@@ -34,6 +34,10 @@ pub struct NodeDesc {
 
 impl NodeDesc {
     pub const RIGID: u8 = 1 << 0;
+    /// The node's kind participates in the down and place phases. Set for
+    /// derived containers with children and for repeaters (which have no
+    /// *table* children but place their materialized instances).
+    pub const CONTAINER: u8 = 1 << 1;
 
     /// Placeholder for const table construction; every slot is overwritten.
     pub const EMPTY: NodeDesc = NodeDesc {
@@ -49,6 +53,11 @@ impl NodeDesc {
     #[inline]
     pub const fn is_rigid(&self) -> bool {
         self.flags & Self::RIGID != 0
+    }
+
+    #[inline]
+    pub const fn is_container(&self) -> bool {
+        self.flags & Self::CONTAINER != 0
     }
 }
 

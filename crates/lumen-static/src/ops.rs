@@ -17,7 +17,7 @@ use crate::desc::{leaf_nop, Constraints, NodeDesc, NodeState, Point, Size, Widge
 use crate::widget::Widget;
 
 #[inline]
-fn fold(out: &mut u64, v: u64) {
+pub(crate) fn fold(out: &mut u64, v: u64) {
     *out = out.wrapping_mul(0x9E37_79B9_7F4A_7C15).wrapping_add(v);
 }
 

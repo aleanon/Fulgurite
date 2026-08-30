@@ -1,0 +1,84 @@
+# Step 3 — repeaters: design notes and measurements
+
+*2026-08-30. Handoff §6's repeater and the §10 Step 3 validation. Machine
+and profile as in `docs/results-step2-crossover.md`. Harness:
+`cargo run --release -p benches --bin repeater`.*
+
+## Design: the template never enters the parent's table
+
+`Repeat<T>` contributes **exactly one** `NodeDesc` to whatever table
+contains it. The handoff sketches "one table entry marks a template range";
+here the template range is simply `T::SUB_TABLE` — it already exists once
+per *type* as a const, so the repeater's ops reference it directly and the
+main passes need no skip logic, no range bookkeeping, nothing. The §6
+scaling property is structural, and tested as a compile-time fact:
+
+```rust
+const _: () = assert!(Repeat::<Item>::NODE_COUNT == 1);
+const _: () = assert!(ListApp::NODE_COUNT == 3);   // header + list + root
+```
+
+Runtime shape: `count` (logical rows), `scroll`, uniform `item_extent`, a
+`bind: fn(&mut T, usize)` that configures a recycled instance for a row,
+and a `RefCell` side arena holding the window's `Vec<T>` instances plus
+their `NodeState`s. The repeater's `up` computes the visible range from
+its height constraint (it is its own scrollport), recycles and binds the
+window, then runs the *ordinary* `pass::layout` per instance over the
+template table — the nested pass is the same code as the outer one.
+`place` shifts instance geometry by `row * extent - scroll` from the
+repeater's origin; `paint` walks the window.
+
+### Changes this forced elsewhere
+
+- **`NodeDesc::CONTAINER` flag.** The down/place phases used to gate
+  dispatch on `child_count > 0`; a repeater has zero *table* children but
+  must still be dispatched in place. The gate is now an explicit flag set
+  by the derive (fields > 0), runtime assembly, and the repeater.
+- `ops::fold` became `pub(crate)` for the repeater's paint.
+
+### Decisions worth recording
+
+- **`bind` is a `fn` pointer, not a closure** — §7's "events are data"
+  rule applied early, so Step 4 will not have to unpick captured state
+  from the repeater.
+- **Windowed state is disposable.** Rows sliding out of the window lose
+  instance state (recycled + rebound). The §12.4 lifecycle question
+  (persistent per-row state, e.g. an expanded row, and its interaction
+  with hot reload) is deliberately still open; nothing here prejudges it.
+- **Uniform extent.** `item_extent` is fixed per repeater — the standard
+  virtualization simplification. Measured/estimated extents are a later
+  feature; they change `visible_range`, not the architecture.
+- **f32 extent ceiling.** `count * item_extent` at 10M rows is 2.4e8 px,
+  past f32's exact-integer range; deep-scroll positions quantize. Real
+  fix (f64 scroll domain or window-relative coordinates) deferred.
+
+## Measurements
+
+Full layout + paint per iteration, 800px viewport (35-row window),
+5-node `Item` template, medians:
+
+| rows | repeat | resident nodes | materialized | resident nodes |
+|---|---|---|---|---|
+| 1k | 1.26 µs | 176 | 34 µs | 5,001 |
+| 100k | 1.26 µs | 176 | 4.66 ms | 500,001 |
+| 1M | 1.27 µs | 176 | 69.1 ms | 5,000,001 |
+| 10M | 1.27 µs | 176 | — | — |
+
+- The repeat arm is **flat to within noise across four orders of
+  magnitude** of data: cost tracks the viewport (35 × 5 nodes + 1), table
+  stays 24 bytes, window state ~5.6 KB.
+- The materialized arm is linear, as it must be: at 1M rows a single
+  frame is 69 ms and the tree holds ~280 MB of table + state. That is the
+  world §6 exists to prevent.
+- Per-window-node cost in the repeat arm (~7 ns) matches the Step 2
+  full-pass figure — the nested pass adds no measurable overhead over the
+  outer one.
+
+## Verdict
+
+§6's scaling property holds and is enforced by construction, not by
+discipline: there is nowhere to put a million descriptors even by
+accident, because `NODE_COUNT` is a type-level constant the data cannot
+reach. Proceed to Step 4 (hot reload) — noting the §12.4 repeater-state
+question is now concrete: window state is currently disposable, and the
+reload design gets to decide whether that stays true.

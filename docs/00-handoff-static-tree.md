@@ -505,6 +505,12 @@ dispatch (per-child dispatch loses to naive dyn outright). See
 Virtualized list with template + runtime count. Validates that `NODE_COUNT`
 scales with source size rather than data size.
 
+**DONE 2026-08-30.** `Repeat<T>` contributes one table entry; the template
+is `T::SUB_TABLE` itself, so no skip logic exists anywhere. Measured flat
+1.26 µs/frame from 1k to 10M rows (35-row window) vs 69 ms materialized at
+1M rows. `NODE_COUNT` data-independence is a compile-time assertion. See
+`docs/step3-repeaters.md`.
+
 ### Step 4 — Hot reload
 
 `Reloadable` derive, save/fresh/restore, dylib swap, `Msg`-based events. Depends

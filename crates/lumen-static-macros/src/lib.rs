@@ -80,6 +80,7 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
     };
     let first_child: u32 = if n_fields > 0 { 1 } else { 0 };
     let child_count = n_fields as u16;
+    let has_children = n_fields > 0;
     let sp = spacing;
 
     // The anonymous-const wrapper keeps helper items unnameable while the
@@ -115,10 +116,12 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                     child_count: #child_count,
                     parent: ::lumen_static::NO_PARENT,
                     next_sibling: 0,
-                    flags: if <#name as ::lumen_static::Widget>::IS_RIGID {
-                        NodeDesc::RIGID
-                    } else {
-                        0
+                    flags: {
+                        let mut f = if #has_children { NodeDesc::CONTAINER } else { 0 };
+                        if <#name as ::lumen_static::Widget>::IS_RIGID {
+                            f |= NodeDesc::RIGID;
+                        }
+                        f
                     },
                 };
                 let mut at: usize = 1;

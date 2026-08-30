@@ -32,7 +32,7 @@ pub fn layout(
     // 1. constraints down
     st[0].constraints = root_c;
     for i in 0..table.len() {
-        if table[i].child_count > 0 {
+        if table[i].is_container() {
             (kinds[table[i].kind as usize].down)(base, table, st, i);
         }
     }
@@ -46,7 +46,7 @@ pub fn layout(
     // 3. positions down
     st[0].pos = Point::default();
     for i in 0..table.len() {
-        if table[i].child_count > 0 {
+        if table[i].is_container() {
             (kinds[table[i].kind as usize].place)(base, table, st, i);
         }
     }
@@ -76,7 +76,7 @@ pub fn layout_partitioned(
     // constraints written but never consumes them).
     for &fi in flexible {
         let i = fi as usize;
-        if table[i].child_count > 0 {
+        if table[i].is_container() {
             (kinds[table[i].kind as usize].down)(base, table, st, i);
         }
     }
@@ -93,7 +93,7 @@ pub fn layout_partitioned(
     // internal offsets shift with their parents).
     st[0].pos = Point::default();
     for i in 0..table.len() {
-        if table[i].child_count > 0 {
+        if table[i].is_container() {
             (kinds[table[i].kind as usize].place)(base, table, st, i);
         }
     }

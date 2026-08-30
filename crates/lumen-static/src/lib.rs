@@ -5,6 +5,7 @@ pub mod assemble;
 pub mod desc;
 pub mod ops;
 pub mod pass;
+pub mod repeat;
 pub mod widget;
 
 pub use desc::{Constraints, NodeDesc, NodeState, Point, Size, WidgetOps, NO_PARENT};

@@ -1,0 +1,180 @@
+//! `Repeat<T>` — the repeater from handoff §6: one main-table entry, a
+//! const template, a runtime instance count, and only the visible window
+//! materialized.
+//!
+//! The template is *not* spliced into the parent's table. It already
+//! exists once as `T::SUB_TABLE`/`T::KIND_LIST`; the repeater's ops run
+//! the ordinary flat passes over it per visible instance, with instance
+//! values and `NodeState`s in a growable side arena behind a `RefCell`
+//! (the pass API hands ops a shared base pointer). This is what makes the
+//! §6 scaling property structural:
+//!
+//! > `NODE_COUNT` grows with how much UI you **wrote**, not how much data
+//! > you **display**.
+//!
+//! Model notes (Step 3 scope, see `docs/step3-repeaters.md`):
+//! - uniform `item_extent` along the vertical axis (the standard
+//!   virtualization simplification; measured extents are later work);
+//! - the repeater is its own scrollport: `scroll` lives on the widget and
+//!   its height constraint is the viewport; its reported size is the full
+//!   logical extent clamped by the viewport;
+//! - `bind` is a plain `fn` pointer, not a closure — the §7 "events are
+//!   data" rule applied ahead of time;
+//! - rows sliding out of the window lose their instance state (recycled);
+//!   the §12.4 lifecycle question stays open.
+
+use core::cell::RefCell;
+
+use crate::desc::{leaf_nop, Constraints, NodeDesc, NodeState, Size, WidgetOps, NO_PARENT};
+use crate::ops::fold;
+use crate::pass;
+use crate::widget::Widget;
+
+pub fn noop_bind<T>(_: &mut T, _: usize) {}
+
+struct Inner<T> {
+    window: Vec<T>,
+    states: Vec<NodeState>,
+    first: usize,
+}
+
+pub struct Repeat<T: Widget + Default + 'static> {
+    /// Logical row count — the data size. Never reflected in any table.
+    pub count: usize,
+    /// Scroll offset in px along the main (vertical) axis.
+    pub scroll: f32,
+    /// Uniform per-row extent along the main axis.
+    pub item_extent: f32,
+    /// Configure a recycled template instance for a row.
+    pub bind: fn(&mut T, usize),
+    inner: RefCell<Inner<T>>,
+}
+
+impl<T: Widget + Default> Default for Repeat<T> {
+    fn default() -> Self {
+        Self::new(0, 1.0, noop_bind::<T>)
+    }
+}
+
+impl<T: Widget + Default> Repeat<T> {
+    pub fn new(count: usize, item_extent: f32, bind: fn(&mut T, usize)) -> Self {
+        Repeat {
+            count,
+            scroll: 0.0,
+            item_extent,
+            bind,
+            inner: RefCell::new(Inner { window: Vec::new(), states: Vec::new(), first: 0 }),
+        }
+    }
+
+    /// Materialized instances (visible window), for tests/inspection.
+    pub fn window_len(&self) -> usize {
+        self.inner.borrow().window.len()
+    }
+
+    /// First materialized row.
+    pub fn first_row(&self) -> usize {
+        self.inner.borrow().first
+    }
+
+    /// Copy of instance `k`'s state for template node `node`.
+    pub fn instance_state(&self, k: usize, node: usize) -> NodeState {
+        self.inner.borrow().states[k * T::NODE_COUNT + node]
+    }
+
+    fn visible_range(&self, viewport_h: f32) -> (usize, usize) {
+        if self.count == 0 || self.item_extent <= 0.0 {
+            return (0, 0);
+        }
+        let first = ((self.scroll / self.item_extent).floor().max(0.0) as usize)
+            .min(self.count - 1);
+        let vis = ((viewport_h / self.item_extent).ceil() as usize + 1).min(self.count - first);
+        (first, vis)
+    }
+
+    fn up_op(b: *const u8, t: &[NodeDesc], st: &[NodeState], i: usize) -> Size {
+        let r: &Self = unsafe { &*(b.add(t[i].offset as usize) as *const Self) };
+        let c = st[i].constraints;
+        let (first, vis) = r.visible_range(c.max_h);
+
+        let mut inner = r.inner.borrow_mut();
+        inner.first = first;
+        inner.window.resize_with(vis, T::default);
+        inner.states.resize(vis * T::NODE_COUNT, NodeState::default());
+        for (k, item) in inner.window.iter_mut().enumerate() {
+            (r.bind)(item, first + k);
+        }
+
+        // Lay out each visible instance with the ordinary flat passes over
+        // the template table; positions come out relative to the instance
+        // origin and are shifted in `place_op`.
+        let row_c = Constraints { min_w: 0.0, max_w: c.max_w, min_h: 0.0, max_h: r.item_extent };
+        let Inner { window, states, .. } = &mut *inner;
+        for (k, item) in window.iter().enumerate() {
+            let ibase = item as *const T as *const u8;
+            let ist = &mut states[k * T::NODE_COUNT..(k + 1) * T::NODE_COUNT];
+            pass::layout(ibase, T::SUB_TABLE, T::KIND_LIST, ist, row_c);
+        }
+
+        c.clamp(Size { w: c.max_w, h: r.count as f32 * r.item_extent })
+    }
+
+    fn place_op(b: *const u8, t: &[NodeDesc], st: &mut [NodeState], i: usize) {
+        let r: &Self = unsafe { &*(b.add(t[i].offset as usize) as *const Self) };
+        let origin = st[i].pos;
+        let mut inner = r.inner.borrow_mut();
+        let first = inner.first;
+        let extent = r.item_extent;
+        let scroll = r.scroll;
+        for k in 0..inner.window.len() {
+            let dy = (first + k) as f32 * extent - scroll;
+            for s in &mut inner.states[k * T::NODE_COUNT..(k + 1) * T::NODE_COUNT] {
+                s.pos.x += origin.x;
+                s.pos.y += origin.y + dy;
+            }
+        }
+    }
+
+    fn paint_op(b: *const u8, d: &NodeDesc, st: &NodeState, out: &mut u64) {
+        let r: &Self = unsafe { &*(b.add(d.offset as usize) as *const Self) };
+        fold(out, d.kind as u64);
+        fold(out, st.size.w.to_bits() as u64 ^ ((st.size.h.to_bits() as u64) << 32));
+        fold(out, r.count as u64 ^ ((r.scroll.to_bits() as u64) << 32));
+
+        let inner = r.inner.borrow();
+        fold(out, inner.first as u64);
+        for (k, item) in inner.window.iter().enumerate() {
+            let ibase = item as *const T as *const u8;
+            for (j, td) in T::SUB_TABLE.iter().enumerate() {
+                let s = &inner.states[k * T::NODE_COUNT + j];
+                (T::KIND_LIST[td.kind as usize].paint)(ibase, td, s, out);
+            }
+        }
+    }
+
+    pub const OPS: WidgetOps = WidgetOps {
+        name: "repeat",
+        down: leaf_nop,
+        up: Self::up_op,
+        place: Self::place_op,
+        paint: Self::paint_op,
+    };
+}
+
+impl<T: Widget + Default + 'static> Widget for Repeat<T> {
+    const NODE_COUNT: usize = 1;
+    const KIND_COUNT: usize = 1;
+    const IS_RIGID: bool = false;
+    /// One entry: no table children (the template is not in this table),
+    /// but CONTAINER so the place phase dispatches the instance shift.
+    const SUB_TABLE: &'static [NodeDesc] = &[NodeDesc {
+        offset: 0,
+        kind: 0,
+        first_child: 0,
+        child_count: 0,
+        parent: NO_PARENT,
+        next_sibling: 0,
+        flags: NodeDesc::CONTAINER,
+    }];
+    const KIND_LIST: &'static [&'static WidgetOps] = &[&Self::OPS];
+}

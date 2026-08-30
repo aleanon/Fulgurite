@@ -28,7 +28,7 @@ impl<C: Widget + Default> Assembled<C> {
             child_count: count as u16,
             parent: NO_PARENT,
             next_sibling: 0,
-            flags: 0,
+            flags: if count > 0 { NodeDesc::CONTAINER } else { 0 },
         };
 
         let mut kinds: Vec<&'static WidgetOps> = Vec::with_capacity(1 + C::KIND_COUNT);

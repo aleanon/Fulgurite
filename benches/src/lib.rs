@@ -294,3 +294,23 @@ pub struct RigidCard {
     pub r3: RigidItem,
     pub r4: RigidItem,
 }
+
+// ---- shared micro-bench harness ---------------------------------------------
+
+/// Median/p10/p90 of `iters` timed runs after a warmup.
+pub fn bench(label: &str, iters: usize, mut f: impl FnMut() -> u64) {
+    for _ in 0..iters.div_ceil(10).max(3) {
+        std::hint::black_box(f());
+    }
+    let mut samples: Vec<u64> = Vec::with_capacity(iters);
+    for _ in 0..iters {
+        let t0 = std::time::Instant::now();
+        std::hint::black_box(f());
+        samples.push(t0.elapsed().as_nanos() as u64);
+    }
+    samples.sort_unstable();
+    let med = samples[samples.len() / 2];
+    let p10 = samples[samples.len() / 10];
+    let p90 = samples[samples.len() * 9 / 10];
+    println!("{label:<34} median {med:>12} ns   p10 {p10:>12}   p90 {p90:>12}");
+}
