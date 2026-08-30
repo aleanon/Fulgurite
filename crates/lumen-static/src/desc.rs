@@ -14,6 +14,21 @@
 //! per phase and loop their children inline, not once per child — per-child
 //! dispatch tripled the indirect-call count and lost to naive dyn recursion.
 
+/// Where a node was declared (handoff §9: source provenance, dev-only).
+/// Compact interning (`src_file: u16` into a string table) is a later
+/// size optimization; dev builds can afford the pointer.
+#[cfg(feature = "observe")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SrcLoc {
+    pub file: &'static str,
+    pub line: u32,
+}
+
+#[cfg(feature = "observe")]
+impl SrcLoc {
+    pub const UNKNOWN: SrcLoc = SrcLoc { file: "", line: 0 };
+}
+
 /// One node of the tree, in DFS pre-order (parent before children).
 ///
 /// Indices (`first_child`, `parent`, `next_sibling`) index the table the
@@ -21,6 +36,10 @@
 /// from the tree base pointer. `kind` indexes the kind list assembled
 /// alongside the table. `next_sibling == 0` means "last child" (slot 0 is
 /// always the root, which is nobody's sibling).
+///
+/// Construct via [`NodeDesc::new`] (+ [`NodeDesc::with_src`]): the struct
+/// grows a provenance field under `feature = "observe"`, and the
+/// constructor keeps derive-emitted code identical across both builds.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct NodeDesc {
     pub offset: u32,
@@ -30,6 +49,8 @@ pub struct NodeDesc {
     pub parent: u32,
     pub next_sibling: u32,
     pub flags: u8,
+    #[cfg(feature = "observe")]
+    pub src: SrcLoc,
 }
 
 impl NodeDesc {
@@ -40,15 +61,40 @@ impl NodeDesc {
     pub const CONTAINER: u8 = 1 << 1;
 
     /// Placeholder for const table construction; every slot is overwritten.
-    pub const EMPTY: NodeDesc = NodeDesc {
-        offset: 0,
-        kind: 0,
-        first_child: 0,
-        child_count: 0,
-        parent: NO_PARENT,
-        next_sibling: 0,
-        flags: 0,
-    };
+    pub const EMPTY: NodeDesc = NodeDesc::new(0, 0, 0, 0, NO_PARENT, 0, 0);
+
+    pub const fn new(
+        offset: u32,
+        kind: u16,
+        first_child: u32,
+        child_count: u16,
+        parent: u32,
+        next_sibling: u32,
+        flags: u8,
+    ) -> NodeDesc {
+        NodeDesc {
+            offset,
+            kind,
+            first_child,
+            child_count,
+            parent,
+            next_sibling,
+            flags,
+            #[cfg(feature = "observe")]
+            src: SrcLoc::UNKNOWN,
+        }
+    }
+
+    /// Stamp source provenance. A no-op unless `feature = "observe"`, so
+    /// derive-emitted code calls it unconditionally at zero release cost.
+    #[allow(unused_mut, unused_variables)]
+    pub const fn with_src(mut self, file: &'static str, line: u32) -> Self {
+        #[cfg(feature = "observe")]
+        {
+            self.src = SrcLoc { file, line };
+        }
+        self
+    }
 
     #[inline]
     pub const fn is_rigid(&self) -> bool {
@@ -123,7 +169,7 @@ pub struct NodeState {
 /// fns cast `base + desc.offset` to their concrete widget type.
 pub struct WidgetOps {
     pub name: &'static str,
-    /// Containers only (`child_count > 0`): write every child's
+    /// Containers only (`CONTAINER` flag): write every child's
     /// constraints, derived from `st[i].constraints`.
     pub down: fn(base: *const u8, table: &[NodeDesc], st: &mut [NodeState], i: usize),
     /// The node's size. Containers read their children's already-computed
@@ -133,6 +179,62 @@ pub struct WidgetOps {
     pub place: fn(base: *const u8, table: &[NodeDesc], st: &mut [NodeState], i: usize),
     /// Fold paint-relevant output into a checksum (display-list stand-in).
     pub paint: fn(base: *const u8, d: &NodeDesc, st: &NodeState, out: &mut u64),
+    /// Fill this kind's accessibility node (role, label, value, extra
+    /// subtrees for virtualized content). Dev surface, §9.
+    #[cfg(feature = "observe")]
+    pub observe: ObserveFn,
+}
+
+/// Contribute to the accessibility/agent tree: the walker pre-fills role
+/// `GenericContainer`, absolute bounds, and table children; the op
+/// overrides what it knows better and may push extra (id, node) pairs for
+/// content outside the table (repeater instances).
+#[cfg(feature = "observe")]
+pub type ObserveFn = fn(
+    base: *const u8,
+    d: &NodeDesc,
+    st: &NodeState,
+    my_id: u64,
+    node: &mut accesskit::Node,
+    extra: &mut Vec<(accesskit::NodeId, accesskit::Node)>,
+);
+
+#[cfg(feature = "observe")]
+fn default_observe(
+    _b: *const u8,
+    _d: &NodeDesc,
+    _st: &NodeState,
+    _id: u64,
+    _n: &mut accesskit::Node,
+    _e: &mut Vec<(accesskit::NodeId, accesskit::Node)>,
+) {
+}
+
+impl WidgetOps {
+    pub const fn new(
+        name: &'static str,
+        down: fn(*const u8, &[NodeDesc], &mut [NodeState], usize),
+        up: fn(*const u8, &[NodeDesc], &[NodeState], usize) -> Size,
+        place: fn(*const u8, &[NodeDesc], &mut [NodeState], usize),
+        paint: fn(*const u8, &NodeDesc, &NodeState, &mut u64),
+    ) -> WidgetOps {
+        WidgetOps {
+            name,
+            down,
+            up,
+            place,
+            paint,
+            #[cfg(feature = "observe")]
+            observe: default_observe,
+        }
+    }
+
+    /// Override the default (empty) observe contribution.
+    #[cfg(feature = "observe")]
+    pub const fn with_observe(mut self, observe: ObserveFn) -> Self {
+        self.observe = observe;
+        self
+    }
 }
 
 /// Shared no-op for leaf `down`/`place` slots (never dispatched: the passes

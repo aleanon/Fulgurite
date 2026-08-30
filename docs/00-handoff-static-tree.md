@@ -526,6 +526,15 @@ an enum special case). Live dylib swap demo passes the full §7 sequence:
 
 AccessKit integration plus source provenance in `NodeDesc`.
 
+**DONE 2026-08-30.** `observe::snapshot` → `accesskit::TreeUpdate` (one
+tree for screen readers and agents; the JSON agent dump is derived from
+it, so they cannot drift). `NodeDesc.src` provenance stamped const by the
+derive; ids positional for table nodes, row-stable for repeater
+instances. Gated behind additive `observe`/`reload` features (Step 4's
+gating debt paid); zero release cost verified by re-running the Step 2
+benchmark unchanged. Deferred: action synthesis (needs events),
+incremental TreeUpdates. See `docs/step5-observability.md`.
+
 ### Step 6 — `#[fuse]`
 
 The optimization dial. Deliberately last: it is a refinement, and its value can

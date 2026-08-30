@@ -73,6 +73,11 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
     let field_ident: Vec<_> = fields.named.iter().map(|f| f.ident.clone().unwrap()).collect();
     let field_ty: Vec<_> = fields.named.iter().map(|f| f.ty.clone()).collect();
     let n_fields = field_ident.len();
+    // §9 provenance: declaration lines from proc-macro2 span locations;
+    // the file comes from `file!()` expanded at the derive's call site.
+    let root_line = input.ident.span().start().line as u32;
+    let field_line: Vec<u32> =
+        fields.named.iter().map(|f| f.ident.as_ref().unwrap().span().start().line as u32).collect();
 
     let (down_fn, up_fn, place_fn) = match axis {
         Axis::Row => (quote!(row_down), quote!(row_up), quote!(row_place)),
@@ -99,31 +104,27 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                 ::lumen_static::ops::#place_fn(t, st, i, #sp)
             }
 
-            const OPS: WidgetOps = WidgetOps {
-                name: #name_str,
-                down: __down,
-                up: __up,
-                place: __place,
-                paint: ::lumen_static::ops::container_paint,
-            };
+            const OPS: WidgetOps =
+                WidgetOps::new(#name_str, __down, __up, __place, ::lumen_static::ops::container_paint);
 
             const TABLE: [NodeDesc; <#name as ::lumen_static::Widget>::NODE_COUNT] = {
                 let mut t = [NodeDesc::EMPTY; <#name as ::lumen_static::Widget>::NODE_COUNT];
-                t[0] = NodeDesc {
-                    offset: 0,
-                    kind: 0,
-                    first_child: #first_child,
-                    child_count: #child_count,
-                    parent: ::lumen_static::NO_PARENT,
-                    next_sibling: 0,
-                    flags: {
+                t[0] = NodeDesc::new(
+                    0,
+                    0,
+                    #first_child,
+                    #child_count,
+                    ::lumen_static::NO_PARENT,
+                    0,
+                    {
                         let mut f = if #has_children { NodeDesc::CONTAINER } else { 0 };
                         if <#name as ::lumen_static::Widget>::IS_RIGID {
                             f |= NodeDesc::RIGID;
                         }
                         f
                     },
-                };
+                )
+                .with_src(::core::file!(), #root_line);
                 let mut at: usize = 1;
                 let mut kb: u16 = 1;
                 let mut prev_root: usize = 0;
@@ -136,6 +137,9 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                         ::core::mem::offset_of!(#name, #field_ident) as u32,
                         kb,
                     );
+                    // Provenance of a child's root is its *field* site;
+                    // its internals keep their own declaration sites.
+                    t[at] = t[at].with_src(::core::file!(), #field_line);
                     if prev_root != 0 {
                         t[prev_root].next_sibling = at as u32;
                     }

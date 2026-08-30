@@ -130,13 +130,13 @@ pub fn container_paint(_base: *const u8, d: &NodeDesc, st: &NodeState, out: &mut
 /// Ops for a container whose values are *not* addressable through the tree
 /// base — the synthetic root used by runtime assembly (handoff §8's
 /// concat-at-startup path). Spacing 0, column axis.
-pub const VIRTUAL_COLUMN_OPS: WidgetOps = WidgetOps {
-    name: "virtual-column",
-    down: |_b, t, st, i| col_down(t, st, i, 0.0),
-    up: |_b, t, st, i| col_up(t, st, i, 0.0),
-    place: |_b, t, st, i| col_place(t, st, i, 0.0),
-    paint: container_paint,
-};
+pub const VIRTUAL_COLUMN_OPS: WidgetOps = WidgetOps::new(
+    "virtual-column",
+    |_b, t, st, i| col_down(t, st, i, 0.0),
+    |_b, t, st, i| col_up(t, st, i, 0.0),
+    |_b, t, st, i| col_place(t, st, i, 0.0),
+    container_paint,
+);
 
 // ---- leaves ----------------------------------------------------------------
 
@@ -147,36 +147,48 @@ pub struct Label {
     pub text: &'static str,
 }
 
-const LABEL_OPS: WidgetOps = WidgetOps {
-    name: "label",
-    down: leaf_nop,
-    up: |b, t, st, i| {
-        let l: &Label = unsafe { &*(b.add(t[i].offset as usize) as *const Label) };
-        st[i].constraints.clamp(Size { w: 8.0 * l.text.len() as f32, h: 16.0 })
-    },
-    place: leaf_nop,
-    paint: |b, d, st, out| {
-        let l: &Label = unsafe { &*(b.add(d.offset as usize) as *const Label) };
-        fold_geom(out, d, st);
-        for &byte in l.text.as_bytes() {
-            fold(out, byte as u64);
-        }
-    },
+#[cfg(feature = "observe")]
+fn label_observe(
+    b: *const u8,
+    d: &NodeDesc,
+    _st: &NodeState,
+    _id: u64,
+    node: &mut accesskit::Node,
+    _extra: &mut Vec<(accesskit::NodeId, accesskit::Node)>,
+) {
+    let l: &Label = unsafe { &*(b.add(d.offset as usize) as *const Label) };
+    node.set_role(accesskit::Role::Label);
+    node.set_value(l.text);
+}
+
+const LABEL_OPS: WidgetOps = {
+    let ops = WidgetOps::new(
+        "label",
+        leaf_nop,
+        |b, t, st, i| {
+            let l: &Label = unsafe { &*(b.add(t[i].offset as usize) as *const Label) };
+            st[i].constraints.clamp(Size { w: 8.0 * l.text.len() as f32, h: 16.0 })
+        },
+        leaf_nop,
+        |b, d, st, out| {
+            let l: &Label = unsafe { &*(b.add(d.offset as usize) as *const Label) };
+            fold_geom(out, d, st);
+            for &byte in l.text.as_bytes() {
+                fold(out, byte as u64);
+            }
+        },
+    );
+    #[cfg(feature = "observe")]
+    let ops = ops.with_observe(label_observe);
+    ops
 };
 
 impl Widget for Label {
     const NODE_COUNT: usize = 1;
     const KIND_COUNT: usize = 1;
     const IS_RIGID: bool = false;
-    const SUB_TABLE: &'static [NodeDesc] = &[NodeDesc {
-        offset: 0,
-        kind: 0,
-        first_child: 0,
-        child_count: 0,
-        parent: crate::desc::NO_PARENT,
-        next_sibling: 0,
-        flags: 0,
-    }];
+    const SUB_TABLE: &'static [NodeDesc] =
+        &[NodeDesc::new(0, 0, 0, 0, crate::desc::NO_PARENT, 0, 0)];
     const KIND_LIST: &'static [&'static WidgetOps] = &[&LABEL_OPS];
 }
 
@@ -193,34 +205,27 @@ impl Default for Fixed {
     }
 }
 
-const FIXED_OPS: WidgetOps = WidgetOps {
-    name: "fixed",
-    down: leaf_nop,
-    up: |b, t, st, i| {
+const FIXED_OPS: WidgetOps = WidgetOps::new(
+    "fixed",
+    leaf_nop,
+    |b, t, st, i| {
         let f: &Fixed = unsafe { &*(b.add(t[i].offset as usize) as *const Fixed) };
         st[i].constraints.clamp(Size { w: f.w, h: f.h })
     },
-    place: leaf_nop,
-    paint: |b, d, st, out| {
+    leaf_nop,
+    |b, d, st, out| {
         let f: &Fixed = unsafe { &*(b.add(d.offset as usize) as *const Fixed) };
         fold_geom(out, d, st);
         fold(out, f.w.to_bits() as u64 ^ f.h.to_bits() as u64);
     },
-};
+);
 
 impl Widget for Fixed {
     const NODE_COUNT: usize = 1;
     const KIND_COUNT: usize = 1;
     const IS_RIGID: bool = true;
-    const SUB_TABLE: &'static [NodeDesc] = &[NodeDesc {
-        offset: 0,
-        kind: 0,
-        first_child: 0,
-        child_count: 0,
-        parent: crate::desc::NO_PARENT,
-        next_sibling: 0,
-        flags: NodeDesc::RIGID,
-    }];
+    const SUB_TABLE: &'static [NodeDesc] =
+        &[NodeDesc::new(0, 0, 0, 0, crate::desc::NO_PARENT, 0, NodeDesc::RIGID)];
     const KIND_LIST: &'static [&'static WidgetOps] = &[&FIXED_OPS];
 }
 
@@ -228,26 +233,19 @@ impl Widget for Fixed {
 #[derive(Default)]
 pub struct Spacer;
 
-const SPACER_OPS: WidgetOps = WidgetOps {
-    name: "spacer",
-    down: leaf_nop,
-    up: |_b, _t, st, i| Size { w: st[i].constraints.max_w, h: st[i].constraints.max_h },
-    place: leaf_nop,
-    paint: |_b, d, st, out| fold_geom(out, d, st),
-};
+const SPACER_OPS: WidgetOps = WidgetOps::new(
+    "spacer",
+    leaf_nop,
+    |_b, _t, st, i| Size { w: st[i].constraints.max_w, h: st[i].constraints.max_h },
+    leaf_nop,
+    |_b, d, st, out| fold_geom(out, d, st),
+);
 
 impl Widget for Spacer {
     const NODE_COUNT: usize = 1;
     const KIND_COUNT: usize = 1;
     const IS_RIGID: bool = false;
-    const SUB_TABLE: &'static [NodeDesc] = &[NodeDesc {
-        offset: 0,
-        kind: 0,
-        first_child: 0,
-        child_count: 0,
-        parent: crate::desc::NO_PARENT,
-        next_sibling: 0,
-        flags: 0,
-    }];
+    const SUB_TABLE: &'static [NodeDesc] =
+        &[NodeDesc::new(0, 0, 0, 0, crate::desc::NO_PARENT, 0, 0)];
     const KIND_LIST: &'static [&'static WidgetOps] = &[&SPACER_OPS];
 }

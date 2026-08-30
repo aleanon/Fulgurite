@@ -152,13 +152,41 @@ impl<T: Widget + Default> Repeat<T> {
         }
     }
 
-    pub const OPS: WidgetOps = WidgetOps {
-        name: "repeat",
-        down: leaf_nop,
-        up: Self::up_op,
-        place: Self::place_op,
-        paint: Self::paint_op,
+    pub const OPS: WidgetOps = {
+        let ops = WidgetOps::new("repeat", leaf_nop, Self::up_op, Self::place_op, Self::paint_op);
+        #[cfg(feature = "observe")]
+        let ops = ops.with_observe(Self::observe_op);
+        ops
     };
+
+    /// Role `List`; pushes each visible instance's template subtree with
+    /// row-stable synthetic ids and links their roots as children.
+    /// Id encoding (documented limits: repeater table index < 2^19,
+    /// template nodes < 2^12, rows < 2^32, one level of nesting):
+    /// `1<<63 | my_id<<44 | row<<12 | template_node`.
+    #[cfg(feature = "observe")]
+    fn observe_op(
+        b: *const u8,
+        d: &NodeDesc,
+        _st: &NodeState,
+        my_id: u64,
+        node: &mut accesskit::Node,
+        extra: &mut Vec<(accesskit::NodeId, accesskit::Node)>,
+    ) {
+        let r: &Self = unsafe { &*(b.add(d.offset as usize) as *const Self) };
+        node.set_role(accesskit::Role::List);
+        let inner = r.inner.borrow();
+        for k in 0..inner.window.len() {
+            let row = (inner.first + k) as u64;
+            let id_of = move |tnode: usize| -> u64 {
+                (1u64 << 63) | (my_id << 44) | (row << 12) | tnode as u64
+            };
+            let ibase = &inner.window[k] as *const T as *const u8;
+            let ist = &inner.states[k * T::NODE_COUNT..(k + 1) * T::NODE_COUNT];
+            crate::observe::emit_subtree(ibase, T::SUB_TABLE, T::KIND_LIST, ist, &id_of, extra);
+            node.push_child(accesskit::NodeId(id_of(0)));
+        }
+    }
 }
 
 impl<T: Widget + Default + 'static> Widget for Repeat<T> {
@@ -167,14 +195,7 @@ impl<T: Widget + Default + 'static> Widget for Repeat<T> {
     const IS_RIGID: bool = false;
     /// One entry: no table children (the template is not in this table),
     /// but CONTAINER so the place phase dispatches the instance shift.
-    const SUB_TABLE: &'static [NodeDesc] = &[NodeDesc {
-        offset: 0,
-        kind: 0,
-        first_child: 0,
-        child_count: 0,
-        parent: NO_PARENT,
-        next_sibling: 0,
-        flags: NodeDesc::CONTAINER,
-    }];
+    const SUB_TABLE: &'static [NodeDesc] =
+        &[NodeDesc::new(0, 0, 0, 0, NO_PARENT, 0, NodeDesc::CONTAINER)];
     const KIND_LIST: &'static [&'static WidgetOps] = &[&Self::OPS];
 }

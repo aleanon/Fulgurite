@@ -3,8 +3,11 @@
 
 pub mod assemble;
 pub mod desc;
+#[cfg(feature = "observe")]
+pub mod observe;
 pub mod ops;
 pub mod pass;
+#[cfg(feature = "reload")]
 pub mod reload;
 pub mod repeat;
 pub mod widget;

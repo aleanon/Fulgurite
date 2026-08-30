@@ -21,15 +21,15 @@ impl<C: Widget + Default> Assembled<C> {
     pub fn new(count: usize) -> Self {
         let n = 1 + count * C::NODE_COUNT;
         let mut table = vec![NodeDesc::EMPTY; n];
-        table[0] = NodeDesc {
-            offset: 0,
-            kind: 0,
-            first_child: if count > 0 { 1 } else { 0 },
-            child_count: count as u16,
-            parent: NO_PARENT,
-            next_sibling: 0,
-            flags: if count > 0 { NodeDesc::CONTAINER } else { 0 },
-        };
+        table[0] = NodeDesc::new(
+            0,
+            0,
+            if count > 0 { 1 } else { 0 },
+            count as u16,
+            NO_PARENT,
+            0,
+            if count > 0 { NodeDesc::CONTAINER } else { 0 },
+        );
 
         let mut kinds: Vec<&'static WidgetOps> = Vec::with_capacity(1 + C::KIND_COUNT);
         kinds.push(&VIRTUAL_COLUMN_OPS);

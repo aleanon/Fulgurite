@@ -10,6 +10,9 @@
 //! - user data (counter, title, rows, scroll) is kept    → survives the swap
 //! - `cache_hits` is reset                               → recomputed after
 
+// The FFI safety contract is documented once at the extern-surface section.
+#![allow(clippy::missing_safety_doc)]
+
 use lumen_static::ops::{Fixed, Label, Spacer};
 use lumen_static::reload::{self, Reloadable};
 use lumen_static::repeat::Repeat;
@@ -89,7 +92,8 @@ impl Default for Session {
 //
 // Safety: every fn below is `unsafe` — callers must pass an app pointer
 // obtained from `hot_new` of THIS library build, and valid (ptr, len)
-// buffer pairs. The host upholds this by construction.
+// buffer pairs. The host upholds this by construction. The contract is
+// stated once here rather than per fn (see the crate-level lint allow).
 
 use std::ffi::c_void;
 
