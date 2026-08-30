@@ -1,0 +1,11 @@
+[package]
+name = "lumen-static"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "lumen_static"
+
+[dependencies]
+lumen-static-macros = { path = "../lumen-static-macros" }
