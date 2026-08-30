@@ -9,3 +9,10 @@ name = "lumen_static"
 
 [dependencies]
 lumen-static-macros = { path = "../lumen-static-macros" }
+# Hot reload (S7) serializes keep-fields as JSON: dev-mode only, chosen for
+# debuggability and per-field fallback; release gating is future work.
+serde = "1"
+serde_json = "1"
+
+[dev-dependencies]
+serde = { version = "1", features = ["derive"] }

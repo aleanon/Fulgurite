@@ -5,9 +5,10 @@ pub mod assemble;
 pub mod desc;
 pub mod ops;
 pub mod pass;
+pub mod reload;
 pub mod repeat;
 pub mod widget;
 
 pub use desc::{Constraints, NodeDesc, NodeState, Point, Size, WidgetOps, NO_PARENT};
-pub use lumen_static_macros::StaticTree;
+pub use lumen_static_macros::{Reloadable, StaticTree};
 pub use widget::Widget;

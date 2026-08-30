@@ -176,3 +176,127 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
         };
     })
 }
+
+// ---- #[derive(Reloadable)] (handoff §7) -------------------------------------
+
+enum ReloadMode {
+    /// `#[reload(keep)]` — serde data, migrated across the swap.
+    Keep,
+    /// `#[reload(fresh)]` / `#[reload(reset)]` — restore never touches it;
+    /// the value from the fresh tree (new dylib's code) stands.
+    Skip,
+    /// No attribute — a nested `Reloadable` (widget subtree); recurse.
+    Nested,
+}
+
+/// Emits `save` (keep fields as a JSON object), `fresh` (`Default`), and
+/// `restore` with per-field fallback: an incompatible or missing saved
+/// field keeps its fresh value and is logged — the §12.2 rule applied to
+/// every field, enum variants included. A fn pointer marked `keep` fails
+/// to compile (no `Serialize`), keeping §7's "Saved cannot contain code
+/// pointers" property structural.
+#[proc_macro_derive(Reloadable, attributes(reload))]
+pub fn derive_reloadable(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    match expand_reloadable(input) {
+        Ok(ts) => ts.into(),
+        Err(e) => e.to_compile_error().into(),
+    }
+}
+
+fn reload_mode(field: &syn::Field) -> syn::Result<ReloadMode> {
+    let mut mode = ReloadMode::Nested;
+    for attr in &field.attrs {
+        if !attr.path().is_ident("reload") {
+            continue;
+        }
+        attr.parse_nested_meta(|meta| {
+            if meta.path.is_ident("keep") {
+                mode = ReloadMode::Keep;
+            } else if meta.path.is_ident("fresh") || meta.path.is_ident("reset") {
+                mode = ReloadMode::Skip;
+            } else {
+                return Err(meta.error("expected `keep`, `fresh`, or `reset`"));
+            }
+            Ok(())
+        })?;
+    }
+    Ok(mode)
+}
+
+fn expand_reloadable(input: DeriveInput) -> syn::Result<Ts2> {
+    let name = &input.ident;
+    let name_str = name.to_string();
+    let Data::Struct(data) = &input.data else {
+        return Err(syn::Error::new_spanned(
+            &input.ident,
+            "Reloadable derives structs with named fields; enums travel as \
+             #[reload(keep)] serde data inside a struct",
+        ));
+    };
+    let Fields::Named(fields) = &data.fields else {
+        return Err(syn::Error::new_spanned(&input.ident, "Reloadable needs named fields"));
+    };
+
+    let mut save_stmts = Vec::new();
+    let mut restore_stmts = Vec::new();
+    for f in &fields.named {
+        let ident = f.ident.clone().unwrap();
+        let key = ident.to_string();
+        match reload_mode(f)? {
+            ReloadMode::Keep => {
+                save_stmts.push(quote! {
+                    m.insert(#key.to_owned(), match ::lumen_static::reload::to_value(&self.#ident) {
+                        Ok(v) => v,
+                        Err(e) => {
+                            ::lumen_static::reload::log_fallback(#name_str, #key, &format!("save failed: {e}"));
+                            ::lumen_static::reload::Value::Null
+                        }
+                    });
+                });
+                restore_stmts.push(quote! {
+                    match obj.get(#key) {
+                        Some(v) => match ::lumen_static::reload::from_value(v.clone()) {
+                            Ok(x) => self.#ident = x,
+                            Err(e) => ::lumen_static::reload::log_fallback(
+                                #name_str, #key, &format!("incompatible saved value: {e}")),
+                        },
+                        None => ::lumen_static::reload::log_fallback(#name_str, #key, "missing from saved state"),
+                    }
+                });
+            }
+            ReloadMode::Skip => {}
+            ReloadMode::Nested => {
+                save_stmts.push(quote! {
+                    m.insert(#key.to_owned(), ::lumen_static::reload::Reloadable::save(&self.#ident));
+                });
+                restore_stmts.push(quote! {
+                    match obj.get(#key) {
+                        Some(v) => ::lumen_static::reload::Reloadable::restore(&mut self.#ident, v),
+                        None => ::lumen_static::reload::log_fallback(#name_str, #key, "missing from saved state"),
+                    }
+                });
+            }
+        }
+    }
+
+    Ok(quote! {
+        impl ::lumen_static::reload::Reloadable for #name {
+            fn save(&self) -> ::lumen_static::reload::Value {
+                let mut m = ::lumen_static::reload::Map::new();
+                #(#save_stmts)*
+                ::lumen_static::reload::Value::Object(m)
+            }
+            fn fresh() -> Self {
+                <Self as ::core::default::Default>::default()
+            }
+            fn restore(&mut self, saved: &::lumen_static::reload::Value) {
+                let Some(obj) = saved.as_object() else {
+                    ::lumen_static::reload::log_fallback(#name_str, "<self>", "saved state is not an object");
+                    return;
+                };
+                #(#restore_stmts)*
+            }
+        }
+    })
+}

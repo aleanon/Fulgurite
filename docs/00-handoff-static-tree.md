@@ -516,6 +516,12 @@ is `T::SUB_TABLE` itself, so no skip logic exists anywhere. Measured flat
 `Reloadable` derive, save/fresh/restore, dylib swap, `Msg`-based events. Depends
 on Step 1 having succeeded.
 
+**DONE 2026-08-30.** `Reloadable` + derive with keep/fresh/reset field
+classes, nested widget recursion, Vec-arity-from-saved-data, and per-field
+fallback with logging (which resolves §12.2 as the general mechanism, not
+an enum special case). Live dylib swap demo passes the full §7 sequence:
+`scripts/hot_reload_demo.sh`. See `docs/step4-hot-reload.md`.
+
 ### Step 5 — Observability
 
 AccessKit integration plus source provenance in `NodeDesc`.
@@ -612,10 +618,19 @@ remains** — which is why §10 Step 1 is the kill criterion.
    defaults to `B`. Rule: take the saved variant when it still exists, fall back
    to `fresh()` when it does not, **and log it** — silent fallback is
    indistinguishable from a bug in the new code.
+   **RESOLVED 2026-08-30:** implemented as per-field fallback-with-log for
+   *every* keep field (missing/type-changed/unknown-variant alike), not an
+   enum special case. Demonstrated live in the Step 4 demo. See
+   `docs/step4-hot-reload.md`.
 3. **Arena as the one type-level axis** (§8) — confirm a single type parameter
    at the app root is genuinely sufficient, or find the second one early.
 4. **Repeater state lifecycle** — what happens to instance state for rows
    scrolled out of the materialized window, and how it interacts with hot reload.
+   **DECIDED (partially) 2026-08-30:** window instances are disposable — 
+   rebound from data every frame, dropped across reload; only
+   count/scroll/extent are kept. Persistent per-row UI state, when it
+   arrives, must live in the data model or a keyed side store, never in
+   window instances. See `docs/step3-repeaters.md`, `docs/step4-hot-reload.md`.
 5. **Fusion granularity heuristics** (§5) — whether `#[fuse]` stays manual or
    the macro can infer candidates from subtree size and instantiation count.
 6. **Parallel layout** — independent subtrees are trivially parallelizable given

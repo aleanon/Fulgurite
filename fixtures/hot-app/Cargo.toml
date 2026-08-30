@@ -1,0 +1,19 @@
+[package]
+name = "hot-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[features]
+# The "edited code": different footer text and Default theme, and the
+# Mode::Fancy variant is deleted.
+v2 = []
+
+[dependencies]
+lumen-static = { path = "../../crates/lumen-static" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

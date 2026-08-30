@@ -6,6 +6,8 @@ members = [
     "crates/lumen-static",
     "crates/lumen-static-macros",
     "benches",
+    "fixtures/hot-app",
+    "fixtures/hot-host",
 ]
 # The Step 1 firewall experiment is its own generated workspace.
 exclude = ["experiments"]
