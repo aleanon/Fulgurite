@@ -3,6 +3,7 @@
 
 pub mod assemble;
 pub mod desc;
+pub mod fuse;
 #[cfg(feature = "observe")]
 pub mod observe;
 pub mod ops;

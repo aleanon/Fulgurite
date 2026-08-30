@@ -314,3 +314,41 @@ pub fn bench(label: &str, iters: usize, mut f: impl FnMut() -> u64) {
     let p90 = samples[samples.len() * 9 / 10];
     println!("{label:<34} median {med:>12} ns   p10 {p10:>12}   p90 {p90:>12}");
 }
+
+// ---- fused shapes (Step 6): identical geometry to Ten/Item/Card ------------
+
+/// `Ten`, fused: 1 table entry instead of 10.
+#[derive(StaticTree, Default)]
+#[widget(row, spacing = 2.0, fuse)]
+pub struct FusedTen {
+    pub l1: Label,
+    pub f1: Fixed,
+    pub s1: Spacer,
+    pub l2: Label,
+    pub f2: Fixed,
+    pub l3: Label,
+    pub f3: Fixed,
+    pub s2: Spacer,
+    pub l4: Label,
+}
+
+/// `Item`, fused.
+#[derive(StaticTree, Default)]
+#[widget(row, spacing = 4.0, fuse)]
+pub struct FusedItem {
+    pub icon: Fixed,
+    pub name: Label,
+    pub gap: Spacer,
+    pub size: Label,
+}
+
+/// `Card`, fused all the way down: 1 table entry instead of 22.
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 2.0, fuse)]
+pub struct FusedCard {
+    pub title: Label,
+    pub r1: FusedItem,
+    pub r2: FusedItem,
+    pub r3: FusedItem,
+    pub r4: FusedItem,
+}

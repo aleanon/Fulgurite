@@ -540,6 +540,16 @@ incremental TreeUpdates. See `docs/step5-observability.md`.
 The optimization dial. Deliberately last: it is a refinement, and its value can
 only be judged against Step 2's measurements.
 
+**DONE 2026-08-30 — and with it the build order is complete.** Spelled
+`#[widget(axis, spacing, fuse)]`: one table entry, one kind, subtree
+layout/paint as straight-line `Inline` code, geometry exactly equal to
+the unfused twin (tested). Measured against Step 2's arms: 43 ns at 10
+logical nodes (closing the dyn gap, −36%), −61%/−64% vs the table at
+1k/100k. Per-*type* monomorphization keeps §4's per-position blowup
+shut. Costs recorded: fused internals are opaque to Step 5's
+observability and hold no per-node state. See
+`docs/results-step6-fuse.md`.
+
 ---
 
 ## 11. Honest risk assessment
@@ -642,6 +652,11 @@ remains** — which is why §10 Step 1 is the kill criterion.
    window instances. See `docs/step3-repeaters.md`, `docs/step4-hot-reload.md`.
 5. **Fusion granularity heuristics** (§5) — whether `#[fuse]` stays manual or
    the macro can infer candidates from subtree size and instantiation count.
+   **RESOLVED 2026-08-30: stays manual.** Per-type (not per-position)
+   monomorphization bounds the cost of a wrong choice, and fusion's real
+   trade-offs (observability opacity, no per-internal-node state) are
+   semantic judgments. Revisit only on evidence from real apps. See
+   `docs/results-step6-fuse.md`.
 6. **Parallel layout** — independent subtrees are trivially parallelizable given
    the flat table, but this was not explored. Interacts with the two-thread
    pipelining in §2.

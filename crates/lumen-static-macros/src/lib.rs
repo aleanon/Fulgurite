@@ -36,9 +36,10 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
     let name = &input.ident;
     let name_str = name.to_string();
 
-    // ---- #[widget(row|column, spacing = <f32>)] ----
+    // ---- #[widget(row|column, spacing = <f32>, fuse)] ----
     let mut axis = None;
     let mut spacing = 0.0f32;
+    let mut fuse = false;
     for attr in &input.attrs {
         if !attr.path().is_ident("widget") {
             continue;
@@ -51,8 +52,10 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
             } else if meta.path.is_ident("spacing") {
                 let lit: syn::LitFloat = meta.value()?.parse()?;
                 spacing = lit.base10_parse()?;
+            } else if meta.path.is_ident("fuse") {
+                fuse = true;
             } else {
-                return Err(meta.error("expected `row`, `column`, or `spacing = <float>`"));
+                return Err(meta.error("expected `row`, `column`, `spacing = <float>`, or `fuse`"));
             }
             Ok(())
         })?;
@@ -78,6 +81,12 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
     let root_line = input.ident.span().start().line as u32;
     let field_line: Vec<u32> =
         fields.named.iter().map(|f| f.ident.as_ref().unwrap().span().start().line as u32).collect();
+
+    if fuse {
+        return expand_fused(
+            name, &name_str, &axis, spacing, &field_ident, &field_ty, root_line,
+        );
+    }
 
     let (down_fn, up_fn, place_fn) = match axis {
         Axis::Row => (quote!(row_down), quote!(row_up), quote!(row_place)),
@@ -302,5 +311,130 @@ fn expand_reloadable(input: DeriveInput) -> syn::Result<Ts2> {
                 #(#restore_stmts)*
             }
         }
+    })
+}
+
+/// The §5 erasure dial: one table entry, one kind, and the subtree's
+/// layout/paint emitted as straight-line code over `Inline` — children
+/// are called directly, so the compiler inlines and const-folds across
+/// the whole subtree. Fields must implement `Inline` (leaves or other
+/// fused structs); a table container inside a fused one fails to compile.
+#[allow(clippy::too_many_arguments)]
+fn expand_fused(
+    name: &syn::Ident,
+    name_str: &str,
+    axis: &Axis,
+    spacing: f32,
+    field_ident: &[syn::Ident],
+    field_ty: &[syn::Type],
+    root_line: u32,
+) -> syn::Result<Ts2> {
+    let k = field_ident.len();
+    let spaced = if k > 1 { spacing * (k - 1) as f32 } else { 0.0 };
+    let nf = if k > 0 { k as f32 } else { 1.0 };
+    let sp = spacing;
+
+    let (cc_expr, acc_child, result_expr, advance_stmt) = match axis {
+        Axis::Row => (
+            quote! { ::lumen_static::Constraints {
+                min_w: 0.0,
+                max_w: ((c.max_w - #spaced) / #nf).max(0.0),
+                min_h: 0.0,
+                max_h: c.max_h,
+            } },
+            quote! { sum += s.w; mx = mx.max(s.h); },
+            quote! { c.clamp(::lumen_static::Size { w: sum + #spaced, h: mx }) },
+            quote! { cur.x += s.w + #sp; },
+        ),
+        Axis::Column => (
+            quote! { ::lumen_static::Constraints {
+                min_w: 0.0,
+                max_w: c.max_w,
+                min_h: 0.0,
+                max_h: ((c.max_h - #spaced) / #nf).max(0.0),
+            } },
+            quote! { sum += s.h; mx = mx.max(s.w); },
+            quote! { c.clamp(::lumen_static::Size { w: mx, h: sum + #spaced }) },
+            quote! { cur.y += s.h + #sp; },
+        ),
+    };
+
+    Ok(quote! {
+        const _: () = {
+            use ::lumen_static::desc::{NodeDesc, NodeState, Size, WidgetOps};
+            use ::lumen_static::fuse::Inline;
+
+            impl Inline for #name {
+                #[allow(unused_mut, unused_variables)]
+                fn measure(&self, c: ::lumen_static::Constraints) -> ::lumen_static::Size {
+                    let cc = #cc_expr;
+                    let mut sum = 0.0f32;
+                    let mut mx = 0.0f32;
+                    #(
+                        let s = Inline::measure(&self.#field_ident, cc);
+                        #acc_child
+                    )*
+                    #result_expr
+                }
+                #[allow(unused_mut, unused_variables)]
+                fn paint_inline(
+                    &self,
+                    c: ::lumen_static::Constraints,
+                    pos: ::lumen_static::Point,
+                    size: ::lumen_static::Size,
+                    out: &mut u64,
+                ) {
+                    ::lumen_static::fuse::fold_tagged(out, 0, size, pos);
+                    let cc = #cc_expr;
+                    let mut cur = pos;
+                    #(
+                        let s = Inline::measure(&self.#field_ident, cc);
+                        Inline::paint_inline(&self.#field_ident, cc, cur, s, out);
+                        #advance_stmt
+                    )*
+                }
+            }
+
+            fn __up(b: *const u8, t: &[NodeDesc], st: &[NodeState], i: usize) -> Size {
+                let s: &#name = unsafe { &*(b.add(t[i].offset as usize) as *const #name) };
+                Inline::measure(s, st[i].constraints)
+            }
+            fn __paint(b: *const u8, d: &NodeDesc, st: &NodeState, out: &mut u64) {
+                let s: &#name = unsafe { &*(b.add(d.offset as usize) as *const #name) };
+                Inline::paint_inline(s, st.constraints, st.pos, st.size, out)
+            }
+
+            const OPS: WidgetOps = WidgetOps::new(
+                #name_str,
+                ::lumen_static::desc::leaf_nop,
+                __up,
+                ::lumen_static::desc::leaf_nop,
+                __paint,
+            );
+
+            const TABLE: [NodeDesc; 1] = [NodeDesc::new(
+                0,
+                0,
+                0,
+                0,
+                ::lumen_static::NO_PARENT,
+                0,
+                if <#name as ::lumen_static::Widget>::IS_RIGID {
+                    NodeDesc::RIGID
+                } else {
+                    0
+                },
+            )
+            .with_src(::core::file!(), #root_line)];
+
+            impl ::lumen_static::Widget for #name {
+                const NODE_COUNT: usize = 1;
+                const KIND_COUNT: usize = 1;
+                const IS_RIGID: bool =
+                    true #(&& <#field_ty as ::lumen_static::Widget>::IS_RIGID)*;
+                const SUB_TABLE: &'static [NodeDesc] = &TABLE;
+                const KIND_LIST: &'static [&'static WidgetOps] = &[&OPS];
+            }
+        };
     })
 }
