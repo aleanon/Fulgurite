@@ -14,9 +14,10 @@ pub mod pass;
 #[cfg(feature = "reload")]
 pub mod reload;
 pub mod repeat;
+pub mod safe;
 pub mod widget;
 
 pub use desc::{Constraints, Inner, NodeDesc, NodeState, Point, Size, WidgetOps, NO_PARENT};
 pub use event::{Event, EventCtx, InputQueue, Key};
-pub use lumen_static_macros::{Reloadable, StaticTree};
+pub use lumen_static_macros::{Reloadable, SafeTree, StaticTree};
 pub use widget::Widget;

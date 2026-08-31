@@ -11,3 +11,7 @@ lumen-static = { path = "../crates/lumen-static" }
 [[bin]]
 name = "crossover"
 path = "src/bin/crossover.rs"
+
+[[bin]]
+name = "safety"
+path = "src/bin/safety.rs"

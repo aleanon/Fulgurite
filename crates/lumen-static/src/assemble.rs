@@ -17,6 +17,41 @@ pub struct Assembled<C> {
     pub states: Vec<NodeState>,
 }
 
+/// Build the concatenated table: a synthetic column root followed by
+/// `count` copies of `sub`, rebased. `stride` is the byte distance
+/// between instances — the safe prototype (`crate::safe::Slab`) passes 0
+/// because it addresses instances by index rather than by offset, and
+/// otherwise builds byte-identical structure.
+pub fn concat_table(
+    count: usize,
+    node_count: usize,
+    sub: &[NodeDesc],
+    stride: usize,
+) -> Vec<NodeDesc> {
+    let n = 1 + count * node_count;
+    let mut table = vec![NodeDesc::EMPTY; n];
+    table[0] = NodeDesc::new(
+        0,
+        0,
+        if count > 0 { 1 } else { 0 },
+        count as u16,
+        NO_PARENT,
+        0,
+        if count > 0 { NodeDesc::CONTAINER } else { 0 },
+    );
+    let mut at = 1usize;
+    let mut prev_root = 0usize;
+    for i in 0..count {
+        splice_child(&mut table, at, sub, 0, (i * stride) as u32, 1);
+        if prev_root != 0 {
+            table[prev_root].next_sibling = at as u32;
+        }
+        prev_root = at;
+        at += node_count;
+    }
+    table
+}
+
 impl<C: Widget + Default> Assembled<C> {
     pub fn new(count: usize) -> Self {
         let n = 1 + count * C::NODE_COUNT;

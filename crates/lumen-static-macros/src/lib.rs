@@ -453,3 +453,110 @@ fn expand_fused(
         };
     })
 }
+
+// ---- #[derive(SafeTree)] — the unsafe-free prototype path ------------------
+
+/// Emits the safe counterpart of what `StaticTree` emits: a `Node` impl
+/// (this container's own layout math) and a `Tree` impl whose `node(i)`
+/// is a range-delegating match over the fields.
+///
+/// This is the same field information `StaticTree` spends on
+/// `offset_of!`, spent instead on a jump table — which is the entire
+/// difference between the two paths (`docs/verification-notes.md`).
+/// Reuses `<Self as Widget>::SUB_TABLE`, so both arms iterate a
+/// byte-identical table and a benchmark isolates one variable.
+#[proc_macro_derive(SafeTree, attributes(widget, widget_id))]
+pub fn derive_safe_tree(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    match expand_safe(input) {
+        Ok(ts) => ts.into(),
+        Err(e) => e.to_compile_error().into(),
+    }
+}
+
+fn expand_safe(input: DeriveInput) -> syn::Result<Ts2> {
+    let name = &input.ident;
+
+    let mut axis = None;
+    let mut spacing = 0.0f32;
+    for attr in &input.attrs {
+        if !attr.path().is_ident("widget") {
+            continue;
+        }
+        attr.parse_nested_meta(|meta| {
+            if meta.path.is_ident("row") {
+                axis = Some(Axis::Row);
+            } else if meta.path.is_ident("column") {
+                axis = Some(Axis::Column);
+            } else if meta.path.is_ident("spacing") {
+                let lit: syn::LitFloat = meta.value()?.parse()?;
+                spacing = lit.base10_parse()?;
+            }
+            // `fuse` and anything else: ignored by this prototype.
+            Ok(())
+        })?;
+    }
+    let Some(axis) = axis else {
+        return Err(syn::Error::new_spanned(&input.ident, "SafeTree needs #[widget(row|column)]"));
+    };
+    let Data::Struct(data) = &input.data else {
+        return Err(syn::Error::new_spanned(&input.ident, "SafeTree derives structs only"));
+    };
+    let Fields::Named(fields) = &data.fields else {
+        return Err(syn::Error::new_spanned(&input.ident, "SafeTree needs named fields"));
+    };
+    let field_ident: Vec<_> = fields.named.iter().map(|f| f.ident.clone().unwrap()).collect();
+    let field_ty: Vec<_> = fields.named.iter().map(|f| f.ty.clone()).collect();
+
+    let (down_fn, up_fn, place_fn) = match axis {
+        Axis::Row => (quote!(row_down), quote!(row_up), quote!(row_place)),
+        Axis::Column => (quote!(col_down), quote!(col_up), quote!(col_place)),
+    };
+    let sp = spacing;
+
+    Ok(quote! {
+        const _: () = {
+            use ::lumen_static::desc::{NodeDesc, NodeState, Size};
+            use ::lumen_static::safe::{Node, Tree};
+
+            impl Node for #name {
+                fn down(&self, t: &[NodeDesc], st: &mut [NodeState], i: usize) {
+                    ::lumen_static::ops::#down_fn(t, st, i, #sp)
+                }
+                fn up(&self, t: &[NodeDesc], st: &[NodeState], i: usize) -> Size {
+                    ::lumen_static::ops::#up_fn(t, st, i, #sp)
+                }
+                fn place(&self, t: &[NodeDesc], st: &mut [NodeState], i: usize) {
+                    ::lumen_static::ops::#place_fn(t, st, i, #sp)
+                }
+                fn paint(&self, d: &NodeDesc, st: &NodeState, out: &mut u64) {
+                    ::lumen_static::ops::fold_geom_pub(out, d, st)
+                }
+            }
+
+            impl Tree for #name {
+                const TABLE: &'static [NodeDesc] = <#name as ::lumen_static::Widget>::SUB_TABLE;
+                const COUNT: usize = <#name as ::lumen_static::Widget>::NODE_COUNT;
+
+                #[inline]
+                fn node(&self, i: usize) -> &dyn Node {
+                    if i == 0 {
+                        return self;
+                    }
+                    let mut at: usize = 1;
+                    #(
+                        {
+                            let n = <#field_ty as Tree>::COUNT;
+                            if i < at + n {
+                                return Tree::node(&self.#field_ident, i - at);
+                            }
+                            at += n;
+                        }
+                    )*
+                    let _ = at;
+                    unreachable!("node index out of range")
+                }
+            }
+        };
+    })
+}

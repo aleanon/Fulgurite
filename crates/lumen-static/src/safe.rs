@@ -1,0 +1,277 @@
+//! A fully-safe variant of the tree and passes — prototype for
+//! `docs/verification-notes.md`'s central question: is the `base +
+//! offset` unsafe needed, or is it a performance choice?
+//!
+//! The idea: keep everything that makes this architecture distinctive —
+//! the const table, const `NODE_COUNT`, zero allocation, flat iterative
+//! passes — and replace only the *erasure mechanism*. Instead of erasing
+//! a widget to `*const u8` and recovering it with a cast, the derive
+//! emits a safe accessor that returns `&dyn Node`. A `&dyn` is a fat
+//! pointer into storage that already exists: no `Box`, no arena, no
+//! allocation.
+//!
+//! What this deletes, beyond the `unsafe` itself:
+//! - **`KIND_LIST`**: the vtable arrives with the `&dyn` coercion, and
+//!   rustc already dedups vtables per type — so §5's "one body per
+//!   widget *kind*, not per tree *position*" is guaranteed by the
+//!   language rather than by our splicing.
+//! - **`kind: u16` from `NodeDesc`** (this prototype keeps it, to reuse
+//!   the identical table and isolate one variable in the benchmark).
+//! - **`RefCell` in `Repeat`**: interior mutability exists only because
+//!   ops receive a *shared* base pointer; a `node_mut` accessor lets
+//!   layout mutate a window directly. Not exercised here — `Repeat` is
+//!   out of scope for the prototype.
+//!
+//! Fusion is evidence this style works: `fuse.rs` already contains zero
+//! `unsafe`, because a fused subtree is monomorphized and calls its
+//! fields directly. This module generalizes that to every seam.
+
+use crate::desc::{Constraints, NodeDesc, NodeState, Point, Size};
+
+/// A widget's own behavior — the safe counterpart of `WidgetOps`, except
+/// there is no table of these: the vtable rides along with `&dyn Node`.
+pub trait Node {
+    /// Containers only: write every child's constraints.
+    fn down(&self, _table: &[NodeDesc], _st: &mut [NodeState], _i: usize) {}
+    /// This node's size.
+    fn up(&self, table: &[NodeDesc], st: &[NodeState], i: usize) -> Size;
+    /// Containers only: write every child's position.
+    fn place(&self, _table: &[NodeDesc], _st: &mut [NodeState], _i: usize) {}
+    /// Fold paint output (display-list stand-in, as in the unsafe path).
+    fn paint(&self, d: &NodeDesc, st: &NodeState, out: &mut u64);
+}
+
+/// Addressing: map a table index to the widget living at it.
+///
+/// The derive generates `node` as a range-delegating match over fields —
+/// the same information it uses for `offset_of!` in the unsafe path,
+/// spent on a jump table instead of pointer arithmetic.
+pub trait Tree {
+    const TABLE: &'static [NodeDesc];
+    const COUNT: usize;
+    fn node(&self, i: usize) -> &dyn Node;
+}
+
+/// Layout, identical in structure to `pass::layout` — three stack-free
+/// loops over the same const table. Only the accessor differs.
+pub fn layout<T: Tree + ?Sized>(tree: &T, st: &mut [NodeState], root_c: Constraints) {
+    let table = T::TABLE;
+    debug_assert_eq!(table.len(), st.len());
+
+    st[0].constraints = root_c;
+    for (i, d) in table.iter().enumerate() {
+        if d.is_container() {
+            tree.node(i).down(table, st, i);
+        }
+    }
+    for i in (0..table.len()).rev() {
+        let s = tree.node(i).up(table, st, i);
+        st[i].size = s;
+    }
+    st[0].pos = Point::default();
+    for (i, d) in table.iter().enumerate() {
+        if d.is_container() {
+            tree.node(i).place(table, st, i);
+        }
+    }
+}
+
+pub fn paint<T: Tree + ?Sized>(tree: &T, st: &[NodeState], out: &mut u64) {
+    for (i, d) in T::TABLE.iter().enumerate() {
+        tree.node(i).paint(d, &st[i], out);
+    }
+}
+
+// ---- leaf impls (compare with the unsafe versions in `ops.rs`) --------
+
+use crate::ops::{fold_geom_pub as fold_geom, fold_pub as fold, Fixed, Label, Spacer};
+
+impl Node for Label {
+    fn up(&self, _t: &[NodeDesc], st: &[NodeState], i: usize) -> Size {
+        st[i].constraints.clamp(Size { w: 8.0 * self.text.len() as f32, h: 16.0 })
+    }
+    fn paint(&self, d: &NodeDesc, st: &NodeState, out: &mut u64) {
+        fold_geom(out, d, st);
+        for &b in self.text.as_bytes() {
+            fold(out, b as u64);
+        }
+    }
+}
+
+impl Tree for Label {
+    const TABLE: &'static [NodeDesc] = <Self as crate::Widget>::SUB_TABLE;
+    const COUNT: usize = 1;
+    fn node(&self, _i: usize) -> &dyn Node {
+        self
+    }
+}
+
+impl Node for Fixed {
+    fn up(&self, _t: &[NodeDesc], st: &[NodeState], i: usize) -> Size {
+        st[i].constraints.clamp(Size { w: self.w, h: self.h })
+    }
+    fn paint(&self, d: &NodeDesc, st: &NodeState, out: &mut u64) {
+        fold_geom(out, d, st);
+        fold(out, self.w.to_bits() as u64 ^ self.h.to_bits() as u64);
+    }
+}
+
+impl Tree for Fixed {
+    const TABLE: &'static [NodeDesc] = <Self as crate::Widget>::SUB_TABLE;
+    const COUNT: usize = 1;
+    fn node(&self, _i: usize) -> &dyn Node {
+        self
+    }
+}
+
+impl Node for Spacer {
+    fn up(&self, _t: &[NodeDesc], st: &[NodeState], i: usize) -> Size {
+        Size { w: st[i].constraints.max_w, h: st[i].constraints.max_h }
+    }
+    fn paint(&self, d: &NodeDesc, st: &NodeState, out: &mut u64) {
+        fold_geom(out, d, st);
+    }
+}
+
+impl Tree for Spacer {
+    const TABLE: &'static [NodeDesc] = <Self as crate::Widget>::SUB_TABLE;
+    const COUNT: usize = 1;
+    fn node(&self, _i: usize) -> &dyn Node {
+        self
+    }
+}
+
+// ---- runtime assembly, safely (§8's concat-at-startup path) ----------
+
+/// The synthetic column root that `Assembled` uses, as an ordinary value.
+#[derive(Default)]
+pub struct VirtualColumn;
+
+impl Node for VirtualColumn {
+    fn down(&self, t: &[NodeDesc], st: &mut [NodeState], i: usize) {
+        crate::ops::col_down(t, st, i, 0.0)
+    }
+    fn up(&self, t: &[NodeDesc], st: &[NodeState], i: usize) -> Size {
+        crate::ops::col_up(t, st, i, 0.0)
+    }
+    fn place(&self, t: &[NodeDesc], st: &mut [NodeState], i: usize) {
+        crate::ops::col_place(t, st, i, 0.0)
+    }
+    fn paint(&self, d: &NodeDesc, st: &NodeState, out: &mut u64) {
+        fold_geom(out, d, st);
+    }
+}
+
+/// A homogeneous slab of components under one virtual root — the safe
+/// counterpart of `Assembled<C>`. Instance addressing is a division by a
+/// *constant* (`C::COUNT`), which compiles to a multiply-shift, where the
+/// unsafe path uses a precomputed byte offset.
+pub struct Slab<C: Tree + 'static> {
+    pub root: VirtualColumn,
+    pub items: Vec<C>,
+    table: Vec<NodeDesc>,
+}
+
+impl<C: Tree + Default + 'static> Slab<C> {
+    /// Builds the same table `Assembled::new` builds, so the two arms
+    /// iterate byte-identical structure.
+    pub fn new(count: usize) -> Self {
+        // Same builder the unsafe path uses, with stride 0: instances are
+        // addressed by index here, so byte offsets are unused.
+        let table = crate::assemble::concat_table(count, C::COUNT, C::TABLE, 0);
+        Slab { root: VirtualColumn, items: (0..count).map(|_| C::default()).collect(), table }
+    }
+
+    pub fn table(&self) -> &[NodeDesc] {
+        &self.table
+    }
+
+    pub fn node_at(&self, i: usize) -> &dyn Node {
+        if i == 0 {
+            return &self.root;
+        }
+        let j = i - 1;
+        self.items[j / C::COUNT].node(j % C::COUNT)
+    }
+}
+
+/// `Slab` cannot implement [`Tree`] (its table is runtime-built, not a
+/// const), so the passes are duplicated for it — the same three loops.
+pub fn layout_slab<C: Tree + Default + 'static>(
+    slab: &Slab<C>,
+    st: &mut [NodeState],
+    root_c: Constraints,
+) {
+    let table = slab.table();
+    st[0].constraints = root_c;
+    for (i, d) in table.iter().enumerate() {
+        if d.is_container() {
+            slab.node_at(i).down(table, st, i);
+        }
+    }
+    for i in (0..table.len()).rev() {
+        let s = slab.node_at(i).up(table, st, i);
+        st[i].size = s;
+    }
+    st[0].pos = Point::default();
+    for (i, d) in table.iter().enumerate() {
+        if d.is_container() {
+            slab.node_at(i).place(table, st, i);
+        }
+    }
+}
+
+pub fn paint_slab<C: Tree + Default + 'static>(slab: &Slab<C>, st: &[NodeState], out: &mut u64) {
+    for (i, d) in slab.table().iter().enumerate() {
+        slab.node_at(i).paint(d, &st[i], out);
+    }
+}
+
+// ---- resolved index: pay the accessor once, not once per pass --------
+
+/// The naive safe passes call `node(i)` in every phase — four walks of
+/// the delegation chain per frame. Resolving the tree into a slice of
+/// `&dyn Node` once makes every subsequent lookup O(1), at the cost of
+/// one fat pointer (16 bytes) per node.
+///
+/// For a static tree the resolved index is only invalidated when the
+/// tree *moves* in memory, so a host can build it once rather than per
+/// frame — the benchmark rebuilds it per frame anyway, which is the
+/// pessimistic reading.
+pub fn resolve<T: Tree + ?Sized>(tree: &T) -> Vec<&dyn Node> {
+    (0..T::TABLE.len()).map(|i| tree.node(i)).collect()
+}
+
+pub fn resolve_slab<C: Tree + Default + 'static>(slab: &Slab<C>) -> Vec<&dyn Node> {
+    (0..slab.table().len()).map(|i| slab.node_at(i)).collect()
+}
+
+pub fn layout_indexed(
+    nodes: &[&dyn Node],
+    table: &[NodeDesc],
+    st: &mut [NodeState],
+    root_c: Constraints,
+) {
+    st[0].constraints = root_c;
+    for (i, d) in table.iter().enumerate() {
+        if d.is_container() {
+            nodes[i].down(table, st, i);
+        }
+    }
+    for i in (0..table.len()).rev() {
+        let s = nodes[i].up(table, st, i);
+        st[i].size = s;
+    }
+    st[0].pos = Point::default();
+    for (i, d) in table.iter().enumerate() {
+        if d.is_container() {
+            nodes[i].place(table, st, i);
+        }
+    }
+}
+
+pub fn paint_indexed(nodes: &[&dyn Node], table: &[NodeDesc], st: &[NodeState], out: &mut u64) {
+    for (i, d) in table.iter().enumerate() {
+        nodes[i].paint(d, &st[i], out);
+    }
+}

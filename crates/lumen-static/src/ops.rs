@@ -22,6 +22,18 @@ pub(crate) fn fold(out: &mut u64, v: u64) {
     *out = out.wrapping_mul(0x9E37_79B9_7F4A_7C15).wrapping_add(v);
 }
 
+/// Re-exported for the safe prototype so both arms fold identically.
+#[inline]
+pub fn fold_pub(out: &mut u64, v: u64) {
+    fold(out, v)
+}
+
+/// Re-exported for the safe prototype (see `fold_pub`).
+#[inline]
+pub fn fold_geom_pub(out: &mut u64, d: &NodeDesc, st: &NodeState) {
+    fold_geom(out, d, st)
+}
+
 #[inline]
 fn fold_geom(out: &mut u64, d: &NodeDesc, st: &NodeState) {
     fold(out, d.kind as u64);
