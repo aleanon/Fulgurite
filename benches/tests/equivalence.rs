@@ -110,7 +110,7 @@ fn paint_is_deterministic_and_value_sensitive() {
     assert_eq!(a, b);
 
     // Values live in the fields (§3): mutate one and paint must see it.
-    tree.l1.text = "changed";
+    tree.l1.set("changed");
     let mut c = 0u64;
     pass::paint(&tree, &st, &mut c);
     assert_ne!(a, c);

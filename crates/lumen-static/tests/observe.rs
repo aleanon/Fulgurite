@@ -39,8 +39,8 @@ fn bind_name(item: &mut RowT, row: usize) {
 
 fn make_app(rows: usize) -> (App, [NodeState; App::NODE_COUNT]) {
     let mut app = App { list: Repeat::new(rows, 24.0, bind_name), ..Default::default() };
-    app.bar.title.text = "hello";
-    app.footer.text = "bye";
+    app.bar.title.set("hello");
+    app.footer.set("bye");
     let mut st = [NodeState::default(); App::NODE_COUNT];
     let sty = pass::default_styles(&app);
     pass::layout(&mut app, &sty, &mut st, VIEW);

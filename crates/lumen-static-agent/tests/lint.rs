@@ -51,7 +51,7 @@ impl Fixture {
     /// A healthy app: a titled bar over a list with rows.
     fn healthy() -> Self {
         let mut app = App { list: Repeat::new(50, 24.0, bind), ..Default::default() };
-        app.bar.title.text = "hi";
+        app.bar.title.set("hi");
         let styles = pass::default_styles(&app);
         Fixture {
             app,
@@ -110,7 +110,7 @@ fn a_collapsed_spacer_is_not_reported_as_invisible() {
     // The false positive that would otherwise be the first thing an agent
     // ever sees: fillers legitimately collapse to nothing.
     let mut f = Fixture::healthy();
-    f.app.bar.title.text = "a very long title that eats the whole row's width";
+    f.app.bar.title.set("a very long title that eats the whole row's width");
     f.frame();
     let codes = f.codes();
     let invisible_on_pad = f
@@ -143,7 +143,7 @@ fn truncation_reports_how_much_room_is_missing() {
     // 60px of row split between three children => 20px each; this text
     // wants far more.
     f.view.max_w = 60.0;
-    f.app.bar.title.text = "far too long for twenty pixels";
+    f.app.bar.title.set("far too long for twenty pixels");
     f.frame();
 
     let findings = f.findings();
@@ -181,7 +181,7 @@ fn an_empty_collection_is_legitimate_and_silent() {
 #[test]
 fn a_blank_frame_announces_itself() {
     let mut f = Fixture::healthy();
-    f.app.bar.title.text = "";
+    f.app.bar.title.set("");
     f.app.list.count = 0;
     f.view.max_h = 0.0;
     f.frame();
@@ -203,7 +203,7 @@ fn overflow_is_impossible_here_so_squeezing_surfaces_as_truncation() {
     // Squeeze the main axis of the bar: three children sharing 30px
     // cannot all have what they ask for.
     f.view.max_w = 30.0;
-    f.app.bar.title.text = "far too long for ten pixels";
+    f.app.bar.title.set("far too long for ten pixels");
     f.frame();
 
     for (i, d) in App::SUB_TABLE.iter().enumerate().skip(1) {
@@ -242,8 +242,8 @@ fn findings_are_keyed_by_code_and_node_not_by_code_alone() {
     }
 
     let mut app = Two::default();
-    app.a.text = "aaa";
-    app.b.text = "bbb";
+    app.a.set("aaa");
+    app.b.set("bbb");
     let mut states = [NodeState::default(); Two::NODE_COUNT];
     let view = Constraints { min_w: 0.0, max_w: 0.0, min_h: 0.0, max_h: 100.0 };
     let styles = pass::default_styles(&app);

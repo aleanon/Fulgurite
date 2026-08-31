@@ -66,10 +66,10 @@ struct Ui {
 impl Default for Ui {
     fn default() -> Self {
         Ui {
-            title: Label { text: "untitled" },
-            status: Label { text: "count 0" },
+            title: Label::new("untitled"),
+            status: Label::new("count 0"),
             list: Repeat::new(0, 24.0, bind_row),
-            footer: Label { text: FOOTER },
+            footer: Label::new(FOOTER),
         }
     }
 }
@@ -127,7 +127,7 @@ pub unsafe extern "C" fn hot_bump(p: *mut c_void) {
 pub unsafe extern "C" fn hot_set_title(p: *mut c_void, ptr: *const u8, len: usize) {
     let bytes = unsafe { core::slice::from_raw_parts(ptr, len) };
     if let Ok(s) = core::str::from_utf8(bytes) {
-        session(p).ui.title.text = Box::leak(s.to_owned().into_boxed_str());
+        session(p).ui.title.set(Box::leak(s.to_owned().into_boxed_str()));
     }
 }
 
@@ -165,13 +165,13 @@ pub unsafe extern "C" fn hot_frame(p: *mut c_void) -> u64 {
     // of truth (`docs/layout-and-storage-decisions.md` §1). Until M3
     // makes text storage owned, the copy must be a `&'static str`, so
     // this is a lookup rather than a `format!`.
-    s.ui.status.text = match s.counter {
+    s.ui.status.set(match s.counter {
         0 => "count 0",
         1 => "count 1",
         2 => "count 2",
         3 => "count 3",
         _ => "count many",
-    };
+    });
     let mut st = [NodeState::default(); Ui::NODE_COUNT];
     let sty = pass::default_styles(&s.ui);
     let c = Constraints { min_w: 0.0, max_w: 800.0, min_h: 0.0, max_h: 600.0 };
@@ -216,9 +216,9 @@ pub unsafe extern "C" fn hot_report(p: *mut c_void, buf: *mut u8, cap: usize) ->
         s.counter,
         s.mode,
         s.theme,
-        s.ui.title.text,
-        s.ui.status.text,
-        s.ui.footer.text,
+        s.ui.title.as_str(),
+        s.ui.status.as_str(),
+        s.ui.footer.as_str(),
         s.ui.list.count,
         s.ui.list.scroll,
         s.ui.list.window_len(),

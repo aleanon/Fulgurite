@@ -9,6 +9,7 @@ use crate::desc::{Constraints, NodeDesc, NodeState, Point, Size, NO_PARENT};
 use crate::event::EventCtx;
 use crate::hit::{contains, Hit};
 use crate::style::{Align, Length, Style};
+use crate::text::{Dirty, Measured, TextStorage};
 use crate::widget::{Node, Widget};
 
 #[inline]
@@ -218,21 +219,48 @@ macro_rules! leaf_common {
     };
 }
 
-/// Content-sized text stand-in. `&'static str` until M3 makes storage
-/// generic over `AsRef<str>`.
+/// A run of text.
+///
+/// Generic over storage so each profile can choose (`docs/
+/// layout-and-storage-decisions.md` §1); defaults to `&'static str` so
+/// the `no_std` profile is the path of least resistance. `text` carries
+/// a dirty bit and `measure` memoizes, because shaping is the expensive
+/// part of a real frame — the reason text lives here rather than in a
+/// sibling field reached by a getter.
 #[derive(Default)]
-pub struct Label {
-    pub text: &'static str,
+pub struct Label<S: TextStorage = &'static str> {
+    pub text: Dirty<S>,
+    measure: Measured,
 }
 
-impl Widget for Label {
+impl<S: TextStorage> Label<S> {
+    pub fn new(text: S) -> Self {
+        Label { text: Dirty::new(text), measure: Measured::new() }
+    }
+
+    /// Replace the text, marking it for re-measurement.
+    pub fn set(&mut self, text: S) {
+        self.text.set(text);
+    }
+
+    pub fn as_str(&self) -> &str {
+        self.text.get().as_ref()
+    }
+
+    /// Whether the memo would serve `limits` without re-measuring.
+    pub fn measure_is_warm(&self, limits: Constraints) -> bool {
+        !self.text.is_dirty() && self.measure.is_warm(limits)
+    }
+}
+
+impl<S: TextStorage> Widget for Label<S> {
     const NODE_COUNT: usize = 1;
     const DEPTH: usize = 1;
     const IS_RIGID: bool = false;
     const SUB_TABLE: &'static [NodeDesc] = &[NodeDesc::new(0, NO_PARENT, 0, 0, 0)];
 }
 
-impl Node for Label {
+impl<S: TextStorage> Node for Label<S> {
     fn kind_name(&self) -> &'static str {
         "label"
     }
@@ -244,16 +272,26 @@ impl Node for Label {
         st: &mut [NodeState],
         i: usize,
     ) -> Size {
-        let content = Size { w: 8.0 * self.text.len() as f32, h: 16.0 };
+        // The memo is the whole reason text is owned here: with real
+        // shaping (M5) this call is the expensive one, and it must not
+        // run for text that has not changed under limits that have not
+        // changed.
+        let text = self.text.get().as_ref();
+        let dirty = self.text.is_dirty();
+        let content = self.measure.get_or(limits, dirty, || Size {
+            w: 8.0 * text.len() as f32,
+            h: 16.0,
+        });
+        self.text.clear_dirty();
         record(st, i, limits, resolve_self(limits, &style[i], content))
     }
     fn paint(&self, st: &[NodeState], i: usize, out: &mut u64) {
         fold_geom(out, 1, &st[i]);
-        for &b in self.text.as_bytes() {
+        for &b in self.text.get().as_ref().as_bytes() {
             fold(out, b as u64);
         }
     }
-    leaf_common!(Label, 0);
+    leaf_common!(Label<S>, 0);
 
     #[cfg(feature = "observe")]
     fn observe(
@@ -265,7 +303,7 @@ impl Node for Label {
         _extra: &mut Vec<(accesskit::NodeId, accesskit::Node)>,
     ) {
         node.set_role(accesskit::Role::Label);
-        node.set_value(self.text);
+        node.set_value(self.text.get().as_ref());
     }
 }
 
@@ -434,6 +472,13 @@ impl VirtualColumn {
 use crate::event::{Handlers, NodeSel};
 
 macro_rules! no_handlers {
+    (Label<S2>) => {
+        impl<S, S2: TextStorage> Handlers<S> for Label<S2> {
+            fn handler(&self, _sel: NodeSel) -> Option<fn(&mut S, &EventCtx)> {
+                None
+            }
+        }
+    };
     ($ty:ty) => {
         impl<S> Handlers<S> for $ty {
             fn handler(&self, _sel: NodeSel) -> Option<fn(&mut S, &EventCtx)> {
@@ -443,7 +488,7 @@ macro_rules! no_handlers {
     };
 }
 
-no_handlers!(Label);
+no_handlers!(Label<S2>);
 no_handlers!(Fixed);
 no_handlers!(Spacer);
 

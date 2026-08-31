@@ -19,11 +19,13 @@ pub mod pass;
 pub mod reload;
 pub mod repeat;
 pub mod style;
+pub mod text;
 pub mod widget;
 
 pub use desc::{Constraints, NodeDesc, NodeState, Point, Size, MAX_DEPTH, NO_PARENT};
 pub use hit::{Hit, Inner};
 pub use style::{Align, Edges, Length, Patch, Rule, Selector, Style};
+pub use text::{Dirty, Measured, TextStorage};
 pub use event::{Event, EventCtx, InputQueue, Key};
 pub use lumen_static_macros::{Reloadable, StaticTree};
 pub use widget::{Node, Widget};

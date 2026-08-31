@@ -40,7 +40,7 @@ struct Session {
 
 fn user_session() -> Session {
     let mut s = Session::fresh();
-    s.header.title.text = "renamed by user";
+    s.header.title.set("renamed by user");
     s.header.badge.w = 99.0;
     s.counter = 3;
     s.mode = Mode::Fancy;
@@ -64,7 +64,7 @@ fn keep_fresh_reset_semantics() {
     assert_eq!(fresh.counter, 3, "keep");
     assert_eq!(fresh.mode, Mode::Fancy, "keep enum");
     assert_eq!(fresh.names, vec!["a".to_owned(), "b".to_owned()], "keep vec");
-    assert_eq!(fresh.header.title.text, "renamed by user", "nested keep");
+    assert_eq!(fresh.header.title.as_str(), "renamed by user", "nested keep");
     assert_eq!(fresh.header.badge.w, 99.0, "nested keep leaf");
     assert_eq!(fresh.theme, "new-theme", "fresh: new code wins");
     assert_eq!(fresh.cache_hits, 0, "reset: recomputed from zero");
@@ -89,7 +89,7 @@ fn incompatible_fields_fall_back_per_field_and_log() {
     assert_eq!(s.counter, 11, "type-changed field keeps fresh value");
     assert_eq!(s.mode, Mode::Basic, "unknown variant keeps fresh value (§12.2)");
     assert!(s.names.is_empty(), "missing field keeps fresh value");
-    assert_eq!(s.header.title.text, "kept title", "unaffected fields still restore");
+    assert_eq!(s.header.title.as_str(), "kept title", "unaffected fields still restore");
 
     let log = take_log();
     assert!(log.iter().any(|l| l.contains("Session.counter")), "log: {log:?}");
@@ -106,7 +106,7 @@ fn vec_of_widgets_arity_comes_from_saved_data() {
     );
     rows.restore(&saved);
     assert_eq!(rows.len(), 47, "…and restore gives back all 47 (§7)");
-    assert_eq!(rows[46].text, "row 46");
+    assert_eq!(rows[46].as_str(), "row 46");
 }
 
 #[test]

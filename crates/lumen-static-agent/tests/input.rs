@@ -53,7 +53,7 @@ struct Host {
 impl Host {
     fn new() -> Self {
         let mut app = App::default();
-        app.ui.head.text = "head";
+        app.ui.head.set("head");
         app.ui.save.label = "save";
         app.ui.save.on_click = on_save;
         let styles = pass::default_styles(&app.ui);

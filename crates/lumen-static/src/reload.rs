@@ -63,19 +63,19 @@ pub fn take_log() -> Vec<String> {
 
 // ---- framework impls --------------------------------------------------------
 
-impl Reloadable for Label {
+impl<S: crate::text::TextStorage> Reloadable for Label<S> {
     fn save(&self) -> Value {
-        Value::String(self.text.to_owned())
+        Value::String(self.as_str().to_owned())
     }
     fn fresh() -> Self {
         Self::default()
     }
     fn restore(&mut self, saved: &Value) {
         match saved.as_str() {
-            // Dev-mode leak, same spirit as dlopen-without-dlclose (§7):
-            // a few bytes per reload beats threading a lifetime through
-            // every widget for a dev-only path.
-            Some(s) => self.text = Box::leak(s.to_owned().into_boxed_str()),
+            // No leak for owning storage (`String`, `Cow`): M3 made this
+            // the storage type's business. `&'static str` still leaks,
+            // and says so in its `TextStorage` impl.
+            Some(s) => self.set(S::from_string(s.to_owned())),
             None => log_fallback("Label", "text", "saved value is not a string"),
         }
     }

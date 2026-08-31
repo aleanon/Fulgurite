@@ -66,15 +66,15 @@ fn on_pick(a: &mut App, c: &EventCtx) {
 fn bind(r: &mut Row, _row: usize) {
     r.icon.w = 6.0;
     r.icon.h = 6.0;
-    r.name.text = "row";
+    r.name.set("row");
     r.pick.label = "p";
     r.pick.on_click = on_pick;
 }
 
 fn main() {
     let mut app = App::default();
-    app.ui.head.text = "head";
-    app.ui.cell.a.text = "cell";
+    app.ui.head.set("head");
+    app.ui.cell.a.set("cell");
     app.ui.save.label = "save";
     app.ui.save.on_click = on_save;
     app.ui.list = Repeat::new(500, 12.0, bind);

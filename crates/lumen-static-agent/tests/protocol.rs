@@ -37,7 +37,7 @@ const VIEW: Constraints = Constraints { min_w: 0.0, max_w: 800.0, min_h: 0.0, ma
 
 fn bind(item: &mut RowT, row: usize) {
     item.icon.w = 10.0;
-    item.name.text = if row.is_multiple_of(2) { "even row" } else { "odd row" };
+    item.name.set(if row.is_multiple_of(2) { "even row" } else { "odd row" });
 }
 
 struct Fixture {
@@ -50,8 +50,8 @@ struct Fixture {
 impl Fixture {
     fn new() -> Self {
         let mut app = App { list: Repeat::new(100, 24.0, bind), ..Default::default() };
-        app.bar.title.text = "hello";
-        app.footer.text = "bye";
+        app.bar.title.set("hello");
+        app.footer.set("bye");
         let mut states = [NodeState::default(); App::NODE_COUNT];
         let styles = pass::default_styles(&app);
         pass::layout(&mut app, &styles, &mut states, VIEW);

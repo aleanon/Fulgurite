@@ -78,7 +78,7 @@ fn fused_values_stay_live() {
     let mut a = 0u64;
     pass::paint(&t, &st, &mut a);
 
-    t.l1.text = "changed";
+    t.l1.set("changed");
     let mut b = 0u64;
     pass::paint(&t, &st, &mut b);
     assert_ne!(a, b, "paint reads fused internals through the fields");
@@ -86,11 +86,11 @@ fn fused_values_stay_live() {
     // And layout responds too: longer text grows the fused row. (Base is
     // re-derived after the write — pre-mutation provenance wouldn't
     // soundly cover it.)
-    t.l2.text = "a much longer label than before";
+    t.l2.set("a much longer label than before");
     pass::layout(&mut t, &sty, &mut st, ROOT_C);
     let mut ten = Ten::default();
-    ten.l1.text = "changed";
-    ten.l2.text = "a much longer label than before";
+    ten.l1.set("changed");
+    ten.l2.set("a much longer label than before");
     let mut tst = [NodeState::default(); Ten::NODE_COUNT];
     let tsty = pass::default_styles(&ten);
     pass::layout(&mut ten, &tsty, &mut tst, ROOT_C);

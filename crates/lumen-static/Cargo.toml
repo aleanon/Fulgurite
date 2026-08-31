@@ -33,5 +33,9 @@ name = "reload"
 required-features = ["reload"]
 
 [[test]]
+name = "text"
+required-features = ["reload"]
+
+[[test]]
 name = "observe"
 required-features = ["observe"]

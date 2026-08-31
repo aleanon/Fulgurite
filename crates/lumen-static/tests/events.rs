@@ -70,7 +70,7 @@ struct Fixture {
 impl Fixture {
     fn new() -> Self {
         let mut app = App::default();
-        app.ui.head.text = "head";
+        app.ui.head.set("head");
         app.ui.save.label = "save";
         app.ui.save.on_click = on_save;
         app.ui.list = Repeat::new(100, 20.0, bind_row);

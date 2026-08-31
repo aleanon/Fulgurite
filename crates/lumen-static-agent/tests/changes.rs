@@ -37,7 +37,7 @@ struct Fixture {
 impl Fixture {
     fn new() -> Self {
         let mut app = Bar::default();
-        app.title.text = "hello";
+        app.title.set("hello");
         let styles = pass::default_styles(&app);
         let mut f = Fixture {
             app,
@@ -88,7 +88,7 @@ fn content_change_without_geometry_is_classified_as_content() {
     let mut f = Fixture::new();
     // Same length, so the label's measured size is identical — only the
     // paint checksum can see this. A geometry-only diff would miss it.
-    f.app.title.text = "world";
+    f.app.title.set("world");
     f.frame();
 
     let changed = f.changed(json!({}));
