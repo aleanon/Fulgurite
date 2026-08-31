@@ -170,6 +170,59 @@ out-of-scope, not TODO.
 
 ### P3 — ambient audit (`ui.lint` + `app.logs`)
 
+**DONE 2026-08-31.** `crates/lumen-static-agent/src/audit.rs` runs at
+every frame boundary; `ui.lint` reads the cached current set (queries
+cost nothing) and open/close transitions push into an `app.logs` ring.
+Lumen's three rev2 scars adopted rather than re-earned, each pinned by a
+test: findings keyed `(code, node)` structurally (two invisible labels
+both report); presence-diff dedup (fix-then-re-break reports twice); a
+standing finding logs once, not per frame.
+
+**The intrinsic-size probe.** Several checks need to know what a node
+*wants* to be. Instead of adding vocabulary to every widget, the audit
+calls the existing `up` op twice under two different generous
+constraints: equal answers mean the node is sized by its content
+(natural size known), growing answers mean it is a filler. That one
+trick powers both `W1001` and `W1005` — and is what keeps a legitimately
+collapsed spacer from being reported as invisible content, the class of
+false positive Lumen's review warned would otherwise be the first thing
+an agent ever sees. Probing is leaves-only (a container's `up` reads
+child sizes out of the state array, so re-measuring it means nothing).
+
+Shipped codes, each with a firing *and* a quiet test:
+
+| code | finding |
+|---|---|
+| `W1001` | intrinsic content laid out with zero area — in the tree, absent on screen |
+| `W1002` | non-empty node entirely outside the root's bounds |
+| `W1005` | intrinsic content allotted less room than it needs (quantifies what is missing) |
+| `W1006` | nothing with both area and content anywhere — the blank frame |
+| `W1007` | a collection with items that occupies no space |
+
+**Two planned checks turned out unreachable and were reserved, not
+shipped.** `W1003` (child escapes parent) and `W1004` (sibling overlap)
+cannot occur in this layout model: constraints flow down and every node
+clamps to them, so a child is never allotted more than its slot, and
+containers place siblings sequentially by measured size. Squeezing
+surfaces as `W1005` instead. The audit's own test suite discovered this
+— the overflow test failed with a correct truncation finding in hand —
+and it is now an invariant guard (`overflow_is_impossible_here_...`)
+that will fail the day a scroll region, absolute positioning, or a
+minimum exceeding the parent's maximum makes the codes implementable.
+This is the direct application of Lumen's "finished but unreachable
+analysis" lesson, applied *before* shipping rather than after.
+
+`NodeStats` (a new `observe`-gated `WidgetOps` hook: `items`,
+`materialized`) is what lets `W1007` distinguish a legitimately empty
+list from a broken one — geometry alone cannot, and that distinction is
+the difference between a useful check and a false positive on the most
+common startup state.
+
+Cost per frame: the journal's one paint dispatch per node plus two `up`
+dispatches per leaf, into a scratch buffer that stops allocating after
+the first frame. No AccessKit snapshot is built at frame time. Dev
+surface only.
+
 Adopt Lumen's corrected design wholesale — its rev2 scars are free
 lessons: findings keyed `(code, node)` (never code alone), per-frame
 presence-diff dedup (not a monotonic seen-set), edge-triggered logs,

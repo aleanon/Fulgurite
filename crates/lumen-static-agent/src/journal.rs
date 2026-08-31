@@ -129,7 +129,10 @@ fn measure(
 
 impl Journal {
     /// Record one completed frame, diffing against the previous one.
-    pub fn record(&mut self, frame: u64, tree: &TreeRef) {
+    /// Returns true when the tree's structure changed under us, so the
+    /// audit can re-seed its finding set in step (indices either side of
+    /// a reload address different nodes).
+    pub fn record(&mut self, frame: u64, tree: &TreeRef) -> bool {
         let (geom, sums) = measure(tree.base, tree.table, tree.kinds, tree.states);
         let fp = fingerprint(tree.table);
 
@@ -143,7 +146,7 @@ impl Journal {
             self.geom = geom;
             self.sums = sums;
             self.seeded = true;
-            return;
+            return reset;
         }
 
         let mut changes = Vec::new();
@@ -165,6 +168,7 @@ impl Journal {
         self.push(FrameRecord { frame, reset: false, changes });
         self.geom = geom;
         self.sums = sums;
+        false
     }
 
     fn push(&mut self, rec: FrameRecord) {

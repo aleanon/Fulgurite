@@ -200,7 +200,29 @@ pub struct WidgetOps {
     /// subtrees for virtualized content). Dev surface, §9.
     #[cfg(feature = "observe")]
     pub observe: ObserveFn,
+    /// Cheap scalar introspection for the per-frame audit. Dev surface.
+    #[cfg(feature = "observe")]
+    pub stats: StatsFn,
 }
+
+/// Scalar facts a kind knows about itself that geometry cannot show —
+/// the collection vocabulary, mirroring AccessKit's `size_of_set`.
+/// Allocation-free by contract: the per-frame audit reads this every
+/// frame, so it must never build a tree or clone state.
+#[cfg(feature = "observe")]
+#[derive(Default, Clone, Copy, Debug, PartialEq)]
+pub struct NodeStats {
+    /// Logical item count for collection-like widgets (a repeater's rows).
+    pub items: Option<u64>,
+    /// Materialized instances, for virtualized widgets.
+    pub materialized: Option<u32>,
+}
+
+#[cfg(feature = "observe")]
+pub type StatsFn = fn(base: *const u8, d: &NodeDesc, out: &mut NodeStats);
+
+#[cfg(feature = "observe")]
+fn default_stats(_b: *const u8, _d: &NodeDesc, _o: &mut NodeStats) {}
 
 /// Contribute to the accessibility/agent tree: the walker pre-fills role
 /// `GenericContainer`, absolute bounds, and table children; the op
@@ -243,6 +265,8 @@ impl WidgetOps {
             paint,
             #[cfg(feature = "observe")]
             observe: default_observe,
+            #[cfg(feature = "observe")]
+            stats: default_stats,
         }
     }
 
@@ -250,6 +274,13 @@ impl WidgetOps {
     #[cfg(feature = "observe")]
     pub const fn with_observe(mut self, observe: ObserveFn) -> Self {
         self.observe = observe;
+        self
+    }
+
+    /// Override the default (empty) stats contribution.
+    #[cfg(feature = "observe")]
+    pub const fn with_stats(mut self, stats: StatsFn) -> Self {
+        self.stats = stats;
         self
     }
 }

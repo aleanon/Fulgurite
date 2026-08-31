@@ -24,8 +24,10 @@ use lumen_static::observe::{self, accesskit};
 use lumen_static::Widget;
 use serde_json::{json, Map, Value};
 
+mod audit;
 mod journal;
 
+use audit::Auditor;
 use journal::{Coalesced, Journal};
 
 /// A laid-out tree, borrowed for one dispatch.
@@ -56,6 +58,7 @@ pub struct Agent {
     pub last_layout_ns: u64,
     pub last_paint_ns: u64,
     journal: Journal,
+    auditor: Auditor,
 }
 
 const NOT_FOUND: i64 = -32001;
@@ -78,7 +81,8 @@ impl Agent {
         self.frame += 1;
         self.last_layout_ns = layout_ns;
         self.last_paint_ns = paint_ns;
-        self.journal.record(self.frame, tree);
+        let structural_reset = self.journal.record(self.frame, tree);
+        self.auditor.record(self.frame, tree, structural_reset);
     }
 
     /// Dispatch one JSON-RPC 2.0 request, returning the response object.
@@ -107,6 +111,8 @@ impl Agent {
             }
             "ui.probe" => self.probe(tree, params),
             "ui.probeRegion" => self.probe_region(tree, params),
+            "ui.lint" => Ok(self.lint(tree)),
+            "app.logs" => Ok(self.logs(params)),
             "ui.lastChange" => Ok(self.last_change(tree, params)),
             "ui.lastDamage" => Ok(self.last_damage(params)),
             "app.diagnostics" => Ok(self.diagnostics(tree)),
@@ -169,6 +175,61 @@ impl Agent {
             .map(|e| ix.summary(e))
             .collect();
         Ok(Value::Array(hits))
+    }
+
+    /// P3: conditions currently true of the frame. Reads the set the
+    /// audit computed at the last frame boundary, so the query is free.
+    fn lint(&self, tree: &TreeRef) -> Value {
+        let findings: Vec<Value> = self
+            .auditor
+            .current()
+            .iter()
+            .map(|f| {
+                let mut o = self.node_ident(tree, f.idx);
+                o.insert("code".into(), f.code.into());
+                o.insert("message".into(), f.message.clone().into());
+                o.insert("detail".into(), f.detail.clone());
+                Value::Object(o)
+            })
+            .collect();
+        json!({ "frame": self.frame, "findings": findings })
+    }
+
+    /// P3's push half: transitions, paged like Lumen's `app.logs`.
+    fn logs(&self, params: &Value) -> Value {
+        let since = self.since_param(params);
+        let (entries, truncated) = self.auditor.log_since(since);
+        let entries: Vec<Value> = entries
+            .iter()
+            .map(|e| {
+                json!({
+                    "frame": e.frame,
+                    "event": e.event,
+                    "code": e.code,
+                    "index": e.idx,
+                    "message": e.message,
+                })
+            })
+            .collect();
+        json!({ "frame": self.frame, "since": since, "entries": entries, "truncated": truncated })
+    }
+
+    /// The identity block every node-bearing response carries: index,
+    /// kind, author id, and the source line to edit.
+    fn node_ident(&self, tree: &TreeRef, idx: u32) -> Map<String, Value> {
+        let mut o = Map::new();
+        let i = idx as usize;
+        o.insert("index".into(), i.into());
+        if let Some(d) = tree.table.get(i) {
+            o.insert("kind".into(), tree.kinds[d.kind as usize].name.into());
+            if !d.wid.is_empty() {
+                o.insert("wid".into(), d.wid.into());
+            }
+            if !d.src.file.is_empty() {
+                o.insert("src".into(), format!("{}:{}", d.src.file, d.src.line).into());
+            }
+        }
+        o
     }
 
     /// `since` defaults to the previous frame, so a bare call means

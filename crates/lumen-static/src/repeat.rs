@@ -155,9 +155,18 @@ impl<T: Widget + Default> Repeat<T> {
     pub const OPS: WidgetOps = {
         let ops = WidgetOps::new("repeat", leaf_nop, Self::up_op, Self::place_op, Self::paint_op);
         #[cfg(feature = "observe")]
-        let ops = ops.with_observe(Self::observe_op);
+        let ops = ops.with_observe(Self::observe_op).with_stats(Self::stats_op);
         ops
     };
+
+    /// Rows and materialized window — what distinguishes a legitimately
+    /// empty list from a broken one, which geometry alone cannot show.
+    #[cfg(feature = "observe")]
+    fn stats_op(b: *const u8, d: &NodeDesc, out: &mut crate::desc::NodeStats) {
+        let r: &Self = unsafe { &*(b.add(d.offset as usize) as *const Self) };
+        out.items = Some(r.count as u64);
+        out.materialized = Some(r.inner.borrow().window.len() as u32);
+    }
 
     /// Role `List`; pushes each visible instance's template subtree with
     /// row-stable synthetic ids and links their roots as children.
