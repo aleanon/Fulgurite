@@ -8,6 +8,7 @@ members = [
     "crates/lumen-static-macros",
     "benches",
     "fixtures/hot-app",
+    "fixtures/miri-smoke",
     "fixtures/hot-host",
 ]
 # The Step 1 firewall experiment is its own generated workspace.

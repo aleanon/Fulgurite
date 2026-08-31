@@ -1,0 +1,12 @@
+[package]
+name = "miri-smoke"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+# No dev-dependencies and no lumen-static features: this crate is shaped
+# exactly like a release build, which is the surface worth checking for
+# undefined behaviour (`docs/verification-notes.md`).
+[dependencies]
+lumen-static = { path = "../../crates/lumen-static" }
