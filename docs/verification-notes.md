@@ -169,7 +169,24 @@ core to it and adds a zero-`unsafe` gate on the release build. The
 verification *push* itself remains unscheduled; the surface it would
 verify is now the intended shape rather than a prototype.
 
-## Present state
+## Present state (updated 2026-09-01)
+
+**The release core now contains zero `unsafe`.** M0 of
+`docs/plan-architecture-v2.md` replaced the `base + offset` mechanism
+with recursive descent over `&mut dyn Node`, and `just no-unsafe` is a
+standing gate. Tier 0 also landed early: the derive emits
+`const { assert!(table_is_well_formed(&TABLE)) }` and
+`assert!(DEPTH <= MAX_DEPTH)` with every table, so the compiler
+re-checks the macro's output at every expansion in every downstream
+crate, and a tree deep enough to overflow the stack does not compile.
+
+What remains for a verification push is Tier 1 (Kani over the recursive
+passes — now structural induction rather than index invariants) and
+Tier 2's coherence contract, which shrank considerably: with no raw
+pointers there is no `(base, table, kinds)` triple left to keep
+coherent.
+
+## Historical: present state before M0
 
 `fixtures/miri-smoke` is a release-shaped harness (no features, no
 dev-dependencies) that exercises every `unsafe` path in one `main`:

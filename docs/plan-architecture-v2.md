@@ -33,7 +33,24 @@ into the core), the `Acc`-era leftovers.
 
 ---
 
-## M0 — Foundation pivot: recursive safe traversal
+## M0 — Foundation pivot: recursive safe traversal — **DONE 2026-09-01**
+
+*Landed as one commit (a trait-level refactor has no individually
+compiling pieces). Gates met: 25 suites, clippy clean both configs, hot
+reload PASS, `just no-unsafe` finds zero. Measured: crossover 50 ns /
+4.10 µs / 438 µs at 10 / 1k / 100k, against 74 ns / 6.47 µs / 690 µs on
+the flat table, and 47% faster than the naive-dyn control (was 16%).*
+
+*Two deltas worth carrying forward:*
+- *`Widget` had to split into `Node` (object-safe methods) and
+  `Widget: Node` (consts), since associated consts are not
+  dyn-compatible.*
+- ***Fusion is now nearly free either way** — 429 µs vs 435 µs at 100k,
+  where it was 2.8× on the flat table. With recursion the only thing
+  `#[fuse]` removes is the indirect call, which the compiler often
+  devirtualizes anyway. `#[fuse]`'s purpose narrows to code-size and
+  embedded control; re-price it before investing further (§6 of this
+  plan).*
 
 *Replaces the flat table passes with recursive descent over trait
 objects. Everything else depends on this. Port the four leaves, the

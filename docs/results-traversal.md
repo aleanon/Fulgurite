@@ -103,16 +103,18 @@ without anyone reading it as a verdict on traversal.
 
 ## What it costs
 
-- **Stack depth proportional to tree depth** — §5's stated fear. Real but
-  bounded: UI trees are shallow (tens, not thousands), and a depth cap in
-  the derive is cheap insurance. Worth a deliberate limit rather than
-  hoping.
+- ~~**Stack depth proportional to tree depth**~~ — **closed 2026-09-01**:
+  `Widget::DEPTH` is a const the derive computes and asserts against
+  `MAX_DEPTH`, so a tree deep enough to be a hazard fails to compile.
 - **The rigid/flexible partition does not port directly.** It was a
   flat-loop optimization (index arrays). Its replacement — skip a clean
   or rigid subtree by not recursing — is strictly simpler, but it is
   different code.
-- Fusion is still 1.7× faster than recursive `&dyn` at 100k, so the
-  monomorphization dial keeps earning its place.
+- ~~Fusion is still 1.7× faster~~ — **re-measured after M0**: on the real
+  recursive path fusion is 429 µs against 435 µs for `&dyn` calls at
+  100k, i.e. within noise. The 1.7× was an artifact of comparing fused
+  code against the *flat table*. `#[fuse]`'s remaining value is code size
+  and embedded control, not speed; re-price it before investing further.
 
 ## Verdict
 

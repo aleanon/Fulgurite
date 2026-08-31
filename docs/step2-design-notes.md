@@ -69,6 +69,10 @@ passes are bandwidth-bound at 100k nodes, so state width is performance.
 
 ### 6. Values live in the fields, reached via `base + offset`
 
+> **SUPERSEDED 2026-09-01.** Values still live in the fields (§3 holds);
+> they are reached by *recursion* now, not by a byte offset and a cast.
+> The release core has no `unsafe` at all.
+
 Ops fns cast the tree base pointer plus `desc.offset` to their concrete
 widget type (§3 made real). Safety contract documented on `WidgetOps`:
 ops may only be dispatched against tables produced by the same
@@ -76,6 +80,11 @@ derive/assembly. The paint test mutates a field and asserts the pass sees
 it — no copies of values exist anywhere.
 
 ### 7. `KIND_LIST` concatenates with duplicates
+
+> **SUPERSEDED 2026-09-01.** `KIND_LIST` is gone: with recursion the
+> vtable arrives on the `&dyn` reference, so rustc's own per-type
+> deduplication provides §5's "one body per kind" guarantee. `NodeDesc`
+> lost `kind` and `offset` with it (24 → 16 bytes).
 
 A derived struct's kind list is its own ops followed by its fields' lists,
 un-deduplicated; spliced child tables get their kind indices rebased by a
@@ -92,6 +101,11 @@ it from a field instead is the right end state once containers have
 styling values; it changes the wrappers, not the architecture.
 
 ### 9. Rigid/flexible partition: const arrays, subtree-granular
+
+> **SUPERSEDED 2026-09-01.** The partition was a flat-loop optimization
+> (index arrays feeding a partitioned pass). With recursion the
+> equivalent is "do not descend into a rigid or clean subtree" — one
+> early return — which M2 picks up along with `Length`.
 
 `count_partition`/`collect_partition` are const fns; at a concrete root
 the arrays are compile-time (`crossover.rs` proves it with a
