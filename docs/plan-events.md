@@ -148,12 +148,28 @@ the currently-loaded `apply` fn; draining twice yields nothing.
 `input.click {selector | x,y}`, `input.key`, `input.type`,
 `input.invokeAction` (AccessKit `Action::Click` → synthesized click at
 the node's center): all *enqueue* into the one queue — the agent never
-calls handlers directly, so everything it does replays. This needs the
-first mutable host surface in the agent crate: a small `Pump` trait
-(`enqueue(Event)`, `pump() -> frame`) implemented by the host loop;
-`Agent::dispatch` grows a `&mut dyn Pump` parameter for the input
-methods only. Recording: the queue serializes to a session trace; a
-replay harness is the seed of the `lumen-test` equivalent.
+calls handlers directly, so everything it does replays. Recording: the queue serializes to a session
+trace; a replay harness is the seed of the `lumen-test` equivalent.
+
+**Delta — the trait is `Host`, not `Pump`, and it hands out the tree.**
+`TreeRef` borrows the host, so a caller cannot hold one *and* pass
+`&mut host`; the trait therefore provides `tree()` alongside
+`enqueue`/`pump`, which keeps each read borrow short and ends it before
+anything mutates. Entry point is
+`Agent::dispatch_input(&mut dyn Host, req)`, which delegates every
+non-`input.*` method to the read-only `dispatch`.
+
+Also shipped: `ui.probe` now uses the **core** hit test instead of the
+AccessKit snapshot, so probe and click can never disagree about what is
+under a point (and the snapshot's BFS depth pass, dead once probe moved,
+is gone). Point resolution accepts `{x,y}` or a selector, clicking the
+node's centre, so agents never compute geometry.
+
+Deliverable tests: click by author id reaches the handler; by
+coordinates; `invokeAction` as a centre click; **the synthesized trace is
+exactly two ordinary pointer events and replays on a fresh host to the
+same state**; typing enqueues per character; unknown key and unknown
+selector both teach.
 
 ## E5 — later, explicitly
 
