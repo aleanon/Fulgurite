@@ -11,7 +11,8 @@ const ROOT_C: Constraints = Constraints { min_w: 0.0, max_w: 800.0, min_h: 0.0, 
 fn root_size<W: Widget + Default>() -> lumen_static::Size {
     let mut w = W::default();
     let mut st = vec![NodeState::default(); W::NODE_COUNT];
-    pass::layout(&mut w, &mut st, ROOT_C);
+    let sty = pass::default_styles(&w);
+    pass::layout(&mut w, &sty, &mut st, ROOT_C);
     st[0].size
 }
 
@@ -46,7 +47,8 @@ fn fused_composes_at_the_seam() {
 
     let mut m = Mixed::default();
     let mut st = [NodeState::default(); Mixed::NODE_COUNT];
-    pass::layout(&mut m, &mut st, ROOT_C);
+    let sty = pass::default_styles(&m);
+    pass::layout(&mut m, &sty, &mut st, ROOT_C);
 
     // The fused cell is placed below the head label like any child.
     assert_eq!(st[2].pos.y, st[1].size.h);
@@ -71,7 +73,8 @@ fn fused_rigidity_composes() {
 fn fused_values_stay_live() {
     let mut t = FusedTen::default();
     let mut st = [NodeState::default(); FusedTen::NODE_COUNT];
-    pass::layout(&mut t, &mut st, ROOT_C);
+    let sty = pass::default_styles(&t);
+    pass::layout(&mut t, &sty, &mut st, ROOT_C);
     let mut a = 0u64;
     pass::paint(&t, &st, &mut a);
 
@@ -84,11 +87,12 @@ fn fused_values_stay_live() {
     // re-derived after the write — pre-mutation provenance wouldn't
     // soundly cover it.)
     t.l2.text = "a much longer label than before";
-    pass::layout(&mut t, &mut st, ROOT_C);
+    pass::layout(&mut t, &sty, &mut st, ROOT_C);
     let mut ten = Ten::default();
     ten.l1.text = "changed";
     ten.l2.text = "a much longer label than before";
     let mut tst = [NodeState::default(); Ten::NODE_COUNT];
-    pass::layout(&mut ten, &mut tst, ROOT_C);
+    let tsty = pass::default_styles(&ten);
+    pass::layout(&mut ten, &tsty, &mut tst, ROOT_C);
     assert_eq!(st[0].size, tst[0].size, "still tracks the unfused twin");
 }

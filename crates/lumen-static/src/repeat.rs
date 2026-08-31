@@ -12,6 +12,7 @@
 
 use crate::desc::{Constraints, NodeDesc, NodeState, Point, Size, NO_PARENT};
 use crate::hit::{contains, Hit, Inner};
+use crate::style::{Length, Style};
 use crate::widget::{Node, Widget};
 
 pub fn noop_bind<T>(_: &mut T, _: usize) {}
@@ -29,6 +30,10 @@ pub struct Repeat<T: Widget + Default + 'static> {
     window: Vec<T>,
     states: Vec<NodeState>,
     first: usize,
+    /// Template default styles, built once. Instances are off-table, so
+    /// the cascade cannot reach them; this is their style source until
+    /// per-row styling exists.
+    row_style: Vec<Style>,
 }
 
 impl<T: Widget + Default> Default for Repeat<T> {
@@ -47,6 +52,7 @@ impl<T: Widget + Default> Repeat<T> {
             window: Vec::new(),
             states: Vec::new(),
             first: 0,
+            row_style: Vec::new(),
         }
     }
 
@@ -80,6 +86,13 @@ impl<T: Widget + Default> Repeat<T> {
         (first, vis)
     }
 
+    fn ensure_row_style(&mut self) {
+        if self.row_style.is_empty() {
+            let probe = T::default();
+            self.row_style = (0..T::NODE_COUNT).map(|j| probe.node(j).defaults()).collect();
+        }
+    }
+
     fn slice(&self, k: usize) -> &[NodeState] {
         &self.states[k * T::NODE_COUNT..(k + 1) * T::NODE_COUNT]
     }
@@ -101,7 +114,21 @@ impl<T: Widget + Default + 'static> Node for Repeat<T> {
         "repeat"
     }
 
-    fn layout(&mut self, limits: Constraints, st: &mut [NodeState], i: usize) -> Size {
+    fn defaults(&self) -> Style {
+        // A list fills its container and scrolls inside it.
+        Style { width: Length::FILL, height: Length::FILL, ..Style::default() }
+    }
+
+    fn layout(
+        &mut self,
+        limits: Constraints,
+        // The repeater's own style is read via `resolve_self` below;
+        // instances use the template's defaults, since the cascade is
+        // keyed by table index and instances are off-table.
+        style: &[Style],
+        st: &mut [NodeState],
+        i: usize,
+    ) -> Size {
         let (first, vis) = self.visible_range(limits.max_h);
         self.first = first;
         self.window.resize_with(vis, T::default);
@@ -118,26 +145,33 @@ impl<T: Widget + Default + 'static> Node for Repeat<T> {
             max_h: self.item_extent,
         };
         let n = T::NODE_COUNT;
-        for (k, item) in self.window.iter_mut().enumerate() {
-            item.layout(row_limits, &mut self.states[k * n..(k + 1) * n], 0);
+        // Instances use the template's own default styles: the cascade
+        // is keyed by *table* index, and instances are not in the table
+        // (`docs/layout-and-storage-decisions.md` §3's recorded limit).
+        self.ensure_row_style();
+        let Repeat { window, states, row_style, .. } = self;
+        for (k, item) in window.iter_mut().enumerate() {
+            item.layout(row_limits, row_style, &mut states[k * n..(k + 1) * n], 0);
         }
 
-        let s = limits.clamp(Size { w: limits.max_w, h: self.count as f32 * self.item_extent });
+        let content = Size { w: limits.max_w, h: self.count as f32 * self.item_extent };
+        let s = crate::ops::resolve_self(limits, &style[i], content);
         st[i].constraints = limits;
         st[i].size = s;
         s
     }
 
-    fn place(&mut self, at: Point, st: &mut [NodeState], i: usize) {
+    fn place(&mut self, at: Point, _style: &[Style], st: &mut [NodeState], i: usize) {
         st[i].pos = at;
         // Instance geometry lives in this repeater's own arena, so the
         // window is positioned here rather than by the caller.
         let n = T::NODE_COUNT;
         let (first, extent, scroll) = (self.first, self.item_extent, self.scroll);
-        for k in 0..self.window.len() {
+        let Repeat { window, states, row_style, .. } = self;
+        for k in 0..window.len() {
             let dy = (first + k) as f32 * extent - scroll;
             let origin = Point { x: at.x, y: at.y + dy };
-            self.window[k].place(origin, &mut self.states[k * n..(k + 1) * n], 0);
+            window[k].place(origin, row_style, &mut states[k * n..(k + 1) * n], 0);
         }
     }
 

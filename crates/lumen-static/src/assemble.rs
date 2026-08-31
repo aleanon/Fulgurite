@@ -6,7 +6,8 @@
 
 use crate::desc::{Constraints, NodeDesc, NodeState, Point, Size, NO_PARENT};
 use crate::hit::{contains, Hit};
-use crate::ops::{col_child_limits, fold_geom};
+use crate::ops::fold_geom;
+use crate::style::Style;
 use crate::widget::{splice_child, Node, Widget};
 
 /// Build the concatenated table: a synthetic column root followed by
@@ -39,6 +40,7 @@ pub struct Assembled<C: Widget + Default + 'static> {
     pub instances: Vec<C>,
     pub table: Vec<NodeDesc>,
     pub states: Vec<NodeState>,
+    pub styles: Vec<Style>,
 }
 
 impl<C: Widget + Default + 'static> Assembled<C> {
@@ -47,18 +49,45 @@ impl<C: Widget + Default + 'static> Assembled<C> {
             instances: (0..count).map(|_| C::default()).collect(),
             table: concat_table(count, C::NODE_COUNT, C::SUB_TABLE),
             states: vec![NodeState::default(); 1 + count * C::NODE_COUNT],
+            styles: Self::default_styles(count),
         }
     }
 
-    /// Lay out and position the whole slab under `limits`.
+    fn default_styles(count: usize) -> Vec<Style> {
+        let probe = C::default();
+        let mut v = Vec::with_capacity(1 + count * C::NODE_COUNT);
+        v.push(Style::default());
+        for _ in 0..count {
+            for j in 0..C::NODE_COUNT {
+                v.push(probe.node(j).defaults());
+            }
+        }
+        v
+    }
+
+    /// Lay out and position the whole slab under `limits`. The synthetic
+    /// root is a column that gives each instance the space it asks for.
     pub fn layout(&mut self, limits: Constraints) {
         let n = C::NODE_COUNT;
-        let cc = col_child_limits(limits, self.instances.len(), 0.0);
+        // The synthetic root behaves as a column: each instance is
+        // offered whatever main-axis space is left, exactly as a derived
+        // container's first scan does.
         let mut sum = 0.0f32;
         let mut mx = 0.0f32;
         for (k, item) in self.instances.iter_mut().enumerate() {
+            let cc = Constraints {
+                min_w: 0.0,
+                max_w: limits.max_w,
+                min_h: 0.0,
+                max_h: (limits.max_h - sum).max(0.0),
+            };
             let d: &mut dyn Node = item;
-            let s = d.layout(cc, &mut self.states[1 + k * n..1 + (k + 1) * n], 0);
+            let s = d.layout(
+                cc,
+                &self.styles[1 + k * n..1 + (k + 1) * n],
+                &mut self.states[1 + k * n..1 + (k + 1) * n],
+                0,
+            );
             sum += s.h;
             mx = mx.max(s.w);
         }
@@ -69,7 +98,12 @@ impl<C: Widget + Default + 'static> Assembled<C> {
         let mut cur = Point::default();
         for (k, item) in self.instances.iter_mut().enumerate() {
             let d: &mut dyn Node = item;
-            d.place(cur, &mut self.states[1 + k * n..1 + (k + 1) * n], 0);
+            d.place(
+                cur,
+                &self.styles[1 + k * n..1 + (k + 1) * n],
+                &mut self.states[1 + k * n..1 + (k + 1) * n],
+                0,
+            );
             cur.y += self.states[1 + k * n].size.h;
         }
     }

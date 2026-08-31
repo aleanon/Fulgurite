@@ -43,6 +43,7 @@ fn bind(item: &mut RowT, row: usize) {
 struct Fixture {
     app: App,
     states: [NodeState; App::NODE_COUNT],
+    styles: Vec<lumen_static::Style>,
     agent: Agent,
 }
 
@@ -52,17 +53,18 @@ impl Fixture {
         app.bar.title.text = "hello";
         app.footer.text = "bye";
         let mut states = [NodeState::default(); App::NODE_COUNT];
-        pass::layout(&mut app, &mut states, VIEW);
+        let styles = pass::default_styles(&app);
+        pass::layout(&mut app, &styles, &mut states, VIEW);
         let mut agent = Agent::new();
         {
-            let mut tm = TreeMut::of_root(&mut app, &states);
+            let mut tm = TreeMut::of_root(&mut app, &styles, &states);
             agent.frame_done(&mut tm, 12_345, 6_789);
         }
-        Fixture { app, states, agent }
+        Fixture { app, states, styles, agent }
     }
 
     fn call(&self, method: &str, params: Value) -> Value {
-        let tree = TreeRef::of_root(&self.app, &self.states);
+        let tree = TreeRef::of_root(&self.app, &self.styles, &self.states);
         self.agent.dispatch(
             &tree,
             &json!({ "jsonrpc": "2.0", "id": 1, "method": method, "params": params }),

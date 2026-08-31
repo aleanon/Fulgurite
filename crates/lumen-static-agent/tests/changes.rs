@@ -30,6 +30,7 @@ const VIEW: Constraints = Constraints { min_w: 0.0, max_w: 800.0, min_h: 0.0, ma
 struct Fixture {
     app: Bar,
     states: [NodeState; Bar::NODE_COUNT],
+    styles: Vec<lumen_static::Style>,
     agent: Agent,
 }
 
@@ -37,9 +38,11 @@ impl Fixture {
     fn new() -> Self {
         let mut app = Bar::default();
         app.title.text = "hello";
+        let styles = pass::default_styles(&app);
         let mut f = Fixture {
             app,
             states: [NodeState::default(); Bar::NODE_COUNT],
+            styles,
             agent: Agent::new(),
         };
         f.frame(); // seeds the baseline
@@ -48,13 +51,13 @@ impl Fixture {
 
     /// Lay out and record one frame.
     fn frame(&mut self) {
-        pass::layout(&mut self.app, &mut self.states, VIEW);
-        let mut tree = TreeMut::of_root(&mut self.app, &self.states);
+        pass::layout(&mut self.app, &self.styles, &mut self.states, VIEW);
+        let mut tree = TreeMut::of_root(&mut self.app, &self.styles, &self.states);
         self.agent.frame_done(&mut tree, 1000, 500);
     }
 
     fn result(&self, method: &str, params: Value) -> Value {
-        let tree = TreeRef::of_root(&self.app, &self.states);
+        let tree = TreeRef::of_root(&self.app, &self.styles, &self.states);
         let resp = self.agent.dispatch(
             &tree,
             &json!({ "jsonrpc": "2.0", "id": 1, "method": method, "params": params }),
@@ -159,13 +162,14 @@ fn structural_change_resets_the_baseline() {
     // reload or a tree swap looks like from the journal's side.
     let mut other = Other::default();
     let mut ost = [NodeState::default(); Other::NODE_COUNT];
-    pass::layout(&mut other, &mut ost, VIEW);
+    let osty = pass::default_styles(&other);
+    pass::layout(&mut other, &osty, &mut ost, VIEW);
     {
-        let mut otree = TreeMut::of_root(&mut other, &ost);
+        let mut otree = TreeMut::of_root(&mut other, &osty, &ost);
         f.agent.frame_done(&mut otree, 1, 1);
     }
 
-    let otree = TreeRef::of_root(&other, &ost);
+    let otree = TreeRef::of_root(&other, &osty, &ost);
     let resp = f.agent.dispatch(
         &otree,
         &json!({ "jsonrpc": "2.0", "id": 1, "method": "ui.lastChange", "params": {} }),

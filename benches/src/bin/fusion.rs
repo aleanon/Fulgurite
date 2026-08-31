@@ -13,8 +13,9 @@ const ROOT_C: Constraints = Constraints { min_w: 0.0, max_w: 1920.0, min_h: 0.0,
 fn static_root<W: Widget + Default>(label: &str, iters: usize) {
     let mut w = W::default();
     let mut st = vec![NodeState::default(); W::NODE_COUNT];
+    let sty = pass::default_styles(&w);
     bench(label, iters, || {
-        pass::layout(&mut w, &mut st, ROOT_C);
+        pass::layout(&mut w, &sty, &mut st, ROOT_C);
         let mut out = 0u64;
         pass::paint(&w, &st, &mut out);
         out

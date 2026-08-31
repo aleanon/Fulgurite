@@ -6,22 +6,57 @@
 //! `docs/results-traversal.md`.
 
 use crate::desc::{Constraints, NodeState, Point};
+use crate::style::Style;
+use crate::widget::Widget;
 use crate::widget::Node;
 
 /// Lay out and position a whole tree.
-pub fn layout<W: Node + ?Sized>(tree: &mut W, st: &mut [NodeState], limits: Constraints) {
-    tree.layout(limits, st, 0);
-    tree.place(Point::default(), st, 0);
+pub fn layout<W: Node + ?Sized>(
+    tree: &mut W,
+    style: &[Style],
+    st: &mut [NodeState],
+    limits: Constraints,
+) {
+    tree.layout(limits, style, st, 0);
+    tree.place(Point::default(), style, st, 0);
+}
+
+/// Resolve styles then lay out — the ordinary frame path.
+pub fn frame<W: Widget + ?Sized>(
+    tree: &mut W,
+    sheet: crate::style::Stylesheet,
+    style: &mut [Style],
+    st: &mut [NodeState],
+    limits: Constraints,
+) {
+    {
+        let t: &W = tree;
+        crate::style::cascade(
+            W::SUB_TABLE,
+            &|i| t.node(i).defaults(),
+            &|i| t.node(i).kind_name(),
+            sheet,
+            style,
+        );
+    }
+    layout(tree, style, st, limits);
+}
+
+/// Default styles for a tree, with no stylesheet applied — the common
+/// case in tests and simple apps.
+pub fn default_styles<W: Widget>(tree: &W) -> Vec<Style> {
+    (0..W::NODE_COUNT).map(|i| tree.node(i).defaults()).collect()
 }
 
 /// Measure only, without positioning — used by tools that need a node's
 /// size under hypothetical limits.
 pub fn measure<W: Node + ?Sized>(
     tree: &mut W,
+    style: &[Style],
     st: &mut [NodeState],
     limits: Constraints,
 ) -> crate::desc::Size {
-    tree.layout(limits, st, 0)
+    tree.layout(limits, style, st, 0)
 }
 
 pub fn paint<W: Node + ?Sized>(tree: &W, st: &[NodeState], out: &mut u64) {
@@ -44,6 +79,7 @@ pub fn hit_test<W: Node + ?Sized>(
 /// it, so a container can act as a fallback for content that ignored it.
 pub fn dispatch<S: crate::event::App>(
     state: &mut S,
+    style: &[Style],
     st: &[NodeState],
     focus: &mut Option<u32>,
     ev: &crate::event::Event,
@@ -52,6 +88,10 @@ pub fn dispatch<S: crate::event::App>(
     use crate::widget::Widget;
 
     let table = <S::Tree as Widget>::SUB_TABLE;
+    // `style` is unused by routing today; it is threaded now so hidden
+    // subtrees (plan M4/4a) can be skipped without another signature
+    // change, and so hosts pass one consistent set of arrays.
+    let _ = style;
 
     let (start, mut ctx, inner) = match ev.position() {
         Some(p) => {

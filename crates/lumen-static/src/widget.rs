@@ -12,6 +12,7 @@
 //! which is the monomorphization dial and nothing more.
 
 use crate::desc::{Constraints, NodeDesc, NodeState, Point, Size};
+use crate::style::Style;
 use crate::hit::Hit;
 
 /// The object-safe half: everything traversal calls.
@@ -25,20 +26,34 @@ pub trait Node {
     /// `&mut self` because each node is visited exactly once, which makes
     /// exclusive access free and lets stateful widgets (a repeater's
     /// window, a measure cache) mutate without interior mutability.
-    fn layout(&mut self, limits: Constraints, st: &mut [NodeState], i: usize) -> Size;
+    ///
+    /// `style` is the parallel computed-style array (plan M1), read for
+    /// this node's `Length`s, padding, spacing and alignment.
+    fn layout(
+        &mut self,
+        limits: Constraints,
+        style: &[Style],
+        st: &mut [NodeState],
+        i: usize,
+    ) -> Size;
 
     /// Position this subtree with its origin at `at`.
     ///
     /// `&mut self` for the same reason as `layout`: one visit per node,
     /// and a widget owning off-table geometry (a repeater's window) must
     /// write it without interior mutability.
-    fn place(&mut self, at: Point, st: &mut [NodeState], i: usize);
+    fn place(&mut self, at: Point, style: &[Style], st: &mut [NodeState], i: usize);
 
     /// Fold paint output (display-list stand-in until M5).
     fn paint(&self, st: &[NodeState], i: usize, out: &mut u64);
 
     /// Deepest node under `(x, y)`, or `None` if the point misses.
     fn hit(&self, st: &[NodeState], i: usize, x: f32, y: f32) -> Option<Hit>;
+
+    /// This kind's own style defaults, before any rule applies.
+    fn defaults(&self) -> Style {
+        Style::default()
+    }
 
     /// This widget kind's name, for agent selectors and diagnostics.
     /// Replaces the name field the old per-kind ops table carried.

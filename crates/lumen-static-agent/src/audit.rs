@@ -234,9 +234,14 @@ impl Auditor {
     ///
     /// M2 retires this — once `Length` exists, `Shrink` results *are* the
     /// intrinsic sizes and the audit reads them instead of probing.
-    fn natural(root: &mut dyn Node, scratch: &mut [NodeState], i: usize) -> Natural {
-        let a = root.node_mut(i).layout(PROBE_A, scratch, i);
-        let b = root.node_mut(i).layout(PROBE_B, scratch, i);
+    fn natural(
+        root: &mut dyn Node,
+        styles: &[lumen_static::Style],
+        scratch: &mut [NodeState],
+        i: usize,
+    ) -> Natural {
+        let a = root.node_mut(i).layout(PROBE_A, styles, scratch, i);
+        let b = root.node_mut(i).layout(PROBE_B, styles, scratch, i);
         Natural { intrinsic: a == b, size: a }
     }
 
@@ -264,7 +269,7 @@ impl Auditor {
 
             // -- content-bearing checks, leaves only (see module docs) --
             if leaf {
-                let nat = Self::natural(tree.root, &mut self.scratch, i);
+                let nat = Self::natural(tree.root, tree.styles, &mut self.scratch, i);
                 let has_content = nat.intrinsic && nat.size.w > 0.0 && nat.size.h > 0.0;
 
                 if has_content && a > 0.0 {
@@ -309,16 +314,25 @@ impl Auditor {
 
             // -- collections: geometry alone cannot tell an empty list
             //    from a broken one, so ask the widget (NodeStats) --
-            if let Some(items) = Self::stats(&tree.as_ref(), i).items {
-                if items > 0 && st[i].size.h <= 0.0 {
+            let stats = Self::stats(&tree.as_ref(), i);
+            if let Some(items) = stats.items {
+                let shown = stats.materialized.unwrap_or(0);
+                // Under the `Length` model a list *fills* its scrollport,
+                // so zero height is no longer the signal — a list with
+                // rows that materializes nothing is.
+                if items > 0 && (shown == 0 || a <= 0.0) {
                     out.push(Finding {
                         code: codes::COLLAPSED_COLLECTION,
                         idx: i as u32,
                         message: format!(
-                            "collection has {items} items but zero height — \
-                             check the item extent and the height it was given"
+                            "collection has {items} items but shows {shown} — \
+                             check the item extent and the space it was given"
                         ),
-                        detail: json!({ "items": items, "size": [st[i].size.w, st[i].size.h] }),
+                        detail: json!({
+                            "items": items,
+                            "materialized": shown,
+                            "size": [st[i].size.w, st[i].size.h],
+                        }),
                     });
                 } else if items > 0 && a > 0.0 {
                     anything_visible = true;

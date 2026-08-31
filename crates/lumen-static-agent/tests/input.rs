@@ -42,6 +42,7 @@ const VIEW: Constraints = Constraints { min_w: 0.0, max_w: 200.0, min_h: 0.0, ma
 struct Host {
     app: App,
     states: [NodeState; Ui::NODE_COUNT],
+    styles: Vec<lumen_static::Style>,
     focus: Option<u32>,
     queue: InputQueue,
     frame: u64,
@@ -55,9 +56,11 @@ impl Host {
         app.ui.head.text = "head";
         app.ui.save.label = "save";
         app.ui.save.on_click = on_save;
+        let styles = pass::default_styles(&app.ui);
         let mut h = Host {
             app,
             states: [NodeState::default(); Ui::NODE_COUNT],
+            styles,
             focus: None,
             queue: InputQueue::new(),
             frame: 0,
@@ -68,14 +71,14 @@ impl Host {
     }
 
     fn layout(&mut self) {
-        pass::layout(&mut self.app.ui, &mut self.states, VIEW);
+        pass::layout(&mut self.app.ui, &self.styles, &mut self.states, VIEW);
     }
 
 }
 
 impl AgentHost for Host {
     fn tree(&self) -> TreeRef<'_> {
-        TreeRef::of_root(&self.app.ui, &self.states)
+        TreeRef::of_root(&self.app.ui, &self.styles, &self.states)
     }
 
     fn enqueue(&mut self, ev: Event) {
@@ -85,7 +88,7 @@ impl AgentHost for Host {
 
     fn pump(&mut self) -> u64 {
         while let Some(ev) = self.queue.pop() {
-            pass::dispatch(&mut self.app, &self.states, &mut self.focus, &ev);
+            pass::dispatch(&mut self.app, &self.styles, &self.states, &mut self.focus, &ev);
         }
         self.layout();
         self.frame += 1;

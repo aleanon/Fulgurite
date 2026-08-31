@@ -173,8 +173,9 @@ pub unsafe extern "C" fn hot_frame(p: *mut c_void) -> u64 {
         _ => "count many",
     };
     let mut st = [NodeState::default(); Ui::NODE_COUNT];
+    let sty = pass::default_styles(&s.ui);
     let c = Constraints { min_w: 0.0, max_w: 800.0, min_h: 0.0, max_h: 600.0 };
-    pass::layout(&mut s.ui, &mut st, c);
+    pass::layout(&mut s.ui, &sty, &mut st, c);
     let mut out = 0u64;
     pass::paint(&s.ui, &st, &mut out);
     out

@@ -23,7 +23,7 @@ enum Axis {
     Column,
 }
 
-#[proc_macro_derive(StaticTree, attributes(widget, widget_id))]
+#[proc_macro_derive(StaticTree, attributes(widget, widget_id, widget_class))]
 pub fn derive_static_tree(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     match expand(input) {
@@ -87,6 +87,27 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
     let root_line = input.ident.span().start().line as u32;
     let field_line: Vec<u32> =
         fields.named.iter().map(|f| f.ident.as_ref().unwrap().span().start().line as u32).collect();
+    let field_classes: Vec<Ts2> = fields
+        .named
+        .iter()
+        .map(|f| {
+            for attr in &f.attrs {
+                if attr.path().is_ident("widget_class") {
+                    let mut out: Vec<String> = Vec::new();
+                    let _ = attr.parse_nested_meta(|m| {
+                        if let Some(id) = m.path.get_ident() {
+                            out.push(id.to_string());
+                        }
+                        Ok(())
+                    });
+                    if !out.is_empty() {
+                        return quote! { &[#(#out),*] };
+                    }
+                }
+            }
+            quote! { &[] }
+        })
+        .collect();
     let field_wid: Vec<String> = fields
         .named
         .iter()
@@ -102,22 +123,23 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
         })
         .collect();
 
-    // Axis-specific bodies. Same math either way, transposed.
-    let (child_limits, accumulate, result, advance) = match axis {
+    let axis_expr = match axis {
+        Axis::Row => quote! { ::lumen_static::ops::Axis::Row },
+        Axis::Column => quote! { ::lumen_static::ops::Axis::Column },
+    };
+    // A container fills across its cross axis and shrinks along its main
+    // one — the shape that makes a column of rows behave as expected.
+    let (default_w, default_h) = match axis {
         Axis::Row => (
-            quote! { ::lumen_static::ops::row_child_limits(limits, #n, #sp) },
-            quote! { sum += s.w; mx = mx.max(s.h); },
-            quote! { ::lumen_static::Size { w: sum + #spaced_total, h: mx } },
-            quote! { cur.x += st[at].size.w + #sp; },
+            quote! { ::lumen_static::Length::FILL },
+            quote! { ::lumen_static::Length::Shrink },
         ),
         Axis::Column => (
-            quote! { ::lumen_static::ops::col_child_limits(limits, #n, #sp) },
-            quote! { sum += s.h; mx = mx.max(s.w); },
-            quote! { ::lumen_static::Size { w: mx, h: sum + #spaced_total } },
-            quote! { cur.y += st[at].size.h + #sp; },
+            quote! { ::lumen_static::Length::FILL },
+            quote! { ::lumen_static::Length::Shrink },
         ),
     };
-    let _ = n_f32;
+    let _ = (n_f32, spaced_total);
 
     // `fuse` is a *call style*, not a separate lowering: the same bodies
     // with static calls, so the subtree monomorphizes into one kind.
@@ -173,7 +195,10 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                     );
                     // A child's root carries its *field* site; the
                     // child's internals keep their own.
-                    t[at] = t[at].with_src(::core::file!(), #field_line).with_id(#field_wid);
+                    t[at] = t[at]
+                        .with_src(::core::file!(), #field_line)
+                        .with_id(#field_wid)
+                        .with_classes(#field_classes);
                     if prev_root != 0 { t[prev_root].next_sibling = at as u32; }
                     prev_root = at;
                     at += <#field_ty as Widget>::NODE_COUNT;
@@ -234,37 +259,167 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                     #name_str
                 }
 
-                fn layout(&mut self, limits: Constraints, st: &mut [NodeState], i: usize) -> Size {
-                    let cc = #child_limits;
-                    let mut sum = 0.0f32;
-                    let mut mx = 0.0f32;
-                    let mut at = i + 1;
-                    #(
-                        {
-                            #mut_calls
-                            #opaque_stmt
-                            let s = d.layout(cc, st, at);
-                            #accumulate
-                            at += <#field_ty as Widget>::NODE_COUNT;
-                        }
-                    )*
-                    let _ = at;
-                    ::lumen_static::ops::record(st, i, limits, limits.clamp(#result))
+                fn defaults(&self) -> ::lumen_static::Style {
+                    ::lumen_static::Style {
+                        width: #default_w,
+                        height: #default_h,
+                        spacing: #sp,
+                        ..::lumen_static::Style::default()
+                    }
                 }
 
-                fn place(&mut self, at_pos: Point, st: &mut [NodeState], i: usize) {
-                    st[i].pos = at_pos;
-                    let mut cur = at_pos;
+                /// iced's `resolve`, per container: one scan lays out the
+                /// non-`Fill` children (which is where `Shrink` gets its
+                /// content size), a second divides the remainder among
+                /// the `Fill` ones. Each child's `layout` is called
+                /// exactly once — no intrinsic pass, no correction pass
+                /// (`docs/layout-and-storage-decisions.md` §2).
+                fn layout(
+                    &mut self,
+                    limits: Constraints,
+                    style: &[::lumen_static::Style],
+                    st: &mut [NodeState],
+                    i: usize,
+                ) -> Size {
+                    use ::lumen_static::ops::{
+                        align_offset, fill_child, inner_limits, loose_child, resolve_self, spaced,
+                        Axis,
+                    };
+                    let me = style[i];
+                    if !me.visible {
+                        return ::lumen_static::ops::record(st, i, limits, Size::default());
+                    }
+                    let axis = #axis_expr;
+                    let inner = inner_limits(limits, me.padding);
+                    let gaps = spaced(#n, me.spacing);
+
+                    // Scan 1: everything that is not Fill along the main
+                    // axis. Shrink children measure their content here.
+                    let mut used = gaps;
+                    let mut cross = 0.0f32;
+                    let mut portions: u32 = 0;
                     let mut at = i + 1;
                     #(
                         {
-                            #mut_calls
-                            d.place(cur, st, at);
-                            #advance
+                            let cs = style[at];
+                            let l = axis.main_len(&cs);
+                            if l.is_fill() {
+                                portions += l.portion() as u32;
+                            } else {
+                                let avail = (axis.main_of(inner) - used).max(0.0);
+                                #mut_calls
+                                #opaque_stmt
+                                let s = d.layout(loose_child(axis, inner, avail, me.align), style, st, at);
+                                used += axis.main(s);
+                                // A child that stretches across the
+                                // container conforms to it; it must not
+                                // also define its cross size, or a
+                                // `Fill` spacer in a `Shrink` row would
+                                // inflate the row to the whole viewport.
+                                if !axis.cross_len(&cs).is_fill() {
+                                    cross = cross.max(axis.cross(s));
+                                }
+                            }
                             at += <#field_ty as Widget>::NODE_COUNT;
                         }
                     )*
-                    let _ = (at, cur);
+
+                    // Scan 2: divide what is left among the fills. No
+                    // freeze-and-redistribute loop exists, because
+                    // nothing here can be squeezed below its content.
+                    // Skipped entirely when the container has no fills,
+                    // which is the common case.
+                    let free = (axis.main_of(inner) - used).max(0.0);
+                    let mut at = i + 1;
+                    if portions != 0 {
+                    #(
+                        {
+                            let cs = style[at];
+                            let l = axis.main_len(&cs);
+                            if l.is_fill() {
+                                let share = if portions == 0 {
+                                    0.0
+                                } else {
+                                    free * l.portion() as f32 / portions as f32
+                                };
+                                #mut_calls
+                                #opaque_stmt
+                                let s = d.layout(fill_child(axis, inner, share, me.align), style, st, at);
+                                used += axis.main(s);
+                                if !axis.cross_len(&cs).is_fill() {
+                                    cross = cross.max(axis.cross(s));
+                                }
+                            }
+                            at += <#field_ty as Widget>::NODE_COUNT;
+                        }
+                    )*
+                    }
+                    let _ = at;
+
+                    let content = axis.size(used, cross);
+                    let padded = Size {
+                        w: content.w + me.padding.horizontal(),
+                        h: content.h + me.padding.vertical(),
+                    };
+                    ::lumen_static::ops::record(st, i, limits, resolve_self(limits, &me, padded))
+                }
+
+                fn place(
+                    &mut self,
+                    at_pos: Point,
+                    style: &[::lumen_static::Style],
+                    st: &mut [NodeState],
+                    i: usize,
+                ) {
+                    use ::lumen_static::ops::{align_offset, Axis};
+                    st[i].pos = at_pos;
+                    let me = style[i];
+                    if !me.visible {
+                        return;
+                    }
+                    let axis = #axis_expr;
+                    let cross_extent = axis.cross(st[i].size)
+                        - match axis {
+                            Axis::Row => me.padding.vertical(),
+                            Axis::Column => me.padding.horizontal(),
+                        };
+                    let mut main = axis.main(Size { w: at_pos.x, h: at_pos.y })
+                        + match axis {
+                            Axis::Row => me.padding.left,
+                            Axis::Column => me.padding.top,
+                        };
+                    let cross0 = axis.cross(Size { w: at_pos.x, h: at_pos.y })
+                        + match axis {
+                            Axis::Row => me.padding.top,
+                            Axis::Column => me.padding.left,
+                        };
+                    let mut at = i + 1;
+                    #(
+                        {
+                            // Stretch a cross-`Fill` child to the extent
+                            // its container settled on. Its descendants
+                            // were measured against the looser bound —
+                            // the documented non-iterative limit.
+                            if axis.cross_len(&style[at]).is_fill() {
+                                let s = st[at].size;
+                                st[at].size = match axis {
+                                    Axis::Row => Size { w: s.w, h: cross_extent },
+                                    Axis::Column => Size { w: cross_extent, h: s.h },
+                                };
+                            }
+                            let size = st[at].size;
+                            let off = align_offset(me.align, cross_extent, axis.cross(size));
+                            let p = match axis {
+                                Axis::Row => Point { x: main, y: cross0 + off },
+                                Axis::Column => Point { x: cross0 + off, y: main },
+                            };
+                            #mut_calls
+                            d.place(p, style, st, at);
+                            main += axis.main(size) + me.spacing;
+                            at += <#field_ty as Widget>::NODE_COUNT;
+                        }
+                    )*
+                    let _ = (at, main);
                 }
 
                 fn paint(&self, st: &[NodeState], i: usize, out: &mut u64) {

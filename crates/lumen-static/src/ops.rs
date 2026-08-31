@@ -8,6 +8,7 @@
 use crate::desc::{Constraints, NodeDesc, NodeState, Point, Size, NO_PARENT};
 use crate::event::EventCtx;
 use crate::hit::{contains, Hit};
+use crate::style::{Align, Length, Style};
 use crate::widget::{Node, Widget};
 
 #[inline]
@@ -34,24 +35,148 @@ pub const fn spaced(n: usize, spacing: f32) -> f32 {
     if n > 1 { spacing * (n - 1) as f32 } else { 0.0 }
 }
 
-/// The limits a row hands each of its `n` children.
-#[inline]
-pub fn row_child_limits(limits: Constraints, n: usize, spacing: f32) -> Constraints {
-    Constraints {
-        min_w: 0.0,
-        max_w: ((limits.max_w - spaced(n, spacing)) / n.max(1) as f32).max(0.0),
-        min_h: 0.0,
-        max_h: limits.max_h,
+/// A container's own axis: which of width/height is the main one.
+#[derive(Clone, Copy, PartialEq)]
+pub enum Axis {
+    Row,
+    Column,
+}
+
+impl Axis {
+    #[inline]
+    pub fn main(&self, s: Size) -> f32 {
+        match self {
+            Axis::Row => s.w,
+            Axis::Column => s.h,
+        }
+    }
+    #[inline]
+    pub fn cross(&self, s: Size) -> f32 {
+        match self {
+            Axis::Row => s.h,
+            Axis::Column => s.w,
+        }
+    }
+    #[inline]
+    pub fn size(&self, main: f32, cross: f32) -> Size {
+        match self {
+            Axis::Row => Size { w: main, h: cross },
+            Axis::Column => Size { w: cross, h: main },
+        }
+    }
+    /// The child's `Length` along this container's main axis.
+    #[inline]
+    pub fn main_len(&self, s: &Style) -> Length {
+        match self {
+            Axis::Row => s.width,
+            Axis::Column => s.height,
+        }
+    }
+
+    /// …and along the cross axis.
+    #[inline]
+    pub fn cross_len(&self, s: &Style) -> Length {
+        match self {
+            Axis::Row => s.height,
+            Axis::Column => s.width,
+        }
     }
 }
 
+/// The content box: the node's limits minus its own padding.
 #[inline]
-pub fn col_child_limits(limits: Constraints, n: usize, spacing: f32) -> Constraints {
+pub fn inner_limits(limits: Constraints, pad: crate::style::Edges) -> Constraints {
     Constraints {
-        min_w: limits.min_w.min(limits.max_w),
-        max_w: limits.max_w,
-        min_h: 0.0,
-        max_h: ((limits.max_h - spaced(n, spacing)) / n.max(1) as f32).max(0.0),
+        min_w: (limits.min_w - pad.horizontal()).max(0.0),
+        max_w: (limits.max_w - pad.horizontal()).max(0.0),
+        min_h: (limits.min_h - pad.vertical()).max(0.0),
+        max_h: (limits.max_h - pad.vertical()).max(0.0),
+    }
+}
+
+/// Limits for a non-`Fill` child: it may take up to whatever is left.
+#[inline]
+pub fn loose_child(axis: Axis, inner: Constraints, remaining_main: f32, align: Align) -> Constraints {
+    let cross_min = if align == Align::Fill { axis.cross_of(inner) } else { 0.0 };
+    match axis {
+        Axis::Row => Constraints {
+            min_w: 0.0,
+            max_w: remaining_main.max(0.0),
+            min_h: cross_min,
+            max_h: inner.max_h,
+        },
+        Axis::Column => Constraints {
+            min_w: cross_min,
+            max_w: inner.max_w,
+            min_h: 0.0,
+            max_h: remaining_main.max(0.0),
+        },
+    }
+}
+
+/// Tight main-axis limits for a `Fill` child's share.
+#[inline]
+pub fn fill_child(axis: Axis, inner: Constraints, share: f32, align: Align) -> Constraints {
+    let cross_min = if align == Align::Fill { axis.cross_of(inner) } else { 0.0 };
+    match axis {
+        Axis::Row => Constraints {
+            min_w: share.max(0.0),
+            max_w: share.max(0.0),
+            min_h: cross_min,
+            max_h: inner.max_h,
+        },
+        Axis::Column => Constraints {
+            min_w: cross_min,
+            max_w: inner.max_w,
+            min_h: share.max(0.0),
+            max_h: share.max(0.0),
+        },
+    }
+}
+
+impl Axis {
+    #[inline]
+    pub fn main_of(&self, c: Constraints) -> f32 {
+        match self {
+            Axis::Row => c.max_w,
+            Axis::Column => c.max_h,
+        }
+    }
+
+    #[inline]
+    fn cross_of(&self, c: Constraints) -> f32 {
+        match self {
+            Axis::Row => c.max_h,
+            Axis::Column => c.max_w,
+        }
+    }
+}
+
+/// Resolve a container's own size from its content, honouring its own
+/// `Length`s: `Fill` takes the whole limit, `Fixed` takes its value,
+/// `Shrink` takes the content size — then clamped.
+#[inline]
+pub fn resolve_self(limits: Constraints, style: &Style, content: Size) -> Size {
+    let w = match style.width {
+        Length::Fixed(v) => v,
+        Length::Shrink => content.w,
+        Length::FillPortion(_) => limits.max_w,
+    };
+    let h = match style.height {
+        Length::Fixed(v) => v,
+        Length::Shrink => content.h,
+        Length::FillPortion(_) => limits.max_h,
+    };
+    limits.clamp(Size { w, h })
+}
+
+/// Cross-axis offset for a child inside a container of `cross` extent.
+#[inline]
+pub fn align_offset(align: Align, cross: f32, child_cross: f32) -> f32 {
+    match align {
+        Align::Start | Align::Fill => 0.0,
+        Align::Center => ((cross - child_cross) / 2.0).max(0.0),
+        Align::End => (cross - child_cross).max(0.0),
     }
 }
 
@@ -70,7 +195,7 @@ pub fn record(st: &mut [NodeState], i: usize, limits: Constraints, size: Size) -
 /// self, `place` writes a position, `hit` is a bounds test.
 macro_rules! leaf_common {
     ($ty:ty, $flags:expr) => {
-        fn place(&mut self, at: Point, st: &mut [NodeState], i: usize) {
+        fn place(&mut self, at: Point, _style: &[Style], st: &mut [NodeState], i: usize) {
             st[i].pos = at;
         }
         fn hit(&self, st: &[NodeState], i: usize, x: f32, y: f32) -> Option<Hit> {
@@ -112,9 +237,15 @@ impl Node for Label {
         "label"
     }
 
-    fn layout(&mut self, limits: Constraints, st: &mut [NodeState], i: usize) -> Size {
-        let s = limits.clamp(Size { w: 8.0 * self.text.len() as f32, h: 16.0 });
-        record(st, i, limits, s)
+    fn layout(
+        &mut self,
+        limits: Constraints,
+        style: &[Style],
+        st: &mut [NodeState],
+        i: usize,
+    ) -> Size {
+        let content = Size { w: 8.0 * self.text.len() as f32, h: 16.0 };
+        record(st, i, limits, resolve_self(limits, &style[i], content))
     }
     fn paint(&self, st: &[NodeState], i: usize, out: &mut u64) {
         fold_geom(out, 1, &st[i]);
@@ -163,9 +294,15 @@ impl Node for Fixed {
         "fixed"
     }
 
-    fn layout(&mut self, limits: Constraints, st: &mut [NodeState], i: usize) -> Size {
-        let s = limits.clamp(Size { w: self.w, h: self.h });
-        record(st, i, limits, s)
+    fn layout(
+        &mut self,
+        limits: Constraints,
+        style: &[Style],
+        st: &mut [NodeState],
+        i: usize,
+    ) -> Size {
+        let content = Size { w: self.w, h: self.h };
+        record(st, i, limits, resolve_self(limits, &style[i], content))
     }
     fn paint(&self, st: &[NodeState], i: usize, out: &mut u64) {
         fold_geom(out, 2, &st[i]);
@@ -190,9 +327,21 @@ impl Node for Spacer {
         "spacer"
     }
 
-    fn layout(&mut self, limits: Constraints, st: &mut [NodeState], i: usize) -> Size {
-        let s = Size { w: limits.max_w, h: limits.max_h };
-        record(st, i, limits, s)
+    /// The one leaf that is filler rather than content.
+    fn defaults(&self) -> Style {
+        Style { width: Length::FILL, height: Length::FILL, ..Style::default() }
+    }
+
+    fn layout(
+        &mut self,
+        limits: Constraints,
+        style: &[Style],
+        st: &mut [NodeState],
+        i: usize,
+    ) -> Size {
+        // A spacer is filler by default; its style says so, and
+        // `resolve_self` turns that into "take the whole limit".
+        record(st, i, limits, resolve_self(limits, &style[i], Size::default()))
     }
     fn paint(&self, st: &[NodeState], i: usize, out: &mut u64) {
         fold_geom(out, 3, &st[i]);
@@ -234,12 +383,18 @@ impl<S: 'static> Node for Button<S> {
         "button"
     }
 
-    fn layout(&mut self, limits: Constraints, st: &mut [NodeState], i: usize) -> Size {
-        let s = limits.clamp(Size {
+    fn layout(
+        &mut self,
+        limits: Constraints,
+        style: &[Style],
+        st: &mut [NodeState],
+        i: usize,
+    ) -> Size {
+        let content = Size {
             w: 8.0 * self.label.len() as f32 + 2.0 * Self::PAD,
             h: 16.0 + Self::PAD,
-        });
-        record(st, i, limits, s)
+        };
+        record(st, i, limits, resolve_self(limits, &style[i], content))
     }
     fn paint(&self, st: &[NodeState], i: usize, out: &mut u64) {
         fold_geom(out, 4, &st[i]);

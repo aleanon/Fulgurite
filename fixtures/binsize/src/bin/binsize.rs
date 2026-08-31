@@ -18,8 +18,9 @@ struct Block { title: Label, c1: Card, c2: Card, c3: Card, c4: Card }
 fn main() {
     let mut t = Block::default();
     let mut st = [NodeState::default(); Block::NODE_COUNT];
+    let sty = pass::default_styles(&t);
     let c = Constraints { min_w: 0.0, max_w: 800.0, min_h: 0.0, max_h: 600.0 };
-    pass::layout(&mut t, &mut st, c);
+    pass::layout(&mut t, &sty, &mut st, c);
     let mut out = 0u64;
     pass::paint(&t, &st, &mut out);
     println!("{out:#x} nodes={} depth={}", Block::NODE_COUNT, Block::DEPTH);

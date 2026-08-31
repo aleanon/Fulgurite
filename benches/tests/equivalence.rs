@@ -66,7 +66,8 @@ fn tables_are_well_formed() {
 fn run_static<W: Widget + Default>() -> Vec<(Size, Point)> {
     let mut w = W::default();
     let mut st = vec![NodeState::default(); W::NODE_COUNT];
-    pass::layout(&mut w, &mut st, ROOT_C);
+    let sty = pass::default_styles(&w);
+    pass::layout(&mut w, &sty, &mut st, ROOT_C);
     st.iter().map(|s| (s.size, s.pos)).collect()
 }
 
@@ -87,9 +88,11 @@ fn static_matches_dyn_root_geometry() {
     d.place(Point::default());
     assert_eq!(got[0].0, dsz, "assembled root size");
 
-    // Spot-check: first card's subtree root (table index 1)
+    // Spot-check: the first card sees the whole viewport, because the
+    // column offers each instance whatever main-axis space is left and
+    // nothing has been consumed yet.
     let mut dc = d_card();
-    let card_c = Constraints { min_w: 0.0, max_w: 800.0, min_h: 0.0, max_h: 600.0 / 45.0 };
+    let card_c = Constraints { min_w: 0.0, max_w: 800.0, min_h: 0.0, max_h: 600.0 };
     let card_sz = dc.layout(card_c);
     assert_eq!(got[1].0, card_sz, "first card size");
 }
@@ -98,7 +101,8 @@ fn static_matches_dyn_root_geometry() {
 fn paint_is_deterministic_and_value_sensitive() {
     let mut tree = Ten::default();
     let mut st = [NodeState::default(); Ten::NODE_COUNT];
-    pass::layout(&mut tree, &mut st, ROOT_C);
+    let sty = pass::default_styles(&tree);
+    pass::layout(&mut tree, &sty, &mut st, ROOT_C);
     let mut a = 0u64;
     pass::paint(&tree, &st, &mut a);
     let mut b = 0u64;

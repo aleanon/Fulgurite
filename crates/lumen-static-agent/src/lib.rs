@@ -43,11 +43,16 @@ pub struct TreeRef<'a> {
     pub root: &'a dyn Node,
     pub table: &'a [NodeDesc],
     pub states: &'a [NodeState],
+    pub styles: &'a [lumen_static::Style],
 }
 
 impl<'a> TreeRef<'a> {
-    pub fn of_root<W: Widget>(root: &'a W, states: &'a [NodeState]) -> Self {
-        TreeRef { root, table: W::SUB_TABLE, states }
+    pub fn of_root<W: Widget>(
+        root: &'a W,
+        styles: &'a [lumen_static::Style],
+        states: &'a [NodeState],
+    ) -> Self {
+        TreeRef { root, table: W::SUB_TABLE, states, styles }
     }
 }
 
@@ -58,15 +63,25 @@ pub struct TreeMut<'a> {
     pub root: &'a mut dyn Node,
     pub table: &'a [NodeDesc],
     pub states: &'a [NodeState],
+    pub styles: &'a [lumen_static::Style],
 }
 
 impl<'a> TreeMut<'a> {
-    pub fn of_root<W: Widget>(root: &'a mut W, states: &'a [NodeState]) -> Self {
-        TreeMut { root, table: W::SUB_TABLE, states }
+    pub fn of_root<W: Widget>(
+        root: &'a mut W,
+        styles: &'a [lumen_static::Style],
+        states: &'a [NodeState],
+    ) -> Self {
+        TreeMut { root, table: W::SUB_TABLE, states, styles }
     }
 
     pub fn as_ref(&self) -> TreeRef<'_> {
-        TreeRef { root: &*self.root, table: self.table, states: self.states }
+        TreeRef {
+            root: &*self.root,
+            table: self.table,
+            states: self.states,
+            styles: self.styles,
+        }
     }
 }
 

@@ -34,10 +34,14 @@ pub struct NodeDesc {
     pub flags: u8,
     #[cfg(feature = "observe")]
     pub src: SrcLoc,
-    /// Author id (`#[widget_id("save")]`) — the agent-facing stable
-    /// address, since table indices shift under source edits.
-    #[cfg(feature = "observe")]
+    /// Author id (`#[widget_id("save")]`). Two jobs: the agent-facing
+    /// stable address (table indices shift under source edits), and an
+    /// `#id` selector for the cascade — which is why it is *not* gated
+    /// behind `observe` any more.
     pub wid: &'static str,
+    /// Style classes (`#[widget_class("row", "striped")]`), matched by
+    /// the cascade. Static per node, like `wid`.
+    pub classes: &'static [&'static str],
 }
 
 impl NodeDesc {
@@ -65,8 +69,8 @@ impl NodeDesc {
             flags,
             #[cfg(feature = "observe")]
             src: SrcLoc::UNKNOWN,
-            #[cfg(feature = "observe")]
             wid: "",
+            classes: &[],
         }
     }
 
@@ -81,13 +85,15 @@ impl NodeDesc {
         self
     }
 
-    /// Stamp an author id (same zero-cost contract as [`Self::with_src`]).
-    #[allow(unused_mut, unused_variables)]
+    /// Stamp an author id.
     pub const fn with_id(mut self, id: &'static str) -> Self {
-        #[cfg(feature = "observe")]
-        {
-            self.wid = id;
-        }
+        self.wid = id;
+        self
+    }
+
+    /// Stamp style classes.
+    pub const fn with_classes(mut self, classes: &'static [&'static str]) -> Self {
+        self.classes = classes;
         self
     }
 

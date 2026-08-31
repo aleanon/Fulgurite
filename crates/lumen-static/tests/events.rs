@@ -63,6 +63,7 @@ fn bind_row(r: &mut RowT, _row: usize) {
 struct Fixture {
     app: App,
     states: [NodeState; Ui::NODE_COUNT],
+    styles: Vec<lumen_static::Style>,
     focus: Option<u32>,
 }
 
@@ -73,17 +74,24 @@ impl Fixture {
         app.ui.save.label = "save";
         app.ui.save.on_click = on_save;
         app.ui.list = Repeat::new(100, 20.0, bind_row);
-        let mut f = Fixture { app, states: [NodeState::default(); Ui::NODE_COUNT], focus: None };
+        let styles = pass::default_styles(&app.ui);
+        let mut f = Fixture {
+            app,
+            states: [NodeState::default(); Ui::NODE_COUNT],
+            styles,
+            focus: None,
+        };
         f.layout();
         f
     }
 
     fn layout(&mut self) {
-        pass::layout(&mut self.app.ui, &mut self.states, VIEW);
+        pass::layout(&mut self.app.ui, &self.styles, &mut self.states, VIEW);
     }
 
     fn send(&mut self, ev: Event) -> bool {
-        let handled = pass::dispatch(&mut self.app, &self.states, &mut self.focus, &ev);
+        let handled =
+            pass::dispatch(&mut self.app, &self.styles, &self.states, &mut self.focus, &ev);
         self.layout();
         handled
     }

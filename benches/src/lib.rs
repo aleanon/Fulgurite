@@ -58,17 +58,60 @@ pub struct Block {
 }
 
 // ---- dyn arm: the naive recursive-descent OOP tree -------------------------
+//
+// The §10 control, implementing the *same* layout model as the framework
+// (iced's `Length`: Fixed / Shrink / Fill), so geometry equivalence is a
+// meaningful oracle. What it does not have is the framework's const
+// tables, compile-time node counts or zero allocation — it is a
+// `Box<dyn>` tree built at runtime, which is the point of the contrast.
+
+#[derive(Clone, Copy, PartialEq)]
+pub enum DLen {
+    Fixed(f32),
+    Shrink,
+    Fill(u16),
+}
+
+impl DLen {
+    fn portion(&self) -> u16 {
+        match self {
+            DLen::Fill(k) => *k,
+            _ => 0,
+        }
+    }
+    fn is_fill(&self) -> bool {
+        matches!(self, DLen::Fill(_))
+    }
+}
 
 pub trait DynWidget {
     fn layout(&mut self, c: Constraints) -> Size;
     fn place(&mut self, at: Point);
     fn paint(&self, out: &mut u64);
     fn size_of(&self) -> Size;
+    fn len_w(&self) -> DLen;
+    fn len_h(&self) -> DLen;
+    /// Overwrite the cross extent when a container stretches this child.
+    fn stretch_cross(&mut self, cross: f32, horizontal: bool);
 }
 
 #[inline]
 fn fold(out: &mut u64, v: u64) {
     *out = out.wrapping_mul(0x9E37_79B9_7F4A_7C15).wrapping_add(v);
+}
+
+fn resolve(c: Constraints, w: DLen, h: DLen, content: Size) -> Size {
+    let ww = match w {
+        DLen::Fixed(v) => v,
+        DLen::Shrink => content.w,
+        DLen::Fill(_) => c.max_w,
+    };
+    let hh = match h {
+        DLen::Fixed(v) => v,
+        DLen::Shrink => content.h,
+        DLen::Fill(_) => c.max_h,
+    };
+    Size { w: ww.clamp(c.min_w, c.max_w), h: hh.clamp(c.min_h, c.max_h) }
 }
 
 pub struct DBox {
@@ -79,56 +122,112 @@ pub struct DBox {
     pub pos: Point,
 }
 
+impl DBox {
+    fn main(&self, s: Size) -> f32 {
+        if self.horizontal { s.w } else { s.h }
+    }
+    fn cross(&self, s: Size) -> f32 {
+        if self.horizontal { s.h } else { s.w }
+    }
+    fn child_len(&self, c: &dyn DynWidget) -> DLen {
+        if self.horizontal { c.len_w() } else { c.len_h() }
+    }
+    fn child_cross_len(&self, c: &dyn DynWidget) -> DLen {
+        if self.horizontal { c.len_h() } else { c.len_w() }
+    }
+}
+
 impl DynWidget for DBox {
+    fn stretch_cross(&mut self, cross: f32, horizontal: bool) {
+        if horizontal {
+            self.size.h = cross;
+        } else {
+            self.size.w = cross;
+        }
+    }
+
     fn layout(&mut self, c: Constraints) -> Size {
-        let n = self.children.len().max(1) as f32;
-        let spaced = if self.children.len() > 1 {
-            self.spacing * (self.children.len() - 1) as f32
-        } else {
-            0.0
-        };
-        let cc = if self.horizontal {
-            Constraints { min_w: 0.0, max_w: ((c.max_w - spaced) / n).max(0.0), min_h: 0.0, max_h: c.max_h }
-        } else {
-            Constraints { min_w: 0.0, max_w: c.max_w, min_h: 0.0, max_h: ((c.max_h - spaced) / n).max(0.0) }
-        };
-        let mut sum = 0.0f32;
-        let mut max = 0.0f32;
-        for ch in &mut self.children {
-            let s = ch.layout(cc);
-            if self.horizontal {
-                sum += s.w;
-                max = max.max(s.h);
+        let n = self.children.len();
+        let gaps = if n > 1 { self.spacing * (n - 1) as f32 } else { 0.0 };
+        let avail_main = if self.horizontal { c.max_w } else { c.max_h };
+
+        // Scan 1: non-fill children.
+        let mut used = gaps;
+        let mut cross = 0.0f32;
+        let mut portions: u32 = 0;
+        for k in 0..n {
+            let l = self.child_len(self.children[k].as_ref());
+            if l.is_fill() {
+                portions += l.portion() as u32;
+                continue;
+            }
+            let rem = (avail_main - used).max(0.0);
+            let cc = if self.horizontal {
+                Constraints { min_w: 0.0, max_w: rem, min_h: 0.0, max_h: c.max_h }
             } else {
-                sum += s.h;
-                max = max.max(s.w);
+                Constraints { min_w: 0.0, max_w: c.max_w, min_h: 0.0, max_h: rem }
+            };
+            let s = self.children[k].layout(cc);
+            used += self.main(s);
+            // A cross-stretched child conforms to the container; it does
+            // not define the container's cross size.
+            if !self.child_cross_len(self.children[k].as_ref()).is_fill() {
+                cross = cross.max(self.cross(s));
             }
         }
-        let raw = if self.horizontal {
-            Size { w: sum + spaced, h: max }
-        } else {
-            Size { w: max, h: sum + spaced }
-        };
-        self.size = c.clamp(raw);
+
+        // Scan 2: fills share the remainder.
+        let free = (avail_main - used).max(0.0);
+        for k in 0..n {
+            let l = self.child_len(self.children[k].as_ref());
+            if !l.is_fill() {
+                continue;
+            }
+            let share =
+                if portions == 0 { 0.0 } else { free * l.portion() as f32 / portions as f32 };
+            let cc = if self.horizontal {
+                Constraints { min_w: share, max_w: share, min_h: 0.0, max_h: c.max_h }
+            } else {
+                Constraints { min_w: 0.0, max_w: c.max_w, min_h: share, max_h: share }
+            };
+            let s = self.children[k].layout(cc);
+            used += self.main(s);
+            if !self.child_cross_len(self.children[k].as_ref()).is_fill() {
+                cross = cross.max(self.cross(s));
+            }
+        }
+
+        let content =
+            if self.horizontal { Size { w: used, h: cross } } else { Size { w: cross, h: used } };
+        self.size = resolve(c, self.len_w(), self.len_h(), content);
         self.size
     }
 
     fn place(&mut self, at: Point) {
         self.pos = at;
+        let cross_extent = self.cross(self.size);
+        let horizontal = self.horizontal;
+        let spacing = self.spacing;
         let mut cur = at;
         for ch in &mut self.children {
+            // Stretch cross-fill children to the settled extent, as the
+            // framework's `place` does.
+            let cl = if horizontal { ch.len_h() } else { ch.len_w() };
+            if cl.is_fill() {
+                ch.stretch_cross(cross_extent, horizontal);
+            }
             ch.place(cur);
             let s = ch.size_of();
-            cur = if self.horizontal {
-                Point { x: cur.x + s.w + self.spacing, y: cur.y }
+            cur = if horizontal {
+                Point { x: cur.x + s.w + spacing, y: cur.y }
             } else {
-                Point { x: cur.x, y: cur.y + s.h + self.spacing }
+                Point { x: cur.x, y: cur.y + s.h + spacing }
             };
         }
     }
 
     fn paint(&self, out: &mut u64) {
-        fold(out, 100);
+        fold(out, 0);
         fold(out, self.size.w.to_bits() as u64 ^ ((self.size.h.to_bits() as u64) << 32));
         fold(out, self.pos.x.to_bits() as u64 ^ ((self.pos.y.to_bits() as u64) << 32));
         for ch in &self.children {
@@ -139,6 +238,12 @@ impl DynWidget for DBox {
     fn size_of(&self) -> Size {
         self.size
     }
+    fn len_w(&self) -> DLen {
+        DLen::Fill(1)
+    }
+    fn len_h(&self) -> DLen {
+        DLen::Shrink
+    }
 }
 
 pub struct DLabel {
@@ -148,15 +253,24 @@ pub struct DLabel {
 }
 
 impl DynWidget for DLabel {
+    fn stretch_cross(&mut self, cross: f32, horizontal: bool) {
+        if horizontal {
+            self.size.h = cross;
+        } else {
+            self.size.w = cross;
+        }
+    }
+
     fn layout(&mut self, c: Constraints) -> Size {
-        self.size = c.clamp(Size { w: 8.0 * self.text.len() as f32, h: 16.0 });
+        let content = Size { w: 8.0 * self.text.len() as f32, h: 16.0 };
+        self.size = resolve(c, DLen::Shrink, DLen::Shrink, content);
         self.size
     }
     fn place(&mut self, at: Point) {
         self.pos = at;
     }
     fn paint(&self, out: &mut u64) {
-        fold(out, 101);
+        fold(out, 1);
         fold(out, self.size.w.to_bits() as u64 ^ ((self.size.h.to_bits() as u64) << 32));
         fold(out, self.pos.x.to_bits() as u64 ^ ((self.pos.y.to_bits() as u64) << 32));
         for &b in self.text.as_bytes() {
@@ -165,6 +279,12 @@ impl DynWidget for DLabel {
     }
     fn size_of(&self) -> Size {
         self.size
+    }
+    fn len_w(&self) -> DLen {
+        DLen::Shrink
+    }
+    fn len_h(&self) -> DLen {
+        DLen::Shrink
     }
 }
 
@@ -176,21 +296,35 @@ pub struct DFixed {
 }
 
 impl DynWidget for DFixed {
+    fn stretch_cross(&mut self, cross: f32, horizontal: bool) {
+        if horizontal {
+            self.size.h = cross;
+        } else {
+            self.size.w = cross;
+        }
+    }
+
     fn layout(&mut self, c: Constraints) -> Size {
-        self.size = c.clamp(Size { w: self.w, h: self.h });
+        self.size = resolve(c, DLen::Shrink, DLen::Shrink, Size { w: self.w, h: self.h });
         self.size
     }
     fn place(&mut self, at: Point) {
         self.pos = at;
     }
     fn paint(&self, out: &mut u64) {
-        fold(out, 102);
+        fold(out, 2);
         fold(out, self.size.w.to_bits() as u64 ^ ((self.size.h.to_bits() as u64) << 32));
         fold(out, self.pos.x.to_bits() as u64 ^ ((self.pos.y.to_bits() as u64) << 32));
         fold(out, self.w.to_bits() as u64 ^ self.h.to_bits() as u64);
     }
     fn size_of(&self) -> Size {
         self.size
+    }
+    fn len_w(&self) -> DLen {
+        DLen::Shrink
+    }
+    fn len_h(&self) -> DLen {
+        DLen::Shrink
     }
 }
 
@@ -200,20 +334,34 @@ pub struct DSpacer {
 }
 
 impl DynWidget for DSpacer {
+    fn stretch_cross(&mut self, cross: f32, horizontal: bool) {
+        if horizontal {
+            self.size.h = cross;
+        } else {
+            self.size.w = cross;
+        }
+    }
+
     fn layout(&mut self, c: Constraints) -> Size {
-        self.size = Size { w: c.max_w, h: c.max_h };
+        self.size = resolve(c, DLen::Fill(1), DLen::Fill(1), Size::default());
         self.size
     }
     fn place(&mut self, at: Point) {
         self.pos = at;
     }
     fn paint(&self, out: &mut u64) {
-        fold(out, 103);
+        fold(out, 3);
         fold(out, self.size.w.to_bits() as u64 ^ ((self.size.h.to_bits() as u64) << 32));
         fold(out, self.pos.x.to_bits() as u64 ^ ((self.pos.y.to_bits() as u64) << 32));
     }
     fn size_of(&self) -> Size {
         self.size
+    }
+    fn len_w(&self) -> DLen {
+        DLen::Fill(1)
+    }
+    fn len_h(&self) -> DLen {
+        DLen::Fill(1)
     }
 }
 

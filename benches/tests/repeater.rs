@@ -24,7 +24,8 @@ fn bind_icon(item: &mut Item, row: usize) {
 }
 
 fn run(app: &mut ListApp, st: &mut [NodeState; ListApp::NODE_COUNT]) {
-    pass::layout(app, st, VIEW);
+    let sty = pass::default_styles(&*app);
+    pass::layout(app, &sty, st, VIEW);
 }
 
 #[test]
@@ -49,14 +50,15 @@ fn only_the_visible_window_materializes() {
     let mut st = [NodeState::default(); ListApp::NODE_COUNT];
     run(&mut app, &mut st);
 
-    // The column splits 600px between header and list -> 300px viewport.
-    // ceil(300/24) + 1 = 14 rows materialized, out of 10,000.
-    assert_eq!(app.list.window_len(), 14);
+    // Under the `Length` model the header is `Shrink` (16px of text) and
+    // the list is `Fill`, so the viewport is 600 - 16 = 584px and
+    // ceil(584/24) + 1 = 26 rows materialize, out of 10,000.
+    assert_eq!(app.list.window_len(), 26);
     assert_eq!(app.list.first_row(), 0);
 
-    // The repeater reports the viewport-clamped extent to its parent…
+    // The repeater reports its viewport to the parent…
     let rep_idx = 2; // root=0, header=1, list=2
-    assert_eq!(st[rep_idx].size.h, 300.0);
+    assert_eq!(st[rep_idx].size.h, 584.0);
     // …not the 240,000px logical extent, which stays virtual.
 }
 
@@ -113,7 +115,12 @@ fn empty_and_tiny_lists_are_sound() {
         let mut app = ListApp { list: Repeat::new(rows, 24.0, bind_icon), ..Default::default() };
         let mut st = [NodeState::default(); ListApp::NODE_COUNT];
         run(&mut app, &mut st);
-        assert_eq!(app.list.window_len(), rows.min(14));
-        assert_eq!(st[2].size.h, (rows as f32 * 24.0).min(300.0));
+        // Only what is on screen materializes, and an empty list
+        // materializes nothing…
+        assert_eq!(app.list.window_len(), rows.min(26));
+        // …but a list is `Fill`: it occupies its scrollport whether or
+        // not it has rows, which is what a list pane should do. Its
+        // *content* extent stays virtual.
+        assert_eq!(st[2].size.h, 584.0);
     }
 }

@@ -20,8 +20,9 @@ fn bind_icon(item: &mut Item, row: usize) {
 fn repeat_arm(rows: usize, iters: usize) {
     let mut list = Repeat::<Item>::new(rows, 24.0, bind_icon);
     let mut st = [NodeState::default(); 1];
+    let sty = pass::default_styles(&list);
     bench(&format!("repeat/{rows}-rows"), iters, || {
-        pass::layout(&mut list, &mut st, ROOT_C);
+        pass::layout(&mut list, &sty, &mut st, ROOT_C);
         let mut out = 0u64;
         pass::paint(&list, &st, &mut out);
         out

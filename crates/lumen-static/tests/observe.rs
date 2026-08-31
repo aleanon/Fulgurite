@@ -42,7 +42,8 @@ fn make_app(rows: usize) -> (App, [NodeState; App::NODE_COUNT]) {
     app.bar.title.text = "hello";
     app.footer.text = "bye";
     let mut st = [NodeState::default(); App::NODE_COUNT];
-    pass::layout(&mut app, &mut st, VIEW);
+    let sty = pass::default_styles(&app);
+    pass::layout(&mut app, &sty, &mut st, VIEW);
     (app, st)
 }
 
@@ -51,7 +52,7 @@ fn snapshot_shape_roles_and_bounds() {
     let (app, st) = make_app(100);
     let up = snapshot(&app, &st);
 
-    // Main table (7 nodes) + window instances (window * 3 template nodes).
+    // Main table + window instances (window * template nodes).
     let win = app.list.window_len();
     assert!(win > 0);
     assert_eq!(up.nodes.len(), App::NODE_COUNT + win * RowT::NODE_COUNT);
@@ -104,11 +105,18 @@ fn repeater_instance_ids_are_row_stable() {
     // Scroll by exactly 5 rows: the window shifts, ids follow the ROWS —
     // 5 ids survive (rows still visible), and none are renumbered.
     app.list.scroll = 5.0 * 24.0;
-    pass::layout(&mut app, &mut st, VIEW);
+    let sty = pass::default_styles(&app);
+    pass::layout(&mut app, &sty, &mut st, VIEW);
     let up2 = snapshot(&app, &st);
     let ids_after = first_ids(&up2);
 
-    assert_eq!(ids_after[..ids_before.len() - 5], ids_before[5..]);
+    // Ids follow the rows, so the still-visible rows keep theirs: after
+    // scrolling five rows the two windows overlap, and the overlapping
+    // ids are identical element for element.
+    assert!(ids_before.len() > 5 && ids_after.len() > 5);
+    let overlap = (ids_before.len() - 5).min(ids_after.len());
+    assert!(overlap > 0);
+    assert_eq!(ids_after[..overlap], ids_before[5..5 + overlap]);
     assert!(ids_after.iter().all(|id| id & (1 << 63) != 0), "synthetic id space");
 }
 

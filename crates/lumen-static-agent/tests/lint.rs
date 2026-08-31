@@ -42,6 +42,7 @@ fn bind(item: &mut RowT, _row: usize) {
 struct Fixture {
     app: App,
     states: [NodeState; App::NODE_COUNT],
+    styles: Vec<lumen_static::Style>,
     agent: Agent,
     view: Constraints,
 }
@@ -51,22 +52,24 @@ impl Fixture {
     fn healthy() -> Self {
         let mut app = App { list: Repeat::new(50, 24.0, bind), ..Default::default() };
         app.bar.title.text = "hi";
+        let styles = pass::default_styles(&app);
         Fixture {
             app,
             states: [NodeState::default(); App::NODE_COUNT],
+            styles,
             agent: Agent::new(),
             view: Constraints { min_w: 0.0, max_w: 800.0, min_h: 0.0, max_h: 600.0 },
         }
     }
 
     fn frame(&mut self) {
-        pass::layout(&mut self.app, &mut self.states, self.view);
-        let mut tree = TreeMut::of_root(&mut self.app, &self.states);
+        pass::layout(&mut self.app, &self.styles, &mut self.states, self.view);
+        let mut tree = TreeMut::of_root(&mut self.app, &self.styles, &self.states);
         self.agent.frame_done(&mut tree, 10, 10);
     }
 
     fn result(&self, method: &str, params: Value) -> Value {
-        let tree = TreeRef::of_root(&self.app, &self.states);
+        let tree = TreeRef::of_root(&self.app, &self.styles, &self.states);
         let resp = self.agent.dispatch(
             &tree,
             &json!({ "jsonrpc": "2.0", "id": 1, "method": method, "params": params }),
@@ -161,6 +164,7 @@ fn a_collection_with_items_but_no_height_is_found() {
     let c = of_code(&findings, "W1007").expect("W1007 expected: {findings:?}");
     assert_eq!(c["wid"], "list");
     assert_eq!(c["detail"]["items"], 50);
+    assert_eq!(c["detail"]["materialized"], 0);
     assert!(c["message"].as_str().unwrap().contains("item extent"));
 }
 
@@ -196,7 +200,10 @@ fn a_blank_frame_announces_itself() {
 #[test]
 fn overflow_is_impossible_here_so_squeezing_surfaces_as_truncation() {
     let mut f = Fixture::healthy();
-    f.view.max_h = 30.0; // far too short for a bar plus a 24px-row list
+    // Squeeze the main axis of the bar: three children sharing 30px
+    // cannot all have what they ask for.
+    f.view.max_w = 30.0;
+    f.app.bar.title.text = "far too long for ten pixels";
     f.frame();
 
     for (i, d) in App::SUB_TABLE.iter().enumerate().skip(1) {
@@ -239,14 +246,15 @@ fn findings_are_keyed_by_code_and_node_not_by_code_alone() {
     app.b.text = "bbb";
     let mut states = [NodeState::default(); Two::NODE_COUNT];
     let view = Constraints { min_w: 0.0, max_w: 0.0, min_h: 0.0, max_h: 100.0 };
-    pass::layout(&mut app, &mut states, view);
+    let styles = pass::default_styles(&app);
+    pass::layout(&mut app, &styles, &mut states, view);
 
     let mut agent = Agent::new();
     {
-        let mut tm = TreeMut::of_root(&mut app, &states);
+        let mut tm = TreeMut::of_root(&mut app, &styles, &states);
         agent.frame_done(&mut tm, 1, 1);
     }
-    let tree = TreeRef::of_root(&app, &states);
+    let tree = TreeRef::of_root(&app, &styles, &states);
     let resp = agent.dispatch(
         &tree,
         &json!({ "jsonrpc": "2.0", "id": 1, "method": "ui.lint", "params": {} }),

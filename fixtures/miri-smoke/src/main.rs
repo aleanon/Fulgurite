@@ -80,10 +80,11 @@ fn main() {
     app.ui.list = Repeat::new(500, 12.0, bind);
 
     let mut st = [NodeState::default(); Ui::NODE_COUNT];
+    let sty = pass::default_styles(&app.ui);
 
     // layout + paint, including the fused subtree and the repeater's
     // nested per-instance layout.
-    pass::layout(&mut app.ui, &mut st, VIEW);
+    pass::layout(&mut app.ui, &sty, &mut st, VIEW);
     let mut sum = 0u64;
     pass::paint(&app.ui, &st, &mut sum);
 
@@ -106,18 +107,18 @@ fn main() {
         .collect();
     for (x, y) in targets {
         for ev in [Event::PointerDown { x, y }, Event::PointerUp { x, y }] {
-            pass::dispatch(&mut app, &st, &mut focus, &ev);
+            pass::dispatch(&mut app, &sty, &st, &mut focus, &ev);
         }
     }
 
     // scrolled repeater: window re-materializes and a click resolves to
     // a different row.
     app.ui.list.scroll = 60.0;
-    pass::layout(&mut app.ui, &mut st, VIEW);
+    pass::layout(&mut app.ui, &sty, &mut st, VIEW);
     let inst = app.ui.list.instance_state(0, 3);
     let (bx, by) = (inst.pos.x + inst.size.w / 2.0, inst.pos.y + inst.size.h / 2.0);
     for ev in [Event::PointerDown { x: bx, y: by }, Event::PointerUp { x: bx, y: by }] {
-        pass::dispatch(&mut app, &st, &mut focus, &ev);
+        pass::dispatch(&mut app, &sty, &st, &mut focus, &ev);
     }
 
     // runtime assembly (§8's concat-at-startup path).
