@@ -244,6 +244,10 @@ finished-but-unreachable for months).
 
 ### P4 — input and actions (needs the event system)
 
+*The event system is now designed: `docs/events-decision.md` (fn-pointer
+handlers; data at the async seam) and `docs/plan-events.md`, whose E4
+milestone is this phase.*
+
 The prerequisite is the `Msg` event dispatch + hit-testing + focus that
 §9's action synthesis already waits on. When it lands: `input.click/
 type/key/scroll`, `app.setValue`, `input.invokeAction` (AccessKit

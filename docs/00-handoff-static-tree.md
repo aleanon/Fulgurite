@@ -354,6 +354,16 @@ the new `fresh()` hands it, which for a dynamically built list is wrong.
 `Msg::Remove(idx)` survives because `idx` is data in the `keep` half. **Elm-style
 message dispatch is the precondition for hot reload here.**
 
+**REFINED 2026-08-31** (`docs/events-decision.md`): the constraint stands —
+event *payloads* must be data, never captures — but the static tree removes
+the reason handlers capture (identity is positional; repeater rows re-bind
+from data every frame and arrive as dispatch arguments), so tree-internal
+handlers are plain `fn` pointer fields (capture-proof by type, re-supplied
+by `fresh()`), already validated live by `Repeat.bind` in the Step 4 demo.
+`Msg`-shaped data survives at exactly one seam: work in flight across a
+frame/thread/reload boundary, which `fresh()` cannot reach into.
+Implementation plan: `docs/plan-events.md`.
+
 ### Sequence — not negotiable
 
 The old tree's `Serialize` impls, `Drop` impls, and vtables all live in the old
