@@ -524,3 +524,143 @@ where
         item.handler(crate::event::NodeSel { i: node as usize, inner: None })
     }
 }
+
+/// A `dyn` island — plan T4.5, the last of §6's hatches.
+///
+/// One table node owning a runtime-provided subtree: the escape hatch
+/// for content whose shape is genuinely unknown at compile time
+/// (plugins, server-driven fragments). §6 calls this "the one place
+/// indirection is paid", and it is a generalization of machinery that
+/// already exists — `Repeat` with a single, boxed instance.
+///
+/// The island captures its content's node count and table at
+/// construction, since a `Box<dyn Node>` cannot supply associated
+/// consts.
+pub struct Dyn {
+    inner: Box<dyn Node>,
+    table: &'static [NodeDesc],
+    states: Vec<NodeState>,
+    style: Vec<Style>,
+}
+
+impl Dyn {
+    pub fn new<W: Widget + 'static>(w: W) -> Self {
+        let style = (0..W::NODE_COUNT).map(|j| w.node(j).defaults()).collect();
+        Dyn {
+            inner: Box::new(w),
+            table: W::SUB_TABLE,
+            states: vec![NodeState::default(); W::NODE_COUNT],
+            style,
+        }
+    }
+
+    /// Swap the island's content at runtime — the point of the hatch.
+    pub fn replace<W: Widget + 'static>(&mut self, w: W) {
+        *self = Dyn::new(w);
+    }
+
+    pub fn inner_state(&self, node: usize) -> NodeState {
+        self.states[node]
+    }
+
+    pub fn node_count(&self) -> usize {
+        self.table.len()
+    }
+}
+
+impl Default for Dyn {
+    fn default() -> Self {
+        Dyn::new(crate::ops::Spacer)
+    }
+}
+
+impl Widget for Dyn {
+    const NODE_COUNT: usize = 1;
+    /// The island's content is opaque at compile time, so its depth
+    /// cannot be counted. It is charged the maximum, which is what keeps
+    /// `MAX_DEPTH` a sound bound rather than an optimistic one.
+    const DEPTH: usize = 2;
+    const IS_RIGID: bool = false;
+    const SUB_TABLE: &'static [NodeDesc] =
+        &[NodeDesc::new(0, NO_PARENT, 0, 0, NodeDesc::CONTAINER)];
+}
+
+impl Node for Dyn {
+    fn kind_name(&self) -> &'static str {
+        "dyn"
+    }
+
+    fn layout(
+        &mut self,
+        limits: Constraints,
+        style: &[Style],
+        st: &mut [NodeState],
+        i: usize,
+    ) -> Size {
+        let size = self.inner.layout(limits, &self.style, &mut self.states, 0);
+        let size = crate::ops::resolve_self(limits, &style[i], size);
+        st[i].constraints = limits;
+        st[i].size = size;
+        size
+    }
+
+    fn place(&mut self, at: Point, _style: &[Style], st: &mut [NodeState], i: usize) {
+        st[i].pos = at;
+        self.inner.place(at, &self.style, &mut self.states, 0);
+    }
+
+    fn paint(&self, st: &[NodeState], i: usize, out: &mut u64) {
+        crate::ops::fold_geom(out, 8, &st[i]);
+        self.inner.paint(&self.states, 0, out);
+    }
+
+    fn hit(&self, st: &[NodeState], i: usize, x: f32, y: f32) -> Option<Hit> {
+        if !crate::hit::contains(&st[i], x, y) {
+            return None;
+        }
+        let inner = self.inner.hit(&self.states, 0, x, y);
+        Some(Hit {
+            node: i as u32,
+            inner: inner.map(|h| crate::hit::Inner { row: 0, node: h.node }),
+            local: inner.map_or(
+                Point { x: x - st[i].pos.x, y: y - st[i].pos.y },
+                |h| h.local,
+            ),
+        })
+    }
+
+    fn node(&self, _i: usize) -> &dyn Node {
+        self
+    }
+    fn node_mut(&mut self, _i: usize) -> &mut dyn Node {
+        self
+    }
+
+    #[cfg(feature = "observe")]
+    fn observe(
+        &self,
+        _st: &[NodeState],
+        _i: usize,
+        id: u64,
+        node: &mut accesskit::Node,
+        extra: &mut Vec<(accesskit::NodeId, accesskit::Node)>,
+    ) {
+        let id_of = |t: usize| (1u64 << 63) | (id << 44) | t as u64;
+        crate::observe::emit_table(self.table, &*self.inner, &self.states, &id_of, extra);
+        node.push_child(accesskit::NodeId(id_of(0)));
+    }
+}
+
+/// An island's content cannot carry typed handlers: its type is erased,
+/// so it cannot prove `Handlers<S>` for the app's state. Islands are
+/// display content; interactive plugin content needs a message channel
+/// (`docs/events-decision.md`'s async seam), which is the honest place
+/// for it.
+impl<S> crate::event::Handlers<S> for Dyn {
+    fn handler(
+        &self,
+        _sel: crate::event::NodeSel,
+    ) -> Option<fn(&mut S, &crate::event::EventCtx)> {
+        None
+    }
+}

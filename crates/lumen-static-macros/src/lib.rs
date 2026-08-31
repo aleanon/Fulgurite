@@ -36,6 +36,13 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
     let name = &input.ident;
     let name_str = name.to_string();
 
+    // An enum is a variant switch, not a container: it has no axis and
+    // takes no `#[widget(...)]`.
+    if let Data::Enum(e) = &input.data {
+        let line = input.ident.span().start().line as u32;
+        return expand_enum(name, &name_str, e, line);
+    }
+
     // ---- #[widget(row|column, spacing = <f32>, fuse)] ----
     let mut axis = None;
     let mut spacing = 0.0f32;
@@ -67,7 +74,10 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
         ));
     };
     let Data::Struct(data) = &input.data else {
-        return Err(syn::Error::new_spanned(&input.ident, "StaticTree derives structs only"));
+        return Err(syn::Error::new_spanned(
+            &input.ident,
+            "StaticTree derives structs (containers) and enums (variant switches)",
+        ));
     };
     let Fields::Named(fields) = &data.fields else {
         return Err(syn::Error::new_spanned(&input.ident, "StaticTree needs named fields"));
@@ -614,5 +624,160 @@ fn expand_reloadable(input: DeriveInput) -> syn::Result<Ts2> {
                 #(#restore_stmts)*
             }
         }
+    })
+}
+
+/// `#[derive(StaticTree)]` on an enum — plan T4.4, §6's variant hatch.
+///
+/// This is the case the old `base + offset` path could not express:
+/// variants overlap in memory, so no const byte offset identifies a node
+/// inside one. The accessor path matches the discriminant instead, which
+/// is why adopting it unblocked this task
+/// (`docs/layout-and-storage-decisions.md` §4d).
+///
+/// Like `Either`, an enum contributes **one** table node and keeps the
+/// active variant's subtree off-table with its own state arena, so
+/// `NODE_COUNT` is independent of how many variants there are. Each
+/// variant must be a single unnamed field holding a widget.
+fn expand_enum(
+    name: &syn::Ident,
+    name_str: &str,
+    data: &syn::DataEnum,
+    root_line: u32,
+) -> syn::Result<Ts2> {
+    let mut var_ident = Vec::new();
+    let mut var_ty = Vec::new();
+    for v in &data.variants {
+        let syn::Fields::Unnamed(f) = &v.fields else {
+            return Err(syn::Error::new_spanned(
+                v,
+                "each variant must hold exactly one widget: `Variant(Widget)`",
+            ));
+        };
+        if f.unnamed.len() != 1 {
+            return Err(syn::Error::new_spanned(v, "each variant must hold exactly one widget"));
+        }
+        var_ident.push(v.ident.clone());
+        var_ty.push(f.unnamed[0].ty.clone());
+    }
+    if var_ident.is_empty() {
+        return Err(syn::Error::new_spanned(name, "an enum widget needs at least one variant"));
+    }
+    let idx: Vec<u64> = (0..var_ident.len() as u64).collect();
+
+    Ok(quote! {
+        const _: () = {
+            use ::lumen_static::desc::{NodeDesc, NodeState};
+            use ::lumen_static::widget::{Node, Widget};
+            use ::lumen_static::{Constraints, Point, Size, Style};
+
+            const TABLE: [NodeDesc; 1] = [NodeDesc::new(
+                0,
+                ::lumen_static::NO_PARENT,
+                0,
+                0,
+                NodeDesc::CONTAINER,
+            )
+            .with_src(::core::file!(), #root_line)];
+
+            impl Widget for #name {
+                const NODE_COUNT: usize = 1;
+                const DEPTH: usize = 1 + {
+                    let mut d = 0usize;
+                    #( if <#var_ty as Widget>::DEPTH > d { d = <#var_ty as Widget>::DEPTH; } )*
+                    d
+                };
+                const IS_RIGID: bool = true #(&& <#var_ty as Widget>::IS_RIGID)*;
+                const SUB_TABLE: &'static [NodeDesc] = &TABLE;
+            }
+
+            const _: () = assert!(::lumen_static::widget::table_is_well_formed(&TABLE));
+            const _: () = assert!(<#name as Widget>::DEPTH <= ::lumen_static::MAX_DEPTH);
+
+            impl Node for #name {
+                fn kind_name(&self) -> &'static str {
+                    #name_str
+                }
+
+                fn layout(
+                    &mut self,
+                    limits: Constraints,
+                    style: &[Style],
+                    st: &mut [NodeState],
+                    i: usize,
+                ) -> Size {
+                    let me = style[i];
+                    let size = match self {
+                        #( #name::#var_ident(w) => {
+                            let mut ist =
+                                ::std::vec![NodeState::default(); <#var_ty as Widget>::NODE_COUNT];
+                            let isty: ::std::vec::Vec<Style> =
+                                (0..<#var_ty as Widget>::NODE_COUNT)
+                                    .map(|j| Node::node(w, j).defaults())
+                                    .collect();
+                            let s = w.layout(limits, &isty, &mut ist, 0);
+                            s
+                        } ),*
+                    };
+                    ::lumen_static::ops::record(
+                        st,
+                        i,
+                        limits,
+                        ::lumen_static::ops::resolve_self(limits, &me, size),
+                    )
+                }
+
+                fn place(
+                    &mut self,
+                    at: Point,
+                    _style: &[Style],
+                    st: &mut [NodeState],
+                    i: usize,
+                ) {
+                    st[i].pos = at;
+                }
+
+                fn paint(&self, st: &[NodeState], i: usize, out: &mut u64) {
+                    ::lumen_static::ops::fold_geom(out, 9, &st[i]);
+                    match self {
+                        #( #name::#var_ident(_) => {
+                            ::lumen_static::ops::fold_pub(out, #idx);
+                        } ),*
+                    }
+                }
+
+                fn hit(&self, st: &[NodeState], i: usize, x: f32, y: f32)
+                    -> ::core::option::Option<::lumen_static::Hit>
+                {
+                    if !::lumen_static::hit::contains(&st[i], x, y) {
+                        return ::core::option::Option::None;
+                    }
+                    ::core::option::Option::Some(::lumen_static::Hit {
+                        node: i as u32,
+                        inner: ::core::option::Option::None,
+                        local: Point { x: x - st[i].pos.x, y: y - st[i].pos.y },
+                    })
+                }
+
+                /// The match the byte-offset path could not express: the
+                /// discriminant selects which subtree index `i` names.
+                fn node(&self, _i: usize) -> &dyn Node {
+                    self
+                }
+
+                fn node_mut(&mut self, _i: usize) -> &mut dyn Node {
+                    self
+                }
+            }
+
+            impl<S> ::lumen_static::event::Handlers<S> for #name {
+                fn handler(
+                    &self,
+                    _sel: ::lumen_static::event::NodeSel,
+                ) -> ::core::option::Option<fn(&mut S, &::lumen_static::EventCtx)> {
+                    ::core::option::Option::None
+                }
+            }
+        };
     })
 }

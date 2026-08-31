@@ -24,7 +24,7 @@ pub mod text;
 pub mod widget;
 
 pub use desc::{Constraints, NodeDesc, NodeState, Point, Size, MAX_DEPTH, NO_PARENT};
-pub use hatch::{Either, List, Side};
+pub use hatch::{Dyn, Either, List, Side};
 pub use hit::{Hit, Inner};
 pub use style::{Align, Edges, Length, Patch, Rule, Selector, Style};
 pub use text::{Dirty, Measured, TextStorage};

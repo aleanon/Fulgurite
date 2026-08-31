@@ -166,3 +166,73 @@ fn clicks_route_into_list_items_with_the_row_attached() {
     }
     assert_eq!(app.picked, vec![2], "the row is an argument, never a capture");
 }
+
+// ---- enum variants: the case the offset path could not express -------
+
+#[derive(StaticTree)]
+enum Slot {
+    Text(Label),
+    Box(Fixed),
+    Nested(Panel),
+}
+
+impl Default for Slot {
+    fn default() -> Self {
+        Slot::Text(Label::default())
+    }
+}
+
+#[test]
+fn enum_variants_switch_subtrees_at_one_table_node() {
+    // Variants overlap in memory, so no const byte offset can name a
+    // node inside one — this is the hatch the accessor path unblocked
+    // (`docs/layout-and-storage-decisions.md` §4d).
+    const _: () = assert!(Slot::NODE_COUNT == 1);
+    // Depth accounts for the deepest variant, so MAX_DEPTH stays sound.
+    const _: () = assert!(Slot::DEPTH == 1 + Panel::DEPTH);
+
+    let sty = vec![lumen_static::Style::default()];
+    let mut st = [NodeState::default(); 1];
+
+    let mut s = Slot::Box(Fixed { w: 40.0, h: 12.0 });
+    pass::layout(&mut s, &sty, &mut st, VIEW);
+    assert_eq!(st[0].size, lumen_static::Size { w: 40.0, h: 12.0 });
+
+    let mut s = Slot::Text(Label::new("hello"));
+    pass::layout(&mut s, &sty, &mut st, VIEW);
+    assert_eq!(st[0].size.w, 8.0 * 5.0, "the other variant measures itself");
+
+    // A variant holding a whole subtree works the same way.
+    let mut s = Slot::Nested(Panel::default());
+    pass::layout(&mut s, &sty, &mut st, VIEW);
+    assert!(st[0].size.h > 0.0, "a nested container variant lays out too");
+
+    let mut s = Slot::Text(Label::new("hello"));
+    pass::layout(&mut s, &sty, &mut st, VIEW);
+
+    // Paint distinguishes the variants, so a change of variant is
+    // visible to the journal.
+    let mut a = 0u64;
+    pass::paint(&s, &st, &mut a);
+    let mut b = 0u64;
+    pass::paint(&Slot::Box(Fixed::default()), &st, &mut b);
+    assert_ne!(a, b);
+}
+
+#[test]
+fn dyn_islands_carry_runtime_content() {
+    use lumen_static::hatch::Dyn;
+
+    const _: () = assert!(<Dyn as Widget>::NODE_COUNT == 1);
+    let mut d = Dyn::new(Panel::default());
+    let sty = pass::default_styles(&d);
+    let mut st = [NodeState::default(); 1];
+    pass::layout(&mut d, &sty, &mut st, VIEW);
+    assert_eq!(d.node_count(), Panel::NODE_COUNT, "the island knows its content's shape");
+
+    // Swapping content at runtime is the point of the hatch.
+    d.replace(Fixed { w: 33.0, h: 7.0 });
+    pass::layout(&mut d, &sty, &mut st, VIEW);
+    assert_eq!(st[0].size, lumen_static::Size { w: 33.0, h: 7.0 });
+    assert_eq!(d.node_count(), Fixed::NODE_COUNT);
+}
