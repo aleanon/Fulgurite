@@ -42,16 +42,14 @@ fn make_app(rows: usize) -> (App, [NodeState; App::NODE_COUNT]) {
     app.bar.title.text = "hello";
     app.footer.text = "bye";
     let mut st = [NodeState::default(); App::NODE_COUNT];
-    let base = &app as *const App as *const u8;
-    pass::layout(base, App::SUB_TABLE, App::KIND_LIST, &mut st, VIEW);
+    pass::layout(&mut app, &mut st, VIEW);
     (app, st)
 }
 
 #[test]
 fn snapshot_shape_roles_and_bounds() {
     let (app, st) = make_app(100);
-    let base = &app as *const App as *const u8;
-    let up = snapshot(base, App::SUB_TABLE, App::KIND_LIST, &st);
+    let up = snapshot(&app, &st);
 
     // Main table (7 nodes) + window instances (window * 3 template nodes).
     let win = app.list.window_len();
@@ -88,8 +86,7 @@ fn snapshot_shape_roles_and_bounds() {
 #[test]
 fn repeater_instance_ids_are_row_stable() {
     let (mut app, mut st) = make_app(10_000);
-    let base = &app as *const App as *const u8;
-    let up1 = snapshot(base, App::SUB_TABLE, App::KIND_LIST, &st);
+    let up1 = snapshot(&app, &st);
     let list_id = (1 + Bar::NODE_COUNT + 1) as u64;
     let first_ids = |up: &accesskit::TreeUpdate| -> Vec<u64> {
         up.nodes
@@ -107,9 +104,8 @@ fn repeater_instance_ids_are_row_stable() {
     // Scroll by exactly 5 rows: the window shifts, ids follow the ROWS —
     // 5 ids survive (rows still visible), and none are renumbered.
     app.list.scroll = 5.0 * 24.0;
-    let base = &app as *const App as *const u8;
-    pass::layout(base, App::SUB_TABLE, App::KIND_LIST, &mut st, VIEW);
-    let up2 = snapshot(base, App::SUB_TABLE, App::KIND_LIST, &st);
+    pass::layout(&mut app, &mut st, VIEW);
+    let up2 = snapshot(&app, &st);
     let ids_after = first_ids(&up2);
 
     assert_eq!(ids_after[..ids_before.len() - 5], ids_before[5..]);
@@ -139,13 +135,11 @@ fn provenance_points_at_declaration_sites() {
 #[test]
 fn dump_is_agent_readable() {
     let (app, st) = make_app(100);
-    let base = &app as *const App as *const u8;
-    let d = dump(base, App::SUB_TABLE, App::KIND_LIST, &st);
+    let d = dump(&app, &st);
     let text = serde_json::to_string(&d).unwrap();
 
     assert!(text.contains("tests/observe.rs:"), "provenance in dump");
     assert!(text.contains("\"role\":\"Label\""), "roles in dump");
     assert!(text.contains("\"value\":\"hello\""), "values in dump");
-    assert!(text.contains("\"kind\":\"repeat\""), "kind names in dump");
     assert_eq!(d["root"], 1);
 }

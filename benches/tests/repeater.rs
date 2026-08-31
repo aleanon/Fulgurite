@@ -23,9 +23,8 @@ fn bind_icon(item: &mut Item, row: usize) {
     item.icon.h = 10.0;
 }
 
-fn run(app: &ListApp, st: &mut [NodeState; ListApp::NODE_COUNT]) {
-    let base = app as *const ListApp as *const u8;
-    pass::layout(base, ListApp::SUB_TABLE, ListApp::KIND_LIST, st, VIEW);
+fn run(app: &mut ListApp, st: &mut [NodeState; ListApp::NODE_COUNT]) {
+    pass::layout(app, st, VIEW);
 }
 
 #[test]
@@ -36,9 +35,9 @@ fn node_count_is_data_independent() {
 
     // And unchanged by data size at runtime: same table, same state arena.
     for rows in [10usize, 1_000_000] {
-        let app = ListApp { list: Repeat::new(rows, 24.0, bind_icon), ..Default::default() };
+        let mut app = ListApp { list: Repeat::new(rows, 24.0, bind_icon), ..Default::default() };
         let mut st = [NodeState::default(); ListApp::NODE_COUNT];
-        run(&app, &mut st);
+        run(&mut app, &mut st);
         assert_eq!(ListApp::SUB_TABLE.len(), 3);
         assert_eq!(st.len(), 3);
     }
@@ -46,9 +45,9 @@ fn node_count_is_data_independent() {
 
 #[test]
 fn only_the_visible_window_materializes() {
-    let app = ListApp { list: Repeat::new(10_000, 24.0, bind_icon), ..Default::default() };
+    let mut app = ListApp { list: Repeat::new(10_000, 24.0, bind_icon), ..Default::default() };
     let mut st = [NodeState::default(); ListApp::NODE_COUNT];
-    run(&app, &mut st);
+    run(&mut app, &mut st);
 
     // The column splits 600px between header and list -> 300px viewport.
     // ceil(300/24) + 1 = 14 rows materialized, out of 10,000.
@@ -65,7 +64,7 @@ fn only_the_visible_window_materializes() {
 fn binding_reaches_visible_rows_and_scrolling_rebinds() {
     let mut app = ListApp { list: Repeat::new(10_000, 24.0, bind_icon), ..Default::default() };
     let mut st = [NodeState::default(); ListApp::NODE_COUNT];
-    run(&app, &mut st);
+    run(&mut app, &mut st);
 
     // Item template: root=0, icon=1 (first field). Row r's icon is
     // (r % 50) + 1 wide; instance k shows row first + k.
@@ -76,7 +75,7 @@ fn binding_reaches_visible_rows_and_scrolling_rebinds() {
 
     // Scroll down 25.5 rows: first materialized row becomes 25.
     app.list.scroll = 25.5 * 24.0;
-    run(&app, &mut st);
+    run(&mut app, &mut st);
     assert_eq!(app.list.first_row(), 25);
     for k in 0..app.list.window_len() {
         let row = 25 + k;
@@ -97,25 +96,23 @@ fn binding_reaches_visible_rows_and_scrolling_rebinds() {
 fn paint_covers_the_window_and_tracks_scroll() {
     let mut app = ListApp { list: Repeat::new(10_000, 24.0, bind_icon), ..Default::default() };
     let mut st = [NodeState::default(); ListApp::NODE_COUNT];
-    run(&app, &mut st);
-    let base = &app as *const ListApp as *const u8;
+    run(&mut app, &mut st);
     let mut a = 0u64;
-    pass::paint(base, ListApp::SUB_TABLE, ListApp::KIND_LIST, &st, &mut a);
+    pass::paint(&app, &st, &mut a);
 
     app.list.scroll = 480.0;
-    run(&app, &mut st);
-    let base = &app as *const ListApp as *const u8;
+    run(&mut app, &mut st);
     let mut b = 0u64;
-    pass::paint(base, ListApp::SUB_TABLE, ListApp::KIND_LIST, &st, &mut b);
+    pass::paint(&app, &st, &mut b);
     assert_ne!(a, b, "scrolled content must paint differently");
 }
 
 #[test]
 fn empty_and_tiny_lists_are_sound() {
     for rows in [0usize, 1, 3] {
-        let app = ListApp { list: Repeat::new(rows, 24.0, bind_icon), ..Default::default() };
+        let mut app = ListApp { list: Repeat::new(rows, 24.0, bind_icon), ..Default::default() };
         let mut st = [NodeState::default(); ListApp::NODE_COUNT];
-        run(&app, &mut st);
+        run(&mut app, &mut st);
         assert_eq!(app.list.window_len(), rows.min(14));
         assert_eq!(st[2].size.h, (rows as f32 * 24.0).min(300.0));
     }

@@ -5,7 +5,7 @@
 use lumen_static::ops::{Fixed, Label, Spacer};
 use lumen_static::repeat::Repeat;
 use lumen_static::{pass, Constraints, NodeState, StaticTree, Widget};
-use lumen_static_agent::{Agent, TreeRef};
+use lumen_static_agent::{Agent, TreeMut, TreeRef};
 use serde_json::{json, Value};
 
 #[derive(StaticTree, Default)]
@@ -60,11 +60,9 @@ impl Fixture {
     }
 
     fn frame(&mut self) {
-        let base = &self.app as *const App as *const u8;
-        pass::layout(base, App::SUB_TABLE, App::KIND_LIST, &mut self.states, self.view);
-        let tree =
-            TreeRef { base, table: App::SUB_TABLE, kinds: App::KIND_LIST, states: &self.states };
-        self.agent.frame_done(&tree, 10, 10);
+        pass::layout(&mut self.app, &mut self.states, self.view);
+        let mut tree = TreeMut::of_root(&mut self.app, &self.states);
+        self.agent.frame_done(&mut tree, 10, 10);
     }
 
     fn result(&self, method: &str, params: Value) -> Value {
@@ -240,13 +238,15 @@ fn findings_are_keyed_by_code_and_node_not_by_code_alone() {
     app.a.text = "aaa";
     app.b.text = "bbb";
     let mut states = [NodeState::default(); Two::NODE_COUNT];
-    let base = &app as *const Two as *const u8;
     let view = Constraints { min_w: 0.0, max_w: 0.0, min_h: 0.0, max_h: 100.0 };
-    pass::layout(base, Two::SUB_TABLE, Two::KIND_LIST, &mut states, view);
-    let tree = TreeRef { base, table: Two::SUB_TABLE, kinds: Two::KIND_LIST, states: &states };
+    pass::layout(&mut app, &mut states, view);
 
     let mut agent = Agent::new();
-    agent.frame_done(&tree, 1, 1);
+    {
+        let mut tm = TreeMut::of_root(&mut app, &states);
+        agent.frame_done(&mut tm, 1, 1);
+    }
+    let tree = TreeRef::of_root(&app, &states);
     let resp = agent.dispatch(
         &tree,
         &json!({ "jsonrpc": "2.0", "id": 1, "method": "ui.lint", "params": {} }),

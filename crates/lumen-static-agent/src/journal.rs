@@ -25,7 +25,7 @@
 
 use std::collections::VecDeque;
 
-use lumen_static::desc::{NodeDesc, NodeState, WidgetOps};
+use lumen_static::desc::NodeDesc;
 use lumen_static::{Point, Size};
 
 use crate::TreeRef;
@@ -104,24 +104,22 @@ fn fingerprint(table: &[NodeDesc]) -> u64 {
     let mut h = table.len() as u64;
     for d in table {
         h = h.wrapping_mul(0x9E37_79B9_7F4A_7C15).wrapping_add(
-            d.kind as u64 ^ ((d.offset as u64) << 16) ^ ((d.child_count as u64) << 48),
+            d.first_child as u64 ^ ((d.parent as u64) << 16) ^ ((d.child_count as u64) << 48),
         );
     }
     h
 }
 
-fn measure(
-    base: *const u8,
-    table: &[NodeDesc],
-    kinds: &[&'static WidgetOps],
-    states: &[NodeState],
-) -> (Vec<Geom>, Vec<u64>) {
-    let mut geom = Vec::with_capacity(table.len());
-    let mut sums = Vec::with_capacity(table.len());
-    for (i, d) in table.iter().enumerate() {
-        geom.push(Geom { size: states[i].size, pos: states[i].pos });
+fn measure(tree: &TreeRef) -> (Vec<Geom>, Vec<u64>) {
+    let mut geom = Vec::with_capacity(tree.table.len());
+    let mut sums = Vec::with_capacity(tree.table.len());
+    for i in 0..tree.table.len() {
+        geom.push(Geom { size: tree.states[i].size, pos: tree.states[i].pos });
+        // One node's own paint contribution: recursion means a node's
+        // `paint` also folds its children, so a subtree's checksum is
+        // taken at its root and inherently covers what it contains.
         let mut sum = 0u64;
-        (kinds[d.kind as usize].paint)(base, d, &states[i], &mut sum);
+        tree.root.node(i).paint(tree.states, i, &mut sum);
         sums.push(sum);
     }
     (geom, sums)
@@ -133,7 +131,7 @@ impl Journal {
     /// audit can re-seed its finding set in step (indices either side of
     /// a reload address different nodes).
     pub fn record(&mut self, frame: u64, tree: &TreeRef) -> bool {
-        let (geom, sums) = measure(tree.base, tree.table, tree.kinds, tree.states);
+        let (geom, sums) = measure(tree);
         let fp = fingerprint(tree.table);
 
         // First frame, or the tree's structure changed: seed a baseline.

@@ -54,6 +54,10 @@ fn bind_row(item: &mut RowW, row: usize) {
 #[widget(column, spacing = 2.0)]
 struct Ui {
     title: Label, // nested keep: user's edits survive
+    /// Derived from `Session.counter` by the update step below, so it is
+    /// recomputed rather than migrated across a reload.
+    #[reload(fresh)]
+    status: Label,
     list: Repeat<RowW>,
     #[reload(fresh)]
     footer: Label, // the new build's footer must win
@@ -63,6 +67,7 @@ impl Default for Ui {
     fn default() -> Self {
         Ui {
             title: Label { text: "untitled" },
+            status: Label { text: "count 0" },
             list: Repeat::new(0, 24.0, bind_row),
             footer: Label { text: FOOTER },
         }
@@ -155,12 +160,23 @@ pub unsafe extern "C" fn hot_set_fancy(p: *mut c_void) {
 pub unsafe extern "C" fn hot_frame(p: *mut c_void) -> u64 {
     let s = session(p);
     s.cache_hits += 1;
-    let base = &s.ui as *const Ui as *const u8;
+    // The update step: application state reaches the screen here. Widget
+    // fields hold the *presentation copy*; sibling fields are the source
+    // of truth (`docs/layout-and-storage-decisions.md` §1). Until M3
+    // makes text storage owned, the copy must be a `&'static str`, so
+    // this is a lookup rather than a `format!`.
+    s.ui.status.text = match s.counter {
+        0 => "count 0",
+        1 => "count 1",
+        2 => "count 2",
+        3 => "count 3",
+        _ => "count many",
+    };
     let mut st = [NodeState::default(); Ui::NODE_COUNT];
     let c = Constraints { min_w: 0.0, max_w: 800.0, min_h: 0.0, max_h: 600.0 };
-    pass::layout(base, Ui::SUB_TABLE, Ui::KIND_LIST, &mut st, c);
+    pass::layout(&mut s.ui, &mut st, c);
     let mut out = 0u64;
-    pass::paint(base, Ui::SUB_TABLE, Ui::KIND_LIST, &st, &mut out);
+    pass::paint(&s.ui, &st, &mut out);
     out
 }
 
@@ -195,11 +211,12 @@ pub unsafe extern "C" fn hot_restore(p: *mut c_void, ptr: *const u8, len: usize)
 pub unsafe extern "C" fn hot_report(p: *mut c_void, buf: *mut u8, cap: usize) -> usize {
     let s = session(p);
     let report = format!(
-        "counter={} mode={:?} theme={} title='{}' footer='{}' rows={} scroll={} window={} cache={}",
+        "counter={} mode={:?} theme={} title='{}' status='{}' footer='{}' rows={} scroll={} window={} cache={}",
         s.counter,
         s.mode,
         s.theme,
         s.ui.title.text,
+        s.ui.status.text,
         s.ui.footer.text,
         s.ui.list.count,
         s.ui.list.scroll,

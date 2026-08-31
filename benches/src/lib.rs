@@ -1,9 +1,12 @@
-//! Shapes and baselines for the Step 2 crossover benchmark (handoff §10):
-//! the static node-table arm and a naive `Box<dyn Widget>` arm over the
-//! same tree shapes and the same layout math.
+//! Shapes and baselines for the benchmarks.
+//!
+//! The `DynWidget` arm is the §10 control: a naive `Box<dyn Widget>`
+//! tree over the same shapes and the same layout math. The framework arm
+//! is now recursive descent over the derived `Widget` impls
+//! (`docs/results-traversal.md`).
 
 use lumen_static::ops::{Fixed, Label, Spacer};
-use lumen_static::{Constraints, Point, SafeTree, Size, StaticTree};
+use lumen_static::{Constraints, Point, Size, StaticTree};
 
 // ---- static arm shapes -----------------------------------------------------
 
@@ -351,52 +354,4 @@ pub struct FusedCard {
     pub r2: FusedItem,
     pub r3: FusedItem,
     pub r4: FusedItem,
-}
-
-// ---- safe-path twins (verification prototype) ------------------------------
-
-/// Same shapes as `Ten`/`Item`/`Card`, additionally deriving the safe
-/// accessor path so the two arms can be compared on identical structure.
-#[derive(StaticTree, SafeTree, Default)]
-#[widget(row, spacing = 2.0)]
-pub struct SafeTen {
-    pub l1: Label,
-    pub f1: Fixed,
-    pub s1: Spacer,
-    pub l2: Label,
-    pub f2: Fixed,
-    pub l3: Label,
-    pub f3: Fixed,
-    pub s2: Spacer,
-    pub l4: Label,
-}
-
-#[derive(StaticTree, SafeTree, Default)]
-#[widget(row, spacing = 4.0)]
-pub struct SafeItem {
-    pub icon: Fixed,
-    pub name: Label,
-    pub gap: Spacer,
-    pub size: Label,
-}
-
-#[derive(StaticTree, SafeTree, Default)]
-#[widget(column, spacing = 2.0)]
-pub struct SafeCard {
-    pub title: Label,
-    pub r1: SafeItem,
-    pub r2: SafeItem,
-    pub r3: SafeItem,
-    pub r4: SafeItem,
-}
-
-/// 90 nodes, safe path — the code-size comparison shape.
-#[derive(StaticTree, SafeTree, Default)]
-#[widget(column, spacing = 0.0)]
-pub struct SafeBlock {
-    pub title: Label,
-    pub c1: SafeCard,
-    pub c2: SafeCard,
-    pub c3: SafeCard,
-    pub c4: SafeCard,
 }

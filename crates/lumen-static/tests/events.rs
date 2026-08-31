@@ -1,6 +1,5 @@
 //! Plan E0–E3: queue, hit testing, dispatch, focus, and the async seam.
 
-use lumen_static::hit::hit_test;
 use lumen_static::inbox::Inbox;
 use lumen_static::ops::{Button, Fixed, Label};
 use lumen_static::repeat::Repeat;
@@ -33,6 +32,16 @@ struct App {
     ui: Ui,
     clicks: u32,
     picked: Vec<u64>,
+}
+
+impl lumen_static::event::App for App {
+    type Tree = Ui;
+    fn tree(&self) -> &Ui {
+        &self.ui
+    }
+    fn tree_mut(&mut self) -> &mut Ui {
+        &mut self.ui
+    }
 }
 
 fn on_save(app: &mut App, _: &EventCtx) {
@@ -70,24 +79,11 @@ impl Fixture {
     }
 
     fn layout(&mut self) {
-        let base = &self.app.ui as *const Ui as *const u8;
-        pass::layout(base, Ui::SUB_TABLE, Ui::KIND_LIST, &mut self.states, VIEW);
+        pass::layout(&mut self.app.ui, &mut self.states, VIEW);
     }
 
-    /// Both pointers come from one `&mut App`, as the dispatch contract
-    /// requires; `states` lives outside the app state.
     fn send(&mut self, ev: Event) -> bool {
-        let sp = &mut self.app as *mut App as *mut u8;
-        let base = unsafe { &raw const (*(sp as *mut App)).ui } as *const u8;
-        let handled = pass::dispatch(
-            sp,
-            base,
-            Ui::SUB_TABLE,
-            Ui::KIND_LIST,
-            &self.states,
-            &mut self.focus,
-            &ev,
-        );
+        let handled = pass::dispatch(&mut self.app, &self.states, &mut self.focus, &ev);
         self.layout();
         handled
     }
@@ -130,15 +126,14 @@ fn e0_queue_is_fifo_and_round_trips_for_replay() {
 #[test]
 fn e1_hit_test_finds_the_deepest_node_and_agrees_with_layout() {
     let f = Fixture::new();
-    let base = &f.app.ui as *const Ui as *const u8;
     let (x, y) = f.center_of(2); // the save button
-    let h = hit_test(base, Ui::SUB_TABLE, Ui::KIND_LIST, &f.states, x, y).unwrap();
+    let h = pass::hit_test(&f.app.ui, &f.states, x, y).unwrap();
     assert_eq!(h.node, 2);
     assert!(h.inner.is_none());
     // Local coordinates are relative to the node's own origin.
     assert_eq!(h.local.x, x - f.states[2].pos.x);
 
-    assert!(hit_test(base, Ui::SUB_TABLE, Ui::KIND_LIST, &f.states, 9e5, 9e5).is_none());
+    assert!(pass::hit_test(&f.app.ui, &f.states, 9e5, 9e5).is_none());
 }
 
 #[test]
@@ -147,17 +142,8 @@ fn e1_hit_test_descends_into_repeater_rows() {
     f.app.ui.list.scroll = 40.0; // rows 2.. are on screen
     f.layout();
 
-    let base = &f.app.ui as *const Ui as *const u8;
     let list = &f.states[3];
-    let h = hit_test(
-        base,
-        Ui::SUB_TABLE,
-        Ui::KIND_LIST,
-        &f.states,
-        list.pos.x + 4.0,
-        list.pos.y + 4.0,
-    )
-    .unwrap();
+    let h = pass::hit_test(&f.app.ui, &f.states, list.pos.x + 4.0, list.pos.y + 4.0).unwrap();
     assert_eq!(h.node, 3, "the repeater owns the point");
     let inner = h.inner.expect("resolved into a row");
     assert_eq!(inner.row, 2, "scrolled two rows down");

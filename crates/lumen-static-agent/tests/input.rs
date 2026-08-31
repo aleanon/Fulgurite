@@ -21,6 +21,16 @@ struct App {
     clicks: u32,
 }
 
+impl lumen_static::event::App for App {
+    type Tree = Ui;
+    fn tree(&self) -> &Ui {
+        &self.ui
+    }
+    fn tree_mut(&mut self) -> &mut Ui {
+        &mut self.ui
+    }
+}
+
 fn on_save(app: &mut App, _: &EventCtx) {
     app.clicks += 1;
 }
@@ -58,20 +68,14 @@ impl Host {
     }
 
     fn layout(&mut self) {
-        let base = &self.app.ui as *const Ui as *const u8;
-        pass::layout(base, Ui::SUB_TABLE, Ui::KIND_LIST, &mut self.states, VIEW);
+        pass::layout(&mut self.app.ui, &mut self.states, VIEW);
     }
 
 }
 
 impl AgentHost for Host {
     fn tree(&self) -> TreeRef<'_> {
-        TreeRef {
-            base: &self.app.ui as *const Ui as *const u8,
-            table: Ui::SUB_TABLE,
-            kinds: Ui::KIND_LIST,
-            states: &self.states,
-        }
+        TreeRef::of_root(&self.app.ui, &self.states)
     }
 
     fn enqueue(&mut self, ev: Event) {
@@ -81,17 +85,7 @@ impl AgentHost for Host {
 
     fn pump(&mut self) -> u64 {
         while let Some(ev) = self.queue.pop() {
-            let sp = &mut self.app as *mut App as *mut u8;
-            let base = unsafe { &raw const (*(sp as *mut App)).ui } as *const u8;
-            pass::dispatch(
-                sp,
-                base,
-                Ui::SUB_TABLE,
-                Ui::KIND_LIST,
-                &self.states,
-                &mut self.focus,
-                &ev,
-            );
+            pass::dispatch(&mut self.app, &self.states, &mut self.focus, &ev);
         }
         self.layout();
         self.frame += 1;

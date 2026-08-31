@@ -10,13 +10,7 @@ publish = false
 [dependencies]
 lumen-static = { path = "../../crates/lumen-static" }
 
-[features]
-safe_no_inline = ["lumen-static/safe_no_inline"]
 
 [[bin]]
-name = "bs-unsafe"
-path = "src/bin/bs_unsafe.rs"
-
-[[bin]]
-name = "bs-safe"
-path = "src/bin/bs_safe.rs"
+name = "binsize"
+path = "src/bin/binsize.rs"

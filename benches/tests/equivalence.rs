@@ -10,14 +10,13 @@ const ROOT_C: Constraints = Constraints { min_w: 0.0, max_w: 800.0, min_h: 0.0, 
 
 #[test]
 fn tables_are_well_formed() {
-    for (name, table, kinds) in [
-        ("Ten", Ten::SUB_TABLE, Ten::KIND_LIST),
-        ("Card", Card::SUB_TABLE, Card::KIND_LIST),
-        ("Block", Block::SUB_TABLE, Block::KIND_LIST),
+    for (name, table) in [
+        ("Ten", Ten::SUB_TABLE),
+        ("Card", Card::SUB_TABLE),
+        ("Block", Block::SUB_TABLE),
     ] {
         assert_eq!(table[0].parent, NO_PARENT, "{name}: root parent");
         for (i, d) in table.iter().enumerate() {
-            assert!((d.kind as usize) < kinds.len(), "{name}[{i}]: kind in range");
             if i > 0 {
                 assert!((d.parent as usize) < i, "{name}[{i}]: parent precedes (DFS)");
             }
@@ -56,36 +55,33 @@ fn tables_are_well_formed() {
     assert_eq!(Card::NODE_COUNT, 22);
     assert_eq!(Block::NODE_COUNT, 90);
     // Block: itself + title + 4 * (card + title + 4 * (item + 4 leaves))
-    assert!(Block::KIND_COUNT >= Block::SUB_TABLE.iter().map(|d| d.kind).max().unwrap() as usize);
+    // The derive asserts well-formedness and the depth cap at compile
+    // time for every table it emits; this re-checks at runtime that the
+    // const fn agrees with the hand-written invariants above.
+    assert!(lumen_static::widget::table_is_well_formed(Block::SUB_TABLE));
+    const _: () = assert!(Block::DEPTH <= lumen_static::MAX_DEPTH);
 }
 
-/// Run the static pipeline; return (sizes, positions) per node in table order.
-fn run_static(
-    base: *const u8,
-    table: &[lumen_static::NodeDesc],
-    kinds: &[&'static lumen_static::WidgetOps],
-) -> Vec<(Size, Point)> {
-    let mut st = vec![NodeState::default(); table.len()];
-    pass::layout(base, table, kinds, &mut st, ROOT_C);
+/// Run the framework pipeline; return (size, pos) per node in table order.
+fn run_static<W: Widget + Default>() -> Vec<(Size, Point)> {
+    let mut w = W::default();
+    let mut st = vec![NodeState::default(); W::NODE_COUNT];
+    pass::layout(&mut w, &mut st, ROOT_C);
     st.iter().map(|s| (s.size, s.pos)).collect()
 }
 
 #[test]
 fn static_matches_dyn_root_geometry() {
-    // Ten (const table) vs dyn ten
-    let tree = Ten::default();
-    let got = run_static(&tree as *const Ten as *const u8, Ten::SUB_TABLE, Ten::KIND_LIST);
+    // Ten vs dyn ten
+    let got = run_static::<Ten>();
     let mut d = d_ten();
     let dsz = d.layout(ROOT_C);
     assert_eq!(got[0].0, dsz, "Ten root size");
 
     // Assembled<Card> vs dyn column of cards
     let mut a = Assembled::<Card>::new(45);
-    let base = a.base();
-    let got = {
-        pass::layout(base, &a.table, &a.kinds, &mut a.states, ROOT_C);
-        a.states.iter().map(|s| (s.size, s.pos)).collect::<Vec<_>>()
-    };
+    a.layout(ROOT_C);
+    let got: Vec<_> = a.states.iter().map(|s| (s.size, s.pos)).collect();
     let mut d = d_assembled(45);
     let dsz = d.layout(ROOT_C);
     d.place(Point::default());
@@ -99,46 +95,19 @@ fn static_matches_dyn_root_geometry() {
 }
 
 #[test]
-fn partitioned_pass_matches_full_pass() {
-    let mut a = Assembled::<Card>::new(45);
-    let base = a.base();
-    pass::layout(base, &a.table, &a.kinds, &mut a.states, ROOT_C);
-    let full: Vec<_> = a.states.iter().map(|s| (s.size, s.pos)).collect();
-
-    let flex: Vec<u32> =
-        (0..a.table.len() as u32).filter(|&i| !a.table[i as usize].is_rigid()).collect();
-    assert!(flex.len() < a.table.len(), "some rigid nodes exist");
-
-    // Perturb all state except sizes of rigid nodes, then run partitioned.
-    for (i, s) in a.states.iter_mut().enumerate() {
-        s.pos = Point { x: -1.0, y: -1.0 };
-        if !a.table[i].is_rigid() {
-            s.size = Size { w: -1.0, h: -1.0 };
-        }
-    }
-    pass::layout_partitioned(base, &a.table, &a.kinds, &mut a.states, ROOT_C, &flex);
-    let part: Vec<_> = a.states.iter().map(|s| (s.size, s.pos)).collect();
-    assert_eq!(full, part);
-}
-
-#[test]
 fn paint_is_deterministic_and_value_sensitive() {
     let mut tree = Ten::default();
-    let base = &tree as *const Ten as *const u8;
     let mut st = [NodeState::default(); Ten::NODE_COUNT];
-    pass::layout(base, Ten::SUB_TABLE, Ten::KIND_LIST, &mut st, ROOT_C);
+    pass::layout(&mut tree, &mut st, ROOT_C);
     let mut a = 0u64;
-    pass::paint(base, Ten::SUB_TABLE, Ten::KIND_LIST, &st, &mut a);
+    pass::paint(&tree, &st, &mut a);
     let mut b = 0u64;
-    pass::paint(base, Ten::SUB_TABLE, Ten::KIND_LIST, &st, &mut b);
+    pass::paint(&tree, &st, &mut b);
     assert_eq!(a, b);
 
     // Values live in the fields (§3): mutate one and paint must see it.
-    // The base pointer is re-derived after the write — the pre-mutation
-    // pointer's provenance would not soundly cover it.
     tree.l1.text = "changed";
-    let base = &tree as *const Ten as *const u8;
     let mut c = 0u64;
-    pass::paint(base, Ten::SUB_TABLE, Ten::KIND_LIST, &st, &mut c);
+    pass::paint(&tree, &st, &mut c);
     assert_ne!(a, c);
 }

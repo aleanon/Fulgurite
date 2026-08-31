@@ -4,7 +4,7 @@
 
 use lumen_static::ops::{Fixed, Label, Spacer};
 use lumen_static::{pass, Constraints, NodeState, StaticTree, Widget};
-use lumen_static_agent::{Agent, TreeRef};
+use lumen_static_agent::{Agent, TreeMut, TreeRef};
 use serde_json::{json, Value};
 
 #[derive(StaticTree, Default)]
@@ -48,15 +48,9 @@ impl Fixture {
 
     /// Lay out and record one frame.
     fn frame(&mut self) {
-        let base = &self.app as *const Bar as *const u8;
-        pass::layout(base, Bar::SUB_TABLE, Bar::KIND_LIST, &mut self.states, VIEW);
-        let tree = TreeRef {
-            base,
-            table: Bar::SUB_TABLE,
-            kinds: Bar::KIND_LIST,
-            states: &self.states,
-        };
-        self.agent.frame_done(&tree, 1000, 500);
+        pass::layout(&mut self.app, &mut self.states, VIEW);
+        let mut tree = TreeMut::of_root(&mut self.app, &self.states);
+        self.agent.frame_done(&mut tree, 1000, 500);
     }
 
     fn result(&self, method: &str, params: Value) -> Value {
@@ -163,14 +157,15 @@ fn structural_change_resets_the_baseline() {
 
     // Feed the same agent a structurally different tree — what a hot
     // reload or a tree swap looks like from the journal's side.
-    let other = Other::default();
+    let mut other = Other::default();
     let mut ost = [NodeState::default(); Other::NODE_COUNT];
-    let obase = &other as *const Other as *const u8;
-    pass::layout(obase, Other::SUB_TABLE, Other::KIND_LIST, &mut ost, VIEW);
-    let otree =
-        TreeRef { base: obase, table: Other::SUB_TABLE, kinds: Other::KIND_LIST, states: &ost };
-    f.agent.frame_done(&otree, 1, 1);
+    pass::layout(&mut other, &mut ost, VIEW);
+    {
+        let mut otree = TreeMut::of_root(&mut other, &ost);
+        f.agent.frame_done(&mut otree, 1, 1);
+    }
 
+    let otree = TreeRef::of_root(&other, &ost);
     let resp = f.agent.dispatch(
         &otree,
         &json!({ "jsonrpc": "2.0", "id": 1, "method": "ui.lastChange", "params": {} }),

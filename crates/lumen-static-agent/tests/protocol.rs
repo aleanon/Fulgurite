@@ -4,7 +4,7 @@
 use lumen_static::ops::{Fixed, Label, Spacer};
 use lumen_static::repeat::Repeat;
 use lumen_static::{pass, Constraints, NodeState, StaticTree, Widget};
-use lumen_static_agent::{Agent, TreeRef};
+use lumen_static_agent::{Agent, TreeMut, TreeRef};
 use serde_json::{json, Value};
 
 #[derive(StaticTree, Default)]
@@ -52,11 +52,12 @@ impl Fixture {
         app.bar.title.text = "hello";
         app.footer.text = "bye";
         let mut states = [NodeState::default(); App::NODE_COUNT];
-        let base = &app as *const App as *const u8;
-        pass::layout(base, App::SUB_TABLE, App::KIND_LIST, &mut states, VIEW);
+        pass::layout(&mut app, &mut states, VIEW);
         let mut agent = Agent::new();
-        let tree = TreeRef { base, table: App::SUB_TABLE, kinds: App::KIND_LIST, states: &states };
-        agent.frame_done(&tree, 12_345, 6_789);
+        {
+            let mut tm = TreeMut::of_root(&mut app, &states);
+            agent.frame_done(&mut tm, 12_345, 6_789);
+        }
         Fixture { app, states, agent }
     }
 

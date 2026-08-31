@@ -122,6 +122,7 @@ fn main() {
     expect(&before, "mode=Fancy", "v1 fancy mode");
     expect(&before, "footer='footer-v1'", "v1 code");
     expect(&before, "cache=2", "v1 ran two frames");
+    expect(&before, "status='count 3'", "the update step puts app state on screen");
 
     // ---- the §7 sequence ----
     let bytes = app.save(); // 1. save while old lib loaded (host-owned buffer)
@@ -149,6 +150,7 @@ fn main() {
     expect(&after, "theme=theme-v2", "fresh: new theme");
     // reset: recomputed after the swap
     expect(&after, "cache=1", "reset: cache recomputed (one post-swap frame)");
+    expect(&after, "status='count 3'", "derived: re-derived from the kept counter");
     // §12.2: removed variant fell back and LOGGED
     expect(&after, "mode=Basic", "enum migration: fell back to fresh variant");
     assert!(log.contains("mode"), "fallback must be logged, got: `{log}`");

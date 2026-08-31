@@ -1,22 +1,14 @@
-//! The flat node table: descriptors, vtables, and per-node runtime state.
+//! Node descriptors, per-node state, and the value types the passes use.
 //!
-//! `NodeDesc` follows the handoff §5 sketch with two additions, both
-//! required by the stack-free passes and recorded in
-//! `docs/step2-design-notes.md`:
-//! - `parent`, so reverse/forward loops can relate a node to its parent
-//!   without a stack;
-//! - `next_sibling`, so a container op can walk exactly its own children
-//!   (a child's subtree intervenes in DFS order, so `first_child + k` does
-//!   not address child `k`).
-//!
-//! Dispatch granularity (learned from the first-cut benchmark, see
-//! `docs/results-step2-crossover.md`): ops are called once per *container*
-//! per phase and loop their children inline, not once per child — per-child
-//! dispatch tripled the indirect-call count and lost to naive dyn recursion.
+//! **The table is no longer the traversal mechanism** (handoff §5,
+//! superseded — see `docs/results-traversal.md`). Layout, paint and hit
+//! testing recurse over the widget struct itself; the const table
+//! survives for *index addressing*, which the agent surface, the change
+//! journal and the ambient audit are all keyed on. That is why `kind`
+//! and `offset` are gone: nothing dispatches through the table any more,
+//! and nothing recovers a widget from a byte offset.
 
 /// Where a node was declared (handoff §9: source provenance, dev-only).
-/// Compact interning (`src_file: u16` into a string table) is a later
-/// size optimization; dev builds can afford the pointer.
 #[cfg(feature = "observe")]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SrcLoc {
@@ -31,61 +23,45 @@ impl SrcLoc {
 
 /// One node of the tree, in DFS pre-order (parent before children).
 ///
-/// Indices (`first_child`, `parent`, `next_sibling`) index the table the
-/// entry lives in; `offset` is the byte offset of the node's *value* struct
-/// from the tree base pointer. `kind` indexes the kind list assembled
-/// alongside the table. `next_sibling == 0` means "last child" (slot 0 is
-/// always the root, which is nobody's sibling).
-///
-/// Construct via [`NodeDesc::new`] (+ [`NodeDesc::with_src`]): the struct
-/// grows a provenance field under `feature = "observe"`, and the
-/// constructor keeps derive-emitted code identical across both builds.
+/// Purely structural now: who the parent is, where the children start,
+/// and who the next sibling is. 16 bytes in a release build.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct NodeDesc {
-    pub offset: u32,
-    pub kind: u16,
     pub first_child: u32,
-    pub child_count: u16,
     pub parent: u32,
     pub next_sibling: u32,
+    pub child_count: u16,
     pub flags: u8,
     #[cfg(feature = "observe")]
     pub src: SrcLoc,
-    /// Author id (`#[widget_id("save")]`), the agent-facing stable
-    /// address — table indices are frame- and reload-stable but shift
-    /// under source edits. Empty = none.
+    /// Author id (`#[widget_id("save")]`) — the agent-facing stable
+    /// address, since table indices shift under source edits.
     #[cfg(feature = "observe")]
     pub wid: &'static str,
 }
 
 impl NodeDesc {
     pub const RIGID: u8 = 1 << 0;
-    /// The node's kind participates in the down and place phases. Set for
-    /// derived containers with children and for repeaters (which have no
-    /// *table* children but place their materialized instances).
+    /// Has children (table children, or off-table content it places).
     pub const CONTAINER: u8 = 1 << 1;
-    /// The node can take keyboard focus (plan E2).
+    /// Can take keyboard focus.
     pub const FOCUSABLE: u8 = 1 << 2;
 
     /// Placeholder for const table construction; every slot is overwritten.
-    pub const EMPTY: NodeDesc = NodeDesc::new(0, 0, 0, 0, NO_PARENT, 0, 0);
+    pub const EMPTY: NodeDesc = NodeDesc::new(0, NO_PARENT, 0, 0, 0);
 
     pub const fn new(
-        offset: u32,
-        kind: u16,
         first_child: u32,
-        child_count: u16,
         parent: u32,
         next_sibling: u32,
+        child_count: u16,
         flags: u8,
     ) -> NodeDesc {
         NodeDesc {
-            offset,
-            kind,
             first_child,
-            child_count,
             parent,
             next_sibling,
+            child_count,
             flags,
             #[cfg(feature = "observe")]
             src: SrcLoc::UNKNOWN,
@@ -134,6 +110,12 @@ impl NodeDesc {
 /// `parent` value of a tree root.
 pub const NO_PARENT: u32 = u32::MAX;
 
+/// Deepest recursion the framework accepts. A tree deeper than this
+/// fails to compile (the derive asserts `DEPTH <= MAX_DEPTH`), which is
+/// how §5's stack-depth concern is retired: it becomes a fact about a
+/// constant rather than a runtime hazard.
+pub const MAX_DEPTH: usize = 64;
+
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Constraints {
     pub min_w: f32,
@@ -172,9 +154,8 @@ pub struct Point {
     pub y: f32,
 }
 
-/// Per-node mutable state, one slot per table entry, in a parallel array —
-/// the `[NodeState; NODE_COUNT]` from handoff §3. Kept to 32 bytes: the
-/// passes stream this array, so its width is bandwidth.
+/// Per-node layout output, one slot per table entry — the
+/// `[NodeState; NODE_COUNT]` from handoff §3.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct NodeState {
     pub constraints: Constraints,
@@ -182,64 +163,8 @@ pub struct NodeState {
     pub pos: Point,
 }
 
-/// One entry per widget *kind* (handoff §5: `KIND_COUNT`, not tree
-/// positions). All fns receive the tree base pointer and locate their value
-/// struct at `base + desc.offset`. Container fns walk their children via
-/// `first_child`/`next_sibling` — one dispatch per container per phase.
-///
-/// # Safety contract
-/// A `WidgetOps` may only be dispatched against a `(base, desc)` pair
-/// produced by the same derive/assembly that produced the ops entry: the
-/// fns cast `base + desc.offset` to their concrete widget type.
-pub struct WidgetOps {
-    pub name: &'static str,
-    /// Containers only (`CONTAINER` flag): write every child's
-    /// constraints, derived from `st[i].constraints`.
-    pub down: fn(base: *const u8, table: &[NodeDesc], st: &mut [NodeState], i: usize),
-    /// The node's size. Containers read their children's already-computed
-    /// sizes from `st`; leaves read their value struct.
-    pub up: fn(base: *const u8, table: &[NodeDesc], st: &[NodeState], i: usize) -> Size,
-    /// Containers only: write every child's position from `st[i].pos`.
-    pub place: fn(base: *const u8, table: &[NodeDesc], st: &mut [NodeState], i: usize),
-    /// Fold paint-relevant output into a checksum (display-list stand-in).
-    pub paint: fn(base: *const u8, d: &NodeDesc, st: &NodeState, out: &mut u64),
-    /// Resolve a point that landed on this node into *off-table* content
-    /// it owns (a repeater's materialized rows). `None` — the default —
-    /// means the node itself is the deepest hit, which is also why a
-    /// fused subtree is opaque to input: it has no table children and no
-    /// hit op, so it answers as one node (Step 6's "fuse display cells,
-    /// not interactive regions", enforced rather than advised).
-    pub hit: fn(base: *const u8, d: &NodeDesc, st: &NodeState, x: f32, y: f32) -> Option<Inner>,
-    /// Offer an event to this node. Returns true if it was consumed.
-    ///
-    /// # Safety contract (extends the struct's)
-    /// `state` must point to the `S` the tree's kinds were monomorphized
-    /// for, derived from the same live borrow as `base`. Implementations
-    /// **must copy their handler `fn` pointer out of the widget before
-    /// materializing `&mut S`** — the widget usually lives inside `S`,
-    /// so holding a shared reference into it across the unique borrow
-    /// would alias (`docs/plan-events.md` E2).
-    pub event: fn(
-        base: *const u8,
-        state: *mut u8,
-        d: &NodeDesc,
-        st: &NodeState,
-        ev: &crate::event::Event,
-        ctx: &crate::event::EventCtx,
-    ) -> bool,
-    /// Fill this kind's accessibility node (role, label, value, extra
-    /// subtrees for virtualized content). Dev surface, §9.
-    #[cfg(feature = "observe")]
-    pub observe: ObserveFn,
-    /// Cheap scalar introspection for the per-frame audit. Dev surface.
-    #[cfg(feature = "observe")]
-    pub stats: StatsFn,
-}
-
 /// Scalar facts a kind knows about itself that geometry cannot show —
 /// the collection vocabulary, mirroring AccessKit's `size_of_set`.
-/// Allocation-free by contract: the per-frame audit reads this every
-/// frame, so it must never build a tree or clone state.
 #[cfg(feature = "observe")]
 #[derive(Default, Clone, Copy, Debug, PartialEq)]
 pub struct NodeStats {
@@ -247,128 +172,4 @@ pub struct NodeStats {
     pub items: Option<u64>,
     /// Materialized instances, for virtualized widgets.
     pub materialized: Option<u32>,
-}
-
-#[cfg(feature = "observe")]
-pub type StatsFn = fn(base: *const u8, d: &NodeDesc, out: &mut NodeStats);
-
-#[cfg(feature = "observe")]
-fn default_stats(_b: *const u8, _d: &NodeDesc, _o: &mut NodeStats) {}
-
-/// Contribute to the accessibility/agent tree: the walker pre-fills role
-/// `GenericContainer`, absolute bounds, and table children; the op
-/// overrides what it knows better and may push extra (id, node) pairs for
-/// content outside the table (repeater instances).
-#[cfg(feature = "observe")]
-pub type ObserveFn = fn(
-    base: *const u8,
-    d: &NodeDesc,
-    st: &NodeState,
-    my_id: u64,
-    node: &mut accesskit::Node,
-    extra: &mut Vec<(accesskit::NodeId, accesskit::Node)>,
-);
-
-#[cfg(feature = "observe")]
-fn default_observe(
-    _b: *const u8,
-    _d: &NodeDesc,
-    _st: &NodeState,
-    _id: u64,
-    _n: &mut accesskit::Node,
-    _e: &mut Vec<(accesskit::NodeId, accesskit::Node)>,
-) {
-}
-
-impl WidgetOps {
-    pub const fn new(
-        name: &'static str,
-        down: fn(*const u8, &[NodeDesc], &mut [NodeState], usize),
-        up: fn(*const u8, &[NodeDesc], &[NodeState], usize) -> Size,
-        place: fn(*const u8, &[NodeDesc], &mut [NodeState], usize),
-        paint: fn(*const u8, &NodeDesc, &NodeState, &mut u64),
-    ) -> WidgetOps {
-        WidgetOps {
-            name,
-            down,
-            up,
-            place,
-            paint,
-            hit: default_hit,
-            event: default_event,
-            #[cfg(feature = "observe")]
-            observe: default_observe,
-            #[cfg(feature = "observe")]
-            stats: default_stats,
-        }
-    }
-
-    /// Override the default (no off-table content) hit resolution.
-    pub const fn with_hit(
-        mut self,
-        hit: fn(*const u8, &NodeDesc, &NodeState, f32, f32) -> Option<Inner>,
-    ) -> Self {
-        self.hit = hit;
-        self
-    }
-
-    /// Override the default (ignores everything) event handling.
-    pub const fn with_event(
-        mut self,
-        event: fn(
-            *const u8,
-            *mut u8,
-            &NodeDesc,
-            &NodeState,
-            &crate::event::Event,
-            &crate::event::EventCtx,
-        ) -> bool,
-    ) -> Self {
-        self.event = event;
-        self
-    }
-
-    /// Override the default (empty) observe contribution.
-    #[cfg(feature = "observe")]
-    pub const fn with_observe(mut self, observe: ObserveFn) -> Self {
-        self.observe = observe;
-        self
-    }
-
-    /// Override the default (empty) stats contribution.
-    #[cfg(feature = "observe")]
-    pub const fn with_stats(mut self, stats: StatsFn) -> Self {
-        self.stats = stats;
-        self
-    }
-}
-
-/// Off-table content a node owns, resolved from a point (plan E1).
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Inner {
-    /// Which row of virtualized content.
-    pub row: u64,
-    /// Node index within that row's template table.
-    pub node: u32,
-    /// The template node's absolute origin, for local coordinates.
-    pub origin: Point,
-}
-
-/// Shared no-op for leaf `down`/`place` slots (never dispatched: the passes
-/// gate on `child_count > 0`).
-pub fn leaf_nop(_b: *const u8, _t: &[NodeDesc], _st: &mut [NodeState], _i: usize) {}
-
-fn default_hit(_b: *const u8, _d: &NodeDesc, _st: &NodeState, _x: f32, _y: f32) -> Option<Inner> {
-    None
-}
-
-fn default_event(
-    _b: *const u8,
-    _s: *mut u8,
-    _d: &NodeDesc,
-    _st: &NodeState,
-    _e: &crate::event::Event,
-    _c: &crate::event::EventCtx,
-) -> bool {
-    false
 }

@@ -21,7 +21,6 @@ accesskit = { version = "0.24", optional = true }
 observe = ["dep:accesskit", "dep:serde", "dep:serde_json"]
 reload = ["dep:serde", "dep:serde_json"]
 # Forwarded to the derive: see docs/results-safe-prototype.md.
-safe_no_inline = ["lumen-static-macros/safe_no_inline"]
 # Measurement only: makes the recursive arm's dispatch opaque to the
 # optimizer, to prove it is real. See docs/results-traversal.md.
 rdyn_opaque = ["lumen-static-macros/rdyn_opaque"]

@@ -66,22 +66,27 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
             "StaticTree needs #[widget(row)] or #[widget(column)]",
         ));
     };
-
     let Data::Struct(data) = &input.data else {
         return Err(syn::Error::new_spanned(&input.ident, "StaticTree derives structs only"));
     };
     let Fields::Named(fields) = &data.fields else {
         return Err(syn::Error::new_spanned(&input.ident, "StaticTree needs named fields"));
     };
+
     let field_ident: Vec<_> = fields.named.iter().map(|f| f.ident.clone().unwrap()).collect();
     let field_ty: Vec<_> = fields.named.iter().map(|f| f.ty.clone()).collect();
-    let n_fields = field_ident.len();
-    // §9 provenance: declaration lines from proc-macro2 span locations;
-    // the file comes from `file!()` expanded at the derive's call site.
+    let n = field_ident.len();
+    let n_f32 = n as f32;
+    let sp = spacing;
+    let spaced_total = if n > 1 { spacing * (n - 1) as f32 } else { 0.0 };
+    let first_child: u32 = if n > 0 { 1 } else { 0 };
+    let child_count = n as u16;
+    let has_children = n > 0;
+
+    // §9 provenance + author ids.
     let root_line = input.ident.span().start().line as u32;
     let field_line: Vec<u32> =
         fields.named.iter().map(|f| f.ident.as_ref().unwrap().span().start().line as u32).collect();
-    // #[widget_id("save")] — the agent-facing stable address (empty = none).
     let field_wid: Vec<String> = fields
         .named
         .iter()
@@ -97,109 +102,237 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
         })
         .collect();
 
-    if fuse {
-        return expand_fused(
-            name, &name_str, &axis, spacing, &field_ident, &field_ty, root_line,
-        );
-    }
-
-    let (down_fn, up_fn, place_fn) = match axis {
-        Axis::Row => (quote!(row_down), quote!(row_up), quote!(row_place)),
-        Axis::Column => (quote!(col_down), quote!(col_up), quote!(col_place)),
+    // Axis-specific bodies. Same math either way, transposed.
+    let (child_limits, accumulate, result, advance) = match axis {
+        Axis::Row => (
+            quote! { ::lumen_static::ops::row_child_limits(limits, #n, #sp) },
+            quote! { sum += s.w; mx = mx.max(s.h); },
+            quote! { ::lumen_static::Size { w: sum + #spaced_total, h: mx } },
+            quote! { cur.x += st[at].size.w + #sp; },
+        ),
+        Axis::Column => (
+            quote! { ::lumen_static::ops::col_child_limits(limits, #n, #sp) },
+            quote! { sum += s.h; mx = mx.max(s.w); },
+            quote! { ::lumen_static::Size { w: mx, h: sum + #spaced_total } },
+            quote! { cur.y += st[at].size.h + #sp; },
+        ),
     };
-    let first_child: u32 = if n_fields > 0 { 1 } else { 0 };
-    let child_count = n_fields as u16;
-    let has_children = n_fields > 0;
-    let sp = spacing;
+    let _ = n_f32;
 
-    // The anonymous-const wrapper keeps helper items unnameable while the
-    // trait impl leaks out, the standard derive pattern.
+    // `fuse` is a *call style*, not a separate lowering: the same bodies
+    // with static calls, so the subtree monomorphizes into one kind.
+    let call_child = |m: &str| {
+        let m = syn::Ident::new(m, proc_macro2::Span::call_site());
+        if fuse {
+            quote! { let d = &mut self.#m; }
+        } else {
+            quote! { let d: &mut dyn ::lumen_static::Node = &mut self.#m; }
+        }
+    };
+    let call_child_ref = |m: &str| {
+        let m = syn::Ident::new(m, proc_macro2::Span::call_site());
+        if fuse {
+            quote! { let d = &self.#m; }
+        } else {
+            quote! { let d: &dyn ::lumen_static::Node = &self.#m; }
+        }
+    };
+    let mut_calls: Vec<Ts2> = field_ident.iter().map(|f| call_child(&f.to_string())).collect();
+    let ref_calls: Vec<Ts2> = field_ident.iter().map(|f| call_child_ref(&f.to_string())).collect();
+    let opaque_stmt = if cfg!(feature = "rdyn_opaque") && !fuse {
+        quote! { let d = ::core::hint::black_box(d); }
+    } else {
+        quote! {}
+    };
+
     Ok(quote! {
         const _: () = {
-            use ::lumen_static::desc::{NodeDesc, NodeState, Size, WidgetOps};
+            use ::lumen_static::desc::{NodeDesc, NodeState};
+            use ::lumen_static::widget::{Node, Widget};
+            use ::lumen_static::{Constraints, Point, Size};
 
-            fn __down(_b: *const u8, t: &[NodeDesc], st: &mut [NodeState], i: usize) {
-                ::lumen_static::ops::#down_fn(t, st, i, #sp)
-            }
-            fn __up(_b: *const u8, t: &[NodeDesc], st: &[NodeState], i: usize) -> Size {
-                ::lumen_static::ops::#up_fn(t, st, i, #sp)
-            }
-            fn __place(_b: *const u8, t: &[NodeDesc], st: &mut [NodeState], i: usize) {
-                ::lumen_static::ops::#place_fn(t, st, i, #sp)
-            }
-
-            const OPS: WidgetOps =
-                WidgetOps::new(#name_str, __down, __up, __place, ::lumen_static::ops::container_paint);
-
-            const TABLE: [NodeDesc; <#name as ::lumen_static::Widget>::NODE_COUNT] = {
-                let mut t = [NodeDesc::EMPTY; <#name as ::lumen_static::Widget>::NODE_COUNT];
+            const TABLE: [NodeDesc; <#name as Widget>::NODE_COUNT] = {
+                let mut t = [NodeDesc::EMPTY; <#name as Widget>::NODE_COUNT];
                 t[0] = NodeDesc::new(
-                    0,
-                    0,
                     #first_child,
-                    #child_count,
                     ::lumen_static::NO_PARENT,
                     0,
+                    #child_count,
                     {
                         let mut f = if #has_children { NodeDesc::CONTAINER } else { 0 };
-                        if <#name as ::lumen_static::Widget>::IS_RIGID {
-                            f |= NodeDesc::RIGID;
-                        }
+                        if <#name as Widget>::IS_RIGID { f |= NodeDesc::RIGID; }
                         f
                     },
                 )
                 .with_src(::core::file!(), #root_line);
                 let mut at: usize = 1;
-                let mut kb: u16 = 1;
                 let mut prev_root: usize = 0;
                 #(
                     ::lumen_static::widget::splice_child(
-                        &mut t,
-                        at,
-                        <#field_ty as ::lumen_static::Widget>::SUB_TABLE,
-                        0,
-                        ::core::mem::offset_of!(#name, #field_ident) as u32,
-                        kb,
+                        &mut t, at, <#field_ty as Widget>::SUB_TABLE, 0,
                     );
-                    // Provenance of a child's root is its *field* site;
-                    // its internals keep their own declaration sites.
+                    // A child's root carries its *field* site; the
+                    // child's internals keep their own.
                     t[at] = t[at].with_src(::core::file!(), #field_line).with_id(#field_wid);
-                    if prev_root != 0 {
-                        t[prev_root].next_sibling = at as u32;
-                    }
+                    if prev_root != 0 { t[prev_root].next_sibling = at as u32; }
                     prev_root = at;
-                    at += <#field_ty as ::lumen_static::Widget>::NODE_COUNT;
-                    kb += <#field_ty as ::lumen_static::Widget>::KIND_COUNT as u16;
+                    at += <#field_ty as Widget>::NODE_COUNT;
                 )*
-                let _ = (at, kb, prev_root);
+                let _ = (at, prev_root);
                 t
             };
 
-            const KINDS: [&'static WidgetOps; <#name as ::lumen_static::Widget>::KIND_COUNT] = {
-                let mut ks: [&'static WidgetOps; <#name as ::lumen_static::Widget>::KIND_COUNT] =
-                    [&OPS; <#name as ::lumen_static::Widget>::KIND_COUNT];
-                let mut at: usize = 1;
-                #(
-                    ::lumen_static::widget::splice_kinds(
-                        &mut ks,
-                        at,
-                        <#field_ty as ::lumen_static::Widget>::KIND_LIST,
-                    );
-                    at += <#field_ty as ::lumen_static::Widget>::KIND_COUNT;
-                )*
-                let _ = at;
-                ks
-            };
-
-            impl ::lumen_static::Widget for #name {
-                const NODE_COUNT: usize =
-                    1 #(+ <#field_ty as ::lumen_static::Widget>::NODE_COUNT)*;
-                const KIND_COUNT: usize =
-                    1 #(+ <#field_ty as ::lumen_static::Widget>::KIND_COUNT)*;
-                const IS_RIGID: bool =
-                    true #(&& <#field_ty as ::lumen_static::Widget>::IS_RIGID)*;
+            impl Widget for #name {
+                const NODE_COUNT: usize = 1 #(+ <#field_ty as Widget>::NODE_COUNT)*;
+                const DEPTH: usize = 1 + {
+                    let mut d = 0usize;
+                    #( if <#field_ty as Widget>::DEPTH > d { d = <#field_ty as Widget>::DEPTH; } )*
+                    d
+                };
+                const IS_RIGID: bool = true #(&& <#field_ty as Widget>::IS_RIGID)*;
                 const SUB_TABLE: &'static [NodeDesc] = &TABLE;
-                const KIND_LIST: &'static [&'static WidgetOps] = &KINDS;
+            }
+
+            // Proof-carrying table: the compiler re-checks the macro's
+            // own output at every expansion, and the depth cap turns the
+            // stack-overflow hazard into a compile error.
+            const _: () = assert!(::lumen_static::widget::table_is_well_formed(&TABLE));
+            const _: () = assert!(<#name as Widget>::DEPTH <= ::lumen_static::MAX_DEPTH);
+
+            /// Delegates by index range, like `node`. The where-clause
+            /// is what makes a mis-typed `Button<Other>` a compile error
+            /// at the *container* that holds it.
+            impl<S> ::lumen_static::event::Handlers<S> for #name
+            where
+                #(#field_ty: ::lumen_static::event::Handlers<S>,)*
+            {
+                fn handler(
+                    &self,
+                    sel: ::lumen_static::event::NodeSel,
+                ) -> ::core::option::Option<fn(&mut S, &::lumen_static::EventCtx)> {
+                    if sel.i == 0 { return ::core::option::Option::None; }
+                    let mut at: usize = 1;
+                    #(
+                        {
+                            let c = <#field_ty as Widget>::NODE_COUNT;
+                            if sel.i < at + c {
+                                return ::lumen_static::event::Handlers::handler(
+                                    &self.#field_ident,
+                                    ::lumen_static::event::NodeSel { i: sel.i - at, inner: sel.inner },
+                                );
+                            }
+                            at += c;
+                        }
+                    )*
+                    let _ = at;
+                    ::core::option::Option::None
+                }
+            }
+
+            impl Node for #name {
+                fn kind_name(&self) -> &'static str {
+                    #name_str
+                }
+
+                fn layout(&mut self, limits: Constraints, st: &mut [NodeState], i: usize) -> Size {
+                    let cc = #child_limits;
+                    let mut sum = 0.0f32;
+                    let mut mx = 0.0f32;
+                    let mut at = i + 1;
+                    #(
+                        {
+                            #mut_calls
+                            #opaque_stmt
+                            let s = d.layout(cc, st, at);
+                            #accumulate
+                            at += <#field_ty as Widget>::NODE_COUNT;
+                        }
+                    )*
+                    let _ = at;
+                    ::lumen_static::ops::record(st, i, limits, limits.clamp(#result))
+                }
+
+                fn place(&mut self, at_pos: Point, st: &mut [NodeState], i: usize) {
+                    st[i].pos = at_pos;
+                    let mut cur = at_pos;
+                    let mut at = i + 1;
+                    #(
+                        {
+                            #mut_calls
+                            d.place(cur, st, at);
+                            #advance
+                            at += <#field_ty as Widget>::NODE_COUNT;
+                        }
+                    )*
+                    let _ = (at, cur);
+                }
+
+                fn paint(&self, st: &[NodeState], i: usize, out: &mut u64) {
+                    ::lumen_static::ops::fold_geom(out, 0, &st[i]);
+                    let mut at = i + 1;
+                    #(
+                        {
+                            #ref_calls
+                            d.paint(st, at, out);
+                            at += <#field_ty as Widget>::NODE_COUNT;
+                        }
+                    )*
+                    let _ = at;
+                }
+
+                fn hit(&self, st: &[NodeState], i: usize, x: f32, y: f32)
+                    -> ::core::option::Option<::lumen_static::Hit>
+                {
+                    if !::lumen_static::hit::contains(&st[i], x, y) {
+                        return ::core::option::Option::None;
+                    }
+                    let mut at = i + 1;
+                    #(
+                        {
+                            #ref_calls
+                            if let ::core::option::Option::Some(h) = d.hit(st, at, x, y) {
+                                return ::core::option::Option::Some(h);
+                            }
+                            at += <#field_ty as Widget>::NODE_COUNT;
+                        }
+                    )*
+                    let _ = at;
+                    ::core::option::Option::Some(::lumen_static::Hit {
+                        node: i as u32,
+                        inner: ::core::option::Option::None,
+                        local: Point { x: x - st[i].pos.x, y: y - st[i].pos.y },
+                    })
+                }
+
+                fn node(&self, i: usize) -> &dyn Node {
+                    if i == 0 { return self; }
+                    let mut at: usize = 1;
+                    #(
+                        {
+                            let c = <#field_ty as Widget>::NODE_COUNT;
+                            if i < at + c { return Node::node(&self.#field_ident, i - at); }
+                            at += c;
+                        }
+                    )*
+                    let _ = at;
+                    ::core::unreachable!("node index out of range")
+                }
+
+                fn node_mut(&mut self, i: usize) -> &mut dyn Node {
+                    if i == 0 { return self; }
+                    let mut at: usize = 1;
+                    #(
+                        {
+                            let c = <#field_ty as Widget>::NODE_COUNT;
+                            if i < at + c {
+                                return Node::node_mut(&mut self.#field_ident, i - at);
+                            }
+                            at += c;
+                        }
+                    )*
+                    let _ = at;
+                    ::core::unreachable!("node index out of range")
+                }
             }
         };
     })
@@ -326,344 +459,5 @@ fn expand_reloadable(input: DeriveInput) -> syn::Result<Ts2> {
                 #(#restore_stmts)*
             }
         }
-    })
-}
-
-/// The §5 erasure dial: one table entry, one kind, and the subtree's
-/// layout/paint emitted as straight-line code over `Inline` — children
-/// are called directly, so the compiler inlines and const-folds across
-/// the whole subtree. Fields must implement `Inline` (leaves or other
-/// fused structs); a table container inside a fused one fails to compile.
-#[allow(clippy::too_many_arguments)]
-fn expand_fused(
-    name: &syn::Ident,
-    name_str: &str,
-    axis: &Axis,
-    spacing: f32,
-    field_ident: &[syn::Ident],
-    field_ty: &[syn::Type],
-    root_line: u32,
-) -> syn::Result<Ts2> {
-    let k = field_ident.len();
-    let spaced = if k > 1 { spacing * (k - 1) as f32 } else { 0.0 };
-    let nf = if k > 0 { k as f32 } else { 1.0 };
-    let sp = spacing;
-
-    let (cc_expr, acc_child, result_expr, advance_stmt) = match axis {
-        Axis::Row => (
-            quote! { ::lumen_static::Constraints {
-                min_w: 0.0,
-                max_w: ((c.max_w - #spaced) / #nf).max(0.0),
-                min_h: 0.0,
-                max_h: c.max_h,
-            } },
-            quote! { sum += s.w; mx = mx.max(s.h); },
-            quote! { c.clamp(::lumen_static::Size { w: sum + #spaced, h: mx }) },
-            quote! { cur.x += s.w + #sp; },
-        ),
-        Axis::Column => (
-            quote! { ::lumen_static::Constraints {
-                min_w: 0.0,
-                max_w: c.max_w,
-                min_h: 0.0,
-                max_h: ((c.max_h - #spaced) / #nf).max(0.0),
-            } },
-            quote! { sum += s.h; mx = mx.max(s.w); },
-            quote! { c.clamp(::lumen_static::Size { w: mx, h: sum + #spaced }) },
-            quote! { cur.y += s.h + #sp; },
-        ),
-    };
-
-    Ok(quote! {
-        const _: () = {
-            use ::lumen_static::desc::{NodeDesc, NodeState, Size, WidgetOps};
-            use ::lumen_static::fuse::Inline;
-
-            impl Inline for #name {
-                #[allow(unused_mut, unused_variables)]
-                fn measure(&self, c: ::lumen_static::Constraints) -> ::lumen_static::Size {
-                    let cc = #cc_expr;
-                    let mut sum = 0.0f32;
-                    let mut mx = 0.0f32;
-                    #(
-                        let s = Inline::measure(&self.#field_ident, cc);
-                        #acc_child
-                    )*
-                    #result_expr
-                }
-                #[allow(unused_mut, unused_variables)]
-                fn paint_inline(
-                    &self,
-                    c: ::lumen_static::Constraints,
-                    pos: ::lumen_static::Point,
-                    size: ::lumen_static::Size,
-                    out: &mut u64,
-                ) {
-                    ::lumen_static::fuse::fold_tagged(out, 0, size, pos);
-                    let cc = #cc_expr;
-                    let mut cur = pos;
-                    #(
-                        let s = Inline::measure(&self.#field_ident, cc);
-                        Inline::paint_inline(&self.#field_ident, cc, cur, s, out);
-                        #advance_stmt
-                    )*
-                }
-            }
-
-            fn __up(b: *const u8, t: &[NodeDesc], st: &[NodeState], i: usize) -> Size {
-                let s: &#name = unsafe { &*(b.add(t[i].offset as usize) as *const #name) };
-                Inline::measure(s, st[i].constraints)
-            }
-            fn __paint(b: *const u8, d: &NodeDesc, st: &NodeState, out: &mut u64) {
-                let s: &#name = unsafe { &*(b.add(d.offset as usize) as *const #name) };
-                Inline::paint_inline(s, st.constraints, st.pos, st.size, out)
-            }
-
-            const OPS: WidgetOps = WidgetOps::new(
-                #name_str,
-                ::lumen_static::desc::leaf_nop,
-                __up,
-                ::lumen_static::desc::leaf_nop,
-                __paint,
-            );
-
-            const TABLE: [NodeDesc; 1] = [NodeDesc::new(
-                0,
-                0,
-                0,
-                0,
-                ::lumen_static::NO_PARENT,
-                0,
-                if <#name as ::lumen_static::Widget>::IS_RIGID {
-                    NodeDesc::RIGID
-                } else {
-                    0
-                },
-            )
-            .with_src(::core::file!(), #root_line)];
-
-            impl ::lumen_static::Widget for #name {
-                const NODE_COUNT: usize = 1;
-                const KIND_COUNT: usize = 1;
-                const IS_RIGID: bool =
-                    true #(&& <#field_ty as ::lumen_static::Widget>::IS_RIGID)*;
-                const SUB_TABLE: &'static [NodeDesc] = &TABLE;
-                const KIND_LIST: &'static [&'static WidgetOps] = &[&OPS];
-            }
-        };
-    })
-}
-
-// ---- #[derive(SafeTree)] — the unsafe-free prototype path ------------------
-
-/// Emits the safe counterpart of what `StaticTree` emits: a `Node` impl
-/// (this container's own layout math) and a `Tree` impl whose `node(i)`
-/// is a range-delegating match over the fields.
-///
-/// This is the same field information `StaticTree` spends on
-/// `offset_of!`, spent instead on a jump table — which is the entire
-/// difference between the two paths (`docs/verification-notes.md`).
-/// Reuses `<Self as Widget>::SUB_TABLE`, so both arms iterate a
-/// byte-identical table and a benchmark isolates one variable.
-#[proc_macro_derive(SafeTree, attributes(widget, widget_id))]
-pub fn derive_safe_tree(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as DeriveInput);
-    match expand_safe(input) {
-        Ok(ts) => ts.into(),
-        Err(e) => e.to_compile_error().into(),
-    }
-}
-
-fn expand_safe(input: DeriveInput) -> syn::Result<Ts2> {
-    let name = &input.ident;
-
-    let mut axis = None;
-    let mut spacing = 0.0f32;
-    for attr in &input.attrs {
-        if !attr.path().is_ident("widget") {
-            continue;
-        }
-        attr.parse_nested_meta(|meta| {
-            if meta.path.is_ident("row") {
-                axis = Some(Axis::Row);
-            } else if meta.path.is_ident("column") {
-                axis = Some(Axis::Column);
-            } else if meta.path.is_ident("spacing") {
-                let lit: syn::LitFloat = meta.value()?.parse()?;
-                spacing = lit.base10_parse()?;
-            }
-            // `fuse` and anything else: ignored by this prototype.
-            Ok(())
-        })?;
-    }
-    let Some(axis) = axis else {
-        return Err(syn::Error::new_spanned(&input.ident, "SafeTree needs #[widget(row|column)]"));
-    };
-    let Data::Struct(data) = &input.data else {
-        return Err(syn::Error::new_spanned(&input.ident, "SafeTree derives structs only"));
-    };
-    let Fields::Named(fields) = &data.fields else {
-        return Err(syn::Error::new_spanned(&input.ident, "SafeTree needs named fields"));
-    };
-    let field_ident: Vec<_> = fields.named.iter().map(|f| f.ident.clone().unwrap()).collect();
-    let field_ty: Vec<_> = fields.named.iter().map(|f| f.ty.clone()).collect();
-
-    let (down_fn, up_fn, place_fn) = match axis {
-        Axis::Row => (quote!(row_down), quote!(row_up), quote!(row_place)),
-        Axis::Column => (quote!(col_down), quote!(col_up), quote!(col_place)),
-    };
-    let sp = spacing;
-    let n_fields_f32 = field_ident.len() as f32;
-    // Measurement knob, resolved when the *macro crate* is compiled, so
-    // emitted code carries no `cfg` — a cfg inside derive output would
-    // resolve against the destination crate (docs/step5-observability.md).
-    let opaque_stmt = if cfg!(feature = "rdyn_opaque") {
-        quote! { let d = ::core::hint::black_box(d); }
-    } else {
-        quote! {}
-    };
-    let spaced_total = if field_ident.len() > 1 {
-        spacing * (field_ident.len() - 1) as f32
-    } else {
-        0.0
-    };
-    // Recursive arm: same math as the flat arm, expressed per container.
-    let (r_child_limits, r_accumulate, r_result, r_advance) = match axis {
-        Axis::Row => (
-            quote! { ::lumen_static::Constraints {
-                min_w: 0.0,
-                max_w: ((limits.max_w - #spaced_total) / n).max(0.0),
-                min_h: 0.0,
-                max_h: limits.max_h,
-            } },
-            quote! { sum += s.w; mx = mx.max(s.h); },
-            quote! { Size { w: sum + #spaced_total, h: mx } },
-            quote! { cur.x += st[at].size.w + #sp; },
-        ),
-        Axis::Column => (
-            quote! { ::lumen_static::Constraints {
-                min_w: 0.0,
-                max_w: limits.max_w,
-                min_h: 0.0,
-                max_h: ((limits.max_h - #spaced_total) / n).max(0.0),
-            } },
-            quote! { sum += s.h; mx = mx.max(s.w); },
-            quote! { Size { w: mx, h: sum + #spaced_total } },
-            quote! { cur.y += st[at].size.h + #sp; },
-        ),
-    };
-
-    Ok(quote! {
-        const _: () = {
-            use ::lumen_static::desc::{NodeDesc, NodeState, Size};
-            use ::lumen_static::safe::{Node, Tree};
-
-            impl Node for #name {
-                fn down(&self, t: &[NodeDesc], st: &mut [NodeState], i: usize) {
-                    ::lumen_static::ops::#down_fn(t, st, i, #sp)
-                }
-                fn up(&self, t: &[NodeDesc], st: &[NodeState], i: usize) -> Size {
-                    ::lumen_static::ops::#up_fn(t, st, i, #sp)
-                }
-                fn place(&self, t: &[NodeDesc], st: &mut [NodeState], i: usize) {
-                    ::lumen_static::ops::#place_fn(t, st, i, #sp)
-                }
-                fn paint(&self, d: &NodeDesc, st: &NodeState, out: &mut u64) {
-                    ::lumen_static::ops::fold_geom_pub(out, d, st)
-                }
-            }
-
-            impl ::lumen_static::safe::RNode for #name {
-                fn layout(
-                    &self,
-                    limits: ::lumen_static::Constraints,
-                    st: &mut [NodeState],
-                    i: usize,
-                ) -> Size {
-                    let n = #n_fields_f32;
-                    let cc = #r_child_limits;
-                    let mut sum = 0.0f32;
-                    let mut mx = 0.0f32;
-                    let mut at = i + 1;
-                    #(
-                        {
-                            // &dyn on purpose: a static call here would
-                            // monomorphize the subtree, i.e. #[fuse].
-                            let d: &dyn ::lumen_static::safe::RNode = &self.#field_ident;
-                            #opaque_stmt
-                            let s = d.layout(cc, st, at);
-                            #r_accumulate
-                            at += <#field_ty as Tree>::COUNT;
-                        }
-                    )*
-                    let _ = at;
-                    let size = limits.clamp(#r_result);
-                    st[i].constraints = limits;
-                    st[i].size = size;
-                    size
-                }
-
-                fn place(&self, at_pos: ::lumen_static::Point, st: &mut [NodeState], i: usize) {
-                    st[i].pos = at_pos;
-                    let mut cur = at_pos;
-                    let mut at = i + 1;
-                    #(
-                        {
-                            let d: &dyn ::lumen_static::safe::RNode = &self.#field_ident;
-                            d.place(cur, st, at);
-                            #r_advance
-                            at += <#field_ty as Tree>::COUNT;
-                        }
-                    )*
-                    let _ = (at, cur);
-                }
-
-                fn paint(&self, st: &[NodeState], i: usize, out: &mut u64) {
-                    ::lumen_static::ops::fold_pub(out, 0);
-                    ::lumen_static::ops::fold_pub(
-                        out,
-                        st[i].size.w.to_bits() as u64 ^ ((st[i].size.h.to_bits() as u64) << 32),
-                    );
-                    ::lumen_static::ops::fold_pub(
-                        out,
-                        st[i].pos.x.to_bits() as u64 ^ ((st[i].pos.y.to_bits() as u64) << 32),
-                    );
-                    let mut at = i + 1;
-                    #(
-                        {
-                            let d: &dyn ::lumen_static::safe::RNode = &self.#field_ident;
-                            d.paint(st, at, out);
-                            at += <#field_ty as Tree>::COUNT;
-                        }
-                    )*
-                    let _ = at;
-                }
-            }
-
-            impl Tree for #name {
-                const TABLE: &'static [NodeDesc] = <#name as ::lumen_static::Widget>::SUB_TABLE;
-                const COUNT: usize = <#name as ::lumen_static::Widget>::NODE_COUNT;
-
-                #[cfg_attr(feature = "safe_no_inline", inline(never))]
-                #[cfg_attr(not(feature = "safe_no_inline"), inline)]
-                fn node(&self, i: usize) -> &dyn Node {
-                    if i == 0 {
-                        return self;
-                    }
-                    let mut at: usize = 1;
-                    #(
-                        {
-                            let n = <#field_ty as Tree>::COUNT;
-                            if i < at + n {
-                                return Tree::node(&self.#field_ident, i - at);
-                            }
-                            at += n;
-                        }
-                    )*
-                    let _ = at;
-                    unreachable!("node index out of range")
-                }
-            }
-        };
     })
 }

@@ -52,10 +52,11 @@
 use std::collections::VecDeque;
 
 use lumen_static::desc::{NodeState, NodeStats};
+use lumen_static::widget::Node;
 use lumen_static::{Constraints, Size};
 use serde_json::{json, Value};
 
-use crate::TreeRef;
+use crate::{TreeMut, TreeRef};
 
 /// Two generous, *different* constraint sets: a node whose measurement is
 /// the same under both is sized by its content, not by its container.
@@ -164,7 +165,7 @@ impl Auditor {
     /// nodes, so the old finding set is discarded and everything true now
     /// re-announces itself. An agent that just swapped a dylib wants the
     /// current state of the world, not a diff against a vanished one.
-    pub fn record(&mut self, frame: u64, tree: &TreeRef, structural_reset: bool) {
+    pub fn record(&mut self, frame: u64, tree: &mut TreeMut, structural_reset: bool) {
         let found = self.collect(tree);
 
         if structural_reset {
@@ -230,28 +231,22 @@ impl Auditor {
 
     /// Measure a leaf under both probes: same answer twice means the node
     /// is sized by its own content.
-    fn natural(&mut self, tree: &TreeRef, i: usize) -> Natural {
-        let d = &tree.table[i];
-        let up = tree.kinds[d.kind as usize].up;
-        let saved = self.scratch[i].constraints;
-
-        self.scratch[i].constraints = PROBE_A;
-        let a = up(tree.base, tree.table, &self.scratch, i);
-        self.scratch[i].constraints = PROBE_B;
-        let b = up(tree.base, tree.table, &self.scratch, i);
-        self.scratch[i].constraints = saved;
-
+    ///
+    /// M2 retires this — once `Length` exists, `Shrink` results *are* the
+    /// intrinsic sizes and the audit reads them instead of probing.
+    fn natural(root: &mut dyn Node, scratch: &mut [NodeState], i: usize) -> Natural {
+        let a = root.node_mut(i).layout(PROBE_A, scratch, i);
+        let b = root.node_mut(i).layout(PROBE_B, scratch, i);
         Natural { intrinsic: a == b, size: a }
     }
 
     fn stats(tree: &TreeRef, i: usize) -> NodeStats {
-        let d = &tree.table[i];
         let mut out = NodeStats::default();
-        (tree.kinds[d.kind as usize].stats)(tree.base, d, &mut out);
+        tree.root.node(i).stats(&mut out);
         out
     }
 
-    fn collect(&mut self, tree: &TreeRef) -> Vec<Finding> {
+    fn collect(&mut self, tree: &mut TreeMut) -> Vec<Finding> {
         let mut out: Vec<Finding> = Vec::new();
         let st = tree.states;
 
@@ -262,13 +257,14 @@ impl Auditor {
         let viewport_ok = area(&st[0]) > 0.0;
         let mut anything_visible = false;
 
-        for (i, d) in tree.table.iter().enumerate() {
+        let table = tree.table;
+        for (i, d) in table.iter().enumerate() {
             let leaf = d.child_count == 0 && !d.is_container();
             let a = area(&st[i]);
 
             // -- content-bearing checks, leaves only (see module docs) --
             if leaf {
-                let nat = self.natural(tree, i);
+                let nat = Self::natural(tree.root, &mut self.scratch, i);
                 let has_content = nat.intrinsic && nat.size.w > 0.0 && nat.size.h > 0.0;
 
                 if has_content && a > 0.0 {
@@ -313,7 +309,7 @@ impl Auditor {
 
             // -- collections: geometry alone cannot tell an empty list
             //    from a broken one, so ask the widget (NodeStats) --
-            if let Some(items) = Self::stats(tree, i).items {
+            if let Some(items) = Self::stats(&tree.as_ref(), i).items {
                 if items > 0 && st[i].size.h <= 0.0 {
                     out.push(Finding {
                         code: codes::COLLAPSED_COLLECTION,

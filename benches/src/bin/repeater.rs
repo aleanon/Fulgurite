@@ -1,13 +1,12 @@
-//! Step 3 scaling benchmark (§6, §10): a virtualized `Repeat<Item>` list
-//! vs a fully materialized tree of the same rows. Full layout + paint per
-//! iteration, fixed 800px viewport.
+//! Step 3 scaling benchmark (§6): a virtualized `Repeat<Item>` vs a
+//! fully materialized tree of the same rows. The claim under test is
+//! that frame cost and resident size track the *viewport*, not the data.
 //!
-//! The claim under test: with the repeater, frame cost and resident tree
-//! size track the *viewport*, not the data. Run:
-//! `cargo run --release -p benches --bin repeater`
+//! Run: `cargo run --release -p benches --bin repeater`
 
 use benches::{bench, Item};
 use lumen_static::assemble::Assembled;
+use lumen_static::desc::NodeDesc;
 use lumen_static::repeat::Repeat;
 use lumen_static::{pass, Constraints, NodeState, Widget};
 
@@ -19,23 +18,20 @@ fn bind_icon(item: &mut Item, row: usize) {
 }
 
 fn repeat_arm(rows: usize, iters: usize) {
-    let list = Repeat::<Item>::new(rows, 24.0, bind_icon);
-    let base = &list as *const Repeat<Item> as *const u8;
+    let mut list = Repeat::<Item>::new(rows, 24.0, bind_icon);
     let mut st = [NodeState::default(); 1];
-    let (table, kinds) = (Repeat::<Item>::SUB_TABLE, Repeat::<Item>::KIND_LIST);
     bench(&format!("repeat/{rows}-rows"), iters, || {
-        pass::layout(base, table, kinds, &mut st, ROOT_C);
+        pass::layout(&mut list, &mut st, ROOT_C);
         let mut out = 0u64;
-        pass::paint(base, table, kinds, &st, &mut out);
+        pass::paint(&list, &st, &mut out);
         out
     });
-    let resident = 1 + list.window_len() * Item::NODE_COUNT;
     println!(
         "    window {} rows, resident nodes {} (table {} B, states {} B)",
         list.window_len(),
-        resident,
-        std::mem::size_of_val(table),
-        (st.len() + list.window_len() * Item::NODE_COUNT) * size_of::<NodeState>(),
+        1 + list.window_len() * Item::NODE_COUNT,
+        std::mem::size_of::<NodeDesc>(),
+        (1 + list.window_len() * Item::NODE_COUNT) * size_of::<NodeState>(),
     );
 }
 
@@ -44,20 +40,17 @@ fn materialized_arm(rows: usize, iters: usize) {
     for (row, item) in a.instances.iter_mut().enumerate() {
         bind_icon(item, row);
     }
-    let base = a.base();
-    let (table, kinds) = (a.table.as_slice(), a.kinds.as_slice());
-    let st = &mut a.states;
     bench(&format!("materialized/{rows}-rows"), iters, || {
-        pass::layout(base, table, kinds, st, ROOT_C);
+        a.layout(ROOT_C);
         let mut out = 0u64;
-        pass::paint(base, table, kinds, st, &mut out);
+        a.paint(&mut out);
         out
     });
     println!(
         "    resident nodes {} (table {} B, states {} B)",
-        table.len(),
-        std::mem::size_of_val(table),
-        st.len() * size_of::<NodeState>(),
+        a.table.len(),
+        std::mem::size_of_val(a.table.as_slice()),
+        std::mem::size_of_val(a.states.as_slice()),
     );
 }
 

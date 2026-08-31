@@ -19,11 +19,12 @@
 //! Selectors resolve over main-table nodes; repeater instances are
 //! reachable through `ui.probe`/`ui.getTree` (documented P1 limit).
 
-use lumen_static::desc::{NodeDesc, NodeState, WidgetOps};
+use lumen_static::desc::{NodeDesc, NodeState};
 use lumen_static::event::{Event, Key};
-use lumen_static::hit::{hit_test, Hit};
+use lumen_static::hit::Hit;
 use lumen_static::observe::{self, accesskit};
-use lumen_static::Widget;
+use lumen_static::widget::Node;
+use lumen_static::{pass, Widget};
 use serde_json::{json, Map, Value};
 
 mod audit;
@@ -33,22 +34,39 @@ use audit::Auditor;
 use journal::{Coalesced, Journal};
 
 /// A laid-out tree, borrowed for one dispatch.
+///
+/// The widget itself plus its structural table and layout output — no
+/// base pointer and no kind list, since traversal recurses
+/// (`docs/results-traversal.md`).
 #[derive(Clone, Copy)]
 pub struct TreeRef<'a> {
-    pub base: *const u8,
+    pub root: &'a dyn Node,
     pub table: &'a [NodeDesc],
-    pub kinds: &'a [&'static WidgetOps],
     pub states: &'a [NodeState],
 }
 
 impl<'a> TreeRef<'a> {
     pub fn of_root<W: Widget>(root: &'a W, states: &'a [NodeState]) -> Self {
-        TreeRef {
-            base: root as *const W as *const u8,
-            table: W::SUB_TABLE,
-            kinds: W::KIND_LIST,
-            states,
-        }
+        TreeRef { root, table: W::SUB_TABLE, states }
+    }
+}
+
+/// The same view at a frame boundary, where the host owns the tree
+/// mutably. The audit's intrinsic probe needs it: measuring what a node
+/// *wants* to be means calling `layout`, which takes `&mut self`.
+pub struct TreeMut<'a> {
+    pub root: &'a mut dyn Node,
+    pub table: &'a [NodeDesc],
+    pub states: &'a [NodeState],
+}
+
+impl<'a> TreeMut<'a> {
+    pub fn of_root<W: Widget>(root: &'a mut W, states: &'a [NodeState]) -> Self {
+        TreeMut { root, table: W::SUB_TABLE, states }
+    }
+
+    pub fn as_ref(&self) -> TreeRef<'_> {
+        TreeRef { root: &*self.root, table: self.table, states: self.states }
     }
 }
 
@@ -79,11 +97,11 @@ impl Agent {
     /// paint, and it is what makes `ui.lastChange`/`ui.lastDamage`
     /// answerable. Costs one extra paint-op dispatch per node (see
     /// `journal`); it is a dev surface, not a release path.
-    pub fn frame_done(&mut self, tree: &TreeRef, layout_ns: u64, paint_ns: u64) {
+    pub fn frame_done(&mut self, tree: &mut TreeMut, layout_ns: u64, paint_ns: u64) {
         self.frame += 1;
         self.last_layout_ns = layout_ns;
         self.last_paint_ns = paint_ns;
-        let structural_reset = self.journal.record(self.frame, tree);
+        let structural_reset = self.journal.record(self.frame, &tree.as_ref());
         self.auditor.record(self.frame, tree, structural_reset);
     }
 
@@ -196,7 +214,7 @@ impl Agent {
 
     fn handle(&self, tree: &TreeRef, method: &str, params: &Value) -> RpcResult {
         match method {
-            "ui.getTree" => Ok(observe::dump(tree.base, tree.table, tree.kinds, tree.states)),
+            "ui.getTree" => Ok(self.get_tree(tree)),
             "ui.getLayout" => self.get_layout(tree, params),
             "ui.resolve" => {
                 let ix = Index::build(tree);
@@ -223,6 +241,47 @@ impl Agent {
         }
     }
 
+    /// `observe::dump` needs the concrete widget type for `SUB_TABLE`;
+    /// through a `TreeRef` the table is carried alongside, so the JSON is
+    /// assembled from the snapshot the same way.
+    fn get_tree(&self, tree: &TreeRef) -> Value {
+        let mut nodes = Vec::with_capacity(tree.table.len());
+        observe::emit_table(tree.table, tree.root, tree.states, &|i| (i + 1) as u64, &mut nodes);
+        let out: Vec<Value> = nodes
+            .iter()
+            .map(|(id, n)| {
+                let mut o = Map::new();
+                o.insert("id".into(), (id.0).into());
+                o.insert("role".into(), format!("{:?}", n.role()).into());
+                if let Some(v) = n.value() {
+                    o.insert("value".into(), v.into());
+                }
+                if let Some(l) = n.label() {
+                    o.insert("label".into(), l.into());
+                }
+                if let Some(b) = n.bounds() {
+                    o.insert("bounds".into(), json!([b.x0, b.y0, b.x1, b.y1]));
+                }
+                let children: Vec<u64> = n.children().iter().map(|c| c.0).collect();
+                if !children.is_empty() {
+                    o.insert("children".into(), children.into());
+                }
+                let idx = (id.0 as usize).wrapping_sub(1);
+                if id.0 & (1 << 63) == 0 && idx < tree.table.len() {
+                    let d = &tree.table[idx];
+                    if !d.src.file.is_empty() {
+                        o.insert("src".into(), format!("{}:{}", d.src.file, d.src.line).into());
+                    }
+                    if !d.wid.is_empty() {
+                        o.insert("wid".into(), d.wid.into());
+                    }
+                }
+                Value::Object(o)
+            })
+            .collect();
+        json!({ "root": 1, "nodes": out })
+    }
+
     fn get_layout(&self, tree: &TreeRef, params: &Value) -> RpcResult {
         let ix = Index::build(tree);
         let e = resolve_one(&ix, selector_param(params)?)?;
@@ -247,7 +306,7 @@ impl Agent {
     /// never disagree about what is under a point.
     fn probe(&self, tree: &TreeRef, params: &Value) -> RpcResult {
         let (x, y) = (f64_param(params, "x")? as f32, f64_param(params, "y")? as f32);
-        match hit_test(tree.base, tree.table, tree.kinds, tree.states, x, y) {
+        match pass::hit_test(tree.root, tree.states, x, y) {
             Some(h) => Ok(self.hit_summary(tree, &h)),
             None => Ok(Value::Null),
         }
@@ -338,7 +397,7 @@ impl Agent {
         let i = idx as usize;
         o.insert("index".into(), i.into());
         if let Some(d) = tree.table.get(i) {
-            o.insert("kind".into(), tree.kinds[d.kind as usize].name.into());
+            o.insert("kind".into(), tree.root.node(i).kind_name().into());
             if !d.wid.is_empty() {
                 o.insert("wid".into(), d.wid.into());
             }
@@ -368,17 +427,7 @@ impl Agent {
             .changed
             .iter()
             .map(|c| {
-                let mut o = Map::new();
-                let i = c.idx as usize;
-                let d = &tree.table[i];
-                o.insert("index".into(), i.into());
-                o.insert("kind".into(), tree.kinds[d.kind as usize].name.into());
-                if !d.wid.is_empty() {
-                    o.insert("wid".into(), d.wid.into());
-                }
-                if !d.src.file.is_empty() {
-                    o.insert("src".into(), format!("{}:{}", d.src.file, d.src.line).into());
-                }
+                let mut o = self.node_ident(tree, c.idx);
                 o.insert("change".into(), change_kind(c).into());
                 o.insert(
                     "old".into(),
@@ -421,16 +470,16 @@ impl Agent {
         let ix = Index::build(tree);
         let rigid = tree.table.iter().filter(|d| d.is_rigid()).count();
         let containers = tree.table.iter().filter(|d| d.is_container()).count();
-        let repeaters: Vec<Value> = ix
-            .entries
-            .iter()
-            .filter(|e| e.idx.is_some() && e.kind(tree) == Some("repeat"))
-            .map(|e| {
-                json!({
-                    "index": e.idx.unwrap(),
-                    "id": e.id,
-                    "window": e.children.len(),
-                    "rows": e.node.size_of_set(),
+        let repeaters: Vec<Value> = (0..tree.table.len())
+            .filter_map(|i| {
+                let mut s = lumen_static::desc::NodeStats::default();
+                tree.root.node(i).stats(&mut s);
+                s.items.map(|items| {
+                    json!({
+                        "index": i,
+                        "rows": items,
+                        "window": s.materialized.unwrap_or(0),
+                    })
                 })
             })
             .collect();
@@ -438,7 +487,6 @@ impl Agent {
             "frame": self.frame,
             "nodes": tree.table.len(),
             "total_nodes": ix.entries.len(),
-            "kinds": tree.kinds.len(),
             "rigid": rigid,
             "containers": containers,
             "repeaters": repeaters,
@@ -499,7 +547,6 @@ fn parse_key(name: &str) -> Option<Key> {
 struct Entry {
     id: u64,
     node: accesskit::Node,
-    children: Vec<u64>,
     /// Main-table index, when this is not a synthesized instance node.
     idx: Option<usize>,
 }
@@ -512,9 +559,6 @@ impl Entry {
         self.bounds()
             .is_some_and(|b| b.x0 < x + w && b.x1 > x && b.y0 < y + h && b.y1 > y)
     }
-    fn kind<'a>(&self, tree: &TreeRef<'a>) -> Option<&'static str> {
-        self.idx.map(|i| tree.kinds[tree.table[i].kind as usize].name)
-    }
 }
 
 struct Index<'a> {
@@ -524,18 +568,17 @@ struct Index<'a> {
 
 impl<'a> Index<'a> {
     fn build(tree: &'a TreeRef<'a>) -> Self {
-        let update = observe::snapshot(tree.base, tree.table, tree.kinds, tree.states);
-        let entries: Vec<Entry> = update
-            .nodes
+        let mut nodes = Vec::with_capacity(tree.table.len());
+        observe::emit_table(tree.table, tree.root, tree.states, &|i| (i + 1) as u64, &mut nodes);
+        let entries: Vec<Entry> = nodes
             .into_iter()
             .map(|(nid, node)| {
-                let children = node.children().to_vec().iter().map(|c| c.0).collect();
                 let idx = if nid.0 & (1 << 63) == 0 {
                     Some((nid.0 - 1) as usize)
                 } else {
                     None
                 };
-                Entry { id: nid.0, node, children, idx }
+                Entry { id: nid.0, node, idx }
             })
             .collect();
 
@@ -555,7 +598,7 @@ impl<'a> Index<'a> {
         if let Some(i) = e.idx {
             let d = &self.tree.table[i];
             o.insert("index".into(), i.into());
-            o.insert("kind".into(), self.tree.kinds[d.kind as usize].name.into());
+            o.insert("kind".into(), self.tree.root.node(i).kind_name().into());
             if !d.wid.is_empty() {
                 o.insert("wid".into(), d.wid.into());
             }
@@ -618,7 +661,7 @@ fn matches(tree: &TreeRef, e: &Entry, term: &Term) -> bool {
             let d = &tree.table[i];
             match term {
                 Term::Wid(w) => d.wid == *w,
-                Term::Kind(k) => tree.kinds[d.kind as usize].name == *k,
+                Term::Kind(k) => tree.root.node(i).kind_name() == *k,
                 Term::Src { file, line } => {
                     d.src.file.ends_with(file) && line.is_none_or(|l| d.src.line == l)
                 }
@@ -637,7 +680,9 @@ fn nearest(tree: &TreeRef, term: &Term) -> Value {
             json!({ "available_ids": ids })
         }
         Term::Kind(_) => {
-            let mut names: Vec<&str> = tree.kinds.iter().map(|k| k.name).collect();
+            let mut names: Vec<&str> =
+                (0..tree.table.len()).map(|i| tree.root.node(i).kind_name()).collect();
+            names.sort_unstable();
             names.dedup();
             json!({ "available_kinds": names })
         }

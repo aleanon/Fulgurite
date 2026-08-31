@@ -118,6 +118,36 @@ impl InputQueue {
     }
 }
 
+/// A node selector for handler lookup: a main-table index, plus the
+/// off-table row a hit resolved to, if any.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct NodeSel {
+    pub i: usize,
+    pub inner: Option<(u64, u32)>,
+}
+
+/// Which handler, if any, a node carries.
+///
+/// Generic over the application state so that a `Button<A>` placed in a
+/// `B`-rooted tree is a **compile error**: the state-type contract that
+/// used to be a safety comment is now checked by the type system.
+pub trait Handlers<S> {
+    fn handler(&self, sel: NodeSel) -> Option<fn(&mut S, &EventCtx)>;
+}
+
+/// The application root: state plus the tree that presents it.
+///
+/// Splitting the tree out of `S` is what lets dispatch hold `&mut S`
+/// while a handler runs: the handler `fn` pointer is copied out through
+/// `&*self` first, that borrow ends, and only then does `&mut S` exist.
+/// The borrow checker enforces the sequence that used to be a documented
+/// rule (`docs/plan-events.md` E2).
+pub trait App: Sized {
+    type Tree: crate::widget::Widget + Handlers<Self>;
+    fn tree(&self) -> &Self::Tree;
+    fn tree_mut(&mut self) -> &mut Self::Tree;
+}
+
 impl Extend<Event> for InputQueue {
     fn extend<T: IntoIterator<Item = Event>>(&mut self, iter: T) {
         self.q.extend(iter);
