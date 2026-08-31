@@ -1,3 +1,10 @@
+## Work queue
+
+The current plan is `docs/plan-architecture-v2.md`. Task ids (`T0.6`) go
+in commit subjects. Decision records live beside it in `docs/`; the
+design spec is `docs/00-handoff-static-tree.md`, whose DECIDED/SUPERSEDED
+markers must move with the code.
+
 ## Committing
 
 commit with a clear explanation of what has been done for every task or subtask completed

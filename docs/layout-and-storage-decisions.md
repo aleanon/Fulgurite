@@ -21,6 +21,10 @@ Consequences to plan around:
 - `Repeat`, `Button`/event dispatch and the `observe` ops must be ported
   — they are unsafe-path only today. `Repeat`'s `RefCell` should go with
   it, since a `node_mut` accessor lets layout mutate the window directly.
+- **Traversal is recursive** (`docs/results-traversal.md`, decided
+  after this section was written): the accessor `node(i)` survives for
+  *index addressing* only; layout/place/paint recurse through `&dyn`
+  children and read no table.
 - **Split the traits so the app-state type stays out of the hot path.**
   `Node`/`Tree` (layout, paint) carry no `S`; a separate `Handlers<S>`
   accessor returns `Option<fn(&mut S, &EventCtx)>` for dispatch. Layout
@@ -93,6 +97,15 @@ literally §3's `text: Dirty<String>, cache: Cell<Size>` sketch.
 ---
 
 ## 2. Not flex — iced's `Length` model, in four flat passes
+
+> **SUPERSEDED IN PART 2026-09-01.** The `Length` model stands. The
+> *four flat passes* do not: `docs/results-traversal.md` measured
+> recursive descent 34–39% faster than flat loops, and with recursion
+> `Length` needs **one visit per node** — the parent gets each child's
+> final size back from the call, so there is no intrinsic-estimate pass
+> and no correction pass. The passes table below is kept as the record
+> of why four were needed *without* recursion. Implementation:
+> `docs/plan-architecture-v2.md` M2.
 
 **Taffy is rejected** (it builds a second node tree beside ours, which is
 the duplication the flat table exists to avoid, and Lumen's own CP5

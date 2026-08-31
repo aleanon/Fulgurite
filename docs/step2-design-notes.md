@@ -27,6 +27,12 @@ stack-free passes need two more index fields:
 
 ### 2. Dispatch is per *container* per phase, not per node-visit
 
+> **SUPERSEDED 2026-09-01** (`docs/results-traversal.md`). This rule was
+> the best flat-loop shape, and it beat naive dyn recursion; recursive
+> descent over `&dyn` children then beat *it* by 34–39%, because the flat
+> path's `desc → kind → vtable` indirection costs more than the dispatch
+> granularity saves. Kept as the record of the intermediate result.
+
 The first cut dispatched per child (each child pulled constraints through
 its parent's ops; each placement advanced a cursor through dispatch) and
 **lost to the naive dyn tree at every size** — ~3 indirect calls per node

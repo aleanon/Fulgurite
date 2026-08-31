@@ -27,10 +27,14 @@ A verification effort has one central obligation, not a scattered set.
   range for `KIND_LIST` — are properties of a compile-time constant, not
   of a runtime heap. They can be discharged by const-eval, today, with
   no external tool (see "Tier 0").
-- **No recursion, no allocation, no dynamic tree.** Every pass is
-  `for i in 0..table.len()` over immutable structure. Loop bounds are
-  literal; termination is trivial; the state space for a fixed table is
-  finite and small. This is the shape bounded model checkers handle best.
+- ~~**No recursion, no allocation, no dynamic tree.**~~ **Corrected
+  2026-09-01:** the passes are now recursive descent
+  (`docs/results-traversal.md`), and that is *better* for verification,
+  not worse — bounded structural recursion gives proofs induction over
+  the tree, which Kani and Creusot handle more naturally than flat-loop
+  index invariants. Depth is a compile-time `DEPTH` constant with a cap,
+  so termination and stack bounds are facts about a constant. No
+  allocation and no dynamic tree still hold.
 - **First-order dispatch.** Ops are monomorphic `fn` pointers, and after
   `docs/events-decision.md` handlers are `fn` pointers too — no closures,
   therefore no captured environments to model. Verifying dispatch does
@@ -157,10 +161,13 @@ behind a benchmark, is equivalence-checked against the shipped path, and
 costs +8% traversal at 100k nodes while *saving* static memory and
 deleting the entire unsafe surface.
 
-**Nothing is adopted and this is parked.** Reopen it when a formal
-verification push is actually scheduled; the outstanding work is porting
-`Repeat` and event dispatch to the safe path, which is where the estimate
-could still move.
+**Update 2026-09-01: adopted, and superseded upward.** The safe
+accessor path became the target, and the traversal measurement then
+showed recursive descent through `&dyn` children is faster still while
+being equally `unsafe`-free. `docs/plan-architecture-v2.md` M0 ports the
+core to it and adds a zero-`unsafe` gate on the release build. The
+verification *push* itself remains unscheduled; the surface it would
+verify is now the intended shape rather than a prototype.
 
 ## Present state
 

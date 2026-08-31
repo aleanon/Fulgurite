@@ -186,6 +186,10 @@ tooling: Kani over safe code and compile-time table assertions would
 suffice, where the current design needs Verus-class pointer-permission
 reasoning.
 
-Not adopted yet — this is a prototype behind a benchmark, and the
-remaining port (repeater, dispatch) is where the estimate could still
-move.
+**Status 2026-09-01: adopted, then overtaken.** The safe path was
+adopted (`docs/layout-and-storage-decisions.md` §0); the follow-up
+traversal measurement (`docs/results-traversal.md`) found recursive
+descent over `&dyn` children faster than *both* the unsafe table and this
+indexed accessor — so the accessor survives for index addressing (agent
+surface, journal, audit) while layout/paint recurse. The port is
+`docs/plan-architecture-v2.md` M0.

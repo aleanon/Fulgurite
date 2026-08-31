@@ -72,6 +72,12 @@ and calls our passes.
 
 ## Architectural decisions that must be made *first*
 
+> **All four decided 2026-09-01** — `docs/layout-and-storage-decisions.md`
+> (text storage, `Length` instead of taffy/flex, style array, §6 build
+> order) plus the traversal result in `docs/results-traversal.md`. The
+> work is sequenced in `docs/plan-architecture-v2.md`; Phase A below is
+> its M5.
+
 These are not effort items; they are forks in the road that later work
 depends on. Each is a gap in our own spec, not just versus Lumen.
 
