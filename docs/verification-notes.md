@@ -149,6 +149,19 @@ layout pass is proved panic-free and whose table structure is checked by
 the compiler is a defensible product claim in a way that "fast tree
 walk" is not.
 
+## Status (2026-09-01)
+
+The central question — is the `unsafe` load-bearing? — is **answered: no**
+(`docs/results-safe-prototype.md`). A safe `&dyn`-accessor path exists
+behind a benchmark, is equivalence-checked against the shipped path, and
+costs +8% traversal at 100k nodes while *saving* static memory and
+deleting the entire unsafe surface.
+
+**Nothing is adopted and this is parked.** Reopen it when a formal
+verification push is actually scheduled; the outstanding work is porting
+`Repeat` and event dispatch to the safe path, which is where the estimate
+could still move.
+
 ## Present state
 
 `fixtures/miri-smoke` is a release-shaped harness (no features, no

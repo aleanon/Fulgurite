@@ -642,6 +642,17 @@ remains** — which is why §10 Step 1 is the kill criterion.
 
 1. **Dispatch mechanism** (§5) — vtable array vs enum-with-external-escape.
    Requires measurement at realistic `KIND_COUNT` and node counts.
+   **MEASURED 2026-08-31, a third option:** a derive-generated
+   `node(i) -> &dyn Node` accessor, where the vtable rides on the
+   reference and `KIND_LIST` disappears entirely. Costs +8% traversal at
+   100k nodes with a cached index (under 1% of a realistic frame), is
+   *faster* than the vtable array below ~100 nodes, halves per-node
+   static data (32 B → 16 B), and removes every `unsafe` in the release
+   build. **Prototype retained, not adopted** — `Repeat` and event
+   dispatch are not ported, which is where the estimate could move. The
+   deciding factor is the long-term formal-verification goal, not
+   performance. See `docs/results-safe-prototype.md`,
+   `docs/verification-notes.md`.
 2. **Reload sequence for enum/`Either` migration** — when the saved value names
    a variant the new code no longer has, or `Either` saved `A` and the new code
    defaults to `B`. Rule: take the saved variant when it still exists, fall back
