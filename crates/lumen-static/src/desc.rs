@@ -51,6 +51,11 @@ pub struct NodeDesc {
     pub flags: u8,
     #[cfg(feature = "observe")]
     pub src: SrcLoc,
+    /// Author id (`#[widget_id("save")]`), the agent-facing stable
+    /// address — table indices are frame- and reload-stable but shift
+    /// under source edits. Empty = none.
+    #[cfg(feature = "observe")]
+    pub wid: &'static str,
 }
 
 impl NodeDesc {
@@ -82,6 +87,8 @@ impl NodeDesc {
             flags,
             #[cfg(feature = "observe")]
             src: SrcLoc::UNKNOWN,
+            #[cfg(feature = "observe")]
+            wid: "",
         }
     }
 
@@ -92,6 +99,16 @@ impl NodeDesc {
         #[cfg(feature = "observe")]
         {
             self.src = SrcLoc { file, line };
+        }
+        self
+    }
+
+    /// Stamp an author id (same zero-cost contract as [`Self::with_src`]).
+    #[allow(unused_mut, unused_variables)]
+    pub const fn with_id(mut self, id: &'static str) -> Self {
+        #[cfg(feature = "observe")]
+        {
+            self.wid = id;
         }
         self
     }

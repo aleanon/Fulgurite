@@ -12,6 +12,8 @@
 //! which does not exist yet — deferred, recorded in
 //! `docs/step5-observability.md`.
 
+pub use accesskit;
+
 use accesskit::{Node, NodeId, Rect, Role, Tree, TreeId, TreeUpdate};
 
 use crate::desc::{NodeDesc, NodeState, WidgetOps};
@@ -108,6 +110,9 @@ pub fn dump(
                 let src = table[idx].src;
                 if !src.file.is_empty() {
                     o.insert("src".into(), format!("{}:{}", src.file, src.line).into());
+                }
+                if !table[idx].wid.is_empty() {
+                    o.insert("wid".into(), table[idx].wid.into());
                 }
                 o.insert("kind".into(), kinds[table[idx].kind as usize].name.into());
             }

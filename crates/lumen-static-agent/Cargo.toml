@@ -1,0 +1,12 @@
+[package]
+name = "lumen-static-agent"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "lumen_static_agent"
+
+[dependencies]
+lumen-static = { path = "../lumen-static", features = ["observe"] }
+serde_json = "1"

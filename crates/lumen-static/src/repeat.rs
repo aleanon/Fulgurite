@@ -175,6 +175,7 @@ impl<T: Widget + Default> Repeat<T> {
     ) {
         let r: &Self = unsafe { &*(b.add(d.offset as usize) as *const Self) };
         node.set_role(accesskit::Role::List);
+        node.set_size_of_set(r.count);
         let inner = r.inner.borrow();
         for k in 0..inner.window.len() {
             let row = (inner.first + k) as u64;

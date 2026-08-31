@@ -67,6 +67,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "lumen-static-agent"
+version = "0.1.0"
+dependencies = [
+ "lumen-static",
+ "serde_json",
+]
+
+[[package]]
 name = "lumen-static-macros"
 version = "0.1.0"
 dependencies = [

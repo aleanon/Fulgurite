@@ -23,7 +23,7 @@ enum Axis {
     Column,
 }
 
-#[proc_macro_derive(StaticTree, attributes(widget))]
+#[proc_macro_derive(StaticTree, attributes(widget, widget_id))]
 pub fn derive_static_tree(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     match expand(input) {
@@ -81,6 +81,21 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
     let root_line = input.ident.span().start().line as u32;
     let field_line: Vec<u32> =
         fields.named.iter().map(|f| f.ident.as_ref().unwrap().span().start().line as u32).collect();
+    // #[widget_id("save")] — the agent-facing stable address (empty = none).
+    let field_wid: Vec<String> = fields
+        .named
+        .iter()
+        .map(|f| {
+            for attr in &f.attrs {
+                if attr.path().is_ident("widget_id") {
+                    if let Ok(lit) = attr.parse_args::<syn::LitStr>() {
+                        return lit.value();
+                    }
+                }
+            }
+            String::new()
+        })
+        .collect();
 
     if fuse {
         return expand_fused(
@@ -148,7 +163,7 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                     );
                     // Provenance of a child's root is its *field* site;
                     // its internals keep their own declaration sites.
-                    t[at] = t[at].with_src(::core::file!(), #field_line);
+                    t[at] = t[at].with_src(::core::file!(), #field_line).with_id(#field_wid);
                     if prev_root != 0 {
                         t[prev_root].next_sibling = at as u32;
                     }

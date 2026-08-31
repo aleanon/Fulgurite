@@ -80,6 +80,12 @@ Ordered by dependency, not value; P1 and P3 are the value.
 
 ### P0 — transport and session (small)
 
+**DONE 2026-08-31** (with P1, one commit). `crates/lumen-static-agent`:
+JSON-RPC 2.0 `Agent::dispatch(&TreeRef, &Value)` with Lumen's envelope;
+the host wrapper stayed thinner than planned — `TreeRef` borrows
+base/table/kinds/states per call, `Agent` holds only frame + timings.
+WebSocket deferred as planned.
+
 `lumen-static-agent` crate: JSON-RPC 2.0 `dispatch(&mut App?, &Value) ->
 Value` mirroring Lumen's envelope, method names, and error codes where
 semantics coincide (agent skills and muscle memory transfer). In-process
@@ -88,6 +94,20 @@ Requires a host-side "app" wrapper (base ptr + table + kinds + states +
 frame counter) — the first time we name that object; keep it thin.
 
 ### P1 — query parity from existing data (the bulk of read-side parity)
+
+**DONE 2026-08-31.** Shipped: `ui.getTree` (dump + `wid` + `src`),
+`ui.getLayout` (incl. constraints), `ui.probe`/`probeRegion` (deepest-hit
+over the snapshot, repeater instances included), `ui.resolve` (added —
+explicit resolution is useful on its own), `app.diagnostics` (incl.
+per-repeater rows/window via `size_of_set`), `ui.waitSettled`,
+`app.perf`. Author ids landed as `#[widget_id("save")]` on fields,
+stamped into `NodeDesc.wid` (observe-gated, same zero-cost builder
+pattern as `src`). Selector grammar as planned (`#id`, kind, `~text`,
+`@file:line`, index; space = conjunction) with teaching errors
+(`-32001` + available ids/kinds/files, `-32002` + candidates).
+Documented P1 limits: selectors resolve main-table nodes only
+(instances via probe/getTree); `waitSettled` is trivially true until
+animations exist. 9 protocol tests.
 
 All from table + `NodeState` + AccessKit snapshot, no new subsystems:
 
