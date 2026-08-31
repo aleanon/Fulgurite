@@ -1,6 +1,8 @@
 # Static-Tree Rust GUI Framework — Design Handoff
 
-**Status:** pre-implementation design notes
+**Status:** design handoff; §10 build order **complete** (2026-08-30);
+§5's traversal decision **superseded by measurement** (2026-09-01) — the
+current work queue is `docs/plan-architecture-v2.md`
 **Audience:** an engineering agent picking up implementation
 **Purpose:** capture decisions, rationale, and open questions so they don't get relitigated
 
@@ -80,6 +82,11 @@ Plus two implementation details that matter as much as the architecture: flat
 contiguous node storage addressed by `u32` handles rather than pointer chasing,
 and pipelining the two threads so frame N builds while frame N−1 rasterizes
 (roughly halves perceived latency at no algorithmic cost).
+
+**AMENDED 2026-09-01:** flat contiguous *state* storage (`[NodeState; N]`)
+stands; flat *traversal* does not — see §5's supersession note. Recursive
+descent over the static struct, writing into the flat state array, measured
+34–39% faster than iterating a flat table at every size tested.
 
 **Caveat to keep in mind:** this design pays real costs in memory and in
 structural-change work. For a UI where everything changes every frame, immediate
@@ -176,6 +183,21 @@ failure mode.
 ---
 
 ## 5. Central decision: reify the tree as a flat const table
+
+> **SUPERSEDED 2026-09-01 — traversal half only** (`docs/results-traversal.md`).
+> Storage as a static struct stands. Const `NODE_COUNT` stands. A const
+> table stands, slimmed, for *index addressing* (the agent surface,
+> journal and audit). What is overturned is *traversal*: iterating the
+> table through `desc → kind → vtable` costs three dependent loads per
+> node per phase, and recursive descent over `&dyn` children — the vtable
+> carried in the reference, no table read at all — measured 34–39% faster
+> at 10, 1k and 100k nodes, with devirtualization ruled out. §4's trap is
+> avoided the same way this section intended: children are called through
+> `&dyn`, so code is per *kind*, not per position; `#[fuse]` is the same
+> body with static calls. The i-cache/prefetch premise below was measured
+> false for this workload. Stack depth is a compile-time `DEPTH` cap. The
+> §12.1 dispatch question is closed by the same measurement.
+> Implementation: `docs/plan-architecture-v2.md` M0.
 
 **DECIDED.** Storage stays a static struct. Traversal does **not** use recursive
 generic descent. A derive macro emits a flat const table alongside the struct,
@@ -486,6 +508,11 @@ release cost is genuinely zero rather than "small".
 
 **Do these in order. Step 1 is a kill criterion.**
 
+**All six steps DONE (2026-08-30).** Subsequent work — agent parity
+P0–P4, the event system E0–E4, and the measurements that overturned §5 —
+is recorded in `docs/plan-agent-parity.md`, `docs/plan-events.md`,
+`docs/results-*.md`, and the v2 work queue `docs/plan-architecture-v2.md`.
+
 ### Step 1 — Validate the compile-time firewall (do this first)
 
 Build a deliberately ugly test app with ~200 components and measure incremental
@@ -642,7 +669,10 @@ remains** — which is why §10 Step 1 is the kill criterion.
 
 1. **Dispatch mechanism** (§5) — vtable array vs enum-with-external-escape.
    Requires measurement at realistic `KIND_COUNT` and node counts.
-   **MEASURED 2026-08-31, a third option:** a derive-generated
+   **CLOSED 2026-09-01.** Neither: recursive descent over `&dyn` children
+   (`docs/results-traversal.md`) beats both a vtable array and an indexed
+   accessor, and needs no `KIND_LIST` at all.
+   Earlier note — **MEASURED 2026-08-31, a third option:** a derive-generated
    `node(i) -> &dyn Node` accessor, where the vtable rides on the
    reference and `KIND_LIST` disappears entirely. Costs +8% traversal at
    100k nodes with a cached index (under 1% of a realistic frame), is
@@ -681,6 +711,9 @@ remains** — which is why §10 Step 1 is the kill criterion.
 6. **Parallel layout** — independent subtrees are trivially parallelizable given
    the flat table, but this was not explored. Interacts with the two-thread
    pipelining in §2.
+   **NOTE 2026-09-01:** with recursive traversal the natural unit is a
+   subtree call, which parallelizes as fork/join rather than as index
+   ranges. Still unexplored.
 7. **Reference target for §10 Step 1** — pick the machine and the rebuild-time
    budget before writing the test app, so the kill criterion is falsifiable.
    **RESOLVED 2026-08-30:** reference machine is the i9-13900KF/32-thread dev
