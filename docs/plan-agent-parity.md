@@ -127,6 +127,38 @@ All from table + `NodeState` + AccessKit snapshot, no new subsystems:
 
 ### P2 — "what changed": state diffing instead of a dependency graph
 
+**DONE 2026-08-31.** `crates/lumen-static-agent/src/journal.rs`: each
+`frame_done` records per-node geometry *and* per-node paint checksums,
+diffs against the previous frame, and appends to a 64-frame ring.
+Shipped `ui.lastChange { since }` (default: previous frame) and
+`ui.lastDamage { since }` — the latter was a bonus the same diff paid
+for. Findings carry `wid`, `kind` and `src`, so "what changed" names the
+line to edit.
+
+Design points worth keeping:
+- **Two flags, not one.** Checksum inequality is a superset of geometry
+  inequality (paint folds geometry), so changes classify as `geometry`,
+  `content`, or `both`. The `content` case is what a pure geometry diff
+  would miss: `"hello"` → `"world"` is invisible to bounds.
+- **Structural fingerprint.** A changed table shape (hot reload, swapped
+  tree) re-seeds the baseline and flags `reset: true` for that frame —
+  indices across the discontinuity are not comparable, so nothing is
+  claimed. This is the honest version of what a naïve index diff would
+  report as "everything changed".
+- **Truncation is reported.** An agent polling slower than the ring gets
+  `truncated: true` plus `oldest_frame`, never a silent half-answer.
+- **Reverted changes still report.** Coalescing keeps the union of flags
+  observed in the interval, with `old` at `since` and `new` now; a node
+  that moved and moved back did change, and the agent wants the flicker.
+
+Limits recorded: repeater *instances* are not individually diffed — a
+scroll or row edit surfaces as a `content` change on the repeater node
+(its paint op folds the window), with per-window detail available from
+`app.diagnostics`. Cost is one extra paint dispatch per node per frame,
+dev-surface only; no AccessKit snapshot is built at frame time (only per
+query). If the future invalidation work wants this diff as its
+acceptance oracle, the journal moves down into `lumen-static`.
+
 `ui.lastChange { since_frame }` from double-buffered `NodeState` diff +
 paint-checksum per subtree; report changed nodes with old/new geometry
 and `src`. Covers the *agent-facing* purpose of Lumen's

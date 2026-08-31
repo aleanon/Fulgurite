@@ -55,7 +55,8 @@ impl Fixture {
         let base = &app as *const App as *const u8;
         pass::layout(base, App::SUB_TABLE, App::KIND_LIST, &mut states, VIEW);
         let mut agent = Agent::new();
-        agent.frame_done(12_345, 6_789);
+        let tree = TreeRef { base, table: App::SUB_TABLE, kinds: App::KIND_LIST, states: &states };
+        agent.frame_done(&tree, 12_345, 6_789);
         Fixture { app, states, agent }
     }
 

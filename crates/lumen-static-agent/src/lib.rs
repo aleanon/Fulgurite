@@ -24,6 +24,10 @@ use lumen_static::observe::{self, accesskit};
 use lumen_static::Widget;
 use serde_json::{json, Map, Value};
 
+mod journal;
+
+use journal::{Coalesced, Journal};
+
 /// A laid-out tree, borrowed for one dispatch.
 #[derive(Clone, Copy)]
 pub struct TreeRef<'a> {
@@ -44,13 +48,14 @@ impl<'a> TreeRef<'a> {
     }
 }
 
-/// Per-session agent state: frame counter and last pass timings, fed by
-/// the host after each frame (`app.perf` reports them).
+/// Per-session agent state: frame counter, last pass timings, and the
+/// change journal (P2), all fed by the host at each frame boundary.
 #[derive(Default)]
 pub struct Agent {
     pub frame: u64,
     pub last_layout_ns: u64,
     pub last_paint_ns: u64,
+    journal: Journal,
 }
 
 const NOT_FOUND: i64 = -32001;
@@ -65,11 +70,15 @@ impl Agent {
         Self::default()
     }
 
-    /// Record a completed frame (host calls this after layout + paint).
-    pub fn frame_done(&mut self, layout_ns: u64, paint_ns: u64) {
+    /// Record a completed frame: the host calls this after layout +
+    /// paint, and it is what makes `ui.lastChange`/`ui.lastDamage`
+    /// answerable. Costs one extra paint-op dispatch per node (see
+    /// `journal`); it is a dev surface, not a release path.
+    pub fn frame_done(&mut self, tree: &TreeRef, layout_ns: u64, paint_ns: u64) {
         self.frame += 1;
         self.last_layout_ns = layout_ns;
         self.last_paint_ns = paint_ns;
+        self.journal.record(self.frame, tree);
     }
 
     /// Dispatch one JSON-RPC 2.0 request, returning the response object.
@@ -98,6 +107,8 @@ impl Agent {
             }
             "ui.probe" => self.probe(tree, params),
             "ui.probeRegion" => self.probe_region(tree, params),
+            "ui.lastChange" => Ok(self.last_change(tree, params)),
+            "ui.lastDamage" => Ok(self.last_damage(params)),
             "app.diagnostics" => Ok(self.diagnostics(tree)),
             "ui.waitSettled" => {
                 // No animation scheduler exists: a laid-out tree is settled.
@@ -160,6 +171,74 @@ impl Agent {
         Ok(Value::Array(hits))
     }
 
+    /// `since` defaults to the previous frame, so a bare call means
+    /// "what changed in the last frame".
+    fn since_param(&self, params: &Value) -> u64 {
+        params
+            .get("since")
+            .and_then(Value::as_u64)
+            .unwrap_or_else(|| self.frame.saturating_sub(1))
+    }
+
+    /// P2: what changed since a frame, from the state diff — the
+    /// agent-facing purpose of Lumen's dependency-graph queries, without
+    /// a dependency graph.
+    fn last_change(&self, tree: &TreeRef, params: &Value) -> Value {
+        let since = self.since_param(params);
+        let report = self.journal.since(since);
+        let changed: Vec<Value> = report
+            .changed
+            .iter()
+            .map(|c| {
+                let mut o = Map::new();
+                let i = c.idx as usize;
+                let d = &tree.table[i];
+                o.insert("index".into(), i.into());
+                o.insert("kind".into(), tree.kinds[d.kind as usize].name.into());
+                if !d.wid.is_empty() {
+                    o.insert("wid".into(), d.wid.into());
+                }
+                if !d.src.file.is_empty() {
+                    o.insert("src".into(), format!("{}:{}", d.src.file, d.src.line).into());
+                }
+                o.insert("change".into(), change_kind(c).into());
+                o.insert(
+                    "old".into(),
+                    json!({ "size": [c.old.size.w, c.old.size.h], "pos": [c.old.pos.x, c.old.pos.y] }),
+                );
+                o.insert(
+                    "new".into(),
+                    json!({ "size": [c.new.size.w, c.new.size.h], "pos": [c.new.pos.x, c.new.pos.y] }),
+                );
+                Value::Object(o)
+            })
+            .collect();
+        json!({
+            "frame": self.frame,
+            "since": since,
+            "changed": changed,
+            "truncated": report.truncated,
+            "reset": report.reset,
+            "oldest_frame": report.oldest_frame,
+        })
+    }
+
+    /// The union of everything that changed — Lumen's `ui.lastDamage`,
+    /// derived from the same diff rather than from paint bookkeeping.
+    fn last_damage(&self, params: &Value) -> Value {
+        let since = self.since_param(params);
+        let report = self.journal.since(since);
+        let rect = journal::damage(&report.changed);
+        json!({
+            "frame": self.frame,
+            "since": since,
+            "rect": rect.map(|r| json!([r[0], r[1], r[2], r[3]])).unwrap_or(Value::Null),
+            "nodes": report.changed.len(),
+            "truncated": report.truncated,
+            "reset": report.reset,
+        })
+    }
+
     fn diagnostics(&self, tree: &TreeRef) -> Value {
         let ix = Index::build(tree);
         let rigid = tree.table.iter().filter(|d| d.is_rigid()).count();
@@ -188,6 +267,14 @@ impl Agent {
             "table_bytes": std::mem::size_of_val(tree.table),
             "state_bytes": std::mem::size_of_val(tree.states),
         })
+    }
+}
+
+fn change_kind(c: &Coalesced) -> &'static str {
+    match (c.geometry, c.content) {
+        (true, true) => "both",
+        (true, false) => "geometry",
+        _ => "content",
     }
 }
 
