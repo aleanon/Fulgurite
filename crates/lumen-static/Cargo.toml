@@ -12,13 +12,13 @@ lumen-static-macros = { path = "../lumen-static-macros" }
 # Dev-surface deps (S9: one gate, zero release cost). Hot reload (S7)
 # serializes keep-fields as JSON — debuggability and per-field fallback
 # beat compactness on a dev-only path.
-serde = { version = "1", optional = true }
+serde = { version = "1", features = ["derive"], optional = true }
 serde_json = { version = "1", optional = true }
 accesskit = { version = "0.24", optional = true }
 
 [features]
 # The S9 dev surface: additive, off in release builds.
-observe = ["dep:accesskit", "dep:serde_json"]
+observe = ["dep:accesskit", "dep:serde", "dep:serde_json"]
 reload = ["dep:serde", "dep:serde_json"]
 
 [dev-dependencies]

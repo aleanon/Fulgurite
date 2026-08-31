@@ -81,6 +81,25 @@ impl Reloadable for Label {
     }
 }
 
+/// `on_click` is code: `fresh()` supplies the new dylib's pointer and
+/// `restore` never touches it — the whole point of
+/// `docs/events-decision.md`. Written by hand because the derive's
+/// untagged-field rule would demand `Reloadable` of an `fn` type.
+impl<S: 'static> Reloadable for crate::ops::Button<S> {
+    fn save(&self) -> Value {
+        Value::String(self.label.to_owned())
+    }
+    fn fresh() -> Self {
+        Self::default()
+    }
+    fn restore(&mut self, saved: &Value) {
+        match saved.as_str() {
+            Some(s) => self.label = Box::leak(s.to_owned().into_boxed_str()),
+            None => log_fallback("Button", "label", "saved value is not a string"),
+        }
+    }
+}
+
 impl Reloadable for Fixed {
     fn save(&self) -> Value {
         json!({ "w": self.w, "h": self.h })

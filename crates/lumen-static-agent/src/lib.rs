@@ -20,6 +20,8 @@
 //! reachable through `ui.probe`/`ui.getTree` (documented P1 limit).
 
 use lumen_static::desc::{NodeDesc, NodeState, WidgetOps};
+use lumen_static::event::{Event, Key};
+use lumen_static::hit::{hit_test, Hit};
 use lumen_static::observe::{self, accesskit};
 use lumen_static::Widget;
 use serde_json::{json, Map, Value};
@@ -100,6 +102,98 @@ impl Agent {
         }
     }
 
+    /// Dispatch including the `input.*` methods, which need somewhere to
+    /// put events. Everything the agent synthesizes goes through the
+    /// host's **one queue** — never straight into a handler — so an agent
+    /// session replays as a test (plan E4).
+    pub fn dispatch_input(&self, host: &mut dyn Host, req: &Value) -> Value {
+        let id = req.get("id").cloned().unwrap_or(Value::Null);
+        let method = req.get("method").and_then(Value::as_str).unwrap_or("");
+        if !method.starts_with("input.") {
+            let tree = host.tree();
+            return self.dispatch(&tree, req);
+        }
+        let params = req.get("params").cloned().unwrap_or_else(|| json!({}));
+        match self.handle_input(host, method, &params) {
+            Ok(result) => json!({ "jsonrpc": "2.0", "id": id, "result": result }),
+            Err((code, message, data)) => json!({
+                "jsonrpc": "2.0", "id": id,
+                "error": { "code": code, "message": message, "data": data }
+            }),
+        }
+    }
+
+    fn handle_input(&self, host: &mut dyn Host, method: &str, params: &Value) -> RpcResult {
+        match method {
+            "input.click" | "input.invokeAction" => {
+                let (x, y) = self.point_param(host, params)?;
+                host.enqueue(Event::PointerDown { x, y });
+                host.enqueue(Event::PointerUp { x, y });
+                Ok(json!({ "frame": host.pump(), "at": [x, y] }))
+            }
+            "input.hover" => {
+                let (x, y) = self.point_param(host, params)?;
+                host.enqueue(Event::PointerMove { x, y });
+                Ok(json!({ "frame": host.pump(), "at": [x, y] }))
+            }
+            "input.scroll" => {
+                let (x, y) = self.point_param(host, params)?;
+                let dy = params.get("dy").and_then(Value::as_f64).unwrap_or(0.0) as f32;
+                host.enqueue(Event::Scroll { x, y, dy });
+                Ok(json!({ "frame": host.pump(), "at": [x, y], "dy": dy }))
+            }
+            "input.key" => {
+                let name = params
+                    .get("key")
+                    .and_then(Value::as_str)
+                    .ok_or((INVALID_PARAMS, "missing `key`".into(), Value::Null))?;
+                let key = parse_key(name).ok_or_else(|| {
+                    (INVALID_PARAMS, format!("unknown key `{name}`"), json!({ "known": KEY_NAMES }))
+                })?;
+                let down = params.get("down").and_then(Value::as_bool).unwrap_or(true);
+                host.enqueue(Event::Key { key, down });
+                Ok(json!({ "frame": host.pump() }))
+            }
+            "input.type" => {
+                let text = params
+                    .get("text")
+                    .and_then(Value::as_str)
+                    .ok_or((INVALID_PARAMS, "missing `text`".into(), Value::Null))?;
+                for ch in text.chars() {
+                    host.enqueue(Event::Text { ch });
+                }
+                Ok(json!({ "frame": host.pump(), "chars": text.chars().count() }))
+            }
+            _ => Err((METHOD_NOT_FOUND, format!("unknown method `{method}`"), Value::Null)),
+        }
+    }
+
+    /// `{x, y}` directly, or the centre of whatever `selector` resolves
+    /// to — so agents can click by author id and never compute geometry.
+    fn point_param(
+        &self,
+        host: &dyn Host,
+        params: &Value,
+    ) -> Result<(f32, f32), (i64, String, Value)> {
+        if let (Some(x), Some(y)) = (
+            params.get("x").and_then(Value::as_f64),
+            params.get("y").and_then(Value::as_f64),
+        ) {
+            return Ok((x as f32, y as f32));
+        }
+        let tree = host.tree();
+        let tree = &tree;
+        let ix = Index::build(tree);
+        let e = resolve_one(&ix, selector_param(params)?)?;
+        let i = e.idx.ok_or((
+            NOT_FOUND,
+            "selector resolved to virtualized content; pass x/y instead".into(),
+            Value::Null,
+        ))?;
+        let st = &tree.states[i];
+        Ok((st.pos.x + st.size.w / 2.0, st.pos.y + st.size.h / 2.0))
+    }
+
     fn handle(&self, tree: &TreeRef, method: &str, params: &Value) -> RpcResult {
         match method {
             "ui.getTree" => Ok(observe::dump(tree.base, tree.table, tree.kinds, tree.states)),
@@ -148,19 +242,42 @@ impl Agent {
         Ok(Value::Object(out))
     }
 
+    /// Uses the core hit test (plan E1), not the AccessKit snapshot —
+    /// the same code path input dispatch takes, so probe and click can
+    /// never disagree about what is under a point.
     fn probe(&self, tree: &TreeRef, params: &Value) -> RpcResult {
-        let (x, y) = (f64_param(params, "x")?, f64_param(params, "y")?);
-        let ix = Index::build(tree);
-        let hit = ix
-            .entries
-            .iter()
-            .enumerate()
-            .filter(|(_, e)| e.contains(x, y))
-            .max_by_key(|(pos, e)| (e.depth, *pos));
-        match hit {
-            Some((_, e)) => Ok(ix.summary(e)),
+        let (x, y) = (f64_param(params, "x")? as f32, f64_param(params, "y")? as f32);
+        match hit_test(tree.base, tree.table, tree.kinds, tree.states, x, y) {
+            Some(h) => Ok(self.hit_summary(tree, &h)),
             None => Ok(Value::Null),
         }
+    }
+
+    /// A hit rendered with the same node ids `observe` uses, so agents can
+    /// carry ids between `ui.getTree` and `ui.probe`.
+    fn hit_summary(&self, tree: &TreeRef, h: &Hit) -> Value {
+        let mut o = self.node_ident(tree, h.node);
+        let st = &tree.states[h.node as usize];
+        o.insert(
+            "bounds".into(),
+            json!([st.pos.x, st.pos.y, st.pos.x + st.size.w, st.pos.y + st.size.h]),
+        );
+        match h.inner {
+            // Mirrors Repeat::observe_op's encoding.
+            Some(inn) => {
+                let id = (1u64 << 63)
+                    | ((h.node as u64 + 1) << 44)
+                    | (inn.row << 12)
+                    | inn.node as u64;
+                o.insert("id".into(), id.into());
+                o.insert("row".into(), inn.row.into());
+                o.insert("inner".into(), inn.node.into());
+            }
+            None => {
+                o.insert("id".into(), (h.node as u64 + 1).into());
+            }
+        }
+        Value::Object(o)
     }
 
     fn probe_region(&self, tree: &TreeRef, params: &Value) -> RpcResult {
@@ -339,13 +456,50 @@ fn change_kind(c: &Coalesced) -> &'static str {
     }
 }
 
+/// The mutable host surface the `input.*` methods need.
+///
+/// It hands out the tree view as well as taking events, because the tree
+/// lives *inside* the host: a caller cannot hold a `TreeRef` borrowed
+/// from the host and pass `&mut host` at the same time. Handing the view
+/// out per call keeps each read borrow short and ends it before anything
+/// mutates.
+///
+/// Synthesized input enters the same queue as OS input, and `pump` is the
+/// host's ordinary frame step — so nothing an agent does can take a path
+/// a real user could not.
+pub trait Host {
+    fn tree(&self) -> TreeRef<'_>;
+    fn enqueue(&mut self, ev: Event);
+    /// Drain the queue, re-lay out, record the frame; returns its number.
+    fn pump(&mut self) -> u64;
+}
+
+const KEY_NAMES: [&str; 11] =
+    ["Enter", "Escape", "Tab", "Backspace", "Delete", "Left", "Right", "Up", "Down", "Home", "End"];
+
+fn parse_key(name: &str) -> Option<Key> {
+    Some(match name {
+        "Enter" => Key::Enter,
+        "Escape" => Key::Escape,
+        "Tab" => Key::Tab,
+        "Backspace" => Key::Backspace,
+        "Delete" => Key::Delete,
+        "Left" => Key::Left,
+        "Right" => Key::Right,
+        "Up" => Key::Up,
+        "Down" => Key::Down,
+        "Home" => Key::Home,
+        "End" => Key::End,
+        _ => return None,
+    })
+}
+
 // ---- snapshot index ---------------------------------------------------------
 
 struct Entry {
     id: u64,
     node: accesskit::Node,
     children: Vec<u64>,
-    depth: u32,
     /// Main-table index, when this is not a synthesized instance node.
     idx: Option<usize>,
 }
@@ -353,9 +507,6 @@ struct Entry {
 impl Entry {
     fn bounds(&self) -> Option<accesskit::Rect> {
         self.node.bounds()
-    }
-    fn contains(&self, x: f64, y: f64) -> bool {
-        self.bounds().is_some_and(|b| x >= b.x0 && x < b.x1 && y >= b.y0 && y < b.y1)
     }
     fn intersects(&self, x: f64, y: f64, w: f64, h: f64) -> bool {
         self.bounds()
@@ -374,7 +525,7 @@ struct Index<'a> {
 impl<'a> Index<'a> {
     fn build(tree: &'a TreeRef<'a>) -> Self {
         let update = observe::snapshot(tree.base, tree.table, tree.kinds, tree.states);
-        let mut entries: Vec<Entry> = update
+        let entries: Vec<Entry> = update
             .nodes
             .into_iter()
             .map(|(nid, node)| {
@@ -384,21 +535,10 @@ impl<'a> Index<'a> {
                 } else {
                     None
                 };
-                Entry { id: nid.0, node, children, depth: 0, idx }
+                Entry { id: nid.0, node, children, idx }
             })
             .collect();
 
-        // Depths via BFS over children links from the root (id 1).
-        let pos_of: std::collections::HashMap<u64, usize> =
-            entries.iter().enumerate().map(|(p, e)| (e.id, p)).collect();
-        let mut queue = std::collections::VecDeque::from([(1u64, 0u32)]);
-        while let Some((id, depth)) = queue.pop_front() {
-            let Some(&p) = pos_of.get(&id) else { continue };
-            entries[p].depth = depth;
-            for c in entries[p].children.clone() {
-                queue.push_back((c, depth + 1));
-            }
-        }
         Index { tree, entries }
     }
 

@@ -3,7 +3,10 @@
 
 pub mod assemble;
 pub mod desc;
+pub mod event;
 pub mod fuse;
+pub mod hit;
+pub mod inbox;
 #[cfg(feature = "observe")]
 pub mod observe;
 pub mod ops;
@@ -13,6 +16,7 @@ pub mod reload;
 pub mod repeat;
 pub mod widget;
 
-pub use desc::{Constraints, NodeDesc, NodeState, Point, Size, WidgetOps, NO_PARENT};
+pub use desc::{Constraints, Inner, NodeDesc, NodeState, Point, Size, WidgetOps, NO_PARENT};
+pub use event::{Event, EventCtx, InputQueue, Key};
 pub use lumen_static_macros::{Reloadable, StaticTree};
 pub use widget::Widget;

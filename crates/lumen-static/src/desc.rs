@@ -64,6 +64,8 @@ impl NodeDesc {
     /// derived containers with children and for repeaters (which have no
     /// *table* children but place their materialized instances).
     pub const CONTAINER: u8 = 1 << 1;
+    /// The node can take keyboard focus (plan E2).
+    pub const FOCUSABLE: u8 = 1 << 2;
 
     /// Placeholder for const table construction; every slot is overwritten.
     pub const EMPTY: NodeDesc = NodeDesc::new(0, 0, 0, 0, NO_PARENT, 0, 0);
@@ -121,6 +123,11 @@ impl NodeDesc {
     #[inline]
     pub const fn is_container(&self) -> bool {
         self.flags & Self::CONTAINER != 0
+    }
+
+    #[inline]
+    pub const fn is_focusable(&self) -> bool {
+        self.flags & Self::FOCUSABLE != 0
     }
 }
 
@@ -196,6 +203,30 @@ pub struct WidgetOps {
     pub place: fn(base: *const u8, table: &[NodeDesc], st: &mut [NodeState], i: usize),
     /// Fold paint-relevant output into a checksum (display-list stand-in).
     pub paint: fn(base: *const u8, d: &NodeDesc, st: &NodeState, out: &mut u64),
+    /// Resolve a point that landed on this node into *off-table* content
+    /// it owns (a repeater's materialized rows). `None` — the default —
+    /// means the node itself is the deepest hit, which is also why a
+    /// fused subtree is opaque to input: it has no table children and no
+    /// hit op, so it answers as one node (Step 6's "fuse display cells,
+    /// not interactive regions", enforced rather than advised).
+    pub hit: fn(base: *const u8, d: &NodeDesc, st: &NodeState, x: f32, y: f32) -> Option<Inner>,
+    /// Offer an event to this node. Returns true if it was consumed.
+    ///
+    /// # Safety contract (extends the struct's)
+    /// `state` must point to the `S` the tree's kinds were monomorphized
+    /// for, derived from the same live borrow as `base`. Implementations
+    /// **must copy their handler `fn` pointer out of the widget before
+    /// materializing `&mut S`** — the widget usually lives inside `S`,
+    /// so holding a shared reference into it across the unique borrow
+    /// would alias (`docs/plan-events.md` E2).
+    pub event: fn(
+        base: *const u8,
+        state: *mut u8,
+        d: &NodeDesc,
+        st: &NodeState,
+        ev: &crate::event::Event,
+        ctx: &crate::event::EventCtx,
+    ) -> bool,
     /// Fill this kind's accessibility node (role, label, value, extra
     /// subtrees for virtualized content). Dev surface, §9.
     #[cfg(feature = "observe")]
@@ -263,11 +294,38 @@ impl WidgetOps {
             up,
             place,
             paint,
+            hit: default_hit,
+            event: default_event,
             #[cfg(feature = "observe")]
             observe: default_observe,
             #[cfg(feature = "observe")]
             stats: default_stats,
         }
+    }
+
+    /// Override the default (no off-table content) hit resolution.
+    pub const fn with_hit(
+        mut self,
+        hit: fn(*const u8, &NodeDesc, &NodeState, f32, f32) -> Option<Inner>,
+    ) -> Self {
+        self.hit = hit;
+        self
+    }
+
+    /// Override the default (ignores everything) event handling.
+    pub const fn with_event(
+        mut self,
+        event: fn(
+            *const u8,
+            *mut u8,
+            &NodeDesc,
+            &NodeState,
+            &crate::event::Event,
+            &crate::event::EventCtx,
+        ) -> bool,
+    ) -> Self {
+        self.event = event;
+        self
     }
 
     /// Override the default (empty) observe contribution.
@@ -285,6 +343,32 @@ impl WidgetOps {
     }
 }
 
+/// Off-table content a node owns, resolved from a point (plan E1).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Inner {
+    /// Which row of virtualized content.
+    pub row: u64,
+    /// Node index within that row's template table.
+    pub node: u32,
+    /// The template node's absolute origin, for local coordinates.
+    pub origin: Point,
+}
+
 /// Shared no-op for leaf `down`/`place` slots (never dispatched: the passes
 /// gate on `child_count > 0`).
 pub fn leaf_nop(_b: *const u8, _t: &[NodeDesc], _st: &mut [NodeState], _i: usize) {}
+
+fn default_hit(_b: *const u8, _d: &NodeDesc, _st: &NodeState, _x: f32, _y: f32) -> Option<Inner> {
+    None
+}
+
+fn default_event(
+    _b: *const u8,
+    _s: *mut u8,
+    _d: &NodeDesc,
+    _st: &NodeState,
+    _e: &crate::event::Event,
+    _c: &crate::event::EventCtx,
+) -> bool {
+    false
+}

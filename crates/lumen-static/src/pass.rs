@@ -111,3 +111,86 @@ pub fn paint(
         (kinds[d.kind as usize].paint)(base, d, s, out);
     }
 }
+
+/// Dispatch one input event against a laid-out tree — plan E2.
+///
+/// Pointer events hit-test; keyboard events go to `focus`. The event is
+/// offered to the hit node's kind and then to each ancestor until one
+/// consumes it (leaf → root), so a container can act as a fallback for
+/// content that ignored the event.
+///
+/// # Contract (extends `WidgetOps`'s)
+/// `state` and `base` must be derived from the same live borrow of the
+/// application state — the widget tree is normally a field of it — and
+/// `st` must **not** live inside that state (layout output is a separate
+/// array in every shape this framework supports). No reference into
+/// either is held across a handler call: each event op copies its `fn`
+/// pointer out before materializing `&mut S`.
+pub fn dispatch(
+    state: *mut u8,
+    base: *const u8,
+    table: &[NodeDesc],
+    kinds: &[&'static WidgetOps],
+    st: &[NodeState],
+    focus: &mut Option<u32>,
+    ev: &crate::event::Event,
+) -> bool {
+    use crate::event::{Event, EventCtx};
+
+    let (start, ctx) = match ev.position() {
+        Some(p) => {
+            let Some(h) = crate::hit::hit_test(base, table, kinds, st, p.x, p.y) else {
+                return false;
+            };
+            // Pointer-down moves focus to the deepest focusable node on
+            // the hit chain (or clears it, which is what clicking the
+            // background should do).
+            if matches!(ev, Event::PointerDown { .. }) {
+                let mut f = None;
+                let mut i = h.node as usize;
+                loop {
+                    if table[i].is_focusable() {
+                        f = Some(i as u32);
+                        break;
+                    }
+                    if table[i].parent == crate::desc::NO_PARENT {
+                        break;
+                    }
+                    i = table[i].parent as usize;
+                }
+                *focus = f;
+            }
+            let ctx = EventCtx {
+                node: h.node,
+                row: h.inner.map(|i| i.row),
+                inner: h.inner.map_or(0, |i| i.node),
+                pos: p,
+                local: h.local,
+            };
+            (h.node as usize, ctx)
+        }
+        None => match *focus {
+            Some(f) => (f as usize, EventCtx::at(f)),
+            None => return false,
+        },
+    };
+
+    let mut i = start;
+    loop {
+        let d = &table[i];
+        let mut ctx = ctx;
+        ctx.node = i as u32;
+        if i != start {
+            // Only the node actually hit owns the inner/row detail.
+            ctx.row = None;
+            ctx.inner = 0;
+        }
+        if (kinds[d.kind as usize].event)(base, state, d, &st[i], ev, &ctx) {
+            return true;
+        }
+        if d.parent == crate::desc::NO_PARENT {
+            return false;
+        }
+        i = d.parent as usize;
+    }
+}

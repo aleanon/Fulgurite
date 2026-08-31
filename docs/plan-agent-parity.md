@@ -244,9 +244,16 @@ finished-but-unreachable for months).
 
 ### P4 — input and actions (needs the event system)
 
-*The event system is now designed: `docs/events-decision.md` (fn-pointer
-handlers; data at the async seam) and `docs/plan-events.md`, whose E4
-milestone is this phase.*
+**DONE 2026-08-31**, as milestone E4 of `docs/plan-events.md` (design:
+`docs/events-decision.md`). Shipped `input.click`, `input.hover`,
+`input.scroll`, `input.key`, `input.type`, `input.invokeAction` — all
+*enqueueing* into the host's one queue rather than calling handlers, so
+an agent session replays as a test (asserted: the trace of a synthesized
+click is two ordinary pointer events, and replaying it on a fresh host
+reproduces the state). Targets are `{x,y}` or any P1 selector, clicking
+the node's centre. New `Host` trait (`tree`/`enqueue`/`pump`) is the
+first mutable host surface; `ui.probe` moved onto the core hit test so
+probe and click cannot disagree.
 
 The prerequisite is the `Msg` event dispatch + hit-testing + focus that
 §9's action synthesis already waits on. When it lands: `input.click/

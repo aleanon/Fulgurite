@@ -74,8 +74,10 @@ synthetic ids.
 
 ## Deferred, deliberately
 
-1. **Action synthesis** (§9 "synthesize events"): there is no event
-   system yet — nothing to synthesize into. Comes with event dispatch.
+1. ~~**Action synthesis**~~ — **done 2026-08-31**: the event system
+   landed (`docs/plan-events.md`), `Button` advertises
+   `accesskit::Action::Click`, and `input.invokeAction` synthesizes it
+   through the one input queue.
 2. **Live TreeUpdate diffing**: `snapshot` rebuilds the full tree; real
    adapters want incremental updates driven by the same dirty tracking
    that invalidation needs. Same future work item as §11's invalidation

@@ -152,8 +152,75 @@ impl<T: Widget + Default> Repeat<T> {
         }
     }
 
+    /// Map a point to the row and template node under it (plan E1). The
+    /// row comes from the window's laid-out instance states, so it is
+    /// recomputed every frame — which is exactly why a handler never
+    /// needs to capture an index (`docs/events-decision.md`).
+    fn hit_op(
+        b: *const u8,
+        d: &NodeDesc,
+        _st: &NodeState,
+        x: f32,
+        y: f32,
+    ) -> Option<crate::desc::Inner> {
+        let r: &Self = unsafe { &*(b.add(d.offset as usize) as *const Self) };
+        let inner = r.inner.borrow();
+        for k in 0..inner.window.len() {
+            let ist = &inner.states[k * T::NODE_COUNT..(k + 1) * T::NODE_COUNT];
+            if let Some(node) = crate::hit::deepest(T::SUB_TABLE, ist, x, y) {
+                return Some(crate::desc::Inner {
+                    row: (inner.first + k) as u64,
+                    node,
+                    origin: ist[node as usize].pos,
+                });
+            }
+        }
+        None
+    }
+
+    /// Re-dispatch into the hit instance: handlers declared on template
+    /// widgets run with `ctx.row` filled in.
+    fn event_op(
+        b: *const u8,
+        state: *mut u8,
+        d: &NodeDesc,
+        _st: &NodeState,
+        ev: &crate::event::Event,
+        ctx: &crate::event::EventCtx,
+    ) -> bool {
+        let Some(row) = ctx.row else { return false };
+        let r: &Self = unsafe { &*(b.add(d.offset as usize) as *const Self) };
+        // Copy what is needed out of the borrow before any handler runs:
+        // a handler may mutate the app state, and the repeater lives in it.
+        let (ibase, ist, mut node) = {
+            let inner = r.inner.borrow();
+            let Some(k) = (row as usize).checked_sub(inner.first) else { return false };
+            if k >= inner.window.len() {
+                return false;
+            }
+            let ibase = &inner.window[k] as *const T as *const u8;
+            let ist = inner.states[k * T::NODE_COUNT..(k + 1) * T::NODE_COUNT].to_vec();
+            (ibase, ist, ctx.inner as usize)
+        };
+        // Bubble within the template: leaf → template root.
+        loop {
+            let td = &T::SUB_TABLE[node];
+            let mut ictx = *ctx;
+            ictx.inner = node as u32;
+            if (T::KIND_LIST[td.kind as usize].event)(ibase, state, td, &ist[node], ev, &ictx) {
+                return true;
+            }
+            if td.parent == NO_PARENT {
+                return false;
+            }
+            node = td.parent as usize;
+        }
+    }
+
     pub const OPS: WidgetOps = {
-        let ops = WidgetOps::new("repeat", leaf_nop, Self::up_op, Self::place_op, Self::paint_op);
+        let ops = WidgetOps::new("repeat", leaf_nop, Self::up_op, Self::place_op, Self::paint_op)
+            .with_hit(Self::hit_op)
+            .with_event(Self::event_op);
         #[cfg(feature = "observe")]
         let ops = ops.with_observe(Self::observe_op).with_stats(Self::stats_op);
         ops

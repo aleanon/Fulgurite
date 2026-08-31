@@ -14,6 +14,7 @@
 //! sums child sizes plus spacing on that axis, takes the max crosswise.
 
 use crate::desc::{leaf_nop, Constraints, NodeDesc, NodeState, Point, Size, WidgetOps};
+use crate::event::{Event, EventCtx};
 use crate::widget::Widget;
 
 #[inline]
@@ -248,4 +249,109 @@ impl Widget for Spacer {
     const SUB_TABLE: &'static [NodeDesc] =
         &[NodeDesc::new(0, 0, 0, 0, crate::desc::NO_PARENT, 0, 0)];
     const KIND_LIST: &'static [&'static WidgetOps] = &[&SPACER_OPS];
+}
+
+// ---- interactive leaf --------------------------------------------------
+
+/// A clickable leaf. `on_click` is a plain `fn` pointer, never a closure:
+/// it cannot capture, so `fresh()` re-supplies it across a hot reload and
+/// no stale code pointer can survive (`docs/events-decision.md`). Payload
+/// that a closure would have captured arrives in [`EventCtx`] instead —
+/// notably `ctx.row` for buttons inside a repeater template.
+pub struct Button<S: 'static> {
+    pub label: &'static str,
+    pub on_click: fn(&mut S, &EventCtx),
+}
+
+pub fn ignore_click<S>(_: &mut S, _: &EventCtx) {}
+
+impl<S> Default for Button<S> {
+    fn default() -> Self {
+        Button { label: "", on_click: ignore_click::<S> }
+    }
+}
+
+impl<S: 'static> Button<S> {
+    /// Padding around the label, so a button is visibly larger than text.
+    const PAD: f32 = 8.0;
+
+    fn up_op(b: *const u8, t: &[NodeDesc], st: &[NodeState], i: usize) -> Size {
+        let x: &Self = unsafe { &*(b.add(t[i].offset as usize) as *const Self) };
+        st[i].constraints.clamp(Size {
+            w: 8.0 * x.label.len() as f32 + 2.0 * Self::PAD,
+            h: 16.0 + Self::PAD,
+        })
+    }
+
+    fn paint_op(b: *const u8, d: &NodeDesc, st: &NodeState, out: &mut u64) {
+        let x: &Self = unsafe { &*(b.add(d.offset as usize) as *const Self) };
+        fold_geom(out, d, st);
+        for &byte in x.label.as_bytes() {
+            fold(out, byte as u64);
+        }
+    }
+
+    /// The aliasing pattern every interactive widget repeats: the handler
+    /// pointer is *copied out* through a raw pointer first, so no shared
+    /// reference into the widget is alive when `&mut S` is created — the
+    /// widget almost always lives inside `S`.
+    fn event_op(
+        b: *const u8,
+        state: *mut u8,
+        d: &NodeDesc,
+        _st: &NodeState,
+        ev: &Event,
+        ctx: &EventCtx,
+    ) -> bool {
+        if !matches!(ev, Event::PointerUp { .. }) {
+            return false;
+        }
+        let handler = unsafe {
+            let p = b.add(d.offset as usize) as *const Self;
+            (*p).on_click
+        };
+        let s: &mut S = unsafe { &mut *(state as *mut S) };
+        handler(s, ctx);
+        true
+    }
+
+    #[cfg(feature = "observe")]
+    fn observe_op(
+        b: *const u8,
+        d: &NodeDesc,
+        _st: &NodeState,
+        _id: u64,
+        node: &mut accesskit::Node,
+        _extra: &mut Vec<(accesskit::NodeId, accesskit::Node)>,
+    ) {
+        let x: &Self = unsafe { &*(b.add(d.offset as usize) as *const Self) };
+        node.set_role(accesskit::Role::Button);
+        node.set_label(x.label);
+        // §9's action synthesis: the agent can now invoke this.
+        node.add_action(accesskit::Action::Click);
+    }
+
+    pub const OPS: WidgetOps = {
+        let ops = WidgetOps::new("button", leaf_nop, Self::up_op, leaf_nop, Self::paint_op)
+            .with_event(Self::event_op);
+        #[cfg(feature = "observe")]
+        let ops = ops.with_observe(Self::observe_op);
+        ops
+    };
+}
+
+impl<S: 'static> Widget for Button<S> {
+    const NODE_COUNT: usize = 1;
+    const KIND_COUNT: usize = 1;
+    const IS_RIGID: bool = false;
+    const SUB_TABLE: &'static [NodeDesc] = &[NodeDesc::new(
+        0,
+        0,
+        0,
+        0,
+        crate::desc::NO_PARENT,
+        0,
+        NodeDesc::FOCUSABLE,
+    )];
+    const KIND_LIST: &'static [&'static WidgetOps] = &[&Self::OPS];
 }

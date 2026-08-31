@@ -22,7 +22,13 @@ unlock for §9's action synthesis. This is a plan, not work done.*
   `WidgetOps` grows one clause: dispatch must pass the state pointer the
   tree was built for.
 
-## E0 — vocabulary and queue
+## Status: E0–E4 implemented 2026-08-31
+
+All five milestones landed in one pass; 14 new tests
+(`lumen-static/tests/events.rs`, `lumen-static-agent/tests/input.rs`).
+Deltas from the plan as written are recorded inline below.
+
+## E0 — vocabulary and queue — **DONE**
 
 `crates/lumen-static/src/event.rs`:
 
@@ -44,9 +50,12 @@ drained by the host once per frame. `EventCtx` carries what dispatch
 learned: node index, `row: Option<u64>` for repeater content, pointer
 position in node-local coordinates.
 
-Deliverable test: queue round-trips through serde (the replay seed).
+Deliverable test: queue round-trips through serde (the replay seed) —
+done, gated on `observe` so the *vocabulary* stays available in release
+while only *recording* is a dev feature. (`observe` gained `dep:serde`
+for this.)
 
-## E1 — hit testing in core
+## E1 — hit testing in core — **DONE**
 
 The agent's probe reconstructs hits from the AccessKit snapshot —
 dev-only and allocation-heavy. Dispatch needs the real thing:
@@ -65,10 +74,22 @@ hittable, which turns "fuse display cells, not interactive regions"
 (Step 6's cost list) from advice into behavior. The agent's `ui.probe`
 switches to this and stops building snapshots for hit tests.
 
-Deliverable tests: hit ↔ layout agreement on the P1 fixtures; repeater
-row resolution across scroll; fused node opacity.
+**Delta — the scan is simpler than planned.** No depth tracking is
+needed: all nodes containing a point form a single ancestor chain
+(children never escape parents, siblings never overlap — the same
+invariant that makes the audit reserve `W1003`/`W1004`), so in DFS order
+the *last* containing node is the deepest. One forward scan, no
+allocation. `hit.rs` says so and points at the guard test; the first
+construct that breaks the invariant must revisit both places at once.
 
-## E2 — handlers and dispatch
+Fused-node opacity needed no code: a fused subtree has no table children
+and no `hit` op, so it answers as one node — Step 6's "fuse display
+cells, not interactive regions" is now enforced rather than advised.
+
+Deliverable tests: hit ↔ layout agreement; repeater row resolution across
+scroll (row 2 after a two-row scroll); miss outside the tree.
+
+## E2 — handlers and dispatch — **DONE**
 
 First interactive leaf: `Button<S>` (generic over app state, concrete at
 the use site — the `Repeat<T>` pattern, single-node `SUB_TABLE`):
@@ -98,11 +119,19 @@ Hot reload: `Button<S>` gets a manual `Reloadable` impl like `Label`'s
 (`label` keep, `on_click` untouched) — the derive's untagged-field rule
 would otherwise demand `Reloadable` of an `fn` type.
 
-Deliverable tests: click mutates state through the tree; row click
-receives the right row after scrolling; reload demo gains a button whose
-keep-state survives while its handler provably runs new-dylib code.
+Deliverable tests: click mutates state through the tree; a non-interactive
+node does not consume; row click receives the right row *after* scrolling
+(0 then 5 — recomputed, never captured); focus follows pointer-down and
+clears on a non-focusable target; keys route to focus.
 
-## E3 — the async seam
+`Button<S>` carries the aliasing pattern in a comment where the next
+interactive widget will copy it: the handler is read out through a raw
+pointer *before* `&mut S` exists, because the widget lives inside `S`.
+`Reloadable for Button<S>` is hand-written (label keeps, `on_click`
+untouched) — the derive's untagged-field rule would otherwise demand
+`Reloadable` of an `fn` type.
+
+## E3 — the async seam — **DONE**
 
 `Inbox<M>`: host-owned mpsc receiver + cloneable sender. Deferred work
 (threads now, an executor behind `dyn` at the shell later — see the
@@ -111,10 +140,10 @@ sends *values*; the host drains per frame into an app-supplied
 `fn(&mut S, M)`. The rule from the decision doc is enforced by shape:
 the sender moves into the task, no code pointer does.
 
-Deliverable test: a message sent before a simulated swap is drained
-after it and interpreted by the "new" apply fn.
+Deliverable test: values cross a real thread boundary and are applied by
+the currently-loaded `apply` fn; draining twice yields nothing.
 
-## E4 — agent parity P4 (rides on E0–E2)
+## E4 — agent parity P4 (rides on E0–E2) — **DONE**
 
 `input.click {selector | x,y}`, `input.key`, `input.type`,
 `input.invokeAction` (AccessKit `Action::Click` → synthesized click at

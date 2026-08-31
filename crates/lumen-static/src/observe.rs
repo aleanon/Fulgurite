@@ -8,9 +8,10 @@
 //! row-stable synthetic ids (see `Repeat::observe_op`), so "the third
 //! row" keeps its id across scrolls *and* dylib swaps.
 //!
-//! Action synthesis (§9's "synthesize events") requires an event system,
-//! which does not exist yet — deferred, recorded in
-//! `docs/step5-observability.md`.
+//! Action synthesis (§9's "synthesize events") arrived with the event
+//! system: interactive kinds advertise their `accesskit::Action`s here,
+//! and the agent synthesizes them as ordinary queued input
+//! (`docs/plan-events.md` E4).
 
 pub use accesskit;
 

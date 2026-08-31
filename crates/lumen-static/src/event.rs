@@ -1,0 +1,125 @@
+//! Input events and the one queue — plan E0 (`docs/plan-events.md`).
+//!
+//! **One queue.** OS input, agent-synthesized input, and test input all
+//! enter [`InputQueue`], so anything an agent does replays as a test.
+//! The queue is host-owned and exists before any shell does: a winit (or
+//! headless, or agent) front end *feeds* it, it does not own it.
+//!
+//! Events are plain data and serialize under `observe` — recording a
+//! session is a dev concern, but the vocabulary itself is not, so the
+//! types are always present.
+
+use crate::desc::Point;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "observe", derive(serde::Serialize, serde::Deserialize))]
+pub enum Key {
+    Enter,
+    Escape,
+    Tab,
+    Backspace,
+    Delete,
+    Left,
+    Right,
+    Up,
+    Down,
+    Home,
+    End,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "observe", derive(serde::Serialize, serde::Deserialize))]
+pub enum Event {
+    PointerDown { x: f32, y: f32 },
+    PointerUp { x: f32, y: f32 },
+    PointerMove { x: f32, y: f32 },
+    Scroll { x: f32, y: f32, dy: f32 },
+    Key { key: Key, down: bool },
+    Text { ch: char },
+}
+
+impl Event {
+    /// Pointer position, for the events that carry one.
+    pub fn position(&self) -> Option<Point> {
+        match *self {
+            Event::PointerDown { x, y }
+            | Event::PointerUp { x, y }
+            | Event::PointerMove { x, y }
+            | Event::Scroll { x, y, .. } => Some(Point { x, y }),
+            Event::Key { .. } | Event::Text { .. } => None,
+        }
+    }
+}
+
+/// What dispatch learned about where an event landed. Handlers read
+/// their payload from here (and from their widget's own fields) — never
+/// from a capture, which is what keeps them `fn` pointers across a hot
+/// reload (`docs/events-decision.md`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct EventCtx {
+    /// Main-table index of the node that received the event.
+    pub node: u32,
+    /// For virtualized content: which row. `None` for ordinary nodes.
+    ///
+    /// This is the field that replaces `move |s| s.remove(idx)`: the row
+    /// is recomputed by hit testing every time, so it can never go stale
+    /// the way a captured index does.
+    pub row: Option<u64>,
+    /// Node index *within the template*, when `row` is set.
+    pub inner: u32,
+    /// Absolute pointer position, when the event carries one.
+    pub pos: Point,
+    /// Pointer position relative to the receiving node's origin.
+    pub local: Point,
+}
+
+impl EventCtx {
+    pub fn at(node: u32) -> Self {
+        EventCtx {
+            node,
+            row: None,
+            inner: 0,
+            pos: Point::default(),
+            local: Point::default(),
+        }
+    }
+}
+
+/// The single input queue (see the module note).
+#[derive(Default, Debug)]
+pub struct InputQueue {
+    q: std::collections::VecDeque<Event>,
+}
+
+impl InputQueue {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn push(&mut self, ev: Event) {
+        self.q.push_back(ev);
+    }
+
+    pub fn pop(&mut self) -> Option<Event> {
+        self.q.pop_front()
+    }
+
+    pub fn len(&self) -> usize {
+        self.q.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.q.is_empty()
+    }
+
+    /// Everything queued, oldest first — the recording seed.
+    pub fn iter(&self) -> impl Iterator<Item = &Event> {
+        self.q.iter()
+    }
+}
+
+impl Extend<Event> for InputQueue {
+    fn extend<T: IntoIterator<Item = Event>>(&mut self, iter: T) {
+        self.q.extend(iter);
+    }
+}
