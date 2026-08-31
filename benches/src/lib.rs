@@ -389,3 +389,14 @@ pub struct SafeCard {
     pub r3: SafeItem,
     pub r4: SafeItem,
 }
+
+/// 90 nodes, safe path — the code-size comparison shape.
+#[derive(StaticTree, SafeTree, Default)]
+#[widget(column, spacing = 0.0)]
+pub struct SafeBlock {
+    pub title: Label,
+    pub c1: SafeCard,
+    pub c2: SafeCard,
+    pub c3: SafeCard,
+    pub c4: SafeCard,
+}

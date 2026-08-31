@@ -538,7 +538,8 @@ fn expand_safe(input: DeriveInput) -> syn::Result<Ts2> {
                 const TABLE: &'static [NodeDesc] = <#name as ::lumen_static::Widget>::SUB_TABLE;
                 const COUNT: usize = <#name as ::lumen_static::Widget>::NODE_COUNT;
 
-                #[inline]
+                #[cfg_attr(feature = "safe_no_inline", inline(never))]
+                #[cfg_attr(not(feature = "safe_no_inline"), inline)]
                 fn node(&self, i: usize) -> &dyn Node {
                     if i == 0 {
                         return self;

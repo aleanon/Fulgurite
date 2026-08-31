@@ -20,6 +20,8 @@ accesskit = { version = "0.24", optional = true }
 # The S9 dev surface: additive, off in release builds.
 observe = ["dep:accesskit", "dep:serde", "dep:serde_json"]
 reload = ["dep:serde", "dep:serde_json"]
+# Forwarded to the derive: see docs/results-safe-prototype.md.
+safe_no_inline = ["lumen-static-macros/safe_no_inline"]
 
 [dev-dependencies]
 serde = { version = "1", features = ["derive"] }

@@ -8,6 +8,9 @@ publish = false
 [dependencies]
 lumen-static = { path = "../crates/lumen-static" }
 
+[features]
+safe_no_inline = ["lumen-static/safe_no_inline"]
+
 [[bin]]
 name = "crossover"
 path = "src/bin/crossover.rs"
@@ -15,3 +18,7 @@ path = "src/bin/crossover.rs"
 [[bin]]
 name = "safety"
 path = "src/bin/safety.rs"
+
+[[bin]]
+name = "memory"
+path = "src/bin/memory.rs"

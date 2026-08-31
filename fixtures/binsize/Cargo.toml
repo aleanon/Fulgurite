@@ -1,0 +1,22 @@
+[package]
+name = "binsize"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+# Code-size comparison: two binaries doing the same work over the same
+# 90-node shape, one per path. No dev-dependencies, no features.
+[dependencies]
+lumen-static = { path = "../../crates/lumen-static" }
+
+[features]
+safe_no_inline = ["lumen-static/safe_no_inline"]
+
+[[bin]]
+name = "bs-unsafe"
+path = "src/bin/bs_unsafe.rs"
+
+[[bin]]
+name = "bs-safe"
+path = "src/bin/bs_safe.rs"

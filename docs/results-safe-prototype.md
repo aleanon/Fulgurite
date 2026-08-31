@@ -65,6 +65,81 @@ Also worth weighing against §11's own calibration: in a mature retained
 GUI the tree walk is 5–15% of frame time. Eight percent of that is well
 under 1% of a frame.
 
+## Memory: measured, and it splits by *kind* of memory
+
+Speed was only half the question. Sizes are measured
+(`cargo run --release -p benches --bin memory`) and code sizes come from
+symbol sums over two isolated binaries that link one path each
+(`fixtures/binsize`).
+
+### Per-node data
+
+| | unsafe | safe |
+|---|---|---|
+| `NodeDesc` | **24 B** | **16 B** — `kind` and `offset` are both dead once the vtable rides on the `&dyn` and addressing is by index |
+| `KIND_LIST` | **8 B/node** | **0 B** |
+| `NodeState` | 32 B | 32 B |
+| resolved index | — | +16 B/node, *only if cached* |
+
+The kind list costs a full pointer per node, not per kind: derived kind
+lists are not deduplicated (`docs/step2-design-notes.md` §7), and for
+every shape in the benchmark `KIND_COUNT == NODE_COUNT` exactly. So the
+safe path halves per-node static data, 32 B → 16 B.
+
+### Code size (90-node tree, one path per binary)
+
+| | framework code |
+|---|---|
+| unsafe | **3,948 B** |
+| safe, accessor inlined (default) | 6,355 B (+61%) |
+| safe, accessor `#[inline(never)]` | **4,758 B (+20%)** |
+
+The inlined accessor is a single 1,914 B symbol for the 90-node root:
+rustc inlines the nested `node()` calls, so accessor code becomes
+O(`NODE_COUNT`) per *root* rather than O(fields) per *type*. That is a
+faint echo of §4's monomorphization trap, and it has a switch —
+`#[inline(never)]` on the generated accessor collapses it to 401 B across
+three symbols, one per component type, restoring "code scales with how
+much UI you wrote, not how much tree you built".
+
+The switch is a real dial, measured both ways
+(`--features safe_no_inline`):
+
+| | 10 nodes | 100k cached |
+|---|---|---|
+| unsafe | 75 ns | 684 µs |
+| safe, inlined | **69 ns** | 741 µs (+8%) |
+| safe, out of line | 85 ns | 783 µs (+13%) |
+
+### Putting it together
+
+For a 90-node tree, out-of-line accessor, slim descriptor:
+
+- **flash**: unsafe `3,948 + 2,160 + 720 = 6,828 B`; safe
+  `4,758 + 1,440 + 0 = 6,198 B` — safe is ~9% smaller.
+- **RAM**: identical at 32 B/node — *unless* the index is cached, which
+  adds 16 B/node (+50% RAM).
+
+The break-even is around **51 nodes**: the safe path pays ~810 B more
+code (for three component types) and saves 16 B per node of static data.
+Below that, unsafe uses less flash; above it, safe does, and the gap
+widens with node count.
+
+### The embedded reading
+
+On the profile that most wants verification, this lands well:
+
+- flash is where tables live, and the safe path wins there past ~50 nodes;
+- RAM is unchanged, because the index is exactly the thing you *don't*
+  cache when RAM is scarce;
+- and uncached is the right choice there anyway — at small node counts
+  the safe path is *faster* than the unsafe one (69 ns vs 75 ns at 10
+  nodes), so the configuration that costs no RAM is also the quick one.
+
+The 8%-at-100k figure is the desktop trade: spend 16 B/node of plentiful
+RAM on a cached index. The two profiles want opposite settings of the
+same dial, and neither setting requires `unsafe`.
+
 ## What the safe path deletes
 
 Not just the `unsafe` keyword:
