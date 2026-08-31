@@ -12,7 +12,7 @@
 
 use benches::{bench, Card, SafeCard, SafeTen, Ten};
 use lumen_static::assemble::Assembled;
-use lumen_static::safe::{self, Slab, Tree};
+use lumen_static::safe::{self, RNode, RSlab, Slab, Tree};
 use lumen_static::{pass, Constraints, NodeState, Widget};
 
 const ROOT_C: Constraints = Constraints { min_w: 0.0, max_w: 1920.0, min_h: 0.0, max_h: 100_000.0 };
@@ -80,6 +80,32 @@ fn safe_slab_cached<C: Tree + Default + 'static>(label: &str, iters: usize, coun
     });
 }
 
+/// Recursive descent — iced's traversal. One visit per node, children
+/// reached through `&dyn` so code stays O(kinds).
+fn recursive_root<T: RNode + Tree + Default>(label: &str, iters: usize) {
+    let t = T::default();
+    let mut st = vec![NodeState::default(); T::COUNT];
+    bench(label, iters, || {
+        t.layout(ROOT_C, &mut st, 0);
+        t.place(lumen_static::Point::default(), &mut st, 0);
+        let mut out = 0u64;
+        t.paint(&st, 0, &mut out);
+        out
+    });
+}
+
+fn recursive_slab<C: RNode + Tree + Default>(label: &str, iters: usize, count: usize) {
+    let slab = RSlab::<C>::new(count);
+    let mut st = vec![NodeState::default(); 1 + count * C::COUNT];
+    bench(label, iters, || {
+        slab.layout(ROOT_C, &mut st);
+        slab.place(&mut st);
+        let mut out = 0u64;
+        slab.paint(&st, &mut out);
+        out
+    });
+}
+
 fn unsafe_slab<C: Widget + Default>(label: &str, iters: usize, count: usize) {
     let mut a = Assembled::<C>::new(count);
     let base = a.base();
@@ -132,7 +158,26 @@ fn check_equivalence() {
         assert_eq!(u.size, s.size, "slab size mismatch at {i}");
         assert_eq!(u.pos, s.pos, "slab pos mismatch at {i}");
     }
-    println!("equivalence: both arms agree on every node's size and position\n");
+    // Recursive arm must agree too, or its numbers mean nothing.
+    let r = SafeTen::default();
+    let mut rst = [NodeState::default(); SafeTen::COUNT];
+    r.layout(ROOT_C, &mut rst, 0);
+    r.place(lumen_static::Point::default(), &mut rst, 0);
+    for i in 0..Ten::NODE_COUNT {
+        assert_eq!(ust[i].size, rst[i].size, "recursive size mismatch at {i}");
+        assert_eq!(ust[i].pos, rst[i].pos, "recursive pos mismatch at {i}");
+    }
+
+    let rslab = RSlab::<SafeCard>::new(45);
+    let mut rst = vec![NodeState::default(); 1 + 45 * SafeCard::COUNT];
+    rslab.layout(ROOT_C, &mut rst);
+    rslab.place(&mut rst);
+    for (i, (u, r)) in a.states.iter().zip(rst.iter()).enumerate() {
+        assert_eq!(u.size, r.size, "recursive slab size mismatch at {i}");
+        assert_eq!(u.pos, r.pos, "recursive slab pos mismatch at {i}");
+    }
+
+    println!("equivalence: flat-unsafe, flat-safe and recursive all agree\n");
 }
 
 fn main() {
@@ -142,16 +187,19 @@ fn main() {
     unsafe_root::<Ten>("10/unsafe", 200_000);
     safe_root::<SafeTen>("10/safe", 200_000);
     safe_indexed::<SafeTen>("10/safe-indexed", 200_000);
+    recursive_root::<SafeTen>("10/recursive", 200_000);
     println!();
 
     unsafe_slab::<Card>("1k/unsafe", 20_000, 45);
     safe_slab::<SafeCard>("1k/safe", 20_000, 45);
     safe_slab_indexed::<SafeCard>("1k/safe-indexed", 20_000, 45);
     safe_slab_cached::<SafeCard>("1k/safe-cached", 20_000, 45);
+    recursive_slab::<SafeCard>("1k/recursive", 20_000, 45);
     println!();
 
     unsafe_slab::<Card>("100k/unsafe", 300, 4545);
     safe_slab::<SafeCard>("100k/safe", 300, 4545);
     safe_slab_indexed::<SafeCard>("100k/safe-indexed", 300, 4545);
     safe_slab_cached::<SafeCard>("100k/safe-cached", 300, 4545);
+    recursive_slab::<SafeCard>("100k/recursive", 300, 4545);
 }

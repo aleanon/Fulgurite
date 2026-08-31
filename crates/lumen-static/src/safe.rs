@@ -275,3 +275,141 @@ pub fn paint_indexed(nodes: &[&dyn Node], table: &[NodeDesc], st: &[NodeState], 
         nodes[i].paint(d, &st[i], out);
     }
 }
+
+// ---- recursive descent: iced's traversal, for comparison -------------
+
+/// The alternative traversal: a container lays out its children by
+/// **calling them**, the way iced and Flutter do, instead of the flat
+/// loops above. Each node is visited exactly once — the parent gets the
+/// child's true final size back from the call, so nothing has to be
+/// estimated and corrected by a later pass.
+///
+/// Children are reached through `&dyn RNode`, deliberately: a *static*
+/// call to a concrete field would monomorphize the whole subtree, which
+/// is `#[fuse]` and already measured. This arm keeps code O(kinds).
+///
+/// Note what is absent: layout reads **no `NodeDesc` at all**. The
+/// structure lives in the types and the child state offsets are consts,
+/// so the table is only needed by the agent surface, not by the passes.
+pub trait RNode {
+    /// Lay out this subtree under `limits`, writing into `st` starting at
+    /// index `i`, and return this node's size.
+    fn layout(&self, limits: Constraints, st: &mut [NodeState], i: usize) -> Size;
+    /// Position this subtree with its origin at `at`.
+    fn place(&self, at: Point, st: &mut [NodeState], i: usize);
+    fn paint(&self, st: &[NodeState], i: usize, out: &mut u64);
+}
+
+#[inline]
+fn r_leaf_paint(st: &[NodeState], i: usize, out: &mut u64, extra: u64) {
+    let s = &st[i];
+    fold(out, extra);
+    fold(out, s.size.w.to_bits() as u64 ^ ((s.size.h.to_bits() as u64) << 32));
+    fold(out, s.pos.x.to_bits() as u64 ^ ((s.pos.y.to_bits() as u64) << 32));
+}
+
+impl RNode for Label {
+    fn layout(&self, limits: Constraints, st: &mut [NodeState], i: usize) -> Size {
+        let s = limits.clamp(Size { w: 8.0 * self.text.len() as f32, h: 16.0 });
+        st[i].constraints = limits;
+        st[i].size = s;
+        s
+    }
+    fn place(&self, at: Point, st: &mut [NodeState], i: usize) {
+        st[i].pos = at;
+    }
+    fn paint(&self, st: &[NodeState], i: usize, out: &mut u64) {
+        r_leaf_paint(st, i, out, 1);
+        for &b in self.text.as_bytes() {
+            fold(out, b as u64);
+        }
+    }
+}
+
+impl RNode for Fixed {
+    fn layout(&self, limits: Constraints, st: &mut [NodeState], i: usize) -> Size {
+        let s = limits.clamp(Size { w: self.w, h: self.h });
+        st[i].constraints = limits;
+        st[i].size = s;
+        s
+    }
+    fn place(&self, at: Point, st: &mut [NodeState], i: usize) {
+        st[i].pos = at;
+    }
+    fn paint(&self, st: &[NodeState], i: usize, out: &mut u64) {
+        r_leaf_paint(st, i, out, 2);
+        fold(out, self.w.to_bits() as u64 ^ self.h.to_bits() as u64);
+    }
+}
+
+impl RNode for Spacer {
+    fn layout(&self, limits: Constraints, st: &mut [NodeState], i: usize) -> Size {
+        let s = Size { w: limits.max_w, h: limits.max_h };
+        st[i].constraints = limits;
+        st[i].size = s;
+        s
+    }
+    fn place(&self, at: Point, st: &mut [NodeState], i: usize) {
+        st[i].pos = at;
+    }
+    fn paint(&self, st: &[NodeState], i: usize, out: &mut u64) {
+        r_leaf_paint(st, i, out, 3);
+    }
+}
+
+/// Recursive counterpart of [`Slab`]: a virtual column over instances.
+pub struct RSlab<C> {
+    pub items: Vec<C>,
+    pub count: usize,
+}
+
+impl<C: RNode + Tree + Default> RSlab<C> {
+    pub fn new(count: usize) -> Self {
+        RSlab { items: (0..count).map(|_| C::default()).collect(), count }
+    }
+
+    pub fn layout(&self, limits: Constraints, st: &mut [NodeState]) -> Size {
+        let n = self.items.len().max(1) as f32;
+        let cc = Constraints {
+            min_w: 0.0,
+            max_w: limits.max_w,
+            min_h: 0.0,
+            max_h: (limits.max_h / n).max(0.0),
+        };
+        let mut sum = 0.0f32;
+        let mut mx = 0.0f32;
+        let mut at = 1usize;
+        for item in &self.items {
+            let d: &dyn RNode = item;
+            let s = d.layout(cc, st, at);
+            sum += s.h;
+            mx = mx.max(s.w);
+            at += C::COUNT;
+        }
+        let s = limits.clamp(Size { w: mx, h: sum });
+        st[0].size = s;
+        s
+    }
+
+    pub fn place(&self, st: &mut [NodeState]) {
+        st[0].pos = Point::default();
+        let mut cur = Point::default();
+        let mut at = 1usize;
+        for item in &self.items {
+            let d: &dyn RNode = item;
+            d.place(cur, st, at);
+            cur.y += st[at].size.h;
+            at += C::COUNT;
+        }
+    }
+
+    pub fn paint(&self, st: &[NodeState], out: &mut u64) {
+        r_leaf_paint(st, 0, out, 0);
+        let mut at = 1usize;
+        for item in &self.items {
+            let d: &dyn RNode = item;
+            d.paint(st, at, out);
+            at += C::COUNT;
+        }
+    }
+}

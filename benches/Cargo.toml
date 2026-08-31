@@ -10,6 +10,7 @@ lumen-static = { path = "../crates/lumen-static" }
 
 [features]
 safe_no_inline = ["lumen-static/safe_no_inline"]
+rdyn_opaque = ["lumen-static/rdyn_opaque"]
 
 [[bin]]
 name = "crossover"

@@ -513,6 +513,45 @@ fn expand_safe(input: DeriveInput) -> syn::Result<Ts2> {
         Axis::Column => (quote!(col_down), quote!(col_up), quote!(col_place)),
     };
     let sp = spacing;
+    let n_fields_f32 = field_ident.len() as f32;
+    // Measurement knob, resolved when the *macro crate* is compiled, so
+    // emitted code carries no `cfg` — a cfg inside derive output would
+    // resolve against the destination crate (docs/step5-observability.md).
+    let opaque_stmt = if cfg!(feature = "rdyn_opaque") {
+        quote! { let d = ::core::hint::black_box(d); }
+    } else {
+        quote! {}
+    };
+    let spaced_total = if field_ident.len() > 1 {
+        spacing * (field_ident.len() - 1) as f32
+    } else {
+        0.0
+    };
+    // Recursive arm: same math as the flat arm, expressed per container.
+    let (r_child_limits, r_accumulate, r_result, r_advance) = match axis {
+        Axis::Row => (
+            quote! { ::lumen_static::Constraints {
+                min_w: 0.0,
+                max_w: ((limits.max_w - #spaced_total) / n).max(0.0),
+                min_h: 0.0,
+                max_h: limits.max_h,
+            } },
+            quote! { sum += s.w; mx = mx.max(s.h); },
+            quote! { Size { w: sum + #spaced_total, h: mx } },
+            quote! { cur.x += st[at].size.w + #sp; },
+        ),
+        Axis::Column => (
+            quote! { ::lumen_static::Constraints {
+                min_w: 0.0,
+                max_w: limits.max_w,
+                min_h: 0.0,
+                max_h: ((limits.max_h - #spaced_total) / n).max(0.0),
+            } },
+            quote! { sum += s.h; mx = mx.max(s.w); },
+            quote! { Size { w: mx, h: sum + #spaced_total } },
+            quote! { cur.y += st[at].size.h + #sp; },
+        ),
+    };
 
     Ok(quote! {
         const _: () = {
@@ -531,6 +570,73 @@ fn expand_safe(input: DeriveInput) -> syn::Result<Ts2> {
                 }
                 fn paint(&self, d: &NodeDesc, st: &NodeState, out: &mut u64) {
                     ::lumen_static::ops::fold_geom_pub(out, d, st)
+                }
+            }
+
+            impl ::lumen_static::safe::RNode for #name {
+                fn layout(
+                    &self,
+                    limits: ::lumen_static::Constraints,
+                    st: &mut [NodeState],
+                    i: usize,
+                ) -> Size {
+                    let n = #n_fields_f32;
+                    let cc = #r_child_limits;
+                    let mut sum = 0.0f32;
+                    let mut mx = 0.0f32;
+                    let mut at = i + 1;
+                    #(
+                        {
+                            // &dyn on purpose: a static call here would
+                            // monomorphize the subtree, i.e. #[fuse].
+                            let d: &dyn ::lumen_static::safe::RNode = &self.#field_ident;
+                            #opaque_stmt
+                            let s = d.layout(cc, st, at);
+                            #r_accumulate
+                            at += <#field_ty as Tree>::COUNT;
+                        }
+                    )*
+                    let _ = at;
+                    let size = limits.clamp(#r_result);
+                    st[i].constraints = limits;
+                    st[i].size = size;
+                    size
+                }
+
+                fn place(&self, at_pos: ::lumen_static::Point, st: &mut [NodeState], i: usize) {
+                    st[i].pos = at_pos;
+                    let mut cur = at_pos;
+                    let mut at = i + 1;
+                    #(
+                        {
+                            let d: &dyn ::lumen_static::safe::RNode = &self.#field_ident;
+                            d.place(cur, st, at);
+                            #r_advance
+                            at += <#field_ty as Tree>::COUNT;
+                        }
+                    )*
+                    let _ = (at, cur);
+                }
+
+                fn paint(&self, st: &[NodeState], i: usize, out: &mut u64) {
+                    ::lumen_static::ops::fold_pub(out, 0);
+                    ::lumen_static::ops::fold_pub(
+                        out,
+                        st[i].size.w.to_bits() as u64 ^ ((st[i].size.h.to_bits() as u64) << 32),
+                    );
+                    ::lumen_static::ops::fold_pub(
+                        out,
+                        st[i].pos.x.to_bits() as u64 ^ ((st[i].pos.y.to_bits() as u64) << 32),
+                    );
+                    let mut at = i + 1;
+                    #(
+                        {
+                            let d: &dyn ::lumen_static::safe::RNode = &self.#field_ident;
+                            d.paint(st, at, out);
+                            at += <#field_ty as Tree>::COUNT;
+                        }
+                    )*
+                    let _ = at;
                 }
             }
 
