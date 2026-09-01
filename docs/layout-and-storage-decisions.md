@@ -16,7 +16,7 @@ makes §4d (enum variants) possible at all.
 
 Consequences to plan around:
 
-- `NodeDesc` loses `kind` and `offset` (24 B → 16 B); `KIND_LIST` and the
+- `NodeDesc` loses `kind` and `offset` (24 B → 16 B — *later 48 B, once M1's `wid` and `classes` fat pointers landed; measured 2026-09-02*); `KIND_LIST` and the
   derive's kind-rebasing disappear.
 - `Repeat`, `Button`/event dispatch and the `observe` ops must be ported
   — they are unsafe-path only today. `Repeat`'s `RefCell` should go with

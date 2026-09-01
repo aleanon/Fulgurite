@@ -554,8 +554,10 @@ yet. Benchmark against a naive `Box<dyn Widget>` tree at 10, 1k, and 100k nodes
 — the crossover behaviour from §4 needs to be measured, not assumed.
 
 **DONE 2026-08-30.** Built in `crates/lumen-static{,-macros}`; measured
-crossover between 10 and 1k nodes (static wins ~16–21% above it, loses ~16%
-at 10 nodes). Two deviations from the §5 sketch proved necessary —
+~~crossover between 10 and 1k nodes (static wins ~16–21% above it, loses ~16%
+at 10 nodes)~~ — *superseded 2026-09-02: on the recursive implementation
+there is no crossover; 10 nodes is a toss-up and static wins ~31% at 1k
+and 100k (`docs/results-step2-crossover.md`, header note).* Two deviations from the §5 sketch proved necessary —
 `parent`/`next_sibling` fields in `NodeDesc` and once-per-*container*
 dispatch (per-child dispatch loses to naive dyn outright). See
 `docs/step2-design-notes.md` and `docs/results-step2-crossover.md`.

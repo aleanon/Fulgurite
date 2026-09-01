@@ -23,8 +23,11 @@ impl SrcLoc {
 
 /// One node of the tree, in DFS pre-order (parent before children).
 ///
-/// Purely structural now: who the parent is, where the children start,
-/// and who the next sibling is. 16 bytes in a release build.
+/// Structural, plus the two static selector inputs the cascade needs.
+/// 48 bytes in a release build (72 with `observe`): 16 of tree links and
+/// flags, 32 of `wid`/`classes` fat pointers. The "16 bytes" this
+/// comment used to claim predates M1 and was never updated — measured
+/// and corrected 2026-09-02.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct NodeDesc {
     pub first_child: u32,

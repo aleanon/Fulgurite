@@ -1,5 +1,34 @@
 # Step 2 — static table vs `Box<dyn Widget>`: measured crossover
 
+> **SUPERSEDED 2026-09-02.** The numbers below describe the *flat-table*
+> implementation that `docs/results-traversal.md` replaced with recursive
+> descent. Re-measured on the shipped code with the batched harness
+> (`bench` rewritten 2026-09-02; machine: i9-13900KF, `powersave`, turbo
+> on, `tsc`), two runs:
+>
+> | nodes | static | dyn | |
+> |---|---|---|---|
+> | 10 | 103–125 ns | 113 ns | **indistinguishable** |
+> | 1k | 8.8 µs | 12.9 µs | static −31% |
+> | 100k | 0.90 ms | 1.31 ms | static −31% |
+>
+> **There is no crossover.** The 10-node result this document reports as
+> "dyn −16%" is now a toss-up within run-to-run noise, and static wins at
+> every larger size. Four later docs cite this one as their machine and
+> profile anchor; they inherit a baseline that no longer describes the
+> code, and the absolute numbers here are 30–60% lower than the same
+> benchmark produces today — consistent with an unrecorded difference in
+> machine state. The *lesson* below (per-child dispatch inverted the
+> result; dispatch per container) stands and is what made recursive
+> descent possible. The table does not.
+>
+> Also from review: the two arms are not like-for-like. The static arm
+> builds a real `DisplayList` while the dyn oracle folds into a `u64`
+> checksum. Decomposed at 100k the asymmetry runs *against* static (it
+> does more paint work and still wins by 31%), so the direction is safe;
+> the percentages should not be quoted as a measured ratio of equal
+> traversals.
+
 *2026-08-30. The §10 Step 2 benchmark: full layout + paint per iteration,
 static node-table passes against a naive recursive `Box<dyn Widget>` tree,
 identical shapes and identical layout math (equality verified by test).

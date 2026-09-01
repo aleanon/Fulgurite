@@ -7,6 +7,21 @@ traversal strategy itself. Harness:
 `cargo run --release -p benches --bin safety`; machine and profile as in
 `docs/results-step2-crossover.md`.*
 
+> **Reproducibility note, 2026-09-02.** The `safety` binary this document
+> cites (and `memory`, below where cited) no longer exists in
+> `benches/src/bin/`; only `crossover`, `fusion`, `repeater` and
+> `bindings` do. The numbers here therefore cannot be re-run from this
+> tree. This is the document that overturns handoff §5. Under the project's own rule that a gate must be able to
+> say no, a gate whose harness has been deleted cannot say anything.
+> The result is retained as historical, with its reasoning; the
+> comparison it records was between two implementations of which only one
+> survives in the tree, so a faithful re-run would require reconstructing
+> the other. Recorded rather than papered over. The per-iteration harness
+> the numbers were taken with has since been replaced by a batched one
+> (`bench`, 2026-09-02); its sub-100 ns rows in particular should be read
+> as indicative — the 69 vs 75 ns small-size figure in the safe-prototype
+> doc is inside that harness's own floor and should not be relied on.
+
 ## The correction that started it
 
 iced lays out **each node exactly once**. Its flex `resolve` iterates the

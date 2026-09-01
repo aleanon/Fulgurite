@@ -84,7 +84,7 @@ it — no copies of values exist anywhere.
 > **SUPERSEDED 2026-09-01.** `KIND_LIST` is gone: with recursion the
 > vtable arrives on the `&dyn` reference, so rustc's own per-type
 > deduplication provides §5's "one body per kind" guarantee. `NodeDesc`
-> lost `kind` and `offset` with it (24 → 16 bytes).
+> lost `kind` and `offset` with it (24 → 16 bytes; *48 bytes since M1 added `wid` and `classes` — measured 2026-09-02*).
 
 A derived struct's kind list is its own ops followed by its fields' lists,
 un-deduplicated; spliced child tables get their kind indices rebased by a
