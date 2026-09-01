@@ -27,6 +27,10 @@ no-unsafe:
 smoke:
     cargo run -p miri-smoke
 
+# The counter, rendered headlessly to a viewable frame.
+counter:
+    cargo run -p counter -- counter.ppm
+
 # The Step 4 dylib swap demo (also an integration test; exits nonzero on failure).
 hot-demo:
     ./scripts/hot_reload_demo.sh

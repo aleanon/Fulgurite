@@ -32,6 +32,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
 
 [[package]]
+name = "counter"
+version = "0.1.0"
+dependencies = [
+ "lumen-static",
+ "lumen-static-agent",
+ "lumen-static-shell",
+ "serde_json",
+]
+
+[[package]]
 name = "hot-app"
 version = "0.1.0"
 dependencies = [
@@ -88,6 +98,13 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "lumen-static-shell"
+version = "0.1.0"
+dependencies = [
+ "lumen-static",
 ]
 
 [[package]]

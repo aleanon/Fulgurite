@@ -1,0 +1,12 @@
+[package]
+name = "counter"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+lumen-static = { path = "../../crates/lumen-static", features = ["observe"] }
+lumen-static-shell = { path = "../../crates/lumen-static-shell" }
+lumen-static-agent = { path = "../../crates/lumen-static-agent" }
+serde_json = "1"
