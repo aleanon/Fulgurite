@@ -20,6 +20,14 @@ The single most important thing in this document is [§10, the validation
 experiment](#10-build-order). Run it before building anything else. If it fails,
 most of the rest of this design is void.
 
+> **Status 2026-09-01.** §10 ran and passed, and every **OPEN** section in this
+> document is now closed — by measurement where one was called for, by
+> deliberate deferral where it was not. Two sections no longer describe the
+> implementation and say so at the top: §5's traversal half is **SUPERSEDED**
+> (recursive descent, `docs/results-traversal.md`) and §7 is **REFINED** (`fn`
+> pointers, not `Msg` — `docs/events-decision.md`). The live work queue is
+> `docs/plan-architecture-v2.md`; this document is the design record behind it.
+
 ---
 
 ## 1. Goal
@@ -258,13 +266,20 @@ struct Cell { icon: Icon, label: Label }
 Same trade as kernel fusion in an ML compiler: fuse the hot inner region, keep
 the outer schedule dynamic.
 
-### OPEN: vtable array vs enum dispatch
+### DECIDED (2026-09-01): vtable array vs enum dispatch — the question dissolved
 
-If the widget set were closed, `enum WidgetKind` + `match` would likely beat an
-indirect call (dense jump table, compiler sees all arms). **Our widget set is
-open by requirement**, so the default is the vtable array. Consider a hybrid:
-built-in kinds as enum variants with a `Kind::External(vtable_idx)` escape.
-Needs measurement.
+*Resolved by M0, not answered: `docs/results-traversal.md`.*
+
+This asked which dispatch mechanism should drive a flat table walk. Recursive
+descent removed the walk, and with it `WidgetOps`, `KIND_LIST` and
+`NodeDesc.kind`. A container calls its children through monomorphized code the
+compiler can see through; there is no per-node dispatch left for an enum to
+beat. Measured 34–39% faster than the table walk it replaced.
+
+The hybrid escape this section proposed — built-in kinds as variants,
+`Kind::External` for the rest — is subsumed by §6: `Dyn` is the one island
+where indirection is paid, and it is opt-in per node rather than a property of
+the dispatch mechanism.
 
 ---
 
@@ -281,6 +296,14 @@ Needs measurement.
 
 `Either` holding both branches' memory is usually a *win* — toggling is free and
 the hidden branch keeps its state.
+
+> **Implementation deviation (M4/T4.2, 2026-09-01).** `Either<A, B>` is *one*
+> table node with both branches in off-table arenas, not `A::NODE_COUNT +
+> B::NODE_COUNT` merged table entries: concatenating two sub-tables into a
+> const table requires `generic_const_exprs`. Both branches still retain state
+> across a toggle — the property this row is claiming — but agent ids inside an
+> `Either` are branch-relative rather than tree-absolute. See
+> `docs/plan-architecture-v2.md` M4.
 
 ### Repeaters
 

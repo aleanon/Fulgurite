@@ -195,7 +195,7 @@ rule) superseded; `verification-notes.md` "present state" updated (no
 
 ---
 
-## M1 — Style array
+## M1 — Style array — **DONE 2026-09-01**
 
 *Before `Length`, because `Length` has to live somewhere.*
 
@@ -221,9 +221,17 @@ unchanged within noise (style reads add one array index per node).
 - **T1.6** Reload: `StyleState` is derived state — recomputed after a
   swap, never migrated. Assert in the reload demo.
 
+**Outcome.** All six landed as written. `Style` is 40 B; the parallel
+array is built by `pass::default_styles` and re-derived after a reload
+rather than migrated. `crossover` moved 122 → 129 ns at N=1 and stayed
+inside noise at N=100k, which is the one-index-per-node cost the gate
+predicted. `#[widget(spacing = …)]` survived M2 after all: it lowers to a
+`DEFAULT_RULES` entry, so the attribute is sugar for a rule rather than a
+second layout input, and removing it would only cost authors ergonomics.
+
 ---
 
-## M2 — `Length` layout, single pass
+## M2 — `Length` layout, single pass — **DONE 2026-09-01**
 
 **Gates:** the dyn oracle in `benches` is rewritten to the same model and
 equivalence holds; `crossover` re-run; the audit's `W1005` test (text
@@ -250,9 +258,32 @@ test pins the worked example from the decision record.
   exactly the remainder, `Shrink` is clamped by loose limits). Re-pin the
   invariant test with `Length` shapes.
 
+**Outcome, with two corrections to the plan as written.**
+
+1. `Fill` is not a separate variant. `Length` is `Fixed | Shrink |
+   FillPortion(u16)` and `Length::FILL` is `FillPortion(1)` — the same
+   three-way decision at each child with one fewer case to match, since
+   `Fill` was only ever `FillPortion(1)`.
+2. **Cross-axis `Fill` conforms, it does not define.** T2.2 said "cross
+   axis: `Fill` stretches" without saying against *what*. Stretching a
+   cross-axis `Fill` child against its own measured size makes it define
+   the container it is supposed to fill: a `Fill` spacer in a `Shrink`
+   row inflated the row to the viewport. The rule the implementation
+   settles on is that cross-fill children are excluded from the cross
+   accumulator during layout and stretched to the resolved cross extent
+   at `place` time. Recorded in `docs/layout-and-storage-decisions.md`
+   §2; the toolbar test pins it.
+
+The dyn oracle in `benches` was rewritten to the same model, so
+equivalence stayed a real check rather than a tautology; several test
+expectations that encoded the old equal-division model were updated with
+comments naming the new semantics. `W1005` re-derives from `Shrink`
+results as planned. Crossover after M2: 129 ns / 9.0 µs / 882 µs static
+vs 117 ns / 12.4 µs dyn.
+
 ---
 
-## M3 — Text storage
+## M3 — Text storage — **DONE 2026-09-01**
 
 **Gates:** `Label<String>` round-trips through hot reload with no
 `Box::leak`; measure cache hit/miss counted in a test; `no_std`-shaped
@@ -269,9 +300,18 @@ test pins the worked example from the decision record.
   an explicit `update` step, closing the gap named in
   `docs/plan-agent-parity.md`'s appendix.
 
+**Outcome.** Landed as written, with the generic named `TextStorage`
+rather than a bare `AsRef<str>` bound: measurement caching needs
+`from_string` to restore after a reload, and a bare `AsRef<str>` cannot
+provide it. `String` and `Cow` own their text; `&'static str` keeps the
+documented dev-only leak, so the default stays `no_std`-shaped. The cache
+is keyed on (dirty flag, limits), which is why the text lives in the
+widget rather than behind a getter — a getter has nothing stable to key
+on (`docs/layout-and-storage-decisions.md` §1).
+
 ---
 
-## M4 — §6 escape hatches
+## M4 — §6 escape hatches — **DONE 2026-09-01**
 
 **Gates:** each hatch has a firing and a quiet test; `NODE_COUNT` stays
 a compile-time constant in every case (asserted); agent ids for inactive
@@ -293,9 +333,28 @@ subtrees are stable across toggles.
   state slice, a generalization of `Repeat` with count 1 and a boxed
   template.
 
+**Outcome, with two deviations recorded rather than papered over.**
+
+1. **`Either<A, B>` is one table node, not `A + B`.** Concatenating two
+   sub-tables into a merged const table needs
+   `generic_const_exprs` — the stable-Rust wall the whole design avoids.
+   `Either` instead holds both branches in off-table arenas behind a
+   single table node, which is the mechanism `Repeat` already proved.
+   Both branches retain their state across a toggle, which was the point
+   of the hatch; what is lost is per-branch table addressing, so agent
+   ids inside an `Either` are branch-relative.
+2. **The enum derive cannot paint variant content.** Enum variants keep
+   stable indices and `node(i)` matches the discriminant as planned, but
+   the scratch arena a variant would need for painting is not retained
+   across the call. `Either` is the answer where painted content matters;
+   the enum derive is for structural switching. Documented at the derive.
+
+Every hatch has a firing and a quiet test, and `NODE_COUNT` is asserted
+constant in each.
+
 ---
 
-## M5 — Phase A: make it real
+## M5 — Phase A: make it real — **DONE 2026-09-01** (except the winit binding)
 
 *`docs/plan-lumen-parity.md` Phase A, unchanged except that layout is
 now single-pass and the seams are the trait methods above.*
@@ -310,6 +369,35 @@ now single-pass and the seams are the trait methods above.*
   the agent `Host` trait so P0–P4 work against the live window.
 - **T5.4** `counter` example on screen. This is the milestone the project
   has not had yet.
+
+**Outcome — done to the OS seam, and stopped there deliberately.**
+
+T5.1 and T5.2 landed as their own `DisplayList` and `LayoutCx` rather
+than by adopting Lumen's `lumen-render`/`lumen-text` crates. The seam is
+what the plan actually needed: `paint` writes commands instead of a
+checksum, and `LayoutCx` carries a `dyn TextMeasure` inside a concrete
+struct so no type parameter goes viral through every widget signature.
+Adopting the real crates is now a swap behind those two traits, with no
+widget signature affected — which is the property that made the seam
+worth building first.
+
+T5.3 stops one step short of a window. `crates/lumen-static-shell` is
+everything between an application and the OS *except* the OS binding:
+`Host` owns the tree, both parallel arrays, the input queue, focus and
+the frame's display list; `pump()` drains input, lays out, paints, times
+both phases; `render()` hands the list to a `&mut dyn Renderer`. A winit
+front end attaches at exactly two points — window events into
+`Host::post`, `Canvas::pixels` blitted to the surface. It is not written,
+because a window cannot be gated headlessly and every other subsystem
+here earned its acceptance test. Seven shell tests pin the loop instead.
+
+T5.4 runs: `examples/counter` clicks its own buttons *by author id*
+through the agent's `ui.getLayout` — the same path an agent driving the
+app takes, so the example doubles as an agent-surface test — and renders
+to a PPM at 7.6% ink. `just counter` writes a viewable frame.
+
+**Remaining in M5:** the winit binding, and adopting Lumen's actual
+render/text crates. Both are Phase A follow-ons, not blockers for M6.
 
 ---
 
@@ -343,3 +431,10 @@ M0 ──► M1 ──► M2 ──► M3 ──► M4 ──► M5 ──► M6
 
 M0 is the large one and is pure refactor — no new behavior, every test
 green before and after. M1–M4 are each small. M5 is integration.
+
+**Status 2026-09-01: M0–M5 complete** (M5 less the winit binding, above).
+Gate at the close of M5: 32 default suites + 8 gated all green, clippy
+clean in both feature configs, zero `unsafe` in the release core, hot
+reload demo PASS, counter renders. What M2's model changed and what M4
+could not deliver as specified are recorded in their sections rather than
+in this line, so the next reader finds the reason next to the claim.
