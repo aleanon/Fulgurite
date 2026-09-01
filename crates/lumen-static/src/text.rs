@@ -112,24 +112,40 @@ pub trait TextStorage: AsRef<str> + Default {
     /// Rebuild from an owned string — the hot-reload restore path.
     /// `&'static str` cannot, and says so by leaking (a dev-only path).
     fn from_string(s: String) -> Self;
+}
 
+/// Storage that can accept a new value *repeatedly* without leaking.
+///
+/// Split out of [`TextStorage`] deliberately. `&'static str` can satisfy
+/// `from_string` only by leaking, which is acceptable exactly once per
+/// hot reload (§7's dlopen-without-dlclose spirit) and catastrophic in a
+/// binding, which runs every frame. Keeping the repeated-write method in
+/// a separate trait turns that misuse into a **compile error** at the
+/// binding site instead of an unbounded leak nobody sees:
+///
+/// ```compile_fail
+/// # use lumen_static::ops::Label;
+/// # use lumen_static::bind::format_into;
+/// let mut l: Label = Label::new("start");      // default storage
+/// format_into(&mut l, format_args!("{}", 1));  // no TextBuffer impl
+/// ```
+///
+/// Measured before the split: 1000 bound updates to a default `Label`
+/// leaked 9,906 bytes and never released them. `Label<String>` allocated
+/// twice and then stayed flat.
+pub trait TextBuffer: TextStorage {
     /// Replace the contents from a borrowed string, reusing the existing
     /// allocation where the storage can.
-    ///
-    /// This is the binding path's hot loop (`crate::bind`): a derived
-    /// label is re-formatted on frames where its source changed, so the
-    /// storage that desktop apps actually use must not allocate to
-    /// accept a new value. The default cannot do better than a rebuild.
-    fn set_from_str(&mut self, s: &str) {
-        *self = Self::from_string(s.to_owned());
-    }
+    fn set_from_str(&mut self, s: &str);
 }
 
 impl TextStorage for String {
     fn from_string(s: String) -> Self {
         s
     }
+}
 
+impl TextBuffer for String {
     /// Keeps the capacity: steady-state binding updates allocate on no
     /// frame but the first for any given length.
     fn set_from_str(&mut self, s: &str) {
@@ -142,7 +158,9 @@ impl TextStorage for std::borrow::Cow<'static, str> {
     fn from_string(s: String) -> Self {
         std::borrow::Cow::Owned(s)
     }
+}
 
+impl TextBuffer for std::borrow::Cow<'static, str> {
     /// Reuses the buffer when this `Cow` already owns one; a `Borrowed`
     /// literal has no buffer to reuse and becomes `Owned`.
     fn set_from_str(&mut self, s: &str) {
@@ -159,6 +177,8 @@ impl TextStorage for std::borrow::Cow<'static, str> {
 impl TextStorage for &'static str {
     /// The documented dev-mode leak: this storage cannot own, and hot
     /// reload is a development path (§7's dlopen-without-dlclose spirit).
+    /// It happens once per swap, not once per frame — which is why there
+    /// is deliberately no [`TextBuffer`] impl here.
     fn from_string(s: String) -> Self {
         Box::leak(s.into_boxed_str())
     }

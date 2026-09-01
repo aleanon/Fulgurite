@@ -253,7 +253,13 @@ impl<S: TextStorage> Label<S> {
     /// allocation where it can. Marks for re-measurement unconditionally
     /// — callers that want the write skipped when nothing changed go
     /// through `crate::bind`, which compares first.
-    pub fn set_str(&mut self, text: &str) {
+    ///
+    /// Requires [`TextBuffer`], so `Label<&'static str>` does not have
+    /// this method: that storage can only accept a new value by leaking.
+    pub fn set_str(&mut self, text: &str)
+    where
+        S: crate::text::TextBuffer,
+    {
         self.text.get_mut().set_from_str(text);
     }
 

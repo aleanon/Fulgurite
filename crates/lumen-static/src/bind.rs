@@ -34,7 +34,7 @@ use core::fmt::Write;
 use std::cell::RefCell;
 
 use crate::ops::Label;
-use crate::text::TextStorage;
+use crate::text::TextBuffer;
 
 thread_local! {
     /// One reusable formatting buffer per thread. It never escapes a
@@ -58,7 +58,7 @@ thread_local! {
 /// assert!(format_into(&mut l, format_args!("count: {}", 2)), "changed");
 /// assert_eq!(l.as_str(), "count: 2");
 /// ```
-pub fn format_into<S: TextStorage>(dst: &mut Label<S>, args: core::fmt::Arguments<'_>) -> bool {
+pub fn format_into<S: TextBuffer>(dst: &mut Label<S>, args: core::fmt::Arguments<'_>) -> bool {
     // Taken rather than borrowed: a `Display` impl that itself runs a
     // binding would double-borrow a `RefCell` and panic. Taking hands
     // the inner call an empty buffer instead, which is merely slower.
@@ -75,7 +75,7 @@ pub fn format_into<S: TextStorage>(dst: &mut Label<S>, args: core::fmt::Argument
 
 /// Store `text` in `dst` only if it differs. The non-formatting form,
 /// for a binding whose source is already a string.
-pub fn set_if_changed<S: TextStorage>(dst: &mut Label<S>, text: &str) -> bool {
+pub fn set_if_changed<S: TextBuffer>(dst: &mut Label<S>, text: &str) -> bool {
     if dst.as_str() == text {
         return false;
     }

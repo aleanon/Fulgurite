@@ -3,7 +3,7 @@
 
 use lumen_static::bind::{format_into, set_if_changed};
 use lumen_static::ops::Label;
-use lumen_static::text::TextStorage;
+use lumen_static::text::TextBuffer;
 use lumen_static::{BlockMetrics, Constraints, LayoutCx, Node, NodeState, Style};
 
 const LIMITS: Constraints = Constraints { min_w: 0.0, max_w: 400.0, min_h: 0.0, max_h: 400.0 };
