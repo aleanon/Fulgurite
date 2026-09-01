@@ -140,16 +140,25 @@ where
 /// branch to keep its state, so toggling a tab strip does not lose a
 /// scroll position. An enum would drop it.
 ///
-/// **Deviation from §6, with its reason.** The handoff expects
-/// `NODE_COUNT = A + B`, i.e. both branches spliced into the parent's
-/// table. A generic impl cannot build such a table on stable Rust —
-/// `[NodeDesc; A::NODE_COUNT + B::NODE_COUNT]` needs
-/// `generic_const_exprs`. So `Either` contributes **one** table node and
-/// keeps its branches off-table with their own state arenas, exactly the
-/// mechanism `Repeat` already proves. The upside is that `NODE_COUNT`
-/// does not grow with the number of branches at all; the cost is that
-/// branch internals get synthetic agent ids rather than table indices,
-/// the same trade repeater rows make.
+/// **Deviation from §6 — and the reason given for it was wrong.** The
+/// handoff expects `NODE_COUNT = A + B`, both branches spliced into the
+/// parent's table. This impl contributes **one** table node and keeps
+/// its branches off-table with their own state arenas (`Repeat`'s
+/// mechanism), and the original comment here said a merged table "needs
+/// `generic_const_exprs`". It does not. `[NodeDesc; A::N + B::N]` *as a
+/// type* does — but `SUB_TABLE` is `&'static [NodeDesc]`, a slice, so
+/// the length is a value: build `[NodeDesc; MAX]` in const-eval with
+/// `splice_child`, `split_at(N)`, and `assert!` the bound. Verified on
+/// stable 1.94 during the 2026-09-02 review, nested three deep, spliced
+/// into a derived struct with tree-absolute indices; exceeding `MAX` is
+/// a compile error.
+///
+/// What this shape costs for that mistaken reason: branch internals get
+/// branch-relative agent ids instead of table indices, and each `Either`
+/// holds four heap `Vec`s — two state arenas, two style arenas — which
+/// a merged table would not need. The decision is **REOPENED** in
+/// `docs/plan-architecture-v2.md` M4 and `docs/either-reopened.md`;
+/// this impl stands until it is re-decided.
 pub struct Either<A: Widget, B: Widget> {
     pub a: A,
     pub b: B,

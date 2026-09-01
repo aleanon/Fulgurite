@@ -341,14 +341,16 @@ subtrees are stable across toggles.
    out to matter: it is the precedent A2 of the scrolling decisions first
    cited and then had to distinguish itself from, because hiding has a
    geometric proxy (zero size) and clipping does not.
-1. **`Either<A, B>` is one table node, not `A + B`.** Concatenating two
-   sub-tables into a merged const table needs
-   `generic_const_exprs` — the stable-Rust wall the whole design avoids.
-   `Either` instead holds both branches in off-table arenas behind a
-   single table node, which is the mechanism `Repeat` already proved.
-   Both branches retain their state across a toggle, which was the point
-   of the hatch; what is lost is per-branch table addressing, so agent
-   ids inside an `Either` are branch-relative.
+1. **`Either<A, B>` is one table node, not `A + B` — REOPENED
+   2026-09-02.** The reason recorded here was that a merged const table
+   "needs `generic_const_exprs`". Review disproved it with a compiling
+   counter-example on stable: `SUB_TABLE` is a slice, so the length is a
+   value, and a padded const array plus `split_at` builds the merged
+   table with a compile-time bound. The shipped shape stands until
+   re-decided; it costs tree-absolute agent ids and four heap `Vec`s per
+   `Either`. Options, evidence and a recommendation in
+   `docs/either-reopened.md`; the re-decision is task T8.0 so it lands
+   before any scroll region is built on top of the current shape.
 2. **The enum derive cannot paint variant content.** Enum variants keep
    stable indices and `node(i)` matches the discriminant as planned, but
    the scratch arena a variant would need for painting is not retained
@@ -513,6 +515,9 @@ Depends on nothing in M7 — true again under the *revised* A2, which
 stamps a `NodeState` flag from `place` instead of changing `paint`/`hit`
 signatures. The first version of this note made the same claim on a
 false premise.
+
+**T8.0 (first):** re-decide `Either`'s table shape per
+`docs/either-reopened.md`, before a `ScrollView` is placed inside one.
 
 Two notes for whoever writes the breakdown:
 

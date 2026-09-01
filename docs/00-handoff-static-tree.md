@@ -297,13 +297,15 @@ the dispatch mechanism.
 `Either` holding both branches' memory is usually a *win* — toggling is free and
 the hidden branch keeps its state.
 
-> **Implementation deviation (M4/T4.2, 2026-09-01).** `Either<A, B>` is *one*
-> table node with both branches in off-table arenas, not `A::NODE_COUNT +
-> B::NODE_COUNT` merged table entries: concatenating two sub-tables into a
-> const table requires `generic_const_exprs`. Both branches still retain state
-> across a toggle — the property this row is claiming — but agent ids inside an
-> `Either` are branch-relative rather than tree-absolute. See
-> `docs/plan-architecture-v2.md` M4.
+> **Implementation deviation (M4/T4.2, 2026-09-01) — REOPENED 2026-09-02.**
+> `Either<A, B>` shipped as *one* table node with both branches in off-table
+> arenas, on the stated ground that a merged `A + B` table "requires
+> `generic_const_exprs`". Review showed that is false: `SUB_TABLE` is a
+> slice, so a padded `[NodeDesc; MAX]` built in const-eval and `split_at(N)`
+> gives the merged table on stable, with the bound a compile error. Both
+> branches retain state either way; what the shipped shape costs is
+> tree-absolute agent ids and four heap `Vec`s per `Either`. See
+> `docs/either-reopened.md`.
 
 ### Repeaters
 
