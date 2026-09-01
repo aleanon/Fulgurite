@@ -101,3 +101,62 @@ fn a_scrolled_row_does_not_paint_where_a_click_would_miss() {
     assert_eq!(above, 0.0, "nothing is drawn above the list — the clip holds");
     assert!(inside > 0.5, "and the list itself still renders ({inside:.2} inked)");
 }
+
+/// Render one command list to a fresh canvas and return the inked fraction.
+fn ink_of(cmds: &[lumen_static::Cmd]) -> f32 {
+    let mut list = lumen_static::DisplayList::new();
+    for c in cmds {
+        match *c {
+            lumen_static::Cmd::Rect { rect, color } => list.rect(rect, color),
+            lumen_static::Cmd::PushClip { rect } => list.push_clip(rect),
+            lumen_static::Cmd::PopClip => list.pop_clip(),
+            lumen_static::Cmd::Text { .. } => unreachable!(),
+        }
+    }
+    let mut c = Canvas::new(64, 64);
+    c.clear(CLEAR);
+    <Canvas as lumen_static::Renderer>::render(&mut c, &list, 64, 64);
+    c.ink_fraction(CLEAR)
+}
+
+#[test]
+fn a_nan_rect_draws_nothing_inside_or_outside_a_clip() {
+    use lumen_static::display::Color;
+    use lumen_static::Cmd;
+    let nan = [f32::NAN, 0.0, 10.0, 10.0];
+    assert_eq!(ink_of(&[Cmd::Rect { rect: nan, color: Color::BLACK }]), 0.0, "outside a clip");
+    assert_eq!(
+        ink_of(&[
+            Cmd::PushClip { rect: [0.0, 0.0, 32.0, 32.0] },
+            Cmd::Rect { rect: nan, color: Color::BLACK },
+            Cmd::PopClip,
+        ]),
+        0.0,
+        "inside a clip — previously filled the whole clip solid"
+    );
+}
+
+#[test]
+fn a_huge_rect_terminates_and_covers_the_surface() {
+    use lumen_static::display::Color;
+    use lumen_static::Cmd;
+    // Previously ~10^16 loop iterations. If this test finishes, it passed.
+    let huge = [-1e8, -1e8, 1e8, 1e8];
+    assert_eq!(ink_of(&[Cmd::Rect { rect: huge, color: Color::BLACK }]), 1.0);
+}
+
+#[test]
+fn an_inverted_rect_draws_nothing() {
+    use lumen_static::display::Color;
+    use lumen_static::Cmd;
+    let inverted = [30.0, 30.0, 10.0, 10.0];
+    assert_eq!(ink_of(&[Cmd::Rect { rect: inverted, color: Color::BLACK }]), 0.0);
+    assert_eq!(
+        ink_of(&[
+            Cmd::PushClip { rect: [0.0, 0.0, 64.0, 64.0] },
+            Cmd::Rect { rect: inverted, color: Color::BLACK },
+            Cmd::PopClip,
+        ]),
+        0.0
+    );
+}

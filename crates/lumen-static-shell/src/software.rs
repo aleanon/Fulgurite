@@ -41,8 +41,16 @@ impl Canvas {
     }
 
     fn fill(&mut self, r: [f32; 4], c: Color) {
-        let (x0, y0) = (r[0].floor() as i64, r[1].floor() as i64);
-        let (x1, y1) = (r[2].ceil() as i64, r[3].ceil() as i64);
+        // Clamp to the surface *before* iterating. `blend` rejects
+        // out-of-range pixels, but a `[-1e8, -1e8, 1e8, 1e8]` rect — a
+        // `Fill` node under an unbounded constraint — would still loop
+        // ~10^16 times getting there. A non-finite rect draws nothing.
+        if !r.iter().all(|v| v.is_finite()) {
+            return;
+        }
+        let (w, h) = (self.width as i64, self.height as i64);
+        let (x0, y0) = ((r[0].floor() as i64).max(0), (r[1].floor() as i64).max(0));
+        let (x1, y1) = ((r[2].ceil() as i64).min(w), (r[3].ceil() as i64).min(h));
         for y in y0..y1 {
             for x in x0..x1 {
                 self.blend(x, y, c);
@@ -118,6 +126,14 @@ impl Renderer for Canvas {
 /// the probe-vs-click class of bug, one layer down. `tests/clip_test.rs`
 /// pins it at the pixel level.
 fn clipped(rect: [f32; 4], stack: &[[f32; 4]]) -> Option<[f32; 4]> {
+    // Reject non-finite and empty input on entry. `f32::max`/`min` return
+    // the non-NaN operand, so without this a NaN coordinate would be
+    // silently *replaced by the clip bound* — a NaN rect inside a clip
+    // scope filled the entire scope solid, while the same rect outside
+    // one drew nothing.
+    if !rect.iter().all(|v| v.is_finite()) || rect[0] >= rect[2] || rect[1] >= rect[3] {
+        return None;
+    }
     let mut r = rect;
     for c in stack {
         r = [r[0].max(c[0]), r[1].max(c[1]), r[2].min(c[2]), r[3].min(c[3])];
