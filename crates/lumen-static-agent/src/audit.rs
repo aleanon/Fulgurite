@@ -240,8 +240,13 @@ impl Auditor {
         scratch: &mut [NodeState],
         i: usize,
     ) -> Natural {
-        let a = root.node_mut(i).layout(PROBE_A, styles, scratch, i);
-        let b = root.node_mut(i).layout(PROBE_B, styles, scratch, i);
+        // The probe measures with the built-in metrics; a host with a
+        // real shaping stack gets slightly different natural sizes, which
+        // is one more reason M2's `Shrink` results should replace this.
+        let mut m = lumen_static::BlockMetrics;
+        let mut cx = lumen_static::LayoutCx::new(&mut m);
+        let a = root.node_mut(i).layout(&mut cx, PROBE_A, styles, scratch, i);
+        let b = root.node_mut(i).layout(&mut cx, PROBE_B, styles, scratch, i);
         Natural { intrinsic: a == b, size: a }
     }
 

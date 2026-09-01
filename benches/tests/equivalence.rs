@@ -103,15 +103,15 @@ fn paint_is_deterministic_and_value_sensitive() {
     let mut st = [NodeState::default(); Ten::NODE_COUNT];
     let sty = pass::default_styles(&tree);
     pass::layout(&mut tree, &sty, &mut st, ROOT_C);
-    let mut a = 0u64;
+    let mut a = lumen_static::DisplayList::new();
     pass::paint(&tree, &st, &mut a);
-    let mut b = 0u64;
+    let mut b = lumen_static::DisplayList::new();
     pass::paint(&tree, &st, &mut b);
-    assert_eq!(a, b);
+    assert_eq!(a.hash_from(0), b.hash_from(0));
 
     // Values live in the fields (§3): mutate one and paint must see it.
     tree.l1.set("changed");
-    let mut c = 0u64;
+    let mut c = lumen_static::DisplayList::new();
     pass::paint(&tree, &st, &mut c);
-    assert_ne!(a, c);
+    assert_ne!(a.hash_from(0), c.hash_from(0));
 }

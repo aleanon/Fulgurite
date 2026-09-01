@@ -23,9 +23,9 @@ fn repeat_arm(rows: usize, iters: usize) {
     let sty = pass::default_styles(&list);
     bench(&format!("repeat/{rows}-rows"), iters, || {
         pass::layout(&mut list, &sty, &mut st, ROOT_C);
-        let mut out = 0u64;
+        let mut out = lumen_static::DisplayList::new();
         pass::paint(&list, &st, &mut out);
-        out
+        out.len() as u64
     });
     println!(
         "    window {} rows, resident nodes {} (table {} B, states {} B)",
@@ -43,9 +43,9 @@ fn materialized_arm(rows: usize, iters: usize) {
     }
     bench(&format!("materialized/{rows}-rows"), iters, || {
         a.layout(ROOT_C);
-        let mut out = 0u64;
+        let mut out = lumen_static::DisplayList::new();
         a.paint(&mut out);
-        out
+        out.len() as u64
     });
     println!(
         "    resident nodes {} (table {} B, states {} B)",

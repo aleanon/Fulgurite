@@ -113,14 +113,15 @@ fn fingerprint(table: &[NodeDesc]) -> u64 {
 fn measure(tree: &TreeRef) -> (Vec<Geom>, Vec<u64>) {
     let mut geom = Vec::with_capacity(tree.table.len());
     let mut sums = Vec::with_capacity(tree.table.len());
+    // One list, reused: a node's signature is the hash of the commands
+    // *it* appended, so the journal never builds a list per node — the
+    // cost trap Lumen's audit review flagged.
+    let mut list = lumen_static::DisplayList::new();
     for i in 0..tree.table.len() {
         geom.push(Geom { size: tree.states[i].size, pos: tree.states[i].pos });
-        // One node's own paint contribution: recursion means a node's
-        // `paint` also folds its children, so a subtree's checksum is
-        // taken at its root and inherently covers what it contains.
-        let mut sum = 0u64;
-        tree.root.node(i).paint(tree.states, i, &mut sum);
-        sums.push(sum);
+        let from = list.len();
+        tree.root.node(i).paint(tree.states, i, &mut list);
+        sums.push(list.hash_from(from));
     }
     (geom, sums)
 }

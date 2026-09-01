@@ -7,7 +7,9 @@
 //! build — see `docs/results-safe-prototype.md`.
 
 pub mod assemble;
+pub mod cx;
 pub mod desc;
+pub mod display;
 pub mod event;
 pub mod hatch;
 pub mod hit;
@@ -26,6 +28,8 @@ pub mod widget;
 pub use desc::{Constraints, NodeDesc, NodeState, Point, Size, MAX_DEPTH, NO_PARENT};
 pub use hatch::{Dyn, Either, List, Side};
 pub use hit::{Hit, Inner};
+pub use cx::{BlockMetrics, LayoutCx, TextMeasure};
+pub use display::{Cmd, Color, DisplayList, Renderer};
 pub use style::{Align, Edges, Length, Patch, Rule, Selector, Style};
 pub use text::{Dirty, Measured, TextStorage};
 pub use event::{Event, EventCtx, InputQueue, Key};

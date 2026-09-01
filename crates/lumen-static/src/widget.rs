@@ -12,6 +12,8 @@
 //! which is the monomorphization dial and nothing more.
 
 use crate::desc::{Constraints, NodeDesc, NodeState, Point, Size};
+use crate::cx::LayoutCx;
+use crate::display::DisplayList;
 use crate::style::Style;
 use crate::hit::Hit;
 
@@ -31,6 +33,7 @@ pub trait Node {
     /// this node's `Length`s, padding, spacing and alignment.
     fn layout(
         &mut self,
+        cx: &mut LayoutCx,
         limits: Constraints,
         style: &[Style],
         st: &mut [NodeState],
@@ -44,8 +47,9 @@ pub trait Node {
     /// write it without interior mutability.
     fn place(&mut self, at: Point, style: &[Style], st: &mut [NodeState], i: usize);
 
-    /// Fold paint output (display-list stand-in until M5).
-    fn paint(&self, st: &[NodeState], i: usize, out: &mut u64);
+    /// Emit drawing commands. The renderer consumes the list *after*
+    /// the pass, so it never appears in a widget signature.
+    fn paint(&self, st: &[NodeState], i: usize, out: &mut DisplayList);
 
     /// Deepest node under `(x, y)`, or `None` if the point misses.
     fn hit(&self, st: &[NodeState], i: usize, x: f32, y: f32) -> Option<Hit>;

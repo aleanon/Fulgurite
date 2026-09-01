@@ -6,19 +6,37 @@
 //! `docs/results-traversal.md`.
 
 use crate::desc::{Constraints, NodeState, Point};
+use crate::display::DisplayList;
+use crate::cx::LayoutCx;
 use crate::style::Style;
 use crate::widget::Widget;
 use crate::widget::Node;
 
 /// Lay out and position a whole tree.
+/// Lay out with a caller-supplied context (the shaping stack, once one
+/// is composed in).
+pub fn layout_with<W: Node + ?Sized>(
+    tree: &mut W,
+    cx: &mut LayoutCx,
+    style: &[Style],
+    st: &mut [NodeState],
+    limits: Constraints,
+) {
+    tree.layout(cx, limits, style, st, 0);
+    tree.place(Point::default(), style, st, 0);
+}
+
+/// Lay out with the built-in metrics — what tests and simple apps use
+/// until a real text stack is wired in.
 pub fn layout<W: Node + ?Sized>(
     tree: &mut W,
     style: &[Style],
     st: &mut [NodeState],
     limits: Constraints,
 ) {
-    tree.layout(limits, style, st, 0);
-    tree.place(Point::default(), style, st, 0);
+    let mut m = crate::cx::BlockMetrics;
+    let mut cx = LayoutCx::new(&mut m);
+    layout_with(tree, &mut cx, style, st, limits);
 }
 
 /// Resolve styles then lay out — the ordinary frame path.
@@ -52,14 +70,15 @@ pub fn default_styles<W: Widget>(tree: &W) -> Vec<Style> {
 /// size under hypothetical limits.
 pub fn measure<W: Node + ?Sized>(
     tree: &mut W,
+    cx: &mut LayoutCx,
     style: &[Style],
     st: &mut [NodeState],
     limits: Constraints,
 ) -> crate::desc::Size {
-    tree.layout(limits, style, st, 0)
+    tree.layout(cx, limits, style, st, 0)
 }
 
-pub fn paint<W: Node + ?Sized>(tree: &W, st: &[NodeState], out: &mut u64) {
+pub fn paint<W: Node + ?Sized>(tree: &W, st: &[NodeState], out: &mut DisplayList) {
     tree.paint(st, 0, out);
 }
 

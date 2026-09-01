@@ -286,6 +286,7 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                 /// (`docs/layout-and-storage-decisions.md` §2).
                 fn layout(
                     &mut self,
+                    cx: &mut ::lumen_static::LayoutCx,
                     limits: Constraints,
                     style: &[::lumen_static::Style],
                     st: &mut [NodeState],
@@ -319,7 +320,7 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                                 let avail = (axis.main_of(inner) - used).max(0.0);
                                 #mut_calls
                                 #opaque_stmt
-                                let s = d.layout(loose_child(axis, inner, avail, me.align), style, st, at);
+                                let s = d.layout(cx, loose_child(axis, inner, avail, me.align), style, st, at);
                                 used += axis.main(s);
                                 // A child that stretches across the
                                 // container conforms to it; it must not
@@ -354,7 +355,7 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                                 };
                                 #mut_calls
                                 #opaque_stmt
-                                let s = d.layout(fill_child(axis, inner, share, me.align), style, st, at);
+                                let s = d.layout(cx, fill_child(axis, inner, share, me.align), style, st, at);
                                 used += axis.main(s);
                                 if !axis.cross_len(&cs).is_fill() {
                                     cross = cross.max(axis.cross(s));
@@ -432,8 +433,12 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                     let _ = (at, main);
                 }
 
-                fn paint(&self, st: &[NodeState], i: usize, out: &mut u64) {
-                    ::lumen_static::ops::fold_geom(out, 0, &st[i]);
+                fn paint(
+                    &self,
+                    st: &[NodeState],
+                    i: usize,
+                    out: &mut ::lumen_static::DisplayList,
+                ) {
                     let mut at = i + 1;
                     #(
                         {
@@ -663,7 +668,6 @@ fn expand_enum(
     if var_ident.is_empty() {
         return Err(syn::Error::new_spanned(name, "an enum widget needs at least one variant"));
     }
-    let idx: Vec<u64> = (0..var_ident.len() as u64).collect();
 
     Ok(quote! {
         const _: () = {
@@ -701,6 +705,7 @@ fn expand_enum(
 
                 fn layout(
                     &mut self,
+                    cx: &mut ::lumen_static::LayoutCx,
                     limits: Constraints,
                     style: &[Style],
                     st: &mut [NodeState],
@@ -715,7 +720,7 @@ fn expand_enum(
                                 (0..<#var_ty as Widget>::NODE_COUNT)
                                     .map(|j| Node::node(w, j).defaults())
                                     .collect();
-                            let s = w.layout(limits, &isty, &mut ist, 0);
+                            let s = w.layout(cx, limits, &isty, &mut ist, 0);
                             s
                         } ),*
                     };
@@ -737,13 +742,20 @@ fn expand_enum(
                     st[i].pos = at;
                 }
 
-                fn paint(&self, st: &[NodeState], i: usize, out: &mut u64) {
-                    ::lumen_static::ops::fold_geom(out, 9, &st[i]);
-                    match self {
-                        #( #name::#var_ident(_) => {
-                            ::lumen_static::ops::fold_pub(out, #idx);
-                        } ),*
-                    }
+                /// **Known limit.** The enum node draws nothing: a
+                /// variant's subtree state lives in a scratch arena that
+                /// is not retained between calls, so there is no geometry
+                /// to paint against here. A variant switch is still
+                /// visible to the change journal through *size*, which is
+                /// what a sizing switch needs. Where painted content
+                /// matters, `Either` retains both branches' arenas and is
+                /// the built-out answer.
+                fn paint(
+                    &self,
+                    _st: &[NodeState],
+                    _i: usize,
+                    _out: &mut ::lumen_static::DisplayList,
+                ) {
                 }
 
                 fn hit(&self, st: &[NodeState], i: usize, x: f32, y: f32)

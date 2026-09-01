@@ -41,5 +41,9 @@ name = "hatches"
 required-features = ["observe"]
 
 [[test]]
+name = "display"
+required-features = []
+
+[[test]]
 name = "observe"
 required-features = ["observe"]

@@ -75,13 +75,13 @@ fn fused_values_stay_live() {
     let mut st = [NodeState::default(); FusedTen::NODE_COUNT];
     let sty = pass::default_styles(&t);
     pass::layout(&mut t, &sty, &mut st, ROOT_C);
-    let mut a = 0u64;
+    let mut a = lumen_static::DisplayList::new();
     pass::paint(&t, &st, &mut a);
 
     t.l1.set("changed");
-    let mut b = 0u64;
+    let mut b = lumen_static::DisplayList::new();
     pass::paint(&t, &st, &mut b);
-    assert_ne!(a, b, "paint reads fused internals through the fields");
+    assert_ne!(a.hash_from(0), b.hash_from(0), "paint reads fused internals through the fields");
 
     // And layout responds too: longer text grows the fused row. (Base is
     // re-derived after the write — pre-mutation provenance wouldn't

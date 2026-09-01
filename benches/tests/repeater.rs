@@ -99,14 +99,14 @@ fn paint_covers_the_window_and_tracks_scroll() {
     let mut app = ListApp { list: Repeat::new(10_000, 24.0, bind_icon), ..Default::default() };
     let mut st = [NodeState::default(); ListApp::NODE_COUNT];
     run(&mut app, &mut st);
-    let mut a = 0u64;
+    let mut a = lumen_static::DisplayList::new();
     pass::paint(&app, &st, &mut a);
 
     app.list.scroll = 480.0;
     run(&mut app, &mut st);
-    let mut b = 0u64;
+    let mut b = lumen_static::DisplayList::new();
     pass::paint(&app, &st, &mut b);
-    assert_ne!(a, b, "scrolled content must paint differently");
+    assert_ne!(a.hash_from(0), b.hash_from(0), "scrolled content must paint differently");
 }
 
 #[test]

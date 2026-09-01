@@ -10,6 +10,8 @@
 //! window directly. Interior mutability existed only because the old
 //! flat passes handed ops a *shared* base pointer.
 
+use crate::cx::LayoutCx;
+use crate::display::DisplayList;
 use crate::desc::{Constraints, NodeDesc, NodeState, Point, Size, NO_PARENT};
 use crate::hit::{contains, Hit, Inner};
 use crate::style::{Length, Style};
@@ -121,6 +123,7 @@ impl<T: Widget + Default + 'static> Node for Repeat<T> {
 
     fn layout(
         &mut self,
+        cx: &mut LayoutCx,
         limits: Constraints,
         // The repeater's own style is read via `resolve_self` below;
         // instances use the template's defaults, since the cascade is
@@ -151,7 +154,7 @@ impl<T: Widget + Default + 'static> Node for Repeat<T> {
         self.ensure_row_style();
         let Repeat { window, states, row_style, .. } = self;
         for (k, item) in window.iter_mut().enumerate() {
-            item.layout(row_limits, row_style, &mut states[k * n..(k + 1) * n], 0);
+            item.layout(cx, row_limits, row_style, &mut states[k * n..(k + 1) * n], 0);
         }
 
         let content = Size { w: limits.max_w, h: self.count as f32 * self.item_extent };
@@ -175,10 +178,7 @@ impl<T: Widget + Default + 'static> Node for Repeat<T> {
         }
     }
 
-    fn paint(&self, st: &[NodeState], i: usize, out: &mut u64) {
-        crate::ops::fold_geom(out, 5, &st[i]);
-        crate::ops::fold_pub(out, self.count as u64);
-        crate::ops::fold_pub(out, self.first as u64);
+    fn paint(&self, _st: &[NodeState], _i: usize, out: &mut DisplayList) {
         for k in 0..self.window.len() {
             self.window[k].paint(self.slice(k), 0, out);
         }

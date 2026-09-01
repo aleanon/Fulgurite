@@ -8,6 +8,8 @@
 use crate::desc::{Constraints, NodeDesc, NodeState, Point, Size, NO_PARENT};
 use crate::event::EventCtx;
 use crate::hit::{contains, Hit};
+use crate::cx::LayoutCx;
+use crate::display::{Color, DisplayList};
 use crate::style::{Align, Length, Style};
 use crate::text::{Dirty, Measured, TextStorage};
 use crate::widget::{Node, Widget};
@@ -23,12 +25,16 @@ pub fn fold_pub(out: &mut u64, v: u64) {
     fold(out, v)
 }
 
+/// A node's absolute box, for emitting commands.
 #[inline]
-pub fn fold_geom(out: &mut u64, tag: u64, st: &NodeState) {
-    fold(out, tag);
-    fold(out, st.size.w.to_bits() as u64 ^ ((st.size.h.to_bits() as u64) << 32));
-    fold(out, st.pos.x.to_bits() as u64 ^ ((st.pos.y.to_bits() as u64) << 32));
+pub fn rect_of(st: &NodeState) -> crate::display::Rect {
+    [st.pos.x, st.pos.y, st.pos.x + st.size.w, st.pos.y + st.size.h]
 }
+
+/// Containers and structural nodes draw nothing by themselves; this
+/// keeps the call site uniform and gives a renderer a hook later.
+#[inline]
+pub fn paint_container(_out: &mut DisplayList, _st: &NodeState) {}
 
 /// Space consumed by gaps between `n` children.
 #[inline]
@@ -267,6 +273,7 @@ impl<S: TextStorage> Node for Label<S> {
 
     fn layout(
         &mut self,
+        cx: &mut LayoutCx,
         limits: Constraints,
         style: &[Style],
         st: &mut [NodeState],
@@ -278,18 +285,13 @@ impl<S: TextStorage> Node for Label<S> {
         // changed.
         let text = self.text.get().as_ref();
         let dirty = self.text.is_dirty();
-        let content = self.measure.get_or(limits, dirty, || Size {
-            w: 8.0 * text.len() as f32,
-            h: 16.0,
-        });
+        let content =
+            self.measure.get_or(limits, dirty, || cx.text.measure(text, 16.0, limits.max_w));
         self.text.clear_dirty();
         record(st, i, limits, resolve_self(limits, &style[i], content))
     }
-    fn paint(&self, st: &[NodeState], i: usize, out: &mut u64) {
-        fold_geom(out, 1, &st[i]);
-        for &b in self.text.get().as_ref().as_bytes() {
-            fold(out, b as u64);
-        }
+    fn paint(&self, st: &[NodeState], i: usize, out: &mut DisplayList) {
+        out.text(rect_of(&st[i]), self.text.get().as_ref(), 16.0, Color::BLACK);
     }
     leaf_common!(Label<S>, 0);
 
@@ -334,6 +336,7 @@ impl Node for Fixed {
 
     fn layout(
         &mut self,
+        _cx: &mut LayoutCx,
         limits: Constraints,
         style: &[Style],
         st: &mut [NodeState],
@@ -342,9 +345,8 @@ impl Node for Fixed {
         let content = Size { w: self.w, h: self.h };
         record(st, i, limits, resolve_self(limits, &style[i], content))
     }
-    fn paint(&self, st: &[NodeState], i: usize, out: &mut u64) {
-        fold_geom(out, 2, &st[i]);
-        fold(out, self.w.to_bits() as u64 ^ self.h.to_bits() as u64);
+    fn paint(&self, st: &[NodeState], i: usize, out: &mut DisplayList) {
+        out.rect(rect_of(&st[i]), Color::BLACK);
     }
     leaf_common!(Fixed, NodeDesc::RIGID);
 }
@@ -372,6 +374,7 @@ impl Node for Spacer {
 
     fn layout(
         &mut self,
+        _cx: &mut LayoutCx,
         limits: Constraints,
         style: &[Style],
         st: &mut [NodeState],
@@ -381,8 +384,8 @@ impl Node for Spacer {
         // `resolve_self` turns that into "take the whole limit".
         record(st, i, limits, resolve_self(limits, &style[i], Size::default()))
     }
-    fn paint(&self, st: &[NodeState], i: usize, out: &mut u64) {
-        fold_geom(out, 3, &st[i]);
+    fn paint(&self, _st: &[NodeState], _i: usize, _out: &mut DisplayList) {
+        // A spacer is empty space; it draws nothing.
     }
     leaf_common!(Spacer, 0);
 }
@@ -423,6 +426,7 @@ impl<S: 'static> Node for Button<S> {
 
     fn layout(
         &mut self,
+        _cx: &mut LayoutCx,
         limits: Constraints,
         style: &[Style],
         st: &mut [NodeState],
@@ -434,11 +438,10 @@ impl<S: 'static> Node for Button<S> {
         };
         record(st, i, limits, resolve_self(limits, &style[i], content))
     }
-    fn paint(&self, st: &[NodeState], i: usize, out: &mut u64) {
-        fold_geom(out, 4, &st[i]);
-        for &b in self.label.as_bytes() {
-            fold(out, b as u64);
-        }
+    fn paint(&self, st: &[NodeState], i: usize, out: &mut DisplayList) {
+        let r = rect_of(&st[i]);
+        out.rect(r, Color(220, 220, 220, 255));
+        out.text(r, self.label, 16.0, Color::BLACK);
     }
     leaf_common!(Button<S>, NodeDesc::FOCUSABLE);
 
@@ -460,12 +463,6 @@ impl<S: 'static> Node for Button<S> {
 /// The synthetic column root runtime assembly puts above its instances.
 #[derive(Default)]
 pub struct VirtualColumn;
-
-impl VirtualColumn {
-    pub fn paint_self(&self, st: &[NodeState], i: usize, out: &mut u64) {
-        fold_geom(out, 0, &st[i]);
-    }
-}
 
 // ---- handler routing ---------------------------------------------------
 

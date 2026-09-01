@@ -4,9 +4,10 @@
 //! root. The table is concatenated at startup for *index addressing*
 //! (agent surface, journal, audit); traversal recurses over the `Vec`.
 
+use crate::cx::LayoutCx;
+use crate::display::DisplayList;
 use crate::desc::{Constraints, NodeDesc, NodeState, Point, Size, NO_PARENT};
 use crate::hit::{contains, Hit};
-use crate::ops::fold_geom;
 use crate::style::Style;
 use crate::widget::{splice_child, Node, Widget};
 
@@ -67,7 +68,7 @@ impl<C: Widget + Default + 'static> Assembled<C> {
 
     /// Lay out and position the whole slab under `limits`. The synthetic
     /// root is a column that gives each instance the space it asks for.
-    pub fn layout(&mut self, limits: Constraints) {
+    pub fn layout_with(&mut self, cx: &mut LayoutCx, limits: Constraints) {
         let n = C::NODE_COUNT;
         // The synthetic root behaves as a column: each instance is
         // offered whatever main-axis space is left, exactly as a derived
@@ -83,6 +84,7 @@ impl<C: Widget + Default + 'static> Assembled<C> {
             };
             let d: &mut dyn Node = item;
             let s = d.layout(
+                cx,
                 cc,
                 &self.styles[1 + k * n..1 + (k + 1) * n],
                 &mut self.states[1 + k * n..1 + (k + 1) * n],
@@ -108,8 +110,14 @@ impl<C: Widget + Default + 'static> Assembled<C> {
         }
     }
 
-    pub fn paint(&self, out: &mut u64) {
-        fold_geom(out, 0, &self.states[0]);
+    /// Lay out with the built-in metrics.
+    pub fn layout(&mut self, limits: Constraints) {
+        let mut m = crate::cx::BlockMetrics;
+        let mut cx = LayoutCx::new(&mut m);
+        self.layout_with(&mut cx, limits);
+    }
+
+    pub fn paint(&self, out: &mut DisplayList) {
         let n = C::NODE_COUNT;
         for (k, item) in self.instances.iter().enumerate() {
             item.paint(&self.states[1 + k * n..1 + (k + 1) * n], 0, out);

@@ -85,7 +85,7 @@ fn main() {
     // layout + paint, including the fused subtree and the repeater's
     // nested per-instance layout.
     pass::layout(&mut app.ui, &sty, &mut st, VIEW);
-    let mut sum = 0u64;
+    let mut sum = lumen_static::DisplayList::new();
     pass::paint(&app.ui, &st, &mut sum);
 
     // hit testing across the whole tree.
@@ -124,7 +124,7 @@ fn main() {
     // runtime assembly (§8's concat-at-startup path).
     let mut asm = Assembled::<Row>::new(8);
     asm.layout(VIEW);
-    let mut asum = 0u64;
+    let mut asum = lumen_static::DisplayList::new();
     asm.paint(&mut asum);
 
     // the async seam.
@@ -136,9 +136,11 @@ fn main() {
     inbox.drain(&mut app, apply);
 
     println!(
-        "ok: paint={sum:#x} hits={hits} clicks={} rows={:?} asm={asum:#x} depth={}",
+        "ok: cmds={} hits={hits} clicks={} rows={:?} asm-cmds={} depth={}",
+        sum.len(),
         app.clicks,
         app.rows,
+        asum.len(),
         Ui::DEPTH,
     );
 }

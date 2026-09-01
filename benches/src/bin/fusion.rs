@@ -16,9 +16,9 @@ fn static_root<W: Widget + Default>(label: &str, iters: usize) {
     let sty = pass::default_styles(&w);
     bench(label, iters, || {
         pass::layout(&mut w, &sty, &mut st, ROOT_C);
-        let mut out = 0u64;
+        let mut out = lumen_static::DisplayList::new();
         pass::paint(&w, &st, &mut out);
-        out
+        out.len() as u64
     });
 }
 
@@ -26,9 +26,9 @@ fn slab<C: Widget + Default + 'static>(label: &str, iters: usize, count: usize) 
     let mut a = Assembled::<C>::new(count);
     bench(label, iters, || {
         a.layout(ROOT_C);
-        let mut out = 0u64;
+        let mut out = lumen_static::DisplayList::new();
         a.paint(&mut out);
-        out
+        out.len() as u64
     });
 }
 
@@ -36,6 +36,8 @@ fn dyn_arm(label: &str, iters: usize, mut tree: Box<dyn DynWidget>) {
     bench(label, iters, || {
         tree.layout(ROOT_C);
         tree.place(Point::default());
+        // The oracle keeps its own checksum paint; only the framework
+        // arm emits a display list.
         let mut out = 0u64;
         tree.paint(&mut out);
         out

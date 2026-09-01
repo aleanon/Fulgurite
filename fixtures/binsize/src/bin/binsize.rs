@@ -21,7 +21,7 @@ fn main() {
     let sty = pass::default_styles(&t);
     let c = Constraints { min_w: 0.0, max_w: 800.0, min_h: 0.0, max_h: 600.0 };
     pass::layout(&mut t, &sty, &mut st, c);
-    let mut out = 0u64;
+    let mut out = lumen_static::DisplayList::new();
     pass::paint(&t, &st, &mut out);
-    println!("{out:#x} nodes={} depth={}", Block::NODE_COUNT, Block::DEPTH);
+    println!("cmds={} nodes={} depth={}", out.len(), Block::NODE_COUNT, Block::DEPTH);
 }

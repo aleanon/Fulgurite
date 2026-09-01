@@ -11,6 +11,8 @@
 //! calls a *win* — toggling is free and the hidden branch remembers
 //! where it was.
 
+use crate::cx::LayoutCx;
+use crate::display::DisplayList;
 use crate::desc::{Constraints, NodeDesc, NodeState, Point, Size, NO_PARENT};
 use crate::hit::Hit;
 use crate::style::Style;
@@ -55,13 +57,14 @@ impl<W: Widget> Node for Option<W> {
 
     fn layout(
         &mut self,
+        cx: &mut LayoutCx,
         limits: Constraints,
         style: &[Style],
         st: &mut [NodeState],
         i: usize,
     ) -> Size {
         match self {
-            Some(w) => w.layout(limits, style, st, i),
+            Some(w) => w.layout(cx, limits, style, st, i),
             None => hide(st, i, limits, W::NODE_COUNT),
         }
     }
@@ -76,7 +79,7 @@ impl<W: Widget> Node for Option<W> {
         }
     }
 
-    fn paint(&self, st: &[NodeState], i: usize, out: &mut u64) {
+    fn paint(&self, st: &[NodeState], i: usize, out: &mut DisplayList) {
         if let Some(w) = self {
             w.paint(st, i, out);
         }
@@ -231,6 +234,7 @@ impl<A: Widget, B: Widget> Node for Either<A, B> {
 
     fn layout(
         &mut self,
+        cx: &mut LayoutCx,
         limits: Constraints,
         _style: &[Style],
         st: &mut [NodeState],
@@ -238,8 +242,8 @@ impl<A: Widget, B: Widget> Node for Either<A, B> {
     ) -> Size {
         self.ensure_styles();
         let size = match self.showing {
-            Side::A => self.a.layout(limits, &self.a_style, &mut self.a_state, 0),
-            Side::B => self.b.layout(limits, &self.b_style, &mut self.b_state, 0),
+            Side::A => self.a.layout(cx, limits, &self.a_style, &mut self.a_state, 0),
+            Side::B => self.b.layout(cx, limits, &self.b_style, &mut self.b_state, 0),
         };
         st[i].constraints = limits;
         st[i].size = size;
@@ -254,8 +258,7 @@ impl<A: Widget, B: Widget> Node for Either<A, B> {
         }
     }
 
-    fn paint(&self, st: &[NodeState], i: usize, out: &mut u64) {
-        crate::ops::fold_geom(out, 6, &st[i]);
+    fn paint(&self, _st: &[NodeState], _i: usize, out: &mut DisplayList) {
         match self.showing {
             Side::A => self.a.paint(&self.a_state, 0, out),
             Side::B => self.b.paint(&self.b_state, 0, out),
@@ -411,6 +414,7 @@ impl<W: Widget> Node for List<W> {
 
     fn layout(
         &mut self,
+        cx: &mut LayoutCx,
         limits: Constraints,
         style: &[Style],
         st: &mut [NodeState],
@@ -430,7 +434,7 @@ impl<W: Widget> Node for List<W> {
                 min_h: 0.0,
                 max_h: (limits.max_h - sum).max(0.0),
             };
-            let s = item.layout(cc, istyle, &mut states[k * n..(k + 1) * n], 0);
+            let s = item.layout(cx, cc, istyle, &mut states[k * n..(k + 1) * n], 0);
             sum += s.h + if k < last { spacing } else { 0.0 };
             mx = mx.max(s.w);
         }
@@ -452,8 +456,7 @@ impl<W: Widget> Node for List<W> {
         }
     }
 
-    fn paint(&self, st: &[NodeState], i: usize, out: &mut u64) {
-        crate::ops::fold_geom(out, 7, &st[i]);
+    fn paint(&self, _st: &[NodeState], _i: usize, out: &mut DisplayList) {
         for k in 0..self.items.len() {
             self.items[k].paint(self.slice(k), 0, out);
         }
@@ -592,12 +595,13 @@ impl Node for Dyn {
 
     fn layout(
         &mut self,
+        cx: &mut LayoutCx,
         limits: Constraints,
         style: &[Style],
         st: &mut [NodeState],
         i: usize,
     ) -> Size {
-        let size = self.inner.layout(limits, &self.style, &mut self.states, 0);
+        let size = self.inner.layout(cx, limits, &self.style, &mut self.states, 0);
         let size = crate::ops::resolve_self(limits, &style[i], size);
         st[i].constraints = limits;
         st[i].size = size;
@@ -609,8 +613,7 @@ impl Node for Dyn {
         self.inner.place(at, &self.style, &mut self.states, 0);
     }
 
-    fn paint(&self, st: &[NodeState], i: usize, out: &mut u64) {
-        crate::ops::fold_geom(out, 8, &st[i]);
+    fn paint(&self, _st: &[NodeState], _i: usize, out: &mut DisplayList) {
         self.inner.paint(&self.states, 0, out);
     }
 

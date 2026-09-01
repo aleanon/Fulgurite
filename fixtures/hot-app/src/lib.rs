@@ -176,9 +176,11 @@ pub unsafe extern "C" fn hot_frame(p: *mut c_void) -> u64 {
     let sty = pass::default_styles(&s.ui);
     let c = Constraints { min_w: 0.0, max_w: 800.0, min_h: 0.0, max_h: 600.0 };
     pass::layout(&mut s.ui, &sty, &mut st, c);
-    let mut out = 0u64;
+    let mut out = lumen_static::DisplayList::new();
     pass::paint(&s.ui, &st, &mut out);
-    out
+    // The host asserts on a stable digest of the frame rather than on
+    // the command list itself, which does not cross the FFI boundary.
+    out.hash_from(0)
 }
 
 /// Serialize the keep-half into a HOST-owned buffer. Returns the byte
