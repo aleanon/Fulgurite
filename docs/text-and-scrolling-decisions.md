@@ -4,10 +4,11 @@
 problem, so they share one document: both need a child to be larger than
 the box it is shown in.*
 
-**Status: all twelve questions are DECIDED**, each on the recommendation
-that accompanied it. A1's fallout is partly implemented already — see
-"What A1 changed on the day it was answered" at the end — and the rest is
-enumerated as work to plan, not work assumed done.
+**Status, 2026-09-02 after review: twelve questions DECIDED, one of them
+REVISED (A2), and eleven new ones OPEN** (A5–A7, B9–B11, C1–C5). Three
+reviews of the plan found that two rationales here were false and that
+the routing layer both halves depend on does not exist yet. The
+decisions themselves survived; what changed is stated at each one.
 
 The framing that opened this document ("the framework currently
 guarantees that cannot happen") turned out to be **false**, which is what
@@ -120,20 +121,39 @@ over its neighbours.
 **Options.** A `NodeState.flags` bit; a field on the widget; a `Style`
 property.
 
-**DECIDED: `Style.overflow: Overflow { Visible, Clip }`.**
+**DECIDED, then REVISED 2026-09-02:** `Style.overflow: Overflow {
+Visible, Clip }` supplied by `Node::defaults()` — **but not cascadeable**
+(no `Patch` field), **and stamped into `NodeState.flags` by `place`**, so
+that `paint` and `hit` read it from the array they already carry.
 
-Precedent, and it is not the precedent the plan predicted. M4 T4.1
-specified `NodeState.flags: HIDDEN`; the implementation put hiding in
-`Style.visible` instead, because M1's style array had landed in the
-meantime and visibility is a styleable property. That deviation is
-undocumented (see "Consequences" below) but it was the right call, and
-clipping is the same kind of property — CSS calls it `overflow` for the
-same reason.
+The first version of this answer rested on a false statement: *"Paint
+and hit both already carry `&[Style]`, so neither needs a new
+parameter."* They do not — only `layout` and `place` do
+(`widget.rs:52,55`). As written, A2 was a `Node` signature change of M0's
+class: every leaf, all four hatches, `Repeat`, `Assembled`, the derive,
+the shell and the journal. Review also showed the cited precedent does
+not transfer: `Style.visible` works without paint or hit reading style
+because hiding has a *geometric proxy* — layout zero-sizes the subtree
+and `contains` fails. Clipping has no proxy; a clip scope's box is
+exactly the size a non-clipping one's would be.
 
-It also gets the ergonomics free. `Node::defaults()` already exists, so a
-`ScrollView` returns `Overflow::Clip` from it, and a stylesheet can still
-override. Paint and hit both already carry `&[Style]`, so neither needs a
-new parameter.
+The revision keeps what A2 was for and drops what it got wrong:
+
+- `Overflow` lives in `Style` so `defaults()` supplies it and a
+  `ScrollView` declares itself. That ergonomic survives.
+- It has **no `Patch` field**, so a stylesheet cannot set it. Review's
+  concrete scenario: `Rule::new(Selector::Any, Patch::new().overflow(Visible))`
+  would re-create the exact defect A1 was written to fix — the derive's
+  `hit` still gates on the node rect while paint stops clipping — after
+  the code was fixed to prevent it. The test for whether a property may
+  cascade is *whether a stylesheet can break an invariant another
+  subsystem assumes*. `visible`: no. `overflow`: `hit.rs`, `W1003` and
+  `W1005` all read it. If a scroller must ever be un-clipped, that is a
+  widget-API decision.
+- `place` already has `&[Style]` (`widget.rs:48`) and already writes
+  `NodeState`; it stamps a `CLIP` flag. Paint and hit read the flag. No
+  signature changes. This is the option the first version dismissed on
+  the false premise.
 
 ### A3. Where does the scroll offset live?
 
@@ -169,6 +189,46 @@ the smallest change that works and it adds nothing to `NodeState`.
   exactly here, in reverse.
 - `W1004` stays reserved: sequential placement still holds within a clip
   scope, so overlap remains impossible until absolute/stack layout.
+
+### A5. What constraints does a scroller give its content? — **OPEN**
+
+Upstream of A1 and A3 and not covered by either. To exceed the viewport
+the content must be measured under a loosened main axis. Then, in the
+derive's second scan (`macros/src/lib.rs:340-352`), a `FillPortion`
+child inside that content resolves against `max_h = ∞`: `used += ∞`,
+`free = (∞ − ∞).max(0.0)` = **NaN**. NaN sizes land in `NodeState`, make
+every `contains` false, hash by bit pattern into the journal, and slip
+past the audit's `EPS` comparisons. Concrete repro once a `ScrollView`
+exists: `ScrollView { Column { Spacer /* Fill×Fill */, Label } }`.
+
+Every framework has a rule here; CSS resolves flex against the viewport,
+not the content. **Recommendation:** a scroller passes its own main-axis
+extent as the reference for `Fill` and an unbounded *maximum* for
+`Shrink`/`Fixed` — i.e. `Fill` inside a scroller means "the viewport",
+never "the content". Needs a decision and a NaN-guard test either way.
+
+### A6. Who clamps the scroll offset? — **OPEN**
+
+A3 settles where the offset lives and stops. Content extent is known only
+after layout — the same reasoning B5 uses to put caret-into-view in
+`layout` — but A3 does not apply it to its own offset. Today
+`repeat.rs:85` clamps `first` to `count − 1` while `place` uses raw
+`self.scroll`, so `scroll = 1e9` on a ten-row list shows an empty box. A
+wheel handler will write that value directly. **Recommendation:** clamp
+in `layout` after measuring, same place and shape as B5.
+
+### A7. A `Repeat` inside a `ScrollView` materializes every row — **OPEN**
+
+`visible_range(limits.max_h)` derives the window from the *constraint*,
+not from an intersection with a viewport. A scroller gives its content
+an unbounded main axis (A5), so a nested `Repeat` computes
+`vis = ceil(∞ / extent) + 1`, saturates, and is clamped to **`count`**. A
+1M-row list inside a page-level scroller materializes and binds all
+1M rows every frame, silently — and it is the first composition anyone
+will write. **Recommendation:** either `Repeat` takes a visible rect
+rather than a constraint, or nesting a `Repeat` in a scroller is
+forbidden and linted. The second is simpler and probably right for v1:
+a `Repeat` *is* a scroller.
 
 ---
 
@@ -286,6 +346,113 @@ would overwrite the buffer every frame and destroy the caret mid-
 keystroke. `bind::format_into` takes `&mut Label<S>`, so it simply does
 not accept a text input. Do not add a convenience impl.
 
+### B9. `Shaped`'s allocation, reload mode and `no_std` story — **OPEN**
+
+B1 says the buffer is "one allocation, grown once, reused". B2 says
+nothing about the advance array. A `Vec<f32>` that grows as the user
+types is an allocation in steady state — the non-negotiable. Also
+unstated: `Shaped` is derived state and must be `#[reload(fresh)]`,
+never migrated (as `StyleState` in T1.6); `Measured`'s `Cell<Option<_>>`
+shape does not transfer because the payload is not `Copy`, so `Shaped`
+is a plain buffer mutated in `layout` (`&mut self`); and `TextInput` has
+no `no_std` story at all where `Label<&'static str>` deliberately does.
+**Recommendation:** make the advance buffer an associated type of the
+storage, so `String` pairs with `Vec<f32>` and an inline buffer pairs
+with an inline array; grow both by the same policy.
+
+### B10. `Repeat::bind` defeats the memo the text design exists for — **OPEN**
+
+`repeat.rs:145-147` calls `bind(item, row)` for every materialized row on
+every layout. The natural bind body is `row.label.set_str(..)`, which
+sets the dirty bit unconditionally, so `Measured` recomputes on every
+idle frame. Measured by review: 11 visible rows, 100 idle frames, 1,100
+shaper calls with a `set_str` bind versus 0 with a `format_into` bind.
+Nothing in `fn(&mut T, usize)` steers an author to the comparing form. A
+`Shaped` cache layered on the same keying inherits the hole and is more
+expensive to rebuild. **Recommendation:** absorb `set_if_changed` into
+`Label::set_str` — compare-then-write is the only sane default for a
+memoized field — and skip `bind` for rows whose index is unchanged.
+Must land before B2.
+
+### B11. `TextStorage::from_string` blocks the no-alloc profile — **OPEN**
+
+It takes an owned `String` by value. A fixed-capacity inline buffer must
+depend on `alloc` just to satisfy the signature, and has no way to
+signal overflow. There is no `no_std` feature today, so this is
+aspiration rather than regression — but it forecloses the profile.
+**Recommendation:** `TextStorage: AsRef<str> + Default` only;
+`TextBuffer` (already split out 2026-09-02) for repeated writes; move
+`from_string` to a `reload`-gated `TextRestore` trait.
+
+---
+
+## Cluster C — routing: the layer both halves depend on
+
+Not in the first version of this document at all, which claimed under
+"Not questions" that *"the event vocabulary is ready … so a widget-owned
+buffer is drivable by an agent on day one."* The vocabulary exists. The
+routing is a stub: `pass.rs:154` returns before any handler lookup for
+every event that is not `PointerUp`, and says so in its own comment. The
+agent's `input.type` and `input.scroll` are enqueued, drained, and
+dropped — finished-but-unreachable, the failure mode `audit.rs` says was
+adopted from Lumen's review rather than re-earned.
+
+### C1. Route `Key`, `Text` and `Scroll` — **OPEN**
+
+`dispatch` must deliver them. To what, is C3. **Recommendation:**
+keyboard and text to the focused node, walking ancestors as pointer
+events do; scroll to the hit node, walking ancestors (C4 decides how the
+walk ends).
+
+### C2. Event payload — **OPEN**
+
+`EventCtx { node, row, inner, pos, local }` has nowhere to put
+`Event::Text { ch }` or `Scroll { dy }`. A handler cannot learn what
+happened. **Recommendation:** `EventCtx.event: Event` — the ctx already
+carries derived data; carrying the source is one field.
+
+### C3. How does a handler reach widget state? — **OPEN, and the largest**
+
+Handlers are `fn(&mut S, &EventCtx)` with `S: App`. B1 puts the buffer in
+the widget; A3 puts the scroll offset there. From `&mut S`, a widget is
+reachable generically only as `&mut dyn Node` — no editing methods, no
+`Any`, `unsafe` banned. Two ways out:
+
+- (i) hand-written per-app handlers navigating the concrete tree
+  (`app.ui.field.insert(ch)`). Works, defeats the idea of a `TextInput`
+  that edits itself.
+- (ii) `Node::on_event(&mut self, ev, cx) -> bool`. A `Node` trait change
+  of M0's class — every leaf, all hatches, `Repeat`, the derive — and it
+  reorders `dispatch`'s copy-handler-then-`&mut S` sequence, which today
+  relies on `tree()` being a *shared* borrow.
+
+**Recommendation: (ii).** It is the only shape under which a widget
+library exists. Cost it as its own milestone task, not as part of
+"text input".
+
+### C4. Scroll chaining — **OPEN**
+
+The ancestor walk stops at the first node that *has* a handler, and
+handlers return `()`. Nested scrollers need "at my end, take it". Adding
+a return value to the handler `fn` pointer changes the signature the
+hot-reload contract is written around. **Recommendation:** `bool` from
+`Node::on_event` (C3) is the natural carrier; the `Handlers` fn-pointer
+signature stays as it is for click handlers.
+
+### C5. Focus for off-table nodes, Tab order, visibility — **OPEN**
+
+`focus: Option<u32>` is a main-table index. A `TextInput` inside a
+`Repeat` row, an `Either` branch or a `Dyn` island has no focus
+representation (`Hit` already models this via `Inner`; focus does not).
+Nothing consumes `Key::Tab`. And focus does not track visibility: click a
+field in `Either::A`, switch to `B`, keep typing — the hidden field takes
+the keystrokes, because `dispatch` never rechecks `style[f].visible`
+despite `pass.rs:113` saying that is why style is threaded.
+**Recommendation:** focus becomes a `NodeSel` (table index plus optional
+`Inner`), `dispatch` drops focus that is hidden, Tab order is
+declaration order within a container. Each is small; together they are
+a task.
+
 ---
 
 ## What A1 changed on the day it was answered
@@ -318,24 +485,39 @@ hit outside it.
 
 1. `hit.rs`'s module comment states the global invariant and must be
    rewritten to the scoped one. **Still open.**
-2. The guard test in `tests/lint.rs` — rewrite, do not delete (A4).
+2. The guard test in `lumen-static-agent/tests/lint.rs` — rewrite, do
+   not delete (A4). It walks `SUB_TABLE` and cannot see arenas.
 3. `docs/plan-architecture-v2.md` T2.6 re-pinned the containment
    invariant under the `Length` model; it needs an amendment.
 4. `audit.rs`'s `_OVERFLOW_RESERVED` / `_OVERLAP_RESERVED` doc comments
    name the trigger as "a scrollable content region" — that trigger fires
    here.
-5. **Unrelated, found while writing this:** M4 T4.1 specified
-   `NodeState.flags: HIDDEN`; the code uses `Style.visible`. The plan
-   should record the deviation and its reason (M1's style array landed
-   first, and visibility is styleable).
+5. ~~`List`, `Dyn` and `Assembled` have the identical unclipped
+   divergence~~ — **fixed 2026-09-02**, with tests.
+6. **`Repeat::observe` still emits the overrun rows** (`repeat.rs`
+   observe) with bounds outside the viewport. Clipped from paint,
+   rejected by hit, announced to AccessKit and the agent anyway — the
+   probe-vs-click class one surface over. Not in the first version of
+   this list.
+7. **The clip rect is the border box, not the padding box.** Children
+   are placed inside padding; content will draw over a scroller's
+   padding. Every other toolkit clips to the padding box.
+8. **The clip stack has no RAII bracket.** An early `return` in a `paint`
+   body — and A2 will want `if !visible { return }` — leaks a clip onto
+   every later sibling. A debug assertion on balance at frame end.
+9. **`Either::layout` never calls `resolve_self`** — it writes the
+   branch's size straight to `st[i]` and ignores `style[i]`. Its
+   width/height style is dead today, and it cannot be a clip scope by
+   A2's mechanism.
+10. **Unrelated, found while writing this:** M4 T4.1 specified
+    `NodeState.flags: HIDDEN`; the code uses `Style.visible`. The plan
+    should record the deviation and its reason.
 
 ## Not questions
 
 - **`NODE_COUNT` and `DEPTH` are unaffected.** A scroll viewport is one
   node with one child subtree; both stay compile-time constants.
-- **The event vocabulary is ready.** `Event::Text { ch }` and
-  `Key::{Backspace, Delete, Left, Right, Home, End}` shipped with E0, and
-  the agent's `input.type` already enqueues `Text` events, so a
-  widget-owned buffer is drivable by an agent on day one.
+- ~~The event vocabulary is ready … drivable by an agent on day one.~~
+  **False** — see Cluster C. The vocabulary exists; nothing routes it.
 - **Clipping primitives exist.** `Cmd::PushClip`/`PopClip` are in the
   display list and the software renderer honours them.

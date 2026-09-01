@@ -333,8 +333,14 @@ subtrees are stable across toggles.
   state slice, a generalization of `Repeat` with count 1 and a boxed
   template.
 
-**Outcome, with two deviations recorded rather than papered over.**
+**Outcome, with three deviations recorded rather than papered over.**
 
+0. **T4.1 put hiding in `Style.visible`, not `NodeState.flags: HIDDEN`.**
+   M1's style array had landed by then and visibility is styleable. Not
+   recorded at the time; found during the 2026-09-02 review. It turned
+   out to matter: it is the precedent A2 of the scrolling decisions first
+   cited and then had to distinguish itself from, because hiding has a
+   geometric proxy (zero size) and clipping does not.
 1. **`Either<A, B>` is one table node, not `A + B`.** Concatenating two
    sub-tables into a merged const table needs
    `generic_const_exprs` — the stable-Rust wall the whole design avoids.
@@ -446,11 +452,18 @@ the reentrancy is noted.
 four-step sketch to a milestone because it is next and because M8 depends
 on it. `docs/plan-lumen-parity.md` Phase A steps 2–4.*
 
-**Gates:** the counter runs in a window and accepts real keyboard and
-pointer input; the software `Canvas` remains the headless oracle and its
-output stays assertable in CI; `benches --bin bindings` is re-run against
-the real shaper and `docs/bindings-decision.md`'s ~13 ns threshold is
-settled either way.
+**Gates, corrected 2026-09-02.** The first version required "the counter
+runs in a window and accepts real keyboard and pointer input", which
+cannot be met: keyboard routing does not exist and is M9's work (Cluster
+C of `docs/text-and-scrolling-decisions.md`). That made M7 depend on the
+milestone that depends on it. Split as review recommended:
+
+- **M7a (T7.1–T7.3), headlessly gated:** the software `Canvas` remains
+  the oracle and every existing pixel test passes against the adopted
+  renderer; `benches --bin bindings` runs against the real measurer and
+  T7.3's four numbers are recorded.
+- **M7b (T7.4–T7.5), manually gated:** the counter runs in a window and
+  responds to *pointer* input. Keyboard is not a gate here.
 
 - **T7.1** Adopt `lumen-render` behind the existing `Renderer` trait. The
   seam is already the right shape, so no widget signature changes. **The
@@ -488,19 +501,18 @@ settled either way.
 
 ---
 
-## M8 — Scrolling and text input — **PLANNED, not started**
+## M8 — Scrolling — **PLANNED, not started**
 
-Design settled in `docs/text-and-scrolling-decisions.md` (twelve
-decisions, 2026-09-02). Two features, one decision, because both need a
-child larger than the box it is shown in. Two of A1's consequences are
-already fixed (`Repeat` clips; the software renderer honours the clip
-stack); the rest is listed there under "Consequences still to handle" and
-needs a task breakdown before it is started.
+Design in `docs/text-and-scrolling-decisions.md` Cluster A. A1–A4
+decided (A2 revised after review); **A5–A7 open** and must be answered
+before the breakdown: what constraints a scroller gives its content (a
+NaN hazard today), who clamps the offset, and what a `Repeat` inside a
+`ScrollView` does.
 
-**Depends on M7** for the text-input half only: B2's `Shaped` cache holds
-per-glyph advances for caret placement, and there is nothing to cache
-until a real shaper exists. The scrolling half (A1–A4) depends on
-nothing and can go first.
+Depends on nothing in M7 — true again under the *revised* A2, which
+stamps a `NodeState` flag from `place` instead of changing `paint`/`hit`
+signatures. The first version of this note made the same claim on a
+false premise.
 
 Two notes for whoever writes the breakdown:
 
@@ -508,15 +520,35 @@ Two notes for whoever writes the breakdown:
   it asked for, which inside a scroller is the normal case — it must
   learn about clip scopes in the same commit that introduces one, or it
   will scream on every scrolling view.
-- **Fold in the deferred f32 scroll ceiling** from
-  `docs/step3-repeaters.md`: `count * item_extent` at 10M rows exceeds
-  f32's exact-integer range and deep-scroll positions quantize. A3 fixes
-  where the scroll offset *lives*; this is what it is *made of*, and the
-  two should be settled together rather than leaving an orphan.
+- **Fold in the f32 scroll ceiling** from `docs/step3-repeaters.md`, and
+  give it a number: `repeat.rs:165` puts `count * item_extent` into
+  `size.h` and `repeat.rs:85` divides in f32 to pick `first`; at 10M ×
+  24px one ulp is 16px and rows are skipped before the offset quantizes.
+  It has been deferred twice; a third deferral needs a stated reason.
 
 ---
 
-## M9+ — parity phases B–E
+## M9 — Input routing and text input — **PLANNED, not started**
+
+Cluster C plus Cluster B of the decisions doc. Split from M8 because the
+two share the containment decision and nothing else — different
+subsystems, different gates, different risk — and because Cluster C is
+larger than a task: `dispatch` drops every event that is not `PointerUp`,
+`EventCtx` carries no payload, and a handler cannot reach widget state
+without a `Node` trait change (C3). That change is M0's class and gets
+its own task with its own gate before any text field is attempted.
+
+Depends on M7a for the text half only: `TextMeasure` needs a shaping
+method (T7.2b) before B2's `Shaped` cache has anything to hold. B10
+(`Repeat::bind` defeating the memo) must land before B2 regardless.
+
+Order within: C1–C2 (routing and payload, small) → C3 (the trait change)
+→ C5 (focus) → B10 → B11 → B3/B2/B9 → the widget → C4 (chaining, once
+two scrollers exist to chain).
+
+---
+
+## M10+ — parity phases B–E
 
 Widget vocabulary (Phase B), `.lss` (Phase C), platform/content (D), test
 harness (E) as laid out in `docs/plan-lumen-parity.md`. Not expanded
@@ -540,7 +572,8 @@ architecture end to end.
 ## Order and dependencies
 
 ```
-M0 ──► M1 ──► M2 ──► M3 ──► M4 ──► M5 ──► M6 ──► M7 ──► M8 ──► M9+
+M0 ──► M1 ──► M2 ──► M3 ──► M4 ──► M5 ──► M6 ──► M7a ──► M8 ──► M9 ──► M10+
+                                                    └─► M7b (manual)
         (style array first: Length must live somewhere)
 ```
 
