@@ -95,6 +95,11 @@ impl<T: Widget + Default> Repeat<T> {
         }
     }
 
+    /// Geometry of materialized row `k`'s root node — for tests.
+    pub fn row_state(&self, k: usize) -> NodeState {
+        self.states[k * T::NODE_COUNT]
+    }
+
     fn slice(&self, k: usize) -> &[NodeState] {
         &self.states[k * T::NODE_COUNT..(k + 1) * T::NODE_COUNT]
     }

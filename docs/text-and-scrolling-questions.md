@@ -59,12 +59,55 @@ cannot both contain a point, and a child scrolled out of view cannot
 contain a point that is inside the viewport. The rule is re-anchored, not
 weakened.
 
-(c) alone is not sufficient — it works for long homogeneous lists, which
-is exactly what `Repeat` is for, but not for a text field scrolling
-through one continuous run, nor for a scroll region holding arbitrary
-widgets.
-
 (a) gives up a real property to buy generality nothing has asked for.
+
+**(c) is not an alternative, because it is not doing the job today.**
+Measured, not assumed — `crates/lumen-static/tests/scroll_containment.rs`:
+
+| `Repeat`, 24px rows, 100px viewport | escapes above | escapes below | clip cmds |
+|---|---|---|---|
+| `scroll = 0` (on an item boundary) | 0px | **44px** | **0** |
+| `scroll = 12` (half an item) | **12px** | 32px | **0** |
+
+`Repeat::place` puts row 0 at `first * extent - scroll` (`repeat.rs:175`),
+which is negative for any scroll off an item boundary, and
+`visible_range` deliberately materializes one row past the viewport
+(`repeat.rs:87`) because a viewport is rarely an exact multiple of the
+item extent. Neither is a bug in virtualization — both are *required* by
+it. `paint` then emits no clip at all: `repeat.rs` contains zero
+occurrences of "clip".
+
+So the invariant in `hit.rs` is **already false**, and has been since
+Step 3. It went unnoticed because the guard test in
+`lumen-static-agent/tests/lint.rs` walks `SUB_TABLE`, and a repeater's
+rows live in an off-table arena — the one mechanism that breaks the
+invariant is invisible to the test written to catch it.
+
+Virtualization decides *how many* children exist; it has nothing to say
+about where the ones at the boundary are allowed to draw. Those are
+orthogonal, which is why (c) cannot substitute for (b):
+
+- **(b) scoping is a correctness mechanism** — it bounds where a subtree
+  may draw and be hit. Every scrolling construct needs it, including
+  virtualized ones.
+- **(c) virtualization is a cost mechanism** — it bounds work per frame
+  regardless of item count. Only uniform homogeneous lists can have it.
+
+Three things (c) cannot do at all, independent of the above. It cannot
+handle a scroll region of heterogeneous static children, because in a
+static tree instantiation is not optional — fields exist because the type
+says so, and there is nothing to leave unmaterialized. It cannot handle
+continuous content with no item boundary, such as a text field scrolling
+horizontally through one run. And it cannot handle non-uniform item
+extents without first measuring everything, which is the cost it exists
+to avoid.
+
+**Live defect, independent of A1.** Hit testing already gates on the
+repeater's own rect before examining rows (`repeat.rs:188`), so it
+behaves as though clipped — while paint draws rows up to 44px outside.
+Hit and paint disagree, which is precisely the class of bug P4 fixed for
+probe-vs-click. Answering A1 fixes it; until then a scrolled list paints
+over its neighbours.
 
 ### A2. Where does "this node clips" live?
 
