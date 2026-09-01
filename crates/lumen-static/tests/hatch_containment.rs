@@ -11,7 +11,6 @@ use lumen_static::assemble::Assembled;
 use lumen_static::hatch::{Dyn, List};
 use lumen_static::ops::Fixed;
 use lumen_static::style::{Length, Patch, Rule, Selector};
-use lumen_static::widget::Node;
 use lumen_static::{pass, Cmd, Constraints, NodeState, StaticTree, Widget};
 
 const VIEW: Constraints = Constraints { min_w: 0.0, max_w: 400.0, min_h: 0.0, max_h: 400.0 };
