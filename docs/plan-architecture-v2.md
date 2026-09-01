@@ -397,9 +397,8 @@ app takes, so the example doubles as an agent-surface test — and renders
 to a PPM at 7.6% ink. `just counter` writes a viewable frame.
 
 **Remaining in M5:** the winit binding, and adopting Lumen's actual
-render/text crates. Both are Phase A follow-ons, not blockers for M6.
-(The `lumen-text` adoption also settles M6's open measurement — see
-`docs/bindings-decision.md`.)
+render/text crates. Both are Phase A follow-ons, not blockers for M6 —
+**now scheduled as M7**, since M8's text input depends on the text stack.
 
 ---
 
@@ -436,7 +435,39 @@ frame, 0.1% of a 16.6 ms budget.
 
 ---
 
-## M7 — Scrolling and text input — **PLANNED, not started**
+## M7 — Phase A completion: a window, real glyphs, real pixels
+
+*The remainder of `plan-lumen-parity.md` Phase A, promoted from a
+four-step sketch to a milestone because it is next and because M8 depends
+on it. `docs/plan-lumen-parity.md` Phase A steps 2–4.*
+
+**Gates:** the counter runs in a window and accepts real keyboard and
+pointer input; the software `Canvas` remains the headless oracle and its
+output stays assertable in CI; `benches --bin bindings` is re-run against
+the real shaper and `docs/bindings-decision.md`'s ~13 ns threshold is
+settled either way.
+
+- **T7.1** Adopt `lumen-render` behind the existing `Renderer` trait. The
+  seam is already the right shape, so no widget signature changes. **The
+  adopted backend must honour `PushClip`/`PopClip`** — the software
+  renderer ignored them for three milestones and only a pixel-level test
+  caught it (`docs/text-and-scrolling-decisions.md`).
+- **T7.2** Adopt `lumen-text` behind `dyn TextMeasure`. Unblocks M8's
+  `Shaped` cache, which cannot be designed against `BlockMetrics`.
+- **T7.3** Re-run `benches --bin bindings`. This is a *decision gate*,
+  not a report: if re-measuring a short label still costs under ~13 ns,
+  `bind::format_into` drops its comparison and always writes, and
+  `docs/bindings-decision.md` records that it lost.
+- **T7.4** winit shell: window events into `Host::post`, `Canvas::pixels`
+  blitted to the surface. The two attachment points M5 deliberately
+  stopped at.
+- **T7.5** AccessKit platform adapter (`accesskit_winit`) — the
+  `TreeUpdate` snapshot exists and has been waiting for a shell
+  (`docs/step5-observability.md`).
+
+---
+
+## M8 — Scrolling and text input — **PLANNED, not started**
 
 Design settled in `docs/text-and-scrolling-decisions.md` (twelve
 decisions, 2026-09-02). Two features, one decision, because both need a
@@ -445,14 +476,26 @@ already fixed (`Repeat` clips; the software renderer honours the clip
 stack); the rest is listed there under "Consequences still to handle" and
 needs a task breakdown before it is started.
 
-Note for whoever writes that breakdown: A4 is the trap. `W1005` fires on
-any `Shrink` node given less than it asked for, which inside a scroller
-is the normal case — it must learn about clip scopes in the same commit
-that introduces one, or it will scream on every scrolling view.
+**Depends on M7** for the text-input half only: B2's `Shaped` cache holds
+per-glyph advances for caret placement, and there is nothing to cache
+until a real shaper exists. The scrolling half (A1–A4) depends on
+nothing and can go first.
+
+Two notes for whoever writes the breakdown:
+
+- **A4 is the trap.** `W1005` fires on any `Shrink` node given less than
+  it asked for, which inside a scroller is the normal case — it must
+  learn about clip scopes in the same commit that introduces one, or it
+  will scream on every scrolling view.
+- **Fold in the deferred f32 scroll ceiling** from
+  `docs/step3-repeaters.md`: `count * item_extent` at 10M rows exceeds
+  f32's exact-integer range and deep-scroll positions quantize. A3 fixes
+  where the scroll offset *lives*; this is what it is *made of*, and the
+  two should be settled together rather than leaving an orphan.
 
 ---
 
-## M8+ — parity phases B–E
+## M9+ — parity phases B–E
 
 Widget vocabulary (Phase B), `.lss` (Phase C), platform/content (D), test
 harness (E) as laid out in `docs/plan-lumen-parity.md`. Not expanded
@@ -476,7 +519,7 @@ architecture end to end.
 ## Order and dependencies
 
 ```
-M0 ──► M1 ──► M2 ──► M3 ──► M4 ──► M5 ──► M6 ──► M7 ──► M8+
+M0 ──► M1 ──► M2 ──► M3 ──► M4 ──► M5 ──► M6 ──► M7 ──► M8 ──► M9+
         (style array first: Length must live somewhere)
 ```
 
