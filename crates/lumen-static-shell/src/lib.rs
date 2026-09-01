@@ -106,6 +106,13 @@ impl<A: App> Host<A> {
             handled |= pass::dispatch(&mut self.app, &self.styles, &self.states, &mut self.focus, &ev);
         }
 
+        // Derived presentation is refreshed here, between input and
+        // layout: a handler has just changed state, and layout is about
+        // to measure what that state renders as. Doing it in the loop
+        // rather than at every call site is what makes a binding
+        // impossible to forget.
+        self.app.update();
+
         let limits = self.limits();
         let t0 = std::time::Instant::now();
         {

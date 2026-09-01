@@ -146,6 +146,19 @@ pub trait App: Sized {
     type Tree: crate::widget::Widget + Handlers<Self>;
     fn tree(&self) -> &Self::Tree;
     fn tree_mut(&mut self) -> &mut Self::Tree;
+
+    /// Refresh the tree's *presentation copies* from the state they are
+    /// derived from. Called by the frame loop after input is drained and
+    /// before layout, so a handler that changes state cannot leave a
+    /// stale value on screen.
+    ///
+    /// Widget fields hold the presentation copy and sibling fields are
+    /// the source of truth (`docs/layout-and-storage-decisions.md` §1);
+    /// this is the seam where the copy is brought back into agreement.
+    /// `#[derive(App)]` writes the body from `#[bind(...)]` declarations
+    /// — see `crate::bind`. The default does nothing, for trees that
+    /// present no derived state.
+    fn update(&mut self) {}
 }
 
 impl Extend<Event> for InputQueue {
