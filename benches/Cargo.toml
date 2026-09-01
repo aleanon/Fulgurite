@@ -20,11 +20,3 @@ path = "src/bin/crossover.rs"
 [[bin]]
 name = "bindings"
 path = "src/bin/bindings.rs"
-
-[[bin]]
-name = "calibrate"
-path = "src/bin/calibrate.rs"
-
-[[bin]]
-name = "binddecomp"
-path = "src/bin/binddecomp.rs"

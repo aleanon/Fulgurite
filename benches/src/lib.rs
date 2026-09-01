@@ -448,22 +448,58 @@ pub struct RigidCard {
 
 // ---- shared micro-bench harness ---------------------------------------------
 
-/// Median/p10/p90 of `iters` timed runs after a warmup.
+/// Number of timed blocks per measurement. Odd, so the median is a
+/// sample rather than an average of two.
+const BLOCKS: usize = 21;
+
+/// Batched timing: `iters` calls are split into [`BLOCKS`] blocks, each
+/// timed as one window, and the per-call cost is `window / calls`.
+///
+/// This replaced per-iteration timing after review showed the old
+/// harness could not resolve what was being asked of it: an empty
+/// closure measured 10–27 ns (the timer itself), and every row of the
+/// bindings table sat within a few ns of that floor. The "~4–13 ns"
+/// range one decision was built on turned out to be the same quantity
+/// sampled five times. Batched, run-to-run spread on that quantity fell
+/// from ±40% to ±0.01 ns.
+///
+/// Prints the median, minimum and maximum over blocks. The minimum is
+/// the least-perturbed estimate and the most stable across runs; the
+/// median is what to quote. The first call in a process also prints the
+/// harness floor — an empty closure through this same path — so that a
+/// result within a small multiple of it is recognisable as noise.
 pub fn bench(label: &str, iters: usize, mut f: impl FnMut() -> u64) {
-    for _ in 0..iters.div_ceil(10).max(3) {
+    print_floor_once();
+    let (med, min, max) = measure(iters, &mut f);
+    println!("{label:<36} median {med:>11.2} ns   min {min:>11.2}   max {max:>11.2}");
+}
+
+fn measure(iters: usize, f: &mut impl FnMut() -> u64) -> (f64, f64, f64) {
+    let per_block = (iters / BLOCKS).max(1);
+    for _ in 0..per_block.max(3) {
         std::hint::black_box(f());
     }
-    let mut samples: Vec<u64> = Vec::with_capacity(iters);
-    for _ in 0..iters {
+    let mut blocks: Vec<f64> = Vec::with_capacity(BLOCKS);
+    for _ in 0..BLOCKS {
         let t0 = std::time::Instant::now();
-        std::hint::black_box(f());
-        samples.push(t0.elapsed().as_nanos() as u64);
+        for _ in 0..per_block {
+            std::hint::black_box(f());
+        }
+        blocks.push(t0.elapsed().as_nanos() as f64 / per_block as f64);
     }
-    samples.sort_unstable();
-    let med = samples[samples.len() / 2];
-    let p10 = samples[samples.len() / 10];
-    let p90 = samples[samples.len() * 9 / 10];
-    println!("{label:<34} median {med:>12} ns   p10 {p10:>12}   p90 {p90:>12}");
+    blocks.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    (blocks[BLOCKS / 2], blocks[0], blocks[BLOCKS - 1])
+}
+
+fn print_floor_once() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        let (med, min, _) = measure(200_000, &mut || 0u64);
+        println!(
+            "{:<36} median {med:>11.2} ns   min {min:>11.2}   (results within ~3x of this are noise)\n",
+            "harness floor (empty closure)"
+        );
+    });
 }
 
 // ---- fused shapes (Step 6): identical geometry to Ten/Item/Card ------------
