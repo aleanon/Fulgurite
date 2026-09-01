@@ -793,3 +793,184 @@ fn expand_enum(
         };
     })
 }
+
+// ---------------------------------------------------------------------
+// `#[derive(App)]` — the application root: tree accessors plus the
+// update step, generated from `#[bind(...)]` declarations (plan T6.3).
+// ---------------------------------------------------------------------
+
+/// What one `#[bind(...)]` attribute says.
+struct BindSpec {
+    /// Path to the target widget, relative to `self` (`ui.value`).
+    target: syn::Expr,
+    kind: BindKind,
+}
+
+enum BindKind {
+    /// `#[bind(t, "fmt {}", extra…)]` — the annotated field is the first
+    /// format argument; further arguments are written out in full.
+    Fmt(syn::LitStr, Vec<syn::Expr>),
+    /// `#[bind(t, with = f)]` — `f: fn(&mut Target, &Source)`.
+    With(syn::Path),
+}
+
+impl syn::parse::Parse for BindSpec {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let target: syn::Expr = input.parse()?;
+        input.parse::<syn::Token![,]>().map_err(|_| {
+            syn::Error::new_spanned(
+                &target,
+                "expected `#[bind(target, \"format {}\")]` or `#[bind(target, with = func)]`",
+            )
+        })?;
+
+        if input.peek(syn::Ident) && input.peek2(syn::Token![=]) {
+            let kw: syn::Ident = input.parse()?;
+            if kw != "with" {
+                return Err(syn::Error::new_spanned(&kw, "expected `with`"));
+            }
+            input.parse::<syn::Token![=]>()?;
+            return Ok(BindSpec { target, kind: BindKind::With(input.parse()?) });
+        }
+
+        let fmt: syn::LitStr = input.parse()?;
+        let mut extra = Vec::new();
+        while input.peek(syn::Token![,]) {
+            input.parse::<syn::Token![,]>()?;
+            if input.is_empty() {
+                break;
+            }
+            extra.push(input.parse()?);
+        }
+        Ok(BindSpec { target, kind: BindKind::Fmt(fmt, extra) })
+    }
+}
+
+/// The application root. Emits `impl App`: the tree accessors, and an
+/// `update` built from the `#[bind]` declarations on the state fields.
+///
+/// ```ignore
+/// #[derive(App, Default)]
+/// #[app(after_update = recompute)]     // optional, fn(&mut Self)
+/// struct Counter {
+///     #[tree]
+///     ui: Ui,
+///     #[bind(ui.value, "count: {}")]
+///     count: i64,
+/// }
+/// ```
+///
+/// The whole impl is generated so that nothing about the update step is
+/// hand-written: a derive that only emitted the binding body would still
+/// leave the author to call it from `update`, which is the wiring this
+/// is meant to remove.
+#[proc_macro_derive(App, attributes(tree, bind, app))]
+pub fn derive_app(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    match expand_app(input) {
+        Ok(ts) => ts.into(),
+        Err(e) => e.to_compile_error().into(),
+    }
+}
+
+fn expand_app(input: DeriveInput) -> syn::Result<Ts2> {
+    let name = &input.ident;
+    let Data::Struct(data) = &input.data else {
+        return Err(syn::Error::new_spanned(name, "App derives a struct with named fields"));
+    };
+    let Fields::Named(fields) = &data.fields else {
+        return Err(syn::Error::new_spanned(name, "App needs named fields"));
+    };
+
+    // Struct-level `#[app(after_update = path)]`.
+    let mut after_update: Option<syn::Path> = None;
+    for attr in &input.attrs {
+        if !attr.path().is_ident("app") {
+            continue;
+        }
+        attr.parse_nested_meta(|meta| {
+            if meta.path.is_ident("after_update") {
+                after_update = Some(meta.value()?.parse()?);
+                Ok(())
+            } else {
+                Err(meta.error("expected `after_update = path`"))
+            }
+        })?;
+    }
+
+    let mut tree_field: Option<&syn::Field> = None;
+    let mut binds = Vec::new();
+    for f in &fields.named {
+        let ident = f.ident.clone().unwrap();
+        for attr in &f.attrs {
+            if attr.path().is_ident("tree") {
+                if let Some(prev) = tree_field {
+                    let mut e = syn::Error::new_spanned(f, "a second `#[tree]` field");
+                    e.combine(syn::Error::new_spanned(prev, "the first is here"));
+                    return Err(e);
+                }
+                tree_field = Some(f);
+            } else if attr.path().is_ident("bind") {
+                let spec: BindSpec = attr.parse_args()?;
+                let target = &spec.target;
+                binds.push(match &spec.kind {
+                    BindKind::Fmt(fmt, extra) => quote! {
+                        ::lumen_static::bind::format_into(
+                            &mut self.#target,
+                            ::core::format_args!(#fmt, &self.#ident #(, #extra)*),
+                        );
+                    },
+                    BindKind::With(path) => quote! {
+                        // Spelled out so a mismatched `with =` names the
+                        // expected signature instead of failing inside
+                        // the generated call.
+                        {
+                            let f: fn(&mut _, &_) = #path;
+                            f(&mut self.#target, &self.#ident);
+                        }
+                    },
+                });
+            }
+        }
+    }
+
+    let Some(tree) = tree_field else {
+        return Err(syn::Error::new_spanned(
+            name,
+            "App needs a `#[tree]` field naming the widget tree, e.g. `#[tree] ui: Ui`",
+        ));
+    };
+    let tree_ident = tree.ident.clone().unwrap();
+    let tree_ty = &tree.ty;
+
+    let after = after_update.map(|p| {
+        quote! {
+            // Typed through a binding so a wrong signature is reported
+            // at the hook, not at the call.
+            let f: fn(&mut Self) = #p;
+            f(self);
+        }
+    });
+
+    let (impl_g, ty_g, where_g) = input.generics.split_for_impl();
+    Ok(quote! {
+        impl #impl_g ::lumen_static::event::App for #name #ty_g #where_g {
+            type Tree = #tree_ty;
+
+            #[inline]
+            fn tree(&self) -> &Self::Tree {
+                &self.#tree_ident
+            }
+
+            #[inline]
+            fn tree_mut(&mut self) -> &mut Self::Tree {
+                &mut self.#tree_ident
+            }
+
+            fn update(&mut self) {
+                #(#binds)*
+                #after
+            }
+        }
+    })
+}

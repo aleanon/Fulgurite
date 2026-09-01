@@ -34,5 +34,8 @@ pub use display::{Cmd, Color, DisplayList, Renderer};
 pub use style::{Align, Edges, Length, Patch, Rule, Selector, Style};
 pub use text::{Dirty, Measured, TextStorage};
 pub use event::{Event, EventCtx, InputQueue, Key};
-pub use lumen_static_macros::{Reloadable, StaticTree};
+// `App` is both a trait and a derive; they live in different namespaces,
+// so `use lumen_static::App` brings in whichever the position calls for.
+pub use event::App;
+pub use lumen_static_macros::{App, Reloadable, StaticTree};
 pub use widget::{Node, Widget};
