@@ -13,12 +13,14 @@ test: no-unsafe
 no-unsafe:
     #!/usr/bin/env bash
     set -euo pipefail
-    # Actual constructs, not the word in prose.
+    # Actual constructs, not the word in prose. `|| true` because grep
+    # exits 1 when it finds nothing, which under `pipefail` is exactly
+    # the case this gate is supposed to pass on.
     pat='unsafe (\{|fn |impl |trait )'
-    n=$(grep -rnE "$pat" crates/lumen-static/src/*.rs | wc -l)
-    if [ "$n" -ne 0 ]; then
-        echo "release core must contain no unsafe; found $n:" >&2
-        grep -rnE "$pat" crates/lumen-static/src/*.rs >&2
+    found=$(grep -rnE "$pat" crates/lumen-static/src/*.rs || true)
+    if [ -n "$found" ]; then
+        echo "release core must contain no unsafe; found:" >&2
+        echo "$found" >&2
         exit 1
     fi
     echo "no unsafe in the release core"
