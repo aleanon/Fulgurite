@@ -112,17 +112,47 @@ pub trait TextStorage: AsRef<str> + Default {
     /// Rebuild from an owned string — the hot-reload restore path.
     /// `&'static str` cannot, and says so by leaking (a dev-only path).
     fn from_string(s: String) -> Self;
+
+    /// Replace the contents from a borrowed string, reusing the existing
+    /// allocation where the storage can.
+    ///
+    /// This is the binding path's hot loop (`crate::bind`): a derived
+    /// label is re-formatted on frames where its source changed, so the
+    /// storage that desktop apps actually use must not allocate to
+    /// accept a new value. The default cannot do better than a rebuild.
+    fn set_from_str(&mut self, s: &str) {
+        *self = Self::from_string(s.to_owned());
+    }
 }
 
 impl TextStorage for String {
     fn from_string(s: String) -> Self {
         s
     }
+
+    /// Keeps the capacity: steady-state binding updates allocate on no
+    /// frame but the first for any given length.
+    fn set_from_str(&mut self, s: &str) {
+        self.clear();
+        self.push_str(s);
+    }
 }
 
 impl TextStorage for std::borrow::Cow<'static, str> {
     fn from_string(s: String) -> Self {
         std::borrow::Cow::Owned(s)
+    }
+
+    /// Reuses the buffer when this `Cow` already owns one; a `Borrowed`
+    /// literal has no buffer to reuse and becomes `Owned`.
+    fn set_from_str(&mut self, s: &str) {
+        match self {
+            std::borrow::Cow::Owned(buf) => {
+                buf.clear();
+                buf.push_str(s);
+            }
+            std::borrow::Cow::Borrowed(_) => *self = std::borrow::Cow::Owned(s.to_owned()),
+        }
     }
 }
 

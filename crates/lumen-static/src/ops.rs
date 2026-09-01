@@ -249,6 +249,14 @@ impl<S: TextStorage> Label<S> {
         self.text.set(text);
     }
 
+    /// Replace the text from a borrowed string, reusing the storage's
+    /// allocation where it can. Marks for re-measurement unconditionally
+    /// — callers that want the write skipped when nothing changed go
+    /// through `crate::bind`, which compares first.
+    pub fn set_str(&mut self, text: &str) {
+        self.text.get_mut().set_from_str(text);
+    }
+
     pub fn as_str(&self) -> &str {
         self.text.get().as_ref()
     }

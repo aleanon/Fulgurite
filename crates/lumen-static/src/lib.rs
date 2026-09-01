@@ -7,6 +7,7 @@
 //! build — see `docs/results-safe-prototype.md`.
 
 pub mod assemble;
+pub mod bind;
 pub mod cx;
 pub mod desc;
 pub mod display;
