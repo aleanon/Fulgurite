@@ -85,46 +85,91 @@ equal text measures equally, so two sources that render identically —
 
 The cost is running the formatter every frame.
 
-## Measurement — and the verdict is *not yet* in its favour
+## Measurement — corrected 2026-09-02 after review
 
-`cargo run --release -p benches --bin bindings`. Medians, same run
-(absolute numbers drift with frequency scaling between runs; only
-within-run comparisons are meaningful):
+**The first version of this section was wrong, and the way it was wrong
+is worth keeping.** It reported that the output comparison "costs ~4–13
+ns per binding and saves ~2 ns — a net loss by roughly an order of
+magnitude", and set ~13 ns as the threshold at which the comparison
+would start to pay. Review found three problems, each independently
+verified before this rewrite:
 
-| | ns |
-|---|---|
-| 1 binding, unchanged (compare, skip write) | 18–27 |
-| 1 binding, changed (compare, then write) | 32–46 |
-| 1 update, no compare (always write) | 14–26 |
-| label layout, memo warm | 13–29 |
-| label layout, memo cold (re-measure) | 15–34 |
-| 1000 bindings, unchanged | 18 µs |
+1. **The harness could not resolve the question.** It timed one call
+   per sample. An empty closure through it measured 10–27 ns — the
+   timer itself — and every row of the table sat within a few ns of
+   that floor. The "~4–13 ns" range was the *same quantity sampled five
+   times*: 4, 2, 6, 6, 13. A range of noise was presented as a range of
+   costs, and the top of it became a threshold.
+2. **The arm difference was misattributed.** "Unchanged" minus "always
+   write" isolates two things, not one: the comparison *and* the
+   thread-local scratch buffer. Decomposed, the buffer is the whole
+   cost and the comparison is none of it.
+3. **Both the original and the review's first re-measurement were
+   measuring a folded format.** With a literal `41`, the compiler
+   constant-folds the entire `format_args!` and the arms time a 9-byte
+   `memcmp`. Under that folding the comparison looked like a 3–6 ns
+   *saving*. Passing the value through `black_box` so the formatter
+   runs, that saving vanishes too.
 
-**The compare costs ~4–13 ns per binding and currently saves ~2 ns.** It
-is a net loss today, by roughly an order of magnitude.
+`benches --bin bindings`, rewritten to batch (21 blocks, 200k calls,
+floor ~0.2 ns, machine: i9-13900KF, governor `powersave`, turbo on,
+`tsc`). Five runs, **minimum** per arm — the least-perturbed estimator;
+the median is within ~1 ns except where noted:
 
-The reason is that `BlockMetrics` — the stand-in text measurer — is
-`char_count × advance` arithmetic, so the memo it protects has almost
-nothing in it. The whole design is a bet on *real* shaping, which M5's
-remaining `lumen-text` adoption brings.
+| arm | ns | |
+|---|---|---|
+| B — local buffer, always write | 12.4–13.6 | format + `set_str` |
+| C — local buffer, compare then skip | 11.8–12.9 | format + `memcmp` |
+| **C − B** | **≈ −0.5** | **the comparison: a wash** |
+| A — `format_into` as shipped (TLS + compare + skip) | 14.9–26.3 | bimodal between runs |
+| **A − C** | **+3 to +14** | **the thread-local scratch, alone** |
+| D — `format_into`, value alternates every frame | 18.0–18.4 | the changed case |
+| `Label::layout`, memo warm / cold | 3.8 / 5.4 | what the memo protects, under `BlockMetrics` |
+| 1000 bindings, unchanged | 25.2–25.4 µs | 0.15% of a 16.6 ms frame |
 
-**The threshold, stated so the gate can say no:** the compare pays for
-itself once re-measuring a short label costs more than **~13 ns**. Real
-shaping of a short run is conventionally quoted in microseconds, which
-would make the bet pay off by two to three orders of magnitude — but that
-number is *not measured here* and must be re-run against the real text
-stack. If it comes back under 13 ns, `format_into` should drop the
-comparison and always write, and this file should say so.
+**What the evidence now supports:**
 
-Two things are already settled regardless:
+- **The comparison costs nothing to speak of.** Comparing-and-skipping
+  is within half a nanosecond of writing, because the ~12 ns integer
+  format dominates both. There is no threshold question, because there
+  is no cost to cross a threshold. **The ~13 ns threshold is deleted.**
+- **The thread-local scratch is the only real overhead in `format_into`**,
+  and it is bimodal — ~3 ns in some runs, ~14 ns in others, presumably
+  by TLS fast-path and cache placement. It is an implementation detail:
+  a `&mut String` threaded from the host, or a small pool, removes it.
+  Not done now, because 25 µs per thousand bindings does not justify a
+  signature change.
+- **The comparison's purpose is unchanged and unmeasured here:** keeping
+  the memo warm so a real shaper is not re-run on identical text.
+  `BlockMetrics` is `char_count × advance`, so the warm/cold gap above
+  (1.5 ns) says nothing about that. It is the claim that M7's `lumen-text`
+  adoption makes measurable — see the rewritten T7.3 — and the direction
+  of the bet is not in doubt: a compare at ~0.5 ns against a shape at
+  hundreds of nanoseconds to microseconds.
+- One caution for whoever runs that measurement: a shaper with its own
+  content-keyed cache (cosmic-text's `ShapeRunCache`) makes a memo miss
+  cost a hash lookup rather than a shape. The framework memo still wins,
+  but by ~200× rather than ~4000×, and §1's "re-shaping is what the
+  cache exists to avoid" quietly assumes the memo is the only thing
+  standing between the label and a shape. It will not be.
 
-- **In absolute terms the cost is irrelevant.** 1000 bindings cost 18 µs
-  per frame, 0.1% of a 16.6 ms budget. Nothing here needs optimizing for
-  its own sake.
-- **A meaningful slice of the compare path is the thread-local scratch
-  buffer**, not the comparison — `take`/`replace` plus moving a `String`
-  twice. If the threshold above ever looks marginal, that is the thing to
-  attack first, not the compare.
+**Two further findings from the same review, both fixed:**
+
+- `Label`'s default storage is `&'static str`, and `set_from_str`'s
+  default body routed to `from_string`, which for that storage is
+  `Box::leak`. So a `#[bind]` on a plain `Label` — the default the
+  examples used — leaked ~10 bytes per changed frame without bound.
+  Measured: 1000 updates, 9,906 bytes never freed. The repeated-write
+  method now lives in `TextBuffer`, implemented for `String` and `Cow`
+  and deliberately not for `&'static str`; binding a default `Label` is
+  a compile error. Leaking once per hot reload and once per frame are
+  different things and the type system now says so.
+- A `Display` impl that re-enters `format_into` is panic-free and
+  correct, but not amortized: the outer call's `replace` drops the inner
+  call's warmed buffer, so the inner allocates on every frame forever
+  (measured: 3 allocations per frame in steady state). Recorded; not
+  fixed, since no binding in the tree nests today. A small pool instead
+  of a single slot is the fix if one ever does.
 
 ## Correction to `layout-and-storage-decisions.md` §1
 
@@ -152,6 +197,5 @@ against.
   `pump` could skip layout on a quiet frame. Deferred: it interacts with
   style changes, resizes and animation, and the frame loop is not yet
   under measurement pressure.
-- **`Label<&'static str>` bindings leak** on every change, because that
-  storage cannot own. It is the documented dev-only path (§7's
-  dlopen-without-dlclose spirit); bindings should use `String` or `Cow`.
+- ~~`Label<&'static str>` bindings leak on every change~~ — **no longer
+  possible**: they do not compile (see Measurement, above).

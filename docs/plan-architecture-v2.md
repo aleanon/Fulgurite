@@ -422,16 +422,21 @@ from a binding; the binding's per-frame cost is measured, not assumed.
   `App` impl so nothing about the update step is hand-written.
 - **T6.4** Counter and `hot-app` converted; `benches --bin bindings`.
 
-**Outcome, including the part that does not flatter the design.** The
-mechanism works and the ergonomics land: the counter's click loop halved
-and its `update` method is gone. But the measurement says the
-output-compare **currently costs ~4–13 ns per binding to save ~2 ns** —
-a net loss, because `BlockMetrics` is arithmetic and the memo it guards
-is nearly empty. The design is a bet on real shaping arriving with
-`lumen-text`, and `docs/bindings-decision.md` states the threshold
-(~13 ns) so the bet can be *settled* rather than assumed when it does. In
-absolute terms none of this matters yet: 1000 bindings cost 18 µs a
-frame, 0.1% of a 16.6 ms budget.
+**Outcome, corrected 2026-09-02.** The mechanism works and the
+ergonomics land: the counter's click loop halved and its `update` method
+is gone. The first version of this paragraph then reported that the
+output-compare "costs ~4–13 ns per binding to save ~2 ns — a net loss".
+Review showed the harness could not resolve that question (its own floor
+was 10–27 ns), the range was one quantity sampled five times, and the
+cost belonged to the thread-local scratch buffer rather than the
+comparison. Re-measured batched with the format actually running: the
+comparison is a wash (±0.5 ns), the scratch is 3–14 ns, and 1000
+bindings cost 25 µs. The ~13 ns threshold is withdrawn.
+`docs/bindings-decision.md` keeps the full account, including how the
+wrong number was produced. Two defects found by the same review — a leak
+on the default `Label` storage under `#[bind]`, and an un-amortized
+reentrant path — are recorded there; the leak is fixed (compile error),
+the reentrancy is noted.
 
 ---
 
@@ -454,10 +459,26 @@ settled either way.
   caught it (`docs/text-and-scrolling-decisions.md`).
 - **T7.2** Adopt `lumen-text` behind `dyn TextMeasure`. Unblocks M8's
   `Shaped` cache, which cannot be designed against `BlockMetrics`.
-- **T7.3** Re-run `benches --bin bindings`. This is a *decision gate*,
-  not a report: if re-measuring a short label still costs under ~13 ns,
-  `bind::format_into` drops its comparison and always writes, and
-  `docs/bindings-decision.md` records that it lost.
+- **T7.3** Measure what the memo guards, against the real shaper. The
+  first version of this task was a threshold gate on `format_into`'s
+  comparison; review showed the comparison has no cost to gate
+  (`docs/bindings-decision.md`), so the gate was aimed at the wrong
+  quantity. What is actually unmeasured is the memo's value. Specified
+  so it can be executed rather than argued: with `lumen-text` installed
+  and its own cache warmed by ≥100 prior calls, batched ≥10k iterations,
+  measure `Label::layout` on a memo hit and a memo miss for (a)
+  `"count: 41"` unwrapped and (b) a 60-char label wrapped at 200 px.
+  Record all four numbers in `docs/bindings-decision.md`. Expected: miss
+  − hit in the hundreds of nanoseconds (shaper cache hit) to microseconds
+  (cold shape). If it is under ~1 ns the memo is pointless and
+  `Measured` should go; nothing about `format_into` changes either way.
+  The bench must be taught to install the real measurer — re-running it
+  as-is measures `BlockMetrics` again.
+- **T7.2b** `TextMeasure` gains a shaping method. `dyn TextMeasure` today
+  returns a bare `Size`; M8's `Shaped` cache needs per-glyph advances,
+  so the seam T7.2 adopts behind is too narrow for T7.2's own stated
+  purpose. The signature is an interface decision and gets written down
+  before `lumen-text` is wired, not discovered during it.
 - **T7.4** winit shell: window events into `Host::post`, `Canvas::pixels`
   blitted to the surface. The two attachment points M5 deliberately
   stopped at.
