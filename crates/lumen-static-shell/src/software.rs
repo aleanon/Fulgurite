@@ -74,12 +74,14 @@ impl Canvas {
 
 impl Renderer for Canvas {
     fn render(&mut self, list: &DisplayList, _w: u32, _h: u32) {
-        // Clipping is tracked but not yet applied per-pixel; the stack is
-        // here so the command vocabulary is exercised end to end.
         let mut clip: Vec<[f32; 4]> = Vec::new();
         for c in &list.cmds {
             match c {
-                Cmd::Rect { rect, color } => self.fill(*rect, *color),
+                Cmd::Rect { rect, color } => {
+                    if let Some(r) = clipped(*rect, &clip) {
+                        self.fill(r, *color);
+                    }
+                }
                 Cmd::Text { rect, text, size, color } => {
                     let s = list.str_of(*text);
                     let advance = size * 0.5;
@@ -92,7 +94,10 @@ impl Renderer for Canvas {
                             break; // clipped by the node's own box
                         }
                         // One block per glyph, inset so runs stay legible.
-                        self.fill([x + 0.5, rect[1] + 2.0, x + advance - 0.5, rect[1] + size - 2.0], *color);
+                        let g = [x + 0.5, rect[1] + 2.0, x + advance - 0.5, rect[1] + size - 2.0];
+                        if let Some(r) = clipped(g, &clip) {
+                            self.fill(r, *color);
+                        }
                     }
                 }
                 Cmd::PushClip { rect } => clip.push(*rect),
@@ -102,4 +107,23 @@ impl Renderer for Canvas {
             }
         }
     }
+}
+
+/// Intersect a rect with every clip on the stack; `None` if nothing
+/// survives.
+///
+/// Honouring the clip stack is not cosmetic. A `Repeat` places rows
+/// outside its viewport by construction and `hit` rejects points there,
+/// so a renderer that ignores clips draws content no click can reach —
+/// the probe-vs-click class of bug, one layer down. `tests/clip_test.rs`
+/// pins it at the pixel level.
+fn clipped(rect: [f32; 4], stack: &[[f32; 4]]) -> Option<[f32; 4]> {
+    let mut r = rect;
+    for c in stack {
+        r = [r[0].max(c[0]), r[1].max(c[1]), r[2].min(c[2]), r[3].min(c[3])];
+        if r[0] >= r[2] || r[1] >= r[3] {
+            return None;
+        }
+    }
+    Some(r)
 }

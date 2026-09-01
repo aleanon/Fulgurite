@@ -1,17 +1,23 @@
-//! Characterization: virtualization alone does **not** keep children
-//! inside their parent.
+//! The scoped containment invariant, pinned on the one construct that
+//! exercises it (A1 of `docs/text-and-scrolling-decisions.md`).
 //!
-//! `hit.rs`'s module comment claims children never escape their parents,
-//! and `lumen-static-agent/tests/lint.rs` guards it — but that guard
-//! walks `SUB_TABLE`, and a `Repeat`'s rows live in an off-table arena,
-//! so the one mechanism that already breaks the invariant is invisible
-//! to the test that exists to catch it.
+//! A repeater's window overruns its viewport in both directions, and
+//! that is *required* by virtualization rather than incidental to it:
+//! `place` puts the first row at `first * extent - scroll`, negative for
+//! any scroll off an item boundary, and `visible_range` materializes one
+//! row past the bottom because a viewport is rarely an exact multiple of
+//! the item extent.
 //!
-//! This test records the actual behaviour so the gap is visible, and is
-//! expected to **fail when question A1 of
-//! `docs/text-and-scrolling-questions.md` is answered**. That is its
-//! job: whoever settles A1 must come here and re-pin it to the scoped
-//! invariant rather than discovering this later.
+//! So the invariant is not "children never escape their parents" — that
+//! has been false since Step 3. It is: **content may extend beyond a
+//! clipping ancestor and is clipped there; it may not extend beyond a
+//! non-clipping one.** These tests pin the escape geometry (unchanged)
+//! and the clip that makes it invisible and unhittable (new).
+//!
+//! It went unnoticed for so long because the guard in
+//! `lumen-static-agent/tests/lint.rs` walks `SUB_TABLE`, and a
+//! repeater's rows live in an off-table arena — the one mechanism that
+//! breaks the invariant is invisible to the test written to catch it.
 
 use lumen_static::ops::{Fixed, Label};
 use lumen_static::repeat::{noop_bind, Repeat};
@@ -54,19 +60,20 @@ fn escapes(scroll: f32) -> (f32, f32, usize) {
 }
 
 #[test]
-fn a_fractionally_scrolled_repeat_paints_outside_its_parent() {
+fn a_fractionally_scrolled_repeat_overruns_its_viewport_and_is_clipped() {
     // Scrolled off an item boundary: `place` puts row 0 at
     // `0 * 24 - 12 = -12`, above the viewport top (repeat.rs:175), and
-    // `visible_range` deliberately materializes one extra row to cover
-    // the partial one at the bottom (repeat.rs:87).
+    // `visible_range` materializes one extra row to cover the partial
+    // one at the bottom (repeat.rs:87). The geometry is unchanged by the
+    // clip — only what reaches the screen is.
     let (above, below, clips) = escapes(12.0);
     assert_eq!(above, 12.0, "row 0 sits above the repeater by half an item");
     assert_eq!(below, 32.0, "the +1 materialized row hangs below it");
-    assert_eq!(clips, 0, "and nothing clips it — it paints over its neighbours");
+    assert_eq!(clips, 1, "and the repeater clips its own window");
 }
 
 #[test]
-fn even_on_an_item_boundary_the_extra_row_escapes() {
+fn even_on_an_item_boundary_the_extra_row_overruns() {
     // Virtualization needs the +1 row whenever the viewport is not an
     // exact multiple of the item extent, so this is not a fractional-
     // scroll edge case — it is the normal state of a scrolling list.
@@ -74,18 +81,19 @@ fn even_on_an_item_boundary_the_extra_row_escapes() {
     assert_eq!(above, 0.0);
     // ceil(100/24) + 1 = 6 rows materialized = 144px of content in a
     // 100px viewport: the overhang is larger here than in the
-    // fractional case above, and it is present on every frame.
+    // fractional case above, and present on every frame.
     assert_eq!(below, 44.0, "100px viewport / 24px items never divides evenly");
-    assert_eq!(clips, 0);
+    assert_eq!(clips, 1);
 }
 
 #[test]
-fn hit_testing_already_behaves_as_if_clipped() {
-    // The asymmetry that makes this a live defect rather than a cosmetic
-    // one: `Repeat::hit` gates on the repeater's own rect before looking
-    // at any row, so a click 6px above the list is correctly rejected —
-    // while paint has already drawn a row there. Hit and paint disagree,
-    // which is the class of bug P4 fixed for probe-vs-click.
+fn hit_and_paint_agree_on_where_the_list_ends() {
+    // `Repeat::hit` has always gated on the repeater's own rect before
+    // looking at any row, so a click 6px above the list is rejected.
+    // Before the clip, paint had already drawn a row there — visible but
+    // not clickable, the class of bug P4 fixed for probe-vs-click. The
+    // clip rect is now exactly the rect `hit` tests against, so the two
+    // cannot diverge.
     let mut ui = Ui { list: Repeat::new(1000, 24.0, noop_bind) };
     ui.list.scroll = 12.0;
     let sty = pass::default_styles(&ui);
@@ -94,4 +102,17 @@ fn hit_testing_already_behaves_as_if_clipped() {
 
     assert!(pass::hit_test(&ui, &st, 10.0, -6.0).is_none(), "no click above the list");
     assert!(pass::hit_test(&ui, &st, 10.0, 50.0).is_some(), "clicks inside still land");
+
+    // The clip rect and the rect `hit` gates on are the same rect.
+    let mut out = lumen_static::DisplayList::new();
+    pass::paint(&ui, &st, &mut out);
+    let clip = out
+        .cmds
+        .iter()
+        .find_map(|c| match c {
+            Cmd::PushClip { rect } => Some(*rect),
+            _ => None,
+        })
+        .expect("the repeater clips");
+    assert_eq!(clip, lumen_static::ops::rect_of(&st[1]));
 }

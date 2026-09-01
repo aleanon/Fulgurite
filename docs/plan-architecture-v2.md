@@ -436,7 +436,23 @@ frame, 0.1% of a 16.6 ms budget.
 
 ---
 
-## M7+ — parity phases B–E
+## M7 — Scrolling and text input — **PLANNED, not started**
+
+Design settled in `docs/text-and-scrolling-decisions.md` (twelve
+decisions, 2026-09-02). Two features, one decision, because both need a
+child larger than the box it is shown in. Two of A1's consequences are
+already fixed (`Repeat` clips; the software renderer honours the clip
+stack); the rest is listed there under "Consequences still to handle" and
+needs a task breakdown before it is started.
+
+Note for whoever writes that breakdown: A4 is the trap. `W1005` fires on
+any `Shrink` node given less than it asked for, which inside a scroller
+is the normal case — it must learn about clip scopes in the same commit
+that introduces one, or it will scream on every scrolling view.
+
+---
+
+## M8+ — parity phases B–E
 
 Widget vocabulary (Phase B), `.lss` (Phase C), platform/content (D), test
 harness (E) as laid out in `docs/plan-lumen-parity.md`. Not expanded
@@ -460,7 +476,7 @@ architecture end to end.
 ## Order and dependencies
 
 ```
-M0 ──► M1 ──► M2 ──► M3 ──► M4 ──► M5 ──► M6 ──► M7+
+M0 ──► M1 ──► M2 ──► M3 ──► M4 ──► M5 ──► M6 ──► M7 ──► M8+
         (style array first: Length must live somewhere)
 ```
 

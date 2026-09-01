@@ -183,10 +183,29 @@ impl<T: Widget + Default + 'static> Node for Repeat<T> {
         }
     }
 
-    fn paint(&self, _st: &[NodeState], _i: usize, out: &mut DisplayList) {
+    fn paint(&self, st: &[NodeState], i: usize, out: &mut DisplayList) {
+        // A repeater is a viewport, and its window deliberately overruns
+        // it in both directions: `place` puts the first row at
+        // `first * extent - scroll`, negative for any scroll off an item
+        // boundary, and `visible_range` materializes one row past the
+        // bottom because a viewport is rarely an exact multiple of the
+        // item extent. Both are required by virtualization rather than
+        // incidental to it.
+        //
+        // `hit` has always gated on this same rect before examining a
+        // row, so without this clip paint and hit disagree: a row drawn
+        // up to a full item outside the list is visible but not
+        // clickable. Clipping here is what makes the two agree.
+        //
+        // When `Style.overflow` lands (A2 of
+        // `docs/text-and-scrolling-decisions.md`) this becomes the
+        // generic mechanism and `Repeat` keeps it only as its
+        // `defaults()`.
+        out.push_clip(crate::ops::rect_of(&st[i]));
         for k in 0..self.window.len() {
             self.window[k].paint(self.slice(k), 0, out);
         }
+        out.pop_clip();
     }
 
     fn hit(&self, st: &[NodeState], i: usize, x: f32, y: f32) -> Option<Hit> {

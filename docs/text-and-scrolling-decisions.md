@@ -1,12 +1,18 @@
-# Open questions: text input and scrolling
+# Decisions: text input and scrolling
 
-*Raised 2026-09-01, unanswered. These two features share one problem, so
-they share one document: both need a child to be larger than the box it
-is shown in, and the framework currently guarantees that cannot happen.*
+*Raised 2026-09-01, **answered 2026-09-02**. These two features share one
+problem, so they share one document: both need a child to be larger than
+the box it is shown in.*
 
-**Status: every question below is OPEN.** Recommendations are mine, with
-the reasoning that produced them; none is settled until it is answered
-here and the marker flips.
+**Status: all twelve questions are DECIDED**, each on the recommendation
+that accompanied it. A1's fallout is partly implemented already — see
+"What A1 changed on the day it was answered" at the end — and the rest is
+enumerated as work to plan, not work assumed done.
+
+The framing that opened this document ("the framework currently
+guarantees that cannot happen") turned out to be **false**, which is what
+made A1 easy to answer: `Repeat` had been violating the invariant since
+Step 3.
 
 ---
 
@@ -50,7 +56,7 @@ read.
 - **(c) Virtualize instead of clipping.** Materialize only what is
   visible, as `Repeat` already does — nothing ever escapes.
 
-**Recommendation: (b), with (c) retained as the specialization.**
+**DECIDED: (b), with (c) retained as the specialization.**
 
 Scoping preserves everything the invariant was actually buying. Early
 exit survives unchanged: children placed at a negative scroll offset keep
@@ -114,7 +120,7 @@ over its neighbours.
 **Options.** A `NodeState.flags` bit; a field on the widget; a `Style`
 property.
 
-**Recommendation: `Style.overflow: Overflow { Visible, Clip }`.**
+**DECIDED: `Style.overflow: Overflow { Visible, Clip }`.**
 
 Precedent, and it is not the precedent the plan predicted. M4 T4.1
 specified `NodeState.flags: HIDDEN`; the implementation put hiding in
@@ -131,7 +137,7 @@ new parameter.
 
 ### A3. Where does the scroll offset live?
 
-**Recommendation: a widget field, `#[reload(keep)]`.**
+**DECIDED: a widget field, `#[reload(keep)]`.**
 
 Consistent with `Repeat.scroll`, which the hot-reload demo already
 asserts survives a swap (`scroll=240`). It is user state, not
@@ -144,7 +150,7 @@ the smallest change that works and it adds nothing to `NodeState`.
 
 ### A4. What happens to the guard test and the reserved lint codes?
 
-**Recommendation: re-pin the guard test, do not delete it; activate
+**DECIDED: re-pin the guard test, do not delete it; activate
 `W1003`; make `W1005` clip-aware; leave `W1004` reserved.**
 
 - The guard test in `tests/lint.rs` must be rewritten to the scoped
@@ -170,7 +176,7 @@ the smallest change that works and it adds nothing to `NodeState`.
 
 ### B1. Who owns the editing buffer?
 
-**Recommendation: the widget. One allocation, grown once, reused.**
+**DECIDED: the widget. One allocation, grown once, reused.**
 
 Considered settled enough to build on unless someone objects, and
 recorded here because it *looks* like it contradicts
@@ -198,7 +204,7 @@ indices into it invites desynchronization.
 editable/selectable text; one type generic over whether advances are
 kept.
 
-**Recommendation: a separate `Shaped`, leaving `Measured` alone.**
+**DECIDED: a separate `Shaped`, leaving `Measured` alone.**
 
 `Measured` is one `Cell<Option<(Constraints, Size)>>`. Every label in a
 100k-node tree carries one. Adding an advance array would put an
@@ -208,7 +214,7 @@ separate cache keeps the cheap case cheap, which is the same shape as
 
 ### B3. How are edits applied — `&mut String`, or methods?
 
-**Recommendation: methods only (`insert_str`, `remove_range`), never a
+**DECIDED: methods only (`insert_str`, `remove_range`), never a
 raw `&mut` to the storage.**
 
 Free to adopt now, expensive to retrofit. Undo, IME preedit and
@@ -220,7 +226,7 @@ undo is never built.
 
 ### B4. How do caret and selection reach the screen?
 
-**Recommendation: ordinary `Cmd::Rect`. No new display-list command.**
+**DECIDED: ordinary `Cmd::Rect`. No new display-list command.**
 
 A caret is a one-pixel rect; a selection is one rect per line. The
 display list stays minimal and the software renderer needs no change,
@@ -231,7 +237,7 @@ in the framework needing a frame clock, which is a separate decision.
 
 ### B5. Where does "scroll the caret into view" happen?
 
-**Recommendation: in the widget's `layout`, after measuring.**
+**DECIDED: in the widget's `layout`, after measuring.**
 
 Not in the event handler, which runs before layout and has no geometry to
 clamp against — it does not yet know how wide the field is or where the
@@ -241,7 +247,7 @@ wrong produces a caret that is correct one frame late.
 
 ### B6. Is IME in the first cut?
 
-**Recommendation: no — but reserve the field, and say so plainly.**
+**DECIDED: no — but reserve the field, and say so plainly.**
 
 Preedit is `Option<(String, Range<usize>)>` overlaying the buffer; it
 affects the shaped cache, since preedit text is displayed but not
@@ -256,7 +262,7 @@ claim the project makes.
 
 ### B7. Multi-line in the first cut?
 
-**Recommendation: no. One widget type, with the field reserved.**
+**DECIDED: no. One widget type, with the field reserved.**
 
 Topology is identical — one node either way — so the static-tree
 preference for types over flags does not apply. Selection across line
@@ -265,7 +271,7 @@ bool` reserved.
 
 ### B8. How does the application read the value?
 
-**Recommendation: directly — `ui.field.as_str()`. Defer `#[bind_from]`.**
+**DECIDED: directly — `ui.field.as_str()`. Defer `#[bind_from]`.**
 
 A reverse binding (widget → state) is the symmetric feature and would be
 easy to add, but nothing needs it yet. It earns its place when a real
@@ -282,10 +288,36 @@ not accept a text input. Do not add a convenience impl.
 
 ---
 
-## Consequences to handle in whichever commit settles A1
+## What A1 changed on the day it was answered
+
+Two things were wrong immediately and are now fixed, both committed with
+this decision:
+
+1. **`Repeat::paint` emits no clip.** It now brackets its window in
+   `PushClip`/`PopClip` using the same rect `hit` gates on, so the two
+   cannot diverge. `Repeat` always clips — it is a viewport — so this
+   needs no `Style.overflow`; when A2 lands, `Repeat` keeps it as its
+   `defaults()` and the generic mechanism subsumes the special case.
+
+2. **The software renderer ignored the clip stack.** It maintained the
+   stack but never intersected against it — its own comment said so
+   ("tracked but not yet applied per-pixel; the stack is here so the
+   command vocabulary is exercised end to end"). So step 1 alone emitted
+   a correct command that the project's only renderer discarded, and the
+   pixel test still showed 30% ink where no click could land. Both halves
+   were needed; the command-level test could not have caught it.
+
+The invariant's precise statement, corrected: it is **not** "children
+never escape their parents". It is *content may extend beyond a clipping
+ancestor and is clipped there; it may not extend beyond a non-clipping
+one.* A repeater's rows still overrun its viewport by up to a full item —
+that is required by virtualization — they are simply no longer drawn or
+hit outside it.
+
+## Consequences still to handle
 
 1. `hit.rs`'s module comment states the global invariant and must be
-   rewritten to the scoped one.
+   rewritten to the scoped one. **Still open.**
 2. The guard test in `tests/lint.rs` — rewrite, do not delete (A4).
 3. `docs/plan-architecture-v2.md` T2.6 re-pinned the containment
    invariant under the `Length` model; it needs an amendment.
