@@ -5,6 +5,7 @@
 //! the boundary, and the saved bytes live in a host-owned buffer.
 //!
 //! v1 → v2 changes, chosen to exercise every reload class:
+//! - `status` is a `#[bind]` on the kept counter        → regenerated, not migrated
 //! - `FOOTER` text and the fresh `theme` differ         → fresh code wins
 //! - `Mode::Fancy` is deleted in v2                      → §12.2 fallback + log
 //! - user data (counter, title, rows, scroll) is kept    → survives the swap
@@ -16,7 +17,10 @@
 use lumen_static::ops::{Fixed, Label, Spacer};
 use lumen_static::reload::{self, Reloadable};
 use lumen_static::repeat::Repeat;
-use lumen_static::{pass, Constraints, NodeState, Reloadable as DeriveReloadable, StaticTree, Widget};
+use lumen_static::{
+    pass, App as DeriveApp, Constraints, NodeState, Reloadable as DeriveReloadable, StaticTree,
+    Widget,
+};
 use serde::{Deserialize, Serialize};
 
 #[cfg(not(feature = "v2"))]
@@ -54,10 +58,12 @@ fn bind_row(item: &mut RowW, row: usize) {
 #[widget(column, spacing = 2.0)]
 struct Ui {
     title: Label, // nested keep: user's edits survive
-    /// Derived from `Session.counter` by the update step below, so it is
-    /// recomputed rather than migrated across a reload.
+    /// Derived from `Session.counter` by a `#[bind]` on that field, so it
+    /// is regenerated after a swap rather than migrated. A binding is
+    /// code: the new dylib supplies it, and nothing about it appears in
+    /// the saved bytes.
     #[reload(fresh)]
-    status: Label,
+    status: Label<String>,
     list: Repeat<RowW>,
     #[reload(fresh)]
     footer: Label, // the new build's footer must win
@@ -67,17 +73,19 @@ impl Default for Ui {
     fn default() -> Self {
         Ui {
             title: Label::new("untitled"),
-            status: Label::new("count 0"),
+            status: Label::default(),
             list: Repeat::new(0, 24.0, bind_row),
             footer: Label::new(FOOTER),
         }
     }
 }
 
-#[derive(DeriveReloadable)]
+#[derive(DeriveReloadable, DeriveApp)]
 struct Session {
+    #[tree]
     ui: Ui,
     #[reload(keep)]
+    #[bind(ui.status, "count {}")]
     counter: u32,
     #[reload(keep)]
     mode: Mode,
@@ -162,16 +170,11 @@ pub unsafe extern "C" fn hot_frame(p: *mut c_void) -> u64 {
     s.cache_hits += 1;
     // The update step: application state reaches the screen here. Widget
     // fields hold the *presentation copy*; sibling fields are the source
-    // of truth (`docs/layout-and-storage-decisions.md` §1). Until M3
-    // makes text storage owned, the copy must be a `&'static str`, so
-    // this is a lookup rather than a `format!`.
-    s.ui.status.set(match s.counter {
-        0 => "count 0",
-        1 => "count 1",
-        2 => "count 2",
-        3 => "count 3",
-        _ => "count many",
-    });
+    // of truth (`docs/layout-and-storage-decisions.md` §1). The body is
+    // generated from the `#[bind]` on `Session.counter` — a real frame
+    // loop calls this from `pump`; this fixture drives frames by hand
+    // across an FFI boundary, so it calls it here.
+    lumen_static::event::App::update(s);
     let mut st = [NodeState::default(); Ui::NODE_COUNT];
     let sty = pass::default_styles(&s.ui);
     let c = Constraints { min_w: 0.0, max_w: 800.0, min_h: 0.0, max_h: 600.0 };

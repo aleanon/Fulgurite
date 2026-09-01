@@ -82,6 +82,14 @@ bit. A getter cannot: the widget has no way to observe that app state
 changed, so it would have to re-shape or re-hash the string every frame,
 which is exactly the cost the cache exists to avoid.
 
+> **Corrected 2026-09-01 (`bindings-decision.md`).** The last clause was
+> too broad. Re-*hashing* or comparing is nanoseconds; re-*shaping* is
+> what the cache exists to avoid, and the two differ by orders of
+> magnitude. The conclusion stands and is strengthened: `#[bind]` is
+> precisely the getter's "compare instead of re-shape" variant, and it
+> works only because the storage is owned — a getter has nowhere to keep
+> the previous value to compare against.
+
 So the model is the ordinary retained one, and the same one Flutter and
 Qt use: **application state is the source of truth in sibling fields;
 widget fields hold the presentation copy, and owning that copy is what
@@ -89,6 +97,12 @@ makes caching possible.** An explicit update step copies one into the
 other — which is the same `update` function §7's `Msg` discipline and
 `docs/events-decision.md` already imply, and the piece the hot-reload
 fixture visibly lacks (its `counter` never reaches the screen).
+
+> **Refined 2026-09-01 (M6, `bindings-decision.md`).** The update step
+> is no longer hand-written or hand-called. `#[bind(target, "fmt {}")]`
+> declares it at the field and `#[derive(App)]` generates the body;
+> `Host::pump` calls it between input and layout. The hot-reload fixture
+> now derives its `status` label this way, closing the gap named above.
 
 Storage is therefore `Dirty<S>`: a wrapper whose `DerefMut`/setter marks
 the node dirty, wrapping whichever `AsRef<str>` the profile chose —

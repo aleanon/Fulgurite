@@ -19,7 +19,7 @@ struct Ui {
 }
 
 /// A `with =` projection: `fn(&mut Target, &Source)`.
-fn shout(dst: &mut Label<String>, src: &String) {
+fn shout(dst: &mut Label<String>, src: &str) {
     lumen_static::bind::set_if_changed(dst, &src.to_uppercase());
 }
 

@@ -8,7 +8,7 @@
 
 use lumen_static::ops::{Button, Label, Spacer};
 use lumen_static::style::{Length, Patch, Rule, Selector};
-use lumen_static::{Edges, EventCtx, StaticTree, Widget};
+use lumen_static::{App, Edges, EventCtx, StaticTree, Widget};
 use lumen_static_agent::{Agent, TreeRef};
 use lumen_static_shell::software::Canvas;
 use lumen_static_shell::{Host, CLEAR};
@@ -19,10 +19,10 @@ use lumen_static_shell::{Host, CLEAR};
 #[widget(row, spacing = 8.0)]
 struct Controls {
     #[widget_id("dec")]
-    dec: Button<App>,
+    dec: Button<Counter>,
     gap: Spacer,
     #[widget_id("inc")]
-    inc: Button<App>,
+    inc: Button<Counter>,
 }
 
 #[derive(StaticTree, Default)]
@@ -30,8 +30,8 @@ struct Controls {
 struct Ui {
     #[widget_id("title")]
     title: Label,
-    /// The counter's presentation copy. Owned `String` storage, so the
-    /// update step can format into it (M3).
+    /// The counter's presentation copy. Owned `String` storage, so a
+    /// binding can format into it without allocating (M3, T6.2).
     #[widget_id("value")]
     value: Label<String>,
     #[widget_id("hint")]
@@ -41,49 +41,42 @@ struct Ui {
 
 // ---- application state, beside the tree (not inside it) --------------
 
-#[derive(Default)]
-struct App {
+/// `#[tree]` names the widget tree; `#[bind]` says how a state field
+/// reaches the screen. The derive writes the `App` impl — the tree
+/// accessors *and* the update step — so the formatting is declared once,
+/// next to the value it formats, instead of living in a method that has
+/// to be kept in step with the fields and remembered at every call site.
+///
+/// Sibling fields stay the source of truth and widget fields still hold
+/// the presentation copy (`docs/layout-and-storage-decisions.md` §1) —
+/// owning that copy is what lets the label cache its measurement. The
+/// binding is only about who keeps the two in agreement, and when.
+#[derive(App, Default)]
+struct Counter {
+    #[tree]
     ui: Ui,
+    #[bind(ui.value, "count: {}")]
     count: i64,
 }
 
-impl lumen_static::event::App for App {
-    type Tree = Ui;
-    fn tree(&self) -> &Ui {
-        &self.ui
-    }
-    fn tree_mut(&mut self) -> &mut Ui {
-        &mut self.ui
-    }
+fn on_inc(c: &mut Counter, _: &EventCtx) {
+    c.count += 1;
 }
 
-fn on_inc(a: &mut App, _: &EventCtx) {
-    a.count += 1;
+fn on_dec(c: &mut Counter, _: &EventCtx) {
+    c.count -= 1;
 }
 
-fn on_dec(a: &mut App, _: &EventCtx) {
-    a.count -= 1;
-}
-
-impl App {
+impl Counter {
     fn new() -> Self {
-        let mut a = App::default();
-        a.ui.title.set("Counter");
-        a.ui.hint.set("click + or - to change the tally");
-        a.ui.controls.dec.label = "-";
-        a.ui.controls.dec.on_click = on_dec;
-        a.ui.controls.inc.label = "+";
-        a.ui.controls.inc.on_click = on_inc;
-        a.update();
-        a
-    }
-
-    /// The update step: application state reaches the screen here.
-    /// Sibling fields are the source of truth; widget fields hold the
-    /// presentation copy, and owning that copy is what lets the label
-    /// cache its measurement (`docs/layout-and-storage-decisions.md` §1).
-    fn update(&mut self) {
-        self.ui.value.set(format!("count: {}", self.count));
+        let mut c = Counter::default();
+        c.ui.title.set("Counter");
+        c.ui.hint.set("click + or - to change the tally");
+        c.ui.controls.dec.label = "-";
+        c.ui.controls.dec.on_click = on_dec;
+        c.ui.controls.inc.label = "+";
+        c.ui.controls.inc.on_click = on_inc;
+        c
     }
 }
 
@@ -99,19 +92,20 @@ fn stylesheet() -> Vec<Rule> {
 }
 
 fn main() {
-    let mut host = Host::new(App::new(), 320, 200);
+    let mut host = Host::new(Counter::new(), 320, 200);
     host.set_stylesheet(&stylesheet());
     host.pump();
 
     // Drive it the way a user would: click "+" three times, "-" once.
-    // Coordinates come from the laid-out tree, not from guesses.
+    // Coordinates come from the laid-out tree, not from guesses. One
+    // pump per click, and no update call: `pump` runs the bindings
+    // between dispatch and layout, so the frame cannot render a count
+    // the handler has already changed.
     let agent = Agent::new();
     for (id, times) in [("#inc", 3), ("#dec", 1)] {
         for _ in 0..times {
             let (x, y) = center_of(&host, id);
             host.click(x, y);
-            host.pump();
-            host.app.update();
             host.pump();
         }
     }
@@ -150,7 +144,7 @@ fn main() {
 
 /// Ask the agent where a widget is, by author id — the same path an
 /// agent driving this app would take.
-fn center_of(host: &Host<App>, selector: &str) -> (f32, f32) {
+fn center_of(host: &Host<Counter>, selector: &str) -> (f32, f32) {
     let agent = Agent::new();
     let tree = TreeRef::of_root(&host.app.ui, &host.styles, &host.states);
     let r = agent.dispatch(

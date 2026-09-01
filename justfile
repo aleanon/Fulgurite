@@ -42,6 +42,7 @@ bench:
     cargo run --release -p benches --bin crossover
     cargo run --release -p benches --bin fusion
     cargo run --release -p benches --bin repeater
+    cargo run --release -p benches --bin bindings
 
 # Step 1 firewall regression experiment.
 firewall:

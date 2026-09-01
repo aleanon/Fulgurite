@@ -398,10 +398,45 @@ to a PPM at 7.6% ink. `just counter` writes a viewable frame.
 
 **Remaining in M5:** the winit binding, and adopting Lumen's actual
 render/text crates. Both are Phase A follow-ons, not blockers for M6.
+(The `lumen-text` adoption also settles M6's open measurement — see
+`docs/bindings-decision.md`.)
 
 ---
 
-## M6+ — parity phases B–E
+## M6 — Derived presentation (`#[bind]`) — **DONE 2026-09-01**
+
+*Not in the original plan. Added when the counter example made the cost
+of a hand-written update step concrete: `docs/bindings-decision.md`.*
+
+**Gates:** the counter drives one pump per click with no `update` call;
+the hot-reload demo still asserts `status='count 3'` after the swap, now
+from a binding; the binding's per-frame cost is measured, not assumed.
+
+- **T6.1** `App::update` (empty default) called by `pump` between input
+  drain and layout — the loop owns *when* derived state refreshes.
+- **T6.2** `bind::format_into` / `set_if_changed`, and
+  `TextStorage::set_from_str` so accepting a value reuses the storage's
+  allocation. Change detection compares the formatted *output*: no bit to
+  forget, no setter to bypass, no stored state.
+- **T6.3** `#[derive(App)]` — `#[tree]`, `#[bind(t, "fmt {}")]`,
+  `#[bind(t, with = f)]`, `#[app(after_update = f)]`. Emits the whole
+  `App` impl so nothing about the update step is hand-written.
+- **T6.4** Counter and `hot-app` converted; `benches --bin bindings`.
+
+**Outcome, including the part that does not flatter the design.** The
+mechanism works and the ergonomics land: the counter's click loop halved
+and its `update` method is gone. But the measurement says the
+output-compare **currently costs ~4–13 ns per binding to save ~2 ns** —
+a net loss, because `BlockMetrics` is arithmetic and the memo it guards
+is nearly empty. The design is a bet on real shaping arriving with
+`lumen-text`, and `docs/bindings-decision.md` states the threshold
+(~13 ns) so the bet can be *settled* rather than assumed when it does. In
+absolute terms none of this matters yet: 1000 bindings cost 18 µs a
+frame, 0.1% of a 16.6 ms budget.
+
+---
+
+## M7+ — parity phases B–E
 
 Widget vocabulary (Phase B), `.lss` (Phase C), platform/content (D), test
 harness (E) as laid out in `docs/plan-lumen-parity.md`. Not expanded
@@ -425,14 +460,14 @@ architecture end to end.
 ## Order and dependencies
 
 ```
-M0 ──► M1 ──► M2 ──► M3 ──► M4 ──► M5 ──► M6+
+M0 ──► M1 ──► M2 ──► M3 ──► M4 ──► M5 ──► M6 ──► M7+
         (style array first: Length must live somewhere)
 ```
 
 M0 is the large one and is pure refactor — no new behavior, every test
 green before and after. M1–M4 are each small. M5 is integration.
 
-**Status 2026-09-01: M0–M5 complete** (M5 less the winit binding, above).
+**Status 2026-09-01: M0–M6 complete** (M5 less the winit binding, above).
 Gate at the close of M5: 32 default suites + 8 gated all green, clippy
 clean in both feature configs, zero `unsafe` in the release core, hot
 reload demo PASS, counter renders. What M2's model changed and what M4
