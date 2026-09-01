@@ -118,10 +118,14 @@ impl<C: Widget + Default + 'static> Assembled<C> {
     }
 
     pub fn paint(&self, out: &mut DisplayList) {
+        // `hit` gates on `states[0]`; paint clips to it for the same
+        // reason `List` and `Repeat` do (A1's scoped invariant).
+        out.push_clip(crate::ops::rect_of(&self.states[0]));
         let n = C::NODE_COUNT;
         for (k, item) in self.instances.iter().enumerate() {
             item.paint(&self.states[1 + k * n..1 + (k + 1) * n], 0, out);
         }
+        out.pop_clip();
     }
 
     pub fn hit(&self, x: f32, y: f32) -> Option<Hit> {

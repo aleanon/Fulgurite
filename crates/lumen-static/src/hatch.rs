@@ -456,10 +456,17 @@ impl<W: Widget> Node for List<W> {
         }
     }
 
-    fn paint(&self, _st: &[NodeState], _i: usize, out: &mut DisplayList) {
+    fn paint(&self, st: &[NodeState], i: usize, out: &mut DisplayList) {
+        // Items live in an arena this node places; `resolve_self` can
+        // size the node below their sum (a `Fixed` height), and `hit`
+        // gates on that size. Clip to the same rect so paint agrees —
+        // the invariant is scoped to the clipping ancestor
+        // (`docs/text-and-scrolling-decisions.md` A1).
+        out.push_clip(crate::ops::rect_of(&st[i]));
         for k in 0..self.items.len() {
             self.items[k].paint(self.slice(k), 0, out);
         }
+        out.pop_clip();
     }
 
     fn hit(&self, st: &[NodeState], i: usize, x: f32, y: f32) -> Option<Hit> {
@@ -613,8 +620,12 @@ impl Node for Dyn {
         self.inner.place(at, &self.style, &mut self.states, 0);
     }
 
-    fn paint(&self, _st: &[NodeState], _i: usize, out: &mut DisplayList) {
+    fn paint(&self, st: &[NodeState], i: usize, out: &mut DisplayList) {
+        // Same shape as `List`: the island's content may exceed the box
+        // `resolve_self` gave it; `hit` stops at the box, so paint must.
+        out.push_clip(crate::ops::rect_of(&st[i]));
         self.inner.paint(&self.states, 0, out);
+        out.pop_clip();
     }
 
     fn hit(&self, st: &[NodeState], i: usize, x: f32, y: f32) -> Option<Hit> {
