@@ -60,7 +60,7 @@ tested by name.
 
 ---
 
-## F1 — Live defects
+## F1 — Live defects — **DONE 2026-09-02** (F1.9 pending)
 
 *Each is independent, small, and ships with the test that would have
 caught it. Order within F1 does not matter; F1.1 and F1.2 first because
