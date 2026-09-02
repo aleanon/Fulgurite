@@ -126,7 +126,7 @@ zero on the plain-tree path.
 
 ---
 
-## F2 — The agent stops costing more than the frame
+## F2 — The agent stops costing more than the frame — **DONE 2026-09-02**
 
 *`frame_done` is 117× the frame it observes at 10k nodes and poisons
 every `Label` memo every frame. Under a real shaper (M7) this is the
@@ -264,7 +264,7 @@ noise of the F3 baseline.
 
 ---
 
-## F5 — The compile-time ceiling
+## F5 — The compile-time ceiling — **F5.1 DONE 2026-09-02** (brought forward: it blocked F2's measurement)
 
 *`table_is_well_formed` is O(N²) at const-eval: 3.2k nodes → 20 s, 10k →
 `long_running_const_eval`, fails to compile. The only finding today that
