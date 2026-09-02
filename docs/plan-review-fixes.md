@@ -46,9 +46,9 @@ tested by name.
   list deleted in M0. Fix `WidgetOps` in `widget.rs:4` and `Pump` in
   `agent/tests/input.rs:41`. *Finding: 3B D6, D14; 4B C.*
 - **F0.3** The two dangling doc citations in `plan-agent-parity.md:8-9`
-  and the two `--bin safety`/`--bin memory` citations — the
+  and the two deleted-bench citations in the `results-*` headers — the
   reproducibility notes already say the binaries are gone; reword the
-  citations so they do not read as runnable commands. *3B D18; 4B C.*
+  headers so they do not read as runnable commands. *3B D18; 4B C.*
 - **F0.4** `cargo test -p lumen-static` (release shape) is in `just
   release-shape`; verify it runs 30 tests and that `just dev-shape`'s
   `--workspace` line is the only unified build. Delete the redundant

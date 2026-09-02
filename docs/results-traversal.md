@@ -3,8 +3,8 @@
 *2026-09-01. Prompted by a correction: iced's layout is single-pass, and
 the four-pass flat scheme in `docs/layout-and-storage-decisions.md` §2
 was buying back exactness that recursion gets for free. This measures the
-traversal strategy itself. Harness:
-`cargo run --release -p benches --bin safety`; machine and profile as in
+traversal strategy itself. Harness: a `benches` binary named `safety`, **since deleted** — see the
+reproducibility note below; machine and profile as in
 `docs/results-step2-crossover.md`.*
 
 > **Reproducibility note, 2026-09-02.** The `safety` binary this document

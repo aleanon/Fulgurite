@@ -3,8 +3,8 @@
 *2026-08-31. The question from `docs/verification-notes.md`: the release
 build's 13 `unsafe` blocks are all one pattern (`base.add(offset) as
 *const W`). Is that pattern load-bearing, or a performance choice? Built
-both and measured. Harness:
-`cargo run --release -p benches --bin safety`; machine and profile as in
+both and measured. Harness: a `benches` binary named `safety`, **since deleted** — see the
+reproducibility note below; machine and profile as in
 `docs/results-step2-crossover.md`.*
 
 > **Reproducibility note, 2026-09-02.** The `safety` binary this document
@@ -83,7 +83,8 @@ under 1% of a frame.
 ## Memory: measured, and it splits by *kind* of memory
 
 Speed was only half the question. Sizes are measured
-(`cargo run --release -p benches --bin memory`) and code sizes come from
+(a `benches` binary named `memory`, since deleted — see the
+reproducibility note above) and code sizes come from
 symbol sums over two isolated binaries that link one path each
 (`fixtures/binsize`).
 

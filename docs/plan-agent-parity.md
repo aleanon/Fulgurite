@@ -5,9 +5,10 @@ app, mapped onto this architecture. Evidence surveyed:
 `Lumen/crates/lumen-agent/src/lib.rs` (35 JSON-RPC methods),
 `lumen-core/src/semantics.rs` (structural `NodeHandle` identity, selector
 resolution with nearest-miss/ambiguity errors),
-`docs/plan-agent-observability.md` rev2 and
-`docs/review-agent-observability-2026-08.md` (the ambient-audit thesis
-and its review scars). This is a plan, not work done.*
+`Lumen/docs/plan-agent-observability.md` rev2 and
+`Lumen/docs/review-agent-observability-2026-08.md` (the ambient-audit
+thesis and its review scars) — all four in Lumen's tree, not ours;
+verified present 2026-09-02. This is a plan, not work done.*
 
 ## What Lumen's surface actually is
 

@@ -24,7 +24,20 @@ sources=$(find crates benches examples fixtures docs scripts -type f \
     -not -path '*/target/*' -not -name 'check_*.sh' 2>/dev/null; echo justfile; echo AGENT.md; echo Cargo.toml)
 
 # --- (1) docs/*.md paths ---
-{ grep -hoE '\bdocs/[A-Za-z0-9._/-]+\.md' $sources 2>/dev/null || true; } | sort -u > "$tmp/paths"
+# Capture any leading path component too, so `Lumen/docs/foo.md` — a
+# citation of another repo's tree — extracts whole and is dropped by the
+# `^docs/` filter rather than masquerading as one of ours.
+{ grep -hoE '[A-Za-z0-9._/-]*docs/[A-Za-z0-9._/-]+\.md' $sources 2>/dev/null || true; } \
+    | grep -E '^docs/' | sort -u > "$tmp/paths"
+
+# A plan may name a document it promises to create. Those live in
+# scripts/doc-paths.allow with a reason, and come off the list as they
+# are written.
+allow="$(dirname "$0")/doc-paths.allow"
+if [ -f "$allow" ]; then
+    sed -e 's/#.*$//' -e 's/[[:space:]]*$//' "$allow" | grep -vE '^$' | sort -u > "$tmp/allow" || true
+    comm -23 "$tmp/paths" "$tmp/allow" > "$tmp/paths.f" && mv "$tmp/paths.f" "$tmp/paths"
+fi
 while IFS= read -r p; do
     [ -n "$p" ] || continue
     if [ ! -f "$p" ]; then

@@ -51,6 +51,64 @@ pub fn derive_static_tree(input: TokenStream) -> TokenStream {
     }
 }
 
+/// `#[widget_class("row", "striped")]` — the documented spelling — or the
+/// bare-ident form `#[widget_class(row, striped)]`. Both are accepted;
+/// anything else is an error rather than an empty class list.
+///
+/// This used to be `let _ = attr.parse_nested_meta(...)`, which silently
+/// produced `&[]` for the *documented* form, because `parse_nested_meta`
+/// yields paths and a string literal is not one. `Selector::Class` was
+/// therefore unreachable through the derive for anyone who read the docs
+/// (`docs/plan-review-fixes.md` F1.5).
+fn parse_classes(f: &syn::Field) -> syn::Result<Ts2> {
+    let mut out: Vec<String> = Vec::new();
+    for attr in &f.attrs {
+        if !attr.path().is_ident("widget_class") {
+            continue;
+        }
+        attr.parse_args_with(|input: syn::parse::ParseStream| {
+            let names =
+                syn::punctuated::Punctuated::<ClassName, syn::Token![,]>::parse_terminated(input)?;
+            out.extend(names.into_iter().map(|c| c.0));
+            Ok(())
+        })?;
+    }
+    Ok(if out.is_empty() { quote! { &[] } } else { quote! { &[#(#out),*] } })
+}
+
+/// One class name: a string literal or a bare identifier.
+struct ClassName(String);
+
+impl syn::parse::Parse for ClassName {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        if input.peek(syn::LitStr) {
+            Ok(ClassName(input.parse::<syn::LitStr>()?.value()))
+        } else if input.peek(syn::Ident) {
+            Ok(ClassName(input.parse::<syn::Ident>()?.to_string()))
+        } else {
+            Err(input.error("expected a class name: `\"striped\"` or `striped`"))
+        }
+    }
+}
+
+/// `#[widget_id("save")]`. The bare-ident form is rejected rather than
+/// silently yielding an empty id — `wid` is the agent's stable address
+/// and a selector input, so a dropped one fails far from the typo.
+fn parse_wid(f: &syn::Field) -> syn::Result<String> {
+    for attr in &f.attrs {
+        if attr.path().is_ident("widget_id") {
+            let lit: syn::LitStr = attr.parse_args().map_err(|_| {
+                syn::Error::new_spanned(
+                    attr,
+                    "expected a string literal: `#[widget_id(\"save\")]`",
+                )
+            })?;
+            return Ok(lit.value());
+        }
+    }
+    Ok(String::new())
+}
+
 fn expand(input: DeriveInput) -> syn::Result<Ts2> {
     let name = &input.ident;
     let name_str = name.to_string();
@@ -119,38 +177,10 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
     let field_classes: Vec<Ts2> = fields
         .named
         .iter()
-        .map(|f| {
-            for attr in &f.attrs {
-                if attr.path().is_ident("widget_class") {
-                    let mut out: Vec<String> = Vec::new();
-                    let _ = attr.parse_nested_meta(|m| {
-                        if let Some(id) = m.path.get_ident() {
-                            out.push(id.to_string());
-                        }
-                        Ok(())
-                    });
-                    if !out.is_empty() {
-                        return quote! { &[#(#out),*] };
-                    }
-                }
-            }
-            quote! { &[] }
-        })
-        .collect();
-    let field_wid: Vec<String> = fields
-        .named
-        .iter()
-        .map(|f| {
-            for attr in &f.attrs {
-                if attr.path().is_ident("widget_id") {
-                    if let Ok(lit) = attr.parse_args::<syn::LitStr>() {
-                        return lit.value();
-                    }
-                }
-            }
-            String::new()
-        })
-        .collect();
+        .map(parse_classes)
+        .collect::<syn::Result<Vec<_>>>()?;
+    let field_wid: Vec<String> =
+        fields.named.iter().map(parse_wid).collect::<syn::Result<Vec<_>>>()?;
 
     let axis_expr = match axis {
         Axis::Row => quote! { ::lumen_static::ops::Axis::Row },
