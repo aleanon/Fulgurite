@@ -166,7 +166,7 @@ flaking); `just test` green.
 
 ---
 
-## F3 — One visibility mechanism, constant defaults
+## F3 — One visibility mechanism, constant defaults — **DONE 2026-09-02**
 
 *Two mechanisms hide today — `Style.visible` (which nothing writes and
 paint ignores) and `hatch::hide()` (which zeroes `NodeState`). And
@@ -182,7 +182,7 @@ None` styles item 1 correctly; `defaults()` returns the same value for a
 kind regardless of instance state; `pass::frame` either has callers or
 is deleted.
 
-- **F3.1** `NodeState.flags: HIDDEN`, stamped by `place` from
+- **F3.1 — superseded by F1.6.** The subtree-zeroing route was taken instead of a `NodeState` flag: it needed no new per-node field (which would have grown `NodeState` 32 B -> 40 B) and no signature change, because a zero-area node cannot paint or be hit. Original text: `NodeState.flags: HIDDEN`, stamped by `place` from
   `style[i].visible` — the A2 mechanism applied to the existing property.
   `paint`/`hit` read the flag from the array they already carry; the
   derive's early-returns go; `hatch::hide()` becomes "set the flag on
