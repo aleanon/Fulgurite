@@ -173,3 +173,69 @@ fn hostile_selectors_are_answered_not_panicked() {
         }
     }
 }
+
+/// `input.*` needs a host, so it goes through `dispatch_input` with a
+/// minimal one rather than the read-only fixture above.
+mod input_limits {
+    use super::*;
+    use lumen_static::{Event, InputQueue};
+    use lumen_static_agent::Host;
+
+    struct Bare {
+        app: Bar,
+        states: [NodeState; Bar::NODE_COUNT],
+        styles: Vec<lumen_static::Style>,
+        queue: InputQueue,
+        frame: u64,
+    }
+
+    impl Host for Bare {
+        fn tree(&self) -> TreeRef<'_> {
+            TreeRef::of_root(&self.app, &self.styles, &self.states)
+        }
+        fn enqueue(&mut self, ev: Event) {
+            self.queue.push(ev);
+        }
+        fn pump(&mut self) -> u64 {
+            while self.queue.pop().is_some() {}
+            self.frame += 1;
+            self.frame
+        }
+    }
+
+    fn bare() -> Bare {
+        let app = Bar::default();
+        let styles = pass::default_styles(&app);
+        Bare {
+            app,
+            states: [NodeState::default(); Bar::NODE_COUNT],
+            styles,
+            queue: InputQueue::default(),
+            frame: 0,
+        }
+    }
+
+    #[test]
+    fn input_type_refuses_an_unbounded_string() {
+        let agent = Agent::new();
+        let mut h = bare();
+
+        let ok = agent.dispatch_input(
+            &mut h,
+            &json!({ "jsonrpc": "2.0", "id": 1, "method": "input.type",
+                     "params": { "text": "hello" } }),
+        );
+        assert_eq!(ok["result"]["chars"], 5, "ordinary typing is unaffected");
+
+        // One JSON character was one queued event, with no cap: 2M chars
+        // measured as 2M events. A keyboard cannot do that.
+        let huge = "x".repeat(100_000);
+        let resp = agent.dispatch_input(
+            &mut h,
+            &json!({ "jsonrpc": "2.0", "id": 1, "method": "input.type",
+                     "params": { "text": huge } }),
+        );
+        assert_eq!(resp["error"]["code"], -32602, "refused: {resp}");
+        assert_eq!(resp["error"]["data"]["chars"], 100_000);
+    }
+}

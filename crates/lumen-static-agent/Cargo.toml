@@ -8,5 +8,24 @@ license.workspace = true
 name = "lumen_static_agent"
 
 [dependencies]
+# `observe` is not optional here, and that has a consequence worth
+# stating rather than discovering.
+#
+# Cargo unifies features across a selection, so **any binary that links
+# this crate builds `lumen-static` with `observe` on** — `NodeDesc` grows
+# 48 B -> 72 B and the accesskit dependency comes with it. That is not
+# the mutually-exclusive size-dial pattern handoff §8 rejects; it is the
+# additive dev gate §9 blesses, used as intended. But §9's "off in
+# release builds" holds only for a binary that does not link the agent,
+# and `docs/step5-observability.md`'s zero-release-cost claim inherits
+# that condition. `fixtures/binsize` deliberately depends on neither, so
+# the recorded release size stays a release size.
+#
+# Making it optional was considered and rejected: `src` provenance drives
+# `@file:line` selectors, `ui.getTree` and the AccessKit snapshot, and
+# provenance on every node is one of the two things this framework has
+# that Lumen's semantics tree does not (`docs/plan-lumen-parity.md`).
+# An agent without it is not the surface this crate exists to provide.
+# `docs/plan-review-fixes.md` F2.5.
 lumen-static = { path = "../lumen-static", features = ["observe"] }
 serde_json = "1"

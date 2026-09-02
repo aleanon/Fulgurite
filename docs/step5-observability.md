@@ -3,6 +3,16 @@
 *2026-08-30. Handoff §9 implemented: AccessKit as the one tree for screen
 readers and agents, source provenance in `NodeDesc`, all behind an
 additive dev gate with measured-zero release cost. Also pays Step 4's
+
+> **Condition, added 2026-09-02 (F2.5).** "Zero release cost" means: a
+> binary that does not link `lumen-static-agent`. That crate depends on
+> `lumen-static` with `features = ["observe"]`, and cargo unifies
+> features across a selection, so linking it turns `observe` on for the
+> whole graph — `NodeDesc` 48 B → 72 B, plus accesskit. This is the
+> additive dev gate §9 blesses, used as intended, but the claim above was
+> stated without the condition and two reviewers read it as unconditional.
+> `fixtures/binsize` links neither the agent nor any feature, so the
+> release figure it records is a release figure.
 recorded debt: the reload surface is now gated too.*
 
 ## The gate: additive cargo features, not a mode

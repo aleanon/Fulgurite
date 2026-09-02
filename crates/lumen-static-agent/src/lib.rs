@@ -99,6 +99,13 @@ pub struct Agent {
 const NOT_FOUND: i64 = -32001;
 const AMBIGUOUS: i64 = -32002;
 const INVALID_PARAMS: i64 = -32602;
+
+/// Longest string `input.type` will turn into queued events in one call.
+///
+/// Generous for anything a person would type or paste, and small enough
+/// that the queue cannot be used to exhaust the host's memory. See the
+/// method for why this exists.
+const MAX_TYPE_CHARS: usize = 4096;
 const METHOD_NOT_FOUND: i64 = -32601;
 
 type RpcResult = Result<Value, (i64, String, Value)>;
@@ -198,10 +205,26 @@ impl Agent {
                     .get("text")
                     .and_then(Value::as_str)
                     .ok_or((INVALID_PARAMS, "missing `text`".into(), Value::Null))?;
+                // One JSON character becomes one queued Event, and the
+                // queue has no cap and no backpressure — 2,000,000 chars
+                // measured as 2,000,000 events in 51 ms. A real keyboard
+                // has a rate limit; so does this. It is also the one
+                // agent method whose *availability* effect a user with a
+                // keyboard could not reproduce, which is the invariant
+                // the input surface is otherwise held to
+                // (`docs/plan-review-fixes.md` F2.6).
+                let n = text.chars().count();
+                if n > MAX_TYPE_CHARS {
+                    return Err((
+                        INVALID_PARAMS,
+                        format!("`text` is {n} characters; the limit is {MAX_TYPE_CHARS}"),
+                        json!({ "chars": n, "limit": MAX_TYPE_CHARS }),
+                    ));
+                }
                 for ch in text.chars() {
                     host.enqueue(Event::Text { ch });
                 }
-                Ok(json!({ "frame": host.pump(), "chars": text.chars().count() }))
+                Ok(json!({ "frame": host.pump(), "chars": n }))
             }
             _ => Err((METHOD_NOT_FOUND, format!("unknown method `{method}`"), Value::Null)),
         }
