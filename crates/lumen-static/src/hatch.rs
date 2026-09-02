@@ -33,14 +33,14 @@ fn hide(st: &mut [NodeState], i: usize, limits: Constraints, count: usize) -> Si
 /// The table always has `W`'s entries, so node indices, agent ids and
 /// provenance are stable across a toggle. That is the property a
 /// key-based reconciler has to work for.
-impl<W: Widget> Widget for Option<W> {
+impl<W: Widget + Default> Widget for Option<W> {
     const NODE_COUNT: usize = W::NODE_COUNT;
     const DEPTH: usize = W::DEPTH;
     const IS_RIGID: bool = W::IS_RIGID;
     const SUB_TABLE: &'static [NodeDesc] = W::SUB_TABLE;
 }
 
-impl<W: Widget> Node for Option<W> {
+impl<W: Widget + Default> Node for Option<W> {
     fn kind_name(&self) -> &'static str {
         match self {
             Some(w) => w.kind_name(),
@@ -48,10 +48,21 @@ impl<W: Widget> Node for Option<W> {
         }
     }
 
+    /// The *inner kind's* defaults, whether or not there is a value.
+    ///
+    /// `defaults()` feeds the cascade, which runs when a stylesheet is
+    /// set — not per frame — so a state-dependent answer is snapshotted
+    /// once and never revisited. This returned `Style::default()` while
+    /// `None`, so an `Option` empty at construction had its slot styled
+    /// `Shrink` permanently: setting it to `Some(Spacer)` later laid the
+    /// spacer out at 0x0 instead of filling, with nothing to say why.
+    /// Absence is expressed by `layout` hiding the subtree, which is a
+    /// per-frame decision and the right home for one.
+    /// `docs/plan-review-fixes.md` F3.2.
     fn defaults(&self) -> Style {
         match self {
             Some(w) => w.defaults(),
-            None => Style::default(),
+            None => W::default().defaults(),
         }
     }
 
@@ -234,11 +245,16 @@ impl<A: Widget, B: Widget> Node for Either<A, B> {
         "either"
     }
 
+    /// Branch A's defaults, whichever branch is showing.
+    ///
+    /// Same reason as [`Option`]'s above: the cascade snapshots this
+    /// once, so a state-dependent answer freezes whichever branch was
+    /// showing when the stylesheet was set. Both branches keep their own
+    /// state across a toggle — that is the hatch's purpose — but they
+    /// share one *style* slot, so `defaults()` has to name a kind. A
+    /// stylesheet rule is how a branch gets a different one.
     fn defaults(&self) -> Style {
-        match self.showing {
-            Side::A => self.a.defaults(),
-            Side::B => self.b.defaults(),
-        }
+        self.a.defaults()
     }
 
     fn layout(

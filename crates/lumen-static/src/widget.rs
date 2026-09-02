@@ -62,6 +62,21 @@ pub trait Node {
     fn hit(&self, st: &[NodeState], i: usize, x: f32, y: f32) -> Option<Hit>;
 
     /// This kind's own style defaults, before any rule applies.
+    ///
+    /// **Must depend only on the type, never on `self`'s current
+    /// state.** The cascade calls this when a stylesheet is set, not per
+    /// frame, and the arena containers snapshot it once per template —
+    /// so a state-dependent answer is frozen at whatever the state
+    /// happened to be, and never revisited. `Option::defaults` returned
+    /// `Style::default()` while `None`, which meant an `Option` empty at
+    /// construction had its slot styled `Shrink` permanently: setting it
+    /// to `Some(Spacer)` later laid the spacer out at 0x0 instead of
+    /// filling, with nothing to indicate why.
+    ///
+    /// Runtime state belongs in `layout` — which runs every frame — not
+    /// here. `Option` hides its subtree when empty; that is the same
+    /// information expressed where it can change.
+    /// `docs/plan-review-fixes.md` F3.2.
     fn defaults(&self) -> Style {
         Style::default()
     }
