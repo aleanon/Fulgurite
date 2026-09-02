@@ -1,0 +1,14 @@
+# Names that appear in backticks inside comments but are legitimately absent
+# from workspace code. Every entry needs a reason. See
+# scripts/check_doc_identifiers.sh.
+
+# --- not ours: C library / toolchain / upstream crate surface ---
+dlclose              # libdl; docs/step4-hot-reload.md §7 says we never call it
+nm                   # binutils, cited in the binsize fixture's notes
+generic_const_exprs  # unstable rustc feature, cited as a road not taken
+size_of_set          # AccessKit's field name, mirrored by desc.rs
+
+# --- documented as deliberately removed ---
+# Prose of the form "`X` is gone". Keep these: the sentence is the record of
+# the removal, and deleting the sentence loses the history.
+offset               # crates/lumen-static/src/desc.rs:8 -- table dispatch is gone

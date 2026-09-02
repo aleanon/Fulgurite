@@ -1,0 +1,204 @@
+# CI for lumen-static. There was none before this file; `just test` was the
+# gate and was run by hand.
+#
+# Two rules shape everything here:
+#
+#   1. CI runs `just` recipes, never bare cargo lines. The justfile is the
+#      gate; if CI reimplemented it the two would drift, which is the exact
+#      failure mode this repo already has in its docs. The recipes are invoked
+#      one per step only so a red X names the stage that failed.
+#
+#   2. Nothing in the required path compares a number produced on this runner
+#      to a number measured elsewhere. The reference machine is an i9-13900KF
+#      with governor `powersave` and turbo on; GitHub runners are shared
+#      vCPUs. Benchmarks run for their exit code, and their output is archived
+#      to read, not diffed.
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A new push to a PR cancels the previous run: the gate is seconds long, so
+# there is nothing to gain from finishing a superseded one.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # Backtraces cost nothing here and turn a fixture panic into a location.
+  RUST_BACKTRACE: 1
+
+jobs:
+  # ---------------------------------------------------------------------
+  # The gate. Everything required to merge lives in this one job.
+  #
+  # No OS matrix: crates/ contains zero `cfg(target_os)`, `std::fs`,
+  # `std::process` or `std::os` -- there is no platform code to matrix over --
+  # and the one thing that is platform-shaped, the hot-reload swap, is
+  # linux-only by construction (scripts/hot_reload_demo.sh hardcodes
+  # libhot_app.so, and "never dlclose" is a dlopen-specific contract).
+  # See the `portability` job below for the part that is genuinely worth
+  # a second OS.
+  # ---------------------------------------------------------------------
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # No toolchain is declared here on purpose. rust-toolchain.toml pins
+      # 1.94.0 with rustfmt + clippy and profile=minimal; `rustup show`
+      # materialises exactly that. Declaring a toolchain in the workflow
+      # would create a second source of truth that silently loses to the file.
+      - name: Install the pinned toolchain
+        run: rustup show
+
+      # The dependency tree is six crates (syn, quote, proc-macro2, serde,
+      # serde_json, accesskit, libloading), so a cold build is ~5s on the
+      # reference machine and roughly a minute on a 4-vCPU runner. The cache
+      # is worth having but it is not the difference between a usable and an
+      # unusable CI -- do not let it become load-bearing.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          # `just test` builds three distinct graphs (default features,
+          # unified features, release profile). Keyed so all three land in
+          # one cache entry.
+          key: gate
+
+      - uses: extractions/setup-just@v2
+
+      # Sub-second, no compile. Runs first so a dead doc reference is not
+      # discovered after a build.
+      - name: Static drift checks
+        run: just static
+
+      - name: Release shape (default features)
+        run: just release-shape
+
+      - name: Dev shape (observe + reload)
+        run: just dev-shape
+
+      - name: Fixtures (counter, hot-reload swap)
+        run: just fixtures
+
+      - name: Release-shape rustdoc, binsize
+        run: just check-extra
+
+      # fixtures/binsize is a code-size comparison with no threshold yet.
+      # Publishing the number every run is what makes a threshold possible
+      # later; asserting one now would be inventing it.
+      - name: Record binary size
+        if: always()
+        run: |
+          if [ -f target/release/binsize ]; then
+            echo "| artifact | bytes |" >> "$GITHUB_STEP_SUMMARY"
+            echo "|---|---|" >> "$GITHUB_STEP_SUMMARY"
+            echo "| binsize | $(stat -c%s target/release/binsize) |" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  # ---------------------------------------------------------------------
+  # Benchmarks: run, do not assert.
+  #
+  # Timings from a shared vCPU are not comparable to the reference machine and
+  # are barely comparable to themselves, so nothing here is a performance
+  # gate. What IS gated is the exit code, and that catches a real class of rot
+  # for free: benches/Cargo.toml declares only `crossover` and `bindings` as
+  # [[bin]] -- `fusion` and `repeater` exist by autodiscovery -- and two
+  # results docs already cite bench binaries (`memory`, `safety`) that no
+  # longer exist. A bench that no longer compiles or panics fails this job.
+  # ---------------------------------------------------------------------
+  bench:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup show
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: bench
+      - uses: extractions/setup-just@v2
+      - name: Run benchmarks (exit code only)
+        run: just bench 2>&1 | tee bench-output.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bench-output-${{ github.sha }}
+          path: bench-output.txt
+          retention-days: 90
+
+  # ---------------------------------------------------------------------
+  # Coverage: a number to read, not a threshold.
+  #
+  # Four fixtures sit at 0% today. A workspace percentage would therefore be
+  # dominated by whether the fixtures ran rather than by how well the core is
+  # tested, and a threshold on it would encode that noise. The lcov file is
+  # the artifact; the per-crate summary goes in the run summary. Add a
+  # threshold on crates/lumen-static/src only after the fixtures are inside
+  # the gate and the number has stopped moving for structural reasons.
+  # ---------------------------------------------------------------------
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup show && rustup component add llvm-tools-preview
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: coverage
+      - uses: taiki-e/install-action@cargo-llvm-cov
+      - name: Measure
+        run: |
+          cargo llvm-cov --workspace --lcov --output-path lcov.info
+          {
+            echo '### Coverage'
+            echo '```'
+            cargo llvm-cov --workspace --summary-only
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lcov-${{ github.sha }}
+          path: lcov.info
+          retention-days: 90
+
+  # ---------------------------------------------------------------------
+  # Non-blocking. Two things this project wants to know about but cannot
+  # currently gate on.
+  # ---------------------------------------------------------------------
+
+  # fixtures/miri-smoke exists precisely so `cargo miri run -p miri-smoke` is
+  # possible, and docs/verification-notes.md records that the tooling is
+  # broken. Running it non-blocking costs nothing and turns "the day miri
+  # works again" into a green check instead of something nobody rechecks.
+  miri:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup toolchain install nightly --component miri --profile minimal
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: miri
+      - run: cargo +nightly miri run -p miri-smoke
+
+  # aarch64 macOS, non-blocking. crates/ has no platform code, so this is not
+  # a portability check in the usual sense -- it is an f32 check. The layout
+  # engine is float arithmetic and the tests assert on positions; if any of
+  # them are only true because of x86-64 rounding, this is where that shows
+  # up. The hot-reload fixture is excluded: it is linux-only by construction.
+  #
+  # Make this blocking the day the project claims cross-platform support.
+  # Until then a red X here is information, not a broken build.
+  portability:
+    runs-on: macos-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup show
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: portability
+      - run: cargo test --workspace
+      - run: cargo test -p lumen-static

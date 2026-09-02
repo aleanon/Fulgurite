@@ -88,8 +88,20 @@ impl<'l> App<'l> {
     }
 }
 
+/// Assert that `needle` appears in `report` as a WHOLE space-delimited field.
+///
+/// `report.contains(needle)` was wrong in both directions in a `k=v k=v`
+/// format: `window=` matched `window=0`, which is exactly the "the repeater
+/// window failed to rebuild" case the assertion exists to catch, and
+/// `counter=3` would equally have matched `counter=30`. Requiring the match to
+/// end at a space or at the end of the report closes both. Needles may still
+/// contain spaces inside quotes (`title='renamed by user'`), so this is a
+/// suffix-delimiter rule, not a tokenizer.
 fn expect(report: &str, needle: &str, what: &str) {
-    assert!(report.contains(needle), "{what}: expected `{needle}` in `{report}`");
+    let matched = report
+        .match_indices(needle)
+        .any(|(i, _)| report[i + needle.len()..].starts_with(' ') || i + needle.len() == report.len());
+    assert!(matched, "{what}: expected field `{needle}` in `{report}`");
     println!("  ok: {what} ({needle})");
 }
 
@@ -156,7 +168,8 @@ fn main() {
     assert!(log.contains("mode"), "fallback must be logged, got: `{log}`");
     println!("  ok: enum fallback logged (§12.2)");
     // the repeater window re-materialized from data after the swap
-    expect(&after, "window=", "repeater window rebuilt");
+    // The value, not the prefix: `window=` alone was satisfied by `window=0`.
+    expect(&after, "window=24", "repeater window rebuilt");
 
     println!("\nHOT RELOAD DEMO: PASS");
 }

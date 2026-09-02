@@ -1,0 +1,12 @@
+# The codebase is written at rustfmt's max_width with struct literals and
+# calls kept on one line; `use_small_heuristics = "Max"` is what that setting
+# is called. Without this file `cargo fmt` rewrites 275 sites across 53 files;
+# with it, 63 across 27.
+#
+# Those 63 are hand-packed layouts stable rustfmt cannot express -- one-line
+# `if c { a } else { b }` in tail position, and manually packed array
+# literals. `cargo fmt --check` is therefore NOT in the gate: it would be
+# permanently red, and making it green means accepting a reformat that
+# rewrites those 63 sites. This file exists so that anyone who does run
+# `cargo fmt` gets a 63-site diff instead of a 275-site one.
+use_small_heuristics = "Max"
