@@ -110,7 +110,22 @@ impl Default for Session {
 
 use std::ffi::c_void;
 
-fn session<'a>(p: *mut c_void) -> &'a mut Session {
+/// Reborrow the host's app pointer.
+///
+/// # Safety
+///
+/// `p` must come from `hot_new` of *this* library build and must not be
+/// aliased for the duration of the returned borrow. Each `extern "C"` fn
+/// below calls this once and lets the borrow die before returning, which
+/// is what upholds the second half.
+///
+/// This was a *safe* fn until 2026-09-02. It manufactured a `&mut` with
+/// a caller-chosen lifetime from a raw pointer, so two live `&mut
+/// Session` could be produced with no `unsafe` at any call site — and
+/// the optimizer already acted on the aliasing (review PoC: `a.n = 1; b.n
+/// = 2;` printed `a.n=2`). No call site did it; nothing but habit
+/// prevented one. `docs/plan-review-fixes.md` F1.2.
+unsafe fn session<'a>(p: *mut c_void) -> &'a mut Session {
     unsafe { &mut *(p as *mut Session) }
 }
 
@@ -128,25 +143,25 @@ pub unsafe extern "C" fn hot_drop(p: *mut c_void) {
 
 #[no_mangle]
 pub unsafe extern "C" fn hot_bump(p: *mut c_void) {
-    session(p).counter += 1;
+    unsafe { session(p) }.counter += 1;
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn hot_set_title(p: *mut c_void, ptr: *const u8, len: usize) {
     let bytes = unsafe { core::slice::from_raw_parts(ptr, len) };
     if let Ok(s) = core::str::from_utf8(bytes) {
-        session(p).ui.title.set(Box::leak(s.to_owned().into_boxed_str()));
+        unsafe { session(p) }.ui.title.set(Box::leak(s.to_owned().into_boxed_str()));
     }
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn hot_set_rows(p: *mut c_void, rows: usize) {
-    session(p).ui.list.count = rows;
+    unsafe { session(p) }.ui.list.count = rows;
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn hot_set_scroll(p: *mut c_void, scroll: f32) {
-    session(p).ui.list.scroll = scroll;
+    unsafe { session(p) }.ui.list.scroll = scroll;
 }
 
 /// v1 only in spirit: sets the mode this build considers "fancy" (v2 has
@@ -155,7 +170,7 @@ pub unsafe extern "C" fn hot_set_scroll(p: *mut c_void, scroll: f32) {
 pub unsafe extern "C" fn hot_set_fancy(p: *mut c_void) {
     #[cfg(not(feature = "v2"))]
     {
-        session(p).mode = Mode::Fancy;
+        unsafe { session(p) }.mode = Mode::Fancy;
     }
     #[cfg(feature = "v2")]
     {
@@ -166,7 +181,7 @@ pub unsafe extern "C" fn hot_set_fancy(p: *mut c_void) {
 /// One frame: layout + paint, returns the paint checksum.
 #[no_mangle]
 pub unsafe extern "C" fn hot_frame(p: *mut c_void) -> u64 {
-    let s = session(p);
+    let s = unsafe { session(p) };
     s.cache_hits += 1;
     // The update step: application state reaches the screen here. Widget
     // fields hold the *presentation copy*; sibling fields are the source
@@ -191,7 +206,7 @@ pub unsafe extern "C" fn hot_frame(p: *mut c_void) -> u64 {
 /// size, then again with the allocation).
 #[no_mangle]
 pub unsafe extern "C" fn hot_save(p: *mut c_void, buf: *mut u8, cap: usize) -> usize {
-    let bytes = serde_json::to_vec(&session(p).save()).unwrap_or_default();
+    let bytes = serde_json::to_vec(&unsafe { session(p) }.save()).unwrap_or_default();
     if bytes.len() <= cap && !buf.is_null() {
         unsafe { core::ptr::copy_nonoverlapping(bytes.as_ptr(), buf, bytes.len()) };
     }
@@ -204,7 +219,7 @@ pub unsafe extern "C" fn hot_restore(p: *mut c_void, ptr: *const u8, len: usize)
     let bytes = unsafe { core::slice::from_raw_parts(ptr, len) };
     match serde_json::from_slice(bytes) {
         Ok(v) => {
-            session(p).restore(&v);
+            unsafe { session(p) }.restore(&v);
             0
         }
         Err(_) => 1,
@@ -215,7 +230,7 @@ pub unsafe extern "C" fn hot_restore(p: *mut c_void, ptr: *const u8, len: usize)
 /// protocol as `hot_save`). The host asserts against this.
 #[no_mangle]
 pub unsafe extern "C" fn hot_report(p: *mut c_void, buf: *mut u8, cap: usize) -> usize {
-    let s = session(p);
+    let s = unsafe { session(p) };
     let report = format!(
         "counter={} mode={:?} theme={} title='{}' status='{}' footer='{}' rows={} scroll={} window={} cache={}",
         s.counter,

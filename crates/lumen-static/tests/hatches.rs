@@ -239,3 +239,27 @@ fn dyn_islands_carry_runtime_content() {
     assert_eq!(st[0].size, lumen_static::Size { w: 33.0, h: 7.0 });
     assert_eq!(d.node_count(), Fixed::NODE_COUNT);
 }
+
+/// `Dyn` reports a constant `DEPTH` because its content is type-erased,
+/// so the compile-time `MAX_DEPTH` assert cannot see inside it. The
+/// check it *can* make is at construction, and this pins both halves:
+/// what is caught, and what is documented as not caught (F1.1).
+#[test]
+fn a_dyn_island_checks_its_content_depth_at_construction() {
+    use lumen_static::desc::MAX_DEPTH;
+    use lumen_static::hatch::Dyn;
+
+    // Ordinary content: recorded, and well inside the bound.
+    let d = Dyn::new(Panel::default());
+    assert_eq!(d.content_depth(), <Panel as Widget>::DEPTH);
+    assert!(d.content_depth() < MAX_DEPTH);
+
+    // The constant the ancestors' arithmetic actually sees is *not* the
+    // content's depth. This is the documented hole, asserted so that
+    // anyone who closes it has to come here.
+    assert_eq!(<Dyn as Widget>::DEPTH, 2, "a lower bound, not the content's depth");
+    assert!(
+        <Panel as Widget>::DEPTH >= 2,
+        "Panel is a container, so its content is deeper than the constant admits"
+    );
+}

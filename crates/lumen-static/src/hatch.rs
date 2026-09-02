@@ -556,6 +556,7 @@ where
 /// construction, since a `Box<dyn Node>` cannot supply associated
 /// consts.
 pub struct Dyn {
+    content_depth: usize,
     inner: Box<dyn Node>,
     table: &'static [NodeDesc],
     states: Vec<NodeState>,
@@ -563,14 +564,36 @@ pub struct Dyn {
 }
 
 impl Dyn {
+    /// Box a widget as an island.
+    ///
+    /// # Panics
+    ///
+    /// If the content's own `DEPTH` does not fit [`MAX_DEPTH`]. This is
+    /// the only depth check an island can make: `W::DEPTH` is known
+    /// here, but the island's *own* position in the tree is not, because
+    /// the type erasure is the point. See `content_depth`.
     pub fn new<W: Widget + 'static>(w: W) -> Self {
+        assert!(
+            W::DEPTH < crate::desc::MAX_DEPTH,
+            "Dyn island content is {} deep, over MAX_DEPTH ({})",
+            W::DEPTH,
+            crate::desc::MAX_DEPTH,
+        );
         let style = (0..W::NODE_COUNT).map(|j| w.node(j).defaults()).collect();
         Dyn {
             inner: Box::new(w),
             table: W::SUB_TABLE,
             states: vec![NodeState::default(); W::NODE_COUNT],
             style,
+            content_depth: W::DEPTH,
         }
+    }
+
+    /// How deep the boxed content is. Recorded because [`Widget::DEPTH`]
+    /// cannot carry it: the ancestors' compile-time arithmetic sees only
+    /// the constant below.
+    pub fn content_depth(&self) -> usize {
+        self.content_depth
     }
 
     /// Swap the island's content at runtime — the point of the hatch.
@@ -595,9 +618,26 @@ impl Default for Dyn {
 
 impl Widget for Dyn {
     const NODE_COUNT: usize = 1;
-    /// The island's content is opaque at compile time, so its depth
-    /// cannot be counted. It is charged the maximum, which is what keeps
-    /// `MAX_DEPTH` a sound bound rather than an optimistic one.
+    /// **A lower bound, and the one hole in the `MAX_DEPTH` guarantee.**
+    ///
+    /// An island's content is type-erased, which is its whole purpose, so
+    /// its depth cannot reach an ancestor's compile-time arithmetic. This
+    /// constant used to be documented as "charged the maximum, which is
+    /// what keeps `MAX_DEPTH` a sound bound" — it is a constant `2`, and
+    /// the claim was false: a 40-deep tree inside a `Dyn` compiled and
+    /// recursed 40 deep (found by review, 2026-09-02).
+    ///
+    /// Charging the real maximum is not available either: `DEPTH` for a
+    /// container is `1 + max(children)`, so `Dyn::DEPTH = MAX_DEPTH`
+    /// would make an island fail the derive's assert inside *any*
+    /// container, i.e. everywhere it is used.
+    ///
+    /// What is checked instead, in [`Dyn::new`]: the content's own depth
+    /// fits `MAX_DEPTH`. That catches a deep tree being boxed — the
+    /// realistic failure — and does not catch a shallow island nested
+    /// deeply, which needs a depth counter threaded through `layout` and
+    /// is left for the recursion budget work. `docs/plan-review-fixes.md`
+    /// F1.1.
     const DEPTH: usize = 2;
     const IS_RIGID: bool = false;
     const SUB_TABLE: &'static [NodeDesc] =

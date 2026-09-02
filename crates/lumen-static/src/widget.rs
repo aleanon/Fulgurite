@@ -104,8 +104,14 @@ pub trait Widget: Node {
     /// Nodes in this widget's subtree, itself included (handoff §3).
     const NODE_COUNT: usize;
     /// Deepest chain of nested widgets, itself included. Asserted against
-    /// [`crate::desc::MAX_DEPTH`] by the derive, so a tree that could
-    /// overflow the stack does not compile.
+    /// [`crate::desc::MAX_DEPTH`] by the derive, so a statically-typed
+    /// tree that could overflow the stack does not compile.
+    ///
+    /// **One exception:** [`crate::hatch::Dyn`] erases its content's
+    /// type, so the content's depth cannot reach this arithmetic. `Dyn`
+    /// reports a constant and checks its content at construction
+    /// instead; a shallow island nested deeply is not caught. See its
+    /// `DEPTH` for what that does and does not cover.
     const DEPTH: usize;
     /// Size provably independent of content (handoff §2's relayout boundary).
     const IS_RIGID: bool;

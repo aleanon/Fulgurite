@@ -120,7 +120,9 @@ impl NodeDesc {
 pub const NO_PARENT: u32 = u32::MAX;
 
 /// Deepest recursion the framework accepts. A tree deeper than this
-/// fails to compile (the derive asserts `DEPTH <= MAX_DEPTH`), which is
+/// fails to compile (the derive asserts `DEPTH <= MAX_DEPTH`) — with
+/// [`crate::hatch::Dyn`] the documented exception, since type erasure
+/// hides its content's depth from that arithmetic — which is
 /// how §5's stack-depth concern is retired: it becomes a fact about a
 /// constant rather than a runtime hazard.
 pub const MAX_DEPTH: usize = 64;

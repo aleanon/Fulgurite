@@ -217,7 +217,7 @@ impl Auditor {
         let entries: Vec<&LogEntry> = self.log.iter().filter(|e| e.frame > since).collect();
         // The ring dropped entries the caller may still be owed.
         let truncated = self.dropped > 0
-            && self.log.front().is_some_and(|e| since + 1 < e.frame);
+            && self.log.front().is_some_and(|e| since.saturating_add(1) < e.frame);
         (entries, truncated)
     }
 

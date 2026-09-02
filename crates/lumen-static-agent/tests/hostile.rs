@@ -1,0 +1,175 @@
+//! The protocol's *domain*, not its vocabulary.
+//!
+//! Every other agent test supplies parameters the implementation would
+//! produce: `since` takes only 0, 1, and `frame - 1`. Two `since + 1`
+//! expressions therefore ran on nothing but small integers, and both
+//! panicked in debug on `u64::MAX` — one of them reachable with a single
+//! recorded frame, the other only once the 256-entry log ring has
+//! dropped something, which is exactly the long session an agent
+//! attaches to. `docs/plan-review-fixes.md` F1.3.
+//!
+//! An agent is untrusted input. Everything here asserts the host stays
+//! up and answers, never that it computes a particular number.
+
+use lumen_static::ops::{Fixed, Label, Spacer};
+use lumen_static::{pass, Constraints, NodeState, StaticTree, Widget};
+use lumen_static_agent::{Agent, TreeMut, TreeRef};
+use serde_json::{json, Value};
+
+#[derive(StaticTree, Default)]
+#[widget(row, spacing = 2.0)]
+struct Bar {
+    #[widget_id("title")]
+    title: Label,
+    pad: Spacer,
+    #[widget_id("badge")]
+    badge: Fixed,
+}
+
+const VIEW: Constraints = Constraints { min_w: 0.0, max_w: 800.0, min_h: 0.0, max_h: 600.0 };
+
+struct Fixture {
+    app: Bar,
+    states: [NodeState; Bar::NODE_COUNT],
+    styles: Vec<lumen_static::Style>,
+    agent: Agent,
+}
+
+impl Fixture {
+    fn new() -> Self {
+        let app = Bar::default();
+        let styles = pass::default_styles(&app);
+        let mut f = Fixture {
+            app,
+            states: [NodeState::default(); Bar::NODE_COUNT],
+            styles,
+            agent: Agent::new(),
+        };
+        f.frame();
+        f
+    }
+
+    fn frame(&mut self) {
+        pass::layout(&mut self.app, &self.styles, &mut self.states, VIEW);
+        let mut tree = TreeMut::of_root(&mut self.app, &self.styles, &self.states);
+        self.agent.frame_done(&mut tree, 1, 1);
+    }
+
+    /// Churn enough frames that the audit's log ring drops entries —
+    /// the precondition for reaching `audit.rs`'s `since + 1`.
+    fn churn(&mut self, frames: usize) {
+        for i in 0..frames {
+            // Alternate a lint on and off so transitions keep pushing.
+            self.app.badge.w = if i % 2 == 0 { 0.0 } else { 40.0 };
+            self.app.badge.h = if i % 2 == 0 { 0.0 } else { 10.0 };
+            self.frame();
+        }
+    }
+
+    fn raw(&self, req: Value) -> Value {
+        let tree = TreeRef::of_root(&self.app, &self.styles, &self.states);
+        self.agent.dispatch(&tree, &req)
+    }
+}
+
+/// Every value that has ever been mistaken for a frame number.
+fn hostile_since() -> Vec<Value> {
+    vec![
+        json!(u64::MAX),
+        json!(u64::MAX - 1),
+        json!(i64::MAX),
+        json!(-1),
+        json!(1.5),
+        json!("abc"),
+        json!(null),
+        json!([]),
+        json!({}),
+    ]
+}
+
+const SINCE_METHODS: [&str; 3] = ["ui.lastChange", "ui.lastDamage", "app.logs"];
+
+/// A response is well-formed if it is a JSON-RPC envelope carrying
+/// exactly one of `result` or `error`. Nothing here cares which.
+fn assert_answered(resp: &Value, what: &str) {
+    assert_eq!(resp["jsonrpc"], "2.0", "{what}: not an envelope: {resp}");
+    let has_result = resp.get("result").is_some();
+    let has_error = resp.get("error").is_some();
+    assert!(has_result ^ has_error, "{what}: must carry exactly one of result/error: {resp}");
+}
+
+#[test]
+fn a_hostile_since_never_takes_the_host_down() {
+    let f = Fixture::new();
+    for m in SINCE_METHODS {
+        for s in hostile_since() {
+            let resp = f.raw(json!({
+                "jsonrpc": "2.0", "id": 1, "method": m, "params": { "since": s }
+            }));
+            assert_answered(&resp, &format!("{m} since={s}"));
+        }
+    }
+}
+
+#[test]
+fn a_hostile_since_survives_a_dropped_log_ring() {
+    // `audit.rs`'s `since + 1` sits behind `self.dropped > 0`, so it is
+    // unreachable until the 256-entry ring overflows. Every agent test
+    // before this one stopped well short.
+    let mut f = Fixture::new();
+    f.churn(400);
+    for m in SINCE_METHODS {
+        for s in hostile_since() {
+            let resp = f.raw(json!({
+                "jsonrpc": "2.0", "id": 1, "method": m, "params": { "since": s }
+            }));
+            assert_answered(&resp, &format!("churned {m} since={s}"));
+        }
+    }
+}
+
+#[test]
+fn malformed_envelopes_are_answered_not_panicked() {
+    let f = Fixture::new();
+    let reqs = vec![
+        json!({}),
+        json!({ "jsonrpc": "2.0" }),
+        json!({ "jsonrpc": "2.0", "id": 1 }),
+        json!({ "jsonrpc": "2.0", "id": 1, "method": "" }),
+        json!({ "jsonrpc": "2.0", "id": 1, "method": "no.such.method" }),
+        json!({ "jsonrpc": "2.0", "id": 1.5, "method": "ui.lastChange" }),
+        json!({ "jsonrpc": "2.0", "id": 1, "method": "ui.lastChange", "params": "not an object" }),
+        json!({ "jsonrpc": "2.0", "id": 1, "method": "ui.lastChange", "params": [] }),
+        json!({ "jsonrpc": "2.0", "id": 1, "method": 42 }),
+        json!("not an object at all"),
+        json!([1, 2, 3]),
+    ];
+    for r in reqs {
+        let resp = f.raw(r.clone());
+        assert_eq!(resp["jsonrpc"], "2.0", "not an envelope for {r}: {resp}");
+    }
+}
+
+#[test]
+fn hostile_selectors_are_answered_not_panicked() {
+    let f = Fixture::new();
+    for sel in [
+        json!(""),
+        json!("   "),
+        json!("~"),
+        json!("#"),
+        json!("@:"),
+        json!("@a:99999999999999999999"),
+        json!("99999999999999999999999999"),
+        json!("#\u{0}"),
+        json!(json!({ "not": "a string" })),
+        json!("#".repeat(4096)),
+    ] {
+        for m in ["ui.resolve", "ui.getLayout"] {
+            let resp = f.raw(json!({
+                "jsonrpc": "2.0", "id": 1, "method": m, "params": { "selector": sel }
+            }));
+            assert_eq!(resp["jsonrpc"], "2.0", "{m} {sel}: {resp}");
+        }
+    }
+}

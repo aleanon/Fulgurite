@@ -187,7 +187,7 @@ impl Journal {
         // those frames, so the interval is fully covered iff we still hold
         // the record for `since + 1`.
         let oldest = self.oldest_frame();
-        let truncated = self.seeded && since + 1 < oldest;
+        let truncated = self.seeded && since.saturating_add(1) < oldest;
 
         let mut order: Vec<u32> = Vec::new();
         let mut acc: std::collections::HashMap<u32, Coalesced> = std::collections::HashMap::new();
