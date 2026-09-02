@@ -373,7 +373,7 @@ exists and pins the 23 properties 1A enumerated; `just test` green.
 
 ---
 
-## F7 — Documentation
+## F7 — Documentation — **DONE 2026-09-02**
 
 *Twenty drifts found; 13 in rustdoc, which the doc-currency rule does not
 name. Six corrected this morning, four more by F0–F2. This is the rest,
