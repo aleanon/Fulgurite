@@ -19,12 +19,12 @@
 //! Every field is a child widget — a leaf from `lumen_static::ops`, or
 //! another derived struct. What `StaticTree` emits is all const:
 //! `NODE_COUNT` and `DEPTH` summed over the field types, and a
-//! `SUB_TABLE` of `NodeDesc` entries spliced at compile time from the
+//! `SUB_TABLE` of `::lumen_static::desc::NodeDesc` entries spliced at compile time from the
 //! fields' own sub-tables, carrying parent/child/sibling links plus the
 //! `#[widget_id]` and `#[widget_class]` selector inputs.
 //!
 //! The table is *addressing*, not dispatch. Traversal is recursive
-//! descent — a container calls its children through `&mut dyn Node` —
+//! descent — a container calls its children through `&mut dyn ::lumen_static::widget::Node` —
 //! so there is no kind list and no `fn`-pointer table
 //! (`docs/results-traversal.md`). Two const assertions ride along with
 //! every expansion: the spliced table is well-formed, and `DEPTH` fits
@@ -107,7 +107,24 @@ fn parse_wid(f: &syn::Field) -> syn::Result<String> {
     Ok(String::new())
 }
 
+/// Reject a generic or lifetime-parameterized widget with one sentence.
+///
+/// `expand`, `expand_enum` and `expand_reloadable` ignore `generics`
+/// entirely, so a generic struct produced a cascade of a dozen raw
+/// resolution failures inside generated code. Three lines turn that into
+/// one error at the parameter list (F6.2).
+fn reject_generics(input: &DeriveInput, what: &str) -> syn::Result<()> {
+    if !input.generics.params.is_empty() {
+        return Err(syn::Error::new_spanned(
+            &input.generics,
+            format!("{what} does not support generic or lifetime parameters"),
+        ));
+    }
+    Ok(())
+}
+
 fn expand(input: DeriveInput) -> syn::Result<Ts2> {
+    reject_generics(&input, "StaticTree")?;
     let name = &input.ident;
     let name_str = name.to_string();
 
@@ -226,20 +243,22 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
 
     Ok(quote! {
         const _: () = {
-            use ::lumen_static::desc::{NodeDesc, NodeState};
-            use ::lumen_static::widget::{Node, Widget};
-            use ::lumen_static::{Constraints, Point, Size};
+            // No `use` block: it would shadow a user type of the same
+            // name at the point the impl is written, so a widget struct
+            // named `::lumen_static::Size`, `::lumen_static::widget::Node` or `::lumen_static::Point` failed with an error
+            // naming a framework type it never mentioned. Everything is
+            // spelled out instead (F6.2).
 
-            const TABLE: [NodeDesc; <#name as Widget>::NODE_COUNT] = {
-                let mut t = [NodeDesc::EMPTY; <#name as Widget>::NODE_COUNT];
-                t[0] = NodeDesc::new(
+            const TABLE: [::lumen_static::desc::NodeDesc; <#name as ::lumen_static::widget::Widget>::NODE_COUNT] = {
+                let mut t = [::lumen_static::desc::NodeDesc::EMPTY; <#name as ::lumen_static::widget::Widget>::NODE_COUNT];
+                t[0] = ::lumen_static::desc::NodeDesc::new(
                     #first_child,
                     ::lumen_static::NO_PARENT,
                     0,
                     #child_count,
                     {
-                        let mut f = if #has_children { NodeDesc::CONTAINER } else { 0 };
-                        if <#name as Widget>::IS_RIGID { f |= NodeDesc::RIGID; }
+                        let mut f = if #has_children { ::lumen_static::desc::NodeDesc::CONTAINER } else { 0 };
+                        if <#name as ::lumen_static::widget::Widget>::IS_RIGID { f |= ::lumen_static::desc::NodeDesc::RIGID; }
                         f
                     },
                 )
@@ -248,7 +267,7 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                 let mut prev_root: usize = 0;
                 #(
                     ::lumen_static::widget::splice_child(
-                        &mut t, at, <#field_ty as Widget>::SUB_TABLE, 0,
+                        &mut t, at, <#field_ty as ::lumen_static::widget::Widget>::SUB_TABLE, 0,
                     );
                     // A child's root carries its *field* site; the
                     // child's internals keep their own.
@@ -258,45 +277,45 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                         .with_classes(#field_classes);
                     if prev_root != 0 { t[prev_root].next_sibling = at as u32; }
                     prev_root = at;
-                    at += <#field_ty as Widget>::NODE_COUNT;
+                    at += <#field_ty as ::lumen_static::widget::Widget>::NODE_COUNT;
                 )*
                 let _ = (at, prev_root);
                 t
             };
 
-            impl Widget for #name {
-                const NODE_COUNT: usize = 1 #(+ <#field_ty as Widget>::NODE_COUNT)*;
+            impl ::lumen_static::widget::Widget for #name {
+                const NODE_COUNT: usize = 1 #(+ <#field_ty as ::lumen_static::widget::Widget>::NODE_COUNT)*;
                 const DEPTH: usize = 1 + {
                     let mut d = 0usize;
-                    #( if <#field_ty as Widget>::DEPTH > d { d = <#field_ty as Widget>::DEPTH; } )*
+                    #( if <#field_ty as ::lumen_static::widget::Widget>::DEPTH > d { d = <#field_ty as ::lumen_static::widget::Widget>::DEPTH; } )*
                     d
                 };
-                const IS_RIGID: bool = true #(&& <#field_ty as Widget>::IS_RIGID)*;
-                const SUB_TABLE: &'static [NodeDesc] = &TABLE;
+                const IS_RIGID: bool = true #(&& <#field_ty as ::lumen_static::widget::Widget>::IS_RIGID)*;
+                const SUB_TABLE: &'static [::lumen_static::desc::NodeDesc] = &TABLE;
             }
 
             // Proof-carrying table: the compiler re-checks the macro's
             // own output at every expansion, and the depth cap turns the
             // stack-overflow hazard into a compile error.
             const _: () = assert!(::lumen_static::widget::table_is_well_formed(&TABLE));
-            const _: () = assert!(<#name as Widget>::DEPTH <= ::lumen_static::MAX_DEPTH);
+            const _: () = assert!(<#name as ::lumen_static::widget::Widget>::DEPTH <= ::lumen_static::MAX_DEPTH);
 
             /// Delegates by index range, like `node`. The where-clause
             /// is what makes a mis-typed `Button<Other>` a compile error
             /// at the *container* that holds it.
-            impl<S> ::lumen_static::event::Handlers<S> for #name
+            impl<__LnS> ::lumen_static::event::Handlers<__LnS> for #name
             where
-                #(#field_ty: ::lumen_static::event::Handlers<S>,)*
+                #(#field_ty: ::lumen_static::event::Handlers<__LnS>,)*
             {
                 fn handler(
                     &self,
                     sel: ::lumen_static::event::NodeSel,
-                ) -> ::core::option::Option<fn(&mut S, &::lumen_static::EventCtx)> {
+                ) -> ::core::option::Option<fn(&mut __LnS, &::lumen_static::EventCtx)> {
                     if sel.i == 0 { return ::core::option::Option::None; }
                     let mut at: usize = 1;
                     #(
                         {
-                            let c = <#field_ty as Widget>::NODE_COUNT;
+                            let c = <#field_ty as ::lumen_static::widget::Widget>::NODE_COUNT;
                             if sel.i < at + c {
                                 return ::lumen_static::event::Handlers::handler(
                                     &self.#field_ident,
@@ -311,7 +330,7 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                 }
             }
 
-            impl Node for #name {
+            impl ::lumen_static::widget::Node for #name {
                 fn kind_name(&self) -> &'static str {
                     #name_str
                 }
@@ -334,11 +353,11 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                 fn layout(
                     &mut self,
                     cx: &mut ::lumen_static::LayoutCx,
-                    limits: Constraints,
+                    limits: ::lumen_static::Constraints,
                     style: &[::lumen_static::Style],
-                    st: &mut [NodeState],
+                    st: &mut [::lumen_static::desc::NodeState],
                     i: usize,
-                ) -> Size {
+                ) -> ::lumen_static::Size {
                     use ::lumen_static::ops::{
                         align_offset, fill_child, inner_limits, loose_child, resolve_self, spaced,
                         Axis,
@@ -352,7 +371,7 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                         // stayed on screen at its old position
                         // (`docs/plan-review-fixes.md` F1.6).
                         return ::lumen_static::ops::hide_subtree(
-                            st, i, limits, <Self as Widget>::NODE_COUNT,
+                            st, i, limits, <Self as ::lumen_static::widget::Widget>::NODE_COUNT,
                         );
                     }
                     let axis = #axis_expr;
@@ -386,7 +405,7 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                                     cross = cross.max(axis.cross(s));
                                 }
                             }
-                            at += <#field_ty as Widget>::NODE_COUNT;
+                            at += <#field_ty as ::lumen_static::widget::Widget>::NODE_COUNT;
                         }
                     )*
 
@@ -416,14 +435,14 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                                     cross = cross.max(axis.cross(s));
                                 }
                             }
-                            at += <#field_ty as Widget>::NODE_COUNT;
+                            at += <#field_ty as ::lumen_static::widget::Widget>::NODE_COUNT;
                         }
                     )*
                     }
                     let _ = at;
 
                     let content = axis.size(used, cross);
-                    let padded = Size {
+                    let padded = ::lumen_static::Size {
                         w: content.w + me.padding.horizontal(),
                         h: content.h + me.padding.vertical(),
                     };
@@ -432,9 +451,9 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
 
                 fn place(
                     &mut self,
-                    at_pos: Point,
+                    at_pos: ::lumen_static::Point,
                     style: &[::lumen_static::Style],
-                    st: &mut [NodeState],
+                    st: &mut [::lumen_static::desc::NodeState],
                     i: usize,
                 ) {
                     use ::lumen_static::ops::{align_offset, Axis};
@@ -443,7 +462,7 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                     if !me.visible {
                         // Collapse descendant positions too, so nothing
                         // downstream can read a stale one.
-                        for k in i..(i + <Self as Widget>::NODE_COUNT).min(st.len()) {
+                        for k in i..(i + <Self as ::lumen_static::widget::Widget>::NODE_COUNT).min(st.len()) {
                             st[k].pos = at_pos;
                         }
                         return;
@@ -454,12 +473,12 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                             Axis::Row => me.padding.vertical(),
                             Axis::Column => me.padding.horizontal(),
                         };
-                    let mut main = axis.main(Size { w: at_pos.x, h: at_pos.y })
+                    let mut main = axis.main(::lumen_static::Size { w: at_pos.x, h: at_pos.y })
                         + match axis {
                             Axis::Row => me.padding.left,
                             Axis::Column => me.padding.top,
                         };
-                    let cross0 = axis.cross(Size { w: at_pos.x, h: at_pos.y })
+                    let cross0 = axis.cross(::lumen_static::Size { w: at_pos.x, h: at_pos.y })
                         + match axis {
                             Axis::Row => me.padding.top,
                             Axis::Column => me.padding.left,
@@ -479,20 +498,20 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                             if style[at].visible && axis.cross_len(&style[at]).is_fill() {
                                 let s = st[at].size;
                                 st[at].size = match axis {
-                                    Axis::Row => Size { w: s.w, h: cross_extent },
-                                    Axis::Column => Size { w: cross_extent, h: s.h },
+                                    Axis::Row => ::lumen_static::Size { w: s.w, h: cross_extent },
+                                    Axis::Column => ::lumen_static::Size { w: cross_extent, h: s.h },
                                 };
                             }
                             let size = st[at].size;
                             let off = align_offset(me.align, cross_extent, axis.cross(size));
                             let p = match axis {
-                                Axis::Row => Point { x: main, y: cross0 + off },
-                                Axis::Column => Point { x: cross0 + off, y: main },
+                                Axis::Row => ::lumen_static::Point { x: main, y: cross0 + off },
+                                Axis::Column => ::lumen_static::Point { x: cross0 + off, y: main },
                             };
                             #mut_calls
                             d.place(p, style, st, at);
                             main += axis.main(size) + me.spacing;
-                            at += <#field_ty as Widget>::NODE_COUNT;
+                            at += <#field_ty as ::lumen_static::widget::Widget>::NODE_COUNT;
                         }
                     )*
                     let _ = (at, main);
@@ -500,7 +519,7 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
 
                 fn paint(
                     &self,
-                    st: &[NodeState],
+                    st: &[::lumen_static::desc::NodeState],
                     i: usize,
                     out: &mut ::lumen_static::DisplayList,
                 ) {
@@ -509,13 +528,13 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                         {
                             #ref_calls
                             d.paint(st, at, out);
-                            at += <#field_ty as Widget>::NODE_COUNT;
+                            at += <#field_ty as ::lumen_static::widget::Widget>::NODE_COUNT;
                         }
                     )*
                     let _ = at;
                 }
 
-                fn hit(&self, st: &[NodeState], i: usize, x: f32, y: f32)
+                fn hit(&self, st: &[::lumen_static::desc::NodeState], i: usize, x: f32, y: f32)
                     -> ::core::option::Option<::lumen_static::Hit>
                 {
                     if !::lumen_static::hit::contains(&st[i], x, y) {
@@ -528,24 +547,24 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                             if let ::core::option::Option::Some(h) = d.hit(st, at, x, y) {
                                 return ::core::option::Option::Some(h);
                             }
-                            at += <#field_ty as Widget>::NODE_COUNT;
+                            at += <#field_ty as ::lumen_static::widget::Widget>::NODE_COUNT;
                         }
                     )*
                     let _ = at;
                     ::core::option::Option::Some(::lumen_static::Hit {
                         node: i as u32,
                         inner: ::core::option::Option::None,
-                        local: Point { x: x - st[i].pos.x, y: y - st[i].pos.y },
+                        local: ::lumen_static::Point { x: x - st[i].pos.x, y: y - st[i].pos.y },
                     })
                 }
 
-                fn node(&self, i: usize) -> &dyn Node {
+                fn node(&self, i: usize) -> &dyn ::lumen_static::widget::Node {
                     if i == 0 { return self; }
                     let mut at: usize = 1;
                     #(
                         {
-                            let c = <#field_ty as Widget>::NODE_COUNT;
-                            if i < at + c { return Node::node(&self.#field_ident, i - at); }
+                            let c = <#field_ty as ::lumen_static::widget::Widget>::NODE_COUNT;
+                            if i < at + c { return ::lumen_static::widget::Node::node(&self.#field_ident, i - at); }
                             at += c;
                         }
                     )*
@@ -553,14 +572,14 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                     ::core::unreachable!("node index out of range")
                 }
 
-                fn node_mut(&mut self, i: usize) -> &mut dyn Node {
+                fn node_mut(&mut self, i: usize) -> &mut dyn ::lumen_static::widget::Node {
                     if i == 0 { return self; }
                     let mut at: usize = 1;
                     #(
                         {
-                            let c = <#field_ty as Widget>::NODE_COUNT;
+                            let c = <#field_ty as ::lumen_static::widget::Widget>::NODE_COUNT;
                             if i < at + c {
-                                return Node::node_mut(&mut self.#field_ident, i - at);
+                                return ::lumen_static::widget::Node::node_mut(&mut self.#field_ident, i - at);
                             }
                             at += c;
                         }
@@ -621,6 +640,7 @@ fn reload_mode(field: &syn::Field) -> syn::Result<ReloadMode> {
 }
 
 fn expand_reloadable(input: DeriveInput) -> syn::Result<Ts2> {
+    reject_generics(&input, "Reloadable")?;
     let name = &input.ident;
     let name_str = name.to_string();
     let Data::Struct(data) = &input.data else {
@@ -721,7 +741,7 @@ fn expand_enum(
         let syn::Fields::Unnamed(f) = &v.fields else {
             return Err(syn::Error::new_spanned(
                 v,
-                "each variant must hold exactly one widget: `Variant(Widget)`",
+                "each variant must hold exactly one widget: `Variant(::lumen_static::widget::Widget)`",
             ));
         };
         if f.unnamed.len() != 1 {
@@ -738,13 +758,15 @@ fn expand_enum(
 
     Ok(quote! {
         const _: () = {
-            use ::lumen_static::desc::{NodeDesc, NodeState};
-            use ::lumen_static::widget::{Node, Widget};
-            use ::lumen_static::{Constraints, Point, Size, Style};
+            // No `use` block: it would shadow a user type of the same
+            // name at the point the impl is written, so a widget struct
+            // named `::lumen_static::Size`, `::lumen_static::widget::Node` or `::lumen_static::Point` failed with an error
+            // naming a framework type it never mentioned. Everything is
+            // spelled out instead (F6.2).
 
             /// Where each variant's subtree starts, plus a terminator.
             const STARTS: [usize; #nvars + 1] = {
-                let counts = [#(<#var_ty as Widget>::NODE_COUNT),*];
+                let counts = [#(<#var_ty as ::lumen_static::widget::Widget>::NODE_COUNT),*];
                 let mut s = [0usize; #nvars + 1];
                 s[0] = 1;
                 let mut k = 0;
@@ -766,45 +788,45 @@ fn expand_enum(
             /// hit, could not carry handlers, and allocated twice per
             /// enum node per frame in framework-generated code
             /// (`docs/plan-review-fixes.md` F4.3).
-            const TABLE: [NodeDesc; 1 #(+ <#var_ty as Widget>::NODE_COUNT)*] = {
-                let mut t = [NodeDesc::EMPTY; 1 #(+ <#var_ty as Widget>::NODE_COUNT)*];
-                t[0] = NodeDesc::new(
+            const TABLE: [::lumen_static::desc::NodeDesc; 1 #(+ <#var_ty as ::lumen_static::widget::Widget>::NODE_COUNT)*] = {
+                let mut t = [::lumen_static::desc::NodeDesc::EMPTY; 1 #(+ <#var_ty as ::lumen_static::widget::Widget>::NODE_COUNT)*];
+                t[0] = ::lumen_static::desc::NodeDesc::new(
                     1,
                     ::lumen_static::NO_PARENT,
                     0,
                     #nvars as u16,
-                    NodeDesc::CONTAINER,
+                    ::lumen_static::desc::NodeDesc::CONTAINER,
                 )
                 .with_src(::core::file!(), #root_line);
                 let mut at: usize = 1;
                 let mut prev_root: usize = 0;
                 #(
                     ::lumen_static::widget::splice_child(
-                        &mut t, at, <#var_ty as Widget>::SUB_TABLE, 0,
+                        &mut t, at, <#var_ty as ::lumen_static::widget::Widget>::SUB_TABLE, 0,
                     );
                     if prev_root != 0 { t[prev_root].next_sibling = at as u32; }
                     prev_root = at;
-                    at += <#var_ty as Widget>::NODE_COUNT;
+                    at += <#var_ty as ::lumen_static::widget::Widget>::NODE_COUNT;
                 )*
                 let _ = (at, prev_root);
                 t
             };
 
-            impl Widget for #name {
-                const NODE_COUNT: usize = 1 #(+ <#var_ty as Widget>::NODE_COUNT)*;
+            impl ::lumen_static::widget::Widget for #name {
+                const NODE_COUNT: usize = 1 #(+ <#var_ty as ::lumen_static::widget::Widget>::NODE_COUNT)*;
                 const DEPTH: usize = 1 + {
                     let mut d = 0usize;
-                    #( if <#var_ty as Widget>::DEPTH > d { d = <#var_ty as Widget>::DEPTH; } )*
+                    #( if <#var_ty as ::lumen_static::widget::Widget>::DEPTH > d { d = <#var_ty as ::lumen_static::widget::Widget>::DEPTH; } )*
                     d
                 };
-                const IS_RIGID: bool = true #(&& <#var_ty as Widget>::IS_RIGID)*;
-                const SUB_TABLE: &'static [NodeDesc] = &TABLE;
+                const IS_RIGID: bool = true #(&& <#var_ty as ::lumen_static::widget::Widget>::IS_RIGID)*;
+                const SUB_TABLE: &'static [::lumen_static::desc::NodeDesc] = &TABLE;
             }
 
             const _: () = assert!(::lumen_static::widget::table_is_well_formed(&TABLE));
-            const _: () = assert!(<#name as Widget>::DEPTH <= ::lumen_static::MAX_DEPTH);
+            const _: () = assert!(<#name as ::lumen_static::widget::Widget>::DEPTH <= ::lumen_static::MAX_DEPTH);
 
-            impl Node for #name {
+            impl ::lumen_static::widget::Node for #name {
                 fn kind_name(&self) -> &'static str {
                     #name_str
                 }
@@ -812,18 +834,18 @@ fn expand_enum(
                 fn layout(
                     &mut self,
                     cx: &mut ::lumen_static::LayoutCx,
-                    limits: Constraints,
-                    style: &[Style],
-                    st: &mut [NodeState],
+                    limits: ::lumen_static::Constraints,
+                    style: &[::lumen_static::Style],
+                    st: &mut [::lumen_static::desc::NodeState],
                     i: usize,
-                ) -> Size {
+                ) -> ::lumen_static::Size {
                     let me = style[i];
                     // Inactive variants are hidden, not stale: their
                     // slots would otherwise keep the geometry from
                     // whenever they were last active, which paint, the
                     // journal and the audit all read.
                     ::lumen_static::ops::hide_subtree(
-                        st, i + 1, limits, <Self as Widget>::NODE_COUNT - 1,
+                        st, i + 1, limits, <Self as ::lumen_static::widget::Widget>::NODE_COUNT - 1,
                     );
                     let size = match self {
                         #( #name::#var_ident(w) => {
@@ -840,9 +862,9 @@ fn expand_enum(
 
                 fn place(
                     &mut self,
-                    at: Point,
-                    style: &[Style],
-                    st: &mut [NodeState],
+                    at: ::lumen_static::Point,
+                    style: &[::lumen_static::Style],
+                    st: &mut [::lumen_static::desc::NodeState],
                     i: usize,
                 ) {
                     st[i].pos = at;
@@ -855,7 +877,7 @@ fn expand_enum(
 
                 fn paint(
                     &self,
-                    st: &[NodeState],
+                    st: &[::lumen_static::desc::NodeState],
                     i: usize,
                     out: &mut ::lumen_static::DisplayList,
                 ) {
@@ -866,7 +888,7 @@ fn expand_enum(
                     }
                 }
 
-                fn hit(&self, st: &[NodeState], i: usize, x: f32, y: f32)
+                fn hit(&self, st: &[::lumen_static::desc::NodeState], i: usize, x: f32, y: f32)
                     -> ::core::option::Option<::lumen_static::Hit>
                 {
                     if !::lumen_static::hit::contains(&st[i], x, y) {
@@ -880,7 +902,7 @@ fn expand_enum(
                     inner.or(::core::option::Option::Some(::lumen_static::Hit {
                         node: i as u32,
                         inner: ::core::option::Option::None,
-                        local: Point { x: x - st[i].pos.x, y: y - st[i].pos.y },
+                        local: ::lumen_static::Point { x: x - st[i].pos.x, y: y - st[i].pos.y },
                     }))
                 }
 
@@ -891,20 +913,20 @@ fn expand_enum(
                 /// the enum node itself rather than panicking — they are
                 /// real table entries with real state, they are simply
                 /// hidden, and the agent walks them.
-                fn node(&self, i: usize) -> &dyn Node {
+                fn node(&self, i: usize) -> &dyn ::lumen_static::widget::Node {
                     if i == 0 { return self; }
                     match self {
                         #( #name::#var_ident(w) => {
                             let (lo, hi) = (STARTS[#var_no], STARTS[#var_no + 1]);
                             if i >= lo && i < hi {
-                                return Node::node(w, i - lo);
+                                return ::lumen_static::widget::Node::node(w, i - lo);
                             }
                         } ),*
                     }
                     self
                 }
 
-                fn node_mut(&mut self, i: usize) -> &mut dyn Node {
+                fn node_mut(&mut self, i: usize) -> &mut dyn ::lumen_static::widget::Node {
                     if i == 0 { return self; }
                     let active = match self {
                         #( #name::#var_ident(_) => (STARTS[#var_no], STARTS[#var_no + 1]) ),*
@@ -914,7 +936,7 @@ fn expand_enum(
                     }
                     let off = active.0;
                     match self {
-                        #( #name::#var_ident(w) => Node::node_mut(w, i - off) ),*
+                        #( #name::#var_ident(w) => ::lumen_static::widget::Node::node_mut(w, i - off) ),*
                     }
                 }
             }
@@ -922,14 +944,14 @@ fn expand_enum(
             /// Delegates to the active variant. The where-clause makes a
             /// mis-typed handler a compile error at the enum, as it does
             /// for a struct container.
-            impl<S> ::lumen_static::event::Handlers<S> for #name
+            impl<__LnS> ::lumen_static::event::Handlers<__LnS> for #name
             where
-                #(#var_ty: ::lumen_static::event::Handlers<S>,)*
+                #(#var_ty: ::lumen_static::event::Handlers<__LnS>,)*
             {
                 fn handler(
                     &self,
                     sel: ::lumen_static::event::NodeSel,
-                ) -> ::core::option::Option<fn(&mut S, &::lumen_static::EventCtx)> {
+                ) -> ::core::option::Option<fn(&mut __LnS, &::lumen_static::EventCtx)> {
                     if sel.i == 0 { return ::core::option::Option::None; }
                     match self {
                         #( #name::#var_ident(w) => {
