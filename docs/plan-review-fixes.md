@@ -314,7 +314,7 @@ compiles at all; `widget.rs:142-171`'s every `return false` is covered;
 
 ---
 
-## F6 — Surface and hygiene
+## F6 — Surface and hygiene — **F6.1–F6.3, F6.8, F6.9 DONE 2026-09-02**
 
 *Nothing here is a defect. Each is a trap for the next reader or the
 next user, and each is cheap.*
