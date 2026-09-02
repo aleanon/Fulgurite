@@ -78,7 +78,11 @@ fn fused_values_stay_live() {
     let mut a = lumen_static::DisplayList::new();
     pass::paint(&t, &st, &mut a);
 
+    // Re-laid out first: a fused tree's labels default to empty, and an
+    // empty label has no area, so it records no text run at all. Without
+    // the layout this compared two frames that both drew nothing.
     t.l1.set("changed");
+    pass::layout(&mut t, &sty, &mut st, ROOT_C);
     let mut b = lumen_static::DisplayList::new();
     pass::paint(&t, &st, &mut b);
     assert_ne!(a.hash_from(0), b.hash_from(0), "paint reads fused internals through the fields");

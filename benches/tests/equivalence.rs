@@ -110,8 +110,27 @@ fn paint_is_deterministic_and_value_sensitive() {
     assert_eq!(a.hash_from(0), b.hash_from(0));
 
     // Values live in the fields (§3): mutate one and paint must see it.
+    // Re-laid out first, as a real frame does — `Ten`'s labels default to
+    // empty text, so without a layout the label's box has no area and
+    // draws nothing whatever its contents. (Before 2026-09-02 a
+    // zero-area run was still recorded, so this passed while asserting
+    // that a command nobody can see had changed.)
     tree.l1.set("changed");
+    pass::layout(&mut tree, &sty, &mut st, ROOT_C);
     let mut c = lumen_static::DisplayList::new();
     pass::paint(&tree, &st, &mut c);
     assert_ne!(a.hash_from(0), c.hash_from(0));
+
+    // And the converse: an empty label has no area, so it contributes
+    // nothing to paint at all.
+    let mut empty = Ten::default();
+    let mut est = [NodeState::default(); Ten::NODE_COUNT];
+    let esty = pass::default_styles(&empty);
+    pass::layout(&mut empty, &esty, &mut est, ROOT_C);
+    let mut e = lumen_static::DisplayList::new();
+    pass::paint(&empty, &est, &mut e);
+    assert!(
+        !e.cmds.iter().any(|cmd| matches!(cmd, lumen_static::Cmd::Text { .. })),
+        "an empty label records no text run"
+    );
 }

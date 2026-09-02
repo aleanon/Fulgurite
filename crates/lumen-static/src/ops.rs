@@ -27,6 +27,27 @@ pub fn fold_pub(out: &mut u64, v: u64) {
 
 /// A node's absolute box, for emitting commands.
 #[inline]
+/// Zero a whole subtree's geometry and return the zero size.
+///
+/// What `Style::visible = false` means, for every widget that honours
+/// it. Zeroing only the node itself is not enough: descendants keep the
+/// previous frame's `size` and `pos`, and `paint` walks into them
+/// unconditionally, so a hidden container drew its children at their old
+/// boxes. `hatch::hide` did this correctly for `Option`; the derive did
+/// not, and the two mechanisms disagreed
+/// (`docs/plan-review-fixes.md` F1.6).
+///
+/// A zero-area node paints nothing a renderer can see and fails every
+/// `contains` test, which is what makes this sufficient without threading
+/// `&[Style]` into `paint` and `hit`.
+pub fn hide_subtree(st: &mut [NodeState], i: usize, limits: Constraints, count: usize) -> Size {
+    for s in st.iter_mut().skip(i).take(count) {
+        s.size = Size::default();
+        s.constraints = limits;
+    }
+    Size::default()
+}
+
 pub fn rect_of(st: &NodeState) -> crate::display::Rect {
     [st.pos.x, st.pos.y, st.pos.x + st.size.w, st.pos.y + st.size.h]
 }
@@ -164,6 +185,14 @@ impl Axis {
 /// `Shrink` takes the content size — then clamped.
 #[inline]
 pub fn resolve_self(limits: Constraints, style: &Style, content: Size) -> Size {
+    // Every leaf resolves its own box here, so this is the one place a
+    // leaf can honour `visible`. Before 2026-09-02 no leaf read the flag
+    // at all: `ops.rs` contained zero occurrences of it, so hiding a
+    // `Label` changed nothing — it kept its size and kept painting
+    // (`docs/plan-review-fixes.md` F1.6).
+    if !style.visible {
+        return Size::default();
+    }
     let w = match style.width {
         Length::Fixed(v) => v,
         Length::Shrink => content.w,

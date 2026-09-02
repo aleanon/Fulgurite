@@ -345,7 +345,15 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                     };
                     let me = style[i];
                     if !me.visible {
-                        return ::lumen_static::ops::record(st, i, limits, Size::default());
+                        // The whole subtree, not just this node. Zeroing
+                        // only `i` left descendants holding last frame's
+                        // geometry, which `paint` then drew and the
+                        // journal and audit then read — a hidden panel
+                        // stayed on screen at its old position
+                        // (`docs/plan-review-fixes.md` F1.6).
+                        return ::lumen_static::ops::hide_subtree(
+                            st, i, limits, <Self as Widget>::NODE_COUNT,
+                        );
                     }
                     let axis = #axis_expr;
                     let inner = inner_limits(limits, me.padding);
@@ -433,6 +441,11 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                     st[i].pos = at_pos;
                     let me = style[i];
                     if !me.visible {
+                        // Collapse descendant positions too, so nothing
+                        // downstream can read a stale one.
+                        for k in i..(i + <Self as Widget>::NODE_COUNT).min(st.len()) {
+                            st[k].pos = at_pos;
+                        }
                         return;
                     }
                     let axis = #axis_expr;
@@ -458,7 +471,12 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                             // its container settled on. Its descendants
                             // were measured against the looser bound —
                             // the documented non-iterative limit.
-                            if axis.cross_len(&style[at]).is_fill() {
+                            // A hidden child is not stretched: `layout`
+                            // zeroed its subtree, and cross-stretching it
+                            // back to the container's extent would leave
+                            // a hidden node reporting real geometry to
+                            // the journal, the audit and the agent.
+                            if style[at].visible && axis.cross_len(&style[at]).is_fill() {
                                 let s = st[at].size;
                                 st[at].size = match axis {
                                     Axis::Row => Size { w: s.w, h: cross_extent },

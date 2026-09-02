@@ -91,9 +91,20 @@ pub struct Style {
     /// Gap between a container's children.
     pub spacing: f32,
     pub align: Align,
-    /// Present in the frame at all. Set false by `Option`/`Either` and
-    /// by explicit hiding; a hidden subtree takes zero space and is
-    /// skipped by paint and hit testing (plan M4/4a).
+    /// Whether this node and everything under it participates in the
+    /// frame.
+    ///
+    /// `false` means: the subtree resolves to zero size, is not
+    /// cross-stretched by its parent, records no drawing commands, and
+    /// fails every hit test. All four are enforced —
+    /// `crates/lumen-static/tests/visible.rs` asserts each clause of
+    /// this sentence for a hidden container *and* a hidden leaf.
+    ///
+    /// Until 2026-09-02 none of them were. No leaf read this field at
+    /// all, and the derive zeroed only the container's own slot, so
+    /// descendants kept the previous frame's geometry and were painted
+    /// at it. `Option`'s separate `hide()` path did the right thing, so
+    /// two mechanisms disagreed. `docs/plan-review-fixes.md` F1.6.
     pub visible: bool,
 }
 

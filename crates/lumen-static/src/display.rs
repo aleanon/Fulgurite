@@ -23,6 +23,12 @@ impl Color {
 /// `[x0, y0, x1, y1]`, absolute.
 pub type Rect = [f32; 4];
 
+/// Whether a rect encloses anything a renderer could paint.
+#[inline]
+fn has_area(r: Rect) -> bool {
+    r[2] > r[0] && r[3] > r[1]
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Cmd {
     Rect { rect: Rect, color: Color },
@@ -89,11 +95,24 @@ impl DisplayList {
         self.text.clear();
     }
 
+    /// Record a filled rect. A rect with no area is dropped: it cannot
+    /// draw, and recording it would put phantom content in front of the
+    /// journal's per-node signature and the audit's "is anything
+    /// visible" check. This is also what makes `Style::visible = false`
+    /// reach the screen as absence rather than as a zero-sized command
+    /// (`docs/plan-review-fixes.md` F1.6).
     pub fn rect(&mut self, rect: Rect, color: Color) {
-        self.cmds.push(Cmd::Rect { rect, color });
+        if has_area(rect) {
+            self.cmds.push(Cmd::Rect { rect, color });
+        }
     }
 
+    /// Record a text run. Dropped when the box has no area, for the same
+    /// reason as [`DisplayList::rect`].
     pub fn text(&mut self, rect: Rect, s: &str, size: f32, color: Color) {
+        if !has_area(rect) {
+            return;
+        }
         let start = self.text.len() as u32;
         self.text.push_str(s);
         let range = (start, self.text.len() as u32 - start);

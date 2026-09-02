@@ -568,7 +568,8 @@ impl Dyn {
     ///
     /// # Panics
     ///
-    /// If the content's own `DEPTH` does not fit [`MAX_DEPTH`]. This is
+    /// If the content's own `DEPTH` does not fit [`MAX_DEPTH`](crate::desc::MAX_DEPTH).
+    /// This is
     /// the only depth check an island can make: `W::DEPTH` is known
     /// here, but the island's *own* position in the tree is not, because
     /// the type erasure is the point. See `content_depth`.
