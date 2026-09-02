@@ -19,7 +19,7 @@
 //! Every field is a child widget — a leaf from `lumen_static::ops`, or
 //! another derived struct. What `StaticTree` emits is all const:
 //! `NODE_COUNT` and `DEPTH` summed over the field types, and a
-//! `SUB_TABLE` of [`NodeDesc`] spliced together at compile time from the
+//! `SUB_TABLE` of `NodeDesc` entries spliced at compile time from the
 //! fields' own sub-tables, carrying parent/child/sibling links plus the
 //! `#[widget_id]` and `#[widget_class]` selector inputs.
 //!
@@ -29,8 +29,6 @@
 //! (`docs/results-traversal.md`). Two const assertions ride along with
 //! every expansion: the spliced table is well-formed, and `DEPTH` fits
 //! `MAX_DEPTH`, so a tree that could overflow the stack does not compile.
-//!
-//! [`NodeDesc`]: lumen_static::NodeDesc
 
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as Ts2;

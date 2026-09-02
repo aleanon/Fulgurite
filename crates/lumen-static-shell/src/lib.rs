@@ -4,7 +4,7 @@
 //! This is everything between an application and the operating system
 //! *except* the OS binding itself. A winit front end adds one thing:
 //! translating window events into [`Host::post`] and blitting
-//! [`Host::pixels`]. Keeping that seam explicit is what lets the loop be
+//! [`Canvas::pixels`](software::Canvas). Keeping that seam explicit is what lets the loop be
 //! tested headlessly, which is how every other subsystem here got its
 //! acceptance test.
 

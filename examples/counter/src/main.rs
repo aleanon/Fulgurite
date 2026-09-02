@@ -2,9 +2,13 @@
 //! a real application, laid out, painted and rendered to pixels, driven
 //! by the event system, and inspectable by the agent protocol.
 //!
-//! It runs headless and writes a PPM, so it is verifiable in CI. A winit
-//! front end adds exactly one thing: window events into `Host::post` and
-//! `Canvas::pixels` blitted to the surface.
+//! It runs headless and writes a PPM, and its assertions live in `main`
+//! — so `cargo test` alone does *not* execute them. `just fixtures` runs
+//! it, and `.github/workflows/ci.yml` runs `just fixtures`; that is what
+//! makes the claim true. Until 2026-09-02 nothing ran it at all.
+//!
+//! A winit front end adds exactly one thing: window events into
+//! `Host::post` and `Canvas::pixels` blitted to the surface.
 
 use lumen_static::ops::{Button, Label, Spacer};
 use lumen_static::style::{Length, Patch, Rule, Selector};

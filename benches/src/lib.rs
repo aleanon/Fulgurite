@@ -452,7 +452,7 @@ pub struct RigidCard {
 /// sample rather than an average of two.
 const BLOCKS: usize = 21;
 
-/// Batched timing: `iters` calls are split into [`BLOCKS`] blocks, each
+/// Batched timing: `iters` calls are split into `BLOCKS` blocks, each
 /// timed as one window, and the per-call cost is `window / calls`.
 ///
 /// This replaced per-iteration timing after review showed the old

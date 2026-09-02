@@ -38,7 +38,7 @@ pub trait Reloadable {
     fn fresh() -> Self
     where
         Self: Sized;
-    /// Graft saved keep-values onto `self` (which came from [`fresh`]).
+    /// Graft saved keep-values onto `self` (which came from [`fresh`](Reloadable::fresh)).
     /// Incompatible or missing fields keep their fresh value, logged.
     fn restore(&mut self, saved: &Value);
 }

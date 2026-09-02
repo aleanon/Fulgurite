@@ -53,9 +53,10 @@ tested by name.
   release-shape`; verify it runs 30 tests and that `just dev-shape`'s
   `--workspace` line is the only unified build. Delete the redundant
   `--all-features` line. *3A opening correction.*
-- **F0.5** `docs/00-handoff-static-tree.md` §10: flip "verifiable in CI"
-  from aspiration to fact, with the workflow path. `AGENT.md` gains one
-  sentence pointing at this plan.
+- **F0.5** Flip "verifiable in CI" from aspiration to fact, with the
+  workflow path. *The claim is in `examples/counter/src/main.rs:5`, not
+  the handoff §10 this task first named.* `AGENT.md` gains one sentence
+  pointing at this plan.
 
 ---
 

@@ -254,7 +254,7 @@ impl<S: TextStorage> Label<S> {
     /// — callers that want the write skipped when nothing changed go
     /// through `crate::bind`, which compares first.
     ///
-    /// Requires [`TextBuffer`], so `Label<&'static str>` does not have
+    /// Requires [`TextBuffer`](crate::text::TextBuffer), so `Label<&'static str>` does not have
     /// this method: that storage can only accept a new value by leaking.
     pub fn set_str(&mut self, text: &str)
     where
