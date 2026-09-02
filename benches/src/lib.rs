@@ -93,6 +93,17 @@ pub trait DynWidget {
     fn len_h(&self) -> DLen;
     /// Overwrite the cross extent when a container stretches this child.
     fn stretch_cross(&mut self, cross: f32, horizontal: bool);
+
+    /// Append `(size, pos)` for this node and its subtree, in DFS
+    /// pre-order — the same order the static arm's `NodeState` array is
+    /// in, so the two can be compared node for node.
+    ///
+    /// The oracle built a per-node vector on the static side and then
+    /// compared four scalars from it, while its module doc claimed
+    /// "every node's size and position must agree exactly". The dyn side
+    /// tracked `pos` and reported it nowhere, so `place` was dead code
+    /// (`docs/plan-review-fixes.md` F6.10).
+    fn collect(&self, out: &mut Vec<(Size, Point)>);
 }
 
 #[inline]
@@ -138,6 +149,13 @@ impl DBox {
 }
 
 impl DynWidget for DBox {
+    fn collect(&self, out: &mut Vec<(Size, Point)>) {
+        out.push((self.size, self.pos));
+        for c in &self.children {
+            c.collect(out);
+        }
+    }
+
     fn stretch_cross(&mut self, cross: f32, horizontal: bool) {
         if horizontal {
             self.size.h = cross;
@@ -253,6 +271,10 @@ pub struct DLabel {
 }
 
 impl DynWidget for DLabel {
+    fn collect(&self, out: &mut Vec<(Size, Point)>) {
+        out.push((self.size, self.pos));
+    }
+
     fn stretch_cross(&mut self, cross: f32, horizontal: bool) {
         if horizontal {
             self.size.h = cross;
@@ -296,6 +318,10 @@ pub struct DFixed {
 }
 
 impl DynWidget for DFixed {
+    fn collect(&self, out: &mut Vec<(Size, Point)>) {
+        out.push((self.size, self.pos));
+    }
+
     fn stretch_cross(&mut self, cross: f32, horizontal: bool) {
         if horizontal {
             self.size.h = cross;
@@ -334,6 +360,10 @@ pub struct DSpacer {
 }
 
 impl DynWidget for DSpacer {
+    fn collect(&self, out: &mut Vec<(Size, Point)>) {
+        out.push((self.size, self.pos));
+    }
+
     fn stretch_cross(&mut self, cross: f32, horizontal: bool) {
         if horizontal {
             self.size.h = cross;

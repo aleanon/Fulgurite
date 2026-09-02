@@ -52,7 +52,10 @@ fn host() -> Host<App> {
 fn a_frame_lays_out_and_paints() {
     let h = host();
     assert_eq!(h.frame_number(), 1);
-    assert!(!h.list.is_empty(), "the frame produced drawing commands");
+    // Exactly what the tree draws: a label, a spacer (nothing), and a
+    // button. A count, not `!is_empty()` — which passed for any
+    // nonempty list, including a corrupted one.
+    assert_eq!(h.list.len(), 3, "the label's text run, and the button's rect and label");
     let (layout_ns, paint_ns) = h.timings();
     assert!(layout_ns > 0 && paint_ns > 0, "both phases were timed");
 }
@@ -105,7 +108,11 @@ fn rendering_produces_pixels() {
     c.clear(CLEAR);
     h.render(&mut c);
 
-    assert!(c.ink_fraction(CLEAR) > 0.0, "something was drawn");
+    // A band assertion, not "> 0.0" — which passed for a single pixel.
+    // The tree is a 4px-spaced column, so the top of the surface carries
+    // the label and the bottom is empty.
+    let ink = c.ink_fraction(CLEAR);
+    assert!((0.01..0.5).contains(&ink), "plausible coverage for this tree, got {ink:.3}");
     let ppm = c.to_ppm();
     assert!(ppm.starts_with(b"P6\n200 120\n255\n"));
     assert_eq!(ppm.len(), 15 + 200 * 120 * 3);
@@ -117,7 +124,8 @@ fn resizing_relayouts() {
     let wide = h.states[0].size.w;
     h.resize(80, 120);
     h.pump();
-    assert!(h.states[0].size.w < wide, "the tree follows the surface");
+    assert_eq!(h.states[0].size.w, 80.0, "the root is exactly the new surface width");
+    assert!(h.states[0].size.w < wide);
 }
 
 #[test]

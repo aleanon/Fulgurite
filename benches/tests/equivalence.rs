@@ -2,7 +2,7 @@
 //! against the naive dyn tree as an oracle — same shapes, same math, so
 //! every node's size and position must agree exactly.
 
-use benches::{d_assembled, d_card, d_ten, Block, Card, Ten};
+use benches::{d_assembled, d_ten, Block, Card, Ten};
 use lumen_static::assemble::Assembled;
 use lumen_static::{pass, Constraints, NodeState, Point, Size, Widget, NO_PARENT};
 
@@ -72,29 +72,41 @@ fn run_static<W: Widget + Default>() -> Vec<(Size, Point)> {
 }
 
 #[test]
-fn static_matches_dyn_root_geometry() {
-    // Ten vs dyn ten
+fn static_matches_dyn_node_for_node() {
+    // Every node's size *and position*, not four scalars from a vector
+    // built for the purpose. The module doc claimed this; the code
+    // compared `got[0].0`, `got[1].0` and two more, and the dyn arm's
+    // `place` call read nothing back (`docs/plan-review-fixes.md` F6.10).
     let got = run_static::<Ten>();
     let mut d = d_ten();
-    let dsz = d.layout(ROOT_C);
-    assert_eq!(got[0].0, dsz, "Ten root size");
+    d.layout(ROOT_C);
+    d.place(Point::default());
+    let mut want = Vec::new();
+    d.collect(&mut want);
+    assert_eq!(got.len(), want.len(), "same node count");
+    for (i, (a, b)) in got.iter().zip(want.iter()).enumerate() {
+        assert_eq!(a, b, "node {i} disagrees: static {a:?} vs dyn {b:?}");
+    }
+}
 
-    // Assembled<Card> vs dyn column of cards
+#[test]
+fn assembled_matches_dyn_node_for_node() {
     let mut a = Assembled::<Card>::new(45);
+    //  places as it goes — it owns the whole
+    // column, so there is no caller to position it.
     a.layout(ROOT_C);
     let got: Vec<_> = a.states.iter().map(|s| (s.size, s.pos)).collect();
-    let mut d = d_assembled(45);
-    let dsz = d.layout(ROOT_C);
-    d.place(Point::default());
-    assert_eq!(got[0].0, dsz, "assembled root size");
 
-    // Spot-check: the first card sees the whole viewport, because the
-    // column offers each instance whatever main-axis space is left and
-    // nothing has been consumed yet.
-    let mut dc = d_card();
-    let card_c = Constraints { min_w: 0.0, max_w: 800.0, min_h: 0.0, max_h: 600.0 };
-    let card_sz = dc.layout(card_c);
-    assert_eq!(got[1].0, card_sz, "first card size");
+    let mut d = d_assembled(45);
+    d.layout(ROOT_C);
+    d.place(Point::default());
+    let mut want = Vec::new();
+    d.collect(&mut want);
+
+    assert_eq!(got.len(), want.len(), "same node count");
+    for (i, (x, y)) in got.iter().zip(want.iter()).enumerate() {
+        assert_eq!(x, y, "node {i} disagrees: static {x:?} vs dyn {y:?}");
+    }
 }
 
 #[test]
