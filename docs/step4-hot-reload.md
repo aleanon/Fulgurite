@@ -51,6 +51,19 @@ discipline held with no rework.
 
 ### §12.4, decided: the repeater window is disposable across reload
 
+> **Amended 2026-09-02 (F1.4).** Disposable, and *not trusted*. `count`
+> and `item_extent` both come back from saved JSON, and both are ends of
+> the division `visible_range` uses, so the reload path is the one place
+> where an attacker-shaped value reaches core layout arithmetic. A
+> subnormal extent cleared the old `<= 0.0` guard and overflowed the
+> `as usize + 1`; `1e-6` with a large count asked for hundreds of
+> millions of instances from forty bytes. `Repeat::restore` now rejects
+> an extent below `MIN_ITEM_EXTENT` — keeping the fresh value, per this
+> section's own per-field fallback rule — and `visible_range` caps the
+> window at `MAX_WINDOW` regardless of how the fields were set.
+> `crates/lumen-static/tests/reload_hostile.rs`.
+
+
 `Repeat` keeps `count`, `scroll`, `item_extent` (the user's place in the
 list survives the swap — visible in the demo as `rows=47 scroll=240`) and
 drops the materialized window; it re-binds from data on the next frame

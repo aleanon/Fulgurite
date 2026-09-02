@@ -78,13 +78,41 @@ impl<T: Widget + Default> Repeat<T> {
         &self.window[k]
     }
 
+    /// The smallest item extent a repeater will act on.
+    ///
+    /// `visible_range` divides the viewport by the extent, so a subnormal
+    /// like `1e-40` — which clears the `<= 0.0` guard — saturates the
+    /// `as usize` cast to `usize::MAX` and then overflows the `+ 1`. A
+    /// value this small cannot describe a row anyone can see; treating it
+    /// as "no rows" is the honest reading. `docs/plan-review-fixes.md`
+    /// F1.4.
+    pub const MIN_ITEM_EXTENT: f32 = 1.0 / 1024.0;
+
+    /// The most instances a repeater will materialize in one frame.
+    ///
+    /// A window is bounded by the viewport in normal use; this bounds it
+    /// when the inputs are not normal. `count` and `item_extent` both
+    /// come back from saved state across a hot reload, so both ends of
+    /// the division are attacker-controlled in the reload path — 40 bytes
+    /// of JSON asking for 600 million rows is not a frame anyone wants
+    /// attempted.
+    pub const MAX_WINDOW: usize = 4096;
+
     fn visible_range(&self, viewport_h: f32) -> (usize, usize) {
-        if self.count == 0 || self.item_extent <= 0.0 {
+        // Spelled out rather than `!(extent >= MIN)`: NaN must land in
+        // the reject arm, and `is_finite` says so where a negated
+        // comparison would only imply it.
+        let usable = self.item_extent.is_finite() && self.item_extent >= Self::MIN_ITEM_EXTENT;
+        if self.count == 0 || !usable {
             return (0, 0);
         }
         let first = ((self.scroll / self.item_extent).floor().max(0.0) as usize)
             .min(self.count - 1);
-        let vis = ((viewport_h / self.item_extent).ceil() as usize + 1).min(self.count - first);
+        // saturating_add, not `+ 1`: the ceil can saturate the cast.
+        let vis = ((viewport_h / self.item_extent).ceil() as usize)
+            .saturating_add(1)
+            .min(self.count - first)
+            .min(Self::MAX_WINDOW);
         (first, vis)
     }
 

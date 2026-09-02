@@ -145,11 +145,22 @@ impl<T: Widget + Default + 'static> Reloadable for Repeat<T> {
             None => log_fallback("Repeat", "count", "missing or not an integer"),
         }
         match saved.get("scroll").and_then(Value::as_f64) {
-            Some(s) => self.scroll = s as f32,
+            Some(s) if (s as f32).is_finite() => self.scroll = (s as f32).max(0.0),
+            Some(_) => log_fallback("Repeat", "scroll", "not finite"),
             None => log_fallback("Repeat", "scroll", "missing or not a number"),
         }
+        // Saved state is the one input the core does not write itself, so
+        // it is the one place a value has to be checked rather than
+        // trusted. A subnormal extent overflowed `visible_range`'s cast;
+        // a small one asked for hundreds of millions of rows from 40
+        // bytes of JSON (`docs/plan-review-fixes.md` F1.4).
         match saved.get("item_extent").and_then(Value::as_f64) {
-            Some(e) => self.item_extent = e as f32,
+            Some(e) if (e as f32) >= Repeat::<T>::MIN_ITEM_EXTENT => self.item_extent = e as f32,
+            Some(e) => log_fallback(
+                "Repeat",
+                "item_extent",
+                &format!("{e} is below MIN_ITEM_EXTENT; keeping the fresh value"),
+            ),
             None => log_fallback("Repeat", "item_extent", "missing or not a number"),
         }
     }

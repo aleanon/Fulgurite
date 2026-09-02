@@ -241,25 +241,31 @@ fn dyn_islands_carry_runtime_content() {
 }
 
 /// `Dyn` reports a constant `DEPTH` because its content is type-erased,
-/// so the compile-time `MAX_DEPTH` assert cannot see inside it. The
-/// check it *can* make is at construction, and this pins both halves:
-/// what is caught, and what is documented as not caught (F1.1).
+/// so the compile-time `MAX_DEPTH` assert cannot see inside it. This
+/// pins both halves: what the construction check catches, and the
+/// under-report it cannot (F1.1).
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+struct Deep {
+    inner: Panel,
+}
+
 #[test]
 fn a_dyn_island_checks_its_content_depth_at_construction() {
     use lumen_static::desc::MAX_DEPTH;
     use lumen_static::hatch::Dyn;
 
-    // Ordinary content: recorded, and well inside the bound.
-    let d = Dyn::new(Panel::default());
-    assert_eq!(d.content_depth(), <Panel as Widget>::DEPTH);
-    assert!(d.content_depth() < MAX_DEPTH);
+    let d = Dyn::new(Deep::default());
+    assert_eq!(d.content_depth(), <Deep as Widget>::DEPTH, "the real depth is recorded");
+    assert!(d.content_depth() < MAX_DEPTH, "and checked against the cap at construction");
 
-    // The constant the ancestors' arithmetic actually sees is *not* the
-    // content's depth. This is the documented hole, asserted so that
-    // anyone who closes it has to come here.
-    assert_eq!(<Dyn as Widget>::DEPTH, 2, "a lower bound, not the content's depth");
+    // The constant an ancestor's arithmetic actually sees is smaller
+    // than the content it stands for. That gap is the documented hole;
+    // asserting it means whoever closes it has to come here.
     assert!(
-        <Panel as Widget>::DEPTH >= 2,
-        "Panel is a container, so its content is deeper than the constant admits"
+        <Dyn as Widget>::DEPTH < d.content_depth(),
+        "Dyn::DEPTH ({}) under-reports {}-deep content",
+        <Dyn as Widget>::DEPTH,
+        d.content_depth(),
     );
 }
