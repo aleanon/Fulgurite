@@ -90,6 +90,14 @@ pub struct Style {
     pub padding: Edges,
     /// Gap between a container's children.
     pub spacing: f32,
+    /// Text colour.
+    pub color: crate::display::Color,
+    /// Fill behind this node. `TRANSPARENT` paints nothing.
+    pub background: crate::display::Color,
+    /// Corner radius for the background, in pixels.
+    pub radius: f32,
+    /// Text size in pixels.
+    pub font_size: f32,
     pub align: Align,
     /// Whether this node and everything under it participates in the
     /// frame.
@@ -115,6 +123,10 @@ impl Default for Style {
             height: Length::Shrink,
             padding: Edges::ZERO,
             spacing: 0.0,
+            color: crate::display::Color::BLACK,
+            background: crate::display::Color::TRANSPARENT,
+            radius: 0.0,
+            font_size: 16.0,
             align: Align::Start,
             visible: true,
         }
@@ -172,6 +184,10 @@ pub struct Patch {
     pub spacing: Option<f32>,
     pub align: Option<Align>,
     pub visible: Option<bool>,
+    pub color: Option<crate::display::Color>,
+    pub background: Option<crate::display::Color>,
+    pub radius: Option<f32>,
+    pub font_size: Option<f32>,
 }
 
 impl Patch {
@@ -183,6 +199,10 @@ impl Patch {
             spacing: None,
             align: None,
             visible: None,
+            color: None,
+            background: None,
+            radius: None,
+            font_size: None,
         }
     }
 
@@ -211,6 +231,26 @@ impl Patch {
         self
     }
 
+    pub const fn color(mut self, c: crate::display::Color) -> Self {
+        self.color = Some(c);
+        self
+    }
+
+    pub const fn background(mut self, c: crate::display::Color) -> Self {
+        self.background = Some(c);
+        self
+    }
+
+    pub const fn radius(mut self, r: f32) -> Self {
+        self.radius = Some(r);
+        self
+    }
+
+    pub const fn font_size(mut self, px: f32) -> Self {
+        self.font_size = Some(px);
+        self
+    }
+
     #[inline]
     fn apply_to(&self, s: &mut Style) {
         if let Some(v) = self.width {
@@ -230,6 +270,18 @@ impl Patch {
         }
         if let Some(v) = self.visible {
             s.visible = v;
+        }
+        if let Some(v) = self.color {
+            s.color = v;
+        }
+        if let Some(v) = self.background {
+            s.background = v;
+        }
+        if let Some(v) = self.radius {
+            s.radius = v;
+        }
+        if let Some(v) = self.font_size {
+            s.font_size = v;
         }
     }
 }

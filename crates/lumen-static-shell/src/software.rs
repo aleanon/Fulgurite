@@ -14,11 +14,102 @@ pub struct Canvas {
     pub width: u32,
     pub height: u32,
     pub pixels: Vec<u8>,
+    /// A real face, when one is available. Without it, text falls back
+    /// to one filled block per glyph — enough to prove the pipeline,
+    /// which is what the headless oracle needs, and not enough to read.
+    #[cfg(feature = "truetype")]
+    pub font: Option<crate::text::FontStack>,
 }
 
 impl Canvas {
     pub fn new(width: u32, height: u32) -> Self {
-        Canvas { width, height, pixels: vec![255; (width * height * 4) as usize] }
+        Canvas {
+            width,
+            height,
+            pixels: vec![255; (width * height * 4) as usize],
+            #[cfg(feature = "truetype")]
+            font: None,
+        }
+    }
+
+    /// A canvas that draws real glyphs.
+    #[cfg(feature = "truetype")]
+    pub fn with_font(width: u32, height: u32, font: crate::text::FontStack) -> Self {
+        let mut c = Self::new(width, height);
+        c.font = Some(font);
+        c
+    }
+
+    /// Fill a rect whose corners are rounded by `radius`.
+    ///
+    /// Coverage is sampled once per pixel against the corner circles —
+    /// no anti-aliasing beyond that, which is the right amount of
+    /// renderer for a reference implementation whose job is to be
+    /// checkable rather than pretty.
+    /// Blit one text run with real glyphs.
+    ///
+    /// The run's box is its *layout* box, so glyphs are placed from its
+    /// top-left and clipped to whatever clip scopes are open — the same
+    /// treatment a rect gets, which is what keeps text inside a scroller.
+    #[cfg(feature = "truetype")]
+    fn draw_run(
+        &mut self,
+        font: crate::text::FontStack,
+        rect: &[f32; 4],
+        text: &str,
+        size: f32,
+        color: Color,
+        clip: &[[f32; 4]],
+    ) {
+        let (glyphs, _) = font.glyphs(text, size, rect[2] - rect[0]);
+        for g in glyphs {
+            for row in 0..g.h {
+                for col in 0..g.w {
+                    let cov = g.cov[row * g.w + col];
+                    if cov == 0 {
+                        continue;
+                    }
+                    let px = rect[0] + g.x + col as f32;
+                    let py = rect[1] + g.y + row as f32;
+                    // One-pixel rect through the same clip path as
+                    // everything else, so a glyph cannot escape a scope
+                    // that a rect could not.
+                    if clipped([px, py, px + 1.0, py + 1.0], clip).is_none() {
+                        continue;
+                    }
+                    let a = (color.3 as u32 * cov as u32 / 255) as u8;
+                    self.blend(px as i64, py as i64, Color(color.0, color.1, color.2, a));
+                }
+            }
+        }
+    }
+
+    /// Fill `bounds`, rounding against `shape`'s corners.
+    fn fill_rounded_within(&mut self, shape: [f32; 4], bounds: [f32; 4], c: Color, radius: f32) {
+        if radius <= 0.5 {
+            self.fill(bounds, c);
+            return;
+        }
+        let r = shape;
+        if !r.iter().all(|v| v.is_finite()) || !bounds.iter().all(|v| v.is_finite()) {
+            return;
+        }
+        let rad = radius.min((r[2] - r[0]) / 2.0).min((r[3] - r[1]) / 2.0);
+        let (w, h) = (self.width as i64, self.height as i64);
+        let (x0, y0) = ((bounds[0].floor() as i64).max(0), (bounds[1].floor() as i64).max(0));
+        let (x1, y1) = ((bounds[2].ceil() as i64).min(w), (bounds[3].ceil() as i64).min(h));
+        for y in y0..y1 {
+            for x in x0..x1 {
+                let (px, py) = (x as f32 + 0.5, y as f32 + 0.5);
+                // Distance past the inner rect, per axis: zero anywhere
+                // but a corner.
+                let dx = (r[0] + rad - px).max(px - (r[2] - rad)).max(0.0);
+                let dy = (r[1] + rad - py).max(py - (r[3] - rad)).max(0.0);
+                if dx * dx + dy * dy <= rad * rad {
+                    self.blend(x, y, c);
+                }
+            }
+        }
     }
 
     pub fn clear(&mut self, c: Color) {
@@ -90,8 +181,21 @@ impl Renderer for Canvas {
                         self.fill(r, *color);
                     }
                 }
+                Cmd::RoundedRect { rect, color, radius } => {
+                    if let Some(r) = clipped(*rect, &clip) {
+                        // Corners are rounded against the *original*
+                        // rect and the fill is limited to the clipped
+                        // one, so a clipped card does not square off.
+                        self.fill_rounded_within(*rect, r, *color, *radius);
+                    }
+                }
                 Cmd::Text { rect, text, size, color } => {
                     let s = list.str_of(*text);
+                    #[cfg(feature = "truetype")]
+                    if let Some(font) = self.font.clone() {
+                        self.draw_run(font, rect, s, *size, *color, &clip);
+                        continue;
+                    }
                     let advance = size * 0.5;
                     for (k, ch) in s.chars().enumerate() {
                         if ch == ' ' {

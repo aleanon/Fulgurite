@@ -126,6 +126,19 @@ miri:
 # Release-shaped whole-core smoke run (no asserts; crash-only).
 smoke:
     cargo run -p miri-smoke
+# The tally in a window: click the buttons, or press up/down.
+tally:
+    cargo run -p counter-window
+
+# One frame of the tally to a viewable image, at a given count.
+tally-frame count="7":
+    cargo run -p counter-window -- --headless target/tally.ppm {{ count }}
+
+# Drive the tally through the agent surface and assert — rung 2 of the
+# verification ladder, above a screenshot.
+tally-drive:
+    cargo run -p counter-window -- --drive
+
 # The counter, rendered headlessly to a viewable frame.
 counter:
     cargo run -p counter -- counter.ppm

@@ -110,6 +110,9 @@ fn ink_of(cmds: &[lumen_static::Cmd]) -> f32 {
             lumen_static::Cmd::Rect { rect, color } => list.rect(rect, color),
             lumen_static::Cmd::PushClip { rect } => list.push_clip(rect),
             lumen_static::Cmd::PopClip => list.pop_clip(),
+            lumen_static::Cmd::RoundedRect { rect, color, radius } => {
+                list.rounded_rect(rect, color, radius)
+            }
             lumen_static::Cmd::Text { .. } => unreachable!(),
         }
     }

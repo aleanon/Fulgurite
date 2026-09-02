@@ -17,6 +17,8 @@ use lumen_static::widget::{Node, Widget};
 use lumen_static::{pass, Constraints, Event, Point};
 
 pub mod software;
+#[cfg(feature = "truetype")]
+pub mod text;
 
 /// A running application: the tree, its parallel arrays, the one input
 /// queue, and the frame's display list.

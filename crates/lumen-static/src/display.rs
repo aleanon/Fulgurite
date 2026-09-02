@@ -45,6 +45,9 @@ pub enum Cmd {
     Rect { rect: Rect, color: Color },
     /// `text` indexes [`DisplayList::text`].
     Text { rect: Rect, text: (u32, u32), size: f32, color: Color },
+    /// A filled rect with rounded corners. `radius` of 0 is a plain
+    /// rect; a renderer that cannot round may treat it as one.
+    RoundedRect { rect: Rect, color: Color, radius: f32 },
     PushClip { rect: Rect },
     PopClip,
 }
@@ -65,6 +68,14 @@ impl Cmd {
                     f(h, v.to_bits() as u64);
                 }
                 f(h, u32::from_be_bytes([color.0, color.1, color.2, color.3]) as u64);
+            }
+            Cmd::RoundedRect { rect, color, radius } => {
+                f(h, 5);
+                for v in rect {
+                    f(h, v.to_bits() as u64);
+                }
+                f(h, u32::from_be_bytes([color.0, color.1, color.2, color.3]) as u64);
+                f(h, radius.to_bits() as u64);
             }
             Cmd::Text { rect, text, size, color } => {
                 f(h, 2);
@@ -128,6 +139,13 @@ impl DisplayList {
         self.text.push_str(s);
         let range = (start, self.text.len() as u32 - start);
         self.cmds.push(Cmd::Text { rect, text: range, size, color });
+    }
+
+    /// Record a filled rect with rounded corners.
+    pub fn rounded_rect(&mut self, rect: Rect, color: Color, radius: f32) {
+        if has_area(rect) && color.3 != 0 {
+            self.cmds.push(Cmd::RoundedRect { rect, color, radius });
+        }
     }
 
     pub fn push_clip(&mut self, rect: Rect) {

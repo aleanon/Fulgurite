@@ -518,9 +518,24 @@ milestone that depends on it. Split as review recommended:
   so the seam T7.2 adopts behind is too narrow for T7.2's own stated
   purpose. The signature is an interface decision and gets written down
   before `lumen-text` is wired, not discovered during it.
-- **T7.4** winit shell: window events into `Host::post`, `Canvas::pixels`
-  blitted to the surface. The two attachment points M5 deliberately
-  stopped at.
+- **T7.4 — DONE 2026-09-02.** `examples/counter-window`: winit events
+  into `Host::post`, `Canvas::pixels` blitted to a softbuffer surface.
+  The claim M5 stopped on held — the binding is two functions,
+  `window_event` and `redraw`, and nothing above the seam changed to
+  accommodate it. The example ships three modes so the parts that *can*
+  be gated are: `--headless <path> [count]` writes a frame, `--drive`
+  runs it through the agent surface and asserts, and no argument opens
+  the window.
+
+  Two things came with it that are not the binding and are worth naming.
+  `Style` gained `color`, `background`, `radius` and `font_size`, and
+  those resolve into `NodeState` during layout — the A2-revised
+  mechanism, since `paint` has no `&[Style]`. And the software renderer
+  grew a real text path behind a `truetype` feature (`fontdue`), because
+  `BlockMetrics` draws one filled square per glyph: correct for proving
+  the pipeline, and the reason a window first showed a row of black
+  boxes rather than a counter. The stand-in remains the default, so
+  every test still runs on a deterministic measurer.
 - **T7.5** AccessKit platform adapter (`accesskit_winit`) — the
   `TreeUpdate` snapshot exists and has been waiting for a shell
   (`docs/step5-observability.md`).

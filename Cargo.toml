@@ -10,6 +10,7 @@ members = [
     "crates/lumen-static-shell",
     "benches",
     "examples/counter",
+    "examples/counter-window",
     "fixtures/hot-app",
     "fixtures/miri-smoke",
     "fixtures/binsize",

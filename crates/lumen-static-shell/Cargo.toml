@@ -5,4 +5,12 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+# Real glyph rasterization for the software renderer. Optional: the
+# headless oracle and every test work without it, on the block-metrics
+# stand-in. See src/text.rs.
+fontdue = { version = "0.9", optional = true }
 lumen-static = { path = "../lumen-static" }
+
+[features]
+default = []
+truetype = ["dep:fontdue"]

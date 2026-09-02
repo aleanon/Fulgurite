@@ -172,6 +172,22 @@ pub struct NodeState {
     pub constraints: Constraints,
     pub size: Size,
     pub pos: Point,
+    /// Resolved paint attributes, stamped from `Style` during layout.
+    ///
+    /// `paint` and `hit` do not take `&[Style]` — only `layout` and
+    /// `place` do — so a widget cannot read its own colour at paint time.
+    /// Rather than thread a fourth parameter through every `Node` method
+    /// and every hatch (the change A2 of
+    /// `docs/text-and-scrolling-decisions.md` first proposed and then
+    /// rejected), the cascade's answer is copied into the state array
+    /// the paint pass already carries.
+    pub fg: crate::display::Color,
+    pub bg: crate::display::Color,
+    pub radius: f32,
+    pub font_size: f32,
+    /// Resolved padding as (left, top, right, bottom), so `paint` can
+    /// inset content without `&[Style]`.
+    pub pad: (f32, f32, f32, f32),
 }
 
 /// Scalar facts a kind knows about itself that geometry cannot show —

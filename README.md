@@ -45,10 +45,12 @@ test of that surface.
 ## Try it
 
 ```
-just counter     # render a frame to target/counter.ppm
-just test        # the gate: static checks, release shape, dev shape, fixtures
-just bench       # benchmarks (machine-dependent; never a gate)
-just hot-demo    # swap a dylib under a running app and check state survived
+just tally         # the counter, in a window
+just tally-frame 7 # one frame to target/tally.ppm, at count 7
+just tally-drive   # drive it through the agent surface and assert
+just test          # the gate: static checks, release shape, dev shape, fixtures
+just bench         # benchmarks (machine-dependent; never a gate)
+just hot-demo      # swap a dylib under a running app and check state survived
 ```
 
 ## The crates
@@ -74,8 +76,14 @@ just hot-demo    # swap a dylib under a running app and check state survived
 
 ## Status
 
-The counter runs headless and renders. There is no window yet: the shell
-deliberately stops at the OS seam so the loop stays testable without a
-display, and a winit front end attaches at two points (`Host::post` and
-`Canvas::pixels`). Text is measured by a stand-in, not a shaper. Both are
-M7 in the plan.
+`just tally` opens a window. `examples/counter-window` is the only crate
+with an OS dependency, and it is two functions long — window events into
+`Host::post`, `Canvas::pixels` blitted to the surface — because the shell
+was built to stop exactly there. The same tree, layout, paint and
+renderer run headlessly under `--headless`, which is how the example is
+checked in CI.
+
+Text is real (`fontdue`, behind the shell's `truetype` feature); the
+default is still a deterministic stand-in so tests can assert on
+geometry. Adopting Lumen's `lumen-text` and `lumen-render` is the rest of
+M7.

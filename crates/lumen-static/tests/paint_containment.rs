@@ -42,7 +42,9 @@ fn first_escape(list: &DisplayList, root: [f32; 4]) -> Option<(usize, [f32; 4])>
             Cmd::PopClip => {
                 stack.pop();
             }
-            Cmd::Rect { rect, .. } | Cmd::Text { rect, .. } => {
+            Cmd::Rect { rect, .. }
+            | Cmd::RoundedRect { rect, .. }
+            | Cmd::Text { rect, .. } => {
                 let mut r = *rect;
                 for clip in &stack {
                     r = [

@@ -446,7 +446,9 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                         w: content.w + me.padding.horizontal(),
                         h: content.h + me.padding.vertical(),
                     };
-                    ::lumen_static::ops::record(st, i, limits, resolve_self(limits, &me, padded))
+                    ::lumen_static::ops::record_painted(
+                        st, i, limits, resolve_self(limits, &me, padded), &me,
+                    )
                 }
 
                 fn place(
@@ -523,6 +525,13 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                     i: usize,
                     out: &mut ::lumen_static::DisplayList,
                 ) {
+                    // A container's own fill, before its children. This
+                    // is what makes a card a card.
+                    out.rounded_rect(
+                        ::lumen_static::ops::rect_of(&st[i]),
+                        st[i].bg,
+                        st[i].radius,
+                    );
                     let mut at = i + 1;
                     #(
                         {

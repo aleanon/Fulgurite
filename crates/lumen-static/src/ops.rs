@@ -228,6 +228,31 @@ pub fn record(st: &mut [NodeState], i: usize, limits: Constraints, size: Size) -
     size
 }
 
+/// `record`, plus the resolved paint attributes.
+///
+/// Every widget that draws calls this instead, so `paint` — which has no
+/// `&[Style]` — can read the cascade's answer out of the state array it
+/// already has.
+pub fn record_painted(
+    st: &mut [NodeState],
+    i: usize,
+    limits: Constraints,
+    size: Size,
+    style: &Style,
+) -> Size {
+    st[i].fg = style.color;
+    st[i].bg = style.background;
+    st[i].radius = style.radius;
+    st[i].font_size = style.font_size;
+    st[i].pad = (
+        style.padding.left,
+        style.padding.top,
+        style.padding.right,
+        style.padding.bottom,
+    );
+    record(st, i, limits, size)
+}
+
 // ---- leaves ----------------------------------------------------------------
 
 /// A leaf's boilerplate: one node, no children, `node`/`node_mut` are
@@ -345,10 +370,14 @@ impl<S: TextStorage> Node for Label<S> {
         // changed.
         let text = self.text.get().as_ref();
         let dirty = self.text.is_dirty();
+        let px = style[i].font_size;
         let content =
-            self.measure.get_or(limits, dirty, || cx.text.measure(text, 16.0, limits.max_w));
+            self.measure.get_or(limits, dirty, || cx.text.measure(text, px, limits.max_w));
         self.text.clear_dirty();
-        record(st, i, limits, resolve_self(limits, &style[i], content))
+        let pad = style[i].padding;
+        let boxed =
+            Size { w: content.w + pad.horizontal(), h: content.h + pad.vertical() };
+        record_painted(st, i, limits, resolve_self(limits, &style[i], boxed), &style[i])
     }
 
     /// Measure without touching the memo — see [`Node::probe`]. The
@@ -363,10 +392,20 @@ impl<S: TextStorage> Node for Label<S> {
         i: usize,
     ) -> Size {
         let content = cx.text.measure(self.text.get().as_ref(), 16.0, limits.max_w);
-        record(st, i, limits, resolve_self(limits, &style[i], content))
+        record_painted(st, i, limits, resolve_self(limits, &style[i], content), &style[i])
     }
     fn paint(&self, st: &[NodeState], i: usize, out: &mut DisplayList) {
-        out.text(rect_of(&st[i]), self.text.get().as_ref(), 16.0, Color::BLACK);
+        let r = rect_of(&st[i]);
+        out.rounded_rect(r, st[i].bg, st[i].radius);
+        // Text sits inside the padding box; `layout` sized the node to
+        // include it.
+        let p = st[i].pad;
+        out.text(
+            [r[0] + p.0, r[1] + p.1, r[2] - p.2, r[3] - p.3],
+            self.text.get().as_ref(),
+            st[i].font_size,
+            st[i].fg,
+        );
     }
     leaf_common!(Label<S>, 0);
 
@@ -418,10 +457,10 @@ impl Node for Fixed {
         i: usize,
     ) -> Size {
         let content = Size { w: self.w, h: self.h };
-        record(st, i, limits, resolve_self(limits, &style[i], content))
+        record_painted(st, i, limits, resolve_self(limits, &style[i], content), &style[i])
     }
     fn paint(&self, st: &[NodeState], i: usize, out: &mut DisplayList) {
-        out.rect(rect_of(&st[i]), Color::BLACK);
+        out.rect(rect_of(&st[i]), st[i].fg);
     }
     leaf_common!(Fixed, NodeDesc::RIGID);
 }
@@ -457,7 +496,7 @@ impl Node for Spacer {
     ) -> Size {
         // A spacer is filler by default; its style says so, and
         // `resolve_self` turns that into "take the whole limit".
-        record(st, i, limits, resolve_self(limits, &style[i], Size::default()))
+        record_painted(st, i, limits, resolve_self(limits, &style[i], Size::default()), &style[i])
     }
     fn paint(&self, _st: &[NodeState], _i: usize, _out: &mut DisplayList) {
         // A spacer is empty space; it draws nothing.
@@ -483,7 +522,6 @@ impl<S, T: TextStorage> Default for Button<S, T> {
 }
 
 impl<S: 'static, T: TextStorage> Button<S, T> {
-    const PAD: f32 = 8.0;
 }
 
 impl<S: 'static, T: TextStorage> Widget for Button<S, T> {
@@ -495,6 +533,16 @@ impl<S: 'static, T: TextStorage> Widget for Button<S, T> {
 }
 
 impl<S: 'static, T: TextStorage> Node for Button<S, T> {
+    fn defaults(&self) -> Style {
+        Style {
+            padding: crate::style::Edges { left: 14.0, right: 14.0, top: 9.0, bottom: 9.0 },
+            background: Color(226, 232, 240, 255),
+            color: Color(15, 23, 42, 255),
+            radius: 8.0,
+            ..Style::default()
+        }
+    }
+
     fn kind_name(&self) -> &'static str {
         "button"
     }
@@ -508,15 +556,23 @@ impl<S: 'static, T: TextStorage> Node for Button<S, T> {
         i: usize,
     ) -> Size {
         let content = Size {
-            w: 8.0 * self.label.as_ref().len() as f32 + 2.0 * Self::PAD,
-            h: 16.0 + Self::PAD,
+            w: style[i].font_size * 0.62 * self.label.as_ref().chars().count() as f32
+                + style[i].padding.horizontal(),
+            h: style[i].font_size * 1.3 + style[i].padding.vertical(),
         };
-        record(st, i, limits, resolve_self(limits, &style[i], content))
+        record_painted(st, i, limits, resolve_self(limits, &style[i], content), &style[i])
     }
     fn paint(&self, st: &[NodeState], i: usize, out: &mut DisplayList) {
         let r = rect_of(&st[i]);
-        out.rect(r, Color(220, 220, 220, 255));
-        out.text(r, self.label.as_ref(), 16.0, Color::BLACK);
+        out.rounded_rect(r, st[i].bg, st[i].radius);
+        // Centre the label in the button's box rather than pinning it to
+        // the left edge: a button is padded, and text at the corner reads
+        // as a bug.
+        let px = st[i].font_size;
+        let tw = px * 0.55 * self.label.as_ref().chars().count() as f32;
+        let x = r[0] + ((r[2] - r[0]) - tw).max(0.0) / 2.0;
+        let y = r[1] + ((r[3] - r[1]) - px).max(0.0) / 2.0;
+        out.text([x, y, r[2], y + px], self.label.as_ref(), px, st[i].fg);
     }
     leaf_common!(Button<S, T>, NodeDesc::FOCUSABLE);
 
