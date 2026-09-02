@@ -26,7 +26,7 @@ here that is a refactor rather than a set of fixes.
 
 ---
 
-## F0 — The gate becomes true — **first**
+## F0 — The gate becomes true — **DONE 2026-09-02**
 
 *Phase 4B wrote the files; they sit uncommitted in the working tree. The
 gate is red on six known items. This milestone commits the gate and
@@ -94,7 +94,7 @@ zero on the plain-tree path.
   `take_log()` shows the rejection (the three `log_fallback` arms at
   `reload.rs:145-153` are uncovered today). Doc: handoff §12.4.
   *2A F4, 3A test #5.*
-- **F1.5** `#[widget_class(...)]` accepts the documented string form and
+- **F1.5 — DONE** (with F0.3). `#[widget_class(...)]` accepts the documented string form and
   errors on anything else; `#[widget_id(...)]` errors on a bare ident.
   Both currently `let _ =` the parse error. Test: `SUB_TABLE[i].classes`
   asserted from an integration test — the first use of `widget_class`
