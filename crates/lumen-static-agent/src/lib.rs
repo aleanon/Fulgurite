@@ -152,7 +152,7 @@ impl Agent {
     /// put events. Everything the agent synthesizes goes through the
     /// host's **one queue** — never straight into a handler — so an agent
     /// session replays as a test (plan E4).
-    pub fn dispatch_input(&self, host: &mut dyn Host, req: &Value) -> Value {
+    pub fn dispatch_input(&self, host: &mut dyn AgentHost, req: &Value) -> Value {
         let id = req.get("id").cloned().unwrap_or(Value::Null);
         let method = req.get("method").and_then(Value::as_str).unwrap_or("");
         if !method.starts_with("input.") {
@@ -169,7 +169,7 @@ impl Agent {
         }
     }
 
-    fn handle_input(&self, host: &mut dyn Host, method: &str, params: &Value) -> RpcResult {
+    fn handle_input(&self, host: &mut dyn AgentHost, method: &str, params: &Value) -> RpcResult {
         match method {
             "input.click" | "input.invokeAction" => {
                 let (x, y) = self.point_param(host, params)?;
@@ -234,7 +234,7 @@ impl Agent {
     /// to — so agents can click by author id and never compute geometry.
     fn point_param(
         &self,
-        host: &dyn Host,
+        host: &dyn AgentHost,
         params: &Value,
     ) -> Result<(f32, f32), (i64, String, Value)> {
         if let (Some(x), Some(y)) = (
@@ -569,7 +569,24 @@ fn change_kind(c: &Coalesced) -> &'static str {
 /// Synthesized input enters the same queue as OS input, and `pump` is the
 /// host's ordinary frame step — so nothing an agent does can take a path
 /// a real user could not.
-pub trait Host {
+/// What `input.*` needs from whatever is driving the frames.
+///
+/// Named `AgentHost`, not `Host`: `lumen_static_shell::Host<A>` is a
+/// different thing at the same layer, and two public types sharing a
+/// name is a documentation hazard even before anything implements both
+/// (`docs/plan-review-fixes.md` F6.5).
+///
+/// **Nothing in the workspace implements this outside a test mock**, and
+/// that is the finding rather than the trait's shape. The shell's `Host`
+/// has all three of these — `post`, `pump`, and the fields to build a
+/// `TreeRef` — but cannot implement it, because the shell does not
+/// depend on this crate and adding the dependency would unify `observe`
+/// into every binary linking the shell (F2.5). So `examples/counter`
+/// reaches into three public fields to rebuild by hand the value
+/// `AgentHost::tree` exists to return, and never exercises `input.*` at
+/// all. Closing that needs the trait to move to the core, or a bridge
+/// crate; both are larger than a rename.
+pub trait AgentHost {
     fn tree(&self) -> TreeRef<'_>;
     fn enqueue(&mut self, ev: Event);
     /// Drain the queue, re-lay out, record the frame; returns its number.

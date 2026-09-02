@@ -5,6 +5,7 @@ resolver = "2"
 members = [
     "crates/lumen-static",
     "crates/lumen-static-agent",
+    "crates/lumen-static-reload",
     "crates/lumen-static-macros",
     "crates/lumen-static-shell",
     "benches",

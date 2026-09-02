@@ -85,16 +85,23 @@ impl<S: crate::text::TextStorage> Reloadable for Label<S> {
 /// `restore` never touches it — the whole point of
 /// `docs/events-decision.md`. Written by hand because the derive's
 /// untagged-field rule would demand `Reloadable` of an `fn` type.
-impl<S: 'static> Reloadable for crate::ops::Button<S> {
+impl<S: 'static, T: crate::text::TextStorage> Reloadable for crate::ops::Button<S, T> {
     fn save(&self) -> Value {
-        Value::String(self.label.to_owned())
+        Value::String(self.label.as_ref().to_owned())
     }
     fn fresh() -> Self {
         Self::default()
     }
+    /// Through `T::from_string`, so `Button<S, String>` restores without
+    /// leaking. The default storage is still `&'static str`, which can
+    /// only accept a value by leaking — but that is now a *choice the
+    /// type records*, documented at `TextStorage`, rather than the only
+    /// path available. It used to `Box::leak` unconditionally, with no
+    /// comment, while `Label`'s equivalent two impls above document
+    /// theirs prominently (`docs/plan-review-fixes.md` F6.4).
     fn restore(&mut self, saved: &Value) {
         match saved.as_str() {
-            Some(s) => self.label = Box::leak(s.to_owned().into_boxed_str()),
+            Some(s) => self.label = T::from_string(s.to_owned()),
             None => log_fallback("Button", "label", "saved value is not a string"),
         }
     }
@@ -208,4 +215,47 @@ impl<W: Reloadable> Reloadable for Option<W> {
             *self = Some(w);
         }
     }
+}
+
+// ---------------------------------------------------------------------
+// The hot-reload ABI, declared once
+// ---------------------------------------------------------------------
+
+/// The symbol names a reloadable app exports and a loader looks up.
+///
+/// Both sides referenced these as byte-string literals — twelve of them
+/// in `fixtures/hot-app` and twelve more in `fixtures/hot-host`, with
+/// nothing checking they agreed. A rename is a runtime `unwrap` on a
+/// `None`, at load time, in a dylib swap. Naming them once makes the
+/// handshake a compile-time fact on the loader side and a single edit on
+/// the app side (`docs/plan-review-fixes.md` F6.7).
+pub mod symbols {
+    /// `fn() -> *mut c_void` — `App::fresh()` from this build's code.
+    pub const NEW: &[u8] = b"hot_new";
+    /// `fn(*mut c_void)` — drop the tree while this library is still
+    /// loaded. Step 2 of §7's sequence.
+    pub const DROP: &[u8] = b"hot_drop";
+    /// `fn(*mut c_void, *mut u8, usize) -> usize` — serialize the keep
+    /// half into a host-owned buffer. Two-call protocol: pass a null
+    /// pointer and zero capacity to size, then allocate and call again.
+    pub const SAVE: &[u8] = b"hot_save";
+    /// `fn(*mut c_void, *const u8, usize) -> i32` — graft saved bytes
+    /// onto this build's fresh tree. Returns 0 on success.
+    pub const RESTORE: &[u8] = b"hot_restore";
+    /// `fn(*mut u8, usize) -> usize` — drain the fallback log. Same
+    /// two-call protocol as [`SAVE`], and it must not discard the log
+    /// when the buffer is too small (F1.7).
+    pub const TAKE_LOG: &[u8] = b"hot_take_log";
+}
+
+/// Serialize a saved value. Infallible in practice — a `Value` built by
+/// `save()` always encodes — and returns an empty buffer rather than
+/// panicking if that ever stops being true.
+pub fn to_vec(v: &Value) -> Vec<u8> {
+    serde_json::to_vec(v).unwrap_or_default()
+}
+
+/// Parse saved bytes, or `None` if they are not the shape `save()` emits.
+pub fn from_slice(bytes: &[u8]) -> Option<Value> {
+    serde_json::from_slice(bytes).ok()
 }

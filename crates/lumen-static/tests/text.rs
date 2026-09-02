@@ -97,3 +97,33 @@ fn a_tree_with_text_is_send_and_sync() {
     assert_send_sync::<Label<&'static str>>();
     assert_send_sync::<Measured>();
 }
+
+/// `Button` restores without leaking when its storage can own.
+///
+/// `Button::restore` used `Box::leak` unconditionally, with no comment,
+/// while `Label`'s two equivalent impls document theirs prominently. It
+/// leaked its label on every reload, and there was no non-leaking path
+/// because `Button` had no storage parameter at all
+/// (`docs/plan-review-fixes.md` F6.4).
+#[test]
+fn a_button_with_owned_storage_restores_without_leaking() {
+    use lumen_static::ops::Button;
+
+    struct App;
+    let mut b: Button<App, String> = Button::default();
+    b.restore(&Value::String("Save".into()));
+    assert_eq!(b.label, "Save");
+
+    // Restoring repeatedly reuses the owned buffer rather than leaking a
+    // new `&'static str` each time.
+    for i in 0..100 {
+        b.restore(&Value::String(format!("v{i}")));
+    }
+    assert_eq!(b.label, "v99");
+
+    // The default storage still exists and still leaks — deliberately,
+    // as a dev-only path, and now as a choice the type records.
+    let mut d: Button<App> = Button::default();
+    d.restore(&Value::String("Save".into()));
+    assert_eq!(d.label, "Save");
+}

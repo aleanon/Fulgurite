@@ -15,7 +15,7 @@
 #![allow(clippy::missing_safety_doc)]
 
 use lumen_static::ops::{Fixed, Label, Spacer};
-use lumen_static::reload::{self, Reloadable};
+use lumen_static::reload;
 use lumen_static::repeat::Repeat;
 use lumen_static::{
     pass, App as DeriveApp, Constraints, NodeState, Reloadable as DeriveReloadable, StaticTree,
@@ -111,6 +111,14 @@ impl Default for Session {
 use std::cell::RefCell;
 use std::ffi::c_void;
 
+// The four generic entry points — `hot_new`, `hot_drop`, `hot_save`,
+// `hot_restore` — come from the framework rather than being written out
+// here. They were about 90 lines of hand-rolled FFI, and the size-probe
+// protocol in them had drifted from the loader's
+// (`docs/plan-review-fixes.md` F6.7). The app-specific verbs below stay
+// hand-written: there is nothing to share about `hot_bump`.
+lumen_static_reload::export_reloadable_app!(Session);
+
 thread_local! {
     /// Fallback lines taken from the core but not yet delivered to the
     /// host. See `hot_take_log`.
@@ -136,17 +144,7 @@ unsafe fn session<'a>(p: *mut c_void) -> &'a mut Session {
     unsafe { &mut *(p as *mut Session) }
 }
 
-/// `App::fresh()` from this dylib's code.
-#[no_mangle]
-pub unsafe extern "C" fn hot_new() -> *mut c_void {
-    Box::into_raw(Box::new(Session::fresh())) as *mut c_void
-}
 
-/// Drop the tree while this dylib is still loaded (§7 sequence step 2).
-#[no_mangle]
-pub unsafe extern "C" fn hot_drop(p: *mut c_void) {
-    drop(unsafe { Box::from_raw(p as *mut Session) });
-}
 
 #[no_mangle]
 pub unsafe extern "C" fn hot_bump(p: *mut c_void) {
@@ -208,30 +206,7 @@ pub unsafe extern "C" fn hot_frame(p: *mut c_void) -> u64 {
     out.hash_from(0)
 }
 
-/// Serialize the keep-half into a HOST-owned buffer. Returns the byte
-/// count needed; writes only if `cap` suffices (call once with cap 0 to
-/// size, then again with the allocation).
-#[no_mangle]
-pub unsafe extern "C" fn hot_save(p: *mut c_void, buf: *mut u8, cap: usize) -> usize {
-    let bytes = serde_json::to_vec(&unsafe { session(p) }.save()).unwrap_or_default();
-    if bytes.len() <= cap && !buf.is_null() {
-        unsafe { core::ptr::copy_nonoverlapping(bytes.as_ptr(), buf, bytes.len()) };
-    }
-    bytes.len()
-}
 
-/// Graft saved bytes onto this dylib's fresh tree. Returns 0 on success.
-#[no_mangle]
-pub unsafe extern "C" fn hot_restore(p: *mut c_void, ptr: *const u8, len: usize) -> i32 {
-    let bytes = unsafe { core::slice::from_raw_parts(ptr, len) };
-    match serde_json::from_slice(bytes) {
-        Ok(v) => {
-            unsafe { session(p) }.restore(&v);
-            0
-        }
-        Err(_) => 1,
-    }
-}
 
 /// Human-readable state summary into a host buffer (same two-call
 /// protocol as `hot_save`). The host asserts against this.

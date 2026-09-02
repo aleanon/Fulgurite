@@ -72,6 +72,7 @@ name = "hot-app"
 version = "0.1.0"
 dependencies = [
  "lumen-static",
+ "lumen-static-reload",
  "serde",
  "serde_json",
 ]
@@ -81,6 +82,7 @@ name = "hot-host"
 version = "0.1.0"
 dependencies = [
  "libloading",
+ "lumen-static",
 ]
 
 [[package]]
@@ -136,6 +138,13 @@ dependencies = [
  "quote",
  "syn 2.0.119",
  "trybuild",
+]
+
+[[package]]
+name = "lumen-static-reload"
+version = "0.1.0"
+dependencies = [
+ "lumen-static",
 ]
 
 [[package]]

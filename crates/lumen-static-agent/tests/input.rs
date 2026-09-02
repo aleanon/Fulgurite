@@ -3,7 +3,7 @@
 
 use lumen_static::ops::{Button, Label};
 use lumen_static::{pass, Constraints, Event, EventCtx, InputQueue, NodeState, StaticTree, Widget};
-use lumen_static_agent::{Agent, Host as AgentHost, TreeRef};
+use lumen_static_agent::{Agent, AgentHost, TreeRef};
 use serde_json::{json, Value};
 
 #[derive(StaticTree, Default)]

@@ -179,7 +179,7 @@ fn hostile_selectors_are_answered_not_panicked() {
 mod input_limits {
     use super::*;
     use lumen_static::{Event, InputQueue};
-    use lumen_static_agent::Host;
+    use lumen_static_agent::AgentHost;
 
     struct Bare {
         app: Bar,
@@ -189,7 +189,7 @@ mod input_limits {
         frame: u64,
     }
 
-    impl Host for Bare {
+    impl AgentHost for Bare {
         fn tree(&self) -> TreeRef<'_> {
             TreeRef::of_root(&self.app, &self.styles, &self.states)
         }

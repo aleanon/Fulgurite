@@ -13,6 +13,11 @@
 use std::ffi::c_void;
 
 use libloading::{Library, Symbol};
+// The generic entry points by name from the framework, not by literal:
+// both sides referenced twelve byte strings each with nothing checking
+// they agreed, so a rename was a runtime `unwrap` at load time in the
+// middle of a dylib swap (`docs/plan-review-fixes.md` F6.7).
+use lumen_static::reload::symbols;
 
 struct App<'l> {
     lib: &'l Library,
@@ -22,7 +27,7 @@ struct App<'l> {
 impl<'l> App<'l> {
     fn new(lib: &'l Library) -> Self {
         let ptr = unsafe {
-            let f: Symbol<unsafe extern "C" fn() -> *mut c_void> = lib.get(b"hot_new").unwrap();
+            let f: Symbol<unsafe extern "C" fn() -> *mut c_void> = lib.get(symbols::NEW).unwrap();
             f()
         };
         App { lib, ptr }
@@ -59,7 +64,7 @@ impl<'l> App<'l> {
     fn save(&self) -> Vec<u8> {
         unsafe {
             let f: Symbol<unsafe extern "C" fn(*mut c_void, *mut u8, usize) -> usize> =
-                self.lib.get(b"hot_save").unwrap();
+                self.lib.get(symbols::SAVE).unwrap();
             let need = f(self.ptr, core::ptr::null_mut(), 0);
             let mut buf = vec![0u8; need]; // HOST-owned, never crosses allocators
             let wrote = f(self.ptr, buf.as_mut_ptr(), buf.len());
@@ -71,7 +76,7 @@ impl<'l> App<'l> {
     fn restore(&self, bytes: &[u8]) {
         let rc = unsafe {
             let f: Symbol<unsafe extern "C" fn(*mut c_void, *const u8, usize) -> i32> =
-                self.lib.get(b"hot_restore").unwrap();
+                self.lib.get(symbols::RESTORE).unwrap();
             f(self.ptr, bytes.as_ptr(), bytes.len())
         };
         assert_eq!(rc, 0, "restore failed");
@@ -84,7 +89,7 @@ impl<'l> App<'l> {
     /// this is the host's.
     fn take_log(&self) -> String {
         let f: Symbol<unsafe extern "C" fn(*mut u8, usize) -> usize> =
-            unsafe { self.lib.get(b"hot_take_log") }.unwrap();
+            unsafe { self.lib.get(symbols::TAKE_LOG) }.unwrap();
         let need = unsafe { f(core::ptr::null_mut(), 0) };
         if need == 0 {
             return String::new();
@@ -147,7 +152,7 @@ fn main() {
     // ---- the §7 sequence ----
     let bytes = app.save(); // 1. save while old lib loaded (host-owned buffer)
     println!("saved {} bytes of keep-state (JSON)", bytes.len());
-    app.call0(b"hot_drop"); // 2. old Drop impls run, old lib still loaded
+    app.call0(symbols::DROP); // 2. old Drop impls run, old lib still loaded
     // 3. v1 is Box::leak'd: never dlclose'd.
 
     // ---- v2: fresh + restore ----
@@ -163,7 +168,7 @@ fn main() {
     // past its own allocation).
     {
         let f: Symbol<unsafe extern "C" fn(*mut u8, usize) -> usize> =
-            unsafe { v2.get(b"hot_take_log") }.unwrap();
+            unsafe { v2.get(symbols::TAKE_LOG) }.unwrap();
         let mut tiny = [0u8; 1];
         let need = unsafe { f(tiny.as_mut_ptr(), 1) };
         assert!(need > 1, "the fallback log should be longer than one byte, got {need}");

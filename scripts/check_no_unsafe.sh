@@ -10,8 +10,14 @@
 #   2. it scanned only crates/lumen-static/src/*.rs, so lumen-static-macros,
 #      -agent and -shell could contain anything.
 #
-# fixtures/hot-host is deliberately excluded: dlopen requires unsafe and it is
-# a fixture, not the shipped core. Nothing else is excluded.
+# Two exclusions, both because the code *is* the FFI boundary:
+#   - fixtures/hot-host: dlopen requires unsafe, and it is a fixture.
+#   - crates/lumen-static-reload: the `extern "C"` shims a reloadable app
+#     exports. They exist in their own crate precisely so this check can stay
+#     absolute over the core rather than growing a cfg-gated exception --
+#     which is how a gate stops meaning anything.
+# Nothing else is excluded, and adding one means editing this list in a commit
+# that has to say why.
 set -euo pipefail
 cd "$(cd "$(dirname "$0")/.." && pwd)"
 
@@ -26,10 +32,11 @@ while IFS= read -r f; do
         echo "$hits" | sed 's/^/  /' >&2
         status=1
     fi
-done < <(find crates -path '*/src/*' -name '*.rs' | sort)
+done < <(find crates -path '*/src/*' -name '*.rs' \
+    -not -path 'crates/lumen-static-reload/*' | sort)
 
 if [ "$status" -ne 0 ]; then
     echo "release core must contain no unsafe (see above)" >&2
     exit 1
 fi
-echo "no-unsafe: clean across crates/*/src"
+echo "no-unsafe: clean across crates/*/src (except lumen-static-reload, the FFI crate)"

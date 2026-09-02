@@ -1,0 +1,13 @@
+[package]
+name = "lumen-static-reload"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "lumen_static_reload"
+
+# The `unsafe` FFI shims live here rather than in the core, whose
+# no-unsafe invariant is a gate rather than a preference.
+[dependencies]
+lumen-static = { path = "../lumen-static", features = ["reload"] }

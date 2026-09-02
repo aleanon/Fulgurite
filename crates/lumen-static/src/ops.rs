@@ -469,24 +469,24 @@ impl Node for Spacer {
 /// it cannot capture, so `fresh()` re-supplies it across a hot reload
 /// (`docs/events-decision.md`). Payload a closure would have captured
 /// arrives in [`EventCtx`] — notably `ctx.row` inside a repeater.
-pub struct Button<S: 'static> {
-    pub label: &'static str,
+pub struct Button<S: 'static, T: TextStorage = &'static str> {
+    pub label: T,
     pub on_click: fn(&mut S, &EventCtx),
 }
 
 pub fn ignore_click<S>(_: &mut S, _: &EventCtx) {}
 
-impl<S> Default for Button<S> {
+impl<S, T: TextStorage> Default for Button<S, T> {
     fn default() -> Self {
-        Button { label: "", on_click: ignore_click::<S> }
+        Button { label: T::default(), on_click: ignore_click::<S> }
     }
 }
 
-impl<S: 'static> Button<S> {
+impl<S: 'static, T: TextStorage> Button<S, T> {
     const PAD: f32 = 8.0;
 }
 
-impl<S: 'static> Widget for Button<S> {
+impl<S: 'static, T: TextStorage> Widget for Button<S, T> {
     const NODE_COUNT: usize = 1;
     const DEPTH: usize = 1;
     const IS_RIGID: bool = false;
@@ -494,7 +494,7 @@ impl<S: 'static> Widget for Button<S> {
         &[NodeDesc::new(0, NO_PARENT, 0, 0, NodeDesc::FOCUSABLE)];
 }
 
-impl<S: 'static> Node for Button<S> {
+impl<S: 'static, T: TextStorage> Node for Button<S, T> {
     fn kind_name(&self) -> &'static str {
         "button"
     }
@@ -508,7 +508,7 @@ impl<S: 'static> Node for Button<S> {
         i: usize,
     ) -> Size {
         let content = Size {
-            w: 8.0 * self.label.len() as f32 + 2.0 * Self::PAD,
+            w: 8.0 * self.label.as_ref().len() as f32 + 2.0 * Self::PAD,
             h: 16.0 + Self::PAD,
         };
         record(st, i, limits, resolve_self(limits, &style[i], content))
@@ -516,9 +516,9 @@ impl<S: 'static> Node for Button<S> {
     fn paint(&self, st: &[NodeState], i: usize, out: &mut DisplayList) {
         let r = rect_of(&st[i]);
         out.rect(r, Color(220, 220, 220, 255));
-        out.text(r, self.label, 16.0, Color::BLACK);
+        out.text(r, self.label.as_ref(), 16.0, Color::BLACK);
     }
-    leaf_common!(Button<S>, NodeDesc::FOCUSABLE);
+    leaf_common!(Button<S, T>, NodeDesc::FOCUSABLE);
 
     #[cfg(feature = "observe")]
     fn observe(
@@ -530,7 +530,7 @@ impl<S: 'static> Node for Button<S> {
         _extra: &mut Vec<(accesskit::NodeId, accesskit::Node)>,
     ) {
         node.set_role(accesskit::Role::Button);
-        node.set_label(self.label);
+        node.set_label(self.label.as_ref());
         node.add_action(accesskit::Action::Click);
     }
 }
@@ -560,7 +560,7 @@ no_handlers!(Spacer);
 /// Only for its *own* state type — a `Button<A>` inside a `B`-rooted
 /// tree fails to satisfy the derive's `Handlers<S>` bound, which is the
 /// compile-time form of the old dispatch safety contract.
-impl<S: 'static> Handlers<S> for Button<S> {
+impl<S: 'static, T: TextStorage> Handlers<S> for Button<S, T> {
     fn handler(&self, _sel: NodeSel) -> Option<fn(&mut S, &EventCtx)> {
         Some(self.on_click)
     }

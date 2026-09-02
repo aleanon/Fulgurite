@@ -6,4 +6,5 @@ license.workspace = true
 publish = false
 
 [dependencies]
+lumen-static = { path = "../../crates/lumen-static", features = ["reload"] }
 libloading = "0.8"
