@@ -36,6 +36,15 @@ pub fn concat_table(count: usize, node_count: usize, sub: &[NodeDesc]) -> Vec<No
     table
 }
 
+/// **Not an [`Arena`](crate::arena::Arena) owner, deliberately.** The
+/// other five off-table constructs hold `k` instances of one template
+/// and index them `k * n + node`. This holds a *table* — a synthetic
+/// root at index 0 followed by the instances, indexed `1 + k * n + node`
+/// — because it is a runtime-assembled tree rather than a widget with
+/// hidden children, and `hit` rebases into a real table index instead of
+/// returning an `Inner`. Sharing `Arena` would mean carving an exception
+/// into it for the one member whose addressing is different.
+/// `docs/plan-review-fixes.md` F4.2.
 /// `count` instances of `C` under a column root.
 pub struct Assembled<C: Widget + Default + 'static> {
     pub instances: Vec<C>,

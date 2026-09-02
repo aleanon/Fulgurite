@@ -174,10 +174,10 @@ pub struct Either<A: Widget, B: Widget> {
     pub a: A,
     pub b: B,
     showing: Side,
-    a_state: Vec<NodeState>,
-    b_state: Vec<NodeState>,
-    a_style: Vec<Style>,
-    b_style: Vec<Style>,
+    /// One arena per branch: both keep their state across a toggle,
+    /// which is the whole point of the hatch (F4.2).
+    a_arena: crate::arena::Arena,
+    b_arena: crate::arena::Arena,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -198,10 +198,8 @@ impl<A: Widget, B: Widget> Either<A, B> {
             a,
             b,
             showing: Side::A,
-            a_state: vec![NodeState::default(); A::NODE_COUNT],
-            b_state: vec![NodeState::default(); B::NODE_COUNT],
-            a_style: Vec::new(),
-            b_style: Vec::new(),
+            a_arena: crate::arena::Arena::new(A::NODE_COUNT),
+            b_arena: crate::arena::Arena::new(B::NODE_COUNT),
         }
     }
 
@@ -217,18 +215,15 @@ impl<A: Widget, B: Widget> Either<A, B> {
     /// Layout state of the active branch, for tests and tooling.
     pub fn active_state(&self, node: usize) -> NodeState {
         match self.showing {
-            Side::A => self.a_state[node],
-            Side::B => self.b_state[node],
+            Side::A => self.a_arena.node_state(0, node),
+            Side::B => self.b_arena.node_state(0, node),
         }
     }
 
     fn ensure_styles(&mut self) {
-        if self.a_style.is_empty() {
-            self.a_style = (0..A::NODE_COUNT).map(|j| self.a.node(j).defaults()).collect();
-        }
-        if self.b_style.is_empty() {
-            self.b_style = (0..B::NODE_COUNT).map(|j| self.b.node(j).defaults()).collect();
-        }
+        let Either { a, b, a_arena, b_arena, .. } = self;
+        a_arena.ensure(1, a);
+        b_arena.ensure(1, b);
     }
 }
 
@@ -267,8 +262,14 @@ impl<A: Widget, B: Widget> Node for Either<A, B> {
     ) -> Size {
         self.ensure_styles();
         let size = match self.showing {
-            Side::A => self.a.layout(cx, limits, &self.a_style, &mut self.a_state, 0),
-            Side::B => self.b.layout(cx, limits, &self.b_style, &mut self.b_state, 0),
+            Side::A => {
+                let (sty, st2) = self.a_arena.parts();
+                self.a.layout(cx, limits, sty, st2, 0)
+            }
+            Side::B => {
+                let (sty, st2) = self.b_arena.parts();
+                self.b.layout(cx, limits, sty, st2, 0)
+            }
         };
         st[i].constraints = limits;
         st[i].size = size;
@@ -278,15 +279,21 @@ impl<A: Widget, B: Widget> Node for Either<A, B> {
     fn place(&mut self, at: Point, _style: &[Style], st: &mut [NodeState], i: usize) {
         st[i].pos = at;
         match self.showing {
-            Side::A => self.a.place(at, &self.a_style, &mut self.a_state, 0),
-            Side::B => self.b.place(at, &self.b_style, &mut self.b_state, 0),
+            Side::A => {
+                let (sty, st2) = self.a_arena.parts();
+                self.a.place(at, sty, st2, 0)
+            }
+            Side::B => {
+                let (sty, st2) = self.b_arena.parts();
+                self.b.place(at, sty, st2, 0)
+            }
         }
     }
 
     fn paint(&self, _st: &[NodeState], _i: usize, out: &mut DisplayList) {
         match self.showing {
-            Side::A => self.a.paint(&self.a_state, 0, out),
-            Side::B => self.b.paint(&self.b_state, 0, out),
+            Side::A => self.a.paint(self.a_arena.slice(0), 0, out),
+            Side::B => self.b.paint(self.b_arena.slice(0), 0, out),
         }
     }
 
@@ -295,8 +302,8 @@ impl<A: Widget, B: Widget> Node for Either<A, B> {
             return None;
         }
         let inner = match self.showing {
-            Side::A => self.a.hit(&self.a_state, 0, x, y),
-            Side::B => self.b.hit(&self.b_state, 0, x, y),
+            Side::A => self.a.hit(self.a_arena.slice(0), 0, x, y),
+            Side::B => self.b.hit(self.b_arena.slice(0), 0, x, y),
         };
         Some(Hit {
             node: i as u32,
@@ -342,10 +349,10 @@ impl<A: Widget, B: Widget> Node for Either<A, B> {
         let id_of = |t: usize| (1u64 << 63) | (id << 44) | (row << 12) | t as u64;
         match self.showing {
             Side::A => {
-                crate::observe::emit_subtree(&self.a, &self.a_state, &id_of, extra);
+                crate::observe::emit_subtree(&self.a, self.a_arena.slice(0), &id_of, extra);
             }
             Side::B => {
-                crate::observe::emit_subtree(&self.b, &self.b_state, &id_of, extra);
+                crate::observe::emit_subtree(&self.b, self.b_arena.slice(0), &id_of, extra);
             }
         }
         node.push_child(accesskit::NodeId(id_of(0)));
@@ -381,19 +388,18 @@ pub struct List<W: Widget> {
     pub items: Vec<W>,
     /// Gap between items along the column.
     pub spacing: f32,
-    states: Vec<NodeState>,
-    style: Vec<Style>,
+    arena: crate::arena::Arena,
 }
 
 impl<W: Widget> Default for List<W> {
     fn default() -> Self {
-        List { items: Vec::new(), spacing: 0.0, states: Vec::new(), style: Vec::new() }
+        List { items: Vec::new(), spacing: 0.0, arena: crate::arena::Arena::new(W::NODE_COUNT) }
     }
 }
 
 impl<W: Widget> List<W> {
     pub fn new(items: Vec<W>) -> Self {
-        List { items, spacing: 0.0, states: Vec::new(), style: Vec::new() }
+        List { items, spacing: 0.0, arena: crate::arena::Arena::new(W::NODE_COUNT) }
     }
 
     pub fn len(&self) -> usize {
@@ -406,21 +412,23 @@ impl<W: Widget> List<W> {
 
     /// Layout state of item `k`'s node `node`.
     pub fn item_state(&self, k: usize, node: usize) -> NodeState {
-        self.states[k * W::NODE_COUNT + node]
+        self.arena.node_state(k, node)
     }
 
     fn ensure(&mut self) {
-        let want = self.items.len() * W::NODE_COUNT;
-        if self.states.len() != want {
-            self.states.resize(want, NodeState::default());
-        }
-        if self.style.is_empty() && !self.items.is_empty() {
-            self.style = (0..W::NODE_COUNT).map(|j| self.items[0].node(j).defaults()).collect();
+        // Disjoint field borrows: `items` shared, `arena` exclusive.
+        let List { items, arena, .. } = self;
+        match items.first() {
+            // One probe styles every item, which is sound only because
+            // `Node::defaults` depends on the type rather than on this
+            // instance's state (F3.2).
+            Some(probe) => arena.ensure(items.len(), probe),
+            None => arena.clear_instances(),
         }
     }
 
     fn slice(&self, k: usize) -> &[NodeState] {
-        &self.states[k * W::NODE_COUNT..(k + 1) * W::NODE_COUNT]
+        self.arena.slice(k)
     }
 }
 
@@ -448,7 +456,8 @@ impl<W: Widget> Node for List<W> {
         self.ensure();
         let n = W::NODE_COUNT;
         let spacing = self.spacing;
-        let List { items, states, style: istyle, .. } = self;
+        let List { items, arena, .. } = self;
+        let (istyle, states) = arena.parts();
         let last = items.len().saturating_sub(1);
         let mut sum = 0.0f32;
         let mut mx = 0.0f32;
@@ -473,7 +482,8 @@ impl<W: Widget> Node for List<W> {
         st[i].pos = at;
         let n = W::NODE_COUNT;
         let spacing = self.spacing;
-        let List { items, states, style: istyle, .. } = self;
+        let List { items, arena, .. } = self;
+        let (istyle, states) = arena.parts();
         let mut y = at.y;
         for (k, item) in items.iter_mut().enumerate() {
             item.place(Point { x: at.x, y }, istyle, &mut states[k * n..(k + 1) * n], 0);
@@ -575,8 +585,10 @@ pub struct Dyn {
     content_depth: usize,
     inner: Box<dyn Node>,
     table: &'static [NodeDesc],
-    states: Vec<NodeState>,
-    style: Vec<Style>,
+    /// One instance's worth. `Arena` is keyed on a runtime node count,
+    /// which is what lets a type-erased island share it with the other
+    /// off-table owners (F4.1).
+    arena: crate::arena::Arena,
 }
 
 impl Dyn {
@@ -596,12 +608,12 @@ impl Dyn {
             W::DEPTH,
             crate::desc::MAX_DEPTH,
         );
-        let style = (0..W::NODE_COUNT).map(|j| w.node(j).defaults()).collect();
+        let mut arena = crate::arena::Arena::new(W::NODE_COUNT);
+        arena.ensure(1, &w);
         Dyn {
             inner: Box::new(w),
             table: W::SUB_TABLE,
-            states: vec![NodeState::default(); W::NODE_COUNT],
-            style,
+            arena,
             content_depth: W::DEPTH,
         }
     }
@@ -619,7 +631,7 @@ impl Dyn {
     }
 
     pub fn inner_state(&self, node: usize) -> NodeState {
-        self.states[node]
+        self.arena.node_state(0, node)
     }
 
     pub fn node_count(&self) -> usize {
@@ -674,7 +686,9 @@ impl Node for Dyn {
         st: &mut [NodeState],
         i: usize,
     ) -> Size {
-        let size = self.inner.layout(cx, limits, &self.style, &mut self.states, 0);
+        let Dyn { inner, arena, .. } = self;
+        let (istyle, states) = arena.parts();
+        let size = inner.layout(cx, limits, istyle, states, 0);
         let size = crate::ops::resolve_self(limits, &style[i], size);
         st[i].constraints = limits;
         st[i].size = size;
@@ -683,14 +697,16 @@ impl Node for Dyn {
 
     fn place(&mut self, at: Point, _style: &[Style], st: &mut [NodeState], i: usize) {
         st[i].pos = at;
-        self.inner.place(at, &self.style, &mut self.states, 0);
+        let Dyn { inner, arena, .. } = self;
+        let (istyle, states) = arena.parts();
+        inner.place(at, istyle, states, 0);
     }
 
     fn paint(&self, st: &[NodeState], i: usize, out: &mut DisplayList) {
         // Same shape as `List`: the island's content may exceed the box
         // `resolve_self` gave it; `hit` stops at the box, so paint must.
         out.push_clip(crate::ops::rect_of(&st[i]));
-        self.inner.paint(&self.states, 0, out);
+        self.inner.paint(self.arena.slice(0), 0, out);
         out.pop_clip();
     }
 
@@ -698,7 +714,7 @@ impl Node for Dyn {
         if !crate::hit::contains(&st[i], x, y) {
             return None;
         }
-        let inner = self.inner.hit(&self.states, 0, x, y);
+        let inner = self.inner.hit(self.arena.slice(0), 0, x, y);
         Some(Hit {
             node: i as u32,
             inner: inner.map(|h| crate::hit::Inner { row: 0, node: h.node }),
@@ -726,7 +742,7 @@ impl Node for Dyn {
         extra: &mut Vec<(accesskit::NodeId, accesskit::Node)>,
     ) {
         let id_of = |t: usize| (1u64 << 63) | (id << 44) | t as u64;
-        crate::observe::emit_table(self.table, &*self.inner, &self.states, &id_of, extra);
+        crate::observe::emit_table(self.table, &*self.inner, self.arena.slice(0), &id_of, extra);
         node.push_child(accesskit::NodeId(id_of(0)));
     }
 }

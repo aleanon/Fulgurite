@@ -6,6 +6,7 @@
 //! journal and ambient audit are keyed on. No `unsafe` in a release
 //! build — see `docs/results-safe-prototype.md`.
 
+pub mod arena;
 pub mod assemble;
 pub mod bind;
 pub mod cx;

@@ -30,12 +30,11 @@ pub struct Repeat<T: Widget + Default + 'static> {
     /// pointer: it cannot capture, so a hot reload re-supplies it.
     pub bind: fn(&mut T, usize),
     window: Vec<T>,
-    states: Vec<NodeState>,
+    /// Materialized rows' state and the template style row they share.
+    /// Instances are off-table, so the cascade cannot reach them; the
+    /// row style is their source until per-row styling exists.
+    arena: crate::arena::Arena,
     first: usize,
-    /// Template default styles, built once. Instances are off-table, so
-    /// the cascade cannot reach them; this is their style source until
-    /// per-row styling exists.
-    row_style: Vec<Style>,
 }
 
 impl<T: Widget + Default> Default for Repeat<T> {
@@ -52,9 +51,8 @@ impl<T: Widget + Default> Repeat<T> {
             item_extent,
             bind,
             window: Vec::new(),
-            states: Vec::new(),
+            arena: crate::arena::Arena::new(T::NODE_COUNT),
             first: 0,
-            row_style: Vec::new(),
         }
     }
 
@@ -70,7 +68,7 @@ impl<T: Widget + Default> Repeat<T> {
 
     /// Copy of instance `k`'s state for template node `node`.
     pub fn instance_state(&self, k: usize, node: usize) -> NodeState {
-        self.states[k * T::NODE_COUNT + node]
+        self.arena.node_state(k, node)
     }
 
     /// Instance `k`'s widget, for routing and observability.
@@ -116,20 +114,13 @@ impl<T: Widget + Default> Repeat<T> {
         (first, vis)
     }
 
-    fn ensure_row_style(&mut self) {
-        if self.row_style.is_empty() {
-            let probe = T::default();
-            self.row_style = (0..T::NODE_COUNT).map(|j| probe.node(j).defaults()).collect();
-        }
-    }
-
     /// Geometry of materialized row `k`'s root node — for tests.
     pub fn row_state(&self, k: usize) -> NodeState {
-        self.states[k * T::NODE_COUNT]
+        self.arena.node_state(k, 0)
     }
 
     fn slice(&self, k: usize) -> &[NodeState] {
-        &self.states[k * T::NODE_COUNT..(k + 1) * T::NODE_COUNT]
+        self.arena.slice(k)
     }
 }
 
@@ -168,7 +159,11 @@ impl<T: Widget + Default + 'static> Node for Repeat<T> {
         let (first, vis) = self.visible_range(limits.max_h);
         self.first = first;
         self.window.resize_with(vis, T::default);
-        self.states.resize(vis * T::NODE_COUNT, NodeState::default());
+        // One probe styles every row: `Node::defaults` depends on the
+        // type, not the instance (F3.2). `T::default()` is the probe
+        // because a repeater's rows are bound, not stored.
+        let probe = T::default();
+        self.arena.ensure(vis, &probe);
         let bind = self.bind;
         for (k, item) in self.window.iter_mut().enumerate() {
             bind(item, first + k);
@@ -184,8 +179,8 @@ impl<T: Widget + Default + 'static> Node for Repeat<T> {
         // Instances use the template's own default styles: the cascade
         // is keyed by *table* index, and instances are not in the table
         // (`docs/layout-and-storage-decisions.md` §3's recorded limit).
-        self.ensure_row_style();
-        let Repeat { window, states, row_style, .. } = self;
+        let Repeat { window, arena, .. } = self;
+        let (row_style, states) = arena.parts();
         for (k, item) in window.iter_mut().enumerate() {
             item.layout(cx, row_limits, row_style, &mut states[k * n..(k + 1) * n], 0);
         }
@@ -203,7 +198,8 @@ impl<T: Widget + Default + 'static> Node for Repeat<T> {
         // window is positioned here rather than by the caller.
         let n = T::NODE_COUNT;
         let (first, extent, scroll) = (self.first, self.item_extent, self.scroll);
-        let Repeat { window, states, row_style, .. } = self;
+        let Repeat { window, arena, .. } = self;
+        let (row_style, states) = arena.parts();
         for k in 0..window.len() {
             let dy = (first + k) as f32 * extent - scroll;
             let origin = Point { x: at.x, y: at.y + dy };
