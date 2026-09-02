@@ -733,6 +733,8 @@ fn expand_enum(
     if var_ident.is_empty() {
         return Err(syn::Error::new_spanned(name, "an enum widget needs at least one variant"));
     }
+    let nvars = var_ident.len();
+    let var_no: Vec<syn::Index> = (0..nvars).map(syn::Index::from).collect();
 
     Ok(quote! {
         const _: () = {
@@ -740,17 +742,56 @@ fn expand_enum(
             use ::lumen_static::widget::{Node, Widget};
             use ::lumen_static::{Constraints, Point, Size, Style};
 
-            const TABLE: [NodeDesc; 1] = [NodeDesc::new(
-                0,
-                ::lumen_static::NO_PARENT,
-                0,
-                0,
-                NodeDesc::CONTAINER,
-            )
-            .with_src(::core::file!(), #root_line)];
+            /// Where each variant's subtree starts, plus a terminator.
+            const STARTS: [usize; #nvars + 1] = {
+                let counts = [#(<#var_ty as Widget>::NODE_COUNT),*];
+                let mut s = [0usize; #nvars + 1];
+                s[0] = 1;
+                let mut k = 0;
+                while k < #nvars {
+                    s[k + 1] = s[k] + counts[k];
+                    k += 1;
+                }
+                s
+            };
+
+            /// Every variant gets its own index range — `1 + sum`, not
+            /// `1`. That is handoff §6's shape, and what it buys is that
+            /// a node's index means the same thing whichever variant is
+            /// showing, so agent ids and provenance survive a switch.
+            ///
+            /// The previous shape was `NODE_COUNT = 1` with the active
+            /// variant laid out into a scratch `Vec` allocated per call.
+            /// It could not paint (no retained geometry), could not be
+            /// hit, could not carry handlers, and allocated twice per
+            /// enum node per frame in framework-generated code
+            /// (`docs/plan-review-fixes.md` F4.3).
+            const TABLE: [NodeDesc; 1 #(+ <#var_ty as Widget>::NODE_COUNT)*] = {
+                let mut t = [NodeDesc::EMPTY; 1 #(+ <#var_ty as Widget>::NODE_COUNT)*];
+                t[0] = NodeDesc::new(
+                    1,
+                    ::lumen_static::NO_PARENT,
+                    0,
+                    #nvars as u16,
+                    NodeDesc::CONTAINER,
+                )
+                .with_src(::core::file!(), #root_line);
+                let mut at: usize = 1;
+                let mut prev_root: usize = 0;
+                #(
+                    ::lumen_static::widget::splice_child(
+                        &mut t, at, <#var_ty as Widget>::SUB_TABLE, 0,
+                    );
+                    if prev_root != 0 { t[prev_root].next_sibling = at as u32; }
+                    prev_root = at;
+                    at += <#var_ty as Widget>::NODE_COUNT;
+                )*
+                let _ = (at, prev_root);
+                t
+            };
 
             impl Widget for #name {
-                const NODE_COUNT: usize = 1;
+                const NODE_COUNT: usize = 1 #(+ <#var_ty as Widget>::NODE_COUNT)*;
                 const DEPTH: usize = 1 + {
                     let mut d = 0usize;
                     #( if <#var_ty as Widget>::DEPTH > d { d = <#var_ty as Widget>::DEPTH; } )*
@@ -777,16 +818,16 @@ fn expand_enum(
                     i: usize,
                 ) -> Size {
                     let me = style[i];
+                    // Inactive variants are hidden, not stale: their
+                    // slots would otherwise keep the geometry from
+                    // whenever they were last active, which paint, the
+                    // journal and the audit all read.
+                    ::lumen_static::ops::hide_subtree(
+                        st, i + 1, limits, <Self as Widget>::NODE_COUNT - 1,
+                    );
                     let size = match self {
                         #( #name::#var_ident(w) => {
-                            let mut ist =
-                                ::std::vec![NodeState::default(); <#var_ty as Widget>::NODE_COUNT];
-                            let isty: ::std::vec::Vec<Style> =
-                                (0..<#var_ty as Widget>::NODE_COUNT)
-                                    .map(|j| Node::node(w, j).defaults())
-                                    .collect();
-                            let s = w.layout(cx, limits, &isty, &mut ist, 0);
-                            s
+                            w.layout(cx, limits, style, st, i + STARTS[#var_no])
                         } ),*
                     };
                     ::lumen_static::ops::record(
@@ -800,27 +841,29 @@ fn expand_enum(
                 fn place(
                     &mut self,
                     at: Point,
-                    _style: &[Style],
+                    style: &[Style],
                     st: &mut [NodeState],
                     i: usize,
                 ) {
                     st[i].pos = at;
+                    match self {
+                        #( #name::#var_ident(w) => {
+                            w.place(at, style, st, i + STARTS[#var_no])
+                        } ),*
+                    }
                 }
 
-                /// **Known limit.** The enum node draws nothing: a
-                /// variant's subtree state lives in a scratch arena that
-                /// is not retained between calls, so there is no geometry
-                /// to paint against here. A variant switch is still
-                /// visible to the change journal through *size*, which is
-                /// what a sizing switch needs. Where painted content
-                /// matters, `Either` retains both branches' arenas and is
-                /// the built-out answer.
                 fn paint(
                     &self,
-                    _st: &[NodeState],
-                    _i: usize,
-                    _out: &mut ::lumen_static::DisplayList,
+                    st: &[NodeState],
+                    i: usize,
+                    out: &mut ::lumen_static::DisplayList,
                 ) {
+                    match self {
+                        #( #name::#var_ident(w) => {
+                            w.paint(st, i + STARTS[#var_no], out)
+                        } ),*
+                    }
                 }
 
                 fn hit(&self, st: &[NodeState], i: usize, x: f32, y: f32)
@@ -829,29 +872,76 @@ fn expand_enum(
                     if !::lumen_static::hit::contains(&st[i], x, y) {
                         return ::core::option::Option::None;
                     }
-                    ::core::option::Option::Some(::lumen_static::Hit {
+                    let inner = match self {
+                        #( #name::#var_ident(w) => {
+                            w.hit(st, i + STARTS[#var_no], x, y)
+                        } ),*
+                    };
+                    inner.or(::core::option::Option::Some(::lumen_static::Hit {
                         node: i as u32,
                         inner: ::core::option::Option::None,
                         local: Point { x: x - st[i].pos.x, y: y - st[i].pos.y },
-                    })
+                    }))
                 }
 
                 /// The match the byte-offset path could not express: the
                 /// discriminant selects which subtree index `i` names.
-                fn node(&self, _i: usize) -> &dyn Node {
+                ///
+                /// Indices belonging to an *inactive* variant resolve to
+                /// the enum node itself rather than panicking — they are
+                /// real table entries with real state, they are simply
+                /// hidden, and the agent walks them.
+                fn node(&self, i: usize) -> &dyn Node {
+                    if i == 0 { return self; }
+                    match self {
+                        #( #name::#var_ident(w) => {
+                            let (lo, hi) = (STARTS[#var_no], STARTS[#var_no + 1]);
+                            if i >= lo && i < hi {
+                                return Node::node(w, i - lo);
+                            }
+                        } ),*
+                    }
                     self
                 }
 
-                fn node_mut(&mut self, _i: usize) -> &mut dyn Node {
-                    self
+                fn node_mut(&mut self, i: usize) -> &mut dyn Node {
+                    if i == 0 { return self; }
+                    let active = match self {
+                        #( #name::#var_ident(_) => (STARTS[#var_no], STARTS[#var_no + 1]) ),*
+                    };
+                    if i < active.0 || i >= active.1 {
+                        return self;
+                    }
+                    let off = active.0;
+                    match self {
+                        #( #name::#var_ident(w) => Node::node_mut(w, i - off) ),*
+                    }
                 }
             }
 
-            impl<S> ::lumen_static::event::Handlers<S> for #name {
+            /// Delegates to the active variant. The where-clause makes a
+            /// mis-typed handler a compile error at the enum, as it does
+            /// for a struct container.
+            impl<S> ::lumen_static::event::Handlers<S> for #name
+            where
+                #(#var_ty: ::lumen_static::event::Handlers<S>,)*
+            {
                 fn handler(
                     &self,
-                    _sel: ::lumen_static::event::NodeSel,
+                    sel: ::lumen_static::event::NodeSel,
                 ) -> ::core::option::Option<fn(&mut S, &::lumen_static::EventCtx)> {
+                    if sel.i == 0 { return ::core::option::Option::None; }
+                    match self {
+                        #( #name::#var_ident(w) => {
+                            let (lo, hi) = (STARTS[#var_no], STARTS[#var_no + 1]);
+                            if sel.i >= lo && sel.i < hi {
+                                return ::lumen_static::event::Handlers::handler(
+                                    w,
+                                    ::lumen_static::event::NodeSel { i: sel.i - lo, inner: sel.inner },
+                                );
+                            }
+                        } ),*
+                    }
                     ::core::option::Option::None
                 }
             }

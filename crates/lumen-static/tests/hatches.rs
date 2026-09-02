@@ -183,18 +183,24 @@ impl Default for Slot {
 }
 
 #[test]
-fn enum_variants_switch_subtrees_at_one_table_node() {
+fn enum_variants_get_stable_index_ranges_and_paint() {
     // Variants overlap in memory, so no const byte offset can name a
     // node inside one — this is the hatch the accessor path unblocked
-    // (`docs/layout-and-storage-decisions.md` §4d).
-    const _: () = assert!(Slot::NODE_COUNT == 1);
+    // (`docs/layout-and-storage-decisions.md` §4d). What it could not do
+    // until 2026-09-02 was *retain* a variant's geometry: NODE_COUNT was
+    // 1 and the active variant was laid out into a `Vec` allocated per
+    // call, so the enum node painted nothing, could not be hit, and
+    // carried no handlers. Now every variant has its own index range —
+    // handoff §6's `1 + sum(variants)` — so a node's index means the
+    // same thing whichever variant shows (F4.3).
+    const _: () = assert!(Slot::NODE_COUNT == 1 + <Label as Widget>::NODE_COUNT + Fixed::NODE_COUNT + Panel::NODE_COUNT);
     // Depth accounts for the deepest variant, so MAX_DEPTH stays sound.
     const _: () = assert!(Slot::DEPTH == 1 + Panel::DEPTH);
 
-    let sty = vec![lumen_static::Style::default()];
-    let mut st = [NodeState::default(); 1];
+    let mut st = [NodeState::default(); Slot::NODE_COUNT];
 
     let mut s = Slot::Box(Fixed { w: 40.0, h: 12.0 });
+    let sty = pass::default_styles(&s);
     pass::layout(&mut s, &sty, &mut st, VIEW);
     assert_eq!(st[0].size, lumen_static::Size { w: 40.0, h: 12.0 });
 
@@ -202,24 +208,26 @@ fn enum_variants_switch_subtrees_at_one_table_node() {
     pass::layout(&mut s, &sty, &mut st, VIEW);
     assert_eq!(st[0].size.w, 8.0 * 5.0, "the other variant measures itself");
 
-    // A variant holding a whole subtree works the same way.
     let mut s = Slot::Nested(Panel::default());
     pass::layout(&mut s, &sty, &mut st, VIEW);
     assert!(st[0].size.h > 0.0, "a nested container variant lays out too");
 
+    // The capability that replaced the documented limit: the active
+    // variant's content reaches the screen.
     let mut s = Slot::Text(Label::new("hello"));
     pass::layout(&mut s, &sty, &mut st, VIEW);
-
-    // A variant switch is visible in *layout* — the sizes above differ,
-    // and the change journal diffs geometry as well as content.
-    //
-    // Known limit: the enum node does not paint its variant's content,
-    // because a variant's subtree state lives in a scratch arena that is
-    // not retained between calls. `Either` is the built-out answer where
-    // painted content matters; the enum derive is a sizing switch.
     let mut a = lumen_static::DisplayList::new();
     pass::paint(&s, &st, &mut a);
-    assert!(a.is_empty(), "documented: the enum node itself draws nothing");
+    assert!(!a.is_empty(), "the active variant paints");
+
+    // And an inactive variant's slots are hidden rather than stale: the
+    // Fixed variant was laid out at 40x12 two frames ago.
+    let fixed_root = 1 + <Label as Widget>::NODE_COUNT;
+    assert_eq!(
+        st[fixed_root].size,
+        lumen_static::Size::default(),
+        "an inactive variant keeps no geometry from when it was active"
+    );
 }
 
 #[test]

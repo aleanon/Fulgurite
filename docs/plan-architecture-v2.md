@@ -351,11 +351,18 @@ subtrees are stable across toggles.
    `Either`. Options, evidence and a recommendation in
    `docs/either-reopened.md`; the re-decision is task T8.0 so it lands
    before any scroll region is built on top of the current shape.
-2. **The enum derive cannot paint variant content.** Enum variants keep
-   stable indices and `node(i)` matches the discriminant as planned, but
-   the scratch arena a variant would need for painting is not retained
-   across the call. `Either` is the answer where painted content matters;
-   the enum derive is for structural switching. Documented at the derive.
+2. ~~**The enum derive cannot paint variant content.**~~ **Closed
+   2026-09-02 (F4.3).** The limit was real and its stated cause was the
+   fix: a variant's state lived in a scratch arena allocated per `layout`
+   call, so there was no retained geometry to paint against — and two
+   heap allocations per enum node per frame, in framework-generated code,
+   against the zero-allocation constraint.
+   `NODE_COUNT` is now `1 + sum(variants)`, which is what handoff §6
+   specified in the first place: every variant has its own range in the
+   main table, so there is no arena at all. Paint, hit and `Handlers` are
+   real, inactive variants are hidden rather than stale, and a node's
+   index means the same thing whichever variant shows. The test that
+   pinned the limit as intended behaviour now pins the capability.
 
 Every hatch has a firing and a quiet test, and `NODE_COUNT` is asserted
 constant in each.
