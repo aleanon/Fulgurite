@@ -1,7 +1,8 @@
 ## Work queue
 
-The current plan is `docs/plan-architecture-v2.md`. Task ids (`T0.6`) go
-in commit subjects. Decision records live beside it in `docs/`; the
+The current plan is `docs/plan-architecture-v2.md`; **the review-fix
+milestones in `docs/plan-review-fixes.md` (F0–F7) run before its M7.**
+Task ids (`T0.6`, `F1.3`) go in commit subjects. Decision records live beside it in `docs/`; the
 design spec is `docs/00-handoff-static-tree.md`, whose DECIDED/SUPERSEDED
 markers must move with the code.
 

@@ -448,6 +448,12 @@ the reentrancy is noted.
 
 ---
 
+> **Inserted 2026-09-02:** the seven-agent review of that date produced
+> `docs/plan-review-fixes.md` — milestones **F0–F7**, which run *before*
+> M7. F4 (`ArenaHost`) changes what M8/M9 build on; F2 makes the agent
+> usable during M7's measurement work. M7–M9 below stand as written and
+> wait.
+
 ## M7 — Phase A completion: a window, real glyphs, real pixels
 
 *The remainder of `plan-lumen-parity.md` Phase A, promoted from a
