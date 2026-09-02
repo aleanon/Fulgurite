@@ -78,8 +78,44 @@ not a comparison: the failure mode is a hard compiler limit, so a wide
 absolute threshold is the right instrument and machine variance does not
 matter at this margin. Current: 0.13–0.21 s, i.e. ~25× of headroom.
 
-## Not fixed here
+## F5.4: the accessor stays a linear scan — the planned fix was slower
 
-`Node::node(i)` is still O(fanout × depth) — a linear scan accumulating
-an offset — and five callers loop over it. That is a *runtime* cost, it
-is not on the release frame path after F2.2, and it is F5.4.
+`Node::node(i)` walks the fields accumulating an offset, so it is
+O(fanout × depth), and five loops call it per index: the cascade, the
+default styles, the AccessKit emitter, the agent's index and the
+journal. The review measured it quadratic *when one container is wide* —
+at 2,001 nodes in a flat-wide tree, doubling the node count cost 4.3× the
+time — and the plan's F5.4 said to emit a const `CHILD_STARTS` array and
+binary-search it.
+
+**Built, measured, reverted.** Same fixture, same harness, one A/B:
+
+| accessor | full scan over 901 nodes | `frame_done` |
+|---|---|---|
+| linear scan (kept) | **5.0 µs** | **44.8 µs** |
+| binary search over a const offset table | 18.0 µs | 72.4 µs |
+
+3.6× *slower*, and it made the agent's frame 60% more expensive. The
+reason is visible in what each shape compiles to. At the fanouts real
+containers have — 5 to 10 fields — the scan becomes a chain of compares
+against constants, and each `Node::node(&self.field, ..)` is a direct
+call on a known type that inlines. Binary search replaces that with a
+genuine loop over an array and then a `match` on a runtime index, i.e. a
+jump table and an indirect branch, in exchange for turning O(10) into
+O(log 10).
+
+Two things worth keeping from this:
+
+- **The quadratic case is real but is not the case we have.** It needs a
+  single container with many dozens of fields. Every container in the
+  workspace has ten or fewer, and a struct with forty fields is a design
+  problem before it is a performance one. If one appears, the crossover
+  is worth re-measuring — not assumed in either direction.
+- **A `const` array is materialized at each use.** The first attempt had
+  `binary_search` copying the whole table to the stack per call; promoting
+  it to a `&'static` reference in rodata changed nothing measurable, so
+  that was not the cause — but it is a real footgun and the reason the
+  first number was even worse.
+
+An optimization that a plan asserted and measurement rejected. The plan
+said so as a recommendation, not a finding; this is the finding.

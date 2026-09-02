@@ -26,6 +26,7 @@ unsafe impl GlobalAlloc for Counting {
 static A: Counting = Counting;
 
 use benches::{bench, Ten10};
+
 use lumen_static::{pass, Constraints, NodeState, Widget};
 use lumen_static_agent::{Agent, TreeMut, TreeRef};
 
@@ -107,6 +108,18 @@ fn main() {
         sagent.finding_count(),
         (ALLOCS.load(Ordering::Relaxed) - b2) as f64 / 100.0,
     );
+
+    // The accessor, which five per-frame or per-startup loops walk.
+    {
+        let tree = TreeRef::of_root(&w, &sty, &st);
+        bench("node(i) full scan over the tree", 2_000, || {
+            let mut acc = 0u64;
+            for i in 0..Ten10::NODE_COUNT {
+                acc += lumen_static::widget::Node::node(tree.root, i).kind_name().len() as u64;
+            }
+            acc
+        });
+    }
 
     // Commands recorded per node — the O(N.depth) symptom.
     let tree = TreeRef::of_root(&w, &sty, &st);
