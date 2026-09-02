@@ -65,10 +65,7 @@ pub fn format_into<S: TextBuffer>(dst: &mut Label<S>, args: core::fmt::Arguments
     let mut buf = SCRATCH.with(|c| c.take());
     buf.clear();
     let _ = buf.write_fmt(args); // writing to a String cannot fail
-    let changed = dst.as_str() != buf.as_str();
-    if changed {
-        dst.set_str(&buf);
-    }
+    let changed = dst.set_str(&buf);
     SCRATCH.with(|c| c.replace(buf));
     changed
 }
@@ -76,9 +73,7 @@ pub fn format_into<S: TextBuffer>(dst: &mut Label<S>, args: core::fmt::Arguments
 /// Store `text` in `dst` only if it differs. The non-formatting form,
 /// for a binding whose source is already a string.
 pub fn set_if_changed<S: TextBuffer>(dst: &mut Label<S>, text: &str) -> bool {
-    if dst.as_str() == text {
-        return false;
-    }
-    dst.set_str(text);
-    true
+    // `Label::set_str` compares as of F4.6; this is kept as the named
+    // spelling for a binding whose source is already a string.
+    dst.set_str(text)
 }

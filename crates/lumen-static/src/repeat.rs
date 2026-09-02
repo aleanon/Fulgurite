@@ -57,6 +57,26 @@ impl<T: Widget + Default> Repeat<T> {
     }
 
     /// Materialized instances (visible window), for tests/inspection.
+    /// Which arena slot holds window position `k`.
+    ///
+    /// The window is a **ring**: position `k` is row `first + k`, and
+    /// that row lives in slot `(first + k) % len`. Slot-indexing it
+    /// instead — position `k` in slot `k` — meant every slot's *row*
+    /// changed when `first` advanced by one, so a one-row scroll rebound
+    /// and re-measured all 31 rows of a 31-row window instead of the one
+    /// that actually entered. Measured 31 of 31 before, 1 of 31 after
+    /// (`docs/plan-review-fixes.md` F4.6).
+    ///
+    /// Rows are still rebound every frame, which is what keeps a data
+    /// change visible without an explicit invalidation call; the ring is
+    /// what makes almost all of those binds write identical text, which
+    /// `Label::set_str` then skips.
+    #[inline]
+    fn slot(&self, k: usize) -> usize {
+        let len = self.window.len();
+        if len == 0 { 0 } else { (self.first + k) % len }
+    }
+
     pub fn window_len(&self) -> usize {
         self.window.len()
     }
@@ -68,12 +88,12 @@ impl<T: Widget + Default> Repeat<T> {
 
     /// Copy of instance `k`'s state for template node `node`.
     pub fn instance_state(&self, k: usize, node: usize) -> NodeState {
-        self.arena.node_state(k, node)
+        self.arena.node_state(self.slot(k), node)
     }
 
     /// Instance `k`'s widget, for routing and observability.
     pub fn instance(&self, k: usize) -> &T {
-        &self.window[k]
+        &self.window[self.slot(k)]
     }
 
     /// The smallest item extent a repeater will act on.
@@ -114,13 +134,13 @@ impl<T: Widget + Default> Repeat<T> {
         (first, vis)
     }
 
-    /// Geometry of materialized row `k`'s root node — for tests.
+    /// Geometry of window position `k`'s root node — for tests.
     pub fn row_state(&self, k: usize) -> NodeState {
-        self.arena.node_state(k, 0)
+        self.arena.node_state(self.slot(k), 0)
     }
 
     fn slice(&self, k: usize) -> &[NodeState] {
-        self.arena.slice(k)
+        self.arena.slice(self.slot(k))
     }
 }
 
@@ -164,9 +184,14 @@ impl<T: Widget + Default + 'static> Node for Repeat<T> {
         // because a repeater's rows are bound, not stored.
         let probe = T::default();
         self.arena.ensure(vis, &probe);
+        // Bound every frame, so a data change needs no invalidation
+        // call — the ring is what makes almost every one of these write
+        // identical text, which `Label::set_str` then skips.
         let bind = self.bind;
-        for (k, item) in self.window.iter_mut().enumerate() {
-            bind(item, first + k);
+        let len = self.window.len();
+        for k in 0..len {
+            let row = first + k;
+            bind(&mut self.window[row % len], row);
         }
 
         let row_limits = Constraints {
@@ -181,8 +206,10 @@ impl<T: Widget + Default + 'static> Node for Repeat<T> {
         // (`docs/layout-and-storage-decisions.md` §3's recorded limit).
         let Repeat { window, arena, .. } = self;
         let (row_style, states) = arena.parts();
-        for (k, item) in window.iter_mut().enumerate() {
-            item.layout(cx, row_limits, row_style, &mut states[k * n..(k + 1) * n], 0);
+        let len = window.len();
+        for k in 0..len {
+            let sl = (first + k) % len;
+            window[sl].layout(cx, row_limits, row_style, &mut states[sl * n..(sl + 1) * n], 0);
         }
 
         let content = Size { w: limits.max_w, h: self.count as f32 * self.item_extent };
@@ -200,10 +227,12 @@ impl<T: Widget + Default + 'static> Node for Repeat<T> {
         let (first, extent, scroll) = (self.first, self.item_extent, self.scroll);
         let Repeat { window, arena, .. } = self;
         let (row_style, states) = arena.parts();
-        for k in 0..window.len() {
+        let len = window.len();
+        for k in 0..len {
+            let sl = (first + k) % len;
             let dy = (first + k) as f32 * extent - scroll;
             let origin = Point { x: at.x, y: at.y + dy };
-            window[k].place(origin, row_style, &mut states[k * n..(k + 1) * n], 0);
+            window[sl].place(origin, row_style, &mut states[sl * n..(sl + 1) * n], 0);
         }
     }
 
@@ -227,7 +256,7 @@ impl<T: Widget + Default + 'static> Node for Repeat<T> {
         // `defaults()`.
         out.push_clip(crate::ops::rect_of(&st[i]));
         for k in 0..self.window.len() {
-            self.window[k].paint(self.slice(k), 0, out);
+            self.window[self.slot(k)].paint(self.slice(k), 0, out);
         }
         out.pop_clip();
     }
@@ -237,7 +266,7 @@ impl<T: Widget + Default + 'static> Node for Repeat<T> {
             return None;
         }
         for k in 0..self.window.len() {
-            if let Some(h) = self.window[k].hit(self.slice(k), 0, x, y) {
+            if let Some(h) = self.window[self.slot(k)].hit(self.slice(k), 0, x, y) {
                 return Some(Hit {
                     node: i as u32,
                     inner: Some(Inner { row: (self.first + k) as u64, node: h.node }),
@@ -274,7 +303,7 @@ impl<T: Widget + Default + 'static> Node for Repeat<T> {
             let row = (self.first + k) as u64;
             // Row-stable synthetic ids: `1<<63 | node<<44 | row<<12 | template`.
             let id_of = |t: usize| (1u64 << 63) | (id << 44) | (row << 12) | t as u64;
-            crate::observe::emit_subtree(&self.window[k], self.slice(k), &id_of, extra);
+            crate::observe::emit_subtree(&self.window[self.slot(k)], self.slice(k), &id_of, extra);
             node.push_child(accesskit::NodeId(id_of(0)));
         }
     }

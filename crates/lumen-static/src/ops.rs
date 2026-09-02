@@ -279,17 +279,31 @@ impl<S: TextStorage> Label<S> {
     }
 
     /// Replace the text from a borrowed string, reusing the storage's
-    /// allocation where it can. Marks for re-measurement unconditionally
-    /// — callers that want the write skipped when nothing changed go
-    /// through `crate::bind`, which compares first.
+    /// allocation where it can. **Compares first**: identical text does
+    /// not touch the dirty bit, so the measurement memo survives.
+    /// Returns whether the text changed.
     ///
-    /// Requires [`TextBuffer`](crate::text::TextBuffer), so `Label<&'static str>` does not have
-    /// this method: that storage can only accept a new value by leaking.
-    pub fn set_str(&mut self, text: &str)
+    /// The compare used to live only in `crate::bind`, which meant the
+    /// obvious way to write a repeater's bind function —
+    /// `row.label.set_str(..)` — dirtied every visible row on every
+    /// layout and defeated the memo entirely: 62 needless text
+    /// measurements per *idle* frame for a 31-row window. Nothing in
+    /// `fn(&mut T, usize)` steered an author away from it. Comparing
+    /// here is the only sane default for a memoized field
+    /// (`docs/plan-review-fixes.md` F4.6).
+    ///
+    /// Requires [`TextBuffer`](crate::text::TextBuffer), so
+    /// `Label<&'static str>` does not have this method: that storage can
+    /// only accept a new value by leaking.
+    pub fn set_str(&mut self, text: &str) -> bool
     where
         S: crate::text::TextBuffer,
     {
+        if self.text.get().as_ref() == text {
+            return false;
+        }
         self.text.get_mut().set_from_str(text);
+        true
     }
 
     pub fn as_str(&self) -> &str {
