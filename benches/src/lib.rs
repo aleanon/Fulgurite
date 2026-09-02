@@ -539,3 +539,20 @@ pub struct FusedCard {
     pub r3: FusedItem,
     pub r4: FusedItem,
 }
+
+/// ~1k nodes of ordinary static tree, for measuring anything that walks
+/// the table rather than the arenas.
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+pub struct Ten10 {
+    pub a: Block,
+    pub b: Block,
+    pub c: Block,
+    pub d: Block,
+    pub e: Block,
+    pub f: Block,
+    pub g: Block,
+    pub h: Block,
+    pub i: Block,
+    pub j: Block,
+}

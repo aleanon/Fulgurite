@@ -232,8 +232,16 @@ impl Auditor {
     /// Measure a leaf under both probes: same answer twice means the node
     /// is sized by its own content.
     ///
-    /// M2 retires this — once `Length` exists, `Shrink` results *are* the
-    /// intrinsic sizes and the audit reads them instead of probing.
+    /// Goes through [`Node::probe`], not `layout`: probing through
+    /// `layout` left every `Label`'s memo keyed on `PROBE_B` and so
+    /// forced a re-measure on every following frame — the scar this
+    /// module's own docs claim to have learned from, re-earned
+    /// (`docs/plan-review-fixes.md` F2.1).
+    ///
+    /// M2 could retire this entirely: `Shrink` results *are* the
+    /// intrinsic sizes. Kept for now because the truncation lint needs
+    /// the *unclamped* natural size, which a laid-out `Shrink` node no
+    /// longer carries once its parent has squeezed it.
     fn natural(
         root: &mut dyn Node,
         styles: &[lumen_static::Style],
@@ -245,8 +253,8 @@ impl Auditor {
         // is one more reason M2's `Shrink` results should replace this.
         let mut m = lumen_static::BlockMetrics;
         let mut cx = lumen_static::LayoutCx::new(&mut m);
-        let a = root.node_mut(i).layout(&mut cx, PROBE_A, styles, scratch, i);
-        let b = root.node_mut(i).layout(&mut cx, PROBE_B, styles, scratch, i);
+        let a = root.node_mut(i).probe(&mut cx, PROBE_A, styles, scratch, i);
+        let b = root.node_mut(i).probe(&mut cx, PROBE_B, styles, scratch, i);
         Natural { intrinsic: a == b, size: a }
     }
 

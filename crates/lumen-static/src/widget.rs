@@ -81,6 +81,33 @@ pub trait Node {
     fn node_mut(&mut self, i: usize) -> &mut dyn Node;
 
     /// Contribute to the accessibility/agent tree.
+    /// Measure under `limits` **without disturbing any memo**.
+    ///
+    /// The ambient audit probes every leaf twice per frame to decide
+    /// whether it is sized by its own content. Doing that through
+    /// `layout` left each `Label`'s measurement cache keyed on the
+    /// probe's constraints rather than the frame's, so the memo missed
+    /// on every subsequent frame — measured: 0 text measurements per
+    /// idle frame without the agent attached, 400 of 400 with it. Under
+    /// a real shaper that is the whole shaping cost paid three times per
+    /// frame, in the one component whose module doc names "re-shaping
+    /// every text node" as a scar it learned from.
+    ///
+    /// The default *is* `layout`, which is right for every widget that
+    /// has nothing to cache. `Label` overrides it.
+    /// `docs/plan-review-fixes.md` F2.1.
+    #[cfg(feature = "observe")]
+    fn probe(
+        &mut self,
+        cx: &mut LayoutCx,
+        limits: Constraints,
+        style: &[Style],
+        st: &mut [NodeState],
+        i: usize,
+    ) -> Size {
+        self.layout(cx, limits, style, st, i)
+    }
+
     #[cfg(feature = "observe")]
     #[allow(unused_variables)]
     fn observe(
@@ -157,31 +184,56 @@ pub const fn table_is_well_formed(t: &[NodeDesc]) -> bool {
     if t[0].parent != crate::desc::NO_PARENT {
         return false;
     }
-    let mut i = 1;
+
+    // Parent precedes child (DFS pre-order), and the declared child
+    // counts add up to "every node but the root is somebody's child".
+    let mut declared = 0usize;
+    let mut i = 0;
     while i < t.len() {
-        // Parent precedes child (DFS pre-order).
-        if t[i].parent as usize >= i {
+        if i > 0 && t[i].parent as usize >= i {
             return false;
         }
+        declared += t[i].child_count as usize;
         i += 1;
     }
-    // Every declared child count is matched by that many nodes claiming
-    // the node as parent.
+    if declared != t.len() - 1 {
+        return false;
+    }
+
+    // Each parent's declared children are real, linked, and claim it.
+    // Walking the sibling chains visits every non-root node exactly
+    // once, so this whole loop is O(n) rather than the O(n^2) rescan it
+    // replaces — which took 20 s of const-eval at 3.2k nodes and tripped
+    // `long_running_const_eval` at 10k, i.e. a tree that large could not
+    // be compiled at all (`docs/plan-review-fixes.md` F5.1).
     let mut n = 0;
     while n < t.len() {
-        let mut seen = 0;
-        let mut k = 1;
-        while k < t.len() {
-            if t[k].parent as usize == n {
-                seen += 1;
+        let c = t[n].child_count as usize;
+        if c > 0 {
+            if t[n].first_child as usize != n + 1 {
+                return false;
             }
-            k += 1;
-        }
-        if seen != t[n].child_count as usize {
-            return false;
-        }
-        if t[n].child_count > 0 && t[n].first_child as usize != n + 1 {
-            return false;
+            let mut k = n + 1;
+            let mut seen = 0;
+            while seen < c {
+                if k >= t.len() || t[k].parent as usize != n {
+                    return false;
+                }
+                seen += 1;
+                let next = t[k].next_sibling as usize;
+                if seen < c {
+                    // More to come: the link must move forward and stay
+                    // inside the table.
+                    if next <= k || next >= t.len() {
+                        return false;
+                    }
+                } else if next != 0 && next <= k {
+                    // The last child terminates with 0, or points at a
+                    // later node (its parent's own next sibling).
+                    return false;
+                }
+                k = next;
+            }
         }
         n += 1;
     }

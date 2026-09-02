@@ -12,3 +12,4 @@ size_of_set          # AccessKit's field name, mirrored by desc.rs
 # Prose of the form "`X` is gone". Keep these: the sentence is the record of
 # the removal, and deleting the sentence loses the history.
 offset               # crates/lumen-static/src/desc.rs:8 -- table dispatch is gone
+long_running_const_eval  # rustc lint name, not ours (widget.rs, F5.1)

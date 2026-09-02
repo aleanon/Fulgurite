@@ -7,6 +7,7 @@ publish = false
 
 [dependencies]
 lumen-static = { path = "../crates/lumen-static" }
+lumen-static-agent = { path = "../crates/lumen-static-agent" }
 
 [features]
 rdyn_opaque = ["lumen-static/rdyn_opaque"]
@@ -20,3 +21,7 @@ path = "src/bin/crossover.rs"
 [[bin]]
 name = "bindings"
 path = "src/bin/bindings.rs"
+
+[[bin]]
+name = "agent"
+path = "src/bin/agent.rs"

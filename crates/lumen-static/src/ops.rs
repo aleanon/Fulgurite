@@ -333,6 +333,21 @@ impl<S: TextStorage> Node for Label<S> {
         self.text.clear_dirty();
         record(st, i, limits, resolve_self(limits, &style[i], content))
     }
+
+    /// Measure without touching the memo — see [`Node::probe`]. The
+    /// dirty bit is left alone too: a probe is a question, not a frame.
+    #[cfg(feature = "observe")]
+    fn probe(
+        &mut self,
+        cx: &mut LayoutCx,
+        limits: Constraints,
+        style: &[Style],
+        st: &mut [NodeState],
+        i: usize,
+    ) -> Size {
+        let content = cx.text.measure(self.text.get().as_ref(), 16.0, limits.max_w);
+        record(st, i, limits, resolve_self(limits, &style[i], content))
+    }
     fn paint(&self, st: &[NodeState], i: usize, out: &mut DisplayList) {
         out.text(rect_of(&st[i]), self.text.get().as_ref(), 16.0, Color::BLACK);
     }

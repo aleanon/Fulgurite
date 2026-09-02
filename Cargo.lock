@@ -16,6 +16,7 @@ name = "benches"
 version = "0.1.0"
 dependencies = [
  "lumen-static",
+ "lumen-static-agent",
 ]
 
 [[package]]

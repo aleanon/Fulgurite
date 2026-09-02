@@ -96,6 +96,13 @@ pub(crate) struct Journal {
     sums: Vec<u64>,
     records: VecDeque<FrameRecord>,
     seeded: bool,
+    /// This frame's measurement, retained across frames. Three
+    /// collections were allocated and dropped per call before
+    /// 2026-09-02 — 172 KB per frame at 1k nodes, on the dev path
+    /// (`docs/plan-review-fixes.md` F2.2).
+    next_geom: Vec<Geom>,
+    next_sums: Vec<u64>,
+    list: lumen_static::DisplayList,
 }
 
 /// Cheap structural identity of a table: shape only, no state. Detects a
@@ -110,20 +117,59 @@ fn fingerprint(table: &[NodeDesc]) -> u64 {
     h
 }
 
-fn measure(tree: &TreeRef) -> (Vec<Geom>, Vec<u64>) {
-    let mut geom = Vec::with_capacity(tree.table.len());
-    let mut sums = Vec::with_capacity(tree.table.len());
-    // One list, reused: a node's signature is the hash of the commands
-    // *it* appended, so the journal never builds a list per node — the
-    // cost trap Lumen's audit review flagged.
-    let mut list = lumen_static::DisplayList::new();
-    for i in 0..tree.table.len() {
+/// Fill `geom` and `sums` for one frame, reusing all three buffers.
+///
+/// **Leaves paint; containers combine.** A container's own `paint` emits
+/// nothing — its content *is* its children — so re-painting its whole
+/// subtree to sign it did O(depth) redundant work per node and produced
+/// 2.1–2.8x N commands per frame. The table is DFS pre-order, so a
+/// reverse walk sees every child before its parent and a container's
+/// signature folds its children's. Total painting is now one pass over
+/// the nodes that actually draw.
+///
+/// `child_count == 0` is the test for "paints its own content", which is
+/// deliberately true for the arena containers too: a `Repeat` has no
+/// table children but does draw, and its window (and its clip) belong in
+/// its own range.
+fn measure_into(
+    tree: &TreeRef,
+    geom: &mut Vec<Geom>,
+    sums: &mut Vec<u64>,
+    list: &mut lumen_static::DisplayList,
+) {
+    let n = tree.table.len();
+    geom.clear();
+    sums.clear();
+    list.clear();
+    sums.resize(n, 0);
+
+    for (i, (d, sum)) in tree.table.iter().zip(sums.iter_mut()).enumerate() {
         geom.push(Geom { size: tree.states[i].size, pos: tree.states[i].pos });
-        let from = list.len();
-        tree.root.node(i).paint(tree.states, i, &mut list);
-        sums.push(list.hash_from(from));
+        if d.child_count == 0 {
+            let from = list.len();
+            tree.root.node(i).paint(tree.states, i, list);
+            *sum = list.hash_from(from);
+        }
     }
-    (geom, sums)
+
+    for i in (0..n).rev() {
+        let d = &tree.table[i];
+        if d.child_count == 0 {
+            continue;
+        }
+        // Fold the children's signatures. Same mixing constant the rest
+        // of the crate uses, so a reordering is visible.
+        let mut h = d.child_count as u64;
+        let mut c = d.first_child as usize;
+        for _ in 0..d.child_count {
+            h = h.wrapping_mul(0x9E37_79B9_7F4A_7C15).wrapping_add(sums[c]);
+            c = tree.table[c].next_sibling as usize;
+            if c == 0 || c >= n {
+                break;
+            }
+        }
+        sums[i] = h;
+    }
 }
 
 impl Journal {
@@ -132,7 +178,16 @@ impl Journal {
     /// audit can re-seed its finding set in step (indices either side of
     /// a reload address different nodes).
     pub fn record(&mut self, frame: u64, tree: &TreeRef) -> bool {
-        let (geom, sums) = measure(tree);
+        // Measured into the retained buffers, then swapped with the
+        // baseline — so the two Vecs alternate roles instead of one pair
+        // being allocated and the other dropped every frame.
+        let (mut geom, mut sums, mut list) = (
+            core::mem::take(&mut self.next_geom),
+            core::mem::take(&mut self.next_sums),
+            core::mem::take(&mut self.list),
+        );
+        measure_into(tree, &mut geom, &mut sums, &mut list);
+        self.list = list;
         let fp = fingerprint(tree.table);
 
         // First frame, or the tree's structure changed: seed a baseline.
@@ -142,8 +197,10 @@ impl Journal {
             let reset = self.seeded;
             self.push(FrameRecord { frame, reset, changes: Vec::new() });
             self.fingerprint = fp;
-            self.geom = geom;
-            self.sums = sums;
+            core::mem::swap(&mut self.geom, &mut geom);
+            core::mem::swap(&mut self.sums, &mut sums);
+            self.next_geom = geom;
+            self.next_sums = sums;
             self.seeded = true;
             return reset;
         }
@@ -165,8 +222,10 @@ impl Journal {
             }
         }
         self.push(FrameRecord { frame, reset: false, changes });
-        self.geom = geom;
-        self.sums = sums;
+        core::mem::swap(&mut self.geom, &mut geom);
+        core::mem::swap(&mut self.sums, &mut sums);
+        self.next_geom = geom;
+        self.next_sums = sums;
         false
     }
 
