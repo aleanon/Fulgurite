@@ -237,11 +237,32 @@ noise of the F3 baseline.
   stop being no-ops; `tests/hatches.rs:216-222`, which pins the paint
   hole as intended, flips. The two per-frame allocations go. *1B #6, 2B
   #3.*
-- **F4.4** `observe::emit_table` recurses into arenas; the id layout is
-  written once there and the agent calls it. `journal::measure` and
-  `audit::collect` walk arenas — per-row change, per-row damage, and
-  lint inside templates fall out; the false `W1006` on an
-  `Either`-only tree goes. *1B #3b, #4.*
+- **F4.4 — PARTLY DONE 2026-09-02.** Two of the three landed and the
+  third is deferred with a reason.
+  - **Done:** the synthetic id layout is defined once, in
+    `observe::instance_id`. It had four hand-written copies — three
+    containers plus the agent crate, the last under a comment citing a
+    `Repeat` method deleted in M0 — and nothing checked they agreed.
+    When they disagree, `ui.probe` and `ui.getTree` return different ids
+    for the same node, the failure the agent's docs call impossible.
+    Pinned by `probe_and_the_snapshot_agree_on_a_repeater_row_id`.
+  - **Done:** the false `W1006`. `collect` walks the table and every
+    off-table container carries `CONTAINER`, so nothing inside a
+    `Repeat`/`Either`/`List`/`Dyn` was examined and a frame full of
+    content reported itself blank — the false positive this module's own
+    docs call "the first thing an agent ever sees". `List` escaped only
+    by accident, via `stats()`. The lint now declines to claim blankness
+    when the walk could not see inside something with area, and still
+    fires in both directions (`tests/off_table_visibility.rs`).
+  - **Deferred: per-row `ui.lastChange` and `ui.lastDamage`.** The
+    journal's arrays are table-indexed, so an arena instance has no
+    index to key on; reporting per-row needs a second, arena-keyed store
+    *and* a change to the wire format (`{node, row}` rather than
+    `{node}`). That is a protocol decision, not a refactor, and it
+    belongs with the agent-parity work rather than a fix pass. Today a
+    change inside a repeater is reported as "the repeat node changed",
+    which is true and coarse. Recorded here so it is a known limit
+    rather than a surprise.
 - **F4.5** `cascade` recurses into arenas with a synthesized `NodeDesc`
   slice. Rules reach templates. Doc: `layout-and-storage-decisions.md
   :263-268`'s "known limit" is closed, not extended to four widgets.

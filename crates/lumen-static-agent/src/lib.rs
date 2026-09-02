@@ -366,12 +366,16 @@ impl Agent {
             json!([st.pos.x, st.pos.y, st.pos.x + st.size.w, st.pos.y + st.size.h]),
         );
         match h.inner {
-            // Mirrors Repeat::observe_op's encoding.
+            // Through `observe::instance_id`, not a fourth hand-written
+            // copy of the bit layout — the comment here used to say it
+            // mirrored a Repeat method deleted in M0,
+            // and nothing checked the copies agreed (F4.4).
             Some(inn) => {
-                let id = (1u64 << 63)
-                    | ((h.node as u64 + 1) << 44)
-                    | (inn.row << 12)
-                    | inn.node as u64;
+                let id = lumen_static::observe::instance_id(
+                    h.node as u64 + 1,
+                    inn.row,
+                    inn.node as usize,
+                );
                 o.insert("id".into(), id.into());
                 o.insert("row".into(), inn.row.into());
                 o.insert("inner".into(), inn.node.into());

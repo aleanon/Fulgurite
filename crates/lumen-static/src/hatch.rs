@@ -376,7 +376,7 @@ impl<A: Widget, B: Widget> Node for Either<A, B> {
             Side::A => 0,
             Side::B => 1,
         };
-        let id_of = |t: usize| (1u64 << 63) | (id << 44) | (row << 12) | t as u64;
+        let id_of = |t: usize| crate::observe::instance_id(id, row, t);
         match self.showing {
             Side::A => {
                 crate::observe::emit_subtree(&self.a, self.a_arena.slice(0), &id_of, extra);
@@ -591,7 +591,7 @@ impl<W: Widget> Node for List<W> {
         node.set_role(accesskit::Role::List);
         node.set_size_of_set(self.items.len());
         for k in 0..self.items.len() {
-            let id_of = move |t: usize| (1u64 << 63) | (id << 44) | ((k as u64) << 12) | t as u64;
+            let id_of = move |t: usize| crate::observe::instance_id(id, k as u64, t);
             crate::observe::emit_subtree(&self.items[k], self.slice(k), &id_of, extra);
             node.push_child(accesskit::NodeId(id_of(0)));
         }
@@ -803,7 +803,9 @@ impl Node for Dyn {
         node: &mut accesskit::Node,
         extra: &mut Vec<(accesskit::NodeId, accesskit::Node)>,
     ) {
-        let id_of = |t: usize| (1u64 << 63) | (id << 44) | t as u64;
+        // Row 0: a `Dyn` island has exactly one instance, so the row
+        // field is unused rather than absent — one layout, one meaning.
+        let id_of = |t: usize| crate::observe::instance_id(id, 0, t);
         crate::observe::emit_table(self.table, &*self.inner, self.arena.slice(0), &id_of, extra);
         node.push_child(accesskit::NodeId(id_of(0)));
     }

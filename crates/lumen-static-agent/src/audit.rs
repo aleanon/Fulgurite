@@ -384,11 +384,24 @@ impl Auditor {
         let viewport = rect(&st[0]);
         let viewport_ok = area(&st[0]) > 0.0;
         let mut anything_visible = false;
+        // Content the audit cannot see into. A node that owns an arena
+        // keeps its children off the table, so `collect`'s walk never
+        // examines them — and asserting "the frame is blank" on the
+        // strength of a walk that could not look is exactly the false
+        // positive this module's own docs call "the first thing an agent
+        // ever sees". `List` escaped it only by accident, because it
+        // implements `stats()`; `Either` and `Dyn` did not
+        // (`docs/plan-review-fixes.md` F4.4).
+        let mut opaque_content = false;
 
         let table = tree.table;
         for (i, d) in table.iter().enumerate() {
             let leaf = d.child_count == 0 && !d.is_container();
             let a = area(&st[i]);
+
+            if a > 0.0 && tree.as_ref().root.node(i).arena_count() > 0 {
+                opaque_content = true;
+            }
 
             // -- content-bearing checks, leaves only (see module docs) --
             if leaf {
@@ -455,7 +468,7 @@ impl Auditor {
 
         }
 
-        if !anything_visible {
+        if !anything_visible && !opaque_content {
             out.push(Finding {
                 code: codes::BLANK,
                 idx: 0,

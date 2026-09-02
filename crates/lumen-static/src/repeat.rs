@@ -344,7 +344,7 @@ impl<T: Widget + Default + 'static> Node for Repeat<T> {
             }
             let row = (self.first + k) as u64;
             // Row-stable synthetic ids: `1<<63 | node<<44 | row<<12 | template`.
-            let id_of = |t: usize| (1u64 << 63) | (id << 44) | (row << 12) | t as u64;
+            let id_of = |t: usize| crate::observe::instance_id(id, row, t);
             crate::observe::emit_subtree(&self.window[self.slot(k)], self.slice(k), &id_of, extra);
             node.push_child(accesskit::NodeId(id_of(0)));
         }

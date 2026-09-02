@@ -116,3 +116,24 @@ pub fn dump<W: Widget>(tree: &W, st: &[NodeState]) -> serde_json::Value {
         .collect();
     serde_json::json!({ "root": 1, "nodes": nodes })
 }
+
+/// The synthetic AccessKit id for one node of one instance of an
+/// off-table container.
+///
+/// `1<<63 | node<<44 | row<<12 | template`. The high bit marks the id as
+/// synthetic; `node` is the owning container's table index (plus one,
+/// since AccessKit reserves 0); `row` is the instance the container
+/// chose to expose — a repeater's row, a list's item index, an
+/// `Either`'s side.
+///
+/// **Defined once, here.** Three containers had written this bit layout
+/// out by hand and `lumen-static-agent` had a fourth copy, under a
+/// comment citing a function that no longer existed. Nothing checked the
+/// four agreed, and when they disagree `ui.probe` and `ui.getTree`
+/// return different ids for the same node — the exact failure the agent
+/// crate's docs claim is impossible
+/// (`docs/plan-review-fixes.md` F4.4).
+#[inline]
+pub fn instance_id(container_node: u64, row: u64, template_node: usize) -> u64 {
+    (1u64 << 63) | (container_node << 44) | (row << 12) | template_node as u64
+}
