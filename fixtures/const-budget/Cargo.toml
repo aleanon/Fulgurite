@@ -1,0 +1,11 @@
+[package]
+name = "const-budget"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+# A deliberately large static tree, built to keep `table_is_well_formed`'s
+# const-eval cost measurable. No features: the release shape.
+[dependencies]
+lumen-static = { path = "../../crates/lumen-static" }

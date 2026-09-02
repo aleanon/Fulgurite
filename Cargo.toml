@@ -12,6 +12,7 @@ members = [
     "fixtures/hot-app",
     "fixtures/miri-smoke",
     "fixtures/binsize",
+    "fixtures/const-budget",
     "fixtures/hot-host",
 ]
 # The Step 1 firewall experiment is its own generated workspace.

@@ -44,7 +44,7 @@ static:
 #   blanket zero.
 
 # Default features: the shipped shape, and the only one docs/verification-notes.md covers.
-release-shape:
+release-shape: const-budget
     cargo test -p lumen-static
     cargo clippy -p lumen-static --all-targets -- -D warnings
     cargo run -p miri-smoke
@@ -131,6 +131,22 @@ smoke:
 # The counter, rendered headlessly to a viewable frame.
 counter:
     cargo run -p counter -- counter.ppm
+# Compile-time budget for the const table check: 3,711 nodes must build
+# in well under 5 s. A budget, not a comparison — the failure mode is a
+# hard rustc limit (docs/results-const-eval.md).
+const-budget:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    touch fixtures/const-budget/src/main.rs
+    start=$(date +%s%N)
+    cargo build -p const-budget
+    ms=$(( ($(date +%s%N) - start) / 1000000 ))
+    echo "const-budget: ${ms} ms for 3711 nodes"
+    if [ "$ms" -gt 5000 ]; then
+        echo "over the 5000 ms budget — see docs/results-const-eval.md" >&2
+        exit 1
+    fi
+
 # The Step 4 dylib swap demo; exit code is the verdict.
 hot-demo:
     ./scripts/hot_reload_demo.sh
