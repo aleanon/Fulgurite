@@ -236,6 +236,36 @@ impl<A: Widget, B: Widget> Widget for Either<A, B> {
 }
 
 impl<A: Widget, B: Widget> Node for Either<A, B> {
+    /// Two: both branches are styled, because both keep their state and
+    /// either may be shown next.
+    fn arena_count(&self) -> usize {
+        2
+    }
+
+    fn arena_mut(&mut self, a: usize) -> Option<crate::arena::ArenaMut<'_>> {
+        match a {
+            0 => {
+                let Either { a, a_arena, .. } = self;
+                a_arena.ensure_style(a);
+                Some(crate::arena::ArenaMut {
+                    table: A::SUB_TABLE,
+                    template: a,
+                    style: a_arena.style_mut(),
+                })
+            }
+            1 => {
+                let Either { b, b_arena, .. } = self;
+                b_arena.ensure_style(b);
+                Some(crate::arena::ArenaMut {
+                    table: B::SUB_TABLE,
+                    template: b,
+                    style: b_arena.style_mut(),
+                })
+            }
+            _ => None,
+        }
+    }
+
     fn kind_name(&self) -> &'static str {
         "either"
     }
@@ -441,6 +471,24 @@ impl<W: Widget> Widget for List<W> {
 }
 
 impl<W: Widget> Node for List<W> {
+    fn arena_count(&self) -> usize {
+        1
+    }
+
+    fn arena_mut(&mut self, a: usize) -> Option<crate::arena::ArenaMut<'_>> {
+        if a != 0 {
+            return None;
+        }
+        let List { items, arena, .. } = self;
+        let t = items.first()?;
+        arena.ensure_style(t);
+        Some(crate::arena::ArenaMut {
+            table: W::SUB_TABLE,
+            template: t,
+            style: arena.style_mut(),
+        })
+    }
+
     fn kind_name(&self) -> &'static str {
         "list"
     }
@@ -674,6 +722,20 @@ impl Widget for Dyn {
 }
 
 impl Node for Dyn {
+    fn arena_count(&self) -> usize {
+        1
+    }
+
+    fn arena_mut(&mut self, a: usize) -> Option<crate::arena::ArenaMut<'_>> {
+        if a != 0 {
+            return None;
+        }
+        let Dyn { inner, table, arena, .. } = self;
+        let t: &dyn Node = &**inner;
+        arena.ensure_style(t);
+        Some(crate::arena::ArenaMut { table, template: t, style: arena.style_mut() })
+    }
+
     fn kind_name(&self) -> &'static str {
         "dyn"
     }

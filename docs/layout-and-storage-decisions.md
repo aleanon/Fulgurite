@@ -261,6 +261,28 @@ With a style array it becomes an initializer or a stylesheet rule, and
 the attribute constant goes away.
 
 **Known limit to design around:** the array is keyed by *table* node, and
+
+> **Closed 2026-09-02 (F4.5).** `style::cascade_deep` recurses into
+> off-table arenas, so a rule reaches a repeater's template row, a
+> `List`'s items, both `Either` branches and a `Dyn` island's content.
+> `Host::set_stylesheet` uses it. Recursion is by *template* — an arena's
+> instances share one style row — so a rule matching inside a template
+> applies to every instance of it; per-instance styling would need
+> per-instance rows and a selector that can name a row, and neither
+> exists.
+>
+> Worth recording that this limit was documented here for the repeater
+> and inherited *silently* by `Either`, `List`, `Dyn` and the enum
+> derive, which is the difference between a decision and an accident. It
+> also made `#[widget_id]` inside a template dead for agent selectors as
+> well as for styling.
+>
+> One case remains: an arena nested inside another arena's template (a
+> `List<Repeat<_>>`) styles the outer but not the inner. The borrow
+> checker will not let the walk descend while the template is borrowed
+> shared and its style row exclusively; the shape that fixes it yields
+> owned handles instead, which is F4.4's territory.
+> `crates/lumen-static/tests/cascade_deep.rs`.
 repeater instances are not in the table — so all rows of a repeater share
 their template's computed style. That is usually what you want; per-row
 overrides (a selected row, a zebra stripe) need either a small per-row

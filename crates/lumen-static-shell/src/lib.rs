@@ -55,14 +55,10 @@ impl<A: App> Host<A> {
     /// that walks the table linearly and the only one that does not run
     /// every frame.
     pub fn set_stylesheet(&mut self, sheet: &[Rule]) {
-        let tree = self.app.tree();
-        lumen_static::style::cascade(
-            <A::Tree as Widget>::SUB_TABLE,
-            &|i| tree.node(i).defaults(),
-            &|i| tree.node(i).kind_name(),
-            sheet,
-            &mut self.styles,
-        );
+        // `cascade_deep`, not `cascade`: a rule must be able to reach a
+        // repeater's template row or an `Either` branch, which are not
+        // in the table (`docs/plan-review-fixes.md` F4.5).
+        lumen_static::style::cascade_deep(self.app.tree_mut(), sheet, &mut self.styles);
     }
 
     pub fn resize(&mut self, width: u32, height: u32) {

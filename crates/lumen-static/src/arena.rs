@@ -109,6 +109,24 @@ impl Arena {
         &self.style
     }
 
+    /// Build the style row from `probe` if it is not already sized.
+    ///
+    /// The cascade runs *before* the first layout, so the row must exist
+    /// by then; `ensure` sizes it alongside the instances, which is too
+    /// late. Separated because the cascade has no instance count to give.
+    pub fn ensure_style(&mut self, probe: &dyn Node) {
+        if self.style.len() != self.node_count {
+            self.style.clear();
+            self.style.extend((0..self.node_count).map(|j| probe.node(j).defaults()));
+        }
+    }
+
+    /// The style row, mutably — for the cascade.
+    #[inline]
+    pub fn style_mut(&mut self) -> &mut [Style] {
+        &mut self.style
+    }
+
     /// Shared style row and exclusive states from one `&mut self`.
     ///
     /// The five owners each hand-wrote this destructuring so they could
@@ -119,4 +137,28 @@ impl Arena {
     pub fn parts(&mut self) -> (&[Style], &mut [NodeState]) {
         (&self.style, &mut self.states)
     }
+}
+
+/// One off-table arena, exposed for the cross-cutting walks.
+///
+/// The cascade, the AccessKit emitter, the journal and the audit all
+/// walk the table — and every construct that keeps children *off* it was
+/// therefore invisible to all four. A stylesheet rule could not reach a
+/// repeater's template row, an author id inside one was dead for both
+/// styling and agent selectors, and the journal collapsed a whole window
+/// into the repeater's single checksum
+/// (`docs/plan-review-fixes.md` F4.4, F4.5).
+///
+/// This is the handle those walks need: the template's own sub-table to
+/// walk, something to ask for defaults and kind names, and the shared
+/// style row to write.
+pub struct ArenaMut<'a> {
+    /// The template's own table — what a walk recurses over.
+    pub table: &'static [crate::desc::NodeDesc],
+    /// An instance to ask for `defaults()` and `kind_name()`. One
+    /// instance answers for all, since `Node::defaults` depends on the
+    /// type (F3.2).
+    pub template: &'a dyn Node,
+    /// The style row every instance in this arena shares.
+    pub style: &'a mut [Style],
 }

@@ -294,3 +294,56 @@ pub fn cascade(
         out[i] = s;
     }
 }
+
+/// Cascade a tree *and every off-table arena under it*.
+///
+/// [`cascade`] walks one table, which is every host's entry point — and
+/// every construct that keeps children off the table was therefore
+/// unreachable by a stylesheet. A rule could not set the padding of a
+/// repeater's row, and an `#[widget_id]` inside a template was dead for
+/// styling as well as for agent selectors. Only the repeater's case was
+/// documented as a known limit; `Either`, `List`, `Dyn` and the enum
+/// derive inherited it silently, which is the difference between a
+/// decision and an accident (`docs/plan-review-fixes.md` F4.5).
+///
+/// Recursion is by *template*: an arena's instances share one style row,
+/// so a rule matching inside a template applies to every instance of it.
+/// Per-instance styling would need per-instance rows and a selector
+/// vocabulary that can name a row; neither exists, and this does not
+/// pretend otherwise.
+pub fn cascade_deep<W: crate::widget::Widget + ?Sized>(
+    tree: &mut W,
+    sheet: Stylesheet,
+    out: &mut [Style],
+) {
+    {
+        let t: &W = tree;
+        cascade(W::SUB_TABLE, &|i| t.node(i).defaults(), &|i| t.node(i).kind_name(), sheet, out);
+    }
+    for i in 0..W::SUB_TABLE.len() {
+        cascade_arenas(tree.node_mut(i), sheet);
+    }
+}
+
+/// Cascade every arena `node` owns, and every arena under those.
+fn cascade_arenas(node: &mut dyn crate::widget::Node, sheet: Stylesheet) {
+    for a in 0..node.arena_count() {
+        let Some(arena) = node.arena_mut(a) else { continue };
+        let table = arena.table;
+        let template = arena.template;
+        cascade(
+            table,
+            &|i| template.node(i).defaults(),
+            &|i| template.node(i).kind_name(),
+            sheet,
+            arena.style,
+        );
+    }
+    // Arenas nested inside an arena's template are not reached: the
+    // template is borrowed shared while its style row is borrowed
+    // exclusively, so descending needs a second pass the borrow checker
+    // will not give from here. A `List<Repeat<_>>` therefore styles the
+    // list's rows but not the repeater's. Recorded rather than papered
+    // over; the shape that fixes it is an arena walk that yields owned
+    // handles, which is F4.4's territory.
+}

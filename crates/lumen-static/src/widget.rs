@@ -61,6 +61,21 @@ pub trait Node {
     /// Deepest node under `(x, y)`, or `None` if the point misses.
     fn hit(&self, st: &[NodeState], i: usize, x: f32, y: f32) -> Option<Hit>;
 
+    /// How many off-table arenas this node owns.
+    ///
+    /// Zero for everything in the table. A repeater owns one (its
+    /// window), an `Either` owns two (one per branch), `List` and `Dyn`
+    /// own one each. See [`crate::arena::ArenaMut`] for why the
+    /// cross-cutting walks need to know.
+    fn arena_count(&self) -> usize {
+        0
+    }
+
+    /// Arena `a`, for a walk that must reach off-table content.
+    fn arena_mut(&mut self, _a: usize) -> Option<crate::arena::ArenaMut<'_>> {
+        None
+    }
+
     /// This kind's own style defaults, before any rule applies.
     ///
     /// **Must depend only on the type, never on `self`'s current
