@@ -10,9 +10,9 @@
 //! A winit front end adds exactly one thing: window events into
 //! `Host::post` and `Canvas::pixels` blitted to the surface.
 
-use lumen_static::ops::{Button, Label, Spacer};
-use lumen_static::style::{Length, Patch, Rule, Selector};
-use lumen_static::{App, Edges, EventCtx, StaticTree, Widget};
+// One import line for the whole vocabulary. Before the prelude existed
+// this was three modules plus the root, for a forty-line app.
+use lumen_static::prelude::*;
 use lumen_static_agent::{Agent, TreeRef};
 use lumen_static_shell::software::Canvas;
 use lumen_static_shell::{Host, CLEAR};
@@ -55,7 +55,7 @@ struct Ui {
 /// the presentation copy (`docs/layout-and-storage-decisions.md` §1) —
 /// owning that copy is what lets the label cache its measurement. The
 /// binding is only about who keeps the two in agreement, and when.
-#[derive(App, Default)]
+#[derive(DeriveApp, Default)]
 struct Counter {
     #[tree]
     ui: Ui,

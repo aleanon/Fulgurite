@@ -11,8 +11,6 @@
 //! cost nothing, computed values allocate only when they must), `String`
 //! for simplicity.
 
-use core::cell::Cell;
-
 use crate::desc::{Constraints, Size};
 
 /// A value plus a dirty bit. Reads are transparent; every mutable access
@@ -70,38 +68,47 @@ impl<T> core::ops::Deref for Dirty<T> {
 /// measures differently in a narrower box once shaping wraps it (M5).
 #[derive(Debug, Default, Clone)]
 pub struct Measured {
-    cache: Cell<Option<(Constraints, Size)>>,
+    cache: Option<(Constraints, Size)>,
 }
 
 impl Measured {
     pub fn new() -> Self {
-        Measured { cache: Cell::new(None) }
+        Measured { cache: None }
     }
 
     /// Return the cached size, or compute and store one.
     #[inline]
-    pub fn get_or(&self, limits: Constraints, dirty: bool, f: impl FnOnce() -> Size) -> Size {
+    /// Takes `&mut self`.
+    ///
+    /// This was `Cell<Option<..>>` with a `&self` signature — interior
+    /// mutability inherited from the flat-pass design, where ops were
+    /// handed a shared base pointer. `layout` takes `&mut self`, and
+    /// `get_or` has exactly one caller, inside it. The `Cell` bought
+    /// nothing and cost `Sync`: every tree holding a `Label` was
+    /// `!Sync`, which the repeater's own docs record removing for the
+    /// same reason (`docs/plan-review-fixes.md` F6.3).
+    pub fn get_or(&mut self, limits: Constraints, dirty: bool, f: impl FnOnce() -> Size) -> Size {
         if !dirty {
-            if let Some((c, s)) = self.cache.get() {
+            if let Some((c, s)) = self.cache {
                 if c == limits {
                     return s;
                 }
             }
         }
         let s = f();
-        self.cache.set(Some((limits, s)));
+        self.cache = Some((limits, s));
         s
     }
 
     /// Drop the memo (a reload restores values without going through
     /// `Dirty`, so the cache must be invalidated explicitly).
-    pub fn invalidate(&self) {
-        self.cache.set(None);
+    pub fn invalidate(&mut self) {
+        self.cache = None;
     }
 
     /// Whether the last `get_or` was served from the memo — for tests.
     pub fn is_warm(&self, limits: Constraints) -> bool {
-        matches!(self.cache.get(), Some((c, _)) if c == limits)
+        matches!(self.cache, Some((c, _)) if c == limits)
     }
 }
 

@@ -4,6 +4,7 @@
 
 use lumen_static::ops::{Fixed, Label};
 use lumen_static::reload::{Reloadable, Value};
+use lumen_static::text::Measured;
 use lumen_static::{pass, Constraints, NodeState, StaticTree, Widget};
 use std::borrow::Cow;
 
@@ -78,4 +79,21 @@ fn owning_storage_reloads_without_leaking() {
     // …and restoring marks it dirty, so the memo cannot serve a stale
     // size for text that arrived behind the widget's back.
     assert!(!fresh.measure_is_warm(VIEW));
+}
+
+/// A tree holding a `Label` is `Sync`.
+///
+/// `Measured` used interior mutability — `Cell<Option<..>>` with a
+/// `&self` getter — inherited from the flat-pass design, where ops were
+/// handed a shared base pointer. `layout` takes `&mut self` and
+/// `get_or` has one caller inside it, so the `Cell` bought nothing and
+/// cost `Sync` on every tree containing text. `repeat.rs` records
+/// removing a `RefCell` for exactly this reason
+/// (`docs/plan-review-fixes.md` F6.3).
+#[test]
+fn a_tree_with_text_is_send_and_sync() {
+    fn assert_send_sync<T: Send + Sync>() {}
+    assert_send_sync::<Label<String>>();
+    assert_send_sync::<Label<&'static str>>();
+    assert_send_sync::<Measured>();
 }

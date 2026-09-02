@@ -1,12 +1,22 @@
-//! Container layout math and the built-in leaf widgets.
+//! The built-in widget vocabulary, and the layout helpers the derive
+//! calls.
 //!
-//! Layout is recursive: a container calls each child's `layout` and gets
-//! its final size back, so nothing is estimated and corrected later. The
-//! shared helpers below are the per-container math the derive's emitted
-//! bodies call — one function per axis per phase, not per widget.
+//! Two audiences in one module, which is a wart the name records: `ops`
+//! is called that because it once held the per-kind op tables M0 deleted.
+//! [`Label`], [`Fixed`], [`Spacer`] and [`Button`] are the vocabulary and
+//! are re-exported from [`crate::prelude`]; the rest —
+//! `inner_limits`, `loose_child`, `fill_child`, `align_offset`,
+//! `spaced`, `hide_subtree` — exist so derive-generated code has a
+//! public path to call and are `#[doc(hidden)]`. `resolve_self`,
+//! `record` and `rect_of` are visible because tests and widgets outside
+//! this crate genuinely use them.
+//!
+//! Splitting the two into a widgets module and a hidden private one is
+//! the honest end state (`docs/plan-review-fixes.md` F6.1); hiding the
+//! machinery is most of the benefit for a fraction of the churn.
 
 use crate::desc::{Constraints, NodeDesc, NodeState, Point, Size, NO_PARENT};
-use crate::event::EventCtx;
+use crate::event::{EventCtx, Handlers, NodeSel};
 use crate::hit::{contains, Hit};
 use crate::cx::LayoutCx;
 use crate::display::{Color, DisplayList};
@@ -14,16 +24,7 @@ use crate::style::{Align, Length, Style};
 use crate::text::{Dirty, Measured, TextStorage};
 use crate::widget::{Node, Widget};
 
-#[inline]
-pub(crate) fn fold(out: &mut u64, v: u64) {
-    *out = out.wrapping_mul(0x9E37_79B9_7F4A_7C15).wrapping_add(v);
-}
 
-/// Public so derive-emitted bodies can fold identically to the leaves.
-#[inline]
-pub fn fold_pub(out: &mut u64, v: u64) {
-    fold(out, v)
-}
 
 /// A node's absolute box, for emitting commands.
 #[inline]
@@ -40,6 +41,7 @@ pub fn fold_pub(out: &mut u64, v: u64) {
 /// A zero-area node paints nothing a renderer can see and fails every
 /// `contains` test, which is what makes this sufficient without threading
 /// `&[Style]` into `paint` and `hit`.
+#[doc(hidden)]
 pub fn hide_subtree(st: &mut [NodeState], i: usize, limits: Constraints, count: usize) -> Size {
     for s in st.iter_mut().skip(i).take(count) {
         s.size = Size::default();
@@ -52,13 +54,10 @@ pub fn rect_of(st: &NodeState) -> crate::display::Rect {
     [st.pos.x, st.pos.y, st.pos.x + st.size.w, st.pos.y + st.size.h]
 }
 
-/// Containers and structural nodes draw nothing by themselves; this
-/// keeps the call site uniform and gives a renderer a hook later.
-#[inline]
-pub fn paint_container(_out: &mut DisplayList, _st: &NodeState) {}
 
 /// Space consumed by gaps between `n` children.
 #[inline]
+#[doc(hidden)]
 pub const fn spaced(n: usize, spacing: f32) -> f32 {
     if n > 1 { spacing * (n - 1) as f32 } else { 0.0 }
 }
@@ -113,6 +112,7 @@ impl Axis {
 
 /// The content box: the node's limits minus its own padding.
 #[inline]
+#[doc(hidden)]
 pub fn inner_limits(limits: Constraints, pad: crate::style::Edges) -> Constraints {
     Constraints {
         min_w: (limits.min_w - pad.horizontal()).max(0.0),
@@ -124,6 +124,7 @@ pub fn inner_limits(limits: Constraints, pad: crate::style::Edges) -> Constraint
 
 /// Limits for a non-`Fill` child: it may take up to whatever is left.
 #[inline]
+#[doc(hidden)]
 pub fn loose_child(axis: Axis, inner: Constraints, remaining_main: f32, align: Align) -> Constraints {
     let cross_min = if align == Align::Fill { axis.cross_of(inner) } else { 0.0 };
     match axis {
@@ -144,6 +145,7 @@ pub fn loose_child(axis: Axis, inner: Constraints, remaining_main: f32, align: A
 
 /// Tight main-axis limits for a `Fill` child's share.
 #[inline]
+#[doc(hidden)]
 pub fn fill_child(axis: Axis, inner: Constraints, share: f32, align: Align) -> Constraints {
     let cross_min = if align == Align::Fill { axis.cross_of(inner) } else { 0.0 };
     match axis {
@@ -208,6 +210,7 @@ pub fn resolve_self(limits: Constraints, style: &Style, content: Size) -> Size {
 
 /// Cross-axis offset for a child inside a container of `cross` extent.
 #[inline]
+#[doc(hidden)]
 pub fn align_offset(align: Align, cross: f32, child_cross: f32) -> f32 {
     match align {
         Align::Start | Align::Fill => 0.0,
@@ -532,13 +535,6 @@ impl<S: 'static> Node for Button<S> {
     }
 }
 
-/// The synthetic column root runtime assembly puts above its instances.
-#[derive(Default)]
-pub struct VirtualColumn;
-
-// ---- handler routing ---------------------------------------------------
-
-use crate::event::{Handlers, NodeSel};
 
 macro_rules! no_handlers {
     (Label<S2>) => {

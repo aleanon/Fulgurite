@@ -181,6 +181,7 @@ pub trait Widget: Node {
 /// indices by `write_at`. The child's root is re-parented to
 /// `parent_index`. Const, so derives run it at compile time; runtime
 /// assembly (handoff §8) calls the same fn.
+#[doc(hidden)]
 pub const fn splice_child(
     dst: &mut [NodeDesc],
     write_at: usize,
@@ -207,6 +208,7 @@ pub const fn splice_child(
 /// Structural well-formedness of a table, as a `const fn` so the derive
 /// can assert it at compile time for every table it generates —
 /// proof-carrying tables (`docs/verification-notes.md`, Tier 0).
+#[doc(hidden)]
 pub const fn table_is_well_formed(t: &[NodeDesc]) -> bool {
     if t.is_empty() {
         return false;

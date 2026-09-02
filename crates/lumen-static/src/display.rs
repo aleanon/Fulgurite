@@ -23,6 +23,17 @@ impl Color {
 /// `[x0, y0, x1, y1]`, absolute.
 pub type Rect = [f32; 4];
 
+/// One round of the mixing function every checksum here uses.
+///
+/// Written out three times before 2026-09-02 — twice in this file and
+/// once in `ops.rs`, where the shared helper sat with no callers
+/// (F6.1). The journal's `measure_into` uses the same constant, so a
+/// container's folded signature mixes the way a leaf's does.
+#[inline]
+pub(crate) fn fold(h: u64, v: u64) -> u64 {
+    h.wrapping_mul(0x9E37_79B9_7F4A_7C15).wrapping_add(v)
+}
+
 /// Whether a rect encloses anything a renderer could paint.
 #[inline]
 fn has_area(r: Rect) -> bool {
@@ -45,7 +56,7 @@ impl Cmd {
     pub fn hash_into(&self, h: &mut u64) {
         #[inline]
         fn f(h: &mut u64, v: u64) {
-            *h = h.wrapping_mul(0x9E37_79B9_7F4A_7C15).wrapping_add(v);
+            *h = fold(*h, v);
         }
         match self {
             Cmd::Rect { rect, color } => {
@@ -140,7 +151,7 @@ impl DisplayList {
             c.hash_into(&mut h);
             if let Cmd::Text { text, .. } = c {
                 for b in self.str_of(*text).as_bytes() {
-                    h = h.wrapping_mul(0x9E37_79B9_7F4A_7C15).wrapping_add(*b as u64);
+                    h = fold(h, *b as u64);
                 }
             }
         }

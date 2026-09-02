@@ -40,3 +40,25 @@ pub use event::{Event, EventCtx, InputQueue, Key};
 pub use event::App;
 pub use lumen_static_macros::{App, Reloadable, StaticTree};
 pub use widget::{Node, Widget};
+
+/// Everything an application needs to build a tree.
+///
+/// There was no prelude, and the root re-exports were inverted: the rare
+/// escape hatches (`Dyn`, `Either`, `List`) were at the root while
+/// `Label` and `Button` needed `lumen_static::ops::`. The shipped
+/// example imports from three modules plus the root for a forty-line app
+/// (`docs/plan-review-fixes.md` F6.1).
+///
+/// `Node` is here because a container reaches its children as
+/// `&mut dyn Node`, so calling `.node(i)` needs the trait in scope — and
+/// the first place most people meet that fact is a rustc error.
+pub mod prelude {
+    pub use crate::desc::{Constraints, NodeState, Point, Size};
+    pub use crate::event::{App, EventCtx, Event, Key};
+    pub use crate::hatch::{Dyn, Either, List, Side};
+    pub use crate::ops::{Button, Fixed, Label, Spacer};
+    pub use crate::repeat::Repeat;
+    pub use crate::style::{Align, Edges, Length, Patch, Rule, Selector, Style};
+    pub use crate::widget::{Node, Widget};
+    pub use crate::{pass, App as DeriveApp, Reloadable, StaticTree};
+}
