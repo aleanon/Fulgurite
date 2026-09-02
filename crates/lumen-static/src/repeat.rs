@@ -299,7 +299,23 @@ impl<T: Widget + Default + 'static> Node for Repeat<T> {
     ) {
         node.set_role(accesskit::Role::List);
         node.set_size_of_set(self.count);
+        // Only rows that intersect the viewport are announced.
+        //
+        // The window deliberately overruns its viewport in both
+        // directions — `place` puts the first row at a negative offset
+        // for any scroll off an item boundary, and `visible_range`
+        // materializes one row past the bottom — and those rows are
+        // clipped from paint and rejected by hit. Announcing them anyway
+        // put nodes in the AccessKit tree and the agent's view at bounds
+        // where nothing is drawn and no click can land: the
+        // probe-versus-click divergence, one surface over from where it
+        // was fixed (`docs/plan-review-fixes.md` F4.7).
+        let viewport = crate::hit::contains_rect(&_st[_i]);
         for k in 0..self.window.len() {
+            let rs = self.arena.node_state(self.slot(k), 0);
+            if !crate::hit::rects_overlap(viewport, crate::ops::rect_of(&rs)) {
+                continue;
+            }
             let row = (self.first + k) as u64;
             // Row-stable synthetic ids: `1<<63 | node<<44 | row<<12 | template`.
             let id_of = |t: usize| (1u64 << 63) | (id << 44) | (row << 12) | t as u64;

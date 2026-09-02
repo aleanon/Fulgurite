@@ -46,6 +46,18 @@ A verification effort has one central obligation, not a scattered set.
   the only concurrency and it sits at the seam by design.
 - **Two invariants are already load-bearing and already stated**:
   children never escape their parent, siblings never overlap. Hit testing
+
+> **Restated 2026-09-02 (F4.8).** "Children never escape their parents"
+> has been false since Step 3 — a repeater's window overruns its viewport
+> by construction. The invariant is *scoped*: content may extend beyond a
+> clipping ancestor and is clipped there; it may not extend beyond a
+> non-clipping one. What is checked, in
+> `crates/lumen-static/tests/paint_containment.rs`, is the consequence
+> that matters — for every drawing command, its rect intersected with
+> every enclosing clip lies inside the root. Over a corpus crossing
+> `{Repeat, List, Dyn, Either, plain}` x four scroll positions x three
+> viewport shapes x squeezed and free. Verified to fail, naming the
+> case, when `Repeat`'s clip is removed.
   *depends* on them (`hit.rs` picks the last containing node in DFS
   order), and the audit reserves `W1003`/`W1004` because of them. Today
   both are pinned by one test on one fixture.

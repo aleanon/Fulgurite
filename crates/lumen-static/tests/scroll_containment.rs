@@ -116,3 +116,49 @@ fn hit_and_paint_agree_on_where_the_list_ends() {
         .expect("the repeater clips");
     assert_eq!(clip, lumen_static::ops::rect_of(&st[1]));
 }
+
+/// The agent and AccessKit must see the same list paint and hit do.
+///
+/// A repeater's window overruns its viewport by construction, and F1.6
+/// clipped those rows from paint while `hit` had always rejected them —
+/// but `observe` announced them anyway, with bounds where nothing draws
+/// and no click can land. That is the probe-versus-click divergence one
+/// surface over: an agent reading `ui.getTree` would see rows it could
+/// not interact with (F4.7).
+#[test]
+#[cfg(feature = "observe")]
+fn observe_announces_only_rows_that_are_actually_on_screen() {
+    use lumen_static::widget::Node;
+
+    let mut ui = Ui { list: Repeat::new(1000, 24.0, noop_bind) };
+    ui.list.scroll = 12.0;
+    let sty = pass::default_styles(&ui);
+    let mut st = [NodeState::default(); Ui::NODE_COUNT];
+    pass::layout(&mut ui, &sty, &mut st, VIEW);
+
+    let materialized = ui.list.window_len();
+    assert!(materialized >= 6, "the window overruns: {materialized} rows for a 100px viewport");
+
+    let mut root = accesskit::Node::new(accesskit::Role::GenericContainer);
+    let mut extra: Vec<(accesskit::NodeId, accesskit::Node)> = Vec::new();
+    ui.list.observe(&st, 1, 1, &mut root, &mut extra);
+
+    let announced = root.children().len();
+    assert!(
+        announced < materialized,
+        "announced {announced} of {materialized} materialized rows — the overrun must be excluded"
+    );
+
+    // Every announced row overlaps the list's own rect.
+    let list_rect = lumen_static::ops::rect_of(&st[1]);
+    for k in 0..materialized {
+        let r = lumen_static::ops::rect_of(&ui.list.row_state(k));
+        let on_screen = lumen_static::hit::rects_overlap(list_rect, r);
+        if !on_screen {
+            assert!(
+                r[3] <= list_rect[1] || r[1] >= list_rect[3],
+                "an excluded row must be wholly outside the viewport, got {r:?}"
+            );
+        }
+    }
+}

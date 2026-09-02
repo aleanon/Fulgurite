@@ -52,10 +52,24 @@ fn snapshot_shape_roles_and_bounds() {
     let (app, st) = make_app(100);
     let up = snapshot(&app, &st);
 
-    // Main table + window instances (window * template nodes).
+    // Main table + the *visible* window instances.
+    //
+    // Not every materialized row: a repeater's window overruns its
+    // viewport by construction, and since 2026-09-02 those rows are
+    // excluded from the snapshot because paint clips them and hit
+    // rejects them — announcing them put nodes in the AccessKit tree at
+    // bounds where nothing draws and no click lands
+    // (`docs/plan-review-fixes.md` F4.7).
     let win = app.list.window_len();
     assert!(win > 0);
-    assert_eq!(up.nodes.len(), App::NODE_COUNT + win * RowT::NODE_COUNT);
+    let announced = (up.nodes.len() - App::NODE_COUNT) / RowT::NODE_COUNT;
+    assert!(announced > 0, "some rows are on screen");
+    assert!(announced <= win, "announced {announced} of {win} materialized");
+    assert_eq!(
+        up.nodes.len(),
+        App::NODE_COUNT + announced * RowT::NODE_COUNT,
+        "the snapshot is the main table plus whole row subtrees"
+    );
     assert_eq!(up.tree.unwrap().root, NodeId(1));
 
     let get = |id: u64| &up.nodes.iter().find(|(n, _)| n.0 == id).unwrap().1;
@@ -78,10 +92,11 @@ fn snapshot_shape_roles_and_bounds() {
     assert_eq!(b.x0 as f32, st[2].pos.x);
     assert_eq!((b.x1 - b.x0) as f32, st[2].size.w);
 
-    // The repeater is a List whose children are the window instances.
+    // The repeater is a List whose children are the *visible* window
+    // instances — same reason as the node count above (F4.7).
     let list = get((list_idx + 1) as u64);
     assert_eq!(list.role(), Role::List);
-    assert_eq!(list.children().len(), win);
+    assert_eq!(list.children().len(), announced);
 }
 
 #[test]
