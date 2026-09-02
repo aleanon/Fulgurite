@@ -203,7 +203,7 @@ is deleted.
 
 ---
 
-## F4 — `ArenaHost`: one abstraction for six containers
+## F4 — `ArenaHost`: one abstraction for six containers — **DONE 2026-09-02** (F4.4 partly; see there)
 
 *Six containers keep off-table state and none share a shape. The cost
 is five hand-written special-case families: `Handlers` decoders ×5,
