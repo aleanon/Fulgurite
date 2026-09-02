@@ -1,17 +1,36 @@
-//! `#[derive(StaticTree)]` — emits the flat const node table for a
-//! concrete container struct (handoff §5).
+//! The three derives: `StaticTree` (a container's shape),
+//! `Reloadable` (what survives a hot swap), and `App` (the application
+//! root and its bindings).
 //!
-//! ```ignore
-//! #[derive(StaticTree)]
+//! ```
+//! use lumen_static::ops::{Fixed, Label, Spacer};
+//! use lumen_static::StaticTree;
+//!
+//! #[derive(StaticTree, Default)]
 //! #[widget(row, spacing = 4.0)]
-//! struct Header { title: Label, gap: Spacer, close: Fixed }
+//! struct Header {
+//!     #[widget_id("title")]
+//!     title: Label,
+//!     gap: Spacer,
+//!     close: Fixed,
+//! }
 //! ```
 //!
-//! Every field is a child widget (a leaf from `lumen_static::ops` or
-//! another derived struct). The emitted impl is all-const: `NODE_COUNT` /
-//! `KIND_COUNT` arithmetic over the field types, a `TABLE` spliced
-//! together at compile time with `offset_of!` byte bases, and a kind list
-//! with the struct's own ops first.
+//! Every field is a child widget — a leaf from `lumen_static::ops`, or
+//! another derived struct. What `StaticTree` emits is all const:
+//! `NODE_COUNT` and `DEPTH` summed over the field types, and a
+//! `SUB_TABLE` of [`NodeDesc`] spliced together at compile time from the
+//! fields' own sub-tables, carrying parent/child/sibling links plus the
+//! `#[widget_id]` and `#[widget_class]` selector inputs.
+//!
+//! The table is *addressing*, not dispatch. Traversal is recursive
+//! descent — a container calls its children through `&mut dyn Node` —
+//! so there is no kind list and no `fn`-pointer table
+//! (`docs/results-traversal.md`). Two const assertions ride along with
+//! every expansion: the spliced table is well-formed, and `DEPTH` fits
+//! `MAX_DEPTH`, so a tree that could overflow the stack does not compile.
+//!
+//! [`NodeDesc`]: lumen_static::NodeDesc
 
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as Ts2;
@@ -849,7 +868,21 @@ impl syn::parse::Parse for BindSpec {
 /// The application root. Emits `impl App`: the tree accessors, and an
 /// `update` built from the `#[bind]` declarations on the state fields.
 ///
-/// ```ignore
+/// ```
+/// use lumen_static::ops::Label;
+/// use lumen_static::{App, StaticTree};
+///
+/// #[derive(StaticTree, Default)]
+/// #[widget(column, spacing = 0.0)]
+/// struct Ui {
+///     #[widget_id("value")]
+///     value: Label<String>,
+/// }
+///
+/// fn recompute(c: &mut Counter) {
+///     c.recomputed += 1;
+/// }
+///
 /// #[derive(App, Default)]
 /// #[app(after_update = recompute)]     // optional, fn(&mut Self)
 /// struct Counter {
@@ -857,7 +890,16 @@ impl syn::parse::Parse for BindSpec {
 ///     ui: Ui,
 ///     #[bind(ui.value, "count: {}")]
 ///     count: i64,
+///     recomputed: u32,
 /// }
+///
+/// # fn main() {
+/// use lumen_static::event::App as _;
+/// let mut c = Counter { count: 7, ..Default::default() };
+/// c.update();                                    // what the frame loop calls
+/// assert_eq!(c.ui.value.as_str(), "count: 7");
+/// assert_eq!(c.recomputed, 1);
+/// # }
 /// ```
 ///
 /// The whole impl is generated so that nothing about the update step is

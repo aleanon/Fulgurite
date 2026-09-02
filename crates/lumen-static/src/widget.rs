@@ -1,10 +1,17 @@
-//! The `Widget` trait and the const splicing helpers the derive uses.
+//! The [`Node`] and [`Widget`] traits, and the const splicing helpers
+//! the derive uses.
 //!
-//! One trait, replacing the old `Widget` (associated consts) plus
-//! `WidgetOps` (a static table of `fn` pointers). Traversal is recursive
-//! descent: a container calls its children through `&mut dyn Widget`, so
-//! the vtable arrives with the reference and there is no
-//! `desc → kind → ops` indirection to pay (`docs/results-traversal.md`).
+//! Two traits, split by what they can carry. [`Node`] holds the methods
+//! and is object-safe, so a container can reach a child as `&mut dyn
+//! Node`. [`Widget`] adds the associated consts — `NODE_COUNT`, `DEPTH`,
+//! `SUB_TABLE` — which is exactly what a trait object cannot have. Every
+//! widget implements both; the split is what lets compile-time facts and
+//! runtime traversal coexist.
+//!
+//! Traversal is recursive descent: the vtable arrives with the child
+//! reference, so there is no per-node kind lookup to pay. That replaced
+//! a flat table walk over a static array of `fn` pointers, and was
+//! measured 34–39% faster (`docs/results-traversal.md`).
 //!
 //! Code is emitted per widget *kind*, not per tree position — §4's trap
 //! is avoided exactly as §5 intended, by the `&dyn` coercion rather than

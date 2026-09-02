@@ -12,6 +12,12 @@ syn = { version = "2", features = ["full"] }
 quote = "1"
 proc-macro2 = { version = "1", features = ["span-locations"] }
 
+# A dev-dependency cycle is legal (dev-deps are not in the normal build
+# graph) and is what lets this crate's doctests and, later, its trybuild
+# suite compile against the real derives instead of being ```ignore``d.
+[dev-dependencies]
+lumen-static = { path = "../lumen-static" }
+
 [features]
 # Keep the generated accessor out of line: code size O(fields per
 # type) instead of O(NODE_COUNT per root). See docs/results-safe-prototype.md.

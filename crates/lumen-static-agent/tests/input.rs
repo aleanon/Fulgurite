@@ -38,7 +38,9 @@ fn on_save(app: &mut App, _: &EventCtx) {
 const VIEW: Constraints = Constraints { min_w: 0.0, max_w: 200.0, min_h: 0.0, max_h: 200.0 };
 
 /// A minimal host: the queue, the layout array, the focus slot, and a
-/// frame counter. Exactly the surface `Pump` asks for.
+/// frame counter. Exactly the surface the agent's `Host` trait asks for
+/// — and the only implementation of it in the workspace, which is why
+/// `input.*` has no coverage outside this file (F6.5).
 struct Host {
     app: App,
     states: [NodeState; Ui::NODE_COUNT],

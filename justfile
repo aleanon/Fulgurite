@@ -23,7 +23,7 @@ static:
     ./scripts/check_no_unsafe.sh        # M0: no `unsafe` anywhere in crates/*/src
     ./scripts/check_doc_identifiers.sh  # backticked names in comments must exist in code
     ./scripts/check_derive_attrs.sh     # every derive helper attribute must have a user
-    ./scripts/check_doc_paths.sh        # cited docs/*.md and --bin targets must exist
+    ./scripts/check_doc_paths.sh        # cited docs/*.md and bench binaries must exist
 
 # Default features == the shipped shape. This is the ONLY build that compiles
 # what docs/verification-notes.md scopes its argument to; `--workspace` cannot

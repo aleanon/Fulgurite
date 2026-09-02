@@ -95,6 +95,7 @@ dependencies = [
 name = "lumen-static-macros"
 version = "0.1.0"
 dependencies = [
+ "lumen-static",
  "proc-macro2",
  "quote",
  "syn 2.0.119",
