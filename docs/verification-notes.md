@@ -11,7 +11,10 @@ With both features off, the entire shipped core is: `desc` (the table
 types), `widget` (const splicing), `pass` (three layout loops + paint +
 dispatch), `hit`, `ops` (containers + `Label`/`Fixed`/`Spacer`/`Button`),
 `fuse`, `repeat`, `assemble`, `event`, `inbox`. That is roughly 1.5k
-lines with **17 `unsafe` blocks, all in two files**, and every one of
+lines with **17 `unsafe` blocks, all in two files** *(counted here on
+2026-08-30; `results-safe-prototype.md` counts 13 the next day, after the
+prototype removed four — both are right about their own moment, and both
+are now zero)*, and every one of
 them is the same pattern:
 
 ```rust

@@ -502,6 +502,17 @@ milestone that depends on it. Split as review recommended:
   `Measured` should go; nothing about `format_into` changes either way.
   The bench must be taught to install the real measurer — re-running it
   as-is measures `BlockMetrics` again.
+
+  **One trap to name before running it.** A shaper with its own
+  content-keyed cache — cosmic-text's `ShapeRunCache`, for instance —
+  makes a memo *miss* cost a hash lookup rather than a shape. Measure
+  against a cold shaper and the answer is microseconds; measure against
+  its warm path and it is hundreds of nanoseconds. Both are true and
+  they differ by ~10x, so the number recorded must say which. It also
+  means `layout-and-storage-decisions.md` §1's "re-shaping is what the
+  cache exists to avoid" stops being the whole story once a real shaper
+  lands: the framework memo will no longer be the only thing between a
+  label and a shape.
 - **T7.2b** `TextMeasure` gains a shaping method. `dyn TextMeasure` today
   returns a bare `Size`; M8's `Shaped` cache needs per-glyph advances,
   so the seam T7.2 adopts behind is too narrow for T7.2's own stated

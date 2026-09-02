@@ -1,5 +1,10 @@
 # Is the `unsafe` needed? — measured
 
+> **Machine.** i9-13900KF, governor `powersave`, turbo on, `tsc`
+> clocksource, rustc 1.94.0. Absolute figures are not portable across
+> machines or governors; ratios taken inside one run are. Recorded from
+> 2026-09-02, when it turned out no results doc had said.
+
 *2026-08-31. The question from `docs/verification-notes.md`: the release
 build's 13 `unsafe` blocks are all one pattern (`base.add(offset) as
 *const W`). Is that pattern load-bearing, or a performance choice? Built

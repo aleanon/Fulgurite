@@ -1,5 +1,32 @@
 # Step 6 — `#[fuse]`: the erasure dial, measured
 
+> **Machine.** i9-13900KF, governor `powersave`, turbo on, `tsc`
+> clocksource, rustc 1.94.0. Absolute figures are not portable across
+> machines or governors; ratios taken inside one run are. Recorded from
+> 2026-09-02, when it turned out no results doc had said.
+
+> **SUPERSEDED 2026-09-02 (F7.1).** Every number below was measured
+> against the flat table walk that `docs/results-traversal.md` replaced
+> with recursive descent. On the shipped code the headline does not hold:
+> **fusion is 429 µs against 435 µs for `&dyn` calls at 100k nodes, i.e.
+> within noise** — `results-traversal.md` records the re-measurement, and
+> `plan-architecture-v2.md`'s M0 outcome repeats it. The −42% / −61% /
+> −64% figures and the "wins ~2.8×" conclusion were artifacts of the
+> traversal being compared against, not of fusion.
+>
+> Why it kept a marker for three days after the fact: the 2026-09-02
+> correction pass annotated four other results docs and skipped this one,
+> which is the same manual-pass failure `AGENT.md`'s doc-currency rule is
+> about. It was the only wholly stale document in `docs/` with no marker
+> at all.
+>
+> **What survives** is the mechanism and the trade, which are unchanged:
+> `#[fuse]` emits static calls instead of `&dyn`, collapses a subtree to
+> one table entry, and therefore makes its internals invisible to the
+> agent surface and unable to carry per-node state. That is a real dial
+> with a real cost; the *speed* it was sold on is not there on the
+> recursive path, where the vtable already arrives with the reference.
+
 *2026-08-30. Handoff §5's per-subtree fusion, judged against Step 2's
 measurements as §10 prescribes. Same machine, profile, shapes, and
 constraints as `docs/results-step2-crossover.md`; harness

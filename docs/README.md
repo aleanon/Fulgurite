@@ -1,0 +1,65 @@
+# The documents, and which of them to trust
+
+*Index, 2026-09-02. Twenty-four files use six different conventions for
+"this is out of date" — token markers, bold DONE lines, strikethrough,
+italic parentheticals, header blockquotes, and prose headings. You cannot
+grep for what to distrust, which is what this table is for.*
+
+**Class** — `live` a decision still in force · `open` a question not yet
+answered · `queue` a work plan · `historical` a step that shipped and was
+superseded, kept for its reasoning · `stale` claims something the code no
+longer does.
+
+**Reproducible** — whether the numbers in it can be re-run from this
+tree today.
+
+| file | answers | class | reproducible |
+|---|---|---|---|
+| [`00-handoff-static-tree.md`](00-handoff-static-tree.md) | why the whole design is shaped this way | **live** (the spec) | n/a |
+| [`plan-architecture-v2.md`](plan-architecture-v2.md) | what is built and what is next (M0–M9) | **queue** | n/a |
+| [`plan-review-fixes.md`](plan-review-fixes.md) | the F0–F7 fix pass from the 2026-09-02 review | **queue** | n/a |
+| [`text-and-scrolling-decisions.md`](text-and-scrolling-decisions.md) | how scrolling and text input will work | **live**, 12 answered + 11 open | n/a |
+| [`layout-and-storage-decisions.md`](layout-and-storage-decisions.md) | the `Length` model, text storage, the style array | **live** (most-cited from code) | n/a |
+| [`events-decision.md`](events-decision.md) | why handlers are `fn` pointers, not `Msg` | **live** | n/a |
+| [`bindings-decision.md`](bindings-decision.md) | why `#[bind]` compares output, and what it costs | **live** | yes — `benches --bin bindings` |
+| [`either-reopened.md`](either-reopened.md) | whether `Either` should use a merged table | **open** (blocks M8's T8.0) | n/a |
+| [`plan-lumen-parity.md`](plan-lumen-parity.md) | how far this is from a usable framework | **queue**; its line counts are dated 2026-09-01 | n/a |
+| [`plan-agent-parity.md`](plan-agent-parity.md) | the agent surface, P0–P5 | **queue**, P0–P4 done | n/a |
+| [`plan-events.md`](plan-events.md) | the event system, E0–E5 | **queue**, E0–E4 done | n/a |
+| [`verification-notes.md`](verification-notes.md) | what could be formally verified, and the `unsafe` audit | **live** | n/a |
+| [`results-allocation.md`](results-allocation.md) | does a steady-state frame allocate? (no) | **live** | yes — `shell/tests/alloc_gate.rs` |
+| [`results-const-eval.md`](results-const-eval.md) | what the const table check costs to compile | **live** | yes — `just const-budget` |
+| [`results-agent-cost.md`](results-agent-cost.md) | what observing a frame costs | **live** | yes — `benches --bin agent` |
+| [`results-traversal.md`](results-traversal.md) | recursion vs a flat table walk | **live** conclusion | **no — harness deleted** |
+| [`results-safe-prototype.md`](results-safe-prototype.md) | is the `unsafe` needed? (no) | **live** conclusion | **no — harness deleted** |
+| [`results-step1-firewall.md`](results-step1-firewall.md) | does the compile-time firewall hold? | **live** | yes — `just firewall` |
+| [`results-step2-crossover.md`](results-step2-crossover.md) | static vs `Box<dyn Widget>` | **historical**, header inverts its own conclusion | superseded; re-measured in the header |
+| [`results-step6-fuse.md`](results-step6-fuse.md) | what `#[fuse]` buys | **historical** | superseded — see its header |
+| [`step2-design-notes.md`](step2-design-notes.md) | the node table's design | **historical**, SUPERSEDED per section | n/a |
+| [`step3-repeaters.md`](step3-repeaters.md) | virtualized lists | **live** substance, drifted mechanism | n/a |
+| [`step4-hot-reload.md`](step4-hot-reload.md) | the swap sequence and what survives | **live** | n/a |
+| [`step5-observability.md`](step5-observability.md) | the AccessKit tree and provenance | **live** doctrine | n/a |
+
+## Two things a new reader should know
+
+**Two results docs cannot be re-run.** `results-traversal.md` and
+`results-safe-prototype.md` cite a `benches` binary that no longer
+exists. They are the documents that overturned handoff §5 and justified
+deleting the entire `unsafe` surface, so their conclusions are
+load-bearing and their evidence is not reproducible. Both say so at the
+top. Under this project's own rule — a gate must be able to say no — a
+gate whose harness has been deleted cannot say anything.
+
+**The oldest numbers are the least trustworthy.** Anything measured
+before 2026-09-02 was taken with a per-iteration benchmark harness whose
+own floor was 10–27 ns, so any figure under ~100 ns in an older document
+is at or below the noise. The harness is batched now and prints its floor
+on every run; a result within a small multiple of it is not a result.
+
+## Where a decision is recorded
+
+Per `AGENT.md`, a decision backed by measurement gets its own
+`results-*.md` — the number, the threshold it was judged against, and the
+verdict — so a later reader can see why the gate said no. A decision that
+is an argument rather than a measurement gets a `*-decision.md`. Plans
+are `plan-*.md` and carry task ids that appear in commit subjects.

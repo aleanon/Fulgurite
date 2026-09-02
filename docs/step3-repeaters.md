@@ -1,3 +1,13 @@
+> **Mechanism drifted, substance stands (2026-09-02, F7.5).** Three
+> details below describe machinery that no longer exists: the `RefCell`
+> side arena (removed in T0.6 — the recursive path hands out `&mut`, so
+> interior mutability bought nothing), the flat down/place phases (M0),
+> and "the table stays 24 bytes" (`NodeDesc` is 48 B since M1 added the
+> cascade's selector inputs — `docs/results-safe-prototype.md`). The
+> scaling property this document establishes, and the deferred f32 extent
+> ceiling it records, are unaffected; the window lives in
+> `crate::arena::Arena` now.
+
 # Step 3 — repeaters: design notes and measurements
 
 *2026-08-30. Handoff §6's repeater and the §10 Step 3 validation. Machine

@@ -137,6 +137,13 @@ pub enum Selector {
     /// `.row` — a class.
     Class(&'static str),
     /// `label` — a widget kind name.
+    /// A widget kind, as [`Node::kind_name`](crate::widget::Node::kind_name)
+    /// reports it — **and the two are not spelled alike**. Built-in
+    /// leaves are lowercase (`label`, `button`, `fixed`, `spacer`);
+    /// derived containers use the struct's own ident (`Ui`, `Controls`).
+    /// So `Selector::Kind("label")` and `Selector::Kind("Ui")` are both
+    /// correct. Documented nowhere until 2026-09-02
+    /// (`docs/plan-review-fixes.md` F7.5).
     Kind(&'static str),
     /// Everything.
     Any,

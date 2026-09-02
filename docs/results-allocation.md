@@ -1,5 +1,10 @@
 # Zero allocation in steady state — measured, and now gated
 
+> **Machine.** i9-13900KF, governor `powersave`, turbo on, `tsc`
+> clocksource, rustc 1.94.0. Absolute figures are not portable across
+> machines or governors; ratios taken inside one run are. Recorded from
+> 2026-09-02, when it turned out no results doc had said.
+
 *2026-09-02, plan `docs/plan-review-fixes.md` F6.9. Harness:
 `crates/lumen-static-shell/tests/alloc_gate.rs`, a counting
 `#[global_allocator]` in its own test binary. Machine-independent: the

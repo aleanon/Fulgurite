@@ -160,9 +160,12 @@ frame, where the rigid partition and dirty tracking let us skip.
 
 ### The four passes
 
-**Taffy is rejected** (it builds a second node tree beside ours, which is
-the duplication the flat table exists to avoid, and Lumen's own CP5
-measured what maintaining it costs).
+> **Note 2026-09-02 (F7.5).** This heading was followed by the Taffy
+> paragraph from earlier in the section, duplicated verbatim — a
+> copy-paste artifact in the most-cited document in `docs/`. The four
+> passes it introduces are the table further down. The whole scheme is
+> superseded in any case: recursion gives single-pass layout for free
+> (`docs/results-traversal.md`), and only the `Length` model survives.
 
 ### Why textbook flexbox is not single-pass
 

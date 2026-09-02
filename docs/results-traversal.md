@@ -1,5 +1,10 @@
 # Flat loops vs recursive descent — measured
 
+> **Machine.** i9-13900KF, governor `powersave`, turbo on, `tsc`
+> clocksource, rustc 1.94.0. Absolute figures are not portable across
+> machines or governors; ratios taken inside one run are. Recorded from
+> 2026-09-02, when it turned out no results doc had said.
+
 *2026-09-01. Prompted by a correction: iced's layout is single-pass, and
 the four-pass flat scheme in `docs/layout-and-storage-decisions.md` §2
 was buying back exactness that recursion gets for free. This measures the
