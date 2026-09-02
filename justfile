@@ -35,13 +35,11 @@ static:
 # Grouped so the whole default-feature graph is built once. Interleaving these
 # with the dev-shape commands recompiles lumen-static both ways every time.
 #
-# TODO(alloc-gate): the steady-state allocation gate belongs here, as
-#   `cargo test -p alloc-gate --release`, once fixtures/alloc-gate exists.
-#   It needs its own binary (#[global_allocator] is per-binary), warmup frames
-#   before counting, and counters read outside any println!. Every path
-#   measures zero today except the enum derive at 2 allocs/frame/node, so it
-#   ships as a per-path table with that one at its known value, not as a
-#   blanket zero.
+# The steady-state allocation gate runs with the dev-shape tests, as
+# `crates/lumen-static-shell/tests/alloc_gate.rs` — its own binary, since
+# #[global_allocator] is per-binary. Every path asserts **zero**, not a
+# budget: they are all at zero, so a budget would only encode a bug
+# (docs/results-allocation.md).
 
 # Default features: the shipped shape, and the only one docs/verification-notes.md covers.
 release-shape: const-budget

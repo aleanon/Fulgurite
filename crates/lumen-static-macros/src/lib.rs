@@ -19,12 +19,12 @@
 //! Every field is a child widget — a leaf from `lumen_static::ops`, or
 //! another derived struct. What `StaticTree` emits is all const:
 //! `NODE_COUNT` and `DEPTH` summed over the field types, and a
-//! `SUB_TABLE` of `::lumen_static::desc::NodeDesc` entries spliced at compile time from the
+//! `SUB_TABLE` of `NodeDesc` entries spliced at compile time from the
 //! fields' own sub-tables, carrying parent/child/sibling links plus the
 //! `#[widget_id]` and `#[widget_class]` selector inputs.
 //!
 //! The table is *addressing*, not dispatch. Traversal is recursive
-//! descent — a container calls its children through `&mut dyn ::lumen_static::widget::Node` —
+//! descent — a container calls its children through `&mut dyn Node` —
 //! so there is no kind list and no `fn`-pointer table
 //! (`docs/results-traversal.md`). Two const assertions ride along with
 //! every expansion: the spliced table is well-formed, and `DEPTH` fits
@@ -245,7 +245,7 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
         const _: () = {
             // No `use` block: it would shadow a user type of the same
             // name at the point the impl is written, so a widget struct
-            // named `::lumen_static::Size`, `::lumen_static::widget::Node` or `::lumen_static::Point` failed with an error
+            // named `Size`, `Node` or `Point` failed with an error
             // naming a framework type it never mentioned. Everything is
             // spelled out instead (F6.2).
 
@@ -741,7 +741,7 @@ fn expand_enum(
         let syn::Fields::Unnamed(f) = &v.fields else {
             return Err(syn::Error::new_spanned(
                 v,
-                "each variant must hold exactly one widget: `Variant(::lumen_static::widget::Widget)`",
+                "each variant must hold exactly one widget: `Variant(Widget)`",
             ));
         };
         if f.unnamed.len() != 1 {
@@ -760,7 +760,7 @@ fn expand_enum(
         const _: () = {
             // No `use` block: it would shadow a user type of the same
             // name at the point the impl is written, so a widget struct
-            // named `::lumen_static::Size`, `::lumen_static::widget::Node` or `::lumen_static::Point` failed with an error
+            // named `Size`, `Node` or `Point` failed with an error
             // naming a framework type it never mentioned. Everything is
             // spelled out instead (F6.2).
 
