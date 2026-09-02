@@ -1,0 +1,5 @@
+error: expected `keep`, `fresh`, or `reset`
+ --> tests/ui/fail_reload_unknown_mode.rs:5:14
+  |
+5 |     #[reload(kepe)]
+  |              ^^^^

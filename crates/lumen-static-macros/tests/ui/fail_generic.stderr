@@ -1,0 +1,5 @@
+error: StaticTree does not support generic or lifetime parameters
+ --> tests/ui/fail_generic.rs:6:15
+  |
+6 | struct Generic<T> {
+  |               ^^^

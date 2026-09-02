@@ -1,0 +1,17 @@
+error[E0277]: the trait bound `&'static str: TextBuffer` is not satisfied
+  --> tests/ui/fail_bind_into_default_label.rs:13:10
+   |
+13 | #[derive(App, Default)]
+   |          ^^^ the trait `TextBuffer` is not implemented for `&'static str`
+   |
+help: the trait `TextBuffer` is implemented for `String`
+  --> $WORKSPACE/crates/lumen-static/src/text.rs
+   |
+   | impl TextBuffer for String {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^
+note: required by a bound in `format_into`
+  --> $WORKSPACE/crates/lumen-static/src/bind.rs
+   |
+   | pub fn format_into<S: TextBuffer>(dst: &mut Label<S>, args: core::fmt::Arguments<'_>) -> bool {
+   |                       ^^^^^^^^^^ required by this bound in `format_into`
+   = note: this error originates in the derive macro `App` (in Nightly builds, run with -Z macro-backtrace for more info)

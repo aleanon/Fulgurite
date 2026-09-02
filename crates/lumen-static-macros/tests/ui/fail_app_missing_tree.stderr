@@ -1,0 +1,5 @@
+error: App needs a `#[tree]` field naming the widget tree, e.g. `#[tree] ui: Ui`
+  --> tests/ui/fail_app_missing_tree.rs:11:8
+   |
+11 | struct NoTree {
+   |        ^^^^^^

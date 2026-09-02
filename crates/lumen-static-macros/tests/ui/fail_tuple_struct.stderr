@@ -1,0 +1,5 @@
+error: StaticTree needs named fields
+ --> tests/ui/fail_tuple_struct.rs:6:8
+  |
+6 | struct Tup(Label);
+  |        ^^^

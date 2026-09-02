@@ -1,0 +1,8 @@
+use lumen_static::ops::Label;
+use lumen_static::StaticTree;
+
+#[derive(StaticTree, Default)]
+#[widget(row, spacing = 0.0)]
+struct Tup(Label);
+
+fn main() {}

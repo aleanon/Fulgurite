@@ -17,6 +17,7 @@ proc-macro2 = { version = "1", features = ["span-locations"] }
 # suite compile against the real derives instead of being ```ignore``d.
 [dev-dependencies]
 lumen-static = { path = "../lumen-static" }
+trybuild = "1"
 
 [features]
 # Keep the generated accessor out of line: code size O(fields per

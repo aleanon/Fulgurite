@@ -1,0 +1,5 @@
+error: expected a string literal: `#[widget_id("save")]`
+ --> tests/ui/fail_widget_id_bare_ident.rs:9:5
+  |
+9 |     #[widget_id(save)]
+  |     ^^^^^^^^^^^^^^^^^^

@@ -1,0 +1,5 @@
+error: expected a class name: `"striped"` or `striped`
+ --> tests/ui/fail_widget_class_bad.rs:7:20
+  |
+7 |     #[widget_class(1)]
+  |                    ^
