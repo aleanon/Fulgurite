@@ -111,7 +111,7 @@ offsets or kind rebasing, and provenance/`widget_id` stamping unchanged.
 
 ### T0.3 — `NodeDesc` slim
 
-Drop `kind` and `offset` (24 B → 16 B). `splice_child` loses two
+Drop `kind` and `offset` (24 B → 16 B *(before M1's `wid`/`classes`; 56 B → 48 B today, same 16 B saving — `docs/results-safe-prototype.md` F1.9)*). `splice_child` loses two
 parameters. `concat_table` keeps its signature minus `stride`. The
 `memory` benchmark's `SlimDesc` projection becomes the measurement.
 

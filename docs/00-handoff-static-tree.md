@@ -704,7 +704,7 @@ remains** — which is why §10 Step 1 is the kill criterion.
    reference and `KIND_LIST` disappears entirely. Costs +8% traversal at
    100k nodes with a cached index (under 1% of a realistic frame), is
    *faster* than the vtable array below ~100 nodes, halves per-node
-   static data (32 B → 16 B), and removes every `unsafe` in the release
+   static data (32 B → 16 B *(per-node saving; both figures predate M1's `wid`/`classes`, which add 32 B to `NodeDesc` in either path — see `docs/results-safe-prototype.md` F1.9)*), and removes every `unsafe` in the release
    build. **Prototype retained, not adopted** — `Repeat` and event
    dispatch are not ported, which is where the estimate could move. The
    deciding factor is the long-term formal-verification goal, not

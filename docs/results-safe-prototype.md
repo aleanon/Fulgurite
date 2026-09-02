@@ -100,7 +100,26 @@ symbol sums over two isolated binaries that link one path each
 The kind list costs a full pointer per node, not per kind: derived kind
 lists are not deduplicated (`docs/step2-design-notes.md` §7), and for
 every shape in the benchmark `KIND_COUNT == NODE_COUNT` exactly. So the
-safe path halves per-node static data, 32 B → 16 B.
+safe path saves 16 B of static data per node, 32 B → 16 B.
+
+> **Corrected 2026-09-02 (F1.9).** This sentence said "halves", and the
+> table above it was corrected the same day to record `NodeDesc` at
+> **48 B** — M1 added `wid` and `classes` for the cascade. A doc
+> contradicting itself eight lines apart is the failure the numbers rule
+> in `docs/plan-review-fixes.md` exists to stop, so: recomputed below,
+> with both arms carrying the M1 fields, since the cascade needs them
+> whichever way the addressing question went.
+>
+> | | per node |
+> |---|---|
+> | unsafe: `NodeDesc` 56 B + `KIND_LIST` 8 B | **64 B** |
+> | safe: `NodeDesc` 48 B, no kind list | **48 B** |
+>
+> **The saving is 16 B/node either way, so the argument's shape is
+> unchanged** — the review that flagged this read the growth as applying
+> to the safe arm alone and concluded the break-even had vanished. It has
+> not. What is wrong is the word "halves" (it is a quarter now) and the
+> 9% figure below (it is 6.5%).
 
 ### Code size (90-node tree, one path per binary)
 
@@ -131,15 +150,29 @@ The switch is a real dial, measured both ways
 
 For a 90-node tree, out-of-line accessor, slim descriptor:
 
-- **flash**: unsafe `3,948 + 2,160 + 720 = 6,828 B`; safe
-  `4,758 + 1,440 + 0 = 6,198 B` — safe is ~9% smaller.
-- **RAM**: identical at 32 B/node — *unless* the index is cached, which
-  adds 16 B/node (+50% RAM).
+- **flash**: unsafe `3,948 + 5,040 + 720 = 9,708 B`; safe
+  `4,758 + 4,320 + 0 = 9,078 B` — safe is ~6.5% smaller.
+- **RAM**: identical at 32 B/node (`NodeState`) — *unless* the index is
+  cached, which adds 16 B/node (+50% RAM).
 
 The break-even is around **51 nodes**: the safe path pays ~810 B more
 code (for three component types) and saves 16 B per node of static data.
 Below that, unsafe uses less flash; above it, safe does, and the gap
 widens with node count.
+
+> **Recomputed 2026-09-02 (F1.9)** at `NodeDesc` = 48 B, both arms
+> carrying M1's `wid`/`classes`. The flash figures moved (6,828 → 9,708
+> and 6,198 → 9,078, i.e. 9% → 6.5%); **the break-even did not**, because
+> the per-node saving is still 16 B. The original numbers are struck
+> above rather than kept, since nothing now measures them: this
+> comparison was between two implementations of which only one survives
+> in the tree, so it cannot be re-run — see the reproducibility note at
+> the top.
+>
+> The one figure in this document that should *not* be relied on is the
+> 69 ns vs 75 ns small-size row: a 6 ns difference measured by the
+> per-iteration harness, whose own floor was 10–27 ns. The +8% at 100k is
+> at a scale that harness handled.
 
 ### The embedded reading
 
