@@ -39,26 +39,6 @@ pub fn layout<W: Node + ?Sized>(
     layout_with(tree, &mut cx, style, st, limits);
 }
 
-/// Resolve styles then lay out — the ordinary frame path.
-pub fn frame<W: Widget + ?Sized>(
-    tree: &mut W,
-    sheet: crate::style::Stylesheet,
-    style: &mut [Style],
-    st: &mut [NodeState],
-    limits: Constraints,
-) {
-    {
-        let t: &W = tree;
-        crate::style::cascade(
-            W::SUB_TABLE,
-            &|i| t.node(i).defaults(),
-            &|i| t.node(i).kind_name(),
-            sheet,
-            style,
-        );
-    }
-    layout(tree, style, st, limits);
-}
 
 /// Default styles for a tree, with no stylesheet applied — the common
 /// case in tests and simple apps.

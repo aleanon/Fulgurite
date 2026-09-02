@@ -258,6 +258,21 @@ fn matches(sel: &Selector, d: &NodeDesc, kind: &str) -> bool {
 /// One flat pass over the table — the cascade is the only place that
 /// still walks the table linearly, and it re-runs only when the sheet or
 /// the tree changes, not every frame.
+/// **When to call this.** Not per frame. The result depends only on the
+/// stylesheet, the table, and each kind's `defaults()` — and
+/// [`Node::defaults`](crate::widget::Node::defaults) is required to
+/// depend on the type alone, never on instance state. So the computed
+/// styles change only when the sheet is replaced or the tree's shape is
+/// (a hot reload), which is exactly when
+/// [`Host::set_stylesheet`](../../lumen_static_shell/struct.Host.html)
+/// and `Host::new` run it.
+///
+/// A `pass::frame` helper used to cascade and lay out together, on the
+/// theory that the two belong in one step. It had zero callers — every
+/// host and test open-coded the pair — and once `defaults()` became
+/// state-independent it was not merely unused but misleading, since it
+/// implied the cascade had to be re-run for a frame to be correct. It
+/// was deleted rather than wired up. `docs/plan-review-fixes.md` F3.3.
 pub fn cascade(
     table: &[NodeDesc],
     defaults: &dyn Fn(usize) -> Defaults,
