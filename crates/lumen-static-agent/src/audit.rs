@@ -22,10 +22,18 @@
 //! 2. **Dedup is a per-frame presence diff**, not a monotonic seen-set: a
 //!    finding that is fixed and then re-broken must report again.
 //! 3. **The audit must not repeat expensive work.** Lumen's `lint()` was
-//!    re-shaping every text node and deep-cloning the tree per call. Here
-//!    nothing allocates a snapshot at frame time; the probe below reuses
-//!    the existing `up` op and a scratch buffer that stops reallocating
-//!    after the first frame.
+//!    re-shaping every text node and deep-cloning the tree per call.
+//!
+//!    This scar was re-earned here and is now closed, which is worth
+//!    recording rather than quietly fixing. The intrinsic probe measured
+//!    every leaf twice per frame *through `layout`*, which writes
+//!    `Label`'s memo — so the memo ended each frame keyed on the probe's
+//!    constraints and missed on the next one: 400 of 400 labels
+//!    re-measured per frame at 1k nodes, in the file whose own doc says
+//!    not to. The probe now goes through [`Node::probe`], which does not
+//!    touch the memo, and every buffer here is retained, so a frame
+//!    boundary allocates nothing whatever the finding count.
+//!    `docs/results-agent-cost.md`, `docs/plan-review-fixes.md` F2.
 //!
 //! ## The intrinsic-size probe
 //!
@@ -110,14 +118,85 @@ pub mod codes {
 pub(crate) struct Finding {
     pub code: &'static str,
     pub idx: u32,
-    pub message: String,
-    pub detail: Value,
+    pub what: What,
+}
+
+/// What a finding found, as numbers.
+///
+/// Findings are built for every node every frame and *most are thrown
+/// away*: a 900-node tree in a short viewport legitimately carries ~130
+/// below-the-fold nodes, and building a `String` and a `serde_json::Value`
+/// for each, every frame, to discover that nothing changed, was the
+/// audit's largest single cost after the probe
+/// (`docs/plan-review-fixes.md` F2.3). This is `Copy` and allocates
+/// nothing; the text is written in `message()`/`detail()`, which run
+/// only when a finding is reported by `ui.lint` or crosses an
+/// open/close transition.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum What {
+    Invisible { natural: Size, size: Size },
+    Truncated { natural: Size, size: Size },
+    Collapsed { items: u64, shown: u32, size: Size },
+    Offscreen { bounds: [f32; 4], viewport: [f32; 4] },
+    Blank { nodes: usize },
 }
 
 impl Finding {
     /// The identity used for the presence diff: structural, never text.
     fn key(&self) -> (&'static str, u32) {
         (self.code, self.idx)
+    }
+
+    pub fn message(&self) -> String {
+        match self.what {
+            What::Invisible { natural, size } => format!(
+                "content wants {:.0}x{:.0} but was laid out {:.0}x{:.0} — \
+                 present in the tree, absent on screen",
+                natural.w, natural.h, size.w, size.h
+            ),
+            What::Truncated { natural, size } => format!(
+                "content wants {:.0}x{:.0} but only got {:.0}x{:.0}",
+                natural.w, natural.h, size.w, size.h
+            ),
+            What::Collapsed { items, shown, .. } => format!(
+                "collection has {items} items but shows {shown} — \
+                 check the item extent and the space it was given"
+            ),
+            What::Offscreen { bounds: r, viewport: v } => format!(
+                "laid out at [{:.0},{:.0},{:.0},{:.0}], entirely outside the \
+                 root's [{:.0},{:.0},{:.0},{:.0}]",
+                r[0], r[1], r[2], r[3], v[0], v[1], v[2], v[3]
+            ),
+            What::Blank { nodes } => format!(
+                "nothing with both area and content in {nodes} nodes — the frame is blank"
+            ),
+        }
+    }
+
+    pub fn detail(&self) -> Value {
+        match self.what {
+            What::Invisible { natural, size } => json!({
+                "natural": [natural.w, natural.h],
+                "size": [size.w, size.h],
+            }),
+            What::Truncated { natural, size } => json!({
+                "natural": [natural.w, natural.h],
+                "size": [size.w, size.h],
+                "missing": [
+                    (natural.w - size.w).max(0.0),
+                    (natural.h - size.h).max(0.0),
+                ],
+            }),
+            What::Collapsed { items, shown, size } => json!({
+                "items": items,
+                "materialized": shown,
+                "size": [size.w, size.h],
+            }),
+            What::Offscreen { bounds, viewport } => json!({
+                "bounds": bounds, "viewport": viewport,
+            }),
+            What::Blank { nodes } => json!({ "nodes": nodes }),
+        }
     }
 }
 
@@ -141,6 +220,13 @@ pub(crate) struct Auditor {
     log: VecDeque<LogEntry>,
     dropped: u64,
     seeded: bool,
+    /// Sorted finding keys for this frame and the previous one, retained
+    /// so the presence diff allocates nothing. See `record`.
+    now_keys: Vec<(&'static str, u32)>,
+    was_keys: Vec<(&'static str, u32)>,
+    /// The findings buffer not currently held by `current`.
+    spare: Vec<Finding>,
+
 }
 
 /// What a leaf measured under the two probes.
@@ -166,7 +252,11 @@ impl Auditor {
     /// re-announces itself. An agent that just swapped a dylib wants the
     /// current state of the world, not a diff against a vanished one.
     pub fn record(&mut self, frame: u64, tree: &mut TreeMut, structural_reset: bool) {
-        let found = self.collect(tree);
+        // `found` is the buffer the previous frame's findings vacated:
+        // the two alternate, so a frame with findings allocates nothing
+        // once both have grown.
+        let mut found = std::mem::take(&mut self.spare);
+        self.collect(tree, &mut found);
 
         if structural_reset {
             self.current.clear();
@@ -181,30 +271,50 @@ impl Auditor {
 
         // Presence diff (never a monotonic seen-set): closed first, so a
         // fix-then-re-break cycle reads in causal order.
+        //
+        // Membership goes through sorted key buffers rather than a
+        // nested `any`: the old form was O(previous x found), and a
+        // 1k-node tree in a short viewport legitimately carries ~200
+        // below-the-fold findings, so it ran 40,000 comparisons every
+        // frame to discover that nothing had changed
+        // (`docs/plan-review-fixes.md` F2.3). The buffers are retained,
+        // so the diff allocates nothing in steady state.
         let previously = std::mem::take(&mut self.current);
+        let (mut now_keys, mut was_keys) =
+            (std::mem::take(&mut self.now_keys), std::mem::take(&mut self.was_keys));
+        now_keys.clear();
+        now_keys.extend(found.iter().map(Finding::key));
+        now_keys.sort_unstable();
+        was_keys.clear();
+        was_keys.extend(previously.iter().map(Finding::key));
+        was_keys.sort_unstable();
+
         for old in &previously {
-            if !found.iter().any(|f| f.key() == old.key()) {
+            if now_keys.binary_search(&old.key()).is_err() {
                 self.push_log(LogEntry {
                     frame,
                     event: "closed",
                     code: old.code,
                     idx: old.idx,
-                    message: old.message.clone(),
+                    message: old.message(),
                 });
             }
         }
         for f in &found {
-            if !previously.iter().any(|o| o.key() == f.key()) {
+            if was_keys.binary_search(&f.key()).is_err() {
                 self.push_log(LogEntry {
                     frame,
                     event: "opened",
                     code: f.code,
                     idx: f.idx,
-                    message: f.message.clone(),
+                    message: f.message(),
                 });
             }
         }
 
+        self.now_keys = now_keys;
+        self.was_keys = was_keys;
+        self.spare = previously;
         self.current = found;
         self.seeded = true;
     }
@@ -264,8 +374,8 @@ impl Auditor {
         out
     }
 
-    fn collect(&mut self, tree: &mut TreeMut) -> Vec<Finding> {
-        let mut out: Vec<Finding> = Vec::new();
+    fn collect(&mut self, tree: &mut TreeMut, out: &mut Vec<Finding>) {
+        out.clear();
         let st = tree.states;
 
         self.scratch.clear();
@@ -293,15 +403,7 @@ impl Auditor {
                     out.push(Finding {
                         code: codes::INVISIBLE,
                         idx: i as u32,
-                        message: format!(
-                            "content wants {:.0}x{:.0} but was laid out {:.0}x{:.0} — \
-                             present in the tree, absent on screen",
-                            nat.size.w, nat.size.h, st[i].size.w, st[i].size.h
-                        ),
-                        detail: json!({
-                            "natural": [nat.size.w, nat.size.h],
-                            "size": [st[i].size.w, st[i].size.h],
-                        }),
+                        what: What::Invisible { natural: nat.size, size: st[i].size },
                     });
                 } else if has_content
                     && (st[i].size.w + EPS < nat.size.w || st[i].size.h + EPS < nat.size.h)
@@ -309,18 +411,7 @@ impl Auditor {
                     out.push(Finding {
                         code: codes::TRUNCATED,
                         idx: i as u32,
-                        message: format!(
-                            "content wants {:.0}x{:.0} but only got {:.0}x{:.0}",
-                            nat.size.w, nat.size.h, st[i].size.w, st[i].size.h
-                        ),
-                        detail: json!({
-                            "natural": [nat.size.w, nat.size.h],
-                            "size": [st[i].size.w, st[i].size.h],
-                            "missing": [
-                                (nat.size.w - st[i].size.w).max(0.0),
-                                (nat.size.h - st[i].size.h).max(0.0),
-                            ],
-                        }),
+                        what: What::Truncated { natural: nat.size, size: st[i].size },
                     });
                 }
             }
@@ -337,15 +428,7 @@ impl Auditor {
                     out.push(Finding {
                         code: codes::COLLAPSED_COLLECTION,
                         idx: i as u32,
-                        message: format!(
-                            "collection has {items} items but shows {shown} — \
-                             check the item extent and the space it was given"
-                        ),
-                        detail: json!({
-                            "items": items,
-                            "materialized": shown,
-                            "size": [st[i].size.w, st[i].size.h],
-                        }),
+                        what: What::Collapsed { items, shown, size: st[i].size },
                     });
                 } else if items > 0 && a > 0.0 {
                     anything_visible = true;
@@ -365,13 +448,7 @@ impl Auditor {
                     out.push(Finding {
                         code: codes::OFFSCREEN,
                         idx: i as u32,
-                        message: format!(
-                            "laid out at [{:.0},{:.0},{:.0},{:.0}], entirely outside the \
-                             root's [{:.0},{:.0},{:.0},{:.0}]",
-                            r[0], r[1], r[2], r[3],
-                            viewport[0], viewport[1], viewport[2], viewport[3]
-                        ),
-                        detail: json!({ "bounds": r, "viewport": viewport }),
+                        what: What::Offscreen { bounds: r, viewport },
                     });
                 }
             }
@@ -382,14 +459,8 @@ impl Auditor {
             out.push(Finding {
                 code: codes::BLANK,
                 idx: 0,
-                message: format!(
-                    "nothing with both area and content in {} nodes — the frame is blank",
-                    tree.table.len()
-                ),
-                detail: json!({ "nodes": tree.table.len() }),
+                what: What::Blank { nodes: tree.table.len() },
             });
         }
-
-        out
     }
 }

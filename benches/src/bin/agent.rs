@@ -36,6 +36,9 @@ fn main() {
     black_box(());
     println!("agent: the cost of observing a frame\n");
 
+    // A short viewport, so a large share of the tree is legitimately
+    // below the fold and the audit carries real findings — the shape
+    // that made the old O(n^2) presence diff expensive.
     let mut w = Ten10::default();
     let sty = pass::default_styles(&w);
     let mut st = vec![NodeState::default(); Ten10::NODE_COUNT];
@@ -59,6 +62,27 @@ fn main() {
         1
     });
 
+    // The case the presence diff actually costs in: a short viewport, so
+    // a large share of the tree is legitimately below the fold and the
+    // audit carries hundreds of findings every frame.
+    const SHORT: Constraints =
+        Constraints { min_w: 0.0, max_w: 1920.0, min_h: 0.0, max_h: 900.0 };
+    let mut sw = Ten10::default();
+    let ssty = pass::default_styles(&sw);
+    let mut sst = vec![NodeState::default(); Ten10::NODE_COUNT];
+    pass::layout(&mut sw, &ssty, &mut sst, SHORT);
+    let mut sagent = Agent::new();
+    for _ in 0..3 {
+        let mut t = TreeMut::of_root(&mut sw, &ssty, &sst);
+        sagent.frame_done(&mut t, 1, 1);
+    }
+    println!("  ({} findings in the short viewport)", sagent.finding_count());
+    bench("frame_done, short viewport", 5_000, || {
+        let mut t = TreeMut::of_root(&mut sw, &ssty, &sst);
+        sagent.frame_done(&mut t, 1, 1);
+        1
+    });
+
     // Allocations per steady-state frame_done. The claim is zero.
     for _ in 0..5 {
         let mut t = TreeMut::of_root(&mut w, &sty, &st);
@@ -71,6 +95,18 @@ fn main() {
     }
     let per_frame = (ALLOCS.load(Ordering::Relaxed) - before) as f64 / 100.0;
     println!("\nallocations per steady-state frame_done: {per_frame:.2}");
+
+    // And the loaded case, where the findings' text used to be built.
+    let b2 = ALLOCS.load(Ordering::Relaxed);
+    for _ in 0..100 {
+        let mut t = TreeMut::of_root(&mut sw, &ssty, &sst);
+        sagent.frame_done(&mut t, 1, 1);
+    }
+    println!(
+        "allocations per frame_done with {} findings:  {:.2}",
+        sagent.finding_count(),
+        (ALLOCS.load(Ordering::Relaxed) - b2) as f64 / 100.0,
+    );
 
     // Commands recorded per node — the O(N.depth) symptom.
     let tree = TreeRef::of_root(&w, &sty, &st);

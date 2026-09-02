@@ -14,11 +14,20 @@
 //! geometry too), so the two flags classify a change as `geometry`,
 //! `content`, or `both` — a distinction an agent can act on directly.
 //!
-//! **Cost, stated up front** (Lumen's audit review found its own lint
-//! path re-shaping text and deep-cloning trees per call — the trap is
-//! real): recording a frame is one extra paint-op dispatch per node plus
-//! two small arrays. No AccessKit snapshot is built here; that happens
-//! only when a query arrives. Dev-surface budget, per §9.
+//! **Cost, stated up front and measured** (Lumen's audit review found
+//! its own lint path re-shaping text and deep-cloning trees per call —
+//! the trap is real, and this file fell into a version of it):
+//! recording a frame paints each *drawing* node once and folds each
+//! container's signature from its children, over three buffers retained
+//! across frames. **Zero allocations in steady state**; the numbers are
+//! in `docs/results-agent-cost.md`. No AccessKit snapshot is built here;
+//! that happens only when a query arrives. Dev-surface budget, per §9.
+//!
+//! This paragraph used to claim "one extra paint-op dispatch per node
+//! plus two small arrays". It was three fresh collections per call, and
+//! signing a node by calling `paint` on it meant a container repainted
+//! its whole subtree — 2.1–2.8x N commands per frame, O(N.depth) work
+//! (`docs/plan-review-fixes.md` F2.2).
 //!
 //! Records live in a bounded ring, so an agent that polls slowly is told
 //! `truncated: true` rather than handed a silent half-answer.

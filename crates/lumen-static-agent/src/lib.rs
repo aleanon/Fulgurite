@@ -110,8 +110,14 @@ impl Agent {
 
     /// Record a completed frame: the host calls this after layout +
     /// paint, and it is what makes `ui.lastChange`/`ui.lastDamage`
-    /// answerable. Costs one extra paint-op dispatch per node (see
-    /// `journal`); it is a dev surface, not a release path.
+    /// answerable.
+    ///
+    /// Runs both the journal's diff and the ambient audit — the audit is
+    /// the larger half, and this doc omitted it entirely until
+    /// 2026-09-02. Measured at 901 nodes: 46 µs against a 7.3 µs frame
+    /// with few findings, 54 µs with 132, and **zero allocations in
+    /// steady state** either way (`docs/results-agent-cost.md`). A dev
+    /// surface, not a release path.
     pub fn frame_done(&mut self, tree: &mut TreeMut, layout_ns: u64, paint_ns: u64) {
         self.frame += 1;
         self.last_layout_ns = layout_ns;
@@ -370,6 +376,12 @@ impl Agent {
 
     /// P3: conditions currently true of the frame. Reads the set the
     /// audit computed at the last frame boundary, so the query is free.
+    /// How many findings the last frame carried — for benchmarks that
+    /// need to state the shape of the tree they measured.
+    pub fn finding_count(&self) -> usize {
+        self.auditor.current().len()
+    }
+
     fn lint(&self, tree: &TreeRef) -> Value {
         let findings: Vec<Value> = self
             .auditor
@@ -378,8 +390,8 @@ impl Agent {
             .map(|f| {
                 let mut o = self.node_ident(tree, f.idx);
                 o.insert("code".into(), f.code.into());
-                o.insert("message".into(), f.message.clone().into());
-                o.insert("detail".into(), f.detail.clone());
+                o.insert("message".into(), f.message().into());
+                o.insert("detail".into(), f.detail());
                 Value::Object(o)
             })
             .collect();
