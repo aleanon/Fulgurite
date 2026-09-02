@@ -121,16 +121,54 @@ fn resizing_relayouts() {
 }
 
 #[test]
+fn a_stale_focus_index_does_not_panic_and_is_cleared() {
+    // `Host.focus` is public and a hot reload can shrink the tree under
+    // a focus set against the old one; `dispatch` then used it as a
+    // `table[i]` index unchecked. It is checked where the index enters
+    // now, which turns out to be *before* the PointerUp gate — so a
+    // stale focus is dropped by the first event that consults it,
+    // keyboard included, rather than surviving until M9 removes the
+    // gate. F1.8.
+    let mut h = host();
+    h.focus = Some(9999);
+    h.post(Event::Key { key: lumen_static::Key::Enter, down: true });
+    h.pump();
+    assert_eq!(h.focus, None, "an out-of-range focus is dropped, not indexed");
+
+    // Only positionless events consult focus: a pointer event that hits
+    // nothing returns before the focus arm, so it neither uses nor
+    // clears a stale index.
+    h.focus = Some(u32::MAX);
+    h.post(Event::PointerUp { x: -50.0, y: -50.0 });
+    h.pump();
+    assert_eq!(h.focus, Some(u32::MAX), "a pointer miss never reaches the focus arm");
+    h.post(Event::Text { ch: 'x' });
+    h.pump();
+    assert_eq!(h.focus, None, "…the next keyboard event clears it");
+
+    // And a valid focus is left alone.
+    let last = (<Ui as Widget>::SUB_TABLE.len() - 1) as u32;
+    h.focus = Some(last);
+    h.post(Event::Key { key: lumen_static::Key::Enter, down: true });
+    h.pump();
+    assert_eq!(h.focus, Some(last), "a valid index survives");
+}
+
+#[test]
 fn keyboard_events_route_to_focus() {
     let mut h = host();
     let st = h.states[<Ui as Widget>::SUB_TABLE.len() - 1];
     h.post(Event::PointerDown { x: st.pos.x + 1.0, y: st.pos.y + 1.0 });
     h.pump();
-    assert!(h.focus.is_some(), "pointer-down focused the button");
+    assert_eq!(
+        h.focus,
+        Some((<Ui as Widget>::SUB_TABLE.len() - 1) as u32),
+        "pointer-down focused the button — the button, not merely something"
+    );
 
     // No handler consumes keys yet, but routing does not panic and the
     // focus survives the frame.
     h.post(Event::Key { key: lumen_static::Key::Enter, down: true });
     h.pump();
-    assert!(h.focus.is_some());
+    assert_eq!(h.focus, Some((<Ui as Widget>::SUB_TABLE.len() - 1) as u32), "and keeps it");
 }

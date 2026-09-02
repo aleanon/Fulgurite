@@ -51,6 +51,14 @@ discipline held with no rework.
 
 ### §12.4, decided: the repeater window is disposable across reload
 
+> **Amended 2026-09-02 (F1.7).** The `hot_take_log` shim is staged. It
+> drains the core's log into a pending buffer and clears that buffer only
+> after a successful copy, so an undersized host buffer refuses delivery
+> instead of destroying the diagnostic — and the host uses the same
+> two-call size probe as `hot_save` rather than guessing 64 KB and
+> slicing past its own allocation. The demo exercises an undersized call
+> deliberately.
+>
 > **Amended 2026-09-02 (F1.4).** Disposable, and *not trusted*. `count`
 > and `item_extent` both come back from saved JSON, and both are ends of
 > the division `visible_range` uses, so the reload path is the one place

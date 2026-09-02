@@ -77,14 +77,22 @@ impl<'l> App<'l> {
         assert_eq!(rc, 0, "restore failed");
     }
 
+    /// The same two-call probe `save` uses. The old version guessed 64 KB
+    /// and sliced `&buf[..n]` with whatever came back — a reload
+    /// producing more fallback lines than that panicked the host, after
+    /// the dylib had already drained the log. Both halves are fixed;
+    /// this is the host's.
     fn take_log(&self) -> String {
-        let mut buf = vec![0u8; 64 * 1024];
-        let n = unsafe {
-            let f: Symbol<unsafe extern "C" fn(*mut u8, usize) -> usize> =
-                self.lib.get(b"hot_take_log").unwrap();
-            f(buf.as_mut_ptr(), buf.len())
-        };
-        String::from_utf8_lossy(&buf[..n]).into_owned()
+        let f: Symbol<unsafe extern "C" fn(*mut u8, usize) -> usize> =
+            unsafe { self.lib.get(b"hot_take_log") }.unwrap();
+        let need = unsafe { f(core::ptr::null_mut(), 0) };
+        if need == 0 {
+            return String::new();
+        }
+        let mut buf = vec![0u8; need];
+        let wrote = unsafe { f(buf.as_mut_ptr(), buf.len()) };
+        assert!(wrote <= buf.len(), "hot_take_log wrote past the host's buffer");
+        String::from_utf8_lossy(&buf[..wrote]).into_owned()
     }
 }
 
@@ -148,6 +156,20 @@ fn main() {
     app2.restore(&bytes); //    …then graft the old values on
     app2.frame();
     let after = app2.buffered(b"hot_report");
+
+    // The size probe is load-bearing, so exercise it directly: a first
+    // call with a one-byte buffer must not deliver and must not lose the
+    // log (F1.7 — the old version drained it and the host then sliced
+    // past its own allocation).
+    {
+        let f: Symbol<unsafe extern "C" fn(*mut u8, usize) -> usize> =
+            unsafe { v2.get(b"hot_take_log") }.unwrap();
+        let mut tiny = [0u8; 1];
+        let need = unsafe { f(tiny.as_mut_ptr(), 1) };
+        assert!(need > 1, "the fallback log should be longer than one byte, got {need}");
+        println!("  ok: undersized buffer refused, {need} bytes still pending");
+    }
+
     let log = app2.take_log();
     println!("v2 after swap:\n  {after}");
     println!("v2 fallback log:\n  {}", if log.is_empty() { "(empty)" } else { &log });

@@ -108,7 +108,14 @@ impl Default for Session {
 // buffer pairs. The host upholds this by construction. The contract is
 // stated once here rather than per fn (see the crate-level lint allow).
 
+use std::cell::RefCell;
 use std::ffi::c_void;
+
+thread_local! {
+    /// Fallback lines taken from the core but not yet delivered to the
+    /// host. See `hot_take_log`.
+    static PENDING_LOG: RefCell<String> = const { RefCell::new(String::new()) };
+}
 
 /// Reborrow the host's app pointer.
 ///
@@ -255,10 +262,28 @@ pub unsafe extern "C" fn hot_report(p: *mut c_void, buf: *mut u8, cap: usize) ->
 /// joined with '\n'; same two-call protocol).
 #[no_mangle]
 pub unsafe extern "C" fn hot_take_log(buf: *mut u8, cap: usize) -> usize {
-    let joined = reload::take_log().join("\n");
-    let bytes = joined.as_bytes();
-    if bytes.len() <= cap && !buf.is_null() {
-        unsafe { core::ptr::copy_nonoverlapping(bytes.as_ptr(), buf, bytes.len()) };
-    }
-    bytes.len()
+    // Staged, because `reload::take_log` is a `mem::take`: the old
+    // version drained the core's log and *then* found the host's buffer
+    // too small, so the diagnostic the log exists to preserve was
+    // destroyed by the call that failed to deliver it — and the host
+    // then panicked slicing past its own buffer. Draining into staging
+    // and clearing only after a successful copy makes the two-call size
+    // probe safe to use here, exactly as `hot_save` already uses it.
+    // `docs/plan-review-fixes.md` F1.7.
+    PENDING_LOG.with(|p| {
+        let mut pending = p.borrow_mut();
+        let fresh = reload::take_log().join("\n");
+        if !fresh.is_empty() {
+            if !pending.is_empty() {
+                pending.push('\n');
+            }
+            pending.push_str(&fresh);
+        }
+        let n = pending.len();
+        if n <= cap && !buf.is_null() {
+            unsafe { core::ptr::copy_nonoverlapping(pending.as_ptr(), buf, n) };
+            pending.clear();
+        }
+        n
+    })
 }

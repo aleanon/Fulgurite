@@ -142,7 +142,21 @@ pub fn dispatch<S: crate::event::App>(
             (h.node as usize, ctx, h.inner.map(|x| (x.row, x.node)))
         }
         None => match *focus {
-            Some(f) => (f as usize, EventCtx::at(f), None),
+            // Bounds-checked where the index *enters*, not where it is
+            // used: `Host.focus` is public, and a hot reload can shrink
+            // the tree under a focus set against the old one. `table[i]`
+            // below would then panic on a safe API.
+            //
+            // This is currently unreachable, and only because the
+            // `PointerUp` gate under this match drops every keyboard
+            // event before the loop runs. That gate is M9's to remove;
+            // whoever removes it must not also have to rediscover this.
+            // `docs/plan-review-fixes.md` F1.8.
+            Some(f) if (f as usize) < table.len() => (f as usize, EventCtx::at(f), None),
+            Some(_) => {
+                *focus = None;
+                return false;
+            }
             None => return false,
         },
     };
