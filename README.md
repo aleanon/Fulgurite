@@ -48,6 +48,7 @@ test of that surface.
 just tally         # the counter, in a window
 just tally-frame 7 # one frame to target/tally.ppm, at count 7
 just tally-drive   # drive it through the agent surface and assert
+just run-agent     # the window plus JSON-RPC on 127.0.0.1:9230 (scripts/agent_client.py)
 just test          # the gate: static checks, release shape, dev shape, fixtures
 just bench         # benchmarks (machine-dependent; never a gate)
 just hot-demo      # swap a dylib under a running app and check state survived
@@ -81,7 +82,9 @@ with an OS dependency, and it is two functions long — window events into
 `Host::post`, `Canvas::pixels` blitted to the surface — because the shell
 was built to stop exactly there. The same tree, layout, paint and
 renderer run headlessly under `--headless`, which is how the example is
-checked in CI.
+checked in CI. The window also serves the agent protocol, so an agent
+can click it, read the tree and take a screenshot from a shell:
+`.claude/skills/verifying-apps` is the ladder.
 
 Text is real (`fontdue`, behind the shell's `truetype` feature); the
 default is still a deterministic stand-in so tests can assert on

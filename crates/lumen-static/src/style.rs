@@ -98,6 +98,10 @@ pub struct Style {
     pub radius: f32,
     /// Text size in pixels.
     pub font_size: f32,
+    /// Text weight, CSS-style: 400 regular, 700 bold.
+    pub font_weight: f32,
+    /// Drop shadow spread in pixels; 0 is none.
+    pub shadow: f32,
     pub align: Align,
     /// Whether this node and everything under it participates in the
     /// frame.
@@ -127,6 +131,8 @@ impl Default for Style {
             background: crate::display::Color::TRANSPARENT,
             radius: 0.0,
             font_size: 16.0,
+            font_weight: 400.0,
+            shadow: 0.0,
             align: Align::Start,
             visible: true,
         }
@@ -188,6 +194,8 @@ pub struct Patch {
     pub background: Option<crate::display::Color>,
     pub radius: Option<f32>,
     pub font_size: Option<f32>,
+    pub font_weight: Option<f32>,
+    pub shadow: Option<f32>,
 }
 
 impl Patch {
@@ -203,6 +211,8 @@ impl Patch {
             background: None,
             radius: None,
             font_size: None,
+            font_weight: None,
+            shadow: None,
         }
     }
 
@@ -251,6 +261,16 @@ impl Patch {
         self
     }
 
+    pub const fn font_weight(mut self, w: f32) -> Self {
+        self.font_weight = Some(w);
+        self
+    }
+
+    pub const fn shadow(mut self, spread: f32) -> Self {
+        self.shadow = Some(spread);
+        self
+    }
+
     #[inline]
     fn apply_to(&self, s: &mut Style) {
         if let Some(v) = self.width {
@@ -282,6 +302,12 @@ impl Patch {
         }
         if let Some(v) = self.font_size {
             s.font_size = v;
+        }
+        if let Some(v) = self.font_weight {
+            s.font_weight = v;
+        }
+        if let Some(v) = self.shadow {
+            s.shadow = v;
         }
     }
 }

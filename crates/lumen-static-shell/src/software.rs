@@ -40,28 +40,15 @@ impl Canvas {
         c
     }
 
-    /// Fill a rect whose corners are rounded by `radius`.
-    ///
-    /// Coverage is sampled once per pixel against the corner circles —
-    /// no anti-aliasing beyond that, which is the right amount of
-    /// renderer for a reference implementation whose job is to be
-    /// checkable rather than pretty.
     /// Blit one text run with real glyphs.
     ///
     /// The run's box is its *layout* box, so glyphs are placed from its
     /// top-left and clipped to whatever clip scopes are open — the same
     /// treatment a rect gets, which is what keeps text inside a scroller.
     #[cfg(feature = "truetype")]
-    fn draw_run(
-        &mut self,
-        font: crate::text::FontStack,
-        rect: &[f32; 4],
-        text: &str,
-        size: f32,
-        color: Color,
-        clip: &[[f32; 4]],
-    ) {
-        let (glyphs, _) = font.glyphs(text, size, rect[2] - rect[0]);
+    fn draw_run(&mut self, font: crate::text::FontStack, run: TextRun<'_>, clip: &[[f32; 4]]) {
+        let TextRun { rect, text, size, weight, color } = run;
+        let (glyphs, _) = font.glyphs(text, size, weight, rect[2] - rect[0]);
         for g in glyphs {
             for row in 0..g.h {
                 for col in 0..g.w {
@@ -85,6 +72,12 @@ impl Canvas {
     }
 
     /// Fill `bounds`, rounding against `shape`'s corners.
+    /// Fill a rect whose corners are rounded by `radius`.
+    ///
+    /// Coverage is sampled once per pixel against the corner circles —
+    /// no anti-aliasing beyond that, which is the right amount of
+    /// renderer for a reference implementation whose job is to be
+    /// checkable rather than pretty.
     fn fill_rounded_within(&mut self, shape: [f32; 4], bounds: [f32; 4], c: Color, radius: f32) {
         if radius <= 0.5 {
             self.fill(bounds, c);
@@ -189,13 +182,15 @@ impl Renderer for Canvas {
                         self.fill_rounded_within(*rect, r, *color, *radius);
                     }
                 }
-                Cmd::Text { rect, text, size, color } => {
+                Cmd::Text { rect, text, size, weight, color } => {
                     let s = list.str_of(*text);
                     #[cfg(feature = "truetype")]
                     if let Some(font) = self.font.clone() {
-                        self.draw_run(font, rect, s, *size, *color, &clip);
+                        let run = TextRun { rect, text: s, size: *size, weight: *weight, color: *color };
+                        self.draw_run(font, run, &clip);
                         continue;
                     }
+                    let _ = weight;
                     let advance = size * 0.5;
                     for (k, ch) in s.chars().enumerate() {
                         if ch == ' ' {
@@ -229,6 +224,17 @@ impl Renderer for Canvas {
 /// so a renderer that ignores clips draws content no click can reach —
 /// the probe-vs-click class of bug, one layer down. `tests/clip_test.rs`
 /// pins it at the pixel level.
+/// One `Cmd::Text` as the glyph blitter wants it: the fields of the
+/// command, borrowed, so the call site does not spell out six scalars.
+#[cfg(feature = "truetype")]
+struct TextRun<'a> {
+    rect: &'a [f32; 4],
+    text: &'a str,
+    size: f32,
+    weight: f32,
+    color: Color,
+}
+
 fn clipped(rect: [f32; 4], stack: &[[f32; 4]]) -> Option<[f32; 4]> {
     // Reject non-finite and empty input on entry. `f32::max`/`min` return
     // the non-NaN operand, so without this a NaN coordinate would be

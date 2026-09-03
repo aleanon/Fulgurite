@@ -536,6 +536,22 @@ milestone that depends on it. Split as review recommended:
   the pipeline, and the reason a window first showed a row of black
   boxes rather than a counter. The stand-in remains the default, so
   every test still runs on a deterministic measurer.
+
+  **Live agent endpoint — DONE 2026-09-03.** The window serves the
+  agent protocol on `LUMEN_AGENT_ADDR` (default `127.0.0.1:9230`),
+  newline-delimited JSON-RPC over TCP, Lumen's transport. Requests
+  cross to the event-loop thread through an `EventLoopProxy` and are
+  answered after `pump`, so a reply already reflects the input it
+  carried. `ui.screenshot` (parity plan P5) came with it — the frame
+  the window blits, PNG-encoded in the agent crate. What this closed:
+  the first live window was verified by a desktop screenshot tool,
+  which needs an unlocked session and cannot be automated; now
+  `scripts/agent_client.py` drives and looks at the window from a shell,
+  and `.claude/skills/verifying-apps` records the ladder. The example
+  also gained the rest of Lumen's counter look — `font_weight` and
+  `shadow` in `Style`, a bold face in the `FontStack`, cross-face glyph
+  fallback so U+2212 is a minus rather than tofu, and advance-based
+  measurement (ink extent truncated "POSITIVE" to "POSITIV").
 - **T7.5** AccessKit platform adapter (`accesskit_winit`) — the
   `TreeUpdate` snapshot exists and has been waiting for a shell
   (`docs/step5-observability.md`).

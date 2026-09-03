@@ -244,6 +244,8 @@ pub fn record_painted(
     st[i].bg = style.background;
     st[i].radius = style.radius;
     st[i].font_size = style.font_size;
+    st[i].font_weight = style.font_weight;
+    st[i].shadow = style.shadow;
     st[i].pad = (
         style.padding.left,
         style.padding.top,
@@ -372,7 +374,9 @@ impl<S: TextStorage> Node for Label<S> {
         let dirty = self.text.is_dirty();
         let px = style[i].font_size;
         let content =
-            self.measure.get_or(limits, dirty, || cx.text.measure(text, px, limits.max_w));
+            self.measure.get_or(limits, dirty, || {
+                cx.text.measure_weighted(text, px, style[i].font_weight, limits.max_w)
+            });
         self.text.clear_dirty();
         let pad = style[i].padding;
         let boxed =
@@ -400,10 +404,11 @@ impl<S: TextStorage> Node for Label<S> {
         // Text sits inside the padding box; `layout` sized the node to
         // include it.
         let p = st[i].pad;
-        out.text(
+        out.text_weighted(
             [r[0] + p.0, r[1] + p.1, r[2] - p.2, r[3] - p.3],
             self.text.get().as_ref(),
             st[i].font_size,
+            st[i].font_weight,
             st[i].fg,
         );
     }
@@ -572,7 +577,7 @@ impl<S: 'static, T: TextStorage> Node for Button<S, T> {
         let tw = px * 0.55 * self.label.as_ref().chars().count() as f32;
         let x = r[0] + ((r[2] - r[0]) - tw).max(0.0) / 2.0;
         let y = r[1] + ((r[3] - r[1]) - px).max(0.0) / 2.0;
-        out.text([x, y, r[2], y + px], self.label.as_ref(), px, st[i].fg);
+        out.text_weighted([x, y, r[2], y + px], self.label.as_ref(), px, st[i].font_weight, st[i].fg);
     }
     leaf_common!(Button<S, T>, NodeDesc::FOCUSABLE);
 

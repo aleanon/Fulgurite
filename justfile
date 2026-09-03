@@ -161,3 +161,9 @@ const-budget:
 # The Step 4 dylib swap demo; exit code is the verdict.
 hot-demo:
     ./scripts/hot_reload_demo.sh
+
+# The tally window with the agent endpoint on 127.0.0.1:9230 (override with
+# LUMEN_AGENT_ADDR). Drive it with scripts/agent_client.py — see
+# .claude/skills/verifying-apps/SKILL.md, rung 4.
+run-agent:
+    cargo run -p counter-window

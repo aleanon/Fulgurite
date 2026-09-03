@@ -30,17 +30,126 @@ mod app;
 
 use app::{build, stylesheet_for, Tally, PAGE};
 
+// ---- the agent endpoint ----------------------------------------------
+
+/// What the endpoint drives: the window's host and its last frame.
+///
+/// The shell's `Host` cannot implement `AgentHost` itself without
+/// pulling `observe` into every binary that links the shell (F2.5), so
+/// the *example* bridges them — which is fine, because this is the one
+/// crate that has already opted into everything.
+struct Live<'a> {
+    host: &'a mut Host<Tally>,
+    metrics: &'a mut Option<FontMetrics>,
+    canvas: &'a mut Canvas,
+    sign: &'a mut i64,
+}
+
+impl lumen_static_agent::AgentHost for Live<'_> {
+    fn tree(&self) -> lumen_static_agent::TreeRef<'_> {
+        lumen_static_agent::TreeRef::of_root(&self.host.app.ui, &self.host.styles, &self.host.states)
+    }
+    fn enqueue(&mut self, ev: Event) {
+        self.host.post(ev);
+    }
+    fn pump(&mut self) -> u64 {
+        match self.metrics.as_mut() {
+            Some(m) => self.host.pump_with(m),
+            None => self.host.pump(),
+        };
+        // Same sign-tracking the redraw path does, so a click that flips
+        // the sign recolours before the agent's next query.
+        let sign = self.host.app.count.signum();
+        if sign != *self.sign {
+            *self.sign = sign;
+            self.host.set_stylesheet(&stylesheet_for(sign));
+            match self.metrics.as_mut() {
+                Some(m) => self.host.pump_with(m),
+                None => self.host.pump(),
+            };
+        }
+        self.canvas.clear(PAGE);
+        self.host.render(self.canvas);
+        self.host.frame_number()
+    }
+    fn frame(&self) -> Option<(u32, u32, &[u8])> {
+        Some((self.canvas.width, self.canvas.height, &self.canvas.pixels))
+    }
+}
+
+/// One request from the socket thread, and where its reply goes.
+struct Rpc {
+    req: serde_json::Value,
+    reply: std::sync::mpsc::Sender<serde_json::Value>,
+}
+
+/// Serve newline-delimited JSON-RPC on `addr`, forwarding each request
+/// to the event loop and writing back what it returns.
+///
+/// Lumen's `run-agent` protocol, so its client works unchanged: one JSON
+/// object per line in, one per line out. The socket thread never touches
+/// the tree — every request crosses to the main thread via the proxy,
+/// and the tree is only ever read or driven from there.
+fn serve_agent(addr: String, proxy: winit::event_loop::EventLoopProxy<Rpc>) {
+    use std::io::{BufRead, BufReader, Write};
+    let listener = match std::net::TcpListener::bind(&addr) {
+        Ok(l) => l,
+        Err(e) => {
+            eprintln!("agent: cannot bind {addr}: {e}");
+            return;
+        }
+    };
+    eprintln!("agent: listening on {addr}");
+    for stream in listener.incoming().flatten() {
+        let mut out = match stream.try_clone() {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
+        for line in BufReader::new(stream).lines().map_while(Result::ok) {
+            if line.trim().is_empty() {
+                continue;
+            }
+            let req: serde_json::Value = match serde_json::from_str(&line) {
+                Ok(v) => v,
+                Err(e) => {
+                    let _ = writeln!(
+                        out,
+                        r#"{{"jsonrpc":"2.0","id":null,"error":{{"code":-32700,"message":"parse error: {e}"}}}}"#
+                    );
+                    continue;
+                }
+            };
+            let (tx, rx) = std::sync::mpsc::channel();
+            if proxy.send_event(Rpc { req, reply: tx }).is_err() {
+                return;
+            }
+            let Ok(resp) = rx.recv() else { return };
+            if writeln!(out, "{resp}").is_err() {
+                break;
+            }
+        }
+    }
+}
+
 // ---- the seam --------------------------------------------------------
 
 struct WinApp {
     host: Host<Tally>,
     canvas: Canvas,
+    /// The *same* face the canvas rasterizes with. Layout must measure
+    /// with the metrics paint will draw with, or the two disagree —
+    /// the first window measured with the block stand-in and painted
+    /// with fontdue, so every box was too narrow and "TALLY" wrapped
+    /// to "TAL / LY". The headless path had it right; the window did
+    /// not, and only a screenshot of the live window showed it.
+    metrics: Option<FontMetrics>,
     /// `None` until `resumed`; winit owns window creation.
     window: Option<Rc<Window>>,
     surface: Option<softbuffer::Surface<Rc<Window>, Rc<Window>>>,
     cursor: (f32, f32),
     /// Last sign the stylesheet was cascaded for.
     sign: i64,
+    agent: lumen_static_agent::Agent,
 }
 
 impl WinApp {
@@ -48,8 +157,9 @@ impl WinApp {
         let (w, h) = (440, 520);
         let mut host = Host::new(build(), w, h);
         host.set_stylesheet(&stylesheet_for(0));
-        let canvas = match FontStack::system() {
-            Some(f) => Canvas::with_font(w, h, f),
+        let font = FontStack::system();
+        let canvas = match &font {
+            Some(f) => Canvas::with_font(w, h, f.clone()),
             // A machine with no font we recognise still gets a window;
             // it just gets the block stand-in in it, which is honest
             // about what happened.
@@ -58,7 +168,29 @@ impl WinApp {
                 Canvas::new(w, h)
             }
         };
-        WinApp { host, canvas, window: None, surface: None, cursor: (0.0, 0.0), sign: 0 }
+        let metrics = font.map(FontMetrics::new);
+        WinApp {
+            host,
+            canvas,
+            metrics,
+            window: None,
+            surface: None,
+            cursor: (0.0, 0.0),
+            sign: 0,
+            agent: lumen_static_agent::Agent::new(),
+        }
+    }
+
+    /// One frame, measured with the real face when there is one.
+    fn pump(&mut self) {
+        match self.metrics.as_mut() {
+            Some(m) => {
+                self.host.pump_with(m);
+            }
+            None => {
+                self.host.pump();
+            }
+        }
     }
 
     /// Re-cascade when the sign changes — Lumen's counter toggles a
@@ -92,9 +224,9 @@ impl WinApp {
             self.host.resize(size.width, size.height);
         }
 
-        self.host.pump();
+        self.pump();
         self.sync_sign();
-        self.host.pump();
+        self.pump();
 
         let Some(surface) = self.surface.as_mut() else { return };
         self.canvas.clear(PAGE);
@@ -121,7 +253,7 @@ impl WinApp {
     }
 }
 
-impl ApplicationHandler for WinApp {
+impl ApplicationHandler<Rpc> for WinApp {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         let attrs = Window::default_attributes()
             .with_title("lumen-static — tally")
@@ -133,6 +265,31 @@ impl ApplicationHandler for WinApp {
         // Ask for the first frame explicitly: nothing else will.
         window.request_redraw();
         self.window = Some(window);
+    }
+
+    /// A request from the agent socket. Answered on this thread, against
+    /// the live tree, then the window is asked to redraw so what the
+    /// agent did is what the user sees.
+    fn user_event(&mut self, event_loop: &ActiveEventLoop, rpc: Rpc) {
+        let method = rpc.req.get("method").and_then(|m| m.as_str()).unwrap_or("");
+        if method == "app.quit" {
+            let _ = rpc.reply.send(serde_json::json!({ "jsonrpc": "2.0", "id": rpc.req.get("id"), "result": { "ok": true } }));
+            event_loop.exit();
+            return;
+        }
+        let resp = {
+            let mut live = Live {
+                host: &mut self.host,
+                metrics: &mut self.metrics,
+                canvas: &mut self.canvas,
+                sign: &mut self.sign,
+            };
+            self.agent.dispatch_input(&mut live, &rpc.req)
+        };
+        let _ = rpc.reply.send(resp);
+        if let Some(w) = &self.window {
+            w.request_redraw();
+        }
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _: WindowId, event: WindowEvent) {
@@ -333,8 +490,14 @@ fn main() {
             return;
         }
     }
-    let event_loop = EventLoop::new().expect("event loop");
+    let event_loop = EventLoop::<Rpc>::with_user_event().build().expect("event loop");
     // Wait, don't spin: this UI changes only when something happens.
     event_loop.set_control_flow(ControlFlow::Wait);
+
+    // The agent endpoint, on Lumen's default address unless overridden.
+    let addr = std::env::var("LUMEN_AGENT_ADDR").unwrap_or_else(|_| "127.0.0.1:9230".into());
+    let proxy = event_loop.create_proxy();
+    std::thread::spawn(move || serve_agent(addr, proxy));
+
     event_loop.run_app(&mut WinApp::new()).expect("run");
 }

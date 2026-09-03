@@ -15,6 +15,13 @@ use crate::desc::Size;
 pub trait TextMeasure {
     /// Size of `text` at `size` px, wrapped to at most `max_w`.
     fn measure(&mut self, text: &str, size: f32, max_w: f32) -> Size;
+
+    /// `measure`, with a weight. The default ignores it, which is right
+    /// for a stand-in with one face; a real stack overrides.
+    fn measure_weighted(&mut self, text: &str, size: f32, weight: f32, max_w: f32) -> Size {
+        let _ = weight;
+        self.measure(text, size, max_w)
+    }
 }
 
 /// The stand-in used until a shaping stack is composed in: a fixed

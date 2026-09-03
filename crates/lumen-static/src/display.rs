@@ -44,7 +44,7 @@ fn has_area(r: Rect) -> bool {
 pub enum Cmd {
     Rect { rect: Rect, color: Color },
     /// `text` indexes [`DisplayList::text`].
-    Text { rect: Rect, text: (u32, u32), size: f32, color: Color },
+    Text { rect: Rect, text: (u32, u32), size: f32, weight: f32, color: Color },
     /// A filled rect with rounded corners. `radius` of 0 is a plain
     /// rect; a renderer that cannot round may treat it as one.
     RoundedRect { rect: Rect, color: Color, radius: f32 },
@@ -77,13 +77,14 @@ impl Cmd {
                 f(h, u32::from_be_bytes([color.0, color.1, color.2, color.3]) as u64);
                 f(h, radius.to_bits() as u64);
             }
-            Cmd::Text { rect, text, size, color } => {
+            Cmd::Text { rect, text, size, weight, color } => {
                 f(h, 2);
                 for v in rect {
                     f(h, v.to_bits() as u64);
                 }
                 f(h, ((text.0 as u64) << 32) | text.1 as u64);
                 f(h, size.to_bits() as u64);
+                f(h, weight.to_bits() as u64);
                 f(h, u32::from_be_bytes([color.0, color.1, color.2, color.3]) as u64);
             }
             Cmd::PushClip { rect } => {
@@ -132,19 +133,40 @@ impl DisplayList {
     /// Record a text run. Dropped when the box has no area, for the same
     /// reason as [`DisplayList::rect`].
     pub fn text(&mut self, rect: Rect, s: &str, size: f32, color: Color) {
+        self.text_weighted(rect, s, size, 400.0, color);
+    }
+
+    /// Record a text run at a given weight (400 regular, 700 bold).
+    pub fn text_weighted(&mut self, rect: Rect, s: &str, size: f32, weight: f32, color: Color) {
         if !has_area(rect) {
             return;
         }
         let start = self.text.len() as u32;
         self.text.push_str(s);
         let range = (start, self.text.len() as u32 - start);
-        self.cmds.push(Cmd::Text { rect, text: range, size, color });
+        self.cmds.push(Cmd::Text { rect, text: range, size, weight, color });
     }
 
     /// Record a filled rect with rounded corners.
     pub fn rounded_rect(&mut self, rect: Rect, color: Color, radius: f32) {
         if has_area(rect) && color.3 != 0 {
             self.cmds.push(Cmd::RoundedRect { rect, color, radius });
+        }
+    }
+
+    /// A soft drop shadow: `spread` px of translucent rounded rects
+    /// stepping outward, darkest nearest the box. Cheap, and reads as a
+    /// blur at the sizes a card uses; a renderer with a real blur may
+    /// collapse these later.
+    pub fn shadow(&mut self, rect: Rect, radius: f32, spread: f32) {
+        let steps = (spread.ceil() as u32).clamp(1, 24);
+        for k in (1..=steps).rev() {
+            let d = k as f32;
+            // Falls off with distance; the sum over the stack reads as
+            // a ~30% shadow at the edge fading to nothing.
+            let a = (40.0 * (1.0 - d / (steps as f32 + 1.0))) as u8;
+            let r = [rect[0] - d, rect[1] - d + spread * 0.35, rect[2] + d, rect[3] + d + spread * 0.35];
+            self.rounded_rect(r, Color(0, 0, 0, a), radius + d);
         }
     }
 

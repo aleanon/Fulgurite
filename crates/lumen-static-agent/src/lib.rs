@@ -28,6 +28,7 @@ use lumen_static::{pass, Widget};
 use serde_json::{json, Map, Value};
 
 mod audit;
+pub mod png;
 mod journal;
 
 use audit::Auditor;
@@ -155,7 +156,7 @@ impl Agent {
     pub fn dispatch_input(&self, host: &mut dyn AgentHost, req: &Value) -> Value {
         let id = req.get("id").cloned().unwrap_or(Value::Null);
         let method = req.get("method").and_then(Value::as_str).unwrap_or("");
-        if !method.starts_with("input.") {
+        if !method.starts_with("input.") && method != "ui.screenshot" {
             let tree = host.tree();
             return self.dispatch(&tree, req);
         }
@@ -199,6 +200,23 @@ impl Agent {
                 let down = params.get("down").and_then(Value::as_bool).unwrap_or(true);
                 host.enqueue(Event::Key { key, down });
                 Ok(json!({ "frame": host.pump() }))
+            }
+            // P5 of docs/plan-agent-parity.md, arriving with the first
+            // host that renders. The image is a PNG so the agent can
+            // open it without leaving the protocol.
+            "ui.screenshot" => {
+                let (w, h, rgba) = host.frame().ok_or((
+                    INVALID_PARAMS,
+                    "this host does not render — nothing to screenshot".into(),
+                    Value::Null,
+                ))?;
+                let png = png::encode_rgba(w, h, rgba);
+                Ok(json!({
+                    "width": w,
+                    "height": h,
+                    "format": "png",
+                    "image_base64": png::base64(&png),
+                }))
             }
             "input.type" => {
                 let text = params
@@ -588,6 +606,12 @@ fn change_kind(c: &Coalesced) -> &'static str {
 /// crate; both are larger than a rename.
 pub trait AgentHost {
     fn tree(&self) -> TreeRef<'_>;
+    /// The last rendered frame as RGBA8, if this host renders. `None`
+    /// for a host that only lays out — which is what `ui.screenshot`
+    /// reports as an error rather than a blank image.
+    fn frame(&self) -> Option<(u32, u32, &[u8])> {
+        None
+    }
     fn enqueue(&mut self, ev: Event);
     /// Drain the queue, re-lay out, record the frame; returns its number.
     fn pump(&mut self) -> u64;

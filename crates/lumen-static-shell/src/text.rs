@@ -22,25 +22,42 @@ use lumen_static::Size;
 /// cannot disagree about advances.
 #[derive(Clone)]
 pub struct FontStack {
-    font: std::sync::Arc<Font>,
+    regular: std::sync::Arc<Font>,
+    /// A bold face when one was found; otherwise `regular` serves both
+    /// weights and the request is quietly honoured as best it can be.
+    bold: Option<std::sync::Arc<Font>>,
 }
 
-/// Where to look for a sans-serif face, in order.
-const CANDIDATES: &[&str] = &[
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-    "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
-    "/usr/share/fonts/TTF/DejaVuSans.ttf",
-    "/usr/share/fonts/dejavu/DejaVuSans.ttf",
-    "/System/Library/Fonts/Helvetica.ttc",
-    "C:\\Windows\\Fonts\\segoeui.ttf",
+/// Where to look for a sans-serif face, in order: (regular, bold).
+const CANDIDATES: &[(&str, &str)] = &[
+    (
+        "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+        "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+    ),
+    (
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    ),
+    ("/usr/share/fonts/TTF/DejaVuSans.ttf", "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf"),
+    ("/System/Library/Fonts/Helvetica.ttc", "/System/Library/Fonts/Helvetica.ttc"),
+    ("C:\\Windows\\Fonts\\segoeui.ttf", "C:\\Windows\\Fonts\\segoeuib.ttf"),
 ];
 
 impl FontStack {
-    /// Load a face from bytes.
-    pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
-        Font::from_bytes(bytes, fontdue::FontSettings::default())
-            .ok()
-            .map(|font| FontStack { font: std::sync::Arc::new(font) })
+    /// Load a regular face, and optionally a bold one, from bytes.
+    pub fn from_bytes(regular: &[u8], bold: Option<&[u8]>) -> Option<Self> {
+        let load = |b: &[u8]| {
+            Font::from_bytes(b, fontdue::FontSettings::default()).ok().map(std::sync::Arc::new)
+        };
+        Some(FontStack { regular: load(regular)?, bold: bold.and_then(load) })
+    }
+
+    /// The face for a CSS-style weight: 600 and up is bold.
+    fn face(&self, weight: f32) -> &Font {
+        match (&self.bold, weight >= 600.0) {
+            (Some(b), true) => b,
+            _ => &self.regular,
+        }
     }
 
     /// Find a system sans-serif face.
@@ -50,20 +67,61 @@ impl FontStack {
     /// than a window that fails to open on a machine with unusual font
     /// paths.
     pub fn system() -> Option<Self> {
-        CANDIDATES
-            .iter()
-            .find_map(|p| std::fs::read(p).ok())
-            .and_then(|b| Self::from_bytes(&b))
+        CANDIDATES.iter().find_map(|(r, b)| {
+            let regular = std::fs::read(r).ok()?;
+            let bold = std::fs::read(b).ok();
+            Self::from_bytes(&regular, bold.as_deref())
+        })
     }
 
     /// Lay out one run and return each glyph's raster and position.
-    pub(crate) fn glyphs(&self, text: &str, px: f32, max_w: f32) -> (Vec<Glyph>, Size) {
+    pub(crate) fn glyphs(
+        &self,
+        text: &str,
+        px: f32,
+        weight: f32,
+        max_w: f32,
+    ) -> (Vec<Glyph>, Size) {
+        // Tofu doctrine (Lumen's verifying-apps skill): a glyph the chosen
+        // face lacks must not render as a box if any face has it. Try the
+        // requested weight, then the other face; only then substitute.
+        let wanted = self.face(weight);
+        let has_all = |f: &Font| text.chars().all(|c| c.is_whitespace() || f.lookup_glyph_index(c) != 0);
+        let other: &Font = if std::ptr::eq(wanted, &*self.regular) {
+            self.bold.as_deref().unwrap_or(&self.regular)
+        } else {
+            &self.regular
+        };
+        let font = if has_all(wanted) { wanted } else if has_all(other) { other } else { wanted };
+        let substituted: String;
+        let text: &str = if has_all(font) {
+            text
+        } else {
+            // Substitute per character rather than per run, so one
+            // missing symbol does not box the whole label.
+            substituted = text
+                .chars()
+                .map(|c| {
+                    if c.is_whitespace() || font.lookup_glyph_index(c) != 0 {
+                        c
+                    } else {
+                        match c {
+                            '\u{2212}' | '\u{2013}' | '\u{2014}' => '-',
+                            '\u{2018}' | '\u{2019}' => '\'',
+                            '\u{201c}' | '\u{201d}' => '"',
+                            _ => '?',
+                        }
+                    }
+                })
+                .collect();
+            &substituted
+        };
         let mut layout = Layout::new(CoordinateSystem::PositiveYDown);
         layout.reset(&LayoutSettings {
             max_width: if max_w.is_finite() && max_w > 0.0 { Some(max_w) } else { None },
             ..LayoutSettings::default()
         });
-        layout.append(&[self.font.as_ref()], &TextStyle::new(text, px, 0));
+        layout.append(&[font], &TextStyle::new(text, px, 0));
 
         let mut out = Vec::with_capacity(text.len());
         let (mut w, mut h) = (0.0f32, 0.0f32);
@@ -73,13 +131,13 @@ impl FontStack {
             // last glyph's right side bearing — and `paint` then re-wraps
             // inside a box a hair too narrow and drops that glyph.
             // "POSITIVE" came out "POSITIV" exactly this way.
-            let adv = self.font.metrics_indexed(g.key.glyph_index, px).advance_width;
+            let adv = font.metrics_indexed(g.key.glyph_index, px).advance_width;
             w = w.max(g.x + adv.max(g.width as f32));
             h = h.max(g.y + g.height as f32);
             if g.width == 0 || g.height == 0 {
                 continue;
             }
-            let (_, bitmap) = self.font.rasterize_config(g.key);
+            let (_, bitmap) = font.rasterize_config(g.key);
             out.push(Glyph { x: g.x, y: g.y, w: g.width, h: g.height, cov: bitmap });
         }
         // Ceiled: `layout` sizes the box from this, and `paint` re-wraps
@@ -112,9 +170,13 @@ impl FontMetrics {
 
 impl TextMeasure for FontMetrics {
     fn measure(&mut self, text: &str, size: f32, max_w: f32) -> Size {
+        self.measure_weighted(text, size, 400.0, max_w)
+    }
+
+    fn measure_weighted(&mut self, text: &str, size: f32, weight: f32, max_w: f32) -> Size {
         if text.is_empty() {
             return Size { w: 0.0, h: 0.0 };
         }
-        self.stack.glyphs(text, size, max_w).1
+        self.stack.glyphs(text, size, weight, max_w).1
     }
 }

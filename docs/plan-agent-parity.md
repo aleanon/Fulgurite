@@ -263,11 +263,16 @@ type/key/scroll`, `app.setValue`, `input.invokeAction` (AccessKit
 sessions replay as tests (Lumen's invariant, adopted verbatim). Design
 the queue with recording in mind from the first commit.
 
-### P5 — visual (needs a renderer)
+### P5 — visual — `ui.screenshot` DONE 2026-09-03
 
-`ui.screenshot` arrives with the composed renderer (§11: take Lumen's
-`lumen-render` — its `Renderer` trait renders a display list to pixels
-headlessly, which is exactly the agent's need). `ui.getStyles`/
+`ui.screenshot` shipped with the live window rather than waiting for
+`lumen-render`: `AgentHost::frame()` hands the agent the RGBA the
+window last blitted, and `lumen_static_agent::png` encodes it
+(stored-deflate PNG, dependency-free) as `image_base64` — Lumen's wire
+shape, so its `agent_client.py` and `verifying-apps` skill carry over
+unchanged. The acceptance run is in `.claude/skills/verifying-apps`:
+three clicks over TCP, `ui.getLayout` reporting `"12"`, the screenshot
+showing it. Hosts without a frame return `null`. `ui.getStyles`/
 `getAppliedStyles`/`ui.animations` arrive with styling/animation, if
 ever — style may stay code-side in this framework, in which case
 `src` provenance already answers "why does it look like this" better

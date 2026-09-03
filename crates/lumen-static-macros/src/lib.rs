@@ -525,8 +525,15 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                     i: usize,
                     out: &mut ::lumen_static::DisplayList,
                 ) {
-                    // A container's own fill, before its children. This
-                    // is what makes a card a card.
+                    // A container's own shadow and fill, before its
+                    // children. This is what makes a card a card.
+                    if st[i].shadow > 0.0 {
+                        out.shadow(
+                            ::lumen_static::ops::rect_of(&st[i]),
+                            st[i].radius,
+                            st[i].shadow,
+                        );
+                    }
                     out.rounded_rect(
                         ::lumen_static::ops::rect_of(&st[i]),
                         st[i].bg,

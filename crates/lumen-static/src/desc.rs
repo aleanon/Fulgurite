@@ -185,6 +185,8 @@ pub struct NodeState {
     pub bg: crate::display::Color,
     pub radius: f32,
     pub font_size: f32,
+    pub font_weight: f32,
+    pub shadow: f32,
     /// Resolved padding as (left, top, right, bottom), so `paint` can
     /// inset content without `&[Style]`.
     pub pad: (f32, f32, f32, f32),
