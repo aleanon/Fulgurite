@@ -74,6 +74,14 @@ The four properties that produce the performance, in rough order of importance:
    provably cannot change (fixed size, or tight constraints from its parent).
    A text change deep in a list costs O(depth-to-boundary), not O(tree).
 
+   **PLANNED 2026-09-04, not built** — `docs/plan-architecture-v2.md` M8b/M8c.
+   The table carries the parents, the `RIGID` bits and contiguous subtree
+   ranges the property needs; no pass consumes them yet, and every frame
+   lays out, paints and rasterises the whole tree. **DECIDED there:** retention
+   is a type parameter on `Host` (`Rebuild` | `Incremental`), never a cargo
+   feature, because `Rebuild` is the oracle the incremental path is tested
+   against, and rigidity is per axis.
+
 2. **Layout is single-pass.** Constraints flow down, sizes flow back up, parent
    positions the child. No node reads its own final position during layout.
    This is what makes it linear rather than iterative reflow.

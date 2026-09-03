@@ -588,6 +588,138 @@ Two notes for whoever writes the breakdown:
 
 ---
 
+## M8b — Incremental raster — **PLANNED 2026-09-04, not started**
+
+The frame is 1.05 ms and 0.9 ms of it is rasterising pixels that did
+not change: every redraw clears the canvas, walks the whole display
+list (shadow included) and blits the whole surface
+(`docs/results-frame-cost.md`). Layout and paint are 1 µs. This
+milestone is the handoff's stage 5 — "damage rects only" — and it comes
+before dirty-scoped layout (M8c) because it is where the time is.
+
+The damage rect already exists. The agent's journal diffs per-node
+geometry and paint checksums every frame and answers `ui.lastDamage`
+from them; the renderer just never hears about it. M8b is mostly
+plumbing that answer to where it is useful.
+
+**T8b.0 — decide how retention is switched off.** See "Retention is a
+type parameter" below. Settled here so T8b.1 does not grow a `cfg`.
+
+**T8b.1 — a damage rect from the frame diff, in the core.** Move the
+geometry+checksum diff out of the agent crate into `lumen-static`
+(`retain::Frame`: previous `Geom` and paint hash per node, 24 B/node)
+so a release build has it; the journal keeps its ring of coalesced
+changes on top. The diff's cost is already measured: part of the 46 µs
+audit at 901 nodes, zero allocations (`docs/results-agent-cost.md`).
+Gate: `ui.lastDamage` answers identically before and after.
+
+**T8b.2 — render only what the rect touches.** `Canvas::render_within
+(list, damage)`: push the damage rect as the outermost clip, skip any
+command whose rect (a shadow's, expanded by `spread`) misses it. Every
+command that *does* intersect is repainted in order, clipped — so the
+card's shadow is redrawn where it lies under a changed label, and only
+there. That is ordinary compositing, and it is why a per-node retained
+display list is not needed for correctness. Gate: the frame after a
+click is pixel-identical to a full re-render (`tests/`: render both
+ways for the tally at every count from −12 to 12, compare buffers).
+
+**T8b.3 — present only the rect.** `softbuffer::Buffer::
+present_with_damage` (0.4.8 has it). Blit only the rect's rows.
+Gate: `just live-gate` — the tally's click frame under **0.2 ms** p95
+(today 2.3 ms), and `input → presented` p95 under 3 ms.
+
+**T8b.4 — no damage, no frame.** A redraw whose diff is empty presents
+nothing. Today an idle `RedrawRequested` (focus change, expose) costs a
+full frame. Gate: `app.perf` shows `render_ns` 0 for a no-op frame.
+
+### Retention is a type parameter, not a feature flag (T8b.0)
+
+The question was whether the retained machinery — dirty bits, the
+previous frame's geometry and checksums, damage — should be switchable
+off for very small apps that would rather rebuild every frame.
+
+Yes, and the reason is not memory. The numbers: `NodeState` is 72 B,
+`NodeDesc` 48 B, `Style` 64 B per node today; retention adds ~24 B per
+node plus a dirty bitset. For the tally (14 nodes) that is 336 bytes
+next to a 915 KB pixel buffer; for a 1,000-node list it is 24 KB next
+to 184 KB. Nobody's RAM is decided by it. What retention costs a small
+app is **correctness surface**: incremental layout and partial raster
+are exactly the code that produces stale pixels and off-by-one damage
+rects, and "rebuild everything" is trivially correct. An embedded
+target that renders a dozen nodes should not have to trust it.
+
+So: `Host<A, R: Retention = Incremental>`, with two implementations —
+
+- `Rebuild`: zero-sized state, `mark_dirty` is a no-op, `damage()` is
+  the viewport, every frame lays out and rasterises everything. This
+  is today's behaviour and it stays exactly as fast as it is.
+- `Incremental`: the dirty bitset and `retain::Frame`; scoped layout
+  (M8c) and partial raster (M8b).
+
+Not a cargo feature, for two reasons. Features unify across a
+workspace: a dependency that wants `Incremental` would switch it on for
+an app that chose `Rebuild`, and there would be no way to run both in
+one process. And the two must run side by side, because **`Rebuild` is
+the oracle**: the gate for every task in M8b and M8c is "`Incremental`
+produces the same `NodeState` array and the same pixels as `Rebuild`
+for the same input sequence". A feature flag would make that test
+impossible to write. The type parameter is one generic on `Host`,
+monomorphised at most twice, and the derive output never mentions it
+(cross-cutting rule 2).
+
+---
+
+## M8c — Dirty-scoped layout and style — **PLANNED 2026-09-04, not started**
+
+The handoff's property 1: "a mutation sets a dirty flag that propagates
+up only until it reaches a relayout boundary". The table already holds
+everything the property needs — parent indices in `SUB_TABLE`, a
+`RIGID` flag stamped from `IS_RIGID`, and subtrees as contiguous index
+ranges — and nothing consumes any of it. Whole-tree layout runs every
+frame: 1 µs at 14 nodes, 7.3 µs at 901. This milestone pays off at
+list scale, which is why it follows M8b rather than leading it.
+
+**T8c.1 — the bound target's index, from the derive.** `#[bind(ui.card.
+value, ..)]` resolves a field path; each derive already emits per-field
+`STARTS`, so the target's table index is a `const` sum the `App` derive
+can write into the generated `update()`: when `set_str` reports a
+change, `R::mark_dirty(index)`. This is the only piece that needs the
+macro, and it is one line of generated code per binding. Widgets
+mutated directly (`Repeat::scroll`, a handler writing `label.set`)
+mark themselves through `Dirty<T>`, which T3.1 built for this.
+
+**T8c.2 — bubble to the boundary.** `while i != NO_PARENT && !table[i]
+.is_rigid() { dirty.set(i); i = table[i].parent }`. Five lines over the
+table; no macro. **Decide per-axis rigidity here**: the tally's card is
+`Fixed(360)` wide and `Shrink` tall, so a taller value label must
+bubble to the page while a wider one must not. `IS_RIGID` becomes
+`RIGID_W`/`RIGID_H`, the derive ANDs each separately, and `NodeDesc`
+carries two bits. Gate: `tests/`: a `Dirty` deep in a `Ten10` fixture
+marks O(depth) nodes, never O(N); the count is asserted.
+
+**T8c.3 — containers skip clean children.** In the derive's generated
+`layout`, a child whose subtree is clean and whose constraints are
+unchanged keeps its `NodeState` (size and stamped attributes); the
+parent still runs its own placement arithmetic over all children's
+sizes, which is O(children), not O(subtree). `Repeat`/`List`/`Dyn`
+treat a dirty window as a dirty subtree. Gate: `Incremental` and
+`Rebuild` produce identical `NodeState` arrays for the M8b click
+corpus and for a scrolled `Ten10`; the 901-node click frame's layout
+under **200 ns** p95 (today 7.3 µs).
+
+**T8c.4 — scoped cascade.** A class toggle re-cascades one subtree —
+the index range `[start, start + NODE_COUNT)` — instead of the table.
+This is the tally's sign flip, and it is the one style operation an
+app does at runtime; a full `set_stylesheet` stays whole-table. Styles
+resolve into `NodeState` during layout, so a scoped cascade dirties the
+range and T8c.3 does the rest: there is no separate "style pass" to
+scope. Gate: the range is asserted equal to the subtree's
+`NODE_COUNT` for every hatch kind (`Either`'s reopened shape,
+`docs/either-reopened.md`, decides what the range means for a
+variant).
+
+---
+
 ## M9 — Input routing and text input — **PLANNED, not started**
 
 Cluster C plus Cluster B of the decisions doc. Split from M8 because the
@@ -642,12 +774,16 @@ architecture end to end.
 
 ```
 M0 ──► M1 ──► M2 ──► M3 ──► M4 ──► M5 ──► M6 ──► M7a ──► M8 ──► M9 ──► M10+
-                                                    └─► M7b (manual)
+                                                    └─► M7b ──► M8b ──► M8c
+                                                       (manual)  (raster) (layout)
         (style array first: Length must live somewhere)
 ```
 
 M0 is the large one and is pure refactor — no new behavior, every test
-green before and after. M1–M4 are each small. M5 is integration.
+green before and after. M1–M4 are each small. M5 is integration. M8b
+and M8c hang off M7b, not M8: they need a window to measure against and
+nothing from scrolling; M8b before M8c because the frame's time is in
+pixels, not layout (`docs/results-frame-cost.md`).
 
 **Status 2026-09-01: M0–M6 complete** (M5 less the winit binding, above).
 Gate at the close of M5: 32 default suites + 8 gated all green, clippy
