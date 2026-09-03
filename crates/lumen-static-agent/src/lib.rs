@@ -123,6 +123,15 @@ pub struct FrameTiming {
     /// The whole redraw, input drain to presented.
     pub frame_ns: u64,
     pub input_latency_ns: Option<u64>,
+    /// Pixels the frame actually redrew — the area of the damage rect,
+    /// or the viewport when everything was redrawn. `None` from a host
+    /// that renders whole frames and does not track damage.
+    ///
+    /// Here because "why is this frame slow" is answered by *how much*
+    /// was drawn far more often than by which stage drew it, and a
+    /// partial-redraw path that has quietly degraded to full frames is
+    /// otherwise invisible: every stage still looks reasonable.
+    pub damaged_px: Option<u64>,
 }
 
 impl FrameTiming {
@@ -139,6 +148,7 @@ impl FrameTiming {
             "present_ns": self.present_ns,
             "frame_ns": self.frame_ns,
             "input_latency_ns": self.input_latency_ns,
+            "damaged_px": self.damaged_px,
         })
     }
 }
@@ -201,13 +211,14 @@ impl Agent {
         }
         type Get = fn(&FrameTiming) -> Option<u64>;
         let mut summary = Map::new();
-        let fields: [(&str, Get); 6] = [
+        let fields: [(&str, Get); 7] = [
             ("layout_ns", |t| Some(t.layout_ns)),
             ("paint_ns", |t| Some(t.paint_ns)),
             ("render_ns", |t| Some(t.render_ns)),
             ("present_ns", |t| Some(t.present_ns)),
             ("frame_ns", |t| Some(t.frame_ns)),
             ("input_latency_ns", |t| t.input_latency_ns),
+            ("damaged_px", |t| t.damaged_px),
         ];
         for (name, get) in fields {
             let mut v: Vec<u64> = self.perf.iter().filter_map(get).collect();

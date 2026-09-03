@@ -631,7 +631,33 @@ Two notes for whoever writes the breakdown:
 
 ---
 
-## M8b — Incremental raster — **PLANNED 2026-09-04, not started**
+## M8b — Incremental raster — **DONE 2026-09-04**
+
+All four tasks landed; both T8b.3 gates pass with margin (frame p95
+0.154 ms against 0.2, input → presented p95 1.38 ms against 3). Numbers
+and what the profile found in `docs/results-frame-cost.md`. Two things
+the plan below did not anticipate:
+
+- **The damage source is the display list, not the node table.** The
+  plan said "move the geometry+checksum diff out of the agent crate".
+  That diff re-paints every leaf into a scratch list to sign each node,
+  because the agent's question is *which node* changed. The renderer's
+  question is *which pixels*, and comparing this frame's commands
+  against last frame's answers it with no per-node bookkeeping, no
+  second paint, and no change to `Node::paint`. The journal keeps its
+  own mechanism; the cheaper one is on the release path.
+- **Damage is banked per present, not per pump.** The surface is
+  multi-buffered: what softbuffer hands back may be zeroed or hold the
+  frame from two presents ago, and it says which through the buffer's
+  age. Drawing one frame's difference onto a two-frame-old base is the
+  classic double-buffered smear. So `Retention::take_damage_for_age`
+  keeps a short ring, and damage *accumulates* across the several pumps
+  one frame may take — the tally re-cascades and re-lays-out when the
+  sign flips, and both pumps land on one screen.
+
+Original plan:
+
+
 
 The frame is 1.05 ms and 0.9 ms of it is rasterising pixels that did
 not change: every redraw clears the canvas, walks the whole display

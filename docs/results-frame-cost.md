@@ -64,6 +64,61 @@ The first ~5 frames after launch render at 4.7 ms — cold clocks on a
 `powersave` governor and first-touch of the pixel buffer. A latency
 check reads the warm window: `ui_check.py latency` clicks first.
 
+## M8b — incremental raster (2026-09-04)
+
+The round above made a *full* frame cheap. M8b stops drawing the parts
+that did not change. Same machine and method.
+
+| stage, one click on the tally | full frame (M8b in) | partial |
+|---|---:|---:|
+| clear | 96 µs | **4 µs** |
+| render | 478 µs | **25 µs** |
+| blit | 69 µs | **6 µs** |
+
+Damage for a count change is the value label: `[175, 143.5, 265,
+247.5]`, **9 360 px of 228 800** — 4% of the frame.
+
+Live, warm (128 frames, 140 agent clicks):
+
+| | before M8b | after | budget |
+|---|---:|---:|---:|
+| frame p50 | 1.05 ms | **0.079 ms** | — |
+| frame p95 | 2.33 ms | **0.154 ms** | 0.2 ms (T8b.3) |
+| render p95 | 2.12 ms | 0.089 ms | — |
+| input → presented p50 | 2.22 ms | **0.811 ms** | — |
+| input → presented p95 | 4.36 ms | **1.383 ms** | 3 ms (T8b.3) |
+| damaged px p50 | 228 800 | **9 464** | — |
+
+**Verdict: both T8b.3 gates pass.** A click frame is 15× cheaper than
+before M8b and 30× cheaper than at the start of 2026-09-03.
+
+### The shadow, a second time
+
+Profiling the partial path found the shadow was **586 µs of an 811 µs
+full render** — one command, 72%. `shadow_within` computed the signed
+distance for every pixel in the shape's bounding box and then discarded
+the ~83% that fell inside the card. The rounded rect *is* its
+inset-by-`radius` rect dilated by `radius`, so every pixel in that inset
+rect is at distance ≤ −radius and cannot contribute: it is skipped
+structurally now, by advancing `x` past it, with no arithmetic at all.
+Full render 811 → 478 µs. The lesson is the same one this document
+opened with — the expensive command was found by measuring per command
+class, not by reading the code.
+
+### What the numbers say about the design
+
+`Incremental` costs a copy of the display list per frame and a walk over
+it. Both are in the p50 above, and `shell/tests/alloc_gate.rs` asserts
+the copy allocates **zero** bytes in steady state once its buffers have
+grown — the same standard every other path is held to.
+
+The oracle held: `shell/tests/damage_oracle.rs` renders the tally at
+every count from −12 to +12 both ways and compares the full pixel
+buffers, plus a buffer-age case where a two-frame-old surface is redrawn
+from two frames of unioned damage. That test is why the retention is a
+type parameter and not a cargo feature: both paths must be alive in one
+process to compare them (`docs/plan-architecture-v2.md` T8b.0).
+
 ## What the round also found (fixed in the same commit)
 
 - **Text 4 px low in every button.** `Button` never measured its
@@ -92,4 +147,10 @@ check reads the warm window: `ui_check.py latency` clicks first.
 - **No press or hover feedback.** `NodeState` has no pressed/hovered
   bit and `dispatch` tracks none. A button that does not change while
   held is a GUI-theory failure (`ui_check.py` cannot check it yet).
-  Planned under M9 routing in `docs/plan-architecture-v2.md`.
+  Planned under M9 routing in `docs/plan-architecture-v2.md` (C6).
+- **Damage is one rect, not a list of them.** Two changes at opposite
+  corners damage everything between. The tally's worst case is a digit
+  count changing, which re-centres the label and shifts the card:
+  58 368 px, 25% of the frame, against a 9 464 px median. A rect list
+  would fix it and is not worth it until a screen exists where it
+  matters.

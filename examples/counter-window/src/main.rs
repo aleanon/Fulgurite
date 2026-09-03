@@ -359,16 +359,41 @@ impl WinApp {
         let (layout_ns, paint_ns) = self.host.timings();
 
         let Some(surface) = self.surface.as_mut() else { return };
+        surface.resize(w, h).expect("resize surface");
+        let mut buf = surface.buffer_mut().expect("acquire surface buffer");
+
+        // What this buffer needs redrawn. Not `host.damage()`: the
+        // surface is multi-buffered, and the one just handed back may
+        // hold the frame from two presents ago or nothing at all. It
+        // says which through `age`, and drawing one frame's difference
+        // onto a two-frame-old base is the classic double-buffered
+        // smear (`crates/lumen-static/src/retain.rs`).
+        let viewport = [0.0, 0.0, size.width as f32, size.height as f32];
+        let Some(area) = self.host.take_damage_for_age(buf.age()).clip_to(viewport) else {
+            // Nothing changed and this buffer already shows it. Drop it
+            // unpresented: a frame that redraws nothing should cost
+            // nothing (M8b, T8b.4).
+            drop(buf);
+            self.input_at = None;
+            return;
+        };
+
         let t = Instant::now();
-        self.canvas.clear(PAGE);
-        self.host.render(&mut self.canvas);
+        self.canvas.clear_within(area, PAGE);
+        self.canvas.render_within(&self.host.list, area);
         let render_ns = t.elapsed().as_nanos() as u64;
 
         let t = Instant::now();
-        surface.resize(w, h).expect("resize surface");
-        let mut buf = surface.buffer_mut().expect("acquire surface buffer");
-        self.canvas.blit_0rgb(&mut buf);
-        buf.present().expect("present");
+        self.canvas.blit_0rgb_within(&mut buf, area);
+        let damage = [softbuffer::Rect {
+            x: area[0] as u32,
+            y: area[1] as u32,
+            width: NonZeroU32::new((area[2].ceil() - area[0].floor()).max(1.0) as u32)
+                .expect("nonzero"),
+            height: NonZeroU32::new((area[3].ceil() - area[1].floor()).max(1.0) as u32)
+                .expect("nonzero"),
+        }];
+        buf.present_with_damage(&damage).expect("present");
         let present_ns = t.elapsed().as_nanos() as u64;
 
         // The frame is on screen: this is where the journal, the audit
@@ -381,6 +406,9 @@ impl WinApp {
             present_ns,
             frame_ns: frame_start.elapsed().as_nanos() as u64,
             input_latency_ns: self.input_at.take().map(|t| t.elapsed().as_nanos() as u64),
+            damaged_px: Some(
+                ((area[2] - area[0]) as f64 * (area[3] - area[1]) as f64).max(0.0) as u64,
+            ),
         };
         let mut tree = lumen_static_agent::TreeMut::of_root(
             &mut self.host.app.ui,
@@ -628,6 +656,50 @@ fn profile(host: &mut Host<Tally>, canvas: &mut Canvas, mut metrics: Option<&mut
     only("  text", Box::new(|c| matches!(c, Cmd::Text { .. })));
     let mut buf = vec![0u32; (w * h) as usize];
     med("blit rgba->0rgb", Box::new(|| canvas.blit_0rgb(&mut buf)));
+
+    // The partial path (M8b), against the damage a count change makes.
+    // Bank the seed frame first, or the damage is the whole viewport.
+    host.take_damage_for_age(1);
+    host.app.count += 1;
+    match metrics.as_mut() {
+        Some(m) => {
+            host.pump_with(*m);
+        }
+        None => {
+            host.pump();
+        }
+    }
+    if let Some(area) =
+        host.take_damage_for_age(1).clip_to([0.0, 0.0, w as f32, h as f32])
+    {
+        let px = ((area[2] - area[0]) * (area[3] - area[1])) as u64;
+        eprintln!("{:<22} {:>8} px  {area:?}", "damage", px);
+        med("  clear_within", Box::new(|| canvas.clear_within(area, PAGE)));
+        med("  render_within", Box::new(|| canvas.render_within(&host.list, area)));
+        med("  blit_within", Box::new(|| canvas.blit_0rgb_within(&mut buf, area)));
+        // What each command class costs inside that rect.
+        let mut only_in = |name: &str, keep: Box<dyn Fn(&lumen_static::Cmd) -> bool>| {
+            let mut sub = lumen_static::DisplayList::new();
+            for c in &host.list.cmds {
+                if keep(c) {
+                    sub.cmds.push(*c);
+                }
+            }
+            sub.text = host.list.text.clone();
+            let mut v: Vec<u128> = (0..50)
+                .map(|_| {
+                    let t = Instant::now();
+                    canvas.render_within(&sub, area);
+                    t.elapsed().as_micros()
+                })
+                .collect();
+            v.sort();
+            eprintln!("{name:<22} {:>8} us  ({} cmds)", v[25], sub.cmds.len());
+        };
+        only_in("    rounded_rect", Box::new(|c| matches!(c, Cmd::RoundedRect { .. })));
+        only_in("    shadow", Box::new(|c| matches!(c, Cmd::Shadow { .. })));
+        only_in("    text", Box::new(|c| matches!(c, Cmd::Text { .. })));
+    }
 }
 
 /// `--drive` runs the app through the agent surface and asserts.

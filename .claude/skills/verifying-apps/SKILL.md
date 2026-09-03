@@ -102,15 +102,20 @@ longer wait means the build failed; read its log.
 
 `app.perf` returns, per frame and as p50/p95/max over the last 128:
 `layout_ns`, `paint_ns`, `render_ns` (display list → pixels),
-`present_ns` (pixels → surface), `frame_ns` (the whole redraw) and
-`input_latency_ns` (oldest input consumed → that frame presented). The
-last is the number a person feels.
+`present_ns` (pixels → surface), `frame_ns` (the whole redraw),
+`input_latency_ns` (oldest input consumed → that frame presented) and
+`damaged_px` (how much of the frame was actually redrawn).
+`input_latency_ns` is the number a person feels; `damaged_px` is the
+one that explains a slow frame, and the one that catches a partial-redraw
+path that has quietly degraded to full frames — every *stage* still
+looks reasonable when that happens.
 
 | budget | value | why |
 |---|---|---|
 | input → presented, p95 | ≤ 100 ms | Nielsen's "feels instantaneous"; below ~50 ms nobody can tell |
 | frame, p95 | ≤ 16 ms | one 60 Hz refresh |
 | layout + paint | ≤ 100 µs | the static tree's promise; anything more is a memo missing |
+| `damaged_px` p50 | ≪ viewport | a partial redraw that damages the whole frame is not one |
 
 Read the *warm* window: the first ~5 frames after launch are 4× slower
 (cold clocks, first touch of the pixel buffer). `ui_check.py latency`

@@ -51,6 +51,7 @@ static A: Counting = Counting;
 use lumen_static::hatch::{Dyn, Either, List};
 use lumen_static::prelude::*;
 use lumen_static::repeat::{noop_bind, Repeat};
+use lumen_static::{Incremental, Rebuild};
 use lumen_static_shell::Host;
 
 #[derive(StaticTree, Default)]
@@ -115,7 +116,16 @@ struct HatchApp {
 }
 
 /// Count allocations over `n` pumps, after warming up.
-fn per_pump<A: lumen_static::event::App>(host: &mut Host<A>, n: usize) -> f64 {
+///
+/// Generic over retention (M8b): the gate must hold for both, and
+/// `Incremental` is the one that could break it — it copies the display
+/// list every frame, which allocates until the retained buffers have
+/// grown to the frame's size. That is what "after warming up" covers,
+/// and asserting zero afterwards is what proves the copy reuses them.
+fn per_pump<A: lumen_static::event::App, R: lumen_static::Retention>(
+    host: &mut Host<A, R>,
+    n: usize,
+) -> f64 {
     for _ in 0..5 {
         host.pump();
     }
@@ -129,13 +139,13 @@ fn per_pump<A: lumen_static::event::App>(host: &mut Host<A>, n: usize) -> f64 {
 
 #[test]
 fn an_idle_frame_allocates_nothing() {
-    let mut host = Host::new(PlainApp::default(), 320, 200);
+    let mut host: Host<_, Incremental> = Host::new(PlainApp::default(), 320, 200);
     assert_eq!(per_pump(&mut host, 100), 0.0, "plain tree, idle");
 }
 
 #[test]
 fn a_frame_carrying_a_state_change_allocates_nothing() {
-    let mut host = Host::new(PlainApp::default(), 320, 200);
+    let mut host: Host<_, Incremental> = Host::new(PlainApp::default(), 320, 200);
     for _ in 0..5 {
         host.pump();
     }
@@ -162,7 +172,7 @@ fn a_frame_holding_every_hatch_allocates_nothing() {
     app.ui.island = Dyn::new(Pane::default());
     app.ui.maybe = Some(Fixed { w: 4.0, h: 4.0 });
 
-    let mut host = Host::new(app, 320, 400);
+    let mut host: Host<_, Incremental> = Host::new(app, 320, 400);
     assert_eq!(per_pump(&mut host, 100), 0.0, "Repeat + List + Either + Dyn + Option, idle");
 }
 
@@ -170,7 +180,7 @@ fn a_frame_holding_every_hatch_allocates_nothing() {
 fn scrolling_a_ten_thousand_row_list_allocates_nothing() {
     let mut app = HatchApp::default();
     app.ui.list = Repeat::new(10_000, 20.0, noop_bind);
-    let mut host = Host::new(app, 320, 400);
+    let mut host: Host<_, Incremental> = Host::new(app, 320, 400);
     for _ in 0..5 {
         host.pump();
     }
@@ -201,6 +211,30 @@ fn an_enum_widget_allocates_nothing() {
     let mut app = EnumApp::default();
     // One of each variant, so both index ranges are exercised.
     app.ui.two = Slot::Block(Fixed { w: 8.0, h: 8.0 });
-    let mut host = Host::new(app, 320, 200);
+    let mut host: Host<_, Incremental> = Host::new(app, 320, 200);
     assert_eq!(per_pump(&mut host, 100), 0.0, "two enum nodes, idle");
+}
+
+#[test]
+fn the_retention_seam_allocates_nothing_in_either_mode() {
+    // Both halves of the M8b type parameter, on the same tree, so a
+    // regression in the retained copy cannot hide behind the oracle.
+    let mut rebuild: Host<_, Rebuild> = Host::new(PlainApp::default(), 320, 200);
+    assert_eq!(per_pump(&mut rebuild, 100), 0.0, "Rebuild keeps nothing");
+
+    let mut incr: Host<_, Incremental> = Host::new(PlainApp::default(), 320, 200);
+    // Drive it through the widths it will use, so the retained command
+    // list and text buffer reach their steady-state capacity.
+    for i in 0..30 {
+        incr.app.count = i;
+        incr.pump();
+        incr.take_damage_for_age(1);
+    }
+    let before = allocs();
+    for i in 0..100 {
+        incr.app.count = i % 30;
+        incr.pump();
+        incr.take_damage_for_age(1);
+    }
+    assert_eq!(allocs() - before, 0, "the retained copy reuses its buffers");
 }

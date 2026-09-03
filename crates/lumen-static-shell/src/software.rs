@@ -142,20 +142,39 @@ impl Canvas {
         let (w, h) = (self.width as i64, self.height as i64);
         let (x0, y0) = ((bounds[0].floor() as i64).max(0), (bounds[1].floor() as i64).max(0));
         let (x1, y1) = ((bounds[2].ceil() as i64).min(w), (bounds[3].ceil() as i64).min(h));
+
+        // The shape's inset-by-`rad` rect is entirely inside it — the
+        // rounded rect *is* that rect dilated by `rad` — so every pixel
+        // in it is at distance <= -rad and contributes nothing. Skipping
+        // it structurally rather than computing a distance and throwing
+        // it away is most of this function: for the tally's card that is
+        // 131k of 158k pixels, and the shadow went from 72% of a frame's
+        // render to a tenth of it (`docs/results-frame-cost.md`).
+        let skip = rad >= 1.0;
+        let (ix0, iy0) = ((shape[0] + rad).ceil() as i64, (shape[1] + rad).ceil() as i64);
+        let (ix1, iy1) = ((shape[2] - rad).floor() as i64, (shape[3] - rad).floor() as i64);
+
         for y in y0..y1 {
             let qy = (y as f32 + 0.5 - cy).abs() - hy;
-            for x in x0..x1 {
-                let qx = (x as f32 + 0.5 - cx).abs() - hx;
-                // Signed distance to a rounded rect (Quilez).
-                let d = (qx.max(0.0).hypot(qy.max(0.0)) + qx.max(qy).min(0.0)) - rad;
-                if d < -1.0 {
+            let inner_row = skip && y >= iy0 && y < iy1;
+            let mut x = x0;
+            while x < x1 {
+                if inner_row && x >= ix0 && x < ix1 {
+                    x = ix1;
                     continue;
                 }
-                let t = 1.0 - (d / spread).clamp(0.0, 1.0);
-                let a = (c.3 as f32 * t * t) as u8;
-                if a > 0 {
-                    self.blend(x, y, Color(c.0, c.1, c.2, a));
+                let qx = (x as f32 + 0.5 - cx).abs() - hx;
+                // Signed distance to a rounded rect (Quilez).
+                let (ax, ay) = (qx.max(0.0), qy.max(0.0));
+                let d = (ax * ax + ay * ay).sqrt() + qx.max(qy).min(0.0) - rad;
+                if d >= -1.0 {
+                    let t = 1.0 - (d / spread).clamp(0.0, 1.0);
+                    let a = (c.3 as f32 * t * t) as u8;
+                    if a > 0 {
+                        self.blend(x, y, Color(c.0, c.1, c.2, a));
+                    }
                 }
+                x += 1;
             }
         }
     }
@@ -164,6 +183,14 @@ impl Canvas {
         for px in self.pixels.chunks_exact_mut(4) {
             px.copy_from_slice(&[c.0, c.1, c.2, c.3]);
         }
+    }
+
+    /// Clear only `r`. A partial redraw clears the region it is about
+    /// to repaint and leaves the rest of the frame standing — clearing
+    /// the whole surface first would make the "partial" half pointless.
+    pub fn clear_within(&mut self, r: [f32; 4], c: Color) {
+        let opaque = Color(c.0, c.1, c.2, 255);
+        self.fill(r, opaque);
     }
 
     /// One row, `[x0, x1)`, already clamped to the surface. Opaque
@@ -232,6 +259,26 @@ impl Canvas {
         }
     }
 
+    /// [`Canvas::blit_0rgb`] for one region — the rows a partial
+    /// redraw touched. `dst` is the whole surface, not the region: the
+    /// stride is the canvas width either way.
+    pub fn blit_0rgb_within(&self, dst: &mut [u32], r: [f32; 4]) {
+        let (w, h) = (self.width as i64, self.height as i64);
+        let x0 = (r[0].floor() as i64).clamp(0, w) as usize;
+        let y0 = (r[1].floor() as i64).clamp(0, h) as usize;
+        let x1 = (r[2].ceil() as i64).clamp(0, w) as usize;
+        let y1 = (r[3].ceil() as i64).clamp(0, h) as usize;
+        let stride = self.width as usize;
+        for y in y0..y1 {
+            let row = y * stride;
+            for x in x0..x1 {
+                let i = (row + x) * 4;
+                let px = &self.pixels[i..i + 3];
+                dst[row + x] = (px[0] as u32) << 16 | (px[1] as u32) << 8 | px[2] as u32;
+            }
+        }
+    }
+
     /// Portable pixmap — no image dependency, and any viewer opens it.
     pub fn to_ppm(&self) -> Vec<u8> {
         let mut out = format!("P6\n{} {}\n255\n", self.width, self.height).into_bytes();
@@ -254,9 +301,30 @@ impl Canvas {
     }
 }
 
-impl Renderer for Canvas {
-    fn render(&mut self, list: &DisplayList, _w: u32, _h: u32) {
+impl Canvas {
+    /// Render only what falls inside `damage`.
+    ///
+    /// Every command is still walked, in order, and every command whose
+    /// ink reaches the region is drawn — clipped to it. That is what
+    /// makes the result identical to a full render of the same list:
+    /// overlap is resolved by paint order exactly as before, and a card's
+    /// shadow *is* repainted where it lies under a changed label,
+    /// because it intersects. Skipping a command that intersects, or
+    /// drawing them out of order, is what a per-node retained list would
+    /// have to get right; walking the list does not have the problem.
+    ///
+    /// The clip stack is honoured throughout: `damage` is pushed as the
+    /// outermost scope, so a command cannot escape it any more than it
+    /// can escape a scroller.
+    pub fn render_within(&mut self, list: &DisplayList, damage: [f32; 4]) {
+        self.render_impl(list, Some(damage));
+    }
+
+    fn render_impl(&mut self, list: &DisplayList, damage: Option<[f32; 4]>) {
         let mut clip: Vec<[f32; 4]> = Vec::new();
+        if let Some(d) = damage {
+            clip.push(d);
+        }
         for c in &list.cmds {
             match c {
                 Cmd::Rect { rect, color } => {
@@ -306,10 +374,23 @@ impl Renderer for Canvas {
                 }
                 Cmd::PushClip { rect } => clip.push(*rect),
                 Cmd::PopClip => {
-                    clip.pop();
+                    // Never pop the damage scope: it is not part of the
+                    // list's own balance, and an unbalanced list (which
+                    // `tests/paint_containment.rs` forbids, but a
+                    // renderer must not trust) would otherwise let a
+                    // later command paint outside the region.
+                    if clip.len() > damage.is_some() as usize {
+                        clip.pop();
+                    }
                 }
             }
         }
+    }
+}
+
+impl Renderer for Canvas {
+    fn render(&mut self, list: &DisplayList, _w: u32, _h: u32) {
+        self.render_impl(list, None);
     }
 }
 

@@ -14,6 +14,7 @@ use lumen_static::display::{Cmd, Color, DisplayList, Renderer};
 use lumen_static::event::App;
 use lumen_static::style::{Rule, Style};
 use lumen_static::widget::{Node, Widget};
+use lumen_static::retain::{Damage, Incremental, Retention};
 use lumen_static::{pass, Constraints, Event, Point};
 
 pub mod software;
@@ -22,7 +23,7 @@ pub mod text;
 
 /// A running application: the tree, its parallel arrays, the one input
 /// queue, and the frame's display list.
-pub struct Host<A: App> {
+pub struct Host<A: App, R: Retention = Incremental> {
     pub app: A,
     pub styles: Vec<Style>,
     pub states: Vec<NodeState>,
@@ -33,9 +34,15 @@ pub struct Host<A: App> {
     frame: u64,
     last_layout_ns: u64,
     last_paint_ns: u64,
+    /// How much of the previous frame is kept, and what changed
+    /// (`docs/plan-architecture-v2.md` M8b). A type parameter rather
+    /// than a feature so `Rebuild` stays available in the same binary
+    /// as the oracle every incremental gate is compared against.
+    retain: R,
+    last_damage: Damage,
 }
 
-impl<A: App> Host<A> {
+impl<A: App, R: Retention> Host<A, R> {
     pub fn new(app: A, width: u32, height: u32) -> Self {
         let n = <A::Tree as Widget>::NODE_COUNT;
         let styles = pass::default_styles(app.tree());
@@ -50,6 +57,8 @@ impl<A: App> Host<A> {
             frame: 0,
             last_layout_ns: 0,
             last_paint_ns: 0,
+            retain: R::default(),
+            last_damage: Damage::All,
         }
     }
 
@@ -63,8 +72,16 @@ impl<A: App> Host<A> {
         lumen_static::style::cascade_deep(self.app.tree_mut(), sheet, &mut self.styles);
     }
 
+    /// A new viewport. Everything is laid out against it, so nothing
+    /// retained from the previous size describes the next frame:
+    /// retention is reset and the next frame is a full redraw.
     pub fn resize(&mut self, width: u32, height: u32) {
+        if self.size == (width, height) {
+            return;
+        }
         self.size = (width, height);
+        self.retain.reset();
+        self.last_damage = Damage::All;
     }
 
     /// Queue one input. OS input, agent-synthesized input and test input
@@ -126,8 +143,31 @@ impl<A: App> Host<A> {
         self.app.tree().paint(&self.states, 0, &mut self.list);
         self.last_paint_ns = t1.elapsed().as_nanos() as u64;
 
+        // What this frame changed. Free under `Rebuild`, which keeps
+        // nothing and answers `All`; under `Incremental` it is a copy of
+        // the command list and a walk over it.
+        self.last_damage = self.retain.record(&self.list);
+
         self.frame += 1;
         handled
+    }
+
+    /// What the frame just pumped changed, against the frame before it.
+    pub fn damage(&self) -> Damage {
+        self.last_damage
+    }
+
+    /// What a surface buffer `age` frames old needs redrawn, and bank
+    /// the accumulated damage as presented.
+    ///
+    /// The question a shell presenting into a multi-buffered surface
+    /// must ask instead of [`Host::damage`]: `age` comes from the
+    /// surface — softbuffer reports it per buffer — 0 meaning its contents are
+    /// unspecified. Call it once per presented frame — it counts
+    /// presents, and a shell that pumps twice for one frame (a
+    /// stylesheet swap between passes) must not call it twice.
+    pub fn take_damage_for_age(&mut self, age: u8) -> Damage {
+        self.retain.take_damage_for_age(age)
     }
 
     /// Hand the frame to a renderer. The renderer is chosen by the

@@ -102,6 +102,7 @@ pub mod ops;
 pub mod pass;
 #[cfg(feature = "reload")]
 pub mod reload;
+pub mod retain;
 pub mod repeat;
 pub mod style;
 pub mod text;
@@ -111,6 +112,7 @@ pub use desc::{Constraints, NodeDesc, NodeState, Point, Size, MAX_DEPTH, NO_PARE
 pub use hatch::{Dyn, Either, List, Side};
 pub use hit::{Hit, Inner};
 pub use cx::{BlockMetrics, Cluster, GlyphSink, LayoutCx, NoSink, TextMeasure};
+pub use retain::{Damage, Incremental, Rebuild, Retention};
 pub use display::{Cmd, Color, DisplayList, Renderer};
 pub use style::{Align, Edges, Length, Patch, Rule, Selector, Style};
 pub use text::{Dirty, Measured, TextBuffer, TextStorage};
