@@ -27,6 +27,19 @@ fn measure(l: &mut Label<String>, style: &[Style], st: &mut [NodeState]) -> u64 
     l.layout(&mut cx, LIMITS, style, st, 0).w as u64
 }
 
+/// The same, against a real face (T7.3). `measure` above answers what
+/// the stand-in costs, which is not the question the memo exists for.
+fn measure_real(
+    l: &mut Label<String>,
+    m: &mut dyn lumen_static::TextMeasure,
+    style: &[Style],
+    st: &mut [NodeState],
+    limits: Constraints,
+) -> u64 {
+    let mut cx = LayoutCx::new(m);
+    l.layout(&mut cx, limits, style, st, 0).w as u64
+}
+
 fn main() {
     black_box(());
     println!("bindings: per-frame cost of a binding, decomposed\n");
@@ -113,8 +126,77 @@ fn main() {
         });
     }
 
+    // ---- T7.3: what the memo is worth against a real face ----
+    //
+    // Four numbers, as the task specifies: hit and miss, for a short
+    // unwrapped label and a 60-char label wrapped at 200 px. The bench
+    // installs `FontMetrics` — running the arms above against
+    // `BlockMetrics` measures char_count x advance, which is not what a
+    // memo protects.
+    //
+    // fontdue has no content-keyed shaping cache of its own, so a miss
+    // here is a real re-layout: the number is the honest upper bound,
+    // and the T7.3 trap about warm-shaper caches does not apply
+    // (docs/text-render-adoption-decision.md).
+    println!("\n-- T7.3: the memo against a real face (fontdue) --");
+    match lumen_static_shell::text::FontStack::system() {
+        None => println!("   no system font found; skipped"),
+        Some(stack) => {
+            let mut real = lumen_static_shell::text::FontMetrics::new(stack);
+            let short = "count: 41";
+            // Exactly 60 characters, as T7.3 specifies.
+            let long: String = "the quick brown fox jumps over the lazy dog and then some mo".into();
+            assert_eq!(long.chars().count(), 60);
+            let wrapped =
+                Constraints { min_w: 0.0, max_w: 200.0, min_h: 0.0, max_h: 1080.0 };
+
+            // Warm the face: fontdue rasterizes and caches per (glyph,
+            // px) inside `Font`, so the first call for a size pays for
+            // the whole alphabet. >=100 prior calls, as specified.
+            for _ in 0..100 {
+                let mut w: Label<String> = Label::new(short.into());
+                measure_real(&mut w, &mut real, &style, &mut st, LIMITS);
+                let mut w2: Label<String> = Label::new(long.clone());
+                measure_real(&mut w2, &mut real, &style, &mut st, wrapped);
+            }
+
+            let mut a: Label<String> = Label::new(short.into());
+            measure_real(&mut a, &mut real, &style, &mut st, LIMITS);
+            bench("short, memo warm (hit)", 20_000, || {
+                measure_real(&mut a, &mut real, &style, &mut st, LIMITS)
+            });
+
+            let mut b: Label<String> = Label::new(short.into());
+            let mut f = false;
+            bench("short, memo cold (miss)", 20_000, || {
+                f = !f;
+                b.set_str(if f { "count: 41" } else { "count: 42" });
+                measure_real(&mut b, &mut real, &style, &mut st, LIMITS)
+            });
+
+            let mut c: Label<String> = Label::new(long.clone());
+            measure_real(&mut c, &mut real, &style, &mut st, wrapped);
+            bench("60-char wrapped, memo warm (hit)", 20_000, || {
+                measure_real(&mut c, &mut real, &style, &mut st, wrapped)
+            });
+
+            // Same length, so the miss arm re-measures rather than
+            // measuring a different amount of text.
+            let long2 = long.replace("dog", "cat");
+            assert_eq!(long2.chars().count(), 60);
+            let mut d: Label<String> = Label::new(long.clone());
+            let mut g = false;
+            bench("60-char wrapped, memo cold (miss)", 20_000, || {
+                g = !g;
+                d.set_str(if g { &long } else { &long2 });
+                measure_real(&mut d, &mut real, &style, &mut st, wrapped)
+            });
+            println!("   miss - hit = what one memoized label saves per frame");
+        }
+    }
+
     println!(
-        "\nBlockMetrics is char_count x advance; a real shaper is what the memo\n\
-         exists for and is not measured here. See docs/bindings-decision.md."
+        "\nBlockMetrics is char_count x advance; the real-face arms above are\n\
+         what the memo exists for. See docs/bindings-decision.md."
     );
 }

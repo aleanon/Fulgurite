@@ -480,14 +480,26 @@ milestone that depends on it. Split as review recommended:
 - **M7b (T7.4–T7.5), manually gated:** the counter runs in a window and
   responds to *pointer* input. Keyboard is not a gate here.
 
-- **T7.1** Adopt `lumen-render` behind the existing `Renderer` trait. The
+**M7a status 2026-09-04: DONE.** T7.1 and T7.2 were re-decided rather
+than executed — adopting Lumen's crates means adopting `lumen-core`,
+measured at 74 and 84 transitive crates against this project's 6
+(`docs/text-render-adoption-decision.md`). The interface is adopted, not
+the crates: the fontdue stack and the software `Canvas` sit behind
+`dyn TextMeasure` and `Renderer`, and T7.2b extended the former with the
+shaping method M8/M9 need. T7.3 ran and its four numbers are in
+`docs/bindings-decision.md`.
+
+- **T7.1 — SUPERSEDED 2026-09-04.** Adopt `lumen-render` behind the existing `Renderer` trait. The
   seam is already the right shape, so no widget signature changes. **The
   adopted backend must honour `PushClip`/`PopClip`** — the software
   renderer ignored them for three milestones and only a pixel-level test
   caught it (`docs/text-and-scrolling-decisions.md`).
-- **T7.2** Adopt `lumen-text` behind `dyn TextMeasure`. Unblocks M8's
-  `Shaped` cache, which cannot be designed against `BlockMetrics`.
-- **T7.3** Measure what the memo guards, against the real shaper. The
+- **T7.2 — SUPERSEDED 2026-09-04.** Adopt `lumen-text` behind `dyn TextMeasure`. Unblocks M8's
+  `Shaped` cache, which cannot be designed against `BlockMetrics`. (The
+  unblocking happened; the crate did not. See T7.2b.)
+- **T7.3 — DONE 2026-09-04.** Four numbers in `docs/bindings-decision.md`:
+  hit 4.8 ns, miss 2.46 µs short / 16.7 µs wrapped. The memo stays by
+  three orders of magnitude. Measure what the memo guards, against the real shaper. The
   first version of this task was a threshold gate on `format_into`'s
   comparison; review showed the comparison has no cost to gate
   (`docs/bindings-decision.md`), so the gate was aimed at the wrong
@@ -513,7 +525,15 @@ milestone that depends on it. Split as review recommended:
   cache exists to avoid" stops being the whole story once a real shaper
   lands: the framework memo will no longer be the only thing between a
   label and a shape.
-- **T7.2b** `TextMeasure` gains a shaping method. `dyn TextMeasure` today
+- **T7.2b — DONE 2026-09-04.** `TextMeasure::shape(text, size, weight,
+  max_w, &mut dyn GlyphSink) -> Size` plus `line_height`. Reports
+  `Cluster { byte, x, line }` — one per character plus the trailing
+  insertion point, byte offsets into the *caller's* string even when a
+  glyph was substituted. A sink rather than a returned buffer because
+  B9 put the buffer in the storage and because `shape` must not
+  allocate; `NoSink` and `Vec<Cluster>` ship. Six tests in
+  `shell/tests/shaping.rs`. Original text:
+  `TextMeasure` gains a shaping method. `dyn TextMeasure` today
   returns a bare `Size`; M8's `Shaped` cache needs per-glyph advances,
   so the seam T7.2 adopts behind is too narrow for T7.2's own stated
   purpose. The signature is an interface decision and gets written down

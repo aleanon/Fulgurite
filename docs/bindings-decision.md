@@ -171,6 +171,53 @@ the median is within ~1 ns except where noted:
   fixed, since no binding in the tree nests today. A small pool instead
   of a single slot is the fix if one ever does.
 
+## T7.3 — what the memo is worth against a real face (2026-09-04)
+
+The measurement above ran against `BlockMetrics`, where a re-measure is
+`char_count × advance` and the memo saves 1.3 ns — a number that says
+nothing about the memo's purpose. T7.3 asked for the same comparison
+against a real shaper, four numbers, and a verdict: *"if it is under
+~1 ns the memo is pointless and `Measured` should go."*
+
+Machine and method as elsewhere in this file (i9-13900KF, `powersave`,
+`benches --bin bindings`, ≥20k iterations in blocks, median of blocks).
+The face is fontdue with the system Noto Sans, warmed by 100 prior
+calls at each size — fontdue caches rasterized glyphs per (glyph, px)
+inside `Font`, so an unwarmed first call pays for the whole alphabet.
+Lumen's parley stack was measured and declined
+(`docs/text-render-adoption-decision.md`); fontdue has **no
+content-keyed shaping cache**, so a miss here is a real re-layout. That
+retires the trap T7.3 named — a warm shaper cache making a miss cost a
+hash lookup — rather than working around it: the numbers below are the
+honest upper bound, not a cache hit in disguise.
+
+| `Label::layout` | memo hit | memo miss | saved |
+|---|---:|---:|---:|
+| `"count: 41"`, unwrapped | **4.82 ns** | **2 459 ns** | 2.45 µs (510×) |
+| 60 chars, wrapped at 200 px | **4.78 ns** | **16 712 ns** | 16.7 µs (3 500×) |
+
+**Verdict: the memo stays, and it is not close.** The threshold was
+1 ns; the margin is three to four orders of magnitude above it.
+
+Two things follow that are larger than the memo itself:
+
+1. **Text measurement dominates layout once text is real.** The whole
+   tally lays out in 1 µs and a 901-node tree in 7.3 µs
+   (`docs/results-agent-cost.md`); *one* wrapped 60-character label
+   costs 16.7 µs to measure. A screenful of unmemoized wrapped labels
+   is milliseconds — a dropped frame from layout alone, in a framework
+   whose layout traversal was never the cost. This is the handoff's
+   §"Performance expectations" calibration arriving a second time, from
+   the other side: after the raster fix (`docs/results-frame-cost.md`)
+   the next thing that can blow a frame budget is shaping, not
+   traversal.
+2. **It raises the value of M8c, not just of the memo.** The memo is
+   keyed on (dirty, limits), so a *resize* invalidates every label at
+   once and pays the miss column for all of them. Dirty-scoped layout
+   does not help there, but the `Shaped` cache (M8/B2) and per-axis
+   rigidity (M8c/T8c.2) both do: a width-rigid node's children keep
+   their memo through a height change.
+
 ## Correction to `layout-and-storage-decisions.md` §1
 
 §1 rejected the getter design partly because it "would have to re-shape

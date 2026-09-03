@@ -8,6 +8,9 @@ publish = false
 [dependencies]
 lumen-static = { path = "../crates/lumen-static" }
 lumen-static-agent = { path = "../crates/lumen-static-agent" }
+# T7.3 measures the memo against the *real* measurer; the stand-in cannot
+# answer what the memo is worth (docs/text-render-adoption-decision.md).
+lumen-static-shell = { path = "../crates/lumen-static-shell", features = ["truetype"] }
 
 [features]
 rdyn_opaque = ["lumen-static/rdyn_opaque"]

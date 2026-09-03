@@ -101,6 +101,7 @@ version = "0.1.0"
 dependencies = [
  "lumen-static",
  "lumen-static-agent",
+ "lumen-static-shell",
 ]
 
 [[package]]

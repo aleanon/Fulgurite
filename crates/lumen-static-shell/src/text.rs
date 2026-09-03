@@ -13,9 +13,10 @@
 //! deterministic measurer is what makes golden geometry assertions
 //! possible at all.
 
+use std::borrow::Cow;
 use fontdue::layout::{CoordinateSystem, Layout, LayoutSettings, TextStyle};
 use fontdue::Font;
-use lumen_static::cx::TextMeasure;
+use lumen_static::cx::{Cluster, GlyphSink, TextMeasure};
 use lumen_static::Size;
 
 /// A loaded font, shared by the measurer and the rasterizer so the two
@@ -74,6 +75,66 @@ impl FontStack {
         })
     }
 
+    /// Pick the face for `weight` and, if it still lacks a glyph,
+    /// substitute per character.
+    ///
+    /// Tofu doctrine (Lumen's `verifying-apps` skill): a glyph the
+    /// chosen face lacks must not render as a box if any face has it.
+    /// Try the requested weight, then the other face; only then
+    /// substitute — per character rather than per run, so one missing
+    /// symbol does not box the whole label.
+    ///
+    /// Returns the face and the text to lay out. The returned text is
+    /// borrowed when nothing was substituted, which is every steady-state
+    /// call; substitution allocates, and is a fallback path.
+    fn prepare<'t>(&self, text: &'t str, weight: f32) -> (&Font, Cow<'t, str>) {
+        let wanted = self.face(weight);
+        let has_all =
+            |f: &Font| text.chars().all(|c| c.is_whitespace() || f.lookup_glyph_index(c) != 0);
+        let other: &Font = if std::ptr::eq(wanted, &*self.regular) {
+            self.bold.as_deref().unwrap_or(&self.regular)
+        } else {
+            &self.regular
+        };
+        let font = if has_all(wanted) {
+            wanted
+        } else if has_all(other) {
+            other
+        } else {
+            wanted
+        };
+        if has_all(font) {
+            return (font, Cow::Borrowed(text));
+        }
+        let out = text
+            .chars()
+            .map(|c| {
+                if c.is_whitespace() || font.lookup_glyph_index(c) != 0 {
+                    c
+                } else {
+                    match c {
+                        '\u{2212}' | '\u{2013}' | '\u{2014}' => '-',
+                        '\u{2018}' | '\u{2019}' => '\'',
+                        '\u{201c}' | '\u{201d}' => '"',
+                        _ => '?',
+                    }
+                }
+            })
+            .collect();
+        (font, Cow::Owned(out))
+    }
+
+    /// Run fontdue's line layout for one styled run.
+    fn run(font: &Font, text: &str, px: f32, max_w: f32) -> Layout {
+        let mut layout = Layout::new(CoordinateSystem::PositiveYDown);
+        layout.reset(&LayoutSettings {
+            max_width: if max_w.is_finite() && max_w > 0.0 { Some(max_w) } else { None },
+            ..LayoutSettings::default()
+        });
+        layout.append(&[font], &TextStyle::new(text, px, 0));
+        layout
+    }
+
     /// Lay out one run and return each glyph's raster and position.
     pub(crate) fn glyphs(
         &self,
@@ -82,46 +143,9 @@ impl FontStack {
         weight: f32,
         max_w: f32,
     ) -> (Vec<Glyph>, Size) {
-        // Tofu doctrine (Lumen's verifying-apps skill): a glyph the chosen
-        // face lacks must not render as a box if any face has it. Try the
-        // requested weight, then the other face; only then substitute.
-        let wanted = self.face(weight);
-        let has_all = |f: &Font| text.chars().all(|c| c.is_whitespace() || f.lookup_glyph_index(c) != 0);
-        let other: &Font = if std::ptr::eq(wanted, &*self.regular) {
-            self.bold.as_deref().unwrap_or(&self.regular)
-        } else {
-            &self.regular
-        };
-        let font = if has_all(wanted) { wanted } else if has_all(other) { other } else { wanted };
-        let substituted: String;
-        let text: &str = if has_all(font) {
-            text
-        } else {
-            // Substitute per character rather than per run, so one
-            // missing symbol does not box the whole label.
-            substituted = text
-                .chars()
-                .map(|c| {
-                    if c.is_whitespace() || font.lookup_glyph_index(c) != 0 {
-                        c
-                    } else {
-                        match c {
-                            '\u{2212}' | '\u{2013}' | '\u{2014}' => '-',
-                            '\u{2018}' | '\u{2019}' => '\'',
-                            '\u{201c}' | '\u{201d}' => '"',
-                            _ => '?',
-                        }
-                    }
-                })
-                .collect();
-            &substituted
-        };
-        let mut layout = Layout::new(CoordinateSystem::PositiveYDown);
-        layout.reset(&LayoutSettings {
-            max_width: if max_w.is_finite() && max_w > 0.0 { Some(max_w) } else { None },
-            ..LayoutSettings::default()
-        });
-        layout.append(&[font], &TextStyle::new(text, px, 0));
+        let (font, prepared) = self.prepare(text, weight);
+        let text: &str = &prepared;
+        let layout = Self::run(font, text, px, max_w);
 
         let shift = cap_shift(font, px);
 
@@ -147,6 +171,75 @@ impl FontStack {
         // drops the last glyph — which is how "POSITIVE" came out as
         // "POSITIV".
         (out, Size { w: w.ceil(), h: h.max(layout.height()).ceil() })
+    }
+
+    /// Shape one run and report every cluster boundary to `sink`.
+    ///
+    /// No rasterization: this is the query a caret, a selection or a
+    /// click-to-offset makes, and it must not cost a glyph cache. The
+    /// trailing boundary (an insertion point after the last character)
+    /// is reported too, so a run of `n` characters yields `n + 1`
+    /// clusters — the caret positions a text field actually has.
+    ///
+    /// Byte offsets are into the *caller's* string. When a glyph was
+    /// substituted the laid-out string differs from it, and since
+    /// substitution is one char for one char the offsets are mapped back
+    /// through the character correspondence rather than reported from
+    /// the substituted copy — `\u{2212}` is three bytes and `-` is one,
+    /// so reporting the copy's offsets would put a caret mid-character.
+    pub(crate) fn shape_into(
+        &self,
+        text: &str,
+        px: f32,
+        weight: f32,
+        max_w: f32,
+        sink: &mut dyn GlyphSink,
+    ) -> Size {
+        let (font, prepared) = self.prepare(text, weight);
+        let laid: &str = &prepared;
+        let layout = Self::run(font, laid, px, max_w);
+
+        // Offset in the laid-out copy → offset in the caller's string.
+        // Identity in the common case; a lookup table only when the
+        // fallback path ran.
+        let remap = |b: usize| -> u32 {
+            if matches!(prepared, Cow::Borrowed(_)) {
+                return b as u32;
+            }
+            match laid.char_indices().position(|(i, _)| i == b) {
+                Some(n) => text.char_indices().nth(n).map(|(i, _)| i as u32).unwrap_or(b as u32),
+                None => text.len() as u32,
+            }
+        };
+
+        let lines = layout.lines();
+        let line_of = |gi: usize| -> u16 {
+            match lines {
+                Some(ls) => {
+                    ls.iter().position(|l| gi >= l.glyph_start && gi <= l.glyph_end).unwrap_or(0)
+                        as u16
+                }
+                None => 0,
+            }
+        };
+
+        let (mut w, mut h) = (0.0f32, 0.0f32);
+        let mut end = (0.0f32, 0u16);
+        for (gi, g) in layout.glyphs().iter().enumerate() {
+            let adv = font.metrics_indexed(g.key.glyph_index, px).advance_width;
+            w = w.max(g.x + adv.max(g.width as f32));
+            h = h.max(g.y + g.height as f32);
+            let line = line_of(gi);
+            if !sink.is_full() {
+                sink.cluster(Cluster { byte: remap(g.byte_offset), x: g.x, line });
+            }
+            end = (g.x + adv, line);
+        }
+        // The insertion point after the last character.
+        if !sink.is_full() {
+            sink.cluster(Cluster { byte: text.len() as u32, x: end.0, line: end.1 });
+        }
+        Size { w: w.ceil(), h: h.max(layout.height()).ceil() }
     }
 }
 
@@ -204,5 +297,29 @@ impl TextMeasure for FontMetrics {
             return Size { w: 0.0, h: 0.0 };
         }
         self.stack.glyphs(text, size, weight, max_w).1
+    }
+
+    fn shape(
+        &mut self,
+        text: &str,
+        size: f32,
+        weight: f32,
+        max_w: f32,
+        sink: &mut dyn GlyphSink,
+    ) -> Size {
+        if text.is_empty() {
+            // One cluster: the caret position in an empty field.
+            sink.cluster(Cluster { byte: 0, x: 0.0, line: 0 });
+            return Size { w: 0.0, h: self.line_height(size) };
+        }
+        self.stack.shape_into(text, size, weight, max_w, sink)
+    }
+
+    fn line_height(&mut self, size: f32) -> f32 {
+        self.stack
+            .regular
+            .horizontal_line_metrics(size)
+            .map(|m| m.new_line_size)
+            .unwrap_or(size * 1.2)
     }
 }
