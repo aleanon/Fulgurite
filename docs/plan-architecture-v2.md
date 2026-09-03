@@ -690,11 +690,12 @@ mark themselves through `Dirty<T>`, which T3.1 built for this.
 
 **T8c.2 — bubble to the boundary.** `while i != NO_PARENT && !table[i]
 .is_rigid() { dirty.set(i); i = table[i].parent }`. Five lines over the
-table; no macro. **Decide per-axis rigidity here**: the tally's card is
-`Fixed(360)` wide and `Shrink` tall, so a taller value label must
-bubble to the page while a wider one must not. `IS_RIGID` becomes
-`RIGID_W`/`RIGID_H`, the derive ANDs each separately, and `NodeDesc`
-carries two bits. Gate: `tests/`: a `Dirty` deep in a `Ten10` fixture
+table; no macro. **DECIDED 2026-09-04: rigidity is per axis.** The
+tally's card is `Fixed(360)` wide and `Shrink` tall, so a taller value
+label must bubble to the page while a wider one must not. `IS_RIGID`
+becomes `RIGID_W`/`RIGID_H`, the derive ANDs each separately, and
+`NodeDesc` carries two bits; a dirty bit bubbles past a node on the
+axis it is not rigid in. Gate: `tests/`: a `Dirty` deep in a `Ten10` fixture
 marks O(depth) nodes, never O(N); the count is asserted.
 
 **T8c.3 — containers skip clean children.** In the derive's generated

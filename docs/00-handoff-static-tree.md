@@ -80,7 +80,7 @@ The four properties that produce the performance, in rough order of importance:
    lays out, paints and rasterises the whole tree. **DECIDED there:** retention
    is a type parameter on `Host` (`Rebuild` | `Incremental`), never a cargo
    feature, because `Rebuild` is the oracle the incremental path is tested
-   against, and rigidity is per axis.
+   against, and rigidity is per axis (`RIGID_W`/`RIGID_H`; a card fixed in width and shrink in height bubbles height changes only).
 
 2. **Layout is single-pass.** Constraints flow down, sizes flow back up, parent
    positions the child. No node reads its own final position during layout.
