@@ -28,3 +28,16 @@ license = "MIT OR Apache-2.0"
 [profile.bench-opt]
 inherits = "release"
 debug = true
+
+# The software rasteriser and the glyph rasteriser run optimised even in
+# dev builds. Unoptimised, a frame of the tally was 190 ms (clearing the
+# canvas alone was 3.4 ms); at opt-level 3 it was still 2 ms, because
+# debug-assertions also switch on std's `ub_checks` inside every slice
+# operation the inner loops are made of; with both off it is 0.8 ms,
+# the same as release. The core, the macros and the examples are still
+# compiled for debugging. `docs/results-frame-cost.md`.
+[profile.dev.package.lumen-static-shell]
+opt-level = 3
+debug-assertions = false
+[profile.dev.package.fontdue]
+opt-level = 3

@@ -643,6 +643,13 @@ The two advantages that are real and that nothing else gives:
 damage tracking deserve at least as much attention as the static tree. Do not
 let the interesting part crowd out the effective part.
 
+**DECIDED 2026-09-03 — confirmed by the first profile of a live frame**
+(`docs/results-frame-cost.md`): layout and paint were 1 µs of a 190 ms frame.
+Everything else was rasterisation — an 18-layer shadow and an unoptimised
+dev build. The static tree's own cost is invisible; the calibration above
+was right. `app.perf` now reports every stage plus input → presented
+latency, and `scripts/ui_check.py latency` judges it against 16 ms / 100 ms.
+
 ### What actually kills GUI framework projects
 
 Layout and traversal are the tractable, fun part, and roughly 15% of the work.

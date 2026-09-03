@@ -14,6 +14,7 @@
 //! the whole binding.
 
 use std::num::NonZeroU32;
+use std::time::Instant;
 use std::rc::Rc;
 
 use lumen_static::prelude::*;
@@ -150,6 +151,10 @@ struct WinApp {
     /// Last sign the stylesheet was cascaded for.
     sign: i64,
     agent: lumen_static_agent::Agent,
+    /// When the oldest not-yet-presented input arrived. Set by the
+    /// first input after a frame, cleared when the frame that consumed
+    /// it is on screen: the interval is `FrameTiming::input_latency_ns`.
+    input_at: Option<Instant>,
 }
 
 impl WinApp {
@@ -168,7 +173,13 @@ impl WinApp {
                 Canvas::new(w, h)
             }
         };
-        let metrics = font.map(FontMetrics::new);
+        let metrics = font.clone().map(FontMetrics::new);
+        let mut agent = lumen_static_agent::Agent::new();
+        if let Some(f) = font {
+            // The audit must measure with the face the window lays out
+            // with, or `ui.lint` reports the block stand-in's opinion.
+            agent.set_text_measure(Box::new(FontMetrics::new(f)));
+        }
         WinApp {
             host,
             canvas,
@@ -177,8 +188,14 @@ impl WinApp {
             surface: None,
             cursor: (0.0, 0.0),
             sign: 0,
-            agent: lumen_static_agent::Agent::new(),
+            agent,
+            input_at: None,
         }
+    }
+
+    /// Stamp an input's arrival, keeping the oldest unpresented one.
+    fn input_arrived(&mut self) {
+        self.input_at.get_or_insert_with(Instant::now);
     }
 
     /// One frame, measured with the real face when there is one.
@@ -224,24 +241,43 @@ impl WinApp {
             self.host.resize(size.width, size.height);
         }
 
+        let frame_start = Instant::now();
         self.pump();
         self.sync_sign();
         self.pump();
+        let (layout_ns, paint_ns) = self.host.timings();
 
         let Some(surface) = self.surface.as_mut() else { return };
+        let t = Instant::now();
         self.canvas.clear(PAGE);
         self.host.render(&mut self.canvas);
+        let render_ns = t.elapsed().as_nanos() as u64;
 
+        let t = Instant::now();
         surface.resize(w, h).expect("resize surface");
         let mut buf = surface.buffer_mut().expect("acquire surface buffer");
-        for (dst, px) in buf.iter_mut().zip(self.canvas.pixels.chunks_exact(4)) {
-            *dst = (px[0] as u32) << 16 | (px[1] as u32) << 8 | px[2] as u32;
-        }
-        let dark = buf.iter().filter(|v| **v != 0x00FF_FFFF).count();
-        let blen = buf.len();
+        self.canvas.blit_0rgb(&mut buf);
         buf.present().expect("present");
+        let present_ns = t.elapsed().as_nanos() as u64;
+
+        // The frame is on screen: this is where the journal, the audit
+        // and the timings are recorded, so `ui.lastChange`, `ui.lint`
+        // and `app.perf` describe what a person can see.
+        let timing = lumen_static_agent::FrameTiming {
+            layout_ns,
+            paint_ns,
+            render_ns,
+            present_ns,
+            frame_ns: frame_start.elapsed().as_nanos() as u64,
+            input_latency_ns: self.input_at.take().map(|t| t.elapsed().as_nanos() as u64),
+        };
+        let mut tree = lumen_static_agent::TreeMut::of_root(
+            &mut self.host.app.ui,
+            &self.host.styles,
+            &self.host.states,
+        );
+        self.agent.frame_done(&mut tree, timing);
         if std::env::var_os("LUMEN_TRACE").is_some() {
-            eprintln!("  buf len={blen} non-white={dark} surface={}x{}", w, h);
             eprintln!(
                 "redraw {}x{} cmds={} ink={:.3}",
                 size.width,
@@ -277,6 +313,9 @@ impl ApplicationHandler<Rpc> for WinApp {
             event_loop.exit();
             return;
         }
+        if method.starts_with("input.") {
+            self.input_arrived();
+        }
         let resp = {
             let mut live = Live {
                 host: &mut self.host,
@@ -306,6 +345,7 @@ impl ApplicationHandler<Rpc> for WinApp {
             }
 
             WindowEvent::MouseInput { state, button: MouseButton::Left, .. } => {
+                self.input_arrived();
                 let (x, y) = self.cursor;
                 self.host.post(match state {
                     ElementState::Pressed => Event::PointerDown { x, y },
@@ -315,6 +355,7 @@ impl ApplicationHandler<Rpc> for WinApp {
             }
 
             WindowEvent::MouseWheel { delta, .. } => {
+                self.input_arrived();
                 let dy = match delta {
                     winit::event::MouseScrollDelta::LineDelta(_, y) => y * 20.0,
                     winit::event::MouseScrollDelta::PixelDelta(p) => p.y as f32,
@@ -324,6 +365,7 @@ impl ApplicationHandler<Rpc> for WinApp {
             }
 
             WindowEvent::KeyboardInput { event, .. } => {
+                self.input_arrived();
                 let down = event.state == ElementState::Pressed;
                 // Up and down nudge the counter. `dispatch` only
                 // activates handlers on pointer-up today (routing for
@@ -401,12 +443,71 @@ fn headless(path: &str, count: i64) {
     canvas.clear(PAGE);
     host.render(&mut canvas);
     std::fs::write(path, canvas.to_ppm()).expect("write frame");
+    if std::env::var_os("LUMEN_PROFILE").is_some() {
+        profile(&mut host, &mut canvas, metrics.as_mut());
+    }
     println!(
         "tally: count={count} nodes={} cmds={} ink={:.1}% -> {path}",
         <app::Page as Widget>::NODE_COUNT,
         host.list.len(),
         canvas.ink_fraction(PAGE) * 100.0,
     );
+}
+
+/// Per-stage frame cost, 50 frames each, median. Temporary harness for
+/// the 2026-09-03 profiling round; the numbers go in
+/// `docs/results-frame-cost.md`.
+fn profile(host: &mut Host<Tally>, canvas: &mut Canvas, mut metrics: Option<&mut FontMetrics>) {
+    let med = |name: &str, mut f: Box<dyn FnMut() + '_>| {
+        let mut v: Vec<u128> = (0..50)
+            .map(|_| {
+                let t = Instant::now();
+                f();
+                t.elapsed().as_micros()
+            })
+            .collect();
+        v.sort();
+        eprintln!("{name:<22} {:>8} us", v[25]);
+    };
+    let (w, h) = (canvas.width, canvas.height);
+    med(
+        "pump(layout+paint)",
+        Box::new(|| match metrics.as_mut() {
+            Some(m) => {
+                host.pump_with(*m);
+            }
+            None => {
+                host.pump();
+            }
+        }),
+    );
+    med("clear", Box::new(|| canvas.clear(PAGE)));
+    med("render(all)", Box::new(|| host.render(canvas)));
+    // Per command class.
+    let mut only = |name: &str, keep: Box<dyn Fn(&lumen_static::Cmd) -> bool>| {
+        let mut sub = lumen_static::DisplayList::new();
+        for c in &host.list.cmds {
+            if keep(c) {
+                sub.cmds.push(*c);
+            }
+        }
+        sub.text = host.list.text.clone();
+        let mut v: Vec<u128> = (0..50)
+            .map(|_| {
+                let t = Instant::now();
+                lumen_static::Renderer::render(canvas, &sub, w, h);
+                t.elapsed().as_micros()
+            })
+            .collect();
+        v.sort();
+        eprintln!("{name:<22} {:>8} us  ({} cmds)", v[25], sub.cmds.len());
+    };
+    use lumen_static::Cmd;
+    only("  rect", Box::new(|c| matches!(c, Cmd::Rect { .. })));
+    only("  rounded_rect", Box::new(|c| matches!(c, Cmd::RoundedRect { .. })));
+    only("  text", Box::new(|c| matches!(c, Cmd::Text { .. })));
+    let mut buf = vec![0u32; (w * h) as usize];
+    med("blit rgba->0rgb", Box::new(|| canvas.blit_0rgb(&mut buf)));
 }
 
 /// `--drive` runs the app through the agent surface and asserts.

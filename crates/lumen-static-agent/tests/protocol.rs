@@ -58,7 +58,7 @@ impl Fixture {
         let mut agent = Agent::new();
         {
             let mut tm = TreeMut::of_root(&mut app, &styles, &states);
-            agent.frame_done(&mut tm, 12_345, 6_789);
+            agent.frame_done(&mut tm, lumen_static_agent::FrameTiming::passes(12_345, 6_789));
         }
         Fixture { app, states, styles, agent }
     }
@@ -186,7 +186,12 @@ fn diagnostics_and_perf() {
     assert_eq!(d["frame"], 1);
 
     let p = f.result("app.perf", json!({}));
-    assert_eq!(p["layout_ns"], 12_345);
+    assert_eq!(p["last"]["layout_ns"], 12_345);
+    assert_eq!(p["last"]["paint_ns"], 6_789);
+    assert_eq!(p["last"]["input_latency_ns"], serde_json::Value::Null, "no input this frame");
+    assert_eq!(p["window"]["layout_ns"]["p95"], 12_345, "one sample: every percentile is it");
+    assert_eq!(p["window"]["input_latency_ns"]["n"], 0);
+    assert_eq!(p["samples"], 1);
     let w = f.result("ui.waitSettled", json!({}));
     assert_eq!(w["settled"], true);
 }

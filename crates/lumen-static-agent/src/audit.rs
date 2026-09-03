@@ -209,11 +209,13 @@ pub(crate) struct LogEntry {
     pub message: String,
 }
 
-#[derive(Default)]
 pub(crate) struct Auditor {
     /// Findings true as of the last recorded frame; `ui.lint` reads this,
     /// so queries cost nothing and the work happens once per frame.
     current: Vec<Finding>,
+    /// What the intrinsic probe measures text with. The block stand-in
+    /// unless the host installs its own — see `natural`.
+    pub(crate) measure: Box<dyn lumen_static::TextMeasure>,
     /// Scratch state array for the intrinsic probe. Kept across frames so
     /// it stops allocating after the first.
     scratch: Vec<NodeState>,
@@ -226,7 +228,22 @@ pub(crate) struct Auditor {
     was_keys: Vec<(&'static str, u32)>,
     /// The findings buffer not currently held by `current`.
     spare: Vec<Finding>,
+}
 
+impl Default for Auditor {
+    fn default() -> Self {
+        Auditor {
+            current: Vec::new(),
+            measure: Box::new(lumen_static::BlockMetrics),
+            scratch: Vec::new(),
+            log: VecDeque::new(),
+            dropped: 0,
+            seeded: false,
+            now_keys: Vec::new(),
+            was_keys: Vec::new(),
+            spare: Vec::new(),
+        }
+    }
 }
 
 /// What a leaf measured under the two probes.
@@ -356,13 +373,16 @@ impl Auditor {
         root: &mut dyn Node,
         styles: &[lumen_static::Style],
         scratch: &mut [NodeState],
+        measure: &mut dyn lumen_static::TextMeasure,
         i: usize,
     ) -> Natural {
-        // The probe measures with the built-in metrics; a host with a
-        // real shaping stack gets slightly different natural sizes, which
-        // is one more reason M2's `Shrink` results should replace this.
-        let mut m = lumen_static::BlockMetrics;
-        let mut cx = lumen_static::LayoutCx::new(&mut m);
+        // Measured with the host's own text stack (`Agent::
+        // set_text_measure`), because the question is what *this*
+        // frame's layout would have wanted. Measuring with the block
+        // stand-in while the window laid out with a real face reported
+        // every button of the live tally as truncated — the block's
+        // 0.5 em advance is wider than any real digit.
+        let mut cx = lumen_static::LayoutCx::new(measure);
         let a = root.node_mut(i).probe(&mut cx, PROBE_A, styles, scratch, i);
         let b = root.node_mut(i).probe(&mut cx, PROBE_B, styles, scratch, i);
         Natural { intrinsic: a == b, size: a }
@@ -405,7 +425,8 @@ impl Auditor {
 
             // -- content-bearing checks, leaves only (see module docs) --
             if leaf {
-                let nat = Self::natural(tree.root, tree.styles, &mut self.scratch, i);
+                let nat =
+                    Self::natural(tree.root, tree.styles, &mut self.scratch, &mut *self.measure, i);
                 let has_content = nat.intrinsic && nat.size.w > 0.0 && nat.size.h > 0.0;
 
                 if has_content && a > 0.0 {

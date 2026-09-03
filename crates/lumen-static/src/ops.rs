@@ -395,8 +395,17 @@ impl<S: TextStorage> Node for Label<S> {
         st: &mut [NodeState],
         i: usize,
     ) -> Size {
-        let content = cx.text.measure(self.text.get().as_ref(), 16.0, limits.max_w);
-        record_painted(st, i, limits, resolve_self(limits, &style[i], content), &style[i])
+        // The same measurement `layout` makes — size, weight, padding —
+        // or the audit compares the frame against a different label.
+        // Until 2026-09-03 this measured at 16 px regular with no
+        // padding, so a probe of the tally's 76 px value asked for a
+        // box a fifth its size.
+        let text = self.text.get().as_ref();
+        let content =
+            cx.text.measure_weighted(text, style[i].font_size, style[i].font_weight, limits.max_w);
+        let pad = style[i].padding;
+        let boxed = Size { w: content.w + pad.horizontal(), h: content.h + pad.vertical() };
+        record_painted(st, i, limits, resolve_self(limits, &style[i], boxed), &style[i])
     }
     fn paint(&self, st: &[NodeState], i: usize, out: &mut DisplayList) {
         let r = rect_of(&st[i]);
@@ -516,13 +525,30 @@ impl Node for Spacer {
 pub struct Button<S: 'static, T: TextStorage = &'static str> {
     pub label: T,
     pub on_click: fn(&mut S, &EventCtx),
+    /// The label's measured box and what it was measured under. `label`
+    /// is a plain field, not a `Dirty<_>`, so the key carries a content
+    /// hash instead of a dirty bit — a few bytes per frame against a
+    /// shaping call that allocates. Until 2026-09-03 a button never
+    /// measured at all: width was `0.62 em × chars`, the text box was
+    /// `font_size` tall, and every label sat 4 px low
+    /// (`docs/results-frame-cost.md`).
+    measured: Option<(ButtonKey, Size)>,
+}
+
+/// What a button's measurement depends on.
+#[derive(Clone, Copy, PartialEq)]
+struct ButtonKey {
+    limits: Constraints,
+    px: u32,
+    weight: u32,
+    label: u64,
 }
 
 pub fn ignore_click<S>(_: &mut S, _: &EventCtx) {}
 
 impl<S, T: TextStorage> Default for Button<S, T> {
     fn default() -> Self {
-        Button { label: T::default(), on_click: ignore_click::<S> }
+        Button { label: T::default(), on_click: ignore_click::<S>, measured: None }
     }
 }
 
@@ -554,30 +580,70 @@ impl<S: 'static, T: TextStorage> Node for Button<S, T> {
 
     fn layout(
         &mut self,
-        _cx: &mut LayoutCx,
+        cx: &mut LayoutCx,
         limits: Constraints,
         style: &[Style],
         st: &mut [NodeState],
         i: usize,
     ) -> Size {
-        let content = Size {
-            w: style[i].font_size * 0.62 * self.label.as_ref().chars().count() as f32
-                + style[i].padding.horizontal(),
-            h: style[i].font_size * 1.3 + style[i].padding.vertical(),
+        let label = self.label.as_ref();
+        let px = style[i].font_size;
+        let weight = style[i].font_weight;
+        let key = ButtonKey {
+            limits,
+            px: px.to_bits(),
+            weight: weight.to_bits(),
+            label: label.bytes().fold(0u64, |h, b| crate::display::fold(h, b as u64)),
         };
+        let text = match self.measured {
+            Some((k, s)) if k == key => s,
+            _ => {
+                let s = cx.text.measure_weighted(label, px, weight, limits.max_w);
+                self.measured = Some((key, s));
+                s
+            }
+        };
+        let pad = style[i].padding;
+        let content = Size { w: text.w + pad.horizontal(), h: text.h + pad.vertical() };
         record_painted(st, i, limits, resolve_self(limits, &style[i], content), &style[i])
     }
     fn paint(&self, st: &[NodeState], i: usize, out: &mut DisplayList) {
         let r = rect_of(&st[i]);
         out.rounded_rect(r, st[i].bg, st[i].radius);
-        // Centre the label in the button's box rather than pinning it to
-        // the left edge: a button is padded, and text at the corner reads
-        // as a bug.
-        let px = st[i].font_size;
-        let tw = px * 0.55 * self.label.as_ref().chars().count() as f32;
-        let x = r[0] + ((r[2] - r[0]) - tw).max(0.0) / 2.0;
-        let y = r[1] + ((r[3] - r[1]) - px).max(0.0) / 2.0;
-        out.text_weighted([x, y, r[2], y + px], self.label.as_ref(), px, st[i].font_weight, st[i].fg);
+        // Centre the *measured* line box in the button. The line box,
+        // not the ink: that is what every toolkit centres, and it puts
+        // capitals a hair below centre in faces with a deep descent
+        // (Noto Sans: 0.03 em) — the same hair a browser leaves.
+        let text = self.measured.map(|(_, s)| s).unwrap_or_default();
+        let x = r[0] + ((r[2] - r[0]) - text.w).max(0.0) / 2.0;
+        let y = r[1] + ((r[3] - r[1]) - text.h).max(0.0) / 2.0;
+        out.text_weighted(
+            [x, y, (x + text.w).max(r[2]), y + text.h],
+            self.label.as_ref(),
+            st[i].font_size,
+            st[i].font_weight,
+            st[i].fg,
+        );
+    }
+    /// Measure without touching the memo — see [`Node::probe`].
+    #[cfg(feature = "observe")]
+    fn probe(
+        &mut self,
+        cx: &mut LayoutCx,
+        limits: Constraints,
+        style: &[Style],
+        st: &mut [NodeState],
+        i: usize,
+    ) -> Size {
+        let text = cx.text.measure_weighted(
+            self.label.as_ref(),
+            style[i].font_size,
+            style[i].font_weight,
+            limits.max_w,
+        );
+        let pad = style[i].padding;
+        let content = Size { w: text.w + pad.horizontal(), h: text.h + pad.vertical() };
+        record_painted(st, i, limits, resolve_self(limits, &style[i], content), &style[i])
     }
     leaf_common!(Button<S, T>, NodeDesc::FOCUSABLE);
 

@@ -44,8 +44,13 @@ fn first_escape(list: &DisplayList, root: [f32; 4]) -> Option<(usize, [f32; 4])>
             }
             Cmd::Rect { rect, .. }
             | Cmd::RoundedRect { rect, .. }
+            | Cmd::Shadow { rect, .. }
             | Cmd::Text { rect, .. } => {
                 let mut r = *rect;
+                // A shadow's ink reaches `spread` past its rect.
+                if let Cmd::Shadow { spread, .. } = c {
+                    r = [r[0] - spread, r[1] - spread, r[2] + spread, r[3] + spread];
+                }
                 for clip in &stack {
                     r = [
                         r[0].max(clip[0]),

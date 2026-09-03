@@ -48,6 +48,12 @@ pub enum Cmd {
     /// A filled rect with rounded corners. `radius` of 0 is a plain
     /// rect; a renderer that cannot round may treat it as one.
     RoundedRect { rect: Rect, color: Color, radius: f32 },
+    /// A soft shadow under the rounded rect `rect`: `color` at the edge
+    /// falling to nothing `spread` px out. Decorative — a renderer that
+    /// cannot draw one skips it. One command, not a stack: the first
+    /// version emitted 18 translucent rounded rects per shadow and that
+    /// was 97% of a frame (`docs/results-frame-cost.md`).
+    Shadow { rect: Rect, color: Color, radius: f32, spread: f32 },
     PushClip { rect: Rect },
     PopClip,
 }
@@ -76,6 +82,15 @@ impl Cmd {
                 }
                 f(h, u32::from_be_bytes([color.0, color.1, color.2, color.3]) as u64);
                 f(h, radius.to_bits() as u64);
+            }
+            Cmd::Shadow { rect, color, radius, spread } => {
+                f(h, 6);
+                for v in rect {
+                    f(h, v.to_bits() as u64);
+                }
+                f(h, u32::from_be_bytes([color.0, color.1, color.2, color.3]) as u64);
+                f(h, radius.to_bits() as u64);
+                f(h, spread.to_bits() as u64);
             }
             Cmd::Text { rect, text, size, weight, color } => {
                 f(h, 2);
@@ -159,15 +174,13 @@ impl DisplayList {
     /// blur at the sizes a card uses; a renderer with a real blur may
     /// collapse these later.
     pub fn shadow(&mut self, rect: Rect, radius: f32, spread: f32) {
-        let steps = (spread.ceil() as u32).clamp(1, 24);
-        for k in (1..=steps).rev() {
-            let d = k as f32;
-            // Falls off with distance; the sum over the stack reads as
-            // a ~30% shadow at the edge fading to nothing.
-            let a = (40.0 * (1.0 - d / (steps as f32 + 1.0))) as u8;
-            let r = [rect[0] - d, rect[1] - d + spread * 0.35, rect[2] + d, rect[3] + d + spread * 0.35];
-            self.rounded_rect(r, Color(0, 0, 0, a), radius + d);
+        if !has_area(rect) || spread <= 0.0 {
+            return;
         }
+        // Dropped a little, like light from above; ~30% black at the
+        // edge. The renderer owns the falloff curve.
+        let r = [rect[0], rect[1] + spread * 0.35, rect[2], rect[3] + spread * 0.35];
+        self.cmds.push(Cmd::Shadow { rect: r, color: Color(0, 0, 0, 80), radius, spread });
     }
 
     pub fn push_clip(&mut self, rect: Rect) {

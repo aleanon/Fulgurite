@@ -86,15 +86,67 @@ impl<'a> TreeMut<'a> {
     }
 }
 
-/// Per-session agent state: frame counter, last pass timings, and the
+/// Per-session agent state: frame counter, frame timings, and the
 /// change journal (P2), all fed by the host at each frame boundary.
-#[derive(Default)]
 pub struct Agent {
     pub frame: u64,
-    pub last_layout_ns: u64,
-    pub last_paint_ns: u64,
+    /// The last `PERF_RING` frames' timings, oldest overwritten. Sized
+    /// once in `new`; `frame_done` never grows it.
+    perf: Vec<FrameTiming>,
+    perf_next: usize,
     journal: Journal,
     auditor: Auditor,
+}
+
+/// Frames `app.perf` summarises. Two seconds at 60 Hz: enough for a
+/// p95 that means something, small enough to copy and sort per query.
+const PERF_RING: usize = 128;
+
+/// Where one frame's time went, as the host measured it. All in
+/// nanoseconds; a host that lacks a stage reports zero for it, and
+/// `input_latency_ns` is `None` for a frame that consumed no input.
+///
+/// `input_latency_ns` is the number a person feels: from the oldest
+/// input this frame consumed arriving at the shell to the frame that
+/// shows its effect being presented. Layout and paint are microseconds
+/// here; the first live tally still took most of a second to react,
+/// and no field the agent then had could see why
+/// (`docs/results-frame-cost.md`).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct FrameTiming {
+    pub layout_ns: u64,
+    pub paint_ns: u64,
+    /// Display list to pixels.
+    pub render_ns: u64,
+    /// Pixels to the surface.
+    pub present_ns: u64,
+    /// The whole redraw, input drain to presented.
+    pub frame_ns: u64,
+    pub input_latency_ns: Option<u64>,
+}
+
+impl FrameTiming {
+    /// Layout and paint only — what a headless host can measure.
+    pub fn passes(layout_ns: u64, paint_ns: u64) -> Self {
+        FrameTiming { layout_ns, paint_ns, ..Default::default() }
+    }
+
+    fn json(&self) -> Value {
+        json!({
+            "layout_ns": self.layout_ns,
+            "paint_ns": self.paint_ns,
+            "render_ns": self.render_ns,
+            "present_ns": self.present_ns,
+            "frame_ns": self.frame_ns,
+            "input_latency_ns": self.input_latency_ns,
+        })
+    }
+}
+
+impl Default for Agent {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 const NOT_FOUND: i64 = -32001;
@@ -113,7 +165,69 @@ type RpcResult = Result<Value, (i64, String, Value)>;
 
 impl Agent {
     pub fn new() -> Self {
-        Self::default()
+        Agent {
+            frame: 0,
+            perf: Vec::with_capacity(PERF_RING),
+            perf_next: 0,
+            journal: Journal::default(),
+            auditor: Auditor::default(),
+        }
+    }
+
+    /// Measure text the way the host does. The ambient audit's
+    /// intrinsic-size probe uses this; left at the block stand-in, a
+    /// host laying out with a real face gets truncation findings for
+    /// labels that fit.
+    pub fn set_text_measure(&mut self, measure: Box<dyn lumen_static::TextMeasure>) {
+        self.auditor.measure = measure;
+    }
+
+    /// The most recent frame's timings.
+    pub fn last_timing(&self) -> FrameTiming {
+        if self.perf.is_empty() {
+            return FrameTiming::default();
+        }
+        self.perf[(self.perf_next + self.perf.len() - 1) % self.perf.len()]
+    }
+
+    /// `app.perf`: the last frame, and p50/p95/max over the ring — the
+    /// summary a latency budget is checked against.
+    fn perf(&self) -> Value {
+        fn pct(sorted: &[u64], p: f64) -> u64 {
+            if sorted.is_empty() {
+                return 0;
+            }
+            sorted[((sorted.len() - 1) as f64 * p).round() as usize]
+        }
+        type Get = fn(&FrameTiming) -> Option<u64>;
+        let mut summary = Map::new();
+        let fields: [(&str, Get); 6] = [
+            ("layout_ns", |t| Some(t.layout_ns)),
+            ("paint_ns", |t| Some(t.paint_ns)),
+            ("render_ns", |t| Some(t.render_ns)),
+            ("present_ns", |t| Some(t.present_ns)),
+            ("frame_ns", |t| Some(t.frame_ns)),
+            ("input_latency_ns", |t| t.input_latency_ns),
+        ];
+        for (name, get) in fields {
+            let mut v: Vec<u64> = self.perf.iter().filter_map(get).collect();
+            v.sort_unstable();
+            summary.insert(
+                name.into(),
+                json!({
+                    "p50": pct(&v, 0.5),
+                    "p95": pct(&v, 0.95),
+                    "max": v.last().copied().unwrap_or(0),
+                    "n": v.len(),
+                }),
+            );
+        }
+        json!({
+            "frame": self.frame,
+            "last": self.last_timing().json(),
+            "window": summary,
+            "samples": self.perf.len(),
+        })
     }
 
     /// Record a completed frame: the host calls this after layout +
@@ -126,10 +240,14 @@ impl Agent {
     /// with few findings, 54 µs with 132, and **zero allocations in
     /// steady state** either way (`docs/results-agent-cost.md`). A dev
     /// surface, not a release path.
-    pub fn frame_done(&mut self, tree: &mut TreeMut, layout_ns: u64, paint_ns: u64) {
+    pub fn frame_done(&mut self, tree: &mut TreeMut, timing: FrameTiming) {
         self.frame += 1;
-        self.last_layout_ns = layout_ns;
-        self.last_paint_ns = paint_ns;
+        if self.perf.len() < PERF_RING {
+            self.perf.push(timing);
+        } else {
+            self.perf[self.perf_next] = timing;
+        }
+        self.perf_next = (self.perf_next + 1) % PERF_RING;
         let structural_reset = self.journal.record(self.frame, &tree.as_ref());
         self.auditor.record(self.frame, tree, structural_reset);
     }
@@ -294,11 +412,7 @@ impl Agent {
                 // No animation scheduler exists: a laid-out tree is settled.
                 Ok(json!({ "settled": true, "frame": self.frame }))
             }
-            "app.perf" => Ok(json!({
-                "frame": self.frame,
-                "layout_ns": self.last_layout_ns,
-                "paint_ns": self.last_paint_ns,
-            })),
+            "app.perf" => Ok(self.perf()),
             _ => Err((METHOD_NOT_FOUND, format!("unknown method `{method}`"), Value::Null)),
         }
     }

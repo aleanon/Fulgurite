@@ -52,7 +52,7 @@ impl Fixture {
     fn frame(&mut self) {
         pass::layout(&mut self.app, &self.styles, &mut self.states, VIEW);
         let mut tree = TreeMut::of_root(&mut self.app, &self.styles, &self.states);
-        self.agent.frame_done(&mut tree, 1, 1);
+        self.agent.frame_done(&mut tree, lumen_static_agent::FrameTiming::passes(1, 1));
     }
 
     /// Churn enough frames that the audit's log ring drops entries —

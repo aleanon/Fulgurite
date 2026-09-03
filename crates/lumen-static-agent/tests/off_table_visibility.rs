@@ -53,7 +53,7 @@ fn lint_codes_in<T: Widget + lumen_static::widget::Node>(
     let mut agent = Agent::new();
     {
         let mut tree = TreeMut::of_root(ui, &styles, &st);
-        agent.frame_done(&mut tree, 1, 1);
+        agent.frame_done(&mut tree, lumen_static_agent::FrameTiming::passes(1, 1));
     }
     let tree = TreeRef::of_root(ui, &styles, &st);
     let r = agent.dispatch(

@@ -125,6 +125,11 @@ All from table + `NodeState` + AccessKit snapshot, no new subsystems:
 - `ui.waitSettled` — trivially true until animations exist; ship the
   method so agent loops are portable.
 - `app.perf` — layout/paint pass timings we already measure in benches.
+  **Extended 2026-09-03:** a `FrameTiming` per frame — layout, paint,
+  render, present, whole frame, and input → presented latency — with
+  p50/p95/max over the last 128 frames. The live tally took most of a
+  second to react while layout and paint reported 1 µs; nothing the
+  agent could see explained it (`docs/results-frame-cost.md`).
 
 ### P2 — "what changed": state diffing instead of a dependency graph
 

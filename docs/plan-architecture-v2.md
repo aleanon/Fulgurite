@@ -606,6 +606,15 @@ Order within: C1–C2 (routing and payload, small) → C3 (the trait change)
 → C5 (focus) → B10 → B11 → B3/B2/B9 → the widget → C4 (chaining, once
 two scrollers exist to chain).
 
+**Added 2026-09-03 — C6, pressed and hovered state.** `NodeState` has no
+pressed/hovered bit and `dispatch` tracks neither, so a button gives no
+feedback while held: the one GUI-theory check `scripts/ui_check.py`
+cannot run (`docs/results-frame-cost.md`, "not fixed"). Rides with C1–C2:
+the routing pass that learns `PointerDown`/`PointerMove` sets the bits,
+the cascade gets `:pressed`/`:hover`-class selectors, and the check
+becomes "the frame after `PointerDown` differs at the target and the
+frame after `PointerUp` restores it".
+
 ---
 
 ## M10+ — parity phases B–E

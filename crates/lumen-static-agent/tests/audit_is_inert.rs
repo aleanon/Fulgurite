@@ -74,7 +74,7 @@ impl Fixture {
 
     fn observe(&mut self) {
         let mut tree = TreeMut::of_root(&mut self.ui, &self.styles, &self.st);
-        self.agent.frame_done(&mut tree, 1, 1);
+        self.agent.frame_done(&mut tree, lumen_static_agent::FrameTiming::passes(1, 1));
     }
 }
 

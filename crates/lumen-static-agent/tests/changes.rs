@@ -53,7 +53,7 @@ impl Fixture {
     fn frame(&mut self) {
         pass::layout(&mut self.app, &self.styles, &mut self.states, VIEW);
         let mut tree = TreeMut::of_root(&mut self.app, &self.styles, &self.states);
-        self.agent.frame_done(&mut tree, 1000, 500);
+        self.agent.frame_done(&mut tree, lumen_static_agent::FrameTiming::passes(1000, 500));
     }
 
     fn result(&self, method: &str, params: Value) -> Value {
@@ -166,7 +166,7 @@ fn structural_change_resets_the_baseline() {
     pass::layout(&mut other, &osty, &mut ost, VIEW);
     {
         let mut otree = TreeMut::of_root(&mut other, &osty, &ost);
-        f.agent.frame_done(&mut otree, 1, 1);
+        f.agent.frame_done(&mut otree, lumen_static_agent::FrameTiming::passes(1, 1));
     }
 
     let otree = TreeRef::of_root(&other, &osty, &ost);

@@ -113,7 +113,7 @@ fn ink_of(cmds: &[lumen_static::Cmd]) -> f32 {
             lumen_static::Cmd::RoundedRect { rect, color, radius } => {
                 list.rounded_rect(rect, color, radius)
             }
-            lumen_static::Cmd::Text { .. } => unreachable!(),
+            lumen_static::Cmd::Text { .. } | lumen_static::Cmd::Shadow { .. } => unreachable!(),
         }
     }
     let mut c = Canvas::new(64, 64);

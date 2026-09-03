@@ -65,7 +65,7 @@ impl Fixture {
     fn frame(&mut self) {
         pass::layout(&mut self.app, &self.styles, &mut self.states, self.view);
         let mut tree = TreeMut::of_root(&mut self.app, &self.styles, &self.states);
-        self.agent.frame_done(&mut tree, 10, 10);
+        self.agent.frame_done(&mut tree, lumen_static_agent::FrameTiming::passes(10, 10));
     }
 
     fn result(&self, method: &str, params: Value) -> Value {
@@ -252,7 +252,7 @@ fn findings_are_keyed_by_code_and_node_not_by_code_alone() {
     let mut agent = Agent::new();
     {
         let mut tm = TreeMut::of_root(&mut app, &styles, &states);
-        agent.frame_done(&mut tm, 1, 1);
+        agent.frame_done(&mut tm, lumen_static_agent::FrameTiming::passes(1, 1));
     }
     let tree = TreeRef::of_root(&app, &styles, &states);
     let resp = agent.dispatch(

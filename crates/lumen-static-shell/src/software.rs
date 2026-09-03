@@ -1,11 +1,13 @@
 //! A software renderer — enough to see the frame without a GPU or a
 //! shaping stack.
 //!
-//! Deliberately small: filled rectangles, and text drawn as one block
-//! per character at the advance `BlockMetrics` assumes, so what is drawn
-//! matches what was measured. Its job is to make the pipeline
-//! *verifiable* headlessly; a real rasterizer (parity Phase A adopts
-//! Lumen's `lumen-render`) replaces it without touching a widget.
+//! Deliberately small: filled and rounded rectangles with anti-aliased
+//! corners, one-pass soft shadows, and text — real glyphs behind the
+//! `truetype` feature, otherwise one block per character at the advance
+//! `BlockMetrics` assumes, so what is drawn matches what was measured.
+//! Its job is to make the pipeline *verifiable* headlessly; a real
+//! rasterizer (parity Phase A adopts Lumen's `lumen-render`) replaces it
+//! without touching a widget. Per-stage costs: `docs/results-frame-cost.md`.
 
 use lumen_static::display::{Cmd, Color, DisplayList, Renderer};
 
@@ -45,39 +47,43 @@ impl Canvas {
     /// The run's box is its *layout* box, so glyphs are placed from its
     /// top-left and clipped to whatever clip scopes are open — the same
     /// treatment a rect gets, which is what keeps text inside a scroller.
+    /// Each glyph is clipped once as a rect; the first version clipped
+    /// every pixel and that was most of the text cost.
     #[cfg(feature = "truetype")]
     fn draw_run(&mut self, font: crate::text::FontStack, run: TextRun<'_>, clip: &[[f32; 4]]) {
         let TextRun { rect, text, size, weight, color } = run;
         let (glyphs, _) = font.glyphs(text, size, weight, rect[2] - rect[0]);
         for g in glyphs {
-            for row in 0..g.h {
-                for col in 0..g.w {
+            let gx = (rect[0] + g.x).round();
+            let gy = (rect[1] + g.y).round();
+            let Some(r) = clipped([gx, gy, gx + g.w as f32, gy + g.h as f32], clip) else {
+                continue;
+            };
+            let (w, h) = (self.width as i64, self.height as i64);
+            let (x0, y0) = ((r[0] as i64).max(0), (r[1] as i64).max(0));
+            let (x1, y1) = ((r[2] as i64).min(w), (r[3] as i64).min(h));
+            for y in y0..y1 {
+                let row = (y - gy as i64) as usize;
+                for x in x0..x1 {
+                    let col = (x - gx as i64) as usize;
                     let cov = g.cov[row * g.w + col];
-                    if cov == 0 {
-                        continue;
+                    if cov != 0 {
+                        self.blend_cov(x, y, color, cov);
                     }
-                    let px = rect[0] + g.x + col as f32;
-                    let py = rect[1] + g.y + row as f32;
-                    // One-pixel rect through the same clip path as
-                    // everything else, so a glyph cannot escape a scope
-                    // that a rect could not.
-                    if clipped([px, py, px + 1.0, py + 1.0], clip).is_none() {
-                        continue;
-                    }
-                    let a = (color.3 as u32 * cov as u32 / 255) as u8;
-                    self.blend(px as i64, py as i64, Color(color.0, color.1, color.2, a));
                 }
             }
         }
     }
 
-    /// Fill `bounds`, rounding against `shape`'s corners.
-    /// Fill a rect whose corners are rounded by `radius`.
+    /// Fill `bounds`, rounding against `shape`'s corners with
+    /// anti-aliased edges.
     ///
-    /// Coverage is sampled once per pixel against the corner circles —
-    /// no anti-aliasing beyond that, which is the right amount of
-    /// renderer for a reference implementation whose job is to be
-    /// checkable rather than pretty.
+    /// Only the four corner squares are sampled per pixel: coverage is
+    /// the pixel centre's distance past the corner circle, clamped to
+    /// one pixel of ramp. Every other row is a straight span. The first
+    /// version tested every pixel of the box and drew hard-edged corners;
+    /// this is both the faster and the smoother one
+    /// (`docs/results-frame-cost.md`).
     fn fill_rounded_within(&mut self, shape: [f32; 4], bounds: [f32; 4], c: Color, radius: f32) {
         if radius <= 0.5 {
             self.fill(bounds, c);
@@ -91,15 +97,64 @@ impl Canvas {
         let (w, h) = (self.width as i64, self.height as i64);
         let (x0, y0) = ((bounds[0].floor() as i64).max(0), (bounds[1].floor() as i64).max(0));
         let (x1, y1) = ((bounds[2].ceil() as i64).min(w), (bounds[3].ceil() as i64).min(h));
+        // Corner bands, in pixel rows/columns.
+        let (top, bottom) = ((r[1] + rad).ceil() as i64, (r[3] - rad).floor() as i64);
+        let (left, right) = ((r[0] + rad).ceil() as i64, (r[2] - rad).floor() as i64);
         for y in y0..y1 {
-            for x in x0..x1 {
-                let (px, py) = (x as f32 + 0.5, y as f32 + 0.5);
-                // Distance past the inner rect, per axis: zero anywhere
-                // but a corner.
+            if y >= top && y < bottom {
+                self.span(y, x0, x1, c);
+                continue;
+            }
+            let py = y as f32 + 0.5;
+            let dy = (r[1] + rad - py).max(py - (r[3] - rad)).max(0.0);
+            // Straight middle of a corner row, then the two corners.
+            self.span(y, x0.max(left), x1.min(right), c);
+            for x in (x0..x1.min(left)).chain(x0.max(right)..x1) {
+                let px = x as f32 + 0.5;
                 let dx = (r[0] + rad - px).max(px - (r[2] - rad)).max(0.0);
-                let dy = (r[1] + rad - py).max(py - (r[3] - rad)).max(0.0);
-                if dx * dx + dy * dy <= rad * rad {
-                    self.blend(x, y, c);
+                let cov = (rad + 0.5 - (dx * dx + dy * dy).sqrt()).clamp(0.0, 1.0);
+                if cov > 0.0 {
+                    self.blend_cov(x, y, c, (cov * 255.0) as u8);
+                }
+            }
+        }
+    }
+
+    /// A soft shadow: `c` at the edge of the rounded rect `shape`,
+    /// falling off to nothing `spread` px out, drawn in one pass from
+    /// the signed distance to the shape. The falloff is quadratic — the
+    /// cheap curve that reads as a blur. Pixels well inside the shape
+    /// are skipped: whatever cast the shadow is painted over them next.
+    fn shadow_within(
+        &mut self,
+        shape: [f32; 4],
+        bounds: [f32; 4],
+        c: Color,
+        radius: f32,
+        spread: f32,
+    ) {
+        if !shape.iter().all(|v| v.is_finite()) || !bounds.iter().all(|v| v.is_finite()) {
+            return;
+        }
+        let rad = radius.clamp(0.0, (shape[2] - shape[0]).min(shape[3] - shape[1]) / 2.0);
+        let (cx, cy) = ((shape[0] + shape[2]) / 2.0, (shape[1] + shape[3]) / 2.0);
+        let (hx, hy) = ((shape[2] - shape[0]) / 2.0 - rad, (shape[3] - shape[1]) / 2.0 - rad);
+        let (w, h) = (self.width as i64, self.height as i64);
+        let (x0, y0) = ((bounds[0].floor() as i64).max(0), (bounds[1].floor() as i64).max(0));
+        let (x1, y1) = ((bounds[2].ceil() as i64).min(w), (bounds[3].ceil() as i64).min(h));
+        for y in y0..y1 {
+            let qy = (y as f32 + 0.5 - cy).abs() - hy;
+            for x in x0..x1 {
+                let qx = (x as f32 + 0.5 - cx).abs() - hx;
+                // Signed distance to a rounded rect (Quilez).
+                let d = (qx.max(0.0).hypot(qy.max(0.0)) + qx.max(qy).min(0.0)) - rad;
+                if d < -1.0 {
+                    continue;
+                }
+                let t = 1.0 - (d / spread).clamp(0.0, 1.0);
+                let a = (c.3 as f32 * t * t) as u8;
+                if a > 0 {
+                    self.blend(x, y, Color(c.0, c.1, c.2, a));
                 }
             }
         }
@@ -108,6 +163,26 @@ impl Canvas {
     pub fn clear(&mut self, c: Color) {
         for px in self.pixels.chunks_exact_mut(4) {
             px.copy_from_slice(&[c.0, c.1, c.2, c.3]);
+        }
+    }
+
+    /// One row, `[x0, x1)`, already clamped to the surface. Opaque
+    /// colours are written, not blended: a card's background is most of
+    /// the pixels in a frame.
+    fn span(&mut self, y: i64, x0: i64, x1: i64, c: Color) {
+        if x0 >= x1 || y < 0 || y >= self.height as i64 || c.3 == 0 {
+            return;
+        }
+        if c.3 == 255 {
+            let start = ((y as u32 * self.width + x0 as u32) * 4) as usize;
+            let end = ((y as u32 * self.width + x1 as u32) * 4) as usize;
+            for px in self.pixels[start..end].chunks_exact_mut(4) {
+                px.copy_from_slice(&[c.0, c.1, c.2, 255]);
+            }
+        } else {
+            for x in x0..x1 {
+                self.blend(x, y, c);
+            }
         }
     }
 
@@ -124,6 +199,13 @@ impl Canvas {
         self.pixels[i + 3] = 255;
     }
 
+    /// Blend with a coverage mask applied to the colour's alpha — a
+    /// glyph's or an edge's.
+    fn blend_cov(&mut self, x: i64, y: i64, c: Color, cov: u8) {
+        let a = (c.3 as u32 * cov as u32 / 255) as u8;
+        self.blend(x, y, Color(c.0, c.1, c.2, a));
+    }
+
     fn fill(&mut self, r: [f32; 4], c: Color) {
         // Clamp to the surface *before* iterating. `blend` rejects
         // out-of-range pixels, but a `[-1e8, -1e8, 1e8, 1e8]` rect — a
@@ -136,9 +218,17 @@ impl Canvas {
         let (x0, y0) = ((r[0].floor() as i64).max(0), (r[1].floor() as i64).max(0));
         let (x1, y1) = ((r[2].ceil() as i64).min(w), (r[3].ceil() as i64).min(h));
         for y in y0..y1 {
-            for x in x0..x1 {
-                self.blend(x, y, c);
-            }
+            self.span(y, x0, x1, c);
+        }
+    }
+
+    /// Copy the frame into a `0RGB` `u32` buffer — softbuffer's format.
+    /// Lives here rather than in the shell binding so it is compiled
+    /// with the rasteriser's optimisation level: in the example it was
+    /// 2 ms of a 3 ms frame.
+    pub fn blit_0rgb(&self, dst: &mut [u32]) {
+        for (d, px) in dst.iter_mut().zip(self.pixels.chunks_exact(4)) {
+            *d = (px[0] as u32) << 16 | (px[1] as u32) << 8 | px[2] as u32;
         }
     }
 
@@ -180,6 +270,13 @@ impl Renderer for Canvas {
                         // rect and the fill is limited to the clipped
                         // one, so a clipped card does not square off.
                         self.fill_rounded_within(*rect, r, *color, *radius);
+                    }
+                }
+                Cmd::Shadow { rect, color, radius, spread } => {
+                    let reach =
+                        [rect[0] - spread, rect[1] - spread, rect[2] + spread, rect[3] + spread];
+                    if let Some(r) = clipped(reach, &clip) {
+                        self.shadow_within(*rect, r, *color, *radius, *spread);
                     }
                 }
                 Cmd::Text { rect, text, size, weight, color } => {

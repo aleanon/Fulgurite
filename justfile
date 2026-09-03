@@ -67,8 +67,11 @@ fixtures:
 # Pre-push / CI
 # ---------------------------------------------------------------------------
 
-# Pre-push: everything in `test`, plus release-shape rustdoc and binsize.
+# Pre-push: everything in `test`, plus release-shape rustdoc and binsize,
+# plus the live gate when there is a display to open a window on.
 check: test check-extra
+    #!/usr/bin/env bash
+    if [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; then ./scripts/live_gate.sh; else echo "live-gate: no display, skipped"; fi
 
 # The `check`-only half, split out so CI can run it as its own step.
 #
@@ -167,3 +170,14 @@ hot-demo:
 # .claude/skills/verifying-apps/SKILL.md, rung 4.
 run-agent:
     cargo run -p counter-window
+
+# Every live check against a fresh window: centring, anti-aliasing, target
+# size, contrast, latency, lint (scripts/ui_check.py). Rung 4's gate; needs
+# a display. In `check` when one is present.
+live-gate:
+    ./scripts/live_gate.sh
+
+# Per-stage cost of one tally frame, headless, median of 50. The numbers
+# belong in docs/results-frame-cost.md.
+profile:
+    LUMEN_PROFILE=1 cargo run -q -p counter-window -- --headless target/tally.ppm 12

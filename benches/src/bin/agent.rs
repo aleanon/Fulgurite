@@ -55,11 +55,11 @@ fn main() {
     let mut agent = Agent::new();
     {
         let mut t = TreeMut::of_root(&mut w, &sty, &st);
-        agent.frame_done(&mut t, 1, 1);
+        agent.frame_done(&mut t, lumen_static_agent::FrameTiming::passes(1, 1));
     }
     bench("frame_done (steady state)", 20_000, || {
         let mut t = TreeMut::of_root(&mut w, &sty, &st);
-        agent.frame_done(&mut t, 1, 1);
+        agent.frame_done(&mut t, lumen_static_agent::FrameTiming::passes(1, 1));
         1
     });
 
@@ -75,24 +75,24 @@ fn main() {
     let mut sagent = Agent::new();
     for _ in 0..3 {
         let mut t = TreeMut::of_root(&mut sw, &ssty, &sst);
-        sagent.frame_done(&mut t, 1, 1);
+        sagent.frame_done(&mut t, lumen_static_agent::FrameTiming::passes(1, 1));
     }
     println!("  ({} findings in the short viewport)", sagent.finding_count());
     bench("frame_done, short viewport", 5_000, || {
         let mut t = TreeMut::of_root(&mut sw, &ssty, &sst);
-        sagent.frame_done(&mut t, 1, 1);
+        sagent.frame_done(&mut t, lumen_static_agent::FrameTiming::passes(1, 1));
         1
     });
 
     // Allocations per steady-state frame_done. The claim is zero.
     for _ in 0..5 {
         let mut t = TreeMut::of_root(&mut w, &sty, &st);
-        agent.frame_done(&mut t, 1, 1);
+        agent.frame_done(&mut t, lumen_static_agent::FrameTiming::passes(1, 1));
     }
     let before = ALLOCS.load(Ordering::Relaxed);
     for _ in 0..100 {
         let mut t = TreeMut::of_root(&mut w, &sty, &st);
-        agent.frame_done(&mut t, 1, 1);
+        agent.frame_done(&mut t, lumen_static_agent::FrameTiming::passes(1, 1));
     }
     let per_frame = (ALLOCS.load(Ordering::Relaxed) - before) as f64 / 100.0;
     println!("\nallocations per steady-state frame_done: {per_frame:.2}");
@@ -101,7 +101,7 @@ fn main() {
     let b2 = ALLOCS.load(Ordering::Relaxed);
     for _ in 0..100 {
         let mut t = TreeMut::of_root(&mut sw, &ssty, &sst);
-        sagent.frame_done(&mut t, 1, 1);
+        sagent.frame_done(&mut t, lumen_static_agent::FrameTiming::passes(1, 1));
     }
     println!(
         "allocations per frame_done with {} findings:  {:.2}",

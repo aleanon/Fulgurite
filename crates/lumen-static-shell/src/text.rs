@@ -123,6 +123,8 @@ impl FontStack {
         });
         layout.append(&[font], &TextStyle::new(text, px, 0));
 
+        let shift = cap_shift(font, px);
+
         let mut out = Vec::with_capacity(text.len());
         let (mut w, mut h) = (0.0f32, 0.0f32);
         for g in layout.glyphs() {
@@ -138,13 +140,37 @@ impl FontStack {
                 continue;
             }
             let (_, bitmap) = font.rasterize_config(g.key);
-            out.push(Glyph { x: g.x, y: g.y, w: g.width, h: g.height, cov: bitmap });
+            out.push(Glyph { x: g.x, y: g.y + shift, w: g.width, h: g.height, cov: bitmap });
         }
         // Ceiled: `layout` sizes the box from this, and `paint` re-wraps
         // inside it. A width rounded *down* by a fraction of a pixel
         // drops the last glyph — which is how "POSITIVE" came out as
         // "POSITIV".
         (out, Size { w: w.ceil(), h: h.max(layout.height()).ceil() })
+    }
+}
+
+/// How far to move a run so its capitals are centred in its line box.
+///
+/// The line box is what gets centred in a button, and its middle is not
+/// where the eye puts the middle of a word: capitals and digits hang
+/// from the ascent, and Noto's ascent is 1.07 em against a 0.71 em cap,
+/// so line-box-centred text reads ~2 px low at 16 px and 6 px low at
+/// 76 px. This is the "vertical trim" design tools apply. Measured from
+/// where the layout actually puts an `H` — its rasterised rows, not the
+/// face's cap-height figure — because the bitmap can sit a pixel below
+/// the metric baseline, and `tests/glyph_placement.rs` checks ink, not
+/// metrics. Descenders still hang below, as they should.
+fn cap_shift(font: &Font, px: f32) -> f32 {
+    let Some(line) = font.horizontal_line_metrics(px).map(|m| m.new_line_size) else {
+        return 0.0;
+    };
+    let mut probe = Layout::new(CoordinateSystem::PositiveYDown);
+    probe.reset(&LayoutSettings::default());
+    probe.append(&[font], &TextStyle::new("H", px, 0));
+    match probe.glyphs().first() {
+        Some(h) if h.height > 0 => (line / 2.0 - (h.y + h.height as f32 / 2.0)).round(),
+        _ => 0.0,
     }
 }
 
