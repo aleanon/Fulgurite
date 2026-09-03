@@ -111,6 +111,7 @@ bench:
     cargo run --release -p benches --bin repeater
     cargo run --release -p benches --bin bindings
     cargo run --release -p benches --bin agent
+    cargo run --release -p benches --bin cascade
 
 # Step 1 firewall regression experiment (its own generated workspace).
 firewall:

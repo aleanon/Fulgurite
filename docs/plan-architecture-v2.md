@@ -738,7 +738,32 @@ monomorphised at most twice, and the derive output never mentions it
 
 ---
 
-## M8c — Dirty-scoped layout and style — **PLANNED 2026-09-04, not started**
+## M8c — Dirty-scoped layout and style — **T8c.4 DONE, T8c.1–3 DEFERRED 2026-09-04**
+
+Measuring first inverted this milestone (`docs/results-cascade-cost.md`).
+It was planned as a layout optimisation with the scoped cascade as a
+rider that "comes free". In fact a **full stylesheet swap costs 37.8 µs
+at 901 nodes — four times a whole layout and paint (9.3 µs)** — and it
+is the operation an app performs at runtime. Scoping it to the changed
+subtree is 16.6× cheaper and provably equivalent, because every
+`Selector` is node-local and a subtree is a contiguous range of a
+pre-order table. `Host::restyle_subtree(sheet, "card")` ships;
+`cascade_subtree` checks the caller's half of the contract against a
+full cascade in debug builds, and caught a real misuse on its first run.
+
+**T8c.1–T8c.3 are deferred, with the reason recorded.** The layout win
+is 9.3 µs at 1k nodes (~6% of the tally's post-M8b frame) because the
+expensive half of layout — text measurement — is already memoized per
+label. And skipping a clean subtree is *unsound* while widget fields are
+public: a dirty bit is only correct if every mutation sets it, and this
+repository mutates `badge.w`, `list.count` and `repeat.scroll` directly
+in fixtures and tests. The prerequisite is encapsulation, not
+invalidation, and that is an M0-class change nothing measured yet
+justifies. T8c.1/T8c.2 would have no consumer without T8c.3.
+
+Original plan:
+
+
 
 The handoff's property 1: "a mutation sets a dirty flag that propagates
 up only until it reaches a relayout boundary". The table already holds

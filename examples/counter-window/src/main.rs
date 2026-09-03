@@ -63,7 +63,13 @@ impl lumen_static_agent::AgentHost for Live<'_> {
         let sign = self.host.app.count.signum();
         if sign != *self.sign {
             *self.sign = sign;
-            self.host.set_stylesheet(&stylesheet_for(sign));
+            // Scoped to the card: the sign only changes `#value`'s
+            // colour and `#pill`'s text and background, both inside it.
+            // A full `set_stylesheet` re-resolves every node against
+            // every rule — 37.8 us at 901 nodes against 2.3 us scoped
+            // (`docs/results-cascade-cost.md`). Debug builds check the
+            // claim against a full cascade.
+            assert!(self.host.restyle_subtree(&stylesheet_for(sign), "card"), "no #card");
             match self.metrics.as_mut() {
                 Some(m) => self.host.pump_with(m),
                 None => self.host.pump(),
@@ -328,7 +334,13 @@ impl WinApp {
         let sign = self.host.app.count.signum();
         if sign != self.sign {
             self.sign = sign;
-            self.host.set_stylesheet(&stylesheet_for(sign));
+            // Scoped to the card: the sign only changes `#value`'s
+            // colour and `#pill`'s text and background, both inside it.
+            // A full `set_stylesheet` re-resolves every node against
+            // every rule — 37.8 us at 901 nodes against 2.3 us scoped
+            // (`docs/results-cascade-cost.md`). Debug builds check the
+            // claim against a full cascade.
+            assert!(self.host.restyle_subtree(&stylesheet_for(sign), "card"), "no #card");
         }
     }
 

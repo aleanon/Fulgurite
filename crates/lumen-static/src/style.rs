@@ -365,8 +365,20 @@ pub fn cascade(
     sheet: Stylesheet,
     out: &mut [Style],
 ) {
+    cascade_range(table, defaults, kind_of, sheet, out, 0..table.len());
+}
+
+/// [`cascade`], restricted to a range of the table.
+fn cascade_range(
+    table: &[NodeDesc],
+    defaults: &dyn Fn(usize) -> Defaults,
+    kind_of: &dyn Fn(usize) -> &'static str,
+    sheet: Stylesheet,
+    out: &mut [Style],
+    range: core::ops::Range<usize>,
+) {
     debug_assert_eq!(table.len(), out.len());
-    for (i, d) in table.iter().enumerate() {
+    for (i, d) in table.iter().enumerate().skip(range.start).take(range.len()) {
         let mut s = defaults(i);
         let kind = kind_of(i);
         for spec in 0..=3u8 {
@@ -377,6 +389,105 @@ pub fn cascade(
             }
         }
         out[i] = s;
+    }
+}
+
+/// The half-open index range of the subtree rooted at `root`.
+///
+/// The table is DFS pre-order, so a subtree is *contiguous* — the
+/// property that makes a scoped cascade a slice rather than a walk. The
+/// end is the root's next sibling, or, when it has none, the next
+/// sibling of the nearest ancestor that has one.
+pub fn subtree_range(table: &[NodeDesc], root: usize) -> core::ops::Range<usize> {
+    let mut i = root;
+    loop {
+        let d = &table[i];
+        if d.next_sibling != 0 {
+            return root..d.next_sibling as usize;
+        }
+        if d.parent == crate::desc::NO_PARENT {
+            return root..table.len();
+        }
+        i = d.parent as usize;
+    }
+}
+
+/// The main-table index of the node carrying `#[widget_id(wid)]`.
+///
+/// A table scan — 901 pointer comparisons on the largest fixture, next
+/// to the ~36 µs a full cascade costs there
+/// (`docs/results-cascade-cost.md`) — so an app may address a subtree by
+/// the name it already wrote rather than by an index arithmetic it would
+/// have to keep in step with the struct.
+pub fn index_of_wid(table: &[NodeDesc], wid: &str) -> Option<usize> {
+    // A node without `#[widget_id]` carries `""`, so an empty argument
+    // would match the first unnamed node — which is usually the root,
+    // and would restyle the whole tree. Nothing is named `""`.
+    if wid.is_empty() {
+        return None;
+    }
+    table.iter().position(|d| d.wid == wid)
+}
+
+/// Re-cascade one subtree: the node at `root` and its descendants.
+///
+/// **Sound because every [`Selector`] is node-local.** `Id`, `Class`,
+/// `Kind` and `Any` all read the node's own descriptor and kind; none
+/// reads an ancestor, a sibling or a position. So a node's resolved
+/// style is a function of that node and the sheet, and re-resolving a
+/// contiguous range cannot disagree with re-resolving the table. A
+/// descendant combinator would end that property, and adding one means
+/// revisiting this function in the same commit.
+///
+/// **The caller's contract:** `sheet` must differ from the one last
+/// cascaded only in rules that match *inside* the subtree. It is the one
+/// thing this cannot check cheaply, so in debug builds it checks it
+/// expensively — a full cascade is run and every style outside the
+/// range is compared. A release build skips that; a test does not, which
+/// is where the mistake will be caught.
+pub fn cascade_subtree<W: crate::widget::Widget + ?Sized>(
+    tree: &mut W,
+    sheet: Stylesheet,
+    out: &mut [Style],
+    root: usize,
+) {
+    let table = W::SUB_TABLE;
+    let range = subtree_range(table, root);
+
+    #[cfg(debug_assertions)]
+    let witness: Vec<Style> = {
+        let mut full = out.to_vec();
+        {
+            let t: &W = tree;
+            cascade(table, &|i| t.node(i).defaults(), &|i| t.node(i).kind_name(), sheet, &mut full);
+        }
+        full
+    };
+
+    {
+        let t: &W = tree;
+        cascade_range(
+            table,
+            &|i| t.node(i).defaults(),
+            &|i| t.node(i).kind_name(),
+            sheet,
+            out,
+            range.clone(),
+        );
+    }
+    for i in range.clone() {
+        cascade_arenas(tree.node_mut(i), sheet);
+    }
+
+    #[cfg(debug_assertions)]
+    for (i, w) in witness.iter().enumerate() {
+        if !range.contains(&i) {
+            debug_assert_eq!(
+                out[i], *w,
+                "cascade_subtree({root}) left node {i} disagreeing with a full cascade: the \
+                 sheet changed a rule that matches outside the subtree"
+            );
+        }
     }
 }
 

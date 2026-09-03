@@ -26,5 +26,9 @@ name = "bindings"
 path = "src/bin/bindings.rs"
 
 [[bin]]
+name = "cascade"
+path = "src/bin/cascade.rs"
+
+[[bin]]
 name = "agent"
 path = "src/bin/agent.rs"

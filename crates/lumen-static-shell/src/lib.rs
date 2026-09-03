@@ -72,6 +72,30 @@ impl<A: App, R: Retention> Host<A, R> {
         lumen_static::style::cascade_deep(self.app.tree_mut(), sheet, &mut self.styles);
     }
 
+    /// Re-cascade one subtree, by the `#[widget_id]` on its root.
+    ///
+    /// The operation a class toggle performs — the tally swaps two
+    /// rules when the sign flips — and the reason it is worth scoping:
+    /// a full `set_stylesheet` re-resolves every node against every
+    /// rule, measured at **36 µs for 901 nodes**, four times what a
+    /// whole-tree layout and paint cost there
+    /// (`docs/results-cascade-cost.md`).
+    ///
+    /// `sheet` must differ from the last one cascaded only in rules that
+    /// match inside the subtree; debug builds check that against a full
+    /// cascade (`style::cascade_subtree`). Returns whether the id was
+    /// found — a typo'd id is a silent no-op otherwise, which is the
+    /// failure mode this whole crate keeps finding.
+    #[must_use = "a false return means the id matched no node and nothing was restyled"]
+    pub fn restyle_subtree(&mut self, sheet: &[Rule], wid: &str) -> bool {
+        let table = <A::Tree as Widget>::SUB_TABLE;
+        let Some(root) = lumen_static::style::index_of_wid(table, wid) else {
+            return false;
+        };
+        lumen_static::style::cascade_subtree(self.app.tree_mut(), sheet, &mut self.styles, root);
+        true
+    }
+
     /// A new viewport. Everything is laid out against it, so nothing
     /// retained from the previous size describes the next frame:
     /// retention is reset and the next frame is a full redraw.
