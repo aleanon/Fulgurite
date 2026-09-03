@@ -18,11 +18,11 @@ tree today.
 | [`00-handoff-static-tree.md`](00-handoff-static-tree.md) | why the whole design is shaped this way | **live** (the spec) | n/a |
 | [`plan-architecture-v2.md`](plan-architecture-v2.md) | what is built and what is next (M0–M9) | **queue** | n/a |
 | [`plan-review-fixes.md`](plan-review-fixes.md) | the F0–F7 fix pass from the 2026-09-02 review | **queue** | n/a |
-| [`text-and-scrolling-decisions.md`](text-and-scrolling-decisions.md) | how scrolling and text input will work | **live**, 12 answered + 11 open | n/a |
+| [`text-and-scrolling-decisions.md`](text-and-scrolling-decisions.md) | how scrolling and text input will work | **live**, all 23 answered (2026-09-04) | n/a |
 | [`layout-and-storage-decisions.md`](layout-and-storage-decisions.md) | the `Length` model, text storage, the style array | **live** (most-cited from code) | n/a |
 | [`events-decision.md`](events-decision.md) | why handlers are `fn` pointers, not `Msg` | **live** | n/a |
 | [`bindings-decision.md`](bindings-decision.md) | why `#[bind]` compares output, and what it costs | **live** | yes — `benches --bin bindings` |
-| [`either-reopened.md`](either-reopened.md) | whether `Either` should use a merged table | **open** (blocks M8's T8.0) | n/a |
+| [`either-reopened.md`](either-reopened.md) | whether `Either` should use a merged table | **decided** 2026-09-04: Option A, built as T8.0 | n/a |
 | [`plan-lumen-parity.md`](plan-lumen-parity.md) | how far this is from a usable framework | **queue**; its line counts are dated 2026-09-01 | n/a |
 | [`plan-agent-parity.md`](plan-agent-parity.md) | the agent surface, P0–P5 | **queue**, P0–P4 done | n/a |
 | [`plan-events.md`](plan-events.md) | the event system, E0–E5 | **queue**, E0–E4 done | n/a |

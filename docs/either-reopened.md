@@ -4,7 +4,7 @@
 branch arenas, on the ground that a merged `A + B` const table needs
 `generic_const_exprs`. Three reviews of the plan disproved that. This
 records what is actually true, what the shipped shape costs, and a
-recommendation. Status: **OPEN**, scheduled as T8.0.*
+recommendation. Status: **DECIDED 2026-09-04 — Option A** (padded `MAX` merged table, `MAX` a crate-level constant, `EitherN` kept available), to be built as T8.0.*
 
 ## What was claimed, and what is true
 
@@ -90,7 +90,7 @@ B has zero waste and an ugly signature: the `N` is checked
 (`assert!(N == 1 + A::NODE_COUNT + B::NODE_COUNT)`) so a wrong value is a
 compile error, but the author has to count.
 
-## Recommendation
+## Recommendation — adopted 2026-09-04
 
 **Option A for `Either`, with `MAX` a crate-level constant the embedded
 profile may lower; Option B kept available as `EitherN` if anyone hits

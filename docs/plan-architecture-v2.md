@@ -342,7 +342,7 @@ subtrees are stable across toggles.
    cited and then had to distinguish itself from, because hiding has a
    geometric proxy (zero size) and clipping does not.
 1. **`Either<A, B>` is one table node, not `A + B` — REOPENED
-   2026-09-02.** The reason recorded here was that a merged const table
+   2026-09-02, RE-DECIDED 2026-09-04: merged padded table (Option A).** The reason recorded here was that a merged const table
    "needs `generic_const_exprs`". Review disproved it with a compiling
    counter-example on stable: `SUB_TABLE` is a slice, so the length is a
    value, and a padded const array plus `split_at` builds the merged
@@ -560,19 +560,21 @@ milestone that depends on it. Split as review recommended:
 
 ## M8 — Scrolling — **PLANNED, not started**
 
-Design in `docs/text-and-scrolling-decisions.md` Cluster A. A1–A4
-decided (A2 revised after review); **A5–A7 open** and must be answered
-before the breakdown: what constraints a scroller gives its content (a
-NaN hazard today), who clamps the offset, and what a `Repeat` inside a
-`ScrollView` does.
+Design in `docs/text-and-scrolling-decisions.md` Cluster A, all of it
+decided (A2 revised after review; A5–A7 settled 2026-09-04): `Fill`
+inside a scroller means the viewport, never the content, with a
+NaN-guard test; the offset is clamped in `layout` after measuring; a
+`Repeat` inside a `ScrollView` is forbidden and linted — a `Repeat` *is*
+a scroller.
 
 Depends on nothing in M7 — true again under the *revised* A2, which
 stamps a `NodeState` flag from `place` instead of changing `paint`/`hit`
 signatures. The first version of this note made the same claim on a
 false premise.
 
-**T8.0 (first):** re-decide `Either`'s table shape per
-`docs/either-reopened.md`, before a `ScrollView` is placed inside one.
+**T8.0 (first):** rebuild `Either` on the merged padded table —
+`docs/either-reopened.md` Option A, decided 2026-09-04 — before a
+`ScrollView` is placed inside one.
 
 Two notes for whoever writes the breakdown:
 
@@ -723,13 +725,15 @@ variant).
 
 ## M9 — Input routing and text input — **PLANNED, not started**
 
-Cluster C plus Cluster B of the decisions doc. Split from M8 because the
-two share the containment decision and nothing else — different
-subsystems, different gates, different risk — and because Cluster C is
-larger than a task: `dispatch` drops every event that is not `PointerUp`,
-`EventCtx` carries no payload, and a handler cannot reach widget state
-without a `Node` trait change (C3). That change is M0's class and gets
-its own task with its own gate before any text field is attempted.
+Cluster C plus Cluster B of the decisions doc, every question decided
+(C1–C5 and B9–B11 settled 2026-09-04 on their recommendations). Split
+from M8 because the two share the containment decision and nothing else
+— different subsystems, different gates, different risk — and because
+Cluster C is larger than a task: `dispatch` drops every event that is
+not `PointerUp`, `EventCtx` carries no payload, and a handler reaches
+widget state through `Node::on_event(&mut self, ev, cx) -> bool` (C3,
+option ii). That change is M0's class and gets its own task with its
+own gate before any text field is attempted.
 
 Depends on M7a for the text half only: `TextMeasure` needs a shaping
 method (T7.2b) before B2's `Shaped` cache has anything to hold. B10

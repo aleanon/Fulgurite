@@ -4,10 +4,13 @@
 problem, so they share one document: both need a child to be larger than
 the box it is shown in.*
 
-**Status, 2026-09-02 after review: twelve questions DECIDED, one of them
-REVISED (A2), and eleven new ones OPEN** (A5–A7, B9–B11, C1–C5). Three
-reviews of the plan found that two rationales here were false and that
-the routing layer both halves depend on does not exist yet. The
+**Status, 2026-09-04: all twenty-three questions DECIDED**, one of them
+REVISED (A2). The eleven raised by the 2026-09-02 review (A5–A7, B9–B11,
+C1–C5) were settled on 2026-09-04 by adopting each section's recorded
+recommendation, unchanged; where a recommendation offered two shapes the
+chosen one is named in the heading (A7: forbid and lint; C3: option ii).
+The 2026-09-02 reviews found that two rationales here were false and
+that the routing layer both halves depend on does not exist yet. The
 decisions themselves survived; what changed is stated at each one.
 
 The framing that opened this document ("the framework currently
@@ -190,7 +193,7 @@ the smallest change that works and it adds nothing to `NodeState`.
 - `W1004` stays reserved: sequential placement still holds within a clip
   scope, so overlap remains impossible until absolute/stack layout.
 
-### A5. What constraints does a scroller give its content? — **OPEN**
+### A5. What constraints does a scroller give its content? — **DECIDED 2026-09-04, recommendation adopted**
 
 Upstream of A1 and A3 and not covered by either. To exceed the viewport
 the content must be measured under a loosened main axis. Then, in the
@@ -207,7 +210,7 @@ extent as the reference for `Fill` and an unbounded *maximum* for
 `Shrink`/`Fixed` — i.e. `Fill` inside a scroller means "the viewport",
 never "the content". Needs a decision and a NaN-guard test either way.
 
-### A6. Who clamps the scroll offset? — **OPEN**
+### A6. Who clamps the scroll offset? — **DECIDED 2026-09-04, recommendation adopted**
 
 A3 settles where the offset lives and stops. Content extent is known only
 after layout — the same reasoning B5 uses to put caret-into-view in
@@ -217,7 +220,7 @@ after layout — the same reasoning B5 uses to put caret-into-view in
 wheel handler will write that value directly. **Recommendation:** clamp
 in `layout` after measuring, same place and shape as B5.
 
-### A7. A `Repeat` inside a `ScrollView` materializes every row — **OPEN**
+### A7. A `Repeat` inside a `ScrollView` materializes every row — **DECIDED 2026-09-04, recommendation adopted** (forbid and lint)
 
 `visible_range(limits.max_h)` derives the window from the *constraint*,
 not from an intersection with a viewport. A scroller gives its content
@@ -346,7 +349,7 @@ would overwrite the buffer every frame and destroy the caret mid-
 keystroke. `bind::format_into` takes `&mut Label<S>`, so it simply does
 not accept a text input. Do not add a convenience impl.
 
-### B9. `Shaped`'s allocation, reload mode and `no_std` story — **OPEN**
+### B9. `Shaped`'s allocation, reload mode and `no_std` story — **DECIDED 2026-09-04, recommendation adopted**
 
 B1 says the buffer is "one allocation, grown once, reused". B2 says
 nothing about the advance array. A `Vec<f32>` that grows as the user
@@ -360,7 +363,7 @@ no `no_std` story at all where `Label<&'static str>` deliberately does.
 storage, so `String` pairs with `Vec<f32>` and an inline buffer pairs
 with an inline array; grow both by the same policy.
 
-### B10. `Repeat::bind` defeats the memo the text design exists for — **OPEN**
+### B10. `Repeat::bind` defeats the memo the text design exists for — **DECIDED 2026-09-04, recommendation adopted**
 
 `repeat.rs:145-147` calls `bind(item, row)` for every materialized row on
 every layout. The natural bind body is `row.label.set_str(..)`, which
@@ -374,7 +377,7 @@ expensive to rebuild. **Recommendation:** absorb `set_if_changed` into
 memoized field — and skip `bind` for rows whose index is unchanged.
 Must land before B2.
 
-### B11. `TextStorage::from_string` blocks the no-alloc profile — **OPEN**
+### B11. `TextStorage::from_string` blocks the no-alloc profile — **DECIDED 2026-09-04, recommendation adopted**
 
 It takes an owned `String` by value. A fixed-capacity inline buffer must
 depend on `alloc` just to satisfy the signature, and has no way to
@@ -397,21 +400,21 @@ agent's `input.type` and `input.scroll` are enqueued, drained, and
 dropped — finished-but-unreachable, the failure mode `audit.rs` says was
 adopted from Lumen's review rather than re-earned.
 
-### C1. Route `Key`, `Text` and `Scroll` — **OPEN**
+### C1. Route `Key`, `Text` and `Scroll` — **DECIDED 2026-09-04, recommendation adopted**
 
 `dispatch` must deliver them. To what, is C3. **Recommendation:**
 keyboard and text to the focused node, walking ancestors as pointer
 events do; scroll to the hit node, walking ancestors (C4 decides how the
 walk ends).
 
-### C2. Event payload — **OPEN**
+### C2. Event payload — **DECIDED 2026-09-04, recommendation adopted**
 
 `EventCtx { node, row, inner, pos, local }` has nowhere to put
 `Event::Text { ch }` or `Scroll { dy }`. A handler cannot learn what
 happened. **Recommendation:** `EventCtx.event: Event` — the ctx already
 carries derived data; carrying the source is one field.
 
-### C3. How does a handler reach widget state? — **OPEN, and the largest**
+### C3. How does a handler reach widget state? — **DECIDED 2026-09-04, recommendation adopted**: (ii) `Node::on_event`
 
 Handlers are `fn(&mut S, &EventCtx)` with `S: App`. B1 puts the buffer in
 the widget; A3 puts the scroll offset there. From `&mut S`, a widget is
@@ -430,7 +433,7 @@ reachable generically only as `&mut dyn Node` — no editing methods, no
 library exists. Cost it as its own milestone task, not as part of
 "text input".
 
-### C4. Scroll chaining — **OPEN**
+### C4. Scroll chaining — **DECIDED 2026-09-04, recommendation adopted**
 
 The ancestor walk stops at the first node that *has* a handler, and
 handlers return `()`. Nested scrollers need "at my end, take it". Adding
@@ -439,7 +442,7 @@ hot-reload contract is written around. **Recommendation:** `bool` from
 `Node::on_event` (C3) is the natural carrier; the `Handlers` fn-pointer
 signature stays as it is for click handlers.
 
-### C5. Focus for off-table nodes, Tab order, visibility — **OPEN**
+### C5. Focus for off-table nodes, Tab order, visibility — **DECIDED 2026-09-04, recommendation adopted**
 
 `focus: Option<u32>` is a main-table index. A `TextInput` inside a
 `Repeat` row, an `Either` branch or a `Dyn` island has no focus
