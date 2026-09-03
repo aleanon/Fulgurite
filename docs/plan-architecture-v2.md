@@ -572,10 +572,31 @@ shaping method M8/M9 need. T7.3 ran and its four numbers are in
   `shadow` in `Style`, a bold face in the `FontStack`, cross-face glyph
   fallback so U+2212 is a minus rather than tofu, and advance-based
   measurement (ink extent truncated "POSITIVE" to "POSITIV").
-- **T7.5** AccessKit platform adapter (`accesskit_winit`) — the
-  `TreeUpdate` snapshot exists and has been waiting for a shell
-  (`docs/step5-observability.md`).
+- **T7.5 — DONE 2026-09-04.** `examples/counter-window --features a11y`
+  creates an `accesskit_winit::Adapter` before the window is shown and
+  pushes `observe::snapshot_focused` from `redraw`, beside
+  `frame_done` — so the screen reader's tree, the agent's journal and
+  the pixels are always the same frame. An `ActionRequested` becomes a
+  click at the node's centre rather than a direct handler call, so
+  assistive input takes the one input path the whole design rests on
+  (`docs/events-decision.md`) and shows up in the journal like any
+  other click.
 
+  Three things came with it. `accesskit` 0.24 → 0.25 (what the adapter
+  requires; `Tree` is now `TreeInfo`). `observe::snapshot` reported
+  `focus: NodeId(1)` unconditionally — the root, which a reader
+  interprets as "nothing focused" — so `snapshot_focused` takes the
+  host's focus and `index_of_node` maps an adapter's id back to a table
+  index, rejecting 0, out-of-range and overflow (four tests in
+  `tests/observe.rs`; a stale focus after a hot reload must not name a
+  node that is not in the tree).
+
+  **Default-off**, and that is the interesting part: on Linux the
+  adapter pulls `accesskit_unix` and a D-Bus/async stack, measured
+  **95 → 157 crates** for the example. `just test` builds this example
+  on every run. The window itself, and every gate, still builds from
+  95. `just tally-a11y` runs it; verified against `scripts/ui_check.py
+  all` with the feature on.
 ---
 
 ## M8 — Scrolling — **PLANNED, not started**

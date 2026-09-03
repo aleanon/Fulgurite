@@ -171,6 +171,12 @@ hot-demo:
 run-agent:
     cargo run -p counter-window
 
+# The tally with the platform screen-reader adapter (T7.5). Default-off:
+# on Linux it pulls accesskit_unix and a D-Bus stack, 95 -> 157 crates,
+# and `just test` builds this example every run.
+tally-a11y:
+    cargo run -p counter-window --features a11y
+
 # Every live check against a fresh window: centring, anti-aliasing, target
 # size, contrast, latency, lint (scripts/ui_check.py). Rung 4's gate; needs
 # a display. In `check` when one is present.

@@ -84,6 +84,23 @@ struct Rpc {
     reply: std::sync::mpsc::Sender<serde_json::Value>,
 }
 
+/// Everything that reaches the event loop from somewhere other than the
+/// window: an agent request, and — with `--features a11y` — the
+/// platform accessibility adapter's callbacks, which arrive on their own
+/// threads and must be answered on this one.
+enum UserEvent {
+    Agent(Rpc),
+    #[cfg(feature = "a11y")]
+    A11y(accesskit_winit::Event),
+}
+
+#[cfg(feature = "a11y")]
+impl From<accesskit_winit::Event> for UserEvent {
+    fn from(e: accesskit_winit::Event) -> Self {
+        UserEvent::A11y(e)
+    }
+}
+
 /// Serve newline-delimited JSON-RPC on `addr`, forwarding each request
 /// to the event loop and writing back what it returns.
 ///
@@ -91,7 +108,7 @@ struct Rpc {
 /// object per line in, one per line out. The socket thread never touches
 /// the tree — every request crosses to the main thread via the proxy,
 /// and the tree is only ever read or driven from there.
-fn serve_agent(addr: String, proxy: winit::event_loop::EventLoopProxy<Rpc>) {
+fn serve_agent(addr: String, proxy: winit::event_loop::EventLoopProxy<UserEvent>) {
     use std::io::{BufRead, BufReader, Write};
     let listener = match std::net::TcpListener::bind(&addr) {
         Ok(l) => l,
@@ -121,7 +138,7 @@ fn serve_agent(addr: String, proxy: winit::event_loop::EventLoopProxy<Rpc>) {
                 }
             };
             let (tx, rx) = std::sync::mpsc::channel();
-            if proxy.send_event(Rpc { req, reply: tx }).is_err() {
+            if proxy.send_event(UserEvent::Agent(Rpc { req, reply: tx })).is_err() {
                 return;
             }
             let Ok(resp) = rx.recv() else { return };
@@ -155,10 +172,20 @@ struct WinApp {
     /// first input after a frame, cleared when the frame that consumed
     /// it is on screen: the interval is `FrameTiming::input_latency_ns`.
     input_at: Option<Instant>,
+    /// The platform accessibility adapter (T7.5). `observe` has built a
+    /// `TreeUpdate` since M5; this is the thing that hands it to the
+    /// screen reader. `None` until the window exists, and absent
+    /// entirely without the `a11y` feature.
+    #[cfg(feature = "a11y")]
+    a11y: Option<accesskit_winit::Adapter>,
+    /// Kept so the adapter, created in `resumed`, can post its callbacks
+    /// back to this loop.
+    #[cfg(feature = "a11y")]
+    proxy: winit::event_loop::EventLoopProxy<UserEvent>,
 }
 
 impl WinApp {
-    fn new() -> Self {
+    fn new(#[allow(unused)] proxy: winit::event_loop::EventLoopProxy<UserEvent>) -> Self {
         let (w, h) = (440, 520);
         let mut host = Host::new(build(), w, h);
         host.set_stylesheet(&stylesheet_for(0));
@@ -190,6 +217,90 @@ impl WinApp {
             sign: 0,
             agent,
             input_at: None,
+            #[cfg(feature = "a11y")]
+            a11y: None,
+            #[cfg(feature = "a11y")]
+            proxy,
+        }
+    }
+
+    /// The accessibility tree as the platform wants it: the same
+    /// `observe` snapshot the agent reads, with focus filled in from the
+    /// host. One source, two consumers — a screen reader and an agent
+    /// cannot see different trees, which is the property `observe::dump`
+    /// exists to keep.
+    #[cfg(feature = "a11y")]
+    fn a11y_tree(&self) -> accesskit::TreeUpdate {
+        lumen_static::observe::snapshot_focused(
+            &self.host.app.ui,
+            &self.host.states,
+            self.host.focus,
+        )
+    }
+
+    /// A request from the agent socket. Answered on this thread, against
+    /// the live tree, then the window is asked to redraw so what the
+    /// agent did is what the user sees.
+    fn agent_request(&mut self, event_loop: &ActiveEventLoop, rpc: Rpc) {
+        let method = rpc.req.get("method").and_then(|m| m.as_str()).unwrap_or("");
+        if method == "app.quit" {
+            let _ = rpc.reply.send(serde_json::json!({ "jsonrpc": "2.0", "id": rpc.req.get("id"), "result": { "ok": true } }));
+            event_loop.exit();
+            return;
+        }
+        if method.starts_with("input.") {
+            self.input_arrived();
+        }
+        let resp = {
+            let mut live = Live {
+                host: &mut self.host,
+                metrics: &mut self.metrics,
+                canvas: &mut self.canvas,
+                sign: &mut self.sign,
+            };
+            self.agent.dispatch_input(&mut live, &rpc.req)
+        };
+        let _ = rpc.reply.send(resp);
+        if let Some(w) = &self.window {
+            w.request_redraw();
+        }
+    }
+
+    /// A callback from the platform accessibility adapter. It runs on
+    /// this thread, and every arm ends by handing the platform a tree
+    /// or an input the rest of the app cannot tell from a click.
+    #[cfg(feature = "a11y")]
+    fn a11y_event(&mut self, e: accesskit_winit::Event) {
+        use accesskit_winit::WindowEvent as AkWindowEvent;
+        match e.window_event {
+            // The screen reader just attached: it has no tree yet.
+            AkWindowEvent::InitialTreeRequested => {
+                let update = self.a11y_tree();
+                if let Some(a) = self.a11y.as_mut() {
+                    a.update_if_active(|| update);
+                }
+            }
+            // A screen-reader activation. It becomes a click at the
+            // node's centre — the same two queued events a mouse
+            // produces, so it routes, dispatches and shows up in the
+            // agent's journal identically. Synthesizing the input rather
+            // than calling the handler directly is what keeps one input
+            // path (`docs/events-decision.md`).
+            AkWindowEvent::ActionRequested(req) => {
+                let Some(i) =
+                    lumen_static::observe::index_of_node::<app::Page>(req.target_node)
+                else {
+                    return;
+                };
+                let st = &self.host.states[i];
+                let (x, y) = (st.pos.x + st.size.w / 2.0, st.pos.y + st.size.h / 2.0);
+                self.input_arrived();
+                self.host.click(x, y);
+                if let Some(w) = &self.window {
+                    w.request_redraw();
+                }
+            }
+            AkWindowEvent::AccessibilityDeactivated => {}
         }
     }
 
@@ -277,6 +388,19 @@ impl WinApp {
             &self.host.states,
         );
         self.agent.frame_done(&mut tree, timing);
+
+        // The screen reader's view of the frame that was just presented.
+        // Pushed here, beside `frame_done`, so the accessibility tree,
+        // the agent's journal and the pixels are all the same frame —
+        // the drift a separate update site would introduce is exactly
+        // what makes a screen reader read a stale label.
+        #[cfg(feature = "a11y")]
+        {
+            let update = self.a11y_tree();
+            if let Some(a) = self.a11y.as_mut() {
+                a.update_if_active(|| update);
+            }
+        }
         if std::env::var_os("LUMEN_TRACE").is_some() {
             eprintln!(
                 "redraw {}x{} cmds={} ink={:.3}",
@@ -289,12 +413,21 @@ impl WinApp {
     }
 }
 
-impl ApplicationHandler<Rpc> for WinApp {
+impl ApplicationHandler<UserEvent> for WinApp {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         let attrs = Window::default_attributes()
             .with_title("lumen-static — tally")
             .with_inner_size(winit::dpi::LogicalSize::new(440.0, 520.0));
         let window = Rc::new(event_loop.create_window(attrs).expect("create window"));
+        // Before the window is shown, per the adapter's contract.
+        #[cfg(feature = "a11y")]
+        {
+            self.a11y = Some(accesskit_winit::Adapter::with_event_loop_proxy(
+                event_loop,
+                &window,
+                self.proxy.clone(),
+            ));
+        }
         let ctx = softbuffer::Context::new(window.clone()).expect("softbuffer context");
         self.surface =
             Some(softbuffer::Surface::new(&ctx, window.clone()).expect("softbuffer surface"));
@@ -303,35 +436,22 @@ impl ApplicationHandler<Rpc> for WinApp {
         self.window = Some(window);
     }
 
-    /// A request from the agent socket. Answered on this thread, against
-    /// the live tree, then the window is asked to redraw so what the
-    /// agent did is what the user sees.
-    fn user_event(&mut self, event_loop: &ActiveEventLoop, rpc: Rpc) {
-        let method = rpc.req.get("method").and_then(|m| m.as_str()).unwrap_or("");
-        if method == "app.quit" {
-            let _ = rpc.reply.send(serde_json::json!({ "jsonrpc": "2.0", "id": rpc.req.get("id"), "result": { "ok": true } }));
-            event_loop.exit();
-            return;
-        }
-        if method.starts_with("input.") {
-            self.input_arrived();
-        }
-        let resp = {
-            let mut live = Live {
-                host: &mut self.host,
-                metrics: &mut self.metrics,
-                canvas: &mut self.canvas,
-                sign: &mut self.sign,
-            };
-            self.agent.dispatch_input(&mut live, &rpc.req)
-        };
-        let _ = rpc.reply.send(resp);
-        if let Some(w) = &self.window {
-            w.request_redraw();
+    fn user_event(&mut self, event_loop: &ActiveEventLoop, ev: UserEvent) {
+        match ev {
+            UserEvent::Agent(rpc) => self.agent_request(event_loop, rpc),
+            #[cfg(feature = "a11y")]
+            UserEvent::A11y(e) => self.a11y_event(e),
         }
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _: WindowId, event: WindowEvent) {
+        // The adapter watches for focus and window-geometry changes it
+        // must report; it never consumes an event.
+        #[cfg(feature = "a11y")]
+        if let (Some(a), Some(w)) = (self.a11y.as_mut(), self.window.as_ref()) {
+            a.process_event(w, &event);
+        }
+
         // The first half of the binding: every one of these becomes an
         // `Event` in the host's single queue — the same queue the agent
         // protocol's `input.*` methods post into, which is what makes an
@@ -591,7 +711,7 @@ fn main() {
             return;
         }
     }
-    let event_loop = EventLoop::<Rpc>::with_user_event().build().expect("event loop");
+    let event_loop = EventLoop::<UserEvent>::with_user_event().build().expect("event loop");
     // Wait, don't spin: this UI changes only when something happens.
     event_loop.set_control_flow(ControlFlow::Wait);
 
@@ -600,5 +720,6 @@ fn main() {
     let proxy = event_loop.create_proxy();
     std::thread::spawn(move || serve_agent(addr, proxy));
 
-    event_loop.run_app(&mut WinApp::new()).expect("run");
+    let mut app = WinApp::new(event_loop.create_proxy());
+    event_loop.run_app(&mut app).expect("run");
 }

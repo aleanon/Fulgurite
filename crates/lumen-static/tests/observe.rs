@@ -3,7 +3,7 @@
 //! agent-facing JSON dump.
 
 use accesskit::{NodeId, Role};
-use lumen_static::observe::{dump, snapshot};
+use lumen_static::observe::{dump, index_of_node, snapshot, snapshot_focused};
 use lumen_static::ops::{Fixed, Label, Spacer};
 use lumen_static::repeat::Repeat;
 use lumen_static::{pass, Constraints, NodeState, StaticTree, Widget};
@@ -165,4 +165,56 @@ fn dump_is_agent_readable() {
     assert!(text.contains("\"role\":\"Label\""), "roles in dump");
     assert!(text.contains("\"value\":\"hello\""), "values in dump");
     assert_eq!(d["root"], 1);
+}
+
+// ---- T7.5: what the platform adapter needs ---------------------------
+
+#[test]
+fn focus_reaches_the_snapshot_and_round_trips_to_an_index() {
+    let (app, st) = make_app(3);
+
+    // No focus: the root, which is how a shell without focus tracking
+    // reports "nothing is focused".
+    assert_eq!(snapshot(&app, &st).focus, NodeId(1));
+    assert_eq!(snapshot_focused(&app, &st, None).focus, NodeId(1));
+
+    // A focused node is announced as itself, and the id the adapter
+    // sends back in an action request maps to the same index.
+    for i in 0..App::NODE_COUNT as u32 {
+        let id = snapshot_focused(&app, &st, Some(i)).focus;
+        assert_eq!(id, NodeId(i as u64 + 1), "node {i} announces itself");
+        assert_eq!(index_of_node::<App>(id), Some(i as usize), "and maps back");
+    }
+}
+
+#[test]
+fn an_out_of_range_focus_is_reported_as_no_focus_not_as_a_dangling_id() {
+    let (app, st) = make_app(3);
+    // A stale focus index — a hot reload shrank the tree, say — must not
+    // put an id in the tree that names no node: a screen reader
+    // following it would land nowhere and stop announcing.
+    let up = snapshot_focused(&app, &st, Some(App::NODE_COUNT as u32 + 5));
+    assert_eq!(up.focus, NodeId(1));
+    assert!(up.nodes.iter().any(|(id, _)| *id == up.focus), "focus names a node in the tree");
+}
+
+#[test]
+fn ids_an_adapter_could_invent_do_not_map_to_nodes() {
+    // `index_of_node` is fed ids from outside the process. 0 is not a
+    // node (ids are index + 1), and neither is anything past the table.
+    assert_eq!(index_of_node::<App>(NodeId(0)), None, "0 is not index -1");
+    assert_eq!(index_of_node::<App>(NodeId(App::NODE_COUNT as u64 + 1)), None);
+    assert_eq!(index_of_node::<App>(NodeId(u64::MAX)), None, "no overflow");
+    assert_eq!(index_of_node::<App>(NodeId(1)), Some(0), "the root");
+}
+
+#[test]
+fn every_announced_focus_target_has_bounds_a_reader_can_point_at() {
+    let (app, st) = make_app(3);
+    let up = snapshot_focused(&app, &st, Some(1));
+    let (_, node) = up.nodes.iter().find(|(id, _)| *id == up.focus).expect("focus is in the tree");
+    // An action request arrives with a node id and the shell turns it
+    // into a click at the node's centre; without bounds there is no
+    // centre to click.
+    assert!(node.bounds().is_some(), "the focused node carries bounds");
 }

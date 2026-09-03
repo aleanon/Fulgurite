@@ -15,3 +15,13 @@ lumen-static-agent = { path = "../../crates/lumen-static-agent" }
 serde_json = "1"
 winit = "0.30"
 softbuffer = "0.4"
+# T7.5: the platform adapter for the `TreeUpdate` snapshot `observe`
+# already builds. Behind a default-off feature — on Linux it pulls
+# accesskit_unix and a D-Bus/async stack, and `just test` builds this
+# example on every run (measured: 95 -> 157 crates).
+accesskit_winit = { version = "0.34", optional = true }
+accesskit = { version = "0.25", optional = true }
+
+[features]
+default = []
+a11y = ["dep:accesskit_winit", "dep:accesskit"]

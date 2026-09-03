@@ -13,7 +13,7 @@
 
 pub use accesskit;
 
-use accesskit::{Node as AkNode, NodeId, Rect, Role, Tree, TreeId, TreeUpdate};
+use accesskit::{Node as AkNode, NodeId, Rect, Role, TreeId, TreeInfo, TreeUpdate};
 
 use crate::desc::{NodeDesc, NodeState};
 use crate::widget::{Node, Widget};
@@ -69,10 +69,41 @@ pub fn emit_table(
 }
 
 /// Full accessibility snapshot, ready for an AccessKit adapter or agent.
+///
+/// Focus is reported as the root. A shell that tracks focus should call
+/// [`snapshot_focused`] instead — a screen reader follows the `focus`
+/// field, so reporting the root means "nothing is focused" no matter
+/// what the app believes.
 pub fn snapshot<W: Widget>(tree: &W, st: &[NodeState]) -> TreeUpdate {
+    snapshot_focused(tree, st, None)
+}
+
+/// [`snapshot`], with the focused node's main-table index.
+///
+/// `None`, or an index past the table, reports the root — the same
+/// "nothing focused" a shell without focus tracking gives. Node ids are
+/// `index + 1` because AccessKit reserves no id but 0 is a poor
+/// sentinel; the root of the emitted tree is id 1.
+pub fn snapshot_focused<W: Widget>(
+    tree: &W,
+    st: &[NodeState],
+    focus: Option<u32>,
+) -> TreeUpdate {
     let mut nodes = Vec::with_capacity(W::SUB_TABLE.len());
     emit_subtree(tree, st, &|i| (i + 1) as u64, &mut nodes);
-    TreeUpdate { nodes, tree: Some(Tree::new(NodeId(1))), tree_id: TreeId::ROOT, focus: NodeId(1) }
+    let focus = match focus {
+        Some(i) if (i as usize) < W::SUB_TABLE.len() => NodeId(i as u64 + 1),
+        _ => NodeId(1),
+    };
+    TreeUpdate { nodes, tree: Some(TreeInfo::new(NodeId(1))), tree_id: TreeId::ROOT, focus }
+}
+
+/// The main-table index an AccessKit [`NodeId`] refers to, if it names a
+/// main-table node. The inverse of the `index + 1` above; an id an
+/// adapter invented, or one naming a synthesized instance, gives `None`.
+pub fn index_of_node<W: Widget>(id: NodeId) -> Option<usize> {
+    let i = id.0.checked_sub(1)? as usize;
+    (i < W::SUB_TABLE.len()).then_some(i)
 }
 
 /// Agent-facing JSON view of the same snapshot, joined with provenance,
