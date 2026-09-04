@@ -124,16 +124,6 @@ impl Measured {
     }
 }
 
-/// What `Label<S>` accepts.
-///
-/// Nothing but "can be read as a string, and has an empty value" (B11).
-/// Rebuilding from an owned `String` used to be here, which quietly
-/// required every storage to depend on `alloc`: a fixed-capacity inline
-/// buffer — the shape a `no_std` profile needs — had to pull in a heap
-/// allocator solely to satisfy a method only the hot-reload path calls.
-/// That method is [`TextRestore`] now, gated behind `reload`, so the
-/// no-allocation profile stays reachable
-/// (`docs/text-and-scrolling-decisions.md` B11).
 /// What `TextInput<S>` and `TextArea<S>` use when the parameter is
 /// elided: `String` where there is an allocator, `InlineText<64>` where
 /// there is not (M13/T13.4).
@@ -150,6 +140,21 @@ pub type DefaultTextStorage = String;
 #[cfg(not(feature = "alloc"))]
 pub type DefaultTextStorage = crate::inline::InlineText<64>;
 
+/// What `Label<S>` accepts.
+///
+/// Nothing but "can be read as a string, and has an empty value" (B11).
+/// Rebuilding from an owned `String` used to be here, which quietly
+/// required every storage to depend on `alloc`: a fixed-capacity inline
+/// buffer — the shape a `no_std` profile needs — had to pull in a heap
+/// allocator solely to satisfy a method only the hot-reload path calls.
+/// That method is `TextRestore` now, gated behind `reload`, so the
+/// no-allocation profile stays reachable
+/// (`docs/text-and-scrolling-decisions.md` B11).
+///
+/// The reference to `TextRestore` is deliberately not a doc link: it
+/// exists only under `reload`, and the shipped-shape rustdoc build
+/// (`just check`) has that feature off, where a link would be a broken
+/// one.
 pub trait TextStorage: AsRef<str> + Default {}
 
 impl<T: AsRef<str> + Default> TextStorage for T {}

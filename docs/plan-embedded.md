@@ -3,8 +3,13 @@
 *Planned 2026-09-04 as M10; **renumbered M13 and moved behind M11 the
 same day**, after a five-agent review of this document found its
 evidence substantially wrong and its scope roughly seven times what was
-written. Status: **not started**. Corrections are marked inline rather
-than quietly applied — the errors are the useful part.*
+written. **Status: done 2026-09-05, T13.0–T13.9.** Corrections are
+marked inline rather than quietly applied — the errors are the useful
+part, and the review's were: every one of the four claims it overturned
+turned out to matter, and the two gaps it did not find (no text stack
+below `std`, and `TextBuffer::insert_str` returning `()`) were both
+found by building rather than by reading. Results:
+`docs/results-embedded.md` and `docs/results-retention.md`.*
 
 > **What the review changed.** Four of this plan's "already true"
 > claims were false: `grep "std::"` cannot see `thread_local!`, the

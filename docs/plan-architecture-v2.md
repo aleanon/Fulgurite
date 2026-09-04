@@ -1156,7 +1156,7 @@ missing is
 
 ---
 
-## M13 — The embedded profile — **PLANNED 2026-09-04, not started**
+## M13 — The embedded profile — **DONE 2026-09-05**
 
 *Was M10 until the review. Task breakdown: `docs/plan-embedded.md`,
 rewritten 2026-09-04 with the corrections below.*
@@ -1167,6 +1167,28 @@ demonstrates it. `alloc_gate.rs` proves no allocation *in steady state
 on a desktop with a working allocator*, which is a much weaker
 statement. M13 makes it true, gated and measured — or finds where it is
 false.
+
+**Done, T13.0–T13.9.** The claim is true and is now a number:
+`docs/results-embedded.md`. The core builds for
+`thumbv7em-none-eabihf` with **no `std` and no allocator at all** —
+where `Vec`, `String` and `DisplayList` cannot be *named* — and a
+linked firmware is **20.5 KB of `.text` and 0 B of `.bss`**.
+`fixtures/embedded` lays out, paints and types into a tree with a baked
+font under an allocator that aborts.
+
+Four things the milestone found that no amount of planning had:
+
+- **One `f32::clamp` cost 26.5 KB of flash, 44% of the firmware** — its
+  panic message formats a float, which links the whole of
+  `core::num::flt2dec` (T13.9).
+- **`TextBuffer::insert_str` returning `()` was a latent bug**, sound
+  only while every storage was unbounded. A bounded one strands the
+  caret (T13.5).
+- **Streaming retention is faster than the list-copying form it
+  replaced** at every scale, and the *allocator-free* implementation is
+  the fastest of the three (T13.8, `docs/results-retention.md`).
+- **There was no text stack below `std` at all**, so the embedded
+  profile would have laid out glyphs nothing could draw (T13.7).
 
 **Moved behind M11 because the review invalidated the reason it was
 first.** "Every widget encodes the allocation answer" is true of the
