@@ -1,22 +1,29 @@
 # Results: the embedded profile
 
-*Placeholder. **No number has been measured yet** — this file exists so
-`docs/plan-architecture-v2.md` M10 cites something real, and so that
-anyone who comes looking for the footprint finds a statement that it
-does not exist rather than a dangling link.*
+## The thresholds — written 2026-09-05, **before** the measurement
 
-## What will go here (M10/T10.4)
+M13/T13.9's gate is that these are recorded first, so the gate can say
+no. A profile with no measured footprint is a claim; a footprint
+measured against a threshold invented afterwards is worse, because it
+can only pass.
 
-- `.text` and `.bss` for the alloc-free fixture at
-  `thumbv7em-none-eabihf`, against the threshold **T13.0's named device
-  implies** — Cortex-M4F, 128 KB RAM, 512 KB flash, no framebuffer
-  (`docs/plan-embedded.md`).
-- Peak RAM its `[NodeState; N]` and `[Style; N]` arrays occupy at a
-  stated node count, and the per-node figure that follows from it —
-  cited, not restated, wherever else it appears (AGENT.md's
-  numbers-stated-once rule).
-- Whether the allocator-panics fixture links and runs, which is the
-  binary answer to "zero allocation, no allocator required".
+The device is T13.0's: Cortex-M4F, `thumbv7em-none-eabihf`, **128 KB
+RAM, 512 KB flash**, a 320×240 SPI panel with its own GRAM and no
+framebuffer.
+
+| | Threshold | Why that number |
+|---|---:|---|
+| Framework `.text` | **≤ 64 KB** | An eighth of flash. The app, its face and its data need the rest; a GUI framework that takes more than a fifth of the part is not an embedded GUI framework. |
+| Framework `.bss` + `.data` | **≤ 2 KB** | The framework's *own* statics. Per-tree arrays are the app's and are budgeted below; anything large here is a hidden global. |
+| RAM for a 100-node tree | **≤ 24 KB** | T13.0's budget said ~19 KB for state + style + widget structs. 24 KB leaves headroom and still fits with the 8 KB stack in well under half of RAM. |
+| Stack, actual depth | **≤ 4 KB** | T13.0 measured 256–272 B per level and a real screen at 4–5 deep (~1.6 KB). 4 KB is generous for that and half the 8 KB budgeted. |
+| `f64` in the frame path | **zero** | The FPU is single-precision, so any `f64` becomes soft-float calls. |
+| The fixture builds and runs | **yes** | The binary answer to "zero allocation, no allocator required". |
+
+Recorded threats to these numbers, so a pass cannot be read as more than
+it is: `cargo check` proves none of them — it type-checks and stops, with
+no codegen, no link, no `.text`. Section sizes below come from a real
+`cargo build --release` for the target.
 
 ## What is already known, 2026-09-04
 
