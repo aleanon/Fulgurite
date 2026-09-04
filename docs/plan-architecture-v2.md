@@ -1085,7 +1085,7 @@ corrected rather than a scope increase.
 
 ---
 
-## M11 — Widget vocabulary — **PLANNED 2026-09-04, not started**
+## M11 — Widget vocabulary — **T11.1–T11.4 DONE 2026-09-04**
 
 *Was Phase B of `docs/plan-lumen-parity.md`. Follows M10 because every
 widget encodes the allocation answer, and three of these items reopen

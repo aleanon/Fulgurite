@@ -2,8 +2,9 @@
 
 *Planned 2026-09-04. Was Phase B of `docs/plan-lumen-parity.md`; that
 document is superseded as a plan and this replaces its widget section.
-Status: **not started**, and gated on M10 because every widget encodes
-the allocation answer.*
+Status: **T11.1–T11.4 done 2026-09-04; T11.5 deliberately not started.**
+Gated on M10a (the `paint` signature), not on the allocation answer —
+the review corrected that reasoning and the milestone order with it.*
 
 ## What is already built
 
@@ -230,9 +231,12 @@ What has to be decided first, and none of it is widget code:
   that reaches *no* node — the one input case `dispatch` currently
   answers with `false`.
 
-**Recommendation: do not start T11.5 as a widget task.** It is a layout
-milestone with three widgets on the end of it, and estimating it as
-"three widgets" is how it would get underestimated.
+**Recommendation, and the decision: T11.5 is not started.** It is a
+layout milestone with three widgets on the end of it, and estimating it
+as "three widgets" is how it would get underestimated. Building the
+other four confirmed the split rather than blurring it — none of them
+needed overlap, z-order or an out-of-flow position, so nothing about
+this work argues for taking the layout change now.
 
 ## Selection and IME
 
