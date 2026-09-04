@@ -5,6 +5,28 @@ at `/mnt/Utvikling-linux/Lumen` (~62k lines of framework across 20
 crates) and its own two readiness assessments, which are unusually candid
 about where it is and is not done.*
 
+> **Superseded as a plan, 2026-09-04.** Parity stopped being a
+> destination when two of the figures below stopped being true. **"About
+> 10k is adoptable" is false**: `lumen-render` and `lumen-text` were
+> measured and declined (74 and 84 transitive crates, both hard-depending
+> on `lumen-core` — `docs/text-render-adoption-decision.md`), and
+> `lumen-style` was checked on 2026-09-04 and depends on `lumen-core`,
+> `lumen-layout` *and* `lumen-text`, so it is in the same position.
+> Nothing here is adoptable, which means parity is ~35–40k lines of
+> someone else's library written from scratch. **And "~4,300 lines, 4
+> widgets" is stale by 2.5×**: 11,101 lines and eleven widget types as of
+> 2026-09-04, with a third of Phase B already built.
+>
+> Phases A–E became milestones instead, and only where they earned it:
+> Phase A shipped as M5/M7, Phase B is now M11, Phase E is M12, Phase C
+> is unscheduled, and **M10 is the embedded profile — which is not in
+> this document at all**, because it is the thing this architecture can
+> do that Lumen cannot. See `docs/plan-architecture-v2.md`.
+>
+> The survey below is left as written. It is still the best map of
+> someone else's territory, and useful for orientation; it is no longer
+> useful for navigation.
+
 ## The scale, stated plainly
 
 | subsystem | Lumen | ours | verdict |

@@ -951,12 +951,211 @@ frame after `PointerUp` restores it".
 
 ---
 
-## M10+ — parity phases B–E
+## M10 — The embedded profile — **PLANNED 2026-09-04, not started**
 
-Widget vocabulary (Phase B), `.lss` (Phase C), platform/content (D), test
-harness (E) as laid out in `docs/plan-lumen-parity.md`. Not expanded
-here; each gets its own plan when reached, after M5 has shown the
-architecture end to end.
+*Replaces "parity phases B–E", which was written on 2026-09-01 against
+numbers that no longer hold. See "Why not parity" below.*
+
+The architecture's stated reason for existing is a profile Lumen cannot
+serve: "zero allocation for the entire UI — not few, zero … no allocator
+required" (handoff §"Performance expectations"). That claim appears in
+three documents and is **demonstrated by nothing**.
+`shell/tests/alloc_gate.rs` proves no allocation *in steady state on a
+desktop with an allocator present*, which is a different and much weaker
+statement. M10 makes the claim true, gated, and measured — or finds out
+where it is false.
+
+It comes before more widgets for the reason `docs/plan-lumen-parity.md`
+gives for its own gating decisions: **every widget encodes the answer.**
+`TextBuffer::Clusters` is already an associated type precisely so a
+fixed-capacity storage can pair with a fixed-capacity cluster array
+(B9). Writing eight more widgets and *then* discovering they all assume
+`Vec` is the same mistake one level up.
+
+### What is already true, measured 2026-09-04
+
+- The core is **9 `std::` references** from compiling without `std`:
+  `RefCell` (bind), `VecDeque` (event), `Cow` (text), a `thread_local!`
+  (reload, already feature-gated) and `mpsc` (inbox, **not** gated).
+- **The alloc-free path already exists and is used by 233 tests.**
+  `pass::layout`/`paint`/`hit_test` take *slices*; the tests own
+  `[NodeState; Ui::NODE_COUNT]` and `[Style; Ui::NODE_COUNT]` directly,
+  because `NODE_COUNT` is a const at the concrete type. `Host` is the
+  convenience wrapper that allocates, not the architecture.
+- What genuinely needs an allocator divides cleanly: the **escape
+  hatches** (`List`, `Dyn`, `Assembled`, and the arenas behind them) and
+  the **display list**. The purely static path — `Label`, `Button`,
+  `Fixed`, `Spacer`, `Repeat`, `ScrollView`, `TextInput` — has none.
+
+That last point is the shape of the answer: *the static core is
+allocation-free; the escape hatches are what cost you an allocator.*
+M10's job is to make that sentence checkable rather than plausible.
+
+### T10.0 — how paint reaches pixels without a list — **DECIDED**
+
+The blocker is `DisplayList { cmds: Vec<Cmd>, text: String }`, which
+`Node::paint` writes into. Two shapes were considered:
+
+- **A fixed-capacity list**, `DisplayList<const N: usize>`. The const is
+  viral: it reaches every `paint` signature, every hatch and the derive.
+- **Paint into a sink.** `Node::paint(&self, st, i, out: &mut dyn
+  Painter)`, where `Painter` is `DisplayList`'s existing builder surface
+  — `rect`, `rounded_rect`, `text_weighted`, `shadow`, `push_clip`,
+  `pop_clip`. `DisplayList` implements it by appending and interning
+  text; an embedded host implements it by rasterising immediately.
+
+**Decided: the sink.** It is the shape this project has now chosen three
+times for the same reason — `dyn TextMeasure` (T5.2), `dyn GlyphSink`
+(T7.2b), `dyn Renderer` — namely that the *caller* should own the
+storage. It removes the whole list on embedded rather than just its
+allocation, it is one parameter type across **16 `paint` sites** rather
+than a viral const, and it composes with M8b: `Rebuild` retention needs
+no retained list, so embedded is sink + `Rebuild` + no damage ring + no
+allocation, while desktop keeps `Incremental` and its list unchanged.
+
+The one thing the sink cannot carry is `Cmd::Text`'s `(offset, len)`
+range into `DisplayList::text`; the trait therefore takes `&str`
+directly, and `DisplayList`'s impl does the interning it already does.
+
+**T10.1 — `no_std + alloc`, and the feature polarity.** Point the nine
+references at `core`/`alloc`, gate `inbox` (it is `mpsc`, and deferred
+work off the frame loop is not an embedded concern), and declare
+`#![cfg_attr(not(feature = "std"), no_std)]` with `extern crate alloc`.
+
+**DECIDED: the features are `std` and `alloc`, both default-on. There is
+no `no_std` feature.** The obvious spelling — a `no_std` feature and
+`#[cfg(not(feature = "no_std"))]` on everything else — inverts the one
+rule Cargo features have: **they are additive, and unified across a
+build.** A `no_std` feature *subtracts*, so one dependent enabling it
+would silently strip `std` from every other crate in the graph that
+never asked. This project has already been bitten by exactly that
+unification — the justfile records that `--workspace` cannot produce the
+shipped shape "because lumen-static-agent, examples/counter and
+fixtures/hot-app turn on `observe`/`reload` and cargo unifies features
+across the selection". A subtractive feature turns that annoyance into a
+build that compiles and is missing things.
+
+So: `default = ["std"]`, `std = ["alloc"]`, `alloc = []`. Adding a
+feature only ever adds. An embedded consumer writes
+`default-features = false`, or `features = ["alloc"]` for the middle
+tier — the same three-tier shape `serde` and `hashbrown` use, and for
+the same reason.
+
+Gate: `cargo check -p lumen-static --no-default-features --target
+thumbv7em-none-eabihf`. The target is available through rustup and
+nothing else in the workspace needs to build for it.
+
+**T10.2 — the sink (T10.0), and an alloc-free static path.** After the
+sink lands, an app that uses only the static widgets, owns its own state
+and style arrays, and paints into an immediate rasteriser should touch
+no allocator at all. Gate: a fixture that builds for `thumbv7em` with
+`#[global_allocator]` set to a stub that **panics on any allocation**,
+lays out and paints a small tree, and returns a checksum. An allocation
+is then a link-time-visible abort, not a number to interpret.
+
+**T10.3 — name the price of the hatches.** `List`, `Dyn`, `Assembled`
+and `Arena` behind the default-on `alloc` feature from T10.1. Not a demotion:
+the point is to make "what does dynamism cost me" answerable in the
+type system rather than in prose. `Either`, `Option` and `Repeat` stay
+in the alloc-free core — `Either` because T8.0 removed its arenas, and
+`Repeat` because its window is a fixed capacity the caller chooses.
+Open: whether `Repeat`'s arena can be caller-supplied, which is the
+same question `TextBuffer::Clusters` already answered for text.
+
+**T10.4 — the number.** `docs/results-embedded.md`: `.text` and `.bss`
+for the fixture at `thumbv7em-none-eabihf`, and the peak RAM its state
+and style arrays occupy for a stated node count, against a stated
+threshold. A profile with no measured footprint is a claim, and this
+file is what turns M10's premise into a result the gate can refuse.
+
+---
+
+## M11 — Widget vocabulary — **PLANNED 2026-09-04, not started**
+
+*Was Phase B of `docs/plan-lumen-parity.md`. Follows M10 because every
+widget encodes the allocation answer, and three of these items reopen
+decisions M9 closed deliberately.*
+
+A third of Phase B's list already exists — text input, scrollable, and
+the escape hatches as first-class widgets. What is left, and what each
+actually costs:
+
+- **checkbox / radio / switch.** One toggle core, three presentations.
+  Cheap: they are `Button` with a bool and a different `paint`. The
+  first widgets that will exercise `NodeState::pressed` for something
+  other than a shade.
+- **slider.** Needs **pointer drag**, which M9 deliberately does not
+  route: `PointerMove` is unrouted because it fires continuously and its
+  only consumer is the hover bit (C6). A slider is the first thing that
+  makes routing it worth the cost, and it must come with the measurement
+  that says so.
+- **text area.** Reopens **B7** (multi-line was decided out of the first
+  cut). The shaping seam already reports `Cluster::line`, so the
+  groundwork is there; the caret arithmetic and `line_height` scrolling
+  are not.
+- **tabs.** Mostly `Either` plus a header strip. T8.0 made this cheap by
+  putting branch nodes on the table.
+- **dropdown / tooltip / modal.** These need **overlay and z-order**,
+  which the layout model has no concept of — containers place children
+  sequentially by measured size, which is also why `W1004` (sibling
+  overlap) is a *reserved* lint code that "ships with the first layout
+  mode that can produce it". That reserved code is the marker for this
+  work; whoever builds overlays makes it real.
+
+**Selection and IME** belong here too, and both are blocked on the event
+vocabulary rather than on widget code: selection needs modifier state on
+`Event::Key` or pointer drag; IME needs a preedit event and a
+composition seam. Named in `docs/text-and-scrolling-decisions.md` B6 and
+the `input.rs` module doc, not silently deferred.
+
+---
+
+## M12 — The test harness — **PLANNED 2026-09-04, not started**
+
+*Was Phase E. Last not because it is least valuable, but because it is
+the only one whose substrate is already finished — so it stays cheap
+however long it waits.*
+
+What exists: one input queue, sessions that replay by construction, 233
+tests, a pixel-exact oracle (`shell/tests/damage_oracle.rs`), a live
+gate with seven checks, and the whole agent protocol. What is missing is
+**ergonomics and artifacts**, not mechanism.
+
+- **A locator/expect API** over the existing selectors, so a test reads
+  `app.locator("#save").click()` and `expect(...).to_have_text("Saved")`
+  rather than assembling JSON-RPC by hand. Lumen's `lumen-test` is 931
+  lines and this is the part worth copying — it is architecture-neutral,
+  which the crates that were declined were not.
+- **Golden images with a diff artifact.** The comparison exists
+  (`damage_oracle.rs` compares whole pixel buffers); what is missing is
+  recording, updating and a red-over-dimmed diff to `Read` on failure.
+- **Session recording as a test artifact.** The invariant already holds
+  — every synthesized input goes through the one queue — but nothing
+  writes the recording out, so "an agent session replays as a test" is
+  true and unexercised. This is the task that makes it exercised, and it
+  is the reason `app.setValue` was refused.
+
+---
+
+### Why not parity — **DECIDED 2026-09-04**
+
+`docs/plan-lumen-parity.md` called itself "a survey, not a commitment",
+and two of its load-bearing figures have since gone:
+
+- **"About 10k is adoptable"** is false. `lumen-render` and `lumen-text`
+  were measured and declined (`docs/text-render-adoption-decision.md`);
+  `lumen-style` was checked on 2026-09-04 and depends on `lumen-core`,
+  `lumen-layout` *and* `lumen-text`, so it is in the same position.
+  Parity now means writing ~35–40k lines of someone else's library
+  ourselves, with nothing inherited.
+- **"~4,300 lines, 4 widgets"** is stale by 2.5×: 11,101 lines and
+  eleven widget types, with a third of Phase B's list already built.
+
+So parity stops being a destination. Widgets get built when an
+application here needs one — which is how `ScrollView` and `TextInput`
+arrived — and `plan-lumen-parity.md` stays as what it always was: a map
+of someone else's territory, useful for orientation and not for
+navigation.
 
 ---
 
@@ -975,8 +1174,8 @@ architecture end to end.
 ## Order and dependencies
 
 ```
-M0 ──► M1 ──► M2 ──► M3 ──► M4 ──► M5 ──► M6 ──► M7a ──► M8 ──► M9 ──► M10+
-                                                    └─► M7b ──► M8b ──► M8c
+M0 ──► M1 ──► M2 ──► M3 ──► M4 ──► M5 ──► M6 ──► M7a ──► M8 ──► M9 ──► M10 ──► M11 ──► M12
+                                                    └─► M7b ──► M8b ──► M8c    (embed) (widgets) (harness)
                                                        (manual)  (raster) (layout)
 
 Actually run, 2026-09-04: M7a → M7b → M8b → M8c → M8 → M9 → agent P6.
@@ -997,8 +1196,10 @@ P0–P6.** What is *not* built is recorded where it was decided rather
 than dropped: M8c's T8c.1–T8c.3 (measured; unsound while widget fields
 are public), focus as a `NodeSel` (T8.0 removed its motivation), IME and
 multi-line text (B6/B7), selection (needs modifier state or pointer-drag
-routing), and `app.setValue` (would bypass the one input queue). M10+ —
-the parity phases B–E — is next and unstarted.
+routing), and `app.setValue` (would bypass the one input queue, and `input.fill`
+serves the need instead). **M10 is the embedded profile**, then M11
+(widget vocabulary) and M12 (test harness) — which replaced "parity
+phases B–E" on 2026-09-04. Parity is no longer a destination.
 
 **Status 2026-09-01: M0–M6 complete** (M5 less the winit binding, above).
 Gate at the close of M5: 32 default suites + 8 gated all green, clippy
