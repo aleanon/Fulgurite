@@ -21,8 +21,12 @@
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use embedded::{frame, Checksum, Panel, NODES};
+use embedded::{frame, type_char, Checksum, Panel, NODES};
 use lumen_static::{NodeState, Style};
+
+/// The `field`'s index in `Ui`'s node table: title, badge, field. An
+/// embedded app has no agent to ask, so it is a constant.
+const FIELD: u32 = 3;
 
 static ARMED: AtomicBool = AtomicBool::new(false);
 
@@ -67,7 +71,6 @@ fn main() {
         out = Checksum::default();
         frame(&mut panel, &mut st, &mut sty, &mut out);
     }
-    ARMED.store(false, Ordering::Relaxed);
 
     assert_eq!(
         (out.hash, out.cmds),
@@ -76,8 +79,32 @@ fn main() {
     );
     assert!(out.cmds > 0, "the frame drew nothing, so it proved nothing");
 
+    // T13.5's gate: type into a TextInput<InlineText<64>> through the
+    // real dispatch path, still with the allocator armed. `Label` and
+    // `Button` never allocate because they never change; an editable
+    // field is the widget that would.
+    let mut focus = Some(FIELD);
+    for ch in "hello embedded".chars() {
+        assert!(type_char(&mut panel, &mut st, &sty, &mut focus, ch), "the field took it");
+    }
+    frame(&mut panel, &mut st, &mut sty, &mut out);
+
+    // Past capacity the buffer refuses rather than growing — the whole
+    // difference between a fixed storage and a String.
+    for _ in 0..200 {
+        type_char(&mut panel, &mut st, &sty, &mut focus, 'x');
+    }
+    frame(&mut panel, &mut st, &mut sty, &mut out);
+    ARMED.store(false, Ordering::Relaxed);
+
+    let typed = panel.ui.field.as_str();
+    assert!(typed.starts_with("hello embedded"), "typed text landed: {typed:?}");
+    assert_eq!(typed.len(), 64, "filled to InlineText<64>'s capacity and stopped");
+
     println!(
-        "embedded: {} cmds, checksum {:#018x}, zero allocations over 100 frames",
-        out.cmds, out.hash
+        "embedded: {} cmds, checksum {:#018x}, {} bytes typed, zero allocations",
+        out.cmds,
+        out.hash,
+        typed.len()
     );
 }

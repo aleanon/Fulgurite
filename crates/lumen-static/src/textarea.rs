@@ -105,13 +105,19 @@ impl<S: TextBuffer> TextArea<S> {
     }
 
     /// Insert at the caret (B3: methods, never a raw `&mut`).
-    pub fn insert(&mut self, s: &str) {
+    pub fn insert(&mut self, s: &str) -> bool {
         if s.is_empty() {
-            return;
+            return false;
         }
-        self.text.insert_str(self.caret, s);
+        // The caret advances only if the storage took the text. A
+        // bounded storage can refuse, and advancing anyway would put
+        // the caret past the end (M13/T13.5).
+        if !self.text.insert_str(self.caret, s) {
+            return false;
+        }
         self.caret += s.len();
         self.shaped_key = None;
+        true
     }
 
     pub fn backspace(&mut self) -> bool {

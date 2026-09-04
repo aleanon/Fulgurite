@@ -117,13 +117,19 @@ impl<S: TextBuffer> TextInput<S> {
     }
 
     /// Insert at the caret and advance it (B3).
-    pub fn insert(&mut self, s: &str) {
+    pub fn insert(&mut self, s: &str) -> bool {
         if s.is_empty() {
-            return;
+            return false;
         }
-        self.text.insert_str(self.caret, s);
+        // The caret advances only if the storage took the text. A
+        // bounded storage can refuse, and advancing anyway would put
+        // the caret past the end (M13/T13.5).
+        if !self.text.insert_str(self.caret, s) {
+            return false;
+        }
         self.caret += s.len();
         self.invalidate();
+        true
     }
 
     /// Delete the character before the caret. Returns whether anything

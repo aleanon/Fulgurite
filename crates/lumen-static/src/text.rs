@@ -199,11 +199,20 @@ pub trait TextBuffer: TextStorage {
     fn set_from_str(&mut self, s: &str);
 
     /// Insert `s` at byte offset `at` (B3: methods, never a raw
-    /// `&mut String`).
+    /// `&mut String`), returning whether it was stored.
     ///
     /// `at` must be a `char` boundary — every caller here derives it
     /// from a caret, and a caret only ever sits on one.
-    fn insert_str(&mut self, at: usize, s: &str);
+    ///
+    /// **The return value is what makes a bounded storage safe to use.**
+    /// This returned `()` until M13/T13.5, which was sound only while
+    /// every implementation was unbounded: a caller advances its caret
+    /// by `s.len()` after inserting, so a storage that *refuses* leaves
+    /// the caret past the end of the text. `InlineText` hit exactly that
+    /// — `debug_assert!(at <= self.len)` fired on the first keystroke
+    /// after the buffer filled. An unbounded storage returns `true`
+    /// always and costs nothing for saying so.
+    fn insert_str(&mut self, at: usize, s: &str) -> bool;
 
     /// Remove `range`, whose ends must be `char` boundaries.
     fn remove_range(&mut self, range: core::ops::Range<usize>);
@@ -226,8 +235,9 @@ impl TextBuffer for String {
         self.push_str(s);
     }
 
-    fn insert_str(&mut self, at: usize, s: &str) {
+    fn insert_str(&mut self, at: usize, s: &str) -> bool {
         String::insert_str(self, at, s);
+        true
     }
 
     fn remove_range(&mut self, range: core::ops::Range<usize>) {
@@ -245,8 +255,9 @@ impl TextRestore for Cow<'static, str> {
 impl TextBuffer for Cow<'static, str> {
     type Clusters = Vec<crate::cx::Cluster>;
 
-    fn insert_str(&mut self, at: usize, s: &str) {
+    fn insert_str(&mut self, at: usize, s: &str) -> bool {
         self.to_mut().insert_str(at, s);
+        true
     }
 
     fn remove_range(&mut self, range: core::ops::Range<usize>) {

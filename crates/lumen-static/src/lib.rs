@@ -108,6 +108,7 @@ pub mod display;
 pub mod event;
 pub mod hatch;
 pub mod hit;
+pub mod inline;
 // `mpsc`, so `std` (M13/T13.1). Deferred work handed back to the frame
 // loop from another thread is not an embedded concern.
 #[cfg(feature = "std")]
@@ -143,6 +144,7 @@ pub use cx::{BlockMetrics, Cluster, GlyphSink, LayoutCx, NoSink, TextMeasure};
 pub use retain::{Damage, Incremental, Rebuild, Retention};
 pub use display::{Cmd, Color, DisplayList, Painter, Renderer, Scaled};
 pub use style::{Align, Edges, Length, Patch, Rule, Selector, Style};
+pub use inline::{InlineClusters, InlineText};
 pub use text::{ClusterBuf, Dirty, Measured, TextBuffer, TextStorage};
 #[cfg(feature = "reload")]
 pub use text::TextRestore;

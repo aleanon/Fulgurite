@@ -498,7 +498,7 @@ so the `alloc`-less build cannot compile until a fixed-capacity storage
 exists to be the default instead. That is T13.5's `InlineText`, and it
 is why the order in this file is not the order of work.
 
-## T13.5 — an allocation-free text storage
+## T13.5 — an allocation-free text storage — **DONE 2026-09-05**
 
 `TextInput<S: TextBuffer>` cannot be instantiated without an allocator
 today: both `TextBuffer` impls need `alloc`, and the only `ClusterBuf`
@@ -513,6 +513,44 @@ decides whether the associated type was worth having.
 
 **Gate:** the fixture instantiates a `TextInput<InlineText<64>>`, types
 into it through `pass::dispatch`, and allocates nothing.
+
+**Done, and it answers this task's own question — the associated type
+was worth having, and the gate proved it by failing.**
+
+`crates/lumen-static/src/inline.rs`: `InlineText<N>` (N *bytes*, not
+chars) and `InlineClusters<N>`, paired through `TextBuffer::Clusters`.
+One cluster per byte is the worst case — every cluster boundary is a
+`char` boundary and the shortest `char` is one byte — so `N` clusters
+can never be too few for `N` bytes.
+
+**The gate found a live defect on its first run.**
+`TextBuffer::insert_str` returned `()`, which is sound only while every
+implementation is unbounded: `TextInput::insert` advances its caret by
+`s.len()` after inserting, so a storage that *refuses* leaves the caret
+past the end of the text. Against `String` this was unobservable.
+Against `InlineText` the first keystroke after the buffer filled tripped
+its bounds assertion.
+
+`insert_str` now returns `bool` and both `TextInput::insert` and
+`TextArea::insert` advance the caret only on success. An unbounded
+storage returns `true` always and pays nothing to say so. This is the
+answer to "whether the associated type was worth having": a bounded
+storage did not merely *fit* the B9 shape, it found a bug in the trait
+around it that no `String`-only test could reach.
+
+Two overflow rules, deliberately different:
+
+- `set_from_str` **truncates** at a `char` boundary. It is the binding
+  path — a formatted value too long for the field should show its
+  prefix, as a narrow column does.
+- `insert_str` **refuses whole**. It is the typing path, where a partial
+  insert would either split a `char` or land a prefix of what the user
+  typed.
+
+`InlineClusters` overrides `GlyphSink::is_full`, which is what that
+method was added for: `shape` checks it and stops early, so a run too
+long for the buffer costs nothing to shape past the point where it would
+be discarded.
 
 ## T13.7 — a text stack that works without an allocator
 

@@ -15,14 +15,15 @@
 
 use lumen_static::display::{Color, Painter, Rect};
 use lumen_static::prelude::*;
-use lumen_static::{pass, Constraints, NodeState, Style};
+use lumen_static::{pass, Constraints, InlineText, NodeState, Style};
 
 // ---- the tree: alloc-free widgets only -------------------------------
 
 /// The state a handler mutates. Beside the tree, not inside it —
 /// `docs/layout-and-storage-decisions.md` §1.
-#[derive(Default)]
+#[derive(DeriveApp, Default)]
 pub struct Panel {
+    #[tree]
     pub ui: Ui,
     pub clicks: u32,
 }
@@ -48,6 +49,12 @@ pub struct Ui {
     title: Label,
     #[widget_id("badge")]
     badge: Fixed,
+    /// T13.5's gate: an editable field with no allocator behind it.
+    /// `InlineText<64>` pairs with `InlineClusters<64>` through
+    /// `TextBuffer::Clusters`, which is what B9 built the associated
+    /// type for and what nothing inhabited until M13.
+    #[widget_id("field")]
+    pub field: TextInput<InlineText<64>>,
     controls: Controls,
 }
 
@@ -71,6 +78,24 @@ impl Panel {
         p.ui.controls.inc.on_click = on_inc;
         p
     }
+}
+
+/// Type one character into the focused field, through the real
+/// dispatch path rather than by calling a method on the widget — which
+/// is the whole point of T13.5's gate: the editable widget has to work,
+/// not merely exist.
+///
+/// `focus` and `capture` are the caller's, as they are on a real host:
+/// dispatch holds `&mut Panel` for the duration, so they cannot live
+/// inside it.
+pub fn type_char(
+    p: &mut Panel,
+    st: &mut [NodeState],
+    sty: &[Style],
+    focus: &mut Option<u32>,
+    ch: char,
+) -> bool {
+    pass::dispatch(p, sty, st, focus, &mut None, &Event::Text { ch })
 }
 
 /// The tree's node count, so a caller can size its arrays as a `const`.
