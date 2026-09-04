@@ -84,12 +84,22 @@ check: test check-extra
 # remaining sites are hand-packed layouts stable rustfmt cannot express. See
 # rustfmt.toml. Turning it on is a decision to accept a reformat, not a
 # decision CI gets to make.
-check-extra:
+
+# Release-shape rustdoc, binsize, and the exhaustive f32 check.
+check-extra: floats
     # Release-shape rustdoc: `--workspace` hides broken links that point at
     # items which only exist behind `observe`/`reload`.
     RUSTDOCFLAGS="-D warnings" cargo doc -p lumen-static --no-deps
     cargo build --release -p binsize
     @ls -l target/release/binsize | awk '{print "binsize: " $5 " bytes"}'
+
+# Prove `num::floor`/`num::ceil` bit-exact with std over all 2^32 f32
+# bit patterns (M13/T13.2). Release-only: 13 s optimized, minutes in the
+# gate's debug build, which is why it is `#[ignore]`d there.
+
+# Exhaustive f32 check: num::floor/ceil vs std over all 2^32 inputs.
+floats:
+    cargo test --release -p lumen-static --lib num -- --ignored
 
 # Line coverage, as an artifact to read -- not a threshold. A workspace
 # percentage is dominated by whether the fixtures ran, not by core quality;

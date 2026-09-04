@@ -7,6 +7,7 @@ dlclose              # libdl; docs/step4-hot-reload.md §7 says we never call it
 nm                   # binutils, cited in the binsize fixture's notes
 generic_const_exprs  # unstable rustc feature, cited as a road not taken
 size_of_set          # AccessKit's field name, mirrored by desc.rs
+libm                 # the crate M13/T13.2 declined to depend on; num.rs says why
 
 # --- documented as deliberately removed ---
 # Prose of the form "`X` is gone". Keep these: the sentence is the record of

@@ -96,6 +96,7 @@ pub mod event;
 pub mod hatch;
 pub mod hit;
 pub mod inbox;
+pub mod num;
 #[cfg(feature = "observe")]
 pub mod observe;
 pub mod ops;

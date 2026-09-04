@@ -168,10 +168,10 @@ impl<T: Widget + Default> Repeat<T> {
         if self.count == 0 || !self.extent_is_usable() {
             return (0, 0);
         }
-        let first = ((self.scroll / self.item_extent).floor().max(0.0) as usize)
+        let first = (crate::num::floor(self.scroll / self.item_extent).max(0.0) as usize)
             .min(self.count - 1);
         // saturating_add, not `+ 1`: the ceil can saturate the cast.
-        let vis = ((viewport_h / self.item_extent).ceil() as usize)
+        let vis = (crate::num::ceil(viewport_h / self.item_extent) as usize)
             .saturating_add(1)
             .min(self.count - first)
             .min(Self::MAX_WINDOW);

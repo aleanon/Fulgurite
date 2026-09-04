@@ -304,7 +304,7 @@ makes it a prerequisite rather than a free check; `just static`
 currently runs no cargo at all, so this either changes that recipe's
 character or belongs in `just check`.
 
-## T13.2 — float math without `std`
+## T13.2 — float math without `std` — **DONE 2026-09-05**
 
 **Two operations at four call sites**, not five: `.abs()` is in `core`
 (verified by compiling it under `#![no_std]`). Only `.floor()` and
@@ -339,6 +339,21 @@ returning `+0.0` — either sign-corrected or documented.
 operations that is seconds in release, and it is a strictly stronger
 gate than a property test — which is the reason to prefer the
 domain-complete implementation over the cast.
+
+**Built as `crates/lumen-static/src/num.rs`.** All 4,294,967,296 inputs
+agree with `f32::floor`/`f32::ceil` *bit for bit*, in 12.9 s release
+(`num::tests::exhaustive_agreement_with_std`, `just floats`, in
+`just check`). Three notes on what the writing settled:
+
+- The ±0.0 divergence is **sign-corrected, not documented**. Once the
+  gate compares bit patterns rather than values it is a real failure,
+  and it covers the ~2³⁰ inputs that round to a zero, so the two-line
+  `zero_like` was cheaper than the exception it would otherwise need.
+- `has_fraction` is bit math (`bits & 0x7fff_ffff < 0x4b00_0000`)
+  rather than `x.abs() < 8_388_608.0`. That makes both fns `const`,
+  and NaN and ±inf fall out of the *same* comparison — an all-ones
+  exponent compares larger than 2²³'s — instead of needing an arm.
+- Both are `pub const fn`, which the cast form could not have been.
 
 ## T13.3 — the alloc-free static path
 

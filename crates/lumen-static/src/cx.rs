@@ -129,8 +129,8 @@ impl TextMeasure for BlockMetrics {
         // Wrap by character count — enough to make wrapping *happen*, so
         // the layout model is exercised; a real shaper breaks on grapheme
         // and word boundaries.
-        let per_line = (max_w / advance).floor().max(1.0);
-        let lines = (text.len() as f32 / per_line).ceil();
+        let per_line = crate::num::floor(max_w / advance).max(1.0);
+        let lines = crate::num::ceil(text.len() as f32 / per_line);
         Size { w: max_w, h: size * lines }
     }
 }
