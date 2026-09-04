@@ -532,7 +532,7 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                     &self,
                     st: &[::lumen_static::desc::NodeState],
                     i: usize,
-                    out: &mut ::lumen_static::DisplayList,
+                    out: &mut dyn ::lumen_static::Painter,
                 ) {
                     // A container's own shadow and fill, before its
                     // children. This is what makes a card a card.
@@ -904,7 +904,7 @@ fn expand_enum(
                     &self,
                     st: &[::lumen_static::desc::NodeState],
                     i: usize,
-                    out: &mut ::lumen_static::DisplayList,
+                    out: &mut dyn ::lumen_static::Painter,
                 ) {
                     match self {
                         #( #name::#var_ident(w) => {

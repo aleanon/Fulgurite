@@ -12,7 +12,7 @@
 //! where it was.
 
 use crate::cx::LayoutCx;
-use crate::display::DisplayList;
+use crate::display::Painter;
 use crate::desc::{Constraints, NodeDesc, NodeState, Point, Size, NO_PARENT};
 use crate::hit::Hit;
 use crate::style::Style;
@@ -90,7 +90,7 @@ impl<W: Widget + Default> Node for Option<W> {
         }
     }
 
-    fn paint(&self, st: &[NodeState], i: usize, out: &mut DisplayList) {
+    fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
         if let Some(w) = self {
             w.paint(st, i, out);
         }
@@ -330,7 +330,7 @@ impl<A: Widget, B: Widget> Node for Either<A, B> {
         }
     }
 
-    fn paint(&self, st: &[NodeState], i: usize, out: &mut DisplayList) {
+    fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
         match self.showing {
             Side::A => self.a.paint(st, i + Self::A_AT, out),
             Side::B => self.b.paint(st, i + Self::B_AT, out),
@@ -541,7 +541,7 @@ impl<W: Widget> Node for List<W> {
         }
     }
 
-    fn paint(&self, st: &[NodeState], i: usize, out: &mut DisplayList) {
+    fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
         // Items live in an arena this node places; `resolve_self` can
         // size the node below their sum (a `Fixed` height), and `hit`
         // gates on that size. Clip to the same rect so paint agrees —
@@ -766,7 +766,7 @@ impl Node for Dyn {
         inner.place(at, istyle, states, 0);
     }
 
-    fn paint(&self, st: &[NodeState], i: usize, out: &mut DisplayList) {
+    fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
         // Same shape as `List`: the island's content may exceed the box
         // `resolve_self` gave it; `hit` stops at the box, so paint must.
         out.push_clip(crate::ops::rect_of(&st[i]));

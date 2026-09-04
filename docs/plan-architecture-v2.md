@@ -951,7 +951,7 @@ frame after `PointerUp` restores it".
 
 ---
 
-## M10a — The `Painter` sink — **PLANNED 2026-09-04, not started**
+## M10a — The `Painter` sink — **T10a.1–T10a.2 DONE 2026-09-04**
 
 *Split out of what was M10 on 2026-09-04, after a five-agent review of
 the plan. It is the only part of the embedded work that genuinely blocks
@@ -984,13 +984,21 @@ afterwards still resolve as inherent methods on the concrete type. That
 sentence is the reason the journal is safe, and it is worth stating
 because nothing about the signature makes it obvious.
 
-**T10a.1 — the trait and `DisplayList`'s impl.** No call site changes.
-**T10a.2 — the core widget impls** (14 in `crates/lumen-static/src`).
-**T10a.3 — the derive**, its `trybuild` `.stderr` regeneration, and the
-rustdoc that names `DisplayList` in a signature (`display.rs`'s module
-doc, `widget.rs`'s `paint`, the crate front page). `just static` catches
-identifiers that no longer *exist*; it cannot catch one that still
-exists and is now wrong in context.
+**T10a.1 — DONE.** The trait and `DisplayList`'s forwarding impl. No
+call site changed; four tests pin the properties T10a.2 relies on.
+
+**T10a.2 — DONE.** Every `paint` signature takes `&mut dyn Painter` —
+the 14 in `crates/lumen-static/src` and the derive's two, in one commit
+because a trait method and its impls must change together to compile.
+**No call site needed touching**: `&mut DisplayList` coerces at each
+one. And every widget file dropped its `DisplayList` import, which is
+the decoupling showing up as a diff.
+
+**T10a.3 — the rustdoc** that names `DisplayList` in a signature or
+describes paint as list-building. `just static` catches identifiers that
+no longer *exist*; it cannot catch one that still exists and is now
+wrong in context, which is the failure this milestone's own review
+found twice.
 
 **Three commits, not one.** M0 was the last change of this shape — one
 commit, 43 files — and a review the following day found twenty drifted
@@ -999,9 +1007,11 @@ after deletion) caused precisely by its size. AGENT.md draws the
 conclusion itself: "If a commit is big enough that the docs feel like a
 second task, that is the signal to split the commit."
 
-**Gate.** Every existing test passes unchanged — *and* `crossover` and
-`fusion` are re-run with the numbers in the commit, per cross-cutting
-rule 1. This is not ceremony: `call_child_ref` in the derive emits
+**Gate — MET.** Every existing test passes unchanged (66 suites);
+`crossover` and `fusion` re-ran within noise, with `fusion` still
+showing its ~30% margin over naive `dyn`; and the sink's own cost is
+measured at **+0.4–0.8 ns per command — 0.03% of the tally's frame
+render, 0.8% at 2 000 commands** (`docs/results-paint-sink.md`). This is not ceremony: `call_child_ref` in the derive emits
 `&dyn Node` for ordinary trees but a concrete `&self.field` under
 `#[fuse]`, so paint in a fused tree is **100% static today** and the
 sink introduces the only indirection in it. `#[fuse]`'s entire purpose

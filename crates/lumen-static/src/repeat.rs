@@ -11,7 +11,7 @@
 //! flat passes handed ops a *shared* base pointer.
 
 use crate::cx::LayoutCx;
-use crate::display::DisplayList;
+use crate::display::Painter;
 use crate::desc::{Constraints, NodeDesc, NodeState, Point, Size, NO_PARENT};
 use crate::hit::{contains, Hit, Inner};
 use crate::style::{Length, Style};
@@ -311,7 +311,7 @@ impl<T: Widget + Default + 'static> Node for Repeat<T> {
         }
     }
 
-    fn paint(&self, st: &[NodeState], i: usize, out: &mut DisplayList) {
+    fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
         // A repeater is a viewport, and its window deliberately overruns
         // it in both directions: `place` puts the first row at
         // `first * extent - scroll`, negative for any scroll off an item

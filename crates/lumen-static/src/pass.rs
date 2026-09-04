@@ -6,7 +6,7 @@
 //! `docs/results-traversal.md`.
 
 use crate::desc::{Constraints, NodeState, Point};
-use crate::display::DisplayList;
+use crate::display::Painter;
 use crate::cx::LayoutCx;
 use crate::style::Style;
 use crate::widget::Widget;
@@ -39,7 +39,6 @@ pub fn layout<W: Node + ?Sized>(
     layout_with(tree, &mut cx, style, st, limits);
 }
 
-
 /// Default styles for a tree, with no stylesheet applied — the common
 /// case in tests and simple apps.
 pub fn default_styles<W: Widget>(tree: &W) -> Vec<Style> {
@@ -58,7 +57,7 @@ pub fn measure<W: Node + ?Sized>(
     tree.layout(cx, limits, style, st, 0)
 }
 
-pub fn paint<W: Node + ?Sized>(tree: &W, st: &[NodeState], out: &mut DisplayList) {
+pub fn paint<W: Node + ?Sized>(tree: &W, st: &[NodeState], out: &mut dyn Painter) {
     tree.paint(st, 0, out);
 }
 

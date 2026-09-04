@@ -5,7 +5,7 @@
 //! (agent surface, journal, audit); traversal recurses over the `Vec`.
 
 use crate::cx::LayoutCx;
-use crate::display::DisplayList;
+use crate::display::Painter;
 use crate::desc::{Constraints, NodeDesc, NodeState, Point, Size, NO_PARENT};
 use crate::hit::{contains, Hit};
 use crate::style::Style;
@@ -126,7 +126,7 @@ impl<C: Widget + Default + 'static> Assembled<C> {
         self.layout_with(&mut cx, limits);
     }
 
-    pub fn paint(&self, out: &mut DisplayList) {
+    pub fn paint(&self, out: &mut dyn Painter) {
         // `hit` gates on `states[0]`; paint clips to it for the same
         // reason `List` and `Repeat` do (A1's scoped invariant).
         out.push_clip(crate::ops::rect_of(&self.states[0]));

@@ -20,7 +20,7 @@
 
 use crate::desc::{Constraints, NodeDesc, NodeState, Point, Size};
 use crate::cx::LayoutCx;
-use crate::display::DisplayList;
+use crate::display::Painter;
 use crate::style::Style;
 use crate::hit::Hit;
 
@@ -56,7 +56,7 @@ pub trait Node {
 
     /// Emit drawing commands. The renderer consumes the list *after*
     /// the pass, so it never appears in a widget signature.
-    fn paint(&self, st: &[NodeState], i: usize, out: &mut DisplayList);
+    fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter);
 
     /// Deepest node under `(x, y)`, or `None` if the point misses.
     fn hit(&self, st: &[NodeState], i: usize, x: f32, y: f32) -> Option<Hit>;

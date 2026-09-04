@@ -35,7 +35,7 @@
 
 use crate::cx::LayoutCx;
 use crate::desc::{NodeDesc, NodeState, NO_PARENT};
-use crate::display::{Color, DisplayList};
+use crate::display::{Color, Painter};
 use crate::event::{Event, EventCtx, Key};
 use crate::hit::Hit;
 use crate::ops::{rect_of, resolve_self};
@@ -294,7 +294,7 @@ impl<S: TextBuffer> Node for TextInput<S> {
         st[i].pos = at;
     }
 
-    fn paint(&self, st: &[NodeState], i: usize, out: &mut DisplayList) {
+    fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
         let s = &st[i];
         let r = rect_of(s);
         out.rounded_rect(r, s.bg, s.radius);

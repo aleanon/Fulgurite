@@ -50,7 +50,7 @@
 //! `crates/lumen-static-agent/tests/lint.rs` covers it now.
 
 use crate::desc::{NodeDesc, NodeState, NO_PARENT};
-use crate::display::DisplayList;
+use crate::display::Painter;
 use crate::hit::Hit;
 use crate::ops::{inner_limits, rect_of, resolve_self, Axis};
 use crate::style::{Length, Style};
@@ -205,7 +205,7 @@ impl<W: Widget> Node for ScrollView<W> {
         self.content.place(shifted, style, st, i + Self::AT);
     }
 
-    fn paint(&self, st: &[NodeState], i: usize, out: &mut DisplayList) {
+    fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
         let r = rect_of(&st[i]);
         out.rounded_rect(r, st[i].bg, st[i].radius);
         // The scoped containment invariant: content may extend past the

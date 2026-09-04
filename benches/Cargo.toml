@@ -26,6 +26,10 @@ name = "bindings"
 path = "src/bin/bindings.rs"
 
 [[bin]]
+name = "paint_sink"
+path = "src/bin/paint_sink.rs"
+
+[[bin]]
 name = "cascade"
 path = "src/bin/cascade.rs"
 

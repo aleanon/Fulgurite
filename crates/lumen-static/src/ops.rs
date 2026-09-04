@@ -19,12 +19,10 @@ use crate::desc::{Constraints, NodeDesc, NodeState, Point, Size, NO_PARENT};
 use crate::event::{EventCtx, Handlers, NodeSel};
 use crate::hit::{contains, Hit};
 use crate::cx::LayoutCx;
-use crate::display::{Color, DisplayList};
+use crate::display::{Color, Painter};
 use crate::style::{Align, Length, Style};
 use crate::text::{Dirty, Measured, TextStorage};
 use crate::widget::{Node, Widget};
-
-
 
 /// A node's absolute box, for emitting commands.
 #[inline]
@@ -53,7 +51,6 @@ pub fn hide_subtree(st: &mut [NodeState], i: usize, limits: Constraints, count: 
 pub fn rect_of(st: &NodeState) -> crate::display::Rect {
     [st.pos.x, st.pos.y, st.pos.x + st.size.w, st.pos.y + st.size.h]
 }
-
 
 /// Space consumed by gaps between `n` children.
 #[inline]
@@ -442,7 +439,7 @@ impl<S: TextStorage> Node for Label<S> {
         let boxed = Size { w: content.w + pad.horizontal(), h: content.h + pad.vertical() };
         record_painted(st, i, limits, resolve_self(limits, &style[i], boxed), &style[i])
     }
-    fn paint(&self, st: &[NodeState], i: usize, out: &mut DisplayList) {
+    fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
         let r = rect_of(&st[i]);
         out.rounded_rect(r, st[i].bg, st[i].radius);
         // Text sits inside the padding box; `layout` sized the node to
@@ -508,7 +505,7 @@ impl Node for Fixed {
         let content = Size { w: self.w, h: self.h };
         record_painted(st, i, limits, resolve_self(limits, &style[i], content), &style[i])
     }
-    fn paint(&self, st: &[NodeState], i: usize, out: &mut DisplayList) {
+    fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
         out.rect(rect_of(&st[i]), st[i].fg);
     }
     leaf_common!(Fixed, NodeDesc::RIGID);
@@ -547,7 +544,7 @@ impl Node for Spacer {
         // `resolve_self` turns that into "take the whole limit".
         record_painted(st, i, limits, resolve_self(limits, &style[i], Size::default()), &style[i])
     }
-    fn paint(&self, _st: &[NodeState], _i: usize, _out: &mut DisplayList) {
+    fn paint(&self, _st: &[NodeState], _i: usize, _out: &mut dyn Painter) {
         // A spacer is empty space; it draws nothing.
     }
     leaf_common!(Spacer, 0);
@@ -647,7 +644,7 @@ impl<S: 'static, T: TextStorage> Node for Button<S, T> {
         let content = Size { w: text.w + pad.horizontal(), h: text.h + pad.vertical() };
         record_painted(st, i, limits, resolve_self(limits, &style[i], content), &style[i])
     }
-    fn paint(&self, st: &[NodeState], i: usize, out: &mut DisplayList) {
+    fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
         let r = rect_of(&st[i]);
         out.rounded_rect(r, st[i].bg, st[i].radius);
         // Centre the *measured* line box in the button. The line box,
@@ -701,7 +698,6 @@ impl<S: 'static, T: TextStorage> Node for Button<S, T> {
         node.add_action(accesskit::Action::Click);
     }
 }
-
 
 macro_rules! no_handlers {
     (Label<S2>) => {
