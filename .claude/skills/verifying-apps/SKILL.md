@@ -68,7 +68,7 @@ python3 scripts/agent_client.py click '#inc10'
 python3 scripts/agent_client.py layout '#value'    # → value, bounds, src
 python3 scripts/agent_client.py screenshot /tmp/after.png
 python3 scripts/agent_client.py call app.perf      # timings, p50/p95 over 128 frames
-python3 scripts/ui_check.py all                    # or one of: centring edges targets contrast latency lint
+python3 scripts/ui_check.py all                    # or one of: centring edges targets contrast press latency lint
 python3 scripts/agent_client.py quit
 ```
 `Read /tmp/after.png`. `ui.screenshot` returns the exact RGBA the window
@@ -77,8 +77,9 @@ blits — no desktop screenshot tool, no unlocked session needed.
 **Methods that exist** (`crates/lumen-static-agent/src/lib.rs`):
 `ui.getTree` `ui.getLayout` `ui.resolve` `ui.probe` `ui.probeRegion`
 `ui.lint` `ui.lastChange` `ui.lastDamage` `ui.waitSettled`
-`ui.screenshot` · `input.click` `input.hover` `input.key` `input.type`
-`input.scroll` `input.invokeAction` · `app.diagnostics` `app.logs`
+`ui.screenshot` · `input.click` `input.pointerDown` `input.pointerUp`
+`input.hover` `input.key` `input.type` `input.scroll`
+`input.invokeAction` · `app.diagnostics` `app.logs`
 `app.perf` `app.quit` (the last is the window's, not the crate's).
 
 **Selectors:** `#id`, a kind name (`label`, `button`), `~text`,
@@ -144,13 +145,16 @@ than with a script.
 | `edges` | rounded corners are anti-aliased (blended pixels on the arc) | no stair-steps at 1× |
 | `targets` | pointer targets ≥ 24×24 px (44 is the comfortable figure) | WCAG 2.5.8; Apple HIG 44 pt |
 | `contrast` | text vs its background ≥ 4.5:1 (3:1 for ≥ 18.7 px bold) | WCAG 1.4.3 AA |
+| `press` | a control changes while held, and restores | every platform's HIG; the affordance people check without noticing |
 | `latency` | budgets above | Nielsen 1993; 60 Hz |
 | `lint` | the agent's ambient audit is empty (blank, truncated, collapsed, hidden-but-hit) | `crates/lumen-static-agent/src/audit.rs` |
 
-Not yet checkable, and known: **press/hover feedback** — a control
-must change while held. `NodeState` has no pressed bit yet (M9, C6 in
-`docs/plan-architecture-v2.md`). Say so in the verification notes
-rather than skipping the row silently. Beyond the script, also look at
+`press` holds the button open — `input.pointerDown`, screenshot,
+`input.pointerUp` — because `input.click` queues both halves into one
+pump and the frame it returns has already let go. That is the shape any
+"state during a gesture" check needs.
+
+Beyond the script, also look at
 the screenshot for: consistent spacing on an 4/8 px rhythm, one visual
 hierarchy (size/weight/colour agree on what matters most), no text
 truncation, no layout shift between frames that should be identical

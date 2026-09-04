@@ -91,7 +91,7 @@ impl Fixture {
 
     fn send(&mut self, ev: Event) -> bool {
         let handled =
-            pass::dispatch(&mut self.app, &self.styles, &self.states, &mut self.focus, &ev);
+            pass::dispatch(&mut self.app, &self.styles, &mut self.states, &mut self.focus, &ev);
         self.layout();
         handled
     }
@@ -201,9 +201,20 @@ fn e2_focus_follows_pointer_down_and_routes_keys() {
     f.send(Event::PointerDown { x, y });
     assert_eq!(f.focus, Some(2), "the button is focusable");
 
-    // Keys go to the focused node; the button ignores them, and with no
-    // ancestor consuming, dispatch reports unhandled.
-    assert!(!f.send(Event::Key { key: Key::Enter, down: true }));
+    // Enter on the focused node activates it (C1, 2026-09-04): a button
+    // is reachable without a pointer at all, which is what makes the
+    // agent's `input.key` and a screen reader's activation work. Before
+    // C1 `dispatch` dropped every event that was not `PointerUp`.
+    let before = f.app.clicks;
+    assert!(f.send(Event::Key { key: Key::Enter, down: true }), "Enter activates the focus");
+    assert_eq!(f.app.clicks, before + 1, "and runs the click handler exactly once");
+
+    // A key *release* is not an activation.
+    assert!(!f.send(Event::Key { key: Key::Enter, down: false }));
+    assert_eq!(f.app.clicks, before + 1);
+
+    // Another key is routed to the focused node and declined by it.
+    assert!(!f.send(Event::Key { key: Key::Tab, down: true }), "a button ignores Tab");
 
     // Clicking a non-focusable area clears focus.
     let (hx, hy) = f.center_of(1);
@@ -232,4 +243,75 @@ fn e3_inbox_carries_values_not_code_across_the_seam() {
     assert_eq!(inbox.drain(&mut app, apply), 3);
     assert_eq!(app.clicks, 6);
     assert_eq!(inbox.drain(&mut app, apply), 0, "drained");
+}
+
+// ---- C6: pressed and hovered ----------------------------------------
+
+#[test]
+fn a_button_is_pressed_while_the_pointer_is_down_on_it() {
+    let mut f = Fixture::new();
+    let (x, y) = f.center_of(2);
+    assert!(!f.states[2].pressed, "resting");
+
+    f.send(Event::PointerDown { x, y });
+    assert!(f.states[2].pressed, "held");
+    assert!(f.states[2].hovered, "and hovered");
+
+    f.send(Event::PointerUp { x, y });
+    assert!(!f.states[2].pressed, "released");
+}
+
+#[test]
+fn releasing_away_from_a_control_still_un_presses_it() {
+    // The reason `PointerUp` clears every node rather than the hit one:
+    // press a button, drag off it, let go. A control that stays lit
+    // after that is the classic stuck-button bug.
+    let mut f = Fixture::new();
+    let (x, y) = f.center_of(2);
+    f.send(Event::PointerDown { x, y });
+    assert!(f.states[2].pressed);
+
+    f.send(Event::PointerUp { x: 5000.0, y: 5000.0 });
+    assert!(!f.states[2].pressed, "released off the control");
+}
+
+#[test]
+fn hover_follows_the_pointer_and_only_one_node_holds_it() {
+    let mut f = Fixture::new();
+    let (bx, by) = f.center_of(2);
+    f.send(Event::PointerMove { x: bx, y: by });
+    assert!(f.states[2].hovered);
+    assert_eq!(f.states.iter().filter(|s| s.hovered).count(), 1, "exactly one");
+
+    f.send(Event::PointerMove { x: 5000.0, y: 5000.0 });
+    assert_eq!(f.states.iter().filter(|s| s.hovered).count(), 0, "off the tree, nothing hovered");
+}
+
+#[test]
+fn the_pressed_shade_reaches_the_paint_attributes() {
+    // C6's point: `paint` has no `&[Style]`, so the affordance has to be
+    // resolved into `NodeState` during layout — the same A2-revised
+    // mechanism the colours use.
+    let mut f = Fixture::new();
+    f.layout();
+    let resting = f.states[2].bg;
+
+    let (x, y) = f.center_of(2);
+    f.send(Event::PointerDown { x, y });
+    f.layout();
+    let pressed = f.states[2].bg;
+    assert_ne!(pressed, resting, "a held button paints differently");
+
+    // Releasing *on* the control leaves it hovered, which is a third
+    // shade — not the resting one. Pressed wins over hovered while held.
+    f.send(Event::PointerUp { x, y });
+    f.layout();
+    let hovered = f.states[2].bg;
+    assert_ne!(hovered, resting, "still under the pointer");
+    assert_ne!(hovered, pressed, "but no longer held");
+
+    // Off the control entirely: back to rest.
+    f.send(Event::PointerMove { x: 5000.0, y: 5000.0 });
+    f.layout();
+    assert_eq!(f.states[2].bg, resting, "and goes back");
 }

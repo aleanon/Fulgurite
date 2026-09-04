@@ -254,7 +254,17 @@ pub fn record_painted(
     style: &Style,
 ) -> Size {
     st[i].fg = style.color;
-    st[i].bg = style.background;
+    // C6: the pointer affordance is resolved here, with the rest of the
+    // paint attributes, so `paint` — which has no `&[Style]` — needs no
+    // second array and no per-frame cascade. Pressed wins over hovered:
+    // a control under a held pointer is pressed, not merely hovered.
+    st[i].bg = if st[i].pressed && style.pressed_dim > 0.0 {
+        dim(style.background, style.pressed_dim)
+    } else if st[i].hovered && style.hover_dim > 0.0 {
+        dim(style.background, style.hover_dim)
+    } else {
+        style.background
+    };
     st[i].radius = style.radius;
     st[i].font_size = style.font_size;
     st[i].font_weight = style.font_weight;
@@ -266,6 +276,18 @@ pub fn record_painted(
         style.padding.bottom,
     );
     record(st, i, limits, size)
+}
+
+/// `c` darkened by `f` (0.0–1.0), alpha untouched.
+///
+/// Multiplicative rather than a fixed subtraction so the affordance
+/// scales with the colour: 12% off a near-black surface is a shade, 12%
+/// off a bright accent is a shade, and neither clips.
+#[inline]
+fn dim(c: crate::display::Color, f: f32) -> crate::display::Color {
+    let k = 1.0 - f.clamp(0.0, 1.0);
+    let ch = |v: u8| (v as f32 * k) as u8;
+    crate::display::Color(ch(c.0), ch(c.1), ch(c.2), c.3)
 }
 
 // ---- leaves ----------------------------------------------------------------
@@ -580,6 +602,11 @@ impl<S: 'static, T: TextStorage> Node for Button<S, T> {
     fn defaults(&self) -> Style {
         Style {
             padding: crate::style::Edges { left: 14.0, right: 14.0, top: 9.0, bottom: 9.0 },
+            // A control that does not change while held reads as broken,
+            // and it is the one GUI-theory check `scripts/ui_check.py`
+            // could not make before C6.
+            pressed_dim: 0.18,
+            hover_dim: 0.07,
             background: Color(226, 232, 240, 255),
             color: Color(15, 23, 42, 255),
             radius: 8.0,

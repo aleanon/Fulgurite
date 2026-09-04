@@ -79,11 +79,11 @@ pub fn hit_test<W: Node + ?Sized>(
 pub fn dispatch<S: crate::event::App>(
     state: &mut S,
     style: &[Style],
-    st: &[NodeState],
+    st: &mut [NodeState],
     focus: &mut Option<u32>,
     ev: &crate::event::Event,
 ) -> bool {
-    use crate::event::{Event, EventCtx, Handlers, NodeSel};
+    use crate::event::{Event, EventCtx, Handlers, Key, NodeSel};
     use crate::widget::Widget;
 
     let table = <S::Tree as Widget>::SUB_TABLE;
@@ -94,7 +94,30 @@ pub fn dispatch<S: crate::event::App>(
 
     let (start, mut ctx, inner) = match ev.position() {
         Some(p) => {
-            let Some(h) = state.tree().hit(st, 0, p.x, p.y) else { return false };
+            let hit = state.tree().hit(st, 0, p.x, p.y);
+
+            // C6: pointer state, before anything can return early.
+            // Hover follows the pointer; press latches on down and
+            // releases on up *wherever* the pointer then is — a button
+            // must un-press when you drag off it and let go, which is
+            // why the release clears every node rather than the hit one.
+            match ev {
+                Event::PointerMove { .. } => set_hovered(st, hit.map(|h| h.node)),
+                Event::PointerDown { .. } => {
+                    set_hovered(st, hit.map(|h| h.node));
+                    if let Some(h) = hit {
+                        st[h.node as usize].pressed = true;
+                    }
+                }
+                Event::PointerUp { .. } => {
+                    for n in st.iter_mut() {
+                        n.pressed = false;
+                    }
+                }
+                _ => {}
+            }
+
+            let Some(h) = hit else { return false };
             if matches!(ev, Event::PointerDown { .. }) {
                 // Focus moves to the deepest focusable node on the hit
                 // chain, or clears — what clicking the background does.
@@ -113,6 +136,7 @@ pub fn dispatch<S: crate::event::App>(
                 *focus = f;
             }
             let ctx = EventCtx {
+                event: *ev,
                 node: h.node,
                 row: h.inner.map(|x| x.row),
                 inner: h.inner.map_or(0, |x| x.node),
@@ -126,26 +150,77 @@ pub fn dispatch<S: crate::event::App>(
             // used: `Host.focus` is public, and a hot reload can shrink
             // the tree under a focus set against the old one. `table[i]`
             // below would then panic on a safe API.
-            //
-            // This is currently unreachable, and only because the
-            // `PointerUp` gate under this match drops every keyboard
-            // event before the loop runs. That gate is M9's to remove;
-            // whoever removes it must not also have to rediscover this.
             // `docs/plan-review-fixes.md` F1.8.
-            Some(f) if (f as usize) < table.len() => (f as usize, EventCtx::at(f), None),
+            Some(f) if (f as usize) < table.len() => {
+                (f as usize, EventCtx::for_event(f, *ev), None)
+            }
             Some(_) => {
                 *focus = None;
                 return false;
             }
+            // C1: a keystroke with nothing focused is not an error, it
+            // is a keystroke nobody wanted. Reported as unhandled so a
+            // shell can use it for an accelerator.
             None => return false,
         },
     };
 
-    // Handlers are *click* handlers: activation is pointer-up, matching
-    // the widget-level policy the old per-kind event op encoded. Focus
-    // still moves on pointer-down above. Richer routing (key activation,
-    // hover, drag) extends `Handlers` when those widgets exist.
-    if !matches!(ev, Event::PointerUp { .. }) {
+    // `PointerMove` is deliberately not routed: it fires continuously,
+    // and its only consumer is the hover state set above, which needs no
+    // handler. Routing it would walk the ancestor chain on every mouse
+    // motion looking for something that is almost never there.
+    if matches!(ev, Event::PointerMove { .. }) {
+        return false;
+    }
+
+    // Pass 1 — C3: the widget itself, deepest first.
+    //
+    // Until 2026-09-04 `dispatch` returned here for everything but
+    // `PointerUp`, so `input.type` and `input.scroll` were enqueued,
+    // drained and dropped: finished-but-unreachable, the failure mode
+    // `crates/lumen-static-agent/src/audit.rs` exists to catch. A
+    // scroller consumes a wheel here; a text field will consume a
+    // keystroke. The `bool` is also C4's scroll chaining — a scroller at
+    // its end declines and its parent gets the event.
+    // The row detail belongs to the node actually hit, and *both* walks
+    // start there — so pass 1 must not leave the ctx it cleared for the
+    // ancestors behind for pass 2. Saved and restored rather than
+    // rebuilt: a fresh ctx would have to re-derive `local`, which only
+    // the hit knows.
+    let (row0, inner0) = (ctx.row, ctx.inner);
+    {
+        let mut i = start;
+        loop {
+            ctx.node = i as u32;
+            if i != start {
+                ctx.row = None;
+                ctx.inner = 0;
+            }
+            if state.tree_mut().node_mut(i).on_event(ev, &ctx) {
+                return true;
+            }
+            if table[i].parent == crate::desc::NO_PARENT {
+                break;
+            }
+            i = table[i].parent as usize;
+        }
+    }
+    ctx.row = row0;
+    ctx.inner = inner0;
+
+    // Pass 2 — activation: the application's handler.
+    //
+    // These stay *click* handlers, which is what every one written so
+    // far assumes: `|c, _| c.count += 1` ignores the ctx entirely, so
+    // routing arbitrary keys to it would make every keystroke press
+    // every button. Enter and Space on the focused node activate too —
+    // keyboard activation, which is what makes a `Button` reachable
+    // without a pointer at all.
+    let activates = matches!(
+        ev,
+        Event::PointerUp { .. } | Event::Key { key: Key::Enter, down: true }
+    );
+    if !activates {
         return false;
     }
 
@@ -169,5 +244,19 @@ pub fn dispatch<S: crate::event::App>(
             return false;
         }
         i = table[i].parent as usize;
+    }
+}
+
+/// Mark `node` hovered and nothing else.
+///
+/// Every node, not just the previously-hovered one: a frame may have
+/// changed the tree under us, and a stale bit is a control that stays
+/// lit after the pointer has left it.
+fn set_hovered(st: &mut [NodeState], node: Option<u32>) {
+    for n in st.iter_mut() {
+        n.hovered = false;
+    }
+    if let Some(i) = node {
+        st[i as usize].hovered = true;
     }
 }

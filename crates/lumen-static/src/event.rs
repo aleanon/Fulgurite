@@ -57,6 +57,14 @@ impl Event {
 /// reload (`docs/events-decision.md`).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct EventCtx {
+    /// What happened (C2).
+    ///
+    /// A handler is one `fn` per node and every event now reaches it —
+    /// keys, text and scroll as well as clicks (C1) — so it has to be
+    /// able to tell them apart. The ctx already carries data *derived*
+    /// from the event (`pos`, `local`, `row`); carrying the event itself
+    /// is one field and removes the guessing.
+    pub event: Event,
     /// Main-table index of the node that received the event.
     pub node: u32,
     /// For virtualized content: which row. `None` for ordinary nodes.
@@ -75,7 +83,13 @@ pub struct EventCtx {
 
 impl EventCtx {
     pub fn at(node: u32) -> Self {
+        EventCtx::for_event(node, Event::PointerUp { x: 0.0, y: 0.0 })
+    }
+
+    /// The ctx a non-pointer event produces at `node`.
+    pub fn for_event(node: u32, event: Event) -> Self {
         EventCtx {
+            event,
             node,
             row: None,
             inner: 0,

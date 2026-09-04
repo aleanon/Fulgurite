@@ -22,6 +22,8 @@ CLI use:
     agent_client.py tree
     agent_client.py layout '<selector>'
     agent_client.py click '<selector>'
+    agent_client.py press '<selector>'    # pointer down, held
+    agent_client.py release '<selector>'
     agent_client.py type '<text>'
     agent_client.py key '<name>'          # Enter, Escape, Up, ...
     agent_client.py screenshot <out.png>
@@ -94,6 +96,13 @@ class AgentClient:
     def click(self, selector: str):
         return self.rpc("input.click", selector=selector)
 
+    def press(self, selector: str):
+        """Pointer down, held. Pair with `release`."""
+        return self.rpc("input.pointerDown", selector=selector)
+
+    def release(self, selector: str):
+        return self.rpc("input.pointerUp", selector=selector)
+
     def type(self, text: str):
         return self.rpc("input.type", text=text)
 
@@ -128,7 +137,7 @@ def main(argv: list[str]) -> int:
     sub.add_parser("tree")
     sub.add_parser("lint")
     sub.add_parser("quit")
-    for name in ("layout", "click"):
+    for name in ("layout", "click", "press", "release"):
         s = sub.add_parser(name)
         s.add_argument("selector")
     t = sub.add_parser("type")
@@ -152,6 +161,10 @@ def main(argv: list[str]) -> int:
         print(json.dumps(cl.layout(a.selector)))
     elif a.cmd == "click":
         print(json.dumps(cl.click(a.selector)))
+    elif a.cmd == "press":
+        print(json.dumps(cl.press(a.selector)))
+    elif a.cmd == "release":
+        print(json.dumps(cl.release(a.selector)))
     elif a.cmd == "type":
         print(json.dumps(cl.type(a.text)))
     elif a.cmd == "key":

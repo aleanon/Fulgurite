@@ -307,6 +307,21 @@ impl Agent {
                 host.enqueue(Event::PointerUp { x, y });
                 Ok(json!({ "frame": host.pump(), "at": [x, y] }))
             }
+            // A press held open, and its release — the two halves of a
+            // click, separately. Without them an agent cannot observe a
+            // pressed control at all: `input.click` queues down and up
+            // into the same pump, so the frame it returns has already
+            // released. `ui_check.py press` is the caller.
+            "input.pointerDown" => {
+                let (x, y) = self.point_param(host, params)?;
+                host.enqueue(Event::PointerDown { x, y });
+                Ok(json!({ "frame": host.pump(), "at": [x, y] }))
+            }
+            "input.pointerUp" => {
+                let (x, y) = self.point_param(host, params)?;
+                host.enqueue(Event::PointerUp { x, y });
+                Ok(json!({ "frame": host.pump(), "at": [x, y] }))
+            }
             "input.hover" => {
                 let (x, y) = self.point_param(host, params)?;
                 host.enqueue(Event::PointerMove { x, y });

@@ -90,7 +90,7 @@ impl AgentHost for Host {
 
     fn pump(&mut self) -> u64 {
         while let Some(ev) = self.queue.pop() {
-            pass::dispatch(&mut self.app, &self.styles, &self.states, &mut self.focus, &ev);
+            pass::dispatch(&mut self.app, &self.styles, &mut self.states, &mut self.focus, &ev);
         }
         self.layout();
         self.frame += 1;

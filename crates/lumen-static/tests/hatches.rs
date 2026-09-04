@@ -179,7 +179,7 @@ fn clicks_route_into_list_items_with_the_row_attached() {
         lumen_static::Event::PointerDown { x, y },
         lumen_static::Event::PointerUp { x, y },
     ] {
-        pass::dispatch(&mut app, &sty, &st, &mut focus, &ev);
+        pass::dispatch(&mut app, &sty, &mut st, &mut focus, &ev);
     }
     assert_eq!(app.picked, vec![2], "the row is an argument, never a capture");
 }

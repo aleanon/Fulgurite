@@ -190,6 +190,17 @@ pub struct NodeState {
     /// Resolved padding as (left, top, right, bottom), so `paint` can
     /// inset content without `&[Style]`.
     pub pad: (f32, f32, f32, f32),
+    /// The pointer is down on this node (C6).
+    ///
+    /// Set by `dispatch`, read by `record_painted` when it resolves the
+    /// paint attributes, so a pressed control looks different without a
+    /// second style array or a per-frame cascade. It lives in the state
+    /// array rather than in `Style` because it is per *node* and per
+    /// frame, where a style row is shared by every instance of a
+    /// template.
+    pub pressed: bool,
+    /// The pointer is over this node (C6).
+    pub hovered: bool,
 }
 
 /// Scalar facts a kind knows about itself that geometry cannot show —

@@ -426,21 +426,21 @@ agent's `input.type` and `input.scroll` are enqueued, drained, and
 dropped — finished-but-unreachable, the failure mode `audit.rs` says was
 adopted from Lumen's review rather than re-earned.
 
-### C1. Route `Key`, `Text` and `Scroll` — **DECIDED 2026-09-04, recommendation adopted**
+### C1. Route `Key`, `Text` and `Scroll` — **DECIDED 2026-09-04, recommendation adopted**, **BUILT 2026-09-04**
 
 `dispatch` must deliver them. To what, is C3. **Recommendation:**
 keyboard and text to the focused node, walking ancestors as pointer
 events do; scroll to the hit node, walking ancestors (C4 decides how the
 walk ends).
 
-### C2. Event payload — **DECIDED 2026-09-04, recommendation adopted**
+### C2. Event payload — **DECIDED 2026-09-04, recommendation adopted**, **BUILT 2026-09-04**
 
 `EventCtx { node, row, inner, pos, local }` has nowhere to put
 `Event::Text { ch }` or `Scroll { dy }`. A handler cannot learn what
 happened. **Recommendation:** `EventCtx.event: Event` — the ctx already
 carries derived data; carrying the source is one field.
 
-### C3. How does a handler reach widget state? — **DECIDED 2026-09-04, recommendation adopted**: (ii) `Node::on_event`
+### C3. How does a handler reach widget state? — **DECIDED 2026-09-04, recommendation adopted**: (ii) `Node::on_event`, **BUILT 2026-09-04**
 
 Handlers are `fn(&mut S, &EventCtx)` with `S: App`. B1 puts the buffer in
 the widget; A3 puts the scroll offset there. From `&mut S`, a widget is
@@ -459,7 +459,7 @@ reachable generically only as `&mut dyn Node` — no editing methods, no
 library exists. Cost it as its own milestone task, not as part of
 "text input".
 
-### C4. Scroll chaining — **DECIDED 2026-09-04, recommendation adopted**
+### C4. Scroll chaining — **DECIDED 2026-09-04, recommendation adopted**, **BUILT 2026-09-04** — it fell out of C3's `bool` with no separate mechanism
 
 The ancestor walk stops at the first node that *has* a handler, and
 handlers return `()`. Nested scrollers need "at my end, take it". Adding

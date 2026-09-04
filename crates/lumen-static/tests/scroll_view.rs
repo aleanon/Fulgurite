@@ -203,3 +203,75 @@ fn the_repeaters_f32_scroll_ceiling_has_a_number() {
         "an offset one row past {last} must be representable"
     );
 }
+
+// ---- C3/C4: the scroller consumes the wheel, and chains -------------
+
+use lumen_static::event::Event;
+
+#[derive(lumen_static::App, Default)]
+struct Page {
+    #[tree]
+    ui: ScrollView<Tall>,
+}
+
+fn page() -> Page {
+    let mut p = Page::default();
+    for f in [&mut p.ui.content.a, &mut p.ui.content.b, &mut p.ui.content.c, &mut p.ui.content.d] {
+        f.w = 50.0;
+        f.h = 60.0;
+    }
+    p
+}
+
+fn wheel(p: &mut Page, st: &mut [NodeState], dy: f32) -> bool {
+    let sty = pass::default_styles(p.ui_ref());
+    pass::layout(&mut p.ui, &sty, st, VIEW);
+    let mut focus = None;
+    pass::dispatch(p, &sty, st, &mut focus, &Event::Scroll { x: 10.0, y: 10.0, dy })
+}
+
+impl Page {
+    fn ui_ref(&self) -> &ScrollView<Tall> {
+        &self.ui
+    }
+}
+
+#[test]
+fn a_wheel_event_scrolls_the_region_it_lands_in() {
+    // C3: before this, `input.scroll` was enqueued, drained and dropped
+    // — the event vocabulary existed and nothing consumed it.
+    let mut p = page();
+    let mut st = vec![NodeState::default(); <ScrollView<Tall> as Widget>::NODE_COUNT];
+    assert!(wheel(&mut p, &mut st, -20.0), "the scroller consumed the wheel");
+    assert_eq!(p.ui.scroll, 20.0);
+    assert!(wheel(&mut p, &mut st, -20.0));
+    assert_eq!(p.ui.scroll, 40.0);
+}
+
+#[test]
+fn a_scroller_at_its_end_declines_so_a_parent_can_chain() {
+    // C4. The `bool` from `on_event` is the whole mechanism: at the end
+    // of travel the scroller returns false and `dispatch` keeps walking
+    // up. Without it, an inner list at its bottom would swallow the rest
+    // of the gesture and the page would not move.
+    let mut p = page();
+    let mut st = vec![NodeState::default(); <ScrollView<Tall> as Widget>::NODE_COUNT];
+
+    assert!(!wheel(&mut p, &mut st, 20.0), "already at the top: declined");
+    assert_eq!(p.ui.scroll, 0.0);
+
+    // Drive to the bottom, then past it.
+    for _ in 0..10 {
+        wheel(&mut p, &mut st, -50.0);
+    }
+    assert_eq!(p.ui.scroll, 140.0, "clamped to the overflow");
+    assert!(!wheel(&mut p, &mut st, -50.0), "at the bottom: declined, so a parent gets it");
+}
+
+#[test]
+fn a_wheel_over_content_that_fits_is_declined() {
+    let mut p = Page::default();
+    p.ui.content.a.h = 10.0;
+    let mut st = vec![NodeState::default(); <ScrollView<Tall> as Widget>::NODE_COUNT];
+    assert!(!wheel(&mut p, &mut st, -50.0), "nothing to scroll, nothing consumed");
+}

@@ -102,6 +102,18 @@ pub struct Style {
     pub font_weight: f32,
     /// Drop shadow spread in pixels; 0 is none.
     pub shadow: f32,
+    /// How much darker this node's background goes while the pointer is
+    /// down on it, 0.0–1.0 (C6). 0 is no feedback.
+    ///
+    /// A scalar rather than a whole second `Patch` per state: pressed
+    /// and hovered affordances are almost always a shade of the resting
+    /// colour, and a `Style` is stored per node — doubling its size to
+    /// express the rare case would cost every node in every tree. A
+    /// control needing more than a shade reads `NodeState::pressed` in
+    /// its own `paint`.
+    pub pressed_dim: f32,
+    /// The same while the pointer is merely over it.
+    pub hover_dim: f32,
     pub align: Align,
     /// Whether this node and everything under it participates in the
     /// frame.
@@ -133,6 +145,8 @@ impl Default for Style {
             font_size: 16.0,
             font_weight: 400.0,
             shadow: 0.0,
+            pressed_dim: 0.0,
+            hover_dim: 0.0,
             align: Align::Start,
             visible: true,
         }
@@ -196,6 +210,8 @@ pub struct Patch {
     pub font_size: Option<f32>,
     pub font_weight: Option<f32>,
     pub shadow: Option<f32>,
+    pub pressed_dim: Option<f32>,
+    pub hover_dim: Option<f32>,
 }
 
 impl Patch {
@@ -213,6 +229,8 @@ impl Patch {
             font_size: None,
             font_weight: None,
             shadow: None,
+            pressed_dim: None,
+            hover_dim: None,
         }
     }
 
@@ -271,6 +289,18 @@ impl Patch {
         self
     }
 
+    /// How much darker the background goes while pressed (0.0–1.0).
+    pub const fn pressed_dim(mut self, v: f32) -> Self {
+        self.pressed_dim = Some(v);
+        self
+    }
+
+    /// The same while hovered.
+    pub const fn hover_dim(mut self, v: f32) -> Self {
+        self.hover_dim = Some(v);
+        self
+    }
+
     #[inline]
     fn apply_to(&self, s: &mut Style) {
         if let Some(v) = self.width {
@@ -305,6 +335,12 @@ impl Patch {
         }
         if let Some(v) = self.font_weight {
             s.font_weight = v;
+        }
+        if let Some(v) = self.pressed_dim {
+            s.pressed_dim = v;
+        }
+        if let Some(v) = self.hover_dim {
+            s.hover_dim = v;
         }
         if let Some(v) = self.shadow {
             s.shadow = v;

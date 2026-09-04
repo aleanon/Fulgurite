@@ -11,6 +11,7 @@ from `app.perf`. Stdlib + Pillow (screenshot decoding only).
     ui_check.py edges              # rounded corners are anti-aliased
     ui_check.py targets            # pointer targets >= 24x24 px (WCAG 2.5.8)
     ui_check.py contrast           # text vs its background >= 4.5:1 (WCAG AA)
+    ui_check.py press              # a control changes while held (C6)
     ui_check.py latency [selector] # click -> presented <= 100 ms; frame <= 16 ms
     ui_check.py lint               # the agent's own ambient audit is empty
 
@@ -224,6 +225,37 @@ def check_latency(c: AgentClient, selector: str = "#inc") -> list[str]:
     return fails
 
 
+def check_press(c: AgentClient) -> list[str]:
+    """A control must change while it is held (C6).
+
+    Held, not clicked: `input.click` queues the press and the release
+    into one pump, so the frame it returns has already let go. The two
+    halves go in separately and the screenshot is taken between them.
+    """
+    fails = []
+    for n in nodes(c, "Button"):
+        wid = n.get("wid", "?")
+        box = ibox(n["bounds"])
+        rest = screenshot(c)
+        c.press(f"#{wid}")
+        held = screenshot(c)
+        c.release(f"#{wid}")
+        back = screenshot(c)
+
+        rest_bg = dominant(rest, box)
+        held_bg = dominant(held, box)
+        back_bg = dominant(back, box)
+        changed = dist(rest_bg, held_bg) > 8
+        restored = dist(rest_bg, back_bg) <= 8 or dist(held_bg, back_bg) > 8
+        tag = "ok " if changed and restored else "FAIL"
+        print(f"  {tag} press    #{wid:8} rest={rest_bg} held={held_bg} after={back_bg}")
+        if not changed:
+            fails.append(f"#{wid}: no visible change while held")
+        elif not restored:
+            fails.append(f"#{wid}: stayed pressed after release")
+    return fails
+
+
 def check_lint(c: AgentClient) -> list[str]:
     r = c.lint()
     findings = r.get("findings", r) if isinstance(r, dict) else r
@@ -237,6 +269,7 @@ CHECKS = {
     "edges": check_edges,
     "targets": check_targets,
     "contrast": check_contrast,
+    "press": check_press,
     "latency": check_latency,
     "lint": check_lint,
 }

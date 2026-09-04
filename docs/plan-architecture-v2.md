@@ -855,7 +855,45 @@ variant).
 
 ---
 
-## M9 — Input routing and text input — **PLANNED, not started**
+## M9 — Input routing and text input — **C1–C4, C6 DONE 2026-09-04**
+
+The routing layer both halves depend on exists now.
+
+- **C1/C2 — every event routes.** `dispatch` returned for anything but
+  `PointerUp`, so `input.type` and `input.scroll` were enqueued, drained
+  and dropped. It now runs two passes over the ancestor chain:
+  widget-level (`Node::on_event`), then application activation.
+  `EventCtx::event` carries what happened.
+- **C3 — `Node::on_event(&mut self, ev, cx) -> bool`.** The seam a
+  widget edits *itself* through. `Handlers` carries the application's
+  `fn(&mut S, &EventCtx)` and cannot reach widget state, because from
+  `&mut S` a widget is only reachable as `&mut dyn Node` — which is why
+  a scroller could not consume a wheel however well events were routed.
+- **C4 — chaining falls out of C3's `bool`.** A scroller at the end of
+  its travel declines and `dispatch` keeps walking up, which is the
+  whole of "nested scrollers, at my end take it". No separate mechanism.
+- **C6 — pressed and hovered.** `NodeState` carries both; `dispatch`
+  sets them; `record_painted` resolves `Style::pressed_dim`/`hover_dim`
+  into the painted background, the same A2-revised mechanism the colours
+  use. `PointerUp` clears the bit on *every* node, so a press dragged
+  off and released does not stay lit. `scripts/ui_check.py press` checks
+  it live, which closes the one GUI-theory rule that was previously
+  unverifiable (`docs/results-frame-cost.md`).
+
+**Two design points worth keeping.** Activation stayed pointer-up (plus
+**Enter on the focused node**, which is what makes a `Button` reachable
+without a pointer): every handler written so far is `|c, _| c.count +=
+1` and ignores the ctx, so routing arbitrary keys to `Handlers` would
+have made every keystroke press every button. And `PointerMove` is
+deliberately not routed — it fires continuously and its only consumer is
+the hover bit, so routing it would walk the chain on every mouse motion
+looking for something that is almost never there.
+
+**Remaining: C5 (focus as a `NodeSel`), B9–B11, and the text field.**
+
+Original plan:
+
+
 
 Cluster C plus Cluster B of the decisions doc, every question decided
 (C1–C5 and B9–B11 settled 2026-09-04 on their recommendations). Split

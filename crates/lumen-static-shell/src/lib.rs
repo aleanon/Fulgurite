@@ -142,7 +142,13 @@ impl<A: App, R: Retention> Host<A, R> {
     pub fn pump_with(&mut self, metrics: &mut dyn TextMeasure) -> bool {
         let mut handled = false;
         while let Some(ev) = self.queue.pop() {
-            handled |= pass::dispatch(&mut self.app, &self.styles, &self.states, &mut self.focus, &ev);
+            handled |= pass::dispatch(
+                &mut self.app,
+                &self.styles,
+                &mut self.states,
+                &mut self.focus,
+                &ev,
+            );
         }
 
         // Derived presentation is refreshed here, between input and

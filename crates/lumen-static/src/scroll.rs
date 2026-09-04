@@ -66,6 +66,13 @@ pub struct ScrollView<W: Widget> {
     /// Which way it scrolls. Vertical is the default and the common
     /// case; the cross axis is not scrolled, it is fitted.
     pub axis: Axis,
+    /// How far the content exceeded the viewport at the last layout.
+    ///
+    /// Kept because `on_event` has no state array and must still know
+    /// whether it is at an end — which is what decides chaining. Not
+    /// `pub`: it is a cache of the last frame, and a caller that sets it
+    /// is lying to the chaining rule.
+    measured_overflow: f32,
 }
 
 impl<W: Widget + Default> Default for ScrollView<W> {
@@ -76,12 +83,12 @@ impl<W: Widget + Default> Default for ScrollView<W> {
 
 impl<W: Widget> ScrollView<W> {
     pub fn new(content: W) -> Self {
-        ScrollView { content, scroll: 0.0, axis: Axis::Column }
+        ScrollView { content, scroll: 0.0, axis: Axis::Column, measured_overflow: 0.0 }
     }
 
     /// A horizontal scroller.
     pub fn horizontal(content: W) -> Self {
-        ScrollView { content, scroll: 0.0, axis: Axis::Row }
+        ScrollView { content, scroll: 0.0, axis: Axis::Row, measured_overflow: 0.0 }
     }
 
     /// Content index, relative to this node.
@@ -181,6 +188,7 @@ impl<W: Widget> Node for ScrollView<W> {
         // A6: clamp here, because this is the first moment the content's
         // extent is known.
         let over = (self.axis.main(content) - self.axis.main(viewport)).max(0.0);
+        self.measured_overflow = over;
         self.scroll = if self.scroll.is_finite() { self.scroll.clamp(0.0, over) } else { 0.0 };
 
         crate::ops::record_painted(st, i, limits, size, &me)
@@ -221,6 +229,33 @@ impl<W: Widget> Node for ScrollView<W> {
             inner: None,
             local: Point { x: x - st[i].pos.x, y: y - st[i].pos.y },
         }))
+    }
+
+    /// Consume a wheel event, or decline it so a parent scroller gets
+    /// it (C3, and C4's chaining).
+    ///
+    /// Declining at the end of travel is the whole of scroll chaining:
+    /// an inner list scrolled to its bottom hands the rest of the
+    /// gesture to the page, which is what every platform does and what
+    /// people notice immediately when it is missing. `dispatch` walks
+    /// the chain and stops at the first `true`, so nothing else is
+    /// needed for it.
+    ///
+    /// Uses the overflow `layout` measured, not the state array: an
+    /// event handler has no `&[NodeState]`, and the last frame's extent
+    /// is the right answer anyway — it is the frame the user is looking
+    /// at while they turn the wheel.
+    fn on_event(&mut self, ev: &crate::event::Event, _cx: &crate::event::EventCtx) -> bool {
+        let crate::event::Event::Scroll { dy, .. } = ev else { return false };
+        // Wheel-up scrolls content down: the offset moves against `dy`.
+        let want = (self.scroll - dy).clamp(0.0, self.measured_overflow);
+        if want == self.scroll {
+            // At an end, or nothing to scroll: decline, and the parent
+            // gets the rest of the gesture.
+            return false;
+        }
+        self.scroll = want;
+        true
     }
 
     fn node(&self, i: usize) -> &dyn Node {

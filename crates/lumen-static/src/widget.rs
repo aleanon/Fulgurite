@@ -126,6 +126,30 @@ pub trait Node {
     /// The default *is* `layout`, which is right for every widget that
     /// has nothing to cache. `Label` overrides it.
     /// `docs/plan-review-fixes.md` F2.1.
+    /// Handle an event addressed to this node, returning whether it was
+    /// consumed (C3, C4 of `docs/text-and-scrolling-decisions.md`).
+    ///
+    /// The seam a widget edits *itself* through. `Handlers` carries the
+    /// application's `fn(&mut S, &EventCtx)` — the click that changes
+    /// app state — and cannot reach widget state, because from `&mut S`
+    /// a widget is only reachable as `&mut dyn Node`. That is why a
+    /// scroller could not consume a wheel event and a text field could
+    /// not accept a keystroke, however well the events were routed.
+    ///
+    /// `dispatch` offers the event to each node on the chain, deepest
+    /// first, and stops at the first `true`. **The `bool` is what makes
+    /// scroll chaining work** (C4): a scroller at its end returns
+    /// `false` and the event continues to its parent, which is what
+    /// "nested scrollers, at my end take it" means. Returning `true`
+    /// from a node that did nothing silently swallows input.
+    ///
+    /// Runs *before* the application's activation handler, so a widget
+    /// may claim a key the app would otherwise treat as a click.
+    fn on_event(&mut self, ev: &crate::event::Event, cx: &crate::event::EventCtx) -> bool {
+        let _ = (ev, cx);
+        false
+    }
+
     /// Whether this node derives how much of its content to materialize
     /// from the constraints it is given.
     ///
