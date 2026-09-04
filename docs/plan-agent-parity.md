@@ -304,6 +304,42 @@ to "pressed" instead of a guess about the stylesheet.
 `ui.getStyles` (the unresolved rules) stays unbuilt: the resolved answer
 is the one every question so far has actually been about.
 
+### P7 — the gap `app.setValue` left — **DONE 2026-09-04**
+
+Declining `app.setValue` (below) was right about the mechanism and
+incomplete about the requirement. "Put this exact value in this field"
+is a real agent operation, and refusing the method without supplying
+another way left it unmet. **Measured before this shipped: 23 RPCs to
+replace a 20-character value** — click, `End`, one `Backspace` per
+character, then the text — and the agent had to read the old value first
+to know how many backspaces to send, so it was wrong if the value had
+changed underneath it. A second consequence was worse: a control
+scrolled out of its viewport **could not be reached at all**, because a
+selector resolves to the node's centre and a centre outside the viewport
+is a point the hit test correctly rejects.
+
+Both are closed by verbs that go **through the queue**, so a session
+still replays:
+
+- **`input.fill { selector, text }`** — focus, `End`, clear, type. It
+  refuses rather than typing when the target is not where a click would
+  land, because a fill that misses sends a run of backspaces to whatever
+  *does* hold focus: destructive and silent. It then verifies by
+  **reading the value back**, not by asking whether the node looks
+  editable — a `Label` is not, a `Button` is focusable and is not
+  either, and a field may filter what it accepts. That check exists
+  because the first version reported `cleared: 1, chars: 3` for a fill
+  into a `Label` in the live window and changed nothing.
+- **`input.scrollIntoView { selector }`** — walks the enclosing scroll
+  regions nearest-first, enqueuing one real wheel gesture per step and
+  re-laying-out between them (a scroll invalidates every position below
+  it, so a plan computed up front would be computed against stale
+  geometry). Bounded, so a target that can never be revealed ends the
+  call and reports `reachable: false` rather than spinning.
+
+Lumen has the first (`fill` vs `type_text`) and not the second; its own
+skill records `scroll_into_view` as still missing.
+
 ### Explicitly not planned
 
 - **`app.setValue`** — listed under P4, deliberately not built.
@@ -311,11 +347,11 @@ is the one every question so far has actually been about.
   synthesized input enters the same queue as OS input, which is what
   makes an agent session replay as a test. `app.setValue` would write a
   widget's state behind the queue's back, so the session that used it
-  would not replay. `input.click` + `input.type` reach a field through
-  the real routing (M9), are already tested end to end
-  (`crates/lumen-static-agent/tests/input.rs`), and cost an agent one
-  extra call. Parity with a method that breaks the invariant the parity
-  document opens with is not parity.
+  would not replay. The need it serves is met by `input.fill` (P7),
+  which does the same job with real events. Parity with a method that
+  breaks the invariant the parity document opens with is not parity —
+  but refusing it was only half an answer until the verb that replaces
+  it existed.
 - `input.setLocale`, `ui.getMenu`, `app.systemRequests`,
   multi-window — no corresponding subsystems; parity is not a goal
   where the feature itself doesn't exist.

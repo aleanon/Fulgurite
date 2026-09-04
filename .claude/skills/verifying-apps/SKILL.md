@@ -89,8 +89,9 @@ checkable", which is not a pass.
 `ui.getTree` `ui.getLayout` `ui.resolve` `ui.probe` `ui.probeRegion`
 `ui.explain` `ui.getAppliedStyles` `ui.lint` `ui.lastChange`
 `ui.lastDamage` `ui.waitSettled` `ui.screenshot` · `input.click` `input.pointerDown` `input.pointerUp`
-`input.hover` `input.key` `input.type` `input.scroll`
-`input.invokeAction` · `app.diagnostics` `app.logs`
+`input.hover` `input.key` `input.type` `input.fill`
+`input.scrollIntoView` `input.scroll` `input.invokeAction` ·
+`app.diagnostics` `app.logs`
 `app.perf` `app.quit` (the last is the window's, not the crate's).
 
 **When a click does not do what you expected, ask `ui.explain` before
@@ -106,6 +107,18 @@ rather than to a guess about the stylesheet.
 `@file.rs:42`, or a table index. Not-found replies carry nearest misses;
 ambiguity carries the candidates — read the error before retrying.
 Repeater instances are not selectable; reach them via `ui.probe`.
+
+**`input.type` inserts at the caret; `input.fill` replaces a value.**
+There is no selection and no select-all (a routing fact — see
+`docs/text-and-scrolling-decisions.md` B-cluster), so clearing a field by
+hand is one `Backspace` per character: 23 RPCs for a 20-character value.
+`input.fill` is one. It refuses rather than typing when the target is not
+where a click would land, because a fill that misses sends a run of
+backspaces to whatever *does* hold focus — destructive and silent. When
+it refuses, `input.scrollIntoView` is usually the answer: a control
+scrolled out of its viewport cannot be clicked at all, since a selector
+resolves to the node's centre and that centre is a point the hit test
+correctly rejects.
 
 **Actions do not auto-wait.** The reply's `frame` is the frame the
 input was dispatched on; re-query (`layout`, `tree`, `screenshot`) after

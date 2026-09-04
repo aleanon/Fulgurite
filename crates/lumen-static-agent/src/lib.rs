@@ -383,6 +383,157 @@ impl Agent {
                     "image_base64": png::base64(&png),
                 }))
             }
+            // Replace a field's whole value in one call, through the
+            // queue.
+            //
+            // `app.setValue` would be the obvious method and is
+            // deliberately absent: it writes widget state behind the
+            // queue's back, so a session using it would not replay,
+            // which is the property the whole input surface exists for
+            // (`docs/plan-agent-parity.md`). This does the same job with
+            // real events — focus, End, one Backspace per existing
+            // character, then the text — so the recording is still a
+            // test. Measured before it existed: 23 RPCs to replace a
+            // 20-character value, and the agent had to read the old
+            // value first to know how many backspaces to send.
+            "input.fill" => {
+                let text = params
+                    .get("text")
+                    .and_then(Value::as_str)
+                    .ok_or((INVALID_PARAMS, "missing `text`".into(), Value::Null))?;
+                let n = text.chars().count();
+                if n > MAX_TYPE_CHARS {
+                    return Err((
+                        INVALID_PARAMS,
+                        format!("`text` is {n} characters; the limit is {MAX_TYPE_CHARS}"),
+                        json!({ "chars": n, "limit": MAX_TYPE_CHARS }),
+                    ));
+                }
+                let (x, y, existing) = {
+                    let tree = host.tree();
+                    let tree = &tree;
+                    let ix = Index::build(tree);
+                    let e = resolve_one(&ix, selector_param(params)?)?;
+                    let i = e.idx.ok_or((
+                        NOT_FOUND,
+                        "selector resolved to virtualized content; fill it by coordinates and \
+                         `input.type`"
+                            .into(),
+                        Value::Null,
+                    ))?;
+                    let st = &tree.states[i];
+                    let (x, y) = (st.pos.x + st.size.w / 2.0, st.pos.y + st.size.h / 2.0);
+                    // Refuse rather than type into whatever *is* there.
+                    // A fill that misses its target does not merely fail:
+                    // it sends a run of backspaces to whichever control
+                    // holds focus, which is destructive and silent.
+                    if !reaches(tree, i, x, y) {
+                        return Err((
+                            NOT_FOUND,
+                            "that control is not where a click would land, so filling it would \
+                             type into something else — call `input.scrollIntoView` first, or \
+                             ask `ui.explain` why"
+                                .into(),
+                            json!({ "at": [x, y] }),
+                        ));
+                    }
+                    let existing =
+                        e.node.value().map(|v| v.chars().count()).unwrap_or(0);
+                    (x, y, existing)
+                };
+                host.enqueue(Event::PointerDown { x, y });
+                host.enqueue(Event::PointerUp { x, y });
+                host.enqueue(Event::Key { key: Key::End, down: true });
+                for _ in 0..existing {
+                    host.enqueue(Event::Key { key: Key::Backspace, down: true });
+                }
+                for ch in text.chars() {
+                    host.enqueue(Event::Text { ch });
+                }
+                let frame = host.pump();
+
+                // Did it take? Checked by reading the value back, not by
+                // asking whether the node *looks* editable: a `Label` is
+                // not, a `Button` is focusable and is not either, and a
+                // field may clamp or filter what it accepts. Only the
+                // outcome knows.
+                //
+                // Without this the method reported success for doing
+                // nothing — found by running it against a `Label` in the
+                // live window, where it answered `cleared: 1, chars: 3`
+                // and changed not one character. A silent no-op is the
+                // failure mode this whole surface is built to refuse.
+                let got = {
+                    let tree = host.tree();
+                    let ix = Index::build(&tree);
+                    resolve_one(&ix, selector_param(params)?)
+                        .ok()
+                        .and_then(|e| e.node.value().map(|v| v.to_string()))
+                        .unwrap_or_default()
+                };
+                if got != text {
+                    return Err((
+                        INVALID_PARAMS,
+                        "that control did not accept the text — it is not an editable field, \
+                         or it rejected the value"
+                            .into(),
+                        json!({ "wanted": text, "got": got, "at": [x, y] }),
+                    ));
+                }
+                Ok(json!({
+                    "frame": frame,
+                    "at": [x, y],
+                    "cleared": existing,
+                    "chars": n,
+                }))
+            }
+            // Scroll a control into its scroller's viewport, through the
+            // queue — the same reasoning as `input.fill`, and the
+            // prerequisite for it: `input.click` resolves a selector to
+            // the node's *centre*, and a centre outside the viewport is
+            // a point the hit test correctly rejects, so a control that
+            // has scrolled away cannot be reached at all.
+            //
+            // Named `input.` rather than `ui.` because it synthesizes
+            // input: it is a recorded gesture, not a query.
+            "input.scrollIntoView" => {
+                let selector = selector_param(params)?.to_owned();
+                let mut steps = 0u32;
+                // Nearest scroller first, then outwards: an inner list
+                // may have to move before the page can see the row at
+                // all. Bounded, because each pass re-lays-out and a
+                // clamped scroller that cannot move must not spin.
+                for _ in 0..8 {
+                    let step = {
+                        let tree = host.tree();
+                        let tree = &tree;
+                        let ix = Index::build(tree);
+                        let e = resolve_one(&ix, &selector)?;
+                        let i = e.idx.ok_or((
+                            NOT_FOUND,
+                            "selector resolved to virtualized content".into(),
+                            Value::Null,
+                        ))?;
+                        scroll_step(tree, i)
+                    };
+                    let Some((sx, sy, dy)) = step else { break };
+                    host.enqueue(Event::Scroll { x: sx, y: sy, dy });
+                    host.pump();
+                    steps += 1;
+                }
+                let tree = host.tree();
+                let tree = &tree;
+                let ix = Index::build(tree);
+                let e = resolve_one(&ix, &selector)?;
+                let i = e.idx.unwrap_or(0);
+                let st = &tree.states[i];
+                let (cx, cy) = (st.pos.x + st.size.w / 2.0, st.pos.y + st.size.h / 2.0);
+                Ok(json!({
+                    "steps": steps,
+                    "reachable": reaches(tree, i, cx, cy),
+                    "bounds": [st.pos.x, st.pos.y, st.pos.x + st.size.w, st.pos.y + st.size.h],
+                }))
+            }
             "input.type" => {
                 let text = params
                     .get("text")
@@ -1158,6 +1309,71 @@ fn nearest(tree: &TreeRef, term: &Term) -> Value {
         Term::TableIndex(_) => json!({ "table_len": tree.table.len() }),
         Term::ValueContains(_) => Value::Null,
     }
+}
+
+/// One scroll gesture that brings `i` closer to being visible, as
+/// `(x, y, dy)` for a `Scroll` event — or `None` when every enclosing
+/// scroller already shows it.
+///
+/// Only the *nearest* scroller that still needs to move is returned, and
+/// the caller re-lays-out between steps: a scroll changes every position
+/// below it, so computing a whole plan up front would be computing it
+/// against geometry the first step invalidates.
+fn scroll_step(tree: &TreeRef, i: usize) -> Option<(f32, f32, f32)> {
+    let target = &tree.states[i];
+    let (top, bottom) = (target.pos.y, target.pos.y + target.size.h);
+    for s in scrolling_ancestors(tree, i) {
+        let v = &tree.states[s];
+        let (vt, vb) = (v.pos.y, v.pos.y + v.size.h);
+        // `dy` is the wheel's sign: the offset moves *against* it, so
+        // revealing content below needs a negative `dy`.
+        let dy = if top < vt {
+            vt - top
+        } else if bottom > vb {
+            vb - bottom
+        } else {
+            continue;
+        };
+        if dy.abs() < 0.5 {
+            continue;
+        }
+        return Some((v.pos.x + v.size.w / 2.0, v.pos.y + v.size.h / 2.0, dy));
+    }
+    None
+}
+
+/// Whether a click at `(x, y)` would land on node `i` or inside it.
+///
+/// Asks the same `pass::hit_test` a real click asks, then walks the
+/// parents of whatever came back. Shared by `ui.explain` and
+/// `input.fill`, so the method that *diagnoses* an unreachable control
+/// and the method that *refuses to type into one* cannot disagree.
+fn reaches(tree: &TreeRef, i: usize, x: f32, y: f32) -> bool {
+    let Some(h) = pass::hit_test(tree.root, tree.states, x, y) else { return false };
+    let mut k = h.node as usize;
+    loop {
+        if k == i {
+            return true;
+        }
+        if tree.table[k].parent == lumen_static::desc::NO_PARENT {
+            return false;
+        }
+        k = tree.table[k].parent as usize;
+    }
+}
+
+/// Scroll regions enclosing `i`, nearest first.
+fn scrolling_ancestors(tree: &TreeRef, i: usize) -> Vec<usize> {
+    let mut out = Vec::new();
+    let mut p = tree.table[i].parent;
+    while p != lumen_static::desc::NO_PARENT {
+        let k = p as usize;
+        if tree.root.node(k).kind_name() == "scrollview" {
+            out.push(k);
+        }
+        p = tree.table[k].parent;
+    }
+    out
 }
 
 fn resolve_one<'e>(

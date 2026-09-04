@@ -24,7 +24,9 @@ CLI use:
     agent_client.py click '<selector>'
     agent_client.py press '<selector>'    # pointer down, held
     agent_client.py release '<selector>'
-    agent_client.py type '<text>'
+    agent_client.py type '<text>'          # insert at the caret
+    agent_client.py fill '<sel>' '<text>'  # replace a field's whole value
+    agent_client.py scroll-into-view '<sel>'
     agent_client.py key '<name>'          # Enter, Escape, Up, ...
     agent_client.py explain '<selector>'  # why a click does/doesn't land
     agent_client.py styles '<selector>'   # the cascade's answer + painted state
@@ -106,7 +108,15 @@ class AgentClient:
         return self.rpc("input.pointerUp", selector=selector)
 
     def type(self, text: str):
+        """Insert at the caret. Use `fill` to replace a value."""
         return self.rpc("input.type", text=text)
+
+    def fill(self, selector: str, text: str):
+        """Replace a field's whole value — focus, clear, type."""
+        return self.rpc("input.fill", selector=selector, text=text)
+
+    def scroll_into_view(self, selector: str):
+        return self.rpc("input.scrollIntoView", selector=selector)
 
     def key(self, key: str, down: bool = True):
         return self.rpc("input.key", key=key, down=down)
@@ -151,6 +161,11 @@ def main(argv: list[str]) -> int:
         s.add_argument("selector")
     t = sub.add_parser("type")
     t.add_argument("text")
+    fi = sub.add_parser("fill")
+    fi.add_argument("selector")
+    fi.add_argument("text")
+    sv = sub.add_parser("scroll-into-view")
+    sv.add_argument("selector")
     k = sub.add_parser("key")
     k.add_argument("key")
     sc = sub.add_parser("screenshot")
@@ -180,6 +195,10 @@ def main(argv: list[str]) -> int:
         print(json.dumps(cl.styles(a.selector), indent=1))
     elif a.cmd == "type":
         print(json.dumps(cl.type(a.text)))
+    elif a.cmd == "fill":
+        print(json.dumps(cl.fill(a.selector, a.text)))
+    elif a.cmd == "scroll-into-view":
+        print(json.dumps(cl.scroll_into_view(a.selector)))
     elif a.cmd == "key":
         print(json.dumps(cl.key(a.key)))
     elif a.cmd == "screenshot":

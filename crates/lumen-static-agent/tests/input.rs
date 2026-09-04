@@ -333,3 +333,242 @@ fn tab_moves_focus_between_the_field_and_the_button() {
     fcall(&mut h, &agent, "input.key", json!({ "key": "Tab" }));
     assert_eq!(h.focus, Some(first), "and wraps");
 }
+
+
+// ---- input.fill and input.scrollIntoView ----------------------------
+
+#[test]
+fn fill_replaces_a_field_in_one_call() {
+    // What `app.setValue` would have done, through the queue instead:
+    // real events, so the session still replays as a test. Measured
+    // before it existed: 23 RPCs to replace a 20-character value, and
+    // the agent had to read the old value first to know how many
+    // backspaces to send.
+    let mut h = FormHost::new();
+    let agent = Agent::new();
+    fcall(&mut h, &agent, "input.click", json!({ "selector": "#name" }));
+    fcall(&mut h, &agent, "input.type", json!({ "text": "ada@lovelace.example" }));
+    assert_eq!(h.app.ui.name.as_str(), "ada@lovelace.example");
+
+    let r = fcall(&mut h, &agent, "input.fill",
+        json!({ "selector": "#name", "text": "grace@hopper.example" }));
+    assert!(r.get("error").is_none(), "{r}");
+    assert_eq!(h.app.ui.name.as_str(), "grace@hopper.example");
+    assert_eq!(r["result"]["cleared"], 20, "it reported what it removed");
+    assert_eq!(r["result"]["chars"], 20);
+}
+
+#[test]
+fn fill_into_an_empty_field_types_without_clearing() {
+    let mut h = FormHost::new();
+    let agent = Agent::new();
+    let r = fcall(&mut h, &agent, "input.fill", json!({ "selector": "#name", "text": "hi" }));
+    assert_eq!(r["result"]["cleared"], 0);
+    assert_eq!(h.app.ui.name.as_str(), "hi");
+}
+
+#[test]
+fn fill_clears_a_field_when_given_nothing() {
+    let mut h = FormHost::new();
+    let agent = Agent::new();
+    fcall(&mut h, &agent, "input.fill", json!({ "selector": "#name", "text": "abc" }));
+    fcall(&mut h, &agent, "input.fill", json!({ "selector": "#name", "text": "" }));
+    assert_eq!(h.app.ui.name.as_str(), "", "an empty fill is a clear");
+}
+
+#[test]
+fn fill_handles_multi_byte_characters_one_backspace_each() {
+    // `cleared` counts *characters*, and `TextInput::backspace` removes
+    // one whole character — byte arithmetic here would leave half of a
+    // multi-byte char behind and panic the next slice.
+    let mut h = FormHost::new();
+    let agent = Agent::new();
+    fcall(&mut h, &agent, "input.fill", json!({ "selector": "#name", "text": "aé漢🎉" }));
+    assert_eq!(h.app.ui.name.as_str(), "aé漢🎉");
+    let r = fcall(&mut h, &agent, "input.fill", json!({ "selector": "#name", "text": "z" }));
+    assert_eq!(r["result"]["cleared"], 4, "four characters, not ten bytes");
+    assert_eq!(h.app.ui.name.as_str(), "z");
+}
+
+#[test]
+fn fill_refuses_rather_than_typing_into_the_wrong_control() {
+    // The hazard this guard exists for: a fill whose click misses sends
+    // a run of backspaces to whatever *does* hold focus. Destructive and
+    // silent, so it is refused with an error that names the way out.
+    let mut h = FormHost::new();
+    let agent = Agent::new();
+    fcall(&mut h, &agent, "input.fill", json!({ "selector": "#name", "text": "keep me" }));
+
+    // Move the field out of reach the way a scroll would.
+    h.states[1].size = lumen_static::Size::default();
+    let r = fcall(&mut h, &agent, "input.fill", json!({ "selector": "#name", "text": "lost" }));
+    let msg = r["error"]["message"].as_str().unwrap_or("");
+    assert!(msg.contains("scrollIntoView"), "the error names the way out: {msg}");
+    assert_eq!(h.app.ui.name.as_str(), "keep me", "and nothing was typed anywhere");
+}
+
+/// A form inside a scroll region, taller than its viewport.
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 4.0)]
+struct ScrolledBody {
+    #[widget_id("top")]
+    top: Label,
+    #[widget_id("field")]
+    field: lumen_static::input::TextInput,
+    #[widget_id("r1")]
+    r1: Label,
+    #[widget_id("r2")]
+    r2: Label,
+    #[widget_id("r3")]
+    r3: Label,
+    #[widget_id("bottom")]
+    bottom: Label,
+}
+
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+struct ScrolledUi {
+    #[widget_id("sc")]
+    sc: lumen_static::scroll::ScrollView<ScrolledBody>,
+}
+
+#[derive(Default)]
+struct ScrolledApp {
+    ui: ScrolledUi,
+}
+
+impl lumen_static::event::App for ScrolledApp {
+    type Tree = ScrolledUi;
+    fn tree(&self) -> &ScrolledUi {
+        &self.ui
+    }
+    fn tree_mut(&mut self) -> &mut ScrolledUi {
+        &mut self.ui
+    }
+}
+
+struct ScrolledHost {
+    app: ScrolledApp,
+    styles: Vec<lumen_static::Style>,
+    states: [NodeState; ScrolledUi::NODE_COUNT],
+    queue: InputQueue,
+    focus: Option<u32>,
+}
+
+const TIGHT: Constraints = Constraints { min_w: 0.0, max_w: 200.0, min_h: 0.0, max_h: 60.0 };
+
+impl ScrolledHost {
+    fn new() -> Self {
+        let mut app = ScrolledApp::default();
+        {
+            let b = &mut app.ui.sc.content;
+            b.top.set("top");
+            b.r1.set("row one");
+            b.r2.set("row two");
+            b.r3.set("row three");
+            b.bottom.set("bottom");
+        }
+        let styles = pass::default_styles(&app.ui);
+        let mut h = ScrolledHost {
+            app,
+            styles,
+            states: [NodeState::default(); ScrolledUi::NODE_COUNT],
+            queue: InputQueue::new(),
+            focus: None,
+        };
+        h.layout();
+        h
+    }
+    fn layout(&mut self) {
+        pass::layout(&mut self.app.ui, &self.styles, &mut self.states, TIGHT);
+    }
+}
+
+impl AgentHost for ScrolledHost {
+    fn tree(&self) -> TreeRef<'_> {
+        TreeRef::of_root(&self.app.ui, &self.styles, &self.states)
+    }
+    fn enqueue(&mut self, ev: Event) {
+        self.queue.push(ev);
+    }
+    fn pump(&mut self) -> u64 {
+        while let Some(ev) = self.queue.pop() {
+            pass::dispatch(&mut self.app, &self.styles, &mut self.states, &mut self.focus, &ev);
+            self.layout();
+        }
+        1
+    }
+}
+
+fn scall(h: &mut ScrolledHost, agent: &Agent, method: &str, params: Value) -> Value {
+    agent
+        .dispatch_input(h, &json!({ "jsonrpc": "2.0", "id": 1, "method": method, "params": params }))
+}
+
+#[test]
+fn scroll_into_view_brings_a_control_back_within_reach() {
+    // `input.click` resolves a selector to the node's *centre*, and a
+    // centre outside the viewport is a point the hit test correctly
+    // rejects — so a control that has scrolled away cannot be reached at
+    // all. This is the way back.
+    let mut h = ScrolledHost::new();
+    let agent = Agent::new();
+
+    // Scroll to the bottom with real wheel events.
+    for _ in 0..10 {
+        scall(&mut h, &agent, "input.scroll", json!({ "selector": "#sc", "dy": -30.0 }));
+    }
+    assert!(h.app.ui.sc.scroll > 0.0, "it scrolled");
+
+    let before = scall(&mut h, &agent, "ui.explain", json!({ "selector": "#field" }));
+    assert_eq!(before["result"]["reachable"], false, "the field is out of view: {before}");
+
+    let r = scall(&mut h, &agent, "input.scrollIntoView", json!({ "selector": "#field" }));
+    assert!(r.get("error").is_none(), "{r}");
+    assert_eq!(r["result"]["reachable"], true, "and now it is: {r}");
+    assert!(r["result"]["steps"].as_u64().unwrap() >= 1);
+
+    // The point of getting it back: it can be filled.
+    let f = scall(&mut h, &agent, "input.fill", json!({ "selector": "#field", "text": "typed" }));
+    assert!(f.get("error").is_none(), "{f}");
+    assert_eq!(h.app.ui.sc.content.field.as_str(), "typed");
+}
+
+#[test]
+fn scroll_into_view_on_something_already_visible_does_nothing() {
+    let mut h = ScrolledHost::new();
+    let agent = Agent::new();
+    let r = scall(&mut h, &agent, "input.scrollIntoView", json!({ "selector": "#top" }));
+    assert_eq!(r["result"]["steps"], 0, "no gesture was needed");
+    assert_eq!(r["result"]["reachable"], true);
+    assert_eq!(h.app.ui.sc.scroll, 0.0, "and nothing moved");
+}
+
+#[test]
+fn scroll_into_view_terminates_when_a_target_cannot_be_shown() {
+    // A scroller clamped at its end cannot move further. The loop is
+    // bounded so a target it can never reveal ends the call rather than
+    // spinning — and reports `reachable: false` honestly.
+    let mut h = ScrolledHost::new();
+    let agent = Agent::new();
+    h.states[2].size = lumen_static::Size::default(); // collapse the content
+    h.states[3].size = lumen_static::Size::default(); // and the target
+    let r = scall(&mut h, &agent, "input.scrollIntoView", json!({ "selector": "#field" }));
+    assert!(r.get("error").is_none(), "{r}");
+    assert_eq!(r["result"]["reachable"], false, "reported, not spun on");
+}
+
+#[test]
+fn fill_reports_a_control_that_did_not_accept_the_text() {
+    // Found live: `input.fill` on a `Label` answered `cleared: 1,
+    // chars: 3` and changed nothing. The check is the *outcome* — read
+    // the value back — rather than "does this look editable": a Label is
+    // not, a Button is focusable and is not either, and a field may
+    // filter what it accepts. Only the outcome knows.
+    let mut h = FormHost::new();
+    let agent = Agent::new();
+    let r = fcall(&mut h, &agent, "input.fill", json!({ "selector": "#submit", "text": "xyz" }));
+    let msg = r["error"]["message"].as_str().unwrap_or("");
+    assert!(msg.contains("did not accept"), "a button is not fillable: {r}");
+    assert_eq!(r["error"]["data"]["wanted"], "xyz");
+}
