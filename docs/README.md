@@ -24,6 +24,9 @@ tree today.
 | [`bindings-decision.md`](bindings-decision.md) | why `#[bind]` compares output, and what it costs | **live** | yes — `benches --bin bindings` |
 | [`either-reopened.md`](either-reopened.md) | whether `Either` should use a merged table | **decided** 2026-09-04: Option A, built as T8.0 | n/a |
 | [`plan-lumen-parity.md`](plan-lumen-parity.md) | how far this is from Lumen | **superseded 2026-09-04** as a plan; kept as a map. Its counts are dated 2026-09-01 and stale by 2.5× | n/a |
+| [`plan-embedded.md`](plan-embedded.md) | M10 — no_std, and proving "zero allocation" | **queue**, not started | not yet |
+| [`plan-widgets.md`](plan-widgets.md) | M11 — the widget vocabulary, with each item's real blocker | **queue**, not started | n/a |
+| [`plan-harness.md`](plan-harness.md) | M12 — locators, goldens, session replay | **queue**, not started | n/a |
 | [`plan-agent-parity.md`](plan-agent-parity.md) | the agent surface, P0–P6 | **queue**, P0–P6 done | n/a |
 | [`plan-events.md`](plan-events.md) | the event system, E0–E5 | **queue**, E0–E4 done | n/a |
 | [`verification-notes.md`](verification-notes.md) | what could be formally verified, and the `unsafe` audit | **live** | n/a |

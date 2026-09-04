@@ -954,7 +954,8 @@ frame after `PointerUp` restores it".
 ## M10 — The embedded profile — **PLANNED 2026-09-04, not started**
 
 *Replaces "parity phases B–E", which was written on 2026-09-01 against
-numbers that no longer hold. See "Why not parity" below.*
+numbers that no longer hold. See "Why not parity" below. **Task
+breakdown: `docs/plan-embedded.md`.***
 
 The architecture's stated reason for existing is a profile Lumen cannot
 serve: "zero allocation for the entire UI — not few, zero … no allocator
@@ -1074,7 +1075,8 @@ file is what turns M10's premise into a result the gate can refuse.
 
 *Was Phase B of `docs/plan-lumen-parity.md`. Follows M10 because every
 widget encodes the allocation answer, and three of these items reopen
-decisions M9 closed deliberately.*
+decisions M9 closed deliberately. **Task breakdown:
+`docs/plan-widgets.md`.***
 
 A third of Phase B's list already exists — text input, scrollable, and
 the escape hatches as first-class widgets. What is left, and what each
@@ -1114,7 +1116,7 @@ the `input.rs` module doc, not silently deferred.
 
 *Was Phase E. Last not because it is least valuable, but because it is
 the only one whose substrate is already finished — so it stays cheap
-however long it waits.*
+however long it waits. **Task breakdown: `docs/plan-harness.md`.***
 
 What exists: one input queue, sessions that replay by construction, 233
 tests, a pixel-exact oracle (`shell/tests/damage_oracle.rs`), a live
