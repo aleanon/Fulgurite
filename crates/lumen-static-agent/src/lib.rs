@@ -32,6 +32,8 @@ use lumen_static::{pass, Widget};
 use serde_json::{json, Map, Value};
 
 mod audit;
+pub mod session;
+pub mod trace;
 pub mod png;
 mod journal;
 

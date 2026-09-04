@@ -116,7 +116,7 @@ it deliberately, and producing something to look at when it fails.
 **Gate:** deliberately break a paint (change a radius by 1 px) and check
 that the diff image shows where, not merely that.
 
-## T12.3 — session recording as a test artifact
+## T12.3 — session recording as a test artifact — **DONE 2026-09-04**
 
 The invariant holds and is **already exercised for a single click at
 the `Event` level** — `crates/lumen-static-agent/tests/input.rs`
@@ -155,17 +155,20 @@ Timing is *not* on the list, correctly: there is no frame clock. The
 residue is that an exported test must not assert on frame numbers,
 `app.perf` figures, or `input.scrollIntoView`'s step count.
 
-**One thing this task must decide and an earlier draft did not:** which
-*level* records. RPC-level (`{selector: "#inc"}`) survives layout drift
-but breaks when an id moves; `Event`-level — what the existing test does
-— freezes coordinates and does the reverse. Pick one and say why.
+**DECIDED: the RPC level.** A selector survives layout drift — restyle
+the button, move it, and `#inc` still names it — where a recorded
+coordinate freezes the geometry of the machine that recorded it, and the
+first layout change invalidates every step. The mirror-image failure is
+that a selector breaks when an author *renames* a node, and that is the
+better one: it is loud, and it is a real change to the app rather than
+an incidental one.
 
 **Gate:** the `--drive` session, recorded, exported, compiled and run as
 a generated test, reaching the same `count`; and a recording whose
 header does not match the replay host is a **hard error, not a diff**.
 If the generated test does not compile, the recording is not a script.
 
-## T12.4 — a trace to read when a failure is not obvious
+## T12.4 — a trace to read when a failure is not obvious — **DONE 2026-09-04**
 
 Lumen writes `target/lumen-traces/<test>.trace.jsonl` — inputs, damage,
 tree snapshots, and on failure an embedded screenshot and tree. We have
@@ -188,7 +191,18 @@ real hit test.
 failing selector's `ui.explain` output, and the reason is legible from
 the file alone without re-running.
 
-## An open question: should this be two tasks, not four?
+## The open question, answered — **DECIDED 2026-09-04**
+
+It said to decide "when M11 is underway and the panel is real, not now."
+The panel is real, so: **T12.3 and T12.4 are built; T12.1 and T12.2
+stay unbuilt for now.** The review's condition for T12.1 — that a second
+application exist — is met by the settings panel, so it is no longer
+*unjustified*; it is simply not the next most valuable thing, and saying
+so beats building it because a plan once listed it.
+
+The argument, kept because it is the reasoning and not just the verdict:
+
+## The original open question: should this be two tasks, not four?
 
 The review argued for cutting T12.1 and T12.2, and the argument is good
 enough to record rather than answer here:
