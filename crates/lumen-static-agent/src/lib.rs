@@ -353,16 +353,33 @@ impl Agent {
             // host that renders. The image is a PNG so the agent can
             // open it without leaving the protocol.
             "ui.screenshot" => {
-                let (w, h, rgba) = host.frame().ok_or((
-                    INVALID_PARAMS,
-                    "this host does not render — nothing to screenshot".into(),
-                    Value::Null,
-                ))?;
-                let png = png::encode_rgba(w, h, rgba);
+                // `source: "surface"` reads the window back from the
+                // display server instead of returning the canvas — the
+                // only way to see the blit and the present, which every
+                // other method is downstream of.
+                let surface = params.get("source").and_then(Value::as_str) == Some("surface");
+                let (w, h, png) = if surface {
+                    let (w, h, rgba) = host.presented().ok_or((
+                        INVALID_PARAMS,
+                        "this host cannot read its window back (softbuffer implements it on \
+                         X11 and Web only) — treat that as not checkable, not as a match"
+                            .into(),
+                        Value::Null,
+                    ))?;
+                    (w, h, png::encode_rgba(w, h, &rgba))
+                } else {
+                    let (w, h, rgba) = host.frame().ok_or((
+                        INVALID_PARAMS,
+                        "this host does not render — nothing to screenshot".into(),
+                        Value::Null,
+                    ))?;
+                    (w, h, png::encode_rgba(w, h, rgba))
+                };
                 Ok(json!({
                     "width": w,
                     "height": h,
                     "format": "png",
+                    "source": if surface { "surface" } else { "canvas" },
                     "image_base64": png::base64(&png),
                 }))
             }
@@ -942,6 +959,25 @@ pub trait AgentHost {
     /// for a host that only lays out — which is what `ui.screenshot`
     /// reports as an error rather than a blank image.
     fn frame(&self) -> Option<(u32, u32, &[u8])> {
+        None
+    }
+
+    /// The pixels **actually on screen**, read back from the window's
+    /// surface, if this host can.
+    ///
+    /// Not the same thing as [`AgentHost::frame`], and the difference is
+    /// the point. `frame` returns the renderer's canvas — what the app
+    /// *believes* it drew. This returns what the display server holds.
+    /// Everything between the two (the blit, the damage rects, the
+    /// present, the buffer's age) is invisible to every other method
+    /// here, and on 2026-09-04 a bug in exactly that gap put another
+    /// window's pixels on screen while `ui.screenshot`, `ui.lint` and
+    /// every live check reported a perfect frame.
+    ///
+    /// `None` where a platform cannot read a window back (softbuffer
+    /// implements it on X11 and Web only), so a caller must treat an
+    /// absent answer as "not checkable here", never as "matches".
+    fn presented(&mut self) -> Option<(u32, u32, Vec<u8>)> {
         None
     }
     fn enqueue(&mut self, ev: Event);

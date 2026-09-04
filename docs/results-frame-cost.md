@@ -82,11 +82,11 @@ Live, warm (128 frames, 140 agent clicks):
 
 | | before M8b | after | budget |
 |---|---:|---:|---:|
-| frame p50 | 1.05 ms | **0.079 ms** | — |
+| frame p50 | 1.05 ms | **0.084 ms** | — |
 | frame p95 | 2.33 ms | **0.154 ms** | 0.2 ms (T8b.3) |
 | render p95 | 2.12 ms | 0.089 ms | — |
-| input → presented p50 | 2.22 ms | **0.811 ms** | — |
-| input → presented p95 | 4.36 ms | **1.383 ms** | 3 ms (T8b.3) |
+| input → presented p50 | 2.22 ms | **0.838 ms** | — |
+| input → presented p95 | 4.36 ms | **1.421 ms** | 3 ms (T8b.3) |
 | damaged px p50 | 228 800 | **9 464** | — |
 
 **Verdict: both T8b.3 gates pass.** A click frame is 15× cheaper than
@@ -104,6 +104,41 @@ structurally now, by advancing `x` past it, with no arithmetic at all.
 Full render 811 → 478 µs. The lesson is the same one this document
 opened with — the expensive command was found by measuring per command
 class, not by reading the code.
+
+### Correction, same day: `no damage, no frame` was wrong
+
+T8b.4 said "a redraw whose diff is empty presents nothing", and the
+first implementation returned before the present. **It emptied the
+window.** `RedrawRequested` is not only ours: X11 sends it on *expose*
+— when the window is mapped, uncovered or moved — and an expose means
+the display server has lost the content, which the application's own
+damage knows nothing about. Skipping the present left whatever was in
+the shared-memory segment on screen, which was another window's pixels.
+
+The fix separates two questions that the first version conflated:
+
+- the **buffer** needs only the damage written into it, because at
+  `age >= 1` it already holds the frame presented last, and at age 0 the
+  damage is `All` by construction;
+- the **present** must be whole, every time, because this redraw may be
+  an expose and winit 0.30 does not say which kind it is.
+
+So `blit_0rgb_within(damage)` then `present()`. What T8b.4 actually
+saves is the raster, which is the expensive half: render p95 0.089 ms
+against present p95 0.039 ms. Costs after the correction — frame p50
+**0.084 ms**, p95 **0.154 ms**; input → presented p50 0.838 ms, p95
+1.421 ms — so both T8b.3 gates still hold.
+
+**Why no test caught it.** Every check read the *canvas*:
+`ui.screenshot` returned the renderer's buffer, and `ui.lint`,
+`ui.lastChange` and the whole of `scripts/ui_check.py` are downstream of
+that. Nothing between the canvas and the display server — the blit, the
+damage rect, the present, the buffer age — was observable at all. That
+gap is now `ui.screenshot { source: "surface" }`, which reads the window
+back through `softbuffer::Surface::fetch`, and `ui_check.py presented`,
+which compares the two. Re-injecting the bug makes it fail at 83% of
+sampled pixels; softbuffer implements read-back on X11 and Web only, so
+elsewhere it reports "not checkable" rather than passing.
 
 ### What the numbers say about the design
 

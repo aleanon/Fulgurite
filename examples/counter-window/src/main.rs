@@ -44,6 +44,10 @@ struct Live<'a> {
     metrics: &'a mut Option<FontMetrics>,
     canvas: &'a mut Canvas,
     sign: &'a mut i64,
+    /// Borrowed so `ui.screenshot { source: "surface" }` can read the
+    /// window back from the display server — the one view that sees the
+    /// blit and the present.
+    surface: &'a mut Option<softbuffer::Surface<Rc<Window>, Rc<Window>>>,
 }
 
 impl lumen_static_agent::AgentHost for Live<'_> {
@@ -81,6 +85,25 @@ impl lumen_static_agent::AgentHost for Live<'_> {
     }
     fn frame(&self) -> Option<(u32, u32, &[u8])> {
         Some((self.canvas.width, self.canvas.height, &self.canvas.pixels))
+    }
+
+    /// Read the window back from X11. `softbuffer::Surface::fetch` is
+    /// unimplemented on Wayland and macOS, and needs a mapped window on
+    /// X11, so a failure here is reported as "not checkable" rather than
+    /// guessed at.
+    fn presented(&mut self) -> Option<(u32, u32, Vec<u8>)> {
+        let surface = self.surface.as_mut()?;
+        let px = surface.fetch().ok()?;
+        let (w, h) = (self.canvas.width, self.canvas.height);
+        if px.len() < (w * h) as usize {
+            return None;
+        }
+        // 0RGB back to RGBA8, which is what the PNG encoder wants.
+        let mut rgba = Vec::with_capacity((w * h * 4) as usize);
+        for v in &px[..(w * h) as usize] {
+            rgba.extend_from_slice(&[(v >> 16) as u8, (v >> 8) as u8, *v as u8, 255]);
+        }
+        Some((w, h, rgba))
     }
 }
 
@@ -263,6 +286,7 @@ impl WinApp {
                 metrics: &mut self.metrics,
                 canvas: &mut self.canvas,
                 sign: &mut self.sign,
+                surface: &mut self.surface,
             };
             self.agent.dispatch_input(&mut live, &rpc.req)
         };
@@ -381,31 +405,65 @@ impl WinApp {
         // onto a two-frame-old base is the classic double-buffered
         // smear (`crates/lumen-static/src/retain.rs`).
         let viewport = [0.0, 0.0, size.width as f32, size.height as f32];
-        let Some(area) = self.host.take_damage_for_age(buf.age()).clip_to(viewport) else {
-            // Nothing changed and this buffer already shows it. Drop it
-            // unpresented: a frame that redraws nothing should cost
-            // nothing (M8b, T8b.4).
-            drop(buf);
-            self.input_at = None;
-            return;
+        let area = self.host.take_damage_for_age(buf.age()).clip_to(viewport);
+
+        if std::env::var_os("LUMEN_TRACE").is_some() {
+            eprintln!(
+                "redraw: age={} area={:?} canvas={}x{} win={}x{}",
+                buf.age(),
+                area,
+                self.canvas.width,
+                self.canvas.height,
+                size.width,
+                size.height
+            );
+        }
+
+        // Render only what changed — but *always* present.
+        //
+        // T8b.4 said "no damage, no frame", and the first implementation
+        // took that literally and returned without presenting. That is
+        // wrong, and it emptied the window: `RedrawRequested` is not
+        // only ours. X11 sends it on **expose** — when the window is
+        // mapped, uncovered or moved — and an expose means the *server*
+        // lost the content, which the app's own damage knows nothing
+        // about. Skipping the present left whatever was in the shared
+        // memory segment on screen, which is another window's pixels.
+        //
+        // winit 0.30 does not say which kind of `RedrawRequested` this
+        // is, and guessing wrong is invisible in every headless test, so
+        // the frame is always presented. What T8b.4 actually saves is
+        // the *raster*, which is the expensive half: render p95
+        // 0.089 ms against present p95 0.044 ms
+        // (`docs/results-frame-cost.md`).
+        let t = Instant::now();
+        let render_ns = match area {
+            Some(area) => {
+                self.canvas.clear_within(area, PAGE);
+                self.canvas.render_within(&self.host.list, area);
+                t.elapsed().as_nanos() as u64
+            }
+            None => 0,
         };
 
         let t = Instant::now();
-        self.canvas.clear_within(area, PAGE);
-        self.canvas.render_within(&self.host.list, area);
-        let render_ns = t.elapsed().as_nanos() as u64;
-
-        let t = Instant::now();
-        self.canvas.blit_0rgb_within(&mut buf, area);
-        let damage = [softbuffer::Rect {
-            x: area[0] as u32,
-            y: area[1] as u32,
-            width: NonZeroU32::new((area[2].ceil() - area[0].floor()).max(1.0) as u32)
-                .expect("nonzero"),
-            height: NonZeroU32::new((area[3].ceil() - area[1].floor()).max(1.0) as u32)
-                .expect("nonzero"),
-        }];
-        buf.present_with_damage(&damage).expect("present");
+        // Blit only what changed, but present all of it.
+        //
+        // The two halves answer different questions. The *buffer* only
+        // needs the damage written into it, because at `age >= 1` it
+        // already holds the frame we presented last — and at age 0 the
+        // damage is `All` by construction, so this is a full blit
+        // anyway. The *present* has to be whole, because this redraw may
+        // be an expose and the display server has lost everything.
+        if let Some(area) = area {
+            self.canvas.blit_0rgb_within(&mut buf, area);
+        }
+        // `present`, not `present_with_damage`: the partial form would
+        // tell the server to copy only the damaged rows, which is
+        // exactly wrong when the redraw is an expose. (`present` is
+        // itself `present_with_damage` over the full rect in every
+        // softbuffer backend, so only the hint is given up.)
+        buf.present().expect("present");
         let present_ns = t.elapsed().as_nanos() as u64;
 
         // The frame is on screen: this is where the journal, the audit
@@ -418,9 +476,9 @@ impl WinApp {
             present_ns,
             frame_ns: frame_start.elapsed().as_nanos() as u64,
             input_latency_ns: self.input_at.take().map(|t| t.elapsed().as_nanos() as u64),
-            damaged_px: Some(
-                ((area[2] - area[0]) as f64 * (area[3] - area[1]) as f64).max(0.0) as u64,
-            ),
+            damaged_px: Some(area.map_or(0, |a| {
+                ((a[2] - a[0]) as f64 * (a[3] - a[1]) as f64).max(0.0) as u64
+            })),
         };
         let mut tree = lumen_static_agent::TreeMut::of_root(
             &mut self.host.app.ui,

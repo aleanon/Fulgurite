@@ -11,6 +11,7 @@ from `app.perf`. Stdlib + Pillow (screenshot decoding only).
     ui_check.py edges              # rounded corners are anti-aliased
     ui_check.py targets            # pointer targets >= 24x24 px (WCAG 2.5.8)
     ui_check.py contrast           # text vs its background >= 4.5:1 (WCAG AA)
+    ui_check.py presented          # what is on screen matches what was drawn
     ui_check.py press              # a control changes while held (C6)
     ui_check.py latency [selector] # click -> presented <= 100 ms; frame <= 16 ms
     ui_check.py lint               # the agent's own ambient audit is empty
@@ -40,8 +41,8 @@ LATENCY_BUDGET_MS = 100.0
 FRAME_BUDGET_MS = 16.0
 
 
-def screenshot(c: AgentClient) -> Image.Image:
-    r = c.rpc("ui.screenshot")
+def screenshot(c: AgentClient, source: str = "canvas") -> Image.Image:
+    r = c.rpc("ui.screenshot", **({"source": source} if source != "canvas" else {}))
     return Image.open(io.BytesIO(base64.b64decode(r["image_base64"]))).convert("RGB")
 
 
@@ -225,6 +226,50 @@ def check_latency(c: AgentClient, selector: str = "#inc") -> list[str]:
     return fails
 
 
+def check_presented(c: AgentClient) -> list[str]:
+    """What the app drew must be what is on screen.
+
+    Every other check here reads the renderer's canvas — what the app
+    *believes* it drew. Nothing between that and the display server (the
+    blit, the damage rect, the present, the buffer's age) was observable
+    at all until this check existed, and on 2026-09-04 a bug in exactly
+    that gap put another window's pixels on screen while every check
+    passed. `source: "surface"` reads the window back.
+
+    Not available everywhere: softbuffer implements read-back on X11 and
+    Web only. An absent answer is reported as "not checkable", never as
+    a pass.
+    """
+    canvas = screenshot(c)
+    try:
+        surface = screenshot(c, "surface")
+    except RuntimeError as e:
+        print(f"  --  presented  not checkable on this platform ({e})")
+        return []
+
+    if canvas.size != surface.size:
+        print(f"  FAIL presented  canvas {canvas.size} vs surface {surface.size}")
+        return [f"presented size {surface.size} != canvas {canvas.size}"]
+
+    cp, sp = canvas.load(), surface.load()
+    w, h = canvas.size
+    bad = 0
+    first = None
+    for y in range(0, h, 2):
+        for x in range(0, w, 2):
+            if dist(cp[x, y], sp[x, y]) > 24:
+                bad += 1
+                if first is None:
+                    first = (x, y, cp[x, y], sp[x, y])
+    total = ((h + 1) // 2) * ((w + 1) // 2)
+    frac = bad / total
+    tag = "ok " if frac <= 0.01 else "FAIL"
+    print(f"  {tag} presented  {frac * 100:.2f}% of sampled pixels differ from the canvas")
+    if tag == "FAIL":
+        return [f"the window shows something else at {first[:2]}: canvas {first[2]} vs screen {first[3]}"]
+    return []
+
+
 def check_press(c: AgentClient) -> list[str]:
     """A control must change while it is held (C6).
 
@@ -269,6 +314,7 @@ CHECKS = {
     "edges": check_edges,
     "targets": check_targets,
     "contrast": check_contrast,
+    "presented": check_presented,
     "press": check_press,
     "latency": check_latency,
     "lint": check_lint,

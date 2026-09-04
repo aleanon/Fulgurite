@@ -737,9 +737,14 @@ present_with_damage` (0.4.8 has it). Blit only the rect's rows.
 Gate: `just live-gate` — the tally's click frame under **0.2 ms** p95
 (today 2.3 ms), and `input → presented` p95 under 3 ms.
 
-**T8b.4 — no damage, no frame.** A redraw whose diff is empty presents
-nothing. Today an idle `RedrawRequested` (focus change, expose) costs a
-full frame. Gate: `app.perf` shows `render_ns` 0 for a no-op frame.
+**T8b.4 — no damage, no *raster*. CORRECTED 2026-09-04.** The task as
+written said "presents nothing", and that is wrong: `RedrawRequested` is
+also X11's expose, which means the display server lost the content —
+something the application's damage cannot know. Implemented literally,
+it put another window's pixels on screen. The frame is always presented;
+only the raster is skipped. Gate: `app.perf` shows `render_ns` 0 for a
+no-op frame, **and `ui_check.py presented` passes**
+(`docs/results-frame-cost.md`).
 
 ### Retention is a type parameter, not a feature flag (T8b.0)
 

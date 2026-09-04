@@ -68,11 +68,22 @@ python3 scripts/agent_client.py click '#inc10'
 python3 scripts/agent_client.py layout '#value'    # → value, bounds, src
 python3 scripts/agent_client.py screenshot /tmp/after.png
 python3 scripts/agent_client.py call app.perf      # timings, p50/p95 over 128 frames
-python3 scripts/ui_check.py all                    # or one of: centring edges targets contrast press latency lint
+python3 scripts/ui_check.py all                    # or one of: centring edges targets contrast presented press latency lint
 python3 scripts/agent_client.py quit
 ```
-`Read /tmp/after.png`. `ui.screenshot` returns the exact RGBA the window
-blits — no desktop screenshot tool, no unlocked session needed.
+`Read /tmp/after.png`. `ui.screenshot` returns the renderer's canvas —
+no desktop screenshot tool, no unlocked session needed.
+
+**But the canvas is not the screen.** Everything between them — the
+blit, the damage rect, the present, the surface buffer's age — is
+downstream of every other method here, and a bug there is invisible to
+all of them: on 2026-09-04 another window's pixels were on screen while
+`ui.screenshot`, `ui.lint` and every check reported a perfect frame.
+`ui.screenshot { source: "surface" }` reads the window back from the
+display server, and `ui_check.py presented` compares the two. **Run it
+after any change to presenting, damage or the blit** — and note that
+read-back exists on X11 and Web only, so elsewhere it says "not
+checkable", which is not a pass.
 
 **Methods that exist** (`crates/lumen-static-agent/src/lib.rs`):
 `ui.getTree` `ui.getLayout` `ui.resolve` `ui.probe` `ui.probeRegion`
@@ -154,6 +165,7 @@ than with a script.
 | `edges` | rounded corners are anti-aliased (blended pixels on the arc) | no stair-steps at 1× |
 | `targets` | pointer targets ≥ 24×24 px (44 is the comfortable figure) | WCAG 2.5.8; Apple HIG 44 pt |
 | `contrast` | text vs its background ≥ 4.5:1 (3:1 for ≥ 18.7 px bold) | WCAG 1.4.3 AA |
+| `presented` | what is on screen matches what was drawn (X11/Web only) | the canvas is not the screen; everything after it is otherwise unobservable |
 | `press` | a control changes while held, and restores | every platform's HIG; the affordance people check without noticing |
 | `latency` | budgets above | Nielsen 1993; 60 Hz |
 | `lint` | the agent's ambient audit is empty (blank, truncated, collapsed, hidden-but-hit) | `crates/lumen-static-agent/src/audit.rs` |
