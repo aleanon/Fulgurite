@@ -120,12 +120,52 @@ impl<T: Widget + Default> Repeat<T> {
     /// attempted.
     pub const MAX_WINDOW: usize = 4096;
 
+    /// The largest `count * item_extent` this can address to the row.
+    ///
+    /// `visible_range` picks the first row with `scroll / item_extent`,
+    /// in `f32`. `f32` represents consecutive integers exactly only up
+    /// to **2^24 = 16,777,216**; above that the gap between
+    /// representable values is 2, then 4, then 8. Once one ulp of
+    /// `scroll` exceeds `item_extent`, some rows have no offset that
+    /// selects them and scrolling *skips* them — silently, and worse the
+    /// further down the list you are.
+    ///
+    /// The number, since this had been deferred twice without one
+    /// (`docs/step3-repeaters.md`): at the common 24 px row, **699,050
+    /// rows** is the ceiling; at 1 px it is 16.7 million. Below the
+    /// ceiling every row is reachable. Above it, `layout` debug-asserts;
+    /// a release build scrolls with gaps rather than panicking, which is
+    /// the lesser of the two wrongs for a list nobody can scroll to the
+    /// end of anyway.
+    ///
+    /// Raising it means an `f64` offset, which is a change to
+    /// `NodeState`'s width and therefore to the memory budget §2 cares
+    /// about — a decision, not a fix.
+    pub const MAX_ADDRESSABLE_EXTENT: f32 = MAX_ADDRESSABLE_EXTENT;
+
+    /// Whether `item_extent` can be divided into.
+    ///
+    /// Spelled positively — `is_finite() &&` rather than a negated
+    /// comparison — so NaN lands in the reject arm by construction
+    /// rather than by implication.
+    #[inline]
+    fn extent_is_usable(&self) -> bool {
+        self.item_extent.is_finite() && self.item_extent >= Self::MIN_ITEM_EXTENT
+    }
+
+    /// Rows this repeater can address at its current `item_extent`.
+    pub fn max_addressable_rows(&self) -> usize {
+        if !self.extent_is_usable() {
+            return 0;
+        }
+        (Self::MAX_ADDRESSABLE_EXTENT / self.item_extent) as usize
+    }
+
     fn visible_range(&self, viewport_h: f32) -> (usize, usize) {
         // Spelled out rather than `!(extent >= MIN)`: NaN must land in
         // the reject arm, and `is_finite` says so where a negated
         // comparison would only imply it.
-        let usable = self.item_extent.is_finite() && self.item_extent >= Self::MIN_ITEM_EXTENT;
-        if self.count == 0 || !usable {
+        if self.count == 0 || !self.extent_is_usable() {
             return (0, 0);
         }
         let first = ((self.scroll / self.item_extent).floor().max(0.0) as usize)
@@ -159,6 +199,10 @@ impl<T: Widget + Default + 'static> Widget for Repeat<T> {
         &[NodeDesc::new(0, NO_PARENT, 0, 0, NodeDesc::CONTAINER)];
 }
 
+/// See [`Repeat::MAX_ADDRESSABLE_EXTENT`]. Free-standing as well as
+/// associated so the audit can cite it without naming a type parameter.
+pub const MAX_ADDRESSABLE_EXTENT: f32 = 16_777_216.0;
+
 impl<T: Widget + Default + 'static> Node for Repeat<T> {
     fn arena_count(&self) -> usize {
         1
@@ -184,6 +228,11 @@ impl<T: Widget + Default + 'static> Node for Repeat<T> {
 
     fn kind_name(&self) -> &'static str {
         "repeat"
+    }
+
+    /// Yes — this is the construct A7 forbids inside a scroller.
+    fn virtualizes(&self) -> bool {
+        true
     }
 
     fn defaults(&self) -> Style {
@@ -354,6 +403,7 @@ impl<T: Widget + Default + 'static> Node for Repeat<T> {
     fn stats(&self, out: &mut crate::desc::NodeStats) {
         out.items = Some(self.count as u64);
         out.materialized = Some(self.window.len() as u32);
+        out.item_extent = Some(self.item_extent);
     }
 }
 

@@ -377,6 +377,15 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                     let axis = #axis_expr;
                     let inner = inner_limits(limits, me.padding);
                     let gaps = spaced(#n, me.spacing);
+                    // What `Fill` divides up. Normally the inner
+                    // maximum; inside a scroll region that maximum is
+                    // unbounded, and dividing infinity among portions
+                    // produces NaN sizes (A5). `fill_extent` answers
+                    // with the scroller's viewport there.
+                    let fill_span = cx.fill_extent(
+                        axis.main_of(inner),
+                        ::lumen_static::ops::is_vertical(axis),
+                    );
 
                     // Scan 1: everything that is not Fill along the main
                     // axis. Shrink children measure their content here.
@@ -414,7 +423,7 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                     // nothing here can be squeezed below its content.
                     // Skipped entirely when the container has no fills,
                     // which is the common case.
-                    let free = (axis.main_of(inner) - used).max(0.0);
+                    let free = (fill_span - used).max(0.0);
                     let mut at = i + 1;
                     if portions != 0 {
                     #(

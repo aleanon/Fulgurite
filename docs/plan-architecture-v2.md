@@ -600,7 +600,40 @@ shaping method M8/M9 need. T7.3 ran and its four numbers are in
   all` with the feature on.
 ---
 
-## M8 — Scrolling — **PLANNED, not started**
+## M8 — Scrolling — **DONE 2026-09-04**
+
+`ScrollView<W>`: one node plus its content's subtree, both on a merged
+const table (the technique T8.0 introduced). Content is measured against
+an unbounded main axis so it can exceed the viewport, placed at a
+clamped offset, and clipped when painted and when hit. Ten tests in
+`crates/lumen-static/tests/scroll_view.rs`, including the A5 NaN repro
+and a scroller inside an `Either` branch — the composition T8.0 was
+sequenced ahead of this milestone for.
+
+What the tasks became:
+
+- **A5** needed two numbers, not one. The first attempt passed the
+  viewport unchanged, reasoning that `Shrink` returns content size; but
+  `resolve_self` ends with `limits.clamp(...)`, so a finite maximum
+  squeezes the content and nothing scrolls. The `Fill` reference went
+  into `LayoutCx` (`with_fill_span`/`fill_extent`) rather than into
+  `Constraints`, which 69 struct literals construct by hand.
+- **A4's feared false positive did not materialize**, and structurally
+  rather than by a special case: because the scroller loosens the main
+  axis, nothing inside is squeezed, so `W1005` has nothing to report.
+  Pinned by a test that would fail if the axis were bounded again.
+- **A7 became a lint, not a panic** (`W1008`), and so did the f32 scroll
+  ceiling (`W1009`) — see below. `Node::virtualizes()` carries the
+  signal ungated.
+- **The f32 ceiling has a number**, after two deferrals:
+  `Repeat::MAX_ADDRESSABLE_EXTENT = 2^24`, which is **699,050 rows at
+  24 px**. This repository's own repeater bench used 1,000,000 at 24 px
+  — past the ceiling, where some rows have no scroll offset that
+  selects them.
+
+Original plan:
+
+
 
 Design in `docs/text-and-scrolling-decisions.md` Cluster A, all of it
 decided (A2 revised after review; A5–A7 settled 2026-09-04): `Fill`

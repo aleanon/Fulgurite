@@ -103,6 +103,7 @@ pub mod pass;
 #[cfg(feature = "reload")]
 pub mod reload;
 pub mod retain;
+pub mod scroll;
 pub mod repeat;
 pub mod style;
 pub mod text;
@@ -110,6 +111,7 @@ pub mod widget;
 
 pub use desc::{Constraints, NodeDesc, NodeState, Point, Size, MAX_DEPTH, NO_PARENT};
 pub use hatch::{Dyn, Either, List, Side};
+pub use scroll::ScrollView;
 pub use hit::{Hit, Inner};
 pub use cx::{BlockMetrics, Cluster, GlyphSink, LayoutCx, NoSink, TextMeasure};
 pub use retain::{Damage, Incremental, Rebuild, Retention};
@@ -138,6 +140,7 @@ pub mod prelude {
     pub use crate::desc::{Constraints, NodeState, Point, Size};
     pub use crate::event::{App, EventCtx, Event, Key};
     pub use crate::hatch::{Dyn, Either, List, Side};
+    pub use crate::scroll::ScrollView;
     pub use crate::ops::{Button, Fixed, Label, Spacer};
     pub use crate::repeat::Repeat;
     pub use crate::style::{Align, Edges, Length, Patch, Rule, Selector, Style};

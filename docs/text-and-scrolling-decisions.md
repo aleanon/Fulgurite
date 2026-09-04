@@ -193,7 +193,21 @@ the smallest change that works and it adds nothing to `NodeState`.
 - `W1004` stays reserved: sequential placement still holds within a clip
   scope, so overlap remains impossible until absolute/stack layout.
 
-### A5. What constraints does a scroller give its content? — **DECIDED 2026-09-04, recommendation adopted**
+### A5. What constraints does a scroller give its content? — **DECIDED 2026-09-04, recommendation adopted**, **BUILT 2026-09-04**
+
+**What shipping it taught.** The recommendation said "the viewport as
+the reference for `Fill` and an unbounded *maximum* for
+`Shrink`/`Fixed`", and the first implementation tried to satisfy both
+with one number — the viewport, unchanged — on the theory that
+`Length::Shrink` returns content size and so content would overflow
+anyway. It does not: `resolve_self` ends with `limits.clamp(...)`, so a
+finite maximum squeezes the content and there is nothing to scroll. The
+two numbers are genuinely two numbers. `Constraints` did not grow a
+field (69 struct literals would have had to change); the reference goes
+in `LayoutCx`, which exists for exactly this — a service layout needs
+that a widget cannot own — as `with_fill_span`/`fill_extent`. An
+unbounded `Fill` at the content *root* falls back to its content size in
+`resolve_self`, so no infinity reaches a `Size` on any path.
 
 Upstream of A1 and A3 and not covered by either. To exceed the viewport
 the content must be measured under a loosened main axis. Then, in the
@@ -210,7 +224,10 @@ extent as the reference for `Fill` and an unbounded *maximum* for
 `Shrink`/`Fixed` — i.e. `Fill` inside a scroller means "the viewport",
 never "the content". Needs a decision and a NaN-guard test either way.
 
-### A6. Who clamps the scroll offset? — **DECIDED 2026-09-04, recommendation adopted**
+### A6. Who clamps the scroll offset? — **DECIDED 2026-09-04, recommendation adopted**, **BUILT 2026-09-04**
+
+`ScrollView::layout` clamps after measuring, and resets a non-finite
+offset to zero rather than clamping it into another non-finite one.
 
 A3 settles where the offset lives and stops. Content extent is known only
 after layout — the same reasoning B5 uses to put caret-into-view in
@@ -220,7 +237,16 @@ after layout — the same reasoning B5 uses to put caret-into-view in
 wheel handler will write that value directly. **Recommendation:** clamp
 in `layout` after measuring, same place and shape as B5.
 
-### A7. A `Repeat` inside a `ScrollView` materializes every row — **DECIDED 2026-09-04, recommendation adopted** (forbid and lint)
+### A7. A `Repeat` inside a `ScrollView` materializes every row — **DECIDED 2026-09-04, recommendation adopted** (forbid and lint), **BUILT 2026-09-04** as `W1008`
+
+**Reported, not refused.** The first implementation also had
+`ScrollView::layout` assert against it in debug builds. That was wrong
+twice: it turns a slow frame into a crash, and — the part that settled
+it — it made the release-path lint impossible to test, because the
+assert fired before any frame the lint could examine. A check that
+prevents its own verification is not a check. `Node::virtualizes()`
+carries the signal, ungated, so the invariant does not hold only in dev
+builds.
 
 `visible_range(limits.max_h)` derives the window from the *constraint*,
 not from an intersection with a viewport. A scroller gives its content

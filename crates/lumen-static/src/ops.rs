@@ -195,17 +195,30 @@ pub fn resolve_self(limits: Constraints, style: &Style, content: Size) -> Size {
     if !style.visible {
         return Size::default();
     }
+    // An unbounded axis is a scroll region's (A5). `Fill` there cannot
+    // mean the maximum — it is infinite — so it means the content, and
+    // the enclosing scroller's viewport reaches the *children* through
+    // `LayoutCx::fill_extent`. Either way no infinity reaches a `Size`.
     let w = match style.width {
         Length::Fixed(v) => v,
         Length::Shrink => content.w,
+        Length::FillPortion(_) if !limits.max_w.is_finite() => content.w,
         Length::FillPortion(_) => limits.max_w,
     };
     let h = match style.height {
         Length::Fixed(v) => v,
         Length::Shrink => content.h,
+        Length::FillPortion(_) if !limits.max_h.is_finite() => content.h,
         Length::FillPortion(_) => limits.max_h,
     };
     limits.clamp(Size { w, h })
+}
+
+/// Whether an axis is the vertical one — for [`LayoutCx::fill_extent`].
+#[inline]
+#[doc(hidden)]
+pub fn is_vertical(axis: Axis) -> bool {
+    matches!(axis, Axis::Column)
 }
 
 /// Cross-axis offset for a child inside a container of `cross` extent.

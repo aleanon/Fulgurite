@@ -126,6 +126,23 @@ pub trait Node {
     /// The default *is* `layout`, which is right for every widget that
     /// has nothing to cache. `Label` overrides it.
     /// `docs/plan-review-fixes.md` F2.1.
+    /// Whether this node derives how much of its content to materialize
+    /// from the constraints it is given.
+    ///
+    /// `Repeat` does; nothing else does. It exists so
+    /// [`ScrollView`](crate::scroll::ScrollView) can refuse to contain
+    /// one (A7 of `docs/text-and-scrolling-decisions.md`): a scroller
+    /// hands its content the viewport, a `Repeat` reads that as "show
+    /// this much", and a repeater inside a scroller therefore shows a
+    /// viewport's worth *of the scroller's* — the two disagree about who
+    /// is windowing. A `Repeat` is already a scroller.
+    ///
+    /// Not behind `observe`, deliberately: it guards an invariant, and
+    /// an invariant that only holds in dev builds is not one.
+    fn virtualizes(&self) -> bool {
+        false
+    }
+
     #[cfg(feature = "observe")]
     fn probe(
         &mut self,

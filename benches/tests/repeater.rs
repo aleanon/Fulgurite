@@ -35,7 +35,12 @@ fn node_count_is_data_independent() {
     const _: () = assert!(ListApp::NODE_COUNT == 3);
 
     // And unchanged by data size at runtime: same table, same state arena.
-    for rows in [10usize, 1_000_000] {
+    // 699,050 rather than 1,000,000: past `count * item_extent = 2^24`
+    // the f32 scroll offset cannot select every row, and `ui.lint` says
+    // so (`W1009`, `Repeat::MAX_ADDRESSABLE_EXTENT`). The property under
+    // test here is that `NODE_COUNT` is data-independent, which a
+    // reachable row count demonstrates just as well.
+    for rows in [10usize, 699_000] {
         let mut app = ListApp { list: Repeat::new(rows, 24.0, bind_icon), ..Default::default() };
         let mut st = [NodeState::default(); ListApp::NODE_COUNT];
         run(&mut app, &mut st);

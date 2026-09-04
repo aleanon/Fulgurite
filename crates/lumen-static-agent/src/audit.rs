@@ -112,6 +112,25 @@ pub mod codes {
     pub const BLANK: &str = "W1006";
     /// A collection with items that occupies no space.
     pub const COLLAPSED_COLLECTION: &str = "W1007";
+    /// A virtualizing collection nested inside a scroll region.
+    ///
+    /// A7 of `docs/text-and-scrolling-decisions.md`. `Repeat` derives
+    /// its window from the constraint it is given; a scroller hands its
+    /// content an unbounded main axis, so the repeater's window becomes
+    /// "all of it" and a million-row list materializes every row —
+    /// silently, and it is the first composition anyone writes. A
+    /// `Repeat` *is* a scroller. `ScrollView::layout` debug-asserts
+    /// against it; this is what a release build reports.
+    pub const NESTED_VIRTUALIZER: &str = "W1008";
+    /// A collection with more rows than its scroll offset can address.
+    ///
+    /// `Repeat` picks the first visible row with `scroll / item_extent`
+    /// in `f32`, which represents consecutive integers exactly only to
+    /// 2^24. Past `count * item_extent = 16,777,216` one ulp of the
+    /// offset is wider than a row, so some rows have no offset that
+    /// selects them — scrolling skips them, silently and worse the
+    /// further down you are. `Repeat::MAX_ADDRESSABLE_EXTENT`.
+    pub const UNADDRESSABLE_ROWS: &str = "W1009";
 }
 
 /// A condition that is true of the current frame.
@@ -139,6 +158,8 @@ pub(crate) enum What {
     Collapsed { items: u64, shown: u32, size: Size },
     Offscreen { bounds: [f32; 4], viewport: [f32; 4] },
     Blank { nodes: usize },
+    NestedVirtualizer { scroller: u32, items: u64 },
+    UnaddressableRows { rows: u64, addressable: u64, extent: f32 },
 }
 
 impl Finding {
@@ -170,6 +191,16 @@ impl Finding {
             What::Blank { nodes } => format!(
                 "nothing with both area and content in {nodes} nodes — the frame is blank"
             ),
+            What::UnaddressableRows { rows, addressable, extent } => format!(
+                "{rows} rows at {extent} px: only the first {addressable} have a scroll \
+                 offset that selects them, because f32 holds consecutive integers to 2^24. \
+                 The rest are unreachable by scrolling"
+            ),
+            What::NestedVirtualizer { scroller, items } => format!(
+                "a virtualizing collection of {items} rows is inside the scroll region at \
+                 node {scroller}: it will materialize every row. A Repeat is already a \
+                 scroller — drop the ScrollView, or put a fixed-size subtree in it"
+            ),
         }
     }
 
@@ -196,6 +227,12 @@ impl Finding {
                 "bounds": bounds, "viewport": viewport,
             }),
             What::Blank { nodes } => json!({ "nodes": nodes }),
+            What::NestedVirtualizer { scroller, items } => {
+                json!({ "scroller": scroller, "items": items })
+            }
+            What::UnaddressableRows { rows, addressable, extent } => {
+                json!({ "rows": rows, "addressable": addressable, "item_extent": extent })
+            }
         }
     }
 }
@@ -244,6 +281,49 @@ impl Default for Auditor {
             spare: Vec::new(),
         }
     }
+}
+
+/// Rows a virtualizer holds that no scroll offset can select.
+///
+/// Asks the node for its row count and extent through the same
+/// `NodeStats`/`Node` surface everything else here uses, so a widget
+/// that starts virtualizing is covered without touching this.
+fn unaddressable(tree: &TreeRef, i: usize) -> Option<(u64, u64, f32)> {
+    let node = tree.root.node(i);
+    if !node.virtualizes() {
+        return None;
+    }
+    let mut s = lumen_static::desc::NodeStats::default();
+    node.stats(&mut s);
+    let rows = s.items?;
+    let extent = s.item_extent?;
+    if !(extent.is_finite() && extent > 0.0) {
+        return None;
+    }
+    let addressable =
+        (lumen_static::repeat::MAX_ADDRESSABLE_EXTENT / extent) as u64;
+    (rows > addressable).then_some((rows, addressable, extent))
+}
+
+/// The nearest ancestor of `i` that is a scroll region, if any.
+///
+/// By kind name rather than by a flag, because that is what the
+/// selector vocabulary already uses and what a finding can name back to
+/// the author.
+fn scrolling_ancestor(
+    tree: &TreeRef,
+    table: &[lumen_static::desc::NodeDesc],
+    i: usize,
+) -> Option<usize> {
+    let mut p = table[i].parent;
+    while p != lumen_static::desc::NO_PARENT {
+        let k = p as usize;
+        if tree.root.node(k).kind_name() == "scrollview" {
+            return Some(k);
+        }
+        p = table[k].parent;
+    }
+    None
 }
 
 /// What a leaf measured under the two probes.
@@ -446,6 +526,31 @@ impl Auditor {
                         code: codes::TRUNCATED,
                         idx: i as u32,
                         what: What::Truncated { natural: nat.size, size: st[i].size },
+                    });
+                }
+            }
+
+            // -- the f32 scroll ceiling (`Repeat::MAX_ADDRESSABLE_EXTENT`) --
+            if let Some((rows, addressable, extent)) = unaddressable(&tree.as_ref(), i) {
+                out.push(Finding {
+                    code: codes::UNADDRESSABLE_ROWS,
+                    idx: i as u32,
+                    what: What::UnaddressableRows { rows, addressable, extent },
+                });
+            }
+
+            // -- A7: a virtualizer inside a scroll region --
+            if tree.as_ref().root.node(i).virtualizes() {
+                if let Some(scroller) = scrolling_ancestor(&tree.as_ref(), table, i) {
+                    let mut s = lumen_static::desc::NodeStats::default();
+                    tree.as_ref().root.node(i).stats(&mut s);
+                    out.push(Finding {
+                        code: codes::NESTED_VIRTUALIZER,
+                        idx: i as u32,
+                        what: What::NestedVirtualizer {
+                            scroller: scroller as u32,
+                            items: s.items.unwrap_or(0),
+                        },
                     });
                 }
             }

@@ -201,4 +201,11 @@ pub struct NodeStats {
     pub items: Option<u64>,
     /// Materialized instances, for virtualized widgets.
     pub materialized: Option<u32>,
+    /// Px per item, for virtualized widgets that place by extent.
+    ///
+    /// Reported because the offset arithmetic that selects a row is
+    /// `f32`, and whether every row is *reachable* depends on this
+    /// against the row count (`Repeat::MAX_ADDRESSABLE_EXTENT`, lint
+    /// `W1009`). Geometry alone cannot answer it.
+    pub item_extent: Option<f32>,
 }

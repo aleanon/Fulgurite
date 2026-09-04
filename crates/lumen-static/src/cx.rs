@@ -139,10 +139,62 @@ impl TextMeasure for BlockMetrics {
 /// call; concrete, so no type parameter goes viral.
 pub struct LayoutCx<'a> {
     pub text: &'a mut dyn TextMeasure,
+    /// What `Fill` resolves against on an axis whose maximum is not a
+    /// real bound.
+    ///
+    /// A scroll region measures its content against an **unbounded**
+    /// main axis — that is the only way `Shrink` content can exceed the
+    /// viewport, because `resolve_self` clamps every node to the limits
+    /// it was given. But `Fill` cannot mean "infinity": `used += ∞` then
+    /// `free = (∞ − ∞).max(0.0)` is **NaN**, and NaN sizes reach
+    /// `NodeState`, make every `contains` false, hash by bit pattern
+    /// into the journal and slip past the audit's `EPS` comparisons.
+    ///
+    /// So the scroller publishes its viewport here for the duration of
+    /// its content's layout, and `Fill` inside means *the viewport* —
+    /// never the content. That is A5 of
+    /// `docs/text-and-scrolling-decisions.md`, and it is the reason no
+    /// infinity ever reaches a size.
+    ///
+    /// `None` outside a scroller, where the constraint's own maximum is
+    /// the answer.
+    fill_span: Option<Size>,
 }
 
 impl<'a> LayoutCx<'a> {
     pub fn new(text: &'a mut dyn TextMeasure) -> Self {
-        LayoutCx { text }
+        LayoutCx { text, fill_span: None }
+    }
+
+    /// Run `f` with `span` as the `Fill` reference, restoring whatever
+    /// was there before.
+    ///
+    /// Restoring matters: scrollers nest, and an inner one must not
+    /// leave its viewport in place for the outer one's remaining
+    /// children.
+    pub fn with_fill_span<R>(&mut self, span: Size, f: impl FnOnce(&mut Self) -> R) -> R {
+        let saved = self.fill_span.replace(span);
+        let out = f(self);
+        self.fill_span = saved;
+        out
+    }
+
+    /// The extent `Fill` resolves against along one axis: the
+    /// constraint's own maximum when that is a real bound, else the
+    /// enclosing scroller's viewport, else zero.
+    ///
+    /// Zero rather than infinity for the last case: a `Fill` with
+    /// nothing to fill against occupies nothing, which is visible and
+    /// inert. An infinity would propagate into `NodeState`.
+    #[inline]
+    pub fn fill_extent(&self, bound: f32, vertical: bool) -> f32 {
+        if bound.is_finite() {
+            return bound;
+        }
+        match self.fill_span {
+            Some(s) if vertical => s.h,
+            Some(s) => s.w,
+            None => 0.0,
+        }
     }
 }

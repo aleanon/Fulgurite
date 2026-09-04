@@ -310,3 +310,110 @@ fn a_persisting_finding_logs_once_not_every_frame() {
     assert!(f.logs(after_first).is_empty(), "a standing finding stays quiet in the log");
     assert!(!f.findings().is_empty(), "…while remaining true in ui.lint");
 }
+
+// ---- M8/A4 + A7: what a scroll region does to the lints -------------
+
+/// A scroller with content taller than it.
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+struct TallBody {
+    a: Fixed,
+    b: Fixed,
+    c: Fixed,
+}
+
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+struct Scrolled {
+    #[widget_id("scroller")]
+    scroller: lumen_static::scroll::ScrollView<TallBody>,
+}
+
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+struct BadNesting {
+    #[widget_id("scroller")]
+    scroller: lumen_static::scroll::ScrollView<lumen_static::repeat::Repeat<TallBody>>,
+}
+
+fn lint_of<W>(app: &mut W) -> Vec<String>
+where
+    W: lumen_static::widget::Node + Widget,
+{
+    let styles = pass::default_styles(app);
+    let mut st = vec![NodeState::default(); W::NODE_COUNT];
+    const VIEW: Constraints =
+        Constraints { min_w: 0.0, max_w: 200.0, min_h: 0.0, max_h: 100.0 };
+    pass::layout(app, &styles, &mut st, VIEW);
+    let mut agent = Agent::new();
+    {
+        let mut tm = TreeMut::of_root(app, &styles, &st);
+        agent.frame_done(&mut tm, lumen_static_agent::FrameTiming::passes(1, 1));
+    }
+    let tree = TreeRef::of_root(app, &styles, &st);
+    let resp = agent.dispatch(
+        &tree,
+        &json!({ "jsonrpc": "2.0", "id": 1, "method": "ui.lint", "params": {} }),
+    );
+    resp["result"]["findings"]
+        .as_array()
+        .map(|a| a.iter().map(|f| f["code"].as_str().unwrap_or("").to_owned()).collect())
+        .unwrap_or_default()
+}
+
+#[test]
+fn content_taller_than_its_scroller_is_not_reported_as_truncated() {
+    // A4's worry: `W1005` fires on any `Shrink` node given less than it
+    // asked for, "which inside a scroller is the normal case". It does
+    // not fire here, and the reason is structural rather than a special
+    // case in the lint: a scroller lays its content out against an
+    // *unbounded* main axis (A5), so nothing inside is squeezed and
+    // there is no truncation to report.
+    let mut app = Scrolled::default();
+    for f in [&mut app.scroller.content.a, &mut app.scroller.content.b, &mut app.scroller.content.c]
+    {
+        f.w = 20.0;
+        f.h = 400.0;
+    }
+    let codes = lint_of(&mut app);
+    assert!(
+        !codes.iter().any(|c| c == "W1005"),
+        "a scroller's overflowing content is not truncation: {codes:?}"
+    );
+}
+
+#[test]
+fn a_repeat_inside_a_scroller_is_reported_as_w1008() {
+    // A7. The debug assert in `ScrollView::layout` catches this in a dev
+    // build; the lint is what a release build has.
+    let mut app = BadNesting::default();
+    app.scroller.content.count = 100_000;
+    app.scroller.content.item_extent = 24.0;
+    let codes = lint_of(&mut app);
+    assert!(codes.iter().any(|c| c == "W1008"), "expected W1008, got {codes:?}");
+}
+
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+struct BigList {
+    #[widget_id("rows")]
+    rows: Repeat<TallBody>,
+}
+
+#[test]
+fn a_list_longer_than_f32_can_address_is_reported_as_w1009() {
+    // The ceiling deferred twice without a number
+    // (`docs/step3-repeaters.md`): `scroll / item_extent` is f32, which
+    // holds consecutive integers only to 2^24, so past
+    // count * extent = 16,777,216 some rows have no offset that selects
+    // them. 1,000,000 rows at 24 px is 24,000,000 — and it is the
+    // configuration this repository's own repeater bench used.
+    let mut app = BigList { rows: Repeat::new(1_000_000, 24.0, lumen_static::repeat::noop_bind) };
+    let codes = lint_of(&mut app);
+    assert!(codes.iter().any(|c| c == "W1009"), "expected W1009, got {codes:?}");
+
+    // Just under the ceiling is silent.
+    let mut ok = BigList { rows: Repeat::new(699_000, 24.0, lumen_static::repeat::noop_bind) };
+    let codes = lint_of(&mut ok);
+    assert!(!codes.iter().any(|c| c == "W1009"), "699k rows at 24 px are addressable: {codes:?}");
+}
