@@ -1333,3 +1333,41 @@ clean in both feature configs, zero `unsafe` in the release core, hot
 reload demo PASS, counter renders. What M2's model changed and what M4
 could not deliver as specified are recorded in their sections rather than
 in this line, so the next reader finds the reason next to the claim.
+
+---
+
+## M14 — The desktop shell — **PLANNED 2026-09-05, not started**
+
+*Task breakdown: `docs/plan-desktop.md`.*
+
+M13 proved the seams by plugging a second implementation into every
+one of them. M14 answers the opposite question — **what is missing that
+no implementation can supply** — and the answer is that the desktop
+side has capability gaps, not seam gaps:
+
+- **There is no windowing crate.** `lumen-static-shell` has no window
+  dependency at all; the winit/softbuffer glue is ~480 lines inside
+  `examples/counter-window`, tangled with the agent endpoint and the
+  profiler. A second application copy-pastes it (T14.0).
+- **The event vocabulary has no modifiers and one mouse button.** That
+  single absence blocks shortcuts, Ctrl+C/V, Shift+Arrow selection and
+  context menus at once (T14.1–T14.3).
+- **No clipboard, no text selection, no cursor icons, no scrollbar**
+  (T14.4–T14.7). Selection is half-unblocked already: T11.2's pointer
+  capture is the drag mechanism `input.rs` still says does not exist —
+  a stale comment T14.4 must correct.
+- **No IME**, which makes CJK input impossible rather than awkward.
+  Left **OPEN** and possibly its own milestone: the honest answer
+  depends on what T14.4's anchor turns out to be (T14.8).
+
+**Measured before planning**, since the queue is
+`CAP` × `size_of::<Event>()`: the full proposed vocabulary — `Key` with
+`Char(char)` and `F(u8)`, pointer events carrying a button, plus a
+`Modifiers` event — **still measures 16 B, and the queue stays
+1048 B.** A vocabulary that grew the enum would have grown every host's
+queue with it.
+
+Nothing in M14 restores desktop capability lost to M13. Desktop is the
+default type argument of every seam, and M13 improved it: retention got
+faster at every scale (`docs/results-retention.md`) and `num::clamp`
+removed a panic path from every node of every frame.
