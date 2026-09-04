@@ -12,6 +12,7 @@ publish = false
 lumen-static = { path = "../../crates/lumen-static" }
 lumen-static-shell = { path = "../../crates/lumen-static-shell", features = ["truetype"] }
 lumen-static-agent = { path = "../../crates/lumen-static-agent" }
+lumen-static-winit = { path = "../../crates/lumen-static-winit" }
 serde_json = "1"
 winit = "0.30"
 softbuffer = "0.4"

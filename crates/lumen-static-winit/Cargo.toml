@@ -1,0 +1,19 @@
+[package]
+name = "lumen-static-winit"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "lumen_static_winit"
+
+# The only crate in the workspace with an OS dependency. Deliberately
+# *not* a feature on lumen-static-shell: the shell is the headless half
+# and every test in the workspace depends on it staying that way, so
+# adding winit there would put a windowing system behind `cargo test`
+# (docs/plan-desktop.md T14.0).
+[dependencies]
+lumen-static = { path = "../lumen-static" }
+lumen-static-shell = { path = "../lumen-static-shell", features = ["truetype"] }
+winit = "0.30"
+softbuffer = "0.4"

@@ -1,0 +1,10 @@
+[package]
+name = "minimal"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+lumen-static = { path = "../../crates/lumen-static" }
+lumen-static-winit = { path = "../../crates/lumen-static-winit" }

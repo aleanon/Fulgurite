@@ -71,7 +71,7 @@ Measured before planning, so the estimates below are anchored:
 
 ---
 
-## T14.0 — `lumen-static-winit`: extract the window
+## T14.0 — `lumen-static-winit`: extract the window — **DONE 2026-09-05**
 
 **The largest gap, and the least interesting work.** There is no
 windowing layer. `lumen-static-shell` has *no window dependency at all*
@@ -100,6 +100,54 @@ crate — all eight checks, including click-to-presented latency and
 contrast. Behavioural equivalence on a real window is the only gate
 worth having for a move like this. Plus: `counter-window` drops below
 **400 lines** and a second example builds a window in **under 30**.
+
+**Done. The live gate passes unchanged** — eight checks, frame p50
+0.06 ms and click-to-presented 5.3 ms against a 100 ms budget, the same
+numbers as before the move.
+
+**One half of the line gate was the wrong measure, and the result says
+so.** `examples/minimal` opens a real window — tree, event loop,
+software raster, damage, buffer age, scale factor, system font — in
+**24 lines of code**, which is the half that mattered. But
+`counter-window` did *not* drop below 400 lines in total: it went from
+1160 to **1255**, because splitting one file into five adds five module
+headers, and the doc comments explaining what each module is for are
+worth more than the lines they cost.
+
+What actually moved is the *windowing* code, and the honest numbers are:
+
+| | before | after |
+|---|---:|---:|
+| `main.rs` | 1160 | **43** |
+| generic window code in the example | ~480 | **0** |
+| `window.rs` (agent socket, a11y, sign cascade, app keys) | — | 384 |
+| a second app's window | ~480 | **24** |
+
+"Total lines in the example crate" was never the property worth
+gating; "lines an application must write to get a window" was. The gate
+should have said that, and this entry is the correction.
+
+**And the split made the input path testable for the first time.**
+`translate.rs` is pure — `WindowEvent` in, `Event` out — so
+`crates/lumen-static-winit/tests/translate.rs` covers all twelve keys,
+the cursor-position-on-click rule, wheel lines versus pixels, and the
+logical/physical conversion, with **no display**. None of that had a
+test before, because it lived inside an event loop that cannot run
+headless.
+
+Three things the extraction turned up:
+
+- **`Surface` must not own the `Canvas`.** The first design had it, and
+  the tally's agent endpoint answers `ui.screenshot` before `resumed`
+  has created a surface — which would have made it `None`. The canvas
+  is the caller's; `Surface` is the softbuffer half alone.
+- **The `a11y` feature broke and the default build did not notice**,
+  because a default-off feature is not in `just test`'s path. Found by
+  building it explicitly, which is now worth doing after any change to
+  that file.
+- **The 0RGB→RGBA readback moved into the crate** as
+  `Surface::fetch_rgba`. It is the same for every window, and it was in
+  the example only because the example was where windows lived.
 
 ---
 

@@ -601,6 +601,7 @@ dependencies = [
  "lumen-static",
  "lumen-static-agent",
  "lumen-static-shell",
+ "lumen-static-winit",
  "serde_json",
  "softbuffer",
  "winit",
@@ -1184,6 +1185,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "lumen-static-winit"
+version = "0.1.0"
+dependencies = [
+ "lumen-static",
+ "lumen-static-shell",
+ "softbuffer",
+ "winit",
+]
+
+[[package]]
 name = "memchr"
 version = "2.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1205,6 +1216,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "488016bfae457b036d996092f6cb448677611ce4449e970ceaf42695203f218a"
 dependencies = [
  "autocfg",
+]
+
+[[package]]
+name = "minimal"
+version = "0.1.0"
+dependencies = [
+ "lumen-static",
+ "lumen-static-winit",
 ]
 
 [[package]]
