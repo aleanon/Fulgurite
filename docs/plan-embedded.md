@@ -1,7 +1,18 @@
-# M10 — the embedded profile
+# M13 — the embedded profile
 
-*Planned 2026-09-04. Replaces "parity phase B" as the next milestone
-(`docs/plan-architecture-v2.md`). Status: **not started**.*
+*Planned 2026-09-04 as M10; **renumbered M13 and moved behind M11 the
+same day**, after a five-agent review of this document found its
+evidence substantially wrong and its scope roughly seven times what was
+written. Status: **not started**. Corrections are marked inline rather
+than quietly applied — the errors are the useful part.*
+
+> **What the review changed.** Four of this plan's "already true"
+> claims were false: `grep "std::"` cannot see `thread_local!`, the
+> style array has no non-allocating constructor, `TextInput` has no
+> alloc-free storage, and the recorded type sizes were stale. It also
+> found a blocker never considered — **stack depth** — and that only
+> the `paint` signature (now M10a) actually blocked the widget work
+> this milestone was scheduled ahead of.
 
 ## The premise
 
@@ -22,41 +33,64 @@ M10 makes it true, gated and measured — or finds out where it is false.
 Either outcome is worth more than the current situation, which is a
 claim nobody has tested.
 
-## Why before more widgets
+## Why this is no longer first — **REVISED 2026-09-04**
 
-`docs/plan-lumen-parity.md`'s own summary: the gating decisions "should
-be settled before any widget beyond the current four is written, because
-every widget encodes both." Allocation is that kind of decision.
-`TextBuffer::Clusters` is already an associated type precisely so a
-fixed-capacity storage can pair with a fixed-capacity cluster array
-(B9). Writing eight more widgets and then discovering each assumes `Vec`
-is the same mistake one level up.
+The original argument was that "every widget encodes the allocation
+answer", by analogy with the parity survey's rule about gating
+decisions. The review took that apart: walk M11's own list and none of
+the widgets would be written differently based on this milestone's
+outcome. Toggles are a `Button` with a `bool`; tabs are `Either` plus a
+header strip; the slider is a *routing* change; overlays are a layout
+milestone. The one item with storage in it, `TextArea`, sits on
+`TextBuffer::Clusters` — which this document itself cites as *already*
+being an associated type for exactly this reason.
+
+What genuinely blocked M11 was the `paint` signature, because every
+widget adds a `paint` impl. That is now **M10a** and runs first. This
+milestone runs after M11, and before it starts, someone has to name a
+device (see below) — there is no user for the profile yet: no commit in
+this repository has ever targeted an embedded platform.
 
 ## The starting position, measured 2026-09-04
 
 Better than expected. This is what M10 is actually up against:
 
-**Nine `std::` references in the core**, and three are already gated:
+**Nine `std::` paths (three gated) — and that count is the wrong
+metric.** It is arithmetically right and materially misleading, because
+a `grep` for `std::` cannot see an unqualified prelude macro:
 
 | file | what | disposition |
 |---|---|---|
 | `bind.rs` | `std::cell::RefCell` | → `core::cell` |
-| `event.rs` | `std::collections::VecDeque` | → `alloc::collections` |
-| `text.rs` (×4) | `std::borrow::Cow` | → `alloc::borrow` |
-| `reload.rs` | `std::thread_local!` | already behind `reload` |
-| `inbox.rs` | `std::sync::mpsc` | gate behind `std` (T10.1) |
+| `bind.rs` | **`thread_local!`, ungated** | **no `core` equivalent.** It is the runtime of `#[bind]` — the mainline derive path, not a dev feature. Decide: a `&mut` scratch buffer threaded through `format_into`, a critical-section static, or gate `#[bind]`'s formatting behind `std` |
+| `event.rs` | `std::collections::VecDeque` | → `alloc::collections` — but see "input" below |
+| `text.rs` (×5) | `std::borrow::Cow` | → `alloc::borrow`; two already behind `reload` |
+| `reload.rs` | `thread_local!`, `eprintln!` | already behind `reload` |
+| `inbox.rs` | `std::sync::mpsc` | gate behind `std` |
 
-**Five float-math calls**, all `std`-only for `f32` in a `no_std` build:
-two `.floor()`, two `.ceil()`, one `.abs()`, in `cx.rs`, `repeat.rs` and
-`input.rs`. That is a smaller surface than a dependency on `libm` would
-be worth (T10.2).
+Counting every prelude identifier that needs an `alloc::` import under
+`#![no_std]` — `Vec`, `String`, `Box`, `vec!`, `format!`, `to_owned`,
+`to_string` — gives **~67 across 15 files**. So T13.1 is not a nine-line
+diff; it is ~70 lines across most of the crate, plus a design decision
+for `bind.rs`.
 
-**The allocation-free path already exists and is exercised.**
-`pass::layout`, `pass::paint` and `pass::hit_test` take *slices*. The
-233 tests in this repository already own their arrays —
-`[NodeState; Ui::NODE_COUNT]` and `[Style; Ui::NODE_COUNT]` — because
-`NODE_COUNT` is a `const` at the concrete type. `Host` is a convenience
-that allocates; it is not the architecture.
+**Four float-math calls, not five.** `.abs()` is in `core` — verified by
+compiling it under `#![no_std]`. The std-only surface is two operations
+at four sites: `.floor()`/`.ceil()` in `cx.rs` and `repeat.rs`. Nothing
+else is missed: `max`, `min`, `clamp`, `to_bits`, `is_finite`,
+`signum` and `copysign` are all core, and float *formatting* works in
+`no_std + alloc` because `Display` for floats lives in `core::fmt` —
+though its flt2dec path is multiple KB of `.text` and belongs in the
+budget.
+
+**The allocation-free path *half* exists.** `pass::layout`,
+`pass::paint` and `pass::hit_test` take *slices*, and there are 86
+`[NodeState; N]` array literals in the workspace. But there are **zero**
+`[Style; N]` literals: all 84 sites call `pass::default_styles`, which
+returns a `Vec` and is the only way to build one. An earlier draft
+claimed "233 tests already own their arrays"; they own their *state*
+arrays. A non-allocating style constructor is work in this milestone,
+not a starting position.
 
 **What genuinely needs an allocator divides on one line:**
 
@@ -64,16 +98,58 @@ that allocates; it is not the architecture.
 > count needs an allocator.**
 
 - Alloc-free: `Label`, `Button`, `Fixed`, `Spacer`, `Either` (T8.0
-  removed its arenas), `Option`, `ScrollView`, `TextInput` with a
-  fixed-capacity storage, and every derived container.
+  removed its arenas), `Option`, `ScrollView`, and every derived
+  container.
 - Needs `alloc`: `Repeat` (a `Vec<T>` window **and** an `Arena`), `List`,
   `Dyn`, `Assembled`, and `DisplayList` itself.
+- **`TextInput` is on neither side yet.** An earlier draft listed it as
+  alloc-free "with a fixed-capacity storage". No such storage exists:
+  both `TextBuffer` impls (`String`, `Cow`) need `alloc`, and the only
+  `ClusterBuf` impl is `Vec<Cluster>`. B9's associated type is the right
+  machinery with no inhabitant — so building one is a task here (T13.5),
+  and it is the thing that cashes B9 out.
+- **Input is not covered by the sentence at all.** `InputQueue` is a
+  `VecDeque`, so an app that wants *events* needs an allocator. An event
+  backlog is a runtime *event* count, not a runtime *content* count.
+  Either it becomes a bounded ring with a stated drop policy, or the
+  line is extended to "a compile-time node count **and a bounded event
+  count**" and an embedded host calls `pass::dispatch` directly.
 
-Proving that sentence is M10's whole job.
+Proving that sentence — with those three corrections in it — is this
+milestone's whole job.
+
+## The blocker the first draft never considered: stack
+
+Traversal is recursive, and `MAX_DEPTH` is **64**. Measured frame sizes
+for the derive-generated `layout` on 32-bit ARM: **256–272 B per level
+in release, 568 B in dev**. At the framework's own maximum depth that is
+**~17 KB of stack in release, ~36 KB unoptimised**, against typical
+Cortex-M budgets of 4–16 KB. There is no overflow trap without MPU
+setup: it silently corrupts `.bss`, which is exactly where the
+`[NodeState; N]` array lives.
+
+`desc.rs` currently claims `MAX_DEPTH` is "how §5's stack-depth concern
+is retired: it becomes a fact about a constant rather than a runtime
+hazard." That is true given a desktop stack. On this profile the
+constant is a cap on a cost that must be *budgeted*, and `Dyn` is
+documented as a hole in the guarantee anyway. **T13.0 derives a maximum
+tree depth from a stack budget** — at 264 B/level a 4 KB stack allows
+depth 15 — and amends that comment in the same commit.
 
 ---
 
-## T10.0 — how paint reaches pixels without a list — **DECIDED**
+## T13.0 — name the device, and budget the stack — **first**
+
+Every threshold in this milestone is derived from a device, and the
+rule "write the threshold down before the measurement, so the gate can
+say no" is not satisfiable without one. Name: part class, RAM and flash
+ceiling, display size, bit depth and bus, and a target frame interval.
+Then derive the stack budget and the maximum tree depth from it.
+
+If no such device can be named, that is the answer to whether this
+milestone should run at all.
+
+## ~~T10.0~~ — moved to M10a — how paint reaches pixels without a list
 
 `Node::paint(&self, st, i, out: &mut DisplayList)` is the blocker:
 `DisplayList` is `Vec<Cmd>` plus `String`. Two shapes were considered.
@@ -86,7 +162,10 @@ Proving that sentence is M10's whole job.
   surface: `rect`, `text_weighted`, `rounded_rect`, `shadow`,
   `push_clip`, `pop_clip`.
 
-**Decided: the sink.** Reasons, in order:
+**Decided: the sink**, and **split out as milestone M10a** because it is
+the only part of this plan that blocks M11. The decision and its task
+breakdown now live in `docs/plan-architecture-v2.md` M10a; the reasoning
+is kept here because it was argued here. Reasons, in order:
 
 1. It is the shape this project has chosen three times already for the
    same reason — `dyn TextMeasure` (T5.2), `dyn GlyphSink` (T7.2b), `dyn
@@ -110,7 +189,7 @@ only `Painter` in the workspace at the end of this task, so the
 refactor is provably behaviour-preserving before anything depends on
 it.
 
-## T10.1 — `no_std + alloc`, and the feature polarity — **DECIDED**
+## T13.1 — `no_std + alloc`, and the feature polarity — **DECIDED**
 
 Point the nine references at `core`/`alloc`, gate `inbox` behind `std`
 (it is `mpsc`, and deferred work off the frame loop is not an embedded
@@ -144,37 +223,77 @@ An embedded consumer writes `default-features = false`, or
 `features = ["alloc"]` for the middle tier — the three-tier shape
 `serde` and `hashbrown` use.
 
-**Gate:** `cargo check -p lumen-static --no-default-features --target
-thumbv7em-none-eabihf`, added to `just static` (it is a check, not a
-build, so it costs seconds). The target is available through rustup and
-nothing else in the workspace needs it.
+**Also gate `observe` and `reload` behind `std`.** Neither lists it
+today, and both pull `accesskit`/`serde_json`, which are not `no_std`.
+Without it, `--no-default-features --features alloc,observe` resolves
+cleanly at the Cargo level and then fails deep inside a dependency
+instead of at the point of the mistake.
 
-## T10.2 — float math without `std`
+**Gate:** `cargo check -p lumen-static --no-default-features
+**--features alloc** --target thumbv7em-none-eabihf`. Not bare
+`--no-default-features`: with the tiers above that means *neither*
+`std` nor `alloc`, and `Vec`/`String`/`VecDeque` are still in the core
+until T13.4 — so the stricter form belongs in T13.4's gate, not this
+one. The target needs `rustup target add thumbv7em-none-eabihf`, which
+makes it a prerequisite rather than a free check; `just static`
+currently runs no cargo at all, so this either changes that recipe's
+character or belongs in `just check`.
 
-`f32::floor`, `ceil` and `abs` are `std`-only. Five call sites.
+## T13.2 — float math without `std`
 
-**Do not take a `libm` dependency for five calls.** Write them as
-`const fn`s in a small `num` module against the ranges that actually
-occur: layout coordinates are finite and bounded by the viewport, and
-every one of the five is already guarded by a finiteness check or
-followed by a clamp. `abs` is a sign test; `floor`/`ceil` on a value
-known finite and within `i32` range are casts.
+**Two operations at four call sites**, not five: `.abs()` is in `core`
+(verified by compiling it under `#![no_std]`). Only `.floor()` and
+`.ceil()` are std-only, in `cx.rs` and `repeat.rs`.
 
-**Gate:** a property test over the finite `f32` range that the
-replacements agree with `std`'s to the bit, run in the `std` build where
-both exist. That is the only way to know the substitution is honest, and
-it costs one test.
+**Do not take a `libm` dependency for four calls** — but do not write
+the obvious cast either. A range-restricted `x as i32 as f32` cannot
+pass the gate this task sets: measured against `std`, it disagrees for
+**every finite `f32` with |x| ≥ 2³¹** (billions of values inside "the
+finite range"), for `±inf`, for `NaN`, and for `−0.0`. And the inputs
+are reachable: `Repeat::scroll` is a public field and `MIN_ITEM_EXTENT`
+is 1/1024, so `scroll / item_extent` can be `+inf` or `NaN` through the
+public API. Today's downstream saturation happens to mask it, which is
+luck rather than design.
 
-## T10.3 — the alloc-free static path
+Write the domain-complete form instead — barely longer, and exhaustively
+correct:
+
+```rust
+const fn floor(x: f32) -> f32 {
+    // NaN, ±inf and |x| ≥ 2^23 are already integral.
+    if !(x.abs() < 8_388_608.0) { return x; }
+    let t = x as i32 as f32;
+    if t > x { t - 1.0 } else { t }
+}
+```
+
+with the one remaining divergence — `floor(-0.0)` and `ceil(-0.5)`
+returning `+0.0` — either sign-corrected or documented.
+
+**Gate: exhaustive over all 2³² bit patterns**, not sampled. At two
+operations that is seconds in release, and it is a strictly stronger
+gate than a property test — which is the reason to prefer the
+domain-complete implementation over the cast.
+
+## T13.3 — the alloc-free static path
 
 With T10.0 and T10.1 done, an application that uses only the alloc-free
 widget set, owns its own state and style arrays, and paints into an
 immediate-mode `Painter` should touch no allocator at all.
 
-Two things stand in the way and both are `Repeat`:
+Three things stand in the way, and only two of them are `Repeat`:
 
 - `window: Vec<T>` — the materialized rows.
 - `arena: Arena` — their `NodeState` and `Style`.
+- **`pass::default_styles` returns a `Vec` and is the only way to build
+  a style array.** Add `default_styles_into(&tree, &mut [Style])` and
+  keep the allocating form as the `alloc` convenience. This is the item
+  an earlier draft missed by asserting the arrays were already owned.
+
+Also: `style::cascade_subtree` allocates a witness `Vec<Style>` under
+`#[cfg(debug_assertions)]` to check the caller's contract. That is gated
+on the *profile*, not a feature, so an embedded debug build allocates
+inside the cascade. Decide whether the check survives there.
 
 **Decision to make here, not now:** whether `Repeat` gains
 caller-supplied storage (the shape `TextBuffer::Clusters` already uses
@@ -186,15 +305,31 @@ more work. **Recommendation: move it behind `alloc` in M10, and revisit
 if an embedded app actually wants a bounded list.** Recording it so the
 choice is visible rather than defaulted.
 
-**Gate:** `fixtures/embedded/` — a crate that builds for
-`thumbv7em-none-eabihf` with `#![no_std]`, a `#[global_allocator]` whose
-`alloc` is `panic!("allocated")`, a small tree of the alloc-free widgets,
-and a `layout`+`paint` into a checksumming `Painter`. An allocation
-becomes a link-visible abort rather than a number to interpret. Run
-under `just static` as a `cargo check`, and under `just check` as a real
-build.
+**Gate:** `fixtures/embedded/` — a crate with `#![no_std]`, a small tree
+of the alloc-free widgets, and a `layout`+`paint` into a checksumming
+`Painter`.
 
-## T10.4 — name the price of the hatches
+Three corrections to how an earlier draft specified it:
+
+- **The allocator must abort, not `panic!`.** std's panic machinery
+  boxes its payload, which allocates, which re-enters the allocator.
+  `shell/tests/alloc_gate.rs` already has the right pattern — count over
+  `System` with `try_with` — and says why in a comment.
+- **The static gate is the strong one, not the dynamic one.** A
+  panicking allocator only covers paths that execute; T13.4's
+  `--no-default-features` build, where `Vec` cannot be *named*, is what
+  actually proves the property. The emphasis was backwards.
+- **A real `thumbv7em` binary needs `#[panic_handler]`, `#[entry]`,
+  `panic = "abort"` and a linker script with a concrete memory map** —
+  i.e. a board, which "What M13 is not" says is out of scope. So the
+  fixture is a *library* check for thumb and a *binary* run on the host,
+  and this plan should say that rather than imply a flashable artifact.
+
+`scripts/check_no_unsafe.sh` scans `crates/*/src`, so the fixture's
+`unsafe impl GlobalAlloc` under `fixtures/` does not violate the M0
+rule — worth stating, because a reader will assume it does.
+
+## T13.4 — name the price of the hatches
 
 `List`, `Dyn`, `Assembled`, `Arena` — and `Repeat`, per T10.3 — behind
 the default-on `alloc` feature. Not a demotion: the point is that "what
@@ -206,17 +341,44 @@ and the compiler says which line wanted one.
 hatches absent, and the doc comment on each names `alloc` as its
 requirement.
 
-## T10.5 — the number
+## T13.5 — an allocation-free text storage
+
+`TextInput<S: TextBuffer>` cannot be instantiated without an allocator
+today: both `TextBuffer` impls need `alloc`, and the only `ClusterBuf`
+impl is `Vec<Cluster>`. B9 built the associated type precisely so a
+fixed-capacity storage could pair with a fixed-capacity cluster array,
+and then nothing ever inhabited it.
+
+`InlineText<const N: usize>` implementing `TextBuffer`, and
+`InlineClusters<const N: usize>` implementing `ClusterBuf`, used by the
+T13.3 fixture. This is the task that cashes B9 out and the one that
+decides whether the associated type was worth having.
+
+**Gate:** the fixture instantiates a `TextInput<InlineText<64>>`, types
+into it through `pass::dispatch`, and allocates nothing.
+
+## T13.6 — the number
 
 `docs/results-embedded.md` currently says, correctly, that no number has
 been measured. This task fills it in:
 
-- `.text` and `.bss` for the T10.3 fixture at `thumbv7em-none-eabihf`,
-  against a stated threshold.
-- Peak RAM its `[NodeState; N]` and `[Style; N]` arrays occupy at a
-  stated node count, and the per-node figure that follows — stated once,
-  cited elsewhere (AGENT.md).
-- Whether the allocator-panics fixture links and runs.
+- `.text` and `.bss` for the T13.3 fixture at `thumbv7em-none-eabihf`,
+  against the threshold T13.0's device implies.
+- Peak RAM at a stated node count — **state + style + the widget
+  structs**, which no earlier version of this counted, and measured **on
+  the target**: `NodeDesc` holds two pointers, so it is ~32 B on 32-bit
+  against 48 B on the host.
+- The stack figure from T13.0, and the maximum tree depth it implies.
+- Whether the allocator fixture links and runs.
+- Correct `docs/results-embedded.md`'s sizes in the same commit — it
+  said 72/64 where `size_of` says **76/72**, and cited a document
+  containing neither figure.
+
+**Keep `f64` out of the frame path.** The only `f64` today is in
+`observe`, behind a feature; `thumbv7em-none-eabihf` has a
+single-precision FPU, so any `f64` becomes soft-float calls. Worth
+stating because `repeat.rs` already notes that raising
+`MAX_ADDRESSABLE_EXTENT` "means an `f64` offset".
 
 **Gate:** the threshold is written down *before* the measurement, so the
 gate can say no. A profile with no measured footprint is a claim, not a
@@ -237,11 +399,18 @@ profile.
 
 ## Risks
 
-- **The `Painter` refactor touches every widget.** It is the one M0-class
-  change in M10, which is why it is first and why its gate is "every
-  existing test passes unchanged".
-- **`thumbv7em` has no `std`, so the gate is a `cargo check`,** not a
-  test run. What it proves is that the code compiles for a target with
-  no allocator and no OS — which is exactly the claim, but it is not the
-  same as running. The allocator-panics fixture (T10.3) is what raises
-  it from "compiles" to "does not allocate", and it runs on the host.
+- **`cargo check` proves less than the earlier draft claimed.** It
+  type-checks a library and stops: no codegen, no linking, no missing
+  intrinsics, no `#[panic_handler]` requirement (a *lib* never needs
+  one), no `.text`/`.bss`, no stack usage — and with `--features alloc`
+  it proves nothing about allocation either, since a library may name
+  `Vec` freely without a `#[global_allocator]`. **It also never compiles
+  derive output**, because the core contains no `#[derive(StaticTree)]`
+  outside tests and `cargo check` builds neither tests nor doctests — so
+  whether the macro's generated code is `no_std`-clean is untested until
+  T13.3's fixture, two tasks later. The macro does emit `format!`,
+  behind `reload`.
+- **The `Painter` refactor is gone from this milestone** — it is M10a,
+  and it is the one M0-class change. What is left here is broad but
+  shallow: ~70 import changes, four float calls, three storage
+  decisions.

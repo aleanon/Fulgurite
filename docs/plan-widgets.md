@@ -38,10 +38,18 @@ One toggle core with three presentations. Each is a `Button` with a
 `bool`, a different `paint`, and an AccessKit role
 (`CheckBox`/`RadioButton`/`Switch`) with `set_toggled`.
 
-Everything they need exists: `NodeState::pressed` and `hovered` (C6),
-`Node::on_event` for keyboard toggling on Space, focus and Tab order
-(C5), and `set_hidden`/roles in `observe`. These are the first widgets
-to use `pressed` for something other than a shade.
+Most of what they need exists: `NodeState::pressed` and `hovered` (C6),
+focus and Tab order (C5), and `set_hidden`/roles in `observe`. These are
+the first widgets to use `pressed` for something other than a shade.
+
+**One thing does not exist, and it is the convention:** every desktop
+toolkit toggles a checkbox with **Space**, and the `Key` enum has no
+variant for it. That is an event-vocabulary gap of the same kind T11.2
+names for `PointerMove` — a shell mapping, an enum variant, and a line
+in `dispatch`'s activation match. It is small, but it must be named
+rather than substituted: an earlier draft of this plan quietly gated on
+`input.key Enter` instead, and `pass.rs` carried a comment claiming
+Space already worked (corrected 2026-09-04).
 
 **Radio needs a group.** A radio button's state is "am I the selected
 one", which is not local. The honest shapes are (a) the *app* holds the
@@ -49,12 +57,22 @@ selection and each radio is bound to it with `#[bind]`, or (b) a
 `RadioGroup<N>` container owning an index. **(a) is the one that fits
 this architecture** — it is exactly what `#[bind]` exists for, it needs
 no new container, and it keeps the selection in application state where
-a reader can find it. Decide it in the task, but that is the
-recommendation.
+a reader can find it.
+
+**Its cost, which an earlier draft did not state.** `#[bind]` targets a
+single field and its `with =` form is `fn(&mut Target, &Source)`;
+nothing in the derive fans one binding out across N radios by index. So
+(a) needs **one hand-written `with` function per option**, each
+hard-coding its own value to compare against, and that scales with the
+number of options. (b) would compute `i == self.selected` once — which
+is exactly how `Repeat` routes N rows through one template function
+using `ctx.row`, the codebase's own idiom for the shape. Decide it in
+the task with that on the table; (a) is still the recommendation, but
+not a free one.
 
 **Gate:** the `ui_check.py press` check passes on all three; `ui.lint`
 is clean; a toggle round-trips through `input.click` *and*
-`input.key Enter`; the AccessKit role and toggled state appear in
+`input.key Space`; the AccessKit role and toggled state appear in
 `ui.getTree`.
 
 ### T11.2 — slider — *needs a routing change*
@@ -101,6 +119,12 @@ is answerable today, and `tests/shaping.rs` covers wrapping. What does
 not: caret movement across lines (up/down is not a byte step, it is a
 geometric query), and vertical scrolling of the run.
 
+**It must stay generic over `TextBuffer`, like `TextInput`.** Multi-line
+caret geometry and vertical scrolling are exactly what tempts a hidden
+`Vec<usize>` of line-start offsets, and that would put a second
+allocating widget in the vocabulary. Line bookkeeping rides on
+`Cluster::line`, which the shaping seam already reports.
+
 **Recommendation: build it as a distinct `TextArea` rather than a flag
 on `TextInput`.** A `multiline: bool` puts two caret models in one type
 and every method grows a branch; the storage and the edit methods are
@@ -113,6 +137,12 @@ up/down across wrapped lines and asserting a boundary at every stop; a
 rule, one dimension over).
 
 ### T11.4 — tabs — *cheap, and T8.0 made it cheaper*
+
+*Ordered fourth in this document and buildable second: it has the same
+dependency depth as T11.1 (T8.0 only) and needs neither the routing
+change nor B7. Grouped with the text work only because it reads better
+that way; take it whenever, and the review was right to notice the two
+cheap items are not adjacent.*
 
 A header strip plus `Either` (or an enum-derived tree for more than two
 tabs). T8.0 put branch nodes on the table, so a tab's content is
@@ -178,6 +208,13 @@ half of selection.
   whole library including its own animation, theming and platform
   affordances. The list above is what an application here has actually
   wanted, plus the three it will want next.
+- **Not an icon or image widget.** There is no display-list command for
+  one — `Cmd` is `Rect`, `Text`, `RoundedRect`, `Shadow`, `PushClip`,
+  `PopClip` — so unlike a progress bar (composable today from styled
+  containers) an icon cannot be built from the vocabulary at all. It is
+  a vocabulary change of the same class as overlays, it is unscheduled,
+  and it is recorded in `docs/plan-architecture-v2.md`'s Phase D
+  paragraph rather than silently omitted here.
 - **Not a styling milestone.** Widgets get `Style` fields as they need
   them; a `.lss` parser (parity Phase C) remains unscheduled and
   unjustified — nothing has yet been hard to express in Rust rules.

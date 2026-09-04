@@ -951,123 +951,107 @@ frame after `PointerUp` restores it".
 
 ---
 
-## M10 — The embedded profile — **PLANNED 2026-09-04, not started**
+## M10a — The `Painter` sink — **PLANNED 2026-09-04, not started**
 
-*Replaces "parity phases B–E", which was written on 2026-09-01 against
-numbers that no longer hold. See "Why not parity" below. **Task
-breakdown: `docs/plan-embedded.md`.***
+*Split out of what was M10 on 2026-09-04, after a five-agent review of
+the plan. It is the only part of the embedded work that genuinely blocks
+M11: toggles, tabs and a slider would be written identically whatever
+the allocation answer turns out to be, but every one of them adds a
+`paint` impl, and this changes `paint`'s signature.*
 
-The architecture's stated reason for existing is a profile Lumen cannot
-serve: "zero allocation for the entire UI — not few, zero … no allocator
-required" (handoff §"Performance expectations"). That claim appears in
-three documents and is **demonstrated by nothing**.
-`shell/tests/alloc_gate.rs` proves no allocation *in steady state on a
-desktop with an allocator present*, which is a different and much weaker
-statement. M10 makes the claim true, gated, and measured — or finds out
-where it is false.
+`Node::paint(&self, st, i, out: &mut DisplayList)` becomes
+`out: &mut dyn Painter`, where `Painter` is `DisplayList`'s existing
+builder surface — `rect`, `text_weighted`, `rounded_rect`, `shadow`,
+`push_clip`, `pop_clip`. `DisplayList` implements it by appending and
+interning text; a host that rasterises immediately implements it and
+builds no list at all.
 
-It comes before more widgets for the reason `docs/plan-lumen-parity.md`
-gives for its own gating decisions: **every widget encodes the answer.**
-`TextBuffer::Clusters` is already an associated type precisely so a
-fixed-capacity storage can pair with a fixed-capacity cluster array
-(B9). Writing eight more widgets and *then* discovering they all assume
-`Vec` is the same mistake one level up.
+**Why the sink rather than a fixed-capacity `DisplayList<const N>`:** it
+is the shape this project has chosen three times for the same reason —
+`dyn TextMeasure` (T5.2), `dyn GlyphSink` (T7.2b), `dyn Renderer` —
+the *caller* owns the storage. The const would be viral through every
+`paint` signature and the derive; the sink is one parameter type across
+**16 sites** (`ops` 4, `hatch` 4, `scroll`, `input`, `repeat`,
+`assemble`, `widget`, `pass` 1 each, derive 2 — verified by review).
 
-### What is already true, measured 2026-09-04
+**What survives untouched, and why.** The change journal takes a node's
+paint signature with `list.hash_from(from)` (`journal.rs`), and
+`Retention` diffs two `DisplayList`s positionally (`retain.rs`). Both
+keep working because **Rust's unsized coercion is call-site-local**:
+passing a `&mut DisplayList` where `&mut dyn Painter` is expected does
+not change the caller's variable, so `.len()` and `.hash_from()` right
+afterwards still resolve as inherent methods on the concrete type. That
+sentence is the reason the journal is safe, and it is worth stating
+because nothing about the signature makes it obvious.
 
-- The core is **9 `std::` references** from compiling without `std`:
-  `RefCell` (bind), `VecDeque` (event), `Cow` (text), a `thread_local!`
-  (reload, already feature-gated) and `mpsc` (inbox, **not** gated).
-- **The alloc-free path already exists and is used by 233 tests.**
-  `pass::layout`/`paint`/`hit_test` take *slices*; the tests own
-  `[NodeState; Ui::NODE_COUNT]` and `[Style; Ui::NODE_COUNT]` directly,
-  because `NODE_COUNT` is a const at the concrete type. `Host` is the
-  convenience wrapper that allocates, not the architecture.
-- What genuinely needs an allocator divides cleanly: the **escape
-  hatches** (`List`, `Dyn`, `Assembled`, and the arenas behind them) and
-  the **display list**. The purely static path — `Label`, `Button`,
-  `Fixed`, `Spacer`, `Repeat`, `ScrollView`, `TextInput` — has none.
+**T10a.1 — the trait and `DisplayList`'s impl.** No call site changes.
+**T10a.2 — the core widget impls** (14 in `crates/lumen-static/src`).
+**T10a.3 — the derive**, its `trybuild` `.stderr` regeneration, and the
+rustdoc that names `DisplayList` in a signature (`display.rs`'s module
+doc, `widget.rs`'s `paint`, the crate front page). `just static` catches
+identifiers that no longer *exist*; it cannot catch one that still
+exists and is now wrong in context.
 
-That last point is the shape of the answer: *the static core is
-allocation-free; the escape hatches are what cost you an allocator.*
-M10's job is to make that sentence checkable rather than plausible.
+**Three commits, not one.** M0 was the last change of this shape — one
+commit, 43 files — and a review the following day found twenty drifted
+claims, two of them (`F0.2`, and the `Repeat` method named by a comment
+after deletion) caused precisely by its size. AGENT.md draws the
+conclusion itself: "If a commit is big enough that the docs feel like a
+second task, that is the signal to split the commit."
 
-### T10.0 — how paint reaches pixels without a list — **DECIDED**
+**Gate.** Every existing test passes unchanged — *and* `crossover` and
+`fusion` are re-run with the numbers in the commit, per cross-cutting
+rule 1. This is not ceremony: `call_child_ref` in the derive emits
+`&dyn Node` for ordinary trees but a concrete `&self.field` under
+`#[fuse]`, so paint in a fused tree is **100% static today** and the
+sink introduces the only indirection in it. `#[fuse]`'s entire purpose
+is devirtualization (`docs/results-traversal.md`); a change that
+re-introduces an indirect call it cannot remove must be measured, not
+assumed.
 
-The blocker is `DisplayList { cmds: Vec<Cmd>, text: String }`, which
-`Node::paint` writes into. Two shapes were considered:
+**One consequence to record rather than discover.** An embedded host
+paints into an immediate-mode `Painter` and therefore has no retained
+list — so it gets `Rebuild` retention and redraws whole frames. That is
+a *choice*, not a consequence: incremental redraw matters more on a slow
+display bus, not less (M8b bought 2.33 ms → 0.154 ms on a desktop). A
+write-only sink cannot carry damage, because the diff compares command
+lists. If an embedded host wants damage it computes its own, and this
+plan does not pretend otherwise.
 
-- **A fixed-capacity list**, `DisplayList<const N: usize>`. The const is
-  viral: it reaches every `paint` signature, every hatch and the derive.
-- **Paint into a sink.** `Node::paint(&self, st, i, out: &mut dyn
-  Painter)`, where `Painter` is `DisplayList`'s existing builder surface
-  — `rect`, `rounded_rect`, `text_weighted`, `shadow`, `push_clip`,
-  `pop_clip`. `DisplayList` implements it by appending and interning
-  text; an embedded host implements it by rasterising immediately.
+---
 
-**Decided: the sink.** It is the shape this project has now chosen three
-times for the same reason — `dyn TextMeasure` (T5.2), `dyn GlyphSink`
-(T7.2b), `dyn Renderer` — namely that the *caller* should own the
-storage. It removes the whole list on embedded rather than just its
-allocation, it is one parameter type across **16 `paint` sites** rather
-than a viral const, and it composes with M8b: `Rebuild` retention needs
-no retained list, so embedded is sink + `Rebuild` + no damage ring + no
-allocation, while desktop keeps `Incremental` and its list unchanged.
+## M10b — Scale factor — **PLANNED 2026-09-04, not started**
 
-The one thing the sink cannot carry is `Cmd::Text`'s `(offset, len)`
-range into `DisplayList::text`; the trait therefore takes `&str`
-directly, and `DisplayList`'s impl does the interning it already does.
+*Not in any earlier plan. Found by the review, and it is a live defect
+rather than a missing feature.*
 
-**T10.1 — `no_std + alloc`, and the feature polarity.** Point the nine
-references at `core`/`alloc`, gate `inbox` (it is `mpsc`, and deferred
-work off the frame loop is not an embedded concern), and declare
-`#![cfg_attr(not(feature = "std"), no_std)]` with `extern crate alloc`.
+**The framework has no concept of logical versus physical pixels.** A
+search of `crates` and `examples` finds one hit, and it is a
+window-creation constant. `redraw()` takes `window.inner_size()` —
+physical — and hands it to `Canvas::new` and `Host::resize`, so layout
+runs against physical pixels and the whole UI renders at half its
+intended size on a 2× display. There is no `ScaleFactorChanged` arm.
 
-**DECIDED: the features are `std` and `alloc`, both default-on. There is
-no `no_std` feature.** The obvious spelling — a `no_std` feature and
-`#[cfg(not(feature = "no_std"))]` on everything else — inverts the one
-rule Cargo features have: **they are additive, and unified across a
-build.** A `no_std` feature *subtracts*, so one dependent enabling it
-would silently strip `std` from every other crate in the graph that
-never asked. This project has already been bitten by exactly that
-unification — the justfile records that `--workspace` cannot produce the
-shipped shape "because lumen-static-agent, examples/counter and
-fixtures/hot-app turn on `observe`/`reload` and cargo unifies features
-across the selection". A subtractive feature turns that annoyance into a
-build that compiles and is missing things.
+**The reason this is urgent rather than cosmetic:**
+`scripts/ui_check.py` sets `MIN_TARGET_PX = 24` and compares it against
+agent-reported bounds, which are physical. On a 2× display a
+22-logical-pixel button — below the WCAG 2.5.8 floor the check cites —
+**passes**. The contrast check's pixel sampling and every screenshot
+comparison have the same defect, and any golden recorded under M12 would
+inherit it. The accessibility gate has been measuring the wrong quantity
+since it was written.
 
-So: `default = ["std"]`, `std = ["alloc"]`, `alloc = []`. Adding a
-feature only ever adds. An embedded consumer writes
-`default-features = false`, or `features = ["alloc"]` for the middle
-tier — the same three-tier shape `serde` and `hashbrown` use, and for
-the same reason.
+**T10b.1** — `scale: f32` on `Host`, set from `window.scale_factor()`
+and updated on `ScaleFactorChanged`, applied at the layout/paint
+boundary so `Style` and `Length` stay in logical units.
+**T10b.2** — express `ui_check.py`'s thresholds in logical units and
+report both in the failure message.
 
-Gate: `cargo check -p lumen-static --no-default-features --target
-thumbv7em-none-eabihf`. The target is available through rustup and
-nothing else in the workspace needs to build for it.
-
-**T10.2 — the sink (T10.0), and an alloc-free static path.** After the
-sink lands, an app that uses only the static widgets, owns its own state
-and style arrays, and paints into an immediate rasteriser should touch
-no allocator at all. Gate: a fixture that builds for `thumbv7em` with
-`#[global_allocator]` set to a stub that **panics on any allocation**,
-lays out and paints a small tree, and returns a checksum. An allocation
-is then a link-time-visible abort, not a number to interpret.
-
-**T10.3 — name the price of the hatches.** `List`, `Dyn`, `Assembled`
-and `Arena` behind the default-on `alloc` feature from T10.1. Not a demotion:
-the point is to make "what does dynamism cost me" answerable in the
-type system rather than in prose. `Either`, `Option` and `Repeat` stay
-in the alloc-free core — `Either` because T8.0 removed its arenas, and
-`Repeat` because its window is a fixed capacity the caller chooses.
-Open: whether `Repeat`'s arena can be caller-supplied, which is the
-same question `TextBuffer::Clusters` already answered for text.
-
-**T10.4 — the number.** `docs/results-embedded.md`: `.text` and `.bss`
-for the fixture at `thumbv7em-none-eabihf`, and the peak RAM its state
-and style arrays occupy for a stated node count, against a stated
-threshold. A profile with no measured footprint is a claim, and this
-file is what turns M10's premise into a result the gate can refuse.
+**Before M11**, because it gets multiplicatively harder once eight more
+widgets have hard-coded pixel values in their `paint`. The handoff lists
+"HiDPI, per-monitor scaling" under what kills GUI framework projects; no
+decision record ever deferred it, so this is an oversight being
+corrected rather than a scope increase.
 
 ---
 
@@ -1114,28 +1098,62 @@ the `input.rs` module doc, not silently deferred.
 
 ## M12 — The test harness — **PLANNED 2026-09-04, not started**
 
-*Was Phase E. Last not because it is least valuable, but because it is
-the only one whose substrate is already finished — so it stays cheap
-however long it waits. **Task breakdown: `docs/plan-harness.md`.***
+*Was Phase E. **Not blocked by anything** — its substrate has been
+finished since M9, so it can be taken up at any point; it is ordered
+late by cost, not by dependency, and the arrow in the diagram above
+says so. **Task breakdown: `docs/plan-harness.md`.***
 
 What exists: one input queue, sessions that replay by construction, 233
 tests, a pixel-exact oracle (`shell/tests/damage_oracle.rs`), a live
 gate with seven checks, and the whole agent protocol. What is missing is
 **ergonomics and artifacts**, not mechanism.
 
-- **A locator/expect API** over the existing selectors, so a test reads
-  `app.locator("#save").click()` and `expect(...).to_have_text("Saved")`
-  rather than assembling JSON-RPC by hand. Lumen's `lumen-test` is 931
-  lines and this is the part worth copying — it is architecture-neutral,
-  which the crates that were declined were not.
-- **Golden images with a diff artifact.** The comparison exists
-  (`damage_oracle.rs` compares whole pixel buffers); what is missing is
-  recording, updating and a red-over-dimmed diff to `Read` on failure.
-- **Session recording as a test artifact.** The invariant already holds
-  — every synthesized input goes through the one queue — but nothing
-  writes the recording out, so "an agent session replays as a test" is
-  true and unexercised. This is the task that makes it exercised, and it
-  is the reason `app.setValue` was refused.
+- **A locator/expect API** over the existing selectors. `lumen-test` is
+  the reference for its *shape only*: the crate depends on
+  `lumen-core`, `lumen-render` and `lumen-widgets`, so it is no more
+  adoptable than the others (`docs/text-render-adoption-decision.md`).
+  The signature is in `docs/plan-harness.md` T12.1 and is not restated
+  here — it was, and the two copies had already diverged.
+
+---
+
+---
+
+## M13 — The embedded profile — **PLANNED 2026-09-04, not started**
+
+*Was M10 until the review. Task breakdown: `docs/plan-embedded.md`,
+rewritten 2026-09-04 with the corrections below.*
+
+The claim "zero allocation for the entire UI … no allocator required"
+appears in the handoff, the README and the parity survey, and nothing
+demonstrates it. `alloc_gate.rs` proves no allocation *in steady state
+on a desktop with a working allocator*, which is a much weaker
+statement. M13 makes it true, gated and measured — or finds where it is
+false.
+
+**Moved behind M11 because the review invalidated the reason it was
+first.** "Every widget encodes the allocation answer" is true of the
+`paint` signature (now M10a) and of essentially nothing else in M11's
+list. Meanwhile the work is roughly **seven times** what was scoped: a
+`grep` for `std::` cannot see `thread_local!` in `bind.rs` — ungated,
+on the mainline `#[bind]` path — and there are ~67 prelude identifiers
+needing `alloc::` imports, not nine lines. There is also no named target
+device, and no commit in this repository's history has ever touched an
+embedded target.
+
+**The blocker it never considered:** recursive descent at
+`MAX_DEPTH = 64` measures 256–272 B per level in release and 568 B in
+dev, so one layout pass is ~17 KB of stack, or ~36 KB unoptimised.
+Cortex-M stack budgets are typically 4–16 KB, and without MPU setup an
+overflow silently corrupts `.bss` — where the state array lives.
+`desc.rs` claims `MAX_DEPTH` "retires the stack-depth concern"; on this
+profile it does not, and a maximum tree depth has to be derived from a
+stack budget before anything else in M13 means much.
+
+**First task is therefore not code:** name the device — RAM and flash
+ceiling, display size and bus, frame interval. Every threshold in this
+milestone is derived from it, and "the threshold is written down before
+the measurement" is not satisfiable without one.
 
 ---
 
@@ -1152,6 +1170,26 @@ and two of its load-bearing figures have since gone:
   ourselves, with nothing inherited.
 - **"~4,300 lines, 4 widgets"** is stale by 2.5×: 11,101 lines and
   eleven widget types, with a third of Phase B's list already built.
+
+**Phase D has no successor, and that is deliberate — recorded here
+because retiring the survey silently dropped it.** Multi-window,
+clipboard, drag and drop, file dialogs, images and i18n are unscheduled.
+Two of them have named consequences rather than vague absence:
+
+- **Clipboard is blocked on the event vocabulary, not on a platform
+  API.** `Event::Key` carries no modifier state, so Ctrl+C/Ctrl+V — and
+  Shift+Tab, and shift-selection — are unrepresentable. That single
+  missing field blocks three separate items, and M11 depends on it for
+  selection. It should be one named task whenever it is taken up, not
+  three.
+- **Images have no display-list command at all.** `Cmd` is `Rect`,
+  `Text`, `RoundedRect`, `Shadow`, `PushClip`, `PopClip`. Unlike a
+  progress bar — composable today from styled containers — an icon
+  cannot be built from that vocabulary, so it is a vocabulary change of
+  the same class as overlays.
+
+Neither is scheduled. Both are now on the record, which is the whole
+difference between a deferral and an omission.
 
 So parity stops being a destination. Widgets get built when an
 application here needs one — which is how `ScrollView` and `TextInput`
@@ -1176,9 +1214,12 @@ navigation.
 ## Order and dependencies
 
 ```
-M0 ──► M1 ──► M2 ──► M3 ──► M4 ──► M5 ──► M6 ──► M7a ──► M8 ──► M9 ──► M10 ──► M11 ──► M12
-                                                    └─► M7b ──► M8b ──► M8c    (embed) (widgets) (harness)
+M0 ──► M1 ──► M2 ──► M3 ──► M4 ──► M5 ──► M6 ──► M7a ──► M8 ──► M9 ──► M10a ──► M10b ──► M11 ──► M13
+                                                    └─► M7b ──► M8b ──► M8c   (sink)  (scale)  (widgets) (no_std)
                                                        (manual)  (raster) (layout)
+                                                                              └─► M12 (harness — unblocked
+                                                                                  since M9; ordered by cost,
+                                                                                  not by dependency)
 
 Actually run, 2026-09-04: M7a → M7b → M8b → M8c → M8 → M9 → agent P6.
 M8b/M8c came before M8 because a window existed to measure against and
