@@ -283,11 +283,39 @@ ever — style may stay code-side in this framework, in which case
 `src` provenance already answers "why does it look like this" better
 than a cascade dump would.
 
+### P6 — the deferred narrative — **DONE 2026-09-04**
+
+`ui.explain` was held back "until there is event routing to narrate".
+M9 built the routing, so it shipped: `ui.explain { selector, at? }`
+answers *"I clicked #save and nothing happened"* by **running the real
+hit test** at the node's centre (or at `at`) and reporting what came
+back — occluded by which node and its bounds, no area, hidden, not
+focusable. The method matters more than the prose: a narrative assembled
+from properties would be a second model of dispatch, free to drift from
+the first, which is the probe-vs-click class of bug one layer up.
+`crates/lumen-static-agent/tests/explain.rs` fails if hiding a node ever
+becomes cosmetic.
+
+`ui.getAppliedStyles` shipped with it — the other half of "why does it
+look like this". `src` provenance says where a node came from; this says
+what the cascade resolved *and* what was actually painted, including
+C6's pressed/hovered shade, so a darker button in a screenshot resolves
+to "pressed" instead of a guess about the stylesheet.
+`ui.getStyles` (the unresolved rules) stays unbuilt: the resolved answer
+is the one every question so far has actually been about.
+
 ### Explicitly not planned
 
-- `ui.explain` (Lumen's "why didn't the click land" narrative) — 
-  revisit after P4 when there is event routing to narrate; P2's diff +
-  P3's lints cover most of its use ambiently.
+- **`app.setValue`** — listed under P4, deliberately not built.
+  Structural property 1 of this document is *one input queue*: every
+  synthesized input enters the same queue as OS input, which is what
+  makes an agent session replay as a test. `app.setValue` would write a
+  widget's state behind the queue's back, so the session that used it
+  would not replay. `input.click` + `input.type` reach a field through
+  the real routing (M9), are already tested end to end
+  (`crates/lumen-static-agent/tests/input.rs`), and cost an agent one
+  extra call. Parity with a method that breaks the invariant the parity
+  document opens with is not parity.
 - `input.setLocale`, `ui.getMenu`, `app.systemRequests`,
   multi-window — no corresponding subsystems; parity is not a goal
   where the feature itself doesn't exist.

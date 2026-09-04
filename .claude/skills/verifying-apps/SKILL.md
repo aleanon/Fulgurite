@@ -76,11 +76,20 @@ blits — no desktop screenshot tool, no unlocked session needed.
 
 **Methods that exist** (`crates/lumen-static-agent/src/lib.rs`):
 `ui.getTree` `ui.getLayout` `ui.resolve` `ui.probe` `ui.probeRegion`
-`ui.lint` `ui.lastChange` `ui.lastDamage` `ui.waitSettled`
-`ui.screenshot` · `input.click` `input.pointerDown` `input.pointerUp`
+`ui.explain` `ui.getAppliedStyles` `ui.lint` `ui.lastChange`
+`ui.lastDamage` `ui.waitSettled` `ui.screenshot` · `input.click` `input.pointerDown` `input.pointerUp`
 `input.hover` `input.key` `input.type` `input.scroll`
 `input.invokeAction` · `app.diagnostics` `app.logs`
 `app.perf` `app.quit` (the last is the window's, not the crate's).
+
+**When a click does not do what you expected, ask `ui.explain` before
+reading code.** It runs the *real* hit test at the node's centre and
+reports what came back — occluded by which node, zero area, hidden, not
+focusable — so it cannot disagree with what a click actually does. Pair
+it with `ui.getAppliedStyles` when the question is visual rather than
+positional: that reports the cascade's answer *and* the painted
+background, so a darker button in a screenshot resolves to "pressed"
+rather than to a guess about the stylesheet.
 
 **Selectors:** `#id`, a kind name (`label`, `button`), `~text`,
 `@file.rs:42`, or a table index. Not-found replies carry nearest misses;

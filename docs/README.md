@@ -24,9 +24,12 @@ tree today.
 | [`bindings-decision.md`](bindings-decision.md) | why `#[bind]` compares output, and what it costs | **live** | yes — `benches --bin bindings` |
 | [`either-reopened.md`](either-reopened.md) | whether `Either` should use a merged table | **decided** 2026-09-04: Option A, built as T8.0 | n/a |
 | [`plan-lumen-parity.md`](plan-lumen-parity.md) | how far this is from a usable framework | **queue**; its line counts are dated 2026-09-01 | n/a |
-| [`plan-agent-parity.md`](plan-agent-parity.md) | the agent surface, P0–P5 | **queue**, P0–P4 done | n/a |
+| [`plan-agent-parity.md`](plan-agent-parity.md) | the agent surface, P0–P6 | **queue**, P0–P6 done | n/a |
 | [`plan-events.md`](plan-events.md) | the event system, E0–E5 | **queue**, E0–E4 done | n/a |
 | [`verification-notes.md`](verification-notes.md) | what could be formally verified, and the `unsafe` audit | **live** | n/a |
+| [`results-cascade-cost.md`](results-cascade-cost.md) | what a stylesheet swap costs, and why M8c inverted | **live** | yes — `benches --bin cascade` |
+| [`results-frame-cost.md`](results-frame-cost.md) | frame cost and input latency, before/after M8b | **live** | yes — `just profile`, `just live-gate` |
+| [`text-render-adoption-decision.md`](text-render-adoption-decision.md) | why Lumen's text/render crates were measured and declined | **live** | n/a |
 | [`results-allocation.md`](results-allocation.md) | does a steady-state frame allocate? (no) | **live** | yes — `shell/tests/alloc_gate.rs` |
 | [`results-const-eval.md`](results-const-eval.md) | what the const table check costs to compile | **live** | yes — `just const-budget` |
 | [`results-agent-cost.md`](results-agent-cost.md) | what observing a frame costs | **live** | yes — `benches --bin agent` |

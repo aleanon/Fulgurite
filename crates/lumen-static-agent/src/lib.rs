@@ -14,6 +14,10 @@
 //! - `@app.rs:42`   source provenance (file suffix, optional line)
 //! - `7`            table index
 //!
+//! `ui.explain` answers the question those selectors are usually asked
+//! in service of — "I clicked it and nothing happened" — by running the
+//! real hit test rather than by describing the tree.
+//!
 //! Resolution errors teach (Lumen's ergonomic, adopted): not-found
 //! carries the nearest misses, ambiguity carries the candidates.
 //! Selectors resolve over main-table nodes; repeater instances are
@@ -427,6 +431,8 @@ impl Agent {
                 let e = resolve_one(&ix, selector_param(params)?)?;
                 Ok(ix.summary(e))
             }
+            "ui.explain" => self.explain(tree, params),
+            "ui.getAppliedStyles" => self.applied_styles(tree, params),
             "ui.probe" => self.probe(tree, params),
             "ui.probeRegion" => self.probe_region(tree, params),
             "ui.lint" => Ok(self.lint(tree)),
@@ -506,6 +512,192 @@ impl Agent {
     /// Uses the core hit test (plan E1), not the AccessKit snapshot —
     /// the same code path input dispatch takes, so probe and click can
     /// never disagree about what is under a point.
+    /// `ui.explain` — why a click on this node would or would not land.
+    ///
+    /// Deferred at P4 until "there is event routing to narrate"
+    /// (`docs/plan-agent-parity.md`); M9 built the routing, so this is
+    /// the narration. The question it answers is the one an agent
+    /// actually has — *"I clicked #save and nothing happened"* — and the
+    /// method by which it answers is the point: it runs the **real hit
+    /// test** at the node's own centre and reports what came back. A
+    /// narrative assembled from properties would be a second model of
+    /// dispatch, free to drift from the first; asking the same
+    /// `pass::hit_test` a click asks cannot.
+    ///
+    /// `at` overrides the probe point, for "why did my click at *these*
+    /// coordinates go somewhere else".
+    fn explain(&self, tree: &TreeRef, params: &Value) -> RpcResult {
+        let ix = Index::build(tree);
+        let e = resolve_one(&ix, selector_param(params)?)?;
+        let Some(i) = e.idx else {
+            return Err((
+                INVALID_PARAMS,
+                "that selector names a synthesized instance node, which has no table entry \
+                    to explain; probe its coordinates instead"
+                    .into(),
+                Value::Null,
+            ));
+        };
+        let st = &tree.states[i];
+        let style = &tree.styles[i];
+        let (w, h) = (st.size.w, st.size.h);
+
+        let (px, py) = match params.get("at").and_then(Value::as_array) {
+            Some(a) if a.len() == 2 => (
+                a[0].as_f64().unwrap_or(f64::NAN) as f32,
+                a[1].as_f64().unwrap_or(f64::NAN) as f32,
+            ),
+            _ => (st.pos.x + w / 2.0, st.pos.y + h / 2.0),
+        };
+
+        let hit = pass::hit_test(tree.root, tree.states, px, py);
+        // Is the node that was hit this one, or inside it? The table is
+        // pre-order, so "inside" is an ancestor walk.
+        let mut reached = None;
+        if let Some(hh) = hit {
+            let mut k = hh.node as usize;
+            loop {
+                if k == i {
+                    reached = Some(hh.node);
+                    break;
+                }
+                if tree.table[k].parent == lumen_static::desc::NO_PARENT {
+                    break;
+                }
+                k = tree.table[k].parent as usize;
+            }
+        }
+
+        let mut reasons: Vec<Value> = Vec::new();
+        let mut push = |code: &str, detail: String| {
+            reasons.push(json!({ "code": code, "detail": detail }));
+        };
+        if !style.visible {
+            push(
+                "hidden",
+                "`Style::visible` is false: the subtree is laid out at zero size, painted \
+                 nothing and rejected by hit testing"
+                    .into(),
+            );
+        }
+        if w <= 0.0 || h <= 0.0 {
+            push(
+                "no-area",
+                format!(
+                    "laid out {w:.0}x{h:.0}. A node with no area cannot be hit, whatever is \
+                        inside it — check the parent's constraints, or `ui.lint` for \
+                        W1001/W1005"
+                ),
+            );
+        }
+        if !tree.table[i].is_focusable() {
+            push(
+                "not-focusable",
+                "this node takes no keyboard focus, so `input.key` will never reach it; \
+                    pointer input still can"
+                    .into(),
+            );
+        }
+        match (hit, reached) {
+            (None, _) => push(
+                "nothing-there",
+                format!("hit testing at [{px:.0},{py:.0}] found no node at all — the point is \
+                    outside the root, or every candidate has zero area"),
+            ),
+            (Some(hh), None) => {
+                let other = hh.node as usize;
+                let os = &tree.states[other];
+                push(
+                    "occluded",
+                    format!(
+                        "the point belongs to node {} (`{}`{}), laid out \
+                            [{:.0},{:.0},{:.0},{:.0}] — it is in front of, or clipped over, \
+                            the one you asked about",
+                        other,
+                        tree.root.node(other).kind_name(),
+                        if tree.table[other].wid.is_empty() {
+                            String::new()
+                        } else {
+                            format!(" #{}", tree.table[other].wid)
+                        },
+                        os.pos.x,
+                        os.pos.y,
+                        os.pos.x + os.size.w,
+                        os.pos.y + os.size.h,
+                    ),
+                );
+            }
+            (Some(_), Some(_)) => {}
+        }
+
+        let reachable = reached.is_some() && reasons.is_empty();
+        let summary = if reachable {
+            format!("a click at [{px:.0},{py:.0}] reaches this node")
+        } else if reached.is_some() {
+            format!(
+                "a click at [{px:.0},{py:.0}] reaches this node, but {} condition(s) may \
+                    still make it useless",
+                reasons.len()
+            )
+        } else {
+            format!("a click at [{px:.0},{py:.0}] does NOT reach this node")
+        };
+
+        Ok(json!({
+            "summary": summary,
+            "reachable": reachable,
+            "probed_at": [px, py],
+            "target": ix.summary(e),
+            "hit": hit.map(|hh| self.hit_summary(tree, &hh)),
+            "reasons": reasons,
+        }))
+    }
+
+    /// `ui.getAppliedStyles` — the cascade's answer for one node.
+    ///
+    /// The other half of "why does it look like this". `src` provenance
+    /// says *where the node came from*; this says what the stylesheet
+    /// resolved for it, which is the question a wrong colour or a
+    /// surprising size actually raises. Reported from the same `Style`
+    /// row layout reads, not from a re-run of the cascade.
+    fn applied_styles(&self, tree: &TreeRef, params: &Value) -> RpcResult {
+        let ix = Index::build(tree);
+        let e = resolve_one(&ix, selector_param(params)?)?;
+        let Some(i) = e.idx else {
+            return Err((
+                INVALID_PARAMS,
+                "instances share their template's style row; ask for the template".into(),
+                Value::Null,
+            ));
+        };
+        let s = &tree.styles[i];
+        let st = &tree.states[i];
+        let color = |c: lumen_static::Color| json!([c.0, c.1, c.2, c.3]);
+        Ok(json!({
+            "index": i,
+            "width": format!("{:?}", s.width),
+            "height": format!("{:?}", s.height),
+            "padding": [s.padding.left, s.padding.top, s.padding.right, s.padding.bottom],
+            "spacing": s.spacing,
+            "color": color(s.color),
+            "background": color(s.background),
+            "radius": s.radius,
+            "font_size": s.font_size,
+            "font_weight": s.font_weight,
+            "shadow": s.shadow,
+            "align": format!("{:?}", s.align),
+            "visible": s.visible,
+            // The interaction state that changes what is painted (C6),
+            // so a screenshot taken mid-gesture can be explained.
+            "state": {
+                "pressed": st.pressed,
+                "hovered": st.hovered,
+                "focused": st.focused,
+                "painted_background": color(st.bg),
+            },
+        }))
+    }
+
     fn probe(&self, tree: &TreeRef, params: &Value) -> RpcResult {
         let (x, y) = (f64_param(params, "x")? as f32, f64_param(params, "y")? as f32);
         match pass::hit_test(tree.root, tree.states, x, y) {

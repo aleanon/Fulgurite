@@ -26,6 +26,8 @@ CLI use:
     agent_client.py release '<selector>'
     agent_client.py type '<text>'
     agent_client.py key '<name>'          # Enter, Escape, Up, ...
+    agent_client.py explain '<selector>'  # why a click does/doesn't land
+    agent_client.py styles '<selector>'   # the cascade's answer + painted state
     agent_client.py screenshot <out.png>
     agent_client.py lint
     agent_client.py quit
@@ -118,6 +120,13 @@ class AgentClient:
     def lint(self):
         return self.rpc("ui.lint")
 
+    def explain(self, selector: str, at=None):
+        """Why a click on `selector` would or would not land."""
+        return self.rpc("ui.explain", selector=selector, **({"at": at} if at else {}))
+
+    def styles(self, selector: str):
+        return self.rpc("ui.getAppliedStyles", selector=selector)
+
     def quit(self):
         try:
             return self.rpc("app.quit")
@@ -137,7 +146,7 @@ def main(argv: list[str]) -> int:
     sub.add_parser("tree")
     sub.add_parser("lint")
     sub.add_parser("quit")
-    for name in ("layout", "click", "press", "release"):
+    for name in ("layout", "click", "press", "release", "explain", "styles"):
         s = sub.add_parser(name)
         s.add_argument("selector")
     t = sub.add_parser("type")
@@ -165,6 +174,10 @@ def main(argv: list[str]) -> int:
         print(json.dumps(cl.press(a.selector)))
     elif a.cmd == "release":
         print(json.dumps(cl.release(a.selector)))
+    elif a.cmd == "explain":
+        print(json.dumps(cl.explain(a.selector), indent=1))
+    elif a.cmd == "styles":
+        print(json.dumps(cl.styles(a.selector), indent=1))
     elif a.cmd == "type":
         print(json.dumps(cl.type(a.text)))
     elif a.cmd == "key":
