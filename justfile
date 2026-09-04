@@ -58,13 +58,15 @@ dev-shape:
 # `assert!`, so it proves only that no path panics or aborts, which is still
 # the cheapest whole-core exercise available.
 
-# The counter, the M8/M9 form, and the hot-reload swap. The form drives a
+# The counter, the M8/M9 form, the alloc-free embedded frame, and the
+# hot-reload swap. The form drives a
 # `ScrollView` with real wheel events and renders a `TextInput` through the
 # real rasteriser: unit tests count display-list commands, which is not the
 # same as knowing a widget paints where it claims to.
 fixtures:
     cargo run -p counter -- {{ justfile_directory() }}/target/counter.ppm
     cargo run -p counter-window -- --form {{ justfile_directory() }}/target/form.ppm
+    cargo run -p embedded
     ./scripts/hot_reload_demo.sh
 
 # ---------------------------------------------------------------------------
@@ -108,9 +110,10 @@ floats:
 # this one. Needs `rustup target add thumbv7em-none-eabihf`, which is why
 # it is here and not in `just test`.
 
-# Cortex-M4F no_std build of the core (M13 device, docs/results-embedded.md).
+# Cortex-M4F no_std build of the core + fixture (docs/results-embedded.md).
 thumb:
     cargo check -p lumen-static --no-default-features --features alloc --target thumbv7em-none-eabihf
+    cargo check -p embedded --lib --target thumbv7em-none-eabihf
 
 # Line coverage, as an artifact to read -- not a threshold. A workspace
 # percentage is dominated by whether the fixtures ran, not by core quality;

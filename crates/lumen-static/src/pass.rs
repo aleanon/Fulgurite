@@ -7,7 +7,8 @@
 
 // `alloc`, not the std prelude: this crate is `no_std` when the
 // `std` feature is off (M13/T13.1).
-use alloc::vec::Vec;
+#[cfg(feature = "alloc")]
+use alloc::{vec, vec::Vec};
 
 use crate::desc::{Constraints, NodeState, Point};
 use crate::display::Painter;
@@ -45,8 +46,45 @@ pub fn layout<W: Node + ?Sized>(
 
 /// Default styles for a tree, with no stylesheet applied — the common
 /// case in tests and simple apps.
+///
+/// The allocating convenience over [`default_styles_into`]. An app that
+/// owns its own style array wants that one; this is what almost every
+/// caller in this repository wants.
+#[cfg(feature = "alloc")]
 pub fn default_styles<W: Widget>(tree: &W) -> Vec<Style> {
-    (0..W::NODE_COUNT).map(|i| tree.node(i).defaults()).collect()
+    let mut out = vec![Style::default(); W::NODE_COUNT];
+    default_styles_into(tree, &mut out);
+    out
+}
+
+/// Write a tree's default styles into caller-owned storage.
+///
+/// The alloc-free half of [`default_styles`], and the reason M13's
+/// static path is reachable at all: `default_styles` returning a `Vec`
+/// was the only way to build a style array, so an app that owned its
+/// own `[Style; N]` still had to allocate one to fill it
+/// (`docs/plan-embedded.md` T13.3).
+///
+/// `out` must hold at least `W::NODE_COUNT` styles. It may be longer —
+/// the trailing entries are left alone, so a fixed-capacity array
+/// shared between trees works.
+///
+/// # Panics
+///
+/// If `out` is shorter than `W::NODE_COUNT`. The check is explicit
+/// rather than left to indexing so the message names both numbers: the
+/// caller's array is a `const` they can fix, and "index out of bounds"
+/// would not say what to fix it to.
+pub fn default_styles_into<W: Widget>(tree: &W, out: &mut [Style]) {
+    assert!(
+        out.len() >= W::NODE_COUNT,
+        "style array holds {} but the tree has {} nodes",
+        out.len(),
+        W::NODE_COUNT
+    );
+    for (i, slot) in out.iter_mut().enumerate().take(W::NODE_COUNT) {
+        *slot = tree.node(i).defaults();
+    }
 }
 
 /// Measure only, without positioning — used by tools that need a node's

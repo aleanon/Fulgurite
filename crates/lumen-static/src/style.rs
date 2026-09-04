@@ -494,7 +494,14 @@ pub fn cascade_subtree<W: crate::widget::Widget + ?Sized>(
     let table = W::SUB_TABLE;
     let range = subtree_range(table, root);
 
-    #[cfg(debug_assertions)]
+    // Gated on `alloc` as well as the profile (M13/T13.3): this check
+    // allocates a whole second style array, and it is gated on
+    // `debug_assertions`, which is a *profile*, not a feature — so
+    // without the `alloc` clause an embedded debug build would allocate
+    // inside the cascade, on the one target where that is least
+    // affordable. The check survives wherever a `Vec` is nameable,
+    // which is every build that has a stylesheet to get wrong.
+    #[cfg(all(debug_assertions, feature = "alloc"))]
     let witness: Vec<Style> = {
         let mut full = out.to_vec();
         {
@@ -519,7 +526,7 @@ pub fn cascade_subtree<W: crate::widget::Widget + ?Sized>(
         cascade_arenas(tree.node_mut(i), sheet);
     }
 
-    #[cfg(debug_assertions)]
+    #[cfg(all(debug_assertions, feature = "alloc"))]
     for (i, w) in witness.iter().enumerate() {
         if !range.contains(&i) {
             debug_assert_eq!(

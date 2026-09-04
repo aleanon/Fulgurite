@@ -376,7 +376,7 @@ agree with `f32::floor`/`f32::ceil` *bit for bit*, in 12.9 s release
   exponent compares larger than 2²³'s — instead of needing an arm.
 - Both are `pub const fn`, which the cast form could not have been.
 
-## T13.3 — the alloc-free static path
+## T13.3 — the alloc-free static path — **DONE 2026-09-05**
 
 With T10.0 and T10.1 done, an application that uses only the alloc-free
 widget set, owns its own state and style arrays, and paints into an
@@ -406,6 +406,11 @@ more work. **Recommendation: move it behind `alloc` in M10, and revisit
 if an embedded app actually wants a bounded list.** Recording it so the
 choice is visible rather than defaulted.
 
+**Taken, as recommended — `Repeat` moves behind `alloc` in T13.4.**
+Nothing found while building the fixture argued the other way: a
+virtualized list is a runtime-content-count feature, and the dividing
+line stays exactly there.
+
 **Gate:** `fixtures/embedded/` — a crate with `#![no_std]`, a small tree
 of the alloc-free widgets, and a `layout`+`paint` into a checksumming
 `Painter`.
@@ -429,6 +434,30 @@ Three corrections to how an earlier draft specified it:
 `scripts/check_no_unsafe.sh` scans `crates/*/src`, so the fixture's
 `unsafe impl GlobalAlloc` under `fixtures/` does not violate the M0
 rule — worth stating, because a reader will assume it does.
+
+**Done, as `fixtures/embedded/`.** 7 nodes, 9 commands, **zero
+allocations over 100 frames**, and the same checksum every frame. The
+lib half compiles for `thumbv7em-none-eabihf` (`just thumb`); the bin
+half runs in `just fixtures`.
+
+- **`pass::default_styles_into(&tree, &mut [Style])`** is the item that
+  unblocked it, exactly as this task predicted: `default_styles`
+  returning a `Vec` was the only way to build a style array, so an app
+  owning its own `[Style; N]` still had to allocate one to fill it. The
+  allocating form is now a two-line wrapper over it, behind `alloc`.
+- **The cascade witness is gated on `alloc` as well as the profile.**
+  `debug_assertions` is a *profile*, not a feature, so an embedded debug
+  build was allocating a whole second style array inside
+  `cascade_subtree` — on the one target that can least afford it. It
+  survives wherever a `Vec` is nameable, which is every build that has a
+  stylesheet to get wrong.
+- **The aborting allocator was validated by re-injecting the bug**: one
+  `Vec::with_capacity(8)` inside `frame` turns the run into SIGABRT
+  (134). A gate nobody has watched fail is a gate nobody has tested.
+- The alloc-free widget set turned out to be *the defaults*:
+  `Label` and `Button` both default their text storage to
+  `&'static str`. The fixture uses the defaults rather than spelling
+  them out, so it stays honest about what an embedded app writes.
 
 ## T13.4 — name the price of the hatches
 

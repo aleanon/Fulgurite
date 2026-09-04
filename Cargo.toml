@@ -16,6 +16,7 @@ members = [
     "fixtures/binsize",
     "fixtures/const-budget",
     "fixtures/hot-host",
+    "fixtures/embedded",
 ]
 # The Step 1 firewall experiment is its own generated workspace.
 exclude = ["experiments"]

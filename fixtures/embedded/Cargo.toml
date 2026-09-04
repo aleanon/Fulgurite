@@ -1,0 +1,24 @@
+[package]
+name = "embedded"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+# `default-features = false, features = ["alloc"]` is the M13 device's
+# shape (docs/plan-embedded.md T13.0): no `std`, an allocator present.
+# The lib half of this crate is `#![no_std]` and is checked for
+# thumbv7em-none-eabihf by `just thumb-fixture`; the bin half runs on the
+# host under an aborting allocator, because a real thumb binary would
+# need a #[panic_handler], an #[entry] and a linker script -- i.e. a
+# board, which "What M13 is not" puts out of scope.
+[dependencies]
+lumen-static = { path = "../../crates/lumen-static", default-features = false, features = ["alloc"] }
+
+[lib]
+name = "embedded"
+path = "src/lib.rs"
+
+[[bin]]
+name = "embedded"
+path = "src/main.rs"
