@@ -71,6 +71,13 @@ impl<const N: usize> InlineText<N> {
         N - self.len
     }
 
+    /// Drop the contents, keeping the capacity (there is nothing else
+    /// to keep). Mirrors `String::clear`, so a scratch buffer reads the
+    /// same in both builds.
+    pub fn clear(&mut self) {
+        self.len = 0;
+    }
+
     /// The largest `n <= max` that is a `char` boundary of `s`.
     fn fit(s: &str, max: usize) -> usize {
         let mut n = max.min(s.len());
@@ -134,6 +141,31 @@ impl<const N: usize> TextBuffer for InlineText<N> {
         }
         self.buf.copy_within(range.end..self.len, range.start);
         self.len -= range.end - range.start;
+    }
+}
+
+/// Appends, truncating at a `char` boundary when the buffer fills.
+///
+/// Returning `Err` on a short write is what makes truncation visible to
+/// `core::fmt`, which stops formatting at the first error — so the tail
+/// of a too-long `format_args!` costs nothing to not write. The bytes
+/// that did fit stay, which is the same rule
+/// [`set_from_str`](InlineText::set_from_str) follows.
+///
+/// This is what lets [`crate::bind::format_into`] run without an
+/// allocator: its reusable scratch buffer is a `thread_local!`, which
+/// needs `std`, so a `no_std` build formats into one of these on the
+/// stack instead.
+impl<const N: usize> core::fmt::Write for InlineText<N> {
+    fn write_str(&mut self, s: &str) -> core::fmt::Result {
+        let n = Self::fit(s, self.remaining());
+        self.buf[self.len..self.len + n].copy_from_slice(&s.as_bytes()[..n]);
+        self.len += n;
+        if n == s.len() {
+            Ok(())
+        } else {
+            Err(core::fmt::Error)
+        }
     }
 }
 

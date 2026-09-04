@@ -56,6 +56,7 @@ pub trait GlyphSink {
 /// The obvious growable sink. `String` storage pairs with this one
 /// (B9); a fixed-capacity storage supplies its own and overrides
 /// `is_full`.
+#[cfg(feature = "alloc")]
 impl GlyphSink for Vec<Cluster> {
     fn cluster(&mut self, c: Cluster) {
         self.push(c);

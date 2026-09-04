@@ -112,7 +112,16 @@ floats:
 
 # Cortex-M4F no_std build of the core + fixture (docs/results-embedded.md).
 thumb:
+    # The middle tier: no std, an allocator present. This is the M13
+    # device's shape (T13.0/T13.1).
     cargo check -p lumen-static --no-default-features --features alloc --target thumbv7em-none-eabihf
+    cargo clippy -p lumen-static --no-default-features --features alloc --target thumbv7em-none-eabihf -- -D warnings
+    # The strict tier: no std AND no alloc, where Vec, String, DisplayList
+    # and the escape hatches cannot be *named* (T13.4). This is the strong
+    # proof of the alloc-free path -- a panicking allocator only covers
+    # paths that run; here the compiler says which line wanted one.
+    cargo check -p lumen-static --no-default-features --target thumbv7em-none-eabihf
+    cargo clippy -p lumen-static --no-default-features --target thumbv7em-none-eabihf -- -D warnings
     cargo check -p embedded --lib --target thumbv7em-none-eabihf
 
 # Line coverage, as an artifact to read -- not a threshold. A workspace

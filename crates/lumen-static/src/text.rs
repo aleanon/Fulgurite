@@ -134,6 +134,22 @@ impl Measured {
 /// That method is [`TextRestore`] now, gated behind `reload`, so the
 /// no-allocation profile stays reachable
 /// (`docs/text-and-scrolling-decisions.md` B11).
+/// What `TextInput<S>` and `TextArea<S>` use when the parameter is
+/// elided: `String` where there is an allocator, `InlineText<64>` where
+/// there is not (M13/T13.4).
+///
+/// An alias rather than a `cfg` on the parameter default, because a
+/// default type parameter cannot be *removed* by a `cfg` — the
+/// definition still has to name some type. That is why T13.5 had to
+/// land before T13.4 could finish.
+#[cfg(feature = "alloc")]
+pub type DefaultTextStorage = String;
+
+/// See the `alloc` form above. 64 bytes is the same capacity the
+/// `fixtures/embedded` field uses.
+#[cfg(not(feature = "alloc"))]
+pub type DefaultTextStorage = crate::inline::InlineText<64>;
+
 pub trait TextStorage: AsRef<str> + Default {}
 
 impl<T: AsRef<str> + Default> TextStorage for T {}
@@ -149,6 +165,7 @@ pub trait ClusterBuf: crate::cx::GlyphSink + Default {
     fn as_slice(&self) -> &[crate::cx::Cluster];
 }
 
+#[cfg(feature = "alloc")]
 impl ClusterBuf for Vec<crate::cx::Cluster> {
     fn clear(&mut self) {
         Vec::clear(self);
@@ -225,6 +242,7 @@ impl TextRestore for String {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl TextBuffer for String {
     type Clusters = Vec<crate::cx::Cluster>;
 
@@ -246,12 +264,14 @@ impl TextBuffer for String {
 }
 
 #[cfg(feature = "reload")]
+#[cfg(feature = "alloc")]
 impl TextRestore for Cow<'static, str> {
     fn from_string(s: String) -> Self {
         Cow::Owned(s)
     }
 }
 
+#[cfg(feature = "alloc")]
 impl TextBuffer for Cow<'static, str> {
     type Clusters = Vec<crate::cx::Cluster>;
 

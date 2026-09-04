@@ -79,11 +79,16 @@ pub trait Node {
     /// window), an `Either` owns two (one per branch), `List` and `Dyn`
     /// own one each. See [`crate::arena::ArenaMut`] for why the
     /// cross-cutting walks need to know.
+    /// Behind `alloc`: the only implementors are `Repeat`, `List` and
+    /// `Dyn`, which are the escape hatches T13.4 gates. A tree with no
+    /// allocator has no off-table content to reach.
+    #[cfg(feature = "alloc")]
     fn arena_count(&self) -> usize {
         0
     }
 
     /// Arena `a`, for a walk that must reach off-table content.
+    #[cfg(feature = "alloc")]
     fn arena_mut(&mut self, _a: usize) -> Option<crate::arena::ArenaMut<'_>> {
         None
     }

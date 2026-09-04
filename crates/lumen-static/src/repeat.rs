@@ -25,6 +25,17 @@ use crate::widget::{Node, Widget};
 
 pub fn noop_bind<T>(_: &mut T, _: usize) {}
 
+/// A virtualized list: `count` rows of `T`, of which only the visible
+/// window is materialized.
+///
+/// **Requires the `alloc` feature** (default-on). One of the escape
+/// hatches M13/T13.4 moved behind it, so that "what does dynamism cost
+/// me" is answerable in the type system rather than in prose.
+///
+/// T13.3 considered giving it caller-supplied storage instead — the
+/// shape `TextBuffer::Clusters` uses — and decided against: a
+/// virtualized million-row list is not an embedded use case, and the
+/// dividing line stays exactly at "runtime content count".
 pub struct Repeat<T: Widget + Default + 'static> {
     /// Logical row count — the data size. Never reflected in any table.
     pub count: usize,

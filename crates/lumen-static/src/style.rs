@@ -571,7 +571,11 @@ pub fn cascade_deep<W: crate::widget::Widget + ?Sized>(
 }
 
 /// Cascade every arena `node` owns, and every arena under those.
+// Both parameters are unused without `alloc`: nothing implements the
+// arena hooks then, because Repeat, List and Dyn are all gated.
+#[cfg_attr(not(feature = "alloc"), allow(unused_variables))]
 fn cascade_arenas(node: &mut dyn crate::widget::Node, sheet: Stylesheet) {
+    #[cfg(feature = "alloc")]
     for a in 0..node.arena_count() {
         let Some(arena) = node.arena_mut(a) else { continue };
         let table = arena.table;

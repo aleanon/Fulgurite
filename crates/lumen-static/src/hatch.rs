@@ -424,6 +424,13 @@ where
 /// therefore merges both into its table (T8.0) — so `NODE_COUNT` stays
 /// independent of how many items there are, which is §6's scaling law
 /// applied to a plain list.
+///
+/// **Requires the `alloc` feature** (default-on). This is one of the
+/// escape hatches M13/T13.4 moved behind it, so that "what does
+/// dynamism cost me" is answerable in the type system rather than in
+/// prose: a `--no-default-features` build simply does not have it, and
+/// the compiler names the line that wanted one.
+#[cfg(feature = "alloc")]
 pub struct List<W: Widget> {
     pub items: Vec<W>,
     /// Gap between items along the column.
@@ -431,12 +438,14 @@ pub struct List<W: Widget> {
     arena: crate::arena::Arena,
 }
 
+#[cfg(feature = "alloc")]
 impl<W: Widget> Default for List<W> {
     fn default() -> Self {
         List { items: Vec::new(), spacing: 0.0, arena: crate::arena::Arena::new(W::NODE_COUNT) }
     }
 }
 
+#[cfg(feature = "alloc")]
 impl<W: Widget> List<W> {
     pub fn new(items: Vec<W>) -> Self {
         List { items, spacing: 0.0, arena: crate::arena::Arena::new(W::NODE_COUNT) }
@@ -472,6 +481,7 @@ impl<W: Widget> List<W> {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl<W: Widget> Widget for List<W> {
     const NODE_COUNT: usize = 1;
     const DEPTH: usize = 1 + W::DEPTH;
@@ -480,6 +490,7 @@ impl<W: Widget> Widget for List<W> {
         &[NodeDesc::new(0, NO_PARENT, 0, 0, NodeDesc::CONTAINER)];
 }
 
+#[cfg(feature = "alloc")]
 impl<W: Widget> Node for List<W> {
     fn arena_count(&self) -> usize {
         1
@@ -614,6 +625,7 @@ impl<W: Widget> Node for List<W> {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl<W, S> crate::event::Handlers<S> for List<W>
 where
     W: Widget + crate::event::Handlers<S>,
@@ -639,6 +651,13 @@ where
 /// The island captures its content's node count and table at
 /// construction, since a `Box<dyn Node>` cannot supply associated
 /// consts.
+///
+/// **Requires the `alloc` feature** (default-on). This is one of the
+/// escape hatches M13/T13.4 moved behind it, so that "what does
+/// dynamism cost me" is answerable in the type system rather than in
+/// prose: a `--no-default-features` build simply does not have it, and
+/// the compiler names the line that wanted one.
+#[cfg(feature = "alloc")]
 pub struct Dyn {
     content_depth: usize,
     inner: Box<dyn Node>,
@@ -649,6 +668,7 @@ pub struct Dyn {
     arena: crate::arena::Arena,
 }
 
+#[cfg(feature = "alloc")]
 impl Dyn {
     /// Box a widget as an island.
     ///
@@ -697,12 +717,14 @@ impl Dyn {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl Default for Dyn {
     fn default() -> Self {
         Dyn::new(crate::ops::Spacer)
     }
 }
 
+#[cfg(feature = "alloc")]
 impl Widget for Dyn {
     const NODE_COUNT: usize = 1;
     /// **A lower bound, and the one hole in the `MAX_DEPTH` guarantee.**
@@ -731,6 +753,7 @@ impl Widget for Dyn {
         &[NodeDesc::new(0, NO_PARENT, 0, 0, NodeDesc::CONTAINER)];
 }
 
+#[cfg(feature = "alloc")]
 impl Node for Dyn {
     fn arena_count(&self) -> usize {
         1
@@ -826,6 +849,7 @@ impl Node for Dyn {
 /// display content; interactive plugin content needs a message channel
 /// (`docs/events-decision.md`'s async seam), which is the honest place
 /// for it.
+#[cfg(feature = "alloc")]
 impl<S> crate::event::Handlers<S> for Dyn {
     fn handler(
         &self,

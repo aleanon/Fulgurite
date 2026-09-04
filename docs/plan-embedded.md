@@ -459,7 +459,7 @@ half runs in `just fixtures`.
   `&'static str`. The fixture uses the defaults rather than spelling
   them out, so it stays honest about what an embedded app writes.
 
-## T13.4 — name the price of the hatches
+## T13.4 — name the price of the hatches — **DONE 2026-09-05**
 
 `List`, `Dyn`, `Assembled`, `Arena` — and `Repeat`, per T10.3 — behind
 the default-on `alloc` feature. Not a demotion: the point is that "what
@@ -489,6 +489,29 @@ never pressed — while rejecting the newest leaves the queued prefix a
 coherent history. Drops are counted and readable through
 `InputQueue::dropped`, on the same rule as the change journal's
 `truncated` flag.
+
+**Done. `just thumb` builds two tiers — `--features alloc` and bare
+`--no-default-features` — and clippy-cleans both.** Behind `alloc`:
+`Arena`, `Assembled`, `List`, `Dyn`, `Repeat`, and — not foreseen here —
+`DisplayList`, `Renderer` and the whole `retain` module. Each names the
+requirement in its own doc comment, not only in its `cfg`.
+
+**Three things the bare build turned out to implicate beyond the
+hatches.**
+
+- **`DisplayList` and `Renderer`.** A list is one `Painter`, not the
+  vocabulary; `Renderer::render` names `&DisplayList` in its signature.
+  A host without a list paints straight through the trait, which is
+  what M10a's seam was built for — this is the first build that
+  *proves* the seam holds, because it is the first where the list
+  cannot be named.
+- **The whole `retain` module**, because `Retention::record` takes a
+  `&DisplayList`. That is precisely T13.8's finding, arrived at from the
+  other direction: the trait hard-wires the vocabulary. Until T13.8 a
+  no-alloc build has no retention, which is honest — it rebuilds every
+  frame by definition, and `Rebuild` is a ZST that does nothing.
+- **`Widget::arena_count`/`arena_mut`.** Only `Repeat`, `List` and `Dyn`
+  implement them and the derive never emits them, so they gate cleanly.
 
 **2. T13.4's gate depends on T13.5, so T13.5 runs first.**
 `TextInput<S: TextBuffer = String>` and `TextArea<S: TextBuffer =

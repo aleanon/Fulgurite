@@ -33,7 +33,8 @@
 // `alloc`, not the std prelude: this crate is `no_std` when the
 // `std` feature is off (M13/T13.1), and absent entirely without the
 // `alloc` feature (T13.4).
-#[cfg(feature = "alloc")]
+// The std scratch `thread_local!` is the only user.
+#[cfg(feature = "std")]
 use alloc::string::String;
 
 use core::fmt::Write;
@@ -52,24 +53,23 @@ std::thread_local! {
     static SCRATCH: RefCell<String> = const { RefCell::new(String::new()) };
 }
 
-/// The `no_std` scratch buffer: a fresh one per call.
+/// The `no_std` scratch buffer: `SCRATCH_CAP` bytes on the stack.
 ///
 /// `thread_local!` is std-only, and the obvious `static` replacement is
-/// not `Sync`, so reusing one buffer without `std` needs either
+/// not `Sync`, so *reusing* one buffer without `std` would need either
 /// `critical-section` or `unsafe` — a dependency and an M0 violation
-/// respectively, for a path that is already allocating.
+/// respectively. A stack buffer needs neither, and unlike the
+/// `String::new()` this was between T13.1 and T13.4 it does not
+/// allocate once per bound label per frame on the one target that can
+/// least afford it.
 ///
-/// **So `no_std` pays one allocation per bound label per frame**, which
-/// `std` does not (M13/T13.1). That is a real cost and it is named here
-/// rather than hidden: the reason it is acceptable is that this function
-/// only runs for a `Label<S>` whose `S` allocates in the first place, so
-/// the alloc-free path T13.3 gates never reaches it. An embedded app
-/// that wants a bound label wants the fixed-capacity text storage T13.5
-/// adds, and that is where a fixed-capacity scratch belongs — not here.
+/// The cost is a bound: a formatted label longer than `SCRATCH_CAP`
+/// truncates at a `char` boundary, where `std` would grow. That is the
+/// same rule `InlineText::set_from_str` follows for the same reason —
+/// a binding is a presentation path, and a value too long for its field
+/// should show its prefix.
 #[cfg(not(feature = "std"))]
-fn scratch() -> String {
-    String::new()
-}
+const SCRATCH_CAP: usize = 256;
 
 /// Format `args` into `dst`, but only actually store the result — and
 /// only mark the label for re-measurement — if it differs from the text
@@ -93,11 +93,11 @@ pub fn format_into<S: TextBuffer>(dst: &mut Label<S>, args: core::fmt::Arguments
     #[cfg(feature = "std")]
     let mut buf: String = SCRATCH.with(|c| c.take());
     #[cfg(not(feature = "std"))]
-    let mut buf: String = scratch();
+    let mut buf: crate::inline::InlineText<SCRATCH_CAP> = Default::default();
 
     buf.clear();
     let _ = buf.write_fmt(args); // writing to a String cannot fail
-    let changed = dst.set_str(&buf);
+    let changed = dst.set_str(buf.as_ref());
 
     #[cfg(feature = "std")]
     SCRATCH.with(|c| c.replace(buf));

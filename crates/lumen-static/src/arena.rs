@@ -36,6 +36,10 @@ use crate::widget::Node;
 /// Keyed on a **runtime** node count rather than a type parameter, so
 /// [`Dyn`](crate::hatch::Dyn) — whose content is erased — can hold one
 /// too.
+///
+/// **Requires the `alloc` feature** (default-on). One of the escape
+/// hatches M13/T13.4 moved behind it, so that "what does dynamism cost
+/// me" is answerable in the type system rather than in prose.
 #[derive(Default, Debug, Clone)]
 pub struct Arena {
     node_count: usize,

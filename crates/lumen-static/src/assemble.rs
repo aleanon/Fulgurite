@@ -52,6 +52,10 @@ pub fn concat_table(count: usize, node_count: usize, sub: &[NodeDesc]) -> Vec<No
 /// into it for the one member whose addressing is different.
 /// `docs/plan-review-fixes.md` F4.2.
 /// `count` instances of `C` under a column root.
+///
+/// **Requires the `alloc` feature** (default-on). One of the escape
+/// hatches M13/T13.4 moved behind it, so that "what does dynamism cost
+/// me" is answerable in the type system rather than in prose.
 pub struct Assembled<C: Widget + Default + 'static> {
     pub instances: Vec<C>,
     pub table: Vec<NodeDesc>,

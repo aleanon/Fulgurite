@@ -53,6 +53,9 @@ pub(crate) fn fold(h: u64, v: u64) -> u64 {
 
 /// Whether a rect encloses anything a renderer could paint.
 #[inline]
+// Only `DisplayList`'s methods drop empty commands, so this follows it
+// behind `alloc` (T13.4).
+#[cfg(feature = "alloc")]
 fn has_area(r: Rect) -> bool {
     r[2] > r[0] && r[3] > r[1]
 }
@@ -167,6 +170,7 @@ pub trait Painter {
 }
 
 /// One frame's drawing commands, in paint order.
+#[cfg(feature = "alloc")]
 #[derive(Default, Debug)]
 pub struct DisplayList {
     pub cmds: Vec<Cmd>,
@@ -174,6 +178,7 @@ pub struct DisplayList {
     pub text: String,
 }
 
+#[cfg(feature = "alloc")]
 impl DisplayList {
     pub fn new() -> Self {
         Self::default()
@@ -281,6 +286,10 @@ impl DisplayList {
 
 /// What a renderer must do with a list. Implemented at the shell — the
 /// renderer never appears in a widget signature.
+// Names `DisplayList` in its signature, so it follows `alloc` (T13.4).
+// A host with no list implements `Painter` and rasterises as paint
+// arrives -- which is what M10a's seam is for.
+#[cfg(feature = "alloc")]
 pub trait Renderer {
     fn render(&mut self, list: &DisplayList, width: u32, height: u32);
 }
@@ -355,6 +364,7 @@ impl Painter for Scaled<'_> {
 
 /// Collecting into a list is *one* implementation of [`Painter`], not
 /// the definition of painting.
+#[cfg(feature = "alloc")]
 impl Painter for DisplayList {
     fn rect(&mut self, rect: Rect, color: Color) {
         DisplayList::rect(self, rect, color)
