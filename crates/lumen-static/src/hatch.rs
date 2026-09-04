@@ -11,6 +11,11 @@
 //! calls a *win* — toggling is free and the hidden branch remembers
 //! where it was.
 
+// `alloc`, not the std prelude: this crate is `no_std` when the
+// `std` feature is off (M13/T13.1).
+use alloc::boxed::Box;
+use alloc::vec::Vec;
+
 use crate::cx::LayoutCx;
 use crate::display::Painter;
 use crate::desc::{Constraints, NodeDesc, NodeState, Point, Size, NO_PARENT};

@@ -20,6 +20,10 @@
 //!
 //! `docs/plan-review-fixes.md` F4.1.
 
+// `alloc`, not the std prelude: this crate is `no_std` when the
+// `std` feature is off (M13/T13.1).
+use alloc::vec::Vec;
+
 use crate::desc::NodeState;
 use crate::style::Style;
 use crate::widget::Node;

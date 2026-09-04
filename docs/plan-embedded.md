@@ -254,7 +254,7 @@ only `Painter` in the workspace at the end of this task, so the
 refactor is provably behaviour-preserving before anything depends on
 it.
 
-## T13.1 — `no_std + alloc`, and the feature polarity — **DECIDED**
+## T13.1 — `no_std + alloc`, and the feature polarity — **DONE 2026-09-05**
 
 Point the nine references at `core`/`alloc`, gate `inbox` behind `std`
 (it is `mpsc`, and deferred work off the frame loop is not an embedded
@@ -303,6 +303,27 @@ one. The target needs `rustup target add thumbv7em-none-eabihf`, which
 makes it a prerequisite rather than a free check; `just static`
 currently runs no cargo at all, so this either changes that recipe's
 character or belongs in `just check`.
+
+**Done. `just thumb`, in `just check`** — it compiles clean with zero
+warnings. The conversion was smaller than the nine references suggested
+and the surprises were all in the same place:
+
+- **Eight explicit `std::` lines; the work was the implicit prelude.**
+  `Vec`, `String`, `Box`, `VecDeque`, `Cow` and `vec!` arrive free under
+  `std` and must be named from `alloc` without it — 19 files.
+- **Six of those imports are `observe`-gated**, because the only `Vec`
+  left in `ops`, `input`, `slider`, `textarea`, `toggle` and `widget` is
+  the accesskit `extra` argument. Worth knowing: the alloc-free widget
+  set T13.3 needs is closer than the raw grep implied.
+- **`bind::format_into` is the one place `no_std` is measurably worse.**
+  Its reusable scratch buffer is a `thread_local!`, which is std-only,
+  and the `static` replacement is not `Sync` — so reuse without `std`
+  needs `critical-section` (a dependency) or `unsafe` (an M0 violation).
+  `no_std` therefore allocates one buffer per bound label per frame.
+  Acceptable because the function only runs for a `Label<S>` whose `S`
+  allocates anyway, so the alloc-free path never reaches it; the fix, if
+  one is wanted, is a fixed-capacity scratch on T13.5's storage.
+- `inbox` is behind `std` as planned (it is `mpsc`).
 
 ## T13.2 — float math without `std` — **DONE 2026-09-05**
 

@@ -34,6 +34,12 @@
 //! and it is the honest cost of not inventing a group container
 //! (`docs/plan-widgets.md` T11.1 records the alternative).
 
+// `alloc`, not the std prelude: this crate is `no_std` when the
+// `std` feature is off (M13/T13.1).
+// Only the accesskit `extra` arg needs it, and that is observe-gated.
+#[cfg(feature = "observe")]
+use alloc::vec::Vec;
+
 use crate::desc::{NodeDesc, NodeState, NO_PARENT};
 use crate::display::{Color, Painter};
 use crate::event::{EventCtx, NodeSel};

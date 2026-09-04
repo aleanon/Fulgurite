@@ -10,6 +10,10 @@
 //! window directly. Interior mutability existed only because the old
 //! flat passes handed ops a *shared* base pointer.
 
+// `alloc`, not the std prelude: this crate is `no_std` when the
+// `std` feature is off (M13/T13.1).
+use alloc::vec::Vec;
+
 use crate::cx::LayoutCx;
 use crate::display::Painter;
 use crate::desc::{Constraints, NodeDesc, NodeState, Point, Size, NO_PARENT};

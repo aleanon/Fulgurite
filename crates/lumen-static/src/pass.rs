@@ -5,6 +5,10 @@
 //! The flat iterative passes they replaced are recorded in
 //! `docs/results-traversal.md`.
 
+// `alloc`, not the std prelude: this crate is `no_std` when the
+// `std` feature is off (M13/T13.1).
+use alloc::vec::Vec;
+
 use crate::desc::{Constraints, NodeState, Point};
 use crate::display::Painter;
 use crate::cx::LayoutCx;

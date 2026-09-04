@@ -17,9 +17,23 @@ serde_json = { version = "1", optional = true }
 accesskit = { version = "0.25", optional = true }
 
 [features]
-# The S9 dev surface: additive, off in release builds.
-observe = ["dep:accesskit", "dep:serde", "dep:serde_json"]
-reload = ["dep:serde", "dep:serde_json"]
+# Three tiers, all default-on, in the shape serde and hashbrown use
+# (M13/T13.1). There is deliberately NO `no_std` feature: cargo features
+# are additive and unified across a build, so a subtractive one would let
+# a single dependent strip `std` from every other crate in the graph that
+# never asked for it -- in a build that still compiles. An embedded
+# consumer writes `default-features = false`, or `features = ["alloc"]`
+# for the middle tier. See docs/plan-embedded.md T13.1.
+default = ["std"]
+std = ["alloc"]
+alloc = []
+# The S9 dev surface: additive, off in release builds. Both require `std`:
+# they pull accesskit and serde_json, which are not no_std, so without the
+# requirement `--no-default-features --features alloc,observe` would
+# resolve cleanly and then fail deep inside a dependency instead of at the
+# point of the mistake.
+observe = ["std", "dep:accesskit", "dep:serde", "dep:serde_json"]
+reload = ["std", "dep:serde", "dep:serde_json"]
 # Forwarded to the derive: see docs/results-safe-prototype.md.
 # Measurement only: makes the recursive arm's dispatch opaque to the
 # optimizer, to prove it is real. See docs/results-traversal.md.

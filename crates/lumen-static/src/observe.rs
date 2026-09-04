@@ -11,6 +11,10 @@
 //! system: interactive kinds advertise their `accesskit::Action`s here,
 //! and the agent synthesizes them as ordinary queued input.
 
+// `alloc`, not the std prelude: this crate is `no_std` when the
+// `std` feature is off (M13/T13.1).
+use alloc::vec::Vec;
+
 pub use accesskit;
 
 use accesskit::{Node as AkNode, NodeId, Rect, Role, TreeId, TreeInfo, TreeUpdate};

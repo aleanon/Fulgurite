@@ -18,6 +18,12 @@
 //! by a table. `#[widget(fuse)]` emits the same bodies with static calls,
 //! which is the monomorphization dial and nothing more.
 
+// `alloc`, not the std prelude: this crate is `no_std` when the
+// `std` feature is off (M13/T13.1).
+// Only the accesskit `extra` arg needs it, and that is observe-gated.
+#[cfg(feature = "observe")]
+use alloc::vec::Vec;
+
 use crate::desc::{Constraints, NodeDesc, NodeState, Point, Size};
 use crate::cx::LayoutCx;
 use crate::display::Painter;

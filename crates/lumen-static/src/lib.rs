@@ -86,6 +86,17 @@
 //! build — see `docs/results-safe-prototype.md`, and
 //! `scripts/check_no_unsafe.sh`, which enforces it.
 
+// M13/T13.1. `std` and `alloc` are both default-on and there is no
+// `no_std` feature, because cargo features are additive: a subtractive
+// one would let a dependent strip `std` from crates that never asked.
+// `docs/plan-embedded.md` T13.1 has the argument.
+#![cfg_attr(not(feature = "std"), no_std)]
+
+// Available in a `std` build too -- `std` re-exports it -- so this needs
+// no cfg of its own beyond the tier that supplies `Vec` and `String`.
+#[cfg(feature = "alloc")]
+extern crate alloc;
+
 pub mod arena;
 pub mod assemble;
 pub mod bind;
@@ -95,6 +106,9 @@ pub mod display;
 pub mod event;
 pub mod hatch;
 pub mod hit;
+// `mpsc`, so `std` (M13/T13.1). Deferred work handed back to the frame
+// loop from another thread is not an embedded concern.
+#[cfg(feature = "std")]
 pub mod inbox;
 pub mod num;
 #[cfg(feature = "observe")]

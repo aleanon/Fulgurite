@@ -11,6 +11,13 @@
 //! cost nothing, computed values allocate only when they must), `String`
 //! for simplicity.
 
+// `alloc`, not the std prelude: this crate is `no_std` when the
+// `std` feature is off (M13/T13.1).
+use alloc::borrow::Cow;
+use alloc::borrow::ToOwned;
+use alloc::string::String;
+use alloc::vec::Vec;
+
 use crate::desc::{Constraints, Size};
 
 /// A value plus a dirty bit. Reads are transparent; every mutable access
@@ -224,13 +231,13 @@ impl TextBuffer for String {
 }
 
 #[cfg(feature = "reload")]
-impl TextRestore for std::borrow::Cow<'static, str> {
+impl TextRestore for Cow<'static, str> {
     fn from_string(s: String) -> Self {
-        std::borrow::Cow::Owned(s)
+        Cow::Owned(s)
     }
 }
 
-impl TextBuffer for std::borrow::Cow<'static, str> {
+impl TextBuffer for Cow<'static, str> {
     type Clusters = Vec<crate::cx::Cluster>;
 
     fn insert_str(&mut self, at: usize, s: &str) {
@@ -245,11 +252,11 @@ impl TextBuffer for std::borrow::Cow<'static, str> {
     /// literal has no buffer to reuse and becomes `Owned`.
     fn set_from_str(&mut self, s: &str) {
         match self {
-            std::borrow::Cow::Owned(buf) => {
+            Cow::Owned(buf) => {
                 buf.clear();
                 buf.push_str(s);
             }
-            std::borrow::Cow::Borrowed(_) => *self = std::borrow::Cow::Owned(s.to_owned()),
+            Cow::Borrowed(_) => *self = Cow::Owned(s.to_owned()),
         }
     }
 }

@@ -9,6 +9,10 @@
 //! session is a dev concern, but the vocabulary itself is not, so the
 //! types are always present.
 
+// `alloc`, not the std prelude: this crate is `no_std` when the
+// `std` feature is off (M13/T13.1).
+use alloc::collections::VecDeque;
+
 use crate::desc::Point;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -106,7 +110,7 @@ impl EventCtx {
 /// The single input queue (see the module note).
 #[derive(Default, Debug)]
 pub struct InputQueue {
-    q: std::collections::VecDeque<Event>,
+    q: VecDeque<Event>,
 }
 
 impl InputQueue {

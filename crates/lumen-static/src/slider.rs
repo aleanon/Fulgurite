@@ -23,6 +23,12 @@
 //! no walk, and nothing else sees them. `docs/results-capture-cost.md`
 //! has the number.
 
+// `alloc`, not the std prelude: this crate is `no_std` when the
+// `std` feature is off (M13/T13.1).
+// Only the accesskit `extra` arg needs it, and that is observe-gated.
+#[cfg(feature = "observe")]
+use alloc::vec::Vec;
+
 use crate::desc::{NodeDesc, NodeState, NO_PARENT};
 use crate::display::{Color, Painter};
 use crate::event::{Event, EventCtx, Key};

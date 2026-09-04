@@ -7,6 +7,10 @@
 //! with `dyn` inside — the shape recorded in the renderer/executor
 //! answer (`docs/plan-agent-parity.md`, appendix).
 
+// `alloc`, not the std prelude: this crate is `no_std` when the
+// `std` feature is off (M13/T13.1).
+use alloc::vec::Vec;
+
 use crate::desc::Size;
 
 /// One cluster boundary in a shaped run: a place an insertion point may

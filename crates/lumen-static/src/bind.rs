@@ -30,17 +30,43 @@
 //! formatter every frame, which for the values that go in labels is
 //! nanoseconds into a reused buffer.
 
+// `alloc`, not the std prelude: this crate is `no_std` when the
+// `std` feature is off (M13/T13.1).
+use alloc::string::String;
+
 use core::fmt::Write;
-use std::cell::RefCell;
+// The scratch `thread_local!` is the only user, and it is std-only.
+#[cfg(feature = "std")]
+use core::cell::RefCell;
 
 use crate::ops::Label;
 use crate::text::TextBuffer;
 
-thread_local! {
+#[cfg(feature = "std")]
+std::thread_local! {
     /// One reusable formatting buffer per thread. It never escapes a
     /// call; it exists so that a binding running every frame allocates
     /// on no frame but the first.
     static SCRATCH: RefCell<String> = const { RefCell::new(String::new()) };
+}
+
+/// The `no_std` scratch buffer: a fresh one per call.
+///
+/// `thread_local!` is std-only, and the obvious `static` replacement is
+/// not `Sync`, so reusing one buffer without `std` needs either
+/// `critical-section` or `unsafe` — a dependency and an M0 violation
+/// respectively, for a path that is already allocating.
+///
+/// **So `no_std` pays one allocation per bound label per frame**, which
+/// `std` does not (M13/T13.1). That is a real cost and it is named here
+/// rather than hidden: the reason it is acceptable is that this function
+/// only runs for a `Label<S>` whose `S` allocates in the first place, so
+/// the alloc-free path T13.3 gates never reaches it. An embedded app
+/// that wants a bound label wants the fixed-capacity text storage T13.5
+/// adds, and that is where a fixed-capacity scratch belongs — not here.
+#[cfg(not(feature = "std"))]
+fn scratch() -> String {
+    String::new()
 }
 
 /// Format `args` into `dst`, but only actually store the result — and
@@ -62,10 +88,16 @@ pub fn format_into<S: TextBuffer>(dst: &mut Label<S>, args: core::fmt::Arguments
     // Taken rather than borrowed: a `Display` impl that itself runs a
     // binding would double-borrow a `RefCell` and panic. Taking hands
     // the inner call an empty buffer instead, which is merely slower.
-    let mut buf = SCRATCH.with(|c| c.take());
+    #[cfg(feature = "std")]
+    let mut buf: String = SCRATCH.with(|c| c.take());
+    #[cfg(not(feature = "std"))]
+    let mut buf: String = scratch();
+
     buf.clear();
     let _ = buf.write_fmt(args); // writing to a String cannot fail
     let changed = dst.set_str(&buf);
+
+    #[cfg(feature = "std")]
     SCRATCH.with(|c| c.replace(buf));
     changed
 }

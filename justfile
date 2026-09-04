@@ -86,7 +86,7 @@ check: test check-extra
 # decision CI gets to make.
 
 # Release-shape rustdoc, binsize, and the exhaustive f32 check.
-check-extra: floats
+check-extra: floats thumb
     # Release-shape rustdoc: `--workspace` hides broken links that point at
     # items which only exist behind `observe`/`reload`.
     RUSTDOCFLAGS="-D warnings" cargo doc -p lumen-static --no-deps
@@ -100,6 +100,17 @@ check-extra: floats
 # Exhaustive f32 check: num::floor/ceil vs std over all 2^32 inputs.
 floats:
     cargo test --release -p lumen-static --lib num -- --ignored
+
+# The core, no_std, for the M13 device (M13/T13.1). `--features alloc`
+# rather than bare `--no-default-features`: with the std > alloc > none
+# tiers the bare form means NEITHER, and Vec/String/VecDeque are still in
+# the core until T13.4 -- so the stricter build is that task's gate, not
+# this one. Needs `rustup target add thumbv7em-none-eabihf`, which is why
+# it is here and not in `just test`.
+
+# Cortex-M4F no_std build of the core (M13 device, docs/results-embedded.md).
+thumb:
+    cargo check -p lumen-static --no-default-features --features alloc --target thumbv7em-none-eabihf
 
 # Line coverage, as an artifact to read -- not a threshold. A workspace
 # percentage is dominated by whether the fixtures ran, not by core quality;

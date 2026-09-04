@@ -15,6 +15,12 @@
 //! load new lib, never dlclose → fresh → restore, bytes owned by the
 //! host) lives in the host, not here — see `fixtures/hot-host`.
 
+// `alloc`, not the std prelude: this crate is `no_std` when the
+// `std` feature is off (M13/T13.1).
+use alloc::borrow::ToOwned;
+use alloc::string::String;
+use alloc::vec::Vec;
+
 use core::cell::RefCell;
 
 pub use serde_json::{json, Map, Value};

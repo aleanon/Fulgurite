@@ -11,6 +11,10 @@
 //! Computed style is *derived*: it is recomputed by the cascade, never
 //! migrated across a hot reload.
 
+// `alloc`, not the std prelude: this crate is `no_std` when the
+// `std` feature is off (M13/T13.1).
+use alloc::vec::Vec;
+
 use crate::desc::NodeDesc;
 
 /// How a node claims space along one axis — iced's model, which needs no
