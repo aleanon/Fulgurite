@@ -8,7 +8,9 @@ does not exist rather than a dangling link.*
 ## What will go here (M10/T10.4)
 
 - `.text` and `.bss` for the alloc-free fixture at
-  `thumbv7em-none-eabihf`, against a stated threshold.
+  `thumbv7em-none-eabihf`, against the threshold **T13.0's named device
+  implies** — Cortex-M4F, 128 KB RAM, 512 KB flash, no framebuffer
+  (`docs/plan-embedded.md`).
 - Peak RAM its `[NodeState; N]` and `[Style; N]` arrays occupy at a
   stated node count, and the per-node figure that follows from it —
   cited, not restated, wherever else it appears (AGENT.md's
@@ -55,3 +57,9 @@ Not results, just the starting position, measured while planning M10:
 Until the first three bullets have numbers, the claim "zero allocation,
 the microcontroller profile" remains **unproven** and should be written
 as an intention wherever it appears.
+
+One figure that is not a measurement of this framework but sets every
+budget here: a 320×240 16 bpp **framebuffer is 150 KB**, and a full
+frame over a 40 MHz SPI bus takes **31 ms**. The first is why the
+profile keeps no framebuffer; the second is why damage matters more on
+this device than on a desktop (T13.8).

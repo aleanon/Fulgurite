@@ -1019,14 +1019,17 @@ is devirtualization (`docs/results-traversal.md`); a change that
 re-introduces an indirect call it cannot remove must be measured, not
 assumed.
 
-**One consequence to record rather than discover.** An embedded host
-paints into an immediate-mode `Painter` and therefore has no retained
-list — so it gets `Rebuild` retention and redraws whole frames. That is
-a *choice*, not a consequence: incremental redraw matters more on a slow
-display bus, not less (M8b bought 2.33 ms → 0.154 ms on a desktop). A
-write-only sink cannot carry damage, because the diff compares command
-lists. If an embedded host wants damage it computes its own, and this
-plan does not pretend otherwise.
+**One consequence recorded rather than discovered — and since settled.**
+An embedded host paints into an immediate-mode `Painter` and therefore
+has no retained list, so the obvious pairing is `Rebuild` retention and
+whole-frame redraws. That was flagged here as a *choice* rather than a
+consequence, and **T13.0 measured it to be the wrong one**: on a 320×240
+SPI display a full frame is 31 ms, so the bus is the frame budget and
+damage is worth ~10× more there than on the desktop where M8b won
+2.33 ms → 0.154 ms. `docs/plan-embedded.md` T13.8 carries the design —
+retention as a `Painter` wrapper that keeps per-command `(hash, rect)`
+rather than the commands — which should also be cheaper on the desktop,
+since `Incremental` currently copies the whole frame every frame.
 
 ---
 
@@ -1182,10 +1185,24 @@ overflow silently corrupts `.bss` — where the state array lives.
 profile it does not, and a maximum tree depth has to be derived from a
 stack budget before anything else in M13 means much.
 
-**First task is therefore not code:** name the device — RAM and flash
-ceiling, display size and bus, frame interval. Every threshold in this
-milestone is derived from it, and "the threshold is written down before
-the measurement" is not satisfiable without one.
+**The device is named (T13.0, 2026-09-05):** Cortex-M4F,
+`thumbv7em-none-eabihf`, 128 KB RAM, 512 KB flash — the STM32F411 class
+— driving a 320×240 SPI display that has its own GRAM, so there is **no
+framebuffer**; one would be 150 KB, more RAM than the part has. That is
+reachable only because M10a's sink lets a host paint without building a
+list.
+
+Two gaps that naming it exposed, now tasks: **there is no text stack
+below `std`** (`fontdue` needs `alloc`), which made the alloc-free
+widget set look more complete than it is — T13.7; and **damage matters
+more here than on the desktop**, because the bus is the frame budget —
+T13.8.
+
+The stack figure is also correctly framed now: 256–272 B per level is
+the measurement, but the cost is *actual* depth, not `MAX_DEPTH`. The
+tally is 4 deep and the settings panel 5, so a real screen costs
+~1.6 KB; the profile lowers the cap from 64 to 24 (6.3 KB) because
+nothing built here comes close.
 
 ---
 

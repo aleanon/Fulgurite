@@ -138,18 +138,83 @@ depth 15 — and amends that comment in the same commit.
 
 ---
 
-## T13.0 — name the device, and budget the stack — **first**
+## T13.0 — the device, and the stack budget — **DECIDED 2026-09-05**
 
-Every threshold in this milestone is derived from a device, and the
-rule "write the threshold down before the measurement, so the gate can
-say no" is not satisfiable without one. Name: part class, RAM and flash
-ceiling, display size, bit depth and bus, and a target frame interval.
-Then derive the stack budget and the maximum tree depth from it.
+Every threshold in this milestone is derived from a device, and "write
+the threshold down before the measurement" is not satisfiable without
+one. So:
 
-If no such device can be named, that is the answer to whether this
-milestone should run at all.
+### The target
 
-## ~~T10.0~~ — moved to M10a — how paint reaches pixels without a list
+**Cortex-M4F, `thumbv7em-none-eabihf`, 128 KB RAM, 512 KB flash** — the
+STM32F411 class. Cheap, ubiquitous, and well served by Rust HALs. A
+hardware single-precision FPU is a *requirement*, not a preference: this
+framework is `f32` throughout — layout, clipping, the shadow's signed
+distance — and soft-float on a Cortex-M0 would pay for that on every
+coordinate.
+
+**Display: 320×240 at 16 bpp over SPI, with its own GRAM** (an ILI9341
+and its relatives). **No local framebuffer**, which is the decision the
+whole class rests on: one would be **150 KB**, more RAM than the part
+has. An immediate-mode [`Painter`] pushes to the bus and never builds a
+list — which is exactly what M10a bought, and without it this device
+class is not reachable at all.
+
+### The budget
+
+| | |
+|---|---:|
+| widget tree, 100 nodes @ ~190 B | ~19 KB |
+| layout stack (see below) | 8 KB |
+| framebuffer | **none** |
+| left for the application, drivers and buffers | ~100 KB |
+| const table in flash, 100 nodes | ~3 KB |
+
+`~190 B` is `NodeState` (76) + `Style` (72) + the widget struct
+(13–40) — the third of which no earlier version of this plan counted.
+
+### The frame interval comes from the bus, not the CPU
+
+A full 320×240×16 bpp frame is **1.23 Mbit**:
+
+| SPI clock | full frame | ceiling |
+|---|---:|---:|
+| 20 MHz | 61 ms | 16 fps |
+| 40 MHz | 31 ms | 33 fps |
+| 62 MHz | 20 ms | 50 fps |
+
+Layout and paint are microseconds against that. **The bus is the frame
+budget**, which has a consequence large enough to have its own task —
+see T13.8.
+
+### The stack, correctly framed
+
+The review measured **256–272 B per level** for the derive-generated
+`layout` in release, and concluded ~17 KB at `MAX_DEPTH = 64`. That is
+the right measurement and the wrong reading: the cost is *actual* depth,
+not the cap. The tally is 4 deep and the settings panel 5, so a real
+screen costs **~1.6 KB**.
+
+`MAX_DEPTH = 64` is a compile-time ceiling on how deep a tree may be, so
+what it bounds is the worst case a badly-built tree could reach. **The
+embedded profile lowers it to 24** — 6.3 KB, comfortably inside the 8 KB
+budget, and still four times deeper than anything built here. It is a
+const, so exceeding it is a compile error naming the type, which is the
+whole reason it exists.
+
+`desc.rs` claims `MAX_DEPTH` "retires the stack-depth concern"; that is
+true given a desktop stack and must be amended in the same commit that
+lowers it.
+
+### What this device cannot do, stated up front
+
+- **No `alloc`.** So no `Repeat`, `List`, `Dyn`, `Assembled` (T13.4).
+- **No `fontdue`.** It needs `alloc` and is a `std` crate, so the text
+  stack is a gap with its own task — T13.7.
+- **Not a 60 Hz UI.** The bus says 33 fps for a full frame; anything
+  smoother comes from drawing less, not from being faster.
+
+## ~~T10.0~~ — moved to M10a## ~~T10.0~~ — moved to M10a — how paint reaches pixels without a list
 
 `Node::paint(&self, st, i, out: &mut DisplayList)` is the blocker:
 `DisplayList` is `Vec<Cmd>` plus `String`. Two shapes were considered.
@@ -357,6 +422,93 @@ decides whether the associated type was worth having.
 **Gate:** the fixture instantiates a `TextInput<InlineText<64>>`, types
 into it through `pass::dispatch`, and allocates nothing.
 
+## T13.7 — a text stack that works without an allocator
+
+`FontMetrics` is `fontdue`, which needs `alloc` and is a `std` crate,
+and it lives in `lumen-static-shell` — which this milestone explicitly
+keeps `std`. So on the target there is **no measurer at all**, and
+T13.3's fixture would lay out a `Label` whose glyphs nothing can draw.
+No earlier version of this plan named that, which made the alloc-free
+widget set look more complete than it is.
+
+`TextMeasure` is a trait, so the shape is settled; what is missing is an
+implementation. A **pre-rasterised bitmap face**: glyph advances and
+coverage bitmaps in `const` data, indexed by a sparse table, measured
+and drawn with no allocation and no shaping. That is what every embedded
+GUI does, and it is the honest answer for a device whose font lives in
+flash.
+
+What it gives up, said plainly: one size per baked face, no hinting, no
+complex-script shaping. `docs/text-render-adoption-decision.md` already
+records the last of those as deferred; the first two are new and belong
+next to it.
+
+**Gate:** the T13.3 fixture lays out and paints a `Label` and a
+`TextInput<InlineText<64>>` with a baked face, allocating nothing, and
+the glyph coverage it emits matches a desktop render of the same face
+at the same size.
+
+## T13.8 — damage without a retained list
+
+**The finding that makes this a task:** damage is worth *more* on this
+device than on a desktop, not less. M8b bought 2.33 ms → 0.154 ms on a
+desktop where the raster was the cost. Here the **bus** is the cost, and
+redrawing a tenth of the screen is a tenth of 31 ms. That is a ~10×
+difference in the thing the user actually feels.
+
+But `Incremental` computes damage by keeping the previous
+`DisplayList` — a `Vec<Cmd>` and a `String` — which is precisely what
+an allocator-free, list-free host does not have. M10a records "embedded
+is sink + `Rebuild` + no damage ring" as a *choice*; this task is the
+evidence that it is the wrong one.
+
+**What is already right:** `Retention` is a type parameter and `Rebuild`
+is zero-sized, so a host that wants no retention carries none.
+
+**What is not:** two things.
+
+1. `Host` holds `list: DisplayList` as a concrete field whatever `R` is
+   — cleared, painted into and never read under `Rebuild` with an
+   immediate-mode painter. It costs the embedded profile nothing, only
+   because `Host` also holds two `Vec`s and so is not on that profile at
+   all; an embedded host calls `pass::layout`/`pass::paint` with its own
+   arrays, as all 233 tests already do. Worth recording so the next
+   reader does not mistake `Host` for the architecture.
+2. `Retention::record(&mut self, list: &DisplayList)` hard-wires the
+   vocabulary. Even `Rebuild` is *typed* against a list it does not
+   want, and a strategy that computes damage without storing commands
+   cannot express itself.
+
+**Proposal: retention becomes a `Painter` wrapper**, the shape this
+crate has now chosen for `Scaled` and for every seam before it —
+
+```text
+paint → Retention(Scaled(sink))
+```
+
+— observing commands as they stream past and keeping per-command
+`(hash, rect)` rather than the commands themselves. No stored list, no
+text buffer, and it composes with the scaling wrapper already there.
+
+Two reasons beyond embedded:
+
+- **It should be cheaper on the desktop too.** `Incremental::record`
+  currently copies the whole frame every frame; at 2 000 commands that
+  is ~80 KB of memcpy, roughly **8 µs against an 89 µs render**
+  (`docs/results-frame-cost.md`). `(hash, rect)` is 20 bytes per
+  command against ~40 plus text.
+- It removes the last coupling between `Retention` and `DisplayList`.
+
+**Gate — and this one decides the task.** Streaming hashes every command
+instead of comparing stored ones, so it may be a wash; that is a claim,
+and this project measures claims. Benchmark both at the tally's 34
+commands and at ~2 000, and **keep the copying implementation if
+streaming is not faster** — the point is a host that needs no list, and
+if that costs desktop time it should be a second `Retention` impl rather
+than a replacement. `crates/lumen-static-shell/tests/damage_oracle.rs`
+is the correctness gate either way: whatever computes the damage, the
+partial redraw must stay pixel-identical to a full one.
+
 ## T13.6 — the number
 
 `docs/results-embedded.md` currently says, correctly, that no number has
@@ -394,7 +546,12 @@ profile.
   about this architecture.
 - **Not `no_std` for the shell, the agent or the macros.** The shell
   owns fonts, a rasteriser and a window; the agent owns JSON. Both are
-  desktop by nature and stay `std`. Only `lumen-static` is in scope.
+  desktop by nature and stay `std`. Only `lumen-static` is in scope —
+  which is why the bitmap face of T13.7 cannot live in the shell either.
+- **Not a board bring-up.** T13.0 names a device to derive budgets from,
+  not a target to flash. The fixture is a library check for thumb and a
+  binary run on the host; a real binary would need `#[panic_handler]`,
+  `#[entry]` and a linker script with a concrete memory map.
 - **Not a promise about `Repeat`.** See T10.3.
 
 ## Risks
