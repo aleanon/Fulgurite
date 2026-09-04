@@ -15,7 +15,7 @@ has eleven, and three of Phase B's items are among them:
 | text input | `TextInput` (M9) — no IME, no selection, single-line |
 | scrollable | `ScrollView` (M8) — with chaining |
 | §6 escape hatches as first-class widgets | `Either`, `Option`, `List`, `Dyn`, `Repeat`, `Assembled` |
-| checkbox / radio / switch | **not built** |
+| checkbox / radio / switch | `Toggle<S, SHAPE>` (T11.1) — shape is a const, not a field |
 | slider | **not built** — blocked, see T11.2 |
 | text area | **not built** — reopens B7 |
 | container / card | *not needed* — any derived container with a background is one |
@@ -32,7 +32,7 @@ original phase did, and it is why the phase was never actionable.
 
 ## The four groups, in order
 
-### T11.1 — toggles: checkbox, radio, switch — *cheap*
+### T11.1 — toggles: checkbox, radio, switch — **DONE 2026-09-04**
 
 One toggle core with three presentations. Each is a `Button` with a
 `bool`, a different `paint`, and an AccessKit role
@@ -42,9 +42,9 @@ Most of what they need exists: `NodeState::pressed` and `hovered` (C6),
 focus and Tab order (C5), and `set_hidden`/roles in `observe`. These are
 the first widgets to use `pressed` for something other than a shade.
 
-**One thing does not exist, and it is the convention:** every desktop
-toolkit toggles a checkbox with **Space**, and the `Key` enum has no
-variant for it. That is an event-vocabulary gap of the same kind T11.2
+**`Key::Space` was added here**, which is what the task was actually
+missing: every desktop toolkit toggles a checkbox with Space, and the
+enum had no variant for it. That is an event-vocabulary gap of the same kind T11.2
 names for `PointerMove` — a shell mapping, an enum variant, and a line
 in `dispatch`'s activation match. It is small, but it must be named
 rather than substituted: an earlier draft of this plan quietly gated on
@@ -70,10 +70,29 @@ using `ctx.row`, the codebase's own idiom for the shape. Decide it in
 the task with that on the table; (a) is still the recommendation, but
 not a free one.
 
-**Gate:** the `ui_check.py press` check passes on all three; `ui.lint`
-is clean; a toggle round-trips through `input.click` *and*
-`input.key Space`; the AccessKit role and toggled state appear in
-`ui.getTree`.
+**Gate — MET.** Eight tests, and three findings worth keeping:
+
+- **Shape is a const type parameter, not a field.** `kind_name` feeds
+  the cascade and the agent's selectors, and `defaults` is snapshotted
+  once when a stylesheet is set — a shape in a field would make both
+  state-dependent, which is the hazard `Option::defaults` was fixed for
+  (F3.2).
+- **The widget does not flip itself.** `on` is a presentation copy and
+  the application owns the boolean, exactly as a `Label`'s text is a
+  copy. A widget that flipped itself would consume the event — C3's
+  contract is that `true` stops the walk — so the app's handler would
+  never run and the two copies could disagree.
+- **A default must be visible in both states.** The first version
+  inverted `fg`/`bg` for the on state, and `Style::background` defaults
+  to *transparent* while `rounded_rect` drops a transparent command — so
+  an "on" switch drew no knob at all. Caught by the knob-travel test,
+  which measured the body and called it the knob. Both colours are
+  opaque now, and a test pins that nothing vanishes in either state.
+
+And one consequence of the vocabulary: **a checkmark is a staircase.**
+`Cmd` has no path and no rotation, so the tick is small squares stepped
+along two diagonals. It reads correctly at 24 px, and it is the same
+missing vocabulary an icon needs.
 
 ### T11.2 — slider — *needs a routing change*
 

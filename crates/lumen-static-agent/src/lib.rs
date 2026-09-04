@@ -1152,12 +1152,15 @@ pub trait AgentHost {
     fn pump(&mut self) -> u64;
 }
 
-const KEY_NAMES: [&str; 11] =
-    ["Enter", "Escape", "Tab", "Backspace", "Delete", "Left", "Right", "Up", "Down", "Home", "End"];
+const KEY_NAMES: [&str; 12] = [
+    "Enter", "Space", "Escape", "Tab", "Backspace", "Delete", "Left", "Right", "Up", "Down",
+    "Home", "End",
+];
 
 fn parse_key(name: &str) -> Option<Key> {
     Some(match name {
         "Enter" => Key::Enter,
+        "Space" => Key::Space,
         "Escape" => Key::Escape,
         "Tab" => Key::Tab,
         "Backspace" => Key::Backspace,

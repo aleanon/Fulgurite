@@ -271,7 +271,9 @@ pub fn dispatch<S: crate::event::App>(
     // *identifiers* exist, not that prose is true.
     let activates = matches!(
         ev,
-        Event::PointerUp { .. } | Event::Key { key: Key::Enter, down: true }
+        Event::PointerUp { .. }
+            | Event::Key { key: Key::Enter, down: true }
+            | Event::Key { key: Key::Space, down: true }
     );
     if !activates {
         return false;

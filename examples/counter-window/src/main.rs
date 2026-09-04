@@ -29,7 +29,7 @@ use winit::window::{Window, WindowId};
 
 mod app;
 
-use app::{build, stylesheet_for, Tally, INK, PAGE, SURFACE};
+use app::{build, stylesheet_for, Tally, ACCENT, INK, PAGE, SURFACE};
 
 // ---- the agent endpoint ----------------------------------------------
 
@@ -641,6 +641,7 @@ fn named_key(k: &WKey) -> Option<Key> {
     let WKey::Named(n) = k else { return None };
     Some(match n {
         NamedKey::Enter => Key::Enter,
+        NamedKey::Space => Key::Space,
         NamedKey::Escape => Key::Escape,
         NamedKey::Tab => Key::Tab,
         NamedKey::Backspace => Key::Backspace,
@@ -862,12 +863,44 @@ fn drive() {
 
 // ---- `--form`: the M8/M9 widgets through the real rasteriser --------
 
-/// A scrollable form: a field, and more rows than fit.
+/// One row of the settings panel: a control and its label.
+///
+/// A checkbox is a box, not a box-with-text — composing it with a
+/// `Label` in a row is the tree doing the work a `label:` field on every
+/// control would otherwise duplicate.
+#[derive(lumen_static::StaticTree, Default)]
+#[widget(row, spacing = 8.0)]
+struct CheckRow {
+    #[widget_id("check")]
+    check: lumen_static::toggle::CheckBox<Form>,
+    #[widget_id("check_label")]
+    label: Label,
+}
+
+#[derive(lumen_static::StaticTree, Default)]
+#[widget(row, spacing = 8.0)]
+struct SwitchRow {
+    #[widget_id("switch")]
+    switch: lumen_static::toggle::Switch<Form>,
+    #[widget_id("switch_label")]
+    label: Label,
+}
+
+/// The growing settings panel — M11's gate behind every task gate.
+///
+/// Each widget the milestone adds lands here as well as in its own
+/// tests, because every M11 gate is otherwise agent-protocol-shaped:
+/// `ui.lint` clean, the role present, `press` passing. A control can
+/// satisfy all of that without ever being placed next to another one,
+/// which is the fastest route to a vocabulary that is individually
+/// correct and collectively unusable.
 #[derive(lumen_static::StaticTree, Default)]
 #[widget(column, spacing = 10.0)]
 struct FormBody {
     #[widget_id("name")]
     name: lumen_static::input::TextInput,
+    check_row: CheckRow,
+    switch_row: SwitchRow,
     #[widget_id("r1")]
     r1: Label,
     #[widget_id("r2")]
@@ -891,6 +924,17 @@ struct FormUi {
 struct Form {
     #[tree]
     ui: FormUi,
+    /// The truth for the checkbox. The widget holds a copy, kept in step
+    /// by the binding — the same relationship a `Label` has with the
+    /// value it shows.
+    #[bind(ui.scroll.content.check_row.check, with = set_on)]
+    notify: bool,
+    #[bind(ui.scroll.content.switch_row.switch, with = set_on)]
+    dark: bool,
+}
+
+fn set_on<S: 'static, const K: u8>(t: &mut lumen_static::toggle::Toggle<S, K>, v: &bool) {
+    t.on = *v;
 }
 
 /// Render the form headlessly and assert the properties only a real
@@ -909,6 +953,10 @@ fn form(path: &str) {
     {
         let b = &mut host.app.ui.scroll.content;
         b.name.set_str("typed into a real field");
+        b.check_row.label.set("notify me");
+        b.check_row.check.on_toggle = |f: &mut Form, _| f.notify = !f.notify;
+        b.switch_row.label.set("dark mode");
+        b.switch_row.switch.on_toggle = |f: &mut Form, _| f.dark = !f.dark;
         for (i, l) in [&mut b.r1, &mut b.r2, &mut b.r3, &mut b.r4, &mut b.r5].into_iter().enumerate()
         {
             l.set(match i {
@@ -924,6 +972,10 @@ fn form(path: &str) {
         Rule::new(Selector::Kind("FormUi"), Patch::new().background(PAGE).padding(Edges::all(12.0))),
         Rule::new(Selector::Id("name"), Patch::new().background(SURFACE).radius(8.0).width(Length::FILL)),
         Rule::new(Selector::Kind("label"), Patch::new().color(INK)),
+        // Two colours, four states: the resting body and the on body are
+        // each the other's mark (`crates/lumen-static/src/toggle.rs`).
+        Rule::new(Selector::Kind("checkbox"), Patch::new().background(SURFACE).color(ACCENT)),
+        Rule::new(Selector::Kind("switch"), Patch::new().background(SURFACE).color(ACCENT)),
         Rule::new(Selector::Id("name"), Patch::new().color(INK)),
     ]);
     let mut metrics = FontStack::system().map(FontMetrics::new);
@@ -941,8 +993,27 @@ fn form(path: &str) {
     };
     pump(&mut host, &mut metrics);
 
-    let content_h = host.states[2].size.h;
-    let viewport_h = host.states[1].size.h;
+    // The panel's controls answer to the app's state through bindings.
+    host.app.notify = true;
+    host.app.dark = true;
+    pump(&mut host, &mut metrics);
+    assert!(
+        host.app.ui.scroll.content.check_row.check.on,
+        "the binding wrote the checkbox's copy"
+    );
+    assert!(host.app.ui.scroll.content.switch_row.switch.on, "and the switch's");
+
+    // Resolve by author id, not by index: the panel grows every task,
+    // and the first time it did, three hard-coded indices silently
+    // became different nodes.
+    let table = <FormUi as Widget>::SUB_TABLE;
+    let at = |wid: &str| {
+        lumen_static::style::index_of_wid(table, wid).unwrap_or_else(|| panic!("no #{wid}"))
+    };
+    let (i_scroll, i_body, i_name, i_last) = (at("scroll"), at("scroll") + 1, at("name"), at("r5"));
+
+    let content_h = host.states[i_body].size.h;
+    let viewport_h = host.states[i_scroll].size.h;
     assert!(content_h > viewport_h, "the form must overflow: {content_h} vs {viewport_h}");
 
     // Scroll to the bottom through the real event path, not by writing
@@ -967,9 +1038,9 @@ fn form(path: &str) {
     // that has left from painting there anyway — the property a
     // repeater got wrong for three milestones, and only geometry plus
     // pixels together can show it.
-    let top = host.states[1].pos.y;
-    let field_y = host.states[3].pos.y;
-    let last = &host.states[8];
+    let top = host.states[i_scroll].pos.y;
+    let field_y = host.states[i_name].pos.y;
+    let last = &host.states[i_last];
     assert!(field_y < top, "the field has scrolled above the viewport (y={field_y}, top={top})");
     assert!(
         last.pos.y >= top && last.pos.y + last.size.h <= top + viewport_h + 0.001,
@@ -977,6 +1048,19 @@ fn form(path: &str) {
         last.pos.y,
         last.size.h
     );
+
+    // Back to the top for the artifact: the controls are what this
+    // fixture is for, and they sit above the fold.
+    host.app.ui.scroll.scroll = 0.0;
+    pump(&mut host, &mut metrics);
+    canvas.clear(PAGE);
+    host.render(&mut canvas);
+    // Back to the top for the artifact: the controls are what this
+    // fixture is for, and they sit above the fold.
+    host.app.ui.scroll.scroll = 0.0;
+    pump(&mut host, &mut metrics);
+    canvas.clear(PAGE);
+    host.render(&mut canvas);
 
     std::fs::write(path, canvas.to_ppm()).expect("write frame");
     println!(

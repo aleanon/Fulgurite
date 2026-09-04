@@ -15,6 +15,10 @@ use crate::desc::Point;
 #[cfg_attr(feature = "observe", derive(serde::Serialize, serde::Deserialize))]
 pub enum Key {
     Enter,
+    /// Activates the focused control. Added M11/T11.1: every desktop
+    /// toolkit toggles a checkbox with Space, and until then `dispatch`
+    /// carried a comment claiming it already did.
+    Space,
     Escape,
     Tab,
     Backspace,
