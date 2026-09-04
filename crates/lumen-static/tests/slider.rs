@@ -38,8 +38,7 @@ struct F {
     app: App,
     styles: Vec<lumen_static::Style>,
     st: [NodeState; Ui::NODE_COUNT],
-    focus: Option<u32>,
-    capture: Option<u32>,
+    input: lumen_static::event::InputState,
 }
 
 impl F {
@@ -52,7 +51,7 @@ impl F {
             &mut styles,
         );
         let mut f =
-            F { app, styles, st: [NodeState::default(); Ui::NODE_COUNT], focus: None, capture: None };
+            F { app, styles, st: [NodeState::default(); Ui::NODE_COUNT], input: Default::default() };
         f.layout();
         f
     }
@@ -64,8 +63,7 @@ impl F {
             &mut self.app,
             &self.styles,
             &mut self.st,
-            &mut self.focus,
-            &mut self.capture,
+            &mut self.input,
             &ev,
         );
         self.layout();
@@ -98,7 +96,7 @@ fn a_drag_keeps_tracking_after_the_pointer_leaves_the_control() {
     let mut f = F::new();
     let (x, y) = f.at(0.5);
     f.send(Event::PointerDown { x, y });
-    assert_eq!(f.capture, Some(1), "the press claimed the gesture");
+    assert_eq!(f.input.capture, Some(1), "the press claimed the gesture");
 
     // Far below the control, and far to the right of it.
     f.send(Event::PointerMove { x: x + 5000.0, y: y + 5000.0 });
@@ -108,7 +106,7 @@ fn a_drag_keeps_tracking_after_the_pointer_leaves_the_control() {
     assert_eq!(f.v(), 0.0, "and in the other direction");
 
     f.send(Event::PointerUp { x: -5000.0, y: y + 5000.0 });
-    assert_eq!(f.capture, None, "the release gives the gesture back");
+    assert_eq!(f.input.capture, None, "the release gives the gesture back");
 
     // A move after the release changes nothing.
     let before = f.v();
@@ -132,7 +130,7 @@ fn arrow_keys_step_it_so_it_is_reachable_without_a_pointer() {
     let (x, y) = f.at(0.0);
     f.send(Event::PointerDown { x, y });
     f.send(Event::PointerUp { x, y });
-    assert_eq!(f.focus, Some(1));
+    assert_eq!(f.input.focus, Some(1));
 
     assert!(f.send(Event::Key { key: Key::Right, down: true }));
     assert!((f.v() - 0.05).abs() < 1e-6, "one step: {}", f.v());

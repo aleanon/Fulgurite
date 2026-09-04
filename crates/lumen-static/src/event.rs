@@ -14,6 +14,12 @@ use crate::desc::Point;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "observe", derive(serde::Serialize, serde::Deserialize))]
+///
+/// **Deliberately not exhaustive.** Media and browser keys, numpad
+/// distinctions, and the modifier keys themselves are excluded
+/// (`docs/plan-desktop.md` T14.2). Modifiers are *state* — [`Mods`] —
+/// not keys: a `Key::Shift` would let a widget see a shortcut
+/// half-pressed.
 pub enum Key {
     Enter,
     /// Activates the focused control. Added M11/T11.1: every desktop
@@ -30,6 +36,75 @@ pub enum Key {
     Down,
     Home,
     End,
+    /// Added M14/T14.2, with the rest of this block.
+    PageUp,
+    PageDown,
+    /// Completes the editing set beside Delete and Backspace.
+    Insert,
+    /// A printable key *as a shortcut*: Ctrl+C is
+    /// `Key::Char('c')` with [`Mods::CTRL`], not [`Event::Text`].
+    ///
+    /// Typing still arrives as `Event::Text`; the windowing layer
+    /// suppresses that when [`Mods::is_shortcut`] holds, or Ctrl+C would
+    /// both fire the shortcut and type a "c" — a bug invisible until a
+    /// text field has focus.
+    ///
+    /// Lower-cased by the windowing layer, so a shortcut table needs one
+    /// entry rather than two: Shift is reported in the modifiers.
+    Char(char),
+    /// F1 to F12, as `F(1)` to `F(12)`. One variant rather than twelve:
+    /// F1 help, F2 rename, F5 refresh and F11 fullscreen are the common
+    /// ones, and a table is a worse fit than a number.
+    F(u8),
+}
+
+/// Which modifier keys are held — `docs/plan-desktop.md` T14.1.
+///
+/// A bitflag rather than four `bool`s so it fits in one byte and
+/// `Event` stays 16 B, which is what keeps [`InputQueue`] at 1 KB.
+///
+/// **`META`, not `CMD` or `SUPER`.** One name for the platform's own
+/// modifier — Command on macOS, Super elsewhere — mapped per platform
+/// by the windowing layer, so an application writes one shortcut table.
+/// Whether `CTRL` or `META` is "the" shortcut modifier is the
+/// *application's* choice; this reports both truthfully and decides
+/// nothing.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "observe", derive(serde::Serialize, serde::Deserialize))]
+pub struct Mods(pub u8);
+
+impl Mods {
+    pub const NONE: Mods = Mods(0);
+    pub const SHIFT: Mods = Mods(1 << 0);
+    pub const CTRL: Mods = Mods(1 << 1);
+    pub const ALT: Mods = Mods(1 << 2);
+    pub const META: Mods = Mods(1 << 3);
+
+    /// Whether every bit of `m` is held. `has(Mods::NONE)` is always
+    /// true, which is the right answer to "does this need no modifiers".
+    pub const fn has(self, m: Mods) -> bool {
+        self.0 & m.0 == m.0
+    }
+
+    /// Whether *no* modifier is held. A shortcut table wants this to
+    /// tell a bare Enter from Ctrl+Enter.
+    pub const fn is_empty(self) -> bool {
+        self.0 == 0
+    }
+
+    /// Whether any modifier but Shift is held.
+    ///
+    /// The rule the windowing layer applies to suppress [`Event::Text`]:
+    /// Shift is excluded because Shift+A *is* how a capital arrives,
+    /// while Ctrl+C must not also type a "c" (T14.2).
+    pub const fn is_shortcut(self) -> bool {
+        self.0 & !Mods::SHIFT.0 != 0
+    }
+
+    /// Add `m`.
+    pub const fn with(self, m: Mods) -> Mods {
+        Mods(self.0 | m.0)
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -41,6 +116,15 @@ pub enum Event {
     Scroll { x: f32, y: f32, dy: f32 },
     Key { key: Key, down: bool },
     Text { ch: char },
+    /// The modifier keys changed — T14.1.
+    ///
+    /// **In the queue, not beside it.** `docs/plan-events.md` E0 is
+    /// "one queue, so anything an agent does replays as a test", and
+    /// modifier state held outside the queue makes a recorded session
+    /// unreplayable exactly when modifiers matter. `dispatch` tracks
+    /// the current value and puts it in every [`EventCtx`], so a
+    /// handler reads `ctx.mods` and never sees this event.
+    Modifiers(Mods),
 }
 
 impl Event {
@@ -51,7 +135,7 @@ impl Event {
             | Event::PointerUp { x, y }
             | Event::PointerMove { x, y }
             | Event::Scroll { x, y, .. } => Some(Point { x, y }),
-            Event::Key { .. } | Event::Text { .. } => None,
+            Event::Key { .. } | Event::Text { .. } | Event::Modifiers(_) => None,
         }
     }
 }
@@ -84,6 +168,11 @@ pub struct EventCtx {
     pub pos: Point,
     /// Pointer position relative to the receiving node's origin.
     pub local: Point,
+    /// Which modifiers were held when this event happened (T14.1).
+    ///
+    /// Tracked by `dispatch` from [`Event::Modifiers`] rather than
+    /// carried on each event, so `Event` stays 16 B.
+    pub mods: Mods,
 }
 
 impl EventCtx {
@@ -100,8 +189,35 @@ impl EventCtx {
             inner: 0,
             pos: Point::default(),
             local: Point::default(),
+            mods: Mods::NONE,
         }
     }
+
+    /// The same, with the modifiers that were held.
+    pub fn for_event_with(node: u32, event: Event, mods: Mods) -> Self {
+        EventCtx { mods, ..EventCtx::for_event(node, event) }
+    }
+}
+
+/// The caller-owned input state `dispatch` reads and updates.
+///
+/// Bundled as of M14/T14.1, when modifier tracking would have made
+/// `dispatch` a seven-argument function. It is also the thing a session
+/// recording snapshots: three loose `&mut` were three things to
+/// remember, and this is one.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct InputState {
+    /// The focused node's main-table index, if any.
+    pub focus: Option<u32>,
+    /// The node holding the pointer for a drag, if any (T11.2).
+    ///
+    /// Checked *before* the hit test: a drag that leaves its control
+    /// must keep reaching it, and the first version checked after, so
+    /// the slider stopped following the pointer the moment it left the
+    /// track.
+    pub capture: Option<u32>,
+    /// Modifiers currently held, updated from [`Event::Modifiers`].
+    pub mods: Mods,
 }
 
 /// The single input queue (see the module note).

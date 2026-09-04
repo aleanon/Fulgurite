@@ -28,15 +28,20 @@ pub struct Host<A: App, R: Retention = Incremental> {
     pub styles: Vec<Style>,
     pub states: Vec<NodeState>,
     pub list: DisplayList,
-    pub focus: Option<u32>,
-    /// The node that owns the current pointer gesture (M11/T11.2).
+    /// Focus, pointer capture and modifier state.
     ///
-    /// Set when a node consumes a `PointerDown`, cleared on the release.
-    /// While it is set, moves go straight to that node and nothing walks
-    /// — which is what lets a slider keep tracking after the pointer has
-    /// left it without reinstating the per-motion ancestor walk M9
-    /// refused.
-    pub capture: Option<u32>,
+    /// One field since M14/T14.1. It was `focus` and `capture` as
+    /// separate fields, and modifier tracking would have made a third —
+    /// three things for a session recording to snapshot, and three
+    /// places for `dispatch` to disagree with the host.
+    ///
+    /// `capture` is the node that owns the current pointer gesture
+    /// (M11/T11.2): set when a node consumes a `PointerDown`, cleared on
+    /// the release. While it is set, moves go straight to that node and
+    /// nothing walks — which is what lets a slider keep tracking after
+    /// the pointer has left it without reinstating the per-motion
+    /// ancestor walk M9 refused.
+    pub input: lumen_static::event::InputState,
     queue: lumen_static::InputQueue,
     /// Surface size in **physical** pixels — what a window reports.
     size: (u32, u32),
@@ -70,8 +75,7 @@ impl<A: App, R: Retention> Host<A, R> {
             styles,
             states: vec![NodeState::default(); n],
             list: DisplayList::new(),
-            focus: None,
-            capture: None,
+            input: lumen_static::event::InputState::default(),
             queue: lumen_static::InputQueue::new(),
             size: (width, height),
             scale: 1.0,
@@ -199,8 +203,7 @@ impl<A: App, R: Retention> Host<A, R> {
                 &mut self.app,
                 &self.styles,
                 &mut self.states,
-                &mut self.focus,
-                &mut self.capture,
+                &mut self.input,
                 &ev,
             );
         }

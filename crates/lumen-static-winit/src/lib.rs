@@ -86,6 +86,10 @@ struct Win<A: App> {
     surface: Option<Surface>,
     canvas: lumen_static_shell::software::Canvas,
     cursor: Cursor,
+    /// Modifiers as of the last `ModifiersChanged`. Kept here as well as
+    /// in the host because translation needs it *before* the event is
+    /// queued: it decides whether a keystroke types (T14.2).
+    mods: lumen_static::Mods,
 }
 
 impl<A: App> Win<A> {
@@ -109,6 +113,7 @@ impl<A: App> Win<A> {
             surface: None,
             canvas,
             cursor: Cursor::default(),
+            mods: lumen_static::Mods::NONE,
         }
     }
 
@@ -177,9 +182,12 @@ impl<A: App> ApplicationHandler for Win<A> {
 
             ref event => {
                 let host = &self.host;
-                let t = translate::window_event(event, &mut self.cursor, |x, y| {
+                let t = translate::window_event(event, &mut self.cursor, self.mods, |x, y| {
                     host.to_logical(x, y)
                 });
+                if let winit::event::WindowEvent::ModifiersChanged(m) = event {
+                    self.mods = translate::mods(m.state());
+                }
                 let any = t.events[0].is_some();
                 for ev in t.iter() {
                     self.host.post(ev);

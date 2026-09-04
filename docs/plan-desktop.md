@@ -151,7 +151,7 @@ Three things the extraction turned up:
 
 ---
 
-## T14.1 — modifier state
+## T14.1 — modifier state — **DONE 2026-09-05**
 
 Nothing in the event vocabulary carries Shift, Ctrl, Alt or Cmd. That
 single absence blocks keyboard shortcuts, Ctrl+C/V/A/Z, Shift+Arrow
@@ -194,9 +194,22 @@ budget is a gate rather than a memory. A recorded session that includes
 modifier changes replays identically (T12.3's `Recording` already has
 the machinery).
 
+**Done, as designed.** `Event::Modifiers(Mods)` in the queue, `mods` on
+`EventCtx`, `InputState { focus, capture, mods }` bundled.
+`crates/lumen-static/tests/modifiers.rs` asserts `Event` is still 16 B,
+`Mods` 1 B and `InputQueue` 1048 B — the budget is a gate now, not a
+memory.
+
+The bundle cost more churn than the plan's "9 call sites" implied:
+`Host.focus` and `Host.capture` were **public fields** with readers in
+five test files and the window, so it was closer to 30 edits. Worth it
+anyway — the alternative was `Host` holding focus, capture *and* mods as
+three fields while `dispatch` took an `InputState`, which is two
+representations of one thing and a sync bug waiting to be written.
+
 ---
 
-## T14.2 — the key set
+## T14.2 — the key set — **DONE 2026-09-05**
 
 `Key` has 12 variants and no way to name a shortcut's letter.
 Printable characters arrive only as `Event::Text`, which is the typing
@@ -228,6 +241,22 @@ prevent, and one that is invisible until a text field has focus.
 through translation to `dispatch`, so a key that translates to nothing
 fails rather than being silently dropped — which is what `named_key`
 returning `Option` does today.
+
+**Done.** `PageUp`, `PageDown`, `Insert`, `Char(char)`, `F(u8)`;
+`Key` is 8 B and `Event` is still 16.
+
+**The gate as written could not be built, and the reason improved the
+code.** `winit::event::KeyEvent` has a `platform_specific` field with no
+public constructor, so a test cannot synthesize a keyboard event at all.
+So the keyboard branch is now `translate::keyboard(logical, text, down,
+held)` — a function of what a key event *says* rather than of winit's
+type — and `window_event` calls it. That is the branch most worth
+testing, because it is where the shortcut/typing rule lives, and it was
+the one branch the original design left untestable.
+
+Thirteen tests now cover translation, including the two rules that
+matter: **Ctrl+C produces the key and no text**, and **Shift+A still
+types**. Both were written as the bug they prevent.
 
 ---
 

@@ -64,8 +64,7 @@ struct Fixture {
     app: App,
     states: [NodeState; Ui::NODE_COUNT],
     styles: Vec<lumen_static::Style>,
-    focus: Option<u32>,
-    capture: Option<u32>,
+    input: lumen_static::event::InputState,
 }
 
 impl Fixture {
@@ -80,8 +79,7 @@ impl Fixture {
             app,
             states: [NodeState::default(); Ui::NODE_COUNT],
             styles,
-            focus: None,
-            capture: None,
+            input: Default::default(),
         };
         f.layout();
         f
@@ -93,7 +91,7 @@ impl Fixture {
 
     fn send(&mut self, ev: Event) -> bool {
         let handled =
-            pass::dispatch(&mut self.app, &self.styles, &mut self.states, &mut self.focus, &mut self.capture, &ev);
+            pass::dispatch(&mut self.app, &self.styles, &mut self.states, &mut self.input, &ev);
         self.layout();
         handled
     }
@@ -197,11 +195,11 @@ fn e2_row_click_receives_the_right_row_after_scrolling() {
 #[test]
 fn e2_focus_follows_pointer_down_and_routes_keys() {
     let mut f = Fixture::new();
-    assert!(f.focus.is_none());
+    assert!(f.input.focus.is_none());
 
     let (x, y) = f.center_of(2);
     f.send(Event::PointerDown { x, y });
-    assert_eq!(f.focus, Some(2), "the button is focusable");
+    assert_eq!(f.input.focus, Some(2), "the button is focusable");
 
     // Enter on the focused node activates it (C1, 2026-09-04): a button
     // is reachable without a pointer at all, which is what makes the
@@ -222,7 +220,7 @@ fn e2_focus_follows_pointer_down_and_routes_keys() {
     // Clicking a non-focusable area clears focus.
     let (hx, hy) = f.center_of(1);
     f.send(Event::PointerDown { x: hx, y: hy });
-    assert_eq!(f.focus, None);
+    assert_eq!(f.input.focus, None);
     assert!(!f.send(Event::Text { ch: 'a' }), "no focus, nothing to route to");
 }
 
@@ -331,14 +329,14 @@ fn focus_is_dropped_when_the_focused_node_leaves_the_screen() {
     let (x, y) = f.center_of(2);
     f.send(Event::PointerDown { x, y });
     f.send(Event::PointerUp { x, y });
-    assert_eq!(f.focus, Some(2));
+    assert_eq!(f.input.focus, Some(2));
 
     // Hide it the way `Option`, `Either` and a hidden subtree all do:
     // zero geometry, with `Style::visible` untouched.
     f.states[2].size = lumen_static::Size::default();
     let before = f.app.clicks;
     assert!(!f.send(Event::Key { key: Key::Enter, down: true }), "nothing focused now");
-    assert_eq!(f.focus, None, "focus was dropped");
+    assert_eq!(f.input.focus, None, "focus was dropped");
     assert_eq!(f.app.clicks, before, "and the hidden control was not activated");
 }
 
@@ -346,13 +344,13 @@ fn focus_is_dropped_when_the_focused_node_leaves_the_screen() {
 fn tab_walks_the_focusables_in_declaration_order_and_wraps() {
     let mut f = Fixture::new();
     f.layout();
-    assert_eq!(f.focus, None);
+    assert_eq!(f.input.focus, None);
 
     // Collect where Tab goes, until it comes back.
     let mut seen = Vec::new();
     for _ in 0..8 {
         assert!(f.send(Event::Key { key: Key::Tab, down: true }));
-        let Some(n) = f.focus else { break };
+        let Some(n) = f.input.focus else { break };
         if seen.contains(&n) {
             break;
         }
@@ -362,7 +360,7 @@ fn tab_walks_the_focusables_in_declaration_order_and_wraps() {
     assert!(seen.windows(2).all(|w| w[0] < w[1]), "declaration order: {seen:?}");
     // Wrapped: another Tab from the last returns to the first.
     assert!(f.send(Event::Key { key: Key::Tab, down: true }));
-    assert_eq!(f.focus, Some(seen[0]), "wraps to the first");
+    assert_eq!(f.input.focus, Some(seen[0]), "wraps to the first");
 }
 
 #[test]
@@ -370,11 +368,11 @@ fn tab_skips_a_focusable_with_no_area() {
     let mut f = Fixture::new();
     f.layout();
     f.send(Event::Key { key: Key::Tab, down: true });
-    let first = f.focus.expect("something focusable");
+    let first = f.input.focus.expect("something focusable");
 
     // Collapse it; Tab from nothing must now land elsewhere.
-    f.focus = None;
+    f.input.focus = None;
     f.states[first as usize].size = lumen_static::Size::default();
     f.send(Event::Key { key: Key::Tab, down: true });
-    assert_ne!(f.focus, Some(first), "a Tab stop you cannot see is not a Tab stop");
+    assert_ne!(f.input.focus, Some(first), "a Tab stop you cannot see is not a Tab stop");
 }

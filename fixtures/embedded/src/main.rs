@@ -83,16 +83,16 @@ fn main() {
     // real dispatch path, still with the allocator armed. `Label` and
     // `Button` never allocate because they never change; an editable
     // field is the widget that would.
-    let mut focus = Some(FIELD);
+    let mut input = lumen_static::event::InputState { focus: Some(FIELD), ..Default::default() };
     for ch in "hello embedded".chars() {
-        assert!(type_char(&mut panel, &mut st, &sty, &mut focus, ch), "the field took it");
+        assert!(type_char(&mut panel, &mut st, &sty, &mut input, ch), "the field took it");
     }
     frame(&mut panel, &mut st, &mut sty, &mut out);
 
     // Past capacity the buffer refuses rather than growing — the whole
     // difference between a fixed storage and a String.
     for _ in 0..200 {
-        type_char(&mut panel, &mut st, &sty, &mut focus, 'x');
+        type_char(&mut panel, &mut st, &sty, &mut input, 'x');
     }
     frame(&mut panel, &mut st, &mut sty, &mut out);
     ARMED.store(false, Ordering::Relaxed);

@@ -51,8 +51,7 @@ struct Host {
     styles: Vec<lumen_static::Style>,
     states: [NodeState; Ui::NODE_COUNT],
     queue: InputQueue,
-    focus: Option<u32>,
-    capture: Option<u32>,
+    input: lumen_static::event::InputState,
 }
 
 impl Host {
@@ -68,8 +67,7 @@ impl Host {
             styles,
             states: [NodeState::default(); Ui::NODE_COUNT],
             queue: InputQueue::new(),
-            focus: None,
-            capture: None,
+            input: Default::default(),
         };
         h.pump();
         h
@@ -89,8 +87,7 @@ impl AgentHost for Host {
                 &mut self.app,
                 &self.styles,
                 &mut self.states,
-                &mut self.focus,
-                &mut self.capture,
+                &mut self.input,
                 &ev,
             );
         }

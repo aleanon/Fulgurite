@@ -163,7 +163,7 @@ pub use inline::{InlineClusters, InlineText};
 pub use text::{ClusterBuf, Dirty, Measured, TextBuffer, TextStorage};
 #[cfg(feature = "reload")]
 pub use text::TextRestore;
-pub use event::{Event, EventCtx, InputQueue, Key};
+pub use event::{Event, EventCtx, InputQueue, Key, Mods};
 // `App` is both a trait and a derive; they live in different namespaces,
 // so `use lumen_static::App` brings in whichever the position calls for.
 pub use event::App;
@@ -183,7 +183,7 @@ pub use widget::{Node, Widget};
 /// the first place most people meet that fact is a rustc error.
 pub mod prelude {
     pub use crate::desc::{Constraints, NodeState, Point, Size};
-    pub use crate::event::{App, EventCtx, Event, Key};
+    pub use crate::event::{App, EventCtx, Event, Key, Mods};
     pub use crate::hatch::{Either, Side};
     #[cfg(feature = "alloc")]
     pub use crate::hatch::{Dyn, List};

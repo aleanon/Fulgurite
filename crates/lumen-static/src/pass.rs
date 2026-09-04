@@ -126,14 +126,24 @@ pub fn dispatch<S: crate::event::App>(
     state: &mut S,
     style: &[Style],
     st: &mut [NodeState],
-    focus: &mut Option<u32>,
-    capture: &mut Option<u32>,
+    input: &mut crate::event::InputState,
     ev: &crate::event::Event,
 ) -> bool {
     use crate::event::{Event, EventCtx, Handlers, Key, NodeSel};
     use crate::widget::Widget;
 
     let table = <S::Tree as Widget>::SUB_TABLE;
+
+    // Modifier state is carried *in* the queue and tracked here, so a
+    // recorded session replays with the modifiers it was recorded with
+    // (`docs/plan-desktop.md` T14.1). Handlers never see this event:
+    // they read `ctx.mods`.
+    if let Event::Modifiers(m) = ev {
+        input.mods = *m;
+        return true;
+    }
+    let (focus, capture) = (&mut input.focus, &mut input.capture);
+    let mods = input.mods;
 
     // C5: focus that is no longer on screen does not keep receiving
     // keystrokes.
@@ -215,6 +225,7 @@ pub fn dispatch<S: crate::event::App>(
                     // Relative to the *captured* node, not to whatever
                     // the pointer is over — the whole point.
                     local: Point { x: p.x - s.pos.x, y: p.y - s.pos.y },
+                    mods,
                 };
                 let taken = state.tree_mut().node_mut(cap).on_event(ev, &cx);
                 if matches!(ev, Event::PointerUp { .. }) {
@@ -275,6 +286,7 @@ pub fn dispatch<S: crate::event::App>(
                 inner: h.inner.map_or(0, |x| x.node),
                 pos: p,
                 local: h.local,
+                mods,
             };
             (h.node as usize, ctx, h.inner.map(|x| (x.row, x.node)))
         }
@@ -285,7 +297,7 @@ pub fn dispatch<S: crate::event::App>(
             // below would then panic on a safe API.
             // `docs/plan-review-fixes.md` F1.8.
             Some(f) if (f as usize) < table.len() => {
-                (f as usize, EventCtx::for_event(f, *ev), None)
+                (f as usize, EventCtx::for_event_with(f, *ev, mods), None)
             }
             Some(_) => {
                 *focus = None;

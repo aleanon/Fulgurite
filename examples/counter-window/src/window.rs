@@ -41,6 +41,9 @@ pub struct WinApp {
     window: Option<Rc<Window>>,
     surface: Option<Surface>,
     cursor: Cursor,
+    /// Modifiers as of the last `ModifiersChanged`. Needed before the
+    /// event is queued: it decides whether a keystroke types (T14.2).
+    mods: lumen_static::Mods,
     /// Last sign the stylesheet was cascaded for.
     sign: i64,
     agent: lumen_static_agent::Agent,
@@ -82,6 +85,7 @@ impl WinApp {
             window: None,
             surface: None,
             cursor: Cursor::default(),
+            mods: lumen_static::Mods::NONE,
             sign: 0,
             agent,
             input_at: None,
@@ -102,7 +106,7 @@ impl WinApp {
         lumen_static::observe::snapshot_focused(
             &self.host.app.ui,
             &self.host.states,
-            self.host.focus,
+            self.host.input.focus,
         )
     }
 
@@ -352,7 +356,13 @@ impl ApplicationHandler<UserEvent> for WinApp {
                 // `input.*` methods post into, which is what makes an
                 // agent session replay as a test.
                 let host = &self.host;
-                let t = translate::window_event(ev, &mut self.cursor, |x, y| host.to_logical(x, y));
+                let t =
+                    translate::window_event(ev, &mut self.cursor, self.mods, |x, y| {
+                        host.to_logical(x, y)
+                    });
+                if let WindowEvent::ModifiersChanged(m) = ev {
+                    self.mods = translate::mods(m.state());
+                }
                 if t.is_input {
                     self.input_arrived();
                 }

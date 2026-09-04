@@ -45,8 +45,7 @@ struct Host {
     app: App,
     states: [NodeState; Ui::NODE_COUNT],
     styles: Vec<lumen_static::Style>,
-    focus: Option<u32>,
-    capture: Option<u32>,
+    input: lumen_static::event::InputState,
     queue: InputQueue,
     frame: u64,
     /// Every event the host ever saw — the recording seed.
@@ -64,8 +63,7 @@ impl Host {
             app,
             states: [NodeState::default(); Ui::NODE_COUNT],
             styles,
-            focus: None,
-            capture: None,
+            input: Default::default(),
             queue: InputQueue::new(),
             frame: 0,
             trace: Vec::new(),
@@ -92,7 +90,7 @@ impl AgentHost for Host {
 
     fn pump(&mut self) -> u64 {
         while let Some(ev) = self.queue.pop() {
-            pass::dispatch(&mut self.app, &self.styles, &mut self.states, &mut self.focus, &mut self.capture, &ev);
+            pass::dispatch(&mut self.app, &self.styles, &mut self.states, &mut self.input, &ev);
         }
         self.layout();
         self.frame += 1;
@@ -223,8 +221,7 @@ struct FormHost {
     styles: Vec<lumen_static::Style>,
     states: [NodeState; Form::NODE_COUNT],
     queue: InputQueue,
-    focus: Option<u32>,
-    capture: Option<u32>,
+    input: lumen_static::event::InputState,
 }
 
 impl FormHost {
@@ -238,8 +235,7 @@ impl FormHost {
             styles,
             states: [NodeState::default(); Form::NODE_COUNT],
             queue: InputQueue::new(),
-            focus: None,
-            capture: None,
+            input: Default::default(),
         };
         h.layout();
         h
@@ -262,8 +258,7 @@ impl AgentHost for FormHost {
                 &mut self.app,
                 &self.styles,
                 &mut self.states,
-                &mut self.focus,
-                &mut self.capture,
+                &mut self.input,
                 &ev,
             );
             self.layout();
@@ -288,7 +283,7 @@ fn an_agent_can_focus_a_field_and_type_into_it() {
 
     let r = fcall(&mut h, &agent, "input.click", json!({ "selector": "#name" }));
     assert!(r.get("error").is_none(), "{r}");
-    assert_eq!(h.focus, Some(1), "the field took focus");
+    assert_eq!(h.input.focus, Some(1), "the field took focus");
 
     fcall(&mut h, &agent, "input.type", json!({ "text": "Ada" }));
     assert_eq!(h.app.ui.name.as_str(), "Ada");
@@ -331,12 +326,12 @@ fn tab_moves_focus_between_the_field_and_the_button() {
     let mut h = FormHost::new();
     let agent = Agent::new();
     fcall(&mut h, &agent, "input.key", json!({ "key": "Tab" }));
-    let first = h.focus.expect("Tab focused something");
+    let first = h.input.focus.expect("Tab focused something");
     fcall(&mut h, &agent, "input.key", json!({ "key": "Tab" }));
-    let second = h.focus.expect("and moved on");
+    let second = h.input.focus.expect("and moved on");
     assert_ne!(first, second, "Tab visits both focusables");
     fcall(&mut h, &agent, "input.key", json!({ "key": "Tab" }));
-    assert_eq!(h.focus, Some(first), "and wraps");
+    assert_eq!(h.input.focus, Some(first), "and wraps");
 }
 
 
@@ -457,8 +452,7 @@ struct ScrolledHost {
     styles: Vec<lumen_static::Style>,
     states: [NodeState; ScrolledUi::NODE_COUNT],
     queue: InputQueue,
-    focus: Option<u32>,
-    capture: Option<u32>,
+    input: lumen_static::event::InputState,
 }
 
 const TIGHT: Constraints = Constraints { min_w: 0.0, max_w: 200.0, min_h: 0.0, max_h: 60.0 };
@@ -480,8 +474,7 @@ impl ScrolledHost {
             styles,
             states: [NodeState::default(); ScrolledUi::NODE_COUNT],
             queue: InputQueue::new(),
-            focus: None,
-            capture: None,
+            input: Default::default(),
         };
         h.layout();
         h
@@ -500,7 +493,7 @@ impl AgentHost for ScrolledHost {
     }
     fn pump(&mut self) -> u64 {
         while let Some(ev) = self.queue.pop() {
-            pass::dispatch(&mut self.app, &self.styles, &mut self.states, &mut self.focus, &mut self.capture, &ev);
+            pass::dispatch(&mut self.app, &self.styles, &mut self.states, &mut self.input, &ev);
             self.layout();
         }
         1

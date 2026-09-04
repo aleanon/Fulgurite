@@ -6,7 +6,7 @@
 //! it is what T14.1–T14.3 extend. The loop around it is untestable
 //! without a display; this is not.
 
-use lumen_static::{Event, Key};
+use lumen_static::{Event, Key, Mods};
 use winit::event::{ElementState, MouseScrollDelta, WindowEvent};
 use winit::keyboard::{Key as WKey, NamedKey};
 
@@ -58,9 +58,14 @@ impl Translated {
 /// ones everything above the renderer speaks (M10b) — it is
 /// `Host::to_logical`, taken as a closure so this function does not need
 /// the host's type parameter.
+///
+/// `held` is the modifier state as of the last `ModifiersChanged`. It is
+/// needed here, not just by the host, because it decides whether a
+/// keystroke types (T14.2).
 pub fn window_event(
     event: &WindowEvent,
     cursor: &mut Cursor,
+    held: Mods,
     to_logical: impl Fn(f32, f32) -> (f32, f32),
 ) -> Translated {
     match event {
@@ -92,24 +97,75 @@ pub fn window_event(
             Translated::one(Event::Scroll { x: cursor.x, y: cursor.y, dy })
         }
 
-        WindowEvent::KeyboardInput { event, .. } => {
-            let down = event.state == ElementState::Pressed;
-            let key = named_key(&event.logical_key).map(|key| Event::Key { key, down });
-            // Text only on the way down, and never for a control
-            // character: winit reports "\r" as the text of Enter, and
-            // typing it into a field would insert a carriage return
-            // beside the Key event that already means "activate".
-            let text = event
-                .text
-                .as_ref()
-                .filter(|_| down)
-                .and_then(|t| t.chars().find(|c| !c.is_control()))
-                .map(|ch| Event::Text { ch });
-            Translated { events: [key, text], is_input: true }
+        WindowEvent::ModifiersChanged(m) => {
+            // Into the queue, not beside it: modifier state held outside
+            // the queue makes a recorded session unreplayable exactly
+            // when modifiers matter (T14.1).
+            Translated {
+                events: [Some(Event::Modifiers(mods(m.state()))), None],
+                is_input: false,
+            }
         }
+
+        WindowEvent::KeyboardInput { event, .. } => keyboard(
+            &event.logical_key,
+            event.text.as_deref(),
+            event.state == ElementState::Pressed,
+            held,
+        ),
 
         _ => Translated::NONE,
     }
+}
+
+/// The keyboard half of [`window_event`], as a function of what a key
+/// event *says* rather than of winit's `KeyEvent`.
+///
+/// Split out because `KeyEvent::platform_specific` has no public
+/// constructor, so a test cannot build one — and this is the branch most
+/// worth testing, since it is where the shortcut/typing rule lives.
+pub fn keyboard(logical: &WKey, text: Option<&str>, down: bool, held: Mods) -> Translated {
+    let key = key_of(logical).map(|key| Event::Key { key, down });
+            // Text only on the way down, never for a control character,
+            // and **never while a shortcut modifier is held**.
+            //
+            // The control-character rule: winit reports "\r" as the text
+            // of Enter, and typing it into a field would insert a
+            // carriage return beside the `Key` that already means
+            // "activate".
+            //
+            // The modifier rule (T14.2): without it Ctrl+C both fires
+            // the shortcut and types a "c". Shift is excluded from
+            // "shortcut" because Shift+A *is* how a capital arrives —
+            // which is why `Mods::is_shortcut` masks it off rather than
+            // testing for an empty set.
+    let text = text
+        .filter(|_| down && !held.is_shortcut())
+        .and_then(|t| t.chars().find(|c| !c.is_control()))
+        .map(|ch| Event::Text { ch });
+    Translated { events: [key, text], is_input: true }
+}
+
+/// winit's modifier state to [`Mods`].
+///
+/// `META` is winit's `SUPER`, which is Command on macOS and the Windows
+/// or Super key elsewhere — one name for the platform's own modifier, so
+/// an application writes one shortcut table (T14.1).
+pub fn mods(m: winit::keyboard::ModifiersState) -> Mods {
+    let mut out = Mods::NONE;
+    if m.shift_key() {
+        out = out.with(Mods::SHIFT);
+    }
+    if m.control_key() {
+        out = out.with(Mods::CTRL);
+    }
+    if m.alt_key() {
+        out = out.with(Mods::ALT);
+    }
+    if m.super_key() {
+        out = out.with(Mods::META);
+    }
+    out
 }
 
 /// winit's named keys to the framework's, for the keys [`Key`] names.
@@ -117,7 +173,19 @@ pub fn window_event(
 /// `None` for a key this framework has no name for. That is a real
 /// dropped keystroke, which is why T14.2 exists: the set is small on
 /// purpose, but it should be small *deliberately*.
-pub fn named_key(k: &WKey) -> Option<Key> {
+pub fn key_of(k: &WKey) -> Option<Key> {
+    // A printable key becomes `Key::Char`, lower-cased so a shortcut
+    // table needs one entry rather than two — Shift is reported in the
+    // modifiers, not folded into the letter (T14.2).
+    if let WKey::Character(s) = k {
+        let mut it = s.chars();
+        return match (it.next(), it.next()) {
+            (Some(c), None) => Some(Key::Char(c.to_ascii_lowercase())),
+            // A multi-character key label is a dead-key or IME artefact,
+            // not a shortcut. T14.8 is where those get an answer.
+            _ => None,
+        };
+    }
     let WKey::Named(n) = k else { return None };
     Some(match n {
         NamedKey::Enter => Key::Enter,
@@ -132,6 +200,21 @@ pub fn named_key(k: &WKey) -> Option<Key> {
         NamedKey::ArrowDown => Key::Down,
         NamedKey::Home => Key::Home,
         NamedKey::End => Key::End,
+        NamedKey::PageUp => Key::PageUp,
+        NamedKey::PageDown => Key::PageDown,
+        NamedKey::Insert => Key::Insert,
+        NamedKey::F1 => Key::F(1),
+        NamedKey::F2 => Key::F(2),
+        NamedKey::F3 => Key::F(3),
+        NamedKey::F4 => Key::F(4),
+        NamedKey::F5 => Key::F(5),
+        NamedKey::F6 => Key::F(6),
+        NamedKey::F7 => Key::F(7),
+        NamedKey::F8 => Key::F(8),
+        NamedKey::F9 => Key::F(9),
+        NamedKey::F10 => Key::F(10),
+        NamedKey::F11 => Key::F(11),
+        NamedKey::F12 => Key::F(12),
         _ => return None,
     })
 }

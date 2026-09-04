@@ -138,18 +138,18 @@ fn a_stale_focus_index_does_not_panic_and_is_cleared() {
     // keyboard included, rather than surviving until M9 removes the
     // gate. F1.8.
     let mut h = host();
-    h.focus = Some(9999);
+    h.input.focus = Some(9999);
     h.post(Event::Key { key: lumen_static::Key::Enter, down: true });
     h.pump();
-    assert_eq!(h.focus, None, "an out-of-range focus is dropped, not indexed");
+    assert_eq!(h.input.focus, None, "an out-of-range focus is dropped, not indexed");
 
     // Since C5 (2026-09-04) the check runs before *any* routing, not
     // just the positionless arm, so even a pointer event that hits
     // nothing drops a stale index. Strictly earlier than F1.8 left it.
-    h.focus = Some(u32::MAX);
+    h.input.focus = Some(u32::MAX);
     h.post(Event::PointerUp { x: -50.0, y: -50.0 });
     h.pump();
-    assert_eq!(h.focus, None, "any event validates the focus it might use");
+    assert_eq!(h.input.focus, None, "any event validates the focus it might use");
 
     // And a focus that is in range *and on screen* is left alone. C5
     // added the second half: an index that is in range but names a node
@@ -157,10 +157,10 @@ fn a_stale_focus_index_does_not_panic_and_is_cleared() {
     // dropped too, because it would otherwise take every keystroke
     // invisibly.
     let last = (<Ui as Widget>::SUB_TABLE.len() - 1) as u32;
-    h.focus = Some(last);
+    h.input.focus = Some(last);
     h.post(Event::Key { key: lumen_static::Key::Enter, down: true });
     h.pump();
-    assert_eq!(h.focus, Some(last), "a valid index survives");
+    assert_eq!(h.input.focus, Some(last), "a valid index survives");
 }
 
 #[test]
@@ -170,7 +170,7 @@ fn keyboard_events_route_to_focus() {
     h.post(Event::PointerDown { x: st.pos.x + 1.0, y: st.pos.y + 1.0 });
     h.pump();
     assert_eq!(
-        h.focus,
+        h.input.focus,
         Some((<Ui as Widget>::SUB_TABLE.len() - 1) as u32),
         "pointer-down focused the button — the button, not merely something"
     );
@@ -179,5 +179,5 @@ fn keyboard_events_route_to_focus() {
     // focus survives the frame.
     h.post(Event::Key { key: lumen_static::Key::Enter, down: true });
     h.pump();
-    assert_eq!(h.focus, Some((<Ui as Widget>::SUB_TABLE.len() - 1) as u32), "and keeps it");
+    assert_eq!(h.input.focus, Some((<Ui as Widget>::SUB_TABLE.len() - 1) as u32), "and keeps it");
 }

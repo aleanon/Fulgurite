@@ -45,8 +45,7 @@ struct F {
     app: App,
     styles: Vec<lumen_static::Style>,
     st: [NodeState; Ui::NODE_COUNT],
-    focus: Option<u32>,
-    capture: Option<u32>,
+    input: lumen_static::event::InputState,
 }
 
 impl F {
@@ -56,7 +55,7 @@ impl F {
         app.ui.radio.on_toggle = on_flip;
         app.ui.switch.on_toggle = on_flip;
         let styles = pass::default_styles(&app.ui);
-        let mut f = F { app, styles, st: [NodeState::default(); Ui::NODE_COUNT], focus: None, capture: None };
+        let mut f = F { app, styles, st: [NodeState::default(); Ui::NODE_COUNT], input: Default::default() };
         f.layout();
         f
     }
@@ -64,7 +63,7 @@ impl F {
         pass::layout(&mut self.app.ui, &self.styles, &mut self.st, VIEW);
     }
     fn send(&mut self, ev: Event) -> bool {
-        let r = pass::dispatch(&mut self.app, &self.styles, &mut self.st, &mut self.focus, &mut self.capture, &ev);
+        let r = pass::dispatch(&mut self.app, &self.styles, &mut self.st, &mut self.input, &ev);
         self.layout();
         r
     }
@@ -130,7 +129,7 @@ fn space_activates_the_focused_toggle() {
     let (x, y) = f.centre(1);
     f.send(Event::PointerDown { x, y });
     f.send(Event::PointerUp { x, y });
-    assert_eq!(f.focus, Some(1), "pointer-down focused it");
+    assert_eq!(f.input.focus, Some(1), "pointer-down focused it");
     let before = f.app.flips;
 
     assert!(f.send(Event::Key { key: Key::Space, down: true }), "Space activates");

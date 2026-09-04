@@ -96,10 +96,10 @@ pub fn type_char(
     p: &mut Panel,
     st: &mut [NodeState],
     sty: &[Style],
-    focus: &mut Option<u32>,
+    input: &mut lumen_static::event::InputState,
     ch: char,
 ) -> bool {
-    pass::dispatch(p, sty, st, focus, &mut None, &Event::Text { ch })
+    pass::dispatch(p, sty, st, input, &Event::Text { ch })
 }
 
 /// The tree's node count, so a caller can size its arrays as a `const`.

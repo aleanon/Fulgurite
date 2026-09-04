@@ -174,12 +174,12 @@ fn clicks_route_into_list_items_with_the_row_attached() {
     // Click the third item's button, addressed through its own geometry.
     let b = app.ui.list.item_state(2, 1);
     let (x, y) = (b.pos.x + b.size.w / 2.0, b.pos.y + b.size.h / 2.0);
-    let mut focus = None;
+    let mut input = lumen_static::event::InputState::default();
     for ev in [
         lumen_static::Event::PointerDown { x, y },
         lumen_static::Event::PointerUp { x, y },
     ] {
-        pass::dispatch(&mut app, &sty, &mut st, &mut focus, &mut None, &ev);
+        pass::dispatch(&mut app, &sty, &mut st, &mut input, &ev);
     }
     assert_eq!(app.picked, vec![2], "the row is an argument, never a capture");
 }
