@@ -277,6 +277,74 @@ pub trait Renderer {
     fn render(&mut self, list: &DisplayList, width: u32, height: u32);
 }
 
+/// A [`Painter`] that multiplies everything by a scale factor and
+/// forwards — M10b.
+///
+/// This is how logical pixels reach a HiDPI surface. Layout, hit
+/// testing and everything an agent reports stay in **logical** units, so
+/// a 44 px control is 44 px on every display and a rule like "a pointer
+/// target is at least 24 px" means what WCAG meant. The physical
+/// coordinates a rasteriser needs are produced here, at the last
+/// possible moment.
+///
+/// It exists as a wrapper rather than as a scale field on the renderer
+/// because [`Painter`] made it possible: scaling is a transformation of
+/// what is drawn, not a property of what draws it, and nothing but this
+/// type has to know.
+///
+/// Text is scaled too — `size` is in logical pixels and reaches the
+/// rasteriser in physical ones. Whether the *metrics* were measured at
+/// the physical size is the measurer's business (see
+/// `lumen-static-shell`'s `FontMetrics::with_scale`), and getting that
+/// wrong is what makes scaled text drift from its box.
+pub struct Scaled<'a> {
+    inner: &'a mut dyn Painter,
+    scale: f32,
+}
+
+impl<'a> Scaled<'a> {
+    /// Wrap `inner`, multiplying by `scale`. A `scale` of 1.0 is a
+    /// forwarding no-op, which is the desktop case and costs one
+    /// multiply per coordinate.
+    pub fn new(inner: &'a mut dyn Painter, scale: f32) -> Self {
+        Scaled { inner, scale: if scale.is_finite() && scale > 0.0 { scale } else { 1.0 } }
+    }
+
+    #[inline]
+    fn r(&self, r: Rect) -> Rect {
+        [r[0] * self.scale, r[1] * self.scale, r[2] * self.scale, r[3] * self.scale]
+    }
+}
+
+impl Painter for Scaled<'_> {
+    fn rect(&mut self, rect: Rect, color: Color) {
+        let r = self.r(rect);
+        self.inner.rect(r, color);
+    }
+    fn text_weighted(&mut self, rect: Rect, s: &str, size: f32, weight: f32, color: Color) {
+        let r = self.r(rect);
+        let size = size * self.scale;
+        self.inner.text_weighted(r, s, size, weight, color);
+    }
+    fn rounded_rect(&mut self, rect: Rect, color: Color, radius: f32) {
+        let r = self.r(rect);
+        let radius = radius * self.scale;
+        self.inner.rounded_rect(r, color, radius);
+    }
+    fn shadow(&mut self, rect: Rect, radius: f32, spread: f32) {
+        let r = self.r(rect);
+        let (radius, spread) = (radius * self.scale, spread * self.scale);
+        self.inner.shadow(r, radius, spread);
+    }
+    fn push_clip(&mut self, rect: Rect) {
+        let r = self.r(rect);
+        self.inner.push_clip(r);
+    }
+    fn pop_clip(&mut self) {
+        self.inner.pop_clip();
+    }
+}
+
 /// Collecting into a list is *one* implementation of [`Painter`], not
 /// the definition of painting.
 impl Painter for DisplayList {

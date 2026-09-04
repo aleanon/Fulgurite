@@ -30,7 +30,18 @@ pub struct Host<A: App, R: Retention = Incremental> {
     pub list: DisplayList,
     pub focus: Option<u32>,
     queue: lumen_static::InputQueue,
+    /// Surface size in **physical** pixels — what a window reports.
     size: (u32, u32),
+    /// Physical pixels per logical pixel (M10b).
+    ///
+    /// Everything above the renderer is logical: constraints, `Style`,
+    /// `NodeState`, hit testing and every bound an agent reports. Only
+    /// the display list is physical, produced by wrapping the painter in
+    /// `Scaled`. Without this the framework laid out against *physical*
+    /// pixels, so a window rendered half-size on a 2x display and a
+    /// 24-logical-pixel accessibility floor was measured against numbers
+    /// twice too large.
+    scale: f32,
     frame: u64,
     last_layout_ns: u64,
     last_paint_ns: u64,
@@ -54,6 +65,7 @@ impl<A: App, R: Retention> Host<A, R> {
             focus: None,
             queue: lumen_static::InputQueue::new(),
             size: (width, height),
+            scale: 1.0,
             frame: 0,
             last_layout_ns: 0,
             last_paint_ns: 0,
@@ -122,13 +134,45 @@ impl<A: App, R: Retention> Host<A, R> {
         (self.last_layout_ns, self.last_paint_ns)
     }
 
+    /// Logical viewport: the physical surface divided by the scale.
     fn limits(&self) -> Constraints {
         Constraints {
             min_w: 0.0,
-            max_w: self.size.0 as f32,
+            max_w: self.size.0 as f32 / self.scale,
             min_h: 0.0,
-            max_h: self.size.1 as f32,
+            max_h: self.size.1 as f32 / self.scale,
         }
+    }
+
+    /// Physical pixels per logical pixel. 1.0 until a shell says
+    /// otherwise.
+    pub fn scale(&self) -> f32 {
+        self.scale
+    }
+
+    /// Tell the host what the display's scale factor is — from
+    /// `winit`'s `Window::scale_factor`, and again on
+    /// `ScaleFactorChanged`.
+    ///
+    /// Resets retention: every laid-out position changes, so nothing
+    /// kept from the previous frame describes the next one.
+    pub fn set_scale(&mut self, scale: f32) {
+        let scale = if scale.is_finite() && scale > 0.0 { scale } else { 1.0 };
+        if self.scale == scale {
+            return;
+        }
+        self.scale = scale;
+        self.retain.reset();
+        self.last_damage = Damage::All;
+    }
+
+    /// A physical point (what an OS reports) in the logical coordinates
+    /// everything above the renderer uses.
+    ///
+    /// A shell must convert before `post`ing a pointer event, or clicks
+    /// land at twice their coordinates on a 2x display.
+    pub fn to_logical(&self, x: f32, y: f32) -> (f32, f32) {
+        (x / self.scale, y / self.scale)
     }
 
     /// One frame: drain input, lay out, paint. Returns whether any event
@@ -170,7 +214,12 @@ impl<A: App, R: Retention> Host<A, R> {
 
         let t1 = std::time::Instant::now();
         self.list.clear();
-        self.app.tree().paint(&self.states, 0, &mut self.list);
+        {
+            // Logical geometry in, physical commands out (M10b). At a
+            // scale of 1.0 this is a forwarding wrapper.
+            let mut out = lumen_static::Scaled::new(&mut self.list, self.scale);
+            self.app.tree().paint(&self.states, 0, &mut out);
+        }
         self.last_paint_ns = t1.elapsed().as_nanos() as u64;
 
         // What this frame changed. Free under `Rebuild`, which keeps
@@ -202,6 +251,10 @@ impl<A: App, R: Retention> Host<A, R> {
 
     /// Hand the frame to a renderer. The renderer is chosen by the
     /// caller and never appears in a widget signature.
+    ///
+    /// The list is already in physical pixels — `pump` painted it
+    /// through `Scaled` — so a renderer needs to know nothing about the
+    /// scale factor.
     pub fn render(&self, r: &mut dyn Renderer) {
         r.render(&self.list, self.size.0, self.size.1);
     }

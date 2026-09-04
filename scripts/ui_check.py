@@ -34,11 +34,24 @@ try:
 except ImportError:  # pragma: no cover
     sys.exit("ui_check needs Pillow: pip install pillow")
 
+# All budgets are in LOGICAL pixels. `ui.getLayout` reports logical
+# bounds; `ui.screenshot` returns physical pixels. Until 2026-09-04 this
+# file compared the two directly, so on a 2x display a 22-logical-pixel
+# button — under the WCAG floor below — passed. Every screenshot lookup
+# now goes through `scale()`.
 CENTRE_TOL_PX = 2.0
 MIN_TARGET_PX = 24
 MIN_CONTRAST = 4.5
 LATENCY_BUDGET_MS = 100.0
 FRAME_BUDGET_MS = 16.0
+
+
+def scale(c: AgentClient) -> float:
+    """Physical pixels per logical pixel, from the host."""
+    try:
+        return float(c.rpc("ui.screenshot")["scale"])
+    except (RuntimeError, KeyError, TypeError):
+        return 1.0
 
 
 def screenshot(c: AgentClient, source: str = "canvas") -> Image.Image:
@@ -51,8 +64,14 @@ def nodes(c: AgentClient, role: str | None = None) -> list[dict]:
     return [n for n in c.tree()["nodes"] if role is None or n.get("role") == role]
 
 
-def ibox(b: list[float]) -> tuple[int, int, int, int]:
-    return int(round(b[0])), int(round(b[1])), int(round(b[2])), int(round(b[3]))
+def ibox(b: list[float], k: float = 1.0) -> tuple[int, int, int, int]:
+    """Logical bounds to physical pixel indices into a screenshot."""
+    return (
+        int(round(b[0] * k)),
+        int(round(b[1] * k)),
+        int(round(b[2] * k)),
+        int(round(b[3] * k)),
+    )
 
 
 def dominant(im: Image.Image, box) -> tuple[int, int, int]:
@@ -104,16 +123,19 @@ def ink_bbox(im: Image.Image, box, bg):
 
 def check_centring(c: AgentClient) -> list[str]:
     im = screenshot(c)
+    k = scale(c)
     fails = []
     for n in nodes(c, "Button"):
-        box = ibox(n["bounds"])
+        box = ibox(n["bounds"], k)
         bg = dominant(im, box)
         ink = ink_bbox(im, box, bg)
         if ink is None:
             fails.append(f"#{n.get('wid', n['id'])}: no ink inside its bounds")
             continue
-        dx = (ink[0] + ink[2]) / 2 - (box[0] + box[2]) / 2
-        dy = (ink[1] + ink[3]) / 2 - (box[1] + box[3]) / 2
+        # Report the offset in logical pixels, which is what the budget
+        # is expressed in.
+        dx = ((ink[0] + ink[2]) / 2 - (box[0] + box[2]) / 2) / k
+        dy = ((ink[1] + ink[3]) / 2 - (box[1] + box[3]) / 2) / k
         tag = "ok " if abs(dx) <= CENTRE_TOL_PX and abs(dy) <= CENTRE_TOL_PX else "FAIL"
         print(f"  {tag} centring #{n.get('wid','?'):8} dx={dx:+.1f} dy={dy:+.1f}  (ink {ink} in {box})")
         if tag == "FAIL":
@@ -126,10 +148,11 @@ def check_edges(c: AgentClient) -> list[str]:
     the fill and the outside. A hard-edged corner has none; an
     anti-aliased one has a pixel or two per row of the arc."""
     im = screenshot(c)
+    k = scale(c)
     px = im.load()
     fails = []
     for n in nodes(c, "Button"):
-        x0, y0, x1, y1 = ibox(n["bounds"])
+        x0, y0, x1, y1 = ibox(n["bounds"], k)
         fill = dominant(im, (x0, y0, x1, y1))
         outside = outside_of(im, (x0, y0, x1, y1))
         # A blend must be clearly neither endpoint; scale that to how far
@@ -152,9 +175,11 @@ def check_targets(c: AgentClient) -> list[str]:
     fails = []
     for n in nodes(c, "Button"):
         b = n["bounds"]
+        # Logical, straight from ui.getLayout — no conversion, which is
+        # the point: this is the unit WCAG 2.5.8 is written in.
         w, h = b[2] - b[0], b[3] - b[1]
         tag = "ok " if w >= MIN_TARGET_PX and h >= MIN_TARGET_PX else "FAIL"
-        print(f"  {tag} target   #{n.get('wid','?'):8} {w:.0f}x{h:.0f} px")
+        print(f"  {tag} target   #{n.get('wid','?'):8} {w:.0f}x{h:.0f} logical px")
         if tag == "FAIL":
             fails.append(f"#{n.get('wid','?')}: target {w:.0f}x{h:.0f} < {MIN_TARGET_PX}")
     return fails
@@ -175,10 +200,11 @@ def contrast(a, b) -> float:
 
 def check_contrast(c: AgentClient) -> list[str]:
     im = screenshot(c)
+    k = scale(c)
     px = im.load()
     fails = []
     for n in nodes(c, "Button") + nodes(c, "Label"):
-        box = ibox(n["bounds"])
+        box = ibox(n["bounds"], k)
         if box[2] - box[0] < 4 or box[3] - box[1] < 4:
             continue
         bg = dominant(im, box)
@@ -280,7 +306,7 @@ def check_press(c: AgentClient) -> list[str]:
     fails = []
     for n in nodes(c, "Button"):
         wid = n.get("wid", "?")
-        box = ibox(n["bounds"])
+        box = ibox(n["bounds"], scale(c))
         rest = screenshot(c)
         c.press(f"#{wid}")
         held = screenshot(c)

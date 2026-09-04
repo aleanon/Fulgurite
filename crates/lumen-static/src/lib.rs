@@ -117,7 +117,7 @@ pub use scroll::ScrollView;
 pub use hit::{Hit, Inner};
 pub use cx::{BlockMetrics, Cluster, GlyphSink, LayoutCx, NoSink, TextMeasure};
 pub use retain::{Damage, Incremental, Rebuild, Retention};
-pub use display::{Cmd, Color, DisplayList, Painter, Renderer};
+pub use display::{Cmd, Color, DisplayList, Painter, Renderer, Scaled};
 pub use style::{Align, Edges, Length, Patch, Rule, Selector, Style};
 pub use text::{ClusterBuf, Dirty, Measured, TextBuffer, TextStorage};
 #[cfg(feature = "reload")]

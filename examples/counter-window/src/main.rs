@@ -87,6 +87,10 @@ impl lumen_static_agent::AgentHost for Live<'_> {
         Some((self.canvas.width, self.canvas.height, &self.canvas.pixels))
     }
 
+    fn scale(&self) -> f32 {
+        self.host.scale()
+    }
+
     /// Read the window back from X11. `softbuffer::Surface::fetch` is
     /// unimplemented on Wayland and macOS, and needs a mapped window on
     /// X11, so a failure here is reported as "not checkable" rather than
@@ -526,6 +530,12 @@ impl ApplicationHandler<UserEvent> for WinApp {
                 self.proxy.clone(),
             ));
         }
+        // Before the first frame: layout is logical, the surface is
+        // physical, and this is the only thing that relates them (M10b).
+        self.host.set_scale(window.scale_factor() as f32);
+        if let Some(m) = self.metrics.as_mut() {
+            m.set_scale(window.scale_factor() as f32);
+        }
         let ctx = softbuffer::Context::new(window.clone()).expect("softbuffer context");
         self.surface =
             Some(softbuffer::Surface::new(&ctx, window.clone()).expect("softbuffer surface"));
@@ -558,7 +568,9 @@ impl ApplicationHandler<UserEvent> for WinApp {
             WindowEvent::CloseRequested => event_loop.exit(),
 
             WindowEvent::CursorMoved { position, .. } => {
-                self.cursor = (position.x as f32, position.y as f32);
+                // winit reports physical; everything above the renderer
+                // is logical, so convert once, here (M10b).
+                self.cursor = self.host.to_logical(position.x as f32, position.y as f32);
                 self.host.post(Event::PointerMove { x: self.cursor.0, y: self.cursor.1 });
             }
 
@@ -604,6 +616,15 @@ impl ApplicationHandler<UserEvent> for WinApp {
                     for ch in t.chars().filter(|c| !c.is_control()) {
                         self.host.post(Event::Text { ch });
                     }
+                }
+                self.window.as_ref().unwrap().request_redraw();
+            }
+
+            WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
+                // A window can be dragged between monitors.
+                self.host.set_scale(scale_factor as f32);
+                if let Some(m) = self.metrics.as_mut() {
+                    m.set_scale(scale_factor as f32);
                 }
                 self.window.as_ref().unwrap().request_redraw();
             }

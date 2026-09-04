@@ -243,6 +243,21 @@ impl FontStack {
     }
 }
 
+/// Divides cluster positions back to logical units on the way out.
+struct LogicalClusters<'a> {
+    inner: &'a mut dyn GlyphSink,
+    scale: f32,
+}
+
+impl GlyphSink for LogicalClusters<'_> {
+    fn cluster(&mut self, c: Cluster) {
+        self.inner.cluster(Cluster { x: c.x / self.scale, ..c });
+    }
+    fn is_full(&self) -> bool {
+        self.inner.is_full()
+    }
+}
+
 /// How far to move a run so its capitals are centred in its line box.
 ///
 /// The line box is what gets centred in a button, and its middle is not
@@ -279,11 +294,38 @@ pub(crate) struct Glyph {
 /// [`TextMeasure`] backed by a real face — what `layout` asks.
 pub struct FontMetrics {
     stack: FontStack,
+    /// Physical pixels per logical pixel (M10b).
+    ///
+    /// Layout speaks logical units, but glyphs are rasterised at
+    /// physical ones, and a face's advances are **not** linear in size:
+    /// hinting and rounding mean measuring at 16 px and doubling is not
+    /// measuring at 32 px. So this measures at `size * scale` and
+    /// divides the answer back down. Get it wrong and text drifts out of
+    /// the box that was laid out for it — visible as a clipped last
+    /// glyph, which is exactly how "POSITIVE" once became "POSITIV"
+    /// (`docs/results-frame-cost.md`).
+    scale: f32,
 }
 
 impl FontMetrics {
+    /// A measurer for a 1:1 display.
     pub fn new(stack: FontStack) -> Self {
-        FontMetrics { stack }
+        FontMetrics { stack, scale: 1.0 }
+    }
+
+    /// A measurer that reports logical sizes for a display with this
+    /// scale factor.
+    pub fn with_scale(stack: FontStack, scale: f32) -> Self {
+        let scale = if scale.is_finite() && scale > 0.0 { scale } else { 1.0 };
+        FontMetrics { stack, scale }
+    }
+
+    /// Update the scale factor in place — a window can move between
+    /// monitors.
+    pub fn set_scale(&mut self, scale: f32) {
+        if scale.is_finite() && scale > 0.0 {
+            self.scale = scale;
+        }
     }
 }
 
@@ -296,7 +338,9 @@ impl TextMeasure for FontMetrics {
         if text.is_empty() {
             return Size { w: 0.0, h: 0.0 };
         }
-        self.stack.glyphs(text, size, weight, max_w).1
+        let k = self.scale;
+        let s = self.stack.glyphs(text, size * k, weight, max_w * k).1;
+        Size { w: s.w / k, h: s.h / k }
     }
 
     fn shape(
@@ -312,14 +356,20 @@ impl TextMeasure for FontMetrics {
             sink.cluster(Cluster { byte: 0, x: 0.0, line: 0 });
             return Size { w: 0.0, h: self.line_height(size) };
         }
-        self.stack.shape_into(text, size, weight, max_w, sink)
+        // Clusters are reported in logical x, because a caret is placed
+        // by `layout` and `paint`, both of which speak logical.
+        let k = self.scale;
+        let mut scaled = LogicalClusters { inner: sink, scale: k };
+        let s = self.stack.shape_into(text, size * k, weight, max_w * k, &mut scaled);
+        Size { w: s.w / k, h: s.h / k }
     }
 
     fn line_height(&mut self, size: f32) -> f32 {
+        let k = self.scale;
         self.stack
             .regular
-            .horizontal_line_metrics(size)
-            .map(|m| m.new_line_size)
+            .horizontal_line_metrics(size * k)
+            .map(|m| m.new_line_size / k)
             .unwrap_or(size * 1.2)
     }
 }

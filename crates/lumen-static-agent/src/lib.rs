@@ -380,6 +380,10 @@ impl Agent {
                     "height": h,
                     "format": "png",
                     "source": if surface { "surface" } else { "canvas" },
+                    // Physical pixels per logical pixel: the image is in
+                    // physical units and `ui.getLayout` is in logical
+                    // ones, so a client comparing them needs this.
+                    "scale": host.scale(),
                     "image_base64": png::base64(&png),
                 }))
             }
@@ -1106,6 +1110,18 @@ fn change_kind(c: &Coalesced) -> &'static str {
 /// crate; both are larger than a rename.
 pub trait AgentHost {
     fn tree(&self) -> TreeRef<'_>;
+
+    /// Physical pixels per logical pixel (M10b).
+    ///
+    /// Everything this protocol reports as geometry is **logical**;
+    /// `ui.screenshot` returns **physical** pixels. A client that
+    /// compares one to the other — `scripts/ui_check.py` does, for
+    /// centring, edges and contrast — must scale, and cannot unless the
+    /// host says by how much. Reported through `app.diagnostics` and
+    /// alongside every screenshot.
+    fn scale(&self) -> f32 {
+        1.0
+    }
     /// The last rendered frame as RGBA8, if this host renders. `None`
     /// for a host that only lays out — which is what `ui.screenshot`
     /// reports as an error rather than a blank image.

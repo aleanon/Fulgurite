@@ -1030,7 +1030,7 @@ plan does not pretend otherwise.
 
 ---
 
-## M10b — Scale factor — **PLANNED 2026-09-04, not started**
+## M10b — Scale factor — **DONE 2026-09-04**
 
 *Not in any earlier plan. Found by the review, and it is a live defect
 rather than a missing feature.*
@@ -1051,11 +1051,31 @@ comparison have the same defect, and any golden recorded under M12 would
 inherit it. The accessibility gate has been measuring the wrong quantity
 since it was written.
 
-**T10b.1** — `scale: f32` on `Host`, set from `window.scale_factor()`
-and updated on `ScaleFactorChanged`, applied at the layout/paint
-boundary so `Style` and `Length` stay in logical units.
-**T10b.2** — express `ui_check.py`'s thresholds in logical units and
-report both in the failure message.
+**T10b.1 — DONE.** `Host::scale`, from `window.scale_factor()` and
+updated on `ScaleFactorChanged`. `limits()` divides the physical surface
+by it, so layout, hit testing and every bound an agent reports are
+**logical**; only the display list is physical.
+
+The conversion is a `Painter` wrapper — `Scaled` — which M10a made
+possible and which is the right shape for it: scaling is a
+transformation of what is drawn, not a property of what draws it, so the
+renderer needs to know nothing. `Host::to_logical` converts the physical
+points an OS reports before they are posted, because hit testing speaks
+logical.
+
+`FontMetrics` gained the scale too, and that is the subtle half: a
+face's advances are **not** linear in size, so measuring at 16 px and
+doubling is not measuring at 32 px. It measures at `size × scale` and
+divides back, and reports cluster positions in logical x so a caret
+still lands where `paint` puts it. Getting that wrong is what clips a
+last glyph — how "POSITIVE" once became "POSITIV".
+
+**T10b.2 — DONE.** `ui_check.py` converts logical bounds to physical
+indices wherever it samples a screenshot, and reports the target budget
+in logical pixels. Seven tests in `shell/tests/scale.rs` pin the
+property that matters: **layout is byte-identical at 1× and 2×**, the
+display list doubles, a converted click lands and an unconverted one
+does not, and a degenerate scale is ignored rather than propagated.
 
 **Before M11**, because it gets multiplicatively harder once eight more
 widgets have hard-coded pixel values in their `paint`. The handoff lists
