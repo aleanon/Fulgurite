@@ -22,6 +22,10 @@ path = "src/bin/crossover.rs"
 
 
 [[bin]]
+name = "retain"
+path = "src/bin/retain.rs"
+
+[[bin]]
 name = "bindings"
 path = "src/bin/bindings.rs"
 

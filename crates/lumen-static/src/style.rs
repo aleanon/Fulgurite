@@ -15,6 +15,9 @@
 // `std` feature is off (M13/T13.1), and absent entirely without the
 // `alloc` feature (T13.4).
 #[cfg(feature = "alloc")]
+// The cascade witness (debug + alloc) is the only user now that the
+// arena walk is gated.
+#[cfg(all(debug_assertions, feature = "alloc"))]
 use alloc::vec::Vec;
 
 use crate::desc::NodeDesc;

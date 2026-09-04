@@ -1026,10 +1026,12 @@ whole-frame redraws. That was flagged here as a *choice* rather than a
 consequence, and **T13.0 measured it to be the wrong one**: on a 320×240
 SPI display a full frame is 31 ms, so the bus is the frame budget and
 damage is worth ~10× more there than on the desktop where M8b won
-2.33 ms → 0.154 ms. `docs/plan-embedded.md` T13.8 carries the design —
+2.33 ms → 0.154 ms. `docs/plan-embedded.md` T13.8 carried the design —
 retention as a `Painter` wrapper that keeps per-command `(hash, rect)`
-rather than the commands — which should also be cheaper on the desktop,
-since `Incremental` currently copies the whole frame every frame.
+rather than the commands — and **built it on 2026-09-05**. It is also
+cheaper on the desktop, as predicted: `docs/results-retention.md` has
+the numbers, and the fixed-array form for a host with no allocator
+turned out to be the *fastest* of the three.
 
 ---
 
@@ -1196,7 +1198,7 @@ Two gaps that naming it exposed, now tasks: **there is no text stack
 below `std`** (`fontdue` needs `alloc`), which made the alloc-free
 widget set look more complete than it is — T13.7; and **damage matters
 more here than on the desktop**, because the bus is the frame budget —
-T13.8.
+T13.8. Both are now done.
 
 The stack figure is also correctly framed now: 256–272 B per level is
 the measurement, but the cost is *actual* depth, not `MAX_DEPTH`. The

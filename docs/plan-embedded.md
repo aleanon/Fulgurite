@@ -629,7 +629,7 @@ The two new deferrals — one size per baked face, no hinting — are
 recorded in `docs/text-render-adoption-decision.md` beside the
 complex-script one, as this task asked.
 
-## T13.8 — damage without a retained list
+## T13.8 — damage without a retained list — **DONE 2026-09-05**
 
 **The finding that makes this a task:** damage is worth *more* on this
 device than on a desktop, not less. M8b bought 2.33 ms → 0.154 ms on a
@@ -647,6 +647,8 @@ evidence that it is the wrong one.
 is zero-sized, so a host that wants no retention carries none.
 
 **What is not:** two things.
+
+**Item 2 below is fixed; item 1 stands as recorded.**
 
 1. `Host` holds `list: DisplayList` as a concrete field whatever `R` is
    — cleared, painted into and never read under `Rebuild` with an
@@ -689,6 +691,45 @@ if that costs desktop time it should be a second `Retention` impl rather
 than a replacement. `crates/lumen-static-shell/tests/damage_oracle.rs`
 is the correctness gate either way: whatever computes the damage, the
 partial redraw must stay pixel-identical to a full one.
+
+**Done, and the gate came back clearly: streaming is faster, so it
+replaces the copying form rather than joining it.** Numbers in
+`docs/results-retention.md`; `damage_oracle.rs` and all 79 test binaries
+pass unchanged.
+
+`Retention` no longer names a display list. It is
+`observe(hash, ink)` + `finish() -> Damage`, fed by `Recording`, a
+`Painter` wrapper in the shape `Scaled` already uses and composing with
+it: `paint → Recording(Scaled(sink))`. Three implementations now —
+`Rebuild` (still a ZST, still the oracle), `Incremental` (a growable
+buffer, `alloc`), and `Streaming<N>` (a fixed array, no heap).
+
+**The whole `retain` module came back out from behind `alloc`**, which
+T13.4 had had to put it behind for exactly the reason this task names.
+That is the deliverable: a host with no allocator and no list can have
+damage, on the device where damage is worth the most.
+
+Four findings the measurement produced that this plan did not predict:
+
+1. **`Streaming<N>` is 2× faster than `Incremental`** — 1.38 vs 2.71 ns
+   per command, same algorithm. A fixed array indexed inline against a
+   `Vec` that costs a pointer load and a second bounds check. The
+   allocator-free implementation is the fast one, which is not the usual
+   direction.
+2. **`Recording` is free** — 0.08 ns per command, at the noise floor.
+   That is what makes wrapping the painter an affordable seam rather
+   than a tax.
+3. **Damage with no list is cheaper than a list with no damage**:
+   11.4 µs against a 12.8 µs floor at 2 000 commands. The M10a seam
+   paying off in a number.
+4. **Text comparison got better for free.** `Cmd::Text` holds a *range*
+   into a text buffer, so "12" → "13" produced identical commands and
+   the copying diff needed a special case to catch it. A stream is
+   handed the `&str`; the case does not exist to forget.
+
+The cost, stated once: equality is now a 64-bit hash, so a collision
+would leave stale pixels — around 10⁻¹³ per frame at 2 000 commands,
+with `damage_oracle.rs` standing over it.
 
 ## T13.9 — the number, last
 

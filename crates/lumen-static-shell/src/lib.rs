@@ -225,17 +225,20 @@ impl<A: App, R: Retention> Host<A, R> {
         let t1 = std::time::Instant::now();
         self.list.clear();
         {
-            // Logical geometry in, physical commands out (M10b). At a
-            // scale of 1.0 this is a forwarding wrapper.
-            let mut out = lumen_static::Scaled::new(&mut self.list, self.scale);
+            // Logical geometry in, physical commands out (M10b), with
+            // retention observing the stream on the way past (T13.8).
+            // At a scale of 1.0 `Scaled` is a forwarding wrapper, and
+            // under `Rebuild` `Recording` forwards to an empty
+            // `observe` the optimizer removes.
+            let mut scaled = lumen_static::Scaled::new(&mut self.list, self.scale);
+            let mut out = lumen_static::Recording::new(&mut scaled, &mut self.retain);
             self.app.tree().paint(&self.states, 0, &mut out);
         }
         self.last_paint_ns = t1.elapsed().as_nanos() as u64;
 
-        // What this frame changed. Free under `Rebuild`, which keeps
-        // nothing and answers `All`; under `Incremental` it is a copy of
-        // the command list and a walk over it.
-        self.last_damage = self.retain.record(&self.list);
+        // What this frame changed. Retention has already seen every
+        // command; this closes the frame. Free under `Rebuild`.
+        self.last_damage = self.retain.finish();
 
         self.frame += 1;
         handled

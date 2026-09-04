@@ -122,7 +122,6 @@ pub mod pass;
 #[cfg(feature = "reload")]
 pub mod reload;
 pub mod input;
-#[cfg(feature = "alloc")]
 pub mod retain;
 pub mod scroll;
 pub mod slider;
@@ -147,12 +146,12 @@ pub use textarea::TextArea;
 pub use toggle::{CheckBox, Radio, Switch, Toggle};
 pub use hit::{Hit, Inner};
 pub use cx::{BlockMetrics, Cluster, GlyphSink, LayoutCx, NoSink, TextMeasure};
-// Behind `alloc` in full, because `Retention::record` takes a
-// `&DisplayList` -- the vocabulary is hard-wired into the trait, which
-// is the finding T13.8 exists to fix. Until then a no-alloc build has
-// no retention, which is honest: it rebuilds every frame by definition.
+// T13.8 removed the `&DisplayList` from `Retention`, so retention is
+// available with no allocator: `Streaming<N>` keeps `(hash, ink)` in a
+// fixed array. Only `Incremental`, whose buffer grows, needs `alloc`.
+pub use retain::{Damage, Rebuild, Recording, Retention, Streaming};
 #[cfg(feature = "alloc")]
-pub use retain::{Damage, Incremental, Rebuild, Retention};
+pub use retain::Incremental;
 // `DisplayList` is one `Painter`, not the vocabulary: it owns a `Vec`
 // of commands and a `String` of text, so it follows `alloc` (T13.4).
 // A host without one paints straight through the trait (M10a).

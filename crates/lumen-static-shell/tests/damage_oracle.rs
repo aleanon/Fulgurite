@@ -95,7 +95,7 @@ fn app() -> Counter {
     c
 }
 
-fn full(host: &Host<Counter>, canvas: &mut Canvas) {
+fn full<R: lumen_static::Retention>(host: &Host<Counter, R>, canvas: &mut Canvas) {
     canvas.clear(BG);
     host.render(canvas);
 }
@@ -105,7 +105,18 @@ fn full(host: &Host<Counter>, canvas: &mut Canvas) {
 /// that silently degraded to `Damage::All` everywhere cannot pass by
 /// being trivially correct.
 fn drive(steps: &[i64]) -> (usize, usize) {
-    let mut host: Host<Counter> = Host::new(app(), W, H);
+    drive_with::<lumen_static::Incremental>(steps)
+}
+
+/// The oracle comparison, over any [`Retention`](lumen_static::Retention).
+///
+/// Parameterised as of M13/T13.8, which added `Streaming<N>` — the
+/// allocator-free retention the embedded profile uses. An
+/// implementation nothing renders through is an implementation nobody
+/// has checked, and "same pixels as a full redraw" is the only property
+/// that matters about any of them.
+fn drive_with<R: lumen_static::Retention>(steps: &[i64]) -> (usize, usize) {
+    let mut host: Host<Counter, R> = Host::new(app(), W, H);
     host.set_stylesheet(&sheet());
     host.pump();
 
@@ -180,6 +191,31 @@ fn the_damage_rect_is_smaller_than_the_frame_but_covers_what_moved() {
     let v = host.probe(r[0] + 1.0, r[1] + 1.0);
     let _ = v;
     assert!(r[0] >= 0.0 && r[1] >= 0.0 && r[2] <= W as f32 && r[3] <= H as f32, "within the frame");
+}
+
+/// The same gate, on the retention an embedded host uses. `Streaming`
+/// is the fixed-array form: no heap, and a frame longer than `N` falls
+/// back to `Damage::All` rather than comparing against a slot that is
+/// not its own.
+#[test]
+fn streaming_retention_renders_identically_to_a_full_redraw() {
+    let steps: Vec<i64> = (-12..=12).collect();
+    let (checked, partial) = drive_with::<lumen_static::Streaming<256>>(&steps);
+    assert_eq!(checked, 25);
+    assert!(partial >= 20, "only {partial} of {checked} steps had a partial rect");
+}
+
+/// A frame with more commands than the array holds must report
+/// everything, not a rect computed from mismatched slots. `Streaming<2>`
+/// cannot hold this tree, so every frame is `All` — and the pixels must
+/// still agree, which is what proves the fallback is safe rather than
+/// merely present.
+#[test]
+fn streaming_that_overflows_its_capacity_falls_back_to_all() {
+    let steps: Vec<i64> = (0..6).collect();
+    let (checked, partial) = drive_with::<lumen_static::Streaming<2>>(&steps);
+    assert_eq!(checked, 6);
+    assert_eq!(partial, 0, "an overflowing capacity must never claim a partial rect");
 }
 
 #[test]
