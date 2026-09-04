@@ -1105,7 +1105,9 @@ says so. **Task breakdown: `docs/plan-harness.md`.***
 
 What exists: one input queue, sessions that replay by construction, 233
 tests, a pixel-exact oracle (`shell/tests/damage_oracle.rs`), a live
-gate with seven checks, and the whole agent protocol. What is missing is
+gate (the check list lives in `scripts/ui_check.py`; this sentence said
+"seven" while there were eight), and the whole agent protocol. What is
+missing is
 **ergonomics and artifacts**, not mechanism.
 
 - **A locator/expect API** over the existing selectors. `lumen-test` is

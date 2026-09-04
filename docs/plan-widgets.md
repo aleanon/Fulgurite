@@ -202,6 +202,24 @@ code**:
 Sequence them after T11.2, since pointer capture unblocks the cheaper
 half of selection.
 
+## One example, growing — the gate behind every gate
+
+Every task gate above is agent-protocol-shaped: `ui.lint` is clean, the
+role appears in `ui.getTree`, `ui_check.py press` passes. That is a real
+risk the review named: a widget can satisfy all of it without anyone
+having put it on a screen next to another widget, which is the fastest
+route to a vocabulary that is individually correct and **collectively
+unusable**. There are two examples in this repository and both are the
+same tally.
+
+So each task additionally lands in one growing example — a settings
+panel: toggles, then a slider, then tabs, then a text area — and the
+task is not done until that panel still looks right and
+`scripts/live_gate.sh` still passes on it. The panel is the artifact
+that would notice spacing that only works in isolation, a focus ring
+that collides with a neighbour, or four controls that each chose a
+different padding.
+
 ## What M11 is not
 
 - **Not "Lumen's 17.5k lines of widgets".** That number is a proxy for a

@@ -188,6 +188,29 @@ real hit test.
 failing selector's `ui.explain` output, and the reason is legible from
 the file alone without re-running.
 
+## An open question: should this be two tasks, not four?
+
+The review argued for cutting T12.1 and T12.2, and the argument is good
+enough to record rather than answer here:
+
+- **T12.1 (locators)** builds ergonomics for application authors who do
+  not exist yet. Its gate is "rewrite `--drive`" — one existing session,
+  against `scripts/agent_client.py`, which already does this.
+- **T12.2 (goldens)** is, by this document's own argument two sections
+  up, the item that catches least: every bug this project actually
+  shipped was caught by a property or the live gate and would have been
+  *masked* by a re-recorded golden.
+- **T12.3 and T12.4** are the two that retire something real — an
+  unexercised claim, and a diagnosis (`ui.explain` into a failure trace)
+  available no other way.
+
+The counter-argument is that T12.1 is what makes a *second* application
+cheap to test, and M11's growing settings panel is that application. So
+the honest sequencing may be: **T12.3 and T12.4 whenever; T12.1 when the
+panel exists; T12.2 reduced to giving `damage_oracle` a diff artifact**,
+which improves a test that already earns its keep. Decide when M11 is
+underway and the panel is real, not now.
+
 ## What M12 is not
 
 - **Not `lumen-test` ported.** The crate depends on `lumen-core`,
