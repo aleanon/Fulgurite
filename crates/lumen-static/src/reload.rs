@@ -63,7 +63,7 @@ pub fn take_log() -> Vec<String> {
 
 // ---- framework impls --------------------------------------------------------
 
-impl<S: crate::text::TextStorage> Reloadable for Label<S> {
+impl<S: crate::text::TextRestore> Reloadable for Label<S> {
     fn save(&self) -> Value {
         Value::String(self.as_str().to_owned())
     }
@@ -75,7 +75,7 @@ impl<S: crate::text::TextStorage> Reloadable for Label<S> {
             // No leak for owning storage (`String`, `Cow`): M3 made this
             // the storage type's business. `&'static str` still leaks,
             // and says so in its `TextStorage` impl.
-            Some(s) => self.set(S::from_string(s.to_owned())),
+            Some(s) => self.set(<S as crate::text::TextRestore>::from_string(s.to_owned())),
             None => log_fallback("Label", "text", "saved value is not a string"),
         }
     }
@@ -85,7 +85,7 @@ impl<S: crate::text::TextStorage> Reloadable for Label<S> {
 /// `restore` never touches it — the whole point of
 /// `docs/events-decision.md`. Written by hand because the derive's
 /// untagged-field rule would demand `Reloadable` of an `fn` type.
-impl<S: 'static, T: crate::text::TextStorage> Reloadable for crate::ops::Button<S, T> {
+impl<S: 'static, T: crate::text::TextRestore> Reloadable for crate::ops::Button<S, T> {
     fn save(&self) -> Value {
         Value::String(self.label.as_ref().to_owned())
     }
@@ -101,7 +101,7 @@ impl<S: 'static, T: crate::text::TextStorage> Reloadable for crate::ops::Button<
     /// theirs prominently (`docs/plan-review-fixes.md` F6.4).
     fn restore(&mut self, saved: &Value) {
         match saved.as_str() {
-            Some(s) => self.label = T::from_string(s.to_owned()),
+            Some(s) => self.label = <T as crate::text::TextRestore>::from_string(s.to_owned()),
             None => log_fallback("Button", "label", "saved value is not a string"),
         }
     }

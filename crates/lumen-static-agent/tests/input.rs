@@ -187,3 +187,149 @@ fn read_methods_still_work_through_the_input_entry_point() {
     let r = call(&mut h, &agent, "app.diagnostics", json!({}));
     assert_eq!(r["result"]["nodes"], Ui::NODE_COUNT);
 }
+
+// ---- M9: the agent types into a real field ---------------------------
+
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+struct Form {
+    #[widget_id("name")]
+    name: lumen_static::input::TextInput,
+    #[widget_id("submit")]
+    submit: Button<FormApp>,
+}
+
+#[derive(Default)]
+struct FormApp {
+    ui: Form,
+    submits: u32,
+}
+
+impl lumen_static::event::App for FormApp {
+    type Tree = Form;
+    fn tree(&self) -> &Form {
+        &self.ui
+    }
+    fn tree_mut(&mut self) -> &mut Form {
+        &mut self.ui
+    }
+}
+
+/// The same minimal host, over the form.
+struct FormHost {
+    app: FormApp,
+    styles: Vec<lumen_static::Style>,
+    states: [NodeState; Form::NODE_COUNT],
+    queue: InputQueue,
+    focus: Option<u32>,
+}
+
+impl FormHost {
+    fn new() -> Self {
+        let mut app = FormApp::default();
+        app.ui.submit.label = "go";
+        app.ui.submit.on_click = |a: &mut FormApp, _: &EventCtx| a.submits += 1;
+        let styles = pass::default_styles(&app.ui);
+        let mut h = FormHost {
+            app,
+            styles,
+            states: [NodeState::default(); Form::NODE_COUNT],
+            queue: InputQueue::new(),
+            focus: None,
+        };
+        h.layout();
+        h
+    }
+    fn layout(&mut self) {
+        pass::layout(&mut self.app.ui, &self.styles, &mut self.states, VIEW);
+    }
+}
+
+impl AgentHost for FormHost {
+    fn tree(&self) -> TreeRef<'_> {
+        TreeRef::of_root(&self.app.ui, &self.styles, &self.states)
+    }
+    fn enqueue(&mut self, ev: Event) {
+        self.queue.push(ev);
+    }
+    fn pump(&mut self) -> u64 {
+        while let Some(ev) = self.queue.pop() {
+            pass::dispatch(
+                &mut self.app,
+                &self.styles,
+                &mut self.states,
+                &mut self.focus,
+                &ev,
+            );
+            self.layout();
+        }
+        1
+    }
+}
+
+fn fcall(h: &mut FormHost, agent: &Agent, method: &str, params: Value) -> Value {
+    agent.dispatch_input(h, &json!({ "jsonrpc": "2.0", "id": 1, "method": method, "params": params }))
+}
+
+#[test]
+fn an_agent_can_focus_a_field_and_type_into_it() {
+    // The whole M9 chain in one test: `input.click` focuses (C1's
+    // pointer-down focus move), `input.type` routes to the focused node
+    // (C1), the field consumes it through `Node::on_event` (C3), and the
+    // application reads it directly (B8). Before M9 every one of those
+    // characters was enqueued, drained and dropped.
+    let mut h = FormHost::new();
+    let agent = Agent::new();
+
+    let r = fcall(&mut h, &agent, "input.click", json!({ "selector": "#name" }));
+    assert!(r.get("error").is_none(), "{r}");
+    assert_eq!(h.focus, Some(1), "the field took focus");
+
+    fcall(&mut h, &agent, "input.type", json!({ "text": "Ada" }));
+    assert_eq!(h.app.ui.name.as_str(), "Ada");
+
+    fcall(&mut h, &agent, "input.key", json!({ "key": "Backspace" }));
+    assert_eq!(h.app.ui.name.as_str(), "Ad");
+
+    fcall(&mut h, &agent, "input.key", json!({ "key": "Home" }));
+    fcall(&mut h, &agent, "input.type", json!({ "text": "!" }));
+    assert_eq!(h.app.ui.name.as_str(), "!Ad", "Home moved the caret to the start");
+}
+
+#[test]
+fn typing_into_a_field_does_not_activate_the_form() {
+    // The two-pass split: the field claims the keystrokes, and the
+    // application's *click* handler is untouched. Before the split,
+    // routing every event to `Handlers` would have made each character
+    // press the submit button.
+    let mut h = FormHost::new();
+    let agent = Agent::new();
+    fcall(&mut h, &agent, "input.click", json!({ "selector": "#name" }));
+    fcall(&mut h, &agent, "input.type", json!({ "text": "abc" }));
+    assert_eq!(h.app.submits, 0, "typing is not submitting");
+
+    // Enter is not the field's, so it reaches the ancestor chain — and
+    // there is no handler on the column, so nothing fires. Clicking the
+    // button still does.
+    fcall(&mut h, &agent, "input.key", json!({ "key": "Enter" }));
+    assert_eq!(h.app.submits, 0);
+    fcall(&mut h, &agent, "input.click", json!({ "selector": "#submit" }));
+    assert_eq!(h.app.submits, 1);
+
+    // And Enter on the *focused button* activates it (C1).
+    fcall(&mut h, &agent, "input.key", json!({ "key": "Enter" }));
+    assert_eq!(h.app.submits, 2, "keyboard activation");
+}
+
+#[test]
+fn tab_moves_focus_between_the_field_and_the_button() {
+    let mut h = FormHost::new();
+    let agent = Agent::new();
+    fcall(&mut h, &agent, "input.key", json!({ "key": "Tab" }));
+    let first = h.focus.expect("Tab focused something");
+    fcall(&mut h, &agent, "input.key", json!({ "key": "Tab" }));
+    let second = h.focus.expect("and moved on");
+    assert_ne!(first, second, "Tab visits both focusables");
+    fcall(&mut h, &agent, "input.key", json!({ "key": "Tab" }));
+    assert_eq!(h.focus, Some(first), "and wraps");
+}

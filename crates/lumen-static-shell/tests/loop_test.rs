@@ -143,18 +143,19 @@ fn a_stale_focus_index_does_not_panic_and_is_cleared() {
     h.pump();
     assert_eq!(h.focus, None, "an out-of-range focus is dropped, not indexed");
 
-    // Only positionless events consult focus: a pointer event that hits
-    // nothing returns before the focus arm, so it neither uses nor
-    // clears a stale index.
+    // Since C5 (2026-09-04) the check runs before *any* routing, not
+    // just the positionless arm, so even a pointer event that hits
+    // nothing drops a stale index. Strictly earlier than F1.8 left it.
     h.focus = Some(u32::MAX);
     h.post(Event::PointerUp { x: -50.0, y: -50.0 });
     h.pump();
-    assert_eq!(h.focus, Some(u32::MAX), "a pointer miss never reaches the focus arm");
-    h.post(Event::Text { ch: 'x' });
-    h.pump();
-    assert_eq!(h.focus, None, "…the next keyboard event clears it");
+    assert_eq!(h.focus, None, "any event validates the focus it might use");
 
-    // And a valid focus is left alone.
+    // And a focus that is in range *and on screen* is left alone. C5
+    // added the second half: an index that is in range but names a node
+    // with no area — a hidden `Either` branch, an absent `Option` — is
+    // dropped too, because it would otherwise take every keystroke
+    // invisibly.
     let last = (<Ui as Widget>::SUB_TABLE.len() - 1) as u32;
     h.focus = Some(last);
     h.post(Event::Key { key: lumen_static::Key::Enter, down: true });

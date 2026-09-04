@@ -87,10 +87,51 @@ pub fn dispatch<S: crate::event::App>(
     use crate::widget::Widget;
 
     let table = <S::Tree as Widget>::SUB_TABLE;
-    // `style` is unused by routing today; it is threaded now so hidden
-    // subtrees (plan M4/4a) can be skipped without another signature
-    // change, and so hosts pass one consistent set of arrays.
-    let _ = style;
+
+    // C5: focus that is no longer on screen does not keep receiving
+    // keystrokes.
+    //
+    // The scenario: focus a control in `Either::A`, switch to `B`, keep
+    // typing. The hidden branch is still in the table and still
+    // focusable by index, so without this it takes every keystroke —
+    // invisibly. Checked here, once, before anything is routed, rather
+    // than at each use: `Host.focus` is public and a stale value can
+    // arrive from anywhere.
+    //
+    // Both tests are needed. `visible` catches a styled-away node;
+    // *area* catches the ones hidden by `layout` zeroing their subtree,
+    // which is how `Option`, `Either` and a hidden subtree all express
+    // absence — and none of those touches `Style::visible`.
+    if let Some(f) = *focus {
+        let i = f as usize;
+        let gone = i >= table.len()
+            || !style[i].visible
+            || st[i].size.w <= 0.0
+            || st[i].size.h <= 0.0;
+        if gone {
+            *focus = None;
+        }
+    }
+
+    // Publish focus into the state array, so a widget's `paint` can see
+    // it (a caret is drawn only in the focused field). Every node, so a
+    // focus that moved does not leave the old one lit.
+    for (i, n) in st.iter_mut().enumerate() {
+        n.focused = *focus == Some(i as u32);
+    }
+
+    // C5: Tab moves focus in declaration order, which for a pre-order
+    // table is simply the next focusable index, wrapping. Consumed here
+    // — it never reaches a handler, the way it never does on any
+    // platform.
+    //
+    // Shift+Tab is not implemented because `Event::Key` carries no
+    // modifier state; adding one is a change to the event vocabulary and
+    // to every shell that fills it in.
+    if matches!(ev, crate::event::Event::Key { key: crate::event::Key::Tab, down: true }) {
+        *focus = next_focusable(table, st, style, *focus);
+        return true;
+    }
 
     let (start, mut ctx, inner) = match ev.position() {
         Some(p) => {
@@ -245,6 +286,32 @@ pub fn dispatch<S: crate::event::App>(
         }
         i = table[i].parent as usize;
     }
+}
+
+/// The focusable node after `from` in declaration order, wrapping.
+///
+/// Skips anything with no area or `visible: false` — a Tab stop you
+/// cannot see is a Tab stop that loses the user.
+fn next_focusable(
+    table: &[crate::desc::NodeDesc],
+    st: &[NodeState],
+    style: &[Style],
+    from: Option<u32>,
+) -> Option<u32> {
+    let n = table.len();
+    if n == 0 {
+        return None;
+    }
+    let start = from.map_or(0, |f| f as usize + 1);
+    (0..n)
+        .map(|k| (start + k) % n)
+        .find(|&i| {
+            table[i].is_focusable()
+                && style[i].visible
+                && st[i].size.w > 0.0
+                && st[i].size.h > 0.0
+        })
+        .map(|i| i as u32)
 }
 
 /// Mark `node` hovered and nothing else.

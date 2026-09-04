@@ -213,8 +213,9 @@ fn e2_focus_follows_pointer_down_and_routes_keys() {
     assert!(!f.send(Event::Key { key: Key::Enter, down: false }));
     assert_eq!(f.app.clicks, before + 1);
 
-    // Another key is routed to the focused node and declined by it.
-    assert!(!f.send(Event::Key { key: Key::Tab, down: true }), "a button ignores Tab");
+    // Tab is consumed by focus movement, never routed (C5).
+    assert!(f.send(Event::Key { key: Key::Tab, down: true }), "Tab moves focus");
+    assert_eq!(f.app.clicks, before + 1, "and does not activate anything");
 
     // Clicking a non-focusable area clears focus.
     let (hx, hy) = f.center_of(1);
@@ -314,4 +315,64 @@ fn the_pressed_shade_reaches_the_paint_attributes() {
     f.send(Event::PointerMove { x: 5000.0, y: 5000.0 });
     f.layout();
     assert_eq!(f.states[2].bg, resting, "and goes back");
+}
+
+
+// ---- C5: focus that is not on screen, and Tab order ------------------
+
+#[test]
+fn focus_is_dropped_when_the_focused_node_leaves_the_screen() {
+    // The scenario C5 names: focus a control, hide it, keep typing. The
+    // hidden node is still in the table and still focusable by index, so
+    // without the check it takes every keystroke invisibly.
+    let mut f = Fixture::new();
+    let (x, y) = f.center_of(2);
+    f.send(Event::PointerDown { x, y });
+    f.send(Event::PointerUp { x, y });
+    assert_eq!(f.focus, Some(2));
+
+    // Hide it the way `Option`, `Either` and a hidden subtree all do:
+    // zero geometry, with `Style::visible` untouched.
+    f.states[2].size = lumen_static::Size::default();
+    let before = f.app.clicks;
+    assert!(!f.send(Event::Key { key: Key::Enter, down: true }), "nothing focused now");
+    assert_eq!(f.focus, None, "focus was dropped");
+    assert_eq!(f.app.clicks, before, "and the hidden control was not activated");
+}
+
+#[test]
+fn tab_walks_the_focusables_in_declaration_order_and_wraps() {
+    let mut f = Fixture::new();
+    f.layout();
+    assert_eq!(f.focus, None);
+
+    // Collect where Tab goes, until it comes back.
+    let mut seen = Vec::new();
+    for _ in 0..8 {
+        assert!(f.send(Event::Key { key: Key::Tab, down: true }));
+        let Some(n) = f.focus else { break };
+        if seen.contains(&n) {
+            break;
+        }
+        seen.push(n);
+    }
+    assert!(!seen.is_empty(), "something is focusable");
+    assert!(seen.windows(2).all(|w| w[0] < w[1]), "declaration order: {seen:?}");
+    // Wrapped: another Tab from the last returns to the first.
+    assert!(f.send(Event::Key { key: Key::Tab, down: true }));
+    assert_eq!(f.focus, Some(seen[0]), "wraps to the first");
+}
+
+#[test]
+fn tab_skips_a_focusable_with_no_area() {
+    let mut f = Fixture::new();
+    f.layout();
+    f.send(Event::Key { key: Key::Tab, down: true });
+    let first = f.focus.expect("something focusable");
+
+    // Collapse it; Tab from nothing must now land elsewhere.
+    f.focus = None;
+    f.states[first as usize].size = lumen_static::Size::default();
+    f.send(Event::Key { key: Key::Tab, down: true });
+    assert_ne!(f.focus, Some(first), "a Tab stop you cannot see is not a Tab stop");
 }

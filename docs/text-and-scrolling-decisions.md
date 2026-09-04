@@ -375,7 +375,7 @@ would overwrite the buffer every frame and destroy the caret mid-
 keystroke. `bind::format_into` takes `&mut Label<S>`, so it simply does
 not accept a text input. Do not add a convenience impl.
 
-### B9. `Shaped`'s allocation, reload mode and `no_std` story — **DECIDED 2026-09-04, recommendation adopted**
+### B9. `Shaped`'s allocation, reload mode and `no_std` story — **DECIDED 2026-09-04, recommendation adopted**, **BUILT 2026-09-04** as `TextBuffer::Clusters`
 
 B1 says the buffer is "one allocation, grown once, reused". B2 says
 nothing about the advance array. A `Vec<f32>` that grows as the user
@@ -389,7 +389,15 @@ no `no_std` story at all where `Label<&'static str>` deliberately does.
 storage, so `String` pairs with `Vec<f32>` and an inline buffer pairs
 with an inline array; grow both by the same policy.
 
-### B10. `Repeat::bind` defeats the memo the text design exists for — **DECIDED 2026-09-04, recommendation adopted**
+### B10. `Repeat::bind` defeats the memo the text design exists for — **DECIDED 2026-09-04, recommendation adopted**, **ALREADY CLOSED**
+
+Both halves were already in place when this was revisited on 2026-09-04.
+`Label::set_str` compares before writing (F4.6, 2026-09-02), and the
+window is a ring, so a one-row scroll rebinds every row but only *one*
+writes — the measured 31-of-31 became 1-of-31 then. The recommendation's
+second half ("skip `bind` for rows whose index is unchanged") saves only
+the call itself, which writes nothing.
+`crates/lumen-static/tests/repeat_memo.rs` pins both.
 
 `repeat.rs:145-147` calls `bind(item, row)` for every materialized row on
 every layout. The natural bind body is `row.label.set_str(..)`, which
@@ -403,7 +411,13 @@ expensive to rebuild. **Recommendation:** absorb `set_if_changed` into
 memoized field — and skip `bind` for rows whose index is unchanged.
 Must land before B2.
 
-### B11. `TextStorage::from_string` blocks the no-alloc profile — **DECIDED 2026-09-04, recommendation adopted**
+### B11. `TextStorage::from_string` blocks the no-alloc profile — **DECIDED 2026-09-04, recommendation adopted**, **BUILT 2026-09-04**
+
+`TextStorage` is `AsRef<str> + Default` and nothing else; `from_string`
+moved to `TextRestore`, gated behind `reload`. The advance buffer B9
+asked for is `TextBuffer::Clusters`, an associated type — so a
+fixed-capacity storage can pair with a fixed-capacity cluster array and
+neither trait drags in an allocator.
 
 It takes an owned `String` by value. A fixed-capacity inline buffer must
 depend on `alloc` just to satisfy the signature, and has no way to
@@ -468,7 +482,19 @@ hot-reload contract is written around. **Recommendation:** `bool` from
 `Node::on_event` (C3) is the natural carrier; the `Handlers` fn-pointer
 signature stays as it is for click handlers.
 
-### C5. Focus for off-table nodes, Tab order, visibility — **DECIDED 2026-09-04, recommendation adopted**
+### C5. Focus for off-table nodes, Tab order, visibility — **DECIDED 2026-09-04, recommendation adopted**, **PART-BUILT 2026-09-04**
+
+**Built:** hidden focus is dropped, and Tab walks the focusables in
+declaration order, wrapping, skipping anything with no area. Both are
+checked before any routing, so a stale index cannot be used by *any*
+event (F1.8 had checked only the positionless arm).
+
+**Not built: focus as a `NodeSel`.** T8.0 removed its main motivation —
+`Either` branches are ordinary table nodes now, addressed by index like
+anything else — leaving only `Repeat` rows, and no focusable widget
+currently lives in a template. Deferred until one does, rather than
+changing a public field's type for a case that does not exist. Recorded
+so the next reader does not have to rediscover why it looks half-done.
 
 `focus: Option<u32>` is a main-table index. A `TextInput` inside a
 `Repeat` row, an `Either` branch or a `Dyn` island has no focus

@@ -889,7 +889,29 @@ deliberately not routed — it fires continuously and its only consumer is
 the hover bit, so routing it would walk the chain on every mouse motion
 looking for something that is almost never there.
 
-**Remaining: C5 (focus as a `NodeSel`), B9–B11, and the text field.**
+**Cluster B, 2026-09-04.** `TextInput<S: TextBuffer>` ships: the widget
+owns the buffer (B1), edits go through methods (B3), the caret is an
+ordinary `Cmd::Rect` drawn only when `NodeState::focused` (B4),
+caret-into-view happens in `layout` after shaping (B5), the app reads
+`field.as_str()` (B8). No IME (B6) and no multi-line (B7) — and **no
+reserved fields for them**, because an unused field is a claim the code
+has not earned. B9 became `TextBuffer::Clusters`, an associated type, so
+a fixed-capacity storage pairs with a fixed-capacity cluster array; B11
+emptied `TextStorage` down to `AsRef<str> + Default` and moved
+`from_string` to a `reload`-gated `TextRestore`. B10 was **already
+closed** by F4.6's ring plus the comparing setter.
+
+**No selection, and that is a routing fact, not an omission.** A
+selection needs modifier state on `Event::Key` (Shift+Arrow) or pointer
+drag (`PointerMove` is deliberately unrouted, C6). Both are named
+changes to the event vocabulary; neither is worth making for a field
+nobody has asked to select in. The anchor is *not* stored.
+
+**C5 is part-built.** Hidden focus is dropped and Tab walks the
+focusables in declaration order, wrapping. Focus as a `NodeSel` is not
+built: T8.0 removed its main motivation — `Either` branches are ordinary
+table nodes now — leaving only `Repeat` rows, where no focusable widget
+currently lives.
 
 Original plan:
 

@@ -112,12 +112,50 @@ impl Measured {
     }
 }
 
-/// What `Label<S>` accepts. Implemented for the storage types each
-/// profile uses; the blanket `AsRef<str>` bound would conflict with the
-/// `From<String>` reload path, so it is spelled out.
-pub trait TextStorage: AsRef<str> + Default {
+/// What `Label<S>` accepts.
+///
+/// Nothing but "can be read as a string, and has an empty value" (B11).
+/// Rebuilding from an owned `String` used to be here, which quietly
+/// required every storage to depend on `alloc`: a fixed-capacity inline
+/// buffer — the shape a `no_std` profile needs — had to pull in a heap
+/// allocator solely to satisfy a method only the hot-reload path calls.
+/// That method is [`TextRestore`] now, gated behind `reload`, so the
+/// no-allocation profile stays reachable
+/// (`docs/text-and-scrolling-decisions.md` B11).
+pub trait TextStorage: AsRef<str> + Default {}
+
+impl<T: AsRef<str> + Default> TextStorage for T {}
+
+/// Where a shaped run's cluster positions are kept (B9).
+///
+/// An associated type of the *storage*, not a fixed `Vec`, so a
+/// fixed-capacity inline buffer can pair with a fixed-capacity cluster
+/// array and the no-allocation profile stays reachable. `String` pairs
+/// with `Vec<Cluster>`.
+pub trait ClusterBuf: crate::cx::GlyphSink + Default {
+    fn clear(&mut self);
+    fn as_slice(&self) -> &[crate::cx::Cluster];
+}
+
+impl ClusterBuf for Vec<crate::cx::Cluster> {
+    fn clear(&mut self) {
+        Vec::clear(self);
+    }
+    fn as_slice(&self) -> &[crate::cx::Cluster] {
+        self
+    }
+}
+
+/// Storage that a hot reload can rebuild from saved bytes.
+///
+/// Behind `reload` because that is the only caller: restoring is a
+/// dev-surface operation (§7), and requiring it of every storage is what
+/// B11 objected to. `&'static str` satisfies it by leaking, which is
+/// acceptable exactly once per reload and is why [`TextBuffer`] is a
+/// separate trait for the repeated case.
+#[cfg(feature = "reload")]
+pub trait TextRestore: TextStorage {
     /// Rebuild from an owned string — the hot-reload restore path.
-    /// `&'static str` cannot, and says so by leaking (a dev-only path).
     fn from_string(s: String) -> Self;
 }
 
@@ -141,33 +179,68 @@ pub trait TextStorage: AsRef<str> + Default {
 /// leaked 9,906 bytes and never released them. `Label<String>` allocated
 /// twice and then stayed flat.
 pub trait TextBuffer: TextStorage {
+    /// Where this storage's shaped cluster positions live (B9).
+    type Clusters: ClusterBuf;
+
     /// Replace the contents from a borrowed string, reusing the existing
     /// allocation where the storage can.
     fn set_from_str(&mut self, s: &str);
+
+    /// Insert `s` at byte offset `at` (B3: methods, never a raw
+    /// `&mut String`).
+    ///
+    /// `at` must be a `char` boundary — every caller here derives it
+    /// from a caret, and a caret only ever sits on one.
+    fn insert_str(&mut self, at: usize, s: &str);
+
+    /// Remove `range`, whose ends must be `char` boundaries.
+    fn remove_range(&mut self, range: core::ops::Range<usize>);
 }
 
-impl TextStorage for String {
+#[cfg(feature = "reload")]
+impl TextRestore for String {
     fn from_string(s: String) -> Self {
         s
     }
 }
 
 impl TextBuffer for String {
+    type Clusters = Vec<crate::cx::Cluster>;
+
     /// Keeps the capacity: steady-state binding updates allocate on no
     /// frame but the first for any given length.
     fn set_from_str(&mut self, s: &str) {
         self.clear();
         self.push_str(s);
     }
+
+    fn insert_str(&mut self, at: usize, s: &str) {
+        String::insert_str(self, at, s);
+    }
+
+    fn remove_range(&mut self, range: core::ops::Range<usize>) {
+        self.replace_range(range, "");
+    }
 }
 
-impl TextStorage for std::borrow::Cow<'static, str> {
+#[cfg(feature = "reload")]
+impl TextRestore for std::borrow::Cow<'static, str> {
     fn from_string(s: String) -> Self {
         std::borrow::Cow::Owned(s)
     }
 }
 
 impl TextBuffer for std::borrow::Cow<'static, str> {
+    type Clusters = Vec<crate::cx::Cluster>;
+
+    fn insert_str(&mut self, at: usize, s: &str) {
+        self.to_mut().insert_str(at, s);
+    }
+
+    fn remove_range(&mut self, range: core::ops::Range<usize>) {
+        self.to_mut().replace_range(range, "");
+    }
+
     /// Reuses the buffer when this `Cow` already owns one; a `Borrowed`
     /// literal has no buffer to reuse and becomes `Owned`.
     fn set_from_str(&mut self, s: &str) {
@@ -181,7 +254,8 @@ impl TextBuffer for std::borrow::Cow<'static, str> {
     }
 }
 
-impl TextStorage for &'static str {
+#[cfg(feature = "reload")]
+impl TextRestore for &'static str {
     /// The documented dev-mode leak: this storage cannot own, and hot
     /// reload is a development path (§7's dlopen-without-dlclose spirit).
     /// It happens once per swap, not once per frame — which is why there

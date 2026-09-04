@@ -102,6 +102,7 @@ pub mod ops;
 pub mod pass;
 #[cfg(feature = "reload")]
 pub mod reload;
+pub mod input;
 pub mod retain;
 pub mod scroll;
 pub mod repeat;
@@ -111,13 +112,16 @@ pub mod widget;
 
 pub use desc::{Constraints, NodeDesc, NodeState, Point, Size, MAX_DEPTH, NO_PARENT};
 pub use hatch::{Dyn, Either, List, Side};
+pub use input::TextInput;
 pub use scroll::ScrollView;
 pub use hit::{Hit, Inner};
 pub use cx::{BlockMetrics, Cluster, GlyphSink, LayoutCx, NoSink, TextMeasure};
 pub use retain::{Damage, Incremental, Rebuild, Retention};
 pub use display::{Cmd, Color, DisplayList, Renderer};
 pub use style::{Align, Edges, Length, Patch, Rule, Selector, Style};
-pub use text::{Dirty, Measured, TextBuffer, TextStorage};
+pub use text::{ClusterBuf, Dirty, Measured, TextBuffer, TextStorage};
+#[cfg(feature = "reload")]
+pub use text::TextRestore;
 pub use event::{Event, EventCtx, InputQueue, Key};
 // `App` is both a trait and a derive; they live in different namespaces,
 // so `use lumen_static::App` brings in whichever the position calls for.
@@ -140,6 +144,7 @@ pub mod prelude {
     pub use crate::desc::{Constraints, NodeState, Point, Size};
     pub use crate::event::{App, EventCtx, Event, Key};
     pub use crate::hatch::{Dyn, Either, List, Side};
+    pub use crate::input::TextInput;
     pub use crate::scroll::ScrollView;
     pub use crate::ops::{Button, Fixed, Label, Spacer};
     pub use crate::repeat::Repeat;

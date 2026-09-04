@@ -201,6 +201,13 @@ pub struct NodeState {
     pub pressed: bool,
     /// The pointer is over this node (C6).
     pub hovered: bool,
+    /// This node holds keyboard focus.
+    ///
+    /// Set by `dispatch` beside `pressed`/`hovered`, for the same
+    /// reason: `paint` has no access to the host's focus, and a text
+    /// field that cannot tell whether it is focused cannot decide
+    /// whether to draw a caret.
+    pub focused: bool,
 }
 
 /// Scalar facts a kind knows about itself that geometry cannot show —
