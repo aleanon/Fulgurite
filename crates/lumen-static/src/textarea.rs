@@ -293,7 +293,7 @@ impl<S: TextBuffer> Node for TextArea<S> {
         if cy < self.scroll {
             self.scroll = cy;
         }
-        self.scroll = self.scroll.clamp(0.0, (content.h - inner_h).max(0.0));
+        self.scroll = crate::num::clamp(self.scroll, 0.0, (content.h - inner_h).max(0.0));
         self.pad = (me.padding.left, me.padding.top);
 
         crate::ops::record_painted(st, i, limits, size, &me)

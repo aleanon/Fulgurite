@@ -97,7 +97,7 @@ fn clamp01(v: f32) -> f32 {
     if v.is_nan() {
         0.0
     } else {
-        v.clamp(0.0, 1.0)
+        crate::num::clamp(v, 0.0, 1.0)
     }
 }
 
@@ -167,7 +167,7 @@ impl Node for Slider {
             out.rounded_rect([r[0], mid - t / 2.0, x, mid + t / 2.0], s.fg, t / 2.0);
         }
         let d = h * 0.75;
-        let kx = (x - d / 2.0).clamp(r[0], r[2] - d);
+        let kx = crate::num::clamp(x - d / 2.0, r[0], r[2] - d);
         out.rounded_rect([kx, mid - d / 2.0, kx + d, mid + d / 2.0], s.fg, d / 2.0);
     }
 

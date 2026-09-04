@@ -297,7 +297,7 @@ impl<S: TextBuffer> Node for TextInput<S> {
         if cx_pos < self.scroll {
             self.scroll = cx_pos;
         }
-        self.scroll = self.scroll.clamp(0.0, (run_w - inner_w).max(0.0));
+        self.scroll = crate::num::clamp(self.scroll, 0.0, (run_w - inner_w).max(0.0));
         self.pad_left = me.padding.left;
 
         crate::ops::record_painted(st, i, limits, size, &me)

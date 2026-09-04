@@ -66,7 +66,7 @@ dev-shape:
 fixtures:
     cargo run -p counter -- {{ justfile_directory() }}/target/counter.ppm
     cargo run -p counter-window -- --form {{ justfile_directory() }}/target/form.ppm
-    cargo run -p embedded
+    cargo run -p embedded --bin embedded
     ./scripts/hot_reload_demo.sh
 
 # ---------------------------------------------------------------------------
@@ -117,6 +117,16 @@ floats:
 # Re-bake fixtures/embedded/src/face.rs from a system TTF.
 bake-font font="/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf" px="16":
     cargo run -p bake-font -- {{ font }} {{ px }} fixtures/embedded/src/face.rs
+
+# Link a real thumbv7em firmware and print its sections (M13/T13.9).
+# `cargo check` proves none of this: it type-checks and stops, with no
+# codegen, no link and no .text. The numbers in docs/results-embedded.md
+# come from here.
+
+# Section sizes of a linked Cortex-M4F firmware (docs/results-embedded.md).
+firmware-size:
+    cargo build --release -p embedded --bin firmware --features firmware --target thumbv7em-none-eabihf
+    @size -A target/thumbv7em-none-eabihf/release/firmware | grep -E '\.text|\.rodata|\.bss|\.data|Total'
 
 # Cortex-M4F no_std build of the core + fixture (docs/results-embedded.md).
 thumb:

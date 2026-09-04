@@ -63,6 +63,31 @@ pub const fn ceil(x: f32) -> f32 {
     }
 }
 
+/// `x` limited to `[lo, hi]`, without `f32::clamp`'s panic path.
+///
+/// **This exists for a measured reason.** `f32::clamp` panics when
+/// `lo > hi` or either bound is NaN, and its message *formats a float* —
+/// which links `core::num::flt2dec` into the binary. On
+/// `thumbv7em-none-eabihf` that is **14 KB of a 43 KB firmware, a third
+/// of `.text`**, for a branch no frame ever takes
+/// (`docs/results-embedded.md`).
+///
+/// Behaviour matches `f32::clamp` everywhere `f32::clamp` returns:
+/// NaN in gives NaN out, and the bounds are inclusive. Where
+/// `f32::clamp` *panics* — `lo > hi`, or a NaN bound — this is total
+/// instead, which is the better failure for a frame loop: a GUI that
+/// stops drawing is worse than one that draws a degenerate rect.
+#[inline]
+pub fn clamp(x: f32, lo: f32, hi: f32) -> f32 {
+    if x < lo {
+        lo
+    } else if x > hi {
+        hi
+    } else {
+        x
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -112,6 +137,32 @@ mod tests {
         assert!(floor(-0.0).is_sign_negative());
         assert!(ceil(-0.5).is_sign_negative());
         assert!(floor(0.5).is_sign_positive());
+    }
+
+    #[test]
+    fn clamp_matches_std_where_std_answers() {
+        for &(x, lo, hi) in &[
+            (0.5f32, 0.0f32, 1.0f32),
+            (-1.0, 0.0, 1.0),
+            (2.0, 0.0, 1.0),
+            (0.0, 0.0, 1.0),
+            (1.0, 0.0, 1.0),
+            (f32::INFINITY, 0.0, 1.0),
+            (f32::NEG_INFINITY, 0.0, 1.0),
+            (-3.0, -2.0, 5.0),
+        ] {
+            assert_eq!(clamp(x, lo, hi), x.clamp(lo, hi), "clamp({x}, {lo}, {hi})");
+        }
+        // NaN in, NaN out -- the one non-panicking NaN case std has.
+        assert!(clamp(f32::NAN, 0.0, 1.0).is_nan());
+    }
+
+    #[test]
+    fn clamp_is_total_where_std_panics() {
+        // `f32::clamp(_, 1.0, 0.0)` panics; this returns a bound. A
+        // frame loop that draws a degenerate rect beats one that stops.
+        assert_eq!(clamp(0.5, 1.0, 0.0), 1.0);
+        assert_eq!(clamp(0.5, f32::NAN, 1.0), 0.5);
     }
 
     #[test]

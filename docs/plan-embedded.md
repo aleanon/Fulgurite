@@ -731,7 +731,7 @@ The cost, stated once: equality is now a 64-bit hash, so a collision
 would leave stale pixels — around 10⁻¹³ per frame at 2 000 commands,
 with `damage_oracle.rs` standing over it.
 
-## T13.9 — the number, last
+## T13.9 — the number, last — **DONE 2026-09-05**
 
 `docs/results-embedded.md` currently says, correctly, that no number has
 been measured. This task fills it in:
@@ -757,6 +757,32 @@ stating because `repeat.rs` already notes that raising
 **Gate:** the threshold is written down *before* the measurement, so the
 gate can say no. A profile with no measured footprint is a claim, not a
 profile.
+
+**Done, thresholds committed first, in their own commit.** Numbers in
+`docs/results-embedded.md`; `just firmware-size` reproduces them from a
+**linked** `thumbv7em-none-eabihf` binary, because `cargo check` proves
+none of this — it type-checks and stops, with no codegen, no link and no
+sections. Every threshold met, `.text` at 31% of budget and `.bss` at
+literally zero.
+
+**And the measurement earned its keep on the first link.** `.text` was
+43 KB, a third of it `core::num::flt2dec` — float *formatting*, in a GUI
+that formats no floats. `f32::clamp` panics when `lo > hi` or a bound is
+NaN, and its panic message formats a float. Replacing it with
+`num::clamp` at nine sites — one of them `Constraints::clamp`, which
+runs for every node of every frame — took the whole firmware from
+60,173 B to 33,677 B: **−26.5 KB, 44%**. Invisible on a desktop; found
+in ten minutes by linking once for the target.
+
+Two smaller corrections the numbers forced:
+
+- **`MAX_DEPTH` stays 64.** T13.0 said the profile lowers it to 24; it
+  does not, because `MAX_DEPTH` is a compile-time assertion with no
+  runtime cost, so lowering it would only reject trees — on desktop
+  too. The *budget* is real and is recorded instead.
+- **`InlineClusters<64>` is 768 B**, 72% of the fixture's whole widget
+  tree. One cluster per byte is the correct worst case and an expensive
+  one; an embedded app should size `InlineText<N>` to its field.
 
 ---
 

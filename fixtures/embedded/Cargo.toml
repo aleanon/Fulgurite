@@ -13,7 +13,7 @@ publish = false
 # need a #[panic_handler], an #[entry] and a linker script -- i.e. a
 # board, which "What M13 is not" puts out of scope.
 [dependencies]
-lumen-static = { path = "../../crates/lumen-static", default-features = false, features = ["alloc"] }
+lumen-static = { path = "../../crates/lumen-static", default-features = false }
 
 # The T13.7 gate re-rasterises the baked face and compares every byte.
 # `fontdue` is a dev-dependency here and only here: it is the thing the
@@ -28,3 +28,15 @@ path = "src/lib.rs"
 [[bin]]
 name = "embedded"
 path = "src/main.rs"
+
+# The linked thumb binary T13.9 measures. `required-features` keeps it
+# out of every host build: it defines `#[panic_handler]`, which is a
+# duplicate lang item wherever std is linked, so `cargo test --workspace`
+# would fail on it. `just firmware-size` turns the feature on.
+[[bin]]
+name = "firmware"
+path = "src/bin/firmware.rs"
+required-features = ["firmware"]
+
+[features]
+firmware = []

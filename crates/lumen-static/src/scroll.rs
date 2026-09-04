@@ -189,7 +189,8 @@ impl<W: Widget> Node for ScrollView<W> {
         // extent is known.
         let over = (self.axis.main(content) - self.axis.main(viewport)).max(0.0);
         self.measured_overflow = over;
-        self.scroll = if self.scroll.is_finite() { self.scroll.clamp(0.0, over) } else { 0.0 };
+        self.scroll =
+            if self.scroll.is_finite() { crate::num::clamp(self.scroll, 0.0, over) } else { 0.0 };
 
         crate::ops::record_painted(st, i, limits, size, &me)
     }
@@ -248,7 +249,7 @@ impl<W: Widget> Node for ScrollView<W> {
     fn on_event(&mut self, ev: &crate::event::Event, _cx: &crate::event::EventCtx) -> bool {
         let crate::event::Event::Scroll { dy, .. } = ev else { return false };
         // Wheel-up scrolls content down: the offset moves against `dy`.
-        let want = (self.scroll - dy).clamp(0.0, self.measured_overflow);
+        let want = crate::num::clamp(self.scroll - dy, 0.0, self.measured_overflow);
         if want == self.scroll {
             // At an end, or nothing to scroll: decline, and the parent
             // gets the rest of the gesture.

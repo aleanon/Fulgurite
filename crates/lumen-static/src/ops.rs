@@ -288,7 +288,7 @@ pub fn record_painted(
 /// off a bright accent is a shade, and neither clips.
 #[inline]
 fn dim(c: crate::display::Color, f: f32) -> crate::display::Color {
-    let k = 1.0 - f.clamp(0.0, 1.0);
+    let k = 1.0 - crate::num::clamp(f, 0.0, 1.0);
     let ch = |v: u8| (v as f32 * k) as u8;
     crate::display::Color(ch(c.0), ch(c.1), ch(c.2), c.3)
 }

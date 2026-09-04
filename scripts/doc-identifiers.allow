@@ -8,6 +8,8 @@ nm                   # binutils, cited in the binsize fixture's notes
 generic_const_exprs  # unstable rustc feature, cited as a road not taken
 size_of_set          # AccessKit's field name, mirrored by desc.rs
 libm                 # the crate M13/T13.2 declined to depend on; num.rs says why
+AtomicU64            # core type absent on thumbv7em; firmware.rs says why it uses AtomicU32
+flt2dec              # core's float formatter, named where num::clamp says why it avoids it
 
 # --- documented as deliberately removed ---
 # Prose of the form "`X` is gone". Keep these: the sentence is the record of

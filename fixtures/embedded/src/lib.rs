@@ -224,3 +224,44 @@ pub fn frame(p: &mut Panel, st: &mut [NodeState], sty: &mut [Style], out: &mut C
     pass::layout_with(&mut p.ui, &mut cx, sty, st, VIEW);
     pass::paint(&p.ui, st, out);
 }
+
+/// Target-measured type sizes — `docs/plan-embedded.md` T13.9.
+///
+/// These are `const` on the **target**, not the host: `NodeDesc` holds
+/// two pointers, so it is smaller on 32-bit, and carrying a host figure
+/// over would be exactly the mistake `docs/results-embedded.md` records
+/// having made once already.
+///
+/// They are asserted, not merely computed. A `const` assertion fails the
+/// `thumbv7em-none-eabihf` build if a field is added to `NodeState`, which
+/// is how the RAM budget in `docs/results-embedded.md` stays true rather than
+/// becoming a number someone measured in 2026 — the same drift that doc
+/// exists to record.
+pub mod sizes {
+    use core::mem::size_of;
+    use lumen_static::{NodeDesc, NodeState, Style};
+
+    pub const NODE_STATE: usize = size_of::<NodeState>();
+    pub const STYLE: usize = size_of::<Style>();
+    pub const NODE_DESC: usize = size_of::<NodeDesc>();
+    pub const UI: usize = size_of::<super::Ui>();
+    pub const PANEL: usize = size_of::<super::Panel>();
+
+    /// State + style per node, which is what a tree costs before its
+    /// widget structs. `NodeDesc` is `const` data in flash, not RAM.
+    pub const PER_NODE_RAM: usize = NODE_STATE + STYLE;
+
+    // Measured on `thumbv7em-none-eabihf`, 2026-09-05, and asserted so
+    // the build fails rather than the budget silently drifting — which
+    // is exactly what happened to this figure once already
+    // (`docs/results-embedded.md`, the 72/64 correction). `NodeDesc` is
+    // 32 B here against 48 on the host: it holds two pointers.
+    const _: () = assert!(NODE_STATE == 76, "NodeState grew; re-budget docs/results-embedded.md");
+    const _: () = assert!(STYLE == 72, "Style grew; re-budget docs/results-embedded.md");
+    const _: () = assert!(PER_NODE_RAM == 148, "per-node RAM changed");
+    // 32 on a 32-bit target, 48 on a 64-bit host: this one is
+    // deliberately checked only where the budget applies.
+    #[cfg(target_pointer_width = "32")]
+    const _: () = assert!(NODE_DESC == 32, "NodeDesc changed on the target");
+}
+

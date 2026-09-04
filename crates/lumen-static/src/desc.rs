@@ -147,8 +147,8 @@ impl Constraints {
     #[inline]
     pub fn clamp(&self, s: Size) -> Size {
         Size {
-            w: s.w.clamp(self.min_w, self.max_w),
-            h: s.h.clamp(self.min_h, self.max_h),
+            w: crate::num::clamp(s.w, self.min_w, self.max_w),
+            h: crate::num::clamp(s.h, self.min_h, self.max_h),
         }
     }
 }
