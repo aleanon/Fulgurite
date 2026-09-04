@@ -85,6 +85,7 @@ pub fn dispatch<S: crate::event::App>(
     style: &[Style],
     st: &mut [NodeState],
     focus: &mut Option<u32>,
+    capture: &mut Option<u32>,
     ev: &crate::event::Event,
 ) -> bool {
     use crate::event::{Event, EventCtx, Handlers, Key, NodeSel};
@@ -135,6 +136,51 @@ pub fn dispatch<S: crate::event::App>(
     if matches!(ev, crate::event::Event::Key { key: crate::event::Key::Tab, down: true }) {
         *focus = next_focusable(table, st, style, *focus);
         return true;
+    }
+
+    // Pointer capture — M11/T11.2.
+    //
+    // **Before the hit test**, deliberately. A drag has to keep reaching
+    // the control it started on after the pointer has left it, and once
+    // it has, hit testing finds nothing and the pointer arm below
+    // returns early — so a capture checked after it would never fire in
+    // the one case it exists for. That is not hypothetical: it is what
+    // the first version of this did, and the slider stopped following
+    // the pointer the moment it left the track.
+    //
+    // A captured node is addressed **directly**, with no walk, which is
+    // also how M9's objection to routing `PointerMove` stays answered:
+    // moves cost one call when a gesture is in flight and nothing
+    // otherwise.
+    if let Some(cap) = *capture {
+        let cap = cap as usize;
+        if cap >= table.len() {
+            *capture = None;
+        } else if let Some(p) = ev.position() {
+            if matches!(ev, Event::PointerMove { .. } | Event::PointerUp { .. }) {
+                if matches!(ev, Event::PointerUp { .. }) {
+                    for n in st.iter_mut() {
+                        n.pressed = false;
+                    }
+                }
+                let s = &st[cap];
+                let cx = EventCtx {
+                    event: *ev,
+                    node: cap as u32,
+                    row: None,
+                    inner: 0,
+                    pos: p,
+                    // Relative to the *captured* node, not to whatever
+                    // the pointer is over — the whole point.
+                    local: Point { x: p.x - s.pos.x, y: p.y - s.pos.y },
+                };
+                let taken = state.tree_mut().node_mut(cap).on_event(ev, &cx);
+                if matches!(ev, Event::PointerUp { .. }) {
+                    *capture = None;
+                }
+                return taken;
+            }
+        }
     }
 
     let (start, mut ctx, inner) = match ev.position() {
@@ -210,10 +256,8 @@ pub fn dispatch<S: crate::event::App>(
         },
     };
 
-    // `PointerMove` is deliberately not routed: it fires continuously,
-    // and its only consumer is the hover state set above, which needs no
-    // handler. Routing it would walk the ancestor chain on every mouse
-    // motion looking for something that is almost never there.
+    // An unrouted move: its only consumer is the hover state set above,
+    // which needs no handler.
     if matches!(ev, Event::PointerMove { .. }) {
         return false;
     }
@@ -242,6 +286,11 @@ pub fn dispatch<S: crate::event::App>(
                 ctx.inner = 0;
             }
             if state.tree_mut().node_mut(i).on_event(ev, &ctx) {
+                // A node that consumed a press owns the gesture until
+                // the release, wherever the pointer then goes.
+                if matches!(ev, Event::PointerDown { .. }) {
+                    *capture = Some(i as u32);
+                }
                 return true;
             }
             if table[i].parent == crate::desc::NO_PARENT {

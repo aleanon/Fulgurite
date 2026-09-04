@@ -29,6 +29,14 @@ pub struct Host<A: App, R: Retention = Incremental> {
     pub states: Vec<NodeState>,
     pub list: DisplayList,
     pub focus: Option<u32>,
+    /// The node that owns the current pointer gesture (M11/T11.2).
+    ///
+    /// Set when a node consumes a `PointerDown`, cleared on the release.
+    /// While it is set, moves go straight to that node and nothing walks
+    /// — which is what lets a slider keep tracking after the pointer has
+    /// left it without reinstating the per-motion ancestor walk M9
+    /// refused.
+    pub capture: Option<u32>,
     queue: lumen_static::InputQueue,
     /// Surface size in **physical** pixels — what a window reports.
     size: (u32, u32),
@@ -63,6 +71,7 @@ impl<A: App, R: Retention> Host<A, R> {
             states: vec![NodeState::default(); n],
             list: DisplayList::new(),
             focus: None,
+            capture: None,
             queue: lumen_static::InputQueue::new(),
             size: (width, height),
             scale: 1.0,
@@ -191,6 +200,7 @@ impl<A: App, R: Retention> Host<A, R> {
                 &self.styles,
                 &mut self.states,
                 &mut self.focus,
+                &mut self.capture,
                 &ev,
             );
         }

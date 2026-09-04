@@ -65,6 +65,7 @@ struct Fixture {
     states: [NodeState; Ui::NODE_COUNT],
     styles: Vec<lumen_static::Style>,
     focus: Option<u32>,
+    capture: Option<u32>,
 }
 
 impl Fixture {
@@ -80,6 +81,7 @@ impl Fixture {
             states: [NodeState::default(); Ui::NODE_COUNT],
             styles,
             focus: None,
+            capture: None,
         };
         f.layout();
         f
@@ -91,7 +93,7 @@ impl Fixture {
 
     fn send(&mut self, ev: Event) -> bool {
         let handled =
-            pass::dispatch(&mut self.app, &self.styles, &mut self.states, &mut self.focus, &ev);
+            pass::dispatch(&mut self.app, &self.styles, &mut self.states, &mut self.focus, &mut self.capture, &ev);
         self.layout();
         handled
     }

@@ -227,7 +227,8 @@ fn wheel(p: &mut Page, st: &mut [NodeState], dy: f32) -> bool {
     let sty = pass::default_styles(p.ui_ref());
     pass::layout(&mut p.ui, &sty, st, VIEW);
     let mut focus = None;
-    pass::dispatch(p, &sty, st, &mut focus, &Event::Scroll { x: 10.0, y: 10.0, dy })
+    let mut capture = None;
+    pass::dispatch(p, &sty, st, &mut focus, &mut capture, &Event::Scroll { x: 10.0, y: 10.0, dy })
 }
 
 impl Page {

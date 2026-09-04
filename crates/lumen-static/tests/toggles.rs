@@ -46,6 +46,7 @@ struct F {
     styles: Vec<lumen_static::Style>,
     st: [NodeState; Ui::NODE_COUNT],
     focus: Option<u32>,
+    capture: Option<u32>,
 }
 
 impl F {
@@ -55,7 +56,7 @@ impl F {
         app.ui.radio.on_toggle = on_flip;
         app.ui.switch.on_toggle = on_flip;
         let styles = pass::default_styles(&app.ui);
-        let mut f = F { app, styles, st: [NodeState::default(); Ui::NODE_COUNT], focus: None };
+        let mut f = F { app, styles, st: [NodeState::default(); Ui::NODE_COUNT], focus: None, capture: None };
         f.layout();
         f
     }
@@ -63,7 +64,7 @@ impl F {
         pass::layout(&mut self.app.ui, &self.styles, &mut self.st, VIEW);
     }
     fn send(&mut self, ev: Event) -> bool {
-        let r = pass::dispatch(&mut self.app, &self.styles, &mut self.st, &mut self.focus, &ev);
+        let r = pass::dispatch(&mut self.app, &self.styles, &mut self.st, &mut self.focus, &mut self.capture, &ev);
         self.layout();
         r
     }

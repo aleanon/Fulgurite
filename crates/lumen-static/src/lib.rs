@@ -105,6 +105,7 @@ pub mod reload;
 pub mod input;
 pub mod retain;
 pub mod scroll;
+pub mod slider;
 pub mod toggle;
 pub mod repeat;
 pub mod style;
@@ -115,6 +116,7 @@ pub use desc::{Constraints, NodeDesc, NodeState, Point, Size, MAX_DEPTH, NO_PARE
 pub use hatch::{Dyn, Either, List, Side};
 pub use input::TextInput;
 pub use scroll::ScrollView;
+pub use slider::Slider;
 pub use toggle::{CheckBox, Radio, Switch, Toggle};
 pub use hit::{Hit, Inner};
 pub use cx::{BlockMetrics, Cluster, GlyphSink, LayoutCx, NoSink, TextMeasure};
@@ -148,6 +150,7 @@ pub mod prelude {
     pub use crate::hatch::{Dyn, Either, List, Side};
     pub use crate::input::TextInput;
     pub use crate::scroll::ScrollView;
+    pub use crate::slider::Slider;
     pub use crate::toggle::{CheckBox, Radio, Switch};
     pub use crate::ops::{Button, Fixed, Label, Spacer};
     pub use crate::repeat::Repeat;

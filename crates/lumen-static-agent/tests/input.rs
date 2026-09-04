@@ -46,6 +46,7 @@ struct Host {
     states: [NodeState; Ui::NODE_COUNT],
     styles: Vec<lumen_static::Style>,
     focus: Option<u32>,
+    capture: Option<u32>,
     queue: InputQueue,
     frame: u64,
     /// Every event the host ever saw — the recording seed.
@@ -64,6 +65,7 @@ impl Host {
             states: [NodeState::default(); Ui::NODE_COUNT],
             styles,
             focus: None,
+            capture: None,
             queue: InputQueue::new(),
             frame: 0,
             trace: Vec::new(),
@@ -90,7 +92,7 @@ impl AgentHost for Host {
 
     fn pump(&mut self) -> u64 {
         while let Some(ev) = self.queue.pop() {
-            pass::dispatch(&mut self.app, &self.styles, &mut self.states, &mut self.focus, &ev);
+            pass::dispatch(&mut self.app, &self.styles, &mut self.states, &mut self.focus, &mut self.capture, &ev);
         }
         self.layout();
         self.frame += 1;
@@ -222,6 +224,7 @@ struct FormHost {
     states: [NodeState; Form::NODE_COUNT],
     queue: InputQueue,
     focus: Option<u32>,
+    capture: Option<u32>,
 }
 
 impl FormHost {
@@ -236,6 +239,7 @@ impl FormHost {
             states: [NodeState::default(); Form::NODE_COUNT],
             queue: InputQueue::new(),
             focus: None,
+            capture: None,
         };
         h.layout();
         h
@@ -259,6 +263,7 @@ impl AgentHost for FormHost {
                 &self.styles,
                 &mut self.states,
                 &mut self.focus,
+                &mut self.capture,
                 &ev,
             );
             self.layout();
@@ -453,6 +458,7 @@ struct ScrolledHost {
     states: [NodeState; ScrolledUi::NODE_COUNT],
     queue: InputQueue,
     focus: Option<u32>,
+    capture: Option<u32>,
 }
 
 const TIGHT: Constraints = Constraints { min_w: 0.0, max_w: 200.0, min_h: 0.0, max_h: 60.0 };
@@ -475,6 +481,7 @@ impl ScrolledHost {
             states: [NodeState::default(); ScrolledUi::NODE_COUNT],
             queue: InputQueue::new(),
             focus: None,
+            capture: None,
         };
         h.layout();
         h
@@ -493,7 +500,7 @@ impl AgentHost for ScrolledHost {
     }
     fn pump(&mut self) -> u64 {
         while let Some(ev) = self.queue.pop() {
-            pass::dispatch(&mut self.app, &self.styles, &mut self.states, &mut self.focus, &ev);
+            pass::dispatch(&mut self.app, &self.styles, &mut self.states, &mut self.focus, &mut self.capture, &ev);
             self.layout();
         }
         1

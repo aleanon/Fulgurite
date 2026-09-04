@@ -16,7 +16,7 @@ has eleven, and three of Phase B's items are among them:
 | scrollable | `ScrollView` (M8) — with chaining |
 | §6 escape hatches as first-class widgets | `Either`, `Option`, `List`, `Dyn`, `Repeat`, `Assembled` |
 | checkbox / radio / switch | `Toggle<S, SHAPE>` (T11.1) — shape is a const, not a field |
-| slider | **not built** — blocked, see T11.2 |
+| slider | `Slider` (T11.2), with pointer capture |
 | text area | **not built** — reopens B7 |
 | container / card | *not needed* — any derived container with a background is one |
 | tabs | **not built** |
@@ -94,7 +94,7 @@ And one consequence of the vocabulary: **a checkmark is a staircase.**
 along two diagonals. It reads correctly at 24 px, and it is the same
 missing vocabulary an icon needs.
 
-### T11.2 — slider — *needs a routing change*
+### T11.2 — slider — **DONE 2026-09-04**
 
 A slider is the first widget that needs **pointer drag**, which M9
 deliberately does not route: `PointerMove` is unrouted because it fires
@@ -113,17 +113,31 @@ So T11.2 is two tasks wearing one name:
    receiving events after the pointer leaves the control.
 2. **The slider itself**, once (1) exists.
 
-**Measure before deciding (1).** The C6 note says routing every move
-would cost an ancestor walk per motion event. Pointer capture avoids
-the walk entirely, so the cost should be near zero — but that is a
-prediction, and this project's rule is that a traversal change is
-re-measured. Record it in a results doc.
+**Measured, not predicted** (`docs/results-capture-cost.md`): a motion
+frame is **0.033 ms p50 against a click frame's 0.092**. Capture does
+not add an ancestor walk — it removes the need for one — and frame cost
+is dominated by damage size, not by dispatch.
 
-**Gate:** `app.perf` shows no regression in `frame_ns` p95 during a
-drag; a slider driven by `input.pointerDown` → moves → `input.pointerUp`
-reaches the right value; and the value is reachable by keyboard
-(Left/Right), because a control only draggable by mouse is not
-accessible.
+**The part that was easy to get wrong**, and which the tests caught:
+the capture check must run **before** the hit test. Once the pointer
+leaves every node, hit testing finds nothing and the pointer arm returns
+early — so a capture checked afterwards never fires in the one case it
+exists for. The first version did exactly that and the slider stopped
+following the pointer the moment it left the track.
+
+**Gate — MET.** Six tests, including the one that matters: a drag
+5 000 px off the control still tracks, and a move with nothing captured
+is not routed at all. Arrow keys, Home and End step it, because a
+control only draggable by a mouse is not accessible. The value is
+clamped with NaN mapped to zero — a non-finite value would reach
+`NodeState` through the knob's rect, where every `contains` is false and
+the control silently stops being clickable.
+
+**Who owns the value:** the slider does. Unlike a toggle's `on`, it is
+produced by a gesture rather than mirrored from application state — the
+same reason a text field owns its text (B1), and the application reads
+`value()` (B8). The rule is identical in both and only looks opposite:
+whoever can invalidate the derived state owns the storage.
 
 ### T11.3 — text area — *reopens B7*
 
