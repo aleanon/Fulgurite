@@ -277,8 +277,8 @@ impl<A: App, R: Retention> Host<A, R> {
 
     /// Convenience: click at a point, as two ordinary queued events.
     pub fn click(&mut self, x: f32, y: f32) {
-        self.post(Event::PointerDown { x, y });
-        self.post(Event::PointerUp { x, y });
+        self.post(Event::down(x, y));
+        self.post(Event::up(x, y));
     }
 
     /// The node under a point, for tests and tooling.

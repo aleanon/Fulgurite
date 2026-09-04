@@ -176,8 +176,8 @@ fn clicks_route_into_list_items_with_the_row_attached() {
     let (x, y) = (b.pos.x + b.size.w / 2.0, b.pos.y + b.size.h / 2.0);
     let mut input = lumen_static::event::InputState::default();
     for ev in [
-        lumen_static::Event::PointerDown { x, y },
-        lumen_static::Event::PointerUp { x, y },
+        lumen_static::Event::down(x, y),
+        lumen_static::Event::up(x, y),
     ] {
         pass::dispatch(&mut app, &sty, &mut st, &mut input, &ev);
     }

@@ -115,9 +115,9 @@ fn clicking_runs_the_apps_handler_and_the_widget_does_not_flip_itself() {
     let mut f = F::new();
     assert!(!f.app.ui.check.on);
     let (x, y) = f.centre(1);
-    f.send(Event::PointerDown { x, y });
+    f.send(Event::down(x, y));
     assert!(!f.app.ui.check.on, "nothing happens on press");
-    f.send(Event::PointerUp { x, y });
+    f.send(Event::up(x, y));
     assert_eq!(f.app.flips, 1, "the app's handler ran");
     assert!(f.app.ui.check.on, "and it is the app that set the copy");
 }
@@ -127,8 +127,8 @@ fn space_activates_the_focused_toggle() {
     // The convention, and the reason `Key::Space` was added in T11.1.
     let mut f = F::new();
     let (x, y) = f.centre(1);
-    f.send(Event::PointerDown { x, y });
-    f.send(Event::PointerUp { x, y });
+    f.send(Event::down(x, y));
+    f.send(Event::up(x, y));
     assert_eq!(f.input.focus, Some(1), "pointer-down focused it");
     let before = f.app.flips;
 

@@ -106,7 +106,7 @@ fn main() {
         .map(|i| (st[i].pos.x + st[i].size.w / 2.0, st[i].pos.y + st[i].size.h / 2.0))
         .collect();
     for (x, y) in targets {
-        for ev in [Event::PointerDown { x, y }, Event::PointerUp { x, y }] {
+        for ev in [Event::down(x, y), Event::up(x, y)] {
             pass::dispatch(&mut app, &sty, &mut st, &mut input, &ev);
         }
     }
@@ -117,7 +117,7 @@ fn main() {
     pass::layout(&mut app.ui, &sty, &mut st, VIEW);
     let inst = app.ui.list.instance_state(0, 3);
     let (bx, by) = (inst.pos.x + inst.size.w / 2.0, inst.pos.y + inst.size.h / 2.0);
-    for ev in [Event::PointerDown { x: bx, y: by }, Event::PointerUp { x: bx, y: by }] {
+    for ev in [Event::down(bx, by), Event::up(bx, by)] {
         pass::dispatch(&mut app, &sty, &mut st, &mut input, &ev);
     }
 

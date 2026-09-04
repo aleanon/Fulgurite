@@ -142,8 +142,13 @@ pub fn dispatch<S: crate::event::App>(
         input.mods = *m;
         return true;
     }
+    // The press's click count survives to its release, where activation
+    // happens (T14.3).
+    if let Event::PointerDown { clicks, .. } = ev {
+        input.clicks = *clicks;
+    }
     let (focus, capture) = (&mut input.focus, &mut input.capture);
-    let mods = input.mods;
+    let (mods, clicks) = (input.mods, input.clicks);
 
     // C5: focus that is no longer on screen does not keep receiving
     // keystrokes.
@@ -225,6 +230,8 @@ pub fn dispatch<S: crate::event::App>(
                     // Relative to the *captured* node, not to whatever
                     // the pointer is over — the whole point.
                     local: Point { x: p.x - s.pos.x, y: p.y - s.pos.y },
+                    button: ev.button(),
+                    clicks,
                     mods,
                 };
                 let taken = state.tree_mut().node_mut(cap).on_event(ev, &cx);
@@ -286,6 +293,8 @@ pub fn dispatch<S: crate::event::App>(
                 inner: h.inner.map_or(0, |x| x.node),
                 pos: p,
                 local: h.local,
+                button: ev.button(),
+                clicks,
                 mods,
             };
             (h.node as usize, ctx, h.inner.map(|x| (x.row, x.node)))

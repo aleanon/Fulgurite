@@ -6,7 +6,9 @@
 //! it is what T14.1–T14.3 extend. The loop around it is untestable
 //! without a display; this is not.
 
-use lumen_static::{Event, Key, Mods};
+use std::time::{Duration, Instant};
+
+use lumen_static::{Event, Key, Mods, PointerButton};
 use winit::event::{ElementState, MouseScrollDelta, WindowEvent};
 use winit::keyboard::{Key as WKey, NamedKey};
 
@@ -15,6 +17,49 @@ use winit::keyboard::{Key as WKey, NamedKey};
 /// winit reports lines on X11 and pixels on a trackpad, and a line has
 /// no inherent size. 20 px is what the tally has always used.
 pub const LINE_SCROLL: f32 = 20.0;
+
+/// How long after a press a second one still counts as a double click.
+///
+/// 500 ms is the platform-conventional value. It is a constant so an
+/// application can say what it means rather than discovering it.
+pub const MULTI_CLICK_TIME: Duration = Duration::from_millis(500);
+
+/// How far a second press may land and still count as a double click,
+/// in **logical** px — so a scale factor does not change the feel
+/// (M10b).
+pub const MULTI_CLICK_SLOP: f32 = 5.0;
+
+/// Counts single, double and triple clicks — `docs/plan-desktop.md`
+/// T14.3.
+///
+/// Lives here rather than in `dispatch` because it needs a clock, and
+/// the core is `no_std`. The count is then carried *on the event*, so a
+/// recorded session replays as the same double click it was recorded as.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ClickCounter {
+    last: Option<(Instant, f32, f32, PointerButton)>,
+    count: u8,
+}
+
+impl ClickCounter {
+    /// Register a press and return whether it is the 1st, 2nd or 3rd.
+    ///
+    /// Wraps back to 1 after a triple: a fourth click starts a new
+    /// sequence, which is what every toolkit does and what a
+    /// select-word-then-select-line gesture expects.
+    pub fn press(&mut self, x: f32, y: f32, button: PointerButton) -> u8 {
+        let now = Instant::now();
+        let continues = self.last.is_some_and(|(t, lx, ly, b)| {
+            b == button
+                && now.duration_since(t) <= MULTI_CLICK_TIME
+                && (x - lx).abs() <= MULTI_CLICK_SLOP
+                && (y - ly).abs() <= MULTI_CLICK_SLOP
+        });
+        self.count = if continues && self.count < 3 { self.count + 1 } else { 1 };
+        self.last = Some((now, x, y, button));
+        self.count
+    }
+}
 
 /// Pointer position, kept between events.
 ///
@@ -65,6 +110,7 @@ impl Translated {
 pub fn window_event(
     event: &WindowEvent,
     cursor: &mut Cursor,
+    clicks: &mut ClickCounter,
     held: Mods,
     to_logical: impl Fn(f32, f32) -> (f32, f32),
 ) -> Translated {
@@ -81,11 +127,16 @@ pub fn window_event(
             }
         }
 
-        WindowEvent::MouseInput { state, button: winit::event::MouseButton::Left, .. } => {
+        WindowEvent::MouseInput { state, button, .. } => {
+            // Back and forward produce nothing rather than a wrong
+            // button — T14.3 excludes them deliberately.
+            let Some(button) = pointer_button(*button) else { return Translated::NONE };
             let (x, y) = (cursor.x, cursor.y);
             Translated::one(match state {
-                ElementState::Pressed => Event::PointerDown { x, y },
-                ElementState::Released => Event::PointerUp { x, y },
+                ElementState::Pressed => {
+                    Event::PointerDown { x, y, button, clicks: clicks.press(x, y, button) }
+                }
+                ElementState::Released => Event::PointerUp { x, y, button },
             })
         }
 
@@ -144,6 +195,21 @@ pub fn keyboard(logical: &WKey, text: Option<&str>, down: bool, held: Mods) -> T
         .and_then(|t| t.chars().find(|c| !c.is_control()))
         .map(|ch| Event::Text { ch });
     Translated { events: [key, text], is_input: true }
+}
+
+/// winit's buttons to the framework's three.
+///
+/// `None` for the back and forward buttons, which are excluded for the
+/// same reason as media keys — an application that wants them wants a
+/// different vocabulary than "the buttons every mouse has" (T14.3).
+pub fn pointer_button(b: winit::event::MouseButton) -> Option<PointerButton> {
+    use winit::event::MouseButton as B;
+    Some(match b {
+        B::Left => PointerButton::Left,
+        B::Right => PointerButton::Right,
+        B::Middle => PointerButton::Middle,
+        _ => return None,
+    })
 }
 
 /// winit's modifier state to [`Mods`].

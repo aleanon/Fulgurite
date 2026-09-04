@@ -309,8 +309,8 @@ impl Agent {
         match method {
             "input.click" | "input.invokeAction" => {
                 let (x, y) = self.point_param(host, params)?;
-                host.enqueue(Event::PointerDown { x, y });
-                host.enqueue(Event::PointerUp { x, y });
+                host.enqueue(Event::down(x, y));
+                host.enqueue(Event::up(x, y));
                 Ok(json!({ "frame": host.pump(), "at": [x, y] }))
             }
             // A press held open, and its release — the two halves of a
@@ -320,12 +320,12 @@ impl Agent {
             // released. `ui_check.py press` is the caller.
             "input.pointerDown" => {
                 let (x, y) = self.point_param(host, params)?;
-                host.enqueue(Event::PointerDown { x, y });
+                host.enqueue(Event::down(x, y));
                 Ok(json!({ "frame": host.pump(), "at": [x, y] }))
             }
             "input.pointerUp" => {
                 let (x, y) = self.point_param(host, params)?;
-                host.enqueue(Event::PointerUp { x, y });
+                host.enqueue(Event::up(x, y));
                 Ok(json!({ "frame": host.pump(), "at": [x, y] }))
             }
             "input.hover" => {
@@ -447,8 +447,8 @@ impl Agent {
                         e.node.value().map(|v| v.chars().count()).unwrap_or(0);
                     (x, y, existing)
                 };
-                host.enqueue(Event::PointerDown { x, y });
-                host.enqueue(Event::PointerUp { x, y });
+                host.enqueue(Event::down(x, y));
+                host.enqueue(Event::up(x, y));
                 host.enqueue(Event::Key { key: Key::End, down: true });
                 for _ in 0..existing {
                     host.enqueue(Event::Key { key: Key::Backspace, down: true });

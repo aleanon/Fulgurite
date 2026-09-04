@@ -139,8 +139,8 @@ fn synthesized_input_goes_through_the_queue_so_it_replays() {
     assert_eq!(
         h.trace,
         vec![
-            Event::PointerDown { x: h.states[2].pos.x + h.states[2].size.w / 2.0, y: h.states[2].pos.y + h.states[2].size.h / 2.0 },
-            Event::PointerUp { x: h.states[2].pos.x + h.states[2].size.w / 2.0, y: h.states[2].pos.y + h.states[2].size.h / 2.0 },
+            Event::down(h.states[2].pos.x + h.states[2].size.w / 2.0, h.states[2].pos.y + h.states[2].size.h / 2.0),
+            Event::up(h.states[2].pos.x + h.states[2].size.w / 2.0, h.states[2].pos.y + h.states[2].size.h / 2.0),
         ],
         "the agent enqueued ordinary pointer events, nothing privileged"
     );

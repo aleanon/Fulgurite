@@ -97,8 +97,8 @@ impl Fixture {
     }
 
     fn click(&mut self, x: f32, y: f32) -> bool {
-        self.send(Event::PointerDown { x, y });
-        self.send(Event::PointerUp { x, y })
+        self.send(Event::down(x, y));
+        self.send(Event::up(x, y))
     }
 
     fn center_of(&self, node: usize) -> (f32, f32) {
@@ -110,7 +110,7 @@ impl Fixture {
 #[test]
 fn e0_queue_is_fifo_and_round_trips_for_replay() {
     let mut q = InputQueue::new();
-    q.push(Event::PointerDown { x: 1.0, y: 2.0 });
+    q.push(Event::down(1.0, 2.0));
     q.push(Event::Key { key: Key::Enter, down: true });
     q.push(Event::Text { ch: 'x' });
     assert_eq!(q.len(), 3);
@@ -125,7 +125,7 @@ fn e0_queue_is_fifo_and_round_trips_for_replay() {
         assert_eq!(recorded, replayed, "a session serializes and comes back");
     }
 
-    assert_eq!(q.pop(), Some(Event::PointerDown { x: 1.0, y: 2.0 }));
+    assert_eq!(q.pop(), Some(Event::down(1.0, 2.0)));
     assert_eq!(q.pop(), Some(Event::Key { key: Key::Enter, down: true }));
     assert_eq!(q.pop(), Some(Event::Text { ch: 'x' }));
     assert!(q.is_empty());
@@ -198,7 +198,7 @@ fn e2_focus_follows_pointer_down_and_routes_keys() {
     assert!(f.input.focus.is_none());
 
     let (x, y) = f.center_of(2);
-    f.send(Event::PointerDown { x, y });
+    f.send(Event::down(x, y));
     assert_eq!(f.input.focus, Some(2), "the button is focusable");
 
     // Enter on the focused node activates it (C1, 2026-09-04): a button
@@ -219,7 +219,7 @@ fn e2_focus_follows_pointer_down_and_routes_keys() {
 
     // Clicking a non-focusable area clears focus.
     let (hx, hy) = f.center_of(1);
-    f.send(Event::PointerDown { x: hx, y: hy });
+    f.send(Event::down(hx, hy));
     assert_eq!(f.input.focus, None);
     assert!(!f.send(Event::Text { ch: 'a' }), "no focus, nothing to route to");
 }
@@ -254,11 +254,11 @@ fn a_button_is_pressed_while_the_pointer_is_down_on_it() {
     let (x, y) = f.center_of(2);
     assert!(!f.states[2].pressed, "resting");
 
-    f.send(Event::PointerDown { x, y });
+    f.send(Event::down(x, y));
     assert!(f.states[2].pressed, "held");
     assert!(f.states[2].hovered, "and hovered");
 
-    f.send(Event::PointerUp { x, y });
+    f.send(Event::up(x, y));
     assert!(!f.states[2].pressed, "released");
 }
 
@@ -269,10 +269,10 @@ fn releasing_away_from_a_control_still_un_presses_it() {
     // after that is the classic stuck-button bug.
     let mut f = Fixture::new();
     let (x, y) = f.center_of(2);
-    f.send(Event::PointerDown { x, y });
+    f.send(Event::down(x, y));
     assert!(f.states[2].pressed);
 
-    f.send(Event::PointerUp { x: 5000.0, y: 5000.0 });
+    f.send(Event::up(5000.0, 5000.0));
     assert!(!f.states[2].pressed, "released off the control");
 }
 
@@ -298,14 +298,14 @@ fn the_pressed_shade_reaches_the_paint_attributes() {
     let resting = f.states[2].bg;
 
     let (x, y) = f.center_of(2);
-    f.send(Event::PointerDown { x, y });
+    f.send(Event::down(x, y));
     f.layout();
     let pressed = f.states[2].bg;
     assert_ne!(pressed, resting, "a held button paints differently");
 
     // Releasing *on* the control leaves it hovered, which is a third
     // shade — not the resting one. Pressed wins over hovered while held.
-    f.send(Event::PointerUp { x, y });
+    f.send(Event::up(x, y));
     f.layout();
     let hovered = f.states[2].bg;
     assert_ne!(hovered, resting, "still under the pointer");
@@ -327,8 +327,8 @@ fn focus_is_dropped_when_the_focused_node_leaves_the_screen() {
     // without the check it takes every keystroke invisibly.
     let mut f = Fixture::new();
     let (x, y) = f.center_of(2);
-    f.send(Event::PointerDown { x, y });
-    f.send(Event::PointerUp { x, y });
+    f.send(Event::down(x, y));
+    f.send(Event::up(x, y));
     assert_eq!(f.input.focus, Some(2));
 
     // Hide it the way `Option`, `Either` and a hidden subtree all do:

@@ -147,7 +147,7 @@ fn a_stale_focus_index_does_not_panic_and_is_cleared() {
     // just the positionless arm, so even a pointer event that hits
     // nothing drops a stale index. Strictly earlier than F1.8 left it.
     h.input.focus = Some(u32::MAX);
-    h.post(Event::PointerUp { x: -50.0, y: -50.0 });
+    h.post(Event::up(-50.0, -50.0));
     h.pump();
     assert_eq!(h.input.focus, None, "any event validates the focus it might use");
 
@@ -167,7 +167,7 @@ fn a_stale_focus_index_does_not_panic_and_is_cleared() {
 fn keyboard_events_route_to_focus() {
     let mut h = host();
     let st = h.states[<Ui as Widget>::SUB_TABLE.len() - 1];
-    h.post(Event::PointerDown { x: st.pos.x + 1.0, y: st.pos.y + 1.0 });
+    h.post(Event::down(st.pos.x + 1.0, st.pos.y + 1.0));
     h.pump();
     assert_eq!(
         h.input.focus,

@@ -41,6 +41,9 @@ pub struct WinApp {
     window: Option<Rc<Window>>,
     surface: Option<Surface>,
     cursor: Cursor,
+    /// Single/double/triple click counting (T14.3): it needs a clock,
+    /// which the core does not have.
+    clicks: translate::ClickCounter,
     /// Modifiers as of the last `ModifiersChanged`. Needed before the
     /// event is queued: it decides whether a keystroke types (T14.2).
     mods: lumen_static::Mods,
@@ -85,6 +88,7 @@ impl WinApp {
             window: None,
             surface: None,
             cursor: Cursor::default(),
+            clicks: Default::default(),
             mods: lumen_static::Mods::NONE,
             sign: 0,
             agent,
@@ -357,7 +361,7 @@ impl ApplicationHandler<UserEvent> for WinApp {
                 // agent session replay as a test.
                 let host = &self.host;
                 let t =
-                    translate::window_event(ev, &mut self.cursor, self.mods, |x, y| {
+                    translate::window_event(ev, &mut self.cursor, &mut self.clicks, self.mods, |x, y| {
                         host.to_logical(x, y)
                     });
                 if let WindowEvent::ModifiersChanged(m) = ev {

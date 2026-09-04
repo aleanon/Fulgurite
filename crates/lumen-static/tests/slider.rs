@@ -84,7 +84,7 @@ fn pressing_the_track_jumps_to_that_value() {
     let mut f = F::new();
     assert_eq!(f.v(), 0.0);
     let (x, y) = f.at(0.5);
-    assert!(f.send(Event::PointerDown { x, y }));
+    assert!(f.send(Event::down(x, y)));
     assert!((f.v() - 0.5).abs() < 0.02, "got {}", f.v());
 }
 
@@ -95,7 +95,7 @@ fn a_drag_keeps_tracking_after_the_pointer_leaves_the_control() {
     // hand-rolled slider has.
     let mut f = F::new();
     let (x, y) = f.at(0.5);
-    f.send(Event::PointerDown { x, y });
+    f.send(Event::down(x, y));
     assert_eq!(f.input.capture, Some(1), "the press claimed the gesture");
 
     // Far below the control, and far to the right of it.
@@ -105,7 +105,7 @@ fn a_drag_keeps_tracking_after_the_pointer_leaves_the_control() {
     f.send(Event::PointerMove { x: -5000.0, y: y + 5000.0 });
     assert_eq!(f.v(), 0.0, "and in the other direction");
 
-    f.send(Event::PointerUp { x: -5000.0, y: y + 5000.0 });
+    f.send(Event::up(-5000.0, y + 5000.0));
     assert_eq!(f.input.capture, None, "the release gives the gesture back");
 
     // A move after the release changes nothing.
@@ -128,8 +128,8 @@ fn a_move_with_nothing_captured_is_not_routed() {
 fn arrow_keys_step_it_so_it_is_reachable_without_a_pointer() {
     let mut f = F::new();
     let (x, y) = f.at(0.0);
-    f.send(Event::PointerDown { x, y });
-    f.send(Event::PointerUp { x, y });
+    f.send(Event::down(x, y));
+    f.send(Event::up(x, y));
     assert_eq!(f.input.focus, Some(1));
 
     assert!(f.send(Event::Key { key: Key::Right, down: true }));

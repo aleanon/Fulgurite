@@ -20,11 +20,15 @@ struct App {
     ui: Ui,
     /// What the handler saw, so a test can assert on it.
     seen: Mods,
+    seen_button: lumen_static::PointerButton,
+    seen_clicks: u8,
     clicks: u32,
 }
 
 fn on_click(a: &mut App, cx: &EventCtx) {
     a.seen = cx.mods;
+    a.seen_button = cx.button;
+    a.seen_clicks = cx.clicks;
     a.clicks += 1;
 }
 
@@ -56,8 +60,8 @@ impl F {
     fn click(&mut self) {
         let s = self.st[2];
         let (x, y) = (s.pos.x + s.size.w / 2.0, s.pos.y + s.size.h / 2.0);
-        self.send(Event::PointerDown { x, y });
-        self.send(Event::PointerUp { x, y });
+        self.send(Event::down(x, y));
+        self.send(Event::up(x, y));
     }
 }
 
@@ -124,4 +128,46 @@ fn has_none_is_always_true() {
     assert!(Mods::CTRL.has(Mods::NONE));
     assert!(Mods::NONE.has(Mods::NONE));
     assert!(!Mods::NONE.has(Mods::CTRL));
+}
+
+// ---- T14.3: buttons and click counts ---------------------------------
+
+/// A right-click reaches a handler that a left-click does — the handler
+/// tells them apart by `ctx.button`, not by a separate event.
+#[test]
+fn a_handler_can_tell_the_buttons_apart() {
+    use lumen_static::PointerButton;
+    let mut f = F::new();
+    let s = f.st[2];
+    let (x, y) = (s.pos.x + s.size.w / 2.0, s.pos.y + s.size.h / 2.0);
+
+    f.send(Event::PointerDown { x, y, button: PointerButton::Right, clicks: 1 });
+    f.send(Event::PointerUp { x, y, button: PointerButton::Right });
+    assert_eq!(f.app.clicks, 1, "the right button still activates");
+    assert_eq!(f.app.seen_button, PointerButton::Right, "and says which it was");
+
+    f.click();
+    assert_eq!(f.app.seen_button, PointerButton::Left);
+}
+
+#[test]
+fn the_click_count_reaches_the_handler() {
+    let mut f = F::new();
+    let s = f.st[2];
+    let (x, y) = (s.pos.x + s.size.w / 2.0, s.pos.y + s.size.h / 2.0);
+    f.send(Event::PointerDown { x, y, button: lumen_static::PointerButton::Left, clicks: 2 });
+    f.send(Event::up(x, y));
+    assert_eq!(f.app.seen_clicks, 2, "a double click says so");
+}
+
+/// The constructors exist because T14.3 added two fields almost no call
+/// site cares about.
+#[test]
+fn the_convenience_constructors_mean_a_plain_left_click() {
+    use lumen_static::PointerButton;
+    assert_eq!(
+        Event::down(1.0, 2.0),
+        Event::PointerDown { x: 1.0, y: 2.0, button: PointerButton::Left, clicks: 1 }
+    );
+    assert_eq!(Event::up(1.0, 2.0), Event::PointerUp { x: 1.0, y: 2.0, button: PointerButton::Left });
 }

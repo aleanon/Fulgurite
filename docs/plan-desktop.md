@@ -260,7 +260,7 @@ types**. Both were written as the bug they prevent.
 
 ---
 
-## T14.3 — mouse buttons and click counts
+## T14.3 — mouse buttons and click counts — **DONE 2026-09-05**
 
 Only `MouseButton::Left` is handled. Right-click reaches nothing, so
 there are no context menus; and nothing counts clicks, so there is no
@@ -280,6 +280,33 @@ scale factor does not change the feel (M10b).
 **Gate:** a right-click reaches a handler that a left-click does not;
 three clicks inside the threshold report 1, 2, 3 and a fourth outside
 it reports 1; a click 6 px away restarts the count.
+
+**Done**, with two corrections to the design as planned.
+
+**The type is `PointerButton`, not `Button`** — the prelude already
+exports `Button`, the *widget*, and a framework whose prelude has two
+`Button`s is a framework that gets one import wrong per file. The events
+are `PointerDown`/`PointerUp`, so the name matches them.
+
+**The click count is tracked in `InputState`, not carried on
+`PointerUp`.** Planned as a field on both pointer events; the test found
+why that is wrong within a minute — a `Button` activates on the
+*release*, and the count is known at the *press*, so `ctx.clicks` was
+always 0 at the moment a handler could read it. `dispatch` now carries
+the press's count forward to its release, which also means a host that
+*synthesizes* a release — the agent, a screen reader — does not have to
+know the count of the press it is completing.
+
+**And 60 call sites wanted `Event::down(x, y)`.** Adding two fields to
+`PointerDown` broke every literal construction in the workspace, most of
+them tests that mean "click here" and have no opinion about buttons or
+click counts. `Event::down`/`Event::up` are those tests' vocabulary;
+the literal form is for the host that actually knows.
+
+Counting lives in `lumen-static-winit`, not `dispatch`: it needs a
+clock, and the core is `no_std`. `MULTI_CLICK_TIME` is 500 ms and
+`MULTI_CLICK_SLOP` is 5 **logical** px, both public constants, both the
+platform-conventional values.
 
 ---
 

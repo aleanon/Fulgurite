@@ -5,8 +5,10 @@
 //! `None`. That is a real dropped key, so the set it covers should be
 //! checked rather than assumed (`docs/plan-desktop.md` T14.0/T14.2).
 
-use lumen_static::{Event, Key, Mods};
-use lumen_static_winit::translate::{key_of, keyboard, window_event, Cursor, LINE_SCROLL};
+use lumen_static::{Event, Key, Mods, PointerButton};
+use lumen_static_winit::translate::{
+    key_of, keyboard, window_event, ClickCounter, Cursor, LINE_SCROLL,
+};
 use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::keyboard::{Key as WKey, NamedKey};
 
@@ -84,7 +86,7 @@ fn a_click_uses_the_last_moves_position() {
         device_id: unsafe_device_id(),
         position: (30.0, 40.0).into(),
     };
-    window_event(&moved, &mut c, Mods::NONE, logical);
+    window_event(&moved, &mut c, &mut ClickCounter::default(), Mods::NONE, logical);
     assert_eq!((c.x, c.y), (30.0, 40.0));
 
     let down = WindowEvent::MouseInput {
@@ -92,8 +94,8 @@ fn a_click_uses_the_last_moves_position() {
         state: ElementState::Pressed,
         button: MouseButton::Left,
     };
-    let t = window_event(&down, &mut c, Mods::NONE, logical);
-    assert_eq!(t.iter().collect::<Vec<_>>(), vec![Event::PointerDown { x: 30.0, y: 40.0 }]);
+    let t = window_event(&down, &mut c, &mut ClickCounter::default(), Mods::NONE, logical);
+    assert_eq!(t.iter().collect::<Vec<_>>(), vec![Event::down(30.0, 40.0)]);
     assert!(t.is_input, "a click is input, for the latency stamp");
 }
 
@@ -106,7 +108,7 @@ fn a_move_is_not_counted_as_input() {
         device_id: unsafe_device_id(),
         position: (1.0, 2.0).into(),
     };
-    assert!(!window_event(&moved, &mut c, Mods::NONE, logical).is_input);
+    assert!(!window_event(&moved, &mut c, &mut ClickCounter::default(), Mods::NONE, logical).is_input);
 }
 
 #[test]
@@ -117,7 +119,7 @@ fn wheel_lines_and_pixels_both_arrive_as_scroll() {
         delta: MouseScrollDelta::LineDelta(0.0, 2.0),
         phase: winit::event::TouchPhase::Moved,
     };
-    let t = window_event(&lines, &mut c, Mods::NONE, logical);
+    let t = window_event(&lines, &mut c, &mut ClickCounter::default(), Mods::NONE, logical);
     assert_eq!(
         t.iter().collect::<Vec<_>>(),
         vec![Event::Scroll { x: 5.0, y: 6.0, dy: 2.0 * LINE_SCROLL }]
@@ -128,7 +130,7 @@ fn wheel_lines_and_pixels_both_arrive_as_scroll() {
         delta: MouseScrollDelta::PixelDelta((0.0, 7.0).into()),
         phase: winit::event::TouchPhase::Moved,
     };
-    let t = window_event(&px, &mut c, Mods::NONE, logical);
+    let t = window_event(&px, &mut c, &mut ClickCounter::default(), Mods::NONE, logical);
     assert_eq!(t.iter().collect::<Vec<_>>(), vec![Event::Scroll { x: 5.0, y: 6.0, dy: 7.0 }]);
 }
 
@@ -141,7 +143,7 @@ fn logical_conversion_is_applied_to_positions() {
         device_id: unsafe_device_id(),
         position: (100.0, 50.0).into(),
     };
-    window_event(&moved, &mut c, Mods::NONE, |x, y| (x / 2.0, y / 2.0));
+    window_event(&moved, &mut c, &mut ClickCounter::default(), Mods::NONE, |x, y| (x / 2.0, y / 2.0));
     assert_eq!((c.x, c.y), (50.0, 25.0));
 }
 
@@ -159,7 +161,7 @@ fn modifiers_changed_reaches_the_queue() {
     // the modifiers it was recorded with (T14.1).
     let mut c = Cursor::default();
     let ev = WindowEvent::ModifiersChanged(winit::keyboard::ModifiersState::CONTROL.into());
-    let t = window_event(&ev, &mut c, Mods::NONE, logical);
+    let t = window_event(&ev, &mut c, &mut ClickCounter::default(), Mods::NONE, logical);
     assert_eq!(t.iter().collect::<Vec<_>>(), vec![Event::Modifiers(Mods::CTRL)]);
     assert!(!t.is_input, "a modifier change is not a click for latency purposes");
 }
@@ -214,4 +216,56 @@ fn enter_activates_without_typing_a_carriage_return() {
 fn a_key_release_never_types() {
     let t = keyboard(&WKey::Character("c".into()), Some("c"), false, Mods::NONE);
     assert_eq!(t.iter().collect::<Vec<_>>(), vec![Event::Key { key: Key::Char('c'), down: false }]);
+}
+
+#[test]
+fn a_right_click_is_not_a_left_click() {
+    let mut c = Cursor { x: 1.0, y: 2.0 };
+    let mut n = ClickCounter::default();
+    let ev = |b| WindowEvent::MouseInput {
+        device_id: unsafe_device_id(),
+        state: ElementState::Pressed,
+        button: b,
+    };
+    let t = window_event(&ev(MouseButton::Right), &mut c, &mut n, Mods::NONE, logical);
+    assert_eq!(
+        t.iter().collect::<Vec<_>>(),
+        vec![Event::PointerDown { x: 1.0, y: 2.0, button: PointerButton::Right, clicks: 1 }]
+    );
+    // Back/forward are excluded on purpose, and produce nothing rather
+    // than a wrong button.
+    let t = window_event(&ev(MouseButton::Back), &mut c, &mut n, Mods::NONE, logical);
+    assert_eq!(t.iter().count(), 0);
+}
+
+#[test]
+fn clicks_count_up_to_three_then_start_over() {
+    let mut n = ClickCounter::default();
+    assert_eq!(n.press(10.0, 10.0, PointerButton::Left), 1);
+    assert_eq!(n.press(10.0, 10.0, PointerButton::Left), 2);
+    assert_eq!(n.press(10.0, 10.0, PointerButton::Left), 3);
+    assert_eq!(n.press(10.0, 10.0, PointerButton::Left), 1, "a fourth starts a new sequence");
+}
+
+#[test]
+fn a_click_too_far_away_restarts_the_count() {
+    let mut n = ClickCounter::default();
+    assert_eq!(n.press(10.0, 10.0, PointerButton::Left), 1);
+    assert_eq!(n.press(10.0 + 6.0, 10.0, PointerButton::Left), 1, "6 px is past the slop");
+    assert_eq!(n.press(10.0 + 6.0, 10.0, PointerButton::Left), 2, "and within it now");
+}
+
+#[test]
+fn a_different_button_restarts_the_count() {
+    let mut n = ClickCounter::default();
+    assert_eq!(n.press(0.0, 0.0, PointerButton::Left), 1);
+    assert_eq!(n.press(0.0, 0.0, PointerButton::Right), 1, "not a left double-click");
+}
+
+#[test]
+fn a_slow_second_click_is_a_new_single() {
+    let mut n = ClickCounter::default();
+    assert_eq!(n.press(0.0, 0.0, PointerButton::Left), 1);
+    std::thread::sleep(lumen_static_winit::translate::MULTI_CLICK_TIME + std::time::Duration::from_millis(20));
+    assert_eq!(n.press(0.0, 0.0, PointerButton::Left), 1);
 }

@@ -8,6 +8,7 @@ nm                   # binutils, cited in the binsize fixture's notes
 generic_const_exprs  # unstable rustc feature, cited as a road not taken
 size_of_set          # AccessKit's field name, mirrored by desc.rs
 CMD                  # the modifier name M14/T14.1 declined; event.rs says why
+DoubleClick          # the event variant M14/T14.3 declined; event.rs says why it is a field
 SUPER                # winit's name for the same key; ours is META
 platform_specific    # winit KeyEvent field with no public constructor; translate.rs says why
 KeyEvent             # winit's type, named where translate.rs says why it is not used

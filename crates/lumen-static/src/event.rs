@@ -107,11 +107,31 @@ impl Mods {
     }
 }
 
+/// Which pointer button — `docs/plan-desktop.md` T14.3.
+///
+/// Three, not five: the back and forward buttons are excluded for the
+/// same reason as media keys, and an application that wants them wants
+/// a different vocabulary than "the buttons every mouse has".
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "observe", derive(serde::Serialize, serde::Deserialize))]
+pub enum PointerButton {
+    #[default]
+    Left,
+    Right,
+    Middle,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[cfg_attr(feature = "observe", derive(serde::Serialize, serde::Deserialize))]
 pub enum Event {
-    PointerDown { x: f32, y: f32 },
-    PointerUp { x: f32, y: f32 },
+    /// `clicks` is 1, 2 or 3 — a single, double or triple click.
+    ///
+    /// Counted by the **host**, not by `dispatch`: it needs a clock, and
+    /// the core is `no_std`. Carried on the event rather than tracked
+    /// beside it so that a recorded session replays as the same
+    /// double-click it was recorded as (E0).
+    PointerDown { x: f32, y: f32, button: PointerButton, clicks: u8 },
+    PointerUp { x: f32, y: f32, button: PointerButton },
     PointerMove { x: f32, y: f32 },
     Scroll { x: f32, y: f32, dy: f32 },
     Key { key: Key, down: bool },
@@ -128,11 +148,44 @@ pub enum Event {
 }
 
 impl Event {
+    /// A plain left-button press: one click, no modifiers implied.
+    ///
+    /// The common case, and a constructor rather than a literal because
+    /// T14.3 added two fields that almost every call site does not care
+    /// about — a test that means "click here" should not have to name a
+    /// button and a click count to say it.
+    pub fn down(x: f32, y: f32) -> Event {
+        Event::PointerDown { x, y, button: PointerButton::Left, clicks: 1 }
+    }
+
+    /// The matching release.
+    pub fn up(x: f32, y: f32) -> Event {
+        Event::PointerUp { x, y, button: PointerButton::Left }
+    }
+
+    /// Which button, for the events that carry one; [`PointerButton::Left`]
+    /// otherwise — a key event has no button and no caller should ask.
+    pub fn button(&self) -> PointerButton {
+        match *self {
+            Event::PointerDown { button, .. } | Event::PointerUp { button, .. } => button,
+            _ => PointerButton::Left,
+        }
+    }
+
+    /// How many clicks this press completes, or 0 for anything but a
+    /// `PointerDown`.
+    pub fn clicks(&self) -> u8 {
+        match *self {
+            Event::PointerDown { clicks, .. } => clicks,
+            _ => 0,
+        }
+    }
+
     /// Pointer position, for the events that carry one.
     pub fn position(&self) -> Option<Point> {
         match *self {
-            Event::PointerDown { x, y }
-            | Event::PointerUp { x, y }
+            Event::PointerDown { x, y, .. }
+            | Event::PointerUp { x, y, .. }
             | Event::PointerMove { x, y }
             | Event::Scroll { x, y, .. } => Some(Point { x, y }),
             Event::Key { .. } | Event::Text { .. } | Event::Modifiers(_) => None,
@@ -168,6 +221,14 @@ pub struct EventCtx {
     pub pos: Point,
     /// Pointer position relative to the receiving node's origin.
     pub local: Point,
+    /// Which button, for a pointer event; [`PointerButton::Left`] otherwise.
+    pub button: PointerButton,
+    /// 1, 2 or 3 for a `PointerDown`; 0 for anything else (T14.3).
+    ///
+    /// A widget that does not care reads the same `PointerDown` it
+    /// always did — which is why this is a field rather than a
+    /// `DoubleClick` event.
+    pub clicks: u8,
     /// Which modifiers were held when this event happened (T14.1).
     ///
     /// Tracked by `dispatch` from [`Event::Modifiers`] rather than
@@ -177,7 +238,11 @@ pub struct EventCtx {
 
 impl EventCtx {
     pub fn at(node: u32) -> Self {
-        EventCtx::for_event(node, Event::PointerUp { x: 0.0, y: 0.0 })
+        EventCtx::for_event(node, Event::PointerUp {
+            x: 0.0,
+            y: 0.0,
+            button: PointerButton::Left,
+        })
     }
 
     /// The ctx a non-pointer event produces at `node`.
@@ -189,6 +254,8 @@ impl EventCtx {
             inner: 0,
             pos: Point::default(),
             local: Point::default(),
+            button: event.button(),
+            clicks: event.clicks(),
             mods: Mods::NONE,
         }
     }
@@ -218,6 +285,15 @@ pub struct InputState {
     pub capture: Option<u32>,
     /// Modifiers currently held, updated from [`Event::Modifiers`].
     pub mods: Mods,
+    /// The click count of the press currently in progress (T14.3).
+    ///
+    /// Tracked rather than carried on `PointerUp`, because activation
+    /// happens on the *release* and the count is known at the *press* —
+    /// a handler that acts on a double click would otherwise always see
+    /// zero. Tracking it here also means a host that synthesizes a
+    /// release (the agent, a screen reader) does not have to know the
+    /// count of the press it is completing.
+    pub clicks: u8,
 }
 
 /// The single input queue (see the module note).
