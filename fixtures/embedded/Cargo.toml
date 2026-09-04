@@ -15,6 +15,12 @@ publish = false
 [dependencies]
 lumen-static = { path = "../../crates/lumen-static", default-features = false, features = ["alloc"] }
 
+# The T13.7 gate re-rasterises the baked face and compares every byte.
+# `fontdue` is a dev-dependency here and only here: it is the thing the
+# target cannot have, which is why the face is baked in the first place.
+[dev-dependencies]
+fontdue = "0.9"
+
 [lib]
 name = "embedded"
 path = "src/lib.rs"

@@ -110,6 +110,14 @@ floats:
 # this one. Needs `rustup target add thumbv7em-none-eabihf`, which is why
 # it is here and not in `just test`.
 
+# Regenerate the embedded fixture's baked face (M13/T13.7). Only needed
+# when the size or the source font changes; the committed face.rs is
+# checked byte-for-byte by fixtures/embedded/tests/baked_face.rs.
+
+# Re-bake fixtures/embedded/src/face.rs from a system TTF.
+bake-font font="/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf" px="16":
+    cargo run -p bake-font -- {{ font }} {{ px }} fixtures/embedded/src/face.rs
+
 # Cortex-M4F no_std build of the core + fixture (docs/results-embedded.md).
 thumb:
     # The middle tier: no std, an allocator present. This is the M13

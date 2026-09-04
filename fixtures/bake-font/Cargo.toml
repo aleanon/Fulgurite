@@ -1,0 +1,12 @@
+[package]
+name = "bake-font"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+# A dev tool, not a target artifact: it runs on the host, reads a TTF and
+# writes Rust source. `fontdue` is a std crate and stays on this side of
+# the line -- which is the whole reason M13/T13.7 exists.
+[dependencies]
+fontdue = "0.9"

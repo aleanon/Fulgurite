@@ -60,6 +60,41 @@ is on the path to M8b/M8c/M8/M9, and each can arrive behind the same
 seam. The `no_std` and zero-allocation profiles stay reachable, which
 adoption would have ended.
 
+## The embedded face (M13/T13.7, 2026-09-05)
+
+"The `no_std` profile stays reachable" turned out to have a hole in it,
+and M13 found it: **`FontMetrics` is `fontdue`, which needs `alloc`, is
+a `std` crate, and lives in `lumen-static-shell` — which M13 keeps
+`std`.** So the embedded target had no measurer at all, and would have
+laid out a `Label` whose glyphs nothing could draw. The seam was right;
+nothing had been put through it from the other side.
+
+`lumen_static::font::BakedFace` is that second implementation: advances
+and 8-bit coverage in `const` data, indexed by a sorted glyph table,
+measured and drawn with no allocation and no shaping.
+`fixtures/bake-font` generates one from a TTF, and the data lives in the
+*application* — the machinery is generic, the face is the app's, and a
+GUI framework should not ship a font.
+
+**Two further deferrals, and they are this decision's, not fontdue's:**
+
+- **One size per baked face.** Other sizes scale advances linearly,
+  which is not what a hinted rasteriser produces. A second size is a
+  second bake, and costs flash rather than code.
+- **No hinting.** The coverage is whatever the source rasteriser
+  produced at bake time.
+
+Complex-script shaping stays deferred and is now deferred *twice over*:
+a baked face has no shaping engine at all.
+
+**What is gated:** `fixtures/embedded/tests/baked_face.rs` re-rasterises
+every glyph with a live `fontdue` and compares advance, extent,
+bearings and **every coverage byte**. Generated data rots silently — a
+bake at the wrong size, a hand-patched advance, or a fontdue version
+bump all yield a face that still compiles and draws subtly wrong
+glyphs. It skips, with the path printed, where the system font is
+absent.
+
 ## Consequence for T7.3
 
 T7.3 measures what `Label`'s memo is worth "against the real shaper".

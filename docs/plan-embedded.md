@@ -575,7 +575,7 @@ method was added for: `shape` checks it and stops early, so a run too
 long for the buffer costs nothing to shape past the point where it would
 be discarded.
 
-## T13.7 — a text stack that works without an allocator
+## T13.7 — a text stack that works without an allocator — **DONE 2026-09-05**
 
 `FontMetrics` is `fontdue`, which needs `alloc` and is a `std` crate,
 and it lives in `lumen-static-shell` — which this milestone explicitly
@@ -600,6 +600,34 @@ next to it.
 `TextInput<InlineText<64>>` with a baked face, allocating nothing, and
 the glyph coverage it emits matches a desktop render of the same face
 at the same size.
+
+**Done.** `lumen_static::font::{BakedFace, Glyph}` is the machinery;
+`fixtures/bake-font` is the generator; `fixtures/embedded/src/face.rs`
+is DejaVuSans at 16 px — **95 glyphs, 9,010 bytes of flash**, which is
+1.8% of the device's 512 KB. The fixture resolves **108 glyphs per
+frame** through it and still allocates nothing.
+
+- **The face lives in the application, not the core.** A GUI framework
+  should not ship a font, and the split falls out naturally: `BakedFace`
+  is generic `const`-slice machinery, the bytes are the app's.
+- **Coverage is one blob with per-glyph offsets**, not a slice per
+  glyph — that is how it lands in flash, one contiguous region and a
+  table, rather than 95 relocations.
+- **`glyph()` returns `Option`, and the fixture counts misses.** A face
+  is a fixed set; a caller that silently substitutes a box cannot tell
+  "this font lacks the character" from "this character is a box".
+- **The fixture's `Painter` folds coverage, not the `&str`.** Folding
+  the string would have proved text reached paint but not that anything
+  could draw it — and "nothing can draw it" was precisely the hole this
+  task exists to close.
+- `fixtures/embedded/tests/baked_face.rs` re-rasterises every glyph with
+  a live `fontdue` and compares advance, extent, bearings and every
+  coverage byte. It **skips with the path printed** where the system
+  font is absent, as `just check` skips the live gate without a display.
+
+The two new deferrals — one size per baked face, no hinting — are
+recorded in `docs/text-render-adoption-decision.md` beside the
+complex-script one, as this task asked.
 
 ## T13.8 — damage without a retained list
 

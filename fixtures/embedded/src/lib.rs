@@ -13,8 +13,12 @@
 
 #![no_std]
 
+pub mod face;
+
 use lumen_static::display::{Color, Painter, Rect};
 use lumen_static::prelude::*;
+use lumen_static::cx::LayoutCx;
+use lumen_static::font::BakedFace;
 use lumen_static::{pass, Constraints, InlineText, NodeState, Style};
 
 // ---- the tree: alloc-free widgets only -------------------------------
@@ -117,6 +121,10 @@ pub const VIEW: Constraints =
 pub struct Checksum {
     pub hash: u64,
     pub cmds: u32,
+    /// Glyphs resolved through the baked face and folded (T13.7).
+    pub glyphs: u32,
+    /// Characters the face has no glyph for.
+    pub missing: u32,
 }
 
 impl Checksum {
@@ -155,10 +163,32 @@ impl Painter for Checksum {
         self.r(1, rect, &[]);
         self.color(color);
     }
+
+    /// Resolves each character to a baked glyph and folds its
+    /// **coverage**, which is what an SPI driver would push to the
+    /// panel's GRAM. Folding the `&str` alone would have proved the
+    /// text reached paint but not that anything could draw it — and
+    /// "nothing can draw it" was exactly M13's missing piece before
+    /// T13.7 (`docs/plan-embedded.md`).
     fn text_weighted(&mut self, rect: Rect, s: &str, size: f32, weight: f32, color: Color) {
         self.r(2, rect, &[size, weight]);
-        self.fold(s.as_bytes());
         self.color(color);
+        let mut pen = rect[0];
+        for ch in s.chars() {
+            match face::FACE.glyph(ch) {
+                Some(g) => {
+                    self.glyphs += 1;
+                    self.fold(&[g.w, g.h]);
+                    self.fold(face::FACE.coverage(g));
+                    pen += g.advance;
+                }
+                // Counted, not skipped silently: a face is a fixed set,
+                // and a run full of characters it lacks should be
+                // visible as a number rather than as a blank line.
+                None => self.missing += 1,
+            }
+            self.fold(&pen.to_bits().to_le_bytes());
+        }
     }
     fn rounded_rect(&mut self, rect: Rect, color: Color, radius: f32) {
         self.r(3, rect, &[radius]);
@@ -186,6 +216,11 @@ impl Painter for Checksum {
 /// `Vec` and was, until this task, the only way to build one.
 pub fn frame(p: &mut Panel, st: &mut [NodeState], sty: &mut [Style], out: &mut Checksum) {
     pass::default_styles_into(&p.ui, sty);
-    pass::layout(&mut p.ui, sty, st, VIEW);
+    // `pass::layout` would use `BlockMetrics`, the half-em-per-byte
+    // stand-in. The baked face is the real measurer on this target, so
+    // the fixture goes through `layout_with` to supply it (T13.7).
+    let mut face: BakedFace = face::FACE;
+    let mut cx = LayoutCx::new(&mut face);
+    pass::layout_with(&mut p.ui, &mut cx, sty, st, VIEW);
     pass::paint(&p.ui, st, out);
 }

@@ -101,9 +101,18 @@ fn main() {
     assert!(typed.starts_with("hello embedded"), "typed text landed: {typed:?}");
     assert_eq!(typed.len(), 64, "filled to InlineText<64>'s capacity and stopped");
 
+    // T13.7: the run reached real glyphs, not just a &str that nothing
+    // could draw. `missing` is zero because the baked face covers
+    // printable ASCII and nothing here types outside it.
+    assert!(out.glyphs > 0, "no glyph resolved through the baked face");
+    assert_eq!(out.missing, 0, "the face lacked a character the app used");
+
     println!(
-        "embedded: {} cmds, checksum {:#018x}, {} bytes typed, zero allocations",
+        "embedded: {} cmds, {} glyphs ({} bytes of face), checksum {:#018x}, \
+         {} bytes typed, zero allocations",
         out.cmds,
+        out.glyphs,
+        embedded::face::FACE.cov.len(),
         out.hash,
         typed.len()
     );

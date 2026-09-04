@@ -106,6 +106,7 @@ pub mod cx;
 pub mod desc;
 pub mod display;
 pub mod event;
+pub mod font;
 pub mod hatch;
 pub mod hit;
 pub mod inline;
