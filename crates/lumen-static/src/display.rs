@@ -113,6 +113,42 @@ impl Cmd {
     }
 }
 
+/// Where a widget's `paint` puts what it draws — M10a.
+///
+/// `Node::paint` writes through this rather than into a concrete
+/// [`DisplayList`], so the **caller owns the storage**. That is the
+/// shape this crate has now chosen four times, for the same reason each
+/// time: [`crate::TextMeasure`] (T5.2), [`crate::GlyphSink`] (T7.2b),
+/// [`Renderer`], and this. A desktop host collects into a
+/// `DisplayList`; a host with no allocator implements this directly on
+/// a rasteriser and builds no list at all.
+///
+/// The alternative considered was a fixed-capacity
+/// `DisplayList<const N: usize>`, whose const would have been viral —
+/// through every `paint` signature and the derive's generated one. This
+/// is one parameter type across sixteen call sites
+/// (`docs/plan-architecture-v2.md` M10a).
+///
+/// **Text arrives as `&str`, not as a range.** `Cmd::Text` carries a
+/// `(offset, len)` into [`DisplayList::text`], which only a collector
+/// can assign; an immediate-mode implementation has nowhere to intern
+/// it. So the trait takes the bytes and `DisplayList`'s impl does the
+/// interning it already did.
+pub trait Painter {
+    fn rect(&mut self, rect: Rect, color: Color);
+    fn text_weighted(&mut self, rect: Rect, s: &str, size: f32, weight: f32, color: Color);
+    fn rounded_rect(&mut self, rect: Rect, color: Color, radius: f32);
+    fn shadow(&mut self, rect: Rect, radius: f32, spread: f32);
+    fn push_clip(&mut self, rect: Rect);
+    fn pop_clip(&mut self);
+
+    /// A run at the default weight. Provided, so an implementation only
+    /// has to write the weighted form.
+    fn text(&mut self, rect: Rect, s: &str, size: f32, color: Color) {
+        self.text_weighted(rect, s, size, 400.0, color);
+    }
+}
+
 /// One frame's drawing commands, in paint order.
 #[derive(Default, Debug)]
 pub struct DisplayList {
@@ -191,6 +227,12 @@ impl DisplayList {
         self.cmds.push(Cmd::PopClip);
     }
 
+    // NOTE: the bodies stay here, on the inherent methods, and
+    // `impl Painter for DisplayList` (below) forwards to them. That
+    // keeps `DisplayList`'s own API unchanged, so `hash_from` and
+    // `str_of` still work on a concrete list and the journal keeps
+    // signing per-node command ranges exactly as before.
+
     /// The string a `Cmd::Text` refers to.
     pub fn str_of(&self, range: (u32, u32)) -> &str {
         &self.text[range.0 as usize..(range.0 + range.1) as usize]
@@ -224,4 +266,27 @@ impl DisplayList {
 /// renderer never appears in a widget signature.
 pub trait Renderer {
     fn render(&mut self, list: &DisplayList, width: u32, height: u32);
+}
+
+/// Collecting into a list is *one* implementation of [`Painter`], not
+/// the definition of painting.
+impl Painter for DisplayList {
+    fn rect(&mut self, rect: Rect, color: Color) {
+        DisplayList::rect(self, rect, color)
+    }
+    fn text_weighted(&mut self, rect: Rect, s: &str, size: f32, weight: f32, color: Color) {
+        DisplayList::text_weighted(self, rect, s, size, weight, color)
+    }
+    fn rounded_rect(&mut self, rect: Rect, color: Color, radius: f32) {
+        DisplayList::rounded_rect(self, rect, color, radius)
+    }
+    fn shadow(&mut self, rect: Rect, radius: f32, spread: f32) {
+        DisplayList::shadow(self, rect, radius, spread)
+    }
+    fn push_clip(&mut self, rect: Rect) {
+        DisplayList::push_clip(self, rect)
+    }
+    fn pop_clip(&mut self) {
+        DisplayList::pop_clip(self)
+    }
 }
