@@ -9,9 +9,6 @@
 //! session is a dev concern, but the vocabulary itself is not, so the
 //! types are always present.
 
-// `alloc`, not the std prelude: this crate is `no_std` when the
-// `std` feature is off (M13/T13.1).
-use alloc::collections::VecDeque;
 
 use crate::desc::Point;
 
@@ -108,35 +105,99 @@ impl EventCtx {
 }
 
 /// The single input queue (see the module note).
-#[derive(Default, Debug)]
+///
+/// **Fixed capacity, in every build.** This was a `VecDeque` until
+/// M13/T13.4, which needed the core to compile with no allocator at
+/// all. A second, embedded-only queue would have forked the one thing
+/// `docs/plan-events.md` E0 set out to unify, so instead there is one
+/// ring and every build uses it — which is also the better-tested
+/// arrangement, since the existing suite exercises the embedded path
+/// without knowing it.
+///
+/// `Event` is `Copy` and 16 bytes, so [`CAP`](Self::CAP) events cost
+/// 1 KB inline — affordable on the M13 device's 128 KB
+/// (`docs/results-embedded.md`) and one less heap structure per host
+/// on the desktop.
+#[derive(Debug)]
 pub struct InputQueue {
-    q: VecDeque<Event>,
+    q: [Event; Self::CAP],
+    head: usize,
+    len: usize,
+    dropped: u32,
+}
+
+impl Default for InputQueue {
+    fn default() -> Self {
+        InputQueue {
+            // Any value works: `len` is what makes a slot live.
+            q: [Event::Key { key: Key::Enter, down: false }; Self::CAP],
+            head: 0,
+            len: 0,
+            dropped: 0,
+        }
+    }
 }
 
 impl InputQueue {
+    /// Queue depth. At 60 fps and human input rates this is about a
+    /// second of continuous input without a drain, and the frame loop
+    /// drains every frame.
+    pub const CAP: usize = 64;
+
     pub fn new() -> Self {
         Self::default()
     }
 
-    pub fn push(&mut self, ev: Event) {
-        self.q.push_back(ev);
+    /// Queue `ev`, or count it as dropped if the queue is full.
+    ///
+    /// Overflow rejects the **newest** event rather than evicting the
+    /// oldest. Either choice breaks gesture pairing, but evicting the
+    /// oldest can strand a `PointerUp` whose `PointerDown` is gone —
+    /// a click that was never pressed. Rejecting the newest leaves the
+    /// queued prefix a coherent history.
+    ///
+    /// Returns whether it was queued. The drop is *counted*, not
+    /// silent: see [`dropped`](Self::dropped). Same rule as the change
+    /// journal's `truncated` flag — a gate that hides its own overflow
+    /// is worse than no gate.
+    pub fn push(&mut self, ev: Event) -> bool {
+        if self.len == Self::CAP {
+            self.dropped = self.dropped.saturating_add(1);
+            return false;
+        }
+        self.q[(self.head + self.len) % Self::CAP] = ev;
+        self.len += 1;
+        true
     }
 
     pub fn pop(&mut self) -> Option<Event> {
-        self.q.pop_front()
+        if self.len == 0 {
+            return None;
+        }
+        let ev = self.q[self.head];
+        self.head = (self.head + 1) % Self::CAP;
+        self.len -= 1;
+        Some(ev)
     }
 
     pub fn len(&self) -> usize {
-        self.q.len()
+        self.len
     }
 
     pub fn is_empty(&self) -> bool {
-        self.q.is_empty()
+        self.len == 0
+    }
+
+    /// How many events this queue has ever refused for lack of room.
+    /// Non-zero means input was lost and the app should be told, not
+    /// that the queue is currently full.
+    pub fn dropped(&self) -> u32 {
+        self.dropped
     }
 
     /// Everything queued, oldest first — the recording seed.
     pub fn iter(&self) -> impl Iterator<Item = &Event> {
-        self.q.iter()
+        (0..self.len).map(|i| &self.q[(self.head + i) % Self::CAP])
     }
 }
 
@@ -184,7 +245,83 @@ pub trait App: Sized {
 }
 
 impl Extend<Event> for InputQueue {
+    /// Events past [`InputQueue::CAP`] are counted as dropped, exactly
+    /// as [`InputQueue::push`] does — `Extend` cannot report a refusal,
+    /// so the count is the only channel it has.
     fn extend<T: IntoIterator<Item = Event>>(&mut self, iter: T) {
-        self.q.extend(iter);
+        for ev in iter {
+            self.push(ev);
+        }
+    }
+}
+
+#[cfg(test)]
+mod queue_tests {
+    use super::*;
+
+    fn ev(n: u8) -> Event {
+        Event::Text { ch: n as char }
+    }
+
+    #[test]
+    fn fifo_and_wraparound() {
+        let mut q = InputQueue::new();
+        // Push and drain past CAP so head wraps the backing array — the
+        // case a VecDeque handled for free and this ring must not get
+        // wrong.
+        for round in 0..5u32 {
+            for i in 0..40u8 {
+                assert!(q.push(ev(i)), "round {round} had room");
+            }
+            for i in 0..40u8 {
+                assert_eq!(q.pop(), Some(ev(i)), "FIFO order, round {round}");
+            }
+            assert!(q.is_empty());
+        }
+        assert_eq!(q.dropped(), 0, "never over capacity, so never dropped");
+    }
+
+    #[test]
+    fn overflow_rejects_the_newest_and_counts_it() {
+        let mut q = InputQueue::new();
+        for i in 0..InputQueue::CAP {
+            assert!(q.push(ev(i as u8)));
+        }
+        assert!(!q.push(ev(200)), "full queue refuses");
+        assert!(!q.push(ev(201)));
+        assert_eq!(q.dropped(), 2, "and says how much it lost");
+        assert_eq!(q.len(), InputQueue::CAP);
+
+        // The queued prefix is intact: rejecting the newest is what
+        // keeps it a coherent history rather than one with a hole.
+        assert_eq!(q.pop(), Some(ev(0)));
+        assert_eq!(q.iter().count(), InputQueue::CAP - 1);
+    }
+
+    #[test]
+    fn iter_is_oldest_first_across_a_wrap() {
+        let mut q = InputQueue::new();
+        for i in 0..50u8 {
+            q.push(ev(i));
+        }
+        for _ in 0..40 {
+            q.pop();
+        }
+        for i in 50..70u8 {
+            q.push(ev(i));
+        }
+        let seen: Vec<u8> = q.iter().map(|e| match e {
+            Event::Text { ch } => *ch as u8,
+            _ => unreachable!(),
+        }).collect();
+        assert_eq!(seen, (40..70u8).collect::<Vec<_>>(), "oldest first, wrap included");
+    }
+
+    #[test]
+    fn extend_counts_what_it_could_not_take() {
+        let mut q = InputQueue::new();
+        q.extend((0..70u8).map(ev));
+        assert_eq!(q.len(), InputQueue::CAP);
+        assert_eq!(q.dropped(), 70 - InputQueue::CAP as u32);
     }
 }

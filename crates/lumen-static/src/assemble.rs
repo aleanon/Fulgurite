@@ -5,7 +5,9 @@
 //! (agent surface, journal, audit); traversal recurses over the `Vec`.
 
 // `alloc`, not the std prelude: this crate is `no_std` when the
-// `std` feature is off (M13/T13.1).
+// `std` feature is off (M13/T13.1), and absent entirely without the
+// `alloc` feature (T13.4).
+#[cfg(feature = "alloc")]
 use alloc::{vec, vec::Vec};
 
 use crate::cx::LayoutCx;

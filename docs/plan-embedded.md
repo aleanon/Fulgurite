@@ -471,6 +471,33 @@ and the compiler says which line wanted one.
 hatches absent, and the doc comment on each names `alloc` as its
 requirement.
 
+**Two things this task turned up that the plan did not foresee.**
+
+**1. `InputQueue` was a `VecDeque`** — and it is not an escape hatch, it
+is the one queue `docs/plan-events.md` E0 exists to unify. Giving
+embedded a second queue would fork exactly that. So it is now a
+**fixed-capacity ring in every build**, `CAP = 64`: `Event` is `Copy`
+and 16 bytes, so the whole queue is 1 KB inline, affordable on the
+device (`docs/results-embedded.md`) and one less heap structure per host
+on the desktop. One implementation, exercised by the existing suite
+rather than by an embedded-only path nothing runs.
+
+`push` returns `bool` and overflow **rejects the newest** event, not the
+oldest: either choice breaks gesture pairing, but evicting the oldest
+can strand a `PointerUp` whose `PointerDown` is gone — a click that was
+never pressed — while rejecting the newest leaves the queued prefix a
+coherent history. Drops are counted and readable through
+`InputQueue::dropped`, on the same rule as the change journal's
+`truncated` flag.
+
+**2. T13.4's gate depends on T13.5, so T13.5 runs first.**
+`TextInput<S: TextBuffer = String>` and `TextArea<S: TextBuffer =
+String>` name `String` as a **default type parameter**. A default cannot
+be removed by a `cfg` — the definition still has to name *some* type —
+so the `alloc`-less build cannot compile until a fixed-capacity storage
+exists to be the default instead. That is T13.5's `InlineText`, and it
+is why the order in this file is not the order of work.
+
 ## T13.5 — an allocation-free text storage
 
 `TextInput<S: TextBuffer>` cannot be instantiated without an allocator

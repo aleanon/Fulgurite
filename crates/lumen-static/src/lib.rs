@@ -97,7 +97,9 @@
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
+#[cfg(feature = "alloc")]
 pub mod arena;
+#[cfg(feature = "alloc")]
 pub mod assemble;
 pub mod bind;
 pub mod cx;
@@ -123,6 +125,7 @@ pub mod scroll;
 pub mod slider;
 pub mod textarea;
 pub mod toggle;
+#[cfg(feature = "alloc")]
 pub mod repeat;
 pub mod style;
 pub mod text;

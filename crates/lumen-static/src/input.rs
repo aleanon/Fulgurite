@@ -34,7 +34,9 @@
 //! move would be the reserved-field mistake B6/B7 avoided.
 
 // `alloc`, not the std prelude: this crate is `no_std` when the
-// `std` feature is off (M13/T13.1).
+// `std` feature is off (M13/T13.1), and absent entirely without the
+// `alloc` feature (T13.4).
+#[cfg(feature = "alloc")]
 use alloc::string::String;
 // Only the accesskit `extra` arg needs it, and that is observe-gated.
 #[cfg(feature = "observe")]
