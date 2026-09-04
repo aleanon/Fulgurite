@@ -1,4 +1,4 @@
-//! The paint target — plan T5.1.
+//! The paint target — plan T5.1, widened by M10a.
 //!
 //! Paint stops folding a checksum and starts emitting drawing commands.
 //! This is the seam a renderer consumes: widgets describe *what* to
@@ -7,9 +7,18 @@
 //! widget signature (the answer recorded in
 //! `docs/plan-agent-parity.md`'s appendix).
 //!
-//! Text is stored as a range into one shared buffer rather than a
-//! `String` per command, so a frame's worth of text costs one growable
-//! allocation that is reused between frames.
+//! **There are two seams here, not one.** [`Painter`] is where a widget
+//! *writes*; [`Renderer`] is where a frame is *read*. Until M10a a
+//! widget wrote into a concrete [`DisplayList`] and the two were
+//! conflated — which meant painting required an allocator whether or not
+//! anything wanted a list. Collecting into a `DisplayList` is now one
+//! implementation of `Painter` among others.
+//!
+//! In that collecting implementation, text is stored as a range into one
+//! shared buffer rather than a `String` per command, so a frame's worth
+//! of text costs one growable allocation reused between frames. A
+//! `Painter` that does not collect receives the bytes directly and has
+//! no buffer to intern into — which is why the trait takes `&str`.
 
 /// Straight sRGB, 8 bits per channel.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]

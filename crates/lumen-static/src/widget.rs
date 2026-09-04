@@ -54,8 +54,14 @@ pub trait Node {
     /// write it without interior mutability.
     fn place(&mut self, at: Point, style: &[Style], st: &mut [NodeState], i: usize);
 
-    /// Emit drawing commands. The renderer consumes the list *after*
-    /// the pass, so it never appears in a widget signature.
+    /// Emit drawing commands into whatever the caller supplies.
+    ///
+    /// `&mut dyn Painter`, not `&mut DisplayList`, since M10a: a widget
+    /// describes *what* to draw and does not name where it goes. A
+    /// desktop host collects into a [`crate::DisplayList`]; a host with
+    /// no allocator implements [`crate::Painter`] on a rasteriser and
+    /// no list is ever built. The renderer likewise never appears in a
+    /// widget signature — it consumes the list afterwards.
     fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter);
 
     /// Deepest node under `(x, y)`, or `None` if the point misses.

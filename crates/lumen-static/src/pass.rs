@@ -57,6 +57,11 @@ pub fn measure<W: Node + ?Sized>(
     tree.layout(cx, limits, style, st, 0)
 }
 
+/// Paint the whole tree into `out`.
+///
+/// `out` is a [`crate::Painter`], so this is equally the entry point
+/// for a host that collects a [`crate::DisplayList`] and for one that
+/// rasterises immediately and keeps nothing.
 pub fn paint<W: Node + ?Sized>(tree: &W, st: &[NodeState], out: &mut dyn Painter) {
     tree.paint(st, 0, out);
 }
