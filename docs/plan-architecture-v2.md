@@ -1126,7 +1126,7 @@ the `input.rs` module doc, not silently deferred.
 
 ---
 
-## M12 — The test harness — **PLANNED 2026-09-04, not started**
+## M12 — The test harness — **T12.3–T12.4 DONE 2026-09-04**
 
 *Was Phase E. **Not blocked by anything** — its substrate has been
 finished since M9, so it can be taken up at any point; it is ordered
@@ -1266,8 +1266,18 @@ and M8c hang off M7b, not M8: they need a window to measure against and
 nothing from scrolling; M8b before M8c because the frame's time is in
 pixels, not layout (`docs/results-frame-cost.md`).
 
-**Status 2026-09-04: M0–M9 complete, plus M8b/M8c and agent parity
-P0–P6.** What is *not* built is recorded where it was decided rather
+**Status 2026-09-04: M0–M12 substantially complete.** M10a (the
+`Painter` sink), M10b (scale factor), M11's T11.1–T11.4 (toggles,
+slider, tabs, text area) and M12's T12.3–T12.4 (session replay, failure
+traces) all landed after the multi-agent plan review. What is
+deliberately not built, each recorded where it was decided: T11.5
+(overlays — a layout milestone, not three widgets), T12.1/T12.2
+(locators and goldens — justified now but not the next most valuable
+thing), and **M13, the embedded profile, which is blocked on naming a
+target device** because every threshold in it is derived from one.
+
+**Earlier status, 2026-09-04: M0–M9 complete, plus M8b/M8c and agent
+parity P0–P7.** What is *not* built is recorded where it was decided rather
 than dropped: M8c's T8c.1–T8c.3 (measured; unsound while widget fields
 are public), focus as a `NodeSel` (T8.0 removed its motivation), IME and
 multi-line text (B6/B7), selection (needs modifier state or pointer-drag
