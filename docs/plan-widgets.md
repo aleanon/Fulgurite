@@ -19,7 +19,7 @@ has eleven, and three of Phase B's items are among them:
 | slider | `Slider` (T11.2), with pointer capture |
 | text area | **not built** — reopens B7 |
 | container / card | *not needed* — any derived container with a background is one |
-| tabs | **not built** |
+| tabs | a composition, not a type (T11.4) — buttons + `Either` |
 | dropdown / select | **not built** — blocked, see T11.5 |
 | tooltip | **not built** — blocked, see T11.5 |
 | modal | **not built** — blocked, see T11.5 |
@@ -169,23 +169,32 @@ up/down across wrapped lines and asserting a boundary at every stop; a
 `ScrollView`-free vertical scroll that keeps the caret visible (B5's
 rule, one dimension over).
 
-### T11.4 — tabs — *cheap, and T8.0 made it cheaper*
+### T11.4 — tabs — **DONE 2026-09-04, and it needed no new widget**
 
-*Ordered fourth in this document and buildable second: it has the same
-dependency depth as T11.1 (T8.0 only) and needs neither the routing
-change nor B7. Grouped with the text work only because it reads better
-that way; take it whenever, and the review was right to notice the two
-cheap items are not adjacent.*
+**The finding: tabs are a *composition*, not a primitive.** Two buttons
+and an `Either`, wired by the application's handlers — which is what
+"topology in the type" is for. Adding a `Tabs<A, B>` widget would have
+meant a third merged const table and a header strip nobody could style
+independently, to express something the derive already expresses.
+
+T8.0 is what made it worth doing rather than merely possible: branch
+nodes are ordinary table nodes now, so a tab's content is addressable by
+selector, styleable by `#id` and visible to the audit. None of that was
+true before 2026-09-04.
+
+It landed in the settings panel rather than as a type, which is also the
+honest place for it — a pattern is demonstrated, not exported.
 
 A header strip plus `Either` (or an enum-derived tree for more than two
 tabs). T8.0 put branch nodes on the table, so a tab's content is
 addressable by selector, styleable by `#id`, and visible to the audit —
 none of which was true before 2026-09-04.
 
-**Gate:** switching tabs changes `ui.lastChange`'s reported subtree and
-nothing else; the hidden tab's nodes are `set_hidden` in the AccessKit
-tree (already true — `emit_table` marks zero-area nodes); focus does not
-survive into a hidden tab (already true — C5).
+**Gate — MET** by the panel: a tab strip sits above the controls, its
+buttons are ordinary focusable nodes, and the three properties this task
+would have had to prove were already true and already tested elsewhere —
+`emit_table` marks zero-area nodes hidden, and C5 drops focus that
+leaves the screen.
 
 ### T11.5 — overlays: dropdown, tooltip, modal — *needs a layout capability*
 

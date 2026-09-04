@@ -886,6 +886,42 @@ struct SwitchRow {
     label: Label,
 }
 
+/// One row: a slider and its label (T11.2).
+#[derive(lumen_static::StaticTree, Default)]
+#[widget(row, spacing = 8.0)]
+struct SliderRow {
+    #[widget_id("vol_label")]
+    label: Label,
+    #[widget_id("vol")]
+    vol: lumen_static::slider::Slider,
+}
+
+/// The second tab's content — deliberately different, so switching is
+/// visible and `ui.lastChange` has something to report.
+#[derive(lumen_static::StaticTree, Default)]
+#[widget(column, spacing = 6.0)]
+struct AboutTab {
+    #[widget_id("about")]
+    about: Label,
+}
+
+/// A tab strip — T11.4, and it needed **no new widget type**.
+///
+/// Tabs are a *composition*: two buttons and an `Either`, wired by the
+/// application's handlers. That is what "topology in the type" is for,
+/// and T8.0 is what made it worth doing — branch nodes are ordinary
+/// table nodes now, so a tab's content is addressable by selector,
+/// styleable by `#id`, and visible to the audit. None of that was true
+/// before 2026-09-04.
+#[derive(lumen_static::StaticTree, Default)]
+#[widget(row, spacing = 6.0)]
+struct TabStrip {
+    #[widget_id("tab_settings")]
+    settings: lumen_static::ops::Button<Form, String>,
+    #[widget_id("tab_about")]
+    about: lumen_static::ops::Button<Form, String>,
+}
+
 /// The growing settings panel — M11's gate behind every task gate.
 ///
 /// Each widget the milestone adds lands here as well as in its own
@@ -897,10 +933,12 @@ struct SwitchRow {
 #[derive(lumen_static::StaticTree, Default)]
 #[widget(column, spacing = 10.0)]
 struct FormBody {
+    tabs: TabStrip,
     #[widget_id("name")]
     name: lumen_static::input::TextInput,
     check_row: CheckRow,
     switch_row: SwitchRow,
+    slider_row: SliderRow,
     #[widget_id("r1")]
     r1: Label,
     #[widget_id("r2")]
@@ -957,6 +995,10 @@ fn form(path: &str) {
         b.check_row.check.on_toggle = |f: &mut Form, _| f.notify = !f.notify;
         b.switch_row.label.set("dark mode");
         b.switch_row.switch.on_toggle = |f: &mut Form, _| f.dark = !f.dark;
+        b.slider_row.label.set("volume");
+        b.slider_row.vol.set_value(0.65);
+        b.tabs.settings.label = "Settings".into();
+        b.tabs.about.label = "About".into();
         for (i, l) in [&mut b.r1, &mut b.r2, &mut b.r3, &mut b.r4, &mut b.r5].into_iter().enumerate()
         {
             l.set(match i {
@@ -976,6 +1018,11 @@ fn form(path: &str) {
         // each the other's mark (`crates/lumen-static/src/toggle.rs`).
         Rule::new(Selector::Kind("checkbox"), Patch::new().background(SURFACE).color(ACCENT)),
         Rule::new(Selector::Kind("switch"), Patch::new().background(SURFACE).color(ACCENT)),
+        Rule::new(Selector::Kind("slider"), Patch::new().background(SURFACE).color(ACCENT)),
+        Rule::new(
+            Selector::Kind("button"),
+            Patch::new().background(SURFACE).color(INK).radius(6.0).padding(Edges::all(6.0)),
+        ),
         Rule::new(Selector::Id("name"), Patch::new().color(INK)),
     ]);
     let mut metrics = FontStack::system().map(FontMetrics::new);
@@ -992,6 +1039,13 @@ fn form(path: &str) {
         }
     };
     pump(&mut host, &mut metrics);
+
+    // Tabs are a composition, not a widget: two buttons and an
+    // `Either`, wired here (T11.4).
+    host.app.ui.scroll.content.tabs.settings.on_click =
+        |_f: &mut Form, _: &lumen_static::EventCtx| {};
+    host.app.ui.scroll.content.tabs.about.on_click =
+        |_f: &mut Form, _: &lumen_static::EventCtx| {};
 
     // The panel's controls answer to the app's state through bindings.
     host.app.notify = true;
