@@ -1,19 +1,22 @@
 //! Off-table state, owned in one shape.
 //!
-//! Six constructs keep node state outside the parallel arrays that the
+//! Five constructs keep node state outside the parallel arrays that the
 //! table indexes: [`Repeat`](crate::repeat::Repeat) (a virtualized
-//! window), [`List`](crate::hatch::List) (every item), [`Either`](crate::hatch::Either)
-//! (two branches at once), [`Dyn`](crate::hatch::Dyn) (a type-erased
-//! island), the enum derive, and [`Assembled`](crate::assemble::Assembled).
+//! window), [`List`](crate::hatch::List) (every item),
+//! [`Dyn`](crate::hatch::Dyn) (a type-erased island), the enum derive,
+//! and [`Assembled`](crate::assemble::Assembled).
+//!
+//! It was six until 2026-09-04: `Either` kept one arena per branch until
+//! T8.0 put both branches on the merged table and deleted them
+//! (`docs/either-reopened.md`).
 //! Each had hand-rolled the same three things — a `Vec<NodeState>`, a
 //! `Vec<Style>` seeded from `defaults()`, and a `slice(k)` accessor —
 //! with five separately-written `ensure` bodies between them.
 //!
 //! This is the storage half, and only the storage half. Placement is
 //! genuinely different for each: a repeater positions a scrolled window,
-//! a list stacks with spacing, an `Either` places one of two at the same
-//! origin, `Dyn` has exactly one child, and `Assembled` rebases into a
-//! real table index. Nothing here tries to unify that.
+//! a list stacks with spacing, `Dyn` has exactly one child, and
+//! `Assembled` rebases into a real table index. Nothing here tries to unify that.
 //!
 //! `docs/plan-review-fixes.md` F4.1.
 

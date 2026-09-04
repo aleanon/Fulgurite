@@ -182,9 +182,9 @@ run-agent:
 tally-a11y:
     cargo run -p counter-window --features a11y
 
-# Every live check against a fresh window: centring, anti-aliasing, target
-# size, contrast, latency, lint (scripts/ui_check.py). Rung 4's gate; needs
-# a display. In `check` when one is present.
+# Every live check against a fresh window (scripts/ui_check.py is the list
+# — do not restate it here, it drifted to six once already). Rung 4's gate;
+# needs a display. In `check` when one is present.
 live-gate:
     ./scripts/live_gate.sh
 

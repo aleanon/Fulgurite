@@ -16,7 +16,7 @@ tree today.
 | file | answers | class | reproducible |
 |---|---|---|---|
 | [`00-handoff-static-tree.md`](00-handoff-static-tree.md) | why the whole design is shaped this way | **live** (the spec) | n/a |
-| [`plan-architecture-v2.md`](plan-architecture-v2.md) | what is built and what is next (M0–M9) | **queue** | n/a |
+| [`plan-architecture-v2.md`](plan-architecture-v2.md) | what is built and what is next (M0–M12) | **queue** | n/a |
 | [`plan-review-fixes.md`](plan-review-fixes.md) | the F0–F7 fix pass from the 2026-09-02 review | **queue** | n/a |
 | [`text-and-scrolling-decisions.md`](text-and-scrolling-decisions.md) | how scrolling and text input will work | **live**, all 23 answered (2026-09-04) | n/a |
 | [`layout-and-storage-decisions.md`](layout-and-storage-decisions.md) | the `Length` model, text storage, the style array | **live** (most-cited from code) | n/a |
@@ -27,7 +27,7 @@ tree today.
 | [`plan-embedded.md`](plan-embedded.md) | M10 — no_std, and proving "zero allocation" | **queue**, not started | not yet |
 | [`plan-widgets.md`](plan-widgets.md) | M11 — the widget vocabulary, with each item's real blocker | **queue**, not started | n/a |
 | [`plan-harness.md`](plan-harness.md) | M12 — locators, goldens, session replay | **queue**, not started | n/a |
-| [`plan-agent-parity.md`](plan-agent-parity.md) | the agent surface, P0–P6 | **queue**, P0–P6 done | n/a |
+| [`plan-agent-parity.md`](plan-agent-parity.md) | the agent surface, P0–P7 | **queue**, P0–P7 done | n/a |
 | [`plan-events.md`](plan-events.md) | the event system, E0–E5 | **queue**, E0–E4 done | n/a |
 | [`verification-notes.md`](verification-notes.md) | what could be formally verified, and the `unsafe` audit | **live** | n/a |
 | [`results-embedded.md`](results-embedded.md) | the embedded footprint | **placeholder** — no number measured yet (M10/T10.4) | not yet |

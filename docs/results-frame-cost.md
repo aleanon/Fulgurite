@@ -179,10 +179,12 @@ process to compare them (`docs/plan-architecture-v2.md` T8b.0).
 
 ## Not fixed, recorded
 
-- **No press or hover feedback.** `NodeState` has no pressed/hovered
-  bit and `dispatch` tracks none. A button that does not change while
-  held is a GUI-theory failure (`ui_check.py` cannot check it yet).
-  Planned under M9 routing in `docs/plan-architecture-v2.md` (C6).
+- ~~**No press or hover feedback.**~~ **Fixed 2026-09-04 (M9/C6).**
+  `NodeState` carries `pressed`, `hovered` and `focused`; `dispatch`
+  sets them; `record_painted` resolves `Style::pressed_dim`/`hover_dim`
+  into the painted background. `scripts/ui_check.py press` checks it
+  live. Left visible rather than deleted: this entry is why the check
+  exists.
 - **Damage is one rect, not a list of them.** Two changes at opposite
   corners damage everything between. The tally's worst case is a digit
   count changing, which re-centres the label and shifts the card:

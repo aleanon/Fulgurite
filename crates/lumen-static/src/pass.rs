@@ -254,9 +254,17 @@ pub fn dispatch<S: crate::event::App>(
     // These stay *click* handlers, which is what every one written so
     // far assumes: `|c, _| c.count += 1` ignores the ctx entirely, so
     // routing arbitrary keys to it would make every keystroke press
-    // every button. Enter and Space on the focused node activate too —
-    // keyboard activation, which is what makes a `Button` reachable
-    // without a pointer at all.
+    // every button. Enter on the focused node activates too — keyboard
+    // activation, which is what makes a `Button` reachable without a
+    // pointer at all.
+    //
+    // **Space does not**, and should: every desktop toolkit toggles a
+    // checkbox with it. The `Key` enum in `event.rs` has no variant for
+    // it to match on, so this is an event-vocabulary gap rather than an
+    // omission here — planned as M11/T11.1 (`docs/plan-widgets.md`). Until
+    // 2026-09-04 this comment claimed Space already worked, which no
+    // static check could catch: the checks verify that backticked
+    // *identifiers* exist, not that prose is true.
     let activates = matches!(
         ev,
         Event::PointerUp { .. } | Event::Key { key: Key::Enter, down: true }

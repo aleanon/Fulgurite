@@ -334,6 +334,15 @@ caret landed. This is the one piece of text-input behaviour that is a
 layout-time side effect rather than an event-time one, and getting it
 wrong produces a caret that is correct one frame late.
 
+> **REVISED 2026-09-04.** B7 below says "one widget type, with the field
+> reserved". M9 shipped `TextInput` with **no** reserved field —
+> deliberately, on the ground that an unused field is a claim the code
+> has not earned — and M11/T11.3 (`docs/plan-widgets.md`) makes
+> multi-line a separate `TextArea` rather than a flag. The decision
+> below stands ("no multi-line in the first cut"); its *mechanism* does
+> not. Recorded here because this file is indexed as live and a reader
+> would otherwise trust the reserved-field sentence.
+
 ### B6. Is IME in the first cut?
 
 **DECIDED: no — but reserve the field, and say so plainly.**
