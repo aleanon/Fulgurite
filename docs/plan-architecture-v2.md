@@ -973,6 +973,11 @@ architecture end to end.
 M0 ──► M1 ──► M2 ──► M3 ──► M4 ──► M5 ──► M6 ──► M7a ──► M8 ──► M9 ──► M10+
                                                     └─► M7b ──► M8b ──► M8c
                                                        (manual)  (raster) (layout)
+
+Actually run, 2026-09-04: M7a → M7b → M8b → M8c → M8 → M9 → agent P6.
+M8b/M8c came before M8 because a window existed to measure against and
+scrolling needed nothing from them; M8's T8.0 had to precede a
+`ScrollView` inside an `Either`, which it now is (tested).
         (style array first: Length must live somewhere)
 ```
 
@@ -981,6 +986,14 @@ green before and after. M1–M4 are each small. M5 is integration. M8b
 and M8c hang off M7b, not M8: they need a window to measure against and
 nothing from scrolling; M8b before M8c because the frame's time is in
 pixels, not layout (`docs/results-frame-cost.md`).
+
+**Status 2026-09-04: M0–M9 complete, plus M8b/M8c and agent parity
+P0–P6.** What is *not* built is recorded where it was decided rather
+than dropped: M8c's T8c.1–T8c.3 (measured; unsound while widget fields
+are public), focus as a `NodeSel` (T8.0 removed its motivation), IME and
+multi-line text (B6/B7), selection (needs modifier state or pointer-drag
+routing), and `app.setValue` (would bypass the one input queue). M10+ —
+the parity phases B–E — is next and unstarted.
 
 **Status 2026-09-01: M0–M6 complete** (M5 less the winit binding, above).
 Gate at the close of M5: 32 default suites + 8 gated all green, clippy

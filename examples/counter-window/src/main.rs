@@ -29,7 +29,7 @@ use winit::window::{Window, WindowId};
 
 mod app;
 
-use app::{build, stylesheet_for, Tally, PAGE};
+use app::{build, stylesheet_for, Tally, INK, PAGE, SURFACE};
 
 // ---- the agent endpoint ----------------------------------------------
 
@@ -781,11 +781,145 @@ fn drive() {
     println!("drive: 7 clicks by author id through ui.getLayout — all assertions passed");
 }
 
+// ---- `--form`: the M8/M9 widgets through the real rasteriser --------
+
+/// A scrollable form: a field, and more rows than fit.
+#[derive(lumen_static::StaticTree, Default)]
+#[widget(column, spacing = 10.0)]
+struct FormBody {
+    #[widget_id("name")]
+    name: lumen_static::input::TextInput,
+    #[widget_id("r1")]
+    r1: Label,
+    #[widget_id("r2")]
+    r2: Label,
+    #[widget_id("r3")]
+    r3: Label,
+    #[widget_id("r4")]
+    r4: Label,
+    #[widget_id("r5")]
+    r5: Label,
+}
+
+#[derive(lumen_static::StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+struct FormUi {
+    #[widget_id("scroll")]
+    scroll: lumen_static::scroll::ScrollView<FormBody>,
+}
+
+#[derive(lumen_static::App, Default)]
+struct Form {
+    #[tree]
+    ui: FormUi,
+}
+
+/// Render the form headlessly and assert the properties only a real
+/// rasteriser can settle.
+///
+/// `ScrollView` and `TextInput` are covered by unit tests that count
+/// display-list commands. That is not the same as knowing they *paint*:
+/// this repository has twice shipped a construct whose commands were
+/// right and whose pixels were not — a repeater that drew 44 px outside
+/// its viewport for three milestones, and a renderer that ignored clip
+/// scopes entirely. So the new widgets go through `Canvas` here, in
+/// `just fixtures`, and the frame is asserted.
+fn form(path: &str) {
+    let (w, h) = (300u32, 200u32);
+    let mut host: Host<Form> = Host::new(Form::default(), w, h);
+    {
+        let b = &mut host.app.ui.scroll.content;
+        b.name.set_str("typed into a real field");
+        for (i, l) in [&mut b.r1, &mut b.r2, &mut b.r3, &mut b.r4, &mut b.r5].into_iter().enumerate()
+        {
+            l.set(match i {
+                0 => "row one",
+                1 => "row two",
+                2 => "row three",
+                3 => "row four",
+                _ => "row five — below the fold",
+            });
+        }
+    }
+    host.set_stylesheet(&[
+        Rule::new(Selector::Kind("FormUi"), Patch::new().background(PAGE).padding(Edges::all(12.0))),
+        Rule::new(Selector::Id("name"), Patch::new().background(SURFACE).radius(8.0).width(Length::FILL)),
+        Rule::new(Selector::Kind("label"), Patch::new().color(INK)),
+        Rule::new(Selector::Id("name"), Patch::new().color(INK)),
+    ]);
+    let mut metrics = FontStack::system().map(FontMetrics::new);
+    let mut canvas = match FontStack::system() {
+        Some(f) => Canvas::with_font(w, h, f),
+        None => Canvas::new(w, h),
+    };
+    let pump = |host: &mut Host<Form>, m: &mut Option<FontMetrics>| match m.as_mut() {
+        Some(m) => {
+            host.pump_with(m);
+        }
+        None => {
+            host.pump();
+        }
+    };
+    pump(&mut host, &mut metrics);
+
+    let content_h = host.states[2].size.h;
+    let viewport_h = host.states[1].size.h;
+    assert!(content_h > viewport_h, "the form must overflow: {content_h} vs {viewport_h}");
+
+    // Scroll to the bottom through the real event path, not by writing
+    // the field: this asserts C3's `on_event` reaches the scroller.
+    for _ in 0..20 {
+        host.post(Event::Scroll { x: 150.0, y: 100.0, dy: -20.0 });
+        pump(&mut host, &mut metrics);
+    }
+    let at_end = host.app.ui.scroll.scroll;
+    assert!(at_end > 0.0, "the wheel scrolled it");
+    host.post(Event::Scroll { x: 150.0, y: 100.0, dy: -20.0 });
+    pump(&mut host, &mut metrics);
+    assert_eq!(host.app.ui.scroll.scroll, at_end, "and it stops at the end");
+
+    canvas.clear(PAGE);
+    host.render(&mut canvas);
+    let ink = canvas.ink_fraction(PAGE);
+    assert!(ink > 0.01, "the form is blank ({ink:.3} inked)");
+
+    // Scrolled to the bottom, the *first* row is above the viewport and
+    // the last is inside it. The scroller's clip is what keeps the one
+    // that has left from painting there anyway — the property a
+    // repeater got wrong for three milestones, and only geometry plus
+    // pixels together can show it.
+    let top = host.states[1].pos.y;
+    let field_y = host.states[3].pos.y;
+    let last = &host.states[8];
+    assert!(field_y < top, "the field has scrolled above the viewport (y={field_y}, top={top})");
+    assert!(
+        last.pos.y >= top && last.pos.y + last.size.h <= top + viewport_h + 0.001,
+        "the last row is in view at the bottom (y={}, h={})",
+        last.pos.y,
+        last.size.h
+    );
+
+    std::fs::write(path, canvas.to_ppm()).expect("write frame");
+    println!(
+        "form: nodes={} cmds={} scroll={:.0}/{:.0} ink={:.1}% -> {path}",
+        <FormUi as Widget>::NODE_COUNT,
+        host.list.len(),
+        host.app.ui.scroll.scroll,
+        content_h - viewport_h,
+        ink * 100.0,
+    );
+}
+
 fn main() {
     let mut args = std::env::args().skip(1);
     if let Some(flag) = args.next() {
         if flag == "--drive" {
             drive();
+            return;
+        }
+        if flag == "--form" {
+            let path = args.next().unwrap_or_else(|| "form.ppm".into());
+            form(&path);
             return;
         }
         if flag == "--headless" {

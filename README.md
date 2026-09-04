@@ -49,6 +49,8 @@ just tally         # the counter, in a window
 just tally-frame 7 # one frame to target/tally.ppm, at count 7
 just tally-drive   # drive it through the agent surface and assert
 just run-agent     # the window plus JSON-RPC on 127.0.0.1:9230 (scripts/agent_client.py)
+just live-gate     # every live check against a fresh window
+just profile       # per-stage frame cost, headless
 just test          # the gate: static checks, release shape, dev shape, fixtures
 just bench         # benchmarks (machine-dependent; never a gate)
 just hot-demo      # swap a dylib under a running app and check state survived
@@ -88,5 +90,17 @@ can click it, read the tree and take a screenshot from a shell:
 
 Text is real (`fontdue`, behind the shell's `truetype` feature); the
 default is still a deterministic stand-in so tests can assert on
-geometry. Adopting Lumen's `lumen-text` and `lumen-render` is the rest of
-M7.
+geometry. Lumen's `lumen-text` and `lumen-render` were measured and
+declined — 74 and 84 transitive crates against this project's 6, and
+both hard-depend on `lumen-core`, the reactive architecture this is an
+alternative to (`docs/text-render-adoption-decision.md`). The seam they
+would have plugged into is what was adopted instead.
+
+**Milestones M0–M9 are complete** (2026-09-04). Since M7 the frame is
+incremental — a click redraws ~4% of the window, 0.15 ms p95 against
+2.3 ms before (`docs/results-frame-cost.md`) — every event routes, a
+widget can edit itself (`Node::on_event`), controls respond while held,
+and there is a scroll region and a text field. An agent can click,
+type, screenshot, and ask `ui.explain` why a click did not land.
+`docs/plan-architecture-v2.md` records what is deliberately *not* built
+and why, beside each decision.
