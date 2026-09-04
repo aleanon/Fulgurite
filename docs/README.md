@@ -30,7 +30,7 @@ tree today.
 | [`plan-agent-parity.md`](plan-agent-parity.md) | the agent surface, P0–P7 | **queue**, P0–P7 done | n/a |
 | [`plan-events.md`](plan-events.md) | the event system, E0–E5 | **queue**, E0–E4 done | n/a |
 | [`verification-notes.md`](verification-notes.md) | what could be formally verified, and the `unsafe` audit | **live** | n/a |
-| [`results-embedded.md`](results-embedded.md) | the embedded footprint | **placeholder** — no number measured yet (M13/T13.6) | not yet |
+| [`results-embedded.md`](results-embedded.md) | the embedded footprint | **placeholder** — no number measured yet (M13/T13.9) | not yet |
 | [`results-cascade-cost.md`](results-cascade-cost.md) | what a stylesheet swap costs, and why M8c inverted | **live** | yes — `benches --bin cascade` |
 | [`results-frame-cost.md`](results-frame-cost.md) | frame cost and input latency, before/after M8b | **live** | yes — `just profile`, `just live-gate` |
 | [`text-render-adoption-decision.md`](text-render-adoption-decision.md) | why Lumen's text/render crates were measured and declined | **live** | n/a |

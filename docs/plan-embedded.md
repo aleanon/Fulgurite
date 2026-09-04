@@ -214,7 +214,7 @@ lowers it.
 - **Not a 60 Hz UI.** The bus says 33 fps for a full frame; anything
   smoother comes from drawing less, not from being faster.
 
-## ~~T10.0~~ — moved to M10a## ~~T10.0~~ — moved to M10a — how paint reaches pixels without a list
+## ~~T10.0~~ — moved to M10a — how paint reaches pixels without a list
 
 `Node::paint(&self, st, i, out: &mut DisplayList)` is the blocker:
 `DisplayList` is `Vec<Cmd>` plus `String`. Two shapes were considered.
@@ -509,7 +509,7 @@ than a replacement. `crates/lumen-static-shell/tests/damage_oracle.rs`
 is the correctness gate either way: whatever computes the damage, the
 partial redraw must stay pixel-identical to a full one.
 
-## T13.6 — the number
+## T13.9 — the number, last
 
 `docs/results-embedded.md` currently says, correctly, that no number has
 been measured. This task fills it in:
