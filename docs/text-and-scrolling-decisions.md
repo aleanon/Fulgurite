@@ -334,14 +334,23 @@ caret landed. This is the one piece of text-input behaviour that is a
 layout-time side effect rather than an event-time one, and getting it
 wrong produces a caret that is correct one frame late.
 
-> **REVISED 2026-09-04.** B7 below says "one widget type, with the field
-> reserved". M9 shipped `TextInput` with **no** reserved field —
-> deliberately, on the ground that an unused field is a claim the code
-> has not earned — and M11/T11.3 (`docs/plan-widgets.md`) makes
-> multi-line a separate `TextArea` rather than a flag. The decision
+> **REVISED 2026-09-04, and now BUILT.** B7 below says "one widget type,
+> with the field reserved". M9 shipped `TextInput` with **no** reserved
+> field — an unused field is a claim the code has not earned — and
+> M11/T11.3 shipped multi-line as a separate `TextArea`. The decision
 > below stands ("no multi-line in the first cut"); its *mechanism* does
-> not. Recorded here because this file is indexed as live and a reader
-> would otherwise trust the reserved-field sentence.
+> not.
+>
+> What settled it was writing both: `TextInput` shapes against an
+> unbounded width because it must not wrap, scrolls horizontally, and
+> moves the caret by byte boundaries. `TextArea` shapes against its box,
+> scrolls vertically, and moves the caret up and down **geometrically** —
+> "the cluster on that line nearest my x" is not a byte step at all, and
+> only exists because the shaping seam reports `Cluster::line` (T7.2b).
+> A `wrap: bool` would have branched `layout`, `paint` and every caret
+> method, with two caret models in one type pretending to be one thing.
+> What is genuinely shared is shared: storage and edits go through
+> `TextBuffer`, so `insert_str` and `remove_range` are written once.
 
 ### B6. Is IME in the first cut?
 

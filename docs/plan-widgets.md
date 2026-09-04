@@ -17,7 +17,7 @@ has eleven, and three of Phase B's items are among them:
 | §6 escape hatches as first-class widgets | `Either`, `Option`, `List`, `Dyn`, `Repeat`, `Assembled` |
 | checkbox / radio / switch | `Toggle<S, SHAPE>` (T11.1) — shape is a const, not a field |
 | slider | `Slider` (T11.2), with pointer capture |
-| text area | **not built** — reopens B7 |
+| text area | `TextArea<S>` (T11.3), a separate type — B7 revised |
 | container / card | *not needed* — any derived container with a background is one |
 | tabs | a composition, not a type (T11.4) — buttons + `Either` |
 | dropdown / select | **not built** — blocked, see T11.5 |
@@ -139,7 +139,7 @@ same reason a text field owns its text (B1), and the application reads
 `value()` (B8). The rule is identical in both and only looks opposite:
 whoever can invalidate the derived state owns the storage.
 
-### T11.3 — text area — *reopens B7*
+### T11.3 — text area — **DONE 2026-09-04**
 
 `docs/text-and-scrolling-decisions.md` B7 decided **no multi-line in the
 first cut**, and M9 shipped `TextInput` with no reserved field for it —
@@ -164,10 +164,16 @@ and every method grows a branch; the storage and the edit methods are
 shared through `TextBuffer` regardless. B7 should be re-recorded as
 "multi-line is a separate widget", not "multi-line later".
 
-**Gate:** the UTF-8 caret walk from `tests/text_input.rs`, extended to
-up/down across wrapped lines and asserting a boundary at every stop; a
-`ScrollView`-free vertical scroll that keeps the caret visible (B5's
-rule, one dimension over).
+**Gate — MET.** Six tests. Two are worth naming:
+
+- **Enter behaves oppositely in the two widgets** — inserted here,
+  declined by `TextInput` so a form's submit handler still sees it. That
+  single contrast is the clearest argument they are two types.
+- **Up and down decline when the measurer reports no lines.**
+  `BlockMetrics` reports no clusters by design (T7.2b), so there are no
+  lines to move between and the widget says so rather than moving the
+  caret somewhere arbitrary. A second test supplies a wrapping stand-in
+  that *does* report lines, and the caret then moves geometrically.
 
 ### T11.4 — tabs — **DONE 2026-09-04, and it needed no new widget**
 
