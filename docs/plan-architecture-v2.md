@@ -341,8 +341,9 @@ subtrees are stable across toggles.
    out to matter: it is the precedent A2 of the scrolling decisions first
    cited and then had to distinguish itself from, because hiding has a
    geometric proxy (zero size) and clipping does not.
-1. **`Either<A, B>` is one table node, not `A + B` — REOPENED
-   2026-09-02, RE-DECIDED 2026-09-04: merged padded table (Option A).** The reason recorded here was that a merged const table
+1. ~~**`Either<A, B>` is one table node, not `A + B`**~~ — **CLOSED
+   2026-09-04 (T8.0): the merged padded table shipped.** Kept for the
+   story, which is that the recorded reason was false. The reason recorded here was that a merged const table
    "needs `generic_const_exprs`". Review disproved it with a compiling
    counter-example on stable: `SUB_TABLE` is a slice, so the length is a
    value, and a padded const array plus `split_at` builds the merged
@@ -613,9 +614,15 @@ stamps a `NodeState` flag from `place` instead of changing `paint`/`hit`
 signatures. The first version of this note made the same claim on a
 false premise.
 
-**T8.0 (first):** rebuild `Either` on the merged padded table —
-`docs/either-reopened.md` Option A, decided 2026-09-04 — before a
-`ScrollView` is placed inside one.
+**T8.0 — DONE 2026-09-04.** `Either` rebuilt on the merged padded table
+(`docs/either-reopened.md`, Option A): `NODE_COUNT = 1 + A + B`, table
+built by `EitherTable::ARRAY` in const-eval, four `Vec`s per `Either`
+gone, branch internals addressed by tree-absolute index. The agent crate
+needed no change, which is the clearest evidence its `Either` special
+case was a workaround. It also exposed a hole open since M4:
+`observe::emit_table` announced absent subtrees — an empty `Option`'s
+nodes, now also a hidden branch's — to the screen reader; zero-area
+nodes are marked `set_hidden()` now.
 
 Two notes for whoever writes the breakdown:
 

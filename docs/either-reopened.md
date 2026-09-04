@@ -4,7 +4,7 @@
 branch arenas, on the ground that a merged `A + B` const table needs
 `generic_const_exprs`. Three reviews of the plan disproved that. This
 records what is actually true, what the shipped shape costs, and a
-recommendation. Status: **DECIDED 2026-09-04 — Option A** (padded `MAX` merged table, `MAX` a crate-level constant, `EitherN` kept available), to be built as T8.0.*
+recommendation. Status: **DECIDED and BUILT 2026-09-04 — Option A** (padded merged table, bound by `hatch::MAX_EITHER_NODES`; `EitherN` not needed so far). T8.0 is done; what shipped is at the bottom.*
 
 ## What was claimed, and what is true
 
@@ -115,3 +115,42 @@ and re-deciding after that means migrating it.
 agent's `TreeRef` (which currently special-cases off-table branches for
 `Either` the way it does for `Repeat`), and the three docs that stated
 the wrong reason — already corrected to say so.
+
+## What shipped (T8.0, 2026-09-04)
+
+`Either<A, B>` has `NODE_COUNT = 1 + A + B` and a merged `SUB_TABLE`
+built by `EitherTable<A, B>::ARRAY` — `[NodeDesc; MAX_EITHER_NODES]`
+filled with `splice_child` in const-eval, handed out as
+`split_at(N).0`. Exceeding the bound is a compile error naming the type.
+The two arena fields are gone: an `Either` now holds **no heap at all**,
+where it held four `Vec`s.
+
+Confirmed by the change, not just predicted by it:
+
+- **Branch nodes are ordinary table nodes.** `node`, `node_mut`,
+  `handler` and `hit` all delegate by index range, and a `Hit` inside a
+  branch names an absolute table index — the `(row, node)` indirection
+  that addressed branches like repeater rows is gone. Agent selectors,
+  lints, `#[widget_id]` and stylesheet `#id` rules reach branch
+  internals with no special case; `crates/lumen-static-agent` needed no
+  change at all, which is the clearest evidence the special case was
+  only ever a workaround.
+- **Each branch node has its own style slot.** `Either::defaults()`
+  returned *branch A's* because both branches shared one slot; it now
+  returns a plain container's and each node answers for itself.
+- **The hidden branch is zeroed every frame**, the way an empty
+  `Option`'s subtree is, so nothing downstream reads stale geometry.
+  `tests/hatches.rs` probes three points across a 300×300 hidden icon
+  and asserts none of them lands in it.
+
+### One thing the option table did not predict
+
+Putting a second branch on the table exposed a hole that had been open
+since M4: **`observe::emit_table` announced absent subtrees to the
+screen reader.** An empty `Option`'s nodes, and now a hidden branch's,
+are in the table with zeroed geometry — and were emitted as ordinary
+nodes with zero bounds. A reader would walk into the branch the user is
+not looking at and read it out. Zero-area nodes are now marked
+`set_hidden()`, which keeps them in the tree (no orphans) and tells the
+reader to skip them. `Option` had the bug first; `Either` is what made
+it visible.

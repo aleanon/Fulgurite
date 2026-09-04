@@ -53,6 +53,19 @@ pub fn emit_table(
     for (i, d) in table.iter().enumerate() {
         let mut n = AkNode::new(Role::GenericContainer);
         n.set_bounds(bounds_of(&st[i]));
+        // A node with no area has nothing to announce, and a subtree
+        // that is *absent* — an empty `Option`, the hidden branch of an
+        // `Either`, a node styled `visible: false` — is expressed
+        // exactly that way: `hide_subtree` zeroes it every frame. Left
+        // unmarked, a screen reader walks into the branch the user is
+        // not looking at and reads it out. `set_hidden` keeps the node
+        // in the tree, so nothing is orphaned, and tells the reader to
+        // skip it. Added 2026-09-04 with `Either`'s merged table (T8.0),
+        // which put a second branch on the table for the first time —
+        // but `Option` had the same hole since M4.
+        if st[i].size.w <= 0.0 || st[i].size.h <= 0.0 {
+            n.set_hidden();
+        }
         if d.child_count > 0 {
             let mut c = d.first_child as usize;
             loop {

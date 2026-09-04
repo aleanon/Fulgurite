@@ -110,11 +110,11 @@ fn a_rule_reaches_both_either_branches() {
     let mut st = [NodeState::default(); WithEither::NODE_COUNT];
 
     pass::layout(&mut ui, &styles, &mut st, VIEW);
-    assert_eq!(ui.tabs.active_state(1).size.w, 9.0, "branch A");
+    assert_eq!(ui.tabs.active_state(&st, 1, 1).size.w, 9.0, "branch A");
 
     ui.tabs.show(Side::B);
     pass::layout(&mut ui, &styles, &mut st, VIEW);
-    assert_eq!(ui.tabs.active_state(1).size.w, 9.0, "branch B, after a toggle");
+    assert_eq!(ui.tabs.active_state(&st, 1, 1).size.w, 9.0, "branch B, after a toggle");
 }
 
 #[test]

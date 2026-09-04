@@ -3,6 +3,7 @@
 
 use lumen_static::hatch::{Either, List, Side};
 use lumen_static::ops::{Button, Fixed, Label};
+use lumen_static::widget::Node;
 use lumen_static::{pass, Constraints, EventCtx, NodeState, StaticTree, Widget};
 
 const VIEW: Constraints = Constraints { min_w: 0.0, max_w: 400.0, min_h: 0.0, max_h: 400.0 };
@@ -49,7 +50,9 @@ fn either_holds_both_branches_so_toggling_keeps_state() {
     e.a.head.set("panel head");
     e.b.icon.w = 77.0;
 
-    let mut st = [NodeState::default(); 1];
+    // Both branches are on the table now, so the state array is the
+    // whole subtree's, not one node's.
+    let mut st = [NodeState::default(); <Either<Panel, Row> as Widget>::NODE_COUNT];
     let sty = pass::default_styles(&e);
 
     pass::layout(&mut e, &sty, &mut st, VIEW);
@@ -68,9 +71,23 @@ fn either_holds_both_branches_so_toggling_keeps_state() {
     assert_eq!(e.b.icon.w, 77.0, "the hidden branch kept its state");
     assert_eq!(st[0].size.h, a_h);
 
-    // One table node regardless of branch count (the recorded deviation
-    // from §6's A+B, and an improvement on it).
-    const _: () = assert!(<Either<Panel, Row> as Widget>::NODE_COUNT == 1);
+    // The hidden branch holds no geometry: zeroed every frame, so
+    // nothing downstream can read last frame's position out of it.
+    let b_at = 1 + <Panel as Widget>::NODE_COUNT;
+    assert_eq!(st[b_at].size, lumen_static::Size::default(), "hidden branch is zeroed");
+
+    // Both branches are on the table, as §6 specified: the merged
+    // padded const table, re-decided 2026-09-04
+    // (`docs/either-reopened.md`, Option A).
+    const _: () = assert!(
+        <Either<Panel, Row> as Widget>::NODE_COUNT
+            == 1 + <Panel as Widget>::NODE_COUNT + <Row as Widget>::NODE_COUNT
+    );
+    const _: () = assert!(
+        <Either<Panel, Row> as Widget>::SUB_TABLE.len()
+            == <Either<Panel, Row> as Widget>::NODE_COUNT,
+        "the padding is not in the slice"
+    );
 }
 
 #[test]
@@ -276,4 +293,72 @@ fn a_dyn_island_checks_its_content_depth_at_construction() {
         <Dyn as Widget>::DEPTH,
         d.content_depth(),
     );
+}
+
+// ---- T8.0: the merged table, and what it makes reachable -------------
+
+#[test]
+fn branch_nodes_are_ordinary_table_nodes() {
+    // The point of the merged table (`docs/either-reopened.md`, Option
+    // A): a branch's internals have tree-absolute indices, so everything
+    // that addresses a node by index — an agent selector, a lint
+    // finding, `node()`, a stylesheet's `#id` — reaches them without a
+    // special case.
+    type E = Either<Panel, Row>;
+    let t = <E as Widget>::SUB_TABLE;
+    assert_eq!(t.len(), 1 + Panel::NODE_COUNT + Row::NODE_COUNT);
+    assert!(lumen_static::widget::table_is_well_formed(t), "the spliced table is well formed");
+
+    // The root owns exactly the two branch roots.
+    assert_eq!(t[0].child_count, 2);
+    assert_eq!(t[0].first_child, 1);
+    assert_eq!(t[1].next_sibling as usize, 1 + Panel::NODE_COUNT, "A's sibling is B");
+    assert_eq!(t[1 + Panel::NODE_COUNT].next_sibling, 0, "B is last");
+    assert_eq!(t[1].parent, 0);
+    assert_eq!(t[1 + Panel::NODE_COUNT].parent, 0);
+
+    // `node(i)` reaches into either branch.
+    let e: E = Either::default();
+    assert_eq!(e.node(0).kind_name(), "either");
+    assert_eq!(e.node(1).kind_name(), Panel::default().kind_name(), "A's root");
+    assert_eq!(
+        e.node(1 + Panel::NODE_COUNT).kind_name(),
+        Row::default().kind_name(),
+        "B's root"
+    );
+}
+
+#[test]
+fn a_hit_in_a_branch_names_the_branch_node_not_a_row() {
+    let mut e: Either<Panel, Row> = Either::default();
+    e.a.head.set("head");
+    let mut st = [NodeState::default(); <Either<Panel, Row> as Widget>::NODE_COUNT];
+    let sty = pass::default_styles(&e);
+    pass::layout(&mut e, &sty, &mut st, VIEW);
+
+    let hit = pass::hit_test(&e, &st, 2.0, 2.0).expect("something under the point");
+    assert!(hit.node >= 1, "the hit names a table node inside the branch, not the Either");
+    assert!(hit.inner.is_none(), "no (row, node) indirection is left");
+}
+
+#[test]
+fn the_hidden_branch_cannot_be_hit_anywhere() {
+    let mut e: Either<Panel, Row> = Either::default();
+    e.b.icon.w = 300.0;
+    e.b.icon.h = 300.0;
+    let mut st = [NodeState::default(); <Either<Panel, Row> as Widget>::NODE_COUNT];
+    let sty = pass::default_styles(&e);
+    pass::layout(&mut e, &sty, &mut st, VIEW);
+
+    // B is showing nothing; its big icon must not be reachable.
+    let b_at = 1 + Panel::NODE_COUNT;
+    for probe in [(1.0, 1.0), (100.0, 100.0), (250.0, 150.0)] {
+        if let Some(h) = pass::hit_test(&e, &st, probe.0, probe.1) {
+            assert!(
+                (h.node as usize) < b_at,
+                "point {probe:?} hit node {} inside the hidden branch",
+                h.node
+            );
+        }
+    }
 }

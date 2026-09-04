@@ -305,9 +305,11 @@ the dispatch mechanism.
 `Either` holding both branches' memory is usually a *win* — toggling is free and
 the hidden branch keeps its state.
 
-> **Implementation deviation (M4/T4.2, 2026-09-01) — REOPENED 2026-09-02,
-> RE-DECIDED 2026-09-04: the merged padded table (Option A) will be built
-> as T8.0; until then the text below describes what ships.**
+> ~~**Implementation deviation (M4/T4.2, 2026-09-01)**~~ — **RESOLVED
+> 2026-09-04 (T8.0): §6's shape ships.** `Either<A, B>` has
+> `NODE_COUNT = 1 + A + B` with both branches spliced into a merged
+> const table, so the deviation below no longer exists. Kept because the
+> reason recorded for it was false and that is worth remembering.
 > `Either<A, B>` shipped as *one* table node with both branches in off-table
 > arenas, on the stated ground that a merged `A + B` table "requires
 > `generic_const_exprs`". Review showed that is false: `SUB_TABLE` is a

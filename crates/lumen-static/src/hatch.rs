@@ -151,33 +151,72 @@ where
 /// branch to keep its state, so toggling a tab strip does not lose a
 /// scroll position. An enum would drop it.
 ///
-/// **Deviation from §6 — and the reason given for it was wrong.** The
-/// handoff expects `NODE_COUNT = A + B`, both branches spliced into the
-/// parent's table. This impl contributes **one** table node and keeps
-/// its branches off-table with their own state arenas (`Repeat`'s
-/// mechanism), and the original comment here said a merged table "needs
-/// `generic_const_exprs`". It does not. `[NodeDesc; A::N + B::N]` *as a
-/// type* does — but `SUB_TABLE` is `&'static [NodeDesc]`, a slice, so
-/// the length is a value: build `[NodeDesc; MAX]` in const-eval with
-/// `splice_child`, `split_at(N)`, and `assert!` the bound. Verified on
-/// stable 1.94 during the 2026-09-02 review, nested three deep, spliced
-/// into a derived struct with tree-absolute indices; exceeding `MAX` is
-/// a compile error.
+/// **Both branches are on the table** — `NODE_COUNT = 1 + A + B`, as §6
+/// specified. M4/T4.2 shipped one table node with off-table arenas
+/// instead, on the stated ground that a merged table "needs
+/// `generic_const_exprs`". It does not: `[NodeDesc; A::N + B::N]` *as a
+/// type* would, but `SUB_TABLE` is a slice, so the length is a value.
+/// [`EitherTable`] builds `[NodeDesc; MAX_EITHER_NODES]` in const-eval
+/// and hands out `split_at(N).0`; exceeding the bound is a compile
+/// error. Re-decided 2026-09-04 (`docs/either-reopened.md`, Option A).
 ///
-/// What this shape costs for that mistaken reason: branch internals get
-/// branch-relative agent ids instead of table indices, and each `Either`
-/// holds four heap `Vec`s — two state arenas, two style arenas — which
-/// a merged table would not need. The decision is **REOPENED** in
-/// `docs/plan-architecture-v2.md` M4 and `docs/either-reopened.md`;
-/// this impl stands until it is re-decided.
+/// What the merged table buys, and the old shape could not:
+/// - branch internals get **tree-absolute** indices, so an agent
+///   selector, a lint finding and a `#[widget_id]` inside a branch all
+///   address them the way they address anything else;
+/// - a stylesheet reaches each branch node's own style slot, rather than
+///   both branches sharing one;
+/// - **no heap at all**: the old shape held four `Vec`s per `Either`
+///   (two state arenas, two style arenas).
+///
+/// What it costs: `MAX_EITHER_NODES × size_of::<NodeDesc>()` of rodata
+/// per distinct `Either<A, B>`, whatever the branches' real size.
+/// Measured in `docs/either-reopened.md`: ~3 KB at 64 nodes.
+///
+/// The hidden branch is hidden the way an empty [`Option`] is: `layout`
+/// zeroes its subtree every frame, so it holds no stale geometry for
+/// `paint`, `hit`, the journal or the audit to read.
 pub struct Either<A: Widget, B: Widget> {
     pub a: A,
     pub b: B,
     showing: Side,
-    /// One arena per branch: both keep their state across a toggle,
-    /// which is the whole point of the hatch (F4.2).
-    a_arena: crate::arena::Arena,
-    b_arena: crate::arena::Arena,
+}
+
+/// Upper bound on `1 + A::NODE_COUNT + B::NODE_COUNT` for one
+/// [`Either`].
+///
+/// The padding a merged const table costs. Exceeding it is a compile
+/// error naming the type, not a runtime surprise. Raising it costs
+/// rodata in every distinct `Either` instantiation — measured at ~3 KB
+/// per instantiation at 64, and +138 KB across a probe's instantiations
+/// when raised to 1024 (`docs/either-reopened.md`).
+pub const MAX_EITHER_NODES: usize = 64;
+
+/// The merged table for one `Either<A, B>`, built at compile time.
+///
+/// A helper type rather than a `const` inside the `Widget` impl because
+/// the array must be an *associated* const to be generic in `A` and `B`
+/// and still promotable to `&'static`.
+pub struct EitherTable<A, B>(core::marker::PhantomData<(A, B)>);
+
+impl<A: Widget, B: Widget> EitherTable<A, B> {
+    const ARRAY: [NodeDesc; MAX_EITHER_NODES] = {
+        assert!(
+            1 + A::NODE_COUNT + B::NODE_COUNT <= MAX_EITHER_NODES,
+            "Either<A, B> exceeds MAX_EITHER_NODES; raise it or split the branches"
+        );
+        let mut t = [NodeDesc::EMPTY; MAX_EITHER_NODES];
+        t[0] = NodeDesc::new(1, NO_PARENT, 0, 2, NodeDesc::CONTAINER);
+        crate::widget::splice_child(&mut t, 1, A::SUB_TABLE, 0);
+        crate::widget::splice_child(&mut t, 1 + A::NODE_COUNT, B::SUB_TABLE, 0);
+        // A's root is B's root's previous sibling; B's is the last.
+        t[1].next_sibling = (1 + A::NODE_COUNT) as u32;
+        t
+    };
+
+    /// The used prefix.
+    pub const SLICE: &'static [NodeDesc] =
+        Self::ARRAY.split_at(1 + A::NODE_COUNT + B::NODE_COUNT).0;
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -194,14 +233,13 @@ impl<A: Widget + Default, B: Widget + Default> Default for Either<A, B> {
 
 impl<A: Widget, B: Widget> Either<A, B> {
     pub fn new(a: A, b: B) -> Self {
-        Either {
-            a,
-            b,
-            showing: Side::A,
-            a_arena: crate::arena::Arena::new(A::NODE_COUNT),
-            b_arena: crate::arena::Arena::new(B::NODE_COUNT),
-        }
+        Either { a, b, showing: Side::A }
     }
+
+    /// Table index of branch A's root, relative to this node.
+    const A_AT: usize = 1;
+    /// Table index of branch B's root, relative to this node.
+    const B_AT: usize = 1 + A::NODE_COUNT;
 
     pub fn showing(&self) -> Side {
         self.showing
@@ -212,93 +250,71 @@ impl<A: Widget, B: Widget> Either<A, B> {
         self.showing = side;
     }
 
-    /// Layout state of the active branch, for tests and tooling.
-    pub fn active_state(&self, node: usize) -> NodeState {
+    /// Where the active branch's root sits, relative to this node.
+    ///
+    /// `1` for A, `1 + A::NODE_COUNT` for B — the same arithmetic
+    /// `layout` uses, exposed because a caller holding a `NodeState`
+    /// slice needs it to find the branch's geometry.
+    pub fn active_at(&self) -> usize {
         match self.showing {
-            Side::A => self.a_arena.node_state(0, node),
-            Side::B => self.b_arena.node_state(0, node),
+            Side::A => Self::A_AT,
+            Side::B => Self::B_AT,
         }
     }
 
-    fn ensure_styles(&mut self) {
-        let Either { a, b, a_arena, b_arena, .. } = self;
-        a_arena.ensure(1, a);
-        b_arena.ensure(1, b);
+    /// Layout state of a node of the active branch, `node` being an
+    /// index within that branch's own subtree.
+    ///
+    /// Takes the table slice now, where the arena version needed none:
+    /// branch state lives in the caller's array since 2026-09-04.
+    pub fn active_state(&self, st: &[NodeState], i: usize, node: usize) -> NodeState {
+        st[i + self.active_at() + node]
     }
 }
 
 impl<A: Widget, B: Widget> Widget for Either<A, B> {
-    const NODE_COUNT: usize = 1;
+    const NODE_COUNT: usize = 1 + A::NODE_COUNT + B::NODE_COUNT;
     const DEPTH: usize = 1 + if A::DEPTH > B::DEPTH { A::DEPTH } else { B::DEPTH };
     const IS_RIGID: bool = A::IS_RIGID && B::IS_RIGID;
-    const SUB_TABLE: &'static [NodeDesc] =
-        &[NodeDesc::new(0, NO_PARENT, 0, 0, NodeDesc::CONTAINER)];
+    const SUB_TABLE: &'static [NodeDesc] = EitherTable::<A, B>::SLICE;
 }
 
 impl<A: Widget, B: Widget> Node for Either<A, B> {
-    /// Two: both branches are styled, because both keep their state and
-    /// either may be shown next.
-    fn arena_count(&self) -> usize {
-        2
-    }
-
-    fn arena_mut(&mut self, a: usize) -> Option<crate::arena::ArenaMut<'_>> {
-        match a {
-            0 => {
-                let Either { a, a_arena, .. } = self;
-                a_arena.ensure_style(a);
-                Some(crate::arena::ArenaMut {
-                    table: A::SUB_TABLE,
-                    template: a,
-                    style: a_arena.style_mut(),
-                })
-            }
-            1 => {
-                let Either { b, b_arena, .. } = self;
-                b_arena.ensure_style(b);
-                Some(crate::arena::ArenaMut {
-                    table: B::SUB_TABLE,
-                    template: b,
-                    style: b_arena.style_mut(),
-                })
-            }
-            _ => None,
-        }
-    }
-
     fn kind_name(&self) -> &'static str {
         "either"
     }
 
-    /// Branch A's defaults, whichever branch is showing.
+    /// A plain container's defaults.
     ///
-    /// Same reason as [`Option`]'s above: the cascade snapshots this
-    /// once, so a state-dependent answer freezes whichever branch was
-    /// showing when the stylesheet was set. Both branches keep their own
-    /// state across a toggle — that is the hatch's purpose — but they
-    /// share one *style* slot, so `defaults()` has to name a kind. A
-    /// stylesheet rule is how a branch gets a different one.
+    /// Until 2026-09-04 this returned branch A's, because both branches
+    /// shared one style slot and `defaults()` had to name a kind. With
+    /// both branches on the table each node has its own slot and answers
+    /// for itself, so this node answers for itself too.
     fn defaults(&self) -> Style {
-        self.a.defaults()
+        Style::default()
     }
 
     fn layout(
         &mut self,
         cx: &mut LayoutCx,
         limits: Constraints,
-        _style: &[Style],
+        style: &[Style],
         st: &mut [NodeState],
         i: usize,
     ) -> Size {
-        self.ensure_styles();
+        // The hidden branch is zeroed every frame, not merely skipped:
+        // stale geometry left in the table is what `paint`, `hit`, the
+        // journal and the audit would otherwise read, and an `Option`
+        // that only zeroed its own node put a hidden panel on screen at
+        // last frame's position (`docs/plan-review-fixes.md` F1.6).
         let size = match self.showing {
             Side::A => {
-                let (sty, st2) = self.a_arena.parts();
-                self.a.layout(cx, limits, sty, st2, 0)
+                hide(st, i + Self::B_AT, limits, B::NODE_COUNT);
+                self.a.layout(cx, limits, style, st, i + Self::A_AT)
             }
             Side::B => {
-                let (sty, st2) = self.b_arena.parts();
-                self.b.layout(cx, limits, sty, st2, 0)
+                hide(st, i + Self::A_AT, limits, A::NODE_COUNT);
+                self.b.layout(cx, limits, style, st, i + Self::B_AT)
             }
         };
         st[i].constraints = limits;
@@ -306,24 +322,18 @@ impl<A: Widget, B: Widget> Node for Either<A, B> {
         size
     }
 
-    fn place(&mut self, at: Point, _style: &[Style], st: &mut [NodeState], i: usize) {
+    fn place(&mut self, at: Point, style: &[Style], st: &mut [NodeState], i: usize) {
         st[i].pos = at;
         match self.showing {
-            Side::A => {
-                let (sty, st2) = self.a_arena.parts();
-                self.a.place(at, sty, st2, 0)
-            }
-            Side::B => {
-                let (sty, st2) = self.b_arena.parts();
-                self.b.place(at, sty, st2, 0)
-            }
+            Side::A => self.a.place(at, style, st, i + Self::A_AT),
+            Side::B => self.b.place(at, style, st, i + Self::B_AT),
         }
     }
 
-    fn paint(&self, _st: &[NodeState], _i: usize, out: &mut DisplayList) {
+    fn paint(&self, st: &[NodeState], i: usize, out: &mut DisplayList) {
         match self.showing {
-            Side::A => self.a.paint(self.a_arena.slice(0), 0, out),
-            Side::B => self.b.paint(self.b_arena.slice(0), 0, out),
+            Side::A => self.a.paint(st, i + Self::A_AT, out),
+            Side::B => self.b.paint(st, i + Self::B_AT, out),
         }
     }
 
@@ -331,61 +341,41 @@ impl<A: Widget, B: Widget> Node for Either<A, B> {
         if !crate::hit::contains(&st[i], x, y) {
             return None;
         }
+        // The hidden branch cannot be hit: its subtree is zeroed, so
+        // `contains` rejects it — but ask only the showing one anyway,
+        // so the answer does not depend on that.
         let inner = match self.showing {
-            Side::A => self.a.hit(self.a_arena.slice(0), 0, x, y),
-            Side::B => self.b.hit(self.b_arena.slice(0), 0, x, y),
+            Side::A => self.a.hit(st, i + Self::A_AT, x, y),
+            Side::B => self.b.hit(st, i + Self::B_AT, x, y),
         };
-        Some(Hit {
+        inner.or(Some(Hit {
             node: i as u32,
-            // Branch nodes are off-table, so they are addressed the way
-            // repeater rows are: row 0 for A, row 1 for B.
-            inner: inner.map(|h| crate::hit::Inner {
-                row: match self.showing {
-                    Side::A => 0,
-                    Side::B => 1,
-                },
-                node: h.node,
-            }),
-            local: inner.map_or(
-                Point { x: x - st[i].pos.x, y: y - st[i].pos.y },
-                |h| h.local,
-            ),
-        })
+            inner: None,
+            local: Point { x: x - st[i].pos.x, y: y - st[i].pos.y },
+        }))
     }
 
-    fn node(&self, _i: usize) -> &dyn Node {
-        self
-    }
-
-    fn node_mut(&mut self, _i: usize) -> &mut dyn Node {
-        self
-    }
-
-    #[cfg(feature = "observe")]
-    fn observe(
-        &self,
-        _st: &[NodeState],
-        _i: usize,
-        id: u64,
-        node: &mut accesskit::Node,
-        extra: &mut Vec<(accesskit::NodeId, accesskit::Node)>,
-    ) {
-        // Same synthetic id scheme as the repeater: the branch is "row"
-        // 0 or 1, so ids are stable across toggles.
-        let row: u64 = match self.showing {
-            Side::A => 0,
-            Side::B => 1,
-        };
-        let id_of = |t: usize| crate::observe::instance_id(id, row, t);
-        match self.showing {
-            Side::A => {
-                crate::observe::emit_subtree(&self.a, self.a_arena.slice(0), &id_of, extra);
-            }
-            Side::B => {
-                crate::observe::emit_subtree(&self.b, self.b_arena.slice(0), &id_of, extra);
-            }
+    /// Delegate by index range. Branch nodes are ordinary table nodes
+    /// now, so an agent selector, a lint finding and a stylesheet rule
+    /// all reach them without a special case.
+    fn node(&self, i: usize) -> &dyn Node {
+        if i == 0 {
+            self
+        } else if i < Self::B_AT {
+            self.a.node(i - Self::A_AT)
+        } else {
+            self.b.node(i - Self::B_AT)
         }
-        node.push_child(accesskit::NodeId(id_of(0)));
+    }
+
+    fn node_mut(&mut self, i: usize) -> &mut dyn Node {
+        if i == 0 {
+            self
+        } else if i < Self::B_AT {
+            self.a.node_mut(i - Self::A_AT)
+        } else {
+            self.b.node_mut(i - Self::B_AT)
+        }
     }
 }
 
@@ -394,16 +384,26 @@ where
     A: Widget + crate::event::Handlers<S>,
     B: Widget + crate::event::Handlers<S>,
 {
+    /// Delegate by index range, like [`Node::node`].
+    ///
+    /// Branch nodes are ordinary table nodes since 2026-09-04, so a
+    /// `Hit` names one directly and no `(row, node)` pair is involved.
+    /// The showing branch is not checked here: `hit` cannot produce an
+    /// index inside the hidden one, because its subtree is zeroed.
     fn handler(
         &self,
         sel: crate::event::NodeSel,
     ) -> Option<fn(&mut S, &crate::event::EventCtx)> {
-        let (row, node) = sel.inner?;
-        let inner = crate::event::NodeSel { i: node as usize, inner: None };
-        match (self.showing, row) {
-            (Side::A, 0) => self.a.handler(inner),
-            (Side::B, 1) => self.b.handler(inner),
-            _ => None,
+        if sel.i == 0 {
+            return None;
+        }
+        if sel.i < 1 + A::NODE_COUNT {
+            self.a.handler(crate::event::NodeSel { i: sel.i - 1, inner: sel.inner })
+        } else {
+            self.b.handler(crate::event::NodeSel {
+                i: sel.i - (1 + A::NODE_COUNT),
+                inner: sel.inner,
+            })
         }
     }
 }
@@ -411,9 +411,11 @@ where
 /// `Vec<W>` as a widget — plan T4.3.
 ///
 /// The non-virtualized sibling of `Repeat`: every element is
-/// materialized, and arity comes from the data. One table node, like
-/// `Either`, so `NODE_COUNT` stays independent of how many items there
-/// are — §6's scaling law applied to a plain list.
+/// materialized, and arity comes from the data. One table node — unlike
+/// `Either`, whose branch count is a compile-time two and which
+/// therefore merges both into its table (T8.0) — so `NODE_COUNT` stays
+/// independent of how many items there are, which is §6's scaling law
+/// applied to a plain list.
 pub struct List<W: Widget> {
     pub items: Vec<W>,
     /// Gap between items along the column.
