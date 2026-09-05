@@ -318,6 +318,7 @@ impl ApplicationHandler<UserEvent> for WinApp {
             m.set_scale(scale);
         }
         self.surface = Some(Surface::new(window.clone()));
+        window.set_ime_allowed(true);
         // Ask for the first frame explicitly: nothing else will.
         window.request_redraw();
         self.window = Some(window);
@@ -350,6 +351,22 @@ impl ApplicationHandler<UserEvent> for WinApp {
                 }
                 if let Some(w) = &self.window {
                     w.request_redraw();
+                }
+            }
+
+            WindowEvent::Ime(ref ime) => {
+                use lumen_static::event::Composition;
+                use winit::event::Ime;
+                let changed = match ime {
+                    Ime::Preedit(text, _) => self.host.compose(Composition::Preedit(text)),
+                    Ime::Commit(text) => self.host.compose(Composition::Commit(text)),
+                    Ime::Disabled => self.host.compose(Composition::Cancel),
+                    Ime::Enabled => false,
+                };
+                if changed {
+                    if let Some(w) = &self.window {
+                        w.request_redraw();
+                    }
                 }
             }
 

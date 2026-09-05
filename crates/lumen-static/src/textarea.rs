@@ -53,6 +53,13 @@ use crate::{Constraints, Point, Size};
 pub struct TextArea<S: TextBuffer = crate::text::DefaultTextStorage> {
     text: S,
     caret: usize,
+    /// The provisional text an input method is composing, as a byte
+    /// range into `text` (M14/T14.8).
+    ///
+    /// The text *is* in the buffer, so it measures, positions and
+    /// scrolls like any other; what makes it provisional is that the
+    /// next `Preedit` replaces exactly this range.
+    preedit: Option<core::ops::Range<usize>>,
     /// The fixed end of a selection, if there is one (M14/T14.4).
     /// Same model as `TextInput`'s, so the two widgets cannot drift.
     anchor: Option<usize>,
@@ -71,6 +78,7 @@ impl<S: TextBuffer> Default for TextArea<S> {
             text: S::default(),
             caret: 0,
             anchor: None,
+            preedit: None,
             scroll: 0.0,
             clusters: S::Clusters::default(),
             shaped_key: None,
@@ -161,6 +169,55 @@ impl<S: TextBuffer> TextArea<S> {
         self.caret = r.start;
         self.anchor = None;
         self.shaped_key = None;
+        true
+    }
+
+    /// The provisional range, if a composition is in progress.
+    pub fn preedit(&self) -> Option<core::ops::Range<usize>> {
+        self.preedit.clone()
+    }
+
+    /// Apply one composition step (T14.8).
+    ///
+    /// Returns whether anything changed. A bounded storage may
+    /// **refuse** the provisional text, which is the T13.5 bug in a new
+    /// place: the range is recorded from what the buffer actually took,
+    /// not from what was offered, so a refused preedit leaves no range
+    /// pointing past the end.
+    pub fn compose(&mut self, c: crate::event::Composition<'_>) -> bool {
+        // Whatever was provisional goes first, in every arm: a preedit
+        // replaces it, a commit supersedes it, a cancel drops it.
+        let had = self.preedit.take();
+        if let Some(r) = had.clone() {
+            self.text.remove_range(r.clone());
+            self.caret = r.start;
+        }
+        let text = match c {
+            crate::event::Composition::Cancel => {
+                if had.is_some() {
+                    self.shaped_key = None;
+                }
+                return had.is_some();
+            }
+            crate::event::Composition::Preedit(t) | crate::event::Composition::Commit(t) => t,
+        };
+        if text.is_empty() {
+            if had.is_some() {
+                self.shaped_key = None;
+            }
+            return had.is_some();
+        }
+        let at = self.caret;
+        if !self.insert(text) {
+            // The storage refused. No range is recorded, so nothing
+            // points past the end.
+            return had.is_some();
+        }
+        if matches!(c, crate::event::Composition::Preedit(_)) {
+            // Only what the buffer took: `insert` moved the caret by
+            // exactly that much.
+            self.preedit = Some(at..self.caret);
+        }
         true
     }
 
@@ -435,6 +492,12 @@ impl<S: TextBuffer> Node for TextArea<S> {
                 );
             }
         }
+        if let Some(pre) = self.preedit.clone() {
+            for (x0, x1, line) in self.selection_runs(&pre) {
+                let top = inner[1] + (line as f32 + 1.0) * self.line_h - self.scroll;
+                out.rect([inner[0] + x0, top - 2.0, inner[0] + x1, top - 1.0], s.fg);
+            }
+        }
         if s.focused {
             let (cx, cy) = self.caret_at();
             let x = inner[0] + cx;
@@ -506,6 +569,10 @@ impl<S: TextBuffer> Node for TextArea<S> {
 
     fn selection(&self) -> Option<&str> {
         self.selected_str()
+    }
+
+    fn compose(&mut self, c: crate::event::Composition<'_>) -> bool {
+        TextArea::compose(self, c)
     }
 
     fn node(&self, _i: usize) -> &dyn Node {

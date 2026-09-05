@@ -505,7 +505,7 @@ the remaining half rather than left implied.
 
 ---
 
-## T14.8 — IME — **OPEN, and possibly its own milestone**
+## T14.8 — IME — **DONE 2026-09-05** (was OPEN)
 
 Without it, Chinese, Japanese and Korean input are *impossible*, not
 merely awkward. `WindowEvent::Ime` is not handled and the vocabulary
@@ -529,6 +529,36 @@ shape now would be guessing.
 without entering the buffer, a commit replaces it atomically, and
 `InlineText` — which can *refuse* an insert — reports failure rather
 than stranding a composition, which is the T13.5 bug in a new place.
+
+**Decided after T14.0–T14.7, as this task said to: it is a task.** The
+question was whether T14.4's anchor machinery would be reusable, and
+the answer is that it does not need to be — a preedit is a *different*
+range with a different lifetime, and the two coexist. Once that is
+clear the work is bounded: one non-`Event` type, one `Node` method, one
+field per widget, one underline, and a twenty-line platform handshake.
+
+**One correction to the gate as written.** It says "renders underlined
+*without entering the buffer*". That is the wrong model, and building it
+showed why: provisional text that is not in the buffer cannot be
+measured, positioned, scrolled or hit-tested, so every one of those
+paths would need a parallel implementation. **The text goes in the
+buffer**; what makes it provisional is a recorded range that the next
+`Preedit` replaces. That is also what the platform protocol assumes —
+winit sends an empty `Preedit` immediately before every `Commit`, which
+is only coherent if the preedit is really there.
+
+**The T13.5 bug did reappear, and was caught by the design rather than
+by a test.** A bounded storage can refuse the provisional text, so the
+range is recorded from what the buffer **took** — `insert` moved the
+caret by exactly that much — not from what was offered. A range taken
+from the offered string would point past the end of a full
+`InlineText`. Two tests cover it.
+
+**Not done, and named rather than implied:** `set_ime_cursor_area`, so
+the platform places its candidate window at the caret rather than at the
+window's origin. It needs the caret rect in physical pixels, which the
+host can produce but does not expose; the composition itself works
+without it.
 
 ---
 

@@ -107,6 +107,30 @@ impl Mods {
     }
 }
 
+/// One step of an input-method composition — `docs/plan-desktop.md`
+/// T14.8.
+///
+/// **Not an `Event`.** A composition step carries a string, and `Event`
+/// is `Copy` and 16 bytes; a borrowed payload would put a lifetime on
+/// the whole enum and a borrow in the queue. It reaches the focused node
+/// through `Host::compose` instead, the same shape `Host::paste` uses
+/// for the same reason.
+///
+/// The sequence mirrors the platform's: `Preedit` repeatedly as the user
+/// composes, then `Commit` with the final text — or `Cancel` when the
+/// composition is abandoned. Provisional text is *in* the buffer, so it
+/// measures, positions and scrolls like real text; what makes it
+/// provisional is that the next `Preedit` replaces it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Composition<'a> {
+    /// Replace the provisional text with this. Empty clears it.
+    Preedit(&'a str),
+    /// The composition finished: drop the provisional text, insert this.
+    Commit(&'a str),
+    /// Abandon it, leaving the buffer as it was before composing.
+    Cancel,
+}
+
 /// Which pointer button — `docs/plan-desktop.md` T14.3.
 ///
 /// Three, not five: the back and forward buttons are excluded for the

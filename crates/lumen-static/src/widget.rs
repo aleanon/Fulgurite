@@ -182,6 +182,16 @@ pub trait Node {
         None
     }
 
+    /// One step of an input-method composition (T14.8).
+    ///
+    /// `false` from a node that does not edit text, which is what lets
+    /// `Host::compose` route to the focused node without asking what
+    /// kind of thing it is.
+    fn compose(&mut self, c: crate::event::Composition<'_>) -> bool {
+        let _ = c;
+        false
+    }
+
     /// Whether this node derives how much of its content to materialize
     /// from the constraints it is given.
     ///

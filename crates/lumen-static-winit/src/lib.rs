@@ -218,6 +218,10 @@ impl<A: App> ApplicationHandler for Win<A> {
         }
 
         self.surface = Some(Surface::new(window.clone()));
+        // Tell the platform this window accepts composed input, or an
+        // IME never starts and CJK entry is impossible rather than
+        // merely awkward (T14.8).
+        window.set_ime_allowed(true);
         // Ask for the first frame explicitly: nothing else will.
         window.request_redraw();
         self.window = Some(window);
@@ -235,6 +239,26 @@ impl<A: App> ApplicationHandler for Win<A> {
                 }
                 if let Some(w) = &self.window {
                     w.request_redraw();
+                }
+            }
+
+            // Input-method composition (T14.8). Not routed through
+            // `translate`, because a composition step carries a string
+            // and `Event` is `Copy` and 16 bytes — it reaches the
+            // focused node through `Host::compose` instead.
+            WindowEvent::Ime(ref ime) => {
+                use lumen_static::event::Composition;
+                use winit::event::Ime;
+                let changed = match ime {
+                    Ime::Preedit(text, _) => self.host.compose(Composition::Preedit(text)),
+                    Ime::Commit(text) => self.host.compose(Composition::Commit(text)),
+                    Ime::Disabled => self.host.compose(Composition::Cancel),
+                    Ime::Enabled => false,
+                };
+                if changed {
+                    if let Some(w) = &self.window {
+                        w.request_redraw();
+                    }
                 }
             }
 

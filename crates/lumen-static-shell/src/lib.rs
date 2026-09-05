@@ -247,6 +247,23 @@ impl<A: App, R: Retention> Host<A, R> {
         handled
     }
 
+    /// Route one composition step to the focused node — T14.8.
+    ///
+    /// Returns whether anything changed, so a host knows whether to
+    /// redraw. `false` when nothing is focused or the focused thing does
+    /// not edit text, which are the same answer from a caller's side.
+    ///
+    /// Not an `Event`: a composition step carries a string, and `Event`
+    /// is `Copy` and 16 bytes. Same reason `paste` is a method.
+    pub fn compose(&mut self, c: lumen_static::event::Composition<'_>) -> bool {
+        let Some(i) = self.input.focus.map(|f| f as usize) else { return false };
+        let table = <A::Tree as lumen_static::Widget>::SUB_TABLE;
+        if i >= table.len() {
+            return false;
+        }
+        self.app.tree_mut().node_mut(i).compose(c)
+    }
+
     /// The pointer shape for whatever the pointer is currently over —
     /// `docs/plan-desktop.md` T14.6.
     ///
