@@ -12,8 +12,22 @@ name = "lumen_static_winit"
 # and every test in the workspace depends on it staying that way, so
 # adding winit there would put a windowing system behind `cargo test`
 # (docs/plan-desktop.md T14.0).
+[features]
+# Clipboard is default-ON, unlike the a11y feature, and the difference
+# is measured: arboard costs **11 crates** (207 -> 218, 2026-09-05)
+# against a11y's 62 (95 -> 157). A text field without copy and paste is
+# not a working text field, and a fifth of a11y's cost is worth paying
+# by default. An application that wants neither writes
+# `default-features = false`.
+default = ["clipboard"]
+clipboard = ["dep:arboard"]
+
 [dependencies]
 lumen-static = { path = "../lumen-static" }
 lumen-static-shell = { path = "../lumen-static-shell", features = ["truetype"] }
 winit = "0.30"
 softbuffer = "0.4"
+# The system clipboard (T14.5). `image-data` is off: this framework
+# copies text, and the image feature pulls an image-decoding stack for
+# a capability nothing here has.
+arboard = { version = "3", optional = true, default-features = false }

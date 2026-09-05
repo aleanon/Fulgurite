@@ -369,7 +369,7 @@ next such test is written.
 
 ---
 
-## T14.5 — clipboard
+## T14.5 — clipboard — **DONE 2026-09-05**
 
 There is none. For a text field this is table stakes.
 
@@ -392,6 +392,34 @@ exactly the failure that counter exists to make visible.
 **Gate:** pasting a string longer than `InputQueue::CAP` lands whole
 and `dropped()` stays 0. Copy of an empty selection is `None`, not
 `Some("")`.
+
+**Done**, in three pieces that stay on their own side of the seam:
+
+- `Node::selection() -> Option<&str>` in the core, defaulting to
+  `None` — borrowed, so the core never allocates to answer.
+- `Host::copy()` and `Host::paste()` in the shell. Paste is **per
+  character into the one queue**, so it replays as ordinary typing and
+  gets selection-replacement, caret movement and bindings by the paths
+  typing already uses. No second edit path to get subtly different.
+- `Clipboard` in `lumen-static-winit`, because a clipboard *is* a
+  platform and neither the core nor the shell has one.
+
+**Default-on, and the difference from `a11y` is measured.** `arboard`
+costs **11 crates** (207 → 218, 2026-09-05) against `a11y`'s 62
+(95 → 157). A text field without copy and paste is not a working text
+field, and a fifth of `a11y`'s cost is worth paying by default. Without
+the feature the type still exists and every operation is a no-op, so a
+host needs no `cfg` around its Ctrl+C.
+
+Two details the writing settled:
+
+- **The handle is held open, not opened per copy.** On X11 a clipboard
+  owner must stay alive to answer paste requests, so a handle dropped
+  after each copy puts text on the clipboard that vanishes when the
+  user switches windows.
+- **Cut is copy plus the Backspace the field already implements**,
+  posted as an event rather than called as a method. One edit path, so
+  the caret and the shaped cache cannot disagree with a bespoke one.
 
 ---
 

@@ -167,6 +167,21 @@ pub trait Node {
         false
     }
 
+    /// This node's selected text, if it has one — `docs/plan-desktop.md`
+    /// T14.5.
+    ///
+    /// What a copy asks the focused node for. `None` is both "I have no
+    /// selection" and "I am not the kind of thing that has one", and a
+    /// caller cannot tell them apart because it does not need to: there
+    /// is nothing to copy either way.
+    ///
+    /// A borrowed `&str`, so the core never allocates to answer. The
+    /// *host* owns the copy into a clipboard, because a clipboard is a
+    /// platform, and this crate has no platform.
+    fn selection(&self) -> Option<&str> {
+        None
+    }
+
     /// Whether this node derives how much of its content to materialize
     /// from the constraints it is given.
     ///

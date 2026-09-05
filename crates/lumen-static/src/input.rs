@@ -557,6 +557,10 @@ impl<S: TextBuffer> Node for TextInput<S> {
         changed
     }
 
+    fn selection(&self) -> Option<&str> {
+        self.selected_str()
+    }
+
     fn node(&self, _i: usize) -> &dyn Node {
         self
     }

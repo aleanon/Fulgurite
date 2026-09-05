@@ -502,6 +502,10 @@ impl<S: TextBuffer> Node for TextArea<S> {
         }
     }
 
+    fn selection(&self) -> Option<&str> {
+        self.selected_str()
+    }
+
     fn node(&self, _i: usize) -> &dyn Node {
         self
     }

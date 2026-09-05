@@ -247,6 +247,53 @@ impl<A: App, R: Retention> Host<A, R> {
         handled
     }
 
+    /// The focused node's selected text — what a copy sends to the
+    /// clipboard (`docs/plan-desktop.md` T14.5).
+    ///
+    /// Borrowed, so this allocates nothing. `None` when nothing is
+    /// focused, or the focused thing has no selection: there is nothing
+    /// to copy either way, and a caller does not need to tell them
+    /// apart.
+    ///
+    /// The *clipboard* is the windowing layer's business. A clipboard is
+    /// a platform, and neither this crate nor the core has one.
+    pub fn copy(&self) -> Option<&str> {
+        let i = self.input.focus? as usize;
+        let table = <A::Tree as lumen_static::Widget>::SUB_TABLE;
+        (i < table.len()).then_some(())?;
+        self.app.tree().node(i).selection()
+    }
+
+    /// Type `text` into the focused node, as if a person had.
+    ///
+    /// **Per character, into the one queue**, so a paste replays as
+    /// ordinary typing and a recorded session needs no clipboard to
+    /// reproduce (`docs/plan-events.md` E0). It also means a paste
+    /// replaces a selection, moves the caret and fires bindings by
+    /// exactly the paths typing already uses — no second edit path to
+    /// get subtly different.
+    ///
+    /// **Chunked against [`lumen_static::InputQueue::CAP`]**, because a
+    /// paste is not bounded by it. Filling the queue and pumping, then
+    /// filling it again, is what keeps a 10 kB paste from losing its
+    /// tail — and this is the first real caller of the `push` refusal
+    /// M13/T13.4 added the drop counter for.
+    ///
+    /// Returns how many characters were delivered, which is every
+    /// non-control one unless a widget refused them.
+    pub fn paste(&mut self, text: &str) -> usize {
+        let mut n = 0;
+        for ch in text.chars().filter(|c| !c.is_control() || *c == '\n') {
+            if self.queue.len() == lumen_static::InputQueue::CAP {
+                self.pump();
+            }
+            self.post(Event::Text { ch });
+            n += 1;
+        }
+        self.pump();
+        n
+    }
+
     /// What the frame just pumped changed, against the frame before it.
     pub fn damage(&self) -> Damage {
         self.last_damage

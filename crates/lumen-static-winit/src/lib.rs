@@ -35,9 +35,11 @@ use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{Window, WindowId};
 
+pub mod clipboard;
 pub mod surface;
 pub mod translate;
 
+pub use clipboard::Clipboard;
 pub use surface::{canvas, sync_size, Frame, Surface};
 pub use translate::{Cursor, Translated};
 
@@ -93,6 +95,7 @@ struct Win<A: App> {
     /// in the host because translation needs it *before* the event is
     /// queued: it decides whether a keystroke types (T14.2).
     mods: lumen_static::Mods,
+    clipboard: Clipboard,
 }
 
 impl<A: App> Win<A> {
@@ -118,6 +121,50 @@ impl<A: App> Win<A> {
             cursor: Cursor::default(),
             clicks: Default::default(),
             mods: lumen_static::Mods::NONE,
+            clipboard: Clipboard::new(),
+        }
+    }
+
+    /// Ctrl+C, Ctrl+X and Ctrl+V (or Cmd on macOS) — T14.5.
+    ///
+    /// Handled here rather than in a widget because the *clipboard* is
+    /// the platform's; what the widget owns is the selection and the
+    /// typing, and both of those are `Host` calls. Returns whether the
+    /// keystroke was a clipboard shortcut, so the caller knows not to
+    /// route it on.
+    fn clipboard_shortcut(&mut self, event: &WindowEvent) -> bool {
+        let WindowEvent::KeyboardInput { event, .. } = event else { return false };
+        if event.state != winit::event::ElementState::Pressed {
+            return false;
+        }
+        if !(self.mods.has(lumen_static::Mods::CTRL) || self.mods.has(lumen_static::Mods::META)) {
+            return false;
+        }
+        let Some(lumen_static::Key::Char(c)) = translate::key_of(&event.logical_key) else {
+            return false;
+        };
+        match c {
+            'c' | 'x' => {
+                let Some(text) = self.host.copy().map(str::to_owned) else { return true };
+                self.clipboard.set(&text);
+                if c == 'x' {
+                    // Cut is copy plus the delete the field already
+                    // does: one edit path, so the caret and the shaped
+                    // cache cannot disagree with a bespoke one.
+                    self.host.post(lumen_static::Event::Key {
+                        key: lumen_static::Key::Backspace,
+                        down: true,
+                    });
+                }
+                true
+            }
+            'v' => {
+                if let Some(text) = self.clipboard.get() {
+                    self.host.paste(&text);
+                }
+                true
+            }
+            _ => false,
         }
     }
 
@@ -183,6 +230,12 @@ impl<A: App> ApplicationHandler for Win<A> {
             }
 
             WindowEvent::Resized(_) | WindowEvent::RedrawRequested => self.redraw(),
+
+            ref event if self.clipboard_shortcut(event) => {
+                if let Some(w) = &self.window {
+                    w.request_redraw();
+                }
+            }
 
             ref event => {
                 let host = &self.host;
