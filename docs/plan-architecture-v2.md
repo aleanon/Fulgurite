@@ -1336,7 +1336,7 @@ in this line, so the next reader finds the reason next to the claim.
 
 ---
 
-## M14 — The desktop shell — **PLANNED 2026-09-05, not started**
+## M14 — The desktop shell — **DONE 2026-09-05**
 
 *Task breakdown: `docs/plan-desktop.md`.*
 
@@ -1371,3 +1371,17 @@ Nothing in M14 restores desktop capability lost to M13. Desktop is the
 default type argument of every seam, and M13 improved it: retention got
 faster at every scale (`docs/results-retention.md`) and `num::clamp`
 removed a panic path from every node of every frame.
+
+**Done, T14.0–T14.8.** `lumen-static-winit` exists and
+`examples/minimal` opens a real window in **24 lines**. Modifiers,
+three mouse buttons, click counts, the common keys, selection,
+clipboard, cursor shapes, scrollbars and IME composition all work.
+
+**The vocabulary is still 16 B and the queue still 1048 B**, asserted —
+which is why measuring that *before* designing was the plan's one
+unambiguously right call.
+
+Two things stayed out and are named rather than implied: **dragging a
+scrollbar thumb** (a hit-testing change, not a paint one — T14.7) and
+**`set_ime_cursor_area`** (the platform's candidate window is placed at
+the window origin, not the caret — T14.8). Overlays remain M11/T11.5.

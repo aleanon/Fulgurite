@@ -1,7 +1,16 @@
 # M14 — the desktop shell
 
-*Planned 2026-09-05, after M13. Status: **not started**. Detail for
-`docs/plan-architecture-v2.md` M14.*
+*Planned 2026-09-05, after M13. **Status: done 2026-09-05,
+T14.0–T14.8.** Detail for `docs/plan-architecture-v2.md` M14.*
+
+> **What building it changed.** Four of this plan's decisions were
+> wrong and the work found them, not review: the click count belonged
+> in `InputState` rather than on `PointerUp`; `Button` collided with the
+> widget of that name; the T14.2 gate could not be built because winit's
+> `KeyEvent` has no public constructor; and a preedit has to be *in* the
+> buffer, not beside it. Each is marked at its task. The one thing the
+> plan got exactly right was measuring `Event`'s size before designing
+> the vocabulary — it is still 16 B, and the queue is still 1048 B.
 
 ## The premise
 
