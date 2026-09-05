@@ -53,6 +53,9 @@ use crate::{Constraints, Point, Size};
 pub struct TextArea<S: TextBuffer = crate::text::DefaultTextStorage> {
     text: S,
     caret: usize,
+    /// The fixed end of a selection, if there is one (M14/T14.4).
+    /// Same model as `TextInput`'s, so the two widgets cannot drift.
+    anchor: Option<usize>,
     /// Vertical offset in logical px so the caret stays visible (B5,
     /// one dimension over from `TextInput`'s horizontal one).
     scroll: f32,
@@ -67,6 +70,7 @@ impl<S: TextBuffer> Default for TextArea<S> {
         TextArea {
             text: S::default(),
             caret: 0,
+            anchor: None,
             scroll: 0.0,
             clusters: S::Clusters::default(),
             shaped_key: None,
@@ -107,6 +111,7 @@ impl<S: TextBuffer> TextArea<S> {
         if s.is_empty() {
             return false;
         }
+        self.delete_selection();
         // The caret advances only if the storage took the text. A
         // bounded storage can refuse, and advancing anyway would put
         // the caret past the end (M13/T13.5).
@@ -118,7 +123,60 @@ impl<S: TextBuffer> TextArea<S> {
         true
     }
 
+    /// The selected byte range, ordered, or `None`.
+    pub fn selection(&self) -> Option<core::ops::Range<usize>> {
+        let a = self.anchor?;
+        let (lo, hi) = if a <= self.caret { (a, self.caret) } else { (self.caret, a) };
+        (lo < hi).then_some(lo..hi)
+    }
+
+    /// The selected text, or `None`.
+    pub fn selected_str(&self) -> Option<&str> {
+        self.text.as_ref().get(self.selection()?)
+    }
+
+    /// Select everything. Returns whether there was anything to select.
+    pub fn select_all(&mut self) -> bool {
+        let end = self.text.as_ref().len();
+        if end == 0 {
+            return false;
+        }
+        self.anchor = Some(0);
+        self.caret = end;
+        true
+    }
+
+    /// Drop the selection, keeping the caret.
+    pub fn clear_selection(&mut self) -> bool {
+        self.anchor.take().is_some()
+    }
+
+    /// Delete the selection if there is one; returns whether it did.
+    pub fn delete_selection(&mut self) -> bool {
+        let Some(r) = self.selection() else {
+            self.anchor = None;
+            return false;
+        };
+        self.text.remove_range(r.clone());
+        self.caret = r.start;
+        self.anchor = None;
+        self.shaped_key = None;
+        true
+    }
+
+    /// Extend or collapse after a caret move. See `TextInput::moved`.
+    fn moved(&mut self, extend: bool, from: usize) {
+        if extend {
+            self.anchor.get_or_insert(from);
+        } else {
+            self.anchor = None;
+        }
+    }
+
     pub fn backspace(&mut self) -> bool {
+        if self.delete_selection() {
+            return true;
+        }
         let Some(prev) = self.prev_boundary(self.caret) else { return false };
         self.text.remove_range(prev..self.caret);
         self.caret = prev;
@@ -127,6 +185,9 @@ impl<S: TextBuffer> TextArea<S> {
     }
 
     pub fn delete(&mut self) -> bool {
+        if self.delete_selection() {
+            return true;
+        }
         let Some(next) = self.next_boundary(self.caret) else { return false };
         self.text.remove_range(self.caret..next);
         self.shaped_key = None;
@@ -209,6 +270,47 @@ impl<S: TextBuffer> TextArea<S> {
     }
 
     /// Byte offset nearest a point in the run — where a click lands.
+    /// The selection as one rect per line it covers.
+    ///
+    /// A multi-line selection is not one rectangle: it is a partial
+    /// first line, whole middle lines, and a partial last one. Yielding
+    /// per line keeps `paint` from having to know that, and keeps the
+    /// geometry in the one place that has the clusters.
+    fn selection_runs(&self, sel: &core::ops::Range<usize>) -> impl Iterator<Item = (f32, f32, u16)> + '_ {
+        let cl = self.clusters.as_slice();
+        let (lo, hi) = (sel.start, sel.end);
+        let lines = cl.iter().map(|c| c.line).max().unwrap_or(0);
+        (0..=lines).filter_map(move |line| {
+            let mut bounds: Option<(f32, f32)> = None;
+            for c in cl.iter().filter(|c| c.line == line) {
+                let b = c.byte as usize;
+                if b < lo || b > hi {
+                    continue;
+                }
+                bounds = Some(match bounds {
+                    None => (c.x, c.x),
+                    Some((a, z)) => (a.min(c.x), z.max(c.x)),
+                });
+            }
+            bounds.filter(|(a, z)| z > a).map(|(a, z)| (a, z, line))
+        })
+    }
+
+    /// Where a pointer event landed, in byte offsets.
+    fn at_pointer(&self, cx: &EventCtx) -> usize {
+        self.offset_at(cx.local.x - self.pad.0, cx.local.y - self.pad.1 + self.scroll)
+    }
+
+    /// Run a caret move and update the anchor from Shift — the shape
+    /// `TextInput` spells out per arm, factored here because this widget
+    /// has four movers rather than four one-liners.
+    fn moving(&mut self, cx: &EventCtx, f: impl FnOnce(&mut Self) -> bool) -> bool {
+        let from = self.caret;
+        let moved = f(self);
+        self.moved(cx.mods.has(crate::event::Mods::SHIFT), from);
+        moved
+    }
+
     fn offset_at(&self, x: f32, y: f32) -> usize {
         let line = if self.line_h > 0.0 { (y / self.line_h).max(0.0) as u16 } else { 0 };
         let cl = self.clusters.as_slice();
@@ -320,6 +422,17 @@ impl<S: TextBuffer> Node for TextArea<S> {
             s.font_weight,
             s.fg,
         );
+        // The selection, behind the run — same rule as `TextInput`: a
+        // highlight painted after the glyphs would hide them.
+        if let Some(sel) = self.selection() {
+            for (x0, x1, line) in self.selection_runs(&sel) {
+                let top = inner[1] + line as f32 * self.line_h - self.scroll;
+                out.rect(
+                    [inner[0] + x0, top, inner[0] + x1, top + self.line_h],
+                    crate::input::selection_tint(s.fg),
+                );
+            }
+        }
         if s.focused {
             let (cx, cy) = self.caret_at();
             let x = inner[0] + cx;
@@ -352,16 +465,38 @@ impl<S: TextBuffer> Node for TextArea<S> {
             }
             Event::Key { key: Key::Backspace, down: true } => self.backspace(),
             Event::Key { key: Key::Delete, down: true } => self.delete(),
-            Event::Key { key: Key::Left, down: true } => self.move_left(),
-            Event::Key { key: Key::Right, down: true } => self.move_right(),
-            Event::Key { key: Key::Up, down: true } => self.move_line(-1),
-            Event::Key { key: Key::Down, down: true } => self.move_line(1),
+            Event::Key { key: Key::Left, down: true } => self.moving(cx, Self::move_left),
+            Event::Key { key: Key::Right, down: true } => self.moving(cx, Self::move_right),
+            Event::Key { key: Key::Up, down: true } => self.moving(cx, |s| s.move_line(-1)),
+            Event::Key { key: Key::Down, down: true } => self.moving(cx, |s| s.move_line(1)),
+            Event::Key { key: Key::Char('a'), down: true }
+                if cx.mods.has(crate::event::Mods::CTRL)
+                    || cx.mods.has(crate::event::Mods::META) =>
+            {
+                self.select_all()
+            }
+            Event::Key { key: Key::Escape, down: true } => self.clear_selection(),
             Event::PointerDown { .. } => {
-                let at = self.offset_at(
-                    cx.local.x - self.pad.0,
-                    cx.local.y - self.pad.1 + self.scroll,
-                );
+                let at = self.at_pointer(cx);
+                let from = self.caret;
+                self.caret = at;
+                if cx.mods.has(crate::event::Mods::SHIFT) {
+                    self.anchor.get_or_insert(from);
+                } else {
+                    self.anchor = Some(at);
+                }
+                true
+            }
+            // Only while this node holds the capture T11.2 added.
+            Event::PointerMove { .. } => {
+                let at = self.at_pointer(cx);
                 core::mem::replace(&mut self.caret, at) != at
+            }
+            Event::PointerUp { .. } => {
+                if self.selection().is_none() {
+                    self.anchor = None;
+                }
+                false
             }
             _ => false,
         }

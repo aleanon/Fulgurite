@@ -310,7 +310,7 @@ platform-conventional values.
 
 ---
 
-## T14.4 — text selection
+## T14.4 — text selection — **DONE 2026-09-05**
 
 `TextInput` and `TextArea` cannot select. `input.rs` says why:
 selection needs *"modifier state on `Event::Key` (for Shift+Arrow), or
@@ -338,6 +338,34 @@ cluster bounds; B4 already decided the rectangle.
 the same span. `damage_oracle.rs` stays pixel-identical — a moving
 selection rect is a new damage shape and the oracle is what proves it
 is covered. Typing over a selection replaces it.
+
+**Done, in both widgets**, with the stale comment corrected in the same
+commit as the rule says. 13 tests, including the equivalence the task
+turns on: Shift+Arrow and drag select the same span.
+
+**The selection colour is derived, not a `Style` field — and that is a
+budget decision, recorded rather than defaulted.** A selection colour
+*is* a style property, but paint only has `NodeState`, so a real one
+would have to live there too. `NodeState` is 76 B and asserted at that
+size by `fixtures/embedded` against the RAM budget in
+`docs/results-embedded.md`; four bytes times every node of every tree
+is a poor trade for a colour that can be derived. `selection_tint` is
+the foreground at alpha 64, which works in light and dark themes
+because it tints with the colour that by construction contrasts with
+the field, and the canvas blends it so the glyphs stay readable.
+
+**`TextArea`'s selection is one rect per line**, not one rectangle: a
+multi-line selection is a partial first line, whole middle lines and a
+partial last one. `selection_runs` yields per line so `paint` does not
+have to know that.
+
+**A test that needed a measurer to exist at all.** `BlockMetrics`
+reports *no* clusters — `TextMeasure::shape`'s default measures and says
+nothing — so a field laid out with it has no geometry to hit-test and
+every click lands at the end of the run. The drag test supplies a
+monospace stand-in, which is what a real host does too. Anything
+testing a caret's *position* has to; that is worth knowing before the
+next such test is written.
 
 ---
 
