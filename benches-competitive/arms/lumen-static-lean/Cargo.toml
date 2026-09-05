@@ -1,0 +1,13 @@
+[package]
+name = "lumen-static-lean"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+# The lean shape: no clipboard, so no arboard and no platform clipboard
+# stack. The row that answers "what does the framework itself cost".
+# clipboard included. This is the row a reader should compare against Qt and
+# GTK, because it is what an application actually ships.
+[dependencies]
+lumen-static = { path = "../../../crates/lumen-static" }
+lumen-static-winit = { path = "../../../crates/lumen-static-winit", default-features = false }

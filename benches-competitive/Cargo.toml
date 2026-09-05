@@ -1,0 +1,28 @@
+# Competitive benchmark harness — `docs/results-competitive.md`.
+#
+# Its OWN workspace, excluded from the root one, so foreign UI toolkits never
+# enter lumen-static's dependency graph or Cargo.lock. The same arrangement
+# Lumen's `benches-competitive` uses, and for the same reason.
+#
+# The **methodology is Lumen's**, deliberately: the workload, the stopping
+# points, the size and RSS definitions and the fairness rules all come from
+# `/mnt/Utvikling-linux/Lumen/benches-competitive` and
+# `docs/report-framework-benchmarks-2026-08.md` there. Re-deriving them would
+# have produced numbers that could not be compared with the ones that already
+# exist, which is the opposite of the point.
+[workspace]
+resolver = "2"
+members = [
+    "arms/lumen-static-app",
+    "arms/lumen-static-lean",
+    "arms/frame",
+]
+
+# Match what a shipped application is built with, and match the profile the
+# foreign arms use, so neither side is advantaged by compiler flags.
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

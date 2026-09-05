@@ -348,6 +348,26 @@ impl Canvas {
                     }
                 }
                 Cmd::Text { rect, text, size, weight, color } => {
+                    // Cull the run before shaping it.
+                    //
+                    // Every other arm of this match tests `clipped` first
+                    // and skips; text did not, so a run outside the damage
+                    // rect was still shaped and rasterised and only its
+                    // *glyphs* were clipped, one at a time. On a 3000-row
+                    // list that is 3000 shaping calls per frame for the ~40
+                    // rows a 800 px viewport can show — measured at 7.3 ms a
+                    // frame before this check and 0.16 ms after
+                    // (`docs/results-competitive.md`).
+                    //
+                    // Padded by `size`: a glyph may overhang its run's rect
+                    // (an italic tail, a wide bearing), and culling on the
+                    // bare rect would clip those at the boundary. One em is
+                    // more than any face overhangs and costs nothing.
+                    let pad = *size;
+                    let reach = [rect[0] - pad, rect[1] - pad, rect[2] + pad, rect[3] + pad];
+                    if clipped(reach, &clip).is_none() {
+                        continue;
+                    }
                     let s = list.str_of(*text);
                     #[cfg(feature = "truetype")]
                     if let Some(font) = self.font.clone() {

@@ -1,0 +1,12 @@
+[package]
+name = "lumen-static-app"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+# The default shape: what `lumen-static-winit` gives you out of the box,
+# clipboard included. This is the row a reader should compare against Qt and
+# GTK, because it is what an application actually ships.
+[dependencies]
+lumen-static = { path = "../../../crates/lumen-static" }
+lumen-static-winit = { path = "../../../crates/lumen-static-winit" }
