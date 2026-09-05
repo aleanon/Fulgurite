@@ -32,6 +32,8 @@ tree today.
 | [`plan-events.md`](plan-events.md) | the event system, E0–E5 | **queue**, E0–E4 done | n/a |
 | [`verification-notes.md`](verification-notes.md) | what could be formally verified, and the `unsafe` audit | **live** | n/a |
 | [`results-embedded.md`](results-embedded.md) | the embedded footprint, and the 26.5 KB `f32::clamp` finding | **live** — measured 2026-09-05, thresholds recorded first | yes — `just firmware-size` |
+| [`competitive-feature-gaps.md`](competitive-feature-gaps.md) | what Qt, GTK, iced, Xilem, Slint and Lumen have that this does not, per framework | **live**, surveyed 2026-09-06 | n/a |
+| [`results-competitive.md`](results-competitive.md) | frame time, RSS and size against the same six — and the two defects it found | **live**, measured 2026-09-05 | yes — `benches-competitive/` |
 | [`results-retention.md`](results-retention.md) | streaming retention vs a copied display list (M13/T13.8) | **live** | yes — `benches --bin retain` |
 | [`results-cascade-cost.md`](results-cascade-cost.md) | what a stylesheet swap costs, and why M8c inverted | **live** | yes — `benches --bin cascade` |
 | [`results-frame-cost.md`](results-frame-cost.md) | frame cost and input latency, before/after M8b | **live** | yes — `just profile`, `just live-gate` |
