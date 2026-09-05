@@ -91,6 +91,35 @@ pub enum Align {
     Fill,
 }
 
+/// What the pointer should look like over a node —
+/// `docs/plan-desktop.md` T14.6.
+///
+/// A *style* property rather than an event or a widget method, because
+/// style already cascades and is already per-node: a cursor becomes a
+/// rule like any other, and a custom widget gets one without
+/// implementing anything.
+///
+/// The set is the one a desktop application actually uses. A pointer
+/// shape nothing here can express is a reason to add a variant, not to
+/// make this an open string — the windowing layer has to map it to a
+/// platform cursor, and an unmappable name is a silent no-op.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "observe", derive(serde::Serialize, serde::Deserialize))]
+pub enum Cursor {
+    #[default]
+    Default,
+    /// An I-beam: over editable text.
+    Text,
+    /// A hand: over something clickable.
+    Pointer,
+    Grab,
+    Grabbing,
+    ColResize,
+    RowResize,
+    /// Over a control that is present but will not respond.
+    NotAllowed,
+}
+
 /// One node's computed style.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Style {
@@ -124,6 +153,15 @@ pub struct Style {
     /// The same while the pointer is merely over it.
     pub hover_dim: f32,
     pub align: Align,
+    /// The pointer shape over this node (M14/T14.6).
+    ///
+    /// Free: `Style` was 72 B and this fits in the tail padding beside
+    /// `align` and `visible`. Asserted in
+    /// `crates/lumen-static/tests/cursor.rs`, because it would stop
+    /// being free if a future field pushed it over — and `Style` is
+    /// resolved per node, so a byte here is a byte times every node of
+    /// every tree.
+    pub cursor: Cursor,
     /// Whether this node and everything under it participates in the
     /// frame.
     ///
@@ -157,6 +195,7 @@ impl Default for Style {
             pressed_dim: 0.0,
             hover_dim: 0.0,
             align: Align::Start,
+            cursor: Cursor::Default,
             visible: true,
         }
     }
@@ -212,6 +251,7 @@ pub struct Patch {
     pub padding: Option<Edges>,
     pub spacing: Option<f32>,
     pub align: Option<Align>,
+    pub cursor: Option<Cursor>,
     pub visible: Option<bool>,
     pub color: Option<crate::display::Color>,
     pub background: Option<crate::display::Color>,
@@ -231,6 +271,7 @@ impl Patch {
             padding: None,
             spacing: None,
             align: None,
+            cursor: None,
             visible: None,
             color: None,
             background: None,
@@ -265,6 +306,12 @@ impl Patch {
     }
     pub const fn visible(mut self, v: bool) -> Self {
         self.visible = Some(v);
+        self
+    }
+
+    /// The pointer shape over the nodes this rule matches (T14.6).
+    pub const fn cursor(mut self, c: Cursor) -> Self {
+        self.cursor = Some(c);
         self
     }
 
@@ -329,6 +376,9 @@ impl Patch {
         }
         if let Some(v) = self.visible {
             s.visible = v;
+        }
+        if let Some(v) = self.cursor {
+            s.cursor = v;
         }
         if let Some(v) = self.color {
             s.color = v;

@@ -44,6 +44,9 @@ pub struct WinApp {
     /// Single/double/triple click counting (T14.3): it needs a clock,
     /// which the core does not have.
     clicks: translate::ClickCounter,
+    /// The cursor the window is showing, so an unchanged frame does not
+    /// ask the platform to set it again (T14.6).
+    cursor_shown: lumen_static::style::Cursor,
     /// Modifiers as of the last `ModifiersChanged`. Needed before the
     /// event is queued: it decides whether a keystroke types (T14.2).
     mods: lumen_static::Mods,
@@ -89,6 +92,7 @@ impl WinApp {
             surface: None,
             cursor: Cursor::default(),
             clicks: Default::default(),
+            cursor_shown: lumen_static::style::Cursor::Default,
             mods: lumen_static::Mods::NONE,
             sign: 0,
             agent,
@@ -242,6 +246,8 @@ impl WinApp {
             let surface = self.surface.as_mut().expect("checked above");
             surface.present(&mut self.host, &mut self.canvas, PAGE, start)
         };
+
+        lumen_static_winit::cursor::apply(&window, self.host.cursor(), &mut self.cursor_shown);
 
         // The frame is on screen: this is where the journal, the audit
         // and the timings are recorded, so `ui.lastChange`, `ui.lint`

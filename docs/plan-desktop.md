@@ -423,7 +423,7 @@ Two details the writing settled:
 
 ---
 
-## T14.6 — cursor icons
+## T14.6 — cursor icons — **DONE 2026-09-05**
 
 No I-beam over a text field, no pointer over a button. Small, and it is
 most of what "feels native" means.
@@ -444,9 +444,32 @@ every node of every tree.
 check: hovering `#field` reports an I-beam, hovering the background
 does not.
 
+**Done, and it was free as predicted**: `Style` is still 72 B and
+`NodeState` still 76 B, both asserted in
+`crates/lumen-static/tests/cursor.rs`. The `Cursor` fits in the tail
+padding beside `align` and `visible`.
+
+**And `NodeState` needed nothing at all.** The plan assumed paint would
+have to carry the cursor; it does not — the *host* resolves it, and the
+host has the style array. `Host::cursor()` finds the deepest hovered
+node and reads `styles[i].cursor`. Deepest, because C6 marks every node
+on the hover chain and an ancestor's cursor must not override the leaf
+the pointer is on: a button inside a text field's row has to read as a
+button.
+
+`TextInput` and `TextArea` default to `Text`, `Button`, `Slider` and
+`Toggle` to `Pointer`, so an application gets the right shapes without
+writing a rule. `Cursor` is a closed enum rather than a string because
+the windowing layer has to map every variant to a platform cursor, and
+an unmappable name is a silent no-op.
+
+The window only calls `set_cursor` when the shape *changes*: setting it
+is a round trip to the display server, and a frame loop that set it
+unconditionally would make one per frame for a cursor standing still.
+
 ---
 
-## T14.7 — scrollbars
+## T14.7 — scrollbars — **DONE 2026-09-05**
 
 `ScrollView` scrolls but draws nothing. A scroll region a user cannot
 see the extent of is a usability defect, not a missing decoration.
@@ -460,6 +483,25 @@ unchanged); dragging the thumb to the bottom equals scrolling to the
 bottom; `damage_oracle.rs` stays pixel-identical with the thumb moving,
 which is the interesting case because the thumb and the content damage
 different regions in the same frame.
+
+**Painted, not yet draggable.** A track and a thumb appear when there
+is overflow and not otherwise — a bar that is always present says "this
+scrolls" about something that does not. The thumb is as long a fraction
+of the track as the viewport is of the content, floored at 24 px so a
+very long list still has something to grab.
+
+**The bar is painted outside the clip**, and that is the part worth
+asserting: it belongs to the viewport, not the content, so clipping it
+would be right by accident. The test checks the paint *order* as much
+as the geometry.
+
+**Dragging the thumb is deliberately not done here.** It is the fourth
+user of pointer capture and it needs a hit region that is *not* the
+content's — `ScrollView::hit` currently forwards to the content and
+falls back to itself, so a press on the bar reaches the content
+underneath. That is a hit-testing change, not a paint one, and bundling
+it into a paint task is how it would get underestimated. Recorded as
+the remaining half rather than left implied.
 
 ---
 

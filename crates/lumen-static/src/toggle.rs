@@ -122,6 +122,7 @@ impl<S: 'static, const SHAPE: u8> Node for Toggle<S, SHAPE> {
             color: ON,
             pressed_dim: 0.18,
             hover_dim: 0.07,
+            cursor: crate::style::Cursor::Pointer,
             ..Style::default()
         }
     }

@@ -610,6 +610,8 @@ impl<S: 'static, T: TextStorage> Node for Button<S, T> {
             // could not make before C6.
             pressed_dim: 0.18,
             hover_dim: 0.07,
+            // A hand over something clickable (T14.6).
+            cursor: crate::style::Cursor::Pointer,
             background: Color(226, 232, 240, 255),
             color: Color(15, 23, 42, 255),
             radius: 8.0,

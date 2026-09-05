@@ -247,6 +247,29 @@ impl<A: App, R: Retention> Host<A, R> {
         handled
     }
 
+    /// The pointer shape for whatever the pointer is currently over —
+    /// `docs/plan-desktop.md` T14.6.
+    ///
+    /// Read from the *resolved style*, not from `NodeState`: `Style` had
+    /// room for a `Cursor` in its tail padding and `NodeState` did not,
+    /// and `NodeState` is asserted at 76 B by `fixtures/embedded`
+    /// against the RAM budget in `docs/results-embedded.md`. The host
+    /// has both arrays, so nothing needed to grow.
+    ///
+    /// The **deepest** hovered node wins. C6 marks every node on the
+    /// hover chain, and an ancestor's cursor should not override the
+    /// leaf the pointer is actually on — a button inside a text field's
+    /// row must read as a button.
+    pub fn cursor(&self) -> lumen_static::style::Cursor {
+        self.states
+            .iter()
+            .enumerate()
+            .rev()
+            .find(|(_, s)| s.hovered)
+            .and_then(|(i, _)| self.styles.get(i))
+            .map_or(lumen_static::style::Cursor::Default, |s| s.cursor)
+    }
+
     /// The focused node's selected text — what a copy sends to the
     /// clipboard (`docs/plan-desktop.md` T14.5).
     ///

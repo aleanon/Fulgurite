@@ -360,6 +360,9 @@ impl<S: TextBuffer> Node for TextInput<S> {
     fn defaults(&self) -> Style {
         Style {
             padding: crate::style::Edges { left: 8.0, right: 8.0, top: 6.0, bottom: 6.0 },
+            // An I-beam over editable text, without the application
+            // having to write a rule for it (T14.6).
+            cursor: crate::style::Cursor::Text,
             ..Style::default()
         }
     }

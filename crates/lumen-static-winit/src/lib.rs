@@ -36,6 +36,7 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{Window, WindowId};
 
 pub mod clipboard;
+pub mod cursor;
 pub mod surface;
 pub mod translate;
 
@@ -96,6 +97,9 @@ struct Win<A: App> {
     /// queued: it decides whether a keystroke types (T14.2).
     mods: lumen_static::Mods,
     clipboard: Clipboard,
+    /// The cursor the window is currently showing, so an unchanged
+    /// frame does not ask the platform to set it again.
+    cursor_shown: lumen_static::style::Cursor,
 }
 
 impl<A: App> Win<A> {
@@ -122,6 +126,7 @@ impl<A: App> Win<A> {
             clicks: Default::default(),
             mods: lumen_static::Mods::NONE,
             clipboard: Clipboard::new(),
+            cursor_shown: lumen_static::style::Cursor::Default,
         }
     }
 
@@ -187,6 +192,10 @@ impl<A: App> Win<A> {
             None => self.host.pump(),
         };
         surface.present(&mut self.host, &mut self.canvas, self.config.page, start);
+        // After the frame: the hover bit is set by dispatch and the
+        // shape is read from the resolved style, both of which the pump
+        // above has just brought up to date (T14.6).
+        cursor::apply(&window, self.host.cursor(), &mut self.cursor_shown);
     }
 }
 

@@ -91,6 +91,49 @@ impl<W: Widget> ScrollView<W> {
         ScrollView { content, scroll: 0.0, axis: Axis::Row, measured_overflow: 0.0 }
     }
 
+
+    /// Thickness of the scrollbar, in logical px.
+    pub const BAR: f32 = 8.0;
+    /// Shortest a thumb may get, so a very long list still has one a
+    /// person can see and grab.
+    pub const MIN_THUMB: f32 = 24.0;
+
+    /// Track and thumb rects, or `None` when there is nothing to scroll.
+    ///
+    /// A scroller with no overflow paints **no bar at all** rather than
+    /// a full-length one: a bar that is always present says "this
+    /// scrolls" about something that does not.
+    fn bar_rects(&self, s: &NodeState) -> Option<([f32; 4], [f32; 4])> {
+        // Spelled positively rather than as `!(over > 0.0)`: NaN must
+        // land in the "no bar" arm, and `is_finite` says so where a
+        // negated comparison only implies it — the same rule
+        // `visible_range` already follows two methods down.
+        let over = self.measured_overflow;
+        if !over.is_finite() || over <= 0.0 {
+            return None;
+        }
+        let r = rect_of(s);
+        let (vw, vh) = (r[2] - r[0], r[3] - r[1]);
+        // The thumb is as long a fraction of the track as the viewport
+        // is of the content -- the conventional proportion, and the one
+        // that makes the bar readable as "how much of this am I seeing".
+        let pos = crate::num::clamp(self.scroll / over, 0.0, 1.0);
+        Some(match self.axis {
+            Axis::Column => {
+                let frac = crate::num::clamp(vh / (vh + over), 0.0, 1.0);
+                let thumb_h = crate::num::clamp(vh * frac, Self::MIN_THUMB.min(vh), vh);
+                let y = r[1] + (vh - thumb_h) * pos;
+                ([r[2] - Self::BAR, r[1], r[2], r[3]], [r[2] - Self::BAR, y, r[2], y + thumb_h])
+            }
+            Axis::Row => {
+                let frac = crate::num::clamp(vw / (vw + over), 0.0, 1.0);
+                let thumb_w = crate::num::clamp(vw * frac, Self::MIN_THUMB.min(vw), vw);
+                let x = r[0] + (vw - thumb_w) * pos;
+                ([r[0], r[3] - Self::BAR, r[2], r[3]], [x, r[3] - Self::BAR, x + thumb_w, r[3]])
+            }
+        })
+    }
+
     /// Content index, relative to this node.
     const AT: usize = 1;
 
@@ -216,6 +259,14 @@ impl<W: Widget> Node for ScrollView<W> {
         out.push_clip(r);
         self.content.paint(st, i + Self::AT, out);
         out.pop_clip();
+
+        // The scrollbar, *outside* the clip: it belongs to the viewport,
+        // not to the content, so clipping it would be right by accident
+        // rather than by construction (M14/T14.7).
+        if let Some((track, thumb)) = self.bar_rects(&st[i]) {
+            out.rect(track, crate::input::selection_tint(st[i].fg));
+            out.rect(thumb, st[i].fg);
+        }
     }
 
     fn hit(&self, st: &[NodeState], i: usize, x: f32, y: f32) -> Option<Hit> {

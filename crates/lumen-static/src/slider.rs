@@ -127,6 +127,7 @@ impl Node for Slider {
             color: Color(53, 99, 239, 255),
             pressed_dim: 0.10,
             hover_dim: 0.05,
+            cursor: crate::style::Cursor::Pointer,
             ..Style::default()
         }
     }
