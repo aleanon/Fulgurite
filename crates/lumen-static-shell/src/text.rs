@@ -173,6 +173,34 @@ impl FontStack {
         (out, Size { w: w.ceil(), h: h.max(layout.height()).ceil() })
     }
 
+    /// The size of a run, **without rasterising it**.
+    ///
+    /// `measure` used to call [`Self::glyphs`] and keep only its `Size`,
+    /// throwing away a `Vec` of freshly rasterised coverage bitmaps —
+    /// so *measuring* text rasterised it, and layout paid for pixels no
+    /// one looked at. fontdue has no glyph cache, so that was a real
+    /// raster per glyph per measure.
+    ///
+    /// It cost **2.9 µs a label**, which at 3000 labels is 8.7 ms of a
+    /// frame; `docs/results-competitive.md` has the before and after.
+    /// The width and height arithmetic below is lifted verbatim from
+    /// `glyphs`, so the two cannot disagree about a box — which they
+    /// must not, because `layout` sizes from this and `paint` re-wraps
+    /// inside it.
+    pub(crate) fn measure_run(&self, text: &str, px: f32, weight: f32, max_w: f32) -> Size {
+        let (font, prepared) = self.prepare(text, weight);
+        let text: &str = &prepared;
+        let layout = Self::run(font, text, px, max_w);
+        let (mut w, mut h) = (0.0f32, 0.0f32);
+        for g in layout.glyphs() {
+            // Width from the *advance*, not the ink box — see `glyphs`.
+            let adv = font.metrics_indexed(g.key.glyph_index, px).advance_width;
+            w = w.max(g.x + adv.max(g.width as f32));
+            h = h.max(g.y + g.height as f32);
+        }
+        Size { w: w.ceil(), h: h.max(layout.height()).ceil() }
+    }
+
     /// Shape one run and report every cluster boundary to `sink`.
     ///
     /// No rasterization: this is the query a caret, a selection or a
@@ -339,7 +367,8 @@ impl TextMeasure for FontMetrics {
             return Size { w: 0.0, h: 0.0 };
         }
         let k = self.scale;
-        let s = self.stack.glyphs(text, size * k, weight, max_w * k).1;
+        // `measure_run`, not `glyphs`: measuring must not rasterise.
+        let s = self.stack.measure_run(text, size * k, weight, max_w * k);
         Size { w: s.w / k, h: s.h / k }
     }
 

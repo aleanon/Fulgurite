@@ -10,3 +10,13 @@ lumen-static = { path = "../../../crates/lumen-static" }
 # this one against the half-em-per-byte stand-in would compare fontdue shaping
 # to arithmetic.
 lumen-static-shell = { path = "../../../crates/lumen-static-shell", features = ["truetype"] }
+# The dev surface, so the harness can measure BOTH profiles: `observe` turns
+# on the agent's per-frame journal and ambient audit, which is the right
+# default for `cargo run` and the wrong thing to compare against Qt and GTK,
+# which run no such pass. Lumen's harness draws the same line and for the same
+# reason (its BENCH5 note).
+lumen-static-agent = { path = "../../../crates/lumen-static-agent", optional = true }
+
+[features]
+default = []
+observe = ["dep:lumen-static-agent", "lumen-static/observe"]

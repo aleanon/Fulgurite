@@ -113,6 +113,32 @@ fn main() {
     }
     println!("lumen-static/{:<22} {floor:9.1} us   ({n} rows)", "idle (floor)");
 
+    // The **all-rows-change** workload, which is what Lumen's criterion
+    // benches (`vs_toolkits`, `vs_iced`) measure against masonry and iced.
+    // Every row's text changes, so no cache can serve any of it and no
+    // damage rect can be smaller than the frame — the measurement that
+    // stops a shaping cache flattering one side.
+    let mut best_all = [f64::INFINITY; 2];
+    for k in 0..iters {
+        for (i, row) in ui.rows.items.iter_mut().enumerate() {
+            row.set(format!("row {i} · {k}"));
+        }
+        let t = Instant::now();
+        layout(&mut ui, &mut st, &mut metrics);
+        best_all[0] = best_all[0].min(t.elapsed().as_secs_f64() * 1e6);
+
+        for (i, row) in ui.rows.items.iter_mut().enumerate() {
+            row.set(format!("row {i} · {k}."));
+        }
+        let t = Instant::now();
+        layout(&mut ui, &mut st, &mut metrics);
+        list.clear();
+        pass::paint(&ui, &st, &mut list);
+        best_all[1] = best_all[1].min(t.elapsed().as_secs_f64() * 1e6);
+    }
+    println!("lumen-static/{:<22} {:9.1} us   ({n} rows)", "ALL rows: layout", best_all[0]);
+    println!("lumen-static/{:<22} {:9.1} us   ({n} rows)", "ALL rows: +paint", best_all[1]);
+
     let mut best = [f64::INFINITY; 4];
     for k in 0..iters {
         let text = format!("counter: {:05}", k % 10000);
@@ -158,6 +184,30 @@ fn main() {
             canvas.render_within(&list, area);
         }
         best[3] = best[3].min(t.elapsed().as_secs_f64() * 1e6);
+    }
+
+    // The dev surface, when it is compiled in. `observe` runs the agent's
+    // journal diff *and* the ambient audit over the whole tree on every
+    // painted frame — the right default for `cargo run` and the wrong thing
+    // to put in a row next to Qt, which runs no such pass. Measured, not
+    // assumed, and reported as its own row (T14/BENCH note).
+    #[cfg(feature = "observe")]
+    {
+        let mut agent = lumen_static_agent::Agent::new();
+        let mut best_obs = f64::INFINITY;
+        for k in 0..iters {
+            ui.rows.items[0].set(format!("obs {k}"));
+            let t = Instant::now();
+            layout(&mut ui, &mut st, &mut metrics);
+            list.clear();
+            pass::paint(&ui, &st, &mut list);
+            {
+                let mut tree = lumen_static_agent::TreeMut::of_root(&mut ui, &styles, &st);
+                agent.frame_done(&mut tree, lumen_static_agent::FrameTiming::passes(0, 0));
+            }
+            best_obs = best_obs.min(t.elapsed().as_secs_f64() * 1e6);
+        }
+        println!("lumen-static/{:<22} {best_obs:9.1} us   ({n} rows)", "+paint +observe");
     }
 
     assert!(!list.cmds.is_empty(), "the frame drew nothing, so it measured nothing");
