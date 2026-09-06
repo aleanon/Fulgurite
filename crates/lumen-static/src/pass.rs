@@ -155,6 +155,112 @@ pub fn paint_overlaid<W: Node + ?Sized, O: crate::overlay::OverlaySink>(
     }
 }
 
+/// Dispatch with overlays on top — `docs/plan-capabilities.md` T15.1.
+///
+/// Two things ordinary [`dispatch`] cannot do, both of which every
+/// overlay needs:
+///
+/// - **Route to what is on top.** Pointer events hit-test through
+///   [`hit_test_overlaid`], so a click on a dropdown reaches the
+///   dropdown and not the row underneath it.
+/// - **Answer a click that hits nothing.** A press outside every open
+///   overlay dismisses them. That event reaches no widget by
+///   definition, so no widget can react to it — the pass has to, which
+///   is why `plan-widgets.md` T11.5 listed dismissal as a blocker
+///   rather than a detail.
+///
+/// Escape dismisses the topmost overlay before anything else sees it,
+/// which is what stops a text field inside a modal from eating it.
+///
+/// Returns whether anything handled the event.
+pub fn dispatch_overlaid<S: crate::event::App, O: crate::overlay::OverlaySink>(
+    state: &mut S,
+    style: &[Style],
+    st: &mut [NodeState],
+    input: &mut crate::event::InputState,
+    ov: &O,
+    ev: &crate::event::Event,
+) -> bool {
+    use crate::event::{Event, Key};
+
+    // Escape closes the topmost overlay and stops there.
+    if matches!(ev, Event::Key { key: Key::Escape, down: true }) && !ov.is_empty() {
+        let top = ov.at(ov.len() - 1) as usize;
+        if state.tree_mut().node_mut(top).dismiss() {
+            input.focus = None;
+            return true;
+        }
+    }
+
+    // A press outside every open overlay dismisses them all, topmost
+    // first, and is *consumed* — the click that closes a menu should
+    // not also press the button underneath it, which is what every
+    // desktop toolkit does and what a user expects.
+    if matches!(ev, Event::PointerDown { .. }) && !ov.is_empty() {
+        if let Some(p) = ev.position() {
+            let inside = (0..ov.len()).any(|k| {
+                let i = ov.at(k) as usize;
+                state.tree().node(i).hit(st, i, p.x, p.y).is_some()
+            });
+            if !inside {
+                let mut closed = false;
+                for k in (0..ov.len()).rev() {
+                    let i = ov.at(k) as usize;
+                    closed |= state.tree_mut().node_mut(i).dismiss();
+                }
+                if closed {
+                    input.focus = None;
+                    return true;
+                }
+            }
+        }
+    }
+
+    // Tab is trapped inside the topmost overlay. A modal that lets Tab
+    // walk out to the window behind it is a modal a keyboard user
+    // cannot use, and it is the half of "modal" that is not painting.
+    if matches!(ev, Event::Key { key: Key::Tab, down: true }) && !ov.is_empty() {
+        let top = ov.at(ov.len() - 1) as usize;
+        let table = <S::Tree as crate::widget::Widget>::SUB_TABLE;
+        let span = crate::style::subtree_range(table, top);
+        input.focus = next_focusable_in(table, st, style, input.focus, span);
+        return true;
+    }
+
+    // Otherwise ordinary dispatch, with overlays taking pointer hits
+    // first. `dispatch` does its own hit test, so an overlay hit is
+    // routed by index here rather than by re-walking.
+    if let Some(p) = ev.position() {
+        if !ov.is_empty() {
+            for k in (0..ov.len()).rev() {
+                let i = ov.at(k) as usize;
+                if let Some(h) = state.tree().node(i).hit(st, i, p.x, p.y) {
+                    let cx = crate::event::EventCtx {
+                        event: *ev,
+                        node: h.node,
+                        row: h.inner.map(|x| x.row),
+                        inner: h.inner.map_or(0, |x| x.node),
+                        pos: p,
+                        local: h.local,
+                        button: ev.button(),
+                        clicks: input.clicks,
+                        mods: input.mods,
+                    };
+                    let n = h.node as usize;
+                    if state.tree_mut().node_mut(n).on_event(ev, &cx) {
+                        return true;
+                    }
+                    // Not consumed by the overlay's own widget: fall
+                    // through to activation on the overlay's node.
+                    break;
+                }
+            }
+        }
+    }
+
+    dispatch(state, style, st, input, ev)
+}
+
 /// Hit-test with the overlays from the last [`paint_overlaid`] on top.
 ///
 /// Deferred subtrees are tested **first and in reverse**, because the
@@ -496,13 +602,36 @@ fn next_focusable(
     style: &[Style],
     from: Option<u32>,
 ) -> Option<u32> {
-    let n = table.len();
+    next_focusable_in(table, st, style, from, 0..table.len())
+}
+
+/// The same, restricted to a subtree — `docs/plan-capabilities.md`
+/// T15.1's focus trap.
+///
+/// `scope` is a half-open range of table indices. Tab wraps **within**
+/// it, which is what a modal needs: a dialog that lets Tab walk out to
+/// the window behind it is a dialog a keyboard user cannot use.
+fn next_focusable_in(
+    table: &[crate::desc::NodeDesc],
+    st: &[NodeState],
+    style: &[Style],
+    from: Option<u32>,
+    scope: core::ops::Range<usize>,
+) -> Option<u32> {
+    let (lo, hi) = (scope.start, scope.end.min(table.len()));
+    let n = hi.saturating_sub(lo);
     if n == 0 {
         return None;
     }
-    let start = from.map_or(0, |f| f as usize + 1);
+    // Start after the current focus when it is inside the scope, and at
+    // the scope's beginning when it is not — which is what makes the
+    // first Tab after a modal opens land inside the modal.
+    let start = match from {
+        Some(f) if (f as usize) >= lo && (f as usize) < hi => f as usize + 1 - lo,
+        _ => 0,
+    };
     (0..n)
-        .map(|k| (start + k) % n)
+        .map(|k| lo + (start + k) % n)
         .find(|&i| {
             table[i].is_focusable()
                 && style[i].visible

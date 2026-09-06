@@ -182,6 +182,21 @@ pub trait Node {
         None
     }
 
+    /// Close whatever this node has open, if anything —
+    /// `docs/plan-capabilities.md` T15.1.
+    ///
+    /// Returns whether it closed something, so a caller knows whether
+    /// to redraw. `false` from a node with nothing to close, which is
+    /// what lets `dispatch_overlaid` offer dismissal to every open
+    /// overlay without asking what kind of thing each one is.
+    ///
+    /// **This is the answer to the one input case `dispatch` could not
+    /// express**: a click outside every node. It reaches no widget, so
+    /// no widget can react to it; the pass has to.
+    fn dismiss(&mut self) -> bool {
+        false
+    }
+
     /// One step of an input-method composition (T14.8).
     ///
     /// `false` from a node that does not edit text, which is what lets

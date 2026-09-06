@@ -180,6 +180,10 @@ impl<W: Widget> Node for Popup<W> {
         self.content.hit(st, i + Self::AT, x, y)
     }
 
+    fn dismiss(&mut self) -> bool {
+        core::mem::replace(&mut self.open, false)
+    }
+
     fn node(&self, i: usize) -> &dyn Node {
         if i == 0 {
             self

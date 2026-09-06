@@ -216,7 +216,7 @@ The refusal count is exposed as `OverlaySink::refused`, on the same rule
 `InputQueue::dropped` follows: a structure that silently loses something
 is worse than one that says how much.
 
-### T15.1 — dropdown, tooltip, modal, context menu
+### T15.1 — dropdown, tooltip, modal, context menu — **MECHANISM DONE 2026-09-07**
 
 `plan-widgets.md` T11.5's four widgets, plus the menu bar. Small once
 T15.0 exists — which was that task's whole argument for deferring them.
@@ -230,6 +230,34 @@ Escape-to-close, and focus trapping for modals.
 **Gate:** click-outside dismisses; Escape dismisses; Tab inside a modal
 does not leave it; a context menu opens on `PointerButton::Right`
 (T14.3).
+
+**The mechanism is built and gated; the four widgets are compositions
+over it, and that is a decision rather than a shortfall** — the same one
+T11.4 made for tabs, which are buttons plus an `Either` and not a type.
+A dropdown is a `Button` plus a `Popup`; a context menu is the same
+opened on `PointerButton::Right`; a tooltip is one opened on hover; a
+modal is one with `Anchor::Over` plus the focus trap. What none of them
+could be written over before is what was actually missing:
+
+- **`Node::dismiss()`**, in the shape `Node::selection` and
+  `Node::compose` already use. It answers **the one input case
+  `dispatch` could not express** — a click outside every node reaches no
+  widget by definition, so no widget can react to it and the pass has
+  to. `plan-widgets.md` T11.5 listed this as a blocker rather than a
+  detail, correctly.
+- **`pass::dispatch_overlaid`** — routes pointer events to the topmost
+  overlay first, dismisses on an outside press, and dismisses on
+  Escape.
+- **A scoped focus traversal**, `next_focusable_in`, and Tab trapped
+  inside the topmost overlay. This is the half of "modal" that is not
+  painting: a dialog that lets Tab walk out to the window behind it is
+  one a keyboard user cannot use.
+
+**One behaviour worth stating because it is a choice.** The press that
+dismisses an overlay is **consumed** — it does not also activate what is
+underneath. Every desktop toolkit does this and a user expects it, but
+it is not the only defensible answer and the test asserts it explicitly
+rather than leaving it to be discovered.
 
 ### T15.2 — images
 

@@ -202,3 +202,202 @@ fn no_overlays_is_a_zst() {
     assert_eq!(core::mem::size_of::<NoOverlays>(), 0);
     assert_eq!(core::mem::size_of::<Overlays<8>>(), 8 * 4 + 2 * core::mem::size_of::<usize>());
 }
+
+// ---- T15.1: dismissal ------------------------------------------------
+
+mod dismissal {
+    use super::*;
+    use lumen_static::event::InputState;
+    use lumen_static::{Event, EventCtx, Key, Mods};
+
+    #[derive(StaticTree, Default)]
+    #[widget(column, spacing = 0.0)]
+    struct Ui {
+        #[widget_id("btn")]
+        btn: lumen_static::ops::Button<App>,
+        #[widget_id("pop")]
+        pop: Popup<Menu>,
+    }
+
+    #[derive(lumen_static::App, Default)]
+    struct App {
+        #[tree]
+        ui: Ui,
+        pressed: u32,
+    }
+
+    fn app() -> (App, Vec<lumen_static::Style>, [NodeState; Ui::NODE_COUNT], Overlays<4>) {
+        let mut a = App::default();
+        a.ui.btn.label = "open";
+        a.ui.btn.on_click = |s: &mut App, _: &EventCtx| s.pressed += 1;
+        a.ui.pop.open = true;
+        a.ui.pop.anchor = lumen_static::Anchor::Over;
+        a.ui.pop.content.a.set("one");
+        a.ui.pop.content.b.set("two");
+        let sty = pass::default_styles(&a.ui);
+        let mut st = [NodeState::default(); Ui::NODE_COUNT];
+        pass::layout(&mut a.ui, &sty, &mut st, VIEW);
+        let mut list = DisplayList::new();
+        let mut ov: Overlays<4> = Overlays::default();
+        pass::paint_overlaid(&a.ui, &st, &mut list, &mut ov);
+        (a, sty, st, ov)
+    }
+
+    #[test]
+    fn a_press_outside_closes_it_and_is_consumed() {
+        let (mut a, sty, mut st, ov) = app();
+        let mut input = InputState::default();
+        // Far from the popup, and on the button — which must NOT fire:
+        // the click that closes a menu should not also press what is
+        // underneath it.
+        let b = st[1];
+        let (x, y) = (b.pos.x + 2.0, b.pos.y + 2.0);
+        let handled =
+            pass::dispatch_overlaid(&mut a, &sty, &mut st, &mut input, &ov, &Event::down(x, y));
+        assert!(handled, "the dismissing press is consumed");
+        assert!(!a.ui.pop.open, "and it closed");
+        assert_eq!(a.pressed, 0, "the button underneath did not fire");
+    }
+
+    #[test]
+    fn escape_closes_the_topmost() {
+        let (mut a, sty, mut st, ov) = app();
+        let mut input = InputState::default();
+        let handled = pass::dispatch_overlaid(
+            &mut a,
+            &sty,
+            &mut st,
+            &mut input,
+            &ov,
+            &Event::Key { key: Key::Escape, down: true },
+        );
+        assert!(handled);
+        assert!(!a.ui.pop.open);
+    }
+
+    #[test]
+    fn a_press_inside_does_not_close_it() {
+        let (mut a, sty, mut st, ov) = app();
+        let mut input = InputState::default();
+        let label = st[ov.at(0) as usize + 1];
+        let (x, y) = (label.pos.x + 1.0, label.pos.y + 1.0);
+        pass::dispatch_overlaid(&mut a, &sty, &mut st, &mut input, &ov, &Event::down(x, y));
+        assert!(a.ui.pop.open, "clicking the popup's own content keeps it open");
+    }
+
+    #[test]
+    fn with_nothing_open_it_is_ordinary_dispatch() {
+        let (mut a, sty, mut st, _) = app();
+        a.ui.pop.open = false;
+        let empty: Overlays<4> = Overlays::default();
+        let mut input = InputState::default();
+        let b = st[1];
+        let (x, y) = (b.pos.x + 2.0, b.pos.y + 2.0);
+        pass::dispatch_overlaid(&mut a, &sty, &mut st, &mut input, &empty, &Event::down(x, y));
+        pass::dispatch_overlaid(&mut a, &sty, &mut st, &mut input, &empty, &Event::up(x, y));
+        assert_eq!(a.pressed, 1, "the button works normally when no overlay is open");
+    }
+
+    #[test]
+    fn escape_with_nothing_open_falls_through() {
+        let (mut a, sty, mut st, _) = app();
+        a.ui.pop.open = false;
+        let empty: Overlays<4> = Overlays::default();
+        let mut input = InputState::default();
+        let handled = pass::dispatch_overlaid(
+            &mut a,
+            &sty,
+            &mut st,
+            &mut input,
+            &empty,
+            &Event::Key { key: Key::Escape, down: true },
+        );
+        assert!(!handled, "Escape is the application's when no overlay wants it");
+        let _ = Mods::NONE;
+    }
+}
+
+// ---- T15.1: the focus trap -------------------------------------------
+
+mod focus_trap {
+    use super::*;
+    use lumen_static::event::InputState;
+    use lumen_static::{Event, Key, TextInput};
+
+    #[derive(StaticTree, Default)]
+    #[widget(column, spacing = 0.0)]
+    struct Dialog {
+        #[widget_id("in1")]
+        in1: TextInput,
+        #[widget_id("in2")]
+        in2: TextInput,
+    }
+
+    #[derive(StaticTree, Default)]
+    #[widget(column, spacing = 0.0)]
+    struct Ui {
+        #[widget_id("outside")]
+        outside: TextInput,
+        #[widget_id("modal")]
+        modal: Popup<Dialog>,
+    }
+
+    #[derive(lumen_static::App, Default)]
+    struct App {
+        #[tree]
+        ui: Ui,
+    }
+
+    /// **The half of "modal" that is not painting.** Tab must cycle
+    /// inside the dialog and never reach the field behind it.
+    #[test]
+    fn tab_cycles_inside_the_modal_and_never_leaves() {
+        let mut a = App::default();
+        a.ui.modal.open = true;
+        a.ui.modal.anchor = lumen_static::Anchor::Over;
+        let sty = pass::default_styles(&a.ui);
+        let mut st = [NodeState::default(); Ui::NODE_COUNT];
+        pass::layout(&mut a.ui, &sty, &mut st, VIEW);
+        let mut list = DisplayList::new();
+        let mut ov: Overlays<4> = Overlays::default();
+        pass::paint_overlaid(&a.ui, &st, &mut list, &mut ov);
+        assert_eq!(ov.len(), 1);
+
+        // The dialog's own nodes: the popup at `top`, its two fields
+        // after it.
+        let top = ov.at(0) as usize;
+        let inside = top..top + Popup::<Dialog>::NODE_COUNT;
+
+        let mut input = InputState::default();
+        let tab = Event::Key { key: Key::Tab, down: true };
+        let mut seen = Vec::new();
+        for _ in 0..6 {
+            pass::dispatch_overlaid(&mut a, &sty, &mut st, &mut input, &ov, &tab);
+            let f = input.focus.expect("Tab focused something") as usize;
+            assert!(inside.contains(&f), "Tab escaped the modal to node {f}");
+            seen.push(f);
+        }
+        assert!(seen.iter().any(|&f| f != seen[0]), "and it actually moved between fields");
+    }
+
+    #[test]
+    fn with_no_overlay_tab_walks_the_whole_tree_as_before() {
+        let mut a = App::default();
+        a.ui.modal.open = false;
+        let sty = pass::default_styles(&a.ui);
+        let mut st = [NodeState::default(); Ui::NODE_COUNT];
+        pass::layout(&mut a.ui, &sty, &mut st, VIEW);
+        let empty: Overlays<4> = Overlays::default();
+
+        let mut input = InputState::default();
+        pass::dispatch_overlaid(
+            &mut a,
+            &sty,
+            &mut st,
+            &mut input,
+            &empty,
+            &Event::Key { key: Key::Tab, down: true },
+        );
+        assert_eq!(input.focus, Some(1), "the field outside is reachable again");
+    }
+}
