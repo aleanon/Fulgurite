@@ -109,6 +109,7 @@ pub mod event;
 pub mod font;
 pub mod hatch;
 pub mod hit;
+pub mod image;
 pub mod inline;
 // `mpsc`, so `std` (M13/T13.1). Deferred work handed back to the frame
 // loop from another thread is not an embedded concern.
@@ -157,7 +158,7 @@ pub use retain::Incremental;
 // `DisplayList` is one `Painter`, not the vocabulary: it owns a `Vec`
 // of commands and a `String` of text, so it follows `alloc` (T13.4).
 // A host without one paints straight through the trait (M10a).
-pub use display::{Cmd, Color, Painter, Scaled};
+pub use display::{Cmd, Color, ImageId, ImageSource, Painter, Scaled};
 #[cfg(feature = "alloc")]
 pub use display::{DisplayList, Renderer};
 pub use style::{Align, Edges, Length, Patch, Rule, Selector, Style};
@@ -171,6 +172,7 @@ pub use event::{Event, EventCtx, InputQueue, Key, Mods, PointerButton};
 pub use event::App;
 pub use lumen_static_macros::{App, Reloadable, StaticTree};
 pub use overlay::{NoOverlays, OverlaySink, Overlays};
+pub use image::{Fit, Image};
 pub use popup::{Anchor, Popup};
 pub use widget::{Node, Widget};
 

@@ -21,6 +21,12 @@ pub struct Canvas {
     /// which is what the headless oracle needs, and not enough to read.
     #[cfg(feature = "truetype")]
     pub font: Option<crate::text::FontStack>,
+    /// Where `Cmd::Image` is resolved to pixels (T15.2).
+    ///
+    /// `None` draws nothing, which is what a host that ships no images
+    /// wants and costs it one `Option` check per image command — of
+    /// which it has none.
+    pub images: Option<Box<dyn lumen_static::ImageSource>>,
 }
 
 impl Canvas {
@@ -31,6 +37,7 @@ impl Canvas {
             pixels: vec![255; (width * height * 4) as usize],
             #[cfg(feature = "truetype")]
             font: None,
+            images: None,
         }
     }
 
@@ -213,6 +220,51 @@ impl Canvas {
         }
     }
 
+    /// Blit an image into `dst`, limited to `area`.
+    ///
+    /// Nearest-neighbour: this is a software canvas whose whole point is
+    /// predictable cost, and a bilinear resample is four fetches and
+    /// three lerps per pixel for a smoothness nothing here has asked
+    /// for. `Fit` already keeps the aspect, so the common case is a
+    /// scale close to 1.
+    fn blit_image(
+        &mut self,
+        dst: [f32; 4],
+        area: [f32; 4],
+        iw: u32,
+        ih: u32,
+        px: &[u8],
+        tint: Color,
+    ) {
+        let (dw, dh) = (dst[2] - dst[0], dst[3] - dst[1]);
+        if dw <= 0.0 || dh <= 0.0 {
+            return;
+        }
+        let (x0, y0) = (area[0].floor().max(0.0) as i64, area[1].floor().max(0.0) as i64);
+        let (x1, y1) = (
+            (area[2].ceil() as i64).min(self.width as i64),
+            (area[3].ceil() as i64).min(self.height as i64),
+        );
+        for y in y0..y1 {
+            let v = ((y as f32 + 0.5 - dst[1]) / dh * ih as f32) as i64;
+            if v < 0 || v >= ih as i64 {
+                continue;
+            }
+            for x in x0..x1 {
+                let u = ((x as f32 + 0.5 - dst[0]) / dw * iw as f32) as i64;
+                if u < 0 || u >= iw as i64 {
+                    continue;
+                }
+                let o = ((v as u32 * iw + u as u32) * 4) as usize;
+                let s = &px[o..o + 4];
+                // Tint multiplies, so `Color::WHITE` is untinted and one
+                // monochrome asset can serve several colours.
+                let m = |a: u8, b: u8| ((a as u32 * b as u32) / 255) as u8;
+                self.blend(x, y, Color(m(s[0], tint.0), m(s[1], tint.1), m(s[2], tint.2), m(s[3], tint.3)));
+            }
+        }
+    }
+
     fn blend(&mut self, x: i64, y: i64, c: Color) {
         if x < 0 || y < 0 || x >= self.width as i64 || y >= self.height as i64 || c.3 == 0 {
             return;
@@ -321,6 +373,11 @@ impl Canvas {
     }
 
     fn render_impl(&mut self, list: &DisplayList, damage: Option<[f32; 4]>) {
+        // Taken for the pass and put back at the end: `blit_image`
+        // needs `&mut self` and the source is a field, so holding a
+        // borrow across the loop would conflict. Nothing here can
+        // return early, so it always goes back.
+        let images = self.images.take();
         let mut clip: Vec<[f32; 4]> = Vec::new();
         if let Some(d) = damage {
             clip.push(d);
@@ -392,6 +449,21 @@ impl Canvas {
                         }
                     }
                 }
+                Cmd::Image { rect, id, tint } => {
+                    // Culled before anything is fetched, like every
+                    // other command and like text since the 46x fix
+                    // (`docs/results-competitive.md` §6.1).
+                    let Some(r) = clipped(*rect, &clip) else { continue };
+                    let Some(src) = images.as_ref() else { continue };
+                    // A missing asset draws nothing rather than taking
+                    // the frame down: `ImageSource` returns `Option` for
+                    // exactly that.
+                    let Some((iw, ih, px)) = src.image(*id) else { continue };
+                    if iw == 0 || ih == 0 || px.len() < (iw as usize * ih as usize * 4) {
+                        continue;
+                    }
+                    self.blit_image(*rect, r, iw, ih, px, *tint);
+                }
                 Cmd::PushClip { rect } => clip.push(*rect),
                 Cmd::PopClip => {
                     // Never pop the damage scope: it is not part of the
@@ -405,6 +477,7 @@ impl Canvas {
                 }
             }
         }
+        self.images = images;
     }
 }
 

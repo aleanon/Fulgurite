@@ -74,8 +74,39 @@ pub enum Cmd {
     /// version emitted 18 translucent rounded rects per shadow and that
     /// was 97% of a frame (`docs/results-frame-cost.md`).
     Shadow { rect: Rect, color: Color, radius: f32, spread: f32 },
+    /// A host-owned image, drawn into `rect` — T15.2.
+    ///
+    /// **`id` names a surface the host holds; the core never carries
+    /// pixels and never decodes.** That is what keeps images available
+    /// in the `no_std` profile: an embedded host resolves an id to a
+    /// slice in flash, a desktop host to a decoded buffer, and the
+    /// vocabulary is the same. `tint` multiplies the source, so a
+    /// monochrome icon can be recoloured without a second asset;
+    /// `Color::WHITE` is untinted.
+    Image { rect: Rect, id: ImageId, tint: Color },
     PushClip { rect: Rect },
     PopClip,
+}
+
+/// A host-owned image.
+///
+/// Opaque on purpose: the core never looks inside one, so a host may
+/// number its surfaces however it likes — an index into a `const` array
+/// on an embedded target, a slot in a cache on a desktop.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "observe", derive(serde::Serialize, serde::Deserialize))]
+pub struct ImageId(pub u32);
+
+/// Where a [`Painter`] resolves an [`ImageId`] to pixels.
+///
+/// Implemented by the host, not the core. `no_std`-clean: the pixels are
+/// a borrowed slice, so an embedded host hands back a `&'static [u8]`
+/// in flash and nothing is allocated or copied.
+pub trait ImageSource {
+    /// RGBA8 pixels and dimensions for `id`, or `None` if the host has
+    /// no such surface — which a renderer must treat as "draw nothing",
+    /// not as an error. A missing asset should not take a frame down.
+    fn image(&self, id: ImageId) -> Option<(u32, u32, &[u8])>;
 }
 
 impl Cmd {
@@ -122,6 +153,14 @@ impl Cmd {
                 f(h, weight.to_bits() as u64);
                 f(h, u32::from_be_bytes([color.0, color.1, color.2, color.3]) as u64);
             }
+            Cmd::Image { rect, id, tint } => {
+                f(h, 6);
+                for v in rect {
+                    f(h, v.to_bits() as u64);
+                }
+                f(h, id.0 as u64);
+                f(h, u32::from_be_bytes([tint.0, tint.1, tint.2, tint.3]) as u64);
+            }
             Cmd::PushClip { rect } => {
                 f(h, 3);
                 for v in rect {
@@ -159,6 +198,15 @@ pub trait Painter {
     fn text_weighted(&mut self, rect: Rect, s: &str, size: f32, weight: f32, color: Color);
     fn rounded_rect(&mut self, rect: Rect, color: Color, radius: f32);
     fn shadow(&mut self, rect: Rect, radius: f32, spread: f32);
+
+    /// Draw a host-owned image into `rect`, multiplied by `tint`.
+    ///
+    /// Provided as a no-op, so every existing painter keeps compiling
+    /// and a renderer that has no image support draws nothing rather
+    /// than failing to build.
+    fn image(&mut self, rect: Rect, id: ImageId, tint: Color) {
+        let _ = (rect, id, tint);
+    }
     fn push_clip(&mut self, rect: Rect);
     fn pop_clip(&mut self);
 
@@ -257,6 +305,14 @@ impl DisplayList {
         // edge. The renderer owns the falloff curve.
         let r = [rect[0], rect[1] + spread * 0.35, rect[2], rect[3] + spread * 0.35];
         self.cmds.push(Cmd::Shadow { rect: r, color: Color(0, 0, 0, 80), radius, spread });
+    }
+
+    /// An image, dropped when it has no area — the same rule the other
+    /// commands follow.
+    pub fn image(&mut self, rect: Rect, id: ImageId, tint: Color) {
+        if has_area(rect) {
+            self.cmds.push(Cmd::Image { rect, id, tint });
+        }
     }
 
     pub fn push_clip(&mut self, rect: Rect) {
@@ -371,12 +427,19 @@ impl Painter for Scaled<'_> {
         let (radius, spread) = (radius * self.scale, spread * self.scale);
         self.inner.shadow(r, radius, spread);
     }
+    fn image(&mut self, rect: Rect, id: ImageId, tint: Color) {
+        let r = self.r(rect);
+        self.inner.image(r, id, tint);
+    }
     fn push_clip(&mut self, rect: Rect) {
         let r = self.r(rect);
         self.inner.push_clip(r);
     }
     fn pop_clip(&mut self) {
         self.inner.pop_clip();
+    }
+    fn defer(&mut self, i: u32) -> bool {
+        self.inner.defer(i)
     }
 }
 
@@ -395,6 +458,9 @@ impl Painter for DisplayList {
     }
     fn shadow(&mut self, rect: Rect, radius: f32, spread: f32) {
         DisplayList::shadow(self, rect, radius, spread)
+    }
+    fn image(&mut self, rect: Rect, id: ImageId, tint: Color) {
+        DisplayList::image(self, rect, id, tint)
     }
     fn push_clip(&mut self, rect: Rect) {
         DisplayList::push_clip(self, rect)

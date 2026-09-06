@@ -259,7 +259,7 @@ underneath. Every desktop toolkit does this and a user expects it, but
 it is not the only defensible answer and the test asserts it explicitly
 rather than leaving it to be discovered.
 
-### T15.2 — images
+### T15.2 — images — **CORE DONE 2026-09-07**
 
 **Core stays `no_std`.** A new `Cmd::Image { rect, id, tint }` where
 `id` names a host-owned surface; the core never holds pixels and never
@@ -274,6 +274,35 @@ allocator live.
 **Gate:** the embedded fixture draws an image from a `const` slice with
 no allocator; the shell decodes a PNG behind the feature; `Cmd` stays
 within its current size class or the growth is measured.
+
+**The core half is done and the design held**: `Cmd::Image { rect, id,
+tint }`, `ImageId`, the `ImageSource` trait a host implements, an
+`Image` widget with `Fit::{Stretch, Contain, Cover}`, and a
+nearest-neighbour blit in the software canvas. `just thumb` is green at
+both tiers, so images are available with no allocator — which was the
+claim.
+
+**`Cmd` stayed `Copy`, and that is the whole reason this works.** The
+test asserts it: an image variant carrying a pixel buffer would have
+made `Cmd` non-`Copy` and the `no_std` profile could not have images at
+all. Naming a surface instead is what keeps one vocabulary for both
+profiles.
+
+**The compiler enforced the seam.** Adding a variant broke six
+exhaustive matches — the software renderer, `retain::ink`, the
+containment test, the clip test, a benchmark and the overlay test — and
+every one of them is a place that had to decide what an image means.
+That is the `Cmd` enum being closed doing its job.
+
+Two smaller decisions: a missing asset draws **nothing** rather than
+failing, because `ImageSource::image` returns `Option` and a frame
+should not die of a bad asset id; and the blit is nearest-neighbour,
+because a bilinear resample is four fetches and three lerps per pixel
+for a smoothness nothing has asked for, in a canvas whose point is
+predictable cost.
+
+**Still to do here:** decoding behind the shell's `image` feature, and
+the embedded fixture drawing from a `const` slice.
 
 ### T15.3 — vector drawing
 

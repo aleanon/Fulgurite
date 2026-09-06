@@ -38,6 +38,7 @@ fn ink(c: &Cmd) -> [f32; 4] {
         Cmd::Rect { rect, .. }
         | Cmd::RoundedRect { rect, .. }
         | Cmd::Text { rect, .. }
+        | Cmd::Image { rect, .. }
         | Cmd::PushClip { rect } => *rect,
         Cmd::PopClip => [0.0; 4],
     }

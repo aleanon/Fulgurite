@@ -45,7 +45,8 @@ fn first_escape(list: &DisplayList, root: [f32; 4]) -> Option<(usize, [f32; 4])>
             Cmd::Rect { rect, .. }
             | Cmd::RoundedRect { rect, .. }
             | Cmd::Shadow { rect, .. }
-            | Cmd::Text { rect, .. } => {
+            | Cmd::Text { rect, .. }
+            | Cmd::Image { rect, .. } => {
                 let mut r = *rect;
                 // A shadow's ink reaches `spread` past its rect.
                 if let Cmd::Shadow { spread, .. } = c {

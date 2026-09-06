@@ -462,6 +462,14 @@ impl<R: Retention> Painter for Recording<'_, R> {
         self.inner.shadow(rect, radius, spread);
     }
 
+    fn image(&mut self, rect: Rect, id: crate::display::ImageId, tint: Color) {
+        let mut h = h_rect(fold(0, 7), rect);
+        h = fold(h, id.0 as u64);
+        h = h_color(h, tint);
+        self.ret.observe(h, rect);
+        self.inner.image(rect, id, tint);
+    }
+
     fn push_clip(&mut self, rect: Rect) {
         self.ret.observe(h_rect(fold(0, 5), rect), rect);
         self.inner.push_clip(rect);
@@ -472,5 +480,9 @@ impl<R: Retention> Painter for Recording<'_, R> {
     fn pop_clip(&mut self) {
         self.ret.observe(fold(0, 6), [0.0; 4]);
         self.inner.pop_clip();
+    }
+
+    fn defer(&mut self, i: u32) -> bool {
+        self.inner.defer(i)
     }
 }
