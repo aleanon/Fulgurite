@@ -1,8 +1,24 @@
 # M15 — the capabilities every other framework has
 
-*Planned 2026-09-06. Status: **not started**. The thirteen rows in
-`docs/competitive-feature-gaps.md` marked "common to all six", plus the
-gating policy that decides how each one is paid for.*
+*Planned 2026-09-06. **Status: done 2026-09-07, T15.0–T15.12.** The
+thirteen rows in `docs/competitive-feature-gaps.md` marked "common to
+all six", plus the gating policy that decides how each one is paid for.*
+
+> **What the gating policy actually did.** It was written as a
+> constraint and turned out to be a design tool: it forced `focus_ring`
+> from an `f32` to a `u8` (72 → 76 bytes, caught), moved focus-visible
+> out of `NodeState` (76 → 80, caught), kept the animation tick out of a
+> per-node pass, made the drag payload a type parameter, and put
+> complex-script text in its own crate. **Five designs changed because a
+> measurement said the obvious one cost something.**
+>
+> Two items came in smaller than planned — the overlay phase needed no
+> derive change, and multi-window needed no core change at all — and one
+> came in as a deliberate deferral on its own stated condition (T15.12).
+>
+> `no_std` held throughout: `just thumb` builds both tiers after every
+> task, and it caught three module-gate mistakes and one std-only
+> `f32::sqrt` that review did not.
 
 ## The gating policy, decided first
 

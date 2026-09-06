@@ -1388,7 +1388,7 @@ the window origin, not the caret — T14.8). Overlays remain M11/T11.5.
 
 ---
 
-## M15 — The capabilities every other framework has — **PLANNED 2026-09-06, not started**
+## M15 — The capabilities every other framework has — **DONE 2026-09-07**
 
 *Task breakdown: `docs/plan-capabilities.md`. Gap survey:
 `docs/competitive-feature-gaps.md`.*
@@ -1423,3 +1423,29 @@ the **first** hit, so an earlier sibling wins. Those disagree, and it has
 never mattered because sibling overlap is structurally impossible — which
 is why `W1004` is a reserved lint code. Overlays end that, and **hit in
 reverse paint order** is a derive change, not a widget one.
+
+**Done, T15.0–T15.12.** Overlays as a paint-and-hit phase; dismissal and
+the modal focus trap; images with no pixels in the core; lines and
+gradients in every profile; animation with no clock; touch and gesture
+recognizers as types; Shift+Tab, arrow navigation and a focus ring;
+drag and drop; a `const` translation catalogue and RTL mirroring;
+multi-window; platform dialogs; complex-script text as a separate crate;
+and the `Renderer` seam proven by an SVG backend.
+
+**The gating policy was written as a constraint and worked as a design
+tool.** Five designs changed because a measurement said the obvious one
+cost something: `focus_ring` became a `u8` (an `f32` took `Style` from
+72 to 76 bytes), focus-visible moved to `InputState` (a `NodeState`
+field would have been 76 → 80 for every node to describe one), the
+animation tick became `App::tick` rather than a per-node pass, the drag
+payload became a type parameter rather than `Box<dyn Any>`, and shaping
+became its own crate.
+
+**`no_std` held throughout** — `just thumb` builds both tiers after
+every task, and it caught three module-gate mistakes and a std-only
+`f32::sqrt` that reading did not.
+
+**T15.12 is a deliberate deferral on its own stated gate.** The software
+renderer is 0.54 ms of a 16 ms budget; no number asks for a GPU, and the
+architectural claim underneath it — that `Renderer` admits a second
+implementation — is tested by a non-rasterising one instead.
