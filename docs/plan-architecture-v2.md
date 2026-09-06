@@ -1385,3 +1385,41 @@ Two things stayed out and are named rather than implied: **dragging a
 scrollbar thumb** (a hit-testing change, not a paint one — T14.7) and
 **`set_ime_cursor_area`** (the platform's candidate window is placed at
 the window origin, not the caret — T14.8). Overlays remain M11/T11.5.
+
+---
+
+## M15 — The capabilities every other framework has — **PLANNED 2026-09-06, not started**
+
+*Task breakdown: `docs/plan-capabilities.md`. Gap survey:
+`docs/competitive-feature-gaps.md`.*
+
+The thirteen capabilities `docs/competitive-feature-gaps.md` found in
+**all six** of Qt, GTK, iced, Xilem, Slint and Lumen and in none of
+this: images, vector drawing, animation, overlays, menus, multi-window,
+drag and drop, touch, complex-script text, localisation, focus
+navigation, platform dialogs and GPU rendering.
+
+**The milestone's constraint is that none of it is paid for by an
+application that does not ask.** Three mechanisms in preference order —
+a separate crate, a type parameter, a cargo feature — and three rules:
+`no_std` stays buildable at both tiers, no new per-node field without a
+re-budget against `docs/results-embedded.md`, and every task states its
+price in the commit that lands it.
+
+**The design decision the milestone turns on: overlays are a paint-and-
+hit *phase*, not a layout mode and not a widget.** Layout does not
+change at all. A widget cannot escape an ancestor's clip — a dropdown
+inside a `ScrollView` is drawn between its `push_clip` and `pop_clip` —
+and cannot paint above its later siblings, and neither is fixable inside
+a widget. A z-order layout mode would fix both and break the invariant
+that paint order is tree order, which retention's positional diff and
+the agent's per-node command ranges both rest on. A second paint phase,
+draining outside the clip stack, fixes both and keeps the invariant:
+the stream is phase 1 then phase 2, both in table order.
+
+It also exposes a latent bug. Paint walks children in declaration order
+so a later sibling draws on top; `hit` walks the same order and returns
+the **first** hit, so an earlier sibling wins. Those disagree, and it has
+never mattered because sibling overlap is structurally impossible — which
+is why `W1004` is a reserved lint code. Overlays end that, and **hit in
+reverse paint order** is a derive change, not a widget one.
