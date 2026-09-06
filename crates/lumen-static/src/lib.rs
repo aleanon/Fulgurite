@@ -112,6 +112,7 @@ pub mod font;
 pub mod gesture;
 pub mod hatch;
 pub mod hit;
+pub mod i18n;
 pub mod image;
 pub mod inline;
 // `mpsc`, so `std` (M13/T13.1). Deferred work handed back to the frame
@@ -177,6 +178,7 @@ pub use lumen_static_macros::{App, Reloadable, StaticTree};
 pub use overlay::{NoOverlays, OverlaySink, Overlays};
 pub use anim::{Animated, Easing, Lerp};
 pub use drag::{Drag, DragPhase};
+pub use i18n::{Catalogue, Direction};
 pub use image::{Fit, Image};
 pub use popup::{Anchor, Popup};
 pub use widget::{Node, Widget};

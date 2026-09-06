@@ -539,7 +539,7 @@ core changes; nothing enters the graph unless named. `BakedFace` and
 **Gate:** an Arabic string measures and paints right-to-left; the
 default build's dependency count is unchanged; `just thumb` unaffected.
 
-### T15.9 — localisation
+### T15.9 — localisation — **DONE 2026-09-07**
 
 A catalogue, locale-aware formatting, and RTL layout mirroring.
 
@@ -551,6 +551,32 @@ swaps `Align::Start`/`End` and padding, so it costs a branch in layout.
 **Gate:** a string resolves from a `const` catalogue with no allocator;
 an RTL locale mirrors a row's layout and its padding; T15.8's shaper is
 *not* required for the mirroring half.
+
+**Done, and the split held: mirroring needs no shaper.** A `Catalogue`
+is a sorted `&'static [(&str, &str)]` — the shape `BakedFace` uses, and
+for the same reason: on an embedded target it lives in flash and costs
+no RAM. `mirror_styles` is a **post-cascade pass**, run once when the
+locale changes rather than per frame, so a laid-out frame pays nothing.
+
+**Mirroring is a swap, not a rewrite, and that is `Align::Start`/`End`
+paying off.** The layout model's alignment has been *logical* since M2;
+right-to-left is where that becomes physical, and the whole change is
+two `match` arms and a padding swap. A model with `Left`/`Right` would
+have needed every widget rewritten.
+
+An application can therefore have a mirrored Arabic interface before it
+has an Arabic *shaper* — which is most of the way there, and is exactly
+what `docs/text-render-adoption-decision.md` deferred.
+
+**A missing translation returns the key**, not blank and not a panic: a
+half-translated application showing English among translated strings is
+legible, and a visible key is a bug report a user can read.
+
+One thing caught in the writing rather than by a gate: an earlier draft
+had `tr` and `tr_or` side by side, and the doc on one said "returns the
+key" while its code returned `""`. Collapsed to a single method — that
+disagreement is exactly the drift the doc-currency rule exists to stop,
+and it was in a doc comment about the same function's own behaviour.
 
 ### T15.10 — multi-window
 
