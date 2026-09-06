@@ -462,6 +462,44 @@ impl<R: Retention> Painter for Recording<'_, R> {
         self.inner.shadow(rect, radius, spread);
     }
 
+    fn line(
+        &mut self,
+        a: crate::desc::Point,
+        b: crate::desc::Point,
+        width: f32,
+        color: Color,
+    ) {
+        let mut h = fold(0, 8);
+        for v in [a.x, a.y, b.x, b.y, width] {
+            h = fold(h, v.to_bits() as u64);
+        }
+        h = h_color(h, color);
+        // A line's ink is its bounding box, widened by half the stroke
+        // each way — a damage rect that used only the endpoints would
+        // leave the thick part of a diagonal behind.
+        let w = width / 2.0;
+        let ink = [
+            a.x.min(b.x) - w,
+            a.y.min(b.y) - w,
+            a.x.max(b.x) + w,
+            a.y.max(b.y) + w,
+        ];
+        self.ret.observe(h, ink);
+        self.inner.line(a, b, width, color);
+    }
+
+    fn gradient(&mut self, rect: Rect, stops: crate::display::Stops, angle: f32) {
+        let mut h = h_rect(fold(0, 9), rect);
+        h = fold(h, angle.to_bits() as u64);
+        h = fold(h, stops.len as u64);
+        for k in 0..(stops.len as usize).min(crate::display::MAX_STOPS) {
+            h = fold(h, stops.at[k].to_bits() as u64);
+            h = h_color(h, stops.color[k]);
+        }
+        self.ret.observe(h, rect);
+        self.inner.gradient(rect, stops, angle);
+    }
+
     fn image(&mut self, rect: Rect, id: crate::display::ImageId, tint: Color) {
         let mut h = h_rect(fold(0, 7), rect);
         h = fold(h, id.0 as u64);

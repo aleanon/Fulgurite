@@ -38,6 +38,19 @@ fn first_escape(list: &DisplayList, root: [f32; 4]) -> Option<(usize, [f32; 4])>
     let mut stack: Vec<[f32; 4]> = Vec::new();
     for (n, c) in list.cmds.iter().enumerate() {
         match c {
+            // A line's containment is its bounding box widened by half
+            // the stroke, the same rect retention treats as its ink.
+            Cmd::Line { a, b, width, .. } => {
+                let w = width / 2.0;
+                let r = [a.x.min(b.x) - w, a.y.min(b.y) - w, a.x.max(b.x) + w, a.y.max(b.y) + w];
+                if let Some(c) = stack.last() {
+                    assert!(
+                        r[0] >= c[0] - 0.51 && r[1] >= c[1] - 0.51
+                            && r[2] <= c[2] + 0.51 && r[3] <= c[3] + 0.51,
+                        "command {n} (line) escapes its clip {c:?}: {r:?}"
+                    );
+                }
+            }
             Cmd::PushClip { rect } => stack.push(*rect),
             Cmd::PopClip => {
                 stack.pop();
@@ -46,7 +59,8 @@ fn first_escape(list: &DisplayList, root: [f32; 4]) -> Option<(usize, [f32; 4])>
             | Cmd::RoundedRect { rect, .. }
             | Cmd::Shadow { rect, .. }
             | Cmd::Text { rect, .. }
-            | Cmd::Image { rect, .. } => {
+            | Cmd::Image { rect, .. }
+            | Cmd::Gradient { rect, .. } => {
                 let mut r = *rect;
                 // A shadow's ink reaches `spread` past its rect.
                 if let Cmd::Shadow { spread, .. } = c {

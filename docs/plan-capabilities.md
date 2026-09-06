@@ -304,7 +304,7 @@ predictable cost.
 **Still to do here:** decoding behind the shell's `image` feature, and
 the embedded fixture drawing from a `const` slice.
 
-### T15.3 — vector drawing
+### T15.3 — vector drawing — **LINES AND GRADIENTS DONE 2026-09-07**
 
 Paths, strokes, gradients. The largest change to the draw vocabulary.
 
@@ -320,6 +320,32 @@ Paths, strokes, gradients. The largest change to the draw vocabulary.
 
 **Gate:** a rule and a focus ring drawn with `Cmd::Line`; a gradient
 button; the `no_std` build has lines and gradients and not paths.
+
+**The two cheap thirds are done and are in every profile.**
+`Cmd::Line { a, b, width, color }` and `Cmd::Gradient { rect, stops,
+angle }` with `Stops` inline and bounded at `MAX_STOPS = 4`. Both are
+`Copy`, so `Cmd` still is, and `just thumb` is green at both tiers —
+lines and gradients work with no allocator, which was the point of
+splitting this task by cost rather than by feature.
+
+Three decisions the building settled:
+
+- **A gradient's fallback is a flat fill of the first stop, not a
+  no-op.** `Painter::gradient` is provided, and a renderer that cannot
+  interpolate should still put something approximately right on the
+  screen: a missing background is a worse failure than an un-graded one.
+  Tested directly.
+- **A line's ink is its bounding box widened by half the stroke.**
+  Retention and the containment check both use that rect; the endpoints
+  alone would leave the thick part of a diagonal behind on a partial
+  redraw.
+- **The stroke is a per-pixel distance test, not a Bresenham walk.** It
+  gives round caps and antialiasing for free, and a UI's lines are
+  short. A chart with a million segments wants a different renderer, and
+  `Renderer` is where one plugs in.
+
+**Still to do here:** `Cmd::Path`, which needs a vertex buffer and is
+the part that has to be gated on `alloc` or a caller-owned slice.
 
 ### T15.4 — animation
 

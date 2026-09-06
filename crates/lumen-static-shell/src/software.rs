@@ -9,7 +9,8 @@
 //! rasterizer (parity Phase A adopts Lumen's `lumen-render`) replaces it
 //! without touching a widget. Per-stage costs: `docs/results-frame-cost.md`.
 
-use lumen_static::display::{Cmd, Color, DisplayList, Renderer};
+use lumen_static::desc::Point;
+use lumen_static::display::{Cmd, Color, DisplayList, Renderer, Stops};
 
 /// An RGBA8 pixel buffer.
 pub struct Canvas {
@@ -216,6 +217,58 @@ impl Canvas {
         } else {
             for x in x0..x1 {
                 self.blend(x, y, c);
+            }
+        }
+    }
+
+    /// Stroke a line, one span of the clip at a time.
+    ///
+    /// A distance test per pixel over the bounding box rather than a
+    /// Bresenham walk: it gives a round cap and antialiasing for free,
+    /// and a UI's lines are short. A chart with a million segments wants
+    /// a different renderer, and `Renderer` is where one plugs in.
+    fn stroke_line(&mut self, a: Point, b: Point, width: f32, c: Color, clip: &[[f32; 4]]) {
+        let hw = (width / 2.0).max(0.5);
+        let bounds = [a.x.min(b.x) - hw, a.y.min(b.y) - hw, a.x.max(b.x) + hw, a.y.max(b.y) + hw];
+        let Some(r) = clipped(bounds, clip) else { return };
+        let (dx, dy) = (b.x - a.x, b.y - a.y);
+        let len2 = dx * dx + dy * dy;
+        for y in r[1].floor().max(0.0) as i64..(r[3].ceil() as i64).min(self.height as i64) {
+            for x in r[0].floor().max(0.0) as i64..(r[2].ceil() as i64).min(self.width as i64) {
+                let (px, py) = (x as f32 + 0.5, y as f32 + 0.5);
+                // Distance from the segment, not the infinite line: a
+                // line must end where it ends.
+                let t = if len2 > 0.0 {
+                    clamp01(((px - a.x) * dx + (py - a.y) * dy) / len2)
+                } else {
+                    0.0
+                };
+                let (qx, qy) = (a.x + dx * t, a.y + dy * t);
+                let d = ((px - qx) * (px - qx) + (py - qy) * (py - qy)).sqrt();
+                // One pixel of feather at the edge, which is what makes
+                // a diagonal readable.
+                let cov = clamp01(hw + 0.5 - d);
+                if cov > 0.0 {
+                    self.blend_cov(x, y, c, (cov * 255.0) as u8);
+                }
+            }
+        }
+    }
+
+    /// Fill `dst` with a linear gradient at `angle`, limited to `area`.
+    fn fill_gradient(&mut self, dst: [f32; 4], area: [f32; 4], stops: Stops, angle: f32) {
+        let (cx, cy) = ((dst[0] + dst[2]) / 2.0, (dst[1] + dst[3]) / 2.0);
+        let (ux, uy) = (angle.cos(), angle.sin());
+        // Half-extent of the box along the gradient's axis, so t spans
+        // 0..1 across the whole rect whatever the angle.
+        let half = ((dst[2] - dst[0]) * ux).abs() / 2.0 + ((dst[3] - dst[1]) * uy).abs() / 2.0;
+        let span = if half > 0.0 { half * 2.0 } else { 1.0 };
+        for y in area[1].floor().max(0.0) as i64..(area[3].ceil() as i64).min(self.height as i64) {
+            for x in area[0].floor().max(0.0) as i64..(area[2].ceil() as i64).min(self.width as i64)
+            {
+                let (px, py) = (x as f32 + 0.5 - cx, y as f32 + 0.5 - cy);
+                let t = (px * ux + py * uy) / span + 0.5;
+                self.blend(x, y, stops.sample(t));
             }
         }
     }
@@ -449,6 +502,19 @@ impl Canvas {
                         }
                     }
                 }
+                Cmd::Line { a, b, width, color } => {
+                    let w = width / 2.0;
+                    let bounds =
+                        [a.x.min(b.x) - w, a.y.min(b.y) - w, a.x.max(b.x) + w, a.y.max(b.y) + w];
+                    if clipped(bounds, &clip).is_some() {
+                        self.stroke_line(*a, *b, *width, *color, &clip);
+                    }
+                }
+                Cmd::Gradient { rect, stops, angle } => {
+                    if let Some(r) = clipped(*rect, &clip) {
+                        self.fill_gradient(*rect, r, *stops, *angle);
+                    }
+                }
                 Cmd::Image { rect, id, tint } => {
                     // Culled before anything is fetched, like every
                     // other command and like text since the 46x fix
@@ -523,4 +589,10 @@ fn clipped(rect: [f32; 4], stack: &[[f32; 4]]) -> Option<[f32; 4]> {
         }
     }
     Some(r)
+}
+
+/// `x` limited to 0..=1 — `lumen_static::num::clamp` without repeating
+/// the bounds at every call, and total where `f32::clamp` panics.
+fn clamp01(x: f32) -> f32 {
+    lumen_static::num::clamp(x, 0.0, 1.0)
 }

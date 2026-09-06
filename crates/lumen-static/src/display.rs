@@ -24,6 +24,8 @@
 // `alloc`, not the std prelude: this crate is `no_std` when the
 // `std` feature is off (M13/T13.1), and absent entirely without the
 // `alloc` feature (T13.4).
+use crate::desc::Point;
+
 #[cfg(feature = "alloc")]
 use alloc::string::String;
 #[cfg(feature = "alloc")]
@@ -74,6 +76,21 @@ pub enum Cmd {
     /// version emitted 18 translucent rounded rects per shadow and that
     /// was 97% of a frame (`docs/results-frame-cost.md`).
     Shadow { rect: Rect, color: Color, radius: f32, spread: f32 },
+    /// A straight line from `a` to `b`, `width` px thick — T15.3.
+    ///
+    /// **Always present, in every profile.** A line needs no buffer and
+    /// no allocator, and it is most of what "vector drawing" is asked
+    /// for in a user interface: rules, separators, borders, underlines,
+    /// focus rings, a chart's axes. Arbitrary paths are the expensive
+    /// tenth and are gated separately.
+    Line { a: Point, b: Point, width: f32, color: Color },
+    /// A linear gradient across `rect` — T15.3.
+    ///
+    /// Stops are **inline and bounded** ([`MAX_STOPS`]), so this costs no
+    /// allocator either. Four is what a button, a card or a backdrop
+    /// needs; a gradient with more stops than that is a texture, and
+    /// belongs in an image.
+    Gradient { rect: Rect, stops: Stops, angle: f32 },
     /// A host-owned image, drawn into `rect` — T15.2.
     ///
     /// **`id` names a surface the host holds; the core never carries
@@ -86,6 +103,59 @@ pub enum Cmd {
     Image { rect: Rect, id: ImageId, tint: Color },
     PushClip { rect: Rect },
     PopClip,
+}
+
+/// How many colour stops a [`Cmd::Gradient`] carries.
+///
+/// Four, because that is what a button, a card or a page backdrop
+/// needs, and because the array is inline: raising it costs every
+/// gradient command whether or not it uses the room.
+pub const MAX_STOPS: usize = 4;
+
+/// The stops of a gradient, inline.
+///
+/// `offset` is 0..=1 along the gradient's axis. Stops past `len` are
+/// ignored, so a two-stop gradient costs the same as a four-stop one in
+/// bytes and less in work.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Stops {
+    pub at: [f32; MAX_STOPS],
+    pub color: [Color; MAX_STOPS],
+    pub len: u8,
+}
+
+impl Stops {
+    /// The common case: one colour to another.
+    pub fn two(from: Color, to: Color) -> Stops {
+        Stops {
+            at: [0.0, 1.0, 0.0, 0.0],
+            color: [from, to, from, from],
+            len: 2,
+        }
+    }
+
+    /// The colour at `t` in 0..=1, linearly interpolated between the
+    /// stops that bracket it.
+    pub fn sample(&self, t: f32) -> Color {
+        let n = (self.len as usize).min(MAX_STOPS);
+        if n == 0 {
+            return Color(0, 0, 0, 0);
+        }
+        let t = crate::num::clamp(t, 0.0, 1.0);
+        if t <= self.at[0] {
+            return self.color[0];
+        }
+        for k in 1..n {
+            if t <= self.at[k] {
+                let span = self.at[k] - self.at[k - 1];
+                let f = if span > 0.0 { (t - self.at[k - 1]) / span } else { 0.0 };
+                let (a, b) = (self.color[k - 1], self.color[k]);
+                let l = |x: u8, y: u8| (x as f32 + (y as f32 - x as f32) * f) as u8;
+                return Color(l(a.0, b.0), l(a.1, b.1), l(a.2, b.2), l(a.3, b.3));
+            }
+        }
+        self.color[n - 1]
+    }
 }
 
 /// A host-owned image.
@@ -153,6 +223,26 @@ impl Cmd {
                 f(h, weight.to_bits() as u64);
                 f(h, u32::from_be_bytes([color.0, color.1, color.2, color.3]) as u64);
             }
+            Cmd::Line { a, b, width, color } => {
+                f(h, 8);
+                for v in [a.x, a.y, b.x, b.y, *width] {
+                    f(h, v.to_bits() as u64);
+                }
+                f(h, u32::from_be_bytes([color.0, color.1, color.2, color.3]) as u64);
+            }
+            Cmd::Gradient { rect, stops, angle } => {
+                f(h, 9);
+                for v in rect {
+                    f(h, v.to_bits() as u64);
+                }
+                f(h, angle.to_bits() as u64);
+                f(h, stops.len as u64);
+                for k in 0..(stops.len as usize).min(MAX_STOPS) {
+                    f(h, stops.at[k].to_bits() as u64);
+                    let c = stops.color[k];
+                    f(h, u32::from_be_bytes([c.0, c.1, c.2, c.3]) as u64);
+                }
+            }
             Cmd::Image { rect, id, tint } => {
                 f(h, 6);
                 for v in rect {
@@ -198,6 +288,23 @@ pub trait Painter {
     fn text_weighted(&mut self, rect: Rect, s: &str, size: f32, weight: f32, color: Color);
     fn rounded_rect(&mut self, rect: Rect, color: Color, radius: f32);
     fn shadow(&mut self, rect: Rect, radius: f32, spread: f32);
+
+    /// A straight line. Provided as a no-op so every existing painter
+    /// keeps compiling.
+    fn line(&mut self, a: Point, b: Point, width: f32, color: Color) {
+        let _ = (a, b, width, color);
+    }
+
+    /// A linear gradient across `rect`, at `angle` radians.
+    ///
+    /// Provided as a **flat fill of the first stop**, not a no-op: a
+    /// renderer that cannot interpolate should still put something
+    /// approximately right on the screen, and a missing background is a
+    /// worse failure than an un-graded one.
+    fn gradient(&mut self, rect: Rect, stops: Stops, angle: f32) {
+        let _ = angle;
+        self.rect(rect, stops.sample(0.0));
+    }
 
     /// Draw a host-owned image into `rect`, multiplied by `tint`.
     ///
@@ -305,6 +412,20 @@ impl DisplayList {
         // edge. The renderer owns the falloff curve.
         let r = [rect[0], rect[1] + spread * 0.35, rect[2], rect[3] + spread * 0.35];
         self.cmds.push(Cmd::Shadow { rect: r, color: Color(0, 0, 0, 80), radius, spread });
+    }
+
+    /// A line, dropped when it is zero-length or hairline-thin.
+    pub fn line(&mut self, a: Point, b: Point, width: f32, color: Color) {
+        if width > 0.0 && (a.x != b.x || a.y != b.y) {
+            self.cmds.push(Cmd::Line { a, b, width, color });
+        }
+    }
+
+    /// A gradient, dropped when it has no area or no stops.
+    pub fn gradient(&mut self, rect: Rect, stops: Stops, angle: f32) {
+        if has_area(rect) && stops.len > 0 {
+            self.cmds.push(Cmd::Gradient { rect, stops, angle });
+        }
     }
 
     /// An image, dropped when it has no area — the same rule the other
@@ -427,6 +548,16 @@ impl Painter for Scaled<'_> {
         let (radius, spread) = (radius * self.scale, spread * self.scale);
         self.inner.shadow(r, radius, spread);
     }
+    fn line(&mut self, a: Point, b: Point, width: f32, color: Color) {
+        let k = self.scale;
+        let p = |q: Point| Point { x: q.x * k, y: q.y * k };
+        self.inner.line(p(a), p(b), width * k, color);
+    }
+    fn gradient(&mut self, rect: Rect, stops: Stops, angle: f32) {
+        let r = self.r(rect);
+        // The angle is not scaled: it is an angle.
+        self.inner.gradient(r, stops, angle);
+    }
     fn image(&mut self, rect: Rect, id: ImageId, tint: Color) {
         let r = self.r(rect);
         self.inner.image(r, id, tint);
@@ -458,6 +589,12 @@ impl Painter for DisplayList {
     }
     fn shadow(&mut self, rect: Rect, radius: f32, spread: f32) {
         DisplayList::shadow(self, rect, radius, spread)
+    }
+    fn line(&mut self, a: Point, b: Point, width: f32, color: Color) {
+        DisplayList::line(self, a, b, width, color)
+    }
+    fn gradient(&mut self, rect: Rect, stops: Stops, angle: f32) {
+        DisplayList::gradient(self, rect, stops, angle)
     }
     fn image(&mut self, rect: Rect, id: ImageId, tint: Color) {
         DisplayList::image(self, rect, id, tint)

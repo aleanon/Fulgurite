@@ -63,6 +63,8 @@ fn cmds(list: &DisplayList) -> Vec<(&'static str, [f32; 4])> {
             Cmd::Text { rect, .. } => ("text", *rect),
             Cmd::Shadow { rect, .. } => ("shadow", *rect),
             Cmd::Image { rect, .. } => ("image", *rect),
+            Cmd::Gradient { rect, .. } => ("grad", *rect),
+            Cmd::Line { a, b, .. } => ("line", [a.x, a.y, b.x, b.y]),
             Cmd::PushClip { rect } => ("push", *rect),
             Cmd::PopClip => ("pop", [0.0; 4]),
         })

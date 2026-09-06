@@ -115,7 +115,9 @@ fn ink_of(cmds: &[lumen_static::Cmd]) -> f32 {
             }
             lumen_static::Cmd::Text { .. }
             | lumen_static::Cmd::Shadow { .. }
-            | lumen_static::Cmd::Image { .. } => unreachable!(),
+            | lumen_static::Cmd::Image { .. }
+            | lumen_static::Cmd::Line { .. }
+            | lumen_static::Cmd::Gradient { .. } => unreachable!(),
         }
     }
     let mut c = Canvas::new(64, 64);
