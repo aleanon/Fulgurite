@@ -347,7 +347,7 @@ Three decisions the building settled:
 **Still to do here:** `Cmd::Path`, which needs a vertex buffer and is
 the part that has to be gated on `alloc` or a caller-owned slice.
 
-### T15.4 — animation
+### T15.4 — animation — **DONE 2026-09-07**
 
 **Fully `no_std`, and this is the one that surprises.** The core needs no
 clock: the *host* supplies elapsed time to `pump`, and the core holds
@@ -366,6 +366,36 @@ type, so the cheap case does not carry it.
 `Host::animating()` goes false and the loop idles; the embedded fixture
 animates with no allocator; retention reports damage only where the
 animated node is.
+
+**Done, and the prediction held: it is `no_std` with no clock.** The
+host says how much time passed and everything else is arithmetic —
+`Animated<T>`, `Easing` as `const`-foldable cubics rather than a `dyn
+Fn`, and `Lerp` for `f32` and `Color`. `just thumb` green at both tiers.
+
+**The tick is `App::tick`, not a per-node pass**, and that is the
+gating policy deciding a design rather than describing one. A
+`Node::tick` walked by the framework would cost a virtual call per node
+per frame on trees that animate nothing — 3 000 of them on the
+benchmark's list. The application knows which of its fields are
+`Animated<T>`; nothing else needs to. The default returns `false` and
+inlines away, so an application that animates nothing has no per-frame
+cost *and no code to write*.
+
+Four behaviours the tests pin, all of which are the difference between
+an animation that looks right and one that does not:
+
+- **Retargeting starts from where the value is now**, not from where the
+  last move began. A panel told to close halfway through opening closes
+  from halfway rather than snapping open first.
+- **Retargeting to the current target does nothing**, so a binding may
+  set it every frame without restarting the animation forever.
+- **A stalled host does not overshoot.** A huge `dt` lands on the
+  target rather than past it, because the curve is defined on 0..=1.
+- **A degenerate duration settles rather than dividing by zero** —
+  including NaN and infinity, which read as "already there".
+
+`Animated<T>` is `Copy` and 20 bytes, and there is no registry: a tree
+with no animated field has no animation state at all.
 
 ### T15.5 — touch and gestures
 

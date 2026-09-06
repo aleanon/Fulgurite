@@ -100,6 +100,8 @@ struct Win<A: App> {
     /// The cursor the window is currently showing, so an unchanged
     /// frame does not ask the platform to set it again.
     cursor_shown: lumen_static::style::Cursor,
+    /// When the last frame was drawn, for the animation tick (T15.4).
+    last_frame: Option<Instant>,
 }
 
 impl<A: App> Win<A> {
@@ -127,6 +129,7 @@ impl<A: App> Win<A> {
             mods: lumen_static::Mods::NONE,
             clipboard: Clipboard::new(),
             cursor_shown: lumen_static::style::Cursor::Default,
+            last_frame: None,
         }
     }
 
@@ -187,6 +190,13 @@ impl<A: App> Win<A> {
         );
 
         let start = Instant::now();
+        // Animation, before the pump: a tick changes state, and the
+        // bindings the pump runs are what put that state on screen.
+        let dt = self.last_frame.replace(start).map_or(0.0, |t| {
+            start.duration_since(t).as_secs_f32() * 1000.0
+        });
+        let animating = self.host.tick(dt);
+
         match self.metrics.as_mut() {
             Some(m) => self.host.pump_with(m),
             None => self.host.pump(),
@@ -196,6 +206,13 @@ impl<A: App> Win<A> {
         // shape is read from the resolved style, both of which the pump
         // above has just brought up to date (T14.6).
         cursor::apply(&window, self.host.cursor(), &mut self.cursor_shown);
+
+        // Another frame only while something is moving. A still UI
+        // idles, which is what keeps the idle frame numbers in
+        // `docs/results-frame-cost.md` true.
+        if animating {
+            window.request_redraw();
+        }
     }
 }
 

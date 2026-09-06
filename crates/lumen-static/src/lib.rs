@@ -97,6 +97,7 @@
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
+pub mod anim;
 #[cfg(feature = "alloc")]
 pub mod arena;
 #[cfg(feature = "alloc")]
@@ -172,6 +173,7 @@ pub use event::{Event, EventCtx, InputQueue, Key, Mods, PointerButton};
 pub use event::App;
 pub use lumen_static_macros::{App, Reloadable, StaticTree};
 pub use overlay::{NoOverlays, OverlaySink, Overlays};
+pub use anim::{Animated, Easing, Lerp};
 pub use image::{Fit, Image};
 pub use popup::{Anchor, Popup};
 pub use widget::{Node, Widget};

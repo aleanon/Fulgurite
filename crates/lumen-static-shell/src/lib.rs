@@ -247,6 +247,17 @@ impl<A: App, R: Retention> Host<A, R> {
         handled
     }
 
+    /// Advance animations by `dt` milliseconds; returns whether
+    /// anything moved (T15.4).
+    ///
+    /// A host calls this once a frame with the interval it measured,
+    /// and asks for another frame while it keeps returning `true`.
+    /// Costs nothing for an application that animates nothing: the
+    /// default `App::tick` returns `false` and inlines away.
+    pub fn tick(&mut self, dt_ms: f32) -> bool {
+        self.app.tick(dt_ms)
+    }
+
     /// Route one composition step to the focused node — T14.8.
     ///
     /// Returns whether anything changed, so a host knows whether to

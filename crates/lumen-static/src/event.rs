@@ -458,6 +458,28 @@ pub trait App: Sized {
     /// — see `crate::bind`. The default does nothing, for trees that
     /// present no derived state.
     fn update(&mut self) {}
+
+    /// Advance whatever this application animates by `dt` milliseconds,
+    /// and say whether anything changed — `docs/plan-capabilities.md`
+    /// T15.4.
+    ///
+    /// **Here rather than as a per-node pass**, deliberately. A
+    /// `Node::tick` walked by the framework would cost a virtual call
+    /// per node per frame on trees that animate nothing — 3 000 of them
+    /// on the benchmark's list — which the M15 gating policy forbids.
+    /// The application knows which of its fields are `Animated<T>`;
+    /// nothing else needs to.
+    ///
+    /// The default returns `false`, so an application that animates
+    /// nothing has no per-frame cost and no code to write.
+    ///
+    /// A frame loop that gets `true` should schedule another frame; one
+    /// that gets `false` can idle, which is what keeps a still UI at the
+    /// idle numbers in `docs/results-frame-cost.md`.
+    fn tick(&mut self, dt_ms: f32) -> bool {
+        let _ = dt_ms;
+        false
+    }
 }
 
 impl Extend<Event> for InputQueue {
