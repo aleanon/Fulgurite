@@ -36,11 +36,15 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{Window, WindowId};
 
 pub mod clipboard;
+pub mod dialog;
 pub mod cursor;
 pub mod surface;
+pub mod windows;
 pub mod translate;
 
 pub use clipboard::Clipboard;
+pub use dialog::Dialogs;
+pub use windows::{Pane, Panes};
 pub use surface::{canvas, sync_size, Frame, Surface};
 pub use translate::{Cursor, Translated};
 

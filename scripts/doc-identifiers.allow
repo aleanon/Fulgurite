@@ -13,6 +13,8 @@ SUPER                # winit's name for the same key; ours is META
 platform_specific    # winit KeyEvent field with no public constructor; translate.rs says why
 KeyEvent             # winit's type, named where translate.rs says why it is not used
 libm                 # the crate M13/T13.2 declined to depend on; num.rs says why
+gtk3                 # rfd backend feature name, cited with its measured crate cost
+xdg_portal           # the rfd backend M15/T15.11 declined; dialog.rs has the number
 AtomicU64            # core type absent on thumbv7em; firmware.rs says why it uses AtomicU32
 flt2dec              # core's float formatter, named where num::clamp says why it avoids it
 

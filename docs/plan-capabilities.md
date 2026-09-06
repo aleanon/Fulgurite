@@ -578,7 +578,7 @@ key" while its code returned `""`. Collapsed to a single method — that
 disagreement is exactly the drift the doc-currency rule exists to stop,
 and it was in a doc comment about the same function's own behaviour.
 
-### T15.10 — multi-window
+### T15.10 — multi-window — **DONE 2026-09-07**
 
 `Host` is already one tree and one surface, which is the right unit. The
 work is in `lumen-static-winit`: a window map, per-window `Surface` and
@@ -590,7 +590,23 @@ core does not learn about it.
 **Gate:** two windows with independent trees; closing one leaves the
 other running; the live gate still passes on the first.
 
-### T15.11 — platform dialogs
+**Done, and the core learned nothing about it** — which was the
+prediction and is the interesting part. `Host` is already one tree and
+one surface, so a second window is a second `Host`, not a `Host` with
+two of anything. `Pane<A>` bundles what a window owns and `Panes<A>`
+holds them; no feature, because it adds no dependency and costs a
+one-window application a `Vec` with one entry.
+
+A `Vec` and a linear scan rather than a map: an application with enough
+windows for a hash to pay for itself is not one this is written for, and
+a `Vec` keeps the common case to one comparison.
+
+**Closing the last window does not exit the loop.** That is the
+application's decision — a tray application or a daemon with a settings
+panel keeps running with no window — so `Panes::is_empty` reports and
+the caller decides.
+
+### T15.11 — platform dialogs — **DONE 2026-09-07**
 
 File, colour and font pickers.
 
@@ -600,6 +616,23 @@ manifest comment beside the decision.
 
 **Gate:** a file dialog returns a path; the feature's crate cost is
 recorded; the default build is unchanged.
+
+**Done, and the measurement changed the choice** — which is why the
+gate asks for it rather than treating it as paperwork.
+
+`rfd` costs **79 crates** (218 → 297): the most expensive optional
+thing in this workspace, against `clipboard`'s 11 and `a11y`'s 62.
+Comfortably default-off.
+
+And the *backend* was chosen on the same number. `xdg_portal` costs
+**273** crates (218 → 491), because it pulls an async runtime for a
+dialog this framework opens synchronously; `gtk3` costs 79. I had
+guessed 5 in the first draft of the doc comment and wrote it down before
+measuring — the number was wrong by 16×, and the only reason it did not
+ship that way is that the gate asks for the measurement.
+
+Without the feature the type still exists and every call returns
+`None`, so a host needs no `cfg` around its "Open…" handler.
 
 ### T15.12 — a GPU renderer
 

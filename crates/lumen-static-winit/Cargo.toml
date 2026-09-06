@@ -27,6 +27,12 @@ clipboard = ["dep:arboard"]
 # not a crate. The within-application half (`lumen_static::Drag`) needs
 # neither this nor a platform.
 dnd = []
+# Platform file pickers (T15.11). Default-OFF, and the measurement is
+# why rather than a formality: rfd costs **79 crates** (218 -> 297,
+# 2026-09-07) against clipboard's 11 and a11y's 62. It is the most
+# expensive optional thing in this workspace, and an application that
+# never opens a file should not carry it.
+dialogs = ["dep:rfd"]
 
 [dependencies]
 lumen-static = { path = "../lumen-static" }
@@ -37,3 +43,9 @@ softbuffer = "0.4"
 # copies text, and the image feature pulls an image-decoding stack for
 # a capability nothing here has.
 arboard = { version = "3", optional = true, default-features = false }
+# The platform's file pickers (T15.11). `gtk3` rather than
+# `xdg-portal`, measured 2026-09-07: gtk3 costs 79 crates (218 -> 297)
+# and xdg-portal costs 273 (218 -> 491), because the portal backend
+# pulls an async runtime for a dialog this framework opens
+# synchronously. Neither is cheap, which is why the feature is off.
+rfd = { version = "0.15", optional = true, default-features = false, features = ["gtk3"] }
