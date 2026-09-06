@@ -338,6 +338,18 @@ pub struct InputState {
     pub capture: Option<u32>,
     /// Modifiers currently held, updated from [`Event::Modifiers`].
     pub mods: Mods,
+    /// Whether the current focus came from the **keyboard** — T15.6.
+    ///
+    /// A focus ring after a mouse click is noise; a focus ring after Tab
+    /// is the difference between a usable application and an unusable
+    /// one. Every toolkit draws the distinction (CSS calls it
+    /// `:focus-visible`) and so does this.
+    ///
+    /// Here rather than in `NodeState` because it is **not per node** —
+    /// there is one focus. As a `NodeState` field it would have taken
+    /// that struct from 76 bytes to 80, times every node of every tree,
+    /// to say something about exactly one of them.
+    pub focus_visible: bool,
     /// The click count of the press currently in progress (T14.3).
     ///
     /// Tracked rather than carried on `PointerUp`, because activation

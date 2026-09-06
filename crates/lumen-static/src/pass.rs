@@ -325,6 +325,19 @@ pub fn dispatch<S: crate::event::App>(
     if let Event::PointerDown { clicks, .. } = ev {
         input.clicks = *clicks;
     }
+    // Whether a focus ring should show, decided by *what kind* of input
+    // this is rather than by where focus lands (T15.6). Set before the
+    // borrows below split `input`, and by event kind because that is
+    // exactly what the distinction is: a keystroke that moves focus
+    // makes the ring visible, a press hides it.
+    match ev {
+        Event::Key {
+            key: Key::Tab | Key::Up | Key::Down | Key::Left | Key::Right,
+            down: true,
+        } => input.focus_visible = true,
+        Event::PointerDown { .. } => input.focus_visible = false,
+        _ => {}
+    }
     let (focus, capture) = (&mut input.focus, &mut input.capture);
     let (mods, clicks) = (input.mods, input.clicks);
 
@@ -369,8 +382,54 @@ pub fn dispatch<S: crate::event::App>(
     // modifier state; adding one is a change to the event vocabulary and
     // to every shell that fills it in.
     if matches!(ev, crate::event::Event::Key { key: crate::event::Key::Tab, down: true }) {
-        *focus = next_focusable(table, st, style, *focus);
+        // Shift+Tab goes back, which is half of what Tab means and was
+        // missing until T15.6 — a form you can only walk forwards is a
+        // form you cannot correct.
+        *focus = if mods.has(crate::event::Mods::SHIFT) {
+            prev_focusable(table, st, style, *focus)
+        } else {
+            next_focusable(table, st, style, *focus)
+        };
         return true;
+    }
+
+    // Arrows move focus **within the current group** — T15.6.
+    //
+    // A group is the focused node's parent: that is what a radio group,
+    // a toolbar or a menu is, and it needs no new field to express. Only
+    // when the parent has more than one focusable child, so an arrow
+    // inside a text field still edits text rather than jumping away.
+    if let crate::event::Event::Key { key, down: true } = ev {
+        use crate::event::Key;
+        let dir = match key {
+            Key::Down | Key::Right => 1i32,
+            Key::Up | Key::Left => -1,
+            _ => 0,
+        };
+        if dir != 0 {
+            if let Some(f) = *focus {
+                let i = f as usize;
+                if i < table.len() && table[i].parent != crate::desc::NO_PARENT {
+                    let p = table[i].parent as usize;
+                    let group: heapless_vec::Small = focusable_siblings(table, st, style, p)
+                        .fold(heapless_vec::Small::new(), |mut v, x| {
+                            v.push(x as u32);
+                            v
+                        });
+                    // One focusable child is not a group: the key
+                    // belongs to the widget, which is what keeps Left
+                    // and Right editing text inside a field.
+                    if group.len() > 1 {
+                        if let Some(k) = group.iter().position(|&x| x == f) {
+                            let n = group.len();
+                            let j = if dir > 0 { (k + 1) % n } else { (k + n - 1) % n };
+                            *focus = Some(group.at(j));
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // Pointer capture — M11/T11.2.
@@ -596,6 +655,77 @@ pub fn dispatch<S: crate::event::App>(
 ///
 /// Skips anything with no area or `visible: false` — a Tab stop you
 /// cannot see is a Tab stop that loses the user.
+/// Whether node `i` can take focus right now.
+fn focusable(
+    table: &[crate::desc::NodeDesc],
+    st: &[NodeState],
+    style: &[Style],
+    i: usize,
+) -> bool {
+    i < table.len()
+        && table[i].is_focusable()
+        && style[i].visible
+        && st[i].size.w > 0.0
+        && st[i].size.h > 0.0
+}
+
+/// The focusable **immediate children** of `parent`, in table order.
+///
+/// Immediate children, not the whole subtree — that distinction is the
+/// difference between arrows navigating a radio group and arrows
+/// jumping out of a text field. A field's parent is usually the root,
+/// whose *subtree* holds every focusable in the tree; its *children*
+/// hold only the field.
+fn focusable_siblings<'a>(
+    table: &'a [crate::desc::NodeDesc],
+    st: &'a [NodeState],
+    style: &'a [Style],
+    parent: usize,
+) -> impl Iterator<Item = usize> + 'a {
+    crate::style::subtree_range(table, parent)
+        .filter(move |&i| table[i].parent as usize == parent && focusable(table, st, style, i))
+}
+
+/// The previous focusable, wrapping — Shift+Tab, and Up/Left.
+fn prev_focusable(
+    table: &[crate::desc::NodeDesc],
+    st: &[NodeState],
+    style: &[Style],
+    from: Option<u32>,
+) -> Option<u32> {
+    prev_focusable_in(table, st, style, from, 0..table.len())
+}
+
+/// The previous focusable within `scope`, wrapping.
+fn prev_focusable_in(
+    table: &[crate::desc::NodeDesc],
+    st: &[NodeState],
+    style: &[Style],
+    from: Option<u32>,
+    scope: core::ops::Range<usize>,
+) -> Option<u32> {
+    let (lo, hi) = (scope.start, scope.end.min(table.len()));
+    let n = hi.saturating_sub(lo);
+    if n == 0 {
+        return None;
+    }
+    // Walk backwards from just before the current focus. `+ n` keeps
+    // the modulo positive without signed arithmetic.
+    let start = match from {
+        Some(f) if (f as usize) >= lo && (f as usize) < hi => (f as usize - lo) + n - 1,
+        _ => n - 1,
+    };
+    (0..n)
+        .map(|k| lo + (start + n - k) % n)
+        .find(|&i| {
+            table[i].is_focusable()
+                && style[i].visible
+                && st[i].size.w > 0.0
+                && st[i].size.h > 0.0
+        })
+        .map(|i| i as u32)
+}
+
 fn next_focusable(
     table: &[crate::desc::NodeDesc],
     st: &[NodeState],
@@ -652,5 +782,43 @@ fn set_hovered(st: &mut [NodeState], node: Option<u32>) {
     }
     if let Some(i) = node {
         st[i as usize].hovered = true;
+    }
+}
+
+/// A tiny fixed-capacity vector, for the focus group walk.
+///
+/// The core is `no_std` with no allocator, and collecting a group of
+/// siblings needs somewhere to put them. Sixteen is far more than any
+/// radio group, toolbar or menu row has; a container with more
+/// focusable children than that navigates the first sixteen, which is
+/// a better failure than allocating on a keystroke.
+mod heapless_vec {
+    pub const CAP: usize = 16;
+
+    #[derive(Clone, Copy)]
+    pub struct Small {
+        buf: [u32; CAP],
+        len: usize,
+    }
+
+    impl Small {
+        pub fn new() -> Self {
+            Small { buf: [0; CAP], len: 0 }
+        }
+        pub fn push(&mut self, v: u32) {
+            if self.len < CAP {
+                self.buf[self.len] = v;
+                self.len += 1;
+            }
+        }
+        pub fn len(&self) -> usize {
+            self.len
+        }
+        pub fn at(&self, k: usize) -> u32 {
+            self.buf[k.min(CAP - 1)]
+        }
+        pub fn iter(&self) -> impl Iterator<Item = &u32> + '_ {
+            self.buf[..self.len].iter()
+        }
     }
 }

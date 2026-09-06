@@ -54,6 +54,35 @@ pub fn hide_subtree(st: &mut [NodeState], i: usize, limits: Constraints, count: 
     Size::default()
 }
 
+/// Draw the focus ring behind `i`, if it has focus and a ring width.
+///
+/// One helper rather than five copies: `Button`, `TextInput`,
+/// `TextArea`, `Toggle` and `Slider` all need the same thing, and a
+/// ring that differs between widgets is a ring a user cannot learn.
+///
+/// **A larger rounded rect *underneath*, not an outline on top.** The
+/// first version drew four `Cmd::Line`s around the box, and the live
+/// gate caught it within a frame: a square ring over a rounded button
+/// covers the antialiased corner, and `ui_check.py`'s corner test
+/// dropped to five blended pixels. Drawing behind reuses the rounded
+/// rect the renderer already antialiases, follows the control's own
+/// radius, and cannot cover the content it is marking.
+pub fn focus_ring(st: &[crate::desc::NodeState], i: usize, out: &mut dyn crate::Painter) {
+    let s = &st[i];
+    if !s.focused || s.focus_ring == 0 {
+        return;
+    }
+    let w = s.focus_ring as f32;
+    let r = rect_of(s);
+    out.rounded_rect(
+        [r[0] - w, r[1] - w, r[2] + w, r[3] + w],
+        s.fg,
+        // The control's own radius plus the ring's width, so the ring
+        // stays concentric rather than squaring off at the corners.
+        s.radius + w,
+    );
+}
+
 pub fn rect_of(st: &NodeState) -> crate::display::Rect {
     [st.pos.x, st.pos.y, st.pos.x + st.size.w, st.pos.y + st.size.h]
 }
@@ -269,6 +298,7 @@ pub fn record_painted(
         style.background
     };
     st[i].radius = style.radius;
+    st[i].focus_ring = style.focus_ring;
     st[i].font_size = style.font_size;
     st[i].font_weight = style.font_weight;
     st[i].shadow = style.shadow;
@@ -653,6 +683,7 @@ impl<S: 'static, T: TextStorage> Node for Button<S, T> {
         record_painted(st, i, limits, resolve_self(limits, &style[i], content), &style[i])
     }
     fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
+        focus_ring(st, i, out);
         let r = rect_of(&st[i]);
         out.rounded_rect(r, st[i].bg, st[i].radius);
         // Centre the *measured* line box in the button. The line box,

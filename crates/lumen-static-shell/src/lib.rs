@@ -225,6 +225,23 @@ impl<A: App, R: Retention> Host<A, R> {
         }
         self.last_layout_ns = t0.elapsed().as_nanos() as u64;
 
+        // A focus ring only for keyboard focus (T15.6). **After**
+        // layout, which resolves the ring from the stylesheet and would
+        // otherwise overwrite this — the first version zeroed it before
+        // and had no effect at all.
+        //
+        // One write per frame rather than a per-node flag: there is one
+        // focus, and `NodeState` would have grown from 76 bytes to 80
+        // for every node of every tree to say something about one of
+        // them, which the M15 gating policy forbids.
+        if !self.input.focus_visible {
+            if let Some(f) = self.input.focus {
+                if let Some(s) = self.states.get_mut(f as usize) {
+                    s.focus_ring = 0;
+                }
+            }
+        }
+
         let t1 = std::time::Instant::now();
         self.list.clear();
         {

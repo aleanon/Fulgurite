@@ -208,6 +208,15 @@ pub struct NodeState {
     /// field that cannot tell whether it is focused cannot decide
     /// whether to draw a caret.
     pub focused: bool,
+    /// Ring width when focused, resolved from `Style::focus_ring`
+    /// (T15.6).
+    ///
+    /// Here as well as in `Style` because `paint` has no `&[Style]` —
+    /// the same reason `fg`, `bg` and `radius` are resolved here (C6).
+    /// A `u8`, so it lands in the padding beside the three flags and
+    /// `NodeState` stays 76 bytes; `fixtures/embedded` asserts that
+    /// against the RAM budget in `docs/results-embedded.md`.
+    pub focus_ring: u8,
 }
 
 /// Scalar facts a kind knows about itself that geometry cannot show —

@@ -440,7 +440,7 @@ where those are selections, and the test pins the relative error it
 achieves (< 1e-6 over the range) rather than asserting a zero it does
 not have.
 
-### T15.6 — focus navigation
+### T15.6 — focus navigation — **DONE 2026-09-07**
 
 Arrow-key movement within a group, focus scopes (so a modal traps Tab),
 and a visible focus ring. Cheap, `no_std`-clean, and it is the item on
@@ -453,6 +453,37 @@ existing padding if it fits — measured, not assumed).
 **Gate:** arrows move within a radio group and do not leave it; a modal
 traps Tab in both directions; the ring is visible in `ui_check.py`'s
 contrast pass.
+
+**Done, and it was the cheapest item on the list to get wrong twice.**
+Shift+Tab, arrow navigation within a group, and a focus ring —
+keyboard-only operation was a forward Tab and nothing else.
+
+**"A group" is the focused node's *immediate siblings*, not its
+parent's subtree.** The first version used the subtree and a Left arrow
+in a text field jumped focus out of it, because the field's parent is
+usually the root and the root's subtree holds every focusable in the
+tree. With one focusable sibling there is no group, and the key belongs
+to the widget — which is what keeps Left and Right editing text.
+
+**The ring is a rounded rect drawn *behind* the control, not an outline
+on top**, and the live gate is what said so. The first version drew four
+`Cmd::Line`s around the box; `ui_check.py`'s corner test dropped to five
+blended pixels, because a square ring over a rounded button covers the
+antialiased corner. Drawing behind reuses the rounded rect the renderer
+already antialiases and follows the control's own radius.
+
+**And a ring only for keyboard focus.** A ring after a mouse click is
+noise; after Tab it is the difference between a usable application and
+an unusable one. CSS calls it `:focus-visible`. `InputState` carries the
+bit — *not* `NodeState`, which would have grown from 76 bytes to 80 for
+every node of every tree to say something about exactly one of them.
+The host applies it **after** layout, which resolves the ring from the
+stylesheet; the first attempt zeroed it before and had no effect.
+
+`Style::focus_ring` is a **`u8`, and that was measured**: as an `f32` it
+took `Style` from 72 to 76 bytes. A ring wider than 255 px is not a
+ring, so the byte costs nothing real — and the M15 policy's "fits or
+gets re-budgeted" is what forced the question.
 
 ### T15.7 — drag and drop
 

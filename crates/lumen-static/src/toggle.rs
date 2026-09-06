@@ -141,6 +141,7 @@ impl<S: 'static, const SHAPE: u8> Node for Toggle<S, SHAPE> {
     }
 
     fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
+        crate::ops::focus_ring(st, i, out);
         let s = &st[i];
         let r = rect_of(s);
         let (w, h) = (r[2] - r[0], r[3] - r[1]);

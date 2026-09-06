@@ -153,6 +153,24 @@ pub struct Style {
     /// The same while the pointer is merely over it.
     pub hover_dim: f32,
     pub align: Align,
+    /// Width of the ring drawn around this node when it has focus, in
+    /// logical px; 0 draws none — `docs/plan-capabilities.md` T15.6.
+    ///
+    /// **A visible focus indicator is the difference between a keyboard
+    /// user being able to use an application and not.** It is a
+    /// `Style` property rather than a widget's business for the same
+    /// reason the cursor is: it cascades, so a stylesheet sets it once
+    /// and every focusable widget gets one, including custom ones that
+    /// implement nothing.
+    ///
+    /// **A `u8` and not an `f32`, and that was measured.** As an `f32`
+    /// this took `Style` from 72 to 76 bytes — it does not fit the tail
+    /// padding the way `cursor`'s one byte did, and the M15 gating
+    /// policy says a per-node field either fits or gets re-budgeted
+    /// rather than paid for silently. A ring wider than 255 px is not a
+    /// ring, so the byte costs nothing real. Asserted in
+    /// `tests/cursor.rs`, which is where this struct's budget lives.
+    pub focus_ring: u8,
     /// The pointer shape over this node (M14/T14.6).
     ///
     /// Free: `Style` was 72 B and this fits in the tail padding beside
@@ -195,6 +213,7 @@ impl Default for Style {
             pressed_dim: 0.0,
             hover_dim: 0.0,
             align: Align::Start,
+            focus_ring: 2,
             cursor: Cursor::Default,
             visible: true,
         }
@@ -252,6 +271,7 @@ pub struct Patch {
     pub spacing: Option<f32>,
     pub align: Option<Align>,
     pub cursor: Option<Cursor>,
+    pub focus_ring: Option<u8>,
     pub visible: Option<bool>,
     pub color: Option<crate::display::Color>,
     pub background: Option<crate::display::Color>,
@@ -272,6 +292,7 @@ impl Patch {
             spacing: None,
             align: None,
             cursor: None,
+            focus_ring: None,
             visible: None,
             color: None,
             background: None,
@@ -312,6 +333,12 @@ impl Patch {
     /// The pointer shape over the nodes this rule matches (T14.6).
     pub const fn cursor(mut self, c: Cursor) -> Self {
         self.cursor = Some(c);
+        self
+    }
+
+    /// Width of the focus ring, in logical px; 0 for none (T15.6).
+    pub const fn focus_ring(mut self, w: u8) -> Self {
+        self.focus_ring = Some(w);
         self
     }
 
@@ -379,6 +406,9 @@ impl Patch {
         }
         if let Some(v) = self.cursor {
             s.cursor = v;
+        }
+        if let Some(v) = self.focus_ring {
+            s.focus_ring = v;
         }
         if let Some(v) = self.color {
             s.color = v;

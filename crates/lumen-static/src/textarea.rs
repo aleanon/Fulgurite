@@ -465,6 +465,7 @@ impl<S: TextBuffer> Node for TextArea<S> {
     }
 
     fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
+        crate::ops::focus_ring(st, i, out);
         let s = &st[i];
         let r = rect_of(s);
         out.rounded_rect(r, s.bg, s.radius);
