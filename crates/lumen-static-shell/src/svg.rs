@@ -1,0 +1,236 @@
+//! A second [`Renderer`], and a useful one — `docs/plan-capabilities.md`
+//! T15.12.
+//!
+//! # Why this exists rather than a GPU backend
+//!
+//! T15.12 asks for a GPU renderer, and gates it: *"last, and only if a
+//! number asks for it."* The numbers say no. The software canvas
+//! renders a live tally frame in **0.54 ms against a 16 ms budget** —
+//! 3% of a frame — and a 3 000-row full redraw in **159 µs**
+//! (`docs/results-competitive.md`). Nothing is waiting on the
+//! rasteriser, and a wgpu backend would add a driver stack, a glyph
+//! atlas and a shader pipeline to make an already-idle stage faster.
+//!
+//! What T15.12 was *really* claiming is architectural: that
+//! [`Renderer`] admits a second implementation, so a GPU backend is
+//! bounded work when a number does ask. This proves that with a
+//! renderer that is useful today — export, print, and documentation
+//! screenshots that stay sharp — and that exercises the **whole**
+//! command vocabulary including the ones T15.2 and T15.3 added.
+//!
+//! It is also the first renderer here that is not a rasteriser at all,
+//! which is a stronger test of the seam than a second rasteriser would
+//! have been.
+
+use core::fmt::Write;
+
+use lumen_static::display::{Cmd, Color, DisplayList, ImageId, Renderer, Stops};
+
+/// Renders a frame to SVG.
+pub struct Svg {
+    /// The document so far.
+    out: String,
+    /// How many clip scopes are open, so they can be closed.
+    clips: usize,
+    /// Gradient definitions, which SVG requires up front.
+    defs: String,
+    grads: usize,
+}
+
+impl Default for Svg {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Svg {
+    pub fn new() -> Self {
+        Svg { out: String::new(), clips: 0, defs: String::new(), grads: 0 }
+    }
+
+    /// The finished document.
+    pub fn finish(self) -> String {
+        self.out
+    }
+
+    fn colour(c: Color) -> String {
+        // `rgba()` rather than hex plus fill-opacity: one attribute, and
+        // every SVG renderer since 2016 takes it.
+        format!("rgba({},{},{},{:.3})", c.0, c.1, c.2, c.3 as f32 / 255.0)
+    }
+
+    fn gradient_def(&mut self, stops: Stops, angle: f32) -> String {
+        let id = format!("g{}", self.grads);
+        self.grads += 1;
+        // A unit vector along the gradient, which is how SVG expresses
+        // direction — the canvas expresses the same thing as an angle.
+        let (dx, dy) = (angle.cos(), angle.sin());
+        let (x1, y1) = (0.5 - dx / 2.0, 0.5 - dy / 2.0);
+        let (x2, y2) = (0.5 + dx / 2.0, 0.5 + dy / 2.0);
+        let _ = write!(
+            self.defs,
+            r#"<linearGradient id="{id}" x1="{x1:.3}" y1="{y1:.3}" x2="{x2:.3}" y2="{y2:.3}">"#
+        );
+        for k in 0..(stops.len as usize).min(lumen_static::display::MAX_STOPS) {
+            let _ = write!(
+                self.defs,
+                r#"<stop offset="{:.3}" stop-color="{}"/>"#,
+                stops.at[k],
+                Self::colour(stops.color[k])
+            );
+        }
+        self.defs.push_str("</linearGradient>");
+        id
+    }
+
+    /// XML-escape text. Without this a label containing `&` or `<`
+    /// produces a document no parser will open — which is the kind of
+    /// failure that shows up in someone else's tool, days later.
+    fn escape(s: &str) -> String {
+        let mut out = String::with_capacity(s.len());
+        for c in s.chars() {
+            match c {
+                '<' => out.push_str("&lt;"),
+                '>' => out.push_str("&gt;"),
+                '&' => out.push_str("&amp;"),
+                '"' => out.push_str("&quot;"),
+                _ => out.push(c),
+            }
+        }
+        out
+    }
+}
+
+impl Renderer for Svg {
+    fn render(&mut self, list: &DisplayList, width: u32, height: u32) {
+        let mut body = String::new();
+        self.defs.clear();
+        self.clips = 0;
+
+        for c in &list.cmds {
+            match c {
+                Cmd::Rect { rect, color } => {
+                    let _ = write!(
+                        body,
+                        r#"<rect x="{:.2}" y="{:.2}" width="{:.2}" height="{:.2}" fill="{}"/>"#,
+                        rect[0],
+                        rect[1],
+                        rect[2] - rect[0],
+                        rect[3] - rect[1],
+                        Self::colour(*color)
+                    );
+                }
+                Cmd::RoundedRect { rect, color, radius } => {
+                    let _ = write!(
+                        body,
+                        r#"<rect x="{:.2}" y="{:.2}" width="{:.2}" height="{:.2}" rx="{radius:.2}" fill="{}"/>"#,
+                        rect[0],
+                        rect[1],
+                        rect[2] - rect[0],
+                        rect[3] - rect[1],
+                        Self::colour(*color)
+                    );
+                }
+                Cmd::Shadow { rect, color, radius, spread } => {
+                    // No blur filter: a filter per shadow is expensive
+                    // to render and the canvas's own shadow is one SDF
+                    // pass. A soft edge as a translucent outset rect is
+                    // close enough for an export and honest about being
+                    // an approximation.
+                    let _ = write!(
+                        body,
+                        r#"<rect x="{:.2}" y="{:.2}" width="{:.2}" height="{:.2}" rx="{:.2}" fill="{}" opacity="0.35"/>"#,
+                        rect[0] - spread,
+                        rect[1] - spread,
+                        (rect[2] - rect[0]) + spread * 2.0,
+                        (rect[3] - rect[1]) + spread * 2.0,
+                        radius + spread,
+                        Self::colour(*color)
+                    );
+                }
+                Cmd::Text { rect, text, size, weight, color } => {
+                    let _ = write!(
+                        body,
+                        r#"<text x="{:.2}" y="{:.2}" font-size="{size:.2}" font-weight="{weight:.0}" fill="{}" xml:space="preserve">{}</text>"#,
+                        rect[0],
+                        // SVG positions text on its baseline; the
+                        // command's rect is its box, so the baseline is
+                        // approximated at 0.8 of the size down.
+                        rect[1] + size * 0.8,
+                        Self::colour(*color),
+                        Self::escape(list.str_of(*text))
+                    );
+                }
+                Cmd::Line { a, b, width: w, color } => {
+                    let _ = write!(
+                        body,
+                        r#"<line x1="{:.2}" y1="{:.2}" x2="{:.2}" y2="{:.2}" stroke="{}" stroke-width="{w:.2}" stroke-linecap="round"/>"#,
+                        a.x,
+                        a.y,
+                        b.x,
+                        b.y,
+                        Self::colour(*color)
+                    );
+                }
+                Cmd::Gradient { rect, stops, angle } => {
+                    let id = self.gradient_def(*stops, *angle);
+                    let _ = write!(
+                        body,
+                        r#"<rect x="{:.2}" y="{:.2}" width="{:.2}" height="{:.2}" fill="url(#{id})"/>"#,
+                        rect[0],
+                        rect[1],
+                        rect[2] - rect[0],
+                        rect[3] - rect[1]
+                    );
+                }
+                Cmd::Image { rect, id, tint } => {
+                    // A placeholder with the id, not the pixels: this
+                    // renderer has no `ImageSource` and inventing one
+                    // would embed a base64 payload nobody asked for. An
+                    // exporter that wants images resolves them itself.
+                    let ImageId(n) = id;
+                    let _ = write!(
+                        body,
+                        r#"<rect x="{:.2}" y="{:.2}" width="{:.2}" height="{:.2}" fill="{}" data-image="{n}"/>"#,
+                        rect[0],
+                        rect[1],
+                        rect[2] - rect[0],
+                        rect[3] - rect[1],
+                        Self::colour(*tint)
+                    );
+                }
+                Cmd::PushClip { rect } => {
+                    let id = format!("c{}", self.clips);
+                    let _ = write!(
+                        self.defs,
+                        r#"<clipPath id="{id}"><rect x="{:.2}" y="{:.2}" width="{:.2}" height="{:.2}"/></clipPath>"#,
+                        rect[0],
+                        rect[1],
+                        rect[2] - rect[0],
+                        rect[3] - rect[1]
+                    );
+                    let _ = write!(body, r#"<g clip-path="url(#{id})">"#);
+                    self.clips += 1;
+                }
+                Cmd::PopClip => {
+                    if self.clips > 0 {
+                        body.push_str("</g>");
+                        self.clips -= 1;
+                    }
+                }
+            }
+        }
+        // An unbalanced list must still produce a parseable document —
+        // `tests/paint_containment.rs` forbids one, but a renderer must
+        // not trust that, exactly as the canvas does not.
+        for _ in 0..self.clips {
+            body.push_str("</g>");
+        }
+        self.clips = 0;
+
+        self.out = format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}"><defs>{}</defs>{body}</svg>"#,
+            self.defs
+        );
+    }
+}

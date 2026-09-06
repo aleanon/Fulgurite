@@ -18,6 +18,7 @@ use lumen_static::retain::{Damage, Incremental, Retention};
 use lumen_static::{pass, Constraints, Event, Point};
 
 pub mod software;
+pub mod svg;
 #[cfg(feature = "truetype")]
 pub mod text;
 

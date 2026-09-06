@@ -659,7 +659,7 @@ ship that way is that the gate asks for the measurement.
 Without the feature the type still exists and every call returns
 `None`, so a host needs no `cfg` around its "Open…" handler.
 
-### T15.12 — a GPU renderer
+### T15.12 — a GPU renderer — **SEAM PROVEN, wgpu DEFERRED ON ITS OWN GATE 2026-09-07**
 
 **A separate crate**, `lumen-static-wgpu`, implementing `Renderer`.
 M10a built the seam for exactly this and nothing has used it from the
@@ -673,6 +673,38 @@ CPU path.
 (within an antialiasing tolerance, stated); `damage_oracle`'s
 partial-redraw property holds on the GPU path too; the software arm's
 numbers are unchanged.
+
+**This task's own condition was "last, and only if a number asks for
+it". The numbers say no, so wgpu is not built — and that is the plan
+being followed rather than skipped.**
+
+The software canvas renders a live tally frame in **0.54 ms against a
+16 ms budget** — 3% of a frame — and a 3 000-row full redraw in
+**159 µs** (`docs/results-competitive.md`). Layout and paint are 7 µs
+and 9 µs. Nothing in this framework is waiting on the rasteriser, and a
+wgpu backend would add a driver stack, a glyph atlas and a shader
+pipeline to make an already-idle stage faster. It would also cost the
+thing §3 of the competitive results says this framework wins on: the
+GPU-backed arms there carry 68–321 MB of resident memory against
+lumen-static's 24.6, and most of that gap *is* a GPU context.
+
+**What T15.12 was really claiming is architectural** — that `Renderer`
+admits a second implementation, so a GPU backend is bounded work when a
+number does ask. That claim is now tested, by a second renderer that is
+useful today: `lumen_static_shell::svg::Svg`, for export, print and
+documentation that stays sharp.
+
+It is a **stronger** test than a second rasteriser would have been,
+because it is not a rasteriser at all: it consumes the command list and
+produces a document. It covers the whole vocabulary including
+`Cmd::Line`, `Cmd::Gradient` and `Cmd::Image` from T15.2 and T15.3, and
+it needed **no change to `Renderer`, to `Cmd`, or to anything in the
+core**.
+
+**When a number does ask**, the work is: a vertex pipeline for the four
+geometric commands (which the SDF shapes make easy), a glyph atlas for
+text (the expensive half), and `damage_oracle` extended to compare the
+two backends within a stated antialiasing tolerance.
 
 ---
 
