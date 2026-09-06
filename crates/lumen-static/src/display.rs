@@ -167,6 +167,24 @@ pub trait Painter {
     fn text(&mut self, rect: Rect, s: &str, size: f32, color: Color) {
         self.text_weighted(rect, s, size, 400.0, color);
     }
+
+    /// Ask for node `i` to be painted in the **overlay phase** instead
+    /// of here — `docs/plan-capabilities.md` T15.0.
+    ///
+    /// Returns whether the request was taken. **A widget that gets
+    /// `false` must paint inline**, which is what makes a painter with
+    /// no overlay support a working configuration rather than a broken
+    /// one: the content still appears, clipped by its ancestors and
+    /// under its later siblings, which is exactly what it did before
+    /// overlays existed.
+    ///
+    /// Provided as a refusal, so every existing `Painter` — including
+    /// `DisplayList`, `Scaled`, `Recording` and any host's own — keeps
+    /// compiling and keeps its current behaviour.
+    fn defer(&mut self, i: u32) -> bool {
+        let _ = i;
+        false
+    }
 }
 
 /// One frame's drawing commands, in paint order.

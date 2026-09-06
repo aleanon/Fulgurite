@@ -108,6 +108,78 @@ pub fn paint<W: Node + ?Sized>(tree: &W, st: &[NodeState], out: &mut dyn Painter
     tree.paint(st, 0, out);
 }
 
+/// Paint, then paint the overlays — `docs/plan-capabilities.md` T15.0.
+///
+/// Phase 1 is the ordinary pre-order walk, with a [`Deferring`] painter
+/// wrapped around `out` so a widget may ask for a subtree to be painted
+/// later instead of here. Phase 2 repaints each deferred subtree
+/// **outside every clip scope**, in the order it was deferred, so later
+/// overlays land on top of earlier ones and no z-index is needed.
+///
+/// Deferrals made *during* phase 2 are painted in the next round — a
+/// submenu inside a menu — up to [`crate::overlay::MAX_ROUNDS`].
+///
+/// With [`NoOverlays`](crate::NoOverlays) every deferral is refused, the
+/// loop never runs, and this is `paint` with one `is_empty` check.
+///
+/// [`Deferring`]: crate::overlay::Deferring
+pub fn paint_overlaid<W: Node + ?Sized, O: crate::overlay::OverlaySink>(
+    tree: &W,
+    st: &[NodeState],
+    out: &mut dyn Painter,
+    ov: &mut O,
+) {
+    use crate::overlay::{Deferring, MAX_ROUNDS};
+    ov.clear();
+    {
+        let mut d = Deferring::new(out, ov);
+        tree.paint(st, 0, &mut d);
+    }
+
+    let mut done = 0;
+    for _ in 0..MAX_ROUNDS {
+        let upto = ov.len();
+        if done == upto {
+            break;
+        }
+        for k in done..upto {
+            // Copied out before the sink is borrowed again.
+            let i = ov.at(k) as usize;
+            let mut d = Deferring::repainting(out, ov, i as u32);
+            // Painted at its own index, the way the agent's journal
+            // repaints a single node. Nothing above it in the tree runs,
+            // so no ancestor's clip applies — which is the point.
+            tree.node(i).paint(st, i, &mut d);
+        }
+        done = upto;
+    }
+}
+
+/// Hit-test with the overlays from the last [`paint_overlaid`] on top.
+///
+/// Deferred subtrees are tested **first and in reverse**, because the
+/// last one painted is the topmost and a click belongs to what a person
+/// can see. Then the ordinary walk.
+///
+/// The overlay list is the one paint produced, deliberately: what can be
+/// clicked is what was drawn, and a list built any other way could
+/// disagree with the screen.
+pub fn hit_test_overlaid<W: Node + ?Sized, O: crate::overlay::OverlaySink>(
+    tree: &W,
+    st: &[NodeState],
+    ov: &O,
+    x: f32,
+    y: f32,
+) -> Option<crate::hit::Hit> {
+    for k in (0..ov.len()).rev() {
+        let i = ov.at(k) as usize;
+        if let Some(h) = tree.node(i).hit(st, i, x, y) {
+            return Some(h);
+        }
+    }
+    tree.hit(st, 0, x, y)
+}
+
 pub fn hit_test<W: Node + ?Sized>(
     tree: &W,
     st: &[NodeState],

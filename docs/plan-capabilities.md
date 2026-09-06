@@ -153,7 +153,7 @@ Dependency order, not priority order. **T15.0 first**: three later tasks
 are blocked on it and one existing milestone (`plan-widgets.md` T11.5)
 unblocks with it.
 
-### T15.0 — the overlay phase
+### T15.0 — the overlay phase — **DONE 2026-09-07**
 
 The design above. `Node::paint` gains a deferral channel; `pass::paint`
 gains phase 2; `pass::hit_test` and the derive's `hit` gain reverse
@@ -169,6 +169,52 @@ compiles to today's code.
 clip and above later siblings; `damage_oracle.rs` stays pixel-identical
 with an overlay open, closed, and opening; `size_of::<NodeState>()`
 unchanged; `just thumb` green at both tiers.
+
+**Done, and smaller than planned in one important way: the derive was
+not touched.**
+
+The plan said reversing the derive's child order was "the one part of
+the overlay work that is not opt-in". It turned out not to be needed at
+all. Overlays are hit through `pass::hit_test_overlaid`, which tests
+the deferred list first and in reverse; the *ordinary* walk still has
+no overlapping siblings to disagree about, because this design adds no
+out-of-flow positioning to layout. So `W1004` stays reserved, generated
+code is unchanged, and **T15.0 is opt-in end to end**.
+
+The latent paint/hit inconsistency is real and still recorded — a later
+sibling paints on top while an earlier one is hit first — but it
+becomes reachable only if something later makes siblings overlap, and
+nothing here does.
+
+Built as:
+
+- `overlay::OverlaySink` with `NoOverlays` (a ZST that refuses every
+  deferral) and `Overlays<N>` (a fixed array, `no_std`, no allocator).
+- `Painter::defer(i) -> bool`, a **provided** method returning `false`,
+  so every existing painter — `DisplayList`, `Scaled`, `Recording` and
+  any host's own — keeps compiling and keeps its behaviour.
+- `overlay::Deferring`, the painter wrapper, in the shape `Scaled` and
+  `Recording` already use and composing with them.
+- `pass::paint_overlaid` and `pass::hit_test_overlaid`.
+- `popup::Popup<W>` with `Anchor::{Below, Above, Over}`.
+
+**Two design points the building settled:**
+
+- **A refused deferral must paint inline, not vanish.** `defer` returns
+  a `bool` for that reason: `NoOverlays` and a full `Overlays<N>` both
+  degrade to a clipped popup — what it would have looked like before
+  overlays existed — rather than to a missing one. A host that has not
+  opted in still gets a working application.
+- **`Popup` is out of flow by reporting zero size**, not by a layout
+  mode. It measures its content against *loose* constraints (the space
+  its siblings left is not the space it has), stores the result, and
+  positions in `place` against the anchor its parent has already
+  resolved. Opening one does not move its siblings, which the test
+  asserts directly.
+
+The refusal count is exposed as `OverlaySink::refused`, on the same rule
+`InputQueue::dropped` follows: a structure that silently loses something
+is worse than one that says how much.
 
 ### T15.1 — dropdown, tooltip, modal, context menu
 

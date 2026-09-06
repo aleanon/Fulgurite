@@ -118,6 +118,8 @@ pub mod num;
 #[cfg(feature = "observe")]
 pub mod observe;
 pub mod ops;
+pub mod overlay;
+pub mod popup;
 pub mod pass;
 #[cfg(feature = "reload")]
 pub mod reload;
@@ -168,6 +170,8 @@ pub use event::{Event, EventCtx, InputQueue, Key, Mods, PointerButton};
 // so `use lumen_static::App` brings in whichever the position calls for.
 pub use event::App;
 pub use lumen_static_macros::{App, Reloadable, StaticTree};
+pub use overlay::{NoOverlays, OverlaySink, Overlays};
+pub use popup::{Anchor, Popup};
 pub use widget::{Node, Widget};
 
 /// Everything an application needs to build a tree.
