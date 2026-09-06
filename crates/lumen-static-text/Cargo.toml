@@ -1,0 +1,28 @@
+[package]
+name = "lumen-static-text"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "lumen_static_text"
+
+# A SEPARATE CRATE, which is the M15 gating policy's strongest
+# mechanism: nothing here enters a dependency graph unless a manifest
+# names it. `docs/text-render-adoption-decision.md` declined a
+# heavyweight text stack twice, with reasons that still hold for the
+# *default*; this is how an application that needs one gets it without
+# changing that default for everyone else.
+#
+# Cost, measured 2026-09-07: this crate's whole graph is 33 entries
+# against the core's 20 and the shell's 11 -- so shaping is about a
+# dozen crates, paid only by a manifest that names this. The core's own
+# graph is unchanged and `just thumb` still builds it with no std and
+# no allocator.
+[dependencies]
+lumen-static = { path = "../lumen-static" }
+lumen-static-shell = { path = "../lumen-static-shell", features = ["truetype"] }
+# Shaping proper: cluster-correct segmentation, Arabic joining, Indic
+# reordering. `unicode-bidi` orders the runs; rustybuzz shapes each.
+rustybuzz = "0.20"
+unicode-bidi = "0.3"

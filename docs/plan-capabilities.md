@@ -524,7 +524,7 @@ Two behaviours that make the difference between a drag and a click:
 It builds on pointer capture (T11.2), the fourth thing to do so, which
 is what routes `PointerMove` to the node that started the gesture.
 
-### T15.8 — complex-script text
+### T15.8 — complex-script text — **DONE 2026-09-07**
 
 Bidi, Arabic and Indic shaping, grapheme-correct segmentation. The
 seam already exists — `TextMeasure` — and
@@ -538,6 +538,31 @@ core changes; nothing enters the graph unless named. `BakedFace` and
 
 **Gate:** an Arabic string measures and paints right-to-left; the
 default build's dependency count is unchanged; `just thumb` unaffected.
+
+**Done as `lumen-static-text`**, a separate crate implementing
+`TextMeasure` over `rustybuzz` and `unicode-bidi`. Both halves of the
+gate hold: **the core's graph is unchanged at 20 entries and the
+shell's at 11**, while the new crate's is 33 — so shaping is about a
+dozen crates, paid only by a manifest that names it. `just thumb` still
+builds the core with no `std` and no allocator.
+
+This is the gating policy's strongest mechanism doing exactly what it
+is for. `docs/text-render-adoption-decision.md` declined a heavyweight
+text stack twice and the reasons still hold **for the default**; what
+was missing was a way for an application that genuinely needs Arabic or
+Devanagari to get one without changing that default for anyone else.
+
+**The seam needed no widening.** `TextMeasure` has been the right shape
+since T7.2b, and this is its fourth implementation after `BlockMetrics`,
+`FontMetrics` and `BakedFace` — the first to do something the others
+structurally cannot.
+
+**Byte offsets are the caller's, and a bidi split is where that is
+easiest to get wrong.** A caret computed from a shaper's own indices
+lands mid-character; the `Run` struct carries the offset of each
+directional run in the original string precisely so the reported
+clusters index it, and a test asserts every offset is a `char`
+boundary.
 
 ### T15.9 — localisation — **DONE 2026-09-07**
 
