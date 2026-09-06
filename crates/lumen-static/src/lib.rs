@@ -108,6 +108,7 @@ pub mod desc;
 pub mod display;
 pub mod event;
 pub mod font;
+pub mod gesture;
 pub mod hatch;
 pub mod hit;
 pub mod image;
@@ -167,7 +168,7 @@ pub use inline::{InlineClusters, InlineText};
 pub use text::{ClusterBuf, Dirty, Measured, TextBuffer, TextStorage};
 #[cfg(feature = "reload")]
 pub use text::TextRestore;
-pub use event::{Event, EventCtx, InputQueue, Key, Mods, PointerButton};
+pub use event::{Event, EventCtx, InputQueue, Key, Mods, PointerButton, TouchPhase};
 // `App` is both a trait and a derive; they live in different namespaces,
 // so `use lumen_static::App` brings in whichever the position calls for.
 pub use event::App;

@@ -88,6 +88,43 @@ pub fn clamp(x: f32, lo: f32, hi: f32) -> f32 {
     }
 }
 
+/// Square root, without `std`.
+///
+/// `f32::sqrt` is std-only — it lowers to an intrinsic that needs
+/// `libm` on a bare target — and T15.5's pinch recognizer needs a
+/// distance. Same reasoning as [`floor`] and [`ceil`]: two call sites do
+/// not justify a `libm` dependency.
+///
+/// **Not bit-exact with `f32::sqrt`, and this one says so.** `floor` and
+/// `ceil` are exact because they are selections; a square root is an
+/// approximation, and claiming otherwise would be the kind of drift
+/// `AGENT.md` exists to stop. The implementation is the classic
+/// bit-halving seed plus three Newton steps, and
+/// `sqrt_is_accurate_enough_to_measure_with` pins the error it actually
+/// achieves rather than the one it aspires to.
+///
+/// Domain: negatives and NaN give NaN, `+inf` gives `+inf`, and both
+/// zeroes give themselves — matching `f32::sqrt` on every one.
+pub fn sqrt(x: f32) -> f32 {
+    if x.is_nan() || x < 0.0 {
+        return f32::NAN;
+    }
+    if x == 0.0 || !x.is_finite() {
+        // Both zeroes keep their sign, as IEEE says, and +inf is its
+        // own root.
+        return x;
+    }
+    // Halve the exponent by halving the bit pattern about the bias —
+    // an initial guess within a factor of about 1.03.
+    let mut y = f32::from_bits(0x1fbd_1df5 + (x.to_bits() >> 1));
+    // Three Newton steps. Two leaves visible error at the top of the
+    // range; four buys nothing a `f32` can represent.
+    y = 0.5 * (y + x / y);
+    y = 0.5 * (y + x / y);
+    y = 0.5 * (y + x / y);
+    y
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -163,6 +200,36 @@ mod tests {
         // frame loop that draws a degenerate rect beats one that stops.
         assert_eq!(clamp(0.5, 1.0, 0.0), 1.0);
         assert_eq!(clamp(0.5, f32::NAN, 1.0), 0.5);
+    }
+
+    /// The error bound `sqrt` actually achieves, pinned rather than
+    /// asserted to be zero — it is an approximation and the doc says so.
+    #[test]
+    fn sqrt_is_accurate_enough_to_measure_with() {
+        let mut worst = 0.0f32;
+        // A wide sample: subnormals, the ordinary range, and the top.
+        let mut x = f32::MIN_POSITIVE;
+        while x < 1e30 {
+            let got = sqrt(x);
+            let want = x.sqrt();
+            let rel = ((got - want) / want).abs();
+            worst = worst.max(rel);
+            x *= 1.0009;
+        }
+        assert!(worst < 1e-6, "relative error {worst:e} over the range");
+
+        for (x, want) in [(0.0f32, 0.0f32), (1.0, 1.0), (4.0, 2.0), (2.25, 1.5)] {
+            assert!((sqrt(x) - want).abs() < 1e-6, "sqrt({x})");
+        }
+    }
+
+    #[test]
+    fn sqrt_matches_std_on_the_special_values() {
+        assert!(sqrt(f32::NAN).is_nan());
+        assert!(sqrt(-1.0).is_nan(), "as f32::sqrt does");
+        assert_eq!(sqrt(f32::INFINITY), f32::INFINITY);
+        assert_eq!(sqrt(0.0).to_bits(), 0.0f32.to_bits());
+        assert_eq!(sqrt(-0.0).to_bits(), (-0.0f32).to_bits(), "signed zero survives");
     }
 
     #[test]

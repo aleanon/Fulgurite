@@ -131,6 +131,21 @@ pub enum Composition<'a> {
     Cancel,
 }
 
+/// Where a touch is in its life — T15.5.
+///
+/// `Cancel` is not `End`: the system took the touch away (a gesture was
+/// claimed by the OS, a call arrived), and a widget that treats it as a
+/// release commits an action the user did not finish. Distinguishing
+/// them is the whole reason this is four variants and not a `bool`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "observe", derive(serde::Serialize, serde::Deserialize))]
+pub enum TouchPhase {
+    Begin,
+    Move,
+    End,
+    Cancel,
+}
+
 /// Which pointer button — `docs/plan-desktop.md` T14.3.
 ///
 /// Three, not five: the back and forward buttons are excluded for the
@@ -160,6 +175,19 @@ pub enum Event {
     Scroll { x: f32, y: f32, dy: f32 },
     Key { key: Key, down: bool },
     Text { ch: char },
+    /// One finger, at one moment — `docs/plan-capabilities.md` T15.5.
+    ///
+    /// **`id` is a `u32`, and that was measured rather than chosen.**
+    /// `Event` is 16 bytes and asserted; a `u64` id makes this variant
+    /// 20 and the enum 24, which would take [`InputQueue`] from 1 048
+    /// bytes to 1 560. The windowing layer truncates the platform's id,
+    /// which is a per-session sequence and never approaches 2³².
+    ///
+    /// Gesture *recognition* — pinch, rotate, swipe, long-press — is
+    /// not here. Those are stateful, and a framework pass that
+    /// recognised them would cost every tree that wants none. They are
+    /// types an application owns: see [`crate::gesture`].
+    Touch { id: u32, x: f32, y: f32, phase: TouchPhase },
     /// The modifier keys changed — T14.1.
     ///
     /// **In the queue, not beside it.** `docs/plan-events.md` E0 is
@@ -211,6 +239,7 @@ impl Event {
             Event::PointerDown { x, y, .. }
             | Event::PointerUp { x, y, .. }
             | Event::PointerMove { x, y }
+            | Event::Touch { x, y, .. }
             | Event::Scroll { x, y, .. } => Some(Point { x, y }),
             Event::Key { .. } | Event::Text { .. } | Event::Modifiers(_) => None,
         }

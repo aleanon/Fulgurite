@@ -397,7 +397,7 @@ an animation that looks right and one that does not:
 `Animated<T>` is `Copy` and 20 bytes, and there is no registry: a tree
 with no animated field has no animation state at all.
 
-### T15.5 — touch and gestures
+### T15.5 — touch and gestures — **DONE 2026-09-07**
 
 Event vocabulary: `Event::Touch { id, phase, x, y }`, with `phase` one
 of begin/move/end/cancel. The `Event` size budget is 16 B and asserted
@@ -412,6 +412,33 @@ carries none. Pointer capture (T11.2) is the substrate.
 
 **Gate:** `size_of::<Event>()` still 16; a two-finger pinch drives a
 scale value; a long-press fires once and not repeatedly.
+
+**Done, and the risk entry paid for itself.** This task's risk said the
+16-byte budget must be checked *before* choosing a representation. It
+was: **a `u32` touch id fits in 16 bytes; a `u64` makes `Event` 24 and
+the queue 1 560 rather than 1 048.** So `Event::Touch { id: u32, x, y,
+phase }`, and the windowing layer truncates the platform's id — a
+per-session sequence that never approaches 2³².
+
+`TouchPhase` has four variants, not a `bool`: **`Cancel` is not `End`**.
+The system took the touch away, and a widget that treats that as a
+release commits an action the user did not finish.
+
+Recognizers are types an application owns — `Touches`, `Pinch`,
+`LongPress` — fed the same event stream everything else sees. No pass,
+no registry, nothing for a tree that wants none to opt out of.
+`LongPress` takes elapsed time rather than reading a clock, exactly as
+`Animated` does, and fires **once** rather than every tick: a long press
+is an event, and a recognizer that kept reporting it would open a
+context menu per frame.
+
+**And it needed a square root the core did not have.** `f32::sqrt` is
+std-only, caught by `just test`'s embedded fixture rather than by
+reading. `num::sqrt` joins `floor`, `ceil` and `clamp` — but unlike
+them it is **not bit-exact and says so**: a root is an approximation
+where those are selections, and the test pins the relative error it
+achieves (< 1e-6 over the range) rather than asserting a zero it does
+not have.
 
 ### T15.6 — focus navigation
 

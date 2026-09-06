@@ -8,7 +8,7 @@
 
 use std::time::{Duration, Instant};
 
-use lumen_static::{Event, Key, Mods, PointerButton};
+use lumen_static::{Event, Key, Mods, PointerButton, TouchPhase};
 use winit::event::{ElementState, MouseScrollDelta, WindowEvent};
 use winit::keyboard::{Key as WKey, NamedKey};
 
@@ -140,6 +140,15 @@ pub fn window_event(
             })
         }
 
+        WindowEvent::Touch(t) => {
+            let (x, y) = to_logical(t.location.x as f32, t.location.y as f32);
+            // winit's id is a u64 per-session sequence; `Event` is 16
+            // bytes and a u64 id would make it 24, taking the queue from
+            // 1 048 to 1 560 (T15.5, measured before the design). It
+            // never approaches 2^32, so the low half is the id.
+            Translated::one(Event::Touch { id: t.id as u32, x, y, phase: touch_phase(t.phase) })
+        }
+
         WindowEvent::MouseWheel { delta, .. } => {
             let dy = match delta {
                 MouseScrollDelta::LineDelta(_, y) => y * LINE_SCROLL,
@@ -195,6 +204,21 @@ pub fn keyboard(logical: &WKey, text: Option<&str>, down: bool, held: Mods) -> T
         .and_then(|t| t.chars().find(|c| !c.is_control()))
         .map(|ch| Event::Text { ch });
     Translated { events: [key, text], is_input: true }
+}
+
+/// winit's touch phases to the framework's.
+///
+/// `Cancelled` maps to `Cancel` and not to `End`: the system took the
+/// touch away, and a widget that treats that as a release commits an
+/// action the user did not finish.
+pub fn touch_phase(p: winit::event::TouchPhase) -> TouchPhase {
+    use winit::event::TouchPhase as P;
+    match p {
+        P::Started => TouchPhase::Begin,
+        P::Moved => TouchPhase::Move,
+        P::Ended => TouchPhase::End,
+        P::Cancelled => TouchPhase::Cancel,
+    }
 }
 
 /// winit's buttons to the framework's three.
