@@ -485,7 +485,7 @@ took `Style` from 72 to 76 bytes. A ring wider than 255 px is not a
 ring, so the byte costs nothing real — and the M15 policy's "fits or
 gets re-budgeted" is what forced the question.
 
-### T15.7 — drag and drop
+### T15.7 — drag and drop — **DONE 2026-09-07**
 
 Two halves that should not be conflated:
 
@@ -498,6 +498,31 @@ Two halves that should not be conflated:
 **Gate:** an internal drag reorders a list; a file dropped on the window
 reaches a handler behind the feature; neither path allocates in steady
 state.
+
+**Done, in the two halves the plan said not to conflate.**
+`Drag<T>` in the core — payload as a type parameter, so a drop handler
+receives it already typed and there is no `Box<dyn Any>`, no downcast
+and no allocator anywhere near it. `Dropped` in the windowing crate
+behind a default-off `dnd` feature.
+
+**The `dnd` feature costs no dependency**, unlike `clipboard` and
+`a11y`: winit already carries the events, so it gates the *surface*
+rather than a crate. Default-off anyway, because accepting files is a
+capability an application opts into rather than one it should discover.
+
+Two behaviours that make the difference between a drag and a click:
+
+- **A press is not a drag until it moves past a threshold** (4 logical
+  px). Without one, every click is a one-pixel drag and a list whose
+  rows both click and reorder cannot tell them apart. `payload()`
+  returns `None` while merely pending, so a caller *cannot* drop
+  something the user only clicked.
+- **A release ends the drag without dropping.** The drop is the
+  caller's decision, because only it knows what is under the pointer —
+  so `take()` is separate and can be called once.
+
+It builds on pointer capture (T11.2), the fourth thing to do so, which
+is what routes `PointerMove` to the node that started the gesture.
 
 ### T15.8 — complex-script text
 

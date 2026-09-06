@@ -21,6 +21,12 @@ name = "lumen_static_winit"
 # `default-features = false`.
 default = ["clipboard"]
 clipboard = ["dep:arboard"]
+# Platform drag and drop (T15.7). Default-OFF: it is a platform
+# capability an application opts into, and winit already carries the
+# events, so the feature costs no dependency — it gates the *surface*,
+# not a crate. The within-application half (`lumen_static::Drag`) needs
+# neither this nor a platform.
+dnd = []
 
 [dependencies]
 lumen-static = { path = "../lumen-static" }

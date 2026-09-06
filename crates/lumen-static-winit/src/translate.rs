@@ -206,6 +206,39 @@ pub fn keyboard(logical: &WKey, text: Option<&str>, down: bool, held: Mods) -> T
     Translated { events: [key, text], is_input: true }
 }
 
+/// A file the platform dropped on the window — T15.7's other half.
+///
+/// Behind the default-off `dnd` feature: platform drag and drop is a
+/// stack, and an application that does not accept drops should not link
+/// one. The *within-application* half is `lumen_static::Drag` and needs
+/// no feature and no platform at all.
+#[cfg(feature = "dnd")]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Dropped {
+    /// The pointer is over the window carrying files.
+    Hovering,
+    /// Files were released on it.
+    Files(alloc_vec::Vec<std::path::PathBuf>),
+    /// The pointer left without dropping.
+    Cancelled,
+}
+
+#[cfg(feature = "dnd")]
+mod alloc_vec {
+    pub use std::vec::Vec;
+}
+
+/// Translate a platform drag-and-drop event, if this is one.
+#[cfg(feature = "dnd")]
+pub fn dropped(event: &WindowEvent) -> Option<Dropped> {
+    match event {
+        WindowEvent::HoveredFile(_) => Some(Dropped::Hovering),
+        WindowEvent::HoveredFileCancelled => Some(Dropped::Cancelled),
+        WindowEvent::DroppedFile(p) => Some(Dropped::Files(alloc_vec::Vec::from([p.clone()]))),
+        _ => None,
+    }
+}
+
 /// winit's touch phases to the framework's.
 ///
 /// `Cancelled` maps to `Cancel` and not to `End`: the system took the
