@@ -263,5 +263,22 @@ pub mod sizes {
     // deliberately checked only where the budget applies.
     #[cfg(target_pointer_width = "32")]
     const _: () = assert!(NODE_DESC == 32, "NodeDesc changed on the target");
+
+    // **The stack budget, enforced rather than recorded.**
+    //
+    // `docs/results-embedded.md` has budgeted 4 KB of stack since
+    // T13.9 and nothing checked it: the threshold was written down,
+    // the depth was measured once by hand, and the two were never
+    // connected. They are now, at compile time.
+    //
+    // Against the tree's *actual* `DEPTH`, not `MAX_DEPTH` — those are
+    // different numbers and conflating them was the bug this closes.
+    // `MAX_DEPTH` is 64 and would want ~17 KB, which is why it is a
+    // runaway-recursion backstop and not this.
+    pub const STACK: usize = lumen_static::stack_bytes(<super::Ui as lumen_static::Widget>::DEPTH);
+    const _: () = assert!(
+        STACK <= 4096,
+        "the tree is deeper than docs/results-embedded.md's 4 KB stack budget"
+    );
 }
 

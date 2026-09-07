@@ -342,7 +342,7 @@ impl<A: App, R: Retention> Host<A, R> {
     /// exactly the paths typing already uses — no second edit path to
     /// get subtly different.
     ///
-    /// **Chunked against [`lumen_static::InputQueue::CAP`]**, because a
+    /// **Chunked against [`lumen_static::InputQueue::<64>::CAP`]**, because a
     /// paste is not bounded by it. Filling the queue and pumping, then
     /// filling it again, is what keeps a 10 kB paste from losing its
     /// tail — and this is the first real caller of the `push` refusal
@@ -353,7 +353,7 @@ impl<A: App, R: Retention> Host<A, R> {
     pub fn paste(&mut self, text: &str) -> usize {
         let mut n = 0;
         for ch in text.chars().filter(|c| !c.is_control() || *c == '\n') {
-            if self.queue.len() == lumen_static::InputQueue::CAP {
+            if self.queue.len() == lumen_static::InputQueue::<64>::CAP {
                 self.pump();
             }
             self.post(Event::Text { ch });

@@ -371,23 +371,34 @@ pub struct InputState {
 /// arrangement, since the existing suite exercises the embedded path
 /// without knowing it.
 ///
-/// `Event` is `Copy` and 16 bytes, so [`CAP`](Self::CAP) events cost
-/// 1 KB inline — affordable on the M13 device's 128 KB
-/// (`docs/results-embedded.md`) and one less heap structure per host
-/// on the desktop.
+/// **`CAP` is a type parameter, and that is the budget that matters.**
+///
+/// Until 2026-09-07 the capacity was a fixed 64 and `Event`'s 16 bytes
+/// were treated as the constraint — every vocabulary decision was
+/// negotiated against a number nobody had chosen, because 16 is simply
+/// what `Scroll { x, y, dy }` happened to need. The real constraint is
+/// this struct: `CAP * size_of::<Event>()` plus bookkeeping, which at
+/// the default 64 is 1 048 bytes, 0.8% of the M13 device's 128 KB
+/// (`docs/results-embedded.md`).
+///
+/// Decoupling them means an embedded host that wants 384 bytes writes
+/// `InputQueue<16>` and a desktop host that expects bursts writes
+/// `InputQueue<256>`, and neither has to argue with the size of an
+/// event. `Event` staying small is still worth something — it is
+/// multiplied by `CAP` — but it is a cost to weigh rather than a wall.
 #[derive(Debug)]
-pub struct InputQueue {
-    q: [Event; Self::CAP],
+pub struct InputQueue<const CAP: usize = 64> {
+    q: [Event; CAP],
     head: usize,
     len: usize,
     dropped: u32,
 }
 
-impl Default for InputQueue {
+impl<const CAP: usize> Default for InputQueue<CAP> {
     fn default() -> Self {
         InputQueue {
             // Any value works: `len` is what makes a slot live.
-            q: [Event::Key { key: Key::Enter, down: false }; Self::CAP],
+            q: [Event::Key { key: Key::Enter, down: false }; CAP],
             head: 0,
             len: 0,
             dropped: 0,
@@ -395,11 +406,11 @@ impl Default for InputQueue {
     }
 }
 
-impl InputQueue {
-    /// Queue depth. At 60 fps and human input rates this is about a
-    /// second of continuous input without a drain, and the frame loop
-    /// drains every frame.
-    pub const CAP: usize = 64;
+impl<const CAP: usize> InputQueue<CAP> {
+    /// Queue depth. At the default 64, 60 fps and human input rates,
+    /// this is about a second of continuous input without a drain —
+    /// and the frame loop drains every frame.
+    pub const CAP: usize = CAP;
 
     pub fn new() -> Self {
         Self::default()
@@ -418,11 +429,11 @@ impl InputQueue {
     /// journal's `truncated` flag — a gate that hides its own overflow
     /// is worse than no gate.
     pub fn push(&mut self, ev: Event) -> bool {
-        if self.len == Self::CAP {
+        if self.len == CAP {
             self.dropped = self.dropped.saturating_add(1);
             return false;
         }
-        self.q[(self.head + self.len) % Self::CAP] = ev;
+        self.q[(self.head + self.len) % CAP] = ev;
         self.len += 1;
         true
     }
@@ -432,7 +443,7 @@ impl InputQueue {
             return None;
         }
         let ev = self.q[self.head];
-        self.head = (self.head + 1) % Self::CAP;
+        self.head = (self.head + 1) % CAP;
         self.len -= 1;
         Some(ev)
     }
@@ -454,7 +465,7 @@ impl InputQueue {
 
     /// Everything queued, oldest first — the recording seed.
     pub fn iter(&self) -> impl Iterator<Item = &Event> {
-        (0..self.len).map(|i| &self.q[(self.head + i) % Self::CAP])
+        (0..self.len).map(|i| &self.q[(self.head + i) % CAP])
     }
 }
 
@@ -523,8 +534,8 @@ pub trait App: Sized {
     }
 }
 
-impl Extend<Event> for InputQueue {
-    /// Events past [`InputQueue::CAP`] are counted as dropped, exactly
+impl<const CAP: usize> Extend<Event> for InputQueue<CAP> {
+    /// Events past [`InputQueue::<64>::CAP`] are counted as dropped, exactly
     /// as [`InputQueue::push`] does — `Extend` cannot report a refusal,
     /// so the count is the only channel it has.
     fn extend<T: IntoIterator<Item = Event>>(&mut self, iter: T) {
@@ -544,7 +555,7 @@ mod queue_tests {
 
     #[test]
     fn fifo_and_wraparound() {
-        let mut q = InputQueue::new();
+        let mut q: InputQueue = InputQueue::new();
         // Push and drain past CAP so head wraps the backing array — the
         // case a VecDeque handled for free and this ring must not get
         // wrong.
@@ -562,24 +573,24 @@ mod queue_tests {
 
     #[test]
     fn overflow_rejects_the_newest_and_counts_it() {
-        let mut q = InputQueue::new();
-        for i in 0..InputQueue::CAP {
+        let mut q: InputQueue = InputQueue::new();
+        for i in 0..InputQueue::<64>::CAP {
             assert!(q.push(ev(i as u8)));
         }
         assert!(!q.push(ev(200)), "full queue refuses");
         assert!(!q.push(ev(201)));
         assert_eq!(q.dropped(), 2, "and says how much it lost");
-        assert_eq!(q.len(), InputQueue::CAP);
+        assert_eq!(q.len(), InputQueue::<64>::CAP);
 
         // The queued prefix is intact: rejecting the newest is what
         // keeps it a coherent history rather than one with a hole.
         assert_eq!(q.pop(), Some(ev(0)));
-        assert_eq!(q.iter().count(), InputQueue::CAP - 1);
+        assert_eq!(q.iter().count(), InputQueue::<64>::CAP - 1);
     }
 
     #[test]
     fn iter_is_oldest_first_across_a_wrap() {
-        let mut q = InputQueue::new();
+        let mut q: InputQueue = InputQueue::new();
         for i in 0..50u8 {
             q.push(ev(i));
         }
@@ -596,11 +607,36 @@ mod queue_tests {
         assert_eq!(seen, (40..70u8).collect::<Vec<_>>(), "oldest first, wrap included");
     }
 
+    /// A capacity other than the default behaves identically — the
+    /// generic changed the budget, not the semantics.
+    #[test]
+    fn a_small_queue_is_the_same_queue() {
+        let mut q: InputQueue<4> = InputQueue::new();
+        for i in 0..4u8 {
+            assert!(q.push(ev(i)), "room for {i}");
+        }
+        assert!(!q.push(ev(9)), "and full at 4");
+        assert_eq!(q.dropped(), 1);
+        for i in 0..4u8 {
+            assert_eq!(q.pop(), Some(ev(i)), "still FIFO");
+        }
+        // And it wraps, which is where a hand-rolled ring usually
+        // breaks and where a small `CAP` reaches soonest.
+        for round in 0..5u8 {
+            for i in 0..3u8 {
+                q.push(ev(round * 3 + i));
+            }
+            for i in 0..3u8 {
+                assert_eq!(q.pop(), Some(ev(round * 3 + i)), "wrap round {round}");
+            }
+        }
+    }
+
     #[test]
     fn extend_counts_what_it_could_not_take() {
-        let mut q = InputQueue::new();
+        let mut q: InputQueue = InputQueue::new();
         q.extend((0..70u8).map(ev));
-        assert_eq!(q.len(), InputQueue::CAP);
-        assert_eq!(q.dropped(), 70 - InputQueue::CAP as u32);
+        assert_eq!(q.len(), InputQueue::<64>::CAP);
+        assert_eq!(q.dropped(), 70 - InputQueue::<64>::CAP as u32);
     }
 }

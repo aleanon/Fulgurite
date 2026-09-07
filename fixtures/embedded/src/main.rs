@@ -65,7 +65,12 @@ fn main() {
     frame(&mut panel, &mut st, &mut sty, &mut out);
     let warm = (out.hash, out.cmds);
 
-    println!("embedded: {NODES} nodes, arming the allocator for 100 frames");
+    println!(
+        "embedded: {NODES} nodes, depth {} = {} B of stack (budget 4096)",
+        <embedded::Ui as lumen_static::Widget>::DEPTH,
+        embedded::sizes::STACK
+    );
+    println!("embedded: arming the allocator for 100 frames");
     ARMED.store(true, Ordering::Relaxed);
     for _ in 0..100 {
         out = Checksum::default();

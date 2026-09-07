@@ -72,11 +72,34 @@ impl F {
 /// have grown the enum and the queue with it; a `Modifiers` variant
 /// does not. Measured before the design was written, and asserted here
 /// so it stays true (`docs/plan-desktop.md` T14.1).
+/// **The budget is the queue, not the event.**
+///
+/// Until 2026-09-07 this asserted `Event == 16` as if 16 were a law.
+/// It is not: 16 is what `Scroll { x, y, dy }` happened to need, and
+/// treating it as a wall meant every vocabulary decision — the touch id
+/// in T15.5, the click count in T14.3 — was negotiated against a number
+/// nobody had chosen.
+///
+/// What is actually budgeted is resident bytes on a 128 KB device, and
+/// that is `CAP * size_of::<Event>()`. So `CAP` is a type parameter now
+/// and this asserts the *product*, which is the thing
+/// `docs/results-embedded.md` cares about. `Event`'s size is still
+/// worth watching — it is multiplied by `CAP` — so it is reported, but
+/// as a cost to weigh rather than a bound to defend.
 #[test]
-fn the_event_vocabulary_still_fits_in_sixteen_bytes() {
-    assert_eq!(core::mem::size_of::<Event>(), 16, "Event grew; InputQueue grew with it");
-    assert_eq!(core::mem::size_of::<Mods>(), 1, "Mods is a bitflag, not four bools");
+fn the_queue_stays_within_its_memory_budget() {
+    // The default host queue: 1 048 B, 0.8% of the M13 device's RAM.
     assert_eq!(core::mem::size_of::<lumen_static::InputQueue>(), 1048);
+
+    // And the point of making it generic: a host that wants less can
+    // have less, without the event vocabulary being frozen for it.
+    assert_eq!(core::mem::size_of::<lumen_static::InputQueue<16>>(), 280);
+    assert_eq!(core::mem::size_of::<lumen_static::InputQueue<256>>(), 4120);
+
+    // Reported, not defended: an event that grew would show up here as
+    // a bigger queue, which is the consequence that matters.
+    assert_eq!(core::mem::size_of::<Event>(), 16, "if this changes, re-check the queue sizes");
+    assert_eq!(core::mem::size_of::<Mods>(), 1, "Mods is a bitflag, not four bools");
 }
 
 #[test]

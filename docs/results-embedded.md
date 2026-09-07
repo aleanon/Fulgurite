@@ -40,7 +40,7 @@ thing that produces real sections.
 | `.rodata` | — | 12,940 B | of which **9,010 B is the font face** (T13.7) |
 | Flash, total | ≤ 512 KB | **33,677 B** (32.9 KB) | 6.4% of the part |
 | RAM, 100 nodes | ≤ 24 KB | **14.5 KB** state + style | **pass**; widget structs are the app's, below |
-| Stack, actual depth | ≤ 4 KB | ~1.6 KB at depth 4–5 | **pass** (T13.0's per-level figure) |
+| Stack, actual depth | ≤ 4 KB | **816 B at depth 3** | **pass**, and asserted at compile time since 2026-09-07 |
 | `f64` in the frame path | zero | **zero** | the only `f64` is `observe`'s accesskit call, which needs `std` |
 | Fixture builds and runs | yes | **yes** | links for the target; runs on the host with an aborting allocator |
 
@@ -87,6 +87,19 @@ these figures once already (see the 72/64 correction below).
   the correct worst case and an expensive one: an embedded app with a
   text field should size `InlineText<N>` to the field, not to a round
   number.
+
+### The stack budget is enforced now, not just recorded
+
+Until 2026-09-07 this row was a threshold nobody checked: the number was
+written down, the depth was measured once by hand, and the two were
+never connected. `desc::stack_bytes(depth)` connects them, and
+`fixtures/embedded` asserts it **at compile time** against the tree that
+actually has to fit — 816 B at depth 3, verified by re-injection
+(lowering the bound to 512 fails the build).
+
+Against a tree's **actual** `DEPTH`, not `MAX_DEPTH`. Those are
+different numbers, and conflating them is the mistake the next section
+describes.
 
 ### `MAX_DEPTH` stays 64, and the reason is a measurement
 

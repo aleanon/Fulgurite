@@ -9,7 +9,13 @@ fn t(id: u32, x: f32, y: f32, phase: TouchPhase) -> Event {
 
 /// **The budget, checked before the design and asserted after** — the
 /// rule T14.1 set. A `u64` touch id would have made `Event` 24 bytes
-/// and the queue 1 560 rather than 1 048.
+/// and the default queue 1 560 rather than 1 048.
+///
+/// Since 2026-09-07 that is a cost to weigh rather than a wall: `CAP`
+/// is a type parameter, so a host that needs a bigger vocabulary can
+/// buy it back with a shorter queue. The `u32` id is still the right
+/// call — the id is a per-session sequence — but it is now a choice
+/// rather than a constraint.
 #[test]
 fn touch_did_not_grow_the_event_vocabulary() {
     assert_eq!(core::mem::size_of::<Event>(), 16);

@@ -221,3 +221,34 @@ fn focus_visible_follows_the_kind_of_input() {
     f.key(Key::Down, Mods::NONE);
     assert!(f.input.focus_visible, "and an arrow brings it back");
 }
+
+
+// ---- the stack budget, as a fact about a tree ------------------------
+
+/// **`MAX_DEPTH` is a runaway-recursion backstop, not a stack budget**,
+/// and the two were conflated until 2026-09-07.
+///
+/// `docs/results-embedded.md` has budgeted 4 KB of stack since T13.9
+/// and nothing checked it: the threshold was written down, the depth
+/// was measured once by hand, and the two were never connected.
+/// `stack_bytes` connects them, and `fixtures/embedded` asserts it at
+/// compile time for the tree that actually has to fit.
+#[test]
+fn stack_cost_follows_a_trees_own_depth_not_the_cap() {
+    use lumen_static::{stack_bytes, MAX_DEPTH, STACK_BYTES_PER_LEVEL};
+
+    // A real screen. This test's own fixture is the evidence: nothing
+    // here is anywhere near the cap. Compared through a `let` rather
+    // than against a literal, because clippy is right that comparing
+    // two consts is not an assertion.
+    let depth = <Ui as Widget>::DEPTH;
+    let real = stack_bytes(depth);
+    assert!(real <= 4096, "a real tree fits the embedded budget: {real} B");
+    assert!(depth < MAX_DEPTH / 8, "and is nowhere near the cap: {depth}");
+
+    // The cap, read as a budget, would be wrong in both directions:
+    // ~17 KB is nothing on a desktop and twice the embedded device's
+    // whole 8 KB stack.
+    assert_eq!(stack_bytes(MAX_DEPTH), MAX_DEPTH * STACK_BYTES_PER_LEVEL);
+    assert!(stack_bytes(MAX_DEPTH) > 4096, "which is why it is not the budget");
+}

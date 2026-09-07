@@ -122,10 +122,51 @@ pub const NO_PARENT: u32 = u32::MAX;
 /// Deepest recursion the framework accepts. A tree deeper than this
 /// fails to compile (the derive asserts `DEPTH <= MAX_DEPTH`) — with
 /// [`crate::hatch::Dyn`] the documented exception, since type erasure
-/// hides its content's depth from that arithmetic — which is
-/// how §5's stack-depth concern is retired: it becomes a fact about a
-/// constant rather than a runtime hazard.
+/// hides its content's depth from that arithmetic.
+///
+/// **This is a runaway-recursion backstop, not a stack budget**, and
+/// the two were conflated until 2026-09-07. It exists so a tree that
+/// could overflow the stack does not compile; it says nothing about how
+/// much stack a *given* tree uses, because that depends on the tree's
+/// actual `DEPTH` and not on this cap. At [`STACK_BYTES_PER_LEVEL`] a
+/// 64-deep tree would want ~17 KB, which is nothing on a desktop and
+/// twice `docs/results-embedded.md`'s whole 8 KB budget — so reading
+/// this constant as the embedded budget would be wrong in both
+/// directions.
+///
+/// The budget is enforced separately, by [`stack_bytes`] against a
+/// tree's own `DEPTH`. `fixtures/embedded` does that at compile time.
 pub const MAX_DEPTH: usize = 64;
+
+/// Stack a single level of recursive descent costs, in bytes.
+///
+/// **256–272 B measured, and this is the upper end** — T13.0, recorded
+/// in `docs/results-embedded.md`. The worst end deliberately: a budget
+/// checked against the optimistic figure is not a budget.
+///
+/// It is a `const` rather than something computed because the recursion
+/// is monomorphised: each level's frame is the widget's own locals plus
+/// the call, and it does not vary with the tree.
+pub const STACK_BYTES_PER_LEVEL: usize = 272;
+
+/// Stack a tree of `depth` levels costs, in bytes.
+///
+/// `const`, so an application can assert its own budget at compile time
+/// rather than discovering an overflow on a device:
+///
+/// ```
+/// use lumen_static::desc::stack_bytes;
+/// # struct Ui;
+/// # impl Ui { const DEPTH: usize = 5; }
+/// // A real screen is 4-5 deep; 4 KB is the embedded budget.
+/// const _: () = assert!(stack_bytes(Ui::DEPTH) <= 4096);
+/// ```
+///
+/// The number that matters is a tree's **actual** `DEPTH`, not
+/// [`MAX_DEPTH`] — which is why this takes one.
+pub const fn stack_bytes(depth: usize) -> usize {
+    depth * STACK_BYTES_PER_LEVEL
+}
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Constraints {

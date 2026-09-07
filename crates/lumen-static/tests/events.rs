@@ -109,7 +109,7 @@ impl Fixture {
 
 #[test]
 fn e0_queue_is_fifo_and_round_trips_for_replay() {
-    let mut q = InputQueue::new();
+    let mut q: InputQueue = InputQueue::new();
     q.push(Event::down(1.0, 2.0));
     q.push(Event::Key { key: Key::Enter, down: true });
     q.push(Event::Text { ch: 'x' });
