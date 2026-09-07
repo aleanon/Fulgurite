@@ -7,7 +7,7 @@
 //! session each, and both are the kind an app author would hit again.
 
 use std::num::NonZeroU32;
-use std::rc::Rc;
+use std::sync::Arc;
 use std::time::Instant;
 
 use lumen_static::event::App;
@@ -69,12 +69,18 @@ pub fn sync_size<A: App>(
 /// canvas while the surface does not exist — the tally's agent endpoint
 /// answers `ui.screenshot` before `resumed` has run — and a `Surface`
 /// that owned it would make that a `None`.
+/// The window is held in an `Arc`, not an `Rc`, and the reason is the
+/// GPU backend: wgpu's *safe* surface constructor wants a `Send + Sync`
+/// window handle, and `crates/*/src` may contain no `unsafe`
+/// (`scripts/check_no_unsafe.sh`), so `create_surface_unsafe` is not
+/// available to reach for. softbuffer is generic over the handle and
+/// does not care either way.
 pub struct Surface {
-    surface: softbuffer::Surface<Rc<Window>, Rc<Window>>,
+    surface: softbuffer::Surface<Arc<Window>, Arc<Window>>,
 }
 
 impl Surface {
-    pub fn new(window: Rc<Window>) -> Self {
+    pub fn new(window: Arc<Window>) -> Self {
         let ctx = softbuffer::Context::new(window.clone()).expect("softbuffer context");
         let surface = softbuffer::Surface::new(&ctx, window).expect("softbuffer surface");
         Surface { surface }

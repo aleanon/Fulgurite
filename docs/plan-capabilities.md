@@ -675,7 +675,7 @@ ship that way is that the gate asks for the measurement.
 Without the feature the type still exists and every call returns
 `None`, so a host needs no `cfg` around its "Open…" handler.
 
-### T15.12 — a GPU renderer — **SEAM PROVEN; wgpu now REQUIRED, not conditional. Revised 2026-09-07**
+### T15.12 — a GPU renderer — **DONE 2026-09-07**
 
 **A separate crate**, `lumen-static-wgpu`, implementing `Renderer`.
 M10a built the seam for exactly this and nothing has used it from the
@@ -753,6 +753,52 @@ no new concept.
 
 ---
 
+**Built 2026-09-07. `docs/results-gpu.md` has every number below.**
+
+All four items landed, in that order, and the estimate held: the SDF
+shapes did make the vertex pipeline straightforward, the glyph atlas was
+the expensive half, and damage did map to a clip rect with no new
+concept.
+
+| gate | verdict |
+|---|---|
+| same frame renders pixel-comparably, tolerance stated | **yes** — stated at 0.2% of pixels over 8 levels; measured 0.01%, and 0.000% on a live window |
+| `damage_oracle`'s partial-redraw property holds on the GPU | **yes, exactly** — bit-identical, not within a tolerance |
+| the software arm's numbers are unchanged | **yes** — the CPU column reproduces `docs/results-raster-scaling.md` within 2% |
+
+And the payoff: a full 4K redraw at **1.10 ms against the CPU's 22.87** —
+6.6% of a frame budget instead of 143%.
+
+**Three things came out differently from the plan.**
+
+1. **The second seam was smaller than feared.** It was called out as
+   "bigger than implementing `Renderer` on wgpu", and it is one trait —
+   `lumen_static_winit::Backend`, generic in `A` so `present` can still
+   take a `&mut Host<A>` — with two implementations. `Surface` and
+   `Pane` were not touched.
+2. **The window handle became an `Arc`.** wgpu's *safe* surface
+   constructor wants `Send + Sync`, and `crates/*/src` may contain no
+   `unsafe`, so the alternative was not available. A one-word change in
+   five files, and worth recording because it is the second time the
+   no-`unsafe` rule has decided an API shape rather than merely
+   surviving one.
+3. **The gating story got a third layer.** The plan said "a separate
+   crate is the gate". It is, but it turned out not to be enough: an
+   adapter can be absent on a machine the binary was built for. So the
+   choice is per-build (the `gpu` feature), per-application
+   (`Config::backend`), and per-run (`LUMEN_BACKEND`) — and it falls
+   back rather than failing. The measurement that justifies the layering
+   is that compiling the backend in and *not* using it costs 0.6 MB
+   resident, while opening an adapter costs 174 MB. The price is the
+   context, not the code.
+
+**What is not built, stated rather than left to be discovered:** no
+layer tree and no raster thread (handoff §2 item 4 is marked HALF-BUILT
+accordingly), no MSAA, multi-window is software-only, and images larger
+than the atlas are refused rather than scaled.
+
+---
+
 ## Sequence
 
 ```
@@ -772,7 +818,7 @@ T15.9 i18n ── the RTL half needs layout; the catalogue half does not
 
 T15.10 multi-window ─┐
 T15.11 dialogs ──────┴── windowing crate only
-T15.12 GPU ── separate crate, last, and only if a number asks for it
+T15.12 GPU ── separate crate, last; a number asked (results-raster-scaling.md)
 ```
 
 ## Risks

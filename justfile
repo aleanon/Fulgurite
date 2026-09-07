@@ -116,6 +116,7 @@ check-extra: floats thumb gpu
 gpu:
     cargo test -p lumen-static-wgpu
     cargo clippy -p lumen-static-wgpu --all-targets -- -D warnings
+    cargo clippy -p lumen-static-winit --features gpu --all-targets -- -D warnings
 
 # Prove `num::floor`/`num::ceil` bit-exact with std over all 2^32 f32
 # bit patterns (M13/T13.2). Release-only: 13 s optimized, minutes in the
@@ -242,6 +243,18 @@ const-budget:
         echo "over the 5000 ms budget — see docs/results-const-eval.md" >&2
         exit 1
     fi
+
+# The two backends compared through a real window — the half a headless
+# test cannot see, because "rendered" and "shown" are different claims.
+# This project has been caught by that gap before: the first partial
+# redraw skipped the present and left another window's pixels on screen.
+# Needs a display, an adapter and `xwd`; skips when any is missing.
+# Manual rather than in `check`, because it builds the whole wgpu stack
+# in release and opens two windows.
+
+# Render one window on both backends and diff the pixels (docs/results-gpu.md).
+gpu-parity:
+    ./scripts/gpu_parity.sh
 
 # Both backends over a resolution sweep — the table in docs/results-gpu.md.
 raster-sweep:

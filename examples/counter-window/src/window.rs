@@ -14,7 +14,7 @@
 //! `examples/minimal` is the other end of the same seam: 24 lines, no
 //! event loop of its own.
 
-use std::rc::Rc;
+use std::sync::Arc;
 use std::time::Instant;
 
 use lumen_static_shell::text::{FontMetrics, FontStack};
@@ -38,7 +38,7 @@ pub struct WinApp {
     /// canvas that lived inside one would make that a `None`.
     canvas: lumen_static_shell::software::Canvas,
     /// `None` until `resumed`; winit owns window creation.
-    window: Option<Rc<Window>>,
+    window: Option<Arc<Window>>,
     surface: Option<Surface>,
     cursor: Cursor,
     /// Single/double/triple click counting (T14.3): it needs a clock,
@@ -300,7 +300,7 @@ impl ApplicationHandler<UserEvent> for WinApp {
         let attrs = Window::default_attributes()
             .with_title("lumen-static — tally")
             .with_inner_size(winit::dpi::LogicalSize::new(440.0, 520.0));
-        let window = Rc::new(event_loop.create_window(attrs).expect("create window"));
+        let window = Arc::new(event_loop.create_window(attrs).expect("create window"));
         // Before the window is shown, per the adapter's contract.
         #[cfg(feature = "a11y")]
         {

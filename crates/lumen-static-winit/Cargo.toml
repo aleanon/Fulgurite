@@ -33,6 +33,19 @@ dnd = []
 # expensive optional thing in this workspace, and an application that
 # never opens a file should not carry it.
 dialogs = ["dep:rfd"]
+# The GPU renderer (T15.12). Default-OFF, and the most expensive feature
+# in this workspace on every axis measured: +37 crates, +6.97 MB of
+# binary, and +174 MB resident once an adapter is actually opened
+# (docs/results-gpu.md §6, which has the table and the method). What it
+# buys is a full 4K redraw at 1.10 ms instead of 22.87.
+#
+# The feature only decides whether the code is *compiled in*. Whether it
+# is *used* is a runtime choice with a fallback — `backend::Prefer` and
+# `LUMEN_BACKEND` in the environment — because an adapter can be absent
+# on a machine the binary was built for. Compiled in but unused costs
+# 0.6 MB resident, so the fallback is nearly free; the price is the
+# context, not the code.
+gpu = ["dep:lumen-static-wgpu"]
 
 [dependencies]
 lumen-static = { path = "../lumen-static" }
@@ -49,3 +62,6 @@ arboard = { version = "3", optional = true, default-features = false }
 # pulls an async runtime for a dialog this framework opens
 # synchronously. Neither is cheap, which is why the feature is off.
 rfd = { version = "0.15", optional = true, default-features = false, features = ["gtk3"] }
+# The GPU renderer. Optional, and its own crate, which is the gate the
+# M15 policy asks for: nothing pulls wgpu unless a manifest says so.
+lumen-static-wgpu = { path = "../lumen-static-wgpu", optional = true }

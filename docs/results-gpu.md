@@ -146,7 +146,70 @@ more room than an empty atlas has, the frame is *built again* rather than
 finishing with glyphs missing. Rebuilding costs one extra shaping pass in
 a frame that was already exceptional.
 
-## 5. What has not been done
+## 5. What it costs, and why the CPU is still the default
+
+Three axes, measured today. The crate count is unique packages in
+`cargo tree -p lumen-static-winit --prefix none`; the binary is
+`examples/minimal` built `--release`, unstripped; RSS is the median of
+three launches read from `VmRSS` four seconds after start, which is the
+method `docs/results-competitive.md` §3 uses.
+
+| | crates | binary | idle RSS |
+|---|---:|---:|---:|
+| software (default) | 101 | 5.29 MB | 25.6 MB |
+| `--features gpu`, GPU in use | 138 | 12.26 MB | **199.3 MB** |
+| `--features gpu`, `LUMEN_BACKEND=software` | 138 | 12.26 MB | **26.2 MB** |
+
+**The price is the context, not the code.** Compiling the GPU backend in
+and not using it costs 0.6 MB resident. Opening an adapter costs 174 MB,
+which lands `lumen-static` squarely among the GPU-backed arms of
+`docs/results-competitive.md` §3 — iced at 196.3, Lumen at 169.6 — and
+confirms that doc's guess that the gap over them "is mostly a GPU
+context". It was.
+
+That is the whole case for keeping the software canvas the default. A
+form at 1080p should pay 5.6 ms and save 174 MB; a chart animating at 4K
+should not. The choice is per-application (`Config::backend`), per-run
+(`LUMEN_BACKEND`), and per-build (the `gpu` feature), and none of the
+three is the framework's to make.
+
+For scale against the other optional features on the same crate, by the
+same count: clipboard +5 crates, dialogs +24, GPU +37. (The +11 and +79
+recorded in `crates/lumen-static-winit/Cargo.toml` for the first two are
+from 2026-09-05/07 on a different counting method and an older lockfile;
+the ordering agrees, the absolutes do not, and neither has been re-run.)
+
+## 6. The fallback, end to end
+
+The GPU is chosen at *runtime*, not at compile time, because an adapter
+can be absent on a machine the binary was built for: no driver, no
+`/dev/dri`, a remote session. `pick_backend` tries the GPU when the
+feature is on and `Prefer` allows it, prints why it fell back if it
+cannot, and returns the software canvas. **A window always opens.**
+
+Which one you got is printed at startup and available from
+`Backend::name`, because "it is slow" should not require guessing.
+
+The live check that the two are interchangeable is `just gpu-parity`: it
+builds `examples/minimal` once, runs *that one binary* twice — plain and
+`LUMEN_BACKEND=software` — and reads the window back off the X server
+both times. Measured 2026-09-07 at 320×160: **worst channel delta 1, no
+pixel over 8.** It skips rather than fails without a display, an adapter
+or `xwd`.
+
+It exists because "rendered" and "shown" are different claims and this
+project has been caught by the gap: the first partial redraw skipped the
+present entirely and left another window's pixels on screen
+(`crates/lumen-static-winit/src/surface.rs`). No headless test sees that.
+
+The GPU backend deliberately answers `None` to `Backend::fetch_rgba`. It
+*could* read its target back, but the target is what was rendered, not
+what was presented, and that method exists to see the present.
+Answering with the pre-present texture would make
+`ui.screenshot { source: "surface" }` report that a frame reached the
+screen when it did not. `None` means "not checkable", which is true.
+
+## 7. What has not been done
 
 - **No layer tree, and no second thread.** Handoff §2's item 4 — "the GPU
   keeps its own retained copy… an unchanged frame is a few quads plus a
@@ -161,3 +224,10 @@ a frame that was already exceptional.
   one, and `ImageSource` already says a missing image draws nothing.
 - **No text-only or shadow-only sweep.** The scene is mixed on purpose;
   attributing the 20× to a stage has not been done.
+- **Multi-window is software-only.** `Pane` still owns a `Surface` and a
+  `Canvas` directly rather than a `Box<dyn Backend>`. Nothing prevents
+  it; it was not needed, and a second window is a second GPU context —
+  which, at 174 MB, is a decision rather than a detail.
+- **Nothing is threaded.** Raster is still on the UI thread; `draw`
+  returns once the work is queued, but nothing overlaps frame N's layout
+  with frame N−1's raster.

@@ -1535,6 +1535,7 @@ dependencies = [
  "arboard",
  "lumen-static",
  "lumen-static-shell",
+ "lumen-static-wgpu",
  "rfd",
  "softbuffer",
  "winit",

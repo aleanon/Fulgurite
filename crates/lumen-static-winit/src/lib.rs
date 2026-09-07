@@ -10,7 +10,7 @@
 //!
 //! - [`run`] — a window in one call. Everything below the seam is the
 //!   framework's; the application supplies a tree and a background.
-//! - [`Surface`] and [`translate`] — the two halves, for an application
+//! - [`Backend`] and [`translate`] — the two halves, for an application
 //!   that owns its own event loop because it has something else in it
 //!   (the tally has an agent socket and an accessibility adapter).
 //! - Neither: `lumen-static-shell` still has no window dependency, and
@@ -19,11 +19,24 @@
 //!
 //! The claim `lumen-static-shell` stopped on for three milestones was
 //! that a front end adds exactly two things: window events into
-//! `Host::post`, and `Canvas::pixels` blitted to the surface. This crate
-//! is that claim, factored — [`translate`] is the first half and
-//! [`Surface::present`] is the second.
+//! `Host::post`, and pixels put on the screen. This crate is that claim,
+//! factored — [`translate`] is the first half and [`Backend`] is the
+//! second.
+//!
+//! # Two backends, chosen at run time
+//!
+//! Until T15.12 the second half was written directly against softbuffer,
+//! and "pixels put on the screen" meant `Canvas::pixels` blitted into a
+//! surface buffer. It is now [`Backend`]: [`Software`] is that same
+//! path, and `gpu::GpuBackend` (feature `gpu`) is `lumen-static-wgpu`.
+//!
+//! **The choice is at run time and it falls back.** A machine with no
+//! driver, a container with no `/dev/dri`, a remote session, or a
+//! `LUMEN_BACKEND=software` in the environment all still get a window;
+//! the one difference is which line [`Backend::name`] prints. See
+//! [`Prefer`] and `docs/results-gpu.md` §6.
 
-use std::rc::Rc;
+use std::sync::Arc;
 use std::time::Instant;
 
 use lumen_static::event::App;
@@ -35,18 +48,56 @@ use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{Window, WindowId};
 
+pub mod backend;
 pub mod clipboard;
 pub mod dialog;
 pub mod cursor;
+#[cfg(feature = "gpu")]
+pub mod gpu;
 pub mod surface;
 pub mod windows;
 pub mod translate;
 
+pub use backend::{Backend, Prefer, Software};
 pub use clipboard::Clipboard;
 pub use dialog::Dialogs;
+#[cfg(feature = "gpu")]
+pub use gpu::GpuBackend;
 pub use windows::{Pane, Panes};
 pub use surface::{canvas, sync_size, Frame, Surface};
 pub use translate::{Cursor, Translated};
+
+/// Open a window on the best backend available, falling back to the
+/// software canvas.
+///
+/// **The fallback is the design, not a safety net.** The GPU renderer
+/// is a separate crate so that nothing pays for it unasked, and it is
+/// chosen at *runtime* so that nothing breaks when it is not there. A
+/// machine with no driver, a container with no `/dev/dri`, a remote
+/// session, an `LUMEN_BACKEND=software` in the environment: all of them
+/// get a window, and the one difference is which line
+/// [`Backend::name`] prints.
+///
+/// Without the `gpu` feature this is always the software canvas, and
+/// `prefer` only decides whether to say so.
+fn pick_backend<A: App>(
+    window: Arc<Window>,
+    font: Option<FontStack>,
+    prefer: Prefer,
+) -> Box<dyn Backend<A>> {
+    #[cfg(feature = "gpu")]
+    if prefer != Prefer::Software {
+        match gpu::GpuBackend::new(window.clone(), font.clone()) {
+            Some(g) => return Box::new(g),
+            None => eprintln!("no GPU adapter — falling back to the software canvas"),
+        }
+    }
+    #[cfg(not(feature = "gpu"))]
+    if prefer == Prefer::Gpu {
+        eprintln!("gpu requested, but this binary was built without the `gpu` feature");
+    }
+    Box::new(Software::new(window, font))
+}
 
 /// How a window is set up. Everything has a default except the tree.
 pub struct Config {
@@ -55,11 +106,21 @@ pub struct Config {
     pub height: u32,
     /// Cleared behind every damaged region before it is redrawn.
     pub page: Color,
+    /// Which renderer to try for (T15.12). `Auto` is the GPU when this
+    /// crate was built with the `gpu` feature and an adapter exists,
+    /// and the software canvas otherwise.
+    pub backend: Prefer,
 }
 
 impl Default for Config {
     fn default() -> Self {
-        Config { title: "lumen-static", width: 640, height: 480, page: Color(255, 255, 255, 255) }
+        Config {
+            title: "lumen-static",
+            width: 640,
+            height: 480,
+            page: Color(255, 255, 255, 255),
+            backend: Prefer::Auto,
+        }
     }
 }
 
@@ -89,9 +150,10 @@ struct Win<A: App> {
     metrics: Option<FontMetrics>,
     font: Option<FontStack>,
     /// `None` until `resumed`; winit owns window creation.
-    window: Option<Rc<Window>>,
-    surface: Option<Surface>,
-    canvas: lumen_static_shell::software::Canvas,
+    window: Option<Arc<Window>>,
+    /// The renderer, chosen once the window exists — a GPU surface
+    /// cannot be made without one, and neither can a softbuffer one.
+    backend: Option<Box<dyn Backend<A>>>,
     cursor: Cursor,
     /// Single/double/triple click counting (T14.3): it needs a clock,
     /// which the core does not have.
@@ -119,15 +181,13 @@ impl<A: App> Win<A> {
             eprintln!("no system font found — falling back to block glyphs");
         }
         let metrics = font.clone().map(FontMetrics::new);
-        let canvas = surface::canvas(config.width, config.height, font.as_ref());
         Win {
             host,
             config,
             metrics,
             font,
             window: None,
-            surface: None,
-            canvas,
+            backend: None,
             cursor: Cursor::default(),
             clicks: Default::default(),
             mods: lumen_static::Mods::NONE,
@@ -181,17 +241,11 @@ impl<A: App> Win<A> {
     }
 
     fn redraw(&mut self) {
-        let (Some(window), Some(surface)) = (self.window.clone(), self.surface.as_mut()) else {
+        let (Some(window), Some(backend)) = (self.window.clone(), self.backend.as_mut()) else {
             return;
         };
         let size = window.inner_size();
-        surface::sync_size(
-            &mut self.canvas,
-            &mut self.host,
-            self.font.as_ref(),
-            size.width,
-            size.height,
-        );
+        backend.resize(&mut self.host, size.width.max(1), size.height.max(1));
 
         let start = Instant::now();
         // Animation, before the pump: a tick changes state, and the
@@ -205,7 +259,7 @@ impl<A: App> Win<A> {
             Some(m) => self.host.pump_with(m),
             None => self.host.pump(),
         };
-        surface.present(&mut self.host, &mut self.canvas, self.config.page, start);
+        backend.present(&mut self.host, self.config.page, start);
         // After the frame: the hover bit is set by dispatch and the
         // shape is read from the resolved style, both of which the pump
         // above has just brought up to date (T14.6).
@@ -228,7 +282,7 @@ impl<A: App> ApplicationHandler for Win<A> {
                 self.config.width as f64,
                 self.config.height as f64,
             ));
-        let window = Rc::new(event_loop.create_window(attrs).expect("create window"));
+        let window = Arc::new(event_loop.create_window(attrs).expect("create window"));
 
         // Before the first frame: layout is logical, the surface is
         // physical, and this is the only thing that relates them (M10b).
@@ -238,7 +292,10 @@ impl<A: App> ApplicationHandler for Win<A> {
             m.set_scale(scale);
         }
 
-        self.surface = Some(Surface::new(window.clone()));
+        let backend =
+            pick_backend(window.clone(), self.font.clone(), Prefer::from_env(self.config.backend));
+        eprintln!("lumen-static: {}", backend.name());
+        self.backend = Some(backend);
         // Tell the platform this window accepts composed input, or an
         // IME never starts and CJK entry is impossible rather than
         // merely awkward (T14.8).

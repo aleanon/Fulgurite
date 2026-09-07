@@ -14,7 +14,7 @@
 //! which is the same answer the single-window case gives for state
 //! shared between widgets.
 
-use std::rc::Rc;
+use std::sync::Arc;
 
 use lumen_static::event::App;
 use lumen_static::Color;
@@ -26,9 +26,16 @@ use winit::window::{Window, WindowId};
 use crate::{surface, Cursor, Surface};
 
 /// One window and everything it owns.
+///
+/// **Software only.** It holds a [`Surface`] and a `Canvas` directly
+/// rather than a `Box<dyn crate::Backend<A>>`, so a second window is
+/// always rasterised on the CPU even in a binary built with the `gpu`
+/// feature. Nothing prevents the swap; it was not needed, and a second
+/// window would be a second GPU context — 174 MB resident
+/// (`docs/results-gpu.md` §5), which is a decision rather than a detail.
 pub struct Pane<A: App> {
     pub host: Host<A>,
-    pub window: Rc<Window>,
+    pub window: Arc<Window>,
     pub surface: Surface,
     pub canvas: Canvas,
     pub metrics: Option<FontMetrics>,
@@ -39,7 +46,7 @@ pub struct Pane<A: App> {
 }
 
 impl<A: App> Pane<A> {
-    pub fn new(host: A, window: Rc<Window>, page: Color, font: Option<FontStack>) -> Self {
+    pub fn new(host: A, window: Arc<Window>, page: Color, font: Option<FontStack>) -> Self {
         let size = window.inner_size();
         let mut host = Host::new(host, size.width.max(1), size.height.max(1));
         let scale = window.scale_factor() as f32;
