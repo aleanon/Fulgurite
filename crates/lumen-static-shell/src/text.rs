@@ -135,19 +135,32 @@ impl FontStack {
         layout
     }
 
-    /// Lay out one run and return each glyph's raster and position.
-    pub(crate) fn glyphs(
-        &self,
-        text: &str,
-        px: f32,
-        weight: f32,
-        max_w: f32,
-    ) -> (Vec<Glyph>, Size) {
+    /// Lay out one run and report where each inked glyph goes, **without
+    /// rasterising any of them**.
+    ///
+    /// The shaping half of the crate-private `glyphs`, split out for
+    /// `lumen-static-wgpu`: a GPU backend shapes every run every frame
+    /// but rasterises a glyph only the first time it is seen, because
+    /// the pixels live in an atlas on the device. A software canvas has
+    /// nowhere to keep them and so does both every time.
+    ///
+    /// **Both paths shape here**, which is the point. `glyphs` below is
+    /// written in terms of this, so the CPU and GPU renderers cannot
+    /// disagree about where a glyph goes — and "the two backends are
+    /// pixel-comparable" is a claim about rasterisation only, which is
+    /// the claim `tests/parity.rs` in that crate can actually check.
+    pub fn place_run(&self, text: &str, px: f32, weight: f32, max_w: f32) -> (Vec<Placed>, Size) {
         let (font, prepared) = self.prepare(text, weight);
         let text: &str = &prepared;
         let layout = Self::run(font, text, px, max_w);
-
         let shift = cap_shift(font, px);
+        // Which of the two faces `prepare` actually chose — not which
+        // one the weight asked for. A bold run in a stack with no bold
+        // face is rasterised from `regular`, and an id that recorded
+        // the request rather than the outcome would collide with the
+        // regular run's glyphs at the same size while naming a
+        // different face.
+        let bold = self.bold.as_deref().is_some_and(|b| core::ptr::eq(b, font));
 
         let mut out = Vec::with_capacity(text.len());
         let (mut w, mut h) = (0.0f32, 0.0f32);
@@ -163,14 +176,63 @@ impl FontStack {
             if g.width == 0 || g.height == 0 {
                 continue;
             }
-            let (_, bitmap) = font.rasterize_config(g.key);
-            out.push(Glyph { x: g.x, y: g.y + shift, w: g.width, h: g.height, cov: bitmap });
+            out.push(Placed {
+                id: GlyphId { index: g.key.glyph_index, px_bits: px.to_bits(), bold },
+                x: g.x,
+                y: g.y + shift,
+                w: g.width as u32,
+                h: g.height as u32,
+            });
         }
         // Ceiled: `layout` sizes the box from this, and `paint` re-wraps
         // inside it. A width rounded *down* by a fraction of a pixel
         // drops the last glyph — which is how "POSITIVE" came out as
         // "POSITIV".
         (out, Size { w: w.ceil(), h: h.max(layout.height()).ceil() })
+    }
+
+    /// The coverage mask for one glyph identity: `(width, height, cov)`.
+    ///
+    /// `None` when the id names a face this stack does not have, which
+    /// cannot happen for an id this stack produced and is a "draw
+    /// nothing" for one that came from somewhere else — the same rule
+    /// [`lumen_static::ImageSource`] follows for a missing asset.
+    ///
+    /// Deterministic in the id alone: fontdue's raster key is
+    /// `(glyph index, px)` with no subpixel phase, so equal ids give
+    /// byte-identical bitmaps. That is what makes an atlas cache
+    /// correct rather than approximately correct.
+    pub fn rasterize(&self, id: GlyphId) -> Option<(u32, u32, Vec<u8>)> {
+        let font = match (id.bold, &self.bold) {
+            (true, Some(b)) => b.as_ref(),
+            (true, None) => return None,
+            (false, _) => self.regular.as_ref(),
+        };
+        let (m, cov) = font.rasterize_indexed(id.index, f32::from_bits(id.px_bits));
+        Some((m.width as u32, m.height as u32, cov))
+    }
+
+    /// Lay out one run and return each glyph's raster and position.
+    ///
+    /// [`FontStack::place_run`] followed by [`FontStack::rasterize`] per
+    /// glyph — written this way rather than duplicated so the software
+    /// canvas and the GPU atlas share one shaping path.
+    pub(crate) fn glyphs(
+        &self,
+        text: &str,
+        px: f32,
+        weight: f32,
+        max_w: f32,
+    ) -> (Vec<Glyph>, Size) {
+        let (placed, size) = self.place_run(text, px, weight, max_w);
+        let out = placed
+            .into_iter()
+            .filter_map(|p| {
+                let (w, h, cov) = self.rasterize(p.id)?;
+                Some(Glyph { x: p.x, y: p.y, w: w as usize, h: h as usize, cov })
+            })
+            .collect();
+        (out, size)
     }
 
     /// The size of a run, **without rasterising it**.
@@ -308,6 +370,35 @@ fn cap_shift(font: &Font, px: f32) -> f32 {
         Some(h) if h.height > 0 => (line / 2.0 - (h.y + h.height as f32 / 2.0)).round(),
         _ => 0.0,
     }
+}
+
+/// The identity of one rasterised glyph.
+///
+/// Opaque: equal ids mean identical coverage bitmaps, and that is the
+/// whole contract. It carries no `fontdue` type, so a cache keyed on it
+/// — `lumen-static-wgpu`'s atlas — does not inherit this crate's font
+/// dependency in its own API.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub struct GlyphId {
+    index: u16,
+    /// The size in **bits**, because a raster key must be comparable
+    /// and `f32` is not `Eq`. Two runs at the same size hash together;
+    /// two at sizes a hair apart do not, which is correct — they
+    /// rasterise differently.
+    px_bits: u32,
+    bold: bool,
+}
+
+/// Where one inked glyph of a run goes, without its pixels.
+#[derive(Clone, Copy, Debug)]
+pub struct Placed {
+    pub id: GlyphId,
+    /// Offset from the run's top-left, in the same units `px` was given
+    /// in — physical pixels, since that is what a renderer draws.
+    pub x: f32,
+    pub y: f32,
+    pub w: u32,
+    pub h: u32,
 }
 
 /// One rasterized glyph: an 8-bit coverage mask and where to put it.

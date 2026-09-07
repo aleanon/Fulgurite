@@ -1,17 +1,22 @@
-//! **Does the software rasteriser scale to a real display?**
+//! **Does the rasteriser scale to a real display?**
 //!
-//! Every render number this project has is at 400x800 or 440x520. That
-//! is the one variable never swept, and it is the variable a CPU
-//! rasteriser is most sensitive to: its cost is per *pixel*, not per
-//! node. A 4K frame is 36x the pixels of the tally's window.
+//! Every render number this project had before 2026-09-07 was at
+//! 400x800 or 440x520. That is the one variable never swept, and it is
+//! the variable a CPU rasteriser is most sensitive to: its cost is per
+//! *pixel*, not per node. A 4K frame is 36x the pixels of the tally's
+//! window.
 //!
 //! One scene, several canvas sizes, min of 30. The scene scales with
 //! the canvas so the *content* is comparable — a fixed scene on a
 //! bigger canvas would measure empty space.
+//!
+//! Since T15.12 it sweeps **both** backends over the identical scene
+//! and the identical display list, which is the comparison that
+//! un-deferred the GPU work. `docs/results-gpu.md`.
 
 use std::time::Instant;
 
-use lumen_static::display::{Color, DisplayList, Painter, Stops};
+use lumen_static::display::{Color, DisplayList, Stops};
 use lumen_static::Point;
 use lumen_static_shell::software::Canvas;
 use lumen_static_shell::text::FontStack;
@@ -36,10 +41,27 @@ fn scene(w: u32, h: u32, list: &mut DisplayList) {
     }
 }
 
+/// Min of `n` timings of `f`, in milliseconds. Min rather than mean:
+/// the question is what the renderer costs, and every sample above the
+/// minimum is something else the machine was doing.
+fn best_of(n: u32, mut f: impl FnMut()) -> f64 {
+    let mut best = f64::INFINITY;
+    for _ in 0..n {
+        let t = Instant::now();
+        f();
+        best = best.min(t.elapsed().as_secs_f64() * 1000.0);
+    }
+    best
+}
+
 fn main() {
     let font = FontStack::system().expect("a system face: text is most of a raster's cost");
+    let mut gpu_name = String::from("none");
     println!("raster: one scene, several canvas sizes, min of 30\n");
-    println!("{:<14} {:>10} {:>12} {:>12} {:>10}", "canvas", "Mpx", "full (ms)", "per Mpx (ms)", "cmds");
+    println!(
+        "{:<14} {:>8} {:>10} {:>10} {:>10} {:>9} {:>8}",
+        "canvas", "Mpx", "cpu (ms)", "gpu (ms)", "cpu/Mpx", "speedup", "cmds"
+    );
 
     for (w, h, label) in [
         (440, 520, "tally window"),
@@ -53,23 +75,53 @@ fn main() {
         let mut canvas = Canvas::with_font(w, h, font.clone());
         let area = [0.0, 0.0, w as f32, h as f32];
 
-        for _ in 0..5 {
+        best_of(5, || {
             canvas.clear(lumen_static_shell::CLEAR);
             canvas.render_within(&list, area);
-        }
-        let mut best = f64::INFINITY;
-        for _ in 0..30 {
-            let t = Instant::now();
+        });
+        let cpu = best_of(30, || {
             canvas.clear(lumen_static_shell::CLEAR);
             canvas.render_within(&list, area);
-            best = best.min(t.elapsed().as_secs_f64() * 1000.0);
-        }
+        });
+
+        // The GPU arm, headless, over the identical list. `wait` after
+        // every frame: `draw` only *queues* the work, and timing a
+        // queue submission and calling it a render would flatter this
+        // arm by an order of magnitude.
+        let gpu = match lumen_static_wgpu::Gpu::headless(w, h) {
+            Some(mut g) => {
+                g.set_font(font.clone());
+                gpu_name = g.adapter().to_owned();
+                let page = lumen_static_shell::CLEAR;
+                best_of(5, || {
+                    g.draw(&list, None, Some((page, area)));
+                    g.wait();
+                });
+                Some(best_of(30, || {
+                    g.draw(&list, None, Some((page, area)));
+                    g.wait();
+                }))
+            }
+            None => None,
+        };
+
         let mpx = (w as f64 * h as f64) / 1e6;
-        println!(
-            "{label:<14} {mpx:>10.2} {best:>12.2} {:>12.2} {:>10}",
-            best / mpx,
-            list.cmds.len()
-        );
+        match gpu {
+            Some(g) => println!(
+                "{label:<14} {mpx:>8.2} {cpu:>10.2} {g:>10.2} {:>10.2} {:>8.1}x {:>8}",
+                cpu / mpx,
+                cpu / g,
+                list.cmds.len()
+            ),
+            None => println!(
+                "{label:<14} {mpx:>8.2} {cpu:>10.2} {:>10} {:>10.2} {:>9} {:>8}",
+                "-",
+                cpu / mpx,
+                "-",
+                list.cmds.len()
+            ),
+        }
     }
-    println!("\n   the live gate's budget is 16 ms a frame; 60 fps is 16.7");
+    println!("\n   gpu: {gpu_name}");
+    println!("   the live gate's budget is 16 ms a frame; 60 fps is 16.7");
 }

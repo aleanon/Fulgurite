@@ -1,22 +1,26 @@
 //! A second [`Renderer`], and a useful one — `docs/plan-capabilities.md`
 //! T15.12.
 //!
-//! # Why this exists rather than a GPU backend
+//! # Why this exists
 //!
-//! T15.12 asks for a GPU renderer, and gates it: *"last, and only if a
-//! number asks for it."* The numbers say no. The software canvas
-//! renders a live tally frame in **0.54 ms against a 16 ms budget** —
-//! 3% of a frame — and a 3 000-row full redraw in **159 µs**
-//! (`docs/results-competitive.md`). Nothing is waiting on the
-//! rasteriser, and a wgpu backend would add a driver stack, a glyph
-//! atlas and a shader pipeline to make an already-idle stage faster.
+//! It was written under T15.12 as an argument that a GPU backend was
+//! not yet needed, on the ground that the software canvas renders a
+//! live tally frame in 0.54 ms of a 16 ms budget
+//! (`docs/results-competitive.md`).
 //!
-//! What T15.12 was *really* claiming is architectural: that
-//! [`Renderer`] admits a second implementation, so a GPU backend is
-//! bounded work when a number does ask. This proves that with a
-//! renderer that is useful today — export, print, and documentation
-//! screenshots that stay sharp — and that exercises the **whole**
-//! command vocabulary including the ones T15.2 and T15.3 added.
+//! **That argument was wrong, and the GPU backend now exists**
+//! (`lumen-static-wgpu`, `docs/results-gpu.md`). The 0.54 ms was
+//! measured on a 0.23 megapixel window, and resolution is the one
+//! variable a CPU rasteriser is most sensitive to: swept, it is ~2.7 ms
+//! per megapixel and a 4K redraw is over budget
+//! (`docs/results-raster-scaling.md`).
+//!
+//! What survives is the *other* thing this renderer was for, which
+//! turned out to be the useful half: it proves [`Renderer`] admits a
+//! second implementation — so the GPU backend was bounded work — and it
+//! is useful on its own, for export, print, and documentation
+//! screenshots that stay sharp. It exercises the **whole** command
+//! vocabulary including the ones T15.2 and T15.3 added.
 //!
 //! It is also the first renderer here that is not a rasteriser at all,
 //! which is a stronger test of the seam than a second rasteriser would

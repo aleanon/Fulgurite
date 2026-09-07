@@ -47,11 +47,19 @@ release-shape: const-budget
     cargo clippy -p lumen-static --all-targets -- -D warnings
     cargo run -p miri-smoke
 
+# `--exclude lumen-static-wgpu` on all three: the GPU backend is a
+# workspace member so it is type-checked and tested, but wgpu is 37
+# crates and minutes of compile (docs/results-gpu.md), and this runs on
+# every commit. It is built and tested in `check` instead, by the `gpu`
+# recipe below. The crate being *in* the workspace is what keeps its
+# Cargo.lock shared and its version drift visible; being out of this
+# command is what keeps the gate under a minute.
+
 # Dev surface: observe + reload, unified across the workspace by cargo.
 dev-shape:
-    cargo test --workspace
-    cargo clippy --workspace --all-targets -- -D warnings
-    RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
+    cargo test --workspace --exclude lumen-static-wgpu
+    cargo clippy --workspace --all-targets --exclude lumen-static-wgpu -- -D warnings
+    RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --exclude lumen-static-wgpu
 
 # The four fixtures. Until today none of these ran in the gate; three of them
 # assert. miri-smoke runs in `release-shape` above -- it contains zero
@@ -88,12 +96,26 @@ check: test check-extra
 # decision CI gets to make.
 
 # Release-shape rustdoc, binsize, and the exhaustive f32 check.
-check-extra: floats thumb
+check-extra: floats thumb gpu
     # Release-shape rustdoc: `--workspace` hides broken links that point at
     # items which only exist behind `observe`/`reload`.
     RUSTDOCFLAGS="-D warnings" cargo doc -p lumen-static --no-deps
     cargo build --release -p binsize
     @ls -l target/release/binsize | awk '{print "binsize: " $5 " bytes"}'
+
+# The GPU backend (T15.12), which `test` excludes for compile time.
+# Its own tests are the backend-parity gate: the same display list
+# rendered by `software::Canvas` and by wgpu, compared pixel by pixel
+# against a stated tolerance, plus the partial-redraw property that
+# `damage_oracle.rs` holds the software path to. **They skip rather than
+# fail when no adapter is present** — a machine with no GPU is the
+# configuration the CPU fallback exists for, so a red suite there would
+# be reporting the wrong thing (docs/results-gpu.md).
+
+# The GPU backend: build, lint, and compare its pixels with the software canvas.
+gpu:
+    cargo test -p lumen-static-wgpu
+    cargo clippy -p lumen-static-wgpu --all-targets -- -D warnings
 
 # Prove `num::floor`/`num::ceil` bit-exact with std over all 2^32 f32
 # bit patterns (M13/T13.2). Release-only: 13 s optimized, minutes in the
@@ -220,6 +242,10 @@ const-budget:
         echo "over the 5000 ms budget — see docs/results-const-eval.md" >&2
         exit 1
     fi
+
+# Both backends over a resolution sweep — the table in docs/results-gpu.md.
+raster-sweep:
+    cd benches-competitive && cargo run --release -p raster-scaling
 
 # The Step 4 dylib swap demo; exit code is the verdict.
 hot-demo:

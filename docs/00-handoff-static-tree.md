@@ -94,6 +94,14 @@ The four properties that produce the performance, in rough order of importance:
 4. **The GPU keeps its own retained copy.** The layer tree is persistent
    textures. An unchanged frame is a few quads plus a damage rect.
 
+   **HALF-BUILT 2026-09-07** — `lumen-static-wgpu`, `docs/results-gpu.md`.
+   There *is* a GPU backend now, and it does keep a persistent target
+   texture that damage is scissored into, so a partial frame is a few
+   quads over a retained image. There is **no layer tree**: no per-subtree
+   texture, no transform-only frame, and raster is on the UI thread. The
+   half that was built is worth 20× at 4K (22.87 ms → 1.10 ms); the half
+   that was not is what item 3 above needs, and nothing depends on it yet.
+
 Plus two implementation details that matter as much as the architecture: flat
 contiguous node storage addressed by `u32` handles rather than pointer chasing,
 and pipelining the two threads so frame N builds while frame N−1 rasterizes

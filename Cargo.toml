@@ -10,6 +10,7 @@ members = [
     "crates/lumen-static-shell",
     "crates/lumen-static-text",
     "crates/lumen-static-winit",
+    "crates/lumen-static-wgpu",
     "benches",
     "examples/counter",
     "examples/minimal",

@@ -36,6 +36,7 @@ tree today.
 | [`competitive-feature-gaps.md`](competitive-feature-gaps.md) | what Qt, GTK, iced, Xilem, Slint and Lumen have that this does not, per framework | **live**, surveyed 2026-09-06 | n/a |
 | [`results-competitive.md`](results-competitive.md) | frame time, RSS and size against the same six — and the two defects it found | **live**, measured 2026-09-05 | yes — `benches-competitive/` |
 | [`results-raster-scaling.md`](results-raster-scaling.md) | does the software rasteriser scale to a real display? (not at 4K) | **live**, measured 2026-09-07 | yes — `benches-competitive -p raster-scaling` |
+| [`results-gpu.md`](results-gpu.md) | what the wgpu backend buys (20× at 4K), what it costs, and how closely it matches the software canvas | **live**, measured 2026-09-07 | yes — `benches-competitive -p raster-scaling`, `cargo test -p lumen-static-wgpu` |
 | [`results-retention.md`](results-retention.md) | streaming retention vs a copied display list (M13/T13.8) | **live** | yes — `benches --bin retain` |
 | [`results-cascade-cost.md`](results-cascade-cost.md) | what a stylesheet swap costs, and why M8c inverted | **live** | yes — `benches --bin cascade` |
 | [`results-frame-cost.md`](results-frame-cost.md) | frame cost and input latency, before/after M8b | **live** | yes — `just profile`, `just live-gate` |

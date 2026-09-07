@@ -24,3 +24,10 @@ flt2dec              # core's float formatter, named where num::clamp says why i
 offset               # crates/lumen-static/src/desc.rs:8 -- table dispatch is gone
 long_running_const_eval  # rustc lint name, not ours (widget.rs, F5.1)
 present_with_damage  # softbuffer's API, named where counter-window says why it does NOT use it
+
+# wgpu's unsafe surface constructor, named as the thing lumen-static-wgpu
+# deliberately does NOT call: `crates/*/src` may contain no `unsafe`,
+# which is why `Gpu::for_window` asks for a `Send + Sync` window handle
+# instead. A name that exists upstream and must not exist here
+# (T15.12, docs/results-gpu.md).
+create_surface_unsafe
