@@ -14,7 +14,7 @@ framebuffer.
 | | Threshold | Why that number |
 |---|---:|---|
 | Framework `.text` | **≤ 64 KB** | An eighth of flash. The app, its face and its data need the rest; a GUI framework that takes more than a fifth of the part is not an embedded GUI framework. |
-| Framework `.bss` + `.data` | **≤ 2 KB** | The framework's *own* statics. Per-tree arrays are the app's and are budgeted below; anything large here is a hidden global. |
+| Framework `.bss` + `.data` | **zero symbols**, exemptions named | The framework's *own* statics. **Tightened from "≤ 2 KB" on 2026-09-07**: a bound nothing had approached told nobody anything, and what the number was standing in for is a *shape* — no allocator arena, no lazily-initialised registry, no static caches, nothing claiming RAM before `main`. `scripts/check_bss.sh` checks that, and `scripts/bss.allow` names what is allowed and why. |
 | RAM for a 100-node tree | **≤ 24 KB** | T13.0's budget said ~19 KB for state + style + widget structs. 24 KB leaves headroom and still fits with the 8 KB stack in well under half of RAM. |
 | Stack, actual depth | **≤ 4 KB** | T13.0 measured 256–272 B per level and a real screen at 4–5 deep (~1.6 KB). 4 KB is generous for that and half the 8 KB budgeted. |
 | `f64` in the frame path | **zero** | The FPU is single-precision, so any `f64` becomes soft-float calls. |
@@ -36,7 +36,7 @@ thing that produces real sections.
 | | Threshold | Measured | |
 |---|---:|---:|---|
 | `.text` | ≤ 64 KB | **20,524 B** (20.0 KB) | **pass**, at 31% of budget |
-| `.bss` + `.data` | ≤ 2 KB | **0 B** | **pass** — the sections do not exist |
+| `.bss` + `.data` | zero framework symbols | **1 symbol, 4 B, exempted** | **pass** — the only static is the fixture's own harness |
 | `.rodata` | — | 12,940 B | of which **9,010 B is the font face** (T13.7) |
 | Flash, total | ≤ 512 KB | **33,677 B** (32.9 KB) | 6.4% of the part |
 | RAM, 100 nodes | ≤ 24 KB | **14.5 KB** state + style | **pass**; widget structs are the app's, below |
@@ -87,6 +87,33 @@ these figures once already (see the 72/64 correction below).
   the correct worst case and an expensive one: an embedded app with a
   text field should size `InlineText<N>` to the field, not to a round
   number.
+
+### `.bss` is zero symbols now, not two kilobytes
+
+The old threshold was `≤ 2 KB` and measured 0 — **a bound nothing had
+approached, which tells a reader nothing**. What it was standing in for
+is a shape rather than a size: this framework has no hidden global
+state, no allocator arena, no lazily-initialised registry, no static
+caches. The day that stops being true is the day the number matters,
+and 2 KB of headroom would have hidden it.
+
+So it is **zero framework symbols**, with `scripts/bss.allow` naming
+what is allowed and arguing for it. `scripts/check_bss.sh` enforces it
+against a linked binary in `just check`, and was verified by injecting
+a framework static the frame path writes — it names the offender and
+exits 1.
+
+**Making the check honest exposed a defect in the fixture.** `SINK`, the
+static `firmware.rs` parks the frame checksum in "so the whole frame
+cannot be optimized away as dead", **had no symbol in the linked
+binary at all**: as a private static never read, LLVM removed the store.
+The frame survived on panic paths instead — true by accident, which is
+the worst way for a published number to be true. It is `#[no_mangle]
+pub` now, the guard does what its comment says, and it is the one
+exemption on the list.
+
+Confirmed separately that the measured `.text` is not dead code:
+removing the `frame()` call collapses it from 21,946 B to **1,438 B**.
 
 ### The stack budget is enforced now, not just recorded
 

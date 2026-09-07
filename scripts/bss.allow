@@ -1,0 +1,24 @@
+# Symbols allowed in .bss/.data of the embedded firmware.
+#
+# The rule is ZERO framework statics, not "a small number of bytes".
+# `docs/results-embedded.md` budgeted `.bss + .data <= 2 KB` until
+# 2026-09-07, and that threshold was never approached — a bound nothing
+# has come near tells you nothing. What the number was really asserting
+# is a *shape*: that this framework has no hidden global state. No
+# allocator arena, no lazily-initialised registry, no static caches,
+# nothing that claims RAM before `main`.
+#
+# So the check is zero, and anything genuinely needed is named here with
+# a reason. A framework symbol appearing in this file should be an
+# argument, not a formality.
+#
+# Format: one symbol name per line, `#` comments. Sizes are not listed:
+# the point is which symbols exist, and a symbol that grows is still the
+# same decision.
+
+# --- the fixture's own harness, not the framework ---
+# Where firmware.rs parks the frame checksum so the frame is not dead
+# code. It is `#[no_mangle] pub` deliberately: as a private static it
+# had no symbol at all, LLVM having removed the store, and the frame
+# survived only on panic paths — true by accident. See its doc comment.
+SINK

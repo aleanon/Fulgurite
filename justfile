@@ -141,6 +141,10 @@ thumb:
     cargo check -p lumen-static --no-default-features --target thumbv7em-none-eabihf
     cargo clippy -p lumen-static --no-default-features --target thumbv7em-none-eabihf -- -D warnings
     cargo check -p embedded --lib --target thumbv7em-none-eabihf
+    # Zero framework statics, with a named exemption list. Needs a
+    # linked binary, so it lives beside the firmware build rather than
+    # in `just static`, which runs no cargo at all.
+    ./scripts/check_bss.sh
 
 # Line coverage, as an artifact to read -- not a threshold. A workspace
 # percentage is dominated by whether the fixtures ran, not by core quality;
