@@ -1,0 +1,9 @@
+[package]
+name = "raster-scaling"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+lumen-static = { path = "../../../crates/lumen-static" }
+lumen-static-shell = { path = "../../../crates/lumen-static-shell", features = ["truetype"] }

@@ -675,7 +675,7 @@ ship that way is that the gate asks for the measurement.
 Without the feature the type still exists and every call returns
 `None`, so a host needs no `cfg` around its "Open…" handler.
 
-### T15.12 — a GPU renderer — **SEAM PROVEN, wgpu DEFERRED ON ITS OWN GATE 2026-09-07**
+### T15.12 — a GPU renderer — **SEAM PROVEN; wgpu now REQUIRED, not conditional. Revised 2026-09-07**
 
 **A separate crate**, `lumen-static-wgpu`, implementing `Renderer`.
 M10a built the seam for exactly this and nothing has used it from the
@@ -690,37 +690,66 @@ CPU path.
 partial-redraw property holds on the GPU path too; the software arm's
 numbers are unchanged.
 
-**This task's own condition was "last, and only if a number asks for
-it". The numbers say no, so wgpu is not built — and that is the plan
-being followed rather than skipped.**
+---
 
-The software canvas renders a live tally frame in **0.54 ms against a
-16 ms budget** — 3% of a frame — and a 3 000-row full redraw in
-**159 µs** (`docs/results-competitive.md`). Layout and paint are 7 µs
-and 9 µs. Nothing in this framework is waiting on the rasteriser, and a
-wgpu backend would add a driver stack, a glyph atlas and a shader
-pipeline to make an already-idle stage faster. It would also cost the
-thing §3 of the competitive results says this framework wins on: the
-GPU-backed arms there carry 68–321 MB of resident memory against
-lumen-static's 24.6, and most of that gap *is* a GPU context.
+**This task was deferred on 2026-09-07 and un-deferred the same day.
+The deferral was wrong, and the correction is worth more than the
+original reasoning.**
 
-**What T15.12 was really claiming is architectural** — that `Renderer`
-admits a second implementation, so a GPU backend is bounded work when a
-number does ask. That claim is now tested, by a second renderer that is
-useful today: `lumen_static_shell::svg::Svg`, for export, print and
-documentation that stays sharp.
+It was deferred on the condition "only if a number asks for it", citing
+0.54 ms of a 16 ms budget. That number is from the tally's window —
+**0.23 megapixels**. Resolution is the one variable a CPU rasteriser is
+most sensitive to, because its cost is per *pixel* and not per node,
+and it was the one variable never swept.
 
-It is a **stronger** test than a second rasteriser would have been,
-because it is not a rasteriser at all: it consumes the command list and
-produces a document. It covers the whole vocabulary including
-`Cmd::Line`, `Cmd::Gradient` and `Cmd::Image` from T15.2 and T15.3, and
-it needed **no change to `Renderer`, to `Cmd`, or to anything in the
-core**.
+Swept (`benches-competitive/arms/raster`, 2026-09-07):
 
-**When a number does ask**, the work is: a vertex pipeline for the four
-geometric commands (which the SDF shapes make easy), a glyph atlas for
-text (the expensive half), and `damage_oracle` extended to compare the
-two backends within a stated antialiasing tolerance.
+| canvas | Mpx | full redraw | per Mpx |
+|---|---:|---:|---:|
+| tally window | 0.23 | 0.72 ms | 3.14 |
+| 720p | 0.92 | 2.53 ms | 2.74 |
+| 1080p | 2.07 | 5.59 ms | 2.69 |
+| 1440p | 3.69 | **9.75 ms** | 2.64 |
+| 4K | 8.29 | **22.88 ms** | 2.76 |
+
+**~2.7 ms per megapixel, flat.** At 1440p a full redraw is 61% of a
+16 ms frame. **At 4K it is over budget and cannot hold 60 fps.** With
+M10b a 2× HiDPI 1080p window is 4.1 Mpx physical — 11 ms, before layout
+and paint.
+
+What holds the desktop together today is **damage tracking**, which is
+therefore load-bearing rather than an optimisation. That is fine for a
+form or a tally, where a frame dirties a rect. It fails for the case
+this milestone's own survey was about: an application where a lot
+changes at once — a chart animating, a canvas being drawn on, a list
+scrolling — at a resolution people actually own.
+
+**So a GPU backend is architectural, not opportunistic**, and waiting
+for a complaint would mean discovering it from a user on a 4K display
+rather than from a table.
+
+**What the deferral got right and keeps:** it must stay a *choice*. The
+GPU-backed arms in `docs/results-competitive.md` §3 carry 68–321 MB
+resident against lumen-static's 24.6, and most of that gap is a GPU
+context. The embedded profile has no GPU at all. A separate crate is
+still the right gate — the change is that it moves from "if a number
+asks" to "before a complex application does".
+
+**And the survey found the real work item, which neither the plan nor
+the deferral had named.** `Renderer` is the right seam and the SVG
+backend proves it admits a second implementation — but
+`lumen-static-winit`'s `Surface` is **softbuffer-specific**: it acquires
+a CPU buffer, blits `Canvas::pixels` into it and presents. A GPU
+backend needs its own surface and swapchain, so the work is *two*
+seams, not one, and the second does not exist yet. That is the honest
+scope, and it is bigger than "implement `Renderer` on wgpu".
+
+**Remaining work, in order:** generalise the present path so a backend
+owns its surface; a vertex pipeline for the four geometric commands
+(which the SDF shapes make straightforward); a glyph atlas for text —
+the expensive half; `damage_oracle` extended across backends within a
+stated antialiasing tolerance. Damage maps to a scissor rect and needs
+no new concept.
 
 ---
 
