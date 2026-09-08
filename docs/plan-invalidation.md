@@ -324,6 +324,46 @@ command, over a driven session; `damage_oracle.rs` still pixel-identical;
 the retained-list memory cost recorded in a results doc of its own,
 as the policy requires of any cost an application cannot decline.
 
+---
+
+**NOT BUILT 2026-09-08, and the reason is a decision this plan did not
+know it was arguing with.**
+
+The task assumed a skipped subtree could replay its previous commands,
+and that the cost of that was memory. It is not available at any price:
+**retention does not keep the previous frame's commands.** M13/T13.8
+removed the stored `DisplayList` deliberately and replaced it with
+`(hash, ink)` per command observed as paint streams past, because a
+stored list is exactly what made damage unavailable on a host with no
+list — the embedded device, where damage is worth *more* than on a
+desktop, since the cost there is the SPI bus and a tenth of the screen
+is a tenth of 31 ms. Rebuilding the list to skip paint would undo that.
+
+**And the deeper problem is not storage.** What makes a partial redraw
+equal a full one is that every command *intersecting the damage rect* is
+drawn, in order. A clean subtree still needs its commands whenever
+something else damaged the region it sits under — an unchanged card
+background beneath a changed label is the ordinary case. Whether a clean
+subtree intersects the damage cannot be known during paint, because
+damage is what paint is producing.
+
+So a clean subtree's commands are needed *sometimes*, and paint cannot
+tell when. Skipping on cleanliness alone is not an optimisation with a
+memory cost; it is wrong.
+
+**Where the paint win actually is.** Not invalidation — **culling**.
+`List::paint` clips to its own rect and then paints all N items,
+including the 9 960 of 10 000 that lie outside an 800 px viewport, and
+the renderer discards them one at a time afterwards. That is a spatial
+question, it is what GTK and Qt already do in their paint paths, and it
+belongs with T16.12, which is the same question one layer down.
+
+It needs care the invalidation route did not: a shorter display list
+changes retention's positional diff (already handled — a length change
+is `Damage::All`), and a *culled* paint number must never be quoted
+against an arm that does not cull. Both are recorded here so the next
+person does not rediscover them.
+
 ## T16.9 — layout and place skip clean subtrees
 
 Layout is 55 µs and place 7 µs of the same 231 µs frame. Cheaper than
@@ -395,6 +435,9 @@ is 1 562 vs 57 600 damaged pixels, a factor of 37.
 pixel-identical with a width-changing row in the tree.
 
 ## T16.12 — the damage-clipped raster becomes O(visible)
+
+*Now carries T16.8's half of the problem too: the paint win is culling,
+not invalidation. See T16.8's outcome above.*
 
 *Software raster grows 4.89 → 29.85 µs from 100 to 10 000 rows while the
 damaged region stays fixed at 2 002 pixels, because `render_impl` walks
