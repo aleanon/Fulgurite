@@ -434,6 +434,17 @@ is 1 562 vs 57 600 damaged pixels, a factor of 37.
 **Gate:** a decision record; if a change lands, `damage_oracle.rs`
 pixel-identical with a width-changing row in the tree.
 
+**DONE 2026-09-08 — `docs/damage-amplification-decision.md`.** The rule
+is wrong: a clip is not ink, so a clip change can only affect the
+**symmetric difference** of the old and new rects, not their union. The
+fix is specified there and deliberately not built, because it widens the
+`Retention::observe` seam M13/T13.8 shaped for a host with no display
+list — the same trade T16.8 refused. Reopen when an application scrolls
+or animates inside a shrink-width container, where the clip moves every
+frame. **The amplification never produced a wrong frame, only a large
+one**, and T16.2 already removed every published number that depended on
+it.
+
 ## T16.12 — the damage-clipped raster becomes O(visible)
 
 *Now carries T16.8's half of the problem too: the paint win is culling,
@@ -593,6 +604,12 @@ This is a **decision task, not a code task.** Either:
 
 **Gate:** a decision record either way, and no document left claiming
 mobile support that does not exist.
+
+**DONE 2026-09-08 — `docs/mobile-decision.md`.** Deferred on a stated
+condition (*when someone intends to ship an application on a phone*),
+and **the goal corrected in the meantime**: desktop and embedded
+measured, core portable to mobile and unproven there. A goal naming a
+platform nobody can measure is a claim, not a target.
 
 ---
 

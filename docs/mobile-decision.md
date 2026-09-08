@@ -1,0 +1,95 @@
+# Mobile: deferred, and the goal corrected to say so
+
+**Decided 2026-09-08 — `docs/plan-invalidation.md` T16.14.**
+
+The project's stated goal is to be the fastest and most efficient GUI
+framework **on desktop, mobile and embedded**. Two of those are
+measured. This records what the third actually is today, and changes the
+claim rather than leaving it standing.
+
+## What exists
+
+Nothing.
+
+Searched across `crates/`, `examples/`, `fixtures/`, `benches/`,
+`justfile`, `scripts/` and `.github/workflows/ci.yml`:
+
+- no Android or iOS target named anywhere;
+- no `cdylib` crate type except the hot-reload fixture, which is a
+  desktop dylib for `dlopen`;
+- no `winit::platform::*` use — the windowing crate uses only the
+  portable surface;
+- no NDK, Gradle, Xcode or `cargo-apk` configuration;
+- CI is `ubuntu-latest` plus a non-blocking `macos-latest`, which is
+  desktop Apple Silicon, not iOS.
+
+The toolchain on the development machine happens to have
+`aarch64-linux-android`, `armv7-linux-androideabi` and
+`x86_64-linux-android` installed from unrelated work, and there is no
+`.cargo/config.toml` here or in `$HOME` naming an NDK linker — so even a
+bare `cargo check` of the core against an Android target has no linker
+and cannot complete. `docs/competitive-feature-gaps.md` already says it
+plainly: desktop-only, plus a `no_std` core with no driver.
+
+## Why this is not a small gap
+
+The core is genuinely portable — it is `no_std` at two tiers and links a
+20 524-byte `.text` for `thumbv7em-none-eabihf`
+(`docs/results-embedded.md`), which is a far harder target than a phone.
+The gap is not the framework; it is everything around it.
+
+The smallest honest measurement needs, in order:
+
+1. an NDK or Xcode toolchain with a linker configured, so the core
+   cross-compiles at all;
+2. a `cdylib` entry point plus `android-activity` (or the iOS
+   equivalent) glue — the `winit` support exists but nothing here uses
+   it;
+3. the same application packaged as an APK or `.app`, because a
+   framework that cannot be shipped has not been ported;
+4. a device, because an emulator's GPU and memory reporting are not the
+   thing being claimed;
+5. **a separate column, not a shared one.** `dumpsys meminfo` does not
+   report the same quantity as `/proc/<pid>/status`, so a mobile RSS
+   number cannot join the table in `docs/results-competitive.md` §3 —
+   it would look comparable and would not be.
+
+## The decision
+
+**Deferred**, on a stated condition, in the shape `docs/plan-capabilities.md`
+T15.12 used: not "someday", but *when this specific thing is true*.
+
+**The condition: when someone intends to ship an application on a
+phone.** Not when it would be interesting to know — the work is a
+toolchain, a packaging story and a device lab, and none of it improves
+the framework for the platforms it does run on.
+
+**And the goal is corrected in the meantime.** A goal that names a
+platform nobody can measure is a claim, not a target, and this project's
+whole discipline is that numbers are measured and stated once. Until the
+condition above is met, the claim is:
+
+> the fastest and most efficient GUI framework on **desktop and
+> embedded**, with a core that is portable to mobile and unproven there.
+
+That is weaker and it is true, which is the trade this repository makes
+everywhere else.
+
+## What would probably happen if it were done
+
+Recorded as a prediction, so a future measurement can contradict it
+rather than being shaped by it:
+
+- **The core should port cleanly.** It is `no_std`, allocation-free in
+  the steady state, and already runs on a Cortex-M4F.
+- **The software rasteriser is the risk.** `docs/results-raster-scaling.md`
+  measures ~2.7 ms per megapixel on an i9-13900KF. A phone at 1080p+ and
+  a fraction of that single-core throughput is the case
+  `docs/results-gpu.md`'s crossover was measured for, and the answer is
+  likely "GPU by default on mobile" — the opposite of the desktop
+  default.
+- **The 174 MB GPU context** (`docs/results-gpu.md` §5) is a desktop
+  number and would need re-measuring; it is dominated by driver
+  allocations that differ entirely on a tile-based mobile GPU.
+
+None of those are claims. They are what to check first.
