@@ -14,6 +14,7 @@ use lumen_static::display::{Cmd, Color, DisplayList, Renderer};
 use lumen_static::event::App;
 use lumen_static::style::{Rule, Style};
 use lumen_static::widget::{Node, Widget};
+use lumen_static::invalidate::{Everything, Invalidation};
 use lumen_static::retain::{Damage, Incremental, Retention};
 use lumen_static::{pass, Constraints, Event, Point};
 
@@ -24,7 +25,7 @@ pub mod text;
 
 /// A running application: the tree, its parallel arrays, the one input
 /// queue, and the frame's display list.
-pub struct Host<A: App, R: Retention = Incremental> {
+pub struct Host<A: App, R: Retention = Incremental, I: Invalidation = Everything> {
     pub app: A,
     pub styles: Vec<Style>,
     pub states: Vec<NodeState>,
@@ -65,9 +66,18 @@ pub struct Host<A: App, R: Retention = Incremental> {
     /// as the oracle every incremental gate is compared against.
     retain: R,
     last_damage: Damage,
+    /// Which subtrees changed since the last frame —
+    /// `docs/plan-invalidation.md` T16.7.
+    ///
+    /// A second type parameter beside `R`, and for the same reason:
+    /// `Everything` is the whole-tree walk *and* the oracle a bounded
+    /// walk is checked against, so both must be constructible in one
+    /// binary. It defaults to `Everything`, so `Host<A>` is the code
+    /// this crate shipped before T16.7.
+    invalidation: I,
 }
 
-impl<A: App, R: Retention> Host<A, R> {
+impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
     pub fn new(app: A, width: u32, height: u32) -> Self {
         let n = <A::Tree as Widget>::NODE_COUNT;
         let styles = pass::default_styles(app.tree());
@@ -85,7 +95,41 @@ impl<A: App, R: Retention> Host<A, R> {
             last_paint_ns: 0,
             retain: R::default(),
             last_damage: Damage::All,
+            invalidation: I::default(),
         }
+    }
+
+    /// Mark the subtree rooted at the node carrying `#[widget_id(wid)]`
+    /// as changed (T16.7).
+    ///
+    /// Returns whether the id matched — a typo'd id is otherwise a
+    /// silent no-op that shows up as a frame which quietly failed to
+    /// redraw, which is the worst shape this class of bug takes.
+    ///
+    /// Under `Everything` this does nothing and everything is redrawn
+    /// anyway, so an application can call it unconditionally and switch
+    /// the parameter later.
+    #[must_use = "a false return means the id matched no node and nothing was invalidated"]
+    pub fn invalidate(&mut self, wid: &str) -> bool {
+        let table = <A::Tree as Widget>::SUB_TABLE;
+        let Some(root) = lumen_static::style::index_of_wid(table, wid) else {
+            return false;
+        };
+        self.invalidation.mark(lumen_static::style::subtree_range(table, root));
+        true
+    }
+
+    /// Mark everything changed — the answer whenever the blast radius
+    /// is not known.
+    pub fn invalidate_all(&mut self) {
+        self.invalidation.mark_all();
+    }
+
+    /// What the frame just pumped considered changed. For tests and for
+    /// finding out whether the set is collapsing every frame, which is
+    /// the failure mode that makes the machinery pointless.
+    pub fn changed(&self) -> lumen_static::invalidate::Changed<'_> {
+        self.invalidation.view()
     }
 
     /// Apply a stylesheet. Re-runs the cascade, which is the only pass
@@ -96,6 +140,9 @@ impl<A: App, R: Retention> Host<A, R> {
         // repeater's template row or an `Either` branch, which are not
         // in the table (`docs/plan-review-fixes.md` F4.5).
         lumen_static::style::cascade_deep(self.app.tree_mut(), sheet, &mut self.styles);
+        // A stylesheet can change any node's size, so nothing is known
+        // to be clean any more.
+        self.invalidation.mark_all();
     }
 
     /// Re-cascade one subtree, by the `#[widget_id]` on its root.
@@ -119,6 +166,9 @@ impl<A: App, R: Retention> Host<A, R> {
             return false;
         };
         lumen_static::style::cascade_subtree(self.app.tree_mut(), sheet, &mut self.styles, root);
+        // Scoped, so the invalidation is too — the same range the
+        // cascade just rewrote.
+        self.invalidation.mark(lumen_static::style::subtree_range(table, root));
         true
     }
 
@@ -132,6 +182,11 @@ impl<A: App, R: Retention> Host<A, R> {
         self.size = (width, height);
         self.retain.reset();
         self.last_damage = Damage::All;
+        // Every laid-out position changed, so nothing kept from the
+        // previous frame describes the next one — including the dirty
+        // set, whose ranges are about a tree that no longer has those
+        // sizes.
+        self.invalidation.mark_all();
     }
 
     /// Queue one input. OS input, agent-synthesized input and test input
@@ -178,6 +233,7 @@ impl<A: App, R: Retention> Host<A, R> {
         self.scale = scale;
         self.retain.reset();
         self.last_damage = Damage::All;
+        self.invalidation.mark_all();
     }
 
     /// A physical point (what an OS reports) in the logical coordinates
@@ -209,6 +265,24 @@ impl<A: App, R: Retention> Host<A, R> {
             );
         }
 
+        // **A handler that ran invalidates everything** (T16.7).
+        //
+        // Conservative on purpose, and the reason is in the signature: a
+        // handler is `fn(&mut App, &EventCtx)`, so it may touch any
+        // field of the application, and narrowing the mark to the node
+        // that was clicked would be narrowing it to where the *event*
+        // landed rather than to where the *change* did. Those are
+        // different nodes as soon as a button edits a label elsewhere,
+        // which is the ordinary case.
+        //
+        // So this degrades to today's whole-tree walk rather than to a
+        // wrong frame. The precise entry point is `#[bind]`, which knows
+        // statically which tree field it writes; narrowing beyond that
+        // is OPEN (`docs/plan-invalidation.md` T16.7).
+        if handled {
+            self.invalidation.mark_all();
+        }
+
         // Derived presentation is refreshed here, between input and
         // layout: a handler has just changed state, and layout is about
         // to measure what that state renders as. Doing it in the loop
@@ -219,7 +293,9 @@ impl<A: App, R: Retention> Host<A, R> {
         let limits = self.limits();
         let t0 = std::time::Instant::now();
         {
-            let mut cx = LayoutCx::new(metrics);
+            // Disjoint field borrows: the view borrows `invalidation`,
+            // the tree borrows `app`.
+            let mut cx = LayoutCx::with_changed(metrics, self.invalidation.view());
             let tree = self.app.tree_mut();
             tree.layout(&mut cx, limits, &self.styles, &mut self.states, 0);
             tree.place(Point::default(), &self.styles, &mut self.states, 0);
@@ -260,6 +336,12 @@ impl<A: App, R: Retention> Host<A, R> {
         // What this frame changed. Retention has already seen every
         // command; this closes the frame. Free under `Rebuild`.
         self.last_damage = self.retain.finish();
+
+        // The set describes what changed *since the last frame*, so it
+        // is spent once layout has read it. Marks arriving after this
+        // point belong to the next frame, which is what makes
+        // `invalidate` callable from anywhere between pumps.
+        self.invalidation.clear();
 
         self.frame += 1;
         handled

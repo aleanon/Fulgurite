@@ -166,11 +166,38 @@ pub struct LayoutCx<'a> {
     /// `None` outside a scroller, where the constraint's own maximum is
     /// the answer.
     fill_span: Option<Size>,
+    /// Which subtrees changed this frame — `docs/plan-invalidation.md`
+    /// T16.7.
+    ///
+    /// A container may skip a child whose range this reports clean. It
+    /// rides in the context for the same reason `text` does: threading
+    /// it as a type parameter would be viral through every `layout`
+    /// signature and would spend §8's single-type-axis budget, and
+    /// adding a parameter to `Node::layout` would change every widget
+    /// in the workspace to say something most of them do not care
+    /// about.
+    ///
+    /// [`crate::invalidate::Changed::ALL`] unless a caller says otherwise, so
+    /// [`LayoutCx::new`] behaves exactly as it did before T16.7 and
+    /// every existing caller is unaffected.
+    pub changed: crate::invalidate::Changed<'a>,
 }
 
 impl<'a> LayoutCx<'a> {
     pub fn new(text: &'a mut dyn TextMeasure) -> Self {
-        LayoutCx { text, fill_span: None }
+        LayoutCx { text, fill_span: None, changed: crate::invalidate::Changed::ALL }
+    }
+
+    /// A context that knows which subtrees changed, so containers may
+    /// skip the ones that did not (T16.7).
+    ///
+    /// The whole-tree walk is what [`LayoutCx::new`] gives and what the
+    /// oracle uses; this is the bounded one.
+    pub fn with_changed(
+        text: &'a mut dyn TextMeasure,
+        changed: crate::invalidate::Changed<'a>,
+    ) -> Self {
+        LayoutCx { text, fill_span: None, changed }
     }
 
     /// Run `f` with `span` as the `Fill` reference, restoring whatever

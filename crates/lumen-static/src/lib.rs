@@ -115,6 +115,7 @@ pub mod hit;
 pub mod i18n;
 pub mod image;
 pub mod inline;
+pub mod invalidate;
 // `mpsc`, so `std` (M13/T13.1). Deferred work handed back to the frame
 // loop from another thread is not an embedded concern.
 #[cfg(feature = "std")]
@@ -147,6 +148,7 @@ pub use desc::{
 // `Dyn` and `List` own runtime-sized content, so they follow `alloc`
 // (T13.4). `Either` and `Side` are compile-time and always present.
 pub use hatch::{Either, Side};
+pub use invalidate::{Boundaries, Everything, Invalidation};
 #[cfg(feature = "alloc")]
 pub use hatch::{Dyn, List};
 pub use input::TextInput;
