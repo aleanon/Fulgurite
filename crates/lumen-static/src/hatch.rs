@@ -567,7 +567,32 @@ impl<W: Widget> Node for List<W> {
         // the invariant is scoped to the clipping ancestor
         // (`docs/text-and-scrolling-decisions.md` A1).
         out.push_clip(crate::ops::rect_of(&st[i]));
+        // **Cull to the surface** — `docs/plan-invalidation.md` T16.12.
+        //
+        // A `List` materializes every element, deliberately: that is
+        // what makes it comparable with `GtkBox` and `QVBoxLayout`, and
+        // `Repeat` is the virtualizing one. Materializing is a *layout*
+        // property though, and painting ten thousand rows into an
+        // 800 px viewport so the renderer can discard 9 960 of them one
+        // command at a time is not comparability, it is waste. GTK and
+        // Qt both cull in their paint paths.
+        //
+        // `clip_bounds` is the surface, not the enclosing clip stack —
+        // a superset, so this discards less than it could and never
+        // more than it may. `None` (a bare `DisplayList`, every test
+        // and every benchmark arm that does not opt in) culls nothing
+        // and emits exactly what it emitted before.
+        let bounds = out.clip_bounds();
         for k in 0..self.items.len() {
+            if let Some(b) = bounds {
+                let r = crate::ops::rect_of(&self.slice(k)[0]);
+                // Half-open in both axes, and `>=` rather than `>`: a
+                // row whose bottom edge is exactly the surface's top
+                // contributes no pixel.
+                if r[2] <= b[0] || r[0] >= b[2] || r[3] <= b[1] || r[1] >= b[3] {
+                    continue;
+                }
+            }
             self.items[k].paint(self.slice(k), 0, out);
         }
         out.pop_clip();

@@ -332,6 +332,16 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
 
         let t1 = std::time::Instant::now();
         self.list.clear();
+        // Tell paint where the frame is going, so a container can cull
+        // children that cannot be seen (T16.12). **Logical** units: the
+        // list is painted through `Scaled`, which converts on the way
+        // in and converts this back on the way out.
+        self.list.set_bounds(Some([
+            0.0,
+            0.0,
+            self.size.0 as f32,
+            self.size.1 as f32,
+        ]));
         {
             // Logical geometry in, physical commands out (M10b), with
             // retention observing the stream on the way past (T13.8).

@@ -473,6 +473,49 @@ scan.
 
 ---
 
+**DONE 2026-09-08, one layer up from where the task looked.**
+
+Neither candidate was built. The commands the renderer walks are the
+commands *paint emitted*, and paint was emitting ten thousand of them
+for a viewport that can show forty. Culling there removes the work
+instead of getting faster at discarding it, and it needs no spatial
+index and no container ordering property.
+
+`Painter::clip_bounds()` reports the surface — deliberately **not** the
+enclosing clip stack, which would be tighter but would make every
+painter track one. A superset is sound for culling: it discards less
+and never more. `None` is the default and means "cull nothing", so the
+SVG backend, every unit test and every benchmark arm that does not opt
+in emit exactly what they emitted before.
+
+Measured on the frame arm, one row of N changing (`+paint` is
+cumulative with layout, so the paint *stage* is the difference against
+the `layout` row):
+
+| N | commands | paint stage | culled |
+|---:|---|---:|---:|
+| 1 000 | 1 002 → 39 | 5.6 µs | 0.9 µs |
+| 3 000 | 3 002 → 39 | 16.2 µs | 1.5 µs |
+| 10 000 | 10 002 → 39 | 61.5 µs | **7.7 µs** |
+
+**8× at 10 000 rows, and it is reported as its own row rather than
+replacing the old one.** Quoting a culled paint against iced or Lumen —
+neither of which culls — would be comparing forty rows of work with ten
+thousand, which is the kind of comparison this milestone exists to stop
+making.
+
+`List` still materializes every element in *layout*, which is what
+keeps it comparable with `GtkBox` and `QVBoxLayout`. Materializing is a
+layout property; painting what cannot be seen is not comparability, it
+is waste, and GTK and Qt both cull in their own paint paths.
+
+Still open: the raster-side walk. With paint culling the command list is
+short, so `render_impl`'s O(commands) scan no longer dominates — but an
+application that legitimately emits thousands of *visible* commands
+would still meet it.
+
+---
+
 # Phase D — the GPU crossover
 
 ## T16.13 — measure where the GPU wins, then close the gap

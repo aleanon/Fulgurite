@@ -71,3 +71,5 @@ StyleState           # a per-node style cache, never migrated
 VirtualColumn        # deleted in F-series review fixes; the plan records the deletion
 CLIP                 # a proposed NodeState flag; clipping is a paint-time push_clip
 DEFAULT_RULES        # a deprecated-and-removed derive attribute
+GtkBox               # the GTK container List is comparable with; named in hatch.rs's culling note
+QVBoxLayout          # the Qt one, same sentence

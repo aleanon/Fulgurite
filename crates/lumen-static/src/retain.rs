@@ -523,4 +523,9 @@ impl<R: Retention> Painter for Recording<'_, R> {
     fn defer(&mut self, i: u32) -> bool {
         self.inner.defer(i)
     }
+    /// Forwarded unchanged: recording observes a stream, it does not
+    /// move anything (T16.12).
+    fn clip_bounds(&self) -> Option<Rect> {
+        self.inner.clip_bounds()
+    }
 }

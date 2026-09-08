@@ -323,6 +323,27 @@ pub trait Painter {
         self.text_weighted(rect, s, size, 400.0, color);
     }
 
+    /// The bounds nothing outside of can be seen — the surface, in the
+    /// painter's own coordinates. `None` means "unbounded, cull
+    /// nothing", which is what every painter answered before T16.12 and
+    /// what a painter with no surface (the SVG backend, a checksum
+    /// sink) answers still.
+    ///
+    /// **A container may use this to skip children entirely.** That is
+    /// the difference between a 10 000-row list emitting 10 000 text
+    /// commands for the renderer to discard one at a time, and emitting
+    /// the forty a viewport can show. GTK and Qt both cull in their
+    /// paint paths; this crate did not, and `docs/results-competitive.md`
+    /// §5b is what that cost.
+    ///
+    /// Deliberately **not** the current clip stack, which would be
+    /// tighter and would require a painter to track one. A superset is
+    /// sound for culling — it discards less — and it costs nothing to
+    /// answer.
+    fn clip_bounds(&self) -> Option<Rect> {
+        None
+    }
+
     /// Ask for node `i` to be painted in the **overlay phase** instead
     /// of here — `docs/plan-capabilities.md` T15.0.
     ///
@@ -349,6 +370,16 @@ pub struct DisplayList {
     pub cmds: Vec<Cmd>,
     /// Text bytes for this frame; `Cmd::Text` holds ranges into it.
     pub text: String,
+    /// The surface this frame is destined for, if the host said
+    /// (T16.12). Reported through [`Painter::clip_bounds`] so a
+    /// container can cull children that cannot be seen.
+    ///
+    /// `None` by default, which is what keeps a bare `DisplayList` —
+    /// the shape every benchmark arm and every unit test builds —
+    /// emitting exactly the commands it emitted before T16.12. A
+    /// culled paint number must not be compared with an arm that does
+    /// not cull, and this is what makes opting in explicit.
+    pub bounds: Option<Rect>,
 }
 
 #[cfg(feature = "alloc")]
@@ -442,6 +473,14 @@ impl DisplayList {
 
     pub fn pop_clip(&mut self) {
         self.cmds.push(Cmd::PopClip);
+    }
+
+    /// Declare the surface, so painting can cull to it (T16.12).
+    ///
+    /// Survives [`DisplayList::clear`]: it is a property of where the
+    /// frame is going, not of the frame.
+    pub fn set_bounds(&mut self, bounds: Option<Rect>) {
+        self.bounds = bounds;
     }
 
     // NOTE: the bodies stay here, on the inherent methods, and
@@ -572,6 +611,14 @@ impl Painter for Scaled<'_> {
     fn defer(&mut self, i: u32) -> bool {
         self.inner.defer(i)
     }
+    /// Back to **logical** units. Everything above the renderer is
+    /// logical, so a container culling against this must be handed the
+    /// same coordinate system its `NodeState` is in — dividing here is
+    /// the mirror of the multiplication every other method does.
+    fn clip_bounds(&self) -> Option<Rect> {
+        let k = self.scale;
+        self.inner.clip_bounds().map(|r| [r[0] / k, r[1] / k, r[2] / k, r[3] / k])
+    }
 }
 
 /// Collecting into a list is *one* implementation of [`Painter`], not
@@ -604,5 +651,8 @@ impl Painter for DisplayList {
     }
     fn pop_clip(&mut self) {
         DisplayList::pop_clip(self)
+    }
+    fn clip_bounds(&self) -> Option<Rect> {
+        self.bounds
     }
 }

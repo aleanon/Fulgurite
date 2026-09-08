@@ -334,4 +334,35 @@ fn main() {
     {
         println!("lumen-static/{what:<22} {us:9.1} us   ({n} rows)");
     }
+
+    // **Culled paint, reported apart and never mixed in** (T16.12).
+    //
+    // Every row above materializes and paints all N rows, because that
+    // is what `GtkBox`, `QVBoxLayout` and iced's `column` do and it is
+    // what makes the comparison in `docs/results-competitive.md` fair.
+    // A `DisplayList` told where the frame is going culls the rows that
+    // cannot be seen — which is what GTK and Qt do in *their* paint
+    // paths, and what this framework did not.
+    //
+    // It is a separate row and not a replacement, because quoting it
+    // against an arm that does not cull would be comparing forty rows
+    // of work with ten thousand.
+    let mut culled = f64::INFINITY;
+    let mut culled_cmds = 0usize;
+    for k in 0..iters {
+        ui.rows.items[0].set(format!("counter: {:05} #c", k % 10000));
+        let t = Instant::now();
+        layout(&mut ui, &mut st, &mut metrics);
+        list.clear();
+        list.set_bounds(Some([0.0, 0.0, W as f32, H as f32]));
+        pass::paint(&ui, &st, &mut list);
+        culled = culled.min(t.elapsed().as_secs_f64() * 1e6);
+        culled_cmds = list.cmds.len();
+    }
+    list.set_bounds(None);
+    println!(
+        "lumen-static/{:<22} {culled:9.1} us   ({n} rows, {culled_cmds} of {} cmds)",
+        "+paint (culled)",
+        n + 2
+    );
 }
