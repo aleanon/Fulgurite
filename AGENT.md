@@ -20,6 +20,78 @@ markers must move with the code.
 
 commit with a clear explanation of what has been done for every task or subtask completed
 
+## Tests must be shown to fail (binding — 2026-09-08)
+
+**A test that has never failed has not been tested.** Before a new test
+or gate is committed, break the thing it protects and watch it go red.
+Then restore, and watch it go green again. Put what the injection did —
+and by how much — in the commit body, because that number is the only
+evidence the test works, and nobody can re-derive it from the passing
+test later.
+
+Three things the injection has to actually be:
+
+1. **It must break the mechanism, not merely change a value.** Delete
+   the guard, invert the condition, remove the clip, stop pushing the
+   scope. "The output differs" is not the claim; "the assertion fires,
+   by name" is.
+2. **An injection that leaves the test green is a finding about the
+   test.** Do not weaken the injection until it fails — find why the
+   test could not see it, and fix the test. When this happened on the
+   GPU damage gate, the test was checking a real property in a situation
+   that could not exhibit it: a half-cleared boundary pixel under
+   *opaque* content is overwritten by the next command, so the artefact
+   never survived to be compared. Rewriting it to damage a region under
+   *translucent* content made the same injection produce 23 differing
+   pixels.
+3. **A gate that refuses bad input must also accept good input.** Check
+   both directions in the same session, or the next tightening turns it
+   into a gate that refuses everything.
+
+**Two failure shapes account for every vacuous test found on this
+repository so far, and neither looks wrong when you read it:**
+
+- **The setup silently did not happen**, so both sides agree about a
+  frame in which nothing occurred. A `Fixed(220)` card in a 300 px
+  window put a button at x=256, outside its own parent, so every click
+  in an oracle test hit the root and the handler never ran — the oracle
+  passed, comparing two identical no-ops (M16/T16.7). An overlay hit
+  test declared the popup *before* what it covered, so the ordinary walk
+  found it and the overlay path was never exercised (M15/T15.0). Assert
+  that the action landed — `handled`, a changed count, a hit on the node
+  you meant — not only that the result matches.
+- **The bound was computed from the wrong quantity**, so it cannot be
+  exceeded. A damage check bounded height at `st[1].size.h` — which is
+  the *list's* 2200 px total, not a row's 22 — making the limit 4400 px
+  and the assertion unreachable (M16/T16.2). A parity bound of 6% sat
+  over a measured 0.01% (M15/T15.12). Print the quantity next to the
+  bound so a vacuous one is visible in the output.
+
+**And the injection itself can be wrong.** A `#[no_mangle] pub static`
+added to prove the `.bss` gate fires was dropped by the linker, so the
+test proved linker GC and nothing else (M15). An awk locale probe
+written as `1.5 + 0 != 1.5` never fires, because awk lexes its own
+source in the C locale whatever the environment says — only converting a
+*string* tests what input parsing does (M16/T16.3). When an injection
+passes, suspect it before you trust it.
+
+Rationale: over M15 and M16, **six** tests and gates were found passing
+while proving nothing:
+
+| what | why it proved nothing |
+|---|---|
+| overlay hit test (T15.0) | popup declared before what it covered |
+| GPU partial-redraw (T15.12) | passed with `snap_out` deleted |
+| backend parity bound (T15.12) | 6% bound over a 0.01% measurement |
+| `.bss` ceiling (M15) | 2 KB bound over a measured 0 |
+| invalidation oracle (T16.7) | clicks never landed |
+| damage height bound (T16.2) | limit 200× the quantity it bounded |
+
+**Three were caught by injecting a fault; three by printing the measured
+number beside the bound and seeing the gap.** Neither method is
+optional, and reading the code caught none of them — reading is what
+wrote them.
+
 ## Doc currency (binding — adapted from Lumen's D0.7 rule, 2026-08-30)
 
 Any commit that changes public behavior or settles a design question must
