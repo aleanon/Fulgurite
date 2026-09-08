@@ -831,7 +831,10 @@ mark themselves through `Dirty<T>`, which T3.1 built for this.
 .is_rigid() { dirty.set(i); i = table[i].parent }`. Five lines over the
 table; no macro. **DECIDED 2026-09-04: rigidity is per axis.** The
 tally's card is `Fixed(360)` wide and `Shrink` tall, so a taller value
-label must bubble to the page while a wider one must not. `IS_RIGID`
+label must bubble to the page while a wider one must not. **Still
+unbuilt as of 2026-09-08: neither constant exists and `desc.rs` has one
+`RIGID` bit, consumed by nothing** (`docs/plan-invalidation.md` T16.7,
+T16.9). `IS_RIGID`
 becomes `RIGID_W`/`RIGID_H`, the derive ANDs each separately, and
 `NodeDesc` carries two bits; a dirty bit bubbles past a node on the
 axis it is not rigid in. Gate: `tests/`: a `Dirty` deep in a `Ten10` fixture

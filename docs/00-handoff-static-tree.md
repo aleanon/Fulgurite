@@ -80,7 +80,17 @@ The four properties that produce the performance, in rough order of importance:
    lays out, paints and rasterises the whole tree. **DECIDED there:** retention
    is a type parameter on `Host` (`Rebuild` | `Incremental`), never a cargo
    feature, because `Rebuild` is the oracle the incremental path is tested
-   against, and rigidity is per axis (`RIGID_W`/`RIGID_H`; a card fixed in width and shrink in height bubbles height changes only).
+   against, and rigidity is per axis — a card fixed in width and shrink in height should
+   bubble height changes only.
+
+   **That last clause is OPEN, not DECIDED, and said DECIDED until
+   2026-09-08.** It named two constants, `RIGID_W` and `RIGID_H`, which
+   have never existed: `desc.rs` has a single `RIGID` bit and always has.
+   The doc-identifier gate reads `.rs` comments and did not read markdown,
+   so the spec asserted an API it did not have, in a DECIDED marker, for
+   four days. `docs/plan-invalidation.md` T16.6 extended the gate to
+   markdown; T16.9 either implements per-axis rigidity — where it earns
+   its place, in a layout pass that can skip — or deletes the claim.
 
 2. **Layout is single-pass.** Constraints flow down, sizes flow back up, parent
    positions the child. No node reads its own final position during layout.

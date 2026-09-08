@@ -20,6 +20,21 @@
 # Allowlist: scripts/doc-identifiers.allow, one name per line, `#` comments.
 # It is for names that are real but not ours (C functions, rustc features,
 # upstream field names) and for names documented as deliberately REMOVED.
+#
+# MARKDOWN (M16/T16.6). `docs/*.md` is checked too, and it was not until
+# 2026-09-08 -- which is how the design spec came to state as DECIDED that
+# "rigidity is per axis (`RIGID_W`/`RIGID_H`)" when neither identifier has
+# ever existed in the code. The spec is the most load-bearing document here
+# and it was the one place the gate did not look.
+#
+# Markdown is filtered harder than Rust comments, and deliberately: prose
+# legitimately backticks words that are not identifiers at all (`cargo`,
+# `charts`, `accordion`), and 216 of 892 markdown candidates are dead under
+# the Rust-comment rule -- an allowlist that size is where drift goes to
+# hide, not where it is caught. So only **Rust-item-shaped** names count:
+# CamelCase types and UPPER_SNAKE constants. That is the shape a claim about
+# this codebase's API takes, it is the shape `RIGID_W` has, and it cuts the
+# backlog to 84 of which half are foreign toolkit types matched by prefix.
 set -euo pipefail
 cd "$(cd "$(dirname "$0")/.." && pwd)"
 
@@ -38,6 +53,22 @@ grep -hE '^[[:space:]]*//' $(cat "$tmp/files") \
   | grep -oE '`[^`]+`' | sed 's/`//g' \
   | tr ':' '\n' | sed -E 's/!$//; s/\(\)$//' \
   | grep -E '^[A-Za-z_][A-Za-z0-9_]*$' | sort -u > "$tmp/cands"
+
+# Markdown candidates, narrowed to Rust-item shape (see the header).
+# CamelCase (two or more humps) or UPPER_SNAKE / ALLCAPS.
+if compgen -G 'docs/*.md' > /dev/null; then
+    grep -hoE '`[^`]+`' docs/*.md | sed 's/`//g' \
+      | tr ':' '\n' | sed -E 's/!$//; s/\(\)$//' \
+      | grep -E '^([A-Z][a-z0-9]+([A-Z][A-Za-z0-9]*)+|[A-Z][A-Z0-9]+(_[A-Z0-9]+)*)$' \
+      | sort -u > "$tmp/mdcands"
+    # Foreign toolkit types, by prefix. They appear only in the feature-gap
+    # survey, they are real names in someone else's API, and listing four
+    # hundred of them one per line would say nothing a prefix does not.
+    grep -vE '^(Gtk|Qt)' "$tmp/mdcands" > "$tmp/mdcands.f" || true
+    mv "$tmp/mdcands.f" "$tmp/mdcands"
+    sort -u "$tmp/cands" "$tmp/mdcands" > "$tmp/cands.all"
+    mv "$tmp/cands.all" "$tmp/cands"
+fi
 
 # Rust keywords, attributes and prelude names: never project identifiers.
 cat > "$tmp/builtin" <<'EOF'
@@ -68,6 +99,8 @@ if [ -s "$tmp/dead" ]; then
         # loop -- the same bug class that inverted the old no-unsafe gate.
         { grep -rnE --include='*.rs' "\`$name(!|\(\))?\`" crates benches examples fixtures 2>/dev/null || true; } \
           | { grep -E '^[^:]+:[0-9]+:[[:space:]]*//' || true; } | head -3 | sed 's/^/      /' >&2 || true
+        { grep -rnE "\`$name(!|\(\))?\`" docs/*.md 2>/dev/null || true; } \
+          | head -3 | sed 's/^/      /' >&2 || true
     done < "$tmp/dead"
     echo "" >&2
     echo "Fix the comment, or add the name to $ALLOW with a reason." >&2

@@ -31,3 +31,43 @@ present_with_damage  # softbuffer's API, named where counter-window says why it 
 # instead. A name that exists upstream and must not exist here
 # (T15.12, docs/results-gpu.md).
 create_surface_unsafe
+
+# --- markdown, added with the docs/*.md check (M16/T16.6) ---
+# Names that are real but not ours: std, the toolkits the survey compares
+# against, /proc fields, and environment variables.
+DerefMut             # std::ops
+TypeId               # std::any
+TestHarness          # masonry_testing, named in results-competitive.md's caveat
+RenderRoot           # masonry's public driver, used by probes/masonry-raw
+EnableAccessTree     # masonry's WindowEvent variant; the caveat turns on it
+VmRSS                # /proc/<pid>/status field; the RSS method quotes it
+BENCH_SIZES          # env var on the sibling harness (M16/T16.0)
+BENCH_CHURN_SIZES    # ditto
+LUMEN_TRACE          # env var named in a plan; nothing reads it yet
+
+# Designs that were proposed and NOT built, or built and removed. The
+# sentence naming them IS the record of the decision -- deleting it to
+# satisfy this gate would delete the reasoning, which is the opposite of
+# what the doc-currency rule is for.
+RIGID_W              # per-axis rigidity: DECIDED 2026-09-04, still unbuilt; marked OPEN in the spec 2026-09-08 (T16.9)
+RIGID_H              # ditto
+RIGID_NODES          # handoff §5's index-partition proposal; the recursive walk won (results-traversal.md)
+FLEXIBLE_NODES       # ditto
+ArenaHost            # an arena design superseded before it landed
+CHILD_STARTS         # flat-table addressing, superseded by SUB_TABLE
+NODE_TABLE           # ditto
+KIND_COUNT           # kind-dispatch design, removed; macros' front page records why
+KIND_LIST            # ditto
+WidgetOps            # the vtable the static tree replaced
+NodeHandle           # u32 handles, superseded
+SlimDesc             # a narrower NodeDesc, measured and declined
+EitherN              # an N-way Either; only Either exists
+SafeTree             # results-safe-prototype.md's harness, deleted with it
+SafeCard             # ditto
+SafeItem             # ditto
+ShapeRunCache        # a text cache proposed in the scrolling decisions, not built
+StableId             # author ids landed as #[widget_id] instead
+StyleState           # a per-node style cache, never migrated
+VirtualColumn        # deleted in F-series review fixes; the plan records the deletion
+CLIP                 # a proposed NodeState flag; clipping is a paint-time push_clip
+DEFAULT_RULES        # a deprecated-and-removed derive attribute
