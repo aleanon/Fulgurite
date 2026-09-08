@@ -13,7 +13,11 @@
 //! quoting only the paint number flatters the Rust arms (which stop at a
 //! display list) and quoting only layout flatters Qt.
 //!
-//! This arm reports four, because lumen-static has a stage the others do not:
+//! This arm reports **seven** rows (eight under `observe`), because
+//! lumen-static has stages the others do not. Four of them are the
+//! one-row-change ladder below; the other three are an idle floor and the
+//! all-rows pair, which is the workload Lumen's criterion benches use
+//! against masonry and iced. The doc said "four" until T16.3 counted them.
 //!
 //! - `layout`          — the layout pass. Comparable to Qt's `layout` and
 //!                       GTK's `measure`.
@@ -102,7 +106,7 @@ fn main() {
     let mut canvas = Canvas::with_font(W, H, font);
     let mut retain = Incremental::default();
 
-    let mut layout = |ui: &mut Ui, st: &mut Vec<lumen_static::NodeState>, m: &mut FontMetrics| {
+    let layout = |ui: &mut Ui, st: &mut Vec<lumen_static::NodeState>, m: &mut FontMetrics| {
         let mut cx = LayoutCx::new(m);
         pass::layout_with(ui, &mut cx, &styles, st, view);
     };

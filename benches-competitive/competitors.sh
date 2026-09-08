@@ -284,9 +284,23 @@ crit() {
   # is where the size of that difference is already written down.)
   local feat=()
   [ "${LUMEN_OBS:-on}" = off ] && feat=(--no-default-features)
+  # stderr is kept, not discarded (T16.3). The sibling's `sizes()` helper
+  # *panics* on a malformed BENCH_SIZES, and `2>/dev/null` turned that into an
+  # empty run with a zero exit. A benchmark that refused to start now says so.
+  local log; log=$(mktemp)
   ( cd "$SIB" && SKIP_RENDER_TESTS=1 BENCH_SIZES=$n BENCH_CHURN_SIZES=$n \
-      cargo bench -q "${feat[@]}" --bench "$bench" -- --noplot --sample-size "$SAMPLES" "$filter" 2>/dev/null ) \
-  | awk -v arm="$arm" -v wl="$workload" -v n="$n" -f "$HERE/crit.awk"
+      cargo bench -q "${feat[@]}" --bench "$bench" -- --noplot --sample-size "$SAMPLES" "$filter" ) \
+      >"$log" 2>&1
+  local rc=$?
+  if [ $rc -ne 0 ]; then
+    echo "competitors: $arm: cargo bench exited $rc" >&2
+    sed -n '/panicked\|^error/,+3p' "$log" >&2
+    rm -f "$log"; return 1
+  fi
+  awk -v arm="$arm" -v wl="$workload" -v n="$n" -f "$HERE/crit.awk" <"$log"
+  rc=$?
+  rm -f "$log"
+  return $rc
 }
 
 cmd_run() {
