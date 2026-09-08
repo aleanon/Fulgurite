@@ -185,6 +185,12 @@ Median of 3 launches, `VmRSS` 4 s after launch.
 | iced | 196.3 MB |
 | Xilem | 321.1 MB |
 
+**Re-measured after M16, 2026-09-08:** default **25.75 MB**, lean
+**25.59 MB** — within the drift of the 2026-09-05 figures above and
+still the smallest of the eight. The `gpu` feature is its own row
+(`docs/results-gpu.md` §5): 197.8 MB with an adapter open, 26.58 MB in
+the same binary forced to software.
+
 **lumen-static is the smallest resident of the eight, by 1.9× over the
 next one.** The gap over the GPU-backed arms (iced, Xilem, Lumen) is
 mostly a GPU context: a wgpu device and its driver-side allocations are
@@ -207,6 +213,12 @@ excluding the C runtime every binary on the system already has.
 | Lumen | 16.8 MB | 28.0 MB in 66 |
 | GTK 4.14.5 | 0.0 MB | 32.1 MB in 65 |
 | Qt 6.4.2 | 0.0 MB | 70.1 MB in 45 |
+
+**Re-measured after M16, 2026-09-08:** default **2.71 MB**, lean
+**2.56 MB**, and the `gpu` feature **6.58 MB** — all three built one
+package per `cargo` invocation under this workspace's release profile,
+which is the only way these are comparable (M16/T16.1, T16.5). M16 added
+about 500 bytes to the default binary.
 
 **4× smaller than the next self-contained arm**, and the whole
 distributable is smaller than the *delta* between any two of the others.
@@ -259,50 +271,120 @@ made layout 46% slower — and that was a cold run, caught by repeating it.
 
 ---
 
-## 5b. Four UI sizes (2026-09-08, M16)
+## 5b. Four UI sizes, and what M16 changed (2026-09-08)
 
-Every number above was taken at one size. Resolution was swept in
-`docs/results-raster-scaling.md`; **tree size never was**, and small N is
-where a static tree's advantage should be smallest because fixed
+Every number above was taken at one tree size. Resolution was swept in
+`docs/results-raster-scaling.md`; **tree size never was**, and small N
+is where a static tree's advantage should be smallest because fixed
 per-frame costs dominate. It is not: the margin over iced is *wider* at
 100 rows than at 3 000.
 
-One row of N changes — the matched stopping point, no raster:
+Re-run after M16 (`docs/plan-invalidation.md`) on the same machine the
+same day. **The cross-arm rows below are the ones M16 did not touch**,
+which is the point — see "what M16 changed" at the end.
+
+### One row of N changes — the matched stopping point, no raster
 
 | arm | 100 | 1 000 | 3 000 | 10 000 |
 |---|---:|---:|---:|---:|
-| **lumen-static** (layout + display list) | **1.9** | **12.8** | **41.6** | **126.0** |
-| iced 0.14 | 15.5 | 99.3 | 287.1 | 926.5 |
-| egui 0.29 | 36.8 | 261.3 | 792.5 | — |
-| masonry 0.4 | 32.6 | 284.3 | 903.1 | — |
-| Lumen (audit off) | 85.1 | 507.4 | 1 432.5 | — |
-| Qt 6.4.2 (natural update) | 23.7 | 99.8 | 296.5 | — |
-| GTK 4.14.5 (measure only) | 9.0 | 40.4 | 112.3 | 375.9 |
+| **lumen-static** (layout + display list) | **1.9** | **13.0** | **37.4** | **129.0** |
+| GTK 4.14.5 (measure only) | 8.9 | 40.7 | 126.5 | 374.0 |
+| iced 0.14 | 15.6 | 98.8 | 287.9 | 920.9 |
+| Qt 6.4.2 (natural update) | 23.4 | 99.9 | 300.6 | — |
+| masonry 0.4 | 32.7 | 283.0 | 889.8 | — |
+| egui 0.29 | 37.2 | 261.1 | 779.1 | — |
+| Lumen (audit off) | 84.7 | 498.4 | 1 400.5 | — |
 
-GTK measures and never paints, so it belongs against lumen-static's
-`layout` alone — 1.4 / 7.3 / 21.3 / 65.4 µs — a 5.7–6.4× margin rather
-than the 2.7× the raw columns suggest.
+At 3 000 rows: **7.7× iced, 8.0× Qt, 20.8× egui, 23.8× masonry, 37.4×
+Lumen.** GTK measures and never paints, so it belongs against
+lumen-static's `layout` alone — 1.4 / 7.3 / 20.2 / 66.2 µs — a **6.3×**
+margin rather than the 3.4× the raw columns suggest.
 
-Every row of N changes:
+The 10 000-row column has four gaps: masonry, egui and Lumen have
+compile-time size arrays that stop at 3 000, and Qt's harness was not
+driven past it.
+
+### Every row of N changes
 
 | arm | 100 | 1 000 | 3 000 |
 |---|---:|---:|---:|
-| **lumen-static** | **44.3** | **470.5** | **1 511** |
-| Lumen | 1 548 | 5 810 | 15 791 |
-| iced 0.14 | 568 | 5 783 | 17 153 |
+| **lumen-static** | **43.7** | **484.6** | **1 478** |
+| Lumen | 1 575 | 5 923 | 16 124 |
+| iced 0.14 | 585 | 5 921 | 17 767 |
 
-At 100 rows the margin over Lumen is 35×, collapsing to 10.5× by 3 000
-as shaping comes to dominate every arm equally. Reporting only the
-3 000-row figure understates the small-UI case; reporting only the
-100-row figure overstates the large one, which is why both are here.
+**10.9× Lumen and 12.0× iced at 3 000.** At 100 rows the margin over
+Lumen is 36×, collapsing as shaping comes to dominate every arm
+equally. Reporting only one end of that would misdescribe the other.
 
-**Four arms have no all-rows workload** — masonry, egui, Qt and GTK have
-no churn group — so that table cannot be widened without new harness
-code. Slint still has no frame arm at all.
+Four arms have no all-rows workload — masonry, egui, Qt and GTK have no
+churn group — so this table cannot be widened without new harness code.
+Slint still has no frame arm at all.
 
-Microseconds, min of 200 after 20 warm-ups for the C/C++ and
-lumen-static arms, Criterion for the rest. Reproduce with
-`benches-competitive/competitors.sh`.
+### What M16 changed, and what it deliberately did not
+
+**The cross-arm rows above are unchanged.** That is the correct outcome
+and it was checked rather than assumed: M16's two optimisations are
+`Boundaries` invalidation, which is opt-in and off by default, and paint
+culling, which requires a host to declare a surface. Neither is on in
+the arm, because an arm that culls cannot be compared with iced or
+Lumen, which do not.
+
+**The relayout boundary costs nothing when unused**, measured directly
+rather than inferred from a cross-day comparison: the generated check
+compiled in gives 65.6 µs of layout at 10 000 rows, compiled out 65.8,
+restored 65.8. Within noise, in the noise's own direction.
+
+What M16 *did* buy, in configurations an application opts into:
+
+| | before | after |
+|---|---:|---:|
+| layout, one subtree marked (901 nodes) | 5.29 µs | **0.53 µs — 10×** |
+| layout, still frame | 5.29 µs | **0.01 µs — ~450×** |
+| paint stage at 10 000 rows (culled) | 62.8 µs | **7.5 µs — 8.4×** |
+| commands emitted for an 800 px viewport | 10 002 | **39** |
+
+The culled paint figure is reported by the arm as its own row and must
+not be put in the cross-arm table: forty rows of work against ten
+thousand is not a comparison.
+
+### Per-stage, one row of N changes
+
+`benches-competitive/arms/stages`, `Incremental` retention, default
+`Everything` invalidation, min of 5 runs of min-of-200. The summed
+stages and an independently timed whole frame agree to under 1%, which
+is what makes the decomposition usable.
+
+| stage | 100 | 1 000 | 3 000 | 10 000 |
+|---|---:|---:|---:|---:|
+| dispatch | 0.03 | 0.03 | 0.03 | 0.04 |
+| update (bindings) | 0.16 | 1.57 | 4.85 | 17.01 |
+| layout | 1.07 | 6.23 | 17.65 | 57.90 |
+| place | 0.05 | 0.71 | 2.27 | 7.64 |
+| **paint** | **1.30** | **12.84** | **38.49** | **127.93** |
+| damage | 0.01 | 0.01 | 0.01 | 0.01 |
+| raster (software) | 4.88 | 7.32 | 12.27 | 29.67 |
+| blit | 0.96 | 0.97 | 0.97 | 0.98 |
+| **sum** | **8.51** | **29.88** | **76.74** | **242.22** |
+| frame (independent) | 8.73 | 30.43 | 77.08 | 242.51 |
+| raster (GPU, alternative) | 33.01 | 34.61 | 41.08 | 88.66 |
+
+**Paint is the largest stage of a small-update frame** and the damaged
+region is 2 002 px in every cell — identical rasteriser work — so the
+growth is the walk, not the pixels. That is what culling addresses and
+what the `Everything` column above still pays.
+
+For the full-redraw workload the bottleneck is a different one
+entirely: at 10 000 rows layout is **4 911 µs of a 5 292 µs frame, 93%**,
+and that is text shaping, because every row's string genuinely changed.
+The two workloads need different fixes and no single number describes
+both.
+
+An idle frame — nothing changed, damage `None` — costs 211 µs at 10 000
+rows under `Everything`, of which raster and blit are 0.01 each. Under
+`Boundaries` that frame is the 0.01 µs row in the table above.
+
+Reproduce: `benches-competitive/competitors.sh`, `just stages`,
+`benches --bin invalidation`.
 
 ## 6. What the benchmark found
 
