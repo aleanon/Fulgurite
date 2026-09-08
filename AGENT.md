@@ -1,15 +1,15 @@
 ## Work queue
 
 The current plan is `docs/plan-invalidation.md` (M16, T16.0–T16.14) —
-the queue from the 2026-09-08 performance review. **Its Phase A runs
-first and is not optional:** three of the benchmark's defects would
-corrupt the measurement of the rest of the milestone, and the plan's
-opening section says why.
+the queue from the 2026-09-08 performance review. **All of it landed on
+2026-09-08**; its header records what was built, what was decided
+against, and what it measured.
 
 Shipped and kept for their reasoning: `docs/plan-architecture-v2.md`
 (M0–M12), `docs/plan-review-fixes.md` (F0–F7),
 `docs/plan-embedded.md` (M13), `docs/plan-desktop.md` (M14),
-`docs/plan-capabilities.md` (M15). Not started:
+`docs/plan-capabilities.md` (M15), `docs/plan-invalidation.md` (M16).
+Not started:
 `docs/plan-widgets.md` T11.5, `docs/plan-harness.md`.
 
 Task ids (`T0.6`, `F1.3`, `T16.7`) go in commit subjects. Decision records live beside it in `docs/`; the

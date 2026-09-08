@@ -1,5 +1,20 @@
 # M16 — invalidation, and repairing the instrument that measures it
 
+> **Status: T16.0–T16.14 all landed 2026-09-08**, on branch
+> `m16-invalidation`. Three of them landed as *decisions not to build*
+> — T16.8 (paint cannot skip on cleanliness: not a memory cost, a
+> correctness one), T16.11 (a clip is not ink; the fix widens a seam
+> T13.8 shaped deliberately) and T16.14 (mobile, deferred with the goal
+> corrected). Two landed somewhere other than where the plan looked:
+> T16.12's win was culling in *paint*, not a faster raster scan, and
+> T16.13 found the GPU crossover reconciles two earlier readings rather
+> than overturning either.
+>
+> What it bought, measured: **7.6× on layout with one subtree marked,
+> 293× on a still frame** (T16.9/T16.10), **8× on paint at 10 000 rows**
+> (T16.12), and a damage figure that describes every frame instead of
+> the luckiest of 200 (T16.2).
+
 *Planned 2026-09-08. The work queue produced by the performance review
 of that date (three agents: competitor-arm restoration, per-stage
 profiling, resource measurement; then a serial measurement pass on a
