@@ -62,7 +62,37 @@ fn main() {
 
     let mut ui = Ui::default();
     ui.rows.items = (0..n).map(|i| Label::new(format!("row {i}"))).collect();
-    let styles = pass::default_styles(&ui);
+
+    // **The column is pinned to the viewport width, and this is load-bearing
+    // for the damage number** (T16.2).
+    //
+    // `List::paint` clips its items to the list node's rect, and that node's
+    // width is the *widest row*. A row whose text got one pixel wider
+    // therefore rewrote the clip, and `Diffing::step` unions old ink with
+    // new -- so a one-row change damaged the entire column. At 100 rows this
+    // arm alternated between 1,562 and 57,600 damaged pixels depending on
+    // which digits row 0 happened to contain, and because the arm reports a
+    // *minimum*, it preferentially selected the frames where the width did
+    // not change. The published `+render (damage)` figure described the
+    // lucky frames.
+    //
+    // A pinned width is also the more representative case: a list in a
+    // window is the window's width, not its content's.
+    let mut styles = pass::default_styles(&ui);
+    lumen_static::style::cascade_deep(
+        &mut ui,
+        &[
+            // The **list node**, not its parent: `List::paint` clips to
+            // `rect_of(&st[i])` on its own state, so pinning the column
+            // above it leaves the content-dependent width in place. Pinning
+            // `Ui` first was exactly that mistake, and `DIAG=1` -- newly
+            // able to tell the truth -- reported a full-height damage strip
+            // until this line named the right node.
+            Rule::new(Selector::Kind("list"), Patch::new().width(Length::Fixed(W as f32))),
+            Rule::new(Selector::Kind("Ui"), Patch::new().width(Length::Fixed(W as f32))),
+        ],
+        &mut styles,
+    );
     let mut st = vec![lumen_static::NodeState::default(); Ui::NODE_COUNT];
     // Natural height, as Qt's harness is careful to give its rows: squashing
     // 3000 rows into 800 px is a different and much cheaper layout problem.
@@ -141,16 +171,22 @@ fn main() {
 
     let mut best = [f64::INFINITY; 4];
     for k in 0..iters {
-        let text = format!("counter: {:05}", k % 10000);
+        // Every sub-step's string is the **same length and the same glyph
+        // widths** -- five zero-padded digits and a step marker. The four
+        // steps used to append `.`, `..` and `...`, so each measured a
+        // differently-wide row and moved the column's intrinsic width
+        // between sub-steps. Digits are tabular in both candidate faces, so
+        // this run's width is constant frame to frame (T16.2).
+        let text = |step: u8| format!("counter: {:05} #{step}", k % 10000);
 
         // 1. layout only
-        ui.rows.items[0].set(text.clone());
+        ui.rows.items[0].set(text(0));
         let t = Instant::now();
         layout(&mut ui, &mut st, &mut metrics);
         best[0] = best[0].min(t.elapsed().as_secs_f64() * 1e6);
 
         // 2. layout + paint
-        ui.rows.items[0].set(format!("{text}."));
+        ui.rows.items[0].set(text(1));
         let t = Instant::now();
         layout(&mut ui, &mut st, &mut metrics);
         list.clear();
@@ -158,7 +194,7 @@ fn main() {
         best[1] = best[1].min(t.elapsed().as_secs_f64() * 1e6);
 
         // 3. + rasterise the whole viewport
-        ui.rows.items[0].set(format!("{text}.."));
+        ui.rows.items[0].set(text(2));
         let t = Instant::now();
         layout(&mut ui, &mut st, &mut metrics);
         list.clear();
@@ -168,7 +204,7 @@ fn main() {
         best[2] = best[2].min(t.elapsed().as_secs_f64() * 1e6);
 
         // 4. + rasterise only the damage
-        ui.rows.items[0].set(format!("{text}..."));
+        ui.rows.items[0].set(text(3));
         let t = Instant::now();
         layout(&mut ui, &mut st, &mut metrics);
         list.clear();
@@ -212,9 +248,82 @@ fn main() {
 
     assert!(!list.cmds.is_empty(), "the frame drew nothing, so it measured nothing");
     if std::env::var_os("DIAG").is_some() {
-        let d = retain.finish();
-        eprintln!("diag: {} cmds, damage {:?}", list.cmds.len(), d);
+        // **Paint a real frame first.** This used to call `retain.finish()`
+        // straight after the loops, with no intervening `observe` -- so
+        // `Diffing::finish` saw zero observed commands against a non-empty
+        // previous frame, took that for a structural change and returned
+        // `Damage::All` unconditionally. The diagnostic printed `All`
+        // whatever the frame actually damaged, which is to say it had never
+        // once been true (T16.2).
+        //
+        // Two frames, because the first re-establishes the baseline the
+        // loops above left and only the second reports a one-row change.
+        let mut area = None;
+        for step in 0..2u8 {
+            ui.rows.items[0].set(format!("diag: {:05} #{step}", 4242));
+            layout(&mut ui, &mut st, &mut metrics);
+            list.clear();
+            let mut rec = Recording::new(&mut list, &mut retain);
+            pass::paint(&ui, &st, &mut rec);
+            drop(rec);
+            area = retain.finish().clip_to([0.0, 0.0, W as f32, H as f32]);
+        }
+        let px = area.map_or(0, |a| ((a[2] - a[0]) * (a[3] - a[1])).max(0.0) as u64);
+        eprintln!("diag: {} cmds, damage {:?}", list.cmds.len(), area);
+        eprintln!("diag: damaged {px} px of {}", W as u64 * H as u64);
         eprintln!("diag: tree height {}", st[0].size.h);
+
+        // **Is the damage the same every frame?** The reason this check
+        // exists: the arm reports a *minimum* over 200 iterations, so a
+        // damage figure that varies frame to frame is reported at its
+        // smallest and the published number describes the luckiest frame
+        // rather than the typical one. Before T16.2 this swung between
+        // 1,562 and 57,600 px at N=100. A spread here is a broken
+        // measurement, not a curiosity.
+        // A row's height, derived from the column rather than read out of
+        // `st`: `List`'s items live in its arena, not in the node table, so
+        // `st` holds only `Ui` and the list itself. The first version of
+        // this line used `st[1].size.h` -- the list's *total* height, 2200
+        // px at N=100 -- which made the bound below 4400 px and the
+        // assertion vacuous. It passed, which is how it was noticed.
+        let row_h = (st[0].size.h / n as f32).max(1.0);
+        let (mut lo, mut hi, mut tallest) = (u64::MAX, 0u64, 0.0f32);
+        for k in 0..200u32 {
+            ui.rows.items[0].set(format!("counter: {:05} #{}", k % 10000, k % 4));
+            layout(&mut ui, &mut st, &mut metrics);
+            list.clear();
+            let mut rec = Recording::new(&mut list, &mut retain);
+            pass::paint(&ui, &st, &mut rec);
+            drop(rec);
+            let a = retain.finish().clip_to([0.0, 0.0, W as f32, H as f32]);
+            let p = a.map_or(0, |a| ((a[2] - a[0]) * (a[3] - a[1])).max(0.0) as u64);
+            tallest = tallest.max(a.map_or(0.0, |a| a[3] - a[1]));
+            lo = lo.min(p);
+            hi = hi.max(p);
+        }
+        eprintln!(
+            "diag: damage over 200 frames: {lo}..{hi} px, tallest {tallest:.0} px              ({:.1} rows of {row_h:.0} px)",
+            tallest / row_h
+        );
+
+        // **The property is the height, not the area.** The area still moves
+        // a little because row 0's own width moves: the face's digits are
+        // not perfectly tabular, so `counter: 00042` and `counter: 00199`
+        // differ by about a pixel. That is *correct* damage -- the row
+        // really did change width -- and asserting it away would be
+        // asserting that text has fixed width.
+        //
+        // What must not happen is the damage escaping the changed row and
+        // taking the column with it, which is what a content-dependent
+        // container clip did: 1,562 px on a lucky frame and 57,600 on an
+        // unlucky one, 36 rows tall. Two rows is the bound; the first
+        // version of this check asserted exact equality, failed on the
+        // one-pixel wobble, and was testing the wrong thing.
+        assert!(
+            tallest <= row_h * 2.0,
+            "damage is {tallest:.0} px tall, {:.1} rows: it has escaped the row that changed",
+            tallest / row_h
+        );
     }
     for (what, us) in
         ["layout", "+paint", "+render (full)", "+render (damage)"].iter().zip(best)
