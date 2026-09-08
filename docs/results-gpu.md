@@ -156,9 +156,23 @@ method `docs/results-competitive.md` §3 uses.
 
 | | crates | binary | idle RSS |
 |---|---:|---:|---:|
-| software (default) | 101 | 5.29 MB | 25.6 MB |
-| `--features gpu`, GPU in use | 138 | 12.26 MB | **199.3 MB** |
-| `--features gpu`, `LUMEN_BACKEND=software` | 138 | 12.26 MB | **26.2 MB** |
+| software (default) | 101 | 2.71 MB | 25.6 MB |
+| `--features gpu`, GPU in use | 138 | 6.58 MB | **199.3 MB** |
+| `--features gpu`, `LUMEN_BACKEND=software` | 138 | 6.58 MB | **26.2 MB** |
+
+> **Corrected 2026-09-08 (M16/T16.5). The binary column was wrong, and
+> wrong in the GPU's disfavour.** It first read 5.29 and 12.26 MB, taken
+> from `examples/minimal` built in the *framework* workspace — which sets
+> no `[profile.release]` at all: unstripped, no LTO, sixteen codegen
+> units. `docs/results-competitive.md` §4's 2.7 MB comes from
+> `benches-competitive`, which sets `lto=true, codegen-units=1,
+> strip=true, panic="abort"`. Putting the two in one column compared a
+> debug-shaped binary with a shipped one.
+>
+> Re-measured with both arms built under the competitive workspace's
+> profile, one `cargo` invocation each, the GPU backend costs
+> **+3.87 MB**, not +6.97 — the old figure overstated it by 1.8×. The
+> crate count and the RSS rows were never affected.
 
 **The price is the context, not the code.** Compiling the GPU backend in
 and not using it costs 0.6 MB resident. Opening an adapter costs 174 MB,
@@ -178,6 +192,51 @@ same count: clipboard +5 crates, dialogs +24, GPU +37. (The +11 and +79
 recorded in `crates/lumen-static-winit/Cargo.toml` for the first two are
 from 2026-09-05/07 on a different counting method and an older lockfile;
 the ordering agrees, the absolutes do not, and neither has been re-run.)
+
+## 5b. When the GPU *loses* — the crossover
+
+**Added 2026-09-08 (M16/T16.5), because §1 on its own reads more
+favourably than the whole measurement supports.**
+
+§1's 20× is a *full-surface redraw*. On the incremental path — which is
+what the desktop actually runs, and what `Host::pump` produces every
+frame — the ordering inverts. From the per-stage profiler
+(`benches-competitive/arms/stages`), raster only, µs:
+
+| workload | damaged | N=100 | N=1 000 | N=3 000 | N=10 000 |
+|---|---|---|---|---|---|
+| one row, software | 2 002 px (0.6%) | **4.9** | **7.6** | **12.4** | **29.9** |
+| one row, GPU | 2 002 px (0.6%) | 33.3 | 35.6 | 40.4 | 87.7 |
+| all rows, software | 96 800 px (30%) | 128.0 | 128.9 | **135.4** | **157.6** |
+| all rows, GPU | 96 800 px (30%) | **65.8** | **69.1** | 143.5 | 190.8 |
+
+**The GPU loses every damage-clipped frame measured**, by 1.5–6.8×. It
+wins the all-rows case at small N and loses it again by 10 000. So the
+backend is not simply faster; it is faster on one axis and slower on
+another, and both axes move.
+
+Two costs are visible and they pull in opposite directions:
+
+- **A fixed floor per frame** — buffer upload, pass setup, submission,
+  and on this path a `wait`. It is what makes 2 002 damaged pixels cost
+  33 µs on the GPU and 5 µs on the CPU.
+- **A per-command cost that the software path does not pay.** With the
+  damaged area held at 96 800 px, GPU raster grows 65.8 → 190.8 µs from
+  100 to 10 000 rows while software grows 128.0 → 157.6. Both walk and
+  cull the same list, so the GPU's extra growth has another source —
+  instance building is the obvious suspect and has not yet been
+  profiled.
+
+**What a reader should take from this:** enable the GPU for large
+repaints at high resolution — a chart animating, a canvas, a list
+scrolling, anything at 1440p and above where §1's numbers apply. Leave
+it off for a form or a tally, where damage is a rect and the software
+canvas is several times faster *and* 174 MB lighter.
+
+Where exactly the two curves cross is not yet known: it needs a sweep
+over damaged fraction × command count rather than the four points above.
+That is `docs/plan-invalidation.md` T16.13, along with the per-command
+cost and the question of whether the backend should choose for itself.
 
 ## 6. The fallback, end to end
 
@@ -224,6 +283,9 @@ screen when it did not. `None` means "not checkable", which is true.
   one, and `ImageSource` already says a missing image draws nothing.
 - **No text-only or shadow-only sweep.** The scene is mixed on purpose;
   attributing the 20× to a stage has not been done.
+- **The crossover is bounded but not located.** §5b shows the GPU losing
+  on every damage-clipped frame and winning on large repaints; the four
+  points do not say where the curves meet (T16.13).
 - **Multi-window is software-only.** `Pane` still owns a `Surface` and a
   `Canvas` directly rather than a `Box<dyn Backend>`. Nothing prevents
   it; it was not needed, and a second window is a second GPU context —

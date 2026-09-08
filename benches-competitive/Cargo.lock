@@ -977,6 +977,7 @@ dependencies = [
  "arboard",
  "lumen-static",
  "lumen-static-shell",
+ "lumen-static-wgpu",
  "softbuffer",
  "winit",
 ]

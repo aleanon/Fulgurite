@@ -10,3 +10,12 @@ publish = false
 [dependencies]
 lumen-static = { path = "../../../crates/lumen-static" }
 lumen-static-winit = { path = "../../../crates/lumen-static-winit" }
+
+# The GPU backend, so its size can be measured under **this workspace's**
+# release profile (lto, one codegen unit, stripped, panic=abort) rather than
+# the framework workspace's, which sets none of those. `docs/results-gpu.md`
+# §5 quoted 5.29/12.26 MB from `examples/minimal` and put them beside §4's
+# 2.7 MB, which were not comparable numbers (M16/T16.5).
+[features]
+default = []
+gpu = ["lumen-static-winit/gpu"]
