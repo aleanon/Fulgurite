@@ -33,6 +33,7 @@ tree today.
 | [`verification-notes.md`](verification-notes.md) | what could be formally verified, and the `unsafe` audit | **live** | n/a |
 | [`results-embedded.md`](results-embedded.md) | the embedded footprint, and the 26.5 KB `f32::clamp` finding | **live** — measured 2026-09-05, thresholds recorded first | yes — `just firmware-size` |
 | [`plan-capabilities.md`](plan-capabilities.md) | M15 — the thirteen capabilities all six others have, and the gating policy for each | **done** 2026-09-07, T15.0–T15.12 (T15.12 deferred and un-deferred the same day; built 2026-09-07) | sizes and crate counts asserted per task |
+| [`plan-invalidation.md`](plan-invalidation.md) | M16 — the work queue from the 2026-09-08 performance review: relayout boundaries, the O(commands) raster, and the benchmark defects that would have judged them | **queue**, T16.0–T16.14, none started | n/a |
 | [`competitive-feature-gaps.md`](competitive-feature-gaps.md) | what Qt, GTK, iced, Xilem, Slint and Lumen have that this does not, per framework | **live**, surveyed 2026-09-06 | n/a |
 | [`results-competitive.md`](results-competitive.md) | frame time, RSS and size against the same six — and the two defects it found | **live**, measured 2026-09-05 | yes — `benches-competitive/` |
 | [`results-raster-scaling.md`](results-raster-scaling.md) | does the software rasteriser scale to a real display? (not at 4K) | **live**, measured 2026-09-07 | yes — `benches-competitive -p raster-scaling` |
