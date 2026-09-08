@@ -188,9 +188,7 @@ impl Canvas {
     }
 
     pub fn clear(&mut self, c: Color) {
-        for px in self.pixels.chunks_exact_mut(4) {
-            px.copy_from_slice(&[c.0, c.1, c.2, c.3]);
-        }
+        fill_px(&mut self.pixels, [c.0, c.1, c.2, c.3]);
     }
 
     /// Clear only `r`. A partial redraw clears the region it is about
@@ -211,9 +209,7 @@ impl Canvas {
         if c.3 == 255 {
             let start = ((y as u32 * self.width + x0 as u32) * 4) as usize;
             let end = ((y as u32 * self.width + x1 as u32) * 4) as usize;
-            for px in self.pixels[start..end].chunks_exact_mut(4) {
-                px.copy_from_slice(&[c.0, c.1, c.2, 255]);
-            }
+            fill_px(&mut self.pixels[start..end], [c.0, c.1, c.2, 255]);
         } else {
             for x in x0..x1 {
                 self.blend(x, y, c);
@@ -359,8 +355,20 @@ impl Canvas {
     /// with the rasteriser's optimisation level: in the example it was
     /// 2 ms of a 3 ms frame.
     pub fn blit_0rgb(&self, dst: &mut [u32]) {
-        for (d, px) in dst.iter_mut().zip(self.pixels.chunks_exact(4)) {
-            *d = (px[0] as u32) << 16 | (px[1] as u32) << 8 | px[2] as u32;
+        // Four pixels a step, and the pack spelled as `from_le_bytes`
+        // rather than three shifts and two ors: both are what let LLVM
+        // widen this into a shuffle instead of walking one pixel at a
+        // time (M17/T17.0, `docs/results-wide-stores.md`).
+        let mut d4 = dst.chunks_exact_mut(4);
+        let mut s16 = self.pixels.chunks_exact(16);
+        for (dq, sq) in (&mut d4).zip(&mut s16) {
+            for k in 0..4 {
+                let p = &sq[k * 4..k * 4 + 4];
+                dq[k] = u32::from_le_bytes([p[2], p[1], p[0], 0]);
+            }
+        }
+        for (d, px) in d4.into_remainder().iter_mut().zip(s16.remainder().chunks_exact(4)) {
+            *d = u32::from_le_bytes([px[2], px[1], px[0], 0]);
         }
     }
 
@@ -378,8 +386,8 @@ impl Canvas {
             let row = y * stride;
             for x in x0..x1 {
                 let i = (row + x) * 4;
-                let px = &self.pixels[i..i + 3];
-                dst[row + x] = (px[0] as u32) << 16 | (px[1] as u32) << 8 | px[2] as u32;
+                let px = &self.pixels[i..i + 4];
+                dst[row + x] = u32::from_le_bytes([px[2], px[1], px[0], 0]);
             }
         }
     }
@@ -570,6 +578,39 @@ struct TextRun<'a> {
     size: f32,
     weight: f32,
     color: Color,
+}
+
+/// Write one RGBA pixel value across `dst`, wide.
+///
+/// **The naive spelling is 5.6x slower and this is the whole of
+/// M17/T17.0.** `for px in dst.chunks_exact_mut(4) { px.copy_from_slice(&p) }`
+/// is what `clear` and `span` used, and compiled into the library it
+/// stores four bytes at a time -- 0.896 ms to clear 1080p against
+/// 0.159 for the same work done sixteen bytes at a time. The identical
+/// loop written *inline in a test crate* vectorises fine, so this is
+/// not about the loop's shape; it is about what survives being
+/// compiled behind a crate boundary with no LTO.
+///
+/// Splatting the four bytes into a 16-byte pattern first gives the
+/// optimiser something it will widen either way, which is why the fix
+/// is a pattern rather than an `#[inline]`. `docs/results-wide-stores.md`.
+///
+/// Byte-identical to the loop it replaces: the remainder is written
+/// four bytes at a time, and a canvas is always a whole number of
+/// pixels, so the remainder is at most three pixels.
+#[inline]
+fn fill_px(dst: &mut [u8], p: [u8; 4]) {
+    let mut pat = [0u8; 16];
+    for k in 0..4 {
+        pat[k * 4..k * 4 + 4].copy_from_slice(&p);
+    }
+    let mut it = dst.chunks_exact_mut(16);
+    for ch in &mut it {
+        ch.copy_from_slice(&pat);
+    }
+    for px in it.into_remainder().chunks_exact_mut(4) {
+        px.copy_from_slice(&p);
+    }
 }
 
 fn clipped(rect: [f32; 4], stack: &[[f32; 4]]) -> Option<[f32; 4]> {

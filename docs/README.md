@@ -39,6 +39,7 @@ tree today.
 | [`competitive-feature-gaps.md`](competitive-feature-gaps.md) | what Qt, GTK, iced, Xilem, Slint and Lumen have that this does not, per framework | **live**, surveyed 2026-09-06 | n/a |
 | [`results-competitive.md`](results-competitive.md) | frame time, RSS and size against the same six — and the two defects it found | **live**, measured 2026-09-05 | yes — `benches-competitive/` |
 | [`results-raster-scaling.md`](results-raster-scaling.md) | does the software rasteriser scale to a real display? (not at 4K) | **live**, measured 2026-09-07 | yes — `benches-competitive -p raster-scaling` |
+| [`results-wide-stores.md`](results-wide-stores.md) | writing pixels four at a time: 5.6x on `clear`, 1.58x on a whole frame, no `unsafe` | **live**, measured 2026-09-09 | yes — `benches --bin stores`, `just profile` |
 | [`results-threading.md`](results-threading.md) | would a second thread help, and which one? (band-split raster yes, pipelining no) | **live**, measured 2026-09-08 | yes — `raster-scaling --bin bands` |
 | [`results-gpu.md`](results-gpu.md) | what the wgpu backend buys (20× at 4K), what it costs, and how closely it matches the software canvas | **live**, measured 2026-09-07 | yes — `benches-competitive -p raster-scaling`, `cargo test -p lumen-static-wgpu` |
 | [`results-retention.md`](results-retention.md) | streaming retention vs a copied display list (M13/T13.8) | **live** | yes — `benches --bin retain` |
