@@ -233,10 +233,39 @@ scrolling, anything at 1440p and above where §1's numbers apply. Leave
 it off for a form or a tally, where damage is a rect and the software
 canvas is several times faster *and* 174 MB lighter.
 
-Where exactly the two curves cross is not yet known: it needs a sweep
-over damaged fraction × command count rather than the four points above.
-That is `docs/plan-invalidation.md` T16.13, along with the per-command
-cost and the question of whether the backend should choose for itself.
+### Where the curves cross (M16/T16.13, 2026-09-08)
+
+Swept, at 1080p, over the two variables the table above showed moving
+the answer. Each cell is cpu/gpu in milliseconds, min of 20:
+
+| commands | 1% | 2% | 3% | 5% | 10% |
+|---:|---|---|---|---|---|
+| 16 | 0.03/0.04 **cpu** | 0.03/0.04 **cpu** | 0.04/0.04 **cpu** | 0.05/0.04 **gpu** | 0.10/0.06 **gpu** |
+| 160 | 0.04/0.06 **cpu** | 0.06/0.06 **cpu** | 0.04/0.04 **cpu** | 0.05/0.04 **gpu** | 0.09/0.05 **gpu** |
+| 1 600 | 0.03/0.05 **cpu** | 0.05/0.05 **cpu** | 0.07/0.06 **gpu** | 0.08/0.06 **gpu** | 0.11/0.06 **gpu** |
+
+**The crossover is 3–5% of the surface**, arriving earlier as the frame
+gets busier. Below it the GPU's fixed per-frame cost — buffer upload,
+pass setup, submission — dominates a job too small to amortise it.
+Above it the CPU's per-pixel cost takes over and never gives it back:
+§1's 20× at 4K is the same curve at 100%.
+
+This reconciles §5b rather than contradicting it. Those numbers were
+2 002 damaged pixels on a 320 000-pixel surface — **0.6%**, squarely in
+the region where the CPU wins — and the all-rows row was 30%, where the
+GPU won at small command counts. Both readings were correct and neither
+was the whole shape.
+
+**The rule of thumb this yields:** the GPU is the right backend when a
+frame repaints more than about a twentieth of the window. A form or a
+tally, which dirty a rect, should stay on the software canvas; a chart
+animating, a canvas being drawn on, or a list scrolling should not.
+
+Two things this still does not answer: the per-command cost noted above
+is unprofiled, and whether the backend should switch on this threshold
+by itself is deliberately open — a backend that changes under load is a
+backend whose frame times are bimodal, and that trade has not been
+measured. `docs/plan-invalidation.md` T16.13.
 
 ## 6. The fallback, end to end
 

@@ -20,6 +20,7 @@ use lumen_static::display::{Color, DisplayList, Stops};
 use lumen_static::Point;
 use lumen_static_shell::software::Canvas;
 use lumen_static_shell::text::FontStack;
+use lumen_static::display::Painter as _;
 
 /// A frame with the mix a real application paints: cards with shadows,
 /// text, rules, and a gradient header.
@@ -124,4 +125,83 @@ fn main() {
     }
     println!("\n   gpu: {gpu_name}");
     println!("   the live gate's budget is 16 ms a frame; 60 fps is 16.7");
+
+    crossover(&font);
+}
+
+/// **Where does the GPU start winning?** — `docs/plan-invalidation.md`
+/// T16.13.
+///
+/// `docs/results-gpu.md` §1 measured a full-surface redraw and found
+/// 20x at 4K; §5b measured the incremental path and found the GPU
+/// *losing* every damage-clipped frame. Both are true, so a crossover
+/// exists, and four points do not locate it.
+///
+/// Two variables, because §5b showed both moving the answer: the
+/// **damaged fraction** of the surface, and the **command count** of
+/// the frame. One surface size throughout (1080p), so the only things
+/// changing are the two being swept.
+fn crossover(font: &FontStack) {
+    const W: u32 = 1920;
+    const H: u32 = 1080;
+    println!("\n\ncrossover: 1080p, damaged fraction x command count, min of 20\n");
+
+    let Some(mut gpu) = lumen_static_wgpu::Gpu::headless(W, H) else {
+        println!("   no adapter — skipped");
+        return;
+    };
+    gpu.set_font(font.clone());
+    let mut canvas = Canvas::with_font(W, H, font.clone());
+    let page = lumen_static_shell::CLEAR;
+
+    print!("{:<10}", "cmds");
+    for f in [0.01f32, 0.02, 0.03, 0.05, 0.10] {
+        print!("{:>18}", format!("{:.0}% damage", f * 100.0));
+    }
+    println!();
+
+    for cards in [8usize, 80, 800] {
+        let mut list = DisplayList::new();
+        // A band of cards, tiled to fill the surface, so every damage
+        // fraction below intersects roughly the same density of them.
+        let cols = 8usize;
+        for k in 0..cards {
+            let (cx, cy) = ((k % cols) as f32 * 236.0 + 8.0, (k / cols) as f32 * 90.0 + 8.0);
+            let card = [cx, cy, cx + 220.0, cy + 74.0];
+            list.rounded_rect(card, Color(36, 42, 58, 255), 8.0);
+            list.text(
+                [cx + 12.0, cy + 10.0, cx + 200.0, cy + 30.0],
+                "Card title",
+                16.0,
+                Color(240, 244, 250, 255),
+            );
+        }
+        print!("{:<10}", list.cmds.len());
+
+        for frac in [0.01f32, 0.02, 0.03, 0.05, 0.10] {
+            // A full-width band, which is the shape a scrolling list or
+            // an animating row damages.
+            let h = (H as f32 * frac).max(1.0);
+            let area = [0.0, 0.0, W as f32, h];
+
+            for _ in 0..3 {
+                canvas.clear_within(area, page);
+                canvas.render_within(&list, area);
+                gpu.draw(&list, Some(area), Some((page, area)));
+                gpu.wait();
+            }
+            let sw = best_of(20, || {
+                canvas.clear_within(area, page);
+                canvas.render_within(&list, area);
+            });
+            let hw = best_of(20, || {
+                gpu.draw(&list, Some(area), Some((page, area)));
+                gpu.wait();
+            });
+            let mark = if hw < sw { "gpu" } else { "cpu" };
+            print!("{:>18}", format!("{sw:.2}/{hw:.2} {mark}"));
+        }
+        println!();
+    }
+    println!("\n   each cell is cpu/gpu in ms, and which won");
 }

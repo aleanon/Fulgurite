@@ -550,6 +550,21 @@ measurement or explicitly deferred on a stated condition.
 
 ---
 
+**PARTLY DONE 2026-09-08.** The surface is measured and published
+(`docs/results-gpu.md`, "Where the curves cross"): **the crossover is
+3–5% of a 1080p surface**, arriving earlier as command count rises. It
+reconciles §5b — those frames damaged 0.6% of their surface, which is
+CPU territory — rather than contradicting it.
+
+Still open, and deliberately: the per-command cost is unprofiled, and
+the auto-switch question is **not** answered. A backend that changes
+under load has bimodal frame times, and whether that is better than a
+consistently-slower one is a judgement nobody has measured. Deferred on
+a stated condition: when an application exists whose damage fraction
+crosses 3–5% regularly, measure both and decide then.
+
+---
+
 # Phase E — the mobile question
 
 ## T16.14 — decide what mobile means, or stop claiming it
