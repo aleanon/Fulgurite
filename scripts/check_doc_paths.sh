@@ -49,9 +49,19 @@ done < "$tmp/paths"
 
 # --- (2) cargo targets cited from docs and scripts ---
 if command -v cargo >/dev/null; then
-    cargo metadata --no-deps --format-version 1 2>/dev/null \
-      | tr ',' '\n' | grep -oE '"name":"[A-Za-z0-9_-]+"' | sed 's/"name":"//; s/"//' \
-      | sort -u > "$tmp/targets" || : > "$tmp/targets"
+    # BOTH workspaces. `benches-competitive` is deliberately its own
+    # workspace so foreign toolkits stay out of this one's Cargo.lock, and
+    # until 2026-09-08 its targets were invisible here — so a doc citing
+    # `--bin bands` failed the gate for existing in the wrong workspace
+    # rather than for not existing.
+    : > "$tmp/targets"
+    for ws in . benches-competitive; do
+        [ -f "$ws/Cargo.toml" ] || continue
+        cargo metadata --no-deps --format-version 1 --manifest-path "$ws/Cargo.toml" 2>/dev/null \
+          | tr ',' '\n' | grep -oE '"name":"[A-Za-z0-9_-]+"' | sed 's/"name":"//; s/"//' \
+          >> "$tmp/targets" || true
+    done
+    sort -u -o "$tmp/targets" "$tmp/targets"
 
     { grep -hoE '\-\-bin [A-Za-z0-9_-]+' docs/*.md justfile 2>/dev/null || true; } \
       | awk '{print $2}' | sort -u > "$tmp/bins"

@@ -117,6 +117,29 @@ contiguous node storage addressed by `u32` handles rather than pointer chasing,
 and pipelining the two threads so frame N builds while frame N−1 rasterizes
 (roughly halves perceived latency at no algorithmic cost).
 
+**CORRECTED 2026-09-08 — the parenthetical is backwards, and the
+recommendation is the wrong one of the two.** `docs/results-threading.md`.
+
+Pipelining improves *throughput*, not latency: input→photon latency goes
+**up** by one frame, because the frame a click affects is now rasterised
+one period after it is built. The live gate measures click→presented at
+6.0 ms against a 100 ms budget; a pipeline would add 16.7.
+
+And it buys almost nothing here, because it only pays when the two
+halves are balanced. On a real frame they are not: the tally spends
+**2 µs above the rasteriser and 482 µs in it**, so hiding the first
+behind the second saves 0.4%. Even at 10 000 rows it is 13% on the
+software path and 30% on the GPU one.
+
+**The threading that would pay is the other one — splitting the
+*rasteriser* across bands**, which this section does not mention.
+Measured, sixteen bands cost 1–6% more than one full render, so it
+scales close to linearly: ~3 ms for a 4K full redraw against 19.2 on one
+core, which is the difference between holding 60 fps at 4K on the CPU
+and not. It adds no latency, needs no `unsafe`, and is still not urgent,
+because the frames it helps are the ones the GPU backend already wins
+and the frames it cannot help are already 18 µs.
+
 **AMENDED 2026-09-01:** flat contiguous *state* storage (`[NodeState; N]`)
 stands; flat *traversal* does not — see §5's supersession note. Recursive
 descent over the static struct, writing into the flat state array, measured
