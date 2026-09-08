@@ -260,6 +260,20 @@ gpu-parity:
 raster-sweep:
     cd benches-competitive && cargo run --release -p raster-scaling
 
+# Every stage of one frame, separately, over N x workload x retention.
+#
+# The frame arm reports four cumulative numbers because that is what is
+# comparable with Qt and GTK; this one answers "which stage is it" —
+# dispatch, update, layout, place, paint, damage, software raster, blit,
+# and the GPU raster beside them. It prints the sum of the stages and an
+# independently-measured whole frame so the accounting is checkable.
+#
+# Args: N list, iterations, warm-ups. LUMEN_NO_GPU=1 drops the GPU stage.
+
+# Per-stage cost of one frame over N x workload x retention.
+stages ns="100,1000,3000,10000" iters="200" warm="20":
+    cd benches-competitive && cargo run --release -q -p lumen-static-stages -- {{ ns }} {{ iters }} {{ warm }}
+
 # The Step 4 dylib swap demo; exit code is the verdict.
 hot-demo:
     ./scripts/hot_reload_demo.sh

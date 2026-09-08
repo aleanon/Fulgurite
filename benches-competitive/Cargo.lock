@@ -951,6 +951,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "lumen-static-stages"
+version = "0.0.0"
+dependencies = [
+ "lumen-static",
+ "lumen-static-shell",
+ "lumen-static-wgpu",
+]
+
+[[package]]
 name = "lumen-static-wgpu"
 version = "0.1.0"
 dependencies = [

@@ -1,0 +1,17 @@
+[package]
+name = "lumen-static-stages"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+lumen-static = { path = "../../../crates/lumen-static" }
+# `truetype`, for the same reason the frame arm takes it: every stage
+# number here is dominated by text, and measuring against the
+# half-em-per-byte stand-in would report arithmetic where the shipped
+# build shapes glyphs.
+lumen-static-shell = { path = "../../../crates/lumen-static-shell", features = ["truetype"] }
+# The GPU raster stage. This is a benchmark workspace of its own, so
+# pulling wgpu here costs the framework's dependency graph nothing --
+# the same argument the raster arm's manifest makes.
+lumen-static-wgpu = { path = "../../../crates/lumen-static-wgpu" }

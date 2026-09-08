@@ -3,3 +3,7 @@ target/
 # the generator is the source of truth, not the output.
 experiments/firewall/generated/
 __pycache__/
+
+# benches-competitive stages its built arms (foreign toolkits included) under
+# build/. The recipes are the source of truth, not the 12 MB of binaries.
+benches-competitive/build/

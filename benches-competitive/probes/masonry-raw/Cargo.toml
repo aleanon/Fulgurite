@@ -1,0 +1,19 @@
+# Diagnostic probe, NOT a benchmark arm: does masonry 0.4 expose a headless
+# driver that is not `masonry_testing::TestHarness`?
+#
+# `docs/results-competitive.md` §1 calls masonry's row "an upper bound, not a
+# like-for-like: it is driven through `masonry_testing::TestHarness`, a *test*
+# harness that may carry validation overhead". This crate exists only to check
+# whether the alternative compiles. It prints no timings.
+#
+# Its own workspace, so it does not join `benches-competitive`'s.
+[workspace]
+
+[package]
+name = "masonry-raw-probe"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+masonry = "0.4"

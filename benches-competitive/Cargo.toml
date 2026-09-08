@@ -17,6 +17,7 @@ members = [
     "arms/lumen-static-lean",
     "arms/frame",
     "arms/raster",
+    "arms/stages",
 ]
 
 # Match what a shipped application is built with, and match the profile the
