@@ -10,7 +10,21 @@ license.workspace = true
 # stand-in. See src/text.rs.
 fontdue = { version = "0.9", optional = true }
 lumen-static = { path = "../lumen-static" }
+# Safe SIMD types for the shadow SDF (T17.1). Optional; see the feature.
+wide = { version = "0.7", optional = true, default-features = false }
 
 [features]
 default = []
 truetype = ["dep:fontdue"]
+# Explicit SIMD in the rasteriser's hot loop (M17/T17.1).
+#
+# Default-OFF, and gated as a feature rather than a crate because it is
+# one dependency and one code path inside an existing file, not a new
+# capability -- the M15 policy's third mechanism, used where the first
+# two do not fit. `docs/results-simd.md` states its cost.
+#
+# `wide` and not `core::arch`: intrinsics are all `unsafe`, and
+# scripts/check_no_unsafe.sh has held zero `unsafe` across every
+# crates/*/src since M0. `wide` is a safe wrapper, `no_std`-clean, and
+# keeps that gate absolute rather than growing an exception.
+simd = ["dep:wide"]

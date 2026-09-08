@@ -156,33 +156,41 @@ impl Canvas {
         // in it is at distance <= -rad and contributes nothing. Skipping
         // it structurally rather than computing a distance and throwing
         // it away is most of this function: for the tally's card that is
-        // 131k of 158k pixels, and the shadow went from 72% of a frame's
-        // render to a tenth of it (`docs/results-frame-cost.md`).
+        // 131k of 158k pixels, and it took a full render from 811 to
+        // 478 us (`docs/results-frame-cost.md`).
+        //
+        // **This comment used to say the shadow went "to a tenth" of a
+        // frame's render. It did not** (corrected 2026-09-09,
+        // `docs/results-simd.md`). A tenth is true of the *damaged*
+        // path, where the shadow costs 0-1 us. On a full redraw it is
+        // still the largest single command by a wide margin: after the
+        // skip, after T17.0's wide stores and after T17.1's vector
+        // distance field, 180 us of a 270 us render -- 67%.
         let skip = rad >= 1.0;
         let (ix0, iy0) = ((shape[0] + rad).ceil() as i64, (shape[1] + rad).ceil() as i64);
         let (ix1, iy1) = ((shape[2] - rad).floor() as i64, (shape[3] - rad).floor() as i64);
 
+        // Row-oriented since T17.1: the inner loop hands a whole run of
+        // one row to `shadow_run`, which is where the signed-distance
+        // field is evaluated. Two things follow from that shape and both
+        // are the point of it — the per-pixel bounds check inside
+        // `blend` becomes one slice bound for the run, and the distance
+        // field becomes eight lanes wide under `feature = "simd"`.
+        //
+        // This is 74% of a full redraw of the tally: 255 us of 346, for
+        // *one* command (`docs/results-simd.md`).
+        let stride = (self.width * 4) as usize;
         for y in y0..y1 {
             let qy = (y as f32 + 0.5 - cy).abs() - hy;
             let inner_row = skip && y >= iy0 && y < iy1;
-            let mut x = x0;
-            while x < x1 {
-                if inner_row && x >= ix0 && x < ix1 {
-                    x = ix1;
-                    continue;
-                }
-                let qx = (x as f32 + 0.5 - cx).abs() - hx;
-                // Signed distance to a rounded rect (Quilez).
-                let (ax, ay) = (qx.max(0.0), qy.max(0.0));
-                let d = (ax * ax + ay * ay).sqrt() + qx.max(qy).min(0.0) - rad;
-                if d >= -1.0 {
-                    let t = 1.0 - (d / spread).clamp(0.0, 1.0);
-                    let a = (c.3 as f32 * t * t) as u8;
-                    if a > 0 {
-                        self.blend(x, y, Color(c.0, c.1, c.2, a));
-                    }
-                }
-                x += 1;
+            let row = &mut self.pixels[y as usize * stride..(y as usize + 1) * stride];
+            if inner_row {
+                // The interior contributes nothing, so the row is two
+                // runs with a hole between them.
+                shadow_run(row, x0, x1.min(ix0), qy, cx, hx, rad, spread, c);
+                shadow_run(row, x0.max(ix1), x1, qy, cx, hx, rad, spread, c);
+            } else {
+                shadow_run(row, x0, x1, qy, cx, hx, rad, spread, c);
             }
         }
     }
@@ -578,6 +586,121 @@ struct TextRun<'a> {
     size: f32,
     weight: f32,
     color: Color,
+}
+
+/// One row's run of a shadow's signed-distance field — T17.1.
+///
+/// `row` is the whole row; `xa..xb` are pixel indices into it, already
+/// clamped to the surface by the caller, which is what lets the blend
+/// index without a per-pixel bounds check.
+///
+/// Byte-identical between the scalar and SIMD forms **by
+/// construction**: the vector form computes the same `f32` alpha in
+/// eight lanes and hands it back as `f32`, and the `as u8` cast and the
+/// blend stay scalar. So the only arithmetic that differs is the order
+/// the same operations happen in, and `sqrt`, `max`, `min` and the
+/// four arithmetic ops are all exactly specified for `f32`.
+/// `tests/simd_shadow.rs` asserts it anyway, because "by construction"
+/// is an argument and not a measurement.
+#[allow(clippy::too_many_arguments)]
+fn shadow_run(
+    row: &mut [u8],
+    xa: i64,
+    xb: i64,
+    qy: f32,
+    cx: f32,
+    hx: f32,
+    rad: f32,
+    spread: f32,
+    c: Color,
+) {
+    if xa >= xb {
+        return;
+    }
+
+    #[cfg(feature = "simd")]
+    {
+        use wide::{f32x8, CmpGe};
+        let base = c.3 as f32;
+        let (vhx, vrad, vsp) = (f32x8::splat(hx), f32x8::splat(rad), f32x8::splat(spread));
+        let (vcx, vqy, vbase) = (f32x8::splat(cx), f32x8::splat(qy), f32x8::splat(base));
+        let (zero, one, neg1) = (f32x8::splat(0.0), f32x8::splat(1.0), f32x8::splat(-1.0));
+        let ay = vqy.max(zero);
+        let mut x = xa;
+        while x + 8 <= xb {
+            let mut xs = [0.0f32; 8];
+            for (k, v) in xs.iter_mut().enumerate() {
+                *v = (x + k as i64) as f32 + 0.5;
+            }
+            let qx = (f32x8::from(xs) - vcx).abs() - vhx;
+            let ax = qx.max(zero);
+            let d = (ax * ax + ay * ay).sqrt() + qx.max(vqy).min(zero) - vrad;
+            let t = one - (d / vsp).max(zero).min(one);
+            // Pixels deeper than one unit inside the shape contribute
+            // nothing; masking them to zero alpha is what the scalar
+            // form's `if d >= -1.0` does.
+            let a = (vbase * t * t) & d.cmp_ge(neg1);
+            for (k, av) in a.to_array().iter().enumerate() {
+                let a8 = *av as u8;
+                if a8 > 0 {
+                    blend_px(row, (x + k as i64) as usize, Color(c.0, c.1, c.2, a8));
+                }
+            }
+            x += 8;
+        }
+        // The tail: fewer than eight pixels left over.
+        shadow_run_scalar(row, x, xb, qy, cx, hx, rad, spread, c);
+    }
+    #[cfg(not(feature = "simd"))]
+    shadow_run_scalar(row, xa, xb, qy, cx, hx, rad, spread, c);
+}
+
+/// The scalar form, and the tail of the vector one.
+#[allow(clippy::too_many_arguments)]
+fn shadow_run_scalar(
+    row: &mut [u8],
+    xa: i64,
+    xb: i64,
+    qy: f32,
+    cx: f32,
+    hx: f32,
+    rad: f32,
+    spread: f32,
+    c: Color,
+) {
+    let base = c.3 as f32;
+    let ay = qy.max(0.0);
+    for x in xa..xb {
+        let qx = (x as f32 + 0.5 - cx).abs() - hx;
+        // Signed distance to a rounded rect (Quilez).
+        let ax = qx.max(0.0);
+        let d = (ax * ax + ay * ay).sqrt() + qx.max(qy).min(0.0) - rad;
+        if d >= -1.0 {
+            let t = 1.0 - (d / spread).clamp(0.0, 1.0);
+            let a = (base * t * t) as u8;
+            if a > 0 {
+                blend_px(row, x as usize, Color(c.0, c.1, c.2, a));
+            }
+        }
+    }
+}
+
+/// Source-over one pixel into a row, with no coordinate check.
+///
+/// The caller has already clamped the run to the surface, so the only
+/// bound left is the slice's own. `Canvas::blend` re-checks four
+/// comparisons per pixel, which is what a row-oriented loop exists to
+/// stop paying.
+#[inline]
+fn blend_px(row: &mut [u8], x: usize, c: Color) {
+    let i = x * 4;
+    let px = &mut row[i..i + 4];
+    let a = c.3 as u32;
+    let inv = 255 - a;
+    px[0] = ((c.0 as u32 * a + px[0] as u32 * inv) / 255) as u8;
+    px[1] = ((c.1 as u32 * a + px[1] as u32 * inv) / 255) as u8;
+    px[2] = ((c.2 as u32 * a + px[2] as u32 * inv) / 255) as u8;
+    px[3] = 255;
 }
 
 /// Write one RGBA pixel value across `dst`, wide.

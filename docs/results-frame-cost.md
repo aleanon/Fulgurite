@@ -105,6 +105,16 @@ Full render 811 → 478 µs. The lesson is the same one this document
 opened with — the expensive command was found by measuring per command
 class, not by reading the code.
 
+**Still the largest command, 2026-09-09** (`docs/results-simd.md`). The
+skip took it from 72% of a full render to about half, not to a tenth —
+a claim that had drifted into `software.rs`'s comment and is corrected
+there. Two later passes brought it to 180 µs of a 270 µs render, 67%,
+and it remains the one worth attacking. **The measurement per command
+class had a hole in it the whole time:** `just profile`'s full-render
+breakdown reported `rect`, `rounded_rect` and `text` and omitted
+`Shadow`, so its rows summed to 86 of 346 µs and the largest class was
+invisible in exactly the tool this section credits for finding it.
+
 ### Correction, same day: `no damage, no frame` was wrong
 
 T8b.4 said "a redraw whose diff is empty presents nothing", and the

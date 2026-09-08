@@ -96,7 +96,7 @@ check: test check-extra
 # decision CI gets to make.
 
 # Release-shape rustdoc, binsize, and the exhaustive f32 check.
-check-extra: floats thumb gpu
+check-extra: floats thumb gpu simd
     # Release-shape rustdoc: `--workspace` hides broken links that point at
     # items which only exist behind `observe`/`reload`.
     RUSTDOCFLAGS="-D warnings" cargo doc -p lumen-static --no-deps
@@ -111,6 +111,17 @@ check-extra: floats thumb gpu
 # fail when no adapter is present** — a machine with no GPU is the
 # configuration the CPU fallback exists for, so a red suite there would
 # be reporting the wrong thing (docs/results-gpu.md).
+
+# The rasteriser's SIMD path (M17/T17.1). Default-OFF, so `just test`
+# builds the scalar one; this proves the vector one is byte-identical
+# rather than merely close, which is the whole basis for offering it.
+
+# The SIMD rasteriser: byte-identity against the scalar path, and lint.
+simd:
+    cargo test -p lumen-static-shell --features simd --test simd_shadow
+    cargo test -p lumen-static-shell --features simd --test wide_stores
+    cargo test -p lumen-static-shell --features simd --test damage_oracle
+    cargo clippy -p lumen-static-shell --features simd --all-targets -- -D warnings
 
 # The GPU backend: build, lint, and compare its pixels with the software canvas.
 gpu:
@@ -300,3 +311,7 @@ live-gate:
 # belong in docs/results-frame-cost.md.
 profile:
     LUMEN_PROFILE=1 cargo run -q -p counter-window -- --headless target/tally.ppm 12
+
+# The same frame with the rasteriser's SIMD path on (M17/T17.1).
+profile-simd:
+    LUMEN_PROFILE=1 cargo run -q -p counter-window --features simd -- --headless target/tally.ppm 12

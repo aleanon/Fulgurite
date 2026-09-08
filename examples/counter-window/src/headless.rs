@@ -96,6 +96,13 @@ pub fn profile(host: &mut Host<Tally>, canvas: &mut Canvas, mut metrics: Option<
     use lumen_static::Cmd;
     only("  rect", Box::new(|c| matches!(c, Cmd::Rect { .. })));
     only("  rounded_rect", Box::new(|c| matches!(c, Cmd::RoundedRect { .. })));
+    // **Shadow was missing from this list until 2026-09-09** while the
+    // damaged breakdown below had it, so the full-render rows summed to
+    // 86 of 345 us and the largest single command class was
+    // unattributed. It is 75% of a full redraw of the tally
+    // (`docs/results-wide-stores.md`), which is not what
+    // `docs/results-frame-cost.md` says a reader should expect.
+    only("  shadow", Box::new(|c| matches!(c, Cmd::Shadow { .. })));
     only("  text", Box::new(|c| matches!(c, Cmd::Text { .. })));
     let mut buf = vec![0u32; (w * h) as usize];
     med("blit rgba->0rgb", Box::new(|| canvas.blit_0rgb(&mut buf)));
