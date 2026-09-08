@@ -9,6 +9,42 @@ this day. Nothing is estimated, and no number comes from a single run.
 > invisible to every gate here because every gate here draws a handful
 > of labels.
 
+## Corrections, 2026-09-08 (M16/T16.4)
+
+The performance review of 2026-09-08 re-ran this comparison across four
+UI sizes and found three statements here to be wrong. They are corrected
+in place below; this list is so a reader who remembers the old text can
+find what moved.
+
+1. **GTK's caveat gave the wrong reason.** It said GTK "lays out ~63
+   rows at any N". Measured, nothing clamps — see §1.
+2. **masonry's caveat named the wrong overhead.** It is not test-harness
+   validation; it is an accessibility tree rebuilt every frame — see §1.
+3. **§5's `Rebuild` row was not a configuration measurement.** It
+   relabelled two numbers from the single `Incremental` arm.
+
+Two things this review did *not* overturn, recorded because it is easy
+to assume otherwise:
+
+- **No number here came from the four differential Lumen arms**
+  (`lumen-lean`, `-noa11y`, `-nodict`). Those binaries were invalid on
+  disk — built in one cargo invocation, feature-unified, byte-identical
+  — but they are cited nowhere in this file, so nothing published here
+  was affected. `M16/T16.1` fixed them so they *can* be used; §4's
+  clipboard delta was already measured the careful way and its note
+  already says why.
+- **Lumen's default-on ambient audit is not the asymmetry it looks
+  like.** Its rows below are the audit-on build and lumen-static's are
+  audit-off, which is not symmetric — but measured both ways the audit
+  costs Lumen **1.6%** (85.1 vs 86.4 µs at 100 rows; 1 432 vs 1 456 at
+  3 000). The gap is architectural, not configurational.
+
+`docs/results-gpu.md` §5 also records a correction of its own from the
+same review, about release profiles, which affects how its sizes may be
+compared with §4 here.
+
+---
+
 ## Method — inherited, not invented
 
 The workload, the stopping points, the size and RSS definitions and the
@@ -73,15 +109,37 @@ shows it.
 
 Four caveats, or the table flatters us:
 
-- **masonry's number is an upper bound**, not a like-for-like: it is
-  driven through `masonry_testing::TestHarness`, a *test* harness that
-  may carry validation overhead. Lumen's report says so and it is
-  inherited here rather than re-discovered.
-- **GTK's number is a floor.** Its box clamps to the window, so it lays
-  out ~63 rows at any N while every other arm lays out all 3 000. It
-  also has no paint number, because `gtk_widget_snapshot` returns NULL
-  outside a live frame-clock pass — the harness asserts rather than
-  quietly timing nothing.
+- **masonry's number is an upper bound, and the overhead is not the one
+  named here until 2026-09-08.** The caveat said `masonry_testing::
+  TestHarness` "may carry validation overhead". In a release build that
+  validation is `debug_assertions`-gated and off, and its tracing spans
+  are once per pass rather than per widget.
+
+  What the test harness actually adds is **`WindowEvent::
+  EnableAccessTree`, sent unconditionally at construction** — so masonry
+  is charged for an accessibility tree rebuilt every frame that
+  lumen-static and plain Lumen are not, and only `Lumen + semantics` is.
+  A probe driving masonry through the public `RenderRoot` instead
+  produces 203 AccessKit nodes at 100 rows with it enabled and 0
+  without, while shaping all 100 rows either way. It *can* be driven
+  without the test harness, in about fifty lines
+  (`benches-competitive/probes/masonry-raw`), which is what makes the
+  difference measurable rather than merely arguable.
+- **GTK's number is a floor — but not for the reason this file gave
+  until 2026-09-08.** It said GTK's box "clamps to the window, so it
+  lays out ~63 rows at any N". It does not. `gtk_widget_measure(box,
+  VERTICAL, 400)` returns exactly 16 px × N — 1 600 / 16 000 / 48 000 /
+  160 000 at N = 100 / 1 000 / 3 000 / 10 000 — and the arm's timing
+  scales 9.0 → 375.9 µs across that sweep. Nothing is clamped. The
+  sibling report's original wording was about *rasterisation*, and it
+  was restated here as layout, which is not true of the layout number
+  being quoted.
+
+  It is still a floor, for the real reason: **GTK caches per-widget size
+  requests**, so a one-row change re-measures one label and reuses 2 999
+  cached ones, and **no paint happens at all** — `gtk_widget_snapshot`
+  returns NULL outside a live frame-clock pass, and the harness asserts
+  rather than quietly timing nothing.
 - **Qt's four numbers are min-of-200 over separate loops** and cannot be
   subtracted from one another. Its idle floor is quoted so a reader does
   not read `natural update+paint` as the marginal cost of the change.
@@ -175,8 +233,23 @@ one: the same core, `no_std` with no allocator, links a **20 524-byte
 | default | the rows above |
 | `--no-default-features` on the windowing crate | −156 KB binary, −0.3 MB RSS |
 | `observe` (the dev surface) | **+64 µs a frame** at 3000 nodes: `+paint` 33.8 → 97.6 µs |
-| `Rebuild` retention | the `+render (full)` row: 215.2 µs against 71.8 µs — damage is **3.0×** |
+| `Rebuild` retention | **not a configuration measurement** — see below |
 | `no_std`, no allocator | not on this table: it has no window. 20 524 B of `.text` (`docs/results-embedded.md`) |
+
+**Why the `Rebuild` row cannot say what it used to.** It quoted 215.2 µs
+against 71.8 µs and called damage 3.0×. Both numbers came from the
+*same* `Incremental` arm — they are its `+render (full)` and `+render
+(damage)` rows relabelled — so the line described a rendering choice
+within one build, not two configurations of the framework.
+
+There is no build flag that separates the two, and by design there
+cannot be: retention is a type parameter with a default, deliberately
+kept out of the feature system so `Rebuild` stays available in the same
+binary as the oracle every incremental gate is compared against
+(M8b/T8b.0). A real comparison needs one process running both, which is
+what `benches-competitive/arms/stages` now does — it reports every stage
+under `Rebuild` and `Incremental` side by side, and that is where the
+question belongs.
 
 **`observe` costs nothing until it runs.** Layout, paint and render are
 within noise of the default build ; the whole cost is the per-frame journal and ambient audit.
@@ -185,6 +258,51 @@ made layout 46% slower — and that was a cold run, caught by repeating it.
 **No number in this file comes from a single run.**
 
 ---
+
+## 5b. Four UI sizes (2026-09-08, M16)
+
+Every number above was taken at one size. Resolution was swept in
+`docs/results-raster-scaling.md`; **tree size never was**, and small N is
+where a static tree's advantage should be smallest because fixed
+per-frame costs dominate. It is not: the margin over iced is *wider* at
+100 rows than at 3 000.
+
+One row of N changes — the matched stopping point, no raster:
+
+| arm | 100 | 1 000 | 3 000 | 10 000 |
+|---|---:|---:|---:|---:|
+| **lumen-static** (layout + display list) | **1.9** | **12.8** | **41.6** | **126.0** |
+| iced 0.14 | 15.5 | 99.3 | 287.1 | 926.5 |
+| egui 0.29 | 36.8 | 261.3 | 792.5 | — |
+| masonry 0.4 | 32.6 | 284.3 | 903.1 | — |
+| Lumen (audit off) | 85.1 | 507.4 | 1 432.5 | — |
+| Qt 6.4.2 (natural update) | 23.7 | 99.8 | 296.5 | — |
+| GTK 4.14.5 (measure only) | 9.0 | 40.4 | 112.3 | 375.9 |
+
+GTK measures and never paints, so it belongs against lumen-static's
+`layout` alone — 1.4 / 7.3 / 21.3 / 65.4 µs — a 5.7–6.4× margin rather
+than the 2.7× the raw columns suggest.
+
+Every row of N changes:
+
+| arm | 100 | 1 000 | 3 000 |
+|---|---:|---:|---:|
+| **lumen-static** | **44.3** | **470.5** | **1 511** |
+| Lumen | 1 548 | 5 810 | 15 791 |
+| iced 0.14 | 568 | 5 783 | 17 153 |
+
+At 100 rows the margin over Lumen is 35×, collapsing to 10.5× by 3 000
+as shaping comes to dominate every arm equally. Reporting only the
+3 000-row figure understates the small-UI case; reporting only the
+100-row figure overstates the large one, which is why both are here.
+
+**Four arms have no all-rows workload** — masonry, egui, Qt and GTK have
+no churn group — so that table cannot be widened without new harness
+code. Slint still has no frame arm at all.
+
+Microseconds, min of 200 after 20 warm-ups for the C/C++ and
+lumen-static arms, Criterion for the rest. Reproduce with
+`benches-competitive/competitors.sh`.
 
 ## 6. What the benchmark found
 
