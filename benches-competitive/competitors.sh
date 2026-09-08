@@ -179,12 +179,33 @@ build_sibling_benches() {
   return $ok
 }
 
+# One cargo invocation PER PACKAGE (T16.1).
+#
+# Not a style preference. Building this workspace in one `cargo build`
+# unifies features across every member, and the four differential Lumen arms
+# came out **byte-identical at 17,593,576 bytes** -- with the supposedly
+# accessibility-free one still containing accesskit and atspi strings. Every
+# size or RSS row derived from that build was measuring one binary four
+# times.
+#
+# Reproduced on our own side before fixing it: one workspace build puts
+# lumen-static-app and -lean 16 bytes apart; one package per invocation puts
+# them 159,312 apart, which is the arboard stack the lean arm drops.
+#
+# This is the trap lumen-static's own justfile documents at length. The
+# benchmark walked into it anyway, which is why the warning lives in the code
+# that would repeat it rather than only in a commit message.
 build_sibling_apps() {
-  ( cd "$SIB/harnesses/apps" && cargo build --release -q ) \
-    && record sibling-apps ok || { record sibling-apps FAILED; return 1; }
-  # NOTE: these four are built in ONE cargo invocation and come out
-  # byte-identical (trap 2). Only `lumen-counter-app` is quotable as "Lumen";
-  # lumen-lean/-noa11y/-nodict are NOT distinguishable from this build.
+  local ok=0 pkg
+  for pkg in iced-app xilem-app slint-app lumen-counter-app \
+             lumen-lean-app lumen-noa11y-app lumen-nodict-app; do
+    if ( cd "$SIB/harnesses/apps" && cargo build --release -q -p "$pkg" ); then
+      record "app:$pkg" ok
+    else
+      record "app:$pkg" FAILED; ok=1
+    fi
+  done
+  return $ok
 }
 
 cmd_build() {
