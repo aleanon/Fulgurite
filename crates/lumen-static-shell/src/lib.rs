@@ -288,7 +288,18 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         // to measure what that state renders as. Doing it in the loop
         // rather than at every call site is what makes a binding
         // impossible to forget.
-        self.app.update();
+        // A binding that wrote invalidates everything (T16.10).
+        //
+        // Conservative in *where*, precise in *whether*: the derive
+        // knows which tree field each binding targets but not which node
+        // index that is, so the mark cannot be narrowed here — while
+        // `format_into` compares before it writes, so a frame in which
+        // no binding changed anything is known to be still, and that is
+        // the case worth catching. An idle window, an animation between
+        // ticks and a repeat key that changed nothing all land here.
+        if self.app.update() {
+            self.invalidation.mark_all();
+        }
 
         let limits = self.limits();
         let t0 = std::time::Instant::now();

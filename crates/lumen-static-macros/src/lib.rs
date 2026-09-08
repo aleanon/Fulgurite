@@ -362,6 +362,43 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                         align_offset, fill_child, inner_limits, loose_child, resolve_self, spaced,
                         Axis,
                     };
+                    // **The relayout boundary** — `docs/plan-invalidation.md`
+                    // T16.9, and the property the design spec's §2 ranks
+                    // first of the four that produce performance.
+                    //
+                    // A subtree nothing marked, re-measured under the
+                    // constraints it was already measured under, cannot
+                    // have a different size. `st[i]` still holds that
+                    // size and `record` still holds the limits it was
+                    // taken under, so the answer is already here and the
+                    // walk below is pure cost.
+                    //
+                    // Both halves are required. The dirty set alone is
+                    // not enough: a clean subtree given *different*
+                    // limits genuinely re-resolves, which is what
+                    // happens to every child of a container that
+                    // changed width. And the constraints alone are not
+                    // enough: identical limits say nothing about
+                    // whether the content changed.
+                    //
+                    // Under `Everything` — the oracle — `can_skip()` is
+                    // false, so this is a load and a branch the
+                    // optimizer removes, and the code below is what the
+                    // crate shipped before T16.9.
+                    //
+                    // `place` still runs over the skipped subtree: a
+                    // node whose *size* did not change may still have
+                    // moved, because a sibling before it changed. Size
+                    // and position are separate questions and only the
+                    // first one is answered here.
+                    if cx.changed.can_skip()
+                        && cx.changed.is_clean(
+                            i..i + <Self as ::lumen_static::widget::Widget>::NODE_COUNT,
+                        )
+                        && st[i].constraints == limits
+                    {
+                        return st[i].size;
+                    }
                     let me = style[i];
                     if !me.visible {
                         // The whole subtree, not just this node. Zeroing
@@ -1139,8 +1176,10 @@ fn expand_app(input: DeriveInput) -> syn::Result<Ts2> {
                 let spec: BindSpec = attr.parse_args()?;
                 let target = &spec.target;
                 binds.push(match &spec.kind {
+                    // `format_into` compares before it writes and says
+                    // so, so a binding reports precisely (T16.10).
                     BindKind::Fmt(fmt, extra) => quote! {
-                        ::lumen_static::bind::format_into(
+                        changed |= ::lumen_static::bind::format_into(
                             &mut self.#target,
                             ::core::format_args!(#fmt, &self.#ident #(, #extra)*),
                         );
@@ -1149,9 +1188,18 @@ fn expand_app(input: DeriveInput) -> syn::Result<Ts2> {
                         // Spelled out so a mismatched `with =` names the
                         // expected signature instead of failing inside
                         // the generated call.
+                        //
+                        // **Reports `true` unconditionally**: the hook
+                        // returns nothing, so whether it wrote anything
+                        // is unknowable from here. A `with =` binding
+                        // therefore opts its application out of the
+                        // still-frame optimisation, which is the
+                        // conservative direction — the alternative is a
+                        // frame that skipped a change.
                         {
                             let f: fn(&mut _, &_) = #path;
                             f(&mut self.#target, &self.#ident);
+                            changed = true;
                         }
                     },
                 });
@@ -1174,6 +1222,9 @@ fn expand_app(input: DeriveInput) -> syn::Result<Ts2> {
             // at the hook, not at the call.
             let f: fn(&mut Self) = #p;
             f(self);
+            // The hook may write anything and reports nothing, so the
+            // frame is not still (T16.10).
+            changed = true;
         }
     });
 
@@ -1192,9 +1243,12 @@ fn expand_app(input: DeriveInput) -> syn::Result<Ts2> {
                 &mut self.#tree_ident
             }
 
-            fn update(&mut self) {
+            fn update(&mut self) -> bool {
+                #[allow(unused_mut)]
+                let mut changed = false;
                 #(#binds)*
                 #after
+                changed
             }
         }
     })

@@ -189,10 +189,15 @@ impl App for Rows {
         &mut self.ui
     }
 
-    fn update(&mut self) {
+    fn update(&mut self) -> bool {
+        // Reports whether ANY row changed (T16.10). `|=` rather than a
+        // short-circuiting `||`: every row must still be written, and
+        // this is the binding step the profiler is timing.
+        let mut changed = false;
         for (dst, src) in self.ui.rows.items.iter_mut().zip(self.model.iter()) {
-            lumen_static::bind::set_if_changed(dst, src);
+            changed |= lumen_static::bind::set_if_changed(dst, src);
         }
+        changed
     }
 }
 

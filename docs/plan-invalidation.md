@@ -340,6 +340,33 @@ claim.
 step of a driven session; the `RIGID_W`/`RIGID_H` citation is either
 implemented or removed in this commit.
 
+**DONE 2026-09-08, in the derive rather than per widget.** The boundary
+is four lines at the top of the generated container `layout`: a subtree
+nothing marked, re-measured under the constraints it was already
+measured under, returns `st[i].size`. Both halves are load-bearing and
+both are tested — the dirty set alone would keep a stale tree across a
+resize, and the constraints alone say nothing about content.
+
+Measured on `Ten10` (901 nodes), layout only, min of 2000
+(`benches --bin invalidation`):
+
+| frame | layout | vs the oracle |
+|---|---:|---:|
+| `Everything` — the whole-tree walk | 5.27 µs | — |
+| `Boundaries`, one subtree marked (90 of 901 nodes) | 0.69 µs | **7.6×** |
+| `Boundaries`, still frame | 0.02 µs | **293×** |
+
+`RIGID_W`/`RIGID_H` are **not** implemented and the citation was
+downgraded to OPEN in T16.6 rather than left asserting an API that does
+not exist. Per-axis rigidity is a narrowing of this check, not a
+prerequisite for it: the boundary above skips on the whole subtree being
+clean, which is the coarse case, and an axis-split would let a height
+change pass a width-rigid parent without dirtying it. Worth doing when
+something measures a tree where that distinction pays; nothing here does
+yet.
+
+## T16.10 — the binding step becomes proportional to what changed
+
 ## T16.10 — the binding step becomes proportional to what changed
 
 *`update` costs 16.4 µs at 10 000 rows for a one-row change, comparing

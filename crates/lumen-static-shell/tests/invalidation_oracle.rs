@@ -240,3 +240,91 @@ fn an_unknown_widget_id_is_reported_not_swallowed() {
     assert!(!host.invalidate("no-such-id"));
     assert!(host.invalidate("card"));
 }
+
+/// The size of the node carrying `wid`.
+fn size_of<I: Invalidation>(
+    host: &Host<Counter, lumen_static::Incremental, I>,
+    wid: &str,
+) -> lumen_static::Size {
+    let table = <Ui as lumen_static::Widget>::SUB_TABLE;
+    let i = lumen_static::style::index_of_wid(table, wid).expect("id exists");
+    host.states[i].size
+}
+
+#[test]
+fn the_skip_actually_fires_and_this_is_what_it_costs() {
+    // **Proof that T16.9 does something.** The oracle test passing is
+    // necessary and not sufficient: it would also pass if the boundary
+    // check never fired, which is how a whole class of optimisation
+    // lands looking correct and doing nothing.
+    //
+    // So this asserts the *observable consequence* of skipping — a
+    // clean subtree keeps last frame's geometry — and in doing so
+    // documents the contract of an explicit dirty set, which is the
+    // sharp edge of `Boundaries`:
+    //
+    //   **mutate without invalidating and you get a stale frame.**
+    //
+    // That is why `Everything` is the default and `Boundaries` is
+    // opt-in, and why a handler running marks everything: the only
+    // mutations `Boundaries` can be trusted with are the ones something
+    // told it about.
+    let mut bounded: Host<Counter, lumen_static::Incremental, Boundaries<16>> =
+        Host::new(app(), 300, 220);
+    bounded.set_stylesheet(&sheet());
+    bounded.pump();
+    let before = size_of(&bounded, "title");
+
+    // A much longer title, and no invalidate.
+    bounded.app.ui.card.title.set("a considerably longer title than before");
+    bounded.pump();
+    assert_eq!(
+        size_of(&bounded, "title"),
+        before,
+        "the subtree was clean, so layout kept last frame's size — the skip fired"
+    );
+
+    // Told about it, the very next frame catches up.
+    assert!(bounded.invalidate("card"));
+    bounded.pump();
+    let after = size_of(&bounded, "title");
+    assert!(after.w > before.w, "invalidating re-laid it out: {before:?} -> {after:?}");
+
+    // The oracle never skips, so it never goes stale in the first
+    // place — same mutation, same absence of an invalidate.
+    let mut oracle: Host<Counter, lumen_static::Incremental, Everything> =
+        Host::new(app(), 300, 220);
+    oracle.set_stylesheet(&sheet());
+    oracle.pump();
+    assert_eq!(size_of(&oracle, "title"), before, "the two start in the same place");
+    oracle.app.ui.card.title.set("a considerably longer title than before");
+    oracle.pump();
+    assert_eq!(
+        size_of(&oracle, "title"),
+        after,
+        "Everything re-lays out unconditionally, so it is never stale"
+    );
+}
+
+#[test]
+fn changed_constraints_defeat_the_skip_even_when_nothing_is_marked() {
+    // The second half of the boundary condition. A subtree may be
+    // perfectly clean and still need re-laying out, because its parent
+    // handed it different limits — which is what happens to every child
+    // of a container that changed width. Checking the dirty set alone
+    // would produce a tree laid out for the old window.
+    let mut host: Host<Counter, lumen_static::Incremental, Boundaries<16>> =
+        Host::new(app(), 300, 220);
+    host.set_stylesheet(&sheet());
+    host.pump();
+    let narrow = size_of(&host, "card");
+
+    host.resize(500, 220);
+    host.pump();
+    let wide = size_of(&host, "card");
+    assert!(wide.w > narrow.w, "a resize must re-lay out: {narrow:?} -> {wide:?}");
+
+    // And a still frame after it does not undo the work.
+    host.pump();
+    assert_eq!(size_of(&host, "card"), wide);
+}

@@ -509,7 +509,21 @@ pub trait App: Sized {
     /// `#[derive(App)]` writes the body from `#[bind(...)]` declarations
     /// — see `crate::bind`. The default does nothing, for trees that
     /// present no derived state.
-    fn update(&mut self) {}
+    /// Returns **whether anything actually changed** —
+    /// `docs/plan-invalidation.md` T16.10.
+    ///
+    /// A binding already compares before it writes
+    /// ([`crate::bind::format_into`] returns whether the text differed),
+    /// so this costs nothing to report and is what lets a host know a
+    /// frame is genuinely still. Under
+    /// [`crate::invalidate::Boundaries`] a `false` here is the
+    /// difference between skipping the tree and walking it.
+    ///
+    /// The default is `false`: a tree that presents no derived state
+    /// changes nothing here, which is true rather than merely safe.
+    fn update(&mut self) -> bool {
+        false
+    }
 
     /// Advance whatever this application animates by `dt` milliseconds,
     /// and say whether anything changed — `docs/plan-capabilities.md`

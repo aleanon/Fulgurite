@@ -36,8 +36,10 @@ impl lumen_static::event::App for App {
     fn tree_mut(&mut self) -> &mut Ui {
         &mut self.ui
     }
-    fn update(&mut self) {
-        self.ui.count.set_str(&self.n.to_string());
+    fn update(&mut self) -> bool {
+        // `set_str` compares before it writes, so this reports
+        // precisely (T16.10).
+        self.ui.count.set_str(&self.n.to_string())
     }
 }
 
