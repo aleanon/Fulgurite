@@ -79,89 +79,115 @@ canvas can hold 60 fps on a real display: **it can, threaded, without a
 GPU at all.** `docs/results-raster-scaling.md` measured the unthreaded
 4K full redraw at 22.9 ms, over budget.
 
-## 3. Built, and the inference above was wrong by 3× (M17/T17.4)
+## 3. Built (M17/T17.4, corrected by T17.5)
 
-`feature = "threads"` on `lumen-static-shell`: `std::thread::scope`, one
-band of rows per thread, no dependency. **The prediction in §2 — 6–8×
-from eight cores, ~3 ms at 4K — was inference, and it was too
-optimistic.** Measured, on the same machine:
+`feature = "threads"` on `lumen-static-shell`: `std::thread::scope`, no
+dependency, and no `unsafe` — disjoint row bands are a safe split of the
+pixel buffer.
 
-| canvas | one band | threaded | + `simd` | speed-up |
+**T17.4 gave each thread one equal band and measured 2.17× at 4K**, with
+a curve that plateaued at eight bands and got worse beyond. That was
+read as core heterogeneity — the reference 13900K has 8 performance and
+16 efficiency cores, a frame ends at a barrier, so past eight bands the
+extras land somewhere slower and everyone waits — and the band count was
+capped at 8 on that reasoning.
+
+**The reasoning was wrong and the cap was fixing the wrong problem.**
+See §4.
+
+## 4. What was actually limiting it (M17/T17.5)
+
+**Every strip re-shaped every text run in the frame.**
+
+`Surface::render` culls each command against the clip stack before doing
+any work for it, and for text that check is what stands between the arm
+and `FontStack::glyphs`, which shapes *and rasterises* an entire run. On
+a **full** redraw there is no damage rect, so the stack was empty and
+nothing was culled: each strip shaped all 192 runs of the scene. At 4K
+with 8-row strips that is 270 strips × 192 runs, and the "parallel"
+render came out **11× slower than one thread** — 216 ms against 19.3.
+
+The fix is one push: **a band's own rows are a clip**, so the stack
+starts with the band rect (intersected with the damage rect when there
+is one). Attribution at 4K, against 19.3 ms on one thread:
+
+| configuration | before | after |
+|---|---:|---:|
+| T17.4's static 8 bands | 8.91 ms | **5.93** |
+| T17.4's static 32 bands | 9.92 ms | **3.61** |
+| work queue, default | — | **2.60** |
+
+**Once strips stop re-shaping, 32 bands beats 8** — the heterogeneity
+penalty was real but small, and it had been swamped by a cost that grew
+with the band count. The cap is gone.
+
+### The work queue
+
+Strips are pulled from a shared queue rather than assigned up front, so
+a slow core takes fewer of them and a strip containing a shadow does not
+stall a whole worker. `chunks_mut` proves the strips disjoint; taking
+one out of the iterator *moves* the `&mut`; a `Mutex` over the iterator
+is the entire protocol. Per-thread deques and a steal handshake are for
+tasks that spawn subtasks, and these do not.
+
+Swept at 4K — workers across, strip height down:
+
+| workers | 8 rows | 16 | 32 | 64 | 135 |
+|---:|---:|---:|---:|---:|---:|
+| 4 | 11.85 | 9.15 | 7.75 | 7.26 | 7.34 |
+| 8 | 7.18 | 5.01 | 5.11 | 4.91 | 4.67 |
+| 16 | 4.03 | 3.44 | 3.40 | 3.67 | 4.54 |
+| 32 | 3.09 | **2.58** | 2.66 | 3.43 | 4.22 |
+
+The default is `available_parallelism()` workers and four strips each,
+floored at 16 rows, which lands on 2.60 — within noise of the best cell.
+`LUMEN_WORKERS` and `LUMEN_STRIP_ROWS` override both.
+
+### Where it ends up
+
+| canvas | one thread | queue + `simd` | speed-up | GPU |
 |---|---:|---:|---:|---:|
-| tally window | 0.64 ms | 0.64 | 0.62 | **1.00×** (below threshold) |
-| 720p | 2.24 ms | 1.49 | **1.37** | 1.50× |
-| 1080p | 4.91 ms | 2.98 | **2.43** | 1.65× |
-| 1440p | 8.60 ms | 3.84 | **3.95** | 2.24× |
-| 4K | 19.34 ms | 8.93 | **8.89** | **2.17×** |
+| tally window | 0.64 ms | 0.62 | 1.00× (refused) | 0.06 |
+| 720p | 2.24 ms | **1.24** | 1.8× | 0.14 |
+| 1080p | 4.89 ms | **1.40** | 3.5× | 0.29 |
+| 1440p | 8.64 ms | **1.50** | 5.8× | 0.50 |
+| 4K | 19.73 ms | **2.50** | **7.9×** | 1.11 |
 
-### Why 2.2× and not 8×
+**A 4K full redraw is 2.50 ms — 6.4× inside the 16 ms budget, and only
+2.2× behind the GPU**, which was 18× ahead before this. §2's inference
+of 6–8× was right after all; T17.4's 2.17× was measuring a defect.
 
-The band count sweeps like this at 4K:
+### What it deliberately does not touch
 
-| bands | 1 | 2 | 4 | **8** | 12 | 16 | 24 | 32 |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| ms | 19.32 | 12.75 | 10.87 | **8.91** | 9.23 | 9.34 | 9.39 | 9.92 |
+- **The tally frame**, at 0.23 Mpx against a 0.25 threshold. A thread
+  wake is 5–10 µs and that frame rasterises in 12, so `workers_for`
+  refuses and the frame is byte-for-byte the single-threaded one.
+- **The GPU crossover**, still 3–5%: 1–10% of a 1080p surface is
+  0.02–0.2 Mpx, all below the threshold, so nothing in that sweep
+  threads.
+- **Frames with images**, which stay single-threaded because
+  `&dyn ImageSource` has no `Sync` bound.
 
-It plateaus at eight and then **gets worse**. Parallel efficiency is
-already down at two bands (1.52× of a possible 2.0), which is not a
-spawn-cost curve — spawn cost would punish many bands and spare few.
+### What the gate can and cannot catch
 
-**A frame ends at a barrier: every band must finish before the frame
-does, so the frame runs at the speed of the slowest band.** On a
-heterogeneous CPU that means the slowest *core*. The reference machine
-is a 13900K — 8 performance cores, 16 efficiency cores, 32 threads — so
-past eight bands the extra ones land somewhere slower and the whole
-frame waits for them. Equal-sized bands on unequal cores is the wrong
-partition, and the fix is work-stealing rather than more bands.
+`scripts/check_banded.sh` renders ten scenes at five sizes in both
+builds and diffs the checksums — the comparison cannot happen inside one
+binary, because the split is a cargo feature. It caught overlapping
+strips and a band that forgets the damage rect.
 
-The default cap is therefore **8**, not `available_parallelism()`. The
-right number is the performance-core count, which `std` cannot report;
-`LUMEN_BANDS` overrides it.
-
-### The result that matters
-
-**A 4K full redraw is 8.89 ms, inside the 16 ms budget, with no GPU.**
-It was 22.88 before M17 and 19.34 after the scalar work — over budget
-both times. `docs/results-raster-scaling.md`'s verdict that 4K "cannot
-hold 60 fps" on the CPU no longer holds when this feature is on, and is
-corrected there.
-
-### What it does not touch, by design
-
-- **The tally frame is unchanged**, because it is 0.23 Mpx and the
-  threshold is 0.25. A thread costs 5–10 µs to wake and that frame
-  rasterises in 12; threading it would be a loss, so `bands_for`
-  refuses.
-- **The GPU crossover is unchanged** at 3–5%, because 1–10% of a 1080p
-  surface is 0.02–0.2 Mpx — all below the threshold, so no frame in that
-  sweep threads at all.
-- **A frame with images renders on one thread.** `&dyn ImageSource`
-  carries no `Sync` bound, and adding one would change a core trait for
-  a case nothing in this workspace exercises.
-
-### Why it is trusted
-
-Bands own disjoint rows and each draws every command whose ink reaches
-those rows, in list order — the same rule that makes a partial redraw
-equal a full one. So the output is identical by construction, and
-`scripts/check_banded.sh` checks it anyway across ten scenes at five
-sizes, including sizes where the last band is short.
-
-The comparison cannot happen inside one binary — the split is a cargo
-feature — so both builds render the same scenes and their checksums are
-diffed. A hard-coded golden would rot into a rubber stamp on the next
-legitimate rasteriser change; a cross-build diff cannot, because both
-sides move together or the gate fires.
-
-Injected and caught: bands overlapping by one row, and a band that
-forgets the damage rect. `just threads` runs it, plus
-`damage_oracle` against the threaded build, and is part of `just check`.
+**It did not catch removing the band clip, and cannot.** The drawing
+loops already clamp `y` to the band, so the clip is purely an
+optimisation: without it the output is identical and eleven times
+slower. A correctness gate is structurally blind to that, which is worth
+knowing given the size of the cliff. The sweep above is the only thing
+that would show it, and it is not run per commit.
 
 ## Verdict
 
 **Band-split rasterisation is the one worth building; pipelining is
-not.** Built in M17/T17.4 — see §3, which corrects the size of the win
-this section predicted. Neither is *urgent*, and the reason is that both
+not.** Built in M17/T17.4–T17.5; §4 has the measured result, which
+matches this section's inference once a defect in the first attempt was
+found. Neither is *urgent*, and the reason is that both
 address the same case damage tracking and the GPU backend already
 address:
 

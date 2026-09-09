@@ -388,10 +388,28 @@ impl Surface<'_> {
         #[cfg(feature = "truetype")] font: Option<&crate::text::FontStack>,
         images: Option<&dyn lumen_static::ImageSource>,
     ) {
-        let mut clip: Vec<[f32; 4]> = Vec::new();
-        if let Some(d) = damage {
-            clip.push(d);
-        }
+        // **The band's own rows are a clip, and saying so is what makes
+        // a strip cheap** (M17/T17.5).
+        //
+        // Every command is culled against the clip stack before any work
+        // is done for it — decisively for text, where `clipped` is what
+        // stands between the arm and `FontStack::glyphs`, which shapes
+        // *and rasterises* a whole run. Without the band in the stack a
+        // full redraw has an empty one, so every strip re-shaped every
+        // run in the frame: at 4K with 8-row strips that was 270 strips
+        // x 192 runs, and the "parallel" render came out **11x slower
+        // than one thread**.
+        //
+        // Intersecting the damage rect with the band gives one rect, so
+        // the stack still starts one deep and `PopClip`'s floor below is
+        // unchanged.
+        let band = [0.0, self.y0 as f32, self.width as f32, self.y_hi() as f32];
+        let outer = match damage {
+            Some(d) => [d[0].max(band[0]), d[1].max(band[1]), d[2].min(band[2]), d[3].min(band[3])],
+            None => band,
+        };
+        let mut clip: Vec<[f32; 4]> = Vec::with_capacity(4);
+        clip.push(outer);
         for c in &list.cmds {
             match c {
                 Cmd::Rect { rect, color } => {
@@ -494,7 +512,12 @@ impl Surface<'_> {
                     // `tests/paint_containment.rs` forbids, but a
                     // renderer must not trust) would otherwise let a
                     // later command paint outside the region.
-                    if clip.len() > damage.is_some() as usize {
+                    // Never pop the band scope: it is not part of the
+                    // list's own balance, and an unbalanced list (which
+                    // `tests/paint_containment.rs` forbids, but a
+                    // renderer must not trust) would otherwise let a
+                    // later command paint outside this strip's rows.
+                    if clip.len() > 1 {
                         clip.pop();
                     }
                 }
@@ -715,8 +738,8 @@ impl Canvas {
     ) -> bool {
         // `&dyn ImageSource` carries no `Sync` bound, so a frame with
         // images renders on one thread. Adding the bound would change a
-        // core trait for a case nothing in this workspace exercises —
-        // `Canvas::images` has no setter outside tests — and images are
+        // core trait for a case nothing in this workspace exercises --
+        // `Canvas::images` has no setter outside tests -- and images are
         // not what a large repaint is made of.
         if images.is_some() {
             return false;
@@ -731,19 +754,47 @@ impl Canvas {
         let y_hi = (area[3].ceil() as i64).clamp(0, h) as usize;
         let rows = y_hi.saturating_sub(y_lo);
 
-        let n = bands_for(rows * self.width as usize);
-        if n < 2 {
+        let workers = workers_for(rows * self.width as usize);
+        if workers < 2 || rows < 2 {
             return false;
         }
-        let band_rows = rows.div_ceil(n);
+        let strip_rows = strip_rows_for(rows, workers);
         let width = self.width;
         let slice = &mut self.pixels[y_lo * stride..y_hi * stride];
 
+        // **A shared queue, not a fixed partition** -- M17/T17.5.
+        //
+        // T17.4 gave each thread one equal band, and the frame then ran
+        // at the speed of the slowest *core*: 8 bands beat 32 on the
+        // reference machine because past the performance cores the
+        // extras landed somewhere slower and everyone waited at the
+        // barrier. A cap of 8 fixed that for one CPU and would be the
+        // wrong number on anybody else's.
+        //
+        // Over-decomposing and letting workers pull the next strip needs
+        // to know nothing about the machine, and fixes the other
+        // imbalance too: a strip containing a shadow costs far more than
+        // an empty one, and a fixed partition cannot know which is which
+        // either.
+        //
+        // Safe, with no `unsafe` and no dependency. `chunks_mut` proves
+        // the strips disjoint; taking one out of the iterator *moves*
+        // the `&mut`, so ownership transfers to the worker and nothing
+        // aliases. A `Mutex` over the iterator is the whole protocol --
+        // per-thread deques and a steal handshake are for tasks that
+        // spawn subtasks, and these do not.
+        let queue = std::sync::Mutex::new(slice.chunks_mut(strip_rows * stride).enumerate());
+
         std::thread::scope(|sc| {
-            for (k, chunk) in slice.chunks_mut(band_rows * stride).enumerate() {
-                let y0 = (y_lo + k * band_rows) as i64;
-                let nrows = (chunk.len() / stride) as i64;
-                sc.spawn(move || {
+            for _ in 0..workers {
+                let queue = &queue;
+                sc.spawn(move || loop {
+                    // Held only long enough to take a strip, never while
+                    // drawing one.
+                    let next = queue.lock().map(|mut q| q.next()).unwrap_or(None);
+                    let Some((k, chunk)) = next else { break };
+                    let y0 = (y_lo + k * strip_rows) as i64;
+                    let nrows = (chunk.len() / stride) as i64;
                     let mut band = Surface { px: chunk, width, y0, rows: nrows };
                     band.render(
                         list,
@@ -785,53 +836,61 @@ struct TextRun<'a> {
     color: Color,
 }
 
-/// How many bands to split `px` damaged pixels into — T17.4.
+/// How many worker threads to run for `px` damaged pixels — T17.4.
 ///
-/// **The threshold is the point of this function, not the arithmetic.**
-/// A thread costs 5–10 µs to wake, and a damaged tally frame rasterises
-/// in 12 µs, so threading one is a straight loss. Only frames big enough
-/// to amortise a wake-up are split, and the rest take the single-band
-/// path with one comparison spent deciding.
+/// **The threshold is the point, not the arithmetic.** A thread costs
+/// 5–10 µs to wake, and a damaged tally frame rasterises in 12 µs, so
+/// threading one is a straight loss. Only frames big enough to amortise
+/// a wake-up are split; the rest take the single-band path having spent
+/// one comparison deciding. 0.25 Mpx is about an eighth of a 1080p
+/// surface and eight times the tally's whole damaged region.
 ///
-/// 0.25 Mpx is roughly an eighth of a 1080p surface and about eight
-/// times the tally's whole damaged region. `docs/results-threading.md`
-/// measured the band overhead itself at 1–6% across sixteen bands, so
-/// the split is nearly free once it is worth doing at all.
+/// Unlike T17.4's band count this is **not capped at 8**: with a work
+/// queue a slow core simply takes fewer strips, so an extra worker
+/// costs a spawn rather than stalling the frame at the barrier.
+/// `LUMEN_WORKERS` overrides it.
 #[cfg(feature = "threads")]
-fn bands_for(px: usize) -> usize {
+fn workers_for(px: usize) -> usize {
     const MIN_PX: usize = 250_000;
     if px < MIN_PX {
         return 1;
     }
-    // `LUMEN_BANDS` overrides the count, for tuning and for the sweep in
-    // `docs/results-threading.md`. Read once: `available_parallelism` is
-    // a syscall and this is on the frame path.
     static CAP: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
     let cap = *CAP.get_or_init(|| {
-        std::env::var("LUMEN_BANDS")
+        std::env::var("LUMEN_WORKERS")
             .ok()
             .and_then(|v| v.parse::<usize>().ok())
             .filter(|n| *n > 0)
-            .unwrap_or_else(|| {
-                // **Capped at 8, measured** (`docs/results-threading.md`).
-                // A frame ends at a barrier -- every band must finish --
-                // so it runs at the speed of the slowest one. On a
-                // heterogeneous CPU that means the slowest *core*: on
-                // the reference 13900K (8 performance cores, 16
-                // efficiency cores, 32 threads) a 4K redraw is 8.91 ms
-                // at 8 bands and 9.92 at 32, because past the
-                // performance cores the extra bands land somewhere
-                // slower and the whole frame waits for them.
-                //
-                // The right cap is the performance-core count, which
-                // `std` cannot report. 8 is that number here and a
-                // reasonable ceiling elsewhere; `LUMEN_BANDS` overrides
-                // it for anyone whose machine disagrees.
-                std::thread::available_parallelism().map_or(1, |n| n.get()).min(8)
-            })
+            .unwrap_or_else(|| std::thread::available_parallelism().map_or(1, |n| n.get()))
     });
-    // Never more bands than there is work to justify them.
     cap.min(px / MIN_PX).max(1)
+}
+
+/// How tall each strip in the queue is — T17.5.
+///
+/// A product of two costs pulling opposite ways. **Finer strips balance
+/// better**: the frame's tail is bounded by one strip rather than one
+/// whole band. **Coarser strips cost less**: every strip re-walks the
+/// command list, measured at 1.06x the single-strip cost at 8, 1.13x at
+/// 32, 1.20x at 64 and 1.34x at 128 on a 1 633-command 4K scene
+/// (`docs/results-threading.md`).
+///
+/// Four strips per worker bounds the imbalance to a quarter of one
+/// worker's share while staying on the cheap part of that curve, and
+/// never finer than 16 rows, below which the walk dominates whatever
+/// the balance is worth. `LUMEN_STRIP_ROWS` overrides it.
+#[cfg(feature = "threads")]
+fn strip_rows_for(rows: usize, workers: usize) -> usize {
+    static OVERRIDE: std::sync::OnceLock<Option<usize>> = std::sync::OnceLock::new();
+    if let Some(n) = *OVERRIDE.get_or_init(|| {
+        std::env::var("LUMEN_STRIP_ROWS")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .filter(|n| *n > 0)
+    }) {
+        return n.clamp(1, rows);
+    }
+    rows.div_ceil(workers * 4).clamp(16, rows.max(1))
 }
 
 /// One row's run of RGBA -> `0RGB`, shared by both blit paths (T17.3).

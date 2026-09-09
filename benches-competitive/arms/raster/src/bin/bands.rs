@@ -59,7 +59,7 @@ fn main() {
         let full = best(20, || canvas.render_within(&list, full_area));
         println!("{label:<10} {:>6} {full:>10.2} {:>25}", 1, "1.00x (baseline)");
 
-        for bands in [2usize, 4, 8, 16] {
+        for bands in [2usize, 4, 8, 16, 32, 64, 128] {
             let bh = h as f32 / bands as f32;
             let t = best(20, || {
                 for b in 0..bands {
