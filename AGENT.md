@@ -89,11 +89,34 @@ while proving nothing:
 | `.bss` ceiling (M15) | 2 KB bound over a measured 0 |
 | invalidation oracle (T16.7) | clicks never landed |
 | damage height bound (T16.2) | limit 200× the quantity it bounded |
+| banded byte-identity (T17.4) | 6 of 10 cases never split |
 
 **Three were caught by injecting a fault; three by printing the measured
 number beside the bound and seeing the gap.** Neither method is
 optional, and reading the code caught none of them — reading is what
 wrote them.
+
+**The seventh was caught by a review agent reading the plan for a
+*different* feature** (2026-09-10, M18's spec review). `tests/banded.rs`
+said its five sizes were "large enough to cross the splitter's threshold
+at every one of them"; six of its ten cases used one band, so the
+cross-build checksum compared a single-band render with itself and would
+have agreed however badly the splitter was broken. The comment was wrong
+by a factor of two — `workers_for`'s 250 000 px is the per-*worker*
+quantum and splitting needs two workers — which is the "bound computed
+from the wrong quantity" shape again, in prose rather than in an
+assertion. **A threshold named in a comment is not a threshold that was
+checked.** `Canvas::bands_for` now exists so the test asserts its own
+setup instead of describing it.
+
+The same review found a *shipped* defect the same way: `Deferring`
+overrode seven of `Painter`'s eleven methods and inherited the provided
+bodies for the other four, so every `Line` and `Image` painted under an
+overlay pass was dropped and every gradient flattened — four commands
+in, two out. **A provided method is right for a leaf and wrong for a
+wrapper, always**, because a wrapper can always forward and the default
+acts on the wrapper instead. When a trait gains a method, every wrapper
+of it is a call site the compiler will not show you.
 
 ## Doc currency (binding — adapted from Lumen's D0.7 rule, 2026-08-30)
 

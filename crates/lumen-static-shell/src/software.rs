@@ -659,6 +659,38 @@ impl Canvas {
     /// The clip stack is honoured throughout: `damage` is pushed as the
     /// outermost scope, so a command cannot escape it any more than it
     /// can escape a scroller.
+    /// How many band workers a render of `damage` would use — 1 meaning
+    /// "this frame will not be split at all".
+    ///
+    /// **This exists so a threading test can assert its own setup**, and
+    /// it was added because one could not. `tests/banded.rs` claimed its
+    /// five sizes were "large enough to cross the splitter's threshold
+    /// at every one of them" and **six of its ten cases never split** —
+    /// they compared a single-band render with itself across two builds,
+    /// which is `AGENT.md`'s first vacuous shape and the seventh
+    /// instance of it found on this repository. The claim was wrong by a
+    /// factor of two: `workers_for` returns `px / 250_000`, so the
+    /// threshold to *split* is 500 000 px, not the 250 000 floor.
+    ///
+    /// Always 1 without `threads`, which is the truth for that build.
+    pub fn bands_for(&self, damage: Option<[f32; 4]>) -> usize {
+        #[cfg(feature = "threads")]
+        {
+            let (_, _, rows) = self.band_rows(damage);
+            let w = self.workers_for_damage(damage);
+            if w < 2 || rows < 2 || (self.width * 4) == 0 {
+                1
+            } else {
+                w
+            }
+        }
+        #[cfg(not(feature = "threads"))]
+        {
+            let _ = damage;
+            1
+        }
+    }
+
     pub fn render_within(&mut self, list: &DisplayList, damage: [f32; 4]) {
         self.render_impl(list, Some(damage));
     }
@@ -723,6 +755,24 @@ impl Canvas {
     /// rows cost to draw.
     ///
     /// **Byte-identical to the single band by construction.** Bands own
+    /// The absolute row range a render of `damage` would touch, and its
+    /// height. Shared by the splitter and by [`Canvas::bands_for`], so
+    /// the predicate a test asserts on cannot drift from the decision
+    /// the renderer makes.
+    #[cfg(feature = "threads")]
+    fn band_rows(&self, damage: Option<[f32; 4]>) -> (usize, usize, usize) {
+        let h = self.height as i64;
+        let area = damage.unwrap_or([0.0, 0.0, self.width as f32, self.height as f32]);
+        let y_lo = (area[1].floor() as i64).clamp(0, h) as usize;
+        let y_hi = (area[3].ceil() as i64).clamp(0, h) as usize;
+        (y_lo, y_hi, y_hi.saturating_sub(y_lo))
+    }
+
+    #[cfg(feature = "threads")]
+    fn workers_for_damage(&self, damage: Option<[f32; 4]>) -> usize {
+        workers_for(self.band_rows(damage).2 * self.width as usize)
+    }
+
     /// disjoint rows, and each one draws *every* command whose ink
     /// reaches those rows, in list order — the same rule that makes a
     /// partial redraw equal a full one. Nothing is skipped and nothing
@@ -748,13 +798,9 @@ impl Canvas {
         if stride == 0 {
             return false;
         }
-        let h = self.height as i64;
-        let area = damage.unwrap_or([0.0, 0.0, self.width as f32, self.height as f32]);
-        let y_lo = (area[1].floor() as i64).clamp(0, h) as usize;
-        let y_hi = (area[3].ceil() as i64).clamp(0, h) as usize;
-        let rows = y_hi.saturating_sub(y_lo);
+        let (y_lo, y_hi, rows) = self.band_rows(damage);
 
-        let workers = workers_for(rows * self.width as usize);
+        let workers = self.workers_for_damage(damage);
         if workers < 2 || rows < 2 {
             return false;
         }

@@ -404,3 +404,97 @@ mod focus_trap {
         assert_eq!(input.focus, Some(1), "the field outside is reachable again");
     }
 }
+
+/// **`Deferring` must forward every `Painter` method, including the
+/// provided ones** — found 2026-09-10 by the M18 spec review.
+///
+/// `Painter`'s provided bodies exist for *leaf* painters that cannot
+/// draw a thing: `line` and `image` are no-ops, `gradient` is a flat
+/// fill of its first stop, `clip_bounds` is "cull nothing". For a
+/// *wrapper* every one of those is wrong, because the default acts on
+/// the wrapper instead of forwarding — so a wrapper that inherits them
+/// silently rewrites the frame.
+///
+/// `Deferring` inherited four. Measured before the fix, on the list
+/// below: **four commands in, two out** — `Line` and `Image` dropped,
+/// `Gradient` flattened to `Rect`. `Scaled` and `Recording` override all
+/// eleven; this one overrode the seven that existed when it was written
+/// and never gained T15.2's image, T15.3's line and gradient, or
+/// T16.12's `clip_bounds`.
+///
+/// Compares against the *unwrapped* stream rather than a hard-coded
+/// list, so a future command is covered the day it is added — which is
+/// the failure mode this test is about.
+#[test]
+fn deferring_forwards_every_command() {
+    use lumen_static::display::{Color, ImageId, Painter, Stops};
+    use lumen_static::Point;
+    use lumen_static::overlay::Deferring;
+
+    fn paint(p: &mut dyn Painter) {
+        p.rect([0.0, 0.0, 10.0, 10.0], Color(1, 2, 3, 255));
+        p.line(Point { x: 0.0, y: 0.0 }, Point { x: 9.0, y: 9.0 }, 1.0, Color(9, 9, 9, 255));
+        p.gradient(
+            [0.0, 0.0, 10.0, 10.0],
+            Stops::two(Color(10, 0, 0, 255), Color(0, 0, 10, 255)),
+            0.0,
+        );
+        p.image([0.0, 0.0, 10.0, 10.0], ImageId(1), Color(255, 255, 255, 255));
+    }
+
+    let mut direct = DisplayList::new();
+    paint(&mut direct);
+
+    let mut wrapped = DisplayList::new();
+    {
+        let mut sink = NoOverlays;
+        let mut d = Deferring::new(&mut wrapped, &mut sink);
+        paint(&mut d);
+    }
+
+    // Assert the setup happened before comparing: two empty lists are
+    // equal, and that is the vacuous shape `AGENT.md` names.
+    assert_eq!(direct.cmds.len(), 4, "the unwrapped painter dropped something itself");
+    assert_eq!(
+        direct.cmds, wrapped.cmds,
+        "Deferring changed the command stream: {} in, {} out",
+        direct.cmds.len(),
+        wrapped.cmds.len()
+    );
+
+    // `clip_bounds` is invisible to the comparison above -- a
+    // `DisplayList` has no surface and answers `None` either way, so
+    // wrapping one could not show the difference. It needs a painter
+    // that answers `Some`, or the fourth missing method stays untested
+    // while the test looks thorough.
+    struct Surfaced(Option<lumen_static::display::Rect>);
+    impl Painter for Surfaced {
+        fn rect(&mut self, _: lumen_static::display::Rect, _: Color) {}
+        fn text_weighted(
+            &mut self,
+            _: lumen_static::display::Rect,
+            _: &str,
+            _: f32,
+            _: f32,
+            _: Color,
+        ) {
+        }
+        fn rounded_rect(&mut self, _: lumen_static::display::Rect, _: Color, _: f32) {}
+        fn shadow(&mut self, _: lumen_static::display::Rect, _: f32, _: f32) {}
+        fn push_clip(&mut self, _: lumen_static::display::Rect) {}
+        fn pop_clip(&mut self) {}
+        fn clip_bounds(&self) -> Option<lumen_static::display::Rect> {
+            self.0
+        }
+    }
+
+    let want = Some([0.0, 0.0, 800.0, 600.0]);
+    let mut surf = Surfaced(want);
+    let mut sink = NoOverlays;
+    let d = Deferring::new(&mut surf, &mut sink);
+    assert_eq!(
+        d.clip_bounds(),
+        want,
+        "Deferring hid the surface bounds, so culling turns off under an overlay pass"
+    );
+}

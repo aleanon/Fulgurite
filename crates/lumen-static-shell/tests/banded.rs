@@ -74,19 +74,63 @@ fn render(w: u32, h: u32, damage: Option<[f32; 4]>) -> Vec<u8> {
 }
 
 /// Sizes chosen so `rows / bands` divides unevenly — the last band is
-/// short — and so the surface is large enough to cross the splitter's
-/// threshold at every one of them.
-const SIZES: &[(u32, u32)] = &[(640, 480), (641, 481), (800, 601), (1024, 769), (1920, 1080)];
+/// short — and so **every case actually splits**, in the full render and
+/// in the damaged one.
+///
+/// **The previous list did not, and said it did** (fixed 2026-09-10).
+/// It was `(640,480), (641,481), (800,601), (1024,769), (1920,1080)`
+/// with a comment claiming the surface was "large enough to cross the
+/// splitter's threshold at every one of them". Measured: **six of the
+/// ten cases never split** — three sizes, in both their full and damaged
+/// variants — so the cross-build checksum compared a single-band render
+/// with itself and would have agreed however badly the splitter was
+/// broken. `AGENT.md`'s first vacuous shape; the seventh instance found
+/// on this repository.
+///
+/// The claim was wrong by a factor of two. `Canvas::bands_for`'s
+/// threshold is not the 250 000 px floor in `workers_for` — that is the
+/// pixels-per-*worker* quantum, and `render_banded` needs **two**
+/// workers before it splits at all. So the real bar is 500 000 px, and
+/// for the damaged cases it is 500 000 px *of the damage rect*, which is
+/// 66% of the surface here. Every size below clears both, and
+/// `a_full_render_is_identical_however_it_is_banded` now asserts it
+/// rather than trusting this comment.
+const SIZES: &[(u32, u32)] = &[(1281, 601), (1023, 769), (897, 1001), (1537, 853), (1920, 1080)];
+
+/// The damage rect the damaged cases use — one place, so the test and
+/// the checksum printer cannot drift apart about what they measured.
+fn damage_of(w: u32, h: u32) -> [f32; 4] {
+    [w as f32 * 0.13, h as f32 * 0.17, w as f32 * 0.91, h as f32 * 0.83]
+}
+
+/// Assert the frame this case is about **actually splits**.
+///
+/// Without this the suite's whole subject can be absent and every
+/// comparison still passes, which is exactly what happened above. Prints
+/// the band count beside the bound, per `AGENT.md`.
+#[cfg(feature = "threads")]
+fn assert_splits(w: u32, h: u32, damage: Option<[f32; 4]>, tag: &str) {
+    let c = Canvas::new(w, h);
+    let bands = c.bands_for(damage);
+    assert!(
+        bands >= 2,
+        "{w}x{h}/{tag}: bands_for = {bands}, so this case never splits and compares \
+         a single-band render with itself"
+    );
+}
+
+#[cfg(not(feature = "threads"))]
+fn assert_splits(_: u32, _: u32, _: Option<[f32; 4]>, _: &str) {}
 
 #[test]
 fn a_full_render_is_identical_however_it_is_banded() {
     for &(w, h) in SIZES {
+        assert_splits(w, h, None, "full");
         let got = render(w, h, None);
-        // The single-band answer, from a build that cannot split.
-        // Within one binary the two paths differ only by the feature, so
-        // this compares against a canvas whose damage is one row short
-        // of the threshold... no: instead assert self-consistency by
-        // rendering twice, and pin the ink so the frame is not blank.
+        // Within one binary both paths are the same build, so this half
+        // checks determinism and ink; the *banded vs single-band*
+        // comparison is the cross-build checksum below, which
+        // `scripts/check_banded.sh` runs with and without `threads`.
         let again = render(w, h, None);
         assert_eq!(got, again, "{w}x{h}: rendering is not deterministic");
         let inked = got
@@ -103,12 +147,8 @@ fn a_damaged_render_is_identical_however_it_is_banded() {
     for &(w, h) in SIZES {
         // A band that starts and ends mid-surface, so the split's first
         // and last bands are partial rows of the damage rect.
-        let d = [
-            w as f32 * 0.13,
-            h as f32 * 0.17,
-            w as f32 * 0.91,
-            h as f32 * 0.83,
-        ];
+        let d = damage_of(w, h);
+        assert_splits(w, h, Some(d), "damaged");
         let got = render(w, h, Some(d));
         let again = render(w, h, Some(d));
         assert_eq!(got, again, "{w}x{h}: damaged rendering is not deterministic");
@@ -128,7 +168,7 @@ fn print_checksums_for_cross_build_comparison() {
     for &(w, h) in SIZES {
         for (tag, d) in [
             ("full", None),
-            ("damaged", Some([w as f32 * 0.13, h as f32 * 0.17, w as f32 * 0.91, h as f32 * 0.83])),
+            ("damaged", Some(damage_of(w, h))),
         ] {
             let px = render(w, h, d);
             let mut hash = 0xcbf29ce484222325u64;

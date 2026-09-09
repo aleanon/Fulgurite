@@ -212,6 +212,56 @@ impl<O: OverlaySink> crate::display::Painter for Deferring<'_, O> {
     fn shadow(&mut self, rect: crate::display::Rect, radius: f32, spread: f32) {
         self.inner.shadow(rect, radius, spread);
     }
+    // The four below are `Painter`'s *provided* methods, and forwarding
+    // them is not optional -- **it was omitted, and the default bodies
+    // silently rewrote the frame.** `line` and `image` default to no-ops
+    // and `gradient` defaults to a flat fill of its first stop, so every
+    // line and image painted under an overlay pass was dropped and every
+    // gradient was flattened. Measured before the fix on a four-command
+    // list: four commands in, two out.
+    //
+    // A provided body is the right answer for a *leaf* painter that
+    // cannot draw the thing -- that is what `display.rs` says and it is
+    // correct there. For a *wrapper* it is the wrong answer in every
+    // case, because the wrapper can always forward, and the default
+    // instead acts on the wrapper itself. `Scaled` and `Recording`
+    // override all eleven; this type overrode seven, and the four it
+    // missed are exactly the ones added after it (T15.2's image, T15.3's
+    // line and gradient, T16.12's `clip_bounds`).
+    //
+    // `tests/overlay.rs::deferring_forwards_every_command` pins it.
+    fn line(
+        &mut self,
+        a: crate::desc::Point,
+        b: crate::desc::Point,
+        width: f32,
+        color: crate::display::Color,
+    ) {
+        self.inner.line(a, b, width, color);
+    }
+    fn gradient(
+        &mut self,
+        rect: crate::display::Rect,
+        stops: crate::display::Stops,
+        angle: f32,
+    ) {
+        self.inner.gradient(rect, stops, angle);
+    }
+    fn image(
+        &mut self,
+        rect: crate::display::Rect,
+        id: crate::display::ImageId,
+        tint: crate::display::Color,
+    ) {
+        self.inner.image(rect, id, tint);
+    }
+    /// Culling must survive an overlay pass. The default is `None`,
+    /// which means "cull nothing" -- correct for a painter with no
+    /// surface, and a silent 8x regression in `List::paint` here
+    /// (T16.12, `docs/plan-invalidation.md`).
+    fn clip_bounds(&self) -> Option<crate::display::Rect> {
+        self.inner.clip_bounds()
+    }
     fn push_clip(&mut self, rect: crate::display::Rect) {
         self.inner.push_clip(rect);
     }
