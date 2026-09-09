@@ -73,3 +73,7 @@ CLIP                 # a proposed NodeState flag; clipping is a paint-time push_
 DEFAULT_RULES        # a deprecated-and-removed derive attribute
 GtkBox               # the GTK container List is comparable with; named in hatch.rs's culling note
 QVBoxLayout          # the Qt one, same sentence
+vello_cpu            # Linebender's CPU rasteriser, the control arm in results-vello.md
+fearless_simd        # its SIMD layer; named for its unsafe count in the same doc
+RenderContext        # vello_cpu's scene recorder, named where ours is compared with it
+Resources            # vello_cpu's cross-frame glyph cache, same comparison

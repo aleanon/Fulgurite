@@ -849,6 +849,16 @@ struct TextRun<'a> {
 /// queue a slow core simply takes fewer strips, so an extra worker
 /// costs a spawn rather than stalling the frame at the barrier.
 /// `LUMEN_WORKERS` overrides it.
+///
+/// **Both halves of this are leaving time on the table** — measured
+/// 2026-09-09 against `vello_cpu`, `docs/results-vello.md` §3. Removing
+/// the `px / MIN_PX` throttle is worth 2.4x at 720p and 1.8x at 1080p;
+/// lowering the floor is worth 1.9x on the tally window. The heuristic
+/// counts pixels because pixels are what a band splits, and cannot see
+/// that a 720p frame with 400 cards has work for sixteen workers and is
+/// being given three. Not changed, because the strip height was tuned
+/// against a measured re-walk cost (`docs/results-threading.md`) and the
+/// two interact.
 #[cfg(feature = "threads")]
 fn workers_for(px: usize) -> usize {
     const MIN_PX: usize = 250_000;

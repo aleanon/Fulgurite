@@ -193,6 +193,14 @@ impl FontStack {
 
     /// The coverage mask for one glyph identity: `(width, height, cov)`.
     ///
+    /// **Called every frame for every glyph on the software path**, and
+    /// that is a known cost, not an oversight that has gone unnoticed:
+    /// there is no cache here, `glyphs` below calls this per glyph per
+    /// run per frame, and the GPU backend avoids it only because its
+    /// atlas keeps the pixels on the device. Measured against
+    /// `vello_cpu`, which does cache across frames, in
+    /// `docs/results-vello.md` §4.
+    ///
     /// `None` when the id names a face this stack does not have, which
     /// cannot happen for an id this stack produced and is a "draw
     /// nothing" for one that came from somewhere else — the same rule

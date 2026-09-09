@@ -282,6 +282,17 @@ gpu-parity:
 raster-sweep:
     cd benches-competitive && cargo run --release -p raster-scaling
 
+# Our software rasteriser against Vello's — docs/results-vello.md.
+#
+# The only arm in benches-competitive that rasterises on both sides:
+# every other one stops at a display list, so none of them measure the
+# renderer at all. `vello_cpu`'s thread count is a runtime setting, so
+# one build sweeps it; ours is a cargo feature, so the recipe builds
+# twice. Both frames are checked against each other every run — see the
+# three bounds in the arm.
+vello f="simd,threads" threads="16":
+    cd benches-competitive && VELLO_THREADS={{ threads }} cargo run --release -p vello-cpu-arm --features "{{ f }}"
+
 # Every stage of one frame, separately, over N x workload x retention.
 #
 # The frame arm reports four cumulative numbers because that is what is

@@ -454,6 +454,13 @@ and audit. **That is why nothing in this file comes from a single run.**
   masonry stopped before vello's GPU pass, Qt via `QWidget::render`,
   lumen-static via its own software canvas. No arm gets a GPU
   advantage, and none of these numbers describe a GPU frame.
+- **The rasteriser, until 2026-09-09.** Every arm above stops at a
+  display list, which is right for comparing *frameworks* and means none
+  of them says anything about the renderer underneath. `docs/results-vello.md`
+  adds the arm that does: our software canvas against `vello_cpu`, both
+  rasterising the same scene. It is also the first arm this project
+  loses — below 1 Mpx, to a worker heuristic rather than to the
+  rasteriser.
 - **Real applications.** A 3 000-row flat list is not how any competent
   application in *any* of these frameworks builds a long list — all of
   them have virtualized containers, and none is used here, on purpose,

@@ -18,6 +18,7 @@ members = [
     "arms/frame",
     "arms/raster",
     "arms/stages",
+    "arms/vello-cpu",
 ]
 
 # Match what a shipped application is built with, and match the profile the
