@@ -2,7 +2,7 @@
 
 **Measured 2026-09-09.** Reference machine: i9-13900KF, governor
 `powersave`. `just profile` and `just profile-simd` on the tally frame,
-median of 50. M17/T17.1.
+median of 50. M17/T17.1 and T17.2.
 
 ## The measurement came first, and it moved the target
 
@@ -56,11 +56,12 @@ apart in a stride of four, so blending eight pixels at once means
 deinterleaving — shuffles that `wide` does not expose, and the reason
 interleaved-RGBA blending is awkward in portable SIMD generally.
 
-A contiguous alternative exists: `u16x8` covers eight *channels*, which
-is two whole pixels, loaded and stored contiguously with no shuffle.
-That is 2× on the blend rather than 8×, and it was not built. The
-remaining ceiling is small — 180 µs on one command of one frame — and
-the measurement above says the arithmetic is not where the time is.
+A contiguous alternative exists: eight 32-bit lanes cover eight
+*channels*, which is two whole pixels, loaded and stored with no
+shuffle. **That was built and measured in T17.2 below: 1.03×, which is
+noise.** The section there says why, and it is the reason this one gave
+as a guess — two pixels per vector is not enough width to pay for the
+widening.
 
 ## Why `wide`, and why a feature
 
@@ -107,13 +108,78 @@ canvases.
 `damage_oracle` (10 tests, pixel identity) against the vector build, and
 is part of `just check`.
 
+## T17.2 — the blit, and the blend that did not pay
+
+Both of the "what remains" items above were attempted. One worked and
+one did not, and the difference is instructive: **it is deinterleaving,
+not arithmetic.**
+
+### `blit_0rgb`: 2.3×, because the swizzle is arithmetic
+
+RGBA little-endian is `R | G<<8 | B<<16 | A<<24`; `0RGB` is
+`B | G<<8 | R<<16`. So the conversion is three masks, two shifts and two
+ors — **lane-uniform `u32` arithmetic with nothing to deinterleave.**
+Eight pixels per step:
+
+| | 1080p | vs copy floor |
+|---|---:|---:|
+| byte gather (T17.0) | 0.567 ms | 3.8× |
+| the same arithmetic, scalar | 0.605 ms | slower |
+| `u32x8` | **0.246 ms** | 1.58× |
+
+**2.3×, and the scalar spelling of the identical arithmetic is 0.94× —
+slower.** It is the vector width that pays, not the formulation, which
+is why T17.0's four-at-a-time attempt moved it only 1.06×.
+
+### The blend: 1.03×, and it will not get better this way
+
+Attempted with `u32x8` over eight contiguous channels — two whole
+pixels, loaded and stored without a shuffle. Measured **1.03×**, and on
+a re-run 0.98×. It is noise, not a speed-up.
+
+Two reasons, and the second is the one that closes the question:
+
+- **Eight 32-bit lanes cover two pixels.** Interleaved RGBA means a
+  vector holds `[r0,g0,b0,a0,r1,g1,b1,a1]`, so the arithmetic is eight
+  lanes wide and the *pixel* throughput is two. Reaching eight pixels
+  needs the channels separated, and `wide` exposes no shuffle to
+  separate them.
+- **The scalar blend is already 1.27 ns/px** — about four cycles for
+  three multiply-add-divides plus loads and stores. It is superscalar
+  work with no dependency chain, and there is very little for a
+  two-wide vector to reclaim.
+
+Recorded as a **negative result** rather than dropped: the next person
+to look at this loop should know it was measured, what it cost, and
+which of the two reasons would have to change.
+
+A byproduct worth keeping: both exact-division identities for `/255`
+were verified exhaustively over `0..=65025`, the full range a blend
+produces — `((x+1)*257)>>16` and `(x + (x>>8) + 1) >> 8`. Neither is
+needed now; both are correct if a shuffle ever makes the blend worth
+revisiting.
+
+## Where the frame stands
+
+The tally, full redraw, median of 50:
+
+| stage | before M17 | T17.0+T17.1 scalar | + `simd` |
+|---|---:|---:|---:|
+| `clear` | 96 µs | 10 | 10 |
+| `render(all)` | 482 µs | 291 | **269** |
+| — of which `shadow` | 255 µs | 202 | **180** |
+| `blit rgba->0rgb` | 76 µs | 62 | **24** |
+| **total** | **654 µs** | **363** | **303** |
+| | | 1.80× | **2.16×** |
+
+`pump(layout+paint)` is 2 µs throughout and was never the point.
+
 ## What remains
 
-- **The blend, at 2× via `u16x8`**, as above. Small ceiling.
-- **`blit_0rgb` is still 3.8–4.9× off a plain copy**
-  (`docs/results-wide-stores.md`). It is a byte shuffle and the clearest
-  remaining SIMD candidate — and it has the same deinterleave problem,
-  which is why T17.0 barely moved it.
+- **The shadow is still 67% of the render** (180 of 269 µs), one
+  command. It is the only thing left worth attacking in this file, and
+  the remaining lever is the blend inside it — see above for why that is
+  blocked on deinterleaving rather than on effort.
 - **Nothing was measured on a machine without AVX.** `wide` falls back
-  to narrower lanes or scalar, and the 1.12× is an AVX2 number on one
+  to narrower lanes or scalar; every ratio here is an AVX2 number on one
   CPU.

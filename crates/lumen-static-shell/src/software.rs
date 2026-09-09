@@ -363,19 +363,49 @@ impl Canvas {
     /// with the rasteriser's optimisation level: in the example it was
     /// 2 ms of a 3 ms frame.
     pub fn blit_0rgb(&self, dst: &mut [u32]) {
-        // Four pixels a step, and the pack spelled as `from_le_bytes`
-        // rather than three shifts and two ors: both are what let LLVM
-        // widen this into a shuffle instead of walking one pixel at a
-        // time (M17/T17.0, `docs/results-wide-stores.md`).
-        let mut d4 = dst.chunks_exact_mut(4);
-        let mut s16 = self.pixels.chunks_exact(16);
-        for (dq, sq) in (&mut d4).zip(&mut s16) {
-            for k in 0..4 {
-                let p = &sq[k * 4..k * 4 + 4];
-                dq[k] = u32::from_le_bytes([p[2], p[1], p[0], 0]);
+        // **The swizzle is lane-uniform arithmetic, not a shuffle**
+        // (M17/T17.2, `docs/results-simd.md`). RGBA little-endian is
+        // `R | G<<8 | B<<16 | A<<24`; `0RGB` is `B | G<<8 | R<<16`. So
+        // the conversion is three masks, two shifts and two ors — all
+        // `u32` ops that vectorise eight lanes wide with no
+        // deinterleaving, which is what made this one tractable when
+        // the blend was not.
+        //
+        // T17.0 tried it four pixels at a time with `from_le_bytes` and
+        // moved the needle 1.06x; the *same arithmetic* written scalar
+        // is actually 0.94x, i.e. slower. It is the vector width that
+        // pays here, not the spelling.
+        #[cfg(feature = "simd")]
+        {
+            use wide::u32x8;
+            let (m_r, m_g, m_b) = (
+                u32x8::splat(0x0000_00FF),
+                u32x8::splat(0x0000_FF00),
+                u32x8::splat(0x00FF_0000),
+            );
+            let mut d8 = dst.chunks_exact_mut(8);
+            let mut s32 = self.pixels.chunks_exact(32);
+            for (dq, sq) in (&mut d8).zip(&mut s32) {
+                let mut arr = [0u32; 8];
+                for (k, a) in arr.iter_mut().enumerate() {
+                    *a = u32::from_le_bytes([
+                        sq[k * 4],
+                        sq[k * 4 + 1],
+                        sq[k * 4 + 2],
+                        sq[k * 4 + 3],
+                    ]);
+                }
+                let v = u32x8::from(arr);
+                let r: u32x8 = ((v & m_r) << 16) | (v & m_g) | ((v & m_b) >> 16);
+                dq.copy_from_slice(&r.to_array());
+            }
+            let tail_src = s32.remainder();
+            for (d, px) in d8.into_remainder().iter_mut().zip(tail_src.chunks_exact(4)) {
+                *d = u32::from_le_bytes([px[2], px[1], px[0], 0]);
             }
         }
-        for (d, px) in d4.into_remainder().iter_mut().zip(s16.remainder().chunks_exact(4)) {
+        #[cfg(not(feature = "simd"))]
+        for (d, px) in dst.iter_mut().zip(self.pixels.chunks_exact(4)) {
             *d = u32::from_le_bytes([px[2], px[1], px[0], 0]);
         }
     }
