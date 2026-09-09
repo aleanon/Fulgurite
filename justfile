@@ -96,7 +96,7 @@ check: test check-extra
 # decision CI gets to make.
 
 # Release-shape rustdoc, binsize, and the exhaustive f32 check.
-check-extra: floats thumb gpu simd
+check-extra: floats thumb gpu simd threads
     # Release-shape rustdoc: `--workspace` hides broken links that point at
     # items which only exist behind `observe`/`reload`.
     RUSTDOCFLAGS="-D warnings" cargo doc -p lumen-static --no-deps
@@ -122,6 +122,17 @@ simd:
     cargo test -p lumen-static-shell --features simd --test wide_stores
     cargo test -p lumen-static-shell --features simd --test damage_oracle
     cargo clippy -p lumen-static-shell --features simd --all-targets -- -D warnings
+
+# Band-parallel rasterisation (M17/T17.4). Default-OFF and desktop-only.
+# The comparison cannot happen inside one binary -- the split is a cargo
+# feature -- so the same scenes are rendered by both builds and their
+# checksums diffed.
+
+# The threaded rasteriser: byte-identity against the single-band render.
+threads:
+    ./scripts/check_banded.sh
+    cargo clippy -p lumen-static-shell --features threads,truetype --all-targets -- -D warnings
+    cargo test -q -p lumen-static-shell --features threads,truetype --test damage_oracle
 
 # The GPU backend: build, lint, and compare its pixels with the software canvas.
 gpu:
@@ -315,3 +326,7 @@ profile:
 # The same frame with the rasteriser's SIMD path on (M17/T17.1).
 profile-simd:
     LUMEN_PROFILE=1 cargo run -q -p counter-window --features simd -- --headless target/tally.ppm 12
+
+# And with band-parallel rasterisation as well (M17/T17.4).
+profile-threads:
+    LUMEN_PROFILE=1 cargo run -q -p counter-window --features simd,threads -- --headless target/tally.ppm 12

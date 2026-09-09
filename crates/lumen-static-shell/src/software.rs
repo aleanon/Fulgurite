@@ -667,16 +667,95 @@ impl Canvas {
         let font = self.font.clone();
         let images = self.images.take();
         {
-            let mut band = self.whole();
-            band.render(
+            #[cfg(feature = "threads")]
+            let split = self.render_banded(
                 list,
                 damage,
                 #[cfg(feature = "truetype")]
                 font.as_ref(),
                 images.as_deref(),
             );
+            #[cfg(not(feature = "threads"))]
+            let split = false;
+
+            if !split {
+                let mut band = self.whole();
+                band.render(
+                    list,
+                    damage,
+                    #[cfg(feature = "truetype")]
+                    font.as_ref(),
+                    images.as_deref(),
+                );
+            }
         }
         self.images = images;
+    }
+
+    /// Rasterise the damaged rows across threads, one band each — T17.4.
+    ///
+    /// Returns whether it did; `false` means the caller should render
+    /// the ordinary way. Refusing is the common case and is not a
+    /// failure: below the threshold a thread costs more to wake than the
+    /// rows cost to draw.
+    ///
+    /// **Byte-identical to the single band by construction.** Bands own
+    /// disjoint rows, and each one draws *every* command whose ink
+    /// reaches those rows, in list order — the same rule that makes a
+    /// partial redraw equal a full one. Nothing is skipped and nothing
+    /// is reordered, so there is no interleaving for two threads to get
+    /// wrong.
+    #[cfg(feature = "threads")]
+    fn render_banded(
+        &mut self,
+        list: &DisplayList,
+        damage: Option<[f32; 4]>,
+        #[cfg(feature = "truetype")] font: Option<&crate::text::FontStack>,
+        images: Option<&dyn lumen_static::ImageSource>,
+    ) -> bool {
+        // `&dyn ImageSource` carries no `Sync` bound, so a frame with
+        // images renders on one thread. Adding the bound would change a
+        // core trait for a case nothing in this workspace exercises —
+        // `Canvas::images` has no setter outside tests — and images are
+        // not what a large repaint is made of.
+        if images.is_some() {
+            return false;
+        }
+        let stride = (self.width * 4) as usize;
+        if stride == 0 {
+            return false;
+        }
+        let h = self.height as i64;
+        let area = damage.unwrap_or([0.0, 0.0, self.width as f32, self.height as f32]);
+        let y_lo = (area[1].floor() as i64).clamp(0, h) as usize;
+        let y_hi = (area[3].ceil() as i64).clamp(0, h) as usize;
+        let rows = y_hi.saturating_sub(y_lo);
+
+        let n = bands_for(rows * self.width as usize);
+        if n < 2 {
+            return false;
+        }
+        let band_rows = rows.div_ceil(n);
+        let width = self.width;
+        let slice = &mut self.pixels[y_lo * stride..y_hi * stride];
+
+        std::thread::scope(|sc| {
+            for (k, chunk) in slice.chunks_mut(band_rows * stride).enumerate() {
+                let y0 = (y_lo + k * band_rows) as i64;
+                let nrows = (chunk.len() / stride) as i64;
+                sc.spawn(move || {
+                    let mut band = Surface { px: chunk, width, y0, rows: nrows };
+                    band.render(
+                        list,
+                        damage,
+                        #[cfg(feature = "truetype")]
+                        font,
+                        None,
+                    );
+                });
+            }
+        });
+        true
     }
 
 }
@@ -704,6 +783,55 @@ struct TextRun<'a> {
     size: f32,
     weight: f32,
     color: Color,
+}
+
+/// How many bands to split `px` damaged pixels into — T17.4.
+///
+/// **The threshold is the point of this function, not the arithmetic.**
+/// A thread costs 5–10 µs to wake, and a damaged tally frame rasterises
+/// in 12 µs, so threading one is a straight loss. Only frames big enough
+/// to amortise a wake-up are split, and the rest take the single-band
+/// path with one comparison spent deciding.
+///
+/// 0.25 Mpx is roughly an eighth of a 1080p surface and about eight
+/// times the tally's whole damaged region. `docs/results-threading.md`
+/// measured the band overhead itself at 1–6% across sixteen bands, so
+/// the split is nearly free once it is worth doing at all.
+#[cfg(feature = "threads")]
+fn bands_for(px: usize) -> usize {
+    const MIN_PX: usize = 250_000;
+    if px < MIN_PX {
+        return 1;
+    }
+    // `LUMEN_BANDS` overrides the count, for tuning and for the sweep in
+    // `docs/results-threading.md`. Read once: `available_parallelism` is
+    // a syscall and this is on the frame path.
+    static CAP: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
+    let cap = *CAP.get_or_init(|| {
+        std::env::var("LUMEN_BANDS")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .filter(|n| *n > 0)
+            .unwrap_or_else(|| {
+                // **Capped at 8, measured** (`docs/results-threading.md`).
+                // A frame ends at a barrier -- every band must finish --
+                // so it runs at the speed of the slowest one. On a
+                // heterogeneous CPU that means the slowest *core*: on
+                // the reference 13900K (8 performance cores, 16
+                // efficiency cores, 32 threads) a 4K redraw is 8.91 ms
+                // at 8 bands and 9.92 at 32, because past the
+                // performance cores the extra bands land somewhere
+                // slower and the whole frame waits for them.
+                //
+                // The right cap is the performance-core count, which
+                // `std` cannot report. 8 is that number here and a
+                // reasonable ceiling elsewhere; `LUMEN_BANDS` overrides
+                // it for anyone whose machine disagrees.
+                std::thread::available_parallelism().map_or(1, |n| n.get()).min(8)
+            })
+    });
+    // Never more bands than there is work to justify them.
+    cap.min(px / MIN_PX).max(1)
 }
 
 /// One row's run of RGBA -> `0RGB`, shared by both blit paths (T17.3).

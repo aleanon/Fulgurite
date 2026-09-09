@@ -51,6 +51,15 @@ Against the live gate's 16 ms ceiling, for a **full** redraw:
   present still to pay.
 - 4K — 22.9 ms. **Over budget.** 60 fps is impossible; so is 43.
 
+> **No longer true with `threads`, 2026-09-09** —
+> `docs/results-threading.md` §3. M17 took the single-threaded 4K redraw
+> to 19.3 ms (still over) and the band-parallel one to **8.89 ms, inside
+> the budget**. 60 fps at 4K is possible on the CPU now, on eight cores,
+> with the feature on. The rest of this section's argument stands: the
+> default build is still over budget at 4K, damage tracking is still
+> load-bearing, and the GPU backend is still the answer for a machine
+> that has one.
+
 And with M10b's scale factor a 2× HiDPI 1080p *logical* window is 4.1
 Mpx physical — 11 ms, which is the 1440p row under another name.
 

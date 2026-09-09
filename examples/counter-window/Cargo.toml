@@ -29,3 +29,4 @@ a11y = ["dep:accesskit_winit", "dep:accesskit"]
 # Passed through so `just profile` can measure the rasteriser's SIMD
 # path on a real frame (M17/T17.1, docs/results-simd.md).
 simd = ["lumen-static-shell/simd"]
+threads = ["lumen-static-shell/threads"]

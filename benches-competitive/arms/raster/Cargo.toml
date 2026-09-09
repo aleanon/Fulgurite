@@ -16,3 +16,4 @@ lumen-static-wgpu = { path = "../../../crates/lumen-static-wgpu" }
 [features]
 default = []
 simd = ["lumen-static-shell/simd"]
+threads = ["lumen-static-shell/threads"]

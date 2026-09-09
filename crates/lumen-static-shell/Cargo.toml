@@ -28,3 +28,13 @@ truetype = ["dep:fontdue"]
 # crates/*/src since M0. `wide` is a safe wrapper, `no_std`-clean, and
 # keeps that gate absolute rather than growing an exception.
 simd = ["dep:wide"]
+# Band-parallel rasterisation (M17/T17.4). Default-OFF and **desktop
+# only** -- `no_std` has no threads, which is why this is a feature and
+# not the default. No dependency: `std::thread::scope` is enough, and
+# disjoint row bands are a safe split of the pixel buffer, so the gate
+# in scripts/check_no_unsafe.sh stays absolute.
+#
+# Byte-identical by construction: bands own disjoint pixels and each
+# draws every command that reaches its rows, in order. `just threads`
+# asserts it against the single-band build.
+threads = []
