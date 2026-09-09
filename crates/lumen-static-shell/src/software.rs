@@ -30,24 +30,44 @@ pub struct Canvas {
     pub images: Option<Box<dyn lumen_static::ImageSource>>,
 }
 
-impl Canvas {
-    pub fn new(width: u32, height: u32) -> Self {
-        Canvas {
-            width,
-            height,
-            pixels: vec![255; (width * height * 4) as usize],
-            #[cfg(feature = "truetype")]
-            font: None,
-            images: None,
-        }
-    }
+/// A horizontal band of a [`Canvas`], and the only thing that draws.
+///
+/// **Every rasterising method lives here rather than on `Canvas`, and
+/// the reason is threads** (M17/T17.4). A band borrows `&mut [u8]` — a
+/// slice of whole rows — plus the absolute `y` that slice starts at, so
+/// N disjoint bands of one surface can be handed to N threads with no
+/// aliasing and no `unsafe`, because a safe split of the pixel buffer
+/// into row groups is what produces them and the borrow checker proves
+/// they do not overlap. (The threading itself is not built yet; this is
+/// the shape that makes it possible.)
+///
+/// A whole-surface render is the `y0 = 0`, `rows = height` band, so
+/// there is **one** implementation of the pixel arithmetic and not two.
+/// Forking the rasteriser for a threaded copy was considered and
+/// rejected: `damage_oracle.rs`, `clip_test.rs`, `wide_stores.rs` and
+/// `simd_shadow.rs` all assert byte-identity against a single
+/// implementation, and two copies that must stay pixel-identical
+/// forever is the maintenance shape this crate avoids everywhere else.
+///
+/// Coordinates stay **absolute** throughout — a command's rect means
+/// the same thing in every band. Only indexing subtracts `y0`, which is
+/// what keeps the arithmetic in the drawing code unchanged from when it
+/// addressed a whole surface.
+struct Surface<'a> {
+    px: &'a mut [u8],
+    width: u32,
+    /// Absolute y of `px`'s first row.
+    y0: i64,
+    /// Rows in `px`.
+    rows: i64,
+}
 
-    /// A canvas that draws real glyphs.
-    #[cfg(feature = "truetype")]
-    pub fn with_font(width: u32, height: u32, font: crate::text::FontStack) -> Self {
-        let mut c = Self::new(width, height);
-        c.font = Some(font);
-        c
+impl Surface<'_> {
+    /// One past the last absolute row this band owns. Every y clamp in
+    /// the drawing code uses this where it used the surface height.
+    #[inline]
+    fn y_hi(&self) -> i64 {
+        self.y0 + self.rows
     }
 
     /// Blit one text run with real glyphs.
@@ -58,7 +78,7 @@ impl Canvas {
     /// Each glyph is clipped once as a rect; the first version clipped
     /// every pixel and that was most of the text cost.
     #[cfg(feature = "truetype")]
-    fn draw_run(&mut self, font: crate::text::FontStack, run: TextRun<'_>, clip: &[[f32; 4]]) {
+    fn draw_run(&mut self, font: &crate::text::FontStack, run: TextRun<'_>, clip: &[[f32; 4]]) {
         let TextRun { rect, text, size, weight, color } = run;
         let (glyphs, _) = font.glyphs(text, size, weight, rect[2] - rect[0]);
         for g in glyphs {
@@ -67,8 +87,8 @@ impl Canvas {
             let Some(r) = clipped([gx, gy, gx + g.w as f32, gy + g.h as f32], clip) else {
                 continue;
             };
-            let (w, h) = (self.width as i64, self.height as i64);
-            let (x0, y0) = ((r[0] as i64).max(0), (r[1] as i64).max(0));
+            let (w, h) = (self.width as i64, self.y_hi());
+            let (x0, y0) = ((r[0] as i64).max(0), (r[1] as i64).max(self.y0));
             let (x1, y1) = ((r[2] as i64).min(w), (r[3] as i64).min(h));
             for y in y0..y1 {
                 let row = (y - gy as i64) as usize;
@@ -102,8 +122,8 @@ impl Canvas {
             return;
         }
         let rad = radius.min((r[2] - r[0]) / 2.0).min((r[3] - r[1]) / 2.0);
-        let (w, h) = (self.width as i64, self.height as i64);
-        let (x0, y0) = ((bounds[0].floor() as i64).max(0), (bounds[1].floor() as i64).max(0));
+        let (w, h) = (self.width as i64, self.y_hi());
+        let (x0, y0) = ((bounds[0].floor() as i64).max(0), (bounds[1].floor() as i64).max(self.y0));
         let (x1, y1) = ((bounds[2].ceil() as i64).min(w), (bounds[3].ceil() as i64).min(h));
         // Corner bands, in pixel rows/columns.
         let (top, bottom) = ((r[1] + rad).ceil() as i64, (r[3] - rad).floor() as i64);
@@ -147,8 +167,8 @@ impl Canvas {
         let rad = radius.clamp(0.0, (shape[2] - shape[0]).min(shape[3] - shape[1]) / 2.0);
         let (cx, cy) = ((shape[0] + shape[2]) / 2.0, (shape[1] + shape[3]) / 2.0);
         let (hx, hy) = ((shape[2] - shape[0]) / 2.0 - rad, (shape[3] - shape[1]) / 2.0 - rad);
-        let (w, h) = (self.width as i64, self.height as i64);
-        let (x0, y0) = ((bounds[0].floor() as i64).max(0), (bounds[1].floor() as i64).max(0));
+        let (w, h) = (self.width as i64, self.y_hi());
+        let (x0, y0) = ((bounds[0].floor() as i64).max(0), (bounds[1].floor() as i64).max(self.y0));
         let (x1, y1) = ((bounds[2].ceil() as i64).min(w), (bounds[3].ceil() as i64).min(h));
 
         // The shape's inset-by-`rad` rect is entirely inside it — the
@@ -183,7 +203,7 @@ impl Canvas {
         for y in y0..y1 {
             let qy = (y as f32 + 0.5 - cy).abs() - hy;
             let inner_row = skip && y >= iy0 && y < iy1;
-            let row = &mut self.pixels[y as usize * stride..(y as usize + 1) * stride];
+            let row = &mut self.px[(y - self.y0) as usize * stride..((y - self.y0) as usize + 1) * stride];
             if inner_row {
                 // The interior contributes nothing, so the row is two
                 // runs with a hole between them.
@@ -195,14 +215,10 @@ impl Canvas {
         }
     }
 
-    pub fn clear(&mut self, c: Color) {
-        fill_px(&mut self.pixels, [c.0, c.1, c.2, c.3]);
-    }
-
     /// Clear only `r`. A partial redraw clears the region it is about
     /// to repaint and leaves the rest of the frame standing — clearing
     /// the whole surface first would make the "partial" half pointless.
-    pub fn clear_within(&mut self, r: [f32; 4], c: Color) {
+    fn clear_within(&mut self, r: [f32; 4], c: Color) {
         let opaque = Color(c.0, c.1, c.2, 255);
         self.fill(r, opaque);
     }
@@ -211,13 +227,14 @@ impl Canvas {
     /// colours are written, not blended: a card's background is most of
     /// the pixels in a frame.
     fn span(&mut self, y: i64, x0: i64, x1: i64, c: Color) {
-        if x0 >= x1 || y < 0 || y >= self.height as i64 || c.3 == 0 {
+        if x0 >= x1 || y < self.y0 || y >= self.y_hi() || c.3 == 0 {
             return;
         }
         if c.3 == 255 {
-            let start = ((y as u32 * self.width + x0 as u32) * 4) as usize;
-            let end = ((y as u32 * self.width + x1 as u32) * 4) as usize;
-            fill_px(&mut self.pixels[start..end], [c.0, c.1, c.2, 255]);
+            let r0 = (y - self.y0) as u32;
+            let start = ((r0 * self.width + x0 as u32) * 4) as usize;
+            let end = ((r0 * self.width + x1 as u32) * 4) as usize;
+            fill_px(&mut self.px[start..end], [c.0, c.1, c.2, 255]);
         } else {
             for x in x0..x1 {
                 self.blend(x, y, c);
@@ -237,7 +254,7 @@ impl Canvas {
         let Some(r) = clipped(bounds, clip) else { return };
         let (dx, dy) = (b.x - a.x, b.y - a.y);
         let len2 = dx * dx + dy * dy;
-        for y in r[1].floor().max(0.0) as i64..(r[3].ceil() as i64).min(self.height as i64) {
+        for y in (r[1].floor() as i64).max(self.y0)..(r[3].ceil() as i64).min(self.y_hi()) {
             for x in r[0].floor().max(0.0) as i64..(r[2].ceil() as i64).min(self.width as i64) {
                 let (px, py) = (x as f32 + 0.5, y as f32 + 0.5);
                 // Distance from the segment, not the infinite line: a
@@ -267,7 +284,7 @@ impl Canvas {
         // 0..1 across the whole rect whatever the angle.
         let half = ((dst[2] - dst[0]) * ux).abs() / 2.0 + ((dst[3] - dst[1]) * uy).abs() / 2.0;
         let span = if half > 0.0 { half * 2.0 } else { 1.0 };
-        for y in area[1].floor().max(0.0) as i64..(area[3].ceil() as i64).min(self.height as i64) {
+        for y in (area[1].floor() as i64).max(self.y0)..(area[3].ceil() as i64).min(self.y_hi()) {
             for x in area[0].floor().max(0.0) as i64..(area[2].ceil() as i64).min(self.width as i64)
             {
                 let (px, py) = (x as f32 + 0.5 - cx, y as f32 + 0.5 - cy);
@@ -297,10 +314,10 @@ impl Canvas {
         if dw <= 0.0 || dh <= 0.0 {
             return;
         }
-        let (x0, y0) = (area[0].floor().max(0.0) as i64, area[1].floor().max(0.0) as i64);
+        let (x0, y0) = (area[0].floor().max(0.0) as i64, (area[1].floor() as i64).max(self.y0));
         let (x1, y1) = (
             (area[2].ceil() as i64).min(self.width as i64),
-            (area[3].ceil() as i64).min(self.height as i64),
+            (area[3].ceil() as i64).min(self.y_hi()),
         );
         for y in y0..y1 {
             let v = ((y as f32 + 0.5 - dst[1]) / dh * ih as f32) as i64;
@@ -323,16 +340,16 @@ impl Canvas {
     }
 
     fn blend(&mut self, x: i64, y: i64, c: Color) {
-        if x < 0 || y < 0 || x >= self.width as i64 || y >= self.height as i64 || c.3 == 0 {
+        if x < 0 || y < self.y0 || x >= self.width as i64 || y >= self.y_hi() || c.3 == 0 {
             return;
         }
-        let i = ((y as u32 * self.width + x as u32) * 4) as usize;
+        let i = (((y - self.y0) as u32 * self.width + x as u32) * 4) as usize;
         let a = c.3 as u32;
         let inv = 255 - a;
         for (k, src) in [c.0, c.1, c.2].into_iter().enumerate() {
-            self.pixels[i + k] = ((src as u32 * a + self.pixels[i + k] as u32 * inv) / 255) as u8;
+            self.px[i + k] = ((src as u32 * a + self.px[i + k] as u32 * inv) / 255) as u8;
         }
-        self.pixels[i + 3] = 255;
+        self.px[i + 3] = 255;
     }
 
     /// Blend with a coverage mask applied to the colour's alpha — a
@@ -350,12 +367,160 @@ impl Canvas {
         if !r.iter().all(|v| v.is_finite()) {
             return;
         }
-        let (w, h) = (self.width as i64, self.height as i64);
-        let (x0, y0) = ((r[0].floor() as i64).max(0), (r[1].floor() as i64).max(0));
+        let (w, h) = (self.width as i64, self.y_hi());
+        let (x0, y0) = ((r[0].floor() as i64).max(0), (r[1].floor() as i64).max(self.y0));
         let (x1, y1) = ((r[2].ceil() as i64).min(w), (r[3].ceil() as i64).min(h));
         for y in y0..y1 {
             self.span(y, x0, x1, c);
         }
+    }
+
+    /// Walk a display list into this band.
+    ///
+    /// `font` and `images` arrive as parameters rather than fields
+    /// because a band borrows only pixels (T17.4). That also removes the
+    /// take-and-put-back dance the old `render_impl` needed to get
+    /// around borrowing `self.images` while `&mut self` was live.
+    fn render(
+        &mut self,
+        list: &DisplayList,
+        damage: Option<[f32; 4]>,
+        #[cfg(feature = "truetype")] font: Option<&crate::text::FontStack>,
+        images: Option<&dyn lumen_static::ImageSource>,
+    ) {
+        let mut clip: Vec<[f32; 4]> = Vec::new();
+        if let Some(d) = damage {
+            clip.push(d);
+        }
+        for c in &list.cmds {
+            match c {
+                Cmd::Rect { rect, color } => {
+                    if let Some(r) = clipped(*rect, &clip) {
+                        self.fill(r, *color);
+                    }
+                }
+                Cmd::RoundedRect { rect, color, radius } => {
+                    if let Some(r) = clipped(*rect, &clip) {
+                        // Corners are rounded against the *original*
+                        // rect and the fill is limited to the clipped
+                        // one, so a clipped card does not square off.
+                        self.fill_rounded_within(*rect, r, *color, *radius);
+                    }
+                }
+                Cmd::Shadow { rect, color, radius, spread } => {
+                    let reach =
+                        [rect[0] - spread, rect[1] - spread, rect[2] + spread, rect[3] + spread];
+                    if let Some(r) = clipped(reach, &clip) {
+                        self.shadow_within(*rect, r, *color, *radius, *spread);
+                    }
+                }
+                Cmd::Text { rect, text, size, weight, color } => {
+                    // Cull the run before shaping it.
+                    //
+                    // Every other arm of this match tests `clipped` first
+                    // and skips; text did not, so a run outside the damage
+                    // rect was still shaped and rasterised and only its
+                    // *glyphs* were clipped, one at a time. On a 3000-row
+                    // list that is 3000 shaping calls per frame for the ~40
+                    // rows a 800 px viewport can show — measured at 7.3 ms a
+                    // frame before this check and 0.16 ms after
+                    // (`docs/results-competitive.md`).
+                    //
+                    // Padded by `size`: a glyph may overhang its run's rect
+                    // (an italic tail, a wide bearing), and culling on the
+                    // bare rect would clip those at the boundary. One em is
+                    // more than any face overhangs and costs nothing.
+                    let pad = *size;
+                    let reach = [rect[0] - pad, rect[1] - pad, rect[2] + pad, rect[3] + pad];
+                    if clipped(reach, &clip).is_none() {
+                        continue;
+                    }
+                    let s = list.str_of(*text);
+                    #[cfg(feature = "truetype")]
+                    if let Some(font) = font {
+                        let run = TextRun { rect, text: s, size: *size, weight: *weight, color: *color };
+                        self.draw_run(font, run, &clip);
+                        continue;
+                    }
+                    let _ = weight;
+                    let advance = size * 0.5;
+                    for (k, ch) in s.chars().enumerate() {
+                        if ch == ' ' {
+                            continue;
+                        }
+                        let x = rect[0] + k as f32 * advance;
+                        if x + advance > rect[2] {
+                            break; // clipped by the node's own box
+                        }
+                        // One block per glyph, inset so runs stay legible.
+                        let g = [x + 0.5, rect[1] + 2.0, x + advance - 0.5, rect[1] + size - 2.0];
+                        if let Some(r) = clipped(g, &clip) {
+                            self.fill(r, *color);
+                        }
+                    }
+                }
+                Cmd::Line { a, b, width, color } => {
+                    let w = width / 2.0;
+                    let bounds =
+                        [a.x.min(b.x) - w, a.y.min(b.y) - w, a.x.max(b.x) + w, a.y.max(b.y) + w];
+                    if clipped(bounds, &clip).is_some() {
+                        self.stroke_line(*a, *b, *width, *color, &clip);
+                    }
+                }
+                Cmd::Gradient { rect, stops, angle } => {
+                    if let Some(r) = clipped(*rect, &clip) {
+                        self.fill_gradient(*rect, r, *stops, *angle);
+                    }
+                }
+                Cmd::Image { rect, id, tint } => {
+                    // Culled before anything is fetched, like every
+                    // other command and like text since the 46x fix
+                    // (`docs/results-competitive.md` §6.1).
+                    let Some(r) = clipped(*rect, &clip) else { continue };
+                    let Some(src) = images else { continue };
+                    // A missing asset draws nothing rather than taking
+                    // the frame down: `ImageSource` returns `Option` for
+                    // exactly that.
+                    let Some((iw, ih, px)) = src.image(*id) else { continue };
+                    if iw == 0 || ih == 0 || px.len() < (iw as usize * ih as usize * 4) {
+                        continue;
+                    }
+                    self.blit_image(*rect, r, iw, ih, px, *tint);
+                }
+                Cmd::PushClip { rect } => clip.push(*rect),
+                Cmd::PopClip => {
+                    // Never pop the damage scope: it is not part of the
+                    // list's own balance, and an unbalanced list (which
+                    // `tests/paint_containment.rs` forbids, but a
+                    // renderer must not trust) would otherwise let a
+                    // later command paint outside the region.
+                    if clip.len() > damage.is_some() as usize {
+                        clip.pop();
+                    }
+                }
+            }
+        }
+    }
+}
+
+impl Canvas {
+    pub fn new(width: u32, height: u32) -> Self {
+        Canvas {
+            width,
+            height,
+            pixels: vec![255; (width * height * 4) as usize],
+            #[cfg(feature = "truetype")]
+            font: None,
+            images: None,
+        }
+    }
+
+    /// A canvas that draws real glyphs.
+    #[cfg(feature = "truetype")]
+    pub fn with_font(width: u32, height: u32, font: crate::text::FontStack) -> Self {
+        let mut c = Self::new(width, height);
+        c.font = Some(font);
+        c
     }
 
     /// Copy the frame into a `0RGB` `u32` buffer — softbuffer's format.
@@ -475,126 +640,45 @@ impl Canvas {
         self.render_impl(list, Some(damage));
     }
 
-    fn render_impl(&mut self, list: &DisplayList, damage: Option<[f32; 4]>) {
-        // Taken for the pass and put back at the end: `blit_image`
-        // needs `&mut self` and the source is a field, so holding a
-        // borrow across the loop would conflict. Nothing here can
-        // return early, so it always goes back.
-        let images = self.images.take();
-        let mut clip: Vec<[f32; 4]> = Vec::new();
-        if let Some(d) = damage {
-            clip.push(d);
+    /// Fill the whole surface.
+    pub fn clear(&mut self, c: Color) {
+        fill_px(&mut self.pixels, [c.0, c.1, c.2, c.3]);
+    }
+
+    /// Clear only `r`. A partial redraw clears the region it is about
+    /// to repaint and leaves the rest of the frame standing — clearing
+    /// the whole surface first would make the "partial" half pointless.
+    pub fn clear_within(&mut self, r: [f32; 4], c: Color) {
+        self.whole().clear_within(r, c);
+    }
+
+    /// The whole surface as one band.
+    fn whole(&mut self) -> Surface<'_> {
+        Surface {
+            px: &mut self.pixels,
+            width: self.width,
+            y0: 0,
+            rows: self.height as i64,
         }
-        for c in &list.cmds {
-            match c {
-                Cmd::Rect { rect, color } => {
-                    if let Some(r) = clipped(*rect, &clip) {
-                        self.fill(r, *color);
-                    }
-                }
-                Cmd::RoundedRect { rect, color, radius } => {
-                    if let Some(r) = clipped(*rect, &clip) {
-                        // Corners are rounded against the *original*
-                        // rect and the fill is limited to the clipped
-                        // one, so a clipped card does not square off.
-                        self.fill_rounded_within(*rect, r, *color, *radius);
-                    }
-                }
-                Cmd::Shadow { rect, color, radius, spread } => {
-                    let reach =
-                        [rect[0] - spread, rect[1] - spread, rect[2] + spread, rect[3] + spread];
-                    if let Some(r) = clipped(reach, &clip) {
-                        self.shadow_within(*rect, r, *color, *radius, *spread);
-                    }
-                }
-                Cmd::Text { rect, text, size, weight, color } => {
-                    // Cull the run before shaping it.
-                    //
-                    // Every other arm of this match tests `clipped` first
-                    // and skips; text did not, so a run outside the damage
-                    // rect was still shaped and rasterised and only its
-                    // *glyphs* were clipped, one at a time. On a 3000-row
-                    // list that is 3000 shaping calls per frame for the ~40
-                    // rows a 800 px viewport can show — measured at 7.3 ms a
-                    // frame before this check and 0.16 ms after
-                    // (`docs/results-competitive.md`).
-                    //
-                    // Padded by `size`: a glyph may overhang its run's rect
-                    // (an italic tail, a wide bearing), and culling on the
-                    // bare rect would clip those at the boundary. One em is
-                    // more than any face overhangs and costs nothing.
-                    let pad = *size;
-                    let reach = [rect[0] - pad, rect[1] - pad, rect[2] + pad, rect[3] + pad];
-                    if clipped(reach, &clip).is_none() {
-                        continue;
-                    }
-                    let s = list.str_of(*text);
-                    #[cfg(feature = "truetype")]
-                    if let Some(font) = self.font.clone() {
-                        let run = TextRun { rect, text: s, size: *size, weight: *weight, color: *color };
-                        self.draw_run(font, run, &clip);
-                        continue;
-                    }
-                    let _ = weight;
-                    let advance = size * 0.5;
-                    for (k, ch) in s.chars().enumerate() {
-                        if ch == ' ' {
-                            continue;
-                        }
-                        let x = rect[0] + k as f32 * advance;
-                        if x + advance > rect[2] {
-                            break; // clipped by the node's own box
-                        }
-                        // One block per glyph, inset so runs stay legible.
-                        let g = [x + 0.5, rect[1] + 2.0, x + advance - 0.5, rect[1] + size - 2.0];
-                        if let Some(r) = clipped(g, &clip) {
-                            self.fill(r, *color);
-                        }
-                    }
-                }
-                Cmd::Line { a, b, width, color } => {
-                    let w = width / 2.0;
-                    let bounds =
-                        [a.x.min(b.x) - w, a.y.min(b.y) - w, a.x.max(b.x) + w, a.y.max(b.y) + w];
-                    if clipped(bounds, &clip).is_some() {
-                        self.stroke_line(*a, *b, *width, *color, &clip);
-                    }
-                }
-                Cmd::Gradient { rect, stops, angle } => {
-                    if let Some(r) = clipped(*rect, &clip) {
-                        self.fill_gradient(*rect, r, *stops, *angle);
-                    }
-                }
-                Cmd::Image { rect, id, tint } => {
-                    // Culled before anything is fetched, like every
-                    // other command and like text since the 46x fix
-                    // (`docs/results-competitive.md` §6.1).
-                    let Some(r) = clipped(*rect, &clip) else { continue };
-                    let Some(src) = images.as_ref() else { continue };
-                    // A missing asset draws nothing rather than taking
-                    // the frame down: `ImageSource` returns `Option` for
-                    // exactly that.
-                    let Some((iw, ih, px)) = src.image(*id) else { continue };
-                    if iw == 0 || ih == 0 || px.len() < (iw as usize * ih as usize * 4) {
-                        continue;
-                    }
-                    self.blit_image(*rect, r, iw, ih, px, *tint);
-                }
-                Cmd::PushClip { rect } => clip.push(*rect),
-                Cmd::PopClip => {
-                    // Never pop the damage scope: it is not part of the
-                    // list's own balance, and an unbalanced list (which
-                    // `tests/paint_containment.rs` forbids, but a
-                    // renderer must not trust) would otherwise let a
-                    // later command paint outside the region.
-                    if clip.len() > damage.is_some() as usize {
-                        clip.pop();
-                    }
-                }
-            }
+    }
+
+    fn render_impl(&mut self, list: &DisplayList, damage: Option<[f32; 4]>) {
+        #[cfg(feature = "truetype")]
+        let font = self.font.clone();
+        let images = self.images.take();
+        {
+            let mut band = self.whole();
+            band.render(
+                list,
+                damage,
+                #[cfg(feature = "truetype")]
+                font.as_ref(),
+                images.as_deref(),
+            );
         }
         self.images = images;
     }
+
 }
 
 impl Renderer for Canvas {
