@@ -33,6 +33,12 @@ row.
 | 1440p | 3.69 | 9.92 ms | 0.50 ms | 19.7× | 881 |
 | 4K | 8.29 | **22.87 ms** | **1.10 ms** | 20.8× | 2041 |
 
+> **The CPU column is pre-M17, 2026-09-09.** The software rasteriser is
+> now 1.2–1.3× faster (`docs/results-simd.md`): 4K is 18.17 ms scalar,
+> 17.65 with `simd`, so the speed-up at 4K is **16.1×** rather than
+> 20.8×. Still over budget on the CPU, still comfortably under on the
+> GPU; the conclusion is unchanged and the ratio is not.
+
 **A full 4K redraw goes from 143% of a frame budget to 6.6% of one.**
 That is the whole argument, and it is the one number the deferral was
 missing.
@@ -245,7 +251,13 @@ the answer. Each cell is cpu/gpu in milliseconds, min of 20:
 | 1 600 | 0.03/0.05 **cpu** | 0.05/0.05 **cpu** | 0.07/0.06 **gpu** | 0.08/0.06 **gpu** | 0.11/0.06 **gpu** |
 
 **The crossover is 3–5% of the surface**, arriving earlier as the frame
-gets busier. Below it the GPU's fixed per-frame cost — buffer upload,
+gets busier.
+
+> **Re-measured after M17, 2026-09-09: it is 5% at every command
+> count.** The faster CPU rasteriser pushed the one cell that had gone
+> to the GPU at 3% (1 600 commands) back to the CPU. The shape is the
+> same and the rule of thumb below is unchanged; the boundary moved by
+> one column, in the direction a faster CPU predicts. Below it the GPU's fixed per-frame cost — buffer upload,
 pass setup, submission — dominates a job too small to amortise it.
 Above it the CPU's per-pixel cost takes over and never gives it back:
 §1's 20× at 4K is the same curve at 100%.

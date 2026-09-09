@@ -422,11 +422,15 @@ impl Canvas {
         let stride = self.width as usize;
         for y in y0..y1 {
             let row = y * stride;
-            for x in x0..x1 {
-                let i = (row + x) * 4;
-                let px = &self.pixels[i..i + 4];
-                dst[row + x] = u32::from_le_bytes([px[2], px[1], px[0], 0]);
-            }
+            // **The same swizzle as `blit_0rgb`, and the same vector
+            // form.** T17.2 vectorised only the whole-surface blit and
+            // left this one scalar — which is backwards, because this
+            // is the one a frame actually calls: the full blit runs on
+            // a resize, this runs every damaged frame. `blit_within`
+            // was 7 us of a 19 us damaged tally frame, 37% of it, and
+            // measured 0.97 us in the per-stage profiler under both
+            // builds, which is what exposed the omission (M17/T17.3).
+            blit_run(&self.pixels, &mut dst[row..row + stride], row, x0, x1);
         }
     }
 
@@ -616,6 +620,56 @@ struct TextRun<'a> {
     size: f32,
     weight: f32,
     color: Color,
+}
+
+/// One row's run of RGBA -> `0RGB`, shared by both blit paths (T17.3).
+///
+/// `dst` is the destination row; `base` is that row's first pixel index
+/// into `pixels`, and `x0..x1` are pixel columns.
+#[inline]
+fn blit_run(pixels: &[u8], dst: &mut [u32], base: usize, x0: usize, x1: usize) {
+    #[cfg(feature = "simd")]
+    {
+        use wide::u32x8;
+        let (m_r, m_g, m_b) = (
+            u32x8::splat(0x0000_00FF),
+            u32x8::splat(0x0000_FF00),
+            u32x8::splat(0x00FF_0000),
+        );
+        let mut x = x0;
+        while x + 8 <= x1 {
+            let i = (base + x) * 4;
+            let sq = &pixels[i..i + 32];
+            let mut arr = [0u32; 8];
+            for (k, a) in arr.iter_mut().enumerate() {
+                *a = u32::from_le_bytes([
+                    sq[k * 4],
+                    sq[k * 4 + 1],
+                    sq[k * 4 + 2],
+                    sq[k * 4 + 3],
+                ]);
+            }
+            let v = u32x8::from(arr);
+            let r: u32x8 = ((v & m_r) << 16) | (v & m_g) | ((v & m_b) >> 16);
+            dst[x..x + 8].copy_from_slice(&r.to_array());
+            x += 8;
+        }
+        blit_run_scalar(pixels, dst, base, x, x1);
+        }
+    #[cfg(not(feature = "simd"))]
+    blit_run_scalar(pixels, dst, base, x0, x1);
+}
+
+/// The scalar form, and the tail of the vector one.
+#[inline]
+fn blit_run_scalar(pixels: &[u8], dst: &mut [u32], base: usize, x0: usize, x1: usize) {
+    if x0 >= x1 {
+        return;
+    }
+    let src = &pixels[(base + x0) * 4..(base + x1) * 4];
+    for (d, px) in dst[x0..x1].iter_mut().zip(src.chunks_exact(4)) {
+        *d = u32::from_le_bytes([px[2], px[1], px[0], 0]);
+    }
 }
 
 /// One row's run of a shadow's signed-distance field — T17.1.

@@ -159,20 +159,92 @@ produces — `((x+1)*257)>>16` and `(x + (x>>8) + 1) >> 8`. Neither is
 needed now; both are correct if a shuffle ever makes the blend worth
 revisiting.
 
+## T17.3 — the vectorised blit was on the wrong function
+
+T17.2 vectorised `blit_0rgb`, the whole-surface blit. **The one a frame
+actually calls is `blit_0rgb_within`**, the damaged one — the full blit
+runs on a resize, the damaged one runs every frame — and it was left
+scalar.
+
+The per-stage profiler is what exposed it: `blit` measured **0.97 µs
+under both builds** at every N, a ratio of exactly 1.00×, which is what
+a vectorised path that never runs looks like. Both now share one
+`blit_run`.
+
+| | scalar | simd | |
+|---|---:|---:|---|
+| `blit_within`, tally | 7 µs | **1 µs** | **7×** |
+| the damaged frame | 19 µs | **13 µs** | 1.46× |
+
+`blit_within` was 37% of a damaged frame. It is now 8%.
+
+**And the fault injection was wrong before the test was.** Striding the
+vector loop by 7 instead of 8 left the test green — because overlapping
+runs write *correctly computed* pixels twice, so the output is right and
+only the speed is wrong. Two injections that do change output — a wrong
+shift in the blue mask, and dropping the scalar tail — are caught by
+name with the failing run length. Recorded because `AGENT.md` warns that
+an injection can be the broken thing, and this is the second time in
+this milestone.
+
 ## Where the frame stands
 
 The tally, full redraw, median of 50:
 
-| stage | before M17 | T17.0+T17.1 scalar | + `simd` |
+The tally, full redraw, median of 50:
+
+| stage | before M17 | M17 scalar | M17 + `simd` |
 |---|---:|---:|---:|
-| `clear` | 96 µs | 10 | 10 |
-| `render(all)` | 482 µs | 291 | **269** |
-| — of which `shadow` | 255 µs | 202 | **180** |
-| `blit rgba->0rgb` | 76 µs | 62 | **24** |
-| **total** | **654 µs** | **363** | **303** |
-| | | 1.80× | **2.16×** |
+| `clear` | 96 µs | 9 | 10 |
+| `render(all)` | 482 µs | 275 | **269** |
+| — of which `shadow` | 255 µs | 192 | **180** |
+| `blit rgba->0rgb` | 76 µs | 63 | **24** |
+| **total** | **654 µs** | **347** | **303** |
+| | | 1.88× | **2.16×** |
+
+And the damaged frame, which is what a running application pays:
+
+| stage | before M17 | M17 scalar | M17 + `simd` |
+|---|---:|---:|---:|
+| `clear_within` | 4 µs | 0 | 0 |
+| `render_within` | 18 µs | 12 | 12 |
+| `blit_within` | 6 µs | 7 | **1** |
+| **total** | **28 µs** | **19** | **13** |
 
 `pump(layout+paint)` is 2 µs throughout and was never the point.
+
+## The full benchmark, re-run with `simd` on
+
+**SIMD moves nothing in the competitive comparison, and that is
+correct.** The cross-arm rows stop at a display list — `layout` and
+`+paint` — and every ratio between the two builds is 1.00× within noise
+at all four tree sizes. There is no rasterisation in them to vectorise.
+
+It also moves nothing in the per-stage profile of the *list* workload:
+`raster.sw` is 1.00× at every N, because that scene is text rows with
+**no shadow**, and the vector path is the shadow's distance field. A
+reader who takes the tally's 2.16× as a general number will be
+disappointed; it is a shadow-and-blit-heavy frame.
+
+Where it does show — the card-grid scene, which has a shadow per card
+(`benches-competitive --bin raster-scaling`, min of 30):
+
+| canvas | before M17 | M17 scalar | M17 + `simd` | total |
+|---|---:|---:|---:|---:|
+| tally window | 0.72 ms | 0.60 | 0.61 | 1.18× |
+| 720p | 2.53 ms | 2.22 | **2.02** | 1.25× |
+| 1080p | 5.59 ms | 4.60 | **4.38** | 1.28× |
+| 1440p | 9.75 ms | 8.10 | **8.06** | 1.21× |
+| 4K | 22.88 ms | 18.17 | **17.65** | **1.30×** |
+
+**Most of that is T17.0's free rewrite, not SIMD**: 22.88 → 18.17 costs
+nothing and needs no feature; 18.17 → 17.65 is the 3% SIMD adds on a
+mixed scene. The honest range for the `simd` feature is **3–10% on a
+mixed scene, up to 1.2× on a shadow-and-blit-heavy one**, and 7× on the
+damaged blit alone.
+
+`docs/results-raster-scaling.md` and `docs/results-gpu.md` carry the
+pre-M17 CPU column and are corrected against these.
 
 ## What remains
 

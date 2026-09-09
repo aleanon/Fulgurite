@@ -29,6 +29,15 @@ rather than the empty space.
 | 1440p | 3.69 | **9.75 ms** | 2.64 | 881 |
 | 4K | 8.29 | **22.88 ms** | 2.76 | 2041 |
 
+> **Superseded for the CPU column, 2026-09-09 (M17)** —
+> `docs/results-simd.md`. The rasteriser got 1.2–1.3× faster: a 4K full
+> redraw is **18.17 ms** scalar and **17.65 ms** with the `simd`
+> feature, against the 22.88 below, and per-megapixel is ~2.2 rather
+> than ~2.7. **The verdict does not change** — 4K is still over the
+> 16 ms budget, damage tracking is still load-bearing, and the GPU
+> backend the numbers below justified is still justified. The rows are
+> kept because they are what T15.12's reversal was argued from.
+
 **~2.7 ms per megapixel, flat across a 36× range.** The rasteriser is
 pixel-bound and scales linearly, which is what a software rasteriser
 should do and exactly why resolution is the variable that matters.

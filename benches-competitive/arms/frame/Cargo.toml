@@ -18,5 +18,9 @@ lumen-static-shell = { path = "../../../crates/lumen-static-shell", features = [
 lumen-static-agent = { path = "../../../crates/lumen-static-agent", optional = true }
 
 [features]
+# Passed through so the rasteriser's SIMD path can be measured on the
+# same workload as the scalar one (M17, docs/results-simd.md). The
+# cross-arm rows stop before rasterising, so this cannot move them.
+simd = ["lumen-static-shell/simd"]
 default = []
 observe = ["dep:lumen-static-agent", "lumen-static/observe"]

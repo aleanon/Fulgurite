@@ -329,6 +329,12 @@ culling, which requires a host to declare a surface. Neither is on in
 the arm, because an arm that culls cannot be compared with iced or
 Lumen, which do not.
 
+**And neither does M17's SIMD** (2026-09-09, `docs/results-simd.md`).
+Every row in this section is 1.00× within noise between the scalar and
+`simd` builds at all four sizes, because the matched stopping point is a
+display list and there is no rasterisation in it to vectorise. M17 moved
+`+render`, which is not a cross-arm row.
+
 **The relayout boundary costs nothing when unused**, measured directly
 rather than inferred from a cross-day comparison: the generated check
 compiled in gives 65.6 µs of layout at 10 000 rows, compiled out 65.8,

@@ -131,3 +131,62 @@ fn a_rendered_frame_is_byte_identical_to_the_reference_paths() {
     reference_blit(&b.pixels, &mut gb);
     assert_eq!(ga, gb, "the blitted frame differs");
 }
+
+/// The loop `blit_0rgb_within` used before T17.3.
+fn reference_blit_within(
+    pixels: &[u8],
+    w: u32,
+    h: u32,
+    dst: &mut [u32],
+    r: [f32; 4],
+) {
+    let (iw, ih) = (w as i64, h as i64);
+    let x0 = (r[0].floor() as i64).clamp(0, iw) as usize;
+    let y0 = (r[1].floor() as i64).clamp(0, ih) as usize;
+    let x1 = (r[2].ceil() as i64).clamp(0, iw) as usize;
+    let y1 = (r[3].ceil() as i64).clamp(0, ih) as usize;
+    let stride = w as usize;
+    for y in y0..y1 {
+        let row = y * stride;
+        for x in x0..x1 {
+            let i = (row + x) * 4;
+            let px = &pixels[i..i + 4];
+            dst[row + x] = (px[0] as u32) << 16 | (px[1] as u32) << 8 | px[2] as u32;
+        }
+    }
+}
+
+#[test]
+fn the_damaged_blit_is_byte_identical_at_every_run_length() {
+    // The path a real frame actually calls — `blit_0rgb_within` runs
+    // every damaged frame while the whole-surface blit runs on a resize.
+    // T17.2 vectorised the wrong one of the two, which is why this test
+    // exists (T17.3).
+    for &w in &[7u32, 8, 16, 17, 33, 64, 71] {
+        for h in [1u32, 5] {
+            let mut c = Canvas::new(w, h);
+            for (i, px) in c.pixels.chunks_exact_mut(4).enumerate() {
+                px.copy_from_slice(&[(i % 251) as u8, (i % 241) as u8, (i % 239) as u8, 255]);
+            }
+            let n = (w * h) as usize;
+            // Every start and end column, so every eight-lane tail and
+            // every sub-lane run is covered.
+            for x0 in 0..w {
+                for x1 in x0..=w {
+                    let rect = [x0 as f32, 0.0, x1 as f32, h as f32];
+                    let mut got = vec![0u32; n];
+                    c.blit_0rgb_within(&mut got, rect);
+                    let mut want = vec![0u32; n];
+                    reference_blit_within(&c.pixels, w, h, &mut want, rect);
+                    assert_eq!(
+                        got, want,
+                        "damaged blit differs at {w}x{h} cols [{x0},{x1}) \
+                         (run = {}, simd = {})",
+                        x1 - x0,
+                        cfg!(feature = "simd")
+                    );
+                }
+            }
+        }
+    }
+}
