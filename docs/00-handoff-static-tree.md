@@ -806,3 +806,16 @@ remains** — which is why §10 Step 1 is the kill criterion.
    **RESOLVED 2026-08-30:** reference machine is the i9-13900KF/32-thread dev
    box (`rustc 1.94.0`); budget is **leaf edit → usable rebuild < 2s**. See
    `docs/results-step1-firewall.md`.
+8. **How far the paint vocabulary goes** — the spec never bounded `Cmd`, and
+   "as capable as CSS" turns out to be two questions, not one.
+   **DECIDED 2026-09-10.** CSS's *box* styling is closed-form and belongs in
+   `Cmd`: per-corner radii, borders, inset and offset shadows, radial and
+   conic gradients, blend modes, rounded clips, and backdrop effects
+   including blur, refraction and specular. CSS's *vector* half — rotation
+   and skew, `clip-path`, dashes and joins, SVG — is a Bézier pipeline, is
+   not in `Cmd`, and plugs in at the `Renderer` seam if it is ever wanted.
+   The measurement behind the line is `docs/results-vello.md`; the first
+   feature built on the near side of it is `docs/plan-glass.md` (M18).
+   **Layout is not part of this question** and never was: layout produces
+   the rects a renderer consumes, so grid, wrap and min/max constraints are
+   work in `ops.rs` that no renderer choice affects.

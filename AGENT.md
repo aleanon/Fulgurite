@@ -10,7 +10,10 @@ Shipped and kept for their reasoning: `docs/plan-architecture-v2.md`
 `docs/plan-embedded.md` (M13), `docs/plan-desktop.md` (M14),
 `docs/plan-capabilities.md` (M15), `docs/plan-invalidation.md` (M16).
 Not started:
-`docs/plan-widgets.md` T11.5, `docs/plan-harness.md`.
+`docs/plan-widgets.md` T11.5, `docs/plan-harness.md`,
+`docs/plan-glass.md` (M18, T18.0–T18.7 — backdrop blur, refraction and
+specular as one closed-form command; the scope line it sits on is
+`docs/results-vello.md` §4).
 
 Task ids (`T0.6`, `F1.3`, `T16.7`) go in commit subjects. Decision records live beside it in `docs/`; the
 design spec is `docs/00-handoff-static-tree.md`, whose DECIDED/SUPERSEDED
