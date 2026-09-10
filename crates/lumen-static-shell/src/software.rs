@@ -823,6 +823,20 @@ impl Canvas {
     /// threshold to *split* is 500 000 px, not the 250 000 floor.
     ///
     /// Always 1 without `threads`, which is the truth for that build.
+    /// [`Canvas::bands_for`], but for a specific list — 1 when the list
+    /// contains a backdrop filter, which cannot be banded (M19/T19.5).
+    ///
+    /// Exists so `tests/banded.rs` can **assert** the decline rather
+    /// than infer it from pixels that happen to match. Shares
+    /// `has_glass` with the splitter, so the predicate a test pins
+    /// cannot drift from the decision the renderer makes.
+    pub fn bands_for_list(&self, list: &DisplayList, damage: Option<[f32; 4]>) -> usize {
+        if has_glass(list) {
+            return 1;
+        }
+        self.bands_for(damage)
+    }
+
     pub fn bands_for(&self, damage: Option<[f32; 4]>) -> usize {
         #[cfg(feature = "threads")]
         {
@@ -942,6 +956,28 @@ impl Canvas {
         // `Canvas::images` has no setter outside tests -- and images are
         // not what a large repaint is made of.
         if images.is_some() {
+            return false;
+        }
+        // **A backdrop filter cannot run in a band** — M19/T19.5.
+        //
+        // A band owns disjoint rows and that is the whole safety
+        // argument; `Cmd::Glass` captures a source region reaching
+        // `3σ + 4` px past the panel on every side, into rows another
+        // worker owns and is concurrently writing.
+        //
+        // The plan's T19.5 was to segment the command list at glass
+        // boundaries and join between segments, reconstructing the clip
+        // stack at each. Not built, and `docs/results-glass.md` §7 has
+        // the measurement that decided it: a toolbar-sized panel is
+        // 0.42 ms in total, so segmentation, a clip prefix per boundary
+        // and a per-segment worker count buy nothing at the size a panel
+        // actually is. The condition to revisit is a panel of a few
+        // hundred thousand pixels, which §2 prices at 5 ms and up.
+        //
+        // `tests/banded.rs` asserts the decline through
+        // [`Canvas::bands_for_list`], so this cannot silently start
+        // threading.
+        if has_glass(list) {
             return false;
         }
         let stride = (self.width * 4) as usize;
@@ -1097,6 +1133,15 @@ fn strip_rows_for(rows: usize, workers: usize) -> usize {
         return n.clamp(1, rows);
     }
     rows.div_ceil(workers * 4).clamp(16, rows.max(1))
+}
+
+/// Whether a list contains a backdrop filter.
+///
+/// One place, shared by the splitter and by
+/// [`Canvas::bands_for_list`] — a predicate a test asserts on must be
+/// the predicate the renderer decides with, or the test pins nothing.
+fn has_glass(list: &DisplayList) -> bool {
+    list.cmds.iter().any(|c| matches!(c, lumen_static::Cmd::Glass { .. }))
 }
 
 /// SVG's box width for a Gaussian of this standard deviation.

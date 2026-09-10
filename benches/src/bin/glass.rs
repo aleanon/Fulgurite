@@ -81,6 +81,43 @@ fn main() {
         );
     }
 
+    // What a cache could ever save. A cache must still CAPTURE the
+    // source to know whether it is still valid, so its best case is the
+    // cost with the box passes removed -- which `blur = 0` measures
+    // exactly, because `glass_within` skips them at zero.
+    println!("\n  what the box passes cost, against capture + composite alone");
+    println!("{:>14} {:>12} {:>12} {:>10}", "panel", "blur 12 ms", "blur 0 ms", "passes");
+    for (pw, ph) in [(400.0f32, 200.0f32), (800.0, 300.0)] {
+        let area = [0.0, 0.0, w as f32, h as f32];
+        let mut timed = |sigma: f32| {
+            let mut list = DisplayList::new();
+            backdrop(w, h, &mut list);
+            list.glass([40.0, 40.0, 40.0 + pw, 40.0 + ph], 12.0, sigma, Color(255, 255, 255, 40));
+            let mut base = DisplayList::new();
+            backdrop(w, h, &mut base);
+            best_of(3, || {
+                canvas.clear(Color(20, 24, 34, 255));
+                canvas.render_within(&list, area);
+            });
+            let with = best_of(20, || {
+                canvas.clear(Color(20, 24, 34, 255));
+                canvas.render_within(&list, area);
+            });
+            let without = best_of(20, || {
+                canvas.clear(Color(20, 24, 34, 255));
+                canvas.render_within(&base, area);
+            });
+            with - without
+        };
+        let full = timed(12.0);
+        let none = timed(0.0);
+        println!(
+            "{:>14} {full:>12.2} {none:>12.2} {:>9.0}%",
+            format!("{pw:.0}x{ph:.0}"),
+            (full - none) / full * 100.0
+        );
+    }
+
     println!("\n{:>14} {:>9} {:>10} {:>12}", "panel", "px", "ms", "ns/px");
     for (pw, ph) in [(200.0f32, 80.0f32), (400.0, 200.0), (800.0, 300.0), (1600.0, 800.0)] {
         let mut list = DisplayList::new();

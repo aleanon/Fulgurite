@@ -415,9 +415,9 @@ or drops the claim.
 | **T19.1** — **DONE 2026-09-10** | `Glass<W>`: the `NodeDesc` splice, `layout`/`place`/`paint`/`hit`, `blur` and `tint` as fields. | A `#[widget(stack)]` of `ScrollView<Rows>` and `Glass<Bar>` overlaps by 19 200 px and emits the panel *after* what it covers — which is also what makes T19.2's oracle constructible. |
 | **T19.2** — **DONE 2026-09-10** | Software capture, three-box blur, composite. Single-threaded. `observe_dep` and the fixpoint on M18's region set. The damage oracle — whose scene needs T11.6's `stack`, since a panel with nothing behind it cannot go stale. | Byte-identical over a moving backdrop across 8 steps (7 partial, 7 with the panel's pixels moving), and a still frame with a panel damages nothing. |
 | **T19.3** — **DONE 2026-09-10** | Blur quality: the `k` search, the odd/even rule, `u16` intermediates, grid anchor, border rule. `docs/results-glass.md` has the sweep. | Delivered σ within **10.0%** at the worst point of a fine sweep (bound 12%); cost flat past σ = 6 — 5.2 ms against 12.0 at σ = 2, because a small blur is the one that cannot downsample — and ~21 ns/px. |
-| **T19.4** | The backdrop cache, measured against T19.2. | A frame whose damage misses every panel costs the composite only, and the doc says by how much. |
-| **T19.5** | Threading: segmentation, clip prefix, per-segment worker count, composite in the next segment's head. | `just threads` byte-identity holds with glass in the scene, at every swept strip height, **with the split asserted** via `Canvas::bands_for`. |
-| **T19.6** | Embedded: confirm the variant costs the firmware nothing. | `just firmware-size` and `scripts/check_text.sh` restated in `docs/results-embedded.md`. |
+| **T19.4** — **NOT BUILT 2026-09-10**, decided on measurement | The backdrop cache. | Measured instead: the box passes are **1–4%** of a panel's cost, and the state a cache would exploit cannot occur once the dependency rule exists. `docs/results-glass.md` §5. |
+| **T19.5** — **NOT BUILT 2026-09-10**, decided on measurement | Threading. `render_banded` declines a list containing glass, and the decline is asserted via `Canvas::bands_for_list`. | A toolbar-sized panel is 0.42 ms in total; segmentation would divide a number already inside the budget. Condition to revisit and what the decline costs: `docs/results-glass.md` §6. |
+| **T19.6** — **DONE 2026-09-10** | Embedded: confirm the variant costs the firmware nothing. | **+148 B of `.text`** for M18 and M19 together, 34.5% of the ceiling; the blur is not linked at all. Restated in `docs/results-embedded.md`. |
 
 **Deferred, deliberately, each with its condition:** refraction and
 specular (when blur has shipped and someone wants the material rather
@@ -439,8 +439,7 @@ sweep. T19.4 and T19.5 are a day each. T19.6 is an hour.
 | T19.2 annulus | dilate the dependency to `rect` instead of `src` | the outer ring reads last frame's final pixels |
 | T19.3 blur | use three equal boxes when `d` is even | the 1.5 px shift the spec's odd/even rule exists to prevent |
 | T19.3 capture | shrink the dilation by `2k` | the rim samples clamped edges; assert the differing-pixel count and print it |
-| T19.4 cache | never invalidate the cache | the panel freezes over a moving backdrop |
-| T19.5 threading | composite from a source clamped to the band's own rows | a panel spanning bands blurs wrong |
+| T19.5 threading | let `render_banded` accept a list with glass | `a list with a backdrop filter was banded into 8` |
 
 ## 10. The three vacuous tests this will otherwise produce
 

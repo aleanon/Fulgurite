@@ -162,6 +162,36 @@ fn a_damaged_render_is_identical_however_it_is_banded() {
 /// `just threads`. A hard-coded constant would have to be regenerated
 /// on every legitimate rasteriser change and would rot into a rubber
 /// stamp.
+/// **A list with a backdrop filter in it must not be banded** —
+/// M19/T19.5.
+///
+/// A band owns disjoint rows; `Cmd::Glass` reads `3σ + 4` px past its
+/// panel on every side, into rows another worker owns. The renderer
+/// declines, and this asserts the decline rather than trusting it — a
+/// splitter that silently started threading a glass frame would produce
+/// a wrong picture only under load, which is the worst way to find out.
+///
+/// Only meaningful with `threads`: without it nothing bands, so a
+/// decline is indistinguishable from the default and the control below
+/// cannot hold.
+#[cfg(feature = "threads")]
+#[test]
+fn a_list_with_glass_is_not_banded() {
+    let (w, h) = (1920u32, 1080u32);
+    let c = Canvas::new(w, h);
+    // The same geometry without glass *does* band, so this is a
+    // statement about the command and not about the size.
+    assert!(c.bands_for(None) >= 2, "the control does not band; this proves nothing");
+
+    let plain = scene(w, h);
+    assert!(c.bands_for_list(&plain, None) >= 2, "the same scene without glass must band");
+
+    let mut l = scene(w, h);
+    l.glass([100.0, 100.0, 500.0, 200.0], 8.0, 12.0, Color(255, 255, 255, 40));
+    let bands = c.bands_for_list(&l, None);
+    assert_eq!(bands, 1, "a list with a backdrop filter was banded into {bands}");
+}
+
 #[test]
 fn print_checksums_for_cross_build_comparison() {
     let mut out = String::new();

@@ -92,14 +92,75 @@ least able to hit a small σ, and it is the number the test bounds at 12%.
 `software::blur_plan` is public so this table is computed from the
 renderer's own function rather than a copy of it.
 
-## 5. What is not measured here
+## 5. T19.4 — the backdrop cache, decided against on measurement
+
+The plan's T19.4 was one buffer per panel holding its blurred backdrop,
+so a frame whose damage misses the panel would pay the composite only.
+**It is not built, because the measurement says it cannot pay.**
+
+A cache must still *capture* the source region to know whether what it
+cached is still valid, and must still composite. So its ceiling is
+whatever the box passes cost — and `blur = 0` measures exactly that,
+because the renderer skips them at zero:
+
+| panel | σ = 12 | σ = 0 (capture + composite) | the passes |
+|---|---:|---:|---:|
+| 400×200 | 1.81 ms | 1.73 | **4%** |
+| 800×300 | 5.21 | 5.17 | **1%** |
+
+**One to four percent.** That does not pay for a per-panel buffer, an
+invalidation rule and the correctness surface that comes with both.
+
+There is a second reason, and it is the one that would have wasted the
+day. The win the plan described — "nothing intersects the panel's `src`
+→ reuse it" — **cannot happen**. M18's region set plus T19.2's
+dependency rule mean a panel is repainted *only* when damage touches its
+source region, and if damage touches its source region the cached
+backdrop is stale by definition. The two states the cache distinguishes
+are the two states the damage rule already collapsed. The only case left
+is a panel whose own tint or blur animates over a still backdrop, which
+is 1–4% of one panel's cost.
+
+Recorded rather than dropped, the way `docs/results-simd.md` records the
+blend that did not pay: the next person to reach for this should know it
+was measured, what the ceiling was, and which of the two reasons would
+have to change.
+
+## 6. T19.5 — threading, declined for now
+
+A band owns disjoint rows, and that is the entire safety argument behind
+`Surface`. A backdrop filter captures a region reaching `3σ + 4` px past
+its panel on every side — into rows another worker owns and is
+concurrently writing. So `render_banded` **declines any list containing
+a glass command**, and `tests/banded.rs` asserts the decline through
+`Canvas::bands_for_list` rather than inferring it from pixels that
+happen to match.
+
+The plan's T19.5 was to segment the command list at glass boundaries,
+reconstruct the clip stack at each, and join between segments. It is not
+built, and §2 is why: **a toolbar-sized panel is 0.42 ms in total.**
+Segmentation, a clip prefix per boundary and a per-segment worker count
+are a day of delicate work to divide a number that is already inside the
+frame budget by four.
+
+The condition to revisit, stated rather than left as "someday": **a
+frame with a panel of a few hundred thousand pixels.** §2 prices 240 000
+px at 5.2 ms and 1 280 000 at 26.9, and at that size the whole rest of
+the frame is threaded and this is not.
+
+What it costs meanwhile: a frame containing any glass panel renders
+single-threaded, so the *rest* of that frame loses threading too. At
+4K that is the difference between 2.50 ms and 19.3
+(`docs/results-threading.md`) — which is the strongest argument for
+building the segmentation, and it is an argument about the rest of the
+frame rather than about the panel.
+
+## 7. What is not measured here
 
 - **Threading.** Everything above is single-threaded. T19.5 segments the
   command list at glass boundaries; the numbers here are what it will be
   measured against.
-- **The cache.** T19.4 keeps a panel's blurred backdrop between frames,
-  so a frame whose damage misses the panel pays the composite only.
-  These are all cold costs.
+- **A cache.** There is none, and §5 says why.
 - **The GPU.** It draws the degraded fallback; `docs/plan-glass.md` §1.3
   says why.
 - **Anything but this machine.** One CPU, `powersave`, one scene.

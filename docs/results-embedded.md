@@ -91,12 +91,21 @@ out not to match this file.
 | end of M15 (`8109ad2`) | 21,970 | **+1,446** | 33.5% |
 | end of M16 (`959cf2c`) | 22,458 | **+488** | 34.3% |
 | end of M17 (`59a45ef`) | 22,458 | **0** | 34.3% |
-| 2026-09-10 | **22,458** | | **34.3%** |
+| 2026-09-10 | 22,458 | | 34.3% |
+| M18 + M19 (`ee220cb`…`f02c5cb`) | **22,606** | **+148** | **34.5%** |
 
 `.rodata` moved 12,940 → 13,016 (+76) and flash total 33,677 → 35,691
 over the same span. `.bss` is unchanged at one exempted 4-byte symbol,
 and the per-node RAM figures below are unchanged — `NodeState` is still
 76 B and `Style` still 72 B, both still `const`-asserted.
+
+**M18 and M19 together cost 148 bytes** — `Damage`'s region set, the
+`Cmd::Glass` arm in `hash_into`, and `display::glass_source`. The blur
+itself is not there at all: it lives in `lumen-static-shell`, which an
+embedded profile does not link, so a part that cannot render a backdrop
+filter pays for the command's *identity* and nothing else. `.rodata`
+moved 13,016 → 13,032 and `.bss` is unchanged at one exempted 4-byte
+symbol. That is T19.6, and the claim it was there to check.
 
 **M17 cost the firmware exactly nothing**, which is the tiering claim
 holding up under measurement rather than in argument: T17.0–T17.5 landed
