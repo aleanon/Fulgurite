@@ -735,6 +735,23 @@ impl<R: Retention> Painter for Recording<'_, R> {
         self.inner.image(rect, id, tint);
     }
 
+    /// A backdrop filter inks exactly its own rect — the blur reads
+    /// wider than that but writes nothing outside it.
+    ///
+    /// **The region it *reads* is a separate question** and is not
+    /// answered here: `docs/plan-glass.md` §5's dependency rule is
+    /// T19.2's, and until it lands a glass panel over a backdrop that
+    /// changes without changing this command's hash will go stale. The
+    /// widget does not exist yet, so nothing can build that frame.
+    fn glass(&mut self, rect: Rect, radius: f32, blur: f32, tint: Color) {
+        let mut h = h_rect(fold(0, 10), rect);
+        h = fold(h, radius.to_bits() as u64);
+        h = fold(h, blur.to_bits() as u64);
+        h = h_color(h, tint);
+        self.ret.observe(h, rect);
+        self.inner.glass(rect, radius, blur, tint);
+    }
+
     fn push_clip(&mut self, rect: Rect) {
         self.ret.observe(h_rect(fold(0, 5), rect), rect);
         self.inner.push_clip(rect);

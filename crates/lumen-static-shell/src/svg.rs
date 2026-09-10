@@ -203,6 +203,30 @@ impl Renderer for Svg {
                         Self::colour(*tint)
                     );
                 }
+                Cmd::Glass { rect, radius, blur, tint } => {
+                    // **SVG has a real Gaussian blur and this does not
+                    // use it.** `feGaussianBlur` with `BackgroundImage`
+                    // as its input was removed from the spec and no
+                    // browser implements it, so a faithful export would
+                    // need the backdrop rasterised into the document —
+                    // pixels this renderer deliberately does not have
+                    // (see the image arm above). The degraded panel is
+                    // the honest answer, and it carries `data-blur` so
+                    // an exporter that *can* resolve a backdrop knows
+                    // what was asked for.
+                    let a = tint.3.max(lumen_static::display::GLASS_FALLBACK_ALPHA);
+                    let _ = write!(
+                        body,
+                        r#"<rect x="{:.2}" y="{:.2}" width="{:.2}" height="{:.2}" rx="{:.2}" fill="{}" data-blur="{:.2}"/>"#,
+                        rect[0],
+                        rect[1],
+                        rect[2] - rect[0],
+                        rect[3] - rect[1],
+                        radius,
+                        Self::colour(Color(tint.0, tint.1, tint.2, a)),
+                        blur
+                    );
+                }
                 Cmd::PushClip { rect } => {
                     let id = format!("c{}", self.clips);
                     let _ = write!(

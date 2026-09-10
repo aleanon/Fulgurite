@@ -40,6 +40,7 @@ fn ink(c: &Cmd) -> [f32; 4] {
         | Cmd::Text { rect, .. }
         | Cmd::Image { rect, .. }
         | Cmd::Gradient { rect, .. }
+        | Cmd::Glass { rect, .. }
         | Cmd::PushClip { rect } => *rect,
         Cmd::Line { a, b, .. } => [a.x, a.y, b.x, b.y],
         Cmd::PopClip => [0.0; 4],

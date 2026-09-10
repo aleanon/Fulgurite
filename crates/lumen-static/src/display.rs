@@ -101,9 +101,35 @@ pub enum Cmd {
     /// monochrome icon can be recoloured without a second asset;
     /// `Color::WHITE` is untinted.
     Image { rect: Rect, id: ImageId, tint: Color },
+    /// A backdrop filter: the pixels already beneath `rect`, blurred and
+    /// tinted — M19/T19.0.
+    ///
+    /// **The only command that reads what is already there.** Everything
+    /// else composes forward, which is why a partial redraw can replay a
+    /// command list and get the same pixels; this one is a function of
+    /// the frame beneath it, and `docs/plan-glass.md` §5 is the damage
+    /// rule that follows.
+    ///
+    /// `blur` is a Gaussian standard deviation in logical px; 0 is a
+    /// plain tint. `tint` multiplies over the blurred backdrop and its
+    /// alpha is the strength — **alpha 0 is legitimate**, a pure frosted
+    /// panel, which is why the collector does not drop it the way
+    /// `rounded_rect` drops a transparent fill.
+    ///
+    /// `radius` is the panel's own, matching [`Cmd::RoundedRect`]'s
+    /// meaning. It is not inherited from a clip: clips are axis-aligned
+    /// rects here, so there is nothing to round a panel against.
+    Glass { rect: Rect, radius: f32, blur: f32, tint: Color },
     PushClip { rect: Rect },
     PopClip,
 }
+
+/// The alpha a renderer that cannot blur paints a glass panel at.
+///
+/// Not the tint's own, which is typically around 40 of 255: flat, that
+/// is invisible, and a fallback nobody can see is one nobody can test.
+/// This is a deliberate lie in the direction of being noticed.
+pub const GLASS_FALLBACK_ALPHA: u8 = 140;
 
 /// How many colour stops a [`Cmd::Gradient`] carries.
 ///
@@ -244,11 +270,30 @@ impl Cmd {
                 }
             }
             Cmd::Image { rect, id, tint } => {
-                f(h, 6);
+                // **7, not 6.** `Shadow` also hashed as 6 until
+                // 2026-09-10, so a shadow and an image with the same
+                // rect and colour folded to the same value and retention
+                // could not tell one becoming the other apart. Nothing
+                // pinned a literal hash, so the fix cost nothing;
+                // `Recording`'s parallel numbering had it right all
+                // along, which is how the two disagreed unnoticed.
+                f(h, 7);
                 for v in rect {
                     f(h, v.to_bits() as u64);
                 }
                 f(h, id.0 as u64);
+                f(h, u32::from_be_bytes([tint.0, tint.1, tint.2, tint.3]) as u64);
+            }
+            Cmd::Glass { rect, radius, blur, tint } => {
+                f(h, 10);
+                for v in rect {
+                    f(h, v.to_bits() as u64);
+                }
+                f(h, radius.to_bits() as u64);
+                // `blur` sizes the region this command *reads*, so a
+                // hash that skipped it would let a widened blur through
+                // with no damage and leave the outer ring stale.
+                f(h, blur.to_bits() as u64);
                 f(h, u32::from_be_bytes([tint.0, tint.1, tint.2, tint.3]) as u64);
             }
             Cmd::PushClip { rect } => {
@@ -314,6 +359,29 @@ pub trait Painter {
     fn image(&mut self, rect: Rect, id: ImageId, tint: Color) {
         let _ = (rect, id, tint);
     }
+    /// A backdrop filter — M19/T19.0.
+    ///
+    /// **Provided as a degraded *draw*, not a no-op**, following
+    /// `gradient`: a renderer that cannot read its own destination
+    /// should still put a panel where the panel is.
+    ///
+    /// The fallback raises the tint's alpha to [`GLASS_FALLBACK_ALPHA`].
+    /// A realistic glass tint is around 16% white, and painting that
+    /// flat gives a rectangle you cannot see — which would make every
+    /// test of this fallback a test that nothing happened. Ugly and
+    /// visible beats faithful and invisible.
+    ///
+    /// **Wrappers must override this.** A provided body acts on `self`,
+    /// so a wrapper that inherits it rewrites the command into a
+    /// `rounded_rect` instead of forwarding it. That is not theoretical:
+    /// `Deferring` inherited four such bodies and silently dropped every
+    /// `Line` and `Image` under an overlay pass until 2026-09-10.
+    fn glass(&mut self, rect: Rect, radius: f32, blur: f32, tint: Color) {
+        let _ = blur;
+        let a = tint.3.max(GLASS_FALLBACK_ALPHA);
+        self.rounded_rect(rect, Color(tint.0, tint.1, tint.2, a), radius);
+    }
+
     fn push_clip(&mut self, rect: Rect);
     fn pop_clip(&mut self);
 
@@ -443,6 +511,18 @@ impl DisplayList {
         // edge. The renderer owns the falloff curve.
         let r = [rect[0], rect[1] + spread * 0.35, rect[2], rect[3] + spread * 0.35];
         self.cmds.push(Cmd::Shadow { rect: r, color: Color(0, 0, 0, 80), radius, spread });
+    }
+
+    /// A backdrop filter, dropped only when it has **no area**.
+    ///
+    /// Deliberately *not* `rounded_rect`'s rule, which also drops a
+    /// fully transparent colour. `tint.3 == 0` with a non-zero blur is a
+    /// pure frosted panel — the plainest thing this command does — and
+    /// copying the neighbouring guard would have dropped it.
+    pub fn glass(&mut self, rect: Rect, radius: f32, blur: f32, tint: Color) {
+        if has_area(rect) {
+            self.cmds.push(Cmd::Glass { rect, radius, blur, tint });
+        }
     }
 
     /// A line, dropped when it is zero-length or hairline-thin.
@@ -601,6 +681,17 @@ impl Painter for Scaled<'_> {
         let r = self.r(rect);
         self.inner.image(r, id, tint);
     }
+    /// `rect`, `radius` and `blur` are lengths and scale; `tint` is a
+    /// colour and does not.
+    ///
+    /// Getting `blur` wrong here is invisible at scale 1.0 — every test
+    /// and every non-HiDPI desktop — and gives a half-strength blur on a
+    /// 2x display. That is the shape of bug this whole wrapper exists to
+    /// prevent, so it is spelled out field by field.
+    fn glass(&mut self, rect: Rect, radius: f32, blur: f32, tint: Color) {
+        let r = self.r(rect);
+        self.inner.glass(r, radius * self.scale, blur * self.scale, tint);
+    }
     fn push_clip(&mut self, rect: Rect) {
         let r = self.r(rect);
         self.inner.push_clip(r);
@@ -645,6 +736,9 @@ impl Painter for DisplayList {
     }
     fn image(&mut self, rect: Rect, id: ImageId, tint: Color) {
         DisplayList::image(self, rect, id, tint)
+    }
+    fn glass(&mut self, rect: Rect, radius: f32, blur: f32, tint: Color) {
+        DisplayList::glass(self, rect, radius, blur, tint)
     }
     fn push_clip(&mut self, rect: Rect) {
         DisplayList::push_clip(self, rect)

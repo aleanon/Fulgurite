@@ -262,6 +262,15 @@ impl<O: OverlaySink> crate::display::Painter for Deferring<'_, O> {
     fn clip_bounds(&self) -> Option<crate::display::Rect> {
         self.inner.clip_bounds()
     }
+    fn glass(
+        &mut self,
+        rect: crate::display::Rect,
+        radius: f32,
+        blur: f32,
+        tint: crate::display::Color,
+    ) {
+        self.inner.glass(rect, radius, blur, tint);
+    }
     fn push_clip(&mut self, rect: crate::display::Rect) {
         self.inner.push_clip(rect);
     }

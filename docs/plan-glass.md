@@ -151,11 +151,11 @@ expressible today and only M18 remains.
 ## 3. The command
 
 ```rust
-Glass { rect: Rect, blur: f32, tint: Color },
+Glass { rect: Rect, radius: f32, blur: f32, tint: Color },
 ```
 
-Three fields, so `glass(rect, blur, tint)` matches `shadow(rect, radius,
-spread)` in shape and there is no seven-argument transposition hazard.
+Four fields, so `glass(rect, radius, blur, tint)` is `shadow`'s shape
+plus a colour, and there is no seven-argument transposition hazard.
 When refraction and specular arrive they come as a params struct, in the
 shape `Stops` already uses — **not** as four more positional `f32`s.
 
@@ -171,10 +171,13 @@ plus the tag; `Glass` is 24. T19.0 asserts **both** — `Cmd == 60` and the
 only the first is a bound 32 bytes from anything it constrains, which is
 the shape `docs/plan-invalidation.md` T16.2 and the `.bss` ceiling were.
 
-**Corner radius is deliberately absent.** A glass panel's shape comes
-from `Glass<W>`'s own `Style.radius`, which already cascades, and the
-widget emits a `RoundedRect` clip or shape around it the way any
-container does. One radius, one place.
+**Corner radius is *not* absent, and the first draft was wrong to leave
+it out** (corrected 2026-09-10 while building T19.0). It reasoned that a
+panel's shape could come from `Glass<W>`'s own `Style.radius` and a clip
+around it — but clips here are axis-aligned rects, so there is no
+rounded clip to lean on and a panel would have had square corners.
+`RoundedRect` and `Shadow` both carry their own radius; this carries one
+too, and the payload is 28 B against a 56 B budget either way.
 
 ## 4. Where it is drawn from
 

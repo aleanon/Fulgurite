@@ -425,6 +425,19 @@ impl Surface<'_> {
                         self.fill_rounded_within(*rect, r, *color, *radius);
                     }
                 }
+                Cmd::Glass { rect, radius, blur, tint } => {
+                    // **T19.0 draws the fallback, not the filter.** The
+                    // backdrop read, the blur and the damage dependency
+                    // are T19.2's, and shipping the panel first means
+                    // every seam between here and `Glass<W>` is exercised
+                    // before the interesting part exists to hide behind.
+                    let _ = blur;
+                    if let Some(r) = clipped(*rect, &clip) {
+                        let a = tint.3.max(lumen_static::display::GLASS_FALLBACK_ALPHA);
+                        let c = Color(tint.0, tint.1, tint.2, a);
+                        self.fill_rounded_within(*rect, r, c, *radius);
+                    }
+                }
                 Cmd::Shadow { rect, color, radius, spread } => {
                     let reach =
                         [rect[0] - spread, rect[1] - spread, rect[2] + spread, rect[3] + spread];

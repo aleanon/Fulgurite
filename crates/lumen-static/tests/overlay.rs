@@ -66,6 +66,7 @@ fn cmds(list: &DisplayList) -> Vec<(&'static str, [f32; 4])> {
             Cmd::Gradient { rect, .. } => ("grad", *rect),
             Cmd::Line { a, b, .. } => ("line", [a.x, a.y, b.x, b.y]),
             Cmd::PushClip { rect } => ("push", *rect),
+            Cmd::Glass { rect, .. } => ("glass", *rect),
             Cmd::PopClip => ("pop", [0.0; 4]),
         })
         .collect()
@@ -440,6 +441,7 @@ fn deferring_forwards_every_command() {
             0.0,
         );
         p.image([0.0, 0.0, 10.0, 10.0], ImageId(1), Color(255, 255, 255, 255));
+        p.glass([0.0, 0.0, 10.0, 10.0], 4.0, 8.0, Color(255, 255, 255, 40));
     }
 
     let mut direct = DisplayList::new();
@@ -454,7 +456,7 @@ fn deferring_forwards_every_command() {
 
     // Assert the setup happened before comparing: two empty lists are
     // equal, and that is the vacuous shape `AGENT.md` names.
-    assert_eq!(direct.cmds.len(), 4, "the unwrapped painter dropped something itself");
+    assert_eq!(direct.cmds.len(), 5, "the unwrapped painter dropped something itself");
     assert_eq!(
         direct.cmds, wrapped.cmds,
         "Deferring changed the command stream: {} in, {} out",

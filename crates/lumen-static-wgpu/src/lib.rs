@@ -621,6 +621,25 @@ impl Gpu {
                         out.push(shape(*rect, r, *color, rad, KIND_ROUNDED));
                     }
                 }
+                Cmd::Glass { rect, radius, blur, tint } => {
+                    // The GPU backend draws the fallback and will keep
+                    // doing so past M19: `docs/plan-glass.md` §1.3 defers
+                    // the real filter, because a texture copy cannot
+                    // happen inside a render pass and matching the CPU
+                    // blur closely enough for `just gpu-parity`'s 0.2%
+                    // pixel-count bound essentially forces a compute
+                    // shader. Emitting the same rounded rect the software
+                    // canvas emits keeps the two backends comparable
+                    // meanwhile, which is what that bound measures.
+                    let _ = blur;
+                    if let Some(r) = clipped(*rect, &clip) {
+                        let rad =
+                            radius.min((rect[2] - rect[0]) / 2.0).min((rect[3] - rect[1]) / 2.0);
+                        let a = tint.3.max(lumen_static::display::GLASS_FALLBACK_ALPHA);
+                        let c = lumen_static::display::Color(tint.0, tint.1, tint.2, a);
+                        out.push(shape(*rect, r, c, rad, KIND_ROUNDED));
+                    }
+                }
                 Cmd::Shadow { rect, color, radius, spread } => {
                     let reach =
                         [rect[0] - spread, rect[1] - spread, rect[2] + spread, rect[3] + spread];

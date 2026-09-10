@@ -60,6 +60,7 @@ fn first_escape(list: &DisplayList, root: [f32; 4]) -> Option<(usize, [f32; 4])>
             | Cmd::Shadow { rect, .. }
             | Cmd::Text { rect, .. }
             | Cmd::Image { rect, .. }
+            | Cmd::Glass { rect, .. }
             | Cmd::Gradient { rect, .. } => {
                 let mut r = *rect;
                 // A shadow's ink reaches `spread` past its rect.
