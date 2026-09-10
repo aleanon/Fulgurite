@@ -24,7 +24,10 @@ are independent of each other**, so either may go first:
   as `Glass<W>`, software only. The scope line it sits on is
   `docs/results-vello.md` §4.
 
-Unsequenced: `docs/plan-harness.md`.
+Unsequenced: `docs/plan-harness.md`, and `docs/plan-book.md` (M20,
+T20.0–T20.13 — the book's chapters, phased v0.1/v0.2/v0.3; it blocks
+nothing and nothing blocks it, so it is written between milestones
+rather than instead of one).
 
 Task ids (`T0.6`, `F1.3`, `T16.7`) go in commit subjects. Decision records live beside it in `docs/`; the
 design spec is `docs/00-handoff-static-tree.md`, whose DECIDED/SUPERSEDED
@@ -131,10 +134,11 @@ of it is a call site the compiler will not show you.
 
 ## The book (`book/`, added 2026-09-10)
 
-`book/` is an mdBook: the reader-facing narrative, in teaching order. It
-is in this repository and not beside it because the doc-currency rule
-below requires prose to move in the **same commit** as the behaviour, and
-a second repository has no such commit — `docs/book-decision.md` records
+`book/` is an mdBook: the reader-facing narrative, in teaching order,
+planned chapter by chapter in `docs/plan-book.md`. It is in this
+repository and not beside it because the doc-currency rule below
+requires prose to move in the **same commit** as the behaviour, and a
+second repository has no such commit — `docs/book-decision.md` records
 the reasoning, the two tooling traps, and the seven injections the gates
 were verified with.
 

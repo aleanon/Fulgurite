@@ -85,7 +85,18 @@ jobs:
       - name: Fixtures (counter, hot-reload swap)
         run: just fixtures
 
-      - name: Release-shape rustdoc, binsize
+      # `just check-extra` includes `just book`, which needs mdbook. It is
+      # installed rather than skipped on purpose: a book gate that silently
+      # does nothing when the tool is absent is a gate that passes for the
+      # wrong reason, and CI is the only place it would ever be absent.
+      # binstall fetches a release binary (~3 s); building mdbook from
+      # source here would cost minutes.
+      - name: Install mdbook
+        uses: taiki-e/install-action@v2
+        with:
+          tool: mdbook
+
+      - name: Release-shape rustdoc, binsize, the book
         run: just check-extra
 
       # fixtures/binsize is a code-size comparison with no threshold yet.

@@ -2,29 +2,45 @@
 
 [Introduction](./index.md)
 
-# Getting started
+# Build something
 
 - [Your first tree](./first-tree.md)
 - [State, bindings and handlers]()
-- [Running it: host, canvas, window]()
+- [Layout]()
+- [Styling]()
+
+# Why a static tree
+
+- [The retained-mode baseline]()
+- [Topology in the type](./topology.md)
+- [What it costs, and who should not use this]()
 
 # The model
 
-- [Topology in the type](./topology.md)
-- [The const node table]()
 - [What a frame does]()
+- [The const node table]()
+- [Where state lives]()
 - [The component boundary]()
 
-# Building interfaces
+# The widget set
 
-- [The widget set]()
-- [Styling: rules, selectors, patches]()
-- [Dynamism: Either, Dyn, List, Repeat]()
-- [Text, scrolling and input]()
+- [Leaves]()
+- [Taking input]()
+- [Containers and escape hatches]()
+- [Overlays]()
+- [Writing your own widget]()
 
-# Running applications
+# Making it feel right
 
-- [Backends: software, winit, wgpu]()
+- [Events, focus and keyboard navigation]()
+- [Gestures, touch, drag and drop]()
+- [Animation]()
+- [Text]()
+
+# Shipping
+
+- [Backends]()
+- [Windows, dialogs, clipboard, cursors]()
 - [Embedded and no_std]()
 - [Hot reload]()
 - [The agent protocol]()
@@ -32,8 +48,9 @@
 # Under the hood
 
 - [Damage and invalidation]()
-- [Band-parallel rasterisation]()
-- [Performance budgets]()
+- [The rasteriser]()
+- [Performance]()
+- [What this does not do]()
 
 ---
 
