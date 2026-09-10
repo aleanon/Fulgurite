@@ -178,40 +178,85 @@ impl Surface<'_> {
         // in its outermost ring and the oracle would not see it.
         let src = lumen_static::display::glass_source(shape, blur);
         let (w, h) = (self.width as i64, self.y_hi());
-        let (sx0, sy0) = ((src[0].floor() as i64).max(0), (src[1].floor() as i64).max(self.y0));
-        let (sx1, sy1) = ((src[2].ceil() as i64).min(w), (src[3].ceil() as i64).min(h));
+        let (k, d, _) = if blur > 0.0 { blur_plan(blur) } else { (1usize, 1i64, 0.0) };
+        let ki = k as i64;
+        // **Snapped to a multiple of `k` in *surface* coordinates**, so
+        // the downsample grid is anchored to the surface and not to the
+        // panel. Anchored to the capture, a panel at a fractional or
+        // scrolled position samples a different phase every frame and
+        // the blur shimmers -- and neither "stable frame to frame" nor
+        // the incremental-vs-rebuild oracle can see it, because the
+        // capture rect is identical in the two renders being compared.
+        let snap_lo = |v: i64| v.div_euclid(ki) * ki;
+        let snap_hi = |v: i64| v.div_euclid(ki) * ki + if v.rem_euclid(ki) != 0 { ki } else { 0 };
+        let (sx0, sy0) = (snap_lo((src[0].floor() as i64).max(0)), snap_lo((src[1].floor() as i64).max(self.y0)));
+        let (sx1, sy1) = (snap_hi((src[2].ceil() as i64).min(w)), snap_hi((src[3].ceil() as i64).min(h)));
+        let (sx1, sy1) = (sx1.min(w), sy1.min(h));
         if sx1 <= sx0 || sy1 <= sy0 {
             return;
         }
         let (sw, sh) = ((sx1 - sx0) as usize, (sy1 - sy0) as usize);
         let stride = (self.width * 4) as usize;
 
-        // Capture. One copy of the source region, RGB only -- alpha is
-        // the constant 255 above, so carrying it through three passes
-        // would blur a constant.
-        let mut a: Vec<u16> = Vec::with_capacity(sw * sh * 3);
-        for y in sy0..sy1 {
-            let row = (y - self.y0) as usize * stride;
-            for x in sx0..sx1 {
-                let p = row + x as usize * 4;
-                a.push(self.px[p] as u16);
-                a.push(self.px[p + 1] as u16);
-                a.push(self.px[p + 2] as u16);
+        // Capture, downsampling by `k` in the same pass. RGB only:
+        // alpha is the constant 255 above, so carrying it through three
+        // box passes would blur a constant.
+        let (bw, bh) = (sw.div_ceil(k), sh.div_ceil(k));
+        let mut a: Vec<u16> = vec![0; bw * bh * 3];
+        {
+            let mut acc: Vec<u32> = vec![0; bw * bh * 4];
+            for y in sy0..sy1 {
+                let row = (y - self.y0) as usize * stride;
+                let by = ((y - sy0) / ki) as usize;
+                for x in sx0..sx1 {
+                    let p = row + x as usize * 4;
+                    let bx = ((x - sx0) / ki) as usize;
+                    let at = (by * bw + bx) * 4;
+                    acc[at] += self.px[p] as u32;
+                    acc[at + 1] += self.px[p + 1] as u32;
+                    acc[at + 2] += self.px[p + 2] as u32;
+                    acc[at + 3] += 1;
+                }
+            }
+            for i in 0..bw * bh {
+                let n = acc[i * 4 + 3].max(1);
+                a[i * 3] = (acc[i * 4] / n) as u16;
+                a[i * 3 + 1] = (acc[i * 4 + 1] / n) as u16;
+                a[i * 3 + 2] = (acc[i * 4 + 2] / n) as u16;
             }
         }
-        let mut b: Vec<u16> = vec![0; sw * sh * 3];
+        let mut b: Vec<u16> = vec![0; bw * bh * 3];
 
-        // Three box passes each way. `d` is SVG's box width for this
-        // sigma; forced odd here so one kernel is centred on the output
-        // pixel -- T19.3 adds the spec's even-width case.
-        let d = (blur * 3.0 * (2.0 * core::f32::consts::PI).sqrt() / 4.0 + 0.5).floor() as i64;
-        let rad = ((d.max(1) - 1) / 2).max(1) as usize;
-        if blur > 0.0 {
-            for _ in 0..3 {
-                box_rows(&a, &mut b, sw, sh, rad);
-                box_cols(&b, &mut a, sw, sh, rad);
+        // Three passes each way, at the widths SVG specifies.
+        if blur > 0.0 && d > 1 {
+            for (l, r) in box_windows(d) {
+                box_rows(&a, &mut b, bw, bh, l, r);
+                box_cols(&b, &mut a, bw, bh, l, r);
             }
         }
+
+        // Bilinear sample of the downsampled, blurred backdrop, in
+        // surface coordinates.
+        let sample = |x: i64, y: i64| -> [f32; 3] {
+            let fx = ((x - sx0) as f32 + 0.5) / k as f32 - 0.5;
+            let fy = ((y - sy0) as f32 + 0.5) / k as f32 - 0.5;
+            let x0 = fx.floor();
+            let y0f = fy.floor();
+            let tx = fx - x0;
+            let ty = fy - y0f;
+            let cx = |v: f32| (v.max(0.0) as usize).min(bw - 1);
+            let cy = |v: f32| (v.max(0.0) as usize).min(bh - 1);
+            let (ix0, ix1) = (cx(x0), cx(x0 + 1.0));
+            let (iy0, iy1) = (cy(y0f), cy(y0f + 1.0));
+            let g = |xi: usize, yi: usize, c: usize| a[(yi * bw + xi) * 3 + c] as f32;
+            let mut out = [0.0f32; 3];
+            for (c, o) in out.iter_mut().enumerate() {
+                let top = g(ix0, iy0, c) * (1.0 - tx) + g(ix1, iy0, c) * tx;
+                let bot = g(ix0, iy1, c) * (1.0 - tx) + g(ix1, iy1, c) * tx;
+                *o = top * (1.0 - ty) + bot * ty;
+            }
+            out
+        };
 
         // Composite, at exactly `fill_rounded_within`'s coverage.
         let rr = radius.min((shape[2] - shape[0]) / 2.0).min((shape[3] - shape[1]) / 2.0);
@@ -234,8 +279,7 @@ impl Surface<'_> {
                 if cov <= 0.0 {
                     continue;
                 }
-                let k = ((y - sy0) as usize * sw + (x - sx0) as usize) * 3;
-                let back = [a[k] as f32, a[k + 1] as f32, a[k + 2] as f32];
+                let back = sample(x, y);
                 let t = tint.3 as f32 / 255.0;
                 let mix = |c: f32, ti: u8| c + (ti as f32 - c) * t;
                 let c = Color(
@@ -1055,29 +1099,102 @@ fn strip_rows_for(rows: usize, workers: usize) -> usize {
     rows.div_ceil(workers * 4).clamp(16, rows.max(1))
 }
 
+/// SVG's box width for a Gaussian of this standard deviation.
+///
+/// <https://www.w3.org/TR/SVG11/filters.html#feGaussianBlurElement>:
+/// `d = floor(s * 3 * sqrt(2*pi)/4 + 0.5)`.
+fn box_width(sigma: f32) -> i64 {
+    (sigma * 3.0 * (2.0 * core::f32::consts::PI).sqrt() / 4.0 + 0.5).floor() as i64
+}
+
+/// The standard deviation three box passes of width `d` actually
+/// deliver — M19/T19.3.
+///
+/// A box of width `d` has variance `(d² − 1)/12`. Three of them add, and
+/// the even case is the spec's: two boxes of `d` and one of `d + 1`.
+fn box_sigma(d: i64) -> f32 {
+    if d <= 1 {
+        return 0.0;
+    }
+    let dd = d as f32;
+    let var = if d % 2 == 1 {
+        3.0 * (dd * dd - 1.0) / 12.0
+    } else {
+        (2.0 * (dd * dd - 1.0) + ((dd + 1.0) * (dd + 1.0) - 1.0)) / 12.0
+    };
+    var.sqrt()
+}
+
+/// The three `(left, right)` windows for a blur of width `d`.
+///
+/// **The even case is not three equal boxes**, and getting it wrong is
+/// not a subtle quality difference: an even box has no centre pixel, so
+/// three of them shift the image half a pixel per pass — 1.5 px in
+/// total, a visible slide of the backdrop under the panel. The spec's
+/// answer is two boxes of `d` centred on opposite pixel *boundaries*,
+/// which is the asymmetric pair below, and one of `d + 1` centred on the
+/// pixel. And the even case is the common one here: T19.3's `k` search
+/// targets a per-pass sigma around 2, where `d` is 4.
+fn box_windows(d: i64) -> [(usize, usize); 3] {
+    let h = (d / 2) as usize;
+    if d % 2 == 1 {
+        [(h, h), (h, h), (h, h)]
+    } else {
+        [(h, h.saturating_sub(1)), (h.saturating_sub(1), h), (h, h)]
+    }
+}
+
+/// Downsample factor, box width, and the sigma actually **delivered**.
+///
+/// Public so `benches --bin glass` can print requested against delivered
+/// without a second copy of the arithmetic. A results table computed
+/// from a duplicate of the code it describes is a table that goes wrong
+/// silently, which is what `AGENT.md`'s "numbers are stated once" rule
+/// is about.
+///
+/// **Chosen by search, not by a formula** — M19/T19.3. The obvious rule,
+/// `k = ceil(sigma/2)`, drops the per-pass sigma below the 2.0 the SVG
+/// approximation is specified for, delivers a blur up to 24% away from
+/// what was asked, and does it in plateaus: several requested sigmas
+/// render identically and then one jumps 50%. Eight iterations of the
+/// real cost function, once per command rather than per pixel, bound the
+/// error at about 10% and remove the plateaus.
+pub fn blur_plan(sigma: f32) -> (usize, i64, f32) {
+    let mut best = (1usize, 1i64, f32::INFINITY);
+    for k in 1..=8usize {
+        let d = box_width(sigma / k as f32).max(1);
+        let delivered = k as f32 * box_sigma(d);
+        let cost = (delivered - sigma).abs();
+        if cost < best.2 {
+            best = (k, d, cost);
+        }
+    }
+    (best.0, best.1, best.0 as f32 * box_sigma(best.1))
+}
+
 /// One box pass across rows, with a running sum — M19/T19.2.
 ///
 /// Normalised by the number of *contributing* samples, so a box that
 /// hangs off the edge does not darken the rim. Clamp-to-edge is the
 /// other honest rule and is what a GPU sampler does; this is the same
 /// answer without a branch per tap.
-fn box_rows(src: &[u16], dst: &mut [u16], w: usize, h: usize, rad: usize) {
+fn box_rows(src: &[u16], dst: &mut [u16], w: usize, h: usize, left: usize, right: usize) {
     for y in 0..h {
         let row = y * w * 3;
         for ch in 0..3 {
             let mut sum: u32 = 0;
             let mut n: u32 = 0;
-            for x in 0..(rad + 1).min(w) {
+            for x in 0..(right + 1).min(w) {
                 sum += src[row + x * 3 + ch] as u32;
                 n += 1;
             }
             for x in 0..w {
                 dst[row + x * 3 + ch] = (sum / n.max(1)) as u16;
-                if x >= rad {
-                    sum -= src[row + (x - rad) * 3 + ch] as u32;
+                if x >= left {
+                    sum -= src[row + (x - left) * 3 + ch] as u32;
                     n -= 1;
                 }
-                let add = x + rad + 1;
+                let add = x + right + 1;
                 if add < w {
                     sum += src[row + add * 3 + ch] as u32;
                     n += 1;
@@ -1088,23 +1205,23 @@ fn box_rows(src: &[u16], dst: &mut [u16], w: usize, h: usize, rad: usize) {
 }
 
 /// The same, down columns.
-fn box_cols(src: &[u16], dst: &mut [u16], w: usize, h: usize, rad: usize) {
+fn box_cols(src: &[u16], dst: &mut [u16], w: usize, h: usize, left: usize, right: usize) {
     for x in 0..w {
         for ch in 0..3 {
             let at = |y: usize| y * w * 3 + x * 3 + ch;
             let mut sum: u32 = 0;
             let mut n: u32 = 0;
-            for y in 0..(rad + 1).min(h) {
+            for y in 0..(right + 1).min(h) {
                 sum += src[at(y)] as u32;
                 n += 1;
             }
             for y in 0..h {
                 dst[at(y)] = (sum / n.max(1)) as u16;
-                if y >= rad {
-                    sum -= src[at(y - rad)] as u32;
+                if y >= left {
+                    sum -= src[at(y - left)] as u32;
                     n -= 1;
                 }
-                let add = y + rad + 1;
+                let add = y + right + 1;
                 if add < h {
                     sum += src[at(add)] as u32;
                     n += 1;
