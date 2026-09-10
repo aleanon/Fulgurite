@@ -1,10 +1,15 @@
 # M20 — the book
 
-> **Status: planned 2026-09-10. Scaffolding landed the same day
-> (`3d26e32`): `book/`, three gates, and four chapters written. T20.0
-> and T20.1 landed 2026-09-10. Unsequenced — it blocks nothing and
-> nothing blocks it, so it is written between milestones rather than
-> instead of one.**
+> **Status: DONE 2026-09-10. All twenty-nine chapters and both
+> appendices are written, T20.0–T20.13. Five gates hold them: includes,
+> orphaned anchors, intra-book links, the ban on ```rust,ignore, and the
+> attribute-table divergence check.**
+>
+> Recovered once mid-milestone: a `reset` and an `--amend` that landed
+> on a book commit dropped T20.0–T20.11 from the branch. Everything was
+> restored from the reflog in `b2e4a14`, and the include gate is what
+> made the restore safe — it named sixteen includes that would otherwise
+> have come back as silently empty code blocks.
 
 *Each chapter is one commit. Task ids go in commit subjects. The rules
 the scaffolding established are in `AGENT.md`; the reasoning for the
@@ -211,18 +216,18 @@ which is the doc-currency rule applied to example code.
 |---|---|---|
 | **T20.0** ✅ | The orphan-anchor gate: `scripts/check_book_includes.sh` gains the reverse direction, so an `// ANCHOR:` no chapter includes fails `just static`. | An anchor added to an example with no consumer names the file and the anchor; with it consumed, the gate reports both counts. |
 | **T20.1** ✅ | Ch 2 — state, bindings and handlers. | A snippet binds with a format string, with extra arguments and with `with =`, and `mdbook test` runs it. Done: five anchors in `derive_app.rs`, thirteen includes in the book, and **no retyped code** — the three `rust,ignore` blocks the first draft had were replaced by includes or by inline prose. |
-| **T20.2** | Ch 3 — layout. | The two-spacer centring trick is shown from `Page`, and the chapter states the `Fixed`-wider-than-parent trap by name. |
-| **T20.3** | Ch 4 — styling. | Both `kind_name` conventions appear in one working stylesheet. |
-| **T20.4** | Ch 8 — what a frame does. | A snippet demonstrates that a handler cannot leave a stale value on screen — by asserting it, not asserting it in prose. |
-| **T20.5** | Ch 21 — backends. | The same tree renders headless and under winit in the chapter, from the two examples that already do it. |
-| **T20.6** | Ch 25 — the agent protocol. | A snippet drives a widget by selector and asserts the effect, included from `counter`'s existing `center_of` path. |
-| **T20.7** | v0.2 — Part II, chapters 5 and 7. | Every claim about a decision carries its spec section; the chapters contain no figures at all. |
-| **T20.8** | v0.2 — Part III remainder (9–11). | — |
-| **T20.9** | v0.2 — Part IV (12–16) with §4's example growth. | Each growth lands with a test, in the same commit as the chapter that needs it. |
-| **T20.10** | v0.2 — ch 29, the gap list. | It cites the survey rather than restating it, and the survey is current on the day it is cited (§9). |
-| **T20.11** | v0.3 — Part V (17–20). | — |
-| **T20.12** | v0.3 — Part VII (26–28). | — |
-| **T20.13** | v0.3 — appendices, and the attribute reference cross-linked to rustdoc. | The seven attributes appear in one table here and one table in `lib.rs`, and a check fails if they diverge. |
+| **T20.2** ✅ | Ch 3 — layout. | The two-spacer centring trick is shown from `Page`, and the chapter states the `Fixed`-wider-than-parent trap by name. |
+| **T20.3** ✅ | Ch 4 — styling. | Both `kind_name` conventions appear in one working stylesheet. |
+| **T20.4** ✅ | Ch 8 — what a frame does. | A snippet demonstrates that a handler cannot leave a stale value on screen — by asserting it, not asserting it in prose. |
+| **T20.5** ✅ | Ch 21 — backends. | The same tree renders headless and under winit in the chapter, from the two examples that already do it. |
+| **T20.6** ✅ | Ch 25 — the agent protocol. | A snippet drives a widget by selector and asserts the effect, included from `counter`'s existing `center_of` path. |
+| **T20.7** ✅ | v0.2 — Part II, chapters 5 and 7. | Every claim about a decision carries its spec section; the chapters contain no figures at all. |
+| **T20.8** ✅ | v0.2 — Part III remainder (9–11). | — |
+| **T20.9** ✅ | v0.2 — Part IV (12–16) with §4's example growth. | Each growth lands with a test, in the same commit as the chapter that needs it. |
+| **T20.10** ✅ | v0.2 — ch 29, the gap list. | It cites the survey rather than restating it, and the survey is current on the day it is cited (§9). |
+| **T20.11** ✅ | v0.3 — Part V (17–20). | — |
+| **T20.12** ✅ | v0.3 — Part VII (26–28). | — |
+| **T20.13** ✅ | v0.3 — appendices, and the attribute reference cross-linked to rustdoc. | The seven attributes appear in one table here and one table in `lib.rs`, and a check fails if they diverge. |
 
 **Sizing.** v0.1's five remaining chapters are a day each including the
 anchors. T20.9 is the largest single item because it carries example
@@ -280,14 +285,26 @@ tell a cited number from an invented one. It is the rule most likely to
 be broken by a chapter written in a hurry, and the reason Part II is
 forbidden figures outright rather than trusted with them.
 
-## 9. One thing to fix before chapter 29 cites it
+## 9. One thing to fix before chapter 29 cites it — WORSE THAN STATED
 
 `docs/competitive-feature-gaps.md` is marked **live** in `docs/README.md`
 and states a draw vocabulary of six commands and no image support. Both
 were true when it was surveyed on 2026-09-06 and neither was true a day
 later: T15.2 and T15.3 landed images, lines and gradients on 2026-09-07.
-`Cmd` has nine variants today. The survey needs a dated note or a
-re-survey before a chapter cites it, or the book will inherit a number
-that the code disagrees with — which is the exact failure the
-cites-don't-restate rule exists to prevent, arriving through the
-citation instead of around it.
+`Cmd` has nine variants today.
+
+**On writing chapter 29 this turned out to be a whole milestone, not one
+count.** The survey's "common to all six" table lists thirteen
+capabilities as missing that M15 shipped on 2026-09-07, the day after
+the survey: images, vector lines and gradients, animation, touch and
+gestures, focus navigation, drag and drop, complex-script text,
+localisation, multi-window, platform dialogs and the GPU backend, with
+the overlay mechanism following. A reader taking that table at face
+value today would conclude the framework is a milestone smaller than it
+is.
+
+So chapter 29 was written **from the code**, names the staleness in its
+own text, and points readers at the per-framework sections and the
+"how much of this is a decision" section, which are still sound. The
+survey needs a re-survey or a dated freeze marker; `docs/README.md`
+currently calls it **live**.

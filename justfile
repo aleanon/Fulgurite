@@ -24,7 +24,8 @@ static:
     ./scripts/check_doc_identifiers.sh  # backticked names in comments must exist in code
     ./scripts/check_derive_attrs.sh     # every derive helper attribute must have a user
     ./scripts/check_doc_paths.sh        # cited docs/*.md and bench binaries must exist
-    ./scripts/check_book_includes.sh     # book/src includes must name a live file and anchor
+    ./scripts/check_book_includes.sh    # book includes, anchors and links must all resolve
+    ./scripts/check_attr_table.sh       # the attribute table in lib.rs and the book must agree
 
 # Default features == the shipped shape. This is the ONLY build that compiles
 # what docs/verification-notes.md scopes its argument to; `--workspace` cannot

@@ -55,3 +55,5 @@
 ---
 
 [Where the decisions live](./decisions.md)
+[The attribute reference](./attributes.md)
+[Glossary](./glossary.md)

@@ -43,7 +43,7 @@
 //!
 //! | attribute | on | meaning |
 //! |---|---|---|
-//! | `#[widget(row \| column, spacing = 4.0)]` | a `StaticTree` struct | axis, and the gap between children |
+//! | `#[widget(row \| column \| stack, spacing = 4.0)]` | a `StaticTree` struct | container mode, and the gap between children. `stack`'s children share its rect (M11/T11.6) and it takes no spacing |
 //! | `#[widget(fuse)]` | a `StaticTree` struct | emit static calls instead of `&dyn` — the erasure dial |
 //! | `#[widget_id("save")]` | a field | stable author id: an agent selector, and `#save` in a stylesheet |
 //! | `#[widget_class("row", "striped")]` | a field | style classes, matched by `.row` |
@@ -125,6 +125,7 @@ pub mod num;
 pub mod observe;
 pub mod ops;
 pub mod overlay;
+pub mod glass;
 pub mod popup;
 pub mod pass;
 #[cfg(feature = "reload")]
@@ -152,6 +153,7 @@ pub use invalidate::{Boundaries, Everything, Invalidation};
 #[cfg(feature = "alloc")]
 pub use hatch::{Dyn, List};
 pub use input::TextInput;
+pub use glass::Glass;
 pub use scroll::ScrollView;
 pub use slider::Slider;
 pub use textarea::TextArea;

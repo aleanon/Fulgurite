@@ -5,7 +5,9 @@ the queue from the 2026-09-08 performance review. **All of it landed on
 2026-09-08**; its header records what was built, what was decided
 against, and what it measured.
 
-Shipped and kept for their reasoning: `docs/plan-architecture-v2.md`
+Shipped and kept for their reasoning: `docs/plan-book.md` (M20 — the
+book, all twenty-nine chapters, done 2026-09-10),
+`docs/plan-architecture-v2.md`
 (M0–M12), `docs/plan-review-fixes.md` (F0–F7),
 `docs/plan-embedded.md` (M13), `docs/plan-desktop.md` (M14),
 `docs/plan-capabilities.md` (M15), `docs/plan-invalidation.md` (M16).
@@ -24,10 +26,7 @@ are independent of each other**, so either may go first:
   as `Glass<W>`, software only. The scope line it sits on is
   `docs/results-vello.md` §4.
 
-Unsequenced: `docs/plan-harness.md`, and `docs/plan-book.md` (M20,
-T20.0–T20.13 — the book's chapters, phased v0.1/v0.2/v0.3; it blocks
-nothing and nothing blocks it, so it is written between milestones
-rather than instead of one).
+Unsequenced: `docs/plan-harness.md`.
 
 Task ids (`T0.6`, `F1.3`, `T16.7`) go in commit subjects. Decision records live beside it in `docs/`; the
 design spec is `docs/00-handoff-static-tree.md`, whose DECIDED/SUPERSEDED
@@ -148,11 +147,22 @@ Three rules, all of them the existing ones applied to a new surface:
    `docs/results-*.md` that owns it, in the same sentence. The book is
    the surface most tempted to repeat a number in friendlier prose, and
    that is how a corrected table and its uncorrected paragraph happen.
-2. **Code is included, never retyped** — `{{#include ...:anchor}}` from
-   `examples/`, by *named anchor*. A renamed anchor expands to the empty
-   string and `mdbook test` still exits 0, which is why
-   `scripts/check_book_includes.sh` runs in `just static`. Line-number
-   includes are refused, not checked.
+2. **Code that exists is included; code that only teaches is executed.**
+   If the repository already contains the code, the chapter includes it
+   by *named anchor* — never retypes it, because a copy drifts. If the
+   code exists only to make a point, it lives in the chapter and must
+   **run**: a ```rust block with an assertion in it. **```rust,ignore is
+   forbidden** and gated: it compiles nothing while rendering exactly
+   like a tested block, and it is what a writer reaches for when a
+   fragment will not compile alone — where the honest answers are a
+   finer anchor plus hidden setup lines, or prose. The first version of
+   this rule said "included, never retyped" full stop; it was written
+   for a four-chapter book sourced entirely from `examples/`, and no
+   example demonstrates gestures, i18n or animation in teachable form.
+   A renamed anchor expands to the empty string and `mdbook test` still
+   exits 0, and an intra-book link to an unwritten chapter renders as a
+   dead link — both silent, both why `scripts/check_book_includes.sh`
+   runs in `just static`. Line-number includes are refused, not checked.
 3. **A `SUMMARY.md` entry that points nowhere is an error**
    (`create-missing = false`). Unwritten chapters are draft entries.
 
@@ -209,10 +219,11 @@ separate pass the rule exists to prevent. If a commit is big enough that
 the docs feel like a second task, that is the signal to split the commit,
 not to defer the docs.
 
-Five checks in `just static` mechanise the part a human reliably misses:
+Six checks in `just static` mechanise the part a human reliably misses:
 a backticked identifier in a comment must exist in the code, a declared
 derive attribute must have a user, a cited `docs/*.md` or bench binary
 must exist, every `{{#include}}` in the book must name a live file and a
-live anchor, and the core must contain no `unsafe`. They run before any
-compile. The first three read `book/src/*.md` as well as `docs/*.md`,
+live anchor, the attribute table must say the same thing in the rustdoc
+and in the book, and the core must contain no `unsafe`. They run before
+any compile. The first three read `book/src/*.md` as well as `docs/*.md`,
 from 2026-09-10.
