@@ -1,8 +1,22 @@
 # M19 — `Glass<W>`: a backdrop filter as a widget
 
-> **Status: planned 2026-09-10, not started. Blocked on M18 (§2).**
-> Its other prerequisite, `plan-widgets.md` T11.6's `stack` axis (§2.1),
-> **landed 2026-09-10**.
+> **Status: T19.0–T19.6 all resolved 2026-09-10.** Four built, two
+> decided against on measurement, one confirmed. Both prerequisites
+> landed first: `plan-widgets.md` T11.6's `stack` axis (§2.1) and M18's
+> region set (§2).
+>
+> What it bought, measured: **`backdrop-filter: blur()` at ~21 ns/px**,
+> a toolbar-sized panel at **0.42 ms**, delivered σ within **10%** of
+> requested, and a partial redraw byte-identical to a full one over a
+> moving backdrop. What it cost the embedded profile: **148 bytes of
+> `.text`**, shared with M18.
+>
+> The two tasks not built are the interesting half.
+> **T19.4's cache cannot pay** — the box passes are 1–4% of a panel's
+> cost, and the state it would exploit cannot occur once the dependency
+> rule exists. **T19.5's threading is deferred on a stated condition**,
+> and the decline is asserted rather than trusted. Both are
+> `docs/results-glass.md` §5 and §6.
 >
 > Rewritten from the first draft after a four-agent spec review found
 > ~35 defects in it, two of which were in shipped code and are already

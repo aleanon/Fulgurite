@@ -18,13 +18,14 @@ are independent of each other**, so either may go first:
   2026-09-10**, with `W1004` shipped in the same commit as T11.5
   pre-registered. T11.5's three widgets (dropdown, tooltip, modal) are
   now unblocked too.
-- **M18 — `Damage` as a set of regions.** No plan doc yet; wanted on its
-  own merits (`docs/damage-amplification-decision.md` records a measured
-  37× amplification a bounding-box union causes). What M19 needs from it
-  is `docs/plan-glass.md` §2.
-- **M19 — `docs/plan-glass.md`** (T19.0–T19.6): `backdrop-filter: blur()`
-  as `Glass<W>`, software only. The scope line it sits on is
-  `docs/results-vello.md` §4.
+- ~~**M18 — `Damage` as a set of regions.**~~ **DONE 2026-09-10.** No
+  plan doc; the measurement is in the commit and in
+  `docs/damage-amplification-decision.md`, which it partly supersedes.
+- ~~**M19 — `docs/plan-glass.md`**~~ **DONE 2026-09-10** (T19.0–T19.6):
+  `backdrop-filter: blur()` as `Glass<W>`, software only, with
+  `docs/results-glass.md` for what it costs. Two of its seven tasks were
+  decided *against* on measurement, which is where the doc is worth
+  reading.
 
 Unsequenced: `docs/plan-harness.md`.
 
