@@ -68,6 +68,9 @@ just hot-demo      # swap a dylib under a running app and check state survived
 
 ## Where to read next
 
+- **Building something with it** — the book, in `book/`: `just book-serve`
+  to read it, or `book/src/index.md` to start from the file. Every snippet
+  in it is included from a compiled example, not retyped.
 - **Writing a widget** — the crate docs for `lumen_static`: `Node` vs
   `Widget`, the seven attributes, and what the derive emits.
 - **Why any of it is shaped this way** — `docs/00-handoff-static-tree.md`,

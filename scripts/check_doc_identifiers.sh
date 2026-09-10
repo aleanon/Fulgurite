@@ -21,7 +21,8 @@
 # It is for names that are real but not ours (C functions, rustc features,
 # upstream field names) and for names documented as deliberately REMOVED.
 #
-# MARKDOWN (M16/T16.6). `docs/*.md` is checked too, and it was not until
+# MARKDOWN (M16/T16.6). `docs/*.md` and `book/src/*.md` are checked too,
+# and markdown was not checked at all until
 # 2026-09-08 -- which is how the design spec came to state as DECIDED that
 # "rigidity is per axis (`RIGID_W`/`RIGID_H`)" when neither identifier has
 # ever existed in the code. The spec is the most load-bearing document here
@@ -56,8 +57,9 @@ grep -hE '^[[:space:]]*//' $(cat "$tmp/files") \
 
 # Markdown candidates, narrowed to Rust-item shape (see the header).
 # CamelCase (two or more humps) or UPPER_SNAKE / ALLCAPS.
-if compgen -G 'docs/*.md' > /dev/null; then
-    grep -hoE '`[^`]+`' docs/*.md | sed 's/`//g' \
+mdfiles=$(ls docs/*.md 2>/dev/null; find book/src -name '*.md' 2>/dev/null)
+if [ -n "$mdfiles" ]; then
+    grep -hoE '`[^`]+`' $mdfiles | sed 's/`//g' \
       | tr ':' '\n' | sed -E 's/!$//; s/\(\)$//' \
       | grep -E '^([A-Z][a-z0-9]+([A-Z][A-Za-z0-9]*)+|[A-Z][A-Z0-9]+(_[A-Z0-9]+)*)$' \
       | sort -u > "$tmp/mdcands"
@@ -99,7 +101,7 @@ if [ -s "$tmp/dead" ]; then
         # loop -- the same bug class that inverted the old no-unsafe gate.
         { grep -rnE --include='*.rs' "\`$name(!|\(\))?\`" crates benches examples fixtures 2>/dev/null || true; } \
           | { grep -E '^[^:]+:[0-9]+:[[:space:]]*//' || true; } | head -3 | sed 's/^/      /' >&2 || true
-        { grep -rnE "\`$name(!|\(\))?\`" docs/*.md 2>/dev/null || true; } \
+        { grep -rnE "\`$name(!|\(\))?\`" $mdfiles 2>/dev/null || true; } \
           | head -3 | sed 's/^/      /' >&2 || true
     done < "$tmp/dead"
     echo "" >&2

@@ -1,0 +1,36 @@
+# The lumen-static book.
+#
+# It lives in this repo, not beside it, for the reason `AGENT.md` gives:
+# the doc-currency rule requires the prose to move in the *same commit*
+# as the behaviour, and a second repository makes that structurally
+# impossible. It also buys the two mechanisms this file configures --
+# `{{#include}}` from `examples/`, and `mdbook test` against the real
+# rlibs -- both of which need one checkout.
+
+[book]
+title = "lumen-static"
+description = "A GUI framework where the widget tree's shape lives in the type."
+src = "src"
+language = "en"
+
+[build]
+build-dir = "../target/book-html"
+# A SUMMARY.md entry pointing at a file that does not exist is a mistake,
+# not a request to create a blank page. Unwritten chapters are draft
+# entries (no link), which is what mdBook has them for.
+create-missing = false
+
+[rust]
+# Without this rustdoc compiles every snippet as edition 2015, where
+# `use lumen_static::prelude::*` cannot resolve and the error it gives
+# you ("you might be missing a crate") points nowhere near the cause.
+edition = "2021"
+
+[output.html]
+default-theme = "rust"
+no-section-label = false
+
+[output.html.playground]
+# Snippets link against this workspace, which the Rust playground does
+# not have. A ▶ button here would be a promise the page cannot keep.
+runnable = false

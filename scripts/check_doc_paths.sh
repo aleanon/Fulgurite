@@ -4,7 +4,10 @@
 # Two kinds, same failure mode -- a pointer to something that was renamed or
 # deleted, which nothing in the toolchain notices:
 #   (1) `docs/foo.md` paths, cited from Rust comments, other docs, the
-#       justfile and Cargo.toml. Two are dangling today.
+#       book, the justfile and Cargo.toml. Two are dangling today. The book
+#       is in scope from 2026-09-10: it cites results docs by rule rather
+#       than restating their numbers, so its citations are the ones most
+#       likely to outlive what they point at.
 #   (2) `--bin NAME` / `-p CRATE` targets cited from docs. Two results docs
 #       name bench binaries that no longer exist (`memory`, `safety`), which
 #       makes their numbers unreproducible -- the doc says how to rerun the
@@ -19,7 +22,7 @@ cd "$(cd "$(dirname "$0")/.." && pwd)"
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 status=0
 
-sources=$(find crates benches examples fixtures docs scripts -type f \
+sources=$(find crates benches examples fixtures docs book scripts -type f \
     \( -name '*.rs' -o -name '*.md' -o -name '*.toml' -o -name '*.sh' \) \
     -not -path '*/target/*' -not -name 'check_*.sh' 2>/dev/null; echo justfile; echo AGENT.md; echo Cargo.toml)
 

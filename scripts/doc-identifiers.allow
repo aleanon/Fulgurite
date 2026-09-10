@@ -77,3 +77,4 @@ vello_cpu            # Linebender's CPU rasteriser, the control arm in results-v
 fearless_simd        # its SIMD layer; named for its unsafe count in the same doc
 RenderContext        # vello_cpu's scene recorder, named where ours is compared with it
 Resources            # vello_cpu's cross-frame glyph cache, same comparison
+ERROR                # mdbook log level, quoted in docs/book-decision.md -- not ours

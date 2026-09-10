@@ -24,6 +24,7 @@ static:
     ./scripts/check_doc_identifiers.sh  # backticked names in comments must exist in code
     ./scripts/check_derive_attrs.sh     # every derive helper attribute must have a user
     ./scripts/check_doc_paths.sh        # cited docs/*.md and bench binaries must exist
+    ./scripts/check_book_includes.sh     # book/src includes must name a live file and anchor
 
 # Default features == the shipped shape. This is the ONLY build that compiles
 # what docs/verification-notes.md scopes its argument to; `--workspace` cannot
@@ -96,7 +97,7 @@ check: test check-extra
 # decision CI gets to make.
 
 # Release-shape rustdoc, binsize, and the exhaustive f32 check.
-check-extra: floats thumb gpu simd threads
+check-extra: floats thumb gpu simd threads book
     # Release-shape rustdoc: `--workspace` hides broken links that point at
     # items which only exist behind `observe`/`reload`.
     RUSTDOCFLAGS="-D warnings" cargo doc -p lumen-static --no-deps
@@ -345,3 +346,39 @@ profile-simd:
 # And with band-parallel rasterisation as well (M17/T17.4).
 profile-threads:
     LUMEN_PROFILE=1 cargo run -q -p counter-window --features simd,threads -- --headless target/tally.ppm 12
+
+# ---------------------------------------------------------------------------
+# The book
+# ---------------------------------------------------------------------------
+
+# `book/` is an mdBook. It lives in this repo because AGENT.md's
+# doc-currency rule requires prose to move in the SAME COMMIT as the
+# behaviour, which a second repository makes structurally impossible --
+# and because both mechanisms below need one checkout.
+#
+# The split between here and `static`: check_book_includes.sh is pure
+# bash and runs on every commit; these two need mdbook installed
+# (`cargo binstall mdbook`) and a build, so they run pre-push.
+
+# Build the book and compile every snippet in it.
+book: book-deps
+    ./scripts/build_book.sh
+
+# The rlibs the book's snippets link against, in their own target dir.
+# NOT target/debug/deps: that holds thousands of files and a dozen
+# differently featured liblumen_static-*.rlib, and rustdoc refuses an
+# ambiguous search path (E0464). This one holds exactly one of each.
+#
+# The wipe is not laziness. Cargo never deletes a superseded artifact, so
+# building `-p counter` and later `-p counter -p minimal` -- different
+# feature unification, different hash -- leaves BOTH rlibs here, and the
+# book then fails to compile with an error that names neither the cause
+# nor the fix. Eight seconds of rebuild buys a directory whose contents
+# are a function of this line alone.
+book-deps:
+    rm -rf target/book
+    cargo build -q -p counter -p minimal --target-dir target/book
+
+# Read it locally, rebuilding on save.
+book-serve: book-deps
+    mdbook serve book --open

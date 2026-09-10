@@ -11,6 +11,7 @@
 //! backend a run actually got is printed at startup, and
 //! `LUMEN_BACKEND=software` forces the fallback.
 
+// ANCHOR: app
 use lumen_static::prelude::*;
 use lumen_static_winit::{run, Config};
 
@@ -35,3 +36,4 @@ fn main() {
     app.ui.button.on_click = |c: &mut Counter, _: &EventCtx| c.count += 1;
     run(app, Config { title: "minimal", width: 320, height: 160, ..Config::default() });
 }
+// ANCHOR_END: app

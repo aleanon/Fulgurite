@@ -19,6 +19,7 @@ use lumen_static_shell::{Host, CLEAR};
 
 // ---- the tree: topology in the type, values in the fields (§3) -------
 
+// ANCHOR: tree
 #[derive(StaticTree, Default)]
 #[widget(row, spacing = 8.0)]
 struct Controls {
@@ -43,6 +44,8 @@ struct Ui {
     controls: Controls,
 }
 
+// ANCHOR_END: tree
+
 // ---- application state, beside the tree (not inside it) --------------
 
 /// `#[tree]` names the widget tree; `#[bind]` says how a state field
@@ -55,6 +58,7 @@ struct Ui {
 /// the presentation copy (`docs/layout-and-storage-decisions.md` §1) —
 /// owning that copy is what lets the label cache its measurement. The
 /// binding is only about who keeps the two in agreement, and when.
+// ANCHOR: state
 #[derive(DeriveApp, Default)]
 struct Counter {
     #[tree]
@@ -62,7 +66,9 @@ struct Counter {
     #[bind(ui.value, "count: {}")]
     count: i64,
 }
+// ANCHOR_END: state
 
+// ANCHOR: handlers
 fn on_inc(c: &mut Counter, _: &EventCtx) {
     c.count += 1;
 }
@@ -70,6 +76,7 @@ fn on_inc(c: &mut Counter, _: &EventCtx) {
 fn on_dec(c: &mut Counter, _: &EventCtx) {
     c.count -= 1;
 }
+// ANCHOR_END: handlers
 
 impl Counter {
     fn new() -> Self {
@@ -84,6 +91,7 @@ impl Counter {
     }
 }
 
+// ANCHOR: style
 fn stylesheet() -> Vec<Rule> {
     vec![
         // A column of shrink-height children, padded away from the edge.
@@ -94,6 +102,7 @@ fn stylesheet() -> Vec<Rule> {
         Rule::new(Selector::Kind("Controls"), Patch::new().width(Length::FILL)),
     ]
 }
+// ANCHOR_END: style
 
 fn main() {
     let mut host = Host::new(Counter::new(), 320, 200);

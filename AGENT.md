@@ -122,6 +122,34 @@ wrapper, always**, because a wrapper can always forward and the default
 acts on the wrapper instead. When a trait gains a method, every wrapper
 of it is a call site the compiler will not show you.
 
+## The book (`book/`, added 2026-09-10)
+
+`book/` is an mdBook: the reader-facing narrative, in teaching order. It
+is in this repository and not beside it because the doc-currency rule
+below requires prose to move in the **same commit** as the behaviour, and
+a second repository has no such commit — `docs/book-decision.md` records
+the reasoning, the two tooling traps, and the seven injections the gates
+were verified with.
+
+Three rules, all of them the existing ones applied to a new surface:
+
+1. **It cites; it does not restate.** A figure in a chapter names the
+   `docs/results-*.md` that owns it, in the same sentence. The book is
+   the surface most tempted to repeat a number in friendlier prose, and
+   that is how a corrected table and its uncorrected paragraph happen.
+2. **Code is included, never retyped** — `{{#include ...:anchor}}` from
+   `examples/`, by *named anchor*. A renamed anchor expands to the empty
+   string and `mdbook test` still exits 0, which is why
+   `scripts/check_book_includes.sh` runs in `just static`. Line-number
+   includes are refused, not checked.
+3. **A `SUMMARY.md` entry that points nowhere is an error**
+   (`create-missing = false`). Unwritten chapters are draft entries.
+
+`just book` builds it and compiles and runs every snippet against the
+real rlibs; `just book-serve` reads it locally. Both need
+`cargo binstall mdbook`, which is why only the pure-bash include check
+gates every commit and the compile gates pre-push.
+
 ## Doc currency (binding — adapted from Lumen's D0.7 rule, 2026-08-30)
 
 Any commit that changes public behavior or settles a design question must
@@ -170,8 +198,10 @@ separate pass the rule exists to prevent. If a commit is big enough that
 the docs feel like a second task, that is the signal to split the commit,
 not to defer the docs.
 
-Four checks in `just static` mechanise the part a human reliably misses:
+Five checks in `just static` mechanise the part a human reliably misses:
 a backticked identifier in a comment must exist in the code, a declared
 derive attribute must have a user, a cited `docs/*.md` or bench binary
-must exist, and the core must contain no `unsafe`. They run before any
-compile.
+must exist, every `{{#include}}` in the book must name a live file and a
+live anchor, and the core must contain no `unsafe`. They run before any
+compile. The first three read `book/src/*.md` as well as `docs/*.md`,
+from 2026-09-10.
