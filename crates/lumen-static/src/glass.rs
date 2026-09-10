@@ -211,3 +211,20 @@ impl<W: Widget> Node for Glass<W> {
         }
     }
 }
+
+/// Handlers pass straight through to the content: a panel is a surface,
+/// not a control, and node 0 has nothing to answer.
+impl<W, S> crate::event::Handlers<S> for Glass<W>
+where
+    W: Widget + crate::event::Handlers<S>,
+{
+    fn handler(
+        &self,
+        sel: crate::event::NodeSel,
+    ) -> Option<fn(&mut S, &crate::event::EventCtx)> {
+        if sel.i == 0 {
+            return None;
+        }
+        self.content.handler(crate::event::NodeSel { i: sel.i - Self::AT, inner: sel.inner })
+    }
+}

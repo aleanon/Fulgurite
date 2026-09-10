@@ -124,6 +124,28 @@ pub enum Cmd {
     PopClip,
 }
 
+/// The region a [`Cmd::Glass`] with this blur **reads**, given the rect
+/// it writes — M19/T19.2.
+///
+/// **One expression, called by both the renderer and the damage
+/// recorder.** If the capture were wider than the dependency, a partial
+/// redraw would read pixels nothing damaged and the panel would be stale
+/// in its outermost ring — and the oracle would pass, because both sides
+/// would agree about a frame in which that ring never changed. Writing
+/// it twice is how they would drift.
+///
+/// Three box passes of the size SVG's `feGaussianBlur` specifies reach
+/// about `3σ`, and a bilinear tap adds one pixel on each side. The `+ 4`
+/// is that tap plus the margin T19.3's downsample will need when it
+/// lands, so the dependency does not have to widen again then.
+pub fn glass_source(rect: Rect, blur: f32) -> Rect {
+    if !blur.is_finite() || blur <= 0.0 {
+        return rect;
+    }
+    let reach = crate::num::ceil(3.0 * blur + 4.0);
+    [rect[0] - reach, rect[1] - reach, rect[2] + reach, rect[3] + reach]
+}
+
 /// The alpha a renderer that cannot blur paints a glass panel at.
 ///
 /// Not the tint's own, which is typically around 40 of 255: flat, that

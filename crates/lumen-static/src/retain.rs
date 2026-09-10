@@ -365,6 +365,22 @@ pub trait Retention: Default {
     /// frame had.
     fn observe(&mut self, hash: u64, ink: Rect);
 
+    /// Observe that a command's pixels are a **function of** the region
+    /// `src`, not merely of its own inputs — M19/T19.2.
+    ///
+    /// [`crate::display::Cmd::Glass`] is the only command that reads
+    /// what is already in the frame. Everything else composes forward,
+    /// which is why a partial redraw can replay a command list and get
+    /// the same pixels; a backdrop filter is a function of the frame
+    /// beneath it, so if `src` changed, this command's output changed
+    /// even though its own hash did not.
+    ///
+    /// Provided as a no-op, so [`Rebuild`] — which redraws everything
+    /// anyway — and any host strategy are unaffected until they opt in.
+    fn observe_dep(&mut self, src: Rect) {
+        let _ = src;
+    }
+
     /// End the frame: return what changed against what was retained,
     /// and retain this frame instead.
     fn finish(&mut self) -> Damage;
@@ -451,7 +467,24 @@ struct Diffing {
     /// Damage of the last [`AGES`] *presented* frames, newest at `head`.
     ring: [Damage; AGES],
     head: usize,
+    /// Source regions observed this frame by commands that read the
+    /// frame beneath them, and how many. Bounded: a scene with more
+    /// backdrop filters than this reports `Damage::All`, which is
+    /// correct and merely slow, the same answer a slot overflow gets.
+    deps: [Rect; MAX_DEPS],
+    n_deps: usize,
+    dep_overflow: bool,
 }
+
+/// How many backdrop-reading commands one frame may have before damage
+/// degrades to [`Damage::All`].
+///
+/// `docs/plan-glass.md` §5.1: a glass panel serialises the rasteriser
+/// and cannot be batched, so a frame with more than a handful is a
+/// design problem rather than a case to optimise. Four matches
+/// [`MAX_REGIONS`], which is not a coincidence — each panel contributes
+/// at most one region.
+pub const MAX_DEPS: usize = 4;
 
 impl Diffing {
     /// Compare one command against its retained slot and overwrite it.
@@ -461,6 +494,14 @@ impl Diffing {
     /// a command is compared the moment it arrives and then replaces
     /// what it was compared against.
     fn step(&mut self, slot: Option<&mut (u64, Rect)>, hash: u64, ink: Rect) {
+        if self.n == 0 {
+            // First command of a frame: last frame's dependencies are
+            // gone. Cleared here rather than in `finish`, because
+            // `take_damage_for_age` runs *after* `finish` and needs
+            // them still alive.
+            self.n_deps = 0;
+            self.dep_overflow = false;
+        }
         self.n += 1;
         let Some(slot) = slot else {
             self.overflow = true;
@@ -470,6 +511,59 @@ impl Diffing {
             self.frame = self.frame.union(Damage::rect(slot.1)).union(Damage::rect(ink));
         }
         *slot = (hash, ink);
+    }
+
+    /// Record a region a backdrop-reading command depends on.
+    fn dep(&mut self, src: Rect) {
+        if self.n_deps < MAX_DEPS {
+            self.deps[self.n_deps] = src;
+            self.n_deps += 1;
+        } else {
+            self.dep_overflow = true;
+        }
+    }
+
+    /// Grow `d` until every dependent region that damage touches is
+    /// itself fully damaged — M19/T19.2.
+    ///
+    /// **`D ∪= src`, not `D ∪= dst`.** The panel writes only its own
+    /// rect but *reads* a wider one, and the ring between them is what a
+    /// partial redraw would leave holding the previous frame's final
+    /// pixels — including commands painted *after* the panel, and
+    /// including the panel's own previous output, which re-blurs and
+    /// smears a little more every frame. Damaging only where it draws
+    /// fixes neither.
+    ///
+    /// **Terminates in at most `n_deps + 1` rounds, provably**, so there
+    /// is no cap and no fallback: `d` only grows, the regions are fixed
+    /// for the frame, and re-adding a contained region is a no-op — so
+    /// every round that changes `d` consumes one of a finite set. A cap
+    /// with a `Damage::All` escape would be a branch that cannot fire,
+    /// and `AGENT.md` says such a branch cannot be shown to fail.
+    fn dilate(&self, mut d: Damage) -> Damage {
+        if self.dep_overflow && self.n_deps > 0 {
+            return Damage::All;
+        }
+        if matches!(d, Damage::None | Damage::All) {
+            return d;
+        }
+        for _ in 0..=self.n_deps {
+            let mut grew = false;
+            for k in 0..self.n_deps {
+                let src = self.deps[k];
+                if d.intersects(src) {
+                    let next = d.union(Damage::rect(src));
+                    if next != d {
+                        d = next;
+                        grew = true;
+                    }
+                }
+            }
+            if !grew {
+                break;
+            }
+        }
+        d
     }
 
     /// Close the frame and return its damage.
@@ -482,7 +576,7 @@ impl Diffing {
         let d = if !self.seeded || self.overflow || self.n != self.len {
             Damage::All
         } else {
-            self.frame
+            self.dilate(self.frame)
         };
         self.len = self.n;
         self.n = 0;
@@ -506,7 +600,13 @@ impl Diffing {
         for k in 1..age as usize {
             d = d.union(self.ring[(self.head + AGES - k) % AGES]);
         }
-        d
+        // **Dilated again here, not only in `finish`.** Each banked
+        // entry was closed under the dependency rule when it was
+        // written, but their *union* need not be: merging two regions
+        // that each missed a panel can produce one that clips it. The
+        // panel would then be correct at buffer age 1 and stale at 3,
+        // which is the worst shape a bug can have.
+        self.dilate(d)
     }
 
     fn reset(&mut self) {
@@ -553,6 +653,10 @@ impl Retention for Incremental {
         }
     }
 
+    fn observe_dep(&mut self, src: Rect) {
+        self.d.dep(src);
+    }
+
     fn finish(&mut self) -> Damage {
         let d = self.d.finish();
         // Drop slots the frame no longer reaches, so a shrink does not
@@ -596,6 +700,10 @@ impl<const N: usize> Retention for Streaming<N> {
         let i = self.d.n;
         let slot = self.slots.get_mut(i);
         self.d.step(slot, hash, ink);
+    }
+
+    fn observe_dep(&mut self, src: Rect) {
+        self.d.dep(src);
     }
 
     fn finish(&mut self) -> Damage {
@@ -735,20 +843,22 @@ impl<R: Retention> Painter for Recording<'_, R> {
         self.inner.image(rect, id, tint);
     }
 
-    /// A backdrop filter inks exactly its own rect — the blur reads
-    /// wider than that but writes nothing outside it.
+    /// A backdrop filter inks exactly its own rect and **reads** a wider
+    /// one, and both are reported: `observe` for the ink, `observe_dep`
+    /// for the source.
     ///
-    /// **The region it *reads* is a separate question** and is not
-    /// answered here: `docs/plan-glass.md` §5's dependency rule is
-    /// T19.2's, and until it lands a glass panel over a backdrop that
-    /// changes without changing this command's hash will go stale. The
-    /// widget does not exist yet, so nothing can build that frame.
+    /// Both, not either. Skipping `observe` would desynchronise the
+    /// command count against the retained slots and make `finish` answer
+    /// `Damage::All` for the rest of the frame; skipping `observe_dep`
+    /// would let the panel go stale whenever its backdrop changed
+    /// without this command's own hash changing — which is every scroll.
     fn glass(&mut self, rect: Rect, radius: f32, blur: f32, tint: Color) {
         let mut h = h_rect(fold(0, 10), rect);
         h = fold(h, radius.to_bits() as u64);
         h = fold(h, blur.to_bits() as u64);
         h = h_color(h, tint);
         self.ret.observe(h, rect);
+        self.ret.observe_dep(crate::display::glass_source(rect, blur));
         self.inner.glass(rect, radius, blur, tint);
     }
 

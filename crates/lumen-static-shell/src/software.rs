@@ -148,6 +148,107 @@ impl Surface<'_> {
         }
     }
 
+    /// A backdrop filter — M19/T19.2.
+    ///
+    /// **The only method here that reads the destination before writing
+    /// it.** Everything else composes forward; this captures what is
+    /// already in the buffer under `shape`, blurs it, and composites the
+    /// result back at the panel's own coverage.
+    ///
+    /// Three passes of a box blur approximate a Gaussian to within a few
+    /// percent, and a box blur with a running sum is O(1) per pixel in
+    /// the radius — which is what makes a 12 px blur cost the same as a
+    /// 2 px one. The box width is the one SVG's `feGaussianBlur`
+    /// specifies. **T19.3 owns the rest of the quality story**: the
+    /// odd/even split, the downsample, `u16` intermediates. This is the
+    /// correct-and-simple version those are measured against.
+    ///
+    /// Straight, non-premultiplied sRGB, and that is correct *here and
+    /// only here*: `blend` and `blend_px` write `α = 255`
+    /// unconditionally and `CLEAR` is opaque, so the destination alpha
+    /// is constant and straight equals premultiplied. **A
+    /// transparent-window path would invalidate this** and must
+    /// premultiply before the box passes.
+    fn glass_within(&mut self, shape: [f32; 4], bounds: [f32; 4], radius: f32, blur: f32, tint: Color) {
+        if !shape.iter().all(|v| v.is_finite()) || !bounds.iter().all(|v| v.is_finite()) {
+            return;
+        }
+        // The source region, from the *shared* expression the damage
+        // recorder uses. If these two disagreed the panel would be stale
+        // in its outermost ring and the oracle would not see it.
+        let src = lumen_static::display::glass_source(shape, blur);
+        let (w, h) = (self.width as i64, self.y_hi());
+        let (sx0, sy0) = ((src[0].floor() as i64).max(0), (src[1].floor() as i64).max(self.y0));
+        let (sx1, sy1) = ((src[2].ceil() as i64).min(w), (src[3].ceil() as i64).min(h));
+        if sx1 <= sx0 || sy1 <= sy0 {
+            return;
+        }
+        let (sw, sh) = ((sx1 - sx0) as usize, (sy1 - sy0) as usize);
+        let stride = (self.width * 4) as usize;
+
+        // Capture. One copy of the source region, RGB only -- alpha is
+        // the constant 255 above, so carrying it through three passes
+        // would blur a constant.
+        let mut a: Vec<u16> = Vec::with_capacity(sw * sh * 3);
+        for y in sy0..sy1 {
+            let row = (y - self.y0) as usize * stride;
+            for x in sx0..sx1 {
+                let p = row + x as usize * 4;
+                a.push(self.px[p] as u16);
+                a.push(self.px[p + 1] as u16);
+                a.push(self.px[p + 2] as u16);
+            }
+        }
+        let mut b: Vec<u16> = vec![0; sw * sh * 3];
+
+        // Three box passes each way. `d` is SVG's box width for this
+        // sigma; forced odd here so one kernel is centred on the output
+        // pixel -- T19.3 adds the spec's even-width case.
+        let d = (blur * 3.0 * (2.0 * core::f32::consts::PI).sqrt() / 4.0 + 0.5).floor() as i64;
+        let rad = ((d.max(1) - 1) / 2).max(1) as usize;
+        if blur > 0.0 {
+            for _ in 0..3 {
+                box_rows(&a, &mut b, sw, sh, rad);
+                box_cols(&b, &mut a, sw, sh, rad);
+            }
+        }
+
+        // Composite, at exactly `fill_rounded_within`'s coverage.
+        let rr = radius.min((shape[2] - shape[0]) / 2.0).min((shape[3] - shape[1]) / 2.0);
+        let (x0, y0) = ((bounds[0].floor() as i64).max(0), (bounds[1].floor() as i64).max(self.y0));
+        let (x1, y1) = ((bounds[2].ceil() as i64).min(w), (bounds[3].ceil() as i64).min(h));
+        let (top, bottom) = ((shape[1] + rr).ceil() as i64, (shape[3] - rr).floor() as i64);
+        let (left, right) = ((shape[0] + rr).ceil() as i64, (shape[2] - rr).floor() as i64);
+        for y in y0..y1 {
+            let corner_row = !(y >= top && y < bottom) && rr > 0.5;
+            let py = y as f32 + 0.5;
+            let dy = (shape[1] + rr - py).max(py - (shape[3] - rr)).max(0.0);
+            for x in x0..x1 {
+                let cov = if !corner_row || (x >= left && x < right) {
+                    1.0
+                } else {
+                    let px = x as f32 + 0.5;
+                    let dx = (shape[0] + rr - px).max(px - (shape[2] - rr)).max(0.0);
+                    (rr + 0.5 - (dx * dx + dy * dy).sqrt()).clamp(0.0, 1.0)
+                };
+                if cov <= 0.0 {
+                    continue;
+                }
+                let k = ((y - sy0) as usize * sw + (x - sx0) as usize) * 3;
+                let back = [a[k] as f32, a[k + 1] as f32, a[k + 2] as f32];
+                let t = tint.3 as f32 / 255.0;
+                let mix = |c: f32, ti: u8| c + (ti as f32 - c) * t;
+                let c = Color(
+                    mix(back[0], tint.0) as u8,
+                    mix(back[1], tint.1) as u8,
+                    mix(back[2], tint.2) as u8,
+                    255,
+                );
+                self.blend_cov(x, y, c, (cov * 255.0) as u8);
+            }
+        }
+    }
+
     /// A soft shadow: `c` at the edge of the rounded rect `shape`,
     /// falling off to nothing `spread` px out, drawn in one pass from
     /// the signed distance to the shape. The falloff is quadratic — the
@@ -426,16 +527,8 @@ impl Surface<'_> {
                     }
                 }
                 Cmd::Glass { rect, radius, blur, tint } => {
-                    // **T19.0 draws the fallback, not the filter.** The
-                    // backdrop read, the blur and the damage dependency
-                    // are T19.2's, and shipping the panel first means
-                    // every seam between here and `Glass<W>` is exercised
-                    // before the interesting part exists to hide behind.
-                    let _ = blur;
                     if let Some(r) = clipped(*rect, &clip) {
-                        let a = tint.3.max(lumen_static::display::GLASS_FALLBACK_ALPHA);
-                        let c = Color(tint.0, tint.1, tint.2, a);
-                        self.fill_rounded_within(*rect, r, c, *radius);
+                        self.glass_within(*rect, r, *radius, *blur, *tint);
                     }
                 }
                 Cmd::Shadow { rect, color, radius, spread } => {
@@ -960,6 +1053,65 @@ fn strip_rows_for(rows: usize, workers: usize) -> usize {
         return n.clamp(1, rows);
     }
     rows.div_ceil(workers * 4).clamp(16, rows.max(1))
+}
+
+/// One box pass across rows, with a running sum — M19/T19.2.
+///
+/// Normalised by the number of *contributing* samples, so a box that
+/// hangs off the edge does not darken the rim. Clamp-to-edge is the
+/// other honest rule and is what a GPU sampler does; this is the same
+/// answer without a branch per tap.
+fn box_rows(src: &[u16], dst: &mut [u16], w: usize, h: usize, rad: usize) {
+    for y in 0..h {
+        let row = y * w * 3;
+        for ch in 0..3 {
+            let mut sum: u32 = 0;
+            let mut n: u32 = 0;
+            for x in 0..(rad + 1).min(w) {
+                sum += src[row + x * 3 + ch] as u32;
+                n += 1;
+            }
+            for x in 0..w {
+                dst[row + x * 3 + ch] = (sum / n.max(1)) as u16;
+                if x >= rad {
+                    sum -= src[row + (x - rad) * 3 + ch] as u32;
+                    n -= 1;
+                }
+                let add = x + rad + 1;
+                if add < w {
+                    sum += src[row + add * 3 + ch] as u32;
+                    n += 1;
+                }
+            }
+        }
+    }
+}
+
+/// The same, down columns.
+fn box_cols(src: &[u16], dst: &mut [u16], w: usize, h: usize, rad: usize) {
+    for x in 0..w {
+        for ch in 0..3 {
+            let at = |y: usize| y * w * 3 + x * 3 + ch;
+            let mut sum: u32 = 0;
+            let mut n: u32 = 0;
+            for y in 0..(rad + 1).min(h) {
+                sum += src[at(y)] as u32;
+                n += 1;
+            }
+            for y in 0..h {
+                dst[at(y)] = (sum / n.max(1)) as u16;
+                if y >= rad {
+                    sum -= src[at(y - rad)] as u32;
+                    n -= 1;
+                }
+                let add = y + rad + 1;
+                if add < h {
+                    sum += src[at(add)] as u32;
+                    n += 1;
+                }
+            }
+        }
+    }
 }
 
 /// One row's run of RGBA -> `0RGB`, shared by both blit paths (T17.3).
