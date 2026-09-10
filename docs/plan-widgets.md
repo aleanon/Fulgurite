@@ -252,7 +252,7 @@ So the three widgets themselves are close to free now — a dropdown, a
 tooltip and a modal are each `Popup<W>` with an anchor. What is left of
 T11.5 is T11.6, and the widgets are a day after it.
 
-### T11.6 — the `stack` axis — *not started, and M19 is blocked on it*
+### T11.6 — the `stack` axis — **DONE 2026-09-10**
 
 **Added 2026-09-10.** `docs/plan-glass.md` needs content *underneath* a
 panel and no stock container produces overlapping rects, which is what
@@ -326,6 +326,48 @@ next tightening turns it into one that refuses everything.
 
 **Sizing.** A day, plus the lint. It unblocks T11.5's three widgets and
 M19's motivating scene, and nothing else in the queue depends on it.
+
+#### What it turned out to be
+
+Every design note above survived contact. Three things the plan did not
+say:
+
+- **`record_painted` is the template's, not each body's.** The three
+  mode-dependent bodies (`layout`, `place`, `hit`) are spliced into one
+  shared impl, and a node's own box is recorded once after them. The
+  first version had the stack body record it too, which produced two
+  calls in sequence and an unparsable expansion — caught by dumping the
+  token stream, not by reading it.
+- **`paint` is not one of the three.** A stack paints its children in
+  field order exactly as a row does, and that order *is* the z-order.
+  Only measuring, placing and hitting change.
+- **A stack keeps the container default of `FILL` width, `Shrink`
+  height**, shared with row and column. Two tests asserted the largest
+  child on both axes and were wrong: the stack was viewport-wide because
+  its own style said `FILL`. The convention is pinned by
+  `a_stack_defaults_to_fill_width_like_every_other_container` so a
+  change to it is deliberate.
+
+**Shown to fail** — five injections, each caught by name:
+
+| injection | result |
+|---|---|
+| place a stack's children sequentially | `a stack's children must occupy the same rect`, 5 of 9 fail |
+| walk `hit` forward | `hit must return the topmost child (node 3), not node 2`, 1 of 9 |
+| drop the `W1004` stack exemption | `a stack must be exempt: ["W1004"]` |
+| never report an overlap | `expected W1004: []` **and** the quiet test's own control |
+| `>=` instead of `>` on the overlap test | `a shared edge is not an overlap: ["W1004"]` |
+
+The fourth is why the quiet test carries its own control. "No `W1004`"
+is also what a lint that never ran says — and **the first version of
+`stack_overlap.rs` said exactly that**: its helper built a fresh `Agent`
+to dispatch `ui.lint`, so both quiet tests passed with the audit never
+having run. The firing case in the same file is what exposed it. A quiet
+assertion needs a firing one beside it, in the same test, or it is
+checking nothing.
+
+`spacing` on a stack is a compile error rather than a silently ignored
+attribute, pinned by `tests/ui/fail_stack_spacing.rs`.
 
 ## Selection and IME
 

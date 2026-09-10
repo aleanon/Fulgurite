@@ -1,4 +1,4 @@
-error: StaticTree needs #[widget(row)] or #[widget(column)]
+error: StaticTree needs #[widget(row)], #[widget(column)] or #[widget(stack)]
  --> tests/ui/fail_missing_axis.rs:5:8
   |
 5 | struct NoAxis {

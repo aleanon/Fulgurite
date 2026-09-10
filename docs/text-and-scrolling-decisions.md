@@ -33,7 +33,10 @@ That property does three jobs. It lets hit testing stop at the first
 claiming child. It is why audit codes `W1003` (overflow) and `W1004`
 (sibling overlap) are marked *structurally impossible* rather than
 unimplemented, with a guard test in `tests/lint.rs` that fails if it ever
-stops holding. And `W1005` (truncation) reads "a `Shrink` node whose
+stops holding. (**`W1004` shipped 2026-09-10** with `#[widget(stack)]`,
+which is the layout mode A4 below named as the condition; the guard test
+still holds for sequential containers, which is exactly why the code is
+scoped to them.) And `W1005` (truncation) reads "a `Shrink` node whose
 parent gave it less than it asked for" — which inside a scrolling region
 is not a bug but the normal case.
 
@@ -192,6 +195,15 @@ the smallest change that works and it adds nothing to `NodeState`.
   exactly here, in reverse.
 - `W1004` stays reserved: sequential placement still holds within a clip
   scope, so overlap remains impossible until absolute/stack layout.
+  **Superseded 2026-09-10 — M11/T11.6 built the stack**, and the code
+  shipped with it in the same commit, as `plan-widgets.md` T11.5
+  pre-registered. Two things the reservation did not anticipate: a
+  stack's children overlap *deliberately*, so the code needs an
+  exemption or it is noise on every stack — declared through
+  `Node::overlaps_children`, because geometry cannot tell an intended
+  overlap from an accidental one; and a *sequential* container still
+  cannot produce overlap, so the firing test has to hand the detector
+  overlapping `NodeState`s directly rather than lay them out.
 
 ### A5. What constraints does a scroller give its content? — **DECIDED 2026-09-04, recommendation adopted**, **BUILT 2026-09-04**
 

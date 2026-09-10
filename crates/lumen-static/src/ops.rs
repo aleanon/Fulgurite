@@ -246,6 +246,30 @@ pub fn resolve_self(limits: Constraints, style: &Style, content: Size) -> Size {
     limits.clamp(Size { w, h })
 }
 
+/// Limits for a child of a `stack` container — M11/T11.6.
+///
+/// **A stack has no main axis**, which is why this cannot be
+/// [`loose_child`] with an argument and why `Axis` gained no third
+/// variant: every method on that enum presupposes that one of
+/// width/height is the main one.
+///
+/// Every child is offered the container's whole inner box, because a
+/// stack's children *share* its rect instead of dividing it. Nothing
+/// else is needed for the two `Length` cases: [`resolve_self`] already
+/// answers `FillPortion` with `limits.max_w`/`max_h`, so a `Fill` child
+/// takes the box and a `Shrink` child measures its content.
+///
+/// `Align::Fill` is the one that also sets the *minimum*, so a child
+/// stretches to the box rather than merely being allowed to — the same
+/// meaning it has on a row's cross axis, applied to both axes here.
+#[inline]
+#[doc(hidden)]
+pub fn stack_child(inner: Constraints, align: Align) -> Constraints {
+    let (min_w, min_h) =
+        if align == Align::Fill { (inner.max_w, inner.max_h) } else { (0.0, 0.0) };
+    Constraints { min_w, max_w: inner.max_w, min_h, max_h: inner.max_h }
+}
+
 /// Whether an axis is the vertical one — for [`LayoutCx::fill_extent`].
 #[inline]
 #[doc(hidden)]

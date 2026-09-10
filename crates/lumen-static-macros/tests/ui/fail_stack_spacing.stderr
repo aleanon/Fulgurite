@@ -1,0 +1,5 @@
+error: `spacing` has no meaning on #[widget(stack)]: its children share one rect rather than sitting next to each other
+ --> tests/ui/fail_stack_spacing.rs:7:27
+  |
+7 | #[widget(stack, spacing = 4.0)]
+  |                           ^^^

@@ -1,7 +1,8 @@
 # M19 — `Glass<W>`: a backdrop filter as a widget
 
-> **Status: planned 2026-09-10, not started. Blocked on two things:
-> M18 (§2) and `docs/plan-widgets.md` T11.6 (§2.1).**
+> **Status: planned 2026-09-10, not started. Blocked on M18 (§2).**
+> Its other prerequisite, `plan-widgets.md` T11.6's `stack` axis (§2.1),
+> **landed 2026-09-10**.
 >
 > Rewritten from the first draft after a four-agent spec review found
 > ~35 defects in it, two of which were in shipped code and are already
@@ -140,11 +141,12 @@ that disqualifies it: `pass.rs` closes the topmost overlay on Escape and
 permanent bar built on `Popup` would vanish on the first click elsewhere
 in the application and swallow it. That is not a quirk to route around.
 
-So M19 waits on `docs/plan-widgets.md` T11.6, which adds `#[widget(stack)]`
-— children sharing the container's rect, painted in order, hit in
-reverse. It is a day's work, it is wanted independently (it also
-unblocks T11.5's dropdown, tooltip and modal, and makes the reserved
-`W1004` lint real), and it is **not** glass's to build.
+`docs/plan-widgets.md` T11.6 built it: `#[widget(stack)]`, children
+sharing the container's rect, painted in field order, hit in reverse,
+with the reserved `W1004` overlap lint shipped alongside and scoped to
+sequential containers. **Landed 2026-09-10**, so this is no longer a
+blocker — `Stack { content: ScrollView<Rows>, bar: Glass<Toolbar> }` is
+expressible today and only M18 remains.
 
 ## 3. The command
 

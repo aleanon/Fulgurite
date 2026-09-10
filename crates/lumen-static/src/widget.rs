@@ -224,6 +224,24 @@ pub trait Node {
         false
     }
 
+    /// Whether this container places its children **on top of each
+    /// other** rather than beside them — M11/T11.6.
+    ///
+    /// The audit's `W1004` (sibling overlap) exists because overlapping
+    /// siblings are normally a layout bug. In a `stack` they are the
+    /// entire point, so a code that fired on every stack would be noise,
+    /// and noise is how a diagnostic stops being read. This is the
+    /// distinction, declared by the container rather than guessed from
+    /// the geometry — geometry cannot tell an intended overlap from an
+    /// accidental one.
+    ///
+    /// Answered by `#[widget(stack)]`'s generated impl and by nothing
+    /// else. Not behind `observe`: a lint that only exists in dev builds
+    /// still has to agree with a release build about what the tree is.
+    fn overlaps_children(&self) -> bool {
+        false
+    }
+
     #[cfg(feature = "observe")]
     fn probe(
         &mut self,

@@ -80,6 +80,17 @@ const EPS: f32 = 0.5;
 /// Frames of transitions kept for `app.logs`.
 const LOG_CAPACITY: usize = 256;
 
+/// How many of a container's children `W1004` compares pairwise.
+///
+/// The check is O(n²) in the children of **one** container, and a
+/// container with hundreds of direct children is a `List` or a `Repeat`
+/// — which place sequentially and cannot overlap anyway. Bounded rather
+/// than unbounded so a pathological tree cannot make the audit the most
+/// expensive thing in the frame; a container wider than this reports on
+/// its first 32, which is where a layout bug will be visible if it is
+/// visible at all.
+const MAX_CHECKED_SIBLINGS: usize = 32;
+
 /// Diagnostic codes. Reserved entries are documented rather than shipped
 /// unreachable — Lumen's review found finished-but-uncallable analysis
 /// sitting in its tree for months.
@@ -102,10 +113,21 @@ pub mod codes {
     /// scrollable content region, absolute positioning, or a minimum size
     /// larger than the parent's maximum.
     pub const _OVERFLOW_RESERVED: &str = "W1003";
-    /// *Reserved:* sibling overlap. Structurally impossible while
-    /// containers place children sequentially by measured size; ships
-    /// with the first layout mode that can produce it (absolute/stack).
-    pub const _OVERLAP_RESERVED: &str = "W1004";
+    /// Two direct children of the same container overlap.
+    ///
+    /// **Shipped 2026-09-10 with `#[widget(stack)]`** (M11/T11.6), which
+    /// is the layout mode this code was reserved against: it was
+    /// "structurally impossible while containers place children
+    /// sequentially by measured size", and a stack is the first mode
+    /// that does not.
+    ///
+    /// A stack's children overlap *on purpose*, so it is exempt — by
+    /// declaration, through [`lumen_static::widget::Node::overlaps_children`],
+    /// not by inspecting geometry, which cannot tell an intended overlap
+    /// from an accidental one. What is left is what the code was always
+    /// for: a row or a column whose children collide, which means a
+    /// child took more room than its slot.
+    pub const OVERLAP: &str = "W1004";
     /// Intrinsic content allotted less room than it needs.
     pub const TRUNCATED: &str = "W1005";
     /// Nothing with area and content anywhere in the frame.
@@ -160,6 +182,7 @@ pub(crate) enum What {
     Blank { nodes: usize },
     NestedVirtualizer { scroller: u32, items: u64 },
     UnaddressableRows { rows: u64, addressable: u64, extent: f32 },
+    Overlap { a: u32, b: u32, over: [f32; 4] },
 }
 
 impl Finding {
@@ -187,6 +210,11 @@ impl Finding {
                 "laid out at [{:.0},{:.0},{:.0},{:.0}], entirely outside the \
                  root's [{:.0},{:.0},{:.0},{:.0}]",
                 r[0], r[1], r[2], r[3], v[0], v[1], v[2], v[3]
+            ),
+            What::Overlap { a, b, over } => format!(
+                "children {a} and {b} overlap over [{:.0},{:.0},{:.0},{:.0}] — \
+                 a sequential container's children should not collide",
+                over[0], over[1], over[2], over[3]
             ),
             What::Blank { nodes } => format!(
                 "nothing with both area and content in {nodes} nodes — the frame is blank"
@@ -217,6 +245,12 @@ impl Finding {
                     (natural.w - size.w).max(0.0),
                     (natural.h - size.h).max(0.0),
                 ],
+            }),
+            What::Overlap { a, b, over } => json!({
+                "a": a,
+                "b": b,
+                "overlap": over,
+                "area": ((over[2] - over[0]) * (over[3] - over[1])).max(0.0),
             }),
             What::Collapsed { items, shown, size } => json!({
                 "items": items,
@@ -537,6 +571,58 @@ impl Auditor {
                     idx: i as u32,
                     what: What::UnaddressableRows { rows, addressable, extent },
                 });
+            }
+
+            // -- W1004: two children of a sequential container collide --
+            //
+            // Shipped with `#[widget(stack)]` (M11/T11.6), the layout
+            // mode this code was reserved against. A stack is exempt by
+            // **declaration**, not by geometry: overlapping children are
+            // what it is for, and a code that fires on every stack is
+            // noise rather than a diagnostic.
+            //
+            // Direct children only. A grandchild escaping its parent is
+            // W1003's business and is still unreachable; this is about
+            // siblings that were each given a slot and did not stay in
+            // it.
+            if d.child_count > 1 && !tree.as_ref().root.node(i).overlaps_children() {
+                let mut kids = [0u32; MAX_CHECKED_SIBLINGS];
+                let mut k = 0usize;
+                let mut c = d.first_child as usize;
+                while k < kids.len() && c != 0 && c < table.len() {
+                    if area(&st[c]) > 0.0 {
+                        kids[k] = c as u32;
+                        k += 1;
+                    }
+                    c = table[c].next_sibling as usize;
+                }
+                'pairs: for x in 0..k {
+                    for y in (x + 1)..k {
+                        let (ra, rb) = (rect(&st[kids[x] as usize]), rect(&st[kids[y] as usize]));
+                        let over = [
+                            ra[0].max(rb[0]),
+                            ra[1].max(rb[1]),
+                            ra[2].min(rb[2]),
+                            ra[3].min(rb[3]),
+                        ];
+                        // Strictly greater: sequential placement puts a
+                        // child's edge exactly on its neighbour's, and a
+                        // shared edge is not an overlap. `EPS` because
+                        // those edges are accumulated sums of f32.
+                        if over[2] - over[0] > EPS && over[3] - over[1] > EPS {
+                            out.push(Finding {
+                                code: codes::OVERLAP,
+                                idx: i as u32,
+                                what: What::Overlap { a: kids[x], b: kids[y], over },
+                            });
+                            // One finding per container: the pair is
+                            // enough to send someone to the right node,
+                            // and N children that all collide would
+                            // otherwise report N*(N-1)/2 times.
+                            break 'pairs;
+                        }
+                    }
+                }
             }
 
             // -- A7: a virtualizer inside a scroll region --

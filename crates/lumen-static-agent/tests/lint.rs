@@ -189,14 +189,20 @@ fn a_blank_frame_announces_itself() {
     assert!(of_code(&findings, "W1006").is_some(), "W1006 expected: {findings:?}");
 }
 
-/// Pins the reason W1003 (overflow) and W1004 (sibling overlap) are
-/// reserved rather than shipped: constraints flow down and every node
-/// clamps to them, so a squeezed layout cannot push a child outside its
-/// parent — it can only leave the child too small, which is W1005.
+/// Pins the reason W1003 (overflow) is reserved rather than shipped:
+/// constraints flow down and every node clamps to them, so a squeezed
+/// layout cannot push a child outside its parent — it can only leave the
+/// child too small, which is W1005.
 ///
 /// If a later layout mode (scroll content, absolute positioning, a
 /// minimum exceeding the parent's maximum) breaks this invariant, this
-/// test fails and the reserved codes become implementable.
+/// test fails and W1003 becomes implementable.
+///
+/// **W1004 is no longer among them.** It shipped 2026-09-10 with
+/// `#[widget(stack)]` — the layout mode it was reserved against — and
+/// `stack_overlap.rs` covers it. The invariant below is unchanged for
+/// sequential containers, which is exactly why the code is scoped to
+/// them.
 #[test]
 fn overflow_is_impossible_here_so_squeezing_surfaces_as_truncation() {
     let mut f = Fixture::healthy();

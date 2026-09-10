@@ -12,10 +12,10 @@ Shipped and kept for their reasoning: `docs/plan-architecture-v2.md`
 Not started, in dependency order. **M19 has two prerequisites and they
 are independent of each other**, so either may go first:
 
-- **`docs/plan-widgets.md` T11.6 — the `stack` axis.** A container whose
-  children share its rect. Also unblocks T11.5 (dropdown, tooltip,
-  modal), whose other two prerequisites M15 already paid, and makes the
-  reserved `W1004` overlap lint real.
+- ~~**`docs/plan-widgets.md` T11.6 — the `stack` axis.**~~ **DONE
+  2026-09-10**, with `W1004` shipped in the same commit as T11.5
+  pre-registered. T11.5's three widgets (dropdown, tooltip, modal) are
+  now unblocked too.
 - **M18 — `Damage` as a set of regions.** No plan doc yet; wanted on its
   own merits (`docs/damage-amplification-decision.md` records a measured
   37× amplification a bounding-box union causes). What M19 needs from it

@@ -7,7 +7,7 @@
 //! use lumen_static::StaticTree;
 //!
 //! #[derive(StaticTree, Default)]
-//! #[widget(row, spacing = 4.0)]
+//! #[widget(row, spacing = 4.0)]   // or `column`, or `stack`
 //! struct Header {
 //!     #[widget_id("title")]
 //!     title: Label,
@@ -35,9 +35,19 @@ use proc_macro2::TokenStream as Ts2;
 use quote::quote;
 use syn::{parse_macro_input, Data, DeriveInput, Fields};
 
+/// A container's declared mode. **Not `ops::Axis`** — that enum has two
+/// variants and every method on it (`main`, `cross`, `size`, and the two
+/// `Length` accessors) presupposes a main axis. A stack has none, so it
+/// is a third *codegen* branch here rather than a third value there
+/// (M11/T11.6).
+#[derive(Clone, Copy, PartialEq)]
 enum Axis {
     Row,
     Column,
+    /// Children share the container's rect. Painted in order, so the
+    /// last field is on top; hit in reverse, so the topmost is found
+    /// first.
+    Stack,
 }
 
 #[proc_macro_derive(StaticTree, attributes(widget, widget_id, widget_class))]
@@ -135,9 +145,10 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
         return expand_enum(name, &name_str, e, line);
     }
 
-    // ---- #[widget(row|column, spacing = <f32>, fuse)] ----
+    // ---- #[widget(row|column|stack, spacing = <f32>, fuse)] ----
     let mut axis = None;
     let mut spacing = 0.0f32;
+    let mut spacing_span = None;
     let mut fuse = false;
     for attr in &input.attrs {
         if !attr.path().is_ident("widget") {
@@ -148,13 +159,18 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                 axis = Some(Axis::Row);
             } else if meta.path.is_ident("column") {
                 axis = Some(Axis::Column);
+            } else if meta.path.is_ident("stack") {
+                axis = Some(Axis::Stack);
             } else if meta.path.is_ident("spacing") {
                 let lit: syn::LitFloat = meta.value()?.parse()?;
                 spacing = lit.base10_parse()?;
+                spacing_span = Some(lit);
             } else if meta.path.is_ident("fuse") {
                 fuse = true;
             } else {
-                return Err(meta.error("expected `row`, `column`, `spacing = <float>`, or `fuse`"));
+                return Err(meta.error(
+                    "expected `row`, `column`, `stack`, `spacing = <float>`, or `fuse`",
+                ));
             }
             Ok(())
         })?;
@@ -162,9 +178,22 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
     let Some(axis) = axis else {
         return Err(syn::Error::new_spanned(
             &input.ident,
-            "StaticTree needs #[widget(row)] or #[widget(column)]",
+            "StaticTree needs #[widget(row)], #[widget(column)] or #[widget(stack)]",
         ));
     };
+    // **A stack has no gaps to space.** Accepting the attribute and
+    // ignoring it is the shape that makes someone spend an afternoon on
+    // a layout that was never going to move, so it is an error at the
+    // token that asked for it.
+    if axis == Axis::Stack {
+        if let Some(lit) = spacing_span {
+            return Err(syn::Error::new_spanned(
+                lit,
+                "`spacing` has no meaning on #[widget(stack)]: its children share one rect \
+                 rather than sitting next to each other",
+            ));
+        }
+    }
     let Data::Struct(data) = &input.data else {
         return Err(syn::Error::new_spanned(
             &input.ident,
@@ -197,22 +226,18 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
     let field_wid: Vec<String> =
         fields.named.iter().map(parse_wid).collect::<syn::Result<Vec<_>>>()?;
 
+    // Only the row/column bodies mention it; the stack bodies have no
+    // axis to name.
     let axis_expr = match axis {
-        Axis::Row => quote! { ::lumen_static::ops::Axis::Row },
+        Axis::Row | Axis::Stack => quote! { ::lumen_static::ops::Axis::Row },
         Axis::Column => quote! { ::lumen_static::ops::Axis::Column },
     };
     // A container fills across its cross axis and shrinks along its main
     // one — the shape that makes a column of rows behave as expected.
-    let (default_w, default_h) = match axis {
-        Axis::Row => (
-            quote! { ::lumen_static::Length::FILL },
-            quote! { ::lumen_static::Length::Shrink },
-        ),
-        Axis::Column => (
-            quote! { ::lumen_static::Length::FILL },
-            quote! { ::lumen_static::Length::Shrink },
-        ),
-    };
+    let (default_w, default_h) = (
+        quote! { ::lumen_static::Length::FILL },
+        quote! { ::lumen_static::Length::Shrink },
+    );
     let _ = (n_f32, spaced_total);
 
     // `fuse` is a *call style*, not a separate lowering: the same bodies
@@ -235,13 +260,307 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
     };
     let mut_calls: Vec<Ts2> = field_ident.iter().map(|f| call_child(&f.to_string())).collect();
     let ref_calls: Vec<Ts2> = field_ident.iter().map(|f| call_child_ref(&f.to_string())).collect();
+    // Each child's start index as a `const` expression, so the hit walk
+    // can run in **reverse** without accumulating `at` forward. A stack
+    // paints in field order, so the last field is on top and must be
+    // hit first; every other container may walk forward because its
+    // children cannot overlap (M11/T11.6).
+    let child_at: Vec<Ts2> = (0..n)
+        .map(|k| {
+            let prev = field_ty[..k].to_vec();
+            quote! { i + 1 #( + <#prev as ::lumen_static::widget::Widget>::NODE_COUNT )* }
+        })
+        .collect();
+
     let opaque_stmt = if cfg!(feature = "rdyn_opaque") && !fuse {
         quote! { let d = ::core::hint::black_box(d); }
     } else {
         quote! {}
     };
 
-    Ok(quote! {
+    // Declared, not inferred: `W1004` must tell an intended overlap from
+    // an accidental one, and geometry cannot.
+    let overlaps_impl = match axis {
+        Axis::Stack => quote! {
+            fn overlaps_children(&self) -> bool {
+                true
+            }
+        },
+        Axis::Row | Axis::Column => quote! {},
+    };
+
+    // ---- the three bodies that differ by mode (M11/T11.6) ----
+    //
+    // `paint` is **not** among them: a stack paints its children in
+    // field order exactly as a row does, and that order is what puts the
+    // last field on top. Only measuring, placing and hitting change.
+    let layout_use = match axis {
+        Axis::Row | Axis::Column => quote! {
+            use ::lumen_static::ops::{
+                fill_child, inner_limits, loose_child, resolve_self, spaced, Axis,
+            };
+        },
+        Axis::Stack => quote! {
+            use ::lumen_static::ops::{inner_limits, resolve_self, stack_child};
+        },
+    };
+    let place_use = match axis {
+        Axis::Row | Axis::Column => quote! {
+            use ::lumen_static::ops::{align_offset, Axis};
+        },
+        Axis::Stack => quote! {
+            use ::lumen_static::ops::align_offset;
+        },
+    };
+
+    let layout_body = match axis {
+        Axis::Row | Axis::Column => quote! {
+                    let axis = #axis_expr;
+                    let inner = inner_limits(limits, me.padding);
+                    let gaps = spaced(#n, me.spacing);
+                    // What `Fill` divides up. Normally the inner
+                    // maximum; inside a scroll region that maximum is
+                    // unbounded, and dividing infinity among portions
+                    // produces NaN sizes (A5). `fill_extent` answers
+                    // with the scroller's viewport there.
+                    let fill_span = cx.fill_extent(
+                        axis.main_of(inner),
+                        ::lumen_static::ops::is_vertical(axis),
+                    );
+
+                    // Scan 1: everything that is not Fill along the main
+                    // axis. Shrink children measure their content here.
+                    let mut used = gaps;
+                    let mut cross = 0.0f32;
+                    let mut portions: u32 = 0;
+                    let mut at = i + 1;
+                    #(
+                        {
+                            let cs = style[at];
+                            let l = axis.main_len(&cs);
+                            if l.is_fill() {
+                                portions += l.portion() as u32;
+                            } else {
+                                let avail = (axis.main_of(inner) - used).max(0.0);
+                                #mut_calls
+                                #opaque_stmt
+                                let s = d.layout(cx, loose_child(axis, inner, avail, me.align), style, st, at);
+                                used += axis.main(s);
+                                // A child that stretches across the
+                                // container conforms to it; it must not
+                                // also define its cross size, or a
+                                // `Fill` spacer in a `Shrink` row would
+                                // inflate the row to the whole viewport.
+                                if !axis.cross_len(&cs).is_fill() {
+                                    cross = cross.max(axis.cross(s));
+                                }
+                            }
+                            at += <#field_ty as ::lumen_static::widget::Widget>::NODE_COUNT;
+                        }
+                    )*
+
+                    // Scan 2: divide what is left among the fills. No
+                    // freeze-and-redistribute loop exists, because
+                    // nothing here can be squeezed below its content.
+                    // Skipped entirely when the container has no fills,
+                    // which is the common case.
+                    let free = (fill_span - used).max(0.0);
+                    let mut at = i + 1;
+                    if portions != 0 {
+                    #(
+                        {
+                            let cs = style[at];
+                            let l = axis.main_len(&cs);
+                            if l.is_fill() {
+                                let share = if portions == 0 {
+                                    0.0
+                                } else {
+                                    free * l.portion() as f32 / portions as f32
+                                };
+                                #mut_calls
+                                #opaque_stmt
+                                let s = d.layout(cx, fill_child(axis, inner, share, me.align), style, st, at);
+                                used += axis.main(s);
+                                if !axis.cross_len(&cs).is_fill() {
+                                    cross = cross.max(axis.cross(s));
+                                }
+                            }
+                            at += <#field_ty as ::lumen_static::widget::Widget>::NODE_COUNT;
+                        }
+                    )*
+                    }
+                    let _ = at;
+
+                    let content = axis.size(used, cross);
+                    let padded = ::lumen_static::Size {
+                        w: content.w + me.padding.horizontal(),
+                        h: content.h + me.padding.vertical(),
+                    };
+        },
+        // **Every child is offered the same box.** There is no scan for
+        // fills and no remaining space to divide, because nothing is
+        // divided: the container's size is the largest child on each
+        // axis, independently.
+        Axis::Stack => quote! {
+            let inner = inner_limits(limits, me.padding);
+            // A stack inside a scroll region. The scroller's axis is
+            // unbounded, and `Fill` there cannot mean the maximum
+            // because it is infinite (A5) -- `fill_extent` answers with
+            // the viewport. Row and column ask this on their main axis;
+            // a stack has none, so it asks on both.
+            let box_ = ::lumen_static::Constraints {
+                min_w: inner.min_w,
+                max_w: cx.fill_extent(inner.max_w, false),
+                min_h: inner.min_h,
+                max_h: cx.fill_extent(inner.max_h, true),
+            };
+            let kid = stack_child(box_, me.align);
+            let mut cw = 0.0f32;
+            let mut ch = 0.0f32;
+            let mut at = i + 1;
+            #(
+                {
+                    #mut_calls
+                    #opaque_stmt
+                    let s = d.layout(cx, kid, style, st, at);
+                    cw = cw.max(s.w);
+                    ch = ch.max(s.h);
+                    at += <#field_ty as ::lumen_static::widget::Widget>::NODE_COUNT;
+                }
+            )*
+            let _ = at;
+            // `record_painted` is the template's, shared with the
+            // row/column body -- one place where a node's own box is
+            // recorded, not two that must agree forever.
+            let padded = ::lumen_static::Size {
+                w: cw + me.padding.horizontal(),
+                h: ch + me.padding.vertical(),
+            };
+        },
+    };
+
+    let place_body = match axis {
+        Axis::Row | Axis::Column => quote! {
+                    let axis = #axis_expr;
+                    let cross_extent = axis.cross(st[i].size)
+                        - match axis {
+                            Axis::Row => me.padding.vertical(),
+                            Axis::Column => me.padding.horizontal(),
+                        };
+                    let mut main = axis.main(::lumen_static::Size { w: at_pos.x, h: at_pos.y })
+                        + match axis {
+                            Axis::Row => me.padding.left,
+                            Axis::Column => me.padding.top,
+                        };
+                    let cross0 = axis.cross(::lumen_static::Size { w: at_pos.x, h: at_pos.y })
+                        + match axis {
+                            Axis::Row => me.padding.top,
+                            Axis::Column => me.padding.left,
+                        };
+                    let mut at = i + 1;
+                    #(
+                        {
+                            // Stretch a cross-`Fill` child to the extent
+                            // its container settled on. Its descendants
+                            // were measured against the looser bound —
+                            // the documented non-iterative limit.
+                            // A hidden child is not stretched: `layout`
+                            // zeroed its subtree, and cross-stretching it
+                            // back to the container's extent would leave
+                            // a hidden node reporting real geometry to
+                            // the journal, the audit and the agent.
+                            if style[at].visible && axis.cross_len(&style[at]).is_fill() {
+                                let s = st[at].size;
+                                st[at].size = match axis {
+                                    Axis::Row => ::lumen_static::Size { w: s.w, h: cross_extent },
+                                    Axis::Column => ::lumen_static::Size { w: cross_extent, h: s.h },
+                                };
+                            }
+                            let size = st[at].size;
+                            let off = align_offset(me.align, cross_extent, axis.cross(size));
+                            let p = match axis {
+                                Axis::Row => ::lumen_static::Point { x: main, y: cross0 + off },
+                                Axis::Column => ::lumen_static::Point { x: cross0 + off, y: main },
+                            };
+                            #mut_calls
+                            d.place(p, style, st, at);
+                            main += axis.main(size) + me.spacing;
+                            at += <#field_ty as ::lumen_static::widget::Widget>::NODE_COUNT;
+                        }
+                    )*
+                    let _ = (at, main);
+        },
+        Axis::Stack => quote! {
+            let inner_w = (st[i].size.w - me.padding.horizontal()).max(0.0);
+            let inner_h = (st[i].size.h - me.padding.vertical()).max(0.0);
+            let x0 = at_pos.x + me.padding.left;
+            let y0 = at_pos.y + me.padding.top;
+            let mut at = i + 1;
+            #(
+                {
+                    // Stretch a `Fill` child to the box the container
+                    // settled on -- the step a row takes for a
+                    // cross-`Fill` child, on both axes because a stack
+                    // has no cross axis. Its descendants were measured
+                    // against the looser bound, which is the documented
+                    // non-iterative limit. A hidden child is left alone:
+                    // `layout` zeroed its subtree and stretching it back
+                    // would have a hidden node reporting real geometry.
+                    if style[at].visible {
+                        let s = st[at].size;
+                        st[at].size = ::lumen_static::Size {
+                            w: if style[at].width.is_fill() { inner_w } else { s.w },
+                            h: if style[at].height.is_fill() { inner_h } else { s.h },
+                        };
+                    }
+                    let size = st[at].size;
+                    let p = ::lumen_static::Point {
+                        x: x0 + align_offset(me.align, inner_w, size.w),
+                        y: y0 + align_offset(me.align, inner_h, size.h),
+                    };
+                    #mut_calls
+                    d.place(p, style, st, at);
+                    at += <#field_ty as ::lumen_static::widget::Widget>::NODE_COUNT;
+                }
+            )*
+            let _ = at;
+        },
+    };
+
+    // Reversed for a stack, and only for a stack. `child_at` exists so
+    // this needs no running offset -- walking backwards while
+    // accumulating forwards is how you get an off-by-one that only
+    // shows up on the third child.
+    let hit_rev_at: Vec<Ts2> = child_at.iter().rev().cloned().collect();
+    let hit_rev_ref: Vec<Ts2> = ref_calls.iter().rev().cloned().collect();
+    let hit_body = match axis {
+        Axis::Row | Axis::Column => quote! {
+                    let mut at = i + 1;
+                    #(
+                        {
+                            #ref_calls
+                            if let ::core::option::Option::Some(h) = d.hit(st, at, x, y) {
+                                return ::core::option::Option::Some(h);
+                            }
+                            at += <#field_ty as ::lumen_static::widget::Widget>::NODE_COUNT;
+                        }
+                    )*
+                    let _ = at;
+        },
+        Axis::Stack => quote! {
+            #(
+                {
+                    let at = #hit_rev_at;
+                    #hit_rev_ref
+                    if let ::core::option::Option::Some(h) = d.hit(st, at, x, y) {
+                        return ::core::option::Option::Some(h);
+                    }
+                }
+            )*
+        },
+    };
+
+    let __out = quote! {
         const _: () = {
             // No `use` block: it would shadow a user type of the same
             // name at the point the impl is written, so a widget struct
@@ -358,10 +677,7 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                     st: &mut [::lumen_static::desc::NodeState],
                     i: usize,
                 ) -> ::lumen_static::Size {
-                    use ::lumen_static::ops::{
-                        align_offset, fill_child, inner_limits, loose_child, resolve_self, spaced,
-                        Axis,
-                    };
+                    #layout_use
                     // **The relayout boundary** — `docs/plan-invalidation.md`
                     // T16.9, and the property the design spec's §2 ranks
                     // first of the four that produce performance.
@@ -411,87 +727,7 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                             st, i, limits, <Self as ::lumen_static::widget::Widget>::NODE_COUNT,
                         );
                     }
-                    let axis = #axis_expr;
-                    let inner = inner_limits(limits, me.padding);
-                    let gaps = spaced(#n, me.spacing);
-                    // What `Fill` divides up. Normally the inner
-                    // maximum; inside a scroll region that maximum is
-                    // unbounded, and dividing infinity among portions
-                    // produces NaN sizes (A5). `fill_extent` answers
-                    // with the scroller's viewport there.
-                    let fill_span = cx.fill_extent(
-                        axis.main_of(inner),
-                        ::lumen_static::ops::is_vertical(axis),
-                    );
-
-                    // Scan 1: everything that is not Fill along the main
-                    // axis. Shrink children measure their content here.
-                    let mut used = gaps;
-                    let mut cross = 0.0f32;
-                    let mut portions: u32 = 0;
-                    let mut at = i + 1;
-                    #(
-                        {
-                            let cs = style[at];
-                            let l = axis.main_len(&cs);
-                            if l.is_fill() {
-                                portions += l.portion() as u32;
-                            } else {
-                                let avail = (axis.main_of(inner) - used).max(0.0);
-                                #mut_calls
-                                #opaque_stmt
-                                let s = d.layout(cx, loose_child(axis, inner, avail, me.align), style, st, at);
-                                used += axis.main(s);
-                                // A child that stretches across the
-                                // container conforms to it; it must not
-                                // also define its cross size, or a
-                                // `Fill` spacer in a `Shrink` row would
-                                // inflate the row to the whole viewport.
-                                if !axis.cross_len(&cs).is_fill() {
-                                    cross = cross.max(axis.cross(s));
-                                }
-                            }
-                            at += <#field_ty as ::lumen_static::widget::Widget>::NODE_COUNT;
-                        }
-                    )*
-
-                    // Scan 2: divide what is left among the fills. No
-                    // freeze-and-redistribute loop exists, because
-                    // nothing here can be squeezed below its content.
-                    // Skipped entirely when the container has no fills,
-                    // which is the common case.
-                    let free = (fill_span - used).max(0.0);
-                    let mut at = i + 1;
-                    if portions != 0 {
-                    #(
-                        {
-                            let cs = style[at];
-                            let l = axis.main_len(&cs);
-                            if l.is_fill() {
-                                let share = if portions == 0 {
-                                    0.0
-                                } else {
-                                    free * l.portion() as f32 / portions as f32
-                                };
-                                #mut_calls
-                                #opaque_stmt
-                                let s = d.layout(cx, fill_child(axis, inner, share, me.align), style, st, at);
-                                used += axis.main(s);
-                                if !axis.cross_len(&cs).is_fill() {
-                                    cross = cross.max(axis.cross(s));
-                                }
-                            }
-                            at += <#field_ty as ::lumen_static::widget::Widget>::NODE_COUNT;
-                        }
-                    )*
-                    }
-                    let _ = at;
-
-                    let content = axis.size(used, cross);
-                    let padded = ::lumen_static::Size {
-                        w: content.w + me.padding.horizontal(),
-                        h: content.h + me.padding.vertical(),
-                    };
+                    #layout_body
                     ::lumen_static::ops::record_painted(
                         st, i, limits, resolve_self(limits, &me, padded), &me,
                     )
@@ -504,7 +740,7 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                     st: &mut [::lumen_static::desc::NodeState],
                     i: usize,
                 ) {
-                    use ::lumen_static::ops::{align_offset, Axis};
+                    #place_use
                     st[i].pos = at_pos;
                     let me = style[i];
                     if !me.visible {
@@ -515,55 +751,10 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                         }
                         return;
                     }
-                    let axis = #axis_expr;
-                    let cross_extent = axis.cross(st[i].size)
-                        - match axis {
-                            Axis::Row => me.padding.vertical(),
-                            Axis::Column => me.padding.horizontal(),
-                        };
-                    let mut main = axis.main(::lumen_static::Size { w: at_pos.x, h: at_pos.y })
-                        + match axis {
-                            Axis::Row => me.padding.left,
-                            Axis::Column => me.padding.top,
-                        };
-                    let cross0 = axis.cross(::lumen_static::Size { w: at_pos.x, h: at_pos.y })
-                        + match axis {
-                            Axis::Row => me.padding.top,
-                            Axis::Column => me.padding.left,
-                        };
-                    let mut at = i + 1;
-                    #(
-                        {
-                            // Stretch a cross-`Fill` child to the extent
-                            // its container settled on. Its descendants
-                            // were measured against the looser bound —
-                            // the documented non-iterative limit.
-                            // A hidden child is not stretched: `layout`
-                            // zeroed its subtree, and cross-stretching it
-                            // back to the container's extent would leave
-                            // a hidden node reporting real geometry to
-                            // the journal, the audit and the agent.
-                            if style[at].visible && axis.cross_len(&style[at]).is_fill() {
-                                let s = st[at].size;
-                                st[at].size = match axis {
-                                    Axis::Row => ::lumen_static::Size { w: s.w, h: cross_extent },
-                                    Axis::Column => ::lumen_static::Size { w: cross_extent, h: s.h },
-                                };
-                            }
-                            let size = st[at].size;
-                            let off = align_offset(me.align, cross_extent, axis.cross(size));
-                            let p = match axis {
-                                Axis::Row => ::lumen_static::Point { x: main, y: cross0 + off },
-                                Axis::Column => ::lumen_static::Point { x: cross0 + off, y: main },
-                            };
-                            #mut_calls
-                            d.place(p, style, st, at);
-                            main += axis.main(size) + me.spacing;
-                            at += <#field_ty as ::lumen_static::widget::Widget>::NODE_COUNT;
-                        }
-                    )*
-                    let _ = (at, main);
+                    #place_body
                 }
+
+                #overlaps_impl
 
                 fn paint(
                     &self,
@@ -602,17 +793,7 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                     if !::lumen_static::hit::contains(&st[i], x, y) {
                         return ::core::option::Option::None;
                     }
-                    let mut at = i + 1;
-                    #(
-                        {
-                            #ref_calls
-                            if let ::core::option::Option::Some(h) = d.hit(st, at, x, y) {
-                                return ::core::option::Option::Some(h);
-                            }
-                            at += <#field_ty as ::lumen_static::widget::Widget>::NODE_COUNT;
-                        }
-                    )*
-                    let _ = at;
+                    #hit_body
                     ::core::option::Option::Some(::lumen_static::Hit {
                         node: i as u32,
                         inner: ::core::option::Option::None,
@@ -651,7 +832,8 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                 }
             }
         };
-    })
+    };
+    Ok(__out)
 }
 
 // ---- #[derive(Reloadable)] (handoff §7) -------------------------------------
