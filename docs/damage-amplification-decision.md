@@ -60,6 +60,15 @@ N = 100 measurement above that is roughly 22 px wide by 800 tall against
 a 72×800 column: about a third, and far less on a taller list where the
 old and new widths differ by a pixel.
 
+> **Partly superseded 2026-09-10 by M18**, which made `Damage` a set of
+> regions rather than a bounding box. That does **not** implement the
+> `observe_clip` seam below — a clip is still observed as ink, and the
+> symmetric-difference rule is still unbuilt — but it removes the half of
+> the cost that came from *merging*: two damaged regions no longer become
+> the box spanning them. Measured on the case M18's own test uses, a
+> scrollbar thumb plus a status label, the box was **141×** the regions.
+> The clip-versus-ink half remains open on the terms below.
+
 ## The decision
 
 **The rule is wrong and the fix is known, and it is not being built

@@ -137,10 +137,16 @@ fn drive_with<R: lumen_static::Retention>(steps: &[i64]) -> (usize, usize) {
                 incremental.clear(BG);
                 host.render(&mut incremental);
             }
-            Damage::Rect(r) => {
+            // **Every region, not the bounding box** (M18). Rendering
+            // only `clip_to`'s box would still be correct here and would
+            // hide the whole point of the change: the oracle must see
+            // the set the renderer will actually consume.
+            d @ Damage::Regions(_) => {
                 partial_steps += 1;
-                incremental.clear_within(r, BG);
-                incremental.render_within(&host.list, r);
+                for r in d.regions([0.0, 0.0, W as f32, H as f32]) {
+                    incremental.clear_within(r, BG);
+                    incremental.render_within(&host.list, r);
+                }
             }
         }
         checked += 1;
@@ -170,7 +176,7 @@ fn a_frame_that_changes_nothing_reports_no_damage() {
 
     host.app.count = 5;
     host.pump();
-    assert!(matches!(host.damage(), Damage::Rect(_)), "a changed count damages a region");
+    assert!(matches!(host.damage(), Damage::Regions(_)), "a changed count damages a region");
     host.pump();
     assert_eq!(host.damage(), Damage::None, "and settles again");
 }
@@ -183,7 +189,10 @@ fn the_damage_rect_is_smaller_than_the_frame_but_covers_what_moved() {
     host.app.count = 7;
     host.pump();
 
-    let Damage::Rect(r) = host.damage() else { panic!("expected a rect, got {:?}", host.damage()) };
+    let r = host
+        .damage()
+        .clip_to([0.0, 0.0, W as f32, H as f32])
+        .unwrap_or_else(|| panic!("expected a region, got {:?}", host.damage()));
     let area = (r[2] - r[0]) * (r[3] - r[1]);
     assert!(area < (W * H) as f32 * 0.5, "damage {r:?} is most of the frame; nothing was saved");
 

@@ -71,6 +71,160 @@ use alloc::vec::Vec;
 
 use crate::display::{fold, Color, Painter, Rect};
 
+/// How many regions damage keeps apart before it starts merging them.
+///
+/// **Four, and the number is a cost ceiling rather than a correctness
+/// one.** Overlapping regions are *correct* — each is cleared and
+/// replayed independently, so a pixel in two of them is drawn twice and
+/// lands on the same value — so merging can never make a frame wrong,
+/// only slower. What it protects is the other direction: a frame with a
+/// hundred separate changes should not become a hundred render calls.
+///
+/// A frame's damage is normally one region, or two once something reads
+/// the backdrop beneath it (`docs/plan-glass.md` §5). Four leaves room
+/// without making [`Damage`] large: it is stored per age in a ring of
+/// `AGES`, so every rect here is paid five times over in the diffing
+/// state.
+pub const MAX_REGIONS: usize = 4;
+
+/// A bounded set of damaged regions.
+///
+/// **The reason this is a set and not a bounding box** — M18. A box
+/// union is not closed under anything useful: a scrollbar thumb moving
+/// down the right edge, unioned with a toolbar across the top, is the
+/// whole window. `docs/damage-amplification-decision.md` measured the
+/// same failure from a different cause (a `Shrink` container's clip
+/// change damaging a whole column, 1 562 px → 57 600 px, **37×**) and
+/// recorded it as known and unfixed. This is the fix.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Regions {
+    rects: [Rect; MAX_REGIONS],
+    len: u8,
+}
+
+impl Default for Regions {
+    fn default() -> Self {
+        Regions { rects: [[0.0; 4]; MAX_REGIONS], len: 0 }
+    }
+}
+
+#[inline]
+fn area_of(r: Rect) -> f32 {
+    (r[2] - r[0]).max(0.0) * (r[3] - r[1]).max(0.0)
+}
+
+#[inline]
+fn merge(a: Rect, b: Rect) -> Rect {
+    [a[0].min(b[0]), a[1].min(b[1]), a[2].max(b[2]), a[3].max(b[3])]
+}
+
+#[inline]
+fn overlaps(a: Rect, b: Rect) -> bool {
+    a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3]
+}
+
+#[inline]
+fn contains(outer: Rect, inner: Rect) -> bool {
+    outer[0] <= inner[0] && outer[1] <= inner[1] && outer[2] >= inner[2] && outer[3] >= inner[3]
+}
+
+impl Regions {
+    /// One region.
+    pub fn one(r: Rect) -> Self {
+        let mut out = Regions::default();
+        out.push(r);
+        out
+    }
+
+    pub fn as_slice(&self) -> &[Rect] {
+        &self.rects[..self.len as usize]
+    }
+
+    pub fn len(&self) -> usize {
+        self.len as usize
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
+    /// Whether any region overlaps `r`.
+    ///
+    /// The predicate a backdrop-reading command tests its source region
+    /// against (`docs/plan-glass.md` §5). Strict on every edge: a region
+    /// that merely *touches* `r` shares an edge and no pixels.
+    pub fn intersects(&self, r: Rect) -> bool {
+        self.as_slice().iter().any(|a| overlaps(*a, r))
+    }
+
+    /// The single box containing every region — what a caller that can
+    /// only take one rect must use, and what M18 exists to stop being
+    /// the only answer.
+    pub fn bounds(&self) -> Option<Rect> {
+        let mut it = self.as_slice().iter().copied();
+        let first = it.next()?;
+        Some(it.fold(first, merge))
+    }
+
+    /// Add a region, keeping the set within [`MAX_REGIONS`].
+    ///
+    /// Absorbed if an existing region already contains it; absorbing in
+    /// turn if it contains one. Overlapping regions are merged, because
+    /// keeping them apart would render their intersection twice for no
+    /// benefit. When the set is full, the two regions whose merge adds
+    /// the least area are merged — the cheapest way to lose the least
+    /// precision, and the reason a hundred scattered changes degrade
+    /// smoothly instead of collapsing to the whole frame at the fifth.
+    pub fn push(&mut self, r: Rect) {
+        if area_of(r) <= 0.0 {
+            return;
+        }
+        let mut r = r;
+        // Absorb everything this rect already covers or touches, so the
+        // set stays roughly disjoint without a separate pass.
+        let mut k = 0;
+        while k < self.len as usize {
+            let e = self.rects[k];
+            if contains(e, r) {
+                return;
+            }
+            if contains(r, e) || overlaps(e, r) {
+                r = merge(e, r);
+                self.remove(k);
+                continue;
+            }
+            k += 1;
+        }
+        if (self.len as usize) < MAX_REGIONS {
+            self.rects[self.len as usize] = r;
+            self.len += 1;
+            return;
+        }
+        // Full: `r` plus the existing set is MAX_REGIONS + 1 boxes, and
+        // one pair has to go. Pick the pair whose union wastes least.
+        self.rects[MAX_REGIONS - 1] = merge(self.rects[MAX_REGIONS - 1], r);
+        let mut best = (0usize, 1usize, f32::INFINITY);
+        for i in 0..self.len as usize {
+            for j in (i + 1)..self.len as usize {
+                let cost = area_of(merge(self.rects[i], self.rects[j]))
+                    - area_of(self.rects[i])
+                    - area_of(self.rects[j]);
+                if cost < best.2 {
+                    best = (i, j, cost);
+                }
+            }
+        }
+        self.rects[best.0] = merge(self.rects[best.0], self.rects[best.1]);
+        self.remove(best.1);
+    }
+
+    fn remove(&mut self, k: usize) {
+        let last = self.len as usize - 1;
+        self.rects[k] = self.rects[last];
+        self.len -= 1;
+    }
+}
+
 /// What differs between the frame just painted and the one before it.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub enum Damage {
@@ -78,45 +232,118 @@ pub enum Damage {
     /// the raster and the present.
     #[default]
     None,
-    /// Only this region differs.
-    Rect(Rect),
+    /// These regions differ, and nothing else does.
+    Regions(Regions),
     /// Everything must be redrawn — the first frame, a resize, a
     /// structural change, or a host that does not retain.
     All,
 }
 
 impl Damage {
-    /// The smallest damage covering both. `All` absorbs everything;
-    /// `None` is the identity.
+    /// Damage covering exactly one region.
+    pub fn rect(r: Rect) -> Damage {
+        if area_of(r) <= 0.0 {
+            return Damage::None;
+        }
+        Damage::Regions(Regions::one(r))
+    }
+
+    /// Everything both cover. `All` absorbs everything; `None` is the
+    /// identity.
+    ///
+    /// **Exact, not a bounding box** — that is the whole of M18. The
+    /// previous version merged two rects into the box spanning them,
+    /// which is why a change in one corner of a window and a change in
+    /// the other repainted all of it.
     pub fn union(self, other: Damage) -> Damage {
         match (self, other) {
             (Damage::All, _) | (_, Damage::All) => Damage::All,
             (Damage::None, d) | (d, Damage::None) => d,
-            (Damage::Rect(a), Damage::Rect(b)) => Damage::Rect([
-                a[0].min(b[0]),
-                a[1].min(b[1]),
-                a[2].max(b[2]),
-                a[3].max(b[3]),
-            ]),
+            (Damage::Regions(a), Damage::Regions(b)) => {
+                let mut out = a;
+                for r in b.as_slice() {
+                    out.push(*r);
+                }
+                Damage::Regions(out)
+            }
         }
     }
 
-    /// The rect to redraw within, given the surface being drawn into.
+    /// Whether this damage touches `r`. `All` touches everything;
+    /// `None` touches nothing.
+    pub fn intersects(self, r: Rect) -> bool {
+        match self {
+            Damage::None => false,
+            Damage::All => area_of(r) > 0.0,
+            Damage::Regions(g) => g.intersects(r),
+        }
+    }
+
+    /// Each region to redraw, clipped to the viewport, in no particular
+    /// order.
+    ///
+    /// Regions may overlap. That is deliberate and it is safe: a caller
+    /// clears and replays each one independently, so a pixel covered
+    /// twice is written the same value twice. Merging exists to bound
+    /// the *work*, never to make the output correct.
+    pub fn regions(self, viewport: Rect) -> RegionIter {
+        let g = match self {
+            Damage::None => Regions::default(),
+            Damage::All => Regions::one(viewport),
+            Damage::Regions(g) => g,
+        };
+        RegionIter { g, viewport, at: 0 }
+    }
+
+    /// The single rect to redraw within, given the surface being drawn
+    /// into — the **bounding box** of every region.
+    ///
     /// `None` means "draw nothing"; `Some(r)` is always clamped to the
     /// viewport, so a caller cannot be handed a rect off the surface.
+    ///
+    /// Kept for callers that can only take one rect. A caller that can
+    /// take several should use [`Damage::regions`] and do less work.
     pub fn clip_to(self, viewport: Rect) -> Option<Rect> {
         let r = match self {
             Damage::None => return None,
             Damage::All => viewport,
-            Damage::Rect(r) => r,
+            Damage::Regions(g) => g.bounds()?,
         };
-        let out = [
-            r[0].max(viewport[0]),
-            r[1].max(viewport[1]),
-            r[2].min(viewport[2]),
-            r[3].min(viewport[3]),
-        ];
-        (out[0] < out[2] && out[1] < out[3]).then_some(out)
+        clip(r, viewport)
+    }
+}
+
+#[inline]
+fn clip(r: Rect, viewport: Rect) -> Option<Rect> {
+    let out = [
+        r[0].max(viewport[0]),
+        r[1].max(viewport[1]),
+        r[2].min(viewport[2]),
+        r[3].min(viewport[3]),
+    ];
+    (out[0] < out[2] && out[1] < out[3]).then_some(out)
+}
+
+/// Each damaged region, clipped to a viewport. See [`Damage::regions`].
+#[derive(Clone, Copy, Debug)]
+pub struct RegionIter {
+    g: Regions,
+    viewport: Rect,
+    at: u8,
+}
+
+impl Iterator for RegionIter {
+    type Item = Rect;
+
+    fn next(&mut self) -> Option<Rect> {
+        while (self.at as usize) < self.g.len() {
+            let r = self.g.rects[self.at as usize];
+            self.at += 1;
+            if let Some(c) = clip(r, self.viewport) {
+                return Some(c);
+            }
+        }
+        None
     }
 }
 
@@ -240,7 +467,7 @@ impl Diffing {
             return;
         };
         if self.seeded && slot.0 != hash {
-            self.frame = self.frame.union(Damage::Rect(slot.1)).union(Damage::Rect(ink));
+            self.frame = self.frame.union(Damage::rect(slot.1)).union(Damage::rect(ink));
         }
         *slot = (hash, ink);
     }

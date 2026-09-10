@@ -135,7 +135,7 @@ impl Surface {
         // two-frame-old base is the classic double-buffered smear
         // (`crates/lumen-static/src/retain.rs`).
         let viewport = [0.0, 0.0, width as f32, height as f32];
-        let area = host.take_damage_for_age(buf.age()).clip_to(viewport);
+        let damage = host.take_damage_for_age(buf.age());
 
         // Render only what changed — but *always* present.
         //
@@ -153,15 +153,24 @@ impl Surface {
         // the frame is always presented. What T8b.4 actually saves is the
         // *raster*, which is the expensive half: render p95 0.089 ms
         // against present p95 0.044 ms (`docs/results-frame-cost.md`).
+        //
+        // **Every region, not their bounding box** — M18. A box union of
+        // two changes in opposite corners is the whole window, which is
+        // how a scrollbar plus a toolbar used to cost a full repaint.
+        // Regions may overlap; clearing and replaying each independently
+        // writes an overlapped pixel twice with the same value, so the
+        // only cost of an overlap is the second write.
         let t = Instant::now();
-        let render_ns = match area {
-            Some(area) => {
-                canvas.clear_within(area, page);
-                canvas.render_within(&host.list, area);
-                t.elapsed().as_nanos() as u64
-            }
-            None => 0,
-        };
+        let mut damaged_px = 0u64;
+        let mut rendered = false;
+        for area in damage.regions(viewport) {
+            canvas.clear_within(area, page);
+            canvas.render_within(&host.list, area);
+            damaged_px +=
+                ((area[2] - area[0]) as f64 * (area[3] - area[1]) as f64).max(0.0) as u64;
+            rendered = true;
+        }
+        let render_ns = if rendered { t.elapsed().as_nanos() as u64 } else { 0 };
 
         let t = Instant::now();
         // Blit only what changed, but present all of it. The two halves
@@ -171,7 +180,7 @@ impl Surface {
         // construction, so this is a full blit anyway. The *present* has
         // to be whole, because this redraw may be an expose and the
         // display server has lost everything.
-        if let Some(area) = area {
+        for area in damage.regions(viewport) {
             canvas.blit_0rgb_within(&mut buf, area);
         }
         // `present`, not `present_with_damage`: the partial form would
@@ -188,9 +197,9 @@ impl Surface {
             render_ns,
             present_ns,
             frame_ns: frame_start.elapsed().as_nanos() as u64,
-            damaged_px: area.map_or(0, |a| {
-                ((a[2] - a[0]) as f64 * (a[3] - a[1]) as f64).max(0.0) as u64
-            }),
+            // The sum over regions, so an overlap is counted twice --
+            // which is what it costs.
+            damaged_px,
         }
     }
 }

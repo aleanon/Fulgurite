@@ -64,7 +64,7 @@ fn diff(prev: &DisplayList, now: &DisplayList) -> Damage {
         if a == b && !text_differs(prev, now, i, a) {
             continue;
         }
-        d = d.union(Damage::Rect(ink(a))).union(Damage::Rect(ink(b)));
+        d = d.union(Damage::rect(ink(a))).union(Damage::rect(ink(b)));
         if d == Damage::All {
             break;
         }
