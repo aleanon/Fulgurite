@@ -1,6 +1,7 @@
 # M19 — `Glass<W>`: a backdrop filter as a widget
 
-> **Status: planned 2026-09-10, not started. Blocked on M18.**
+> **Status: planned 2026-09-10, not started. Blocked on two things:
+> M18 (§2) and `docs/plan-widgets.md` T11.6 (§2.1).**
 >
 > Rewritten from the first draft after a four-agent spec review found
 > ~35 defects in it, two of which were in shipped code and are already
@@ -24,7 +25,7 @@ here so the tasks do not re-argue them.
 | **Where the parameters live** | On a widget, `Glass<W>`, as ordinary struct fields. **Not** on `Style`. |
 | **What ships first** | Blur only. Refraction and specular are a later, purely additive task. |
 | **Which backend** | Software. The GPU backend draws the degraded fallback until a later milestone. |
-| **When** | After `Damage` carries a set of regions (M18). Not before. |
+| **When** | After `Damage` carries a set of regions (M18) and a container can overlap its children (T11.6). Not before. |
 | **How it stays cheap** | A backdrop cache per panel, so a recompute is bounded by the panel and not by the frame. |
 
 ### 1.1 Why a widget and not a `Style` field
@@ -121,6 +122,29 @@ What glass needs from it, specifically:
 
 M18 should get its own plan doc when it starts. It is listed in
 `AGENT.md`'s queue ahead of this one.
+
+### 2.1 And a container that can overlap its children — T11.6
+
+**A glass panel with nothing behind it is a tinted rectangle.** A
+`column` allocates non-overlapping rects, so a toolbar laid out above a
+scroller has the page behind it and nothing to blur. The motivating
+scene does not merely look better with overlap; it does not exist
+without it.
+
+`Popup<W>` supplies more of this than it first appears — out of flow,
+zero size in the parent's arithmetic, `Anchor::Over`, painted last in
+the overlay phase, and measured with `max_w = limits.max_w` so a `FILL`
+child does span the parent. What it also supplies is dismissal, and
+that disqualifies it: `pass.rs` closes the topmost overlay on Escape and
+**all** open overlays on a press outside, *consuming that press*. A
+permanent bar built on `Popup` would vanish on the first click elsewhere
+in the application and swallow it. That is not a quirk to route around.
+
+So M19 waits on `docs/plan-widgets.md` T11.6, which adds `#[widget(stack)]`
+— children sharing the container's rect, painted in order, hit in
+reverse. It is a day's work, it is wanted independently (it also
+unblocks T11.5's dropdown, tooltip and modal, and makes the reserved
+`W1004` lint real), and it is **not** glass's to build.
 
 ## 3. The command
 
@@ -384,7 +408,7 @@ or drops the claim.
 |---|---|---|
 | **T19.0** | `Cmd::Glass`, `DisplayList::glass`, `Painter::glass` with a degraded default, explicit overrides on **all four** wrappers, arms in all three renderers, `hash_into`, `Scaled`, both size assertions. | A glass command survives every wrapper unchanged, and renders as a tinted rounded rect on both backends. |
 | **T19.1** | `Glass<W>`: the `NodeDesc` splice, `layout`/`place`/`paint`/`hit`, `blur` and `tint` as fields. | A tree containing `Glass<Label>` paints a glass command at the right rect — which is also what makes T19.2's oracle constructible. |
-| **T19.2** | Software capture, three-box blur, composite. Single-threaded. `observe_dep` and the fixpoint on M18's region set. The damage oracle. | Incremental and rebuild renders are byte-identical over a **moving** backdrop, and a still frame with glass damages nothing. |
+| **T19.2** | Software capture, three-box blur, composite. Single-threaded. `observe_dep` and the fixpoint on M18's region set. The damage oracle — whose scene needs T11.6's `stack`, since a panel with nothing behind it cannot go stale. | Incremental and rebuild renders are byte-identical over a **moving** backdrop, and a still frame with glass damages nothing. |
 | **T19.3** | Blur quality: the `k` search, the odd/even rule, `u16` intermediates, grid anchor, border rule. A results doc with the σ × panel-size sweep and delivered-vs-requested σ. | The sweep exists; delivered σ is within 10% of requested at every point in it. |
 | **T19.4** | The backdrop cache, measured against T19.2. | A frame whose damage misses every panel costs the composite only, and the doc says by how much. |
 | **T19.5** | Threading: segmentation, clip prefix, per-segment worker count, composite in the next segment's head. | `just threads` byte-identity holds with glass in the scene, at every swept strip height, **with the split asserted** via `Canvas::bands_for`. |
@@ -458,13 +482,10 @@ alpha to a documented floor, and T19.0 asserts a **pixel count**, not
   a rect. `filter: blur` on a node blurs the node, which is a layer.
 - **No rotation, `clip-path` or SVG.** `docs/results-vello.md` §4 is
   still the map of what is on the far side of the line.
-- **No Z-stack.** A `column` lays children out in order *and paints them
-  in that order*, so a panel cannot be at the top of the layout and last
-  in paint order. Overlapping geometry today means `Popup` and the
-  overlay phase, which carry open/anchor/dismiss semantics a glass panel
-  may not want. **This is a real gap and it is not glass's** — a
-  translucent overlay card wants it too — but the motivating scene runs
-  into it first, so it is recorded here.
+- **No overlap of its own.** `Glass<W>` blurs what precedes it in paint
+  order; it does not create the overlap. That is `plan-widgets.md`
+  T11.6's `stack` axis, and §2.1 says why a panel is useless without
+  it.
 - **No measured cost.** Nothing in this document is a measurement except
   `size_of::<Cmd>() == 60`, `Style`'s 72, and the translucency check in
   §4. T19.3 produces the sweep; until then "glass is cheap" is an

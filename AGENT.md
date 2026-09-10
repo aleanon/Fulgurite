@@ -9,15 +9,22 @@ Shipped and kept for their reasoning: `docs/plan-architecture-v2.md`
 (M0–M12), `docs/plan-review-fixes.md` (F0–F7),
 `docs/plan-embedded.md` (M13), `docs/plan-desktop.md` (M14),
 `docs/plan-capabilities.md` (M15), `docs/plan-invalidation.md` (M16).
-Not started, in dependency order:
-**M18 — `Damage` as a set of regions.** No plan doc yet; wanted on its
-own merits (`docs/damage-amplification-decision.md` records a measured
-37× amplification a bounding-box union causes) and a hard prerequisite
-for M19, whose requirements on it are `docs/plan-glass.md` §2.
-**M19 — `docs/plan-glass.md`** (T19.0–T19.6): `backdrop-filter: blur()`
-as `Glass<W>`, software only. The scope line it sits on is
-`docs/results-vello.md` §4.
-Unsequenced: `docs/plan-widgets.md` T11.5, `docs/plan-harness.md`.
+Not started, in dependency order. **M19 has two prerequisites and they
+are independent of each other**, so either may go first:
+
+- **`docs/plan-widgets.md` T11.6 — the `stack` axis.** A container whose
+  children share its rect. Also unblocks T11.5 (dropdown, tooltip,
+  modal), whose other two prerequisites M15 already paid, and makes the
+  reserved `W1004` overlap lint real.
+- **M18 — `Damage` as a set of regions.** No plan doc yet; wanted on its
+  own merits (`docs/damage-amplification-decision.md` records a measured
+  37× amplification a bounding-box union causes). What M19 needs from it
+  is `docs/plan-glass.md` §2.
+- **M19 — `docs/plan-glass.md`** (T19.0–T19.6): `backdrop-filter: blur()`
+  as `Glass<W>`, software only. The scope line it sits on is
+  `docs/results-vello.md` §4.
+
+Unsequenced: `docs/plan-harness.md`.
 
 Task ids (`T0.6`, `F1.3`, `T16.7`) go in commit subjects. Decision records live beside it in `docs/`; the
 design spec is `docs/00-handoff-static-tree.md`, whose DECIDED/SUPERSEDED

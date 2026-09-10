@@ -238,6 +238,95 @@ other four confirmed the split rather than blurring it — none of them
 needed overlap, z-order or an out-of-flow position, so nothing about
 this work argues for taking the layout change now.
 
+**Two of those three prerequisites landed in M15** (`docs/plan-capabilities.md`
+T15.0/T15.1), which is worth recording because it was not framed as
+paying this debt at the time:
+
+| prerequisite | status |
+|---|---|
+| a stack/absolute layout mode | **still missing** — T11.6 below |
+| paint order versus tree order | **done**: the overlay phase, `Painter::defer`, `pass::paint_overlaid` |
+| dismissal | **done**: `pass.rs` closes the topmost overlay on Escape and all of them on a press outside, consuming that press |
+
+So the three widgets themselves are close to free now — a dropdown, a
+tooltip and a modal are each `Popup<W>` with an anchor. What is left of
+T11.5 is T11.6, and the widgets are a day after it.
+
+### T11.6 — the `stack` axis — *not started, and M19 is blocked on it*
+
+**Added 2026-09-10.** `docs/plan-glass.md` needs content *underneath* a
+panel and no stock container produces overlapping rects, which is what
+turned T11.5's first prerequisite from a deferred nicety into a
+dependency.
+
+**What it is.** A third container mode beside `row` and `column`:
+
+```rust
+#[widget(stack)]
+struct Screen { content: ScrollView<Rows>, bar: Glass<Toolbar> }
+```
+
+Children share the container's rect. `layout` measures each against the
+same constraints and takes the max; `place` puts every child at the same
+origin, offset by its own `Style.align` on **both** axes rather than
+just the cross one; `paint` walks forward, so the last child is on top.
+
+**`Axis` is the wrong place for it, and that is the interesting part.**
+Every helper on that enum — `main`, `cross`, `size`, and the two
+`Length` accessors — presupposes that one of width/height is the main
+axis. A stack has none, and a third variant would put a meaningless arm
+in five methods. The derive branches on the declared mode already; this
+is a third branch in codegen, not a third value in `Axis`. `spacing` is
+meaningless here and `#[widget(stack, spacing = ..)]` should be a
+compile error rather than a silently ignored attribute.
+
+**`hit` must walk children in reverse.** Paint order is bottom-to-top,
+so the topmost child is the last painted and must be the first hit.
+Every other container can walk forward because its children cannot
+overlap; this one cannot.
+
+**`W1004` becomes real in the same commit.** It is reserved in
+`crates/lumen-static-agent/src/audit.rs` as `_OVERLAP_RESERVED`, its
+reason is pinned by `crates/lumen-static-agent/tests/lint.rs`, and
+`docs/text-and-scrolling-decisions.md` says to leave it reserved because
+"sequential placement still holds within a clip". This is the layout
+mode that stops that being true, and T11.5 above already committed
+whoever builds overlap to making the lint real at the same time.
+
+**The lint's whole difficulty is that a stack's children overlap on
+purpose.** A code that fires on every stack is noise, and noise is how
+an audit code stops being read. It must fire on overlap *between
+siblings of a sequential container* — where it means a layout bug — and
+stay silent inside a stack. That is a scoping question, not a geometry
+question, and it is the part to get right.
+
+**Why not the alternatives**, since both were considered:
+
+- *A `pinned: bool` on `Popup` that opts out of dismissal.* Smaller, and
+  wrong: it keeps popup semantics — out of flow, zero size, overlay
+  phase, anchor-relative placement — on a thing that is not a popup, and
+  a persistent bar built that way still swallows the click that would
+  have dismissed it if the flag is ever wrong.
+- *Letting a glass panel read across siblings.* Does not work at all. A
+  `column` allocates non-overlapping rects, so a toolbar above a
+  scroller has the page behind it and nothing to blur.
+
+**Shown to fail:**
+
+| test | injection | proves |
+|---|---|---|
+| children share the rect | place children sequentially | the stack is not a column |
+| hit returns the topmost | walk children forward | z-order is real, not incidental |
+| `W1004` fires on unintended overlap | remove the overlap from the fixture | the code is not vacuous |
+| `W1004` is silent inside a stack | drop the scoping | the code is not noise |
+
+The last two are the pair `AGENT.md` requires: a gate that refuses bad
+input must be checked to accept good input in the same session, or the
+next tightening turns it into one that refuses everything.
+
+**Sizing.** A day, plus the lint. It unblocks T11.5's three widgets and
+M19's motivating scene, and nothing else in the queue depends on it.
+
 ## Selection and IME
 
 Both belong to the text widgets and **neither is blocked on widget
