@@ -1,286 +1,471 @@
-# M18 — `Cmd::Glass`: backdrop blur, refraction and specular as one command
+# M19 — `Glass<W>`: a backdrop filter as a widget
 
-> **Status: planned 2026-09-10, not started.** Origin: a question about
-> whether the renderer-scope answer ruled out blurred nodes and
-> Apple-style "liquid glass". It does not, and the reason is worth a
-> plan rather than a paragraph: **glass is closed-form over a signed
-> distance field we already evaluate**, which puts it on the cheap side
-> of the line `docs/results-vello.md` §4 draws, not the expensive one.
+> **Status: planned 2026-09-10, not started. Blocked on M18.**
+>
+> Rewritten from the first draft after a four-agent spec review found
+> ~35 defects in it, two of which were in shipped code and are already
+> fixed (`1de77c6`). This version records the decisions that review
+> forced, and is deliberately much smaller than the plan it replaces.
 
 *Each task is one commit; each ends with `just test` green. Task ids go
-in commit subjects. Every task states what it must be shown to fail at,
-because a rendering feature whose tests have never been red is a
-rendering feature with no tests.*
+in commit subjects. Every task names the injection its tests must go red
+under, because a rendering feature whose tests have never failed has no
+tests.*
 
 ---
 
-## 1. The decision this plan encodes
+## 1. The five decisions
 
-**Glass is one command, not a layer system.**
+The first draft got all five wrong or left them open. They are settled
+here so the tasks do not re-argue them.
 
-The material has four parts, and none of them is a path:
+| | decided |
+|---|---|
+| **Where the parameters live** | On a widget, `Glass<W>`, as ordinary struct fields. **Not** on `Style`. |
+| **What ships first** | Blur only. Refraction and specular are a later, purely additive task. |
+| **Which backend** | Software. The GPU backend draws the degraded fallback until a later milestone. |
+| **When** | After `Damage` carries a set of regions (M18). Not before. |
+| **How it stays cheap** | A backdrop cache per panel, so a recompute is bounded by the panel and not by the frame. |
 
-| part | needs | already have |
-|---|---|---|
-| backdrop blur | the destination pixels under the rect | they are in the buffer |
-| tint and saturation lift | per-pixel colour arithmetic | `blend_px` |
-| edge refraction | displace the sample by the SDF **gradient** | rounded-rect SDF |
-| specular rim | `dot(gradient, light)`, sharpened | the same gradient |
+### 1.1 Why a widget and not a `Style` field
 
-This is the move `Cmd::Shadow` already is. Its doc comment records the
-first version: eighteen translucent rounded rects per shadow, 97% of a
-frame (`docs/results-frame-cost.md`). Collapsing that stack into one
-closed-form command is what fixed it, and a filter graph for glass would
-be the same mistake with a different silhouette.
+Two reasons, and the second is the one that decides it.
 
-**What this plan is not.** Group opacity is genuinely a layer — a
-subtree rendered in isolation and composited — and it is *not* here. So
-are arbitrary filters on arbitrary subtrees, `clip-path`, rotation and
-everything else in `docs/results-vello.md` §4's third group.
+**Bytes.** `Style` is 72 with zero spare — the tail slot `cursor` and
+`focus_ring` were fitted into is full. Measured 2026-09-10
+(`docs/results-embedded.md`): a full glass parameter set is +20 B, taking
+`Style` to 92 and per-node RAM from 148 to 168 B. That is +236 B of
+`.text` and no measurable frame cost, so it is *cheap* — but it is paid
+by every node of every tree, including the embedded profiles that take
+the `Painter` fallback and cannot render a blur at all. `Glass<W>`
+carrying its own fields costs **zero** on every tree that does not use
+one, and gives per-instance tuning that a packed `u8` preset index could
+not.
 
-## 2. Why the backdrop is the easy case and opacity is the hard one
+**Paint order, which a style property cannot express.** Glass reads what
+was painted *before* it. A `Style` flag is applied wherever the derive
+emits it, which is not a moment the author chose. A widget occupies a
+position in the tree, and that position *is* the answer to "what does
+this blur". `ScrollView<W>` and `Popup<W>` already have exactly this
+shape, and `Popup` already solves the harder half with `out.defer(i)`.
 
-CSS files `opacity` and `backdrop-filter` under the same heading and the
-intuition that follows is wrong for this renderer.
+**What is lost, stated plainly:** a stylesheet cannot make an existing
+panel glass. `Glass<Card>` is a code edit, not a rule. That is the price
+of the topology being in the type, and it applies to `ScrollView` too.
 
-`Surface::render` walks the command list **in order into one buffer**.
-When a glass command is reached, everything behind it is already sitting
-in `self.px` at those coordinates. There is nothing to render in
-isolation and nothing to composite: the backdrop is the destination.
+### 1.2 Why blur only, first
 
-Group opacity has the opposite shape — the subtree must be rendered
-*without* the backdrop, then composited at α — and that needs a real
-offscreen target with its own lifetime. That is why one is in this plan
-and one is not.
+Refraction and specular need the SDF *gradient*; blur does not. Dropping
+them for the first cut removes, wholesale: the gradient's `sign(p − c)`
+term (which the first draft got wrong, so the left and top rims would
+have refracted and lit backwards), its `0/0` degeneracy over the entire
+inner rect, the `refraction = 0` division, a `rim` field, and the choice
+of a specular exponent. Roughly half the review's maths findings are
+about machinery this milestone does not build.
 
-What glass does need is a **scratch buffer the size of the element's
-source region**, because a blur cannot read and write the same pixels.
-That is a transient the size of a panel, not a layer tree.
+What remains is `backdrop-filter: blur()`, which is the part that is
+architecturally interesting and the part every other decision hangs on.
+
+### 1.3 Why the GPU waits
+
+Reviewed concretely: `G+1` render passes (a texture copy cannot happen
+inside a render pass), two scratch textures ping-ponged, a second
+pipeline, a sixth and seventh bind-group entry, a **linear** sampler
+(the existing one is `Nearest` deliberately, so glyphs stay crisp), and a
+fix to `draw`'s `Overflow` retry so a second attempt does not inherit the
+first's split points. Two to four days, not the half day the first draft
+implied.
+
+And the parity gate cannot absorb it as written: `tests/parity.rs` bounds
+the *count* of differing pixels at 0.2%, measured at 0.01%. A glass panel
+differs over its whole area if the two blurs disagree anywhere — a
+400×200 panel is 8.7% of a 720p frame, 43× the bound. Making that gate
+meaningful means matching the CPU blur bit-for-bit on the GPU, which
+essentially forces a compute shader. That is its own milestone's worth of
+work and it is not this one's.
+
+**Cost of waiting, stated:** the two backends visibly diverge for anyone
+running `LUMEN_BACKEND=gpu`. That is a first for this project and it is
+the reason this is a decision rather than an omission.
+
+## 2. What M18 must deliver first
+
+Glass is blocked on it, and it is worth doing on its own merits.
+
+`Damage` is `None | Rect | All`, and `union` is a **bounding-box merge**.
+Correct glass needs damage to cover what the panel *reads*, so `D ∪= src`
+— and with a single box that goes badly: a scrollbar thumb moving
+(8 000 px) unioned with a glass toolbar's source region (149 000 px)
+gives the whole 960 000-px window. Any glass panel plus damage anywhere
+else becomes a near-full repaint, and the 13 µs damaged frame
+(`docs/results-simd.md`) is gone.
+
+M18 is: **`Damage` carries a small set of regions**, exactly unioned,
+with the shell rendering each. It also fixes a defect this repository
+already knows about and has not fixed — `docs/damage-amplification-decision.md`
+records a `Shrink` container's clip change damaging a whole column,
+measured 37× (1 562 px → 57 600 px), for the same reason.
+
+What glass needs from it, specifically:
+
+1. an exact union, so `D ∪ src` does not swallow the frame;
+2. an **intersection** predicate with `None` and `All` arms spelled out
+   (`All` short-circuits; `None` is empty), because the dependency rule
+   is a test against `D`;
+3. the set surviving `take_damage_for_age`. The fixpoint cannot live
+   only in `Diffing::finish`: `finish`'s result is banked into `pending`
+   and re-merged across up to `AGES-1` frames, and **a merge is not
+   closed under the dependency rule**. Worked example: two frames of
+   damage that each miss a panel can merge into a box that clips it,
+   so a panel correct at buffer age 1 is stale at age 3.
+
+M18 should get its own plan doc when it starts. It is listed in
+`AGENT.md`'s queue ahead of this one.
 
 ## 3. The command
 
 ```rust
-Glass {
-    rect: Rect,
-    /// Corner radius, matching `RoundedRect`'s meaning.
-    radius: f32,
-    /// Backdrop blur, as a Gaussian standard deviation in px. 0 is a
-    /// clear lens — refraction and specular with no blur, which is a
-    /// real look and the cheapest way to test everything but §5.3.
-    blur: f32,
-    /// Multiplied over the blurred backdrop; `tint.3` is its strength.
-    /// An opaque tint is a rounded rect with extra steps, and §8 says
-    /// why no test may use one.
-    tint: Color,
-    /// How far, in px, the edge displaces what is seen through it.
-    /// 0 is frosted glass; a few px is a lens.
-    refraction: f32,
-    /// Rim highlight strength, 0..=1.
-    specular: f32,
-    /// Direction the light comes from, radians clockwise from +x.
-    light: f32,
-}
+Glass { rect: Rect, blur: f32, tint: Color },
 ```
 
-**Budget: free.** `size_of::<Cmd>()` is 60 with align 4, set by
-`Gradient`'s 56-byte payload plus the tag. `Glass` is 40. T18.0 asserts
-`size_of::<Cmd>() == 60` the way `tests/cursor.rs` asserts `Style`'s 72,
-so the next field added here has to argue for itself.
+Three fields, so `glass(rect, blur, tint)` matches `shadow(rect, radius,
+spread)` in shape and there is no seven-argument transposition hazard.
+When refraction and specular arrive they come as a params struct, in the
+shape `Stops` already uses — **not** as four more positional `f32`s.
 
-**The `Painter` default is a degraded draw, not a no-op**, following
-`gradient`'s precedent — "a missing background is a worse failure than
-an un-graded one":
+- `blur` is a Gaussian standard deviation in **logical** px.
+- `tint` multiplies over the blurred backdrop; `tint.3` is its strength.
+  Alpha 0 is a legitimate value — a pure frosted panel — which is why
+  `DisplayList::glass` must drop only on `!has_area(rect)` and **not**
+  copy `rounded_rect`'s `color.3 == 0` guard.
 
-```rust
-fn glass(&mut self, rect: Rect, radius: f32, blur: f32, tint: Color, ..) {
-    self.rounded_rect(rect, tint, radius);
-}
+**Budget.** `size_of::<Cmd>()` is 60, set by `Gradient`'s 56-byte payload
+plus the tag; `Glass` is 24. T19.0 asserts **both** — `Cmd == 60` and the
+`Glass` payload against 56 with the measured 24 in the message. Asserting
+only the first is a bound 32 bytes from anything it constrains, which is
+the shape `docs/plan-invalidation.md` T16.2 and the `.bss` ceiling were.
+
+**Corner radius is deliberately absent.** A glass panel's shape comes
+from `Glass<W>`'s own `Style.radius`, which already cascades, and the
+widget emits a `RoundedRect` clip or shape around it the way any
+container does. One radius, one place.
+
+## 4. Where it is drawn from
+
+`Surface::render` walks commands **in order into one buffer**, so when a
+glass command is reached the backdrop is already the destination. There
+is nothing to pass in and no layer to composite. That asymmetry is worth
+stating because CSS files `opacity` and `backdrop-filter` under one
+heading and the intuition is backwards here: group opacity needs a
+subtree rendered *in isolation* and is not in this plan; a backdrop needs
+the pixels that are already there.
+
+A **translucent** card needs none of this and already works. Verified
+2026-09-10: a translucent rounded rect over content whose colour changed,
+rendered by `render_within` against a full render — 18 731 px inked,
+**0 px differ**. It is composed *forward*, so damage triggers a replay
+and the replay does the compositing. Glass is composed *backward*, off
+finished pixels, and that is the entire source of its cost.
+
+### 4.1 The composite
+
+For each pixel in the panel:
+
+1. **Coverage** comes from `fill_rounded_within`'s *structure*, not from
+   a fresh SDF: hard spans in the straight regions, the ramp only in the
+   corner bands. The first draft claimed `clamp(0.5 − d, 0, 1)` was "the
+   identical ramp" — it is identical only inside the corner bands, and
+   elsewhere that function fills whole pixels hard, floor/ceil-snapped.
+   On a rect with fractional coordinates the two disagree by up to
+   254/255 along a straight edge. Sharing the structure is what makes
+   "pixel-identical to a `RoundedRect` of the same geometry" achievable
+   at all, and it keeps glass looking like every other panel.
+2. **Tint:** `c = mix(backdrop, tint.rgb, tint.a)`.
+3. **Blend** `c` into the destination at that coverage.
+
+### 4.2 The blur
+
+Three box passes with running sums — O(1) per pixel in the radius **on
+the CPU** — at the size SVG's `feGaussianBlur` specifies:
+
+> `d = floor(s * 3 * sqrt(2*pi)/4 + 0.5)`; if `d` is odd, three boxes of
+> size `d` centred on the output pixel; **if `d` is even, two boxes of
+> size `d` centred on opposite pixel boundaries and one of size `d+1`
+> centred on the pixel.**
+> — <https://www.w3.org/TR/SVG11/filters.html#feGaussianBlurElement>
+
+The even case is not a detail to skip: an even box has no centre pixel,
+so three equal even boxes shift the image half a pixel per pass, 1.5 px
+total. And the even case is the *common* one here — the downsample below
+targets `σ' ≈ 2`, where `d = 4`.
+
+Five things the first draft left unspecified, each of which changes
+pixels:
+
+- **Downsample factor.** `k = clamp(⌈σ/2⌉, 1, 8)` was wrong twice: it
+  drops the per-pass sigma below the spec's own `s ≥ 2.0` precondition
+  for every σ that is not an even integer, and it delivers a blur up to
+  **24% away** from the requested σ, in plateaus (σ = 4.0, 4.5 and 5.0
+  all render identically, then σ = 6 jumps 50%). Instead **search
+  `k ∈ 1..=8` for the `k` minimising `|k·σ_box(d(σ/k)) − σ|`** — eight
+  iterations of `floor` and `sqrt` per command, not per pixel, bounding
+  the error at 10%. The results doc prints *delivered* σ beside
+  *requested*, so the quantisation is visible rather than re-derived.
+- **Capture dilation.** `3σ` is exactly the three-box reach with zero
+  margin at every even-`d` operating point, and it counts none of the
+  downsample's own `k`-px footprint, the bilinear upsample's, or the
+  sample's own ±1 tap. Use `ceil(3σ + 2k + 2)`, snapped outward to a
+  multiple of `k`. **The dependency in §5 must use the same
+  expression** — a capture wider than the dependency is stale in its
+  outermost ring, and the oracle would pass on it.
+- **Downsample grid anchor.** Anchored to the **surface** origin
+  (`floor(x/k)`), never the capture's. Anchored to the capture, a panel
+  at a fractional or scrolled position samples a different phase each
+  frame and the blur shimmers — and both the "stable frame to frame"
+  check and the incremental-vs-rebuild oracle are blind to it, because
+  the capture rect is identical in the two renders being compared.
+- **Border rule.** Samples outside the captured region clamp to its
+  edge, and the running sum is normalised by the number of contributing
+  samples, so a partial box does not darken. This also answers the
+  window-edge case, and matches what a GPU sampler does by default when
+  that backend arrives.
+- **Intermediates are `u16`, not `u8`.** Three passes round three times
+  at ≤0.5 LSB each and band visibly on a smooth backdrop. 2× scratch,
+  one rounding at the end.
+
+### 4.3 Colour, stated once
+
+The blur is computed on **straight, non-premultiplied 8-bit sRGB**, and
+that is correct *here and only here*: `Surface::blend` and `blend_px`
+both write `α = 255` unconditionally and `CLEAR` is opaque, so the
+destination alpha is a constant and straight equals premultiplied. **A
+transparent-window path would invalidate this** and must premultiply
+before the box passes. T19.2 puts that sentence next to the loop.
+
+It also means the result matches **CSS `backdrop-filter` on HTML
+content**, not SVG's `feGaussianBlur` — whose
+`color-interpolation-filters` defaults to `linearRGB`, so a browser's
+SVG blur works in linear light and this does not. Using the SVG spec's
+box sizes buys the right *kernel*, not the right *colour space*, and the
+first draft claimed the latter.
+
+## 5. Damage: the dependency
+
+`Recording::glass` reports two things, not one:
+
+- `observe(hash, rect)` — as every command does. Skipping it
+  desynchronises `Diffing`'s command count against its slots and makes
+  `finish` return `Damage::All` for the rest of the frame; and the
+  panel's own `blur`/`tint` change would never be reported. The hash
+  covers **every field by bit pattern**, `blur` included, since `blur`
+  sizes the dilation.
+- `observe_dep(src)` — the region the composite reads, `rect` dilated by
+  §4.2's expression.
+
+Then, wherever the frame's damage is finalised:
+
+```
+for each dep src, while D changed and at most G+1 rounds:
+    if D ∩ src is non-empty then D ∪= src
 ```
 
-Every existing painter — the checksum sink, the SVG backend, an
-allocator-free embedded canvas — keeps compiling and draws a tinted
-panel instead of nothing.
+Four corrections to the first draft, all from the review:
 
-## 4. The maths
+1. **`D ∪= src`, not `D ∪= dst`.** The annulus `src \ dst` is what the
+   panel reads and does not write. Left un-damaged it holds the previous
+   frame's *final* pixels — including commands painted **after** the
+   glass, and including **the panel's own previous output**, which
+   re-blurs and smears a little more every frame. Both reviewers who
+   looked at this found it independently, from different code.
+2. Since `src ⊇ dst` by construction, the rule has one clause, not two.
+3. **It also runs on the banked union**, not only in `finish` — see §2.3.
+4. **No round cap, and no fallback.** `D` only grows, the rects are fixed for
+   the frame, and re-adding a contained rect is a no-op, so the fixpoint
+   terminates in at most `G+1` rounds *provably*. The first draft's cap
+   and its `Damage::All` fallback were an untriggerable branch, and per
+   `AGENT.md` a branch that cannot fire cannot be shown to fail. The
+   first draft specified a cap and a `Damage::All` fallback for it;
+   assert the bound instead.
 
-Let `p` be the pixel centre, `d = sd_round_box(p, rect, radius)`
-(negative inside), and `n` the unit gradient of that field — for a
-rounded box, `normalize(max(|p - c| - h, 0))` outside the inner rect and
-the dominant axis within it. Both already exist: `shader.wgsl` has
-`sd_round_box`, and `fill_rounded_within` computes the same distance
-inline.
+`observe_dep` gets a **provided body** so `Rebuild`, `Streaming<N>` and
+any host strategy are unaffected until they opt in — the shape
+`docs/damage-amplification-decision.md` already pre-registered for this
+trait. `Retention` is a type parameter and never `dyn`, so object safety
+is not a constraint. `Streaming<N>` needs a fixed dep array whose
+overflow sets `Damage::All`, mirroring how its slot overflow already
+behaves.
 
-1. **Coverage.** `cov = clamp(0.5 - d, 0, 1)` — the identical ramp
-   `fill_rounded_within` uses, so a glass panel and a rounded rect of
-   the same geometry have the same silhouette to the pixel. T18.1
-   asserts that against a rendered `RoundedRect`.
-2. **Edge factor.** `t = clamp(-d / refraction, 0, 1)`, inverted:
-   `e = (1 - t)²`. Zero in the middle, one at the rim.
-3. **Refraction.** Sample the blurred backdrop at `p + n * refraction * e`,
-   bilinear, clamped to the captured region.
-4. **Tint.** `c = mix(backdrop, tint.rgb, tint.a)`.
-5. **Specular.** `s = pow(max(dot(n, light_dir), 0), 32) * specular * e`,
-   added as white. Confined to the rim by `e`, which is what stops it
-   reading as a gradient overlay.
-6. **Blend** `c` into the destination at `cov`.
+**Which coordinate space.** `Recording` wraps `Scaled`, so `observe` and
+`observe_dep` see **logical** rects while `render_within` consumes
+physical ones. At scale 1.0 — every test, every desktop default — this is
+invisible. T19.2 states the space in the doc comment and
+`tests/scale.rs` gets the row.
 
-**The blur is three box passes, not a Gaussian.** Box blur with running
-sums is O(1) per pixel in the radius; three of them approximate a
-Gaussian to within a few percent, and the box size is the one SVG's
-`feGaussianBlur` specifies: `d = floor(σ · 3 · √(2π) / 4 + 0.5)`. Using
-the spec's own approximation rather than inventing one means the result
-is comparable with a browser's, which matters the first time someone
-holds the two side by side.
+## 6. The backdrop cache
 
-At σ above about 4 the capture is downsampled by `k = clamp(⌈σ/2⌉, 1, 8)`
-first, blurred at `σ/k`, and sampled back bilinearly. **This is the
-whole performance story of the feature** and T18.3 measures it; nothing
-above is a number and none of it has been measured yet.
+The optimisation that makes glass cheap, and the reason §2's rect set is
+enough rather than merely necessary.
 
-## 5. The three costs, and the rule each one gets
+One buffer per live glass panel, holding its blurred backdrop. On a
+frame:
 
-### 5.1 It serialises
+- nothing intersects the panel's `src` → reuse it; cost is the composite
+  alone;
+- something does → re-render commands `0..i` clipped to `src` into the
+  cache, re-blur, composite.
 
-A glass command must see everything before it and nothing after, so it
-cannot be reordered, batched or deferred. Fine for the handful a real
-window has — a toolbar, a sheet, a sidebar. **Not** a general-purpose
-primitive, and T18.7's `Style` plumbing must not make it feel like one.
+**The win is that a recompute is bounded by the panel's own area rather
+than by a union across the frame.** The scrollbar-plus-toolbar case stops
+costing a full-window replay and starts costing one toolbar-sized prefix
+replay.
 
-### 5.2 It crosses band boundaries
+It is a layer cache scoped to glass panels — bounded, countable, and
+nothing like a general layer tree. Cost: one buffer per panel (a
+1200×124 toolbar is ~600 KB) and a second validity question. T19.4 lands
+it *after* a correct uncached implementation and is measured against it,
+so the cache's value is a number and not an assumption.
 
-`Surface`'s entire safety argument is that bands own disjoint rows. A
-blur reads rows another worker owns, mid-flight. The rule:
+## 7. Threading
 
-> **The command list is segmented at glass boundaries.** Each segment is
-> banded in parallel as today; between segments the workers join and the
-> glass runs.
+`Surface`'s whole safety argument is that bands own disjoint rows. A blur
+reads rows another worker owns.
 
-Capture and blur are serial. **The composite is not** — once the source
-is in scratch, each output row reads only scratch and writes only its
-own destination row, so the glass rect's rows parallelise by the same
-`chunks_mut` argument the bands already use.
+**The rule:** the command list is segmented at glass boundaries; each
+segment is banded as today; between segments the workers join and the
+capture and blur run serially. **The composite rides the head of the
+*next* segment** — each band composites the glass over the rows it owns,
+culled exactly as every other command is — which keeps the count at
+`G+1` scopes and `G+1` joins. Giving the composite its own scope would
+make it `2G+1`, which is what the first draft's text described while its
+arithmetic said otherwise.
 
-Cost: a frame with G glass commands has G+1 parallel segments and G
-joins. That makes `std::thread::scope`'s per-render spawn G+1 times as
-expensive, which is a second reason — the first is in
-`docs/results-vello.md` §3 — to want a persistent pool.
+Four things it must also say:
 
-### 5.3 Its pixels depend on pixels it does not own
+- **The clip stack must be reconstructed at each boundary.**
+  `Surface::render` builds its stack by walking from index 0, seeded with
+  the band ∩ damage rect. A band starting mid-list would begin at depth 1
+  and not know it is inside a scroller — and a glass toolbar inside a
+  scrolling view is the motivating scene. The segmenter computes the
+  clip prefix serially, once, and each band starts with
+  `[band ∩ damage] ++ prefix`. `PopClip`'s floor stays at index 0, not at
+  the prefix depth, since a `PushClip` before the glass and its matching
+  `PopClip` after it is the normal case.
+- **`Surface::render` takes a command range and a clip prefix.** It
+  cannot take `&[Cmd]` — the text arm needs `list.str_of` — so the
+  `&DisplayList` stays and a `Range<usize>` joins it. That is a change to
+  the one rasteriser entry point all three callers use, and it *is* the
+  task, not a precondition of it.
+- **The borrow structure permits it.** N sequential `thread::scope`s over
+  the same `&mut [u8]` are fine; only the hoisted `let slice = &mut
+  self.pixels[..]` has to move inside the loop so its borrow ends each
+  iteration. Sub-row writes need no `unsafe`: disjointness comes from the
+  row split, and a worker sub-slicing a row it already owns exclusively
+  is an index range, not aliasing.
+- **The worker count is recomputed per segment.** `workers_for` is
+  called once today, on the whole damaged pixel count. Spawning 32
+  workers for a trailing segment of three commands is pure loss.
 
-This is the one that touches invalidation, and it is the reason T18.2
-exists as its own task.
+**One implementation, not two.** The composite is a `Surface` method,
+called by the whole-surface walk and by the segmented bands alike.
+`render_banded` can decline (small frame, `images.is_some()`,
+`workers < 2`), and the caller then renders through `Canvas::whole()` as
+one band — so a second copy for the threaded path is exactly the fork
+`Surface`'s doc comment records rejecting.
 
-A glass panel over a scrolling list must repaint when the list scrolls,
-even though its own command is byte-identical. Nothing in `Diffing`
-knows that today: `observe(hash, ink)` says "this command drew here",
-and a command whose hash did not change contributes no damage.
+**Unmeasured, and the plan says so:** the per-spawn cost this `G+1`
+arithmetic matters against does not exist as a measurement anywhere in
+this repository. The "5–10 µs to wake" figure in `software.rs` and
+`docs/results-threading.md` is an unsourced assertion. T19.5 measures it
+or drops the claim.
 
-The new concept is a **dependency**: a region whose content is a
-function of another region.
-
-```rust
-fn observe_dep(&mut self, src: Rect, dst: Rect);
-```
-
-`Recording::glass` reports `dst = rect` and
-`src = rect` dilated by `3σ + refraction` — the furthest a pixel can be
-read from. Then `Diffing::finish`, after computing damage `D`:
-
-```
-repeat until fixed point (capped at DEP_ROUNDS):
-    for each (src, dst): if D ∩ src ≠ ∅ then D ∪= dst
-```
-
-The fixpoint is for glass over glass; the cap keeps a pathological scene
-from looping and falls back to `Damage::All`, which is always correct
-and merely slow.
-
-**Deliberately conservative in one way, stated so nobody "fixes" it
-later:** the rule uses all of the frame's damage, not only damage from
-commands *earlier* in the list. A glass panel therefore repaints when
-something in front of it changes too. Tracking order would need damage
-attributed per command index, which is a larger change to `Diffing` than
-this feature justifies, and the over-damage is one panel.
-
-## 6. Tasks
-
-**Ordering principle: every commit leaves the tree correct.** T18.1
-introduces a command that reads the backdrop, which creates the
-staleness bug in §5.3 — so T18.1 ships with the *conservative* rule
-("a frame containing glass damages each glass rect unconditionally"),
-which is correct and slow, and T18.2 replaces it with the dependency
-test and measures what that bought. The oracle exists before the
-optimisation, as in M16.
+## 8. Tasks
 
 | id | task | done when |
 |---|---|---|
-| **T18.0** | The command, the `Painter` default, `hash_into`, `Scaled` forwarding, the `size_of::<Cmd>() == 60` assertion. No renderer implements it yet; every renderer draws the tinted rounded rect. | A glass command in a list renders as a tinted rounded rect on both backends, and `Cmd` has not grown. |
-| **T18.1** | Software: coverage, refraction, specular, `blur = 0`. Backdrop read + bilinear sample from a scratch capture. Conservative damage rule. | Silhouette is pixel-identical to `RoundedRect` at the same geometry; a lens over a photograph displaces visibly and is stable frame to frame. |
-| **T18.2** | Damage dependencies: `observe_dep`, the fixpoint in `finish`, `DEP_ROUNDS`, and the oracle test. Replaces T18.1's blanket rule. | Incremental and rebuild renders are byte-identical over a **moving** backdrop, and a still frame with glass damages nothing. |
-| **T18.3** | The blur: capture dilation, downsample, three box passes, upsample. A results doc of its own — named on landing, per the rule that a `results-*.md` carries numbers — with the σ × panel-size sweep and the downsample threshold. | The sweep exists and the σ→cost curve is flat past the downsample threshold. |
-| **T18.4** | Threading: segment the command list at glass boundaries; parallelise the composite over the glass's own rows. | `just threads`' byte-identity holds with glass in the scene, at every strip height. |
-| **T18.5** | GPU: split the render pass at each glass command, blit the source region to a scratch texture, blur it, draw `KIND_GLASS` sampling it. | `just gpu-parity` holds within the existing 0.2% bound with glass in the scene. |
-| **T18.6** | Embedded: re-measure `.text` and `.bss` against the ceilings; confirm the no-alloc profile takes the `Painter` default rather than growing a scratch buffer. | `just thumb` green with the ceilings restated, not raised silently. |
-| **T18.7** | `Style.glass` so it cascades like `shadow` and `radius` do, plus one widget in the tally. Must re-assert `size_of::<Style>()`. | The tally has a glass toolbar over its scrolling content, and `Style` did not grow. |
+| **T19.0** | `Cmd::Glass`, `DisplayList::glass`, `Painter::glass` with a degraded default, explicit overrides on **all four** wrappers, arms in all three renderers, `hash_into`, `Scaled`, both size assertions. | A glass command survives every wrapper unchanged, and renders as a tinted rounded rect on both backends. |
+| **T19.1** | `Glass<W>`: the `NodeDesc` splice, `layout`/`place`/`paint`/`hit`, `blur` and `tint` as fields. | A tree containing `Glass<Label>` paints a glass command at the right rect — which is also what makes T19.2's oracle constructible. |
+| **T19.2** | Software capture, three-box blur, composite. Single-threaded. `observe_dep` and the fixpoint on M18's region set. The damage oracle. | Incremental and rebuild renders are byte-identical over a **moving** backdrop, and a still frame with glass damages nothing. |
+| **T19.3** | Blur quality: the `k` search, the odd/even rule, `u16` intermediates, grid anchor, border rule. A results doc with the σ × panel-size sweep and delivered-vs-requested σ. | The sweep exists; delivered σ is within 10% of requested at every point in it. |
+| **T19.4** | The backdrop cache, measured against T19.2. | A frame whose damage misses every panel costs the composite only, and the doc says by how much. |
+| **T19.5** | Threading: segmentation, clip prefix, per-segment worker count, composite in the next segment's head. | `just threads` byte-identity holds with glass in the scene, at every swept strip height, **with the split asserted** via `Canvas::bands_for`. |
+| **T19.6** | Embedded: confirm the variant costs the firmware nothing. | `just firmware-size` and `scripts/check_text.sh` restated in `docs/results-embedded.md`. |
 
-**Sizing.** T18.0 and T18.1 are a day together. T18.2 is the interesting
-one and should be budgeted as such — it changes `Retention`, which
-`damage_oracle.rs` and `invalidation_oracle.rs` both pin. T18.3 is a day
-including the sweep. T18.4–T18.6 are half a day each if 5.2's
-segmentation lands cleanly. T18.7 is small and is where the feature
-becomes visible.
+**Deferred, deliberately, each with its condition:** refraction and
+specular (when blur has shipped and someone wants the material rather
+than the effect); the GPU backend (§1.3); group opacity (needs a real
+layer, §4).
 
-## 7. What must be shown to fail
+**Sizing.** T19.0 and T19.1 are a day together. T19.2 is the milestone's
+centre and should be budgeted as such. T19.3 is a day including the
+sweep. T19.4 and T19.5 are a day each. T19.6 is an hour.
 
-Per `AGENT.md`. Each row is a test and the injection that must turn it
-red, named up front so the task cannot quietly ship without one.
+## 9. What must be shown to fail
 
-| test | injection | what it proves |
+| test | injection | proves |
 |---|---|---|
-| T18.1 silhouette | widen the coverage ramp to `1.0 - d` | glass and `RoundedRect` share one edge, not two that look alike |
-| T18.2 damage oracle | delete the `observe_dep` call | the glass goes stale over a moving backdrop |
-| T18.2 still frame | make the dependency unconditional | a still frame with glass stops being free |
-| T18.3 blur | wrong box size for σ | the three-pass approximation is the specified one |
-| T18.3 capture | shrink the source dilation to `rect` | the panel's rim samples clamped edge pixels and darkens |
-| T18.4 threading | let a band composite glass without the join | a glass spanning bands reads half-written rows |
-| T18.5 parity | skip the GPU blur pass | the two backends stop agreeing |
+| T19.0 wrappers | drop the `glass` override from `Deferring` | a wrapper's provided body rewrites the command — the defect this review already found live and fixed in `1de77c6` |
+| T19.0 budget | add `[f32; 8]` to `Glass` | the payload assertion binds, not just the `Cmd == 60` one |
+| T19.2 oracle | delete `observe_dep` | the panel goes stale over a moving backdrop |
+| T19.2 still frame | make the dependency unconditional | a still frame with glass stops being free |
+| T19.2 annulus | dilate the dependency to `rect` instead of `src` | the outer ring reads last frame's final pixels |
+| T19.3 blur | use three equal boxes when `d` is even | the 1.5 px shift the spec's odd/even rule exists to prevent |
+| T19.3 capture | shrink the dilation by `2k` | the rim samples clamped edges; assert the differing-pixel count and print it |
+| T19.4 cache | never invalidate the cache | the panel freezes over a moving backdrop |
+| T19.5 threading | composite from a source clamped to the band's own rows | a panel spanning bands blurs wrong |
 
-## 8. The two ways this plan will produce a vacuous test
+## 10. The three vacuous tests this will otherwise produce
 
-Both are the documented failure shapes in `AGENT.md`, and both are
-*specific to this feature*, which is why they are written down before
-anyone writes the tests rather than after someone finds them.
+All three are `AGENT.md`'s documented shapes, specific to this feature,
+written down before the tests rather than after someone finds them.
 
-**A static backdrop cannot exhibit a stale glass.** If T18.2's scene
-does not move behind the panel, the incremental and rebuild renders
-agree about a frame in which nothing happened — the invalidation
-oracle's exact failure (T16.7), one feature later. **The backdrop must
-move, and the test must assert that it moved** (a changed pixel count
-under the panel), not only that the two renders match.
+**A static backdrop cannot exhibit a stale panel.** If T19.2's scene does
+not move behind the glass, incremental and rebuild agree about a frame in
+which nothing happened — T16.7's invalidation oracle, three milestones
+later. The backdrop must move **and the test must assert that it moved**,
+not only that the two renders match.
 
-**An opaque tint hides everything this feature does.** With
-`tint.3 == 255` the blur, the refraction and the backdrop are all
-invisible, every injection above still produces the right pixels, and
-the suite is a rounded-rect test wearing a costume. This is the GPU
-damage gate's failure exactly — a half-cleared boundary pixel under
-*opaque* content is overwritten and the artefact never survives to be
-compared (T15.12) — and the fix is the same one: **every glass test uses
-a translucent tint over content with structure in it**, and asserts the
-backdrop is visible before asserting anything else.
+**A backdrop that moves by changing the command count degrades to
+`Damage::All`.** The obvious moving backdrop is a scrolling list — but
+T16.12's paint-side culling emits only the rows a viewport shows, so
+scrolling changes the command count, and `Diffing::finish` answers a
+length change with `Damage::All`. The incremental arm then takes the
+full-redraw path and the oracle compares two identical full renders, with
+`observe_dep` deleted and still green. **The backdrop must move without
+changing the command count** — a label whose text changes, or content
+translating inside a fixed-length list — and the test must assert
+`Damage` is a region set on the steps it counts, printing the count
+beside the bound.
 
-## 9. What this does not buy
+**An opaque tint hides everything this feature does.** At `tint.3 = 255`
+the blur and the backdrop are both invisible, every injection above still
+produces correct pixels, and the suite is a rounded-rect test in costume.
+This is the T15.12 GPU damage gate's failure exactly — a half-cleared
+boundary pixel under *opaque* content is overwritten and the artefact
+never survives to be compared. **Every glass test uses a translucent tint
+over content with structure in it**, and asserts the backdrop is visible
+before asserting anything else.
 
-Stated so the plan is not read as a step toward general filters.
+The same trap sits inside T19.0's own done-when. A realistic tint is
+something like `Color(255,255,255,40)`, and the degraded fallback paints
+that as a 16%-opacity rectangle — nearly nothing. So the fallback raises
+alpha to a documented floor, and T19.0 asserts a **pixel count**, not
+"renders as a tinted rounded rect".
 
-- **No group opacity.** §2.
-- **No blur on arbitrary subtrees.** `Cmd::Glass` blurs what is behind a
-  rounded rect. A `filter: blur` on a node blurs *the node*, which is a
-  layer, which is §2 again.
-- **No rotation, no `clip-path`, no SVG.** Unchanged by this plan;
-  `docs/results-vello.md` §4 is still the map.
-- **No claim about cost.** Nothing in this document is a measured
-  number except `size_of::<Cmd>() == 60`. T18.3 produces the results
-  doc, and until it does, "glass is cheap" is a hypothesis with an
-  argument behind it and no evidence. This plan deliberately cites no
-  such file yet: `scripts/check_doc_paths.sh` refused the forward
-  reference, which is the gate working.
+## 11. What this does not buy
+
+- **No group opacity.** §4.
+- **No blur of a node's own content.** `Cmd::Glass` blurs what is behind
+  a rect. `filter: blur` on a node blurs the node, which is a layer.
+- **No rotation, `clip-path` or SVG.** `docs/results-vello.md` §4 is
+  still the map of what is on the far side of the line.
+- **No Z-stack.** A `column` lays children out in order *and paints them
+  in that order*, so a panel cannot be at the top of the layout and last
+  in paint order. Overlapping geometry today means `Popup` and the
+  overlay phase, which carry open/anchor/dismiss semantics a glass panel
+  may not want. **This is a real gap and it is not glass's** — a
+  translucent overlay card wants it too — but the motivating scene runs
+  into it first, so it is recorded here.
+- **No measured cost.** Nothing in this document is a measurement except
+  `size_of::<Cmd>() == 60`, `Style`'s 72, and the translucency check in
+  §4. T19.3 produces the sweep; until then "glass is cheap" is an
+  argument with no evidence.

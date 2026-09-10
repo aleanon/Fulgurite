@@ -815,7 +815,11 @@ remains** — which is why §10 Step 1 is the kill criterion.
    and skew, `clip-path`, dashes and joins, SVG — is a Bézier pipeline, is
    not in `Cmd`, and plugs in at the `Renderer` seam if it is ever wanted.
    The measurement behind the line is `docs/results-vello.md`; the first
-   feature built on the near side of it is `docs/plan-glass.md` (M18).
+   feature built on the near side of it is `docs/plan-glass.md` (M19),
+   and it is a **widget** rather than a `Style` field — parameters that
+   only a handful of nodes per frame use do not belong in a struct
+   resolved for every node, and paint order is something a position in
+   the tree expresses and a style property cannot.
    **Layout is not part of this question** and never was: layout produces
    the rects a renderer consumes, so grid, wrap and min/max constraints are
    work in `ops.rs` that no renderer choice affects.

@@ -77,5 +77,3 @@ vello_cpu            # Linebender's CPU rasteriser, the control arm in results-v
 fearless_simd        # its SIMD layer; named for its unsafe count in the same doc
 RenderContext        # vello_cpu's scene recorder, named where ours is compared with it
 Resources            # vello_cpu's cross-frame glyph cache, same comparison
-DEP_ROUNDS           # M18/T18.2's dependency fixpoint cap; planned in plan-glass.md, remove this line when it lands
-KIND_GLASS           # M18/T18.5's shader discriminant; same, remove when the GPU task lands

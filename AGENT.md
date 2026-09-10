@@ -9,11 +9,15 @@ Shipped and kept for their reasoning: `docs/plan-architecture-v2.md`
 (M0–M12), `docs/plan-review-fixes.md` (F0–F7),
 `docs/plan-embedded.md` (M13), `docs/plan-desktop.md` (M14),
 `docs/plan-capabilities.md` (M15), `docs/plan-invalidation.md` (M16).
-Not started:
-`docs/plan-widgets.md` T11.5, `docs/plan-harness.md`,
-`docs/plan-glass.md` (M18, T18.0–T18.7 — backdrop blur, refraction and
-specular as one closed-form command; the scope line it sits on is
-`docs/results-vello.md` §4).
+Not started, in dependency order:
+**M18 — `Damage` as a set of regions.** No plan doc yet; wanted on its
+own merits (`docs/damage-amplification-decision.md` records a measured
+37× amplification a bounding-box union causes) and a hard prerequisite
+for M19, whose requirements on it are `docs/plan-glass.md` §2.
+**M19 — `docs/plan-glass.md`** (T19.0–T19.6): `backdrop-filter: blur()`
+as `Glass<W>`, software only. The scope line it sits on is
+`docs/results-vello.md` §4.
+Unsequenced: `docs/plan-widgets.md` T11.5, `docs/plan-harness.md`.
 
 Task ids (`T0.6`, `F1.3`, `T16.7`) go in commit subjects. Decision records live beside it in `docs/`; the
 design spec is `docs/00-handoff-static-tree.md`, whose DECIDED/SUPERSEDED
