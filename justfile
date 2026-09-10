@@ -190,6 +190,10 @@ thumb:
     # linked binary, so it lives beside the firmware build rather than
     # in `just static`, which runs no cargo at all.
     ./scripts/check_bss.sh
+    # And the flash ceiling, which docs/results-embedded.md has stated
+    # since 2026-09-05 and nothing checked until 2026-09-10 -- by which
+    # point the doc's figure had drifted 9.4% below reality.
+    ./scripts/check_text.sh
 
 # Line coverage, as an artifact to read -- not a threshold. A workspace
 # percentage is dominated by whether the fixtures ran, not by core quality;

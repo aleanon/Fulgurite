@@ -34,7 +34,8 @@ plainly: desktop-only, plus a `no_std` core with no driver.
 ## Why this is not a small gap
 
 The core is genuinely portable — it is `no_std` at two tiers and links a
-20 524-byte `.text` for `thumbv7em-none-eabihf`
+22 458-byte `.text` for `thumbv7em-none-eabihf`
+(2026-09-10)
 (`docs/results-embedded.md`), which is a far harder target than a phone.
 The gap is not the framework; it is everything around it.
 

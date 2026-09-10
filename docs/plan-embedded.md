@@ -768,7 +768,8 @@ profile.
 **linked** `thumbv7em-none-eabihf` binary, because `cargo check` proves
 none of this — it type-checks and stops, with no codegen, no link and no
 sections. Every threshold met, `.text` at 31% of budget and `.bss` at
-literally zero.
+literally zero — *as measured 2026-09-05; `.text` is 34.3% of budget at
+2026-09-10 and is a gate now, `docs/results-embedded.md`*.
 
 **And the measurement earned its keep on the first link.** `.text` was
 43 KB, a third of it `core::num::flt2dec` — float *formatting*, in a GUI

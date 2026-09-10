@@ -35,10 +35,10 @@ thing that produces real sections.
 
 | | Threshold | Measured | |
 |---|---:|---:|---|
-| `.text` | ≤ 64 KB | **20,524 B** (20.0 KB) | **pass**, at 31% of budget |
-| `.bss` + `.data` | zero framework symbols | **1 symbol, 4 B, exempted** | **pass** — the only static is the fixture's own harness |
-| `.rodata` | — | 12,940 B | of which **9,010 B is the font face** (T13.7) |
-| Flash, total | ≤ 512 KB | **33,677 B** (32.9 KB) | 6.4% of the part |
+| `.text` | ≤ 64 KB | **20,524 B** (20.0 KB) | **pass**, at 31% of budget — *2026-09-05; now 22,458, see below* |
+| `.bss` + `.data` | zero framework symbols | **1 symbol, 4 B, exempted** | **pass** — the only static is the fixture's own harness; still 1 symbol, 4 B |
+| `.rodata` | — | 12,940 B | of which **9,010 B is the font face** (T13.7) — *now 13,016* |
+| Flash, total | ≤ 512 KB | **33,677 B** (32.9 KB) | 6.4% of the part — *now 35,691* |
 | RAM, 100 nodes | ≤ 24 KB | **14.5 KB** state + style | **pass**; widget structs are the app's, below |
 | Stack, actual depth | ≤ 4 KB | **816 B at depth 3** | **pass**, and asserted at compile time since 2026-09-07 |
 | `f64` in the frame path | zero | **zero** | the only `f64` is `observe`'s accesskit call, which needs `std` |
@@ -69,6 +69,59 @@ the better failure for a frame loop. **This is the finding that
 justifies the task**: it is invisible on a desktop, where 26 KB is
 nothing and nobody links for a 512 KB part, and no amount of
 `cargo check` would have shown it.
+
+### Re-measured 2026-09-10 — and the ceiling is a gate now
+
+**The 2026-09-05 figure above drifted 9.4% and nothing noticed**, because
+the `≤ 64 KB` threshold was stated in this document and enforced by
+nothing. `scripts/check_bss.sh` has held `.bss` since 2026-09-07; there
+was no equivalent for `.text`. There is now —
+`scripts/check_text.sh`, in `just thumb` beside the `.bss` gate — and it
+prints the measurement next to the ceiling rather than only "pass", so a
+closing margin is visible in the output.
+
+Found while measuring something else: whether growing `Style` by 4 bytes
+would cost the embedded profile anything (`docs/plan-glass.md`'s T18.7
+question). It does not — but the baseline it was measured against turned
+out not to match this file.
+
+| | `.text` | Δ | of the 64 KB ceiling |
+|---|---:|---:|---:|
+| 2026-09-05, T13.9 | 20,524 | — | 31.3% |
+| end of M15 (`8109ad2`) | 21,970 | **+1,446** | 33.5% |
+| end of M16 (`959cf2c`) | 22,458 | **+488** | 34.3% |
+| end of M17 (`59a45ef`) | 22,458 | **0** | 34.3% |
+| 2026-09-10 | **22,458** | | **34.3%** |
+
+`.rodata` moved 12,940 → 13,016 (+76) and flash total 33,677 → 35,691
+over the same span. `.bss` is unchanged at one exempted 4-byte symbol,
+and the per-node RAM figures below are unchanged — `NodeState` is still
+76 B and `Style` still 72 B, both still `const`-asserted.
+
+**M17 cost the firmware exactly nothing**, which is the tiering claim
+holding up under measurement rather than in argument: T17.0–T17.5 landed
+entirely in `lumen-static-shell`, which an embedded profile does not
+link. M14 and M15 together account for three quarters of the growth
+(+1,446) and M16 for the rest (+488) — the core gained `Cmd::Line`,
+`Cmd::Gradient`, `Cmd::Image`, overlays, popups, the focus ring and the
+cursor in M15, and invalidation and paint-side culling in M16. Not
+attributed below the milestone; the per-milestone split is what the gate
+needs and what a reader can act on.
+
+**What growing `Style` would cost, since it was measured here** (probe
+applied and reverted, 2026-09-10):
+
+| `Style` | `.text` | Δ flash | RAM/node | 100 nodes |
+|---|---:|---:|---:|---:|
+| 72 B (today) | 22,458 | — | 148 B | 14.5 KB |
+| 76 B (+1 `f32`) | 22,494 | +36 | 152 B | 15.2 KB |
+| 92 B (+20 B, a full glass parameter set) | 22,694 | +236 | 168 B | 16.4 KB |
+
+Frame time at 10 000 nodes was unaffected in either direction — four
+runs each, min-of-150, distributions fully overlapping (rebuild
+5,202–5,442 µs baseline against 5,169–5,460 µs at 76 B). The cost of a
+per-node field on this profile is RAM per node, not flash and not
+frame time.
 
 ### Target sizes, asserted rather than remembered
 

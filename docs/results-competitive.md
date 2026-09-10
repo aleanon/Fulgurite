@@ -234,7 +234,7 @@ a multi-package selection, which is the trap this repository's own
 justfile documents, and it hid the number until each was built alone.
 
 And the number that has no column here, because no other framework has
-one: the same core, `no_std` with no allocator, links a **20 524-byte
+one: the same core, `no_std` with no allocator, links a **22 458-byte
 `.text`** firmware for `thumbv7em-none-eabihf`
 (`docs/results-embedded.md`).
 
@@ -246,7 +246,7 @@ one: the same core, `no_std` with no allocator, links a **20 524-byte
 | `--no-default-features` on the windowing crate | −156 KB binary, −0.3 MB RSS |
 | `observe` (the dev surface) | **+64 µs a frame** at 3000 nodes: `+paint` 33.8 → 97.6 µs |
 | `Rebuild` retention | **not a configuration measurement** — see below |
-| `no_std`, no allocator | not on this table: it has no window. 20 524 B of `.text` (`docs/results-embedded.md`) |
+| `no_std`, no allocator | not on this table: it has no window. 22 458 B of `.text` at 2026-09-10 (`docs/results-embedded.md`) |
 
 **Why the `Rebuild` row cannot say what it used to.** It quoted 215.2 µs
 against 71.8 µs and called damage 3.0×. Both numbers came from the

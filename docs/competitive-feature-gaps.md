@@ -254,7 +254,8 @@ reader should treat as a backlog.
 
 **And the two things that run the other way**, since a gap list read
 alone is misleading: no framework here has a **no-allocator profile**
-(`docs/results-embedded.md`: 20 524 bytes of `.text`, zero `.bss`), and
+(`docs/results-embedded.md`: 22 458 bytes of `.text` at 2026-09-10,
+zero `.bss`), and
 none has **source provenance on every node** exposed through an agent
 protocol. Both are consequences of the static tree, and both are why
 several rows above are hard rather than merely unwritten.

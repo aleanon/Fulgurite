@@ -149,7 +149,7 @@ Symmetrically, and none of it shows up in a frame time:
 
 - **`no_std` at two tiers, and no allocator required.** `vello_cpu` has
   a `libm` path and can build without `std`, but a `RenderContext` is
-  built out of `Vec`s. Our core links 20 524 bytes of `.text` for
+  built out of `Vec`s. Our core links 22 458 bytes of `.text` for
   `thumbv7em-none-eabihf` (`docs/results-embedded.md`).
 - **Damage.** `render_within` repaints a rect and leaves the rest of the
   frame standing — 13 µs against 303 for a full redraw on the tally
