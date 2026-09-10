@@ -1,9 +1,10 @@
 # M20 — the book
 
 > **Status: planned 2026-09-10. Scaffolding landed the same day
-> (`3d26e32`): `book/`, three gates, and four chapters written.
-> Unsequenced — it blocks nothing and nothing blocks it, so it is
-> written between milestones rather than instead of one.**
+> (`3d26e32`): `book/`, three gates, and four chapters written. T20.0
+> and T20.1 landed 2026-09-10. Unsequenced — it blocks nothing and
+> nothing blocks it, so it is written between milestones rather than
+> instead of one.**
 
 *Each chapter is one commit. Task ids go in commit subjects. The rules
 the scaffolding established are in `AGENT.md`; the reasoning for the
@@ -67,7 +68,7 @@ The four surfaces, the cites-don't-restate rule, and two paragraphs of
 | # | chapter | teaches | code from |
 |---|---|---|---|
 | 1 | Your first tree ✅ | tree, state, `#[bind]`, handlers, a stylesheet | `counter` ×4 |
-| 2 | State, bindings and handlers | `#[tree]`; `#[bind]` with a format string, with extra arguments, and with `with =` for a projection; `#[app(after_update)]`; why a handler is a bare `fn` and not a message | `counter-window/app.rs` — `set_sign` is the projection example already |
+| 2 | State, bindings and handlers ✅ | `#[tree]`; `#[bind]` with a format string, with extra arguments, and with `with =` for a projection; `#[app(after_update)]`; why a handler is a bare `fn` and not a message | `crates/lumen-static/tests/derive_app.rs` — **not** an example. It is the only place all four `#[bind]` forms appear in one struct, and each one is asserted there, so the chapter's snippet is a test `just test` already runs. |
 | 3 | Layout | row and column, the three `Length` cases, padding, spacing, cross-axis `Align`, one axis per container; main-axis centring with two `Fill` spacers, since there is no `justify-content` | `counter-window/app.rs`, the `Page` struct |
 | 4 | Styling | `Rule`, `Selector`, `Patch`; `#[widget_id]` versus `#[widget_class]`; **the lowercase-leaf / PascalCase-container split in `kind_name`** | `counter:style` |
 
@@ -198,10 +199,18 @@ v0.1 is specified per chapter because it is what gets scheduled. Later
 phases are grouped, and each will be split into per-chapter commits when
 it is picked up.
 
+**Anchors land with the chapter that consumes them**, never ahead of it.
+T20.0 was originally written as an anchor harvest with no prose, and its
+own gate contradicted it: an anchor harvested before its chapter is an
+orphan by definition. `check_derive_attrs.sh` already requires every
+declared derive attribute to have a user; T20.0 is that relation for
+anchors, and it makes each chapter's commit carry its own includes —
+which is the doc-currency rule applied to example code.
+
 | id | task | done when |
 |---|---|---|
-| **T20.0** | Anchor harvest: the includes Part I needs, in `counter-window/app.rs` and `form.rs`. No prose. | `just static` green with the new anchors, and each one is *referenced* by the chapter that will include it (§8). |
-| **T20.1** | Ch 2 — state, bindings and handlers. | A snippet binds with a format string, with extra arguments and with `with =`, and `mdbook test` runs it. |
+| **T20.0** ✅ | The orphan-anchor gate: `scripts/check_book_includes.sh` gains the reverse direction, so an `// ANCHOR:` no chapter includes fails `just static`. | An anchor added to an example with no consumer names the file and the anchor; with it consumed, the gate reports both counts. |
+| **T20.1** ✅ | Ch 2 — state, bindings and handlers. | A snippet binds with a format string, with extra arguments and with `with =`, and `mdbook test` runs it. Done: five anchors in `derive_app.rs`, thirteen includes in the book, and **no retyped code** — the three `rust,ignore` blocks the first draft had were replaced by includes or by inline prose. |
 | **T20.2** | Ch 3 — layout. | The two-spacer centring trick is shown from `Page`, and the chapter states the `Fixed`-wider-than-parent trap by name. |
 | **T20.3** | Ch 4 — styling. | Both `kind_name` conventions appear in one working stylesheet. |
 | **T20.4** | Ch 8 — what a frame does. | A snippet demonstrates that a handler cannot leave a stale value on screen — by asserting it, not asserting it in prose. |
@@ -227,9 +236,11 @@ refused anything has not been tested.
 
 | gate | injection | proves |
 |---|---|---|
-| T20.0 anchors | rename an anchor the chapter includes | `scripts/check_book_includes.sh` names the chapter and the anchor — the end-anchored version, since the substring version did not |
+| T20.0 forward | rename an anchor the chapter includes | the gate names the chapter and the anchor — the end-anchored version, since the substring version did not |
+| T20.0 reverse | add an anchor to an example that no chapter includes | the gate names the file and the anchor: `// ANCHOR: orphan` in `examples/counter`, exit 1 |
 | any chapter's snippet | flip an asserted constant | `mdbook test` fails at *runtime*, so the snippet is executed rather than merely compiled |
 | T20.4 | remove the binding from the state struct in the snippet | the stale-value assertion fires; if it does not, the chapter is asserting nothing |
+| any chapter's links | link to a chapter not yet written | the gate names the file and the href — caught for real on ch 2's forward reference to `frame.md` |
 | T20.10 | cite a results doc that does not exist | `scripts/check_doc_paths.sh` names the chapter |
 | T20.13 | add an eighth attribute to `lib.rs` and not to the appendix | the divergence check fails |
 
@@ -253,6 +264,15 @@ every commit and not pre-push.
 assertion passes `mdbook test` by existing. A chapter teaching a
 behaviour asserts that behaviour, or it teaches nothing a reader can
 check.
+
+**A retyped snippet is an untested snippet, and it looks exactly like a
+tested one.** Chapter 2's first draft had three `rust,ignore` blocks
+showing a projection, an attribute and a handler that the anchors above
+them already contained. `ignore` compiles nothing, so all three were
+free to drift from the code they duplicated — and `AGENT.md`'s rule is
+that book code is *included, never retyped*. Where a fragment is too
+small to compile on its own, the answer is a finer anchor plus hidden
+setup lines, or inline prose. Not a fence that opts out.
 
 **A figure without a citation is a figure that will drift.** Stated once
 in `AGENT.md`, restated once here, and enforced by nothing — no gate can

@@ -1,0 +1,91 @@
+# The agent protocol
+
+This is the chapter that describes something other frameworks do not
+have, so it is worth stating the shape before the detail:
+
+> **The accessibility tree, the test harness and the agent surface are
+> the same object.**
+
+An agent needs a serialisable tree with roles, labels, geometry and
+state, plus the ability to synthesise events and observe what changed.
+That is precisely an accessibility tree. One implementation serves screen
+readers and agents both — and the accessibility work, which is required
+anyway, stops being a tax.
+
+## JSON-RPC over an already-laid-out tree
+
+The protocol is JSON-RPC 2.0. Methods divide into three groups:
+
+**Query** — `ui.getTree`, `ui.getLayout`, `ui.getAppliedStyles`,
+`ui.resolve`, `ui.probe`, `ui.probeRegion`, `ui.screenshot`,
+`ui.lastChange`, `ui.lastDamage`, `ui.lint`, `ui.explain`.
+
+**Synthesise** — `input.click`, `input.hover`, `input.key`,
+`input.type`, `input.fill`, `input.scroll`, `input.scrollIntoView`,
+`input.pointerDown`, `input.pointerUp`, `input.invokeAction`.
+
+**Observe** — `app.diagnostics`, `app.logs`, `app.perf`,
+`ui.waitSettled`.
+
+## Selectors
+
+Space-separated terms, all of which must match:
+
+| term | matches |
+|---|---|
+| `#save` | author id, from `#[widget_id("save")]` |
+| `label` | widget kind name |
+| `~text` | value contains "text" |
+| `@app.rs:42` | source provenance — file suffix, optional line |
+| `7` | table index |
+
+`@app.rs:42` is the one worth dwelling on. `NodeDesc` carries a `SrcLoc`
+in `observe` builds, so a report is not "a button has zero hit area" but
+a file and a line. It composes with hot reload, because a node is
+identified by an offset in a table rather than by a generated key — patch
+that line, swap the dylib, and the identity survives.
+
+## `ui.explain`
+
+The method that earns the protocol its keep. It answers the question the
+other selectors are usually asked in service of — *"I clicked it and
+nothing happened"* — by running **the real hit test**, not by describing
+the tree.
+
+That distinction is the whole value. A description of the tree tells you
+what you already believe; running the hit test tells you what the frame
+actually does, which is where the disagreement lives.
+
+## Why synthesised input replays as a test
+
+Every synthesised event enters the **same `InputQueue`** as OS input —
+see [Events, focus and keyboard navigation](./events.md). There is no
+second path, so an agent session and a test are the same kind of thing,
+and a recorded session replays by construction.
+
+`examples/counter` uses this on itself: it asks the agent where a widget
+is, clicks the centre of it, pumps, and asserts the count. Coordinates
+come from the laid-out tree rather than from guesses.
+
+## The trap that makes an agent test vacuous
+
+Read this before writing one. In M16/T16.7 an invalidation oracle drove
+an application by clicking through this protocol, compared two frames,
+and passed — while **every click had missed**. A `Fixed(220)` card in a
+300 px window had put the button at x = 256, outside its own parent, so
+the clicks landed on the root and the handler never ran. The test was
+comparing two frames in which nothing had happened.
+
+**Assert that the action landed.** A changed count, a `handled` flag, a
+hit on the node you meant — not only that two results match. The same
+advice appears in [Layout](./layout.md) from the layout side; this is the
+side it usually bites from.
+
+## What is gated, and what that costs
+
+The whole development surface is behind `observe`, which compiles to
+nothing in release. The const tables exist either way — only *exposure*
+is gated — which is what makes the release cost genuinely zero rather
+than small.
+
+`docs/results-agent-cost.md` measures what it costs when it is on.
