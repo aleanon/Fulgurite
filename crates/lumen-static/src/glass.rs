@@ -31,11 +31,11 @@
 //! the background, and a fill underneath it would be the thing the blur
 //! reads — an opaque backdrop blurs to itself, so the panel would look
 //! like a flat rect and the feature would appear broken. The tint is
-//! [`Glass::tint`]; `tests/glass_widget.rs` pins that the background is
+//! [`Material::tint`]; `tests/glass_widget.rs` pins that the background is
 //! ignored rather than silently composited.
 
 use crate::desc::{Constraints, NodeDesc, NodeState, Point, Size, NO_PARENT};
-use crate::display::{Color, Material, Painter};
+use crate::display::{Material, Painter};
 use crate::hit::Hit;
 use crate::ops::{inner_limits, rect_of, resolve_self};
 use crate::style::{Length, Style};
@@ -44,25 +44,15 @@ use crate::LayoutCx;
 
 /// Content on a panel made of glass.
 ///
-/// The material is [`Material`]; the fields below are the same six,
-/// flattened so an application writes `bar.refraction = 9.0` rather than
-/// reaching through a struct. `paint` assembles them.
+/// The material is one field, not a flattened copy of [`Material`]'s.
+/// It was flattened until M22/T22.0, when the count reached eight on its
+/// way to ten and the round trip was written out twice — and when
+/// T22.4's press deformation made a public `material()` accessor a lie,
+/// because the material the panel actually paints with depends on state
+/// the accessor cannot see.
 pub struct Glass<W: Widget> {
     pub content: W,
-    /// Gaussian standard deviation, in logical px. 0 is a clear lens.
-    pub blur: f32,
-    /// Multiplied over the backdrop; `tint.3` is its strength.
-    pub tint: Color,
-    /// Width of the bevelled edge, in logical px — where the surface
-    /// curves, and the only band refraction and specular touch.
-    pub rim: f32,
-    /// How far the bevel displaces what is seen through it, in px.
-    pub refraction: f32,
-    /// Strength of the specular highlight, 0..=1.
-    pub specular: f32,
-    /// Where the light is, radians clockwise from +x in y-down screen
-    /// space.
-    pub light: f32,
+    pub material: Material,
 }
 
 impl<W: Widget + Default> Default for Glass<W> {
@@ -87,40 +77,18 @@ impl<W: Widget> Glass<W> {
     }
 
     /// A panel with an explicit material.
-    pub fn with(content: W, m: Material) -> Self {
-        Glass {
-            content,
-            blur: m.blur,
-            tint: m.tint,
-            rim: m.rim,
-            refraction: m.refraction,
-            specular: m.specular,
-            light: m.light,
-        }
+    pub fn with(content: W, material: Material) -> Self {
+        Glass { content, material }
     }
 
-    /// The six fields as the command carries them.
-    pub fn material(&self) -> Material {
-        Material {
-            blur: self.blur,
-            tint: self.tint,
-            rim: self.rim,
-            refraction: self.refraction,
-            specular: self.specular,
-            light: self.light,
-        }
-    }
-
-    /// Set the blur, in logical px.
-    pub fn blur(mut self, px: f32) -> Self {
-        self.blur = px;
-        self
-    }
-
-    /// Set the tint.
-    pub fn tint(mut self, tint: Color) -> Self {
-        self.tint = tint;
-        self
+    /// The material this panel paints with **at node `i`**.
+    ///
+    /// Not a plain accessor: T22.4 modulates the bevel from the pressed
+    /// state, which lives in the node array rather than on the widget,
+    /// so the material the renderer receives is a function of both.
+    pub fn material_at(&self, st: &[NodeState], i: usize) -> Material {
+        let _ = (st, i);
+        self.material
     }
 }
 
@@ -211,7 +179,7 @@ impl<W: Widget> Node for Glass<W> {
         // `st[i].bg`: see the module note — a fill under the glass is
         // what the blur would read, and an opaque backdrop blurs to
         // itself.
-        out.glass(r, st[i].radius, self.material());
+        out.glass(r, st[i].radius, self.material_at(st, i));
         self.content.paint(st, i + Self::AT, out);
     }
 

@@ -327,11 +327,11 @@ fn build(sigma: f32) -> Demo {
     app.ui.bar.content.more.label = "+".into();
     app.ui.bar.content.less.on_click = |d: &mut Demo, _: &EventCtx| {
         d.sigma = (d.sigma - 4).max(0);
-        d.ui.bar.blur = d.sigma as f32;
+        d.ui.bar.material.blur = d.sigma as f32;
     };
     app.ui.bar.content.more.on_click = |d: &mut Demo, _: &EventCtx| {
         d.sigma = (d.sigma + 4).min(40);
-        d.ui.bar.blur = d.sigma as f32;
+        d.ui.bar.material.blur = d.sigma as f32;
     };
 
     // The material.
@@ -343,8 +343,8 @@ fn build(sigma: f32) -> Demo {
     // visible *and* keeps the bar's own text at contrast — which is the
     // trade every real glass surface makes.
     // Frosted: a blur and a tint, no bevel.
-    app.ui.bar.blur = sigma;
-    app.ui.bar.tint = TINT;
+    app.ui.bar.material.blur = sigma;
+    app.ui.bar.material.tint = TINT;
 
     // Liquid: **barely any blur**. The glassiness is the bevel -- an
     // edge that displaces what is behind it and catches the light --
@@ -475,6 +475,6 @@ mod tests {
         host.pump();
         println!("sigma {before} -> {}", host.app.sigma);
         assert!(host.app.sigma > before, "the + button did nothing");
-        assert_eq!(host.app.ui.bar.blur, host.app.sigma as f32, "and the panel followed it");
+        assert_eq!(host.app.ui.bar.material.blur, host.app.sigma as f32, "and the panel followed it");
     }
 }

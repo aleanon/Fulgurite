@@ -7,6 +7,59 @@ striped 1920×1080 backdrop, min of 20. M19/T19.3.
 The figure is the *difference* between rendering the scene with the
 panel and without it, so it is the panel's own cost and not the frame's.
 
+## 0. The command's byte budget
+
+Measured 2026-09-11. Stated here because `docs/plan-liquid.md` §1 cites
+it and a plan is not where numbers live.
+
+| | bytes |
+|---|---:|
+| `Material` | 28 |
+| `Cmd::Glass` payload (`rect` 16 + `radius` 4 + `Material`) | 48 |
+| `Gradient`'s payload — **what sets `Cmd`'s size** | 56 |
+| `Cmd` | 60 |
+
+**Every strength is a `u8`, and that was the difference between fitting
+and not.** M22 adds four unitless 0..=1 fractions; as `f32` they take
+`Cmd` from 60 to 64, which is four bytes on every command in every
+list — about 8 KB on a 2 000-command frame. As `u8` all four fit with
+room left over. The same trade `Style::focus_ring` already made and
+recorded.
+
+`Material` is 28 rather than 26 because of two bytes of alignment
+padding, which is why `tests/glass_cmd.rs` enforces the field list with
+an exhaustive destructure rather than an arithmetic check — a new field
+stops that test compiling.
+
+## 0b. T22.0 — Fresnel, the inner shadow, saturation
+
+**Measured 2026-09-11**, same machine and method as §2.
+
+| panel | bevel alone | full material | added |
+|---|---:|---:|---:|
+| 400×200 | 5.47 ms | 5.94 | **+9%** |
+| 800×300 | 14.39 | 16.29 | **+13%** |
+
+"Bevel alone" is M21's material — no inner shadow, neutral saturation.
+Fresnel cannot be separated from it, because it is derived from
+`specular` rather than given its own field; that is what "zero bytes"
+buys and what it costs.
+
+The cost grows with the panel because **saturation is the one effect
+here that is not rim-band only** — it applies to every pixel the panel
+covers, while Fresnel and the shadow fall out with the bevel parameter.
+
+### Fresnel is a two-to-three pixel effect, and that is the point
+
+Schlick's fifth power is a *grazing*-angle term. Measured on a 13 px
+rim: 2.5 px inside the boundary the bevel normal's z component is 0.59
+and the term is 0.011; at the boundary z falls to 0.28 and it is 0.18.
+So the reflection lives in the outermost two or three pixels — which is
+exactly why it reads as an *edge* rather than as a tint.
+
+The first version of its test sampled the whole rim band and measured a
+lift of 0.3 against a threshold of 12. The band matters.
+
 ## 1. Cost against σ — flat, and that is the downsample working
 
 | requested σ | k | box width | delivered σ | error | panel |

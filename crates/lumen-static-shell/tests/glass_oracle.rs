@@ -98,10 +98,10 @@ fn app() -> Moving {
     m.ui.tail.pad.w = 1.0;
     m.ui.tail.pad.h = 18.0;
     m.ui.tail.badge.set("static badge");
-    m.ui.bar.blur = 6.0;
+    m.ui.bar.material.blur = 6.0;
     // Translucent, deliberately: an opaque tint would hide the blur and
     // the backdrop, and every injection below would still pass.
-    m.ui.bar.tint = Color(255, 255, 255, 40);
+    m.ui.bar.material.tint = Color(255, 255, 255, 40);
     m
 }
 

@@ -64,40 +64,59 @@ fn no_two_command_kinds_fold_alike() {
     }
 }
 
-/// `blur` is part of the identity: it sizes the region the command
-/// reads, so a change to it must be visible to retention.
+/// **Every `Material` field is part of the command's identity**, and
+/// the test is table-driven so a new field cannot be added without one.
+///
+/// Omitting a field from the recorder's hash is **silent staleness**,
+/// not a wrong colour: the hash is unchanged, damage reports nothing,
+/// the shell skips the raster, and the panel keeps the previous frame's
+/// pixels indefinitely. The two hand-written field lists live in
+/// different crates — the same shape that let `Shadow` and `Image` both
+/// hash as tag 6 for a year.
+///
+/// The exhaustive destructure below is what makes it table-driven
+/// rather than hand-enumerated: **adding a field to `Material` stops
+/// this test compiling**, which is a better signal than any count —
+/// the first version compared the mutator count against
+/// `size_of::<Material>()` and tripped over two bytes of alignment
+/// padding, which is arithmetic about the wrong thing.
 #[test]
-fn the_hash_covers_blur_and_tint() {
-    let base = Cmd::Glass {
-        rect: [0.0; 4],
-        radius: 2.0,
-        material: Material { blur: 4.0, tint: Color(1, 1, 1, 40), ..Material::FROSTED },
-    };
+fn every_material_field_is_in_the_hash() {
+    let base = Cmd::Glass { rect: [0.0; 4], radius: 2.0, material: Material::LIQUID };
     let hash = |c: &Cmd| {
         let mut h = 0u64;
         c.hash_into(&mut h);
         h
     };
-    let mut wider = base;
-    if let Cmd::Glass { material, .. } = &mut wider {
-        material.blur = 8.0;
+    type Mut = (&'static str, fn(&mut Material));
+    let mutators: &[Mut] = &[
+        ("blur", |m| m.blur += 1.0),
+        ("tint", |m| m.tint = Color(m.tint.0, m.tint.1, m.tint.2, m.tint.3.wrapping_add(7))),
+        ("rim", |m| m.rim += 1.0),
+        ("refraction", |m| m.refraction += 1.0),
+        ("specular", |m| m.specular += 0.1),
+        ("light", |m| m.light += 0.3),
+        ("shadow", |m| m.shadow = m.shadow.wrapping_add(9)),
+        ("saturation", |m| m.saturation = m.saturation.wrapping_add(9)),
+    ];
+
+    // No `..`: a new field is a compile error here, and the message
+    // points at the test that has to gain a mutator.
+    let Material { blur, tint, rim, refraction, specular, light, shadow, saturation } =
+        Material::LIQUID;
+    let _ = (blur, tint, rim, refraction, specular, light, shadow, saturation);
+    assert_eq!(mutators.len(), 8, "a field was added to Material without a mutator here");
+
+    for (name, f) in mutators {
+        let mut changed = base;
+        if let Cmd::Glass { material, .. } = &mut changed {
+            f(material);
+        }
+        assert_ne!(hash(&base), hash(&changed), "changing `{name}` did not change the hash");
     }
-    let mut tinted = base;
-    if let Cmd::Glass { material, .. } = &mut tinted {
-        material.tint = Color(1, 1, 1, 80);
-    }
-    // `refraction` widens the source region too, so it is as
-    // damage-relevant as `blur` and must be in the identity.
-    let mut bent = base;
-    if let Cmd::Glass { material, .. } = &mut bent {
-        material.refraction = 6.0;
-    }
-    assert_ne!(hash(&base), hash(&wider), "a widened blur must change the hash");
-    assert_ne!(hash(&base), hash(&tinted), "a changed tint must change the hash");
-    assert_ne!(hash(&base), hash(&bent), "a widened refraction must change the hash");
 }
 
-/// Alpha 0 is a real value — a pure frosted panel — and must survive the
+/// Alpha 0 is a real value/// Alpha 0 is a real value — a pure frosted panel — and must survive the
 /// collector, which drops a transparent `rounded_rect`.
 #[test]
 fn a_fully_transparent_tint_is_not_dropped() {

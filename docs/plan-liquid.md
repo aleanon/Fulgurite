@@ -111,7 +111,7 @@ when `u > 0.62`**, independent of light angle — the outer 38% of the
 rim, 4.9 px of a 13 px bevel. "Darken the negative half" is a dark
 hairline, not thickness.
 
-**Use a diffuse term riding `u²`, the same parameter the refraction
+**Use a diffuse term riding the squared bevel parameter, the same one the refraction
 uses**, so the shading covers the whole unlit rim and falls to zero in
 the interior. It needs the two horizontal terms the existing dot product
 already computes.

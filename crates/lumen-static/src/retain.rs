@@ -859,6 +859,12 @@ impl<R: Retention> Painter for Recording<'_, R> {
             h = fold(h, v.to_bits() as u64);
         }
         h = h_color(h, material.tint);
+        // The `u8` strengths. **This list is the one that decides
+        // whether pixels are stale** -- `Cmd::hash_into`'s parallel list
+        // only affects consumers of that function, while an omission
+        // here means the frame reports no damage and the shell skips
+        // the raster entirely.
+        h = fold(h, ((material.shadow as u64) << 8) | material.saturation as u64);
         self.ret.observe(h, rect);
         self.ret.observe_dep(crate::display::glass_source(rect, &material));
         self.inner.glass(rect, radius, material);

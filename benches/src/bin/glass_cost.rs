@@ -94,6 +94,50 @@ fn main() {
     // What the bevel costs: the same panel, frosted against liquid.
     // Liquid is nearly all composite -- its blur is 3 px -- so this is
     // the price of refraction and specular, not of a different blur.
+    // M22/T22.0: what Fresnel, the inner shadow and saturation add on
+    // top of the bevel. All three are rim-band only except saturation,
+    // which is the whole panel -- so the two sizes below separate them.
+    println!("\n  T22.0: the bevel alone against the full material");
+    println!("{:>14} {:>12} {:>12} {:>10}", "panel", "bevel ms", "full ms", "added");
+    for (pw, ph) in [(400.0f32, 200.0f32), (800.0, 300.0)] {
+        let area = [0.0, 0.0, w as f32, h as f32];
+        let mut timed = |m: Material| {
+            let mut list = DisplayList::new();
+            backdrop(w, h, &mut list);
+            list.glass([40.0, 40.0, 40.0 + pw, 40.0 + ph], 26.0, m);
+            let mut base = DisplayList::new();
+            backdrop(w, h, &mut base);
+            best_of(3, || {
+                canvas.clear(Color(20, 24, 34, 255));
+                canvas.render_within(&list, area);
+            });
+            let with = best_of(20, || {
+                canvas.clear(Color(20, 24, 34, 255));
+                canvas.render_within(&list, area);
+            });
+            let without = best_of(20, || {
+                canvas.clear(Color(20, 24, 34, 255));
+                canvas.render_within(&base, area);
+            });
+            with - without
+        };
+        // M21's material: no shadow, neutral saturation, and Fresnel
+        // rides `specular` so it cannot be switched off separately --
+        // which is what "zero bytes" buys and costs.
+        let m21 = Material {
+            shadow: 0,
+            saturation: Material::NEUTRAL_SATURATION,
+            ..Material::LIQUID
+        };
+        let bevel = timed(m21);
+        let full = timed(Material::LIQUID);
+        println!(
+            "{:>14} {bevel:>12.2} {full:>12.2} {:>9.0}%",
+            format!("{pw:.0}x{ph:.0}"),
+            (full - bevel) / bevel * 100.0
+        );
+    }
+
     println!("\n  the bevel: frosted against liquid, same panel");
     println!("{:>14} {:>12} {:>12} {:>10}", "panel", "frosted ms", "liquid ms", "bevel");
     for (pw, ph) in [(400.0f32, 200.0f32), (800.0, 300.0)] {

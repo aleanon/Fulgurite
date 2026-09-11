@@ -189,10 +189,39 @@ pub struct Material {
     /// it. 0 is flat glass.
     pub refraction: f32,
     /// Strength of the specular highlight, 0..=1.
+    ///
+    /// Also the **Fresnel** strength, derived rather than given its own
+    /// field: reflectance rising at grazing incidence and a highlight on
+    /// the rim are the same property of the same edge, and a panel with
+    /// no specular should have neither. Costs zero bytes — M22/T22.0.
     pub specular: f32,
     /// Direction the light comes from, radians clockwise from +x in the
     /// **y-down** screen space both backends work in.
+    ///
+    /// The *azimuth* only. The elevation is a constant in the renderer,
+    /// which is why animating this rotates a highlight around a panel
+    /// and cannot sweep it across the rim — the motion a tilting device
+    /// actually produces. `docs/plan-liquid.md` §13.
     pub light: f32,
+    /// Inner-shadow strength, `0` off to `255` full — M22/T22.0.
+    ///
+    /// The rim facing away from the light, darkened. Lit on one side and
+    /// shaded on the other is what reads as *thickness* rather than as a
+    /// bright outline.
+    ///
+    /// **A `u8`, like every strength here, and that was measured.** As
+    /// `f32` the four this milestone adds take `Cmd` from 60 bytes to
+    /// 64; as `u8` they fit with room to spare
+    /// (`docs/results-glass.md` §0). The same trade `Style::focus_ring`
+    /// already made.
+    pub shadow: u8,
+    /// Chroma multiplier, **`128` is neutral** — M22/T22.0.
+    ///
+    /// A blur that desaturates looks like fog; colours read *through*
+    /// real glass because the material does not eat them. Encoded
+    /// against 128 rather than 255 so the useful range (roughly 1.0 to
+    /// 1.4) has resolution and 1.0 is exactly representable.
+    pub saturation: u8,
 }
 
 impl Default for Material {
@@ -210,7 +239,17 @@ impl Material {
         refraction: 0.0,
         specular: 0.0,
         light: -0.9,
+        shadow: 0,
+        saturation: Material::NEUTRAL_SATURATION,
     };
+
+    /// The `saturation` value that changes nothing.
+    ///
+    /// Named because a *test* needs it: nothing else asserts that a new
+    /// field is inert at its default, and a non-neutral one silently
+    /// re-baselines every existing glass test
+    /// (`docs/plan-liquid.md` §11).
+    pub const NEUTRAL_SATURATION: u8 = 128;
 
     /// A see-through panel whose edge bends and catches the light.
     ///
@@ -225,6 +264,8 @@ impl Material {
         refraction: 11.0,
         specular: 0.9,
         light: -0.9,
+        shadow: 85,
+        saturation: 148,
     };
 }
 
@@ -402,6 +443,7 @@ impl Cmd {
                     f(h, v.to_bits() as u64);
                 }
                 f(h, u32::from_be_bytes([m.tint.0, m.tint.1, m.tint.2, m.tint.3]) as u64);
+                f(h, ((m.shadow as u64) << 8) | m.saturation as u64);
             }
             Cmd::PushClip { rect } => {
                 f(h, 3);

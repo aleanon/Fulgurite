@@ -286,12 +286,18 @@ impl Surface<'_> {
         let (left, right) = ((shape[0] + rr).ceil() as i64, (shape[2] - rr).floor() as i64);
 
         let rim = m.rim.max(0.0);
-        let bevelled = rim > 0.0 && (m.refraction > 0.0 || m.specular > 0.0);
-        // The light, in 3D. `lz` tilts it out of the screen so a flat
+        let tv = tint.3 as f32 / 255.0;
+        let sat = m.saturation as f32 / lumen_static::display::Material::NEUTRAL_SATURATION as f32;
+        // **`shadow` is in the predicate**, and leaving it out would
+        // have been a panel compared with itself: a material with only
+        // an inner shadow would get no bevel, no normal and no dot
+        // product, and every injection aimed at the shadow would pass
+        // (`docs/plan-liquid.md` §2).
+        let bevelled = rim > 0.0 && (m.refraction > 0.0 || m.specular > 0.0 || m.shadow > 0);
+        // The light, in 3D. Its elevation tilts it out of the screen so a flat
         // interior is lit at all; without it only the rim would be, and
         // the panel would read as an outline rather than a surface.
-        let (lz, lxy) = (0.62f32, (1.0f32 - 0.62 * 0.62).sqrt());
-        let light = [m.light.cos() * lxy, m.light.sin() * lxy, lz];
+        let light = [m.light.cos() * LIGHT_XY, m.light.sin() * LIGHT_XY, LIGHT_Z];
 
         for y in y0..y1 {
             let corner_row = !(y >= top && y < bottom) && rr > 0.5;
@@ -312,6 +318,11 @@ impl Surface<'_> {
                 let (px, pyf) = (x as f32 + 0.5, y as f32 + 0.5);
                 let mut sample_at = (x, y);
                 let mut spec = 0.0f32;
+                // Extra tint strength from grazing incidence, and the
+                // unlit rim's darkening. Both are rim-band only: `u` is
+                // 0 in the interior and both fall out with it.
+                let mut fres = 0.0f32;
+                let mut dark = 0.0f32;
                 if bevelled {
                     // Signed distance and the outward 2D normal of the
                     // rounded rect, everywhere -- not just in corners.
@@ -350,21 +361,61 @@ impl Surface<'_> {
                             let k = m.refraction * u * u;
                             sample_at = ((px + nx * k) as i64, (pyf + ny * k) as i64);
                         }
+                        // **Fresnel — M22/T22.0, and the reason a thick
+                        // edge reads as a bright band rather than a
+                        // tinted one.** Real glass reflects far more at
+                        // grazing incidence, and with the viewer on +z
+                        // the cosine of the incidence angle *is* `nz`,
+                        // already computed. Schlick's fifth power.
+                        //
+                        // Derived from `specular` rather than given a
+                        // field: a bright rim and a highlight are the
+                        // same property of the same edge, and a panel
+                        // with no specular should have neither.
                         if m.specular > 0.0 {
-                            let dot = nx * u * light[0] + ny * u * light[1] + nz * light[2];
+                            let f = 1.0 - nz;
+                            let f2 = f * f;
+                            fres = f2 * f2 * f * m.specular;
+
+                            let along = nx * u * light[0] + ny * u * light[1];
+                            let dot = along + nz * light[2];
                             if dot > 0.0 {
                                 let d2 = dot * dot;
                                 let d8 = d2 * d2 * d2 * d2;
                                 spec = d8 * d8 * d8 * m.specular;
                             }
                         }
+                        // **The inner shadow rides u-squared, not the
+                        // specular's negative half.** That half exists
+                        // only where `u` exceeds the light's elevation
+                        // — the outer 38% of the rim — so darkening it
+                        // gives a hairline. A diffuse term on the
+                        // horizontal components covers the whole unlit
+                        // side and falls to zero in the interior, and it
+                        // reuses two of the three products above.
+                        if m.shadow > 0 {
+                            let facing = -(nx * light[0] + ny * light[1]) / LIGHT_XY;
+                            if facing > 0.0 {
+                                dark = (m.shadow as f32 / 255.0) * u * u * facing;
+                            }
+                        }
                     }
                 }
 
-                let back = sample(sample_at.0, sample_at.1);
-                let t = tint.3 as f32 / 255.0;
+                let back = saturate(sample(sample_at.0, sample_at.1), sat);
+                // Fresnel raises the tint's strength toward 1 at the
+                // rim; `t` is unchanged in the interior where `fres` is
+                // 0.
+                let t = tv + (1.0 - tv) * fres;
                 let mix = |c: f32, ti: u8| c + (ti as f32 - c) * t;
-                let lit = |c: f32| (c + spec * 255.0).min(255.0);
+                // **Shadow multiplies, specular adds.** Subtracting
+                // clips each channel at a different point and rotates
+                // hue -- (30, 60, 220) less 200 is (0, 0, 20) and the
+                // ratios are gone. A multiply cannot go below zero and
+                // preserves them, which also stops the shadow undoing
+                // the saturation boost in the same pixel.
+                let shade = 1.0 - dark;
+                let lit = |c: f32| (c * shade + spec * 255.0).clamp(0.0, 255.0);
                 let c = Color(
                     lit(mix(back[0], tint.0)) as u8,
                     lit(mix(back[1], tint.1)) as u8,
@@ -1216,6 +1267,50 @@ fn strip_rows_for(rows: usize, workers: usize) -> usize {
         return n.clamp(1, rows);
     }
     rows.div_ceil(workers * 4).clamp(16, rows.max(1))
+}
+
+/// The light's elevation, as the z component of a unit direction.
+///
+/// A constant rather than a field: only the azimuth is authorable, which
+/// is why animating `Material::light` rotates a highlight around a panel
+/// and cannot sweep it across the rim (`docs/plan-liquid.md` §13).
+const LIGHT_Z: f32 = 0.62;
+
+/// …and the horizontal magnitude that goes with it.
+const LIGHT_XY: f32 = 0.784_599_3;
+
+/// Boost a colour's chroma about its luma — M22/T22.0.
+///
+/// **Luma, not luminance.** The renderer blurs in straight, gamma-encoded
+/// sRGB and never linearises; Rec.709's coefficients are *linear-light*
+/// and applied to gamma bytes they over-darken blue and over-brighten
+/// green. 0.299/0.587/0.114 is the convention that matches the encoding
+/// actually in the buffer.
+///
+/// **Clamps the scale, not the channels.** `lum + (c − lum)·s` leaves
+/// gamut at both ends, and clipping each channel where it happens to
+/// land rotates hue: (255, 120, 20) at 1.4 becomes (255, 108, 0) and the
+/// red-to-green ratio moves. Reducing `s` until every channel fits
+/// desaturates gracefully instead. The search runs only when a channel
+/// would actually leave gamut, because unlike everything else in T22.0
+/// this applies to the whole panel and not the rim band.
+fn saturate(c: [f32; 3], s: f32) -> [f32; 3] {
+    if s == 1.0 {
+        return c;
+    }
+    let lum = 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2];
+    let mut k = s;
+    for v in c {
+        let d = v - lum;
+        if d > 0.0 {
+            if lum + d * k > 255.0 {
+                k = k.min((255.0 - lum) / d);
+            }
+        } else if d < 0.0 && lum + d * k < 0.0 {
+            k = k.min(-lum / d);
+        }
+    }
+    [lum + (c[0] - lum) * k, lum + (c[1] - lum) * k, lum + (c[2] - lum) * k]
 }
 
 /// `-1` or `+1`, and never `0` — a normal needs a direction even
