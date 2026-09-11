@@ -244,15 +244,32 @@ impl Surface<'_> {
 
         // Bilinear sample of the downsampled, blurred backdrop, in
         // surface coordinates.
-        let sample = |x: i64, y: i64| -> [f32; 3] {
+        // **Float coordinates — M22/T22.1.**
+        //
+        // This took `i64` until then, and the refracted read truncated
+        // to a whole surface pixel *before* getting here. Combined with
+        // the downsample factor being 1 at the liquid blur — where `fx`
+        // below is then already an integer and the four taps collapse
+        // to one — the refraction was nearest-neighbour, and its rim
+        // carried a staircase.
+        //
+        // It also made a colour fringe impossible: a sub-pixel
+        // difference between three channels cannot survive truncation
+        // to the same pixel, which is what T22.2 needs.
+        let sample = |x: f32, y: f32| -> [f32; 3] {
             // Clamped to the capture: refraction displaces the read, and
             // a panel at the surface edge can push it past what was
             // captured. Clamp-to-edge is the same rule the box passes
             // use at their own boundary.
-            let x = x.clamp(sx0, sx1 - 1);
-            let y = y.clamp(sy0, sy1 - 1);
-            let fx = ((x - sx0) as f32 + 0.5) / k as f32 - 0.5;
-            let fy = ((y - sy0) as f32 + 0.5) / k as f32 - 0.5;
+            // `x` and `y` are pixel **centres**, not indices — the
+            // caller passes `i + 0.5`. The mapping therefore carries no
+            // `+ 0.5` of its own; adding one shifted every read half a
+            // pixel and slid the blur's centre of mass from 59.5 to
+            // 59.0, which `glass_blur.rs` caught immediately.
+            let x = x.clamp(sx0 as f32 + 0.5, sx1 as f32 - 0.5);
+            let y = y.clamp(sy0 as f32 + 0.5, sy1 as f32 - 0.5);
+            let fx = (x - sx0 as f32) / k as f32 - 0.5;
+            let fy = (y - sy0 as f32) / k as f32 - 0.5;
             let x0 = fx.floor();
             let y0f = fy.floor();
             let tx = fx - x0;
@@ -316,7 +333,7 @@ impl Surface<'_> {
                 }
 
                 let (px, pyf) = (x as f32 + 0.5, y as f32 + 0.5);
-                let mut sample_at = (x, y);
+                let mut sample_at = (px, pyf);
                 let mut spec = 0.0f32;
                 // Extra tint strength from grazing incidence, and the
                 // unlit rim's darkening. Both are rim-band only: `u` is
@@ -359,7 +376,7 @@ impl Surface<'_> {
                         let nz = (1.0 - u * u).max(0.0).sqrt();
                         if m.refraction > 0.0 {
                             let k = m.refraction * u * u;
-                            sample_at = ((px + nx * k) as i64, (pyf + ny * k) as i64);
+                            sample_at = (px + nx * k, pyf + ny * k);
                         }
                         // **Fresnel — M22/T22.0, and the reason a thick
                         // edge reads as a bright band rather than a

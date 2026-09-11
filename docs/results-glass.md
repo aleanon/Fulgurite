@@ -60,6 +60,36 @@ exactly why it reads as an *edge* rather than as a tint.
 The first version of its test sampled the whole rim band and measured a
 lift of 0.3 against a threshold of 12. The band matters.
 
+## 0c. T22.1 — the refracted read is sub-pixel
+
+**Measured 2026-09-12.** Until M22/T22.1 the refracted coordinate was
+truncated to a whole surface pixel before sampling, and the downsample
+factor is 1 at the liquid blur — where the bilinear mapping's four taps
+already collapse to one. So the refraction was nearest-neighbour and its
+rim carried a staircase.
+
+Against the example's dock panel, sub-pixel versus the integer read:
+
+| | |
+|---|---:|
+| pixels that differ | **766** of 285 200 |
+| worst channel delta | **9** |
+
+Small, and stated because it is inherited: every later task and the
+future GPU parity baseline sit on top of it.
+
+It is also a **prerequisite for T22.2**. A sub-pixel difference between
+three channels cannot survive truncation to the same pixel, so dispersion
+on an integer read is not a weak fringe — it is a dithered speckle.
+Measured: a 0.35 px shift of the panel moves 240 of 800 rim pixels with
+the float read and 80 with the integer one.
+
+One trap it set on the way in. The sampler's argument changed from a
+pixel *index* to a pixel *centre*, and the mapping kept its own `+ 0.5`
+— shifting every read half a pixel and sliding the blur's centre of mass
+from 59.5 to 59.0. `tests/glass_blur.rs`'s odd/even test caught it
+immediately, which is the value of having written it.
+
 ## 1. Cost against σ — flat, and that is the downsample working
 
 | requested σ | k | box width | delivered σ | error | panel |

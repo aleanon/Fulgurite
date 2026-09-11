@@ -301,3 +301,51 @@ fn changing_a_strength_reports_damage() {
         host.pump();
     }
 }
+
+/// **M22/T22.1: the refracted read is sub-pixel.**
+///
+/// It truncated to a whole surface pixel until then, and the downsample
+/// factor is 1 at the liquid blur — so the four bilinear taps collapsed
+/// to one and the refraction was nearest-neighbour, with a staircase on
+/// its rim.
+///
+/// The property a test can hold onto: a **sub-pixel** change in the
+/// panel's position must produce a change in the refracted rim. Under
+/// the old integer read, moving the panel by less than a pixel moved
+/// nothing at all — which is the definition of the staircase.
+#[test]
+fn a_sub_pixel_move_changes_the_refracted_rim() {
+    let m = Material { shadow: 0, specular: 0.0, tint: Color(0, 0, 0, 0), ..liquid() };
+    let scene = |dx: f32| {
+        let mut c = Canvas::new(W, H);
+        c.clear(Color(0x10, 0x10, 0x10, 0xff));
+        let mut l = DisplayList::new();
+        // A hard edge **where the refracted reads actually land**, not
+        // merely under the rim. On the left rim the read is displaced
+        // *outward* by up to `refraction` px, so a pixel at x = 45 reads
+        // near x = 41: an edge at 60 is never sampled, and the first
+        // version of this test put it there and measured 0 of 800.
+        l.rect([0.0, 0.0, 45.0, H as f32], Color(0xf0, 0xf0, 0xf0, 0xff));
+        l.rect([45.0, 0.0, W as f32, H as f32], Color(0x28, 0x28, 0x28, 0xff));
+        l.glass([40.0 + dx, 50.0, 220.0 + dx, 170.0], 34.0, m);
+        lumen_static::Renderer::render(&mut c, &l, W, H);
+        c
+    };
+    let a = scene(0.0);
+    let b = scene(0.35);
+    let (mut differ, mut checked) = (0, 0);
+    for y in 90..130usize {
+        for x in 40..60usize {
+            checked += 1;
+            if (luma(px(&a, x, y)) - luma(px(&b, x, y))).abs() > 1.0 {
+                differ += 1;
+            }
+        }
+    }
+    println!("{differ} of {checked} rim px move under a 0.35 px shift");
+    assert!(checked > 500, "not enough sampled: {checked}");
+    assert!(
+        differ > checked / 4,
+        "a sub-pixel move changed almost nothing ({differ}/{checked}) — the read is still quantised"
+    );
+}
