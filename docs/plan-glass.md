@@ -437,8 +437,10 @@ or drops the claim.
 specular~~ — **BUILT 2026-09-11 as M21**, when the condition was met and
 someone wanted the material rather than the effect. Over a *bevel*,
 which the plan did not anticipate and which is the part that matters:
-`docs/results-glass.md` §5b. Still deferred: the GPU backend (§1.3) and
-group opacity (needs a real layer, §4).
+`docs/results-glass.md` §5b. Still deferred: group opacity (needs a real
+layer, §4). The GPU backend (§1.3) is now M22's T22.4, sequenced last
+there for a reason this plan could not have known: every material change
+before it is a change the parity gate's shader has to match.
 
 **Sizing.** T19.0 and T19.1 are a day together. T19.2 is the milestone's
 centre and should be budgeted as such. T19.3 is a day including the

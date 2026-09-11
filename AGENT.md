@@ -27,6 +27,13 @@ are independent of each other**, so either may go first:
   decided *against* on measurement, which is where the doc is worth
   reading.
 
+- **M22 — `docs/plan-liquid.md`** (T22.0–T22.4): the rest of the liquid
+  material — dispersion, adaptive tint, press deformation, the
+  smooth-minimum morph, and the GPU backend. The first four keep it
+  panel-sized; **only the fifth changes what it can be used for**, and
+  it is last because every task before it changes the shader the parity
+  gate compares.
+
 Unsequenced: `docs/plan-harness.md`.
 
 Task ids (`T0.6`, `F1.3`, `T16.7`) go in commit subjects. Decision records live beside it in `docs/`; the
