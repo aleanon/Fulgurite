@@ -1,9 +1,17 @@
 # M22 — the complete liquid material
 
-> **Status: planned 2026-09-11, not started.** Five tasks, and they are
-> deliberately in this order: the first four keep the material
-> panel-sized and cheap, and the fifth is the only one that changes what
-> it can be *used* for.
+> **Status: planned 2026-09-11, rewritten the same day after a
+> four-agent review.** Seven tasks, where the first draft had five.
+>
+> The review found **five of the first draft's seven injections would
+> have passed under their own injection**, which is the failure
+> `AGENT.md` exists to prevent, occurring in the section written to
+> prevent it. It also found the headline feature could not work as
+> specified, that the fallback for the hardest task could not be built
+> where the plan put it, and a cheaper effect the plan had not
+> considered. Everything below is the second draft; §11 records what the
+> first got wrong, because the corrections are more useful than the
+> plan.
 >
 > Builds on M19 (`docs/plan-glass.md`) and M21's bevel
 > (`docs/results-glass.md` §5b). What exists: backdrop blur, edge
@@ -11,13 +19,15 @@
 
 *Each task is one commit; each ends with `just test` green. Task ids go
 in commit subjects. Every task names the injection its tests must go red
-under, and §7 names the vacuous test each one will otherwise produce.*
+under, and §9 names the vacuous test each will otherwise produce.*
 
 ---
 
-## 1. The budget, first, because it decides two of the five
+## 1. The budget, and the encoding decision it forces
 
-Measured 2026-09-11:
+Measured 2026-09-11 (and **the numbers belong in a results doc, not
+here** — M22's first commit moves this table to `docs/results-glass.md`
+and cites it, per `AGENT.md`'s "stated once"):
 
 | | bytes |
 |---|---:|
@@ -26,212 +36,484 @@ Measured 2026-09-11:
 | `Gradient`'s payload — **what sets `Cmd`'s size** | 56 |
 | `Cmd` | 60 |
 
-**Headroom is 12 bytes: three more `f32`s, and the fourth grows every
-command in every list.** That is not a style preference, it is the
-constraint T22.0–T22.3 have to be designed inside, and it is why the
-morph below is the task with a real decision in it rather than a real
-formula.
+Headroom is 12 bytes. The first draft spent it in `f32` and ran out
+before the morph; measured, a fourth `f32` takes `Cmd` to 64.
 
-Spend: T22.0 takes two (`dispersion`, `saturation`), T22.1 takes one
-(`adapt`), T22.2 takes none. T22.3 needs at least twelve and is
-therefore **over budget by construction** — §5.
+**Every strength this milestone adds is a unitless 0..=1 fraction, and
+every one is a `u8`.** The repository already made this call and wrote
+down why: `Style::focus_ring` is a `u8` "and that was measured. As an
+`f32` this took `Style` from 72 to 76 bytes." Measured for `Material`:
 
-## 2. T22.0 — dispersion, inner shadow, saturation
+| encoding | `Material` | `Cmd` | left |
+|---|---:|---:|---:|
+| four `f32` strengths | 40 | **64** | — |
+| four `u8` strengths | 28 | 60 | **8 B** |
+| four `u8` + a second tint `Color` | 32 | 60 | **4 B** |
 
-The biggest visual return per hour, and all three are arithmetic in the
-loop that already runs.
+So the whole milestone fits, and the morph's remaining 4 bytes is the
+constraint T22.5 designs inside — §7.
 
-**Chromatic dispersion.** Glass splits light by wavelength, and the
-fringe at a thick edge is most of what separates "a lens" from "a blur
-with a highlight". Sample the three channels at slightly different
-displacements:
+**What each task spends:** T22.0 two `u8` (`shadow`, `saturation`) and
+**zero** for Fresnel, which is derived from `specular`. T22.2 one `u8`
+(`dispersion`). T22.3 one `u8` (`adapt`) and one `Color`. T22.4 nothing.
+T22.5 the remaining 4 bytes, or a re-budget.
+
+**Three hand-written lists must learn every new field**, and two of them
+fail *open*: `Recording`'s hash array and `Cmd::hash_into`'s are literal
+field lists in different crates — the exact shape that let `Shadow` and
+`Image` both hash as tag 6 for a year. **Omitting a field from the first
+is silent staleness**, not a wrong colour: the hash is unchanged, damage
+reports `None`, the shell skips the raster, and the panel keeps last
+frame's pixels indefinitely. §8 has a row for it and §9 explains why the
+existing test cannot catch it.
+
+`Scaled::glass` is the third, and it fails open only for a **length**:
+its `..material` rest pattern silently does the right thing for every
+unitless field and the wrong thing for a new distance. Nothing in
+T22.0–T22.4 adds a length. T22.5's offset does.
+
+## 2. T22.0 — Fresnel, inner shadow, saturation
+
+The first draft led with dispersion. The review's strongest optical
+finding is that **Fresnel is the bigger effect and costs nothing**, so
+it leads instead.
+
+### Fresnel — why the rim is bright
+
+Real glass reflects far more at grazing incidence, and that is what
+makes a thick edge read as a bright band rather than as a tinted one.
+The tint currently mixes at a constant strength everywhere. With the
+viewer on the +z axis, the cosine of the incidence angle **is the
+bevel normal's z component**, which is already in a register:
+
+```
+f  = 1 − nz
+t' = t + (1 − t) · fresnel · f⁵          (Schlick)
+```
+
+Five multiplies and a subtract, in the rim band only, **and no new
+`Material` field**: `fresnel` is derived from `specular`, which already
+means "how glassy is this edge". A panel with no specular has no
+Fresnel, which is the right coupling.
+
+### Inner shadow — and the two claims the first draft got wrong
+
+The first draft said the dot product "is already in hand… it is free".
+It is not. It sits inside `if m.specular > 0.0`, and the bevel itself is
+gated on `rim > 0 && (refraction > 0 || specular > 0)`. **A material
+with only a shadow gets no dot product and no bevel at all** — a panel
+compared with itself, and every injection green. Both predicates learn
+the new field.
+
+The second wrong claim was the falloff. Measured from the code: with the
+light's elevation fixed at 0.62, the dot product is negative **exactly
+when `u > 0.62`**, independent of light angle — the outer 38% of the
+rim, 4.9 px of a 13 px bevel. "Darken the negative half" is a dark
+hairline, not thickness.
+
+**Use a diffuse term riding `u²`, the same parameter the refraction
+uses**, so the shading covers the whole unlit rim and falls to zero in
+the interior. It needs the two horizontal terms the existing dot product
+already computes.
+
+**And it multiplies, it does not subtract.** The composite adds the
+specular with no lower clamp and relies on a saturating cast. Subtracting
+clips each channel at a different point, which rotates hue: a backdrop
+(30, 60, 220) minus 200 is (0, 0, 20), and the ratios are gone.
+Multiplicative darkening cannot go below zero and preserves them — which
+also protects the saturation boost from being undone by the shadow in
+the same pixel.
+
+### Saturation
+
+A blur that desaturates looks like fog; colours read *through* real
+glass because the material does not eat them.
+
+Two things the first draft left unstated, both of which decide the
+result:
+
+- **The weights.** The renderer blurs in straight, gamma-encoded 8-bit
+  sRGB and never linearises. Rec.709's coefficients are *linear-light*
+  luminance; applied to gamma bytes they over-darken blue and
+  over-brighten green. On gamma-encoded values the consistent choice is
+  the luma convention — 0.299, 0.587, 0.114 — and the field's doc says
+  so, with the reason.
+- **Out of gamut on both ends.** `lum + (c − lum)·s` exceeds 255 on the
+  dominant channel *and* goes negative on the weakest. Clamping per
+  channel rotates hue. **Clamp the scale, not the channels**: reduce `s`
+  until every channel fits, so an over-saturated pixel desaturates
+  gracefully. Guard it behind a cheap out-of-range test, because
+  saturation applies to the **whole panel** and not the rim band — it is
+  the one effect here whose cost is per-panel-area.
+
+**The colour space goes in the field's doc comment**, because a fragment
+shader's natural habitat is linear and a linear-vs-gamma saturation
+disagrees over the whole panel — which is precisely what T22.6's parity
+gate cannot absorb.
+
+## 3. T22.1 — sub-pixel refraction sampling
+
+A refactor with no new field, landed on its own because **it moves
+existing pixels**.
+
+The refracted read truncates to a whole surface pixel before sampling,
+and the sampler only interpolates when the downsample factor exceeds 1 —
+which at the liquid blur it does not. So today's refraction is
+nearest-neighbour and its rim carries a staircase.
+
+Taking float coordinates removes the staircase and is a prerequisite for
+T22.2: a sub-pixel colour fringe cannot exist on an integer read.
+
+**The pixel delta is the deliverable.** This task's results row is the
+differing-pixel count against M21's output at `LIQUID`, stated rather
+than absorbed, because every later task and T22.6's parity baseline
+inherit it.
+
+## 4. T22.2 — dispersion
+
+Now that the read is sub-pixel, the three channels can be displaced
+differently:
 
 ```
 k = refraction · u²
-r at p + n·k·(1 + dispersion)
+r at p + n·k·(1 − dispersion)
 g at p + n·k
-b at p + n·k·(1 − dispersion)
+b at p + n·k·(1 + dispersion)
 ```
 
-Three bilinear samples instead of one, **in the rim band only** — `u` is
-0 in the interior, so the interior is untouched and costs nothing.
+**Blue deviates more, not red** — the first draft had it inverted, and
+the ordering is the thing an eye reads as "lens" rather than colour
+noise.
 
-**Inner shadow.** The specular already computes `dot(n, light)` and
-discards the negative half. Darken there instead of discarding. A rim
-lit on one side and shaded on the other is what reads as thickness, and
-it is free: the dot product is already in hand.
+Three things the first draft missed:
 
-**Saturation.** Multiply the blurred backdrop's chroma before the tint
-mixes in. Frosted glass that desaturates looks like fog; the reason
-colours read *through* a real panel is that the material does not eat
-them. One lerp against the pixel's own luminance.
+- **`glass_source` must widen** to `3σ + refraction·(1 + dispersion) +
+  4`. It is the one expression the renderer and the damage recorder
+  share, and the existing `+ 4` is documented slack for a different
+  purpose. Spending it silently is the drift the doc-currency rule
+  targets — and the symptom is invisible to every gate: the sampler
+  clamps, so the red fringe flattens against the capture edge
+  *identically in the full and the partial render*.
+- **The cost is per channel, not per sample.** The sampler computes one
+  coordinate and returns three channels from twelve loads; calling it
+  three times triples the coordinate setup and triples the loads. A
+  per-channel entry point gives the plan's stated cost. And the interior
+  must branch out, or it pays three times for three identical answers.
+- **Per-channel clamping manufactures colour.** Where the capture was
+  truncated by the surface edge, three displacements clamp at three
+  different distances and an achromatic backdrop grows a coloured band.
+  Fall back to the single three-channel read whenever the green
+  coordinate is already clamped — one comparison, and it makes the
+  degenerate case bit-identical to the pre-T22.2 renderer.
 
-## 3. T22.1 — adaptive tint, the one that makes it usable
+## 5. T22.3 — adaptive tint, stateless
 
-A fixed tint is legible over the backdrop it was chosen for. Apple's
-material goes light over dark content and dark over light, so whatever
-is *on* the glass stays readable as the content scrolls under it. That
-is the difference between a material and a decoration.
+A fixed tint is legible over the backdrop it was chosen for. The
+material should go light over dark content and dark over light, so what
+is *on* the glass stays readable as content scrolls under it.
 
-**The input is already computed.** The blur downsamples the captured
-source by `k`; the mean luminance under the panel is a reduction over
-that small buffer, not over the full-resolution capture. A box blur
-preserves the mean, so it can be read after the passes.
+**It is a pure function of the captured buffer. There is no state, and
+the first draft's fallback could not have been built.** The reasons are
+worth stating because they are not obvious:
 
-Three things to get right, each of which is a way to get it wrong:
+- The renderer has no path back to application state, and
+  `render_within` is called **once per damaged region** — so a
+  renderer-side update would run a variable number of times per frame,
+  which is the one thing a damped value must not depend on.
+- A renderer-computed mean never reaches the hash. On a frame where the
+  backdrop did not change the hash is identical, damage is `None`, and
+  the shell may skip the raster entirely — so a damped value advances
+  only on frames something *else* changed, then jumps by the whole
+  accumulated delta.
+- And the oracles would not have caught it. They drive **one** host and
+  render **one** list two ways; widget state cannot diverge between the
+  sides. **The gate would have stayed green**, which is worse than
+  failing.
 
-- **Reduce over the panel, not over the capture.** The captured region
-  is dilated by `3σ + refraction + 4`. A panel near a window edge whose
-  mean came from the dilated source would adapt to content it is not
-  over.
-- **Smooth, not stepped.** A hard threshold flickers when the mean sits
-  on it and the content scrolls. Interpolate.
-- **And that may not be enough.** If it still oscillates, the fix is
-  temporal damping, which is *state* — and a command has none. It would
-  live on `Glass<W>` as an `Animated<f32>`, which is the same place
-  T22.2's press animation lives. **Do not add it pre-emptively**:
-  measure the oscillation first, and if smoothing alone settles it, the
-  state is not needed.
+So the flicker must be settled by smoothing, and this task carries a
+**pre-registered exit**: if the measured frame-to-frame movement through
+the threshold region exceeds a stated bound after smoothing, stop and
+reopen the question rather than reaching for state. The bound and the
+measurement go in `docs/results-glass.md` either way.
 
-## 4. T22.2 — press deformation
+**Reduce over the panel's own rect — never over the clip.** The first
+draft named the wrong hazard. Reducing over the dilated capture gives a
+wrong colour *in both renders equally*, so the gates stay green.
+Reducing over the clip — which is the damage region in a partial redraw
+— makes the full and partial renders compute different means and differ
+on **every pixel of the panel**. That is the central gate, and §8 has
+the injection for it. It is safe today only because two rules in other
+files happen to make the clip contain the panel; this task pins it.
 
-`NodeState::pressed` already exists and `Style::pressed_dim` already
-uses it. A glass button should *squash*: `rim` and `refraction` rise
-briefly under the finger, so the edge thickens and the lensing deepens.
+One measurement this task owes before it trusts its input: the box
+passes renormalise at the capture boundary, so the blurred mean over a
+*sub-region* is not exactly the true mean. The error goes in the results
+doc beside the bound.
 
-**No command change and no renderer change.** `Glass<W>` reads the
-pressed flag and modulates the `Material` it assembles in `paint`.
+## 6. T22.4 — press deformation
 
-One shape question the task has to answer: `Node::paint` takes `&self`,
-so it cannot advance an animation. The value has to be stepped where
-state is already stepped — `Host::tick` — which means an `Animated<f32>`
-on the widget and a decision about which hook advances it. That is the
-whole of the task's difficulty; the maths is a multiply.
+A glass button should squash: the rim thickens and the lensing deepens
+under the finger.
 
-## 5. T22.3 — the morph, and the decision it forces
+**No new `Material` field and no renderer change.** The widget reads the
+pressed state and modulates the material it assembles. Three corrections
+to the first draft, each of which would have shipped a test that passed
+on a panel compared with itself:
 
-The "liquid" in the name is panels **stretching and merging like
-droplets**. It looks like it needs arbitrary shapes — a Bézier pipeline,
-which `docs/results-vello.md` §4 puts firmly outside this renderer.
+- **The pressed flag is set on the hit node only** — one node, the
+  deepest, not the chain. For `Glass<Button>` the *button* is marked and
+  the panel never is. The widget therefore tests **its whole subtree**,
+  which matches the composition this task is about and needs no change
+  to the dispatch. `NODE_COUNT` is a const, so the test is a slice scan.
+- **The animation hook the first draft named does not reach the
+  widget.** `App::tick`'s rustdoc records a decision: a per-node tick
+  "would cost a virtual call per node per frame on trees that animate
+  nothing — 3 000 of them on the benchmark's list — which the M15 gating
+  policy forbids." **Keep that decision.** The widget *retargets* in
+  `layout`, the one method holding both `&mut self` and the state array;
+  the application *advances* it from `App::tick`. Ugly to write, and it
+  is what makes widget animation reachable at all without overturning a
+  measured design record.
+- **And the frame loop must be fixed, or it snaps instead of settling.**
+  The windowing crate ticks *before* it pumps, so a press that starts an
+  animation during the pump leaves the "still animating" answer already
+  false: no further redraw is requested, and the rim jumps to its next
+  value on the following unrelated event. This task owns the reorder.
+  The "done when" must be driven through the real redraw path, because a
+  hand-rolled tick loop passes either way.
 
-**It does not.** Two merging blobs is a *smooth minimum* of two signed
-distance fields: `min(a, b)` softened by a polynomial in `|a − b|`.
-Closed form, a few operations, and it produces exactly the surface
-tension necking that two pills show as they meet. The composite is
-already driven by an SDF, so this fits the architecture **better** than
-it fits a path renderer, where the outline would have to be solved for.
+**This is `Animated<T>`'s first user in the workspace.** Nothing outside
+its own tests uses it, so anything it does not already support is this
+task's to find.
 
-Three consequences, and the first is the reason this task is listed
-third rather than first:
+## 7. T22.5 — the morph
 
-- **It does not fit the budget.** A second rect is 16 bytes against 12
-  of headroom (§1), and by T22.3 the headroom is 0. The options, and
-  the task's first job is to choose between them with a measurement:
-  **(a)** encode the second blob as an offset and a scale — three
-  `f32`s, which fits exactly and covers a pill splitting or an icon
-  growing into a panel, but not two panels of different aspect merging;
-  **(b)** give the pair its own `Cmd` variant and let `Cmd` grow, which
-  costs every command in every list and must be re-budgeted in
-  `docs/results-embedded.md`, not asserted away.
-- **Coverage stops being `fill_rounded_within`'s.** A morphing outline
-  has no straight spans, so the hard-span/corner-ramp structure M19
-  kept for silhouette parity no longer applies and every pixel needs a
-  distance. That is a real cost increase and it should be measured, not
-  assumed small.
-- **The normal is a blend.** The bevel needs the gradient of the
-  *combined* field, which is the two gradients weighted by which one
-  dominates. Getting that wrong shows as a crease where the blobs meet
-  rather than a neck.
+The "liquid" in the name is panels stretching and merging like droplets.
+It looks like it needs arbitrary shapes and does not: two merging blobs
+is a **smooth minimum** of two signed distance fields, which the first
+draft named and never wrote down:
 
-## 6. T22.4 — the GPU backend, and why it is last
+```
+h    = clamp(0.5 + 0.5·(b − a)/κ, 0, 1)
+smin = b + (a − b)·h − κ·h·(1 − h)
+```
 
-**This is the only task that changes what the material can be used for**,
-and everything above is why it is not first.
+C¹ everywhere, exactly `min` beyond κ, and it undershoots by κ/4 where
+the fields meet. κ ties to `rim`, so the neck's scale matches the
+bevel's.
 
-Measured, `docs/results-glass.md` §2: **~21 ns/px.**
+Five consequences. The first draft listed three and got two of them
+wrong.
 
-| | cost |
-|---|---:|
-| a toolbar, 460×64 | 0.6 ms |
-| 1080p, full screen | **43 ms** |
-| 4K, full screen | **174 ms** |
+- **The bounding rect must become the union of both blobs.** The
+  command's rect is the *ink*, the *clip test*, and the *source*. A
+  second blob outside it is a stale panel (damage never covers it), a
+  **visible hole** (a damage region covering only the second blob fails
+  the clip test and the region was already cleared), and a short
+  dependency. The individual shapes are then derived from the union.
+- **It reports one dependency, not two.** `MAX_DEPS`'s rustdoc states
+  "each panel contributes at most one region", and two morphing panels
+  reporting two each would exhaust it and degrade the frame to a full
+  redraw — correct, and a silent cliff. One dep over the union
+  preserves the invariant; anything else corrects that comment in the
+  same commit.
+- **The blended normal is exact, and it is not unit.** Weighting the two
+  gradients by the same `h` the value uses is not an approximation — the
+  remaining term vanishes identically. But the blend's length is below 1
+  wherever the gradients disagree and zero where they oppose, and the
+  bevel is built on the normal being unit **by construction**. That
+  claim becomes false at the neck, which is where it matters most. It
+  must be normalised, with the epsilon guard the existing code uses.
+- **A smooth minimum is not a distance field**, so the rim band pinches
+  in the neck: the gradient's length is below 1 there, so `u` reaches
+  zero after fewer pixels than `rim`. Dividing the distance by that
+  length restores it, and costs nothing — it shares the square root the
+  normalisation already needs. Without it the neck's bevel visibly
+  narrows and the blame lands on the crease.
+- **Coverage, and the invariant it threatens.** The first draft said
+  per-pixel coverage is "a real cost increase"; it is not, because every
+  pixel already gets a distance whenever the bevel is on. What it
+  actually costs is **M19's stated silhouette parity**: `plan-glass.md`
+  §4.1 records that glass keeps `fill_rounded_within`'s hard-span
+  structure precisely so a panel is pixel-identical to a rounded rect of
+  the same geometry, and that a pure SDF ramp disagrees by up to 254/255
+  on a fractional edge. **Take the SDF path only when a second blob is
+  present** — a branch on the command, not on the pixel — and assert a
+  single panel is byte-identical before and after. Otherwise the whole
+  M19/M21 baseline moves inside a commit whose subject is a morph.
 
-A panel is affordable and a screen is not. Apple's material is used over
-large regions at 120 Hz, which is a fragment shader; ours is a software
-rasteriser and single-threaded besides, because T19.5 declined banding —
-a bevel reads past its own rows.
+**The budget.** After T22.0–T22.3 there are 4 bytes left (§1). An offset
+and a uniform scale as `f32` is 12 and does not fit; as fixed-point
+16-bit values it is 6, and `Material` lands at 36 with `Cmd` still 60.
+The alternative is a second command variant and a re-budget — measured,
+that is `Cmd` at 80, **+33% on every command in every list**, which
+against a 2 000-command frame is 40 KB. Either way the decision is this
+task's first act, it is a measurement, and it goes in
+`docs/results-glass.md` — **not** `results-embedded.md`, which budgets
+`.text` and per-node RAM and where a command size appears nowhere.
+Boxing is not available: the command is `Copy` and the list is the
+`no_std` seam.
 
-The port itself is already specified: `docs/plan-glass.md` §1.3 has the
-concrete list (G+1 render passes because a texture copy cannot happen
-inside one, two ping-ponged scratch textures, a second pipeline, a
-linear sampler beside the deliberately-`Nearest` one, and the
-`Overflow` retry fix), and §1.3 also has the parity problem — the gate
-bounds the *count* of differing pixels at 0.2%, and a panel differs over
-its whole area if the two blurs disagree anywhere.
+## 8. T22.6 — the GPU backend, and why it is last
 
-**Last, deliberately.** Every task above changes the material, and the
-shader has to match the CPU pixel for pixel or the parity gate is
-meaningless. Porting before the material settles is porting twice.
+**The only task that changes what the material can be used for.**
+Measured, `docs/results-glass.md` §2: ~21 ns/px — 0.6 ms for a toolbar,
+**43 ms at 1080p**, 174 ms at 4K. A panel is affordable and a screen is
+not.
 
-## 7. Tasks
+The port is specified in `docs/plan-glass.md` §1.3. Last, because every
+task above changes the material the shader must match, and T22.5 may
+change the command encoding as well.
+
+**The parity gate needs two bounds, pre-registered, and the scene needs
+teeth.** As it stands the gate would pass with the feature absent:
+today's parity frame has no glass at all; if the panel added were the
+frosted preset the bevel would be off and skipping the shader's
+dispersion would be a no-op on both sides; the comparison ignores
+per-pixel deltas under 8 levels, which a fringe over a smooth backdrop
+does not exceed; and "a bound stated with the measurement beside it"
+lets the bound be chosen *after* seeing the number — which is exactly
+how a 6% bound over a 0.01% measurement got written.
+
+So: the scene uses the liquid preset with dispersion and adapt
+explicitly non-zero over a **hard, saturated colour edge** under the
+rim; the CPU side asserts the fringe exists *before* the backends are
+compared; and there are two bounds — a whole-panel count, which the blur
+disagreement forces loose, and a **separate rim-band bound tight enough
+that a missing fringe cannot hide under it**. One frame-wide count
+cannot both admit the blur and refuse the dispersion.
+
+## 9. Tasks
 
 | id | task | done when |
 |---|---|---|
-| **T22.0** | Dispersion, inner shadow, saturation. Two new `Material` fields. | A coloured edge under the rim shows a visible fringe; a lit rim has a shaded opposite; a saturated backdrop stays saturated through the panel. `Cmd` is still 60 B. |
-| **T22.1** | Adaptive tint from the mean luminance under the panel. One new field. | Sweeping the backdrop from black to white moves the tint monotonically, and a scroll across the midpoint does not flicker. |
-| **T22.2** | Press deformation, driven by `NodeState::pressed`. No command change. | Pressing a glass button thickens its rim and settles back, and the panel is unchanged when nothing is pressed. |
-| **T22.3** | The smooth-minimum morph. **Decide (a) or (b) of §5 first, with the measurement.** | Two panels at a separation of one rim width show a neck, not two outlines; and the budget decision is recorded with its cost. |
-| **T22.4** | The GPU backend (`docs/plan-glass.md` §1.3). | `just gpu-parity` holds with a glass panel in the scene, under a bound stated with the measurement beside it. |
+| **T22.0** | Fresnel (no field), inner shadow, saturation. Two `u8` fields. | Fringe-free: rim luminance at grazing incidence rises by a measured factor; the unlit rim is darker **than the panel's own interior** with specular off; a mid-chroma backdrop's chroma ratio through the panel exceeds a stated bound. All three printed. `Cmd` still 60 B. |
+| **T22.1** | Sub-pixel refraction sampling. No field. | The staircase is gone, and **the differing-pixel count against M21 is the deliverable**, stated in the results doc. |
+| **T22.2** | Dispersion. One `u8`. Widened source expression. | Over a hard colour edge, the count of outermost-rim pixels where red and blue differ by more than 8 levels is non-zero with dispersion on and zero with it off — both printed. |
+| **T22.3** | Adaptive tint, stateless, with the pre-registered exit. One `u8` + one `Color`. | A fine sweep of backdrop luminance moves the tint **strictly** monotonically with a stated total travel; a scroll through the threshold bounds the per-frame movement; and the sweep asserts the threshold was actually crossed. |
+| **T22.4** | Press deformation, and the redraw-loop reorder. No field. | Driven through the real redraw path: pressing thickens the rim band by a measured pixel count at the animation's peak, and the settled frame is **byte-identical** to the pre-press frame. |
+| **T22.5** | The morph. Budget decision first, with its measurement. | At a separation of one rim width the pixels between the blobs are inked; at three rim widths they are empty; and a single panel is byte-identical to before the task. |
+| **T22.6** | The GPU backend. | `just gpu-parity` holds under **two** bounds, both stated before the measurement. |
 
-**Sizing.** T22.0 is a day. T22.1 is a day plus however long the
-flicker takes to settle. T22.2 is an afternoon once the animation hook
-is chosen. T22.3 is two days and one of them is the budget decision.
-T22.4 is 2–4 days and is its own milestone in all but name.
+**Sizing — in measurement cycles, not days.** The first draft said "a
+day" per task; for calibration, M19's six tasks were 37 minutes of wall
+clock and M21 was 85. What actually paces work here is the number of
+measured rows a task owes `docs/results-glass.md`: T22.0 three plus a
+cost delta, T22.1 one, T22.2 one plus a cost delta, T22.3 two (the
+sweep and the mean's error), T22.5 two (the budget decision and the
+coverage cost), T22.6 the parity bounds. T22.6's "2–4 days" is inherited
+from `plan-glass.md` §1.3 rather than re-derived, and it is the only
+task nobody here has attempted.
 
-## 8. What must be shown to fail
+## 10. What must be shown to fail
 
-| test | injection | proves |
+Rewritten. Five of the first draft's seven rows would have passed under
+their own injection; each is replaced with one that fires, and the
+reason the old one did not is in §11.
+
+| test | injection | fires because |
 |---|---|---|
-| dispersion | sample all three channels at the same displacement | the fringe is dispersion and not an artefact of the blur |
-| inner shadow | discard the negative dot again | the shaded side is computed, not inherited from the backdrop |
-| saturation | pass the backdrop through unchanged | the chroma boost is doing something |
-| adaptive tint | freeze the mean at 0.5 | the tint is reading the backdrop, not a constant |
-| press | ignore `NodeState::pressed` | the deformation is driven by input |
-| morph | plain `min` instead of the smooth one | the neck is the smooth minimum and not overlap |
-| GPU parity | skip the shader's dispersion | the two backends agree about the material, not just about its silhouette |
+| Fresnel | fix the incidence term at a constant | the rim's grazing brightness collapses to the interior's |
+| inner shadow | leave the bevel predicate ignorant of the shadow field | a shadow-only material renders with no bevel at all, so the unlit rim equals the interior |
+| inner shadow, second | subtract instead of multiply | a saturated backdrop's channel ratios move — assert the hue, not the luminance |
+| saturation | pass the backdrop through unchanged | the chroma ratio falls to 1.0 on a **mid-chroma** backdrop, where neither end clamps |
+| sub-pixel sampling | truncate the coordinate again | the staircase returns; the count against M21's baseline is the measure |
+| dispersion | give all three channels the same displacement | red and blue stop differing in the outer rim |
+| dispersion, source | leave the source expression at its old reach | the outer ring differs between a full and a partial redraw |
+| adaptive tint | freeze the mean | the sweep's **total travel** collapses to zero — monotonicity alone accepts a constant |
+| adaptive tint, region | reduce over the clip instead of the panel | the damage oracle goes red: full and partial renders compute different means |
+| press | ignore the pressed state | the rim-band difference between rest and peak collapses — **on a liquid fixture**, since a frosted one has no bevel to deform |
+| press, settle | never return to the resting value | the settled frame stops being byte-identical to the pre-press frame |
+| morph | plain minimum instead of the smooth one | the pixels between the blobs are empty at one rim width |
+| morph, normal | use one blob's gradient instead of the blend | the luminance profile across the neck gains a step — bound the largest adjacent jump |
+| morph, parity | take the SDF coverage path for single panels too | a lone panel stops being byte-identical to before the task |
+| the hash | drop the new field from the recorder's list | a frame in which only that field changed reports no damage |
+| neutral defaults | give a new field a non-neutral default | M21's scene stops being byte-identical with the new fields zeroed |
+| GPU parity | skip the shader's dispersion | the **rim-band** bound fires; the frame-wide count would not |
 
-## 9. The vacuous tests this will otherwise produce
+## 11. The vacuous tests this will otherwise produce
 
-Each is specific to a task above, and each is a case where the feature
-is invisible and every injection still passes.
+Ten, where the first draft had five. Every one is a case where the
+feature is invisible on the fixture and every injection passes.
 
-- **Dispersion over a grey backdrop splits nothing.** Three channels
-  sampled at three offsets of the same grey give the same grey. The test
-  needs a *coloured* edge under the rim, and must assert the three
-  channels actually differ there.
-- **Saturation over a grey backdrop does nothing either**, for the same
-  reason and with the same fix.
-- **Adaptive tint over a uniform mid backdrop never crosses anything.**
-  The test has to sweep the backdrop's luminance across the range and
-  assert the tint moved monotonically — a single frame proves nothing at
-  all.
-- **Press deformation with `pressed` never set** compares a panel with
-  itself. Assert the flag changed, not only that the pixels match.
-- **A morph at either extreme is not a morph.** Fully separated is two
-  panels; fully overlapped is one. The property is the *neck*, so the
-  test must sit at a separation where a neck exists — and assert that
-  the pixels between the two blobs are inked, which is the thing plain
-  `min` would not do.
+**The five the first draft had**, corrected where it was too loose:
 
-## 10. What this does not buy
+- **Dispersion and saturation over a grey backdrop split nothing.** And
+  the subtler half the first draft missed: a box blur is a *mean*, so a
+  striped or checked fixture — which is what the existing bevel tests
+  use — averages to near-neutral before the effect sees it. The fixture
+  must be a large solid colour region, and the *blurred* chroma is what
+  the test measures.
+- **Adaptive tint over a uniform backdrop crosses nothing**, and
+  "monotonic" accepts a constant. Assert strict movement and a total
+  travel.
+- **Press with the flag never set** compares a panel with itself — and
+  the first draft's guard ("assert the flag changed") is satisfied by
+  the *button's* flag while the panel's stays false. Assert the flag on
+  the node the material reads.
+- **A morph at either extreme is not a morph** — and the first draft
+  framed both extremes as vacuous when one is a required negative case:
+  beyond the blend radius the blobs must read as **separate**, or the
+  smooth minimum is fusing panels that should not fuse. Both directions,
+  same test.
+
+**The five it missed:**
+
+- **A frosted fixture has no bevel.** The default material's rim is
+  zero, so the bevel is off entirely and every rim-band effect — Fresnel,
+  shadow, dispersion, press — renders a panel compared with itself.
+  Every test of those effects builds on the liquid preset **and asserts
+  the rim is non-zero before measuring**.
+- **The press is temporal and the obvious test is one frame.** Nothing
+  advances an animation unless the test advances it, so a test that
+  presses and renders sees the value at rest: the flag changed, the
+  pixels match, the injection is green. The test is a sequence with the
+  animated value printed at each step.
+- **Saturation clamps at the top end too.** A fully saturated backdrop —
+  the obvious choice for "a saturated backdrop" — cannot be boosted, so
+  "pass it through unchanged" leaves the pixels identical. Mid-chroma
+  fixture, and assert no sampled channel sits at 0 or 255.
+- **A non-neutral default silently re-baselines every existing test.**
+  Nothing today asserts that a new field is inert at its default, and
+  two public presets are about to gain four fields. One test per task:
+  M21's scene with the new fields zeroed must be byte-identical.
+- **A threshold sampled at round numbers is not sampled.** `plan-glass.md`
+  §9 records this exactly — eight round sigmas passed with the search
+  replaced by the rule it exists to beat. A flicker check at luminance
+  0/64/128/192/255 steps straight over a threshold at the midpoint. Sweep
+  finely through the threshold region, and sweep the morph's separation
+  rather than testing one.
+
+## 12. What the first draft got wrong
+
+Kept because the corrections are the useful part, and because a plan
+that quietly replaced itself would teach the next reader nothing.
+
+| claim | what the review found |
+|---|---|
+| "Three bilinear samples instead of one" | The read is integer-truncated and the sampler does not interpolate at the liquid blur. There was nothing bilinear to take three of, and dispersion could not have produced a fringe — only a dithered speckle. |
+| red displaced most | Blue deviates more. One character, and it flips which side the warm fringe lands on. |
+| "the dot product is already in hand… it is free" | It is inside a specular guard, and the bevel predicate would have excluded a shadow-only material entirely. |
+| "a rim lit on one side and shaded on the other" | The negative half exists only over the outer 38% of the rim: a hairline, not thickness. |
+| "temporal damping… would live on the widget" | Cannot be built there, and — worse — the oracle would not have noticed. |
+| "the rebuild has no history, so it diverges" | Both oracles drive one host and render one list two ways. State cannot diverge between the sides. |
+| "every pixel needs a distance… a real cost increase" | Every pixel already gets one. The real cost is M19's silhouette-parity invariant. |
+| "the two gradients weighted by which one dominates" | Correct, and exactly so — but the blend is **not unit**, which the bevel assumes. |
+| "an offset and a scale — three `f32`s, which fits exactly" | The headroom was already spent. Measured, that is `Cmd` at 72. |
+| "re-budgeted in `docs/results-embedded.md`" | Wrong document: it budgets `.text` and per-node RAM, not command size. |
+| "`light` is a field and an application can already animate it" | Only the azimuth is. The elevation is a hardcoded constant, and azimuth rotates a highlight *around* a panel — it cannot sweep it *across* the rim, which is the motion a tilt produces. |
+| sizing in days | M19 was 37 minutes of wall clock; M21 was 85. |
+
+## 13. What this does not buy
 
 - **Not Apple's, even complete.** No environment reflection from a real
-  cubemap, no light that responds to device motion (though `light` is a
-  field and an application can already animate it), and no system-level
-  "Reduce Transparency" fallback — that is a host policy, not a renderer
-  feature, and it belongs wherever accessibility settings land.
-- **Not full-screen, until T22.4.** §6.
-- **No measured cost yet.** Nothing in this document is a measurement
-  except §1's byte counts and §6's 21 ns/px, both of which are already
-  in `docs/results-embedded.md` and `docs/results-glass.md`. Each task
-  adds its own row to the latter.
+  cubemap, and no light elevation — which is what a tilt actually
+  changes, and which is one `u8` if it is ever wanted.
+- **A second, broader specular lobe is two arithmetic operations from
+  values already computed**, and is declined for *look*, not cost. Said
+  plainly because both this plan and the results doc previously implied
+  it was expensive.
+- **Not full-screen, until T22.6.** §8.
+- **No measured cost yet.** Only §1's byte counts and §8's 21 ns/px,
+  both of which move to `docs/results-glass.md` in T22.0. Every task
+  adds its own rows; §9 says which.

@@ -27,12 +27,14 @@ are independent of each other**, so either may go first:
   decided *against* on measurement, which is where the doc is worth
   reading.
 
-- **M22 — `docs/plan-liquid.md`** (T22.0–T22.4): the rest of the liquid
-  material — dispersion, adaptive tint, press deformation, the
-  smooth-minimum morph, and the GPU backend. The first four keep it
-  panel-sized; **only the fifth changes what it can be used for**, and
-  it is last because every task before it changes the shader the parity
-  gate compares.
+- **M22 — `docs/plan-liquid.md`** (T22.0–T22.6): the rest of the liquid
+  material — Fresnel, inner shadow, saturation, sub-pixel sampling,
+  dispersion, adaptive tint, press deformation, the smooth-minimum
+  morph, and the GPU backend. The first six keep it panel-sized;
+  **only the last changes what it can be used for**. Read §12 before
+  §2: a four-agent review found five of the first draft's seven
+  injections would have passed under their own injection, and the plan
+  keeps the corrections rather than quietly replacing itself.
 
 Unsequenced: `docs/plan-harness.md`.
 
