@@ -1303,6 +1303,7 @@ impl syn::parse::Parse for BindSpec {
 ///
 /// #[derive(App, Default)]
 /// #[app(after_update = recompute)]     // optional, fn(&mut Self)
+/// // #[app(tick = advance)]             // optional, fn(&mut Self, f32) -> bool
 /// struct Counter {
 ///     #[tree]
 ///     ui: Ui,
@@ -1342,8 +1343,9 @@ fn expand_app(input: DeriveInput) -> syn::Result<Ts2> {
         return Err(syn::Error::new_spanned(name, "App needs named fields"));
     };
 
-    // Struct-level `#[app(after_update = path)]`.
+    // Struct-level `#[app(after_update = path)]` and `#[app(tick = path)]`.
     let mut after_update: Option<syn::Path> = None;
+    let mut tick: Option<syn::Path> = None;
     for attr in &input.attrs {
         if !attr.path().is_ident("app") {
             continue;
@@ -1352,8 +1354,11 @@ fn expand_app(input: DeriveInput) -> syn::Result<Ts2> {
             if meta.path.is_ident("after_update") {
                 after_update = Some(meta.value()?.parse()?);
                 Ok(())
+            } else if meta.path.is_ident("tick") {
+                tick = Some(meta.value()?.parse()?);
+                Ok(())
             } else {
-                Err(meta.error("expected `after_update = path`"))
+                Err(meta.error("expected `after_update = path` or `tick = path`"))
             }
         })?;
     }
@@ -1426,6 +1431,22 @@ fn expand_app(input: DeriveInput) -> syn::Result<Ts2> {
         }
     });
 
+    // **M22/T22.4.** Without this a derived app could not advance an
+    // animation at all: the derive writes the whole `App` impl, so
+    // `tick` could only come from the trait default, and a widget that
+    // animates — `Glass`'s press deformation is the first — would
+    // retarget and then never move. The hook mirrors `after_update`.
+    let tick_fn = tick.map(|p| {
+        quote! {
+            fn tick(&mut self, dt_ms: f32) -> bool {
+                // Typed through a binding so a wrong signature is
+                // reported at the hook, not at the call.
+                let f: fn(&mut Self, f32) -> bool = #p;
+                f(self, dt_ms)
+            }
+        }
+    });
+
     let (impl_g, ty_g, where_g) = input.generics.split_for_impl();
     Ok(quote! {
         impl #impl_g ::lumen_static::event::App for #name #ty_g #where_g {
@@ -1448,6 +1469,8 @@ fn expand_app(input: DeriveInput) -> syn::Result<Ts2> {
                 #after
                 changed
             }
+
+            #tick_fn
         }
     })
 }

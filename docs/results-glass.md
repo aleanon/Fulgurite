@@ -267,6 +267,70 @@ unchanged — the injection has nothing to bite on. A `PushClip` in the
 list is what distinguishes the two, and it is a real situation: a glass
 panel inside a `ScrollView` is clipped by its viewport every frame.
 
+## 0f. T22.4 — press deformation, and the frame loop it exposed
+
+**Measured 2026-09-12.** No new `Material` field and no renderer change:
+the widget assembles a material from its declared one and an animated
+press value. At a full press the rim thickens by 55% and the refraction
+deepens by 85% — chosen, not measured; they are the largest deformation
+that still reads as the same panel.
+
+Driven through `Host` — the real pump, the real dispatch, the real
+`App::tick` — because `docs/plan-liquid.md` §6 requires it: a
+hand-rolled tick loop passes whether or not the frame loop asks about
+animation at the right moment, which is half of what this task fixes.
+
+| | |
+|---|---:|
+| pixels deformed at the peak, clear of the button | **5432** |
+| the same with the press ignored | **0** |
+| settled frame against the pre-press frame | **0** px differ |
+
+### Three things the fixture had to get right
+
+**The bound was met by the button dimming itself.** Counted frame-wide,
+a press changes 2416 px before the panel does anything at all — the
+button's own `pressed_dim` over its 92 × 34 rect — which cleared a bound
+of 400 on its own. Both injections for this task reported a "peak" of
+exactly 2416, which is the button's rect and nothing else. The count is
+now taken clear of the button, where the injected figure is 0.
+
+**The click has to land on the button, not the panel.** The panel is
+260 px wide and the button 92, so a click at the panel's centre lands on
+the panel — which is itself pressable, so the test goes green while
+proving only the trivial case. `dispatch` marks the deepest hit node
+alone, so pressing the button leaves the panel's own flag `false`
+forever; that is why the widget scans its **whole subtree**, and
+scanning only its own node measures 0.
+
+**The pointer does not leave when the button is released.** A resting
+frame captured before any pointer event differs from the settled one by
+the *hover*, and 2416 px of that was charged to the press. The resting
+frame is taken with the pointer already in place.
+
+### The derive had no way to advance anything
+
+`DeriveApp` writes the whole `App` impl, so `tick` could only come from
+the trait default and **a derived application could not animate at
+all** — the panel would retarget on every press and then sit still. The
+derive gained `#[app(tick = path)]`, mirroring the existing
+`after_update` hook. Removing it from the fixture takes the peak to 0.
+
+### The loop asked the wrong question at the wrong time
+
+`lumen-static-winit` ticked, then pumped, and used the *tick's* answer
+to decide whether to request another frame. A press dispatched during
+the pump starts an animation that tick could not have seen, so the loop
+was told nothing was moving: no redraw, and the rim jumped to its next
+value on the following unrelated event. A press that stutters unless you
+wiggle the mouse.
+
+The tick stays before the pump — the bindings the pump runs are what put
+a ticked value on screen — and the loop asks again afterwards with a
+zero `dt`, which `App::tick` now documents as a pure query.
+`Animated::tick` satisfies it without a thought: it adds
+`clamp(0, 0, duration)` and returns `!settled()`.
+
 ## 1. Cost against σ — flat, and that is the downsample working
 
 | requested σ | k | box width | delivered σ | error | panel |

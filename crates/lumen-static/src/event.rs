@@ -542,6 +542,15 @@ pub trait App: Sized {
     /// A frame loop that gets `true` should schedule another frame; one
     /// that gets `false` can idle, which is what keeps a still UI at the
     /// idle numbers in `docs/results-frame-cost.md`.
+    ///
+    /// **A `dt_ms` of `0.0` must advance nothing and answer whether
+    /// anything is still in motion** — M22/T22.4. A frame loop ticks
+    /// before it pumps, because the bindings the pump runs are what put
+    /// a ticked value on screen; but a press dispatched *during* the
+    /// pump starts an animation that tick could not have seen, so the
+    /// loop asks again afterwards with a zero `dt`. Forwarding to
+    /// [`crate::anim::Animated::tick`] satisfies this without a thought:
+    /// it adds `clamp(0, 0, duration)` and returns `!settled()`.
     fn tick(&mut self, dt_ms: f32) -> bool {
         let _ = dt_ms;
         false

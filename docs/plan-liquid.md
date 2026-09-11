@@ -317,6 +317,18 @@ on a panel compared with itself:
 its own tests uses it, so anything it does not already support is this
 task's to find.
 
+**Built 2026-09-12. What it found was not in `Animated` but in the
+derive.** `DeriveApp` writes the whole `App` impl, so `tick` could only
+come from the trait default and *a derived application could not advance
+an animation at all* — the plan's "the application advances it from
+`App::tick`" had no way to be written. The derive gained
+`#[app(tick = path)]`, mirroring `after_update`.
+
+And the fixture's own bound was met by the button dimming itself: 2416
+px change on a press before the panel does anything, which cleared a
+bound of 400. Both injections reported exactly that number.
+`docs/results-glass.md` §0f.
+
 ## 7. T22.5 — the morph
 
 The "liquid" in the name is panels stretching and merging like droplets.
@@ -422,7 +434,7 @@ cannot both admit the blur and refuse the dispersion.
 | **T22.1** | Sub-pixel refraction sampling. No field. | The staircase is gone, and **the differing-pixel count against M21 is the deliverable**, stated in the results doc. |
 | **T22.2** | Dispersion. One `u8`. Widened source expression. | **Done 2026-09-12.** Over a hard edge the rim's blue − red is **+27.3** signed — signed because the *ordering* is the claim — against **0.00** chroma with dispersion off, both printed. Cost +10%, flat across panel size. `docs/results-glass.md` §0d. |
 | **T22.3** | Adaptive tint, stateless, with the pre-registered exit. One `u8` + one `Color`. | **Done 2026-09-12.** Travel **31.0** levels, strictly monotonic over 23 steps, crossing neutral between backdrop 141 and 150. The exit's bound — under one output level per one-pixel scroll — holds at **0.886**, and **1.000** under a 40 px panel, which is the stated limit. Cost −0%/+1%. `docs/results-glass.md` §0e. |
-| **T22.4** | Press deformation, and the redraw-loop reorder. No field. | Driven through the real redraw path: pressing thickens the rim band by a measured pixel count at the animation's peak, and the settled frame is **byte-identical** to the pre-press frame. |
+| **T22.4** | Press deformation, and the redraw-loop reorder. No field. | **Done 2026-09-12.** **5432** px deformed at the peak clear of the button, **0** with the press ignored, and the settled frame **byte-identical** to the pre-press one. Also `#[app(tick = path)]`, without which a derived app could not advance anything. `docs/results-glass.md` §0f. |
 | **T22.5** | The morph. Budget decision first, with its measurement. | At a separation of one rim width the pixels between the blobs are inked; at three rim widths they are empty; and a single panel is byte-identical to before the task. |
 | **T22.6** | The GPU backend. | `just gpu-parity` holds under **two** bounds, both stated before the measurement. |
 

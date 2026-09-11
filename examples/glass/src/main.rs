@@ -164,7 +164,18 @@ struct Screen {
     dock: Floating,
 }
 
+/// Advance what the tree animates — M22/T22.4.
+///
+/// There is no framework-walked per-node tick (see `App::tick`), so the
+/// application names what moves. Here that is the dock's press
+/// deformation: without this call the panel retargets on every press and
+/// then never travels, because nothing advances the value.
+fn advance(d: &mut Demo, dt_ms: f32) -> bool {
+    d.ui.dock.row.dock.tick(dt_ms)
+}
+
 #[derive(DeriveApp, Default)]
+#[app(tick = advance)]
 struct Demo {
     #[tree]
     ui: Screen,

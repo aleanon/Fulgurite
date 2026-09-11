@@ -49,10 +49,16 @@ use crate::LayoutCx;
 /// way to ten and the round trip was written out twice — and when
 /// T22.4's press deformation made a public `material()` accessor a lie,
 /// because the material the panel actually paints with depends on state
-/// the accessor cannot see.
+/// the accessor cannot see. [`Glass::material_now`] is that function.
 pub struct Glass<W: Widget> {
     pub content: W,
     pub material: Material,
+    /// How far into the press, `0` at rest and `1` held — M22/T22.4.
+    ///
+    /// Private: it is retargeted from the node array in `layout` and
+    /// advanced by [`Glass::tick`], and a caller setting it directly
+    /// would be overwritten on the next layout.
+    press: crate::anim::Animated<f32>,
 }
 
 impl<W: Widget + Default> Default for Glass<W> {
@@ -78,17 +84,61 @@ impl<W: Widget> Glass<W> {
 
     /// A panel with an explicit material.
     pub fn with(content: W, material: Material) -> Self {
-        Glass { content, material }
+        let mut press = crate::anim::Animated::new(0.0);
+        // Faster than the 200 ms default: a press is a response to a
+        // finger, and anything slower reads as lag rather than as
+        // material.
+        press.duration = 110.0;
+        Glass { content, material, press }
     }
 
-    /// The material this panel paints with **at node `i`**.
+    /// How much the rim thickens at a full press — M22/T22.4.
     ///
-    /// Not a plain accessor: T22.4 modulates the bevel from the pressed
-    /// state, which lives in the node array rather than on the widget,
-    /// so the material the renderer receives is a function of both.
-    pub fn material_at(&self, st: &[NodeState], i: usize) -> Material {
-        let _ = (st, i);
-        self.material
+    /// Chosen rather than measured: it is the largest deformation that
+    /// still reads as the same panel. The refraction deepens further,
+    /// because a squashed edge bends light more than it grows.
+    const PRESS_RIM: f32 = 0.55;
+    /// How much the refraction deepens at a full press.
+    const PRESS_REFRACT: f32 = 0.85;
+
+    /// The material this panel paints with **right now**.
+    ///
+    /// Not a plain accessor: a pressed panel squashes, so the material
+    /// the renderer receives is the declared one modulated by an
+    /// animated value. Nothing here is a new [`Material`] field and the
+    /// renderer is unchanged — the widget assembles what it asks for.
+    pub fn material_now(&self) -> Material {
+        let p = self.press.get();
+        if p <= 0.0 {
+            // **Exactly the declared material at rest**, not a multiply
+            // by 1.0: the settled frame has to be byte-identical to the
+            // pre-press one, and a float round trip is not free to
+            // assume.
+            return self.material;
+        }
+        Material {
+            rim: self.material.rim * (1.0 + Self::PRESS_RIM * p),
+            refraction: self.material.refraction * (1.0 + Self::PRESS_REFRACT * p),
+            ..self.material
+        }
+    }
+
+    /// Advance the press animation by `dt` milliseconds; returns whether
+    /// it moved — M22/T22.4.
+    ///
+    /// **The application calls this from [`crate::App::tick`].** There is
+    /// no framework-walked `Node::tick`, and that is a recorded decision
+    /// rather than an omission: it would cost a virtual call per node
+    /// per frame on trees that animate nothing — 3 000 of them on the
+    /// benchmark's list — which the M15 gating policy forbids. See
+    /// [`crate::App::tick`].
+    ///
+    /// It advances **this** panel only. A `Glass` nested inside another
+    /// panel's content is a separate animation and needs its own call;
+    /// recursing would mean a `tick` on `Widget`, which is the per-node
+    /// pass this design rejects.
+    pub fn tick(&mut self, dt_ms: f32) -> bool {
+        self.press.tick(dt_ms)
     }
 }
 
@@ -148,6 +198,18 @@ impl<W: Widget> Node for Glass<W> {
         if !me.visible {
             return crate::ops::hide_subtree(st, i, limits, Self::NODE_COUNT);
         }
+        // **Retarget here — M22/T22.4.** `layout` is the one method
+        // holding both `&mut self` and the state array, and `dispatch`
+        // has already run this pump, so the flag is this frame's.
+        //
+        // **The whole subtree, not this node.** `dispatch` marks the
+        // deepest hit node only, so for `Glass<Button>` the *button*
+        // carries the flag and the panel never does. A test that
+        // asserted "the flag changed" on the panel would compare a
+        // frame with itself forever.
+        let hi = (i + Self::NODE_COUNT).min(st.len());
+        let down = st[i..hi].iter().any(|n| n.pressed);
+        self.press.go(if down { 1.0 } else { 0.0 });
         let inner = inner_limits(limits, me.padding);
         let content = self.content.layout(cx, inner, style, st, i + Self::AT);
         let padded = Size {
@@ -179,7 +241,7 @@ impl<W: Widget> Node for Glass<W> {
         // `st[i].bg`: see the module note — a fill under the glass is
         // what the blur would read, and an opaque backdrop blurs to
         // itself.
-        out.glass(r, st[i].radius, self.material_at(st, i));
+        out.glass(r, st[i].radius, self.material_now());
         self.content.paint(st, i + Self::AT, out);
     }
 

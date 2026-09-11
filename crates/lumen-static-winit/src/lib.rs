@@ -269,12 +269,28 @@ impl<A: App> Win<A> {
         let dt = self.last_frame.replace(start).map_or(0.0, |t| {
             start.duration_since(t).as_secs_f32() * 1000.0
         });
-        let animating = self.host.tick(dt);
+        self.host.tick(dt);
 
         match self.metrics.as_mut() {
             Some(m) => self.host.pump_with(m),
             None => self.host.pump(),
         };
+        // **Ask again, after the pump — M22/T22.4.**
+        //
+        // The tick above is where animations *advance*, and it has to
+        // stay before the pump because the bindings the pump runs are
+        // what put a ticked value on screen. But its answer is stale by
+        // the time the pump returns: a press dispatched *during* the
+        // pump starts an animation the tick could not have seen, so
+        // `animating` was already `false`, no redraw was requested, and
+        // the rim jumped to its next value on the following unrelated
+        // event instead of settling. A press that stutters unless you
+        // wiggle the mouse is the symptom.
+        //
+        // A zero `dt` is a pure query — `App::tick` guarantees it — so
+        // this advances nothing and costs one call that inlines away for
+        // an application that animates nothing.
+        let animating = self.host.tick(0.0);
         backend.present(&mut self.host, self.config.page, start);
         // After the frame: the hover bit is set by dispatch and the
         // shape is read from the resolved style, both of which the pump
