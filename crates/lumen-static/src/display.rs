@@ -119,7 +119,11 @@ pub enum Cmd {
     /// `radius` is the panel's own, matching [`Cmd::RoundedRect`]'s
     /// meaning. It is not inherited from a clip: clips are axis-aligned
     /// rects here, so there is nothing to round a panel against.
-    Glass { rect: Rect, radius: f32, blur: f32, tint: Color },
+    ///
+    /// Everything else is [`Material`], a struct rather than five more
+    /// positional `f32`s — `blur` and `rim` and `refraction` are all
+    /// lengths and would transpose silently.
+    Glass { rect: Rect, radius: f32, material: Material },
     PushClip { rect: Rect },
     PopClip,
 }
@@ -138,12 +142,90 @@ pub enum Cmd {
 /// about `3σ`, and a bilinear tap adds one pixel on each side. The `+ 4`
 /// is that tap plus the margin T19.3's downsample will need when it
 /// lands, so the dependency does not have to widen again then.
-pub fn glass_source(rect: Rect, blur: f32) -> Rect {
-    if !blur.is_finite() || blur <= 0.0 {
+pub fn glass_source(rect: Rect, m: &Material) -> Rect {
+    let blur = if m.blur.is_finite() && m.blur > 0.0 { m.blur } else { 0.0 };
+    let refract = if m.refraction.is_finite() && m.refraction > 0.0 { m.refraction } else { 0.0 };
+    if blur == 0.0 && refract == 0.0 {
         return rect;
     }
-    let reach = crate::num::ceil(3.0 * blur + 4.0);
+    // **`refraction` belongs here too**, and leaving it out was a real
+    // hole: a bevel samples the backdrop up to `refraction` px outside
+    // the panel, so a source that counted only the blur would read
+    // pixels nothing had damaged and the rim would go stale.
+    let reach = crate::num::ceil(3.0 * blur + refract + 4.0);
     [rect[0] - reach, rect[1] - reach, rect[2] + reach, rect[3] + reach]
+}
+
+/// What a glass panel is made of — M21.
+///
+/// Six numbers, and the last four are what separate **frosted** from
+/// **liquid**. Frosted is a blur: the backdrop goes soft and that is the
+/// whole effect. Liquid is mostly *see-through* — the glassiness comes
+/// from an edge that bends what is behind it and catches the light,
+/// which is [`Material::refraction`] and [`Material::specular`] over a
+/// bevel of width [`Material::rim`].
+///
+/// A struct and not five more arguments: `blur`, `rim` and `refraction`
+/// are all lengths in logical px, and a transposed pair of them
+/// compiles and looks plausible.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Material {
+    /// Gaussian standard deviation for the backdrop blur, in logical
+    /// px. 0 is a clear lens — which is what a liquid look wants.
+    pub blur: f32,
+    /// Multiplied over the backdrop; `tint.3` is its strength. Alpha 0
+    /// is a real value.
+    pub tint: Color,
+    /// Width of the bevelled edge, in logical px. The band within `rim`
+    /// of the boundary is where the surface curves, and therefore the
+    /// only place refraction and specular do anything.
+    ///
+    /// **Independent of `refraction`, deliberately.** The first design
+    /// derived the rim from the displacement, which made a panel with
+    /// `refraction = 0` have no specular either — and a see-through
+    /// panel with a lit edge is exactly the case worth having.
+    pub rim: f32,
+    /// How far, in logical px, the bevel displaces what is seen through
+    /// it. 0 is flat glass.
+    pub refraction: f32,
+    /// Strength of the specular highlight, 0..=1.
+    pub specular: f32,
+    /// Direction the light comes from, radians clockwise from +x in the
+    /// **y-down** screen space both backends work in.
+    pub light: f32,
+}
+
+impl Default for Material {
+    fn default() -> Self {
+        Material::FROSTED
+    }
+}
+
+impl Material {
+    /// A frosted panel: blur, a light tint, no bevel. What M19 shipped.
+    pub const FROSTED: Material = Material {
+        blur: 12.0,
+        tint: Color(255, 255, 255, 40),
+        rim: 0.0,
+        refraction: 0.0,
+        specular: 0.0,
+        light: -0.9,
+    };
+
+    /// A see-through panel whose edge bends and catches the light.
+    ///
+    /// Barely any blur — the glassiness is the bevel, not the softness,
+    /// which is the whole difference between this and [`FROSTED`].
+    ///
+    /// [`FROSTED`]: Material::FROSTED
+    pub const LIQUID: Material = Material {
+        blur: 3.0,
+        tint: Color(255, 255, 255, 18),
+        rim: 13.0,
+        refraction: 11.0,
+        specular: 0.9,
+        light: -0.9,
+    };
 }
 
 /// The alpha a renderer that cannot blur paints a glass panel at.
@@ -306,17 +388,20 @@ impl Cmd {
                 f(h, id.0 as u64);
                 f(h, u32::from_be_bytes([tint.0, tint.1, tint.2, tint.3]) as u64);
             }
-            Cmd::Glass { rect, radius, blur, tint } => {
+            Cmd::Glass { rect, radius, material: m } => {
                 f(h, 10);
                 for v in rect {
                     f(h, v.to_bits() as u64);
                 }
                 f(h, radius.to_bits() as u64);
-                // `blur` sizes the region this command *reads*, so a
-                // hash that skipped it would let a widened blur through
+                // Every field, and `blur` and `refraction` especially:
+                // both size the region this command *reads*, so a hash
+                // that skipped one would let a widened source through
                 // with no damage and leave the outer ring stale.
-                f(h, blur.to_bits() as u64);
-                f(h, u32::from_be_bytes([tint.0, tint.1, tint.2, tint.3]) as u64);
+                for v in [m.blur, m.rim, m.refraction, m.specular, m.light] {
+                    f(h, v.to_bits() as u64);
+                }
+                f(h, u32::from_be_bytes([m.tint.0, m.tint.1, m.tint.2, m.tint.3]) as u64);
             }
             Cmd::PushClip { rect } => {
                 f(h, 3);
@@ -398,10 +483,10 @@ pub trait Painter {
     /// `rounded_rect` instead of forwarding it. That is not theoretical:
     /// `Deferring` inherited four such bodies and silently dropped every
     /// `Line` and `Image` under an overlay pass until 2026-09-10.
-    fn glass(&mut self, rect: Rect, radius: f32, blur: f32, tint: Color) {
-        let _ = blur;
-        let a = tint.3.max(GLASS_FALLBACK_ALPHA);
-        self.rounded_rect(rect, Color(tint.0, tint.1, tint.2, a), radius);
+    fn glass(&mut self, rect: Rect, radius: f32, material: Material) {
+        let t = material.tint;
+        let a = t.3.max(GLASS_FALLBACK_ALPHA);
+        self.rounded_rect(rect, Color(t.0, t.1, t.2, a), radius);
     }
 
     fn push_clip(&mut self, rect: Rect);
@@ -541,9 +626,9 @@ impl DisplayList {
     /// fully transparent colour. `tint.3 == 0` with a non-zero blur is a
     /// pure frosted panel — the plainest thing this command does — and
     /// copying the neighbouring guard would have dropped it.
-    pub fn glass(&mut self, rect: Rect, radius: f32, blur: f32, tint: Color) {
+    pub fn glass(&mut self, rect: Rect, radius: f32, material: Material) {
         if has_area(rect) {
-            self.cmds.push(Cmd::Glass { rect, radius, blur, tint });
+            self.cmds.push(Cmd::Glass { rect, radius, material });
         }
     }
 
@@ -710,9 +795,18 @@ impl Painter for Scaled<'_> {
     /// and every non-HiDPI desktop — and gives a half-strength blur on a
     /// 2x display. That is the shape of bug this whole wrapper exists to
     /// prevent, so it is spelled out field by field.
-    fn glass(&mut self, rect: Rect, radius: f32, blur: f32, tint: Color) {
+    fn glass(&mut self, rect: Rect, radius: f32, material: Material) {
         let r = self.r(rect);
-        self.inner.glass(r, radius * self.scale, blur * self.scale, tint);
+        // `blur`, `rim` and `refraction` are lengths and scale; `tint`
+        // is a colour, `specular` a 0..=1 strength and `light` an angle,
+        // and none of those do.
+        let m = Material {
+            blur: material.blur * self.scale,
+            rim: material.rim * self.scale,
+            refraction: material.refraction * self.scale,
+            ..material
+        };
+        self.inner.glass(r, radius * self.scale, m);
     }
     fn push_clip(&mut self, rect: Rect) {
         let r = self.r(rect);
@@ -759,8 +853,8 @@ impl Painter for DisplayList {
     fn image(&mut self, rect: Rect, id: ImageId, tint: Color) {
         DisplayList::image(self, rect, id, tint)
     }
-    fn glass(&mut self, rect: Rect, radius: f32, blur: f32, tint: Color) {
-        DisplayList::glass(self, rect, radius, blur, tint)
+    fn glass(&mut self, rect: Rect, radius: f32, material: Material) {
+        DisplayList::glass(self, rect, radius, material)
     }
     fn push_clip(&mut self, rect: Rect) {
         DisplayList::push_clip(self, rect)

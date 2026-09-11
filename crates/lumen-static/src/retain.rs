@@ -852,14 +852,16 @@ impl<R: Retention> Painter for Recording<'_, R> {
     /// `Damage::All` for the rest of the frame; skipping `observe_dep`
     /// would let the panel go stale whenever its backdrop changed
     /// without this command's own hash changing — which is every scroll.
-    fn glass(&mut self, rect: Rect, radius: f32, blur: f32, tint: Color) {
+    fn glass(&mut self, rect: Rect, radius: f32, material: crate::display::Material) {
         let mut h = h_rect(fold(0, 10), rect);
         h = fold(h, radius.to_bits() as u64);
-        h = fold(h, blur.to_bits() as u64);
-        h = h_color(h, tint);
+        for v in [material.blur, material.rim, material.refraction, material.specular, material.light] {
+            h = fold(h, v.to_bits() as u64);
+        }
+        h = h_color(h, material.tint);
         self.ret.observe(h, rect);
-        self.ret.observe_dep(crate::display::glass_source(rect, blur));
-        self.inner.glass(rect, radius, blur, tint);
+        self.ret.observe_dep(crate::display::glass_source(rect, &material));
+        self.inner.glass(rect, radius, material);
     }
 
     fn push_clip(&mut self, rect: Rect) {

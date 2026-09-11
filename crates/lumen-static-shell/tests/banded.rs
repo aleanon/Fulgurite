@@ -187,7 +187,7 @@ fn a_list_with_glass_is_not_banded() {
     assert!(c.bands_for_list(&plain, None) >= 2, "the same scene without glass must band");
 
     let mut l = scene(w, h);
-    l.glass([100.0, 100.0, 500.0, 200.0], 8.0, 12.0, Color(255, 255, 255, 40));
+    l.glass([100.0, 100.0, 500.0, 200.0], 8.0, lumen_static::display::Material::FROSTED);
     let bands = c.bands_for_list(&l, None);
     assert_eq!(bands, 1, "a list with a backdrop filter was banded into {bands}");
 }

@@ -57,7 +57,7 @@ fn glass_cmds(list: &DisplayList) -> Vec<(usize, [f32; 4], f32, Color)> {
         .iter()
         .enumerate()
         .filter_map(|(k, c)| match c {
-            Cmd::Glass { rect, blur, tint, .. } => Some((k, *rect, *blur, *tint)),
+            Cmd::Glass { rect, material, .. } => Some((k, *rect, material.blur, material.tint)),
             _ => None,
         })
         .collect()
@@ -71,7 +71,11 @@ fn a_glass_panel_emits_one_command_over_its_own_rect() {
     let g = glass_cmds(&list);
     assert_eq!(g.len(), 1, "one panel, one command: {:?}", list.cmds);
     assert_eq!(g[0].1, lumen_static::ops::rect_of(&st[1]), "over the panel's own rect");
-    assert_eq!(g[0].2, Glass::<Bar>::BLUR, "and the widget's blur reaches the command");
+    assert_eq!(
+        g[0].2,
+        lumen_static::display::Material::FROSTED.blur,
+        "and the widget's blur reaches the command"
+    );
 }
 
 /// The content paints **after** the panel, so a button on a toolbar is

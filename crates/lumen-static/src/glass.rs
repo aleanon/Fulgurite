@@ -35,21 +35,34 @@
 //! ignored rather than silently composited.
 
 use crate::desc::{Constraints, NodeDesc, NodeState, Point, Size, NO_PARENT};
-use crate::display::{Color, Painter};
+use crate::display::{Color, Material, Painter};
 use crate::hit::Hit;
 use crate::ops::{inner_limits, rect_of, resolve_self};
 use crate::style::{Length, Style};
 use crate::widget::{Node, Widget};
 use crate::LayoutCx;
 
-/// Content on a panel that blurs the frame beneath it.
+/// Content on a panel made of glass.
+///
+/// The material is [`Material`]; the fields below are the same six,
+/// flattened so an application writes `bar.refraction = 9.0` rather than
+/// reaching through a struct. `paint` assembles them.
 pub struct Glass<W: Widget> {
     pub content: W,
-    /// Gaussian standard deviation, in logical px. 0 is a plain tint.
+    /// Gaussian standard deviation, in logical px. 0 is a clear lens.
     pub blur: f32,
-    /// Multiplied over the blurred backdrop; `tint.3` is its strength.
-    /// Alpha 0 is a real value — a pure frosted panel.
+    /// Multiplied over the backdrop; `tint.3` is its strength.
     pub tint: Color,
+    /// Width of the bevelled edge, in logical px — where the surface
+    /// curves, and the only band refraction and specular touch.
+    pub rim: f32,
+    /// How far the bevel displaces what is seen through it, in px.
+    pub refraction: f32,
+    /// Strength of the specular highlight, 0..=1.
+    pub specular: f32,
+    /// Where the light is, radians clockwise from +x in y-down screen
+    /// space.
+    pub light: f32,
 }
 
 impl<W: Widget + Default> Default for Glass<W> {
@@ -62,22 +75,41 @@ impl<W: Widget> Glass<W> {
     /// Content index, relative to this node.
     const AT: usize = 1;
 
-    /// A frosted panel with the default material.
+    /// A frosted panel: [`Material::FROSTED`].
     pub fn new(content: W) -> Self {
-        Glass { content, blur: Self::BLUR, tint: Self::TINT }
+        Glass::with(content, Material::FROSTED)
     }
 
-    /// The default blur, in logical px.
-    ///
-    /// Chosen to read as frosted rather than as a smear at the size a
-    /// toolbar is, and **not measured** — `docs/plan-glass.md` §11 says
-    /// nothing in this feature is a measured number until T19.3's sweep.
-    pub const BLUR: f32 = 12.0;
+    /// A see-through panel whose edge bends and catches the light:
+    /// [`Material::LIQUID`].
+    pub fn liquid(content: W) -> Self {
+        Glass::with(content, Material::LIQUID)
+    }
 
-    /// The default tint: white at 16%, the strength a light material
-    /// uses. Also the value that makes the degraded fallback's alpha
-    /// floor visibly a lie, which is why that floor exists.
-    pub const TINT: Color = Color(255, 255, 255, 40);
+    /// A panel with an explicit material.
+    pub fn with(content: W, m: Material) -> Self {
+        Glass {
+            content,
+            blur: m.blur,
+            tint: m.tint,
+            rim: m.rim,
+            refraction: m.refraction,
+            specular: m.specular,
+            light: m.light,
+        }
+    }
+
+    /// The six fields as the command carries them.
+    pub fn material(&self) -> Material {
+        Material {
+            blur: self.blur,
+            tint: self.tint,
+            rim: self.rim,
+            refraction: self.refraction,
+            specular: self.specular,
+            light: self.light,
+        }
+    }
 
     /// Set the blur, in logical px.
     pub fn blur(mut self, px: f32) -> Self {
@@ -179,7 +211,7 @@ impl<W: Widget> Node for Glass<W> {
         // `st[i].bg`: see the module note — a fill under the glass is
         // what the blur would read, and an opaque backdrop blurs to
         // itself.
-        out.glass(r, st[i].radius, self.blur, self.tint);
+        out.glass(r, st[i].radius, self.material());
         self.content.paint(st, i + Self::AT, out);
     }
 

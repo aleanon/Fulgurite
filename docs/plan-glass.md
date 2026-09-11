@@ -433,10 +433,12 @@ or drops the claim.
 | **T19.5** — **NOT BUILT 2026-09-10**, decided on measurement | Threading. `render_banded` declines a list containing glass, and the decline is asserted via `Canvas::bands_for_list`. | A toolbar-sized panel is 0.42 ms in total; segmentation would divide a number already inside the budget. Condition to revisit and what the decline costs: `docs/results-glass.md` §6. |
 | **T19.6** — **DONE 2026-09-10** | Embedded: confirm the variant costs the firmware nothing. | **+148 B of `.text`** for M18 and M19 together, 34.5% of the ceiling; the blur is not linked at all. Restated in `docs/results-embedded.md`. |
 
-**Deferred, deliberately, each with its condition:** refraction and
-specular (when blur has shipped and someone wants the material rather
-than the effect); the GPU backend (§1.3); group opacity (needs a real
-layer, §4).
+**Deferred, deliberately, each with its condition:** ~~refraction and
+specular~~ — **BUILT 2026-09-11 as M21**, when the condition was met and
+someone wanted the material rather than the effect. Over a *bevel*,
+which the plan did not anticipate and which is the part that matters:
+`docs/results-glass.md` §5b. Still deferred: the GPU backend (§1.3) and
+group opacity (needs a real layer, §4).
 
 **Sizing.** T19.0 and T19.1 are a day together. T19.2 is the milestone's
 centre and should be budgeted as such. T19.3 is a day including the

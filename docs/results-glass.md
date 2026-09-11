@@ -126,6 +126,56 @@ blend that did not pay: the next person to reach for this should know it
 was measured, what the ceiling was, and which of the two reasons would
 have to change.
 
+## 5b. The bevel — what makes it look like glass rather than frost
+
+**Measured 2026-09-11.** M21 added `refraction` and `specular` over a
+bevel of width `rim`, which is what separates
+[`Material::LIQUID`](../crates/lumen-static/src/display.rs) from
+`FROSTED`.
+
+| panel | frosted | liquid | the bevel |
+|---|---:|---:|---:|
+| 400×200 | 4.56 ms | 5.38 | **+18%** |
+| 800×300 | 13.71 | 14.42 | **+5%** |
+
+Both at σ = 3, so only the bevel differs. (Both are dearer than §1's
+table because σ = 3 takes `k = 1` and runs the box passes at full
+resolution — the same "a small blur is the expensive one" result.)
+
+### Why a *third* normal component is the whole trick
+
+A rounded-rect SDF gives a 2D gradient, and along each straight edge
+that gradient is **constant**. A highlight built on one is a uniform
+stripe down the edge that switches off at the corners — an outline, not
+a surface.
+
+The bevel lifts the normal out of the plane. With `u` running 1 at the
+boundary to 0 at `rim` px inside:
+
+```
+n = (u·nx, u·ny, sqrt(1 − u²))
+```
+
+— a spherical cap, already unit, singular nowhere, and no division. It
+varies **across** the rim as well as around it, so the highlight sweeps
+the way a curved edge does. `tests/glass_bevel.rs` pins it by injection:
+forcing `nz = 0` kills the highlight outright at every light angle,
+because a purely horizontal normal never points at a light that has any
+elevation.
+
+The refraction rides the same parameter: the backdrop is sampled at
+`p + n₂ · refraction · u²`, so it is strongest at the rim and zero in
+the interior. Measured: **240 of 390 rim pixels move**, and **0 interior
+pixels do**.
+
+### What this is not
+
+Not Apple's. No chromatic dispersion, no adaptive tint that reads the
+backdrop's luminance, no light that responds to device motion, and one
+specular lobe rather than the several a real edge shows. What it has is
+the part that makes a panel read as a solid object: an edge with
+thickness, which bends what is behind it and catches the light.
+
 ## 6. T19.5 — threading, declined for now
 
 A band owns disjoint rows, and that is the entire safety argument behind

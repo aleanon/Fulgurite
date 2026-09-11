@@ -621,7 +621,7 @@ impl Gpu {
                         out.push(shape(*rect, r, *color, rad, KIND_ROUNDED));
                     }
                 }
-                Cmd::Glass { rect, radius, blur, tint } => {
+                Cmd::Glass { rect, radius, material } => {
                     // The GPU backend draws the fallback and will keep
                     // doing so past M19: `docs/plan-glass.md` §1.3 defers
                     // the real filter, because a texture copy cannot
@@ -631,7 +631,7 @@ impl Gpu {
                     // shader. Emitting the same rounded rect the software
                     // canvas emits keeps the two backends comparable
                     // meanwhile, which is what that bound measures.
-                    let _ = blur;
+                    let tint = material.tint;
                     if let Some(r) = clipped(*rect, &clip) {
                         let rad =
                             radius.min((rect[2] - rect[0]) / 2.0).min((rect[3] - rect[1]) / 2.0);

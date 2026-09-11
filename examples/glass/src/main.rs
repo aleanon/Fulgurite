@@ -27,7 +27,7 @@
 //!    is a flat background. The rows carry colour swatches and real
 //!    glyphs so there is something to smear.
 
-use lumen_static::display::Color;
+use lumen_static::display::{Color, Material};
 use lumen_static::prelude::*;
 use lumen_static::{Glass, ScrollView};
 use lumen_static_winit::{run, Config};
@@ -105,6 +105,43 @@ struct Toolbar {
     more: Button<Demo, String>,
 }
 
+/// The floating dock: a liquid pill pushed to the bottom centre.
+///
+/// Two `Spacer`s at `FILL` do the pushing, because a stack aligns all
+/// of its children the same way and this one has to sit somewhere the
+/// bar does not. It is also why the pill is a *pill*: a bevel is only
+/// visible where there is an edge on screen, and a full-bleed bar has
+/// three of its four rims off the window.
+#[derive(StaticTree, Default)]
+#[widget(row, spacing = 0.0)]
+struct DockRow {
+    #[widget_id("dockl")]
+    l: Spacer,
+    #[widget_id("dock")]
+    dock: Glass<Tabs>,
+    #[widget_id("dockr")]
+    r: Spacer,
+}
+
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+struct Floating {
+    #[widget_id("push")]
+    push: Spacer,
+    row: DockRow,
+}
+
+#[derive(StaticTree, Default)]
+#[widget(row, spacing = 18.0)]
+struct Tabs {
+    #[widget_id("t0")]
+    t0: Label,
+    #[widget_id("t1")]
+    t1: Label,
+    #[widget_id("t2")]
+    t2: Label,
+}
+
 /// **The composition the whole feature needs.**
 ///
 /// A stack, so the two children share one rect: the scroller fills it,
@@ -118,8 +155,13 @@ struct Toolbar {
 struct Screen {
     #[widget_id("content")]
     content: ScrollView<Cards>,
+    /// **Frosted**: a blur, no bevel. What M19 shipped.
     #[widget_id("bar")]
     bar: Glass<Toolbar>,
+    /// **Liquid**: barely any blur, a bevelled edge that bends what is
+    /// behind it and catches the light. Side by side with the bar so the
+    /// difference is one screenshot rather than two.
+    dock: Floating,
 }
 
 #[derive(DeriveApp, Default)]
@@ -176,6 +218,32 @@ fn stylesheet() -> Vec<Rule> {
         Rule::new(Selector::Id("sub"), Patch::new().color(CARD_SUB).font_size(12.0)),
         Rule::new(Selector::Id("less"), btn()),
         Rule::new(Selector::Id("more"), btn()),
+        // The dock: a rounded pill, sized to its tabs, floated to the
+        // bottom centre by three FILL spacers.
+        Rule::new(Selector::Id("push"), Patch::new().height(Length::FILL)),
+        Rule::new(Selector::Id("dockl"), Patch::new().width(Length::FILL)),
+        Rule::new(Selector::Id("dockr"), Patch::new().width(Length::FILL)),
+        // **Both of these, and the second is the one that catches
+        // people.** A derived container defaults to `FILL` width, so
+        // `Tabs` would expand to whatever box it was given and the
+        // `Shrink` panel around it would then measure *that* — a
+        // full-width pill with `Shrink` written on it. A `Shrink`
+        // container needs `Shrink` content.
+        Rule::new(Selector::Kind("Tabs"), Patch::new().width(Length::Shrink)),
+        Rule::new(
+            Selector::Id("dock"),
+            Patch::new()
+                .width(Length::Shrink)
+                .radius(26.0)
+                .padding(Edges { left: 26.0, right: 26.0, top: 15.0, bottom: 15.0 }),
+        ),
+        Rule::new(
+            Selector::Kind("Floating"),
+            Patch::new().padding(Edges { left: 0.0, right: 0.0, top: 0.0, bottom: 26.0 }),
+        ),
+        Rule::new(Selector::Id("t0"), Patch::new().color(INK).font_size(14.0).font_weight(600.0)),
+        Rule::new(Selector::Id("t1"), Patch::new().color(INK).font_size(14.0).font_weight(600.0)),
+        Rule::new(Selector::Id("t2"), Patch::new().color(INK).font_size(14.0).font_weight(600.0)),
     ];
     for (id, (_, _, colour)) in IDS.iter().zip(CARDS.iter()) {
         rules.push(Rule::new(
@@ -266,8 +334,7 @@ fn build(sigma: f32) -> Demo {
         d.ui.bar.blur = d.sigma as f32;
     };
 
-    // The material. A *translucent* tint: at full alpha the panel is a
-    // flat rectangle and there is nothing to see.
+    // The material.
     //
     // Dark rather than white, and that is a legibility decision rather
     // than a stylistic one. The cards behind are saturated and bright;
@@ -275,8 +342,22 @@ fn build(sigma: f32) -> Demo {
     // unreadable. Tinting toward the page colour keeps the backdrop
     // visible *and* keeps the bar's own text at contrast — which is the
     // trade every real glass surface makes.
+    // Frosted: a blur and a tint, no bevel.
     app.ui.bar.blur = sigma;
     app.ui.bar.tint = TINT;
+
+    // Liquid: **barely any blur**. The glassiness is the bevel -- an
+    // edge that displaces what is behind it and catches the light --
+    // which is why this one is nearly see-through and still reads as
+    // glass. Everything here is `Material::LIQUID` except the tint,
+    // which is darkened for the same legibility reason the bar's is.
+    app.ui.dock.row.dock = Glass::with(
+        Tabs::default(),
+        Material { tint: Color(0x0b, 0x0e, 0x14, 0x3d), ..Material::LIQUID },
+    );
+    app.ui.dock.row.dock.content.t0.set("Home");
+    app.ui.dock.row.dock.content.t1.set("Search");
+    app.ui.dock.row.dock.content.t2.set("Library");
     app
 }
 

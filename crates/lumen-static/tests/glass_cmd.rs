@@ -4,7 +4,7 @@
 //! command exists, costs nothing, survives every seam between a widget
 //! and a renderer, and draws *something* everywhere.
 
-use lumen_static::display::{Color, GLASS_FALLBACK_ALPHA};
+use lumen_static::display::{Color, Material, GLASS_FALLBACK_ALPHA};
 use lumen_static::{Cmd, DisplayList, Painter};
 
 /// `Cmd` must not have grown, **and `Glass` must not be what sets its
@@ -18,8 +18,7 @@ fn the_command_is_free() {
     struct GlassPayload {
         _rect: [f32; 4],
         _radius: f32,
-        _blur: f32,
-        _tint: Color,
+        _material: Material,
     }
     let payload = core::mem::size_of::<GlassPayload>();
     // `Gradient`'s 56 is what sets `Cmd`'s size. Printed beside the
@@ -52,7 +51,7 @@ fn no_two_command_kinds_fold_alike() {
         Cmd::RoundedRect { rect: r, color: c, radius: 0.0 },
         Cmd::Shadow { rect: r, color: c, radius: 0.0, spread: 0.0 },
         Cmd::Image { rect: r, id: lumen_static::display::ImageId(0), tint: c },
-        Cmd::Glass { rect: r, radius: 0.0, blur: 0.0, tint: c },
+        Cmd::Glass { rect: r, radius: 0.0, material: Material { tint: c, ..Material::FROSTED } },
         Cmd::PushClip { rect: r },
         Cmd::PopClip,
     ];
@@ -69,22 +68,33 @@ fn no_two_command_kinds_fold_alike() {
 /// reads, so a change to it must be visible to retention.
 #[test]
 fn the_hash_covers_blur_and_tint() {
-    let base = Cmd::Glass { rect: [0.0; 4], radius: 2.0, blur: 4.0, tint: Color(1, 1, 1, 40) };
+    let base = Cmd::Glass {
+        rect: [0.0; 4],
+        radius: 2.0,
+        material: Material { blur: 4.0, tint: Color(1, 1, 1, 40), ..Material::FROSTED },
+    };
     let hash = |c: &Cmd| {
         let mut h = 0u64;
         c.hash_into(&mut h);
         h
     };
     let mut wider = base;
-    if let Cmd::Glass { blur, .. } = &mut wider {
-        *blur = 8.0;
+    if let Cmd::Glass { material, .. } = &mut wider {
+        material.blur = 8.0;
     }
     let mut tinted = base;
-    if let Cmd::Glass { tint, .. } = &mut tinted {
-        *tint = Color(1, 1, 1, 80);
+    if let Cmd::Glass { material, .. } = &mut tinted {
+        material.tint = Color(1, 1, 1, 80);
+    }
+    // `refraction` widens the source region too, so it is as
+    // damage-relevant as `blur` and must be in the identity.
+    let mut bent = base;
+    if let Cmd::Glass { material, .. } = &mut bent {
+        material.refraction = 6.0;
     }
     assert_ne!(hash(&base), hash(&wider), "a widened blur must change the hash");
     assert_ne!(hash(&base), hash(&tinted), "a changed tint must change the hash");
+    assert_ne!(hash(&base), hash(&bent), "a widened refraction must change the hash");
 }
 
 /// Alpha 0 is a real value — a pure frosted panel — and must survive the
@@ -92,11 +102,15 @@ fn the_hash_covers_blur_and_tint() {
 #[test]
 fn a_fully_transparent_tint_is_not_dropped() {
     let mut list = DisplayList::new();
-    list.glass([0.0, 0.0, 10.0, 10.0], 0.0, 6.0, Color(0, 0, 0, 0));
+    list.glass(
+        [0.0, 0.0, 10.0, 10.0],
+        0.0,
+        Material { blur: 6.0, tint: Color(0, 0, 0, 0), ..Material::FROSTED },
+    );
     assert_eq!(list.cmds.len(), 1, "a zero-alpha tint with a blur is a frosted panel");
 
     let mut empty = DisplayList::new();
-    empty.glass([5.0, 5.0, 5.0, 5.0], 0.0, 6.0, Color(0, 0, 0, 255));
+    empty.glass([5.0, 5.0, 5.0, 5.0], 0.0, Material::FROSTED);
     assert!(empty.cmds.is_empty(), "no area is still no command");
 }
 
@@ -121,7 +135,11 @@ fn the_painter_fallback_paints_something_you_can_see() {
 
     let mut p = Plain::default();
     // A realistic glass tint: 16% white. Painted flat that is invisible.
-    p.glass([0.0, 0.0, 10.0, 10.0], 4.0, 8.0, Color(255, 255, 255, 40));
+    p.glass(
+        [0.0, 0.0, 10.0, 10.0],
+        4.0,
+        Material { tint: Color(255, 255, 255, 40), ..Material::FROSTED },
+    );
     assert_eq!(p.0.len(), 1, "the fallback must draw, not skip");
     let (c, radius) = p.0[0];
     println!("fallback alpha {} from a tint of 40", c.3);

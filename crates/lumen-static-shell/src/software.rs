@@ -169,14 +169,21 @@ impl Surface<'_> {
     /// is constant and straight equals premultiplied. **A
     /// transparent-window path would invalidate this** and must
     /// premultiply before the box passes.
-    fn glass_within(&mut self, shape: [f32; 4], bounds: [f32; 4], radius: f32, blur: f32, tint: Color) {
+    fn glass_within(
+        &mut self,
+        shape: [f32; 4],
+        bounds: [f32; 4],
+        radius: f32,
+        m: lumen_static::display::Material,
+    ) {
+        let (blur, tint) = (m.blur, m.tint);
         if !shape.iter().all(|v| v.is_finite()) || !bounds.iter().all(|v| v.is_finite()) {
             return;
         }
         // The source region, from the *shared* expression the damage
         // recorder uses. If these two disagreed the panel would be stale
         // in its outermost ring and the oracle would not see it.
-        let src = lumen_static::display::glass_source(shape, blur);
+        let src = lumen_static::display::glass_source(shape, &m);
         let (w, h) = (self.width as i64, self.y_hi());
         let (k, d, _) = if blur > 0.0 { blur_plan(blur) } else { (1usize, 1i64, 0.0) };
         let ki = k as i64;
@@ -238,6 +245,12 @@ impl Surface<'_> {
         // Bilinear sample of the downsampled, blurred backdrop, in
         // surface coordinates.
         let sample = |x: i64, y: i64| -> [f32; 3] {
+            // Clamped to the capture: refraction displaces the read, and
+            // a panel at the surface edge can push it past what was
+            // captured. Clamp-to-edge is the same rule the box passes
+            // use at their own boundary.
+            let x = x.clamp(sx0, sx1 - 1);
+            let y = y.clamp(sy0, sy1 - 1);
             let fx = ((x - sx0) as f32 + 0.5) / k as f32 - 0.5;
             let fy = ((y - sy0) as f32 + 0.5) / k as f32 - 0.5;
             let x0 = fx.floor();
@@ -258,12 +271,28 @@ impl Surface<'_> {
             out
         };
 
-        // Composite, at exactly `fill_rounded_within`'s coverage.
+        // Composite. **Coverage keeps `fill_rounded_within`'s structure**
+        // -- hard spans in the straight regions, the ramp only in the
+        // corner bands -- so a panel and a rounded rect of the same
+        // geometry have the same silhouette. What is new is the bevel:
+        // within `rim` of the boundary the surface curves, and that band
+        // needs a signed distance everywhere, not only in the corners.
         let rr = radius.min((shape[2] - shape[0]) / 2.0).min((shape[3] - shape[1]) / 2.0);
+        let (cx, cy) = ((shape[0] + shape[2]) / 2.0, (shape[1] + shape[3]) / 2.0);
+        let (hx, hy) = ((shape[2] - shape[0]) / 2.0 - rr, (shape[3] - shape[1]) / 2.0 - rr);
         let (x0, y0) = ((bounds[0].floor() as i64).max(0), (bounds[1].floor() as i64).max(self.y0));
         let (x1, y1) = ((bounds[2].ceil() as i64).min(w), (bounds[3].ceil() as i64).min(h));
         let (top, bottom) = ((shape[1] + rr).ceil() as i64, (shape[3] - rr).floor() as i64);
         let (left, right) = ((shape[0] + rr).ceil() as i64, (shape[2] - rr).floor() as i64);
+
+        let rim = m.rim.max(0.0);
+        let bevelled = rim > 0.0 && (m.refraction > 0.0 || m.specular > 0.0);
+        // The light, in 3D. `lz` tilts it out of the screen so a flat
+        // interior is lit at all; without it only the rim would be, and
+        // the panel would read as an outline rather than a surface.
+        let (lz, lxy) = (0.62f32, (1.0f32 - 0.62 * 0.62).sqrt());
+        let light = [m.light.cos() * lxy, m.light.sin() * lxy, lz];
+
         for y in y0..y1 {
             let corner_row = !(y >= top && y < bottom) && rr > 0.5;
             let py = y as f32 + 0.5;
@@ -279,13 +308,67 @@ impl Surface<'_> {
                 if cov <= 0.0 {
                     continue;
                 }
-                let back = sample(x, y);
+
+                let (px, pyf) = (x as f32 + 0.5, y as f32 + 0.5);
+                let mut sample_at = (x, y);
+                let mut spec = 0.0f32;
+                if bevelled {
+                    // Signed distance and the outward 2D normal of the
+                    // rounded rect, everywhere -- not just in corners.
+                    let (qx, qy) = ((px - cx).abs() - hx, (pyf - cy).abs() - hy);
+                    let (mx, my) = (qx.max(0.0), qy.max(0.0));
+                    let outside = (mx * mx + my * my).sqrt();
+                    let d = outside + qx.max(qy).min(0.0) - rr;
+                    // `u` is 1 at the boundary and 0 at `rim` px inside:
+                    // the bevel's parameter.
+                    let u = (1.0 + d / rim).clamp(0.0, 1.0);
+                    if u > 0.0 {
+                        // The outward normal. **`sign(p - c)` is not
+                        // optional**: `max(q, 0)` is componentwise
+                        // non-negative, so without it every normal
+                        // points into the +x/+y quadrant and the left
+                        // and top rims refract and light backwards.
+                        let (sx, sy) = (sign_of(px - cx), sign_of(pyf - cy));
+                        let (nx, ny) = if outside > 1.0e-4 {
+                            (sx * mx / outside, sy * my / outside)
+                        } else if qx > qy {
+                            (sx, 0.0)
+                        } else {
+                            (0.0, sy)
+                        };
+                        // **The bevel is a spherical cap, and this is
+                        // the whole of it.** `(u*n, sqrt(1 - u*u))` is
+                        // already unit -- no division, no singularity at
+                        // the rim -- and it is what gives the normal a
+                        // *third* component. A 2D gradient is constant
+                        // along a straight edge, so a highlight built on
+                        // one is a uniform stripe; this one varies
+                        // across the rim as well as around it, which is
+                        // what reads as a curved surface.
+                        let nz = (1.0 - u * u).max(0.0).sqrt();
+                        if m.refraction > 0.0 {
+                            let k = m.refraction * u * u;
+                            sample_at = ((px + nx * k) as i64, (pyf + ny * k) as i64);
+                        }
+                        if m.specular > 0.0 {
+                            let dot = nx * u * light[0] + ny * u * light[1] + nz * light[2];
+                            if dot > 0.0 {
+                                let d2 = dot * dot;
+                                let d8 = d2 * d2 * d2 * d2;
+                                spec = d8 * d8 * d8 * m.specular;
+                            }
+                        }
+                    }
+                }
+
+                let back = sample(sample_at.0, sample_at.1);
                 let t = tint.3 as f32 / 255.0;
                 let mix = |c: f32, ti: u8| c + (ti as f32 - c) * t;
+                let lit = |c: f32| (c + spec * 255.0).min(255.0);
                 let c = Color(
-                    mix(back[0], tint.0) as u8,
-                    mix(back[1], tint.1) as u8,
-                    mix(back[2], tint.2) as u8,
+                    lit(mix(back[0], tint.0)) as u8,
+                    lit(mix(back[1], tint.1)) as u8,
+                    lit(mix(back[2], tint.2)) as u8,
                     255,
                 );
                 self.blend_cov(x, y, c, (cov * 255.0) as u8);
@@ -570,9 +653,9 @@ impl Surface<'_> {
                         self.fill_rounded_within(*rect, r, *color, *radius);
                     }
                 }
-                Cmd::Glass { rect, radius, blur, tint } => {
+                Cmd::Glass { rect, radius, material } => {
                     if let Some(r) = clipped(*rect, &clip) {
-                        self.glass_within(*rect, r, *radius, *blur, *tint);
+                        self.glass_within(*rect, r, *radius, *material);
                     }
                 }
                 Cmd::Shadow { rect, color, radius, spread } => {
@@ -1133,6 +1216,17 @@ fn strip_rows_for(rows: usize, workers: usize) -> usize {
         return n.clamp(1, rows);
     }
     rows.div_ceil(workers * 4).clamp(16, rows.max(1))
+}
+
+/// `-1` or `+1`, and never `0` — a normal needs a direction even
+/// exactly on the centre line.
+#[inline]
+fn sign_of(v: f32) -> f32 {
+    if v < 0.0 {
+        -1.0
+    } else {
+        1.0
+    }
 }
 
 /// Whether a list contains a backdrop filter.

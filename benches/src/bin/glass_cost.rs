@@ -15,7 +15,7 @@
 
 use std::time::Instant;
 
-use lumen_static::display::{Color, DisplayList};
+use lumen_static::display::{Color, DisplayList, Material};
 use lumen_static_shell::software::Canvas;
 
 /// Requested sigma against what the renderer will actually deliver.
@@ -25,6 +25,12 @@ use lumen_static_shell::software::Canvas;
 /// silently, and this one exists precisely to publish a number a caller
 /// cannot otherwise see.
 use lumen_static_shell::software::blur_plan as delivered;
+
+/// Frosted at `sigma`: the material M19 shipped, so these numbers stay
+/// comparable with the table already in `docs/results-glass.md`.
+fn frosted(sigma: f32) -> Material {
+    Material { blur: sigma, tint: Color(255, 255, 255, 40), ..Material::FROSTED }
+}
 
 fn best_of(n: u32, mut f: impl FnMut()) -> f64 {
     let mut best = f64::INFINITY;
@@ -56,7 +62,7 @@ fn main() {
         let (k, d, got) = delivered(sigma);
         let mut list = DisplayList::new();
         backdrop(w, h, &mut list);
-        list.glass([200.0, 100.0, 1000.0, 400.0], 12.0, sigma, Color(255, 255, 255, 40));
+        list.glass([200.0, 100.0, 1000.0, 400.0], 12.0, frosted(sigma));
 
         let mut base = DisplayList::new();
         backdrop(w, h, &mut base);
@@ -85,6 +91,43 @@ fn main() {
     // source to know whether it is still valid, so its best case is the
     // cost with the box passes removed -- which `blur = 0` measures
     // exactly, because `glass_within` skips them at zero.
+    // What the bevel costs: the same panel, frosted against liquid.
+    // Liquid is nearly all composite -- its blur is 3 px -- so this is
+    // the price of refraction and specular, not of a different blur.
+    println!("\n  the bevel: frosted against liquid, same panel");
+    println!("{:>14} {:>12} {:>12} {:>10}", "panel", "frosted ms", "liquid ms", "bevel");
+    for (pw, ph) in [(400.0f32, 200.0f32), (800.0, 300.0)] {
+        let area = [0.0, 0.0, w as f32, h as f32];
+        let mut timed = |m: Material| {
+            let mut list = DisplayList::new();
+            backdrop(w, h, &mut list);
+            list.glass([40.0, 40.0, 40.0 + pw, 40.0 + ph], 26.0, m);
+            let mut base = DisplayList::new();
+            backdrop(w, h, &mut base);
+            best_of(3, || {
+                canvas.clear(Color(20, 24, 34, 255));
+                canvas.render_within(&list, area);
+            });
+            let with = best_of(20, || {
+                canvas.clear(Color(20, 24, 34, 255));
+                canvas.render_within(&list, area);
+            });
+            let without = best_of(20, || {
+                canvas.clear(Color(20, 24, 34, 255));
+                canvas.render_within(&base, area);
+            });
+            with - without
+        };
+        // Frosted at the liquid blur, so only the bevel differs.
+        let flat = timed(Material { blur: Material::LIQUID.blur, ..Material::FROSTED });
+        let bevel = timed(Material::LIQUID);
+        println!(
+            "{:>14} {flat:>12.2} {bevel:>12.2} {:>9.0}%",
+            format!("{pw:.0}x{ph:.0}"),
+            (bevel - flat) / flat * 100.0
+        );
+    }
+
     println!("\n  what the box passes cost, against capture + composite alone");
     println!("{:>14} {:>12} {:>12} {:>10}", "panel", "blur 12 ms", "blur 0 ms", "passes");
     for (pw, ph) in [(400.0f32, 200.0f32), (800.0, 300.0)] {
@@ -92,7 +135,7 @@ fn main() {
         let mut timed = |sigma: f32| {
             let mut list = DisplayList::new();
             backdrop(w, h, &mut list);
-            list.glass([40.0, 40.0, 40.0 + pw, 40.0 + ph], 12.0, sigma, Color(255, 255, 255, 40));
+            list.glass([40.0, 40.0, 40.0 + pw, 40.0 + ph], 12.0, frosted(sigma));
             let mut base = DisplayList::new();
             backdrop(w, h, &mut base);
             best_of(3, || {
@@ -122,7 +165,7 @@ fn main() {
     for (pw, ph) in [(200.0f32, 80.0f32), (400.0, 200.0), (800.0, 300.0), (1600.0, 800.0)] {
         let mut list = DisplayList::new();
         backdrop(w, h, &mut list);
-        list.glass([40.0, 40.0, 40.0 + pw, 40.0 + ph], 12.0, 12.0, Color(255, 255, 255, 40));
+        list.glass([40.0, 40.0, 40.0 + pw, 40.0 + ph], 12.0, frosted(12.0));
         let mut base = DisplayList::new();
         backdrop(w, h, &mut base);
         let area = [0.0, 0.0, w as f32, h as f32];

@@ -203,7 +203,7 @@ impl Renderer for Svg {
                         Self::colour(*tint)
                     );
                 }
-                Cmd::Glass { rect, radius, blur, tint } => {
+                Cmd::Glass { rect, radius, material } => {
                     // **SVG has a real Gaussian blur and this does not
                     // use it.** `feGaussianBlur` with `BackgroundImage`
                     // as its input was removed from the spec and no
@@ -214,6 +214,7 @@ impl Renderer for Svg {
                     // the honest answer, and it carries `data-blur` so
                     // an exporter that *can* resolve a backdrop knows
                     // what was asked for.
+                    let (blur, tint) = (material.blur, material.tint);
                     let a = tint.3.max(lumen_static::display::GLASS_FALLBACK_ALPHA);
                     let _ = write!(
                         body,

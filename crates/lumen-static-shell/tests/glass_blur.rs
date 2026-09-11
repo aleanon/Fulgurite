@@ -4,7 +4,7 @@
 //! is checked here is the property a table cannot show: **a blur must
 //! not move the image**.
 
-use lumen_static::display::{Color, DisplayList};
+use lumen_static::display::{Color, DisplayList, Material};
 use lumen_static_shell::software::{blur_plan, Canvas};
 
 const W: u32 = 200;
@@ -19,7 +19,11 @@ fn render(blur: f32) -> Canvas {
     l.rect([0.0, 58.0, W as f32, 62.0], Color(250, 250, 250, 255));
     // A fully transparent tint, so what the panel shows is the blurred
     // backdrop and nothing else.
-    l.glass([0.0, 0.0, W as f32, H as f32], 0.0, blur, Color(0, 0, 0, 0));
+    l.glass(
+        [0.0, 0.0, W as f32, H as f32],
+        0.0,
+        Material { blur, tint: Color(0, 0, 0, 0), ..Material::FROSTED },
+    );
     lumen_static::Renderer::render(&mut c, &l, W, H);
     c
 }
@@ -147,7 +151,11 @@ fn translating_the_scene_by_k_translates_the_blur_exactly() {
             let y = dy + 70.0 + n as f32 * 14.0;
             l.rect([dx + 55.0, y, dx + 205.0, y + 5.0], Color(240, 240, 240, 255));
         }
-        l.glass([dx + 60.0, dy + 60.0, dx + 200.0, dy + 160.0], 0.0, SIGMA, Color(0, 0, 0, 0));
+        l.glass(
+            [dx + 60.0, dy + 60.0, dx + 200.0, dy + 160.0],
+            0.0,
+            Material { blur: SIGMA, tint: Color(0, 0, 0, 0), ..Material::FROSTED },
+        );
         lumen_static::Renderer::render(&mut c, &l, BW, BH);
         c
     };
@@ -203,7 +211,11 @@ fn sliding_the_panel_by_one_pixel_does_not_change_the_blur() {
             let y = 70.0 + n as f32 * 14.0;
             l.rect([55.0, y, 205.0, y + 5.0], Color(240, 240, 240, 255));
         }
-        l.glass([60.0 + dx, 60.0, 200.0 + dx, 160.0], 0.0, SIGMA, Color(0, 0, 0, 0));
+        l.glass(
+            [60.0 + dx, 60.0, 200.0 + dx, 160.0],
+            0.0,
+            Material { blur: SIGMA, tint: Color(0, 0, 0, 0), ..Material::FROSTED },
+        );
         lumen_static::Renderer::render(&mut c, &l, BW, BH);
         c
     };

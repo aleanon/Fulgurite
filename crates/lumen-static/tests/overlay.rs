@@ -441,7 +441,11 @@ fn deferring_forwards_every_command() {
             0.0,
         );
         p.image([0.0, 0.0, 10.0, 10.0], ImageId(1), Color(255, 255, 255, 255));
-        p.glass([0.0, 0.0, 10.0, 10.0], 4.0, 8.0, Color(255, 255, 255, 40));
+        p.glass(
+            [0.0, 0.0, 10.0, 10.0],
+            4.0,
+            lumen_static::display::Material::FROSTED,
+        );
     }
 
     let mut direct = DisplayList::new();
