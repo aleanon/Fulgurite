@@ -285,6 +285,16 @@ so the topmost child is the last painted and must be the first hit.
 Every other container can walk forward because its children cannot
 overlap; this one cannot.
 
+**And that exposed a rule nothing had needed before** (2026-09-11,
+found by `examples/glass` being unusable): **hit testing follows
+painting.** A `Spacer` claimed hits like every other leaf, and a derived
+container claimed any gap its children did not — invisible in a row or a
+column, where declining would only return the parent and the handler
+walk ends up in the same place. In a stack it is fatal: a transparent
+layout layer sits *over* the content, is hit first, and swallows the
+whole frame's input. Both now decline — `Spacer` always, a container
+where `bg.3 == 0 && shadow <= 0.0`.
+
 **`W1004` becomes real in the same commit.** It is reserved in
 `crates/lumen-static-agent/src/audit.rs` as `_OVERLAP_RESERVED`, its
 reason is pinned by `crates/lumen-static-agent/tests/lint.rs`, and

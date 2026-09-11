@@ -353,6 +353,24 @@ fn dim(c: crate::display::Color, f: f32) -> crate::display::Color {
 /// self, `place` writes a position, `hit` is a bounds test.
 macro_rules! leaf_common {
     ($ty:ty, $flags:expr) => {
+        leaf_common!($ty, $flags, hit);
+    };
+    // `nohit`: the leaf is never a click target, whatever its box says.
+    ($ty:ty, $flags:expr, nohit) => {
+        fn place(&mut self, at: Point, _style: &[Style], st: &mut [NodeState], i: usize) {
+            st[i].pos = at;
+        }
+        fn hit(&self, _st: &[NodeState], _i: usize, _x: f32, _y: f32) -> Option<Hit> {
+            None
+        }
+        fn node(&self, _i: usize) -> &dyn Node {
+            self
+        }
+        fn node_mut(&mut self, _i: usize) -> &mut dyn Node {
+            self
+        }
+    };
+    ($ty:ty, $flags:expr, hit) => {
         fn place(&mut self, at: Point, _style: &[Style], st: &mut [NodeState], i: usize) {
             st[i].pos = at;
         }
@@ -607,7 +625,17 @@ impl Node for Spacer {
     fn paint(&self, _st: &[NodeState], _i: usize, _out: &mut dyn Painter) {
         // A spacer is empty space; it draws nothing.
     }
-    leaf_common!(Spacer, 0);
+
+    // `nohit`: a spacer is not a click target.
+    // Hit testing follows painting — you cannot click what was never
+    // drawn. A row or a column hides the difference, because its
+    // children cannot overlap and claiming a transparent gap only ever
+    // returns the parent. A `stack` does not: a `Spacer` at `FILL` in a
+    // layer above the content is invisible, covers the whole window,
+    // and is hit *first* because a stack walks its children in reverse.
+    // It swallowed every click and every wheel event in
+    // `examples/glass` (found 2026-09-11).
+    leaf_common!(Spacer, 0, nohit);
 }
 
 /// A clickable leaf. `on_click` is a plain `fn` pointer, never a closure:

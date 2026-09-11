@@ -384,3 +384,97 @@ fn main() {
         },
     );
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use lumen_static::event::{Event, PointerButton};
+    use lumen_static_shell::text::{FontMetrics, FontStack};
+    use lumen_static_shell::Host;
+
+    const W: u32 = 460;
+    const H: u32 = 620;
+
+    fn driven() -> Host<Demo> {
+        let mut host: Host<Demo> = Host::new(build(14.0), W, H);
+        host.set_stylesheet(&stylesheet());
+        let mut metrics = FontStack::system().map(FontMetrics::new);
+        for _ in 0..2 {
+            match metrics.as_mut() {
+                Some(m) => {
+                    host.pump_with(m);
+                }
+                None => {
+                    host.pump();
+                }
+            }
+        }
+        host
+    }
+
+    fn wid_at(host: &Host<Demo>, x: f32, y: f32) -> &'static str {
+        lumen_static::pass::hit_test(&host.app.ui, &host.states, x, y)
+            .map(|h| Screen::SUB_TABLE[h.node as usize].wid)
+            .unwrap_or("<none>")
+    }
+
+    /// **The regression this file exists for.**
+    ///
+    /// The dock is a full-height layer over everything, and a `stack`
+    /// hits its children in reverse — so before `Spacer` stopped
+    /// claiming hits and containers stopped claiming their transparent
+    /// gaps, node `push` (an invisible `FILL` spacer) answered *every*
+    /// point in the window. The buttons did nothing and the list would
+    /// not scroll.
+    #[test]
+    fn the_dock_layer_does_not_swallow_the_window() {
+        let host = driven();
+        // **Positive assertions.** `!= "push"` was the first version and
+        // it was too weak: with only half the fix the hit landed on the
+        // layer's *container* instead of its spacer, which is a
+        // different wrong answer that still swallows the frame.
+        let on_list = wid_at(&host, 230.0, 300.0);
+        assert!(
+            on_list.starts_with('c') || on_list == "title" || on_list == "sub",
+            "a point over the list hit {on_list:?}, not a card"
+        );
+        assert_eq!(wid_at(&host, 430.0, 30.0), "more", "a point over the + button hit something else");
+        // And the dock itself is still hittable, or this fixed nothing.
+        let dock = wid_at(&host, 230.0, 568.0);
+        assert!(
+            matches!(dock, "t0" | "t1" | "t2" | "dock"),
+            "the dock is no longer reachable: {dock}"
+        );
+    }
+
+    /// The wheel reaches the scroller, which is what the whole example
+    /// is for: the blur only changes because the backdrop moves.
+    #[test]
+    fn the_wheel_scrolls_the_list() {
+        let mut host = driven();
+        assert_eq!(host.app.ui.content.scroll, 0.0);
+        host.post(Event::Scroll { x: 230.0, y: 300.0, dy: -60.0 });
+        host.pump();
+        let after = host.app.ui.content.scroll;
+        println!("scroll after one wheel notch: {after}");
+        assert!(after > 0.0, "the wheel did not reach the scroller");
+    }
+
+    /// And the toolbar buttons run their handlers.
+    #[test]
+    fn the_blur_buttons_work() {
+        let mut host = driven();
+        let before = host.app.sigma;
+        let (bx, by) = {
+            let i = Screen::SUB_TABLE.iter().position(|d| d.wid == "more").expect("the + button");
+            let st = &host.states[i];
+            (st.pos.x + st.size.w / 2.0, st.pos.y + st.size.h / 2.0)
+        };
+        host.post(Event::PointerDown { x: bx, y: by, button: PointerButton::Left, clicks: 1 });
+        host.post(Event::PointerUp { x: bx, y: by, button: PointerButton::Left });
+        host.pump();
+        println!("sigma {before} -> {}", host.app.sigma);
+        assert!(host.app.sigma > before, "the + button did nothing");
+        assert_eq!(host.app.ui.bar.blur, host.app.sigma as f32, "and the panel followed it");
+    }
+}

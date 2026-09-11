@@ -794,6 +794,22 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                         return ::core::option::Option::None;
                     }
                     #hit_body
+                    // **A container claims a hit only where it painted
+                    // something.** Hit testing follows painting: a
+                    // transparent gap between children was never drawn,
+                    // so nothing was clicked there.
+                    //
+                    // Invisible in a row or a column, whose children
+                    // cannot overlap -- declining there only returns the
+                    // parent instead of the child, and the handler walk
+                    // ends up in the same place. It matters in a
+                    // `stack`, where a later transparent layer sits
+                    // *over* the content and is hit first: without this
+                    // an empty layout wrapper swallows the whole frame's
+                    // input, which is what it did to `examples/glass`.
+                    if st[i].bg.3 == 0 && st[i].shadow <= 0.0 {
+                        return ::core::option::Option::None;
+                    }
                     ::core::option::Option::Some(::lumen_static::Hit {
                         node: i as u32,
                         inner: ::core::option::Option::None,
