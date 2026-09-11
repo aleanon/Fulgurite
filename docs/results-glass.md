@@ -428,6 +428,96 @@ material separately, so a caller may hold one still while the other
 moves; the gate now drives `Recording` directly with the same rect both
 times, where the injection reports `Damage::None`.
 
+## 0h. T22.6 — the filter on the GPU
+
+**Measured 2026-09-12**, NVIDIA GeForce RTX 4070 (Vulkan). Until this
+task the GPU backend drew a flat rounded rect where a panel should be —
+the one place in the project where the two backends visibly diverged,
+which `docs/plan-glass.md` §1.3 recorded as a decision rather than an
+omission.
+
+### What it buys
+
+Filter cost, with the same frame minus the glass command subtracted on
+both sides — `benches --bin glass-cost`'s method, so the tables read
+together:
+
+| panel | software | gpu | |
+|---|---:|---:|---:|
+| 400×200 @ 720p | 6.83 ms | **0.12** | 55× |
+| full screen @ 1080p | 147.87 | **1.44** | 103× |
+| full screen @ 4K | 750.14 | **2.84** | 264× |
+
+**A full-screen backdrop filter goes from impossible to routine**: 148 ms
+is nine frames at 60 Hz, 1.44 ms is a tenth of one. That is the whole
+case for the task.
+
+The software column is larger than §2's: that table measures the
+**blur**, whose capture is dilated by the frosted `3σ + 4`, and this one
+measures the full liquid material — bevel, Fresnel, inner shadow,
+saturation, dispersion and the adaptive tint. `docs/plan-liquid.md` §8
+motivated the task by citing §2's 43 ms at 1080p; for the material M22
+actually shipped the figure is 148 ms, which makes the case stronger
+rather than weaker.
+
+**The first version of this table was timing the queue.** `draw` returns
+as soon as the work is submitted — which is what a GPU is for — so every
+row read 0.03 ms whatever the resolution, and it reported a 27687×
+speedup at 4K. `Gpu::wait` exists for exactly this and its rustdoc says
+so.
+
+### How it is structured
+
+A texture cannot be sampled by the pass that is writing it, so the frame
+is **split at every glass command**: everything under the panel, then
+six blur passes ping-ponging between two scratch targets, then the panel
+itself — `G + 1` main passes and `6G` blur passes. The first blur pass
+reads the target directly, so no copy is needed.
+
+The material rides a storage buffer indexed per instance, the way `Grad`
+already does and for the same reason: it is 112 bytes and almost no
+frame has a panel in it.
+
+### The parity gate needs two bounds, and now that is measured
+
+`docs/plan-liquid.md` §8 predicted that one frame-wide count cannot both
+admit the blur's disagreement and refuse a missing fringe. Measured:
+
+| | B1, whole panel | B2, rim band |
+|---|---:|---:|
+| bound, stated first | ≤ 10% over 8 levels | ≤ 8 levels |
+| both backends as shipped | **0** of 24 000 (worst delta 3) | **0.5** |
+| shader's dispersion deleted | 1.5% — **green** | **18.2** — fires |
+| shader's adaptive tint deleted | 97.4% — fires | 0.2 — green |
+
+Each bound catches exactly what the other cannot. The agreement is far
+closer than the bounds allow because at the liquid preset the CPU's
+downsample factor is 1, so both backends run the same three box passes
+at the same widths and the only divergence is 8-bit rounding between
+passes.
+
+### The fringe measure was of the wrong quantity, twice
+
+The bounds were pre-registered and neither has moved. What the rim-band
+bound *measures* took three attempts:
+
+1. **Mean blue-over-red across the band.** Dominated by the backdrop's
+   own colour: over a blue and yellow edge it reads +110 levels whether
+   or not the renderer disperses anything, and deleting dispersion moved
+   it by 3.3 — under the bound, green.
+2. **The same, as a difference against `dispersion: 0`.** Right idea,
+   but the *mean of a signed fringe cancels*: a fringe is one sign on one
+   side of an edge and the other sign on the other, and it read −1.2.
+3. **Per pixel, as `|chroma(on) − chroma(off)|`, compared between the
+   backends pixel by pixel.** A shader that skips dispersion contributes
+   zero and this reads back the software arm's whole fringe.
+
+And the band was in the wrong place. Profiled, dispersion's contribution
+is 32, 21, 5 and 15 levels in columns 60–63 and **exactly zero** from 65
+on; the first band ran 61..67, so half of it was dead columns pulling the
+mean under the floor. The same mistake T22.0's Fresnel test made, for the
+same reason: it is a two-to-four pixel effect.
+
 ## 1. Cost against σ — flat, and that is the downsample working
 
 | requested σ | k | box width | delivered σ | error | panel |
@@ -465,11 +555,20 @@ Linear in area, as a separable blur must be. The per-pixel figure falls
 slightly with size because the capture is dilated by a fixed `3σ + 4`
 reach on every side, which is proportionally more of a small panel.
 
-**A 1600×800 panel at 26.9 ms does not fit in a frame.** A full-screen
-backdrop filter is not what this is for, and T19.4's cache is what makes
-a *static* one affordable — but a panel that large over content that
-moves every frame costs what the table says. A toolbar-sized panel is
-0.4 ms and fits comfortably.
+**A 1600×800 panel at 26.9 ms does not fit in a frame**, on this
+backend. A toolbar-sized panel is 0.4 ms and fits comfortably.
+
+Two corrections to what this paragraph said when it was written:
+
+- It credited **T19.4's cache** with making a static full-screen panel
+  affordable. There is no cache — §5 records it as decided against on
+  measurement, and this sentence outlived that decision by a milestone.
+- The answer for a large panel is **M22/T22.6's GPU backend**, where the
+  same full-screen filter is 1.44 ms at 1080p. §0h.
+
+And this table measures the **blur**: its capture is dilated by
+`3σ + 4`, the frosted reach, with no refraction term. The full liquid
+material is a different and larger quantity — §0h measures it.
 
 ## 3. The blur is the one SVG specifies, and it does not move the image
 
@@ -632,6 +731,6 @@ frame rather than about the panel.
   command list at glass boundaries; the numbers here are what it will be
   measured against.
 - **A cache.** There is none, and §5 says why.
-- **The GPU.** It draws the degraded fallback; `docs/plan-glass.md` §1.3
-  says why.
+- **The GPU.** Superseded 2026-09-12: it runs the real filter, not the
+  fallback. §0h.
 - **Anything but this machine.** One CPU, `powersave`, one scene.

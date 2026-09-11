@@ -415,6 +415,11 @@ Measured, `docs/results-glass.md` §2: ~21 ns/px — 0.6 ms for a toolbar,
 **43 ms at 1080p**, 174 ms at 4K. A panel is affordable and a screen is
 not.
 
+**Built 2026-09-12, and those figures were the blur's, not the
+material's.** §2's capture is dilated by the frosted `3σ + 4` with no
+refraction term; the full liquid material at 1080p is **148 ms**, not
+43. On the GPU it is **1.44 ms**. §0h.
+
 The port is specified in `docs/plan-glass.md` §1.3. Last, because every
 task above changes the material the shader must match, and T22.5 may
 change the command encoding as well.
@@ -447,7 +452,7 @@ cannot both admit the blur and refuse the dispersion.
 | **T22.3** | Adaptive tint, stateless, with the pre-registered exit. One `u8` + one `Color`. | **Done 2026-09-12.** Travel **31.0** levels, strictly monotonic over 23 steps, crossing neutral between backdrop 141 and 150. The exit's bound — under one output level per one-pixel scroll — holds at **0.886**, and **1.000** under a 40 px panel, which is the stated limit. Cost −0%/+1%. `docs/results-glass.md` §0e. |
 | **T22.4** | Press deformation, and the redraw-loop reorder. No field. | **Done 2026-09-12.** **5432** px deformed at the peak clear of the button, **0** with the press ignored, and the settled frame **byte-identical** to the pre-press one. Also `#[app(tick = path)]`, without which a derived app could not advance anything. `docs/results-glass.md` §0f. |
 | **T22.5** | The morph. Budget decision first, with its measurement. | **Done 2026-09-12.** Budget measured: an offset as 2 × `i16` fits exactly (`Cmd` stays 60); a scale costs `Cmd` 64, so there is none. **60 of 60** rows inked between the blobs at one rim width, **0** at three, and the lone panel byte-identical by digest. Cost +8%/+7% over the same rect. `docs/results-glass.md` §0g. |
-| **T22.6** | The GPU backend. | `just gpu-parity` holds under **two** bounds, both stated before the measurement. |
+| **T22.6** | The GPU backend. | **Done 2026-09-12.** Both bounds stated first and held: **0** of 24 000 panel px over 8 levels (worst 3), rim-band fringe gap **0.5** against 8. Each bound shown to catch what the other cannot. Full-screen filter 148 ms → **1.44 ms** at 1080p. `docs/results-glass.md` §0h. |
 
 **Sizing — in measurement cycles, not days.** The first draft said "a
 day" per task; for calibration, M19's six tasks were 37 minutes of wall

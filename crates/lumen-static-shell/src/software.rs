@@ -1592,7 +1592,7 @@ fn box_sigma(d: i64) -> f32 {
 /// which is the asymmetric pair below, and one of `d + 1` centred on the
 /// pixel. And the even case is the common one here: T19.3's `k` search
 /// targets a per-pass sigma around 2, where `d` is 4.
-fn box_windows(d: i64) -> [(usize, usize); 3] {
+pub fn box_windows(d: i64) -> [(usize, usize); 3] {
     let h = (d / 2) as usize;
     if d % 2 == 1 {
         [(h, h), (h, h), (h, h)]

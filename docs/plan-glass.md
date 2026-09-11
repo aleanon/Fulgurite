@@ -39,7 +39,7 @@ here so the tasks do not re-argue them.
 |---|---|
 | **Where the parameters live** | On a widget, `Glass<W>`, as ordinary struct fields. **Not** on `Style`. |
 | **What ships first** | Blur only. Refraction and specular are a later, purely additive task. |
-| **Which backend** | Software. The GPU backend draws the degraded fallback until a later milestone. |
+| **Which backend** | Software. The GPU backend drew the degraded fallback until **M22/T22.6**, which ships the real filter — `docs/results-glass.md` §0h. |
 | **When** | After `Damage` carries a set of regions (M18) and a container can overlap its children (T11.6). Not before. |
 | **How it stays cheap** | A backdrop cache per panel, so a recompute is bounded by the panel and not by the frame. |
 

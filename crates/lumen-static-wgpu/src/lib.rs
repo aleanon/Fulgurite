@@ -62,6 +62,11 @@ const KIND_LINE: u32 = 2;
 const KIND_GRADIENT: u32 = 3;
 const KIND_GLYPH: u32 = 4;
 const KIND_IMAGE: u32 = 5;
+const KIND_BLUR: u32 = 6;
+const KIND_GLASS: u32 = 7;
+/// `software::LIGHT_Z` / `LIGHT_XY`.
+const LIGHT_Z: f32 = 0.62;
+const LIGHT_XY: f32 = 0.784_599_3;
 
 /// Glyph atlas edge, in texels. 1 MB of R8, which holds a few thousand
 /// glyphs at UI sizes — far more than a screen has.
@@ -181,6 +186,23 @@ pub struct Gpu {
     quad_cap: usize,
     grads: wgpu::Buffer,
     grad_cap: usize,
+    /// Glass materials, out of line like the gradients — M22/T22.6.
+    mats: wgpu::Buffer,
+    mat_cap: usize,
+
+    /// The two ping-ponged scratch targets a backdrop filter needs. A
+    /// texture copy cannot happen inside a render pass, so every glass
+    /// command splits the frame: the target is blurred into these and
+    /// read back out.
+    scratch: [wgpu::Texture; 2],
+    scratch_view: [wgpu::TextureView; 2],
+    /// Group 1 for each of the three things a pass can read: the
+    /// target, and the two scratch textures.
+    src_binds: [wgpu::BindGroup; 3],
+    src_layout: wgpu::BindGroupLayout,
+    /// **Linear**, where `sampler` is `Nearest`. A refracted read lands
+    /// at a fractional coordinate by definition.
+    linear: wgpu::Sampler,
 
     glyph_tex: wgpu::Texture,
     glyph_atlas: Atlas<GlyphId>,
@@ -198,6 +220,22 @@ pub struct Gpu {
     font: Option<FontStack>,
     /// Where `Cmd::Image` is resolved to pixels.
     images: Option<Box<dyn ImageSource>>,
+}
+
+/// Which texture group 1 names for a pass — M22/T22.6.
+const SRC_TARGET: usize = 0;
+const SRC_SCRATCH_A: usize = 1;
+const SRC_SCRATCH_B: usize = 2;
+
+/// Where a glass command splits the frame, and which instances blur its
+/// backdrop first.
+struct Split {
+    /// Instance index of the glass quad itself.
+    glass: u32,
+    /// Instance indices of its blur passes, in order. Six of them: three
+    /// box passes each way, at the widths SVG specifies and
+    /// `software::box_windows` computes.
+    blur: [u32; 6],
 }
 
 /// The atlas ran out of room mid-frame. Answered by resetting it and
@@ -317,7 +355,12 @@ impl Gpu {
                 texture_entry(2),
                 sampler_entry(3),
                 storage_entry(4),
+                storage_entry(5),
             ],
+        });
+        let src_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("lumen-static glass source"),
+            entries: &[texture_entry(0), sampler_entry(1)],
         });
         let blit_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("lumen-static blit binds"),
@@ -335,12 +378,20 @@ impl Gpu {
             min_filter: wgpu::FilterMode::Nearest,
             ..Default::default()
         });
+        let linear = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("lumen-static linear sampler"),
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            ..Default::default()
+        });
 
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("lumen-static shapes"),
             layout: Some(&device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: None,
-                bind_group_layouts: &[Some(&bind_layout)],
+                bind_group_layouts: &[Some(&bind_layout), Some(&src_layout)],
                 immediate_size: 0,
             })),
             vertex: wgpu::VertexState {
@@ -426,14 +477,17 @@ impl Gpu {
         });
         let quads = make_quad_buffer(&device, 256);
         let grads = make_grad_buffer(&device, 4);
+        let mats = make_mat_buffer(&device, 2);
+        let (scratch, scratch_view) = make_scratch(&device, width, height);
         let glyph_tex = make_atlas_texture(&device, GLYPH_ATLAS, wgpu::TextureFormat::R8Unorm);
         // A 1x1 placeholder until an image command asks for a real one.
         let image_tex = make_atlas_texture(&device, 1, wgpu::TextureFormat::Rgba8Unorm);
 
         let bind = make_bind(
-            &device, &bind_layout, &globals, &glyph_tex, &image_tex, &sampler, &grads,
+            &device, &bind_layout, &globals, &glyph_tex, &image_tex, &sampler, &grads, &mats,
         );
         let blit_bind = make_blit_bind(&device, &blit_layout, &target_view, &sampler);
+        let src_binds = make_src_binds(&device, &src_layout, &target_view, &scratch_view, &linear);
 
         Some(Gpu {
             device,
@@ -456,6 +510,13 @@ impl Gpu {
             quad_cap: 256,
             grads,
             grad_cap: 4,
+            mats,
+            mat_cap: 2,
+            scratch,
+            scratch_view,
+            src_binds,
+            src_layout,
+            linear,
             glyph_tex,
             glyph_atlas: Atlas::new(GLYPH_ATLAS),
             image_tex,
@@ -509,6 +570,19 @@ impl Gpu {
         self.target_view = v;
         self.blit_bind =
             make_blit_bind(&self.device, &self.blit_layout, &self.target_view, &self.sampler);
+        // The scratch targets are the target's size, and group 1 names
+        // all three views — a resize that rebuilt one and not the others
+        // would blur last frame's dimensions into this one's.
+        let (st, sv) = make_scratch(&self.device, width, height);
+        self.scratch = st;
+        self.scratch_view = sv;
+        self.src_binds = make_src_binds(
+            &self.device,
+            &self.src_layout,
+            &self.target_view,
+            &self.scratch_view,
+            &self.linear,
+        );
         if let Some(s) = &self.surface {
             self.config.width = width;
             self.config.height = height;
@@ -547,6 +621,14 @@ impl Gpu {
             }
             quads.clear();
             let mut grads = Vec::new();
+            // **Cleared with the quads, not declared outside the loop.**
+            // A retry rebuilds the frame from an empty atlas, and a
+            // split names an *instance index*: carrying the first
+            // attempt's splits into the second would blur at whatever
+            // the rebuilt list happens to have at that position, which
+            // on an atlas reset is a different command every time.
+            let mut mats: Vec<Mat> = Vec::new();
+            let mut splits: Vec<Split> = Vec::new();
             if let Some((c, r)) = page {
                 let r = snap_out(damage.unwrap_or(r));
                 // Opaque, like `Canvas::clear_within`: a page colour
@@ -562,9 +644,9 @@ impl Gpu {
                     _pad: [0; 3],
                 });
             }
-            match self.collect(list, damage, &mut quads, &mut grads) {
+            match self.collect(list, damage, &mut quads, &mut grads, &mut mats, &mut splits) {
                 Ok(()) => {
-                    self.submit(&quads, &grads);
+                    self.submit(&quads, &grads, &mats, &splits);
                     return;
                 }
                 Err(Overflow) if attempt == 0 => continue,
@@ -573,7 +655,7 @@ impl Gpu {
                 // last glyphs is worse than one that is whole, and far
                 // better than a black window.
                 Err(Overflow) => {
-                    self.submit(&quads, &grads);
+                    self.submit(&quads, &grads, &mats, &splits);
                     return;
                 }
             }
@@ -592,6 +674,8 @@ impl Gpu {
         damage: Option<Rect>,
         out: &mut Vec<Quad>,
         grads: &mut Vec<Grad>,
+        mats: &mut Vec<Mat>,
+        splits: &mut Vec<Split>,
     ) -> Result<(), Overflow> {
         // Taken for the pass and put back at the end, like the software
         // canvas does: the source is a field and the atlas needs
@@ -622,23 +706,117 @@ impl Gpu {
                     }
                 }
                 Cmd::Glass { rect, radius, material } => {
-                    // The GPU backend draws the fallback and will keep
-                    // doing so past M19: `docs/plan-glass.md` §1.3 defers
-                    // the real filter, because a texture copy cannot
-                    // happen inside a render pass and matching the CPU
-                    // blur closely enough for `just gpu-parity`'s 0.2%
-                    // pixel-count bound essentially forces a compute
-                    // shader. Emitting the same rounded rect the software
-                    // canvas emits keeps the two backends comparable
-                    // meanwhile, which is what that bound measures.
-                    let tint = material.tint;
-                    if let Some(r) = clipped(*rect, &clip) {
-                        let rad =
-                            radius.min((rect[2] - rect[0]) / 2.0).min((rect[3] - rect[1]) / 2.0);
-                        let a = tint.3.max(lumen_static::display::GLASS_FALLBACK_ALPHA);
-                        let c = lumen_static::display::Color(tint.0, tint.1, tint.2, a);
-                        out.push(shape(*rect, r, c, rad, KIND_ROUNDED));
+                    // **The real filter, since M22/T22.6.** Until then
+                    // this drew a flat rounded rect, because a texture
+                    // copy cannot happen inside a render pass
+                    // (`docs/plan-glass.md` §1.3). It still cannot: the
+                    // frame is split instead, and the six blur
+                    // instances below run in their own passes between
+                    // the backdrop and the panel.
+                    let Some(r) = clipped(*rect, &clip) else { continue };
+                    let m = *material;
+                    let prim = lumen_static::display::glass_primary(*rect, &m);
+                    let rad = radius
+                        .min((prim[2] - prim[0]) / 2.0)
+                        .min((prim[3] - prim[1]) / 2.0);
+                    // The capture, from the **shared** expression the
+                    // damage recorder and the software canvas both use.
+                    let src = lumen_static::display::glass_source(*rect, &m);
+                    let (sw, sh) = (self.size.0 as f32, self.size.1 as f32);
+                    let src = [
+                        src[0].floor().max(0.0),
+                        src[1].floor().max(0.0),
+                        src[2].ceil().min(sw),
+                        src[3].ceil().min(sh),
+                    ];
+                    if src[2] <= src[0] || src[3] <= src[1] {
+                        continue;
                     }
+
+                    // The blur, at the widths `software::box_windows`
+                    // computes for the same sigma. The CPU also
+                    // downsamples by `k` and blurs the small image; this
+                    // blurs at full resolution with the windows scaled
+                    // by `k`, which delivers the same sigma and is
+                    // identical when `k` is 1 — which it is at the
+                    // liquid preset, and so at the parity scene.
+                    let mut blur = [0u32; 6];
+                    if m.blur > 0.0 {
+                        let (k, d, _) = lumen_static_shell::software::blur_plan(m.blur);
+                        let win = lumen_static_shell::software::box_windows(d);
+                        for (i, slot) in blur.iter_mut().enumerate() {
+                            let (l, rgt) = win[i / 2];
+                            let dir = if i % 2 == 0 { [1.0, 0.0] } else { [0.0, 1.0] };
+                            *slot = out.len() as u32;
+                            out.push(Quad {
+                                rect: src,
+                                clip: src,
+                                color: [0.0; 4],
+                                params: [
+                                    dir[0],
+                                    dir[1],
+                                    (l * k) as f32,
+                                    (rgt * k) as f32,
+                                ],
+                                uv: src,
+                                kind: KIND_BLUR,
+                                _pad: [0; 3],
+                            });
+                        }
+                    } else {
+                        // No blur: one zero-width pass still has to run,
+                        // or the panel would sample a scratch nothing
+                        // wrote this frame.
+                        for (i, slot) in blur.iter_mut().enumerate() {
+                            *slot = out.len() as u32;
+                            out.push(Quad {
+                                rect: src,
+                                clip: src,
+                                color: [0.0; 4],
+                                params: [
+                                    if i % 2 == 0 { 1.0 } else { 0.0 },
+                                    if i % 2 == 0 { 0.0 } else { 1.0 },
+                                    0.0,
+                                    0.0,
+                                ],
+                                uv: src,
+                                kind: KIND_BLUR,
+                                _pad: [0; 3],
+                            });
+                        }
+                    }
+
+                    let (odx, ody) = lumen_static::display::morph_offset(&m);
+                    let morphing = lumen_static::display::morphing(&m);
+                    let t = m.tint;
+                    let t2 = m.tint_over_light;
+                    let rim = m.rim.max(0.0);
+                    mats.push(Mat {
+                        tint: linear(t),
+                        tint2: linear(t2),
+                        prim,
+                        p0: [rim, m.refraction, m.specular, m.shadow as f32 / 255.0],
+                        p1: [
+                            m.light.cos() * LIGHT_XY,
+                            m.light.sin() * LIGHT_XY,
+                            LIGHT_Z,
+                            m.saturation as f32
+                                / lumen_static::display::Material::NEUTRAL_SATURATION as f32,
+                        ],
+                        p2: [m.dispersion as f32 / 255.0, m.adapt as f32 / 255.0, odx, ody],
+                        p3: [(rim * 3.0).max(4.0), morphing as u32 as f32, rad, 0.0],
+                    });
+                    let glass = out.len() as u32;
+                    out.push(Quad {
+                        rect: *rect,
+                        clip: r,
+                        color: [0.0; 4],
+                        params: [rad, 0.0, 0.0, (mats.len() - 1) as f32],
+                        uv: src,
+                        kind: KIND_GLASS,
+                        _pad: [0; 3],
+                    });
+                    splits.push(Split { glass, blur });
                 }
                 Cmd::Shadow { rect, color, radius, spread } => {
                     let reach =
@@ -836,8 +1014,17 @@ impl Gpu {
         Ok(Some(slot.uv(self.image_atlas.size())))
     }
 
-    /// Upload the instances and run the pass.
-    fn submit(&mut self, quads: &[Quad], grads: &[Grad]) {
+    /// Upload the instances and run the passes.
+    ///
+    /// **Passes, plural, since M22/T22.6.** One pass is enough while
+    /// nothing reads what has already been drawn; a backdrop filter
+    /// does, and a texture cannot be sampled by the same pass that is
+    /// writing it. So `splits` names the instance index of each glass
+    /// command, and the frame becomes: everything before the panel,
+    /// then six blur passes ping-ponging between the two scratch
+    /// targets, then the panel itself — repeated per panel, then the
+    /// remainder. `G + 1` main passes and `6G` blur passes.
+    fn submit(&mut self, quads: &[Quad], grads: &[Grad], mats: &[Mat], splits: &[Split]) {
         if quads.is_empty() {
             return;
         }
@@ -850,6 +1037,11 @@ impl Gpu {
             self.grads = make_grad_buffer(&self.device, self.grad_cap);
             self.bind_dirty = true;
         }
+        if mats.len() > self.mat_cap {
+            self.mat_cap = mats.len().next_power_of_two();
+            self.mats = make_mat_buffer(&self.device, self.mat_cap);
+            self.bind_dirty = true;
+        }
         if self.bind_dirty {
             self.bind = make_bind(
                 &self.device,
@@ -859,6 +1051,7 @@ impl Gpu {
                 &self.image_tex,
                 &self.sampler,
                 &self.grads,
+                &self.mats,
             );
             self.bind_dirty = false;
         }
@@ -875,22 +1068,34 @@ impl Gpu {
         if !grads.is_empty() {
             self.queue.write_buffer(&self.grads, 0, bytemuck::cast_slice(grads));
         }
+        if !mats.is_empty() {
+            self.queue.write_buffer(&self.mats, 0, bytemuck::cast_slice(mats));
+        }
 
         let mut enc = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("frame") });
-        {
+
+        // One pass over `range`, reading `src` and writing `dst`.
+        //
+        // **Load, never clear.** The target holds the previous frame,
+        // and a partial redraw is exactly the statement that most of it
+        // is still correct; clearing would make damage a lie. The
+        // scratch targets are fully overwritten by their blur pass, so
+        // loading them costs nothing and needs no special case.
+        let run = |enc: &mut wgpu::CommandEncoder,
+                       dst: &wgpu::TextureView,
+                       src: usize,
+                       range: core::ops::Range<u32>| {
+            if range.is_empty() {
+                return;
+            }
             let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("shapes"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &self.target_view,
+                    view: dst,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        // **Load, never clear.** The target holds the
-                        // previous frame, and a partial redraw is
-                        // exactly the statement that most of it is
-                        // still correct. Clearing here would make
-                        // damage a lie.
                         load: wgpu::LoadOp::Load,
                         store: wgpu::StoreOp::Store,
                     },
@@ -903,9 +1108,34 @@ impl Gpu {
             });
             pass.set_pipeline(&self.pipeline);
             pass.set_bind_group(0, &self.bind, &[]);
+            pass.set_bind_group(1, &self.src_binds[src], &[]);
             pass.set_vertex_buffer(0, self.quads.slice(..));
-            pass.draw(0..4, 0..quads.len() as u32);
+            pass.draw(0..4, range);
+        };
+
+        let mut at = 0u32;
+        for sp in splits {
+            // Everything under the panel, into the target. **Up to the
+            // first blur instance, not up to the glass**: the six blur
+            // quads are pushed immediately before the panel and belong
+            // to their own passes, so a range that ran to `glass` would
+            // draw them into the target and paint the frame with the
+            // backdrop filter's intermediates.
+            run(&mut enc, &self.target_view, SRC_SCRATCH_A, at..sp.blur[0]);
+            // Capture and blur. The first pass reads the target itself,
+            // so no copy is needed: a render pass may sample a texture
+            // it is not writing.
+            let mut src = SRC_TARGET;
+            for (i, b) in sp.blur.iter().enumerate() {
+                let dst = if i % 2 == 0 { 1usize } else { 0usize };
+                run(&mut enc, &self.scratch_view[dst], src, *b..*b + 1);
+                src = if dst == 1 { SRC_SCRATCH_B } else { SRC_SCRATCH_A };
+            }
+            // The panel, reading whichever scratch the last pass wrote.
+            run(&mut enc, &self.target_view, src, sp.glass..sp.glass + 1);
+            at = sp.glass + 1;
         }
+        run(&mut enc, &self.target_view, SRC_SCRATCH_A, at..quads.len() as u32);
         self.queue.submit([enc.finish()]);
     }
 
@@ -1079,6 +1309,75 @@ fn grad_of(s: Stops) -> Grad {
     Grad { color, at: s.at, len: s.len as u32, _pad: [0; 3] }
 }
 
+/// One glass material, out of line. Mirrors `Mat` in `shader.wgsl`.
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+struct Mat {
+    tint: [f32; 4],
+    tint2: [f32; 4],
+    prim: [f32; 4],
+    p0: [f32; 4],
+    p1: [f32; 4],
+    p2: [f32; 4],
+    p3: [f32; 4],
+}
+
+fn make_mat_buffer(device: &wgpu::Device, cap: usize) -> wgpu::Buffer {
+    device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("lumen-static materials"),
+        size: (cap * core::mem::size_of::<Mat>()) as u64,
+        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    })
+}
+
+/// The two ping-ponged scratch targets the blur passes write.
+fn make_scratch(
+    device: &wgpu::Device,
+    w: u32,
+    h: u32,
+) -> ([wgpu::Texture; 2], [wgpu::TextureView; 2]) {
+    let mk = |n: &'static str| {
+        device.create_texture(&wgpu::TextureDescriptor {
+            label: Some(n),
+            size: wgpu::Extent3d { width: w.max(1), height: h.max(1), depth_or_array_layers: 1 },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: TARGET_FORMAT,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        })
+    };
+    let a = mk("lumen-static scratch a");
+    let b = mk("lumen-static scratch b");
+    let av = a.create_view(&wgpu::TextureViewDescriptor::default());
+    let bv = b.create_view(&wgpu::TextureViewDescriptor::default());
+    ([a, b], [av, bv])
+}
+
+/// Group 1, for each thing a pass can read: the target, then the two
+/// scratch textures.
+fn make_src_binds(
+    device: &wgpu::Device,
+    layout: &wgpu::BindGroupLayout,
+    target: &wgpu::TextureView,
+    scratch: &[wgpu::TextureView; 2],
+    samp: &wgpu::Sampler,
+) -> [wgpu::BindGroup; 3] {
+    let one = |v: &wgpu::TextureView| {
+        device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("lumen-static glass source"),
+            layout,
+            entries: &[
+                wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(v) },
+                wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(samp) },
+            ],
+        })
+    };
+    [one(target), one(&scratch[0]), one(&scratch[1])]
+}
+
 fn make_target(device: &wgpu::Device, w: u32, h: u32) -> (wgpu::Texture, wgpu::TextureView) {
     let t = device.create_texture(&wgpu::TextureDescriptor {
         label: Some("lumen-static target"),
@@ -1229,6 +1528,7 @@ fn make_bind(
     image: &wgpu::Texture,
     sampler: &wgpu::Sampler,
     grads: &wgpu::Buffer,
+    mats: &wgpu::Buffer,
 ) -> wgpu::BindGroup {
     let gv = glyph.create_view(&wgpu::TextureViewDescriptor::default());
     let iv = image.create_view(&wgpu::TextureViewDescriptor::default());
@@ -1241,6 +1541,7 @@ fn make_bind(
             wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(&iv) },
             wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::Sampler(sampler) },
             wgpu::BindGroupEntry { binding: 4, resource: grads.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 5, resource: mats.as_entire_binding() },
         ],
     })
 }

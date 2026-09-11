@@ -838,8 +838,11 @@ remains** — which is why §10 Step 1 is the kill criterion.
    The measurement behind the line is `docs/results-vello.md`; the first
    feature built on the near side of it is `docs/plan-glass.md` (M19),
    extended by `docs/plan-liquid.md` (M22) — which adds Fresnel, an inner
-   shadow, saturation, **chromatic dispersion** and a **backdrop-adaptive
-   tint** to the backdrop effect, costs in `docs/results-glass.md`,
+   shadow, saturation, **chromatic dispersion**, a **backdrop-adaptive
+   tint**, press deformation and a two-blob **morph** to the backdrop
+   effect, and ports the whole of it to the GPU, where a full-screen
+   filter costs 1.44 ms against the software canvas's 148
+   (`docs/results-glass.md` §0h). Costs in `docs/results-glass.md`,
    and it is a **widget** rather than a `Style` field — parameters that
    only a handful of nodes per frame use do not belong in a struct
    resolved for every node, and paint order is something a position in
