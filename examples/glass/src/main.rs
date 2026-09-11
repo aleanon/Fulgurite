@@ -1,6 +1,6 @@
 //! **A glass toolbar over a scrolling list** — what `Cmd::Glass` is for.
 //!
-//! Scroll the list with the wheel. The toolbar stays put and the blur
+//! `just example glass`. Scroll the list with the wheel. The toolbar stays put and the blur
 //! under it changes continuously, because a backdrop filter is a
 //! function of the frame beneath it rather than of its own inputs. That
 //! is the whole feature, and it is also the whole difficulty: see
@@ -8,7 +8,8 @@
 //! a partial redraw.
 //!
 //! `+` and `-` in the toolbar change σ, so the material is adjustable
-//! rather than a fixed look. Watch the cost while you do: a small blur
+//! rather than a fixed look. `just example glass --shot frame.ppm 120 30`
+//! renders one frame headlessly instead, scrolled 120 px at σ = 30. Watch the cost while you do: a small blur
 //! is the *expensive* one, because it cannot downsample
 //! (`docs/results-glass.md` §1).
 //!

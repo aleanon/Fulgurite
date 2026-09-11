@@ -240,6 +240,28 @@ miri:
 # Release-shaped whole-core smoke run (no asserts; crash-only).
 smoke:
     cargo run -p miri-smoke
+# Run an example in a window — `just example glass`.
+#
+# Every directory under `examples/` is a package of the same name, so the
+# name you pass is the directory you see. `just examples` lists them.
+#
+# Anything after the name goes to the binary, so the headless modes work
+# too: `just example glass --shot frame.ppm 120 30`, or
+# `just example counter-window --drive`.
+#
+# **Release, unlike the recipes below it.** These are demos somebody
+# looks at and scrolls, and the software rasteriser is the thing being
+# looked at -- `examples/glass` re-blurs its panel on every frame that
+# moves (`docs/results-glass.md`). Plain `cargo run -p glass` is the
+# debug build if you want one.
+example name *args:
+    @test -d examples/{{ name }} || { echo "no such example: {{ name }}" >&2; echo "try one of:" >&2; ls examples >&2; exit 1; }
+    cargo run --release -p {{ name }} -- {{ args }}
+
+# What `just example` accepts.
+examples:
+    @ls examples
+
 # The tally in a window: click the buttons, or press up/down.
 tally:
     cargo run -p counter-window
