@@ -14,6 +14,7 @@ lumen-static-shell = { path = "../../crates/lumen-static-shell", features = ["tr
 
 [features]
 default = []
-# The blur is software-only (docs/plan-glass.md §1.3); built `--features
-# gpu` the panel falls back to a flat tint, which is itself worth seeing.
+# Superseded by M22/T22.6: the GPU runs the real filter now, not a flat
+# tint. Built `--features gpu` this example looks the same and costs far
+# less -- `docs/results-glass.md` §0h.
 gpu = ["lumen-static-winit/gpu"]

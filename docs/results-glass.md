@@ -466,6 +466,29 @@ row read 0.03 ms whatever the resolution, and it reported a 27687×
 speedup at 4K. `Gpu::wait` exists for exactly this and its rustdoc says
 so.
 
+### A whole screen of it
+
+`examples/glasswall` is the stress case: **fourteen** backdrop filters
+at 3840 × 2160 — a frosted bar, a 4 × 3 grid of liquid panels and a
+dock. `just glasswall-bench`, measured 2026-09-12:
+
+| | |
+|---|---:|
+| software | **318 ms** a frame |
+| GPU | **4.2 ms** a frame |
+| damage on a frame where nothing changed | `All` |
+
+Best of eight and best of twenty respectively. Three samples was not
+enough for the software arm — it ranged 318 to 428 ms across runs and
+the first figures written here came from the loose end of that.
+
+The damage row is not a defect being demonstrated. `MAX_DEPS` is 4, and
+`retain.rs` states the reasoning: a glass panel serialises the
+rasteriser, so "a frame with more than a handful is a design problem
+rather than a case to optimise". Fourteen is past it by a wide margin,
+every frame is a full redraw, and **3.5 ms is that worst case** — there
+is no incremental path being credited here.
+
 ### How it is structured
 
 A texture cannot be sampled by the pass that is writing it, so the frame

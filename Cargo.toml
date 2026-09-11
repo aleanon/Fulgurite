@@ -15,6 +15,7 @@ members = [
     "examples/counter",
     "examples/minimal",
     "examples/counter-window",
+    "examples/glasswall",
     "examples/glass",
     "fixtures/hot-app",
     "fixtures/miri-smoke",

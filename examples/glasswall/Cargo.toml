@@ -1,0 +1,26 @@
+[package]
+name = "glasswall"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+lumen-static = { path = "../../crates/lumen-static" }
+lumen-static-winit = { path = "../../crates/lumen-static-winit" }
+# `truetype` so the tiles under the glass are real glyphs. A backdrop
+# filter over block metrics blurs uniform boxes, which demonstrates
+# nothing.
+lumen-static-shell = { path = "../../crates/lumen-static-shell", features = ["truetype"] }
+# Only so `--bench` can put a number on the backend this example is for.
+# Optional, because the M15 gating policy is that nothing pulls wgpu
+# unless a manifest says so.
+lumen-static-wgpu = { path = "../../crates/lumen-static-wgpu", optional = true }
+
+[features]
+default = []
+# **Build with this.** The software filter is ~750 ms for one
+# full-screen panel at 4K (`docs/results-glass.md` §0h); thirteen of
+# them is not a frame, it is a slideshow. M22/T22.6 put the whole filter
+# on the GPU, where the same work is milliseconds.
+gpu = ["lumen-static-winit/gpu", "dep:lumen-static-wgpu"]

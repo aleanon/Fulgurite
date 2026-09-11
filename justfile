@@ -258,6 +258,16 @@ example name *args:
     @test -d examples/{{ name }} || { echo "no such example: {{ name }}" >&2; echo "try one of:" >&2; ls examples >&2; exit 1; }
     cargo run --release -p {{ name }} -- {{ args }}
 
+# The 4K glass stress test, and what it costs on both backends.
+#
+# Built `--features gpu`, which is the point: fourteen backdrop filters
+# at 3840x2160 is 318 ms on the software canvas and 4.2 ms on a GPU
+# (docs/results-glass.md §0h). It also prints the damage the scene
+# reports, which is `All` -- past MAX_DEPS every frame is a full redraw,
+# and this example is deliberately past it.
+glasswall-bench:
+    cargo run --release -p glasswall --features gpu -- --bench
+
 # What `just example` accepts.
 examples:
     @ls examples
