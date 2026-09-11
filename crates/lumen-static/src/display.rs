@@ -152,7 +152,18 @@ pub fn glass_source(rect: Rect, m: &Material) -> Rect {
     // hole: a bevel samples the backdrop up to `refraction` px outside
     // the panel, so a source that counted only the blur would read
     // pixels nothing had damaged and the rim would go stale.
-    let reach = crate::num::ceil(3.0 * blur + refract + 4.0);
+    //
+    // **And dispersion pushes one channel further still** (M22/T22.2).
+    // The symptom of leaving *that* out is not a stale ring but
+    // something quieter: the sampler clamps, so the outermost fringe
+    // flattens against the capture edge *identically in a full and a
+    // partial render*, and every gate in the milestone stays green. The
+    // existing `+ 4` would have hidden it up to a dispersion of about
+    // 0.36, which is most of the useful range — spending documented
+    // slack on a second purpose is the drift the doc-currency rule is
+    // about.
+    let spread = 1.0 + (m.dispersion as f32 / 255.0) * Material::MAX_DISPERSION;
+    let reach = crate::num::ceil(3.0 * blur + refract * spread + 4.0);
     [rect[0] - reach, rect[1] - reach, rect[2] + reach, rect[3] + reach]
 }
 
@@ -215,6 +226,17 @@ pub struct Material {
     /// (`docs/results-glass.md` §0). The same trade `Style::focus_ring`
     /// already made.
     pub shadow: u8,
+    /// Chromatic dispersion, `0` off to `255` full — M22/T22.2.
+    ///
+    /// Glass splits light by wavelength, and the colour fringe at a
+    /// thick edge is most of what separates a lens from a blur with a
+    /// highlight. **Blue deviates more than red** — normal dispersion —
+    /// and the ordering is the thing an eye reads as "lens" rather than
+    /// as colour noise.
+    ///
+    /// Scaled so 255 displaces the outer channels by a quarter of the
+    /// refraction either way, which is well past subtle.
+    pub dispersion: u8,
     /// Chroma multiplier, **`128` is neutral** — M22/T22.0.
     ///
     /// A blur that desaturates looks like fog; colours read *through*
@@ -241,7 +263,12 @@ impl Material {
         light: -0.9,
         shadow: 0,
         saturation: Material::NEUTRAL_SATURATION,
+        dispersion: 0,
     };
+
+    /// How far `dispersion` at 255 pushes the outer channels, as a
+    /// fraction of the refraction.
+    pub const MAX_DISPERSION: f32 = 0.25;
 
     /// The `saturation` value that changes nothing.
     ///
@@ -266,6 +293,7 @@ impl Material {
         light: -0.9,
         shadow: 85,
         saturation: 148,
+        dispersion: 90,
     };
 }
 
@@ -443,7 +471,7 @@ impl Cmd {
                     f(h, v.to_bits() as u64);
                 }
                 f(h, u32::from_be_bytes([m.tint.0, m.tint.1, m.tint.2, m.tint.3]) as u64);
-                f(h, ((m.shadow as u64) << 8) | m.saturation as u64);
+                f(h, ((m.shadow as u64) << 16) | ((m.saturation as u64) << 8) | m.dispersion as u64);
             }
             Cmd::PushClip { rect } => {
                 f(h, 3);

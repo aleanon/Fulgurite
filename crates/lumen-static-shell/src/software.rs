@@ -288,6 +288,31 @@ impl Surface<'_> {
             out
         };
 
+        // One channel, for the dispersive path — M22/T22.2.
+        //
+        // Calling the three-channel read three times would triple the
+        // coordinate setup *and* do 36 loads where 12 suffice, because
+        // it amortises one clamp-and-floor over all three. This is the
+        // cost the plan claims: three setups, twelve loads.
+        let sample_ch = |x: f32, y: f32, c: usize| -> f32 {
+            let x = x.clamp(sx0 as f32 + 0.5, sx1 as f32 - 0.5);
+            let y = y.clamp(sy0 as f32 + 0.5, sy1 as f32 - 0.5);
+            let fx = (x - sx0 as f32) / k as f32 - 0.5;
+            let fy = (y - sy0 as f32) / k as f32 - 0.5;
+            let x0 = fx.floor();
+            let y0f = fy.floor();
+            let tx = fx - x0;
+            let ty = fy - y0f;
+            let cx = |v: f32| (v.max(0.0) as usize).min(bw - 1);
+            let cy = |v: f32| (v.max(0.0) as usize).min(bh - 1);
+            let (ix0, ix1) = (cx(x0), cx(x0 + 1.0));
+            let (iy0, iy1) = (cy(y0f), cy(y0f + 1.0));
+            let g = |xi: usize, yi: usize| a[(yi * bw + xi) * 3 + c] as f32;
+            let top = g(ix0, iy0) * (1.0 - tx) + g(ix1, iy0) * tx;
+            let bot = g(ix0, iy1) * (1.0 - tx) + g(ix1, iy1) * tx;
+            top * (1.0 - ty) + bot * ty
+        };
+
         // Composite. **Coverage keeps `fill_rounded_within`'s structure**
         // -- hard spans in the straight regions, the ramp only in the
         // corner bands -- so a panel and a rounded rect of the same
@@ -334,6 +359,9 @@ impl Surface<'_> {
 
                 let (px, pyf) = (x as f32 + 0.5, y as f32 + 0.5);
                 let mut sample_at = (px, pyf);
+                // The per-channel displacement, in the same units as
+                // `sample_at`'s. Zero everywhere the bevel is not.
+                let mut split = (0.0f32, 0.0f32);
                 let mut spec = 0.0f32;
                 // Extra tint strength from grazing incidence, and the
                 // unlit rim's darkening. Both are rim-band only: `u` is
@@ -377,6 +405,18 @@ impl Surface<'_> {
                         if m.refraction > 0.0 {
                             let k = m.refraction * u * u;
                             sample_at = (px + nx * k, pyf + ny * k);
+                            // **Blue deviates more than red.** Normal
+                            // dispersion: the refractive index falls
+                            // with wavelength. Getting it backwards
+                            // flips which side of the rim the warm
+                            // fringe lands on, which is the one thing
+                            // an eye recognises as a lens.
+                            if m.dispersion > 0 {
+                                let e = k
+                                    * (m.dispersion as f32 / 255.0)
+                                    * lumen_static::display::Material::MAX_DISPERSION;
+                                split = (nx * e, ny * e);
+                            }
                         }
                         // **Fresnel — M22/T22.0, and the reason a thick
                         // edge reads as a bright band rather than a
@@ -419,7 +459,39 @@ impl Surface<'_> {
                     }
                 }
 
-                let back = saturate(sample(sample_at.0, sample_at.1), sat);
+                let back = if split.0 != 0.0 || split.1 != 0.0 {
+                    // **Fall back to the shared read the moment any of
+                    // the three would clamp.** At the capture's edge
+                    // three displacements clamp at three different
+                    // distances, and an achromatic backdrop grows a
+                    // coloured band indistinguishable from the feature.
+                    // The fallback makes that case bit-identical to the
+                    // pre-T22.2 renderer.
+                    //
+                    // The test is on the **extremes**, not on the green
+                    // coordinate the plan named: green is the midpoint,
+                    // so blue can clamp while green is still inside, and
+                    // checking green alone would let exactly the band
+                    // this guards against through on one side.
+                    let cl = |v: f32, e: f32, lo: f32, hi: f32| {
+                        let (a, b) = (v - e, v + e);
+                        a.min(b) <= lo || a.max(b) >= hi
+                    };
+                    let edge = cl(sample_at.0, split.0, sx0 as f32 + 0.5, sx1 as f32 - 0.5)
+                        || cl(sample_at.1, split.1, sy0 as f32 + 0.5, sy1 as f32 - 0.5);
+                    if edge {
+                        sample(sample_at.0, sample_at.1)
+                    } else {
+                        [
+                            sample_ch(sample_at.0 - split.0, sample_at.1 - split.1, 0),
+                            sample_ch(sample_at.0, sample_at.1, 1),
+                            sample_ch(sample_at.0 + split.0, sample_at.1 + split.1, 2),
+                        ]
+                    }
+                } else {
+                    sample(sample_at.0, sample_at.1)
+                };
+                let back = saturate(back, sat);
                 // Fresnel raises the tint's strength toward 1 at the
                 // rim; `t` is unchanged in the interior where `fres` is
                 // 0.

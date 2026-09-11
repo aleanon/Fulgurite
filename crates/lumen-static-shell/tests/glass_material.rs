@@ -291,6 +291,7 @@ fn changing_a_strength_reports_damage() {
     for (name, f) in [
         ("shadow", (|m: &mut Material| m.shadow = 40) as fn(&mut Material)),
         ("saturation", |m: &mut Material| m.saturation = 200),
+        ("dispersion", |m: &mut Material| m.dispersion = 200),
     ] {
         f(&mut host.app.ui.panel.material);
         host.pump();
@@ -347,5 +348,218 @@ fn a_sub_pixel_move_changes_the_refracted_rim() {
     assert!(
         differ > checked / 4,
         "a sub-pixel move changed almost nothing ({differ}/{checked}) — the read is still quantised"
+    );
+}
+
+// ---- M22/T22.2: dispersion ------------------------------------------
+
+/// Mean over the **left** rim band, where the outward direction is −x.
+fn left_rim(c: &Canvas) -> [f32; 3] {
+    mean(c, 41, 50, 90, 130)
+}
+
+/// **Blue deviates more than red.** Normal dispersion — the refractive
+/// index falls with wavelength — and the *ordering* is the whole claim:
+/// a fringe with the channels the other way round is not a weaker lens,
+/// it is colour noise on the wrong side of the edge.
+///
+/// So the assertion is signed. The backdrop steps from white on the
+/// outside to dark under the panel, and refraction displaces the read
+/// *outward*; blue is displaced furthest, so blue reads the brighter
+/// side hardest and the left rim must come out blue-over-red.
+#[test]
+fn blue_refracts_further_than_red() {
+    let base = Material {
+        shadow: 0,
+        specular: 0.0,
+        tint: Color(0, 0, 0, 0),
+        saturation: Material::NEUTRAL_SATURATION,
+        ..liquid()
+    };
+    assert!(base.refraction > 0.0, "no refraction means no dispersion to measure");
+    let scene = |d: u8| {
+        let mut c = Canvas::new(W, H);
+        c.clear(Color(0x10, 0x10, 0x10, 0xff));
+        let mut l = DisplayList::new();
+        // The step sits at the panel's own left edge, so the outward
+        // reads straddle it — the same lesson as T22.1's fixture.
+        l.rect([0.0, 0.0, 40.0, H as f32], Color(0xff, 0xff, 0xff, 0xff));
+        l.rect([40.0, 0.0, W as f32, H as f32], Color(0x20, 0x20, 0x20, 0xff));
+        l.glass(PANEL, 34.0, Material { dispersion: d, ..base });
+        lumen_static::Renderer::render(&mut c, &l, W, H);
+        c
+    };
+
+    // The accepting direction: with dispersion off, an achromatic
+    // backdrop must stay achromatic. A gate that only refuses is a gate
+    // that refuses everything.
+    let off = left_rim(&scene(0));
+    println!("dispersion off: rim chroma {:.2}", chroma(off));
+    assert!(chroma(off) < 1.0, "the rim is not achromatic without dispersion: {off:?}");
+
+    let on = left_rim(&scene(255));
+    let split = on[2] - on[0];
+    println!("dispersion on: blue − red = {split:+.2} (rim mean {on:?})");
+    assert!(
+        split > 4.0,
+        "no blue-over-red fringe ({split:+.2}) — dispersion is absent, or inverted"
+    );
+}
+
+/// **At the capture edge the fringe is switched off, not clamped.**
+///
+/// Three displaced reads clamp at three different distances, so a panel
+/// flush with the window edge grows a coloured band out of a backdrop
+/// that has no colour in it at all. The guard drops to the shared read
+/// the moment any extreme would clamp, which makes that band achromatic
+/// — the same degradation the pre-T22.2 renderer had.
+///
+/// **The property is measured over a grey ramp**, and both halves of it
+/// are asserted, because each alone is satisfiable by a renderer that is
+/// wrong in the other direction:
+///
+/// - inside the clamped band the output must carry *no* chroma, and
+/// - immediately outside it the fringe must still be there, or the
+///   "fix" is just dispersion switched off everywhere.
+///
+/// Two things the first two drafts of this test got wrong, both worth
+/// keeping:
+///
+/// - A **flat** backdrop cannot show the artefact. A clamped read and an
+///   unclamped one differ in *position*, and a flat field gives that
+///   difference no value to express itself in — so deleting the guard
+///   left the test green. Hence the ramp.
+/// - Sampling out to x = 10 at `LIQUID`'s 11 px refraction spans the
+///   clamped band *and* the region where dispersion is legitimately
+///   working, so the test failed with the guard in place. The band's
+///   width scales with the refraction; at 60 px it is 25 columns wide
+///   and there is room to sample each side separately.
+#[test]
+fn a_clamped_read_invents_no_colour() {
+    // A deep bevel, so the clamped band is wide enough to sample apart
+    // from the fringe beyond it.
+    let base = Material {
+        shadow: 0,
+        specular: 0.0,
+        tint: Color(0, 0, 0, 0),
+        saturation: Material::NEUTRAL_SATURATION,
+        rim: 60.0,
+        refraction: 60.0,
+        dispersion: 255,
+        ..liquid()
+    };
+    // Flush with the left edge: the source clamps to x = 0 and the left
+    // rim's outward reads run off it.
+    const FLUSH: [f32; 4] = [0.0, 50.0, 180.0, 170.0];
+    const BAND: usize = 25;
+    let mut c = Canvas::new(W, H);
+    c.clear(Color(0x10, 0x10, 0x10, 0xff));
+    let mut l = DisplayList::new();
+    l.rect([0.0, 0.0, W as f32, H as f32], Color(0x20, 0x20, 0x20, 0xff));
+    // An achromatic ramp across the clamp: every source pixel is grey,
+    // so any chroma in the result was invented by the renderer.
+    for i in 0..40u32 {
+        let v = 255u32.saturating_sub(i * 6) as u8;
+        l.rect([i as f32, 0.0, i as f32 + 1.0, H as f32], Color(v, v, v, 0xff));
+    }
+    l.glass(FLUSH, 34.0, base);
+    lumen_static::Renderer::render(&mut c, &l, W, H);
+
+    let (mut worst, mut checked) = (0.0f32, 0);
+    for y in 90..130usize {
+        for x in 0..BAND {
+            checked += 1;
+            worst = worst.max(chroma(px(&c, x, y)));
+        }
+    }
+    // And the other direction: the fringe survives just outside.
+    let mut beyond = 0.0f32;
+    for y in 90..130usize {
+        for x in BAND + 1..BAND + 9 {
+            beyond = beyond.max(chroma(px(&c, x, y)));
+        }
+    }
+    println!("clamped band x<{BAND}: worst chroma {worst:.0}; just beyond: {beyond:.0}");
+    assert!(checked > 900, "not enough sampled: {checked}");
+    assert_eq!(worst, 0.0, "a clamped read invented {worst:.0} of chroma from a grey ramp");
+    assert!(beyond > 10.0, "no fringe outside the band ({beyond:.0}) — dispersion is off everywhere");
+}
+
+/// **The captured backdrop has to reach as far as the blue channel
+/// does.** `glass_source` bounds both the capture and the damage
+/// dependency, so a source that stops short means the outermost fringe
+/// is blurred from edge-extended data — identically in a full and a
+/// partial render, which is why no other gate in this milestone can see
+/// it.
+///
+/// The formula carries `+ 4` px of slack, and **the slack alone covers
+/// the dispersive widening at any ordinary refraction**: at `LIQUID`'s
+/// 11 px it is 11 × 0.25 = 2.75 px, well under 4. A fixture built on
+/// `LIQUID` therefore measures the slack and not the term — the first
+/// version of this test did exactly that and reported 0 of 240.
+///
+/// This one is deliberately outside the slack. At refraction 100 the
+/// widening is 25 px, and the two formulas disagree about a 25 px band
+/// that the blue read genuinely lands in:
+///
+/// ```text
+/// with the term:  ceil(9 + 100 × 1.25 + 4) = 138  capture from x = 162
+/// without it:     ceil(9 + 100        + 4) = 113  capture from x = 187
+/// ```
+///
+/// The probe stripe lies in that band. Two independent things then go
+/// wrong with the short source — the band is uncaptured *and* the blue
+/// coordinate clamps, so the guard drops the fringe — and both point the
+/// same way, which is why the assertion is one-sided.
+#[test]
+fn the_source_reaches_as_far_as_the_blue_channel() {
+    const WIDE: u32 = 600;
+    const PANEL2: [f32; 4] = [300.0, 50.0, 560.0, 170.0];
+    // Inside the correct capture (x >= 162), outside the short one.
+    const STRIPE: [f32; 4] = [163.0, 0.0, 187.0, 220.0];
+    let m = Material {
+        shadow: 0,
+        specular: 0.0,
+        tint: Color(0, 0, 0, 0),
+        saturation: Material::NEUTRAL_SATURATION,
+        refraction: 100.0,
+        dispersion: 255,
+        ..liquid()
+    };
+    let scene = |stripe: Color| {
+        let mut c = Canvas::new(WIDE, H);
+        c.clear(Color(0x10, 0x10, 0x10, 0xff));
+        let mut l = DisplayList::new();
+        l.rect([0.0, 0.0, WIDE as f32, H as f32], Color(0x40, 0x40, 0x40, 0xff));
+        l.rect(STRIPE, stripe);
+        l.glass(PANEL2, 34.0, m);
+        lumen_static::Renderer::render(&mut c, &l, WIDE, H);
+        c
+    };
+    let plain = scene(Color(0x40, 0x40, 0x40, 0xff));
+    let lit = scene(Color(0xff, 0xff, 0xff, 0xff));
+    // Blue only: the stripe is far outside where red and green read, so
+    // a change in any other channel would mean something else moved.
+    let blue = |c: &Canvas, x: usize, y: usize| c.pixels[(y * WIDE as usize + x) * 4 + 2] as f32;
+    // **One column.** The displacement rides u², so it collapses fast:
+    // at x = 301 the read has already come back inside the band the
+    // short source does capture, and a wider box would dilute a real
+    // signal into a minority and make the bound unreachable.
+    let (mut worst, mut differ, mut checked) = (0.0f32, 0, 0);
+    for y in 86..134usize {
+        for x in 300..301usize {
+            checked += 1;
+            let d = (blue(&plain, x, y) - blue(&lit, x, y)).abs();
+            worst = worst.max(d);
+            if d > 1.0 {
+                differ += 1;
+            }
+        }
+    }
+    println!("stripe in the disputed band moves {differ} of {checked} rim px, worst blue delta {worst:.1}");
+    assert!(checked > 40, "not enough sampled: {checked}");
+    assert!(
+        differ > checked * 3 / 4,
+        "the outer rim cannot see the stripe ({differ}/{checked}) — the source stops short of the blue read"
     );
 }

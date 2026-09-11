@@ -33,12 +33,18 @@ stops that test compiling.
 
 ## 0b. T22.0 — Fresnel, the inner shadow, saturation
 
-**Measured 2026-09-11**, same machine and method as §2.
+**Re-measured 2026-09-12**, same machine and method as §2.
 
 | panel | bevel alone | full material | added |
 |---|---:|---:|---:|
-| 400×200 | 5.47 ms | 5.94 | **+9%** |
-| 800×300 | 14.39 | 16.29 | **+13%** |
+| 400×200 | 5.59 ms | 6.00 | **+7%** |
+| 800×300 | 15.64 | 16.85 | **+8%** |
+
+The first run of this table, on 2026-09-11, read +9% and +13%. It is
+restated rather than annotated because **T22.1 raised both columns**:
+the sub-pixel read costs the bevel baseline as much as it costs the
+full material, so the ratio fell while neither side got cheaper. A
+stale ratio beside a live one is the drift this doc exists to prevent.
 
 "Bevel alone" is M21's material — no inner shadow, neutral saturation.
 Fresnel cannot be separated from it, because it is derived from
@@ -89,6 +95,81 @@ pixel *index* to a pixel *centre*, and the mapping kept its own `+ 0.5`
 — shifting every read half a pixel and sliding the blur's centre of mass
 from 59.5 to 59.0. `tests/glass_blur.rs`'s odd/even test caught it
 immediately, which is the value of having written it.
+
+## 0d. T22.2 — dispersion
+
+**Measured 2026-09-12.** One `u8`, `Material::dispersion`, scaled so 255
+displaces the outer channels by `MAX_DISPERSION = 0.25` of the
+refraction either way. `LIQUID` carries 90.
+
+### What it costs
+
+| panel | T22.0 material | + dispersion | added |
+|---|---:|---:|---:|
+| 400×200 | 6.00 ms | 6.58 | **+10%** |
+| 800×300 | 16.85 | 18.49 | **+10%** |
+
+Flat across the two sizes, because dispersion is rim-band only — unlike
+saturation, which is why §0b's rows are *not* flat.
+
+The 10% is three taps where there was one, and it is only 10% because
+the sampler grew a **per-channel entry point**. Calling the
+three-channel read three times would triple the coordinate setup and do
+36 loads where 12 suffice: one clamp-and-floor is amortised over three
+channels, and dispersion needs three different coordinates but only one
+channel from each.
+
+### What it looks like
+
+| | |
+|---|---:|
+| rim mean, blue − red, over a white-to-dark step | **+27.3** |
+| the same rim with `dispersion: 0` | **0.00** chroma |
+
+Signed, because **the ordering is the entire claim**. Normal dispersion
+puts blue further out than red; inverted, the fringe is the same size
+and lands on the wrong side of the edge, where an eye reads it as colour
+noise rather than as glass. A test that measured only "the channels
+differ" would pass on the inverted renderer.
+
+Mapped directly with a one-pixel stripe sweep: the outermost rim pixel's
+**blue** channel responds to source columns 67–84 and its **red** to
+85–100, a clean ~18 px separation at refraction 40 — which is
+`2 × 40 × 0.25`, as designed.
+
+### Two bounds that were nearly wrong
+
+**The source expression.** `glass_source` widens to
+`3σ + refraction·(1 + dispersion·0.25) + 4`, and the widening is real:
+it bounds the capture *and* the damage dependency, so a short source
+blurs the outer fringe from edge-extended data — identically in a full
+and a partial render, which is why no other gate in the milestone can
+see it.
+
+But **the `+ 4` slack hides the term at any ordinary refraction**: at
+`LIQUID`'s 11 px the widening is 2.75 px, comfortably inside 4. The
+first gate written for this was built on `LIQUID`, measured 0 of 240,
+and was testing the slack. The shipped one runs at refraction 100, where
+the widening is 25 px, and moves **48 of 48** rim pixels with a worst
+blue delta of 139 — 0 of 48 when the term is removed.
+
+**The clamp guard.** Where the capture is truncated by the window edge,
+three displacements clamp at three different distances and a grey ramp
+grows a coloured band. The guard falls back to the shared read, and it
+tests the **extremes, not the green coordinate** the plan named: green
+is the midpoint, so blue can clamp while green is inside. Measured on a
+panel flush with the left edge at refraction 60 — worst chroma in the
+clamped band:
+
+| | |
+|---|---:|
+| guarded | **0** |
+| guard deleted | **35** |
+| guard on the green coordinate only, as first planned | **35** |
+
+The fringe immediately outside the band measures 52, asserted in the
+same test: a guard that refuses everything would satisfy the first half
+alone.
 
 ## 1. Cost against σ — flat, and that is the downsample working
 

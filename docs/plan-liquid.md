@@ -194,6 +194,14 @@ Three things the first draft missed:
   targets — and the symptom is invisible to every gate: the sampler
   clamps, so the red fringe flattens against the capture edge
   *identically in the full and the partial render*.
+
+  **Built 2026-09-12, and the slack is worse than this paragraph
+  thought.** It does not merely hide the term from a reader; it hides
+  it from a *test*. At `LIQUID`'s 11 px refraction the widening is
+  2.75 px and the slack is 4, so removing the term changes nothing a
+  fixture built on `LIQUID` can observe — the first gate measured 0 of
+  240 and was green either way. The gate ships at refraction 100.
+  `docs/results-glass.md` §0d.
 - **The cost is per channel, not per sample.** The sampler computes one
   coordinate and returns three channels from twelve loads; calling it
   three times triples the coordinate setup and triples the loads. A
@@ -205,6 +213,13 @@ Three things the first draft missed:
   Fall back to the single three-channel read whenever the green
   coordinate is already clamped — one comparison, and it makes the
   degenerate case bit-identical to the pre-T22.2 renderer.
+
+  **Corrected 2026-09-12: the green coordinate is the wrong one to
+  test.** Green is the *midpoint*; blue can clamp while green is still
+  inside, which is exactly the one-sided band the guard exists to stop.
+  Guarding on green alone invents the same 35 levels of chroma from a
+  grey ramp as having no guard at all — both measured. The shipped
+  guard tests the extremes. `docs/results-glass.md` §0d.
 
 ## 5. T22.3 — adaptive tint, stateless
 
@@ -389,7 +404,7 @@ cannot both admit the blur and refuse the dispersion.
 |---|---|---|
 | **T22.0** | Fresnel (no field), inner shadow, saturation. Two `u8` fields. | Fringe-free: rim luminance at grazing incidence rises by a measured factor; the unlit rim is darker **than the panel's own interior** with specular off; a mid-chroma backdrop's chroma ratio through the panel exceeds a stated bound. All three printed. `Cmd` still 60 B. |
 | **T22.1** | Sub-pixel refraction sampling. No field. | The staircase is gone, and **the differing-pixel count against M21 is the deliverable**, stated in the results doc. |
-| **T22.2** | Dispersion. One `u8`. Widened source expression. | Over a hard colour edge, the count of outermost-rim pixels where red and blue differ by more than 8 levels is non-zero with dispersion on and zero with it off — both printed. |
+| **T22.2** | Dispersion. One `u8`. Widened source expression. | **Done 2026-09-12.** Over a hard edge the rim's blue − red is **+27.3** signed — signed because the *ordering* is the claim — against **0.00** chroma with dispersion off, both printed. Cost +10%, flat across panel size. `docs/results-glass.md` §0d. |
 | **T22.3** | Adaptive tint, stateless, with the pre-registered exit. One `u8` + one `Color`. | A fine sweep of backdrop luminance moves the tint **strictly** monotonically with a stated total travel; a scroll through the threshold bounds the per-frame movement; and the sweep asserts the threshold was actually crossed. |
 | **T22.4** | Press deformation, and the redraw-loop reorder. No field. | Driven through the real redraw path: pressing thickens the rim band by a measured pixel count at the animation's peak, and the settled frame is **byte-identical** to the pre-press frame. |
 | **T22.5** | The morph. Budget decision first, with its measurement. | At a separation of one rim width the pixels between the blobs are inked; at three rim widths they are empty; and a single panel is byte-identical to before the task. |
