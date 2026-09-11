@@ -11,9 +11,20 @@ where they apply.
 
 Write layout and paint as recursive generic descent and the compiler
 emits a separate specialised `layout` and `paint` **per distinct subtree
-type** — which is per tree *position*, not per widget kind. Two buttons
-in different places are two instantiations. On a large application that
-is tens of thousands of them.
+type**.
+
+Read that precisely, because the obvious gloss is wrong. Monomorphization
+is per **type**, and it is deduplicated: two fields of the same type
+share one copy of that type's code. Two `Button<Counter>` at different
+positions are *one* instantiation, not two — measured, in
+`docs/results-monomorphization.md`.
+
+What makes the trap real is what the type *contains*. In the encoding §4
+is warning about — `Row<(A, B, C, …)>` — a node's type includes its
+entire subtree, so two positions almost never share a type: the root's
+type is unique, each child's type is unique, and the distinct-type count
+approaches the node count. That is where "tens of thousands of
+instantiations" comes from.
 
 What that costs, from spec §4:
 
@@ -21,7 +32,7 @@ What that costs, from spec §4:
 |---|---|
 | instruction-cache pressure | past a certain size a boring `dyn` loop over a flat arena is *faster*, because a dyn call with a stable target predicts nearly perfectly |
 | compile times | change one leaf, the root type changes, every monomorphization above it invalidates, the whole UI crate rebuilds |
-| binary size | bloat — ironic, given the embedded target |
+| binary size | bloat — ironic, given the embedded target. Real here too, but it scales with the number of **distinct structs written**, not with the node count (`docs/results-monomorphization.md`) |
 | error messages | type names hundreds of lines long, and rust-analyzer degrading badly |
 | refactoring | moving a widget changes types all the way up the chain |
 
@@ -31,10 +42,22 @@ unpleasant past roughly a dozen children. SwiftUI's "expression too
 complex to be solved in reasonable time" is this exact failure mode.
 
 **The crossover point where `dyn` wins is lower than intuition
-suggests.** That sentence is in the spec, and the escape it motivates is
-§5: reify the tree as a flat `const` table, so the *shape* is const data
-rather than const code. The struct is still the tree; the traversal is
-not generated per position.
+suggests.** That sentence is in the spec, and it is the reason this
+framework does not use the encoding above.
+
+Two things shut the trap, and neither is the one a reader usually
+guesses. **The types are nominal.** A `#[derive(StaticTree)]` struct is
+one type wherever it appears, so `Controls` used in four places is one
+`Controls` — whereas `Row<(Label, Button)>` and `Row<(Button, Label)>`
+are two types for the same two widgets in the other order. And
+**children are reached through `&dyn`**, so a container's code does not
+specialise on what it contains. The spec says this itself in §5's
+supersession note: code is per *kind*, not per position.
+
+What the `const` table contributes is the other half — the *shape* is
+const data rather than const code, so knowing the tree's structure at
+compile time costs bytes in the binary rather than instantiations of a
+generic.
 
 ## The escape hatches are a consequence, not a feature
 

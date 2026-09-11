@@ -220,6 +220,27 @@ a separate specialized `layout` and `paint` **per distinct subtree type** — th
 is, per tree *position*, not per widget kind. On a large app that is tens of
 thousands of instantiations.
 
+> **CLARIFIED 2026-09-11 — the gloss is encoding-specific, and reading it
+> as a general claim put a false sentence in the book**
+> (`docs/results-monomorphization.md`). Monomorphization is per **type**
+> and is deduplicated: two fields of the same type share one body. Two
+> `Button<Counter>` at different positions are *one* instantiation, not
+> two — counted in a shipped binary, where eight nodes over six distinct
+> types produce six `layout` symbols.
+>
+> "Per position" holds for the `Row<(A, B, C, …)>` encoding this section
+> is warning against, because there a node's type contains its entire
+> subtree, so positions almost never share a type and the distinct-type
+> count approaches the node count. It does **not** describe what shipped:
+> §5's supersession note already says "code is per *kind*, not per
+> position", and `docs/layout-and-storage-decisions.md` already says
+> "kind count multiplies by instantiation, not position … so §4's trap
+> stays shut". Both predate the book and neither was consulted.
+>
+> The Binary size row below is directionally right and its magnitude is
+> not per node: measured, a node reusing an existing type costs ~20×
+> less than one introducing a new struct.
+
 Consequences:
 
 | Symptom | Effect |
