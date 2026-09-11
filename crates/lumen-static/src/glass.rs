@@ -241,7 +241,12 @@ impl<W: Widget> Node for Glass<W> {
         // `st[i].bg`: see the module note — a fill under the glass is
         // what the blur would read, and an opaque backdrop blurs to
         // itself.
-        out.glass(r, st[i].radius, self.material_now());
+        // **The union of both blobs — M22/T22.5.** The command's rect
+        // is the ink, the clip test and the source, so a second blob
+        // outside it would be stale, holed and short of backdrop. The
+        // renderer derives the blobs back out of the union.
+        let m = self.material_now();
+        out.glass(crate::display::glass_union(r, &m), st[i].radius, m);
         self.content.paint(st, i + Self::AT, out);
     }
 

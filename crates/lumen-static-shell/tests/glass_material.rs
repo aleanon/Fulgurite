@@ -299,6 +299,8 @@ fn changing_a_strength_reports_damage() {
         ("dispersion", |m: &mut Material| m.dispersion = 200),
         ("adapt", |m: &mut Material| m.adapt = 40),
         ("tint_over_light", |m: &mut Material| m.tint_over_light = Color(9, 9, 9, 99)),
+        ("morph_x", |m: &mut Material| m.morph_x = 160),
+        ("morph_y", |m: &mut Material| m.morph_y = 80),
     ] {
         f(&mut host.app.ui.panel.material);
         host.pump();

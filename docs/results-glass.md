@@ -331,6 +331,103 @@ zero `dt`, which `App::tick` now documents as a pure query.
 `Animated::tick` satisfies it without a thought: it adds
 `clamp(0, 0, duration)` and returns `!settled()`.
 
+## 0g. T22.5 — the morph, and the budget decision it opened with
+
+**Measured 2026-09-12.** Two panels merge through a smooth minimum of
+their signed distance fields:
+
+```
+h    = clamp(0.5 + 0.5·(b − a)/κ, 0, 1)
+smin = b + (a − b)·h − κ·h·(1 − h)
+```
+
+### The budget: an offset, and no scale
+
+The task's first act, and it is a measurement. `Material` was 32 B and
+`Cmd::Glass`'s payload 52, against a 56 B payload ceiling set by
+`Gradient`:
+
+| encoding | `Material` | payload | `Cmd` |
+|---|---:|---:|---:|
+| today | 32 | 52 | 60 |
+| **+ offset, 2 × `i16`** | **36** | **56** | **60** |
+| + offset and scale, 3 × `i16` | 40 | 60 | **64** |
+| + offset and scale, 3 × `f32` | 44 | 64 | 68 |
+
+**The offset fits exactly and the scale does not.** The plan predicted
+three `i16` would land `Material` at 36 with `Cmd` still 60; measured, it
+lands at 40 because the `f32` fields force a 4-byte alignment, and `Cmd`
+grows to 64 — **+7% on every command in every list**, 8 KB on a
+2000-command frame.
+
+That is far cheaper than the plan's framing of the alternative (a second
+command variant, `Cmd` at 80, +33%), but it is not free, and the
+repository has already made this call once: `Style::focus_ring` is a
+`u8` because as an `f32` it took `Style` from 72 to 76. So **the second
+blob is the same size as the first**, offset by up to ±2048 px in 1/16
+px steps. A uniform scale remains available for +7% if a design ever
+needs one.
+
+### κ is arithmetic, not taste
+
+The smooth minimum undershoots by κ/4 where the fields meet, so at a
+separation `s` the midpoint sits at `s/2 − κ/4` and **the neck closes
+below `s = κ/2`**. At `κ = rim` — which is what "κ ties to `rim`" reads
+as — that is 6.5 px on `LIQUID`: the blobs would be apart at *half* a rim
+width, and the gate `docs/plan-liquid.md` §9 writes at one rim width
+would read empty on a correct renderer. `κ = 3·rim` puts the closing
+point at 1.5 rim widths, between the two separations the plan gates on.
+
+| | |
+|---|---:|
+| inked between the blobs at one rim width (13 px) | **60** of 60 rows |
+| the same at three rim widths (39 px) | **0** |
+| inside the far blob, as a control | **60** |
+
+### Cost
+
+Over the **same rect**, so the pixel count is identical and only the
+per-pixel work differs — a morphing pair inks a larger union, and
+charging that area to the morph would measure the fixture:
+
+| rect | one blob | two | added |
+|---|---:|---:|---:|
+| 400×200 | 6.51 ms | 7.04 | **+8%** |
+| 800×300 | 18.33 | 19.60 | **+7%** |
+
+Two distance fields and a normalisation where there was one field. A
+panel with no second blob pays none of it: the branch is on the command.
+
+### A lone panel is byte-identical, and that is pinned by a digest
+
+M19 records that glass keeps `fill_rounded_within`'s hard-span coverage
+precisely so a panel is pixel-identical to a rounded rect of the same
+geometry, and that a pure SDF ramp disagrees by up to 254/255 on a
+fractional edge (`docs/plan-glass.md` §4.1). The SDF coverage path is
+taken **only when a second blob is present**. The digest
+`0x2e4fd518a418f744` was taken from the renderer at the commit before
+T22.5, over a fixture with deliberately fractional edges, and is
+unchanged by it. Forcing the SDF path for every panel moves it to
+`0xc9cfb2682786da79`.
+
+### Two bounds that were wrong, and one gate that could not fire
+
+**The crease bound was 140× the signal.** The neck's largest
+adjacent-pixel jump measures **0.1** levels; the first draft bounded it
+at 14 because that felt like a visible step. Both injections this gate
+exists for — one blob's gradient instead of the blend, and the distance
+left undivided by the gradient's length — land at **12.5**, under the
+bound and green. It ships at 4.
+
+**The recorder's hash could not be tested through the widget.** `Glass`
+emits the union of both blobs, the union determines the offset exactly,
+and the rect is hashed — so changing `morph_x` through the widget
+reports damage whether or not the material's own fields are in the hash,
+and the injection stays green. `Painter::glass` takes a rect and a
+material separately, so a caller may hold one still while the other
+moves; the gate now drives `Recording` directly with the same rect both
+times, where the injection reports `Damage::None`.
+
 ## 1. Cost against σ — flat, and that is the downsample working
 
 | requested σ | k | box width | delivered σ | error | panel |

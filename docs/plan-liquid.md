@@ -388,6 +388,17 @@ wrong.
 **The budget.** After T22.0–T22.3 there are 4 bytes left (§1). An offset
 and a uniform scale as `f32` is 12 and does not fit; as fixed-point
 16-bit values it is 6, and `Material` lands at 36 with `Cmd` still 60.
+
+**Measured 2026-09-12, and that last sentence is wrong.** Three `i16`
+land `Material` at **40**, not 36 — the `f32` fields force a 4-byte
+alignment — and `Cmd` at **64**. The offset *alone*, two `i16`, is what
+lands at 36 with the payload at exactly the 56 B ceiling. So the second
+blob is the same size as the first, and a scale is available for +7% on
+every command if a design ever needs one. `docs/results-glass.md` §0g.
+
+**And κ is not `rim`.** The neck closes below `s = κ/2`, so `κ = rim`
+would put the blobs apart at half a rim width and the "one rim width"
+gate below would read empty on a correct renderer. It ships at `3·rim`.
 The alternative is a second command variant and a re-budget — measured,
 that is `Cmd` at 80, **+33% on every command in every list**, which
 against a 2 000-command frame is 40 KB. Either way the decision is this
@@ -435,7 +446,7 @@ cannot both admit the blur and refuse the dispersion.
 | **T22.2** | Dispersion. One `u8`. Widened source expression. | **Done 2026-09-12.** Over a hard edge the rim's blue − red is **+27.3** signed — signed because the *ordering* is the claim — against **0.00** chroma with dispersion off, both printed. Cost +10%, flat across panel size. `docs/results-glass.md` §0d. |
 | **T22.3** | Adaptive tint, stateless, with the pre-registered exit. One `u8` + one `Color`. | **Done 2026-09-12.** Travel **31.0** levels, strictly monotonic over 23 steps, crossing neutral between backdrop 141 and 150. The exit's bound — under one output level per one-pixel scroll — holds at **0.886**, and **1.000** under a 40 px panel, which is the stated limit. Cost −0%/+1%. `docs/results-glass.md` §0e. |
 | **T22.4** | Press deformation, and the redraw-loop reorder. No field. | **Done 2026-09-12.** **5432** px deformed at the peak clear of the button, **0** with the press ignored, and the settled frame **byte-identical** to the pre-press one. Also `#[app(tick = path)]`, without which a derived app could not advance anything. `docs/results-glass.md` §0f. |
-| **T22.5** | The morph. Budget decision first, with its measurement. | At a separation of one rim width the pixels between the blobs are inked; at three rim widths they are empty; and a single panel is byte-identical to before the task. |
+| **T22.5** | The morph. Budget decision first, with its measurement. | **Done 2026-09-12.** Budget measured: an offset as 2 × `i16` fits exactly (`Cmd` stays 60); a scale costs `Cmd` 64, so there is none. **60 of 60** rows inked between the blobs at one rim width, **0** at three, and the lone panel byte-identical by digest. Cost +8%/+7% over the same rect. `docs/results-glass.md` §0g. |
 | **T22.6** | The GPU backend. | `just gpu-parity` holds under **two** bounds, both stated before the measurement. |
 
 **Sizing — in measurement cycles, not days.** The first draft said "a

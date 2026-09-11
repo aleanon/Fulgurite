@@ -872,6 +872,7 @@ impl<R: Retention> Painter for Recording<'_, R> {
                 | material.adapt as u64,
         );
         h = h_color(h, material.tint_over_light);
+        h = fold(h, ((material.morph_x as u16 as u64) << 16) | material.morph_y as u16 as u64);
         self.ret.observe(h, rect);
         self.ret.observe_dep(crate::display::glass_source(rect, &material));
         self.inner.glass(rect, radius, material);

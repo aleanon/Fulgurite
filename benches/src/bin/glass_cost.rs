@@ -153,6 +153,47 @@ fn main() {
         );
     }
 
+    // M22/T22.5: the smooth minimum is two distance fields and a
+    // normalisation where there was one field. Compared over the SAME
+    // rect, so the pixel count is identical and only the per-pixel work
+    // differs -- a morphing pair inks a larger union, and charging that
+    // area to the morph would measure the fixture.
+    println!("\n  T22.5: one blob against two, over the same rect");
+    println!("{:>14} {:>12} {:>12} {:>10}", "rect", "one ms", "two ms", "added");
+    for (pw, ph) in [(400.0f32, 200.0f32), (800.0, 300.0)] {
+        let area = [0.0, 0.0, w as f32, h as f32];
+        let mut timed = |m: Material, r: [f32; 4]| {
+            let mut list = DisplayList::new();
+            backdrop(w, h, &mut list);
+            list.glass(r, 26.0, m);
+            let mut base = DisplayList::new();
+            backdrop(w, h, &mut base);
+            best_of(3, || {
+                canvas.clear(Color(20, 24, 34, 255));
+                canvas.render_within(&list, area);
+            });
+            let with = best_of(20, || {
+                canvas.clear(Color(20, 24, 34, 255));
+                canvas.render_within(&list, area);
+            });
+            let without = best_of(20, || {
+                canvas.clear(Color(20, 24, 34, 255));
+                canvas.render_within(&base, area);
+            });
+            with - without
+        };
+        let union = [40.0, 40.0, 40.0 + pw, 40.0 + ph];
+        let one = timed(Material::LIQUID, union);
+        // Two blobs each half the width, spanning the same union.
+        let off = (pw / 2.0 * Material::MORPH_UNIT) as i16;
+        let two = timed(Material { morph_x: off, ..Material::LIQUID }, union);
+        println!(
+            "{:>14} {one:>12.2} {two:>12.2} {:>9.0}%",
+            format!("{pw:.0}x{ph:.0}"),
+            (two - one) / one * 100.0
+        );
+    }
+
     println!("\n  the bevel: frosted against liquid, same panel");
     println!("{:>14} {:>12} {:>12} {:>10}", "panel", "frosted ms", "liquid ms", "bevel");
     for (pw, ph) in [(400.0f32, 200.0f32), (800.0, 300.0)] {

@@ -378,13 +378,21 @@ impl Surface<'_> {
         // geometry have the same silhouette. What is new is the bevel:
         // within `rim` of the boundary the surface curves, and that band
         // needs a signed distance everywhere, not only in the corners.
-        let rr = radius.min((shape[2] - shape[0]) / 2.0).min((shape[3] - shape[1]) / 2.0);
-        let (cx, cy) = ((shape[0] + shape[2]) / 2.0, (shape[1] + shape[3]) / 2.0);
-        let (hx, hy) = ((shape[2] - shape[0]) / 2.0 - rr, (shape[3] - shape[1]) / 2.0 - rr);
+        //
+        // **M22/T22.5: `shape` is the *union* of both blobs.** The
+        // primary is derived back out of it, and is bit-exactly `shape`
+        // when there is no second blob — the offsets are zero and
+        // nothing is added or subtracted.
+        let morphing = lumen_static::display::morphing(&m);
+        let prim = lumen_static::display::glass_primary(shape, &m);
+        let (odx, ody) = lumen_static::display::morph_offset(&m);
+        let rr = radius.min((prim[2] - prim[0]) / 2.0).min((prim[3] - prim[1]) / 2.0);
+        let (cx, cy) = ((prim[0] + prim[2]) / 2.0, (prim[1] + prim[3]) / 2.0);
+        let (hx, hy) = ((prim[2] - prim[0]) / 2.0 - rr, (prim[3] - prim[1]) / 2.0 - rr);
         let (x0, y0) = ((bounds[0].floor() as i64).max(0), (bounds[1].floor() as i64).max(self.y0));
         let (x1, y1) = ((bounds[2].ceil() as i64).min(w), (bounds[3].ceil() as i64).min(h));
-        let (top, bottom) = ((shape[1] + rr).ceil() as i64, (shape[3] - rr).floor() as i64);
-        let (left, right) = ((shape[0] + rr).ceil() as i64, (shape[2] - rr).floor() as i64);
+        let (top, bottom) = ((prim[1] + rr).ceil() as i64, (prim[3] - rr).floor() as i64);
+        let (left, right) = ((prim[0] + rr).ceil() as i64, (prim[2] - rr).floor() as i64);
 
         let rim = m.rim.max(0.0);
         let tv = tint[3] / 255.0;
@@ -395,6 +403,44 @@ impl Surface<'_> {
         // product, and every injection aimed at the shadow would pass
         // (`docs/plan-liquid.md` §2).
         let bevelled = rim > 0.0 && (m.refraction > 0.0 || m.specular > 0.0 || m.shadow > 0);
+        // How wide the neck is, in px — M22/T22.5. Tied to `rim` so the
+        // blend's scale follows the bevel's, and floored so a rimless
+        // morph still merges rather than producing a hard union.
+        //
+        // **The multiplier is arithmetic, not taste.** The smooth
+        // minimum undershoots by κ/4 where the fields meet, so at a
+        // separation `s` the midpoint sits at `s/2 − κ/4`: the neck
+        // closes below `s = κ/2`. At `κ = rim` that is 6.5 px on
+        // `LIQUID` — the blobs would already be apart at *half* a rim
+        // width, and a gate written at one rim width would read empty.
+        // `κ = 3·rim` puts the closing point at 1.5 rim widths, between
+        // the two separations `docs/plan-liquid.md` §9 gates on.
+        let kappa = (rim * 3.0).max(4.0);
+        // The signed distance to one rounded rect and its outward
+        // normal, which for a true distance field is the unit gradient.
+        //
+        // **Used by both paths**, not duplicated for the morph: two
+        // copies of this expression is the shape that let `Shadow` and
+        // `Image` hash as the same tag for a year.
+        let blob = |px: f32, pyf: f32, bcx: f32, bcy: f32| -> (f32, f32, f32) {
+            let (qx, qy) = ((px - bcx).abs() - hx, (pyf - bcy).abs() - hy);
+            let (mx, my) = (qx.max(0.0), qy.max(0.0));
+            let outside = (mx * mx + my * my).sqrt();
+            let d = outside + qx.max(qy).min(0.0) - rr;
+            // **`sign(p - c)` is not optional**: `max(q, 0)` is
+            // componentwise non-negative, so without it every normal
+            // points into the +x/+y quadrant and the left and top rims
+            // refract and light backwards.
+            let (sx, sy) = (sign_of(px - bcx), sign_of(pyf - bcy));
+            let (nx, ny) = if outside > 1.0e-4 {
+                (sx * mx / outside, sy * my / outside)
+            } else if qx > qy {
+                (sx, 0.0)
+            } else {
+                (0.0, sy)
+            };
+            (d, nx, ny)
+        };
         // The light, in 3D. Its elevation tilts it out of the screen so a flat
         // interior is lit at all; without it only the rim would be, and
         // the panel would read as an outline rather than a surface.
@@ -405,18 +451,59 @@ impl Surface<'_> {
             let py = y as f32 + 0.5;
             let dy = (shape[1] + rr - py).max(py - (shape[3] - rr)).max(0.0);
             for x in x0..x1 {
-                let cov = if !corner_row || (x >= left && x < right) {
-                    1.0
+                let (px, pyf) = (x as f32 + 0.5, y as f32 + 0.5);
+                // **M22/T22.5: the smooth minimum, or nothing.**
+                //
+                // `morph_d` is `None` for an ordinary panel, and the
+                // whole block below it is then the code M19 shipped,
+                // reached by the same route. That branch is on the
+                // *command*, not the pixel: M19 records that glass keeps
+                // `fill_rounded_within`'s hard-span coverage so a panel
+                // is pixel-identical to a rounded rect of the same
+                // geometry, and that a pure SDF ramp disagrees by up to
+                // 254/255 on a fractional edge (`plan-glass.md` §4.1).
+                let morph_d = if morphing {
+                    let (da, gax, gay) = blob(px, pyf, cx, cy);
+                    let (db, gbx, gby) = blob(px, pyf, cx + odx, cy + ody);
+                    let hb = (0.5 + 0.5 * (db - da) / kappa).clamp(0.0, 1.0);
+                    let d = db + (da - db) * hb - kappa * hb * (1.0 - hb);
+                    // **The blended gradient is exact, and it is not
+                    // unit.** Weighting the two gradients by the same
+                    // `h` the value uses is not an approximation — the
+                    // remaining term vanishes identically. But its
+                    // length falls below 1 wherever the gradients
+                    // disagree and reaches 0 where they oppose, and the
+                    // bevel is built on the normal being unit *by
+                    // construction*.
+                    let (gx, gy) = (gbx + (gax - gbx) * hb, gby + (gay - gby) * hb);
+                    let len = (gx * gx + gy * gy).sqrt();
+                    if len > 1.0e-4 {
+                        // **And a smooth minimum is not a distance
+                        // field.** The gradient's length is below 1 in
+                        // the neck, so `u` would reach 0 after fewer
+                        // than `rim` pixels and the bevel would visibly
+                        // pinch there. Dividing by the length restores
+                        // it and shares the square root the
+                        // normalisation already needed.
+                        Some((d / len, gx / len, gy / len))
+                    } else {
+                        Some((d, 0.0, 0.0))
+                    }
                 } else {
-                    let px = x as f32 + 0.5;
-                    let dx = (shape[0] + rr - px).max(px - (shape[2] - rr)).max(0.0);
-                    (rr + 0.5 - (dx * dx + dy * dy).sqrt()).clamp(0.0, 1.0)
+                    None
+                };
+                let cov = match morph_d {
+                    Some((d, _, _)) => (0.5 - d).clamp(0.0, 1.0),
+                    None if !corner_row || (x >= left && x < right) => 1.0,
+                    None => {
+                        let dx = (prim[0] + rr - px).max(px - (prim[2] - rr)).max(0.0);
+                        (rr + 0.5 - (dx * dx + dy * dy).sqrt()).clamp(0.0, 1.0)
+                    }
                 };
                 if cov <= 0.0 {
                     continue;
                 }
 
-                let (px, pyf) = (x as f32 + 0.5, y as f32 + 0.5);
                 let mut sample_at = (px, pyf);
                 // The per-channel displacement, in the same units as
                 // `sample_at`'s. Zero everywhere the bevel is not.
@@ -428,29 +515,17 @@ impl Surface<'_> {
                 let mut fres = 0.0f32;
                 let mut dark = 0.0f32;
                 if bevelled {
-                    // Signed distance and the outward 2D normal of the
-                    // rounded rect, everywhere -- not just in corners.
-                    let (qx, qy) = ((px - cx).abs() - hx, (pyf - cy).abs() - hy);
-                    let (mx, my) = (qx.max(0.0), qy.max(0.0));
-                    let outside = (mx * mx + my * my).sqrt();
-                    let d = outside + qx.max(qy).min(0.0) - rr;
+                    // Signed distance and the outward 2D normal --
+                    // everywhere, not just in corners. The morph path
+                    // has already produced both.
+                    let (d, nx, ny) = match morph_d {
+                        Some(v) => v,
+                        None => blob(px, pyf, cx, cy),
+                    };
                     // `u` is 1 at the boundary and 0 at `rim` px inside:
                     // the bevel's parameter.
                     let u = (1.0 + d / rim).clamp(0.0, 1.0);
                     if u > 0.0 {
-                        // The outward normal. **`sign(p - c)` is not
-                        // optional**: `max(q, 0)` is componentwise
-                        // non-negative, so without it every normal
-                        // points into the +x/+y quadrant and the left
-                        // and top rims refract and light backwards.
-                        let (sx, sy) = (sign_of(px - cx), sign_of(pyf - cy));
-                        let (nx, ny) = if outside > 1.0e-4 {
-                            (sx * mx / outside, sy * my / outside)
-                        } else if qx > qy {
-                            (sx, 0.0)
-                        } else {
-                            (0.0, sy)
-                        };
                         // **The bevel is a spherical cap, and this is
                         // the whole of it.** `(u*n, sqrt(1 - u*u))` is
                         // already unit -- no division, no singularity at

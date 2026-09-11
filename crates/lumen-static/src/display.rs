@@ -226,6 +226,28 @@ pub struct Material {
     /// (`docs/results-glass.md` §0). The same trade `Style::focus_ring`
     /// already made.
     pub shadow: u8,
+    /// Where a second blob sits, in 1/[`Material::MORPH_UNIT`] px from
+    /// the panel's own position — M22/T22.5. `0, 0` means there is no
+    /// second blob and the panel is an ordinary rounded rect.
+    ///
+    /// The two blobs merge through a **smooth minimum** of their signed
+    /// distance fields, which is what "liquid" means: a neck forms
+    /// between them and pinches off as they separate.
+    ///
+    /// **Fixed-point, and two values rather than three.** Measured
+    /// 2026-09-12: the offset as two `i16` takes `Material` to 36 B and
+    /// `Cmd::Glass`'s payload to 56 — exactly the headroom, `Cmd` stays
+    /// 60. Adding a uniform scale as a third `i16` takes `Material` to
+    /// 40 and `Cmd` to **64**, +7% on every command in every list.
+    /// `docs/results-glass.md` §0g. So the second blob is the same size
+    /// as the first.
+    ///
+    /// **It is a length**, which matters at the `Scaled` seam: every
+    /// other strength this milestone added is unitless and rides
+    /// `..material` correctly, and this one does not.
+    pub morph_x: i16,
+    /// The second blob's vertical offset — see [`Material::morph_x`].
+    pub morph_y: i16,
     /// How strongly the tint follows the backdrop, `0` off to `255`
     /// full — M22/T22.3.
     ///
@@ -285,7 +307,14 @@ impl Material {
         dispersion: 0,
         adapt: 0,
         tint_over_light: Color(0, 0, 0, 0),
+        morph_x: 0,
+        morph_y: 0,
     };
+
+    /// Fixed-point steps per pixel in [`Material::morph_x`] — 1/16 px,
+    /// which puts the offset's range at ±2048 px and its resolution
+    /// below what the sub-pixel read of T22.1 can resolve.
+    pub const MORPH_UNIT: f32 = 16.0;
 
     /// How far `dispersion` at 255 pushes the outer channels, as a
     /// fraction of the refraction.
@@ -316,6 +345,8 @@ impl Material {
         saturation: 148,
         dispersion: 90,
         adapt: 190,
+        morph_x: 0,
+        morph_y: 0,
         // Dark and barely there: over bright content the panel needs to
         // *subtract* light, and the same 18/255 the light tint uses
         // would be invisible against it.
@@ -348,6 +379,56 @@ pub const GLASS_FALLBACK_ALPHA: u8 = 140;
 /// It lives here rather than in the shell because the GPU backend
 /// (T22.6) must compute the same number, and a second copy of a curve
 /// is a parity failure waiting for someone to edit one of them.
+/// The second blob's offset in pixels — M22/T22.5.
+pub fn morph_offset(m: &Material) -> (f32, f32) {
+    (m.morph_x as f32 / Material::MORPH_UNIT, m.morph_y as f32 / Material::MORPH_UNIT)
+}
+
+/// Whether this material has a second blob at all.
+///
+/// **A branch on the command, not on the pixel.** M19 records that glass
+/// keeps `fill_rounded_within`'s hard-span coverage precisely so a panel
+/// is pixel-identical to a rounded rect of the same geometry, and that a
+/// pure SDF ramp disagrees by up to 254/255 on a fractional edge
+/// (`docs/plan-glass.md` §4.1). The SDF coverage path is taken only when
+/// this is true, so a lone panel is byte-identical to before M22/T22.5.
+pub fn morphing(m: &Material) -> bool {
+    m.morph_x != 0 || m.morph_y != 0
+}
+
+/// The rect a panel inks: **the union of both blobs** — M22/T22.5.
+///
+/// The command's rect is the ink, the clip test *and* the source. A
+/// second blob outside it would be a stale panel (damage never covers
+/// it), a visible hole (a damage region covering only the second blob
+/// fails the clip test, over a region already cleared) and a short
+/// dependency. So the widget emits the union and the renderer derives
+/// the blobs back out of it — one expression, used by both, for the same
+/// reason [`glass_source`] is.
+pub fn glass_union(shape: Rect, m: &Material) -> Rect {
+    let (dx, dy) = morph_offset(m);
+    [
+        shape[0] + dx.min(0.0),
+        shape[1] + dy.min(0.0),
+        shape[2] + dx.max(0.0),
+        shape[3] + dy.max(0.0),
+    ]
+}
+
+/// The primary blob, recovered from the union [`glass_union`] produced.
+///
+/// Exactly the input when there is no second blob: the offsets are zero,
+/// `min` and `max` of zero are zero, and nothing is added or subtracted.
+pub fn glass_primary(union: Rect, m: &Material) -> Rect {
+    let (dx, dy) = morph_offset(m);
+    [
+        union[0] - dx.min(0.0),
+        union[1] - dy.min(0.0),
+        union[2] - dx.max(0.0),
+        union[3] - dy.max(0.0),
+    ]
+}
+
 pub fn adapt_mix(luma: f32, adapt: u8) -> f32 {
     let l = luma.clamp(0.0, 1.0);
     l * l * (3.0 - 2.0 * l) * (adapt as f32 / 255.0)
@@ -526,6 +607,7 @@ impl Cmd {
                     | m.adapt as u64);
                 let t2 = m.tint_over_light;
                 f(h, u32::from_be_bytes([t2.0, t2.1, t2.2, t2.3]) as u64);
+                f(h, ((m.morph_x as u16 as u64) << 16) | m.morph_y as u16 as u64);
             }
             Cmd::PushClip { rect } => {
                 f(h, 3);
@@ -921,13 +1003,29 @@ impl Painter for Scaled<'_> {
     /// prevent, so it is spelled out field by field.
     fn glass(&mut self, rect: Rect, radius: f32, material: Material) {
         let r = self.r(rect);
-        // `blur`, `rim` and `refraction` are lengths and scale; `tint`
-        // is a colour, `specular` a 0..=1 strength and `light` an angle,
-        // and none of those do.
+        // `blur`, `rim`, `refraction` and the morph offset are lengths
+        // and scale; `tint` is a colour, `specular`, `saturation`,
+        // `dispersion` and `adapt` are unitless strengths and `light` is
+        // an angle, and none of those do.
+        //
+        // **The rest pattern fails open for a length**, which is why the
+        // morph offset is named here and every unitless field M22 added
+        // is not: `..material` silently does the right thing for a
+        // fraction and the wrong thing for a distance, and the symptom
+        // is a second blob that sits at the correct place at 1x and
+        // half-way there at 2x.
+        let q = |v: i16| {
+            let scaled = v as f32 * self.scale;
+            // Saturating, because the offset's range is finite and a
+            // wrapped one would put the blob on the opposite side.
+            scaled.clamp(i16::MIN as f32, i16::MAX as f32) as i16
+        };
         let m = Material {
             blur: material.blur * self.scale,
             rim: material.rim * self.scale,
             refraction: material.refraction * self.scale,
+            morph_x: q(material.morph_x),
+            morph_y: q(material.morph_y),
             ..material
         };
         self.inner.glass(r, radius * self.scale, m);
