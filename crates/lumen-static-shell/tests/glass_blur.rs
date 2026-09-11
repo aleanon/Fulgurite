@@ -1,6 +1,6 @@
 //! M19/T19.3: the blur's shape, not its speed.
 //!
-//! The speed is `benches --bin glass` and `docs/results-glass.md`. What
+//! The speed is `benches --bin glass-cost` and `docs/results-glass.md`. What
 //! is checked here is the property a table cannot show: **a blur must
 //! not move the image**.
 

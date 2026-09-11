@@ -1,7 +1,7 @@
 # What a glass panel costs, and what blur it delivers
 
 **Measured 2026-09-10.** Reference machine: i9-13900KF, governor
-`powersave`. `cargo run --release -p benches --bin glass`, a panel over a
+`powersave`. `cargo run --release -p benches --bin glass-cost`, a panel over a
 striped 1920×1080 backdrop, min of 20. M19/T19.3.
 
 The figure is the *difference* between rendering the scene with the

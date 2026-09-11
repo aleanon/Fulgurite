@@ -1191,7 +1191,7 @@ fn box_windows(d: i64) -> [(usize, usize); 3] {
 
 /// Downsample factor, box width, and the sigma actually **delivered**.
 ///
-/// Public so `benches --bin glass` can print requested against delivered
+/// Public so `benches --bin glass-cost` can print requested against delivered
 /// without a second copy of the arithmetic. A results table computed
 /// from a duplicate of the code it describes is a table that goes wrong
 /// silently, which is what `AGENT.md`'s "numbers are stated once" rule

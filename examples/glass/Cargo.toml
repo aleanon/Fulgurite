@@ -1,0 +1,19 @@
+[package]
+name = "glass"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+lumen-static = { path = "../../crates/lumen-static" }
+lumen-static-winit = { path = "../../crates/lumen-static-winit" }
+# `truetype` so the rows are real glyphs. A backdrop filter over block
+# metrics blurs uniform boxes, which is a demonstration of nothing.
+lumen-static-shell = { path = "../../crates/lumen-static-shell", features = ["truetype"] }
+
+[features]
+default = []
+# The blur is software-only (docs/plan-glass.md §1.3); built `--features
+# gpu` the panel falls back to a flat tint, which is itself worth seeing.
+gpu = ["lumen-static-winit/gpu"]

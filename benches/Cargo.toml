@@ -16,8 +16,8 @@ lumen-static-shell = { path = "../crates/lumen-static-shell", features = ["truet
 rdyn_opaque = ["lumen-static/rdyn_opaque"]
 
 [[bin]]
-name = "glass"
-path = "src/bin/glass.rs"
+name = "glass-cost"
+path = "src/bin/glass_cost.rs"
 
 [[bin]]
 name = "crossover"

@@ -40,6 +40,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use lumen_static::event::App;
+use lumen_static::style::Rule;
 use lumen_static::Color;
 use lumen_static_shell::text::{FontMetrics, FontStack};
 use lumen_static_shell::Host;
@@ -110,6 +111,17 @@ pub struct Config {
     /// crate was built with the `gpu` feature and an adapter exists,
     /// and the software canvas otherwise.
     pub backend: Prefer,
+    /// The stylesheet, applied once before the first frame.
+    ///
+    /// Added 2026-09-11 for `examples/glass`, which needs one and had
+    /// only two ways to get it: hand-roll a window on [`Surface`] the
+    /// way `examples/counter-window` does — 480 lines M14 existed to
+    /// delete — or ship unstyled. A turnkey window that cannot be
+    /// styled is a turnkey window for one application.
+    ///
+    /// Empty by default, which is what every node's `Node::defaults`
+    /// already gives.
+    pub stylesheet: Vec<Rule>,
 }
 
 impl Default for Config {
@@ -120,6 +132,7 @@ impl Default for Config {
             height: 480,
             page: Color(255, 255, 255, 255),
             backend: Prefer::Auto,
+            stylesheet: Vec::new(),
         }
     }
 }
@@ -172,7 +185,10 @@ struct Win<A: App> {
 
 impl<A: App> Win<A> {
     fn new(app: A, config: Config) -> Self {
-        let host = Host::new(app, config.width, config.height);
+        let mut host = Host::new(app, config.width, config.height);
+        if !config.stylesheet.is_empty() {
+            host.set_stylesheet(&config.stylesheet);
+        }
         let font = FontStack::system();
         if font.is_none() {
             // A machine with no font we recognise still gets a window;
