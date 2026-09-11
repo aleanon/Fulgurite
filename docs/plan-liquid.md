@@ -1,7 +1,37 @@
 # M22 — the complete liquid material
 
-> **Status: planned 2026-09-11, rewritten the same day after a
-> four-agent review.** Seven tasks, where the first draft had five.
+> **Status: LANDED 2026-09-12. All seven tasks (T22.0–T22.6).**
+>
+> What it built: Fresnel, an inner shadow and saturation (T22.0); a
+> sub-pixel refracted read (T22.1); chromatic dispersion (T22.2); a
+> backdrop-adaptive tint (T22.3); press deformation and the redraw
+> loop's reorder (T22.4); a two-blob smooth-minimum morph (T22.5); and
+> the whole filter on the GPU (T22.6). `Material` went 24 B → 36 B and
+> `Cmd` is still 60.
+>
+> What it decided against: a **uniform scale** for the morph's second
+> blob — measured, three `i16` take `Cmd` to 64, +7% on every command in
+> every list (§7, `docs/results-glass.md` §0g) — and **state** for the
+> adaptive tint, which stayed a pure function of the captured backdrop
+> and whose pre-registered flicker bound held at 0.886 levels against 1
+> (§5, §0e).
+>
+> What it measured: the material costs **+18%** over M21's bevel end to
+> end, and on the GPU a full-screen filter is **1.44 ms** against the
+> software canvas's 148. Every number is in `docs/results-glass.md`
+> §0b–§0h.
+>
+> **Where the plan was wrong, and it was wrong five times**, each
+> recorded inline at the section it belongs to: `κ = rim` puts the blobs
+> apart at half a rim width (§7); three `i16` land `Material` at 40, not
+> 36 (§1, §7); the clamp guard must test the extremes, not the green
+> coordinate (§4); "reduce over the clip" cannot fire through the damage
+> oracle (§5); and the `+ 4` px of source slack hides the dispersion
+> term from a *test*, not merely a reader (§4). The plan also had no way
+> for a derived application to advance an animation at all (§6).
+>
+> **Planned 2026-09-11, rewritten the same day after a four-agent
+> review.** Seven tasks, where the first draft had five.
 >
 > The review found **five of the first draft's seven injections would
 > have passed under their own injection**, which is the failure
