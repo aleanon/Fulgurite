@@ -226,6 +226,25 @@ pub struct Material {
     /// (`docs/results-glass.md` §0). The same trade `Style::focus_ring`
     /// already made.
     pub shadow: u8,
+    /// How strongly the tint follows the backdrop, `0` off to `255`
+    /// full — M22/T22.3.
+    ///
+    /// A fixed tint is legible over the backdrop it was chosen for and
+    /// nothing else. At `255` the material runs the whole way from
+    /// [`Material::tint`] over dark content to
+    /// [`Material::tint_over_light`] over bright content, so what sits
+    /// *on* the glass stays readable as content scrolls under it.
+    ///
+    /// **It is a pure function of the captured backdrop.** There is no
+    /// stored value and no damping: the renderer has no path back to
+    /// application state, and `render_within` runs once per damaged
+    /// region, so anything accumulated here would advance a variable
+    /// number of times per frame. The crossing is smoothed in
+    /// *luminance* instead — see `docs/plan-liquid.md` §5.
+    pub adapt: u8,
+    /// The tint used over a bright backdrop, when [`Material::adapt`]
+    /// is non-zero — M22/T22.3. Ignored when `adapt` is `0`.
+    pub tint_over_light: Color,
     /// Chromatic dispersion, `0` off to `255` full — M22/T22.2.
     ///
     /// Glass splits light by wavelength, and the colour fringe at a
@@ -264,6 +283,8 @@ impl Material {
         shadow: 0,
         saturation: Material::NEUTRAL_SATURATION,
         dispersion: 0,
+        adapt: 0,
+        tint_over_light: Color(0, 0, 0, 0),
     };
 
     /// How far `dispersion` at 255 pushes the outer channels, as a
@@ -294,6 +315,11 @@ impl Material {
         shadow: 85,
         saturation: 148,
         dispersion: 90,
+        adapt: 190,
+        // Dark and barely there: over bright content the panel needs to
+        // *subtract* light, and the same 18/255 the light tint uses
+        // would be invisible against it.
+        tint_over_light: Color(10, 10, 14, 26),
     };
 }
 
@@ -303,6 +329,29 @@ impl Material {
 /// is invisible, and a fallback nobody can see is one nobody can test.
 /// This is a deliberate lie in the direction of being noticed.
 pub const GLASS_FALLBACK_ALPHA: u8 = 140;
+
+/// Where the adaptive tint sits between [`Material::tint`] and
+/// [`Material::tint_over_light`], given the backdrop's mean luminance
+/// in `0..=1` — M22/T22.3.
+///
+/// **Smooth, not thresholded.** A step would make the tint flip between
+/// two values as content scrolls, and a single pixel of scroll can cross
+/// a step; a smooth-step curve spreads the crossing over the whole range,
+/// so the movement between two frames is bounded by the change in mean
+/// luminance between them. That bound is what T22.3's pre-registered
+/// exit is stated against — `docs/results-glass.md` §0e.
+///
+/// It is strictly increasing on `(0, 1)`, which the sweep test relies
+/// on; the derivative vanishes at both ends, so a sweep that runs to
+/// pure black or pure white measures a plateau rather than the curve.
+///
+/// It lives here rather than in the shell because the GPU backend
+/// (T22.6) must compute the same number, and a second copy of a curve
+/// is a parity failure waiting for someone to edit one of them.
+pub fn adapt_mix(luma: f32, adapt: u8) -> f32 {
+    let l = luma.clamp(0.0, 1.0);
+    l * l * (3.0 - 2.0 * l) * (adapt as f32 / 255.0)
+}
 
 /// How many colour stops a [`Cmd::Gradient`] carries.
 ///
@@ -471,7 +520,12 @@ impl Cmd {
                     f(h, v.to_bits() as u64);
                 }
                 f(h, u32::from_be_bytes([m.tint.0, m.tint.1, m.tint.2, m.tint.3]) as u64);
-                f(h, ((m.shadow as u64) << 16) | ((m.saturation as u64) << 8) | m.dispersion as u64);
+                f(h, ((m.shadow as u64) << 24)
+                    | ((m.saturation as u64) << 16)
+                    | ((m.dispersion as u64) << 8)
+                    | m.adapt as u64);
+                let t2 = m.tint_over_light;
+                f(h, u32::from_be_bytes([t2.0, t2.1, t2.2, t2.3]) as u64);
             }
             Cmd::PushClip { rect } => {
                 f(h, 3);

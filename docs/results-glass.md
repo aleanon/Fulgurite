@@ -33,18 +33,29 @@ stops that test compiling.
 
 ## 0b. T22.0 — Fresnel, the inner shadow, saturation
 
-**Re-measured 2026-09-12**, same machine and method as §2.
+**Re-measured 2026-09-12**, same machine and method as §2. **This is
+the milestone's only cost table** — §0d and §0e cite it rather than
+restating a column, per `AGENT.md`'s "numbers are stated once".
 
-| panel | bevel alone | full material | added |
-|---|---:|---:|---:|
-| 400×200 | 5.59 ms | 6.00 | **+7%** |
-| 800×300 | 15.64 | 16.85 | **+8%** |
+| panel | bevel alone | + T22.0 | | + T22.2 | | + T22.3 | |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 400×200 | 5.33 ms | 5.69 | **+7%** | 6.27 | **+10%** | 6.26 | **−0%** |
+| 800×300 | 14.97 | 16.07 | **+7%** | 17.43 | **+8%** | 17.63 | **+1%** |
 
-The first run of this table, on 2026-09-11, read +9% and +13%. It is
-restated rather than annotated because **T22.1 raised both columns**:
-the sub-pixel read costs the bevel baseline as much as it costs the
-full material, so the ratio fell while neither side got cheaper. A
-stale ratio beside a live one is the drift this doc exists to prevent.
+Each "added" is against the column to its left, so they compose. Read
+end to end: the whole of M22's material work costs **+18%** over M21's
+bevel at either size.
+
+The T22.0 column read +9% and +13% when it was first measured on
+2026-09-11. It is restated rather than annotated because **T22.1 raised
+both of its columns**: the sub-pixel read costs the bevel baseline as
+much as it costs the full material, so the ratio fell while neither side
+got cheaper. A stale ratio beside a live one is the drift this doc
+exists to prevent.
+
+Each column also had to gain an explicit "off" for every *later* field,
+or it stops measuring what it is named for: `LIQUID` carries dispersion
+and adapt now, so the T22.0 row sets both to zero.
 
 "Bevel alone" is M21's material — no inner shadow, neutral saturation.
 Fresnel cannot be separated from it, because it is derived from
@@ -104,15 +115,11 @@ refraction either way. `LIQUID` carries 90.
 
 ### What it costs
 
-| panel | T22.0 material | + dispersion | added |
-|---|---:|---:|---:|
-| 400×200 | 6.00 ms | 6.58 | **+10%** |
-| 800×300 | 16.85 | 18.49 | **+10%** |
+**+10% / +8%** — §0b's table. Nearly flat across panel size, because
+dispersion is rim-band only; saturation is not, which is why §0b's
+T22.0 column is the one that grows.
 
-Flat across the two sizes, because dispersion is rim-band only — unlike
-saturation, which is why §0b's rows are *not* flat.
-
-The 10% is three taps where there was one, and it is only 10% because
+That is three taps where there was one, and it is only 10% because
 the sampler grew a **per-channel entry point**. Calling the
 three-channel read three times would triple the coordinate setup and do
 36 loads where 12 suffice: one clamp-and-floor is amortised over three
@@ -170,6 +177,95 @@ clamped band:
 The fringe immediately outside the band measures 52, asserted in the
 same test: a guard that refuses everything would satisfy the first half
 alone.
+
+## 0e. T22.3 — the adaptive tint
+
+**Measured 2026-09-12.** One `u8` (`adapt`) and one `Color`
+(`tint_over_light`). `LIQUID` carries `adapt: 190` and a dark
+`(10, 10, 14, 26)` over bright content. **Cost −0% / +1%** (§0b): one
+reduction over the panel's blurred array against a per-pixel composite
+is not measurable at these sizes.
+
+It is a pure function of the captured backdrop — no stored value, no
+damping — for the three reasons in `docs/plan-liquid.md` §5, the sharpest
+being that `render_within` runs once per damaged region, so anything
+accumulated in the renderer would advance a variable number of times per
+frame.
+
+### The sweep
+
+24 backdrops from 24 to 231, measuring the panel's interior **minus the
+backdrop it sits on** — the difference, because reading the interior
+alone confounds the tint with the backdrop as both rise together.
+
+| | |
+|---|---:|
+| total travel | **31.0** levels, +16.0 → −15.0 |
+| largest single step | 2.0 levels |
+| strictly monotonic | yes, all 23 steps |
+| crosses neutral | yes, between backdrop 141 and 150 |
+
+All three properties are asserted, because each alone accepts a renderer
+the others reject: monotonic accepts a *constant*, travel accepts a
+jump, and neither notices the interesting region was never entered.
+
+### The pre-registered exit, and what it caught
+
+The bound was fixed before the measurement: **less than one output level
+of movement per one-pixel scroll**, principled rather than round — below
+the quantisation of a `u8` channel nothing can be seen to flicker. Over
+a hard light/dark boundary scrolled 90 px through the panel:
+
+| | |
+|---|---:|
+| worst per-frame move, 120 px panel | **0.886** levels |
+| worst per-frame move, 40 px panel | **1.000** levels |
+| bound | 1.0 |
+
+**It passes, and it passes narrowly.** The movement scales as
+`contrast × width / area`, so it grows as the panel shrinks: at 40 px
+tall the same scroll sits exactly on the bound. A materially shorter
+panel over full-contrast content would exceed it, and that is the stated
+limit of the stateless design rather than a margin to spend.
+
+**The first implementation sat *on* the bound at 120 px**, and the cause
+was not the mean at all: the blended tint was rounded back to a `Color`,
+so one step of its `u8` alpha moved the panel's interior by a whole
+output level. Keeping the tint as four `f32` through the composite
+removed the staircase and took the figure to 0.886. A continuous
+function quantised at the last step is not a continuous function.
+
+### How much of the tint is chosen by content the panel does not cover
+
+The renderer reduces a *blurred* mean, and every sample inside the panel
+mixes in backdrop from up to 3σ outside it. Measured as the tint shift
+between two scenes with an identical backdrop under the panel and
+opposite surroundings — which is the contamination and nothing else:
+
+| | |
+|---|---:|
+| leak, reducing over the panel | **1.00** levels |
+| bound, set first at 20% of the sweep's travel | 6.2 |
+| leak, reducing over the whole capture instead | **8.11** |
+
+The third row is the injection, and it is the reason the bound is worth
+having: reducing over the dilated capture is the *quiet* failure here —
+the wrong colour, equally wrong in every render, invisible to every
+other gate.
+
+### The region is the panel's rect, and the plan was wrong about why
+
+Reducing over `bounds` — the rect intersected with the clip — makes a
+clipped panel compute a different mean from an unclipped one and then
+differ on **4896 of 4896** shared pixels, worst channel delta 5.
+
+The plan expected that to surface as a *damage-oracle* failure. It does
+not. `Recording::glass` registers the whole `glass_source` rect as a
+dependency, so any partial redraw touching the panel already carries a
+clip containing all of it and `clipped(rect, clip)` returns the rect
+unchanged — the injection has nothing to bite on. A `PushClip` in the
+list is what distinguishes the two, and it is a real situation: a glass
+panel inside a `ScrollView` is clipped by its viewport every frame.
 
 ## 1. Cost against σ — flat, and that is the downsample working
 

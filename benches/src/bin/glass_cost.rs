@@ -101,10 +101,10 @@ fn main() {
     // M22/T22.2 shares the harness: `dispersion` is the only field that
     // changes the *number of taps*, so it gets its own column rather
     // than being folded into "full".
-    println!("\n  T22.0/T22.2: the bevel alone, the T22.0 fields, then dispersion");
+    println!("\n  T22.0/T22.2/T22.3: the bevel alone, then each milestone field group");
     println!(
-        "{:>14} {:>12} {:>12} {:>10} {:>12} {:>10}",
-        "panel", "bevel ms", "T22.0 ms", "added", "disp ms", "added"
+        "{:>14} {:>12} {:>12} {:>10} {:>12} {:>10} {:>12} {:>10}",
+        "panel", "bevel ms", "T22.0 ms", "added", "disp ms", "added", "adapt ms", "added"
     );
     for (pw, ph) in [(400.0f32, 200.0f32), (800.0, 300.0)] {
         let area = [0.0, 0.0, w as f32, h as f32];
@@ -141,12 +141,15 @@ fn main() {
         // `LIQUID` carries dispersion since T22.2, so the T22.0 column
         // has to switch it off or it stops measuring T22.0.
         let full = timed(Material { dispersion: 0, ..Material::LIQUID });
-        let disp = timed(Material::LIQUID);
+        let disp = timed(Material { adapt: 0, ..Material::LIQUID });
+        // M22/T22.3: one reduction over the panel before the composite.
+        let adapt = timed(Material::LIQUID);
         println!(
-            "{:>14} {bevel:>12.2} {full:>12.2} {:>9.0}% {disp:>12.2} {:>9.0}%",
+            "{:>14} {bevel:>12.2} {full:>12.2} {:>9.0}% {disp:>12.2} {:>9.0}% {adapt:>12.2} {:>9.0}%",
             format!("{pw:.0}x{ph:.0}"),
             (full - bevel) / bevel * 100.0,
-            (disp - full) / full * 100.0
+            (disp - full) / full * 100.0,
+            (adapt - disp) / disp * 100.0
         );
     }
 

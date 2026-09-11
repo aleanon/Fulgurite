@@ -866,10 +866,12 @@ impl<R: Retention> Painter for Recording<'_, R> {
         // the raster entirely.
         h = fold(
             h,
-            ((material.shadow as u64) << 16)
-                | ((material.saturation as u64) << 8)
-                | material.dispersion as u64,
+            ((material.shadow as u64) << 24)
+                | ((material.saturation as u64) << 16)
+                | ((material.dispersion as u64) << 8)
+                | material.adapt as u64,
         );
+        h = h_color(h, material.tint_over_light);
         self.ret.observe(h, rect);
         self.ret.observe_dep(crate::display::glass_source(rect, &material));
         self.inner.glass(rect, radius, material);

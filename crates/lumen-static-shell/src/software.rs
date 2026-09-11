@@ -176,7 +176,14 @@ impl Surface<'_> {
         radius: f32,
         m: lumen_static::display::Material,
     ) {
-        let (blur, tint) = (m.blur, m.tint);
+        let blur = m.blur;
+        // **Float, not `Color` — M22/T22.3.** The adaptive tint is a
+        // continuous function of the backdrop, and rounding the blend
+        // back to `u8` puts a staircase on it: one step of the alpha
+        // moves the panel's interior by a whole output level, which was
+        // measured at exactly the flicker bound. `docs/results-glass.md`
+        // §0e.
+        let tint = [m.tint.0 as f32, m.tint.1 as f32, m.tint.2 as f32, m.tint.3 as f32];
         if !shape.iter().all(|v| v.is_finite()) || !bounds.iter().all(|v| v.is_finite()) {
             return;
         }
@@ -241,6 +248,58 @@ impl Surface<'_> {
                 box_cols(&b, &mut a, bw, bh, l, r);
             }
         }
+
+        // **M22/T22.3: the tint follows the backdrop.**
+        //
+        // Reduced over the panel's own `shape`, intersected with the
+        // capture — **never over `bounds`**. `bounds` is the clip, and
+        // in a partial redraw the clip is the damage region: reduce
+        // over it and the full and the partial render compute different
+        // means and then differ on *every pixel of the panel*. That is
+        // what the invalidation oracle exists to catch, and it is the
+        // one hazard here a gate can see.
+        //
+        // Reducing over the dilated capture instead would be a quieter
+        // bug: a mean that includes `3σ + refraction` of surrounding
+        // backdrop is simply the wrong colour — equally wrong in both
+        // renders, so every gate stays green. The panel's rect is the
+        // only region with both properties.
+        //
+        // Safe today only because two rules elsewhere happen to put the
+        // panel inside the clip; this pins it to neither.
+        let tint = if m.adapt > 0 {
+            let lo = |v: f32, s: i64| ((v.floor() as i64).max(s) - s).max(0) as usize / k;
+            let hi = |v: f32, e: i64, s: i64| (((v.ceil() as i64).min(e) - s).max(0) as usize).div_ceil(k);
+            let (bx0, by0) = (lo(shape[0], sx0), lo(shape[1], sy0));
+            let (bx1, by1) = (hi(shape[2], sx1, sx0).min(bw), hi(shape[3], sy1, sy0).min(bh));
+            if bx1 > bx0 && by1 > by0 {
+                let mut acc = 0.0f32;
+                for by in by0..by1 {
+                    for bx in bx0..bx1 {
+                        let i = (by * bw + bx) * 3;
+                        // Rec. 601 luma, the same weights `Canvas`
+                        // uses for the shadow's facing term.
+                        acc += 0.299 * a[i] as f32
+                            + 0.587 * a[i + 1] as f32
+                            + 0.114 * a[i + 2] as f32;
+                    }
+                }
+                let n = ((bx1 - bx0) * (by1 - by0)) as f32;
+                let f = lumen_static::display::adapt_mix(acc / n / 255.0, m.adapt);
+                let t2 = m.tint_over_light;
+                let g = |x: f32, y: u8| x + (y as f32 - x) * f;
+                [
+                    g(tint[0], t2.0),
+                    g(tint[1], t2.1),
+                    g(tint[2], t2.2),
+                    g(tint[3], t2.3),
+                ]
+            } else {
+                tint
+            }
+        } else {
+            tint
+        };
 
         // Bilinear sample of the downsampled, blurred backdrop, in
         // surface coordinates.
@@ -328,7 +387,7 @@ impl Surface<'_> {
         let (left, right) = ((shape[0] + rr).ceil() as i64, (shape[2] - rr).floor() as i64);
 
         let rim = m.rim.max(0.0);
-        let tv = tint.3 as f32 / 255.0;
+        let tv = tint[3] / 255.0;
         let sat = m.saturation as f32 / lumen_static::display::Material::NEUTRAL_SATURATION as f32;
         // **`shadow` is in the predicate**, and leaving it out would
         // have been a panel compared with itself: a material with only
@@ -496,7 +555,7 @@ impl Surface<'_> {
                 // rim; `t` is unchanged in the interior where `fres` is
                 // 0.
                 let t = tv + (1.0 - tv) * fres;
-                let mix = |c: f32, ti: u8| c + (ti as f32 - c) * t;
+                let mix = |c: f32, ti: f32| c + (ti - c) * t;
                 // **Shadow multiplies, specular adds.** Subtracting
                 // clips each channel at a different point and rotates
                 // hue -- (30, 60, 220) less 200 is (0, 0, 20) and the
@@ -506,9 +565,9 @@ impl Surface<'_> {
                 let shade = 1.0 - dark;
                 let lit = |c: f32| (c * shade + spec * 255.0).clamp(0.0, 255.0);
                 let c = Color(
-                    lit(mix(back[0], tint.0)) as u8,
-                    lit(mix(back[1], tint.1)) as u8,
-                    lit(mix(back[2], tint.2)) as u8,
+                    lit(mix(back[0], tint[0])) as u8,
+                    lit(mix(back[1], tint[1])) as u8,
+                    lit(mix(back[2], tint[2])) as u8,
                     255,
                 );
                 self.blend_cov(x, y, c, (cov * 255.0) as u8);

@@ -92,6 +92,10 @@ fn liquid() -> Material {
 /// what is left is Fresnel alone. Shadow off for the same reason.
 #[test]
 fn the_rim_reflects_more_than_the_interior() {
+    // `adapt: 0` — M22/T22.3 gave `LIQUID` an adaptive tint, and this
+    // test's whole premise is a *fixed* one it can name. Left on, the
+    // material blends toward `tint_over_light` and the test measures a
+    // colour it never chose.
     // A strongly coloured tint over a contrasting backdrop, so "pulled
     // toward the tint" is a channel measurement and not a brightness
     // one — the specular adds white and would confound that.
@@ -100,6 +104,7 @@ fn the_rim_reflects_more_than_the_interior() {
         shadow: 0,
         light: 0.0,
         saturation: Material::NEUTRAL_SATURATION,
+        adapt: 0,
         ..liquid()
     };
     let c = render(m, Color(200, 60, 40, 255));
@@ -292,6 +297,8 @@ fn changing_a_strength_reports_damage() {
         ("shadow", (|m: &mut Material| m.shadow = 40) as fn(&mut Material)),
         ("saturation", |m: &mut Material| m.saturation = 200),
         ("dispersion", |m: &mut Material| m.dispersion = 200),
+        ("adapt", |m: &mut Material| m.adapt = 40),
+        ("tint_over_light", |m: &mut Material| m.tint_over_light = Color(9, 9, 9, 99)),
     ] {
         f(&mut host.app.ui.panel.material);
         host.pump();
@@ -562,4 +569,222 @@ fn the_source_reaches_as_far_as_the_blue_channel() {
         differ > checked * 3 / 4,
         "the outer rim cannot see the stripe ({differ}/{checked}) — the source stops short of the blue read"
     );
+}
+
+// ---- M22/T22.3: the adaptive tint -----------------------------------
+
+/// The panel's interior, minus the backdrop it sits on.
+///
+/// Reading the interior alone would confound the tint with the backdrop
+/// — both rise together through the sweep. The *difference* isolates
+/// what the material contributed: positive where the tint adds light,
+/// negative where it subtracts.
+///
+/// A mean over a box, not one pixel, because `u8` output quantises a
+/// per-step movement of about one level into ties and "strictly
+/// monotonic" would then be measuring rounding.
+fn lift(c: &Canvas, backdrop: f32) -> f32 {
+    luma(mean(c, 100, 160, 95, 125)) - backdrop
+}
+
+/// **The tint follows the backdrop, smoothly and all the way across.**
+///
+/// Three things are asserted, and the plan requires all three because
+/// each alone accepts a renderer that is wrong in a way the others
+/// catch: monotonic accepts a *constant*, travel accepts a jump, and
+/// neither notices that the interesting region was never entered.
+#[test]
+fn the_tint_sweeps_across_the_backdrop() {
+    let m = liquid();
+    assert!(m.adapt > 0, "a material that does not adapt has nothing to sweep");
+    let mut prev = f32::INFINITY;
+    let (mut first, mut last, mut crossed) = (0.0f32, 0.0f32, false);
+    let mut worst_step = 0.0f32;
+    for i in 0..24u32 {
+        let v = (24 + i * 9) as u8;
+        let l = lift(&render(m, Color(v, v, v, 0xff)), v as f32);
+        println!("  backdrop {v:>3} -> lift {l:+.3}");
+        if i == 0 {
+            first = l;
+        } else {
+            assert!(l < prev, "step {i} did not move the tint: {l:.2} vs {prev:.2}");
+            worst_step = worst_step.max(prev - l);
+            if (prev > 0.0) != (l > 0.0) {
+                crossed = true;
+            }
+        }
+        prev = l;
+        last = l;
+    }
+    let travel = first - last;
+    println!("tint travel {travel:.1} levels (from {first:+.1} to {last:+.1}), largest step {worst_step:.2}");
+    assert!(travel > 20.0, "the tint barely moved across the whole sweep: {travel:.1}");
+    assert!(crossed, "the sweep never crossed the threshold — it stayed on one side of neutral");
+}
+
+/// **The pre-registered exit — `docs/plan-liquid.md` §5.**
+///
+/// The tint is a pure function of the captured backdrop, so it changes
+/// whenever content scrolls under the panel. The bound was fixed before
+/// the measurement, and it is a principled one rather than a round
+/// number: **less than one level of `u8` per frame**, because movement
+/// below the quantisation of the output cannot be seen to flicker. If a
+/// one-pixel scroll had exceeded it, the task stops and the question of
+/// state reopens rather than the bound moving.
+#[test]
+fn a_scroll_moves_the_tint_by_less_than_one_level_a_frame() {
+    const BOUND: f32 = 1.0;
+    let m = liquid();
+    let tinted = |dy: f32, a: u8| {
+        let mut c = Canvas::new(W, H);
+        c.clear(Color(0x10, 0x10, 0x10, 0xff));
+        let mut l = DisplayList::new();
+        // A hard light/dark boundary scrolling through the panel: the
+        // steepest input the mean can be given.
+        l.rect([0.0, 0.0, W as f32, H as f32], Color(0x18, 0x18, 0x18, 0xff));
+        l.rect([0.0, 40.0 + dy, W as f32, H as f32], Color(0xf0, 0xf0, 0xf0, 0xff));
+        l.glass(PANEL, 34.0, Material { adapt: a, ..m });
+        lumen_static::Renderer::render(&mut c, &l, W, H);
+        luma(mean(&c, 100, 160, 95, 125))
+    };
+    // **The adaptive contribution alone**, by differencing against the
+    // same frame with `adapt: 0`. Measuring the panel's absolute
+    // luminance instead measures the *backdrop* scrolling under the
+    // sample box — 6.8 levels a frame, none of it the tint, and the
+    // bound fired on a renderer that was behaving.
+    let at = |dy: f32| tinted(dy, m.adapt) - tinted(dy, 0);
+    let (mut worst, mut prev, mut total) = (0.0f32, at(0.0), 0.0f32);
+    for i in 1..90u32 {
+        let v = at(i as f32);
+        worst = worst.max((v - prev).abs());
+        total += (v - prev).abs();
+        prev = v;
+    }
+    // **The bound is per panel size, and that is worth measuring rather
+    // than deriving.** The mean is over the panel's own rect, so a
+    // one-pixel scroll changes it by (contrast x width) / area — which
+    // grows as the panel shrinks. A short panel is the hostile case.
+    let short = |dy: f32, a: u8| {
+        let mut c = Canvas::new(W, H);
+        c.clear(Color(0x10, 0x10, 0x10, 0xff));
+        let mut l = DisplayList::new();
+        l.rect([0.0, 0.0, W as f32, H as f32], Color(0x18, 0x18, 0x18, 0xff));
+        l.rect([0.0, 40.0 + dy, W as f32, H as f32], Color(0xf0, 0xf0, 0xf0, 0xff));
+        l.glass([40.0, 90.0, 220.0, 130.0], 18.0, Material { adapt: a, ..m });
+        lumen_static::Renderer::render(&mut c, &l, W, H);
+        luma(mean(&c, 100, 160, 105, 115))
+    };
+    let mut short_worst = 0.0f32;
+    let mut sp = short(0.0, m.adapt) - short(0.0, 0);
+    for i in 1..90u32 {
+        let v = short(i as f32, m.adapt) - short(i as f32, 0);
+        short_worst = short_worst.max((v - sp).abs());
+        sp = v;
+    }
+    println!("scroll: worst per-frame move {worst:.3} levels (bound {BOUND}), total {total:.1}");
+    println!("        same scroll under a 40 px panel: {short_worst:.3} levels");
+    assert!(total > 5.0, "the boundary never moved the panel — the fixture scrolls nothing");
+    assert!(worst < BOUND, "a one-pixel scroll moved the tint {worst:.3} levels, over the {BOUND} bound");
+}
+
+/// **The mean is reduced over the panel, not over the clip.**
+///
+/// `bounds` is the panel rect intersected with the clip. Reduce over it
+/// and a clipped panel computes a different mean from an unclipped one
+/// — and then differs on *every pixel they share*, not merely at the
+/// edge. Clipping must restrict which pixels are written and never what
+/// colour they are.
+///
+/// **The plan expected this to show up as a damage-oracle failure, and
+/// it does not.** `Recording::glass` registers the whole
+/// `glass_source` rect as a dependency, so a partial redraw that
+/// touches the panel already carries a clip containing all of it, and
+/// `clipped(rect, clip)` returns `rect` unchanged — the injection has
+/// nothing to bite on. A `PushClip` in the list is the situation that
+/// actually distinguishes the two, and it is a real one: a glass panel
+/// inside a `ScrollView` is clipped by its viewport every frame.
+///
+/// Reducing over the dilated capture instead would be simply the wrong
+/// colour, equally wrong in every render, and no gate would see it.
+#[test]
+fn a_clipped_panel_computes_the_same_tint() {
+    let m = liquid();
+    let list = {
+        let mut l = DisplayList::new();
+        l.rect([0.0, 0.0, W as f32, H as f32], Color(0x18, 0x18, 0x18, 0xff));
+        l.rect([0.0, 110.0, W as f32, H as f32], Color(0xf0, 0xf0, 0xf0, 0xff));
+        l.glass(PANEL, 34.0, m);
+        l
+    };
+    let mut full = Canvas::new(W, H);
+    full.clear(Color(0x10, 0x10, 0x10, 0xff));
+    lumen_static::Renderer::render(&mut full, &list, W, H);
+
+    // The same scene with the panel clipped to a slice — deliberately
+    // asymmetric and entirely above the light/dark boundary, so a mean
+    // taken over it lands far from the mean over the whole panel.
+    const PART: [f32; 4] = [60.0, 60.0, 200.0, 100.0];
+    let mut partial = Canvas::new(W, H);
+    partial.clear(Color(0x10, 0x10, 0x10, 0xff));
+    {
+        let mut l = DisplayList::new();
+        l.rect([0.0, 0.0, W as f32, H as f32], Color(0x18, 0x18, 0x18, 0xff));
+        l.rect([0.0, 110.0, W as f32, H as f32], Color(0xf0, 0xf0, 0xf0, 0xff));
+        l.push_clip(PART);
+        l.glass(PANEL, 34.0, m);
+        l.pop_clip();
+        lumen_static::Renderer::render(&mut partial, &l, W, H);
+    }
+
+    let (mut differ, mut checked, mut worst) = (0, 0, 0i32);
+    for y in 62..98usize {
+        for x in 62..198usize {
+            checked += 1;
+            let (a, b) = (px(&full, x, y), px(&partial, x, y));
+            let d = (0..3).map(|k| (a[k] - b[k]).abs() as i32).max().unwrap();
+            worst = worst.max(d);
+            if d != 0 {
+                differ += 1;
+            }
+        }
+    }
+    println!("clipped vs unclipped inside the clip: {differ} of {checked} px differ, worst {worst}");
+    assert!(checked > 3000, "not enough sampled: {checked}");
+    assert_eq!(differ, 0, "the clipped panel painted {differ} of {checked} px differently (worst {worst})");
+}
+
+/// **The mean the renderer reduces is a *blurred* mean, and a blurred
+/// mean over a sub-region is not the true mean of that sub-region.**
+///
+/// Every sample inside the panel mixes in backdrop from up to 3σ
+/// outside it, so content the panel does not cover still votes on the
+/// panel's tint. `docs/plan-liquid.md` §5 owes this number before it
+/// trusts its input.
+///
+/// Measured as the tint shift between two scenes with an **identical**
+/// backdrop under the panel and opposite surroundings, which is exactly
+/// the contamination and nothing else. The bound was set before the
+/// measurement at 20% of the sweep's full 31-level travel: beyond that,
+/// the panel's colour would be substantially chosen by content it does
+/// not cover.
+#[test]
+fn the_blurred_mean_leaks_little_from_outside_the_panel() {
+    const BOUND: f32 = 6.2;
+    let m = liquid();
+    let surrounded = |outside: Color| {
+        let mut c = Canvas::new(W, H);
+        c.clear(Color(0x10, 0x10, 0x10, 0xff));
+        let mut l = DisplayList::new();
+        l.rect([0.0, 0.0, W as f32, H as f32], outside);
+        // Identical under the panel in both scenes.
+        l.rect(PANEL, Color(0x80, 0x80, 0x80, 0xff));
+        l.glass(PANEL, 34.0, m);
+        lumen_static::Renderer::render(&mut c, &l, W, H);
+        luma(mean(&c, 100, 160, 95, 125))
+    };
+    let dark = surrounded(Color(0x00, 0x00, 0x00, 0xff));
+    let light = surrounded(Color(0xff, 0xff, 0xff, 0xff));
+    let leak = (dark - light).abs();
+    println!("blurred-mean leak from outside the panel: {leak:.2} levels (bound {BOUND})");
+    assert!(leak < BOUND, "content outside the panel moved its tint {leak:.2} levels");
 }

@@ -99,14 +99,32 @@ fn every_material_field_is_in_the_hash() {
         ("shadow", |m| m.shadow = m.shadow.wrapping_add(9)),
         ("saturation", |m| m.saturation = m.saturation.wrapping_add(9)),
         ("dispersion", |m| m.dispersion = m.dispersion.wrapping_add(9)),
+        ("adapt", |m| m.adapt = m.adapt.wrapping_add(9)),
+        ("tint_over_light", |m| {
+            let t = m.tint_over_light;
+            m.tint_over_light = Color(t.0, t.1, t.2, t.3.wrapping_add(7));
+        }),
     ];
 
     // No `..`: a new field is a compile error here, and the message
     // points at the test that has to gain a mutator.
-    let Material { blur, tint, rim, refraction, specular, light, shadow, saturation, dispersion } =
+    let Material {
+        blur,
+        tint,
+        rim,
+        refraction,
+        specular,
+        light,
+        shadow,
+        saturation,
+        dispersion,
+        adapt,
+        tint_over_light,
+    } =
         Material::LIQUID;
-    let _ = (blur, tint, rim, refraction, specular, light, shadow, saturation, dispersion);
-    assert_eq!(mutators.len(), 9, "a field was added to Material without a mutator here");
+    let _ =
+        (blur, tint, rim, refraction, specular, light, shadow, saturation, dispersion, adapt, tint_over_light);
+    assert_eq!(mutators.len(), 11, "a field was added to Material without a mutator here");
 
     for (name, f) in mutators {
         let mut changed = base;

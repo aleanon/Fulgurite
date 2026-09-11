@@ -260,6 +260,22 @@ on **every pixel of the panel**. That is the central gate, and §8 has
 the injection for it. It is safe today only because two rules in other
 files happen to make the clip contain the panel; this task pins it.
 
+**Built 2026-09-12, and the second half of that paragraph is wrong.**
+The clip contains the panel for one specific reason, not two incidental
+ones: `Recording::glass` registers the whole `glass_source` rect as a
+dependency, so a partial redraw that touches the panel *always* carries
+a clip containing it and `clipped(rect, clip)` returns the rect
+unchanged. The damage oracle therefore cannot see this injection at all.
+What distinguishes the two is a `PushClip` in the list — a glass panel
+in a `ScrollView`, clipped by its viewport every frame — and under one
+the injection differs on 4896 of 4896 shared pixels.
+
+**And the flicker's source was not the mean.** The first implementation
+rounded the blended tint back to a `Color`, and one step of its `u8`
+alpha moves the panel's interior by a whole output level — landing
+exactly on the pre-registered bound. Keeping the tint as four `f32`
+through the composite took it to 0.886. `docs/results-glass.md` §0e.
+
 One measurement this task owes before it trusts its input: the box
 passes renormalise at the capture boundary, so the blurred mean over a
 *sub-region* is not exactly the true mean. The error goes in the results
@@ -405,7 +421,7 @@ cannot both admit the blur and refuse the dispersion.
 | **T22.0** | Fresnel (no field), inner shadow, saturation. Two `u8` fields. | Fringe-free: rim luminance at grazing incidence rises by a measured factor; the unlit rim is darker **than the panel's own interior** with specular off; a mid-chroma backdrop's chroma ratio through the panel exceeds a stated bound. All three printed. `Cmd` still 60 B. |
 | **T22.1** | Sub-pixel refraction sampling. No field. | The staircase is gone, and **the differing-pixel count against M21 is the deliverable**, stated in the results doc. |
 | **T22.2** | Dispersion. One `u8`. Widened source expression. | **Done 2026-09-12.** Over a hard edge the rim's blue − red is **+27.3** signed — signed because the *ordering* is the claim — against **0.00** chroma with dispersion off, both printed. Cost +10%, flat across panel size. `docs/results-glass.md` §0d. |
-| **T22.3** | Adaptive tint, stateless, with the pre-registered exit. One `u8` + one `Color`. | A fine sweep of backdrop luminance moves the tint **strictly** monotonically with a stated total travel; a scroll through the threshold bounds the per-frame movement; and the sweep asserts the threshold was actually crossed. |
+| **T22.3** | Adaptive tint, stateless, with the pre-registered exit. One `u8` + one `Color`. | **Done 2026-09-12.** Travel **31.0** levels, strictly monotonic over 23 steps, crossing neutral between backdrop 141 and 150. The exit's bound — under one output level per one-pixel scroll — holds at **0.886**, and **1.000** under a 40 px panel, which is the stated limit. Cost −0%/+1%. `docs/results-glass.md` §0e. |
 | **T22.4** | Press deformation, and the redraw-loop reorder. No field. | Driven through the real redraw path: pressing thickens the rim band by a measured pixel count at the animation's peak, and the settled frame is **byte-identical** to the pre-press frame. |
 | **T22.5** | The morph. Budget decision first, with its measurement. | At a separation of one rim width the pixels between the blobs are inked; at three rim widths they are empty; and a single panel is byte-identical to before the task. |
 | **T22.6** | The GPU backend. | `just gpu-parity` holds under **two** bounds, both stated before the measurement. |
