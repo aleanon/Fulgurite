@@ -1053,6 +1053,29 @@ impl Canvas {
         c
     }
 
+    /// Resize the pixel buffer **in place**, keeping everything else.
+    ///
+    /// **A method rather than a fresh `Canvas`, and that is the point.**
+    /// `lumen-static-winit`'s `sync_size` used to do `*canvas =
+    /// Canvas::new(w, h)`, which silently dropped every other field —
+    /// and the moment one of those fields carried something a caller had
+    /// installed, that became a bug nobody could see: `Config::images`
+    /// reached the canvas at startup, the first frame resized it because
+    /// a window manager had clamped the window, and the wallpaper
+    /// vanished on both backends. A whole-struct replacement is a field
+    /// list that nobody wrote down and the compiler will not check.
+    ///
+    /// Cheap and idempotent when the size has not changed.
+    pub fn resize(&mut self, width: u32, height: u32) {
+        if (self.width, self.height) == (width, height) {
+            return;
+        }
+        self.width = width;
+        self.height = height;
+        self.pixels.clear();
+        self.pixels.resize((width as usize * height as usize) * 4, 255);
+    }
+
     /// Copy the frame into a `0RGB` `u32` buffer — softbuffer's format.
     /// Lives here rather than in the shell binding so it is compiled
     /// with the rasteriser's optimisation level: in the example it was

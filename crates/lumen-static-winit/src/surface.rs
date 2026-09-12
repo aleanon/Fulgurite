@@ -58,7 +58,15 @@ pub fn sync_size<A: App>(
     if (canvas.width, canvas.height) == (width, height) {
         return;
     }
-    *canvas = self::canvas(width, height, font);
+    // **In place.** This was `*canvas = canvas(w, h, font)` until
+    // 2026-09-13, which rebuilt the whole struct and therefore dropped
+    // every field the constructor does not set — including the
+    // `ImageSource` a `Config::images` had just installed. The symptom
+    // was a window with no picture in it on both backends while the
+    // headless render at the same size was correct, because only the
+    // window resizes.
+    let _ = font;
+    canvas.resize(width, height);
     host.resize(width, height);
 }
 

@@ -261,7 +261,7 @@ example name *args:
 # The glass home screen, and what it costs on both backends.
 #
 # Built `--features gpu`, which is the point: twenty-six backdrop filters
-# at 1290x2796 is 150 ms on the software canvas and 2.1 ms on a GPU
+# at 1290x2796 is 153 ms on the software canvas and 2.1 ms on a GPU
 # (docs/results-glass.md §0h). It also prints the damage the scene
 # reports, which is `All` -- past MAX_DEPS every frame is a full redraw,
 # and this example is deliberately past it.

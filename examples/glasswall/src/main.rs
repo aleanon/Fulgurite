@@ -5,6 +5,22 @@
 //! status bar across the top, a 4 × 6 grid of clear app icons, and a
 //! floating tab bar at the bottom.
 //!
+//! # It is designed at 1290 × 2796 and opens at 460 × 997
+//!
+//! Two different questions. The *design* is a phone at 3×, which is
+//! where a 24 pt icon lands as 224 physical pixels and a bevel has room
+//! to be seen; `--shot` and `--bench` render there. The *window* opens
+//! at a size a desktop will actually grant, and everything is a fraction
+//! of [`k`], the ratio between the two.
+//!
+//! **Hard-coded sizes are not merely wrong at the other size, they are
+//! invisible.** `resolve_self` ends in `limits.clamp(...)`, so a
+//! `Fixed(224)` height inside a container that has run out of room
+//! resolves to **zero** rather than overflowing, and a zero-height node
+//! paints nothing. Asking for a 2796 px window, getting 1008, and
+//! laying out at 1× produces a black screen with nothing on it but the
+//! bar and the dock — which the `FILL` spacers still place.
+//!
 //! # Clear icons over a picture, and the two have to go together
 //!
 //! The icons carry a tint of 20/255. Nearly everything you see in one is
@@ -52,16 +68,42 @@ use lumen_static_winit::{run, Config};
 
 // ---- the device ------------------------------------------------------
 
-/// A phone at 3×, which is where a 24 px design lands as 72 physical
-/// pixels and a bevel has room to be seen.
-const W: u32 = 1290;
-const H: u32 = 2796;
+/// The design's own size: a phone at 3×, which is where a 24 pt icon
+/// lands as 224 physical pixels and a bevel has room to be seen.
+const DESIGN_W: f32 = 1290.0;
+const DESIGN_H: f32 = 2796.0;
+
+/// What the window actually opens at.
+///
+/// **Not the design size**, and that is the whole lesson of this
+/// constant. Asking for a 2796 px tall window gets you whatever the
+/// window manager is willing to give — 1008 px on an ordinary desktop —
+/// and a layout with hard-coded sizes then does not fit. In this
+/// framework it does not overflow or clip when that happens: it
+/// *vanishes*. `resolve_self` ends in `limits.clamp(...)`, so a
+/// `Fixed(224)` height inside a container that has run out of room
+/// resolves to **zero**, and a zero-height node paints nothing. The
+/// screen goes black except for whatever the `FILL` spacers still
+/// place, which is exactly the bar and the dock.
+///
+/// So everything below is a fraction of [`k`], and the window opens at
+/// a size a desktop will actually grant.
+const W: u32 = 460;
+const H: u32 = 997;
+
+/// The scale between the design and the window it got.
+///
+/// `min` of the two ratios, so the layout fits on both axes rather than
+/// fitting one and overflowing the other — an overflow here is a
+/// collapse, not a scrollbar.
+fn k(w: u32, h: u32) -> f32 {
+    (w as f32 / DESIGN_W).min(h as f32 / DESIGN_H)
+}
 
 const ICON: f32 = 224.0;
-/// `(1290 − 4·224 − 3·104) / 2`, where 104 is the row spacing below.
-/// The gap is a literal there because `#[widget(row, spacing = ...)]` is
-/// an attribute and takes one.
+/// `(1290 − 4·224 − 3·104) / 2`, where 104 is the icon gap.
 const MARGIN: f32 = 41.0;
+const ICON_GAP: f32 = 104.0;
 
 // ---- palette ---------------------------------------------------------
 
@@ -87,19 +129,22 @@ const BAR_TINT: Color = Color(0x08, 0x0a, 0x12, 0x33);
 /// brightest part of the wallpaper and its glyphs are tap targets.
 const DOCK_TINT: Color = Color(0x08, 0x0a, 0x12, 0x40);
 
-/// **`LIQUID`, scaled for a 3× phone.**
+/// **`LIQUID`, scaled to the icon it is drawn on.**
 ///
-/// `Material`'s lengths are in *physical* pixels. `Scaled` multiplies
-/// them by the DPI factor, but this window is 1290 × 2796 at scale 1 —
-/// a large window, not a scaled one — so the preset's 13 px rim would be
-/// a hairline on a 224 px icon. Everything here is the preset × 1.8.
-/// The unitless fields (specular, saturation, dispersion, adapt) are
-/// **not** multiplied: a fraction has no length in it.
-fn icon_glass() -> Material {
+/// `Material`'s lengths are in *physical* pixels, and `Scaled`
+/// multiplies them by the DPI factor — which is 1 here, because a large
+/// window is not a scaled one. So they are scaled by hand, by the same
+/// `k` every other length in this file uses: a 24 px rim is right on a
+/// 224 px icon and absurd on an 80 px one.
+///
+/// The unitless fields — specular, saturation, dispersion, adapt — are
+/// **not** multiplied. A fraction has no length in it, and scaling one
+/// is how a material stops meaning the same thing at two sizes.
+fn icon_glass(k: f32) -> Material {
     Material {
-        rim: 24.0,
-        refraction: 20.0,
-        blur: 2.0,
+        rim: 24.0 * k,
+        refraction: 20.0 * k,
+        blur: 2.0 * k,
         tint: ICON_TINT,
         // Clear glass shows its edge or it shows nothing, so the rim
         // works harder here than on a tinted panel.
@@ -123,8 +168,28 @@ fn icon_glass() -> Material {
 /// radial blooms screened over it, which is what a phone wallpaper
 /// actually looks like and — more to the point — has a gradient
 /// everywhere. The icon rims have something to bend.
-const WALL_W: u32 = 540;
-const WALL_H: u32 = 1170;
+///
+/// **Both dimensions are under 1024, and that is a hard requirement
+/// rather than a preference.** The GPU backend atlases images into a
+/// 1024 px texture and *refuses* anything larger — `image_slot` returns
+/// `Ok(None)`, which `ImageSource`'s contract says draws nothing. The
+/// software canvas has no atlas and draws any size. So a wallpaper of
+/// 540 × 1170 renders perfectly headless, renders perfectly in a
+/// software window, and is **missing entirely on the GPU** — which is
+/// what a black screen with the glass still on it looks like.
+/// The `const` assertion below refuses it at compile time.
+const WALL_W: u32 = 470;
+const WALL_H: u32 = 1018;
+
+/// `lumen-static-wgpu`'s `IMAGE_ATLAS`, restated because it is private —
+/// with the consequence beside it, which is what makes a restated
+/// constant survive being restated.
+const GPU_IMAGE_ATLAS: u32 = 1024;
+const _: () = assert!(
+    WALL_W <= GPU_IMAGE_ATLAS && WALL_H <= GPU_IMAGE_ATLAS,
+    "the wallpaper is larger than the GPU's image atlas: it will draw on \
+     the software canvas, draw headless, and vanish on the GPU"
+);
 const WALL_ID: lumen_static::display::ImageId = lumen_static::display::ImageId(1);
 
 /// Where `Cmd::Image` gets its pixels. One image, generated once.
@@ -372,9 +437,23 @@ struct Home {
 
 // ---- style -----------------------------------------------------------
 
-fn stylesheet() -> Vec<Rule> {
+/// Every length here is `design × k`. The `#[widget(..., spacing = N)]`
+/// attributes take a literal, so the spacings are re-stated as rules —
+/// a `Patch` overrides the attribute, and a scaled layout cannot leave
+/// its gaps at 1×.
+fn stylesheet(k: f32) -> Vec<Rule> {
+    let s = |v: f32| v * k;
+    let pad = |l: f32, r: f32, t: f32, b: f32| {
+        Edges { left: s(l), right: s(r), top: s(t), bottom: s(b) }
+    };
     vec![
         Rule::new(Selector::Kind("Screen"), Patch::new().background(PAGE)),
+        // The spacings, re-stated because an attribute takes a literal.
+        Rule::new(Selector::Kind("AppRow"), Patch::new().spacing(s(ICON_GAP))),
+        Rule::new(Selector::Kind("Apps"), Patch::new().spacing(s(58.0))),
+        Rule::new(Selector::Kind("App"), Patch::new().spacing(s(14.0))),
+        Rule::new(Selector::Kind("Tabs"), Patch::new().spacing(s(74.0))),
+        Rule::new(Selector::Kind("Status"), Patch::new().spacing(s(20.0))),
         // The wallpaper: one image, cropped to cover.
         Rule::new(
             Selector::Id("wall"),
@@ -386,13 +465,13 @@ fn stylesheet() -> Vec<Rule> {
         Rule::new(
             Selector::Id("icon"),
             Patch::new()
-                .width(Length::Fixed(ICON))
-                .height(Length::Fixed(ICON))
-                .radius(58.0),
+                .width(Length::Fixed(s(ICON)))
+                .height(Length::Fixed(s(ICON)))
+                .radius(s(58.0)),
         ),
         Rule::new(
             Selector::Id("glyph"),
-            Patch::new().color(INK).font_size(92.0).font_weight(600.0),
+            Patch::new().color(INK).font_size(s(92.0)).font_weight(600.0),
         ),
         // `align` is the container's, not the child's: `align_offset`
         // is applied by the parent to what it lays out.
@@ -401,25 +480,20 @@ fn stylesheet() -> Vec<Rule> {
         Rule::new(
             Selector::Kind("Glyph"),
             Patch::new()
-                .width(Length::Fixed(ICON))
-                .height(Length::Fixed(ICON))
+                .width(Length::Fixed(s(ICON)))
+                .height(Length::Fixed(s(ICON)))
                 .align(Align::Center),
         ),
-        Rule::new(Selector::Id("name"), Patch::new().color(DIM).font_size(30.0)),
+        Rule::new(Selector::Id("name"), Patch::new().color(DIM).font_size(s(30.0))),
         Rule::new(
             Selector::Kind("App"),
-            Patch::new().width(Length::Fixed(ICON)).align(Align::Center),
+            Patch::new().width(Length::Fixed(s(ICON))).align(Align::Center),
         ),
         // The grid, centred between the two bars by its own padding and
         // two FILL spacers.
         Rule::new(
             Selector::Kind("Apps"),
-            Patch::new().padding(Edges {
-                left: MARGIN,
-                right: MARGIN,
-                top: 300.0,
-                bottom: 400.0,
-            }),
+            Patch::new().padding(pad(MARGIN, MARGIN, 300.0, 400.0)),
         ),
         Rule::new(Selector::Id("atop"), Patch::new().height(Length::FILL)),
         Rule::new(Selector::Id("abot"), Patch::new().height(Length::FILL)),
@@ -427,15 +501,15 @@ fn stylesheet() -> Vec<Rule> {
         Rule::new(
             Selector::Id("status"),
             Patch::new()
-                .height(Length::Fixed(158.0))
-                .padding(Edges { left: 64.0, right: 64.0, top: 62.0, bottom: 30.0 }),
+                .height(Length::Fixed(s(158.0)))
+                .padding(pad(64.0, 64.0, 62.0, 30.0)),
         ),
         Rule::new(
             Selector::Id("clock"),
-            Patch::new().color(INK).font_size(38.0).font_weight(700.0),
+            Patch::new().color(INK).font_size(s(38.0)).font_weight(700.0),
         ),
         Rule::new(Selector::Id("sgap"), Patch::new().width(Length::FILL)),
-        Rule::new(Selector::Id("meta"), Patch::new().color(DIM).font_size(30.0)),
+        Rule::new(Selector::Id("meta"), Patch::new().color(DIM).font_size(s(30.0))),
         // The tab bar: a pill sized to its tabs, floated to the bottom
         // centre by three FILL spacers.
         Rule::new(Selector::Id("push"), Patch::new().height(Length::FILL)),
@@ -452,12 +526,12 @@ fn stylesheet() -> Vec<Rule> {
             Selector::Id("dock"),
             Patch::new()
                 .width(Length::Shrink)
-                .radius(74.0)
-                .padding(Edges { left: 74.0, right: 74.0, top: 44.0, bottom: 44.0 }),
+                .radius(s(74.0))
+                .padding(pad(74.0, 74.0, 44.0, 44.0)),
         ),
         Rule::new(
             Selector::Kind("Floating"),
-            Patch::new().padding(Edges { left: 0.0, right: 0.0, top: 0.0, bottom: 90.0 }),
+            Patch::new().padding(pad(0.0, 0.0, 0.0, 90.0)),
         ),
         // No background and no press dim: the *panel* deforms under a
         // press, which is the whole point, and a grey rectangle
@@ -466,7 +540,7 @@ fn stylesheet() -> Vec<Rule> {
             Selector::Id("tab"),
             Patch::new()
                 .color(INK)
-                .font_size(52.0)
+                .font_size(s(52.0))
                 .background(Color(0, 0, 0, 0))
                 .pressed_dim(0.0),
         ),
@@ -494,7 +568,7 @@ const APPS: [(&str, &str); 24] = [
     ("K", "Stocks"), ("Z", "Voice"), ("Y", "Shortcuts"), ("E", "App Store"),
 ];
 
-fn build() -> Home {
+fn build(k: f32) -> Home {
     let mut app = Home::default();
     app.ui.wall = lumen_static::Image::new(
         WALL_ID,
@@ -510,18 +584,18 @@ fn build() -> Home {
         let mut i = 0;
         for r in rows {
             for icon in [&mut r.a, &mut r.b, &mut r.c, &mut r.d] {
-                icon.art.material = icon_glass();
+                icon.art.material = icon_glass(k);
                 icon.art.content.ch.set(APPS[i].0.into());
                 icon.name.set(APPS[i].1.into());
                 i += 1;
             }
         }
     }
-    app.ui.status.material = Material { blur: 26.0, tint: BAR_TINT, ..Material::FROSTED };
+    app.ui.status.material = Material { blur: 26.0 * k, tint: BAR_TINT, ..Material::FROSTED };
     app.ui.status.content.clock.set("9:41".into());
     app.ui.status.content.meta.set("twenty-six panels".into());
 
-    app.ui.dock.row.dock.material = Material { tint: DOCK_TINT, ..icon_glass() };
+    app.ui.dock.row.dock.material = Material { tint: DOCK_TINT, ..icon_glass(k) };
     for (t, g) in [
         (&mut app.ui.dock.row.dock.content.t0, "P"),
         (&mut app.ui.dock.row.dock.content.t1, "@"),
@@ -537,8 +611,8 @@ fn build() -> Home {
 
 fn host(w: u32, h: u32) -> lumen_static_shell::Host<Home> {
     use lumen_static_shell::text::{FontMetrics, FontStack};
-    let mut host = lumen_static_shell::Host::new(build(), w, h);
-    host.set_stylesheet(&stylesheet());
+    let mut host = lumen_static_shell::Host::new(build(k(w, h)), w, h);
+    host.set_stylesheet(&stylesheet(k(w, h)));
     let mut metrics = FontStack::system().map(FontMetrics::new);
     // Twice: the first pump is what teaches the layout its sizes, and
     // the second is the one whose damage means anything.
@@ -645,21 +719,26 @@ fn gpu_bench(host: &lumen_static_shell::Host<Home>, w: u32, h: u32) {
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    // **The headless modes default to the *design* size, the window to
+    // what a desktop will grant.** They are different questions: a shot
+    // wants the phone's real 1290 × 2796, and a window that asks for it
+    // gets whatever the window manager feels like.
     let dim = |i: usize, d: u32| args.get(i).and_then(|s| s.parse().ok()).unwrap_or(d);
+    let (dw, dh) = (DESIGN_W as u32, DESIGN_H as u32);
     match args.first().map(String::as_str) {
         Some("--shot") => {
             let path = args.get(1).cloned().unwrap_or_else(|| "glasswall.ppm".into());
-            shot(&path, dim(2, W), dim(3, H));
+            shot(&path, dim(2, dw), dim(3, dh));
         }
-        Some("--bench") => bench(dim(1, W), dim(2, H)),
+        Some("--bench") => bench(dim(1, dw), dim(2, dh)),
         _ => run(
-            build(),
+            build(k(W, H)),
             Config {
                 title: "glasswall",
                 width: W,
                 height: H,
                 page: PAGE,
-                stylesheet: stylesheet(),
+                stylesheet: stylesheet(k(W, H)),
                 images: Some(Box::new(Wallpaper::new())),
                 ..Config::default()
             },
@@ -690,9 +769,13 @@ mod tests {
     /// geometry rather than by a hand-counted index that a new field
     /// would silently shift.
     fn icons(host: &lumen_static_shell::Host<Home>) -> Vec<(usize, usize)> {
+        // **The scaled size, not `ICON`.** Every length in this file is
+        // `design × k`, so a helper that looked for 224 px nodes found
+        // none at any window size but the design's.
+        let want = ICON * k(W, H);
         let is_icon = |i: usize| {
             let s = &host.states[i];
-            s.size.w == ICON && s.size.h == ICON
+            (s.size.w - want).abs() < 0.5 && (s.size.h - want).abs() < 0.5
         };
         // A `Glass` and the stack inside it are both ICON × ICON, so
         // they arrive as adjacent pairs; the label is the node after.
@@ -763,14 +846,19 @@ mod tests {
             let s = &host.states[*icon];
             let (cx, cy) = (s.pos.x + s.size.w / 2.0, s.pos.y + s.size.h / 2.0);
             // Off the glyph, which is ink and not glass.
-            let m = (cx as usize + 80, cy as usize);
-            let e = (s.pos.x as usize + 4, cy as usize);
-            let d = |p: (usize, usize)| {
-                let (a, b) = (at(&c, p.0, p.1), at(&bare, p.0, p.1));
+            let d = |x: usize, y: usize| {
+                let (a, b) = (at(&c, x, y), at(&bare, x, y));
                 (0..3).map(|k| (a[k] - b[k]).abs()).fold(0.0, f32::max)
             };
-            middle = middle.max(d(m));
-            edge = edge.max(d(e));
+            // Off the glyph, which is ink and not glass.
+            middle = middle.max(d(cx as usize + (s.size.w * 0.36) as usize, cy as usize));
+            // **A band across the rim, not one pixel.** The rim is
+            // `24 × k` px wide, so a fixed 4 px offset lands mid-bevel at
+            // the design size and past it at any smaller one.
+            let rim = (24.0 * k(W, H)).max(2.0) as usize;
+            for off in 1..=rim {
+                edge = edge.max(d(s.pos.x as usize + off, cy as usize));
+            }
         }
         println!("worst change at an icon's middle {middle:.0}, at its rim {edge:.0}");
         assert!(middle < 40.0, "the icons are not clear — the middle moved {middle:.0} levels");
@@ -812,7 +900,14 @@ mod tests {
         // quietly — which is the opposite polarity to the usual "the
         // setup silently did not happen".
         let (mut jump, mut lo, mut hi) = (0.0f32, f32::MAX, f32::MIN);
-        for y in [260usize, 2740] {
+        // **Fractions of the window, not pixels.** These were 260 and
+        // 2740 — correct for the design's 2796 px height and off the end
+        // of the 997 px one the window actually opens at.
+        let rows = [
+            (H as f32 * 260.0 / DESIGN_H) as usize,
+            (H as f32 * 2740.0 / DESIGN_H) as usize,
+        ];
+        for y in rows {
             for x in 1..W as usize {
                 let v = lum(x, y);
                 jump = jump.max((v - lum(x - 1, y)).abs());
@@ -829,7 +924,7 @@ mod tests {
     /// wallpaper can be measured on its own.
     fn host2() -> lumen_static_shell::Host<Home> {
         use lumen_static_shell::text::{FontMetrics, FontStack};
-        let mut app = build();
+        let mut app = build(k(W, H));
         let clear = Material { blur: 0.0, rim: 0.0, tint: Color(0, 0, 0, 0), ..Material::FROSTED };
         {
             let a = &mut app.ui.apps;
@@ -842,7 +937,7 @@ mod tests {
         app.ui.status.material = clear;
         app.ui.dock.row.dock.material = clear;
         let mut host = lumen_static_shell::Host::new(app, W, H);
-        host.set_stylesheet(&stylesheet());
+        host.set_stylesheet(&stylesheet(k(W, H)));
         let mut metrics = FontStack::system().map(FontMetrics::new);
         for _ in 0..2 {
             match metrics.as_mut() {
@@ -863,7 +958,7 @@ mod tests {
     #[test]
     fn a_second_press_animates_while_the_first_is_still_settling() {
         let mut host = host(W, H);
-        let rest = icon_glass().rim;
+        let rest = icon_glass(k(W, H)).rim;
         let found = icons(&host);
         assert_eq!(found.len(), 24, "the grid is not twenty-four icons");
         let centre = |h: &lumen_static_shell::Host<Home>, i: usize| {
@@ -888,10 +983,15 @@ mod tests {
         host.pump();
 
         let moved = host.app.ui.apps.r5.d.art.material_now().rim;
-        println!("last icon's rim {moved:.1} against {rest:.1} at rest");
+        // **Relative.** The rim is `24 × k` px, so an absolute threshold
+        // that held at the design size failed at the window's — the
+        // press deforms by a *fraction*, and a fraction of a smaller rim
+        // is a smaller number.
+        println!("last icon's rim {moved:.2} against {rest:.2} at rest (×{:.3})", moved / rest);
         assert!(
-            moved > rest + 0.5,
-            "the second icon never advanced ({moved:.1} vs {rest:.1}) — `advance` short-circuited"
+            moved > rest * 1.01,
+            "the second icon never advanced ({moved:.2} vs {rest:.2}) — `advance` short-circuited"
         );
     }
 }
+

@@ -478,7 +478,7 @@ what the material is for. `just glasswall-bench`, re-measured
 
 | | |
 |---|---:|
-| software | **150 ms** a frame — seven frames a second |
+| software | **153 ms** a frame — seven frames a second |
 | GPU | **2.1 ms** a frame |
 | damage on a frame where nothing changed | `All` |
 
@@ -487,8 +487,18 @@ decorative: the first version of the scene laid it out as a grid of flat
 colour tiles, and a clear icon over a uniform patch of colour has
 nothing to refract — bending a flat colour gives a flat colour. The
 icons read as outlines on coloured squares. Both numbers above moved
-slightly when it changed (139 → 150 ms software), because one `Cmd::Image`
+slightly when it changed (139 → 153 ms software), because one `Cmd::Image`
 replaced twenty-eight rects and the image is sampled per pixel.
+
+**The wallpaper is 470 × 1018 and that bound is the GPU's, not the
+design's.** `lumen-static-wgpu` atlases images into a 1024 px texture
+and refuses anything larger — drawing nothing, which is `ImageSource`'s
+stated answer for a missing asset — while the software canvas has no
+atlas and draws any size. A 540 × 1170 wallpaper therefore rendered
+correctly headless, correctly in a software window, and **not at all on
+the GPU**. It is the only divergence between the two backends this
+milestone found that neither the headless parity gate nor a software
+test could see, because both halves of each pair agree with themselves.
 
 The damage row is not a defect being demonstrated. `MAX_DEPS` is 4, and
 `retain.rs` states the reasoning: a glass panel serialises the
