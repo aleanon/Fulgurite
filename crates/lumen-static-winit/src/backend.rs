@@ -58,6 +58,17 @@ pub trait Backend<A: App> {
         None
     }
 
+    /// Hand the renderer the application's image pixels.
+    ///
+    /// **Defaulted to a no-op, and that is not a shrug**: a backend that
+    /// cannot resolve `Cmd::Image` is a real configuration — the SVG
+    /// writer is one — and the contract `ImageSource` already states for
+    /// a missing asset is "draw nothing, do not fail". A backend that
+    /// can should override it.
+    fn set_images(&mut self, images: Box<dyn lumen_static::ImageSource>) {
+        let _ = images;
+    }
+
     /// What to print in a startup line. A user reporting "it is slow"
     /// should not have to guess which renderer they got.
     fn name(&self) -> &str;
@@ -95,6 +106,10 @@ impl Software {
 impl<A: App> Backend<A> for Software {
     fn resize(&mut self, host: &mut Host<A>, width: u32, height: u32) {
         crate::surface::sync_size(&mut self.canvas, host, self.font.as_ref(), width, height);
+    }
+
+    fn set_images(&mut self, images: Box<dyn lumen_static::ImageSource>) {
+        self.canvas.images = Some(images);
     }
 
     fn present(&mut self, host: &mut Host<A>, page: Color, frame_start: Instant) -> Frame {

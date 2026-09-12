@@ -470,16 +470,25 @@ so.
 
 `examples/glasswall` is the stress case, laid out as a phone home
 screen: **twenty-six** backdrop filters at 1290 × 2796 — a status bar, a
-4 × 6 grid of clear app icons, and a floating tab bar. The icons carry a
-tint of 20/255, so nearly everything in one is the wallpaper behind it
-refracted through a bevelled edge, which is what the material is for.
-`just glasswall-bench`, measured 2026-09-12:
+4 × 6 grid of clear app icons, and a floating tab bar, over a generated
+picture. The icons carry a tint of 20/255, so nearly everything in one
+is the wallpaper behind it refracted through a bevelled edge, which is
+what the material is for. `just glasswall-bench`, re-measured
+2026-09-13:
 
 | | |
 |---|---:|
-| software | **139 ms** a frame — seven frames a second |
-| GPU | **2.2 ms** a frame |
+| software | **150 ms** a frame — seven frames a second |
+| GPU | **2.1 ms** a frame |
 | damage on a frame where nothing changed | `All` |
+
+The wallpaper is a **picture** and that is load-bearing rather than
+decorative: the first version of the scene laid it out as a grid of flat
+colour tiles, and a clear icon over a uniform patch of colour has
+nothing to refract — bending a flat colour gives a flat colour. The
+icons read as outlines on coloured squares. Both numbers above moved
+slightly when it changed (139 → 150 ms software), because one `Cmd::Image`
+replaced twenty-eight rects and the image is sampled per pixel.
 
 The damage row is not a defect being demonstrated. `MAX_DEPS` is 4, and
 `retain.rs` states the reasoning: a glass panel serialises the

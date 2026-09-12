@@ -122,6 +122,18 @@ pub struct Config {
     /// Empty by default, which is what every node's `Node::defaults`
     /// already gives.
     pub stylesheet: Vec<Rule>,
+    /// Where `Cmd::Image` gets its pixels.
+    ///
+    /// Added 2026-09-13 for `examples/glasswall`, and for the same
+    /// reason `stylesheet` was: without it a turnkey window cannot draw
+    /// an image *at all*. Both backends can — `Canvas::images` and
+    /// `Gpu::set_images` have existed since M14 and T15.12 — and there
+    /// was simply no way to reach either from `run`, so every windowed
+    /// application was one with no photographs in it.
+    ///
+    /// Taken once, when the backend is created. A `None` here is not an
+    /// error: `ImageSource` already says a missing asset draws nothing.
+    pub images: Option<Box<dyn lumen_static::ImageSource>>,
 }
 
 impl Default for Config {
@@ -133,6 +145,7 @@ impl Default for Config {
             page: Color(255, 255, 255, 255),
             backend: Prefer::Auto,
             stylesheet: Vec::new(),
+            images: None,
         }
     }
 }
@@ -324,9 +337,14 @@ impl<A: App> ApplicationHandler for Win<A> {
             m.set_scale(scale);
         }
 
-        let backend =
+        let mut backend =
             pick_backend(window.clone(), self.font.clone(), Prefer::from_env(self.config.backend));
         eprintln!("lumen-static: {}", backend.name());
+        // Taken, not cloned: `ImageSource` is a trait object and the
+        // renderer is where the pixels are wanted.
+        if let Some(images) = self.config.images.take() {
+            backend.set_images(images);
+        }
         self.backend = Some(backend);
         // Tell the platform this window accepts composed input, or an
         // IME never starts and CJK entry is impossible rather than

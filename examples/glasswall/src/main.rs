@@ -5,25 +5,34 @@
 //! status bar across the top, a 4 × 6 grid of clear app icons, and a
 //! floating tab bar at the bottom.
 //!
-//! # Clear icons are the point
+//! # Clear icons over a picture, and the two have to go together
 //!
-//! The icons carry almost no tint. Nearly everything you see in one is
+//! The icons carry a tint of 20/255. Nearly everything you see in one is
 //! the wallpaper behind it, refracted through a bevelled edge and lit
-//! from one side — which is why the grid reads as coloured glass rather
-//! than as twenty-four grey squares, and why the wallpaper under it is
-//! a hue ramp rather than a flat colour. A backdrop filter over a flat
-//! background is a flat background.
+//! from one side.
+//!
+//! **That only works over a picture.** The first version of this file
+//! drew the wallpaper as a grid of flat colour tiles, and it showed: a
+//! clear icon over a *uniform* patch of colour has nothing to refract,
+//! because bending a flat colour gives a flat colour. What you saw was
+//! coloured squares with faint outlines on them. The wallpaper is now
+//! generated — a soft ramp with wide radial blooms screened over it —
+//! for one reason, which is that it has a gradient everywhere.
 //!
 //! This is also why the icons sit *over* the wallpaper in a
 //! `#[widget(stack)]` and not above it in a column: a column allocates
 //! non-overlapping rects, so an icon laid out that way would have the
 //! page behind it and nothing to read.
 //!
+//! `tests::the_wallpaper_is_a_picture` pins both halves — smooth
+//! everywhere, and not flat — because each is a way to end up with no
+//! picture and neither is visible in a test of the glass itself.
+//!
 //! # Build it with `--features gpu`
 //!
 //! Twenty-six panels is far past what the software filter is for.
-//! Measured, `just glasswall-bench`: **139 ms** a frame on the software
-//! canvas against **2.2 ms** on a GPU — seven frames a second against
+//! Measured, `just glasswall-bench`: **150 ms** a frame on the software
+//! canvas against **2.1 ms** on a GPU — seven frames a second against
 //! four hundred (`docs/results-glass.md` §0h).
 //!
 //! # It is past what *damage* is for too, and that is the honest part
@@ -67,7 +76,16 @@ const ICON_TINT: Color = Color(0xff, 0xff, 0xff, 0x14);
 /// The bars carry more, because text sits on them and text needs a
 /// ground. Dark rather than white — the wallpaper below is bright and
 /// saturated, and white on pastel is unreadable.
-const BAR_TINT: Color = Color(0x08, 0x0a, 0x12, 0x59);
+///
+/// **Light enough to still be glass.** At 0x59 the status bar read as a
+/// black stripe across the top rather than as a frosted one, which is
+/// the failure mode of every tint chosen for legibility alone: past
+/// about a third opacity a backdrop filter is just a rectangle, and the
+/// blur behind it is work with no output.
+const BAR_TINT: Color = Color(0x08, 0x0a, 0x12, 0x33);
+/// The dock carries a little more than the status bar: it sits over the
+/// brightest part of the wallpaper and its glyphs are tap targets.
+const DOCK_TINT: Color = Color(0x08, 0x0a, 0x12, 0x40);
 
 /// **`LIQUID`, scaled for a 3× phone.**
 ///
@@ -93,162 +111,89 @@ fn icon_glass() -> Material {
 
 // ---- the wallpaper ---------------------------------------------------
 
-/// A hue ramp, not a photograph, and not a flat colour.
+/// **A picture, not a grid of coloured squares.**
 ///
-/// Diagonal so neither a row nor a column of icons sits over one hue —
-/// the refraction at an icon's edge is only visible where there is a
-/// gradient to bend.
-const WALL: [Color; 28] = [
-    Color(0x17, 0x50, 0x84, 0xff),
-    Color(0x1c, 0x36, 0x8e, 0xff),
-    Color(0x28, 0x21, 0x98, 0xff),
-    Color(0x52, 0x26, 0xa2, 0xff),
-    Color(0x1d, 0x2e, 0x91, 0xff),
-    Color(0x34, 0x22, 0x9b, 0xff),
-    Color(0x5e, 0x27, 0xa5, 0xff),
-    Color(0x8c, 0x2d, 0xaf, 0xff),
-    Color(0x40, 0x24, 0x9e, 0xff),
-    Color(0x6b, 0x29, 0xa8, 0xff),
-    Color(0x99, 0x2f, 0xb2, 0xff),
-    Color(0xbc, 0x35, 0xae, 0xff),
-    Color(0x78, 0x2b, 0xab, 0xff),
-    Color(0xa7, 0x31, 0xb5, 0xff),
-    Color(0xbf, 0x37, 0xa5, 0xff),
-    Color(0xc9, 0x3d, 0x86, 0xff),
-    Color(0xb5, 0x32, 0xb8, 0xff),
-    Color(0xc2, 0x39, 0x9d, 0xff),
-    Color(0xcc, 0x3f, 0x7d, 0xff),
-    Color(0xd5, 0x47, 0x5c, 0xff),
-    Color(0xc4, 0x3b, 0x94, 0xff),
-    Color(0xce, 0x41, 0x74, 0xff),
-    Color(0xd8, 0x49, 0x52, 0xff),
-    Color(0xe2, 0x71, 0x50, 0xff),
-    Color(0xd1, 0x43, 0x6a, 0xff),
-    Color(0xdb, 0x4d, 0x4b, 0xff),
-    Color(0xe5, 0x80, 0x52, 0xff),
-    Color(0xef, 0xb4, 0x5b, 0xff)
-];
+/// The first version of this file laid the wallpaper out as twenty-eight
+/// flat tiles, and it looked like twenty-eight flat tiles: hard edges
+/// everywhere, and a clear icon sitting over one of them had a *uniform*
+/// backdrop to refract, which is to say nothing to refract. Bending a
+/// flat colour produces a flat colour.
+///
+/// So this is generated: a soft vertical ramp with a handful of wide
+/// radial blooms screened over it, which is what a phone wallpaper
+/// actually looks like and — more to the point — has a gradient
+/// everywhere. The icon rims have something to bend.
+const WALL_W: u32 = 540;
+const WALL_H: u32 = 1170;
+const WALL_ID: lumen_static::display::ImageId = lumen_static::display::ImageId(1);
 
-const WALL_IDS: [&str; 28] = [
-    "w0", "w1", "w2", "w3", "w4", "w5", "w6", "w7", "w8", "w9", "w10", "w11", "w12", "w13",
-    "w14", "w15", "w16", "w17", "w18", "w19", "w20", "w21", "w22", "w23", "w24", "w25", "w26",
-    "w27",
-];
-
-#[derive(StaticTree, Default)]
-#[widget(column, spacing = 0.0)]
-struct Patch4 {
-    #[widget_id("wtile")]
-    pad: Spacer,
-}
-
-/// Four across, **and seven distinct row types rather than one used
-/// seven times**. A `#[widget_id]` lives on a field of its parent, so a
-/// shared row type gives every row the same four ids — a selector
-/// matches every node carrying one, and the wallpaper comes out as four
-/// full-height stripes with twenty-four of the twenty-eight colours
-/// never reaching the screen.
-#[derive(StaticTree, Default)]
-#[widget(row, spacing = 0.0)]
-struct WallRow0 {
-    #[widget_id("w0")]
-    a: Patch4,
-    #[widget_id("w1")]
-    b: Patch4,
-    #[widget_id("w2")]
-    c: Patch4,
-    #[widget_id("w3")]
-    d: Patch4,
-}
-
-#[derive(StaticTree, Default)]
-#[widget(row, spacing = 0.0)]
-struct WallRow1 {
-    #[widget_id("w4")]
-    a: Patch4,
-    #[widget_id("w5")]
-    b: Patch4,
-    #[widget_id("w6")]
-    c: Patch4,
-    #[widget_id("w7")]
-    d: Patch4,
-}
-
-#[derive(StaticTree, Default)]
-#[widget(row, spacing = 0.0)]
-struct WallRow2 {
-    #[widget_id("w8")]
-    a: Patch4,
-    #[widget_id("w9")]
-    b: Patch4,
-    #[widget_id("w10")]
-    c: Patch4,
-    #[widget_id("w11")]
-    d: Patch4,
-}
-
-#[derive(StaticTree, Default)]
-#[widget(row, spacing = 0.0)]
-struct WallRow3 {
-    #[widget_id("w12")]
-    a: Patch4,
-    #[widget_id("w13")]
-    b: Patch4,
-    #[widget_id("w14")]
-    c: Patch4,
-    #[widget_id("w15")]
-    d: Patch4,
-}
-
-#[derive(StaticTree, Default)]
-#[widget(row, spacing = 0.0)]
-struct WallRow4 {
-    #[widget_id("w16")]
-    a: Patch4,
-    #[widget_id("w17")]
-    b: Patch4,
-    #[widget_id("w18")]
-    c: Patch4,
-    #[widget_id("w19")]
-    d: Patch4,
-}
-
-#[derive(StaticTree, Default)]
-#[widget(row, spacing = 0.0)]
-struct WallRow5 {
-    #[widget_id("w20")]
-    a: Patch4,
-    #[widget_id("w21")]
-    b: Patch4,
-    #[widget_id("w22")]
-    c: Patch4,
-    #[widget_id("w23")]
-    d: Patch4,
-}
-
-#[derive(StaticTree, Default)]
-#[widget(row, spacing = 0.0)]
-struct WallRow6 {
-    #[widget_id("w24")]
-    a: Patch4,
-    #[widget_id("w25")]
-    b: Patch4,
-    #[widget_id("w26")]
-    c: Patch4,
-    #[widget_id("w27")]
-    d: Patch4,
-}
-
-#[derive(StaticTree, Default)]
-#[widget(column, spacing = 0.0)]
+/// Where `Cmd::Image` gets its pixels. One image, generated once.
 struct Wallpaper {
-    r0: WallRow0,
-    r1: WallRow1,
-    r2: WallRow2,
-    r3: WallRow3,
-    r4: WallRow4,
-    r5: WallRow5,
-    r6: WallRow6,
+    px: Vec<u8>,
+}
+
+impl lumen_static::ImageSource for Wallpaper {
+    fn image(&self, id: lumen_static::display::ImageId) -> Option<(u32, u32, &[u8])> {
+        (id == WALL_ID).then_some((WALL_W, WALL_H, &self.px))
+    }
+}
+
+impl Wallpaper {
+    /// Rendered at a fraction of the screen and scaled up by `Fit::Cover`.
+    ///
+    /// **Deliberately low resolution.** Every gradient here is smooth
+    /// over hundreds of pixels, so a bilinear upscale loses nothing a
+    /// viewer can see, and generating 3.6 M pixels to blur and refract
+    /// a picture that has no detail in it would be a cost with no
+    /// output.
+    fn new() -> Self {
+        // (x, y, radius, colour) in fractions of the image.
+        const BLOOMS: [(f32, f32, f32, [f32; 3]); 6] = [
+            (0.18, 0.10, 0.55, [0.15, 0.55, 1.00]),
+            (0.88, 0.20, 0.50, [0.60, 0.25, 0.95]),
+            (0.10, 0.48, 0.45, [0.00, 0.75, 0.80]),
+            (0.95, 0.58, 0.52, [1.00, 0.30, 0.55]),
+            (0.30, 0.85, 0.55, [1.00, 0.55, 0.20]),
+            (0.80, 0.96, 0.48, [0.95, 0.20, 0.40]),
+        ];
+        let mut px = vec![0u8; (WALL_W * WALL_H * 4) as usize];
+        for y in 0..WALL_H {
+            let v = y as f32 / (WALL_H - 1) as f32;
+            for x in 0..WALL_W {
+                let u = x as f32 / (WALL_W - 1) as f32;
+                // The ground: night at the top, ember at the bottom.
+                let mut c = [
+                    0.05 + 0.22 * v,
+                    0.03 + 0.07 * v,
+                    0.18 + 0.10 * (1.0 - v),
+                ];
+                for (bx, by, r, bc) in BLOOMS {
+                    // Aspect-corrected, or a blob on a 1:2.2 canvas is an
+                    // ellipse and the seams between them go vertical.
+                    let dx = (u - bx) * (WALL_W as f32 / WALL_H as f32) * 2.2;
+                    let dy = v - by;
+                    let d = ((dx * dx + dy * dy).sqrt() / r).min(1.0);
+                    // Smooth falloff: `1 - smoothstep`, so a bloom has
+                    // no edge of its own to show up as a ring.
+                    let w = 1.0 - d * d * (3.0 - 2.0 * d);
+                    let w = w * w;
+                    // Screen, not add: it saturates toward white instead
+                    // of clipping each channel at a different point,
+                    // which is the same argument the inner shadow makes
+                    // for multiplying.
+                    for k in 0..3 {
+                        c[k] = 1.0 - (1.0 - c[k]) * (1.0 - bc[k] * w * 0.85);
+                    }
+                }
+                let i = ((y * WALL_W + x) * 4) as usize;
+                for k in 0..3 {
+                    px[i + k] = (c[k].clamp(0.0, 1.0) * 255.0) as u8;
+                }
+                px[i + 3] = 255;
+            }
+        }
+        Wallpaper { px }
+    }
 }
 
 // ---- the icons -------------------------------------------------------
@@ -388,7 +333,7 @@ struct Floating {
 #[widget(stack)]
 struct Screen {
     #[widget_id("wall")]
-    wall: Wallpaper,
+    wall: lumen_static::Image,
     apps: Apps,
     #[widget_id("status")]
     status: Glass<Status>,
@@ -428,27 +373,13 @@ struct Home {
 // ---- style -----------------------------------------------------------
 
 fn stylesheet() -> Vec<Rule> {
-    let mut rules = vec![
+    vec![
         Rule::new(Selector::Kind("Screen"), Patch::new().background(PAGE)),
-        // The wallpaper: seven rows, each filling its share, each tile
-        // filling its share of the row.
+        // The wallpaper: one image, cropped to cover.
         Rule::new(
-            Selector::Id("wtile"),
+            Selector::Id("wall"),
             Patch::new().width(Length::FILL).height(Length::FILL),
         ),
-        Rule::new(Selector::Kind("Patch4"), Patch::new().width(Length::FILL).height(Length::FILL)),
-        // **Every row needs its own height rule.** A derived container
-        // is `Shrink` by default on its cross axis, so without these the
-        // seven rows collapse onto the `Spacer`s inside them and the
-        // wallpaper does not render at all — which is a black screen
-        // with the icons still perfectly correct on top of it.
-        Rule::new(Selector::Kind("WallRow0"), Patch::new().height(Length::FILL)),
-        Rule::new(Selector::Kind("WallRow1"), Patch::new().height(Length::FILL)),
-        Rule::new(Selector::Kind("WallRow2"), Patch::new().height(Length::FILL)),
-        Rule::new(Selector::Kind("WallRow3"), Patch::new().height(Length::FILL)),
-        Rule::new(Selector::Kind("WallRow4"), Patch::new().height(Length::FILL)),
-        Rule::new(Selector::Kind("WallRow5"), Patch::new().height(Length::FILL)),
-        Rule::new(Selector::Kind("WallRow6"), Patch::new().height(Length::FILL)),
         // The icons. **`radius` is what makes them app icons** — a
         // square of glass reads as a window, a superellipse-ish rounded
         // one reads as an icon.
@@ -496,8 +427,8 @@ fn stylesheet() -> Vec<Rule> {
         Rule::new(
             Selector::Id("status"),
             Patch::new()
-                .height(Length::Fixed(190.0))
-                .padding(Edges { left: 64.0, right: 64.0, top: 78.0, bottom: 34.0 }),
+                .height(Length::Fixed(158.0))
+                .padding(Edges { left: 64.0, right: 64.0, top: 62.0, bottom: 30.0 }),
         ),
         Rule::new(
             Selector::Id("clock"),
@@ -539,11 +470,7 @@ fn stylesheet() -> Vec<Rule> {
                 .background(Color(0, 0, 0, 0))
                 .pressed_dim(0.0),
         ),
-    ];
-    for (id, colour) in WALL_IDS.iter().zip(WALL.iter()) {
-        rules.push(Rule::new(Selector::Id(id), Patch::new().background(*colour)));
-    }
-    rules
+    ]
 }
 
 // ---- the apps --------------------------------------------------------
@@ -569,6 +496,14 @@ const APPS: [(&str, &str); 24] = [
 
 fn build() -> Home {
     let mut app = Home::default();
+    app.ui.wall = lumen_static::Image::new(
+        WALL_ID,
+        lumen_static::Size { w: WALL_W as f32, h: WALL_H as f32 },
+    );
+    // **`Cover`, not `Contain`.** A wallpaper fills the screen and is
+    // cropped; letterboxing one would put the page colour down the
+    // sides, and the icons over that edge would have nothing to refract.
+    app.ui.wall.fit = lumen_static::image::Fit::Cover;
     {
         let a = &mut app.ui.apps;
         let rows = [&mut a.r0, &mut a.r1, &mut a.r2, &mut a.r3, &mut a.r4, &mut a.r5];
@@ -586,7 +521,7 @@ fn build() -> Home {
     app.ui.status.content.clock.set("9:41".into());
     app.ui.status.content.meta.set("twenty-six panels".into());
 
-    app.ui.dock.row.dock.material = Material { tint: BAR_TINT, ..icon_glass() };
+    app.ui.dock.row.dock.material = Material { tint: DOCK_TINT, ..icon_glass() };
     for (t, g) in [
         (&mut app.ui.dock.row.dock.content.t0, "P"),
         (&mut app.ui.dock.row.dock.content.t1, "@"),
@@ -625,6 +560,7 @@ fn shot(path: &str, w: u32, h: u32) {
         Some(f) => Canvas::with_font(w, h, f),
         None => Canvas::new(w, h),
     };
+    canvas.images = Some(Box::new(Wallpaper::new()));
     canvas.clear(PAGE);
     let t = std::time::Instant::now();
     lumen_static::Renderer::render(&mut canvas, &host.list, w, h);
@@ -662,6 +598,7 @@ fn bench(w: u32, h: u32) {
         Some(f) => Canvas::with_font(w, h, f),
         None => Canvas::new(w, h),
     };
+    canvas.images = Some(Box::new(Wallpaper::new()));
     let mut best = f32::INFINITY;
     for _ in 0..8 {
         let t = std::time::Instant::now();
@@ -688,6 +625,7 @@ fn gpu_bench(host: &lumen_static_shell::Host<Home>, w: u32, h: u32) {
     if let Some(f) = lumen_static_shell::text::FontStack::system() {
         g.set_font(f);
     }
+    g.set_images(Box::new(Wallpaper::new()));
     // Warm: the first frame compiles pipelines and allocates.
     g.clear(PAGE);
     g.render(&host.list, w, h);
@@ -722,6 +660,7 @@ fn main() {
                 height: H,
                 page: PAGE,
                 stylesheet: stylesheet(),
+                images: Some(Box::new(Wallpaper::new())),
                 ..Config::default()
             },
         ),
@@ -798,17 +737,21 @@ mod tests {
     #[test]
     fn the_icons_are_clear_and_still_visible() {
         use lumen_static_shell::software::Canvas;
+        // **Both canvases need the image source.** Without it neither
+        // draws the wallpaper, and the test compares glass over the page
+        // colour with page colour — which is a real measurement of
+        // something nobody will ever see.
+        let shot = |h: &lumen_static_shell::Host<Home>| {
+            let mut c = Canvas::new(W, H);
+            c.images = Some(Box::new(Wallpaper::new()));
+            c.clear(PAGE);
+            lumen_static::Renderer::render(&mut c, &h.list, W, H);
+            c
+        };
         let host = host(W, H);
-        let mut c = Canvas::new(W, H);
-        c.clear(PAGE);
-        lumen_static::Renderer::render(&mut c, &host.list, W, H);
-
+        let c = shot(&host);
         // The same wallpaper with no glass on it at all.
-        let mut bare_host = host2();
-        let mut bare = Canvas::new(W, H);
-        bare.clear(PAGE);
-        lumen_static::Renderer::render(&mut bare, &bare_host.list, W, H);
-        let _ = &mut bare_host;
+        let bare = shot(&host2());
 
         let at = |cv: &Canvas, x: usize, y: usize| {
             let i = (y * W as usize + x) * 4;
@@ -832,6 +775,54 @@ mod tests {
         println!("worst change at an icon's middle {middle:.0}, at its rim {edge:.0}");
         assert!(middle < 40.0, "the icons are not clear — the middle moved {middle:.0} levels");
         assert!(edge > 18.0, "the icons are invisible — even the rim moved only {edge:.0}");
+    }
+
+    /// **The wallpaper is a picture: smooth everywhere, and not flat.**
+    ///
+    /// Both halves are the assertion. The first version of this example
+    /// drew the wallpaper as a grid of flat colour tiles, which fails
+    /// *smooth* — hard edges every few hundred pixels — and a clear icon
+    /// over one of them had a uniform backdrop to refract, which is to
+    /// say nothing to refract. Dropping the image source entirely fails
+    /// *not flat*, and that is the other way to end up with no picture.
+    ///
+    /// Measured on a row well clear of the icons, so what is scanned is
+    /// the wallpaper and not a rim.
+    #[test]
+    fn the_wallpaper_is_a_picture() {
+        use lumen_static_shell::software::Canvas;
+        let host = host2();
+        let mut c = Canvas::new(W, H);
+        c.images = Some(Box::new(Wallpaper::new()));
+        c.clear(PAGE);
+        lumen_static::Renderer::render(&mut c, &host.list, W, H);
+
+        let lum = |x: usize, y: usize| {
+            let i = (y * W as usize + x) * 4;
+            0.299 * c.pixels[i] as f32
+                + 0.587 * c.pixels[i + 1] as f32
+                + 0.114 * c.pixels[i + 2] as f32
+        };
+        // Two rows clear of every glyph and label: one under the status
+        // bar and above the first icon row, one below the dock.
+        //
+        // **The jump assertion verifies its own fixture.** A row that
+        // strayed into text would produce exactly the hard edge it
+        // forbids, so a badly chosen row fails loudly instead of passing
+        // quietly — which is the opposite polarity to the usual "the
+        // setup silently did not happen".
+        let (mut jump, mut lo, mut hi) = (0.0f32, f32::MAX, f32::MIN);
+        for y in [260usize, 2740] {
+            for x in 1..W as usize {
+                let v = lum(x, y);
+                jump = jump.max((v - lum(x - 1, y)).abs());
+                lo = lo.min(v);
+                hi = hi.max(v);
+            }
+        }
+        println!("wallpaper: largest adjacent jump {jump:.1}, range {:.0}", hi - lo);
+        assert!(jump < 4.0, "the wallpaper has a hard edge in it ({jump:.1} levels in one pixel)");
+        assert!(hi - lo > 40.0, "the wallpaper is flat ({:.0} levels of range)", hi - lo);
     }
 
     /// The same tree with every material made fully transparent, so the

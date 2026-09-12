@@ -48,6 +48,10 @@ impl GpuBackend {
 }
 
 impl<A: App> Backend<A> for GpuBackend {
+    fn set_images(&mut self, images: Box<dyn lumen_static::ImageSource>) {
+        self.gpu.set_images(images);
+    }
+
     fn resize(&mut self, host: &mut Host<A>, width: u32, height: u32) {
         if self.gpu.size() == (width, height) {
             return;
