@@ -1,262 +1,361 @@
-//! **A 4K screen filled with glass** — every material M22 built, at once.
+//! **A phone home screen made of glass** — what the material is *for*.
 //!
-//! `just example glasswall` (add `--features gpu`; see below). Fourteen
-//! backdrop filters over one structured page: a full-width frosted bar,
-//! a 4 × 3 grid of liquid panels each turning one part of the material
-//! on or off, and a floating dock that squashes when pressed.
+//! `just example glasswall` (add `--features gpu`; see below). Twenty-six
+//! backdrop filters laid out the way a mobile screen actually is: a
+//! status bar across the top, a 4 × 6 grid of clear app icons, and a
+//! floating tab bar at the bottom.
+//!
+//! # Clear icons are the point
+//!
+//! The icons carry almost no tint. Nearly everything you see in one is
+//! the wallpaper behind it, refracted through a bevelled edge and lit
+//! from one side — which is why the grid reads as coloured glass rather
+//! than as twenty-four grey squares, and why the wallpaper under it is
+//! a hue ramp rather than a flat colour. A backdrop filter over a flat
+//! background is a flat background.
+//!
+//! This is also why the icons sit *over* the wallpaper in a
+//! `#[widget(stack)]` and not above it in a column: a column allocates
+//! non-overlapping rects, so an icon laid out that way would have the
+//! page behind it and nothing to read.
 //!
 //! # Build it with `--features gpu`
 //!
-//! This example is deliberately past the point the software filter is
-//! for. One full-screen panel at 4K costs **750 ms** on the software
-//! canvas and **2.8 ms** on the GPU (`docs/results-glass.md` §0h), and
-//! there are thirteen panels here. `just glasswall-bench` prints what
-//! this scene costs on whichever backends are available, so the claim is
-//! measured rather than asserted.
+//! Twenty-six panels is far past what the software filter is for.
+//! Measured, `just glasswall-bench`: **139 ms** a frame on the software
+//! canvas against **2.2 ms** on a GPU — seven frames a second against
+//! four hundred (`docs/results-glass.md` §0h).
 //!
-//! # It is also past the point *damage* is for, on purpose
+//! # It is past what *damage* is for too, and that is the honest part
 //!
 //! `MAX_DEPS` is 4: a frame with more backdrop filters than that reports
-//! `Damage::All` and redraws everything, every frame. That is not a bug
-//! being demonstrated — `retain.rs` states the reasoning, that a glass
-//! panel serialises the rasteriser and "a frame with more than a handful
-//! is a design problem rather than a case to optimise". This example is
-//! that design problem, built so the cliff has a number next to it
-//! rather than only a comment. `--bench` prints the damage the scene
-//! actually reports.
-//!
-//! **So read this as a stress test, not as a layout to copy.** A real
-//! interface puts glass on one or two surfaces — `just example glass` is
-//! that one.
+//! `Damage::All` and redraws everything, every frame. `retain.rs` states
+//! the reasoning — a glass panel serialises the rasteriser, so "a frame
+//! with more than a handful is a design problem rather than a case to
+//! optimise". A home screen full of glass icons is exactly that design
+//! problem, and the benchmark prints the damage so the cliff has a
+//! number beside it rather than only a comment.
 
 use lumen_static::display::{Color, Material};
 use lumen_static::prelude::*;
 use lumen_static::Glass;
 use lumen_static_winit::{run, Config};
 
+// ---- the device ------------------------------------------------------
+
+/// A phone at 3×, which is where a 24 px design lands as 72 physical
+/// pixels and a bevel has room to be seen.
+const W: u32 = 1290;
+const H: u32 = 2796;
+
+const ICON: f32 = 224.0;
+/// `(1290 − 4·224 − 3·104) / 2`, where 104 is the row spacing below.
+/// The gap is a literal there because `#[widget(row, spacing = ...)]` is
+/// an attribute and takes one.
+const MARGIN: f32 = 41.0;
+
 // ---- palette ---------------------------------------------------------
 
-const PAGE: Color = Color(0x07, 0x09, 0x0e, 0xff);
-const INK: Color = Color(0xf2, 0xf6, 0xfc, 0xff);
-const DIM: Color = Color(0xd3, 0xdb, 0xea, 0xff);
-const TILE_INK: Color = Color(0x0d, 0x10, 0x16, 0xff);
+const PAGE: Color = Color(0x08, 0x0a, 0x12, 0xff);
+const INK: Color = Color(0xff, 0xff, 0xff, 0xff);
+const DIM: Color = Color(0xe6, 0xea, 0xf6, 0xff);
 
-/// The panels' tint: the page colour, not white.
-///
-/// A legibility decision rather than a stylistic one, and the same one
-/// `examples/glass` makes: the tiles behind are saturated and bright, a
-/// white tint over them gives pastel, and white label text on pastel is
-/// unreadable. Tinting *toward the page* keeps the backdrop visible and
-/// the panel's own text at contrast.
-const TINT: Color = Color(0x07, 0x09, 0x0e, 0x4d);
+/// **Almost nothing.** An app icon is a piece of clear glass: the
+/// wallpaper is supposed to come through it, and a tint heavy enough to
+/// read as a colour would make twenty-four identical squares.
+const ICON_TINT: Color = Color(0xff, 0xff, 0xff, 0x14);
+/// The bars carry more, because text sits on them and text needs a
+/// ground. Dark rather than white — the wallpaper below is bright and
+/// saturated, and white on pastel is unreadable.
+const BAR_TINT: Color = Color(0x08, 0x0a, 0x12, 0x59);
 
-/// **`LIQUID`, scaled for 4K.**
+/// **`LIQUID`, scaled for a 3× phone.**
 ///
 /// `Material`'s lengths are in *physical* pixels. `Scaled` multiplies
-/// them by the DPI factor, but a 4K window at scale 1 is not a scaled
-/// window — it is a large one, and `LIQUID`'s 13 px rim on an 820 px
-/// panel is a hairline. Everything here is the preset times 2.3, which
-/// is the ratio of this design's panel to the one the preset was tuned
-/// against. The unitless fields — specular, saturation, dispersion,
-/// adapt — are *not* multiplied, because a fraction has no length in it.
-fn liquid_4k() -> Material {
-    Material { rim: 30.0, refraction: 26.0, blur: 5.0, tint: TINT, ..Material::LIQUID }
+/// them by the DPI factor, but this window is 1290 × 2796 at scale 1 —
+/// a large window, not a scaled one — so the preset's 13 px rim would be
+/// a hairline on a 224 px icon. Everything here is the preset × 1.8.
+/// The unitless fields (specular, saturation, dispersion, adapt) are
+/// **not** multiplied: a fraction has no length in it.
+fn icon_glass() -> Material {
+    Material {
+        rim: 24.0,
+        refraction: 20.0,
+        blur: 2.0,
+        tint: ICON_TINT,
+        // Clear glass shows its edge or it shows nothing, so the rim
+        // works harder here than on a tinted panel.
+        specular: 1.0,
+        shadow: 110,
+        ..Material::LIQUID
+    }
 }
 
-// ---- the page being blurred ------------------------------------------
+// ---- the wallpaper ---------------------------------------------------
 
-/// What the glass reads. A blur over a flat background is a flat
-/// background, so this is a field of saturated tiles with real glyphs on
-/// them — structure at two scales, because a wide blur eats the small
-/// one and a bevel only displaces the large one.
-const TILES: [(&str, Color); 24] = [
-    ("Aurora", Color(0xff, 0x6b, 0x6b, 0xff)),
-    ("Basalt", Color(0xfe, 0xca, 0x57, 0xff)),
-    ("Cinder", Color(0x1d, 0xd1, 0xa1, 0xff)),
-    ("Drift", Color(0x54, 0xa0, 0xff, 0xff)),
-    ("Ember", Color(0xff, 0x9f, 0x43, 0xff)),
-    ("Fathom", Color(0xa2, 0x9b, 0xfe, 0xff)),
-    ("Glacier", Color(0x48, 0xdb, 0xfb, 0xff)),
-    ("Harbour", Color(0xff, 0x9f, 0xf3, 0xff)),
-    ("Ingot", Color(0xba, 0xd7, 0x00, 0xff)),
-    ("Lumen", Color(0x00, 0xd2, 0xd3, 0xff)),
-    ("Marrow", Color(0xee, 0x52, 0x53, 0xff)),
-    ("Nadir", Color(0x0a, 0xbd, 0xe3, 0xff)),
-    ("Onyx", Color(0xf7, 0xd7, 0x94, 0xff)),
-    ("Pallor", Color(0xc7, 0xec, 0xee, 0xff)),
-    ("Quarry", Color(0xff, 0x79, 0x3f, 0xff)),
-    ("Relic", Color(0x8e, 0xf6, 0xe4, 0xff)),
-    ("Solder", Color(0xd6, 0xa2, 0xe8, 0xff)),
-    ("Tundra", Color(0x7e, 0xd6, 0xdf, 0xff)),
-    ("Umber", Color(0xf3, 0xa6, 0x83, 0xff)),
-    ("Vellum", Color(0xcf, 0xf0, 0x9e, 0xff)),
-    ("Wick", Color(0xff, 0xd3, 0x2a, 0xff)),
-    ("Xenon", Color(0x9b, 0xf6, 0xff, 0xff)),
-    ("Yarrow", Color(0xbd, 0xb2, 0xff, 0xff)),
-    ("Zephyr", Color(0xff, 0xc6, 0xff, 0xff)),
+/// A hue ramp, not a photograph, and not a flat colour.
+///
+/// Diagonal so neither a row nor a column of icons sits over one hue —
+/// the refraction at an icon's edge is only visible where there is a
+/// gradient to bend.
+const WALL: [Color; 28] = [
+    Color(0x17, 0x50, 0x84, 0xff),
+    Color(0x1c, 0x36, 0x8e, 0xff),
+    Color(0x28, 0x21, 0x98, 0xff),
+    Color(0x52, 0x26, 0xa2, 0xff),
+    Color(0x1d, 0x2e, 0x91, 0xff),
+    Color(0x34, 0x22, 0x9b, 0xff),
+    Color(0x5e, 0x27, 0xa5, 0xff),
+    Color(0x8c, 0x2d, 0xaf, 0xff),
+    Color(0x40, 0x24, 0x9e, 0xff),
+    Color(0x6b, 0x29, 0xa8, 0xff),
+    Color(0x99, 0x2f, 0xb2, 0xff),
+    Color(0xbc, 0x35, 0xae, 0xff),
+    Color(0x78, 0x2b, 0xab, 0xff),
+    Color(0xa7, 0x31, 0xb5, 0xff),
+    Color(0xbf, 0x37, 0xa5, 0xff),
+    Color(0xc9, 0x3d, 0x86, 0xff),
+    Color(0xb5, 0x32, 0xb8, 0xff),
+    Color(0xc2, 0x39, 0x9d, 0xff),
+    Color(0xcc, 0x3f, 0x7d, 0xff),
+    Color(0xd5, 0x47, 0x5c, 0xff),
+    Color(0xc4, 0x3b, 0x94, 0xff),
+    Color(0xce, 0x41, 0x74, 0xff),
+    Color(0xd8, 0x49, 0x52, 0xff),
+    Color(0xe2, 0x71, 0x50, 0xff),
+    Color(0xd1, 0x43, 0x6a, 0xff),
+    Color(0xdb, 0x4d, 0x4b, 0xff),
+    Color(0xe5, 0x80, 0x52, 0xff),
+    Color(0xef, 0xb4, 0x5b, 0xff)
 ];
 
-/// One id per tile, all twenty-four of them.
-const TILE_IDS: [&str; 24] = [
-    "k0", "k1", "k2", "k3", "k4", "k5", "k6", "k7", "k8", "k9", "k10", "k11", "k12", "k13",
-    "k14", "k15", "k16", "k17", "k18", "k19", "k20", "k21", "k22", "k23",
+const WALL_IDS: [&str; 28] = [
+    "w0", "w1", "w2", "w3", "w4", "w5", "w6", "w7", "w8", "w9", "w10", "w11", "w12", "w13",
+    "w14", "w15", "w16", "w17", "w18", "w19", "w20", "w21", "w22", "w23", "w24", "w25", "w26",
+    "w27",
 ];
 
 #[derive(StaticTree, Default)]
 #[widget(column, spacing = 0.0)]
-struct Tile {
-    #[widget_id("tile_t")]
+struct Patch4 {
+    #[widget_id("wtile")]
+    pad: Spacer,
+}
+
+/// Four across, **and seven distinct row types rather than one used
+/// seven times**. A `#[widget_id]` lives on a field of its parent, so a
+/// shared row type gives every row the same four ids — a selector
+/// matches every node carrying one, and the wallpaper comes out as four
+/// full-height stripes with twenty-four of the twenty-eight colours
+/// never reaching the screen.
+#[derive(StaticTree, Default)]
+#[widget(row, spacing = 0.0)]
+struct WallRow0 {
+    #[widget_id("w0")]
+    a: Patch4,
+    #[widget_id("w1")]
+    b: Patch4,
+    #[widget_id("w2")]
+    c: Patch4,
+    #[widget_id("w3")]
+    d: Patch4,
+}
+
+#[derive(StaticTree, Default)]
+#[widget(row, spacing = 0.0)]
+struct WallRow1 {
+    #[widget_id("w4")]
+    a: Patch4,
+    #[widget_id("w5")]
+    b: Patch4,
+    #[widget_id("w6")]
+    c: Patch4,
+    #[widget_id("w7")]
+    d: Patch4,
+}
+
+#[derive(StaticTree, Default)]
+#[widget(row, spacing = 0.0)]
+struct WallRow2 {
+    #[widget_id("w8")]
+    a: Patch4,
+    #[widget_id("w9")]
+    b: Patch4,
+    #[widget_id("w10")]
+    c: Patch4,
+    #[widget_id("w11")]
+    d: Patch4,
+}
+
+#[derive(StaticTree, Default)]
+#[widget(row, spacing = 0.0)]
+struct WallRow3 {
+    #[widget_id("w12")]
+    a: Patch4,
+    #[widget_id("w13")]
+    b: Patch4,
+    #[widget_id("w14")]
+    c: Patch4,
+    #[widget_id("w15")]
+    d: Patch4,
+}
+
+#[derive(StaticTree, Default)]
+#[widget(row, spacing = 0.0)]
+struct WallRow4 {
+    #[widget_id("w16")]
+    a: Patch4,
+    #[widget_id("w17")]
+    b: Patch4,
+    #[widget_id("w18")]
+    c: Patch4,
+    #[widget_id("w19")]
+    d: Patch4,
+}
+
+#[derive(StaticTree, Default)]
+#[widget(row, spacing = 0.0)]
+struct WallRow5 {
+    #[widget_id("w20")]
+    a: Patch4,
+    #[widget_id("w21")]
+    b: Patch4,
+    #[widget_id("w22")]
+    c: Patch4,
+    #[widget_id("w23")]
+    d: Patch4,
+}
+
+#[derive(StaticTree, Default)]
+#[widget(row, spacing = 0.0)]
+struct WallRow6 {
+    #[widget_id("w24")]
+    a: Patch4,
+    #[widget_id("w25")]
+    b: Patch4,
+    #[widget_id("w26")]
+    c: Patch4,
+    #[widget_id("w27")]
+    d: Patch4,
+}
+
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+struct Wallpaper {
+    r0: WallRow0,
+    r1: WallRow1,
+    r2: WallRow2,
+    r3: WallRow3,
+    r4: WallRow4,
+    r5: WallRow5,
+    r6: WallRow6,
+}
+
+// ---- the icons -------------------------------------------------------
+
+/// What is *inside* the glass: one glyph.
+///
+/// **Centred by the icon's padding, not by spacers**, and the reason is
+/// worth knowing before you reach for the obvious thing.
+///
+/// `Style` has `align`, which is the *cross* axis, and no main-axis
+/// equivalent — so in a column nothing centres a child top to bottom,
+/// and the first version of this had twenty-four letters in their
+/// icons' top-left corners. The usual fix is a `FILL` `Spacer` either
+/// side, which is how the dock floats itself, and here it made things
+/// worse: the glyphs escaped their icons entirely and landed between
+/// them.
+///
+/// The reason is general rather than anything to do with `Glass`.
+/// `inner_limits` derives a child's box from the limits its parent was
+/// *given*, while `resolve_self` picks the parent's own `Fixed` size
+/// separately — so **a `FILL` child of a `Fixed` container fills the
+/// space available to the container, not the container**. Two `FILL`
+/// spacers in a 224 px icon therefore split the whole row's height, and
+/// a `FILL`-width column does the same sideways: the next version had
+/// every glyph drifting a column to the right of its own icon, by
+/// exactly the width each one had left over.
+///
+/// **A `stack` is the container that does constrain its children.** Its
+/// `place` stretches a `FILL` child to the box the container settled on
+/// and then aligns it — on *both* axes, because a stack has no cross
+/// axis — which is the one place `align` centres something vertically.
+/// So the glyph sits in a fixed-size stack, and `Align::Center` does
+/// the rest.
+#[derive(StaticTree, Default)]
+#[widget(stack)]
+struct Glyph {
+    #[widget_id("glyph")]
+    ch: Label<String>,
+}
+
+/// One app: the glass tile, and its name **underneath** rather than on
+/// it — which is how a home screen is laid out, and which keeps the
+/// icon itself clear.
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 14.0)]
+struct App {
+    #[widget_id("icon")]
+    art: Glass<Glyph>,
+    #[widget_id("name")]
     name: Label<String>,
 }
 
-/// Six tiles across, **and four of these rather than one used four
-/// times**. A `#[widget_id]` lives on a field of its parent, so one
-/// shared row type gives all four rows the same six ids — a selector
-/// matches every node carrying one, and the page came out as six
-/// full-height stripes with eighteen of the twenty-four colours never
-/// reaching the screen. A blur over vertical stripes has structure in
-/// one axis, which is half a demonstration.
-///
-/// (`List<Tile>` cannot do it either: a list styles every item from
-/// **one probe**, so all six would take the same background.)
+/// Four across. **One shared row type is right here**, unlike the
+/// wallpaper: every icon is the same size and the same material, and
+/// what differs between them — the glyph and the name — is set in
+/// `build` rather than by a selector.
 #[derive(StaticTree, Default)]
-#[widget(row, spacing = 0.0)]
-struct TileRow0 {
-    #[widget_id("k0")]
-    a: Tile,
-    #[widget_id("k1")]
-    b: Tile,
-    #[widget_id("k2")]
-    c: Tile,
-    #[widget_id("k3")]
-    d: Tile,
-    #[widget_id("k4")]
-    e: Tile,
-    #[widget_id("k5")]
-    f: Tile,
+#[widget(row, spacing = 104.0)]
+struct AppRow {
+    a: App,
+    b: App,
+    c: App,
+    d: App,
 }
 
 #[derive(StaticTree, Default)]
-#[widget(row, spacing = 0.0)]
-struct TileRow1 {
-    #[widget_id("k6")]
-    a: Tile,
-    #[widget_id("k7")]
-    b: Tile,
-    #[widget_id("k8")]
-    c: Tile,
-    #[widget_id("k9")]
-    d: Tile,
-    #[widget_id("k10")]
-    e: Tile,
-    #[widget_id("k11")]
-    f: Tile,
-}
-
-#[derive(StaticTree, Default)]
-#[widget(row, spacing = 0.0)]
-struct TileRow2 {
-    #[widget_id("k12")]
-    a: Tile,
-    #[widget_id("k13")]
-    b: Tile,
-    #[widget_id("k14")]
-    c: Tile,
-    #[widget_id("k15")]
-    d: Tile,
-    #[widget_id("k16")]
-    e: Tile,
-    #[widget_id("k17")]
-    f: Tile,
-}
-
-#[derive(StaticTree, Default)]
-#[widget(row, spacing = 0.0)]
-struct TileRow3 {
-    #[widget_id("k18")]
-    a: Tile,
-    #[widget_id("k19")]
-    b: Tile,
-    #[widget_id("k20")]
-    c: Tile,
-    #[widget_id("k21")]
-    d: Tile,
-    #[widget_id("k22")]
-    e: Tile,
-    #[widget_id("k23")]
-    f: Tile,
-}
-
-#[derive(StaticTree, Default)]
-#[widget(column, spacing = 0.0)]
-struct Page {
-    r0: TileRow0,
-    r1: TileRow1,
-    r2: TileRow2,
-    r3: TileRow3,
-}
-
-// ---- the glass -------------------------------------------------------
-
-/// One panel's contents: what it is, and what it is showing.
-#[derive(StaticTree, Default)]
-#[widget(column, spacing = 10.0)]
-struct Cell {
-    #[widget_id("cap")]
-    title: Label<String>,
-    #[widget_id("sub")]
-    sub: Label<String>,
-}
-
-/// Four panels across. **One id for all of them**, unlike the tiles: a
-/// selector matches every node carrying it, and here that is what is
-/// wanted — twelve panels of identical geometry, differing only in the
-/// material each is given in `build`.
-#[derive(StaticTree, Default)]
-#[widget(row, spacing = 48.0)]
-struct PanelRow {
-    #[widget_id("cellw")]
-    a: Glass<Cell>,
-    #[widget_id("cellw")]
-    b: Glass<Cell>,
-    #[widget_id("cellw")]
-    c: Glass<Cell>,
-    #[widget_id("cellw")]
-    d: Glass<Cell>,
-}
-
-#[derive(StaticTree, Default)]
-#[widget(column, spacing = 48.0)]
-struct Grid {
-    #[widget_id("gtop")]
+#[widget(column, spacing = 58.0)]
+struct Apps {
+    #[widget_id("atop")]
     top: Spacer,
-    r0: PanelRow,
-    r1: PanelRow,
-    r2: PanelRow,
-    #[widget_id("gbot")]
+    r0: AppRow,
+    r1: AppRow,
+    r2: AppRow,
+    r3: AppRow,
+    r4: AppRow,
+    r5: AppRow,
+    #[widget_id("abot")]
     bottom: Spacer,
 }
 
-#[derive(StaticTree, Default)]
-#[widget(row, spacing = 28.0)]
-struct Bar {
-    #[widget_id("brand")]
-    brand: Label<String>,
-    #[widget_id("gap")]
-    gap: Spacer,
-    #[widget_id("note")]
-    note: Label<String>,
-}
+// ---- the two bars ----------------------------------------------------
 
 #[derive(StaticTree, Default)]
-#[widget(row, spacing = 30.0)]
+#[widget(row, spacing = 20.0)]
+struct Status {
+    #[widget_id("clock")]
+    clock: Label<String>,
+    #[widget_id("sgap")]
+    gap: Spacer,
+    #[widget_id("meta")]
+    meta: Label<String>,
+}
+
+/// The tab bar's four buttons. Buttons rather than labels because this
+/// is the surface a finger actually lands on, and pressing it is what
+/// drives the deformation — M22/T22.4.
+#[derive(StaticTree, Default)]
+#[widget(row, spacing = 74.0)]
 struct Tabs {
-    #[widget_id("t0")]
-    t0: Button<Demo, String>,
-    #[widget_id("t1")]
-    t1: Button<Demo, String>,
-    #[widget_id("t2")]
-    t2: Button<Demo, String>,
+    #[widget_id("tab")]
+    t0: Button<Home, String>,
+    #[widget_id("tab")]
+    t1: Button<Home, String>,
+    #[widget_id("tab")]
+    t2: Button<Home, String>,
+    #[widget_id("tab")]
+    t3: Button<Home, String>,
 }
 
 #[derive(StaticTree, Default)]
@@ -278,117 +377,135 @@ struct Floating {
     row: DockRow,
 }
 
-/// **A stack, and the order in it is the whole feature.**
+/// **A stack, and the field order in it is the whole feature.**
 ///
-/// A `column` allocates non-overlapping rects, so a bar laid out above
-/// the page would have nothing behind it to blur. The stack's children
-/// share one rect and paint in field order, so each of these reads
-/// everything declared before it: the grid reads the page, and the bar
-/// and dock read the page *and* the grid.
+/// The stack's children share one rect and paint in order, so each reads
+/// everything declared before it: the icons read the wallpaper, and the
+/// two bars read the wallpaper *and* the icons. A `column` would put
+/// them side by side, and a panel with nothing behind it is a tinted
+/// rectangle.
 #[derive(StaticTree, Default)]
 #[widget(stack)]
 struct Screen {
-    #[widget_id("page")]
-    page: Page,
-    grid: Grid,
-    #[widget_id("bar")]
-    bar: Glass<Bar>,
+    #[widget_id("wall")]
+    wall: Wallpaper,
+    apps: Apps,
+    #[widget_id("status")]
+    status: Glass<Status>,
     dock: Floating,
 }
 
 /// Advance what the tree animates — M22/T22.4.
 ///
 /// There is no framework-walked per-node tick (`App::tick` records why),
-/// so the application names what moves. Without this a panel retargets
-/// on every press and then never travels.
+/// so the application names what moves: twenty-four icons, the status
+/// bar and the dock.
 ///
-/// **`|`, not `||`, and `fold` rather than `any`.** Both short-circuit,
-/// and a short circuit here does not merely mis-report — it stops
-/// calling `tick` on every panel after the first one that is moving, so
-/// pressing two at once animates one of them.
-fn advance(d: &mut Demo, dt_ms: f32) -> bool {
-    let g = &mut d.ui.grid;
-    let cells: [&mut Glass<Cell>; 12] = [
-        &mut g.r0.a, &mut g.r0.b, &mut g.r0.c, &mut g.r0.d,
-        &mut g.r1.a, &mut g.r1.b, &mut g.r1.c, &mut g.r1.d,
-        &mut g.r2.a, &mut g.r2.b, &mut g.r2.c, &mut g.r2.d,
-    ];
-    let moved = cells.into_iter().fold(false, |acc, p| p.tick(dt_ms) | acc);
-    moved | d.ui.bar.tick(dt_ms) | d.ui.dock.row.dock.tick(dt_ms)
+/// **`|=`, not `any` or an early return.** Both short-circuit, and a
+/// short circuit here stops calling `tick` on every panel after the
+/// first one moving — on screen, an icon that ignores you while another
+/// is still settling. `|` on a `bool` evaluates both sides; `||` does
+/// not, and that is the whole difference.
+fn advance(d: &mut Home, dt_ms: f32) -> bool {
+    let a = &mut d.ui.apps;
+    let rows = [&mut a.r0, &mut a.r1, &mut a.r2, &mut a.r3, &mut a.r4, &mut a.r5];
+    let mut moved = false;
+    for r in rows {
+        for icon in [&mut r.a, &mut r.b, &mut r.c, &mut r.d] {
+            moved |= icon.art.tick(dt_ms);
+        }
+    }
+    moved | d.ui.status.tick(dt_ms) | d.ui.dock.row.dock.tick(dt_ms)
 }
 
 #[derive(DeriveApp, Default)]
 #[app(tick = advance)]
-struct Demo {
+struct Home {
     #[tree]
     ui: Screen,
 }
 
-// ---- layout ----------------------------------------------------------
-
-/// Designed at 4K and laid out in fractions of it, so a smaller window
-/// is the same picture rather than a cropped one.
-const W: u32 = 3840;
-const H: u32 = 2160;
-const CELL_W: f32 = 820.0;
-const CELL_H: f32 = 420.0;
-/// `(3840 − 4·820 − 3·48) / 2`, so the grid is centred.
-const MARGIN: f32 = 208.0;
-
-fn cell_ink() -> Patch {
-    Patch::new().color(INK).font_size(34.0).font_weight(700.0)
-}
+// ---- style -----------------------------------------------------------
 
 fn stylesheet() -> Vec<Rule> {
     let mut rules = vec![
         Rule::new(Selector::Kind("Screen"), Patch::new().background(PAGE)),
-        // The page under everything: four rows of six tiles, each
-        // filling its share.
-        Rule::new(Selector::Kind("Tile"), Patch::new().width(Length::FILL).height(Length::FILL)),
-        Rule::new(Selector::Kind("TileRow0"), Patch::new().height(Length::FILL)),
-        Rule::new(Selector::Kind("TileRow1"), Patch::new().height(Length::FILL)),
-        Rule::new(Selector::Kind("TileRow2"), Patch::new().height(Length::FILL)),
-        Rule::new(Selector::Kind("TileRow3"), Patch::new().height(Length::FILL)),
+        // The wallpaper: seven rows, each filling its share, each tile
+        // filling its share of the row.
         Rule::new(
-            Selector::Id("tile_t"),
-            Patch::new().color(TILE_INK).font_size(46.0).font_weight(700.0),
+            Selector::Id("wtile"),
+            Patch::new().width(Length::FILL).height(Length::FILL),
         ),
-        // The bar: a strip at the top of the shared rect. `Glass`
-        // defaults to FILL width and Shrink height, so this pins the
-        // height and the padding and nothing else.
+        Rule::new(Selector::Kind("Patch4"), Patch::new().width(Length::FILL).height(Length::FILL)),
+        // **Every row needs its own height rule.** A derived container
+        // is `Shrink` by default on its cross axis, so without these the
+        // seven rows collapse onto the `Spacer`s inside them and the
+        // wallpaper does not render at all — which is a black screen
+        // with the icons still perfectly correct on top of it.
+        Rule::new(Selector::Kind("WallRow0"), Patch::new().height(Length::FILL)),
+        Rule::new(Selector::Kind("WallRow1"), Patch::new().height(Length::FILL)),
+        Rule::new(Selector::Kind("WallRow2"), Patch::new().height(Length::FILL)),
+        Rule::new(Selector::Kind("WallRow3"), Patch::new().height(Length::FILL)),
+        Rule::new(Selector::Kind("WallRow4"), Patch::new().height(Length::FILL)),
+        Rule::new(Selector::Kind("WallRow5"), Patch::new().height(Length::FILL)),
+        Rule::new(Selector::Kind("WallRow6"), Patch::new().height(Length::FILL)),
+        // The icons. **`radius` is what makes them app icons** — a
+        // square of glass reads as a window, a superellipse-ish rounded
+        // one reads as an icon.
         Rule::new(
-            Selector::Id("bar"),
+            Selector::Id("icon"),
             Patch::new()
-                .height(Length::Fixed(150.0))
-                .padding(Edges { left: MARGIN, right: MARGIN, top: 48.0, bottom: 48.0 }),
+                .width(Length::Fixed(ICON))
+                .height(Length::Fixed(ICON))
+                .radius(58.0),
         ),
         Rule::new(
-            Selector::Id("brand"),
-            Patch::new().color(INK).font_size(44.0).font_weight(700.0),
+            Selector::Id("glyph"),
+            Patch::new().color(INK).font_size(92.0).font_weight(600.0),
         ),
-        Rule::new(Selector::Id("gap"), Patch::new().width(Length::FILL)),
-        Rule::new(Selector::Id("note"), Patch::new().color(DIM).font_size(26.0)),
-        // The grid. Its own padding clears the bar at the top and the
-        // dock at the bottom; the two FILL spacers centre what is left.
+        // `align` is the container's, not the child's: `align_offset`
+        // is applied by the parent to what it lays out.
+        // Fixed on both axes and centred: see `Glyph` for why this is
+        // a stack and why the size is pinned rather than filled.
         Rule::new(
-            Selector::Kind("Grid"),
-            Patch::new().padding(Edges { left: MARGIN, right: MARGIN, top: 200.0, bottom: 220.0 }),
-        ),
-        Rule::new(Selector::Id("gtop"), Patch::new().height(Length::FILL)),
-        Rule::new(Selector::Id("gbot"), Patch::new().height(Length::FILL)),
-        // **One rule, twelve panels.** A selector matches every node
-        // carrying the id, and all twelve are the same geometry.
-        Rule::new(
-            Selector::Id("cellw"),
+            Selector::Kind("Glyph"),
             Patch::new()
-                .width(Length::Fixed(CELL_W))
-                .height(Length::Fixed(CELL_H))
-                .radius(56.0)
-                .padding(Edges { left: 44.0, right: 44.0, top: 40.0, bottom: 40.0 }),
+                .width(Length::Fixed(ICON))
+                .height(Length::Fixed(ICON))
+                .align(Align::Center),
         ),
-        Rule::new(Selector::Id("cap"), cell_ink()),
-        Rule::new(Selector::Id("sub"), Patch::new().color(DIM).font_size(25.0)),
-        // The dock: a pill sized to its tabs, floated to the bottom
+        Rule::new(Selector::Id("name"), Patch::new().color(DIM).font_size(30.0)),
+        Rule::new(
+            Selector::Kind("App"),
+            Patch::new().width(Length::Fixed(ICON)).align(Align::Center),
+        ),
+        // The grid, centred between the two bars by its own padding and
+        // two FILL spacers.
+        Rule::new(
+            Selector::Kind("Apps"),
+            Patch::new().padding(Edges {
+                left: MARGIN,
+                right: MARGIN,
+                top: 300.0,
+                bottom: 400.0,
+            }),
+        ),
+        Rule::new(Selector::Id("atop"), Patch::new().height(Length::FILL)),
+        Rule::new(Selector::Id("abot"), Patch::new().height(Length::FILL)),
+        // The status bar: a strip at the top of the shared rect.
+        Rule::new(
+            Selector::Id("status"),
+            Patch::new()
+                .height(Length::Fixed(190.0))
+                .padding(Edges { left: 64.0, right: 64.0, top: 78.0, bottom: 34.0 }),
+        ),
+        Rule::new(
+            Selector::Id("clock"),
+            Patch::new().color(INK).font_size(38.0).font_weight(700.0),
+        ),
+        Rule::new(Selector::Id("sgap"), Patch::new().width(Length::FILL)),
+        Rule::new(Selector::Id("meta"), Patch::new().color(DIM).font_size(30.0)),
+        // The tab bar: a pill sized to its tabs, floated to the bottom
         // centre by three FILL spacers.
         Rule::new(Selector::Id("push"), Patch::new().height(Length::FILL)),
         Rule::new(Selector::Id("dockl"), Patch::new().width(Length::FILL)),
@@ -396,142 +513,94 @@ fn stylesheet() -> Vec<Rule> {
         // **Both of these, and the second is the one that catches
         // people.** A derived container defaults to FILL width, so
         // `Tabs` would expand to whatever box it was given and the
-        // Shrink panel around it would measure *that* — a full-width
-        // pill with Shrink written on it. A Shrink container needs
-        // Shrink content.
+        // Shrink pill around it would measure *that* — a full-width bar
+        // with Shrink written on it. A Shrink container needs Shrink
+        // content.
         Rule::new(Selector::Kind("Tabs"), Patch::new().width(Length::Shrink)),
         Rule::new(
             Selector::Id("dock"),
             Patch::new()
                 .width(Length::Shrink)
-                .radius(66.0)
-                .padding(Edges { left: 62.0, right: 62.0, top: 34.0, bottom: 34.0 }),
+                .radius(74.0)
+                .padding(Edges { left: 74.0, right: 74.0, top: 44.0, bottom: 44.0 }),
         ),
         Rule::new(
             Selector::Kind("Floating"),
-            Patch::new().padding(Edges { left: 0.0, right: 0.0, top: 0.0, bottom: 70.0 }),
+            Patch::new().padding(Edges { left: 0.0, right: 0.0, top: 0.0, bottom: 90.0 }),
         ),
-    ];
-    for id in ["t0", "t1", "t2"] {
-        rules.push(Rule::new(
-            Selector::Id(id),
+        // No background and no press dim: the *panel* deforms under a
+        // press, which is the whole point, and a grey rectangle
+        // appearing behind the glyph would hide it.
+        Rule::new(
+            Selector::Id("tab"),
             Patch::new()
                 .color(INK)
-                .font_size(30.0)
-                .font_weight(600.0)
+                .font_size(52.0)
                 .background(Color(0, 0, 0, 0))
                 .pressed_dim(0.0),
-        ));
-    }
-    for (id, (_, colour)) in TILE_IDS.iter().zip(TILES.iter()) {
+        ),
+    ];
+    for (id, colour) in WALL_IDS.iter().zip(WALL.iter()) {
         rules.push(Rule::new(Selector::Id(id), Patch::new().background(*colour)));
     }
     rules
 }
 
-// ---- the thirteen materials ------------------------------------------
+// ---- the apps --------------------------------------------------------
 
-/// What each panel turns on, and what it is called.
+/// Twenty-four of them: a glyph and a name. Set here rather than by a
+/// selector, because they are *content* — a stylesheet has no business
+/// knowing what an app is called.
 ///
-/// Every one of these is `Material::LIQUID` with **one** thing changed,
-/// so a screenshot is a controlled comparison rather than twelve
-/// unrelated looks. The captions say which.
-type Spec = (&'static str, &'static str, fn(Material) -> Material);
-
-const SPECS: [Spec; 12] = [
-    ("Frosted", "blur, no bevel — what M19 shipped", |_| Material {
-        blur: 40.0,
-        tint: TINT,
-        ..Material::FROSTED
-    }),
-    ("Liquid", "the preset: bevel, Fresnel, shadow, dispersion", |m| m),
-    ("No dispersion", "the same edge without the colour fringe", |m| Material {
-        dispersion: 0,
-        ..m
-    }),
-    ("Dispersion ×2.8", "blue deviates further than red — T22.2", |m| Material {
-        dispersion: 255,
-        ..m
-    }),
-    ("No adapt", "a fixed tint, whatever is behind it", |m| Material { adapt: 0, ..m }),
-    ("Adapt full", "the tint follows the backdrop — T22.3", |m| Material { adapt: 255, ..m }),
-    ("Desaturated", "chroma pulled out of what shows through", |m| Material {
-        saturation: 40,
-        ..m
-    }),
-    ("Deep shadow", "the unlit rim, darkened — T22.0", |m| Material {
-        shadow: 220,
-        specular: 0.0,
-        ..m
-    }),
-    ("Thick rim", "a wider bevel bends more of the edge", |m| Material {
-        rim: 96.0,
-        refraction: 78.0,
-        ..m
-    }),
-    ("Morph: merged", "one stretched blob — T22.5", |m| Material {
-        morph_y: (260.0 * Material::MORPH_UNIT) as i16,
-        ..m
-    }),
-    ("Morph: neck", "a separation inside κ/2, so it stays joined", |m| Material {
-        morph_y: ((CELL_H + 10.0) * Material::MORPH_UNIT) as i16,
-        ..m
-    }),
-    ("Morph: apart", "past κ/2 the neck pinches off", |m| Material {
-        morph_y: ((CELL_H + 110.0) * Material::MORPH_UNIT) as i16,
-        ..m
-    }),
+/// **Letters, not pictograms**, and that is a measurement rather than a
+/// preference: the first draft used ☎ ✉ ♫ ⚙ and the rest, and the system
+/// font had none of them. Twenty-two of the twenty-four icons rendered
+/// as the missing-glyph box, which is a demonstration of the shaper's
+/// fallback and not of glass. An example that ships has to draw on the
+/// machine it ships to.
+const APPS: [(&str, &str); 24] = [
+    ("M", "Messages"), ("P", "Phone"), ("@", "Mail"), ("W", "Weather"),
+    ("A", "Music"), ("V", "Video"), ("O", "Camera"), ("F", "Photos"),
+    ("D", "Files"), ("N", "Notes"), ("R", "Reminders"), ("C", "Calendar"),
+    ("T", "Clock"), ("S", "Settings"), ("$", "Wallet"), ("X", "Maps"),
+    ("H", "Home"), ("+", "Health"), ("B", "Books"), ("G", "Podcasts"),
+    ("K", "Stocks"), ("Z", "Voice"), ("Y", "Shortcuts"), ("E", "App Store"),
 ];
 
-fn build() -> Demo {
-    let mut app = Demo::default();
-
-    // The page. Six tiles a row, four rows, twenty-four names.
+fn build() -> Home {
+    let mut app = Home::default();
     {
-        let ui = &mut app.ui.page;
+        let a = &mut app.ui.apps;
+        let rows = [&mut a.r0, &mut a.r1, &mut a.r2, &mut a.r3, &mut a.r4, &mut a.r5];
         let mut i = 0;
-        let six = |t: [&mut Tile; 6], i: &mut usize| {
-            for tile in t {
-                tile.name.set(TILES[*i].0.to_string());
-                *i += 1;
+        for r in rows {
+            for icon in [&mut r.a, &mut r.b, &mut r.c, &mut r.d] {
+                icon.art.material = icon_glass();
+                icon.art.content.ch.set(APPS[i].0.into());
+                icon.name.set(APPS[i].1.into());
+                i += 1;
             }
-        };
-        six([&mut ui.r0.a, &mut ui.r0.b, &mut ui.r0.c, &mut ui.r0.d, &mut ui.r0.e, &mut ui.r0.f], &mut i);
-        six([&mut ui.r1.a, &mut ui.r1.b, &mut ui.r1.c, &mut ui.r1.d, &mut ui.r1.e, &mut ui.r1.f], &mut i);
-        six([&mut ui.r2.a, &mut ui.r2.b, &mut ui.r2.c, &mut ui.r2.d, &mut ui.r2.e, &mut ui.r2.f], &mut i);
-        six([&mut ui.r3.a, &mut ui.r3.b, &mut ui.r3.c, &mut ui.r3.d, &mut ui.r3.e, &mut ui.r3.f], &mut i);
-    }
-
-    // The twelve panels.
-    {
-        let g = &mut app.ui.grid;
-        let cells: [&mut Glass<Cell>; 12] = [
-            &mut g.r0.a, &mut g.r0.b, &mut g.r0.c, &mut g.r0.d,
-            &mut g.r1.a, &mut g.r1.b, &mut g.r1.c, &mut g.r1.d,
-            &mut g.r2.a, &mut g.r2.b, &mut g.r2.c, &mut g.r2.d,
-        ];
-        let base = liquid_4k();
-        for (cell, (title, sub, f)) in cells.into_iter().zip(SPECS.iter()) {
-            cell.material = f(base);
-            cell.content.title.set((*title).into());
-            cell.content.sub.set((*sub).into());
         }
     }
+    app.ui.status.material = Material { blur: 26.0, tint: BAR_TINT, ..Material::FROSTED };
+    app.ui.status.content.clock.set("9:41".into());
+    app.ui.status.content.meta.set("twenty-six panels".into());
 
-    app.ui.bar.material = Material { blur: 36.0, tint: TINT, ..Material::FROSTED };
-    app.ui.bar.content.brand.set("glasswall".into());
-    app.ui.bar.content.note.set("fourteen backdrop filters, 3840 × 2160".into());
-
-    app.ui.dock.row.dock.material = liquid_4k();
-    app.ui.dock.row.dock.content.t0.label = "Press".into();
-    app.ui.dock.row.dock.content.t1.label = "any".into();
-    app.ui.dock.row.dock.content.t2.label = "panel".into();
+    app.ui.dock.row.dock.material = Material { tint: BAR_TINT, ..icon_glass() };
+    for (t, g) in [
+        (&mut app.ui.dock.row.dock.content.t0, "P"),
+        (&mut app.ui.dock.row.dock.content.t1, "@"),
+        (&mut app.ui.dock.row.dock.content.t2, "A"),
+        (&mut app.ui.dock.row.dock.content.t3, "O"),
+    ] {
+        t.label = g.into();
+    }
     app
 }
 
 // ---- headless: a frame, and what it costs ----------------------------
 
-fn host(w: u32, h: u32) -> lumen_static_shell::Host<Demo> {
+fn host(w: u32, h: u32) -> lumen_static_shell::Host<Home> {
     use lumen_static_shell::text::{FontMetrics, FontStack};
     let mut host = lumen_static_shell::Host::new(build(), w, h);
     host.set_stylesheet(&stylesheet());
@@ -605,12 +674,12 @@ fn bench(w: u32, h: u32) {
 }
 
 #[cfg(not(feature = "gpu"))]
-fn gpu_bench(_: &lumen_static_shell::Host<Demo>, _: u32, _: u32) {
+fn gpu_bench(_: &lumen_static_shell::Host<Home>, _: u32, _: u32) {
     println!("gpu:      not built — rebuild with `--features gpu` for the number that matters");
 }
 
 #[cfg(feature = "gpu")]
-fn gpu_bench(host: &lumen_static_shell::Host<Demo>, w: u32, h: u32) {
+fn gpu_bench(host: &lumen_static_shell::Host<Home>, w: u32, h: u32) {
     use lumen_static::Renderer as _;
     let Some(mut g) = lumen_static_wgpu::Gpu::headless(w, h) else {
         println!("gpu:      no adapter");
@@ -667,82 +736,151 @@ mod tests {
 
     /// Every panel reaches the display list.
     ///
-    /// Cheap, and it is the assertion the other two rest on: a scene
-    /// that silently dropped its glass would still lay out, still paint,
-    /// and still pass anything measured on the pixels it did emit.
+    /// Cheap, and it is what the others rest on: a scene that silently
+    /// dropped its glass would still lay out, still paint, and still
+    /// pass anything measured on what it did emit.
     #[test]
     fn the_scene_emits_every_panel() {
         let host = host(W, H);
         let n = host.list.cmds.iter().filter(|c| matches!(c, Cmd::Glass { .. })).count();
         println!("{n} glass commands");
-        assert_eq!(n, 14, "twelve grid panels, the bar and the dock");
+        assert_eq!(n, 26, "twenty-four icons, the status bar and the dock");
     }
 
-    /// **A morphing panel inks the union of both blobs.**
+    /// The icon nodes, and the glyph label inside each — found by
+    /// geometry rather than by a hand-counted index that a new field
+    /// would silently shift.
+    fn icons(host: &lumen_static_shell::Host<Home>) -> Vec<(usize, usize)> {
+        let is_icon = |i: usize| {
+            let s = &host.states[i];
+            s.size.w == ICON && s.size.h == ICON
+        };
+        // A `Glass` and the stack inside it are both ICON × ICON, so
+        // they arrive as adjacent pairs; the label is the node after.
+        (0..host.states.len() - 2)
+            .filter(|&i| is_icon(i) && is_icon(i + 1) && !is_icon(i + 2))
+            .map(|i| (i, i + 2))
+            .collect()
+    }
+
+    /// **The glyph is centred in its icon.**
     ///
-    /// The command's rect is the ink, the clip test *and* the source
-    /// (M22/T22.5), so a second blob outside it would be stale, holed
-    /// and short of backdrop. Here that is visible as a command taller
-    /// than the node it came from — and it is what makes the bottom row
-    /// of this example show anything at all.
+    /// Two separate layout traps sit behind this one assertion, and both
+    /// were live in this file before it existed: `FILL` spacers in a
+    /// fixed-size column split the whole *row's* height rather than the
+    /// icon's, and a `FILL`-width container takes the row's remaining
+    /// width — which put every glyph a column to the right of its own
+    /// icon. Neither is a paint bug, so nothing about the pixels of a
+    /// single icon would have caught it.
     #[test]
-    fn the_morph_panels_ink_past_their_own_cells() {
+    fn every_glyph_is_centred_in_its_icon() {
         let host = host(W, H);
-        let tall = host
-            .list
-            .cmds
-            .iter()
-            .filter_map(|c| match c {
-                Cmd::Glass { rect, material, .. } if material.morph_y != 0 => {
-                    Some(rect[3] - rect[1])
-                }
-                _ => None,
-            })
-            .collect::<Vec<_>>();
-        println!("morphing panels are {tall:?} px tall against a {CELL_H} px cell");
-        assert_eq!(tall.len(), 3, "three morph panels in the bottom row");
-        for h in tall {
-            assert!(h > CELL_H + 100.0, "a morphing panel inked only its own cell ({h} px)");
+        let found = icons(&host);
+        assert_eq!(found.len(), 24, "the grid is not twenty-four icons");
+        let mut worst = 0.0f32;
+        for (icon, glyph) in found {
+            let (a, b) = (&host.states[icon], &host.states[glyph]);
+            let dx = (a.pos.x + a.size.w / 2.0) - (b.pos.x + b.size.w / 2.0);
+            let dy = (a.pos.y + a.size.h / 2.0) - (b.pos.y + b.size.h / 2.0);
+            worst = worst.max(dx.abs().max(dy.abs()));
         }
+        println!("worst glyph offset from its icon's centre: {worst:.1} px");
+        assert!(worst < 3.0, "a glyph is {worst:.1} px off its icon's centre");
     }
 
-    /// **Every panel is advanced, not just the first one moving.**
+    /// **The icons are clear**, which is the whole look.
+    ///
+    /// Both directions, because each alone accepts a renderer the other
+    /// rejects: the wallpaper must come through the middle of an icon
+    /// almost unchanged, *and* the icon must still be visible — a tint
+    /// of zero over a flat material would pass the first half and leave
+    /// twenty-four invisible squares.
+    #[test]
+    fn the_icons_are_clear_and_still_visible() {
+        use lumen_static_shell::software::Canvas;
+        let host = host(W, H);
+        let mut c = Canvas::new(W, H);
+        c.clear(PAGE);
+        lumen_static::Renderer::render(&mut c, &host.list, W, H);
+
+        // The same wallpaper with no glass on it at all.
+        let mut bare_host = host2();
+        let mut bare = Canvas::new(W, H);
+        bare.clear(PAGE);
+        lumen_static::Renderer::render(&mut bare, &bare_host.list, W, H);
+        let _ = &mut bare_host;
+
+        let at = |cv: &Canvas, x: usize, y: usize| {
+            let i = (y * W as usize + x) * 4;
+            [cv.pixels[i] as f32, cv.pixels[i + 1] as f32, cv.pixels[i + 2] as f32]
+        };
+        let found = icons(&host);
+        let (mut middle, mut edge) = (0.0f32, 0.0f32);
+        for (icon, _) in &found {
+            let s = &host.states[*icon];
+            let (cx, cy) = (s.pos.x + s.size.w / 2.0, s.pos.y + s.size.h / 2.0);
+            // Off the glyph, which is ink and not glass.
+            let m = (cx as usize + 80, cy as usize);
+            let e = (s.pos.x as usize + 4, cy as usize);
+            let d = |p: (usize, usize)| {
+                let (a, b) = (at(&c, p.0, p.1), at(&bare, p.0, p.1));
+                (0..3).map(|k| (a[k] - b[k]).abs()).fold(0.0, f32::max)
+            };
+            middle = middle.max(d(m));
+            edge = edge.max(d(e));
+        }
+        println!("worst change at an icon's middle {middle:.0}, at its rim {edge:.0}");
+        assert!(middle < 40.0, "the icons are not clear — the middle moved {middle:.0} levels");
+        assert!(edge > 18.0, "the icons are invisible — even the rim moved only {edge:.0}");
+    }
+
+    /// The same tree with every material made fully transparent, so the
+    /// wallpaper can be measured on its own.
+    fn host2() -> lumen_static_shell::Host<Home> {
+        use lumen_static_shell::text::{FontMetrics, FontStack};
+        let mut app = build();
+        let clear = Material { blur: 0.0, rim: 0.0, tint: Color(0, 0, 0, 0), ..Material::FROSTED };
+        {
+            let a = &mut app.ui.apps;
+            for r in [&mut a.r0, &mut a.r1, &mut a.r2, &mut a.r3, &mut a.r4, &mut a.r5] {
+                for icon in [&mut r.a, &mut r.b, &mut r.c, &mut r.d] {
+                    icon.art.material = clear;
+                }
+            }
+        }
+        app.ui.status.material = clear;
+        app.ui.dock.row.dock.material = clear;
+        let mut host = lumen_static_shell::Host::new(app, W, H);
+        host.set_stylesheet(&stylesheet());
+        let mut metrics = FontStack::system().map(FontMetrics::new);
+        for _ in 0..2 {
+            match metrics.as_mut() {
+                Some(m) => host.pump_with(m),
+                None => host.pump(),
+            };
+        }
+        host
+    }
+
+    /// **Every icon is advanced, not just the first one moving.**
     ///
     /// `advance` folds rather than short-circuits, and this is the case
-    /// that tells the difference: one panel is already animating when a
+    /// that tells the difference: one icon is already animating when a
     /// second is pressed. With `any` or `||` the first returns `true`,
-    /// the iteration stops, and the second never moves — which on screen
-    /// is a panel that ignores you while another is settling.
+    /// the iteration stops, and the second never moves — on screen, an
+    /// icon that ignores you while another is settling.
     #[test]
     fn a_second_press_animates_while_the_first_is_still_settling() {
         let mut host = host(W, H);
-        let rest = liquid_4k().rim;
-
-        // **The grid panels are the only nodes of this exact geometry**,
-        // so they can be found by it rather than by a hand-counted index
-        // that a new field would silently shift. Twelve of them, in tree
-        // order, which the corner assertions below pin.
-        let cells: Vec<usize> = host
-            .states
-            .iter()
-            .enumerate()
-            .filter(|(_, s)| s.size.w == CELL_W && s.size.h == CELL_H)
-            .map(|(i, _)| i)
-            .collect();
-        assert_eq!(cells.len(), 12, "the grid is not twelve panels of one size");
-        let (tl, br) = (&host.states[cells[0]], &host.states[*cells.last().unwrap()]);
-        assert!(
-            tl.pos.x < br.pos.x && tl.pos.y < br.pos.y,
-            "the first and last panels are not opposite corners; tree order moved"
-        );
-        let centre = |i: usize| {
-            let s = &host.states[i];
+        let rest = icon_glass().rim;
+        let found = icons(&host);
+        assert_eq!(found.len(), 24, "the grid is not twenty-four icons");
+        let centre = |h: &lumen_static_shell::Host<Home>, i: usize| {
+            let s = &h.states[i];
             (s.pos.x + s.size.w / 2.0, s.pos.y + s.size.h / 2.0)
         };
-        let (p0, p1) = (centre(cells[0]), centre(*cells.last().unwrap()));
+        let (p0, p1) = (centre(&host, found[0].0), centre(&host, found[23].0));
 
-        // Press the first, deform it, then release — it is now animating
-        // back to rest and keeps reporting `true`.
         host.post(Event::down(p0.0, p0.1));
         host.pump();
         for _ in 0..3 {
@@ -751,19 +889,18 @@ mod tests {
         }
         host.post(Event::up(p0.0, p0.1));
         host.pump();
-        assert!(host.tick(0.0), "the first panel settled too early; the test proves nothing");
+        assert!(host.tick(0.0), "the first icon settled too early; the test proves nothing");
 
-        // Now press the second and advance once.
         host.post(Event::down(p1.0, p1.1));
         host.pump();
         host.tick(30.0);
         host.pump();
 
-        let moved = host.app.ui.grid.r2.d.material_now().rim;
-        println!("second panel's rim {moved:.1} against {rest:.1} at rest");
+        let moved = host.app.ui.apps.r5.d.art.material_now().rim;
+        println!("last icon's rim {moved:.1} against {rest:.1} at rest");
         assert!(
-            moved > rest + 1.0,
-            "the second panel never advanced ({moved:.1} vs {rest:.1}) — `advance` short-circuited"
+            moved > rest + 0.5,
+            "the second icon never advanced ({moved:.1} vs {rest:.1}) — `advance` short-circuited"
         );
     }
 }
