@@ -4,6 +4,7 @@
 use lumen_static::ops::{Button, Label, Spacer};
 use lumen_static::{App as AppDerive, EventCtx, StaticTree};
 
+// ANCHOR: tree
 #[derive(StaticTree, Default)]
 #[widget(column, spacing = 2.0)]
 struct Ui {
@@ -17,16 +18,22 @@ struct Ui {
     #[widget_id("go")]
     go: Button<Counter>,
 }
+// ANCHOR_END: tree
 
+// ANCHOR: projection
 /// A `with =` projection: `fn(&mut Target, &Source)`.
 fn shout(dst: &mut Label<String>, src: &str) {
     lumen_static::bind::set_if_changed(dst, &src.to_uppercase());
 }
+// ANCHOR_END: projection
 
+// ANCHOR: hook
 fn recompute(c: &mut Counter) {
     c.hook_ran += 1;
 }
+// ANCHOR_END: hook
 
+// ANCHOR: state
 #[derive(AppDerive, Default)]
 #[app(after_update = recompute)]
 struct Counter {
@@ -43,13 +50,17 @@ struct Counter {
     total: u32,
     hook_ran: u32,
 }
+// ANCHOR_END: state
 
+// ANCHOR: handler
 fn bump(c: &mut Counter, _: &EventCtx) {
     c.count += 1;
 }
+// ANCHOR_END: handler
 
 #[test]
 fn update_is_generated_from_the_declarations() {
+    // ANCHOR: assertions
     use lumen_static::event::App;
 
     let mut c = Counter { total: 10, name: "ada".into(), ..Default::default() };
@@ -66,6 +77,7 @@ fn update_is_generated_from_the_declarations() {
     assert_eq!(c.ui.value.as_str(), "count: 7");
     assert_eq!(c.ui.ratio.as_str(), "3 of 10");
     assert_eq!(c.hook_ran, 2);
+    // ANCHOR_END: assertions
 }
 
 #[test]

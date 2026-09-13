@@ -33,7 +33,7 @@ struct WithEither {
 #[derive(StaticTree, Default)]
 #[widget(column, spacing = 0.0)]
 struct WithDyn {
-    island: Dyn,
+    island: Dyn<()>,
 }
 
 const VIEW: Constraints = Constraints { min_w: 0.0, max_w: 400.0, min_h: 0.0, max_h: 400.0 };

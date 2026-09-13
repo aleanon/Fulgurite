@@ -105,7 +105,7 @@ struct HatchUi {
     list: Repeat<Row>,
     items: List<Row>,
     tabs: Either<Pane, Row>,
-    island: Dyn,
+    island: Dyn<HatchApp>,
     maybe: Option<Fixed>,
 }
 

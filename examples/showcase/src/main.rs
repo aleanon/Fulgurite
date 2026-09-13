@@ -242,6 +242,11 @@ pub struct Show {
     /// Turns, for the demos that animate. Advanced by `App::tick`;
     /// nothing here drives its own clock.
     phase: f32,
+    /// Set when the selection changed and the stage needs re-seeding.
+    /// Not every pump: a `TextInput` owns its text, and re-seeding it
+    /// each frame would overwrite what was typed on the frame after it
+    /// was typed.
+    needs_seed: bool,
     /// The live demo's own state. One store rather than one per demo,
     /// because a showcase only ever has one demo alive.
     presses: u32,
@@ -257,6 +262,11 @@ pub struct Show {
 /// one interaction late. `after_update` runs on every pump, which is
 /// exactly when the store can have changed.
 fn refresh(s: &mut Show) {
+    if s.needs_seed {
+        s.needs_seed = false;
+        let e = &CATALOG[s.selected];
+        (e.seed)(s);
+    }
     // **Read the typed fields back before reporting.** This is what a
     // `Dyn` island could not do: a `Slider` owns its value, and through
     // a `Box<dyn Node>` there was no handle to ask.
@@ -291,6 +301,7 @@ fn advance(s: &mut Show, dt_ms: f32) -> bool {
 fn rebuild(s: &mut Show) {
     let e = &CATALOG[s.selected];
     s.ui.body.stage.note.set(e.note.into());
+    s.needs_seed = true;
     // **ASCII, not `\u{25be}`.** The system font has no chevron and
     // `examples/glasswall` already paid for that lesson: a missing glyph
     // renders as the fallback box, which looks like a bug in the widget
@@ -461,6 +472,9 @@ fn build(entry: usize, open: bool) -> Show {
     app.open = open;
     rebuild(&mut app);
     sync_open(&mut app);
+    // **Last**, and it must be last: the cascade that follows resolves
+    // every demo node's style from the widget actually sitting there.
+    app.ui.body.stage.row.demos.fill_all();
     app
 }
 
@@ -525,6 +539,16 @@ fn main() {
 /// One dropdown row's height.
 const ROW_H: f32 = 30.0;
 
+/// The shape all three button variants share; only the colours differ.
+fn btn() -> lumen_static::style::Patch {
+    use lumen_static::style::Patch;
+    Patch::new()
+        .radius(8.0)
+        .font_size(15.0)
+        .font_weight(600.0)
+        .padding(Edges { left: 18.0, right: 18.0, top: 10.0, bottom: 10.0 })
+}
+
 fn stylesheet() -> Vec<StyleRule> {
     use lumen_static::style::{Patch, Selector};
     vec![
@@ -575,6 +599,56 @@ fn stylesheet() -> Vec<StyleRule> {
                 .background(BAND)
                 .radius(10.0),
         ),
+        // ---- the demos -------------------------------------------
+        //
+        // **A widget's `defaults()` is a floor, not a look.** It is what
+        // makes a control visible with no stylesheet at all — the
+        // contract `Toggle`'s module note records — and for a badge or a
+        // switch that is already the whole picture. For a button and a
+        // field it is not: the core ships them plain on purpose, because
+        // a toolkit that bakes in a house style is a toolkit you fight.
+        // A showcase has to supply the style it wants to show, and the
+        // first version of this file supplied none — so a `TextInput`
+        // rendered as its text and nothing else, which is to say as a
+        // `Label`.
+        StyleRule::new(
+            Selector::Id("d_button_a"),
+            btn().background(ACCENT).color(BAND),
+        ),
+        StyleRule::new(
+            Selector::Id("d_button_b"),
+            btn().background(BAND).color(INK),
+        ),
+        StyleRule::new(
+            Selector::Id("d_button_c"),
+            btn().background(Color(0, 0, 0, 0)).color(ACCENT),
+        ),
+        // The field: a ground, a rounded edge, room for a caret.
+        StyleRule::new(
+            Selector::Id("d_textinput_a"),
+            Patch::new()
+                .width(Length::Fixed(260.0))
+                .height(Length::Fixed(38.0))
+                .background(BAND)
+                .color(INK)
+                .radius(8.0)
+                .font_size(15.0)
+                .padding(Edges { left: 12.0, right: 12.0, top: 9.0, bottom: 9.0 }),
+        ),
+        // The ones whose width is the demo: a bar, a divider, a
+        // skeleton and a slider all fill whatever they are given, and on
+        // an empty stage that is the whole window.
+        StyleRule::new(Selector::Id("d_slider_a"), Patch::new().width(Length::Fixed(280.0))),
+        StyleRule::new(Selector::Id("d_progressbar_a"), Patch::new().width(Length::Fixed(280.0))),
+        StyleRule::new(Selector::Id("d_divider_a"), Patch::new().width(Length::Fixed(280.0))),
+        StyleRule::new(
+            Selector::Id("d_skeleton_a"),
+            Patch::new().width(Length::Fixed(180.0)).height(Length::Fixed(18.0)),
+        ),
+        StyleRule::new(
+            Selector::Id("d_skeleton_b"),
+            Patch::new().width(Length::Fixed(120.0)).height(Length::Fixed(18.0)),
+        ),
         StyleRule::new(
             Selector::Id("opt"),
             Patch::new()
@@ -594,6 +668,21 @@ fn stylesheet() -> Vec<StyleRule> {
 mod tests {
     use super::*;
     use lumen_static::display::Cmd;
+
+    /// An `EventCtx` for a press, for calling a handler directly.
+    fn press_at(x: f32, y: f32) -> EventCtx {
+        EventCtx {
+            event: Event::down(x, y),
+            node: 0,
+            row: None,
+            inner: 0,
+            pos: lumen_static::Point { x, y },
+            local: lumen_static::Point { x, y },
+            button: PointerButton::Left,
+            clicks: 1,
+            mods: Mods::NONE,
+        }
+    }
 
     /// The `Stage` node's index. Its `pos.y` is where the header stops
     /// and the demo's own commands start.
@@ -683,6 +772,34 @@ mod tests {
             );
             assert!(blurb, "{}'s blurb never reached the header", e.name);
             assert!(demo > 0, "{} put nothing on the stage", e.name);
+
+            // **A widget that draws only text is a label.** That is the
+            // bug this gate exists for: the demos got no stylesheet
+            // rules at first, so a `TextInput` rendered as its text and
+            // nothing else — no ground, no edge, no caret room — and so
+            // did a `Button`. `defaults()` is a floor that keeps a
+            // control *visible*, not a look; a showcase has to supply
+            // the style it means to show.
+            //
+            // `Label` is the one entry exempt, because text is all it
+            // is.
+            if e.name != "Label" {
+                let shapes = h
+                    .list
+                    .cmds
+                    .iter()
+                    .filter(|c| match c {
+                        Cmd::Rect { rect, .. } | Cmd::RoundedRect { rect, .. } => rect[1] >= top,
+                        Cmd::Line { a, .. } => a.y >= top,
+                        _ => false,
+                    })
+                    .count();
+                assert!(
+                    shapes > 0,
+                    "{} drew only text on the stage — it looks like a label",
+                    e.name
+                );
+            }
         }
     }
 
@@ -756,34 +873,38 @@ mod tests {
         assert!(shown, "the readout did not follow the press");
     }
 
-    /// **A `Dyn` island reports no handler — pinned, so nobody reaches
-    /// for one again.**
+    /// **A `Dyn` island routes a handler into its content** — M23.
     ///
-    /// This is the framework fact that made the first version of the
-    /// stage silently dead, and it is not a defect: `Dyn` is a
-    /// `Box<dyn Node>` and the application type is exactly what the
-    /// erasure erased, so there is nothing for `Handlers<S>` to forward
-    /// to. It is a *cost* of the hatch, and one its own rustdoc does not
-    /// spell out. Asserted here rather than remembered.
+    /// This test said the opposite one commit ago, and pinned it: `Dyn`
+    /// boxed a `dyn Node`, which has no `Handlers<S>` because the
+    /// application type is exactly what the erasure erased, so every
+    /// interactive widget in an island was dead. The fix is a supertrait
+    /// — `NodeFor<S>: Node` with a blanket impl — and the island boxes
+    /// that instead.
+    ///
+    /// The stage does **not** use one: a typed `Option` field can be
+    /// *read* as well as clicked, which is what lets a `Slider`'s value
+    /// reach the readout. The hatch is for content whose shape is
+    /// genuinely unknown, and this is what it now costs to use.
     #[test]
-    fn a_dyn_island_cannot_route_a_handler() {
+    fn a_dyn_island_routes_a_handler() {
         use lumen_static::event::{Handlers, NodeSel};
         let mut b = Button::<Show, String>::default();
         b.label = "live".into();
         b.on_click = |s: &mut Show, _: &EventCtx| s.presses += 1;
-        // The same button, reachable directly...
         let direct: Option<fn(&mut Show, &EventCtx)> =
             Handlers::<Show>::handler(&b, NodeSel { i: 0, inner: None });
-        // ...and through an island.
-        let island = lumen_static::Dyn::new(b);
+        let island: lumen_static::Dyn<Show> = lumen_static::Dyn::new(b);
         let through: Option<fn(&mut Show, &EventCtx)> =
             Handlers::<Show>::handler(&island, NodeSel { i: 0, inner: None });
         println!("direct {:?}, through a Dyn {:?}", direct.is_some(), through.is_some());
         assert!(direct.is_some(), "a wired button reports no handler at all");
-        assert!(
-            through.is_none(),
-            "a Dyn now routes handlers — the stage could use one again, and this test should go"
-        );
+        assert!(through.is_some(), "a Dyn island still swallows its content's handlers");
+
+        // And it is the *same* handler, not merely some handler.
+        let mut s = Show::default();
+        (through.unwrap())(&mut s, &press_at(0.0, 0.0));
+        assert_eq!(s.presses, 1, "the routed handler is not the button's");
     }
 
     /// **Picking a row changes what is on the stage.**
@@ -794,18 +915,7 @@ mod tests {
     fn picking_a_row_swaps_the_demo() {
         let mut s = build(0, true);
         assert_eq!(s.selected, 0);
-        let cx = EventCtx {
-            event: Event::down(0.0, 0.0),
-            node: 0,
-            row: None,
-            inner: 0,
-            pos: lumen_static::Point { x: 0.0, y: 0.0 },
-            local: lumen_static::Point { x: 0.0, y: 0.0 },
-            button: PointerButton::Left,
-            clicks: 1,
-            mods: Mods::NONE,
-        };
-        PICKERS[15](&mut s, &cx);
+        PICKERS[15](&mut s, &press_at(0.0, 0.0));
         println!("after picking row 15: {} ({})", CATALOG[s.selected].name, s.selected);
         assert_eq!(s.selected, 15, "the handler picked the wrong entry");
         assert!(!s.open, "picking a row left the dropdown open");

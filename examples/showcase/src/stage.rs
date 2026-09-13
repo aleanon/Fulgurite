@@ -30,170 +30,170 @@ use super::*;
 #[derive(StaticTree, Default)]
 #[widget(row, spacing = 12.0)]
 pub struct DLabel {
-    #[widget_id("d_label")]
+    #[widget_id("d_label_a")]
     pub a: Label<String>,
 }
 
 #[derive(StaticTree, Default)]
 #[widget(row, spacing = 12.0)]
 pub struct DBadge {
-    #[widget_id("d_badge")]
+    #[widget_id("d_badge_a")]
     pub a: Badge<String>,
-    #[widget_id("d_badge")]
+    #[widget_id("d_badge_b")]
     pub b: Badge<String>,
-    #[widget_id("d_badge")]
+    #[widget_id("d_badge_c")]
     pub c: Badge<String>,
 }
 
 #[derive(StaticTree, Default)]
 #[widget(row, spacing = 12.0)]
 pub struct DChip {
-    #[widget_id("d_chip")]
+    #[widget_id("d_chip_a")]
     pub a: Chip<String>,
-    #[widget_id("d_chip")]
+    #[widget_id("d_chip_b")]
     pub b: Chip<String>,
-    #[widget_id("d_chip")]
+    #[widget_id("d_chip_c")]
     pub c: Chip<String>,
 }
 
 #[derive(StaticTree, Default)]
 #[widget(row, spacing = 12.0)]
 pub struct DAvatar {
-    #[widget_id("d_avatar")]
+    #[widget_id("d_avatar_a")]
     pub a: Avatar<String>,
-    #[widget_id("d_avatar")]
+    #[widget_id("d_avatar_b")]
     pub b: Avatar<String>,
-    #[widget_id("d_avatar")]
+    #[widget_id("d_avatar_c")]
     pub c: Avatar<String>,
 }
 
 #[derive(StaticTree, Default)]
 #[widget(row, spacing = 12.0)]
 pub struct DIcon {
-    #[widget_id("d_icon")]
+    #[widget_id("d_icon_a")]
     pub a: Icon,
-    #[widget_id("d_icon")]
+    #[widget_id("d_icon_b")]
     pub b: Icon,
-    #[widget_id("d_icon")]
+    #[widget_id("d_icon_c")]
     pub c: Icon,
-    #[widget_id("d_icon")]
+    #[widget_id("d_icon_d")]
     pub d: Icon,
-    #[widget_id("d_icon")]
+    #[widget_id("d_icon_e")]
     pub e: Icon,
-    #[widget_id("d_icon")]
+    #[widget_id("d_icon_f")]
     pub f: Icon,
-    #[widget_id("d_icon")]
+    #[widget_id("d_icon_g")]
     pub g: Icon,
-    #[widget_id("d_icon")]
+    #[widget_id("d_icon_h")]
     pub h: Icon,
 }
 
 #[derive(StaticTree, Default)]
 #[widget(row, spacing = 12.0)]
 pub struct DDivider {
-    #[widget_id("d_divider")]
+    #[widget_id("d_divider_a")]
     pub a: Divider,
 }
 
 #[derive(StaticTree, Default)]
 #[widget(row, spacing = 12.0)]
 pub struct DButton {
-    #[widget_id("d_button")]
+    #[widget_id("d_button_a")]
     pub a: Button<Show, String>,
-    #[widget_id("d_button")]
+    #[widget_id("d_button_b")]
     pub b: Button<Show, String>,
-    #[widget_id("d_button")]
+    #[widget_id("d_button_c")]
     pub c: Button<Show, String>,
 }
 
 #[derive(StaticTree, Default)]
 #[widget(row, spacing = 12.0)]
 pub struct DCheckBox {
-    #[widget_id("d_checkbox")]
+    #[widget_id("d_checkbox_a")]
     pub a: CheckBox<Show>,
-    #[widget_id("d_checkbox")]
+    #[widget_id("d_checkbox_b")]
     pub b: CheckBox<Show>,
 }
 
 #[derive(StaticTree, Default)]
 #[widget(row, spacing = 12.0)]
 pub struct DSwitch {
-    #[widget_id("d_switch")]
+    #[widget_id("d_switch_a")]
     pub a: Switch<Show>,
-    #[widget_id("d_switch")]
+    #[widget_id("d_switch_b")]
     pub b: Switch<Show>,
 }
 
 #[derive(StaticTree, Default)]
 #[widget(row, spacing = 12.0)]
 pub struct DRadio {
-    #[widget_id("d_radio")]
+    #[widget_id("d_radio_a")]
     pub a: Radio<Show>,
-    #[widget_id("d_radio")]
+    #[widget_id("d_radio_b")]
     pub b: Radio<Show>,
-    #[widget_id("d_radio")]
+    #[widget_id("d_radio_c")]
     pub c: Radio<Show>,
 }
 
 #[derive(StaticTree, Default)]
 #[widget(row, spacing = 12.0)]
 pub struct DSlider {
-    #[widget_id("d_slider")]
+    #[widget_id("d_slider_a")]
     pub a: Slider,
 }
 
 #[derive(StaticTree, Default)]
 #[widget(row, spacing = 12.0)]
 pub struct DTextInput {
-    #[widget_id("d_textinput")]
+    #[widget_id("d_textinput_a")]
     pub a: TextInput<String>,
 }
 
 #[derive(StaticTree, Default)]
 #[widget(row, spacing = 12.0)]
 pub struct DProgressBar {
-    #[widget_id("d_progress")]
+    #[widget_id("d_progress_a")]
     pub a: ProgressBar,
 }
 
 #[derive(StaticTree, Default)]
 #[widget(row, spacing = 12.0)]
 pub struct DSpinner {
-    #[widget_id("d_spinner")]
+    #[widget_id("d_spinner_a")]
     pub a: Spinner,
-    #[widget_id("d_spinner")]
+    #[widget_id("d_spinner_b")]
     pub b: Spinner,
-    #[widget_id("d_spinner")]
+    #[widget_id("d_spinner_c")]
     pub c: Spinner,
 }
 
 #[derive(StaticTree, Default)]
 #[widget(row, spacing = 12.0)]
 pub struct DSkeleton {
-    #[widget_id("d_skeleton")]
+    #[widget_id("d_skeleton_a")]
     pub a: Skeleton,
-    #[widget_id("d_skeleton")]
+    #[widget_id("d_skeleton_b")]
     pub b: Skeleton,
 }
 
 #[derive(StaticTree, Default)]
 #[widget(row, spacing = 12.0)]
 pub struct DBarChart {
-    #[widget_id("d_bar")]
+    #[widget_id("d_bar_a")]
     pub a: BarChart,
 }
 
 #[derive(StaticTree, Default)]
 #[widget(row, spacing = 12.0)]
 pub struct DLineChart {
-    #[widget_id("d_line")]
+    #[widget_id("d_line_a")]
     pub a: LineChart,
 }
 
 #[derive(StaticTree, Default)]
 #[widget(row, spacing = 12.0)]
 pub struct DPieChart {
-    #[widget_id("d_pie")]
+    #[widget_id("d_pie_a")]
     pub a: PieChart,
 }
 
@@ -226,6 +226,40 @@ pub struct Demos {
 pub const DEMOS: usize = 18;
 
 impl Demos {
+    /// Make **every** demo present, for the cascade's benefit.
+    ///
+    /// **The cascade runs once**, when the stylesheet is set, and
+    /// `Option<W>::node` returns the *`Option`* when it is `None` — so a
+    /// demo that was absent at that moment had its style resolved from
+    /// `Spacer`'s defaults rather than the widget's. Every badge, chip,
+    /// toggle and chart then painted with a transparent background and
+    /// no size of its own, which on screen is a widget that looks like
+    /// a label. That is exactly what it looked like.
+    ///
+    /// So the tree is built full, cascaded, and reduced to one demo on
+    /// the first pump. The style array is indexed by node and is not
+    /// touched by hiding, so the resolved styles survive.
+    pub fn fill_all(&mut self) {
+        self.label = Some(Default::default());
+        self.badge = Some(Default::default());
+        self.chip = Some(Default::default());
+        self.avatar = Some(Default::default());
+        self.icon = Some(Default::default());
+        self.divider = Some(Default::default());
+        self.button = Some(Default::default());
+        self.checkbox = Some(Default::default());
+        self.switch = Some(Default::default());
+        self.radio = Some(Default::default());
+        self.slider = Some(Default::default());
+        self.textinput = Some(Default::default());
+        self.progress = Some(Default::default());
+        self.spinner = Some(Default::default());
+        self.skeleton = Some(Default::default());
+        self.bar = Some(Default::default());
+        self.line = Some(Default::default());
+        self.pie = Some(Default::default());
+    }
+
     /// How many demos are present. **Exactly one, always** — and the
     /// reason this exists rather than being obvious: `clear` is a
     /// hand-written list of eighteen fields, and a field left out of it

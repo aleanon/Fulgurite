@@ -252,7 +252,7 @@ fn dyn_islands_carry_runtime_content() {
     use lumen_static::hatch::Dyn;
 
     const _: () = assert!(<Dyn as Widget>::NODE_COUNT == 1);
-    let mut d = Dyn::new(Panel::default());
+    let mut d: Dyn = Dyn::new(Panel::default());
     let sty = pass::default_styles(&d);
     let mut st = [NodeState::default(); 1];
     pass::layout(&mut d, &sty, &mut st, VIEW);
@@ -280,7 +280,7 @@ fn a_dyn_island_checks_its_content_depth_at_construction() {
     use lumen_static::desc::MAX_DEPTH;
     use lumen_static::hatch::Dyn;
 
-    let d = Dyn::new(Deep::default());
+    let d: Dyn = Dyn::new(Deep::default());
     assert_eq!(d.content_depth(), <Deep as Widget>::DEPTH, "the real depth is recorded");
     assert!(d.content_depth() < MAX_DEPTH, "and checked against the cap at construction");
 

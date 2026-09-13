@@ -151,7 +151,7 @@ pub use desc::{
 pub use hatch::{Either, Side};
 pub use invalidate::{Boundaries, Everything, Invalidation};
 #[cfg(feature = "alloc")]
-pub use hatch::{Dyn, List};
+pub use hatch::{Dyn, List, NodeFor};
 pub use input::TextInput;
 pub use glass::Glass;
 pub use scroll::ScrollView;

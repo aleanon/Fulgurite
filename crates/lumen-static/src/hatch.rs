@@ -682,10 +682,38 @@ where
 /// dynamism cost me" is answerable in the type system rather than in
 /// prose: a `--no-default-features` build simply does not have it, and
 /// the compiler names the line that wanted one.
+/// A [`Node`] that can also route a handler for `S` — M23.
+///
+/// **The supertrait that makes an island interactive.** `Dyn` boxes its
+/// content, and a `Box<dyn Node>` has no `Handlers<S>`: the application
+/// type is exactly what the erasure erased. So the island boxes *this*
+/// instead, and the blanket impl below means any widget that already
+/// answers `Handlers<S>` qualifies without writing anything.
+///
+/// It exists because the alternative shipped and was silently broken:
+/// `examples/showcase` put its demos in an island, and every button,
+/// checkbox and field in it could be hit-tested, hovered and pressed
+/// while no handler ever ran.
 #[cfg(feature = "alloc")]
-pub struct Dyn {
+pub trait NodeFor<S>: Node {
+    fn handler_for(&self, sel: crate::event::NodeSel)
+        -> Option<fn(&mut S, &crate::event::EventCtx)>;
+}
+
+#[cfg(feature = "alloc")]
+impl<S, W: Node + crate::event::Handlers<S>> NodeFor<S> for W {
+    fn handler_for(
+        &self,
+        sel: crate::event::NodeSel,
+    ) -> Option<fn(&mut S, &crate::event::EventCtx)> {
+        crate::event::Handlers::handler(self, sel)
+    }
+}
+
+#[cfg(feature = "alloc")]
+pub struct Dyn<S = ()> {
     content_depth: usize,
-    inner: Box<dyn Node>,
+    inner: Box<dyn NodeFor<S>>,
     table: &'static [NodeDesc],
     /// One instance's worth. `Arena` is keyed on a runtime node count,
     /// which is what lets a type-erased island share it with the other
@@ -694,7 +722,7 @@ pub struct Dyn {
 }
 
 #[cfg(feature = "alloc")]
-impl Dyn {
+impl<S> Dyn<S> {
     /// Box a widget as an island.
     ///
     /// # Panics
@@ -704,7 +732,7 @@ impl Dyn {
     /// the only depth check an island can make: `W::DEPTH` is known
     /// here, but the island's *own* position in the tree is not, because
     /// the type erasure is the point. See `content_depth`.
-    pub fn new<W: Widget + 'static>(w: W) -> Self {
+    pub fn new<W: Widget + crate::event::Handlers<S> + 'static>(w: W) -> Self {
         assert!(
             W::DEPTH < crate::desc::MAX_DEPTH,
             "Dyn island content is {} deep, over MAX_DEPTH ({})",
@@ -729,7 +757,7 @@ impl Dyn {
     }
 
     /// Swap the island's content at runtime — the point of the hatch.
-    pub fn replace<W: Widget + 'static>(&mut self, w: W) {
+    pub fn replace<W: Widget + crate::event::Handlers<S> + 'static>(&mut self, w: W) {
         *self = Dyn::new(w);
     }
 
@@ -743,14 +771,14 @@ impl Dyn {
 }
 
 #[cfg(feature = "alloc")]
-impl Default for Dyn {
+impl<S> Default for Dyn<S> {
     fn default() -> Self {
         Dyn::new(crate::ops::Spacer)
     }
 }
 
 #[cfg(feature = "alloc")]
-impl Widget for Dyn {
+impl<S> Widget for Dyn<S> {
     const NODE_COUNT: usize = 1;
     /// **A lower bound, and the one hole in the `MAX_DEPTH` guarantee.**
     ///
@@ -779,7 +807,7 @@ impl Widget for Dyn {
 }
 
 #[cfg(feature = "alloc")]
-impl Node for Dyn {
+impl<S> Node for Dyn<S> {
     fn arena_count(&self) -> usize {
         1
     }
@@ -875,11 +903,17 @@ impl Node for Dyn {
 /// (`docs/events-decision.md`'s async seam), which is the honest place
 /// for it.
 #[cfg(feature = "alloc")]
-impl<S> crate::event::Handlers<S> for Dyn {
+/// **Routes into the island** — M23.
+///
+/// This returned `None` unconditionally until the supertrait above
+/// existed, and the comment explaining why was correct about the cause
+/// and wrong about it being unavoidable: nothing can be forwarded to a
+/// `Box<dyn Node>`, so the island boxes a `dyn NodeFor<S>` instead.
+impl<S> crate::event::Handlers<S> for Dyn<S> {
     fn handler(
         &self,
-        _sel: crate::event::NodeSel,
+        sel: crate::event::NodeSel,
     ) -> Option<fn(&mut S, &crate::event::EventCtx)> {
-        None
+        self.inner.handler_for(sel)
     }
 }

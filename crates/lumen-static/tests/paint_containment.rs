@@ -145,7 +145,7 @@ struct WithList {
 #[widget(column, spacing = 0.0)]
 struct WithDyn {
     #[widget_id("subject")]
-    inner: Dyn,
+    inner: Dyn<()>,
 }
 
 #[derive(StaticTree, Default)]

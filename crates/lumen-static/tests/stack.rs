@@ -15,6 +15,7 @@ use lumen_static::{
     pass, Cmd, Constraints, DisplayList, Length, NodeState, Point, StaticTree, Style, Widget,
 };
 
+// ANCHOR: stack
 #[derive(StaticTree, Default)]
 #[widget(stack)]
 struct Panel {
@@ -23,6 +24,7 @@ struct Panel {
     #[widget_id("over")]
     over: Fixed,
 }
+// ANCHOR_END: stack
 
 #[derive(StaticTree, Default)]
 #[widget(column, spacing = 0.0)]

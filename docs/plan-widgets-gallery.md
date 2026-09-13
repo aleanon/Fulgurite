@@ -88,12 +88,20 @@ showcase got it wrong first. Three candidates:
    cascade can say it, but every demo pays layout every frame.
 3. `Dyn` — a boxed `dyn Node` island with `replace`.
 
-**Three was chosen and it was wrong.** `Dyn`'s `Handlers<S>` returns
-`None` unconditionally, because the application type is exactly what the
-erasure erased. Every button, checkbox, radio and text field in the
-showcase could be hit-tested, hovered and pressed, and no handler ever
-ran. Nothing that stopped at "the demo paints" could see it — and the
-first round of tests stopped there.
+**Three was chosen and it was wrong — and then it was fixed in the
+core.** `Dyn`'s `Handlers<S>` returned `None` unconditionally, because
+the application type is exactly what the erasure erased. Every button,
+checkbox, radio and text field in the showcase could be hit-tested,
+hovered and pressed, and no handler ever ran. Nothing that stopped at
+"the demo paints" could see it — and the first round of tests stopped
+there.
+
+**`Dyn` routes handlers now** (M23/T23.1b). The island boxes a
+`dyn NodeFor<S>` — a supertrait of `Node` with a blanket impl for
+anything that already answers `Handlers<S>` — instead of a bare
+`dyn Node`, and `Dyn<S>` forwards to it. The cost is that an island in
+an application's tree is `Dyn<TheApp>` rather than `Dyn`; `Dyn<()>`
+remains for content that only paints.
 
 The answer is **one above the list: every demo is a typed `Option`
 field, and exactly one is `Some`.** `Option` is the core's own hide
@@ -108,11 +116,25 @@ mode: `Demos::clear` is a hand-written list of eighteen fields, and one
 left out leaves the previous demo underneath the new one.
 `Demos::shown()` is asserted to be exactly 1 after every selection.
 
-**Two lessons for T23.2 onward.** `Dyn` is for content that only has to
-*paint* — it cannot carry an interaction to the application, and its own
-rustdoc does not say so; `tests::a_dyn_island_cannot_route_a_handler`
-pins the fact. And a widget test that asserts only "it drew something"
-will pass on a widget nobody can use.
+**And the cascade runs once.** The second bug in the same file, and the
+more surprising one: `set_stylesheet` resolves every node's style *once*
+from `Node::defaults()`, and `Option<W>::node` returns the **`Option`**
+when it is `None`. So every demo that was absent at that moment had its
+style resolved from `Spacer`'s defaults — transparent background, no
+size of its own — and painted as bare text. On screen, every widget
+looked like a label.
+
+The tree is therefore built **full**, cascaded, and reduced to one demo
+on the first pump: `Demos::fill_all` exists for the cascade's benefit
+and nothing else. The style array is indexed by node and hiding does not
+touch it, so the resolved styles survive.
+
+**Three lessons for T23.2 onward.** A widget's `defaults()` is a floor
+that keeps it *visible*, not a look — a showcase supplies the style it
+means to show, and `TextInput` and `Button` ship plain on purpose. A
+subtree that is `None` when the stylesheet is set is a subtree styled as
+a `Spacer`. And a widget test that asserts only "it drew something" will
+pass on a widget nobody can use *and* on one that draws only its text.
 
 **The menu is a field per entry, not a `Repeat`.** Both off-table
 containers were tried; neither painted a row, which is a seam to

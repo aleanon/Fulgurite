@@ -81,7 +81,7 @@ struct Tall {
 #[widget(column, spacing = 0.0)]
 struct WithDyn {
     #[widget_id("dyn")]
-    island: Dyn,
+    island: Dyn<()>,
 }
 
 #[test]
