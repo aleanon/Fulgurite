@@ -1,0 +1,338 @@
+//! Progress, and the two ways of saying "not yet": a spinner and a
+//! skeleton.
+//!
+//! All three are leaves, and two of them animate. Neither animates
+//! *itself*: there is no framework-walked per-node tick — `App::tick`
+//! records why — so the application advances the phase and binds it,
+//! exactly as it does for `Glass`'s press. A widget that drove its own
+//! clock would need a virtual call per node per frame on trees that
+//! animate nothing.
+
+use lumen_static::desc::{NodeDesc, NodeState, NO_PARENT};
+use lumen_static::display::{Color, Painter};
+use lumen_static::ops::{record_painted, rect_of, resolve_self};
+use lumen_static::style::{Length, Style};
+use lumen_static::widget::{Node, Widget};
+use lumen_static::{leaf_common, Constraints, LayoutCx, Point, Size};
+
+const LEAF: &[NodeDesc] = &[NodeDesc::new(0, NO_PARENT, 0, 0, 0)];
+
+/// A determinate bar.
+///
+/// `value` is a presentation copy in `0..=1`, clamped on the way to the
+/// screen rather than on the way in: a binding that produced 1.4 should
+/// draw a full bar, not panic, and clamping at the edge keeps the
+/// application's own number untouched.
+#[derive(Default)]
+pub struct ProgressBar {
+    /// How full, `0.0..=1.0`. Bind it.
+    pub value: f32,
+}
+
+impl ProgressBar {
+    pub fn new(value: f32) -> Self {
+        ProgressBar { value }
+    }
+    /// The drawn fraction: clamped, and **NaN lands at zero**. Spelled
+    /// with the comparison this way round because every comparison
+    /// against NaN is false, so `v > 0.0` is the arm that rejects it —
+    /// the same trick `Animated::settled` uses.
+    fn fraction(&self) -> f32 {
+        if self.value > 0.0 {
+            self.value.min(1.0)
+        } else {
+            0.0
+        }
+    }
+}
+
+impl Widget for ProgressBar {
+    const NODE_COUNT: usize = 1;
+    const DEPTH: usize = 1;
+    const IS_RIGID: bool = true;
+    const SUB_TABLE: &'static [NodeDesc] = LEAF;
+}
+
+const BAR_H: f32 = 8.0;
+
+impl Node for ProgressBar {
+    fn kind_name(&self) -> &'static str {
+        "progressbar"
+    }
+
+    fn defaults(&self) -> Style {
+        Style {
+            width: Length::FILL,
+            height: Length::Fixed(BAR_H),
+            radius: BAR_H / 2.0,
+            background: Color(0xe2, 0xe8, 0xf0, 0xff),
+            color: Color(0x2f, 0x6b, 0xff, 0xff),
+            ..Style::default()
+        }
+    }
+
+    fn layout(
+        &mut self,
+        _cx: &mut LayoutCx,
+        limits: Constraints,
+        style: &[Style],
+        st: &mut [NodeState],
+        i: usize,
+    ) -> Size {
+        let me = style[i];
+        let size = resolve_self(limits, &me, Size { w: 0.0, h: BAR_H });
+        record_painted(st, i, limits, size, &me)
+    }
+
+    fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
+        let s = &st[i];
+        let r = rect_of(s);
+        let (w, h) = (r[2] - r[0], r[3] - r[1]);
+        if w <= 0.0 || h <= 0.0 {
+            return;
+        }
+        let radius = s.radius.min(h / 2.0);
+        out.rounded_rect(r, s.bg, radius);
+        let filled = w * self.fraction();
+        // **Not painted at all when empty.** A zero-width rounded rect
+        // with a radius still covers `2 × radius` of pixels at the
+        // renderer's clamp, so a 0% bar would show a dot.
+        if filled > 0.5 {
+            out.rounded_rect([r[0], r[1], r[0] + filled.max(radius * 2.0), r[3]], s.fg, radius);
+        }
+    }
+
+    leaf_common!(ProgressBar, 0, nohit);
+}
+
+/// An indeterminate spinner: a ring with a travelling gap.
+///
+/// `phase` is turns, `0.0..=1.0`, and **the application advances it**.
+/// A spinner that owned its own clock would be the per-node tick the
+/// framework does not have.
+#[derive(Default)]
+pub struct Spinner {
+    /// Where the gap is, in turns. Bind it from `App::tick`.
+    pub phase: f32,
+}
+
+impl Spinner {
+    pub fn new(phase: f32) -> Self {
+        Spinner { phase }
+    }
+}
+
+impl Widget for Spinner {
+    const NODE_COUNT: usize = 1;
+    const DEPTH: usize = 1;
+    const IS_RIGID: bool = true;
+    const SUB_TABLE: &'static [NodeDesc] = LEAF;
+}
+
+const SPIN: f32 = 28.0;
+/// Segments in the ring. Twelve reads as a circle at these sizes and is
+/// twelve commands; the renderer has no arc.
+const SEGMENTS: usize = 12;
+
+/// The twelve unit vectors, as a table.
+///
+/// **A table rather than `sin`/`cos`**, because the core is `no_std` and
+/// `lumen_static::num` carries only what it has needed — `clamp` and
+/// `sqrt`. Twelve fixed directions do not need a trig implementation
+/// added to a crate that has so far avoided one, and a `const` table is
+/// exact at every one of them.
+const RING: [(f32, f32); SEGMENTS] = [
+    (1.0, 0.0),
+    (0.866_025_4, 0.5),
+    (0.5, 0.866_025_4),
+    (0.0, 1.0),
+    (-0.5, 0.866_025_4),
+    (-0.866_025_4, 0.5),
+    (-1.0, 0.0),
+    (-0.866_025_4, -0.5),
+    (-0.5, -0.866_025_4),
+    (0.0, -1.0),
+    (0.5, -0.866_025_4),
+    (0.866_025_4, -0.5),
+];
+
+impl Node for Spinner {
+    fn kind_name(&self) -> &'static str {
+        "spinner"
+    }
+
+    fn defaults(&self) -> Style {
+        Style {
+            width: Length::Fixed(SPIN),
+            height: Length::Fixed(SPIN),
+            color: Color(0x2f, 0x6b, 0xff, 0xff),
+            ..Style::default()
+        }
+    }
+
+    fn layout(
+        &mut self,
+        _cx: &mut LayoutCx,
+        limits: Constraints,
+        style: &[Style],
+        st: &mut [NodeState],
+        i: usize,
+    ) -> Size {
+        let me = style[i];
+        let size = resolve_self(limits, &me, Size { w: SPIN, h: SPIN });
+        record_painted(st, i, limits, size, &me)
+    }
+
+    fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
+        let s = &st[i];
+        let r = rect_of(s);
+        let (w, h) = (r[2] - r[0], r[3] - r[1]);
+        if w <= 0.0 || h <= 0.0 {
+            return;
+        }
+        let d = w.min(h);
+        let (cx, cy) = ((r[0] + r[2]) / 2.0, (r[1] + r[3]) / 2.0);
+        let outer = d * 0.46;
+        let inner = d * 0.30;
+        let stroke = (d * 0.10).max(1.0);
+        // `rem_euclid`, so a negative phase — a clock that went
+        // backwards — still lands inside the ring rather than lighting
+        // nothing.
+        let lead = self.phase.rem_euclid(1.0) * SEGMENTS as f32;
+        for (n, &(cs, sn)) in RING.iter().enumerate() {
+            // How far *behind* the leading segment this one is, which is
+            // what makes the tail fade rather than the head.
+            let back = (lead - n as f32).rem_euclid(SEGMENTS as f32) / SEGMENTS as f32;
+            let a = 1.0 - back;
+            let alpha = (a * a * 255.0) as u8;
+            if alpha == 0 {
+                continue;
+            }
+            out.line(
+                Point { x: cx + cs * inner, y: cy + sn * inner },
+                Point { x: cx + cs * outer, y: cy + sn * outer },
+                stroke,
+                Color(s.fg.0, s.fg.1, s.fg.2, alpha),
+            );
+        }
+    }
+
+    leaf_common!(Spinner, 0, nohit);
+}
+
+/// A placeholder block for content that has not arrived.
+///
+/// The shimmer is a `phase` the application advances, like [`Spinner`]'s.
+/// At `phase == 0` it is a flat block, which is what a host that
+/// animates nothing gets and is still the right picture.
+#[derive(Default)]
+pub struct Skeleton {
+    /// Where the highlight is, in `0.0..=1.0` of the width.
+    pub phase: f32,
+}
+
+impl Skeleton {
+    pub fn new(phase: f32) -> Self {
+        Skeleton { phase }
+    }
+}
+
+impl Widget for Skeleton {
+    const NODE_COUNT: usize = 1;
+    const DEPTH: usize = 1;
+    const IS_RIGID: bool = true;
+    const SUB_TABLE: &'static [NodeDesc] = LEAF;
+}
+
+impl Node for Skeleton {
+    fn kind_name(&self) -> &'static str {
+        "skeleton"
+    }
+
+    fn defaults(&self) -> Style {
+        Style {
+            width: Length::FILL,
+            height: Length::Fixed(16.0),
+            radius: 4.0,
+            background: Color(0xe4, 0xe9, 0xf2, 0xff),
+            color: Color(0xf4, 0xf7, 0xfc, 0xff),
+            ..Style::default()
+        }
+    }
+
+    fn layout(
+        &mut self,
+        _cx: &mut LayoutCx,
+        limits: Constraints,
+        style: &[Style],
+        st: &mut [NodeState],
+        i: usize,
+    ) -> Size {
+        let me = style[i];
+        let size = resolve_self(limits, &me, Size { w: 0.0, h: 16.0 });
+        record_painted(st, i, limits, size, &me)
+    }
+
+    fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
+        let s = &st[i];
+        let r = rect_of(s);
+        let (w, h) = (r[2] - r[0], r[3] - r[1]);
+        if w <= 0.0 || h <= 0.0 {
+            return;
+        }
+        out.rounded_rect(r, s.bg, s.radius.min(h / 2.0));
+        // The highlight, clipped to the block so a band near either end
+        // does not paint past it. `push_clip`/`pop_clip` rather than
+        // arithmetic, because the renderer's clip is a hard test and
+        // the arithmetic would have to repeat the rounded corner.
+        let band = w * 0.28;
+        let x = r[0] - band + (w + band * 2.0) * self.phase.rem_euclid(1.0);
+        out.push_clip(r);
+        out.rounded_rect([x, r[1], x + band, r[3]], s.fg, s.radius.min(h / 2.0));
+        out.pop_clip();
+    }
+
+    leaf_common!(Skeleton, 0, nohit);
+}
+
+/// **No handlers.** Every widget in a tree must answer `Handlers`, and a
+/// widget that carries no `on_*` field answers `None` — dispatch then
+/// walks past it. This is one impl per type rather than a blanket one
+/// because a blanket `impl<W, S> Handlers<S> for W` would collide with
+/// every widget that *does* have handlers.
+impl<S> lumen_static::event::Handlers<S> for ProgressBar {
+    fn handler(
+        &self,
+        _sel: lumen_static::event::NodeSel,
+    ) -> Option<fn(&mut S, &lumen_static::EventCtx)> {
+        None
+    }
+}
+
+/// **No handlers.** Every widget in a tree must answer `Handlers`, and a
+/// widget that carries no `on_*` field answers `None` — dispatch then
+/// walks past it. This is one impl per type rather than a blanket one
+/// because a blanket `impl<W, S> Handlers<S> for W` would collide with
+/// every widget that *does* have handlers.
+impl<S> lumen_static::event::Handlers<S> for Spinner {
+    fn handler(
+        &self,
+        _sel: lumen_static::event::NodeSel,
+    ) -> Option<fn(&mut S, &lumen_static::EventCtx)> {
+        None
+    }
+}
+
+/// **No handlers.** Every widget in a tree must answer `Handlers`, and a
+/// widget that carries no `on_*` field answers `None` — dispatch then
+/// walks past it. This is one impl per type rather than a blanket one
+/// because a blanket `impl<W, S> Handlers<S> for W` would collide with
+/// every widget that *does* have handlers.
+impl<S> lumen_static::event::Handlers<S> for Skeleton {
+    fn handler(
+        &self,
+        _sel: lumen_static::event::NodeSel,
+    ) -> Option<fn(&mut S, &lumen_static::EventCtx)> {
+        None
+    }
+}

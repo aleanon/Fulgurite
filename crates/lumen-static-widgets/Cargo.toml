@@ -1,0 +1,18 @@
+[package]
+name = "lumen-static-widgets"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+lumen-static = { path = "../lumen-static" }
+
+[features]
+default = ["std"]
+# **The crate is the gate, as everywhere else in this workspace.** A
+# widget set is the one part of a toolkit that grows without limit, and
+# an embedded profile that pulls a pie chart it cannot draw has paid
+# `.text` for nothing. Nothing here is in `lumen-static`; an application
+# opts in by naming this crate.
+std = ["lumen-static/std"]
+alloc = ["lumen-static/alloc"]

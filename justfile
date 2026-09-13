@@ -268,6 +268,10 @@ example name *args:
 glasswall-bench:
     cargo run --release -p glasswall --features gpu -- --bench
 
+# Every built-in widget, one at a time — the showcase (docs/plan-widgets-gallery.md).
+showcase:
+    cargo run --release -p showcase
+
 # What `just example` accepts.
 examples:
     @ls examples

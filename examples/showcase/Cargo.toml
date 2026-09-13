@@ -1,0 +1,16 @@
+[package]
+name = "showcase"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+lumen-static = { path = "../../crates/lumen-static" }
+lumen-static-widgets = { path = "../../crates/lumen-static-widgets" }
+lumen-static-winit = { path = "../../crates/lumen-static-winit" }
+lumen-static-shell = { path = "../../crates/lumen-static-shell", features = ["truetype"] }
+
+[features]
+default = []
+gpu = ["lumen-static-winit/gpu"]

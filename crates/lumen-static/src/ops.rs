@@ -21,9 +21,8 @@
 #[cfg(feature = "observe")]
 use alloc::vec::Vec;
 
-use crate::desc::{Constraints, NodeDesc, NodeState, Point, Size, NO_PARENT};
+use crate::desc::{Constraints, NodeDesc, NodeState, Size, NO_PARENT};
 use crate::event::{EventCtx, Handlers, NodeSel};
-use crate::hit::{contains, Hit};
 use crate::cx::LayoutCx;
 use crate::display::{Color, Painter};
 use crate::style::{Align, Length, Style};
@@ -351,44 +350,77 @@ fn dim(c: crate::display::Color, f: f32) -> crate::display::Color {
 
 /// A leaf's boilerplate: one node, no children, `node`/`node_mut` are
 /// self, `place` writes a position, `hit` is a bounds test.
+///
+/// **Exported, since M23.** `Node` has four methods that every leaf
+/// answers identically, and a widget crate outside this one had no way
+/// to reach them — so the first out-of-core widget set would have
+/// written the same twenty lines per widget, which is the shape that let
+/// `Shadow` and `Image` hash as the same tag for a year. Every path
+/// inside is `$crate::`-qualified so it resolves wherever it is called
+/// from.
+#[macro_export]
 macro_rules! leaf_common {
     ($ty:ty, $flags:expr) => {
-        leaf_common!($ty, $flags, hit);
+        $crate::leaf_common!($ty, $flags, hit);
     };
     // `nohit`: the leaf is never a click target, whatever its box says.
     ($ty:ty, $flags:expr, nohit) => {
-        fn place(&mut self, at: Point, _style: &[Style], st: &mut [NodeState], i: usize) {
+        fn place(
+            &mut self,
+            at: $crate::Point,
+            _style: &[$crate::Style],
+            st: &mut [$crate::NodeState],
+            i: usize,
+        ) {
             st[i].pos = at;
         }
-        fn hit(&self, _st: &[NodeState], _i: usize, _x: f32, _y: f32) -> Option<Hit> {
+        fn hit(
+            &self,
+            _st: &[$crate::NodeState],
+            _i: usize,
+            _x: f32,
+            _y: f32,
+        ) -> Option<$crate::Hit> {
             None
         }
-        fn node(&self, _i: usize) -> &dyn Node {
+        fn node(&self, _i: usize) -> &dyn $crate::Node {
             self
         }
-        fn node_mut(&mut self, _i: usize) -> &mut dyn Node {
+        fn node_mut(&mut self, _i: usize) -> &mut dyn $crate::Node {
             self
         }
     };
     ($ty:ty, $flags:expr, hit) => {
-        fn place(&mut self, at: Point, _style: &[Style], st: &mut [NodeState], i: usize) {
+        fn place(
+            &mut self,
+            at: $crate::Point,
+            _style: &[$crate::Style],
+            st: &mut [$crate::NodeState],
+            i: usize,
+        ) {
             st[i].pos = at;
         }
-        fn hit(&self, st: &[NodeState], i: usize, x: f32, y: f32) -> Option<Hit> {
-            if contains(&st[i], x, y) {
-                Some(Hit {
+        fn hit(
+            &self,
+            st: &[$crate::NodeState],
+            i: usize,
+            x: f32,
+            y: f32,
+        ) -> Option<$crate::Hit> {
+            if $crate::hit::contains(&st[i], x, y) {
+                Some($crate::Hit {
                     node: i as u32,
                     inner: None,
-                    local: Point { x: x - st[i].pos.x, y: y - st[i].pos.y },
+                    local: $crate::Point { x: x - st[i].pos.x, y: y - st[i].pos.y },
                 })
             } else {
                 None
             }
         }
-        fn node(&self, _i: usize) -> &dyn Node {
+        fn node(&self, _i: usize) -> &dyn $crate::Node {
             self
         }
-        fn node_mut(&mut self, _i: usize) -> &mut dyn Node {
+        fn node_mut(&mut self, _i: usize) -> &mut dyn $crate::Node {
             self
         }
     };
