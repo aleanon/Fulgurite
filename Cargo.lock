@@ -1120,6 +1120,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "glass"
+version = "0.1.0"
+dependencies = [
+ "lumen-static",
+ "lumen-static-shell",
+ "lumen-static-winit",
+]
+
+[[package]]
+name = "glasswall"
+version = "0.1.0"
+dependencies = [
+ "lumen-static",
+ "lumen-static-shell",
+ "lumen-static-wgpu",
+ "lumen-static-winit",
+]
+
+[[package]]
 name = "glib-sys"
 version = "0.18.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1530,14 +1549,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "lumen-static-widgets"
+version = "0.1.0"
+dependencies = [
+ "lumen-static",
+]
+
+[[package]]
 name = "lumen-static-winit"
 version = "0.1.0"
 dependencies = [
  "arboard",
  "lumen-static",
+ "lumen-static-agent",
  "lumen-static-shell",
  "lumen-static-wgpu",
  "rfd",
+ "serde_json",
  "softbuffer",
  "winit",
 ]
@@ -2528,6 +2556,16 @@ name = "shlex"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
+
+[[package]]
+name = "showcase"
+version = "0.1.0"
+dependencies = [
+ "lumen-static",
+ "lumen-static-shell",
+ "lumen-static-widgets",
+ "lumen-static-winit",
+]
 
 [[package]]
 name = "signal-hook-registry"
