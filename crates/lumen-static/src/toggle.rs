@@ -91,12 +91,22 @@ impl<S: 'static, const SHAPE: u8> Widget for Toggle<S, SHAPE> {
 const BOX: f32 = 24.0;
 const TRACK_W: f32 = 40.0;
 
-/// A switch's knob, in both states — see the note in `paint`.
+/// What a control draws *on* itself when it is on: the tick, the dot,
+/// the knob.
 ///
-/// Not a `Style` field: a third colour on every node in the tree, for
-/// one shape of one widget, is the trade `Style::focus_ring` was made a
-/// `u8` to avoid.
-const KNOB: Color = Color(255, 255, 255, 255);
+/// **Not `Style::background`, which is what it used to be.** The
+/// original scheme inverted `(body, mark)` across the on/off boundary so
+/// that two colours covered four states — the resting body became the
+/// on-state mark. That couples two things which are not related: making
+/// the resting grey dark enough to *see* on a light page (it was sixteen
+/// levels from the page, and invisible) then made the tick on a checked
+/// box that same grey, so a checked box had a grey tick on blue where
+/// every toolkit draws white.
+///
+/// Not a `Style` field either: a third colour on every node in the tree,
+/// for one part of one widget, is the trade `Style::focus_ring` was made
+/// a `u8` to avoid.
+const MARK: Color = Color(255, 255, 255, 255);
 
 impl<S: 'static, const SHAPE: u8> Node for Toggle<S, SHAPE> {
     fn kind_name(&self) -> &'static str {
@@ -125,7 +135,15 @@ impl<S: 'static, const SHAPE: u8> Node for Toggle<S, SHAPE> {
             // and each is the other's mark, so two colours cover four
             // states. A stylesheet writing `color: accent, background:
             // white` gets a blue box with a white tick for free.
-            background: Color(226, 232, 240, 255),
+            // **Dark enough to see on a light page.** This was
+            // `(226, 232, 240)` — about sixteen levels from a typical
+            // page colour, so an *unchecked* box and an *unselected*
+            // radio were all but invisible, and the switch's white knob
+            // had nothing to sit against. Lumen's resting control is
+            // `#bfc4cc` on white; this is that. A control whose resting
+            // state cannot be seen is the same defect as one whose
+            // default styling draws nothing.
+            background: Color(0xbf, 0xc4, 0xcc, 255),
             color: ON,
             pressed_dim: 0.18,
             hover_dim: 0.07,
@@ -160,7 +178,11 @@ impl<S: 'static, const SHAPE: u8> Node for Toggle<S, SHAPE> {
         // toolkit uses and which keeps a single pair of colours doing
         // both jobs — so a stylesheet that sets two colours gets four
         // states.
-        let (body, mark) = if self.on { (s.fg, s.bg) } else { (s.bg, s.fg) };
+        // `bg` is the resting body and `fg` the on body; the mark is
+        // always [`MARK`]. Nothing draws a mark when off — a checkbox
+        // has no tick, a radio no dot — and the switch's knob is drawn
+        // in both states, so it takes `MARK` too.
+        let (body, mark) = if self.on { (s.fg, MARK) } else { (s.bg, MARK) };
         match SHAPE {
             SWITCH => {
                 out.rounded_rect(r, body, h / 2.0);
@@ -179,7 +201,7 @@ impl<S: 'static, const SHAPE: u8> Node for Toggle<S, SHAPE> {
                 // that is what this does.
                 let d = (h - 4.0).max(1.0);
                 let x = if self.on { r[2] - d - 2.0 } else { r[0] + 2.0 };
-                out.rounded_rect([x, r[1] + 2.0, x + d, r[1] + 2.0 + d], KNOB, d / 2.0);
+                out.rounded_rect([x, r[1] + 2.0, x + d, r[1] + 2.0 + d], mark, d / 2.0);
             }
             RADIO => {
                 out.rounded_rect(r, body, w.min(h) / 2.0);

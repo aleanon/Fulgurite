@@ -27,6 +27,43 @@
 
 use super::*;
 
+/// One labelled control: the box and its text, kept together.
+///
+/// **A nested row, not padding.** The grouping gap has to be wider
+/// between pairs than inside one, and neither lever on a flat row can do
+/// it: padding on the *label* is subtracted from the box its text is
+/// measured against (it wrapped "Blue"), and padding on a *fixed-size*
+/// control is ignored outright — `resolve_self` returns the `Fixed`
+/// width whatever the padding says. So the pair is its own row with its
+/// own spacing, and the outer row spaces the pairs.
+#[derive(StaticTree, Default)]
+#[widget(row, spacing = 10.0)]
+pub struct PairCheck {
+    #[widget_id("d_checkbox_a")]
+    pub t: CheckBox<Show>,
+    #[widget_id("d_checkbox_al")]
+    pub l: Label<String>,
+}
+
+#[derive(StaticTree, Default)]
+#[widget(row, spacing = 10.0)]
+pub struct PairSwitch {
+    #[widget_id("d_switch_a")]
+    pub t: Switch<Show>,
+    #[widget_id("d_switch_al")]
+    pub l: Label<String>,
+}
+
+#[derive(StaticTree, Default)]
+#[widget(row, spacing = 10.0)]
+pub struct PairRadio {
+    #[widget_id("d_radio_a")]
+    pub t: Radio<Show>,
+    #[widget_id("d_radio_al")]
+    pub l: Label<String>,
+}
+
+
 #[derive(StaticTree, Default)]
 #[widget(row, spacing = 12.0)]
 pub struct DLabel {
@@ -107,46 +144,25 @@ pub struct DButton {
 }
 
 #[derive(StaticTree, Default)]
-#[widget(row, spacing = 12.0)]
+#[widget(row, spacing = 34.0)]
 pub struct DCheckBox {
-    #[widget_id("d_checkbox_a")]
-    pub a: CheckBox<Show>,
-    #[widget_id("d_checkbox_al")]
-    pub al: Label<String>,
-    #[widget_id("d_checkbox_b")]
-    pub b: CheckBox<Show>,
-    #[widget_id("d_checkbox_bl")]
-    pub bl: Label<String>,
+    pub a: PairCheck,
+    pub b: PairCheck,
 }
 
 #[derive(StaticTree, Default)]
-#[widget(row, spacing = 12.0)]
+#[widget(row, spacing = 34.0)]
 pub struct DSwitch {
-    #[widget_id("d_switch_a")]
-    pub a: Switch<Show>,
-    #[widget_id("d_switch_al")]
-    pub al: Label<String>,
-    #[widget_id("d_switch_b")]
-    pub b: Switch<Show>,
-    #[widget_id("d_switch_bl")]
-    pub bl: Label<String>,
+    pub a: PairSwitch,
+    pub b: PairSwitch,
 }
 
 #[derive(StaticTree, Default)]
-#[widget(row, spacing = 12.0)]
+#[widget(row, spacing = 34.0)]
 pub struct DRadio {
-    #[widget_id("d_radio_a")]
-    pub a: Radio<Show>,
-    #[widget_id("d_radio_al")]
-    pub al: Label<String>,
-    #[widget_id("d_radio_b")]
-    pub b: Radio<Show>,
-    #[widget_id("d_radio_bl")]
-    pub bl: Label<String>,
-    #[widget_id("d_radio_c")]
-    pub c: Radio<Show>,
-    #[widget_id("d_radio_cl")]
-    pub cl: Label<String>,
+    pub a: PairRadio,
+    pub b: PairRadio,
+    pub c: PairRadio,
 }
 
 #[derive(StaticTree, Default)]

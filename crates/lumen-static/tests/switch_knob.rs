@@ -89,3 +89,57 @@ fn the_track_carries_the_state() {
     println!("track off {off:?}, on {on:?}");
     assert_ne!(off, on, "the track is the same colour on and off");
 }
+
+/// **A checked box's tick is light, and a selected radio's dot is.**
+///
+/// The mark used to be `Style::background` — the *resting* body — so the
+/// two were coupled: making the resting grey dark enough to see on a
+/// light page (it was sixteen levels from the page, and invisible) made
+/// the tick on a checked box that same grey. A grey tick on blue is what
+/// this catches; every toolkit draws white.
+#[test]
+fn a_checked_control_marks_in_light() {
+    use lumen_static::{CheckBox, Radio};
+    for (name, parts) in [
+        ("checkbox", parts_of(&mut CheckBox::<()> { on: true, ..Default::default() })),
+        ("radio", parts_of(&mut Radio::<()> { on: true, ..Default::default() })),
+    ] {
+        assert_eq!(parts.len(), 2, "{name}: expected a body and a mark");
+        let (body, mark) = (parts[0], parts[1]);
+        println!("{name:<9} body {body:?} luma {:.0}, mark {mark:?} luma {:.0}", luma(body), luma(mark));
+        assert!(
+            luma(mark) > luma(body) + 60.0,
+            "{name}: the mark (luma {:.0}) barely shows on its body (luma {:.0})",
+            luma(mark),
+            luma(body)
+        );
+    }
+}
+
+/// A toggle's body and its mark.
+///
+/// **The mark is not always a rounded rect**: a radio's dot and a
+/// switch's knob are, and a checkbox's tick is two `Cmd::Line`s. The
+/// first version of this helper collected only rects and reported one
+/// part for a checkbox, which failed on correct code — a test that has
+/// never passed is as untrustworthy as one that has never failed.
+fn parts_of<W: Node + lumen_static::Widget>(w: &mut W) -> Vec<Color> {
+    let style = [w.defaults(); 4];
+    let mut st = [NodeState::default(); 4];
+    let limits = Constraints { min_w: 0.0, max_w: 200.0, min_h: 0.0, max_h: 80.0 };
+    let mut metrics = lumen_static::cx::BlockMetrics;
+    let mut cx = LayoutCx::new(&mut metrics);
+    w.layout(&mut cx, limits, &style, &mut st, 0);
+    w.place(Point { x: 0.0, y: 0.0 }, &style, &mut st, 0);
+    let mut l = DisplayList::new();
+    w.paint(&st, 0, &mut l);
+    let body = l.cmds.iter().find_map(|c| match c {
+        Cmd::RoundedRect { color, .. } => Some(*color),
+        _ => None,
+    });
+    let mark = l.cmds.iter().skip(1).find_map(|c| match c {
+        Cmd::RoundedRect { color, .. } | Cmd::Line { color, .. } => Some(*color),
+        _ => None,
+    });
+    body.into_iter().chain(mark).collect()
+}

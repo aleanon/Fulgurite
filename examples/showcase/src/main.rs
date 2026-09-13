@@ -731,14 +731,10 @@ fn main() {
         shot(&path, entry, open);
         return;
     }
-    let mut app = Show::default();
-    app.ui.body.header.title.set("Widget showcase");
-    app.ui.body.header.trigger.on_click = |s: &mut Show, _: &EventCtx| {
-        s.open = !s.open;
-        sync_open(s);
-    };
-    rebuild(&mut app);
-    sync_open(&mut app);
+    // A bare number opens the window on that entry, so a review can
+    // look at one widget without clicking through the picker.
+    let start: usize = args.first().and_then(|a| a.parse::<usize>().ok()).unwrap_or(0);
+    let app = build(start.min(CATALOG.len() - 1), false);
     run(
         app,
         Config {
@@ -763,6 +759,8 @@ fn lbl() -> lumen_static::style::Patch {
     use lumen_static::style::Patch;
     Patch::new().color(INK).font_size(15.0)
 }
+
+
 
 /// The shape all three button variants share; only the colours differ.
 fn btn() -> lumen_static::style::Patch {
@@ -874,12 +872,8 @@ fn stylesheet() -> Vec<StyleRule> {
         // do not: `Toggle` has no text of its own, so the demo pairs it
         // with a `Label` — which is also how an application writes it.
         StyleRule::new(Selector::Id("d_checkbox_al"), lbl()),
-        StyleRule::new(Selector::Id("d_checkbox_bl"), lbl()),
         StyleRule::new(Selector::Id("d_switch_al"), lbl()),
-        StyleRule::new(Selector::Id("d_switch_bl"), lbl()),
         StyleRule::new(Selector::Id("d_radio_al"), lbl()),
-        StyleRule::new(Selector::Id("d_radio_bl"), lbl()),
-        StyleRule::new(Selector::Id("d_radio_cl"), lbl()),
         StyleRule::new(Selector::Id("d_slider_a"), Patch::new().width(Length::Fixed(280.0))),
         StyleRule::new(Selector::Id("d_progress_a"), Patch::new().width(Length::Fixed(280.0))),
         StyleRule::new(Selector::Id("d_divider_a"), Patch::new().width(Length::Fixed(280.0))),
