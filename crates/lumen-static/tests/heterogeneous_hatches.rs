@@ -40,8 +40,7 @@ fn frame<T: Widget + Node>(ui: &mut T, st: &mut [NodeState]) -> Vec<lumen_static
     let mut styles = pass::default_styles(ui);
     lumen_static::style::cascade(
         T::SUB_TABLE,
-        &|i| ui.node(i).defaults(),
-        &|i| ui.node(i).kind_name(),
+        T::SEEDS,
         &[],
         &mut styles,
     );

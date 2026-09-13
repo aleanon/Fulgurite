@@ -21,6 +21,22 @@
 //! so a `Slider`'s value reaches the readout. Through a `Dyn` it could
 //! not, and the catalogue had a flag apologising for it.
 //!
+//! # What M24 removed from this file
+//!
+//! A `fill_all()` that made every demo `Some` before the cascade and let
+//! the first pump empty the stage again. It was here because the cascade
+//! read a node's kind and defaults off the *live tree*, and an
+//! `Option::None` has no live node — so every absent demo resolved
+//! `Spacer`'s defaults and painted as a bare text run. The test that
+//! catches it says so in as many words: *"Badge drew only text on the
+//! stage — it looks like a label"*.
+//!
+//! `Widget::SEEDS` moved both facts to the type, so an empty `Option`
+//! now resolves exactly as a full one and the workaround is gone
+//! (`docs/plan-select.md`, M24/T24.0–T24.1). Removing it with the
+//! cascade put back on the live tree makes that test fire, which is how
+//! the removal was checked rather than assumed.
+//!
 //! The price is the tree carries all eighteen demos. That is the trade a
 //! static tree offers — space for reach — and at this size it is
 //! nothing.
@@ -256,40 +272,6 @@ pub struct Demos {
 pub const DEMOS: usize = 18;
 
 impl Demos {
-    /// Make **every** demo present, for the cascade's benefit.
-    ///
-    /// **The cascade runs once**, when the stylesheet is set, and
-    /// `Option<W>::node` returns the *`Option`* when it is `None` — so a
-    /// demo that was absent at that moment had its style resolved from
-    /// `Spacer`'s defaults rather than the widget's. Every badge, chip,
-    /// toggle and chart then painted with a transparent background and
-    /// no size of its own, which on screen is a widget that looks like
-    /// a label. That is exactly what it looked like.
-    ///
-    /// So the tree is built full, cascaded, and reduced to one demo on
-    /// the first pump. The style array is indexed by node and is not
-    /// touched by hiding, so the resolved styles survive.
-    pub fn fill_all(&mut self) {
-        self.label = Some(Default::default());
-        self.badge = Some(Default::default());
-        self.chip = Some(Default::default());
-        self.avatar = Some(Default::default());
-        self.icon = Some(Default::default());
-        self.divider = Some(Default::default());
-        self.button = Some(Default::default());
-        self.checkbox = Some(Default::default());
-        self.switch = Some(Default::default());
-        self.radio = Some(Default::default());
-        self.slider = Some(Default::default());
-        self.textinput = Some(Default::default());
-        self.progress = Some(Default::default());
-        self.spinner = Some(Default::default());
-        self.skeleton = Some(Default::default());
-        self.bar = Some(Default::default());
-        self.line = Some(Default::default());
-        self.pie = Some(Default::default());
-    }
-
     /// How many demos are present. **Exactly one, always** — and the
     /// reason this exists rather than being obvious: `clear` is a
     /// hand-written list of eighteen fields, and a field left out of it

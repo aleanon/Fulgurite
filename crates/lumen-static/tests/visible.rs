@@ -19,7 +19,6 @@
 
 use lumen_static::ops::{Fixed, Label};
 use lumen_static::style::{Patch, Rule, Selector};
-use lumen_static::widget::Node;
 use lumen_static::{pass, Cmd, Constraints, DisplayList, NodeState, StaticTree, Style, Widget};
 
 #[derive(StaticTree, Default)]
@@ -65,8 +64,7 @@ fn frame(hide: Option<&'static str>) -> Frame {
         let sheet = [Rule::new(Selector::Id(id), Patch::new().visible(false))];
         lumen_static::style::cascade(
             <Ui as Widget>::SUB_TABLE,
-            &|i| ui.node(i).defaults(),
-            &|i| ui.node(i).kind_name(),
+            <Ui as Widget>::SEEDS,
             &sheet,
             &mut styles,
         );

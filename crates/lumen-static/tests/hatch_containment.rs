@@ -26,8 +26,7 @@ fn lay<T: Widget>(ui: &mut T, states: &mut [NodeState], id: &'static str) {
     let sheet = [Rule::new(Selector::Id(id), Patch::new().height(Length::Fixed(50.0)))];
     lumen_static::style::cascade(
         T::SUB_TABLE,
-        &|i| ui.node(i).defaults(),
-        &|i| ui.node(i).kind_name(),
+        T::SEEDS,
         &sheet,
         &mut styles,
     );

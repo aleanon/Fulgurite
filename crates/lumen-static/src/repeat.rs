@@ -261,6 +261,7 @@ impl<T: Widget + Default + 'static> Node for Repeat<T> {
             table: T::SUB_TABLE,
             template: t,
             style: arena.style_mut(),
+            seeds: Some(T::SEEDS),
         })
     }
 

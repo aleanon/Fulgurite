@@ -75,7 +75,7 @@ A fact that cannot vary per instance, reachable only through an
 instance, is a fact stored in the wrong place. The contract was written
 down and then left to prose; this milestone moves it into the type.
 
-## T24.0 — `Widget::SEEDS`: the type-level style inputs
+## T24.0 — `Widget::SEEDS`: the type-level style inputs — **DONE 2026-09-13**
 
 Add to `style.rs`:
 
@@ -135,7 +135,7 @@ for one silently styles the other. `no_two_kinds_collide` and
 agreement test now says in its own doc comment which half of it is
 tautological.
 
-## T24.1 — the cascade reads `SEEDS`
+## T24.1 — the cascade reads `SEEDS` — **DONE 2026-09-13**
 
 `cascade` takes `&[Seed]` instead of two `&dyn Fn` closures;
 `cascade_deep`, `cascade_subtree` and `cascade_arenas` pass `W::SEEDS`.
@@ -146,10 +146,49 @@ what makes a scoped re-cascade cheaper: no virtual call per node.
 an inactive enum variant, and a `None` `Option`'s subtree resolves its
 own defaults.
 
-**Injection:** restore the closure that reads the live tree and watch
-both halves fail; then check the *other* direction, that an active
-variant still cascades correctly, so the fix is not "everything gets
-the leaf's defaults now".
+**Shown to fail.** Injection H puts `cascade_deep` — the function
+`Host::set_stylesheet` calls, which is why the gate goes through it
+rather than through `cascade` — back on the live tree. Three of the four
+tests go red (`a Kind("checkbox") rule did not reach the hidden
+CheckBox: it resolved Shrink`, `hidden CheckBox resolved width Shrink;
+its own default is Fixed(24.0)`), and the fourth,
+`the_showing_variant_is_unaffected`, stays green — correctly: the
+showing variant was never broken, and that assertion is the other
+direction, that the fix does not hand every node the leaf's defaults.
+
+**And it is 2.4× faster**, which was not the point and is worth stating
+plainly for that reason. The virtual call per node was most of what a
+stylesheet swap cost: 37.45 µs → 15.42 µs on the 901-node fixture, one
+`git stash` apart on the same machine. `docs/results-cascade-cost.md`
+owns the figures and records that its 2026-09-04 conclusion — a swap is
+the expensive runtime operation, scope it — is unchanged.
+
+**One case still reads an instance**, deliberately: an arena under a
+`Dyn` island. Type erasure is what an island is *for*, so the boxed
+content's kinds cannot reach a const array. `ArenaMut` gains
+`seeds: Option<&'static [Seed]>` — `Some` for `Repeat` and `List`, whose
+content types are known, `None` for `Dyn` — and the `None` arm calls
+`cascade_from_instance`. That fallback is sound where the main table's
+was not: an arena template is a live instance by construction, whereas
+the node the main cascade needed might be hidden.
+
+### What it removed from the showcase, and how that was checked
+
+`Demos::fill_all()` — thirty-four lines that made every demo `Some`
+before the cascade and let the first pump empty the stage again. With
+`Option` seeding transparently it is dead, and deleting it leaves the
+showcase's nine tests green.
+
+**Green is not the evidence; red is.** Deleted *and* with `cascade_deep`
+put back on the live tree, `every_entry_paints_a_demo` fires:
+
+```
+Badge drew only text on the stage — it looks like a label
+```
+
+which is the sentence the defect was reported in, from a test that
+already existed and had never seen it — because `fill_all` was hiding
+it.
 
 ## T24.2 — `Select<E>` over `Popup`
 
@@ -171,8 +210,9 @@ comment in `stage.rs` that says a field missing from `clear()` is *"the
 one bug this shape makes possible and a `Dyn` did not"* is retired with
 the shape that made it possible.
 
-**Blocked on T24.1.** Attempting it before is the 2026-09-12 symptom
-again, with no `fill_all` available to hide it.
+**Was blocked on T24.1**, which landed 2026-09-13. Attempting it before
+would have been the 2026-09-12 symptom again with no `fill_all`
+available to hide it — the workaround an enum cannot have.
 
 ## What this is not
 

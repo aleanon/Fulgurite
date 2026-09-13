@@ -170,8 +170,17 @@ pub struct ArenaMut<'a> {
     pub table: &'static [crate::desc::NodeDesc],
     /// An instance to ask for `defaults()` and `kind_name()`. One
     /// instance answers for all, since `Node::defaults` depends on the
-    /// type (F3.2).
+    /// type (F3.2). Only read when `seeds` is `None`.
     pub template: &'a dyn Node,
+    /// This arena's style seeds, when the content's type is known.
+    ///
+    /// `None` for a [`crate::hatch::Dyn`] island and nothing else:
+    /// erasing the content's type is what an island is *for*, so its
+    /// kinds cannot reach a const array and the cascade falls back to
+    /// asking `template`. That fallback is sound where the main table's
+    /// was not — a template is a live instance by construction, whereas
+    /// the node the main cascade needed might be hidden (M24/T24.1).
+    pub seeds: Option<&'static [crate::style::Seed]>,
     /// The style row every instance in this arena shares.
     pub style: &'a mut [Style],
 }

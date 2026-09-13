@@ -545,6 +545,7 @@ impl<W: Widget> Node for List<W> {
             table: W::SUB_TABLE,
             template: t,
             style: arena.style_mut(),
+            seeds: Some(W::SEEDS),
         })
     }
 
@@ -869,7 +870,14 @@ impl<S> Node for Dyn<S> {
         let Dyn { inner, table, arena, .. } = self;
         let t: &dyn Node = &**inner;
         arena.ensure_style(t);
-        Some(crate::arena::ArenaMut { table, template: t, style: arena.style_mut() })
+        // `seeds: None` — the island's content is type-erased, so its
+        // kinds cannot reach a const array. See `ArenaMut::seeds`.
+        Some(crate::arena::ArenaMut {
+            table,
+            template: t,
+            style: arena.style_mut(),
+            seeds: None,
+        })
     }
 
     fn kind_name(&self) -> &'static str {

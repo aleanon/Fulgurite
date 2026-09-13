@@ -535,27 +535,55 @@ fn matches(sel: &Selector, d: &NodeDesc, kind: &str) -> bool {
 /// state-independent it was not merely unused but misleading, since it
 /// implied the cascade had to be re-run for a frame to be correct. It
 /// was deleted rather than wired up. `docs/plan-review-fixes.md` F3.3.
-pub fn cascade(
-    table: &[NodeDesc],
-    defaults: &dyn Fn(usize) -> Defaults,
-    kind_of: &dyn Fn(usize) -> &'static str,
-    sheet: Stylesheet,
-    out: &mut [Style],
-) {
-    cascade_range(table, defaults, kind_of, sheet, out, 0..table.len());
+pub fn cascade(table: &[NodeDesc], seeds: &[Seed], sheet: Stylesheet, out: &mut [Style]) {
+    cascade_range(table, seeds, sheet, out, 0..table.len());
 }
 
 /// [`cascade`], restricted to a range of the table.
 fn cascade_range(
     table: &[NodeDesc],
-    defaults: &dyn Fn(usize) -> Defaults,
-    kind_of: &dyn Fn(usize) -> &'static str,
+    seeds: &[Seed],
     sheet: Stylesheet,
     out: &mut [Style],
     range: core::ops::Range<usize>,
 ) {
     debug_assert_eq!(table.len(), out.len());
+    debug_assert_eq!(table.len(), seeds.len());
     for (i, d) in table.iter().enumerate().skip(range.start).take(range.len()) {
+        let mut s = (seeds[i].defaults)();
+        let kind = seeds[i].kind;
+        for spec in 0..=3u8 {
+            for r in sheet {
+                if r.selector.specificity() == spec && matches(&r.selector, d, kind) {
+                    r.patch.apply_to(&mut s);
+                }
+            }
+        }
+        out[i] = s;
+    }
+}
+
+/// [`cascade`] for a table whose seeds are not knowable statically.
+///
+/// **One caller: an arena under a [`crate::hatch::Dyn`].** Type erasure
+/// is the island's purpose, so the boxed content's kinds cannot reach a
+/// const array — the boxed instance is the only thing that knows them,
+/// and it is live by construction, so asking it is sound here where it
+/// was not for the main table.
+///
+/// `alloc`-gated because its only caller is: `Dyn`, `Repeat` and `List`
+/// are all behind that feature (T13.4), so a tree with no allocator has
+/// no arena and no instance to fall back to.
+#[cfg(feature = "alloc")]
+fn cascade_from_instance(
+    table: &[NodeDesc],
+    defaults: &dyn Fn(usize) -> Defaults,
+    kind_of: &dyn Fn(usize) -> &'static str,
+    sheet: Stylesheet,
+    out: &mut [Style],
+) {
+    debug_assert_eq!(table.len(), out.len());
+    for (i, d) in table.iter().enumerate() {
         let mut s = defaults(i);
         let kind = kind_of(i);
         for spec in 0..=3u8 {
@@ -641,24 +669,11 @@ pub fn cascade_subtree<W: crate::widget::Widget + ?Sized>(
     #[cfg(all(debug_assertions, feature = "alloc"))]
     let witness: Vec<Style> = {
         let mut full = out.to_vec();
-        {
-            let t: &W = tree;
-            cascade(table, &|i| t.node(i).defaults(), &|i| t.node(i).kind_name(), sheet, &mut full);
-        }
+        cascade(table, W::SEEDS, sheet, &mut full);
         full
     };
 
-    {
-        let t: &W = tree;
-        cascade_range(
-            table,
-            &|i| t.node(i).defaults(),
-            &|i| t.node(i).kind_name(),
-            sheet,
-            out,
-            range.clone(),
-        );
-    }
+    cascade_range(table, W::SEEDS, sheet, out, range.clone());
     for i in range.clone() {
         cascade_arenas(tree.node_mut(i), sheet);
     }
@@ -696,10 +711,7 @@ pub fn cascade_deep<W: crate::widget::Widget + ?Sized>(
     sheet: Stylesheet,
     out: &mut [Style],
 ) {
-    {
-        let t: &W = tree;
-        cascade(W::SUB_TABLE, &|i| t.node(i).defaults(), &|i| t.node(i).kind_name(), sheet, out);
-    }
+    cascade(W::SUB_TABLE, W::SEEDS, sheet, out);
     for i in 0..W::SUB_TABLE.len() {
         cascade_arenas(tree.node_mut(i), sheet);
     }
@@ -714,14 +726,20 @@ fn cascade_arenas(node: &mut dyn crate::widget::Node, sheet: Stylesheet) {
     for a in 0..node.arena_count() {
         let Some(arena) = node.arena_mut(a) else { continue };
         let table = arena.table;
-        let template = arena.template;
-        cascade(
-            table,
-            &|i| template.node(i).defaults(),
-            &|i| template.node(i).kind_name(),
-            sheet,
-            arena.style,
-        );
+        match arena.seeds {
+            Some(seeds) => cascade(table, seeds, sheet, arena.style),
+            // A `Dyn` island: see `cascade_from_instance`.
+            None => {
+                let template = arena.template;
+                cascade_from_instance(
+                    table,
+                    &|i| template.node(i).defaults(),
+                    &|i| template.node(i).kind_name(),
+                    sheet,
+                    arena.style,
+                );
+            }
+        }
     }
     // Arenas nested inside an arena's template are not reached: the
     // template is borrowed shared while its style row is borrowed

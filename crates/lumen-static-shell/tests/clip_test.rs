@@ -9,7 +9,6 @@
 use lumen_static::ops::{Fixed, Spacer};
 use lumen_static::repeat::Repeat;
 use lumen_static::style::{Length, Patch, Rule, Selector};
-use lumen_static::widget::Node;
 use lumen_static::{pass, Constraints, NodeState, StaticTree, Widget};
 use lumen_static_shell::software::Canvas;
 use lumen_static_shell::CLEAR;
@@ -56,8 +55,7 @@ fn ink_above_the_list() -> (f32, f32) {
     ];
     lumen_static::style::cascade(
         <Ui as Widget>::SUB_TABLE,
-        &|i| ui.node(i).defaults(),
-        &|i| ui.node(i).kind_name(),
+        <Ui as Widget>::SEEDS,
         &sheet,
         &mut styles,
     );

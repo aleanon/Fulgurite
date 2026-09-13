@@ -178,8 +178,7 @@ fn run<T: Widget + Node + Default>(
         let sheet = [Rule::new(Selector::Id("subject"), Patch::new().height(Length::Fixed(h)))];
         lumen_static::style::cascade(
             T::SUB_TABLE,
-            &|i| ui.node(i).defaults(),
-            &|i| ui.node(i).kind_name(),
+            T::SEEDS,
             &sheet,
             &mut styles,
         );

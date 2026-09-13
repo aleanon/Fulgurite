@@ -477,9 +477,6 @@ fn build(entry: usize, open: bool) -> Show {
     app.phase = 0.35;
     rebuild(&mut app);
     sync_open(&mut app);
-    // **Last**, and it must be last: the cascade that follows resolves
-    // every demo node's style from the widget actually sitting there.
-    app.ui.body.stage.row.demos.fill_all();
     app
 }
 

@@ -24,6 +24,9 @@ flt2dec              # core's float formatter, named where num::clamp says why i
 offset               # crates/lumen-static/src/desc.rs:8 -- table dispatch is gone
 long_running_const_eval  # rustc lint name, not ours (widget.rs, F5.1)
 present_with_damage  # softbuffer's API, named where counter-window says why it does NOT use it
+fill_all             # examples/showcase's cascade workaround, deleted by M24/T24.1 --
+                     # stage.rs and docs/plan-select.md record why it existed and how its
+                     # removal was checked (the showcase test it was hiding goes red)
 
 # wgpu's unsafe surface constructor, named as the thing lumen-static-wgpu
 # deliberately does NOT call: `crates/*/src` may contain no `unsafe`,

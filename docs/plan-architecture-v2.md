@@ -789,7 +789,11 @@ Measuring first inverted this milestone (`docs/results-cascade-cost.md`).
 It was planned as a layout optimisation with the scoped cascade as a
 rider that "comes free". In fact a **full stylesheet swap costs 37.8 µs
 at 901 nodes — four times a whole layout and paint (9.3 µs)** — and it
-is the operation an app performs at runtime. Scoping it to the changed
+is the operation an app performs at runtime. (Both cascade figures were
+superseded on 2026-09-13 by M24/T24.1, which removed the virtual call
+per node: 15.4 µs and 10.8× — see `docs/results-cascade-cost.md`, which
+owns them. The reasoning below is unaffected and is why this paragraph
+is corrected rather than rewritten.) Scoping it to the changed
 subtree is 16.6× cheaper and provably equivalent, because every
 `Selector` is node-local and a subtree is a contiguous range of a
 pre-order table. `Host::restyle_subtree(sheet, "card")` ships;

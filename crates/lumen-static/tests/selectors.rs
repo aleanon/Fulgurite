@@ -10,7 +10,6 @@
 
 use lumen_static::ops::{Fixed, Label};
 use lumen_static::style::{Length, Patch, Rule, Selector};
-use lumen_static::widget::Node;
 use lumen_static::{pass, Constraints, NodeState, StaticTree, Widget};
 
 #[derive(StaticTree, Default)]
@@ -46,8 +45,7 @@ fn a_class_rule_matches_every_member_and_nothing_else() {
     let sheet = [Rule::new(Selector::Class("row"), Patch::new().height(Length::Fixed(7.0)))];
     lumen_static::style::cascade(
         <Ui as Widget>::SUB_TABLE,
-        &|i| ui.node(i).defaults(),
-        &|i| ui.node(i).kind_name(),
+        <Ui as Widget>::SEEDS,
         &sheet,
         &mut styles,
     );
@@ -71,8 +69,7 @@ fn a_second_class_on_the_same_node_is_matched_independently() {
     let sheet = [Rule::new(Selector::Class("striped"), Patch::new().height(Length::Fixed(9.0)))];
     lumen_static::style::cascade(
         <Ui as Widget>::SUB_TABLE,
-        &|i| ui.node(i).defaults(),
-        &|i| ui.node(i).kind_name(),
+        <Ui as Widget>::SEEDS,
         &sheet,
         &mut styles,
     );

@@ -27,6 +27,36 @@ specificity level) testing every rule against it. That is
 O(nodes × rules × 4) with a virtual call per node — where layout is one
 arithmetic pass with a memo in front of the only expensive part.
 
+## What M24/T24.1 changed — 2026-09-13
+
+**The virtual call per node is gone**, and it was most of the cost.
+`cascade` now reads a const `Widget::SEEDS` array — one
+`{kind, defaults: fn() -> Style}` per node — instead of calling
+`Node::defaults` and `Node::kind_name` through `&dyn Node` behind two
+`&dyn Fn` closures. That was done for correctness, not speed: a *hidden*
+subtree has no live node to ask, so `Option::None` and an inactive enum
+variant were resolving their container's kind and defaults
+(`docs/plan-select.md` §1). The speed was a side effect, and it is
+larger than the correctness fix's author expected.
+
+Same machine, same session, one `git stash` apart — so the two rows are
+the same fixture, the same build flags and the same thermal state:
+
+| operation, 901 nodes | before (T24.0) | after (T24.1) | |
+|---|---:|---:|---:|
+| `cascade_deep` — a full stylesheet swap | 37.45 µs | **15.42 µs** | **2.43× faster** |
+| `cascade_subtree`, 90 of 901 nodes | 2.19 µs | **1.43 µs** | 1.53× faster |
+
+The `before` row reproduces the 37.8 µs measured on 2026-09-04 to within
+1%, which is what makes the comparison worth reading.
+
+**The conclusion the table above draws is unchanged.** A swap is still
+the expensive runtime operation — 15.4 µs against a 9.3 µs whole-tree
+layout and paint — and scoping is still what an `#[widget_id]` toggle
+should do: 10.8× cheaper here, against 16.6× before. The ratio narrowed
+because the per-node constant fell on both sides, not because scoping
+matters less.
+
 ## Why scoping is sound, and not merely faster
 
 Every `Selector` is node-local: `Id`, `Class`, `Kind` and `Any` read the
