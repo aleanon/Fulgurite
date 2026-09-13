@@ -205,3 +205,88 @@ fn every_symbol_draws_a_distinct_mark() {
         }
     }
 }
+
+/// **A spinner is a ring, not a sunburst.**
+///
+/// The first version drew twelve *radial* spokes fading around the
+/// circle — the Windows-95 hourglass look — where every toolkit's
+/// spinner is a stroked circle with an arc missing. Both are "some lines
+/// near a circle", so a test that counted commands could not tell them
+/// apart, and neither could the visibility gate above.
+///
+/// The property that separates them is the **direction of a segment**: a
+/// ring's endpoints are the same distance from the centre, a spoke's are
+/// not. And the gap has to be real, or a full circle passes.
+#[test]
+fn a_spinner_draws_a_ring_with_a_gap() {
+    use lumen_static::Point;
+    let box_ = Size { w: 40.0, h: 40.0 };
+    let l = painted(&mut Spinner::new(0.0), box_);
+    let (cx, cy) = (20.0f32, 20.0f32);
+    let segs: Vec<(Point, Point)> = l
+        .cmds
+        .iter()
+        .filter_map(|c| match c {
+            Cmd::Line { a, b, .. } => Some((*a, *b)),
+            _ => None,
+        })
+        .collect();
+    assert!(segs.len() > 12, "only {} segments — not a ring", segs.len());
+
+    let radius = |p: Point| ((p.x - cx).powi(2) + (p.y - cy).powi(2)).sqrt();
+    let mut worst = 0.0f32;
+    for (a, b) in &segs {
+        worst = worst.max((radius(*a) - radius(*b)).abs());
+    }
+    println!("{} segments, worst endpoint radius difference {worst:.2} px", segs.len());
+    // A spoke runs from an inner radius to an outer one: the version
+    // this replaced went from `0.30 × d` to `0.46 × d`, which on a 40 px
+    // box is **6.4 px**. A chord's endpoints sit on the same circle, and
+    // measure **0.56 px** apart — the six-decimal rounding in the unit
+    // table, not a direction. The bound sits between the two.
+    assert!(worst < 1.5, "segments are radial, not tangential ({worst:.2} px apart in radius)");
+
+    // The gap: the segments must not close the circle. Measured as the
+    // largest angular step between consecutive segment starts.
+    let mut angles: Vec<f32> = segs
+        .iter()
+        .map(|(a, _)| (a.y - cy).atan2(a.x - cx))
+        .collect();
+    angles.sort_by(|x, y| x.partial_cmp(y).unwrap());
+    let mut biggest = angles[0] + core::f32::consts::TAU - angles[angles.len() - 1];
+    for w in angles.windows(2) {
+        biggest = biggest.max(w[1] - w[0]);
+    }
+    let frac = biggest / core::f32::consts::TAU;
+    println!("largest angular gap: {:.0}% of the circle", frac * 100.0);
+    assert!(frac > 0.10, "no gap — this is a circle, not a spinner ({:.0}%)", frac * 100.0);
+    assert!(frac < 0.60, "the gap is most of the circle ({:.0}%)", frac * 100.0);
+}
+
+/// **A badge reads as an alert, and is round at a short count.**
+///
+/// Lumen's badge is a red notification count; a blue pill reads as a
+/// tag, which is what `Chip` is for. Both halves are asserted because
+/// the colour alone would pass on a red rectangle.
+#[test]
+fn a_badge_is_round_and_alarming() {
+    let box_ = Size { w: 200.0, h: 60.0 };
+    let l = painted(&mut Badge { text: "3" }, box_);
+    let (rect, colour, radius) = l
+        .cmds
+        .iter()
+        .find_map(|c| match c {
+            Cmd::RoundedRect { rect, color, radius } => Some((*rect, *color, *radius)),
+            _ => None,
+        })
+        .expect("a badge painted no body");
+    let (w, h) = (rect[2] - rect[0], rect[3] - rect[1]);
+    println!("badge {w:.0}x{h:.0} r{radius:.0} {colour:?}");
+    assert!(colour.0 > 150 && colour.1 < 110 && colour.2 < 110, "a badge is not an alert colour");
+    assert!(
+        (radius - h / 2.0).abs() < 0.5,
+        "the radius is {radius:.1}, not half the height ({:.1}) — it will not read as round",
+        h / 2.0
+    );
+    assert!(w < h * 1.6, "a one-digit badge is {w:.0}x{h:.0}, too wide to read as round");
+}

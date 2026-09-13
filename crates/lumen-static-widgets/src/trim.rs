@@ -120,9 +120,15 @@ impl<S: TextStorage> Node for Badge<S> {
         Style {
             width: Length::Shrink,
             height: Length::Shrink,
-            radius: 10.0,
-            padding: Edges { left: 8.0, right: 8.0, top: 2.0, bottom: 2.0 },
-            background: Color(0x2f, 0x6b, 0xff, 0xff),
+            // **Red and round, which is what a badge is.** Lumen's is
+            // a notification count sitting on a label, and every system
+            // draws that in an alert colour — a blue pill reads as a
+            // tag, which is what `Chip` is for. The radius is clamped to
+            // half the height in `paint`, so a one- or two-character
+            // count comes out circular and a longer one a pill.
+            radius: 999.0,
+            padding: Edges { left: 7.0, right: 7.0, top: 2.0, bottom: 2.0 },
+            background: Color(0xd9, 0x30, 0x25, 0xff),
             color: Color(0xff, 0xff, 0xff, 0xff),
             font_size: 12.0,
             font_weight: 700.0,

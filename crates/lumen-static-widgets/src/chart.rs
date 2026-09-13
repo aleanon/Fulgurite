@@ -285,12 +285,14 @@ impl<const KIND: u8> Node for Chart<KIND> {
     leaf_common!(Chart<KIND>, 0, nohit);
 }
 
-/// One of 96 unit vectors around the circle, starting at twelve o'clock
-/// and going clockwise — which is the direction every pie chart in every
-/// toolkit reads.
-fn unit(seg: usize) -> (f32, f32) {
+/// One of [`STEPS_ROUND`] unit vectors around the circle, starting at
+/// twelve o'clock and going clockwise — the direction every pie chart in
+/// every toolkit reads, and the direction a spinner turns.
+pub(crate) const STEPS_ROUND: usize = 96;
+
+pub(crate) fn unit(seg: usize) -> (f32, f32) {
     // Quarter-turn table; the other three quadrants are sign flips of
-    // it. Same argument as `indicator::RING`: no trig in a `no_std`
+    // it. Same argument as the spinner's ring: no trig in a `no_std`
     // crate that has needed none.
     const Q: usize = 24;
     const QUARTER: [(f32, f32); Q] = [

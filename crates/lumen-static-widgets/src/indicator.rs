@@ -132,30 +132,6 @@ impl Widget for Spinner {
 const SPIN: f32 = 28.0;
 /// Segments in the ring. Twelve reads as a circle at these sizes and is
 /// twelve commands; the renderer has no arc.
-const SEGMENTS: usize = 12;
-
-/// The twelve unit vectors, as a table.
-///
-/// **A table rather than `sin`/`cos`**, because the core is `no_std` and
-/// `lumen_static::num` carries only what it has needed — `clamp` and
-/// `sqrt`. Twelve fixed directions do not need a trig implementation
-/// added to a crate that has so far avoided one, and a `const` table is
-/// exact at every one of them.
-const RING: [(f32, f32); SEGMENTS] = [
-    (1.0, 0.0),
-    (0.866_025_4, 0.5),
-    (0.5, 0.866_025_4),
-    (0.0, 1.0),
-    (-0.5, 0.866_025_4),
-    (-0.866_025_4, 0.5),
-    (-1.0, 0.0),
-    (-0.866_025_4, -0.5),
-    (-0.5, -0.866_025_4),
-    (0.0, -1.0),
-    (0.5, -0.866_025_4),
-    (0.866_025_4, -0.5),
-];
-
 impl Node for Spinner {
     fn kind_name(&self) -> &'static str {
         "spinner"
@@ -190,29 +166,32 @@ impl Node for Spinner {
         if w <= 0.0 || h <= 0.0 {
             return;
         }
+        // **A ring with a gap, not a sunburst.** The first version drew
+        // twelve *radial* spokes fading around the circle, which is the
+        // Windows-95 hourglass look; every toolkit's spinner — Lumen's
+        // included — is a stroked circle with a arc missing, turning.
+        // The difference is the direction of the segments: tangential,
+        // not radial.
         let d = w.min(h);
         let (cx, cy) = ((r[0] + r[2]) / 2.0, (r[1] + r[3]) / 2.0);
-        let outer = d * 0.46;
-        let inner = d * 0.30;
-        let stroke = (d * 0.10).max(1.0);
-        // `rem_euclid`, so a negative phase — a clock that went
-        // backwards — still lands inside the ring rather than lighting
-        // nothing.
-        let lead = self.phase.rem_euclid(1.0) * SEGMENTS as f32;
-        for (n, &(cs, sn)) in RING.iter().enumerate() {
-            // How far *behind* the leading segment this one is, which is
-            // what makes the tail fade rather than the head.
-            let back = (lead - n as f32).rem_euclid(SEGMENTS as f32) / SEGMENTS as f32;
-            let a = 1.0 - back;
-            let alpha = (a * a * 255.0) as u8;
-            if alpha == 0 {
-                continue;
-            }
+        let radius = d * 0.40;
+        let stroke = (d * 0.10).max(1.5);
+        let steps = crate::chart::STEPS_ROUND;
+        // How much of the circle is missing. A quarter reads as a
+        // spinner; much less and it is a circle, much more and it is a
+        // comma.
+        let gap = steps / 4;
+        // `rem_euclid`, so a clock that went backwards still lands
+        // inside the ring rather than lighting nothing.
+        let lead = (self.phase.rem_euclid(1.0) * steps as f32) as usize;
+        for k in 0..steps - gap {
+            let a = crate::chart::unit((lead + k) % steps);
+            let b = crate::chart::unit((lead + k + 1) % steps);
             out.line(
-                Point { x: cx + cs * inner, y: cy + sn * inner },
-                Point { x: cx + cs * outer, y: cy + sn * outer },
+                Point { x: cx + a.0 * radius, y: cy + a.1 * radius },
+                Point { x: cx + b.0 * radius, y: cy + b.1 * radius },
                 stroke,
-                Color(s.fg.0, s.fg.1, s.fg.2, alpha),
+                s.fg,
             );
         }
     }

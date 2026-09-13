@@ -111,8 +111,12 @@ pub struct DButton {
 pub struct DCheckBox {
     #[widget_id("d_checkbox_a")]
     pub a: CheckBox<Show>,
+    #[widget_id("d_checkbox_al")]
+    pub al: Label<String>,
     #[widget_id("d_checkbox_b")]
     pub b: CheckBox<Show>,
+    #[widget_id("d_checkbox_bl")]
+    pub bl: Label<String>,
 }
 
 #[derive(StaticTree, Default)]
@@ -120,8 +124,12 @@ pub struct DCheckBox {
 pub struct DSwitch {
     #[widget_id("d_switch_a")]
     pub a: Switch<Show>,
+    #[widget_id("d_switch_al")]
+    pub al: Label<String>,
     #[widget_id("d_switch_b")]
     pub b: Switch<Show>,
+    #[widget_id("d_switch_bl")]
+    pub bl: Label<String>,
 }
 
 #[derive(StaticTree, Default)]
@@ -129,10 +137,16 @@ pub struct DSwitch {
 pub struct DRadio {
     #[widget_id("d_radio_a")]
     pub a: Radio<Show>,
+    #[widget_id("d_radio_al")]
+    pub al: Label<String>,
     #[widget_id("d_radio_b")]
     pub b: Radio<Show>,
+    #[widget_id("d_radio_bl")]
+    pub bl: Label<String>,
     #[widget_id("d_radio_c")]
     pub c: Radio<Show>,
+    #[widget_id("d_radio_cl")]
+    pub cl: Label<String>,
 }
 
 #[derive(StaticTree, Default)]

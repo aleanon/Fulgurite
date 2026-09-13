@@ -758,6 +758,12 @@ const STAGE_NODE: usize = 8;
 /// One dropdown row's height.
 const ROW_H: f32 = 30.0;
 
+/// A control's own label — the text beside a checkbox or a switch.
+fn lbl() -> lumen_static::style::Patch {
+    use lumen_static::style::Patch;
+    Patch::new().color(INK).font_size(15.0)
+}
+
 /// The shape all three button variants share; only the colours differ.
 fn btn() -> lumen_static::style::Patch {
     use lumen_static::style::Patch;
@@ -852,7 +858,10 @@ fn stylesheet() -> Vec<StyleRule> {
             Patch::new()
                 .width(Length::Fixed(260.0))
                 .height(Length::Fixed(38.0))
-                .background(BAND)
+                // Lumen's field is a pale fill, not white. `Style` has
+                // no border and `Cmd` no stroked rect, so the ground is
+                // what separates a field from the page here.
+                .background(Color(0xf0, 0xf2, 0xf6, 0xff))
                 .color(INK)
                 .radius(8.0)
                 .font_size(15.0)
@@ -861,6 +870,16 @@ fn stylesheet() -> Vec<StyleRule> {
         // The ones whose width is the demo: a bar, a divider, a
         // skeleton and a slider all fill whatever they are given, and on
         // an empty stage that is the whole window.
+        // The toggles' labels, which Lumen's controls carry and ours
+        // do not: `Toggle` has no text of its own, so the demo pairs it
+        // with a `Label` — which is also how an application writes it.
+        StyleRule::new(Selector::Id("d_checkbox_al"), lbl()),
+        StyleRule::new(Selector::Id("d_checkbox_bl"), lbl()),
+        StyleRule::new(Selector::Id("d_switch_al"), lbl()),
+        StyleRule::new(Selector::Id("d_switch_bl"), lbl()),
+        StyleRule::new(Selector::Id("d_radio_al"), lbl()),
+        StyleRule::new(Selector::Id("d_radio_bl"), lbl()),
+        StyleRule::new(Selector::Id("d_radio_cl"), lbl()),
         StyleRule::new(Selector::Id("d_slider_a"), Patch::new().width(Length::Fixed(280.0))),
         StyleRule::new(Selector::Id("d_progress_a"), Patch::new().width(Length::Fixed(280.0))),
         StyleRule::new(Selector::Id("d_divider_a"), Patch::new().width(Length::Fixed(280.0))),

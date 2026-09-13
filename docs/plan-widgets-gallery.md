@@ -172,6 +172,40 @@ T16.10). It uses the hook to keep a `Slider`'s readout following a drag
 Damage itself is exact: a press reports the button's own rect and
 nothing more.
 
+## 3c. Matched against Lumen's own renders
+
+`crates/lumen-widgets/src/doc_shots/` holds **sixty rendered PNGs**, one
+per widget. That is the reference, and comparing against it found four
+things that reading the source did not — because all four are questions
+about what a widget *looks like*, and the source answers what it is.
+
+| | Lumen | ours, before |
+|---|---|---|
+| **Spinner** | a stroked ring with an arc missing, turning | twelve *radial* spokes fading around a circle — the Windows-95 hourglass |
+| **Badge** | a red notification count, round at one or two digits | a blue pill, which reads as a tag — and a tag is what `Chip` is for |
+| **CheckBox / Switch / Radio** | the control **and its label**: "I agree", "Wi-Fi", "Red" | a bare control, which is not how any of them is ever used |
+| **TextInput** | a pale fill with a hairline border | white, so it read as text on the page |
+
+The first two were fixed in the widgets, the third in the demos — our
+`Toggle` has no text of its own, so the demo pairs it with a `Label`,
+which is also how an application writes it. The fourth is fixed as far
+as it can be: `Style` has no border and `Cmd` has no stroked rect, so
+the ground is what separates a field from the page here. That gap is
+worth a task of its own before T23.9's pickers, all of which are
+bordered controls.
+
+**The gate that came out of it is about geometry, not colour.** A ring
+and a sunburst are both "some lines near a circle", so counting commands
+cannot tell them apart and neither can a visibility check. What
+separates them is the direction of a segment: a ring's endpoints are the
+same distance from the centre, a spoke's are not. Measured — 0.56 px
+apart for the ring, which is the unit table's rounding, against 3.64 px
+for a spoke on the same box.
+
+`ffmpeg` and the `doc_shots` directory are all this takes, and it should
+be the first thing done for every T23.x: build the widget, render it,
+put it beside Lumen's, and look.
+
 ## 4. What is next, in order
 
 | id | task |
