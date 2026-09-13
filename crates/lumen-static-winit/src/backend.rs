@@ -69,6 +69,17 @@ pub trait Backend<A: App> {
         let _ = images;
     }
 
+    /// The last frame this backend rendered, as RGBA8.
+    ///
+    /// **Not the same as `fetch_rgba`**, and the difference is the whole
+    /// reason both exist: this is what the renderer *drew*, that is what
+    /// the display server is *showing*. A backend that cannot hand back
+    /// its own pixels answers `None`, which `ui.screenshot` reports as
+    /// an error rather than as a blank image.
+    fn frame_rgba(&self) -> Option<(u32, u32, &[u8])> {
+        None
+    }
+
     /// What to print in a startup line. A user reporting "it is slow"
     /// should not have to guess which renderer they got.
     fn name(&self) -> &str;
@@ -110,6 +121,10 @@ impl<A: App> Backend<A> for Software {
 
     fn set_images(&mut self, images: Box<dyn lumen_static::ImageSource>) {
         self.canvas.images = Some(images);
+    }
+
+    fn frame_rgba(&self) -> Option<(u32, u32, &[u8])> {
+        Some((self.canvas.width, self.canvas.height, &self.canvas.pixels))
     }
 
     fn present(&mut self, host: &mut Host<A>, page: Color, frame_start: Instant) -> Frame {

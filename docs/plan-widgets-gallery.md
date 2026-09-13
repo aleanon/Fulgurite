@@ -206,6 +206,45 @@ for a spoke on the same box.
 be the first thing done for every T23.x: build the widget, render it,
 put it beside Lumen's, and look.
 
+## 3d. Steering the running window
+
+**The endpoint existed; the transport did not.** `lumen-static-agent`
+has carried the whole command surface since M15 — `input.click`,
+`input.pointerDown`/`pointerUp`, `input.type`, `ui.getTree`,
+`ui.resolve`, `ui.screenshot`, `ui.waitSettled` — and
+`examples/counter-window` has had a JSON-RPC socket for it since M14.
+What never existed was a way to reach either from `run`, which is what
+every other example uses. So a review of this showcase **restarted the
+process once per widget**, eighteen times, instead of opening the
+dropdown and picking the next one.
+
+That is the **third** time this shape has appeared: `Config::stylesheet`
+was added because a turnkey window could not be styled,
+`Config::images` because it could not draw a picture, and now
+`Config::agent` because it could not be driven. The pattern is worth
+naming — a capability landing in the shell without a line in `Config` is
+a capability no application can use.
+
+`lumen-static-winit` gains an `agent` feature and a reusable `Live`
+bridge. Generic over the application, which is what makes it reusable
+where the example's copy was not: `App::tree` reaches the tree without
+knowing its field name, and `Backend` reaches the pixels without knowing
+which renderer drew them. Default-off, because `lumen-static-agent`
+builds `lumen-static` with `observe` and that takes `NodeDesc` from
+48 B to 72 B in every binary that links it.
+
+`just agent-drive` is the gate, in `just gpu-parity`'s idiom: it opens
+the dropdown, picks a row, and holds a press — all against the live
+window, in one process. Two things it proves that a headless test cannot:
+that a synthesized click crosses the socket thread, the event-loop proxy
+and the backend, and that **a press is observable while held**, which a
+screenshot taken after a click cannot show.
+
+Two corrections to what the protocol looked like from the outside:
+`input.click` takes `x`/`y` *or* a `selector`, and the held-press
+methods are `input.pointerDown` / `input.pointerUp` — not `press` and
+`release`, which is what the comment above them describes them as.
+
 ## 4. What is next, in order
 
 | id | task |

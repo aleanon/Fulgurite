@@ -272,6 +272,13 @@ glasswall-bench:
 showcase:
     cargo run --release -p showcase
 
+# Drive the showcase's live window over the agent socket (M23/T23.1c).
+#
+# The endpoint has existed since M15 and had no transport out of `run`;
+# this is the gate that it does now. Needs a display; skips without one.
+agent-drive:
+    ./scripts/agent_drive.sh
+
 # What `just example` accepts.
 examples:
     @ls examples

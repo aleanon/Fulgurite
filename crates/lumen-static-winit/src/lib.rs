@@ -49,6 +49,8 @@ use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{Window, WindowId};
 
+#[cfg(feature = "agent")]
+pub mod agent;
 pub mod backend;
 pub mod clipboard;
 pub mod dialog;
@@ -134,6 +136,19 @@ pub struct Config {
     /// Taken once, when the backend is created. A `None` here is not an
     /// error: `ImageSource` already says a missing asset draws nothing.
     pub images: Option<Box<dyn lumen_static::ImageSource>>,
+    /// Where to serve the agent endpoint, with `--features agent`.
+    ///
+    /// `Some("127.0.0.1:7654")` opens a JSON-RPC socket that drives this
+    /// window: `input.click`, `input.type`, `ui.getTree`,
+    /// `ui.screenshot` and the rest of the protocol
+    /// `lumen-static-agent` has carried since M15. Until M23 there was
+    /// no way to reach any of it from `run`, so steering a live window
+    /// meant copying a socket into your own binary — see the
+    /// `agent` module, which the feature compiles in.
+    ///
+    /// `None`, and without the feature the field is inert, which is what
+    /// keeps a release build free of `observe`.
+    pub agent: Option<String>,
 }
 
 impl Default for Config {
@@ -146,6 +161,7 @@ impl Default for Config {
             backend: Prefer::Auto,
             stylesheet: Vec::new(),
             images: None,
+            agent: None,
         }
     }
 }
@@ -157,10 +173,32 @@ impl Default for Config {
 /// `ApplicationHandler` out of [`Surface`] and [`translate`], which is
 /// what `examples/counter-window` does.
 pub fn run<A: App + 'static>(app: A, config: Config) {
-    let event_loop = EventLoop::new().expect("event loop");
-    event_loop.set_control_flow(ControlFlow::Wait);
-    let mut win = Win::new(app, config);
-    event_loop.run_app(&mut win).expect("run");
+    #[cfg(feature = "agent")]
+    {
+        // **A user-event loop, so the socket thread has something to
+        // send to.** Built unconditionally under the feature rather than
+        // only when `config.agent` is set: the loop's type is fixed at
+        // construction, and branching on a runtime value would need two
+        // of them.
+        let event_loop = EventLoop::<agent::UserEvent>::with_user_event()
+            .build()
+            .expect("event loop");
+        event_loop.set_control_flow(ControlFlow::Wait);
+        if let Some(addr) = config.agent.clone() {
+            let proxy = event_loop.create_proxy();
+            std::thread::spawn(move || agent::serve(addr, proxy));
+        }
+        let mut win = Win::new(app, config);
+        event_loop.run_app(&mut win).expect("run");
+        return;
+    }
+    #[cfg(not(feature = "agent"))]
+    {
+        let event_loop = EventLoop::new().expect("event loop");
+        event_loop.set_control_flow(ControlFlow::Wait);
+        let mut win = Win::new(app, config);
+        event_loop.run_app(&mut win).expect("run");
+    }
 }
 
 /// The turnkey handler behind [`run`].
@@ -194,6 +232,9 @@ struct Win<A: App> {
     cursor_shown: lumen_static::style::Cursor,
     /// When the last frame was drawn, for the animation tick (T15.4).
     last_frame: Option<Instant>,
+    /// The agent, when the endpoint is compiled in.
+    #[cfg(feature = "agent")]
+    agent: lumen_static_agent::Agent,
 }
 
 impl<A: App> Win<A> {
@@ -223,6 +264,8 @@ impl<A: App> Win<A> {
             clipboard: Clipboard::new(),
             cursor_shown: lumen_static::style::Cursor::Default,
             last_frame: None,
+            #[cfg(feature = "agent")]
+            agent: lumen_static_agent::Agent::new(),
         }
     }
 
@@ -310,6 +353,21 @@ impl<A: App> Win<A> {
         // above has just brought up to date (T14.6).
         cursor::apply(&window, self.host.cursor(), &mut self.cursor_shown);
 
+        // The journal, fed beside the frame it describes — this is what
+        // `ui.lastChange`, `ui.lastDamage` and `ui.waitSettled` read, and
+        // without it an agent can drive the window but cannot tell when
+        // it has finished moving.
+        #[cfg(feature = "agent")]
+        {
+            let timing = lumen_static_agent::FrameTiming::default();
+            let mut tree = lumen_static_agent::TreeMut::of_root(
+                self.host.app.tree_mut(),
+                &self.host.styles,
+                &self.host.states,
+            );
+            self.agent.frame_done(&mut tree, timing);
+        }
+
         // Another frame only while something is moving. A still UI
         // idles, which is what keeps the idle frame numbers in
         // `docs/results-frame-cost.md` true.
@@ -319,8 +377,56 @@ impl<A: App> Win<A> {
     }
 }
 
+#[cfg(feature = "agent")]
+impl<A: App> ApplicationHandler<agent::UserEvent> for Win<A> {
+    fn resumed(&mut self, e: &ActiveEventLoop) {
+        Win::resumed_impl(self, e);
+    }
+    fn window_event(&mut self, e: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
+        Win::window_event_impl(self, e, id, event);
+    }
+
+    /// Answer one agent request **on the event loop's own thread**, with
+    /// the tree and the backend in hand.
+    fn user_event(&mut self, _: &ActiveEventLoop, ev: agent::UserEvent) {
+        let agent::UserEvent::Agent(rpc) = ev;
+        let Some(backend) = self.backend.as_deref_mut() else {
+            let _ = rpc.reply.send(serde_json::json!({
+                "jsonrpc": "2.0", "id": rpc.req.get("id").cloned().unwrap_or(serde_json::Value::Null),
+                "error": {"code": -32603, "message": "no window yet"}
+            }));
+            return;
+        };
+        let mut live = agent::Live {
+            host: &mut self.host,
+            metrics: &mut self.metrics,
+            backend,
+            page: self.config.page,
+        };
+        // **One call.** `dispatch_input` already falls through to
+        // `dispatch` for anything that is not an `input.*` method or a
+        // screenshot, so the split between "drives" and "only reads"
+        // does not have to be made out here.
+        let resp = self.agent.dispatch_input(&mut live, &rpc.req);
+        let _ = rpc.reply.send(resp);
+        if let Some(w) = &self.window {
+            w.request_redraw();
+        }
+    }
+}
+
+#[cfg(not(feature = "agent"))]
 impl<A: App> ApplicationHandler for Win<A> {
-    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+    fn resumed(&mut self, e: &ActiveEventLoop) {
+        Win::resumed_impl(self, e);
+    }
+    fn window_event(&mut self, e: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
+        Win::window_event_impl(self, e, id, event);
+    }
+}
+
+impl<A: App> Win<A> {
+    fn resumed_impl(&mut self, event_loop: &ActiveEventLoop) {
         let attrs = Window::default_attributes()
             .with_title(self.config.title)
             .with_inner_size(winit::dpi::LogicalSize::new(
@@ -355,7 +461,7 @@ impl<A: App> ApplicationHandler for Win<A> {
         self.window = Some(window);
     }
 
-    fn window_event(&mut self, event_loop: &ActiveEventLoop, _: WindowId, event: WindowEvent) {
+    fn window_event_impl(&mut self, event_loop: &ActiveEventLoop, _: WindowId, event: WindowEvent) {
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
 

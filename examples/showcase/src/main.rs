@@ -743,9 +743,24 @@ fn main() {
             height: H,
             page: PAGE,
             stylesheet: stylesheet(),
+            // Built `--features agent`, the window can be steered from
+            // outside: `input.click` on the picker, `ui.screenshot` of
+            // the result. `LUMEN_AGENT` overrides the address.
+            agent: agent_addr(),
             ..Config::default()
         },
     );
+}
+
+/// Where to serve the agent endpoint, or `None` without the feature.
+#[cfg(feature = "agent")]
+fn agent_addr() -> Option<String> {
+    Some(std::env::var("LUMEN_AGENT").unwrap_or_else(|_| "127.0.0.1:7654".into()))
+}
+
+#[cfg(not(feature = "agent"))]
+fn agent_addr() -> Option<String> {
+    None
 }
 
 /// The `Stage` node's index — where the header stops.

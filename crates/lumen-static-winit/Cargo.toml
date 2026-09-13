@@ -20,6 +20,13 @@ name = "lumen_static_winit"
 # by default. An application that wants neither writes
 # `default-features = false`.
 default = ["clipboard"]
+# The agent endpoint: a JSON-RPC socket that drives the *running* window
+# (M23/T23.1c). Default-OFF and a feature rather than always-on, because
+# `lumen-static-agent` builds `lumen-static` with `observe`, which takes
+# `NodeDesc` from 48 B to 72 B in every binary that links it — the
+# condition `docs/step5-observability.md`'s zero-release-cost claim
+# depends on. An application opts in; a release build does not.
+agent = ["dep:lumen-static-agent", "dep:serde_json"]
 clipboard = ["dep:arboard"]
 # Platform drag and drop (T15.7). Default-OFF: it is a platform
 # capability an application opts into, and winit already carries the
@@ -65,3 +72,5 @@ rfd = { version = "0.15", optional = true, default-features = false, features = 
 # The GPU renderer. Optional, and its own crate, which is the gate the
 # M15 policy asks for: nothing pulls wgpu unless a manifest says so.
 lumen-static-wgpu = { path = "../lumen-static-wgpu", optional = true }
+lumen-static-agent = { path = "../lumen-static-agent", optional = true }
+serde_json = { version = "1", optional = true }
