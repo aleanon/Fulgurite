@@ -27,7 +27,7 @@ use alloc::vec::Vec;
 use crate::desc::{Constraints, NodeDesc, NodeState, Point, Size};
 use crate::cx::LayoutCx;
 use crate::display::Painter;
-use crate::style::Style;
+use crate::style::{Seed, Style};
 use crate::hit::Hit;
 
 /// The object-safe half: everything traversal calls.
@@ -291,6 +291,41 @@ pub trait Widget: Node {
     /// Structural descriptors for this subtree — index addressing for the
     /// agent surface, journal and audit. Not read during layout.
     const SUB_TABLE: &'static [NodeDesc];
+
+    /// The kind name a [`crate::style::Selector::Kind`] rule matches.
+    ///
+    /// The type-level half of [`Node::kind_name`], which forwards here.
+    const KIND: &'static str;
+
+    /// This kind's own defaults, before any rule applies.
+    ///
+    /// The type-level half of [`Node::defaults`], which forwards here —
+    /// and the home that method's contract always described. See
+    /// [`crate::style::Seed`] for what reading it off an instance cost.
+    fn type_defaults() -> Style {
+        Style::default()
+    }
+
+    /// One [`crate::style::Seed`] per node of this subtree, in
+    /// `SUB_TABLE` order — so `SEEDS.len() == NODE_COUNT`.
+    ///
+    /// **No default**, deliberately. A default correct for a leaf is
+    /// silently wrong for a container, and a container that cascades as
+    /// `"widget"` with `Style::default()` is precisely the failure this
+    /// exists to end. Requiring it makes the compiler name every site.
+    const SEEDS: &'static [Seed];
+}
+
+/// Copy a child's `SEEDS` into a parent's array being built. The seed
+/// counterpart of [`splice_child`] — and simpler, because a seed holds
+/// no indices to rebase.
+#[doc(hidden)]
+pub const fn splice_seeds(dst: &mut [Seed], write_at: usize, src: &[Seed]) {
+    let mut j = 0;
+    while j < src.len() {
+        dst[write_at + j] = src[j];
+        j += 1;
+    }
 }
 
 /// Copy a child's `SUB_TABLE` into a parent table being built, rebasing

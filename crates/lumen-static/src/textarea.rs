@@ -44,7 +44,7 @@ use crate::display::Painter;
 use crate::event::{Event, EventCtx, Key};
 use crate::hit::Hit;
 use crate::ops::{rect_of, resolve_self};
-use crate::style::Style;
+use crate::style::{Seed, Style};
 use crate::text::{ClusterBuf, TextBuffer};
 use crate::widget::{Node, Widget};
 use crate::{Constraints, Point, Size};
@@ -390,14 +390,10 @@ impl<S: TextBuffer> Widget for TextArea<S> {
     const IS_RIGID: bool = false;
     const SUB_TABLE: &'static [NodeDesc] =
         &[NodeDesc::new(0, NO_PARENT, 0, 0, NodeDesc::FOCUSABLE)];
-}
 
-impl<S: TextBuffer> Node for TextArea<S> {
-    fn kind_name(&self) -> &'static str {
-        "textarea"
-    }
+    const KIND: &'static str = "textarea";
 
-    fn defaults(&self) -> Style {
+    fn type_defaults() -> Style {
         Style {
             padding: crate::style::Edges { left: 8.0, right: 8.0, top: 6.0, bottom: 6.0 },
             height: crate::style::Length::Fixed(96.0),
@@ -405,6 +401,18 @@ impl<S: TextBuffer> Node for TextArea<S> {
             cursor: crate::style::Cursor::Text,
             ..Style::default()
         }
+    }
+
+    const SEEDS: &'static [Seed] = &[Seed::new(Self::KIND, Self::type_defaults)];
+}
+
+impl<S: TextBuffer> Node for TextArea<S> {
+    fn kind_name(&self) -> &'static str {
+        <Self as Widget>::KIND
+    }
+
+    fn defaults(&self) -> Style {
+        <Self as Widget>::type_defaults()
     }
 
     fn layout(

@@ -611,7 +611,43 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                 };
                 const IS_RIGID: bool = true #(&& <#field_ty as ::lumen_static::widget::Widget>::IS_RIGID)*;
                 const SUB_TABLE: &'static [::lumen_static::desc::NodeDesc] = &TABLE;
+
+                const KIND: &'static str = #name_str;
+
+                fn type_defaults() -> ::lumen_static::Style {
+                    ::lumen_static::Style {
+                        width: #default_w,
+                        height: #default_h,
+                        spacing: #sp,
+                        ..::lumen_static::Style::default()
+                    }
+                }
+
+                const SEEDS: &'static [::lumen_static::style::Seed] = &SEEDS;
             }
+
+            /// One seed per node, spliced from the fields exactly as
+            /// `TABLE` is — the cascade reads this instead of walking the
+            /// live tree, so a hidden subtree still resolves from its own
+            /// type (M24/T24.0).
+            const SEEDS: [::lumen_static::style::Seed;
+                1 #(+ <#field_ty as ::lumen_static::widget::Widget>::NODE_COUNT)*] = {
+                let mut s = [::lumen_static::style::Seed::WIDGET;
+                    1 #(+ <#field_ty as ::lumen_static::widget::Widget>::NODE_COUNT)*];
+                s[0] = ::lumen_static::style::Seed::new(
+                    <#name as ::lumen_static::widget::Widget>::KIND,
+                    <#name as ::lumen_static::widget::Widget>::type_defaults,
+                );
+                let mut at: usize = 1;
+                #(
+                    ::lumen_static::widget::splice_seeds(
+                        &mut s, at, <#field_ty as ::lumen_static::widget::Widget>::SEEDS,
+                    );
+                    at += <#field_ty as ::lumen_static::widget::Widget>::NODE_COUNT;
+                )*
+                let _ = at;
+                s
+            };
 
             // Proof-carrying table: the compiler re-checks the macro's
             // own output at every expansion, and the depth cap turns the
@@ -651,16 +687,11 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
 
             impl ::lumen_static::widget::Node for #name {
                 fn kind_name(&self) -> &'static str {
-                    #name_str
+                    <Self as ::lumen_static::widget::Widget>::KIND
                 }
 
                 fn defaults(&self) -> ::lumen_static::Style {
-                    ::lumen_static::Style {
-                        width: #default_w,
-                        height: #default_h,
-                        spacing: #sp,
-                        ..::lumen_static::Style::default()
-                    }
+                    <Self as ::lumen_static::widget::Widget>::type_defaults()
                 }
 
                 /// iced's `resolve`, per container: one scan lays out the
@@ -1081,14 +1112,48 @@ fn expand_enum(
                 };
                 const IS_RIGID: bool = true #(&& <#var_ty as ::lumen_static::widget::Widget>::IS_RIGID)*;
                 const SUB_TABLE: &'static [::lumen_static::desc::NodeDesc] = &TABLE;
+
+                const KIND: &'static str = #name_str;
+
+                const SEEDS: &'static [::lumen_static::style::Seed] = &SEEDS;
             }
+
+            /// One seed per node, **including every inactive variant's**.
+            ///
+            /// This is what the switch was missing. An inactive variant
+            /// has no instance, so `node(i)` on those indices returns the
+            /// enum itself — deliberately, so the agent can walk them —
+            /// and the cascade therefore resolved a hidden `CheckBox`
+            /// from the *enum's* kind and defaults: `Fixed(24.0)` became
+            /// `Shrink`, which on screen is a control with no size of its
+            /// own. A seed is a property of the variant's type, which is
+            /// known here whether or not it is the one showing.
+            /// `docs/plan-select.md` §1.
+            const SEEDS: [::lumen_static::style::Seed;
+                1 #(+ <#var_ty as ::lumen_static::widget::Widget>::NODE_COUNT)*] = {
+                let mut s = [::lumen_static::style::Seed::WIDGET;
+                    1 #(+ <#var_ty as ::lumen_static::widget::Widget>::NODE_COUNT)*];
+                s[0] = ::lumen_static::style::Seed::new(
+                    <#name as ::lumen_static::widget::Widget>::KIND,
+                    <#name as ::lumen_static::widget::Widget>::type_defaults,
+                );
+                let mut at: usize = 1;
+                #(
+                    ::lumen_static::widget::splice_seeds(
+                        &mut s, at, <#var_ty as ::lumen_static::widget::Widget>::SEEDS,
+                    );
+                    at += <#var_ty as ::lumen_static::widget::Widget>::NODE_COUNT;
+                )*
+                let _ = at;
+                s
+            };
 
             const _: () = assert!(::lumen_static::widget::table_is_well_formed(&TABLE));
             const _: () = assert!(<#name as ::lumen_static::widget::Widget>::DEPTH <= ::lumen_static::MAX_DEPTH);
 
             impl ::lumen_static::widget::Node for #name {
                 fn kind_name(&self) -> &'static str {
-                    #name_str
+                    <Self as ::lumen_static::widget::Widget>::KIND
                 }
 
                 fn layout(

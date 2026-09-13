@@ -53,7 +53,7 @@ use crate::desc::{NodeDesc, NodeState, NO_PARENT};
 use crate::display::Painter;
 use crate::hit::Hit;
 use crate::ops::{inner_limits, rect_of, resolve_self, Axis};
-use crate::style::{Length, Style};
+use crate::style::{Length, Seed, Style};
 use crate::widget::{Node, Widget};
 use crate::{Constraints, LayoutCx, Point, Size};
 
@@ -153,6 +153,16 @@ impl<W: Widget> Widget for ScrollView<W> {
     /// inside can never resize anything above it.
     const IS_RIGID: bool = true;
     const SUB_TABLE: &'static [NodeDesc] = ScrollTable::<W>::SLICE;
+
+    const KIND: &'static str = "scrollview";
+
+    const SEEDS: &'static [Seed] = ScrollTable::<W>::SEED_SLICE;
+
+    /// Fills its parent on both axes: a scroller with a `Shrink` height
+    /// would size to its content and never scroll.
+    fn type_defaults() -> Style {
+        Style { width: Length::FILL, height: Length::FILL, ..Style::default() }
+    }
 }
 
 /// The merged table for one `ScrollView<W>`, built at compile time —
@@ -172,6 +182,18 @@ impl<W: Widget> ScrollTable<W> {
         t
     };
     pub const SLICE: &'static [NodeDesc] = Self::ARRAY.split_at(1 + W::NODE_COUNT).0;
+
+    /// The seed counterpart of [`Self::ARRAY`], spliced the same way.
+    const SEED_ARRAY: [Seed; MAX_SCROLL_NODES] = {
+        let mut s = [Seed::WIDGET; MAX_SCROLL_NODES];
+        s[0] = Seed::new(
+            <ScrollView<W> as Widget>::KIND,
+            <ScrollView<W> as Widget>::type_defaults,
+        );
+        crate::widget::splice_seeds(&mut s, 1, W::SEEDS);
+        s
+    };
+    pub const SEED_SLICE: &'static [Seed] = Self::SEED_ARRAY.split_at(1 + W::NODE_COUNT).0;
 }
 
 /// Upper bound on `1 + W::NODE_COUNT` for one [`ScrollView`]. See
@@ -180,13 +202,11 @@ pub const MAX_SCROLL_NODES: usize = 256;
 
 impl<W: Widget> Node for ScrollView<W> {
     fn kind_name(&self) -> &'static str {
-        "scrollview"
+        <Self as Widget>::KIND
     }
 
-    /// Fills its parent on both axes: a scroller with a `Shrink` height
-    /// would size to its content and never scroll.
     fn defaults(&self) -> Style {
-        Style { width: Length::FILL, height: Length::FILL, ..Style::default() }
+        <Self as Widget>::type_defaults()
     }
 
     fn layout(

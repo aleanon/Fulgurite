@@ -8,7 +8,7 @@
 use lumen_static::desc::{NodeDesc, NodeState, NO_PARENT};
 use lumen_static::display::{Color, Painter};
 use lumen_static::ops::{record_painted, rect_of, resolve_self};
-use lumen_static::style::{Align, Edges, Length, Style};
+use lumen_static::style::{Align, Edges, Length, Seed, Style};
 use lumen_static::widget::{Node, Widget};
 use lumen_static::{leaf_common, Constraints, LayoutCx, Size, TextStorage};
 
@@ -38,14 +38,10 @@ impl Widget for Divider {
     /// content.
     const IS_RIGID: bool = true;
     const SUB_TABLE: &'static [NodeDesc] = LEAF;
-}
 
-impl Node for Divider {
-    fn kind_name(&self) -> &'static str {
-        "rule"
-    }
+    const KIND: &'static str = "rule";
 
-    fn defaults(&self) -> Style {
+    fn type_defaults() -> Style {
         Style {
             width: Length::FILL,
             height: Length::Fixed(1.0),
@@ -54,6 +50,10 @@ impl Node for Divider {
         }
     }
 
+    const SEEDS: &'static [Seed] = &[Seed::new(Self::KIND, Self::type_defaults)];
+}
+
+impl Node for Divider {
     fn layout(
         &mut self,
         _cx: &mut LayoutCx,
@@ -109,14 +109,10 @@ impl<S: TextStorage> Widget for Badge<S> {
     /// `true` here would let a changed count keep the old box and clip.
     const IS_RIGID: bool = false;
     const SUB_TABLE: &'static [NodeDesc] = LEAF;
-}
 
-impl<S: TextStorage> Node for Badge<S> {
-    fn kind_name(&self) -> &'static str {
-        "badge"
-    }
+    const KIND: &'static str = "badge";
 
-    fn defaults(&self) -> Style {
+    fn type_defaults() -> Style {
         Style {
             width: Length::Shrink,
             height: Length::Shrink,
@@ -136,6 +132,10 @@ impl<S: TextStorage> Node for Badge<S> {
         }
     }
 
+    const SEEDS: &'static [Seed] = &[Seed::new(Self::KIND, Self::type_defaults)];
+}
+
+impl<S: TextStorage> Node for Badge<S> {
     fn layout(
         &mut self,
         cx: &mut LayoutCx,
@@ -207,14 +207,10 @@ impl<S: TextStorage> Widget for Chip<S> {
     const DEPTH: usize = 1;
     const IS_RIGID: bool = false;
     const SUB_TABLE: &'static [NodeDesc] = LEAF;
-}
 
-impl<S: TextStorage> Node for Chip<S> {
-    fn kind_name(&self) -> &'static str {
-        "chip"
-    }
+    const KIND: &'static str = "chip";
 
-    fn defaults(&self) -> Style {
+    fn type_defaults() -> Style {
         Style {
             width: Length::Shrink,
             height: Length::Shrink,
@@ -228,6 +224,10 @@ impl<S: TextStorage> Node for Chip<S> {
         }
     }
 
+    const SEEDS: &'static [Seed] = &[Seed::new(Self::KIND, Self::type_defaults)];
+}
+
+impl<S: TextStorage> Node for Chip<S> {
     fn layout(
         &mut self,
         cx: &mut LayoutCx,
@@ -313,16 +313,10 @@ impl<S: TextStorage> Widget for Avatar<S> {
     /// Rigid: an avatar is a fixed circle whatever is in it.
     const IS_RIGID: bool = true;
     const SUB_TABLE: &'static [NodeDesc] = LEAF;
-}
 
-const AVATAR: f32 = 40.0;
+    const KIND: &'static str = "avatar";
 
-impl<S: TextStorage> Node for Avatar<S> {
-    fn kind_name(&self) -> &'static str {
-        "avatar"
-    }
-
-    fn defaults(&self) -> Style {
+    fn type_defaults() -> Style {
         Style {
             width: Length::Fixed(AVATAR),
             height: Length::Fixed(AVATAR),
@@ -336,6 +330,12 @@ impl<S: TextStorage> Node for Avatar<S> {
         }
     }
 
+    const SEEDS: &'static [Seed] = &[Seed::new(Self::KIND, Self::type_defaults)];
+}
+
+const AVATAR: f32 = 40.0;
+
+impl<S: TextStorage> Node for Avatar<S> {
     fn layout(
         &mut self,
         _cx: &mut LayoutCx,
@@ -421,16 +421,10 @@ impl Widget for Icon {
     const DEPTH: usize = 1;
     const IS_RIGID: bool = true;
     const SUB_TABLE: &'static [NodeDesc] = LEAF;
-}
 
-const ICON: f32 = 20.0;
+    const KIND: &'static str = "icon";
 
-impl Node for Icon {
-    fn kind_name(&self) -> &'static str {
-        "icon"
-    }
-
-    fn defaults(&self) -> Style {
+    fn type_defaults() -> Style {
         Style {
             width: Length::Fixed(ICON),
             height: Length::Fixed(ICON),
@@ -439,6 +433,12 @@ impl Node for Icon {
         }
     }
 
+    const SEEDS: &'static [Seed] = &[Seed::new(Self::KIND, Self::type_defaults)];
+}
+
+const ICON: f32 = 20.0;
+
+impl Node for Icon {
     fn layout(
         &mut self,
         _cx: &mut LayoutCx,

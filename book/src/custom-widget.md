@@ -104,13 +104,37 @@ Zero for everything in the table. `Repeat` owns one, `Either` owns two,
 cascade, the audit — need this to reach content the table does not
 describe.
 
-## And `kind_name`
+## And the three type-level items
 
 ```text
-fn kind_name(&self) -> &'static str
+const KIND: &'static str;
+fn type_defaults() -> Style;
+const SEEDS: &'static [Seed];
 ```
 
-It is what `Selector::Kind` matches and what the agent's selectors
+These are on `Widget`, not `Node`, because none of them may depend on an
+instance — and a *hidden* subtree has no instance at all, which is what
+made the old instance-method spelling wrong rather than merely untidy
+(see [Styling](./styling.md#when-the-cascade-runs)).
+
+`KIND` is what `Selector::Kind` matches and what the agent's selectors
 report. Follow the convention: a **leaf** gets a lowercase name, matching
 `label`, `button`, `fixed`, `spacer`. See [Styling](./styling.md) for why
-the convention is not uniform.
+the convention is not uniform. Two widgets must not share one, which
+`lumen-static/tests/seeds.rs` checks, because a copied `const KIND` is
+how a `Kind` rule ends up styling a widget it was never written for.
+
+`SEEDS` has one entry per node of the subtree, in `SUB_TABLE` order. For
+a leaf that is a one-element array:
+
+```text
+const SEEDS: &'static [Seed] = &[Seed::new(Self::KIND, Self::type_defaults)];
+```
+
+A container splices its children's, which `#[derive(StaticTree)]` does
+for you. There is deliberately **no default**: one that is right for a
+leaf is silently wrong for a container, so the compiler asks every
+implementation instead.
+
+`leaf_common!` already forwards `Node::kind_name` and `Node::defaults`
+to these, so a leaf that uses it writes nothing further.

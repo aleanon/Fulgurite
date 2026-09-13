@@ -23,7 +23,7 @@ use crate::cx::LayoutCx;
 use crate::display::Painter;
 use crate::desc::{Constraints, NodeDesc, NodeState, Point, Size, NO_PARENT};
 use crate::hit::Hit;
-use crate::style::Style;
+use crate::style::{Seed, Style};
 use crate::widget::{Node, Widget};
 
 /// Lay out a subtree as absent: zero size, no descent.
@@ -46,14 +46,25 @@ impl<W: Widget + Default> Widget for Option<W> {
     const DEPTH: usize = W::DEPTH;
     const IS_RIGID: bool = W::IS_RIGID;
     const SUB_TABLE: &'static [NodeDesc] = W::SUB_TABLE;
+
+    /// **The inner kind, present or not.** An `Option` adds no node of
+    /// its own — `NODE_COUNT` and `SUB_TABLE` are `W`'s — so there is no
+    /// node for an `"option"` kind to name. `kind_name` used to answer
+    /// `"option"` while `None`, which made a `Kind` rule match a hidden
+    /// subtree and stop matching when it was filled: state-dependent,
+    /// which [`crate::style::Seed`] forbids for exactly this reason.
+    const KIND: &'static str = W::KIND;
+
+    fn type_defaults() -> Style {
+        W::type_defaults()
+    }
+
+    const SEEDS: &'static [Seed] = W::SEEDS;
 }
 
 impl<W: Widget + Default> Node for Option<W> {
     fn kind_name(&self) -> &'static str {
-        match self {
-            Some(w) => w.kind_name(),
-            None => "option",
-        }
+        <Self as Widget>::KIND
     }
 
     /// The *inner kind's* defaults, whether or not there is a value.
@@ -68,10 +79,7 @@ impl<W: Widget + Default> Node for Option<W> {
     /// per-frame decision and the right home for one.
     /// `docs/plan-review-fixes.md` F3.2.
     fn defaults(&self) -> Style {
-        match self {
-            Some(w) => w.defaults(),
-            None => W::default().defaults(),
-        }
+        <Self as Widget>::type_defaults()
     }
 
     fn layout(
@@ -225,6 +233,17 @@ impl<A: Widget, B: Widget> EitherTable<A, B> {
     /// The used prefix.
     pub const SLICE: &'static [NodeDesc] =
         Self::ARRAY.split_at(1 + A::NODE_COUNT + B::NODE_COUNT).0;
+
+    /// The seed counterpart of [`Self::ARRAY`], spliced the same way.
+    const SEED_ARRAY: [Seed; MAX_EITHER_NODES] = {
+        let mut s = [Seed::WIDGET; MAX_EITHER_NODES];
+        s[0] = Seed::new("either", crate::style::plain_style);
+        crate::widget::splice_seeds(&mut s, 1, A::SEEDS);
+        crate::widget::splice_seeds(&mut s, 1 + A::NODE_COUNT, B::SEEDS);
+        s
+    };
+    pub const SEED_SLICE: &'static [Seed] =
+        Self::SEED_ARRAY.split_at(1 + A::NODE_COUNT + B::NODE_COUNT).0;
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -285,12 +304,10 @@ impl<A: Widget, B: Widget> Widget for Either<A, B> {
     const DEPTH: usize = 1 + if A::DEPTH > B::DEPTH { A::DEPTH } else { B::DEPTH };
     const IS_RIGID: bool = A::IS_RIGID && B::IS_RIGID;
     const SUB_TABLE: &'static [NodeDesc] = EitherTable::<A, B>::SLICE;
-}
 
-impl<A: Widget, B: Widget> Node for Either<A, B> {
-    fn kind_name(&self) -> &'static str {
-        "either"
-    }
+    const KIND: &'static str = "either";
+
+    const SEEDS: &'static [Seed] = EitherTable::<A, B>::SEED_SLICE;
 
     /// A plain container's defaults.
     ///
@@ -298,8 +315,18 @@ impl<A: Widget, B: Widget> Node for Either<A, B> {
     /// shared one style slot and `defaults()` had to name a kind. With
     /// both branches on the table each node has its own slot and answers
     /// for itself, so this node answers for itself too.
-    fn defaults(&self) -> Style {
+    fn type_defaults() -> Style {
         Style::default()
+    }
+}
+
+impl<A: Widget, B: Widget> Node for Either<A, B> {
+    fn kind_name(&self) -> &'static str {
+        <Self as Widget>::KIND
+    }
+
+    fn defaults(&self) -> Style {
+        <Self as Widget>::type_defaults()
     }
 
     fn layout(
@@ -488,10 +515,21 @@ impl<W: Widget> Widget for List<W> {
     const IS_RIGID: bool = false;
     const SUB_TABLE: &'static [NodeDesc] =
         &[NodeDesc::new(0, NO_PARENT, 0, 0, NodeDesc::CONTAINER)];
+
+    const KIND: &'static str = "list";
+
+    /// **One seed, for the list's own node.** Its rows are off-table —
+    /// they live in an arena the main cascade cannot reach — and are
+    /// styled by `cascade_arenas` from a template instance instead.
+    const SEEDS: &'static [Seed] = &[Seed::new(Self::KIND, Self::type_defaults)];
 }
 
 #[cfg(feature = "alloc")]
 impl<W: Widget> Node for List<W> {
+    fn defaults(&self) -> Style {
+        <Self as Widget>::type_defaults()
+    }
+
     fn arena_count(&self) -> usize {
         1
     }
@@ -804,10 +842,22 @@ impl<S> Widget for Dyn<S> {
     const IS_RIGID: bool = false;
     const SUB_TABLE: &'static [NodeDesc] =
         &[NodeDesc::new(0, NO_PARENT, 0, 0, NodeDesc::CONTAINER)];
+
+    const KIND: &'static str = "dyn";
+
+    /// **One seed, and the island's content gets none.** Type erasure is
+    /// the point: the content's kinds are not knowable to this type, so
+    /// they cannot be seeds. `cascade_arenas` styles them from the boxed
+    /// instance, which is the one place they *are* reachable.
+    const SEEDS: &'static [Seed] = &[Seed::new(Self::KIND, Self::type_defaults)];
 }
 
 #[cfg(feature = "alloc")]
 impl<S> Node for Dyn<S> {
+    fn defaults(&self) -> Style {
+        <Self as Widget>::type_defaults()
+    }
+
     fn arena_count(&self) -> usize {
         1
     }

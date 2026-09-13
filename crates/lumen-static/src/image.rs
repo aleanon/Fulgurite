@@ -16,7 +16,7 @@ use crate::desc::{Constraints, NodeDesc, NodeState, Size, NO_PARENT};
 use crate::display::{Color, ImageId, Painter};
 use crate::hit::Hit;
 use crate::ops::{rect_of, resolve_self};
-use crate::style::Style;
+use crate::style::{Seed, Style};
 use crate::widget::{Node, Widget};
 
 /// How an image fills a box whose aspect differs from its own.
@@ -77,11 +77,19 @@ impl Widget for Image {
     const DEPTH: usize = 1;
     const IS_RIGID: bool = true;
     const SUB_TABLE: &'static [NodeDesc] = &[NodeDesc::new(0, NO_PARENT, 0, 0, 0)];
+
+    const KIND: &'static str = "image";
+
+    const SEEDS: &'static [Seed] = &[Seed::new(Self::KIND, Self::type_defaults)];
 }
 
 impl Node for Image {
     fn kind_name(&self) -> &'static str {
-        "image"
+        <Self as Widget>::KIND
+    }
+
+    fn defaults(&self) -> Style {
+        <Self as Widget>::type_defaults()
     }
 
     fn layout(

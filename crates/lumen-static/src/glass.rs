@@ -38,7 +38,7 @@ use crate::desc::{Constraints, NodeDesc, NodeState, Point, Size, NO_PARENT};
 use crate::display::{Material, Painter};
 use crate::hit::Hit;
 use crate::ops::{inner_limits, rect_of, resolve_self};
-use crate::style::{Length, Style};
+use crate::style::{Length, Seed, Style};
 use crate::widget::{Node, Widget};
 use crate::LayoutCx;
 
@@ -154,6 +154,16 @@ impl<W: Widget> Widget for Glass<W> {
     /// here would let a content change skip a relayout it needed.
     const IS_RIGID: bool = W::IS_RIGID;
     const SUB_TABLE: &'static [NodeDesc] = GlassTable::<W>::SLICE;
+
+    const KIND: &'static str = "glass";
+
+    const SEEDS: &'static [Seed] = GlassTable::<W>::SEED_SLICE;
+
+    /// The container convention: full width, content height. A glass
+    /// toolbar spans its stack and is as tall as what is on it.
+    fn type_defaults() -> Style {
+        Style { width: Length::FILL, height: Length::Shrink, ..Style::default() }
+    }
 }
 
 /// The merged table for one `Glass<W>`, built at compile time — the same
@@ -170,6 +180,18 @@ impl<W: Widget> GlassTable<W> {
         t
     };
     pub const SLICE: &'static [NodeDesc] = Self::ARRAY.split_at(1 + W::NODE_COUNT).0;
+
+    /// The seed counterpart of [`Self::ARRAY`], spliced the same way.
+    const SEED_ARRAY: [Seed; MAX_GLASS_NODES] = {
+        let mut s = [Seed::WIDGET; MAX_GLASS_NODES];
+        s[0] = Seed::new(
+            <Glass<W> as Widget>::KIND,
+            <Glass<W> as Widget>::type_defaults,
+        );
+        crate::widget::splice_seeds(&mut s, 1, W::SEEDS);
+        s
+    };
+    pub const SEED_SLICE: &'static [Seed] = Self::SEED_ARRAY.split_at(1 + W::NODE_COUNT).0;
 }
 
 /// Upper bound on `1 + W::NODE_COUNT` for one [`Glass`].
@@ -177,13 +199,11 @@ pub const MAX_GLASS_NODES: usize = 256;
 
 impl<W: Widget> Node for Glass<W> {
     fn kind_name(&self) -> &'static str {
-        "glass"
+        <Self as Widget>::KIND
     }
 
-    /// The container convention: full width, content height. A glass
-    /// toolbar spans its stack and is as tall as what is on it.
     fn defaults(&self) -> Style {
-        Style { width: Length::FILL, height: Length::Shrink, ..Style::default() }
+        <Self as Widget>::type_defaults()
     }
 
     fn layout(

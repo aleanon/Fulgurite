@@ -20,7 +20,7 @@ use crate::cx::LayoutCx;
 use crate::display::Painter;
 use crate::desc::{Constraints, NodeDesc, NodeState, Point, Size, NO_PARENT};
 use crate::hit::{contains, Hit, Inner};
-use crate::style::{Length, Style};
+use crate::style::{Length, Seed, Style};
 use crate::widget::{Node, Widget};
 
 pub fn noop_bind<T>(_: &mut T, _: usize) {}
@@ -214,6 +214,19 @@ impl<T: Widget + Default + 'static> Widget for Repeat<T> {
     /// but CONTAINER, because it places off-table content.
     const SUB_TABLE: &'static [NodeDesc] =
         &[NodeDesc::new(0, NO_PARENT, 0, 0, NodeDesc::CONTAINER)];
+
+    const KIND: &'static str = "repeat";
+
+    /// **One seed, for the repeater's own node.** Its rows are off-table
+    /// and styled by `cascade_arenas` from the template — see
+    /// [`crate::hatch::List`], which has the same shape and the same
+    /// reason.
+    const SEEDS: &'static [Seed] = &[Seed::new(Self::KIND, Self::type_defaults)];
+
+    fn type_defaults() -> Style {
+        // A list fills its container and scrolls inside it.
+        Style { width: Length::FILL, height: Length::FILL, ..Style::default() }
+    }
 }
 
 /// See [`Repeat::MAX_ADDRESSABLE_EXTENT`]. Free-standing as well as
@@ -221,6 +234,14 @@ impl<T: Widget + Default + 'static> Widget for Repeat<T> {
 pub const MAX_ADDRESSABLE_EXTENT: f32 = 16_777_216.0;
 
 impl<T: Widget + Default + 'static> Node for Repeat<T> {
+    fn kind_name(&self) -> &'static str {
+        <Self as Widget>::KIND
+    }
+
+    fn defaults(&self) -> Style {
+        <Self as Widget>::type_defaults()
+    }
+
     fn arena_count(&self) -> usize {
         1
     }
@@ -243,18 +264,9 @@ impl<T: Widget + Default + 'static> Node for Repeat<T> {
         })
     }
 
-    fn kind_name(&self) -> &'static str {
-        "repeat"
-    }
-
     /// Yes — this is the construct A7 forbids inside a scroller.
     fn virtualizes(&self) -> bool {
         true
-    }
-
-    fn defaults(&self) -> Style {
-        // A list fills its container and scrolls inside it.
-        Style { width: Length::FILL, height: Length::FILL, ..Style::default() }
     }
 
     fn layout(

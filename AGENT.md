@@ -27,6 +27,14 @@ are independent of each other**, so either may go first:
   decided *against* on measurement, which is where the doc is worth
   reading.
 
+- **M24 — `docs/plan-select.md`** (T24.0–T24.3): the cascade's seed,
+  and the `Select` it unblocks. Written from a reading of
+  `examples/showcase`: the dropdown is hand-wired because three
+  framework pieces that should have carried it could not be reached —
+  `Popup`, the enum variant switch, and T11.5's never-built `Select`.
+  **T24.0 landed 2026-09-13**; §1 has the measurement and the injection
+  table, including the one that came back green.
+
 - **M22 — `docs/plan-liquid.md`** (T22.0–T22.6): the rest of the liquid
   material — Fresnel, inner shadow, saturation, sub-pixel sampling,
   dispersion, adaptive tint, press deformation, the smooth-minimum

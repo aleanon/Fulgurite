@@ -224,6 +224,58 @@ impl Default for Style {
 /// derive from `#[widget(...)]` and returned by leaves.
 pub type Defaults = Style;
 
+/// Everything the cascade needs about a node that **cannot vary per
+/// instance**: its kind name and its own defaults.
+///
+/// # Why this is not read off the live tree
+///
+/// It was, until M24/T24.0, through `Node::kind_name` and
+/// `Node::defaults` — whose rustdoc has said since F3.2 that the answer
+/// *"must depend only on the type, never on `self`'s current state"*.
+/// A fact that cannot vary per instance, reachable only through an
+/// instance, is stored in the wrong place, and the cost of that was
+/// exact: **a hidden subtree has no live node to ask.**
+/// `Option::<W>::node` returns the `Option` when `None`, and the enum
+/// switch returns the enum itself for an inactive variant's indices —
+/// deliberately, so the agent can walk them. So those nodes cascaded
+/// from the *container's* kind and defaults. A `CheckBox`'s
+/// `Fixed(24.0)` became `Shrink`, which on screen is a control with no
+/// size of its own: a widget that looks like a label
+/// (`docs/plan-select.md` §1).
+///
+/// `Selector::Id` never had the problem, because `wid` lives in the
+/// const [`crate::desc::NodeDesc`]. This puts the other two inputs
+/// where that one always was.
+///
+/// # `fn() -> Style`, not `Style`
+///
+/// Forced, not chosen: every `defaults()` body in the tree ends
+/// `..Style::default()`, and `Default::default` is not a `const fn`. A
+/// thunk costs one pointer per node of `.rodata` and leaves the bodies
+/// reading exactly as they did.
+#[derive(Clone, Copy)]
+pub struct Seed {
+    /// The kind name a [`Selector::Kind`] rule matches.
+    pub kind: &'static str,
+    /// This kind's defaults, before any rule applies.
+    pub defaults: fn() -> Style,
+}
+
+impl Seed {
+    pub const fn new(kind: &'static str, defaults: fn() -> Style) -> Seed {
+        Seed { kind, defaults }
+    }
+
+    /// The seed of a node that declares nothing — [`crate::widget::Node`]'s
+    /// own defaults, spelled as a type-level fact.
+    pub const WIDGET: Seed = Seed::new("widget", plain_style);
+}
+
+/// `Style::default` as a plain `fn` item, so [`Seed`] can hold it.
+pub fn plain_style() -> Style {
+    Style::default()
+}
+
 // ---- selectors and rules ----------------------------------------------
 
 /// What a rule matches on. Deliberately small: id, class and kind are the

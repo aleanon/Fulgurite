@@ -25,7 +25,7 @@ use crate::desc::{Constraints, NodeDesc, NodeState, Size, NO_PARENT};
 use crate::event::{EventCtx, Handlers, NodeSel};
 use crate::cx::LayoutCx;
 use crate::display::{Color, Painter};
-use crate::style::{Align, Length, Style};
+use crate::style::{Align, Length, Seed, Style};
 use crate::text::{Dirty, Measured, TextStorage};
 use crate::widget::{Node, Widget};
 
@@ -349,7 +349,9 @@ fn dim(c: crate::display::Color, f: f32) -> crate::display::Color {
 // ---- leaves ----------------------------------------------------------------
 
 /// A leaf's boilerplate: one node, no children, `node`/`node_mut` are
-/// self, `place` writes a position, `hit` is a bounds test.
+/// self, `place` writes a position, `hit` is a bounds test, and
+/// `kind_name`/`defaults` forward to the type-level [`crate::Widget`]
+/// halves so the two spellings of one fact cannot drift (M24/T24.0).
 ///
 /// **Exported, since M23.** `Node` has four methods that every leaf
 /// answers identically, and a widget crate outside this one had no way
@@ -382,6 +384,12 @@ macro_rules! leaf_common {
             _y: f32,
         ) -> Option<$crate::Hit> {
             None
+        }
+        fn kind_name(&self) -> &'static str {
+            <$ty as $crate::widget::Widget>::KIND
+        }
+        fn defaults(&self) -> $crate::Style {
+            <$ty as $crate::widget::Widget>::type_defaults()
         }
         fn node(&self, _i: usize) -> &dyn $crate::Node {
             self
@@ -416,6 +424,12 @@ macro_rules! leaf_common {
             } else {
                 None
             }
+        }
+        fn kind_name(&self) -> &'static str {
+            <$ty as $crate::widget::Widget>::KIND
+        }
+        fn defaults(&self) -> $crate::Style {
+            <$ty as $crate::widget::Widget>::type_defaults()
         }
         fn node(&self, _i: usize) -> &dyn $crate::Node {
             self
@@ -493,13 +507,13 @@ impl<S: TextStorage> Widget for Label<S> {
     const DEPTH: usize = 1;
     const IS_RIGID: bool = false;
     const SUB_TABLE: &'static [NodeDesc] = &[NodeDesc::new(0, NO_PARENT, 0, 0, 0)];
+
+    const KIND: &'static str = "label";
+
+    const SEEDS: &'static [Seed] = &[Seed::new(Self::KIND, Self::type_defaults)];
 }
 
 impl<S: TextStorage> Node for Label<S> {
-    fn kind_name(&self) -> &'static str {
-        "label"
-    }
-
     fn layout(
         &mut self,
         cx: &mut LayoutCx,
@@ -597,13 +611,13 @@ impl Widget for Fixed {
     const IS_RIGID: bool = true;
     const SUB_TABLE: &'static [NodeDesc] =
         &[NodeDesc::new(0, NO_PARENT, 0, 0, NodeDesc::RIGID)];
+
+    const KIND: &'static str = "fixed";
+
+    const SEEDS: &'static [Seed] = &[Seed::new(Self::KIND, Self::type_defaults)];
 }
 
 impl Node for Fixed {
-    fn kind_name(&self) -> &'static str {
-        "fixed"
-    }
-
     fn layout(
         &mut self,
         _cx: &mut LayoutCx,
@@ -630,18 +644,18 @@ impl Widget for Spacer {
     const DEPTH: usize = 1;
     const IS_RIGID: bool = false;
     const SUB_TABLE: &'static [NodeDesc] = &[NodeDesc::new(0, NO_PARENT, 0, 0, 0)];
-}
 
-impl Node for Spacer {
-    fn kind_name(&self) -> &'static str {
-        "spacer"
-    }
+    const KIND: &'static str = "spacer";
 
     /// The one leaf that is filler rather than content.
-    fn defaults(&self) -> Style {
+    fn type_defaults() -> Style {
         Style { width: Length::FILL, height: Length::FILL, ..Style::default() }
     }
 
+    const SEEDS: &'static [Seed] = &[Seed::new(Self::KIND, Self::type_defaults)];
+}
+
+impl Node for Spacer {
     fn layout(
         &mut self,
         _cx: &mut LayoutCx,
@@ -713,10 +727,10 @@ impl<S: 'static, T: TextStorage> Widget for Button<S, T> {
     const IS_RIGID: bool = false;
     const SUB_TABLE: &'static [NodeDesc] =
         &[NodeDesc::new(0, NO_PARENT, 0, 0, NodeDesc::FOCUSABLE)];
-}
 
-impl<S: 'static, T: TextStorage> Node for Button<S, T> {
-    fn defaults(&self) -> Style {
+    const KIND: &'static str = "button";
+
+    fn type_defaults() -> Style {
         Style {
             padding: crate::style::Edges { left: 14.0, right: 14.0, top: 9.0, bottom: 9.0 },
             // A control that does not change while held reads as broken,
@@ -733,10 +747,10 @@ impl<S: 'static, T: TextStorage> Node for Button<S, T> {
         }
     }
 
-    fn kind_name(&self) -> &'static str {
-        "button"
-    }
+    const SEEDS: &'static [Seed] = &[Seed::new(Self::KIND, Self::type_defaults)];
+}
 
+impl<S: 'static, T: TextStorage> Node for Button<S, T> {
     fn layout(
         &mut self,
         cx: &mut LayoutCx,

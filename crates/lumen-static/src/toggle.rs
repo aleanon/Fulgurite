@@ -45,7 +45,7 @@ use crate::display::{Color, Painter};
 use crate::event::{EventCtx, NodeSel};
 use crate::hit::{contains, Hit};
 use crate::ops::{record_painted, rect_of, resolve_self};
-use crate::style::{Edges, Length, Style};
+use crate::style::{Edges, Length, Seed, Style};
 use crate::widget::{Node, Widget};
 use crate::{Constraints, LayoutCx, Point, Size};
 
@@ -83,6 +83,49 @@ impl<S: 'static, const SHAPE: u8> Widget for Toggle<S, SHAPE> {
     const IS_RIGID: bool = true;
     const SUB_TABLE: &'static [NodeDesc] =
         &[NodeDesc::new(0, NO_PARENT, 0, 0, NodeDesc::FOCUSABLE)];
+
+    const KIND: &'static str = match SHAPE {
+            RADIO => "radio",
+            SWITCH => "switch",
+            _ => "checkbox",
+        };
+
+    /// A visible control with no stylesheet at all.
+    ///
+    /// Both colours are opaque deliberately. `Style::background`
+    /// defaults to transparent, and `rounded_rect` drops a transparent
+    /// command — so the first version of this widget, which inverted
+    /// `fg`/`bg` for the on state, drew an "on" switch with **no knob**:
+    /// the mark was the transparent default. A control whose default
+    /// styling is invisible in one of its two states is not a default.
+    fn type_defaults() -> Style {
+        Style {
+            width: Length::Fixed(if SHAPE == SWITCH { TRACK_W } else { BOX }),
+            height: Length::Fixed(BOX),
+            radius: if SHAPE == RADIO { BOX / 2.0 } else { 5.0 },
+            padding: Edges::all(0.0),
+            // `background` is the resting body, `color` the on body —
+            // and each is the other's mark, so two colours cover four
+            // states. A stylesheet writing `color: accent, background:
+            // white` gets a blue box with a white tick for free.
+            // **Dark enough to see on a light page.** This was
+            // `(226, 232, 240)` — about sixteen levels from a typical
+            // page colour, so an *unchecked* box and an *unselected*
+            // radio were all but invisible, and the switch's white knob
+            // had nothing to sit against. Lumen's resting control is
+            // `#bfc4cc` on white; this is that. A control whose resting
+            // state cannot be seen is the same defect as one whose
+            // default styling draws nothing.
+            background: Color(0xbf, 0xc4, 0xcc, 255),
+            color: ON,
+            pressed_dim: 0.18,
+            hover_dim: 0.07,
+            cursor: crate::style::Cursor::Pointer,
+            ..Style::default()
+        }
+    }
+
+    const SEEDS: &'static [Seed] = &[Seed::new(Self::KIND, Self::type_defaults)];
 }
 
 /// Logical pixels. 24 is the WCAG 2.5.8 minimum pointer target, and a
@@ -110,46 +153,11 @@ const MARK: Color = Color(255, 255, 255, 255);
 
 impl<S: 'static, const SHAPE: u8> Node for Toggle<S, SHAPE> {
     fn kind_name(&self) -> &'static str {
-        match SHAPE {
-            RADIO => "radio",
-            SWITCH => "switch",
-            _ => "checkbox",
-        }
+        <Self as Widget>::KIND
     }
 
-    /// A visible control with no stylesheet at all.
-    ///
-    /// Both colours are opaque deliberately. `Style::background`
-    /// defaults to transparent, and `rounded_rect` drops a transparent
-    /// command — so the first version of this widget, which inverted
-    /// `fg`/`bg` for the on state, drew an "on" switch with **no knob**:
-    /// the mark was the transparent default. A control whose default
-    /// styling is invisible in one of its two states is not a default.
     fn defaults(&self) -> Style {
-        Style {
-            width: Length::Fixed(if SHAPE == SWITCH { TRACK_W } else { BOX }),
-            height: Length::Fixed(BOX),
-            radius: if SHAPE == RADIO { BOX / 2.0 } else { 5.0 },
-            padding: Edges::all(0.0),
-            // `background` is the resting body, `color` the on body —
-            // and each is the other's mark, so two colours cover four
-            // states. A stylesheet writing `color: accent, background:
-            // white` gets a blue box with a white tick for free.
-            // **Dark enough to see on a light page.** This was
-            // `(226, 232, 240)` — about sixteen levels from a typical
-            // page colour, so an *unchecked* box and an *unselected*
-            // radio were all but invisible, and the switch's white knob
-            // had nothing to sit against. Lumen's resting control is
-            // `#bfc4cc` on white; this is that. A control whose resting
-            // state cannot be seen is the same defect as one whose
-            // default styling draws nothing.
-            background: Color(0xbf, 0xc4, 0xcc, 255),
-            color: ON,
-            pressed_dim: 0.18,
-            hover_dim: 0.07,
-            cursor: crate::style::Cursor::Pointer,
-            ..Style::default()
-        }
+        <Self as Widget>::type_defaults()
     }
 
     fn layout(

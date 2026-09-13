@@ -11,7 +11,7 @@
 use lumen_static::desc::{NodeDesc, NodeState, NO_PARENT};
 use lumen_static::display::{Color, Painter};
 use lumen_static::ops::{record_painted, rect_of, resolve_self};
-use lumen_static::style::{Length, Style};
+use lumen_static::style::{Length, Seed, Style};
 use lumen_static::widget::{Node, Widget};
 use lumen_static::{leaf_common, Constraints, LayoutCx, Point, Size};
 
@@ -51,16 +51,10 @@ impl Widget for ProgressBar {
     const DEPTH: usize = 1;
     const IS_RIGID: bool = true;
     const SUB_TABLE: &'static [NodeDesc] = LEAF;
-}
 
-const BAR_H: f32 = 8.0;
+    const KIND: &'static str = "progressbar";
 
-impl Node for ProgressBar {
-    fn kind_name(&self) -> &'static str {
-        "progressbar"
-    }
-
-    fn defaults(&self) -> Style {
+    fn type_defaults() -> Style {
         Style {
             width: Length::FILL,
             height: Length::Fixed(BAR_H),
@@ -71,6 +65,12 @@ impl Node for ProgressBar {
         }
     }
 
+    const SEEDS: &'static [Seed] = &[Seed::new(Self::KIND, Self::type_defaults)];
+}
+
+const BAR_H: f32 = 8.0;
+
+impl Node for ProgressBar {
     fn layout(
         &mut self,
         _cx: &mut LayoutCx,
@@ -127,17 +127,10 @@ impl Widget for Spinner {
     const DEPTH: usize = 1;
     const IS_RIGID: bool = true;
     const SUB_TABLE: &'static [NodeDesc] = LEAF;
-}
 
-const SPIN: f32 = 28.0;
-/// Segments in the ring. Twelve reads as a circle at these sizes and is
-/// twelve commands; the renderer has no arc.
-impl Node for Spinner {
-    fn kind_name(&self) -> &'static str {
-        "spinner"
-    }
+    const KIND: &'static str = "spinner";
 
-    fn defaults(&self) -> Style {
+    fn type_defaults() -> Style {
         Style {
             width: Length::Fixed(SPIN),
             height: Length::Fixed(SPIN),
@@ -146,6 +139,13 @@ impl Node for Spinner {
         }
     }
 
+    const SEEDS: &'static [Seed] = &[Seed::new(Self::KIND, Self::type_defaults)];
+}
+
+const SPIN: f32 = 28.0;
+/// Segments in the ring. Twelve reads as a circle at these sizes and is
+/// twelve commands; the renderer has no arc.
+impl Node for Spinner {
     fn layout(
         &mut self,
         _cx: &mut LayoutCx,
@@ -221,14 +221,10 @@ impl Widget for Skeleton {
     const DEPTH: usize = 1;
     const IS_RIGID: bool = true;
     const SUB_TABLE: &'static [NodeDesc] = LEAF;
-}
 
-impl Node for Skeleton {
-    fn kind_name(&self) -> &'static str {
-        "skeleton"
-    }
+    const KIND: &'static str = "skeleton";
 
-    fn defaults(&self) -> Style {
+    fn type_defaults() -> Style {
         Style {
             width: Length::FILL,
             height: Length::Fixed(16.0),
@@ -239,6 +235,10 @@ impl Node for Skeleton {
         }
     }
 
+    const SEEDS: &'static [Seed] = &[Seed::new(Self::KIND, Self::type_defaults)];
+}
+
+impl Node for Skeleton {
     fn layout(
         &mut self,
         _cx: &mut LayoutCx,

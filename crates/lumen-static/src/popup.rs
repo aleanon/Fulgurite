@@ -24,7 +24,7 @@ use crate::cx::LayoutCx;
 use crate::desc::{Constraints, NodeDesc, NodeState, Point, Size, NO_PARENT};
 use crate::display::Painter;
 use crate::hit::Hit;
-use crate::style::Style;
+use crate::style::{Seed, Style};
 use crate::widget::{Node, Widget};
 
 /// Where a popup puts itself relative to its anchor.
@@ -81,6 +81,10 @@ impl<W: Widget> Widget for Popup<W> {
     /// Zero-sized in flow, so its parent never asks it to stretch.
     const IS_RIGID: bool = true;
     const SUB_TABLE: &'static [NodeDesc] = PopupTable::<W>::SLICE;
+
+    const KIND: &'static str = "popup";
+
+    const SEEDS: &'static [Seed] = PopupTable::<W>::SEED_SLICE;
 }
 
 /// The merged table for one `Popup<W>`, built at compile time — the
@@ -97,12 +101,28 @@ impl<W: Widget> PopupTable<W> {
         t
     };
     pub const SLICE: &'static [NodeDesc] = Self::ARRAY.split_at(1 + W::NODE_COUNT).0;
+
+    /// The seed counterpart of [`Self::ARRAY`], spliced the same way.
+    const SEED_ARRAY: [Seed; MAX_POPUP_NODES] = {
+        let mut s = [Seed::WIDGET; MAX_POPUP_NODES];
+        s[0] = Seed::new(
+            <Popup<W> as Widget>::KIND,
+            <Popup<W> as Widget>::type_defaults,
+        );
+        crate::widget::splice_seeds(&mut s, 1, W::SEEDS);
+        s
+    };
+    pub const SEED_SLICE: &'static [Seed] = Self::SEED_ARRAY.split_at(1 + W::NODE_COUNT).0;
 }
 
 /// Upper bound on `1 + W::NODE_COUNT` for one [`Popup`].
 pub const MAX_POPUP_NODES: usize = 256;
 
 impl<W: Widget> Node for Popup<W> {
+    fn defaults(&self) -> Style {
+        <Self as Widget>::type_defaults()
+    }
+
     fn kind_name(&self) -> &'static str {
         "popup"
     }

@@ -290,3 +290,98 @@ fn a_badge_is_round_and_alarming() {
     );
     assert!(w < h * 1.6, "a one-digit badge is {w:.0}x{h:.0}, too wide to read as round");
 }
+
+/// M24/T24.0 — every seed in this crate must say what its live node says.
+///
+/// The same gate `lumen-static/tests/seeds.rs` runs over the core, over
+/// the widgets that live outside it.
+///
+/// **What the agreement half does and does not prove.** Every widget
+/// here goes through `leaf_common!`, whose `kind_name` forwards to
+/// `Widget::KIND` — so for a leaf the two sides of that assertion are
+/// the same expression and it *cannot* fail. Changing a `KIND` changed
+/// both and the test stayed green, which is how this was found. It is
+/// kept because the forwarding is a macro anyone can stop using, and the
+/// length check is real; the assertion that carries weight is
+/// [`no_two_widgets_share_a_kind`] below.
+#[test]
+fn every_seed_agrees_with_its_live_node() {
+    macro_rules! agrees {
+        ($t:ty, $v:expr) => {{
+            let v: $t = $v;
+            let seeds = <$t as Widget>::SEEDS;
+            assert_eq!(
+                seeds.len(),
+                <$t as Widget>::NODE_COUNT,
+                "{}: SEEDS has {} entries for {} nodes",
+                stringify!($t),
+                seeds.len(),
+                <$t as Widget>::NODE_COUNT
+            );
+            assert_eq!(
+                seeds[0].kind,
+                lumen_static::Node::kind_name(&v),
+                "{}: the seed's kind and Node::kind_name disagree",
+                stringify!($t)
+            );
+            assert_eq!(
+                (seeds[0].defaults)(),
+                lumen_static::Node::defaults(&v),
+                "{}: the seed's defaults and Node::defaults disagree",
+                stringify!($t)
+            );
+            seeds.len()
+        }};
+    }
+    let mut n = 0;
+    n += agrees!(Divider, Divider);
+    n += agrees!(Badge<String>, Badge::default());
+    n += agrees!(Chip<String>, Chip::default());
+    n += agrees!(Avatar<String>, Avatar::default());
+    n += agrees!(Icon, Icon::default());
+    n += agrees!(ProgressBar, ProgressBar::default());
+    n += agrees!(Spinner, Spinner::default());
+    n += agrees!(Skeleton, Skeleton::default());
+    n += agrees!(BarChart, BarChart::default());
+    n += agrees!(LineChart, LineChart::default());
+    n += agrees!(PieChart, PieChart::default());
+    assert_eq!(n, 11, "every widget in the crate is one node; {n} checked");
+    // The three charts are one type with three `KIND`s — the case a
+    // per-type gate would miss if it only ever saw one of them.
+    assert_eq!(<BarChart as Widget>::KIND, "barchart");
+    assert_eq!(<LineChart as Widget>::KIND, "linechart");
+    assert_eq!(<PieChart as Widget>::KIND, "piechart");
+}
+
+/// A kind name is a stylesheet's only handle on a widget type, and
+/// **two widgets sharing one is the realistic failure**: a new widget is
+/// written by copying the nearest one, and `const KIND` is one line of
+/// the block that gets copied. Nothing else notices — both widgets
+/// compile, both paint, and a `Kind` rule meant for one silently styles
+/// the other.
+///
+/// `"widget"` is the trait default and means the `KIND` was never
+/// written; the empty string would match nothing.
+#[test]
+fn no_two_widgets_share_a_kind() {
+    let kinds = [
+        <Divider as Widget>::KIND,
+        <Badge<String> as Widget>::KIND,
+        <Chip<String> as Widget>::KIND,
+        <Avatar<String> as Widget>::KIND,
+        <Icon as Widget>::KIND,
+        <ProgressBar as Widget>::KIND,
+        <Spinner as Widget>::KIND,
+        <Skeleton as Widget>::KIND,
+        <BarChart as Widget>::KIND,
+        <LineChart as Widget>::KIND,
+        <PieChart as Widget>::KIND,
+    ];
+    for (i, a) in kinds.iter().enumerate() {
+        assert!(!a.is_empty() && *a != "widget", "kind {i} is {a:?}: never written");
+        for b in &kinds[i + 1..] {
+            assert_ne!(a, b, "two widgets both call themselves {a:?}");
+        }
+    }
+    println!("{} distinct kinds: {kinds:?}", kinds.len());
+}

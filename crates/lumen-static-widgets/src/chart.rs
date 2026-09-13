@@ -24,7 +24,7 @@
 use lumen_static::desc::{NodeDesc, NodeState, NO_PARENT};
 use lumen_static::display::{Color, Painter};
 use lumen_static::ops::{record_painted, rect_of, resolve_self};
-use lumen_static::style::{Length, Style};
+use lumen_static::style::{Length, Seed, Style};
 use lumen_static::widget::{Node, Widget};
 use lumen_static::{leaf_common, Constraints, LayoutCx, Point, Size};
 
@@ -138,6 +138,24 @@ impl<const KIND: u8> Widget for Chart<KIND> {
     /// never how big it is.
     const IS_RIGID: bool = true;
     const SUB_TABLE: &'static [NodeDesc] = LEAF;
+
+    const KIND: &'static str = match KIND {
+            LINE => "linechart",
+            PIE => "piechart",
+            _ => "barchart",
+        };
+
+    fn type_defaults() -> Style {
+        Style {
+            width: Length::Fixed(CHART.w),
+            height: Length::Fixed(CHART.h),
+            background: Color(0, 0, 0, 0),
+            color: Color(0x2f, 0x6b, 0xff, 0xff),
+            ..Style::default()
+        }
+    }
+
+    const SEEDS: &'static [Seed] = &[Seed::new(Self::KIND, Self::type_defaults)];
 }
 
 const CHART: Size = Size { w: 280.0, h: 160.0 };
@@ -154,24 +172,6 @@ const WEDGES: [Color; 6] = [
 ];
 
 impl<const KIND: u8> Node for Chart<KIND> {
-    fn kind_name(&self) -> &'static str {
-        match KIND {
-            LINE => "linechart",
-            PIE => "piechart",
-            _ => "barchart",
-        }
-    }
-
-    fn defaults(&self) -> Style {
-        Style {
-            width: Length::Fixed(CHART.w),
-            height: Length::Fixed(CHART.h),
-            background: Color(0, 0, 0, 0),
-            color: Color(0x2f, 0x6b, 0xff, 0xff),
-            ..Style::default()
-        }
-    }
-
     fn layout(
         &mut self,
         _cx: &mut LayoutCx,

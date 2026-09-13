@@ -93,9 +93,18 @@ buttons get pushed apart. Styling and layout are not separate systems —
 
 Once, when the sheet or the tree's shape changes — `Host::new` and
 `Host::set_stylesheet` — and not on the frame path. That is only sound
-because `Node::defaults` is required to depend on the *type* alone and
+because a node's kind and its defaults depend on the *type* alone and
 never on instance state, so a resolved `Style` cannot go stale while the
 sheet and the table are unchanged.
+
+Since M24 that is enforced rather than asked for. Both facts live in a
+`style::Seed`, one per node, in a const `Widget::SEEDS` array spliced
+the way `SUB_TABLE` is; `Node::kind_name` and `Node::defaults` forward
+to the type-level halves. The rule used to be prose on
+`Node::defaults`, and prose could not reach the case that mattered — a
+*hidden* subtree has no instance to ask, so an `Option` that was `None`
+or an inactive enum variant cascaded from its container's kind and
+defaults instead of its own (`docs/plan-select.md` §1).
 
 Off-table constructs — `Repeat`, `List`, `Either`, `Dyn` — keep their
 instances in an `Arena`, and the sheet reaches inside them by *template*

@@ -34,7 +34,7 @@ use crate::display::{Color, Painter};
 use crate::event::{Event, EventCtx, Key};
 use crate::hit::{contains, Hit};
 use crate::ops::{record_painted, rect_of, resolve_self};
-use crate::style::{Edges, Length, Style};
+use crate::style::{Edges, Length, Seed, Style};
 use crate::widget::{Node, Widget};
 use crate::{Constraints, LayoutCx, Point, Size};
 
@@ -107,17 +107,10 @@ impl Widget for Slider {
     const IS_RIGID: bool = true;
     const SUB_TABLE: &'static [NodeDesc] =
         &[NodeDesc::new(0, NO_PARENT, 0, 0, NodeDesc::FOCUSABLE)];
-}
 
-/// Logical pixels; 24 is the WCAG 2.5.8 pointer-target floor.
-const H: f32 = 24.0;
+    const KIND: &'static str = "slider";
 
-impl Node for Slider {
-    fn kind_name(&self) -> &'static str {
-        "slider"
-    }
-
-    fn defaults(&self) -> Style {
+    fn type_defaults() -> Style {
         Style {
             width: Length::FILL,
             height: Length::Fixed(H),
@@ -130,6 +123,21 @@ impl Node for Slider {
             cursor: crate::style::Cursor::Pointer,
             ..Style::default()
         }
+    }
+
+    const SEEDS: &'static [Seed] = &[Seed::new(Self::KIND, Self::type_defaults)];
+}
+
+/// Logical pixels; 24 is the WCAG 2.5.8 pointer-target floor.
+const H: f32 = 24.0;
+
+impl Node for Slider {
+    fn kind_name(&self) -> &'static str {
+        <Self as Widget>::KIND
+    }
+
+    fn defaults(&self) -> Style {
+        <Self as Widget>::type_defaults()
     }
 
     fn layout(

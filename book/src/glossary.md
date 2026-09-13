@@ -37,8 +37,15 @@ Currently conservative: a handler that ran marks everything. →
 [What a frame does](./frame.md)
 
 **`kind_name`** — the string `Selector::Kind` matches. Lowercase for
-built-in leaves, the struct's own ident for derived containers. →
+built-in leaves, the struct's own ident for derived containers. Since
+M24 it forwards to the type-level `Widget::KIND`; see **Seed**. →
 [Styling](./styling.md)
+
+**Seed** — a node's kind and its own defaults, as a compile-time pair.
+One per node in `Widget::SEEDS`, spliced the way the node table is. The
+cascade reads these instead of the live tree, which is the only way a
+*hidden* subtree can resolve its own style — it has no instance to ask.
+→ [Styling](./styling.md), [Writing a widget](./custom-widget.md)
 
 **Node table** — the `const` `[NodeDesc; N]` describing a tree type's
 shape. Not used for traversal; used for index addressing. →
