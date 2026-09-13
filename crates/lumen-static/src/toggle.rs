@@ -91,6 +91,13 @@ impl<S: 'static, const SHAPE: u8> Widget for Toggle<S, SHAPE> {
 const BOX: f32 = 24.0;
 const TRACK_W: f32 = 40.0;
 
+/// A switch's knob, in both states — see the note in `paint`.
+///
+/// Not a `Style` field: a third colour on every node in the tree, for
+/// one shape of one widget, is the trade `Style::focus_ring` was made a
+/// `u8` to avoid.
+const KNOB: Color = Color(255, 255, 255, 255);
+
 impl<S: 'static, const SHAPE: u8> Node for Toggle<S, SHAPE> {
     fn kind_name(&self) -> &'static str {
         match SHAPE {
@@ -159,9 +166,20 @@ impl<S: 'static, const SHAPE: u8> Node for Toggle<S, SHAPE> {
                 out.rounded_rect(r, body, h / 2.0);
                 // The knob travels; its diameter is the track's height
                 // less a hairline, so it reads as inside the track.
+                //
+                // **The knob is always light, and does not invert with
+                // the track.** The `(body, mark)` swap above is right
+                // for a checkbox and a radio, where the mark exists only
+                // when the control is on — so the two colours really do
+                // cover four states. A switch is the odd one out: its
+                // knob is drawn in *both* states, so inverting put the
+                // accent colour on the knob of an **off** switch, which
+                // reads as on. Every toolkit draws a light knob on a
+                // grey track and a light knob on a coloured one, and
+                // that is what this does.
                 let d = (h - 4.0).max(1.0);
                 let x = if self.on { r[2] - d - 2.0 } else { r[0] + 2.0 };
-                out.rounded_rect([x, r[1] + 2.0, x + d, r[1] + 2.0 + d], mark, d / 2.0);
+                out.rounded_rect([x, r[1] + 2.0, x + d, r[1] + 2.0 + d], KNOB, d / 2.0);
             }
             RADIO => {
                 out.rounded_rect(r, body, w.min(h) / 2.0);

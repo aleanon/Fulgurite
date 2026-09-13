@@ -85,7 +85,7 @@ pub static CATALOG: &[Entry] = &[
         "Two *chars*, not two bytes: \"ÅB\" sliced at byte two would panic, and an avatar is decoration.",
         false,
         |s| on(s, |d| &mut d.avatar, DAvatar {
-            a: Avatar { initials: "ÅB".into() }, b: Avatar { initials: "日本".into() }, c: Avatar { initials: "K".into() } }),
+            a: Avatar { initials: "ÅB".into() }, b: Avatar { initials: "JD".into() }, c: Avatar { initials: "K".into() } }),
         none),
     entry!("Text", "Icon", "All eight marks, drawn from primitives.",
         "A closed enum, not a font codepoint — a glyph icon set fails as the missing-glyph box, which is how `examples/glasswall` lost twenty-two icons.",

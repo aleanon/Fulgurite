@@ -142,6 +142,36 @@ understand before leaning on it for a menu, and T23.8 owns it. A
 catalogue's length is known when the binary is, so `ROWS` is asserted
 against `CATALOG.len()`.
 
+## 3b. What driving it found
+
+Reading a showcase is not inspecting it. Five defects survived the first
+two rounds of tests because every one of those tests asked "did it
+paint", and all five painted.
+
+| what | why nothing caught it |
+|---|---|
+| **The switch's knob inverted with its track** — an *off* switch drew a grey track with an **accent-coloured** knob, which reads as on | `Toggle` swaps `(body, mark)` on the state boundary, which is exactly right for a checkbox and a radio, where the mark exists only when on. A switch draws its knob in **both** states, so it is the one shape the two-colour scheme does not cover. Fixed in the core; `tests/switch_knob.rs` holds the knob lighter than its track in both states, the same colour in both, and the *track* different between them — the third is what stops the first two being satisfied by a switch that never changes. |
+| **A stylesheet rule matching no node** — the `ProgressBar`'s field is `progress`, so its id is `d_progress_a`, and the rule said `d_progressbar_a` | A dead rule is silent: the cascade skips it and the widget keeps its bare `defaults()`, so the bar rendered full-window and flat. `tests::every_rule_matches_a_node` compares the sheet's ids against `SUB_TABLE`'s. |
+| **Ghost buttons showed no press at all** | `pressed_dim` and `hover_dim` *scale* a background; they cannot invent one, and a fully transparent button has nothing to scale. A third of "clicking does nothing" was this. |
+| **Animated demos opened at phase 0** — an empty bar, an unlit spinner | Indistinguishable from a broken widget in a still frame. The app opens mid-travel. |
+| **An avatar's CJK initials drew as the missing-glyph box** | The same trap `examples/glasswall` paid for. A demo has to draw on the machine it ships to. |
+
+Two tools now exist for this and should be used before any T23.x is
+called done: `--demo <n>` renders one entry cropped to the laid-out
+geometry of the demo itself, and `--seq` renders every frame of a click
+— rest, held, released, and a second control held. **A press exists
+between two events**, so a screenshot taken after the release shows the
+resting frame, which is why "clicking does nothing" is a report a still
+image can neither confirm nor deny.
+
+One known cost, recorded rather than fixed: the showcase's frame never
+settles, because `#[app(after_update = ...)]` reports nothing and the
+derive therefore marks every pump changed (`plan-invalidation.md`
+T16.10). It uses the hook to keep a `Slider`'s readout following a drag
+— a slider owns its value and has no change callback to hang it on.
+Damage itself is exact: a press reports the button's own rect and
+nothing more.
+
 ## 4. What is next, in order
 
 | id | task |

@@ -470,6 +470,11 @@ fn build(entry: usize, open: bool) -> Show {
     };
     app.selected = entry.min(CATALOG.len() - 1);
     app.open = open;
+    // **Mid-travel, not zero.** The animated demos take their value from
+    // `phase`, and a showcase opened on one of them at phase 0 shows an
+    // empty bar and an unlit spinner — which reads as a broken widget
+    // rather than as a starting state.
+    app.phase = 0.35;
     rebuild(&mut app);
     sync_open(&mut app);
     // **Last**, and it must be last: the cascade that follows resolves
@@ -506,8 +511,219 @@ fn shot(path: &str, entry: usize, open: bool) {
         entry, if open { "open" } else { "closed" });
 }
 
+/// One entry, cropped tight to what the demo actually drew.
+///
+/// **The crop comes from the laid-out geometry, not from a guess.**
+/// Eyeballing coordinates off a full-window screenshot is how a review
+/// ends up looking at the wrong 240 px and concluding a widget is
+/// broken — or worse, that it is fine.
+fn demo_shot(path: &str, entry: usize) {
+    use lumen_static_shell::software::Canvas;
+    use lumen_static_shell::text::{FontMetrics, FontStack};
+    let mut host: lumen_static_shell::Host<Show> =
+        lumen_static_shell::Host::new(build(entry, false), W, H);
+    host.set_stylesheet(&stylesheet());
+    let mut metrics = FontStack::system().map(FontMetrics::new);
+    for _ in 0..2 {
+        match metrics.as_mut() {
+            Some(m) => host.pump_with(m),
+            None => host.pump(),
+        };
+    }
+    let mut c = match FontStack::system() {
+        Some(f) => Canvas::with_font(W, H, f),
+        None => Canvas::new(W, H),
+    };
+    c.clear(PAGE);
+    lumen_static::Renderer::render(&mut c, &host.list, W, H);
+
+    // The union of every node with a real box below the header — the
+    // demo row and nothing else.
+    let top = host.states[STAGE_NODE].pos.y;
+    let (mut x0, mut y0, mut x1, mut y1) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
+    for st in host.states.iter() {
+        // Skip the `FILL` spacers that centre the row (400 px each,
+        // and together they span the window) and the note beneath it.
+        if st.pos.y < top || st.size.w <= 0.0 || st.size.h <= 0.0 || st.size.w > 300.0 {
+            continue;
+        }
+        x0 = x0.min(st.pos.x);
+        y0 = y0.min(st.pos.y);
+        x1 = x1.max(st.pos.x + st.size.w);
+        y1 = y1.max(st.pos.y + st.size.h);
+    }
+    let pad = 16.0;
+    let (x0, y0) = ((x0 - pad).max(0.0) as usize, (y0 - pad).max(0.0) as usize);
+    let (x1, y1) = ((x1 + pad).min(W as f32) as usize, (y1 + pad).min(H as f32) as usize);
+    let (cw, chh) = (x1.saturating_sub(x0).max(1), y1.saturating_sub(y0).max(1));
+    let mut out = format!("P6\n{cw} {chh}\n255\n").into_bytes();
+    for y in y0..y1 {
+        for x in x0..x1 {
+            let i = (y * W as usize + x) * 4;
+            out.extend_from_slice(&c.pixels[i..i + 3]);
+        }
+    }
+    std::fs::write(path, out).expect("write");
+    println!("{path}: {} — {cw}x{chh} at ({x0},{y0})", CATALOG[entry].name);
+}
+
+/// An entry with its `which`-th control **held down**, rendered while
+/// the pointer is still on it.
+///
+/// A press is a state that exists between two events, so a screenshot
+/// taken after the release shows nothing. This posts the down, pumps,
+/// and renders — which is the only way to see what a user sees mid-click.
+fn press_shot(path: &str, entry: usize, which: usize) {
+    use lumen_static_shell::software::Canvas;
+    use lumen_static_shell::text::{FontMetrics, FontStack};
+    let mut host: lumen_static_shell::Host<Show> =
+        lumen_static_shell::Host::new(build(entry, false), W, H);
+    host.set_stylesheet(&stylesheet());
+    let mut metrics = FontStack::system().map(FontMetrics::new);
+    let mut pump = |h: &mut lumen_static_shell::Host<Show>| match metrics.as_mut() {
+        Some(m) => {
+            h.pump_with(m);
+        }
+        None => {
+            h.pump();
+        }
+    };
+    pump(&mut host);
+    pump(&mut host);
+
+    let top = host.states[STAGE_NODE].pos.y;
+    let mut targets: Vec<(f32, f32, usize)> = host
+        .states
+        .iter()
+        .enumerate()
+        .filter(|(_, st)| st.pos.y >= top && st.size.w > 0.0 && st.size.w <= 300.0 && st.size.h > 0.0)
+        .map(|(i, st)| (st.pos.x, st.pos.y, i))
+        .collect();
+    targets.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+    let Some(&(_, _, node)) = targets.get(which) else {
+        println!("{path}: no control {which}");
+        return;
+    };
+    let st = host.states[node];
+    let (x, y) = (st.pos.x + st.size.w / 2.0, st.pos.y + st.size.h / 2.0);
+    host.post(Event::down(x, y));
+    pump(&mut host);
+
+    let mut c = match FontStack::system() {
+        Some(f) => Canvas::with_font(W, H, f),
+        None => Canvas::new(W, H),
+    };
+    c.clear(PAGE);
+    lumen_static::Renderer::render(&mut c, &host.list, W, H);
+    // Centred on the control that is held, not on the stage's top —
+    // the first version cropped y 150..270 while the buttons sit at 423
+    // and produced three identical blank images.
+    let (cw, chh) = (460usize, 72usize);
+    let x0 = ((x - cw as f32 / 2.0).max(0.0) as usize).min(W as usize - cw);
+    let y0 = ((y - chh as f32 / 2.0).max(0.0) as usize).min(H as usize - chh);
+    let mut out = format!("P6\n{cw} {chh}\n255\n").into_bytes();
+    for yy in y0..(y0 + chh).min(H as usize) {
+        for xx in x0..(x0 + cw).min(W as usize) {
+            let i = (yy * W as usize + xx) * 4;
+            out.extend_from_slice(&c.pixels[i..i + 3]);
+        }
+    }
+    std::fs::write(path, out).expect("write");
+    println!(
+        "{path}: {} control {which} (node {node}) held at ({x:.0},{y:.0}), pressed={}",
+        CATALOG[entry].name, host.states[node].pressed
+    );
+}
+
+/// The whole click sequence a user performs, rendered frame by frame:
+/// press the first button, release it, then press the second.
+///
+/// **This is the only way to see a press.** It exists between two events
+/// and a screenshot taken after the release shows the resting frame —
+/// which is why "nothing happens when I click" is a report that a
+/// still image cannot confirm or deny.
+fn seq_shot(stem: String) {
+    use lumen_static_shell::software::Canvas;
+    use lumen_static_shell::text::{FontMetrics, FontStack};
+    let entry = CATALOG.iter().position(|e| e.name == "Button").unwrap();
+    let mut host: lumen_static_shell::Host<Show> =
+        lumen_static_shell::Host::new(build(entry, false), W, H);
+    host.set_stylesheet(&stylesheet());
+    let mut metrics = FontStack::system().map(FontMetrics::new);
+    let mut pump = |h: &mut lumen_static_shell::Host<Show>| match metrics.as_mut() {
+        Some(m) => {
+            h.pump_with(m);
+        }
+        None => {
+            h.pump();
+        }
+    };
+    pump(&mut host);
+    pump(&mut host);
+    let top = host.states[STAGE_NODE].pos.y;
+    let btns: Vec<usize> = (0..<Screen as Widget>::NODE_COUNT)
+        .filter(|&i| {
+            let s = &host.states[i];
+            s.pos.y >= top && s.size.w > 40.0 && s.size.w <= 300.0 && s.size.h > 20.0
+        })
+        .collect();
+    let at = |h: &lumen_static_shell::Host<Show>, i: usize| {
+        let s = &h.states[i];
+        (s.pos.x + s.size.w / 2.0, s.pos.y + s.size.h / 2.0)
+    };
+    let (x0c, y0c) = at(&host, btns[0]);
+    let (x1c, y1c) = at(&host, btns[1]);
+    let steps: [(&str, Option<Event>); 4] = [
+        ("0-rest", None),
+        ("1-down-a", Some(Event::down(x0c, y0c))),
+        ("2-up-a", Some(Event::up(x0c, y0c))),
+        ("3-down-b", Some(Event::down(x1c, y1c))),
+    ];
+    for (tag, ev) in steps {
+        if let Some(e) = ev {
+            host.post(e);
+            pump(&mut host);
+        }
+        let mut c = match FontStack::system() {
+            Some(f) => Canvas::with_font(W, H, f),
+            None => Canvas::new(W, H),
+        };
+        c.clear(PAGE);
+        lumen_static::Renderer::render(&mut c, &host.list, W, H);
+        let (cw, chh) = (400usize, 64usize);
+        let x0 = ((x0c - 60.0).max(0.0) as usize).min(W as usize - cw);
+        let y0 = ((y0c - chh as f32 / 2.0).max(0.0) as usize).min(H as usize - chh);
+        let mut out = format!("P6\n{cw} {chh}\n255\n").into_bytes();
+        for yy in y0..y0 + chh {
+            for xx in x0..x0 + cw {
+                let i = (yy * W as usize + xx) * 4;
+                out.extend_from_slice(&c.pixels[i..i + 3]);
+            }
+        }
+        std::fs::write(format!("{stem}-{tag}.ppm"), out).expect("write");
+        println!("{stem}-{tag}: presses {}", host.app.presses);
+    }
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.first().map(String::as_str) == Some("--seq") {
+        seq_shot(args.get(1).cloned().unwrap_or_else(|| "seq".into()));
+        return;
+    }
+    if args.first().map(String::as_str) == Some("--press") {
+        let entry: usize = args.get(1).and_then(|s| s.parse().ok()).unwrap_or(6);
+        let which: usize = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(0);
+        let path = args.get(3).cloned().unwrap_or_else(|| "press.ppm".into());
+        press_shot(&path, entry, which);
+        return;
+    }
+    if args.first().map(String::as_str) == Some("--demo") {
+        let entry: usize = args.get(1).and_then(|s| s.parse().ok()).unwrap_or(0);
+        let path = args.get(2).cloned().unwrap_or_else(|| "demo.ppm".into());
+        demo_shot(&path, entry.min(CATALOG.len() - 1));
+        return;
+    }
     if args.first().map(String::as_str) == Some("--shot") {
         let path = args.get(1).cloned().unwrap_or_else(|| "showcase.ppm".into());
         let entry = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(0);
@@ -535,6 +751,9 @@ fn main() {
         },
     );
 }
+
+/// The `Stage` node's index — where the header stops.
+const STAGE_NODE: usize = 8;
 
 /// One dropdown row's height.
 const ROW_H: f32 = 30.0;
@@ -619,9 +838,13 @@ fn stylesheet() -> Vec<StyleRule> {
             Selector::Id("d_button_b"),
             btn().background(BAND).color(INK),
         ),
+        // **Ghost has a ground, faint as it is.** `pressed_dim` and
+        // `hover_dim` *scale* a background; they cannot invent one. A
+        // fully transparent button therefore shows no press at all —
+        // which is a third of the reported "clicking does nothing".
         StyleRule::new(
             Selector::Id("d_button_c"),
-            btn().background(Color(0, 0, 0, 0)).color(ACCENT),
+            btn().background(Color(0xea, 0xef, 0xfb, 0xff)).color(ACCENT),
         ),
         // The field: a ground, a rounded edge, room for a caret.
         StyleRule::new(
@@ -639,7 +862,7 @@ fn stylesheet() -> Vec<StyleRule> {
         // skeleton and a slider all fill whatever they are given, and on
         // an empty stage that is the whole window.
         StyleRule::new(Selector::Id("d_slider_a"), Patch::new().width(Length::Fixed(280.0))),
-        StyleRule::new(Selector::Id("d_progressbar_a"), Patch::new().width(Length::Fixed(280.0))),
+        StyleRule::new(Selector::Id("d_progress_a"), Patch::new().width(Length::Fixed(280.0))),
         StyleRule::new(Selector::Id("d_divider_a"), Patch::new().width(Length::Fixed(280.0))),
         StyleRule::new(
             Selector::Id("d_skeleton_a"),
@@ -668,6 +891,7 @@ fn stylesheet() -> Vec<StyleRule> {
 mod tests {
     use super::*;
     use lumen_static::display::Cmd;
+    use lumen_static::style::Selector;
 
     /// An `EventCtx` for a press, for calling a handler directly.
     fn press_at(x: f32, y: f32) -> EventCtx {
@@ -905,6 +1129,144 @@ mod tests {
         let mut s = Show::default();
         (through.unwrap())(&mut s, &press_at(0.0, 0.0));
         assert_eq!(s.presses, 1, "the routed handler is not the button's");
+    }
+
+    /// Drive a click on one button, then another, reading back what each
+    /// button's resolved background is at every step.
+    #[test]
+    fn a_press_shows_on_the_button_being_pressed() {
+        let entry = CATALOG.iter().position(|e| e.name == "Button").unwrap();
+        let mut h = host(entry, false);
+        let top = h.states[STAGE_NODE].pos.y;
+        let btns: Vec<usize> = (0..<Screen as Widget>::NODE_COUNT)
+            .filter(|&i| {
+                let s = &h.states[i];
+                s.pos.y >= top && s.size.w > 40.0 && s.size.w <= 300.0 && s.size.h > 20.0
+            })
+            .collect();
+        assert_eq!(btns.len(), 3, "expected three buttons, found {}", btns.len());
+        let at = |h: &lumen_static_shell::Host<Show>, i: usize| {
+            let s = &h.states[i];
+            (s.pos.x + s.size.w / 2.0, s.pos.y + s.size.h / 2.0)
+        };
+        let show = |h: &lumen_static_shell::Host<Show>, tag: &str| {
+            let v: Vec<String> = btns
+                .iter()
+                .map(|&i| {
+                    let s = &h.states[i];
+                    format!("{}{}", if s.pressed { "P" } else { "-" }, if s.hovered { "H" } else { "-" })
+                })
+                .collect();
+            println!("  {tag:<18} {v:?}");
+        };
+        show(&h, "start");
+        let (x, y) = at(&h, btns[0]);
+        h.post(Event::down(x, y));
+        h.pump();
+        show(&h, "down on 0");
+        assert!(h.states[btns[0]].pressed, "button 0 is not pressed while held");
+        h.post(Event::up(x, y));
+        h.pump();
+        show(&h, "up on 0");
+        assert!(!h.states[btns[0]].pressed, "button 0 stayed pressed after release");
+
+        let (x2, y2) = at(&h, btns[1]);
+        h.post(Event::down(x2, y2));
+        h.pump();
+        show(&h, "down on 1");
+        assert!(h.states[btns[1]].pressed, "button 1 is not pressed while held");
+        assert!(
+            !h.states[btns[0]].pressed,
+            "button 0 still reads pressed while button 1 is held — the stale press"
+        );
+    }
+
+    /// **A press repaints the button it is on** — through the *damage*
+    /// path the window actually uses.
+    ///
+    /// The reported symptom was that clicking did nothing visible, and
+    /// that clicking a second button seemed to animate the first. Every
+    /// test so far rendered the whole frame, which is not what a window
+    /// does: it renders `Host::damage`'s regions and leaves the rest.
+    /// A colour change the damage does not cover is a change nobody
+    /// sees until something else forces a repaint of that area — which
+    /// is exactly what "it happens when I click the next one" describes.
+    #[test]
+    fn a_press_damages_the_button_it_is_on() {
+        use lumen_static::retain::Damage;
+        let entry = CATALOG.iter().position(|e| e.name == "Button").unwrap();
+        let mut h = host(entry, false);
+        let top = h.states[STAGE_NODE].pos.y;
+        let btns: Vec<usize> = (0..<Screen as Widget>::NODE_COUNT)
+            .filter(|&i| {
+                let s = &h.states[i];
+                s.pos.y >= top && s.size.w > 40.0 && s.size.w <= 300.0 && s.size.h > 20.0
+            })
+            .collect();
+        assert_eq!(btns.len(), 3);
+        // **This frame does not settle, and that is a known cost.**
+        // `#[app(after_update = ...)]` reports nothing, so the derive
+        // marks every pump as changed (`docs/plan-invalidation.md`
+        // T16.10) — the showcase uses the hook to keep a `Slider`'s
+        // readout following a drag, since a slider owns its value and
+        // has no change callback to hang it on. So the assertion here is
+        // *coverage*, not exclusivity: the press must damage the button,
+        // whatever else is also damaged.
+        let _ = h.take_damage_for_age(1);
+        h.pump();
+
+        let s0 = h.states[btns[0]];
+        let (x, y) = (s0.pos.x + s0.size.w / 2.0, s0.pos.y + s0.size.h / 2.0);
+        h.post(Event::down(x, y));
+        h.pump();
+        let d = h.damage();
+        println!("press damage: {d:?}");
+        println!("button 0 box: {:?} {:?}", s0.pos, s0.size);
+        assert_ne!(d, Damage::None, "a press reported no damage at all");
+        // And it must actually cover the button, not merely be non-empty.
+        let covers = match d {
+            Damage::All => true,
+            Damage::Regions(r) => r.as_slice().iter().any(|g| {
+                g[0] <= s0.pos.x + 1.0
+                    && g[1] <= s0.pos.y + 1.0
+                    && g[2] >= s0.pos.x + s0.size.w - 1.0
+                    && g[3] >= s0.pos.y + s0.size.h - 1.0
+            }),
+            Damage::None => false,
+        };
+        assert!(covers, "the press damaged something, but not the button it was on");
+    }
+
+    /// **Every stylesheet rule matches a node.**
+    ///
+    /// A rule whose id matches nothing is silent: the cascade skips it,
+    /// the widget keeps its bare `defaults()`, and what reaches the
+    /// screen is a control with no size or ground of its own. That is
+    /// what happened to `ProgressBar` — its field is `progress`, so its
+    /// id is `d_progress_a`, and the rule said d_progressbar_a. The
+    /// bar rendered full-window and flat, which is indistinguishable
+    /// from a widget that does not work.
+    ///
+    /// `SUB_TABLE` carries every node's `wid`, so the two sets can
+    /// simply be compared.
+    #[test]
+    fn every_rule_matches_a_node() {
+        let ids: Vec<&str> = <Screen as Widget>::SUB_TABLE
+            .iter()
+            .map(|d| d.wid)
+            .filter(|w| !w.is_empty())
+            .collect();
+        let sheet = stylesheet();
+        let mut dead = Vec::new();
+        for r in &sheet {
+            if let Selector::Id(want) = r.selector {
+                if !ids.contains(&want) {
+                    dead.push(want);
+                }
+            }
+        }
+        println!("{} rules, {} ids in the tree, dead: {dead:?}", sheet.len(), ids.len());
+        assert!(dead.is_empty(), "stylesheet rules match no node: {dead:?}");
     }
 
     /// **Picking a row changes what is on the stage.**
