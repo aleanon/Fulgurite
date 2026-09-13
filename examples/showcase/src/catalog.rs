@@ -12,32 +12,15 @@ pub struct Entry {
     pub group: &'static str,
     /// Display name.
     pub name: &'static str,
-    /// One line on what the seeded demo shows.
+    /// One line on what the demo shows.
     pub blurb: &'static str,
+    /// A subtlety worth a sentence, printed under the demo — Lumen's
+    /// showcase does this and it is most of what makes it teach rather
+    /// than merely list.
+    pub note: &'static str,
     /// Whether it wants a per-frame tick.
     pub animated: bool,
-    /// Whether its state lives in the **application**.
-    ///
-    /// The core's own split, and the reason this flag exists rather than
-    /// a blanket rule: a checkbox's boolean belongs to the app and is
-    /// written back through a binding, so the demo is rebuilt from the
-    /// store after every pump. A text field's text and a slider's value
-    /// originate *at the widget*, because the user typed or dragged
-    /// them — rebuilding those from the store would overwrite the
-    /// interaction on the very next frame.
-    ///
-    /// A `Dyn` island has no typed handle, so a widget that owns its own
-    /// value cannot be read back here at all. That is the honest cost of
-    /// the hatch, and it is why those entries print no readout.
-    pub live: bool,
-    /// Put it on the stage, seeded with real data.
-    ///
-    /// **Rebuilds the island rather than updating it**, which is the
-    /// cost of the hatch rather than a shortcut: a `Dyn` is a
-    /// `Box<dyn Node>`, so once a widget is inside one there is no typed
-    /// handle left to write a field through. For a showcase that is one
-    /// small allocation per change; a real application would reach for
-    /// `Either` or a typed field.
+    /// Put it on the stage, seeded with real data and wired to `Show`.
     pub seed: fn(&mut Show),
     /// A live readout of whatever state the demo carries.
     pub status: fn(&Show) -> String,
@@ -48,99 +31,136 @@ fn none(_: &Show) -> String {
 }
 
 macro_rules! entry {
-    ($group:literal, $name:literal, $blurb:literal, $anim:expr, $live:expr, $seed:expr, $status:expr) => {
+    ($group:literal, $name:literal, $blurb:literal, $note:literal, $anim:expr, $seed:expr, $status:expr) => {
         Entry {
             group: $group,
             name: $name,
             blurb: $blurb,
+            note: $note,
             animated: $anim,
-            live: $live,
             seed: $seed,
             status: $status,
         }
     };
 }
 
+/// The stage, cleared and given one demo.
+fn on<T>(s: &mut Show, pick: fn(&mut Demos) -> &mut Option<T>, demo: T) {
+    s.ui.body.stage.row.demos.clear();
+    *pick(&mut s.ui.body.stage.row.demos) = Some(demo);
+}
+
+/// A `Button` wired to the press counter.
+fn btn(label: &str) -> Button<Show, String> {
+    let mut b = Button::<Show, String>::default();
+    b.label = label.into();
+    b.on_click = |s: &mut Show, _: &EventCtx| s.presses += 1;
+    b
+}
+
+fn toggle<const K: u8>(on_: bool) -> Toggle<Show, K> {
+    Toggle::<Show, K> { on: on_, on_toggle: |s: &mut Show, _: &EventCtx| s.flag = !s.flag }
+}
+
 /// Everything on the stage, in dropdown order.
 pub static CATALOG: &[Entry] = &[
-    // ---- text & display ------------------------------------------
-    entry!("Text", "Label", "A line of text — the core's simplest widget.", false, false,
-        |s| stage(s, Label::<String>::default().tap(|l| l.set("The quick brown fox".into()))), none),
-    entry!("Text", "Badge", "A count, as a pill.", false, false,
-        |s| stage(s, Badge { text: "128".to_string() }), none),
-    entry!("Text", "Chip", "A token in the quiet palette.", false, false,
-        |s| stage(s, Chip { text: "rust · systems".to_string() }), none),
-    entry!("Text", "Avatar", "Initials, trimmed on a char boundary.", false, false,
-        |s| stage(s, Avatar { initials: "ÅB".to_string() }), none),
-    entry!("Text", "Icon", "A mark drawn from primitives — never a missing glyph.", false, false,
-        |s| stage(s, Icon::new(Symbol::Check)), none),
-    entry!("Text", "Divider", "A hairline; its thickness is its style's.", false, false,
-        |s| stage(s, Divider), none),
-    // ---- input ---------------------------------------------------
-    entry!("Input", "Button", "Press it; the readout counts.", false, true,
-        |s| {
-            let mut b = Button::<Show, String>::default();
-            b.label = "Press me".into();
-            b.on_click = |s: &mut Show, _: &EventCtx| s.value += 1.0;
-            stage(s, b);
-        },
-        |s| format!("pressed {} times", s.value as i64)),
-    entry!("Input", "CheckBox", "A box and a tick. The app owns the flag.", false, true,
-        |s| {
-            stage(
-                s,
-                CheckBox::<Show> {
-                    on: s.flag,
-                    on_toggle: |s: &mut Show, _: &EventCtx| s.flag = !s.flag,
-                },
-            )
-        },
-        |s| format!("checked: {}", s.flag)),
-    entry!("Input", "Switch", "The same two states, as a sliding pill.", false, true,
-        |s| {
-            stage(
-                s,
-                Switch::<Show> {
-                    on: s.flag,
-                    on_toggle: |s: &mut Show, _: &EventCtx| s.flag = !s.flag,
-                },
-            )
-        },
-        |s| format!("on: {}", s.flag)),
-    entry!("Input", "Radio", "One of a set; the selection lives in the app.", false, true,
-        |s| {
-            stage(
-                s,
-                Radio::<Show> {
-                    on: s.flag,
-                    on_toggle: |s: &mut Show, _: &EventCtx| s.flag = !s.flag,
-                },
-            )
-        },
-        |s| format!("selected: {}", s.flag)),
-    entry!("Input", "Slider", "Drag it. It owns its value — see `Entry::live`.", false, false,
-        |s| stage(s, Slider::new(0.35)), none),
-    entry!("Input", "TextInput", "One line, editable. The widget owns the text.", false, false,
-        |s| {
-            let mut t = TextInput::<String>::default();
-            t.set_str("type here");
-            stage(s, t)
-        },
+    entry!("Text", "Label", "A line of text — the core's simplest widget.",
+        "A `Label`'s text is a presentation copy: the application owns it and `#[bind]` writes it here.",
+        false,
+        |s| on(s, |d| &mut d.label, DLabel { a: { let mut l = Label::<String>::default(); l.set("The quick brown fox".into()); l } }),
         none),
-    // ---- progress ------------------------------------------------
-    entry!("Progress", "ProgressBar", "Determinate, driven by the tick.", true, false,
-        |s| stage(s, ProgressBar::new(s.phase)), |s| format!("{:.0}%", s.phase * 100.0)),
-    entry!("Progress", "Spinner", "Indeterminate: a ring with a travelling gap.", true, false,
-        |s| stage(s, Spinner::new(s.phase)), |s| format!("phase {:.2}", s.phase)),
-    entry!("Progress", "Skeleton", "A placeholder with a shimmer.", true, false,
-        |s| stage(s, Skeleton::new(s.phase)), |s| format!("phase {:.2}", s.phase)),
-    // ---- charts --------------------------------------------------
-    entry!("Charts", "BarChart", "Bars from a zero baseline.", false, false,
-        |s| stage(s, BarChart::new(SAMPLE)), none),
-    entry!("Charts", "LineChart", "A polyline through the same points.", false, false,
-        |s| stage(s, LineChart::new(SAMPLE)), none),
-    entry!("Charts", "PieChart", "Proportions of a whole, as a ring.", false, false,
-        |s| stage(s, PieChart::new(&[5.0, 3.0, 2.0, 1.5, 1.0])), none),
+    entry!("Text", "Badge", "A count, a status and a tag.",
+        "It shrinks to its text, so `IS_RIGID` is false — a changed count is a relayout boundary, not just a repaint.",
+        false,
+        |s| on(s, |d| &mut d.badge, DBadge {
+            a: Badge { text: "9".into() }, b: Badge { text: "128".into() }, c: Badge { text: "NEW".into() } }),
+        none),
+    entry!("Text", "Chip", "The same shape, in the quiet palette.",
+        "A separate type rather than a field, because `kind_name` feeds the cascade and the agent's selectors.",
+        false,
+        |s| on(s, |d| &mut d.chip, DChip {
+            a: Chip { text: "rust".into() }, b: Chip { text: "systems".into() }, c: Chip { text: "no_std".into() } }),
+        none),
+    entry!("Text", "Avatar", "Initials, trimmed on a char boundary.",
+        "Two *chars*, not two bytes: \"ÅB\" sliced at byte two would panic, and an avatar is decoration.",
+        false,
+        |s| on(s, |d| &mut d.avatar, DAvatar {
+            a: Avatar { initials: "ÅB".into() }, b: Avatar { initials: "日本".into() }, c: Avatar { initials: "K".into() } }),
+        none),
+    entry!("Text", "Icon", "All eight marks, drawn from primitives.",
+        "A closed enum, not a font codepoint — a glyph icon set fails as the missing-glyph box, which is how `examples/glasswall` lost twenty-two icons.",
+        false,
+        |s| on(s, |d| &mut d.icon, DIcon {
+            a: Icon::new(Symbol::Play), b: Icon::new(Symbol::Pause), c: Icon::new(Symbol::Stop),
+            d: Icon::new(Symbol::Check), e: Icon::new(Symbol::Close), f: Icon::new(Symbol::Down),
+            g: Icon::new(Symbol::Plus), h: Icon::new(Symbol::Minus) }),
+        none),
+    entry!("Text", "Divider", "A hairline; its thickness is its style's.",
+        "Named `Divider` where Lumen says `Rule`, because `lumen_static::Rule` is a stylesheet rule and is in the prelude.",
+        false,
+        |s| on(s, |d| &mut d.divider, DDivider { a: Divider }),
+        none),
+    entry!("Input", "Button", "Three of them, all wired to one counter.",
+        "An `on_click` is a plain `fn` pointer: it cannot capture, which is what lets a hot reload re-supply it.",
+        false,
+        |s| on(s, |d| &mut d.button, DButton { a: btn("Primary"), b: btn("Default"), c: btn("Ghost") }),
+        |s| format!("presses: {}", s.presses)),
+    entry!("Input", "CheckBox", "A box and a tick, both bound to one flag.",
+        "A toggle does not flip itself: the app owns the boolean and the binding writes this copy back, or the two could disagree.",
+        false,
+        |s| on(s, |d| &mut d.checkbox, DCheckBox { a: toggle(s.flag), b: toggle(!s.flag) }),
+        |s| format!("checked: {}", s.flag)),
+    entry!("Input", "Switch", "The same two states, as a sliding pill.",
+        "One type with three presentations, chosen by a *const* parameter — so `kind_name` and `defaults` answer at compile time.",
+        false,
+        |s| on(s, |d| &mut d.switch, DSwitch { a: toggle(s.flag), b: toggle(!s.flag) }),
+        |s| format!("on: {}", s.flag)),
+    entry!("Input", "Radio", "One of a set; the selection lives in the app.",
+        "There is no group container: each radio compares against a shared value, which is the honest cost of not inventing one.",
+        false,
+        |s| on(s, |d| &mut d.radio, DRadio { a: toggle(s.flag), b: toggle(!s.flag), c: toggle(false) }),
+        |s| format!("selected: {}", s.flag)),
+    entry!("Input", "Slider", "Drag it, or focus it and use the arrows.",
+        "A slider only draggable by mouse is not an accessible slider, so `step` is a field.",
+        false,
+        |s| on(s, |d| &mut d.slider, DSlider { a: Slider::new(s.fraction) }),
+        |s| format!("value: {:.2}", s.fraction)),
+    entry!("Input", "TextInput", "One line, editable. Click it and type.",
+        "The one place a widget owning state is right: the data originates *at* the widget, because the user typed it.",
+        false,
+        |s| on(s, |d| &mut d.textinput, DTextInput { a: { let mut t = TextInput::<String>::default(); t.set_str("type here"); t } }),
+        none),
+    entry!("Progress", "ProgressBar", "Determinate, driven by the tick.",
+        "An empty bar paints nothing at all: a zero-width rounded rect still covers `2 × radius` px once the radius is clamped.",
+        true,
+        |s| on(s, |d| &mut d.progress, DProgressBar { a: ProgressBar::new(s.phase) }),
+        |s| format!("{:.0}%", s.phase * 100.0)),
+    entry!("Progress", "Spinner", "Three phases of the same ring.",
+        "It does not drive its own clock — there is no per-node tick, so the application advances the phase.",
+        true,
+        |s| on(s, |d| &mut d.spinner, DSpinner {
+            a: Spinner::new(s.phase), b: Spinner::new(s.phase + 0.33), c: Spinner::new(s.phase + 0.66) }),
+        |s| format!("phase {:.2}", s.phase)),
+    entry!("Progress", "Skeleton", "A placeholder with a travelling highlight.",
+        "The shimmer is clipped to the block, because the renderer's clip is a hard test and the arithmetic would have to repeat the rounded corner.",
+        true,
+        |s| on(s, |d| &mut d.skeleton, DSkeleton { a: Skeleton::new(s.phase), b: Skeleton::new(s.phase) }),
+        |s| format!("phase {:.2}", s.phase)),
+    entry!("Charts", "BarChart", "Bars from a zero baseline.",
+        "`Series` is a fixed array, so a chart allocates nothing and is `Copy`; over-long input is truncated rather than refused.",
+        false,
+        |s| on(s, |d| &mut d.bar, DBarChart { a: BarChart::new(SAMPLE) }),
+        none),
+    entry!("Charts", "LineChart", "A polyline through the same points.",
+        "A non-finite sample costs one segment, not the whole scale — a chart is a view of numbers it did not produce.",
+        false,
+        |s| on(s, |d| &mut d.line, DLineChart { a: LineChart::new(SAMPLE) }),
+        none),
+    entry!("Charts", "PieChart", "Proportions of a whole, as a ring.",
+        "Wedges are runs of radial lines: the renderer has no arc and no polygon, and 96 segments hides the joins at any size.",
+        false,
+        |s| on(s, |d| &mut d.pie, DPieChart { a: PieChart::new(&[5.0, 3.0, 2.0, 1.5, 1.0]) }),
+        none),
 ];
 
 /// The series the charts share, so the three demos are comparable.

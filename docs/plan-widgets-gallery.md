@@ -79,27 +79,46 @@ Three decisions inside them worth keeping:
 stage, a live readout for the ones that carry state.
 
 **"One of N" is the interesting problem in a static tree**, and the
-showcase is as much a demonstration of the answer as of the widgets.
-Three ways out, and the third is used:
+showcase got it wrong first. Three candidates:
 
 1. Every demo in the tree, all but one hidden — what `Either` does for
    two. For eighteen it is seventeen nested `Either`s, and the merged
    const table is bounded by `MAX_EITHER_NODES` (64) per instantiation.
 2. A stylesheet rebuilt per selection, flipping `Style::visible`. The
-   cascade can say it, but every demo still pays layout every frame.
-3. **`Dyn`** — a boxed `dyn Node` island with `replace`. One node in the
-   parent's table, content swapped on selection. Precisely what
-   M13/T13.4 put the hatch behind `alloc` *for*.
+   cascade can say it, but every demo pays layout every frame.
+3. `Dyn` — a boxed `dyn Node` island with `replace`.
 
-Its cost is real and is recorded on `Entry::live`: a `Dyn` has no typed
-handle, so a widget that owns its own value — a `Slider`, a
-`TextInput` — cannot be read back out. Those entries print no readout.
+**Three was chosen and it was wrong.** `Dyn`'s `Handlers<S>` returns
+`None` unconditionally, because the application type is exactly what the
+erasure erased. Every button, checkbox, radio and text field in the
+showcase could be hit-tested, hovered and pressed, and no handler ever
+ran. Nothing that stopped at "the demo paints" could see it — and the
+first round of tests stopped there.
+
+The answer is **one above the list: every demo is a typed `Option`
+field, and exactly one is `Some`.** `Option` is the core's own hide
+(`layout` zeroes an absent branch every frame) and `Option<W>` forwards
+`Handlers` to `W`. It also buys back what the island cost: a typed field
+can be *read*, so a `Slider`'s value reaches the readout, where through a
+`Dyn` it could not and `Entry` carried a flag apologising for it.
+
+What it costs is that the tree carries all eighteen demos — space for
+reach, which is the trade this architecture offers — and one new failure
+mode: `Demos::clear` is a hand-written list of eighteen fields, and one
+left out leaves the previous demo underneath the new one.
+`Demos::shown()` is asserted to be exactly 1 after every selection.
+
+**Two lessons for T23.2 onward.** `Dyn` is for content that only has to
+*paint* — it cannot carry an interaction to the application, and its own
+rustdoc does not say so; `tests::a_dyn_island_cannot_route_a_handler`
+pins the fact. And a widget test that asserts only "it drew something"
+will pass on a widget nobody can use.
 
 **The menu is a field per entry, not a `Repeat`.** Both off-table
-containers were tried first; neither painted a row, which is a seam to
-understand before leaning on it for a menu. A catalogue's length is
-known when the binary is, so the static answer is the honest one — and
-`ROWS` is asserted against `CATALOG.len()` so the two cannot drift.
+containers were tried; neither painted a row, which is a seam to
+understand before leaning on it for a menu, and T23.8 owns it. A
+catalogue's length is known when the binary is, so `ROWS` is asserted
+against `CATALOG.len()`.
 
 ## 4. What is next, in order
 

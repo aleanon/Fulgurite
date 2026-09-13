@@ -38,12 +38,14 @@
 use lumen_static::display::Color;
 use lumen_static::prelude::*;
 use lumen_static::Rule as StyleRule;
-use lumen_static::Dyn;
+use lumen_static::Toggle;
 use lumen_static_widgets::prelude::*;
 use lumen_static_winit::{run, Config};
 
 mod catalog;
+mod stage;
 use catalog::CATALOG;
+pub use stage::*;
 
 // ---- palette ---------------------------------------------------------
 
@@ -65,7 +67,7 @@ const PANEL_H: f32 = 560.0;
 /// the core gives a button its hover, press and focus for free.
 #[derive(StaticTree, Default)]
 #[widget(column, spacing = 0.0)]
-struct Row {
+pub struct Row {
     #[widget_id("opt")]
     pick: Button<Show, String>,
 }
@@ -91,7 +93,7 @@ struct Row {
 /// catalogue's length at startup so the two cannot drift silently.
 #[derive(StaticTree, Default)]
 #[widget(column, spacing = 0.0)]
-struct Panel {
+pub struct Panel {
     #[widget_id("opt")]
     r0: Row,
     #[widget_id("opt")]
@@ -136,7 +138,7 @@ const ROWS: usize = 18;
 /// The header band: the trigger, what it is, and a live readout.
 #[derive(StaticTree, Default)]
 #[widget(column, spacing = 8.0)]
-struct Header {
+pub struct Header {
     #[widget_id("title")]
     title: Label,
     #[widget_id("trigger")]
@@ -150,28 +152,32 @@ struct Header {
 /// The stage: whatever the picker chose, centred by two `FILL` spacers.
 #[derive(StaticTree, Default)]
 #[widget(row, spacing = 0.0)]
-struct StageRow {
+pub struct StageRow {
     #[widget_id("sl")]
     l: Spacer,
     #[widget_id("demo")]
-    demo: Dyn,
+    demos: Demos,
     #[widget_id("sr")]
     r: Spacer,
 }
 
 #[derive(StaticTree, Default)]
-#[widget(column, spacing = 0.0)]
-struct Stage {
+#[widget(column, spacing = 18.0)]
+pub struct Stage {
     #[widget_id("st")]
     top: Spacer,
     row: StageRow,
+    /// The subtlety under the demo — what makes Lumen's showcase teach
+    /// rather than merely list.
+    #[widget_id("note")]
+    note: Label<String>,
     #[widget_id("sb")]
     bottom: Spacer,
 }
 
 #[derive(StaticTree, Default)]
 #[widget(column, spacing = 0.0)]
-struct Body {
+pub struct Body {
     #[widget_id("header")]
     header: Header,
     #[widget_id("hr")]
@@ -194,7 +200,7 @@ struct Body {
 /// up with the trigger.
 #[derive(StaticTree, Default)]
 #[widget(row, spacing = 0.0)]
-struct PanelRow {
+pub struct PanelRow {
     #[widget_id("pl")]
     l: Spacer,
     /// **`Option`, which is how the core hides a subtree.** `layout`
@@ -209,7 +215,7 @@ struct PanelRow {
 
 #[derive(StaticTree, Default)]
 #[widget(column, spacing = 0.0)]
-struct PanelLayer {
+pub struct PanelLayer {
     #[widget_id("pt")]
     top: Spacer,
     row: PanelRow,
@@ -219,14 +225,14 @@ struct PanelLayer {
 
 #[derive(StaticTree, Default)]
 #[widget(stack)]
-struct Screen {
+pub struct Screen {
     body: Body,
     layer: PanelLayer,
 }
 
 #[derive(DeriveApp, Default)]
 #[app(tick = advance, after_update = refresh)]
-struct Show {
+pub struct Show {
     #[tree]
     ui: Screen,
     /// Which catalogue entry is on the stage.
@@ -238,22 +244,9 @@ struct Show {
     phase: f32,
     /// The live demo's own state. One store rather than one per demo,
     /// because a showcase only ever has one demo alive.
-    value: f32,
+    presses: u32,
     flag: bool,
-}
-
-/// A tiny builder helper, so a catalogue entry is one expression.
-trait Tap: Sized {
-    fn tap(mut self, f: impl FnOnce(&mut Self)) -> Self {
-        f(&mut self);
-        self
-    }
-}
-impl<T> Tap for T {}
-
-/// Put a widget on the stage.
-fn stage<W: Widget + lumen_static::Node + 'static>(s: &mut Show, w: W) {
-    s.ui.body.stage.row.demo.replace(w);
+    fraction: f32,
 }
 
 /// After every pump: rebuild the demos whose state lives in the store,
@@ -264,10 +257,13 @@ fn stage<W: Widget + lumen_static::Node + 'static>(s: &mut Show, w: W) {
 /// one interaction late. `after_update` runs on every pump, which is
 /// exactly when the store can have changed.
 fn refresh(s: &mut Show) {
-    let e = &CATALOG[s.selected];
-    if e.live {
-        (e.seed)(s);
+    // **Read the typed fields back before reporting.** This is what a
+    // `Dyn` island could not do: a `Slider` owns its value, and through
+    // a `Box<dyn Node>` there was no handle to ask.
+    if let Some(d) = &s.ui.body.stage.row.demos.slider {
+        s.fraction = d.a.value();
     }
+    let e = &CATALOG[s.selected];
     let text = (e.status)(s);
     s.ui.body.header.readout.set(text);
 }
@@ -294,6 +290,7 @@ fn advance(s: &mut Show, dt_ms: f32) -> bool {
 /// Put the selected entry on the stage and bring the header into step.
 fn rebuild(s: &mut Show) {
     let e = &CATALOG[s.selected];
+    s.ui.body.stage.note.set(e.note.into());
     // **ASCII, not `\u{25be}`.** The system font has no chevron and
     // `examples/glasswall` already paid for that lesson: a missing glyph
     // renders as the fallback box, which looks like a bug in the widget
@@ -617,7 +614,7 @@ mod tests {
         h
     }
 
-    /// **The panel has a row for every entry.**
+    /// **The stage has a demo for every entry, and the menu a row.**
     ///
     /// The one place this file can drift: `Panel` is a field per
     /// catalogue entry, so adding a widget to `CATALOG` without adding a
@@ -625,8 +622,9 @@ mod tests {
     /// only to someone who counted.
     #[test]
     fn the_menu_has_a_row_for_every_widget() {
-        println!("{} rows, {} entries", ROWS, CATALOG.len());
+        println!("{} rows, {} demos, {} entries", ROWS, stage::DEMOS, CATALOG.len());
         assert_eq!(ROWS, CATALOG.len(), "`Panel`'s fields and `CATALOG` disagree");
+        assert_eq!(stage::DEMOS, CATALOG.len(), "`Demos`'s fields and `CATALOG` disagree");
     }
 
     /// **Every entry puts something on the stage.**
@@ -636,8 +634,15 @@ mod tests {
     /// smoke test that stopped at `seed`.
     #[test]
     fn every_entry_paints_a_demo() {
+        // **One host, selected through in turn** — not a fresh one per
+        // entry. A `Demos::clear` that forgets a field leaves the
+        // previous demo on the stage, and from a fresh app there is
+        // never a previous demo to leave: the first version of this
+        // loop rebuilt each time and could not see it.
+        let mut h = host(0, false);
         for (i, e) in CATALOG.iter().enumerate() {
-            let h = host(i, false);
+            choose(&mut h.app, i);
+            h.pump();
             // **Commands on the stage, not in the frame.** The header
             // alone draws ten, so a whole-frame count is cleared by the
             // header whatever the stage does — an entry whose `seed`
@@ -665,6 +670,17 @@ mod tests {
                 })
                 .any(|t| t == e.blurb);
             println!("  {:>12}  {demo} commands", e.name);
+            // **Exactly one demo on the stage.** `Demos::clear` is a
+            // hand-written list of eighteen fields; one left out of it
+            // leaves the previous demo underneath the new one, which
+            // paints and hit-tests and looks almost right.
+            assert_eq!(
+                h.app.ui.body.stage.row.demos.shown(),
+                1,
+                "{} left {} demos on the stage",
+                e.name,
+                h.app.ui.body.stage.row.demos.shown()
+            );
             assert!(blurb, "{}'s blurb never reached the header", e.name);
             assert!(demo > 0, "{} put nothing on the stage", e.name);
         }
@@ -684,6 +700,90 @@ mod tests {
         assert!(open.app.ui.layer.row.panel.is_some(), "an open picker has no panel");
         assert!(shut.app.ui.layer.row.panel.is_none(), "a closed picker kept its panel");
         assert!(b > a + ROWS, "an open panel drew {} more commands, not {ROWS}+", b - a);
+    }
+
+    /// **A widget on the stage actually receives its clicks.**
+    ///
+    /// The bug this test exists for: the stage was a `Dyn` island, whose
+    /// `Handlers<S>` returns `None` unconditionally — the application
+    /// type is exactly what type erasure erased. Every button, checkbox
+    /// and radio in the showcase could be hit-tested, hovered and
+    /// pressed, and no handler ever ran. Nothing that stopped at "the
+    /// demo paints" could see it.
+    ///
+    /// Driven through `Host`: a real pointer event, at the widget's real
+    /// laid-out position, and the assertion is on the application's own
+    /// state.
+    #[test]
+    fn pressing_a_demo_button_reaches_the_application() {
+        let button = CATALOG.iter().position(|e| e.name == "Button").unwrap();
+        let mut h = host(button, false);
+        assert_eq!(h.app.presses, 0);
+
+        // The first button of the `Button` demo, found by geometry
+        // rather than by a counted index.
+        assert!(
+            h.app.ui.body.stage.row.demos.button.is_some(),
+            "the Button demo is not on the stage"
+        );
+        let node = (0..<Screen as Widget>::NODE_COUNT)
+            .find(|&i| {
+                let s = &h.states[i];
+                s.size.w > 40.0 && s.size.h > 20.0 && s.pos.y > 200.0 && s.size.w < 200.0
+            })
+            .expect("no button-shaped node on the stage");
+        let s = &h.states[node];
+        let (x, y) = (s.pos.x + s.size.w / 2.0, s.pos.y + s.size.h / 2.0);
+        println!("clicking node {node} at ({x:.0}, {y:.0}), size {:?}", s.size);
+
+        h.post(Event::down(x, y));
+        h.post(Event::up(x, y));
+        h.pump();
+        println!("presses after one click: {}", h.app.presses);
+        assert_eq!(h.app.presses, 1, "the click never reached the handler");
+
+        // And the readout followed, which is the other half of the
+        // wiring: `after_update` refreshes it on the same pump.
+        let shown = h
+            .list
+            .cmds
+            .iter()
+            .filter_map(|c| match c {
+                Cmd::Text { text, .. } => Some(h.list.str_of(*text).to_string()),
+                _ => None,
+            })
+            .any(|t| t == "presses: 1");
+        assert!(shown, "the readout did not follow the press");
+    }
+
+    /// **A `Dyn` island reports no handler — pinned, so nobody reaches
+    /// for one again.**
+    ///
+    /// This is the framework fact that made the first version of the
+    /// stage silently dead, and it is not a defect: `Dyn` is a
+    /// `Box<dyn Node>` and the application type is exactly what the
+    /// erasure erased, so there is nothing for `Handlers<S>` to forward
+    /// to. It is a *cost* of the hatch, and one its own rustdoc does not
+    /// spell out. Asserted here rather than remembered.
+    #[test]
+    fn a_dyn_island_cannot_route_a_handler() {
+        use lumen_static::event::{Handlers, NodeSel};
+        let mut b = Button::<Show, String>::default();
+        b.label = "live".into();
+        b.on_click = |s: &mut Show, _: &EventCtx| s.presses += 1;
+        // The same button, reachable directly...
+        let direct: Option<fn(&mut Show, &EventCtx)> =
+            Handlers::<Show>::handler(&b, NodeSel { i: 0, inner: None });
+        // ...and through an island.
+        let island = lumen_static::Dyn::new(b);
+        let through: Option<fn(&mut Show, &EventCtx)> =
+            Handlers::<Show>::handler(&island, NodeSel { i: 0, inner: None });
+        println!("direct {:?}, through a Dyn {:?}", direct.is_some(), through.is_some());
+        assert!(direct.is_some(), "a wired button reports no handler at all");
+        assert!(
+            through.is_none(),
+            "a Dyn now routes handlers — the stage could use one again, and this test should go"
+        );
     }
 
     /// **Picking a row changes what is on the stage.**
