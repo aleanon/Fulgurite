@@ -46,13 +46,15 @@ are independent of each other**, so either may go first:
   injections would have passed under their own injection, and the plan
   keeps the corrections rather than quietly replacing itself.
 
-- **M25 — `docs/plan-appearance.md`** (T25.0–T25.7): appearance moves
-  off the per-node `Style` onto each widget — a look function over a
-  palette that is data, iced's shape without its boxed closures or
-  theme parameter. Layout stays in the cascade. §0 is the evidence: six
-  colours hard-coded or derived because one struct is paid on every
-  node. **T25.2's `Toggle` pilot is a stop point** — if it trips T25.0's
-  thresholds the milestone ends there, recorded.
+- **M25 — `docs/plan-appearance.md`** (T25.0–T25.9): **T25.0 is a
+  shipped defect and goes first** — hover and press shading are stale
+  under `Boundaries` invalidation, because nothing reports a hovered or
+  pressed flip. Then appearance moves off the per-node `Style` onto each
+  widget: a look function over a palette that is data, iced's shape
+  without its boxed closures or theme parameter; layout stays cascaded.
+  Revised after a six-lens review (47 findings, none refuted) — **read
+  §5 before §2**. **T25.5's `Toggle` pilot is the decision point**, with
+  §2.6's much smaller change as the fallback.
 
 Unsequenced: `docs/plan-harness.md`.
 

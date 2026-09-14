@@ -1,27 +1,29 @@
-# M25 — appearance on the widget: a look per kind, a palette as data
+# M25 — appearance on the widget, and the invalidation gap under it
 
-> **Not started. Written 2026-09-14.** The ask: *"find out if there
-> could be any benefit in this framework to have style attached to each
-> widget, similar to how iced does it — so the style struct only carries
-> what it needs for the given widget and styling becomes a function on
-> the widget."*
+> **Not started. Written 2026-09-14; revised the same day after a
+> six-lens review** (facts, injections, design, cost, migration,
+> alternatives), each lens followed by an adversarial verifier that
+> re-opened the code: 47 findings, 43 confirmed, 4 plausible, none
+> refuted. §5 records what the review found and what it changed. Read
+> it before §2 — the first draft's central premise was false, and the
+> plan keeps the correction rather than quietly replacing itself.
 >
-> The answer the investigation reached is **yes for appearance, no for
-> layout**, and this plan is shaped by that split. `Style` today is one
-> struct resolved for every node, and six places in the tree have
-> hard-coded or derived a colour *because* of that (§0). iced's
-> per-widget style carries appearance only — width, height and padding
-> are set on the widget, not in its style — and that is the half worth
-> taking.
+> **The first task is a shipped defect, not a feature.** Hover and press
+> shading go stale under `Boundaries` invalidation today (T25.0). The
+> review found it by checking the premise this milestone was built on —
+> "hover already reaches layout" — and it does not, except under the
+> default `Everything`. Everything after T25.0 depends on it.
 >
-> Two objections raised while investigating turned out to be wrong, and
-> are recorded in §2 so they are not raised again: that a style function
-> cannot be hot-reloaded, and that iced's theming is code rather than
-> data.
+> The ask that started this: *"find out if there could be any benefit
+> in this framework to have style attached to each widget, similar to
+> how iced does it — so the style struct only carries what it needs for
+> the given widget and styling becomes a function on the widget."* The
+> answer is **yes for appearance, no for layout**, with a stop point at
+> the pilot where a much smaller change (§2.6) is the fallback.
 
-*Each task is one commit; each ends with `just test` green. Task ids go
-in commit subjects. Every task names the injection its tests must go red
-under.*
+*Each task is one commit unless it says otherwise; each ends with
+`just test` green. Task ids go in commit subjects. Every gate names the
+injection it must go red under, and what it prints beside its bound.*
 
 ---
 
@@ -29,337 +31,567 @@ under.*
 
 `Style` is 72 B and `NodeState` 76 B, both `const`-asserted, and every
 field is paid on every node of every tree
-(`docs/results-embedded.md`). That budget is right to defend — and
-defending it is why appearance that only one widget needs has nowhere to
-live. Each row below says so in its own doc comment:
+(`docs/results-embedded.md`). Defending that budget is right, and it is
+why appearance that one widget needs has been hard-coded or derived:
 
-| where | what it does instead of styling | the reason it gives |
+| where | what it does instead of styling | what its doc comment says |
 |---|---|---|
 | `toggle.rs` `MARK` | tick, dot and knob are always white | "a third colour on every node in the tree, for one part of one widget" |
 | `input.rs` `selection_tint` | selection is the text colour at alpha 64 | "`NodeState` is 76 B and asserted at that size" |
-| `input.rs` `CARET` | caret colour is a constant | the same budget |
-| `scroll.rs` `paint` | track and thumb are both derived from `fg` | the same budget, via `selection_tint` |
-| `chart.rs` `WEDGES` | pie series colours are hard-coded | — no stylesheet can reach them |
+| `input.rs` `CARET` | caret colour is a constant | nothing — the budget reason is `selection_tint`'s |
+| `scroll.rs` `paint` | track and thumb both derive from `fg`, via `selection_tint` | nothing about budget; it explains clip placement |
+| `chart.rs` `WEDGES` | pie series colours are hard-coded | nothing |
 | `style.rs` `pressed_dim` / `hover_dim` | a pressed or hovered control may only darken its background | "doubling its size to express the rare case would cost every node" |
 
-And one thing that does not exist at all: **a disabled look.**
-`Cursor::NotAllowed` is in the vocabulary; nothing can make a control
-*look* unavailable.
+**Not every row needs this milestone.** `Image` already carries
+`pub tint` and `Glass<W>` a `Material`: a per-widget colour field is a
+shape the tree already uses, and MARK's own objection is to a `Style`
+field, not a widget field. §2.6 compares that smaller path honestly.
+What only this milestone gives is in §2.6 too.
 
-### How the cascade is actually used
+### How the stylesheets are used
 
-Counted across `examples/` on 2026-09-14:
+Counted across `examples/` on 2026-09-14 (selector *occurrences*, which
+can exceed constructors):
 
 | example | rules | `Id` | `Kind` | `Class` |
 |---|---:|---:|---:|---:|
-| `showcase` | 30 | 29 | 2 | 0 |
+| `showcase` | 26 | 24 | 3 | 0 |
 | `glass` | 20 | 17 | 3 | 0 |
 | `glasswall` | 26 | 15 | 11 | 0 |
 | `counter-window` (`app.rs`) | 11 | 10 | 1 | 0 |
 | `counter-window` (`form.rs`) | 8 | 2 | 6 | 0 |
 | `counter` | 2 | 0 | 2 | 0 |
 
-**No example uses a class.** The dominant use of the stylesheet is
-per-instance styling by name — which is what a style function on the
-instance is, with the compiler checking the name.
+**What this shows is that the examples mostly name instances — not that
+appearance should leave the cascade.** Many `Id` rules are layout-only
+and stay rules; many mix a colour with `font_size` on the same label,
+which this plan splits across two mechanisms. And the case the design
+must still serve is the one real theming pattern here: `form.rs` themes
+every checkbox, switch, slider, button and label with **one `Kind` rule
+each**, and in the showcase a `Kind` rule is the only selector that
+reaches a `Repeat`'s rows (§2.4).
 
-Two silent no-ops the current shape allows, both of the kind the
-repository keeps finding:
+Two silent no-ops exist, and **neither is fixed by moving appearance**
+— `font_weight` stays in `Style`, and nothing checks kind spelling. They
+get their own task, T25.2, which is independent of looks:
 
 - `Rule::new(Selector::Kind("checkbox"), Patch::new().font_weight(700.0))`
-  compiles and changes nothing. A field that has no meaning for a kind
-  is still writable for it.
-- `Selector::Kind("Label")` matches nothing (`book/src/styling.md`,
-  "kind names are not spelled alike").
+  compiles and changes nothing.
+- `Selector::Kind("Label")` matches nothing (`book/src/styling.md`).
 
 ## 1. What iced does, and what this takes from it
 
 Verified against iced 0.14:
 
-- Each widget module has its own `Style` struct holding **appearance
-  only**, and its own `Status` enum (`Active`, `Hovered`, `Pressed`,
-  `Disabled` for a button; a scrollable's variants carry per-rail
-  flags).
+- Each widget module has its own `Style` struct holding appearance only,
+  and its own `Status` enum (`Active`, `Hovered`, `Pressed`, `Disabled`
+  for a button; a scrollable's variants carry per-rail flags).
 - A widget takes `.style(impl Fn(&Theme, Status) -> Style)`.
-- `Theme` is built from a `Palette` — background, primary, secondary,
-  success, warning, danger, and an `is_dark` flag — which is **data**,
-  changeable at runtime.
+- `Theme` is built from a `Palette` — background, text, primary,
+  success, warning, danger — which is **data**, changeable at runtime.
+  An extended palette (adding secondary and a dark flag) is generated
+  from it.
 - Layout is not in the style: `button(..).padding(15)`.
 
-| iced | this plan | why the difference |
+| iced | this plan | why |
 |---|---|---|
-| per-widget appearance struct | **taken** — one look struct per kind | §0 |
-| `Status` per widget | **taken** — one shared `Status`, widgets read what they need | four states cover every widget in the tree today; a per-widget enum is added when one needs a fifth |
-| `Palette` as data | **taken** | §2.2 |
-| `Box<dyn Fn>` style closure | **not taken** — a plain `fn` pointer | `no_std` without `alloc` has no `Box` (M13/T13.4), and every handler here is already a `fn` pointer (`docs/events-decision.md`) |
-| widgets generic over a `Theme` with a `Catalog` trait | **not taken** — one concrete palette type | a type parameter on every widget is a second axis of monomorphization, and `docs/results-monomorphization.md` says code size scales per *type* |
-| layout on the widget | **not taken** — layout stays in the cascade | §2.1 |
+| per-widget appearance struct | **taken** | §0 |
+| `Status` per widget | **taken** — one shared `Status`; focus stays a paint-time bit (§2.1) | the four states are what hover, press and a future disabled flag need |
+| `Palette` as data | **taken**, with a text colour | §2.2 |
+| `Box<dyn Fn>` style closure | **not taken** — a plain `fn` pointer | `no_std` without `alloc` has no `Box` (M13/T13.4); handlers are already `fn` pointers |
+| widgets generic over a `Theme` with a `Catalog` trait | **not taken** — one concrete palette type | a type parameter on every widget is a second monomorphization axis (`docs/results-monomorphization.md`) |
+| layout on the widget | **not taken** — layout stays cascaded | §2 |
 
 ## 2. The decisions
 
 | | decided |
 |---|---|
-| **What leaves `Style`** | Appearance: `color`, `background`, `radius`, `shadow`, `pressed_dim`, `hover_dim`. |
-| **What stays** | Layout and cross-cutting properties: `width`, `height`, `padding`, `spacing`, `align`, `visible`, `cursor`, `focus_ring` — and `font_size`, `font_weight`, which are inputs to text measurement. |
-| **Where a look is chosen** | A `look: fn(&Palette, Status) -> …Look` field on each leaf widget, defaulting to the kind's own function. |
-| **Where it is resolved** | In `layout`, which already has `&mut self` and already resolves pressed/hovered (`record_painted`). Stored on the widget; `paint` reads it. `paint`'s signature does not change. |
-| **How theming works** | One `Palette` held by the host, reached through `LayoutCx`. `Host::set_palette` swaps it. |
-| **The name** | `Style` keeps its name through this milestone. A rename to say "this is layout now" touches every stylesheet in the tree and the book, and is a separate decision after T25.6. |
+| **What leaves `Style`** | Per-widget appearance: `color`, and `pressed_dim` / `hover_dim`. Whether box fills (`background`, `radius`, `shadow`) leave too is **OPEN** — §2.3, settled by T25.4. |
+| **What stays** | `width`, `height`, `padding`, `spacing`, `align`, `visible`, `cursor`, `focus_ring`, `font_size`, `font_weight` (the last two feed text measurement). |
+| **Where a look is chosen** | A `look` field on each leaf widget, `fn(&Palette, Status) -> …`, defaulting to the kind's own function — or to the kind-wide choice of §2.4. |
+| **Where it is resolved** | In `layout`, stored on the widget; `paint` reads it and its signature does not change. **Sound only after T25.0** — see §2.1. |
+| **How theming works** | One `Palette` held by the host, reached through `LayoutCx`. `Host::set_palette` stores it and **invalidates** — `mark_all`, as `set_stylesheet` does — when it differs. Damage then follows from retention's command hashes; it is not something the setter produces. |
+| **The name** | `Style` keeps its name through this milestone. |
 
-### 2.1 Why layout stays in the cascade
+### 2.1 Why resolve in layout, and what that depends on
 
-Every node has a width. Rules like "every focusable control gets a
-2 px ring" or "every row fills" are what a cascade is for, and
-`cascade_subtree`'s soundness argument (`docs/results-cascade-cost.md`)
-does not care which fields a `Patch` has. The half of `Style` that is
-genuinely per-node stays per-node; only the half that is per-*kind*
-moves.
+A look that depends on `Status` must be re-resolved when a node's
+hovered or pressed bit flips. **Today nothing reports that flip** (T25.0).
+Under the default `Everything` every node is laid out every frame, so it
+does not matter; under `Boundaries` a clean subtree returns before
+`record_painted` runs, and the shade goes stale. Resolving looks in
+layout inherits exactly that, so T25.0 comes first.
 
-### 2.2 The two objections that were wrong
+The alternative the review raised — resolve the status-dependent part in
+`paint`, which already has `st[i].hovered` — needs either the palette in
+`paint` (the `Node` signature change `docs/text-and-scrolling-decisions.md`
+A2 rejected) or every status variant of the look stored on the widget,
+which multiplies the per-instance bytes of §2.5 by four. Neither is
+cheaper than fixing the report, which is needed anyway.
 
-**"A style function is code, so it cannot be hot-reloaded."** It can,
-and the reload design already handles exactly this shape.
-`reload.rs` on `Button`: *"`on_click` is code: `fresh()` supplies the
-new dylib's pointer and `restore` never touches it."* The old library is
-never `dlclose`d, so the old pointer cannot dangle
-(`docs/step4-hot-reload.md`, "Dev-mode leaks are policy"). And a `fn`
-field marked `#[reload(keep)]` **fails to compile**, because `fn` types
-are not `Serialize` — so a look cannot be migrated by mistake. A `look`
-field is one more handler as far as reload is concerned. T25.2 proves it
-end to end rather than trusting this paragraph.
+**Focus is not a `Status`.** `TextInput` and `TextArea` already branch
+on `st.focused` in `paint`, and the host rewrites `focus_ring` *after*
+layout for pointer focus, so a look resolved in layout cannot see
+focus-visible. Focus appearance stays a paint-time read; where the ring
+takes its colour and radius from once `fg`/`radius` leave `NodeState`
+is part of T25.4.
 
-**"iced's theming is code, not data."** Its `Palette` is data. The
-design here matches it: the palette is data a host, an agent or a
-config file can swap; the mapping from palette to a widget's look is
-code, and code hot-reloads.
+### 2.2 The two objections that were wrong, and what they missed
 
-**What genuinely differs, stated plainly.** The agent endpoint is a
-separate process: it can send a palette, and it cannot send a function.
-Today it can restyle one node's colour with a sheet rule; after T25.6 it
-restyles colours by palette only. If tooling needs per-node colour
-overrides, a registry of named looks the agent selects by string is the
-shape — deferred until something asks for it.
+**"A style function cannot be hot-reloaded."** It can: `reload.rs` on
+`Button` — *"`on_click` is code: `fresh()` supplies the new dylib's
+pointer and `restore` never touches it"*; the old library is never
+`dlclose`d; and a `fn` field marked `#[reload(keep)]` fails to compile.
+**What that argument missed:** only Label, Button, Fixed, Spacer,
+Repeat, `Vec` and `Option` implement `Reloadable`, so a widget gaining a
+`look` still needs its own hand-written impl before a reloadable tree
+can hold it. T25.5 writes Toggle's.
 
-### 2.3 Derived containers — **OPEN, settled by T25.3**
+**"iced's theming is code, not data."** Its palette is data. Here too:
+the palette is data a host, agent or config swaps; the mapping from
+palette to look is code, and code hot-reloads.
 
-A derive cannot add a field to the user's struct, so a `Card` cannot
-carry a `look` field the way a `Button` can. Containers paint a
-background today through `Style`, and `examples/counter-window`'s card
-is styled exactly that way. Three shapes, in order of preference:
+**What genuinely differs.** The agent endpoint can send a palette, not a
+function, so per-node colour overrides by sheet rule are lost when
+colours leave the cascade. Deferred until a tool needs it (§4).
 
-1. **A type-level look:** `#[widget(column, look = card)]` emits a
-   `const` function on the type. No per-instance choice — the same
-   property `KIND` and `SEEDS` already have (`docs/plan-select.md`
-   T24.0) — and a new attribute, so `lib.rs`'s table and
-   `book/src/attributes.md` move together (`scripts/check_attr_table.sh`).
-2. **A wrapper widget**, `Surface<W>`, shaped like `Glass<W>`: a
-   container that wants a fill says so in the tree.
-3. **Container appearance stays in `Style`.** Cheapest, and it keeps
-   `background`/`radius`/`shadow` per node, which gives back most of the
-   bytes.
+### 2.3 Box painters — **OPEN, settled by T25.4**
 
-T25.3 counts how many derived containers in `examples/` and `fixtures/`
-paint a background, and decides.
+Every node that paints its own box reads `st.bg`, `st.radius` and
+`st.shadow`, and none of them is a leaf with room for a `look`:
 
-### 2.4 Byte arithmetic — an estimate, not a measurement
+| painter | reads | note |
+|---|---|---|
+| the derive's container `paint` | `bg`, `radius`, `shadow` | `crates/lumen-static-macros/src/lib.rs` |
+| the derive's container `hit` | `bg` alpha, `shadow` | **input routing, not only paint**: a container that paints nothing does not claim the hit, which is what stops a transparent stack layer swallowing `examples/glass`'s input |
+| `Repeat::paint` | `bg`, `radius`, `shadow` | how `Select`'s menu panel gets its fill (M24/T24.2) |
+| `Glass::paint` | `radius`, `shadow` | `tests/glass_widget.rs` pins radius-from-style |
+| `ScrollView`, `Fixed`, `Image`, `Chart` | `bg` / `fg` | `Fixed` paints `fg`; `Image` and `Chart` paint a background behind content |
+| `ops::focus_ring` | `fg`, `radius` | used by five widgets |
 
-From field sizes alone: removing appearance takes `Style` from 72 to
-about 48 B, and `NodeState` from 76 to about 60 B once `fg`, `bg`,
-`radius` and `shadow` no longer need stamping. **That arithmetic is not
-a result** — alignment, the `Length` discriminants and whatever §2.3
-decides all move it, and the look structs move bytes onto widget
-instances. T25.0 measures it, and the number is stated in
-`docs/results-appearance.md` and cited from here.
+Three shapes, **now ordered by cost**:
+
+1. **Box fills stay per node.** `background`, `radius`, `shadow` remain
+   in `Style` and `NodeState`; only per-widget appearance leaves. No new
+   mechanism, hit semantics unchanged, and most of §2.5's bytes come
+   back. The cheapest, and the default if T25.4 finds no reason against.
+2. **A wrapper widget**, shaped like `Glass<W>`, holding a fill look as a
+   field. Consistent with "stored on the widget"; the author says so in
+   the tree.
+3. **A type-level look** via a new container attribute. **Not cheaper
+   than 1**, which the first draft claimed: `paint` has no palette, and
+   a derived container has no field, so the resolved fill has nowhere to
+   live except the `NodeState` bytes shape 1 keeps.
+
+### 2.4 Kind-wide appearance and composites — **OPEN, settled by T25.4**
+
+**Kind-wide.** "Every button in this app has radius 6 and the accent
+colour" is one rule today. Under per-instance looks it is a look on every
+button — and a `#[derive(StaticTree, Default)]` field has nowhere to put
+one, and a `Repeat` row is reachable only by `Kind`. Candidates: an
+app-level table of per-kind look functions on the host beside the
+palette, consulted when an instance's `look` is unset (iced's `Catalog`
+default class, made concrete); or layout-plus-shape tokens (`radius`)
+on the palette itself. T25.4 picks one against `form.rs` and the
+showcase's menu rows.
+
+**Composites.** `Select` is a trigger `Button`, a `Popup` and a
+`Repeat` of `Button` rows — not a leaf. Its look is a struct of part
+looks handed to its children in layout, and `Button` and `Select`
+migrate in one commit so the showcase's trigger and rows do not change
+appearance between them.
+
+**Repeat rows never receive hovered or pressed.** `set_hovered` writes
+only the table's `st`; `Repeat::hit` reports the repeater's index with
+the row in `inner`. So a menu row's `Status` is always `Active`. That is
+true today and this milestone does not change it (§4).
+
+### 2.5 Bytes — probed by the review, owned by T25.1
+
+A review probe using the real component types: `Style` 72 → 48 B and
+`NodeState` 76 → 60 B with all six appearance fields removed, on both
+x86-64 and thumbv7em. Widgets grow by a `fn` pointer and a stored look:
+on thumbv7em `Toggle` 8 → 28, `Button` 64 → 88, `Label` 40 → 48 B.
+
+**Two consequences the first draft missed.** A table tree still shrinks
+per node once the struct is counted (a thumb `Label`: −40 + 8). An arena
+row does not: a `List` or `Repeat` shares one style row, so a row saves
+only `NodeState`'s 16 B and gains the look — roughly neutral for a
+label, a net gain for a button. And under §2.3 shape 1 the per-node
+saving is smaller, because `background`, `radius` and `shadow` stay.
+These are probe figures, not results: T25.1 re-measures, and
+`docs/results-appearance.md` owns the numbers.
+
+### 2.6 The smaller path, and why it is the fallback rather than the plan
+
+Three changes, none of which removes anything from `Style`:
+
+- **(a) Per-widget colour fields**, the `Image::tint` shape: a mark
+  colour on `Toggle`, caret and selection on `TextInput`, track on
+  `ScrollView`, a series slice on `Chart`. Four or five of §0's six rows,
+  in one or two commits.
+- **(b) Palette-indexed colours in `Patch`**, resolved by the existing
+  cascade. Theming with no widget changes; `set_palette` is "store,
+  re-cascade, `mark_all`", measured at 15.4 µs for 901 nodes
+  (`docs/results-cascade-cost.md`); per-node restyle by rule survives.
+- **(c) The sheet lint** — which this plan builds anyway, as T25.2.
+
+**What only the full milestone gives:** a pressed or hovered look that is
+a different hue rather than a shade; appearance fields that cannot be
+written for a kind that ignores them; and the per-node RAM of §2.5.
+**What it costs:** ten tasks, and every example stylesheet's colour
+rules rewritten.
+
+The plan builds T25.0–T25.3, which (c) and the invalidation fix need
+regardless, then the pilot. **T25.5 is the decision point:** if the
+pilot trips T25.1's thresholds, or its status-look gate turns out to be
+the only thing it buys, the milestone stops there and (a)+(b) ship
+instead, recorded in `docs/results-appearance.md`.
 
 ---
 
-## T25.0 — measure before building
+## T25.0 — hover and press reach layout under every invalidation strategy
 
-No API. Three probes, applied and reverted, the way
-`docs/results-embedded.md` measured a larger `Style` on 2026-09-10.
+**A shipped defect**, independent of everything below.
 
-**Thresholds, recorded before measuring:**
+`dispatch` writes `hovered`, `pressed` and `focused` into the state
+array and returns `false` for an unrouted pointer move
+(`crates/lumen-static/src/pass.rs`). `Host::pump_with` marks the dirty
+set only when a handler ran or a binding wrote
+(`crates/lumen-static-shell/src/lib.rs`). Under `Boundaries<N>` the
+derive returns early for a clean subtree with unchanged limits, so
+`record_painted` never re-resolves the shade. Probed by the review on a
+button with background (200,100,50), `hover_dim` 0.5, `pressed_dim` 0.9:
 
-| quantity | threshold | kill if |
-|---|---|---|
-| RAM per node, a tree of labels and containers only | must not grow | it grows |
-| embedded `.text` (`just firmware-size`) | ≤ +1 KB for the pilot widget | it exceeds that |
-| frame time at 10 000 nodes | distributions overlap the baseline | they separate |
-| full cascade, 901 nodes (`benches --bin cascade`) | reported, not gated | — a smaller `Patch` should make it faster; if it is slower, find out why before T25.1 |
+```
+Everything:     hovered=true handled=false painted=Color(100,50,25)  changed=true
+Boundaries<16>: hovered=true handled=false painted=Color(200,100,50) changed=false
+Boundaries<16>: pressed=true handled=false painted=Color(200,100,50) changed=false
+```
 
-**The precondition.** Resolving a look in `layout` is only correct if a
-change of `hovered` or `pressed` reaches that node's `layout` before the
-frame that shows it. It must already — `hover_dim` works, and it is
-resolved in `record_painted`, which only `layout` calls — but *must
-already* is a reading, and reading is what wrote the six vacuous tests
-in `AGENT.md`. T25.0 finds the path and pins it with a test: hover a
-button, assert its painted background changed with no sheet swap and no
-explicit relayout call.
+`invalidation_oracle.rs`'s `drive` never hovers, which is why the
+oracle has not seen it.
 
-**Injection:** break the path found (stop marking the node when
-`hovered` flips). The test must fire by name, and print the painted
-colour beside the resting one.
+**Which flips are unreported.** A Tab or arrow move returns `true` and
+reaches `mark_all` through `handled`. Unreported: pointer hover, press,
+release (which clears every pressed bit), the C5 drop of a focus that is
+no longer on screen, and `focus_visible` turning off on a pointer press
+over a node with no handler — which leaves a zeroed `focus_ring` in a
+state array a skipped layout never rewrites.
 
-Creates `docs/results-appearance.md`.
-
-## T25.1 — `Status` and `Palette` in the core
-
-`style::Status { Active, Hovered, Pressed, Disabled }`, derived from
-`NodeState` — `Disabled` is a variant nothing produces yet (§4).
-`Palette` as a `Copy` struct of named colours, a light default and a
-dark one. `LayoutCx` carries `&Palette`; `Host::set_palette` swaps it
-and damages the whole frame. **No widget reads either.**
+**The fix.** `InputState` gains the hovered and pressed node indices
+beside `focus` — per host, not per node, so no `NodeState` byte. `pump`
+reads `(hovered, pressed, focus, focus_visible)` before the event loop
+and after it, and for each that changed marks `subtree_range` of the old
+index and of the new one; a `focus_visible` change marks the focused
+node. No allocation (`crates/lumen-static-shell/tests/alloc_gate.rs`).
+The direct callers of `pass::dispatch` (`fixtures/embedded`,
+`fixtures/miri-smoke`) keep no dirty set and are unaffected.
 
 **Gates:**
 
-- A test leaf reads `cx.palette` in `layout`; the host's palette
-  reaches it. *Injection:* the host passes the default palette instead
-  of its own — fires, printing both.
-- `set_palette` produces a frame whose pixels differ, *and* a leaf's
-  `layout` ran (assert the action landed, not only the result).
-  *Injection:* `set_palette` stores the palette without damaging —
+- **The oracle sees it.** `drive` gains four steps: a pointer move onto a
+  button, a press, a release, and a move off. Each step asserts its
+  setup landed — the intended node's bit is set, and `handled` is
+  `false`, so the step proves the unrouted path rather than a handler's
+  `mark_all`. **Red before the fix**: record which step and the two
+  display-list hashes. *Injection after:* delete the new marks — the
+  oracle fires at the hover step, printing the painted `bg` under both
+  strategies.
+- **The mark is precise.** On a `Boundaries<16>` host, a hover marks a
+  set that is not `is_all`, and the painted background equals the dimmed
+  resting colour, both printed. *Other direction:* a pointer move that
+  stays on the same node leaves `changed()` empty. *Injection:* mark on
+  every pointer event regardless of change — the still-frame assertion
   fires.
-- The other direction: `set_palette` with an equal palette does not
-  force a full redraw.
+- **Focus-visible.** Tab to a button, then press elsewhere and Tab back
+  on a `Boundaries<16>` host: the ring's width is non-zero exactly when
+  keyboard focus is visible. *Injection:* drop the `focus_visible`
+  comparison — fires, printing the ring width.
 
-**The agent surface** gains `set_palette` in the same commit, because a
-host capability the agent cannot reach is the Config-gap shape
-`docs/plan-widgets-gallery.md` §3d names. `scripts/agent_drive.sh`
-drives it.
+`crates/lumen-static/tests/events.rs`'s shade test calls `layout` by
+hand after each event and so could never see this; it stays as the
+unit-level check.
 
-## T25.2 — the pilot: `Toggle`
+**Docs in the same commit:** the `invalidate.rs` module doc and the
+pump's comments, which list what marks the set; `InputState`'s rustdoc;
+`docs/plan-invalidation.md` T16.7, which describes the handler-only
+marking as the conservative path; and any book chapter that enumerates
+what marks.
+
+## T25.1 — measure before building
+
+No API. Probes applied and reverted, as `docs/results-embedded.md`
+measured a larger `Style` on 2026-09-10. **Each probe first proves its
+setup exists.**
+
+| quantity | how | threshold | kill if |
+|---|---|---|---|
+| embedded `.text` | `just firmware-size`, after adding a `CheckBox`, a `Radio` and a `Switch` to `fixtures/embedded` — each `SHAPE` is its own instantiation — and asserting Toggle symbols are in the linked binary before taking the baseline | pilot ≤ +300 B, against M16's +488 and M18+M19's +148 | it exceeds that |
+| RAM, table tree | state + style + widget struct, on thumbv7em; the fixture's `UI` size is computed today and not asserted — assert it, and print all three terms | must not grow | it grows |
+| RAM, arena row | `NodeState` + one instance, for `List<Label>` and `List<Button>` on x86-64 | reported, not gated — the desktop has no per-node budget | — |
+| frame time, per-node work | `benches --bin crossover` (1k table nodes) and a new bench binary with 1 000 toggles on the table, so the pilot's code is in the measured frame | delta smaller than the measured run-to-run spread, printed beside it | the delta exceeds the spread |
+| frame time, arena | `just stages 10000 150 20`, the incremental layout and paint stages — not the rebuild, which is 93% text shaping (`docs/results-competitive.md`) | same | same |
+| cascade | `benches --bin cascade`, plus the showcase's sheet as a second fixture, since the bench's two `Kind` rules match almost nothing | reported with no predicted direction | — |
+
+**Re-baseline**: the review measured linked `.text` at 21 278 B, against
+the 22 606 `docs/results-embedded.md` last recorded; that file is
+corrected in this commit.
+
+**Docs:** creates `docs/results-appearance.md`; adds an **OPEN** entry to
+`docs/00-handoff-static-tree.md` for appearance per kind, with §2.3 and
+§2.4 as sub-questions, pointing here.
+
+## T25.2 — the sheet lint
+
+Independent of looks, and the fix for both §0 no-ops.
+
+Each kind declares, as a type-level fact spliced into `Seed` beside
+`KIND`, the mask of `Style` fields it reads. The agent's audit gains a
+`W10xx` lint, reported through `ui.lint` like `W1004`–`W1009`: a `Kind`
+selector naming no kind present in the tree, and a `Patch` field that no
+matched kind reads. When a kind migrates, its mask loses the appearance
+bits — so this is also the "appearance field on a migrated kind" warning
+the first draft specified without a mechanism.
+
+**Gates:**
+
+- `Kind("Label")` fires; `Kind("label")` does not.
+- `Kind("checkbox")` with `font_weight` fires; with `width` does not.
+- **The mask cannot lie.** For every kind in both crates, patching each
+  field its mask claims changes that node's layout or its display list,
+  printed per field. *Injection:* add a field Toggle does not read to
+  its mask — fires, naming kind and field. *Injection:* splice every mask
+  as full — the `font_weight` case goes silent and its test fires.
+- Every example sheet is lint-clean, or the commit fixes it.
+
+## T25.3 — `Status`, `Palette` and `set_palette`
+
+**Two commits.**
+
+**(a) Core types.** `style::Status { Active, Hovered, Pressed, Disabled }`
+from the `NodeState` bits — `Disabled` is produced by nothing yet (§4).
+`Palette` as a `Copy` struct of named colours including text, page,
+surface, accent, on-accent, muted and focus; a light default and a dark
+one. `LayoutCx` carries `&Palette`. No widget reads either.
+
+**(b) The host and the agent.** `Host::set_palette` stores the palette
+and calls `mark_all` if it differs. The agent gains a method to set it,
+driven from `scripts/agent_drive.sh`.
+
+**Gates, all on `Host<_, Incremental, Boundaries<16>>`** — under
+`Everything` every layout runs every frame and none of these could fail:
+
+- A test leaf counts its `layout` calls and records the palette it saw.
+  The host's palette is asserted to differ from the default first.
+  *Injection:* the host passes the default palette — fires, printing both.
+- After `set_palette`, the counter advances and the recorded palette is
+  the new one. *Injection:* omit `mark_all` — the counter does not
+  advance; fires, printing the stale palette.
+- *Other direction:* an equal palette leaves `changed()` empty and the
+  counter unchanged.
+
+## T25.4 — decide the box painters, kind-wide looks, and the focus ring
+
+A decision task before any widget migrates, because the pilot's example
+rules and the removal task both depend on it. Settles:
+
+1. **§2.3**: count every box painter in `crates/`, `examples/` and
+   `fixtures/` and pick a shape. Default: shape 1.
+2. **§2.4**: the kind-wide mechanism, chosen against `form.rs` and the
+   showcase's `Repeat` rows; and composite looks for `Select`.
+3. **The focus ring's** colour (the palette's focus colour) and radius
+   source, once `fg` and possibly `radius` leave `NodeState`.
+
+Flips the handoff entry from T25.1 to **DECIDED** with the counts.
+
+**Gates, if shape 2 or 3 is built:** a card paints its fill look's
+colour after a palette swap, on `Boundaries<16>` — *injection:* ignore
+the look, fires. **And hit routing survives:** a click on a stack layer
+that paints nothing still reaches what is under it — *injection:* the
+container always claims the hit, fires. Under shape 1 nothing new is
+built, and the decision record is the deliverable.
+
+## T25.5 — the pilot: `Toggle` — **the decision point**
 
 `Toggle` gains `look: fn(&Palette, Status) -> ToggleLook` with
-`ToggleLook { body, on_body, mark, radius }`. `MARK` is deleted. The
-widget stops reading `color`/`background`/`radius` from `Style` —
-which still has them; nothing else migrates yet.
+`ToggleLook { body, on_body, mark, radius }`; `MARK` is deleted. Toggle's
+lint mask loses `color` (and the box fields, if T25.4 moved them).
 
-`Toggle` first because it has the most workarounds: `MARK`, the
-inverted-colour history in its own doc comment, and a switch knob whose
-colour has been wrong twice (`tests/switch_knob.rs`).
+**In the same commit:**
+
+- `examples/counter-window/src/form.rs`'s `Kind("checkbox")` and
+  `Kind("switch")` rules move to T25.4's kind-wide mechanism. `just test`
+  renders that form; without this the pilot silently recolours it.
+- `Reloadable for Toggle`: saves and restores `on`, never touches `look`
+  or the resolved look.
+- `ui.getAppliedStyles` reports a toggle's resolved look instead of
+  `Style` colours it no longer paints.
 
 **Gates:**
 
-- **What was impossible now renders:** a look with a coloured tick. A
-  pixel under the tick is that colour. *Injection:* paint reads the old
-  `MARK` constant — fires.
-- **A pressed look differs by more than a shade:** a look whose pressed
-  `body` is a different hue. *Injection:* `Status` is computed as
-  `Active` always — fires, naming the state.
-- **The silent no-op becomes loud.** A `Kind("checkbox")` rule setting
-  `background` now changes nothing, which is exactly the §0 failure
-  shape. The cascade emits a lint for an appearance field matched onto
-  a migrated kind. *Injection:* delete the emission — the lint test
-  fires. *Other direction:* a `width` rule on the same kind emits
-  nothing.
-- **Hot reload, end to end.** `fixtures/hot-app` builds a toggle with
-  one look, the host swaps to a build with another, and after the swap
-  the tick is the new colour *and* the toggle's `on` survived.
-  *Injection:* the fixture's second build keeps the first look function
-  — the colour assertion fires while the state assertion stays green,
-  which is the test telling the two halves apart.
+- **A coloured tick.** The test's mark colour is asserted to differ from
+  white and from the default look's mark, both printed; the check reads
+  the tick command's colour from the display list, as
+  `tests/switch_knob.rs` does, not a pixel on a 3 px anti-aliased dot.
+  *Injection:* paint reads the old `MARK` — fires.
+- **A pressed look that is a different hue**, on `Boundaries<16>` — so
+  it rides T25.0's mark. *Injection:* `Status` is always `Active` —
+  fires, naming the state.
+- **Hot reload.** `fixtures/hot-app` gains a toggle with a v1 look and a
+  v2 look behind its `v2` feature, and an extern returning the painted
+  mark colour. Before the swap the host asserts v1's colour — so the
+  probe is shown to read the look — and after it v2's colour and the
+  surviving `on`. *Injection* on the mechanism, not the fixture: `restore`
+  writes back a saved resolved look — the colour assertion fires while
+  the `on` assertion stays green. Run by `just hot-demo`.
 
-**Measure** the pilot against T25.0's thresholds and append to
-`docs/results-appearance.md`. **If `.text` or frame time trips a
-threshold, stop here** and record the decision; the milestone is a
-single widget's worth of evidence that it should not continue.
+**Measure** against T25.1 and append to `docs/results-appearance.md`.
+**Stop here** if a threshold trips, and ship §2.6's (a)+(b) instead.
 
-## T25.3 — decide containers (§2.3)
+## T25.6 — the core's leaves
 
-Count derived containers in `examples/` and `fixtures/` that set
-`background`, `radius` or `shadow`. Pick one of §2.3's three shapes,
-build it on one example's card, flip §2.3 to **DECIDED** with the count.
+**One commit per widget**, except `Button` and `Select` together (§2.4).
+`Label`, `TextInput`, `TextArea`, `Slider`, `ScrollView`, `Fixed`,
+`Image` (its `tint` and its background). Deletes `CARET`;
+`selection_tint` and the scrollbar track become look fields.
 
-**Gate** for option 1 or 2: the card paints its look's background under
-a palette swap. *Injection:* the derive (or wrapper) ignores the look —
-fires. For option 3 there is no new mechanism, and the decision record
-is the deliverable.
+**Each commit also:** rewrites the example rules that target that kind;
+updates its lint mask; updates `ui.getAppliedStyles` for it; and, for
+the firmware-linked `Button`, `Label` and `TextInput`, records the
+cumulative `.text` in `docs/results-appearance.md`.
 
-## T25.4 — the core's leaves
+`Glass<W>` keeps `Material`, which is already this shape; its `radius`
+and `shadow` follow T25.4.
 
-`Button`, `Label`, `TextInput`, `TextArea`, `Slider`, `ScrollView`,
-`Select`, `Image` (its `tint`). Deletes `CARET`; `selection_tint` and
-the scrollbar's derived track become look fields. One commit per widget
-or per closely related pair, each carrying its own doc-comment updates —
-**`AGENT.md`'s measured split applies directly here**: milestone-sized
-commits are the ones that skip docs.
+**Gate per widget — headless, in `just test`.** Lay the kind out and
+paint it under the dark palette; from the display-list commands, assert
+the look's fill contrasts with the palette's page colour and its text or
+mark with its own fill, printing both ratios beside 4.5:1 and the number
+of nodes of that kind measured. *Injection:* the look ignores the palette
+and returns its light colours — the page-versus-fill assertion fires by
+kind name. (`scripts/ui_check.py contrast` cannot be this gate: it
+visits only Button and Label, measures inside a widget's own box, and
+skips a node whose text it cannot separate. T25.9 extends it.)
 
-`Glass<W>` is not migrated: `Material` is already per-widget appearance,
-which is §1's shape arrived at independently
-(`docs/plan-glass.md` §1.1). Whether its tint should read the palette is
-M22's question.
+## T25.7 — the widgets crate
 
-**Gate per widget:** its default look under the dark palette passes
-`scripts/ui_check.py` contrast. *Injection:* one widget's look ignores
-the palette and returns its light colours — the contrast check fires on
-that widget by name.
+**One commit per file:** `trim.rs` (`Divider`, `Badge`, `Chip`,
+`Avatar`, `Icon`), `indicator.rs` (`ProgressBar`, `Spinner`, `Skeleton`),
+`chart.rs` (`Chart` — BAR, LINE, PIE — whose `WEDGES` becomes a palette
+series and whose background follows T25.4). Same gate and same
+same-commit list as T25.6.
 
-## T25.5 — the widgets crate
+## T25.8 — remove the moved fields
 
-`Rule`, `Badge`, `Chip`, `Avatar`, `Icon`, the three charts (`WEDGES`
-becomes a series list on the palette), `ProgressBar`, `Spinner`,
-`Skeleton`. Same gate as T25.4.
+**Three commits**, because this is the milestone-sized change `AGENT.md`
+measured skipping its docs.
 
-## T25.6 — remove appearance from the per-node structs
+**(a) The remaining readers.** Every reader of the moved `NodeState`
+fields outside `record_painted` goes to its T25.4 home: the derive's
+container paint and hit, `Repeat`, `Glass`, `ops::focus_ring`.
+**Precondition for (b):** a grep for those field reads returns only the
+stamping.
 
-Delete the §2 fields from `Style`, `Patch` and `NodeState`, and their
-stamping from `record_painted`. Update, **in the same commit**:
+**(b) Tests and examples off the setters.** The tests that read or write
+them: `crates/lumen-static/tests/{events,repeat_box,cascade_hidden,toggles,glass_widget}.rs`,
+`crates/lumen-static-shell/tests/{damage_oracle,invalidation_oracle}.rs`,
+`crates/lumen-static-agent/tests/explain.rs`. `cascade_hidden.rs` is
+T24.1's gate; its injection went red on `width`, which stays, so its
+colour assertions move without re-deriving the gate. **Precondition for
+(c):** no appearance setter left in `examples/`.
 
-- the size assertions in `tests/cursor.rs`, `tests/focus.rs` and
-  `fixtures/embedded`, to the measured sizes;
-- `docs/results-embedded.md`'s per-node table;
-- `docs/layout-and-storage-decisions.md` §3 — **partly superseded**:
-  its argument was against *every* widget carrying *every* field, and
-  it still holds for layout;
-- the agent's `style` method, which serializes `background`,
-  `font_weight` and the painted colour today, and gains the resolved
-  look;
-- `book/src/styling.md`, whose "What a `Style` costs" section is the
-  argument this milestone answers;
-- `docs/00-handoff-static-tree.md` where it names `Style` fields.
+**(c) The deletion, sizes and docs.** Delete the moved fields from
+`Style`, `Patch` and `NodeState` — the list T25.4 settled, not §2's
+first-draft list. Update in the same commit:
 
-**Gate:** the new sizes are `const`-asserted. *Injection:* re-add one
-`f32` of appearance to `Style` — the assertion fires, printing both
-sizes.
+- the size assertions in `crates/lumen-static/tests/cursor.rs`,
+  `crates/lumen-static/tests/focus.rs` and `fixtures/embedded`. The
+  target's `const` asserts cannot format a value, so their messages carry
+  the expected number and `just firmware-size` prints the measured sizes
+  beside them;
+- every rustdoc that cites the 76 B / 72 B sizes or the full-struct
+  argument: `invalidate.rs`, `desc.rs`, `event.rs`, `style.rs`,
+  `input.rs`, and the shell's focus-ring comment;
+- `docs/results-embedded.md`, each place it repeats the sizes;
+- `docs/layout-and-storage-decisions.md` §3 — the "Widgets stay small"
+  bullet and the "Known limit" paragraph, edited, not bannered;
+- `docs/00-handoff-static-tree.md` open question 8, whose "a widget
+  rather than a `Style` field" principle this generalises;
+- `ui.getAppliedStyles`, which loses `color`, `background`, `radius`,
+  `shadow` and `state.painted_background` as T25.4 decided, and
+  `scripts/agent_client.py`'s `styles` command;
+- `book/src/styling.md` ("What a `Style` costs") and
+  `book/src/state-lives.md`, which lists the stamped fields;
+- `docs/results-frame-cost.md` and `docs/results-glass.md`, which cite
+  `pressed_dim`, and `crates/lumen-static-agent/src/session.rs`.
 
-## T25.7 — use the thing
+**Gate:** the new sizes asserted. *Injection:* re-add one `f32` to
+`Style` — the host test fires printing both sizes, and the target build
+fails with the expected size in its message.
 
-`AGENT.md`, 2026-09-14: four defects in M24 were found by *assembling*
-passes that were each tested directly. This milestone is the same risk
-— a look resolved in `layout`, a palette reaching `LayoutCx`, damage on
-a swap, a reload of a function pointer — so it is not done until it is
-used end to end.
+## T25.9 — use the thing
 
-`examples/showcase` gains a light/dark switch that calls `set_palette`.
-Then: `just agent-drive` flips the palette and screenshots every demo;
-`just gpu-parity` holds under both palettes; `scripts/ui_check.py`
-contrast and target checks pass under both. **Every widget in the
-catalogue must visibly change** between the two screenshots — a widget
-that looks identical under both palettes did not migrate.
+`AGENT.md`, 2026-09-14: M24's defects were found by assembling passes
+each tested alone.
+
+- **Parity under both palettes.** `examples/minimal` gains an
+  environment switch for the dark palette; `scripts/gpu_parity.sh` loops
+  both, and asserts the light and dark captures **differ from each other**
+  before comparing backends — otherwise it compares one palette twice.
+- **Every widget changes.** The showcase gains a light/dark switch. With
+  `phase` pinned, `just agent-drive` flips the palette and compares each
+  catalogue node's resolved look through `ui.getAppliedStyles`, printing
+  the kinds that did not change. `Glass` is exempt by name.
+- **`scripts/ui_check.py contrast`** is extended to the roles of every
+  migrated kind, prints measured-versus-present counts per role, and
+  fails rather than skips a text-bearing node it cannot measure. Run
+  under both palettes.
 
 ---
 
 ## 3. What this is not
 
-**Not the end of the cascade.** Layout, cursor, focus ring and
-visibility stay rules. `cascade_subtree`'s soundness is unchanged.
+**Not the end of the cascade.** Layout, cursor, focus ring and visibility
+stay rules, and so do box fills unless T25.4 says otherwise.
 
-**Not per-instance layout.** A `Repeat`'s rows still share their
-template's style row. Their *looks*, resolved per instance in `layout`,
-may differ per row — which would be the first per-row styling the tree
-has had (`docs/layout-and-storage-decisions.md` §3's known limit). That
-is a consequence to test in T25.4, not a promise this plan makes.
+**Not per-row status.** `Repeat` rows share their template's style row
+and never receive hovered or pressed (§2.4). Looks resolved per instance
+may differ per row in ways that do not depend on `Status`; that is a
+consequence to test, not a promise.
 
-**Not a stylesheet language.** Nothing here parses.
-
-**Not iced's `Catalog`.** One palette type, no theme parameter on
-widgets (§1).
+**Not a stylesheet language, and not iced's `Catalog`.**
 
 ## 4. Deferred, with conditions
 
-- **Producing `Disabled`.** A disabled flag needs a byte of per-node
-  state, and `NodeState` has none spare until T25.6 frees some. After
-  T25.6, if a widget needs it.
-- **Named looks the agent can select.** When a tool needs per-node
-  colour overrides that a palette cannot express (§2.2).
-- **Renaming `Style`.** After T25.6, as its own decision.
+- **Producing `Disabled`.** A `disabled` field on the widget needs no
+  `NodeState` byte; only a disabled state that cascades to descendants
+  would. When a widget needs it.
+- **Hover and press on `Repeat` rows.** Needs the repeater to keep the
+  hit row from `Hit.inner` and hand it to that slot's layout. When a menu
+  needs a row highlight.
+- **Named looks the agent can select**, for per-node overrides a palette
+  cannot express.
+- **Renaming `Style`**, after T25.8.
+
+## 5. What the review found, and what it changed
+
+Six lenses, each verified by a second agent told to refute. The rows are
+grouped; every one was re-checked against the code by its verifier.
+
+| found | evidence | changed |
+|---|---|---|
+| **The premise was false**: hover reaches layout only under `Everything`; under `Boundaries` the shade is stale today, and the first draft's injection ("stop marking the node") named a mark that does not exist | the probe in T25.0; `pump_with` marks only on `handled` or a binding write | **T25.0 added**, first; §2.1 rewritten; every status gate moved to `Boundaries<16>` |
+| The contrast gate could not fire: `ui_check.py` visits only Button and Label, inside the widget's own box | `scripts/ui_check.py` `check_contrast` | headless display-list gate in T25.6; `ui_check` extended in T25.9 |
+| The `.text` kill switch measured a firmware with no Toggle in it | `nm` on the linked firmware: 0 Toggle symbols | toggles added to the fixture, symbols asserted first (T25.1) |
+| "RAM per node must not grow" summed state + style, which can only shrink | `fixtures/embedded` `PER_NODE_RAM` | the struct term added, arena rows reported (T25.1) |
+| The 10 000-node frame named no command and is 93% shaping; at the pilot, no toggle was in it | `docs/results-competitive.md`; `just stages` over `List<Label>` | named commands, a toggle bench, spread-relative threshold (T25.1) |
+| `set_palette` "damages": damage comes from retention hashes, and the injection stayed green under `Everything` | `retain.rs`; `set_stylesheet` calls `mark_all` | invalidates, gated on `Boundaries` (§2, T25.3) |
+| The removal deleted fields that `Repeat`, `Glass`, `Fixed`, `Image`, `Chart`, `focus_ring` and the derive's **hit test** still read | §2.3's table | §2.3 widened and reordered; T25.4 decides before any migration; T25.8 split in three |
+| §2.3's preferred container option needed the same `NodeState` bytes as keeping the fields | derive `paint` has no palette | reordered; shape 1 is the default |
+| No task migrated the examples; the pilot silently recoloured `form.rs`; kind-wide theming had no replacement | `form.rs` `Kind` rules; `just test` renders it | §2.4 added; example rules move with their widget |
+| The migrated-kind lint had no marker and no channel; both §0 no-ops survived the plan | `Seed` is `{ kind, defaults }`; lints live in the agent audit | **T25.2 added**: one field-mask lint covering both |
+| The hot-reload gate needed a `Reloadable` impl and a fixture that cannot express a colour; its injection edited the fixture | `reload.rs` impls; `fixtures/hot-app` | named in T25.5; injection moved to `restore` |
+| No comparison with a smaller path | `Image::tint`, `Material` already exist | §2.6; T25.5 is a decision point |
+| Smaller: iced's palette fields were the extended palette's; the showcase counts did not add up; two §0 reasons were not in their doc comments; `Rule` is not a widget; the agent method is `ui.getAppliedStyles`; ~10 tests, two chapters and several docs were missing from the removal list | recounts and greps | corrected in place |
