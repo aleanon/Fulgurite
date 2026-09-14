@@ -181,11 +181,31 @@ pub struct LayoutCx<'a> {
     /// [`LayoutCx::new`] behaves exactly as it did before T16.7 and
     /// every existing caller is unaffected.
     pub changed: crate::invalidate::Changed<'a>,
+    /// The palette a widget's look is resolved against — M25/T25.3.
+    ///
+    /// Here for the reason `changed` is: a parameter on `Node::layout`
+    /// would change every widget to say something most do not use. The
+    /// host sets it with [`LayoutCx::with_palette`];
+    /// [`crate::style::Palette::LIGHT`] otherwise, which is the colours the
+    /// widgets' defaults already are, so every existing caller is
+    /// unaffected.
+    pub palette: &'a crate::style::Palette,
 }
 
 impl<'a> LayoutCx<'a> {
     pub fn new(text: &'a mut dyn TextMeasure) -> Self {
-        LayoutCx { text, fill_span: None, changed: crate::invalidate::Changed::ALL }
+        LayoutCx {
+            text,
+            fill_span: None,
+            changed: crate::invalidate::Changed::ALL,
+            palette: &crate::style::Palette::LIGHT,
+        }
+    }
+
+    /// The same context, resolving looks against `palette` (M25/T25.3).
+    pub fn with_palette(mut self, palette: &'a crate::style::Palette) -> Self {
+        self.palette = palette;
+        self
     }
 
     /// A context that knows which subtrees changed, so containers may
@@ -197,7 +217,7 @@ impl<'a> LayoutCx<'a> {
         text: &'a mut dyn TextMeasure,
         changed: crate::invalidate::Changed<'a>,
     ) -> Self {
-        LayoutCx { text, fill_span: None, changed }
+        LayoutCx { text, fill_span: None, changed, palette: &crate::style::Palette::LIGHT }
     }
 
     /// Run `f` with `span` as the `Fill` reference, restoring whatever

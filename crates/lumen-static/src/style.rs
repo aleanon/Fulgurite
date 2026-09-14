@@ -387,6 +387,103 @@ impl Fields {
     }
 }
 
+// ---- status and palette — M25/T25.3 ----------------------------------
+
+/// The pointer state a widget's look is chosen by — M25/T25.3.
+///
+/// Derived from the bits `dispatch` writes into [`crate::NodeState`], so
+/// a look resolved in `layout` sees the same state `record_painted` uses
+/// for the shade today. **Pressed wins over hovered**: a control under a
+/// held pointer is pressed, not merely hovered, which is the order
+/// `record_painted` already applies.
+///
+/// **Focus is not a status.** It is orthogonal — a focused button can be
+/// hovered — and the focus ring is rewritten by the host *after* layout,
+/// so a look resolved in layout could not see whether focus is visible
+/// (`docs/plan-appearance.md` §2.1). `Disabled` is produced by nothing
+/// yet; it is here so a look written now handles it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Status {
+    #[default]
+    Active,
+    Hovered,
+    Pressed,
+    Disabled,
+}
+
+impl Status {
+    /// The status the state array says node `st` is in.
+    pub const fn of(st: &crate::desc::NodeState) -> Status {
+        if st.pressed {
+            Status::Pressed
+        } else if st.hovered {
+            Status::Hovered
+        } else {
+            Status::Active
+        }
+    }
+}
+
+/// The colours a theme is made of — data, swapped at runtime — M25/T25.3.
+///
+/// iced's shape (`docs/plan-appearance.md` §1): a palette is data, and a
+/// widget's look is a function of it. Held by the host and reached by
+/// every `layout` through [`crate::LayoutCx::palette`]; nothing reads it
+/// until a widget declares a look.
+///
+/// Named by role, not by hue, so a dark palette is the same names with
+/// different values and a look written against one reads correctly
+/// against the other.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Palette {
+    /// The window behind everything.
+    pub page: crate::display::Color,
+    /// A control's resting body: a button, an unchecked box, a track.
+    pub surface: crate::display::Color,
+    /// Text on `page` or `surface`.
+    pub text: crate::display::Color,
+    /// Secondary text and hairlines.
+    pub muted: crate::display::Color,
+    /// The one colour that says "on" or "primary".
+    pub accent: crate::display::Color,
+    /// Text and marks on `accent`.
+    pub on_accent: crate::display::Color,
+    /// The keyboard focus ring.
+    pub focus: crate::display::Color,
+}
+
+impl Palette {
+    /// The light palette, and the default. Its values are the ones the
+    /// widgets' own defaults already use, so a tree that never sets a
+    /// palette looks exactly as it did before one existed.
+    pub const LIGHT: Palette = Palette {
+        page: crate::display::Color(255, 255, 255, 255),
+        surface: crate::display::Color(226, 232, 240, 255),
+        text: crate::display::Color(15, 23, 42, 255),
+        muted: crate::display::Color(100, 116, 139, 255),
+        accent: crate::display::Color(53, 99, 239, 255),
+        on_accent: crate::display::Color(255, 255, 255, 255),
+        focus: crate::display::Color(53, 99, 239, 255),
+    };
+
+    /// The dark palette: the same roles, for a dark page.
+    pub const DARK: Palette = Palette {
+        page: crate::display::Color(15, 18, 26, 255),
+        surface: crate::display::Color(38, 44, 58, 255),
+        text: crate::display::Color(230, 234, 242, 255),
+        muted: crate::display::Color(148, 160, 180, 255),
+        accent: crate::display::Color(99, 140, 255, 255),
+        on_accent: crate::display::Color(10, 14, 24, 255),
+        focus: crate::display::Color(130, 170, 255, 255),
+    };
+}
+
+impl Default for Palette {
+    fn default() -> Self {
+        Palette::LIGHT
+    }
+}
+
 // ---- selectors and rules ----------------------------------------------
 
 /// What a rule matches on. Deliberately small: id, class and kind are the
