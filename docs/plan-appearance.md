@@ -347,7 +347,28 @@ pump's comments, which list what marks the set; `InputState`'s rustdoc;
 marking as the conservative path; and any book chapter that enumerates
 what marks.
 
-## T25.1 — measure before building
+## T25.1 — measure before building — **DONE 2026-09-15**
+
+> **Landed.** Every figure is in `docs/results-appearance.md`. What
+> changed in the tree: `fixtures/embedded` holds a `CheckBox`, `Radio`
+> and `Switch` (`.text` 21,278 → **26,252 B**; three shapes cost 4,974);
+> `scripts/check_text.sh` refuses a binary with no Toggle linked; the
+> fixture asserts `Ui` at 1,104 B on the target; `benches --bin
+> appearance` is the toggle frame; `benches --bin cascade` gained a
+> showcase-shaped sheet. The handoff has an **OPEN** question 9.
+>
+> **Two gates, both shown to fail.** Removing the three toggle fields —
+> a fixture that still compiles — made `check_text.sh` exit 1 naming the
+> missing code. The first attempt at that injection left a dangling doc
+> comment and failed the *build* instead, which proved nothing about the
+> gate; it was redone rather than counted. Changing the asserted `Ui`
+> size to 1,100 failed the target build with the expected size in the
+> message.
+>
+> **One finding outside M25.** The cascade figure this repository quotes
+> as "a stylesheet swap" was measured on a sheet whose second rule
+> matches nothing; a showcase-shaped sheet costs 4.3× as much
+> (`docs/results-appearance.md`).
 
 No API. Probes applied and reverted, as `docs/results-embedded.md`
 measured a larger `Style` on 2026-09-10. **Each probe first proves its

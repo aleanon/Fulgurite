@@ -60,6 +60,21 @@ pub struct Ui {
     #[widget_id("field")]
     pub field: TextInput<InlineText<64>>,
     controls: Controls,
+    /// One of each toggle shape — M25/T25.1.
+    ///
+    /// Here so the firmware **links** them. `Toggle<S, SHAPE>` is generic,
+    /// and each `SHAPE` is its own instantiation, so a tree that does not
+    /// hold all three measures a `.text` none of them can reach. M25's
+    /// pilot migrates `Toggle` and is stopped by a flash threshold, which
+    /// before this was measured on a firmware with zero Toggle symbols in
+    /// it (`docs/plan-appearance.md` §5). `scripts/check_text.sh` fails if
+    /// they stop being linked.
+    #[widget_id("check")]
+    check: CheckBox<Panel>,
+    #[widget_id("radio")]
+    radio: Radio<Panel>,
+    #[widget_id("switch")]
+    switch: Switch<Panel>,
 }
 
 fn on_inc(p: &mut Panel, _: &EventCtx) {
@@ -263,6 +278,16 @@ pub mod sizes {
     // deliberately checked only where the budget applies.
     #[cfg(target_pointer_width = "32")]
     const _: () = assert!(NODE_DESC == 32, "NodeDesc changed on the target");
+    // **The third resident array**, asserted — M25/T25.1. The per-node
+    // budget is state + style + widget struct (`docs/results-embedded.md`),
+    // and `PER_NODE_RAM` above counts only the first two. A change that
+    // moves bytes out of `Style` and onto widgets — M25's — shrinks
+    // `PER_NODE_RAM` whatever it costs, so the struct term has to be held
+    // too or the saving cannot be told from a transfer. 1,104 B for 11
+    // nodes, measured on the target 2026-09-15; a `const` panic cannot
+    // print a value, so the expected one is in the message.
+    #[cfg(target_pointer_width = "32")]
+    const _: () = assert!(UI == 1104, "Ui is no longer 1104 B on the target; re-budget docs/results-appearance.md");
 
     // **The stack budget, enforced rather than recorded.**
     //

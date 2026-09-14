@@ -27,6 +27,21 @@ CEILING=${LUMEN_TEXT_CEILING:-65536}
 cargo build --release -q -p embedded --bin firmware --features firmware --target $TARGET || exit 1
 [ -f "$BIN" ] || { echo "text: $BIN not built" >&2; exit 1; }
 
+# The widgets a measurement is meant to judge must be IN the binary it
+# measures (M25/T25.1). `Toggle` is generic: if the fixture's tree stops
+# holding one, its code is never instantiated, `.text` cannot see it, and
+# a threshold on a Toggle change passes whatever the change costs -- the
+# setup-silently-did-not-happen shape AGENT.md records. Checked before
+# the number is read, so the number cannot be quoted without it.
+toggles=$(nm -C "$BIN" 2>/dev/null | grep -c 'toggle::Toggle' || true)
+if [ "${toggles:-0}" -eq 0 ]; then
+  echo "text: no Toggle code is linked into $BIN" >&2
+  echo "" >&2
+  echo "fixtures/embedded's tree must hold a CheckBox, a Radio and a Switch," >&2
+  echo "or a .text threshold on toggle work measures nothing (docs/plan-appearance.md T25.1)." >&2
+  exit 1
+fi
+
 text=$(size -A "$BIN" | awk '$1 == ".text" {print $2}')
 [ -n "$text" ] || { echo "text: could not read .text from $BIN" >&2; exit 1; }
 
@@ -40,4 +55,4 @@ if [ "$text" -gt "$CEILING" ]; then
   exit 1
 fi
 
-echo "text: .text $text B of $CEILING ($pct% of budget)"
+echo "text: .text $text B of $CEILING ($pct% of budget), $toggles Toggle symbols linked"

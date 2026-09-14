@@ -132,6 +132,31 @@ runs each, min-of-150, distributions fully overlapping (rebuild
 per-node field on this profile is RAM per node, not flash and not
 frame time.
 
+### Re-measured 2026-09-15 — the fixture holds toggles now
+
+**The baseline had drifted again**: the linked `.text` was **21,278 B**,
+not the 22,606 recorded above, and `.rodata` 12,704. Not attributed —
+M20 to M24 landed between the two measurements.
+
+Then M25/T25.1 added one `CheckBox`, one `Radio` and one `Switch` to the
+fixture's tree, because M25's pilot migrates `Toggle` and stops on a
+flash threshold, and the firmware linked **zero** Toggle symbols — so
+that threshold would have measured a binary the pilot's code could not
+reach (`docs/plan-appearance.md` §5):
+
+| | `.text` | `.rodata` | total | Toggle symbols |
+|---|---:|---:|---:|---:|
+| before, 8 nodes | 21,278 | 12,704 | 34,199 | 0 |
+| with three toggles, 11 nodes | **26,252** | 12,752 | 39,221 | 3 |
+
+**Three toggle shapes cost 4,974 B of `.text`**, 7.6% of the ceiling.
+Each `SHAPE` is its own instantiation (`docs/results-monomorphization.md`).
+`scripts/check_text.sh` now fails when no Toggle is linked, verified by
+removing the three fields: the fixture still compiled and the script
+exited 1 naming the missing code. The fixture's `Ui` is 1,104 B on the
+target and asserted there; M25's own figures are in
+`docs/results-appearance.md`.
+
 ### Target sizes, asserted rather than remembered
 
 Measured on `thumbv7em-none-eabihf` and held by `const` assertions in

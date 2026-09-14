@@ -850,3 +850,14 @@ remains** — which is why §10 Step 1 is the kill criterion.
    **Layout is not part of this question** and never was: layout produces
    the rects a renderer consumes, so grid, wrap and min/max constraints are
    work in `ops.rs` that no renderer choice affects.
+9. **Appearance per kind** — should appearance leave the per-node `Style`
+   for a look on each widget, a function of a palette that is data?
+   **OPEN 2026-09-15**, planned as M25 in `docs/plan-appearance.md`. It is
+   question 8's principle generalised — parameters few nodes use do not
+   belong in a struct resolved for every node — from glass to every
+   widget's colours, with layout staying cascaded. Two sub-questions are
+   settled by that plan's T25.4 rather than here: where box fills live
+   (per node, a wrapper widget, or a type-level look; its §2.3), and how an
+   application sets one look for every instance of a kind (its §2.4). The
+   plan's pilot is a stop point, with a much smaller change as the
+   fallback, so this may close as "no".

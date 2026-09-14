@@ -44,3 +44,7 @@ path = "src/bin/cascade.rs"
 [[bin]]
 name = "agent"
 path = "src/bin/agent.rs"
+
+[[bin]]
+name = "appearance"
+path = "src/bin/appearance.rs"
