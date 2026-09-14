@@ -51,6 +51,19 @@
 //! ran marks everything — is what [`crate::event::App`]'s callers use,
 //! and it degrades to today's behaviour rather than to a wrong frame.
 //! Recorded as OPEN in `docs/plan-invalidation.md` T16.7.
+//!
+//! # Pointer and focus state is marked by the host
+//!
+//! A hover, a press, a release, a focus move and focus becoming visible
+//! all change what a node paints without any handler running. The host
+//! compares [`crate::event::InputState`]'s `hovered`, `pressed`, `focus`
+//! and `focus_visible` across dispatch and marks the subtree of every
+//! node whose state changed — the old one and the new one. Until
+//! M25/T25.0 nothing did, and under [`Boundaries`] a hovered button kept
+//! its resting shade: the derive skipped the clean subtree before the
+//! shade was resolved. [`Everything`] lays out every node regardless,
+//! which is why the oracle, whose session never hovered, did not see it
+//! (`docs/plan-appearance.md` T25.0).
 
 use core::ops::Range;
 

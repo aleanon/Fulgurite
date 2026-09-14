@@ -33,7 +33,9 @@ instead of `&dyn`. The erasure dial, and it is local to a component
 rather than global. → [The component boundary](./component-boundary.md)
 
 **Invalidation** — which *nodes* must be laid out and painted again.
-Currently conservative: a handler that ran marks everything. →
+Currently conservative: a handler that ran marks everything. Pointer
+and focus state — hover, press, focus becoming visible — marks only the
+nodes it moved between. →
 [What a frame does](./frame.md)
 
 **`kind_name`** — the string `Selector::Kind` matches. Lowercase for

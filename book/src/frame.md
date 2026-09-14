@@ -7,6 +7,7 @@ separate places.
 ```text
 1. drain the input queue      every event through `pass::dispatch`
 2. if a handler ran           mark the tree invalid
+   if pointer or focus moved  mark the nodes it moved between
 3. run the bindings           `App::update` — the derive's work
 4. layout, then place         constraints down, sizes up, parent positions child
 5. paint                      into a display list, through Scaled and Recording
@@ -67,6 +68,14 @@ So it degrades to a whole-tree walk rather than to a wrong frame. The
 precise entry point is `#[bind]`, which knows statically which tree field
 it writes; narrowing beyond that is open work
 (`docs/plan-invalidation.md` T16.7).
+
+**Step 2's second line is precise, and it is the one that was missing.**
+A hover, a press, a release, or focus becoming visible runs no handler at
+all, yet each changes what one node paints — its shade, its ring. So the
+host compares that state before and after the queue drains and marks
+exactly the node the pointer or focus left and the one it reached. Before
+M25/T25.0 nothing marked it, and a host that skips clean subtrees painted
+a hovered button in its resting colour (`docs/plan-appearance.md` T25.0).
 
 There is one piece of precision already: `format_into` compares before it
 writes, so a frame in which no binding changed anything is *known* to be

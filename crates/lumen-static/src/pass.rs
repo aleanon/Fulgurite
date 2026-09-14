@@ -494,6 +494,7 @@ fn dispatch_at<S: crate::event::App>(
                     for n in st.iter_mut() {
                         n.pressed = false;
                     }
+                    input.pressed = None;
                 }
                 let s = &st[cap];
                 let cx = EventCtx {
@@ -530,18 +531,26 @@ fn dispatch_at<S: crate::event::App>(
             // releases on up *wherever* the pointer then is — a button
             // must un-press when you drag off it and let go, which is
             // why the release clears every node rather than the hit one.
+            // The indices go into `input` beside the bits, so the host can
+            // see that they changed (M25/T25.0).
             match ev {
-                Event::PointerMove { .. } => set_hovered(st, hit.map(|h| h.node)),
+                Event::PointerMove { .. } => {
+                    input.hovered = hit.map(|h| h.node);
+                    set_hovered(st, input.hovered);
+                }
                 Event::PointerDown { .. } => {
-                    set_hovered(st, hit.map(|h| h.node));
+                    input.hovered = hit.map(|h| h.node);
+                    set_hovered(st, input.hovered);
                     if let Some(h) = hit {
                         st[h.node as usize].pressed = true;
+                        input.pressed = Some(h.node);
                     }
                 }
                 Event::PointerUp { .. } => {
                     for n in st.iter_mut() {
                         n.pressed = false;
                     }
+                    input.pressed = None;
                 }
                 _ => {}
             }

@@ -251,9 +251,36 @@ instead, recorded in `docs/results-appearance.md`.
 
 ---
 
-## T25.0 — hover and press reach layout under every invalidation strategy
+## T25.0 — hover and press reach layout under every invalidation strategy — **DONE 2026-09-15**
 
 **A shipped defect**, independent of everything below.
+
+> **Landed.** `InputState` keeps `hovered` and `pressed`; `Host::pump_with`
+> compares them with `focus` and `focus_visible` across dispatch and marks
+> the subtree of every node whose state changed, old and new.
+> `crates/lumen-static-shell/tests/pointer_invalidation.rs` holds the four
+> gates below, and the oracle's `drive` gained the four pointer steps.
+>
+> **Red before the fix**, on `Boundaries<16>`: the oracle diverged at step
+> 13 (the hover); the hovered button painted (226,232,240) against an
+> expected (210,215,223); the pressed one (210,215,223) against
+> (185,190,196); the ring was 0 against a styled 2. The still-frame test
+> was green before the fix, correctly — nothing marked anything.
+>
+> **Five injections, each red by name and restored green:** every mark
+> deleted (the oracle at step 13 and three of the four tests); the
+> `pressed` comparison alone (the press test only — the oracle's own press
+> step also moves focus, which marks the node, so the isolated test is the
+> one that sees it); the `focus_visible` comparison (the ring, 0 vs 2);
+> marking the hovered node every frame (the still-frame test: the unreported
+> note re-laid out, 196×48 against a stale 32×16); `mark_all` in place of
+> the scoped mark (the hover test's scoping assertion: 196×48 against 40×16).
+>
+> **One correction to the gate as first written.** "Tab to a button, then
+> Tab back" could not fail: Tab returns `true`, so it reaches `mark_all`
+> through `handled` whether or not the fix exists. The gate uses an arrow
+> key on a button alone in its group, which makes focus visible **without
+> being handled**, and asserts that it was not.
 
 `dispatch` writes `hovered`, `pressed` and `focused` into the state
 array and returns `false` for an unrouted pointer move

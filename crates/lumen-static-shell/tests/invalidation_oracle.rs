@@ -157,6 +157,39 @@ fn drive<I: Invalidation>() -> Vec<(Vec<NodeState>, u64, usize)> {
         host.pump();
         out.push(record(&host));
     }
+
+    // **Pointer state no handler reports** — M25/T25.0.
+    //
+    // Until then this session never hovered, so the oracle compared two
+    // strategies that agreed about every frame it drove while `Boundaries`
+    // painted a stale hover and press shade on every real one. Each step
+    // asserts its setup landed: the bit is on the node meant, and the
+    // move and the press were *unhandled* — a handled event reaches
+    // `mark_all` and would make the step prove nothing.
+    let table = <Ui as lumen_static::Widget>::SUB_TABLE;
+    let dec = lumen_static::style::index_of_wid(table, "dec").expect("id exists");
+    let (x, y) = centre_of(&host, "dec");
+
+    host.post(lumen_static::Event::PointerMove { x, y });
+    assert!(!host.pump(), "a move onto a button must be unrouted, or this step is vacuous");
+    assert!(host.states[dec].hovered, "the move did not land on `dec`");
+    out.push(record(&host));
+
+    host.post(lumen_static::Event::down(x, y));
+    assert!(!host.pump(), "a press is activated on release, so it must be unhandled here");
+    assert!(host.states[dec].pressed, "the press did not latch on `dec`");
+    out.push(record(&host));
+
+    host.post(lumen_static::Event::up(x, y));
+    host.pump();
+    assert!(!host.states[dec].pressed, "the release did not clear the press");
+    out.push(record(&host));
+
+    host.post(lumen_static::Event::PointerMove { x: 1.0, y: 1.0 });
+    assert!(!host.pump(), "a move off the button must be unrouted");
+    assert!(!host.states[dec].hovered, "the move did not leave `dec`");
+    out.push(record(&host));
+
     out
 }
 

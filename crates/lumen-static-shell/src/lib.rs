@@ -271,6 +271,7 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
     /// Same, with a caller-supplied text stack.
     pub fn pump_with(&mut self, metrics: &mut dyn TextMeasure) -> bool {
         let mut handled = false;
+        let before = PointerFocus::of(&self.input);
         while let Some(ev) = self.queue.pop() {
             // `dispatch_overlaid`: an overlay takes pointer hits first,
             // Escape closes the topmost, and a press outside every open
@@ -303,6 +304,37 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         // is OPEN (`docs/plan-invalidation.md` T16.7).
         if handled {
             self.invalidation.mark_all();
+        }
+
+        // **State no handler reports** (M25/T25.0).
+        //
+        // `dispatch` writes `hovered`, `pressed`, `focused` and
+        // `focus_visible` whether or not anything handled the event, and
+        // the paint attributes that depend on them — the hover and press
+        // shade, the focus ring — are resolved in `layout`. Until T25.0
+        // only the two marks above existed, so under `Boundaries` a
+        // hover or a press skipped the node and painted last frame's
+        // shade; `Everything` lays out every node anyway and hid it.
+        //
+        // Marked precisely, old node and new, because unlike a handler
+        // the blast radius here *is* known: a pointer-state bit changes
+        // what exactly one node paints.
+        let after = PointerFocus::of(&self.input);
+        if after != before {
+            let table = <A::Tree as Widget>::SUB_TABLE;
+            let inv = &mut self.invalidation;
+            if after.hovered != before.hovered {
+                mark_node(inv, table, before.hovered);
+                mark_node(inv, table, after.hovered);
+            }
+            if after.pressed != before.pressed {
+                mark_node(inv, table, before.pressed);
+                mark_node(inv, table, after.pressed);
+            }
+            if after.focus != before.focus || after.focus_visible != before.focus_visible {
+                mark_node(inv, table, before.focus);
+                mark_node(inv, table, after.focus);
+            }
         }
 
         // Derived presentation is refreshed here, between input and
@@ -530,6 +562,38 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
     /// The node under a point, for tests and tooling.
     pub fn probe(&self, x: f32, y: f32) -> Option<lumen_static::Hit> {
         pass::hit_test(self.app.tree(), &self.states, x, y)
+    }
+}
+
+/// The input state whose changes `pump` marks without a handler having
+/// run — M25/T25.0.
+#[derive(Clone, Copy, PartialEq)]
+struct PointerFocus {
+    hovered: Option<u32>,
+    pressed: Option<u32>,
+    focus: Option<u32>,
+    focus_visible: bool,
+}
+
+impl PointerFocus {
+    fn of(input: &lumen_static::event::InputState) -> Self {
+        PointerFocus {
+            hovered: input.hovered,
+            pressed: input.pressed,
+            focus: input.focus,
+            focus_visible: input.focus_visible,
+        }
+    }
+}
+
+/// Mark the subtree rooted at node `i`, if there is one and it is still
+/// in the table — a hot reload can shrink the tree under an index.
+fn mark_node<I: Invalidation>(inv: &mut I, table: &[lumen_static::desc::NodeDesc], i: Option<u32>) {
+    if let Some(i) = i {
+        let i = i as usize;
+        if i < table.len() {
+            inv.mark(lumen_static::style::subtree_range(table, i));
+        }
     }
 }
 

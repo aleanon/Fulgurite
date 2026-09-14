@@ -78,6 +78,13 @@ the *event* landed rather than where the *change* did.
 The precision that does exist is at the write: bindings compare before
 they write, so a frame in which nothing changed is *known* to be still.
 
+And at the pointer. A hover, a press, a release or focus becoming
+visible runs no handler, yet changes what exactly one node paints — so
+the host compares that state across dispatch and marks just the node it
+left and the node it reached. Until M25/T25.0 nothing marked it at all,
+and a host skipping clean subtrees painted a hovered button in its
+resting shade (`docs/plan-appearance.md` T25.0).
+
 ## Testing damage without testing nothing
 
 Two shapes to avoid, both of which have already happened here:

@@ -312,6 +312,16 @@ and the three candidate answers each cost something:
 correct-by-construction and the other two can narrow it later. Mark (1)
 and (2) OPEN in the same commit.
 
+> **A fourth source this list missed — found 2026-09-14, fixed by
+> M25/T25.0.** State `dispatch` writes with **no handler running**:
+> `hovered`, `pressed`, `focused`, `focus_visible`. (3) marks only when a
+> handler ran, so nothing marked these, and under `Boundaries` a hovered
+> or pressed button painted its resting shade while the oracle — whose
+> session never hovered — agreed with it. The host now compares that
+> state across dispatch and marks the old and new node precisely,
+> because unlike a handler's, the blast radius is known
+> (`docs/plan-appearance.md` T25.0).
+
 **Gate:** `Everything` and `Boundaries` produce byte-identical display
 lists over a driven session, asserted in a test that holds both in one
 process — the `damage_oracle.rs` shape; `size_of::<NodeState>()`

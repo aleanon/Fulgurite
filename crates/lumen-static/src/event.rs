@@ -350,6 +350,19 @@ pub struct InputState {
     /// that struct from 76 bytes to 80, times every node of every tree,
     /// to say something about exactly one of them.
     pub focus_visible: bool,
+    /// The node the pointer is over, as `dispatch` last hit-tested it —
+    /// M25/T25.0.
+    ///
+    /// The same fact as the `hovered` bits in the state array, kept
+    /// here as well so a host can tell that it **changed** without
+    /// scanning every node. A hover runs no handler, so nothing else
+    /// reports it, and a host that skips clean subtrees
+    /// (`invalidate::Boundaries`) would otherwise keep painting the
+    /// shade of the node the pointer left.
+    pub hovered: Option<u32>,
+    /// The node a press latched on, until its release — M25/T25.0.
+    /// Kept for the same reason as [`InputState::hovered`].
+    pub pressed: Option<u32>,
     /// The click count of the press currently in progress (T14.3).
     ///
     /// Tracked rather than carried on `PointerUp`, because activation

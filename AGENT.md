@@ -137,6 +137,7 @@ while proving nothing:
 | the whole suite vs. `Repeat`'s fill (M24/T24.2) | no test read a repeater's own background |
 | `tests/overlay.rs` dismissal (M24/T24.2) | asserted the popup *stayed open*, never that anything inside it fired |
 | every gate vs. a hidden subtree (M24/T24.3) | no tree had ever put an inactive enum variant near the end of the table |
+| invalidation oracle vs. hover and press (M25/T25.0) | its session never hovered, so `Boundaries` painted a stale shade on every real frame and the oracle agreed with it |
 
 **Three were caught by injecting a fault; three by printing the measured
 number beside the bound and seeing the gap.** Neither method is
