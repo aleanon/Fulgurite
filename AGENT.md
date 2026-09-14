@@ -46,6 +46,14 @@ are independent of each other**, so either may go first:
   injections would have passed under their own injection, and the plan
   keeps the corrections rather than quietly replacing itself.
 
+- **M25 — `docs/plan-appearance.md`** (T25.0–T25.7): appearance moves
+  off the per-node `Style` onto each widget — a look function over a
+  palette that is data, iced's shape without its boxed closures or
+  theme parameter. Layout stays in the cascade. §0 is the evidence: six
+  colours hard-coded or derived because one struct is paid on every
+  node. **T25.2's `Toggle` pilot is a stop point** — if it trips T25.0's
+  thresholds the milestone ends there, recorded.
+
 Unsequenced: `docs/plan-harness.md`.
 
 Task ids (`T0.6`, `F1.3`, `T16.7`) go in commit subjects. Decision records live beside it in `docs/`; the
