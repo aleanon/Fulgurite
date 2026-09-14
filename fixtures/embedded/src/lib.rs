@@ -287,7 +287,7 @@ pub mod sizes {
     // nodes, measured on the target 2026-09-15; a `const` panic cannot
     // print a value, so the expected one is in the message.
     #[cfg(target_pointer_width = "32")]
-    const _: () = assert!(UI == 1120, "Ui is no longer 1120 B on the target; re-budget docs/results-appearance.md");
+    const _: () = assert!(UI == 1136, "Ui is no longer 1136 B on the target; re-budget docs/results-appearance.md");
 
     // **The stack budget, enforced rather than recorded.**
     //

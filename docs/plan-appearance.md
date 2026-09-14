@@ -719,7 +719,27 @@ each tested alone.
 
 ---
 
-## T25.10 — §2.6 (a): the colours a widget needs, as fields on it
+## T25.10 — §2.6 (a): the colours a widget needs, as fields on it — **DONE 2026-09-15**
+
+> **Landed in two commits.** `Toggle::mark` with the stop decision
+> (`1afda3c`); then `TextInput`/`TextArea` `caret_color` and
+> `selection_color`, `ScrollView` `track` and `thumb`, and `Chart::series`.
+> Five of §0's six rows are closed; the sixth, a pressed look beyond a
+> shade, is what the milestone decided not to buy. `CARET` turned out to
+> be dead — the caret already painted in the text colour — and is deleted.
+>
+> **Every field is shown to paint, and each gate to fail:** paint ignoring
+> the field made its test fire by name, for all eight — the toggle's mark,
+> both text widgets' caret and selection, the scrollbar's track and thumb,
+> and the pie's series. One setup failed first and was fixed rather than
+> weakened: a `TextArea` paints its selection from the clusters layout
+> records, and the block measurer records none, so the test's own
+> "a selection was painted" guard fired until it used a measurer that
+> reports clusters (the one `tests/textarea.rs` already has).
+>
+> **Measured:** `.text` +112 B over T25.1's baseline, inside the +300 B the
+> pilot was held to; the toggle frame unchanged
+> (`docs/results-appearance.md` T25.10).
 
 The stop branch's first half. Each colour §0 found hard-coded or derived
 becomes a field on the one widget that paints it, costing bytes only

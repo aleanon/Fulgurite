@@ -73,6 +73,12 @@ pub struct ScrollView<W: Widget> {
     /// `pub`: it is a cache of the last frame, and a caller that sets it
     /// is lying to the chaining rule.
     measured_overflow: f32,
+    /// The scrollbar's track colour; a tint of the text colour when `None`
+    /// — M25/T25.10.
+    pub track: Option<crate::display::Color>,
+    /// The scrollbar's thumb colour; the text colour when `None` —
+    /// M25/T25.10.
+    pub thumb: Option<crate::display::Color>,
 }
 
 impl<W: Widget + Default> Default for ScrollView<W> {
@@ -83,12 +89,19 @@ impl<W: Widget + Default> Default for ScrollView<W> {
 
 impl<W: Widget> ScrollView<W> {
     pub fn new(content: W) -> Self {
-        ScrollView { content, scroll: 0.0, axis: Axis::Column, measured_overflow: 0.0 }
+        ScrollView {
+            content,
+            scroll: 0.0,
+            axis: Axis::Column,
+            measured_overflow: 0.0,
+            track: None,
+            thumb: None,
+        }
     }
 
     /// A horizontal scroller.
     pub fn horizontal(content: W) -> Self {
-        ScrollView { content, scroll: 0.0, axis: Axis::Row, measured_overflow: 0.0 }
+        ScrollView { axis: Axis::Row, ..ScrollView::new(content) }
     }
 
     /// Thickness of the scrollbar, in logical px.
@@ -288,8 +301,8 @@ impl<W: Widget> Node for ScrollView<W> {
         // not to the content, so clipping it would be right by accident
         // rather than by construction (M14/T14.7).
         if let Some((track, thumb)) = self.bar_rects(&st[i]) {
-            out.rect(track, crate::input::selection_tint(st[i].fg));
-            out.rect(thumb, st[i].fg);
+            out.rect(track, self.track.unwrap_or_else(|| crate::input::selection_tint(st[i].fg)));
+            out.rect(thumb, self.thumb.unwrap_or(st[i].fg));
         }
     }
 

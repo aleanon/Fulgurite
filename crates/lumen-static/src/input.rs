@@ -95,6 +95,11 @@ pub struct TextInput<S: TextBuffer = crate::text::DefaultTextStorage> {
     /// the node's edge to the first glyph has to be remembered here.
     /// The same reason the scroller keeps its measured overflow.
     pad_left: f32,
+    /// The caret's colour; the text colour when `None` — M25/T25.10.
+    pub caret_color: Option<Color>,
+    /// The selection highlight's colour; [`selection_tint`] of the text
+    /// colour when `None` — M25/T25.10.
+    pub selection_color: Option<Color>,
 }
 
 impl<S: TextBuffer> Default for TextInput<S> {
@@ -108,6 +113,8 @@ impl<S: TextBuffer> Default for TextInput<S> {
             clusters: S::Clusters::default(),
             shaped_key: None,
             pad_left: 0.0,
+            caret_color: None,
+            selection_color: None,
         }
     }
 }
@@ -376,15 +383,15 @@ impl<S: TextBuffer> TextInput<S> {
     }
 }
 
-/// The selection highlight: the foreground colour at low alpha.
+/// The selection highlight when a field sets none: the foreground colour
+/// at low alpha.
 ///
-/// **Derived rather than a `Style` field, and the reason is a budget.**
-/// A selection colour is genuinely a style property, but paint only has
-/// `NodeState`, so a real one would have to live there too —
-/// `NodeState` is 76 B and asserted at that size by
-/// `fixtures/embedded`, against the RAM budget in
-/// `docs/results-embedded.md`. Four bytes times every node of every
-/// tree is a poor trade for a colour that can be derived.
+/// **A default, not the only answer**, since M25/T25.10: a field that
+/// wants a different highlight sets its `selection_color`. It is not a
+/// `Style` field because paint only has `NodeState`, which is 76 B and
+/// asserted at that size by `fixtures/embedded` — four bytes times every
+/// node of every tree for a colour one widget uses. A field on the widget
+/// costs bytes only where a text field is.
 ///
 /// The derivation works in both light and dark themes because it tints
 /// with the *text* colour, which is by construction the one that
@@ -522,7 +529,10 @@ impl<S: TextBuffer> Node for TextInput<S> {
         if let Some(sel) = self.selection() {
             let run_w = inner[2] - inner[0];
             let (a, b) = (self.x_of(sel.start, run_w), self.x_of(sel.end, run_w));
-            out.rect([x + a, inner[1], x + b, inner[3]], selection_tint(s.fg));
+            out.rect(
+                [x + a, inner[1], x + b, inner[3]],
+                self.selection_color.unwrap_or_else(|| selection_tint(s.fg)),
+            );
         }
         out.text_weighted(
             [x, inner[1], x + (inner[2] - inner[0]) + self.scroll, inner[3]],
@@ -543,7 +553,7 @@ impl<S: TextBuffer> Node for TextInput<S> {
         }
         if s.focused {
             let cx_pos = inner[0] - self.scroll + self.caret_x(inner[2] - inner[0]);
-            out.rect([cx_pos, inner[1], cx_pos + 1.0, inner[3]], s.fg);
+            out.rect([cx_pos, inner[1], cx_pos + 1.0, inner[3]], self.caret_color.unwrap_or(s.fg));
         }
         out.pop_clip();
     }
@@ -681,6 +691,3 @@ impl<S: TextBuffer, A> crate::event::Handlers<A> for TextInput<S> {
         None
     }
 }
-
-/// A field's caret colour when nothing sets one.
-pub const CARET: Color = Color(20, 20, 20, 255);

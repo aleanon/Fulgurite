@@ -110,6 +110,10 @@ pub const PIE: u8 = 2;
 pub struct Chart<const KIND: u8 = BAR> {
     /// The values. A presentation copy — bind it.
     pub data: Series,
+    /// The colours a pie's wedges take in turn — M25/T25.10. The built-in
+    /// six by default; an empty slice falls back to them rather than
+    /// painting nothing.
+    pub series: &'static [Color],
 }
 
 pub type BarChart = Chart<BAR>;
@@ -118,13 +122,13 @@ pub type PieChart = Chart<PIE>;
 
 impl<const KIND: u8> Default for Chart<KIND> {
     fn default() -> Self {
-        Chart { data: Series::default() }
+        Chart { data: Series::default(), series: &WEDGES }
     }
 }
 
 impl<const KIND: u8> Chart<KIND> {
     pub fn new(values: &[f32]) -> Self {
-        Chart { data: Series::new(values) }
+        Chart { data: Series::new(values), series: &WEDGES }
     }
     pub fn set(&mut self, values: &[f32]) {
         self.data = Series::new(values);
@@ -177,8 +181,9 @@ impl<const KIND: u8> Widget for Chart<KIND> {
 
 const CHART: Size = Size { w: 280.0, h: 160.0 };
 
-/// The series palette, used when a chart has more than one colour to
-/// give — which is the pie, and the pie only.
+/// The series palette a chart has unless it sets [`Chart::series`], used
+/// when a chart has more than one colour to give — which is the pie, and
+/// the pie only.
 const WEDGES: [Color; 6] = [
     Color(0x2f, 0x6b, 0xff, 0xff),
     Color(0x21, 0xc0, 0xa8, 0xff),
@@ -258,7 +263,8 @@ impl<const KIND: u8> Node for Chart<KIND> {
                         continue;
                     }
                     let frac = v / total;
-                    let colour = WEDGES[k % WEDGES.len()];
+                    let series = if self.series.is_empty() { &WEDGES[..] } else { self.series };
+                    let colour = series[k % series.len()];
                     let from = (at * STEPS as f32) as usize;
                     let to = ((at + frac) * STEPS as f32) as usize;
                     for seg in from..to.min(STEPS) {

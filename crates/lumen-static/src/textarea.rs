@@ -70,6 +70,11 @@ pub struct TextArea<S: TextBuffer = crate::text::DefaultTextStorage> {
     shaped_key: Option<(u64, u32, u32, u32)>,
     line_h: f32,
     pad: (f32, f32),
+    /// The caret's colour; the text colour when `None` — M25/T25.10.
+    pub caret_color: Option<crate::display::Color>,
+    /// The selection highlight's colour; `input::selection_tint` of the
+    /// text colour when `None` — M25/T25.10.
+    pub selection_color: Option<crate::display::Color>,
 }
 
 impl<S: TextBuffer> Default for TextArea<S> {
@@ -84,6 +89,8 @@ impl<S: TextBuffer> Default for TextArea<S> {
             shaped_key: None,
             line_h: 0.0,
             pad: (0.0, 0.0),
+            caret_color: None,
+            selection_color: None,
         }
     }
 }
@@ -513,7 +520,7 @@ impl<S: TextBuffer> Node for TextArea<S> {
                 let top = inner[1] + line as f32 * self.line_h - self.scroll;
                 out.rect(
                     [inner[0] + x0, top, inner[0] + x1, top + self.line_h],
-                    crate::input::selection_tint(s.fg),
+                    self.selection_color.unwrap_or_else(|| crate::input::selection_tint(s.fg)),
                 );
             }
         }
@@ -527,7 +534,7 @@ impl<S: TextBuffer> Node for TextArea<S> {
             let (cx, cy) = self.caret_at();
             let x = inner[0] + cx;
             let top = inner[1] + cy - self.scroll;
-            out.rect([x, top, x + 1.0, top + self.line_h], s.fg);
+            out.rect([x, top, x + 1.0, top + self.line_h], self.caret_color.unwrap_or(s.fg));
         }
         out.pop_clip();
     }

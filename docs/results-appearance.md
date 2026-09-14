@@ -250,6 +250,22 @@ same bench, same procedure:
 bytes and none of its frame time.** What it cannot do is change with the
 pointer: a pressed toggle still darkens by `pressed_dim` and nothing more.
 
+### The rest of (a): text fields, the scrollbar, the chart
+
+`TextInput` and `TextArea` gained `caret_color` and `selection_color`,
+`ScrollView` `track` and `thumb` — each an `Option<Color>` that falls back
+to today's derivation from the text colour — and `Chart` a `series`
+slice defaulting to its built-in six. `CARET` was deleted: it had no user,
+and the caret already painted in the text colour.
+
+| quantity | T25.1 baseline | `Toggle::mark` only | **all of (a)** | threshold | verdict |
+|---|---:|---:|---:|---|---|
+| embedded `.text` | 26,252 B | 26,280 B | **26,364 B** (+112) | ≤ +300 B | **pass** |
+| RAM, `Ui` on the target | 1,104 B | 1,120 B | **1,136 B** (+32) | — | the fixture's one `TextInput` carries two `Option<Color>`s: +16 B, 1.7% of its 920 |
+
+The frame bench holds toggles, not text fields, so it does not move with
+this half; the toggle row above is (a)'s frame measurement.
+
 **The probe was wrong three times before it was right**, each caught by
 reading its output against the code rather than trusting a green: a
 setup assertion that every kind reads `visible` (false for `Either`);
