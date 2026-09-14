@@ -105,6 +105,13 @@ call("input.pointerDown", {"x": cx, "y": cy})
 held = shot()
 call("input.pointerUp", {"x": cx, "y": cy})
 assert held != rest, "agent-drive: a held press looks identical to the resting frame"
+
+# M25/T25.3: the running window takes a palette. Asserted as `applied`, not
+# as changed pixels -- no widget reads the palette until T25.5, so a pixel
+# check here would fail for the right code; T25.9 adds that one.
+for name in ("dark", "light"):
+    r = call("app.setPalette", {"name": name})
+    assert r.get("applied") is True, f"agent-drive: the window did not take the {name} palette: {r!r}"
 print(f"agent-drive: {before.split()[0]} -> {after.split()[0]}, "
       f"menu {int(box[2]-box[0])}x{int(box[3]-box[1])} px, press observable")
 PY

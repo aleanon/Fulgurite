@@ -68,6 +68,12 @@ impl<A: App> AgentHost for Live<'_, A> {
         self.host.post(ev);
     }
 
+    /// `app.setPalette` (M25/T25.3): the host owns the palette.
+    fn set_palette(&mut self, palette: lumen_static::style::Palette) -> bool {
+        self.host.set_palette(palette);
+        true
+    }
+
     /// Pump **and present**, then report the frame number.
     ///
     /// Presenting matters: `ui.screenshot` and every pixel assertion

@@ -100,6 +100,12 @@ pub struct Host<A: App, R: Retention = Incremental, I: Invalidation = Everything
     /// rules whose selector matches nothing, or that set only fields no
     /// matched node reads. The agent reports them as `W1010`.
     sheet_findings: Vec<lumen_static::style::SheetFinding>,
+    /// The palette every look is resolved against — M25/T25.3.
+    ///
+    /// Data, swapped at runtime by [`Host::set_palette`], and handed to
+    /// `layout` through [`LayoutCx::with_palette`]. `Palette::LIGHT` until
+    /// set.
+    palette: lumen_static::style::Palette,
 }
 
 impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
@@ -124,7 +130,31 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             invalidation: I::default(),
             sheet: Vec::new(),
             sheet_findings: Vec::new(),
+            palette: lumen_static::style::Palette::LIGHT,
         }
+    }
+
+    /// The palette looks are resolved against (M25/T25.3).
+    pub fn palette(&self) -> &lumen_static::style::Palette {
+        &self.palette
+    }
+
+    /// Swap the palette (M25/T25.3).
+    ///
+    /// **Invalidates rather than damages.** Damage follows by itself:
+    /// retention compares every painted command's hash with last frame's,
+    /// so a look that paints a new colour is damaged where it paints. What
+    /// nothing else supplies is the *layout* that resolves the new look —
+    /// under `Boundaries` a clean subtree is skipped before a widget ever
+    /// sees the palette — so this marks everything, as
+    /// [`Host::set_stylesheet`] does. An equal palette marks nothing: a
+    /// host that sets its palette every frame pays for none of them.
+    pub fn set_palette(&mut self, palette: lumen_static::style::Palette) {
+        if palette == self.palette {
+            return;
+        }
+        self.palette = palette;
+        self.invalidation.mark_all();
     }
 
     /// The last stylesheet applied (M25/T25.2).
@@ -396,8 +426,9 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         let t0 = std::time::Instant::now();
         {
             // Disjoint field borrows: the view borrows `invalidation`,
-            // the tree borrows `app`.
-            let mut cx = LayoutCx::with_changed(metrics, self.invalidation.view());
+            // the palette `palette`, the tree borrows `app`.
+            let mut cx = LayoutCx::with_changed(metrics, self.invalidation.view())
+                .with_palette(&self.palette);
             let tree = self.app.tree_mut();
             tree.layout(&mut cx, limits, &self.styles, &mut self.states, 0);
             tree.place(Point::default(), &self.styles, &mut self.states, 0);

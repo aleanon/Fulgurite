@@ -446,7 +446,28 @@ the first draft specified without a mechanism.
   as full — the `font_weight` case goes silent and its test fires.
 - Every example sheet is lint-clean, or the commit fixes it.
 
-## T25.3 — `Status`, `Palette` and `set_palette`
+## T25.3 — `Status`, `Palette` and `set_palette` — **DONE 2026-09-15**
+
+> **Landed in two commits.** (a) `style::Status`, `style::Palette` (seven
+> roles, `LIGHT` — the widgets' existing colours — and `DARK`), and
+> `LayoutCx::palette` with `with_palette`; none of the 27 existing
+> `LayoutCx` construction sites changed. (b) `Host::palette`,
+> `Host::set_palette`, the pump handing the palette to layout, the
+> `app.setPalette` agent method with a default-`false`
+> `AgentHost::set_palette`, and both real agent hosts implementing it.
+> `scripts/agent_drive.sh` sets both palettes on the live showcase.
+>
+> **Every host gate runs on `Boundaries<16>`**, and one test asserts the
+> premise the others rest on — that a still frame skips the probe — so
+> they cannot pass because layout ran every frame.
+>
+> **Six injections, each red by name, restored green:** `with_palette`
+> ignoring its argument; `Status` checking hover before press;
+> `set_palette` not marking (layouts 1 → 1, "the probe kept last frame");
+> the equal-palette early return removed ("setting the palette the host
+> already has marked the tree"); the pump not passing the palette (layout
+> ran, 1 → 2, against LIGHT); `AgentHost::set_palette` defaulting to
+> `true` ("the default claimed a palette it has no way to apply").
 
 **Two commits.**
 

@@ -38,6 +38,11 @@ impl lumen_static_agent::AgentHost for Live<'_> {
     fn enqueue(&mut self, ev: Event) {
         self.host.post(ev);
     }
+    /// `app.setPalette` (M25/T25.3): the host owns the palette.
+    fn set_palette(&mut self, palette: lumen_static::style::Palette) -> bool {
+        self.host.set_palette(palette);
+        true
+    }
     fn pump(&mut self) -> u64 {
         match self.metrics.as_mut() {
             Some(m) => self.host.pump_with(m),

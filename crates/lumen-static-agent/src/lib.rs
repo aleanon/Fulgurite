@@ -374,7 +374,8 @@ impl Agent {
     pub fn dispatch_input(&self, host: &mut dyn AgentHost, req: &Value) -> Value {
         let id = req.get("id").cloned().unwrap_or(Value::Null);
         let method = req.get("method").and_then(Value::as_str).unwrap_or("");
-        if !method.starts_with("input.") && method != "ui.screenshot" {
+        if !method.starts_with("input.") && method != "ui.screenshot" && method != "app.setPalette"
+        {
             let tree = host.tree();
             return self.dispatch(&tree, req);
         }
@@ -390,6 +391,31 @@ impl Agent {
 
     fn handle_input(&self, host: &mut dyn AgentHost, method: &str, params: &Value) -> RpcResult {
         match method {
+            // M25/T25.3: swap the palette a running window's looks are
+            // resolved against. By name, because a palette is a theme an
+            // agent chooses rather than seven colours it should have to
+            // spell; `applied: false` from a host that cannot, so a caller
+            // does not mistake "unsupported" for "done".
+            "app.setPalette" => {
+                let name = params.get("name").and_then(Value::as_str).ok_or((
+                    INVALID_PARAMS,
+                    "missing `name`".into(),
+                    json!({ "known": ["light", "dark"] }),
+                ))?;
+                let palette = match name {
+                    "light" => lumen_static::style::Palette::LIGHT,
+                    "dark" => lumen_static::style::Palette::DARK,
+                    other => {
+                        return Err((
+                            INVALID_PARAMS,
+                            format!("unknown palette `{other}`"),
+                            json!({ "known": ["light", "dark"] }),
+                        ))
+                    }
+                };
+                let applied = host.set_palette(palette);
+                Ok(json!({ "applied": applied, "palette": name, "frame": host.pump() }))
+            }
             "input.click" | "input.invokeAction" => {
                 let (x, y) = self.point_param(host, params)?;
                 host.enqueue(Event::down(x, y));
@@ -1268,6 +1294,16 @@ pub trait AgentHost {
     fn enqueue(&mut self, ev: Event);
     /// Drain the queue, re-lay out, record the frame; returns its number.
     fn pump(&mut self) -> u64;
+    /// Swap the palette looks are resolved against — M25/T25.3, the
+    /// `app.setPalette` method.
+    ///
+    /// Returns whether the host applied it. `false` by default, for a host
+    /// with no palette to set, which the method reports rather than
+    /// pretending: a provided method that silently succeeds is how an
+    /// agent comes to believe a window changed when it did not.
+    fn set_palette(&mut self, _palette: lumen_static::style::Palette) -> bool {
+        false
+    }
 }
 
 const KEY_NAMES: [&str; 12] = [
