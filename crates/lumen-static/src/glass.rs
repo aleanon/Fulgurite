@@ -184,9 +184,16 @@ impl<W: Widget> GlassTable<W> {
     /// The seed counterpart of [`Self::ARRAY`], spliced the same way.
     const SEED_ARRAY: [Seed; MAX_GLASS_NODES] = {
         let mut s = [Seed::WIDGET; MAX_GLASS_NODES];
-        s[0] = Seed::new(
-            <Glass<W> as Widget>::KIND,
-            <Glass<W> as Widget>::type_defaults,
+        s[0] = Seed::new(<Glass<W> as Widget>::KIND, <Glass<W> as Widget>::type_defaults).reading(
+            crate::style::Fields::of(&[
+                crate::style::Fields::WIDTH,
+                crate::style::Fields::HEIGHT,
+                crate::style::Fields::PADDING,
+                crate::style::Fields::CURSOR,
+                crate::style::Fields::VISIBLE,
+                crate::style::Fields::RADIUS,
+                crate::style::Fields::SHADOW,
+            ]),
         );
         crate::widget::splice_seeds(&mut s, 1, W::SEEDS);
         s
@@ -232,10 +239,8 @@ impl<W: Widget> Node for Glass<W> {
         self.press.go(if down { 1.0 } else { 0.0 });
         let inner = inner_limits(limits, me.padding);
         let content = self.content.layout(cx, inner, style, st, i + Self::AT);
-        let padded = Size {
-            w: content.w + me.padding.horizontal(),
-            h: content.h + me.padding.vertical(),
-        };
+        let padded =
+            Size { w: content.w + me.padding.horizontal(), h: content.h + me.padding.vertical() };
         crate::ops::record_painted(st, i, limits, resolve_self(limits, &me, padded), &me)
     }
 
@@ -305,10 +310,7 @@ impl<W, S> crate::event::Handlers<S> for Glass<W>
 where
     W: Widget + crate::event::Handlers<S>,
 {
-    fn handler(
-        &self,
-        sel: crate::event::NodeSel,
-    ) -> Option<fn(&mut S, &crate::event::EventCtx)> {
+    fn handler(&self, sel: crate::event::NodeSel) -> Option<fn(&mut S, &crate::event::EventCtx)> {
         if sel.i == 0 {
             return None;
         }

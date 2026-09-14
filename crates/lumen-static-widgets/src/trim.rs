@@ -50,7 +50,14 @@ impl Widget for Divider {
         }
     }
 
-    const SEEDS: &'static [Seed] = &[Seed::new(Self::KIND, Self::type_defaults)];
+    const SEEDS: &'static [Seed] =
+        &[Seed::new(Self::KIND, Self::type_defaults).reading(lumen_static::style::Fields::of(&[
+            lumen_static::style::Fields::WIDTH,
+            lumen_static::style::Fields::HEIGHT,
+            lumen_static::style::Fields::VISIBLE,
+            lumen_static::style::Fields::BACKGROUND,
+            lumen_static::style::Fields::RADIUS,
+        ]))];
 }
 
 impl Node for Divider {
@@ -132,7 +139,18 @@ impl<S: TextStorage> Widget for Badge<S> {
         }
     }
 
-    const SEEDS: &'static [Seed] = &[Seed::new(Self::KIND, Self::type_defaults)];
+    const SEEDS: &'static [Seed] =
+        &[Seed::new(Self::KIND, Self::type_defaults).reading(lumen_static::style::Fields::of(&[
+            lumen_static::style::Fields::WIDTH,
+            lumen_static::style::Fields::HEIGHT,
+            lumen_static::style::Fields::PADDING,
+            lumen_static::style::Fields::VISIBLE,
+            lumen_static::style::Fields::COLOR,
+            lumen_static::style::Fields::BACKGROUND,
+            lumen_static::style::Fields::RADIUS,
+            lumen_static::style::Fields::FONT_SIZE,
+            lumen_static::style::Fields::FONT_WEIGHT,
+        ]))];
 }
 
 impl<S: TextStorage> Node for Badge<S> {
@@ -151,10 +169,7 @@ impl<S: TextStorage> Node for Badge<S> {
             me.font_weight,
             limits.max_w,
         );
-        let content = Size {
-            w: m.w + me.padding.horizontal(),
-            h: m.h + me.padding.vertical(),
-        };
+        let content = Size { w: m.w + me.padding.horizontal(), h: m.h + me.padding.vertical() };
         let size = resolve_self(limits, &me, content);
         record_painted(st, i, limits, size, &me)
     }
@@ -166,12 +181,7 @@ impl<S: TextStorage> Node for Badge<S> {
             return;
         }
         out.rounded_rect(r, s.bg, s.radius.min((r[3] - r[1]) / 2.0));
-        let inner = [
-            r[0] + s.pad.0,
-            r[1] + s.pad.1,
-            r[2] - s.pad.2,
-            r[3] - s.pad.3,
-        ];
+        let inner = [r[0] + s.pad.0, r[1] + s.pad.1, r[2] - s.pad.2, r[3] - s.pad.3];
         out.text_weighted(inner, self.text.as_ref(), s.font_size, s.font_weight, s.fg);
     }
 
@@ -224,7 +234,18 @@ impl<S: TextStorage> Widget for Chip<S> {
         }
     }
 
-    const SEEDS: &'static [Seed] = &[Seed::new(Self::KIND, Self::type_defaults)];
+    const SEEDS: &'static [Seed] =
+        &[Seed::new(Self::KIND, Self::type_defaults).reading(lumen_static::style::Fields::of(&[
+            lumen_static::style::Fields::WIDTH,
+            lumen_static::style::Fields::HEIGHT,
+            lumen_static::style::Fields::PADDING,
+            lumen_static::style::Fields::VISIBLE,
+            lumen_static::style::Fields::COLOR,
+            lumen_static::style::Fields::BACKGROUND,
+            lumen_static::style::Fields::RADIUS,
+            lumen_static::style::Fields::FONT_SIZE,
+            lumen_static::style::Fields::FONT_WEIGHT,
+        ]))];
 }
 
 impl<S: TextStorage> Node for Chip<S> {
@@ -243,10 +264,7 @@ impl<S: TextStorage> Node for Chip<S> {
             me.font_weight,
             limits.max_w,
         );
-        let content = Size {
-            w: m.w + me.padding.horizontal(),
-            h: m.h + me.padding.vertical(),
-        };
+        let content = Size { w: m.w + me.padding.horizontal(), h: m.h + me.padding.vertical() };
         let size = resolve_self(limits, &me, content);
         record_painted(st, i, limits, size, &me)
     }
@@ -258,12 +276,7 @@ impl<S: TextStorage> Node for Chip<S> {
             return;
         }
         out.rounded_rect(r, s.bg, s.radius.min((r[3] - r[1]) / 2.0));
-        let inner = [
-            r[0] + s.pad.0,
-            r[1] + s.pad.1,
-            r[2] - s.pad.2,
-            r[3] - s.pad.3,
-        ];
+        let inner = [r[0] + s.pad.0, r[1] + s.pad.1, r[2] - s.pad.2, r[3] - s.pad.3];
         out.text_weighted(inner, self.text.as_ref(), s.font_size, s.font_weight, s.fg);
     }
 
@@ -330,7 +343,16 @@ impl<S: TextStorage> Widget for Avatar<S> {
         }
     }
 
-    const SEEDS: &'static [Seed] = &[Seed::new(Self::KIND, Self::type_defaults)];
+    const SEEDS: &'static [Seed] =
+        &[Seed::new(Self::KIND, Self::type_defaults).reading(lumen_static::style::Fields::of(&[
+            lumen_static::style::Fields::WIDTH,
+            lumen_static::style::Fields::HEIGHT,
+            lumen_static::style::Fields::VISIBLE,
+            lumen_static::style::Fields::COLOR,
+            lumen_static::style::Fields::BACKGROUND,
+            lumen_static::style::Fields::FONT_SIZE,
+            lumen_static::style::Fields::FONT_WEIGHT,
+        ]))];
 }
 
 const AVATAR: f32 = 40.0;
@@ -433,7 +455,13 @@ impl Widget for Icon {
         }
     }
 
-    const SEEDS: &'static [Seed] = &[Seed::new(Self::KIND, Self::type_defaults)];
+    const SEEDS: &'static [Seed] =
+        &[Seed::new(Self::KIND, Self::type_defaults).reading(lumen_static::style::Fields::of(&[
+            lumen_static::style::Fields::WIDTH,
+            lumen_static::style::Fields::HEIGHT,
+            lumen_static::style::Fields::VISIBLE,
+            lumen_static::style::Fields::COLOR,
+        ]))];
 }
 
 const ICON: f32 = 20.0;

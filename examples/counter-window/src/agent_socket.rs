@@ -33,6 +33,7 @@ pub struct Live<'a> {
 impl lumen_static_agent::AgentHost for Live<'_> {
     fn tree(&self) -> lumen_static_agent::TreeRef<'_> {
         lumen_static_agent::TreeRef::of_root(&self.host.app.ui, &self.host.styles, &self.host.states)
+            .with_sheet(self.host.stylesheet(), self.host.sheet_findings())
     }
     fn enqueue(&mut self, ev: Event) {
         self.host.post(ev);

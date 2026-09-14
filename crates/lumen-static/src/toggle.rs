@@ -85,10 +85,10 @@ impl<S: 'static, const SHAPE: u8> Widget for Toggle<S, SHAPE> {
         &[NodeDesc::new(0, NO_PARENT, 0, 0, NodeDesc::FOCUSABLE)];
 
     const KIND: &'static str = match SHAPE {
-            RADIO => "radio",
-            SWITCH => "switch",
-            _ => "checkbox",
-        };
+        RADIO => "radio",
+        SWITCH => "switch",
+        _ => "checkbox",
+    };
 
     /// A visible control with no stylesheet at all.
     ///
@@ -125,7 +125,19 @@ impl<S: 'static, const SHAPE: u8> Widget for Toggle<S, SHAPE> {
         }
     }
 
-    const SEEDS: &'static [Seed] = &[Seed::new(Self::KIND, Self::type_defaults)];
+    const SEEDS: &'static [Seed] =
+        &[Seed::new(Self::KIND, Self::type_defaults).reading(crate::style::Fields::of(&[
+            crate::style::Fields::WIDTH,
+            crate::style::Fields::HEIGHT,
+            crate::style::Fields::CURSOR,
+            crate::style::Fields::FOCUS_RING,
+            crate::style::Fields::VISIBLE,
+            crate::style::Fields::COLOR,
+            crate::style::Fields::BACKGROUND,
+            crate::style::Fields::RADIUS,
+            crate::style::Fields::PRESSED_DIM,
+            crate::style::Fields::HOVER_DIM,
+        ]))];
 }
 
 /// Logical pixels. 24 is the WCAG 2.5.8 minimum pointer target, and a

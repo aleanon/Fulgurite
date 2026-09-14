@@ -413,7 +413,22 @@ impl<S: TextBuffer> Widget for TextInput<S> {
         }
     }
 
-    const SEEDS: &'static [Seed] = &[Seed::new(Self::KIND, Self::type_defaults)];
+    const SEEDS: &'static [Seed] =
+        &[Seed::new(Self::KIND, Self::type_defaults).reading(crate::style::Fields::of(&[
+            crate::style::Fields::WIDTH,
+            crate::style::Fields::HEIGHT,
+            crate::style::Fields::PADDING,
+            crate::style::Fields::CURSOR,
+            crate::style::Fields::FOCUS_RING,
+            crate::style::Fields::VISIBLE,
+            crate::style::Fields::COLOR,
+            crate::style::Fields::BACKGROUND,
+            crate::style::Fields::RADIUS,
+            crate::style::Fields::FONT_SIZE,
+            crate::style::Fields::FONT_WEIGHT,
+            crate::style::Fields::PRESSED_DIM,
+            crate::style::Fields::HOVER_DIM,
+        ]))];
 }
 
 impl<S: TextBuffer> Node for TextInput<S> {
@@ -449,17 +464,22 @@ impl<S: TextBuffer> Node for TextInput<S> {
         // box would move the clusters every time the field scrolled.
         if self.shaped_key != Some(key) {
             self.clusters.clear();
-            cx.text.shape(self.text.as_ref(), px, me.font_weight, f32::INFINITY, &mut self.clusters);
+            cx.text.shape(
+                self.text.as_ref(),
+                px,
+                me.font_weight,
+                f32::INFINITY,
+                &mut self.clusters,
+            );
             self.shaped_key = Some(key);
         }
-        let run_w = cx.text.measure_weighted(self.text.as_ref(), px, me.font_weight, f32::INFINITY).w;
+        let run_w =
+            cx.text.measure_weighted(self.text.as_ref(), px, me.font_weight, f32::INFINITY).w;
         let line = cx.text.line_height(px);
 
         let content = Size { w: run_w, h: line };
-        let padded = Size {
-            w: content.w + me.padding.horizontal(),
-            h: content.h + me.padding.vertical(),
-        };
+        let padded =
+            Size { w: content.w + me.padding.horizontal(), h: content.h + me.padding.vertical() };
         let size = resolve_self(limits, &me, padded);
 
         // B5: caret into view, here, because this is the first moment

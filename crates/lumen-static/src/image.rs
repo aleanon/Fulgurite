@@ -80,7 +80,13 @@ impl Widget for Image {
 
     const KIND: &'static str = "image";
 
-    const SEEDS: &'static [Seed] = &[Seed::new(Self::KIND, Self::type_defaults)];
+    const SEEDS: &'static [Seed] =
+        &[Seed::new(Self::KIND, Self::type_defaults).reading(crate::style::Fields::of(&[
+            crate::style::Fields::WIDTH,
+            crate::style::Fields::HEIGHT,
+            crate::style::Fields::CURSOR,
+            crate::style::Fields::VISIBLE,
+        ]))];
 }
 
 impl Node for Image {

@@ -68,10 +68,8 @@ use crate::{TreeMut, TreeRef};
 
 /// Two generous, *different* constraint sets: a node whose measurement is
 /// the same under both is sized by its content, not by its container.
-const PROBE_A: Constraints =
-    Constraints { min_w: 0.0, max_w: 1.0e6, min_h: 0.0, max_h: 1.0e6 };
-const PROBE_B: Constraints =
-    Constraints { min_w: 0.0, max_w: 2.0e6, min_h: 0.0, max_h: 2.0e6 };
+const PROBE_A: Constraints = Constraints { min_w: 0.0, max_w: 1.0e6, min_h: 0.0, max_h: 1.0e6 };
+const PROBE_B: Constraints = Constraints { min_w: 0.0, max_w: 2.0e6, min_h: 0.0, max_h: 2.0e6 };
 
 /// Slack before a size or overflow difference counts. Layout arithmetic
 /// is f32; a finding that fires on rounding noise is worse than none.
@@ -153,6 +151,16 @@ pub mod codes {
     /// selects them — scrolling skips them, silently and worse the
     /// further down you are. `Repeat::MAX_ADDRESSABLE_EXTENT`.
     pub const UNADDRESSABLE_ROWS: &str = "W1009";
+    /// A stylesheet rule that cannot change the frame — M25/T25.2.
+    ///
+    /// Either its selector matches no node (`Kind("Label")` against a
+    /// tree of `label`s), or every field it sets that no node it matches
+    /// reads — a checkbox given a `font_weight`. Both compiled and did
+    /// nothing before this, silently. Computed by the core's
+    /// `style::lint_sheet_deep` against each kind's declared
+    /// `Seed::reads`, and reported per *rule* rather than per node,
+    /// because the rule is what is wrong.
+    pub const SHEET_NO_EFFECT: &str = "W1010";
 }
 
 /// A condition that is true of the current frame.
@@ -216,9 +224,9 @@ impl Finding {
                  a sequential container's children should not collide",
                 over[0], over[1], over[2], over[3]
             ),
-            What::Blank { nodes } => format!(
-                "nothing with both area and content in {nodes} nodes — the frame is blank"
-            ),
+            What::Blank { nodes } => {
+                format!("nothing with both area and content in {nodes} nodes — the frame is blank")
+            }
             What::UnaddressableRows { rows, addressable, extent } => format!(
                 "{rows} rows at {extent} px: only the first {addressable} have a scroll \
                  offset that selects them, because f32 holds consecutive integers to 2^24. \
@@ -334,8 +342,7 @@ fn unaddressable(tree: &TreeRef, i: usize) -> Option<(u64, u64, f32)> {
     if !(extent.is_finite() && extent > 0.0) {
         return None;
     }
-    let addressable =
-        (lumen_static::repeat::MAX_ADDRESSABLE_EXTENT / extent) as u64;
+    let addressable = (lumen_static::repeat::MAX_ADDRESSABLE_EXTENT / extent) as u64;
     (rows > addressable).then_some((rows, addressable, extent))
 }
 
@@ -457,8 +464,8 @@ impl Auditor {
     pub fn log_since(&self, since: u64) -> (Vec<&LogEntry>, bool) {
         let entries: Vec<&LogEntry> = self.log.iter().filter(|e| e.frame > since).collect();
         // The ring dropped entries the caller may still be owed.
-        let truncated = self.dropped > 0
-            && self.log.front().is_some_and(|e| since.saturating_add(1) < e.frame);
+        let truncated =
+            self.dropped > 0 && self.log.front().is_some_and(|e| since.saturating_add(1) < e.frame);
         (entries, truncated)
     }
 
@@ -677,7 +684,10 @@ impl Auditor {
             //    W1006 would drag every node along with it --
             if viewport_ok && a > 0.0 {
                 let r = rect(&st[i]);
-                if r[2] <= viewport[0] || r[0] >= viewport[2] || r[3] <= viewport[1] || r[1] >= viewport[3]
+                if r[2] <= viewport[0]
+                    || r[0] >= viewport[2]
+                    || r[3] <= viewport[1]
+                    || r[1] >= viewport[3]
                 {
                     out.push(Finding {
                         code: codes::OFFSCREEN,
@@ -686,7 +696,6 @@ impl Auditor {
                     });
                 }
             }
-
         }
 
         if !anything_visible && !opaque_content {

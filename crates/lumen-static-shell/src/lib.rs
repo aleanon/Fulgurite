@@ -12,10 +12,10 @@ use lumen_static::cx::{BlockMetrics, LayoutCx, TextMeasure};
 use lumen_static::desc::NodeState;
 use lumen_static::display::{Cmd, Color, DisplayList, Renderer};
 use lumen_static::event::App;
-use lumen_static::style::{Rule, Style};
-use lumen_static::widget::{Node, Widget};
 use lumen_static::invalidate::{Everything, Invalidation};
 use lumen_static::retain::{Damage, Incremental, Retention};
+use lumen_static::style::{Rule, Style};
+use lumen_static::widget::{Node, Widget};
 use lumen_static::{pass, Constraints, Event, Point};
 
 pub mod software;
@@ -90,6 +90,16 @@ pub struct Host<A: App, R: Retention = Incremental, I: Invalidation = Everything
     /// binary. It defaults to `Everything`, so `Host<A>` is the code
     /// this crate shipped before T16.7.
     invalidation: I,
+    /// The last stylesheet applied — M25/T25.2.
+    ///
+    /// Kept because the cascade consumes a sheet and keeps only its
+    /// answer, so nothing afterwards could say which rule did nothing.
+    /// `Rule` is `Copy`, and a sheet is set, not pumped.
+    sheet: Vec<Rule>,
+    /// What [`lumen_static::style::lint_sheet_deep`] found in `sheet`:
+    /// rules whose selector matches nothing, or that set only fields no
+    /// matched node reads. The agent reports them as `W1010`.
+    sheet_findings: Vec<lumen_static::style::SheetFinding>,
 }
 
 impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
@@ -112,7 +122,30 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             retain: R::default(),
             last_damage: Damage::All,
             invalidation: I::default(),
+            sheet: Vec::new(),
+            sheet_findings: Vec::new(),
         }
+    }
+
+    /// The last stylesheet applied (M25/T25.2).
+    pub fn stylesheet(&self) -> &[Rule] {
+        &self.sheet
+    }
+
+    /// Rules in the last stylesheet that cannot change the frame
+    /// (M25/T25.2) — empty for a sheet in which every rule does
+    /// something. By index into [`Host::stylesheet`].
+    pub fn sheet_findings(&self) -> &[lumen_static::style::SheetFinding] {
+        &self.sheet_findings
+    }
+
+    fn keep_and_lint(&mut self, sheet: &[Rule]) {
+        self.sheet.clear();
+        self.sheet.extend_from_slice(sheet);
+        let mut found = core::mem::take(&mut self.sheet_findings);
+        found.clear();
+        lumen_static::style::lint_sheet_deep(self.app.tree_mut(), sheet, &mut |f| found.push(f));
+        self.sheet_findings = found;
     }
 
     /// Mark the subtree rooted at the node carrying `#[widget_id(wid)]`
@@ -156,6 +189,7 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         // repeater's template row or an `Either` branch, which are not
         // in the table (`docs/plan-review-fixes.md` F4.5).
         lumen_static::style::cascade_deep(self.app.tree_mut(), sheet, &mut self.styles);
+        self.keep_and_lint(sheet);
         // A stylesheet can change any node's size, so nothing is known
         // to be clean any more.
         self.invalidation.mark_all();
@@ -182,6 +216,9 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             return false;
         };
         lumen_static::style::cascade_subtree(self.app.tree_mut(), sheet, &mut self.styles, root);
+        // The whole sheet is the one now in force, so it is the one kept
+        // and linted.
+        self.keep_and_lint(sheet);
         // Scoped, so the invalidation is too — the same range the
         // cascade just rewrote.
         self.invalidation.mark(lumen_static::style::subtree_range(table, root));
@@ -390,12 +427,7 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         // children that cannot be seen (T16.12). **Logical** units: the
         // list is painted through `Scaled`, which converts on the way
         // in and converts this back on the way out.
-        self.list.set_bounds(Some([
-            0.0,
-            0.0,
-            self.size.0 as f32,
-            self.size.1 as f32,
-        ]));
+        self.list.set_bounds(Some([0.0, 0.0, self.size.0 as f32, self.size.1 as f32]));
         {
             // Logical geometry in, physical commands out (M10b), with
             // retention observing the stream on the way past (T13.8).
@@ -404,12 +436,7 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             // `observe` the optimizer removes.
             let mut scaled = lumen_static::Scaled::new(&mut self.list, self.scale);
             let mut out = lumen_static::Recording::new(&mut scaled, &mut self.retain);
-            pass::paint_overlaid(
-                self.app.tree(),
-                &self.states,
-                &mut out,
-                &mut self.overlays,
-            );
+            pass::paint_overlaid(self.app.tree(), &self.states, &mut out, &mut self.overlays);
         }
         self.last_paint_ns = t1.elapsed().as_nanos() as u64;
 

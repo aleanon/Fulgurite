@@ -32,10 +32,10 @@ use lumen_static::{pass, Widget};
 use serde_json::{json, Map, Value};
 
 mod audit;
+mod journal;
+pub mod png;
 pub mod session;
 pub mod trace;
-pub mod png;
-mod journal;
 
 use audit::Auditor;
 use journal::{Coalesced, Journal};
@@ -51,6 +51,12 @@ pub struct TreeRef<'a> {
     pub table: &'a [NodeDesc],
     pub states: &'a [NodeState],
     pub styles: &'a [lumen_static::Style],
+    /// The stylesheet in force and what the sheet lint found in it —
+    /// M25/T25.2. Empty unless a host supplies them with
+    /// [`TreeRef::with_sheet`]; `ui.lint` reports the findings as
+    /// `W1010`.
+    pub sheet: &'a [lumen_static::Rule],
+    pub sheet_findings: &'a [lumen_static::style::SheetFinding],
 }
 
 /// Which indices `Node::node` actually answers *for*, into `out`.
@@ -121,7 +127,20 @@ impl<'a> TreeRef<'a> {
         styles: &'a [lumen_static::Style],
         states: &'a [NodeState],
     ) -> Self {
-        TreeRef { root, table: W::SUB_TABLE, states, styles }
+        TreeRef { root, table: W::SUB_TABLE, states, styles, sheet: &[], sheet_findings: &[] }
+    }
+
+    /// The same view, carrying the stylesheet in force and its lint
+    /// findings (M25/T25.2) — what `lumen_static_shell::Host::stylesheet`
+    /// and `Host::sheet_findings` return.
+    pub fn with_sheet(
+        mut self,
+        sheet: &'a [lumen_static::Rule],
+        findings: &'a [lumen_static::style::SheetFinding],
+    ) -> Self {
+        self.sheet = sheet;
+        self.sheet_findings = findings;
+        self
     }
 }
 
@@ -150,6 +169,8 @@ impl<'a> TreeMut<'a> {
             table: self.table,
             states: self.states,
             styles: self.styles,
+            sheet: &[],
+            sheet_findings: &[],
         }
     }
 }
@@ -402,10 +423,11 @@ impl Agent {
                 Ok(json!({ "frame": host.pump(), "at": [x, y], "dy": dy }))
             }
             "input.key" => {
-                let name = params
-                    .get("key")
-                    .and_then(Value::as_str)
-                    .ok_or((INVALID_PARAMS, "missing `key`".into(), Value::Null))?;
+                let name = params.get("key").and_then(Value::as_str).ok_or((
+                    INVALID_PARAMS,
+                    "missing `key`".into(),
+                    Value::Null,
+                ))?;
                 let key = parse_key(name).ok_or_else(|| {
                     (INVALID_PARAMS, format!("unknown key `{name}`"), json!({ "known": KEY_NAMES }))
                 })?;
@@ -465,10 +487,11 @@ impl Agent {
             // 20-character value, and the agent had to read the old
             // value first to know how many backspaces to send.
             "input.fill" => {
-                let text = params
-                    .get("text")
-                    .and_then(Value::as_str)
-                    .ok_or((INVALID_PARAMS, "missing `text`".into(), Value::Null))?;
+                let text = params.get("text").and_then(Value::as_str).ok_or((
+                    INVALID_PARAMS,
+                    "missing `text`".into(),
+                    Value::Null,
+                ))?;
                 let n = text.chars().count();
                 if n > MAX_TYPE_CHARS {
                     return Err((
@@ -505,8 +528,7 @@ impl Agent {
                             json!({ "at": [x, y] }),
                         ));
                     }
-                    let existing =
-                        e.node.value().map(|v| v.chars().count()).unwrap_or(0);
+                    let existing = e.node.value().map(|v| v.chars().count()).unwrap_or(0);
                     (x, y, existing)
                 };
                 host.enqueue(Event::down(x, y));
@@ -603,10 +625,11 @@ impl Agent {
                 }))
             }
             "input.type" => {
-                let text = params
-                    .get("text")
-                    .and_then(Value::as_str)
-                    .ok_or((INVALID_PARAMS, "missing `text`".into(), Value::Null))?;
+                let text = params.get("text").and_then(Value::as_str).ok_or((
+                    INVALID_PARAMS,
+                    "missing `text`".into(),
+                    Value::Null,
+                ))?;
                 // One JSON character becomes one queued Event, and the
                 // queue has no cap and no backpressure — 2,000,000 chars
                 // measured as 2,000,000 events in 51 ms. A real keyboard
@@ -639,10 +662,9 @@ impl Agent {
         host: &dyn AgentHost,
         params: &Value,
     ) -> Result<(f32, f32), (i64, String, Value)> {
-        if let (Some(x), Some(y)) = (
-            params.get("x").and_then(Value::as_f64),
-            params.get("y").and_then(Value::as_f64),
-        ) {
+        if let (Some(x), Some(y)) =
+            (params.get("x").and_then(Value::as_f64), params.get("y").and_then(Value::as_f64))
+        {
             return Ok((x as f32, y as f32));
         }
         let tree = host.tree();
@@ -779,10 +801,9 @@ impl Agent {
         let (w, h) = (st.size.w, st.size.h);
 
         let (px, py) = match params.get("at").and_then(Value::as_array) {
-            Some(a) if a.len() == 2 => (
-                a[0].as_f64().unwrap_or(f64::NAN) as f32,
-                a[1].as_f64().unwrap_or(f64::NAN) as f32,
-            ),
+            Some(a) if a.len() == 2 => {
+                (a[0].as_f64().unwrap_or(f64::NAN) as f32, a[1].as_f64().unwrap_or(f64::NAN) as f32)
+            }
             _ => (st.pos.x + w / 2.0, st.pos.y + h / 2.0),
         };
 
@@ -837,8 +858,10 @@ impl Agent {
         match (hit, reached) {
             (None, _) => push(
                 "nothing-there",
-                format!("hit testing at [{px:.0},{py:.0}] found no node at all — the point is \
-                    outside the root, or every candidate has zero area"),
+                format!(
+                    "hit testing at [{px:.0},{py:.0}] found no node at all — the point is \
+                    outside the root, or every candidate has zero area"
+                ),
             ),
             (Some(hh), None) => {
                 let other = hh.node as usize;
@@ -996,7 +1019,7 @@ impl Agent {
     }
 
     fn lint(&self, tree: &TreeRef) -> Value {
-        let findings: Vec<Value> = self
+        let mut findings: Vec<Value> = self
             .auditor
             .current()
             .iter()
@@ -1008,6 +1031,40 @@ impl Agent {
                 Value::Object(o)
             })
             .collect();
+        // W1010 (M25/T25.2): per *rule*, not per node — the rule is what
+        // is wrong, and an unmatched one has no node to name.
+        for f in tree.sheet_findings {
+            let Some(rule) = tree.sheet.get(f.rule) else { continue };
+            let selector = format!("{:?}", rule.selector);
+            let (message, fields) = match f.issue {
+                lumen_static::style::SheetIssue::Unmatched => (
+                    format!(
+                        "stylesheet rule {} ({selector}) matches no node — check its spelling \
+                         against the tree's kinds and ids (built-in kinds are lowercase)",
+                        f.rule
+                    ),
+                    Vec::new(),
+                ),
+                lumen_static::style::SheetIssue::Unread(set) => {
+                    let names: Vec<&str> = set.names().collect();
+                    (
+                        format!(
+                            "stylesheet rule {} ({selector}) sets {} but no node it matches reads it",
+                            f.rule,
+                            names.join(", ")
+                        ),
+                        names,
+                    )
+                }
+            };
+            findings.push(json!({
+                "code": audit::codes::SHEET_NO_EFFECT,
+                "rule": f.rule,
+                "selector": selector,
+                "message": message,
+                "detail": { "fields": fields },
+            }));
+        }
         json!({ "frame": self.frame, "findings": findings })
     }
 
@@ -1051,10 +1108,7 @@ impl Agent {
     /// `since` defaults to the previous frame, so a bare call means
     /// "what changed in the last frame".
     fn since_param(&self, params: &Value) -> u64 {
-        params
-            .get("since")
-            .and_then(Value::as_u64)
-            .unwrap_or_else(|| self.frame.saturating_sub(1))
+        params.get("since").and_then(Value::as_u64).unwrap_or_else(|| self.frame.saturating_sub(1))
     }
 
     /// P2: what changed since a frame, from the state diff — the
@@ -1217,8 +1271,18 @@ pub trait AgentHost {
 }
 
 const KEY_NAMES: [&str; 12] = [
-    "Enter", "Space", "Escape", "Tab", "Backspace", "Delete", "Left", "Right", "Up", "Down",
-    "Home", "End",
+    "Enter",
+    "Space",
+    "Escape",
+    "Tab",
+    "Backspace",
+    "Delete",
+    "Left",
+    "Right",
+    "Up",
+    "Down",
+    "Home",
+    "End",
 ];
 
 fn parse_key(name: &str) -> Option<Key> {
@@ -1253,8 +1317,7 @@ impl Entry {
         self.node.bounds()
     }
     fn intersects(&self, x: f64, y: f64, w: f64, h: f64) -> bool {
-        self.bounds()
-            .is_some_and(|b| b.x0 < x + w && b.x1 > x && b.y0 < y + h && b.y1 > y)
+        self.bounds().is_some_and(|b| b.x0 < x + w && b.x1 > x && b.y0 < y + h && b.y1 > y)
     }
 }
 
@@ -1270,11 +1333,7 @@ impl<'a> Index<'a> {
         let entries: Vec<Entry> = nodes
             .into_iter()
             .map(|(nid, node)| {
-                let idx = if nid.0 & (1 << 63) == 0 {
-                    Some((nid.0 - 1) as usize)
-                } else {
-                    None
-                };
+                let idx = if nid.0 & (1 << 63) == 0 { Some((nid.0 - 1) as usize) } else { None };
                 Entry { id: nid.0, node, idx }
             })
             .collect();
@@ -1459,16 +1518,10 @@ fn scrolling_ancestors(tree: &TreeRef, i: usize) -> Vec<usize> {
     out
 }
 
-fn resolve_one<'e>(
-    ix: &'e Index<'_>,
-    selector: &str,
-) -> Result<&'e Entry, (i64, String, Value)> {
+fn resolve_one<'e>(ix: &'e Index<'_>, selector: &str) -> Result<&'e Entry, (i64, String, Value)> {
     let terms = parse_selector(selector).map_err(|e| (INVALID_PARAMS, e, Value::Null))?;
-    let matched: Vec<&Entry> = ix
-        .entries
-        .iter()
-        .filter(|e| terms.iter().all(|t| matches(ix.tree, e, t)))
-        .collect();
+    let matched: Vec<&Entry> =
+        ix.entries.iter().filter(|e| terms.iter().all(|t| matches(ix.tree, e, t))).collect();
     match matched.len() {
         1 => Ok(matched[0]),
         0 => {
@@ -1495,15 +1548,17 @@ fn resolve_one<'e>(
 // ---- param helpers ----------------------------------------------------------
 
 fn selector_param(params: &Value) -> Result<&str, (i64, String, Value)> {
-    params
-        .get("selector")
-        .and_then(Value::as_str)
-        .ok_or((INVALID_PARAMS, "missing `selector`".into(), Value::Null))
+    params.get("selector").and_then(Value::as_str).ok_or((
+        INVALID_PARAMS,
+        "missing `selector`".into(),
+        Value::Null,
+    ))
 }
 
 fn f64_param(params: &Value, key: &str) -> Result<f64, (i64, String, Value)> {
-    params
-        .get(key)
-        .and_then(Value::as_f64)
-        .ok_or((INVALID_PARAMS, format!("missing `{key}`"), Value::Null))
+    params.get(key).and_then(Value::as_f64).ok_or((
+        INVALID_PARAMS,
+        format!("missing `{key}`"),
+        Value::Null,
+    ))
 }

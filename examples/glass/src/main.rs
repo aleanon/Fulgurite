@@ -437,6 +437,21 @@ mod tests {
     /// gaps, node `push` (an invisible `FILL` spacer) answered *every*
     /// point in the window. The buttons did nothing and the list would
     /// not scroll.
+    /// M25/T25.2: no rule in the sheet is a no-op.
+    #[test]
+    fn every_stylesheet_rule_changes_something() {
+        let host = driven();
+        let sheet = host.stylesheet();
+        let found: Vec<String> = host
+            .sheet_findings()
+            .iter()
+            .map(|f| format!("rule {} {:?}: {:?}", f.rule, sheet[f.rule].selector, f.issue))
+            .collect();
+        println!("{} rules, {} findings", sheet.len(), found.len());
+        assert!(!sheet.is_empty(), "setup: the sheet was applied");
+        assert!(found.is_empty(), "stylesheet rules that change nothing:\n{}", found.join("\n"));
+    }
+
     #[test]
     fn the_dock_layer_does_not_swallow_the_window() {
         let host = driven();

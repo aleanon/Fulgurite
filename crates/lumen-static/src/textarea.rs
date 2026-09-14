@@ -333,7 +333,10 @@ impl<S: TextBuffer> TextArea<S> {
     /// first line, whole middle lines, and a partial last one. Yielding
     /// per line keeps `paint` from having to know that, and keeps the
     /// geometry in the one place that has the clusters.
-    fn selection_runs(&self, sel: &core::ops::Range<usize>) -> impl Iterator<Item = (f32, f32, u16)> + '_ {
+    fn selection_runs(
+        &self,
+        sel: &core::ops::Range<usize>,
+    ) -> impl Iterator<Item = (f32, f32, u16)> + '_ {
         let cl = self.clusters.as_slice();
         let (lo, hi) = (sel.start, sel.end);
         let lines = cl.iter().map(|c| c.line).max().unwrap_or(0);
@@ -403,7 +406,22 @@ impl<S: TextBuffer> Widget for TextArea<S> {
         }
     }
 
-    const SEEDS: &'static [Seed] = &[Seed::new(Self::KIND, Self::type_defaults)];
+    const SEEDS: &'static [Seed] =
+        &[Seed::new(Self::KIND, Self::type_defaults).reading(crate::style::Fields::of(&[
+            crate::style::Fields::WIDTH,
+            crate::style::Fields::HEIGHT,
+            crate::style::Fields::PADDING,
+            crate::style::Fields::CURSOR,
+            crate::style::Fields::FOCUS_RING,
+            crate::style::Fields::VISIBLE,
+            crate::style::Fields::COLOR,
+            crate::style::Fields::BACKGROUND,
+            crate::style::Fields::RADIUS,
+            crate::style::Fields::FONT_SIZE,
+            crate::style::Fields::FONT_WEIGHT,
+            crate::style::Fields::PRESSED_DIM,
+            crate::style::Fields::HOVER_DIM,
+        ]))];
 }
 
 impl<S: TextBuffer> Node for TextArea<S> {
@@ -446,10 +464,8 @@ impl<S: TextBuffer> Node for TextArea<S> {
         let run = cx.text.measure_weighted(self.text.as_ref(), px, me.font_weight, inner_w);
 
         let content = Size { w: inner_w, h: run.h.max(self.line_h) };
-        let padded = Size {
-            w: content.w + me.padding.horizontal(),
-            h: content.h + me.padding.vertical(),
-        };
+        let padded =
+            Size { w: content.w + me.padding.horizontal(), h: content.h + me.padding.vertical() };
         let size = resolve_self(limits, &me, padded);
 
         // B5, vertically: the caret into view, after shaping, because

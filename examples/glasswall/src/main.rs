@@ -757,6 +757,21 @@ mod tests {
     /// Cheap, and it is what the others rest on: a scene that silently
     /// dropped its glass would still lay out, still paint, and still
     /// pass anything measured on what it did emit.
+    /// M25/T25.2: no rule in the sheet is a no-op.
+    #[test]
+    fn every_stylesheet_rule_changes_something() {
+        let host = host(W, H);
+        let sheet = host.stylesheet();
+        let found: Vec<String> = host
+            .sheet_findings()
+            .iter()
+            .map(|f| format!("rule {} {:?}: {:?}", f.rule, sheet[f.rule].selector, f.issue))
+            .collect();
+        println!("{} rules, {} findings", sheet.len(), found.len());
+        assert!(!sheet.is_empty(), "setup: the sheet was applied");
+        assert!(found.is_empty(), "stylesheet rules that change nothing:\n{}", found.join("\n"));
+    }
+
     #[test]
     fn the_scene_emits_every_panel() {
         let host = host(W, H);

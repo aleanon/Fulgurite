@@ -170,7 +170,8 @@ impl<S: 'static> SelectTable<S> {
 
     const SEED_ARRAY: [Seed; MAX_SELECT_NODES] = {
         let mut s = [Seed::WIDGET; MAX_SELECT_NODES];
-        s[0] = Seed::new(<Select<S> as Widget>::KIND, <Select<S> as Widget>::type_defaults);
+        s[0] = Seed::new(<Select<S> as Widget>::KIND, <Select<S> as Widget>::type_defaults)
+            .reading(crate::style::Fields::of(&[crate::style::Fields::VISIBLE]));
         crate::widget::splice_seeds(&mut s, 1, <Row<S> as Widget>::SEEDS);
         crate::widget::splice_seeds(
             &mut s,
@@ -194,8 +195,7 @@ pub const PART_POPUP: &str = "select-popup";
 pub const PART_MENU: &str = "select-menu";
 
 impl<S: 'static> Widget for Select<S> {
-    const NODE_COUNT: usize =
-        1 + <Row<S> as Widget>::NODE_COUNT + <Menu<S> as Widget>::NODE_COUNT;
+    const NODE_COUNT: usize = 1 + <Row<S> as Widget>::NODE_COUNT + <Menu<S> as Widget>::NODE_COUNT;
     const DEPTH: usize = 1 + {
         let a = <Row<S> as Widget>::DEPTH;
         let b = <Menu<S> as Widget>::DEPTH;
@@ -336,9 +336,7 @@ impl<S: 'static> crate::event::Handlers<S> for Select<S> {
             return None;
         }
         if sel.i < Self::MENU {
-            return self
-                .trigger
-                .handler(crate::event::NodeSel { i: sel.i - Self::TRIGGER, ..sel });
+            return self.trigger.handler(crate::event::NodeSel { i: sel.i - Self::TRIGGER, ..sel });
         }
         self.menu.handler(crate::event::NodeSel { i: sel.i - Self::MENU, ..sel })
     }

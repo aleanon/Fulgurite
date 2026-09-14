@@ -107,6 +107,8 @@ fn stylesheet() -> Vec<Rule> {
 fn main() {
     let mut host = Host::new(Counter::new(), 320, 200);
     host.set_stylesheet(&stylesheet());
+    // M25/T25.2: every rule does something. `just fixtures` runs this.
+    assert!(host.sheet_findings().is_empty(), "stylesheet rules that change nothing: {:?}", host.sheet_findings());
     host.pump();
 
     // Drive it the way a user would: click "+" three times, "-" once.

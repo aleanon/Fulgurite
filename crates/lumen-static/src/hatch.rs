@@ -20,8 +20,8 @@ use alloc::boxed::Box;
 use alloc::vec::Vec;
 
 use crate::cx::LayoutCx;
-use crate::display::Painter;
 use crate::desc::{Constraints, NodeDesc, NodeState, Point, Size, NO_PARENT};
+use crate::display::Painter;
 use crate::hit::Hit;
 use crate::style::{Seed, Style};
 use crate::widget::{Node, Widget};
@@ -153,10 +153,7 @@ impl<W, S> crate::event::Handlers<S> for Option<W>
 where
     W: Widget + crate::event::Handlers<S>,
 {
-    fn handler(
-        &self,
-        sel: crate::event::NodeSel,
-    ) -> Option<fn(&mut S, &crate::event::EventCtx)> {
+    fn handler(&self, sel: crate::event::NodeSel) -> Option<fn(&mut S, &crate::event::EventCtx)> {
         self.as_ref().and_then(|w| w.handler(sel))
     }
 }
@@ -237,7 +234,7 @@ impl<A: Widget, B: Widget> EitherTable<A, B> {
     /// The seed counterpart of [`Self::ARRAY`], spliced the same way.
     const SEED_ARRAY: [Seed; MAX_EITHER_NODES] = {
         let mut s = [Seed::WIDGET; MAX_EITHER_NODES];
-        s[0] = Seed::new("either", crate::style::plain_style);
+        s[0] = Seed::new("either", crate::style::plain_style).reading(crate::style::Fields::NONE);
         crate::widget::splice_seeds(&mut s, 1, A::SEEDS);
         crate::widget::splice_seeds(&mut s, 1 + A::NODE_COUNT, B::SEEDS);
         s
@@ -425,20 +422,15 @@ where
     /// `Hit` names one directly and no `(row, node)` pair is involved.
     /// The showing branch is not checked here: `hit` cannot produce an
     /// index inside the hidden one, because its subtree is zeroed.
-    fn handler(
-        &self,
-        sel: crate::event::NodeSel,
-    ) -> Option<fn(&mut S, &crate::event::EventCtx)> {
+    fn handler(&self, sel: crate::event::NodeSel) -> Option<fn(&mut S, &crate::event::EventCtx)> {
         if sel.i == 0 {
             return None;
         }
         if sel.i < 1 + A::NODE_COUNT {
             self.a.handler(crate::event::NodeSel { i: sel.i - 1, inner: sel.inner })
         } else {
-            self.b.handler(crate::event::NodeSel {
-                i: sel.i - (1 + A::NODE_COUNT),
-                inner: sel.inner,
-            })
+            self.b
+                .handler(crate::event::NodeSel { i: sel.i - (1 + A::NODE_COUNT), inner: sel.inner })
         }
     }
 }
@@ -521,7 +513,13 @@ impl<W: Widget> Widget for List<W> {
     /// **One seed, for the list's own node.** Its rows are off-table —
     /// they live in an arena the main cascade cannot reach — and are
     /// styled by `cascade_arenas` from a template instance instead.
-    const SEEDS: &'static [Seed] = &[Seed::new(Self::KIND, Self::type_defaults)];
+    const SEEDS: &'static [Seed] =
+        &[Seed::new(Self::KIND, Self::type_defaults).reading(crate::style::Fields::of(&[
+            crate::style::Fields::WIDTH,
+            crate::style::Fields::HEIGHT,
+            crate::style::Fields::CURSOR,
+            crate::style::Fields::VISIBLE,
+        ]))];
 }
 
 #[cfg(feature = "alloc")]
@@ -694,10 +692,7 @@ impl<W, S> crate::event::Handlers<S> for List<W>
 where
     W: Widget + crate::event::Handlers<S>,
 {
-    fn handler(
-        &self,
-        sel: crate::event::NodeSel,
-    ) -> Option<fn(&mut S, &crate::event::EventCtx)> {
+    fn handler(&self, sel: crate::event::NodeSel) -> Option<fn(&mut S, &crate::event::EventCtx)> {
         let (row, node) = sel.inner?;
         let item = self.items.get(row as usize)?;
         item.handler(crate::event::NodeSel { i: node as usize, inner: None })
@@ -735,8 +730,10 @@ where
 /// while no handler ever ran.
 #[cfg(feature = "alloc")]
 pub trait NodeFor<S>: Node {
-    fn handler_for(&self, sel: crate::event::NodeSel)
-        -> Option<fn(&mut S, &crate::event::EventCtx)>;
+    fn handler_for(
+        &self,
+        sel: crate::event::NodeSel,
+    ) -> Option<fn(&mut S, &crate::event::EventCtx)>;
 }
 
 #[cfg(feature = "alloc")]
@@ -780,12 +777,7 @@ impl<S> Dyn<S> {
         );
         let mut arena = crate::arena::Arena::new(W::NODE_COUNT);
         arena.ensure(1, &w);
-        Dyn {
-            inner: Box::new(w),
-            table: W::SUB_TABLE,
-            arena,
-            content_depth: W::DEPTH,
-        }
+        Dyn { inner: Box::new(w), table: W::SUB_TABLE, arena, content_depth: W::DEPTH }
     }
 
     /// How deep the boxed content is. Recorded because [`Widget::DEPTH`]
@@ -850,7 +842,13 @@ impl<S> Widget for Dyn<S> {
     /// the point: the content's kinds are not knowable to this type, so
     /// they cannot be seeds. `cascade_arenas` styles them from the boxed
     /// instance, which is the one place they *are* reachable.
-    const SEEDS: &'static [Seed] = &[Seed::new(Self::KIND, Self::type_defaults)];
+    const SEEDS: &'static [Seed] =
+        &[Seed::new(Self::KIND, Self::type_defaults).reading(crate::style::Fields::of(&[
+            crate::style::Fields::WIDTH,
+            crate::style::Fields::HEIGHT,
+            crate::style::Fields::CURSOR,
+            crate::style::Fields::VISIBLE,
+        ]))];
 }
 
 #[cfg(feature = "alloc")]
@@ -872,12 +870,7 @@ impl<S> Node for Dyn<S> {
         arena.ensure_style(t);
         // `seeds: None` — the island's content is type-erased, so its
         // kinds cannot reach a const array. See `ArenaMut::seeds`.
-        Some(crate::arena::ArenaMut {
-            table,
-            template: t,
-            style: arena.style_mut(),
-            seeds: None,
-        })
+        Some(crate::arena::ArenaMut { table, template: t, style: arena.style_mut(), seeds: None })
     }
 
     fn kind_name(&self) -> &'static str {
@@ -924,10 +917,7 @@ impl<S> Node for Dyn<S> {
         Some(Hit {
             node: i as u32,
             inner: inner.map(|h| crate::hit::Inner { row: 0, node: h.node }),
-            local: inner.map_or(
-                Point { x: x - st[i].pos.x, y: y - st[i].pos.y },
-                |h| h.local,
-            ),
+            local: inner.map_or(Point { x: x - st[i].pos.x, y: y - st[i].pos.y }, |h| h.local),
         })
     }
 
@@ -968,10 +958,7 @@ impl<S> Node for Dyn<S> {
 /// and wrong about it being unavoidable: nothing can be forwarded to a
 /// `Box<dyn Node>`, so the island boxes a `dyn NodeFor<S>` instead.
 impl<S> crate::event::Handlers<S> for Dyn<S> {
-    fn handler(
-        &self,
-        sel: crate::event::NodeSel,
-    ) -> Option<fn(&mut S, &crate::event::EventCtx)> {
+    fn handler(&self, sel: crate::event::NodeSel) -> Option<fn(&mut S, &crate::event::EventCtx)> {
         self.inner.handler_for(sel)
     }
 }

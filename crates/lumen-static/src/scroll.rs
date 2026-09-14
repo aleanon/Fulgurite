@@ -91,7 +91,6 @@ impl<W: Widget> ScrollView<W> {
         ScrollView { content, scroll: 0.0, axis: Axis::Row, measured_overflow: 0.0 }
     }
 
-
     /// Thickness of the scrollbar, in logical px.
     pub const BAR: f32 = 8.0;
     /// Shortest a thumb may get, so a very long list still has one a
@@ -172,10 +171,7 @@ pub struct ScrollTable<W>(core::marker::PhantomData<W>);
 
 impl<W: Widget> ScrollTable<W> {
     const ARRAY: [NodeDesc; MAX_SCROLL_NODES] = {
-        assert!(
-            W::NODE_COUNT < MAX_SCROLL_NODES,
-            "ScrollView content exceeds MAX_SCROLL_NODES"
-        );
+        assert!(W::NODE_COUNT < MAX_SCROLL_NODES, "ScrollView content exceeds MAX_SCROLL_NODES");
         let mut t = [NodeDesc::EMPTY; MAX_SCROLL_NODES];
         t[0] = NodeDesc::new(1, NO_PARENT, 0, 1, NodeDesc::CONTAINER);
         crate::widget::splice_child(&mut t, 1, W::SUB_TABLE, 0);
@@ -186,10 +182,18 @@ impl<W: Widget> ScrollTable<W> {
     /// The seed counterpart of [`Self::ARRAY`], spliced the same way.
     const SEED_ARRAY: [Seed; MAX_SCROLL_NODES] = {
         let mut s = [Seed::WIDGET; MAX_SCROLL_NODES];
-        s[0] = Seed::new(
-            <ScrollView<W> as Widget>::KIND,
-            <ScrollView<W> as Widget>::type_defaults,
-        );
+        s[0] = Seed::new(<ScrollView<W> as Widget>::KIND, <ScrollView<W> as Widget>::type_defaults)
+            .reading(crate::style::Fields::of(&[
+                crate::style::Fields::WIDTH,
+                crate::style::Fields::HEIGHT,
+                crate::style::Fields::PADDING,
+                crate::style::Fields::CURSOR,
+                crate::style::Fields::VISIBLE,
+                crate::style::Fields::BACKGROUND,
+                crate::style::Fields::RADIUS,
+                crate::style::Fields::PRESSED_DIM,
+                crate::style::Fields::HOVER_DIM,
+            ]));
         crate::widget::splice_seeds(&mut s, 1, W::SEEDS);
         s
     };
@@ -345,17 +349,13 @@ impl<W: Widget> Node for ScrollView<W> {
             self.content.node_mut(i - Self::AT)
         }
     }
-
 }
 
 impl<W, S> crate::event::Handlers<S> for ScrollView<W>
 where
     W: Widget + crate::event::Handlers<S>,
 {
-    fn handler(
-        &self,
-        sel: crate::event::NodeSel,
-    ) -> Option<fn(&mut S, &crate::event::EventCtx)> {
+    fn handler(&self, sel: crate::event::NodeSel) -> Option<fn(&mut S, &crate::event::EventCtx)> {
         if sel.i == 0 {
             return None;
         }

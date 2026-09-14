@@ -105,10 +105,8 @@ impl<W: Widget> PopupTable<W> {
     /// The seed counterpart of [`Self::ARRAY`], spliced the same way.
     const SEED_ARRAY: [Seed; MAX_POPUP_NODES] = {
         let mut s = [Seed::WIDGET; MAX_POPUP_NODES];
-        s[0] = Seed::new(
-            <Popup<W> as Widget>::KIND,
-            <Popup<W> as Widget>::type_defaults,
-        );
+        s[0] = Seed::new(<Popup<W> as Widget>::KIND, <Popup<W> as Widget>::type_defaults)
+            .reading(crate::style::Fields::of(&[crate::style::Fields::VISIBLE]));
         crate::widget::splice_seeds(&mut s, 1, W::SEEDS);
         s
     };
@@ -147,12 +145,8 @@ impl<W: Widget> Node for Popup<W> {
         // space: a popup is out of flow, so the space its siblings left
         // is not the space it has. It gets the whole viewport's width as
         // an upper bound and its natural height.
-        let loose = Constraints {
-            min_w: 0.0,
-            max_w: limits.max_w,
-            min_h: 0.0,
-            max_h: f32::INFINITY,
-        };
+        let loose =
+            Constraints { min_w: 0.0, max_w: limits.max_w, min_h: 0.0, max_h: f32::INFINITY };
         self.measured = self.content.layout(cx, loose, style, st, i + Self::AT);
 
         // Zero in flow. The parent lays its siblings out as if this were

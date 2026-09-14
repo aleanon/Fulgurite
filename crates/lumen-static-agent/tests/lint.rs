@@ -423,3 +423,50 @@ fn a_list_longer_than_f32_can_address_is_reported_as_w1009() {
     let codes = lint_of(&mut ok);
     assert!(!codes.iter().any(|c| c == "W1009"), "699k rows at 24 px are addressable: {codes:?}");
 }
+
+#[test]
+fn a_stylesheet_rule_that_does_nothing_is_w1010_and_its_working_twin_is_not() {
+    // M25/T25.2. The two rules differ only in the kind's spelling, so a
+    // lint firing on every rule fails this as surely as one firing on
+    // none.
+    use lumen_static::style::lint_sheet_deep;
+    use lumen_static::{Color, Patch, Rule, Selector};
+
+    let mut f = Fixture::healthy();
+    f.frame();
+    let ink = Color(20, 20, 20, 255);
+    let sheet = [
+        Rule::new(Selector::Kind("Label"), Patch::new().color(ink)),
+        Rule::new(Selector::Kind("label"), Patch::new().color(ink)),
+    ];
+    let mut found = Vec::new();
+    lint_sheet_deep(&mut f.app, &sheet, &mut |x| found.push(x));
+
+    let tree = TreeRef::of_root(&f.app, &f.styles, &f.states).with_sheet(&sheet, &found);
+    let resp = f.agent.dispatch(
+        &tree,
+        &json!({ "jsonrpc": "2.0", "id": 1, "method": "ui.lint", "params": {} }),
+    );
+    let w1010: Vec<&Value> = resp["result"]["findings"]
+        .as_array()
+        .expect("ui.lint returns findings")
+        .iter()
+        .filter(|x| x["code"] == "W1010")
+        .collect();
+    println!("{w1010:#?}");
+    assert_eq!(w1010.len(), 1, "exactly the misspelled rule: {w1010:?}");
+    assert_eq!(w1010[0]["rule"], 0);
+    assert!(w1010[0]["message"].as_str().unwrap_or("").contains("matches no node"));
+
+    // A view that carries no sheet reports none: the host supplies it or
+    // nothing does.
+    let bare = TreeRef::of_root(&f.app, &f.styles, &f.states);
+    let resp = f.agent.dispatch(
+        &bare,
+        &json!({ "jsonrpc": "2.0", "id": 2, "method": "ui.lint", "params": {} }),
+    );
+    assert!(
+        !resp["result"]["findings"].as_array().unwrap().iter().any(|x| x["code"] == "W1010"),
+        "a view without a sheet reported a sheet finding"
+    );
+}

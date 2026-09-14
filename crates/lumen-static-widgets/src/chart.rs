@@ -140,10 +140,10 @@ impl<const KIND: u8> Widget for Chart<KIND> {
     const SUB_TABLE: &'static [NodeDesc] = LEAF;
 
     const KIND: &'static str = match KIND {
-            LINE => "linechart",
-            PIE => "piechart",
-            _ => "barchart",
-        };
+        LINE => "linechart",
+        PIE => "piechart",
+        _ => "barchart",
+    };
 
     fn type_defaults() -> Style {
         Style {
@@ -155,7 +155,24 @@ impl<const KIND: u8> Widget for Chart<KIND> {
         }
     }
 
-    const SEEDS: &'static [Seed] = &[Seed::new(Self::KIND, Self::type_defaults)];
+    const SEEDS: &'static [Seed] =
+        &[Seed::new(Self::KIND, Self::type_defaults).reading(match KIND {
+            PIE => lumen_static::style::Fields::of(&[
+                lumen_static::style::Fields::WIDTH,
+                lumen_static::style::Fields::HEIGHT,
+                lumen_static::style::Fields::VISIBLE,
+                lumen_static::style::Fields::BACKGROUND,
+                lumen_static::style::Fields::RADIUS,
+            ]),
+            _ => lumen_static::style::Fields::of(&[
+                lumen_static::style::Fields::WIDTH,
+                lumen_static::style::Fields::HEIGHT,
+                lumen_static::style::Fields::VISIBLE,
+                lumen_static::style::Fields::COLOR,
+                lumen_static::style::Fields::BACKGROUND,
+                lumen_static::style::Fields::RADIUS,
+            ]),
+        })];
 }
 
 const CHART: Size = Size { w: 280.0, h: 160.0 };
@@ -272,11 +289,7 @@ impl<const KIND: u8> Node for Chart<KIND> {
                     }
                     let bh = (v / max) * h;
                     let x = r[0] + slot * k as f32 + (slot - bw) / 2.0;
-                    out.rounded_rect(
-                        [x, r[3] - bh, x + bw, r[3]],
-                        s.fg,
-                        (bw * 0.18).min(bh / 2.0),
-                    );
+                    out.rounded_rect([x, r[3] - bh, x + bw, r[3]], s.fg, (bw * 0.18).min(bh / 2.0));
                 }
             }
         }
@@ -296,20 +309,35 @@ pub(crate) fn unit(seg: usize) -> (f32, f32) {
     // crate that has needed none.
     const Q: usize = 24;
     const QUARTER: [(f32, f32); Q] = [
-        (0.000_000, -1.000_000), (0.065_403, -0.997_859), (0.130_526, -0.991_445),
-        (0.195_090, -0.980_785), (0.258_819, -0.965_926), (0.321_439, -0.946_930),
-        (0.382_683, -0.923_880), (0.442_289, -0.896_873), (0.500_000, -0.866_025),
-        (0.555_570, -0.831_470), (0.608_761, -0.793_353), (0.659_346, -0.751_840),
+        (0.000_000, -1.000_000),
+        (0.065_403, -0.997_859),
+        (0.130_526, -0.991_445),
+        (0.195_090, -0.980_785),
+        (0.258_819, -0.965_926),
+        (0.321_439, -0.946_930),
+        (0.382_683, -0.923_880),
+        (0.442_289, -0.896_873),
+        (0.500_000, -0.866_025),
+        (0.555_570, -0.831_470),
+        (0.608_761, -0.793_353),
+        (0.659_346, -0.751_840),
         // Clippy names the 45° entry as an approximation of
         // `FRAC_1_SQRT_2`, which it is — the table is a quarter turn in
         // equal steps, so one of its twenty-four entries is bound to be
         // a named constant. Written as the constant so the lint is
         // answered rather than silenced.
         (core::f32::consts::FRAC_1_SQRT_2, -core::f32::consts::FRAC_1_SQRT_2),
-        (0.751_840, -0.659_346), (0.793_353, -0.608_761),
-        (0.831_470, -0.555_570), (0.866_025, -0.500_000), (0.896_873, -0.442_289),
-        (0.923_880, -0.382_683), (0.946_930, -0.321_439), (0.965_926, -0.258_819),
-        (0.980_785, -0.195_090), (0.991_445, -0.130_526), (0.997_859, -0.065_403),
+        (0.751_840, -0.659_346),
+        (0.793_353, -0.608_761),
+        (0.831_470, -0.555_570),
+        (0.866_025, -0.500_000),
+        (0.896_873, -0.442_289),
+        (0.923_880, -0.382_683),
+        (0.946_930, -0.321_439),
+        (0.965_926, -0.258_819),
+        (0.980_785, -0.195_090),
+        (0.991_445, -0.130_526),
+        (0.997_859, -0.065_403),
     ];
     let s = seg % (Q * 4);
     let (i, quad) = (s % Q, s / Q);

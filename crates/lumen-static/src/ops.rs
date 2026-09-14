@@ -21,10 +21,10 @@
 #[cfg(feature = "observe")]
 use alloc::vec::Vec;
 
-use crate::desc::{Constraints, NodeDesc, NodeState, Size, NO_PARENT};
-use crate::event::{EventCtx, Handlers, NodeSel};
 use crate::cx::LayoutCx;
+use crate::desc::{Constraints, NodeDesc, NodeState, Size, NO_PARENT};
 use crate::display::{Color, Painter};
+use crate::event::{EventCtx, Handlers, NodeSel};
 use crate::style::{Align, Length, Seed, Style};
 use crate::text::{Dirty, Measured, TextStorage};
 use crate::widget::{Node, Widget};
@@ -90,7 +90,11 @@ pub fn rect_of(st: &NodeState) -> crate::display::Rect {
 #[inline]
 #[doc(hidden)]
 pub const fn spaced(n: usize, spacing: f32) -> f32 {
-    if n > 1 { spacing * (n - 1) as f32 } else { 0.0 }
+    if n > 1 {
+        spacing * (n - 1) as f32
+    } else {
+        0.0
+    }
 }
 
 /// A container's own axis: which of width/height is the main one.
@@ -156,7 +160,12 @@ pub fn inner_limits(limits: Constraints, pad: crate::style::Edges) -> Constraint
 /// Limits for a non-`Fill` child: it may take up to whatever is left.
 #[inline]
 #[doc(hidden)]
-pub fn loose_child(axis: Axis, inner: Constraints, remaining_main: f32, align: Align) -> Constraints {
+pub fn loose_child(
+    axis: Axis,
+    inner: Constraints,
+    remaining_main: f32,
+    align: Align,
+) -> Constraints {
     let cross_min = if align == Align::Fill { axis.cross_of(inner) } else { 0.0 };
     match axis {
         Axis::Row => Constraints {
@@ -264,8 +273,7 @@ pub fn resolve_self(limits: Constraints, style: &Style, content: Size) -> Size {
 #[inline]
 #[doc(hidden)]
 pub fn stack_child(inner: Constraints, align: Align) -> Constraints {
-    let (min_w, min_h) =
-        if align == Align::Fill { (inner.max_w, inner.max_h) } else { (0.0, 0.0) };
+    let (min_w, min_h) = if align == Align::Fill { (inner.max_w, inner.max_h) } else { (0.0, 0.0) };
     Constraints { min_w, max_w: inner.max_w, min_h, max_h: inner.max_h }
 }
 
@@ -325,12 +333,7 @@ pub fn record_painted(
     st[i].font_size = style.font_size;
     st[i].font_weight = style.font_weight;
     st[i].shadow = style.shadow;
-    st[i].pad = (
-        style.padding.left,
-        style.padding.top,
-        style.padding.right,
-        style.padding.bottom,
-    );
+    st[i].pad = (style.padding.left, style.padding.top, style.padding.right, style.padding.bottom);
     record(st, i, limits, size)
 }
 
@@ -408,13 +411,7 @@ macro_rules! leaf_common {
         ) {
             st[i].pos = at;
         }
-        fn hit(
-            &self,
-            st: &[$crate::NodeState],
-            i: usize,
-            x: f32,
-            y: f32,
-        ) -> Option<$crate::Hit> {
+        fn hit(&self, st: &[$crate::NodeState], i: usize, x: f32, y: f32) -> Option<$crate::Hit> {
             if $crate::hit::contains(&st[i], x, y) {
                 Some($crate::Hit {
                     node: i as u32,
@@ -510,7 +507,21 @@ impl<S: TextStorage> Widget for Label<S> {
 
     const KIND: &'static str = "label";
 
-    const SEEDS: &'static [Seed] = &[Seed::new(Self::KIND, Self::type_defaults)];
+    const SEEDS: &'static [Seed] =
+        &[Seed::new(Self::KIND, Self::type_defaults).reading(crate::style::Fields::of(&[
+            crate::style::Fields::WIDTH,
+            crate::style::Fields::HEIGHT,
+            crate::style::Fields::PADDING,
+            crate::style::Fields::CURSOR,
+            crate::style::Fields::VISIBLE,
+            crate::style::Fields::COLOR,
+            crate::style::Fields::BACKGROUND,
+            crate::style::Fields::RADIUS,
+            crate::style::Fields::FONT_SIZE,
+            crate::style::Fields::FONT_WEIGHT,
+            crate::style::Fields::PRESSED_DIM,
+            crate::style::Fields::HOVER_DIM,
+        ]))];
 }
 
 impl<S: TextStorage> Node for Label<S> {
@@ -529,14 +540,12 @@ impl<S: TextStorage> Node for Label<S> {
         let text = self.text.get().as_ref();
         let dirty = self.text.is_dirty();
         let px = style[i].font_size;
-        let content =
-            self.measure.get_or(limits, dirty, || {
-                cx.text.measure_weighted(text, px, style[i].font_weight, limits.max_w)
-            });
+        let content = self.measure.get_or(limits, dirty, || {
+            cx.text.measure_weighted(text, px, style[i].font_weight, limits.max_w)
+        });
         self.text.clear_dirty();
         let pad = style[i].padding;
-        let boxed =
-            Size { w: content.w + pad.horizontal(), h: content.h + pad.vertical() };
+        let boxed = Size { w: content.w + pad.horizontal(), h: content.h + pad.vertical() };
         record_painted(st, i, limits, resolve_self(limits, &style[i], boxed), &style[i])
     }
 
@@ -609,12 +618,18 @@ impl Widget for Fixed {
     const NODE_COUNT: usize = 1;
     const DEPTH: usize = 1;
     const IS_RIGID: bool = true;
-    const SUB_TABLE: &'static [NodeDesc] =
-        &[NodeDesc::new(0, NO_PARENT, 0, 0, NodeDesc::RIGID)];
+    const SUB_TABLE: &'static [NodeDesc] = &[NodeDesc::new(0, NO_PARENT, 0, 0, NodeDesc::RIGID)];
 
     const KIND: &'static str = "fixed";
 
-    const SEEDS: &'static [Seed] = &[Seed::new(Self::KIND, Self::type_defaults)];
+    const SEEDS: &'static [Seed] =
+        &[Seed::new(Self::KIND, Self::type_defaults).reading(crate::style::Fields::of(&[
+            crate::style::Fields::WIDTH,
+            crate::style::Fields::HEIGHT,
+            crate::style::Fields::CURSOR,
+            crate::style::Fields::VISIBLE,
+            crate::style::Fields::COLOR,
+        ]))];
 }
 
 impl Node for Fixed {
@@ -652,7 +667,12 @@ impl Widget for Spacer {
         Style { width: Length::FILL, height: Length::FILL, ..Style::default() }
     }
 
-    const SEEDS: &'static [Seed] = &[Seed::new(Self::KIND, Self::type_defaults)];
+    const SEEDS: &'static [Seed] =
+        &[Seed::new(Self::KIND, Self::type_defaults).reading(crate::style::Fields::of(&[
+            crate::style::Fields::WIDTH,
+            crate::style::Fields::HEIGHT,
+            crate::style::Fields::VISIBLE,
+        ]))];
 }
 
 impl Node for Spacer {
@@ -718,8 +738,7 @@ impl<S, T: TextStorage> Default for Button<S, T> {
     }
 }
 
-impl<S: 'static, T: TextStorage> Button<S, T> {
-}
+impl<S: 'static, T: TextStorage> Button<S, T> {}
 
 impl<S: 'static, T: TextStorage> Widget for Button<S, T> {
     const NODE_COUNT: usize = 1;
@@ -747,7 +766,22 @@ impl<S: 'static, T: TextStorage> Widget for Button<S, T> {
         }
     }
 
-    const SEEDS: &'static [Seed] = &[Seed::new(Self::KIND, Self::type_defaults)];
+    const SEEDS: &'static [Seed] =
+        &[Seed::new(Self::KIND, Self::type_defaults).reading(crate::style::Fields::of(&[
+            crate::style::Fields::WIDTH,
+            crate::style::Fields::HEIGHT,
+            crate::style::Fields::PADDING,
+            crate::style::Fields::CURSOR,
+            crate::style::Fields::FOCUS_RING,
+            crate::style::Fields::VISIBLE,
+            crate::style::Fields::COLOR,
+            crate::style::Fields::BACKGROUND,
+            crate::style::Fields::RADIUS,
+            crate::style::Fields::FONT_SIZE,
+            crate::style::Fields::FONT_WEIGHT,
+            crate::style::Fields::PRESSED_DIM,
+            crate::style::Fields::HOVER_DIM,
+        ]))];
 }
 
 impl<S: 'static, T: TextStorage> Node for Button<S, T> {

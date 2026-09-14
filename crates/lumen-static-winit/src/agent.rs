@@ -61,6 +61,7 @@ pub struct Live<'a, A: App> {
 impl<A: App> AgentHost for Live<'_, A> {
     fn tree(&self) -> TreeRef<'_> {
         TreeRef::of_root(self.host.app.tree(), &self.host.styles, &self.host.states)
+            .with_sheet(self.host.stylesheet(), self.host.sheet_findings())
     }
 
     fn enqueue(&mut self, ev: lumen_static::Event) {

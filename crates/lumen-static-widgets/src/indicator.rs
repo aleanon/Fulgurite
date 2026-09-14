@@ -65,7 +65,15 @@ impl Widget for ProgressBar {
         }
     }
 
-    const SEEDS: &'static [Seed] = &[Seed::new(Self::KIND, Self::type_defaults)];
+    const SEEDS: &'static [Seed] =
+        &[Seed::new(Self::KIND, Self::type_defaults).reading(lumen_static::style::Fields::of(&[
+            lumen_static::style::Fields::WIDTH,
+            lumen_static::style::Fields::HEIGHT,
+            lumen_static::style::Fields::VISIBLE,
+            lumen_static::style::Fields::COLOR,
+            lumen_static::style::Fields::BACKGROUND,
+            lumen_static::style::Fields::RADIUS,
+        ]))];
 }
 
 const BAR_H: f32 = 8.0;
@@ -139,7 +147,13 @@ impl Widget for Spinner {
         }
     }
 
-    const SEEDS: &'static [Seed] = &[Seed::new(Self::KIND, Self::type_defaults)];
+    const SEEDS: &'static [Seed] =
+        &[Seed::new(Self::KIND, Self::type_defaults).reading(lumen_static::style::Fields::of(&[
+            lumen_static::style::Fields::WIDTH,
+            lumen_static::style::Fields::HEIGHT,
+            lumen_static::style::Fields::VISIBLE,
+            lumen_static::style::Fields::COLOR,
+        ]))];
 }
 
 const SPIN: f32 = 28.0;
@@ -235,7 +249,15 @@ impl Widget for Skeleton {
         }
     }
 
-    const SEEDS: &'static [Seed] = &[Seed::new(Self::KIND, Self::type_defaults)];
+    const SEEDS: &'static [Seed] =
+        &[Seed::new(Self::KIND, Self::type_defaults).reading(lumen_static::style::Fields::of(&[
+            lumen_static::style::Fields::WIDTH,
+            lumen_static::style::Fields::HEIGHT,
+            lumen_static::style::Fields::VISIBLE,
+            lumen_static::style::Fields::COLOR,
+            lumen_static::style::Fields::BACKGROUND,
+            lumen_static::style::Fields::RADIUS,
+        ]))];
 }
 
 impl Node for Skeleton {

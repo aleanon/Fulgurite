@@ -194,6 +194,12 @@ pub struct Style {
     /// descendants kept the previous frame's geometry and were painted
     /// at it. `Option`'s separate `hide()` path did the right thing, so
     /// two mechanisms disagreed. `docs/plan-review-fixes.md` F1.6.
+    ///
+    /// **Not by an `Either`'s own node**, measured 2026-09-15: it forwards
+    /// layout to the branch it shows and resolves no style of its own, so
+    /// `visible: false` on it changes nothing. Hide the branch instead.
+    /// The sheet lint reports such a rule (M25/T25.2,
+    /// `docs/results-appearance.md`).
     pub visible: bool,
 }
 
@@ -259,11 +265,28 @@ pub struct Seed {
     pub kind: &'static str,
     /// This kind's defaults, before any rule applies.
     pub defaults: fn() -> Style,
+    /// The [`Style`] fields this kind's layout and paint actually read —
+    /// M25/T25.2.
+    ///
+    /// What the sheet lint ([`lint_sheet_deep`]) compares a rule against:
+    /// a rule setting a field that no node it matches reads is a rule
+    /// that compiles and changes nothing. [`Fields::ALL`] from
+    /// [`Seed::new`], which never produces a finding — so a kind that has
+    /// not declared its reads is not linted rather than wrongly linted,
+    /// and `crates/lumen-static-widgets/tests/style_reads.rs` measures
+    /// every declared mask against what the kind's output actually does.
+    pub reads: Fields,
 }
 
 impl Seed {
     pub const fn new(kind: &'static str, defaults: fn() -> Style) -> Seed {
-        Seed { kind, defaults }
+        Seed { kind, defaults, reads: Fields::ALL }
+    }
+
+    /// The same seed, declaring which fields its kind reads.
+    pub const fn reading(mut self, reads: Fields) -> Seed {
+        self.reads = reads;
+        self
     }
 
     /// The seed of a node that declares nothing — [`crate::widget::Node`]'s
@@ -274,6 +297,94 @@ impl Seed {
 /// `Style::default` as a plain `fn` item, so [`Seed`] can hold it.
 pub fn plain_style() -> Style {
     Style::default()
+}
+
+// ---- which fields a kind reads — M25/T25.2 ---------------------------
+
+/// A set of [`Style`] fields, one bit each, in [`Patch`]'s order.
+///
+/// Two uses: what a [`Patch`] sets ([`Patch::fields`]) and what a kind
+/// reads ([`Seed::reads`]). The difference between the two is a rule
+/// that does nothing, which is the failure the sheet lint exists for —
+/// `Kind("checkbox")` with a `font_weight` compiled and changed nothing
+/// before it, and so did every rule naming a kind the tree does not
+/// have.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Fields(u16);
+
+impl Fields {
+    pub const NONE: Fields = Fields(0);
+    pub const WIDTH: Fields = Fields(1 << 0);
+    pub const HEIGHT: Fields = Fields(1 << 1);
+    pub const PADDING: Fields = Fields(1 << 2);
+    pub const SPACING: Fields = Fields(1 << 3);
+    pub const ALIGN: Fields = Fields(1 << 4);
+    pub const CURSOR: Fields = Fields(1 << 5);
+    pub const FOCUS_RING: Fields = Fields(1 << 6);
+    pub const VISIBLE: Fields = Fields(1 << 7);
+    pub const COLOR: Fields = Fields(1 << 8);
+    pub const BACKGROUND: Fields = Fields(1 << 9);
+    pub const RADIUS: Fields = Fields(1 << 10);
+    pub const FONT_SIZE: Fields = Fields(1 << 11);
+    pub const FONT_WEIGHT: Fields = Fields(1 << 12);
+    pub const SHADOW: Fields = Fields(1 << 13);
+    pub const PRESSED_DIM: Fields = Fields(1 << 14);
+    pub const HOVER_DIM: Fields = Fields(1 << 15);
+    pub const ALL: Fields = Fields(u16::MAX);
+
+    /// Every field with its name, for reports and for the tests that
+    /// measure a mask field by field.
+    pub const EACH: [(Fields, &'static str); 16] = [
+        (Fields::WIDTH, "width"),
+        (Fields::HEIGHT, "height"),
+        (Fields::PADDING, "padding"),
+        (Fields::SPACING, "spacing"),
+        (Fields::ALIGN, "align"),
+        (Fields::CURSOR, "cursor"),
+        (Fields::FOCUS_RING, "focus_ring"),
+        (Fields::VISIBLE, "visible"),
+        (Fields::COLOR, "color"),
+        (Fields::BACKGROUND, "background"),
+        (Fields::RADIUS, "radius"),
+        (Fields::FONT_SIZE, "font_size"),
+        (Fields::FONT_WEIGHT, "font_weight"),
+        (Fields::SHADOW, "shadow"),
+        (Fields::PRESSED_DIM, "pressed_dim"),
+        (Fields::HOVER_DIM, "hover_dim"),
+    ];
+
+    /// The union of a list — how a widget spells its mask at the
+    /// [`Seed`] it declares.
+    pub const fn of(list: &[Fields]) -> Fields {
+        let mut bits = 0u16;
+        let mut k = 0;
+        while k < list.len() {
+            bits |= list[k].0;
+            k += 1;
+        }
+        Fields(bits)
+    }
+
+    pub const fn union(self, other: Fields) -> Fields {
+        Fields(self.0 | other.0)
+    }
+
+    pub const fn minus(self, other: Fields) -> Fields {
+        Fields(self.0 & !other.0)
+    }
+
+    pub const fn contains(self, other: Fields) -> bool {
+        self.0 & other.0 == other.0
+    }
+
+    pub const fn is_empty(self) -> bool {
+        self.0 == 0
+    }
+
+    /// The names of the fields in this set.
+    pub fn names(self) -> impl Iterator<Item = &'static str> {
+        Self::EACH.into_iter().filter(move |(f, _)| self.contains(*f)).map(|(_, n)| n)
+    }
 }
 
 // ---- selectors and rules ----------------------------------------------
@@ -489,6 +600,63 @@ impl Patch {
     }
 }
 
+impl Patch {
+    /// The fields this patch sets — what the sheet lint compares against
+    /// the fields a matched kind reads (M25/T25.2).
+    pub const fn fields(&self) -> Fields {
+        let mut f = 0u16;
+        if self.width.is_some() {
+            f |= Fields::WIDTH.0;
+        }
+        if self.height.is_some() {
+            f |= Fields::HEIGHT.0;
+        }
+        if self.padding.is_some() {
+            f |= Fields::PADDING.0;
+        }
+        if self.spacing.is_some() {
+            f |= Fields::SPACING.0;
+        }
+        if self.align.is_some() {
+            f |= Fields::ALIGN.0;
+        }
+        if self.cursor.is_some() {
+            f |= Fields::CURSOR.0;
+        }
+        if self.focus_ring.is_some() {
+            f |= Fields::FOCUS_RING.0;
+        }
+        if self.visible.is_some() {
+            f |= Fields::VISIBLE.0;
+        }
+        if self.color.is_some() {
+            f |= Fields::COLOR.0;
+        }
+        if self.background.is_some() {
+            f |= Fields::BACKGROUND.0;
+        }
+        if self.radius.is_some() {
+            f |= Fields::RADIUS.0;
+        }
+        if self.font_size.is_some() {
+            f |= Fields::FONT_SIZE.0;
+        }
+        if self.font_weight.is_some() {
+            f |= Fields::FONT_WEIGHT.0;
+        }
+        if self.shadow.is_some() {
+            f |= Fields::SHADOW.0;
+        }
+        if self.pressed_dim.is_some() {
+            f |= Fields::PRESSED_DIM.0;
+        }
+        if self.hover_dim.is_some() {
+            f |= Fields::HOVER_DIM.0;
+        }
+        Fields(f)
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct Rule {
     pub selector: Selector,
@@ -594,6 +762,90 @@ fn cascade_from_instance(
             }
         }
         out[i] = s;
+    }
+}
+
+/// What the sheet lint found wrong with one rule — M25/T25.2.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SheetIssue {
+    /// The selector matches no node: a kind, id or class spelled
+    /// differently from the tree's. `Kind("Label")` against a tree of
+    /// `label`s is the documented case (`book/src/styling.md`).
+    Unmatched,
+    /// It matches, and these fields it sets are read by **none** of the
+    /// nodes it matches — a checkbox given a `font_weight`.
+    Unread(Fields),
+}
+
+/// One rule the lint found doing nothing, by its index in the sheet.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SheetFinding {
+    pub rule: usize,
+    pub issue: SheetIssue,
+}
+
+/// Report every rule in `sheet` that cannot change `tree`'s frame —
+/// M25/T25.2.
+///
+/// A rule is reported when its selector matches no node, or when some
+/// field it sets is read by no node it matches ([`Seed::reads`]). The
+/// walk reaches arena templates the way [`cascade_deep`] does, because a
+/// rule matching only a repeater's row is a rule that works. A `Dyn`
+/// island's kinds are asked of its live template and counted as reading
+/// every field, since its content's masks cannot reach a const array.
+///
+/// **Arenas nested inside an arena's template are not reached**, the
+/// same limit `cascade_arenas` records: a rule matching only there is
+/// reported as unmatched. Conservative in the wrong direction for that
+/// one shape, and stated rather than hidden.
+///
+/// O(rules × nodes), with no allocation. Not per frame: a host runs it
+/// when a sheet is set.
+#[cfg_attr(not(feature = "alloc"), allow(unused_variables))]
+pub fn lint_sheet_deep<W: crate::widget::Widget + ?Sized>(
+    tree: &mut W,
+    sheet: Stylesheet,
+    report: &mut dyn FnMut(SheetFinding),
+) {
+    for (r, rule) in sheet.iter().enumerate() {
+        let mut matched = false;
+        let mut read = Fields::NONE;
+        let mut visit = |d: &NodeDesc, kind: &str, reads: Fields| {
+            if matches(&rule.selector, d, kind) {
+                matched = true;
+                read = read.union(reads);
+            }
+        };
+        for (i, d) in W::SUB_TABLE.iter().enumerate() {
+            visit(d, W::SEEDS[i].kind, W::SEEDS[i].reads);
+        }
+        #[cfg(feature = "alloc")]
+        for i in 0..W::SUB_TABLE.len() {
+            let node = tree.node_mut(i);
+            for a in 0..node.arena_count() {
+                let Some(arena) = node.arena_mut(a) else { continue };
+                match arena.seeds {
+                    Some(seeds) => {
+                        for (k, d) in arena.table.iter().enumerate() {
+                            visit(d, seeds[k].kind, seeds[k].reads);
+                        }
+                    }
+                    None => {
+                        for (k, d) in arena.table.iter().enumerate() {
+                            visit(d, arena.template.node(k).kind_name(), Fields::ALL);
+                        }
+                    }
+                }
+            }
+        }
+        if !matched {
+            report(SheetFinding { rule: r, issue: SheetIssue::Unmatched });
+            continue;
+        }
+        let unread = rule.patch.fields().minus(read);
+        if !unread.is_empty() {
+            report(SheetFinding { rule: r, issue: SheetIssue::Unread(unread) });
+        }
     }
 }
 

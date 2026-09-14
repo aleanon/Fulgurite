@@ -391,7 +391,39 @@ corrected in this commit.
 `docs/00-handoff-static-tree.md` for appearance per kind, with §2.3 and
 §2.4 as sub-questions, pointing here.
 
-## T25.2 — the sheet lint
+## T25.2 — the sheet lint — **DONE 2026-09-15**
+
+> **Landed.** `style::Fields` (one bit per `Style` field), `Seed::reads`
+> declared at every kind in both crates and the derive, `Patch::fields`,
+> and `style::lint_sheet_deep`. The host keeps the last sheet and its
+> findings (`Host::stylesheet`, `Host::sheet_findings`); `TreeRef::with_sheet`
+> carries them to the agent, and `ui.lint` reports each as `W1010`, per
+> rule. The winit and counter-window agent hosts pass them.
+>
+> **Two decisions the task text did not make.** The lint lives in the
+> core and runs when a sheet is *set*, because the cascade consumes a
+> sheet and nothing afterwards could name the rule; the agent reports what
+> the host kept. And "unmatched" covers ids and classes as well as kinds —
+> 68 of the examples' 93 rules are `Id` rules, and a typo in one is the
+> same silent no-op.
+>
+> **The masks were measured, not written**, and the measurement was wrong
+> three times first — `docs/results-appearance.md` records how. What it
+> found: an `Either` reads nothing (so `Style::visible`'s rustdoc was
+> wrong), a pie chart ignores `color`, unhittable leaves read no dims.
+>
+> **Five injections, each red by name, each restored green:** a toggle
+> mask claiming `font_weight` → "checkbox/radio/switch: declares unread
+> [font_weight]"; `Button`'s mask dropping `padding` → "button: omits read
+> [padding]"; the toggle mask back to `Fields::ALL` → both checkbox
+> `font_weight` lint tests; `Kind("Label")` added to the showcase's sheet
+> → "rule 1 Kind("Label"): Unmatched"; the arena walk disabled → "a kind
+> found only in an arena template matches". Every example sheet is clean,
+> and both lint tests have a quiet twin.
+>
+> **Not built:** the per-field "patching it changes layout or the display
+> list" gate below *is* `tests/style_reads.rs`, extended with pointer
+> reachability and two bases; there is no separate test.
 
 Independent of looks, and the fix for both §0 no-ops.
 

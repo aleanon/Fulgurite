@@ -114,6 +114,43 @@ recorded here, where M25's cascade row reads it.
 | one row changed | 57.9 µs | 7.7 µs | 129.9 µs |
 
 **One run, so no spread** — a second is T25.5's to take, beside the
-pilot's. These stages, not the `rebuild` frame, are what a per-node look
+pilot's.
+
+## T25.2 — what each kind reads, measured
+
+`crates/lumen-static-widgets/tests/style_reads.rs` renders each of 32
+kinds with and without each of the 16 `Style` fields — under a fixed and
+a shrink-to-content base, in every pointer state the node can actually be
+in, over the instance states that change what it paints — and requires
+the declared `Seed::reads` to equal what changed. The masks live in the
+code beside each kind; what the measurement showed that nobody had
+written down:
+
+- **An `Either`'s own node reads nothing**, `visible` included. It
+  forwards layout to its showing branch, so every rule aimed at it is a
+  no-op. `Style::visible`'s rustdoc said all nodes honour it; it now says
+  which does not.
+- **`select` and `popup` read only `visible`**: their appearance belongs
+  to their parts, which have kinds of their own.
+- **A pie chart ignores `color`** — its wedges are `WEDGES`, §0's
+  hard-coded palette, visible here as a missing bit.
+- **Badges, chips, avatars, icons, indicators and charts read no
+  `hover_dim`, `pressed_dim` or `cursor`**: no hit lands on them, so the
+  host never hovers or presses them. The code resolves the dims for them
+  anyway; a rule setting one does nothing on screen.
+- **A `Fixed` paints `color`, not `background`.**
+- **No example sheet has a rule that does nothing**: showcase 29 rules,
+  glass 26, glasswall 26, the counter and the form fixtures — all zero
+  findings, and injecting `Kind("Label")` into the showcase's sheet fails
+  its test naming rule 1.
+
+**The probe was wrong three times before it was right**, each caught by
+reading its output against the code rather than trusting a green: a
+setup assertion that every kind reads `visible` (false for `Either`);
+hovered and pressed bits set on nodes no hit reaches (so a badge
+"read" `hover_dim`); and a fixed base size, under which `Button`'s
+`padding` — which only changes intrinsic size — measured as unread. A
+mask declared from any of those would have made the lint wrong in one
+direction or the other. These stages, not the `rebuild` frame, are what a per-node look
 would show in: the rebuild's layout at `all_rows` is 4,879 µs of text
 shaping.

@@ -790,6 +790,23 @@ mod tests {
     /// Seeded, laid out and painted for real — not merely constructed.
     /// A demo that built a widget and gave it no size would pass a
     /// smoke test that stopped at `seed`.
+    /// M25/T25.2: no rule in the showcase's sheet is a no-op — its
+    /// selector matches, and every field it sets is read by a node it
+    /// matches. Prints each finding, so a failure says which rule.
+    #[test]
+    fn every_stylesheet_rule_changes_something() {
+        let h = host(0, true);
+        let sheet = h.stylesheet();
+        let found: Vec<String> = h
+            .sheet_findings()
+            .iter()
+            .map(|f| format!("rule {} {:?}: {:?}", f.rule, sheet[f.rule].selector, f.issue))
+            .collect();
+        println!("{} rules, {} findings", sheet.len(), found.len());
+        assert!(!sheet.is_empty(), "setup: the sheet was applied");
+        assert!(found.is_empty(), "stylesheet rules that change nothing:\n{}", found.join("\n"));
+    }
+
     #[test]
     fn every_entry_paints_a_demo() {
         let mut seen: Vec<(&str, core::mem::Discriminant<Demo>)> = Vec::new();

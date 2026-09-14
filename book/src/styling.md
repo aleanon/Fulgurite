@@ -56,6 +56,20 @@ and `Selector::Kind("Label")` silently matches nothing. Nothing in the
 type system tells you which you need. This was documented nowhere until
 2026-09-02 (`docs/plan-review-fixes.md` F7.5).
 
+## A rule that does nothing is reported
+
+Since M25/T25.2 the host lints every sheet it is given. A rule is
+reported when its selector matches no node — `Kind("Label")` above, or
+an id nothing carries — or when a field it sets is read by none of the
+nodes it matches: a checkbox paints no text, so a `font_weight` for one
+changes nothing. `Host::sheet_findings` returns them by rule index, and
+the agent's `ui.lint` reports each as `W1010`.
+
+Which fields a kind reads is declared beside its kind name and **measured
+rather than trusted**: `crates/lumen-static-widgets/tests/style_reads.rs`
+renders every kind with and without each field and fails if a declared
+mask disagrees with what the output did (`docs/results-appearance.md`).
+
 ## Ids and classes come from the tree
 
 They are attributes on the field, not values set at runtime:

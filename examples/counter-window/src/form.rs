@@ -172,6 +172,16 @@ pub fn form(path: &str) {
         ),
         Rule::new(Selector::Id("name"), Patch::new().color(INK)),
     ]);
+    // M25/T25.2: every rule in the form's sheet does something.
+    {
+        let sheet = host.stylesheet();
+        let found: Vec<String> = host
+            .sheet_findings()
+            .iter()
+            .map(|f| format!("rule {} {:?}: {:?}", f.rule, sheet[f.rule].selector, f.issue))
+            .collect();
+        assert!(found.is_empty(), "form stylesheet rules that change nothing:\n{}", found.join("\n"));
+    }
     let mut metrics = FontStack::system().map(FontMetrics::new);
     let mut canvas = match FontStack::system() {
         Some(f) => Canvas::with_font(w, h, f),

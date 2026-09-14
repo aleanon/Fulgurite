@@ -17,8 +17,8 @@
 use alloc::vec::Vec;
 
 use crate::cx::LayoutCx;
-use crate::display::Painter;
 use crate::desc::{Constraints, NodeDesc, NodeState, Point, Size, NO_PARENT};
+use crate::display::Painter;
 use crate::hit::{contains, Hit, Inner};
 use crate::style::{Length, Seed, Style};
 use crate::widget::{Node, Widget};
@@ -95,7 +95,11 @@ impl<T: Widget + Default> Repeat<T> {
     #[inline]
     fn slot(&self, k: usize) -> usize {
         let len = self.window.len();
-        if len == 0 { 0 } else { (self.first + k) % len }
+        if len == 0 {
+            0
+        } else {
+            (self.first + k) % len
+        }
     }
 
     pub fn window_len(&self) -> usize {
@@ -221,7 +225,18 @@ impl<T: Widget + Default + 'static> Widget for Repeat<T> {
     /// and styled by `cascade_arenas` from the template — see
     /// [`crate::hatch::List`], which has the same shape and the same
     /// reason.
-    const SEEDS: &'static [Seed] = &[Seed::new(Self::KIND, Self::type_defaults)];
+    const SEEDS: &'static [Seed] =
+        &[Seed::new(Self::KIND, Self::type_defaults).reading(crate::style::Fields::of(&[
+            crate::style::Fields::WIDTH,
+            crate::style::Fields::HEIGHT,
+            crate::style::Fields::CURSOR,
+            crate::style::Fields::VISIBLE,
+            crate::style::Fields::BACKGROUND,
+            crate::style::Fields::RADIUS,
+            crate::style::Fields::SHADOW,
+            crate::style::Fields::PRESSED_DIM,
+            crate::style::Fields::HOVER_DIM,
+        ]))];
 
     fn type_defaults() -> Style {
         // A list fills its container and scrolls inside it.
@@ -311,12 +326,8 @@ impl<T: Widget + Default + 'static> Node for Repeat<T> {
         // fixed.
         let content = Size { w: limits.max_w, h: self.count as f32 * self.item_extent };
         let s = crate::ops::resolve_self(limits, &style[i], content);
-        let row_limits = Constraints {
-            min_w: 0.0,
-            max_w: s.w,
-            min_h: 0.0,
-            max_h: self.item_extent,
-        };
+        let row_limits =
+            Constraints { min_w: 0.0, max_w: s.w, min_h: 0.0, max_h: self.item_extent };
         let n = T::NODE_COUNT;
         // Instances use the template's own default styles: the cascade
         // is keyed by *table* index, and instances are not in the table
@@ -468,10 +479,7 @@ impl<T, S> crate::event::Handlers<S> for Repeat<T>
 where
     T: Widget + Default + 'static + crate::event::Handlers<S>,
 {
-    fn handler(
-        &self,
-        sel: crate::event::NodeSel,
-    ) -> Option<fn(&mut S, &crate::event::EventCtx)> {
+    fn handler(&self, sel: crate::event::NodeSel) -> Option<fn(&mut S, &crate::event::EventCtx)> {
         let (row, node) = sel.inner?;
         let k = (row as usize).checked_sub(self.first)?;
         let item = self.window.get(k)?;
