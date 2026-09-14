@@ -35,6 +35,9 @@ pick0                # one handler per row -> one `fn` plus `EventCtx::row`
 pick17               # the other end of the same range
 PICKERS              # the table of eighteen that dispatched them
 ROWS                 # the field-per-entry count -> `Select::count()`, data
+# M25/T25.5 deleted the toggle's hard-coded white mark; the plan and results
+# docs record why it existed and what replaced it.
+MARK                 # toggle.rs's constant tick colour -> a colour the toggle carries
 fill_all             # examples/showcase's cascade workaround, deleted by M24/T24.1 --
                      # stage.rs and docs/plan-select.md record why it existed and how its
                      # removal was checked (the showcase test it was hiding goes red)

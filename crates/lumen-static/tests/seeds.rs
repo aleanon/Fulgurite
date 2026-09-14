@@ -154,8 +154,9 @@ fn an_option_seeds_as_its_content_either_way() {
 /// instances in different states seed identically.
 #[test]
 fn a_seed_is_the_same_whatever_the_instance_is_doing() {
-    let off: CheckBox<()> = CheckBox { on: false, ..Default::default() };
-    let on: CheckBox<()> = CheckBox { on: true, ..Default::default() };
+    let off: CheckBox<()> = CheckBox::default();
+    let mut on: CheckBox<()> = CheckBox::default();
+    on.on = true;
     let a: Style = Node::defaults(&off);
     let b: Style = Node::defaults(&on);
     assert_eq!(a, b);

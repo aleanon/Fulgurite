@@ -197,6 +197,43 @@ on coloured glass (`CARD_INK`, `CARD_SUB`), the counter's sign-dependent
 `value_fg`, a pill's text on its own fill — and those are what a
 per-instance look is for.
 
+## T25.5 — the `Toggle` pilot, against the thresholds
+
+Measured 2026-09-15 on the pilot as built: `Toggle` with a `look`
+function and a stored resolved `ToggleLook`, resolved in `layout` from
+the palette and `Status`. Same machine and procedure as T25.1.
+
+| quantity | T25.1 baseline | pilot | threshold | verdict |
+|---|---:|---:|---|---|
+| embedded `.text` | 26,252 B | **26,080 B** (−172) | ≤ +300 B | **pass** |
+| the same, with `dim`'s early return | 26,252 B | **26,144 B** (−108) | ≤ +300 B | **pass** |
+| RAM, table tree: `Ui` on the target | 1,104 B | **1,168 B** (+64) | must not grow | **trips** |
+| 1 000 toggles, layout + paint, 4 medians | 13,449–13,784 ns | **18,069–18,248 ns** | within 335 ns of baseline | **trips** (+4.5 µs, +33%) |
+| the same, `ops::dim` returning early at a zero shade | — | **17,392–17,480 ns**, one run 19,017 | within 335 ns | **trips** (+3.6 µs, +27%) |
+| arena frame, 10 000 rows, one-row layout / paint | 57.9 / 129.9 µs | 57.9 / 130.7 µs | within spread | pass — no toggle in it |
+
+**The RAM row trips by construction**, and that is a finding about the
+threshold as much as about the pilot. At T25.5 nothing has left `Style`
+yet — T25.8 removes the fields — so adding a look to three toggles can
+only grow `state + style + struct`. Projected to T25.8, with shape 1's
+16 B a node saved on 11 nodes (−176 B) against every widget in the
+fixture gaining a look (≈ +64 B toggles, +48 B two buttons, +8 B a label,
+≈ +24 B a field), the end state is **roughly neutral**. The threshold
+should have been written against that projection; it would not have
+passed by enough to matter.
+
+**The frame row trips on its own**, and the early return in `dim` — work
+the first version did for no result — recovered a fifth of it, not the
+rest. What is left is a function-pointer call and a 16-byte copy per
+toggle per layout, and a `Toggle` that grew from 16 to 40 B on the host:
+about 3.6 ns a toggle. Small in absolute terms; ten times the
+run-to-run spread the threshold was written against.
+
+**What the pilot bought that nothing smaller would**: a pressed look
+that changes hue (`crates/lumen-static-shell/tests/toggle_status.rs`).
+The coloured tick, the palette-driven body, and the reload behaviour
+are all within reach of `docs/plan-appearance.md` §2.6's (a) and (b).
+
 **The probe was wrong three times before it was right**, each caught by
 reading its output against the code rather than trusting a green: a
 setup assertion that every kind reads `visible` (false for `Either`);

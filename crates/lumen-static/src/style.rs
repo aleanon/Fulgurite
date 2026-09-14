@@ -438,8 +438,16 @@ impl Status {
 pub struct Palette {
     /// The window behind everything.
     pub page: crate::display::Color,
-    /// A control's resting body: a button, an unchecked box, a track.
+    /// A raised body: a button, a card, a text field.
     pub surface: crate::display::Color,
+    /// A control's resting body where it sits straight on the page: an
+    /// unchecked box, an unselected radio, a switch's track — M25/T25.5.
+    ///
+    /// **Not `surface`**, and the difference was paid for once already:
+    /// a toggle's resting body in `surface`'s grey is about sixteen levels
+    /// from a light page, which is to say invisible (M23). A control has
+    /// to be seen before it is checked.
+    pub control: crate::display::Color,
     /// Text on `page` or `surface`.
     pub text: crate::display::Color,
     /// Secondary text and hairlines.
@@ -459,6 +467,7 @@ impl Palette {
     pub const LIGHT: Palette = Palette {
         page: crate::display::Color(255, 255, 255, 255),
         surface: crate::display::Color(226, 232, 240, 255),
+        control: crate::display::Color(0xbf, 0xc4, 0xcc, 255),
         text: crate::display::Color(15, 23, 42, 255),
         muted: crate::display::Color(100, 116, 139, 255),
         accent: crate::display::Color(53, 99, 239, 255),
@@ -470,6 +479,7 @@ impl Palette {
     pub const DARK: Palette = Palette {
         page: crate::display::Color(15, 18, 26, 255),
         surface: crate::display::Color(38, 44, 58, 255),
+        control: crate::display::Color(74, 82, 99, 255),
         text: crate::display::Color(230, 234, 242, 255),
         muted: crate::display::Color(148, 160, 180, 255),
         accent: crate::display::Color(99, 140, 255, 255),

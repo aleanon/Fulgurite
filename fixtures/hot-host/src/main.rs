@@ -40,6 +40,13 @@ impl<'l> App<'l> {
         }
     }
 
+    fn call_u32(&self, name: &[u8]) -> u32 {
+        unsafe {
+            let f: Symbol<unsafe extern "C" fn(*mut c_void) -> u32> = self.lib.get(name).unwrap();
+            f(self.ptr)
+        }
+    }
+
     fn frame(&self) -> u64 {
         unsafe {
             let f: Symbol<unsafe extern "C" fn(*mut c_void) -> u64> =
@@ -139,6 +146,7 @@ fn main() {
         f(app.ptr, 240.0);
     }
     app.call0(b"hot_set_fancy");
+    app.call0(b"hot_set_check");
     app.frame();
     app.frame();
     let before = app.buffered(b"hot_report");
@@ -148,6 +156,12 @@ fn main() {
     expect(&before, "footer='footer-v1'", "v1 code");
     expect(&before, "cache=2", "v1 ran two frames");
     expect(&before, "status='count 3'", "the update step puts app state on screen");
+    expect(&before, "check=on", "v1 checked the box");
+    // M25/T25.5: the tick probe reads the look -- asserted before the swap
+    // too, so a probe returning a constant cannot pass both halves.
+    let mark_v1 = app.call_u32(b"hot_check_mark");
+    println!("v1 tick colour {mark_v1:#010x}");
+    assert_eq!(mark_v1, 0xc8_1e_1e_ff, "v1's look paints a red tick");
 
     // ---- the §7 sequence ----
     let bytes = app.save(); // 1. save while old lib loaded (host-owned buffer)
@@ -196,7 +210,16 @@ fn main() {
     println!("  ok: enum fallback logged (§12.2)");
     // the repeater window re-materialized from data after the swap
     // The value, not the prefix: `window=` alone was satisfied by `window=0`.
-    expect(&after, "window=24", "repeater window rebuilt");
+    // 23, not 24, since M25/T25.5 put a 24 px checkbox in the same 600 px
+    // column: the window is whatever the remaining height holds, rebuilt
+    // from `rows` and `scroll` after the swap -- which is the claim.
+    expect(&after, "window=23", "repeater window rebuilt");
+    // M25/T25.5: a toggle's `on` is data (kept), its look is code (fresh).
+    expect(&after, "check=on", "keep: the toggle's on state");
+    let mark_v2 = app2.call_u32(b"hot_check_mark");
+    println!("v2 tick colour {mark_v2:#010x}");
+    assert_eq!(mark_v2, 0x1e_3c_dc_ff, "fresh: the new build's look paints a blue tick");
+    println!("  ok: the look came from the new build and the on state from the old");
 
     println!("\nHOT RELOAD DEMO: PASS");
 }

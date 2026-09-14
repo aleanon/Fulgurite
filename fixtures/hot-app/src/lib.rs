@@ -14,11 +14,14 @@
 // The FFI safety contract is documented once at the extern-surface section.
 #![allow(clippy::missing_safety_doc)]
 
+use lumen_static::display::{Cmd, Color};
 use lumen_static::ops::{Fixed, Label, Spacer};
 use lumen_static::reload;
 use lumen_static::repeat::Repeat;
+use lumen_static::style::{Palette, Status};
+use lumen_static::toggle::{default_look, ToggleLook};
 use lumen_static::{
-    pass, App as DeriveApp, Constraints, NodeState, Reloadable as DeriveReloadable, StaticTree,
+    pass, CheckBox, App as DeriveApp, Constraints, NodeState, Reloadable as DeriveReloadable, StaticTree,
     Widget,
 };
 use serde::{Deserialize, Serialize};
@@ -32,6 +35,18 @@ const FOOTER: &str = "footer-v2";
 const THEME: &str = "theme-v1";
 #[cfg(feature = "v2")]
 const THEME: &str = "theme-v2";
+
+/// The checkbox's look (M25/T25.5). The edited code paints a different
+/// tick, so a swap that kept the old *function* would show — a look is
+/// code, and `fresh()` must supply the new one.
+#[cfg(not(feature = "v2"))]
+fn check_look(p: &Palette, s: Status) -> ToggleLook {
+    ToggleLook { mark: Color(200, 30, 30, 255), ..default_look(p, s) }
+}
+#[cfg(feature = "v2")]
+fn check_look(p: &Palette, s: Status) -> ToggleLook {
+    ToggleLook { mark: Color(30, 60, 220, 255), ..default_look(p, s) }
+}
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone, Copy, PartialEq)]
 enum Mode {
@@ -65,6 +80,9 @@ struct Ui {
     #[reload(fresh)]
     status: Label<String>,
     list: Repeat<RowW>,
+    /// M25/T25.5: `on` is data and must survive; `look` is code and must not.
+    #[widget_id("check")]
+    check: CheckBox<Session>,
     #[reload(fresh)]
     footer: Label, // the new build's footer must win
 }
@@ -75,6 +93,11 @@ impl Default for Ui {
             title: Label::new("untitled"),
             status: Label::default(),
             list: Repeat::new(0, 24.0, bind_row),
+            check: {
+                let mut c = CheckBox::default();
+                c.look = check_look;
+                c
+            },
             footer: Label::new(FOOTER),
         }
     }
@@ -183,6 +206,48 @@ pub unsafe extern "C" fn hot_set_fancy(p: *mut c_void) {
     }
 }
 
+/// Check the box — v1 does, before the swap (M25/T25.5).
+#[no_mangle]
+pub unsafe extern "C" fn hot_set_check(p: *mut c_void) {
+    let s = unsafe { session(p) };
+    s.ui.check.on = true;
+}
+
+/// The colour the checkbox's tick was painted in, RGBA packed high byte
+/// first; `0` if nothing was painted (M25/T25.5).
+///
+/// Read off a laid-out and painted frame, not off the look, so it is what
+/// the screen would show. It does not count as a frame: `cache_hits` is
+/// untouched, because the host asserts on it.
+#[no_mangle]
+pub unsafe extern "C" fn hot_check_mark(p: *mut c_void) -> u32 {
+    let s = unsafe { session(p) };
+    let mut st = [NodeState::default(); Ui::NODE_COUNT];
+    let sty = pass::default_styles(&s.ui);
+    let c = Constraints { min_w: 0.0, max_w: 800.0, min_h: 0.0, max_h: 600.0 };
+    pass::layout(&mut s.ui, &sty, &mut st, c);
+    let mut out = lumen_static::DisplayList::new();
+    pass::paint(&s.ui, &st, &mut out);
+    let Some(i) = lumen_static::style::index_of_wid(<Ui as Widget>::SUB_TABLE, "check") else {
+        return 0;
+    };
+    let b = st[i];
+    let inside = |r: &[f32; 4]| {
+        r[0] >= b.pos.x - 0.5
+            && r[2] <= b.pos.x + b.size.w + 0.5
+            && r[1] >= b.pos.y - 0.5
+            && r[3] <= b.pos.y + b.size.h + 0.5
+    };
+    out.cmds
+        .iter()
+        .filter_map(|c| match c {
+            Cmd::RoundedRect { rect, color, .. } if inside(rect) => Some(*color),
+            _ => None,
+        })
+        .next_back()
+        .map_or(0, |c| u32::from_be_bytes([c.0, c.1, c.2, c.3]))
+}
+
 /// One frame: layout + paint, returns the paint checksum.
 #[no_mangle]
 pub unsafe extern "C" fn hot_frame(p: *mut c_void) -> u64 {
@@ -214,7 +279,7 @@ pub unsafe extern "C" fn hot_frame(p: *mut c_void) -> u64 {
 pub unsafe extern "C" fn hot_report(p: *mut c_void, buf: *mut u8, cap: usize) -> usize {
     let s = unsafe { session(p) };
     let report = format!(
-        "counter={} mode={:?} theme={} title='{}' status='{}' footer='{}' rows={} scroll={} window={} cache={}",
+        "counter={} mode={:?} theme={} title='{}' status='{}' footer='{}' rows={} scroll={} window={} cache={} check={}",
         s.counter,
         s.mode,
         s.theme,
@@ -225,6 +290,7 @@ pub unsafe extern "C" fn hot_report(p: *mut c_void, buf: *mut u8, cap: usize) ->
         s.ui.list.scroll,
         s.ui.list.window_len(),
         s.cache_hits,
+        if s.ui.check.on { "on" } else { "off" },
     );
     let bytes = report.as_bytes();
     if bytes.len() <= cap && !buf.is_null() {
