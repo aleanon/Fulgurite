@@ -64,10 +64,11 @@ fn btn(label: &str) -> Button<Show, String> {
 }
 
 fn toggle<const K: u8>(on_: bool) -> Toggle<Show, K> {
-    let mut t = Toggle::<Show, K>::default();
-    t.on = on_;
-    t.on_toggle = |s: &mut Show, _: &EventCtx| s.flag = !s.flag;
-    t
+    Toggle::<Show, K> {
+        on: on_,
+        on_toggle: |s: &mut Show, _: &EventCtx| s.flag = !s.flag,
+        ..Default::default()
+    }
 }
 
 /// Everything on the stage, in dropdown order.

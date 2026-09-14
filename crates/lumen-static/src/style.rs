@@ -389,41 +389,6 @@ impl Fields {
 
 // ---- status and palette — M25/T25.3 ----------------------------------
 
-/// The pointer state a widget's look is chosen by — M25/T25.3.
-///
-/// Derived from the bits `dispatch` writes into [`crate::NodeState`], so
-/// a look resolved in `layout` sees the same state `record_painted` uses
-/// for the shade today. **Pressed wins over hovered**: a control under a
-/// held pointer is pressed, not merely hovered, which is the order
-/// `record_painted` already applies.
-///
-/// **Focus is not a status.** It is orthogonal — a focused button can be
-/// hovered — and the focus ring is rewritten by the host *after* layout,
-/// so a look resolved in layout could not see whether focus is visible
-/// (`docs/plan-appearance.md` §2.1). `Disabled` is produced by nothing
-/// yet; it is here so a look written now handles it.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum Status {
-    #[default]
-    Active,
-    Hovered,
-    Pressed,
-    Disabled,
-}
-
-impl Status {
-    /// The status the state array says node `st` is in.
-    pub const fn of(st: &crate::desc::NodeState) -> Status {
-        if st.pressed {
-            Status::Pressed
-        } else if st.hovered {
-            Status::Hovered
-        } else {
-            Status::Active
-        }
-    }
-}
-
 /// The colours a theme is made of — data, swapped at runtime — M25/T25.3.
 ///
 /// iced's shape (`docs/plan-appearance.md` §1): a palette is data, and a

@@ -234,6 +234,22 @@ that changes hue (`crates/lumen-static-shell/tests/toggle_status.rs`).
 The coloured tick, the palette-driven body, and the reload behaviour
 are all within reach of `docs/plan-appearance.md` §2.6's (a) and (b).
 
+## T25.10 — the fallback, against the same thresholds
+
+The pilot's look reverted and `Toggle::mark` added as a plain `Color`
+field — §2.6's (a) for the one widget the pilot touched. Same fixture,
+same bench, same procedure:
+
+| quantity | T25.1 baseline | pilot (T25.5) | **`mark` field** | threshold | verdict |
+|---|---:|---:|---:|---|---|
+| embedded `.text` | 26,252 B | 26,144 B | **26,280 B** (+28) | ≤ +300 B | **pass** |
+| RAM, `Ui` on the target | 1,104 B | 1,168 B | **1,120 B** (+16) | must not grow | grows by the field, 4 B a toggle — the price (a) states |
+| 1 000 toggles, 4 medians | 13,449–13,784 ns | 17,392–17,480 ns | **13,456–13,732 ns** | within 335 ns | **pass** |
+
+**The colour the pilot existed to deliver costs a sixth of the pilot's
+bytes and none of its frame time.** What it cannot do is change with the
+pointer: a pressed toggle still darkens by `pressed_dim` and nothing more.
+
 **The probe was wrong three times before it was right**, each caught by
 reading its output against the code rather than trusting a green: a
 setup assertion that every kind reads `visible` (false for `Either`);

@@ -1,5 +1,4 @@
-//! M25/T25.3(a): the palette reaches `layout`, and `Status` reads the
-//! state array the way `record_painted` does.
+//! M25/T25.3(a): the palette reaches `layout`.
 //!
 //! Nothing in the tree reads a palette yet, so the probe is a leaf
 //! written here that records what its `layout` saw — and asserts that
@@ -12,7 +11,7 @@ use lumen_static::cx::BlockMetrics;
 use lumen_static::desc::{NodeDesc, NodeState, NO_PARENT};
 use lumen_static::display::{Color, Painter};
 use lumen_static::ops::{record_painted, resolve_self};
-use lumen_static::style::{Palette, Seed, Status, Style};
+use lumen_static::style::{Palette, Seed, Style};
 use lumen_static::widget::{Node, Widget};
 use lumen_static::{leaf_common, pass, Constraints, LayoutCx, Size};
 
@@ -86,16 +85,4 @@ fn a_palette_given_to_the_context_is_the_one_layout_sees() {
     assert_eq!(probe.layouts.get(), 1, "setup: the probe was laid out");
     println!("seen {seen:?}, dark {:?}", Palette::DARK.text);
     assert_eq!(seen, Some(Palette::DARK.text), "layout saw a palette other than the one given");
-}
-
-#[test]
-fn status_reads_pressed_over_hovered_over_active() {
-    let mut s = NodeState::default();
-    assert_eq!(Status::of(&s), Status::Active);
-    s.hovered = true;
-    assert_eq!(Status::of(&s), Status::Hovered);
-    s.pressed = true;
-    assert_eq!(Status::of(&s), Status::Pressed, "a held control is pressed, not hovered");
-    s.hovered = false;
-    assert_eq!(Status::of(&s), Status::Pressed, "pressed does not depend on hover");
 }

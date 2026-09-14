@@ -117,12 +117,12 @@ impl<S: 'static, T: crate::text::TextRestore> Reloadable for crate::ops::Button<
     }
 }
 
-/// `on` is kept; `look` and `on_toggle` are code, so `fresh()` supplies
-/// the new build's and `restore` never touches them — M25/T25.5. The
-/// resolved look is not saved either: `layout` recomputes it from the new
-/// `look` on the first frame, which is what makes an edited look show
-/// after a swap. Written by hand for the reason `Button`'s is: the
-/// derive's untagged-field rule would demand `Reloadable` of an `fn`.
+/// `on` is kept — M25/T25.5. `on_toggle` is code, so `fresh()` supplies
+/// the new build's and `restore` never touches it; `mark` is not saved
+/// either, so an edited default colour shows after a swap
+/// (`fixtures/hot-app` asserts both). Written by hand for the reason
+/// `Button`'s is: the derive's untagged-field rule would demand
+/// `Reloadable` of an `fn`.
 impl<S: 'static, const SHAPE: u8> Reloadable for crate::toggle::Toggle<S, SHAPE> {
     fn save(&self) -> Value {
         Value::Bool(self.on)

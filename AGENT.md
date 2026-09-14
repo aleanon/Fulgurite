@@ -46,15 +46,16 @@ are independent of each other**, so either may go first:
   injections would have passed under their own injection, and the plan
   keeps the corrections rather than quietly replacing itself.
 
-- **M25 — `docs/plan-appearance.md`** (T25.0–T25.9): **T25.0 is a
-  shipped defect and goes first** — hover and press shading are stale
-  under `Boundaries` invalidation, because nothing reports a hovered or
-  pressed flip. Then appearance moves off the per-node `Style` onto each
-  widget: a look function over a palette that is data, iced's shape
-  without its boxed closures or theme parameter; layout stays cascaded.
-  Revised after a six-lens review (47 findings, none refuted) — **read
-  §5 before §2**. **T25.5's `Toggle` pilot is the decision point**, with
-  §2.6's much smaller change as the fallback.
+- **M25 — `docs/plan-appearance.md`** (T25.0–T25.11): **T25.0–T25.5
+  DONE 2026-09-15, and the milestone stopped at T25.5 on its own rule.**
+  T25.0 fixed stale hover and press shading under `Boundaries`; T25.2
+  shipped the sheet lint (`W1010`); T25.3 the palette and
+  `app.setPalette`. The `Toggle` pilot — appearance as a look function on
+  the widget, iced's shape — tripped two thresholds written before it was
+  built and is in history as measured, not shipped. **T25.10 and T25.11
+  are the fallback**: colour fields on the widgets that need them, and
+  palette roles in stylesheets. `docs/results-appearance.md` T25.5 is
+  the decision's evidence.
 
 Unsequenced: `docs/plan-harness.md`.
 

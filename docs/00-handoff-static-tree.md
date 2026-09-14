@@ -868,3 +868,9 @@ remains** — which is why §10 Step 1 is the kill criterion.
    application's palette, because every kind-wide colour rule in the
    examples is a palette role. Counts in `docs/results-appearance.md`.
    The question itself stays OPEN until the pilot.
+   **DECIDED 2026-09-15: no.** The `Toggle` pilot tripped two of the
+   thresholds written before it was built — RAM, and 1 000 toggles 27%
+   slower — and bought only one thing a smaller change could not: a
+   pressed look that changes hue. Appearance stays in `Style`; the colours
+   one widget needs become fields on that widget, and a stylesheet can name
+   a palette role (`docs/plan-appearance.md` T25.5, T25.10, T25.11).

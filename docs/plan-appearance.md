@@ -553,7 +553,33 @@ that paints nothing still reaches what is under it — *injection:* the
 container always claims the hit, fires. Under shape 1 nothing new is
 built, and the decision record is the deliverable.
 
-## T25.5 — the pilot: `Toggle` — **the decision point**
+## T25.5 — the pilot: `Toggle` — **the decision point** — **DONE 2026-09-15: the milestone stops here**
+
+> **Built, measured, and not shipped.** The pilot — a `look` function and
+> a stored resolved look on `Toggle` — is in history as measured
+> (`5436381`), with its five injections. Against T25.1's thresholds
+> (`docs/results-appearance.md` T25.5): `.text` passed (−108 B); **RAM
+> tripped** (`Ui` +64 B, by construction, projecting to roughly neutral at
+> T25.8); **the frame tripped** (+3.6 µs over 1 000 toggles, +27%, ten
+> times the run-to-run spread, after removing the avoidable work).
+>
+> **The plan's own rule decides it**, and both of its conditions hold: a
+> threshold tripped, and the one thing the pilot bought that §2.6's smaller
+> path would not is a pressed look that changes hue. So the look is
+> reverted, T25.6–T25.9 are not built, and §2.6's (a) and (b) ship instead
+> as **T25.10** and **T25.11** below.
+>
+> **What stays from M25:** T25.0's invalidation fix, T25.2's sheet lint,
+> T25.3's `Palette`, `LayoutCx::palette`, `Host::set_palette` and
+> `app.setPalette`, the `Palette::control` role, `Toggle`'s `Reloadable`
+> impl, and the early return in `ops::dim`. **What goes:** `ToggleLook`,
+> `Toggle::look`, `Status`, `ops::focus_ring_in`, `Node::look` and its
+> agent reporting — nothing outside the pilot used them.
+>
+> **What the decision cost, stated once:** a pressed or hovered appearance
+> that is more than a shade remains unexpressible in a stylesheet, as
+> `Style::pressed_dim`'s rustdoc has said since C6. A widget that needs one
+> reads `NodeState::pressed` in its own `paint`.
 
 `Toggle` gains `look: fn(&Palette, Status) -> ToggleLook` with
 `ToggleLook { body, on_body, mark, radius }`; `MARK` is deleted. Toggle's
@@ -590,7 +616,7 @@ lint mask loses `color` (and the box fields, if T25.4 moved them).
 **Measure** against T25.1 and append to `docs/results-appearance.md`.
 **Stop here** if a threshold trips, and ship §2.6's (a)+(b) instead.
 
-## T25.6 — the core's leaves
+## T25.6 — the core's leaves — **NOT BUILT: stopped at T25.5**
 
 **One commit per widget**, except `Button` and `Select` together (§2.4).
 `Label`, `TextInput`, `TextArea`, `Slider`, `ScrollView`, `Fixed`,
@@ -615,7 +641,7 @@ kind name. (`scripts/ui_check.py contrast` cannot be this gate: it
 visits only Button and Label, measures inside a widget's own box, and
 skips a node whose text it cannot separate. T25.9 extends it.)
 
-## T25.7 — the widgets crate
+## T25.7 — the widgets crate — **NOT BUILT: stopped at T25.5**
 
 **One commit per file:** `trim.rs` (`Divider`, `Badge`, `Chip`,
 `Avatar`, `Icon`), `indicator.rs` (`ProgressBar`, `Spinner`, `Skeleton`),
@@ -623,7 +649,7 @@ skips a node whose text it cannot separate. T25.9 extends it.)
 series and whose background follows T25.4). Same gate and same
 same-commit list as T25.6.
 
-## T25.8 — remove the moved fields
+## T25.8 — remove the moved fields — **NOT BUILT: stopped at T25.5**
 
 **Three commits**, because this is the milestone-sized change `AGENT.md`
 measured skipping its docs.
@@ -673,7 +699,7 @@ settled, not §2's first-draft six. Update in the same commit:
 `Style` — the host test fires printing both sizes, and the target build
 fails with the expected size in its message.
 
-## T25.9 — use the thing
+## T25.9 — use the thing — **NOT BUILT: stopped at T25.5** (T25.11 carries its palette check)
 
 `AGENT.md`, 2026-09-14: M24's defects were found by assembling passes
 each tested alone.
@@ -692,6 +718,40 @@ each tested alone.
   under both palettes.
 
 ---
+
+## T25.10 — §2.6 (a): the colours a widget needs, as fields on it
+
+The stop branch's first half. Each colour §0 found hard-coded or derived
+becomes a field on the one widget that paints it, costing bytes only
+where that widget is — the shape `Image::tint` already had:
+
+- `Toggle::mark` — the tick, the dot and the knob (was `MARK`).
+- `TextInput` and `TextArea`: `caret` and `selection`, each an
+  `Option<Color>` that falls back to today's derivation from the text
+  colour. (`CARET` was dead: the caret already painted in `fg`.)
+- `ScrollView`: `track` and `thumb`, the same shape.
+- `Chart::series` — the wedge palette (was `WEDGES`).
+
+**Gate per field:** a non-default value is what paints, asserted on the
+display-list command, with the setup asserting the value differs from
+the default. *Injection:* paint ignores the field.
+
+**Measured:** `.text` and the 1 000-toggle frame against T25.1's
+baseline, so the fallback is held to the thresholds the pilot failed.
+
+## T25.11 — §2.6 (b): palette roles in a stylesheet
+
+The stop branch's second half: theming without widget changes. A `Patch`
+colour may name a palette role instead of a value; the cascade resolves
+it against the host's palette, and `Host::set_palette` re-cascades the
+kept sheet. Kind-wide theming stays a rule, as T25.4 found every example
+already wants.
+
+**Gates, on `Boundaries<16>`:** a label coloured by `Role::Text` changes
+colour on `set_palette`. *Injection:* `set_palette` does not re-cascade —
+the label keeps last palette's colour. The lint counts a role field as
+the field it sets. `examples/showcase` switches palettes, and T25.9's
+"every themed node changes" check runs against it.
 
 ## 3. What this is not
 

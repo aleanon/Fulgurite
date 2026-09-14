@@ -38,6 +38,8 @@ ROWS                 # the field-per-entry count -> `Select::count()`, data
 # M25/T25.5 deleted the toggle's hard-coded white mark; the plan and results
 # docs record why it existed and what replaced it.
 MARK                 # toggle.rs's constant tick colour -> a colour the toggle carries
+ToggleLook           # M25/T25.5's pilot look, reverted when the pilot tripped its thresholds;
+                     # docs/plan-appearance.md T25.5 and results-appearance.md record it
 fill_all             # examples/showcase's cascade workaround, deleted by M24/T24.1 --
                      # stage.rs and docs/plan-select.md record why it existed and how its
                      # removal was checked (the showcase test it was hiding goes red)
