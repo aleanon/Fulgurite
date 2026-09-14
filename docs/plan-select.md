@@ -190,19 +190,95 @@ which is the sentence the defect was reported in, from a test that
 already existed and had never seen it — because `fill_all` was hiding
 it.
 
-## T24.2 — `Select<E>` over `Popup`
+## T24.2 — `Select<S>` over `Popup` — **DONE 2026-09-14**
 
 The dropdown as a widget: a trigger, a `Popup` panel anchored `Below`,
-rows from a `&'static [&'static str]`, and a selection reported as an
-index. Retires `Panel`, `PICKERS`, `PanelRow`, `PanelLayer` and
-`sync_open`.
+and rows from a `Repeat`. Four nodes, whatever the option count.
 
-This is **T11.5**, deferred 2026-09-04 for want of the `stack` axis,
-which shipped 2026-09-10. `docs/plan-widgets.md` §T11.5 lists what is
-still open there — dismissal on click-outside is an event-routing
-question, not a layout one — and that list is the spec.
+This is **T11.5**, deferred 2026-09-04 as "a layout milestone with three
+widgets on the end of it". Two of its three prerequisites landed in M15
+and the third in T11.6, so what was left was widget code — and the
+widget itself took an afternoon. **Seven framework defects underneath it
+took the rest of the day**, which is the part worth recording: a
+capability nothing had exercised end to end was not one capability but
+seven, each individually invisible — and one of them a release-build
+panic that every gate in the repository was green for.
 
-## T24.3 — the showcase's stage becomes an enum
+### What it owns
+
+`Select` owns **opening**, in `Node::on_event` — the hook a widget has
+for its own state, the one `Slider` uses. It cannot be an `on_click`,
+because that is `fn(&mut S, ..)` and from `&mut S` a widget is reachable
+only as `&mut dyn Node`.
+
+It does **not** own closing, and that is not an omission. A press
+outside every overlay is dismissed and consumed by `dispatch_overlaid`
+before any widget sees it, so pressing the trigger while the menu is
+open closes it and does *not* reopen it — the press never arrives. The
+classic dropdown bug, avoided by not writing code, because M15 made
+dismissal the pass's job. `on_event` writes `open = true` rather than
+`!open` so the bug cannot return even if the press did.
+
+### The parts are addressable
+
+A composite is more than one node and the derive names only a *field*,
+so `select::PART_TRIGGER`, `PART_POPUP` and `PART_MENU` are stamped on
+the internal nodes. Without them nothing can reach inside a `Select` —
+not a stylesheet, not the agent's `#id` selectors, not
+`scripts/agent_drive.sh`. Namespaced, because a bare `trigger` would
+collide with an application's own `#[widget_id("trigger")]`.
+
+### The five things underneath
+
+Each was found by the widget failing to work — four of them by *looking
+at a rendered frame*, one by running the window. **Five of the seven
+left the whole suite green when injected back**, which makes them
+findings about the tests; every one was answered by strengthening the
+test rather than weakening the injection.
+
+| # | defect | how it surfaced | gate now |
+|---|---|---|---|
+| 1 | `dispatch_overlaid` threw away its overlay hit and fell through to `dispatch`, which hit-tests plainly — so **no handler inside an open popup could ever run** | the menu opened and clicking a row did nothing | `tests/overlay.rs::overlay_activation`, `tests/select.rs` |
+| 2 | `Host` painted with **no overlay sink and no `dispatch_overlaid`** — so `Popup` had never worked from the shell every example uses | the menu painted *inline*, under the backgrounds of its later siblings | the showcase's own tests, and `just agent-drive` |
+| 3 | `Repeat` laid its rows out against the limits it was **given**, not its resolved box | 18 rows 932 px wide in a 300 px panel | `tests/repeat_box.rs` |
+| 4 | `Repeat` painted no background and never called `record_painted`, so `style.background` reached no `NodeState` | the panel was transparent | `tests/repeat_box.rs` |
+| 5 | the enum derive emitted **no `defaults`**, inheriting `Node`'s `Shrink`/`Shrink` where every other container is `FILL`/`Shrink` | the stage stopped being centred | `tests/hatches.rs` |
+| 6 | the journal and the auditor painted and probed **stand-in nodes** — `node(i)` answers with the enclosing container for an index inside a branch that is not laid out, and using it *at `i`* runs off the end of `states` | a **release-build panic** the moment the menu opened; `just check` was green and 134 test binaries were green | `lumen-static-agent/tests/hidden_subtree.rs` |
+| 7 | `pass::default_styles` seeded from the live tree, so a hidden subtree got the container's defaults | an inactive variant measured 400 px instead of 40 | `tests/hatches.rs` |
+
+Six and seven are M24's own shape once more, in the two places T24.1
+did not reach. Seven is literally the cascade defect in a second
+function. Six is subtler and worth stating on its own:
+
+> `Node::node(i)` **cannot** answer for an index inside a branch that is
+> not laid out, and answers with the enclosing container instead so the
+> agent can still walk and report those nodes. Anything that then uses
+> that value *at `i`* — paints it, probes it, lays it out — is using a
+> node that does not know where it is.
+
+`crate::live_nodes` is the predicate, and what it is *not* is the part
+worth reading: **not "has area"**. That was tried first and it turned
+off `W1001`, the invisible-content lint, because a leaf with content and
+no room is zeroed exactly like a hidden one. The test is object
+identity — `node(i)` is a stand-in iff it is the same object as
+`node(parent(i))`, address *and* kind. The kind is not defensive: a
+zero-sized first field shares its parent's address, and dropping it from
+the comparison fails `changes.rs`.
+
+Number 2 is the **fourth** instance of the `Config`-gap shape §3d of
+`plan-widgets-gallery.md` named: a capability shipped into the framework
+with nothing in the front door wired to it. M15 built the overlay phase,
+`Painter::defer`, `paint_overlaid`, `dispatch_overlaid` and dismissal —
+and `Host`, which every example and every window goes through, called
+none of them. `examples/glass` and `tests/overlay.rs` drove the passes
+directly, which is why it looked covered.
+
+Number 5 is the shape this milestone started from, one level up: a fact
+that is a property of the *kind* of container, left to a default that
+happened to be wrong, and invisible until something was placed where the
+difference showed.
+
+## T24.3 — the showcase's stage becomes an enum — **DONE 2026-09-14**
 
 `Demos` → `#[derive(StaticTree)] enum Demo { Label(DLabel), … }`.
 `shown()` and `clear()` cease to exist: one-of-N by construction. The

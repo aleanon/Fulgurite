@@ -4,38 +4,40 @@
 //!
 //! The first version of this file put one `Dyn` island on the stage and
 //! swapped its content per selection. It looked right and **every
-//! interactive widget in it was dead**: `Dyn` is a `Box<dyn Node>`, and
-//! its `Handlers<S>` impl returns `None` unconditionally, because the
+//! interactive widget in it was dead**: `Dyn` was a `Box<dyn Node>`, and
+//! its `Handlers<S>` impl returned `None` unconditionally, because the
 //! application type is exactly what type erasure erased. A button inside
-//! an island can be hit-tested, hovered and pressed, and no handler will
-//! ever run.
+//! an island could be hit-tested, hovered and pressed, and no handler
+//! would ever run. (`Dyn` was given a `NodeFor<S>` supertrait in M23 and
+//! does route handlers now; the stage still does not use one, for the
+//! reason below.)
 //!
-//! So the stage is what a static tree wanted all along: **every demo is
-//! a typed field**, each wrapped in `Option`, and exactly one is `Some`.
-//! `Option` is the core's own hide — `layout` zeroes an absent branch
-//! every frame, so it holds no stale geometry for `paint`, `hit`, the
-//! journal or the audit — and `Option<W>` forwards `Handlers` to `W`, so
-//! a button on the stage is wired to the application like any other.
+//! # Why an enum
 //!
-//! It also buys back what the island cost: a typed field can be *read*,
-//! so a `Slider`'s value reaches the readout. Through a `Dyn` it could
-//! not, and the catalogue had a flag apologising for it.
+//! A typed variant can be *read*, so a `Slider`'s value reaches the
+//! readout. Through a `Dyn` it could not, and the catalogue had a flag
+//! apologising for it.
 //!
 //! # What M24 removed from this file
 //!
-//! A `fill_all()` that made every demo `Some` before the cascade and let
-//! the first pump empty the stage again. It was here because the cascade
-//! read a node's kind and defaults off the *live tree*, and an
-//! `Option::None` has no live node — so every absent demo resolved
-//! `Spacer`'s defaults and painted as a bare text run. The test that
-//! catches it says so in as many words: *"Badge drew only text on the
-//! stage — it looks like a label"*.
+//! Eighteen `Option` fields and the `fill_all` / `clear` / `shown`
+//! trio — 111 lines whose content was the number eighteen, and a
+//! `clear` with one field left out was the one bug that shape made
+//! possible.
 //!
-//! `Widget::SEEDS` moved both facts to the type, so an empty `Option`
-//! now resolves exactly as a full one and the workaround is gone
-//! (`docs/plan-select.md`, M24/T24.0–T24.1). Removing it with the
-//! cascade put back on the live tree makes that test fire, which is how
-//! the removal was checked rather than assumed.
+//! The `Option` stack existed because the enum switch **did not work**:
+//! the cascade read a node's kind and defaults off the *live tree*, and
+//! an inactive variant has no live node, so every hidden demo resolved
+//! the container's defaults and painted as a bare text run. The test
+//! that catches it says so in as many words: *"Badge drew only text on
+//! the stage — it looks like a label"*.
+//!
+//! `Option` could paper over that by being briefly all-`Some` when the
+//! stylesheet was set; an enum holds one variant by definition and has
+//! no such moment, which is why the workaround could not be carried
+//! across. M24/T24.1 moved both facts to the type (`Widget::SEEDS`), and
+//! the enum this file always wanted became writable.
+//! `docs/plan-select.md`.
 //!
 //! The price is the tree carries all eighteen demos. That is the trade a
 //! static tree offers — space for reach — and at this size it is
@@ -243,84 +245,53 @@ pub struct DPieChart {
     pub a: PieChart,
 }
 
-/// Every demo, sharing one rect. A stack, because they overlap by
-/// definition — only one is ever present.
-#[derive(StaticTree, Default)]
-#[widget(stack)]
-pub struct Demos {
-    pub label: Option<DLabel>,
-    pub badge: Option<DBadge>,
-    pub chip: Option<DChip>,
-    pub avatar: Option<DAvatar>,
-    pub icon: Option<DIcon>,
-    pub divider: Option<DDivider>,
-    pub button: Option<DButton>,
-    pub checkbox: Option<DCheckBox>,
-    pub switch: Option<DSwitch>,
-    pub radio: Option<DRadio>,
-    pub slider: Option<DSlider>,
-    pub textinput: Option<DTextInput>,
-    pub progress: Option<DProgressBar>,
-    pub spinner: Option<DSpinner>,
-    pub skeleton: Option<DSkeleton>,
-    pub bar: Option<DBarChart>,
-    pub line: Option<DLineChart>,
-    pub pie: Option<DPieChart>,
+/// Every demo, as **one enum**.
+///
+/// `#[derive(StaticTree)]` on an enum is a variant switch: each variant
+/// gets its own range of the node table, inactive variants are zeroed
+/// rather than left stale, and `Handlers<S>` forwards to the active one.
+/// So a demo on the stage is wired to the application exactly as a
+/// typed field was.
+///
+/// **This is what the file wanted from the start** and could not have
+/// until M24/T24.1. Before that the cascade read a node's kind and
+/// defaults off the *live tree*, and an inactive variant has no live
+/// node — so every hidden demo resolved the enum's defaults and painted
+/// as a bare text run. The `Option` stack could paper over it by being
+/// briefly all-`Some` at cascade time (`fill_all`); an enum holds one
+/// variant by definition and has no such moment. `docs/plan-select.md`.
+///
+/// What it removes: `fill_all`, `clear` and `shown` — 111 lines whose
+/// content was the number eighteen, and a `clear` with one field left
+/// out was the one bug the `Option` shape made possible. One-of-N is
+/// now the type's job.
+#[derive(StaticTree)]
+pub enum Demo {
+    Label(DLabel),
+    Badge(DBadge),
+    Chip(DChip),
+    Avatar(DAvatar),
+    Icon(DIcon),
+    Divider(DDivider),
+    Button(DButton),
+    CheckBox(DCheckBox),
+    Switch(DSwitch),
+    Radio(DRadio),
+    Slider(DSlider),
+    TextInput(DTextInput),
+    Progress(DProgressBar),
+    Spinner(DSpinner),
+    Skeleton(DSkeleton),
+    Bar(DBarChart),
+    Line(DLineChart),
+    Pie(DPieChart),
+}
+
+impl Default for Demo {
+    fn default() -> Self {
+        Demo::Label(DLabel::default())
+    }
 }
 
 /// How many demos the stage has. Asserted against the catalogue.
 pub const DEMOS: usize = 18;
-
-impl Demos {
-    /// How many demos are present. **Exactly one, always** — and the
-    /// reason this exists rather than being obvious: `clear` is a
-    /// hand-written list of eighteen fields, and a field left out of it
-    /// leaves the previous demo on the stage underneath the new one.
-    /// That is the one bug this shape makes possible and a `Dyn` did
-    /// not, so it is the one the tests gate.
-    pub fn shown(&self) -> usize {
-        let mut n = 0;
-        n += self.label.is_some() as usize;
-        n += self.badge.is_some() as usize;
-        n += self.chip.is_some() as usize;
-        n += self.avatar.is_some() as usize;
-        n += self.icon.is_some() as usize;
-        n += self.divider.is_some() as usize;
-        n += self.button.is_some() as usize;
-        n += self.checkbox.is_some() as usize;
-        n += self.switch.is_some() as usize;
-        n += self.radio.is_some() as usize;
-        n += self.slider.is_some() as usize;
-        n += self.textinput.is_some() as usize;
-        n += self.progress.is_some() as usize;
-        n += self.spinner.is_some() as usize;
-        n += self.skeleton.is_some() as usize;
-        n += self.bar.is_some() as usize;
-        n += self.line.is_some() as usize;
-        n += self.pie.is_some() as usize;
-        n
-    }
-
-    /// Hide everything. Called before each `show`, so a selection cannot
-    /// leave the previous demo behind.
-    pub fn clear(&mut self) {
-        self.label = None;
-        self.badge = None;
-        self.chip = None;
-        self.avatar = None;
-        self.icon = None;
-        self.divider = None;
-        self.button = None;
-        self.checkbox = None;
-        self.switch = None;
-        self.radio = None;
-        self.slider = None;
-        self.textinput = None;
-        self.progress = None;
-        self.spinner = None;
-        self.skeleton = None;
-        self.bar = None;
-        self.line = None;
-        self.pie = None;
-    }
-}

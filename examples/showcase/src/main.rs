@@ -38,6 +38,7 @@
 use lumen_static::display::Color;
 use lumen_static::prelude::*;
 use lumen_static::Rule as StyleRule;
+use lumen_static::select::{Row as SelectRow, Select};
 use lumen_static::Toggle;
 use lumen_static_widgets::prelude::*;
 use lumen_static_winit::{run, Config};
@@ -63,86 +64,17 @@ const PANEL_H: f32 = 560.0;
 
 // ---- the tree --------------------------------------------------------
 
-/// One row of the dropdown. A `Button` because it is a tap target and
-/// the core gives a button its hover, press and focus for free.
-#[derive(StaticTree, Default)]
-#[widget(column, spacing = 0.0)]
-pub struct Row {
-    #[widget_id("opt")]
-    pick: Button<Show, String>,
-}
-
-/// The dropdown panel.
-///
-/// **`Repeat`, not a field per entry.** The catalogue's length is data,
-/// not a fact about the tree's shape, and `Repeat` is virtualized: its
-/// `bind` is a plain `fn` that cannot capture, and a click reports which
-/// row through `EventCtx::row` — recomputed by hit testing every frame,
-/// so it cannot go stale the way a captured index can.
-/// The dropdown's rows, **one field per catalogue entry**.
-///
-/// Verbose, and the static tree's own answer. `Repeat` and `List` are
-/// the off-table containers built for runtime-sized collections, and a
-/// catalogue is not one: its length is known when the binary is. Both
-/// were tried here first and neither painted a row — their instances
-/// live in an arena rather than the main state array, which is a seam
-/// worth understanding before leaning on it for a *menu*.
-///
-/// The cost is real and worth stating: adding a widget to `CATALOG`
-/// means adding a field here, and `ROWS` is asserted against the
-/// catalogue's length at startup so the two cannot drift silently.
-#[derive(StaticTree, Default)]
-#[widget(column, spacing = 0.0)]
-pub struct Panel {
-    #[widget_id("opt")]
-    r0: Row,
-    #[widget_id("opt")]
-    r1: Row,
-    #[widget_id("opt")]
-    r2: Row,
-    #[widget_id("opt")]
-    r3: Row,
-    #[widget_id("opt")]
-    r4: Row,
-    #[widget_id("opt")]
-    r5: Row,
-    #[widget_id("opt")]
-    r6: Row,
-    #[widget_id("opt")]
-    r7: Row,
-    #[widget_id("opt")]
-    r8: Row,
-    #[widget_id("opt")]
-    r9: Row,
-    #[widget_id("opt")]
-    r10: Row,
-    #[widget_id("opt")]
-    r11: Row,
-    #[widget_id("opt")]
-    r12: Row,
-    #[widget_id("opt")]
-    r13: Row,
-    #[widget_id("opt")]
-    r14: Row,
-    #[widget_id("opt")]
-    r15: Row,
-    #[widget_id("opt")]
-    r16: Row,
-    #[widget_id("opt")]
-    r17: Row,
-}
-
-/// How many rows the panel has. Checked against the catalogue.
-const ROWS: usize = 18;
-
 /// The header band: the trigger, what it is, and a live readout.
 #[derive(StaticTree, Default)]
 #[widget(column, spacing = 8.0)]
 pub struct Header {
     #[widget_id("title")]
     title: Label,
-    #[widget_id("trigger")]
-    trigger: Button<Show, String>,
+    /// **The dropdown, as one field.** Its trigger, its popup and its
+    /// rows are `Select`'s four nodes; the option count is data, so
+    /// adding a widget to `CATALOG` no longer adds a field here.
+    #[widget_id("picker")]
+    picker: Select<Show>,
     #[widget_id("blurb")]
     blurb: Label<String>,
     #[widget_id("readout")]
@@ -156,7 +88,7 @@ pub struct StageRow {
     #[widget_id("sl")]
     l: Spacer,
     #[widget_id("demo")]
-    demos: Demos,
+    demo: Demo,
     #[widget_id("sr")]
     r: Spacer,
 }
@@ -185,49 +117,18 @@ pub struct Body {
     stage: Stage,
 }
 
-/// **A stack, and the panel is declared last.**
+/// The whole window.
 ///
-/// The dropdown paints *over* the stage and must win its clicks. A stack
-/// paints in field order and hit-tests in reverse, so declaring the
-/// panel last gives both — the rule `examples/glass` records after an
-/// invisible `FILL` spacer in the wrong layer swallowed every click.
-/// The dropdown layer: the panel, pushed under the trigger.
-///
-/// **A stack has one alignment for every child**, so a panel that has to
-/// sit at a particular place inside it is positioned by spacers — the
-/// same technique the glass dock uses to float itself. A fixed spacer
-/// above puts it under the header band; a fixed one to the left lines it
-/// up with the trigger.
-#[derive(StaticTree, Default)]
-#[widget(row, spacing = 0.0)]
-pub struct PanelRow {
-    #[widget_id("pl")]
-    l: Spacer,
-    /// **`Option`, which is how the core hides a subtree.** `layout`
-    /// zeroes an absent branch every frame, so it holds no stale
-    /// geometry for `paint`, `hit`, the journal or the audit to read —
-    /// and an absent panel cannot swallow a click meant for the stage.
-    #[widget_id("panelwrap")]
-    panel: Option<Panel>,
-    #[widget_id("pr")]
-    r: Spacer,
-}
-
+/// **No overlay layer any more.** The dropdown used to be a second
+/// child of a stack, positioned under the trigger by four `Spacer`s,
+/// because nothing else could put a panel over the stage. `Select`'s
+/// menu is a `Popup`: out of flow, painted in the overlay phase, hit
+/// first. So the tree is the body, and the four spacers, the wrapper row
+/// and the wrapper column are gone with it.
 #[derive(StaticTree, Default)]
 #[widget(column, spacing = 0.0)]
-pub struct PanelLayer {
-    #[widget_id("pt")]
-    top: Spacer,
-    row: PanelRow,
-    #[widget_id("pb")]
-    bottom: Spacer,
-}
-
-#[derive(StaticTree, Default)]
-#[widget(stack)]
 pub struct Screen {
     body: Body,
-    layer: PanelLayer,
 }
 
 #[derive(DeriveApp, Default)]
@@ -237,8 +138,6 @@ pub struct Show {
     ui: Screen,
     /// Which catalogue entry is on the stage.
     selected: usize,
-    /// Whether the dropdown is down.
-    open: bool,
     /// Turns, for the demos that animate. Advanced by `App::tick`;
     /// nothing here drives its own clock.
     phase: f32,
@@ -270,7 +169,7 @@ fn refresh(s: &mut Show) {
     // **Read the typed fields back before reporting.** This is what a
     // `Dyn` island could not do: a `Slider` owns its value, and through
     // a `Box<dyn Node>` there was no handle to ask.
-    if let Some(d) = &s.ui.body.stage.row.demos.slider {
+    if let Demo::Slider(d) = &s.ui.body.stage.row.demo {
         s.fraction = d.a.value();
     }
     let e = &CATALOG[s.selected];
@@ -306,177 +205,69 @@ fn rebuild(s: &mut Show) {
     // `examples/glasswall` already paid for that lesson: a missing glyph
     // renders as the fallback box, which looks like a bug in the widget
     // rather than in the font.
-    s.ui.body.header.trigger.label = format!("{}      {}", e.name, if s.open { "^" } else { "v" });
+    let open = s.ui.body.header.picker.is_open();
+    s.ui.body.header.picker.trigger.label =
+        format!("{}      {}", e.name, if open { "^" } else { "v" });
     s.ui.body.header.blurb.set(e.blurb.into());
     (e.seed)(s);
     let text = (e.status)(s);
     s.ui.body.header.readout.set(text);
 }
 
-/// **One handler per row, generated.**
-///
-/// An `on_click` is a plain `fn` pointer: it cannot close over the row's
-/// index, and it is a `fn` on purpose — a captured index is exactly what
-/// goes stale when a list changes under it, and a hot reload can
-/// re-supply a `fn` where it cannot re-supply a closure. `EventCtx::row`
-/// answers this for *off-table* rows; these are ordinary nodes, so the
-/// index is baked into the handler instead.
-fn pick0(s: &mut Show, _: &EventCtx) {
-    choose(s, 0);
-}
-fn pick1(s: &mut Show, _: &EventCtx) {
-    choose(s, 1);
-}
-fn pick2(s: &mut Show, _: &EventCtx) {
-    choose(s, 2);
-}
-fn pick3(s: &mut Show, _: &EventCtx) {
-    choose(s, 3);
-}
-fn pick4(s: &mut Show, _: &EventCtx) {
-    choose(s, 4);
-}
-fn pick5(s: &mut Show, _: &EventCtx) {
-    choose(s, 5);
-}
-fn pick6(s: &mut Show, _: &EventCtx) {
-    choose(s, 6);
-}
-fn pick7(s: &mut Show, _: &EventCtx) {
-    choose(s, 7);
-}
-fn pick8(s: &mut Show, _: &EventCtx) {
-    choose(s, 8);
-}
-fn pick9(s: &mut Show, _: &EventCtx) {
-    choose(s, 9);
-}
-fn pick10(s: &mut Show, _: &EventCtx) {
-    choose(s, 10);
-}
-fn pick11(s: &mut Show, _: &EventCtx) {
-    choose(s, 11);
-}
-fn pick12(s: &mut Show, _: &EventCtx) {
-    choose(s, 12);
-}
-fn pick13(s: &mut Show, _: &EventCtx) {
-    choose(s, 13);
-}
-fn pick14(s: &mut Show, _: &EventCtx) {
-    choose(s, 14);
-}
-fn pick15(s: &mut Show, _: &EventCtx) {
-    choose(s, 15);
-}
-fn pick16(s: &mut Show, _: &EventCtx) {
-    choose(s, 16);
-}
-fn pick17(s: &mut Show, _: &EventCtx) {
-    choose(s, 17);
-}
-
-static PICKERS: [fn(&mut Show, &EventCtx); ROWS] = [
-    pick0,
-    pick1,
-    pick2,
-    pick3,
-    pick4,
-    pick5,
-    pick6,
-    pick7,
-    pick8,
-    pick9,
-    pick10,
-    pick11,
-    pick12,
-    pick13,
-    pick14,
-    pick15,
-    pick16,
-    pick17,
-];
-
-/// Put entry `i` on the stage and close the dropdown.
-fn choose(s: &mut Show, i: usize) {
-    s.selected = i.min(CATALOG.len() - 1);
-    s.open = false;
-    s.phase = 0.0;
-    rebuild(s);
-    sync_open(s);
-}
-
 /// A row's caption, with its group folded in so the list reads as
 /// grouped without the panel needing heading nodes of a second type.
-fn bind_row(r: &mut Row, i: usize) {
+///
+/// **One `fn` for every row.** It cannot capture — `Repeat::bind` is a
+/// plain `fn` pointer, which is what lets a hot reload re-supply it —
+/// and it does not need to: [`EventCtx::row`] tells the handler which
+/// row was hit, recomputed by hit testing every frame, so it cannot go
+/// stale the way a captured index can.
+///
+/// This replaces `pick0`..`pick17` and a `PICKERS` table: eighteen
+/// functions whose only difference was a literal.
+fn bind_row(r: &mut SelectRow<Show>, i: usize) {
     let e = &CATALOG[i];
     let first = i == 0 || CATALOG[i - 1].group != e.group;
-    r.pick.label = if first {
+    r.label = if first {
         format!("{} - {}", e.group, e.name)
     } else {
         format!("        {}", e.name)
     };
-    // **The index comes from the node, not from a capture.** An
-    // `on_click` is a plain `fn` pointer — it cannot close over `i` —
-    // and `EventCtx::row` is for off-table rows, which these are not.
-    // So the handler reads back which of the panel's nodes was hit.
-    r.pick.on_click = PICKERS[i];
+    r.on_click = |s: &mut Show, cx: &EventCtx| {
+        let i = cx.row.map_or(0, |r| r as usize);
+        choose(s, i);
+    };
 }
 
-/// The panel is shown by giving it a height and hidden by taking it
-/// away — `Style::visible` is the cascade's, and the cascade is static.
-fn sync_open(s: &mut Show) {
-    let e = &CATALOG[s.selected];
-    s.ui.body.header.trigger.label =
-        format!("{}      {}", e.name, if s.open { "^" } else { "v" });
-    s.ui.layer.row.panel = s.open.then(|| {
-        {
-            let mut p = Panel::default();
-            let rows: [&mut Row; ROWS] = [
-                &mut p.r0,
-                &mut p.r1,
-                &mut p.r2,
-                &mut p.r3,
-                &mut p.r4,
-                &mut p.r5,
-                &mut p.r6,
-                &mut p.r7,
-                &mut p.r8,
-                &mut p.r9,
-                &mut p.r10,
-                &mut p.r11,
-                &mut p.r12,
-                &mut p.r13,
-                &mut p.r14,
-                &mut p.r15,
-                &mut p.r16,
-                &mut p.r17,
-            ];
-            for (i, r) in rows.into_iter().enumerate() {
-                bind_row(r, i);
-            }
-            p
-        }
-    });
+/// Put entry `i` on the stage and close the dropdown.
+fn choose(s: &mut Show, i: usize) {
+    s.selected = i.min(CATALOG.len() - 1);
+    // Closing is the application's, deliberately: `Select` owns
+    // *opening* (a press on the trigger, in `on_event`) and dismissal
+    // (the pass, on Escape or a press outside), but what a chosen row
+    // means is not the widget's business.
+    s.ui.body.header.picker.close();
+    s.phase = 0.0;
+    rebuild(s);
 }
 
 /// Build the app, already on `entry`, with the dropdown `open` or not.
 fn build(entry: usize, open: bool) -> Show {
     let mut app = Show::default();
     app.ui.body.header.title.set("Widget showcase");
-    app.ui.body.header.trigger.on_click = |s: &mut Show, _: &EventCtx| {
-        s.open = !s.open;
-        sync_open(s);
-    };
+    // **The whole wiring of the dropdown.** One `fn` for the rows, the
+    // count as data, and nothing about eighteen.
+    app.ui.body.header.picker = Select::new(CATALOG.len(), ROW_H, bind_row);
     app.selected = entry.min(CATALOG.len() - 1);
-    app.open = open;
+    if open {
+        app.ui.body.header.picker.open();
+    }
     // **Mid-travel, not zero.** The animated demos take their value from
     // `phase`, and a showcase opened on one of them at phase 0 shows an
     // empty bar and an unlit spinner — which reads as a broken widget
     // rather than as a starting state.
     app.phase = 0.35;
     rebuild(&mut app);
-    sync_open(&mut app);
     app
 }
 
@@ -764,6 +555,11 @@ fn agent_addr() -> Option<String> {
 const STAGE_NODE: usize = 8;
 
 /// One dropdown row's height.
+///
+/// `Repeat` is uniform-extent, so this single number decides both where
+/// a row is drawn and which row a click at `y` lands on — they cannot
+/// disagree, which is the half the eighteen-field panel had to keep in
+/// step by hand.
 const ROW_H: f32 = 30.0;
 
 /// A control's own label — the text beside a checkbox or a switch.
@@ -775,9 +571,17 @@ fn lbl() -> lumen_static::style::Patch {
 
 
 /// The shape all three button variants share; only the colours differ.
+///
+/// **`width` and `height` are named here on purpose.** The menu's rows
+/// are styled by `Kind("button")` — the only selector that reaches an
+/// arena's template — and that rule sets a `FILL` width and a fixed
+/// height. An id beats a kind, so these three win; leaving either out
+/// let the row rule through and the demo buttons came out full-width.
 fn btn() -> lumen_static::style::Patch {
     use lumen_static::style::Patch;
     Patch::new()
+        .width(Length::Shrink)
+        .height(Length::Shrink)
         .radius(8.0)
         .font_size(15.0)
         .font_weight(600.0)
@@ -795,8 +599,13 @@ fn stylesheet() -> Vec<StyleRule> {
                 .padding(Edges { left: 28.0, right: 28.0, top: 20.0, bottom: 18.0 }),
         ),
         StyleRule::new(Selector::Id("title"), Patch::new().color(INK).font_size(20.0).font_weight(700.0)),
+        // **The picker's parts, by the ids `Select` stamps.** A
+        // composite is more than one node, and the derive only names a
+        // *field* — so a widget that is several nodes has to publish its
+        // own ids or nothing can reach inside it, not a stylesheet and
+        // not the agent. `select::PART_*` are those names.
         StyleRule::new(
-            Selector::Id("trigger"),
+            Selector::Id(lumen_static::select::PART_TRIGGER),
             Patch::new()
                 .width(Length::Fixed(300.0))
                 .background(Color(0xf7, 0xf9, 0xfd, 0xff))
@@ -814,12 +623,12 @@ fn stylesheet() -> Vec<StyleRule> {
         StyleRule::new(Selector::Id("sb"), Patch::new().height(Length::FILL)),
         StyleRule::new(Selector::Id("sl"), Patch::new().width(Length::FILL)),
         StyleRule::new(Selector::Id("sr"), Patch::new().width(Length::FILL)),
-        // The dropdown layer: spacers put the panel under the trigger.
-        StyleRule::new(Selector::Id("pt"), Patch::new().height(Length::Fixed(118.0))),
-        StyleRule::new(Selector::Id("pb"), Patch::new().height(Length::FILL)),
-        StyleRule::new(Selector::Id("pl"), Patch::new().width(Length::Fixed(28.0))),
-        StyleRule::new(Selector::Id("pr"), Patch::new().width(Length::FILL)),
-        // The dropdown panel, pinned under the trigger.
+        // The menu panel. **No spacers.** It used to take four — two
+        // to push a layer down and across to meet the trigger — because
+        // the panel lived in a stack beside the body and had to be
+        // aimed by hand. A `Popup` anchors itself on its parent, so the
+        // position is the widget's and the sheet only says how big.
+        //
         // **No `ScrollView` around it**, and that is a scope note
         // rather than a preference: a scroller lays its content out
         // against the limits *it* was given, not against its own
@@ -827,7 +636,7 @@ fn stylesheet() -> Vec<StyleRule> {
         // out 932 px wide. The catalogue fits the panel today; a list
         // that outgrows it needs that asymmetry addressed first.
         StyleRule::new(
-            Selector::Id("panelwrap"),
+            Selector::Id(lumen_static::select::PART_MENU),
             Patch::new()
                 .width(Length::Fixed(300.0))
                 .height(Length::Fixed(PANEL_H))
@@ -897,8 +706,16 @@ fn stylesheet() -> Vec<StyleRule> {
             Selector::Id("d_skeleton_b"),
             Patch::new().width(Length::Fixed(120.0)).height(Length::Fixed(18.0)),
         ),
+        // **The menu rows, by kind.** A `Repeat`'s rows live in an
+        // arena, off the main table, and are styled from the *template*
+        // — which carries no `#[widget_id]`, so `Kind` is the only
+        // selector that reaches them. It works here because every other
+        // `Button` in this sheet is addressed by id and an id beats a
+        // kind; it would not survive an un-named button being added.
+        // `docs/plan-select.md` T24.4 is the per-row addressing that
+        // would make this exact rather than merely true.
         StyleRule::new(
-            Selector::Id("opt"),
+            Selector::Kind("button"),
             Patch::new()
                 .width(Length::FILL)
                 .height(Length::Fixed(ROW_H))
@@ -937,7 +754,7 @@ mod tests {
     /// and the demo's own commands start.
     const STAGE: usize = 8;
 
-    fn host(entry: usize, open: bool) -> lumen_static_shell::Host<Show> {
+    pub(super) fn host(entry: usize, open: bool) -> lumen_static_shell::Host<Show> {
         use lumen_static_shell::text::{FontMetrics, FontStack};
         let mut h: lumen_static_shell::Host<Show> =
             lumen_static_shell::Host::new(build(entry, open), W, H);
@@ -954,15 +771,18 @@ mod tests {
 
     /// **The stage has a demo for every entry, and the menu a row.**
     ///
-    /// The one place this file can drift: `Panel` is a field per
+    /// **The menu's length is data now.** It used to be a field per
     /// catalogue entry, so adding a widget to `CATALOG` without adding a
-    /// field would silently drop it off the end of the menu — visible
-    /// only to someone who counted.
+    /// field silently dropped it off the end of the menu — visible only
+    /// to someone who counted. `Select` takes the count from
+    /// `CATALOG.len()`, so only the stage can still drift.
     #[test]
     fn the_menu_has_a_row_for_every_widget() {
-        println!("{} rows, {} demos, {} entries", ROWS, stage::DEMOS, CATALOG.len());
-        assert_eq!(ROWS, CATALOG.len(), "`Panel`'s fields and `CATALOG` disagree");
-        assert_eq!(stage::DEMOS, CATALOG.len(), "`Demos`'s fields and `CATALOG` disagree");
+        let app = build(0, true);
+        let rows = app.ui.body.header.picker.count();
+        println!("{rows} rows, {} demos, {} entries", stage::DEMOS, CATALOG.len());
+        assert_eq!(rows, CATALOG.len(), "the menu lists a different number of options");
+        assert_eq!(stage::DEMOS, CATALOG.len(), "`Demo`'s variants and `CATALOG` disagree");
     }
 
     /// **Every entry puts something on the stage.**
@@ -972,6 +792,7 @@ mod tests {
     /// smoke test that stopped at `seed`.
     #[test]
     fn every_entry_paints_a_demo() {
+        let mut seen: Vec<(&str, core::mem::Discriminant<Demo>)> = Vec::new();
         // **One host, selected through in turn** — not a fresh one per
         // entry. A `Demos::clear` that forgets a field leaves the
         // previous demo on the stage, and from a fresh app there is
@@ -1008,17 +829,19 @@ mod tests {
                 })
                 .any(|t| t == e.blurb);
             println!("  {:>12}  {demo} commands", e.name);
-            // **Exactly one demo on the stage.** `Demos::clear` is a
-            // hand-written list of eighteen fields; one left out of it
-            // leaves the previous demo underneath the new one, which
-            // paints and hit-tests and looks almost right.
-            assert_eq!(
-                h.app.ui.body.stage.row.demos.shown(),
-                1,
-                "{} left {} demos on the stage",
-                e.name,
-                h.app.ui.body.stage.row.demos.shown()
-            );
+            // **Exactly one demo on the stage — now by construction.**
+            // This used to assert `shown() == 1` over eighteen
+            // `Option`s, because `clear()` was a hand-written list and
+            // one field left out of it left the previous demo underneath
+            // the new one. An enum cannot hold two variants, so that
+            // assertion has no content left.
+            //
+            // What replaces it is the failure the enum *does* still
+            // allow: a catalogue entry seeding the wrong variant, which
+            // is a copy-paste away. Collected here, checked below — no
+            // per-entry literal to go stale, and two entries landing on
+            // one variant is exactly what it catches.
+            seen.push((e.name, core::mem::discriminant(&h.app.ui.body.stage.row.demo)));
             assert!(blurb, "{}'s blurb never reached the header", e.name);
             assert!(demo > 0, "{} put nothing on the stage", e.name);
 
@@ -1050,6 +873,15 @@ mod tests {
                 );
             }
         }
+
+        // No two entries put the same variant on the stage.
+        assert_eq!(seen.len(), CATALOG.len());
+        for (i, (na, da)) in seen.iter().enumerate() {
+            for (nb, db) in &seen[i + 1..] {
+                assert_ne!(da, db, "{na} and {nb} both seed the same demo variant");
+            }
+        }
+        println!("{} entries, {} distinct variants", seen.len(), seen.len());
     }
 
     /// **The dropdown is absent when closed and present when open**, and
@@ -1063,9 +895,10 @@ mod tests {
         let (shut, open) = (host(0, false), host(0, true));
         let (a, b) = (shut.list.cmds.len(), open.list.cmds.len());
         println!("closed {a} commands, open {b}");
-        assert!(open.app.ui.layer.row.panel.is_some(), "an open picker has no panel");
-        assert!(shut.app.ui.layer.row.panel.is_none(), "a closed picker kept its panel");
-        assert!(b > a + ROWS, "an open panel drew {} more commands, not {ROWS}+", b - a);
+        assert!(open.app.ui.body.header.picker.is_open(), "an open picker is not open");
+        assert!(!shut.app.ui.body.header.picker.is_open(), "a closed picker is open");
+        let rows = CATALOG.len();
+        assert!(b > a + rows, "an open menu drew {} more commands, not {rows}+", b - a);
     }
 
     /// **A widget on the stage actually receives its clicks.**
@@ -1089,7 +922,7 @@ mod tests {
         // The first button of the `Button` demo, found by geometry
         // rather than by a counted index.
         assert!(
-            h.app.ui.body.stage.row.demos.button.is_some(),
+            matches!(h.app.ui.body.stage.row.demo, Demo::Button(_)),
             "the Button demo is not on the stage"
         );
         let node = (0..<Screen as Widget>::NODE_COUNT)
@@ -1296,15 +1129,22 @@ mod tests {
 
     /// **Picking a row changes what is on the stage.**
     ///
-    /// Drives the real handler rather than setting `selected` directly,
-    /// so the wiring between a row and its entry is what is tested.
+    /// Drives the real handler, with the row index arriving the way it
+    /// does at runtime — in `EventCtx::row` — rather than from a table
+    /// of eighteen functions that no longer exists.
     #[test]
     fn picking_a_row_swaps_the_demo() {
         let mut s = build(0, true);
         assert_eq!(s.selected, 0);
-        PICKERS[15](&mut s, &press_at(0.0, 0.0));
+        let mut row = SelectRow::<Show>::default();
+        bind_row(&mut row, 15);
+        let mut cx = press_at(0.0, 0.0);
+        cx.row = Some(15);
+        (row.on_click)(&mut s, &cx);
         println!("after picking row 15: {} ({})", CATALOG[s.selected].name, s.selected);
         assert_eq!(s.selected, 15, "the handler picked the wrong entry");
-        assert!(!s.open, "picking a row left the dropdown open");
+        assert!(!s.ui.body.header.picker.is_open(), "picking a row left the dropdown open");
     }
 }
+
+

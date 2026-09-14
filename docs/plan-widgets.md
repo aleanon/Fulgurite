@@ -21,7 +21,7 @@ has eleven, and three of Phase B's items are among them:
 | text area | `TextArea<S>` (T11.3), a separate type — B7 revised |
 | container / card | *not needed* — any derived container with a background is one |
 | tabs | a composition, not a type (T11.4) — buttons + `Either` |
-| dropdown / select | **not built** — blocked, see T11.5 |
+| dropdown / select | **built** 2026-09-14 — `select::Select`, M24/T24.2 |
 | tooltip | **not built** — blocked, see T11.5 |
 | modal | **not built** — blocked, see T11.5 |
 
@@ -203,7 +203,15 @@ would have had to prove were already true and already tested elsewhere —
 `emit_table` marks zero-area nodes hidden, and C5 drops focus that
 leaves the screen.
 
-### T11.5 — overlays: dropdown, tooltip, modal — *needs a layout capability*
+### T11.5 — overlays: dropdown, tooltip, modal — **dropdown DONE 2026-09-14**
+
+> The dropdown shipped as `lumen_static::select::Select` in M24/T24.2;
+> tooltip and modal are still unbuilt. The estimate below — "the widgets
+> are a day after it" — was right about the widget and wrong about what
+> it would find: five framework defects underneath, four of which left
+> the whole test suite green when injected back. `docs/plan-select.md`
+> §T24.2 has the table.
+
 
 These three need **overlay and z-order**, which the layout model has no
 concept of. Containers place children sequentially by measured size,

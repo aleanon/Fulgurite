@@ -1115,6 +1115,27 @@ fn expand_enum(
 
                 const KIND: &'static str = #name_str;
 
+                /// **A container's defaults, like every other
+                /// container's.** The enum switch emitted no `defaults`
+                /// at all and so inherited `Node`'s `Style::default()`
+                /// — `Shrink` on both axes, where `row`, `column` and
+                /// `stack` all resolve `FILL` across and `Shrink` along.
+                ///
+                /// Nothing caught it because nothing had put an enum
+                /// where the difference shows. `examples/showcase` did,
+                /// in M24/T24.3: its stage is centred by a `FILL` spacer
+                /// either side, and a `Shrink` middle child is measured
+                /// in the row's *first* pass against all the space there
+                /// is — so it took the whole 960 px and the spacers got
+                /// nothing. The demo moved to the left edge.
+                fn type_defaults() -> ::lumen_static::Style {
+                    ::lumen_static::Style {
+                        width: ::lumen_static::Length::FILL,
+                        height: ::lumen_static::Length::Shrink,
+                        ..::lumen_static::Style::default()
+                    }
+                }
+
                 const SEEDS: &'static [::lumen_static::style::Seed] = &SEEDS;
             }
 
@@ -1154,6 +1175,10 @@ fn expand_enum(
             impl ::lumen_static::widget::Node for #name {
                 fn kind_name(&self) -> &'static str {
                     <Self as ::lumen_static::widget::Widget>::KIND
+                }
+
+                fn defaults(&self) -> ::lumen_static::Style {
+                    <Self as ::lumen_static::widget::Widget>::type_defaults()
                 }
 
                 fn layout(

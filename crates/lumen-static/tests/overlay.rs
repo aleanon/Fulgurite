@@ -504,3 +504,108 @@ fn deferring_forwards_every_command() {
         "Deferring hid the surface bounds, so culling turns off under an overlay pass"
     );
 }
+
+// ---- M24/T24.2: activation inside an overlay -------------------------
+
+/// A click on a widget *inside* an open overlay must reach the
+/// application.
+///
+/// It could not until 2026-09-14, and the dismissal tests above did not
+/// see it because they asserted the popup **stayed open**, never that
+/// anything inside it fired. `dispatch_overlaid` hit-tested with the
+/// overlays on top, offered the result to `on_event`, and then fell
+/// through to `dispatch` — which hit-tests *plainly*, and the ordinary
+/// walk cannot reach an out-of-flow child: a container rejects a point
+/// outside its own rect long before it gets there. So the hit that had
+/// just been found was thrown away and recomputed as `None`.
+///
+/// The comment at that fall-through read "fall through to activation on
+/// the overlay's node", which is what it was for and not what it did.
+mod overlay_activation {
+    use super::*;
+    use lumen_static::event::InputState;
+    use lumen_static::{Event, EventCtx};
+
+    #[derive(StaticTree, Default)]
+    #[widget(column, spacing = 0.0)]
+    struct Panel {
+        #[widget_id("row")]
+        row: lumen_static::ops::Button<App>,
+    }
+
+    #[derive(StaticTree, Default)]
+    #[widget(column, spacing = 0.0)]
+    struct Ui {
+        #[widget_id("head")]
+        head: lumen_static::ops::Fixed,
+        #[widget_id("pop")]
+        pop: Popup<Panel>,
+    }
+
+    #[derive(lumen_static::App, Default)]
+    struct App {
+        #[tree]
+        ui: Ui,
+        popped: u32,
+    }
+
+    #[test]
+    fn a_click_inside_an_open_overlay_reaches_the_handler() {
+        let mut a = App::default();
+        a.ui.pop.open = true;
+        a.ui.pop.anchor = lumen_static::Anchor::Below;
+        a.ui.pop.content.row.label = "pick";
+        a.ui.pop.content.row.on_click = |s: &mut App, _: &EventCtx| s.popped += 1;
+
+        let sheet = [
+            lumen_static::style::Rule::new(
+                lumen_static::style::Selector::Id("head"),
+                lumen_static::style::Patch::new()
+                    .width(lumen_static::style::Length::Fixed(80.0))
+                    .height(lumen_static::style::Length::Fixed(20.0)),
+            ),
+            lumen_static::style::Rule::new(
+                lumen_static::style::Selector::Id("row"),
+                lumen_static::style::Patch::new()
+                    .width(lumen_static::style::Length::Fixed(80.0))
+                    .height(lumen_static::style::Length::Fixed(20.0)),
+            ),
+        ];
+        let mut sty = vec![lumen_static::Style::default(); Ui::NODE_COUNT];
+        lumen_static::style::cascade_deep(&mut a.ui, &sheet, &mut sty);
+        let mut st = [NodeState::default(); Ui::NODE_COUNT];
+        pass::layout(&mut a.ui, &sty, &mut st, VIEW);
+        let mut list = DisplayList::new();
+        let mut ov: Overlays<4> = Overlays::default();
+        pass::paint_overlaid(&a.ui, &st, &mut list, &mut ov);
+
+        assert!(!ov.is_empty(), "setup: paint registered no overlay");
+        // The *button* inside the panel inside the popup — the node a
+        // person clicks, two levels below the overlay's root.
+        let row = lumen_static::style::index_of_wid(<Ui as Widget>::SUB_TABLE, "row")
+            .expect("the row node");
+        let c = st[row];
+        assert!(c.size.w > 0.0 && c.size.h > 0.0, "setup: the overlay content has no area");
+        let (x, y) = (c.pos.x + c.size.w / 2.0, c.pos.y + c.size.h / 2.0);
+        // **The premise.** If the ordinary walk can already find this
+        // point then the overlay path is not being exercised and a pass
+        // means nothing — the shape `docs/plan-select.md` and AGENT.md
+        // both call "the setup silently did not happen".
+        assert!(
+            pass::hit_test(&a.ui, &st, x, y).is_none(),
+            "setup: the plain walk finds ({x}, {y}) on its own, so this test \
+             would pass with the overlay routing removed"
+        );
+        assert!(
+            pass::hit_test_overlaid(&a.ui, &st, &ov, x, y).is_some(),
+            "setup: not even the overlay walk finds the content"
+        );
+
+        let mut input = InputState::default();
+        pass::dispatch_overlaid(&mut a, &sty, &mut st, &mut input, &ov, &Event::down(x, y));
+        let handled =
+            pass::dispatch_overlaid(&mut a, &sty, &mut st, &mut input, &ov, &Event::up(x, y));
+        assert!(handled, "the release was not handled");
+        assert_eq!(a.popped, 1, "the overlay content's handler never ran");
+    }
+}

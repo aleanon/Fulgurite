@@ -82,8 +82,16 @@ pub fn default_styles_into<W: Widget>(tree: &W, out: &mut [Style]) {
         out.len(),
         W::NODE_COUNT
     );
+    // **From the seed table, not the live tree** — the same correction
+    // the cascade got in M24/T24.1, in the second function that had the
+    // problem. `tree.node(i)` answers with the *container* for a hidden
+    // subtree (an `Option::None`, an inactive enum variant), so those
+    // nodes were seeded with the wrong type's defaults here exactly as
+    // they were there. Found by `tests/hatches.rs`, which read an
+    // inactive variant's width and got the enum's.
+    let _ = tree;
     for (i, slot) in out.iter_mut().enumerate().take(W::NODE_COUNT) {
-        *slot = tree.node(i).defaults();
+        *slot = (W::SEEDS[i].defaults)();
     }
 }
 
@@ -230,6 +238,7 @@ pub fn dispatch_overlaid<S: crate::event::App, O: crate::overlay::OverlaySink>(
     // Otherwise ordinary dispatch, with overlays taking pointer hits
     // first. `dispatch` does its own hit test, so an overlay hit is
     // routed by index here rather than by re-walking.
+    let mut on_overlay = None;
     if let Some(p) = ev.position() {
         if !ov.is_empty() {
             for k in (0..ov.len()).rev() {
@@ -251,14 +260,17 @@ pub fn dispatch_overlaid<S: crate::event::App, O: crate::overlay::OverlaySink>(
                         return true;
                     }
                     // Not consumed by the overlay's own widget: fall
-                    // through to activation on the overlay's node.
+                    // through to activation, **on this hit**. The
+                    // ordinary walk cannot find it again — see
+                    // `dispatch_at`.
+                    on_overlay = Some(h);
                     break;
                 }
             }
         }
     }
 
-    dispatch(state, style, st, input, ev)
+    dispatch_at(state, style, st, input, ev, on_overlay)
 }
 
 /// Hit-test with the overlays from the last [`paint_overlaid`] on top.
@@ -306,6 +318,32 @@ pub fn dispatch<S: crate::event::App>(
     st: &mut [NodeState],
     input: &mut crate::event::InputState,
     ev: &crate::event::Event,
+) -> bool {
+    dispatch_at(state, style, st, input, ev, None)
+}
+
+/// [`dispatch`], with the hit supplied rather than computed.
+///
+/// **Why this exists:** [`dispatch_overlaid`] has already hit-tested
+/// *with the overlays on top*, and the ordinary walk cannot reproduce
+/// that result — a container rejects a point outside its own rect
+/// before it ever reaches an out-of-flow child, which is exactly what an
+/// overlay is. So `dispatch_overlaid` used to fall through to
+/// `dispatch`, whose plain hit test answered `None`, and **no handler
+/// inside an open popup could ever run** (M24/T24.2). Passing the hit
+/// down is what makes "fall through to activation on the overlay's
+/// node" — which the comment there already claimed — true.
+///
+/// `None` means "hit-test as usual", and is computed at the same point
+/// in the sequence it always was, so a captured pointer still costs no
+/// hit test.
+fn dispatch_at<S: crate::event::App>(
+    state: &mut S,
+    style: &[Style],
+    st: &mut [NodeState],
+    input: &mut crate::event::InputState,
+    ev: &crate::event::Event,
+    preset: Option<crate::hit::Hit>,
 ) -> bool {
     use crate::event::{Event, EventCtx, Handlers, Key, NodeSel};
     use crate::widget::Widget;
@@ -482,7 +520,10 @@ pub fn dispatch<S: crate::event::App>(
 
     let (start, mut ctx, inner) = match ev.position() {
         Some(p) => {
-            let hit = state.tree().hit(st, 0, p.x, p.y);
+            let hit = match preset {
+                Some(h) => Some(h),
+                None => state.tree().hit(st, 0, p.x, p.y),
+            };
 
             // C6: pointer state, before anything can return early.
             // Hover follows the pointer; press latches on down and

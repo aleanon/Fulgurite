@@ -24,6 +24,17 @@ flt2dec              # core's float formatter, named where num::clamp says why i
 offset               # crates/lumen-static/src/desc.rs:8 -- table dispatch is gone
 long_running_const_eval  # rustc lint name, not ours (widget.rs, F5.1)
 present_with_damage  # softbuffer's API, named where counter-window says why it does NOT use it
+# The hand-wired dropdown and Option stage `examples/showcase` carried until
+# M24/T24.2-3, named in the prose that records what replaced them and why.
+# ~300 lines whose content was the number eighteen; `docs/plan-select.md` §0
+# has the table, and stage.rs and main.rs say it where the code used to be.
+Demos                # 18 Option fields + fill_all/clear/shown -> `enum Demo`
+PanelLayer           # a stack layer aiming the panel by spacers -> `Popup`
+PanelRow             # the other half of that scaffold
+pick0                # one handler per row -> one `fn` plus `EventCtx::row`
+pick17               # the other end of the same range
+PICKERS              # the table of eighteen that dispatched them
+ROWS                 # the field-per-entry count -> `Select::count()`, data
 fill_all             # examples/showcase's cascade workaround, deleted by M24/T24.1 --
                      # stage.rs and docs/plan-select.md record why it existed and how its
                      # removal was checked (the showcase test it was hiding goes red)

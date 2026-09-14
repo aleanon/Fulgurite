@@ -53,6 +53,68 @@ pub struct TreeRef<'a> {
     pub styles: &'a [lumen_static::Style],
 }
 
+/// Which indices `Node::node` actually answers *for*, into `out`.
+///
+/// `Node::node(i)` answers with the nearest enclosing **container** when
+/// `i` falls inside a branch that is not currently laid out — an
+/// `Option::None`, an inactive enum variant, a closed `Popup`. That is
+/// deliberate: the agent still walks those indices and reports them, so
+/// a tree dump names every node whichever variant is showing.
+///
+/// **But that stand-in must never be painted or probed at `i`.** It lays
+/// its own children out from `i` rather than from its own index, so the
+/// deeper the hidden node the further past the end of `states` it
+/// writes — a release-build panic the first time a real tree put an enum
+/// switch near the end of the table (M24/T24.3). Earlier trees escaped
+/// by luck: no hidden subtree, or one near enough the start that the
+/// overrun stayed in bounds and quietly hashed the wrong node.
+///
+/// # Why not "zero area"
+///
+/// Tried first, and wrong. A hidden branch *is* zeroed by `layout`, but
+/// so is a leaf that has content and was given no room — which is
+/// exactly `W1001`, the lint this crate exists to make possible. Both
+/// look identical from the state array, and gating on area turned the
+/// invisible-content lint off.
+///
+/// # What it actually tests
+///
+/// A node is a stand-in iff `node(i)` is **the same object** as
+/// `node(parent(i))` — same address *and* same kind. A live node is
+/// always a distinct object from its parent's.
+///
+/// The kind is checked as well as the address because a zero-sized first
+/// field shares its parent's address: `struct Row { s: Spacer }` puts
+/// `&row.s` and `&row` at the same place. Their kinds differ, so they
+/// are told apart — and dropping the kind from this comparison is shown
+/// to break `changes.rs`, so it is load-bearing rather than defensive.
+/// The residue it cannot see is a wrapper both at offset zero and of the
+/// same kind as its own child, which needs a type to contain itself.
+///
+/// One `node()` call per index, walking the table in order, so this is
+/// O(n) rather than the O(n·depth) an ancestor walk would cost.
+pub fn live_nodes(root: &dyn Node, table: &[NodeDesc], out: &mut Vec<bool>) {
+    fn ident(n: &dyn Node) -> (*const (), &'static str) {
+        (n as *const dyn Node as *const (), n.kind_name())
+    }
+    out.clear();
+    out.resize(table.len(), true);
+    let mut id: Vec<(*const (), &'static str)> = Vec::with_capacity(table.len());
+    for i in 0..table.len() {
+        id.push(ident(root.node(i)));
+    }
+    for i in 0..table.len() {
+        let p = table[i].parent;
+        if p == lumen_static::NO_PARENT {
+            continue;
+        }
+        // A stand-in *and* everything under it: the parent's liveness
+        // carries down, so one pass in table order (DFS pre-order, so
+        // parents first) settles the whole subtree.
+        out[i] = out[p as usize] && id[i] != id[p as usize];
+    }
+}
+
 impl<'a> TreeRef<'a> {
     pub fn of_root<W: Widget>(
         root: &'a W,

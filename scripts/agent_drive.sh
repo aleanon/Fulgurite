@@ -27,7 +27,7 @@ fi
 
 PORT="${LUMEN_AGENT_PORT:-7655}"
 cargo build --release -p showcase --features agent
-LUMEN_AGENT="127.0.0.1:$PORT" ./target/release/showcase >/tmp/agent_drive.log 2>&1 &
+RUST_BACKTRACE=1 LUMEN_AGENT="127.0.0.1:$PORT" ./target/release/showcase >/tmp/agent_drive.log 2>&1 &
 pid=$!
 trap 'kill $pid 2>/dev/null || true' EXIT
 sleep 4
@@ -55,34 +55,56 @@ def call(method, params=None):
         sys.exit(f"agent-drive: ui.getTree answered {res!r}, not a tree")
     return res
 
+# `select-trigger` and `select-menu` are the ids `Select` stamps on its
+# own nodes -- a composite is more than one node and the derive names only
+# a field, so a widget that is several has to publish its parts or nothing
+# can address them: not a stylesheet, not this script.
+TRIGGER = "#select-trigger"
+MENU = "#select-menu"
+ROW_H = 30
+
 def trigger_label():
-    for node in call("ui.getTree", {"depth": 3})["nodes"]:
-        if node.get("wid") == "trigger":
+    for node in call("ui.getTree", {"depth": 4})["nodes"]:
+        if node.get("wid") == "select-trigger":
             return node.get("label", "")
-    sys.exit("agent-drive: no #trigger in the tree")
+    sys.exit(f"agent-drive: no {TRIGGER} in the tree")
+
+def menu_box():
+    """The menu's bounds, or None when it is closed."""
+    r = call("ui.resolve", {"selector": MENU})
+    b = r.get("bounds")
+    if not b or b[2] - b[0] <= 0 or b[3] - b[1] <= 0:
+        return None
+    return b
 
 def shot():
     r = call("ui.screenshot", {})
     return hashlib.sha256(base64.b64decode(r["image_base64"])).hexdigest()
 
 before = trigger_label()
-call("input.click", {"selector": "#trigger"})
-rows = [x for x in call("ui.getTree", {"depth": 3})["nodes"] if x.get("wid") == "opt"]
-assert rows, "agent-drive: the dropdown did not open"
-# Row 8 is the Switch. Rows start at y = 118 and are 30 px apart.
-call("input.click", {"x": 178, "y": 118 + 30 * 8 + 15})
+assert menu_box() is None, "agent-drive: the menu is already open before anything was clicked"
+call("input.click", {"selector": TRIGGER})
+box = menu_box()
+assert box, "agent-drive: the dropdown did not open"
+
+# Row 8 is the Switch. Its position is computed from the menu's resolved
+# box rather than written down -- a hardcoded y is how a test ends up
+# clicking the wrong row and passing anyway.
+call("input.click", {"x": (box[0] + box[2]) / 2, "y": box[1] + ROW_H * 8 + ROW_H / 2})
 after = trigger_label()
 assert after != before, f"agent-drive: picking a row changed nothing ({before!r})"
 assert "Switch" in after, f"agent-drive: expected Switch, got {after!r}"
+assert menu_box() is None, "agent-drive: picking a row left the menu open"
 
 # A press, held. The frame while held must differ from the released one --
 # which is the claim a screenshot taken after a click cannot make.
-b = call("ui.resolve", {"selector": "#trigger"})["bounds"]
+b = call("ui.resolve", {"selector": TRIGGER})["bounds"]
 cx, cy = (b[0] + b[2]) / 2, (b[1] + b[3]) / 2
 rest = shot()
 call("input.pointerDown", {"x": cx, "y": cy})
 held = shot()
 call("input.pointerUp", {"x": cx, "y": cy})
 assert held != rest, "agent-drive: a held press looks identical to the resting frame"
-print(f"agent-drive: {before.split()[0]} -> {after.split()[0]}, {len(rows)} rows, press observable")
+print(f"agent-drive: {before.split()[0]} -> {after.split()[0]}, "
+      f"menu {int(box[2]-box[0])}x{int(box[3]-box[1])} px, press observable")
 PY

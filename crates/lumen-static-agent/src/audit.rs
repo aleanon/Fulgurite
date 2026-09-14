@@ -529,6 +529,8 @@ impl Auditor {
         let mut opaque_content = false;
 
         let table = tree.table;
+        let mut live = Vec::new();
+        crate::live_nodes(tree.as_ref().root, table, &mut live);
         for (i, d) in table.iter().enumerate() {
             let leaf = d.child_count == 0 && !d.is_container();
             let a = area(&st[i]);
@@ -538,7 +540,14 @@ impl Auditor {
             }
 
             // -- content-bearing checks, leaves only (see module docs) --
-            if leaf {
+            // Only leaves `node_mut(i)` actually answers for. For an
+            // index inside a branch that is not laid out it answers with
+            // the enclosing container, and probing that at `i` lays its
+            // children out from `i` and off the end of `scratch` — see
+            // `crate::live_nodes`. Note this is *not* "has area": a leaf
+            // with content and no room is `W1001`, which must still
+            // fire, and gating on area turned that lint off.
+            if leaf && live[i] {
                 let nat =
                     Self::natural(tree.root, tree.styles, &mut self.scratch, &mut *self.measure, i);
                 let has_content = nat.intrinsic && nat.size.w > 0.0 && nat.size.h > 0.0;

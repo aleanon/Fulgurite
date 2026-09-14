@@ -44,6 +44,21 @@ pub struct Host<A: App, R: Retention = Incremental, I: Invalidation = Everything
     /// the pointer has left it without reinstating the per-motion
     /// ancestor walk M9 refused.
     pub input: lumen_static::event::InputState,
+    /// Subtrees the last paint deferred to the overlay phase.
+    ///
+    /// **Added M24/T24.2**, and until then `Popup` did not work from
+    /// this host at all — which is every example and every window, since
+    /// `Host` is the front door. `Painter::defer` answered `false` with
+    /// no sink, so a popup painted *inline*, in tree order, and the
+    /// backgrounds of its later siblings drew straight over it;
+    /// `dispatch` rather than `dispatch_overlaid` meant Escape and
+    /// click-outside dismissal never ran either. The machinery had
+    /// shipped in M15 with nothing wired to it.
+    ///
+    /// Sixteen, and a full sink refuses rather than dropping silently —
+    /// see [`lumen_static::overlay::Overlays`]. Sixteen simultaneously
+    /// open overlays is a menu inside a menu inside a modal, four deep.
+    overlays: lumen_static::overlay::Overlays<16>,
     queue: lumen_static::InputQueue,
     /// Surface size in **physical** pixels — what a window reports.
     size: (u32, u32),
@@ -87,6 +102,7 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             states: vec![NodeState::default(); n],
             list: DisplayList::new(),
             input: lumen_static::event::InputState::default(),
+            overlays: Default::default(),
             queue: lumen_static::InputQueue::new(),
             size: (width, height),
             scale: 1.0,
@@ -256,11 +272,17 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
     pub fn pump_with(&mut self, metrics: &mut dyn TextMeasure) -> bool {
         let mut handled = false;
         while let Some(ev) = self.queue.pop() {
-            handled |= pass::dispatch(
+            // `dispatch_overlaid`: an overlay takes pointer hits first,
+            // Escape closes the topmost, and a press outside every open
+            // one dismisses them and is consumed. `self.overlays` is
+            // what the *last* paint deferred, which is deliberate — what
+            // can be clicked is what was drawn.
+            handled |= pass::dispatch_overlaid(
                 &mut self.app,
                 &self.styles,
                 &mut self.states,
                 &mut self.input,
+                &self.overlays,
                 &ev,
             );
         }
@@ -350,7 +372,12 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             // `observe` the optimizer removes.
             let mut scaled = lumen_static::Scaled::new(&mut self.list, self.scale);
             let mut out = lumen_static::Recording::new(&mut scaled, &mut self.retain);
-            self.app.tree().paint(&self.states, 0, &mut out);
+            pass::paint_overlaid(
+                self.app.tree(),
+                &self.states,
+                &mut out,
+                &mut self.overlays,
+            );
         }
         self.last_paint_ns = t1.elapsed().as_nanos() as u64;
 

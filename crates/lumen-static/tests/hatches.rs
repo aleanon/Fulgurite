@@ -216,14 +216,30 @@ fn enum_variants_get_stable_index_ranges_and_paint() {
 
     let mut st = [NodeState::default(); Slot::NODE_COUNT];
 
+    // **The enum node fills across and shrinks along, like every other
+    // container.** It used to `Shrink` on *both* axes, because the enum
+    // derive emitted no `defaults` at all and inherited `Node`'s — a
+    // difference from `row`, `column` and `stack` that nothing had put
+    // in a position to show until M24/T24.3. These assertions used to
+    // read the variant's own width off the enum node, which only worked
+    // because of that accident.
+    let text_at = 1;
+    let box_at = 1 + <Label as Widget>::NODE_COUNT;
+
     let mut s = Slot::Box(Fixed { w: 40.0, h: 12.0 });
     let sty = pass::default_styles(&s);
     pass::layout(&mut s, &sty, &mut st, VIEW);
-    assert_eq!(st[0].size, lumen_static::Size { w: 40.0, h: 12.0 });
+    assert_eq!(st[0].size.w, VIEW.max_w, "the enum node fills across");
+    assert_eq!(st[0].size.h, 12.0, "and shrinks to the variant along");
+    assert_eq!(
+        st[box_at].size,
+        lumen_static::Size { w: 40.0, h: 12.0 },
+        "the variant's own geometry is retained at its own index"
+    );
 
     let mut s = Slot::Text(Label::new("hello"));
     pass::layout(&mut s, &sty, &mut st, VIEW);
-    assert_eq!(st[0].size.w, 8.0 * 5.0, "the other variant measures itself");
+    assert_eq!(st[text_at].size.w, 8.0 * 5.0, "the other variant measures itself");
 
     let mut s = Slot::Nested(Panel::default());
     pass::layout(&mut s, &sty, &mut st, VIEW);

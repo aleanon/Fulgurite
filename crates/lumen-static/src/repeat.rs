@@ -299,9 +299,21 @@ impl<T: Widget + Default + 'static> Node for Repeat<T> {
             bind(&mut self.window[row % len], row);
         }
 
+        // **The repeater's own width, resolved first.** A row must be
+        // laid out against the box the repeater *settled on*, not the
+        // one it was offered — and it can be, because the width this
+        // resolves to never depends on a row: `content.w` below is the
+        // limit, not a measurement. Using `limits.max_w` here put an
+        // 18-row menu inside a 300 px panel out at 932 px wide, with
+        // every label centred in a box three times the panel
+        // (M24/T24.2). It is the same asymmetry `ScrollView` has and
+        // `examples/showcase` recorded against it; this half is now
+        // fixed.
+        let content = Size { w: limits.max_w, h: self.count as f32 * self.item_extent };
+        let s = crate::ops::resolve_self(limits, &style[i], content);
         let row_limits = Constraints {
             min_w: 0.0,
-            max_w: limits.max_w,
+            max_w: s.w,
             min_h: 0.0,
             max_h: self.item_extent,
         };
@@ -317,11 +329,13 @@ impl<T: Widget + Default + 'static> Node for Repeat<T> {
             window[sl].layout(cx, row_limits, row_style, &mut states[sl * n..(sl + 1) * n], 0);
         }
 
-        let content = Size { w: limits.max_w, h: self.count as f32 * self.item_extent };
-        let s = crate::ops::resolve_self(limits, &style[i], content);
-        st[i].constraints = limits;
-        st[i].size = s;
-        s
+        // **`record_painted`, not two field writes.** This wrote only
+        // `constraints` and `size`, so a repeater's `background`,
+        // `radius` and `shadow` resolved in the cascade and then reached
+        // no `NodeState` — `paint` has no `&[Style]` and reads them from
+        // there. A menu panel with a background came out transparent
+        // (M24/T24.2). Every other container records through here.
+        crate::ops::record_painted(st, i, limits, s, &style[i])
     }
 
     fn place(&mut self, at: Point, _style: &[Style], st: &mut [NodeState], i: usize) {
@@ -359,7 +373,17 @@ impl<T: Widget + Default + 'static> Node for Repeat<T> {
         // `docs/text-and-scrolling-decisions.md`) this becomes the
         // generic mechanism and `Repeat` keeps it only as its
         // `defaults()`.
-        out.push_clip(crate::ops::rect_of(&st[i]));
+        // **Its own shadow and fill, before the rows** — which every
+        // other container does (the derive, `ScrollView`, `Glass`) and
+        // this one did not, so a `background` on a repeater resolved
+        // and then painted nothing. Found when a menu panel came out
+        // transparent (M24/T24.2).
+        let r = crate::ops::rect_of(&st[i]);
+        if st[i].shadow > 0.0 {
+            out.shadow(r, st[i].radius, st[i].shadow);
+        }
+        out.rounded_rect(r, st[i].bg, st[i].radius);
+        out.push_clip(r);
         for k in 0..self.window.len() {
             self.window[self.slot(k)].paint(self.slice(k), 0, out);
         }

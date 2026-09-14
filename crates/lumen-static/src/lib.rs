@@ -138,6 +138,10 @@ pub mod textarea;
 pub mod toggle;
 #[cfg(feature = "alloc")]
 pub mod repeat;
+/// Behind `alloc`: its rows are a [`repeat::Repeat`], which is one of the
+/// escape hatches T13.4 gates.
+#[cfg(feature = "alloc")]
+pub mod select;
 pub mod style;
 pub mod text;
 pub mod widget;

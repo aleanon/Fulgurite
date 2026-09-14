@@ -151,10 +151,17 @@ fn measure_into(
     sums.clear();
     list.clear();
     sums.resize(n, 0);
+    let mut live = Vec::new();
+    crate::live_nodes(tree.root, tree.table, &mut live);
 
     for (i, (d, sum)) in tree.table.iter().zip(sums.iter_mut()).enumerate() {
-        geom.push(Geom { size: tree.states[i].size, pos: tree.states[i].pos });
-        if d.child_count == 0 {
+        let st = tree.states[i];
+        geom.push(Geom { size: st.size, pos: st.pos });
+        // **Only nodes `node(i)` actually answers for.** For an index
+        // inside a branch that is not laid out, it answers with the
+        // enclosing container, and painting that container at `i` runs
+        // off the end of `states` — see `crate::live_nodes`.
+        if d.child_count == 0 && live[i] {
             let from = list.len();
             tree.root.node(i).paint(tree.states, i, list);
             *sum = list.hash_from(from);

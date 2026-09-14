@@ -123,11 +123,31 @@ while proving nothing:
 | invalidation oracle (T16.7) | clicks never landed |
 | damage height bound (T16.2) | limit 200× the quantity it bounded |
 | banded byte-identity (T17.4) | 6 of 10 cases never split |
+| the whole suite vs. `Repeat`'s box (M24/T24.2) | no test laid a repeater out inside a narrower parent |
+| the whole suite vs. `Repeat`'s fill (M24/T24.2) | no test read a repeater's own background |
+| `tests/overlay.rs` dismissal (M24/T24.2) | asserted the popup *stayed open*, never that anything inside it fired |
+| every gate vs. a hidden subtree (M24/T24.3) | no tree had ever put an inactive enum variant near the end of the table |
 
 **Three were caught by injecting a fault; three by printing the measured
 number beside the bound and seeing the gap.** Neither method is
 optional, and reading the code caught none of them — reading is what
 wrote them.
+
+**The four added on 2026-09-14 were caught by a third method: using the
+thing.** M24/T24.2 built a dropdown on machinery that had shipped in
+M15 and been tested pass-by-pass ever since. Three of its four gaps were
+visible in the first rendered frame — rows laid out three times too
+wide, a panel with no background, a stage that stopped being centred —
+and the fourth was a **release-build panic** that appeared the moment a
+menu opened over an enum switch, with `just check` green and 134 test
+binaries green.
+
+The pattern is not that the tests were bad. Each one tested its pass
+directly and correctly. What nothing did was **assemble them** — and an
+end-to-end assembly is the only thing that can find a capability which
+is present, correct in isolation, and unreachable. `just gpu-parity` and
+`just agent-drive` exist because of this; a new capability wants one
+before it is called done.
 
 **The seventh was caught by a review agent reading the plan for a
 *different* feature** (2026-09-10, M18's spec review). `tests/banded.rs`

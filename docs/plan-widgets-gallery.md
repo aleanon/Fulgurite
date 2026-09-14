@@ -30,14 +30,14 @@ Tranche 1 is every leaf worth having, which is why it moved fast.
 |---|---|---|
 | **Text & display** (15) | Label, RichText, Markdown, Icon, Image, Avatar, Badge, Card, Chip, Rule, Space, Skeleton, Spinner, Toast, Tooltip | **done:** Label, Image, Spacer (=Space), Icon, Avatar, Badge, Chip, Divider (=Rule), Skeleton, Spinner · **left:** RichText, Markdown, Card, Toast, Tooltip |
 | **Buttons & input** (16) | Button, CheckBox, Switch, Radio, Slider, RangeSlider, Stepper, TextInput, TextField, SearchField, RichTextEditor, FindReplaceBar, ColorPicker, DatePicker, TimePicker, FilePicker | **done:** Button, CheckBox, Switch, Radio, Slider, TextInput, TextArea (≈TextField) · **left:** RangeSlider, Stepper, SearchField, RichTextEditor, FindReplaceBar, ColorPicker, DatePicker, TimePicker, FilePicker |
-| **Choice** (4) | PickList, Combobox, Select, Menu | **left:** all four. The showcase's own picker is the prototype — §3. |
+| **Choice** (4) | PickList, Combobox, Select, Menu | **done:** `Select` (M24/T24.2 — the showcase's picker *is* it now) · **left:** PickList, Combobox, Menu |
 | **Layout** (8) | Container, AlignBox, Wrap, Grid, SplitPane, PaneGrid, Scrollable, Accordion | **done:** the derive's row/column/stack (≈Container/AlignBox), ScrollView (=Scrollable) · **left:** Wrap, Grid, SplitPane, PaneGrid, Accordion |
 | **Lists & data** (4) | VirtualList, DataGrid, Tree, Pagination | **done:** Repeat (=VirtualList), List · **left:** DataGrid, Tree, Pagination |
 | **Charts & progress** (5) | BarChart, LineChart, PieChart, ProgressBar, Canvas | **done:** all but Canvas |
 | **Navigation** (5) | Tabs, AppBar, BottomNav, NavigationRail, PullToRefresh | **left:** all five |
 | **Overlays** (4) | Modal, Popover, Sheet, Drawer | **done:** Popup (≈Popover) · **left:** Modal, Sheet, Drawer |
 
-**Twenty-two of sixty-one**, counting the core's. Thirty-nine left.
+**Twenty-three of sixty-one**, counting the core's. Thirty-eight left.
 
 ## 1. The crate, and why it is a crate
 

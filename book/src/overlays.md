@@ -76,3 +76,55 @@ The test passed, and it was testing nothing (`AGENT.md`, M15/T15.0).
 If you are testing that an overlay is hit first, declare it *after* what
 it covers — otherwise you have written a test that ordinary tree order
 already satisfies.
+
+## `Select<S>`: the dropdown
+
+The first widget built on all of this, and the one that found out what
+was not wired up.
+
+```text
+Select<S> {
+    trigger: Button<S, String>,
+    menu:    Popup<Repeat<Button<S, String>>>,
+}
+```
+
+Four nodes, **whatever the option count** — the rows are a `Repeat`, so
+a menu's length is data about what you are showing rather than a fact
+about the tree's shape. One `bind` configures a recycled row's label and
+its `on_click`, and one handler serves every row because `EventCtx::row`
+says which was hit.
+
+It owns **opening**: a press on the trigger is consumed in
+`Node::on_event`, the hook a widget has for its own state. It cannot be
+an `on_click` — that is `fn(&mut S, ..)`, and from `&mut S` a widget is
+reachable only as `&mut dyn Node`.
+
+It does not own **closing**, and that is the interesting half. A press
+outside every open overlay is dismissed and consumed by
+`dispatch_overlaid` before any widget sees it, so pressing the trigger
+while the menu is open closes it and does *not* reopen it. That is what
+every desktop toolkit does, and here it is what happens when you write
+no code for it.
+
+### Reaching inside a composite
+
+`#[widget_id]` names a *field*. A widget that is several nodes has to
+publish its own, or nothing can address its parts — not a stylesheet,
+not the agent's `#id` selectors. `Select` stamps
+`select::PART_TRIGGER`, `PART_POPUP` and `PART_MENU`, namespaced so they
+cannot collide with an application's own ids.
+
+## What `Host` does with all this
+
+`Host::pump` paints through `paint_overlaid` and routes input through
+`dispatch_overlaid`. It did neither until M24: the machinery above
+shipped in M15 with the passes tested directly and **nothing in the
+front door wired to them**, so a `Popup` inside a `Host` — which is
+every example and every window — painted inline, under the backgrounds
+of its later siblings, and never saw Escape or a click outside.
+
+If you are adding a capability to this framework, that is the failure
+mode to watch for. It is the fourth time here: a stylesheet, an image
+source, an agent socket and now the overlay phase all existed and were
+unreachable from the shell applications actually use.
