@@ -86,6 +86,23 @@ fn a_kind_found_only_in_an_arena_template_matches() {
     );
 }
 
+/// M25/T25.11: a role sets the field it resolves into, so it is judged as
+/// that field. `Fixed` reads `color` and not `background`, so the same
+/// kind gives both the firing case and its quiet twin.
+#[test]
+fn a_role_is_linted_as_the_field_it_sets() {
+    use lumen_static::style::Role;
+    let found = lint(&[
+        Rule::new(Selector::Kind("fixed"), Patch::new().background_role(Role::Surface)),
+        Rule::new(Selector::Kind("fixed"), Patch::new().color_role(Role::Text)),
+    ]);
+    assert_eq!(
+        found,
+        vec![SheetFinding { rule: 0, issue: SheetIssue::Unread(Fields::BACKGROUND) }],
+        "a `Fixed` paints no background, so a background role on one is a no-op; its colour role is not"
+    );
+}
+
 #[test]
 fn any_always_matches() {
     assert!(lint(&[Rule::new(Selector::Any, Patch::new().width(Length::FILL))]).is_empty());

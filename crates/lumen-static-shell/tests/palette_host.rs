@@ -15,11 +15,11 @@
 use std::cell::Cell;
 
 use lumen_static::desc::{NodeDesc, NodeState, NO_PARENT};
-use lumen_static::display::{Color, Painter};
+use lumen_static::display::{Cmd, Color, Painter};
 use lumen_static::event::{EventCtx, Handlers, NodeSel};
 use lumen_static::invalidate::Boundaries;
 use lumen_static::ops::{record_painted, resolve_self, Label};
-use lumen_static::style::{Palette, Seed, Style};
+use lumen_static::style::{Palette, Patch, Role, Rule, Seed, Selector, Style};
 use lumen_static::widget::{Node, Widget};
 use lumen_static::{leaf_common, App as DeriveApp, Constraints, LayoutCx, Size, StaticTree};
 use lumen_static_shell::Host;
@@ -71,6 +71,7 @@ impl<S> Handlers<S> for Probe {
 #[widget(column, spacing = 0.0)]
 struct Panel {
     probe: Probe,
+    #[widget_id("note")]
     note: Label,
 }
 
@@ -100,6 +101,107 @@ fn settled() -> Bounded {
 
 fn layouts(h: &Bounded) -> u32 {
     h.app.ui.panel.probe.layouts.get()
+}
+
+/// The colour the label's text was painted in last frame — read off the
+/// display list, so a style that was cascaded but never laid out and
+/// painted does not count.
+fn note_colour(h: &Bounded) -> Option<Color> {
+    let colours: Vec<Color> = h
+        .list
+        .cmds
+        .iter()
+        .filter_map(|c| match c {
+            Cmd::Text { color, .. } => Some(*color),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(colours.len(), 1, "setup: the label paints exactly one run of text: {colours:?}");
+    colours.first().copied()
+}
+
+/// `settled`, with text in the label so it paints something to read.
+fn settled_with_text() -> Bounded {
+    let mut app = Themed::default();
+    app.ui.panel.note = Label::new("note");
+    let mut h: Bounded = Host::new(app, 200, 100);
+    h.pump();
+    h.pump();
+    assert!(h.changed().can_skip(), "setup: a still frame leaves nothing marked");
+    h
+}
+
+fn text_role() -> [Rule; 1] {
+    [Rule::new(Selector::Id("note"), Patch::new().color_role(Role::Text))]
+}
+
+/// M25/T25.11: a rule that names a role follows the host's palette — at
+/// `set_stylesheet` and again at every `set_palette`.
+///
+/// **Dark first**, so the sheet is applied under a palette that is not
+/// the default: `set_stylesheet` resolving against `Palette::LIGHT`
+/// instead of the host's would otherwise go unseen.
+#[test]
+fn a_role_in_the_sheet_follows_set_palette() {
+    let mut h = settled_with_text();
+    let default = note_colour(&h);
+    assert_ne!(default, Some(Palette::DARK.text), "setup: the label's default is not dark text");
+    assert_ne!(default, Some(Palette::LIGHT.text), "setup: the label's default is not light text");
+    assert_ne!(Palette::DARK.text, Palette::LIGHT.text, "setup: the palettes differ where probed");
+
+    h.set_palette(Palette::DARK);
+    h.set_stylesheet(&text_role());
+    h.pump();
+    let under_dark = note_colour(&h);
+    println!("default {default:?}; after the sheet, under dark: {under_dark:?}");
+    assert_eq!(
+        under_dark,
+        Some(Palette::DARK.text),
+        "set_stylesheet resolved the role against a palette other than the host's"
+    );
+
+    h.pump();
+    assert!(h.changed().can_skip(), "setup: the frame settled before the swap");
+    h.set_palette(Palette::LIGHT);
+    h.pump();
+    let under_light = note_colour(&h);
+    println!("after set_palette(LIGHT): {under_light:?}");
+    assert_eq!(
+        under_light,
+        Some(Palette::LIGHT.text),
+        "set_palette did not re-resolve the sheet's role: the label kept last palette's colour"
+    );
+}
+
+/// A scoped restyle resolves against the host's palette too — otherwise a
+/// class toggle under a dark theme would paint that subtree light.
+#[test]
+fn restyle_subtree_resolves_roles_against_the_host_palette() {
+    let mut h = settled_with_text();
+    h.set_palette(Palette::DARK);
+    h.pump();
+    assert!(h.restyle_subtree(&text_role(), "note"), "setup: the id matched");
+    h.pump();
+    let painted = note_colour(&h);
+    println!("restyled under dark: {painted:?}");
+    assert_eq!(
+        painted,
+        Some(Palette::DARK.text),
+        "restyle_subtree resolved the role against a palette other than the host's"
+    );
+}
+
+/// A rule that names a colour, not a role, keeps it under every palette —
+/// the half of theming a role must not take over.
+#[test]
+fn a_plain_colour_does_not_follow_the_palette() {
+    const INK: Color = Color(90, 10, 10, 255);
+    let mut h = settled_with_text();
+    h.set_stylesheet(&[Rule::new(Selector::Id("note"), Patch::new().color(INK))]);
+    h.pump();
+    h.set_palette(Palette::DARK);
+    h.pump();
+    assert_eq!(note_colour(&h), Some(INK));
 }
 
 #[test]

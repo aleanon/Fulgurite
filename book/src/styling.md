@@ -70,6 +70,49 @@ rather than trusted**: `crates/lumen-static-widgets/tests/style_reads.rs`
 renders every kind with and without each field and fails if a declared
 mask disagrees with what the output did (`docs/results-appearance.md`).
 
+## A rule may name a palette role instead of a colour
+
+A `style::Palette` is the colours a theme is made of, named by role —
+`page`, `surface`, `control`, `text`, `muted`, `accent`, `on_accent`,
+`focus` — and the host holds one. A rule themes by naming a `style::Role`
+where it would have named a colour:
+
+```rust
+# extern crate lumen_static;
+use lumen_static::style::{Palette, Patch, Role, Rule, Selector};
+use lumen_static::Color;
+
+fn sheet() -> [Rule; 2] {
+    [
+        // Follows the palette: whatever it calls text.
+        Rule::new(Selector::Kind("label"), Patch::new().color_role(Role::Text)),
+        // Does not: a hairline is this colour under every palette.
+        Rule::new(Selector::Id("hr"), Patch::new().background(Color(0xdf, 0xe4, 0xed, 0xff))),
+    ]
+}
+# fn main() {
+#     let s = sheet();
+#     assert_eq!(s[0].patch.color_role, Some(Role::Text));
+#     assert_eq!(Palette::DARK.get(Role::Text), Palette::DARK.text);
+# }
+```
+
+The cascade resolves a role into the node's `Style` — `color_role` into
+`color`, `background_role` into `background` — so nothing on the frame
+path knows roles exist. `Host::set_palette` re-runs the cascade over the
+sheet the host kept, and marks the tree changed so a skipped subtree is
+laid out again; a rule that named a value keeps its value. The lint
+counts a role as the field it sets, so a `background_role` on a kind
+that paints no background is reported like a `background` would be.
+
+`examples/showcase` is written this way: `LUMEN_PALETTE=dark just
+showcase` starts it dark, and its `every_role_rule_follows_the_palette`
+test checks every field a role decides against both palettes. What a role
+cannot reach is a colour a widget keeps as its own field — a toggle's
+`mark`, a text field's `caret_color` — and a pressed look that is more
+than a shade; `docs/plan-appearance.md` T25.10 and T25.11 record why
+those were left there.
+
 ## Ids and classes come from the tree
 
 They are attributes on the field, not values set at runtime:

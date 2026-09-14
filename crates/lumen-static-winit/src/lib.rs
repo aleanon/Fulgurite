@@ -124,6 +124,11 @@ pub struct Config {
     /// Empty by default, which is what every node's `Node::defaults`
     /// already gives.
     pub stylesheet: Vec<Rule>,
+    /// The palette the stylesheet's roles resolve against (M25/T25.11),
+    /// set before the sheet is applied so the first frame is already in
+    /// it. `Palette::LIGHT` by default; a running window swaps it with
+    /// `app.setPalette` when the agent is compiled in.
+    pub palette: lumen_static::style::Palette,
     /// Where `Cmd::Image` gets its pixels.
     ///
     /// Added 2026-09-13 for `examples/glasswall`, and for the same
@@ -160,6 +165,7 @@ impl Default for Config {
             page: Color(255, 255, 255, 255),
             backend: Prefer::Auto,
             stylesheet: Vec::new(),
+            palette: lumen_static::style::Palette::LIGHT,
             images: None,
             agent: None,
         }
@@ -240,6 +246,7 @@ struct Win<A: App> {
 impl<A: App> Win<A> {
     fn new(app: A, config: Config) -> Self {
         let mut host = Host::new(app, config.width, config.height);
+        host.set_palette(config.palette);
         if !config.stylesheet.is_empty() {
             host.set_stylesheet(&config.stylesheet);
         }

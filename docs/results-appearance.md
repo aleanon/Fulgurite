@@ -276,3 +276,34 @@ mask declared from any of those would have made the lint wrong in one
 direction or the other. These stages, not the `rebuild` frame, are what a per-node look
 would show in: the rebuild's layout at `all_rows` is 4,879 µs of text
 shaping.
+
+## T25.11 — palette roles in a stylesheet
+
+`Patch::color_role` and `Patch::background_role` name a `style::Role`; the
+cascade resolves them against the palette it is handed, and
+`Host::set_palette` re-cascades the sheet the host kept. Measured against
+the T25.10 commit (`58ce0f3`), built in a worktree beside this one.
+
+| quantity | T25.10 | **roles** | threshold | verdict |
+|---|---:|---:|---|---|
+| embedded `.text` | 26,364 B | **26,364 B** (+0) | ≤ +300 B over T25.1 | **pass** — the fixture's firmware links no cascade, so this measures that nothing else grew, not what a cascade on the target would cost |
+| RAM, `Ui` on the target | 1,136 B | **1,136 B** | must not grow | **pass** — no widget changed |
+| `Patch`, host | 108 B | **112 B** (+4) | reported | two one-byte `Option<Role>`s, rounded to the struct's 4-byte alignment |
+| `Rule`, host | 136 B | **136 B** | reported | the +4 fits in padding the selector already left |
+
+The cascade, two alternating runs of `benches --bin cascade` each, medians:
+
+| case | T25.10 | **roles** | verdict |
+|---|---:|---:|---|
+| whole table, 901 nodes | 17,848–17,910 ns | **17,905–18,179 ns** | overlaps the runs' own spread |
+| subtree, 90 of 901 | 1,634–1,751 ns | **1,740–1,860 ns** | overlaps |
+| showcase-shaped sheet, 27 rules | 76,927–78,224 ns | **63,764–64,254 ns** | **17% faster — not claimed.** The bench's sheet names no role, so the change adds a branch per colour field and removes nothing; a speed-up it cannot cause is code placement, recorded so a later regression back to ~77 µs is not mistaken for one |
+
+A palette swap is one of these cascades plus the full relayout
+`set_palette` already cost at T25.3, on an event a user makes.
+
+**What the showcase exercises:** `every_role_rule_follows_the_palette`
+checks 414 role-decided colour fields against both of the showcase's
+palettes and 54 value-decided ones for staying put, over its 18 catalogue
+entries — the main table and every arena under it, since most of the sheet
+styles the demo and the menu rows, which live off the table.

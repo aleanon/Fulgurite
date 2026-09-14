@@ -391,13 +391,15 @@ impl Fields {
 
 /// The colours a theme is made of — data, swapped at runtime — M25/T25.3.
 ///
-/// iced's shape (`docs/plan-appearance.md` §1): a palette is data, and a
-/// widget's look is a function of it. Held by the host and reached by
-/// every `layout` through [`crate::LayoutCx::palette`]; nothing reads it
-/// until a widget declares a look.
+/// iced's shape (`docs/plan-appearance.md` §1): a palette is data, and
+/// what is drawn is a function of it. Held by the host, and reached two
+/// ways: a stylesheet rule names a [`Role`] instead of a colour
+/// ([`Patch::color_role`], M25/T25.11) and the cascade resolves it here;
+/// and every `layout` sees it through [`crate::LayoutCx::palette`], for a
+/// widget that wants a colour no rule sets.
 ///
 /// Named by role, not by hue, so a dark palette is the same names with
-/// different values and a look written against one reads correctly
+/// different values and a sheet written against one reads correctly
 /// against the other.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Palette {
@@ -451,6 +453,40 @@ impl Palette {
         on_accent: crate::display::Color(10, 14, 24, 255),
         focus: crate::display::Color(130, 170, 255, 255),
     };
+
+    /// The colour this palette gives `role`.
+    pub const fn get(&self, role: Role) -> crate::display::Color {
+        match role {
+            Role::Page => self.page,
+            Role::Surface => self.surface,
+            Role::Control => self.control,
+            Role::Text => self.text,
+            Role::Muted => self.muted,
+            Role::Accent => self.accent,
+            Role::OnAccent => self.on_accent,
+            Role::Focus => self.focus,
+        }
+    }
+}
+
+/// One of a [`Palette`]'s colours, by name — what a stylesheet rule sets
+/// when it themes rather than paints (M25/T25.11).
+///
+/// A rule that says `color_role(Role::Text)` resolves to whatever the
+/// host's palette calls text, and resolves again when the palette is
+/// swapped; a rule that says `color(INK)` keeps `INK` under every
+/// palette. One byte, so a sheet of them costs what a sheet of colours
+/// did.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Role {
+    Page,
+    Surface,
+    Control,
+    Text,
+    Muted,
+    Accent,
+    OnAccent,
+    Focus,
 }
 
 impl Default for Palette {
@@ -510,6 +546,12 @@ pub struct Patch {
     pub visible: Option<bool>,
     pub color: Option<crate::display::Color>,
     pub background: Option<crate::display::Color>,
+    /// `color`, as a palette role resolved at cascade time (M25/T25.11).
+    /// **Wins over `color`** when both are set; the setters clear the
+    /// other, so only a struct literal can set both.
+    pub color_role: Option<Role>,
+    /// `background`, the same way.
+    pub background_role: Option<Role>,
     pub radius: Option<f32>,
     pub font_size: Option<f32>,
     pub font_weight: Option<f32>,
@@ -531,6 +573,8 @@ impl Patch {
             visible: None,
             color: None,
             background: None,
+            color_role: None,
+            background_role: None,
             radius: None,
             font_size: None,
             font_weight: None,
@@ -579,11 +623,28 @@ impl Patch {
 
     pub const fn color(mut self, c: crate::display::Color) -> Self {
         self.color = Some(c);
+        self.color_role = None;
         self
     }
 
     pub const fn background(mut self, c: crate::display::Color) -> Self {
         self.background = Some(c);
+        self.background_role = None;
+        self
+    }
+
+    /// The text or mark colour, as whatever the host's palette calls
+    /// `role` — re-resolved when the palette changes (M25/T25.11).
+    pub const fn color_role(mut self, role: Role) -> Self {
+        self.color_role = Some(role);
+        self.color = None;
+        self
+    }
+
+    /// The background, as a palette role (M25/T25.11).
+    pub const fn background_role(mut self, role: Role) -> Self {
+        self.background_role = Some(role);
+        self.background = None;
         self
     }
 
@@ -620,7 +681,7 @@ impl Patch {
     }
 
     #[inline]
-    fn apply_to(&self, s: &mut Style) {
+    fn apply_to(&self, s: &mut Style, palette: &Palette) {
         if let Some(v) = self.width {
             s.width = v;
         }
@@ -645,10 +706,14 @@ impl Patch {
         if let Some(v) = self.focus_ring {
             s.focus_ring = v;
         }
-        if let Some(v) = self.color {
+        if let Some(r) = self.color_role {
+            s.color = palette.get(r);
+        } else if let Some(v) = self.color {
             s.color = v;
         }
-        if let Some(v) = self.background {
+        if let Some(r) = self.background_role {
+            s.background = palette.get(r);
+        } else if let Some(v) = self.background {
             s.background = v;
         }
         if let Some(v) = self.radius {
@@ -701,10 +766,12 @@ impl Patch {
         if self.visible.is_some() {
             f |= Fields::VISIBLE.0;
         }
-        if self.color.is_some() {
+        // A role sets the field it resolves into, so the lint judges it
+        // by that field (M25/T25.11).
+        if self.color.is_some() || self.color_role.is_some() {
             f |= Fields::COLOR.0;
         }
-        if self.background.is_some() {
+        if self.background.is_some() || self.background_role.is_some() {
             f |= Fields::BACKGROUND.0;
         }
         if self.radius.is_some() {
@@ -764,10 +831,11 @@ fn matches(sel: &Selector, d: &NodeDesc, kind: &str) -> bool {
 /// stylesheet, the table, and each kind's `defaults()` — and
 /// [`Node::defaults`](crate::widget::Node::defaults) is required to
 /// depend on the type alone, never on instance state. So the computed
-/// styles change only when the sheet is replaced or the tree's shape is
-/// (a hot reload), which is exactly when
-/// [`Host::set_stylesheet`](../../lumen_static_shell/struct.Host.html)
-/// and `Host::new` run it.
+/// styles change only when the sheet is replaced, the palette its roles
+/// name is (M25/T25.11), or the tree's shape is (a hot reload), which is
+/// exactly when
+/// [`Host::set_stylesheet`](../../lumen_static_shell/struct.Host.html),
+/// `Host::set_palette` and `Host::new` run it.
 ///
 /// A `pass::frame` helper used to cascade and lay out together, on the
 /// theory that the two belong in one step. It had zero callers — every
@@ -775,15 +843,31 @@ fn matches(sel: &Selector, d: &NodeDesc, kind: &str) -> bool {
 /// state-independent it was not merely unused but misleading, since it
 /// implied the cascade had to be re-run for a frame to be correct. It
 /// was deleted rather than wired up. `docs/plan-review-fixes.md` F3.3.
+///
+/// A rule's palette roles resolve against [`Palette::LIGHT`]; a host with
+/// a palette of its own calls [`cascade_with`].
 pub fn cascade(table: &[NodeDesc], seeds: &[Seed], sheet: Stylesheet, out: &mut [Style]) {
-    cascade_range(table, seeds, sheet, out, 0..table.len());
+    cascade_with(table, seeds, sheet, &Palette::LIGHT, out);
 }
 
-/// [`cascade`], restricted to a range of the table.
+/// [`cascade`], resolving the sheet's palette roles against `palette`
+/// (M25/T25.11).
+pub fn cascade_with(
+    table: &[NodeDesc],
+    seeds: &[Seed],
+    sheet: Stylesheet,
+    palette: &Palette,
+    out: &mut [Style],
+) {
+    cascade_range(table, seeds, sheet, palette, out, 0..table.len());
+}
+
+/// [`cascade_with`], restricted to a range of the table.
 fn cascade_range(
     table: &[NodeDesc],
     seeds: &[Seed],
     sheet: Stylesheet,
+    palette: &Palette,
     out: &mut [Style],
     range: core::ops::Range<usize>,
 ) {
@@ -795,7 +879,7 @@ fn cascade_range(
         for spec in 0..=3u8 {
             for r in sheet {
                 if r.selector.specificity() == spec && matches(&r.selector, d, kind) {
-                    r.patch.apply_to(&mut s);
+                    r.patch.apply_to(&mut s, palette);
                 }
             }
         }
@@ -820,6 +904,7 @@ fn cascade_from_instance(
     defaults: &dyn Fn(usize) -> Defaults,
     kind_of: &dyn Fn(usize) -> &'static str,
     sheet: Stylesheet,
+    palette: &Palette,
     out: &mut [Style],
 ) {
     debug_assert_eq!(table.len(), out.len());
@@ -829,7 +914,7 @@ fn cascade_from_instance(
         for spec in 0..=3u8 {
             for r in sheet {
                 if r.selector.specificity() == spec && matches(&r.selector, d, kind) {
-                    r.patch.apply_to(&mut s);
+                    r.patch.apply_to(&mut s, palette);
                 }
             }
         }
@@ -974,9 +1059,25 @@ pub fn index_of_wid(table: &[NodeDesc], wid: &str) -> Option<usize> {
 /// expensively — a full cascade is run and every style outside the
 /// range is compared. A release build skips that; a test does not, which
 /// is where the mistake will be caught.
+///
+/// Roles resolve against [`Palette::LIGHT`]; see [`cascade_subtree_with`].
 pub fn cascade_subtree<W: crate::widget::Widget + ?Sized>(
     tree: &mut W,
     sheet: Stylesheet,
+    out: &mut [Style],
+    root: usize,
+) {
+    cascade_subtree_with(tree, sheet, &Palette::LIGHT, out, root);
+}
+
+/// [`cascade_subtree`], resolving roles against `palette` (M25/T25.11).
+/// The palette must be the one the rest of `out` was cascaded against,
+/// for the same reason the sheet must: the debug check compares with a
+/// full cascade under it.
+pub fn cascade_subtree_with<W: crate::widget::Widget + ?Sized>(
+    tree: &mut W,
+    sheet: Stylesheet,
+    palette: &Palette,
     out: &mut [Style],
     root: usize,
 ) {
@@ -993,13 +1094,13 @@ pub fn cascade_subtree<W: crate::widget::Widget + ?Sized>(
     #[cfg(all(debug_assertions, feature = "alloc"))]
     let witness: Vec<Style> = {
         let mut full = out.to_vec();
-        cascade(table, W::SEEDS, sheet, &mut full);
+        cascade_with(table, W::SEEDS, sheet, palette, &mut full);
         full
     };
 
-    cascade_range(table, W::SEEDS, sheet, out, range.clone());
+    cascade_range(table, W::SEEDS, sheet, palette, out, range.clone());
     for i in range.clone() {
-        cascade_arenas(tree.node_mut(i), sheet);
+        cascade_arenas(tree.node_mut(i), sheet, palette);
     }
 
     #[cfg(all(debug_assertions, feature = "alloc"))]
@@ -1030,28 +1131,43 @@ pub fn cascade_subtree<W: crate::widget::Widget + ?Sized>(
 /// Per-instance styling would need per-instance rows and a selector
 /// vocabulary that can name a row; neither exists, and this does not
 /// pretend otherwise.
+///
+/// Roles resolve against [`Palette::LIGHT`]; a host holding a palette
+/// calls [`cascade_deep_with`].
 pub fn cascade_deep<W: crate::widget::Widget + ?Sized>(
     tree: &mut W,
     sheet: Stylesheet,
     out: &mut [Style],
 ) {
-    cascade(W::SUB_TABLE, W::SEEDS, sheet, out);
+    cascade_deep_with(tree, sheet, &Palette::LIGHT, out);
+}
+
+/// [`cascade_deep`], resolving the sheet's palette roles against
+/// `palette` — what `Host::set_stylesheet` and `Host::set_palette` run
+/// (M25/T25.11).
+pub fn cascade_deep_with<W: crate::widget::Widget + ?Sized>(
+    tree: &mut W,
+    sheet: Stylesheet,
+    palette: &Palette,
+    out: &mut [Style],
+) {
+    cascade_with(W::SUB_TABLE, W::SEEDS, sheet, palette, out);
     for i in 0..W::SUB_TABLE.len() {
-        cascade_arenas(tree.node_mut(i), sheet);
+        cascade_arenas(tree.node_mut(i), sheet, palette);
     }
 }
 
 /// Cascade every arena `node` owns, and every arena under those.
-// Both parameters are unused without `alloc`: nothing implements the
+// The parameters are unused without `alloc`: nothing implements the
 // arena hooks then, because Repeat, List and Dyn are all gated.
 #[cfg_attr(not(feature = "alloc"), allow(unused_variables))]
-fn cascade_arenas(node: &mut dyn crate::widget::Node, sheet: Stylesheet) {
+fn cascade_arenas(node: &mut dyn crate::widget::Node, sheet: Stylesheet, palette: &Palette) {
     #[cfg(feature = "alloc")]
     for a in 0..node.arena_count() {
         let Some(arena) = node.arena_mut(a) else { continue };
         let table = arena.table;
         match arena.seeds {
-            Some(seeds) => cascade(table, seeds, sheet, arena.style),
+            Some(seeds) => cascade_with(table, seeds, sheet, palette, arena.style),
             // A `Dyn` island: see `cascade_from_instance`.
             None => {
                 let template = arena.template;
@@ -1060,6 +1176,7 @@ fn cascade_arenas(node: &mut dyn crate::widget::Node, sheet: Stylesheet) {
                     &|i| template.node(i).defaults(),
                     &|i| template.node(i).kind_name(),
                     sheet,
+                    palette,
                     arena.style,
                 );
             }

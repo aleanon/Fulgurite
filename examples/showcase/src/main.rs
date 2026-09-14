@@ -39,6 +39,7 @@ use lumen_static::display::Color;
 use lumen_static::prelude::*;
 use lumen_static::Rule as StyleRule;
 use lumen_static::select::{Row as SelectRow, Select};
+use lumen_static::style::Palette;
 use lumen_static::Toggle;
 use lumen_static_widgets::prelude::*;
 use lumen_static_winit::{run, Config};
@@ -50,12 +51,49 @@ pub use stage::*;
 
 // ---- palette ---------------------------------------------------------
 
-const PAGE: Color = Color(0xf4, 0xf6, 0xfa, 0xff);
-const BAND: Color = Color(0xff, 0xff, 0xff, 0xff);
-const INK: Color = Color(0x1b, 0x22, 0x30, 0xff);
-const MUTED: Color = Color(0x6b, 0x74, 0x88, 0xff);
-const ACCENT: Color = Color(0x2f, 0x6b, 0xff, 0xff);
+/// The showcase's colours, by role (M25/T25.11). The sheet names roles
+/// rather than these values, so one `set_palette` re-themes every rule
+/// that does. `LUMEN_PALETTE=dark` starts in [`SHOW_DARK`]; a running
+/// window built with `--features agent` also takes `app.setPalette`, which
+/// swaps to the core's `Palette::LIGHT` or `Palette::DARK`.
+const SHOW_LIGHT: Palette = Palette {
+    page: Color(0xf4, 0xf6, 0xfa, 0xff),
+    surface: Color(0xff, 0xff, 0xff, 0xff),
+    // A field's and the trigger's pale ground: `Style` has no border, so
+    // the fill is what separates a control from the page.
+    control: Color(0xf0, 0xf2, 0xf6, 0xff),
+    text: Color(0x1b, 0x22, 0x30, 0xff),
+    muted: Color(0x6b, 0x74, 0x88, 0xff),
+    accent: Color(0x2f, 0x6b, 0xff, 0xff),
+    on_accent: Color(0xff, 0xff, 0xff, 0xff),
+    focus: Color(0x2f, 0x6b, 0xff, 0xff),
+};
+
+const SHOW_DARK: Palette = Palette {
+    page: Color(0x12, 0x15, 0x1c, 0xff),
+    surface: Color(0x1c, 0x21, 0x2b, 0xff),
+    control: Color(0x2a, 0x30, 0x3c, 0xff),
+    text: Color(0xe6, 0xea, 0xf2, 0xff),
+    muted: Color(0x94, 0xa0, 0xb4, 0xff),
+    accent: Color(0x5b, 0x8c, 0xff, 0xff),
+    on_accent: Color(0x0a, 0x0e, 0x18, 0xff),
+    focus: Color(0x82, 0xaa, 0xff, 0xff),
+};
+
+/// The palette to start in: [`SHOW_DARK`] under `LUMEN_PALETTE=dark`.
+fn palette() -> Palette {
+    match std::env::var("LUMEN_PALETTE").as_deref() {
+        Ok("dark") => SHOW_DARK,
+        _ => SHOW_LIGHT,
+    }
+}
+
+/// The colours with no role, kept as values on purpose: a hairline is
+/// neither text nor a control's body, and a ghost button's tint is one
+/// button's. They stay put under every palette, which the
+/// `every_role_rule_follows_the_palette` test prints rather than hides.
 const HAIRLINE: Color = Color(0xdf, 0xe4, 0xed, 0xff);
+const GHOST: Color = Color(0xea, 0xef, 0xfb, 0xff);
 
 const W: u32 = 960;
 const H: u32 = 720;
@@ -276,6 +314,7 @@ fn shot(path: &str, entry: usize, open: bool) {
     use lumen_static_shell::software::Canvas;
     use lumen_static_shell::text::{FontMetrics, FontStack};
     let mut host: lumen_static_shell::Host<Show> = lumen_static_shell::Host::new(build(entry, open), W, H);
+    host.set_palette(palette());
     host.set_stylesheet(&stylesheet());
     let mut metrics = FontStack::system().map(FontMetrics::new);
     for _ in 0..2 {
@@ -288,7 +327,7 @@ fn shot(path: &str, entry: usize, open: bool) {
         Some(f) => Canvas::with_font(W, H, f),
         None => Canvas::new(W, H),
     };
-    c.clear(PAGE);
+    c.clear(palette().page);
     lumen_static::Renderer::render(&mut c, &host.list, W, H);
     let mut out = format!("P6\n{W} {H}\n255\n").into_bytes();
     for p in c.pixels.chunks_exact(4) {
@@ -310,6 +349,7 @@ fn demo_shot(path: &str, entry: usize) {
     use lumen_static_shell::text::{FontMetrics, FontStack};
     let mut host: lumen_static_shell::Host<Show> =
         lumen_static_shell::Host::new(build(entry, false), W, H);
+    host.set_palette(palette());
     host.set_stylesheet(&stylesheet());
     let mut metrics = FontStack::system().map(FontMetrics::new);
     for _ in 0..2 {
@@ -322,7 +362,7 @@ fn demo_shot(path: &str, entry: usize) {
         Some(f) => Canvas::with_font(W, H, f),
         None => Canvas::new(W, H),
     };
-    c.clear(PAGE);
+    c.clear(palette().page);
     lumen_static::Renderer::render(&mut c, &host.list, W, H);
 
     // The union of every node with a real box below the header — the
@@ -366,6 +406,7 @@ fn press_shot(path: &str, entry: usize, which: usize) {
     use lumen_static_shell::text::{FontMetrics, FontStack};
     let mut host: lumen_static_shell::Host<Show> =
         lumen_static_shell::Host::new(build(entry, false), W, H);
+    host.set_palette(palette());
     host.set_stylesheet(&stylesheet());
     let mut metrics = FontStack::system().map(FontMetrics::new);
     let mut pump = |h: &mut lumen_static_shell::Host<Show>| match metrics.as_mut() {
@@ -401,7 +442,7 @@ fn press_shot(path: &str, entry: usize, which: usize) {
         Some(f) => Canvas::with_font(W, H, f),
         None => Canvas::new(W, H),
     };
-    c.clear(PAGE);
+    c.clear(palette().page);
     lumen_static::Renderer::render(&mut c, &host.list, W, H);
     // Centred on the control that is held, not on the stage's top —
     // the first version cropped y 150..270 while the buttons sit at 423
@@ -436,6 +477,7 @@ fn seq_shot(stem: String) {
     let entry = CATALOG.iter().position(|e| e.name == "Button").unwrap();
     let mut host: lumen_static_shell::Host<Show> =
         lumen_static_shell::Host::new(build(entry, false), W, H);
+    host.set_palette(palette());
     host.set_stylesheet(&stylesheet());
     let mut metrics = FontStack::system().map(FontMetrics::new);
     let mut pump = |h: &mut lumen_static_shell::Host<Show>| match metrics.as_mut() {
@@ -476,7 +518,7 @@ fn seq_shot(stem: String) {
             Some(f) => Canvas::with_font(W, H, f),
             None => Canvas::new(W, H),
         };
-        c.clear(PAGE);
+        c.clear(palette().page);
         lumen_static::Renderer::render(&mut c, &host.list, W, H);
         let (cw, chh) = (400usize, 64usize);
         let x0 = ((x0c - 60.0).max(0.0) as usize).min(W as usize - cw);
@@ -529,7 +571,8 @@ fn main() {
             title: "showcase",
             width: W,
             height: H,
-            page: PAGE,
+            page: palette().page,
+            palette: palette(),
             stylesheet: stylesheet(),
             // Built `--features agent`, the window can be steered from
             // outside: `input.click` on the picker, `ui.screenshot` of
@@ -564,8 +607,8 @@ const ROW_H: f32 = 30.0;
 
 /// A control's own label — the text beside a checkbox or a switch.
 fn lbl() -> lumen_static::style::Patch {
-    use lumen_static::style::Patch;
-    Patch::new().color(INK).font_size(15.0)
+    use lumen_static::style::{Patch, Role};
+    Patch::new().color_role(Role::Text).font_size(15.0)
 }
 
 
@@ -589,16 +632,16 @@ fn btn() -> lumen_static::style::Patch {
 }
 
 fn stylesheet() -> Vec<StyleRule> {
-    use lumen_static::style::{Patch, Selector};
+    use lumen_static::style::{Patch, Role, Selector};
     vec![
-        StyleRule::new(Selector::Kind("Screen"), Patch::new().background(PAGE)),
+        StyleRule::new(Selector::Kind("Screen"), Patch::new().background_role(Role::Page)),
         StyleRule::new(
             Selector::Id("header"),
             Patch::new()
-                .background(BAND)
+                .background_role(Role::Surface)
                 .padding(Edges { left: 28.0, right: 28.0, top: 20.0, bottom: 18.0 }),
         ),
-        StyleRule::new(Selector::Id("title"), Patch::new().color(INK).font_size(20.0).font_weight(700.0)),
+        StyleRule::new(Selector::Id("title"), Patch::new().color_role(Role::Text).font_size(20.0).font_weight(700.0)),
         // **The picker's parts, by the ids `Select` stamps.** A
         // composite is more than one node, and the derive only names a
         // *field* — so a widget that is several nodes has to publish its
@@ -608,14 +651,17 @@ fn stylesheet() -> Vec<StyleRule> {
             Selector::Id(lumen_static::select::PART_TRIGGER),
             Patch::new()
                 .width(Length::Fixed(300.0))
-                .background(Color(0xf7, 0xf9, 0xfd, 0xff))
-                .color(INK)
+                .background_role(Role::Control)
+                .color_role(Role::Text)
                 .radius(8.0)
                 .font_size(15.0)
                 .padding(Edges { left: 14.0, right: 14.0, top: 9.0, bottom: 9.0 }),
         ),
-        StyleRule::new(Selector::Id("blurb"), Patch::new().color(MUTED).font_size(13.0)),
-        StyleRule::new(Selector::Id("readout"), Patch::new().color(ACCENT).font_size(13.0).font_weight(600.0)),
+        StyleRule::new(Selector::Id("blurb"), Patch::new().color_role(Role::Muted).font_size(13.0)),
+        StyleRule::new(
+            Selector::Id("readout"),
+            Patch::new().color_role(Role::Accent).font_size(13.0).font_weight(600.0),
+        ),
         StyleRule::new(Selector::Id("hr"), Patch::new().background(HAIRLINE)),
         // The stage: the demo centred in what is left.
         StyleRule::new(Selector::Kind("Stage"), Patch::new().height(Length::FILL)),
@@ -640,7 +686,7 @@ fn stylesheet() -> Vec<StyleRule> {
             Patch::new()
                 .width(Length::Fixed(300.0))
                 .height(Length::Fixed(PANEL_H))
-                .background(BAND)
+                .background_role(Role::Surface)
                 .radius(10.0),
         ),
         // ---- the demos -------------------------------------------
@@ -657,11 +703,11 @@ fn stylesheet() -> Vec<StyleRule> {
         // `Label`.
         StyleRule::new(
             Selector::Id("d_button_a"),
-            btn().background(ACCENT).color(BAND),
+            btn().background_role(Role::Accent).color_role(Role::OnAccent),
         ),
         StyleRule::new(
             Selector::Id("d_button_b"),
-            btn().background(BAND).color(INK),
+            btn().background_role(Role::Surface).color_role(Role::Text),
         ),
         // **Ghost has a ground, faint as it is.** `pressed_dim` and
         // `hover_dim` *scale* a background; they cannot invent one. A
@@ -669,7 +715,7 @@ fn stylesheet() -> Vec<StyleRule> {
         // which is a third of the reported "clicking does nothing".
         StyleRule::new(
             Selector::Id("d_button_c"),
-            btn().background(Color(0xea, 0xef, 0xfb, 0xff)).color(ACCENT),
+            btn().background(GHOST).color_role(Role::Accent),
         ),
         // The field: a ground, a rounded edge, room for a caret.
         StyleRule::new(
@@ -680,8 +726,8 @@ fn stylesheet() -> Vec<StyleRule> {
                 // Lumen's field is a pale fill, not white. `Style` has
                 // no border and `Cmd` no stroked rect, so the ground is
                 // what separates a field from the page here.
-                .background(Color(0xf0, 0xf2, 0xf6, 0xff))
-                .color(INK)
+                .background_role(Role::Control)
+                .color_role(Role::Text)
                 .radius(8.0)
                 .font_size(15.0)
                 .padding(Edges { left: 12.0, right: 12.0, top: 9.0, bottom: 9.0 }),
@@ -720,7 +766,7 @@ fn stylesheet() -> Vec<StyleRule> {
                 .width(Length::FILL)
                 .height(Length::Fixed(ROW_H))
                 .background(Color(0, 0, 0, 0))
-                .color(INK)
+                .color_role(Role::Text)
                 .font_size(13.0)
                 .radius(0.0)
                 .hover_dim(0.0)
@@ -758,6 +804,7 @@ mod tests {
         use lumen_static_shell::text::{FontMetrics, FontStack};
         let mut h: lumen_static_shell::Host<Show> =
             lumen_static_shell::Host::new(build(entry, open), W, H);
+        h.set_palette(SHOW_LIGHT);
         h.set_stylesheet(&stylesheet());
         let mut m = FontStack::system().map(FontMetrics::new);
         for _ in 0..2 {
@@ -805,6 +852,118 @@ mod tests {
         println!("{} rules, {} findings", sheet.len(), found.len());
         assert!(!sheet.is_empty(), "setup: the sheet was applied");
         assert!(found.is_empty(), "stylesheet rules that change nothing:\n{}", found.join("\n"));
+    }
+
+    /// M25/T25.11 — T25.9's "every themed node changes", for what a
+    /// stylesheet themes. For every catalogue entry, each colour field a
+    /// **role** rule decides is resolved from `SHOW_LIGHT`, and after one
+    /// `set_palette` from `SHOW_DARK`; each one a **value** rule decides
+    /// keeps its colour. The menu rows and the demo live in arenas, so the
+    /// walk reaches them the way the cascade does — a check over the main
+    /// table alone would miss most of the sheet.
+    #[test]
+    fn every_role_rule_follows_the_palette() {
+        use lumen_static::style::{Fields, Role, Rule};
+        use lumen_static::widget::Node as _;
+
+        const ROLES: [Role; 8] = [
+            Role::Page,
+            Role::Surface,
+            Role::Control,
+            Role::Text,
+            Role::Muted,
+            Role::Accent,
+            Role::OnAccent,
+            Role::Focus,
+        ];
+        for r in ROLES {
+            assert_ne!(SHOW_LIGHT.get(r), SHOW_DARK.get(r), "setup: the palettes differ at {r:?}");
+        }
+
+        /// Every node's author id, kind and resolved style: the main table,
+        /// then every arena under it.
+        fn nodes(h: &mut lumen_static_shell::Host<Show>) -> Vec<(&'static str, &'static str, Style)> {
+            let table = <Screen as Widget>::SUB_TABLE;
+            let mut out: Vec<_> = table
+                .iter()
+                .enumerate()
+                .map(|(i, d)| (d.wid, <Screen as Widget>::SEEDS[i].kind, h.styles[i]))
+                .collect();
+            for i in 0..table.len() {
+                let node = h.app.ui.node_mut(i);
+                for a in 0..node.arena_count() {
+                    let Some(arena) = node.arena_mut(a) else { continue };
+                    for (k, d) in arena.table.iter().enumerate() {
+                        let kind = match arena.seeds {
+                            Some(seeds) => seeds[k].kind,
+                            None => arena.template.node(k).kind_name(),
+                        };
+                        out.push((d.wid, kind, arena.style[k]));
+                    }
+                }
+            }
+            out
+        }
+
+        /// The rule that decides a field for a node, in the cascade's
+        /// order: highest specificity, then the last declared
+        /// (`max_by_key` keeps the last of equals).
+        fn winner<'s>(sheet: &'s [Rule], wid: &str, kind: &str, field: Fields) -> Option<&'s Rule> {
+            sheet
+                .iter()
+                .filter(|r| r.patch.fields().contains(field))
+                .filter(|r| match r.selector {
+                    Selector::Id(id) => id == wid,
+                    Selector::Kind(k) => k == kind,
+                    Selector::Any => true,
+                    Selector::Class(_) => panic!("setup: this check does not model classes"),
+                })
+                .max_by_key(|r| r.selector.specificity())
+        }
+
+        let sheet = stylesheet();
+        let (mut themed, mut kept) = (0usize, 0usize);
+        let mut wrong: Vec<String> = Vec::new();
+        for (entry, e) in CATALOG.iter().enumerate() {
+            let mut h = host(entry, true);
+            let light = nodes(&mut h);
+            h.set_palette(SHOW_DARK);
+            let dark = nodes(&mut h);
+            assert_eq!(light.len(), dark.len(), "setup: both walks saw the same nodes");
+            for ((wid, kind, l), (_, _, d)) in light.iter().zip(&dark) {
+                let fields = [
+                    (Fields::COLOR, "color", l.color, d.color),
+                    (Fields::BACKGROUND, "background", l.background, d.background),
+                ];
+                for (field, name, lc, dc) in fields {
+                    let Some(rule) = winner(&sheet, wid, kind, field) else { continue };
+                    let role =
+                        if field == Fields::COLOR { rule.patch.color_role } else { rule.patch.background_role };
+                    let at = || format!("{} {kind} #{wid} {name}", e.name);
+                    match role {
+                        Some(r) => {
+                            themed += 1;
+                            if (lc, dc) != (SHOW_LIGHT.get(r), SHOW_DARK.get(r)) {
+                                wrong.push(format!("{}: {r:?} painted {lc:?} then {dc:?}", at()));
+                            }
+                        }
+                        None => {
+                            kept += 1;
+                            if lc != dc {
+                                wrong.push(format!("{}: a value changed with the palette", at()));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        println!(
+            "{themed} role-decided fields followed the palette and {kept} value-decided fields \
+             kept theirs, over {} entries",
+            CATALOG.len()
+        );
+        assert!(themed > 0 && kept > 0, "setup: both halves were exercised");
+        assert!(wrong.is_empty(), "fields that did not follow their rule:\n{}", wrong.join("\n"));
     }
 
     #[test]

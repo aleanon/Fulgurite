@@ -134,26 +134,40 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         }
     }
 
-    /// The palette looks are resolved against (M25/T25.3).
+    /// The palette the stylesheet's roles and every `layout` resolve
+    /// against (M25/T25.3, T25.11).
     pub fn palette(&self) -> &lumen_static::style::Palette {
         &self.palette
     }
 
     /// Swap the palette (M25/T25.3).
     ///
+    /// **Re-cascades the kept sheet** (M25/T25.11): a rule that names a
+    /// `style::Role` resolved to a colour when it was cascaded, so the new
+    /// palette reaches it only through another cascade. The whole sheet,
+    /// because [`Host::stylesheet`] is the sheet now in force however it
+    /// was applied — by `set_stylesheet` or by `restyle_subtree` — and it
+    /// is one cascade on an event a user makes, not per frame.
+    ///
     /// **Invalidates rather than damages.** Damage follows by itself:
     /// retention compares every painted command's hash with last frame's,
-    /// so a look that paints a new colour is damaged where it paints. What
-    /// nothing else supplies is the *layout* that resolves the new look —
+    /// so a node that paints a new colour is damaged where it paints. What
+    /// nothing else supplies is the *layout* that stamps the new style —
     /// under `Boundaries` a clean subtree is skipped before a widget ever
-    /// sees the palette — so this marks everything, as
-    /// [`Host::set_stylesheet`] does. An equal palette marks nothing: a
-    /// host that sets its palette every frame pays for none of them.
+    /// sees it — so this marks everything, as [`Host::set_stylesheet`]
+    /// does. An equal palette neither cascades nor marks: a host that sets
+    /// its palette every frame pays for none of it.
     pub fn set_palette(&mut self, palette: lumen_static::style::Palette) {
         if palette == self.palette {
             return;
         }
         self.palette = palette;
+        lumen_static::style::cascade_deep_with(
+            self.app.tree_mut(),
+            &self.sheet,
+            &self.palette,
+            &mut self.styles,
+        );
         self.invalidation.mark_all();
     }
 
@@ -218,7 +232,14 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         // `cascade_deep`, not `cascade`: a rule must be able to reach a
         // repeater's template row or an `Either` branch, which are not
         // in the table (`docs/plan-review-fixes.md` F4.5).
-        lumen_static::style::cascade_deep(self.app.tree_mut(), sheet, &mut self.styles);
+        // Against the host's palette, so a role in the sheet resolves to
+        // the theme in force rather than the light default (M25/T25.11).
+        lumen_static::style::cascade_deep_with(
+            self.app.tree_mut(),
+            sheet,
+            &self.palette,
+            &mut self.styles,
+        );
         self.keep_and_lint(sheet);
         // A stylesheet can change any node's size, so nothing is known
         // to be clean any more.
@@ -245,7 +266,13 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         let Some(root) = lumen_static::style::index_of_wid(table, wid) else {
             return false;
         };
-        lumen_static::style::cascade_subtree(self.app.tree_mut(), sheet, &mut self.styles, root);
+        lumen_static::style::cascade_subtree_with(
+            self.app.tree_mut(),
+            sheet,
+            &self.palette,
+            &mut self.styles,
+            root,
+        );
         // The whole sheet is the one now in force, so it is the one kept
         // and linted.
         self.keep_and_lint(sheet);

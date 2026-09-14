@@ -1,17 +1,19 @@
 # M25 — appearance on the widget, and the invalidation gap under it
 
-> **Not started. Written 2026-09-14; revised the same day after a
-> six-lens review** (facts, injections, design, cost, migration,
+> **Done 2026-09-15: stopped at the T25.5 pilot by its own rule, and
+> finished by its fallback — T25.10 and T25.11 shipped, T25.6–T25.9 were
+> not built.** Written 2026-09-14; revised the same day after a
+> six-lens review (facts, injections, design, cost, migration,
 > alternatives), each lens followed by an adversarial verifier that
 > re-opened the code: 47 findings, 43 confirmed, 4 plausible, none
 > refuted. §5 records what the review found and what it changed. Read
 > it before §2 — the first draft's central premise was false, and the
 > plan keeps the correction rather than quietly replacing itself.
 >
-> **The first task is a shipped defect, not a feature.** Hover and press
-> shading go stale under `Boundaries` invalidation today (T25.0). The
-> review found it by checking the premise this milestone was built on —
-> "hover already reaches layout" — and it does not, except under the
+> **The first task was a shipped defect, not a feature.** Hover and press
+> shading went stale under `Boundaries` invalidation until T25.0 fixed it.
+> The review found it by checking the premise this milestone was built on
+> — "hover already reaches layout" — and it did not, except under the
 > default `Everything`. Everything after T25.0 depends on it.
 >
 > The ask that started this: *"find out if there could be any benefit
@@ -19,7 +21,8 @@
 > how iced does it — so the style struct only carries what it needs for
 > the given widget and styling becomes a function on the widget."* The
 > answer is **yes for appearance, no for layout**, with a stop point at
-> the pilot where a much smaller change (§2.6) is the fallback.
+> the pilot where a much smaller change (§2.6) is the fallback. **The
+> pilot stopped it, and the smaller change is what shipped.**
 
 *Each task is one commit unless it says otherwise; each ends with
 `just test` green. Task ids go in commit subjects. Every gate names the
@@ -759,7 +762,38 @@ the default. *Injection:* paint ignores the field.
 **Measured:** `.text` and the 1 000-toggle frame against T25.1's
 baseline, so the fallback is held to the thresholds the pilot failed.
 
-## T25.11 — §2.6 (b): palette roles in a stylesheet
+## T25.11 — §2.6 (b): palette roles in a stylesheet — **DONE 2026-09-15**
+
+> **Landed as designed, plus what the design did not say.**
+> `Patch::color_role` and `Patch::background_role` name a `style::Role`;
+> the setters clear the value half and a struct literal that sets both
+> gets the role. `cascade`, `cascade_deep` and `cascade_subtree` keep their
+> signatures and resolve against `Palette::LIGHT`; the `_with` forms take
+> a palette, and the host calls those from `set_stylesheet`,
+> `restyle_subtree` and `set_palette`. The last re-cascades the sheet it
+> kept — the whole sheet, since that is the one in force however it was
+> applied — and an equal palette does neither that nor the mark.
+> `lumen_static_winit::Config` gained `palette`, applied before the sheet.
+>
+> **Every gate was shown to fail, one injection at a time:** `set_palette`
+> without its cascade, `set_stylesheet` and `restyle_subtree` resolving
+> against `LIGHT` (the host tests, by name, on `Boundaries<16>`);
+> `apply_to` ignoring roles, arenas resolving against `LIGHT`, a value
+> beating a role, and `fields()` ignoring roles (the core and lint tests).
+> **Run together, the last and the third-to-last hid each other** — one
+> test asserts both, and the first assertion to fire masked the second —
+> so each was rerun alone, and the lint's own binary was never reached
+> until `--no-fail-fast`. The first setup assertion was also wrong: a
+> label's default text is black, not the light palette's `text`.
+>
+> **T25.9's "every themed node changes" runs in `just test`** as the
+> showcase's `every_role_rule_follows_the_palette` — every field a role
+> decides, over every catalogue entry and every arena — and in
+> `just agent-drive` against the live window, on the header's resolved
+> background and on the frame's pixels. The rest of T25.9 (both-palette
+> GPU parity, the contrast script) had widget looks as its subject and
+> stays unbuilt with them. **Measured:** `.text` unchanged, `Patch` +4 B,
+> the cascade within its spread (`docs/results-appearance.md` T25.11).
 
 The stop branch's second half: theming without widget changes. A `Patch`
 colour may name a palette role instead of a value; the cascade resolves

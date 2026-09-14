@@ -181,7 +181,10 @@ pub struct LayoutCx<'a> {
     /// [`LayoutCx::new`] behaves exactly as it did before T16.7 and
     /// every existing caller is unaffected.
     pub changed: crate::invalidate::Changed<'a>,
-    /// The palette a widget's look is resolved against — M25/T25.3.
+    /// The host's palette — M25/T25.3 — for a widget that wants a colour
+    /// no stylesheet rule sets. A rule that names a role does not need it:
+    /// the cascade already resolved that role into the node's `Style`
+    /// (M25/T25.11).
     ///
     /// Here for the reason `changed` is: a parameter on `Node::layout`
     /// would change every widget to say something most do not use. The

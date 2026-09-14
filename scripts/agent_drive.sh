@@ -106,12 +106,22 @@ held = shot()
 call("input.pointerUp", {"x": cx, "y": cy})
 assert held != rest, "agent-drive: a held press looks identical to the resting frame"
 
-# M25/T25.3: the running window takes a palette. Asserted as `applied`, not
-# as changed pixels -- no widget reads the palette until T25.5, so a pixel
-# check here would fail for the right code; T25.9 adds that one.
+# M25/T25.3 and T25.11: the running window takes a palette, and the
+# showcase's sheet names roles, so each swap re-resolves them. Asserted on
+# the header's resolved background *and* on the frame's pixels: `applied`
+# alone was the check before any rule named a role, and it would pass for a
+# host that stored the palette and re-cascaded nothing.
+def header_bg():
+    return call("ui.getAppliedStyles", {"selector": "#header"})["background"]
+prev_bg, prev_shot = header_bg(), shot()
 for name in ("dark", "light"):
     r = call("app.setPalette", {"name": name})
     assert r.get("applied") is True, f"agent-drive: the window did not take the {name} palette: {r!r}"
+    bg, frame = header_bg(), shot()
+    print(f"agent-drive: palette {name}: header background {prev_bg} -> {bg}")
+    assert bg != prev_bg, f"agent-drive: the {name} palette did not re-resolve the header's role"
+    assert frame != prev_shot, f"agent-drive: the {name} palette left the frame's pixels unchanged"
+    prev_bg, prev_shot = bg, frame
 print(f"agent-drive: {before.split()[0]} -> {after.split()[0]}, "
       f"menu {int(box[2]-box[0])}x{int(box[3]-box[1])} px, press observable")
 PY

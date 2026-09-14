@@ -27,10 +27,11 @@ The protocol is JSON-RPC 2.0. Methods divide into three groups:
 **Observe** — `app.diagnostics`, `app.logs`, `app.perf`,
 `ui.waitSettled`.
 
-**Steer** — `app.setPalette` swaps the palette a running window's looks
-are resolved against, by name (`light`, `dark`). It answers `applied:
-false` from a host that has no palette to set, rather than succeeding at
-nothing (M25/T25.3).
+**Steer** — `app.setPalette` swaps a running window's palette, by name
+(`light`, `dark`), and the host re-resolves every stylesheet rule that
+names a role (M25/T25.11) — so `ui.getAppliedStyles` answers in the new
+colours on the next call. It answers `applied: false` from a host that
+has no palette to set, rather than succeeding at nothing (M25/T25.3).
 
 `ui.lint` reports stylesheet rules too, when the host supplies its sheet:
 `W1010` names a rule whose selector matches no node, or whose fields no
