@@ -144,6 +144,59 @@ written down:
   findings, and injecting `Kind("Label")` into the showcase's sheet fails
   its test naming rule 1.
 
+## T25.4 — where box fills live, and who themes a kind
+
+### Box fills: counted, and they stay per node
+
+Every stylesheet rule in `examples/` that sets `background`, `radius` or
+`shadow`, classified by what it targets:
+
+| target | rules | examples |
+|---|---:|---|
+| a **derived container** | 7 | `Screen` ×3, `Page`, `FormUi`, `Header`, the counter's `Card` (the one with a shadow) |
+| a `Glass` panel | 3 | `dock` ×2, `icon` (radius only) |
+| a composite's part | 2 | `Select`'s trigger (a `Button`) and menu (a `Repeat`) |
+| a leaf | 13 | buttons ×6 by id or kind, three toggles and a slider by kind, a text field, a divider, a pill `Label` |
+
+And from T25.2's measurement, **about twenty kinds read those three
+fields** — every leaf with a body, `Repeat`, `ScrollView`, `Glass` and the
+derive. A fill that left `Style` would need a new home in all of them, and
+the derive's container has no field to hold one (plan §2.3). **Decided:
+shape 1 — `background`, `radius` and `shadow` stay per node.**
+
+What that costs the byte argument, measured by the same probe, both
+targets:
+
+| | today | all six removed | **shape 1** (`color` and the dims only) |
+|---|---:|---:|---:|
+| `Style` | 72 | 48 | **60** |
+| `NodeState` | 76 | 60 | **72** (only `fg` leaves) |
+| per node | 148 | 108 | **132** |
+
+**Sixteen bytes a node, not forty.** The RAM case for M25 is now small;
+what is left to justify it is the status look and the extra colours a
+widget can have, which is what T25.5's pilot has to show.
+
+### Colour: every kind-wide rule is a palette role
+
+Every rule in `examples/` that sets `color` or a dim by **kind** —
+the only kind of colour rule that themes more than one node — uses a
+colour the example already names for a role:
+
+| rule | colour | role |
+|---|---|---|
+| form `Kind("label")`, `Kind("button")` | `INK` | `text` |
+| form `Kind("checkbox")`, `Kind("switch")`, `Kind("slider")` | `ACCENT` | `accent` |
+| showcase `Kind("button")` (the menu rows) | `INK` | `text` |
+
+Each example also defines its own `PAGE`, `INK`, `MUTED`, `ACCENT` and (the
+counter) `SURFACE` constants — a palette in all but name. **Decided:
+kind-wide colour comes from the application's `Palette`; no per-kind look
+table.** The remaining colour rules are by **id** — 20 of them: card text
+on coloured glass (`CARD_INK`, `CARD_SUB`), the counter's sign-dependent
+`value_fg`, a pill's text on its own fill — and those are what a
+per-instance look is for.
+
 **The probe was wrong three times before it was right**, each caught by
 reading its output against the code rather than trusting a green: a
 setup assertion that every kind reads `visible` (false for `Either`);

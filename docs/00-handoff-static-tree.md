@@ -861,3 +861,10 @@ remains** — which is why §10 Step 1 is the kill criterion.
    application sets one look for every instance of a kind (its §2.4). The
    plan's pilot is a stop point, with a much smaller change as the
    fallback, so this may close as "no".
+   **Sub-questions DECIDED 2026-09-15 (M25/T25.4):** box fills stay per
+   node — seven example rules fill derived containers and about twenty
+   kinds read the fields, so only `color` and the two dims would leave,
+   16 B a node rather than 40; and kind-wide colour comes from the
+   application's palette, because every kind-wide colour rule in the
+   examples is a palette role. Counts in `docs/results-appearance.md`.
+   The question itself stays OPEN until the pilot.

@@ -107,7 +107,7 @@ Verified against iced 0.14:
 
 | | decided |
 |---|---|
-| **What leaves `Style`** | Per-widget appearance: `color`, and `pressed_dim` / `hover_dim`. Whether box fills (`background`, `radius`, `shadow`) leave too is **OPEN** — §2.3, settled by T25.4. |
+| **What leaves `Style`** | `color`, `pressed_dim` and `hover_dim`, and `fg` from `NodeState`. **Box fills (`background`, `radius`, `shadow`) stay per node** — §2.3, DECIDED by T25.4. |
 | **What stays** | `width`, `height`, `padding`, `spacing`, `align`, `visible`, `cursor`, `focus_ring`, `font_size`, `font_weight` (the last two feed text measurement). |
 | **Where a look is chosen** | A `look` field on each leaf widget, `fn(&Palette, Status) -> …`, defaulting to the kind's own function — or to the kind-wide choice of §2.4. |
 | **Where it is resolved** | In `layout`, stored on the widget; `paint` reads it and its signature does not change. **Sound only after T25.0** — see §2.1. |
@@ -156,7 +156,15 @@ palette to look is code, and code hot-reloads.
 function, so per-node colour overrides by sheet rule are lost when
 colours leave the cascade. Deferred until a tool needs it (§4).
 
-### 2.3 Box painters — **OPEN, settled by T25.4**
+### 2.3 Box painters — **DECIDED 2026-09-15 (T25.4): shape 1, fills stay per node**
+
+> Seven example rules fill a derived container, three a `Glass`, two a
+> composite's parts, and T25.2 measured about twenty kinds reading the
+> three fields — so a fill that left `Style` needed a new home nearly
+> everywhere, and the derive's container has none to give. Kept per node.
+> The price is the byte argument: 148 → 132 B a node, not 148 → 108
+> (`docs/results-appearance.md` T25.4). The table and the three shapes
+> below are kept as the reasoning.
 
 Every node that paints its own box reads `st.bg`, `st.radius` and
 `st.shadow`, and none of them is a leaf with room for a `look`:
@@ -184,7 +192,25 @@ Three shapes, **now ordered by cost**:
    a derived container has no field, so the resolved fill has nowhere to
    live except the `NodeState` bytes shape 1 keeps.
 
-### 2.4 Kind-wide appearance and composites — **OPEN, settled by T25.4**
+### 2.4 Kind-wide appearance and composites — **DECIDED 2026-09-15 (T25.4)**
+
+> - **Kind-wide colour is the application's `Palette`.** Every rule in
+>   `examples/` that colours a kind uses a colour the example already
+>   names for a role — `INK` for labels and buttons, `ACCENT` for toggles
+>   and sliders — and every example defines its own `PAGE`/`INK`/`MUTED`/
+>   `ACCENT` constants. No per-kind look table is built; one is deferred
+>   until an application needs a kind-wide colour no role expresses.
+> - **Per-instance colour is a look**: the 20 id colour rules (card text
+>   on coloured glass, the counter's sign colour) become a `look` function
+>   on that instance.
+> - **Composites carry a struct of their parts' looks**: `Select`'s is a
+>   trigger look and a row look, handed down in layout. Its menu panel's
+>   fill stays cascaded (shape 1).
+> - **The focus ring** takes its colour from `Palette::focus`, carried in
+>   each focusable widget's look and passed to `ops::focus_ring` — it
+>   paints in `fg` today, which leaves `NodeState`. Its radius stays
+>   `st.radius`, which does not.
+> - **Repeat rows still have no `Status`** (§4, unchanged).
 
 **Kind-wide.** "Every button in this app has radius 6 and the accent
 colour" is one rule today. Under per-instance looks it is a look on every
@@ -493,7 +519,20 @@ driven from `scripts/agent_drive.sh`.
 - *Other direction:* an equal palette leaves `changed()` empty and the
   counter unchanged.
 
-## T25.4 — decide the box painters, kind-wide looks, and the focus ring
+## T25.4 — decide the box painters, kind-wide looks, and the focus ring — **DONE 2026-09-15**
+
+> **Decided, and nothing built**, which is what the task said shape 1
+> would mean: §2.3 (fills stay per node) and §2.4 (palette for kinds, looks
+> for instances, part-looks for composites, the ring from
+> `Palette::focus`). The counts and the re-probed bytes are in
+> `docs/results-appearance.md`; handoff question 9's sub-questions are
+> marked DECIDED. The consequences for the tasks below are applied in
+> place: T25.8 removes three `Style` fields and `fg`, not six and four,
+> and the derive, `Repeat` and `Glass` keep reading what they read.
+>
+> **What the decision cost M25, plainly:** 16 B a node instead of 40.
+> T25.5's pilot now has to justify the milestone on the status look and
+> the extra colours alone.
 
 A decision task before any widget migrates, because the pilot's example
 rules and the removal task both depend on it. Settles:
@@ -589,9 +628,11 @@ same-commit list as T25.6.
 **Three commits**, because this is the milestone-sized change `AGENT.md`
 measured skipping its docs.
 
-**(a) The remaining readers.** Every reader of the moved `NodeState`
-fields outside `record_painted` goes to its T25.4 home: the derive's
-container paint and hit, `Repeat`, `Glass`, `ops::focus_ring`.
+**(a) The remaining readers.** Under T25.4's shape 1 only `fg` leaves
+`NodeState`, so the readers left are those of `fg` — every one a widget
+T25.6 or T25.7 has migrated, plus `ops::focus_ring`, whose colour comes
+from each widget's look by then. The derive's container paint and hit,
+`Repeat` and `Glass` read `bg`, `radius` and `shadow`, which stay.
 **Precondition for (b):** a grep for those field reads returns only the
 stamping.
 
@@ -603,9 +644,9 @@ T24.1's gate; its injection went red on `width`, which stays, so its
 colour assertions move without re-deriving the gate. **Precondition for
 (c):** no appearance setter left in `examples/`.
 
-**(c) The deletion, sizes and docs.** Delete the moved fields from
-`Style`, `Patch` and `NodeState` — the list T25.4 settled, not §2's
-first-draft list. Update in the same commit:
+**(c) The deletion, sizes and docs.** Delete `color`, `pressed_dim` and `hover_dim`
+from `Style` and `Patch`, and `fg` from `NodeState` — the list T25.4
+settled, not §2's first-draft six. Update in the same commit:
 
 - the size assertions in `crates/lumen-static/tests/cursor.rs`,
   `crates/lumen-static/tests/focus.rs` and `fixtures/embedded`. The
