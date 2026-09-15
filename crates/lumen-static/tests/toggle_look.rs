@@ -1,27 +1,25 @@
-//! M25/T25.5: a toggle is coloured by its look, and its look by the
-//! palette.
+//! M25/T25.10: a toggle's mark is a colour the toggle carries.
 //!
-//! The first test is the one the milestone exists for: a tick in a colour
-//! `Style` could not give it. Before M25 the mark was a hard-coded white,
+//! Before M25 the tick, the dot and the knob were a hard-coded white,
 //! because a third colour on every node was too dear for one part of one
-//! widget.
+//! widget. A field on the widget costs bytes only where a toggle is — the
+//! shape `Image::tint` already had — and this is the test that the field
+//! is what paints.
 
 use lumen_static::display::{Cmd, Color, DisplayList};
-use lumen_static::style::{Palette, Status};
-use lumen_static::toggle::{default_look, ToggleLook};
-use lumen_static::{CheckBox, Constraints, LayoutCx, Node, NodeState, Point, Style};
+use lumen_static::{CheckBox, Constraints, LayoutCx, Node, NodeState, Point, Switch};
 
 const RED: Color = Color(200, 30, 30, 255);
 const WHITE: Color = Color(255, 255, 255, 255);
 
-/// The colours of every rounded rect a checkbox paints, in order: the
-/// body, then the tick's dots when it is on.
-fn painted(w: &mut CheckBox<()>, style: Style, palette: &Palette) -> Vec<Color> {
-    let style = [style; 1];
+/// The colours of every rounded rect a toggle paints, in order: the body,
+/// then the mark.
+fn painted<N: Node>(w: &mut N) -> Vec<Color> {
+    let style = [w.defaults(); 1];
     let mut st = [NodeState::default(); 1];
     let limits = Constraints { min_w: 0.0, max_w: 100.0, min_h: 0.0, max_h: 100.0 };
     let mut metrics = lumen_static::cx::BlockMetrics;
-    let mut cx = LayoutCx::new(&mut metrics).with_palette(palette);
+    let mut cx = LayoutCx::new(&mut metrics);
     w.layout(&mut cx, limits, &style, &mut st, 0);
     w.place(Point { x: 0.0, y: 0.0 }, &style, &mut st, 0);
     let mut l = DisplayList::new();
@@ -35,65 +33,31 @@ fn painted(w: &mut CheckBox<()>, style: Style, palette: &Palette) -> Vec<Color> 
         .collect()
 }
 
-/// [`painted`] under the widget's own defaults.
-fn painted_default(w: &mut CheckBox<()>, palette: &Palette) -> Vec<Color> {
-    let d = w.defaults();
-    painted(w, d, palette)
-}
-
-fn red_tick(p: &Palette, s: Status) -> ToggleLook {
-    ToggleLook { mark: RED, ..default_look(p, s) }
-}
-
 #[test]
-fn a_look_colours_the_tick() {
-    let default_mark = default_look(&Palette::LIGHT, Status::Active).mark;
-    println!("look mark {RED:?}, default mark {default_mark:?}");
-    // Setup: the colour under test is neither the old hard-coded white nor
-    // the default look's, or a paint that ignored the look would pass.
-    assert_ne!(RED, WHITE);
-    assert_ne!(RED, default_mark);
-
-    let mut w = CheckBox::<()>::default();
-    w.on = true;
-    w.set_look(red_tick);
-    let colours = painted_default(&mut w, &Palette::LIGHT);
-    println!("painted {colours:?}");
+fn the_default_mark_is_white() {
+    let mut w = CheckBox::<()> { on: true, ..Default::default() };
+    let colours = painted(&mut w);
     assert!(colours.len() > 1, "setup: an on checkbox paints a body and a tick");
-    assert!(
-        colours[1..].iter().all(|c| *c == RED),
-        "the tick was not painted in the look's mark colour: {:?}",
-        &colours[1..]
-    );
+    assert!(colours[1..].iter().all(|c| *c == WHITE), "the default tick is not white: {colours:?}");
 }
 
 #[test]
-fn the_palette_colours_the_default_look() {
-    for palette in [Palette::LIGHT, Palette::DARK] {
-        let mut on = CheckBox::<()>::default();
-        on.on = true;
-        let mut off = CheckBox::<()>::default();
-        let (on_c, off_c) =
-            (painted_default(&mut on, &palette), painted_default(&mut off, &palette));
-        println!("on {:?} off {:?}", on_c[0], off_c[0]);
-        assert_eq!(on_c[0], palette.accent, "an on box's body is the palette's accent");
-        assert_eq!(off_c[0], palette.control, "an off box's body is the palette's control grey");
-        assert_eq!(on_c[1], palette.on_accent, "the tick is the palette's on_accent");
+fn a_mark_colour_paints_the_tick_and_the_knob() {
+    // Setup: not the default, or a paint that ignored the field would pass.
+    assert_ne!(RED, CheckBox::<()>::default().mark);
+
+    let mut check = CheckBox::<()> { on: true, mark: RED, ..Default::default() };
+    let colours = painted(&mut check);
+    println!("checkbox {colours:?}");
+    assert!(colours.len() > 1, "setup: an on checkbox paints a body and a tick");
+    assert!(colours[1..].iter().all(|c| *c == RED), "the tick ignored `mark`: {:?}", &colours[1..]);
+
+    // The switch's knob, off as well as on: it is drawn in both states.
+    for on in [false, true] {
+        let mut switch = Switch::<()> { on, mark: RED, ..Default::default() };
+        let parts = painted(&mut switch);
+        println!("switch on={on} {parts:?}");
+        assert_eq!(parts.len(), 2, "setup: a track and a knob");
+        assert_eq!(parts[1], RED, "the knob ignored `mark` (on = {on})");
     }
-    assert_ne!(Palette::LIGHT.accent, Palette::DARK.accent, "setup: the two palettes differ");
-}
-
-#[test]
-fn a_stylesheet_background_no_longer_colours_a_toggle() {
-    let magenta = Color(255, 0, 255, 255);
-    let mut w = CheckBox::<()>::default();
-    let style =
-        Style { background: magenta, color: magenta, ..CheckBox::<()>::default().defaults() };
-    let colours = painted(&mut w, style, &Palette::LIGHT);
-    println!("body {:?}", colours[0]);
-    assert_eq!(
-        colours[0],
-        Palette::LIGHT.control,
-        "a Style background reached a toggle's body; its mask says it does not read one"
-    );
 }

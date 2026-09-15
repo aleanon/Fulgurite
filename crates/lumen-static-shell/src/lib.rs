@@ -106,10 +106,6 @@ pub struct Host<A: App, R: Retention = Incremental, I: Invalidation = Everything
     /// `layout` through [`LayoutCx::with_palette`]. `Palette::LIGHT` until
     /// set.
     palette: lumen_static::style::Palette,
-    /// Bumped whenever `palette` changes, and handed to `layout` beside it
-    /// — M25/T25.12. A cached look keys on this rather than on the
-    /// palette's colours. Never `0`.
-    palette_generation: u32,
 }
 
 impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
@@ -135,7 +131,6 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             sheet: Vec::new(),
             sheet_findings: Vec::new(),
             palette: lumen_static::style::Palette::LIGHT,
-            palette_generation: 1,
         }
     }
 
@@ -167,10 +162,6 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             return;
         }
         self.palette = palette;
-        // A new generation, so a look cached under the old palette misses
-        // (M25/T25.12). Wrapping, and skipping `0`, which means "never
-        // resolved" to a widget.
-        self.palette_generation = self.palette_generation.wrapping_add(1).max(1);
         lumen_static::style::cascade_deep_with(
             self.app.tree_mut(),
             &self.sheet,
@@ -464,8 +455,7 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             // Disjoint field borrows: the view borrows `invalidation`,
             // the palette `palette`, the tree borrows `app`.
             let mut cx = LayoutCx::with_changed(metrics, self.invalidation.view())
-                .with_palette(&self.palette)
-                .with_palette_generation(self.palette_generation);
+                .with_palette(&self.palette);
             let tree = self.app.tree_mut();
             tree.layout(&mut cx, limits, &self.styles, &mut self.states, 0);
             tree.place(Point::default(), &self.styles, &mut self.states, 0);

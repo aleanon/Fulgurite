@@ -45,7 +45,7 @@ use crate::display::{Color, Painter};
 use crate::event::{EventCtx, NodeSel};
 use crate::hit::{contains, Hit};
 use crate::ops::{record_painted, rect_of, resolve_self};
-use crate::style::{Edges, Length, Palette, Seed, Status, Style};
+use crate::style::{Edges, Length, Seed, Style};
 use crate::widget::{Node, Widget};
 use crate::{Constraints, LayoutCx, Point, Size};
 
@@ -64,111 +64,31 @@ pub struct Toggle<S: 'static, const SHAPE: u8 = CHECKBOX> {
     /// Run on activation: click, Enter or Space. Flip the application's
     /// own field here; the binding writes `on` back.
     pub on_toggle: fn(&mut S, &EventCtx),
-    /// How it looks, as a function of the palette and its pointer state
-    /// — M25/T25.5. Set with [`Toggle::set_look`].
+    /// What the control draws *on* itself: the tick, the dot, the knob —
+    /// M25/T25.10.
     ///
-    /// **Code, not data**, and a hot reload treats it as such: `fresh()`
-    /// supplies the new build's function and `restore` never touches it,
-    /// the same as `on_toggle`. [`default_look`] unless an application
-    /// sets one; kind-wide theming is the application's
-    /// [`Palette`], not a look per instance.
+    /// A field on the widget, where it was a hard-coded white constant
+    /// because a third colour on every node of every tree was too dear for
+    /// one part of one widget. A field costs bytes only where a toggle is,
+    /// which is the shape `Image::tint` already had. White by default.
     ///
-    /// **Private since M25/T25.12**, because the look is cached: a public
-    /// field could be reassigned without the cache noticing, and the old
-    /// look would paint until the palette or the pointer state changed.
-    look: fn(&Palette, Status) -> ToggleLook,
-    /// The look as last resolved in `layout`, which `paint` reads.
-    resolved: ToggleLook,
-    /// What `resolved` was resolved from — M25/T25.12: the palette
-    /// generation shifted left two bits, the [`Status`] in the low two.
-    /// `0` is never a stamp, since a generation is never `0`, so a
-    /// `Default` toggle and a `fresh()` one after a hot reload resolve on
-    /// their first layout.
-    stamp: u32,
-}
-
-/// The stamp a look resolved under `generation` and `status` carries.
-///
-/// Two bits of status leave thirty of generation: a host would have to
-/// swap palettes 2³⁰ times for two different palettes to share a stamp.
-const fn stamp_of(generation: u32, status: Status) -> u32 {
-    let s = match status {
-        Status::Active => 0,
-        Status::Hovered => 1,
-        Status::Pressed => 2,
-        Status::Disabled => 3,
-    };
-    (generation << 2) | s
+    /// **Not `Style::background`, which is what it was before that.** The
+    /// original scheme inverted `(body, mark)` across the on/off boundary,
+    /// so making the resting grey dark enough to *see* on a light page also
+    /// made the tick on a checked box that grey.
+    pub mark: Color,
 }
 
 pub type CheckBox<S> = Toggle<S, CHECKBOX>;
 pub type Radio<S> = Toggle<S, RADIO>;
 pub type Switch<S> = Toggle<S, SWITCH>;
 
-/// Every colour a toggle paints — M25/T25.5.
-///
-/// The three that `Style` could not hold on every node, and the one that
-/// moves off it: a **mark** colour (the tick, the dot, the knob), which
-/// was the hard-coded white `MARK` because a third colour per node was
-/// too dear; a **focus** colour, which was the node's `fg`; and a body
-/// for each state, which were `background` and `color`.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct ToggleLook {
-    /// The body when off.
-    pub body: Color,
-    /// The body when on.
-    pub on_body: Color,
-    /// The tick, the dot, the switch's knob.
-    pub mark: Color,
-    /// The keyboard focus ring.
-    pub focus: Color,
-}
-
-/// The look a toggle has unless an application gives it one.
-///
-/// The palette's `control` grey off and `accent` on, with an
-/// `on_accent` mark — the colours this widget has always had under the
-/// light palette, so an application that sets nothing sees no change.
-/// Hovered and pressed darken both bodies by the amounts the cascade's
-/// `hover_dim` and `pressed_dim` used to (7% and 18%).
-pub fn default_look(p: &Palette, status: Status) -> ToggleLook {
-    let k = match status {
-        Status::Pressed => 0.18,
-        Status::Hovered => 0.07,
-        Status::Active | Status::Disabled => 0.0,
-    };
-    ToggleLook {
-        body: crate::ops::dim(p.control, k),
-        on_body: crate::ops::dim(p.accent, k),
-        mark: p.on_accent,
-        focus: p.focus,
-    }
-}
+/// A toggle's mark when nothing sets one.
+const WHITE: Color = Color(255, 255, 255, 255);
 
 impl<S, const SHAPE: u8> Default for Toggle<S, SHAPE> {
     fn default() -> Self {
-        Toggle {
-            on: false,
-            on_toggle: crate::ops::ignore_click::<S>,
-            look: default_look,
-            resolved: default_look(&Palette::LIGHT, Status::Active),
-            stamp: 0,
-        }
-    }
-}
-
-impl<S, const SHAPE: u8> Toggle<S, SHAPE> {
-    /// The look `layout` last resolved — what `paint` is drawing.
-    pub fn resolved_look(&self) -> ToggleLook {
-        self.resolved
-    }
-
-    /// Replace the look. The cached one is dropped, so the next `layout`
-    /// resolves the new look whatever else has or has not changed
-    /// (M25/T25.12).
-    pub fn set_look(&mut self, look: fn(&Palette, Status) -> ToggleLook) {
-        self.look = look;
-        self.stamp = 0;
+        Toggle { on: false, on_toggle: crate::ops::ignore_click::<S>, mark: WHITE }
     }
 }
 
@@ -186,21 +106,33 @@ impl<S: 'static, const SHAPE: u8> Widget for Toggle<S, SHAPE> {
         _ => "checkbox",
     };
 
-    /// Its size, corner and cursor. **Not its colours**, since
-    /// M25/T25.5: those are its [`ToggleLook`], resolved from the
-    /// palette, and a stylesheet's `background`, `color` or dims no
-    /// longer reach it — the sheet lint reports a rule that tries.
+    /// A visible control with no stylesheet at all.
     ///
-    /// The two defects the colour defaults here once guarded against
-    /// stay guarded, by [`default_look`] and [`Palette::control`]: an "on"
-    /// switch with a transparent, invisible knob, and an unchecked box in
-    /// a grey sixteen levels from a light page.
+    /// Both colours are opaque deliberately. `Style::background`
+    /// defaults to transparent, and `rounded_rect` drops a transparent
+    /// command — so the first version of this widget, which inverted
+    /// `fg`/`bg` for the on state, drew an "on" switch with **no knob**:
+    /// the mark was the transparent default. A control whose default
+    /// styling is invisible in one of its two states is not a default.
     fn type_defaults() -> Style {
         Style {
             width: Length::Fixed(if SHAPE == SWITCH { TRACK_W } else { BOX }),
             height: Length::Fixed(BOX),
             radius: if SHAPE == RADIO { BOX / 2.0 } else { 5.0 },
             padding: Edges::all(0.0),
+            // `background` is the resting body and `color` the on body.
+            // **Dark enough to see on a light page.** This was
+            // `(226, 232, 240)` — about sixteen levels from a typical
+            // page colour, so an *unchecked* box and an *unselected*
+            // radio were all but invisible, and the switch's white knob
+            // had nothing to sit against. Lumen's resting control is
+            // `#bfc4cc` on white; this is that. A control whose resting
+            // state cannot be seen is the same defect as one whose
+            // default styling draws nothing.
+            background: Color(0xbf, 0xc4, 0xcc, 255),
+            color: ON,
+            pressed_dim: 0.18,
+            hover_dim: 0.07,
             cursor: crate::style::Cursor::Pointer,
             ..Style::default()
         }
@@ -213,7 +145,11 @@ impl<S: 'static, const SHAPE: u8> Widget for Toggle<S, SHAPE> {
             crate::style::Fields::CURSOR,
             crate::style::Fields::FOCUS_RING,
             crate::style::Fields::VISIBLE,
+            crate::style::Fields::COLOR,
+            crate::style::Fields::BACKGROUND,
             crate::style::Fields::RADIUS,
+            crate::style::Fields::PRESSED_DIM,
+            crate::style::Fields::HOVER_DIM,
         ]))];
 }
 
@@ -234,46 +170,30 @@ impl<S: 'static, const SHAPE: u8> Node for Toggle<S, SHAPE> {
 
     fn layout(
         &mut self,
-        cx: &mut LayoutCx,
+        _cx: &mut LayoutCx,
         limits: Constraints,
         style: &[Style],
         st: &mut [NodeState],
         i: usize,
     ) -> Size {
         let me = style[i];
-        // M25/T25.5: the look, against the host's palette and this node's
-        // pointer state. Resolved here and not in `paint`, which has no
-        // palette — and correct under `Boundaries` only because a hover
-        // or press marks the node (T25.0), so this runs when they change.
-        //
-        // M25/T25.12: and only when they changed. A layout whose palette
-        // generation and status match the stamp reads the cached look, the
-        // way every node reads its cascaded `Style` — which is the shape
-        // the stylesheet has and the first pilot did not.
-        let status = Status::of(&st[i]);
-        let stamp = stamp_of(cx.palette_generation, status);
-        if stamp != self.stamp {
-            self.resolved = (self.look)(cx.palette, status);
-            self.stamp = stamp;
-        }
         let size = resolve_self(limits, &me, Size { w: BOX, h: BOX });
         record_painted(st, i, limits, size, &me)
     }
 
     fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
-        let look = self.resolved;
-        crate::ops::focus_ring_in(st, i, look.focus, out);
+        crate::ops::focus_ring(st, i, out);
         let s = &st[i];
         let r = rect_of(s);
         let (w, h) = (r[2] - r[0], r[3] - r[1]);
         if w <= 0.0 || h <= 0.0 {
             return;
         }
-        // The body is the look's for the state it is in, and the mark is
-        // the look's `mark` in both. Nothing draws a mark when off — a
+        // `bg` is the resting body and `fg` the on body; the mark is
+        // always [`Toggle::mark`]. Nothing draws a mark when off — a
         // checkbox has no tick, a radio no dot — and the switch's knob is
-        // drawn in both states, so it takes the same `mark`.
-        let (body, mark) = if self.on { (look.on_body, look.mark) } else { (look.body, look.mark) };
+        // drawn in both states, so it takes the mark too.
+        let (body, mark) = if self.on { (s.fg, self.mark) } else { (s.bg, self.mark) };
         match SHAPE {
             SWITCH => {
                 out.rounded_rect(r, body, h / 2.0);
@@ -354,15 +274,6 @@ impl<S: 'static, const SHAPE: u8> Node for Toggle<S, SHAPE> {
         node.set_toggled(if self.on { Toggled::True } else { Toggled::False });
         node.add_action(crate::observe::accesskit::Action::Click);
     }
-
-    #[cfg(feature = "observe")]
-    fn look(&self, out: &mut dyn FnMut(&'static str, Color)) {
-        let l = self.resolved;
-        out("body", l.body);
-        out("on_body", l.on_body);
-        out("mark", l.mark);
-        out("focus", l.focus);
-    }
 }
 
 /// A checkmark, stepped along its two diagonals.
@@ -400,3 +311,6 @@ impl<S: 'static, const SHAPE: u8> crate::event::Handlers<S> for Toggle<S, SHAPE>
         (sel.i == 0).then_some(self.on_toggle)
     }
 }
+
+/// The colour a toggle reads as "on" with no stylesheet.
+pub const ON: Color = Color(53, 99, 239, 255);

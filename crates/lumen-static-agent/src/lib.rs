@@ -958,11 +958,7 @@ impl Agent {
         let s = &tree.styles[i];
         let st = &tree.states[i];
         let color = |c: lumen_static::Color| json!([c.0, c.1, c.2, c.3]);
-        let mut look = Map::new();
-        tree.root.node(i).look(&mut |name, c| {
-            look.insert(name.into(), color(c));
-        });
-        let mut out = json!({
+        Ok(json!({
             "index": i,
             "width": format!("{:?}", s.width),
             "height": format!("{:?}", s.height),
@@ -984,22 +980,7 @@ impl Agent {
                 "focused": st.focused,
                 "painted_background": color(st.bg),
             },
-        });
-        // M25/T25.5: a widget with a look paints its colours from the look.
-        // Its cascaded `color` and `background`, and the background stamped
-        // from them, describe a frame that is not on screen, so they are
-        // replaced rather than reported beside it.
-        if !look.is_empty() {
-            if let Some(o) = out.as_object_mut() {
-                o.remove("color");
-                o.remove("background");
-                if let Some(state) = o.get_mut("state").and_then(Value::as_object_mut) {
-                    state.remove("painted_background");
-                }
-                o.insert("look".into(), Value::Object(look));
-            }
-        }
-        Ok(out)
+        }))
     }
 
     fn probe(&self, tree: &TreeRef, params: &Value) -> RpcResult {

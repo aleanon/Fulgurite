@@ -2,10 +2,9 @@
 
 > **Done 2026-09-15: stopped at the T25.5 pilot by its own rule, and
 > finished by its fallback — T25.10 and T25.11 shipped, T25.6–T25.9 were
-> not built.** **T25.12, added afterwards, is not started:** it measures
-> the pilot again with its look cached, because T25.5 judged only the
-> version that resolved on every layout. Written 2026-09-14; revised the
-> same day after a
+> not built.** **T25.12, added afterwards, measured the pilot again with
+> its look cached (2026-09-16): the cache works, and the stop stands.**
+> Written 2026-09-14; revised the same day after a
 > six-lens review (facts, injections, design, cost, migration,
 > alternatives), each lens followed by an adversarial verifier that
 > re-opened the code: 47 findings, 43 confirmed, 4 plausible, none
@@ -810,7 +809,33 @@ the label keeps last palette's colour. The lint counts a role field as
 the field it sets. `examples/showcase` switches palettes, and T25.9's
 "every themed node changes" check runs against it.
 
-## T25.12 — the pilot again, with its look cached — **NOT STARTED**
+## T25.12 — the pilot again, with its look cached — **DONE 2026-09-16: the stop stands**
+
+> **Built on `t25.12-cached-look` and measured; the code is reverted by
+> the commit that records it**, as T25.5's was. P is `48a627c` and C is
+> `0df160b`. Every gate below held, and each was shown to fail alone —
+> the hot reload's too, with `restore` carrying the old build's stamp
+> and resolved look across the swap. The cache does what it is for: 0
+> look calls on a still frame, 2 on a hover, 1 000 on a palette swap,
+> proven before timing. It recovers a little over half the pilot's cost.
+> `still` and `hover` still trip by about four times the spread;
+> `palette`, `.text` and the RAM projection pass
+> (`docs/results-appearance.md` T25.12).
+>
+> **The attribution written under "Thresholds and decision" was wrong,
+> and a probe is why this says so.** It said a `still` trip at zero calls
+> would be the widget's size. `main` with its `Toggle` padded to the same
+> 40 B moved the frame by noise. The cached variant with its look block
+> removed from `layout` recovered about 0.9 µs of its 1.5. What is left is
+> the check itself and the look-shaped paint, not the bytes — so shrinking
+> `NodeState` and `Style`, which the pilot never did, would not have paid
+> for it either. The rule is kept below as it was written.
+>
+> **What a third variant would have to be**, by this task's own rule — a
+> named change for a named cost: resolve a look where its inputs change,
+> in `set_palette` and at the pointer marks T25.0 added, instead of
+> checking in every `layout`. That needs a new `Node` hook, which makes
+> every wrapper of `Node` a call site. Not built.
 
 **Why this exists.** T25.5 measured one shape of appearance on the
 widget: the look function called in every `layout`. That is not the

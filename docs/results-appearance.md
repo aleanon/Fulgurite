@@ -328,3 +328,70 @@ session, alternating, four runs each.
 **What a `still` trip at zero calls means is decided here too:** the cost
 left is the widget's size, not the call. The plan does not try a third
 variant for it.
+
+## T25.12 — the cached pilot, against those thresholds
+
+Measured 2026-09-16 on branch `t25.12-cached-look`: **B** is `5b93d9e`
+(`main`) built with the reshaped bench, **P** the pilot re-applied at
+`48a627c`, **C** the cached look at `0df160b`. Governor `powersave`; the
+three binaries alternating, four runs, one median per run, in ns for a
+full layout and paint of 1 000 toggles. **Each binary proved its look
+calls per iteration before anything was timed:** P 1 000 / 1 000 / 1 000,
+C 0 / 2 / 1 000.
+
+| case | B (`main`) | P (pilot) | C (cached) |
+|---|---:|---:|---:|
+| `still` | 13,453–15,212 † | 17,272–17,547 | 14,998–16,708 |
+| `hover` | 13,459–13,558 | 17,267–17,534 | 15,021–16,575 |
+| `palette` | 13,454–13,561 | 17,287–17,528 | 17,392–17,484 |
+
+† One B run read 15,212 on `still`; B's other eleven medians span
+13,454–13,585, **132 ns**. Counted with the outlier, B's spread is
+1,759 ns and every row below would pass — the bound computed from the
+wrong quantity, so it is not used. Every build showed that second mode,
+about 1.7 µs up on `still` and `hover` in some runs (C in half of its); the
+comparisons below hold in both modes.
+
+| quantity | measured | threshold | verdict |
+|---|---|---|---|
+| embedded `.text` | C **26,260 B** — +8 over T25.1 (P 26,232; `main` 26,364) | ≤ +300 B | **pass** |
+| RAM, `Ui` on the target | C **1,192 B** (P 1,184; `main` 1,136) | T25.5's projection to T25.8 with the stamps, against 1,104 B | **pass on estimates:** T25.5's 1,072 B, plus 8 B measured for the three toggles' stamps, plus 16 B estimated for the two buttons, the label and the field — 1,096 B, 8 B inside |
+| frame, `still` | C − B ≥ **+1,413 ns** in the closest pair of runs | within B's spread, 132 ns (T25.1's was 335) | **trips** |
+| frame, `hover` | C − B ≥ **+1,463 ns** | same | **trips** |
+| frame, `palette` | C's four runs fall inside P's range | C − P within B's spread | **pass** |
+| `Toggle<()>`, host | **40 B**, as P — the stamp fits the padding | reported | — |
+| arena frame | not re-run: the tree holds no toggle, and T25.5 found it unchanged | reported | — |
+
+**The stop stands.** The cache does what it is for — a still frame calls no
+look, a hover calls two — and takes the frame from about +4 µs over `main`
+to about +1.5 µs, which is still four times the threshold.
+
+### Where the rest goes — two probes, and a rule that was wrong
+
+The thresholds above said a `still` trip at zero calls would be the
+widget's size. Two probes, built in worktrees and measured in the same
+alternating procedure, test that instead of assuming it:
+
+- **B40** — `main` with 24 unused bytes in `Toggle`, making it 40 B, as C is.
+- **C0** — C with its look block removed from `layout`, so the stamp is
+  never computed or compared; the paint path is C's.
+
+Per run, `still`, in the lower mode, against that run's B:
+
+| build | run 2 | run 3 | run 4 | the cost it isolates |
+|---|---:|---:|---:|---|
+| B40 | +48 | −50 | +90 † | **the widget's size: none measurable** |
+| C0 | +530 | +517 | +737 | the look-shaped paint: the 16-byte look copied, `focus_ring_in`, bodies from the look |
+| C | +1,518 | — † | +1,883 | the above, plus the stamp check in `layout` |
+| P | +3,781 | +3,801 | +4,015 | the above, plus the look called every layout |
+
+† in the upper mode that run; B40's +90 is from the first probe session.
+
+So of the cached look's ~1.5 µs, **about 0.6 µs is the paint shape and
+about 0.9 µs the check** — `Status::of`, the stamp and a compare, some
+0.9 ns a toggle. The call it saves is about 2.4 µs. **None of it is size.**
+The same probe answers the question this re-measurement was asked with:
+T25.8 would shrink `NodeState` and `Style` by 16 B on each of the 1,100
+nodes, 17.6 KB. B40 grew the toggle array by 24 KB and moved the frame by
+noise, so that shrink would not have paid for the 1.5 µs either — an
+extrapolation from B40, not a measurement of T25.8.

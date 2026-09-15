@@ -157,11 +157,11 @@ fn main() {
     expect(&before, "cache=2", "v1 ran two frames");
     expect(&before, "status='count 3'", "the update step puts app state on screen");
     expect(&before, "check=on", "v1 checked the box");
-    // M25/T25.5: the tick probe reads the look -- asserted before the swap
+    // M25/T25.10: the tick probe reads the painted mark -- asserted before the swap
     // too, so a probe returning a constant cannot pass both halves.
     let mark_v1 = app.call_u32(b"hot_check_mark");
     println!("v1 tick colour {mark_v1:#010x}");
-    assert_eq!(mark_v1, 0xc8_1e_1e_ff, "v1's look paints a red tick");
+    assert_eq!(mark_v1, 0xc8_1e_1e_ff, "v1's default paints a red tick");
 
     // ---- the §7 sequence ----
     let bytes = app.save(); // 1. save while old lib loaded (host-owned buffer)
@@ -214,12 +214,12 @@ fn main() {
     // column: the window is whatever the remaining height holds, rebuilt
     // from `rows` and `scroll` after the swap -- which is the claim.
     expect(&after, "window=23", "repeater window rebuilt");
-    // M25/T25.5: a toggle's `on` is data (kept), its look is code (fresh).
+    // M25/T25.10: a toggle's `on` is saved (kept), its mark is not (fresh).
     expect(&after, "check=on", "keep: the toggle's on state");
     let mark_v2 = app2.call_u32(b"hot_check_mark");
     println!("v2 tick colour {mark_v2:#010x}");
-    assert_eq!(mark_v2, 0x1e_3c_dc_ff, "fresh: the new build's look paints a blue tick");
-    println!("  ok: the look came from the new build and the on state from the old");
+    assert_eq!(mark_v2, 0x1e_3c_dc_ff, "fresh: the new build's default paints a blue tick");
+    println!("  ok: the mark came from the new build and the on state from the old");
 
     println!("\nHOT RELOAD DEMO: PASS");
 }

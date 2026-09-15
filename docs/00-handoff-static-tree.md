@@ -874,8 +874,9 @@ remains** — which is why §10 Step 1 is the kill criterion.
    pressed look that changes hue. Appearance stays in `Style`; the colours
    one widget needs become fields on that widget, and a stylesheet can name
    a palette role (`docs/plan-appearance.md` T25.5, T25.10, T25.11).
-   **The "no" covers one shape of the idea, and stands until T25.12
-   reports.** The pilot resolved its look on every layout; the cascade it
-   lost to resolves once and is read afterwards. T25.12 measures the look
-   cached the same way, against thresholds written before it is built,
-   and says in advance which result reverses this.
+   **T25.12 measured it again with the look cached, and the "no" stands**
+   (2026-09-16). The pilot resolved its look on every layout, where the
+   cascade it lost to resolves once. Cached the same way, the look still
+   cost about four times the frame threshold, and probes put that cost in
+   the cache check and the look-shaped paint, not in the widget's size
+   (`docs/results-appearance.md` T25.12).

@@ -25,6 +25,12 @@
 //! `NodeState` plus the instance, not `NodeState` plus `Style`.
 //!
 //! Run: `cargo run --release -p benches --bin appearance [--features look|cached]`
+//!
+//! **Those two features build only at the commits T25.12 measured** —
+//! `48a627c`, the pilot, and `0df160b`, the cached look — because the look
+//! they install was reverted when the stop stood. Anywhere else, build it
+//! without features: that is the B variant, and `docs/results-appearance.md`
+//! T25.12 has all three.
 
 use std::hint::black_box;
 use std::mem::size_of;

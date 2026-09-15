@@ -128,9 +128,7 @@ fn every_container_agrees_with_its_seed() {
 fn an_option_seeds_as_its_content_either_way() {
     type O = Option<Pair>;
     assert_eq!(<O as Widget>::SEEDS.len(), <Pair as Widget>::NODE_COUNT);
-    for (i, (o, p)) in
-        <O as Widget>::SEEDS.iter().zip(<Pair as Widget>::SEEDS.iter()).enumerate()
-    {
+    for (i, (o, p)) in <O as Widget>::SEEDS.iter().zip(<Pair as Widget>::SEEDS.iter()).enumerate() {
         assert_eq!(o.kind, p.kind, "node {i}");
         assert_eq!((o.defaults)(), (p.defaults)(), "node {i}");
     }
@@ -155,8 +153,7 @@ fn an_option_seeds_as_its_content_either_way() {
 #[test]
 fn a_seed_is_the_same_whatever_the_instance_is_doing() {
     let off: CheckBox<()> = CheckBox::default();
-    let mut on: CheckBox<()> = CheckBox::default();
-    on.on = true;
+    let on: CheckBox<()> = CheckBox { on: true, ..Default::default() };
     let a: Style = Node::defaults(&off);
     let b: Style = Node::defaults(&on);
     assert_eq!(a, b);
