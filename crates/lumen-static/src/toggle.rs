@@ -65,18 +65,40 @@ pub struct Toggle<S: 'static, const SHAPE: u8 = CHECKBOX> {
     /// own field here; the binding writes `on` back.
     pub on_toggle: fn(&mut S, &EventCtx),
     /// How it looks, as a function of the palette and its pointer state
-    /// — M25/T25.5.
+    /// — M25/T25.5. Set with [`Toggle::set_look`].
     ///
     /// **Code, not data**, and a hot reload treats it as such: `fresh()`
     /// supplies the new build's function and `restore` never touches it,
     /// the same as `on_toggle`. [`default_look`] unless an application
     /// sets one; kind-wide theming is the application's
     /// [`Palette`], not a look per instance.
-    pub look: fn(&Palette, Status) -> ToggleLook,
+    ///
+    /// **Private since M25/T25.12**, because the look is cached: a public
+    /// field could be reassigned without the cache noticing, and the old
+    /// look would paint until the palette or the pointer state changed.
+    look: fn(&Palette, Status) -> ToggleLook,
     /// The look as last resolved in `layout`, which `paint` reads.
-    /// Private: `layout` overwrites it every frame, so a value set from
-    /// outside would last one frame at most.
     resolved: ToggleLook,
+    /// What `resolved` was resolved from — M25/T25.12: the palette
+    /// generation shifted left two bits, the [`Status`] in the low two.
+    /// `0` is never a stamp, since a generation is never `0`, so a
+    /// `Default` toggle and a `fresh()` one after a hot reload resolve on
+    /// their first layout.
+    stamp: u32,
+}
+
+/// The stamp a look resolved under `generation` and `status` carries.
+///
+/// Two bits of status leave thirty of generation: a host would have to
+/// swap palettes 2³⁰ times for two different palettes to share a stamp.
+const fn stamp_of(generation: u32, status: Status) -> u32 {
+    let s = match status {
+        Status::Active => 0,
+        Status::Hovered => 1,
+        Status::Pressed => 2,
+        Status::Disabled => 3,
+    };
+    (generation << 2) | s
 }
 
 pub type CheckBox<S> = Toggle<S, CHECKBOX>;
@@ -130,6 +152,7 @@ impl<S, const SHAPE: u8> Default for Toggle<S, SHAPE> {
             on_toggle: crate::ops::ignore_click::<S>,
             look: default_look,
             resolved: default_look(&Palette::LIGHT, Status::Active),
+            stamp: 0,
         }
     }
 }
@@ -140,13 +163,12 @@ impl<S, const SHAPE: u8> Toggle<S, SHAPE> {
         self.resolved
     }
 
-    /// Replace the look.
-    ///
-    /// M25/T25.12 adds this to the pilot so `benches --bin appearance` can
-    /// install a counting look through the same call on the pilot and on
-    /// the cached variant. Here it only assigns.
+    /// Replace the look. The cached one is dropped, so the next `layout`
+    /// resolves the new look whatever else has or has not changed
+    /// (M25/T25.12).
     pub fn set_look(&mut self, look: fn(&Palette, Status) -> ToggleLook) {
         self.look = look;
+        self.stamp = 0;
     }
 }
 
@@ -223,7 +245,17 @@ impl<S: 'static, const SHAPE: u8> Node for Toggle<S, SHAPE> {
         // pointer state. Resolved here and not in `paint`, which has no
         // palette — and correct under `Boundaries` only because a hover
         // or press marks the node (T25.0), so this runs when they change.
-        self.resolved = (self.look)(cx.palette, Status::of(&st[i]));
+        //
+        // M25/T25.12: and only when they changed. A layout whose palette
+        // generation and status match the stamp reads the cached look, the
+        // way every node reads its cascaded `Style` — which is the shape
+        // the stylesheet has and the first pilot did not.
+        let status = Status::of(&st[i]);
+        let stamp = stamp_of(cx.palette_generation, status);
+        if stamp != self.stamp {
+            self.resolved = (self.look)(cx.palette, status);
+            self.stamp = stamp;
+        }
         let size = resolve_self(limits, &me, Size { w: BOX, h: BOX });
         record_painted(st, i, limits, size, &me)
     }

@@ -56,7 +56,7 @@ fn a_look_colours_the_tick() {
 
     let mut w = CheckBox::<()>::default();
     w.on = true;
-    w.look = red_tick;
+    w.set_look(red_tick);
     let colours = painted_default(&mut w, &Palette::LIGHT);
     println!("painted {colours:?}");
     assert!(colours.len() > 1, "setup: an on checkbox paints a body and a tick");

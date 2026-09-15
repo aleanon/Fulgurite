@@ -95,7 +95,7 @@ impl Default for Ui {
             list: Repeat::new(0, 24.0, bind_row),
             check: {
                 let mut c = CheckBox::default();
-                c.look = check_look;
+                c.set_look(check_look);
                 c
             },
             footer: Label::new(FOOTER),

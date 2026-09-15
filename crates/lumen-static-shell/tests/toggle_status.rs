@@ -58,7 +58,7 @@ fn a_pressed_look_can_change_hue() {
     let mut h: Host<Pressable, lumen_static::Incremental, Boundaries<16>> =
         Host::new(Pressable::default(), 200, 100);
     h.app.ui.check.on = true;
-    h.app.ui.check.look = green_when_pressed;
+    h.app.ui.check.set_look(green_when_pressed);
     h.invalidate_all();
     h.pump();
     h.pump();
@@ -77,4 +77,35 @@ fn a_pressed_look_can_change_hue() {
     let pressed = body(&h, i);
     println!("pressed body {pressed:?}");
     assert_eq!(pressed, GREEN, "the pressed look's hue did not reach the frame");
+}
+
+/// M25/T25.12: a palette swap reaches a cached look.
+///
+/// The swap marks the tree, so layout runs; what this guards is the cache
+/// underneath it. A stamp keyed on anything but the palette's generation
+/// would match the one from before the swap, and the toggle would keep
+/// painting the old palette on a frame that was laid out.
+#[test]
+fn a_palette_swap_reaches_a_cached_look() {
+    let mut h: Host<Pressable, lumen_static::Incremental, Boundaries<16>> =
+        Host::new(Pressable::default(), 200, 100);
+    h.app.ui.check.on = true;
+    h.invalidate_all();
+    h.pump();
+    h.pump();
+    let i = lumen_static::style::index_of_wid(<Ui as Widget>::SUB_TABLE, "check").unwrap();
+
+    let light = body(&h, i);
+    assert_ne!(Palette::LIGHT.accent, Palette::DARK.accent, "setup: the palettes differ here");
+    assert_eq!(light, Palette::LIGHT.accent, "setup: an on checkbox's body is the light accent");
+
+    h.set_palette(Palette::DARK);
+    h.pump();
+    let dark = body(&h, i);
+    println!("body under light {light:?}, after set_palette(DARK) {dark:?}");
+    assert_eq!(
+        dark,
+        Palette::DARK.accent,
+        "the palette swap did not reach the cached look: the body kept the old palette's accent"
+    );
 }

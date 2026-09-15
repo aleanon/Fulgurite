@@ -119,8 +119,9 @@ impl<S: 'static, T: crate::text::TextRestore> Reloadable for crate::ops::Button<
 
 /// `on` is kept; `look` and `on_toggle` are code, so `fresh()` supplies
 /// the new build's and `restore` never touches them — M25/T25.5. The
-/// resolved look is not saved either: `layout` recomputes it from the new
-/// `look` on the first frame, which is what makes an edited look show
+/// resolved look and its cache stamp are not saved either: `fresh()`'s
+/// stamp is `0`, which matches no layout, so the first frame resolves the
+/// new `look` (M25/T25.12) — which is what makes an edited look show
 /// after a swap. Written by hand for the reason `Button`'s is: the
 /// derive's untagged-field rule would demand `Reloadable` of an `fn`.
 impl<S: 'static, const SHAPE: u8> Reloadable for crate::toggle::Toggle<S, SHAPE> {

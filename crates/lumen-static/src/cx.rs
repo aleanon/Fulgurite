@@ -193,6 +193,16 @@ pub struct LayoutCx<'a> {
     /// widgets' defaults already are, so every existing caller is
     /// unaffected.
     pub palette: &'a crate::style::Palette,
+    /// Which palette `palette` is, as a number the host changes whenever
+    /// it changes the palette — M25/T25.12.
+    ///
+    /// What a widget that caches a look resolved from the palette keys on,
+    /// because comparing or storing the 32-byte `Palette` on every such
+    /// widget would spend what the cache saves. **The host's contract:** a
+    /// different palette under the same generation is not seen by a cached
+    /// look. `1` from [`LayoutCx::new`], alongside `Palette::LIGHT`; `0` is
+    /// never a generation, so a widget can use it for "never resolved".
+    pub palette_generation: u32,
 }
 
 impl<'a> LayoutCx<'a> {
@@ -202,12 +212,20 @@ impl<'a> LayoutCx<'a> {
             fill_span: None,
             changed: crate::invalidate::Changed::ALL,
             palette: &crate::style::Palette::LIGHT,
+            palette_generation: 1,
         }
     }
 
     /// The same context, resolving looks against `palette` (M25/T25.3).
     pub fn with_palette(mut self, palette: &'a crate::style::Palette) -> Self {
         self.palette = palette;
+        self
+    }
+
+    /// Set [`LayoutCx::palette_generation`] — what a host that swaps
+    /// palettes calls beside [`LayoutCx::with_palette`] (M25/T25.12).
+    pub fn with_palette_generation(mut self, generation: u32) -> Self {
+        self.palette_generation = generation;
         self
     }
 
@@ -220,7 +238,13 @@ impl<'a> LayoutCx<'a> {
         text: &'a mut dyn TextMeasure,
         changed: crate::invalidate::Changed<'a>,
     ) -> Self {
-        LayoutCx { text, fill_span: None, changed, palette: &crate::style::Palette::LIGHT }
+        LayoutCx {
+            text,
+            fill_span: None,
+            changed,
+            palette: &crate::style::Palette::LIGHT,
+            palette_generation: 1,
+        }
     }
 
     /// Run `f` with `span` as the `Fill` reference, restoring whatever
