@@ -2,7 +2,10 @@
 
 > **Done 2026-09-15: stopped at the T25.5 pilot by its own rule, and
 > finished by its fallback — T25.10 and T25.11 shipped, T25.6–T25.9 were
-> not built.** Written 2026-09-14; revised the same day after a
+> not built.** **T25.12, added afterwards, is not started:** it measures
+> the pilot again with its look cached, because T25.5 judged only the
+> version that resolved on every layout. Written 2026-09-14; revised the
+> same day after a
 > six-lens review (facts, injections, design, cost, migration,
 > alternatives), each lens followed by an adversarial verifier that
 > re-opened the code: 47 findings, 43 confirmed, 4 plausible, none
@@ -806,6 +809,115 @@ colour on `set_palette`. *Injection:* `set_palette` does not re-cascade —
 the label keeps last palette's colour. The lint counts a role field as
 the field it sets. `examples/showcase` switches palettes, and T25.9's
 "every themed node changes" check runs against it.
+
+## T25.12 — the pilot again, with its look cached — **NOT STARTED**
+
+**Why this exists.** T25.5 measured one shape of appearance on the
+widget: the look function called in every `layout`. That is not the
+shape the stylesheet it lost to has. The cascade is slow — tens of µs
+for a showcase-sized sheet (`docs/results-appearance.md` T25.1) — and
+wins on the frame path only because it runs when its inputs change and
+leaves an array that layout reads. The pilot was never given that, so
+the stop decision judged *resolving on every layout*, not *a look on
+the widget*. This task measures the variant that caches, against the
+same thresholds, and says before it is built what its numbers decide.
+
+**Where the pilot's time went**, per `docs/results-appearance.md` T25.5:
+an indirect call through the `fn` pointer, a 16-byte look copied into the
+widget, and a `Toggle` that grew from 16 to 40 B. **A cache removes the
+first two on a hit and keeps the third.** So this can still trip, on
+size alone, and the bench is shaped to say which cost it was.
+
+**When a cache matters at all.** Under `Boundaries` a still frame skips
+a clean subtree before `layout`, which is already a cache at subtree
+grain. This one pays on frames that lay a toggle out without changing its
+inputs: every frame under `Everything`, the default strategy, and every
+relayout under `Boundaries` caused by something else — a resize, text
+edited in a sibling, a stylesheet swap.
+
+### What gets built
+
+On a branch from `main`, with the pilot's look restored from `5436381`.
+T25.10's `Toggle::mark` field becomes the look's `mark` rather than
+living beside it.
+
+- **A key, not a stored palette.** `LayoutCx` gains a palette generation,
+  a `u32` the host bumps in `set_palette` when the palette differs, and
+  `LayoutCx::new` fixes at 1 alongside `Palette::LIGHT`. Comparing or
+  storing the 32-byte `Palette` per toggle would spend what the cache
+  saves.
+- **`Toggle` stores `resolved` and a `u32` stamp**: the generation shifted
+  left two bits, with the `Status` in the low two. `0` means never
+  resolved. `layout` calls `look` only when the stamp differs, then
+  writes it.
+- **The look function is private, behind a setter that zeroes the
+  stamp.** A public `fn` field could be reassigned without the cache
+  noticing, and would paint the old look until something else changed.
+- **Hot reload:** `fresh()` supplies stamp `0` and `restore` keeps only
+  `on`, so the first layout after a swap resolves with the new build's
+  function.
+
+### Gates — each shown to fail, one injection at a time
+
+| gate | injection | must fire |
+|---|---|---|
+| the pilot's pressed-look gate on `Boundaries<16>` (`toggle_status.rs` in `5436381`) | the stamp omits `Status` | the pressed body stays the resting colour |
+| a palette swap reaches the look, `Boundaries<16>` | the stamp omits the generation | the body keeps the old palette's colour |
+| replacing the look repaints | the setter does not zero the stamp | the old look's mark is painted |
+| `just hot-demo`'s v1 → v2 mark colour | `restore` also restores the stamp and resolved look | the v2 colour assertion; the `on` assertion stays green |
+| **the cache hits** — a counting look function, two still frames under `Everything`, the count printed | the stamp is never written | the call count grew by one per toggle per frame |
+
+The last row is the one that makes the others mean something. A cache
+that always misses passes every staleness gate and is the pilot again.
+
+### The bench — shaped so it cannot flatter the cache
+
+The existing `1k-toggles/static` case lays out identical inputs every
+iteration, so a cache would hit 100% and a miss would never be measured.
+`benches --bin appearance` gains three cases, all full layout and paint
+of the same 1 000 toggles:
+
+- **`still`** — nothing changes: every look hits.
+- **`hover`** — two toggles' hovered bits flip each iteration, a pointer
+  crossing between them: 2 misses of 1 000.
+- **`palette`** — the generation alternates each iteration: every look
+  misses.
+
+**Each case proves its miss count before it is timed**: an untimed pass
+with the counting look prints calls per iteration beside the expected
+0, 2 and 1 000, and aborts if they differ. The timed pass then uses the
+default look.
+
+Three builds, measured in one session, alternating, four runs each:
+**B**, `main` as it is; **P**, the pilot re-applied to the same base,
+because the T25.5 numbers were taken on a tree that has since moved;
+**C**, the cached variant.
+
+### Thresholds and decision
+
+The table is in `docs/results-appearance.md` T25.12, written before the
+build as T25.1's was. In short: `.text` and RAM as T25.1, with RAM judged
+on T25.5's projection to T25.8 with the stamp included; `still` and
+`hover` within B's own run spread; `palette` no worse than P by more than
+that spread, since a palette swap already costs a cascade and a full
+relayout on an event a user makes.
+
+- **Every row passes →** T25.5's decision is reversed. T25.6–T25.8
+  reopen on the cached shape; T25.10's fields become look fields as those
+  tasks planned; T25.11's roles stay for the rules that remain, box fills
+  among them. Handoff question 9, this header and `AGENT.md` move with
+  it.
+- **Any row trips →** the stop stands, now judged on both shapes, and
+  the branch's as-measured commit stays in history the way `5436381`
+  does. **No third variant** unless a named cost is left that a named
+  change removes. If `still` trips while the counter reads zero calls,
+  that cost is the widget's size. The only way to remove it is to take
+  the look off the widget, and §2.1 already priced that at four times
+  the bytes.
+
+**Not in this task:** static dispatch — the look as a type parameter,
+inlinable — instead of a `fn` pointer. It would change what a hot reload
+swaps, and it is a separate question from caching.
 
 ## 3. What this is not
 

@@ -307,3 +307,24 @@ checks 414 role-decided colour fields against both of the showcase's
 palettes and 54 value-decided ones for staying put, over its 18 catalogue
 entries — the main table and every arena under it, since most of the sheet
 styles the demo and the menu rows, which live off the table.
+
+## T25.12 — thresholds for the cached pilot, written before it is built
+
+Recorded 2026-09-15, so the variant `docs/plan-appearance.md` T25.12
+describes can be told no. **B** is `main`, **P** the pilot re-applied to
+the same base, **C** the cached variant; all three measured in one
+session, alternating, four runs each.
+
+| quantity | how | threshold | kill if |
+|---|---|---|---|
+| embedded `.text` | `just firmware-size`, Toggle symbols asserted linked | C ≤ +300 B over T25.1's 26,252 B — of which T25.10 has spent 112, leaving 188 over today's `main` | it exceeds that |
+| RAM, table tree | `fixtures/embedded`'s `UI`, `NODE_STATE` and `STYLE` on the target | trips by construction at this step, as T25.5's did; judged on T25.5's projection to T25.8, recomputed from target sizes **with a 4-byte stamp on every migrated leaf**, against T25.1's 1,104 B | the projected end state grows |
+| frame, `still` | `benches --bin appearance`, 0 misses proven untimed | C − B within the spread of B's four runs, printed beside it | it exceeds the spread |
+| frame, `hover` | the same, 2 misses of 1 000 proven | C − B within B's spread | it exceeds the spread |
+| frame, `palette` | the same, 1 000 misses proven | C − P within B's spread — the cache must not make the all-miss frame worse than the pilot; C − B reported | C − P exceeds the spread |
+| frame, arena | `just stages 10000 150 20` | reported — no toggle in it | — |
+| `Toggle<()>`, host | the bench's size table | reported beside P's 40 B | — |
+
+**What a `still` trip at zero calls means is decided here too:** the cost
+left is the widget's size, not the call. The plan does not try a third
+variant for it.

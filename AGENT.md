@@ -56,7 +56,10 @@ are independent of each other**, so either may go first:
   T25.11 shipped instead**: colour fields on the widgets that need them,
   and palette roles in stylesheets that `Host::set_palette` re-resolves.
   T25.6–T25.9 are not built. `docs/results-appearance.md` T25.5 is the
-  decision's evidence.
+  decision's evidence. **T25.12 is not started**: the pilot again with
+  its look cached. T25.5 judged a look resolved on every layout, not a
+  look on the widget, and the thresholds for the cached version are
+  written down before it is built.
 
 Unsequenced: `docs/plan-harness.md`.
 
