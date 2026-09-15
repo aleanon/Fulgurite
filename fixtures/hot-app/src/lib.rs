@@ -18,6 +18,8 @@ use lumen_static::display::{Cmd, Color};
 use lumen_static::ops::{Fixed, Label, Spacer};
 use lumen_static::reload;
 use lumen_static::repeat::Repeat;
+use lumen_static::style::{Palette, Status};
+use lumen_static::toggle::{default_look, ToggleLook};
 use lumen_static::{
     pass, CheckBox, App as DeriveApp, Constraints, NodeState, Reloadable as DeriveReloadable, StaticTree,
     Widget,
@@ -34,13 +36,17 @@ const THEME: &str = "theme-v1";
 #[cfg(feature = "v2")]
 const THEME: &str = "theme-v2";
 
-/// The checkbox's tick colour, which the edited code changes (M25/T25.10).
-/// `Toggle`'s `Reloadable` keeps only `on`, so the tick comes from the new
-/// build's `Default` after a swap — the fresh class, for a colour field.
+/// The checkbox's look (M25/T25.5). The edited code paints a different
+/// tick, so a swap that kept the old *function* would show — a look is
+/// code, and `fresh()` must supply the new one.
 #[cfg(not(feature = "v2"))]
-const CHECK_MARK: Color = Color(200, 30, 30, 255);
+fn check_look(p: &Palette, s: Status) -> ToggleLook {
+    ToggleLook { mark: Color(200, 30, 30, 255), ..default_look(p, s) }
+}
 #[cfg(feature = "v2")]
-const CHECK_MARK: Color = Color(30, 60, 220, 255);
+fn check_look(p: &Palette, s: Status) -> ToggleLook {
+    ToggleLook { mark: Color(30, 60, 220, 255), ..default_look(p, s) }
+}
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone, Copy, PartialEq)]
 enum Mode {
@@ -74,8 +80,7 @@ struct Ui {
     #[reload(fresh)]
     status: Label<String>,
     list: Repeat<RowW>,
-    /// M25/T25.10: `on` is saved and must survive; `mark` is not and comes
-    /// from the new build.
+    /// M25/T25.5: `on` is data and must survive; `look` is code and must not.
     #[widget_id("check")]
     check: CheckBox<Session>,
     #[reload(fresh)]
@@ -88,7 +93,11 @@ impl Default for Ui {
             title: Label::new("untitled"),
             status: Label::default(),
             list: Repeat::new(0, 24.0, bind_row),
-            check: CheckBox { mark: CHECK_MARK, ..Default::default() },
+            check: {
+                let mut c = CheckBox::default();
+                c.look = check_look;
+                c
+            },
             footer: Label::new(FOOTER),
         }
     }

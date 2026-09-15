@@ -13,7 +13,8 @@ use lumen_static::{Constraints, LayoutCx, Node, NodeState, Point, Switch};
 /// The rounded rects a switch paints, in order: the track, then the
 /// knob.
 fn painted(on: bool) -> Vec<(Color, f32)> {
-    let mut w = Switch::<()> { on, ..Default::default() };
+    let mut w = Switch::<()>::default();
+    w.on = on;
     let style = [w.defaults(); 4];
     let mut st = [NodeState::default(); 4];
     let limits = Constraints { min_w: 0.0, max_w: 200.0, min_h: 0.0, max_h: 80.0 };
@@ -100,19 +101,12 @@ fn the_track_carries_the_state() {
 #[test]
 fn a_checked_control_marks_in_light() {
     for (name, parts) in [
-        (
-            "checkbox",
-            parts_of(&mut lumen_static::CheckBox::<()> { on: true, ..Default::default() }),
-        ),
-        ("radio", parts_of(&mut lumen_static::Radio::<()> { on: true, ..Default::default() })),
+        ("checkbox", parts_of(&mut on::<{ lumen_static::toggle::CHECKBOX }>())),
+        ("radio", parts_of(&mut on::<{ lumen_static::toggle::RADIO }>())),
     ] {
         assert_eq!(parts.len(), 2, "{name}: expected a body and a mark");
         let (body, mark) = (parts[0], parts[1]);
-        println!(
-            "{name:<9} body {body:?} luma {:.0}, mark {mark:?} luma {:.0}",
-            luma(body),
-            luma(mark)
-        );
+        println!("{name:<9} body {body:?} luma {:.0}, mark {mark:?} luma {:.0}", luma(body), luma(mark));
         assert!(
             luma(mark) > luma(body) + 60.0,
             "{name}: the mark (luma {:.0}) barely shows on its body (luma {:.0})",
@@ -148,4 +142,12 @@ fn parts_of<W: Node + lumen_static::Widget>(w: &mut W) -> Vec<Color> {
         _ => None,
     });
     body.into_iter().chain(mark).collect()
+}
+
+/// An "on" toggle of `SHAPE`, built through `Default` because its
+/// resolved look is private (M25/T25.5).
+fn on<const SHAPE: u8>() -> lumen_static::Toggle<(), SHAPE> {
+    let mut t = lumen_static::Toggle::<(), SHAPE>::default();
+    t.on = true;
+    t
 }

@@ -67,6 +67,21 @@ pub fn hide_subtree(st: &mut [NodeState], i: usize, limits: Constraints, count: 
 /// rect the renderer already antialiases, follows the control's own
 /// radius, and cannot cover the content it is marking.
 pub fn focus_ring(st: &[crate::desc::NodeState], i: usize, out: &mut dyn crate::Painter) {
+    focus_ring_in(st, i, st[i].fg, out);
+}
+
+/// [`focus_ring`] in an explicit colour — M25/T25.5.
+///
+/// A widget with a look passes its look's focus colour, which comes from
+/// [`crate::style::Palette::focus`]; `fg` is what M25 moves off the state
+/// array, so the ring cannot keep reading it. The width and radius still
+/// come from the node, because `focus_ring` and `radius` stay cascaded.
+pub fn focus_ring_in(
+    st: &[crate::desc::NodeState],
+    i: usize,
+    color: crate::display::Color,
+    out: &mut dyn crate::Painter,
+) {
     let s = &st[i];
     if !s.focused || s.focus_ring == 0 {
         return;
@@ -75,7 +90,7 @@ pub fn focus_ring(st: &[crate::desc::NodeState], i: usize, out: &mut dyn crate::
     let r = rect_of(s);
     out.rounded_rect(
         [r[0] - w, r[1] - w, r[2] + w, r[3] + w],
-        s.fg,
+        color,
         // The control's own radius plus the ring's width, so the ring
         // stays concentric rather than squaring off at the corners.
         s.radius + w,
@@ -342,11 +357,13 @@ pub fn record_painted(
 /// Multiplicative rather than a fixed subtraction so the affordance
 /// scales with the colour: 12% off a near-black surface is a shade, 12%
 /// off a bright accent is a shade, and neither clips.
+///
+/// Public since M25/T25.5, so a look can darken a palette colour for its
+/// hovered and pressed states the way the cascade's dims did.
 #[inline]
-fn dim(c: crate::display::Color, f: f32) -> crate::display::Color {
-    // Nothing to darken — the common case, a control at rest. Kept from
-    // M25/T25.5's pilot, where it was measured to matter; the output is
-    // identical, since a factor of 1.0 truncates to the same byte.
+pub fn dim(c: crate::display::Color, f: f32) -> crate::display::Color {
+    // Nothing to darken: every resting control asks for a zero shade, and
+    // a look is resolved per control per layout (M25/T25.5).
     if f <= 0.0 {
         return c;
     }

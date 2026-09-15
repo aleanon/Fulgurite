@@ -269,7 +269,19 @@ pub trait Node {
     /// Cheap scalar introspection for the per-frame audit.
     #[cfg(feature = "observe")]
     #[allow(unused_variables)]
-    fn stats(&self, out: &mut crate::desc::NodeStats) {}}
+    fn stats(&self, out: &mut crate::desc::NodeStats) {}
+
+    /// The colours a widget's look resolved, by name — M25/T25.5.
+    ///
+    /// What `ui.getAppliedStyles` reports for a widget whose colours come
+    /// from a look rather than from `Style`, so an agent is told what is
+    /// painted instead of a cascaded colour nothing reads. Nothing by
+    /// default: a widget without a look has nothing to add. Asked of the
+    /// node itself, never forwarded — a container has no look of its own.
+    #[cfg(feature = "observe")]
+    #[allow(unused_variables)]
+    fn look(&self, out: &mut dyn FnMut(&'static str, crate::display::Color)) {}
+}
 
 /// The compile-time half: facts about a widget's shape.
 pub trait Widget: Node {

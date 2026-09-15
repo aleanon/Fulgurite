@@ -14,6 +14,11 @@ lumen-static-shell = { path = "../crates/lumen-static-shell", features = ["truet
 
 [features]
 rdyn_opaque = ["lumen-static/rdyn_opaque"]
+# M25/T25.12: which variant `--bin appearance` is built against. None is
+# `main`; `look` is the pilot (a look resolved on every layout); `cached`
+# is the pilot with its look cached, and adds the palette generation.
+look = []
+cached = ["look"]
 
 [[bin]]
 name = "glass-cost"

@@ -7,7 +7,7 @@ use lumen_static_shell::software::Canvas;
 use lumen_static_shell::text::{FontMetrics, FontStack};
 use lumen_static_shell::Host;
 
-use crate::app::{ACCENT, INK, PAGE, SURFACE};
+use crate::app::{ACCENT, INK, MUTED, PAGE, SURFACE, WHITE};
 
 
 /// One row of the settings panel: a control and its label.
@@ -161,10 +161,6 @@ pub fn form(path: &str) {
         Rule::new(Selector::Kind("FormUi"), Patch::new().background(PAGE).padding(Edges::all(12.0))),
         Rule::new(Selector::Id("name"), Patch::new().background(SURFACE).radius(8.0).width(Length::FILL)),
         Rule::new(Selector::Kind("label"), Patch::new().color(INK)),
-        // Two colours, four states: the resting body and the on body are
-        // each the other's mark (`crates/lumen-static/src/toggle.rs`).
-        Rule::new(Selector::Kind("checkbox"), Patch::new().background(SURFACE).color(ACCENT)),
-        Rule::new(Selector::Kind("switch"), Patch::new().background(SURFACE).color(ACCENT)),
         Rule::new(Selector::Kind("slider"), Patch::new().background(SURFACE).color(ACCENT)),
         Rule::new(
             Selector::Kind("button"),
@@ -172,6 +168,21 @@ pub fn form(path: &str) {
         ),
         Rule::new(Selector::Id("name"), Patch::new().color(INK)),
     ]);
+    // M25/T25.5: the checkbox and the switch are coloured by the
+    // application's palette, not by `Kind` rules — the rules that did it
+    // set `background` and `color`, which a toggle no longer reads, and
+    // the sheet lint below would name them. The tally's own tokens, each
+    // in the role its name already said.
+    host.set_palette(lumen_static::style::Palette {
+        page: PAGE,
+        surface: SURFACE,
+        control: SURFACE,
+        text: INK,
+        muted: MUTED,
+        accent: ACCENT,
+        on_accent: WHITE,
+        focus: ACCENT,
+    });
     // M25/T25.2: every rule in the form's sheet does something.
     {
         let sheet = host.stylesheet();
