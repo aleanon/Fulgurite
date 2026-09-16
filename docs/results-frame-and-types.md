@@ -163,6 +163,20 @@ derived container, the enum to be reached, and its subtree to be clean.
 An enum of leaves cannot exhibit it, and neither can any tree under
 `Everything`, where nothing is ever clean.
 
+### T26.2 — the agent reported a hidden node's kind as its container's
+
+| | |
+|---|---|
+| before the fix | `ui.resolve` on `#d1`, a `Label` inside the inactive variant, answered **`Stage`** — the enum container's kind |
+| after | **`label`**, and `#d3` **`fixed`**; the visible `#head` unchanged at `label` |
+| the exemption's own gate | dropping the kind from `live_nodes`' identity fired *"setup: a visible node was reported hidden"* — a stand-in and its container share an address, so the kind is what separates them |
+| sites moved | 6 reporting paths read `TreeRef::seeds`; `live_nodes` alone still asks the instance |
+
+**Residue.** `role` is still read from the instance, so the same response
+that now reports `kind: "fixed"` for a hidden node reports
+`role: "GenericContainer"` beside it. `Seed` carries no role, so nothing
+static can be read; deferred rather than papered over.
+
 ## Phase B — the confirmed optimizations
 
 *One table per task: before, after, spread, verdict against the

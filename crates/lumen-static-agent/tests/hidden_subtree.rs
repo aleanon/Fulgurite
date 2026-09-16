@@ -138,3 +138,56 @@ fn the_hidden_nodes_are_still_in_the_tree_report() {
         assert!(wids.contains(&want), "{want} — inside the hidden variant — is not reported");
     }
 }
+
+/// M26/T26.2: and they report **their own** kind, not their container's.
+///
+/// `Node::node(i)` answers for a hidden index with the container standing
+/// in for it, so a kind read off the instance is the container's — the
+/// defect M24/T24.1 fixed in the cascade, in the reporting surface next
+/// door. Kinds come from `Widget::SEEDS`, which is per index and cannot
+/// vary per instance.
+#[test]
+fn a_hidden_node_reports_its_own_kind() {
+    let mut app = Ui::default();
+    let styles = pass::default_styles(&app);
+    let mut states = [NodeState::default(); Ui::NODE_COUNT];
+    // **Laid out first**, as the test above does. `ui.getTree` walks the
+    // frame, and a tree that was never laid out reports no nodes at all:
+    // the first version of this test omitted this and read `<missing>`
+    // for every id, catching its own setup rather than the defect.
+    pass::layout(&mut app, &styles, &mut states, VIEW);
+    let agent = Agent::new();
+    let tree = TreeRef::of_root(&app, &styles, &states);
+    let resp = agent.dispatch(
+        &tree,
+        &json!({ "jsonrpc": "2.0", "id": 1, "method": "ui.getTree", "params": { "depth": 8 } }),
+    );
+    // **`ui.resolve`, not `ui.getTree`.** The tree dump reports `role`,
+    // `wid` and geometry and no kind at all, so a kind assertion against
+    // it reads `null` for every node and catches nothing — which is what
+    // the first version of this test did.
+    let _ = resp;
+    let kind_of = |wid: &str| -> String {
+        let r = agent.dispatch(
+            &tree,
+            &json!({ "jsonrpc": "2.0", "id": 2, "method": "ui.resolve",
+                     "params": { "selector": format!("#{wid}") } }),
+        );
+        println!("resolve #{wid}: {r}");
+        r["result"]["kind"].as_str().unwrap_or("<missing>").to_owned()
+    };
+
+    // Setup: #d3 really is inside the inactive variant.
+    let mut live = Vec::new();
+    lumen_static_agent::live_nodes(&app, <Ui as Widget>::SUB_TABLE, &mut live);
+    let hidden = lumen_static::style::index_of_wid(<Ui as Widget>::SUB_TABLE, "d3")
+        .expect("#d3 exists in the table");
+    assert!(!live[hidden], "setup: #d3 is not inside a hidden subtree");
+
+    assert_eq!(kind_of("d1"), "label", "a hidden label reported its container's kind");
+    assert_eq!(kind_of("d3"), "fixed", "a hidden Fixed reported its container's kind");
+
+    // A gate that refuses bad input must still accept good input: the
+    // visible side is unchanged.
+    assert_eq!(kind_of("head"), "label", "a visible label's kind changed");
+}

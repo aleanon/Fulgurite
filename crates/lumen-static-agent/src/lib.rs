@@ -57,6 +57,21 @@ pub struct TreeRef<'a> {
     /// `W1010`.
     pub sheet: &'a [lumen_static::Rule],
     pub sheet_findings: &'a [lumen_static::style::SheetFinding],
+    /// One [`Seed`](lumen_static::style::Seed) per table index — the
+    /// kind and defaults of the node that *belongs* at each index,
+    /// M26/T26.2.
+    ///
+    /// **Reporting reads kinds from here, never from the instance.** A
+    /// node inside an inactive enum variant has no live instance, so
+    /// `Node::node(i)` answers with the container standing in for it and
+    /// `kind_name` then reports the container's kind for every hidden
+    /// node. That is the defect M24/T24.1 fixed in the cascade, and this
+    /// is the same fix in the surface next door. `live_nodes` is the one
+    /// exception and says why at its own definition.
+    ///
+    /// Same length as `table`, by construction: both come from `W` in
+    /// [`TreeRef::of_root`].
+    pub seeds: &'a [lumen_static::style::Seed],
 }
 
 /// Which indices `Node::node` actually answers *for*, into `out`.
@@ -100,6 +115,13 @@ pub struct TreeRef<'a> {
 /// One `node()` call per index, walking the table in order, so this is
 /// O(n) rather than the O(n·depth) an ancestor walk would cost.
 pub fn live_nodes(root: &dyn Node, table: &[NodeDesc], out: &mut Vec<bool>) {
+    // **The one place that must keep asking the instance** — M26/T26.2.
+    // Everything that *reports* a kind reads `TreeRef::seeds`, because a
+    // hidden node's instance is its container standing in. Here the
+    // stand-in is precisely what is being detected: a hidden node and the
+    // container it stands in for share an address *and* a kind, and the
+    // seed kinds differ per index, so a seed-built identity could never
+    // match and nothing would be reported hidden.
     fn ident(n: &dyn Node) -> (*const (), &'static str) {
         (n as *const dyn Node as *const (), n.kind_name())
     }
@@ -127,7 +149,15 @@ impl<'a> TreeRef<'a> {
         styles: &'a [lumen_static::Style],
         states: &'a [NodeState],
     ) -> Self {
-        TreeRef { root, table: W::SUB_TABLE, states, styles, sheet: &[], sheet_findings: &[] }
+        TreeRef {
+            root,
+            table: W::SUB_TABLE,
+            states,
+            styles,
+            sheet: &[],
+            sheet_findings: &[],
+            seeds: W::SEEDS,
+        }
     }
 
     /// The same view, carrying the stylesheet in force and its lint
@@ -152,6 +182,8 @@ pub struct TreeMut<'a> {
     pub table: &'a [NodeDesc],
     pub states: &'a [NodeState],
     pub styles: &'a [lumen_static::Style],
+    /// As [`TreeRef::seeds`] — M26/T26.2.
+    pub seeds: &'a [lumen_static::style::Seed],
 }
 
 impl<'a> TreeMut<'a> {
@@ -160,7 +192,7 @@ impl<'a> TreeMut<'a> {
         styles: &'a [lumen_static::Style],
         states: &'a [NodeState],
     ) -> Self {
-        TreeMut { root, table: W::SUB_TABLE, states, styles }
+        TreeMut { root, table: W::SUB_TABLE, states, styles, seeds: W::SEEDS }
     }
 
     pub fn as_ref(&self) -> TreeRef<'_> {
@@ -171,6 +203,7 @@ impl<'a> TreeMut<'a> {
             styles: self.styles,
             sheet: &[],
             sheet_findings: &[],
+            seeds: self.seeds,
         }
     }
 }
@@ -899,7 +932,7 @@ impl Agent {
                             [{:.0},{:.0},{:.0},{:.0}] — it is in front of, or clipped over, \
                             the one you asked about",
                         other,
-                        tree.root.node(other).kind_name(),
+                        tree.seeds[other].kind,
                         if tree.table[other].wid.is_empty() {
                             String::new()
                         } else {
@@ -1120,7 +1153,7 @@ impl Agent {
         let i = idx as usize;
         o.insert("index".into(), i.into());
         if let Some(d) = tree.table.get(i) {
-            o.insert("kind".into(), tree.root.node(i).kind_name().into());
+            o.insert("kind".into(), tree.seeds[i].kind.into());
             if !d.wid.is_empty() {
                 o.insert("wid".into(), d.wid.into());
             }
@@ -1390,7 +1423,7 @@ impl<'a> Index<'a> {
         if let Some(i) = e.idx {
             let d = &self.tree.table[i];
             o.insert("index".into(), i.into());
-            o.insert("kind".into(), self.tree.root.node(i).kind_name().into());
+            o.insert("kind".into(), self.tree.seeds[i].kind.into());
             if !d.wid.is_empty() {
                 o.insert("wid".into(), d.wid.into());
             }
@@ -1453,7 +1486,7 @@ fn matches(tree: &TreeRef, e: &Entry, term: &Term) -> bool {
             let d = &tree.table[i];
             match term {
                 Term::Wid(w) => d.wid == *w,
-                Term::Kind(k) => tree.root.node(i).kind_name() == *k,
+                Term::Kind(k) => tree.seeds[i].kind == *k,
                 Term::Src { file, line } => {
                     d.src.file.ends_with(file) && line.is_none_or(|l| d.src.line == l)
                 }
@@ -1472,8 +1505,7 @@ fn nearest(tree: &TreeRef, term: &Term) -> Value {
             json!({ "available_ids": ids })
         }
         Term::Kind(_) => {
-            let mut names: Vec<&str> =
-                (0..tree.table.len()).map(|i| tree.root.node(i).kind_name()).collect();
+            let mut names: Vec<&str> = tree.seeds.iter().map(|s| s.kind).collect();
             names.sort_unstable();
             names.dedup();
             json!({ "available_kinds": names })
@@ -1546,7 +1578,7 @@ fn scrolling_ancestors(tree: &TreeRef, i: usize) -> Vec<usize> {
     let mut p = tree.table[i].parent;
     while p != lumen_static::desc::NO_PARENT {
         let k = p as usize;
-        if tree.root.node(k).kind_name() == "scrollview" {
+        if tree.seeds[k].kind == "scrollview" {
             out.push(k);
         }
         p = tree.table[k].parent;

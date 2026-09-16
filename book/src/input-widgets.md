@@ -24,8 +24,11 @@ Switch<S>   = Toggle<S, SWITCH>
 ```
 
 The shape is a **const parameter, not a field**, and the reason is
-mechanical. `kind_name` feeds the cascade and the agent's selectors, and
-`defaults()` is snapshotted once when a stylesheet is set. A shape held
+mechanical. The kind a widget answers with feeds the cascade and the
+agent's selectors — and both now read it from `Widget::SEEDS`, which is
+spliced per *type* (M24/T24.1 for the cascade, M26/T26.2 for the agent),
+because an instance cannot be asked for a node that is hidden. `defaults()`
+is snapshotted once when a stylesheet is set. A shape held
 in a field would make both state-dependent — the same hazard that had to
 be fixed once already (`docs/plan-review-fixes.md` F3.2). As const
 parameters, `Toggle<S, CHECKBOX>` and `Toggle<S, SWITCH>` are different

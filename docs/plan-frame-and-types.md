@@ -230,7 +230,31 @@ cautionary twin of this defect: it stood marked DECIDED for four days
 naming two constants that never existed, because the identifier gate did
 not read markdown then.
 
-### T26.2 — the agent reports a hidden variant's kind as its container's
+### T26.2 — the agent reports a hidden variant's kind as its container's — **DONE 2026-09-17**
+
+> **Six reporting sites moved to the seeds; `live_nodes` kept on the
+> instance, and both halves shown to fail.** Reverting the summary site
+> made `#d1` — a `Label` inside the inactive variant — report **`Stage`**,
+> the enum container's kind. Dropping the kind from `live_nodes`'
+> identity fired *"setup: a visible node was reported hidden"*, which is
+> the exemption earning its comment rather than asserting it: a stand-in
+> and the node it stands in for share an address, so the kind is what
+> tells them apart.
+>
+> **The gate was aimed at the wrong method twice**, and the second miss
+> is the useful one. `ui.getTree` reports `role`, `wid`, geometry and
+> **no kind at all**, so a kind assertion against it reads `null` for
+> every node and catches nothing; the gate now uses `ui.resolve`, which
+> goes through the changed site. Before that it had no `pass::layout` at
+> all and reported `<missing>` for every id — its own setup assertion
+> catching it, twice, before the code was touched.
+>
+> **Residue, named rather than fixed:** `role` still comes from the
+> instance, so a hidden node reports `GenericContainer` while its `kind`
+> is now right — visible in the same JSON response. `Seed` carries kind
+> and defaults, not roles, so there is nothing static to read; closing it
+> means a role on the seed or an accessibility pass that walks types.
+> Deferred to §5.
 
 `TreeRef`/`TreeMut` read kinds from the live tree, so every node of an
 inactive variant answers with the container's kind — in `ui.find`, the
@@ -275,10 +299,21 @@ nothing). `Measured` keys on the constraints and a caller-passed dirty
 bit; `Label::layout` reads the size and weight *inside the closure*, so
 they never enter the key.
 
-**Fix:** a key type whose only constructor takes the whole `Style`, so a
-caller cannot build one that omits a field, threaded through `Measured`
-and its callers in `ops.rs` — including the two measures there that use
-no memo at all.
+**Fix: generalise the key this file already gets right.** `Button` keys
+its memo on `limits`, size, weight **and** a fold of the label's bytes,
+and has done since the frame-cost round; `Measured`, which `Label` uses,
+keys on the constraints plus a caller-passed dirty bit and drops the
+rest. So the right answer and the wrong one are in the same file. Widen
+`Measured` to `Button`'s discipline — a key type whose only constructor
+takes the whole `Style`, so a caller cannot build one that omits a field
+— and let `Button` use it too, deleting the duplicate.
+
+**Both `probe`s stay unmemoized**, and that is not an oversight to fix:
+a probe is the audit asking what a node *wants* to be, and it must
+neither read nor dirty the frame's memo. They take the same key type only
+so that "the same measurement `layout` makes" is enforced by construction
+rather than by a comment — which is what went wrong when a probe measured
+at 16 px against a 76 px label.
 
 **Gate:** restyle changing only `font_size` under unchanged constraints
 → the measured box changes. *Injection:* drop the size term from the key
@@ -673,6 +708,14 @@ already exists; nothing here changes what the GPU can draw.
   `docs/00-handoff-static-tree.md` §9 wants the observability namespace to
   stay a stable string path that survives a reload — which a type-level id
   would replace.
+- **A hidden node's `role`** (M26/T26.2's residue). Kinds now come from
+  `Widget::SEEDS`, which is per type, but `role` is still read from the
+  instance — and for a node inside an inactive variant the instance is
+  the container standing in for it, so the same response reports
+  `kind: "fixed"` beside `role: "GenericContainer"`. `Seed` carries kind
+  and defaults, not roles, so there is nothing static to read. Closing it
+  means a role on the seed, or an accessibility pass that walks types
+  rather than instances. When a tool reads roles off hidden nodes.
 - **Index newtypes** separating main-table from template-relative
   indices. Refuted: the defect they were offered against (F1.8) was a
   *stale* index, not a confusion of two index spaces, so the newtype
