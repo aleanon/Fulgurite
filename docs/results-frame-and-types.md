@@ -147,6 +147,22 @@ judged against it before anything is built.
 what it prints after. No frame numbers are claimed for these; they are
 correctness.*
 
+### T26.1 — the enum derive zeroed the active variant
+
+| | |
+|---|---|
+| before the fix | the active variant's container measured **0×0** where its sheet gives it 40×20, on `Boundaries<16>` |
+| after | **40×20**, and the same session under `Everything` unchanged throughout |
+| second gate | the invalidation oracle, whose fixture gained an enum and a variant switch: *"step 2: the display lists differ"* under the injection |
+| sites inventoried | **10 hide call sites, 1 defective.** `Option` hides only on `None`, `Either` only the side it is not showing, `Popup` only when closed; the six `!visible` sites are stylesheet-driven and marked by `set_stylesheet`/`restyle_subtree`. Only the enum derive zeroed a subtree it then laid out |
+
+**Why no test had seen it.** The stale zero is returned by the *variant's
+own* relayout boundary — `can_skip() && is_clean(..) && constraints ==
+limits` → `return st[i].size` — so it needs the active variant to be a
+derived container, the enum to be reached, and its subtree to be clean.
+An enum of leaves cannot exhibit it, and neither can any tree under
+`Everything`, where nothing is ever clean.
+
 ## Phase B — the confirmed optimizations
 
 *One table per task: before, after, spread, verdict against the

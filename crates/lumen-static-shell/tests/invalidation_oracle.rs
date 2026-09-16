@@ -44,12 +44,49 @@ struct Card {
     bar: Bar,
 }
 
+/// One-of-two, so the session drives a variant switch — M26/T26.1.
+///
+/// Both variants are derived containers on purpose: the relayout
+/// boundary that made the enum defect invisible lives at the top of a
+/// *container's* `layout`, so an enum of leaves could not exhibit it and
+/// this fixture would have gone on agreeing with itself.
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+struct PaneA {
+    #[widget_id("pane_a")]
+    text: Label,
+}
+
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+struct PaneB {
+    #[widget_id("pane_b")]
+    text: Label,
+}
+
+#[derive(StaticTree)]
+enum Pane {
+    A(PaneA),
+    B(PaneB),
+}
+
+impl Default for Pane {
+    fn default() -> Self {
+        Pane::A(PaneA::default())
+    }
+}
+
 #[derive(StaticTree, Default)]
 #[widget(column, spacing = 0.0)]
 struct Ui {
     top: Spacer,
     #[widget_id("card")]
     card: Card,
+    /// M26/T26.1: until this fixture held an enum, the oracle's
+    /// "byte-identical frames" claim could not fail on a hidden-subtree
+    /// defect, because no tree it drove had a hidden subtree at all.
+    #[widget_id("pane")]
+    pane: Pane,
     #[widget_id("footer")]
     footer: Label,
 }
@@ -150,6 +187,14 @@ fn drive<I: Invalidation>() -> Vec<(Vec<NodeState>, u64, usize)> {
             2 => {
                 let s = sheet_with_card_font(14.0 + step as f32);
                 assert!(host.restyle_subtree(&s, "card"));
+            }
+            // A variant switch, marked the way an application would mark
+            // it — M26/T26.1. The enum is *not* what is marked on the
+            // other steps, so the frames in between are exactly the ones
+            // where a hidden-subtree defect shows.
+            3 if step == 3 => {
+                host.app.ui.pane = Pane::B(PaneB::default());
+                assert!(host.invalidate("pane"), "the pane id must exist");
             }
             // A frame where nothing at all happened.
             _ => {}

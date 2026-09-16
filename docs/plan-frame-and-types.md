@@ -143,7 +143,32 @@ Each of these lands **test first**: the failing test is committed in the
 same commit as the fix, and the commit body carries the output it
 produced before the fix.
 
-### T26.1 — the enum derive zeroes the active variant before laying it out
+### T26.1 — the enum derive zeroes the active variant before laying it out — **DONE 2026-09-17**
+
+> **One defect, nine sites correct by construction.** The task's own
+> inventory was the point: of the ten hide call sites, only the enum
+> derive applied the mechanism to the subtree it was *about to lay out*.
+> `Option` hides only on `None`, `Either` hides only the side it is not
+> showing, `Popup` only when closed — none of them can hand a live
+> subtree a zero. That is now stated from the code rather than assumed,
+> and it is why the fix is one macro change.
+>
+> **Test first, and it failed its own setup twice before it failed for
+> the right reason.** The first version read the wrong node — arithmetic
+> off the enum lands on the pane's child, then on the *hidden* variant —
+> and its "the marked sibling relaid out" guard fired, which is the guard
+> working. Addressed by `#[widget_id]` instead, the stage collapsed to
+> `0×0` against the sheet's `40×20`, on `Boundaries<16>`, while the same
+> session under `Everything` stayed green.
+>
+> **Both gates were shown to fail.** Restoring the whole-span hide fired
+> `enum_relayout`'s assertion by name (left `(0.0, 0.0)`, right
+> `(40.0, 20.0)`), and — run separately, because cargo stops at the first
+> failing binary — the oracle fired too: *"step 2: the display lists
+> differ"*. Step 2 is the scoped restyle, exactly the frame where the enum
+> is reached with its own subtree clean. The oracle could not have caught
+> this before: its fixture held no enum, no `Option` and no `Either`, so
+> its byte-identical claim was over trees with nothing hidden in them.
 
 `crates/lumen-static-macros/src/lib.rs:1197` calls `hide_subtree` over
 `NODE_COUNT - 1` — every variant's slots, the active one included — and
@@ -157,10 +182,28 @@ the ranges that should be hidden.
 **The defect is the mechanism, not the derive** (review 2026-09-17,
 confirmed). It is: *a subtree zeroed with the same `limits` its owner will
 later lay it out under, in front of a clean-skip guard that keys on
-`st[i].constraints == limits`*. `Either` satisfies that description
-exactly — `hatch.rs` passes the branch's `limits` to `hide` and then
-stamps `st[i].constraints = limits` — and `Option` and every other hider
-must be checked against it in this task, not assumed innocent.
+`st[i].constraints == limits`*. The guard is exact —
+`can_skip() && is_clean(i..i + NODE_COUNT) && st[i].constraints == limits`
+returns `st[i].size` — and `ops::hide_subtree` stamps both halves of what
+it tests: `size = default()` **and** `constraints = limits`.
+`hatch::hide` is a byte-for-byte twin of it.
+
+**Ten call sites, in two classes** (enumerated 2026-09-17, T26.0). The
+task classifies every one; it does not fix only the one the review
+happened to name:
+
+| class | sites | why it matters |
+|---|---|---|
+| **runtime state** — flips without a stylesheet | the enum derive (`macros` :1197), `Either`'s two branches, `Option`'s `None`, `Popup` (`!self.open`), and `Select` through the popup it owns | the hide can flip between frames with nothing marking it |
+| **stylesheet-driven** — `!visible` | the derived container (`macros` :757), `Glass`, `ScrollView`, `Image`, `TextInput`, `TextArea` | a visibility flip goes through `set_stylesheet`/`restyle_subtree`, which mark — so the guard should be unreachable, and the task **shows** that rather than assuming it |
+
+**Reachability is the other half, and it narrows the claim.** `pump_with`
+marks everything when an event is `handled`, and again when
+`App::update` reports a change — so a popup opened by a *click* is
+marked and lays out. What survives is a hide flipped with neither: a
+programmatic mutation between frames, which is what `Host::invalidate`
+exists for and what an application driving its own state does. The fix
+removes the hazard whether or not a given caller reaches it.
 
 **Fix:** hide the ranges before and after the active variant, not the
 whole span; and for each other hider, either show it cannot reach the
@@ -181,8 +224,11 @@ stays green, which is the shape of the defect.
 "byte-identical display lists over a driven session" and could not fail
 on this, because `invalidation_oracle.rs`'s fixture holds no enum and no
 `Option`; the fixture gains one in this commit. Also T16.9's DONE note,
-`docs/plan-select.md` T24.3, and `docs/00-handoff-static-tree.md` §2's
-relayout-boundary property.
+`docs/plan-select.md` T24.3, and `docs/00-handoff-static-tree.md` §2
+property 1 — the relayout boundary itself, whose own entry is a
+cautionary twin of this defect: it stood marked DECIDED for four days
+naming two constants that never existed, because the identifier gate did
+not read markdown then.
 
 ### T26.2 — the agent reports a hidden variant's kind as its container's
 

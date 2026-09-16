@@ -1194,11 +1194,32 @@ fn expand_enum(
                     // slots would otherwise keep the geometry from
                     // whenever they were last active, which paint, the
                     // journal and the audit all read.
-                    ::lumen_static::ops::hide_subtree(
-                        st, i + 1, limits, <Self as ::lumen_static::widget::Widget>::NODE_COUNT - 1,
-                    );
+                    //
+                    // **The ranges either side of the active variant, not
+                    // the whole span** — M26/T26.1. `hide_subtree` stamps
+                    // `constraints = limits` as well as zeroing the size,
+                    // and a derived container's `layout` begins with
+                    // `can_skip() && is_clean(..) && st[i].constraints ==
+                    // limits -> return st[i].size`. Hiding the active
+                    // variant first therefore handed it a zero that its
+                    // own relayout boundary then returned, on any frame
+                    // where the enum was reached but its subtree was
+                    // clean: the stage vanished under `Boundaries` and
+                    // was correct under `Everything`, which is why no
+                    // test had ever seen it
+                    // (`crates/lumen-static-shell/tests/enum_relayout.rs`).
                     let size = match self {
                         #( #name::#var_ident(w) => {
+                            ::lumen_static::ops::hide_subtree(
+                                st, i + 1, limits, STARTS[#var_no] - 1,
+                            );
+                            ::lumen_static::ops::hide_subtree(
+                                st,
+                                i + STARTS[#var_no + 1],
+                                limits,
+                                <Self as ::lumen_static::widget::Widget>::NODE_COUNT
+                                    - STARTS[#var_no + 1],
+                            );
                             w.layout(cx, limits, style, st, i + STARTS[#var_no])
                         } ),*
                     };
