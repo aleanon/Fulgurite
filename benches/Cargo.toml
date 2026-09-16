@@ -11,6 +11,10 @@ lumen-static-agent = { path = "../crates/lumen-static-agent" }
 # T7.3 measures the memo against the *real* measurer; the stand-in cannot
 # answer what the memo is worth (docs/text-render-adoption-decision.md).
 lumen-static-shell = { path = "../crates/lumen-static-shell", features = ["truetype"] }
+# M26/T26.0: `Badge` and `Chip` shape on every layout with no memo at all
+# (M26/T26.8), and the memo arms live here — so the widgets that lack one
+# have to be measurable beside the ones that have it.
+lumen-static-widgets = { path = "../crates/lumen-static-widgets" }
 
 [features]
 rdyn_opaque = ["lumen-static/rdyn_opaque"]

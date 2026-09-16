@@ -68,7 +68,34 @@ numbers borrowed across quantities nine times:
 `thumb`, `gpu`, `simd`, `threads`, `floats`, `book`) before each phase
 closes.
 
-## T26.0 — baselines and thresholds, before anything changes
+## T26.0 — baselines and thresholds, before anything changes — **DONE 2026-09-17**
+
+> **Six arms added, and two of them were wrong before they were right.**
+> The `Badge`/`Chip` rows first ran against the stand-in measurer and
+> printed 4.2 ns — a widget that reshapes every layout, priced as though
+> it had a memo — because under `BlockMetrics` a measurement is
+> `char_count × advance`. Rebuilt against a real face: **412 ns**, beside
+> a memo hit's 5.4. The showcase popup arm reported the *settled* frame as
+> 100% damaged too, so it could not tell a still frame from a popup-open
+> one; it was measuring the banked seed frame, and now banks first.
+>
+> **Every arm was then shown to move under its own injection**, and the
+> plan's own proposed injection for two of them was wrong: deleting the
+> relayout boundary cannot move the `place` row (the boundary is in
+> `layout`), and "force `Damage::All`" is a no-op at baseline. Both were
+> replaced. Results: place 1.01 → 0.01 µs, dispatch 1.11 → 0.03 µs, lint
+> 183,460 → 42,816 ns, `either45` 210.9 → 203.7 ns, Badge 412.6 → 4.4 ns
+> with Chip unmoved.
+>
+> **Two findings fall out of the baselines themselves.** The `Either`
+> injection moves only ~7 ns of a 211 ns frame, which **bounds Phase D's
+> "cache the hide" probe at ~3%** before it is built. And the sheet lint
+> is the largest number measured here — 183 µs against the 66 µs cascade
+> over the same sheet — which is T26.17 #10's whole case.
+>
+> **The mode rule earned itself immediately:** one of eight runs came back
+> slow on three invalidation rows while `dispatch` in that same run did
+> not. Numbers in `docs/results-frame-and-types.md` T26.0.
 
 No behaviour change. Records what every later task is judged against, in
 `docs/results-frame-and-types.md`, and **adds the arms that do not exist
@@ -96,8 +123,8 @@ generated `layout`, and `place` receives no context and takes no skip
 | dispatch row | make the hover and focus publishes touch one node instead of sweeping — the row drops by the per-node term |
 | lint row | return early from the arena walk — the row collapses |
 | `Either` row | stop zeroing the hidden branch — the row drops |
-| `Badge`/`Chip` rows | bypass the memo — the row rises to the miss cost |
-| popup frame | **not** "force `Damage::All`" — a length change already answers `Damage::All` today, so that injection is a no-op at baseline and would be the "both sides agree about a frame in which nothing happened" shape. Instead: after T26.11, make the alignment damage the union rather than the middle — the damaged area jumps to the window's |
+| `Badge`/`Chip` rows | **not** "bypass the memo" — these widgets have none, which is the point. Short-circuit the layout to return a stored size and the row must *fall* to the memo-hit cost; a row that does not move was measuring the stand-in measurer rather than shaping, which is what the first version of this arm did (`docs/bindings-decision.md`: the stand-in cannot answer what a memo is worth, so these rows run against a real face) |
+| popup frame | **not** "force `Damage::All`" — a length change already answers `Damage::All` today, so that injection is a no-op at baseline and would be the "both sides agree about a frame in which nothing happened" shape. The arm carries its own control instead: it prints the **settled** frame's damaged area beside the popup frame's, so a run in which both are the window is an arm that cannot distinguish them and is fixed before use. After T26.11, the injection is: make the alignment damage the union rather than the middle — the damaged area jumps back to the window's |
 
 An arm whose number does not move under its own injection is reported and
 fixed before the baseline is taken from it, not after.

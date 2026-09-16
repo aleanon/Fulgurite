@@ -78,4 +78,20 @@ fn main() {
         lumen_static::style::cascade_deep(&mut app, &showcase, &mut styles);
         styles.len() as u64
     });
+
+    // ---- the sheet lint — M26/T26.0 ------------------------------------
+    //
+    // `lint_sheet_deep` runs on the same event the rows above do: a host
+    // being handed a sheet. It walks every arena once *per rule*
+    // (M26/T26.17 #10), and nothing has ever priced it — so a change
+    // there has had no way to be judged.
+    let mut found = 0u64;
+    bench("lint_sheet_deep (showcase-shaped sheet)", 20_000, || {
+        found = 0;
+        lumen_static::style::lint_sheet_deep(&mut app, &showcase, &mut |_| found += 1);
+        found
+    });
+    println!(
+        "   {found} findings — `Ten10` carries no ids, so every `Id` rule is reported unmatched"
+    );
 }

@@ -11,10 +11,16 @@
 //! - **`Boundaries`, nothing marked** — a still frame, which is what an
 //!   idle window and an animation between ticks produce.
 //!
-//! Layout only. Paint is the larger stage of a small-update frame
-//! (121 µs against 55 at 10 000 rows, `docs/results-competitive.md`
-//! §5b) and is not skipped yet — T16.8 — so quoting a whole frame here
-//! would credit this milestone with work it has not done.
+//! Paint is the larger stage of a small-update frame (121 µs against 55
+//! at 10 000 rows, `docs/results-competitive.md` §5b) and is not skipped
+//! yet — T16.8 — so quoting a whole frame here would credit that
+//! milestone with work it has not done.
+//!
+//! **Two more rows since M26/T26.0**, because M26 changes both and
+//! neither had ever been priced: `place`, which takes no relayout
+//! boundary at all (it is handed no context, so it cannot see what
+//! changed), and `dispatch`, which publishes hover, press and focus by
+//! walking every node in the state array on every pointer event.
 
 use std::time::Instant;
 
@@ -105,5 +111,46 @@ fn main() {
     println!(
         "\n   the skip needs BOTH a clean subtree and unchanged constraints;\n   \
          a resize defeats it by design, which is what `Everything` measures."
+    );
+
+    // ---- place and dispatch — M26/T26.0 --------------------------------
+    //
+    // Measured after the rows above so the tree is laid out, which is the
+    // state both passes actually run in.
+
+    // `place` has no boundary to take: `Node::place` receives no
+    // `LayoutCx`, so `Changed` is unreachable from it and every node is
+    // repositioned whatever changed. That is the whole row — there is no
+    // second variant to compare it against until M26/T26.17 #1 adds one.
+    let placed = best(2000, || {
+        app.place(lumen_static::Point::default(), &styles, &mut st, 0);
+    });
+    println!("\n{:<34}{placed:9.2} us   (whole tree; place takes no `Changed`)", "place");
+
+    // One `PointerMove`, through the real dispatch path. The entry point
+    // is named on purpose: `pass::dispatch` alone is what the per-node
+    // publishes cost, while `Host::pump` after an event is what the
+    // `Everything`/`Boundaries` split above applies to — measuring the
+    // second and calling it the first is how a row prices the wrong
+    // quantity (M26 §0 rule 2).
+    let mut dapp = benches::Ten10App::default();
+    let dstyles: Vec<Style> = pass::default_styles(&dapp.ui);
+    let mut dst = vec![NodeState::default(); Ten10::NODE_COUNT];
+    {
+        let mut m = BlockMetrics;
+        let mut cx = LayoutCx::new(&mut m);
+        dapp.ui.layout(&mut cx, VIEW, &dstyles, &mut dst, 0);
+        dapp.ui.place(lumen_static::Point::default(), &dstyles, &mut dst, 0);
+    }
+    let mut input = lumen_static::event::InputState::default();
+    let ev = lumen_static::Event::PointerMove { x: 12.0, y: 12.0 };
+    let dispatched = best(2000, || {
+        let _ = pass::dispatch(&mut dapp, &dstyles, &mut dst, &mut input, &ev);
+    });
+    println!(
+        "{:<34}{dispatched:9.2} us   {:.2} ns/node over {} nodes",
+        "dispatch, one PointerMove",
+        dispatched * 1000.0 / Ten10::NODE_COUNT as f64,
+        Ten10::NODE_COUNT
     );
 }

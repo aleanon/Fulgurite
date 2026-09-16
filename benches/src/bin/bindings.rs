@@ -27,6 +27,25 @@ fn measure(l: &mut Label<String>, style: &[Style], st: &mut [NodeState]) -> u64 
     l.layout(&mut cx, LIMITS, style, st, 0).w as u64
 }
 
+/// Any leaf's layout against a **real** face — `measure_real` below, for
+/// the two text widgets that carry no memo at all (M26/T26.0).
+///
+/// Real rather than the stand-in for the reason `docs/bindings-decision.md`
+/// gives: under `BlockMetrics` a measurement is `char_count × advance`, so
+/// a widget that reshapes every layout and one that never does cost the
+/// same, and the first version of this arm duly printed 4.2 ns for the
+/// widget whose missing memo it exists to price.
+fn measure_node<N: Node>(
+    w: &mut N,
+    m: &mut dyn lumen_static::TextMeasure,
+    style: &[Style],
+    st: &mut [NodeState],
+    limits: Constraints,
+) -> u64 {
+    let mut cx = LayoutCx::new(m);
+    w.layout(&mut cx, limits, style, st, 0).w as u64
+}
+
 /// The same, against a real face (T7.3). `measure` above answers what
 /// the stand-in costs, which is not the question the memo exists for.
 fn measure_real(
@@ -111,6 +130,7 @@ fn main() {
         measure(&mut cold, &style, &mut st)
     });
 
+
     // ---- scale ----
     println!("\n-- a screenful of bindings, none changing --");
     let v = black_box(41);
@@ -179,6 +199,37 @@ fn main() {
             bench("60-char wrapped, memo warm (hit)", 20_000, || {
                 measure_real(&mut c, &mut real, &style, &mut st, wrapped)
             });
+
+            // ---- Badge and Chip: no memo at all — M26/T26.0 -----------
+            //
+            // Here, inside the real-face arm, and not beside the
+            // stand-in rows above: these two carry no `Measured`, so
+            // their unchanged row *is* a miss, and only a real face can
+            // show that. M26/T26.8's baseline — after it, these must fall
+            // to the hit cost printed above.
+            let mut badge: lumen_static_widgets::Badge<String> =
+                lumen_static_widgets::Badge::default();
+            badge.set(short.into());
+            let bstyle = [badge.defaults()];
+            let mut chip: lumen_static_widgets::Chip<String> =
+                lumen_static_widgets::Chip::default();
+            chip.set(short.into());
+            let cstyle = [chip.defaults()];
+            // Warm the face at these widgets' own font sizes, as the
+            // loop above warms it at the labels'.
+            for _ in 0..100 {
+                measure_node(&mut badge, &mut real, &bstyle, &mut st, LIMITS);
+                measure_node(&mut chip, &mut real, &cstyle, &mut st, LIMITS);
+            }
+            bench("Badge layout, unchanged (no memo)", 20_000, || {
+                measure_node(&mut badge, &mut real, &bstyle, &mut st, LIMITS)
+            });
+            bench("Chip layout, unchanged (no memo)", 20_000, || {
+                measure_node(&mut chip, &mut real, &cstyle, &mut st, LIMITS)
+            });
+            println!(
+                "   against `short, memo warm (hit)` above: the gap is what M26/T26.8 removes"
+            );
 
             // Same length, so the miss arm re-measures rather than
             // measuring a different amount of text.

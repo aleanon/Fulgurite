@@ -62,8 +62,15 @@ are independent of each other**, so either may go first:
   overturned the attribution written before the build: the cost left is
   the cache check and the look-shaped paint, not the widget's size.
 
-- **M26 — `docs/plan-frame-and-types.md`** (T26.0–T26.17): **not
-  started**, written 2026-09-17 from a 14-agent review of the frame path
+- **M26 — `docs/plan-frame-and-types.md`** (T26.0–T26.17): **T26.0 landed
+  2026-09-17**; Phase A (the five defects) is next. T26.0 added the six
+  arms the review could not price — `place`, `dispatch`, the sheet lint,
+  an `Either` frame, `Badge`/`Chip` against a real face, and a
+  popup-open damage ratio — proved each moves under its own injection,
+  and recorded the baselines. Two arms were vacuous on the first attempt
+  and were rebuilt, and two of the plan's own proposed injections could
+  not fire and were replaced. Written 2026-09-17 from a 14-agent review
+  of the frame path
   and the type-level guarantees (42 findings; 20 confirmed, 18 plausible,
   4 refuted). **Phase A is five defects, not optimizations** — the enum
   derive zeroes the *active* variant before laying it out, so a clean enum

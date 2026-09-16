@@ -6,7 +6,7 @@
 
 use std::hint::black_box;
 
-use benches::{bench, d_assembled, d_ten, Card, DynWidget, Ten};
+use benches::{bench, d_assembled, d_ten, Card, DynWidget, EitherCard, Ten};
 use lumen_static::assemble::Assembled;
 use lumen_static::{pass, Constraints, NodeState, Point, Widget};
 
@@ -51,6 +51,14 @@ fn main() {
 
     static_root::<Ten>("10/static", 200_000);
     dyn_arm("10/dyn", 200_000, d_ten());
+    println!();
+
+    // An `Either` over two 22-node branches — M26/T26.0. The hidden
+    // branch is zeroed on every layout rather than skipped
+    // (`docs/plan-review-fixes.md` F1.6) and no arm has priced it.
+    // M26/T26.1 changes what a hider writes, and Phase D asks whether the
+    // zeroing can be cached; both are judged against this row.
+    static_root::<EitherCard>("either45/static", 100_000);
     println!();
 
     static_slab::<Card>("1k/static", 20_000, 45);

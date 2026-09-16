@@ -383,6 +383,13 @@ live-gate:
 profile:
     LUMEN_PROFILE=1 cargo run -q -p counter-window -- --headless target/tally.ppm 12
 
+# The frame a popup opens on, damaged area against the window's
+# (M26/T26.0). `profile` above is fixed to the tally and takes no
+# arguments, so M26/T26.11 — a command-count change answering
+# `Damage::All` — had no arm to be judged on.
+profile-showcase:
+    cargo run --release -q -p showcase -- --profile
+
 # The same frame with the rasteriser's SIMD path on (M17/T17.1).
 profile-simd:
     LUMEN_PROFILE=1 cargo run -q -p counter-window --features simd -- --headless target/tally.ppm 12

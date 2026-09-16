@@ -570,6 +570,30 @@ pub struct FusedCard {
     pub r4: FusedItem,
 }
 
+/// `Ten10` behind an `App` — M26/T26.0.
+///
+/// `pass::dispatch` is generic over `event::App`, not over `Widget`, so
+/// the per-event work it does (publishing hover, press and focus over
+/// every node) cannot be measured against a bare tree.
+#[derive(lumen_static::App, Default)]
+pub struct Ten10App {
+    #[tree]
+    pub ui: Ten10,
+}
+
+/// Two `Card` branches behind an `Either` — M26/T26.0.
+///
+/// The hidden branch is zeroed every frame rather than skipped
+/// (`docs/plan-review-fixes.md` F1.6), and no arm has ever priced that.
+/// M26/T26.1 changes what a hider does and Phase D asks whether the
+/// zeroing is worth caching, so both need a number first. 45 nodes of
+/// the 64 `Either` allows.
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+pub struct EitherCard {
+    pub switch: lumen_static::hatch::Either<Card, Card>,
+}
+
 /// ~1k nodes of ordinary static tree, for measuring anything that walks
 /// the table rather than the arenas.
 #[derive(StaticTree, Default)]

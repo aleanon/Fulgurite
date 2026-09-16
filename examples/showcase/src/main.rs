@@ -338,6 +338,75 @@ fn shot(path: &str, entry: usize, open: bool) {
         entry, if open { "open" } else { "closed" });
 }
 
+/// The frame a popup opens on — M26/T26.0.
+///
+/// `just profile` is fixed to counter-window's tally and takes no
+/// arguments, so M26/T26.11 — whose whole subject is that opening a
+/// popup damages the entire window — had no arm at all. This is one: it
+/// settles a closed frame, opens the picker, pumps, and prints the
+/// damaged area beside the window's. Today that ratio is 100%, because a
+/// command-count change answers `Damage::All`; after T26.11 it must be
+/// the popup's rect, and this is the number that says so.
+fn profile_popup() {
+    let mut host: lumen_static_shell::Host<Show> =
+        lumen_static_shell::Host::new(build(0, false), W, H);
+    host.set_palette(palette());
+    host.set_stylesheet(&stylesheet());
+    let mut metrics = lumen_static_shell::text::FontStack::system()
+        .map(lumen_static_shell::text::FontMetrics::new);
+    let mut pump = |h: &mut lumen_static_shell::Host<Show>| match metrics.as_mut() {
+        Some(m) => {
+            h.pump_with(m);
+        }
+        None => {
+            h.pump();
+        }
+    };
+    let viewport = [0.0, 0.0, W as f32, H as f32];
+    // `.max(0.0)`: an empty region set sums to a negative zero, which
+    // prints as "-0 px" and reads like a measurement error.
+    let area = |d: lumen_static::Damage| -> f32 {
+        let px: f32 = {
+        // `regions` already yields rects inside the viewport; `clip_to`
+        // is a different thing — it answers the clipped *bounding* rect
+        // as an `Option`, which is what counter-window's headless prints.
+        d.regions(viewport).map(|r| (r[2] - r[0]) * (r[3] - r[1])).sum()
+        };
+        px.max(0.0)
+    };
+    // **Bank the seed frame before measuring anything**, the way
+    // `examples/counter-window`'s headless profile does — "or the damage
+    // is the whole viewport". The first version of this arm measured the
+    // banked frame and reported the settled frame as 100% damaged, which
+    // made it unable to tell a still frame from a popup-open one: an arm
+    // that cannot say no (M26/T26.0's own gate).
+    pump(&mut host);
+    pump(&mut host);
+    let _seed = host.take_damage_for_age(1);
+    // Now a genuinely still frame: nothing changed since the bank.
+    pump(&mut host);
+    let settled = host.take_damage_for_age(1);
+    let before = host.list.len();
+
+    host.app.ui.body.header.picker.open();
+    rebuild(&mut host.app);
+    host.invalidate_all();
+    pump(&mut host);
+
+    let opened = area(host.take_damage_for_age(1));
+    let window = W as f32 * H as f32;
+    println!(
+        "showcase popup frame: damaged {opened:.0} px of {window:.0} ({:.1}% of the window)",
+        100.0 * opened / window
+    );
+    println!(
+        "   commands {before} -> {} (a length change is Damage::All today — M26/T26.11); \
+         settled frame damaged {:.0} px",
+        host.list.len(),
+        area(settled)
+    );
+}
+
 /// One entry, cropped tight to what the demo actually drew.
 ///
 /// **The crop comes from the laid-out geometry, not from a guess.**
@@ -552,6 +621,10 @@ fn main() {
         let entry: usize = args.get(1).and_then(|s| s.parse().ok()).unwrap_or(0);
         let path = args.get(2).cloned().unwrap_or_else(|| "demo.ppm".into());
         demo_shot(&path, entry.min(CATALOG.len() - 1));
+        return;
+    }
+    if args.first().map(String::as_str) == Some("--profile") {
+        profile_popup();
         return;
     }
     if args.first().map(String::as_str) == Some("--shot") {

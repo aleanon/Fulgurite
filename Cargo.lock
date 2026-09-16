@@ -429,6 +429,7 @@ dependencies = [
  "lumen-static",
  "lumen-static-agent",
  "lumen-static-shell",
+ "lumen-static-widgets",
 ]
 
 [[package]]
