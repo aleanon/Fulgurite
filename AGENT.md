@@ -62,6 +62,20 @@ are independent of each other**, so either may go first:
   overturned the attribution written before the build: the cost left is
   the cache check and the look-shaped paint, not the widget's size.
 
+- **M26 — `docs/plan-frame-and-types.md`** (T26.0–T26.17): **not
+  started**, written 2026-09-17 from a 14-agent review of the frame path
+  and the type-level guarantees (42 findings; 20 confirmed, 18 plausible,
+  4 refuted). **Phase A is five defects, not optimizations** — the enum
+  derive zeroes the *active* variant before laying it out, so a clean enum
+  subtree collapses under `Boundaries` and is correct under `Everything`,
+  which is M25/T25.0's shape again. Phase B is the confirmed
+  optimizations, each with its bench arm named first; Phase C the
+  compile-time guarantees; **Phase D is a measurement round that decides
+  which of the 18 plausible findings are worth building at all**, with a
+  kill rule written before the probes. §6 records what the verifiers
+  corrected, including four findings the review refuted and nine numbers
+  cited for the wrong quantity.
+
 Unsequenced: `docs/plan-harness.md`.
 
 Task ids (`T0.6`, `F1.3`, `T16.7`) go in commit subjects. Decision records live beside it in `docs/`; the
