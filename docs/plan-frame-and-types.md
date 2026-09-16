@@ -32,10 +32,15 @@ under, and prints its measured quantity beside its bound.*
 Four things every task does, because the review found the repository's own
 numbers borrowed across quantities nine times:
 
-1. **Measure before and after, on the arm the task names**, four runs,
-   medians, with the runs' own spread printed beside the delta. A change
-   whose delta sits inside that spread is reported as "no effect", never
-   as a win.
+1. **Measure before and after, on the arm the task names** — and because
+   M25/T25.12 found this arm family **bimodal**, not outlier-contaminated
+   (`docs/results-appearance.md` T25.12: every build showed a second mode
+   about 1.7 µs up on `still` and `hover`), the rule is a mode rule, not
+   an outlier rule. Eight runs, not four. Classify each into the fast or
+   the slow cluster before any spread is computed, print the count in each
+   and the spread *within* the fast cluster, and compare like with like. A
+   delta inside the fast cluster's spread is "no effect", never a win. A
+   task whose runs land in one mode only says so.
 2. **State the quantity.** A figure from `docs/results-*.md` may only be
    cited for the case it was measured on. The review's own findings cited
    an arena `place` figure for a table walk, a software damage ratio for a
@@ -43,11 +48,21 @@ numbers borrowed across quantities nine times:
    three were corrected by verification, not by review.
 3. **Guard the budgets that do not appear in a frame number**:
    `scripts/check_text.sh` (`.text`), the struct-size asserts in
-   `fixtures/embedded`, `just const-budget` (rustc's time — the ceiling
-   `docs/results-const-eval.md` records), and the allocation gate.
+   `fixtures/embedded`, rustc's time, and the allocation gate.
+   **`just const-budget` is a ceiling, not a threshold**: it fails only
+   past 5 000 ms against a fixture that builds in a fraction of a second,
+   so a Phase C task is judged against the millisecond figure the recipe
+   *prints*, recorded in the results doc with its own spread — a "+10%"
+   read against the 5 000 ms ceiling would be a bound computed from the
+   wrong quantity, which is the shape this milestone exists to stop
+   repeating.
 4. **Docs move in the same commit**, including the decision record the
-   task contradicts. Several tasks here reopen a DECIDED question; each
-   says which.
+   task contradicts, and **each task's Docs line names the
+   `docs/00-handoff-static-tree.md` section it touches** — §2's relayout
+   boundary for T26.1 and Phase D #1, §2's damage rects for T26.11 and
+   T26.12, §10's zero-allocation claim for T26.13. Several tasks here
+   contradict something recorded as decided; each says which, and T26.15
+   reverses a rationale written in rustdoc and taught in the book.
 
 **Regression guard.** `just test` per task; `just check` (which adds
 `thumb`, `gpu`, `simd`, `threads`, `floats`, `book`) before each phase
@@ -62,18 +77,30 @@ measures them:
 
 | arm | what it must newly cover |
 |---|---|
-| `benches --bin invalidation` | a `place` row (it is layout-only today, and says so), and a dispatch row: one `PointerMove` under `Everything` and under `Boundaries` |
+| `benches --bin invalidation` | a `place` row (it is layout-only today, and says so), and a dispatch row that **names its entry point**: `pass::dispatch` alone prices the per-node sweeps, `Host::pump` after the event is what the `Everything`/`Boundaries` split applies to; the row measures the first and reports ns/node |
 | `benches --bin cascade` | a sheet-lint row, on the 27-rule showcase-shaped sheet it already builds |
 | `benches --bin crossover` | an `Either` row, so a hidden branch's cost is visible |
 | `benches --bin repeater` | rows of a text leaf, so a memo's absence shows |
-| `just profile` | a popup-open frame on the showcase, the case T26.11 exists for |
+| a showcase profile recipe | `just profile` is fixed to counter-window's headless tally and takes no arguments, so this is a **new** recipe over the showcase's headless path, printing the damaged area beside the window area on a popup-open frame — the case T26.11 exists for |
+| `benches --bin bindings` | a `Badge` and a `Chip` row, so T26.8's two unmemoized widgets are measured where the memo is measured |
 
-**Gate — a new arm must be able to say no.** For each arm added, break
-the thing it measures and watch the number move: delete the relayout
-boundary in the generated `layout` and the `place` row must move; force
-`Damage::All` and the popup frame must jump to the window's area. An arm
-whose number does not move under its own injection is reported and fixed
-before the baseline is taken, not after.
+**Gate — a new arm must be able to say no**, and the injection must break
+what *that* arm measures. Deleting the relayout boundary moves the two
+layout rows and **cannot move the place row**: the boundary lives in the
+generated `layout`, and `place` receives no context and takes no skip
+(review 2026-09-17, confirmed). So:
+
+| arm | injection that must move it |
+|---|---|
+| `place` row | stop recursing into children in the generated `place` — the row collapses |
+| dispatch row | make the hover and focus publishes touch one node instead of sweeping — the row drops by the per-node term |
+| lint row | return early from the arena walk — the row collapses |
+| `Either` row | stop zeroing the hidden branch — the row drops |
+| `Badge`/`Chip` rows | bypass the memo — the row rises to the miss cost |
+| popup frame | **not** "force `Damage::All`" — a length change already answers `Damage::All` today, so that injection is a no-op at baseline and would be the "both sides agree about a frame in which nothing happened" shape. Instead: after T26.11, make the alignment damage the union rather than the middle — the damaged area jumps to the window's |
+
+An arm whose number does not move under its own injection is reported and
+fixed before the baseline is taken from it, not after.
 
 **Thresholds**, written here and owned by the results doc: no arm
 regresses by more than its own four-run spread; `.text` ≤ +300 B over the
@@ -100,17 +127,35 @@ the same frame. Under `Boundaries` a clean active subtree returns before
 marked. The const `STARTS` array the derive already emits names exactly
 the ranges that should be hidden.
 
+**The defect is the mechanism, not the derive** (review 2026-09-17,
+confirmed). It is: *a subtree zeroed with the same `limits` its owner will
+later lay it out under, in front of a clean-skip guard that keys on
+`st[i].constraints == limits`*. `Either` satisfies that description
+exactly — `hatch.rs` passes the branch's `limits` to `hide` and then
+stamps `st[i].constraints = limits` — and `Option` and every other hider
+must be checked against it in this task, not assumed innocent.
+
 **Fix:** hide the ranges before and after the active variant, not the
-whole span.
+whole span; and for each other hider, either show it cannot reach the
+guard or fix it the same way.
 
 **Gate:** an enum tree on `Boundaries<16>`; settle; mark an unrelated
-node; pump; the active variant's size is unchanged and non-zero. Both
-strategies asserted, because the bug is invisible under one of them.
-*Injection:* restore the whole-span hide — the `Boundaries` case fires,
-the `Everything` case stays green, which is the shape of the defect.
+node; pump. **Assert the setup first** — the enum's `layout` ran this
+frame — because if the enum sits under a container that is itself clean,
+the derive skips it and both sides agree about a frame in which nothing
+happened, which is the vacuous shape `AGENT.md` names. Then: the active
+variant's size is unchanged and non-zero. One case per hider — the enum
+switch, `Either::show`, `Option` `None`→`Some` — under both strategies,
+because the bug is invisible under one of them. *Injection:* restore the
+whole-span hide — the `Boundaries` case fires, the `Everything` case
+stays green, which is the shape of the defect.
 
-**Docs:** `docs/plan-invalidation.md` T16.9 (whose measurement table has
-no enum case), `docs/plan-select.md` T24.3.
+**Docs:** `docs/plan-invalidation.md` T16.7 — its gate is
+"byte-identical display lists over a driven session" and could not fail
+on this, because `invalidation_oracle.rs`'s fixture holds no enum and no
+`Option`; the fixture gains one in this commit. Also T16.9's DONE note,
+`docs/plan-select.md` T24.3, and `docs/00-handoff-static-tree.md` §2's
+relayout-boundary property.
 
 ### T26.2 — the agent reports a hidden variant's kind as its container's
 
@@ -120,11 +165,22 @@ tree dump, the journal summary and `W1001`. This is the defect M24/T24.1
 fixed in the cascade, in the surface next door.
 
 **Fix:** carry `W::SEEDS` on `TreeRef`/`TreeMut` and read `kind` from the
-seed, as the cascade does.
+seed in every **reporting** path — the tree dump, `explain`, `find`'s
+kind term, the available-kinds list.
+
+**`live_nodes` is exempt, and this is the task's trap** (review
+2026-09-17, confirmed). It identifies a hidden stand-in by *address and
+kind together*, and its own doc records that dropping the kind breaks
+`changes.rs`: "load-bearing rather than defensive". Seed kinds are static
+per index and identical for a stand-in and the slot it stands in for, so
+a seed-built identity cannot tell them apart. It keeps reading the
+instance.
 
 **Gate:** a tree with an inactive variant; the agent reports that node's
-own kind. *Injection:* read the kind from the instance again — fires,
-naming the node.
+own kind, **and** `live_nodes` still reports those nodes as stand-ins.
+*Injection (a):* read the kind from the instance in a reporting path —
+fires, naming the node. *Injection (b):* build `live_nodes`' identity
+from the seed — the stand-in assertion fires by node index.
 
 **Docs:** `docs/plan-select.md` §1 and T24.0–T24.1 ("a fact that cannot
 vary per instance, reachable only through an instance, is stored in the
@@ -138,9 +194,18 @@ the tree trips it today — `examples/counter-window` keeps the same
 `font_size` in all three sign arms — which is why it is a defect found by
 reading rather than by a frame.
 
+**The defect is in `Measured`, in `text.rs`, and its one caller is
+`Label::layout` in `ops.rs`** (review 2026-09-17, confirmed — the first
+draft of this task named `input.rs` and `textarea.rs`, whose keys already
+carry both terms, and a "thirteen call sites" count that matches
+nothing). `Measured` keys on the constraints and a caller-passed dirty
+bit; `Label::layout` reads the size and weight *inside the closure*, so
+they never enter the key.
+
 **Fix:** a key type whose only constructor takes the whole `Style`, so a
-caller cannot build one that omits a field. Thirteen call sites across
-`input.rs` and `textarea.rs` build the key by hand today.
+caller cannot build one that omits a field, threaded through `Measured`
+and its callers in `ops.rs` — including the two measures there that use
+no memo at all.
 
 **Gate:** restyle changing only `font_size` under unchanged constraints
 → the measured box changes. *Injection:* drop the size term from the key
@@ -171,10 +236,15 @@ construction.
 
 **Fix:** a const assert on `N`, and one implementation called by both.
 
-**Gate:** the existing agreement test, plus a documented compile-fail
-injection (`Boundaries<300>` must not compile; the repository has no
-compile-fail harness, so this one is run by hand and recorded in the
-commit body).
+**Gate:** the existing agreement test, plus a compile-fail case in the
+trybuild suite: `Boundaries<300>` must not compile, with its `.stderr`
+committed. **The repository has a compile-fail harness** — eleven
+`fail_*` cases with committed expected output, run by `cargo test
+--workspace`, and it already carries a `#[widget_id]` case — so this
+gate, and every one in Phase C, is mechanised rather than run by hand.
+The cases live beside the existing ones, which compile against the core
+crate, so no second harness is needed. *Good input, the other half the
+rule requires:* a `pass_*` case at a legal `N` that must keep compiling.
 
 **Docs:** `docs/plan-invalidation.md` T16.7.
 
@@ -233,19 +303,35 @@ thirteen times.
 of the five. *Injection:* bypass the helper in one widget — fires by
 widget name.
 
+**Measure:** `--bin bindings`'s memo warm and miss rows, extended by
+T26.0 with the `Badge` and `Chip` rows — the arm the 4.8 ns against
+2,459 ns was measured on, so the before and after are comparable to the
+figure this task cites.
+
 ### T26.9 — every derived container emits a background command it usually has none of
 
-The generated `paint` emits shadow and fill unconditionally; retention
-then hashes and retains a command the sink dropped. `hit` already knows
-the predicate.
+The generated `paint` **guards its shadow** and emits the fill
+unconditionally, including when the background is fully transparent;
+retention then hashes and retains a command the sink dropped. `hit`
+already knows the predicate. One guard to add, not two.
 
 **Gate:** a transparent container emits no body command, and retention
 keeps no slot for it. *Injection:* unguard the emission — both counts
 rise.
 
-**Measure:** `--bin retain`, `--bin paint_sink`. Also shortens the stream
-for `Streaming<N>` on the embedded profile, where overflowing `N`
-degrades a frame to `Damage::All`.
+**Measure:** `--bin crossover` and `--bin repeater`, which paint derived
+containers. **Not `--bin retain` or `--bin paint_sink` for the frame
+number** — both issue commands directly against a `Painter` rather than
+painting a tree, and say so in their own headers, so neither can move
+when the generated `paint` changes; `--bin retain` is re-run only as the
+per-command retention price. Also shortens the stream for `Streaming<N>`
+on the embedded profile, where overflowing `N` degrades a frame to
+`Damage::All`.
+
+**Ordering:** this makes the retained stream's *length* depend on a
+node's background alpha, which `retain.rs` still answers with
+`Damage::All` until T26.11 lands. Say so in the commit, and re-run
+`--bin retain` after T26.11.
 
 ### T26.10 — the arenas stop reading live instances
 
@@ -261,6 +347,12 @@ island. *Injection:* restore the instance read — fires.
 
 **Measure:** `--bin cascade`, `--bin repeater`.
 
+**Three commits, not one** — the arena signature change and its call
+sites; the island capturing its seeds, with the cascade fallback deleted
+and the lint's hole closed; the dead fields removed. A single commit here
+is the milestone-sized shape `AGENT.md` measured at zero-of-eleven doc
+compliance.
+
 **Docs:** contradicts `docs/plan-select.md` T24.1's "one case still reads
 an instance, deliberately" — that case is the one being deleted — and
 changes the signature `docs/plan-review-fixes.md` F4.1 specifies.
@@ -273,21 +365,33 @@ everything, on the strategy the desktop shell defaults to.
 
 **Fix:** two slot buffers instead of one, with `finish` aligning them
 when the lengths differ — longest common prefix and suffix by hash,
-damage the middle. **A slot is 24 B** (measured; `retain.rs`'s own
-comment says 20 and is wrong — fix it in this commit), so this doubles
-the retained array.
+damage the middle. **A slot is 24 B** — measured; `retain.rs`'s own
+comment says `N * 20` and derives "`Streaming<256>` is 5 KB" from it, and
+both are wrong (24 B, 6 KB). Fix the comment, and record what this task
+then does to it: doubling the array makes `Streaming<256>` 12 KB against
+the M13 device's 128 KB. **Say explicitly whether `Streaming<N>` gets the
+second buffer** — it shares `Diffing` with `Incremental`, and a fixed
+array on a 128 KB part is the one place doubling is a decision rather
+than an allocation.
 
 **Gate:** a popup-open frame damages the popup's rect, not the window,
-on `Incremental` + `Boundaries<16>`; and a frame that genuinely changes
-everything still reports `Damage::All`. *Injection:* force `All` on a
-length change — the first assertion fires; *second injection:* align on
-length alone without comparing hashes — the second fires.
+on `Incremental` + `Boundaries<16>`. **The good-input half is stated as
+area, not as a variant** — after this change a frame in which every
+command differs reports regions covering the viewport, not necessarily
+`Damage::All`, so assert the covered area against the viewport's and
+print both. *Injection:* force `All` on a length change — the first
+assertion fires; *second injection:* align on length alone without
+comparing hashes — the covered-area assertion fires.
 
 **Measure:** `--bin retain`, and `just profile` on the new popup frame.
 
-**Docs:** `docs/plan-invalidation.md` T16.8 is **reopened** — its stated
-blocker was that retention keeps no display list, and this keeps none,
-only a second array of hashes. `docs/damage-amplification-decision.md`.
+**Docs:** `docs/plan-invalidation.md` T16.8 is **not** reopened, and the
+first draft of this task said it was (review 2026-09-17, confirmed).
+T16.8 is *paint* skipping clean subtrees, and its blocker is correctness
+— "paint cannot skip on cleanliness" — not storage; this task changes how
+damage is computed and gives paint no new knowledge. What moves:
+`retain.rs`'s slot comment, `docs/damage-amplification-decision.md`, and
+`docs/00-handoff-static-tree.md` §2's damage-rects property.
 
 ### T26.12 — the GPU backend collapses M18's region set to its bounding box
 
@@ -297,14 +401,28 @@ the damage regions, which is the merging cost M18 removed.
 **Fix:** `Gpu::draw` takes `&[Rect]`, at most `retain::MAX_REGIONS`, and
 scissors per region.
 
-**Gate:** `just gpu-parity` stays byte-identical, and a test asserts one
-scissor per region rather than one for the union. *Injection:* collapse
-to the bounding box — the region-count assertion fires while parity stays
-green, which is why parity alone could not catch this.
+**Gate, and where it runs.** `just test` excludes the wgpu crate, and
+`just gpu-parity` is in neither `test` nor `check` — so a gate written
+only there runs on nobody's commit. Assert the region set **where the
+shell hands it over**, in a test `just test` runs: the backend is given
+one rect per region, not their union. Pixel comparison stays in the
+adapter-gated run. *Injection:* collapse to the bounding box — the
+handed-over set drops to one rect and the assertion fires, while parity
+stays green, which is why parity alone could not catch this.
 
-**Measure:** `just profile` with `--features gpu`. **Ceiling, stated
-first:** `docs/results-gpu.md` prices a full 4K redraw at 1.10 ms, so
-this cannot buy more than that on the worst frame — and the 141× in
+**Also say what happens to the page clear and to overlapping regions** —
+per-region clearing is the part a bounding box made trivial.
+
+**Measure:** a headless GPU arm — `Gpu::headless` exists and
+`benches-competitive` already drives a damaged-region GPU timing — not
+`just profile`, which is fixed to counter-window's headless tally, takes
+no arguments, and has no `gpu` feature to pass (review 2026-09-17,
+confirmed).
+
+**Ceiling, stated first, and on the right arm:** the frames this changes
+are damage-clipped ones, where `docs/results-gpu.md` §5b shows the GPU
+*losing* at small damaged areas; §1's 1.10 ms full-surface 4K redraw
+bounds the win from above but is not the case being improved. The 141× in
 `docs/damage-amplification-decision.md` is a *software* damaged-pixel
 ratio and must not be restated as a GPU speed-up.
 
@@ -314,10 +432,13 @@ The repository's stated invariant is zero steady-state allocation, and
 `crates/lumen-static-shell/tests/alloc_gate.rs` cannot see the raster
 path.
 
-**Fix, three independent parts:** a fixed clip stack with a depth limit
-(the shape `InputQueue` and `Overlays` already use), a reused glass
-scratch buffer, and the capture path's write-then-read removed at the
-preset `docs/results-glass.md` §1 identifies as the expensive one.
+**Fix, three independent parts — and therefore not one commit:** a fixed
+clip stack with a depth limit (the shape `InputQueue` and `Overlays`
+already use, and the task states what happens when it overflows), a
+reused glass scratch buffer, and the capture accumulator's write-then-read
+removed. The last is worst in the σ range `docs/results-glass.md` §1
+prices as expensive — below about 5, where the search picks a single pass
+and all three run at full resolution. §1 names a range, not a preset.
 
 **Gate — the gate first.** Extend the allocation gate to cover a raster
 frame; *injection:* restore one `Vec` per strip and the gate fires. Only
@@ -325,8 +446,10 @@ then change the code.
 
 **Measure:** `just profile`, `--bin glass-cost`.
 
-**Docs:** `docs/results-allocation.md`'s "what is not covered" shrinks by
-what this closes.
+**Docs:** `docs/results-allocation.md` gains the blind spot it never
+recorded — its gate measures `Host::pump`, not a raster frame, so the
+raster path was outside every zero in its table — and the row that closes
+it. Also `docs/00-handoff-static-tree.md` §10's zero-allocation claim.
 
 ---
 
@@ -338,16 +461,21 @@ which `just const-budget` gates.
 
 ### T26.14 — `index_of_wid` as a `const fn`
 
-A typo'd or renamed `#[widget_id]` is a silent no-op today: the wrong
-subtree is invalidated or restyled and the frame quietly fails to
-redraw. A const lookup makes it a compile error.
+A typo'd or renamed `#[widget_id]` marks **nothing**: the lookup returns
+`None` — it can never return a wrong index — and the frame quietly fails
+to redraw. A const lookup makes it a compile error.
 
-**Honest scope, from the verifier:** every in-tree caller already
-asserts the `Option`, so this buys nothing against the current tree and
-everything against the next caller and third-party code.
+**Honest scope.** It is silent only for a caller that ignores the answer:
+`Host::invalidate` and `Host::restyle_subtree` have returned a
+`#[must_use] bool` since T16.7 for exactly this reason, and every in-tree
+caller asserts it. So this buys little against the current tree and
+everything against the next caller and third-party code — and the first
+draft of this task claimed the wrong subtree was affected, which the
+lookup cannot do (review 2026-09-17, confirmed).
 
-**Gate:** runtime and const lookups agree for every id in the workspace;
-a documented compile-fail injection for a typo'd id.
+**Gate:** runtime and const lookups agree for every id in the workspace
+(the good-input half), plus a trybuild case for a typo'd id with its
+`.stderr` committed.
 
 ### T26.15 — `Seed::reads` stops defaulting to `Fields::ALL`
 
@@ -356,29 +484,53 @@ gets. Make the mask a parameter, with an explicit constructor for the
 deliberately unlinted cases (`Seed::WIDGET` and the wrapper padding
 slots).
 
-**Gate:** `crates/lumen-static-widgets/tests/style_reads.rs` still
-verifies all 30 measured masks; a widget declared without a mask does not
-compile (manual injection, recorded).
+**This reverses a decision that is written down, and the task says so.**
+`Seed::reads`' own rustdoc records the default as deliberate — a kind
+that has not declared its reads "is not linted rather than wrongly
+linted" — and the book teaches the two-argument constructor in its
+custom-widget chapter. Both move in this commit.
 
-**Docs:** `docs/plan-appearance.md` T25.2.
+**It is also source-breaking for out-of-tree widgets:** the seeds array
+is a required associated const, so a third-party impl cannot avoid the
+constructor. **Choose and state one shape:** keep the two-argument
+constructor compiling and add a declaring one (a deprecation path, no
+breakage), or make the mask required and take the break deliberately.
+
+**Gate:** `crates/lumen-static-widgets/tests/style_reads.rs` still
+verifies every declared mask; a widget declared without a mask does not
+compile — a trybuild case with committed `.stderr`, beside a passing case
+that declares one.
+
+**Docs:** `docs/plan-appearance.md` T25.2, `Seed::reads`' rustdoc, and
+the book's custom-widget chapter, whose snippet and the sentence beneath
+it both change.
 
 ### T26.16 — shape asserts for hand-written impls, and duplicate ids
 
 Two halves, one commit:
-- `SUB_TABLE.len() == NODE_COUNT` and `SEEDS.len() == NODE_COUNT` are
-  const facts asserted only for derived trees. The four hand-written
-  generic impls write both quantities twice. **The derive half is
-  unfalsifiable** — there the two are the same expression — so this is
-  scoped to hand-written impls, where it is real.
+- The table and seed lengths are const facts asserted only for derived
+  trees, and the hand-written generic impls write both quantities twice.
+  **"The derive half is unfalsifiable" is true of exactly one of four
+  cases** (review 2026-09-17, confirmed): only the struct derive's table
+  length literally *is* the node count. The struct derive's seed length
+  and both of the enum derive's lengths are re-spelled sums and can
+  drift, so assert those too. In a *generic* impl an anonymous const
+  assert cannot name the type parameter at all, so the assert goes where
+  the impl already forces a const — and the task names the injection that
+  proves it fires: change one helper's length by one and the build must
+  fail.
 - Duplicate `#[widget_id]` among one container's fields is accepted
   silently, and every id-*addressing* operation then acts on the first
-  match. Reject it for addressing; **styling must keep matching them
-  all**, which is what `examples/glasswall` relies on with four
-  intentional duplicates.
+  match. **Name the mechanism:** the rejection lives on the const
+  addressing path T26.14 adds, not in the derive — the derive cannot tell
+  an addressing use from a styling one, and `examples/glasswall` styles
+  four intentional duplicates by selector while addressing none of them.
+  Styling must keep matching them all.
 
-**Gate, both directions:** the duplicate case fails to compile *and*
-`glasswall` still builds. A gate that refuses everything is the failure
-mode this rule exists for.
+**Gate, both directions:** addressing a duplicated id fails to compile
+*and* `glasswall` still builds and still styles all four. A gate that
+refuses everything is the failure mode this rule exists for. Both halves
+are trybuild cases with committed output.
 
 ---
 
@@ -397,7 +549,7 @@ back inside the spread closes the finding permanently.
 | # | finding | probe | the correction already known |
 |---|---|---|---|
 | 1 | `place` has no relayout boundary | the new `place` row, with a size-unchanged term added to the guard | the review's guard was incomplete; the 7.6 µs it cited is an arena figure |
-| 2 | dispatch writes hover/press/focus over every node per event | the new dispatch row | the array is `NODE_COUNT`, not rows; `docs/results-competitive.md` already prices dispatch at 0.03–0.04 µs, so expect little |
+| 2 | dispatch writes hover/press/focus over every node per event | the new dispatch row, against `pass::dispatch` alone | the array is `NODE_COUNT`, not rows; `docs/results-competitive.md` already prices dispatch at 0.03–0.04 µs, so expect little |
 | 3 | `record_painted` re-stamps ten style-derived fields | stamp the static ones where the cascade runs | nine fields, not ten — `focus_ring` is rewritten per frame by the host |
 | 4 | paint culling stops at the arena boundary | a long scrolled column of derived containers | T16.12's 8× is `List`'s arena loop; do not borrow it |
 | 5 | the generated scans copy a whole `Style` per child | codegen diff on `--bin fusion` | plausibly zero; `Style` is `Copy` and LLVM may elide it |
@@ -411,12 +563,15 @@ back inside the spread closes the finding permanently.
 | 13 | `FontStack::prepare` re-scans every character | a coverage-bitmap A/B | it is exactly two scans in the steady state, not one to three |
 | 14 | `App::update`'s blast radius | generated per-field offsets behind a dotted mark | the 7.6×/293× cited are `Boundaries`-vs-`Everything`, a different comparison |
 | 15 | a shaped-run cache in the canvas | `just profile` on the tally frame | buys nothing on all-new text; the 7,315→158 µs figure is the *culling* win |
-| 16 | index newtypes separating main-table from template-relative indices | — | the win was attributed to F1.8, which was a stale index, not a space confusion |
+| ~~16~~ | *moved to §5: refuted, not probed* | — | the win was attributed to F1.8, which was a stale index, not a space confusion |
 | 17 | `SEEDS.len()` asserts for hand-written impls | folded into T26.16 | the derive half is unfalsifiable |
 | 18 | duplicate `#[widget_id]` | folded into T26.16 | ambiguous only for addressing, never for styling |
 
-Three of these (7, 17, 18) are duplicates of tasks above and close with
-them; two (2, 14) are the same finding seen from two subsystems.
+**Fourteen live probes, not eighteen.** Row 16 is refuted and belongs to
+§5; rows 17 and 18 fold into T26.16; row 7 closes with T26.6; and rows 2
+and 14 are one finding seen from two subsystems. The count is stated
+because a table headed "the plausible set" that silently carries a
+refuted row is how a closed question gets re-opened by accident.
 
 ---
 
@@ -441,8 +596,15 @@ already exists; nothing here changes what the GPU can draw.
   `Event` is `no_std` core and size-asserted — so only the shell seam is
   typeable. When a second backend arrives.
 - **A cross-crate id registry.** Interning ids as types needs a registry
-  crate and therefore nightly or unsafe; the component-boundary decision
-  (`docs/00-handoff-static-tree.md` §9) also wants ids to stay strings.
+  crate and therefore nightly or unsafe, and
+  `docs/00-handoff-static-tree.md` §9 wants the observability namespace to
+  stay a stable string path that survives a reload — which a type-level id
+  would replace.
+- **Index newtypes** separating main-table from template-relative
+  indices. Refuted: the defect they were offered against (F1.8) was a
+  *stale* index, not a confusion of two index spaces, so the newtype
+  would not have caught it. When a second index space appears that is not
+  structurally identical to the first.
 
 ## 6. What the review found, and what its verifiers corrected
 
@@ -465,3 +627,41 @@ The four refuted findings are in §5 or dropped: the const sheet lint, a
 defaulted associated const on `Widget` carrying the table-shape proof
 (the form proposed does not work on stable), the index newtypes, and
 typed logical/physical pixels.
+
+## 7. What the review of *this plan* found — 2026-09-17
+
+Seven lenses over the plan itself — facts, gates and injections,
+measurement, sequencing, ADR and docs, risk and omissions, type
+guarantees — each followed by a verifier told to refute. **Ten blocking
+findings confirmed, twelve major, and three "blocking" claims refuted by
+their own verifier.** The plan was revised in place; this is what was
+wrong with it, because a plan that quietly replaces itself teaches
+nothing.
+
+| what the first draft said | what the code says |
+|---|---|
+| T26.3: thirteen key sites across the two text-input files | those files' keys already carry size and weight; the defect is in the label's memo, one caller, in another file — and "thirteen" matches nothing |
+| T26.5: "the repository has no compile-fail harness" | it has one, with eleven failing cases and committed expected output, run by `cargo test --workspace` — and it already carries a `#[widget_id]` case. All four Phase C gates are mechanisable |
+| T26.1: the defect is the enum derive | the defect is *a subtree zeroed under the same limits the clean-skip guard compares against*; `Either` satisfies it too, and nothing in the repository exercises that |
+| T26.2: read every kind from the seeds | the stand-in detector identifies hidden nodes by address **and** kind, and its doc records that dropping the kind breaks the change journal |
+| T26.11: T16.8 is reopened | T16.8 is paint skipping, and its blocker is correctness, not storage. This task does not touch it |
+| T26.11: a slot is 24 B, the comment says 20 | and the comment derives 5 KB from the wrong figure; both move, and this task then doubles it — which the fixed-array profile must price |
+| T26.9: the generated paint emits shadow and fill unconditionally | the shadow is guarded; one guard to add, not two |
+| T26.9: measure on the retention and paint-sink arms | neither paints a tree, and both say so in their headers, so neither can move |
+| T26.12: measure `just profile --features gpu` | that recipe is fixed to another example and has no such feature; and its gate ran where neither `just test` nor `just check` reaches |
+| T26.12: the ceiling is a full 4K redraw | that is the full-surface case; this task changes damage-clipped frames, where the GPU currently loses |
+| T26.14: a typo'd id invalidates the wrong subtree | the lookup returns `None`; it cannot return a wrong index. And the two shell entry points have returned a `#[must_use]` answer since T16.7 |
+| T26.15: make the mask a parameter | it reverses a rationale recorded in rustdoc and taught in the book, and breaks every out-of-tree widget's seed array — neither was named |
+| T26.16: the derive half is unfalsifiable | true for one of four cases; three are re-spelled sums that can drift |
+| T26.0: break the relayout boundary and the place row moves | the boundary is in `layout`; `place` takes no skip, so that injection cannot move that row |
+| T26.0: force `Damage::All` and the popup frame jumps | a length change already answers `Damage::All` today, so at baseline that injection is a no-op — the "both sides agree about a frame in which nothing happened" shape |
+| §0: judge against a four-run spread | the arm family is bimodal; a single spread over both modes is a bound computed from the wrong quantity |
+| §0: rustc time gated at +10% | the recipe fails only past 5 000 ms against a sub-second fixture, so nothing Phase C does could reach it |
+
+**Three "blocking" findings were refuted by their verifiers** and the
+plan was *not* changed for them: that the dispatch row splits on an axis
+dispatch does not have (the row is fine once its entry point is named);
+that T26.11's acceptance direction is unsatisfiable (it is satisfiable,
+but it had to be stated as covered area rather than as a variant); and
+that the const id lookup is unreachable from its callers (it is a free
+function over the table, not a method on the generic host).

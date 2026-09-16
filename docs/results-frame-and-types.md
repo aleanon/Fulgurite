@@ -7,8 +7,9 @@ Machine: i9-13900KF, governor `powersave`. Target for flash and RAM rows:
 ## The thresholds — written before anything is changed
 
 Recorded at T26.0, 2026-09-17, so a task can be told no. Every frame row
-is four runs, medians, with the runs' own spread printed beside the
-delta.
+is **eight** runs, each classified into the fast or the slow mode before
+any spread is computed, with the count in each mode and the fast mode's
+internal spread printed beside the delta.
 
 | quantity | how | threshold | kill if |
 |---|---|---|---|
@@ -22,15 +23,24 @@ delta.
 | glass | `benches --bin glass-cost` | same | same |
 | embedded flash | `scripts/check_text.sh` | ≤ +300 B over the M26 baseline | it exceeds that |
 | embedded RAM | the const-asserted sizes in `fixtures/embedded` | unchanged unless the task records a new number | an unrecorded change |
-| rustc time | `just const-budget` | ≤ +10% over the M26 baseline | it exceeds that |
+| rustc time | the millisecond figure `just const-budget` prints, four builds, with its own spread | no regression beyond that spread | the delta exceeds it |
 | allocation | `crates/lumen-static-shell/tests/alloc_gate.rs` | stays at zero, and covers the raster path from T26.13 | any steady-state allocation |
 | backend parity | `just gpu-parity` | unchanged | any divergence |
 
-**Why the spread and not a fixed bound.** M25/T25.1 wrote a 335 ns
-threshold and M25/T25.12 then found a run of the *baseline* 1.7 µs above
-its own median — an outlier that, counted into the spread, would have
-made every row pass. Each arm's spread is therefore recorded here with
-the outliers named, and a delta is judged against the undisturbed runs.
+**Why a mode rule and not a fixed bound.** M25/T25.1 wrote a 335 ns
+threshold; M25/T25.12 then found the *baseline* running 1.7 µs above its
+own median on some runs — and not as an outlier, as a second mode every
+build exhibited. Counted into one spread it would have made every row
+pass, which is a bound computed from the wrong quantity. So each arm
+records both modes: how many runs landed in each, and the spread inside
+the fast one. A delta is judged against the fast mode, and a task whose
+runs land in one mode only says so.
+
+**The rustc-time row is a printed figure, not the recipe's exit code.**
+`just const-budget` fails only past 5 000 ms against a fixture that
+builds in a fraction of a second, so the recipe is a ceiling that nothing
+Phase C does could reach. The number it prints is the measurement; the
+ceiling stays where it is.
 
 ## T26.0 — the baselines
 
