@@ -204,7 +204,13 @@ impl Invalidation for Everything {
 pub struct Boundaries<const N: usize = 16> {
     /// `(start, end)` half-open, in table index space.
     ranges: [(u32, u32); N],
-    len: u8,
+    /// **`usize`, not `u8`** — M26/T26.5. Nothing bounded `N`, so
+    /// `Boundaries<300>` stored its 256th range and wrote a length that
+    /// wrapped to zero: the set then reported *nothing* marked, every
+    /// subtree answered clean, and the frame skipped the whole tree. One
+    /// value per `Host`, not per node, so the width costs nothing the
+    /// per-node budget cares about.
+    len: usize,
     /// Set when a mark did not fit, or when a caller asked for it.
     all: bool,
 }
@@ -222,7 +228,7 @@ impl<const N: usize> Boundaries<N> {
     /// Ranges currently marked. `0` with [`Boundaries::is_all`] false
     /// means a genuinely still frame.
     pub fn len(&self) -> usize {
-        self.len as usize
+        self.len
     }
 
     pub fn is_empty(&self) -> bool {
@@ -252,7 +258,7 @@ impl<const N: usize> Invalidation for Boundaries<N> {
         // still exactly a subtree — but the arithmetic does not depend
         // on that and stays correct for any range a caller invents.
         let mut w = 0;
-        for k in 0..self.len as usize {
+        for k in 0..self.len {
             let (rs, re) = self.ranges[k];
             if rs < e && s < re {
                 s = s.min(rs);
@@ -267,7 +273,7 @@ impl<const N: usize> Invalidation for Boundaries<N> {
             return;
         }
         self.ranges[w] = (s, e);
-        self.len = (w + 1) as u8;
+        self.len = w + 1;
     }
 
     fn mark_all(&mut self) {
@@ -275,12 +281,13 @@ impl<const N: usize> Invalidation for Boundaries<N> {
         self.len = 0;
     }
 
+    /// Asked of the view, so there is **one** implementation of the
+    /// intersection test — M26/T26.5. This was a second copy of
+    /// [`Changed::is_clean`], kept in step by a unit test rather than by
+    /// construction. Off the frame path: the derive holds a `Changed` and
+    /// asks that, so nothing per node pays for the extra borrow.
     fn is_clean(&self, r: Range<usize>) -> bool {
-        if self.all || r.start >= r.end {
-            return false;
-        }
-        let (s, e) = (r.start as u32, r.end as u32);
-        !self.ranges[..self.len as usize].iter().any(|&(rs, re)| rs < e && s < re)
+        self.view().is_clean(r)
     }
 
     fn clear(&mut self) {
@@ -289,7 +296,7 @@ impl<const N: usize> Invalidation for Boundaries<N> {
     }
 
     fn view(&self) -> Changed<'_> {
-        Changed { ranges: &self.ranges[..self.len as usize], all: self.all }
+        Changed { ranges: &self.ranges[..self.len], all: self.all }
     }
 }
 
@@ -369,6 +376,29 @@ mod tests {
         assert!(!b.is_clean(0..99));
         b.clear();
         assert!(b.is_clean(0..99), "and clearing forgets it again");
+    }
+
+    /// M26/T26.5: a set larger than a `u8` counts its ranges correctly.
+    ///
+    /// `len` was a `u8` with nothing bounding `N`. At 256 marks it wrapped
+    /// to zero, and a set that reports zero ranges and `all == false` is a
+    /// still frame — so every subtree answered *clean* and a frame that
+    /// had marked 256 subtrees skipped all of them. The failure is silent
+    /// and total, which is why the fix is a wider counter rather than a
+    /// cap that refuses to compile.
+    #[test]
+    fn a_set_wider_than_a_u8_does_not_wrap_its_length() {
+        let mut b: Boundaries<300> = Boundaries::default();
+        b.clear();
+        // 300 disjoint ranges: (0,1), (2,3), … — none touches another, so
+        // none is merged away and the count is exactly the marks made.
+        for i in 0..300usize {
+            b.mark(i * 2..i * 2 + 1);
+        }
+        assert_eq!(b.len(), 300, "the length wrapped: 300 marks reported as {}", b.len());
+        assert!(!b.is_all(), "the set collapsed instead of holding its marks");
+        assert!(!b.is_clean(512..513), "a marked subtree past 255 answered clean");
+        assert!(b.is_clean(1..2), "an unmarked gap answered dirty");
     }
 
     #[test]

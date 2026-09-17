@@ -73,13 +73,23 @@ impl<C: Widget + Default + 'static> Assembled<C> {
         }
     }
 
+    /// **From `C::SEEDS`, never from a live instance** — M26/T26.4.
+    ///
+    /// This built one `C::default()` and asked it
+    /// `probe.node(j).defaults()`. `Node::node(j)` answers for an index
+    /// inside an inactive enum variant with the *container* standing in
+    /// for it, so every hidden node in a slab was seeded with the enum's
+    /// defaults instead of its own kind's. The seed table is per type and
+    /// has an entry for every index whether or not it is inhabited, which
+    /// is why M24/T24.1 moved the cascade onto it; this is the same move,
+    /// in the fourth and last place that had not made it
+    /// (`docs/plan-review-fixes.md` F4.2).
     fn default_styles(count: usize) -> Vec<Style> {
-        let probe = C::default();
         let mut v = Vec::with_capacity(1 + count * C::NODE_COUNT);
         v.push(Style::default());
         for _ in 0..count {
             for j in 0..C::NODE_COUNT {
-                v.push(probe.node(j).defaults());
+                v.push((C::SEEDS[j].defaults)());
             }
         }
         v

@@ -177,6 +177,24 @@ that now reports `kind: "fixed"` for a hidden node reports
 `role: "GenericContainer"` beside it. `Seed` carries no role, so nothing
 static can be read; deferred rather than papered over.
 
+### T26.4 — an `Assembled` slab seeded its hidden nodes from a live probe
+
+| | |
+|---|---|
+| before the fix | a hidden checkbox in a slab carried **`FillPortion(1)`** — the enum container's width, via the stand-in `Node::node(j)` answers with |
+| after | **`Fixed(24.0)`** and the checkbox's own colours, at both instances |
+| gate | *injection:* restore the probe — fires, naming the instance |
+| why it was latent | no `Assembled` in the tree contains an enum; the test supplies the first one |
+
+### T26.5 — `Boundaries<N>` wrapped its length, and kept a second `is_clean`
+
+| | |
+|---|---|
+| before the fix | 300 marks reported as **44** — 300 truncated to a `u8`. A set reporting zero ranges with `all == false` *is* a still frame, so at 256 marks every subtree answered clean and the frame skipped the whole tree |
+| after | **300**, with the marked ranges dirty and the gaps clean |
+| gates | *injection a:* restore the `u8` → "the length wrapped: 300 marks reported as 44". *injection b:* give `Boundaries` its own divergent `is_clean` → the agreement test fires, with three other range tests |
+| shape of the fix | the counter widened rather than `N` capped: one value per `Host`, so the width is free, and `Boundaries<300>` now works instead of being refused |
+
 ### T26.3 — the text memo's key omitted font size and weight
 
 | | |

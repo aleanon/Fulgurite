@@ -357,7 +357,16 @@ not 24 as the review first claimed.
 **Docs:** `docs/layout-and-storage-decisions.md` §1,
 `docs/text-and-scrolling-decisions.md` B2.
 
-### T26.4 — `Assembled::default_styles` seeds from a live probe
+### T26.4 — `Assembled::default_styles` seeds from a live probe — **DONE 2026-09-17**
+
+> **Two lines, and a fixture that had to be built to see it.** No
+> `Assembled` in the tree contains an enum — `benches`' `Item`, `Card` and
+> `Toggles` are flat — so the test file supplies one: a row whose enum
+> shows a pane and hides a checkbox. Before the fix the hidden checkbox
+> was seeded `FillPortion(1)`, the enum container's width, instead of its
+> own `Fixed(24.0)`; after, both instances of the slab carry the
+> checkbox's own defaults. *Injection:* restore the probe — fires by
+> instance number.
 
 T24.1's defect in a fourth place: the slab builds its styles from
 `C::default()` instead of `C::SEEDS`, so an `Assembled` whose content
@@ -376,19 +385,38 @@ truncates; and `Boundaries::is_clean` is a second implementation of
 `Changed::is_clean` kept honest by a unit test rather than by
 construction.
 
-**Fix:** a const assert on `N`, and one implementation called by both.
+**Fix: the counter is widened, not capped** — and that is the *other*
+branch of what this task first considered, taken deliberately when the
+failure turned out to be worse than "a large `N` is refused".
 
-**Gate:** the existing agreement test, plus a compile-fail case in the
-trybuild suite: `Boundaries<300>` must not compile, with its `.stderr`
-committed. **The repository has a compile-fail harness** — eleven
-`fail_*` cases with committed expected output, run by `cargo test
---workspace`, and it already carries a `#[widget_id]` case — so this
-gate, and every one in Phase C, is mechanised rather than run by hand.
-The cases live beside the existing ones, which compile against the core
-crate, so no second harness is needed. *Good input, the other half the
-rule requires:* a `pass_*` case at a legal `N` that must keep compiling.
+> **DONE 2026-09-17.** `len` is a `usize`; `Boundaries::is_clean` asks
+> `self.view()`, so one implementation answers for both.
+>
+> **Why not the const assert this section asked for.** A cap makes
+> `Boundaries<300>` fail to compile; widening makes it *work*. The
+> counter is one value per `Host`, not per node, so the width costs
+> nothing the per-node budget cares about — and refusing a set size the
+> machinery can hold perfectly well would have been gating a limitation
+> rather than fixing a defect. With the wrap gone there is nothing left
+> for a compile-fail case to refuse, so none is added; Phase C's gates
+> still use the trybuild suite, which does exist.
+>
+> **What the failure actually was**, and why it deserved the stronger
+> fix: at 256 marks the length wrapped to zero, and a set reporting zero
+> ranges with `all == false` *is* a still frame — so every subtree
+> answered clean and a frame that had marked 256 subtrees skipped all of
+> them. Silent and total.
+>
+> **Gates, both shown to fail:** a 300-range set counts 300 and answers
+> correctly — *injection:* restore the `u8` and it reports **44**, which
+> is 300 truncated. And the existing agreement test, with a second
+> injection: give `Boundaries` its own divergent `is_clean` and it fires,
+> along with three other range tests.
 
-**Docs:** `docs/plan-invalidation.md` T16.7.
+**Docs:** `docs/plan-invalidation.md` T16.7 — which describes
+`Boundaries<const N: usize>` and never named the `u8`, so nothing there
+was stale; the claim lived only in the field's own comment, which this
+replaces.
 
 ---
 
