@@ -33,7 +33,9 @@ names a role (M25/T25.11) — so `ui.getAppliedStyles` answers in the new
 colours on the next call. It answers `applied: false` from a host that
 has no palette to set, rather than succeeding at nothing (M25/T25.3).
 
-`ui.lint` reports stylesheet rules too, when the host supplies its sheet:
+`ui.lint` reports stylesheet rules too, when the host supplies its sheet
+— which a host built with the `agent` feature does, and one without does
+not lint at all (M26/T26.18):
 `W1010` names a rule whose selector matches no node, or whose fields no
 node it matches reads — by rule, because the rule is what is wrong
 (M25/T25.2).

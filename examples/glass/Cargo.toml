@@ -18,3 +18,8 @@ default = []
 # tint. Built `--features gpu` this example looks the same and costs far
 # less -- `docs/results-glass.md` §0h.
 gpu = ["lumen-static-winit/gpu"]
+
+[dev-dependencies]
+# The sheet lint is agent-gated (M26/T26.6); this crate's tests assert
+# that every rule in its stylesheet does something, so they need it.
+lumen-static-shell = { path = "../../crates/lumen-static-shell", features = ["truetype", "agent"] }

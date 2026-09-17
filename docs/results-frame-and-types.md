@@ -194,6 +194,22 @@ that now reports `kind: "fixed"` for a hidden node reports
 `role: "GenericContainer"` beside it. `Seed` carries no role, so nothing
 static can be read; deferred rather than papered over.
 
+### T26.18 — the lint leaves a non-agent build entirely
+
+| quantity | before | after |
+|---|---:|---:|
+| `examples/minimal` `.text` (no agent) | 2,618,470 B | **2,615,910 B** (−2,560) |
+| `lint_sheet_deep` symbols linked into it | 1 | **0** |
+| `examples/counter` (feature on) | 1 | 1 |
+| the 183 µs per `set_stylesheet` | paid by every build | paid only where an agent can read it |
+
+**The measurement was contaminated once and had to be retaken.** Building
+`minimal` and `counter` in one `cargo` invocation unifies their features,
+so the "no agent" binary had the lint linked after all and the symbol
+count read 1. Built alone it reads 0. The workspace is `resolver = "2"`,
+so the dev-dependencies the example tests use do not leak the feature
+into anything else's normal build.
+
 ### T26.4 — an `Assembled` slab seeded its hidden nodes from a live probe
 
 | | |

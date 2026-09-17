@@ -18,3 +18,8 @@ gpu = ["lumen-static-winit/gpu"]
 # the live window, so a review can open the dropdown and pick the next
 # widget instead of restarting the process once per widget.
 agent = ["lumen-static-winit/agent"]
+
+[dev-dependencies]
+# The sheet lint is agent-gated (M26/T26.6); this crate's tests assert
+# that every rule in its stylesheet does something, so they need it.
+lumen-static-shell = { path = "../../crates/lumen-static-shell", features = ["truetype", "agent"] }

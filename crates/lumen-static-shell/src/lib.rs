@@ -99,6 +99,7 @@ pub struct Host<A: App, R: Retention = Incremental, I: Invalidation = Everything
     /// What [`lumen_static::style::lint_sheet_deep`] found in `sheet`:
     /// rules whose selector matches nothing, or that set only fields no
     /// matched node reads. The agent reports them as `W1010`.
+    #[cfg(feature = "agent")]
     sheet_findings: Vec<lumen_static::style::SheetFinding>,
     /// The palette every look is resolved against — M25/T25.3.
     ///
@@ -129,6 +130,7 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             last_damage: Damage::All,
             invalidation: I::default(),
             sheet: Vec::new(),
+            #[cfg(feature = "agent")]
             sheet_findings: Vec::new(),
             palette: lumen_static::style::Palette::LIGHT,
         }
@@ -179,17 +181,34 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
     /// Rules in the last stylesheet that cannot change the frame
     /// (M25/T25.2) — empty for a sheet in which every rule does
     /// something. By index into [`Host::stylesheet`].
+    /// **Requires the `agent` feature** — M26/T26.18. The lint is a
+    /// development diagnostic costing 183 µs a sheet swap
+    /// (`docs/results-frame-and-types.md` T26.0), and its only consumer
+    /// is the agent's `ui.lint`, so a build without one neither runs it
+    /// nor stores its findings.
+    #[cfg(feature = "agent")]
     pub fn sheet_findings(&self) -> &[lumen_static::style::SheetFinding] {
         &self.sheet_findings
     }
 
-    fn keep_and_lint(&mut self, sheet: &[Rule]) {
+    /// Keep the sheet in force, and lint it where anything can read the
+    /// findings.
+    ///
+    /// The sheet itself is kept unconditionally: [`Host::set_palette`]
+    /// re-cascades it when a palette role resolves differently
+    /// (M25/T25.11), which has nothing to do with the agent.
+    fn keep_sheet(&mut self, sheet: &[Rule]) {
         self.sheet.clear();
         self.sheet.extend_from_slice(sheet);
-        let mut found = core::mem::take(&mut self.sheet_findings);
-        found.clear();
-        lumen_static::style::lint_sheet_deep(self.app.tree_mut(), sheet, &mut |f| found.push(f));
-        self.sheet_findings = found;
+        #[cfg(feature = "agent")]
+        {
+            let mut found = core::mem::take(&mut self.sheet_findings);
+            found.clear();
+            lumen_static::style::lint_sheet_deep(self.app.tree_mut(), sheet, &mut |f| {
+                found.push(f)
+            });
+            self.sheet_findings = found;
+        }
     }
 
     /// Mark the subtree rooted at the node carrying `#[widget_id(wid)]`
@@ -240,7 +259,7 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             &self.palette,
             &mut self.styles,
         );
-        self.keep_and_lint(sheet);
+        self.keep_sheet(sheet);
         // A stylesheet can change any node's size, so nothing is known
         // to be clean any more.
         self.invalidation.mark_all();
@@ -275,7 +294,7 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         );
         // The whole sheet is the one now in force, so it is the one kept
         // and linted.
-        self.keep_and_lint(sheet);
+        self.keep_sheet(sheet);
         // Scoped, so the invalidation is too — the same range the
         // cascade just rewrote.
         self.invalidation.mark(lumen_static::style::subtree_range(table, root));

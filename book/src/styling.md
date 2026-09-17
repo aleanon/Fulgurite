@@ -58,12 +58,21 @@ type system tells you which you need. This was documented nowhere until
 
 ## A rule that does nothing is reported
 
-Since M25/T25.2 the host lints every sheet it is given. A rule is
-reported when its selector matches no node — `Kind("Label")` above, or
-an id nothing carries — or when a field it sets is read by none of the
-nodes it matches: a checkbox paints no text, so a `font_weight` for one
-changes nothing. `Host::sheet_findings` returns them by rule index, and
-the agent's `ui.lint` reports each as `W1010`.
+A host built with the `agent` feature lints every sheet it is given. A
+rule is reported when its selector matches no node — `Kind("Label")`
+above, or an id nothing carries — or when a field it sets is read by none
+of the nodes it matches: a checkbox paints no text, so a `font_weight`
+for one changes nothing. `Host::sheet_findings` returns them by rule
+index, and the agent's `ui.lint` reports each as `W1010`.
+
+**Behind a feature since M26/T26.18, and it used to be unconditional.**
+The walk is O(rules × nodes) and re-walks every arena once per rule —
+183 µs on a 27-rule sheet over 901 nodes, against the 66 µs the cascade
+costs over the same sheet (`docs/results-frame-and-types.md` T26.0) —
+and its only consumer is the agent. A build with no agent was paying it
+on every sheet swap for findings nothing could read. Turn it on with
+`lumen-static-shell`'s `agent` feature, which `lumen-static-winit`'s
+`agent` feature already implies.
 
 Which fields a kind reads is declared beside its kind name and **measured
 rather than trusted**: `crates/lumen-static-widgets/tests/style_reads.rs`

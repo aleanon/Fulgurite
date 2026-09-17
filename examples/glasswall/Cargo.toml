@@ -24,3 +24,8 @@ default = []
 # them is not a frame, it is a slideshow. M22/T22.6 put the whole filter
 # on the GPU, where the same work is milliseconds.
 gpu = ["lumen-static-winit/gpu", "dep:lumen-static-wgpu"]
+
+[dev-dependencies]
+# The sheet lint is agent-gated (M26/T26.6); this crate's tests assert
+# that every rule in its stylesheet does something, so they need it.
+lumen-static-shell = { path = "../../crates/lumen-static-shell", features = ["truetype", "agent"] }

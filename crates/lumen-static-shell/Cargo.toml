@@ -15,6 +15,22 @@ wide = { version = "0.7", optional = true, default-features = false }
 
 [features]
 default = []
+# The stylesheet lint, and the findings the agent reports as `W1010`
+# (M25/T25.2, gated by M26/T26.18).
+#
+# **Default-OFF because it is a development diagnostic, and it is not
+# free.** `lint_sheet_deep` is O(rules × nodes) and re-walks every arena
+# once per rule: **183 µs** on a 27-rule sheet over 901 nodes, against
+# the 66 µs the cascade costs over the same sheet
+# (`docs/results-frame-and-types.md` T26.0). `Host::set_stylesheet` ran
+# it unconditionally, in every build, so an application that never
+# attaches an agent paid it on every sheet swap for findings nothing
+# could read.
+#
+# Nothing else is gated: `style::lint_sheet_deep` is generic, so a build
+# that never calls it never instantiates it, and the `Seed::reads` masks
+# it compares against are two bytes of rodata per kind.
+agent = []
 truetype = ["dep:fontdue"]
 # Explicit SIMD in the rasteriser's hot loop (M17/T17.1).
 #

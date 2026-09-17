@@ -26,7 +26,7 @@ default = ["clipboard"]
 # `NodeDesc` from 48 B to 72 B in every binary that links it — the
 # condition `docs/step5-observability.md`'s zero-release-cost claim
 # depends on. An application opts in; a release build does not.
-agent = ["dep:lumen-static-agent", "dep:serde_json"]
+agent = ["dep:lumen-static-agent", "dep:serde_json", "lumen-static-shell/agent"]
 clipboard = ["dep:arboard"]
 # Platform drag and drop (T15.7). Default-OFF: it is a platform
 # capability an application opts into, and winit already carries the

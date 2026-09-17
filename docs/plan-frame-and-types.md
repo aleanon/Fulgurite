@@ -632,6 +632,38 @@ it. Also `docs/00-handoff-static-tree.md` §10's zero-allocation claim.
 
 ---
 
+### T26.18 — the sheet lint is agent-gated, not optimised — **DONE 2026-09-17**
+
+> Asked what the 183 µs lint should cost, the answer turned out not to be
+> "less". It is a **development diagnostic whose only consumer is the
+> agent** — `Host::sheet_findings` feeds `TreeRef::with_sheet`, which
+> feeds `ui.lint`'s `W1010` — and `Host::set_stylesheet` ran it in every
+> build, so an application that never attaches an agent paid it on every
+> sheet swap for findings nothing could read.
+>
+> **`lumen-static-shell` gains an `agent` feature**, default-off, which
+> `lumen-static-winit`'s existing `agent` feature turns on. Without it the
+> lint does not run and the findings are not stored; the sheet itself is
+> still kept, because `Host::set_palette` re-cascades it (M25/T25.11) for
+> reasons that have nothing to do with the agent.
+>
+> **Measured, not asserted:** `examples/minimal` — a window with no agent
+> — drops from 2,618,470 to **2,615,910 B** of `.text`, and
+> `lint_sheet_deep` goes from **one linked symbol to zero**. In
+> `examples/counter`, which enables the feature, it is still linked. The
+> 183 µs per sheet swap goes with it.
+>
+> **What this does to T26.17 #10.** Optimising the lint's arena walk is
+> now moot for every build that does not ask for it, and for the builds
+> that do it is a development cost, not a user's. The probe stays in the
+> table but its urgency is gone; the two hazards it carried — an
+> under-reporting const list, and a second walk that allocates — are
+> reasons to leave it alone unless an agent session is measurably slow.
+>
+> Nothing in the core is gated: `style::lint_sheet_deep` is generic, so a
+> build that never calls it never instantiates it — which is exactly what
+> the symbol count shows.
+
 ## Phase C — the compile-time guarantees (T26.14–T26.16)
 
 These buy no frame time. They are judged on **what a real defect in this
@@ -728,7 +760,7 @@ back inside the spread closes the finding permanently.
 | # | finding | probe | the correction already known |
 |---|---|---|---|
 | 1 | `place` has no relayout boundary | the new `place` row, with a size-unchanged term added to the guard | the review's guard was incomplete; the 7.6 µs it cited is an arena figure |
-| 2 | dispatch writes hover/press/focus over every node per event | the new dispatch row, against `pass::dispatch` alone | the array is `NODE_COUNT`, not rows; `docs/results-competitive.md` already prices dispatch at 0.03–0.04 µs, so expect little |
+| ~~2~~ | *probed and **moved to §5**: the win is 1.11 → 0.03 µs an event, real but small, and it needs a clearing discipline the sweep currently supplies for free* | done | — |
 | 3 | `record_painted` re-stamps ten style-derived fields | stamp the static ones where the cascade runs | nine fields, not ten — `focus_ring` is rewritten per frame by the host |
 | 4 | paint culling stops at the arena boundary | a long scrolled column of derived containers | T16.12's 8× is `List`'s arena loop; do not borrow it |
 | 5 | the generated scans copy a whole `Style` per child | codegen diff on `--bin fusion` | plausibly zero; `Style` is `Copy` and LLVM may elide it |
@@ -779,6 +811,23 @@ already exists; nothing here changes what the GPU can draw.
   `docs/00-handoff-static-tree.md` §9 wants the observability namespace to
   stay a stable string path that survives a reload — which a type-level id
   would replace.
+- **Clearing hover, press and focus by index instead of by sweeping**
+  (M26/T26.17 #2). **Measured and deferred 2026-09-17, not refused:** the
+  sweep costs **1.11 µs per pointer event over 901 nodes** (1.23 ns a
+  node), and the injection that clears one index instead took it to
+  **0.03 µs** — so the win is real and scales with tree size, roughly
+  12 µs on a 10 000-node tree.
+  **What it needs first, and why it is not done here:** the sweep is
+  laundering state that clearing-by-index must replace deliberately.
+  `Host.input` is `pub`, so a caller that writes `input.hovered` by hand
+  and pumps is corrected today and would not be. The sweep's own
+  justification is "a frame may have changed the tree under us", and
+  there is no `Host::swap` to clear on — so the clearing points must be
+  chosen by hand, starting with `Dyn::replace` and anything else that
+  changes what an index means. A node hidden while hovered would keep its
+  bit: nothing paints it, but the agent reports it and it resurfaces when
+  shown again. **When input latency on a large tree is measured to
+  matter**, and with that clearing discipline written into the commit.
 - **A hidden node's `role`** (M26/T26.2's residue). Kinds now come from
   `Widget::SEEDS`, which is per type, but `role` is still read from the
   instance — and for a node inside an inactive variant the instance is
