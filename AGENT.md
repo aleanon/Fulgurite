@@ -92,6 +92,25 @@ are independent of each other**, so either may go first:
   corrected, including four findings the review refuted and nine numbers
   cited for the wrong quantity.
 
+- **M27 — `docs/plan-widget-parity.md`** (T27.0–T27.12): the thirty-three
+  widgets left between here and Lumen's set — Stepper and FindReplaceBar
+  dropped by the ask, a number input added — and, the larger half of the
+  document, **the gate each one goes through**: an action inventory
+  written before the widget and stored as data so coverage is an
+  assertion rather than a review question; a showcase entry seeded to
+  reach every state it names; a per-widget drive script run against the
+  live window under **both** invalidation strategies, three assertions
+  per action (it landed / the specific consequence, with the quantity
+  printed beside its bound / the same input just outside does nothing);
+  and an adversarial agent that must produce injections, not opinions.
+  **The adversary is itself tested** once per tranche against a planted
+  weakness. §2 names three prerequisites already owed elsewhere — per-row
+  addressing (`docs/plan-select.md` T24.4), the stroked rect `Style` and
+  `Cmd` still lack, and three taken names. **T27.3 retrofits the harness
+  to the eighteen widgets that already exist and does not close if it
+  finds nothing in them.** M23's §4 task list is superseded; its
+  groupings are kept because M27's tranches inherit them.
+
 Unsequenced: `docs/plan-harness.md`.
 
 Task ids (`T0.6`, `F1.3`, `T16.7`) go in commit subjects. Decision records live beside it in `docs/`; the

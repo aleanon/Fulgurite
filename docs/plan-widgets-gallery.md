@@ -37,7 +37,13 @@ Tranche 1 is every leaf worth having, which is why it moved fast.
 | **Navigation** (5) | Tabs, AppBar, BottomNav, NavigationRail, PullToRefresh | **left:** all five |
 | **Overlays** (4) | Modal, Popover, Sheet, Drawer | **done:** Popup (≈Popover) · **left:** Modal, Sheet, Drawer |
 
-**Twenty-three of sixty-one**, counting the core's. Thirty-eight left.
+**Twenty-seven of sixty-one**, counting the core's. Thirty-four left.
+*(Corrected 2026-09-17 by regrepping every one of the sixty-one names
+against `crates/*/src`. The table above was typed before tranche 1's
+last two leaves and before M24/T24.2's `Select`, so the count it
+carried — twenty-three and thirty-eight — was four out. A stale number
+in a plan drifts exactly like a stale number in rustdoc; see
+`docs/plan-widget-parity.md` §0 for the recount.)*
 
 ## 1. The crate, and why it is a crate
 
@@ -246,6 +252,17 @@ methods are `input.pointerDown` / `input.pointerUp` — not `press` and
 `release`, which is what the comment above them describes them as.
 
 ## 4. What is next, in order
+
+> **SUPERSEDED 2026-09-17 by `docs/plan-widget-parity.md` (M27).** The
+> widgets below are still the right widgets and the groupings still
+> hold; what changed is the gate around them, and two of the entries
+> are gone. Stepper (T23.3) and FindReplaceBar (T23.10) were **dropped
+> by the ask**, not forgotten. A number input replaces the Stepper, and
+> each widget now ships with an action inventory, a per-widget drive
+> script run against the live window under both invalidation
+> strategies, and an adversarial review. The table is kept because its
+> groupings are the reasoning M27's tranches inherit.
+
 
 | id | task |
 |---|---|

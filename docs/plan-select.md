@@ -228,6 +228,30 @@ not a stylesheet, not the agent's `#id` selectors, not
 `scripts/agent_drive.sh`. Namespaced, because a bare `trigger` would
 collide with an application's own `#[widget_id("trigger")]`.
 
+### T24.4 — what a part id still cannot reach: a *row*
+
+Recorded 2026-09-14, unbuilt. `PART_TRIGGER`/`PART_POPUP`/`PART_MENU`
+reach the `Select`'s own three nodes. They do not reach **row *k***,
+because an arena row is a template instantiated per index and carries no
+`#[widget_id]` of its own. The only selector that reaches one is `Kind`,
+and that works in the showcase solely because every *other* `Button` in
+its sheet is addressed by an id, and an id beats a kind. Add one unnamed
+button and the menu's rows restyle with it.
+
+Two consequences, and the second is the load-bearing one:
+
+- a stylesheet cannot say "the selected row", which is what
+  `docs/plan-appearance.md` calls *not per-row status*;
+- **nothing can click row *k* by name.** `scripts/agent_drive.sh`
+  computes `box[1] + ROW_H * 8 + ROW_H / 2` instead, which is arithmetic
+  over a resolved box and one renamed row away from clicking the wrong
+  widget and passing — the "setup silently did not happen" shape this
+  repository has been caught by twice.
+
+Promoted to a prerequisite by `docs/plan-widget-parity.md` T27.0, where
+six of the thirty-three widgets are repeaters whose rows must be
+addressable to be tested at all.
+
 ### The five things underneath
 
 Each was found by the widget failing to work — four of them by *looking
