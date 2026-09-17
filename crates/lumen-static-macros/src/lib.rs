@@ -1208,18 +1208,20 @@ fn expand_enum(
                     // was correct under `Everything`, which is why no
                     // test had ever seen it
                     // (`crates/lumen-static-shell/tests/enum_relayout.rs`).
+                    // The active variant's range, then two hides around
+                    // it — two call sites, not two per arm.
+                    let (astart, aend) = match self {
+                        #( #name::#var_ident(_) => (STARTS[#var_no], STARTS[#var_no + 1]), )*
+                    };
+                    ::lumen_static::ops::hide_subtree(st, i + 1, limits, astart - 1);
+                    ::lumen_static::ops::hide_subtree(
+                        st,
+                        i + aend,
+                        limits,
+                        <Self as ::lumen_static::widget::Widget>::NODE_COUNT - aend,
+                    );
                     let size = match self {
                         #( #name::#var_ident(w) => {
-                            ::lumen_static::ops::hide_subtree(
-                                st, i + 1, limits, STARTS[#var_no] - 1,
-                            );
-                            ::lumen_static::ops::hide_subtree(
-                                st,
-                                i + STARTS[#var_no + 1],
-                                limits,
-                                <Self as ::lumen_static::widget::Widget>::NODE_COUNT
-                                    - STARTS[#var_no + 1],
-                            );
                             w.layout(cx, limits, style, st, i + STARTS[#var_no])
                         } ),*
                     };

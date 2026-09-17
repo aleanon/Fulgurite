@@ -161,6 +161,15 @@ produced before the fix.
 > `0×0` against the sheet's `40×20`, on `Boundaries<16>`, while the same
 > session under `Everything` stayed green.
 >
+> **The first implementation cost 25× what the fix needs**, and only a
+> code-size measurement found it. Emitting the two hides *inside each
+> match arm* put 36 inlined copies with constant loop counts into an
+> 18-variant enum: **+13,632 B** of `examples/showcase`'s `.text`.
+> Computing the active variant's range once and hiding around it —
+> two call sites, not two per arm — is **+544 B** for identical
+> behaviour, with both gates unchanged. Landed 2026-09-17, right after
+> the fix it replaces (`docs/results-frame-and-types.md` T26.1).
+>
 > **Both gates were shown to fail.** Restoring the whole-span hide fired
 > `enum_relayout`'s assertion by name (left `(0.0, 0.0)`, right
 > `(40.0, 20.0)`), and — run separately, because cargo stops at the first

@@ -156,6 +156,23 @@ correctness.*
 | second gate | the invalidation oracle, whose fixture gained an enum and a variant switch: *"step 2: the display lists differ"* under the injection |
 | sites inventoried | **10 hide call sites, 1 defective.** `Option` hides only on `None`, `Either` only the side it is not showing, `Popup` only when closed; the six `!visible` sites are stylesheet-driven and marked by `set_stylesheet`/`restyle_subtree`. Only the enum derive zeroed a subtree it then laid out |
 
+**What the fix costs, by shape.** `examples/showcase` links an
+18-variant enum, so it is the binary that prices this; the embedded
+fixture holds no enum and does not move.
+
+| shape | showcase `.text` | over the pre-fix baseline |
+|---|---:|---:|
+| before T26.1 | 2,802,022 B | — |
+| two hides **per match arm** (as first landed) | 2,815,654 B | **+13,632** |
+| **the active range computed once, two hides around it** | 2,802,566 B | **+544** |
+
+**25× for identical behaviour**, and nothing but a size measurement would
+have found it: both gates pass under either shape, and neither the frame
+arms nor the embedded budget moves. The per-arm version inlines
+`hide_subtree` twice per variant with constant counts, so an enum pays
+code size proportional to its variant count for work that is the same two
+calls every time.
+
 **Why no test had seen it.** The stale zero is returned by the *variant's
 own* relayout boundary — `can_skip() && is_clean(..) && constraints ==
 limits` → `return st[i].size` — so it needs the active variant to be a
