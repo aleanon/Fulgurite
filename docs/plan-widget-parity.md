@@ -88,53 +88,127 @@ repository as debts nobody scheduled.
 
 `docs/plan-select.md` T24.4, promoted here from a note to a
 prerequisite, because **the drive protocol cannot be built without
-it.** An arena row carries no `#[widget_id]`, so today the only
-selector that reaches one is `Kind`, and `scripts/agent_drive.sh`
-clicks row 8 by computing `box[1] + ROW_H * 8 + ROW_H / 2` off the
-menu's resolved box.
+it.**
 
-That arithmetic is the documented vacuous shape — "the setup silently
-did not happen" — one renamed row away from clicking the wrong widget
-and passing. A protocol that selects thirty-three widgets by name needs
-a selector that names them: `#select-menu:row(Switch)` or an equivalent
-that resolves through `EventCtx::row`. It also unblocks DataGrid, Tree,
-Pagination, Menu, PickList and Combobox, all of which are repeaters
-whose rows must be addressable to be tested at all.
+The shape is not "rows have no id". It is that **rows are visible to the
+agent and untouchable by it.** `NodeDesc::wid` is a `&'static str` in the
+*const* table, and a repeater's rows are not in that table at all — N
+rows share the template's single `NodeDesc`, so there is one `wid` for
+all of them however many are materialized. The agent enumerates them
+anyway: `observe::emit_table` gives each instance node a synthetic
+64-bit id with **bit 63 set**, and `Index::build` sets `Entry::idx` to
+`None` for exactly those. Every action method then does
+`e.idx.ok_or(...)` and **refuses, deliberately, with advice**:
+
+> `"selector resolved to virtualized content; pass x/y instead"`
+
+Four sites do this today — `input.fill`, `input.scrollIntoView`, the
+shared `pointer_target` behind click/hover/`pointerDown`/`pointerUp`,
+and `ui.explain`. So this is not a missing feature; it is a refusal, and
+**the refusal's own advice is the vacuous-test shape AGENT.md names.**
+`scripts/agent_drive.sh` takes that advice and computes
+`box[1] + ROW_H * 8 + ROW_H / 2`, which is one renamed row away from
+clicking the wrong widget and passing.
+
+Two notes for whoever builds it, from reading the refusal sites rather
+than guessing at them:
+
+- **The click path may be nearly free.** `resolve_one` already returns an
+  `Entry` that carries `bounds()`, and `pointer_target` needs `idx`
+  *only* to compute a centre from `tree.states[i]` — which the bounds
+  already give. Click, hover and the held press want a point, not a
+  table index.
+- **The rest genuinely need an index**, because they read per-node state
+  the main table owns: `ui.explain`, `ui.getAppliedStyles`, and
+  `input.fill`'s focus handling. Those need `(template, row, inner)`
+  resolved to the arena, which is the real work — `EventCtx` already
+  carries exactly that triple (`node`, `row`, `inner`) on the *dispatch*
+  side, so the information exists and only the query direction is
+  missing.
+
+It unblocks six of the thirty-three directly — DataGrid, TreeView,
+Pagination, Menu, PickList, Combobox are all repeaters whose rows must
+be addressable to be tested at all — and it unblocks the harness for all
+thirty-three, which must pick a widget by name out of a fifty-one-row
+menu.
 
 ### T27.1 — the stroked rect
 
 `Style` has no border and `Cmd` has no stroked rect. §3c of the gallery
 plan found this by putting our TextInput beside Lumen's and recorded it
-as "a gap worth a task of its own before T23.9's pickers". It is worse
-than that: counting the thirty-three, **twelve** are bordered controls
-or need a hairline to read at all — the four pickers, SearchField,
-NumberInput, Combobox, Card, DataGrid, Grid, Tabs' active underline,
-Accordion's separators.
+as "a gap worth a task of its own before T23.9's pickers". Counting the
+thirty-three, **twelve** are bordered controls or need a hairline to
+read at all — the four pickers, SearchField, NumberInput, Combobox,
+Card, DataGrid, Grid, Tabs' active underline, Accordion's separators.
 
-Cheap to state, not cheap to land: a stroke is a new `Cmd` variant,
-which means every `Painter` implementor, both backends, the retention
-hash, the damage ink function and — per the `Deferring` lesson in
-AGENT.md — **every wrapper of `Painter`**, which the compiler will not
-show you if the trait carries a provided body. The task ships with a
-test that a stroke survives an overlay pass, because that is the exact
-bug a provided method caused last time.
+It is two gaps, and the second is the one that makes a workaround fail.
+
+**No command.** `Cmd` has ten variants and none of them strokes. `Line`
+exists, and its damage ink is correct — `retain.rs` takes the min/max of
+the endpoints and widens by half the stroke, so a diagonal does not
+leave its thick part behind. So four lines round a box *almost* works,
+and two things stop it:
+
+- `Style::radius` is read by every control this framework draws. Four
+  straight lines cut the corners off a rounded rect.
+- `MAX_REGIONS` is **4**, and its own doc says a frame's damage is
+  "normally one region, or two once something reads the backdrop
+  beneath it". A four-line border contributes four ink rects, and the
+  widget's fill is a fifth — over the cap, merged into the last slot.
+  **Prediction the task must measure, not assume:** twelve bordered
+  widgets drawn this way systematically coarsen the region set M18
+  exists to keep sharp.
+
+**No style field.** `Style` carries fourteen fields and no border. So
+even given the command, no stylesheet rule can say *border* — every
+bordered widget would hardcode one, which is precisely the state
+M25/T25.10 had to undo for colours.
+
+**And one design instruction, from the `Deferring` lesson.** `Painter`
+is five required methods and six provided, with four implementors of
+which **three are wrappers** — `Deferring`, `Recording`, `Scaled`.
+AGENT.md records what a provided method did to the first of them: it
+overrode seven of eleven, inherited the rest, and every `Line` and
+`Image` painted under an overlay pass was dropped. A new *provided*
+`stroked_rect` reproduces that bug exactly and silently. **It ships as a
+required method**, so each wrapper is a compile error until it forwards,
+and the task's test is that a stroke survives an overlay pass.
 
 ### T27.2 — the three taken names
 
-Settle before typing, not during:
+Settle before typing, not during. **None of the three is a compile
+error**, and saying so matters, because the precedent everyone will
+reach for is not the same shape: `Rule` *was* hard — `lumen_static::Rule`
+is a stylesheet rule and is **in the prelude**, so a `Rule` widget makes
+`use ...::prelude::*` ambiguous, and that is why tranche 1 shipped
+`Divider`. Menu, Canvas and Tree are none of them in the prelude and all
+of them in other crates, so `use` disambiguates.
 
-- **Menu.** `select.rs` has `pub type Menu<S> = Popup<Repeat<Row<S>>>`.
-  Lumen's Menu is a nested command menu. Either the alias is renamed
-  (it is one line and two uses) or the widget is. Recommendation: rename
-  the alias to SelectMenu, since it is the menu *of a `Select`* and
-  the narrower name is the more accurate one anyway.
-- **Canvas.** The software backend's render target. Lumen's Canvas is a
-  user draw callback. The backend type is core infrastructure with a
-  long comment history; the widget takes a new name. Recommendation:
-  PaintBox.
-- **Tree.** `StaticTree` is the derive; the collision is with a bare
-  `Tree` widget. Recommendation: TreeView, which is also what the
-  data-grid-adjacent widget is called nearly everywhere else.
+What they cost instead is **prose**, and the tooling here is blind to
+exactly that by design: `check_doc_identifiers.sh` says of itself that
+it "does not know scope — only that nothing anywhere is called `hit`".
+A backticked `Canvas` in a doc comment passes whichever `Canvas` the
+writer meant, forever. The collision is invisible to the one gate that
+looks at prose.
+
+Ranked by how much the collision actually costs:
+
+- **Canvas — rename the widget, certainly.** `software::Canvas` is the
+  raster backend's pixel buffer, with dozens of methods, cited from
+  `lumen-static-shell`'s front page, from `lumen-static-wgpu`'s shader
+  comments, and from AGENT.md itself (`Canvas::bands_for`). Renaming
+  *that* to free a widget name would be the tail wagging the dog.
+  Recommendation: PaintBox for the widget.
+- **Menu — cheap either way.** `pub type Menu<S> = Popup<Repeat<Row<S>>>`
+  has seven uses, all inside `select.rs`. Recommendation: rename the
+  alias to SelectMenu, because it is the menu *of a `Select`* and the
+  narrower name is the more accurate one regardless of the collision.
+- **Tree — the weakest case, and a judgement call.** `App::Tree` is an
+  associated type in a different trait; there is no ambiguity, only a
+  reader who meets three meanings of one word. Recommendation: TreeView,
+  which is what the widget is called nearly everywhere else anyway — but
+  this one is style, and it should be decided rather than inherited from
+  the two above.
 
 ## 3. The gate: one widget, four artifacts
 
