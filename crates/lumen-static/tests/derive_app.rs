@@ -123,8 +123,8 @@ fn a_quiet_update_leaves_the_measurement_memo_warm() {
     let mut cx = LayoutCx::new(&mut m);
     let (style, mut st) = ([Style::default()], [NodeState::default()]);
     c.ui.value.layout(&mut cx, LIMITS, &style, &mut st, 0);
-    assert!(c.ui.value.measure_is_warm(LIMITS));
+    assert!(c.ui.value.measure_is_warm(LIMITS, &style[0]));
 
     c.update(); // nothing changed
-    assert!(c.ui.value.measure_is_warm(LIMITS), "a binding that runs is not a binding that writes");
+    assert!(c.ui.value.measure_is_warm(LIMITS, &style[0]), "a binding that runs is not a binding that writes");
 }

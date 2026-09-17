@@ -307,7 +307,11 @@ kept.
 
 **DECIDED: a separate `Shaped`, leaving `Measured` alone.**
 
-`Measured` is one `Cell<Option<(Constraints, Size)>>`. Every label in a
+`Measured` is one `Option<(MeasureKey, Size)>` — a `Cell` until
+`docs/plan-review-fixes.md` F6.3 made `get_or` take `&mut self`, and keyed
+on the `Constraints` alone until M26/T26.3, which added the font size and
+weight after a restyle that changed only the size was found serving the
+old box (`docs/plan-frame-and-types.md` T26.3). Every label in a
 100k-node tree carries one. Adding an advance array would put an
 allocation in every label to serve the few that need caret placement. A
 separate cache keeps the cheap case cheap, which is the same shape as

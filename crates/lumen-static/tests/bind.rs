@@ -20,13 +20,13 @@ fn warm(l: &mut Label<String>) {
 fn an_unchanged_value_does_not_invalidate_the_measurement() {
     let mut l: Label<String> = Label::new("count: 7".into());
     warm(&mut l);
-    assert!(l.measure_is_warm(LIMITS));
+    assert!(l.measure_is_warm(LIMITS, &Style::default()));
 
     assert!(!format_into(&mut l, format_args!("count: {}", 7)), "no change reported");
-    assert!(l.measure_is_warm(LIMITS), "and the memo survived — the point of the compare");
+    assert!(l.measure_is_warm(LIMITS, &Style::default()), "and the memo survived — the point of the compare");
 
     assert!(format_into(&mut l, format_args!("count: {}", 8)));
-    assert!(!l.measure_is_warm(LIMITS), "a real change re-measures");
+    assert!(!l.measure_is_warm(LIMITS, &Style::default()), "a real change re-measures");
 }
 
 #[test]
@@ -50,7 +50,7 @@ fn distinct_sources_that_format_alike_are_correctly_treated_as_equal() {
     assert!(format_into(&mut l, format_args!("{:.1}", 1.44_f32)));
     warm(&mut l);
     assert!(!format_into(&mut l, format_args!("{:.1}", 1.44999_f32)));
-    assert!(l.measure_is_warm(LIMITS));
+    assert!(l.measure_is_warm(LIMITS, &Style::default()));
 }
 
 #[test]
@@ -82,7 +82,7 @@ fn set_if_changed_is_the_non_formatting_form() {
     let mut l: Label<String> = Label::new("same".into());
     warm(&mut l);
     assert!(!set_if_changed(&mut l, "same"));
-    assert!(l.measure_is_warm(LIMITS));
+    assert!(l.measure_is_warm(LIMITS, &Style::default()));
     assert!(set_if_changed(&mut l, "other"));
     assert_eq!(l.as_str(), "other");
 }

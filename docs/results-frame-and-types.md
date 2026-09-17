@@ -177,6 +177,28 @@ that now reports `kind: "fixed"` for a hidden node reports
 `role: "GenericContainer"` beside it. `Seed` carries no role, so nothing
 static can be read; deferred rather than papered over.
 
+### T26.3 — the text memo's key omitted font size and weight
+
+| | |
+|---|---|
+| before the fix | a label measured **40 at 16 px and still 40 at 32 px**; **40 at weight 400 and still 40 at 800** — the memo served the old box |
+| after | **80** and **80**; five identical layouts still make **one** measure call |
+| gates | size dropped from the key → size and button tests fire, weight test green; weight dropped → weight test only; `Button` comparing its fold but not the key → button test only |
+
+**Cost**, alternating a binary built before the change with one built
+after, four runs each:
+
+| quantity | before | after | verdict |
+|---|---:|---:|---|
+| memo hit, real face (`short`) | 5.34–5.46 ns | 5.03–5.17 ns | **not slower** — the drop is not claimed |
+| memo hit, stand-in | 5.37–5.41 ns (one 5.75) | 4.98–5.47 ns | not slower |
+| memo miss, stand-in | 7.12–7.23 ns (one 8.41) | 7.48–7.58 ns | **+~0.3 ns** — the wider key written on a miss |
+| memo miss, real face | 413–424 ns (one 468) | 413–418 ns | unchanged — the 0.3 ns vanishes in a shape |
+| `Label<String>`, host | 64 B | **72 B** | +8, the key's size and weight |
+| `Button<(), String>`, host | 80 B | 80 B | unchanged: `ButtonKey` held the same fields |
+| embedded `Ui`, target | 1,136 B | **1,144 B** | re-asserted; the fixture holds one `Label` |
+| embedded `.text` | 26,364 B | **26,396 B** | +32, inside the +300 B allowance |
+
 ## Phase B — the confirmed optimizations
 
 *One table per task: before, after, spread, verdict against the

@@ -283,7 +283,41 @@ from the seed — the stand-in assertion fires by node index.
 vary per instance, reachable only through an instance, is stored in the
 wrong place" — this is the last place it still is).
 
-### T26.3 — the text memo's key omits font size and weight
+### T26.3 — the text memo's key omits font size and weight — **DONE 2026-09-17**
+
+> **`MeasureKey`, whose only constructor takes the whole `Style`, now
+> keys both memos in `ops.rs`.** `Label`'s `Measured` holds it beside the
+> text's dirty bit. `Button` holds it beside a fold of its label, and its
+> private `ButtonKey` — the right key, sitting in the same file as the
+> wrong one — is deleted.
+>
+> **Test first, and red for the right reason.** Against a measurer whose
+> width depends on weight (the stand-in ignores weight, so it could not
+> have exhibited that half), a label measured 40 at 16 px and **still 40
+> at 32 px**, and 40 at weight 400 and still 40 at 800. After the fix: 80
+> and 80. The good-input direction held throughout: five identical
+> layouts make one measure call.
+>
+> **Every gate shown to fail, and only its own.** Dropping the size from
+> the key fired the size test and the button test, but not the weight
+> test. Dropping the weight fired only the weight test. Making `Button`
+> compare its fold but not the key fired only the button test, which is
+> new: `Button` was already right, and that test guards the move.
+>
+> **One claim in this task was not carried out, and should not have been
+> written.** It said the two probes would "take the same key type" so that
+> matching `layout`'s measurement was enforced by construction. A probe
+> memoizes nothing, so a key there would compare against nothing and
+> enforce nothing. Both probes read `style[i]` as `layout` does, which is
+> what actually keeps them honest, and they are unchanged.
+>
+> **Cost, measured in this session against a binary built before the
+> change** (`docs/results-frame-and-types.md` T26.3): memo hits not slower;
+> a stand-in miss about +0.3 ns and a real-face miss unchanged at ~415 ns;
+> `Label<String>` 64 → 72 B on the host; the embedded `Ui` 1,136 →
+> **1,144 B**, re-asserted; `.text` +32 B. `measure_is_warm` now takes
+> the style it is asked about. That changed **15** test call sites, not
+> the 18 first counted, which included the definition.
 
 `Measured` keys on constraints and a dirty flag, so a restyle that
 changes only the size or weight of a run reads a stale box. Nothing in

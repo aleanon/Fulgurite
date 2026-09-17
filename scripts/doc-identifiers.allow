@@ -39,6 +39,8 @@ ROWS                 # the field-per-entry count -> `Select::count()`, data
 # docs record why it existed and what replaced it.
 MARK                 # toggle.rs's constant tick colour -> a colour the toggle carries
 CARET                # input.rs's caret constant, dead (the caret painted in fg); deleted by M25/T25.10
+ButtonKey            # ops.rs's private Button memo key, folded into text::MeasureKey by M26/T26.3;
+                     # the plan and results doc record that it was the right key beside the wrong one
 ToggleLook           # M25/T25.5's pilot look, reverted when the pilot tripped its thresholds;
                      # docs/plan-appearance.md T25.5 and results-appearance.md record it
 fill_all             # examples/showcase's cascade workaround, deleted by M24/T24.1 --

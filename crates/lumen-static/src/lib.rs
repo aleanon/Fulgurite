@@ -178,7 +178,7 @@ pub use display::{Cmd, Color, ImageId, ImageSource, Painter, Scaled};
 pub use display::{DisplayList, Renderer};
 pub use style::{Align, Edges, Length, Patch, Rule, Selector, Style};
 pub use inline::{InlineClusters, InlineText};
-pub use text::{ClusterBuf, Dirty, Measured, TextBuffer, TextStorage};
+pub use text::{ClusterBuf, Dirty, MeasureKey, Measured, TextBuffer, TextStorage};
 #[cfg(feature = "reload")]
 pub use text::TextRestore;
 pub use event::{Event, EventCtx, InputQueue, Key, Mods, PointerButton, TouchPhase};

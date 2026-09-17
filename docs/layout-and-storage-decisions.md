@@ -64,6 +64,12 @@ Three consequences worth stating:
   `cache: Cell<Size>`). Generic storage and the dirty/cache machinery are
   one change, not two.
 
+  **The dirty signal covers the text, not everything the size depends
+  on.** The cache is also keyed on the limits (M5) and, since M26/T26.3,
+  on the font size and weight. Until then a restyle that changed only the
+  size was served the old box, because nothing in the key could see it
+  (`docs/plan-frame-and-types.md` T26.3).
+
 Default the parameter to `&'static str` so the embedded profile is the
 path of least resistance.
 

@@ -26,7 +26,7 @@ use crate::desc::{Constraints, NodeDesc, NodeState, Size, NO_PARENT};
 use crate::display::{Color, Painter};
 use crate::event::{EventCtx, Handlers, NodeSel};
 use crate::style::{Align, Length, Seed, Style};
-use crate::text::{Dirty, Measured, TextStorage};
+use crate::text::{Dirty, MeasureKey, Measured, TextStorage};
 use crate::widget::{Node, Widget};
 
 /// A node's absolute box, for emitting commands.
@@ -499,9 +499,15 @@ impl<S: TextStorage> Label<S> {
         self.text.get().as_ref()
     }
 
-    /// Whether the memo would serve `limits` without re-measuring.
-    pub fn measure_is_warm(&self, limits: Constraints) -> bool {
-        !self.text.is_dirty() && self.measure.is_warm(limits)
+    /// Whether the memo would serve a layout under `limits` and `style`
+    /// without re-measuring.
+    ///
+    /// Takes the style since M26/T26.3, and not for symmetry: a memo that
+    /// is warm at 16 px is cold at 32, so "is it warm" has no answer
+    /// without the style being asked about. A version that assumed the
+    /// default would have been the defect again, in the test API.
+    pub fn measure_is_warm(&self, limits: Constraints, style: &Style) -> bool {
+        !self.text.is_dirty() && self.measure.is_warm(MeasureKey::of(limits, style))
     }
 }
 
@@ -543,10 +549,16 @@ impl<S: TextStorage> Node for Label<S> {
         // shaping (M5) this call is the expensive one, and it must not
         // run for text that has not changed under limits that have not
         // changed.
+        //
+        // The key holds the size and weight as well as the limits
+        // (M26/T26.3). Until then only the limits were in it, and the size
+        // and weight were read in the closure below — so a restyle that
+        // changed either, under the same limits, was served the old box.
         let text = self.text.get().as_ref();
         let dirty = self.text.is_dirty();
         let px = style[i].font_size;
-        let content = self.measure.get_or(limits, dirty, || {
+        let key = MeasureKey::of(limits, &style[i]);
+        let content = self.measure.get_or(key, dirty, || {
             cx.text.measure_weighted(text, px, style[i].font_weight, limits.max_w)
         });
         self.text.clear_dirty();
@@ -724,16 +736,13 @@ pub struct Button<S: 'static, T: TextStorage = &'static str> {
     /// measured at all: width was `0.62 em × chars`, the text box was
     /// `font_size` tall, and every label sat 4 px low
     /// (`docs/results-frame-cost.md`).
-    measured: Option<(ButtonKey, Size)>,
-}
-
-/// What a button's measurement depends on.
-#[derive(Clone, Copy, PartialEq)]
-struct ButtonKey {
-    limits: Constraints,
-    px: u32,
-    weight: u32,
-    label: u64,
+    ///
+    /// Keyed on a [`MeasureKey`] and a fold of the label's bytes. The
+    /// fold stands in for the dirty bit a `Label` has and a `Button` does
+    /// not. This was a private `ButtonKey` holding the same three fields
+    /// the label's memo left out, so the right key and the wrong one sat
+    /// in the same file until M26/T26.3 gave both widgets the one type.
+    measured: Option<(MeasureKey, u64, Size)>,
 }
 
 pub fn ignore_click<S>(_: &mut S, _: &EventCtx) {}
@@ -802,17 +811,13 @@ impl<S: 'static, T: TextStorage> Node for Button<S, T> {
         let label = self.label.as_ref();
         let px = style[i].font_size;
         let weight = style[i].font_weight;
-        let key = ButtonKey {
-            limits,
-            px: px.to_bits(),
-            weight: weight.to_bits(),
-            label: label.bytes().fold(0u64, |h, b| crate::display::fold(h, b as u64)),
-        };
+        let key = MeasureKey::of(limits, &style[i]);
+        let fold = label.bytes().fold(0u64, |h, b| crate::display::fold(h, b as u64));
         let text = match self.measured {
-            Some((k, s)) if k == key => s,
+            Some((k, f, s)) if k == key && f == fold => s,
             _ => {
                 let s = cx.text.measure_weighted(label, px, weight, limits.max_w);
-                self.measured = Some((key, s));
+                self.measured = Some((key, fold, s));
                 s
             }
         };
@@ -828,7 +833,7 @@ impl<S: 'static, T: TextStorage> Node for Button<S, T> {
         // not the ink: that is what every toolkit centres, and it puts
         // capitals a hair below centre in faces with a deep descent
         // (Noto Sans: 0.03 em) — the same hair a browser leaves.
-        let text = self.measured.map(|(_, s)| s).unwrap_or_default();
+        let text = self.measured.map(|(_, _, s)| s).unwrap_or_default();
         let x = r[0] + ((r[2] - r[0]) - text.w).max(0.0) / 2.0;
         let y = r[1] + ((r[3] - r[1]) - text.h).max(0.0) / 2.0;
         out.text_weighted(

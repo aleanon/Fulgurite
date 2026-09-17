@@ -24,6 +24,7 @@ use alloc::string::String;
 use alloc::vec::Vec;
 
 use crate::desc::{Constraints, Size};
+use crate::style::Style;
 
 /// A value plus a dirty bit. Reads are transparent; every mutable access
 /// marks the node for re-measurement — §3's original `Dirty<String>`.
@@ -74,13 +75,51 @@ impl<T> core::ops::Deref for Dirty<T> {
     }
 }
 
-/// A memoized measurement, valid for the limits it was taken under.
+/// Everything a text measurement depends on besides the text itself —
+/// M26/T26.3.
 ///
-/// Keyed on the limits as well as the dirty bit, because the same text
-/// measures differently in a narrower box once shaping wraps it (M5).
+/// **The only constructor takes the whole [`Style`]**, so a caller cannot
+/// build a key that leaves a field out. That is the defect this type
+/// exists to close: `Measured` used to key on the constraints alone, while
+/// `Label::layout` read the font size and weight inside the closure it
+/// handed the memo — so a restyle that changed only the size, under
+/// unchanged limits, was served last frame's box.
+///
+/// The text is deliberately *not* in the key. `Label` knows when its text
+/// changed from its [`Dirty`] bit, which costs nothing per frame; `Button`
+/// has no dirty bit and folds its label beside this key instead.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct MeasureKey {
+    limits: Constraints,
+    px: u32,
+    weight: u32,
+}
+
+impl MeasureKey {
+    /// The key for text measured under `limits` and `style`.
+    ///
+    /// Bit patterns, not values: a font size is a float, and the question
+    /// is "is this the same input", which `to_bits` answers without `NaN`
+    /// ever comparing unequal to itself.
+    pub fn of(limits: Constraints, style: &Style) -> MeasureKey {
+        MeasureKey {
+            limits,
+            px: style.font_size.to_bits(),
+            weight: style.font_weight.to_bits(),
+        }
+    }
+}
+
+/// A memoized measurement, valid for the [`MeasureKey`] it was taken
+/// under.
+///
+/// Keyed on the limits because the same text measures differently in a
+/// narrower box once shaping wraps it (M5), and on the font size and
+/// weight because it measures differently at a different size or weight
+/// (M26/T26.3) — plus the caller's dirty bit, for the text itself.
 #[derive(Debug, Default, Clone)]
 pub struct Measured {
-    cache: Option<(Constraints, Size)>,
+    cache: Option<(MeasureKey, Size)>,
 }
 
 impl Measured {
@@ -99,16 +138,16 @@ impl Measured {
     /// nothing and cost `Sync`: every tree holding a `Label` was
     /// `!Sync`, which the repeater's own docs record removing for the
     /// same reason (`docs/plan-review-fixes.md` F6.3).
-    pub fn get_or(&mut self, limits: Constraints, dirty: bool, f: impl FnOnce() -> Size) -> Size {
+    pub fn get_or(&mut self, key: MeasureKey, dirty: bool, f: impl FnOnce() -> Size) -> Size {
         if !dirty {
-            if let Some((c, s)) = self.cache {
-                if c == limits {
+            if let Some((k, s)) = self.cache {
+                if k == key {
                     return s;
                 }
             }
         }
         let s = f();
-        self.cache = Some((limits, s));
+        self.cache = Some((key, s));
         s
     }
 
@@ -118,9 +157,10 @@ impl Measured {
         self.cache = None;
     }
 
-    /// Whether the last `get_or` was served from the memo — for tests.
-    pub fn is_warm(&self, limits: Constraints) -> bool {
-        matches!(self.cache, Some((c, _)) if c == limits)
+    /// Whether a `get_or` under `key` would be served from the memo — for
+    /// tests.
+    pub fn is_warm(&self, key: MeasureKey) -> bool {
+        matches!(self.cache, Some((k, _)) if k == key)
     }
 }
 
