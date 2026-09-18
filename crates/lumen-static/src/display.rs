@@ -70,6 +70,21 @@ pub enum Cmd {
     /// A filled rect with rounded corners. `radius` of 0 is a plain
     /// rect; a renderer that cannot round may treat it as one.
     RoundedRect { rect: Rect, color: Color, radius: f32 },
+    /// An **inset** stroked rounded rect: a border, drawn inside `rect`.
+    ///
+    /// Inset rather than expanded, and that is the whole reason this is a
+    /// command instead of a second `RoundedRect` underneath. The underlay
+    /// trick works — [`crate::ops::focus_ring`] uses it — but it paints
+    /// *outside* the node's box, which is right for a ring that means
+    /// "this has focus" and wrong for a border, because a bordered and an
+    /// unbordered control in the same row would no longer line up.
+    ///
+    /// **Four `Line`s were tried first, elsewhere, and failed visibly.**
+    /// `focus_ring`'s first version drew them and the live gate caught it
+    /// within a frame: a square outline over a rounded box covers the
+    /// antialiased corner. Four lines also cost four ink rects against
+    /// [`crate::retain::MAX_REGIONS`]'s four.
+    StrokedRect { rect: Rect, color: Color, radius: f32, width: f32 },
     /// A soft shadow under the rounded rect `rect`: `color` at the edge
     /// falling to nothing `spread` px out. Decorative — a renderer that
     /// cannot draw one skips it. One command, not a stack: the first
@@ -525,6 +540,15 @@ impl Cmd {
                 }
                 f(h, u32::from_be_bytes([color.0, color.1, color.2, color.3]) as u64);
             }
+            Cmd::StrokedRect { rect, color, radius, width } => {
+                f(h, 11);
+                for v in rect {
+                    f(h, v.to_bits() as u64);
+                }
+                f(h, radius.to_bits() as u64);
+                f(h, width.to_bits() as u64);
+                f(h, u32::from_be_bytes([color.0, color.1, color.2, color.3]) as u64);
+            }
             Cmd::RoundedRect { rect, color, radius } => {
                 f(h, 5);
                 for v in rect {
@@ -646,6 +670,17 @@ pub trait Painter {
     fn text_weighted(&mut self, rect: Rect, s: &str, size: f32, weight: f32, color: Color);
     fn rounded_rect(&mut self, rect: Rect, color: Color, radius: f32);
     fn shadow(&mut self, rect: Rect, radius: f32, spread: f32);
+    /// A border: an inset stroked rounded rect (M27/T27.1).
+    ///
+    /// **Required, deliberately, and this is the one design note worth
+    /// reading before adding another method here.** Six of this trait's
+    /// methods are provided, and a provided body acts on the *wrapper*
+    /// rather than forwarding — which is how `Deferring` silently dropped
+    /// every `Line` and `Image` under an overlay pass for a year. A
+    /// border has no lossy fallback that is worth that risk, so this one
+    /// is required and every wrapper of `Painter` is a compile error
+    /// until it forwards.
+    fn stroked_rect(&mut self, rect: Rect, color: Color, radius: f32, width: f32);
 
     /// A straight line. Provided as a no-op so every existing painter
     /// keeps compiling.
@@ -812,6 +847,19 @@ impl DisplayList {
         }
     }
 
+    /// A border, inset into `rect` (M27/T27.1).
+    ///
+    /// Zero width or a transparent colour records nothing: a `Style` with
+    /// no border is the common case by a wide margin, and a command that
+    /// paints nothing still costs a retention hash and an ink rect
+    /// against [`crate::retain::MAX_REGIONS`].
+    pub fn stroked_rect(&mut self, rect: Rect, color: Color, radius: f32, width: f32) {
+        if width <= 0.0 || color.3 == 0 {
+            return;
+        }
+        self.cmds.push(Cmd::StrokedRect { rect, color, radius, width });
+    }
+
     /// A soft drop shadow: `spread` px of translucent rounded rects
     /// stepping outward, darkest nearest the box. Cheap, and reads as a
     /// blur at the sizes a card uses; a renderer with a real blur may
@@ -975,6 +1023,12 @@ impl Painter for Scaled<'_> {
         let radius = radius * self.scale;
         self.inner.rounded_rect(r, color, radius);
     }
+    fn stroked_rect(&mut self, rect: Rect, color: Color, radius: f32, width: f32) {
+        let r = self.r(rect);
+        // The width scales too. A border that kept its logical width on a
+        // 2x display would be half as thick as everything around it.
+        self.inner.stroked_rect(r, color, radius * self.scale, width * self.scale);
+    }
     fn shadow(&mut self, rect: Rect, radius: f32, spread: f32) {
         let r = self.r(rect);
         let (radius, spread) = (radius * self.scale, spread * self.scale);
@@ -1062,6 +1116,9 @@ impl Painter for DisplayList {
     }
     fn rounded_rect(&mut self, rect: Rect, color: Color, radius: f32) {
         DisplayList::rounded_rect(self, rect, color, radius)
+    }
+    fn stroked_rect(&mut self, rect: Rect, color: Color, radius: f32, width: f32) {
+        DisplayList::stroked_rect(self, rect, color, radius, width)
     }
     fn shadow(&mut self, rect: Rect, radius: f32, spread: f32) {
         DisplayList::shadow(self, rect, radius, spread)

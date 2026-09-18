@@ -101,6 +101,7 @@ impl Node for ProgressBar {
         }
         let radius = s.radius.min(h / 2.0);
         out.rounded_rect(r, s.bg, radius);
+        lumen_static::ops::border(st, i, out);
         let filled = w * self.fraction();
         // **Not painted at all when empty.** A zero-width rounded rect
         // with a radius still covers `2 × radius` of pixels at the
@@ -282,6 +283,7 @@ impl Node for Skeleton {
             return;
         }
         out.rounded_rect(r, s.bg, s.radius.min(h / 2.0));
+        lumen_static::ops::border(st, i, out);
         // The highlight, clipped to the block so a band near either end
         // does not paint past it. `push_clip`/`pop_clip` rather than
         // arithmetic, because the renderer's clip is a hard test and

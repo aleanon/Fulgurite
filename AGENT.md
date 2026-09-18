@@ -114,7 +114,12 @@ are independent of each other**, so either may go first:
   label as well as a value, and the pointer path takes its centre from an
   entry's bounds, so a repeater row is clickable by the text it shows.
   `scripts/agent_drive.sh` picks the Switch by name instead of
-  multiplying a row height.
+  multiplying a row height. **T27.1 shipped 2026-09-18**: `Cmd::StrokedRect`
+  and `border_width`/`border_color` on `Style`, inset so a bordered control
+  still lines up with an unbordered one. `Painter::stroked_rect` is
+  **required**, not provided — an injection reproduces the `Deferring`
+  bug exactly by making it provided. It cost 16 B per node and +676 B of
+  `.text` (`docs/results-embedded.md`), re-budgeted rather than edited.
 
 - **M28 — `docs/plan-tasks.md`** (T28.0–T28.12): **not started**, written
   2026-09-18 and **revised the same day after a seven-lens review: 42

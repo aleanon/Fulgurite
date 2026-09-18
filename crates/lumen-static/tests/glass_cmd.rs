@@ -172,6 +172,7 @@ fn the_painter_fallback_paints_something_you_can_see() {
             self.0.push((color, radius));
         }
         fn shadow(&mut self, _: [f32; 4], _: f32, _: f32) {}
+        fn stroked_rect(&mut self, _: [f32; 4], _: Color, _: f32, _: f32) {}
         fn push_clip(&mut self, _: [f32; 4]) {}
         fn pop_clip(&mut self) {}
     }

@@ -212,6 +212,10 @@ impl Painter for Checksum {
     fn shadow(&mut self, rect: Rect, radius: f32, spread: f32) {
         self.r(4, rect, &[radius, spread]);
     }
+    fn stroked_rect(&mut self, rect: Rect, color: Color, radius: f32, width: f32) {
+        self.r(7, rect, &[radius, width]);
+        self.color(color);
+    }
     fn push_clip(&mut self, rect: Rect) {
         self.r(5, rect, &[]);
     }
@@ -271,9 +275,19 @@ pub mod sizes {
     // is exactly what happened to this figure once already
     // (`docs/results-embedded.md`, the 72/64 correction). `NodeDesc` is
     // 32 B here against 48 on the host: it holds two pointers.
-    const _: () = assert!(NODE_STATE == 76, "NodeState grew; re-budget docs/results-embedded.md");
-    const _: () = assert!(STYLE == 72, "Style grew; re-budget docs/results-embedded.md");
-    const _: () = assert!(PER_NODE_RAM == 148, "per-node RAM changed");
+    // **84 since M27/T27.1.** The border has to reach `paint`, which has
+    // no `&[Style]`, so it travels through `NodeState` the way `bg` and
+    // `radius` do — and this struct's tail was full too: three `bool`s
+    // and `focus_ring` in one 4-byte slot. So the border costs eight
+    // bytes here as well as eight in `Style`.
+    const _: () = assert!(NODE_STATE == 84, "NodeState grew; re-budget docs/results-embedded.md");
+    // **80, not 72, since M27/T27.1** — `Style` gained `border_width: u8`
+    // and `border_color: Color`. It had *no* spare tail padding: `align`,
+    // `focus_ring`, `cursor` and `visible` fill one 4-byte slot exactly,
+    // so even the lone `u8` cost four. Re-budgeted with a measurement
+    // rather than by editing the number: `docs/results-embedded.md`.
+    const _: () = assert!(STYLE == 80, "Style grew; re-budget docs/results-embedded.md");
+    const _: () = assert!(PER_NODE_RAM == 164, "per-node RAM changed");
     // 32 on a 32-bit target, 48 on a 64-bit host: this one is
     // deliberately checked only where the budget applies.
     #[cfg(target_pointer_width = "32")]

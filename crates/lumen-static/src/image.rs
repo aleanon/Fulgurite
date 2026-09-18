@@ -126,6 +126,7 @@ impl Node for Image {
         let r = rect_of(&st[i]);
         if st[i].bg.3 > 0 {
             out.rounded_rect(r, st[i].bg, st[i].radius);
+            crate::ops::border(st, i, out);
         }
         out.image(self.placed(r), self.id, self.tint);
     }

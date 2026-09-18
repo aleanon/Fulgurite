@@ -180,6 +180,24 @@ pub struct Style {
     /// resolved per node, so a byte here is a byte times every node of
     /// every tree.
     pub cursor: Cursor,
+    /// Border thickness in logical px, drawn **inside** the node's box;
+    /// 0 draws none (M27/T27.1).
+    ///
+    /// **A `u8` for the same reason `focus_ring` is one**: a border wider
+    /// than 255 px is not a border, and `Style` had no spare tail padding
+    /// left — `align`, `focus_ring`, `cursor` and `visible` fill one
+    /// 4-byte slot exactly, so a lone `u8` costs four bytes and an `f32`
+    /// costs the same four. The byte is taken for the semantics.
+    ///
+    /// **A `Style` property and not a widget field**, because the
+    /// alternative is the one M25/T25.10 ran and had to undo: colour
+    /// fields on widgets, then palette roles bolted on so
+    /// `Host::set_palette` could re-resolve them. A border on a widget
+    /// cannot be restyled by a sheet, cannot follow a palette, and cannot
+    /// be set once for every bordered control.
+    pub border_width: u8,
+    /// The border's colour. `TRANSPARENT` draws none whatever the width.
+    pub border_color: crate::display::Color,
     /// Whether this node and everything under it participates in the
     /// frame.
     ///
@@ -220,6 +238,8 @@ impl Default for Style {
             hover_dim: 0.0,
             align: Align::Start,
             focus_ring: 2,
+            border_width: 0,
+            border_color: crate::display::Color::TRANSPARENT,
             cursor: Cursor::Default,
             visible: true,
         }
@@ -558,6 +578,9 @@ pub struct Patch {
     pub shadow: Option<f32>,
     pub pressed_dim: Option<f32>,
     pub hover_dim: Option<f32>,
+    pub border_width: Option<u8>,
+    pub border_color: Option<crate::display::Color>,
+    pub border_color_role: Option<Role>,
 }
 
 impl Patch {
@@ -581,6 +604,9 @@ impl Patch {
             shadow: None,
             pressed_dim: None,
             hover_dim: None,
+            border_width: None,
+            border_color: None,
+            border_color_role: None,
         }
     }
 
@@ -648,6 +674,25 @@ impl Patch {
         self
     }
 
+    pub const fn border_width(mut self, w: u8) -> Self {
+        self.border_width = Some(w);
+        self
+    }
+
+    pub const fn border_color(mut self, c: crate::display::Color) -> Self {
+        self.border_color = Some(c);
+        self.border_color_role = None;
+        self
+    }
+
+    /// A border that follows the palette, re-resolved by
+    /// `Host::set_palette` like any other role (M25/T25.11).
+    pub const fn border_color_role(mut self, role: Role) -> Self {
+        self.border_color_role = Some(role);
+        self.border_color = None;
+        self
+    }
+
     pub const fn radius(mut self, r: f32) -> Self {
         self.radius = Some(r);
         self
@@ -705,6 +750,14 @@ impl Patch {
         }
         if let Some(v) = self.focus_ring {
             s.focus_ring = v;
+        }
+        if let Some(v) = self.border_width {
+            s.border_width = v;
+        }
+        if let Some(r) = self.border_color_role {
+            s.border_color = palette.get(r);
+        } else if let Some(v) = self.border_color {
+            s.border_color = v;
         }
         if let Some(r) = self.color_role {
             s.color = palette.get(r);

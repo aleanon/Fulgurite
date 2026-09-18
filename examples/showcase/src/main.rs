@@ -796,11 +796,17 @@ fn stylesheet() -> Vec<StyleRule> {
             Patch::new()
                 .width(Length::Fixed(260.0))
                 .height(Length::Fixed(38.0))
-                // Lumen's field is a pale fill, not white. `Style` has
-                // no border and `Cmd` no stroked rect, so the ground is
-                // what separates a field from the page here.
+                // Lumen's field is a pale fill with a hairline border.
+                // **Both halves, since M27/T27.1.** Until then `Style`
+                // had no border and `Cmd` no stroked rect, so the ground
+                // was the only thing separating a field from the page —
+                // recorded as a gap in `docs/plan-widgets-gallery.md`
+                // §3c, where our field was put beside Lumen's and read
+                // as text on the page.
                 .background_role(Role::Control)
                 .color_role(Role::Text)
+                .border_width(1)
+                .border_color_role(Role::Muted)
                 .radius(8.0)
                 .font_size(15.0)
                 .padding(Edges { left: 12.0, right: 12.0, top: 9.0, bottom: 9.0 }),

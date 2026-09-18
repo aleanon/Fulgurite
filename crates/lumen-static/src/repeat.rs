@@ -394,6 +394,7 @@ impl<T: Widget + Default + 'static> Node for Repeat<T> {
             out.shadow(r, st[i].radius, st[i].shadow);
         }
         out.rounded_rect(r, st[i].bg, st[i].radius);
+        crate::ops::border(st, i, out);
         out.push_clip(r);
         for k in 0..self.window.len() {
             self.window[self.slot(k)].paint(self.slice(k), 0, out);

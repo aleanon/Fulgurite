@@ -64,6 +64,7 @@ const KIND_GLYPH: u32 = 4;
 const KIND_IMAGE: u32 = 5;
 const KIND_BLUR: u32 = 6;
 const KIND_GLASS: u32 = 7;
+const KIND_STROKE: u32 = 8;
 /// `software::LIGHT_Z` / `LIGHT_XY`.
 const LIGHT_Z: f32 = 0.62;
 const LIGHT_XY: f32 = 0.784_599_3;
@@ -703,6 +704,21 @@ impl Gpu {
                         // than a different artefact on each.
                         let rad = radius.min((rect[2] - rect[0]) / 2.0).min((rect[3] - rect[1]) / 2.0);
                         out.push(shape(*rect, r, *color, rad, KIND_ROUNDED));
+                    }
+                }
+                Cmd::StrokedRect { rect, color, radius, width } => {
+                    if let Some(r) = clipped(*rect, &clip) {
+                        let half_w = (rect[2] - rect[0]) / 2.0;
+                        let half_h = (rect[3] - rect[1]) / 2.0;
+                        // Clamped exactly as the software canvas clamps
+                        // it, so an over-wide border is a filled box on
+                        // both backends rather than a different artefact
+                        // on each (`just gpu-parity`).
+                        let bw = width.min(half_w).min(half_h);
+                        let rad = radius.min(half_w).min(half_h).max(0.0);
+                        let mut q = shape(*rect, r, *color, rad, KIND_STROKE);
+                        q.params[1] = bw;
+                        out.push(q);
                     }
                 }
                 Cmd::Glass { rect, radius, material } => {

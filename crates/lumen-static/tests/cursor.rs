@@ -8,10 +8,29 @@ use lumen_static::{pass, Style};
 /// which is why the cursor is a `Style` field and not a `NodeState`
 /// one, and why this assertion exists rather than a comment saying it
 /// was free once.
+///
+/// **80 since M27/T27.1, and re-budgeted rather than edited.** The
+/// cursor really was free: at 72 B it fit the tail padding beside
+/// `align`, `focus_ring` and `visible`. That slot is now *exactly* full
+/// — four `u8`s in four bytes, zero spare — so the border's
+/// `border_width: u8` could not fit and cost four bytes, and
+/// `border_color: Color` four more. This comment's predecessor said a
+/// field "either fits or gets re-budgeted rather than paid for
+/// silently"; the measurement that discharges that is in
+/// `docs/results-embedded.md` — **`.text` +328 B, `.rodata` +4 B on
+/// `thumbv7em-none-eabihf`, and per-node RAM 148 B → 156 B**.
+///
+/// The alternative was to move `align` out, since only containers read
+/// it — that frees one byte of the slot and would have made
+/// `border_width` free. It was declined: `i18n::mirror_styles` rewrites
+/// `align` in one flat pass over the style array, and per-widget
+/// alignment turns RTL mirroring into a tree walk through a trait method
+/// every custom container must remember to implement.
+/// `docs/plan-widget-parity.md` T27.1 has the argument.
 #[test]
 fn the_cursor_costs_nothing() {
-    assert_eq!(core::mem::size_of::<Style>(), 72, "Style grew; every node grew with it");
-    assert_eq!(core::mem::size_of::<lumen_static::NodeState>(), 76);
+    assert_eq!(core::mem::size_of::<Style>(), 80, "Style grew; every node grew with it");
+    assert_eq!(core::mem::size_of::<lumen_static::NodeState>(), 84);
     assert_eq!(core::mem::size_of::<Cursor>(), 1);
 }
 

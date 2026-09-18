@@ -850,6 +850,19 @@ remains** — which is why §10 Step 1 is the kill criterion.
    **Layout is not part of this question** and never was: layout produces
    the rects a renderer consumes, so grid, wrap and min/max constraints are
    work in `ops.rs` that no renderer choice affects.
+
+   **The first of those box features to land is the border, M27/T27.1,
+   2026-09-18** — `Cmd::StrokedRect`, an *inset* stroked rounded rect,
+   with `border_width`/`border_color` on `Style` and a role variant that
+   follows the palette. Inset rather than outset is the load-bearing
+   choice: a bordered and an unbordered control in the same row line up,
+   where `ops::focus_ring`'s deliberately-outset underlay would widen
+   one. `Painter::stroked_rect` is a **required** method, not a provided
+   one, so every wrapper is a compile error until it forwards — the
+   `Deferring` lesson, and an injection in
+   `crates/lumen-static/tests/border.rs` reproduces that bug exactly by
+   making it provided. It cost 16 B per node and +676 B of `.text`
+   (`docs/results-embedded.md`).
 9. **Appearance per kind** — should appearance leave the per-node `Style`
    for a look on each widget, a function of a palette that is data?
    **OPEN 2026-09-15**, planned as M25 in `docs/plan-appearance.md`. It is

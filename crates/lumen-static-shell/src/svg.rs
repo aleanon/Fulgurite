@@ -135,6 +135,25 @@ impl Renderer for Svg {
                         Self::colour(*color)
                     );
                 }
+                Cmd::StrokedRect { rect, color, radius, width } => {
+                    // SVG strokes are *centred* on the path and ours is
+                    // inset, so the path is inset by half the width and
+                    // the radius follows it. Painting the box edge at
+                    // full width instead would put half the border
+                    // outside the node, which is the difference between
+                    // a border and a focus ring.
+                    let h = width / 2.0;
+                    let _ = write!(
+                        body,
+                        r#"<rect x="{:.2}" y="{:.2}" width="{:.2}" height="{:.2}" rx="{:.2}" fill="none" stroke="{}" stroke-width="{width:.2}"/>"#,
+                        rect[0] + h,
+                        rect[1] + h,
+                        (rect[2] - rect[0] - width).max(0.0),
+                        (rect[3] - rect[1] - width).max(0.0),
+                        (radius - h).max(0.0),
+                        Self::colour(*color)
+                    );
+                }
                 Cmd::Shadow { rect, color, radius, spread } => {
                     // No blur filter: a filter per shadow is expensive
                     // to render and the canvas's own shadow is one SDF

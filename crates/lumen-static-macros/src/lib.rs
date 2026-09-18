@@ -807,6 +807,9 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                         st[i].bg,
                         st[i].radius,
                     );
+                    // Over the fill, under the children: a card's border
+                    // belongs to the card, not in front of its content.
+                    ::lumen_static::ops::border(st, i, out);
                     let mut at = i + 1;
                     #(
                         {

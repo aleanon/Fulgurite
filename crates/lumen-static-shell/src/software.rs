@@ -148,6 +148,77 @@ impl Surface<'_> {
         }
     }
 
+    /// An **inset** stroked rounded rect — a border (M27/T27.1).
+    ///
+    /// The ring between two rounded rects: the node's own box, and the
+    /// same box inset by `width` with its radius reduced to match, so the
+    /// inner and outer curves stay concentric. Coverage is the difference
+    /// of the two, which antialiases both edges with one subtraction and
+    /// needs no second pass.
+    ///
+    /// **Not four `Line`s.** `lumen_static::ops::focus_ring` tried that
+    /// and the live gate caught it inside a frame: a square outline over a
+    /// rounded box covers the antialiased corner. Four lines also cost
+    /// four ink rects against `MAX_REGIONS`'s four, so one bordered
+    /// control changing would fill the region set on its own.
+    ///
+    /// Rows are split the way `fill_rounded_within` splits them: a row
+    /// between the inner rect's corner bands can only have coverage at
+    /// the two vertical edges, so the long middle is skipped rather than
+    /// tested per pixel.
+    fn stroke_rounded_within(
+        &mut self,
+        shape: [f32; 4],
+        bounds: [f32; 4],
+        c: Color,
+        radius: f32,
+        width: f32,
+    ) {
+        let r = shape;
+        if !r.iter().all(|v| v.is_finite())
+            || !bounds.iter().all(|v| v.is_finite())
+            || !radius.is_finite()
+            || !width.is_finite()
+            || width <= 0.0
+        {
+            return;
+        }
+        let half_w = (r[2] - r[0]) / 2.0;
+        let half_h = (r[3] - r[1]) / 2.0;
+        // A border thicker than half the box is a filled box. Clamping
+        // rather than refusing keeps `border_width: 255` from drawing
+        // nothing at all, which reads as "the border is broken".
+        let bw = width.min(half_w).min(half_h);
+        let rad_o = radius.min(half_w).min(half_h).max(0.0);
+        let rad_i = (rad_o - bw).max(0.0);
+        let inner = [r[0] + bw, r[1] + bw, r[2] - bw, r[3] - bw];
+
+        let (w, h) = (self.width as i64, self.y_hi());
+        let (x0, y0) = ((bounds[0].floor() as i64).max(0), (bounds[1].floor() as i64).max(self.y0));
+        let (x1, y1) = ((bounds[2].ceil() as i64).min(w), (bounds[3].ceil() as i64).min(h));
+        // Rows strictly between the inner rect's corner bands: only the
+        // two vertical edges can be covered.
+        let (mid_top, mid_bot) = ((inner[1] + rad_i).ceil() as i64, (inner[3] - rad_i).floor() as i64);
+        let left_end = (inner[0].ceil() as i64) + 1;
+        let right_start = (inner[2].floor() as i64) - 1;
+
+        for y in y0..y1 {
+            let py = y as f32 + 0.5;
+            let scan: &mut dyn Iterator<Item = i64> = if y >= mid_top && y < mid_bot {
+                &mut (x0..x1.min(left_end)).chain(x0.max(right_start)..x1)
+            } else {
+                &mut (x0..x1)
+            };
+            for x in scan {
+                let px = x as f32 + 0.5;
+                let cov = rr_cov(px, py, r, rad_o) - rr_cov(px, py, inner, rad_i);
+                if cov > 0.0 {
+                    self.blend_cov(x, y, c, (cov.min(1.0) * 255.0) as u8);
+                }
+            }
+        }
+    }
+
     /// A backdrop filter — M19/T19.2.
     ///
     /// **The only method here that reads the destination before writing
@@ -925,6 +996,15 @@ impl Surface<'_> {
                         // rect and the fill is limited to the clipped
                         // one, so a clipped card does not square off.
                         self.fill_rounded_within(*rect, r, *color, *radius);
+                    }
+                }
+                Cmd::StrokedRect { rect, color, radius, width } => {
+                    if let Some(r) = clipped(*rect, &clip) {
+                        // Same split as `RoundedRect`: the ring is
+                        // computed against the original box and written
+                        // only inside the clipped one, so a clipped
+                        // border does not square off at the clip edge.
+                        self.stroke_rounded_within(*rect, r, *color, *radius, *width);
                     }
                 }
                 Cmd::Glass { rect, radius, material } => {
@@ -1865,6 +1945,43 @@ fn shadow_run_scalar(
 /// comparisons per pixel, which is what a row-oriented loop exists to
 /// stop paying.
 #[inline]
+/// Coverage of a rounded rect at a pixel centre, 0..=1.
+///
+/// One function for both the outer and the inner curve of a border, which
+/// is what lets the ring be a subtraction rather than a second pass.
+///
+/// Two regimes, and the split matters: inside a corner *square* the
+/// distance is to the corner circle, and everywhere else it is to the
+/// nearest straight edge. Using the corner form everywhere is what
+/// `fill_rounded_within` avoids by early-returning for `radius <= 0.5` —
+/// with `rad` at 0 it reports half coverage for every pixel inside a
+/// square box, because the circle it measures against has no radius.
+fn rr_cov(px: f32, py: f32, r: [f32; 4], rad: f32) -> f32 {
+    (0.5 - sd_round_box(px, py, r, rad)).clamp(0.0, 1.0)
+}
+
+/// Signed distance to a rounded box (Quilez): negative inside.
+///
+/// **Transcribed from `shader.wgsl`'s `sd_round_box`, deliberately, and
+/// not re-derived.** `just gpu-parity` compares the two backends pixel
+/// for pixel, and a border whose curve came from a different expression
+/// on each side would differ at exactly the antialiased corner the whole
+/// command exists to get right. The shadow path already shares this
+/// function; the border now does too.
+///
+/// It is also correct at `rad == 0`, which the obvious
+/// distance-past-the-corner form is not: with no radius that form reports
+/// half coverage for every pixel inside a square box, which is why
+/// `fill_rounded_within` early-returns instead of using it.
+fn sd_round_box(px: f32, py: f32, r: [f32; 4], rad: f32) -> f32 {
+    let (cx, cy) = ((r[0] + r[2]) * 0.5, (r[1] + r[3]) * 0.5);
+    let (hx, hy) = ((r[2] - r[0]) * 0.5 - rad, (r[3] - r[1]) * 0.5 - rad);
+    let qx = (px - cx).abs() - hx;
+    let qy = (py - cy).abs() - hy;
+    let out = (qx.max(0.0) * qx.max(0.0) + qy.max(0.0) * qy.max(0.0)).sqrt();
+    out + qx.max(qy).min(0.0) - rad
+}
+
 fn blend_px(row: &mut [u8], x: usize, c: Color) {
     let i = x * 4;
     let px = &mut row[i..i + 4];

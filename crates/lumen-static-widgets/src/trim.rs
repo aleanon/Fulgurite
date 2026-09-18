@@ -79,6 +79,7 @@ impl Node for Divider {
         let r = rect_of(s);
         if r[2] > r[0] && r[3] > r[1] {
             out.rounded_rect(r, s.bg, s.radius);
+            lumen_static::ops::border(st, i, out);
         }
     }
 
@@ -181,6 +182,7 @@ impl<S: TextStorage> Node for Badge<S> {
             return;
         }
         out.rounded_rect(r, s.bg, s.radius.min((r[3] - r[1]) / 2.0));
+        lumen_static::ops::border(st, i, out);
         let inner = [r[0] + s.pad.0, r[1] + s.pad.1, r[2] - s.pad.2, r[3] - s.pad.3];
         out.text_weighted(inner, self.text.as_ref(), s.font_size, s.font_weight, s.fg);
     }
@@ -276,6 +278,7 @@ impl<S: TextStorage> Node for Chip<S> {
             return;
         }
         out.rounded_rect(r, s.bg, s.radius.min((r[3] - r[1]) / 2.0));
+        lumen_static::ops::border(st, i, out);
         let inner = [r[0] + s.pad.0, r[1] + s.pad.1, r[2] - s.pad.2, r[3] - s.pad.3];
         out.text_weighted(inner, self.text.as_ref(), s.font_size, s.font_weight, s.fg);
     }
@@ -379,6 +382,7 @@ impl<S: TextStorage> Node for Avatar<S> {
             return;
         }
         out.rounded_rect(r, s.bg, w.min(h) / 2.0);
+        lumen_static::ops::border(st, i, out);
         // Roughly centred: the text primitive takes a box and aligns
         // within it, so the box is the avatar inset by a quarter of its
         // height — which puts a cap-height glyph on the middle line

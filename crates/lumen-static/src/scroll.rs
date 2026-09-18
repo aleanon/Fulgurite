@@ -289,6 +289,7 @@ impl<W: Widget> Node for ScrollView<W> {
     fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
         let r = rect_of(&st[i]);
         out.rounded_rect(r, st[i].bg, st[i].radius);
+        crate::ops::border(st, i, out);
         // The scoped containment invariant: content may extend past the
         // viewport by construction, and the clip is what stops it
         // (`docs/text-and-scrolling-decisions.md` A1). A renderer that

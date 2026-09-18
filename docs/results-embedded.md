@@ -277,3 +277,67 @@ budget here: a 320×240 16 bpp **framebuffer is 150 KB**, and a full
 frame over a 40 MHz SPI bus takes **31 ms**. The first is why the
 profile keeps no framebuffer; the second is why damage matters more on
 this device than on a desktop (T13.8).
+
+## M27/T27.1 — what the border cost, measured 2026-09-18
+
+The border is a `Style` property (`docs/plan-widget-parity.md` T27.1
+settles why). Twelve of M27's thirty-three widgets are bordered controls
+and the framework could not draw one: no field, and no command.
+
+**Measured before and after on the same day and toolchain**, by stashing
+the change rather than trusting the figure this document already carried:
+
+| | `.text` | `.rodata` | total |
+|---|---:|---:|---:|
+| before (`5c7f6db`) | 26,396 | 12,784 | 39,397 |
+| **after T27.1** | **27,072** | **12,804** | **40,093** |
+| Δ | **+676** | **+20** | **+696** |
+
+`.text` is now **41.3% of the 64 KB ceiling**, from 40.3%. `.bss` is
+unchanged at one exempted 4-byte symbol.
+
+**The baseline in the table above had drifted again, and by more than
+last time.** That table's last row is 22,606 for M18+M19 and the prose
+below it says 22,458; the actual linked `.text` at `5c7f6db` is
+**26,396** — a **16.8%** understatement, accumulated across M22, M24,
+M25 and M26, none of which re-measured. This is the third time this
+document has been caught with a stale baseline, and the pattern is the
+same each time: `scripts/check_text.sh` gates the *ceiling*, so drift
+below it is invisible. The ceiling is the gate; a per-milestone row is a
+habit, and the habit lapsed.
+
+### RAM, which is the real cost
+
+| | before | after | Δ |
+|---|---:|---:|---:|
+| `Style` | 72 B | **80 B** | +8 |
+| `NodeState` | 76 B | **84 B** | +8 |
+| **per node** | 148 B | **164 B** | **+16 (+10.8%)** |
+| 100 nodes | 14.5 KB | **16.0 KB** | +1.5 KB |
+
+**Eight bytes twice, and neither was avoidable at this design.** Both
+structs' tails were *exactly* full: `Style`'s `align`/`focus_ring`/
+`cursor`/`visible` and `NodeState`'s three `bool`s plus `focus_ring`
+each fill one 4-byte slot with nothing spare, so `border_width: u8` cost
+four bytes in each and `border_color: Color` four more. The `u8` is kept
+for its semantics — a border wider than 255 px is not a border — not for
+a size it does not buy.
+
+`NodeState` grew because `Node::paint` has no `&[Style]` and must not
+re-cascade: the border travels to paint the way `bg` and `radius` do.
+
+**Two ways to get half of it back, both declined here and both
+measurable:**
+
+- **Pack `NodeState`'s three `bool`s into a flags byte.** That frees
+  three bytes, `border_width` fits, and `NodeState` stays 80 rather than
+  84. It changes `st[i].pressed` at every read site.
+- **Move `align` out of `Style`.** Only containers read it — every
+  reader is in the derive's container layout. But `i18n::mirror_styles`
+  rewrites it in one flat pass over the style array, and per-widget
+  alignment makes RTL mirroring a tree walk through a trait method every
+  custom container must remember to implement.
+
+Both are packing exercises with real API cost, and pairing either with a
+widget milestone would hide one behind the other. They are named here so
+the next reader of this budget knows the 164 is a choice.

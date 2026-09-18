@@ -209,6 +209,16 @@ impl<O: OverlaySink> crate::display::Painter for Deferring<'_, O> {
     ) {
         self.inner.rounded_rect(rect, color, radius);
     }
+
+    fn stroked_rect(
+        &mut self,
+        rect: crate::display::Rect,
+        color: crate::display::Color,
+        radius: f32,
+        width: f32,
+    ) {
+        self.inner.stroked_rect(rect, color, radius, width);
+    }
     fn shadow(&mut self, rect: crate::display::Rect, radius: f32, spread: f32) {
         self.inner.shadow(rect, radius, spread);
     }

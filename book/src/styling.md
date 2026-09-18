@@ -41,6 +41,35 @@ Specificity decides who wins, highest first:
 
 Ties break on declaration order — later wins.
 
+## Borders
+
+A border is a `Patch` field like any other, and it cascades like any
+other:
+
+```text
+Rule::new(
+    Selector::Kind("textinput"),
+    Patch::new().border_width(1).border_color_role(Role::Line),
+)
+```
+
+Two things about it are worth knowing because they are choices, not
+accidents.
+
+**It is drawn *inside* the node's box.** A bordered control and an
+unbordered one in the same row line up; adding a border never changes a
+layout. That is the opposite of the focus ring, which is deliberately
+drawn *outside* — a ring means "this has focus" and has to be visible
+past the control's own edge.
+
+**The width is a `u8`, in logical pixels.** A border wider than 255 px is
+not a border, and `Style` is resolved per node — a byte here is a byte
+times every node of every tree. What the border cost the embedded
+profile is in `docs/results-embedded.md`, measured rather than estimated.
+
+`border_color_role` follows the palette, so `Host::set_palette` re-resolves
+it like any other role.
+
 ## The one thing that will trip you: kind names are not spelled alike
 
 `Selector::Kind` matches `Node::kind_name`, and it has **two

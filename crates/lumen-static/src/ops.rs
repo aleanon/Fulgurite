@@ -82,6 +82,26 @@ pub fn focus_ring(st: &[crate::desc::NodeState], i: usize, out: &mut dyn crate::
     );
 }
 
+/// Draw `i`'s border, if it has one.
+///
+/// One helper rather than a copy in every widget that fills, for the
+/// reason `focus_ring` gives two functions up: a border that differs
+/// between widgets is a border a user cannot learn. Every call site is
+/// immediately after the node's own `rounded_rect`, because a border is
+/// drawn over the fill it encloses.
+///
+/// **Inset, so it costs the node no space.** A border drawn as a larger
+/// rect underneath — which is how `focus_ring` does it, correctly, for a
+/// ring that means "this has focus" — would make a bordered control
+/// wider than an unbordered one beside it.
+pub fn border(st: &[NodeState], i: usize, out: &mut dyn crate::Painter) {
+    let s = &st[i];
+    if s.border_width == 0 || s.border_color.3 == 0 {
+        return;
+    }
+    out.stroked_rect(rect_of(s), s.border_color, s.radius, s.border_width as f32);
+}
+
 pub fn rect_of(st: &NodeState) -> crate::display::Rect {
     [st.pos.x, st.pos.y, st.pos.x + st.size.w, st.pos.y + st.size.h]
 }
@@ -330,6 +350,8 @@ pub fn record_painted(
     };
     st[i].radius = style.radius;
     st[i].focus_ring = style.focus_ring;
+    st[i].border_color = style.border_color;
+    st[i].border_width = style.border_width;
     st[i].font_size = style.font_size;
     st[i].font_weight = style.font_weight;
     st[i].shadow = style.shadow;
@@ -593,6 +615,7 @@ impl<S: TextStorage> Node for Label<S> {
     fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
         let r = rect_of(&st[i]);
         out.rounded_rect(r, st[i].bg, st[i].radius);
+        border(st, i, out);
         // Text sits inside the padding box; `layout` sized the node to
         // include it.
         let p = st[i].pad;
@@ -829,6 +852,7 @@ impl<S: 'static, T: TextStorage> Node for Button<S, T> {
         focus_ring(st, i, out);
         let r = rect_of(&st[i]);
         out.rounded_rect(r, st[i].bg, st[i].radius);
+        border(st, i, out);
         // Centre the *measured* line box in the button. The line box,
         // not the ink: that is what every toolkit centres, and it puts
         // capitals a hair below centre in faces with a deep descent

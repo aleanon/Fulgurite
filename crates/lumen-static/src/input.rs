@@ -515,6 +515,7 @@ impl<S: TextBuffer> Node for TextInput<S> {
         let s = &st[i];
         let r = rect_of(s);
         out.rounded_rect(r, s.bg, s.radius);
+        crate::ops::border(st, i, out);
 
         let (pl, pt, pr, pb) = s.pad;
         let inner = [r[0] + pl, r[1] + pt, r[2] - pr, r[3] - pb];

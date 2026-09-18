@@ -258,6 +258,19 @@ pub struct NodeState {
     /// `NodeState` stays 76 bytes; `fixtures/embedded` asserts that
     /// against the RAM budget in `docs/results-embedded.md`.
     pub focus_ring: u8,
+    /// The resolved border, carried here for the same reason `bg` and
+    /// `radius` are: `paint` has no `&[Style]` and must not re-cascade
+    /// (M27/T27.1).
+    ///
+    /// **This is the second eight bytes the border costs**, and it was
+    /// not free either: the tail above — three `bool`s and `focus_ring`
+    /// — fills one 4-byte slot exactly, so `border_width` cost four and
+    /// `border_color` four more. `docs/results-embedded.md` has the
+    /// measurement; packing the three `bool`s into a flags byte would
+    /// give half of it back and is a named follow-up rather than
+    /// something to do quietly inside a widget milestone.
+    pub border_color: crate::display::Color,
+    pub border_width: u8,
 }
 
 /// Scalar facts a kind knows about itself that geometry cannot show —

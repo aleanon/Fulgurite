@@ -76,6 +76,7 @@ const KIND_IMAGE:   u32 = 5u;
 // M22/T22.6.
 const KIND_BLUR:    u32 = 6u;
 const KIND_GLASS:   u32 = 7u;
+const KIND_STROKE:  u32 = 8u;
 
 const LIGHT_Z: f32 = 0.62;
 const LIGHT_XY: f32 = 0.7845993;
@@ -115,7 +116,7 @@ fn vs(@builtin(vertex_index) vi: u32, inst: Instance) -> VsOut {
     // Not for glyphs and images: their quad *is* their uv mapping, and
     // growing it would smear the atlas lookup by a pixel.
     var pad = 0.0;
-    if (inst.kind <= KIND_GRADIENT || inst.kind == KIND_GLASS) {
+    if (inst.kind <= KIND_GRADIENT || inst.kind == KIND_GLASS || inst.kind == KIND_STROKE) {
         pad = 1.0;
     }
     let lo = inst.rect.xy - vec2(pad);
@@ -257,6 +258,19 @@ fn fs(in: VsOut) -> @location(0) vec4<f32> {
         case KIND_ROUNDED: {
             // `rad + 0.5 - distance`, which is `0.5 - signed distance`.
             cov = clamp(0.5 - sd_round_box(p, in.rect, in.params.x), 0.0, 1.0);
+        }
+        case KIND_STROKE: {
+            // The ring between the box and the same box inset by the
+            // border's width, as the difference of two coverages — which
+            // antialiases the outer and inner curve in one expression and
+            // keeps them concentric. `software::Canvas::rr_cov` is the
+            // same subtraction over the same `sd_round_box`.
+            let w = in.params.y;
+            let inner = vec4<f32>(in.rect.x + w, in.rect.y + w, in.rect.z - w, in.rect.w - w);
+            let ri = max(in.params.x - w, 0.0);
+            let co = clamp(0.5 - sd_round_box(p, in.rect, in.params.x), 0.0, 1.0);
+            let ci = clamp(0.5 - sd_round_box(p, inner, ri), 0.0, 1.0);
+            cov = clamp(co - ci, 0.0, 1.0);
         }
         case KIND_SHADOW: {
             let d = sd_round_box(p, in.uv, in.params.x);

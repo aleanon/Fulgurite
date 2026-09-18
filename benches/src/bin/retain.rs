@@ -37,6 +37,7 @@ fn ink(c: &Cmd) -> [f32; 4] {
         }
         Cmd::Rect { rect, .. }
         | Cmd::RoundedRect { rect, .. }
+        | Cmd::StrokedRect { rect, .. }
         | Cmd::Text { rect, .. }
         | Cmd::Image { rect, .. }
         | Cmd::Gradient { rect, .. }
@@ -171,6 +172,7 @@ fn run(n: usize) {
             fn rect(&mut self, _: [f32; 4], _: Color) {}
             fn text_weighted(&mut self, _: [f32; 4], _: &str, _: f32, _: f32, _: Color) {}
             fn rounded_rect(&mut self, _: [f32; 4], _: Color, _: f32) {}
+            fn stroked_rect(&mut self, _: [f32; 4], _: Color, _: f32, _: f32) {}
             fn shadow(&mut self, _: [f32; 4], _: f32, _: f32) {}
             fn push_clip(&mut self, _: [f32; 4]) {}
             fn pop_clip(&mut self) {}

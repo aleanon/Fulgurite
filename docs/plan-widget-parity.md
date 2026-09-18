@@ -201,7 +201,7 @@ after landing 1, and 2 and 3 arrive before the catalogue outgrows its
 own menu — which happens in T27.6, the first tranche that takes the
 count past what the popup can show.
 
-### T27.1 — the stroked rect
+### T27.1 — the stroked rect · **DONE 2026-09-18**
 
 `Style` has no border and `Cmd` has no stroked rect. §3c of the gallery
 plan found this by putting our TextInput beside Lumen's and recorded it
@@ -226,7 +226,12 @@ and two things stop it:
   widget's fill is a fifth — over the cap, merged into the last slot.
   **Prediction the task must measure, not assume:** twelve bordered
   widgets drawn this way systematically coarsen the region set M18
-  exists to keep sharp.
+  exists to keep sharp. *(Not measured — the four-line form was never
+  built, because `ops::focus_ring`'s rustdoc already records it being
+  tried there and caught by the live gate within a frame: "a square ring
+  over a rounded button covers the antialiased corner", `ui_check.py`'s
+  corner test down to five blended pixels. One stroked command inks one
+  rect, so the region question does not arise.)*
 
 **No style field — and this is where it goes. DECIDED 2026-09-18:
 border is a `Style` property, not a widget field.**
@@ -239,7 +244,12 @@ palette, and cannot be set once for all twelve controls that want one.
 That is the definition of a cascading property.
 
 **What it costs, measured 2026-09-18 rather than estimated: `Style` goes
-72 B → 80 B, +11% on every node in every tree.** `Style` is *exactly*
+72 B → 80 B — and `NodeState` goes 76 B → 84 B with it, which the
+estimate missed.** `Node::paint` has no `&[Style]` and must not
+re-cascade, so the border travels to paint the way `bg` and `radius` do,
+and *that* struct's tail was exactly full too. Per node: **148 B → 164 B,
++10.8%**, plus **+676 B of `.text`** on the embedded profile.
+`docs/results-embedded.md` has the before/after. `Style` is *exactly*
 packed at 72 with **zero spare tail padding** — `align`, `focus_ring`,
 `cursor` and `visible` fill one 4-byte slot completely — so even a lone
 `u8` costs four bytes. Two fields, `border_width: u8` (px; a border wider
@@ -566,8 +576,8 @@ each names its injections in the commit body.
 
 | id | widgets | why grouped | needs |
 |---|---|---|---|
-| **T27.0** | *(no widget)* | per-row addressing for `Repeat` | — |
-| **T27.1** | *(no widget)* | the stroked rect | — |
+| **T27.0** | *(no widget)* | per-row addressing for `Repeat` — **landing 1 of 3 done 2026-09-18** | — |
+| ~~**T27.1**~~ | *(no widget)* | ~~the stroked rect~~ **DONE 2026-09-18** | — |
 | **T27.2** | *(no widget)* | the three taken names | — |
 | **T27.3** | *(no widget)* | the drive harness + adversary protocol, **retrofitted to the eighteen that already exist** | T27.0 |
 | **T27.4** | Card, Toast, Tooltip | leaves with a shadow and a tip | T27.1 |

@@ -60,6 +60,7 @@ fn cmds(list: &DisplayList) -> Vec<(&'static str, [f32; 4])> {
         .map(|c| match c {
             Cmd::Rect { rect, .. } => ("rect", *rect),
             Cmd::RoundedRect { rect, .. } => ("rrect", *rect),
+            Cmd::StrokedRect { rect, .. } => ("stroke", *rect),
             Cmd::Text { rect, .. } => ("text", *rect),
             Cmd::Shadow { rect, .. } => ("shadow", *rect),
             Cmd::Image { rect, .. } => ("image", *rect),
@@ -487,6 +488,14 @@ fn deferring_forwards_every_command() {
         }
         fn rounded_rect(&mut self, _: lumen_static::display::Rect, _: Color, _: f32) {}
         fn shadow(&mut self, _: lumen_static::display::Rect, _: f32, _: f32) {}
+        fn stroked_rect(
+            &mut self,
+            _: lumen_static::display::Rect,
+            _: Color,
+            _: f32,
+            _: f32,
+        ) {
+        }
         fn push_clip(&mut self, _: lumen_static::display::Rect) {}
         fn pop_clip(&mut self) {}
         fn clip_bounds(&self) -> Option<lumen_static::display::Rect> {

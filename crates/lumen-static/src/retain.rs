@@ -785,6 +785,16 @@ impl<R: Retention> Painter for Recording<'_, R> {
         self.inner.rounded_rect(rect, color, radius);
     }
 
+    /// A border inks only its own rect: it is drawn *inside* it.
+    fn stroked_rect(&mut self, rect: Rect, color: Color, radius: f32, width: f32) {
+        let mut h = h_rect(fold(0, 11), rect);
+        h = h_color(h, color);
+        h = fold(h, radius.to_bits() as u64);
+        h = fold(h, width.to_bits() as u64);
+        self.ret.observe(h, rect);
+        self.inner.stroked_rect(rect, color, radius, width);
+    }
+
     /// A shadow inks past its own rect: the falloff reaches `spread`
     /// beyond it, and repainting only the rect would leave a ring of the
     /// old shadow behind.

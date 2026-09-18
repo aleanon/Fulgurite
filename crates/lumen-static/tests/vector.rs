@@ -76,6 +76,7 @@ fn a_painter_without_gradients_falls_back_to_a_flat_fill() {
         fn text_weighted(&mut self, _: [f32; 4], _: &str, _: f32, _: f32, _: Color) {}
         fn rounded_rect(&mut self, _: [f32; 4], _: Color, _: f32) {}
         fn shadow(&mut self, _: [f32; 4], _: f32, _: f32) {}
+        fn stroked_rect(&mut self, _: [f32; 4], _: Color, _: f32, _: f32) {}
         fn push_clip(&mut self, _: [f32; 4]) {}
         fn pop_clip(&mut self) {}
     }

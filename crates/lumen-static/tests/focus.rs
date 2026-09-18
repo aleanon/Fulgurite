@@ -188,8 +188,16 @@ fn the_ring_costs_no_bytes_per_node() {
     // The M15 policy: a per-node field either fits or is re-budgeted.
     // As an f32 this took Style from 72 to 76; as a u8 it is free, and
     // a ring wider than 255 px is not a ring.
-    assert_eq!(core::mem::size_of::<lumen_static::Style>(), 72);
-    assert_eq!(core::mem::size_of::<NodeState>(), 76);
+    //
+    // **The ring is still free; `Style` is 80 for a different reason.**
+    // M27/T27.1 added the border, which found the tail slot exactly full
+    // — `align`, `focus_ring`, `cursor` and `visible` in four bytes with
+    // nothing spare — and was re-budgeted with a measurement
+    // (`docs/results-embedded.md`). The claim this test makes is about
+    // the *ring*, so it is kept and its number moved rather than deleted:
+    // if `focus_ring` ever became an `f32` this would read 84.
+    assert_eq!(core::mem::size_of::<lumen_static::Style>(), 80);
+    assert_eq!(core::mem::size_of::<NodeState>(), 84);
 }
 
 /// **A ring for the keyboard, not for the mouse.**

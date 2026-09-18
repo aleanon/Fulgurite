@@ -53,6 +53,12 @@ fn frame() -> DisplayList {
     l.rect([150.0, 0.0, 230.0, 60.0], Color(120, 120, 120, 255));
     l.pop_clip();
     l.text([10.0, 45.0, 140.0, 62.0], "parity", 14.0, Color(0, 0, 0, 255));
+    // A border (M27/T27.1). The two backends compute the ring from the
+    // *same* expression -- `sd_round_box` in `shader.wgsl`, transcribed
+    // into `software::rr_cov` -- and this is what holds them to it. The
+    // comment above says "every command in the vocabulary", so a new
+    // command that is not here makes that sentence false.
+    l.stroked_rect([172.0, 62.0, 232.0, 110.0], Color(220, 40, 40, 255), 8.0, 3.0);
     l
 }
 

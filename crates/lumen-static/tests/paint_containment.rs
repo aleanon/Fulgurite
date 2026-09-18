@@ -57,6 +57,9 @@ fn first_escape(list: &DisplayList, root: [f32; 4]) -> Option<(usize, [f32; 4])>
             }
             Cmd::Rect { rect, .. }
             | Cmd::RoundedRect { rect, .. }
+            // A border is drawn *inside* its rect, so its containment is
+            // its rect -- the same reason retention inks only the rect.
+            | Cmd::StrokedRect { rect, .. }
             | Cmd::Shadow { rect, .. }
             | Cmd::Text { rect, .. }
             | Cmd::Image { rect, .. }

@@ -30,6 +30,9 @@ impl Painter for Echo {
     fn shadow(&mut self, r: [f32; 4], radius: f32, spread: f32) {
         self.calls.push(format!("shadow {r:?} {radius} {spread}"));
     }
+    fn stroked_rect(&mut self, r: [f32; 4], c: Color, radius: f32, width: f32) {
+        self.calls.push(format!("stroke {r:?} {c:?} {radius} {width}"));
+    }
     fn push_clip(&mut self, r: [f32; 4]) {
         self.calls.push(format!("push {r:?}"));
     }

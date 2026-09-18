@@ -216,6 +216,7 @@ impl<const KIND: u8> Node for Chart<KIND> {
         }
         if s.bg.3 > 0 {
             out.rounded_rect(r, s.bg, s.radius);
+            lumen_static::ops::border(st, i, out);
         }
         let n = self.data.len();
         let vals = self.data.as_slice();
