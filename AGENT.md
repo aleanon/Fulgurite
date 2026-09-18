@@ -116,8 +116,14 @@ are independent of each other**, so either may go first:
   `scripts/agent_drive.sh` picks the Switch by name instead of
   multiplying a row height.
 
-- **M28 — `docs/plan-tasks.md`** (T28.0–T28.9): **not started**, written
-  2026-09-18. iced's `Task` and `Subscription`, in this architecture's
+- **M28 — `docs/plan-tasks.md`** (T28.0–T28.12): **not started**, written
+  2026-09-18 and **revised the same day after a seven-lens review: 42
+  findings, 13 blocking.** The first draft could not be built — nothing
+  could *spawn* a task (handlers reach the app, never the host), no
+  message type reached the host, and a reload bumping the epoch made the
+  cross-swap gate unpassable. §5 records all of it; §2.5's outbox,
+  §2.6's message type and §2.3's corrected epoch are the answers.
+  iced's `Task` and `Subscription`, in this architecture's
   terms: spawn one, batch, chain, cancel, subscribe. **The seam is
   already built and the rule already decided** — `inbox.rs` shipped as
   plan-events E3, `docs/events-decision.md` forbids a code reference in
