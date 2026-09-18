@@ -583,7 +583,7 @@ each names its injections in the commit body.
 | ~~**T27.2**~~ | *(no widget)* | ~~the three taken names~~ **DONE 2026-09-18** | — |
 | ~~**T27.3**~~ | *(no widget)* | ~~the drive harness~~ **HARNESS DONE 2026-09-19**; six widgets retrofitted (18 actions), twelve left | T27.0 |
 | ~~**T27.4**~~ | ~~Card, Toast, Tooltip~~ **DONE 2026-09-19** | leaves with a shadow and a tip — and two more framework defects | T27.1 |
-| **T27.5** | NumberInput, RangeSlider, SearchField | composites over `TextInput` and `Slider` | T27.1 |
+| ~~**T27.5**~~ | ~~NumberInput, RangeSlider, SearchField~~ **DONE 2026-09-19** | composites over `TextInput` and `Slider` | T27.1 |
 | **T27.6** | Tabs, AppBar, BottomNav, NavigationRail, PullToRefresh | one shape five times: a strip with a selected index | T27.0 |
 | **T27.7** | Modal, Sheet, Drawer | the overlay layer M15 built, now with a `Host` that dispatches into it (M24) | — |
 | **T27.8** | Wrap, Grid, SplitPane, PaneGrid, Accordion | the layout group; needs `Widget`-level work, and is the tranche most likely to move the const-eval number | — |
@@ -664,6 +664,42 @@ bottom could never reach the top again (it scrolls back up first); and
 the tip's area was read from the `Popup` node, which is a zero-sized
 marker whose *content* carries the geometry — reported `0 -> 0` for a
 tip that had opened perfectly well.
+
+### T27.5, as built — and §4's inventory, kept
+
+`NumberInput` shipped against §4's eleven-row inventory written before it
+existed, which is the point of writing one first. **Two of the eleven
+were wrong about the widget and the widget was right**: "type 5 and get
+5" reads `0.05`, because typing appends at the caret like any field —
+so row 10 (select-all, retype) is not a nicety, it is what makes the
+other rows reachable. Both tests were corrected, and a second test now
+asserts the appending behaviour so it is a choice rather than an
+accident.
+
+Two more framework findings:
+
+| | what | how it surfaced |
+|---|---|---|
+| 10 | **No widget in `lumen-static-widgets` published anything to the agent.** The crate had no `observe` feature at all, so `ui.getTree` saw geometry and nothing else for every widget tranche 1 shipped. | a drive asked a number field for its value and got `""` |
+| 11 | **A wrapper must loosen a child's limits to let it shrink.** A `SearchField` is `FILL`, so its own `min_w` is what its parent insisted on — and `resolve_self` clamps a `Fixed` *up* to `min_w`. A 20 px magnifier resolved to 296, centred, with the text off the right edge. | `ui.getAppliedStyles` said `Fixed(20.0)` while `ui.resolve` said 296 wide — the two disagreeing is the tell |
+
+11 is worth keeping as a rule: **the maximum is inherited, the minimum
+is not.** A wrapper that wants a child to shrink has to say so.
+
+**And one of the showcase's own gates was found bounding the wrong
+quantity** — `the_dropdown_is_absent_when_closed` asserted an open menu
+draws more than `CATALOG.len()` extra commands, which was the same number
+as the rows it materialized until the catalogue outgrew the menu. It now
+bounds by `Repeat::window_len`, which is the thing it is about.
+
+Three more harness assertions were vacuous and each was caught by running
+it: a range check comparing `image_base64[:64]`, which is the PNG
+*header* and identical for any two frames of a size — a bound that can
+never be met, which is the same defect as one that can never be exceeded;
+an action that clicked the same point three times and correctly reported
+that nothing had reached the widget; and a bound written as `low > 0.5`,
+a fact about where the *other* handle happened to be, which failed on the
+correct answer `0.50..0.50`.
 
 **T27.3 is the load-bearing one and it is deliberately placed before any
 new widget.** The harness is built and then proved against eighteen

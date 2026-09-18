@@ -17,7 +17,7 @@ gpu = ["lumen-static-winit/gpu"]
 # `just showcase-agent` runs with this on: a JSON-RPC socket that drives
 # the live window, so a review can open the dropdown and pick the next
 # widget instead of restarting the process once per widget.
-agent = ["lumen-static-winit/agent"]
+agent = ["lumen-static-winit/agent", "lumen-static-widgets/observe"]
 # M27/T27.3: the same showcase under `Boundaries` rather than `Everything`.
 # `just widget-drive` runs every drive script against both, because M26
 # found four of its five defects invisible under the default -- a clean

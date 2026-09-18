@@ -194,6 +194,22 @@ pub static CATALOG: &[Entry] = &[
             a: Tooltip::new(btn("Hover me"), "Shows while the pointer is over it".into()),
         })),
         |s| format!("presses: {}", s.presses)),
+    // ---- M27/T27.5 ------------------------------------------------
+    entry!("Fields", "NumberInput", "Arrows step it; letters are refused.",
+        "Not a Stepper: no +/- buttons. Blur commits, because focus is *state* — there is no blur event, and `layout` is the one method that can see it change.",
+        false,
+        |s| on(s, Demo::Number(DNumberInput { a: NumberInput::new(s.fraction * 10.0, 0.0, 10.0, 0.5) })),
+        |s| format!("value: {:.2}", s.fraction * 10.0)),
+    entry!("Fields", "RangeSlider", "Two handles that cannot cross.",
+        "A pair of sliders is not a range: nothing stops the low one passing the high one, and the moment it does the span between them is inverted.",
+        false,
+        |s| on(s, Demo::Range(DRangeSlider { a: RangeSlider::new(0.25, 0.75) })),
+        none),
+    entry!("Fields", "SearchField", "A magnifier, then the text.",
+        "A click in the padding focuses the *field*, not the container — falling through would focus nothing and the control would feel dead at its edges.",
+        false,
+        |s| on(s, Demo::Search(DSearchField { a: SearchField::new("search") })),
+        none),
 ];
 
 /// The series the charts share, so the three demos are comparable.

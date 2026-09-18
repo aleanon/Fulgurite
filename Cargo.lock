@@ -1553,6 +1553,7 @@ dependencies = [
 name = "lumen-static-widgets"
 version = "0.1.0"
 dependencies = [
+ "accesskit",
  "lumen-static",
 ]
 

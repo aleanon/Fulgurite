@@ -6,6 +6,8 @@ license.workspace = true
 
 [dependencies]
 lumen-static = { path = "../lumen-static" }
+# Only under `observe`; `lumen-static` gates its own the same way.
+accesskit = { version = "0.25", optional = true }
 
 [features]
 default = ["std"]
@@ -14,5 +16,16 @@ default = ["std"]
 # an embedded profile that pulls a pie chart it cannot draw has paid
 # `.text` for nothing. Nothing here is in `lumen-static`; an application
 # opts in by naming this crate.
-std = ["lumen-static/std"]
+#  implies , the tiering  uses: the two are
+# nested, not alternatives, and a crate that took  without 
+# would lose  for no reason anyone asked for.
+std = ["alloc", "lumen-static/std"]
 alloc = ["lumen-static/alloc"]
+# **The agent-facing half — M27/T27.5.** Without this no widget in this
+# crate publishes a role or a value, so `ui.getTree` sees geometry and
+# nothing else and a drive script cannot read a number field's number.
+# Every widget here shipped without it and nothing noticed, because
+# nothing had ever asked one of them a question. Default-off and additive
+# for the same reason `lumen-static`'s is: it takes `NodeDesc` from 48 B
+# to 72 B in every binary that links it.
+observe = ["std", "dep:accesskit", "lumen-static/observe"]

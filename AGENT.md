@@ -142,7 +142,13 @@ are independent of each other**, so either may go first:
   the width and left the height), and a tooltip drawn over its own
   control took every click on it, because the overlay pass hit-tests
   before `Node::hit`. Nine widgets, 24 actions, green under both
-  strategies.
+  strategies. **T27.5 shipped 2026-09-19** — `NumberInput` (the ask's
+  addition, built against the plan's own eleven-row inventory),
+  `RangeSlider`, `SearchField`; plus two more findings: no widget in
+  `lumen-static-widgets` published anything to the agent (the crate had
+  no `observe` feature), and **a wrapper must loosen a child's limits to
+  let it shrink** — the maximum is inherited, the minimum is not.
+  Twelve widgets, 33 actions, green both ways.
 
 - **M28 — `docs/plan-tasks.md`** (T28.0–T28.12): **not started**, written
   2026-09-18 and **revised the same day after a seven-lens review: 42

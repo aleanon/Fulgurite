@@ -99,6 +99,27 @@ pair!(PairRadioC, Radio<Show>, "d_radio_c", "d_radio_cl");
 /// hit-testable, hoverable, pressable and wired to nothing.
 #[derive(StaticTree, Default)]
 #[widget(row, spacing = 12.0)]
+pub struct DNumberInput {
+    #[widget_id("d_number_a")]
+    pub a: NumberInput,
+}
+
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 12.0)]
+pub struct DRangeSlider {
+    #[widget_id("d_range_a")]
+    pub a: RangeSlider,
+}
+
+#[derive(StaticTree, Default)]
+#[widget(row, spacing = 12.0)]
+pub struct DSearchField {
+    #[widget_id("d_search_a")]
+    pub a: SearchField,
+}
+
+#[derive(StaticTree, Default)]
+#[widget(row, spacing = 12.0)]
 pub struct DCard {
     #[widget_id("d_card_a")]
     pub a: Card<CardBody>,
@@ -335,6 +356,9 @@ pub enum Demo {
     Card(DCard),
     Toast(DToast),
     Tooltip(DTooltip),
+    Number(DNumberInput),
+    Range(DRangeSlider),
+    Search(DSearchField),
 }
 
 impl Default for Demo {
@@ -344,4 +368,4 @@ impl Default for Demo {
 }
 
 /// How many demos the stage has. Asserted against the catalogue.
-pub const DEMOS: usize = 21;
+pub const DEMOS: usize = 24;

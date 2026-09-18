@@ -428,6 +428,14 @@ pub enum Symbol {
     Plus,
     /// A minus.
     Minus,
+    /// A magnifier: a ring and a handle — M27/T27.5, for `SearchField`.
+    ///
+    /// Drawn from primitives like every other symbol here. A glyph would
+    /// need the icon font present and correct at every scale on every
+    /// platform, and the failure mode when it is not is the
+    /// missing-glyph box — which is how `examples/glasswall` lost
+    /// twenty-two of its twenty-four icons.
+    Search,
 }
 
 /// A small mark drawn from primitives — see [`Symbol`].
@@ -542,6 +550,32 @@ impl Node for Icon {
                 out.line(at(0.0, -k), at(0.0, k), stroke, c);
             }
             Symbol::Minus => out.line(at(-k, 0.0), at(k, 0.0), stroke, c),
+            Symbol::Search => {
+                // A hollow ring plus a handle. Chords off
+                // `chart::unit`'s quarter-turn table, for the reason that
+                // table exists: **no trig in a `no_std` crate that has
+                // needed none**, and `Spinner`'s ring is drawn the same
+                // way. `Cmd` has no stroked ellipse either — only the
+                // inset stroked *rect* M27/T27.1 added, which cannot
+                // round to a circle this small without reading as a blob.
+                //
+                // The ring is offset up and left so the handle has room
+                // inside the icon's own box rather than overhanging it.
+                let (ox, oy) = (-k * 0.18, -k * 0.18);
+                let r = k * 0.58;
+                let n = 16;
+                let ring = |seg: usize| {
+                    let u = crate::chart::unit(seg * (crate::chart::STEPS_ROUND / n));
+                    at(ox + u.0 * r, oy + u.1 * r)
+                };
+                for seg in 0..n {
+                    out.line(ring(seg), ring((seg + 1) % n), stroke, c);
+                }
+                // The handle, from the ring's lower-right corner out to
+                // the icon's own.
+                let d = core::f32::consts::FRAC_1_SQRT_2;
+                out.line(at(ox + r * d, oy + r * d), at(k * 0.92, k * 0.92), stroke, c);
+            }
         }
     }
 

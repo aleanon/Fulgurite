@@ -856,6 +856,11 @@ fn stylesheet() -> Vec<StyleRule> {
         // an id is not.
         StyleRule::new(Selector::Class("pair-label"), lbl()),
         StyleRule::new(Selector::Id("d_slider_a"), Patch::new().width(Length::Fixed(280.0))),
+        // The same, for M27/T27.5's two that fill: a range and a search
+        // box are both as wide as they are given, and on a centring
+        // stage that is nothing at all.
+        StyleRule::new(Selector::Id("d_range_a"), Patch::new().width(Length::Fixed(280.0))),
+        StyleRule::new(Selector::Id("d_search_a"), Patch::new().width(Length::Fixed(320.0))),
         StyleRule::new(Selector::Id("d_progress_a"), Patch::new().width(Length::Fixed(280.0))),
         StyleRule::new(Selector::Id("d_divider_a"), Patch::new().width(Length::Fixed(280.0))),
         StyleRule::new(
@@ -1203,7 +1208,19 @@ mod tests {
         println!("closed {a} commands, open {b}");
         assert!(open.app.ui.body.header.picker.is_open(), "an open picker is not open");
         assert!(!shut.app.ui.body.header.picker.is_open(), "a closed picker is open");
-        let rows = CATALOG.len();
+        // **The rows the menu *materialized*, not the catalogue's length.**
+        // Those were the same number until M27/T27.4 pushed the
+        // catalogue past what the menu can show; after that this bound
+        // was computed from the wrong quantity and failed at 23 extra
+        // commands for 24 entries — which is the honest answer, because
+        // only eighteen rows exist to draw. `Repeat` reports its own
+        // window, so the bound now comes from the thing it bounds.
+        let rows = open.app.ui.body.header.picker.menu.content.window_len();
+        assert!(
+            rows > 0 && rows <= CATALOG.len(),
+            "the menu materialized {rows} rows of {} — setup",
+            CATALOG.len()
+        );
         assert!(b > a + rows, "an open menu drew {} more commands, not {rows}+", b - a);
     }
 

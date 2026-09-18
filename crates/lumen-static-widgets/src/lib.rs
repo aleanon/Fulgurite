@@ -35,12 +35,24 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![forbid(unsafe_code)]
 
+// **`alloc`, for the one widget that holds a growable string.**
+// `NumberInput` owns a `TextInput<String>`, because a number field's
+// text is edited and cannot be `&'static str`. Everything else in this
+// crate is allocation-free and stays so; the module is feature-gated, so
+// an embedded profile that does not take `alloc` does not get it.
+#[cfg(feature = "alloc")]
+extern crate alloc;
+
 mod chart;
+#[cfg(feature = "alloc")]
+mod field;
 mod indicator;
 pub mod surface;
 mod trim;
 
 pub use chart::{BarChart, Chart, LineChart, PieChart, Series, MAX_POINTS};
+#[cfg(feature = "alloc")]
+pub use field::{NumberInput, RangeSlider, SearchField};
 pub use indicator::{ProgressBar, Skeleton, Spinner};
 pub use surface::{Card, Toast, Tooltip, MAX_SURFACE_NODES};
 pub use trim::{Avatar, Badge, Chip, Divider, Icon, Symbol};
@@ -48,7 +60,9 @@ pub use trim::{Avatar, Badge, Chip, Divider, Icon, Symbol};
 /// Everything in this crate, for a `use` that keeps up.
 pub mod prelude {
     pub use crate::{
-        Avatar, Badge, BarChart, Card, Chip, Icon, LineChart, Divider, PieChart, ProgressBar,
+        Avatar, Badge, BarChart, Card, Chip, Divider, Icon, LineChart, PieChart, ProgressBar,
         Series, Skeleton, Spinner, Symbol, Toast, Tooltip,
     };
+    #[cfg(feature = "alloc")]
+    pub use crate::{NumberInput, RangeSlider, SearchField};
 }
