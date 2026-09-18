@@ -132,6 +132,70 @@ be addressable to be tested at all — and it unblocks the harness for all
 thirty-three, which must pick a widget by name out of a fifty-one-row
 menu.
 
+#### The option space
+
+Four separable problems, and reading the code shows they are *not*
+equally hard — two are nearly solved already.
+
+| | problem | state today |
+|---|---|---|
+| **1** | **no syntax** names a row | `Term::ValueContains` (`~text`) is the one term that matches instance nodes at all — it reads the AccessKit node, not the table, so it needs no `idx`. It reads `value()`, and `Button` publishes `set_label`, not `set_value`. **So `~Switch` fails on a menu row by one field.** |
+| **2** | **no decode** from a synthetic id | `observe::instance_id` is `1<<63 \| node<<44 \| row<<12 \| template`. The triple is *already in the id* the agent holds; `index_of_node` just answers `None` and nothing decodes the rest. |
+| **3** | **no action** without a table index | every path goes through `tree.states[i]`. But `pointer_target` wants only a **centre**, and `Entry::bounds()` already has one. |
+| **4** | **no reachability** for a row outside the viewport | `Repeat::observe` announces only rows that overlap the viewport — deliberately (F4.7: announcing overrun rows created probe-versus-click divergence). So an offscreen row has no id, no bounds and no entry, and `input.scrollIntoView`, which is the fix, **refuses virtualized content**. Circular. |
+
+Six candidate solutions, with what each does and does not buy:
+
+- **(a) Coordinates — the status quo.** Zero cost, and it is the vacuous
+  shape. The baseline, not a candidate.
+- **(b) Let `ValueContains` fall back to `label()`.** One condition.
+  Turns `~Switch` into a working row selector immediately, with no id
+  decoding at all. Solves 1.
+- **(c) Drop the `idx` requirement in `pointer_target`,** deriving the
+  centre from `Entry::bounds()`. Solves 3 for click, hover and the held
+  press — which is most of what a drive does. Leaves `ui.explain`,
+  `ui.getAppliedStyles` and `input.fill` refusing, because those read
+  per-node state the main table owns.
+- **(d) A row term over the decoded id** — `#select-menu:row(7)`, plus
+  the decoder problem 2 says is missing. Solves 1 and 2 properly, and is
+  the only route to 3 for the *query* methods, since those need
+  `(container, row, inner)` to reach `Repeat::instance_state`, which
+  already exists.
+- **(e) Application-supplied row keys.** `Repeat` gains a way to name row
+  *k* — the natural shape being a `fn(usize) -> &str` alongside the
+  existing bind, so the app can name a row **without materializing it**.
+  Strictly better than (b) or (d) for test quality: a drive that says
+  "the Switch row" cannot silently retarget, where both an index and a
+  label-match can.
+- **(f) `input.scrollToRow`** — set `Repeat::scroll` to `row × item_extent`
+  directly and re-lay-out. Sidesteps 4's circularity without touching
+  `scrollIntoView`'s refusal. Needs (e) to know *which* row, unless the
+  caller passes an index, which is the thing being avoided.
+
+**The showcase forces the hard half, and this is the argument that
+settles it.** At eighteen entries the menu resolves to 300 × 560 px and a
+row is 30 px, so the whole catalogue fits and problem 4 never fires. At
+fifty-one entries the content is 1 530 px against the same window:
+**roughly two-thirds of the widgets are unmaterialized at any moment**,
+and a harness that must pick each of fifty-one by name cannot reach them
+at all. (The popup's height policy is worth checking before relying on
+that arithmetic — but the direction is not in doubt.)
+
+**Recommended, in three landings, cheapest first:**
+
+1. **(b) + (c)** — two small changes that together give
+   `input.click {"selector": "~Switch"}` on any *visible* row, and let
+   T27.3's harness start against the eighteen that exist today.
+2. **(e)** — row keys, so the drive names a row instead of computing one.
+   This is the one that makes the protocol's claim about itself true.
+3. **(d) + (f)** — the decoder and scroll-to-row, which together unblock
+   the query methods and the offscreen two-thirds.
+
+Splitting it this way means T27.3 is not gated on all four: it starts
+after landing 1, and 2 and 3 arrive before the catalogue outgrows its
+own menu — which happens in T27.6, the first tranche that takes the
+count past what the popup can show.
+
 ### T27.1 — the stroked rect
 
 `Style` has no border and `Cmd` has no stroked rect. §3c of the gallery
@@ -159,10 +223,36 @@ and two things stop it:
   widgets drawn this way systematically coarsen the region set M18
   exists to keep sharp.
 
-**No style field.** `Style` carries fourteen fields and no border. So
-even given the command, no stylesheet rule can say *border* — every
-bordered widget would hardcode one, which is precisely the state
-M25/T25.10 had to undo for colours.
+**No style field — and this is where it goes. DECIDED 2026-09-18:
+border is a `Style` property, not a widget field.**
+
+The alternative is the one M25/T25.10 already ran: colour fields were put
+on the widgets that needed them, and then had to be given palette *roles*
+in stylesheets so `Host::set_palette` could re-resolve them. A border
+living on a widget cannot be restyled by a sheet, cannot follow a
+palette, and cannot be set once for all twelve controls that want one.
+That is the definition of a cascading property.
+
+**What it costs, measured 2026-09-18 rather than estimated: `Style` goes
+72 B → 80 B, +11% on every node in every tree.** `Style` is *exactly*
+packed at 72 with **zero spare tail padding** — `align`, `focus_ring`,
+`cursor` and `visible` fill one 4-byte slot completely — so even a lone
+`u8` costs four bytes. Two fields, `border_width: u8` (px; a border wider
+than 255 px is not a border, which is `focus_ring`'s own argument) and
+`border_color: Color`, land in the same 8-byte step that two `f32`s
+would. Take the `u8` for the semantics, not for the size.
+
+**The 76-byte version is a false economy.** Colour alone at a fixed 1 px
+hairline saves four bytes by giving up Tabs' active underline — which is
+one of the twelve widgets this task exists to unblock.
+
+`tests/cursor.rs` asserts the 72 and its comment says a per-node field
+"either fits or gets re-budgeted rather than paid for silently". Eight
+bytes do not fit. So the task **re-budgets with a measurement** — the
+embedded `.bss` and `.text` delta, in `docs/results-embedded.md`'s terms
+— and does not simply edit the number in the assertion. `Patch` grows
+with it, 112 B → ~120 B, and that one is cheap: a `Patch` is per *rule*,
+and rules number in the tens.
 
 **And one design instruction, from the `Deferring` lesson.** `Painter`
 is five required methods and six provided, with four implementors of
@@ -191,24 +281,24 @@ A backticked `Canvas` in a doc comment passes whichever `Canvas` the
 writer meant, forever. The collision is invisible to the one gate that
 looks at prose.
 
-Ranked by how much the collision actually costs:
+**DECIDED 2026-09-18**, ranked by how much the collision actually costs:
 
-- **Canvas — rename the widget, certainly.** `software::Canvas` is the
-  raster backend's pixel buffer, with dozens of methods, cited from
+- **Canvas → the widget is PaintBox.** `software::Canvas` is the raster
+  backend's pixel buffer, with dozens of methods, cited from
   `lumen-static-shell`'s front page, from `lumen-static-wgpu`'s shader
   comments, and from AGENT.md itself (`Canvas::bands_for`). Renaming
   *that* to free a widget name would be the tail wagging the dog.
-  Recommendation: PaintBox for the widget.
-- **Menu — cheap either way.** `pub type Menu<S> = Popup<Repeat<Row<S>>>`
-  has seven uses, all inside `select.rs`. Recommendation: rename the
-  alias to SelectMenu, because it is the menu *of a `Select`* and the
-  narrower name is the more accurate one regardless of the collision.
-- **Tree — the weakest case, and a judgement call.** `App::Tree` is an
-  associated type in a different trait; there is no ambiguity, only a
-  reader who meets three meanings of one word. Recommendation: TreeView,
-  which is what the widget is called nearly everywhere else anyway — but
-  this one is style, and it should be decided rather than inherited from
-  the two above.
+- **Menu → the alias becomes SelectMenu.** `pub type Menu<S> =
+  Popup<Repeat<Row<S>>>` has seven uses, all inside `select.rs`. The
+  narrower name is the more accurate one regardless of the collision: it
+  is the menu *of a `Select`*. The widget keeps the plain name.
+- **Tree → stays Tree.** `App::Tree` is an associated type in a different
+  trait and `StaticTree` is the derive; there is no ambiguity, only a
+  reader meeting three senses of one word, and none of the three is in
+  the prelude. Renaming to TreeView would buy prose clarity at the price
+  of a name every other toolkit spells the short way. Decided, not
+  inherited from the two above — which is the point of listing it
+  separately.
 
 ## 3. The gate: one widget, four artifacts
 
