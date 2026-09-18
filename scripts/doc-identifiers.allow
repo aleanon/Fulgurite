@@ -102,3 +102,4 @@ Resources            # vello_cpu's cross-frame glyph cache, same comparison
 ERROR                # mdbook log level, quoted in docs/book-decision.md -- not ours
 feGaussianBlur       # SVG filter primitive, named in svg.rs and plan-glass.md -- not ours
 BackgroundImage      # SVG 1.1 filter input, named in the same comment for why it is unusable
+ValueContains        # renamed TextContains in M27/T27.0; the rustdoc records the rename

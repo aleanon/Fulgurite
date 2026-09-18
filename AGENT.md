@@ -110,6 +110,11 @@ are independent of each other**, so either may go first:
   to the eighteen widgets that already exist and does not close if it
   finds nothing in them.** M23's §4 task list is superseded; its
   groupings are kept because M27's tranches inherit them.
+  **T27.0 landing 1 shipped 2026-09-18**: the `~text` selector matches a
+  label as well as a value, and the pointer path takes its centre from an
+  entry's bounds, so a repeater row is clickable by the text it shows.
+  `scripts/agent_drive.sh` picks the Switch by name instead of
+  multiplying a row height.
 
 - **M28 — `docs/plan-tasks.md`** (T28.0–T28.9): **not started**, written
   2026-09-18. iced's `Task` and `Subscription`, in this architecture's

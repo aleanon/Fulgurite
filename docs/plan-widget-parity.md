@@ -139,19 +139,21 @@ equally hard — two are nearly solved already.
 
 | | problem | state today |
 |---|---|---|
-| **1** | **no syntax** names a row | `Term::ValueContains` (`~text`) is the one term that matches instance nodes at all — it reads the AccessKit node, not the table, so it needs no `idx`. It reads `value()`, and `Button` publishes `set_label`, not `set_value`. **So `~Switch` fails on a menu row by one field.** |
+| **1** | ~~**no syntax** names a row~~ **LANDED 2026-09-18** | `Term::TextContains` (`~text`) is the one term that matches instance nodes at all — it reads the AccessKit node, not the table, so it needs no `idx`. It reads `value()`, and `Button` publishes `set_label`, not `set_value`. **So `~Switch` fails on a menu row by one field.** |
 | **2** | **no decode** from a synthetic id | `observe::instance_id` is `1<<63 \| node<<44 \| row<<12 \| template`. The triple is *already in the id* the agent holds; `index_of_node` just answers `None` and nothing decodes the rest. |
-| **3** | **no action** without a table index | every path goes through `tree.states[i]`. But `pointer_target` wants only a **centre**, and `Entry::bounds()` already has one. |
+| **3** | ~~**no action** without a table index~~ **LANDED 2026-09-18** (pointer only) | every path goes through `tree.states[i]`. But `pointer_target` wants only a **centre**, and `Entry::bounds()` already has one. |
 | **4** | **no reachability** for a row outside the viewport | `Repeat::observe` announces only rows that overlap the viewport — deliberately (F4.7: announcing overrun rows created probe-versus-click divergence). So an offscreen row has no id, no bounds and no entry, and `input.scrollIntoView`, which is the fix, **refuses virtualized content**. Circular. |
 
 Six candidate solutions, with what each does and does not buy:
 
 - **(a) Coordinates — the status quo.** Zero cost, and it is the vacuous
   shape. The baseline, not a candidate.
-- **(b) Let `ValueContains` fall back to `label()`.** One condition.
+- **(b) Let the text term fall back to `label()`. DONE 2026-09-18.** One
+  condition, and the term was renamed `TextContains` to stop describing
+  half of what it matches.
   Turns `~Switch` into a working row selector immediately, with no id
   decoding at all. Solves 1.
-- **(c) Drop the `idx` requirement in `pointer_target`,** deriving the
+- **(c) Drop the `idx` requirement in the pointer path. DONE 2026-09-18.** deriving the
   centre from `Entry::bounds()`. Solves 3 for click, hover and the held
   press — which is most of what a drive does. Leaves `ui.explain`,
   `ui.getAppliedStyles` and `input.fill` refusing, because those read
@@ -183,9 +185,12 @@ that arithmetic — but the direction is not in doubt.)
 
 **Recommended, in three landings, cheapest first:**
 
-1. **(b) + (c)** — two small changes that together give
-   `input.click {"selector": "~Switch"}` on any *visible* row, and let
-   T27.3's harness start against the eighteen that exist today.
+1. ~~**(b) + (c)**~~ — **DONE 2026-09-18.**
+   `input.click {"selector": "~Switch"}` now works on any *visible* row.
+   `scripts/agent_drive.sh` picks the Switch by name instead of
+   multiplying a row height, and `crates/lumen-static-agent/tests/rows.rs`
+   holds the two claims with four injections behind them. T27.3's harness
+   is unblocked for the eighteen that exist today.
 2. **(e)** — row keys, so the drive names a row instead of computing one.
    This is the one that makes the protocol's claim about itself true.
 3. **(d) + (f)** — the decoder and scroll-to-row, which together unblock

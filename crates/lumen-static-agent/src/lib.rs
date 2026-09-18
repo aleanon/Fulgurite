@@ -10,7 +10,7 @@
 //! Selector grammar (space-separated terms, all must match):
 //! - `#save`        author id (`#[widget_id("save")]`)
 //! - `label`        widget kind name
-//! - `~text`        value contains "text"
+//! - `~text`        the text it shows contains "text" (value *or* label)
 //! - `@app.rs:42`   source provenance (file suffix, optional line)
 //! - `7`            table index
 //!
@@ -730,13 +730,28 @@ impl Agent {
         let tree = &tree;
         let ix = Index::build(tree);
         let e = resolve_one(&ix, selector_param(params)?)?;
-        let i = e.idx.ok_or((
+        // **A pointer wants a point, not a table index** (M27/T27.0).
+        // This required `idx` solely to reach `states[i]` for a centre
+        // the entry's own bounds already carry — so every click, hover
+        // and held press on a repeater row was refused, and the refusal
+        // told the caller to compute coordinates instead. That advice is
+        // the vacuous shape AGENT.md names, and `scripts/agent_drive.sh`
+        // took it.
+        //
+        // The table path stays first: `states[i]` is what the hit test
+        // will itself consult, and bounds are a `f64` round-trip through
+        // AccessKit. Identical in practice, but there is no reason to
+        // introduce a conversion for the case that never needed one.
+        if let Some(i) = e.idx {
+            let st = &tree.states[i];
+            return Ok((st.pos.x + st.size.w / 2.0, st.pos.y + st.size.h / 2.0));
+        }
+        let b = e.bounds().ok_or((
             NOT_FOUND,
-            "selector resolved to virtualized content; pass x/y instead".into(),
+            "selector resolved to a node with no bounds; pass x/y instead".into(),
             Value::Null,
         ))?;
-        let st = &tree.states[i];
-        Ok((st.pos.x + st.size.w / 2.0, st.pos.y + st.size.h / 2.0))
+        Ok((((b.x0 + b.x1) / 2.0) as f32, ((b.y0 + b.y1) / 2.0) as f32))
     }
 
     fn handle(&self, tree: &TreeRef, method: &str, params: &Value) -> RpcResult {
@@ -1444,7 +1459,17 @@ impl<'a> Index<'a> {
 enum Term<'s> {
     Wid(&'s str),
     Kind(&'s str),
-    ValueContains(&'s str),
+    /// `~text` — the text this node *shows* contains `text`.
+    ///
+    /// **The one term that reaches a repeater row** (M27/T27.0), because
+    /// it matches the AccessKit node rather than the const table, and a
+    /// row has no table entry of its own. It read `value()` alone until
+    /// 2026-09-18, and `Button` publishes `set_label` — so `~Switch`
+    /// missed a menu row by one field while matching the `Label` beside
+    /// it. Both are "the text the user sees"; one term for both is the
+    /// honest reading, and is why this is no longer called
+    /// `ValueContains`.
+    TextContains(&'s str),
     Src { file: &'s str, line: Option<u32> },
     TableIndex(usize),
 }
@@ -1455,7 +1480,7 @@ fn parse_selector(sel: &str) -> Result<Vec<Term<'_>>, String> {
         let term = if let Some(id) = raw.strip_prefix('#') {
             Term::Wid(id)
         } else if let Some(text) = raw.strip_prefix('~') {
-            Term::ValueContains(text)
+            Term::TextContains(text)
         } else if let Some(loc) = raw.strip_prefix('@') {
             match loc.rsplit_once(':') {
                 Some((file, line)) if line.chars().all(|c| c.is_ascii_digit()) => Term::Src {
@@ -1479,7 +1504,10 @@ fn parse_selector(sel: &str) -> Result<Vec<Term<'_>>, String> {
 
 fn matches(tree: &TreeRef, e: &Entry, term: &Term) -> bool {
     match term {
-        Term::ValueContains(t) => e.node.value().is_some_and(|v| v.contains(t)),
+        Term::TextContains(t) => {
+            e.node.value().is_some_and(|v| v.contains(t))
+                || e.node.label().is_some_and(|v| v.contains(t))
+        }
         Term::TableIndex(i) => e.idx == Some(*i),
         Term::Wid(_) | Term::Kind(_) | Term::Src { .. } => {
             let Some(i) = e.idx else { return false };
@@ -1517,7 +1545,7 @@ fn nearest(tree: &TreeRef, term: &Term) -> Value {
             json!({ "available_files": files })
         }
         Term::TableIndex(_) => json!({ "table_len": tree.table.len() }),
-        Term::ValueContains(_) => Value::Null,
+        Term::TextContains(_) => Value::Null,
     }
 }
 

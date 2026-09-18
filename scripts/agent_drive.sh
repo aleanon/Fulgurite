@@ -61,7 +61,6 @@ def call(method, params=None):
 # can address them: not a stylesheet, not this script.
 TRIGGER = "#select-trigger"
 MENU = "#select-menu"
-ROW_H = 30
 
 def trigger_label():
     for node in call("ui.getTree", {"depth": 4})["nodes"]:
@@ -87,10 +86,15 @@ call("input.click", {"selector": TRIGGER})
 box = menu_box()
 assert box, "agent-drive: the dropdown did not open"
 
-# Row 8 is the Switch. Its position is computed from the menu's resolved
-# box rather than written down -- a hardcoded y is how a test ends up
-# clicking the wrong row and passing anyway.
-call("input.click", {"x": (box[0] + box[2]) / 2, "y": box[1] + ROW_H * 8 + ROW_H / 2})
+# **Pick the row by the text it shows** (M27/T27.0). This was
+# `{"y": box[1] + ROW_H * 8 + ROW_H / 2}` until 2026-09-18 -- arithmetic
+# over a resolved box, because every action method refused a repeater row
+# and said so: "selector resolved to virtualized content; pass x/y
+# instead". Taking that advice is the first vacuous shape AGENT.md names:
+# reorder the catalogue and row 8 is a different widget, silently, with
+# the assertion below still green because it only ever checked that
+# *something* changed.
+call("input.click", {"selector": "~Switch"})
 after = trigger_label()
 assert after != before, f"agent-drive: picking a row changed nothing ({before!r})"
 assert "Switch" in after, f"agent-drive: expected Switch, got {after!r}"

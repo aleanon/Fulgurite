@@ -48,9 +48,17 @@ Space-separated terms, all of which must match:
 |---|---|
 | `#save` | author id, from `#[widget_id("save")]` |
 | `label` | widget kind name |
-| `~text` | value contains "text" |
+| `~text` | the text it **shows** contains "text" — a value or a label |
 | `@app.rs:42` | source provenance — file suffix, optional line |
 | `7` | table index |
+
+`~text` is the one term that reaches inside a virtualized list. Every
+other term is matched against the const `NodeDesc`, and a repeater's rows
+are not on the const table — N materialized rows share the template's
+single entry, so they share its id, its classes and its kind. `~text`
+matches the node the widget *published* instead, which each row has of
+its own. It is how a menu row is clicked by name rather than by
+multiplying a row height (`docs/plan-widget-parity.md` T27.0).
 
 `@app.rs:42` is the one worth dwelling on. `NodeDesc` carries a `SrcLoc`
 in `observe` builds, so a report is not "a button has zero hit area" but
