@@ -85,6 +85,16 @@ class Action:
     #: Prose: what must be broken for `expect` to go red. Checked by a
     #: human and by the adversary, not by the runner.
     injection: str = ""
+    #: This action is expected to change *nothing* — it is a geometric
+    #: or stylistic claim about a widget that takes no input, and the
+    #: "did it land" check does not apply.
+    #:
+    #: **A flag, not an inference.** The runner cannot tell "this widget
+    #: has no state" from "the input missed", and guessing would turn
+    #: the first assertion off for every widget that happened to be
+    #: quiet. An author says so, and the runner then *insists* the
+    #: expectation is not merely `True`.
+    static: bool = False
 
 
 @dataclass
@@ -174,9 +184,55 @@ def _pick(c: AgentClient, widget: str) -> None:
     written. `agent_drive.sh` used to compute `box[1] + ROW_H * k`, which
     is the first vacuous shape AGENT.md names: reorder the catalogue and
     row k is a different widget, silently.
+
+    **Scrolling, because the catalogue has outgrown its own menu.**
+    `Repeat::observe` announces only the rows that intersect the
+    viewport — deliberately, so the agent never sees a row no click can
+    land on (F4.7). `docs/plan-widget-parity.md` T27.0 predicted this
+    would bite when the menu could no longer show every widget and put it
+    at fifty-one entries; it arrived at **twenty-one**, the moment
+    T27.4's three landed. Scrolling the open menu is a real user action
+    and needs no new endpoint, so it is what this does until T27.0's
+    third landing gives rows an addressable scroll.
     """
+    # **Settle first.** A drive leaves the window however the previous
+    # widget's last action left it, and an open overlay is not a neutral
+    # state: a `Tooltip`'s tip is a `Popup`, and one left showing sits in
+    # the overlay layer above the menu that is about to open. The first
+    # run of this walked six widgets and then reported the next fifteen
+    # as "never came into the menu's viewport", which is a true statement
+    # about a menu nothing could reach.
+    #
+    # Escape dismisses; the pointer goes to the corner so nothing is
+    # hovered, which is what re-opens a tip.
+    c.key("Escape", True)
+    c.key("Escape", False)
+    c.rpc("input.hover", x=2.0, y=2.0)
     c.click("#select-trigger")
-    c.rpc("input.click", selector=f"~{widget}")
+    menu = c.rpc("ui.resolve", selector="#select-menu").get("bounds")
+    if not menu:
+        raise Failed("the picker did not open")
+    mid = ((menu[0] + menu[2]) / 2, (menu[1] + menu[3]) / 2)
+    # **Back to the top first.** The menu keeps its offset between
+    # openings, so a drive that only ever scrolls *down* can reach the
+    # last widget and then never the first again — which is what
+    # happened the first time this scrolled at all.
+    for _ in range(30):
+        c.rpc("input.scroll", x=mid[0], y=mid[1], dy=120.0)
+    for attempt in range(24):
+        try:
+            c.rpc("input.click", selector=f"~{widget}")
+            break
+        except RuntimeError as e:
+            if "matched nothing" not in str(e):
+                raise
+            if attempt == 23:
+                raise Failed(
+                    f"{widget!r} never came into the menu's viewport after "
+                    f"{attempt + 1} scrolls — the catalogue is longer than the "
+                    f"menu and the row is not announced while it is off-screen"
+                ) from None
+            c.rpc("input.scroll", x=mid[0], y=mid[1], dy=-90.0)
     label = ""
     for n in c.tree()["nodes"]:
         if n.get("wid") == "select-trigger":
@@ -216,12 +272,13 @@ def run_widget(c: AgentClient, widget: str, sel: str, actions: list[Action],
         a.do(ctx)
 
         # (1) it landed -- on this widget, not on the root.
-        changed = c.rpc("ui.lastChange", since=since).get("changed", [])
-        readout = ctx.readout()
-        if not changed and not readout:
-            raise Failed(
-                f"{widget}/{a.name}: nothing changed and the readout is empty — "
-                f"the input did not reach the widget (injection: {a.injection})")
+        if not a.static:
+            changed = c.rpc("ui.lastChange", since=since).get("changed", [])
+            readout = ctx.readout()
+            if not changed and not readout:
+                raise Failed(
+                    f"{widget}/{a.name}: nothing changed and the readout is empty — "
+                    f"the input did not reach the widget (injection: {a.injection})")
 
         # (2) the specific consequence, with the number beside the bound.
         ok, measured = a.expect(ctx)

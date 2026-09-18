@@ -37,16 +37,18 @@
 
 mod chart;
 mod indicator;
+pub mod surface;
 mod trim;
 
 pub use chart::{BarChart, Chart, LineChart, PieChart, Series, MAX_POINTS};
 pub use indicator::{ProgressBar, Skeleton, Spinner};
+pub use surface::{Card, Toast, Tooltip, MAX_SURFACE_NODES};
 pub use trim::{Avatar, Badge, Chip, Divider, Icon, Symbol};
 
 /// Everything in this crate, for a `use` that keeps up.
 pub mod prelude {
     pub use crate::{
-        Avatar, Badge, BarChart, Chip, Icon, LineChart, Divider, PieChart, ProgressBar, Series,
-        Skeleton, Spinner, Symbol,
+        Avatar, Badge, BarChart, Card, Chip, Icon, LineChart, Divider, PieChart, ProgressBar,
+        Series, Skeleton, Spinner, Symbol, Toast, Tooltip,
     };
 }

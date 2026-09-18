@@ -804,6 +804,25 @@ fn stylesheet() -> Vec<StyleRule> {
             Selector::Id("d_button_c"),
             btn().background(GHOST).color_role(Role::Accent),
         ),
+        // ---- M27/T27.4's three -------------------------------------
+        // The card is sized so the stage can show it whole; its default
+        // width is FILL, which is right for a card in a column and wrong
+        // for one on a centring stage.
+        StyleRule::new(
+            Selector::Id("d_card_a"),
+            Patch::new().width(Length::Fixed(280.0)),
+        ),
+        StyleRule::new(Selector::Id("d_card_title"), Patch::new().font_weight(600.0)),
+        // **Buttons need a ground.** `pressed_dim` and `hover_dim` scale
+        // a background; they cannot invent one, and a fully transparent
+        // button shows no press at all — a third of the showcase's
+        // "clicking does nothing" (`docs/plan-widgets-gallery.md` §3b).
+        StyleRule::new(Selector::Id("d_card_go"), btn().background_role(Role::Accent)
+            .color_role(Role::OnAccent)),
+        StyleRule::new(
+            Selector::Id(lumen_static_widgets::surface::PART_CONTENT),
+            btn().background_role(Role::Accent).color_role(Role::OnAccent),
+        ),
         // The field: a ground, a rounded edge, room for a caret.
         StyleRule::new(
             Selector::Id("d_textinput_a"),

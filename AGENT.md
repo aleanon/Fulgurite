@@ -133,7 +133,16 @@ are independent of each other**, so either may go first:
   and `Cmd::hash_into` folding a text run's buffer offset. Damage per
   interaction went from 170×–1 200× the widget's own box to **1.00×**
   (`docs/damage-amplification-decision.md`). Twelve widgets are left to retrofit; the harness drives 18
-  actions across six today, every one at 1.00×.
+  actions across six today, every one at 1.00×. **T27.4 shipped
+  2026-09-19** — `Card`, `Toast`, `Tooltip` in `lumen-static-widgets`,
+  and three more defects the drive found: a `Repeat` handled no wheel at
+  all (so **a `Select` with more options than fit could not be scrolled
+  by anyone**), it measured its viewport from the limits it was offered
+  rather than its own resolved box (M24/T24.2 fixed that asymmetry for
+  the width and left the height), and a tooltip drawn over its own
+  control took every click on it, because the overlay pass hit-tests
+  before `Node::hit`. Nine widgets, 24 actions, green under both
+  strategies.
 
 - **M28 — `docs/plan-tasks.md`** (T28.0–T28.12): **not started**, written
   2026-09-18 and **revised the same day after a seven-lens review: 42

@@ -55,6 +55,14 @@ pub struct Repeat<T: Widget + Default + 'static> {
     /// row style is their source until per-row styling exists.
     arena: crate::arena::Arena,
     first: usize,
+    /// The viewport height `layout` last measured against.
+    ///
+    /// Kept because `on_event` has no state array and must still tell
+    /// "the offset moved" from "we are at an end and the parent should
+    /// have the rest of the gesture" — `ScrollView` keeps its overflow
+    /// for the same reason. It is last frame's, which is this frame's
+    /// for any gesture that did not also resize the window.
+    viewport: f32,
 }
 
 impl<T: Widget + Default> Default for Repeat<T> {
@@ -74,6 +82,7 @@ impl<T: Widget + Default> Repeat<T> {
             template: None,
             arena: crate::arena::Arena::new(T::NODE_COUNT),
             first: 0,
+            viewport: 0.0,
         }
     }
 
@@ -180,6 +189,15 @@ impl<T: Widget + Default> Repeat<T> {
             return 0;
         }
         (Self::MAX_ADDRESSABLE_EXTENT / self.item_extent) as usize
+    }
+
+    /// The largest useful scroll offset: content past the viewport, or
+    /// zero when everything fits.
+    pub fn max_scroll(&self, viewport_h: f32) -> f32 {
+        if self.count == 0 || !self.extent_is_usable() || !viewport_h.is_finite() {
+            return 0.0;
+        }
+        (self.count as f32 * self.item_extent - viewport_h).max(0.0)
     }
 
     fn visible_range(&self, viewport_h: f32) -> (usize, usize) {
@@ -296,7 +314,31 @@ impl<T: Widget + Default + 'static> Node for Repeat<T> {
         st: &mut [NodeState],
         i: usize,
     ) -> Size {
-        let (first, vis) = self.visible_range(limits.max_h);
+        // **The repeater's own box, resolved before anything reads it —
+        // both axes, M27/T27.4.**
+        //
+        // M24/T24.2 fixed the width half of this and the comment below
+        // still describes it: a row must be laid out against the box the
+        // repeater *settled on*, not the one it was offered. The height
+        // half was left, and it is the same defect with a different
+        // symptom: `visible_range` and the scroll clamp were measured
+        // against `limits.max_h`, which for a `Popup`'s content is the
+        // whole window. So a 630 px menu inside a 560 px panel computed
+        // `max_scroll = 630 - 720 = 0` and **could not be scrolled at
+        // all** — the wheel arrived, `on_event` ran, and the clamp
+        // pinned the offset to zero. Found by `just widget-drive`, which
+        // could not reach the last three widgets in the showcase's own
+        // menu.
+        //
+        // Neither `content` nor `s` depends on a row: `content.h` is
+        // `count * item_extent` and `content.w` is the limit. So the box
+        // can be resolved first, and everything below measured against
+        // it.
+        let content = Size { w: limits.max_w, h: self.count as f32 * self.item_extent };
+        let s = crate::ops::resolve_self(limits, &style[i], content);
+        self.viewport = s.h;
+        self.scroll = crate::num::clamp(self.scroll, 0.0, self.max_scroll(s.h));
+        let (first, vis) = self.visible_range(s.h);
         self.first = first;
         self.window.resize_with(vis, T::default);
         // One probe styles every row: `Node::defaults` depends on the
@@ -324,8 +366,6 @@ impl<T: Widget + Default + 'static> Node for Repeat<T> {
         // (M24/T24.2). It is the same asymmetry `ScrollView` has and
         // `examples/showcase` recorded against it; this half is now
         // fixed.
-        let content = Size { w: limits.max_w, h: self.count as f32 * self.item_extent };
-        let s = crate::ops::resolve_self(limits, &style[i], content);
         let row_limits =
             Constraints { min_w: 0.0, max_w: s.w, min_h: 0.0, max_h: self.item_extent };
         let n = T::NODE_COUNT;
@@ -420,6 +460,30 @@ impl<T: Widget + Default + 'static> Node for Repeat<T> {
             inner: None,
             local: Point { x: x - st[i].pos.x, y: y - st[i].pos.y },
         })
+    }
+
+    /// **A repeater scrolls itself — M27/T27.4.**
+    ///
+    /// Nothing did before, and nothing noticed, because every repeater
+    /// in the tree until M24 sat inside a `ScrollView`. `Select`'s menu
+    /// is a bare `Popup<Repeat<Row>>`, so **a dropdown with more options
+    /// than fit on screen could not be scrolled at all** — not by a
+    /// wheel, not by a drag, not by anything. Found by
+    /// `just widget-drive` the moment the showcase's catalogue grew past
+    /// what its own menu could show, at twenty-one entries.
+    ///
+    /// The offset moves *against* `dy`, and declines at an end so the
+    /// parent gets the rest of the gesture. Both are
+    /// [`crate::ScrollView`]'s conventions, because a list that scrolled
+    /// the other way from every other list would be its own defect.
+    fn on_event(&mut self, ev: &crate::event::Event, _cx: &crate::event::EventCtx) -> bool {
+        let crate::event::Event::Scroll { dy, .. } = ev else { return false };
+        let want = crate::num::clamp(self.scroll - dy, 0.0, self.max_scroll(self.viewport));
+        if want == self.scroll {
+            return false;
+        }
+        self.scroll = want;
+        true
     }
 
     fn node(&self, _i: usize) -> &dyn Node {

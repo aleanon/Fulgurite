@@ -170,6 +170,30 @@ pub static CATALOG: &[Entry] = &[
         false,
         |s| on(s, Demo::Pie(DPieChart { a: PieChart::new(&[5.0, 3.0, 2.0, 1.5, 1.0]) })),
         none),
+    // ---- M27/T27.4 ------------------------------------------------
+    entry!("Surface", "Card", "A raised panel with a live control on it.",
+        "A wrapper that does not route `Handlers<S>` leaves every control inside it hit-testable, hoverable, pressable and wired to nothing — which is what `Dyn` shipped as.",
+        false,
+        |s| on(s, Demo::Card(DCard { a: Card::new(CardBody {
+            title: { let mut l = Label::<String>::default(); l.set("Storage".into()); l },
+            go: btn("Manage"),
+        }) })),
+        |s| format!("presses: {}", s.presses)),
+    entry!("Surface", "Toast", "A transient message, in two lengths.",
+        "It does not dismiss itself: there is no per-node tick here, so the application owns the lifetime — the same reason `Spinner` does not drive its own phase.",
+        false,
+        |s| on(s, Demo::Toast(DToast {
+            a: Toast::new("Saved".into()),
+            b: Toast::new("Could not reach the server — retrying".into()),
+        })),
+        none),
+    entry!("Surface", "Tooltip", "Hover the button; the tip follows.",
+        "The tip keys on the *content's* hover, not the wrapper's: `dispatch` marks the deepest node it hits, so a wrapper never sees one.",
+        false,
+        |s| on(s, Demo::Tooltip(DTooltip {
+            a: Tooltip::new(btn("Hover me"), "Shows while the pointer is over it".into()),
+        })),
+        |s| format!("presses: {}", s.presses)),
 ];
 
 /// The series the charts share, so the three demos are comparable.

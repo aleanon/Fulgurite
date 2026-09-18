@@ -582,7 +582,7 @@ each names its injections in the commit body.
 | ~~**T27.1**~~ | *(no widget)* | ~~the stroked rect~~ **DONE 2026-09-18** | — |
 | ~~**T27.2**~~ | *(no widget)* | ~~the three taken names~~ **DONE 2026-09-18** | — |
 | ~~**T27.3**~~ | *(no widget)* | ~~the drive harness~~ **HARNESS DONE 2026-09-19**; six widgets retrofitted (18 actions), twelve left | T27.0 |
-| **T27.4** | Card, Toast, Tooltip | leaves with a shadow and a tip | T27.1 |
+| ~~**T27.4**~~ | ~~Card, Toast, Tooltip~~ **DONE 2026-09-19** | leaves with a shadow and a tip — and two more framework defects | T27.1 |
 | **T27.5** | NumberInput, RangeSlider, SearchField | composites over `TextInput` and `Slider` | T27.1 |
 | **T27.6** | Tabs, AppBar, BottomNav, NavigationRail, PullToRefresh | one shape five times: a strip with a selected index | T27.0 |
 | **T27.7** | Modal, Sheet, Drawer | the overlay layer M15 built, now with a `Host` that dispatches into it (M24) | — |
@@ -633,6 +633,37 @@ protocol failing — M26's four hidden defects were in layout skipping,
 which none of these four widgets exercises — but it is a claim to keep
 checking rather than to assume, and the first tranche whose widgets
 manage their own subtree invalidation is where it should be re-read.
+
+### T27.4, as built — the harness earning its keep on new code
+
+Three widgets, and **two more framework defects**, both found by driving
+rather than by reading and neither visible to a headless test:
+
+| | what | how it surfaced |
+|---|---|---|
+| 7 | **A `Repeat` could not be scrolled.** Nothing in `Repeat`, `Popup` or `Select` handled a wheel — every repeater before M24 sat inside a `ScrollView`, which drove `scroll` as a plain field. So **a dropdown with more options than fit was unusable**, by anyone. | the drive could not reach the last three widgets in the showcase's *own* menu |
+| 8 | And after the wheel landed it still did nothing: `visible_range` and the clamp measured against `limits.max_h`, which for a popup's content is the whole window — a 630 px list in a 560 px panel computed `max_scroll = 630 - 720 = 0`. **M24/T24.2 fixed this exact asymmetry for the width and left the height**, and its comment says so. | the wheel arrived, `on_event` ran, the clamp pinned the offset to zero |
+| 9 | **A tooltip drawn over its own control takes every click on it.** The overlay pass hit-tests *before* `Node::hit`, so `Tooltip::hit` declining to offer the tip made no difference at all. | the press counter did not move; the headless test calls `Node::hit` directly and cannot see the overlay pass |
+
+The fix for 9 is also the right design — a tip belongs *below* its
+control — which is the useful kind of bug: the correct behaviour and the
+working behaviour turn out to be the same edit.
+
+**The reachability problem the plan put at fifty-one entries arrived at
+twenty-one.** §2's option (f) predicted that a catalogue longer than its
+own menu would strand two-thirds of the widgets; three new entries were
+enough. The harness scrolls to find a row for now — a real user action
+needing no new endpoint — and T27.0's third landing still owns the
+proper answer.
+
+**Three more harness bugs, all found by using it**: a drive left an
+overlay open and the next fifteen widgets reported "never came into the
+menu's viewport", which is a true statement about a menu nothing could
+reach (`_pick` now dismisses and un-hovers first); a menu scrolled to the
+bottom could never reach the top again (it scrolls back up first); and
+the tip's area was read from the `Popup` node, which is a zero-sized
+marker whose *content* carries the geometry — reported `0 -> 0` for a
+tip that had opened perfectly well.
 
 **T27.3 is the load-bearing one and it is deliberately placed before any
 new widget.** The harness is built and then proved against eighteen

@@ -62,6 +62,14 @@ def main() -> int:
         except Failed as e:
             print(f"  FAIL {widget} [{strategy}]: {e}", file=sys.stderr)
             failures += 1
+        except RuntimeError as e:
+            # An RPC that errored rather than an assertion that failed —
+            # a refused selector, a method that does not exist. Counted
+            # and carried on: one widget's broken drive must not hide the
+            # other twenty's results, which is what an uncaught exception
+            # did the first time this happened.
+            print(f"  ERROR {widget} [{strategy}]: {e}", file=sys.stderr)
+            failures += 1
     print(f"widget-drive [{strategy}]: {len(entries)} widgets, {actions} actions, "
           f"{failures} failed")
     return 1 if failures else 0

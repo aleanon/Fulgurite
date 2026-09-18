@@ -93,6 +93,42 @@ pair!(PairRadioA, Radio<Show>, "d_radio_a", "d_radio_al");
 pair!(PairRadioB, Radio<Show>, "d_radio_b", "d_radio_bl");
 pair!(PairRadioC, Radio<Show>, "d_radio_c", "d_radio_cl");
 
+/// A card with something on it — the point being that the something is
+/// live. `docs/plan-widgets-gallery.md` §3 records what a wrapper that
+/// does not route handlers looks like: every control inside it is
+/// hit-testable, hoverable, pressable and wired to nothing.
+#[derive(StaticTree, Default)]
+#[widget(row, spacing = 12.0)]
+pub struct DCard {
+    #[widget_id("d_card_a")]
+    pub a: Card<CardBody>,
+}
+
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 8.0)]
+pub struct CardBody {
+    #[widget_id("d_card_title")]
+    pub title: Label<String>,
+    #[widget_id("d_card_go")]
+    pub go: Button<Show, String>,
+}
+
+#[derive(StaticTree, Default)]
+#[widget(row, spacing = 12.0)]
+pub struct DToast {
+    #[widget_id("d_toast_a")]
+    pub a: Toast<String>,
+    #[widget_id("d_toast_b")]
+    pub b: Toast<String>,
+}
+
+#[derive(StaticTree, Default)]
+#[widget(row, spacing = 12.0)]
+pub struct DTooltip {
+    #[widget_id("d_tooltip_a")]
+    pub a: Tooltip<Button<Show, String>, String>,
+}
+
 #[derive(StaticTree, Default)]
 #[widget(row, spacing = 12.0)]
 pub struct DLabel {
@@ -296,6 +332,9 @@ pub enum Demo {
     Bar(DBarChart),
     Line(DLineChart),
     Pie(DPieChart),
+    Card(DCard),
+    Toast(DToast),
+    Tooltip(DTooltip),
 }
 
 impl Default for Demo {
@@ -305,4 +344,4 @@ impl Default for Demo {
 }
 
 /// How many demos the stage has. Asserted against the catalogue.
-pub const DEMOS: usize = 18;
+pub const DEMOS: usize = 21;
