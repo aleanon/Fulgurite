@@ -254,6 +254,68 @@ embedded `.bss` and `.text` delta, in `docs/results-embedded.md`'s terms
 with it, 112 B → ~120 B, and that one is cheap: a `Patch` is per *rule*,
 and rules number in the tens.
 
+#### Why `align` is in `Style` — asked 2026-09-18, and the budget answer that came out of it
+
+The question was whether layout belongs on the widget and only appearance
+in `Style`, since **not every widget needs `align`**. The second half is
+right, the first half is not the seam this struct has, and following the
+second half pays for half the border.
+
+**`Style` is not "appearance" — it is *everything that cascades*.**
+`width`, `height`, `padding` and `spacing` are layout and are 37 of its
+72 bytes. Applying a layout/appearance split consistently would move
+those four out too, and then no stylesheet could lay anything out — which
+is the model the sheet lint (`W1010`), the showcase, and every decision
+in `docs/plan-appearance.md` rest on. The seam is **cascades / does
+not**, and `align` is on the cascading side by more than habit: `spacing`
+has a derive attribute and **`align` has none**, so a stylesheet is the
+*only* way to set it today.
+
+**But the observation is exactly right.** Every reader of `align` is in
+`crates/lumen-static-macros/src/lib.rs` — the derive's container layout,
+off `let me = style[i]`. A leaf pays a byte it never reads.
+
+**And that byte is worth four.** The tail slot — `align`, `focus_ring`,
+`cursor`, `visible` — is 4 bytes and exactly full. Free one and
+`border_width: u8` lands in it: **`Style` 72 → 76 rather than 72 → 80,
+halving what the border costs.**
+
+Two things stop that being a simple win:
+
+- **The same test condemns its neighbours**, which is the sign it is the
+  wrong axis. Only focusable nodes read `focus_ring`; only hovered ones
+  read `cursor`. Three of the four tail bytes fail "not every widget
+  needs it".
+- **`i18n::mirror_styles` rewrites `s.align` and `s.padding` in one flat
+  pass over the style array**, once per locale change, and its doc says
+  this "costs a laid-out frame nothing". Per-widget alignment makes RTL
+  mirroring a tree walk through a new trait method that every custom
+  container must implement — and one that forgets is silently
+  left-to-right in an RTL locale. That is the `Deferring` shape again: a
+  provided body that is right for a leaf and wrong for a container.
+
+**So take the bytes without moving the property.** The four-byte tail
+holds 22 bits of real information: `align` 2 (four variants), `cursor` 3
+(eight), `visible` 1, `focus_ring` 8, `border_width` 8. Packed, every
+field keeps cascading, the border's width is free, and `Style` is 76.
+The cost is named rather than hidden: `s.align` becomes `s.align()`,
+`Style` stops being a plain aggregate that the cascade can assign
+field-wise, and `Patch` application needs setters — churn across the
+derive, `i18n`, the agent's style report and every sheet.
+
+**Weigh it against T25.5 before building it.** That task ran the adjacent
+experiment — six *appearance* fields off `Style` and onto the widget,
+iced's shape — with its thresholds written before the pilot, and it was
+**stopped on its own rule**; the code is in history at `0df160b` and
+`docs/results-appearance.md` is the evidence. It says nothing directly
+about `align`, but it is the same seam, and its protocol — thresholds
+first, then measure — is the one to reuse here.
+
+**Decided for now: `align` stays in `Style`, and the border ships at
+80 B with the budget re-cut.** Packing the tail is a separate,
+measurable task with a real API cost, and pairing it with a widget
+milestone would hide one behind the other.
+
 **And one design instruction, from the `Deferring` lesson.** `Painter`
 is five required methods and six provided, with four implementors of
 which **three are wrappers** — `Deferring`, `Recording`, `Scaled`.
