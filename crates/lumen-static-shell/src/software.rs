@@ -13,6 +13,13 @@ use lumen_static::desc::Point;
 use lumen_static::display::{Cmd, Color, DisplayList, Renderer, Stops};
 
 /// An RGBA8 pixel buffer.
+/// **Keeps its name; M27's widget is PaintBox** (T27.2, 2026-09-18).
+///
+/// Lumen has a `Canvas` widget — a user draw callback — and this is the
+/// raster backend's pixel buffer. Renaming *this* to free the widget
+/// name would be the tail wagging the dog: it is cited from
+/// `lumen-static-shell`'s front page, from `lumen-static-wgpu`'s shader
+/// comments, and from AGENT.md itself (`Canvas::bands_for`).
 pub struct Canvas {
     pub width: u32,
     pub height: u32,

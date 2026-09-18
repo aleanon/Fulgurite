@@ -126,7 +126,7 @@ than guessing at them:
   side, so the information exists and only the query direction is
   missing.
 
-It unblocks six of the thirty-three directly — DataGrid, TreeView,
+It unblocks six of the thirty-three directly — DataGrid, Tree,
 Pagination, Menu, PickList, Combobox are all repeaters whose rows must
 be addressable to be tested at all — and it unblocks the harness for all
 thirty-three, which must pick a widget by name out of a fifty-one-row
@@ -341,7 +341,7 @@ overrode seven of eleven, inherited the rest, and every `Line` and
 required method**, so each wrapper is a compile error until it forwards,
 and the task's test is that a stroke survives an overlay pass.
 
-### T27.2 — the three taken names
+### T27.2 — the three taken names · **DONE 2026-09-18**
 
 Settle before typing, not during. **None of the three is a compile
 error**, and saying so matters, because the precedent everyone will
@@ -364,9 +364,11 @@ looks at prose.
   backend's pixel buffer, with dozens of methods, cited from
   `lumen-static-shell`'s front page, from `lumen-static-wgpu`'s shader
   comments, and from AGENT.md itself (`Canvas::bands_for`). Renaming
-  *that* to free a widget name would be the tail wagging the dog.
-- **Menu → the alias becomes SelectMenu.** `pub type Menu<S> =
-  Popup<Repeat<Row<S>>>` has seven uses, all inside `select.rs`. The
+  *that* to free a widget name would be the tail wagging the dog. The
+  reasoning is recorded on `software::Canvas` itself, where the next
+  person tempted to rename it will read it.
+- **Menu → the alias is now `SelectMenu`. Landed.** Seven uses, all
+  inside `select.rs`. The
   narrower name is the more accurate one regardless of the collision: it
   is the menu *of a `Select`*. The widget keeps the plain name.
 - **Tree → stays Tree.** `App::Tree` is an associated type in a different
@@ -578,7 +580,7 @@ each names its injections in the commit body.
 |---|---|---|---|
 | **T27.0** | *(no widget)* | per-row addressing for `Repeat` — **landing 1 of 3 done 2026-09-18** | — |
 | ~~**T27.1**~~ | *(no widget)* | ~~the stroked rect~~ **DONE 2026-09-18** | — |
-| **T27.2** | *(no widget)* | the three taken names | — |
+| ~~**T27.2**~~ | *(no widget)* | ~~the three taken names~~ **DONE 2026-09-18** | — |
 | **T27.3** | *(no widget)* | the drive harness + adversary protocol, **retrofitted to the eighteen that already exist** | T27.0 |
 | **T27.4** | Card, Toast, Tooltip | leaves with a shadow and a tip | T27.1 |
 | **T27.5** | NumberInput, RangeSlider, SearchField | composites over `TextInput` and `Slider` | T27.1 |
@@ -586,7 +588,7 @@ each names its injections in the commit body.
 | **T27.7** | Modal, Sheet, Drawer | the overlay layer M15 built, now with a `Host` that dispatches into it (M24) | — |
 | **T27.8** | Wrap, Grid, SplitPane, PaneGrid, Accordion | the layout group; needs `Widget`-level work, and is the tranche most likely to move the const-eval number | — |
 | **T27.9** | Menu, PickList, Combobox | generalising `Select`, which the showcase's own picker already is | T27.0 |
-| **T27.10** | DataGrid, TreeView, Pagination | repeaters with addressable rows | T27.0, T27.1 |
+| **T27.10** | DataGrid, Tree, Pagination | repeaters with addressable rows | T27.0, T27.1 |
 | **T27.11** | ColorPicker, DatePicker, TimePicker, FilePicker | all four are bordered composites over the above | T27.1, T27.8 |
 | **T27.12** | RichText, Markdown, RichTextEditor, PaintBox | the text-heavy tail and the draw callback | — |
 

@@ -63,7 +63,21 @@ use crate::widget::{Node, Widget};
 pub type Row<S> = Button<S, alloc::string::String>;
 
 /// The menu itself: rows in an out-of-flow popup.
-pub type Menu<S> = Popup<Repeat<Row<S>>>;
+///
+/// **Named `Menu` until M27/T27.2.** The wider name is wanted for the
+/// nested command menu M27 builds, and the narrower one was the more
+/// accurate of the two anyway: this is the menu *of a `Select`*, not a
+/// menu in general. Renaming the alias rather than the widget is the
+/// cheaper half — seven uses, all in this file.
+///
+/// The collision was never a compile error, since the two would live in
+/// different crates and neither is in the prelude. What it costs is
+/// prose: `check_doc_identifiers.sh` says of itself that it "does not
+/// know scope", so a backticked `Menu` in a doc comment would pass
+/// whichever one the writer meant, forever. `Rule` *was* a hard
+/// collision — it is in the prelude, so a `Rule` widget makes a glob
+/// import ambiguous — which is why tranche 1 shipped `Divider`.
+pub type SelectMenu<S> = Popup<Repeat<Row<S>>>;
 
 /// A dropdown.
 ///
@@ -72,7 +86,7 @@ pub struct Select<S: 'static> {
     /// What the closed control shows. The application writes the label.
     pub trigger: Row<S>,
     /// The rows, and whether they are showing.
-    pub menu: Menu<S>,
+    pub menu: SelectMenu<S>,
     /// The trigger's rect, kept from `place`.
     ///
     /// `on_event` gets neither `&[Style]` nor `&[NodeState]` — the same
@@ -84,7 +98,7 @@ pub struct Select<S: 'static> {
 
 impl<S: 'static> Default for Select<S> {
     fn default() -> Self {
-        let mut menu = Menu::<S>::default();
+        let mut menu = SelectMenu::<S>::default();
         menu.anchor = Anchor::Below;
         Select {
             trigger: Row::<S>::default(),
@@ -141,7 +155,7 @@ impl<S: 'static> Select<S> {
 pub struct SelectTable<S>(core::marker::PhantomData<S>);
 
 impl<S: 'static> SelectTable<S> {
-    const N: usize = 1 + <Row<S> as Widget>::NODE_COUNT + <Menu<S> as Widget>::NODE_COUNT;
+    const N: usize = 1 + <Row<S> as Widget>::NODE_COUNT + <SelectMenu<S> as Widget>::NODE_COUNT;
 
     const ARRAY: [NodeDesc; MAX_SELECT_NODES] = {
         assert!(Self::N <= MAX_SELECT_NODES, "Select exceeds MAX_SELECT_NODES");
@@ -149,7 +163,7 @@ impl<S: 'static> SelectTable<S> {
         t[0] = NodeDesc::new(1, NO_PARENT, 0, 2, NodeDesc::CONTAINER);
         crate::widget::splice_child(&mut t, 1, <Row<S> as Widget>::SUB_TABLE, 0);
         let menu_at = 1 + <Row<S> as Widget>::NODE_COUNT;
-        crate::widget::splice_child(&mut t, menu_at, <Menu<S> as Widget>::SUB_TABLE, 0);
+        crate::widget::splice_child(&mut t, menu_at, <SelectMenu<S> as Widget>::SUB_TABLE, 0);
         t[1].next_sibling = menu_at as u32;
         // **The parts are addressable.** A `Select` is three `Button`s
         // and a panel, so `Kind("button")` cannot tell the trigger from
@@ -176,7 +190,7 @@ impl<S: 'static> SelectTable<S> {
         crate::widget::splice_seeds(
             &mut s,
             1 + <Row<S> as Widget>::NODE_COUNT,
-            <Menu<S> as Widget>::SEEDS,
+            <SelectMenu<S> as Widget>::SEEDS,
         );
         s
     };
@@ -195,10 +209,10 @@ pub const PART_POPUP: &str = "select-popup";
 pub const PART_MENU: &str = "select-menu";
 
 impl<S: 'static> Widget for Select<S> {
-    const NODE_COUNT: usize = 1 + <Row<S> as Widget>::NODE_COUNT + <Menu<S> as Widget>::NODE_COUNT;
+    const NODE_COUNT: usize = 1 + <Row<S> as Widget>::NODE_COUNT + <SelectMenu<S> as Widget>::NODE_COUNT;
     const DEPTH: usize = 1 + {
         let a = <Row<S> as Widget>::DEPTH;
-        let b = <Menu<S> as Widget>::DEPTH;
+        let b = <SelectMenu<S> as Widget>::DEPTH;
         if a > b {
             a
         } else {
