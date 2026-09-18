@@ -170,10 +170,14 @@ between two events**, so a screenshot taken after the release shows the
 resting frame, which is why "clicking does nothing" is a report a still
 image can neither confirm nor deny.
 
-One known cost, recorded rather than fixed: the showcase's frame never
+~~One known cost, recorded rather than fixed: the showcase's frame never
 settles, because `#[app(after_update = ...)]` reports nothing and the
 derive therefore marks every pump changed (`plan-invalidation.md`
-T16.10). It uses the hook to keep a `Slider`'s readout following a drag
+T16.10).~~ **Fixed 2026-09-19, M27/T27.3**: the hook returns `bool` now,
+mirroring `tick`. It was recorded here as a cost of the showcase and was
+in fact a cost of the *derive* — every application using the hook paid
+it, and the bill was the whole window on every interaction
+(`docs/damage-amplification-decision.md`). It uses the hook to keep a `Slider`'s readout following a drag
 — a slider owns its value and has no change callback to hang it on.
 Damage itself is exact: a press reports the button's own rect and
 nothing more.

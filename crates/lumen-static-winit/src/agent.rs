@@ -52,7 +52,7 @@ pub enum UserEvent {
 /// its field name, and `Backend` reaches the pixels without knowing
 /// which renderer drew them.
 pub struct Live<'a, A: App> {
-    pub host: &'a mut Host<A>,
+    pub host: &'a mut Host<A, crate::Ret, crate::Inval>,
     pub metrics: &'a mut Option<FontMetrics>,
     pub backend: &'a mut dyn Backend<A>,
     pub page: lumen_static::display::Color,

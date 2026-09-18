@@ -50,7 +50,7 @@
 //! | `#[reload(keep \| fresh \| reset)]` | a `Reloadable` field | survives a hot swap / comes from the new code / recomputed |
 //! | `#[tree]` | an `App` field | which field is the widget tree |
 //! | `#[bind(ui.value, "count: {}")]` | an `App` field | how this state reaches the screen |
-//! | `#[app(after_update = f)]` | an `App` struct | `fn(&mut Self)`, run after the bindings |
+//! | `#[app(after_update = f)]` | an `App` struct | `fn(&mut Self) -> bool`, run after the bindings; the `bool` says whether it changed anything |
 //!
 //! `#[bind]` also takes `with = f` for a `fn(&mut Target, &Source)`
 //! projection, and extra format arguments after the string.

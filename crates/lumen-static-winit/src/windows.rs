@@ -34,7 +34,7 @@ use crate::{surface, Cursor, Surface};
 /// window would be a second GPU context — 174 MB resident
 /// (`docs/results-gpu.md` §5), which is a decision rather than a detail.
 pub struct Pane<A: App> {
-    pub host: Host<A>,
+    pub host: Host<A, crate::Ret, crate::Inval>,
     pub window: Arc<Window>,
     pub surface: Surface,
     pub canvas: Canvas,

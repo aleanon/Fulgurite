@@ -28,8 +28,14 @@ fn shout(dst: &mut Label<String>, src: &str) {
 // ANCHOR_END: projection
 
 // ANCHOR: hook
-fn recompute(c: &mut Counter) {
+/// **Returns whether it changed anything** (M27/T27.3), mirroring
+/// `App::tick`. It returned `()` until then, which left the derive no
+/// choice but to mark every pump changed — and a frame that never
+/// settles damages the whole window on every interaction.
+fn recompute(c: &mut Counter) -> bool {
     c.hook_ran += 1;
+    // This hook only counts; it changes nothing the frame can see.
+    false
 }
 // ANCHOR_END: hook
 

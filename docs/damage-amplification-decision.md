@@ -116,3 +116,61 @@ That is the condition on which this should be reopened.
 - T16.12's culling does not interact with this. Culling changes which
   commands are emitted; the clip is still emitted and still spans the
   container.
+
+## A second amplification, on the agent's side — M27/T27.3, 2026-09-19
+
+This document is about what the **renderer** damages. The agent had its
+own, larger, and it went unnoticed for the same reason the first did:
+nothing asked a per-widget damage question until a drive script did.
+
+**Measured on the showcase, live**, by `just widget-drive`:
+
+| interaction | damage | the widget's own box | ratio |
+|---|---:|---:|---:|
+| click a `Button` | 691 200 px² | 4 059 px² | **170×** |
+| click a `Switch` | 691 200 px² | 960 px² | **720×** |
+| click a `CheckBox` | 691 200 px² | 576 px² | **1 200×** |
+| **after T27.3, all three** | the widget's own rect | — | **1.00×** |
+
+691 200 px² is 960 × 720 — the whole window, for every interaction.
+Three causes, all in `lumen-static-agent`, none in the renderer:
+
+1. **`journal::measure_into` folded a container's signature from its
+   children's.** One leaf's repaint flipped every ancestor's hash, and
+   every ancestor was then reported changed *with its own rect* — the
+   root's being the window. The fold was a real optimisation (it
+   replaced re-painting each subtree at every depth) and it solved the
+   right problem; it just also made damage grow with depth. A container
+   now signs what its own `paint` draws — shadow, fill, radius, border —
+   which is four state reads and cheaper than what it replaced.
+2. **The same fold meant a container's own paint was never signed at
+   all**, so a container whose background, radius, shadow or border
+   changed reported *nothing*. There was no test for it, because the
+   fold made every container look busy whenever anything under it moved:
+   **one defect hid the other.**
+3. **`Cmd::hash_into` folded a text run's offset into the shared text
+   buffer.** `measure_into` paints every node into one list, so a node
+   whose text changed *length* shifted the offset of every node painted
+   after it, and all of them reported a repaint they had not made. In
+   the showcase the readout going from `checked: false` to
+   `checked: true` — one byte shorter — reported the 954 px note at the
+   far end of the window as repainted: **61 056 px² of phantom damage**
+   for a click on a 24 × 24 checkbox.
+
+And a fourth, in the surface rather than the measurement:
+**`ui.lastDamage` reported the bounding box of every changed node**,
+which is the union M18 replaced. M18 changed the renderer and this
+surface was never updated, so the agent kept answering the pre-M18
+question — `regions` now reports the set, and `rect` is documented as
+the weaker answer.
+
+`crates/lumen-static-agent/tests/damage_shape.rs` holds all four, and
+**two of its five tests were themselves vacuous on the first attempt**,
+each proved so by the injection aimed at it: a sibling that paints a
+rect cannot notice a shifted *text* offset, and `summed <= hull` is an
+inequality a bounding box satisfies exactly. Both were strengthened, not
+softened — the second now asserts the region *count*, which is the only
+thing that separates a set from its hull.
+
+The renderer's 37× above is unaffected by any of this and remains as
+recorded.

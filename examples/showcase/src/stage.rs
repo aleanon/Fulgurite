@@ -54,33 +54,44 @@ use super::*;
 /// control is ignored outright — `resolve_self` returns the `Fixed`
 /// width whatever the padding says. So the pair is its own row with its
 /// own spacing, and the outer row spaces the pairs.
-#[derive(StaticTree, Default)]
-#[widget(row, spacing = 10.0)]
-pub struct PairCheck {
-    #[widget_id("d_checkbox_a")]
-    pub t: CheckBox<Show>,
-    #[widget_id("d_checkbox_al")]
-    pub l: Label<String>,
+/// One labelled control per *instance*, stamped from one macro.
+///
+/// **Seven types where there were three, and that is not duplication —
+/// it is what an author id means here.** A `#[widget_id]` lives on a
+/// *type's* field, so a composite instantiated twice carries the same id
+/// twice; `PairCheck` was used for both checkboxes and both of them
+/// answered to `d_checkbox_a`. `ui.resolve` refuses that ambiguity, so
+/// neither control could be clicked by name, no stylesheet rule could
+/// reach one without the other, and nothing said so.
+///
+/// Found on the **first run** of `just widget-drive` (M27/T27.3), which
+/// could not address either checkbox. Eight ids were duplicated across
+/// the three demos. `W1011` now reports it for everyone.
+///
+/// The labels keep unique ids *and* share a class: an id is an address
+/// and must be unique, a class is a style handle and is meant to repeat.
+/// The sheet uses the class.
+macro_rules! pair {
+    ($name:ident, $ctrl:ty, $cid:literal, $lid:literal) => {
+        #[derive(StaticTree, Default)]
+        #[widget(row, spacing = 10.0)]
+        pub struct $name {
+            #[widget_id($cid)]
+            pub t: $ctrl,
+            #[widget_id($lid)]
+            #[widget_class("pair-label")]
+            pub l: Label<String>,
+        }
+    };
 }
 
-#[derive(StaticTree, Default)]
-#[widget(row, spacing = 10.0)]
-pub struct PairSwitch {
-    #[widget_id("d_switch_a")]
-    pub t: Switch<Show>,
-    #[widget_id("d_switch_al")]
-    pub l: Label<String>,
-}
-
-#[derive(StaticTree, Default)]
-#[widget(row, spacing = 10.0)]
-pub struct PairRadio {
-    #[widget_id("d_radio_a")]
-    pub t: Radio<Show>,
-    #[widget_id("d_radio_al")]
-    pub l: Label<String>,
-}
-
+pair!(PairCheckA, CheckBox<Show>, "d_checkbox_a", "d_checkbox_al");
+pair!(PairCheckB, CheckBox<Show>, "d_checkbox_b", "d_checkbox_bl");
+pair!(PairSwitchA, Switch<Show>, "d_switch_a", "d_switch_al");
+pair!(PairSwitchB, Switch<Show>, "d_switch_b", "d_switch_bl");
+pair!(PairRadioA, Radio<Show>, "d_radio_a", "d_radio_al");
+pair!(PairRadioB, Radio<Show>, "d_radio_b", "d_radio_bl");
+pair!(PairRadioC, Radio<Show>, "d_radio_c", "d_radio_cl");
 
 #[derive(StaticTree, Default)]
 #[widget(row, spacing = 12.0)]
@@ -164,23 +175,23 @@ pub struct DButton {
 #[derive(StaticTree, Default)]
 #[widget(row, spacing = 34.0)]
 pub struct DCheckBox {
-    pub a: PairCheck,
-    pub b: PairCheck,
+    pub a: PairCheckA,
+    pub b: PairCheckB,
 }
 
 #[derive(StaticTree, Default)]
 #[widget(row, spacing = 34.0)]
 pub struct DSwitch {
-    pub a: PairSwitch,
-    pub b: PairSwitch,
+    pub a: PairSwitchA,
+    pub b: PairSwitchB,
 }
 
 #[derive(StaticTree, Default)]
 #[widget(row, spacing = 34.0)]
 pub struct DRadio {
-    pub a: PairRadio,
-    pub b: PairRadio,
-    pub c: PairRadio,
+    pub a: PairRadioA,
+    pub b: PairRadioB,
+    pub c: PairRadioC,
 }
 
 #[derive(StaticTree, Default)]

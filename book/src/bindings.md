@@ -48,7 +48,7 @@ Four declarations, four jobs:
 | `#[bind(ui.value, "count: {}")]` | formats this field into that label, every frame |
 | `#[bind(ui.ratio, "{} of {}", self.total)]` | same, with extra arguments — **the annotated field is always the first** |
 | `#[bind(ui.shout, with = shout)]` | hands it to a `fn(&mut Target, &Source)` instead of formatting |
-| `#[app(after_update = recompute)]` | a `fn(&mut Self)` run once after all the bindings |
+| `#[app(after_update = recompute)]` | a `fn(&mut Self) -> bool` run once after all the bindings |
 
 A field may carry more than one `#[bind]`. The tally in
 `examples/counter-window/src/app.rs` puts two on its single `count`: one
@@ -89,7 +89,7 @@ macro; only the local name differs.
 
 A binding is a per-field rule. When a value depends on several fields at
 once, or on something a format string cannot reach,
-`#[app(after_update = recompute)]` names a `fn(&mut Self)` that runs
+`#[app(after_update = recompute)]` names a `fn(&mut Self) -> bool` that runs
 after every binding has been applied.
 
 The order is the point. Bindings first, then the hook, then layout — so

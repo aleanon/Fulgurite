@@ -52,7 +52,7 @@ impl<A: App> Backend<A> for GpuBackend {
         self.gpu.set_images(images);
     }
 
-    fn resize(&mut self, host: &mut Host<A>, width: u32, height: u32) {
+    fn resize(&mut self, host: &mut Host<A, crate::Ret, crate::Inval>, width: u32, height: u32) {
         if self.gpu.size() == (width, height) {
             return;
         }
@@ -60,7 +60,7 @@ impl<A: App> Backend<A> for GpuBackend {
         host.resize(width, height);
     }
 
-    fn present(&mut self, host: &mut Host<A>, page: Color, frame_start: Instant) -> Frame {
+    fn present(&mut self, host: &mut Host<A, crate::Ret, crate::Inval>, page: Color, frame_start: Instant) -> Frame {
         let (layout_ns, paint_ns) = host.timings();
         let (width, height) = self.gpu.size();
         let viewport = [0.0, 0.0, width as f32, height as f32];

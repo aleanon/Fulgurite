@@ -120,6 +120,20 @@ are independent of each other**, so either may go first:
   **required**, not provided — an injection reproduces the `Deferring`
   bug exactly by making it provided. It cost 16 B per node and +676 B of
   `.text` (`docs/results-embedded.md`), re-budgeted rather than edited.
+  **T27.2** settled the three taken names (`SelectMenu`; Canvas and Tree
+  keep theirs). **T27.3's harness shipped 2026-09-19** —
+  `just widget-drive` drives every action a widget accepts against the
+  live window under *both* invalidation strategies, with three assertions
+  per action and coverage as an assertion rather than a review question.
+  Its prediction held: **six defects while retrofitting the first six
+  widgets**, five of them in the framework — duplicate author ids (now
+  `W1011`), `after_update` unable to report, `ui.lastDamage` answering
+  with a bounding box instead of M18's region set, the journal folding
+  children into containers, a container's own paint never signed at all,
+  and `Cmd::hash_into` folding a text run's buffer offset. Damage per
+  interaction went from 170×–1 200× the widget's own box to **1.00×**
+  (`docs/damage-amplification-decision.md`). Twelve widgets are left to retrofit; the harness drives 18
+  actions across six today, every one at 1.00×.
 
 - **M28 — `docs/plan-tasks.md`** (T28.0–T28.12): **not started**, written
   2026-09-18 and **revised the same day after a seven-lens review: 42
@@ -223,11 +237,25 @@ while proving nothing:
 | `tests/overlay.rs` dismissal (M24/T24.2) | asserted the popup *stayed open*, never that anything inside it fired |
 | every gate vs. a hidden subtree (M24/T24.3) | no tree had ever put an inactive enum variant near the end of the table |
 | invalidation oracle vs. hover and press (M25/T25.0) | its session never hovered, so `Boundaries` painted a stale shade on every real frame and the oracle agreed with it |
+| every test vs. per-widget damage (M27/T27.3) | nothing had ever asked what one interaction costs in pixels, so a click reported the whole window at **1 200×** the widget's own box and 151 test binaries were green |
+| every test vs. a container's own background (M27/T27.3) | the journal folded a container's signature from its *children's*, so every container looked busy whenever anything under it moved — **one defect hid the other**, and no test could have seen the second while the first stood |
 
 **Three were caught by injecting a fault; three by printing the measured
 number beside the bound and seeing the gap.** Neither method is
 optional, and reading the code caught none of them — reading is what
 wrote them.
+
+**The two added on 2026-09-19 were caught by the third method again, and
+they are the strongest case for it yet.** `just widget-drive` asked, for
+the first time, what a single interaction costs in pixels — and got the
+whole window, on a framework with two milestones of invalidation work
+behind it and 151 green test binaries. One of the two was *invisible
+while the other stood*: a container's own paint was never signed, and
+nothing could notice because the fold made every container report
+anyway. **A defect that hides a second defect is the argument for
+end-to-end assembly in one sentence** — reading finds neither, and a
+unit test for the hidden one cannot be written by someone who does not
+know it is there.
 
 **The four added on 2026-09-14 were caught by a third method: using the
 thing.** M24/T24.2 built a dropdown on machinery that had shipped in

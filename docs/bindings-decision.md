@@ -56,6 +56,10 @@ to call it from `update`, which is the same wiring one level up.
 Three forms: a format string (the annotated field is the first argument,
 further arguments written out in full), `with = f` for
 `fn(&mut Target, &Source)`, and struct-level `#[app(after_update = f)]`
+*(`-> bool` since M27/T27.3: a hook that cannot report leaves the
+derive no choice but to mark every pump changed, and a frame that never
+settles damages the whole window on every interaction —
+`docs/damage-amplification-decision.md`.)*
 for logic that will not fit a declaration.
 
 **A binding is generated straight-line code.** No registration, no

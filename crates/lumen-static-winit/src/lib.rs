@@ -178,6 +178,35 @@ impl Default for Config {
 /// endpoint, an accessibility adapter, a per-frame hook — builds its own
 /// `ApplicationHandler` out of [`Surface`] and [`translate`], which is
 /// what `examples/counter-window` does.
+/// Which invalidation strategy a turnkey window runs.
+///
+/// **A build-time switch, and it had to be one.** `Host`'s invalidation
+/// is a type parameter and `Win` holds a `Host` by value, so the choice
+/// is fixed at construction — the same reason the comment in [`run`]
+/// gives for building the user-event loop unconditionally. A `Config`
+/// field would need two of everything and a branch.
+///
+/// **Why it exists at all (M27/T27.3).** Nothing outside `lumen-static`'s
+/// own tests had ever instantiated [`lumen_static::Boundaries`]: not an
+/// example, not a fixture, not this crate. So the strategy M26 spent
+/// five defects on — *four of them invisible under `Everything`*, because
+/// a clean subtree is skipped before a wrong answer can be observed —
+/// was unreachable from every turnkey application. That is the fifth
+/// time a capability has landed in the shell with no way to reach it
+/// from the front door; `Config::stylesheet`, `Config::images`,
+/// `Config::agent` and the overlay sink were the first four.
+///
+/// 256 marks because `Boundaries<N>` stores ranges, not nodes, and M26/
+/// T26.5 fixed it wrapping its length at exactly that count.
+#[cfg(not(feature = "boundaries"))]
+pub type Inval = lumen_static::Everything;
+#[cfg(feature = "boundaries")]
+pub type Inval = lumen_static::Boundaries<256>;
+
+/// The retention this crate's windows use. Named so `Host<A, Ret, Inval>`
+/// reads the same at every site.
+pub type Ret = lumen_static::retain::Incremental;
+
 pub fn run<A: App + 'static>(app: A, config: Config) {
     #[cfg(feature = "agent")]
     {
@@ -209,7 +238,7 @@ pub fn run<A: App + 'static>(app: A, config: Config) {
 
 /// The turnkey handler behind [`run`].
 struct Win<A: App> {
-    host: Host<A>,
+    host: Host<A, Ret, Inval>,
     config: Config,
     /// The *same* face the canvas rasterises with. Layout must measure
     /// with the metrics paint will draw with, or the two disagree — the

@@ -1018,6 +1018,12 @@ impl Agent {
             "font_size": s.font_size,
             "font_weight": s.font_weight,
             "shadow": s.shadow,
+            // M27/T27.1. Reported because a drive script has to be able
+            // to ask "did the sheet's border reach this node" without
+            // reading pixels — and because a `Style` field the agent
+            // cannot see is a field no lint and no drive can check.
+            "border_width": s.border_width,
+            "border_color": color(s.border_color),
             "align": format!("{:?}", s.align),
             "visible": s.visible,
             // The interaction state that changes what is painted (C6),
@@ -1139,6 +1145,34 @@ impl Agent {
                 "detail": { "fields": fields },
             }));
         }
+        // W1011 (M27/T27.3): two nodes with the same author id. Static —
+        // it reads the const table and nothing else — so it is computed
+        // here rather than by the per-frame auditor.
+        let mut seen: Vec<(&str, usize)> = Vec::new();
+        for (i, d) in tree.table.iter().enumerate() {
+            if d.wid.is_empty() {
+                continue;
+            }
+            match seen.iter().find(|(w, _)| *w == d.wid) {
+                Some(&(_, first)) => {
+                    let mut o = self.node_ident(tree, i as u32);
+                    o.insert("code".into(), audit::codes::DUPLICATE_ID.into());
+                    o.insert(
+                        "message".into(),
+                        format!(
+                            "author id `{}` is on node {i} and node {first} — both are \
+                             unaddressable: `#{}` resolves to neither, and a stylesheet \
+                             rule for it silently styles both",
+                            d.wid, d.wid
+                        )
+                        .into(),
+                    );
+                    o.insert("detail".into(), json!({ "wid": d.wid, "first": first }));
+                    findings.push(Value::Object(o));
+                }
+                None => seen.push((d.wid, i)),
+            }
+        }
         json!({ "frame": self.frame, "findings": findings })
     }
 
@@ -1224,10 +1258,19 @@ impl Agent {
         let since = self.since_param(params);
         let report = self.journal.since(since);
         let rect = journal::damage(&report.changed);
+        let regions = journal::damage_regions(&report.changed);
         json!({
             "frame": self.frame,
             "since": since,
+            // **`rect` is the bounding box of `regions`, and is the
+            // weaker answer.** Kept because it is what every existing
+            // caller reads, but a bound computed against it is a bound
+            // against the wrong quantity: two small changes at opposite
+            // corners bound to the whole window. Use `regions`.
             "rect": rect.map(|r| json!([r[0], r[1], r[2], r[3]])).unwrap_or(Value::Null),
+            "regions": regions.as_slice().iter()
+                .map(|r| json!([r[0], r[1], r[2], r[3]]))
+                .collect::<Vec<_>>(),
             "nodes": report.changed.len(),
             "truncated": report.truncated,
             "reset": report.reset,

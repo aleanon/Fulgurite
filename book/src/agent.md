@@ -40,6 +40,27 @@ not lint at all (M26/T26.18):
 node it matches reads — by rule, because the rule is what is wrong
 (M25/T25.2).
 
+`W1011` names two nodes carrying the same `#[widget_id]`. Both are then
+**unaddressable**: `ui.resolve` refuses the ambiguity and so does every
+`input.*` that takes a selector. It is easy to write by accident, because
+an id lives on a *type's* field — a composite instantiated twice
+duplicates every id inside it. `examples/showcase` had eight, from three
+labelled-pair types used two and three times each, and nothing said so
+until a drive script could not click either checkbox (M27/T27.3).
+
+## What changed, and what it damaged
+
+`ui.lastChange` answers which nodes moved or repainted since a frame;
+`ui.lastDamage` answers what that costs in pixels.
+
+**Read `regions`, not `rect`.** `regions` is the damaged *set*, capped
+the way the renderer caps it; `rect` is that set's bounding box and is
+kept only because existing callers read it. A bound computed against
+`rect` is a bound against the wrong quantity — two small changes at
+opposite corners bound to the whole window, which is the union M18
+replaced and which this surface went on reporting until M27/T27.3. The
+numbers that found it are in `docs/damage-amplification-decision.md`.
+
 ## Selectors
 
 Space-separated terms, all of which must match:

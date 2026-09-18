@@ -128,16 +128,32 @@ fn fingerprint(table: &[NodeDesc]) -> u64 {
 
 /// Fill `geom` and `sums` for one frame, reusing all three buffers.
 ///
-/// **Leaves paint; containers combine.** A container's own `paint` emits
-/// nothing — its content *is* its children — so re-painting its whole
-/// subtree to sign it did O(depth) redundant work per node and produced
-/// 2.1–2.8x N commands per frame. The table is DFS pre-order, so a
-/// reverse walk sees every child before its parent and a container's
-/// signature folds its children's. Total painting is now one pass over
-/// the nodes that actually draw.
+/// **Every node signs its own paint and nothing else — M27/T27.3.**
 ///
-/// `child_count == 0` is the test for "paints its own content", which is
-/// deliberately true for the arena containers too: a `Repeat` has no
+/// It used to fold: a container's signature was the mix of its
+/// children's, so the table could be signed in one pass over the nodes
+/// that actually draw instead of re-painting each subtree at every
+/// depth. That solved the right problem and created two others, and both
+/// were found by a drive script rather than by reading:
+///
+/// 1. **Damage amplified to the whole window.** A leaf's repaint flipped
+///    every ancestor's folded signature, so every ancestor was reported
+///    changed *with its own rect* — and the root's rect is the window.
+///    A click on a 4 059 px² button reported 691 200 px² of damage,
+///    **170x**, on a frame whose only real change was a 68x18 label.
+/// 2. **A container's own paint was never signed at all.** The fold
+///    contained its children and nothing of itself, so a container whose
+///    background, shadow, radius — or, since M27/T27.1, whose border —
+///    changed reported *nothing*. There was no test, because the fold
+///    made every container look busy whenever anything under it moved.
+///
+/// So a container now signs exactly what the derive's `paint` draws
+/// before it recurses: shadow, fill, radius, border. That is four state
+/// reads, no painting, and no fold — cheaper than what it replaces, and
+/// it makes both of the above impossible rather than smaller.
+///
+/// `child_count == 0` is the test for "paints arbitrary content", which
+/// is deliberately true for the arena containers too: a `Repeat` has no
 /// table children but does draw, and its window (and its clip) belong in
 /// its own range.
 fn measure_into(
@@ -168,22 +184,23 @@ fn measure_into(
         }
     }
 
-    for i in (0..n).rev() {
-        let d = &tree.table[i];
+    // A container's *own* paint: what the derive draws before it
+    // recurses. Signed from the resolved state rather than by painting,
+    // because painting a container paints its whole subtree.
+    for (i, d) in tree.table.iter().enumerate() {
         if d.child_count == 0 {
             continue;
         }
-        // Fold the children's signatures. Same mixing constant the rest
-        // of the crate uses, so a reordering is visible.
-        let mut h = d.child_count as u64;
-        let mut c = d.first_child as usize;
-        for _ in 0..d.child_count {
-            h = h.wrapping_mul(0x9E37_79B9_7F4A_7C15).wrapping_add(sums[c]);
-            c = tree.table[c].next_sibling as usize;
-            if c == 0 || c >= n {
-                break;
-            }
+        let st = &tree.states[i];
+        let mut h = 0x9E37_79B9_7F4A_7C15u64;
+        for v in [st.radius, st.shadow] {
+            h = h.wrapping_mul(0x9E37_79B9_7F4A_7C15).wrapping_add(v.to_bits() as u64);
         }
+        for c in [st.bg, st.border_color] {
+            let bits = u32::from_be_bytes([c.0, c.1, c.2, c.3]) as u64;
+            h = h.wrapping_mul(0x9E37_79B9_7F4A_7C15).wrapping_add(bits);
+        }
+        h = h.wrapping_mul(0x9E37_79B9_7F4A_7C15).wrapping_add(st.border_width as u64);
         sums[i] = h;
     }
 }
@@ -300,6 +317,34 @@ impl Journal {
 }
 
 /// Union of a coalesced report's old and new bounds — the damage rect.
+/// The damaged **region set**, not its bounding box — M27/T27.3.
+///
+/// [`damage`] below unions every changed rect into one box, and M18's own
+/// doc says why that is the wrong answer: *"a box union is not closed
+/// under anything useful: a scrollbar thumb moving down the right edge,
+/// unioned with a toolbar across the top, is the whole window."* M18
+/// replaced the union with a bounded set in the renderer and **this
+/// surface was never updated**, so `ui.lastDamage` kept reporting the
+/// pre-M18 quantity — and a drive script that bounded a widget's damage
+/// by it read the whole window for a click on a button, because the
+/// readout at the top and the control in the middle bound to the frame.
+///
+/// Capped at [`lumen_static::retain::MAX_REGIONS`], exactly as the
+/// renderer caps it, so what an agent sees is what a frame would redraw
+/// rather than a more optimistic parallel answer.
+pub(crate) fn damage_regions(changed: &[Coalesced]) -> lumen_static::retain::Regions {
+    let mut set = lumen_static::retain::Regions::default();
+    for c in changed {
+        for r in [c.old.rect(), c.new.rect()] {
+            if r[2] <= r[0] || r[3] <= r[1] {
+                continue;
+            }
+            set.push(r);
+        }
+    }
+    set
+}
+
 pub(crate) fn damage(changed: &[Coalesced]) -> Option<[f32; 4]> {
     let mut acc: Option<[f32; 4]> = None;
     for c in changed {

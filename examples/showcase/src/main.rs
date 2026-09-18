@@ -198,21 +198,35 @@ pub struct Show {
 /// asks for no animation, so a tick-only refresh would show the count
 /// one interaction late. `after_update` runs on every pump, which is
 /// exactly when the store can have changed.
-fn refresh(s: &mut Show) {
+/// **Returns whether it changed anything** (M27/T27.3). It used to
+/// return `()`, which forced the derive to mark every pump changed, so
+/// the showcase's frame never settled and every interaction damaged the
+/// whole window. A drive script measuring per-widget damage read 170x
+/// the widget's own box before this.
+fn refresh(s: &mut Show) -> bool {
+    let mut changed = false;
     if s.needs_seed {
         s.needs_seed = false;
         let e = &CATALOG[s.selected];
         (e.seed)(s);
+        changed = true;
     }
     // **Read the typed fields back before reporting.** This is what a
     // `Dyn` island could not do: a `Slider` owns its value, and through
     // a `Box<dyn Node>` there was no handle to ask.
     if let Demo::Slider(d) = &s.ui.body.stage.row.demo {
-        s.fraction = d.a.value();
+        let v = d.a.value();
+        if v != s.fraction {
+            s.fraction = v;
+            changed = true;
+        }
     }
     let e = &CATALOG[s.selected];
     let text = (e.status)(s);
-    s.ui.body.header.readout.set(text);
+    // `set_str` compares before writing and answers whether the text
+    // differed, so the readout reports for itself rather than being
+    // assumed dirty — and the measurement memo survives an unchanged one.
+    changed | s.ui.body.header.readout.set_str(&text)
 }
 
 /// Advance what animates, and keep the live demo in step with the store.
@@ -817,9 +831,11 @@ fn stylesheet() -> Vec<StyleRule> {
         // The toggles' labels, which Lumen's controls carry and ours
         // do not: `Toggle` has no text of its own, so the demo pairs it
         // with a `Label` — which is also how an application writes it.
-        StyleRule::new(Selector::Id("d_checkbox_al"), lbl()),
-        StyleRule::new(Selector::Id("d_switch_al"), lbl()),
-        StyleRule::new(Selector::Id("d_radio_al"), lbl()),
+        // **A class, not seven ids** (M27/T27.3). Every labelled pair is
+        // its own type so its control has a unique address; the labels
+        // all want the same look, which is what a class is for and what
+        // an id is not.
+        StyleRule::new(Selector::Class("pair-label"), lbl()),
         StyleRule::new(Selector::Id("d_slider_a"), Patch::new().width(Length::Fixed(280.0))),
         StyleRule::new(Selector::Id("d_progress_a"), Patch::new().width(Length::Fixed(280.0))),
         StyleRule::new(Selector::Id("d_divider_a"), Patch::new().width(Length::Fixed(280.0))),
@@ -959,14 +975,24 @@ mod tests {
             assert_ne!(SHOW_LIGHT.get(r), SHOW_DARK.get(r), "setup: the palettes differ at {r:?}");
         }
 
-        /// Every node's author id, kind and resolved style: the main table,
-        /// then every arena under it.
-        fn nodes(h: &mut lumen_static_shell::Host<Show>) -> Vec<(&'static str, &'static str, Style)> {
+        /// Every node's author id, **classes**, kind and resolved style:
+        /// the main table, then every arena under it.
+        ///
+        /// Classes carried since M27/T27.3, when the labelled pairs
+        /// started sharing one (`pair-label`) instead of each carrying an
+        /// id. `winner` below used to `panic!("this check does not model
+        /// classes")` rather than quietly ignore them — which is the
+        /// difference between a guard and a hole, and is why adding the
+        /// class turned this test red instead of leaving it green and
+        /// wrong.
+        type Row = (&'static str, &'static [&'static str], &'static str, Style);
+
+        fn nodes(h: &mut lumen_static_shell::Host<Show>) -> Vec<Row> {
             let table = <Screen as Widget>::SUB_TABLE;
             let mut out: Vec<_> = table
                 .iter()
                 .enumerate()
-                .map(|(i, d)| (d.wid, <Screen as Widget>::SEEDS[i].kind, h.styles[i]))
+                .map(|(i, d)| (d.wid, d.classes, <Screen as Widget>::SEEDS[i].kind, h.styles[i]))
                 .collect();
             for i in 0..table.len() {
                 let node = h.app.ui.node_mut(i);
@@ -977,7 +1003,7 @@ mod tests {
                             Some(seeds) => seeds[k].kind,
                             None => arena.template.node(k).kind_name(),
                         };
-                        out.push((d.wid, kind, arena.style[k]));
+                        out.push((d.wid, d.classes, kind, arena.style[k]));
                     }
                 }
             }
@@ -987,15 +1013,21 @@ mod tests {
         /// The rule that decides a field for a node, in the cascade's
         /// order: highest specificity, then the last declared
         /// (`max_by_key` keeps the last of equals).
-        fn winner<'s>(sheet: &'s [Rule], wid: &str, kind: &str, field: Fields) -> Option<&'s Rule> {
+        fn winner<'s>(
+            sheet: &'s [Rule],
+            wid: &str,
+            classes: &[&str],
+            kind: &str,
+            field: Fields,
+        ) -> Option<&'s Rule> {
             sheet
                 .iter()
                 .filter(|r| r.patch.fields().contains(field))
                 .filter(|r| match r.selector {
                     Selector::Id(id) => id == wid,
                     Selector::Kind(k) => k == kind,
+                    Selector::Class(c) => classes.contains(&c),
                     Selector::Any => true,
-                    Selector::Class(_) => panic!("setup: this check does not model classes"),
                 })
                 .max_by_key(|r| r.selector.specificity())
         }
@@ -1009,13 +1041,13 @@ mod tests {
             h.set_palette(SHOW_DARK);
             let dark = nodes(&mut h);
             assert_eq!(light.len(), dark.len(), "setup: both walks saw the same nodes");
-            for ((wid, kind, l), (_, _, d)) in light.iter().zip(&dark) {
+            for ((wid, classes, kind, l), (.., d)) in light.iter().zip(&dark) {
                 let fields = [
                     (Fields::COLOR, "color", l.color, d.color),
                     (Fields::BACKGROUND, "background", l.background, d.background),
                 ];
                 for (field, name, lc, dc) in fields {
-                    let Some(rule) = winner(&sheet, wid, kind, field) else { continue };
+                    let Some(rule) = winner(&sheet, wid, classes, kind, field) else { continue };
                     let role =
                         if field == Fields::COLOR { rule.patch.color_role } else { rule.patch.background_role };
                     let at = || format!("{} {kind} #{wid} {name}", e.name);

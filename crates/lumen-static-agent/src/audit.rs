@@ -161,6 +161,24 @@ pub mod codes {
     /// `Seed::reads`, and reported per *rule* rather than per node,
     /// because the rule is what is wrong.
     pub const SHEET_NO_EFFECT: &str = "W1010";
+    /// Two nodes carry the same `#[widget_id]` — M27/T27.3.
+    ///
+    /// An author id is "the agent-facing stable address" and an `#id`
+    /// selector for the cascade. Two nodes sharing one makes both
+    /// **unaddressable**: `ui.resolve` refuses the ambiguity, every
+    /// `input.*` that takes a selector refuses with it, and a stylesheet
+    /// rule silently styles whichever nodes it finds.
+    ///
+    /// **It is easy to write by accident and nothing caught it.** An id
+    /// lives on a *type's* field, so any composite instantiated twice
+    /// duplicates every id inside it — which is exactly how the
+    /// showcase's `PairCheck` came to carry `d_checkbox_a` on two live
+    /// checkboxes. Found by the first run of `just widget-drive`, which
+    /// could not address either of them.
+    ///
+    /// Static: it depends on the const table alone, so it is computed
+    /// beside the sheet lint rather than per frame by the auditor.
+    pub const DUPLICATE_ID: &str = "W1011";
 }
 
 /// A condition that is true of the current frame.

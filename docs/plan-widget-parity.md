@@ -581,7 +581,7 @@ each names its injections in the commit body.
 | **T27.0** | *(no widget)* | per-row addressing for `Repeat` — **landing 1 of 3 done 2026-09-18** | — |
 | ~~**T27.1**~~ | *(no widget)* | ~~the stroked rect~~ **DONE 2026-09-18** | — |
 | ~~**T27.2**~~ | *(no widget)* | ~~the three taken names~~ **DONE 2026-09-18** | — |
-| **T27.3** | *(no widget)* | the drive harness + adversary protocol, **retrofitted to the eighteen that already exist** | T27.0 |
+| ~~**T27.3**~~ | *(no widget)* | ~~the drive harness~~ **HARNESS DONE 2026-09-19**; six widgets retrofitted (18 actions), twelve left | T27.0 |
 | **T27.4** | Card, Toast, Tooltip | leaves with a shadow and a tip | T27.1 |
 | **T27.5** | NumberInput, RangeSlider, SearchField | composites over `TextInput` and `Slider` | T27.1 |
 | **T27.6** | Tabs, AppBar, BottomNav, NavigationRail, PullToRefresh | one shape five times: a strip with a selected index | T27.0 |
@@ -591,6 +591,48 @@ each names its injections in the commit body.
 | **T27.10** | DataGrid, Tree, Pagination | repeaters with addressable rows | T27.0, T27.1 |
 | **T27.11** | ColorPicker, DatePicker, TimePicker, FilePicker | all four are bordered composites over the above | T27.1, T27.8 |
 | **T27.12** | RichText, Markdown, RichTextEditor, PaintBox | the text-heavy tail and the draw callback | — |
+
+### T27.3, as built — and the prediction it was written to test
+
+**The prediction held.** The plan said the harness would find defects in
+the eighteen that already exist, and that if it found nothing the
+tranche would not close. It found **six** while retrofitting the first six widgets,
+five of them in the framework rather than the showcase:
+
+| | what | how it surfaced |
+|---|---|---|
+| 1 | **Eight duplicate `#[widget_id]`s** in the showcase — every labelled pair. An id lives on a *type's* field, so a composite used twice duplicates every id in it, and both copies become unaddressable | `ui.resolve` refused `#d_checkbox_a`: "matched 2 nodes". New lint `W1011` |
+| 2 | **`#[app(after_update)]` could not report**, so the derive marked every pump changed and the showcase never settled | recorded as a known cost in M23; now `-> bool`, mirroring `tick` |
+| 3 | **`ui.lastDamage` reported a bounding box**, which is the union M18 replaced — the surface was never updated after M18 | a bound against it read 170× for a click on a button |
+| 4 | **The journal folded a container's signature from its children's**, so one leaf's repaint reported every ancestor with its own rect — the root's being the window | damage 691 200 px² on a 4 059 px² button |
+| 5 | **A container's own paint was never signed at all** — background, radius, shadow, border. *Hidden by 4*: the fold made every container look busy anyway | no test could have seen it while 4 stood |
+| 6 | **`Cmd::hash_into` folded a text run's buffer offset**, so a length change anywhere reported every node painted after it | 61 056 px² of phantom damage from a one-byte-shorter readout |
+
+**Damage went from 170×–1 200× the widget's own box to 1.00×**, measured
+on the live window under both strategies.
+`docs/damage-amplification-decision.md` has the table; that document had
+recorded the renderer's 37× as known and unfixed and is where this
+belongs beside it.
+
+**Five of the harness's own assertions were vacuous and each was caught
+by the isolate arm or by an injection aimed at it** — which is the protocol working on itself:
+a painted-background assertion that could not tell a toggle from a hover
+shade; a sibling that paints a rect and so cannot notice a shifted
+*text* offset; `summed <= hull`, an inequality a bounding box satisfies
+exactly; a slider `expect` written as a *state* (`abs(v - 0.5) < 0.12`)
+rather than a transition, which no isolate arm can falsify once a real
+click has put it there; and a focus-then-record ordering that blamed an
+arrow key for the click that had focused the slider. All five were
+strengthened. The plan said an
+injection that leaves a test green is a finding about the test, and it
+was, five times.
+
+**One non-finding worth recording**: `Boundaries` and `Everything` have
+so far produced *identical* results on every widget. That is not the
+protocol failing — M26's four hidden defects were in layout skipping,
+which none of these four widgets exercises — but it is a claim to keep
+checking rather than to assume, and the first tranche whose widgets
+manage their own subtree invalidation is where it should be re-read.
 
 **T27.3 is the load-bearing one and it is deliberately placed before any
 new widget.** The harness is built and then proved against eighteen

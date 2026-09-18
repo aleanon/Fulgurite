@@ -18,6 +18,11 @@ gpu = ["lumen-static-winit/gpu"]
 # the live window, so a review can open the dropdown and pick the next
 # widget instead of restarting the process once per widget.
 agent = ["lumen-static-winit/agent"]
+# M27/T27.3: the same showcase under `Boundaries` rather than `Everything`.
+# `just widget-drive` runs every drive script against both, because M26
+# found four of its five defects invisible under the default -- a clean
+# subtree is skipped before a wrong answer can be observed.
+boundaries = ["lumen-static-winit/boundaries"]
 
 [dev-dependencies]
 # The sheet lint is agent-gated (M26/T26.6); this crate's tests assert

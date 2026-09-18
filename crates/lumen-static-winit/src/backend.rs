@@ -18,7 +18,7 @@
 //! # Why it is generic rather than dynamic in `A`
 //!
 //! `Box<dyn Backend<A>>` rather than `Box<dyn Backend>`, because
-//! `present` takes a `&mut Host<A>` and needs it for two things at once
+//! `present` takes a `&mut Host<A, crate::Ret, crate::Inval>` and needs it for two things at once
 //! — the display list and `take_damage_for_age` — which a closure
 //! cannot be handed without borrowing the host twice. Parameterising the
 //! *trait* keeps it object-safe and keeps the signature the one
@@ -44,10 +44,10 @@ use crate::surface::Frame;
 pub trait Backend<A: App> {
     /// Match the backend's buffers to the window, and tell the host.
     /// Cheap and idempotent when the size has not changed.
-    fn resize(&mut self, host: &mut Host<A>, width: u32, height: u32);
+    fn resize(&mut self, host: &mut Host<A, crate::Ret, crate::Inval>, width: u32, height: u32);
 
     /// Render what the host just pumped, and present it.
-    fn present(&mut self, host: &mut Host<A>, page: Color, frame_start: Instant) -> Frame;
+    fn present(&mut self, host: &mut Host<A, crate::Ret, crate::Inval>, page: Color, frame_start: Instant) -> Frame;
 
     /// The presented window read back from the display server, when
     /// that is possible here.
@@ -115,7 +115,7 @@ impl Software {
 }
 
 impl<A: App> Backend<A> for Software {
-    fn resize(&mut self, host: &mut Host<A>, width: u32, height: u32) {
+    fn resize(&mut self, host: &mut Host<A, crate::Ret, crate::Inval>, width: u32, height: u32) {
         crate::surface::sync_size(&mut self.canvas, host, self.font.as_ref(), width, height);
     }
 
@@ -127,7 +127,7 @@ impl<A: App> Backend<A> for Software {
         Some((self.canvas.width, self.canvas.height, &self.canvas.pixels))
     }
 
-    fn present(&mut self, host: &mut Host<A>, page: Color, frame_start: Instant) -> Frame {
+    fn present(&mut self, host: &mut Host<A, crate::Ret, crate::Inval>, page: Color, frame_start: Instant) -> Frame {
         self.surface.present(host, &mut self.canvas, page, frame_start)
     }
 

@@ -1413,12 +1413,17 @@ impl syn::parse::Parse for BindSpec {
 ///     value: Label<String>,
 /// }
 ///
-/// fn recompute(c: &mut Counter) {
+/// // `-> bool`: whether it changed anything the frame can see. A hook
+/// // that cannot report leaves the derive no choice but to mark every
+/// // pump changed, and a frame that never settles damages the whole
+/// // window on every interaction (M27/T27.3).
+/// fn recompute(c: &mut Counter) -> bool {
 ///     c.recomputed += 1;
+///     false
 /// }
 ///
 /// #[derive(App, Default)]
-/// #[app(after_update = recompute)]     // optional, fn(&mut Self)
+/// #[app(after_update = recompute)]     // optional, fn(&mut Self) -> bool
 /// // #[app(tick = advance)]             // optional, fn(&mut Self, f32) -> bool
 /// struct Counter {
 ///     #[tree]
@@ -1539,11 +1544,18 @@ fn expand_app(input: DeriveInput) -> syn::Result<Ts2> {
         quote! {
             // Typed through a binding so a wrong signature is reported
             // at the hook, not at the call.
-            let f: fn(&mut Self) = #p;
-            f(self);
-            // The hook may write anything and reports nothing, so the
-            // frame is not still (T16.10).
-            changed = true;
+            //
+            // **`-> bool`, mirroring `tick`, since M27/T27.3.** It was
+            // `fn(&mut Self)` and the derive then had to set
+            // `changed = true` unconditionally, because a hook that may
+            // write anything and reports nothing leaves the frame not
+            // still (T16.10). The cost was invisible until a drive
+            // script measured per-widget damage and got **170x the
+            // widget's own box** — the whole window, every pump, for a
+            // click on a button. A hook that knows whether it changed
+            // anything is the only thing that can say so.
+            let f: fn(&mut Self) -> bool = #p;
+            changed |= f(self);
         }
     });
 

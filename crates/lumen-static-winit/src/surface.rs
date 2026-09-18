@@ -50,7 +50,7 @@ pub fn canvas(width: u32, height: u32, font: Option<&FontStack>) -> Canvas {
 /// Cheap and idempotent when the size has not changed.
 pub fn sync_size<A: App>(
     canvas: &mut Canvas,
-    host: &mut Host<A>,
+    host: &mut Host<A, crate::Ret, crate::Inval>,
     font: Option<&FontStack>,
     width: u32,
     height: u32,
@@ -122,7 +122,7 @@ impl Surface {
     /// holds and asks the host what changed.
     pub fn present<A: App>(
         &mut self,
-        host: &mut Host<A>,
+        host: &mut Host<A, crate::Ret, crate::Inval>,
         canvas: &mut Canvas,
         page: Color,
         frame_start: Instant,

@@ -571,7 +571,32 @@ impl Cmd {
                 for v in rect {
                     f(h, v.to_bits() as u64);
                 }
-                f(h, ((text.0 as u64) << 32) | text.1 as u64);
+                // **The length, not the range** — M27/T27.3.
+                //
+                // This folded `(start, end)`, which is an offset into the
+                // *shared* text buffer. `journal::measure_into` paints
+                // every node into one list, so a node whose text changed
+                // length shifted the offset of every node painted after
+                // it, and every one of those was reported as a content
+                // change it had not made. In the showcase, the readout
+                // going from "checked: false" to "checked: true" — one
+                // byte shorter — reported the 954 px note at the bottom
+                // of the window as repainted, and **61 056 px² of
+                // phantom damage** for a click on a 24x24 checkbox.
+                //
+                // The length still distinguishes runs of different size.
+                // The *bytes* are folded by
+                // [`DisplayList::hash_from`], which is the only caller
+                // that has the buffer to read them from, and is what
+                // every production path uses.
+                //
+                // **`text` is `(offset, len)`, not `(start, end)`** — see
+                // [`DisplayList::str_of`], which slices
+                // `text[o..o + len]`. The first attempt at this fix wrote
+                // `text.1 - text.0`, which is offset-dependent again and
+                // fixed nothing; the test above went straight back to
+                // red, which is the only reason it was caught.
+                f(h, text.1 as u64);
                 f(h, size.to_bits() as u64);
                 f(h, weight.to_bits() as u64);
                 f(h, u32::from_be_bytes([color.0, color.1, color.2, color.3]) as u64);

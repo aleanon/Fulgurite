@@ -275,6 +275,12 @@ showcase:
 # Drive the showcase's live window over the agent socket (M23/T23.1c).
 #
 # The endpoint has existed since M15 and had no transport out of `run`;
+# Every widget, every action it accepts, driven against the live window
+# under BOTH invalidation strategies (M27/T27.3). `just widget-drive
+# Switch` drives one. Needs a display; skips without one.
+widget-drive name="":
+    ./scripts/widget_drive.sh {{ name }}
+
 # this is the gate that it does now. Needs a display; skips without one.
 agent-drive:
     ./scripts/agent_drive.sh
