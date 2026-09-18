@@ -98,6 +98,41 @@ pair!(PairRadioC, Radio<Show>, "d_radio_c", "d_radio_cl");
 /// does not route handlers looks like: every control inside it is
 /// hit-testable, hoverable, pressable and wired to nothing.
 #[derive(StaticTree, Default)]
+#[widget(column, spacing = 12.0)]
+pub struct DTabs {
+    #[widget_id("d_tabs_a")]
+    pub a: Tabs,
+}
+
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 12.0)]
+pub struct DBottomNav {
+    #[widget_id("d_bottomnav_a")]
+    pub a: BottomNav,
+}
+
+#[derive(StaticTree, Default)]
+#[widget(row, spacing = 12.0)]
+pub struct DNavigationRail {
+    #[widget_id("d_rail_a")]
+    pub a: NavigationRail,
+}
+
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 12.0)]
+pub struct DAppBar {
+    #[widget_id("d_appbar_a")]
+    pub a: AppBar<String>,
+}
+
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 12.0)]
+pub struct DPullToRefresh {
+    #[widget_id("d_pull_a")]
+    pub a: PullToRefresh<Label<String>>,
+}
+
+#[derive(StaticTree, Default)]
 #[widget(row, spacing = 12.0)]
 pub struct DNumberInput {
     #[widget_id("d_number_a")]
@@ -359,6 +394,11 @@ pub enum Demo {
     Number(DNumberInput),
     Range(DRangeSlider),
     Search(DSearchField),
+    Tabs(DTabs),
+    Bottom(DBottomNav),
+    Rail(DNavigationRail),
+    AppBar(DAppBar),
+    Pull(DPullToRefresh),
 }
 
 impl Default for Demo {
@@ -368,4 +408,4 @@ impl Default for Demo {
 }
 
 /// How many demos the stage has. Asserted against the catalogue.
-pub const DEMOS: usize = 24;
+pub const DEMOS: usize = 29;

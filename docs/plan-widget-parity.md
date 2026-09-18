@@ -584,7 +584,7 @@ each names its injections in the commit body.
 | ~~**T27.3**~~ | *(no widget)* | ~~the drive harness~~ **HARNESS DONE 2026-09-19**; six widgets retrofitted (18 actions), twelve left | T27.0 |
 | ~~**T27.4**~~ | ~~Card, Toast, Tooltip~~ **DONE 2026-09-19** | leaves with a shadow and a tip — and two more framework defects | T27.1 |
 | ~~**T27.5**~~ | ~~NumberInput, RangeSlider, SearchField~~ **DONE 2026-09-19** | composites over `TextInput` and `Slider` | T27.1 |
-| **T27.6** | Tabs, AppBar, BottomNav, NavigationRail, PullToRefresh | one shape five times: a strip with a selected index | T27.0 |
+| ~~**T27.6**~~ | ~~Tabs, AppBar, BottomNav, NavigationRail, PullToRefresh~~ **DONE 2026-09-19** | ~~one shape five times~~ — **three of the five are**; see below | T27.0 |
 | **T27.7** | Modal, Sheet, Drawer | the overlay layer M15 built, now with a `Host` that dispatches into it (M24) | — |
 | **T27.8** | Wrap, Grid, SplitPane, PaneGrid, Accordion | the layout group; needs `Widget`-level work, and is the tranche most likely to move the const-eval number | — |
 | **T27.9** | Menu, PickList, Combobox | generalising `Select`, which the showcase's own picker already is | T27.0 |
@@ -700,6 +700,45 @@ an action that clicked the same point three times and correctly reported
 that nothing had reached the widget; and a bound written as `low > 0.5`,
 a fact about where the *other* handle happened to be, which failed on the
 correct answer `0.50..0.50`.
+
+### T27.6, as built — where the grouping was wrong
+
+The tranche table called these "one shape five times: a strip with a
+selected index". **Three of the five are**, and forcing the other two
+would have been worse than regrouping:
+
+- `Tabs`, `BottomNav` and `NavigationRail` really are one type with three
+  presentations, chosen by a `const` parameter the way `Chart` is — so
+  `kind_name` and `defaults` answer at compile time and a `Kind` selector
+  can style a rail differently from tabs.
+- **`AppBar` is not a selector.** Nothing in it is selected and there is
+  no index; giving it one to fit the group would be a field that is
+  always zero and a keyboard that moves it nowhere.
+- **`PullToRefresh` is not a strip at all.** It is a gesture wrapper.
+  What it shares with `Tabs` is the word "navigation".
+
+That is the tranche table doing its job: it grouped work plausibly from a
+widget list, and the work corrected it. The grouping is worth keeping in
+§6 as written, with this note beside it, because the next tranche's
+grouping is a guess of the same kind.
+
+**One defect, and the render found it.** A `NavigationRail`'s selected
+label is drawn *in the style's background*, because it sits on a pill
+filled with the foreground — and the rail's defaults had no background,
+so the current item's label was invisible: dark text on a dark fill.
+Every test about the selection was about geometry or about the index and
+both were correct. `docs/plan-widgets-gallery.md` §3b's ghost button is
+the same shape, for the third time in M27: **a transparent default takes
+the widget's own affordance away.** `a_filled_strip_has_a_ground_for_its_selected_label`
+now asserts it, in both directions.
+
+**And one of this tranche's own tests was vacuous, caught by its
+injection.** `an_app_bar_does_not_grow_with_its_title` laid the bar out
+under its defaults, where `height: Fixed(56.0)` makes `resolve_self`
+ignore the content outright — so making `layout` measure the title left
+it green. The test proved the *style*, not the code it named. Laid out
+under `Shrink`, the same injection reads "the bar grew from 58 to 122
+with a longer title".
 
 **T27.3 is the load-bearing one and it is deliberately placed before any
 new widget.** The harness is built and then proved against eighteen

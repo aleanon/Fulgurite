@@ -861,6 +861,19 @@ fn stylesheet() -> Vec<StyleRule> {
         // stage that is nothing at all.
         StyleRule::new(Selector::Id("d_range_a"), Patch::new().width(Length::Fixed(280.0))),
         StyleRule::new(Selector::Id("d_search_a"), Patch::new().width(Length::Fixed(320.0))),
+        // M27/T27.6's five. A navigation strip is as wide as the screen
+        // it navigates; on a centring stage that is nothing, so each one
+        // is given a plausible screen's worth.
+        StyleRule::new(Selector::Id("d_tabs_a"), Patch::new().width(Length::Fixed(420.0))),
+        StyleRule::new(Selector::Id("d_bottomnav_a"), Patch::new().width(Length::Fixed(420.0))),
+        StyleRule::new(Selector::Id("d_appbar_a"), Patch::new().width(Length::Fixed(420.0))),
+        // A rail is the other way round: its width is its own, its
+        // height is the screen's.
+        StyleRule::new(Selector::Id("d_rail_a"), Patch::new().height(Length::Fixed(260.0))),
+        StyleRule::new(
+            Selector::Id("d_pull_a"),
+            Patch::new().width(Length::Fixed(280.0)).height(Length::Fixed(120.0)),
+        ),
         StyleRule::new(Selector::Id("d_progress_a"), Patch::new().width(Length::Fixed(280.0))),
         StyleRule::new(Selector::Id("d_divider_a"), Patch::new().width(Length::Fixed(280.0))),
         StyleRule::new(

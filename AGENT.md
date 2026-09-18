@@ -149,6 +149,12 @@ are independent of each other**, so either may go first:
   no `observe` feature), and **a wrapper must loosen a child's limits to
   let it shrink** — the maximum is inherited, the minimum is not.
   Twelve widgets, 33 actions, green both ways.
+  **T27.6 shipped 2026-09-19** — `Tabs`/`BottomNav`/`NavigationRail` as
+  one `Strip<KIND>`, plus `AppBar` and `PullToRefresh`, which are *not*
+  strips and the tranche table's grouping was wrong about. A render
+  caught the rail's selected label drawn in a transparent background —
+  invisible on its own fill, §3b's ghost button for the third time in
+  M27. Seventeen widgets, 42 actions, green both ways.
 
 - **M28 — `docs/plan-tasks.md`** (T28.0–T28.12): **not started**, written
   2026-09-18 and **revised the same day after a seven-lens review: 42
