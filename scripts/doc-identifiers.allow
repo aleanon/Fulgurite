@@ -104,3 +104,4 @@ feGaussianBlur       # SVG filter primitive, named in svg.rs and plan-glass.md -
 BackgroundImage      # SVG 1.1 filter input, named in the same comment for why it is unusable
 ValueContains        # renamed TextContains in M27/T27.0; the rustdoc records the rename
 PairCheck            # split into PairCheckA/PairCheckB in M27/T27.3; two comments record why
+VeilBody             # split into ModalBody/SheetBody/DrawerBody in M27/T27.7; W1011 is why

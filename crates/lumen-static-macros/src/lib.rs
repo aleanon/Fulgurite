@@ -68,6 +68,33 @@ pub fn derive_static_tree(input: TokenStream) -> TokenStream {
 /// yields paths and a string literal is not one. `Selector::Class` was
 /// therefore unreachable through the derive for anyone who read the docs
 /// (`docs/plan-review-fixes.md` F1.5).
+/// The same, for a **struct-level** `#[widget_class(...)]` — the
+/// container's own node.
+///
+/// **It was accepted and silently ignored until M27/T27.7.**
+/// `attributes(widget, widget_id, widget_class)` let it through, nothing
+/// read it, and the class never reached the table — so a rule written
+/// against it matched no node. That is exactly the F1.5 shape the
+/// comment above describes, one level up: the documented-looking
+/// spelling produced `&[]`. Found because `every_stylesheet_rule_changes_something`
+/// reported the rule as `Unmatched`, which is the sheet lint doing the
+/// job it was built for (M25/T25.2).
+fn parse_struct_classes(attrs: &[syn::Attribute]) -> syn::Result<Ts2> {
+    let mut out: Vec<String> = Vec::new();
+    for attr in attrs {
+        if !attr.path().is_ident("widget_class") {
+            continue;
+        }
+        attr.parse_args_with(|input: syn::parse::ParseStream| {
+            let names =
+                syn::punctuated::Punctuated::<ClassName, syn::Token![,]>::parse_terminated(input)?;
+            out.extend(names.into_iter().map(|c| c.0));
+            Ok(())
+        })?;
+    }
+    Ok(if out.is_empty() { quote! { &[] } } else { quote! { &[#(#out),*] } })
+}
+
 fn parse_classes(f: &syn::Field) -> syn::Result<Ts2> {
     let mut out: Vec<String> = Vec::new();
     for attr in &f.attrs {
@@ -218,6 +245,7 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
     let root_line = input.ident.span().start().line as u32;
     let field_line: Vec<u32> =
         fields.named.iter().map(|f| f.ident.as_ref().unwrap().span().start().line as u32).collect();
+    let root_classes = parse_struct_classes(&input.attrs)?;
     let field_classes: Vec<Ts2> = fields
         .named
         .iter()
@@ -581,7 +609,8 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                         f
                     },
                 )
-                .with_src(::core::file!(), #root_line);
+                .with_src(::core::file!(), #root_line)
+                .with_classes(#root_classes);
                 let mut at: usize = 1;
                 let mut prev_root: usize = 0;
                 #(

@@ -55,6 +55,25 @@ fn on(s: &mut Show, demo: Demo) {
     s.ui.body.stage.row.demo = demo;
 }
 
+/// A veil's body: a title and a live control. One per veil kind,
+/// because each is its own type — see `veil_body!` in `stage.rs`.
+macro_rules! body_for {
+    ($ty:ident, $title:expr) => {{
+        let mut l = Label::<String>::default();
+        l.set($title.into());
+        $ty { title: l, go: btn("Confirm") }
+    }};
+}
+
+/// Open a veil, because a shut one is absent and a demo of nothing is
+/// not a demo.
+fn veil<W: lumen_static::widget::Widget, const K: u8>(
+    mut v: lumen_static_widgets::Veil<W, K>,
+) -> lumen_static_widgets::Veil<W, K> {
+    v.open();
+    v
+}
+
 /// A `Button` wired to the press counter.
 fn btn(label: &str) -> Button<Show, String> {
     let mut b = Button::<Show, String>::default();
@@ -236,6 +255,22 @@ pub static CATALOG: &[Entry] = &[
         false,
         |s| on(s, Demo::Pull(DPullToRefresh { a: PullToRefresh::new({ let mut l = Label::<String>::default(); l.set("pull me down".into()); l }) })),
         none),
+    // ---- M27/T27.7 ------------------------------------------------
+    entry!("Overlay", "Modal", "A centred panel over a dimmed window.",
+        "A shut veil is *absent*, not merely unpainted — one that only skipped `paint` would still hit-test at full size and swallow every click in the window.",
+        false,
+        |s| on(s, Demo::Modal(DModal { a: veil(Modal::new(body_for!(ModalBody, "Delete this file?"))) })),
+        |s| format!("dismissals: {}", s.presses)),
+    entry!("Overlay", "Sheet", "The same panel, across the bottom.",
+        "Its panel is measured against what its kind will give it, not against the window: a sheet measured full-height would size its content to a box it never gets.",
+        false,
+        |s| on(s, Demo::Sheet(DSheet { a: veil(Sheet::new(body_for!(SheetBody, "Share with"))) })),
+        |s| format!("dismissals: {}", s.presses)),
+    entry!("Overlay", "Drawer", "And down the side.",
+        "Dismissal is a *request*: pressing the scrim asks, and the application decides — one that must confirm before discarding cannot undo a close that already happened.",
+        false,
+        |s| on(s, Demo::Drawer(DDrawer { a: veil(Drawer::new(body_for!(DrawerBody, "Navigate"))) })),
+        |s| format!("dismissals: {}", s.presses)),
 ];
 
 /// The series the charts share, so the three demos are comparable.

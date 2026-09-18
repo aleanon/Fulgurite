@@ -155,6 +155,12 @@ are independent of each other**, so either may go first:
   caught the rail's selected label drawn in a transparent background —
   invisible on its own fill, §3b's ghost button for the third time in
   M27. Seventeen widgets, 42 actions, green both ways.
+  **T27.7 shipped 2026-09-19** — `Modal`/`Sheet`/`Drawer` as one
+  `Veil<W, KIND>` that defers *itself* so scrim and panel land together.
+  `W1011` fired a third time (one body type shared by three veils), and
+  the harness now refuses to drive any tree carrying one: **an author id
+  lives on a type's field, so a composite used twice is unaddressable by
+  construction.** Twenty widgets, 51 actions, green both ways.
 
 - **M28 — `docs/plan-tasks.md`** (T28.0–T28.12): **not started**, written
   2026-09-18 and **revised the same day after a seven-lens review: 42

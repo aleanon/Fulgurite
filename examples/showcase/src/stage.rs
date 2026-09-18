@@ -97,6 +97,60 @@ pair!(PairRadioC, Radio<Show>, "d_radio_c", "d_radio_cl");
 /// live. `docs/plan-widgets-gallery.md` §3 records what a wrapper that
 /// does not route handlers looks like: every control inside it is
 /// hit-testable, hoverable, pressable and wired to nothing.
+/// The three veils. Each is seeded **open**, because a closed one is
+/// absent by construction — `layout` zeroes it — and a demo of a modal
+/// that shows nothing is a demo of nothing.
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+pub struct DModal {
+    #[widget_id("d_modal_a")]
+    pub a: Modal<ModalBody>,
+}
+
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+pub struct DSheet {
+    #[widget_id("d_sheet_a")]
+    pub a: Sheet<SheetBody>,
+}
+
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+pub struct DDrawer {
+    #[widget_id("d_drawer_a")]
+    pub a: Drawer<DrawerBody>,
+}
+
+/// What sits on a veil: a title and a control, so the demo shows that a
+/// wrapper routes handlers as well as that it paints.
+///
+/// **One type per instance**, stamped from a macro, for the reason
+/// `pair!` above gives: a `#[widget_id]` lives on a *type's* field, so a
+/// composite used three times carries each id three times and `W1011`
+/// reports all of them as unaddressable. `just widget-drive` found this
+/// the moment it tried to press a veil's scrim — `#d_veil_title` matched
+/// three nodes and `ui.resolve` refused. That is the **third** time this
+/// shape has appeared in M27; the first was `PairCheck`.
+macro_rules! veil_body {
+    ($name:ident, $tid:literal, $gid:literal) => {
+        #[derive(StaticTree, Default)]
+        #[widget(column, spacing = 10.0)]
+        #[widget_class("veil-body")]
+        pub struct $name {
+            #[widget_id($tid)]
+            #[widget_class("veil-title")]
+            pub title: Label<String>,
+            #[widget_id($gid)]
+            #[widget_class("veil-go")]
+            pub go: Button<Show, String>,
+        }
+    };
+}
+
+veil_body!(ModalBody, "d_modal_title", "d_modal_go");
+veil_body!(SheetBody, "d_sheet_title", "d_sheet_go");
+veil_body!(DrawerBody, "d_drawer_title", "d_drawer_go");
+
 #[derive(StaticTree, Default)]
 #[widget(column, spacing = 12.0)]
 pub struct DTabs {
@@ -399,6 +453,9 @@ pub enum Demo {
     Rail(DNavigationRail),
     AppBar(DAppBar),
     Pull(DPullToRefresh),
+    Modal(DModal),
+    Sheet(DSheet),
+    Drawer(DDrawer),
 }
 
 impl Default for Demo {
@@ -408,4 +465,4 @@ impl Default for Demo {
 }
 
 /// How many demos the stage has. Asserted against the catalogue.
-pub const DEMOS: usize = 29;
+pub const DEMOS: usize = 32;

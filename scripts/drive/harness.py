@@ -265,6 +265,24 @@ def run_widget(c: AgentClient, widget: str, sel: str, actions: list[Action],
     out.append(f"  {widget} [{strategy}] on stage at "
                f"{int(box[2]-box[0])}x{int(box[3]-box[1])} px")
 
+    # **Refuse to drive a tree with a duplicated author id.**
+    #
+    # `W1011` means two nodes answer to one name, so `ui.resolve` refuses
+    # both and *every* selector in the inventory below is suspect —
+    # including the ones that happen to work. Carrying on would produce a
+    # green run over an ambiguous tree, which is worse than a red one.
+    #
+    # It has fired twice now on the showcase, both times because a
+    # composite was instantiated more than once (`PairCheck` in T27.3,
+    # `VeilBody` in T27.7). Checked here rather than left to the
+    # per-action lint delta, which only sees findings a *new* action
+    # introduced and would miss one that was there from the start.
+    dupes = [f for f in c.lint().get("findings", []) if f.get("code") == "W1011"]
+    if dupes:
+        raise Failed(
+            f"{len(dupes)} duplicated author id(s) in the tree — every selector "
+            f"here is ambiguous. First: {dupes[0].get('message', '')[:120]}")
+
     seen: set[str] = set()
     for a in actions:
         before_lint = len(c.lint().get("findings", []))

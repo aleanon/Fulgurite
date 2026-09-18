@@ -221,6 +221,20 @@ fn refresh(s: &mut Show) -> bool {
             changed = true;
         }
     }
+    // **The dismissal request, taken.** A veil never closes itself — it
+    // asks, and the application decides. Polling here is where an
+    // application does it: `after_update` runs on every pump, which is
+    // exactly when the request can have been made (M27/T27.7).
+    let asked = match &mut s.ui.body.stage.row.demo {
+        Demo::Modal(d) => d.a.take_dismissed(),
+        Demo::Sheet(d) => d.a.take_dismissed(),
+        Demo::Drawer(d) => d.a.take_dismissed(),
+        _ => false,
+    };
+    if asked {
+        s.presses += 1;
+        changed = true;
+    }
     let e = &CATALOG[s.selected];
     let text = (e.status)(s);
     // `set_str` compares before writing and answers whether the text
@@ -861,6 +875,24 @@ fn stylesheet() -> Vec<StyleRule> {
         // stage that is nothing at all.
         StyleRule::new(Selector::Id("d_range_a"), Patch::new().width(Length::Fixed(280.0))),
         StyleRule::new(Selector::Id("d_search_a"), Patch::new().width(Length::Fixed(320.0))),
+        // M27/T27.7's three. **Classes, not ids.** The three bodies are
+        // three types (one per veil, so no id is duplicated — `W1011`),
+        // and all three want the same look, which is what a class is for
+        // and what an id is not. The same split `pair-label` made in
+        // T27.3.
+        StyleRule::new(
+            Selector::Class("veil-body"),
+            Patch::new()
+                .background_role(Role::Surface)
+                .padding(Edges::all(20.0))
+                .radius(12.0)
+                .shadow(12.0),
+        ),
+        StyleRule::new(Selector::Class("veil-title"), Patch::new().font_weight(600.0)),
+        StyleRule::new(
+            Selector::Class("veil-go"),
+            btn().background_role(Role::Accent).color_role(Role::OnAccent),
+        ),
         // M27/T27.6's five. A navigation strip is as wide as the screen
         // it navigates; on a centring stage that is nothing, so each one
         // is given a plausible screen's worth.

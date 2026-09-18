@@ -585,7 +585,7 @@ each names its injections in the commit body.
 | ~~**T27.4**~~ | ~~Card, Toast, Tooltip~~ **DONE 2026-09-19** | leaves with a shadow and a tip — and two more framework defects | T27.1 |
 | ~~**T27.5**~~ | ~~NumberInput, RangeSlider, SearchField~~ **DONE 2026-09-19** | composites over `TextInput` and `Slider` | T27.1 |
 | ~~**T27.6**~~ | ~~Tabs, AppBar, BottomNav, NavigationRail, PullToRefresh~~ **DONE 2026-09-19** | ~~one shape five times~~ — **three of the five are**; see below | T27.0 |
-| **T27.7** | Modal, Sheet, Drawer | the overlay layer M15 built, now with a `Host` that dispatches into it (M24) | — |
+| ~~**T27.7**~~ | ~~Modal, Sheet, Drawer~~ **DONE 2026-09-19** | the overlay layer M15 built | — |
 | **T27.8** | Wrap, Grid, SplitPane, PaneGrid, Accordion | the layout group; needs `Widget`-level work, and is the tranche most likely to move the const-eval number | — |
 | **T27.9** | Menu, PickList, Combobox | generalising `Select`, which the showcase's own picker already is | T27.0 |
 | **T27.10** | DataGrid, Tree, Pagination | repeaters with addressable rows | T27.0, T27.1 |
@@ -739,6 +739,57 @@ ignore the content outright — so making `layout` measure the title left
 it green. The test proved the *style*, not the code it named. Laid out
 under `Shrink`, the same injection reads "the bar grew from 58 to 122
 with a longer title".
+
+### T27.7, as built — and the composite-id shape, for the third time
+
+One `Veil<W, KIND>`; the three differ only in where the panel sits. It
+defers **itself** rather than letting the panel defer, because a modal is
+two pieces of paint that must land together and above everything — a
+wrapper that drew the scrim inline would put the dim *under* what it
+dims.
+
+Two decisions worth the argument:
+
+- **Closed is absent, not unpainted.** `layout` zeroes the subtree, which
+  is what stops a shut modal swallowing every click in the window. A
+  veil that only skipped `paint` would still hit-test at full size, and
+  the test that catches it says so by name.
+- **Dismissal is a request.** A press on the scrim sets a flag;
+  `take_dismissed` hands it over once. The widget never closes itself,
+  because an application that must confirm before discarding cannot undo
+  a close that already happened — the same take-don't-read shape as
+  `PullToRefresh::take_triggered`.
+
+**A modal's panel is capped at 80% of the window.** Found by a test whose
+panel was a plain `Button`: `FILL` measured to the whole window, so there
+was no scrim at all — nowhere to press to dismiss, and nothing to show
+the panel was above the page.
+
+**And `W1011` fired for the third time in M27.** `VeilBody` was one type
+used by all three veils, so every id inside it was on three nodes and
+`ui.resolve` refused all of them. The showcase now stamps a body type per
+veil — the `PairCheckA`/`PairCheckB` split again. **The harness now
+refuses to drive a tree with any `W1011` at all**, rather than leaving it
+to the per-action lint delta, which only sees findings a *new* action
+introduced and would miss one present from the start.
+
+Three instances is a pattern, not a coincidence: **an author id lives on
+a type's field, so a composite used twice is unaddressable by
+construction.** `Select`, `Tooltip` and `SearchField` all publish part
+ids with the same property. Instance-scoped addressing is T27.0's third
+landing, and this is now the strongest argument for it.
+
+**And a twelfth framework finding, from the sheet lint.** A
+**struct-level `#[widget_class]` was accepted and silently ignored** —
+`attributes(...)` let it through, nothing read it, and the class never
+reached the table, so a rule written against it matched no node. That is
+`docs/plan-review-fixes.md` F1.5's shape one level up: the
+documented-looking spelling producing `&[]`. Found by
+`every_stylesheet_rule_changes_something` reporting the rule
+`Unmatched`, which is the sheet lint (M25/T25.2) doing exactly what it
+was built for. The derive reads it now, the attribute table says so in
+both places, and `tests/selectors.rs` holds it in both directions — it
+lands on the container and does *not* leak onto the children.
 
 **T27.3 is the load-bearing one and it is deliberately placed before any
 new widget.** The harness is built and then proved against eighteen

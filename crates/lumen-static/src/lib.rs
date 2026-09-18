@@ -46,7 +46,7 @@
 //! | `#[widget(row \| column \| stack, spacing = 4.0)]` | a `StaticTree` struct | container mode, and the gap between children. `stack`'s children share its rect (M11/T11.6) and it takes no spacing |
 //! | `#[widget(fuse)]` | a `StaticTree` struct | emit static calls instead of `&dyn` — the erasure dial |
 //! | `#[widget_id("save")]` | a field | stable author id: an agent selector, and `#save` in a stylesheet |
-//! | `#[widget_class("row", "striped")]` | a field | style classes, matched by `.row` |
+//! | `#[widget_class("row", "striped")]` | a field **or the struct** | style classes, matched by `.row`; on the struct they land on the container's own node |
 //! | `#[reload(keep \| fresh \| reset)]` | a `Reloadable` field | survives a hot swap / comes from the new code / recomputed |
 //! | `#[tree]` | an `App` field | which field is the widget tree |
 //! | `#[bind(ui.value, "count: {}")]` | an `App` field | how this state reaches the screen |

@@ -83,3 +83,59 @@ fn a_second_class_on_the_same_node_is_matched_independently() {
     assert_eq!(st[1].size.h, 9.0, "only `head` has `striped`");
     assert_ne!(st[2].size.h, 9.0);
 }
+
+/// **A struct-level `#[widget_class]` reaches the container's own node.**
+///
+/// M27/T27.7. It was accepted by `attributes(...)` and silently ignored:
+/// nothing read it, the class never reached the table, and a rule
+/// written against it matched nothing. That is F1.5's shape one level
+/// up — the documented-looking spelling producing `&[]` — and it was
+/// found by the showcase's sheet lint reporting the rule `Unmatched`,
+/// not by anyone reading the derive.
+#[test]
+fn a_struct_level_class_reaches_the_container() {
+    use lumen_static::widget::Widget;
+
+    #[derive(lumen_static::StaticTree, Default)]
+    #[widget(column, spacing = 0.0)]
+    #[widget_class("panel", "raised")]
+    struct Card {
+        #[widget_id("inner")]
+        inner: lumen_static::ops::Label,
+    }
+
+    let t = <Card as Widget>::SUB_TABLE;
+    assert_eq!(
+        t[0].classes,
+        &["panel", "raised"],
+        "the container's own classes are {:?}; a struct-level \
+         #[widget_class] reached nothing",
+        t[0].classes
+    );
+    // And it did not leak onto the child, which has none of its own.
+    assert!(
+        t[1].classes.is_empty(),
+        "the container's classes leaked onto its child: {:?}",
+        t[1].classes
+    );
+}
+
+/// The accepting direction, in the same session: a container with no
+/// `#[widget_class]` has no classes, so the test above cannot be
+/// satisfied by a derive that puts classes on everything.
+#[test]
+fn a_container_without_the_attribute_has_no_classes() {
+    use lumen_static::widget::Widget;
+
+    #[derive(lumen_static::StaticTree, Default)]
+    #[widget(column, spacing = 0.0)]
+    struct Plain {
+        inner: lumen_static::ops::Label,
+    }
+
+    assert!(
+        <Plain as Widget>::SUB_TABLE[0].classes.is_empty(),
+        "a container with no attribute has classes {:?}",
+        <Plain as Widget>::SUB_TABLE[0].classes
+    );
+}
