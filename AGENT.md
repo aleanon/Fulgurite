@@ -111,6 +111,20 @@ are independent of each other**, so either may go first:
   finds nothing in them.** M23's §4 task list is superseded; its
   groupings are kept because M27's tranches inherit them.
 
+- **M28 — `docs/plan-tasks.md`** (T28.0–T28.9): **not started**, written
+  2026-09-18. iced's `Task` and `Subscription`, in this architecture's
+  terms: spawn one, batch, chain, cancel, subscribe. **The seam is
+  already built and the rule already decided** — `inbox.rs` shipped as
+  plan-events E3, `docs/events-decision.md` forbids a code reference in
+  flight, and `docs/plan-agent-parity.md`'s appendix put the spawner
+  behind `dyn` at the shell. What is missing is the runtime, the
+  combinators, cancellation, subscription identity and an idle wake.
+  **§2.1 is the one that matters**: iced chains with a closure across an
+  await, which the boundary rule forbids, so a chain is a *step index* —
+  the same move that let positional identity replace captures in
+  handlers. T28.5's gate is a chain in flight across a dylib swap
+  completing into the new build's step function.
+
 Unsequenced: `docs/plan-harness.md`.
 
 Task ids (`T0.6`, `F1.3`, `T16.7`) go in commit subjects. Decision records live beside it in `docs/`; the
