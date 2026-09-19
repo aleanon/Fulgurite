@@ -571,6 +571,11 @@ impl Diffing {
     /// [`Incremental`] compares two whole streams in `finish` rather
     /// than slot-by-slot as it goes, because aligning them needs both
     /// (M26/T26.11). This is how it hands the result back.
+    ///
+    /// `alloc`-gated with its only caller: `Streaming` keeps one buffer
+    /// and has nothing to hand back, so on a no-alloc build this is
+    /// dead code and `-D warnings` says so.
+    #[cfg(feature = "alloc")]
     fn add(&mut self, d: Damage) {
         self.frame = self.frame.union(d);
     }
