@@ -92,6 +92,36 @@ fn grid_row(r: &mut GridRow, i: usize) {
     r.size.l.set(format!("{} KB", 1 + i % 97));
 }
 
+/// What M27/T27.12's rich text says.
+const RICH: &str = "A span here is a word, and a word never breaks inside \
+itself; the line breaker only ever decides whether the next one fits on \
+this line or opens another.";
+
+/// And its markdown.
+const DOC: &str = "# Markdown\n\nHeadings, **bold**, `code` and bullets \
+are the subset a user interface actually renders.\n\n- a label\n- an \
+identifier\n- a list";
+
+/// The `PaintBox` demo's callback: a `fn`, which is the whole point.
+fn sparkline(out: &mut dyn lumen_static::Painter, r: [f32; 4]) {
+    let (w, h) = (r[2] - r[0], r[3] - r[1]);
+    let pts = [0.25f32, 0.55, 0.35, 0.8, 0.6, 0.95, 0.45, 0.7];
+    let ink = lumen_static::Color(0x25, 0x63, 0xeb, 0xff);
+    let step = w / (pts.len() - 1) as f32;
+    for k in 1..pts.len() {
+        out.line(
+            lumen_static::Point { x: r[0] + step * (k - 1) as f32, y: r[3] - h * pts[k - 1] },
+            lumen_static::Point { x: r[0] + step * k as f32, y: r[3] - h * pts[k] },
+            2.0,
+            ink,
+        );
+    }
+    for (k, p) in pts.iter().enumerate() {
+        let (x, y) = (r[0] + step * k as f32, r[3] - h * p);
+        out.rounded_rect([x - 3.0, y - 3.0, x + 3.0, y + 3.0], ink, 3.0);
+    }
+}
+
 /// What M27/T27.11's file picker lists.
 const FILES: [&str; 7] = [
     "Cargo.toml",
@@ -389,6 +419,28 @@ pub static CATALOG: &[Entry] = &[
         "A release chooses, a press does not — every menu in every toolkit commits on release, and choosing on the press also closes the list under a finger that is still down.",
         false,
         |s| on(s, Demo::Menu(DMenu { a: opened(Menu::new(&COMMANDS)) })),
+        none),
+    // ---- M27/T27.12 -----------------------------------------------
+    entry!("Text", "RichText", "Words that wrap, and a span is a word.",
+        "The measure hook answers `how wide is this string`, not `where would it break` — so a span never wraps inside itself and the breaker only decides whether the next one fits.",
+        false,
+        |s| on(s, Demo::RichText(DRichText { a: RichText::new(RICH) })),
+        none),
+    entry!("Text", "Markdown", "Headings, bold, code, bullets.",
+        "No italic, deliberately: `Painter`'s only typographic axis is weight, and markup that rendered identically to plain text would claim to have done something.",
+        false,
+        |s| on(s, Demo::Markdown(DMarkdown { a: Markdown::new(DOC) })),
+        none),
+    entry!("Text", "RichTextEditor", "Type markup; see it rendered.",
+        "It edits *markup*, not a document model: one source of truth, which round-trips through a file and survives a reload as a `String`.",
+        false,
+        |s| on(s, Demo::RichTextEditor(DRichTextEditor {
+            a: RichTextEditor::new("# Title\n\nSome **bold** and `code`.") })),
+        none),
+    entry!("Text", "PaintBox", "A box the application draws into.",
+        "A plain `fn` pointer and not a closure — a `Box<dyn FnMut>` is a pointer into the old dylib after a reload, and everything the callback needs arrives as an argument.",
+        false,
+        |s| on(s, Demo::PaintBox(DPaintBox { a: PaintBox::new(sparkline) })),
         none),
     // ---- M27/T27.11 -----------------------------------------------
     entry!("Input", "ColorPicker", "Six hues, four lightnesses.",

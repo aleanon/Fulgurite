@@ -200,6 +200,18 @@ are independent of each other**, so either may go first:
   hue families, a month with no weekday strip, a clock with no seam
   between hours and minutes. Thirty-four widgets, 88 actions, green both
   ways.
+  **T27.12 shipped 2026-09-19 and closes M27** — `RichText`, `Markdown`,
+  `RichTextEditor`, `PaintBox`. A span is a **word**: the measure hook
+  answers how wide a string is, not where it would break, so a span
+  never wraps inside itself and the breaker only decides whether the
+  next one fits. Markdown has **no italic** and says why — `Painter`'s
+  only typographic axis is weight, and markup that rendered identically
+  to plain text would claim to have done something. **The render found
+  a defect sixteen green tests did not**: `**bold**,` — emphasis
+  followed by punctuation, the ordinary case — does not end with `**`,
+  so an end-strip never closed it and every word after stayed bold. The
+  parser scans *inside* the word now and a marker toggles. Thirty-eight
+  widgets, 92 actions, green both ways.
 
 - **M28 — `docs/plan-tasks.md`** (T28.0–T28.12): **not started**, written
   2026-09-18 and **revised the same day after a seven-lens review: 42

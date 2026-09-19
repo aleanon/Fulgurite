@@ -53,6 +53,8 @@ mod field;
 mod indicator;
 mod nav;
 pub mod pick;
+#[cfg(feature = "alloc")]
+pub mod rich;
 pub mod split;
 pub mod surface;
 mod trim;
@@ -69,6 +71,10 @@ pub use data::{
 };
 #[cfg(feature = "alloc")]
 pub use field::{NumberInput, RangeSlider, SearchField};
+#[cfg(feature = "alloc")]
+pub use rich::{
+    Markdown, PaintBox, RichText, RichTextEditor, Span, MAX_EDITOR_NODES, MAX_SPANS,
+};
 pub use pick::{
     ColorPicker, DatePicker, FilePicker, Pad, Picker, TimePicker, COLOR, DATE, FILE, MAX_FILES,
     MAX_PICKER_NODES, SWATCHES, TIME,
@@ -91,7 +97,8 @@ pub mod prelude {
     };
     #[cfg(feature = "alloc")]
     pub use crate::{
-        Branch, ColorPicker, Combobox, DataGrid, DatePicker, FilePicker, Menu, NumberInput,
-        OptionList, Pagination, PickList, RangeSlider, SearchField, TimePicker, Tree,
+        Branch, ColorPicker, Combobox, DataGrid, DatePicker, FilePicker, Markdown, Menu,
+        NumberInput, OptionList, PaintBox, Pagination, PickList, RangeSlider, RichText,
+        RichTextEditor, SearchField, TimePicker, Tree,
     };
 }

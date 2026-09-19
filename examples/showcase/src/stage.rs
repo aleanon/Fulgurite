@@ -97,6 +97,35 @@ pair!(PairRadioC, Radio<Show>, "d_radio_c", "d_radio_cl");
 /// live. `docs/plan-widgets-gallery.md` §3 records what a wrapper that
 /// does not route handlers looks like: every control inside it is
 /// hit-testable, hoverable, pressable and wired to nothing.
+/// M27/T27.12's four: the text tail and the draw callback.
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+pub struct DRichText {
+    #[widget_id("d_richtext_a")]
+    pub a: RichText,
+}
+
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+pub struct DMarkdown {
+    #[widget_id("d_markdown_a")]
+    pub a: Markdown,
+}
+
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+pub struct DRichTextEditor {
+    #[widget_id("d_editor_a")]
+    pub a: RichTextEditor,
+}
+
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+pub struct DPaintBox {
+    #[widget_id("d_paintbox_a")]
+    pub a: PaintBox,
+}
+
 /// M27/T27.11's four. Each is a trigger and a popup of cells, and the
 /// only thing that differs is what a cell says — which is why they are
 /// one type with a `KIND` and four demos rather than four widgets.
@@ -632,6 +661,10 @@ pub enum Demo {
     PickList(DPickList),
     Combobox(DCombobox),
     Menu(DMenu),
+    RichText(DRichText),
+    Markdown(DMarkdown),
+    RichTextEditor(DRichTextEditor),
+    PaintBox(DPaintBox),
     ColorPicker(DColorPicker),
     DatePicker(DDatePicker),
     TimePicker(DTimePicker),
@@ -648,4 +681,4 @@ impl Default for Demo {
 }
 
 /// How many demos the stage has. Asserted against the catalogue.
-pub const DEMOS: usize = 46;
+pub const DEMOS: usize = 50;

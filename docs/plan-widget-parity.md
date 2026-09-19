@@ -600,7 +600,7 @@ each names its injections in the commit body.
 | ~~**T27.9**~~ | ~~Menu, PickList, Combobox~~ **DONE 2026-09-19** | one `Chooser<KIND>` — and T27.0's third landing, which this forced | T27.0 |
 | ~~**T27.10**~~ | ~~DataGrid, Tree, Pagination~~ **DONE 2026-09-19** | repeaters with addressable rows | T27.0, T27.1 |
 | ~~**T27.11**~~ | ~~ColorPicker, DatePicker, TimePicker, FilePicker~~ **DONE 2026-09-19** | one `Picker<KIND>` over a grid of cells | T27.1, T27.8 |
-| **T27.12** | RichText, Markdown, RichTextEditor, PaintBox | the text-heavy tail and the draw callback | — |
+| ~~**T27.12**~~ | ~~RichText, Markdown, RichTextEditor, PaintBox~~ **DONE 2026-09-19** | a span is a word; the callback is a `fn` | — |
 
 ### T27.3, as built — and the prediction it was written to test
 
@@ -1072,6 +1072,58 @@ trigger is a bordered control, and its seed had no bit to declare.
 `style_reads.rs` probes every kind's output field by field and named the
 two that were wrong. It also corrected the test written for it, whose
 two directions had their controls backwards.
+
+### T27.12, as built — a span is a word, and the render found the bug
+
+The last four. **`RichText`'s model is the tranche's one real
+decision**: the framework's measure hook answers *how wide is this
+string*, not *where would it break*, so a span here is **atomic** — it
+never wraps inside itself, and the line breaker only decides whether the
+next one fits. The parser therefore splits on whitespace and a span is a
+word. One measure call per word, an exact break (the breaker never
+guesses a width), and a paint that is a loop over placed boxes. What it
+costs is `MAX_SPANS`, which is the trade `Tree` makes with
+`MAX_TREE_NODES`.
+
+**Markdown has no italic, deliberately.** `Painter` has one text method
+and its only typographic axis is weight: there is no italic face and no
+synthetic slant. A parser that accepted `*emphasis*` and rendered it
+identically to plain text would be claiming to have done something. The
+gap is the text stack's — a slant belongs beside `FontStack`, next to
+the weight axis it would join — and `#`, `**`, `` ` `` and `- ` are the
+subset a user interface actually renders.
+
+`RichTextEditor` edits **markup, not a document model**: one source of
+truth, which round-trips through a file and survives a reload as a
+`String`, and whose formatting commands are text edits — `bold()` wraps
+the selection in `**`. A rich editor over styled runs needs a second
+data structure and an undo stack over it, and nothing here can assert
+against a model it also owns.
+
+`PaintBox` is a `fn` pointer, for the reason the whole architecture
+turns on (`docs/events-decision.md`): a `Box<dyn FnMut>` is a pointer
+into the old dylib after a reload. It is also **clipped**, because the
+callback is the application's and nothing else stops it painting over
+its neighbours — which is what a `Tree` did until T27.11, in code this
+repository owns.
+
+**And the render found a defect sixteen green tests did not.**
+`**bold**,` — emphasis followed by punctuation, which is the *ordinary*
+case — does not end with `**`, so a parser that strips markers off a
+word's ends never finds the closing pair: the markers rendered, and
+every word after stayed bold to the end of the paragraph. Every fixture
+had written `**bold** word` and none had written `**bold**,`. The parser
+now **scans inside the word** and a marker *toggles*, which also handles
+`a**b**c` without a rule about which end a marker belongs to. This is
+§3b's lesson for the fourth time in M27, and the fourth different
+disguise.
+
+Thirteen injections: DB–DI against the unit tests, DJ–DN against the
+live drive. The `PaintBox` row is the one worth reading — it reads
+**pixels**, because a paint box publishes no value and takes no input,
+and both halves of what it promises are claims about the frame. With the
+clip removed the drive counts 22 px of the application's ink outside the
+widget's box; with the callback removed, 0 px inside it.
 
 ## 7. The showcase at fifty-one entries
 
