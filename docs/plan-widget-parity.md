@@ -791,6 +791,44 @@ was built for. The derive reads it now, the attribute table says so in
 both places, and `tests/selectors.rs` holds it in both directions — it
 lands on the container and does *not* leak onto the children.
 
+### T27.8, as built — two axes, two widgets, and no Accordion
+
+The plan said this group "needs `Widget`-level work", and it did, but not
+evenly:
+
+- **`wrap` and `grid` are derive axes, not widgets.** A container's
+  children are its *fields* here, so a wrapping row is a way of arranging
+  fields rather than something that holds them. They are **one
+  lowering**: a grid is a wrap whose line break is a *count* instead of a
+  width, and two lowerings would have been two places for the cross-axis
+  arithmetic to disagree — the `Deferring` shape in a macro.
+- **`SplitPane` and `Collapsible` are widgets**, because each holds
+  something an author does not write as a field list: a divider between
+  exactly two panes, and a body that hides.
+- **There is no `Accordion`.** It is a `column` of `Collapsible`s, and
+  the one-open-at-a-time rule is three lines in the application. An
+  `Accordion<A, B, C>` to own that rule would be a type per section
+  count.
+
+The property that matters for a flow and is easy to get wrong: **`place`
+must produce the same lines `layout` did.** `place` has no `LayoutCx` and
+re-runs the break test against the sizes already in `NodeState`; the
+injection that makes it forget a line's height breaks *all five* flow
+tests, which is the coverage that claim needs.
+
+**A stated limitation rather than a discovered one**: a flow cannot
+divide `Fill` among its children, because it does not know how many will
+share a line until it has measured them. A `Fill` child in a wrap takes
+its natural size — a wrap of `Fill` items is a column with extra steps.
+
+**Two more harness lessons, both from running it.** An action whose whole
+point is to resize its own widget legitimately damages what moved, so
+`Action.reflows` moves the damage bound to the *stage* — a larger bound,
+not an absent one. And squeezing a pane to its stop *does* truncate the
+text in it, so `Action.expects_lint` names the codes an action may
+introduce: named codes only, because a run that accepted every new
+finding would stop catching the ones nobody intended.
+
 **T27.3 is the load-bearing one and it is deliberately placed before any
 new widget.** The harness is built and then proved against eighteen
 widgets that already work and have already been driven — because a

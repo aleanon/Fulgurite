@@ -875,6 +875,16 @@ fn stylesheet() -> Vec<StyleRule> {
         // stage that is nothing at all.
         StyleRule::new(Selector::Id("d_range_a"), Patch::new().width(Length::Fixed(280.0))),
         StyleRule::new(Selector::Id("d_search_a"), Patch::new().width(Length::Fixed(320.0))),
+        // M27/T27.8's four. A wrap needs a box narrow enough to wrap in,
+        // a grid needs one wide enough to show that it does *not*, and a
+        // split pane is as big as it is given.
+        StyleRule::new(Selector::Kind("DWrap"), Patch::new().width(Length::Fixed(260.0))),
+        StyleRule::new(Selector::Kind("DGrid"), Patch::new().width(Length::Fixed(420.0))),
+        StyleRule::new(
+            Selector::Id("d_split_a"),
+            Patch::new().width(Length::Fixed(360.0)).height(Length::Fixed(140.0)),
+        ),
+        StyleRule::new(Selector::Kind("DAccordion"), Patch::new().width(Length::Fixed(320.0))),
         // M27/T27.7's three. **Classes, not ids.** The three bodies are
         // three types (one per veil, so no id is duplicated — `W1011`),
         // and all three want the same look, which is what a class is for

@@ -161,6 +161,12 @@ are independent of each other**, so either may go first:
   the harness now refuses to drive any tree carrying one: **an author id
   lives on a type's field, so a composite used twice is unaddressable by
   construction.** Twenty widgets, 51 actions, green both ways.
+  **T27.8 shipped 2026-09-19** — `wrap` and `grid` as **derive axes**
+  (one lowering: a grid is a wrap whose break is a count, not a width),
+  plus `SplitPane` and `Collapsible`. There is deliberately no
+  `Accordion`: it is a column of `Collapsible`s, and a type per section
+  count is what owning the one-open rule would cost. Twenty-four widgets,
+  59 actions, green both ways.
 
 - **M28 — `docs/plan-tasks.md`** (T28.0–T28.12): **not started**, written
   2026-09-18 and **revised the same day after a seven-lens review: 42

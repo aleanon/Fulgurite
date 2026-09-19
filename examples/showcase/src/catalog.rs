@@ -74,6 +74,26 @@ fn veil<W: lumen_static::widget::Widget, const K: u8>(
     v
 }
 
+fn chip(t: &str) -> Chip<String> {
+    Chip::<String> { text: t.into() }
+}
+
+fn gbadge(t: &str) -> Badge<String> {
+    Badge::<String> { text: t.into() }
+}
+
+fn lbl_of(t: &str) -> Label<String> {
+    let mut l = Label::<String>::default();
+    l.set(t.into());
+    l
+}
+
+/// One accordion section, open on the first so the demo shows both
+/// states at once.
+fn section(title: &str, body: &str) -> Collapsible<Label<String>, String> {
+    Collapsible::new(title.into(), lbl_of(body))
+}
+
 /// A `Button` wired to the press counter.
 fn btn(label: &str) -> Button<Show, String> {
     let mut b = Button::<Show, String>::default();
@@ -271,6 +291,34 @@ pub static CATALOG: &[Entry] = &[
         false,
         |s| on(s, Demo::Drawer(DDrawer { a: veil(Drawer::new(body_for!(DrawerBody, "Navigate"))) })),
         |s| format!("dismissals: {}", s.presses)),
+    // ---- M27/T27.8 ------------------------------------------------
+    entry!("Layout", "Wrap", "Six chips that reflow onto a second line.",
+        "A derive axis, not a widget: a container's children are its *fields* here, so a wrapping row is a way of arranging fields rather than something that holds them.",
+        false,
+        |s| on(s, Demo::Wrap(DWrap {
+            a: chip("alpha"), b: chip("bravo"), c: chip("charlie"),
+            d: chip("delta"), e: chip("echo"), f: chip("foxtrot") })),
+        none),
+    entry!("Layout", "Grid", "The same six, three to a row.",
+        "`wrap` and `grid` are one lowering: a grid is a wrap whose line break is a *count* instead of a width, and two lowerings would be two places for the cross-axis arithmetic to disagree.",
+        false,
+        |s| on(s, Demo::Grid(DGrid {
+            a: gbadge("1"), b: gbadge("2"), c: gbadge("3"),
+            d: gbadge("4"), e: gbadge("5"), f: gbadge("6") })),
+        none),
+    entry!("Layout", "SplitPane", "Drag the divider between two panes.",
+        "The divider stops short of both edges: a pane with no area cannot be clicked to get it back, so the control would be one-way.",
+        false,
+        |s| on(s, Demo::Split(DSplitPane { a: SplitPane::new(lbl_of("left"), lbl_of("right")) })),
+        none),
+    entry!("Layout", "Accordion", "Three sections; press a header.",
+        "Not a widget — a column of `Collapsible`s. A press in the *body* must not collapse the section, or clicking what is inside it would close it.",
+        false,
+        |s| on(s, Demo::Accordion(DAccordion {
+            a: section("Account", "Your name and email"),
+            b: section("Privacy", "Who can see your activity"),
+            c: section("Advanced", "Developer options") })),
+        none),
 ];
 
 /// The series the charts share, so the three demos are comparable.

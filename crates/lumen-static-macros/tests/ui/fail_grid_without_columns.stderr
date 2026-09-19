@@ -1,0 +1,5 @@
+error: #[widget(grid)] needs `columns = <int>`; without one it is a wrap
+ --> tests/ui/fail_grid_without_columns.rs:9:8
+  |
+9 | struct Ui {
+  |        ^^

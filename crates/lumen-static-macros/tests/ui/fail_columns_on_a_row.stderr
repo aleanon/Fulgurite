@@ -1,0 +1,5 @@
+error: `columns` applies to `grid` only — a row, column, stack or wrap has none
+ --> tests/ui/fail_columns_on_a_row.rs:9:25
+  |
+9 | #[widget(row, columns = 3)]
+  |                         ^

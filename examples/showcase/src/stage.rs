@@ -97,6 +97,63 @@ pair!(PairRadioC, Radio<Show>, "d_radio_c", "d_radio_cl");
 /// live. `docs/plan-widgets-gallery.md` §3 records what a wrapper that
 /// does not route handlers looks like: every control inside it is
 /// hit-testable, hoverable, pressable and wired to nothing.
+/// A wrap: six chips that reflow when the box narrows.
+#[derive(StaticTree, Default)]
+#[widget(wrap, spacing = 8.0)]
+pub struct DWrap {
+    #[widget_id("d_wrap_a")]
+    pub a: Chip<String>,
+    #[widget_id("d_wrap_b")]
+    pub b: Chip<String>,
+    #[widget_id("d_wrap_c")]
+    pub c: Chip<String>,
+    #[widget_id("d_wrap_d")]
+    pub d: Chip<String>,
+    #[widget_id("d_wrap_e")]
+    pub e: Chip<String>,
+    #[widget_id("d_wrap_f")]
+    pub f: Chip<String>,
+}
+
+/// A grid: the same six, in three columns however wide the box.
+#[derive(StaticTree, Default)]
+#[widget(grid, columns = 3, spacing = 8.0)]
+pub struct DGrid {
+    #[widget_id("d_grid_a")]
+    pub a: Badge<String>,
+    #[widget_id("d_grid_b")]
+    pub b: Badge<String>,
+    #[widget_id("d_grid_c")]
+    pub c: Badge<String>,
+    #[widget_id("d_grid_d")]
+    pub d: Badge<String>,
+    #[widget_id("d_grid_e")]
+    pub e: Badge<String>,
+    #[widget_id("d_grid_f")]
+    pub f: Badge<String>,
+}
+
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+pub struct DSplitPane {
+    #[widget_id("d_split_a")]
+    pub a: SplitPane<Label<String>, Label<String>>,
+}
+
+/// An accordion is a **column of `Collapsible`s**, not a widget: a
+/// container's children are its fields here, so the one-open rule is
+/// three lines in the application rather than a type per section count.
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 8.0)]
+pub struct DAccordion {
+    #[widget_id("d_acc_a")]
+    pub a: Collapsible<Label<String>, String>,
+    #[widget_id("d_acc_b")]
+    pub b: Collapsible<Label<String>, String>,
+    #[widget_id("d_acc_c")]
+    pub c: Collapsible<Label<String>, String>,
+}
+
 /// The three veils. Each is seeded **open**, because a closed one is
 /// absent by construction — `layout` zeroes it — and a demo of a modal
 /// that shows nothing is a demo of nothing.
@@ -456,6 +513,10 @@ pub enum Demo {
     Modal(DModal),
     Sheet(DSheet),
     Drawer(DDrawer),
+    Wrap(DWrap),
+    Grid(DGrid),
+    Split(DSplitPane),
+    Accordion(DAccordion),
 }
 
 impl Default for Demo {
@@ -465,4 +526,4 @@ impl Default for Demo {
 }
 
 /// How many demos the stage has. Asserted against the catalogue.
-pub const DEMOS: usize = 32;
+pub const DEMOS: usize = 36;

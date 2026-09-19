@@ -95,6 +95,25 @@ class Action:
     #: quiet. An author says so, and the runner then *insists* the
     #: expectation is not merely `True`.
     static: bool = False
+    #: This action changes the widget's **own size**, so everything after
+    #: it in the layout moves and the damage is legitimately larger than
+    #: the widget.
+    #:
+    #: **The bound moves, it does not go away.** Damage is measured
+    #: against the *stage* instead — opening an accordion section must
+    #: still not repaint the window. A flag that switched the check off
+    #: would be the bound removed, which is the shape this whole protocol
+    #: exists to refuse.
+    reflows: bool = False
+    #: Lint codes this action may legitimately introduce.
+    #:
+    #: **Named codes only, never "any".** Squeezing a split pane to 8%
+    #: *does* truncate the text in it, and `W1005` saying so is the lint
+    #: working — but a run that accepted every new finding would stop
+    #: catching the ones nobody intended. Listing the code keeps the
+    #: check on for all the others and puts the reason next to the
+    #: action that causes it.
+    expects_lint: tuple = ()
 
 
 @dataclass
@@ -312,25 +331,37 @@ def run_widget(c: AgentClient, widget: str, sel: str, actions: list[Action],
         # quietly started repainting everything is visible in the output
         # even though it is not what this bound is about.
         regions = c.rpc("ui.lastDamage", since=since).get("regions", [])
+        # An action that resizes its own widget moves everything after it,
+        # so the reference box is the stage rather than the widget.
+        against = ctx.box("#demo") if a.reflows else box
         mine = [r for r in regions if _overlaps(r, box)]
         if mine:
             worst = max(_area(r) for r in mine)
-            ratio = worst / max(_area(box), 1.0)
+            ratio = worst / max(_area(against), 1.0)
             total = sum(_area(r) for r in regions)
             out.append(f"      damage: {len(regions)} region(s), "
                        f"{total:.0f} px² total; the one over this widget is "
-                       f"{worst:.0f} px² against its own {_area(box):.0f} px² "
+                       f"{worst:.0f} px² against "
+                       f"{'the stage' if a.reflows else 'its own'} "
+                       f"{_area(against):.0f} px² "
                        f"= {ratio:.2f}x (bound 4.0)")
             if ratio > 4.0:
                 raise Failed(
                     f"{widget}/{a.name}: the damage region covering this widget is "
-                    f"{ratio:.2f}x its own box ({worst:.0f} px² over {_area(box):.0f}), "
+                    f"{ratio:.2f}x {'the stage' if a.reflows else 'its own box'} "
+                    f"({worst:.0f} px² over {_area(against):.0f}), "
                     f"bound 4.0")
 
         # lint stays clean
         after = c.lint().get("findings", [])
         if len(after) > before_lint:
-            raise Failed(f"{widget}/{a.name}: ui.lint gained a finding: {after[-1]}")
+            new_ones = [f for f in after[before_lint:]
+                        if f.get("code") not in a.expects_lint]
+            if new_ones:
+                raise Failed(
+                    f"{widget}/{a.name}: ui.lint gained a finding: {new_ones[0]}")
+            out.append(f"      lint: {len(after) - before_lint} expected "
+                       f"{'/'.join(a.expects_lint)} finding(s)")
 
         # (3) the same input, somewhere it must not work.
         if a.isolate is not None:

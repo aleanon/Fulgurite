@@ -48,6 +48,17 @@ enum Axis {
     /// last field is on top; hit in reverse, so the topmost is found
     /// first.
     Stack,
+    /// Children flow left to right and wrap — M27/T27.8.
+    ///
+    /// **`wrap` and `grid` are one lowering, not two.** A grid is a wrap
+    /// whose line break is a *count* instead of a width, and the rest —
+    /// measuring loosely, accumulating a line, carrying the tallest
+    /// child down — is identical. Two lowerings would have been two
+    /// places for the cross-axis arithmetic to disagree, which is the
+    /// `Deferring` shape in a macro.
+    ///
+    /// `None` wraps on width; `Some(n)` breaks every `n` children.
+    Flow(Option<usize>),
 }
 
 #[proc_macro_derive(StaticTree, attributes(widget, widget_id, widget_class))]
@@ -176,6 +187,8 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
     let mut axis = None;
     let mut spacing = 0.0f32;
     let mut spacing_span = None;
+    let mut columns: Option<usize> = None;
+    let mut columns_span: Option<syn::LitInt> = None;
     let mut fuse = false;
     for attr in &input.attrs {
         if !attr.path().is_ident("widget") {
@@ -188,6 +201,14 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                 axis = Some(Axis::Column);
             } else if meta.path.is_ident("stack") {
                 axis = Some(Axis::Stack);
+            } else if meta.path.is_ident("wrap") {
+                axis = Some(Axis::Flow(None));
+            } else if meta.path.is_ident("grid") {
+                axis = Some(Axis::Flow(Some(0)));
+            } else if meta.path.is_ident("columns") {
+                let lit: syn::LitInt = meta.value()?.parse()?;
+                columns = Some(lit.base10_parse()?);
+                columns_span = Some(lit);
             } else if meta.path.is_ident("spacing") {
                 let lit: syn::LitFloat = meta.value()?.parse()?;
                 spacing = lit.base10_parse()?;
@@ -196,7 +217,8 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                 fuse = true;
             } else {
                 return Err(meta.error(
-                    "expected `row`, `column`, `stack`, `spacing = <float>`, or `fuse`",
+                    "expected `row`, `column`, `stack`, `wrap`, `grid`, \
+                     `columns = <int>`, `spacing = <float>`, or `fuse`",
                 ));
             }
             Ok(())
@@ -205,8 +227,34 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
     let Some(axis) = axis else {
         return Err(syn::Error::new_spanned(
             &input.ident,
-            "StaticTree needs #[widget(row)], #[widget(column)] or #[widget(stack)]",
+            "StaticTree needs #[widget(row)], #[widget(column)], #[widget(stack)], \
+             #[widget(wrap)] or #[widget(grid, columns = N)]",
         ));
+    };
+    // **`columns` belongs to `grid` and nothing else.** Accepting it on
+    // a row and ignoring it is the shape the `stack`/`spacing` check
+    // below exists to refuse, so it is an error at the token that asked.
+    let axis = match (axis, columns) {
+        (Axis::Flow(Some(_)), Some(0)) => {
+            return Err(syn::Error::new_spanned(
+                columns_span.unwrap(),
+                "a grid needs at least one column",
+            ))
+        }
+        (Axis::Flow(Some(_)), Some(c)) => Axis::Flow(Some(c)),
+        (Axis::Flow(Some(_)), None) => {
+            return Err(syn::Error::new_spanned(
+                &input.ident,
+                "#[widget(grid)] needs `columns = <int>`; without one it is a wrap",
+            ))
+        }
+        (_, Some(_)) => {
+            return Err(syn::Error::new_spanned(
+                columns_span.unwrap(),
+                "`columns` applies to `grid` only — a row, column, stack or wrap has none",
+            ))
+        }
+        (other, None) => other,
     };
     // **A stack has no gaps to space.** Accepting the attribute and
     // ignoring it is the shape that makes someone spend an afternoon on
@@ -257,7 +305,8 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
     // Only the row/column bodies mention it; the stack bodies have no
     // axis to name.
     let axis_expr = match axis {
-        Axis::Row | Axis::Stack => quote! { ::lumen_static::ops::Axis::Row },
+        // A flow runs along the row axis; its wrapping is the cross one.
+        Axis::Row | Axis::Stack | Axis::Flow(_) => quote! { ::lumen_static::ops::Axis::Row },
         Axis::Column => quote! { ::lumen_static::ops::Axis::Column },
     };
     // A container fills across its cross axis and shrinks along its main
@@ -314,7 +363,9 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                 true
             }
         },
-        Axis::Row | Axis::Column => quote! {},
+        // A flow's children cannot overlap: each is placed past the
+        // last, and a wrap moves *down* rather than back over.
+        Axis::Row | Axis::Column | Axis::Flow(_) => quote! {},
     };
 
     // ---- the three bodies that differ by mode (M11/T11.6) ----
@@ -331,6 +382,9 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
         Axis::Stack => quote! {
             use ::lumen_static::ops::{inner_limits, resolve_self, stack_child};
         },
+        Axis::Flow(_) => quote! {
+            use ::lumen_static::ops::{inner_limits, resolve_self};
+        },
     };
     let place_use = match axis {
         Axis::Row | Axis::Column => quote! {
@@ -339,8 +393,17 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
         Axis::Stack => quote! {
             use ::lumen_static::ops::align_offset;
         },
+        // A flow positions from the sizes `layout` already recorded; it
+        // needs no alignment helper, because a wrapped line is packed
+        // from its start by definition.
+        Axis::Flow(_) => quote! {},
     };
 
+    // `None` wraps on the line's width; `Some(n)` breaks every `n`.
+    let flow_break = match axis {
+        Axis::Flow(Some(c)) => quote! { in_line >= #c },
+        _ => quote! { in_line > 0 && cur + s.w > inner.max_w + 0.01 },
+    };
     let layout_body = match axis {
         Axis::Row | Axis::Column => quote! {
                     let axis = #axis_expr;
@@ -465,6 +528,60 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                 h: ch + me.padding.vertical(),
             };
         },
+        // ---- a flow: children left to right, wrapping -------------
+        //
+        // **Measured loosely, every child.** A flow cannot divide `Fill`
+        // among its children the way a row does, because it does not
+        // know how many will share a line until it has measured them —
+        // so a `Fill` child in a flow takes its natural size. That is a
+        // real limitation and it is stated here rather than discovered:
+        // a wrap of `Fill` items is a column with extra steps.
+        Axis::Flow(_) => quote! {
+            let inner = inner_limits(limits, me.padding);
+            let loose = ::lumen_static::Constraints {
+                min_w: 0.0,
+                max_w: inner.max_w,
+                min_h: 0.0,
+                max_h: inner.max_h,
+            };
+            let mut at = i + 1;
+            // The line being filled, and what is finished above it.
+            let mut cur = 0.0f32;
+            let mut line_h = 0.0f32;
+            let mut in_line: usize = 0;
+            let mut cw = 0.0f32;
+            let mut ch = 0.0f32;
+            #(
+                {
+                    #mut_calls
+                    #opaque_stmt
+                    let s = d.layout(cx, loose, style, st, at);
+                    if #flow_break {
+                        // Close the line: its width is what was placed
+                        // minus the trailing gap, and the next line
+                        // starts `spacing` below it.
+                        cw = cw.max(cur - me.spacing);
+                        ch += line_h + me.spacing;
+                        cur = 0.0;
+                        line_h = 0.0;
+                        in_line = 0;
+                    }
+                    cur += s.w + me.spacing;
+                    in_line += 1;
+                    if s.h > line_h { line_h = s.h; }
+                    at += <#field_ty as ::lumen_static::widget::Widget>::NODE_COUNT;
+                }
+            )*
+            let _ = at;
+            let _ = in_line;
+            // The last line, which no break closed.
+            cw = cw.max(cur - me.spacing).max(0.0);
+            ch += line_h;
+            let padded = ::lumen_static::Size {
+                w: cw + me.padding.horizontal(),
+                h: ch + me.padding.vertical(),
+            };
+        },
     };
 
     let place_body = match axis {
@@ -553,6 +670,54 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
             )*
             let _ = at;
         },
+        // **The same walk, from the sizes `layout` recorded.** `place`
+        // has no `LayoutCx` and must not re-measure; every child's size
+        // is already in `st`, so the break test can be re-run against it
+        // and must produce the same lines. The two are written to look
+        // alike on purpose: a flow whose place disagreed with its layout
+        // would draw children outside the box it reported.
+        Axis::Flow(_) => quote! {
+            let p = style[i].padding;
+            let inner = ::lumen_static::Constraints {
+                min_w: 0.0,
+                max_w: (st[i].size.w - p.horizontal()).max(0.0),
+                min_h: 0.0,
+                max_h: (st[i].size.h - p.vertical()).max(0.0),
+            };
+            let me = style[i];
+            let mut at = i + 1;
+            let mut cur = 0.0f32;
+            let mut line_y = 0.0f32;
+            let mut line_h = 0.0f32;
+            let mut in_line: usize = 0;
+            #(
+                {
+                    let s = st[at].size;
+                    if #flow_break {
+                        line_y += line_h + me.spacing;
+                        cur = 0.0;
+                        line_h = 0.0;
+                        in_line = 0;
+                    }
+                    #mut_calls
+                    #opaque_stmt
+                    d.place(
+                        ::lumen_static::Point {
+                            x: at_pos.x + p.left + cur,
+                            y: at_pos.y + p.top + line_y,
+                        },
+                        style,
+                        st,
+                        at,
+                    );
+                    cur += s.w + me.spacing;
+                    in_line += 1;
+                    if s.h > line_h { line_h = s.h; }
+                    at += <#field_ty as ::lumen_static::widget::Widget>::NODE_COUNT;
+                }
+            )*
+            let _ = (at, in_line, line_y, inner);
+        },
     };
 
     // Reversed for a stack, and only for a stack. `child_at` exists so
@@ -562,7 +727,8 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
     let hit_rev_at: Vec<Ts2> = child_at.iter().rev().cloned().collect();
     let hit_rev_ref: Vec<Ts2> = ref_calls.iter().rev().cloned().collect();
     let hit_body = match axis {
-        Axis::Row | Axis::Column => quote! {
+        // A flow walks forward like a row: its children cannot overlap.
+        Axis::Row | Axis::Column | Axis::Flow(_) => quote! {
                     let mut at = i + 1;
                     #(
                         {

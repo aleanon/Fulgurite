@@ -48,6 +48,7 @@ mod chart;
 mod field;
 mod indicator;
 mod nav;
+pub mod split;
 pub mod surface;
 mod trim;
 mod veil;
@@ -57,6 +58,7 @@ pub use chart::{BarChart, Chart, LineChart, PieChart, Series, MAX_POINTS};
 pub use field::{NumberInput, RangeSlider, SearchField};
 pub use nav::{AppBar, BottomNav, PullToRefresh, Item, NavigationRail, Strip, Tabs, MAX_ITEMS, BOTTOM, RAIL, TABS};
 pub use indicator::{ProgressBar, Skeleton, Spinner};
+pub use split::{Collapsible, SplitPane, MAX_SPLIT_NODES};
 pub use surface::{Card, Toast, Tooltip, MAX_SURFACE_NODES};
 pub use veil::{Drawer, Modal, Sheet, Veil, DRAWER, MODAL, SHEET};
 pub use trim::{Avatar, Badge, Chip, Divider, Icon, Symbol};
@@ -65,7 +67,8 @@ pub use trim::{Avatar, Badge, Chip, Divider, Icon, Symbol};
 pub mod prelude {
     pub use crate::{
         Avatar, Badge, BarChart, Card, Chip, Divider, Icon, LineChart, PieChart, ProgressBar,
-        AppBar, BottomNav, Drawer, Modal, NavigationRail, PullToRefresh, Series, Sheet,
+        AppBar, BottomNav, Collapsible, Drawer, Modal, NavigationRail, PullToRefresh, Series,
+        Sheet, SplitPane,
         Skeleton, Spinner, Symbol,
         Tabs, Toast, Tooltip,
     };
