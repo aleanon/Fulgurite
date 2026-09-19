@@ -163,14 +163,24 @@ stylesheet swap cost: 37.45 µs → 15.42 µs on the 901-node fixture, one
 owns the figures and records that its 2026-09-04 conclusion — a swap is
 the expensive runtime operation, scope it — is unchanged.
 
-**One case still reads an instance**, deliberately: an arena under a
+~~**One case still reads an instance**, deliberately: an arena under a
 `Dyn` island. Type erasure is what an island is *for*, so the boxed
-content's kinds cannot reach a const array. `ArenaMut` gains
-`seeds: Option<&'static [Seed]>` — `Some` for `Repeat` and `List`, whose
-content types are known, `None` for `Dyn` — and the `None` arm calls
-`cascade_from_instance`. That fallback is sound where the main table's
-was not: an arena template is a live instance by construction, whereas
-the node the main cascade needed might be hidden.
+content's kinds cannot reach a const array.~~ **Overturned 2026-09-19
+by M26/T26.10, and the reasoning above is where it went wrong.** Type
+erasure is about the *instance*, not the type: `Dyn::new` is generic
+over `W`, so `W::SEEDS` is in hand at exactly the moment `W::SUB_TABLE`
+is — which the island was already capturing — and the erasure happens
+afterwards. An island now passes `Some(seeds)` like everything else.
+
+The cost of the old answer was not only tidiness. The sheet lint's
+arena walk had no mask for a `None` island and used `Fields::ALL`, so
+`SheetIssue::Unread` could not fire for **anything** inside one: a rule
+setting a field the boxed kind never reads was silently accepted.
+`crates/lumen-static/tests/island_seeds.rs` pins both directions.
+
+`ArenaMut` keeps `seeds: Option<&'static [Seed]>` for now — the shape
+is still the one `docs/plan-review-fixes.md` F4.1 specifies — but no
+caller passes `None`.
 
 ### What it removed from the showcase, and how that was checked
 

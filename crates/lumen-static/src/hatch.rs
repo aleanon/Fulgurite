@@ -751,6 +751,16 @@ pub struct Dyn<S = ()> {
     content_depth: usize,
     inner: Box<dyn NodeFor<S>>,
     table: &'static [NodeDesc],
+    /// The boxed content's seeds, captured at construction exactly as
+    /// `table` is (M26/T26.10).
+    ///
+    /// **Type erasure is about the *instance*, not the type.** `Dyn::new`
+    /// is generic over `W`, so `W::SEEDS` is in hand at exactly the
+    /// moment `W::SUB_TABLE` is — the island only stops knowing `W`
+    /// afterwards. Capturing both closes the one case where the cascade
+    /// still read a live node for its defaults and its kind, which is
+    /// the defect M24 was entirely about, in the last place it survived.
+    seeds: &'static [crate::style::Seed],
     /// One instance's worth. `Arena` is keyed on a runtime node count,
     /// which is what lets a type-erased island share it with the other
     /// off-table owners (F4.1).
@@ -777,7 +787,13 @@ impl<S> Dyn<S> {
         );
         let mut arena = crate::arena::Arena::new(W::NODE_COUNT);
         arena.ensure(1, &w);
-        Dyn { inner: Box::new(w), table: W::SUB_TABLE, arena, content_depth: W::DEPTH }
+        Dyn {
+            inner: Box::new(w),
+            table: W::SUB_TABLE,
+            seeds: W::SEEDS,
+            arena,
+            content_depth: W::DEPTH,
+        }
     }
 
     /// How deep the boxed content is. Recorded because [`Widget::DEPTH`]
@@ -865,12 +881,18 @@ impl<S> Node for Dyn<S> {
         if a != 0 {
             return None;
         }
-        let Dyn { inner, table, arena, .. } = self;
+        let Dyn { inner, table, seeds, arena, .. } = self;
         let t: &dyn Node = &**inner;
         arena.ensure_style(t);
-        // `seeds: None` — the island's content is type-erased, so its
-        // kinds cannot reach a const array. See `ArenaMut::seeds`.
-        Some(crate::arena::ArenaMut { table, template: t, style: arena.style_mut(), seeds: None })
+        // **`seeds: Some`, since M26/T26.10.** This said `None` — "the
+        // island's content is type-erased, so its kinds cannot reach a
+        // const array" — and the erasure happens *after* `Dyn::new`,
+        // which is generic over `W` and therefore holds `W::SEEDS` at
+        // exactly the moment it holds `W::SUB_TABLE`. With `None` the
+        // cascade fell back to reading the live instance, and the lint
+        // reported every field as read for an island because it had no
+        // mask to consult.
+        Some(crate::arena::ArenaMut { table, template: t, style: arena.style_mut(), seeds: Some(seeds) })
     }
 
     fn kind_name(&self) -> &'static str {
