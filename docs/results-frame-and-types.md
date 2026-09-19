@@ -870,3 +870,95 @@ The plan's warning was the load-bearing part: T16.12's 8× is `List`'s
 arena loop and must not be borrowed for the derived tree, because the
 two differ by exactly the property that makes culling pay — a `List`'s
 length is data, a derived container's is source code.
+
+## T26.17 — Phase D, batch two: findings 5, 6, 8
+
+Three more probed, three closed. All three were *true as written* and
+worth nothing when measured, which is the distinction this round exists
+to draw. Each probe measured a **ceiling** — the work removed outright,
+which no implementation can beat — so a ceiling inside the arm's spread
+closes the finding without the optimization ever being built.
+
+### Finding 5 — the generated scans copy a whole `Style` per child: **closed**
+
+True in the source. The derive emits `let cs = style[at];` once per
+child at two sites in the fill-distribution scan
+(`crates/lumen-static-macros/src/lib.rs`), and `Style` is **80 bytes**
+(`crates/lumen-static/tests/cursor.rs` pins it).
+
+Rewritten to `let cs = &style[at];` at both sites, `layout`, 10 000
+nodes, idle/rebuild, six runs sorted:
+
+| | runs (µs) | fast cluster |
+|---|---|---|
+| as shipped (copy) | 35.23 35.34 35.35 37.04 37.18 37.52 | **35.23**–35.35 |
+| borrow | 35.28 35.60 37.19 37.54 37.60 43.17 | **35.28**–35.60 |
+
+**+0.05 µs**, inside the fast cluster's own 0.12 µs spread. No effect,
+and by this repository's rule that is never a win.
+
+The codegen diff the plan asked for says the same thing from the other
+side: `--bin fusion`'s `.text` goes **379 032 → 379 320 bytes**, so
+removing the copy made the binary **288 bytes larger**. LLVM was
+already eliding it; spelling the borrow only perturbed register
+allocation.
+
+**The probe carries its own setup assertion**, because "the scan is
+cold in this arm" is exactly the vacuous shape `AGENT.md` names first.
+A `panic!` was planted in the rewritten scan and the arm was run: it
+panicked, in `arms/stages`, at 10 000 nodes. The path is live, so the
++0.05 µs is a measurement of the thing and not of its absence.
+
+### Finding 6 — `Seed::defaults` is a fn pointer per node: **closed**
+
+The ceiling: `cascade_range`'s `let mut s = (seeds[i].defaults)();`
+replaced by a loop-invariant `Style::default()`, which removes the
+indirect call *and* lets LLVM hoist the initializer out of the loop
+entirely — strictly more than a const `Style` field could win, since
+that would still load 80 bytes per node.
+
+`--bin cascade`, four runs each, min column:
+
+| arm | as shipped (ns) | ceiling (ns) | delta | four-run spread |
+|---|---|---|---|---|
+| `cascade_deep`, whole table, 901 nodes | 12 287 12 258 12 391 12 768 | 12 210 12 150 12 334 12 492 | **−107** | 510 |
+| `cascade_deep`, showcase-shaped sheet | 40 507 40 653 40 890 40 786 | 41 196 40 796 40 768 40 995 | **+261** | 382 |
+
+Both inside the spread, and the showcase arm came back *slower*. Per
+node the whole-table delta is **107 ns / 901 = 0.12 ns**, which is below
+the bench's own harness floor of 0.30 ns — the quantity printed beside
+the bound, and the bound is smaller than the ruler.
+
+The rustdoc on `Seed` already gave the reason the thunk exists —
+`Default::default` is not a `const fn`, so the field cannot be a
+`Style` — and the measurement now says there is nothing to trade for.
+
+### Finding 8 — `cascade_subtree`'s debug check runs a full cascade: **closed**
+
+True, and the plan's correction was already the right frame: the check
+is `#[cfg(all(debug_assertions, feature = "alloc"))]`, so the win could
+only ever be test-loop time. The probe asks the one question that
+settles it — **how often does it run, and over how many nodes?**
+
+A counter planted at the check, `cargo test --workspace -- --nocapture`:
+
+| tree size | calls |
+|---|---|
+| 15 nodes | 6 |
+| 9 nodes | 3 |
+| 4 nodes | 1 |
+| **total** | **10 calls, 109 nodes cascaded** |
+
+Ten calls in the entire workspace suite, which runs in **12.4 s**. A
+release whole-table cascade is 12.29 µs for 901 nodes — 13.6 ns/node —
+so even at a generous debug multiplier the check's total cost across
+every test in the repository is tens of microseconds. An exact
+diff-based check would replace tens of microseconds with fewer tens of
+microseconds.
+
+The first attempt at this probe reported **zero** calls and would have
+closed the finding for the wrong reason. `cargo test` captures a
+passing test's stderr, so the counter was swallowed; `-- --nocapture`
+is what made it visible. A probe that reports zero is the "setup
+silently did not happen" shape, and zero is the one result that must
+always be disbelieved before it is used.

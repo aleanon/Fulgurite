@@ -824,10 +824,10 @@ back inside the spread closes the finding permanently.
 | ~~2~~ | *probed and **moved to §5**: the win is 1.11 → 0.03 µs an event, real but small, and it needs a clearing discipline the sweep currently supplies for free* | done | — |
 | 3 | `record_painted` re-stamps ten style-derived fields | **probed: worth building, not built in M26.** Ceiling measured by stamping nothing: `layout` 35.34 → 30.04 µs, **−15.0%**, over fast-cluster spreads of 0.12/0.07 µs; buildable share ≈ 4.2 µs | **eight** static, not nine and not ten: `focus_ring` is host-written *and* `bg` is resolved here from `pressed`/`hovered`, not copied |
 | ~~4~~ | *probed and **closed**: true as a fact — `clip_bounds` has one caller, `List::paint` — and worth 7.5 ns per off-surface node, so ~1 500 authored off-surface nodes are needed to reach 10 µs. The showcase paints 25 commands, **0** off-surface* | done | T16.12's 8× is `List`'s arena loop and was correctly not borrowed: a list's length is data, a derived container's is source code |
-| 5 | the generated scans copy a whole `Style` per child | codegen diff on `--bin fusion` | plausibly zero; `Style` is `Copy` and LLVM may elide it |
-| 6 | `Seed::defaults` is a fn pointer per node | an A/B against a const default style value | T24.1's 2.43× is the template, not the prediction |
+| ~~5~~ | *probed and **closed**: borrowing instead of copying moves `layout` +0.05 µs inside a 0.12 µs spread, and makes `--bin fusion`'s `.text` **288 bytes larger** (379 032 → 379 320). A planted `panic!` proved the scan live in the arm first* | done | the correction was right: `Style` is `Copy`, 80 bytes, and LLVM already elides it |
+| ~~6~~ | *probed and **closed**: removing the call outright is −107 ns on a 901-node `cascade_deep` (spread 510) and **+261 ns** on the showcase sheet (spread 382). Per node that is 0.12 ns, below the bench's 0.30 ns harness floor* | done | T24.1's 2.43× is the template, correctly not borrowed |
 | 7 | sorting the sheet by specificity once | compare against T26.6, which may already capture it | mostly subsumed by T26.6 |
-| 8 | `cascade_subtree`'s debug check runs a full cascade | an exact diff-based check | debug-only: the win is test-loop time, not frame time |
+| ~~8~~ | *probed and **closed**: the check runs **10 times in the whole workspace suite**, over trees of 15, 9 and 4 nodes — 109 nodes cascaded in total, against a 12.4 s suite* | done | debug-only was the right frame; the remaining question was frequency, and it is ten |
 | 9 | a spliced const list of which table indices own arenas, so the three deep walks stop asking every node | `--bin cascade` with the deep walks narrowed | — |
 | 10 | `lint_sheet_deep` re-walks every arena per rule | the new lint row | half (b) allocates and must not ship |
 | 11 | ids and classes compared by content | the 24-Id-rule arm | a `wid_hash` costs `NodeDesc` bytes the embedded fixture asserts |
@@ -845,10 +845,17 @@ and 14 are one finding seen from two subsystems. The count is stated
 because a table headed "the plausible set" that silently carries a
 refuted row is how a closed question gets re-opened by accident.
 
-**Batch one is probed: rows 1, 3 and 4.** Two closed on their measured
-ceilings, one promoted to "worth building" with its number and
-explicitly not built inside M26. Eleven live probes remain: 5, 6, 8, 9,
-10, 11, 12, 13, 15, and rows 2/14 as one.
+**Batches one and two are probed: rows 1, 3, 4, 5, 6 and 8.** Five
+closed on their measured ceilings, one promoted to "worth building"
+with its number and explicitly not built inside M26. Eight live probes
+remain: 9, 10, 11, 12, 13, 15, and rows 2/14 as one.
+
+All five closes share a shape worth naming: **every one was true as
+written.** The review read the code correctly each time — a copy per
+child, a fn pointer per node, a full cascade in a debug check — and in
+each case the measured ceiling was inside the arm's own spread. Reading
+finds the mechanism; only measurement finds the magnitude, and this
+round's yield is five mechanisms that cost nothing.
 
 ---
 
