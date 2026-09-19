@@ -24,6 +24,10 @@ pub struct Canvas {
     pub width: u32,
     pub height: u32,
     pub pixels: Vec<u8>,
+    /// The blur's working buffers, kept across frames — M26/T26.13.
+    /// Private: it is scratch, and a caller that resized it would be
+    /// resizing something `glass_within` re-fits on every use anyway.
+    glass: GlassScratch,
     /// A real face, when one is available. Without it, text falls back
     /// to one filled block per glyph — enough to prove the pipeline,
     /// which is what the headless oracle needs, and not enough to read.
@@ -60,6 +64,33 @@ pub struct Canvas {
 /// the same thing in every band. Only indexing subtracts `y0`, which is
 /// what keeps the arithmetic in the drawing code unchanged from when it
 /// addressed a whole surface.
+/// The blur's three working buffers, kept across frames.
+///
+/// **`glass_within` built these per glass command** — a capture, its
+/// accumulator, and the ping-pong target — which the allocation gate
+/// measured at 3.00 allocations per panel (M26/T26.13). They only ever
+/// grow: a window is resized rarely and a panel's source rect is
+/// bounded by it, so the steady state after the first frame is zero.
+#[derive(Default)]
+pub(crate) struct GlassScratch {
+    a: Vec<u16>,
+    b: Vec<u16>,
+    acc: Vec<u32>,
+}
+
+impl GlassScratch {
+    /// Size the three buffers for a `bw * bh` downsampled capture, and
+    /// zero what will be read. `resize` keeps the capacity it has.
+    fn fit(&mut self, bw: usize, bh: usize) {
+        self.a.clear();
+        self.a.resize(bw * bh * 3, 0);
+        self.b.clear();
+        self.b.resize(bw * bh * 3, 0);
+        self.acc.clear();
+        self.acc.resize(bw * bh * 4, 0);
+    }
+}
+
 struct Surface<'a> {
     px: &'a mut [u8],
     width: u32,
@@ -67,6 +98,9 @@ struct Surface<'a> {
     y0: i64,
     /// Rows in `px`.
     rows: i64,
+    /// The blur's buffers, owned by the `Canvas` (or by a worker's own
+    /// band) and lent here for the frame.
+    glass: &'a mut GlassScratch,
 }
 
 impl Surface<'_> {
@@ -294,9 +328,16 @@ impl Surface<'_> {
         // alpha is the constant 255 above, so carrying it through three
         // box passes would blur a constant.
         let (bw, bh) = (sw.div_ceil(k), sh.div_ceil(k));
-        let mut a: Vec<u16> = vec![0; bw * bh * 3];
+        // Borrowed, not built: see `GlassScratch`.
+        // **Taken out and put back**, rather than borrowed in place:
+        // the rest of this function calls `self.blend_px`, so a live
+        // borrow of `self.glass` across it would not compile. `take`
+        // moves the three `Vec`s, which costs three pointer triples and
+        // no allocation.
+        let mut scratch = core::mem::take(self.glass);
+        scratch.fit(bw, bh);
+        let GlassScratch { a, b, acc } = &mut scratch;
         {
-            let mut acc: Vec<u32> = vec![0; bw * bh * 4];
             for y in sy0..sy1 {
                 let row = (y - self.y0) as usize * stride;
                 let by = ((y - sy0) / ki) as usize;
@@ -317,13 +358,11 @@ impl Surface<'_> {
                 a[i * 3 + 2] = (acc[i * 4 + 2] / n) as u16;
             }
         }
-        let mut b: Vec<u16> = vec![0; bw * bh * 3];
-
         // Three passes each way, at the widths SVG specifies.
         if blur > 0.0 && d > 1 {
             for (l, r) in box_windows(d) {
-                box_rows(&a, &mut b, bw, bh, l, r);
-                box_cols(&b, &mut a, bw, bh, l, r);
+                box_rows(a, b, bw, bh, l, r);
+                box_cols(b, a, bw, bh, l, r);
             }
         }
 
@@ -726,6 +765,11 @@ impl Surface<'_> {
                 self.blend_cov(x, y, c, (cov * 255.0) as u8);
             }
         }
+        // **Put the buffers back**, or every call allocates three
+        // fresh ones and the gate reports the same 3.00 per panel it
+        // did before — which is exactly what the first attempt at
+        // this did, and what the gate caught.
+        *self.glass = scratch;
     }
 
     /// A soft shadow: `c` at the edge of the rounded rect `shape`,
@@ -1133,6 +1177,7 @@ impl Canvas {
             width,
             height,
             pixels: vec![255; (width * height * 4) as usize],
+            glass: GlassScratch::default(),
             #[cfg(feature = "truetype")]
             font: None,
             images: None,
@@ -1352,6 +1397,7 @@ impl Canvas {
             width: self.width,
             y0: 0,
             rows: self.height as i64,
+            glass: &mut self.glass,
         }
     }
 
@@ -1501,7 +1547,14 @@ impl Canvas {
                     let Some((k, chunk)) = next else { break };
                     let y0 = (y_lo + k * strip_rows) as i64;
                     let nrows = (chunk.len() / stride) as i64;
-                    let mut band = Surface { px: chunk, width, y0, rows: nrows };
+                    // **One scratch per worker, not per glass command.**
+                    // A `Canvas`'s own buffers cannot be shared across
+                    // threads, so a banded frame builds one set per band
+                    // — bounded by the worker count, where it used to be
+                    // three `Vec`s per panel per band (M26/T26.13).
+                    let mut scratch = GlassScratch::default();
+                    let mut band =
+                        Surface { px: chunk, width, y0, rows: nrows, glass: &mut scratch };
                     band.render(
                         list,
                         damage,

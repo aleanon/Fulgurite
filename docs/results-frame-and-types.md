@@ -498,3 +498,34 @@ frame. `EM` (the stack stops clipping) reddens
 `tests/paint_containment.rs`, which is the property rather than the
 allocation. `EN` (a refused push pops a real scope) and `EO` (the stack
 overwrites its top instead of refusing) redden the depth tests.
+
+## T26.13, part two — the blur allocated three buffers per glass panel
+
+Measured 2026-09-19, gate written first again.
+
+| | before | after |
+|---|---:|---:|
+| `alloc_gate.rs::a_frame_carrying_glass_allocates_nothing`, 20 frames × 2 panels | **120 allocations — 6.00 per frame, 3.00 per panel** | **0** |
+
+Three per panel is exactly the three `Vec`s `glass_within` built: the
+downsampled capture, its accumulator, and the ping-pong target. Two
+panels in the fixture, so "per command" is distinguishable from "per
+frame" — which is what makes 3.00 a diagnosis rather than a number.
+
+They live on the `Canvas` now and are taken out and put back across the
+call, because the rest of `glass_within` calls `self.blend_px` and a
+live borrow would not compile. `fit` clears and resizes rather than
+reallocating, so they only ever grow.
+
+**The banded path keeps one scratch per worker, not per panel.** A
+`Canvas`'s buffers cannot be shared across threads, so a threaded frame
+builds one set per band — bounded by the worker count, where it used to
+be three per panel per band.
+
+**The first attempt allocated exactly as much as before**, because it
+took the buffers and never put them back. The gate reported the same
+3.00 per panel, which is the gate doing its job on the fix rather than
+on the original defect. Two injections: `EP` (drop the scratch instead
+of restoring it) returns to 3.00 per panel; `EQ` (`fit` reallocates one
+of the three) reports **1.00 per panel**, which is the count naming
+which buffer.

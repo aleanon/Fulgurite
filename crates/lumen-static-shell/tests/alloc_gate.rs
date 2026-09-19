@@ -278,3 +278,39 @@ fn rasterising_a_frame_allocates_nothing() {
         n as f64 / 50.0
     );
 }
+
+/// **And a frame carrying glass** — M26/T26.13, part two.
+///
+/// The test above holds no `Cmd::Glass`, so it cannot see the blur's
+/// scratch buffers: `glass_within` builds three `Vec`s — the capture,
+/// its accumulator, and the ping-pong target — **per glass command**.
+/// Written before the fix, so its first run is the measurement.
+#[test]
+fn a_frame_carrying_glass_allocates_nothing() {
+    use lumen_static::display::{Color, DisplayList, Material};
+    use lumen_static::Renderer;
+    use lumen_static_shell::software::Canvas;
+
+    let mut canvas = Canvas::new(200, 120);
+    let mut list = DisplayList::new();
+    list.rect([0.0, 0.0, 200.0, 120.0], Color(30, 60, 90, 255));
+    // Two panels, so "per command" is distinguishable from "per frame".
+    list.glass([20.0, 20.0, 90.0, 90.0], 8.0, Material { blur: 6.0, ..Material::default() });
+    list.glass([110.0, 20.0, 180.0, 90.0], 8.0, Material { blur: 6.0, ..Material::default() });
+
+    for _ in 0..5 {
+        canvas.render(&list, 200, 120);
+    }
+    let before = allocs();
+    for _ in 0..20 {
+        canvas.render(&list, 200, 120);
+    }
+    let n = allocs() - before;
+    assert_eq!(
+        n, 0,
+        "20 frames with two glass panels allocated {n} times — {:.2} per \
+         frame, {:.2} per panel",
+        n as f64 / 20.0,
+        n as f64 / 40.0
+    );
+}
