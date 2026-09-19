@@ -620,7 +620,7 @@ damage is computed and gives paint no new knowledge. What moves:
 `retain.rs`'s slot comment, `docs/damage-amplification-decision.md`, and
 `docs/00-handoff-static-tree.md` §2's damage-rects property.
 
-### T26.12 — the GPU backend collapses M18's region set to its bounding box
+### T26.12 — the GPU backend collapses M18's region set to its bounding box — **DONE 2026-09-19, and Phase B with it**
 
 `Prefer::Auto` picks the GPU first, and the GPU takes the bounding box of
 the damage regions, which is the merging cost M18 removed.

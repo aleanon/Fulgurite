@@ -598,3 +598,53 @@ island passed `seeds: None`, so the sheet lint's arena walk used
 `Fields::ALL` and `SheetIssue::Unread` could not fire for anything
 inside an island. See T26.10 part one above and
 `crates/lumen-static/tests/island_seeds.rs`.
+
+## T26.12 — the GPU was handed a bounding box, not M18's regions
+
+Measured 2026-09-19.
+
+`Prefer::Auto` picks the GPU first, and the shell handed it
+`Damage::clip_to` — whose own doc says it is "the bounding box of every
+region" and that it is "kept for callers that can only take one rect".
+The GPU can take several: a quad carries its own clip in its vertex
+data, so a region costs one more pass over the command list and **no
+scissor API at all**.
+
+| | handed over | area |
+|---|---:|---:|
+| two 50×50 changes at opposite corners of an 800×600 window, before | 1 rect | 452,400 px² |
+| the same, after | **2 rects** | **5,000 px² — 90× less** |
+
+**Regions are disjoint by construction**, which is what makes drawing
+per region sound: `retain::Regions` merges overlapping rects as they
+are added (`retain.rs`, "Overlapping regions are merged"). Nothing is
+written twice, so a translucent command cannot blend into the same pixel
+from two regions. The page clear follows the same rule — one opaque quad
+at the head of each region's instances, exactly as the single-rect form
+put one at the head of the frame.
+
+**Where the gate lives, and why.** `just test` excludes the wgpu crate
+and `just gpu-parity` runs in neither `test` nor `check`, so a gate
+written beside the pixels runs on nobody's commit. The assertion is on
+what the **shell hands over** — `lumen_static_winit::regions_for`, which
+sits outside the `gpu` feature precisely so a test can reach it without
+wgpu — in `crates/lumen-static-winit/tests/gpu_regions.rs`, which
+`dev-shape` runs.
+
+Injection (collapse to `clip_to`): the handed-over set drops to one rect
+and the assertion fires by name. **`just gpu-parity` is green either
+way** — worst channel delta 1, 0 px (0.000%) over 8 — which is exactly
+why parity alone could not have caught this, and why the task said so
+before it was built.
+
+**The profile's own number was the merged one too**: `Frame::damaged_px`
+read the single rect the backend used to be given. It sums the regions
+now, so a profile reports the quantity this change is about rather than
+the one it replaced.
+
+**Ceiling, from `docs/results-gpu.md`**: the frames this changes are
+damage-clipped ones, where §5b shows the GPU *losing* at small damaged
+areas; §1's 1.10 ms full-surface 4K redraw bounds the win from above and
+is not the case being improved. The 141× in
+`docs/damage-amplification-decision.md` is a **software** damaged-pixel
+ratio and is not a GPU speed-up.

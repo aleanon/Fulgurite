@@ -57,6 +57,7 @@ pub mod dialog;
 pub mod cursor;
 #[cfg(feature = "gpu")]
 pub mod gpu;
+
 pub mod surface;
 pub mod windows;
 pub mod translate;
@@ -560,4 +561,20 @@ impl<A: App> Win<A> {
             }
         }
     }
+}
+
+/// The damage regions a frame hands the backend, clamped to the
+/// surface.
+///
+/// **A named function because it is the seam the gate asserts.**
+/// `just test` excludes the wgpu crate and `just gpu-parity` is in
+/// neither `test` nor `check`, so a gate written only there runs on
+/// nobody's commit (M26/T26.12). This is where the shell decides what
+/// the backend is given, it is in a crate `just test` builds, and
+/// `tests/gpu_regions.rs` asserts it.
+pub fn regions_for(
+    d: lumen_static::retain::Damage,
+    viewport: lumen_static::display::Rect,
+) -> Vec<lumen_static::display::Rect> {
+    d.regions(viewport).collect()
 }

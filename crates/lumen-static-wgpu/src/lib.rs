@@ -609,7 +609,37 @@ impl Gpu {
     /// an opaque quad at the head of the instance stream, not a separate
     /// submission.
     pub fn draw(&mut self, list: &DisplayList, damage: Option<Rect>, page: Option<(Color, Rect)>) {
-        let damage = damage.map(snap_out);
+        // The single-rect form, kept for callers that have one: a
+        // `None` damage is the whole surface, which is a clip that
+        // clips nothing.
+        let (w, h) = self.size();
+        let one = [damage.or(page.map(|(_, r)| r)).unwrap_or([0.0, 0.0, w as f32, h as f32])];
+        self.draw_regions(list, &one, page.map(|(c, _)| c));
+    }
+
+    /// Draw, clipped to **each** damage region (M26/T26.12).
+    ///
+    /// `Prefer::Auto` picks the GPU first and this used to take one
+    /// rect: the shell handed over `Damage::clip_to`, the **bounding
+    /// box** of M18's region set. Two small changes at opposite corners
+    /// of a window bound to the whole window, which is the merging cost
+    /// M18 removed on the software path and re-introduced here.
+    ///
+    /// **No scissor is needed**, and that is a property of this
+    /// backend: a quad carries its own `clip` in its vertex data, so a
+    /// region is expressed by building the frame's quads once per
+    /// region with that region's clip. Regions are **disjoint by
+    /// construction** — `retain::Regions` merges overlapping ones as
+    /// they are added — so nothing is drawn twice and a translucent
+    /// command cannot be blended into the same pixel from two regions.
+    ///
+    /// The page clear follows the same rule: one opaque quad per
+    /// region, at the head of that region's instances, exactly as the
+    /// single-rect form put one at the head of the frame.
+    pub fn draw_regions(&mut self, list: &DisplayList, regions: &[Rect], page: Option<Color>) {
+        if regions.is_empty() {
+            return;
+        }
         let mut quads = Vec::new();
         // Twice at most: an atlas that fills is reset and the frame is
         // built again from an empty one. Rebuilding is what keeps the
@@ -630,22 +660,37 @@ impl Gpu {
             // on an atlas reset is a different command every time.
             let mut mats: Vec<Mat> = Vec::new();
             let mut splits: Vec<Split> = Vec::new();
-            if let Some((c, r)) = page {
-                let r = snap_out(damage.unwrap_or(r));
-                // Opaque, like `Canvas::clear_within`: a page colour
-                // with alpha is a page colour that lets the last frame
-                // through.
-                quads.push(Quad {
-                    rect: r,
-                    clip: r,
-                    color: linear(Color(c.0, c.1, c.2, 255)),
-                    params: [0.0; 4],
-                    uv: [0.0; 4],
-                    kind: KIND_ROUNDED,
-                    _pad: [0; 3],
-                });
+            // **Once per region.** A quad carries its own clip, so a
+            // region is expressed by building the frame's quads again
+            // with that region's clip — no scissor, and no second pass.
+            // The regions are disjoint (`retain::Regions` merges
+            // overlapping ones as they are added), so no pixel is
+            // written twice and a translucent command cannot blend into
+            // the same pixel from two of them.
+            let mut outcome = Ok(());
+            for region in regions {
+                let r = snap_out(*region);
+                if let Some(c) = page {
+                    // One clear per region, at the head of that
+                    // region's instances — opaque, like
+                    // `Canvas::clear_within`: a page colour with alpha
+                    // is a page colour that lets the last frame through.
+                    quads.push(Quad {
+                        rect: r,
+                        clip: r,
+                        color: linear(Color(c.0, c.1, c.2, 255)),
+                        params: [0.0; 4],
+                        uv: [0.0; 4],
+                        kind: KIND_ROUNDED,
+                        _pad: [0; 3],
+                    });
+                }
+                outcome = self.collect(list, Some(r), &mut quads, &mut grads, &mut mats, &mut splits);
+                if outcome.is_err() {
+                    break;
+                }
             }
-            match self.collect(list, damage, &mut quads, &mut grads, &mut mats, &mut splits) {
+            match outcome {
                 Ok(()) => {
                     self.submit(&quads, &grads, &mats, &splits);
                     return;

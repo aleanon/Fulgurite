@@ -73,15 +73,21 @@ impl<A: App> Backend<A> for GpuBackend {
         // back holding a frame from two presents ago. `src/blit.wgsl`
         // in that crate spends a paragraph on why the extra blit is
         // worth it, and this is the paragraph's payoff.
-        let area = host.take_damage_for_age(1).clip_to(viewport);
+        // **The region set, not its bounding box** (M26/T26.12). This
+        // was `Damage::clip_to`, whose own doc says it is "the bounding
+        // box of every region" and is "kept for callers that can only
+        // take one rect". The GPU can take several: two small changes
+        // at opposite corners of a window bound to the whole window,
+        // which is the merging cost M18 removed on the software path
+        // and which this quietly re-introduced.
+        let regions = crate::regions_for(host.take_damage_for_age(1), viewport);
 
         let t = Instant::now();
-        let render_ns = match area {
-            Some(area) => {
-                self.gpu.draw(&host.list, Some(area), Some((page, area)));
-                t.elapsed().as_nanos() as u64
-            }
-            None => 0,
+        let render_ns = if regions.is_empty() {
+            0
+        } else {
+            self.gpu.draw_regions(&host.list, &regions, Some(page));
+            t.elapsed().as_nanos() as u64
         };
 
         // Presented whether or not anything was rendered, for the reason
@@ -99,9 +105,15 @@ impl<A: App> Backend<A> for GpuBackend {
             render_ns,
             present_ns,
             frame_ns: frame_start.elapsed().as_nanos() as u64,
-            damaged_px: area.map_or(0, |a| {
-                ((a[2] - a[0]) as f64 * (a[3] - a[1]) as f64).max(0.0) as u64
-            }),
+            // **The regions' own area, not their bounding box's**
+            // (M26/T26.12). This read the single rect the backend used
+            // to be handed, so the number a profile printed was the
+            // merged one — the quantity the change is about, reported
+            // as the quantity it replaced.
+            damaged_px: regions
+                .iter()
+                .map(|a| ((a[2] - a[0]) as f64 * (a[3] - a[1]) as f64).max(0.0) as u64)
+                .sum(),
         }
     }
 
@@ -119,3 +131,4 @@ impl<A: App> Backend<A> for GpuBackend {
         &self.name
     }
 }
+
