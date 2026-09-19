@@ -65,9 +65,22 @@ are independent of each other**, so either may go first:
   overturned the attribution written before the build: the cost left is
   the cache check and the look-shaped paint, not the widget's size.
 
-- **M26 — `docs/plan-frame-and-types.md`** (T26.0–T26.17): **Phase A is
-  done, 2026-09-17** (T26.0–T26.5); Phase B, the confirmed optimizations,
-  is next. T26.1 fixed the enum derive zeroing its active variant under
+- **M26 — `docs/plan-frame-and-types.md`** (T26.0–T26.17): **Phases A
+  and B are done** — A on 2026-09-17 (T26.0–T26.5), **B on 2026-09-19**
+  (T26.6–T26.13). Phase C, the compile-time guarantees, is next, then
+  Phase D's measurement round. Phase B's headline figures, each on the
+  arm its task named and eight runs a side:
+  `TextInput` layout **47×** and `TextArea` **108×** (they measured what
+  shaping had already returned); `Badge`/`Chip` **55×** (no memo at all);
+  the cascade **1.56×**; a popup's damage **37.5×** on the synthetic arm
+  and 100% → 84% of the window on the showcase's real dropdown; the GPU
+  handed 5,000 px² where it used to get 452,400; and the raster path from
+  1.00 + 3.00-per-panel allocations to **zero**. **Two tasks reported
+  *no* win and say so**: T26.9's frame delta sits inside its own arm's
+  spread, and T26.10's is below what its arm resolves — both kept for
+  reasons other than the number. **T26.7's named arms could not move at
+  all**, because neither lays out a text widget; the arm was added where
+  it belongs. T26.1 fixed the enum derive zeroing its active variant under
   `Boundaries`, T26.2 the agent reporting a hidden node's container kind,
   T26.3 the text memo serving a stale box after a font-size or weight
   change, T26.4 an `Assembled` slab seeding hidden nodes from a live
