@@ -269,3 +269,162 @@ fn an_exact_text_selector_picks_one_of_two_prefixed_rows() {
         "the two exact selectors named the same node"
     );
 }
+
+/// **M24/T24.4: a row is addressable by its index.**
+///
+/// The one thing a part id cannot reach. An arena row is a template
+/// instantiated per index and carries no `#[widget_id]`, so until `%k`
+/// the only ways to name one were the text it happened to show — safe
+/// exactly while that text is unique — and arithmetic over a resolved
+/// box, which is the shape `agent_drive.sh` used and AGENT.md's table
+/// names twice.
+#[test]
+fn a_row_resolves_by_its_index() {
+    let h = Host::new();
+    let a = Agent::new();
+    let tree = TreeRef::of_root(&h.app.ui, &h.styles, &h.states);
+    for (k, want) in NAMES.iter().enumerate() {
+        let r = a.dispatch(
+            &tree,
+            &json!({"jsonrpc":"2.0","id":1,"method":"ui.resolve",
+                    "params":{"selector":format!("#menu > %{k}")}}),
+        );
+        let label = r["result"]["label"].as_str().unwrap_or("");
+        assert_eq!(
+            label, *want,
+            "`#menu > %{k}` named {label:?}, not the {k}th row: {r}"
+        );
+    }
+}
+
+/// And the row is *inside its owner*: the descendant step reaches an
+/// arena, which it could not before — a row has no table index, so a
+/// filter written over the table's parent chain skipped every one.
+#[test]
+fn a_descendant_step_reaches_a_repeaters_rows() {
+    let h = Host::new();
+    let a = Agent::new();
+    let tree = TreeRef::of_root(&h.app.ui, &h.styles, &h.states);
+    let inside = a.dispatch(
+        &tree,
+        &json!({"jsonrpc":"2.0","id":1,"method":"ui.resolve",
+                "params":{"selector":"#menu > ~=Gamma"}}),
+    );
+    assert!(
+        inside.get("result").is_some(),
+        "`#menu > ~=Gamma` matched nothing; a row is not reachable through its \
+         owner: {inside}"
+    );
+    // And the step still *excludes*: the header is not in the menu.
+    let outside = a.dispatch(
+        &tree,
+        &json!({"jsonrpc":"2.0","id":2,"method":"ui.resolve",
+                "params":{"selector":"#menu > #head"}}),
+    );
+    assert!(
+        outside.get("error").is_some(),
+        "`#menu > #head` resolved; the step matches things outside its owner: \
+         {outside}"
+    );
+}
+
+/// A bare `%k` names one row *per repeater*, and this tree has one — so
+/// it resolves. The point of the pairing with an owner is what happens
+/// when there are two, which `ui.resolve` reports rather than guessing.
+#[test]
+fn a_row_index_past_the_end_matches_nothing() {
+    let h = Host::new();
+    let a = Agent::new();
+    let tree = TreeRef::of_root(&h.app.ui, &h.styles, &h.states);
+    let r = a.dispatch(
+        &tree,
+        &json!({"jsonrpc":"2.0","id":1,"method":"ui.resolve",
+                "params":{"selector":format!("%{}", NAMES.len() + 3)}}),
+    );
+    assert!(
+        r.get("error").is_some(),
+        "a row index past the last row resolved to something: {r}"
+    );
+}
+
+// ---- two repeaters, which is what makes "inside" mean anything -------
+
+const LEFT: [&str; 3] = ["one", "two", "three"];
+const RIGHT: [&str; 3] = ["red", "green", "blue"];
+
+type TwoRow = Button<TwoApp, String>;
+
+fn bind_left(r: &mut TwoRow, i: usize) {
+    r.label = LEFT[i].to_string();
+}
+
+fn bind_right(r: &mut TwoRow, i: usize) {
+    r.label = RIGHT[i].to_string();
+}
+
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+struct Two {
+    #[widget_id("left")]
+    left: Repeat<TwoRow>,
+    #[widget_id("right")]
+    right: Repeat<TwoRow>,
+}
+
+#[derive(Default)]
+struct TwoApp {
+    ui: Two,
+}
+
+impl lumen_static::event::App for TwoApp {
+    type Tree = Two;
+    fn tree(&self) -> &Two {
+        &self.ui
+    }
+    fn tree_mut(&mut self) -> &mut Two {
+        &mut self.ui
+    }
+}
+
+/// **`#owner > %k` names *that* owner's row** (M24/T24.4).
+///
+/// With one repeater in the tree, "is this row inside this owner" cannot
+/// be wrong — an injection answering `true` for every row left the
+/// single-repeater tests green, which is a finding about them. Two
+/// repeaters is the smallest fixture where the question has an answer.
+#[test]
+fn a_row_index_is_scoped_to_the_repeater_that_owns_it() {
+    let mut app = TwoApp::default();
+    app.ui.left = Repeat::new(LEFT.len(), ROW_H, bind_left);
+    app.ui.right = Repeat::new(RIGHT.len(), ROW_H, bind_right);
+    let styles = pass::default_styles(&app.ui);
+    let mut states = vec![NodeState::default(); Two::NODE_COUNT];
+    pass::layout(&mut app.ui, &styles, &mut states, VIEW);
+    let a = Agent::new();
+    let tree = TreeRef::of_root(&app.ui, &styles, &states);
+
+    let name = |sel: &str| -> String {
+        let r = a.dispatch(
+            &tree,
+            &json!({"jsonrpc":"2.0","id":1,"method":"ui.resolve",
+                    "params":{"selector":sel}}),
+        );
+        r["result"]["label"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(name("#left > %0"), "one", "`#left > %0` named the wrong row");
+    assert_eq!(name("#right > %0"), "red", "`#right > %0` named the wrong row");
+    assert_eq!(name("#left > %2"), "three");
+    assert_eq!(name("#right > %2"), "blue");
+
+    // And a bare `%0` is now ambiguous — two repeaters have one — which
+    // the agent must *report* rather than pick one and be believed.
+    let bare = a.dispatch(
+        &tree,
+        &json!({"jsonrpc":"2.0","id":2,"method":"ui.resolve",
+                "params":{"selector":"%0"}}),
+    );
+    assert_eq!(
+        bare["error"]["code"], -32002,
+        "a bare `%0` with two repeaters in the tree should be ambiguous: {bare}"
+    );
+}

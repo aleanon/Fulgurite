@@ -228,7 +228,7 @@ not a stylesheet, not the agent's `#id` selectors, not
 `scripts/agent_drive.sh`. Namespaced, because a bare `trigger` would
 collide with an application's own `#[widget_id("trigger")]`.
 
-### T24.4 — what a part id still cannot reach: a *row*
+### T24.4 — what a part id still cannot reach: a *row* — **DONE 2026-09-19**
 
 Recorded 2026-09-14, unbuilt. `PART_TRIGGER`/`PART_POPUP`/`PART_MENU`
 reach the `Select`'s own three nodes. They do not reach **row *k***,
@@ -251,6 +251,37 @@ Two consequences, and the second is the load-bearing one:
 Promoted to a prerequisite by `docs/plan-widget-parity.md` T27.0, where
 six of the thirty-three widgets are repeaters whose rows must be
 addressable to be tested at all.
+
+**Built 2026-09-19**, as `%k` plus a fix to the descendant step.
+
+`#menu > %3` is the fourth row of `#menu`; `%3` alone is every
+repeater's fourth row at once, which `ui.resolve` reports as ambiguous
+rather than guessing. The row index rides in the id
+`lumen_static::observe::instance_id` already built — bits 12..=43, with
+the owner in 44..=62 — so nothing new is stored and the decoder sits
+next to the only two things that read it, where it cannot drift from the
+encoder the way four copies of *that* did (F4.4).
+
+**The descendant step could not reach a row at all**, which is the half
+that was silently costing something. It filtered on the table's parent
+chain and an arena row has no table index, so `#grid > ~file-000.rs`
+matched nothing however visible the row was — and `M27/T27.10`'s drive
+worked around it with a bare `~text`, safe only while the text happens
+to be unique in the window. That is a property of a fixture, not of a
+widget. `entry_is_inside` answers for both kinds of entry now.
+
+Five injections (DT–DW). **One left every test green**: "every row is
+inside every owner" cannot be wrong in a tree with *one* repeater, and
+the fixture had one. A second repeater is the smallest thing that makes
+"inside" mean anything, and with `#left > %0` and `#right > %0` naming
+different rows it reddens.
+
+**What is still open**, and it is the other half of this section: a
+stylesheet still cannot say *the selected row*. Rows share one template
+style row by construction — that is what an arena is — so per-row status
+needs a style row per instance, which is `docs/plan-appearance.md`'s
+question and not a selector's. The addressing half is what
+`docs/plan-widget-parity.md` T27.0 promoted this for, and it is done.
 
 ### The five things underneath
 

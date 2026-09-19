@@ -32,8 +32,11 @@ are independent of each other**, so either may go first:
   `examples/showcase`: the dropdown is hand-wired because three
   framework pieces that should have carried it could not be reached —
   `Popup`, the enum variant switch, and T11.5's never-built `Select`.
-  **T24.0 and T24.1 landed 2026-09-13**, leaving T24.2 (`Select<E>`)
-  and T24.3 (the stage as an enum). §1 has the measurement and the
+**M24 is done**: T24.0 and T24.1
+  landed 2026-09-13, T24.2 and T24.3 on 2026-09-14, and **T24.4 —
+  per-row addressing — on 2026-09-19**, as `%k` plus a descendant step
+  that can reach an arena at all (it filtered on the table's parent
+  chain, and a repeater's rows are not in the table). §1 has the measurement and the
   injection table, including the one that came back green; T24.1's
   entry has the 2.4× the cascade got faster for free.
 

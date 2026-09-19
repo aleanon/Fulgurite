@@ -176,13 +176,14 @@ def _row_shown(c, text: str) -> bool:
     below would pass on a window that never moved.
     """
     try:
-        # **Bare `~text`, not `#grid > ~text`.** The descendant step
-        # filters by the table's parent chain, and a repeater's rows are
-        # not in the table at all — so a row is a descendant of nothing
-        # and `#d_datagrid_a > ~file-000.rs` matches nothing however
-        # visible the row is. The file names are unique in this window,
-        # which is what makes the bare form safe here (M27/T27.10).
-        c.c.rpc("ui.resolve", selector=f"~{text}")
+        # **Scoped to the grid** (M24/T24.4). This was a bare `~text`,
+        # because the descendant step filtered by the table's parent
+        # chain and a repeater's rows are not in the table at all — so a
+        # row was a descendant of nothing and `#grid > ~file-000.rs`
+        # matched nothing however visible the row was. The bare form was
+        # safe only while the file names were unique in the window,
+        # which is a property of the fixture and not of the widget.
+        c.c.rpc("ui.resolve", selector=f"{c.sel} > ~{text}")
         return True
     except RuntimeError as e:
         if "matched nothing" not in str(e):

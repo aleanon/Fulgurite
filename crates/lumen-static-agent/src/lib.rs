@@ -1584,6 +1584,21 @@ enum Term<'s> {
     /// is what a person reaching for a selector means; this is the
     /// escape hatch for when it is not.
     TextIs(&'s str),
+    /// `%k` — row *k* of the repeater this is inside (M24/T24.4).
+    ///
+    /// **The one thing a part id cannot reach.** An arena row is a
+    /// template instantiated per index and carries no `#[widget_id]` of
+    /// its own, so until this the only way to name one was the text it
+    /// happened to show — safe exactly while that text is unique in the
+    /// window — or arithmetic over a resolved box, which is the
+    /// "setup silently did not happen" shape this repository has been
+    /// caught by twice (`scripts/agent_drive.sh` computed
+    /// `box[1] + ROW_H * 8 + ROW_H / 2`).
+    ///
+    /// Written with the owner: `#menu > %3` is the fourth row of
+    /// `#menu`, and `%3` alone is every repeater's fourth row at once —
+    /// which `ui.resolve` reports as ambiguous rather than guessing.
+    Row(u64),
     Src { file: &'s str, line: Option<u32> },
     TableIndex(usize),
 }
@@ -1593,6 +1608,10 @@ fn parse_selector(sel: &str) -> Result<Vec<Term<'_>>, String> {
     for raw in sel.split_whitespace() {
         let term = if let Some(id) = raw.strip_prefix('#') {
             Term::Wid(id)
+        } else if let Some(k) = raw.strip_prefix('%') {
+            Term::Row(
+                k.parse().map_err(|_| format!("`{raw}`: a row is a number, as in `%3`"))?,
+            )
         } else if let Some(text) = raw.strip_prefix("~=") {
             Term::TextIs(text)
         } else if let Some(text) = raw.strip_prefix('~') {
@@ -1632,6 +1651,7 @@ fn matches(tree: &TreeRef, e: &Entry, term: &Term) -> bool {
                 || e.node.label().is_some_and(|v| v.trim() == *t)
         }
         Term::TableIndex(i) => e.idx == Some(*i),
+        Term::Row(k) => instance_of(e.id).is_some_and(|(_, row)| row == *k),
         Term::Wid(_) | Term::Kind(_) | Term::Src { .. } => {
             let Some(i) = e.idx else { return false };
             let d = &tree.table[i];
@@ -1668,7 +1688,7 @@ fn nearest(tree: &TreeRef, term: &Term) -> Value {
             json!({ "available_files": files })
         }
         Term::TableIndex(_) => json!({ "table_len": tree.table.len() }),
-        Term::TextContains(_) | Term::TextIs(_) => Value::Null,
+        Term::TextContains(_) | Term::TextIs(_) | Term::Row(_) => Value::Null,
     }
 }
 
@@ -1743,6 +1763,43 @@ fn scrolling_ancestors(tree: &TreeRef, i: usize) -> Vec<usize> {
 /// (`Either`, `Select`, every wrapper in `lumen-static-widgets`) splices
 /// children in, so a subtree is contiguous *in practice* and the walk is
 /// what makes that not need to be true.
+/// The container node and row an [`lumen_static::observe::instance_id`]
+/// names, or `None` for an ordinary table node.
+///
+/// The layout is that function's, read back: bit 63 marks an instance,
+/// bits 44..=62 the container's main-table index, bits 12..=43 the row.
+/// Kept next to the only two things that need it so the pair cannot
+/// drift apart the way the four copies of the *encoder* did
+/// (`docs/plan-review-fixes.md` F4.4).
+fn instance_of(id: u64) -> Option<(usize, u64)> {
+    // **The container is stored as its *node id*, not its index.**
+    // `Repeat::observe` passes the id it was given and `Index::build`
+    // hands out `i + 1`, so the table index is one less — and a zero
+    // would mean no container at all, which cannot happen but is not
+    // worth a panic to prove.
+    (id >> 63 == 1).then(|| {
+        let container = ((id >> 44) & 0x7_FFFF) as usize;
+        (container.saturating_sub(1), (id >> 12) & 0xFFFF_FFFF)
+    })
+}
+
+/// Is `j` inside `i`'s subtree — where `j` may be an **arena row**,
+/// which has no table index at all.
+///
+/// A row's owner is the repeater it was instantiated by, and the
+/// instance id carries it. Without this a descendant step reached every
+/// node inside a widget *except* its rows — so `#grid > ~file-000.rs`
+/// matched nothing however visible the row was, and the drives worked
+/// around it with bare `~text` selectors that are safe only while the
+/// text is unique in the window (M24/T24.4).
+fn entry_is_inside(tree: &TreeRef, owner: usize, e: &Entry) -> bool {
+    match e.idx {
+        Some(j) => is_descendant(tree, owner, j),
+        None => instance_of(e.id)
+            .is_some_and(|(container, _)| container == owner || is_descendant(tree, owner, container)),
+    }
+}
+
 fn is_descendant(tree: &TreeRef, i: usize, j: usize) -> bool {
     let mut k = j;
     while k < tree.table.len() {
@@ -1791,7 +1848,7 @@ fn resolve_one<'e>(ix: &'e Index<'_>, selector: &str) -> Result<&'e Entry, (i64,
             entries: ix
                 .entries
                 .iter()
-                .filter(|e| e.idx.is_some_and(|j| is_descendant(ix.tree, oi, j)))
+                .filter(|e| entry_is_inside(ix.tree, oi, e))
                 .cloned()
                 .collect(),
         };
