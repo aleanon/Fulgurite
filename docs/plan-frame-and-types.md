@@ -820,10 +820,10 @@ back inside the spread closes the finding permanently.
 
 | # | finding | probe | the correction already known |
 |---|---|---|---|
-| 1 | `place` has no relayout boundary | the new `place` row, with a size-unchanged term added to the guard | the review's guard was incomplete; the 7.6 µs it cited is an arena figure |
+| ~~1~~ | *probed and **closed**: `place` is 7.7 µs of a 350.7 µs idle frame at 10 000 nodes (four-run spread 0.32 µs) — **2.2%** for deleting the pass outright, and a boundary wins less. `docs/results-frame-and-types.md` T26.17 batch one* | done | the review's 7.6 µs was an arena figure; the main table's agrees to two significant figures by coincidence of scale |
 | ~~2~~ | *probed and **moved to §5**: the win is 1.11 → 0.03 µs an event, real but small, and it needs a clearing discipline the sweep currently supplies for free* | done | — |
-| 3 | `record_painted` re-stamps ten style-derived fields | stamp the static ones where the cascade runs | nine fields, not ten — `focus_ring` is rewritten per frame by the host |
-| 4 | paint culling stops at the arena boundary | a long scrolled column of derived containers | T16.12's 8× is `List`'s arena loop; do not borrow it |
+| 3 | `record_painted` re-stamps ten style-derived fields | **probed: worth building, not built in M26.** Ceiling measured by stamping nothing: `layout` 35.34 → 30.04 µs, **−15.0%**, over fast-cluster spreads of 0.12/0.07 µs; buildable share ≈ 4.2 µs | **eight** static, not nine and not ten: `focus_ring` is host-written *and* `bg` is resolved here from `pressed`/`hovered`, not copied |
+| ~~4~~ | *probed and **closed**: true as a fact — `clip_bounds` has one caller, `List::paint` — and worth 7.5 ns per off-surface node, so ~1 500 authored off-surface nodes are needed to reach 10 µs. The showcase paints 25 commands, **0** off-surface* | done | T16.12's 8× is `List`'s arena loop and was correctly not borrowed: a list's length is data, a derived container's is source code |
 | 5 | the generated scans copy a whole `Style` per child | codegen diff on `--bin fusion` | plausibly zero; `Style` is `Copy` and LLVM may elide it |
 | 6 | `Seed::defaults` is a fn pointer per node | an A/B against a const default style value | T24.1's 2.43× is the template, not the prediction |
 | 7 | sorting the sheet by specificity once | compare against T26.6, which may already capture it | mostly subsumed by T26.6 |
@@ -844,6 +844,11 @@ back inside the spread closes the finding permanently.
 and 14 are one finding seen from two subsystems. The count is stated
 because a table headed "the plausible set" that silently carries a
 refuted row is how a closed question gets re-opened by accident.
+
+**Batch one is probed: rows 1, 3 and 4.** Two closed on their measured
+ceilings, one promoted to "worth building" with its number and
+explicitly not built inside M26. Eleven live probes remain: 5, 6, 8, 9,
+10, 11, 12, 13, 15, and rows 2/14 as one.
 
 ---
 

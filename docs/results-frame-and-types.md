@@ -766,3 +766,107 @@ accepting-injection allowed counts of `1 | 4`, and the doctest's tree
 carries **two** duplicates, so nothing moved. An injection aimed at a
 number the fixture does not have proves nothing — the same shape as a
 bound computed from the wrong quantity, one level down.
+
+## T26.17 — Phase D, batch one: findings 1, 3, 4
+
+The kill rule, as `docs/plan-frame-and-types.md` §3 wrote it before any
+probe ran: **no promotion without a delta that beats its arm's four-run
+spread, and a probe that comes back inside the spread closes the finding
+permanently.** All three numbers below are min-of-150-iterations after
+20 warm-ups, on `just stages`, whose `us` column is microseconds.
+
+### Finding 1 — `place` has no relayout boundary: **closed**
+
+`place`, 10 000 nodes, the idle/rebuild arm, four runs:
+
+| run | 1 | 2 | 3 | 4 | spread |
+|---|---|---|---|---|---|
+| `place` (µs) | 7.84 | 7.75 | 7.72 | 7.52 | **0.32** |
+
+The frame on the same arm is **350.72 µs** (two runs: 351.47, 349.97),
+so `place` is **2.2% of an idle frame** — and that is the figure for
+deleting `place` entirely. A relayout boundary wins strictly less than
+deleting the pass, because it still has to ask each subtree whether it
+may skip.
+
+The finding is closed on its own ceiling rather than on a built
+boundary, which is the cheaper half of the kill rule: an upper bound
+that is already small does not need the optimization built to be
+decided. It also confirms the plan's own correction — the review cited
+7.6 µs for this finding, which is an **arena** figure; the main table's
+`place` costs 7.7 µs at 10 000 nodes, and the numbers agreeing to two
+significant figures is a coincidence of scale, not evidence.
+
+### Finding 3 — `record_painted` re-stamps ten style-derived fields, eight of them static: **worth building, not built in M26**
+
+Probed by measuring the **ceiling**: `record_painted` was cut down to
+stamp nothing at all — an injection that is incorrect by construction,
+which is exactly what makes it an upper bound. Six runs a side,
+`layout`, 10 000 nodes, idle/rebuild, sorted:
+
+| | runs (µs) | fast cluster | median |
+|---|---|---|---|
+| as shipped | 35.23 35.34 35.35 37.04 37.18 37.52 | 35.23–35.35 (0.12) | **35.34** |
+| stamping nothing | 29.98 30.03 30.04 30.04 30.05 42.04 | 29.98–30.05 (0.07) | **30.04** |
+
+**−5.30 µs, or −15.0% of `layout`**, against fast-cluster spreads of
+0.12 and 0.07 µs — two orders of magnitude clear of the bar. Against the
+whole idle frame it is **1.5%**.
+
+The achievable share is smaller than the ceiling. `record_painted`
+performs **ten** writes — `fg`, `bg`, `radius`, `focus_ring`,
+`border_color`, `border_width`, `font_size`, `font_weight`, `shadow`,
+`pad` — and two of them are genuinely per-frame: `focus_ring` is
+rewritten per frame by the host, and `bg` is *resolved* here from
+`pressed`/`hovered` (C6), not copied. **Eight are static**, so the
+buildable win is roughly four fifths of 5.30 µs, or **4.2 µs**.
+
+The plan's own correction to the review — "nine fields, not ten, because
+`focus_ring` is rewritten per frame" — was itself one short: it counted
+the writes and caught the host's field, and missed that `bg` is the one
+write in the function that is not a copy at all. Counting a list is not
+reading it.
+
+It is recorded as worth building and **not built in M26**, because the
+implementation splits `record_painted`'s inputs across two passes — the
+static fields stamped where the cascade runs, the dynamic two left here
+— and every existing caller of the cascade becomes a site that must
+stamp. That is a correctness surface, and M25/T25.0 is what a stale
+stamp under `Boundaries` looks like when it goes wrong.
+
+First run of this probe was three runs a side and read *slower*
+stamping nothing (43.59 42.09 30.01 against 37.52 37.22 35.61). Three
+runs could not separate the arm's two clusters; six could. A bimodal arm
+sampled below its own period is the "bound computed from the wrong
+quantity" shape wearing a different hat — the quantity was right, the
+sample was not.
+
+### Finding 4 — paint culling stops at the arena boundary: **closed**
+
+True as a fact and worthless as an optimization, which the probe
+separates and reading could not.
+
+`Painter::clip_bounds` has exactly one caller in the whole workspace —
+`List::paint` (`crates/lumen-static/src/hatch.rs`). The generated
+`paint` for a derived container culls nothing. So the finding's premise
+holds.
+
+What it is worth is bounded by two measured numbers:
+
+| quantity | measured |
+|---|---|
+| paint, per node | **7.00 ns** at 1 000 and 3 000 nodes, 7.50 ns at 10 000 (7.15 / 21.37 / 75.06 µs) |
+| painted commands wholly outside the surface, showcase settled frame | **0 of 25** |
+
+Culling saves at most 7.5 ns per off-surface node, less the rect test it
+adds to every node. Reaching even 10 µs — the smallest thing the
+`stages` arm resolves above its spread — needs **~1 500 authored,
+off-surface nodes**. The authored tree is written by hand: the
+showcase, the largest in the repository, paints 25 commands and none of
+them is off-surface. Node counts get large only in arenas, and arenas
+already cull (T16.12).
+
+The plan's warning was the load-bearing part: T16.12's 8× is `List`'s
+arena loop and must not be borrowed for the derived tree, because the
+two differ by exactly the property that makes culling pay — a `List`'s
+length is data, a derived container's is source code.
