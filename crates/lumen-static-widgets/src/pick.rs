@@ -351,8 +351,7 @@ impl<const KIND: u8> Widget for Pad<KIND> {
         TIME => "timepad",
         _ => "filepad",
     };
-    const SEEDS: &'static [Seed] = &[Seed::new(<Pad<KIND> as Widget>::KIND, <Pad<KIND> as Widget>::type_defaults)
-        .reading(Fields::of(&[
+    const SEEDS: &'static [Seed] = &[Seed::new(<Pad<KIND> as Widget>::KIND, <Pad<KIND> as Widget>::type_defaults, Fields::of(&[
             Fields::WIDTH,
             Fields::HEIGHT,
             Fields::PADDING,
@@ -638,13 +637,11 @@ impl<const KIND: u8> PickerTable<KIND> {
 
     const SEED_ARRAY: [Seed; MAX_PICKER_NODES] = {
         let mut s = [Seed::WIDGET; MAX_PICKER_NODES];
-        s[0] = Seed::new(<Picker<KIND> as Widget>::KIND, <Picker<KIND> as Widget>::type_defaults)
-            .reading(Fields::of(&[Fields::WIDTH, Fields::HEIGHT, Fields::VISIBLE]));
+        s[0] = Seed::new(<Picker<KIND> as Widget>::KIND, <Picker<KIND> as Widget>::type_defaults, Fields::of(&[Fields::WIDTH, Fields::HEIGHT, Fields::VISIBLE]));
         // The trigger is painted by this widget, not by a child type —
         // so it seeds from the same defaults and reads the fields a
         // stylesheet can set on it.
-        s[1] = Seed::new("picker-trigger", Picker::<KIND>::trigger_defaults)
-            .reading(Fields::of(&[
+        s[1] = Seed::new("picker-trigger", Picker::<KIND>::trigger_defaults, Fields::of(&[
                 Fields::WIDTH,
                 Fields::HEIGHT,
                 Fields::PADDING,

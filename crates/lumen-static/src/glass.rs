@@ -184,8 +184,7 @@ impl<W: Widget> GlassTable<W> {
     /// The seed counterpart of [`Self::ARRAY`], spliced the same way.
     const SEED_ARRAY: [Seed; MAX_GLASS_NODES] = {
         let mut s = [Seed::WIDGET; MAX_GLASS_NODES];
-        s[0] = Seed::new(<Glass<W> as Widget>::KIND, <Glass<W> as Widget>::type_defaults).reading(
-            crate::style::Fields::of(&[
+        s[0] = Seed::new(<Glass<W> as Widget>::KIND, <Glass<W> as Widget>::type_defaults, crate::style::Fields::of(&[
                 crate::style::Fields::WIDTH,
                 crate::style::Fields::HEIGHT,
                 crate::style::Fields::PADDING,
@@ -193,8 +192,7 @@ impl<W: Widget> GlassTable<W> {
                 crate::style::Fields::VISIBLE,
                 crate::style::Fields::RADIUS,
                 crate::style::Fields::SHADOW,
-            ]),
-        );
+            ]),);
         crate::widget::splice_seeds(&mut s, 1, W::SEEDS);
         s
     };

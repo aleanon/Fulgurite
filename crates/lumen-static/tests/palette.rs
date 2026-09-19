@@ -29,7 +29,7 @@ impl Widget for Probe {
     const IS_RIGID: bool = true;
     const SUB_TABLE: &'static [NodeDesc] = &[NodeDesc::new(0, NO_PARENT, 0, 0, 0)];
     const KIND: &'static str = "palette-probe";
-    const SEEDS: &'static [Seed] = &[Seed::new(Self::KIND, Self::type_defaults)];
+    const SEEDS: &'static [Seed] = &[Seed::unlinted(Self::KIND, Self::type_defaults)];
 }
 
 impl Node for Probe {

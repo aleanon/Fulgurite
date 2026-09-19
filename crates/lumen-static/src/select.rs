@@ -184,8 +184,7 @@ impl<S: 'static> SelectTable<S> {
 
     const SEED_ARRAY: [Seed; MAX_SELECT_NODES] = {
         let mut s = [Seed::WIDGET; MAX_SELECT_NODES];
-        s[0] = Seed::new(<Select<S> as Widget>::KIND, <Select<S> as Widget>::type_defaults)
-            .reading(crate::style::Fields::of(&[crate::style::Fields::VISIBLE]));
+        s[0] = Seed::new(<Select<S> as Widget>::KIND, <Select<S> as Widget>::type_defaults, crate::style::Fields::of(&[crate::style::Fields::VISIBLE]));
         crate::widget::splice_seeds(&mut s, 1, <Row<S> as Widget>::SEEDS);
         crate::widget::splice_seeds(
             &mut s,

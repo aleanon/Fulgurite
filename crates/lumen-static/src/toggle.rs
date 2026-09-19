@@ -139,7 +139,7 @@ impl<S: 'static, const SHAPE: u8> Widget for Toggle<S, SHAPE> {
     }
 
     const SEEDS: &'static [Seed] =
-        &[Seed::new(Self::KIND, Self::type_defaults).reading(crate::style::Fields::of(&[
+        &[Seed::new(Self::KIND, Self::type_defaults, crate::style::Fields::of(&[
             crate::style::Fields::WIDTH,
             crate::style::Fields::HEIGHT,
             crate::style::Fields::CURSOR,

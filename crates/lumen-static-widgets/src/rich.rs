@@ -168,9 +168,7 @@ impl Widget for RichText {
     const KIND: &'static str = "richtext";
     const SEEDS: &'static [Seed] = &[Seed::new(
         <RichText as Widget>::KIND,
-        <RichText as Widget>::type_defaults,
-    )
-    .reading(Fields::of(&[
+        <RichText as Widget>::type_defaults, Fields::of(&[
         Fields::WIDTH,
         Fields::HEIGHT,
         Fields::PADDING,
@@ -517,9 +515,7 @@ impl Widget for Markdown {
     const KIND: &'static str = "markdown";
     const SEEDS: &'static [Seed] = &[Seed::new(
         <Markdown as Widget>::KIND,
-        <Markdown as Widget>::type_defaults,
-    )
-    .reading(Fields::of(&[
+        <Markdown as Widget>::type_defaults, Fields::of(&[
         Fields::WIDTH,
         Fields::HEIGHT,
         Fields::PADDING,
@@ -692,9 +688,7 @@ impl EditorTable {
         let mut s = [Seed::WIDGET; MAX_EDITOR_NODES];
         s[0] = Seed::new(
             <RichTextEditor as Widget>::KIND,
-            <RichTextEditor as Widget>::type_defaults,
-        )
-        .reading(Fields::of(&[Fields::WIDTH, Fields::HEIGHT, Fields::SPACING, Fields::VISIBLE]));
+            <RichTextEditor as Widget>::type_defaults, Fields::of(&[Fields::WIDTH, Fields::HEIGHT, Fields::SPACING, Fields::VISIBLE]));
         s[1] = <lumen_static::textarea::TextArea as Widget>::SEEDS[0];
         s[2] = <Markdown as Widget>::SEEDS[0];
         s
@@ -854,9 +848,7 @@ impl Widget for PaintBox {
     const KIND: &'static str = "paintbox";
     const SEEDS: &'static [Seed] = &[Seed::new(
         <PaintBox as Widget>::KIND,
-        <PaintBox as Widget>::type_defaults,
-    )
-    .reading(Fields::of(&[
+        <PaintBox as Widget>::type_defaults, Fields::of(&[
         Fields::WIDTH,
         Fields::HEIGHT,
         Fields::BACKGROUND,

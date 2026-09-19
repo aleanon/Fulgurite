@@ -128,13 +128,31 @@ how a `Kind` rule ends up styling a widget it was never written for.
 a leaf that is a one-element array:
 
 ```text
-const SEEDS: &'static [Seed] = &[Seed::new(Self::KIND, Self::type_defaults)];
+const SEEDS: &'static [Seed] = &[Seed::new(
+    Self::KIND,
+    Self::type_defaults,
+    Fields::of(&[Fields::WIDTH, Fields::HEIGHT, Fields::COLOR]),
+)];
 ```
 
+The third argument is **which style fields this kind actually reads**,
+and it is required. It is what the `W1010` lint compares a rule
+against: a sheet rule that sets `spacing` on a widget that never reads
+one changes nothing, and saying so needs the widget to have said what
+it reads.
+
+It used to default to `Fields::ALL`, and that default was recorded as
+deliberate — a kind that had not declared its reads "is not linted
+rather than wrongly linted". M26/T26.15 reversed it: `ALL` is the
+lint's **off switch**, and it was what a *new* widget got by doing
+nothing, so the one widget most likely to have a mistargeted rule was
+the one the lint could not speak about. An opt-out should be spelled,
+and `Seed::unlinted` spells it.
+
 A container splices its children's, which `#[derive(StaticTree)]` does
-for you. There is deliberately **no default**: one that is right for a
-leaf is silently wrong for a container, so the compiler asks every
-implementation instead.
+for you. There is deliberately **no default** for `SEEDS` either: one
+that is right for a leaf is silently wrong for a container, so the
+compiler asks every implementation instead.
 
 `leaf_common!` already forwards `Node::kind_name` and `Node::defaults`
 to these, so a leaf that uses it writes nothing further.

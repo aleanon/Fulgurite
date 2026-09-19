@@ -299,19 +299,57 @@ pub struct Seed {
 }
 
 impl Seed {
-    pub const fn new(kind: &'static str, defaults: fn() -> Style) -> Seed {
+    /// **The mask is required** (M26/T26.15).
+    ///
+    /// ```
+    /// # use lumen_static::style::{Fields, Seed, Style};
+    /// fn defaults() -> Style { Style::default() }
+    /// const S: Seed = Seed::new("mine", defaults, Fields::of(&[Fields::WIDTH]));
+    /// ```
+    ///
+    /// A widget that declares no mask does not compile — which is the
+    /// whole point, because the mask it used to get by default was the
+    /// lint's off switch:
+    ///
+    /// ```compile_fail
+    /// # use lumen_static::style::{Seed, Style};
+    /// fn defaults() -> Style { Style::default() }
+    /// const S: Seed = Seed::new("mine", defaults);
+    /// ```
+    ///
+    /// It used to default to [`Fields::ALL`], and this constructor's own
+    /// rustdoc called that deliberate: a kind that has not declared its
+    /// reads "is not linted rather than wrongly linted". That reasoning
+    /// is reversed here. `ALL` is the `W1010` lint's **off switch**, and
+    /// it was what a *new* widget got by doing nothing — so the one
+    /// widget most likely to have a mistargeted rule was the one the
+    /// lint could not speak about. An opt-out should be spelled, which
+    /// is what [`Seed::unlinted`] is for.
+    ///
+    /// Source-breaking for out-of-tree widgets, and taken deliberately:
+    /// the seeds array is a required associated const, so a third-party
+    /// impl cannot avoid this constructor. Every widget in this
+    /// repository already declared a mask — 53 of the 57 call sites —
+    /// and the four that did not are `Seed::WIDGET` and three test
+    /// fixtures.
+    pub const fn new(kind: &'static str, defaults: fn() -> Style, reads: Fields) -> Seed {
+        Seed { kind, defaults, reads }
+    }
+
+    /// A seed that opts **out** of the `W1010` lint, spelled.
+    ///
+    /// For the cases where "reads everything" is the honest answer
+    /// rather than an omission: [`Seed::WIDGET`], the padding slots a
+    /// wrapper's table carries, and a test fixture that is not about
+    /// styling.
+    pub const fn unlinted(kind: &'static str, defaults: fn() -> Style) -> Seed {
         Seed { kind, defaults, reads: Fields::ALL }
     }
 
-    /// The same seed, declaring which fields its kind reads.
-    pub const fn reading(mut self, reads: Fields) -> Seed {
-        self.reads = reads;
-        self
-    }
 
     /// The seed of a node that declares nothing — [`crate::widget::Node`]'s
     /// own defaults, spelled as a type-level fact.
-    pub const WIDGET: Seed = Seed::new("widget", plain_style);
+    pub const WIDGET: Seed = Seed::unlinted("widget", plain_style);
 }
 
 /// `Style::default` as a plain `fn` item, so [`Seed`] can hold it.

@@ -174,8 +174,7 @@ impl Widget for NumberInput {
         &[NodeDesc::new(0, NO_PARENT, 0, 0, NodeDesc::FOCUSABLE)];
     const KIND: &'static str = "numberinput";
     const SEEDS: &'static [Seed] =
-        &[Seed::new(<NumberInput as Widget>::KIND, <NumberInput as Widget>::type_defaults)
-            .reading(Fields::of(&[
+        &[Seed::new(<NumberInput as Widget>::KIND, <NumberInput as Widget>::type_defaults, Fields::of(&[
                 Fields::WIDTH,
                 Fields::HEIGHT,
                 Fields::PADDING,
@@ -406,8 +405,7 @@ impl Widget for RangeSlider {
         &[NodeDesc::new(0, NO_PARENT, 0, 0, NodeDesc::FOCUSABLE)];
     const KIND: &'static str = "rangeslider";
     const SEEDS: &'static [Seed] =
-        &[Seed::new(<RangeSlider as Widget>::KIND, <RangeSlider as Widget>::type_defaults)
-            .reading(Fields::of(&[
+        &[Seed::new(<RangeSlider as Widget>::KIND, <RangeSlider as Widget>::type_defaults, Fields::of(&[
                 Fields::WIDTH,
                 Fields::HEIGHT,
                 Fields::BACKGROUND,
@@ -606,8 +604,7 @@ impl SearchFieldTable {
 
     const SEED_ARRAY: [Seed; Self::N] = {
         let mut s = [Seed::WIDGET; Self::N];
-        s[0] = Seed::new(<SearchField as Widget>::KIND, <SearchField as Widget>::type_defaults)
-            .reading(Fields::of(&[
+        s[0] = Seed::new(<SearchField as Widget>::KIND, <SearchField as Widget>::type_defaults, Fields::of(&[
                 Fields::WIDTH,
                 Fields::HEIGHT,
                 Fields::PADDING,

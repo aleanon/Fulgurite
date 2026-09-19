@@ -66,7 +66,7 @@ impl Widget for ProgressBar {
     }
 
     const SEEDS: &'static [Seed] =
-        &[Seed::new(Self::KIND, Self::type_defaults).reading(lumen_static::style::Fields::of(&[
+        &[Seed::new(Self::KIND, Self::type_defaults, lumen_static::style::Fields::of(&[
             lumen_static::style::Fields::WIDTH,
             lumen_static::style::Fields::HEIGHT,
             lumen_static::style::Fields::VISIBLE,
@@ -150,7 +150,7 @@ impl Widget for Spinner {
     }
 
     const SEEDS: &'static [Seed] =
-        &[Seed::new(Self::KIND, Self::type_defaults).reading(lumen_static::style::Fields::of(&[
+        &[Seed::new(Self::KIND, Self::type_defaults, lumen_static::style::Fields::of(&[
             lumen_static::style::Fields::WIDTH,
             lumen_static::style::Fields::HEIGHT,
             lumen_static::style::Fields::VISIBLE,
@@ -252,7 +252,7 @@ impl Widget for Skeleton {
     }
 
     const SEEDS: &'static [Seed] =
-        &[Seed::new(Self::KIND, Self::type_defaults).reading(lumen_static::style::Fields::of(&[
+        &[Seed::new(Self::KIND, Self::type_defaults, lumen_static::style::Fields::of(&[
             lumen_static::style::Fields::WIDTH,
             lumen_static::style::Fields::HEIGHT,
             lumen_static::style::Fields::VISIBLE,

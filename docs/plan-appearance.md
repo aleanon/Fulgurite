@@ -452,6 +452,17 @@ corrected in this commit.
 > found only in an arena template matches". Every example sheet is clean,
 > and both lint tests have a quiet twin.
 >
+> **Amended 2026-09-19 by M26/T26.15:** the mask is no longer optional.
+> `Seed::new` took two arguments and defaulted `reads` to `Fields::ALL`,
+> which this task's own rustdoc called deliberate — a kind that had not
+> declared its reads "is not linted rather than wrongly linted". `ALL`
+> is this lint's **off switch**, and it was what a *new* widget got by
+> doing nothing, so the widget most likely to carry a mistargeted rule
+> was the one the lint could not speak about. `Seed::new` takes the mask
+> and `Seed::unlinted` spells the opt-out. Source-breaking for
+> out-of-tree widgets and taken deliberately: 53 of 57 call sites here
+> already declared one.
+>
 > **Not built:** the per-field "patching it changes layout or the display
 > list" gate below *is* `tests/style_reads.rs`, extended with pointer
 > reachability and two bases; there is no separate test.

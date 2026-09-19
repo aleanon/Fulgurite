@@ -542,7 +542,7 @@ impl<S: TextStorage> Widget for Label<S> {
     const KIND: &'static str = "label";
 
     const SEEDS: &'static [Seed] =
-        &[Seed::new(Self::KIND, Self::type_defaults).reading(crate::style::Fields::of(&[
+        &[Seed::new(Self::KIND, Self::type_defaults, crate::style::Fields::of(&[
             crate::style::Fields::WIDTH,
             crate::style::Fields::HEIGHT,
             crate::style::Fields::PADDING,
@@ -665,7 +665,7 @@ impl Widget for Fixed {
     const KIND: &'static str = "fixed";
 
     const SEEDS: &'static [Seed] =
-        &[Seed::new(Self::KIND, Self::type_defaults).reading(crate::style::Fields::of(&[
+        &[Seed::new(Self::KIND, Self::type_defaults, crate::style::Fields::of(&[
             crate::style::Fields::WIDTH,
             crate::style::Fields::HEIGHT,
             crate::style::Fields::CURSOR,
@@ -710,7 +710,7 @@ impl Widget for Spacer {
     }
 
     const SEEDS: &'static [Seed] =
-        &[Seed::new(Self::KIND, Self::type_defaults).reading(crate::style::Fields::of(&[
+        &[Seed::new(Self::KIND, Self::type_defaults, crate::style::Fields::of(&[
             crate::style::Fields::WIDTH,
             crate::style::Fields::HEIGHT,
             crate::style::Fields::VISIBLE,
@@ -810,7 +810,7 @@ impl<S: 'static, T: TextStorage> Widget for Button<S, T> {
     }
 
     const SEEDS: &'static [Seed] =
-        &[Seed::new(Self::KIND, Self::type_defaults).reading(crate::style::Fields::of(&[
+        &[Seed::new(Self::KIND, Self::type_defaults, crate::style::Fields::of(&[
             crate::style::Fields::WIDTH,
             crate::style::Fields::HEIGHT,
             crate::style::Fields::PADDING,

@@ -169,8 +169,7 @@ impl<const KIND: u8> Widget for Strip<KIND> {
         _ => "navigationrail",
     };
     const SEEDS: &'static [Seed] =
-        &[Seed::new(<Strip<KIND> as Widget>::KIND, <Strip<KIND> as Widget>::type_defaults)
-            .reading(Fields::of(&[
+        &[Seed::new(<Strip<KIND> as Widget>::KIND, <Strip<KIND> as Widget>::type_defaults, Fields::of(&[
                 Fields::WIDTH,
                 Fields::HEIGHT,
                 Fields::PADDING,
@@ -409,8 +408,7 @@ impl<S: lumen_static::text::TextStorage> Widget for AppBar<S> {
     const SUB_TABLE: &'static [NodeDesc] = &[NodeDesc::new(0, NO_PARENT, 0, 0, NodeDesc::RIGID)];
     const KIND: &'static str = "appbar";
     const SEEDS: &'static [Seed] =
-        &[Seed::new(<AppBar<S> as Widget>::KIND, <AppBar<S> as Widget>::type_defaults).reading(
-            Fields::of(&[
+        &[Seed::new(<AppBar<S> as Widget>::KIND, <AppBar<S> as Widget>::type_defaults, Fields::of(&[
                 Fields::WIDTH,
                 Fields::HEIGHT,
                 Fields::PADDING,
@@ -421,8 +419,7 @@ impl<S: lumen_static::text::TextStorage> Widget for AppBar<S> {
                 Fields::FONT_WEIGHT,
                 Fields::SHADOW,
                 Fields::VISIBLE,
-            ]),
-        )];
+            ]),)];
 
     fn type_defaults() -> Style {
         Style {
@@ -595,9 +592,7 @@ impl<W: Widget> PullTable<W> {
         let mut s = [Seed::WIDGET; MAX_PULL_NODES];
         s[0] = Seed::new(
             <PullToRefresh<W> as Widget>::KIND,
-            <PullToRefresh<W> as Widget>::type_defaults,
-        )
-        .reading(Fields::of(&[Fields::WIDTH, Fields::HEIGHT, Fields::COLOR, Fields::VISIBLE]));
+            <PullToRefresh<W> as Widget>::type_defaults, Fields::of(&[Fields::WIDTH, Fields::HEIGHT, Fields::COLOR, Fields::VISIBLE]));
         lumen_static::widget::splice_seeds(&mut s, 1, W::SEEDS);
         s
     };

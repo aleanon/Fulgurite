@@ -234,7 +234,7 @@ impl<A: Widget, B: Widget> EitherTable<A, B> {
     /// The seed counterpart of [`Self::ARRAY`], spliced the same way.
     const SEED_ARRAY: [Seed; MAX_EITHER_NODES] = {
         let mut s = [Seed::WIDGET; MAX_EITHER_NODES];
-        s[0] = Seed::new("either", crate::style::plain_style).reading(crate::style::Fields::NONE);
+        s[0] = Seed::new("either", crate::style::plain_style, crate::style::Fields::NONE);
         crate::widget::splice_seeds(&mut s, 1, A::SEEDS);
         crate::widget::splice_seeds(&mut s, 1 + A::NODE_COUNT, B::SEEDS);
         s
@@ -514,7 +514,7 @@ impl<W: Widget> Widget for List<W> {
     /// they live in an arena the main cascade cannot reach — and are
     /// styled by `cascade_arenas` from a template instance instead.
     const SEEDS: &'static [Seed] =
-        &[Seed::new(Self::KIND, Self::type_defaults).reading(crate::style::Fields::of(&[
+        &[Seed::new(Self::KIND, Self::type_defaults, crate::style::Fields::of(&[
             crate::style::Fields::WIDTH,
             crate::style::Fields::HEIGHT,
             crate::style::Fields::CURSOR,
@@ -859,7 +859,7 @@ impl<S> Widget for Dyn<S> {
     /// they cannot be seeds. `cascade_arenas` styles them from the boxed
     /// instance, which is the one place they *are* reachable.
     const SEEDS: &'static [Seed] =
-        &[Seed::new(Self::KIND, Self::type_defaults).reading(crate::style::Fields::of(&[
+        &[Seed::new(Self::KIND, Self::type_defaults, crate::style::Fields::of(&[
             crate::style::Fields::WIDTH,
             crate::style::Fields::HEIGHT,
             crate::style::Fields::CURSOR,

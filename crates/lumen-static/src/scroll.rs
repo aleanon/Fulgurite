@@ -195,8 +195,7 @@ impl<W: Widget> ScrollTable<W> {
     /// The seed counterpart of [`Self::ARRAY`], spliced the same way.
     const SEED_ARRAY: [Seed; MAX_SCROLL_NODES] = {
         let mut s = [Seed::WIDGET; MAX_SCROLL_NODES];
-        s[0] = Seed::new(<ScrollView<W> as Widget>::KIND, <ScrollView<W> as Widget>::type_defaults)
-            .reading(crate::style::Fields::of(&[
+        s[0] = Seed::new(<ScrollView<W> as Widget>::KIND, <ScrollView<W> as Widget>::type_defaults, crate::style::Fields::of(&[
                 crate::style::Fields::WIDTH,
                 crate::style::Fields::HEIGHT,
                 crate::style::Fields::PADDING,

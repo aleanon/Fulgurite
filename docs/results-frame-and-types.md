@@ -688,3 +688,40 @@ compile-fail half is a `compile_fail` doctest on the macro. Two
 injections: making a missing id resolve to 0 (the doctest compiles, and
 the compile-fail case fails) and making the const lookup return `i + 1`
 (the agreement test fires, naming the node).
+
+## T26.15 — the lint's off switch stops being the default
+
+The mask in `Seed::reads` defaulted to `Fields::ALL`, and the
+constructor's own rustdoc recorded that as deliberate: a kind that had
+not declared its reads "is not linted rather than wrongly linted".
+
+**Reversed.** `ALL` is the `W1010` lint's off switch, and it was what a
+*new* widget got by doing nothing — so the widget most likely to carry a
+mistargeted rule was the one the lint could not speak about. `Seed::new`
+takes the mask; `Seed::unlinted` spells the opt-out for the cases where
+"reads everything" is honest (`Seed::WIDGET`, a wrapper's padding slots,
+a fixture that is not about styling).
+
+**The size of the break, counted rather than estimated**: 57 call sites
+in this repository, of which **53 already declared a mask** and four did
+not — `Seed::WIDGET` and three test fixtures. `Seed::reading` is deleted
+rather than kept beside the new constructor, because two ways to say it
+is how one of them goes stale.
+
+Source-breaking for out-of-tree widgets, and taken deliberately: the
+seeds array is a required associated const, so a third-party impl cannot
+avoid the constructor.
+
+No measurement: this buys no frame time and does not touch a const-eval
+path. Phase C's other judgement — rustc's time — is unmoved, and the
+task claims nothing there.
+
+Gate: `lumen-static-widgets/tests/style_reads.rs` still measures every
+kind's output field by field and compares it to the declared mask; the
+new half is a `compile_fail` doctest beside a passing one, so a widget
+declared without a mask does not build.
+
+**Three documents move with it**, all of which recorded the old
+rationale: `Seed::new`'s rustdoc, `docs/plan-appearance.md` T25.2, and
+the book's custom-widget chapter, whose snippet gained the argument and
+whose paragraph beneath it now says why.

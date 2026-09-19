@@ -273,7 +273,7 @@ impl<T: Widget + Default + 'static> Widget for Repeat<T> {
     /// [`crate::hatch::List`], which has the same shape and the same
     /// reason.
     const SEEDS: &'static [Seed] =
-        &[Seed::new(Self::KIND, Self::type_defaults).reading(crate::style::Fields::of(&[
+        &[Seed::new(Self::KIND, Self::type_defaults, crate::style::Fields::of(&[
             crate::style::Fields::WIDTH,
             crate::style::Fields::HEIGHT,
             crate::style::Fields::CURSOR,

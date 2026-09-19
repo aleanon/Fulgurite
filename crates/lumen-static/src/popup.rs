@@ -105,8 +105,7 @@ impl<W: Widget> PopupTable<W> {
     /// The seed counterpart of [`Self::ARRAY`], spliced the same way.
     const SEED_ARRAY: [Seed; MAX_POPUP_NODES] = {
         let mut s = [Seed::WIDGET; MAX_POPUP_NODES];
-        s[0] = Seed::new(<Popup<W> as Widget>::KIND, <Popup<W> as Widget>::type_defaults)
-            .reading(crate::style::Fields::of(&[crate::style::Fields::VISIBLE]));
+        s[0] = Seed::new(<Popup<W> as Widget>::KIND, <Popup<W> as Widget>::type_defaults, crate::style::Fields::of(&[crate::style::Fields::VISIBLE]));
         crate::widget::splice_seeds(&mut s, 1, W::SEEDS);
         s
     };

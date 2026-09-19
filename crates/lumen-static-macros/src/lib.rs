@@ -831,8 +831,7 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                     1 #(+ <#field_ty as ::lumen_static::widget::Widget>::NODE_COUNT)*];
                 s[0] = ::lumen_static::style::Seed::new(
                     <#name as ::lumen_static::widget::Widget>::KIND,
-                    <#name as ::lumen_static::widget::Widget>::type_defaults,
-                ).reading(::lumen_static::style::Fields::of(&[::lumen_static::style::Fields::WIDTH, ::lumen_static::style::Fields::HEIGHT, ::lumen_static::style::Fields::PADDING, ::lumen_static::style::Fields::SPACING, ::lumen_static::style::Fields::ALIGN, ::lumen_static::style::Fields::CURSOR, ::lumen_static::style::Fields::VISIBLE, ::lumen_static::style::Fields::BACKGROUND, ::lumen_static::style::Fields::BORDER, ::lumen_static::style::Fields::RADIUS, ::lumen_static::style::Fields::SHADOW, ::lumen_static::style::Fields::PRESSED_DIM, ::lumen_static::style::Fields::HOVER_DIM]));
+                    <#name as ::lumen_static::widget::Widget>::type_defaults, ::lumen_static::style::Fields::of(&[::lumen_static::style::Fields::WIDTH, ::lumen_static::style::Fields::HEIGHT, ::lumen_static::style::Fields::PADDING, ::lumen_static::style::Fields::SPACING, ::lumen_static::style::Fields::ALIGN, ::lumen_static::style::Fields::CURSOR, ::lumen_static::style::Fields::VISIBLE, ::lumen_static::style::Fields::BACKGROUND, ::lumen_static::style::Fields::BORDER, ::lumen_static::style::Fields::RADIUS, ::lumen_static::style::Fields::SHADOW, ::lumen_static::style::Fields::PRESSED_DIM, ::lumen_static::style::Fields::HOVER_DIM]));
                 let mut at: usize = 1;
                 #(
                     ::lumen_static::widget::splice_seeds(
@@ -1365,8 +1364,7 @@ fn expand_enum(
                     1 #(+ <#var_ty as ::lumen_static::widget::Widget>::NODE_COUNT)*];
                 s[0] = ::lumen_static::style::Seed::new(
                     <#name as ::lumen_static::widget::Widget>::KIND,
-                    <#name as ::lumen_static::widget::Widget>::type_defaults,
-                ).reading(::lumen_static::style::Fields::of(&[::lumen_static::style::Fields::WIDTH, ::lumen_static::style::Fields::HEIGHT, ::lumen_static::style::Fields::CURSOR, ::lumen_static::style::Fields::VISIBLE]));
+                    <#name as ::lumen_static::widget::Widget>::type_defaults, ::lumen_static::style::Fields::of(&[::lumen_static::style::Fields::WIDTH, ::lumen_static::style::Fields::HEIGHT, ::lumen_static::style::Fields::CURSOR, ::lumen_static::style::Fields::VISIBLE]));
                 let mut at: usize = 1;
                 #(
                     ::lumen_static::widget::splice_seeds(

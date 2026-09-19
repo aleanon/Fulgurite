@@ -51,7 +51,7 @@ impl Widget for Divider {
     }
 
     const SEEDS: &'static [Seed] =
-        &[Seed::new(Self::KIND, Self::type_defaults).reading(lumen_static::style::Fields::of(&[
+        &[Seed::new(Self::KIND, Self::type_defaults, lumen_static::style::Fields::of(&[
             lumen_static::style::Fields::WIDTH,
             lumen_static::style::Fields::HEIGHT,
             lumen_static::style::Fields::VISIBLE,
@@ -158,7 +158,7 @@ impl<S: TextStorage> Widget for Badge<S> {
     }
 
     const SEEDS: &'static [Seed] =
-        &[Seed::new(Self::KIND, Self::type_defaults).reading(lumen_static::style::Fields::of(&[
+        &[Seed::new(Self::KIND, Self::type_defaults, lumen_static::style::Fields::of(&[
             lumen_static::style::Fields::WIDTH,
             lumen_static::style::Fields::HEIGHT,
             lumen_static::style::Fields::PADDING,
@@ -270,7 +270,7 @@ impl<S: TextStorage> Widget for Chip<S> {
     }
 
     const SEEDS: &'static [Seed] =
-        &[Seed::new(Self::KIND, Self::type_defaults).reading(lumen_static::style::Fields::of(&[
+        &[Seed::new(Self::KIND, Self::type_defaults, lumen_static::style::Fields::of(&[
             lumen_static::style::Fields::WIDTH,
             lumen_static::style::Fields::HEIGHT,
             lumen_static::style::Fields::PADDING,
@@ -380,7 +380,7 @@ impl<S: TextStorage> Widget for Avatar<S> {
     }
 
     const SEEDS: &'static [Seed] =
-        &[Seed::new(Self::KIND, Self::type_defaults).reading(lumen_static::style::Fields::of(&[
+        &[Seed::new(Self::KIND, Self::type_defaults, lumen_static::style::Fields::of(&[
             lumen_static::style::Fields::WIDTH,
             lumen_static::style::Fields::HEIGHT,
             lumen_static::style::Fields::VISIBLE,
@@ -502,7 +502,7 @@ impl Widget for Icon {
     }
 
     const SEEDS: &'static [Seed] =
-        &[Seed::new(Self::KIND, Self::type_defaults).reading(lumen_static::style::Fields::of(&[
+        &[Seed::new(Self::KIND, Self::type_defaults, lumen_static::style::Fields::of(&[
             lumen_static::style::Fields::WIDTH,
             lumen_static::style::Fields::HEIGHT,
             lumen_static::style::Fields::VISIBLE,

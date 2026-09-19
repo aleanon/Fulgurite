@@ -68,8 +68,7 @@ impl<W: Widget> CardTable<W> {
 
     const SEED_ARRAY: [Seed; MAX_SURFACE_NODES] = {
         let mut s = [Seed::WIDGET; MAX_SURFACE_NODES];
-        s[0] = Seed::new(<Card<W> as Widget>::KIND, <Card<W> as Widget>::type_defaults).reading(
-            Fields::of(&[
+        s[0] = Seed::new(<Card<W> as Widget>::KIND, <Card<W> as Widget>::type_defaults, Fields::of(&[
                 Fields::WIDTH,
                 Fields::HEIGHT,
                 Fields::PADDING,
@@ -79,8 +78,7 @@ impl<W: Widget> CardTable<W> {
                 Fields::SHADOW,
                 Fields::CURSOR,
                 Fields::VISIBLE,
-            ]),
-        );
+            ]),);
         lumen_static::widget::splice_seeds(&mut s, 1, W::SEEDS);
         s
     };
@@ -243,9 +241,7 @@ impl<S: TextStorage> Widget for Toast<S> {
     const KIND: &'static str = "toast";
     const SEEDS: &'static [Seed] = &[Seed::new(
         <Toast<S> as Widget>::KIND,
-        <Toast<S> as Widget>::type_defaults,
-    )
-    .reading(Fields::of(&[
+        <Toast<S> as Widget>::type_defaults, Fields::of(&[
         Fields::WIDTH,
         Fields::HEIGHT,
         Fields::PADDING,
@@ -426,9 +422,7 @@ impl<W: Widget, S: TextStorage> TooltipTable<W, S> {
         let mut s = [Seed::WIDGET; MAX_SURFACE_NODES];
         s[0] = Seed::new(
             <Tooltip<W, S> as Widget>::KIND,
-            <Tooltip<W, S> as Widget>::type_defaults,
-        )
-        .reading(Fields::of(&[Fields::WIDTH, Fields::HEIGHT, Fields::VISIBLE]));
+            <Tooltip<W, S> as Widget>::type_defaults, Fields::of(&[Fields::WIDTH, Fields::HEIGHT, Fields::VISIBLE]));
         lumen_static::widget::splice_seeds(&mut s, 1, W::SEEDS);
         lumen_static::widget::splice_seeds(
             &mut s,

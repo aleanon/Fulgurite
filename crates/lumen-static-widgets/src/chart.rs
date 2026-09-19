@@ -160,7 +160,7 @@ impl<const KIND: u8> Widget for Chart<KIND> {
     }
 
     const SEEDS: &'static [Seed] =
-        &[Seed::new(Self::KIND, Self::type_defaults).reading(match KIND {
+        &[Seed::new(Self::KIND, Self::type_defaults, match KIND {
             PIE => lumen_static::style::Fields::of(&[
                 lumen_static::style::Fields::WIDTH,
                 lumen_static::style::Fields::HEIGHT,

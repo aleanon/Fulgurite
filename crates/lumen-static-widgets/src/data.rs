@@ -157,8 +157,7 @@ impl Widget for Pagination {
         &[NodeDesc::new(0, NO_PARENT, 0, 0, NodeDesc::FOCUSABLE)];
     const KIND: &'static str = "pagination";
     const SEEDS: &'static [Seed] =
-        &[Seed::new(<Pagination as Widget>::KIND, <Pagination as Widget>::type_defaults).reading(
-            Fields::of(&[
+        &[Seed::new(<Pagination as Widget>::KIND, <Pagination as Widget>::type_defaults, Fields::of(&[
                 Fields::WIDTH,
                 Fields::HEIGHT,
                 Fields::BACKGROUND,
@@ -169,8 +168,7 @@ impl Widget for Pagination {
                 Fields::FOCUS_RING,
                 Fields::CURSOR,
                 Fields::VISIBLE,
-            ]),
-        )];
+            ]),)];
 
     fn type_defaults() -> Style {
         Style {
@@ -475,7 +473,7 @@ impl Widget for Tree {
     const SUB_TABLE: &'static [NodeDesc] = &[NodeDesc::new(0, NO_PARENT, 0, 0, 0)];
     const KIND: &'static str = "tree";
     const SEEDS: &'static [Seed] =
-        &[Seed::new(<Tree as Widget>::KIND, <Tree as Widget>::type_defaults).reading(Fields::of(
+        &[Seed::new(<Tree as Widget>::KIND, <Tree as Widget>::type_defaults, Fields::of(
             &[
                 Fields::WIDTH,
                 Fields::HEIGHT,
@@ -755,8 +753,7 @@ impl<R: Widget + Default + 'static> GridTable<R> {
 
     const SEED_ARRAY: [Seed; 2] = {
         let mut s = [Seed::WIDGET; 2];
-        s[0] = Seed::new(<DataGrid<R> as Widget>::KIND, <DataGrid<R> as Widget>::type_defaults)
-            .reading(Fields::of(&[
+        s[0] = Seed::new(<DataGrid<R> as Widget>::KIND, <DataGrid<R> as Widget>::type_defaults, Fields::of(&[
                 Fields::WIDTH,
                 Fields::HEIGHT,
                 Fields::PADDING,

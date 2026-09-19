@@ -126,7 +126,7 @@ impl Widget for Slider {
     }
 
     const SEEDS: &'static [Seed] =
-        &[Seed::new(Self::KIND, Self::type_defaults).reading(crate::style::Fields::of(&[
+        &[Seed::new(Self::KIND, Self::type_defaults, crate::style::Fields::of(&[
             crate::style::Fields::WIDTH,
             crate::style::Fields::HEIGHT,
             crate::style::Fields::CURSOR,

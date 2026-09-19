@@ -41,7 +41,7 @@ impl Widget for Rows {
         &[lumen_static::desc::NodeDesc::new(0, lumen_static::desc::NO_PARENT, 0, 0, 0)];
     const KIND: &'static str = "rows";
     const SEEDS: &'static [lumen_static::style::Seed] =
-        &[lumen_static::style::Seed::new("rows", <Rows as Widget>::type_defaults)];
+        &[lumen_static::style::Seed::unlinted("rows", <Rows as Widget>::type_defaults)];
 
     fn type_defaults() -> Style {
         Style { ..Style::default() }

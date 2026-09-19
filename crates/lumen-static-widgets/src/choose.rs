@@ -175,8 +175,7 @@ impl Widget for OptionList {
     const SUB_TABLE: &'static [NodeDesc] = &[NodeDesc::new(0, NO_PARENT, 0, 0, 0)];
     const KIND: &'static str = "optionlist";
     const SEEDS: &'static [Seed] =
-        &[Seed::new(<OptionList as Widget>::KIND, <OptionList as Widget>::type_defaults).reading(
-            Fields::of(&[
+        &[Seed::new(<OptionList as Widget>::KIND, <OptionList as Widget>::type_defaults, Fields::of(&[
                 Fields::WIDTH,
                 Fields::HEIGHT,
                 Fields::PADDING,
@@ -187,8 +186,7 @@ impl Widget for OptionList {
                 Fields::RADIUS,
                 Fields::SHADOW,
                 Fields::VISIBLE,
-            ]),
-        )];
+            ]),)];
 
     fn type_defaults() -> Style {
         Style {
@@ -483,9 +481,7 @@ impl<const KIND: u8> ChooserTable<KIND> {
         let mut s = [Seed::WIDGET; MAX_CHOOSER_NODES];
         s[0] = Seed::new(
             <Chooser<KIND> as Widget>::KIND,
-            <Chooser<KIND> as Widget>::type_defaults,
-        )
-        .reading(Fields::of(&[Fields::WIDTH, Fields::HEIGHT, Fields::VISIBLE]));
+            <Chooser<KIND> as Widget>::type_defaults, Fields::of(&[Fields::WIDTH, Fields::HEIGHT, Fields::VISIBLE]));
         s[1] = <lumen_static::input::TextInput<alloc::string::String> as Widget>::SEEDS[0];
         lumen_static::widget::splice_seeds(&mut s, 2, <Popup<OptionList> as Widget>::SEEDS);
         s

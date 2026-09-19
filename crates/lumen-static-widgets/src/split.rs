@@ -95,9 +95,7 @@ impl<A: Widget, B: Widget> SplitTable<A, B> {
         let mut s = [Seed::WIDGET; MAX_SPLIT_NODES];
         s[0] = Seed::new(
             <SplitPane<A, B> as Widget>::KIND,
-            <SplitPane<A, B> as Widget>::type_defaults,
-        )
-        .reading(Fields::of(&[
+            <SplitPane<A, B> as Widget>::type_defaults, Fields::of(&[
             Fields::WIDTH,
             Fields::HEIGHT,
             Fields::BACKGROUND,
@@ -358,7 +356,7 @@ impl<W: Widget> CollapsibleTable<W> {
 
     const SEED_ARRAY: [Seed; MAX_SPLIT_NODES] = {
         let mut s = [Seed::WIDGET; MAX_SPLIT_NODES];
-        s[0] = Seed::new("collapsible", collapsible_defaults).reading(Fields::of(&[
+        s[0] = Seed::new("collapsible", collapsible_defaults, Fields::of(&[
             Fields::WIDTH,
             Fields::HEIGHT,
             Fields::PADDING,
@@ -772,9 +770,7 @@ impl<A: Widget, B: Widget, C: Widget, D: Widget> PaneTable<A, B, C, D> {
         let mut s = [Seed::WIDGET; MAX_SPLIT_NODES];
         s[0] = Seed::new(
             <PaneGrid<A, B, C, D> as Widget>::KIND,
-            <PaneGrid<A, B, C, D> as Widget>::type_defaults,
-        )
-        .reading(Fields::of(&[
+            <PaneGrid<A, B, C, D> as Widget>::type_defaults, Fields::of(&[
             Fields::WIDTH,
             Fields::HEIGHT,
             Fields::BACKGROUND,

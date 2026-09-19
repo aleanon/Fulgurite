@@ -739,7 +739,7 @@ churns with every rustc release, for a case whose whole content is
 "this does not compile". `cargo test --doc` runs it, and an injection
 that makes a missing id resolve to `0` turns it red.
 
-### T26.15 — `Seed::reads` stops defaulting to `Fields::ALL`
+### T26.15 — `Seed::reads` stops defaulting to `Fields::ALL` — **DONE 2026-09-19**
 
 The default is the W1010 lint's off switch, and it is what a new widget
 gets. Make the mask a parameter, with an explicit constructor for the
@@ -754,14 +754,20 @@ custom-widget chapter. Both move in this commit.
 
 **It is also source-breaking for out-of-tree widgets:** the seeds array
 is a required associated const, so a third-party impl cannot avoid the
-constructor. **Choose and state one shape:** keep the two-argument
-constructor compiling and add a declaring one (a deprecation path, no
-breakage), or make the mask required and take the break deliberately.
+constructor. **Chosen: the mask is required, and the break is
+taken deliberately.** The default is the lint's off switch; an opt-out
+should be spelled, and `Seed::unlinted` spells it. The break is small
+where it can be counted — 53 of this repository's 57 call sites already
+declared a mask, and the four that did not are `Seed::WIDGET` and three
+test fixtures. `Seed::reading` is deleted rather than kept beside the
+new constructor: two ways to say it is how one of them goes stale.
 
 **Gate:** `crates/lumen-static-widgets/tests/style_reads.rs` still
-verifies every declared mask; a widget declared without a mask does not
-compile — a trybuild case with committed `.stderr`, beside a passing case
-that declares one.
+verifies every declared mask — it measures each kind's output field by
+field and compares — and a widget declared without one does not compile.
+That half is a **`compile_fail` doctest** beside a passing one, not
+trybuild: a committed `.stderr` churns with every rustc release for a
+case whose whole content is an arity error.
 
 **Docs:** `docs/plan-appearance.md` T25.2, `Seed::reads`' rustdoc, and
 the book's custom-widget chapter, whose snippet and the sentence beneath

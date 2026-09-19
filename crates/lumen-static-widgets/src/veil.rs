@@ -168,9 +168,7 @@ impl<W: Widget, const KIND: u8> VeilTable<W, KIND> {
         let mut s = [Seed::WIDGET; MAX_VEIL_NODES];
         s[0] = Seed::new(
             <Veil<W, KIND> as Widget>::KIND,
-            <Veil<W, KIND> as Widget>::type_defaults,
-        )
-        .reading(Fields::of(&[
+            <Veil<W, KIND> as Widget>::type_defaults, Fields::of(&[
             Fields::WIDTH,
             Fields::HEIGHT,
             Fields::BACKGROUND,
