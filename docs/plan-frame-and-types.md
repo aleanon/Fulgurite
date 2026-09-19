@@ -653,7 +653,7 @@ bounds the win from above but is not the case being improved. The 141× in
 `docs/damage-amplification-decision.md` is a *software* damaged-pixel
 ratio and must not be restated as a GPU speed-up.
 
-### T26.13 — the raster path allocates per strip and per glass command
+### T26.13 — the raster path allocates per strip and per glass command — **DONE 2026-09-19, in three commits**
 
 The repository's stated invariant is zero steady-state allocation, and
 `crates/lumen-static-shell/tests/alloc_gate.rs` cannot see the raster

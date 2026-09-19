@@ -337,7 +337,28 @@ impl Surface<'_> {
         let mut scratch = core::mem::take(self.glass);
         scratch.fit(bw, bh);
         let GlassScratch { a, b, acc } = &mut scratch;
-        {
+        if k == 1 {
+            // **No accumulator at 1:1** (M26/T26.13, part three). Every
+            // bucket holds exactly one pixel, so the loop below would
+            // write four `u32`s per pixel and read them back to divide
+            // by one — a full write-then-read of `bw * bh * 4` words
+            // for a copy. `docs/results-glass.md` §1 prices the σ range
+            // where this happens as the expensive one: below about 5
+            // the search picks a single pass and all three passes run
+            // at full resolution, so 1:1 is exactly where the frame can
+            // least afford it.
+            for y in sy0..sy1 {
+                let row = (y - self.y0) as usize * stride;
+                let by = (y - sy0) as usize;
+                for x in sx0..sx1 {
+                    let p = row + x as usize * 4;
+                    let at = (by * bw + (x - sx0) as usize) * 3;
+                    a[at] = self.px[p] as u16;
+                    a[at + 1] = self.px[p + 1] as u16;
+                    a[at + 2] = self.px[p + 2] as u16;
+                }
+            }
+        } else {
             for y in sy0..sy1 {
                 let row = (y - self.y0) as usize * stride;
                 let by = ((y - sy0) / ki) as usize;

@@ -529,3 +529,32 @@ on the original defect. Two injections: injection EP (drop the scratch instead
 of restoring it) returns to 3.00 per panel; injection EQ (`fit` reallocates one
 of the three) reports **1.00 per panel**, which is the count naming
 which buffer.
+
+## T26.13, part three — the capture accumulator's write-then-read
+
+Measured 2026-09-19, `--bin glass-cost`, five runs a side.
+
+At `k == 1` every accumulator bucket holds exactly one pixel, so the
+capture wrote four `u32`s per pixel and read them back to divide by
+one — a full write-then-read of `bw * bh * 4` words to perform a copy.
+
+| σ | k | before (fast cluster) | after | Δ |
+|---:|---:|---:|---:|---:|
+| 2.0 | 1 | 13.70 ms | **12.56 ms** | **−8.3%** |
+| 4.0 | 1 | 14.23 ms | **13.13 ms** | **−7.7%** |
+
+Fast-cluster spreads: 0.15 and 0.06 ms before, 0.04 and 0.02 after —
+both deltas an order of magnitude outside. The `k ≥ 2` rows take the
+unchanged path and are unmoved.
+
+**The σ range is the one the task named**, and the reason it matters is
+`docs/results-glass.md` §1: below about 5 the search picks a single pass
+and all three passes run at full resolution, so 1:1 is exactly where the
+frame can least afford a redundant copy. σ = 2 and σ = 4 are the two
+rows this bench runs at `k = 1`.
+
+Gated by the tests that already exist: an injection zeroing the new
+1:1 path reddens `refraction_displaces_the_backdrop` and
+`degenerate_geometry_stays_finite`, which is how the branch was
+confirmed to be *reached* before anything was claimed about it — a new
+branch that no test enters is a change nobody has measured.
