@@ -68,6 +68,10 @@ pub struct TextArea<S: TextBuffer = crate::text::DefaultTextStorage> {
     scroll: f32,
     clusters: S::Clusters,
     shaped_key: Option<(u64, u32, u32, u32)>,
+    /// The height that shaping returned, cached with the key that
+    /// produced it (M26/T26.7). `TextInput` keeps the width; a text
+    /// area wraps, so what it needs back is the height.
+    shaped_h: f32,
     line_h: f32,
     pad: (f32, f32),
     /// The caret's colour; the text colour when `None` — M25/T25.10.
@@ -87,6 +91,7 @@ impl<S: TextBuffer> Default for TextArea<S> {
             scroll: 0.0,
             clusters: S::Clusters::default(),
             shaped_key: None,
+            shaped_h: 0.0,
             line_h: 0.0,
             pad: (0.0, 0.0),
             caret_color: None,
@@ -465,13 +470,14 @@ impl<S: TextBuffer> Node for TextArea<S> {
         // whole difference.
         if self.shaped_key != Some(key) {
             self.clusters.clear();
-            cx.text.shape(self.text.as_ref(), px, me.font_weight, inner_w, &mut self.clusters);
+            let run =
+                cx.text.shape(self.text.as_ref(), px, me.font_weight, inner_w, &mut self.clusters);
+            self.line_h = cx.text.line_height(px);
+            self.shaped_h = run.h;
             self.shaped_key = Some(key);
         }
-        self.line_h = cx.text.line_height(px);
-        let run = cx.text.measure_weighted(self.text.as_ref(), px, me.font_weight, inner_w);
 
-        let content = Size { w: inner_w, h: run.h.max(self.line_h) };
+        let content = Size { w: inner_w, h: self.shaped_h.max(self.line_h) };
         let padded =
             Size { w: content.w + me.padding.horizontal(), h: content.h + me.padding.vertical() };
         let size = resolve_self(limits, &me, padded);

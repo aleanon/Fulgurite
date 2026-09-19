@@ -231,6 +231,39 @@ fn main() {
                 "   against `short, memo warm (hit)` above: the gap is what M26/T26.8 removes"
             );
 
+            // ---- the text widgets' still frame — M26/T26.7 ------------
+            //
+            // **The arm the plan named could not move.** T26.7's Measure
+            // line said `--bin repeater` and `just stages`, and neither
+            // lays out a `TextInput` or a `TextArea` at all: one walks a
+            // repeater of `Fixed`s and the other a table of labels. A
+            // figure from either would have been a bound computed from
+            // the wrong quantity — the shape this milestone's rule 2
+            // exists to stop — so the arm is here, beside the memo rows
+            // it is about, and against the real face, because with the
+            // block stand-in a measure is 4 ns and the saving is
+            // invisible by construction.
+            let mut field: lumen_static::input::TextInput<String> =
+                lumen_static::input::TextInput::new(short);
+            let fstyle = [<lumen_static::input::TextInput<String> as Node>::defaults(&field)];
+            let mut area: lumen_static::textarea::TextArea<String> =
+                lumen_static::textarea::TextArea::new(long.as_str());
+            let astyle = [<lumen_static::textarea::TextArea<String> as Node>::defaults(&area)];
+            for _ in 0..100 {
+                measure_node(&mut field, &mut real, &fstyle, &mut st, LIMITS);
+                measure_node(&mut area, &mut real, &astyle, &mut st, LIMITS);
+            }
+            bench("TextInput layout, unchanged", 20_000, || {
+                measure_node(&mut field, &mut real, &fstyle, &mut st, LIMITS)
+            });
+            bench("TextArea layout, unchanged", 20_000, || {
+                measure_node(&mut area, &mut real, &astyle, &mut st, LIMITS)
+            });
+            println!(
+                "   a still frame: the shape cache hits, and T26.7 stops the \n   \
+                 re-measure that followed it"
+            );
+
             // Same length, so the miss arm re-measures rather than
             // measuring a different amount of text.
             let long2 = long.replace("dog", "cat");

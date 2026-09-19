@@ -88,6 +88,15 @@ pub struct TextInput<S: TextBuffer = crate::text::DefaultTextStorage> {
     /// nothing. Text length and the style inputs; the text's *content*
     /// is covered because every edit goes through a method here.
     shaped_key: Option<(u64, u32, u32, u32)>,
+    /// What that shaping *returned*: the run's width and the line
+    /// height, cached with the key that produced them (M26/T26.7).
+    ///
+    /// **`shape` already answers this.** It returns a `Size`, and this
+    /// file threw it away and called `measure_weighted` on the same run
+    /// on the very next line — unconditionally, every layout, including
+    /// the frames the shape cache hit. Eight bytes to stop re-measuring
+    /// text that has not changed.
+    shaped_size: (f32, f32),
     /// The resolved left padding from the last layout.
     ///
     /// `on_event` has no `&[Style]` and no `&[NodeState]` — it gets the
@@ -112,6 +121,7 @@ impl<S: TextBuffer> Default for TextInput<S> {
             scroll: 0.0,
             clusters: S::Clusters::default(),
             shaped_key: None,
+            shaped_size: (0.0, 0.0),
             pad_left: 0.0,
             caret_color: None,
             selection_color: None,
@@ -472,18 +482,17 @@ impl<S: TextBuffer> Node for TextInput<S> {
         // box would move the clusters every time the field scrolled.
         if self.shaped_key != Some(key) {
             self.clusters.clear();
-            cx.text.shape(
+            let run = cx.text.shape(
                 self.text.as_ref(),
                 px,
                 me.font_weight,
                 f32::INFINITY,
                 &mut self.clusters,
             );
+            self.shaped_size = (run.w, cx.text.line_height(px));
             self.shaped_key = Some(key);
         }
-        let run_w =
-            cx.text.measure_weighted(self.text.as_ref(), px, me.font_weight, f32::INFINITY).w;
-        let line = cx.text.line_height(px);
+        let (run_w, line) = self.shaped_size;
 
         let content = Size { w: run_w, h: line };
         let padded =

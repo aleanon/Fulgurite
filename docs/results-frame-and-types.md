@@ -264,3 +264,54 @@ closed permanently, with its number.*
 | # | finding | probe result | verdict |
 |---|---|---|---|
 | | | | |
+## T26.7 — the text widgets stop measuring what shaping returned
+
+Measured 2026-09-19, `cargo run --release -p benches --bin bindings`,
+the real-face (fontdue) arms.
+
+`TextMeasure::shape` returns a `Size` — it always has. `input.rs`
+threw it away and called `measure_weighted` on the same run on the next
+line, unconditionally, every layout, *including* the frames its own
+shape cache hit. `TextArea` did the same with the height.
+
+| arm (one widget's `layout`, unchanged text) | before | after | Δ |
+|---|---:|---:|---:|
+| `TextInput layout, unchanged` | 401 ns | 8.6 ns | **47×** |
+| `TextArea layout, unchanged` | 2,101 ns | 19.4 ns | **108×** |
+
+Fast-cluster figures; spreads are 21 ns (5%) and 40 ns (2%) before,
+0.16 ns and 0.24 ns after. Both deltas are two orders of magnitude
+outside them.
+
+**The arm the plan named could not move.** T26.7's Measure line said
+`--bin repeater` and `just stages`; neither lays out a `TextInput` or a
+`TextArea` at all — one walks a repeater of `Fixed`s, the other a table
+of labels. A figure from either would have been a bound computed from
+the wrong quantity, which is this milestone's rule 2. The arm above was
+added to `--bin bindings`, beside the memo rows it is about, and against
+the **real face**: with the block stand-in a measure is 4 ns and the
+saving is invisible by construction.
+
+**What it is not.** This is one widget's layout, not a frame. A screen
+with a single text field saves about 0.4 µs per still frame and one
+with a text area about 2 µs — worth having, and nowhere near the
+`layout` stage's millisecond on a 10 000-node tree
+(`just stages 10000 150 20`).
+
+**Size, measured rather than estimated**, as the task required:
+
+| | before | after | Δ |
+|---|---:|---:|---:|
+| `TextInput<String>` | 152 B | 160 B | **+8** |
+| `TextArea<String>` | 160 B | 160 B | **0** — the `f32` landed in padding it already had |
+
+The embedded fixture's `UI == 1144` assert is unchanged: its `Ui`
+carries neither widget.
+
+Gate: `crates/lumen-static/tests/text_memo.rs`, a **counting**
+`TextMeasure` that records every call. Five still frames must ask it
+nothing; changed text must still be shaped; and the cached width must
+equal the measured one, because a cached number that is wrong is worse
+than a measured one. Three injections (EA–EC): restore the field's
+re-measure, restore the area's, and cache a stale width — all three
+redden.

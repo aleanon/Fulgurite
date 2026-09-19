@@ -462,7 +462,7 @@ as its contract.
 
 **Docs:** `docs/results-cascade-cost.md` gains the row.
 
-### T26.7 — the text widgets measure what shaping already returned
+### T26.7 — the text widgets measure what shaping already returned — **DONE 2026-09-19**
 
 `input.rs:472` shapes behind a key guard and `:484` then calls
 `measure_weighted` on the same run unconditionally, every layout.
@@ -476,8 +476,16 @@ as its contract.
 zero. *Injection:* narrow the cache back — the count rises and the test
 names it.
 
-**Measure:** `just stages 10000 150 20` and `--bin repeater`'s new text
-row.
+**Measure:** ~~`just stages 10000 150 20` and `--bin repeater`'s new
+text row~~ — **neither can move under this change.** `--bin repeater`
+walks a repeater of `Fixed`s and `stages` a table of labels; neither
+lays out a `TextInput` or a `TextArea` at all, so a figure from either
+would have been a bound computed from the wrong quantity, which is this
+milestone's own rule 2. The arm was added to `--bin bindings` instead,
+beside the memo rows it is about and against the real face: **401 → 8.6
+ns** for a field's still frame and **2,101 → 19.4 ns** for an area's
+(`docs/results-frame-and-types.md` T26.7). Size, measured: `TextInput`
++8 B, `TextArea` **+0** — its `f32` landed in padding it already had.
 
 ### T26.8 — `Badge` and `Chip` shape on every layout, with no memo at all
 
