@@ -97,6 +97,27 @@ pair!(PairRadioC, Radio<Show>, "d_radio_c", "d_radio_cl");
 /// live. `docs/plan-widgets-gallery.md` §3 records what a wrapper that
 /// does not route handlers looks like: every control inside it is
 /// hit-testable, hoverable, pressable and wired to nothing.
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+pub struct DPickList {
+    #[widget_id("d_picklist_a")]
+    pub a: PickList,
+}
+
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+pub struct DCombobox {
+    #[widget_id("d_combobox_a")]
+    pub a: Combobox,
+}
+
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+pub struct DMenu {
+    #[widget_id("d_menu_a")]
+    pub a: Menu,
+}
+
 /// A wrap: six chips that reflow when the box narrows.
 #[derive(StaticTree, Default)]
 #[widget(wrap, spacing = 8.0)]
@@ -517,6 +538,9 @@ pub enum Demo {
     Grid(DGrid),
     Split(DSplitPane),
     Accordion(DAccordion),
+    PickList(DPickList),
+    Combobox(DCombobox),
+    Menu(DMenu),
 }
 
 impl Default for Demo {
@@ -526,4 +550,4 @@ impl Default for Demo {
 }
 
 /// How many demos the stage has. Asserted against the catalogue.
-pub const DEMOS: usize = 36;
+pub const DEMOS: usize = 39;

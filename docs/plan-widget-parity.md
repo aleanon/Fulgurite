@@ -193,8 +193,18 @@ that arithmetic — but the direction is not in doubt.)
    is unblocked for the eighteen that exist today.
 2. **(e)** — row keys, so the drive names a row instead of computing one.
    This is the one that makes the protocol's claim about itself true.
-3. **(d) + (f)** — the decoder and scroll-to-row, which together unblock
-   the query methods and the offscreen two-thirds.
+3. **(d) + (f)** — the decoder and scroll-to-row. *Not built: the
+   offscreen rows turned out to be reachable by **scrolling the menu**,
+   which is a real user action and needed no new endpoint (T27.4).*
+   **What did land, 2026-09-19, is the thing this list did not name:**
+   a **descendant step**, `#outer > #inner`. Four `W1011`s in, the
+   pattern was plain — a part id lives on a *type's* table, so a
+   composite used twice is unaddressable by construction, and splitting
+   the type each time does not scale and does nothing for an application
+   that legitimately wants two dropdowns. A step means a part id only has
+   to be unique **within its owner**, and the owner is named by the
+   `#[widget_id]` the *application* gave its own field. `W1011` is scoped
+   to match: it now reports only what a step cannot separate.
 
 Splitting it this way means T27.3 is not gated on all four: it starts
 after landing 1, and 2 and 3 arrive before the catalogue outgrows its
@@ -587,7 +597,7 @@ each names its injections in the commit body.
 | ~~**T27.6**~~ | ~~Tabs, AppBar, BottomNav, NavigationRail, PullToRefresh~~ **DONE 2026-09-19** | ~~one shape five times~~ — **three of the five are**; see below | T27.0 |
 | ~~**T27.7**~~ | ~~Modal, Sheet, Drawer~~ **DONE 2026-09-19** | the overlay layer M15 built | — |
 | **T27.8** | Wrap, Grid, SplitPane, PaneGrid, Accordion | the layout group; needs `Widget`-level work, and is the tranche most likely to move the const-eval number | — |
-| **T27.9** | Menu, PickList, Combobox | generalising `Select`, which the showcase's own picker already is | T27.0 |
+| ~~**T27.9**~~ | ~~Menu, PickList, Combobox~~ **DONE 2026-09-19** | one `Chooser<KIND>` — and T27.0's third landing, which this forced | T27.0 |
 | **T27.10** | DataGrid, Tree, Pagination | repeaters with addressable rows | T27.0, T27.1 |
 | **T27.11** | ColorPicker, DatePicker, TimePicker, FilePicker | all four are bordered composites over the above | T27.1, T27.8 |
 | **T27.12** | RichText, Markdown, RichTextEditor, PaintBox | the text-heavy tail and the draw callback | — |
@@ -828,6 +838,45 @@ not an absent one. And squeezing a pane to its stop *does* truncate the
 text in it, so `Action.expects_lint` names the codes an action may
 introduce: named codes only, because a run that accepted every new
 finding would stop catching the ones nobody intended.
+
+### T27.9, as built — and the two findings it forced
+
+One `Chooser<KIND>`; `PickList`, `Combobox` and `Menu` differ in exactly
+two things — whether there is a trigger, and whether typing in it
+filters.
+
+**They do not use `Repeat`, and that is the interesting part.** `Select`
+is the core's dropdown over *someone else's* data: its rows are bound by
+a plain `fn` the application supplies, and a plain `fn` cannot capture
+the widget that owns the options. So a chooser that owns its own list
+draws it, the way `Strip` draws its items — which also keeps a
+six-option picker at four nodes instead of an arena, and sidesteps the
+per-row addressing debt rather than inheriting it. **`Select` stays the
+primitive.**
+
+| | found | how |
+|---|---|---|
+| 13 | **A combobox filtered on its own selection.** Choosing "Apple" puts "Apple" in the trigger; filtering on that leaves one row, so re-opening shows only what is already chosen and every other option is unreachable. | the drive opened one and counted **one** row where six were seeded |
+| 14 | **`ui.resolve` answered with no text for a `Button`.** Its summary carried `value` and never `label`, which `ui.getTree` has had since M15 — so anything reading a control's text through `resolve` got the empty string and could not tell that from a control with no text. | `Ctx.value()` returned `""` |
+
+13's first fix was a flag set from `on_event`, and **it never fired**: a
+`Text` event goes to the *focused* node, which is the field itself, and
+the field consumes it — so the wrapper's arm only ever saw events the
+field had declined. A query is now *derived* — "the trigger is no longer
+showing the selection" — which needs no plumbing and cannot go stale.
+
+**And one design tension, recorded rather than papered over.**
+`dispatch_overlaid` dismisses every overlay on a press that misses them
+all, clears focus, and **consumes** it. A trigger is outside its own
+popup, so a second press on it closes the list rather than re-opening —
+which is `Select`'s documented dropdown behaviour and is *desirable*.
+But the rule cannot tell a press on the overlay's **owner** from a press
+somewhere else entirely, and a combobox wants both: close the list *and*
+focus the field. It cannot have both today.
+`crates/lumen-static-widgets/tests/focus_overlay.rs` pins both halves,
+and a chooser opens on **focus** rather than on a press — which a
+keyboard user needs anyway, and which a press arm could not give them
+because the field consumes the press first.
 
 **T27.3 is the load-bearing one and it is deliberately placed before any
 new widget.** The harness is built and then proved against eighteen

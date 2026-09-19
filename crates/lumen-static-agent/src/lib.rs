@@ -11,6 +11,8 @@
 //! - `#save`        author id (`#[widget_id("save")]`)
 //! - `label`        widget kind name
 //! - `~text`        the text it shows contains "text" (value *or* label)
+//! - `#a > #b`     the `#b` **inside** `#a`; a part id need only be
+//!   unique within its owner (M27/T27.0)
 //! - `@app.rs:42`   source provenance (file suffix, optional line)
 //! - `7`            table index
 //!
@@ -1148,29 +1150,52 @@ impl Agent {
         // W1011 (M27/T27.3): two nodes with the same author id. Static —
         // it reads the const table and nothing else — so it is computed
         // here rather than by the per-frame auditor.
-        let mut seen: Vec<(&str, usize)> = Vec::new();
+        // **Scoped, since M27/T27.0's third landing.** A duplicate is
+        // only *unaddressable* when a descendant step cannot separate
+        // the two — that is, when they share the nearest enclosing node
+        // that has an id of its own. Two `#chooser-trigger`s under
+        // `#a` and `#b` are both reachable as `#a > #chooser-trigger`
+        // and `#b > #chooser-trigger`, and reporting them would be the
+        // lint crying wolf at the pattern the step exists to support.
+        //
+        // Two under the *same* owner still cannot be told apart, and
+        // that is what this now reports.
+        let scope_of = |mut k: usize| -> usize {
+            loop {
+                let p = tree.table[k].parent;
+                if p == lumen_static::desc::NO_PARENT {
+                    return usize::MAX;
+                }
+                if !tree.table[p as usize].wid.is_empty() {
+                    return p as usize;
+                }
+                k = p as usize;
+            }
+        };
+        let mut seen: Vec<(&str, usize, usize)> = Vec::new();
         for (i, d) in tree.table.iter().enumerate() {
             if d.wid.is_empty() {
                 continue;
             }
-            match seen.iter().find(|(w, _)| *w == d.wid) {
-                Some(&(_, first)) => {
+            let scope = scope_of(i);
+            match seen.iter().find(|(w, s, _)| *w == d.wid && *s == scope) {
+                Some(&(_, _, first)) => {
                     let mut o = self.node_ident(tree, i as u32);
                     o.insert("code".into(), audit::codes::DUPLICATE_ID.into());
                     o.insert(
                         "message".into(),
                         format!(
-                            "author id `{}` is on node {i} and node {first} — both are \
-                             unaddressable: `#{}` resolves to neither, and a stylesheet \
-                             rule for it silently styles both",
-                            d.wid, d.wid
+                            "author id `{}` is on node {i} and node {first}, both inside \
+                             the same owner — neither is addressable: `#{}` resolves to \
+                             neither, and not even `#owner > #{}` can tell them apart",
+                            d.wid, d.wid, d.wid
                         )
                         .into(),
                     );
                     o.insert("detail".into(), json!({ "wid": d.wid, "first": first }));
                     findings.push(Value::Object(o));
                 }
-                None => seen.push((d.wid, i)),
+                None => seen.push((d.wid, scope, i)),
             }
         }
         json!({ "frame": self.frame, "findings": findings })
@@ -1432,6 +1457,7 @@ fn parse_key(name: &str) -> Option<Key> {
 
 // ---- snapshot index ---------------------------------------------------------
 
+#[derive(Clone)]
 struct Entry {
     id: u64,
     node: accesskit::Node,
@@ -1474,6 +1500,15 @@ impl<'a> Index<'a> {
         o.insert("role".into(), format!("{:?}", e.node.role()).into());
         if let Some(v) = e.node.value() {
             o.insert("value".into(), v.into());
+        }
+        // **And the label.** `ui.getTree` has carried one since M15 and
+        // this summary never did, so `ui.resolve` on a `Button` — which
+        // publishes `set_label`, not `set_value` — answered with no text
+        // at all. Anything reading a control's text through `resolve`
+        // got the empty string and could not tell that from a control
+        // with no text (M27/T27.9).
+        if let Some(l) = e.node.label() {
+            o.insert("label".into(), l.into());
         }
         if let Some(b) = e.bounds() {
             o.insert("bounds".into(), json!([b.x0, b.y0, b.x1, b.y1]));
@@ -1657,7 +1692,75 @@ fn scrolling_ancestors(tree: &TreeRef, i: usize) -> Vec<usize> {
     out
 }
 
+/// Is `j` inside `i`'s subtree? `false` when `j == i`.
+///
+/// Walks `parent` rather than comparing index ranges: a merged table
+/// (`Either`, `Select`, every wrapper in `lumen-static-widgets`) splices
+/// children in, so a subtree is contiguous *in practice* and the walk is
+/// what makes that not need to be true.
+fn is_descendant(tree: &TreeRef, i: usize, j: usize) -> bool {
+    let mut k = j;
+    while k < tree.table.len() {
+        let p = tree.table[k].parent;
+        if p == lumen_static::desc::NO_PARENT {
+            return false;
+        }
+        if p as usize == i {
+            return true;
+        }
+        k = p as usize;
+    }
+    false
+}
+
 fn resolve_one<'e>(ix: &'e Index<'_>, selector: &str) -> Result<&'e Entry, (i64, String, Value)> {
+    // **`>` is a descendant step** — M27/T27.0's third landing.
+    //
+    // A part id lives on a *type's* table, so a composite instantiated
+    // twice carries every id inside it twice and `W1011` reports both as
+    // unaddressable. That had fired four times by the time this landed,
+    // and the workaround each time was to split the type — which does
+    // not scale and does not help an application that legitimately wants
+    // two dropdowns.
+    //
+    // `#outer > #inner` says "the `#inner` **inside** `#outer`", so a
+    // part id only has to be unique within its owner. The owner is
+    // addressed the way it always was, by the `#[widget_id]` the
+    // application gave *its* field, which is unique because the
+    // application wrote it.
+    //
+    // `>` and not a space: a space already means "and", and changing
+    // that would silently reinterpret every selector already written.
+    if let Some((head, tail)) = selector.split_once('>') {
+        let outer = resolve_one(ix, head.trim())?;
+        let Some(oi) = outer.idx else {
+            return Err((
+                INVALID_PARAMS,
+                format!("`{}` names virtualized content, which has no subtree to \
+                         search; address the row itself with `~text`", head.trim()),
+                Value::Null,
+            ));
+        };
+        let inner = Index {
+            tree: ix.tree,
+            entries: ix
+                .entries
+                .iter()
+                .filter(|e| e.idx.is_some_and(|j| is_descendant(ix.tree, oi, j)))
+                .cloned()
+                .collect(),
+        };
+        // Resolved against the subtree, so the error text names the
+        // whole selector rather than the tail alone.
+        return match resolve_one(&inner, tail.trim()) {
+            Ok(e) => ix
+                .entries
+                .iter()
+                .find(|x| x.id == e.id)
+                .ok_or((NOT_FOUND, format!("selector `{selector}` matched nothing"), Value::Null)),
+            Err((c, m, d)) => Err((c, m.replace(tail.trim(), selector), d)),
+        };
+    }
     let terms = parse_selector(selector).map_err(|e| (INVALID_PARAMS, e, Value::Null))?;
     let matched: Vec<&Entry> =
         ix.entries.iter().filter(|e| terms.iter().all(|t| matches(ix.tree, e, t))).collect();

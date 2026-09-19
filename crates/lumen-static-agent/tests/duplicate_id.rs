@@ -117,3 +117,54 @@ fn neither_copy_can_be_addressed() {
         "expected an ambiguity, got {err:?}"
     );
 }
+
+/// **Scoped since M27/T27.0's third landing.** Two copies under
+/// *different* owners are both reachable — `#a > #cell` and
+/// `#b > #cell` — so reporting them would be the lint crying wolf at
+/// exactly the pattern the descendant step exists to support.
+///
+/// Without this the lint fires on every composite used twice, which is
+/// every `Chooser`, `Tooltip` and `SearchField` in any real tree.
+#[test]
+fn copies_under_different_owners_are_not_reported() {
+    #[derive(StaticTree, Default)]
+    #[widget(column, spacing = 0.0)]
+    struct Owned {
+        #[widget_id("a")]
+        a: Pair,
+        #[widget_id("b")]
+        b: Pair,
+    }
+
+    let f = findings::<Owned>();
+    assert!(
+        dupes(&f).is_empty(),
+        "W1011 fired on two copies that a descendant step can separate: {f:?}"
+    );
+}
+
+/// And the other direction, so the scoping is not just the check turned
+/// off: two copies under the *same* owner are still unaddressable,
+/// because no step can tell them apart.
+#[test]
+fn two_copies_under_one_owner_are_still_reported() {
+    #[derive(StaticTree, Default)]
+    #[widget(column, spacing = 0.0)]
+    struct Both {
+        a: Pair,
+        b: Pair,
+    }
+
+    #[derive(StaticTree, Default)]
+    #[widget(column, spacing = 0.0)]
+    struct Owner {
+        #[widget_id("only")]
+        only: Both,
+    }
+
+    let f = findings::<Owner>();
+    assert_eq!(
+        dupes(&f).len(), 1,
+        "two `#cell`s share the owner `#only` and neither is addressable: {f:?}"
+    );
+}

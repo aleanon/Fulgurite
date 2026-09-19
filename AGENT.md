@@ -166,7 +166,14 @@ are independent of each other**, so either may go first:
   plus `SplitPane` and `Collapsible`. There is deliberately no
   `Accordion`: it is a column of `Collapsible`s, and a type per section
   count is what owning the one-open rule would cost. Twenty-four widgets,
-  59 actions, green both ways.
+  59 actions, green both ways. **T27.9 shipped 2026-09-19** —
+  `PickList`/`Combobox`/`Menu` as one `Chooser<KIND>`, which do *not*
+  use `Repeat` (a bind `fn` cannot capture the widget owning the
+  options). It forced **T27.0's third landing**: a descendant step,
+  `#outer > #inner`, after `W1011` fired four times on the same cause —
+  a part id lives on a type's table, so a composite used twice is
+  unaddressable by construction. `W1011` is scoped to match. Twenty-seven
+  widgets, 64 actions, green both ways.
 
 - **M28 — `docs/plan-tasks.md`** (T28.0–T28.12): **not started**, written
   2026-09-18 and **revised the same day after a seven-lens review: 42

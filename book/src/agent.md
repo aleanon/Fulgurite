@@ -72,6 +72,14 @@ Space-separated terms, all of which must match:
 | `~text` | the text it **shows** contains "text" — a value or a label |
 | `@app.rs:42` | source provenance — file suffix, optional line |
 | `7` | table index |
+| `#a > #b` | the `#b` **inside** `#a` |
+
+`#a > #b` is a **descendant step**, and it exists because a part id
+lives on a *type's* table: a composite used twice carries every id inside
+it twice, and neither copy can be addressed on its own. A step means the
+part only has to be unique within its owner, and the owner is named by
+the `#[widget_id]` the application gave its own field. `W1011` reports
+only what a step cannot separate — two copies under the *same* owner.
 
 `~text` is the one term that reaches inside a virtualized list. Every
 other term is matched against the const `NodeDesc`, and a repeater's rows

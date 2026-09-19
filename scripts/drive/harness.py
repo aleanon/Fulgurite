@@ -145,12 +145,18 @@ class Ctx:
         """What the node publishes as its value — a field's text, a
         label's run. Read from the tree, because not every demo has a
         readout: `TextInput`'s status function is `none`, so the widget
-        itself is the only thing that can report."""
-        want = (sel or self.sel).lstrip("#")
-        for n in self.c.tree()["nodes"]:
-            if n.get("wid") == want:
-                return n.get("value") or n.get("label") or ""
-        raise Failed(f"no node with wid {want!r} in the tree")
+        itself is the only thing that can report.
+
+        **Resolved, not matched.** This compared `wid` literally and so
+        understood only a bare `#id`; the moment a selector carried a
+        descendant step it reported "no node with wid
+        `d_combobox_a > #chooser-list`", which is a true statement about
+        a string nobody meant as one. `ui.resolve` is the thing that
+        knows the selector grammar, so it does the resolving and this
+        looks the answer up by index.
+        """
+        r = self.c.rpc("ui.resolve", selector=sel or self.sel)
+        return r.get("value") or r.get("label") or ""
 
     def styles(self, sel: str | None = None) -> dict:
         return self.c.rpc("ui.getAppliedStyles", selector=sel or self.sel)
@@ -226,6 +232,14 @@ def _pick(c: AgentClient, widget: str) -> None:
     # hovered, which is what re-opens a tip.
     c.key("Escape", True)
     c.key("Escape", False)
+    # **And a press in the corner.** Escape dismisses the *topmost*
+    # overlay; a press that misses them all dismisses every one and is
+    # consumed. A widget left with an open list — a chooser, a veil —
+    # otherwise leaves it open into the next widget's turn, where it
+    # covers the menu this is about to use. That reached the next drive
+    # as "never came into the menu's viewport", which is a true
+    # statement about a menu nothing could see.
+    c.rpc("input.click", x=2.0, y=2.0)
     c.rpc("input.hover", x=2.0, y=2.0)
     c.click("#select-trigger")
     menu = c.rpc("ui.resolve", selector="#select-menu").get("bounds")
@@ -246,10 +260,19 @@ def _pick(c: AgentClient, widget: str) -> None:
             if "matched nothing" not in str(e):
                 raise
             if attempt == 23:
+                # **Say what *was* visible.** "never came into view" is a
+                # true statement about a menu that never opened, one
+                # scrolled to the wrong end, and one covered by another
+                # overlay — three different bugs with one message. The
+                # labels tell them apart at a glance.
+                seen = [
+                    (n.get("label") or "").strip()
+                    for n in c.tree()["nodes"]
+                    if (n.get("label") or "").strip()
+                ]
                 raise Failed(
                     f"{widget!r} never came into the menu's viewport after "
-                    f"{attempt + 1} scrolls — the catalogue is longer than the "
-                    f"menu and the row is not announced while it is off-screen"
+                    f"{attempt + 1} scrolls; visible labels were {seen[-14:]}"
                 ) from None
             c.rpc("input.scroll", x=mid[0], y=mid[1], dy=-90.0)
     label = ""

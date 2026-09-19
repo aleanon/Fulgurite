@@ -875,6 +875,28 @@ fn stylesheet() -> Vec<StyleRule> {
         // stage that is nothing at all.
         StyleRule::new(Selector::Id("d_range_a"), Patch::new().width(Length::Fixed(280.0))),
         StyleRule::new(Selector::Id("d_search_a"), Patch::new().width(Length::Fixed(320.0))),
+        // M27/T27.9's three. A chooser's trigger is a `TextInput` and
+        // ships plain, like every other field here — the sheet is what
+        // says it is a control. `Kind`, because all three share one
+        // part id and styling them apart is not the point.
+        // **A `Kind` rule, not the part id.** Three choosers carry the
+        // same part id, so a rule keyed on it styles all three — which
+        // is what is wanted here, and is also why `Selector::Id` is the
+        // wrong tool: an id is an address and these are not unique. The
+        // trigger is a `TextInput`, so its kind reaches exactly them
+        // plus the showcase's own field, which wants the same look.
+        StyleRule::new(
+            Selector::Kind("textinput"),
+            Patch::new()
+                .width(Length::Fixed(220.0))
+                .height(Length::Fixed(36.0))
+                .background_role(Role::Control)
+                .color_role(Role::Text)
+                .border_width(1)
+                .border_color_role(Role::Muted)
+                .radius(8.0)
+                .padding(Edges { left: 12.0, right: 12.0, top: 8.0, bottom: 8.0 }),
+        ),
         // M27/T27.8's four. A wrap needs a box narrow enough to wrap in,
         // a grid needs one wide enough to show that it does *not*, and a
         // split pane is as big as it is given.
@@ -906,6 +928,7 @@ fn stylesheet() -> Vec<StyleRule> {
         // M27/T27.6's five. A navigation strip is as wide as the screen
         // it navigates; on a centring stage that is nothing, so each one
         // is given a plausible screen's worth.
+        StyleRule::new(Selector::Id("d_menu_a"), Patch::new().height(Length::Fixed(40.0))),
         StyleRule::new(Selector::Id("d_tabs_a"), Patch::new().width(Length::Fixed(420.0))),
         StyleRule::new(Selector::Id("d_bottomnav_a"), Patch::new().width(Length::Fixed(420.0))),
         StyleRule::new(Selector::Id("d_appbar_a"), Patch::new().width(Length::Fixed(420.0))),

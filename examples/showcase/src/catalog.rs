@@ -74,6 +74,26 @@ fn veil<W: lumen_static::widget::Widget, const K: u8>(
     v
 }
 
+/// The options M27/T27.9's three demos share.
+const FRUIT: [&str; 6] =
+    ["Apple", "Banana", "Cherry", "Damson", "Elderberry", "apricot"];
+const COMMANDS: [&str; 4] = ["Cut", "Copy", "Paste", "Select all"];
+
+/// A `Menu` is seeded **open**, because it has no trigger and a closed
+/// one shows nothing at all.
+///
+/// A `PickList` and a `Combobox` are seeded **closed**, which is how
+/// anyone meets one — and is also the only state in which pressing the
+/// trigger works: `dispatch_overlaid` dismisses every overlay on a press
+/// that misses them all and *consumes* it, which is `Select`'s
+/// documented dropdown behaviour and takes the press a combobox's field
+/// needs. `crates/lumen-static-widgets/tests/focus_overlay.rs` pins both
+/// halves.
+fn opened<const K: u8>(mut c: lumen_static_widgets::Chooser<K>) -> lumen_static_widgets::Chooser<K> {
+    c.open();
+    c
+}
+
 fn chip(t: &str) -> Chip<String> {
     Chip::<String> { text: t.into() }
 }
@@ -318,6 +338,22 @@ pub static CATALOG: &[Entry] = &[
             a: section("Account", "Your name and email"),
             b: section("Privacy", "Who can see your activity"),
             c: section("Advanced", "Developer options") })),
+        none),
+    // ---- M27/T27.9 ------------------------------------------------
+    entry!("Choice", "PickList", "Press it; pick one of six.",
+        "It owns its options, which is what `Select` cannot: `Repeat::bind` is a plain `fn` and cannot capture the widget holding them — so these draw their rows the way `Strip` does.",
+        false,
+        |s| on(s, Demo::PickList(DPickList { a: PickList::new(&FRUIT) })),
+        none),
+    entry!("Choice", "Combobox", "The same list, filtered as you type.",
+        "An empty query shows everything: a filter that hid every row when the field was cleared would make the control unusable the moment anyone deleted what they typed.",
+        false,
+        |s| on(s, Demo::Combobox(DCombobox { a: Combobox::new(&FRUIT) })),
+        none),
+    entry!("Choice", "Menu", "A command list with no trigger.",
+        "A release chooses, a press does not — every menu in every toolkit commits on release, and choosing on the press also closes the list under a finger that is still down.",
+        false,
+        |s| on(s, Demo::Menu(DMenu { a: opened(Menu::new(&COMMANDS)) })),
         none),
 ];
 
