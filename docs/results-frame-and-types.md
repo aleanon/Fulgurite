@@ -648,3 +648,43 @@ areas; §1's 1.10 ms full-surface 4K redraw bounds the win from above and
 is not the case being improved. The 141× in
 `docs/damage-amplification-decision.md` is a **software** damaged-pixel
 ratio and is not a GPU speed-up.
+
+## T26.14 — `index_of_wid` as a `const fn`
+
+Measured 2026-09-19. **No change to rustc's time**, which is what Phase
+C is judged on.
+
+| | `just const-budget`, 3,711 nodes |
+|---|---|
+| before | 331, 353, **202, 202** ms |
+| after | 215, 215, **184, 197** ms |
+
+The first runs of each set are warm-up: the recipe rebuilds its
+dependency after a source change, and that lands inside what it prints.
+The settled runs are 202 ms against 184–197, and the recipe's own
+run-to-run spread is larger than the difference. **No effect** — as
+expected, because the fixture never calls `index_of_wid`. The ceiling
+(5,000 ms) is untouched, and this is the millisecond figure the recipe
+prints rather than a percentage read against that ceiling, which would
+be a bound computed from the wrong quantity.
+
+**What it buys** is a `wid_index!(Tree, "id")` that resolves at compile
+time. A typo'd or renamed `#[widget_id]` marks *nothing*: the lookup
+returns `None` — it cannot return a *wrong* index — and the frame
+quietly fails to redraw.
+
+**Honest scope, restated from the task**: it is silent only for a caller
+that ignores the answer. `Host::invalidate` and `Host::restyle_subtree`
+have returned a `#[must_use] bool` since T16.7 for exactly this reason
+and every caller in this repository asserts it, so this buys little
+against the current tree and everything against the next caller and
+third-party code.
+
+Gate: `crates/lumen-static/tests/wid_index.rs` — and the good-input half
+is the one with work in it. It walks the **table**, asserting that the
+const and runtime lookups agree for every id a tree carries, so an id
+added later is covered without anyone remembering to add it. The
+compile-fail half is a `compile_fail` doctest on the macro. Two
+injections: making a missing id resolve to 0 (the doctest compiles, and
+the compile-fail case fails) and making the const lookup return `i + 1`
+(the agreement test fires, naming the node).

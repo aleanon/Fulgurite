@@ -718,7 +718,7 @@ These buy no frame time. They are judged on **what a real defect in this
 repository's history would have been prevented**, and on rustc's time,
 which `just const-budget` gates.
 
-### T26.14 — `index_of_wid` as a `const fn`
+### T26.14 — `index_of_wid` as a `const fn` — **DONE 2026-09-19**
 
 A typo'd or renamed `#[widget_id]` marks **nothing**: the lookup returns
 `None` — it can never return a wrong index — and the frame quietly fails
@@ -732,9 +732,12 @@ everything against the next caller and third-party code — and the first
 draft of this task claimed the wrong subtree was affected, which the
 lookup cannot do (review 2026-09-17, confirmed).
 
-**Gate:** runtime and const lookups agree for every id in the workspace
-(the good-input half), plus a trybuild case for a typo'd id with its
-`.stderr` committed.
+**Gate:** runtime and const lookups agree for every id in the tree (the
+good-input half), plus a **`compile_fail` doctest** for a typo'd id —
+not trybuild, which is a dependency and a committed `.stderr` that
+churns with every rustc release, for a case whose whole content is
+"this does not compile". `cargo test --doc` runs it, and an injection
+that makes a missing id resolve to `0` turns it red.
 
 ### T26.15 — `Seed::reads` stops defaulting to `Fields::ALL`
 

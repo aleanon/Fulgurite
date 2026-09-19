@@ -1087,14 +1087,89 @@ pub fn subtree_range(table: &[NodeDesc], root: usize) -> core::ops::Range<usize>
 /// (`docs/results-cascade-cost.md`) — so an app may address a subtree by
 /// the name it already wrote rather than by an index arithmetic it would
 /// have to keep in step with the struct.
-pub fn index_of_wid(table: &[NodeDesc], wid: &str) -> Option<usize> {
+pub const fn index_of_wid(table: &[NodeDesc], wid: &str) -> Option<usize> {
     // A node without `#[widget_id]` carries `""`, so an empty argument
     // would match the first unnamed node — which is usually the root,
     // and would restyle the whole tree. Nothing is named `""`.
     if wid.is_empty() {
         return None;
     }
-    table.iter().position(|d| d.wid == wid)
+    // **`const`, so a caller can resolve an id at compile time**
+    // (M26/T26.14). A typo'd or renamed `#[widget_id]` marks *nothing*:
+    // this returns `None` — it cannot return a wrong index — and the
+    // frame quietly fails to redraw. A `const` lookup turns that into a
+    // compile error for any caller willing to take one, which
+    // `wid_index!` below is the spelling of.
+    //
+    // Written as an index loop because `Iterator::position` and `==` on
+    // `str` are not `const`; `bytes_eq` is the same comparison spelled
+    // for a const context.
+    let mut i = 0;
+    while i < table.len() {
+        if bytes_eq(table[i].wid, wid) {
+            return Some(i);
+        }
+        i += 1;
+    }
+    None
+}
+
+/// `a == b` for `&str`, in a `const` context.
+const fn bytes_eq(a: &str, b: &str) -> bool {
+    let (a, b) = (a.as_bytes(), b.as_bytes());
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut i = 0;
+    while i < a.len() {
+        if a[i] != b[i] {
+            return false;
+        }
+        i += 1;
+    }
+    true
+}
+
+/// The table index of `$wid` in `$tree`, **checked at compile time**.
+///
+/// ```
+/// # use lumen_static::{wid_index, StaticTree, Widget};
+/// # use lumen_static::ops::Label;
+/// #[derive(StaticTree, Default)]
+/// #[widget(column, spacing = 0.0)]
+/// struct Ui {
+///     #[widget_id("title")]
+///     title: Label,
+/// }
+/// const TITLE: usize = wid_index!(Ui, "title");
+/// assert_eq!(TITLE, 1);
+/// ```
+///
+/// A misspelled id fails the build rather than marking nothing:
+///
+/// ```compile_fail
+/// # use lumen_static::{wid_index, StaticTree, Widget};
+/// # use lumen_static::ops::Label;
+/// # #[derive(StaticTree, Default)]
+/// # #[widget(column, spacing = 0.0)]
+/// # struct Ui {
+/// #     #[widget_id("title")]
+/// #     title: Label,
+/// # }
+/// const OOPS: usize = wid_index!(Ui, "titel");
+/// ```
+#[macro_export]
+macro_rules! wid_index {
+    ($tree:ty, $wid:literal) => {{
+        const IDX: usize = match $crate::style::index_of_wid(
+            <$tree as $crate::widget::Widget>::SUB_TABLE,
+            $wid,
+        ) {
+            Some(i) => i,
+            None => panic!(concat!("no `#[widget_id(\"", $wid, "\")]` in this tree")),
+        };
+        IDX
+    }};
 }
 
 /// Re-cascade one subtree: the node at `root` and its descendants.
