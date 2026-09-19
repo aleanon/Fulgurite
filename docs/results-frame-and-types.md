@@ -1112,3 +1112,61 @@ The test brings its own measurer for the reason T26.3's did:
 every scale and it **cannot exhibit this defect**. A test written
 against it would have passed with the bug in place — the first vacuous
 shape, where both sides agree about a frame in which nothing happened.
+
+## T26.17 — Phase D, finding 13: the second scan of the same face
+
+`FontStack::prepare` chose a face with `has_all(wanted)` and then asked
+`has_all(font)` again — about the face it had just asked about. In the
+steady state, where the wanted face covers the text, that is **two full
+scans of every character** to learn one thing. The plan's correction was
+exact: two scans, not the "one to three" the review guessed.
+
+The arm is `layout` on the `all_rows` workload, which re-measures every
+row's text — 1 400 µs against 11.7 µs idle at 3 000 nodes, so shaping is
+99% of it. Eight runs a side, sorted, per M26's own rule for this
+machine's bimodal arms:
+
+| | runs (µs) | min | median |
+|---|---|---|---|
+| two scans | 1372.6 1373.4 1391.7 1392.6 1408.3 1410.8 1431.8 1455.5 | 1372.6 | 1400.4 |
+| one scan | 1291.4 1319.3 1320.7 1329.2 1331.3 1380.8 1381.6 1398.2 | **1291.4** | **1330.3** |
+
+**−81.2 µs on the min (−5.9%), −70.1 µs on the median (−5.0%)**, and
+the fast clusters are disjoint with a 51.9 µs gap. Four runs a side would
+**not** have settled this — the one-scan set's four-run spread was 106.8 µs
+against an 81 µs delta, and by the four-run rule alone it reads as no
+effect. This is the second time in Phase D that a real effect hid under
+an arm sampled below its own period (finding 3 was the first), and both
+times eight runs separated it.
+
+### The gate it needed did not exist, and the one that looked like it was vacuous
+
+`tests/shaping.rs` has a test named
+`every_byte_offset_lands_on_a_char_boundary_even_after_substitution`.
+Its comment is conditional and honest — U+2212 substitutes to `-` "in a
+face that lacks it" — but every system face this repository has run
+against **has** U+2212 and U+2014. So `has_all(wanted)` answers true, the
+fall-through never runs, and the test inspects an unsubstituted string.
+It is a sound test of byte offsets and a vacuous one of substitution,
+and it passed unchanged with the substitution branch disabled.
+
+This was found the way the rule says to find it: the injection was
+applied first and **left the test green**, which is a finding about the
+test, not a reason to weaken the injection.
+
+`a_character_no_face_has_is_substituted` is the replacement. U+E000 is
+the first Private Use Area code point, so no text face assigns it *by
+definition* and the fall-through is forced. `prepare` maps an uncovered
+character with no specific replacement to `'?'`, so a PUA run must
+measure exactly as wide as a run of question marks.
+
+| direction | result |
+|---|---|
+| refuses bad input (`covered` forced true, so substitution never runs) | **fails by name**: `PUA run 31.0; '???' 21.0; 'abc' 27.0` |
+| accepts good input | green under both the one-scan and the two-scan spellings |
+
+Two setup assertions guard the bound from the inside: `'???'` must
+measure non-zero, and `'???'` must differ from `'abc'` — without the
+second, a face whose every glyph had one width would make the
+comparison unfalsifiable, which is the "bound computed from the wrong
+quantity" shape.

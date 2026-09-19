@@ -358,6 +358,7 @@ while proving nothing:
 | the first `Event::Hover` test (M27/T27.11) | it called `on_event` with a `Hover` in hand, so deleting the synthesis in `dispatch` left it green |
 | every test vs. per-widget damage (M27/T27.3) | nothing had ever asked what one interaction costs in pixels, so a click reported the whole window at **1 200×** the widget's own box and 151 test binaries were green |
 | every test vs. a container's own background (M27/T27.3) | the journal folded a container's signature from its *children's*, so every container looked busy whenever anything under it moved — **one defect hid the other**, and no test could have seen the second while the first stood |
+| `shaping.rs`'s substitution test (M26/T26.17 #13) | it names substitution in its title and never triggers one: every system face has U+2212 and U+2014, so the fall-through it claims to cover is dead. Found by an injection that disabled substitution and left it green |
 
 **Three were caught by injecting a fault; three by printing the measured
 number beside the bound and seeing the gap.** Neither method is

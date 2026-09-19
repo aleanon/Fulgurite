@@ -117,3 +117,39 @@ fn the_stand_in_measures_without_clusters() {
     assert!(out.is_empty(), "the stand-in claims no cluster positions");
     assert_eq!(size, b.measure("Hi", 16.0, f32::INFINITY));
 }
+
+/// M26/T26.17 Phase D #13: a character **no text face has** must be
+/// substituted, and the substitution must be observable.
+///
+/// The test above this one names substitution in its title and does not
+/// exercise it. Its comment is conditional and honest — "in a face that
+/// lacks it" — but U+2212 and U+2014 are in every system face this
+/// repository has run against, so `has_all(wanted)` answers true, the
+/// fall-through never runs, and the assertions inspect an *unsubstituted*
+/// string. It is a real test of byte offsets and a vacuous one of
+/// substitution.
+///
+/// U+E000 is the first Private Use Area code point. No text face assigns
+/// it, by definition, so the fall-through is forced. `prepare` maps any
+/// uncovered character it has no specific replacement for to `'?'`, so a
+/// PUA run must measure exactly as wide as a run of question marks —
+/// and, with substitution skipped, as wide as a run of `.notdef` boxes
+/// instead.
+#[test]
+fn a_character_no_face_has_is_substituted() {
+    let Some(mut m) = metrics() else { return };
+    let pua = m.measure_weighted("\u{E000}\u{E000}\u{E000}", 16.0, 400.0, f32::INFINITY);
+    let subs = m.measure_weighted("???", 16.0, 400.0, f32::INFINITY);
+    let plain = m.measure_weighted("abc", 16.0, 400.0, f32::INFINITY);
+    println!("PUA run {:?}; '???' {:?}; 'abc' {:?}", pua.w, subs.w, plain.w);
+    assert_ne!(subs.w, 0.0, "setup: the face measured something for '???'");
+    assert_ne!(
+        subs.w, plain.w,
+        "setup: '???' and 'abc' must differ, or this comparison cannot fail"
+    );
+    assert_eq!(
+        pua.w, subs.w,
+        "three unassigned code points did not measure as three '?': the substitution \
+         in FontStack::prepare did not run"
+    );
+}

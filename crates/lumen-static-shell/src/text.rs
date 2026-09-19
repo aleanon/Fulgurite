@@ -96,14 +96,22 @@ impl FontStack {
         } else {
             &self.regular
         };
-        let font = if has_all(wanted) {
-            wanted
+        // **One scan of the chosen face, not two** — M26/T26.17 Phase
+        // D #13. This used to call `has_all(wanted)` to pick a face and
+        // then `has_all(font)` again on the very face it had just asked
+        // about, so the steady state — the wanted face covers the text —
+        // scanned every character twice. Carrying the answer out of the
+        // choice costs one `bool` and is worth 5% of a layout that
+        // re-measures every row (`docs/results-frame-and-types.md`
+        // T26.17 finding 13).
+        let (font, covered) = if has_all(wanted) {
+            (wanted, true)
         } else if has_all(other) {
-            other
+            (other, true)
         } else {
-            wanted
+            (wanted, false)
         };
-        if has_all(font) {
+        if covered {
             return (font, Cow::Borrowed(text));
         }
         let out = text
