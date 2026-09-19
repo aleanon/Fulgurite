@@ -163,3 +163,79 @@ fn a_list_that_fits_declines_everything() {
     assert_eq!(ui.list.max_scroll(st[1].size.h), 0.0, "3 rows in {PANEL_H} px should not scroll");
     assert!(!wheel(&mut ui, -120.0), "a list that fits consumed a wheel");
 }
+
+/// **A measurement must not change what it measures** (M27/T27.10).
+///
+/// The agent's ambient audit measures every leaf twice per frame, under
+/// a 1e6 and a 2e6 px box, to tell a node sized by its content from one
+/// sized by its container (`crates/lumen-static-agent/src/audit.rs`).
+/// Against a 2 000 000 px viewport there is nothing to scroll — so a
+/// `layout` that clamped the *stored* offset against the box it was
+/// handed reset the list to the top on every frame the audit ran, and a
+/// `DataGrid` in the showcase could not be scrolled at all while this
+/// file's other tests, a widget unit test and a headless `Host` all
+/// agreed it could.
+///
+/// The probe is spelled out here rather than imported: this crate does
+/// not depend on the agent, and the property is about *any* speculative
+/// pass — a shrink-wrapping parent that measures before it commits does
+/// the same thing.
+#[test]
+fn a_measuring_pass_does_not_move_the_offset() {
+    // **A repeater whose height is its container's**, which is the case
+    // the probes can reach: `laid_out()` pins the list at `Fixed`, so
+    // its resolved height — and with it `max_scroll` — is the same
+    // under a 2e6 px box as under the real one, and both injections
+    // below left this test green when it used that fixture. The
+    // showcase's grid hands its rows `FILL` of what is left under the
+    // header, and a filling node is exactly one that answers the
+    // question the audit is asking.
+    let mut ui = Ui { list: Repeat::new(ROWS, ROW_H, bind) };
+    let sheet = [Rule::new(Selector::Id("list"), Patch::new().height(Length::FILL))];
+    let mut styles = vec![Style::default(); Ui::NODE_COUNT];
+    cascade_deep(&mut ui, &sheet, &mut styles);
+    let mut st = vec![NodeState::default(); Ui::NODE_COUNT];
+    let panel = Constraints { max_h: PANEL_H, ..VIEW };
+    let relay = |ui: &mut Ui, st: &mut Vec<NodeState>| {
+        let mut m = lumen_static::cx::BlockMetrics;
+        let mut cx = lumen_static::LayoutCx::new(&mut m);
+        Node::layout(ui, &mut cx, panel, &styles, st, 0);
+        Node::place(ui, Point { x: 0.0, y: 0.0 }, &styles, st, 0);
+    };
+    relay(&mut ui, &mut st);
+    let viewport = st[1].size.h;
+    assert_eq!(viewport, PANEL_H, "setup: a filling list in a {PANEL_H} px panel");
+    assert!(wheel(&mut ui, -120.0), "setup: the list declined the first wheel");
+    relay(&mut ui, &mut st);
+    let scrolled = ui.list.scroll;
+    assert_eq!(scrolled, 120.0, "setup: the wheel did not move the list");
+
+    // The audit's two probes, in its order, on the live widget.
+    let mut m = lumen_static::cx::BlockMetrics;
+    let mut cx = lumen_static::LayoutCx::new(&mut m);
+    let mut scratch = vec![NodeState::default(); Ui::NODE_COUNT];
+    for max in [1.0e6f32, 2.0e6] {
+        let probe = Constraints { min_w: 0.0, max_w: max, min_h: 0.0, max_h: max };
+        let h = Node::layout(&mut ui.list, &mut cx, probe, &styles, &mut scratch, 1).h;
+        assert!(
+            h > PANEL_H,
+            "setup: the probe at {max} px resolved the list to {h} px, so it \
+             cannot tell a filling node from a fixed one"
+        );
+    }
+    assert_eq!(
+        ui.list.scroll, scrolled,
+        "two probes at 1e6 and 2e6 px moved the offset from {scrolled} to {}",
+        ui.list.scroll
+    );
+    // And the wheel still works afterwards — the offset surviving is no
+    // use if the viewport it is clamped against did not.
+    assert!(
+        wheel(&mut ui, -120.0),
+        "after the probes the list declined a wheel; it reports {} px of \
+         scroll against a viewport of {}",
+        ui.list.max_scroll(ui.list.viewport()),
+        ui.list.viewport()
+    );
+    assert_eq!(ui.list.scroll, scrolled + 120.0, "the wheel after the probes moved nothing");
+}

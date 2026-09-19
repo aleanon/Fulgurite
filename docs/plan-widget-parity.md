@@ -596,9 +596,9 @@ each names its injections in the commit body.
 | ~~**T27.5**~~ | ~~NumberInput, RangeSlider, SearchField~~ **DONE 2026-09-19** | composites over `TextInput` and `Slider` | T27.1 |
 | ~~**T27.6**~~ | ~~Tabs, AppBar, BottomNav, NavigationRail, PullToRefresh~~ **DONE 2026-09-19** | ~~one shape five times~~ — **three of the five are**; see below | T27.0 |
 | ~~**T27.7**~~ | ~~Modal, Sheet, Drawer~~ **DONE 2026-09-19** | the overlay layer M15 built | — |
-| **T27.8** | Wrap, Grid, SplitPane, PaneGrid, Accordion | the layout group; needs `Widget`-level work, and is the tranche most likely to move the const-eval number | — |
+| ~~**T27.8**~~ | ~~Wrap, Grid, SplitPane, PaneGrid, Accordion~~ **DONE 2026-09-19** | the layout group; needs `Widget`-level work, and is the tranche most likely to move the const-eval number | — |
 | ~~**T27.9**~~ | ~~Menu, PickList, Combobox~~ **DONE 2026-09-19** | one `Chooser<KIND>` — and T27.0's third landing, which this forced | T27.0 |
-| **T27.10** | DataGrid, Tree, Pagination | repeaters with addressable rows | T27.0, T27.1 |
+| ~~**T27.10**~~ | ~~DataGrid, Tree, Pagination~~ **DONE 2026-09-19** | repeaters with addressable rows | T27.0, T27.1 |
 | **T27.11** | ColorPicker, DatePicker, TimePicker, FilePicker | all four are bordered composites over the above | T27.1, T27.8 |
 | **T27.12** | RichText, Markdown, RichTextEditor, PaintBox | the text-heavy tail and the draw callback | — |
 
@@ -888,6 +888,62 @@ were gated on "does it paint" plus a handful of handlers, and none of
 them has ever been checked for damage bounds, for lint cleanliness after
 an interaction, or under `Boundaries`. If T27.3 finds nothing, that is
 a finding about the harness and the tranche does not close.
+
+### T27.10, as built — the observer changed the observed
+
+`Pagination`, `Tree` and `DataGrid`: three widgets that answer *where
+the data lives* three different ways, because their data differs. A
+pagination has none (thirty pages is a number). A tree owns its shape,
+so collapsing is arithmetic over one array and `MAX_TREE_NODES` bounds
+it. A grid owns **nothing** — its rows are a `Repeat` the application
+binds, because a grid is a view of a table someone else holds.
+
+| | found | how |
+|---|---|---|
+| 15 | **The agent's per-frame audit reset every repeater's scroll offset.** It measures each leaf twice, under a 1e6 and a 2e6 px box, to tell an intrinsic node from a filler — and `Repeat::layout` clamped its *stored* offset against the box it was handed, where `max_scroll` is 0. A `DataGrid` in the showcase could not be scrolled at all. | `just widget-drive`; a bare-widget unit test, a headless `Host` test and `tests/repeat_scroll.rs` all said it scrolled |
+| 16 | **And the same probe left the agent reading the wrong rows.** `Node::probe`'s provided body is `self.layout(..)`, which for a repeater *picks a window*: after the audit, `first` was row 0 against a 2 000 000 px viewport whatever the frame had painted. The window on screen was right and the tree the agent read was wrong. | the drive saw the grid scroll one row and jump back |
+
+Three fixes, in the order the evidence arrived, each with its own test:
+
+1. **`layout` derives; it does not decide.** The offset is the user's;
+   `first` and the window are derived from it. `Repeat::offset` clamps at
+   use and never writes back, so a speculative pass cannot destroy a
+   number nobody can recompute.
+2. **The viewport is what was *placed*, not what was offered.** `place`
+   runs once per frame on the real box; `layout` runs as often as anyone
+   wants to ask a question. `Repeat::viewport()` is published so a test
+   can assert the cause rather than the symptom.
+3. **`Repeat` overrides `Node::probe`.** The hook exists for exactly
+   this — `Label` already overrode it to keep the audit out of its text
+   memo — and the answer a probe wants is the arithmetic `layout` starts
+   with, without any of what it then does. This is AGENT.md's provided-method
+   rule again: *a provided body is right for a leaf and wrong for
+   anything that keeps state.*
+
+**Both injections left the new test green the first time**, and the
+reason is the first shape AGENT.md names: the fixture pinned the list's
+height with `Fixed`, so its resolved height — and with it `max_scroll` —
+is the same under a 2e6 px box as under the real one, and no probe could
+move it. Rewritten on a **filling** repeater, which is what the
+showcase's grid actually is, both fire by name (injection BO: offset 120 → 0;
+injection BP: the wheel after the probes moves nothing), and the setup asserts
+the probe resolved the list taller than its panel so a future `Fixed`
+cannot quietly make it vacuous again.
+
+**A fourth thing the drive found, fixed in the fixture rather than the
+code**: folding two rows out of a shrink-wrapped tree on a centring
+stage moves the demo 26 px and repaints everything below the header —
+11.94x the stage, measured. A file tree lives in a sidebar with a size,
+so the demo has one; the collapse is then 1.00x its own box. The
+measurement is in the sheet rule's comment, beside the rule.
+
+**One limitation recorded, not fixed.** `#outer > ~text` cannot reach a
+repeater's rows: the descendant step filters by the table's parent
+chain, and virtualized rows are not in the table, so a row is a
+descendant of nothing. The drive uses the bare `~text` form, which is
+safe because the file names are unique in that window. Addressing a row
+*within* a named owner needs the step to understand arenas, which is
+T27.0's fourth landing and is not built.
 
 ## 7. The showcase at fifty-one entries
 

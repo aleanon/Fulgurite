@@ -74,6 +74,24 @@ fn veil<W: lumen_static::widget::Widget, const K: u8>(
     v
 }
 
+/// A small file tree, flattened — which is how `Tree` holds one.
+const TREE_ROWS: [lumen_static_widgets::Branch; 7] = [
+    lumen_static_widgets::Branch::new("crates", 0),
+    lumen_static_widgets::Branch::new("lumen-static", 1),
+    lumen_static_widgets::Branch::new("src", 2),
+    lumen_static_widgets::Branch::new("tests", 2),
+    lumen_static_widgets::Branch::new("lumen-static-widgets", 1),
+    lumen_static_widgets::Branch::new("docs", 0),
+    lumen_static_widgets::Branch::new("README.md", 0),
+];
+
+/// One grid row. A plain `fn`, so it cannot capture — which is the whole
+/// reason a grid does not own its data.
+fn grid_row(r: &mut GridRow, i: usize) {
+    r.name.set(format!("file-{i:03}.rs"));
+    r.size.set(format!("{} KB", 1 + i % 97));
+}
+
 /// The options M27/T27.9's three demos share.
 const FRUIT: [&str; 6] =
     ["Apple", "Banana", "Cherry", "Damson", "Elderberry", "apricot"];
@@ -354,6 +372,23 @@ pub static CATALOG: &[Entry] = &[
         "A release chooses, a press does not — every menu in every toolkit commits on release, and choosing on the press also closes the list under a finger that is still down.",
         false,
         |s| on(s, Demo::Menu(DMenu { a: opened(Menu::new(&COMMANDS)) })),
+        none),
+    // ---- M27/T27.10 -----------------------------------------------
+    entry!("Data", "Pagination", "Thirty pages; the window follows you.",
+        "Centred, not paged in blocks: a block-paged strip jumps under the finger — you press 5 and the numbers shift so 5 is somewhere else.",
+        false,
+        |s| on(s, Demo::Pagination(DPagination { a: Pagination::new(30) })),
+        none),
+    entry!("Data", "Tree", "Press a chevron; the subtree folds away.",
+        "Collapsing hides a whole subtree, not one row — and a *leaf* does not toggle, which is the difference between a chevron that does nothing and one that is not drawn.",
+        false,
+        |s| on(s, Demo::Tree(DTree { a: Tree::new(&TREE_ROWS) })),
+        none),
+    entry!("Data", "DataGrid", "A header over virtualized rows.",
+        "It owns no data: its rows are a `Repeat` the application binds, because a grid is a view of a table someone else holds and copying it in would be a second copy to keep in step.",
+        false,
+        |s| on(s, Demo::DataGrid(DDataGrid {
+            a: DataGrid::new(&["Name", "Size"], 200, 24.0, grid_row) })),
         none),
 ];
 

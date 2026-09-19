@@ -929,6 +929,19 @@ fn stylesheet() -> Vec<StyleRule> {
         // it navigates; on a centring stage that is nothing, so each one
         // is given a plausible screen's worth.
         StyleRule::new(Selector::Id("d_menu_a"), Patch::new().height(Length::Fixed(40.0))),
+        // M27/T27.10's three. A grid fills whatever it is given and a
+        // centring stage gives nothing.
+        StyleRule::new(
+            Selector::Id("d_datagrid_a"),
+            Patch::new().width(Length::Fixed(380.0)).height(Length::Fixed(220.0)),
+        ),
+        // A tree is a *pane*: a file tree lives in a sidebar with a size,
+        // and it is the sidebar that stops a collapse from moving the
+        // rest of the window. Without one the stage centres a
+        // shrink-wrapped tree, so folding two rows away moves the demo
+        // 26 px up and repaints everything below the header — 11.94x the
+        // stage, measured (M27/T27.10).
+        StyleRule::new(Selector::Id("d_tree_a"), Patch::new().height(Length::Fixed(200.0))),
         StyleRule::new(Selector::Id("d_tabs_a"), Patch::new().width(Length::Fixed(420.0))),
         StyleRule::new(Selector::Id("d_bottomnav_a"), Patch::new().width(Length::Fixed(420.0))),
         StyleRule::new(Selector::Id("d_appbar_a"), Patch::new().width(Length::Fixed(420.0))),
@@ -1011,6 +1024,49 @@ mod tests {
             };
         }
         h
+    }
+
+    /// **A wheel over the grid scrolls it — through the real host.**
+    ///
+    /// `crates/lumen-static-widgets/tests/data.rs`'s
+    /// `a_wheel_over_the_body_scrolls_it` walks the same path on a bare
+    /// `DataGrid` and is green; `just widget-drive` found the live
+    /// window ignoring the wheel anyway. The difference is everything
+    /// between them — the enum variant, the stage, the overlay-aware
+    /// dispatch — so this asserts it where the difference lives.
+    #[test]
+    fn a_wheel_over_the_grid_scrolls_it_on_the_stage() {
+        let entry = CATALOG.iter().position(|e| e.name == "DataGrid").unwrap();
+        let mut h = host(entry, false);
+        let before = match &h.app.ui.body.stage.row.demo {
+            Demo::DataGrid(d) => d.a.rows.first_row(),
+            other => panic!("entry {entry} put {:?} on the stage", other.kind_name()),
+        };
+        let (x, y) = {
+            let table =
+                <<Show as lumen_static::event::App>::Tree as
+                    lumen_static::widget::Widget>::SUB_TABLE;
+            let i = table
+                .iter()
+                .position(|d| d.wid == "d_datagrid_a")
+                .expect("the grid is not in the table");
+            let s = &h.states[i];
+            (s.pos.x + s.size.w / 2.0, s.pos.y + s.size.h / 2.0)
+        };
+        let hit = h.probe(x, y).expect("nothing is under the middle of the grid");
+        h.post(Event::Scroll { x, y, dy: -120.0 });
+        h.pump();
+        let after = match &h.app.ui.body.stage.row.demo {
+            Demo::DataGrid(d) => d.a.rows.first_row(),
+            _ => unreachable!(),
+        };
+        println!("hit node {} at ({x}, {y}); first row {before} -> {after}", hit.node);
+        assert!(
+            after > before,
+            "a 120 px wheel over the grid's body left the first visible row at \
+             {after} — the hit named node {}",
+            hit.node
+        );
     }
 
     /// **The stage has a demo for every entry, and the menu a row.**

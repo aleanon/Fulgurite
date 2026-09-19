@@ -809,6 +809,16 @@ remains** — which is why §10 Step 1 is the kill criterion.
    count/scroll/extent are kept. Persistent per-row UI state, when it
    arrives, must live in the data model or a keyed side store, never in
    window instances. See `docs/step3-repeaters.md`, `docs/step4-hot-reload.md`.
+   **Extended 2026-09-19 (M27/T27.10):** of the three that are kept,
+   `scroll` is the only one a *person* sets, and **`layout` may not write
+   it.** Layout runs speculatively — the agent's audit measures every
+   leaf twice per frame under 1e6 and 2e6 px boxes — so a clamp written
+   back from a measurement destroys an offset nothing can recompute. The
+   offset is clamped at use (`Repeat::offset`), the viewport comes from
+   `place` rather than from whatever limits `layout` was last handed,
+   and `Repeat` overrides `Node::probe` so a measurement does not pick a
+   window. See `docs/plan-widget-parity.md` §T27.10 and
+   `crates/lumen-static/tests/repeat_scroll.rs`.
 5. **Fusion granularity heuristics** (§5) — whether `#[fuse]` stays manual or
    the macro can infer candidates from subtree size and instantiation count.
    **RESOLVED 2026-08-30: stays manual.** Per-type (not per-position)

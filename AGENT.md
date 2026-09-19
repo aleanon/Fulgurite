@@ -277,6 +277,7 @@ while proving nothing:
 | `tests/overlay.rs` dismissal (M24/T24.2) | asserted the popup *stayed open*, never that anything inside it fired |
 | every gate vs. a hidden subtree (M24/T24.3) | no tree had ever put an inactive enum variant near the end of the table |
 | invalidation oracle vs. hover and press (M25/T25.0) | its session never hovered, so `Boundaries` painted a stale shade on every real frame and the oracle agreed with it |
+| a repeater vs. the audit's probe (M27/T27.10) | the fixture pinned the list at `Fixed`, so no probe could change the height the clamp was computed from |
 | every test vs. per-widget damage (M27/T27.3) | nothing had ever asked what one interaction costs in pixels, so a click reported the whole window at **1 200×** the widget's own box and 151 test binaries were green |
 | every test vs. a container's own background (M27/T27.3) | the journal folded a container's signature from its *children's*, so every container looked busy whenever anything under it moved — **one defect hid the other**, and no test could have seen the second while the first stood |
 

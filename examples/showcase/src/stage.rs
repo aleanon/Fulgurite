@@ -99,6 +99,39 @@ pair!(PairRadioC, Radio<Show>, "d_radio_c", "d_radio_cl");
 /// hit-testable, hoverable, pressable and wired to nothing.
 #[derive(StaticTree, Default)]
 #[widget(column, spacing = 0.0)]
+pub struct DPagination {
+    #[widget_id("d_pagination_a")]
+    pub a: Pagination,
+}
+
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+pub struct DTree {
+    #[widget_id("d_tree_a")]
+    pub a: Tree,
+}
+
+/// A grid's rows are the **application's**, bound by the `fn` `Repeat`
+/// takes — which is why this demo declares a row type and the chooser
+/// demos do not.
+#[derive(StaticTree, Default)]
+#[widget(row, spacing = 12.0)]
+pub struct GridRow {
+    #[widget_id("d_grid_name")]
+    pub name: Label<String>,
+    #[widget_id("d_grid_size")]
+    pub size: Label<String>,
+}
+
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+pub struct DDataGrid {
+    #[widget_id("d_datagrid_a")]
+    pub a: DataGrid<GridRow>,
+}
+
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
 pub struct DPickList {
     #[widget_id("d_picklist_a")]
     pub a: PickList,
@@ -500,6 +533,15 @@ pub struct DPieChart {
 /// content was the number eighteen, and a `clear` with one field left
 /// out was the one bug the `Option` shape made possible. One-of-N is
 /// now the type's job.
+/// **`clippy::large_enum_variant` is allowed here, and cannot be
+/// obeyed.** Its advice is to box the big variant; a `StaticTree` enum
+/// lays its *active* variant out in place, in the parent's table, which
+/// is the whole point — a widget behind a pointer is the dynamic tree
+/// this project exists not to have. The variant that trips it is
+/// `DTree`, whose 32 `Branch`es are inline for the same reason
+/// (M27/T27.10). The cost is real and is the enum's by design: a
+/// one-of-N stage is as large as its largest demo.
+#[allow(clippy::large_enum_variant)]
 #[derive(StaticTree)]
 pub enum Demo {
     Label(DLabel),
@@ -541,6 +583,9 @@ pub enum Demo {
     PickList(DPickList),
     Combobox(DCombobox),
     Menu(DMenu),
+    Pagination(DPagination),
+    Tree(DTree),
+    DataGrid(DDataGrid),
 }
 
 impl Default for Demo {
@@ -550,4 +595,4 @@ impl Default for Demo {
 }
 
 /// How many demos the stage has. Asserted against the catalogue.
-pub const DEMOS: usize = 39;
+pub const DEMOS: usize = 42;

@@ -47,6 +47,8 @@ mod chart;
 #[cfg(feature = "alloc")]
 pub mod choose;
 #[cfg(feature = "alloc")]
+mod data;
+#[cfg(feature = "alloc")]
 mod field;
 mod indicator;
 mod nav;
@@ -59,6 +61,10 @@ pub use chart::{BarChart, Chart, LineChart, PieChart, Series, MAX_POINTS};
 #[cfg(feature = "alloc")]
 pub use choose::{
     Chooser, Combobox, Menu, OptionList, PickList, COMBOBOX, MAX_OPTIONS, MENU, PICKLIST,
+};
+#[cfg(feature = "alloc")]
+pub use data::{
+    Branch, DataGrid, Pagination, Tree, MAX_COLUMNS, MAX_PAGES, MAX_TREE_NODES,
 };
 #[cfg(feature = "alloc")]
 pub use field::{NumberInput, RangeSlider, SearchField};
@@ -79,5 +85,8 @@ pub mod prelude {
         Tabs, Toast, Tooltip,
     };
     #[cfg(feature = "alloc")]
-    pub use crate::{Combobox, Menu, NumberInput, OptionList, PickList, RangeSlider, SearchField};
+    pub use crate::{
+        Branch, Combobox, DataGrid, Menu, NumberInput, OptionList, Pagination, PickList,
+        RangeSlider, SearchField, Tree,
+    };
 }

@@ -191,6 +191,16 @@ impl<T: Widget + Default> Repeat<T> {
         (Self::MAX_ADDRESSABLE_EXTENT / self.item_extent) as usize
     }
 
+    /// The height this repeater was last **placed** at — what a wheel is
+    /// clamped against.
+    ///
+    /// Published because it is the difference between a list that
+    /// scrolls and one that silently will not, and because a test that
+    /// cannot read it can only assert the symptom (T27.10).
+    pub fn viewport(&self) -> f32 {
+        self.viewport
+    }
+
     /// The largest useful scroll offset: content past the viewport, or
     /// zero when everything fits.
     pub fn max_scroll(&self, viewport_h: f32) -> f32 {
@@ -200,6 +210,28 @@ impl<T: Widget + Default> Repeat<T> {
         (self.count as f32 * self.item_extent - viewport_h).max(0.0)
     }
 
+    /// The offset actually used, clamped to what there is to scroll.
+    ///
+    /// **Clamped at use, never written back** (M27/T27.10). `layout`
+    /// used to assign `self.scroll = clamp(self.scroll, 0, max_scroll)`,
+    /// which is correct for every *real* layout and destructive for a
+    /// speculative one: the agent's ambient audit measures each leaf
+    /// twice under 1e6 and 2e6 px boxes to tell an intrinsic node from a
+    /// filler (`crates/lumen-static-agent/src/audit.rs`), and against a
+    /// 2 000 000 px viewport `max_scroll` is 0 — so every frame the
+    /// audit ran reset the offset to zero. **A grid in the showcase
+    /// could not be scrolled at all**, while the same wheel on the same
+    /// widget moved it in a unit test and in a headless `Host`: found by
+    /// `just widget-drive`, which is the only thing that runs the audit
+    /// and the wheel in one process.
+    ///
+    /// A measurement must not change what it measures. The offset is the
+    /// user's, `first` and the window are derived from it, and anything
+    /// derived may be recomputed by any pass without harm.
+    fn offset(&self, viewport_h: f32) -> f32 {
+        crate::num::clamp(self.scroll, 0.0, self.max_scroll(viewport_h))
+    }
+
     fn visible_range(&self, viewport_h: f32) -> (usize, usize) {
         // Spelled out rather than `!(extent >= MIN)`: NaN must land in
         // the reject arm, and `is_finite` says so where a negated
@@ -207,7 +239,8 @@ impl<T: Widget + Default> Repeat<T> {
         if self.count == 0 || !self.extent_is_usable() {
             return (0, 0);
         }
-        let first = (crate::num::floor(self.scroll / self.item_extent).max(0.0) as usize)
+        let first = (crate::num::floor(self.offset(viewport_h) / self.item_extent).max(0.0)
+            as usize)
             .min(self.count - 1);
         // saturating_add, not `+ 1`: the ceil can saturate the cast.
         let vis = (crate::num::ceil(viewport_h / self.item_extent) as usize)
@@ -336,8 +369,6 @@ impl<T: Widget + Default + 'static> Node for Repeat<T> {
         // it.
         let content = Size { w: limits.max_w, h: self.count as f32 * self.item_extent };
         let s = crate::ops::resolve_self(limits, &style[i], content);
-        self.viewport = s.h;
-        self.scroll = crate::num::clamp(self.scroll, 0.0, self.max_scroll(s.h));
         let (first, vis) = self.visible_range(s.h);
         self.first = first;
         self.window.resize_with(vis, T::default);
@@ -389,12 +420,48 @@ impl<T: Widget + Default + 'static> Node for Repeat<T> {
         crate::ops::record_painted(st, i, limits, s, &style[i])
     }
 
+    /// **Measured without being rebuilt** (M27/T27.10).
+    ///
+    /// The provided body is `self.layout(..)`, which for a repeater
+    /// picks a window: `first` and `window` are recomputed against the
+    /// probe's box, and the audit's box is 2 000 000 px — so every
+    /// frame the audit ran left the *agent's* view of the list showing
+    /// row 0 whatever the window had actually painted. The frame on
+    /// screen was right and the tree the agent read was wrong, which is
+    /// the worst of the two to debug: `just widget-drive` saw a grid
+    /// scroll by one row and then jump back.
+    ///
+    /// `Label` overrides this for the same reason one layer down (its
+    /// memo). The answer a probe wants — how tall the content would be
+    /// given this box — is the same arithmetic `layout` starts with, and
+    /// none of what it then does.
+    #[cfg(feature = "observe")]
+    fn probe(
+        &mut self,
+        _cx: &mut crate::LayoutCx,
+        limits: Constraints,
+        style: &[Style],
+        _st: &mut [NodeState],
+        i: usize,
+    ) -> Size {
+        let content = Size { w: limits.max_w, h: self.count as f32 * self.item_extent };
+        crate::ops::resolve_self(limits, &style[i], content)
+    }
+
     fn place(&mut self, at: Point, _style: &[Style], st: &mut [NodeState], i: usize) {
         st[i].pos = at;
+        // **The viewport is what was placed, not what was offered.**
+        // `layout` runs speculatively — twice per frame from the audit's
+        // probes, and again from any parent that measures before it
+        // commits — and the last of those calls is not the frame's
+        // geometry. `place` runs once, on the real box, which is the
+        // number `on_event` needs to clamp a wheel against (T27.10).
+        self.viewport = st[i].size.h;
         // Instance geometry lives in this repeater's own arena, so the
         // window is positioned here rather than by the caller.
         let n = T::NODE_COUNT;
-        let (first, extent, scroll) = (self.first, self.item_extent, self.scroll);
+        let (first, extent) = (self.first, self.item_extent);
+        let scroll = self.offset(st[i].size.h);
         let Repeat { window, arena, .. } = self;
         let (row_style, states) = arena.parts();
         let len = window.len();
