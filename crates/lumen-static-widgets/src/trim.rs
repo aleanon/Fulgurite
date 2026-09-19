@@ -56,6 +56,7 @@ impl Widget for Divider {
             lumen_static::style::Fields::HEIGHT,
             lumen_static::style::Fields::VISIBLE,
             lumen_static::style::Fields::BACKGROUND,
+            lumen_static::style::Fields::BORDER,
             lumen_static::style::Fields::RADIUS,
         ]))];
 }
@@ -148,6 +149,7 @@ impl<S: TextStorage> Widget for Badge<S> {
             lumen_static::style::Fields::VISIBLE,
             lumen_static::style::Fields::COLOR,
             lumen_static::style::Fields::BACKGROUND,
+            lumen_static::style::Fields::BORDER,
             lumen_static::style::Fields::RADIUS,
             lumen_static::style::Fields::FONT_SIZE,
             lumen_static::style::Fields::FONT_WEIGHT,
@@ -244,6 +246,7 @@ impl<S: TextStorage> Widget for Chip<S> {
             lumen_static::style::Fields::VISIBLE,
             lumen_static::style::Fields::COLOR,
             lumen_static::style::Fields::BACKGROUND,
+            lumen_static::style::Fields::BORDER,
             lumen_static::style::Fields::RADIUS,
             lumen_static::style::Fields::FONT_SIZE,
             lumen_static::style::Fields::FONT_WEIGHT,
@@ -353,6 +356,7 @@ impl<S: TextStorage> Widget for Avatar<S> {
             lumen_static::style::Fields::VISIBLE,
             lumen_static::style::Fields::COLOR,
             lumen_static::style::Fields::BACKGROUND,
+            lumen_static::style::Fields::BORDER,
             lumen_static::style::Fields::FONT_SIZE,
             lumen_static::style::Fields::FONT_WEIGHT,
         ]))];

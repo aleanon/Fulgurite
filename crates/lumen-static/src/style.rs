@@ -330,7 +330,7 @@ pub fn plain_style() -> Style {
 /// before it, and so did every rule naming a kind the tree does not
 /// have.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct Fields(u16);
+pub struct Fields(u32);
 
 impl Fields {
     pub const NONE: Fields = Fields(0);
@@ -350,11 +350,24 @@ impl Fields {
     pub const SHADOW: Fields = Fields(1 << 13);
     pub const PRESSED_DIM: Fields = Fields(1 << 14);
     pub const HOVER_DIM: Fields = Fields(1 << 15);
-    pub const ALL: Fields = Fields(u16::MAX);
+    /// `border_width` and `border_color`, as one bit.
+    ///
+    /// **One bit for two fields, because they are one property**: a
+    /// width with no colour draws nothing and a colour with no width is
+    /// invisible, so a node that reads either reads both and a rule that
+    /// sets either sets a border. They arrived in T27.1 and this did
+    /// not, so a rule that set *only* a border reported the empty set
+    /// and the lint's claim — no rule in this sheet is a no-op — was
+    /// silently false for every border rule (M27/T27.11).
+    ///
+    /// The seventeenth bit is why `Fields` is a `u32`: the first sixteen
+    /// were all taken.
+    pub const BORDER: Fields = Fields(1 << 16);
+    pub const ALL: Fields = Fields(u32::MAX);
 
     /// Every field with its name, for reports and for the tests that
     /// measure a mask field by field.
-    pub const EACH: [(Fields, &'static str); 16] = [
+    pub const EACH: [(Fields, &'static str); 17] = [
         (Fields::WIDTH, "width"),
         (Fields::HEIGHT, "height"),
         (Fields::PADDING, "padding"),
@@ -371,12 +384,13 @@ impl Fields {
         (Fields::SHADOW, "shadow"),
         (Fields::PRESSED_DIM, "pressed_dim"),
         (Fields::HOVER_DIM, "hover_dim"),
+        (Fields::BORDER, "border"),
     ];
 
     /// The union of a list — how a widget spells its mask at the
     /// [`Seed`] it declares.
     pub const fn of(list: &[Fields]) -> Fields {
-        let mut bits = 0u16;
+        let mut bits = 0u32;
         let mut k = 0;
         while k < list.len() {
             bits |= list[k].0;
@@ -794,7 +808,7 @@ impl Patch {
     /// The fields this patch sets — what the sheet lint compares against
     /// the fields a matched kind reads (M25/T25.2).
     pub const fn fields(&self) -> Fields {
-        let mut f = 0u16;
+        let mut f = 0u32;
         if self.width.is_some() {
             f |= Fields::WIDTH.0;
         }
@@ -844,6 +858,13 @@ impl Patch {
         }
         if self.hover_dim.is_some() {
             f |= Fields::HOVER_DIM.0;
+        }
+        // One bit for the pair: see `Fields::BORDER`.
+        if self.border_width.is_some()
+            || self.border_color.is_some()
+            || self.border_color_role.is_some()
+        {
+            f |= Fields::BORDER.0;
         }
         Fields(f)
     }

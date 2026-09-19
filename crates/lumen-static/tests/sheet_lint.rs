@@ -4,6 +4,8 @@
 //! lint keys on, so a lint that fired on everything would fail as surely
 //! as one that fired on nothing.
 
+extern crate alloc;
+
 use lumen_static::ops::{Fixed, Label};
 use lumen_static::repeat::Repeat;
 use lumen_static::style::{lint_sheet_deep, Fields, SheetFinding, SheetIssue};
@@ -16,6 +18,13 @@ struct Ui {
     title: Label,
     #[widget_id("agree")]
     agree: CheckBox<()>,
+    /// A control that paints a border — which a `CheckBox` does not,
+    /// and the first version of `a_border_rule_on_a_node_that_draws_one_is_quiet`
+    /// assumed it did. `Toggle::paint` draws a body and a mark and never
+    /// calls `ops::border`, so the lint was right to report that rule
+    /// and the test was wrong to expect silence.
+    #[widget_id("field")]
+    field: lumen_static::input::TextInput<alloc::string::String>,
     /// A kind that exists only in an arena's template: a rule for it
     /// matches, even though the main table has no `fixed`.
     rows: Repeat<Fixed>,
@@ -106,4 +115,46 @@ fn a_role_is_linted_as_the_field_it_sets() {
 #[test]
 fn any_always_matches() {
     assert!(lint(&[Rule::new(Selector::Any, Patch::new().width(Length::FILL))]).is_empty());
+}
+
+/// **A border rule is a rule like any other** (M27/T27.11).
+///
+/// `Style` gained `border_width` and `border_color` in T27.1 and
+/// `Patch::fields` never learned about them, so a rule that set *only* a
+/// border reported the empty set — and the lint's whole claim, "no rule
+/// in this sheet is a no-op", was silently false for every border rule
+/// in it.
+///
+/// Both directions, because a `Fields` bit that is always set is as
+/// useless as one never set. **Which control goes in which direction
+/// was measured, not assumed**: the first version of this pair had them
+/// the other way round, on the reasoning that a text label is plain and
+/// a checkbox has a box around it.
+/// `lumen-static-widgets/tests/style_reads.rs` probes every kind's
+/// output field by field and says otherwise — a `Label` paints
+/// `ops::border` when a rule gives it one, and `Toggle::paint` draws a
+/// body and a mark and never calls it.
+#[test]
+fn a_border_rule_on_a_node_that_draws_none_is_a_finding() {
+    let found = lint(&[Rule::new(
+        Selector::Id("agree"),
+        Patch::new().border_width(2).border_color(INK),
+    )]);
+    assert_eq!(
+        found,
+        vec![SheetFinding { rule: 0, issue: SheetIssue::Unread(Fields::BORDER) }],
+        "a border on a `CheckBox`, which paints none"
+    );
+}
+
+#[test]
+fn a_border_rule_on_a_node_that_draws_one_is_quiet() {
+    assert!(
+        lint(&[Rule::new(
+            Selector::Id("field"),
+            Patch::new().border_width(2).border_color(INK),
+        )])
+        .is_empty(),
+        "a border on a control that paints one"
+    );
 }

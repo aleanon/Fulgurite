@@ -203,6 +203,7 @@ impl<W: Widget> ScrollTable<W> {
                 crate::style::Fields::CURSOR,
                 crate::style::Fields::VISIBLE,
                 crate::style::Fields::BACKGROUND,
+                crate::style::Fields::BORDER,
                 crate::style::Fields::RADIUS,
                 crate::style::Fields::PRESSED_DIM,
                 crate::style::Fields::HOVER_DIM,

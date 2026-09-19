@@ -283,6 +283,7 @@ impl<T: Widget + Default + 'static> Widget for Repeat<T> {
             crate::style::Fields::CURSOR,
             crate::style::Fields::VISIBLE,
             crate::style::Fields::BACKGROUND,
+            crate::style::Fields::BORDER,
             crate::style::Fields::RADIUS,
             crate::style::Fields::SHADOW,
             crate::style::Fields::PRESSED_DIM,

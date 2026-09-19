@@ -166,6 +166,7 @@ impl<const KIND: u8> Widget for Chart<KIND> {
                 lumen_static::style::Fields::HEIGHT,
                 lumen_static::style::Fields::VISIBLE,
                 lumen_static::style::Fields::BACKGROUND,
+                lumen_static::style::Fields::BORDER,
                 lumen_static::style::Fields::RADIUS,
             ]),
             _ => lumen_static::style::Fields::of(&[
@@ -174,6 +175,7 @@ impl<const KIND: u8> Widget for Chart<KIND> {
                 lumen_static::style::Fields::VISIBLE,
                 lumen_static::style::Fields::COLOR,
                 lumen_static::style::Fields::BACKGROUND,
+                lumen_static::style::Fields::BORDER,
                 lumen_static::style::Fields::RADIUS,
             ]),
         })];

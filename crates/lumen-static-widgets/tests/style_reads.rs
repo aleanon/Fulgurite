@@ -90,6 +90,10 @@ fn patch_for(name: &str) -> Patch {
         "shadow" => p.shadow(6.0),
         "pressed_dim" => p.pressed_dim(0.5),
         "hover_dim" => p.hover_dim(0.5),
+        // One probe for the pair: a width with no colour draws
+        // nothing and a colour with no width is invisible, which is
+        // why `Fields::BORDER` is one bit (M27/T27.11).
+        "border" => p.border_width(3).border_color(Color(250, 10, 10, 255)),
         other => panic!("no probe value for field {other}"),
     }
 }

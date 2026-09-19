@@ -293,6 +293,21 @@ the change rather than trusting the figure this document already carried:
 | **after T27.1** | **27,072** | **12,804** | **40,093** |
 | Δ | **+676** | **+20** | **+696** |
 
+### M27/T27.11 — `Fields` widened to a `u32`, measured 2026-09-19
+
+Zero. `.text` 27,072, `.rodata` 12,804, total 40,093 — byte-identical
+before and after, `git stash` on either side of the same link.
+
+`Fields` grew from `u16` to `u32` to hold a seventeenth bit
+(`Fields::BORDER`; the first sixteen were taken). It is a field of
+[`Seed`](../crates/lumen-static/src/style.rs), which also holds a
+`&'static str` and a `fn` pointer, so the extra two bytes fall inside
+padding the struct already had. `Event::Hover` cost nothing either:
+`Event` is still 16 bytes, asserted by `tests/gesture.rs`.
+
+Recorded because "it was free" is a measurement, and the alternative is
+the next reader re-deriving it — or assuming it was not.
+
 `.text` is now **41.3% of the 64 KB ceiling**, from 40.3%. `.bss` is
 unchanged at one exempted 4-byte symbol.
 

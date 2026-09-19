@@ -72,6 +72,7 @@ impl Widget for ProgressBar {
             lumen_static::style::Fields::VISIBLE,
             lumen_static::style::Fields::COLOR,
             lumen_static::style::Fields::BACKGROUND,
+            lumen_static::style::Fields::BORDER,
             lumen_static::style::Fields::RADIUS,
         ]))];
 }
@@ -257,6 +258,7 @@ impl Widget for Skeleton {
             lumen_static::style::Fields::VISIBLE,
             lumen_static::style::Fields::COLOR,
             lumen_static::style::Fields::BACKGROUND,
+            lumen_static::style::Fields::BORDER,
             lumen_static::style::Fields::RADIUS,
         ]))];
 }

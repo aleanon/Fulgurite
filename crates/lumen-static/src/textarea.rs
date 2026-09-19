@@ -423,6 +423,7 @@ impl<S: TextBuffer> Widget for TextArea<S> {
             crate::style::Fields::VISIBLE,
             crate::style::Fields::COLOR,
             crate::style::Fields::BACKGROUND,
+            crate::style::Fields::BORDER,
             crate::style::Fields::RADIUS,
             crate::style::Fields::FONT_SIZE,
             crate::style::Fields::FONT_WEIGHT,

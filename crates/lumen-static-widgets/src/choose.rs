@@ -181,6 +181,7 @@ impl Widget for OptionList {
                 Fields::HEIGHT,
                 Fields::PADDING,
                 Fields::BACKGROUND,
+                Fields::BORDER,
                 Fields::COLOR,
                 Fields::FONT_SIZE,
                 Fields::RADIUS,
