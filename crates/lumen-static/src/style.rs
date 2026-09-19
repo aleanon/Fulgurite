@@ -947,10 +947,28 @@ fn cascade_range(
 ) {
     debug_assert_eq!(table.len(), out.len());
     debug_assert_eq!(table.len(), seeds.len());
+    // **Which specificity levels this sheet actually has** (M26/T26.6).
+    //
+    // The loop below runs four passes per node so that a rule of higher
+    // specificity always lands last — the cascade's whole ordering
+    // rule. Three of those four are usually empty: every sheet in this
+    // workspace uses `Id` and `Kind` and neither `Class` nor `Any`, so
+    // half the passes scanned every rule to match nothing, per node.
+    //
+    // A property of the *sheet*, so it is computed once here rather
+    // than re-derived per node. The pass order is untouched: this skips
+    // empty passes, it does not reorder or merge them.
+    let mut levels = 0u8;
+    for r in sheet {
+        levels |= 1 << r.selector.specificity();
+    }
     for (i, d) in table.iter().enumerate().skip(range.start).take(range.len()) {
         let mut s = (seeds[i].defaults)();
         let kind = seeds[i].kind;
         for spec in 0..=3u8 {
+            if levels & (1 << spec) == 0 {
+                continue;
+            }
             for r in sheet {
                 if r.selector.specificity() == spec && matches(&r.selector, d, kind) {
                     r.patch.apply_to(&mut s, palette);

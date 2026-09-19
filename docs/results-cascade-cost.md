@@ -110,3 +110,46 @@ Recorded rather than silently dropped: if a future screen makes
 whole-tree layout matter — many thousands of on-table nodes, or a
 memo-defeating pattern like B10's `Repeat::bind` — this is the file that
 says what would have to be true first.
+
+## M26/T26.6 — skipping the specificity passes a sheet has none of
+
+Measured 2026-09-19, `cargo run --release -p benches --bin cascade`,
+**eight runs before and eight after**, classified into the fast and slow
+clusters M25/T25.12 found this machine's arm family to be bimodal over.
+
+The cascade runs four passes per node so that a higher-specificity rule
+always lands last. Three of those four are usually empty: every sheet in
+this workspace uses `Id` and `Kind` and neither `Class` nor `Any`, so
+half the passes scanned every rule, per node, to match nothing. The
+levels a sheet has are a property of the *sheet*, so they are computed
+once before the node loop.
+
+| arm | before (fast cluster) | after | Δ |
+|---|---:|---:|---:|
+| `cascade_deep`, 901 nodes, 4-rule sheet | 14,823 ns | 13,094 ns | **−11.7%** |
+| `cascade_deep`, showcase-shaped 27-rule sheet | 64,249 ns | 41,230 ns | **−35.8% (1.56×)** |
+
+Fast-cluster spread: 204 ns (1.4%) before and 561 ns (4.3%) after on the
+small arm; 771 ns (1.2%) and 598 ns (1.5%) on the showcase-shaped one.
+Both deltas are an order of magnitude outside it. Four of eight runs
+landed in each cluster before and after, on both arms.
+
+**The number the review could not settle.** It reported this twice with
+different figures — 2.2× in one agent's run and 54,399 → 40,739 ns
+(1.33×) in another. Neither was citable and neither is right: it is
+**1.56×** on the showcase-shaped sheet and 1.12× on the small one, which
+is the spread you would expect from a saving proportional to the rule
+count.
+
+**Not a frame win.** The cascade runs on a sheet, palette or shape
+change, which `style.rs` states as its contract; a still frame does not
+pay this at all. What it shortens is a palette swap and the showcase's
+own demo switch.
+
+The gate is `crates/lumen-static/tests/cascade_levels.rs`, and it
+asserts the **ordering** rather than differencing against a naive copy
+of the loop — a differential test would pass under an injection that
+broke both sides, since both sides would be the same code. Three
+injections (DX–DZ): marking a present level absent, running the passes
+in reverse, and skipping a level unconditionally. All three redden, and
+the first two are caught by two tests each.

@@ -431,19 +431,30 @@ replaces.
 
 ## Phase B — the confirmed optimizations (T26.6–T26.13)
 
-### T26.6 — the cascade's per-node work that is a property of the sheet
+### T26.6 — the cascade's per-node work that is a property of the sheet — **DONE 2026-09-19**
 
 Walk the sheet once before the node loop and record which specificity
 levels it actually has; skip the passes for levels that are absent.
 
-**First, settle the number.** The review reported this twice with
-different figures — 2.2× in one agent's run and 54,399 → 40,739 ns
-(1.33×) in another's. Neither is citable. Reproduce both on
-`benches --bin cascade`, four runs, and record what is true.
+**The number, settled.** The review reported this twice with different
+figures — 2.2× in one agent's run and 54,399 → 40,739 ns (1.33×) in
+another's. Neither was citable and neither is right: **1.56×** on the
+showcase-shaped 27-rule sheet and 1.12× on the 4-rule one, eight runs a
+side under the mode rule (`docs/results-cascade-cost.md` T26.6). The
+gap between the two arms is what a saving proportional to the rule
+count looks like, which is probably how one run produced 2.2× and
+another 1.33×.
 
-**Gate:** resolved styles are identical to the naive cascade for every
-sheet in the workspace, asserted node by node. *Injection:* drop a level
-that is present — styles differ, the assertion names the node.
+**Gate:** ~~resolved styles are identical to the naive cascade~~ — the
+**ordering**, asserted directly. A differential test against a naive
+copy of the loop would pass under an injection that broke both sides,
+because both sides would be the same code; the plan's own gate line was
+that test. `crates/lumen-static/tests/cascade_levels.rs` asserts what
+the four passes exist for instead: the most specific rule that matches
+a node wins, whichever levels the sheet contains, with source order
+within a level, a sheet missing a level, and an empty sheet. *Three
+injections* (DX–DZ): a present level marked absent, the passes run in
+reverse, a level skipped unconditionally — all three redden.
 
 **Measure:** `--bin cascade`, three rows. **Not a frame win** — the
 cascade runs on sheet, palette or shape change, which `style.rs` states
