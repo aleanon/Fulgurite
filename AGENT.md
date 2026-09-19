@@ -40,14 +40,22 @@ are independent of each other**, so either may go first:
   injection table, including the one that came back green; T24.1's
   entry has the 2.4× the cascade got faster for free.
 
-- **M22 — `docs/plan-liquid.md`** (T22.0–T22.6): the rest of the liquid
-  material — Fresnel, inner shadow, saturation, sub-pixel sampling,
-  dispersion, adaptive tint, press deformation, the smooth-minimum
-  morph, and the GPU backend. The first six keep it panel-sized;
-  **only the last changes what it can be used for**. Read §12 before
+- ~~**M22 — `docs/plan-liquid.md`** (T22.0–T22.6)~~ — **DONE
+  2026-09-12**, all seven tasks; the queue entry above was stale until
+  2026-09-19, when the code was checked against it field by field.
+  Fresnel, inner shadow, saturation, sub-pixel sampling, dispersion,
+  adaptive tint, press deformation, the smooth-minimum morph, and the
+  GPU backend. `docs/results-glass.md` §0b–§0h own the numbers; the
+  whole material costs **+18%** over M21's bevel at either panel size,
+  and the GPU filter is 148 ms → **1.44 ms** at 1080p. Read §12 before
   §2: a four-agent review found five of the first draft's seven
   injections would have passed under their own injection, and the plan
-  keeps the corrections rather than quietly replacing itself.
+  keeps the corrections rather than quietly replacing itself. **The
+  §10/§11 rewrite earned itself twice over** — T22.0's first Fresnel
+  test sampled the whole 13 px rim and measured a lift of 0.3 against a
+  threshold of 12, which is the "bound computed from the wrong
+  quantity" shape; and T22.1's half-pixel regression was caught by
+  `glass_blur.rs`'s odd/even test, written before it.
 
 - **M25 — `docs/plan-appearance.md`** (T25.0–T25.11): **DONE
   2026-09-15 — stopped at T25.5 on its own rule, and finished by its
