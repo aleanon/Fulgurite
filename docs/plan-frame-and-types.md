@@ -506,7 +506,7 @@ T26.0 with the `Badge` and `Chip` rows — the arm the 4.8 ns against
 2,459 ns was measured on, so the before and after are comparable to the
 figure this task cites.
 
-### T26.9 — every derived container emits a background command it usually has none of
+### T26.9 — every derived container emits a background command it usually has none of — **DONE 2026-09-19, and it is not a frame win**
 
 The generated `paint` **guards its shadow** and emits the fill
 unconditionally, including when the background is fully transparent;
@@ -516,6 +516,25 @@ already knows the predicate. One guard to add, not two.
 **Gate:** a transparent container emits no body command, and retention
 keeps no slot for it. *Injection:* unguard the emission — both counts
 rise.
+
+> **Half of that gate cannot be written as stated.** `DisplayList`
+> already drops a fully transparent fill, so the *command* never exists
+> and a display-list test sees nothing — the first version counted
+> commands and stayed green under exactly this injection. The call is
+> what the guard removes, and the *slot* is what it saves, because
+> `Recording` hashes and observes **before** it forwards. So the gate
+> counts calls with a counting `Painter` and slots with a counting
+> `Retention` (`tests/container_fill.rs`), and the injection reddens all
+> four tests.
+>
+> **And it is not a frame win**: `--bin crossover`'s `1k/static` moves
+> −114 ns against its own 121 ns fast-cluster spread, which this
+> milestone's rule 1 calls no effect. What it removes is one retention
+> slot and one **ink rect** per transparent container per frame, priced
+> at ~6.3 ns of observation each by `--bin retain` — kept for the
+> embedded `Streaming<N>` profile, where overflow degrades a frame to
+> `Damage::All`, and because it makes `paint` agree with `hit`.
+> `docs/results-frame-and-types.md` T26.9.
 
 **Measure:** `--bin crossover` and `--bin repeater`, which paint derived
 containers. **Not `--bin retain` or `--bin paint_sink` for the frame

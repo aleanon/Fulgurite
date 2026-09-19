@@ -362,3 +362,46 @@ misses (the key carries the size and the weight, which is what T26.3
 put in it). Three injections (ED–EF): bypass the helper in `Badge`, drop
 the fold from the key, drop the key and keep only the fold. All three
 redden, the first by two tests and by name.
+
+## T26.9 — the derived container's unconditional fill
+
+Measured 2026-09-19. **No frame win, and the arm says so.**
+
+| arm | before (fast cluster) | after | Δ | verdict |
+|---|---:|---:|---:|---|
+| `--bin crossover`, `1k/static` | 11,030 ns | 10,916 ns | −114 ns (−1.0%) | **no effect** — inside the after arm's own 121 ns fast-cluster spread |
+
+Eight runs a side after a discarded warm-up. By this milestone's rule 1
+a delta inside the fast cluster's spread is no effect, never a win, and
+this one is.
+
+**What the change does remove is countable rather than timeable**, and
+it is one slot per transparent container per frame:
+
+- `DisplayList::rounded_rect` already dropped a fully transparent fill —
+  it has for a long time — so the *command* never existed and a
+  display-list test cannot see this change at all. The first version of
+  the gate counted commands and stayed green under the injection that
+  unguarded the emission, which is the finding that rewrote it.
+- But `Recording`, the wrapper every retained frame paints through,
+  **hashes and observes before it forwards**. So the dropped command
+  still consumed a retention slot and still contributed an **ink rect to
+  the frame's damage**. The task's premise — "retention hashes and
+  retains a command the sink dropped" — is exactly right, and is about
+  retention rather than about the list.
+- `--bin retain` prices pure observation at **215 ns for 34 commands**
+  (`streaming: NO list + Streaming<4096>`), about 6.3 ns each. That is
+  what a transparent container costs per frame, and why it does not
+  surface against an 11 µs arm.
+- On the embedded profile the slot matters more than the nanoseconds:
+  overflowing `Streaming<N>` degrades a whole frame to `Damage::All`.
+
+**Kept on those grounds, not on the frame number.** It also makes
+`paint` agree with `hit`, which has had the same predicate since
+`examples/glass` found an empty wrapper swallowing the frame's input.
+
+Gate: `crates/lumen-static/tests/container_fill.rs` — four tests, two
+counters. A painter that counts *calls* (not commands, for the reason
+above) and a `Retention` that counts *slots*. Both directions: a
+container given a background still paints one, and alpha 1 is not alpha
+0. The injection that unguards the emission reddens all four.

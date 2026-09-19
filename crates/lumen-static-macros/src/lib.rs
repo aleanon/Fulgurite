@@ -997,11 +997,22 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                             st[i].shadow,
                         );
                     }
-                    out.rounded_rect(
-                        ::lumen_static::ops::rect_of(&st[i]),
-                        st[i].bg,
-                        st[i].radius,
-                    );
+                    // **Guarded, like the shadow above it** (M26/T26.9).
+                    // A fully transparent fill draws nothing a renderer
+                    // can see, and every layout container in a tree has
+                    // one — so this emitted a command per container per
+                    // frame that retention then hashed, retained a slot
+                    // for, and handed to a sink that dropped it. `hit`
+                    // has had the same predicate since `examples/glass`
+                    // found an empty wrapper swallowing the frame's
+                    // input; now `paint` agrees with it.
+                    if st[i].bg.3 != 0 {
+                        out.rounded_rect(
+                            ::lumen_static::ops::rect_of(&st[i]),
+                            st[i].bg,
+                            st[i].radius,
+                        );
+                    }
                     // Over the fill, under the children: a card's border
                     // belongs to the card, not in front of its content.
                     ::lumen_static::ops::border(st, i, out);
