@@ -962,3 +962,93 @@ passing test's stderr, so the counter was swallowed; `-- --nocapture`
 is what made it visible. A probe that reports zero is the "setup
 silently did not happen" shape, and zero is the one result that must
 always be disbelieved before it is used.
+
+## T26.17 — Phase D, batch three: findings 9, 10, 11
+
+The round's yield. Two findings promote — and they turn out to be **one
+defect measured twice** — and one closes on cost after its named arm was
+found unable to exhibit it.
+
+### Findings 9 and 10 — the per-node arena ask: **promoted, and they are the same defect**
+
+Finding 9 is "the three deep walks ask every node whether it owns an
+arena"; finding 10 is "`lint_sheet_deep` re-walks every arena per rule".
+Both are the same virtual call — `Node::arena_count()` through
+`tree.node_mut(i)` — made once per node in the first case and once per
+node **per rule** in the second.
+
+Priced directly. A temporary arm timed `cascade_arenas_deep` alone on
+`Ten10`, a 901-node tree with **no arenas at all**, so every call
+answers zero:
+
+| the walk alone, 901 nodes, no arenas | 5 277 / 5 345 / 5 389 / 5 397 ns |
+|---|---|
+| **per node** | **5.9 ns** |
+
+And the two arms it sits inside, min of four runs each:
+
+| arm | as shipped | walk removed | delta | four-run spread |
+|---|---|---|---|---|
+| `cascade_deep`, whole table | 12 150 ns | 7 338 ns | **−4 812 (−40%)** | ~400 |
+| `cascade_deep`, showcase sheet | 41 395 ns | 36 293 ns | **−5 102 (−12%)** | ~250 |
+| `lint_sheet_deep`, showcase sheet | **166 124 ns** | **40 486 ns** | **−125 638 (−75.6%, 4.1×)** | 1 394 |
+
+The lint is the headline: **three quarters of it is asking 901 nodes,
+27 times each, whether they own an arena** — 24 327 asks at 5.2 ns,
+which agrees with the 5.9 ns/node measured in isolation. `lint_sheet_deep`
+runs on every `Host::set_stylesheet`, so this is 126 µs on a sheet swap
+spent on nodes that have none.
+
+**A code-layout artifact nearly closed finding 9 wrongly.** The first
+walks-removed run showed the whole-table arm dropping 4.6 µs and the
+showcase arm dropping 0.2 µs — the same function, on the same tree, with
+only the sheet different, which is impossible. Rather than pick the
+convenient number, the walk was given its own arm and timed alone: 5.3 µs.
+Adding that arm to the binary also moved the showcase arm's *baseline*
+by ~700 ns and its walks-removed figure from 40.3 µs to 36.3 µs — the
+extra arm shifted code alignment. The figures above are all from the one
+binary that contains the isolating arm, so they are comparable with each
+other. **Two arms that disagree about the same quantity are a fact about
+the arms**, and the third, isolating arm is what settled which was
+lying.
+
+The fix both findings share is the one the plan proposed: a spliced
+const list of the table indices that own arenas. `Ten10`'s is empty, so
+the walk becomes a no-op; a tree with two repeaters visits two nodes
+instead of 901. The plan's caution on finding 10 stands and is now
+unnecessary — half (b), hoisting the walk out of the rule loop by
+accumulating per-rule state, would allocate; narrowing the walk needs no
+allocation at all and fixes both sites.
+
+### Finding 11 — ids and classes compared by content: **closed on cost**
+
+**The arm the plan named cannot exhibit this finding.** `benches --bin
+cascade`'s 24-`Id`-rule sheet runs against `Ten10`, which carries no ids
+— so `d.wid` is `""`, `d.wid == *id` compares lengths 0 and 3, and
+returns false without a memcmp. That is already what a hash compare
+costs. Measuring there would have produced a green probe and a false
+close, which is the first vacuous shape `AGENT.md` names: the setup
+silently did not happen.
+
+Three arms were built instead, 21 624 comparisons each (901 nodes ×
+24 rules), min of three runs:
+
+| shape | ns | per compare |
+|---|---|---|
+| every node carries an id sharing a 12-char prefix — the worst case | 31 863 | 1.47 ns |
+| ids sparse, one node in forty — the shape a real tree has | 5 148 | 0.24 ns |
+| `u64` hash compare | 2 986 | 0.14 ns |
+
+Against the worst case a hash is **10.7×**. Against the shape the
+framework actually has it is **5 148 → 2 986 ns, −2.16 µs** per full
+sheet-versus-table match — which does clear the arm's 61 ns spread, so
+it passes the kill rule's bar.
+
+It is declined on the other side of the ledger, which the plan named
+first: a `wid_hash` is **8 bytes per node of `.rodata`**, +800 B on the
+100-node embedded fixture whose flash is asserted
+(`docs/results-embedded.md`), and it buys 2.16 µs on a **sheet swap**,
+which is an event and not a frame. Recorded rather than deleted, with
+the number that would reopen it: a tree whose nodes carry dense,
+same-length, shared-prefix ids pays 1.47 ns a compare instead of 0.24,
+and at that point the 10.7× is worth 8 bytes a node.

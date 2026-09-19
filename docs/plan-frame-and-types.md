@@ -828,9 +828,9 @@ back inside the spread closes the finding permanently.
 | ~~6~~ | *probed and **closed**: removing the call outright is −107 ns on a 901-node `cascade_deep` (spread 510) and **+261 ns** on the showcase sheet (spread 382). Per node that is 0.12 ns, below the bench's 0.30 ns harness floor* | done | T24.1's 2.43× is the template, correctly not borrowed |
 | 7 | sorting the sheet by specificity once | compare against T26.6, which may already capture it | mostly subsumed by T26.6 |
 | ~~8~~ | *probed and **closed**: the check runs **10 times in the whole workspace suite**, over trees of 15, 9 and 4 nodes — 109 nodes cascaded in total, against a 12.4 s suite* | done | debug-only was the right frame; the remaining question was frequency, and it is ten |
-| 9 | a spliced const list of which table indices own arenas, so the three deep walks stop asking every node | `--bin cascade` with the deep walks narrowed | — |
-| 10 | `lint_sheet_deep` re-walks every arena per rule | the new lint row | half (b) allocates and must not ship |
-| 11 | ids and classes compared by content | the 24-Id-rule arm | a `wid_hash` costs `NodeDesc` bytes the embedded fixture asserts |
+| **9** | a spliced const list of which table indices own arenas, so the three deep walks stop asking every node | **probed: PROMOTED.** The ask is **5.9 ns/node** on a 901-node tree with no arenas; removing it is −4 812 ns (−40%) on `cascade_deep` whole-table and −5 102 (−12%) on the showcase sheet | it and #10 are **one defect**; a third, isolating arm was needed to see it — two arms disagreed and the disagreement was code layout |
+| **10** | `lint_sheet_deep` re-walks every arena per rule | **probed: PROMOTED.** 166 124 → 40 486 ns, **−75.6%, 4.1×** — three quarters of the lint is 24 327 arena asks on a tree with no arenas | half (b) would allocate; narrowing the walk with #9's const list needs no allocation and fixes both |
+| ~~11~~ | *probed and **closed on cost**. The named arm could not exhibit it — `Ten10` carries no ids, so the compare short-circuits on length. Purpose-built arms: worst case 1.47 ns/compare, real sparse shape 0.24, hash 0.14 — **−2.16 µs** per sheet-vs-table match* | done | the correction decided it: 8 B/node of `.rodata`, +800 B on the embedded fixture, for 2.16 µs on an **event** |
 | 12 | a measurer epoch for scale changes | a host test with scale and resize in one frame | the failure needs an event ordering nobody has produced |
 | 13 | `FontStack::prepare` re-scans every character | a coverage-bitmap A/B | it is exactly two scans in the steady state, not one to three |
 | 14 | `App::update`'s blast radius | generated per-field offsets behind a dotted mark | the 7.6×/293× cited are `Boundaries`-vs-`Everything`, a different comparison |
@@ -845,10 +845,10 @@ and 14 are one finding seen from two subsystems. The count is stated
 because a table headed "the plausible set" that silently carries a
 refuted row is how a closed question gets re-opened by accident.
 
-**Batches one and two are probed: rows 1, 3, 4, 5, 6 and 8.** Five
-closed on their measured ceilings, one promoted to "worth building"
-with its number and explicitly not built inside M26. Eight live probes
-remain: 9, 10, 11, 12, 13, 15, and rows 2/14 as one.
+**Batches one to three are probed: rows 1, 3, 4, 5, 6, 8, 9, 10 and
+11.** Six closed, three promoted — #3 with its number, and #9/#10,
+which are one defect and the round's largest win by an order of
+magnitude. Five live probes remain: 12, 13, 15, and rows 2/14 as one.
 
 All five closes share a shape worth naming: **every one was true as
 written.** The review read the code correctly each time — a copy per
