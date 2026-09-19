@@ -67,4 +67,50 @@ fn main() {
 
     static_slab::<Card>("100k/static", 300, 4545);
     dyn_arm("100k/dyn", 300, d_assembled(4545));
+
+    drain_rows();
+}
+
+/// **What a frame pays to apply deferred results** — M28/T28.0.
+///
+/// `Inbox::drain` shipped as plan-events E3 and nothing has ever priced
+/// it. M28 puts a drain inside `Host::pump`, so every later task in that
+/// milestone is judged against these two rows: an empty drain is what an
+/// idle frame adds, and the per-result slope is what a busy one costs.
+///
+/// The messages are `u32` — the cheapest thing a queue can carry — so
+/// the rows measure the **queue and the dispatch**, not the payload. A
+/// real message is larger and the slope is a floor, which is the honest
+/// direction for a baseline to err in.
+fn drain_rows() {
+    use lumen_static::inbox::Inbox;
+
+    println!();
+    fn apply(state: &mut u64, m: u32) {
+        *state = state.wrapping_add(m as u64);
+    }
+
+    // Empty: the cost an idle frame pays for the drain existing at all.
+    let empty: Inbox<u32> = Inbox::new();
+    let mut state = 0u64;
+    bench("drain, empty queue", 200_000, || {
+        black_box(empty.drain(&mut state, apply)) as u64
+    });
+
+    // N results, refilled each iteration. The refill is inside the timed
+    // closure and cannot be separated from it by this harness, so the
+    // row is reported as the PAIR — post-then-drain — and named that
+    // way. A row claiming to be the drain alone would be the "bound
+    // computed from the wrong quantity" shape: the post is a `send` and
+    // the drain is a `try_recv`, and both touch the same queue.
+    for n in [1usize, 8, 64] {
+        let inbox: Inbox<u32> = Inbox::new();
+        let mut state = 0u64;
+        bench(&format!("post+drain, {n} results"), 100_000 / n, || {
+            for i in 0..n {
+                inbox.post(i as u32);
+            }
+            black_box(inbox.drain(&mut state, apply)) as u64
+        });
+    }
 }

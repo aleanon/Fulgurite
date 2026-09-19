@@ -34,8 +34,8 @@ takes no dependency at all rather than a reason to prefer it.
 
 ## T28.0 — the baselines
 
-*Filled when T28.0 lands. Every row: the fast cluster's range, how many
-of the eight runs landed in it, and the slow mode reported separately.*
+**Landed 2026-09-19.** Two of the three arms are here; the third is in
+T28.1's section, for the reason given at the end.
 
 **`.text` on thumbv7em is not a row here, deliberately.** The inbox is
 behind the `std` feature and `fixtures/embedded` does not enable it, so
@@ -43,9 +43,59 @@ that number cannot move whatever this milestone does — a bound computed
 from the wrong quantity. The symbol count above is the falsifiable form
 of the same claim.
 
-| arm | fast cluster | runs in it | slow mode |
-|---|---:|---:|---|
-| | | | |
+### 1. The allocation gate now counts frees
+
+The gate counted allocations and forwarded `dealloc` to the system
+without counting. **A frame that frees on the frame thread and allocates
+nothing read as clean** — and that is exactly the shape M28 introduces,
+because draining a completed job out of an mpsc queue frees the queue's
+node with no matching allocation on that thread. A one-sided counter
+cannot see it.
+
+Both counters stay per-thread, for the reason the file already records:
+`cargo test` runs tests in parallel threads sharing one process, and a
+global counter measured every other test's allocations.
+
+| case | allocs/frame | frees/frame |
+|---|---:|---:|
+| plain tree, idle | 0 | **0** |
+| `Repeat` + `List` + `Either` + `Dyn` + `Option`, idle | 0 | **0** |
+| two enum nodes, idle | 0 | **0** |
+| `Rebuild` retention | 0 | **0** |
+| a binding that re-formats | 0 | **0** |
+| a scrolling repeater | 0 | **0** |
+| 50 rasterised frames | 0 | **0** |
+| 20 frames, two glass panels | 0 | **0** |
+
+Zero in both directions today, which is the baseline every later task in
+this milestone is judged against.
+
+### 2. `--bin crossover` gained drain rows
+
+`Inbox::drain` shipped as plan-events E3 and nothing had ever priced it.
+Messages are `u32` — the cheapest thing a queue can carry — so these rows
+measure the **queue and the dispatch**, not a payload. A real message is
+larger, so the slope is a floor, which is the honest direction for a
+baseline to err in.
+
+| row | ns (min) |
+|---|---:|
+| drain, empty queue | **4.72** |
+| post+drain, 1 result | 25.89 |
+| post+drain, 8 results | 172.89 |
+| post+drain, 64 results | 1250.46 |
+
+Per-result slope **19.4 ns** — (1250.46 − 25.89) / 63 — with an intercept
+of ~6.5 ns that agrees with the empty drain's 4.72.
+
+Against the threshold above, *"N = 0 indistinguishable from today's
+frame"*: the empty drain is 4.72 ns against an idle frame of ~350 µs
+(`docs/results-frame-and-types.md` T26.17), or **0.001%**. Passes.
+
+The rows are named `post+drain`, not `drain`. The refill must happen
+inside the timed closure, and calling the row "the drain" would be the
+bound-computed-from-the-wrong-quantity shape: the post is a `send`, the
+drain is a `try_recv`, and both touch the same queue.
 
 ### The arms T28.0 adds, and the injection each was shown to move under
 
@@ -55,7 +105,36 @@ it. Two of M26/T26.0's six were.*
 
 | arm | injection | moved by |
 |---|---|---|
-| | | |
+| the free counter | `dealloc` restored to forwarding without counting — the shape before this task | `the_free_counter_sees_a_drain_that_only_frees` fails by name, reporting `allocs 0, frees 0` against a required 16. The other eight cases stay green, so the pair is refuses-bad / accepts-good |
+| the drain rows | `Inbox::drain` made a no-op | every row moves and the empty row falls to the harness floor: 4.48 → **0.17** ns; 1 result 24.72 → 9.33; 8 results 165.12 → 73.69; 64 results 1192.57 → 580.77 |
+
+**The free counter is also shown able to move in the accepting
+direction**, because a counter that never moves is indistinguishable
+from one that does not work. Every case above reports zero, so one test
+makes a free happen on purpose: a worker allocates 16 buffers and sends
+them; the test's own thread drains and drops them.
+
+```
+drained 1024 bytes: allocs 0, frees 16
+```
+
+`allocs 0` is what the old gate saw, and it is the whole argument for
+the second counter.
+
+**The drain injection paid more than it was asked for.** It decomposes
+the pair: post-only has a slope of **9.1 ns** per result
+((580.77 − 9.33) / 63), so of the 19.4 ns the drain half is **10.3 ns**
+and the post half 9.1.
+
+### 3. The wake path — measured in T28.1, not here
+
+The plan's injection for this arm is "drop the wake", which presupposes
+a wake. Outside the `agent` feature `lumen-static-winit` builds
+`EventLoop::new()`, which has no user-event channel at all, so there is
+nothing to drop and nothing to time. Building the arm against a path
+that does not exist would produce a measurement of its absence — the
+"setup silently did not happen" shape. It is built in the same commit as
+the mechanism it measures.
 
 ## Per task
 
