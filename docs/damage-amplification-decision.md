@@ -174,3 +174,40 @@ thing that separates a set from its hull.
 
 The renderer's 37× above is unaffected by any of this and remains as
 recorded.
+
+
+## A third: a command-count change was the whole window — M26/T26.11, 2026-09-19
+
+`Incremental` compared its retained slots **slot-by-slot during the
+walk**, overwriting each as it went. So when `finish` learned the two
+frames had different lengths, the previous frame no longer existed and
+the only honest answer was `Damage::All`. Every popup open and close,
+and every enum-variant switch, repainted the window — on the strategy
+the desktop shell defaults to.
+
+It keeps two buffers now and aligns them in `finish`: longest common
+prefix and suffix by hash, damage the middle. Nothing guesses — a prefix
+matches only where the hashes are equal — so a stream that genuinely
+changed everywhere still reports rects covering the viewport, which is
+the same answer as before arrived at by measurement.
+
+| | before | after |
+|---|---:|---:|
+| a popup over unchanged chrome (`tests/retain_align.rs`) | the viewport, 120,000 px² | **3,200 px² — the popup's own rect**, 37.5× less |
+| the showcase's real dropdown (`just profile-showcase`) | 691,200 px, **100.0%** | 580,680 px, **84.0%** |
+
+The showcase's own frame improves by much less than the synthetic one,
+and that is honest rather than disappointing: opening its dropdown also
+changes the trigger's label and re-lays the stage, so a lot of that 84%
+genuinely did change. The synthetic arm isolates the property; the
+showcase arm prices it on a real screen.
+
+**`Streaming<N>` does not get the second buffer**, deliberately. It
+would take `Streaming<256>` from 6,680 B to 13 KB — a tenth of the M13
+device's RAM — for a strategy whose whole purpose is a bounded,
+allocation-free footprint. A length change still answers `Damage::All`
+there.
+
+And the per-command price *fell*, because the comparison left the hot
+path: `--bin retain`'s `streaming: build + Incremental` arm, 34
+commands, **328 → 295 ns**.

@@ -428,7 +428,7 @@ fn profile_popup() {
         100.0 * opened / window
     );
     println!(
-        "   commands {before} -> {} (a length change is Damage::All today — M26/T26.11); \
+        "   commands {before} -> {} (a length change is aligned since M26/T26.11; it was `Damage::All`, and this frame was 100%); \
          settled frame damaged {:.0} px",
         host.list.len(),
         area(settled)

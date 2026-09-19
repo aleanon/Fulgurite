@@ -566,14 +566,26 @@ impl Diffing {
         d
     }
 
+    /// Add damage computed outside the per-command walk.
+    ///
+    /// [`Incremental`] compares two whole streams in `finish` rather
+    /// than slot-by-slot as it goes, because aligning them needs both
+    /// (M26/T26.11). This is how it hands the result back.
+    fn add(&mut self, d: Damage) {
+        self.frame = self.frame.union(d);
+    }
+
     /// Close the frame and return its damage.
     ///
-    /// A length change is [`Damage::All`] rather than an attempt to
-    /// align two streams: it means the structure changed (an arena
-    /// grew, a branch switched), it is rare, and the alignment would be
-    /// guesswork.
-    fn finish(&mut self) -> Damage {
-        let d = if !self.seeded || self.overflow || self.n != self.len {
+    /// **A length change is `Damage::All` only where the strategy
+    /// cannot align two streams.** [`Streaming`] keeps one fixed array
+    /// and answers `All`; [`Incremental`] keeps the previous frame as
+    /// well and aligns, so it passes `lengths_align = true` and this
+    /// takes the damage it computed instead. Before M26/T26.11 nothing
+    /// could align, so every popup open and close repainted the window
+    /// on the strategy the desktop shell defaults to.
+    fn finish_aligned(&mut self, lengths_align: bool) -> Damage {
+        let d = if !self.seeded || self.overflow || (!lengths_align && self.n != self.len) {
             Damage::All
         } else {
             self.dilate(self.frame)
@@ -585,6 +597,11 @@ impl Diffing {
         self.seeded = true;
         self.pending = self.pending.union(d);
         d
+    }
+
+    /// The un-aligned form: a length change is [`Damage::All`].
+    fn finish(&mut self) -> Damage {
+        self.finish_aligned(false)
     }
 
     fn take_damage_for_age(&mut self, age: u8) -> Damage {
@@ -632,25 +649,65 @@ impl Diffing {
 #[cfg(feature = "alloc")]
 #[derive(Default, Debug)]
 pub struct Incremental {
+    /// The frame being observed.
     slots: Vec<(u64, Rect)>,
+    /// The frame before it, kept whole (M26/T26.11).
+    ///
+    /// **Two buffers, because aligning needs both.** The comparison used
+    /// to happen slot-by-slot *during* the walk, overwriting each slot
+    /// as it went — which is why a length change could only answer
+    /// `Damage::All`: by the time `finish` knew the lengths differed,
+    /// the previous frame was gone. A popup opening therefore repainted
+    /// the window, on the strategy the desktop shell defaults to.
+    prev: Vec<(u64, Rect)>,
     d: Diffing,
+}
+
+#[cfg(feature = "alloc")]
+impl Incremental {
+    /// Damage between two frames whose lengths differ.
+    ///
+    /// **Longest common prefix and suffix by hash; damage the middle.**
+    /// A popup opens by appending commands in the middle of a stream
+    /// whose head and tail are untouched, and that is exactly what this
+    /// finds. Nothing here guesses: a prefix matches only where the
+    /// hashes are equal, so a stream that genuinely changed everywhere
+    /// reports every rect in both frames — which covers the viewport,
+    /// the same answer `Damage::All` gave, arrived at by measurement.
+    fn align(prev: &[(u64, Rect)], cur: &[(u64, Rect)]) -> Damage {
+        let mut head = 0usize;
+        while head < prev.len() && head < cur.len() && prev[head].0 == cur[head].0 {
+            head += 1;
+        }
+        let mut tail = 0usize;
+        while tail < prev.len() - head
+            && tail < cur.len() - head
+            && prev[prev.len() - 1 - tail].0 == cur[cur.len() - 1 - tail].0
+        {
+            tail += 1;
+        }
+        let mut d = Damage::None;
+        for slot in &prev[head..prev.len() - tail] {
+            d = d.union(Damage::rect(slot.1));
+        }
+        for slot in &cur[head..cur.len() - tail] {
+            d = d.union(Damage::rect(slot.1));
+        }
+        d
+    }
 }
 
 #[cfg(feature = "alloc")]
 impl Retention for Incremental {
     fn observe(&mut self, hash: u64, ink: Rect) {
-        let i = self.d.n;
-        if i < self.slots.len() {
-            let slot = self.slots.get_mut(i);
-            self.d.step(slot, hash, ink);
-        } else {
-            // The frame is longer than any before it. There is no slot
-            // to compare against, but the length change `finish` sees
-            // answers it — so this is deliberately *not* `overflow`,
-            // which means "a fixed capacity that cannot grow".
-            self.slots.push((hash, ink));
-            self.d.n += 1;
-        }
+        // **Recorded, not compared.** The comparison moved to `finish`
+        // so that both whole streams are in hand when the lengths
+        // differ; `Diffing::step` still runs, with no slot, for the
+        // bookkeeping it owns (the per-frame dependency reset and the
+        // command count).
+        self.d.step(None, hash, ink);
+        self.d.overflow = false;
+        self.slots.push((hash, ink));
     }
 
     fn observe_dep(&mut self, src: Rect) {
@@ -658,10 +715,25 @@ impl Retention for Incremental {
     }
 
     fn finish(&mut self) -> Damage {
-        let d = self.d.finish();
-        // Drop slots the frame no longer reaches, so a shrink does not
-        // leave a stale tail for the next comparison to trust.
-        self.slots.truncate(self.d.len);
+        if self.d.seeded {
+            let d = if self.prev.len() == self.slots.len() {
+                // Equal lengths: slot for slot, which is the common case
+                // and the cheap one.
+                let mut d = Damage::None;
+                for (a, b) in self.prev.iter().zip(self.slots.iter()) {
+                    if a.0 != b.0 {
+                        d = d.union(Damage::rect(a.1)).union(Damage::rect(b.1));
+                    }
+                }
+                d
+            } else {
+                Self::align(&self.prev, &self.slots)
+            };
+            self.d.add(d);
+        }
+        let d = self.d.finish_aligned(true);
+        core::mem::swap(&mut self.prev, &mut self.slots);
+        self.slots.clear();
         d
     }
 
@@ -671,6 +743,7 @@ impl Retention for Incremental {
 
     fn reset(&mut self) {
         self.slots.clear();
+        self.prev.clear();
         self.d.reset();
     }
 }
@@ -678,11 +751,25 @@ impl Retention for Incremental {
 /// Retain `(hash, ink)` for up to `N` commands in a fixed array — the
 /// allocator-free half of [`Incremental`] (M13/T13.8).
 ///
-/// `N` commands cost `N * 20` bytes and no heap at all: `Streaming<256>`
-/// is 5 KB, against the 128 KB the M13 device has
+/// `N` commands cost `N * 24` bytes and no heap at all: `Streaming<256>`
+/// is **6,680 B**, against the 128 KB the M13 device has
 /// (`docs/results-embedded.md`). A frame longer than `N` reports
 /// [`Damage::All`], which is correct but wasteful — size `N` above the
 /// busiest frame, not at the typical one.
+///
+/// **Both numbers were wrong until M26/T26.11**: this said `N * 20` and
+/// "5 KB", and a slot is 24 B — a `u64` and four `f32`s. Measured with
+/// `size_of`, which is also how the 6,680 above is known rather than
+/// derived.
+///
+/// **And this strategy keeps *one* buffer, deliberately.**
+/// [`Incremental`] gained a second in T26.11 so it can align two
+/// streams whose lengths differ, which is what stops a popup repainting
+/// the window. Doing the same here would take `Streaming<256>` to
+/// 13 KB — a tenth of the M13 device's RAM — for a strategy whose whole
+/// purpose is a bounded, allocation-free footprint. A length change
+/// still answers [`Damage::All`] here, and an embedded frame is both
+/// simpler and rarer to restructure.
 #[derive(Debug)]
 pub struct Streaming<const N: usize> {
     slots: [(u64, Rect); N],

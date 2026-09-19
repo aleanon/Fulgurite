@@ -405,3 +405,49 @@ counters. A painter that counts *calls* (not commands, for the reason
 above) and a `Retention` that counts *slots*. Both directions: a
 container given a background still paints one, and alpha 1 is not alpha
 0. The injection that unguards the emission reddens all four.
+
+## T26.11 — a command-count change is no longer `Damage::All`
+
+Measured 2026-09-19.
+
+| arm | before | after | Δ |
+|---|---:|---:|---:|
+| `tests/retain_align.rs`, popup over unchanged chrome | 120,000 px² (the viewport) | **3,200 px²** | **37.5×** |
+| `just profile-showcase`, the real dropdown | 691,200 px (100.0%) | 580,680 px (**84.0%**) | 1.19× |
+| `--bin retain`, `streaming: build + Incremental`, 34 cmds | 328 ns | **295 ns** | −10% |
+
+The last row is the surprise: two buffers are *faster* than one, because
+the hash comparison left the per-command path for a tight zip in
+`finish`. Six runs a side, fast clusters (325–340 before, 287–299
+after).
+
+The showcase's frame improves by far less than the synthetic one, which
+is the honest result: opening its dropdown also changes the trigger's
+label and re-lays the stage, so much of that 84% genuinely did change.
+
+**Sizes, measured with `size_of` rather than derived**: a slot is
+**24 B** — `retain.rs` said `N * 20` and "`Streaming<256>` is 5 KB", and
+both were wrong; it is 6,680 B. `Incremental` is 584 B of struct, and
+its heap doubles: two slot vectors instead of one, so a 3,000-command
+frame holds 144 KB rather than 72 KB. The allocation gate is unmoved —
+the vectors are swapped and cleared, never reallocated, and
+`shell/tests/alloc_gate.rs` still reports a steady state of zero.
+
+**`Streaming<N>` keeps one buffer**, deliberately: the second would take
+`Streaming<256>` to 13 KB, a tenth of the M13 device's RAM, for a
+strategy whose purpose is a bounded allocation-free footprint. A length
+change still answers `Damage::All` there.
+
+Gate: `crates/lumen-static/tests/retain_align.rs`. The good-input half
+is stated **as area**, as the task required — after this change a frame
+in which everything differs reports regions covering the viewport rather
+than the `All` variant, so the assertions compare covered area against
+the viewport's and print both. The two injections the task named both
+fire: forcing `All` on a length change (120,000 px² where 3,200 is
+expected) and aligning on length alone without comparing hashes (16,500
+px² of 120,000, so the all-different assertion fires).
+
+**And the gate's own fixture was wrong first.** It coloured each rect by
+its *index*, so inserting a command changed the hash of everything after
+it, the suffix match never fired, and a 3,200 px² popup reported 11,200.
+The colour comes from the rect now.

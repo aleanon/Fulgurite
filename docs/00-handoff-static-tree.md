@@ -65,6 +65,8 @@ UI thread
                  │
 Raster thread    ▼
   5. Raster and composite      GPU layers, damage rects only
+                               (a command-count change is aligned, not
+                               the whole window — M26/T26.11)
 ```
 
 The four properties that produce the performance, in rough order of importance:

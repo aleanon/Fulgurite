@@ -574,7 +574,7 @@ compliance.
 an instance, deliberately" — that case is the one being deleted — and
 changes the signature `docs/plan-review-fixes.md` F4.1 specifies.
 
-### T26.11 — a command-count change is `Damage::All`
+### T26.11 — a command-count change is `Damage::All` — **DONE 2026-09-19**
 
 `retain.rs:571-577`: a length change damages the window. Every popup
 open and close and every enum-variant switch therefore repaints
@@ -586,10 +586,14 @@ damage the middle. **A slot is 24 B** — measured; `retain.rs`'s own
 comment says `N * 20` and derives "`Streaming<256>` is 5 KB" from it, and
 both are wrong (24 B, 6 KB). Fix the comment, and record what this task
 then does to it: doubling the array makes `Streaming<256>` 12 KB against
-the M13 device's 128 KB. **Say explicitly whether `Streaming<N>` gets the
-second buffer** — it shares `Diffing` with `Incremental`, and a fixed
-array on a 128 KB part is the one place doubling is a decision rather
-than an allocation.
+the M13 device's 128 KB. **`Streaming<N>` does not get the second
+buffer.** It would go from 6,680 B to 13 KB — a tenth of the M13
+device's RAM — for a strategy whose whole purpose is a bounded,
+allocation-free footprint, and an embedded frame is both simpler and
+rarer to restructure. A length change still answers `Damage::All`
+there. Both numbers in the comment were corrected from `size_of`: a
+slot is **24 B**, not 20, and `Streaming<256>` is **6,680 B**, not 5 KB
+— so the doubling this task considered would have been 13 KB, not 12.
 
 **Gate:** a popup-open frame damages the popup's rect, not the window,
 on `Incremental` + `Boundaries<16>`. **The good-input half is stated as
@@ -600,7 +604,13 @@ print both. *Injection:* force `All` on a length change — the first
 assertion fires; *second injection:* align on length alone without
 comparing hashes — the covered-area assertion fires.
 
-**Measure:** `--bin retain`, and `just profile` on the new popup frame.
+**Measured:** `--bin retain`'s `streaming: build + Incremental` arm
+**328 → 295 ns** — two buffers are *faster* than one, because the hash
+comparison left the per-command path for a tight zip in `finish`; and
+`just profile-showcase` **100.0% → 84.0%** of the window on the real
+dropdown, against **37.5×** on the synthetic arm. The gap between the
+two is honest: opening the showcase's dropdown also changes the
+trigger's label and re-lays the stage.
 
 **Docs:** `docs/plan-invalidation.md` T16.8 is **not** reopened, and the
 first draft of this task said it was (review 2026-09-17, confirmed).
