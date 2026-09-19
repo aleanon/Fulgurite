@@ -126,15 +126,65 @@ the pair: post-only has a slope of **9.1 ns** per result
 ((580.77 − 9.33) / 63), so of the 19.4 ns the drain half is **10.3 ns**
 and the post half 9.1.
 
-### 3. The wake path — measured in T28.1, not here
+### 3. The wake path — built with the mechanism it measures
 
 The plan's injection for this arm is "drop the wake", which presupposes
-a wake. Outside the `agent` feature `lumen-static-winit` builds
-`EventLoop::new()`, which has no user-event channel at all, so there is
+a wake. Outside the `agent` feature `lumen-static-winit` built
+`EventLoop::new()`, which has no user-event channel at all, so there was
 nothing to drop and nothing to time. Building the arm against a path
-that does not exist would produce a measurement of its absence — the
-"setup silently did not happen" shape. It is built in the same commit as
-the mechanism it measures.
+that does not exist would have measured its absence — the "setup
+silently did not happen" shape. It lands in T28.1's commit instead, and
+its number is in T28.1's section below.
+
+## T28.1 — an idle window wakes when work completes
+
+**Landed 2026-09-19.**
+
+| quantity | measured |
+|---|---:|
+| worker's send → a frame, on a window idle for 600 ms | **~3 ms** (603 ms elapsed against a 600 ms settle; a second run gave 602) |
+| the fixture's deadline | 5 000 ms |
+
+No bound was written before this was measured, which is what the
+threshold table said to do: *"reported; no bound written before it is
+measured"*. The deadline is not a latency budget — it is the line
+between "a wake arrives" and "the loop slept through a completion", and
+a real budget would need a quiet machine to mean anything. The elapsed
+time prints beside it on success as well as failure, so a bound that
+drifts away from its quantity is visible rather than inferred.
+
+### The gate, split along the seam this repository already uses
+
+| half | where | asserts |
+|---|---|---|
+| deterministic | `crates/lumen-static/tests/inbox_wake.rs`, in `cargo test` | sending **asks** for a wake, against a recording proxy and no window |
+| live | `scripts/wake_gate.sh` → `examples/wake-gate`, `just wake-gate` | the ask reaches a real winit loop in `ControlFlow::Wait`, and a frame follows |
+
+The live half is a binary that asserts *itself* for three reasons, all
+of them ones the other live gates here already have: `cargo test` runs
+on every commit with no display; it has no per-test timeout, so the
+failure this gate catches — *no wake ever arrives* — would hang CI
+rather than fail it; and winit wants the loop on the main thread. It
+skips with exit 0 where there is no display.
+
+### Injections
+
+| half | injection | fires as |
+|---|---|---|
+| deterministic | `Sender::send` drops the wake request | `a_send_from_a_worker_asks_for_a_wake` fails by name — *"four sends asked for 0 wakes, not 4"* — and so does `a_sender_minted_before_the_waker_says_so`. The two accepting-direction tests stay green |
+| live | `ProxyWaker::wake` made a no-op — the plan's own injection | the fixture reaches its deadline and exits **1**: *"no frame followed the worker's send within 5000 ms"* |
+
+Two accepting-direction cases keep this from becoming a host that wakes
+on everything: `an_inbox_with_no_waker_still_delivers` (a headless
+`Host`, a bench, or an embedded target has no loop, and sending must
+still work) and `post_wakes_too`.
+
+A third asserts a real ordering hazard rather than assuming it away.
+`a_sender_minted_before_the_waker_says_so`: a sender handed out *before*
+`set_waker` carries no waker, the rustdoc says so, and the test pins it.
+A host that minted a sender in its constructor and installed the waker
+afterwards would produce exactly the late-frame symptom this task
+removes, and nothing else would have noticed.
 
 ## Per task
 

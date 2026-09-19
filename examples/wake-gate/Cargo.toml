@@ -1,0 +1,14 @@
+[package]
+name = "wake-gate"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+# M28/T28.1's live half. A fixture that owns a window and asserts
+# *itself* — see the crate docs in src/main.rs for why it cannot be a
+# `cargo test`.
+[dependencies]
+lumen-static = { path = "../../crates/lumen-static" }
+lumen-static-winit = { path = "../../crates/lumen-static-winit" }
+winit = "0.30"

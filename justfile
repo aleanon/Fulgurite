@@ -285,6 +285,13 @@ widget-drive name="":
 agent-drive:
     ./scripts/agent_drive.sh
 
+# M28/T28.1: a completion posted by a worker wakes an idle window. The
+# fixture owns its own deadline and asserts itself, because the failure
+# it catches is "no wake ever arrives" — which under `cargo test` would
+# hang rather than fail. Needs a display; skips without one.
+wake-gate:
+    ./scripts/wake_gate.sh
+
 # What `just example` accepts.
 examples:
     @ls examples

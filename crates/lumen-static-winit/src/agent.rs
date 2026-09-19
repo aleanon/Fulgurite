@@ -20,11 +20,26 @@
 //!
 //! # The thread rule
 //!
-//! The socket thread **never touches the tree**. Each request crosses to
-//! the event loop through winit's proxy and is answered there, so the
+//! **No thread but the loop's touches the tree.** Each request crosses
+//! to the event loop through winit's proxy and is answered there, so the
 //! tree is only ever read or driven from the thread that owns it. That
 //! is inherited from the counter-window endpoint and is the only
 //! arrangement that is sound without a lock.
+//!
+//! **Widened from "the socket thread" by M28/T28.1**, which is a
+//! restatement rather than a change: the socket thread was the only
+//! other thread that existed when this was written, and
+//! [`crate::UserEvent`] now carries a
+//! [`Wake`](crate::UserEvent::Wake) as well as an [`Rpc`], sent by any
+//! worker holding a [`ProxyWaker`](crate::ProxyWaker). The rule was
+//! always about the tree's ownership and never about sockets, and
+//! stating it in terms of one producer is how a second producer gets
+//! added without anyone checking it against the rule.
+//!
+//! The wake carries **no payload**, which is what keeps the widening
+//! honest: a worker cannot hand the loop anything to apply, only ask it
+//! to look at the inbox it already wrote to. `Rpc` is the exception and
+//! pays for it by being answered on the loop's own thread.
 
 use lumen_static::event::App;
 use lumen_static_agent::{AgentHost, TreeRef};
@@ -38,11 +53,6 @@ use crate::backend::Backend;
 pub struct Rpc {
     pub req: serde_json::Value,
     pub reply: std::sync::mpsc::Sender<serde_json::Value>,
-}
-
-/// What reaches the event loop from somewhere other than the window.
-pub enum UserEvent {
-    Agent(Rpc),
 }
 
 /// The live window, as the agent protocol sees it.
@@ -110,7 +120,7 @@ impl<A: App> AgentHost for Live<'_, A> {
 ///
 /// Lumen's `run-agent` protocol, so its client works unchanged: one JSON
 /// object per line in, one per line out.
-pub fn serve(addr: String, proxy: winit::event_loop::EventLoopProxy<UserEvent>) {
+pub fn serve(addr: String, proxy: winit::event_loop::EventLoopProxy<crate::UserEvent>) {
     use std::io::{BufRead, BufReader, Write};
     let listener = match std::net::TcpListener::bind(&addr) {
         Ok(l) => l,
@@ -137,7 +147,7 @@ pub fn serve(addr: String, proxy: winit::event_loop::EventLoopProxy<UserEvent>) 
                 }
             };
             let (tx, rx) = std::sync::mpsc::channel();
-            if proxy.send_event(UserEvent::Agent(Rpc { req, reply: tx })).is_err() {
+            if proxy.send_event(crate::UserEvent::Agent(Rpc { req, reply: tx })).is_err() {
                 return;
             }
             let Ok(resp) = rx.recv() else { return };

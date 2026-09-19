@@ -51,6 +51,58 @@ use winit::window::{Window, WindowId};
 
 #[cfg(feature = "agent")]
 pub mod agent;
+
+/// What reaches the event loop from somewhere other than the window.
+///
+/// **Unconditional since M28/T28.1.** It lived in `agent.rs` and existed
+/// only under that feature, which meant a build without the agent had no
+/// user-event channel at all: `EventLoop::new()` rather than
+/// `with_user_event()`. Since the loop runs in `ControlFlow::Wait`, an
+/// idle window slept until input arrived and **a completion posted from
+/// a worker could not reach a frame** — the whole premise of M28.
+///
+/// The agent's request is now one variant among others rather than the
+/// only reason a loop has a proxy.
+pub enum UserEvent {
+    /// One agent request, answered on the loop's own thread.
+    #[cfg(feature = "agent")]
+    Agent(agent::Rpc),
+    /// Somebody off the frame thread has queued work and wants a frame —
+    /// see [`ProxyWaker`].
+    ///
+    /// Carries nothing. The message itself already went through the
+    /// inbox's channel; duplicating it here would put a second copy in
+    /// flight and reintroduce the ordering question the inbox exists to
+    /// answer.
+    Wake,
+}
+
+/// A [`Waker`](lumen_static::inbox::Waker) over the event loop's proxy —
+/// M28/T28.1.
+///
+/// This is the only place winit and the core's deferred-work seam meet.
+/// The core cannot name winit, and winit cannot name the application's
+/// message type, so the trait carries no payload: it says *wake up*, and
+/// the queue the worker already wrote to says what happened.
+pub struct ProxyWaker(winit::event_loop::EventLoopProxy<UserEvent>);
+
+impl ProxyWaker {
+    /// Wrap a proxy. `EventLoop::create_proxy` is the only source.
+    pub fn new(proxy: winit::event_loop::EventLoopProxy<UserEvent>) -> Self {
+        ProxyWaker(proxy)
+    }
+}
+
+impl lumen_static::inbox::Waker for ProxyWaker {
+    /// **A closed loop is not an error here.** A worker outliving its
+    /// window is ordinary — the user closed it while a download was in
+    /// flight — and `send_event` answers that with `Err`. Dropping the
+    /// request is the correct response: there is no loop to wake and no
+    /// frame anyone will see.
+    fn wake(&self) {
+        let _ = self.0.send_event(UserEvent::Wake);
+    }
+}
 pub mod backend;
 pub mod clipboard;
 pub mod dialog;
@@ -209,32 +261,32 @@ pub type Inval = lumen_static::Boundaries<256>;
 pub type Ret = lumen_static::retain::Incremental;
 
 pub fn run<A: App + 'static>(app: A, config: Config) {
+    // **Always a user-event loop** — M28/T28.1.
+    //
+    // This was `with_user_event()` under the `agent` feature and
+    // `EventLoop::new()` without it. The loop's type is fixed at
+    // construction, so the two could not be chosen at runtime, and the
+    // consequence was that an ordinary build had no way to be woken from
+    // another thread at all. `ControlFlow::Wait` then means a completion
+    // posted by a worker waits for the user to move the mouse.
+    //
+    // The cost of doing it unconditionally is one enum discriminant in
+    // the loop's queue type; `UserEvent` carries an `Rpc` only when the
+    // agent feature is on.
+    let event_loop = EventLoop::<UserEvent>::with_user_event().build().expect("event loop");
+    event_loop.set_control_flow(ControlFlow::Wait);
     #[cfg(feature = "agent")]
-    {
-        // **A user-event loop, so the socket thread has something to
-        // send to.** Built unconditionally under the feature rather than
-        // only when `config.agent` is set: the loop's type is fixed at
-        // construction, and branching on a runtime value would need two
-        // of them.
-        let event_loop = EventLoop::<agent::UserEvent>::with_user_event()
-            .build()
-            .expect("event loop");
-        event_loop.set_control_flow(ControlFlow::Wait);
-        if let Some(addr) = config.agent.clone() {
-            let proxy = event_loop.create_proxy();
-            std::thread::spawn(move || agent::serve(addr, proxy));
-        }
-        let mut win = Win::new(app, config);
-        event_loop.run_app(&mut win).expect("run");
-        return;
+    if let Some(addr) = config.agent.clone() {
+        let proxy = event_loop.create_proxy();
+        std::thread::spawn(move || agent::serve(addr, proxy));
     }
-    #[cfg(not(feature = "agent"))]
-    {
-        let event_loop = EventLoop::new().expect("event loop");
-        event_loop.set_control_flow(ControlFlow::Wait);
-        let mut win = Win::new(app, config);
-        event_loop.run_app(&mut win).expect("run");
-    }
+    // T28.2 installs a [`ProxyWaker`] on the host's inbox here; the
+    // inbox is not a `Host` field yet, and a waker stored where nothing
+    // reads it would be a field the next reader has to reason about for
+    // nothing. The type and the loop variant it sends are what T28.1
+    // owes, and `examples/wake-gate` exercises both end to end.
+    let mut win = Win::new(app, config);
+    event_loop.run_app(&mut win).expect("run");
 }
 
 /// The turnkey handler behind [`run`].
@@ -414,8 +466,7 @@ impl<A: App> Win<A> {
     }
 }
 
-#[cfg(feature = "agent")]
-impl<A: App> ApplicationHandler<agent::UserEvent> for Win<A> {
+impl<A: App> ApplicationHandler<UserEvent> for Win<A> {
     fn resumed(&mut self, e: &ActiveEventLoop) {
         Win::resumed_impl(self, e);
     }
@@ -423,10 +474,39 @@ impl<A: App> ApplicationHandler<agent::UserEvent> for Win<A> {
         Win::window_event_impl(self, e, id, event);
     }
 
+    /// Anything that reached the loop from off the window's thread.
+    ///
+    /// **One impl since M28/T28.1**, where there were two: one over
+    /// `agent::UserEvent` under that feature and one over winit's
+    /// default `()` without it.
+    fn user_event(&mut self, _e: &ActiveEventLoop, ev: UserEvent) {
+        match ev {
+            // A worker queued something. Ask for a frame and let the
+            // ordinary redraw path handle it — this arm deliberately
+            // does **not** pump, because `about_to_wait` and the redraw
+            // handler already own that sequence, and a second entry
+            // point into it is how two frame loops come to disagree.
+            UserEvent::Wake => {
+                if let Some(w) = &self.window {
+                    w.request_redraw();
+                }
+            }
+            #[cfg(feature = "agent")]
+            UserEvent::Agent(rpc) => self.answer_agent(rpc),
+        }
+    }
+}
+
+#[cfg(feature = "agent")]
+impl<A: App> Win<A> {
     /// Answer one agent request **on the event loop's own thread**, with
     /// the tree and the backend in hand.
-    fn user_event(&mut self, _: &ActiveEventLoop, ev: agent::UserEvent) {
-        let agent::UserEvent::Agent(rpc) = ev;
+    ///
+    /// Split out of `user_event` by M28/T28.1: the handler now has two
+    /// arms and only one of them exists under this feature, so the body
+    /// moved to where the feature gate can sit on a whole `impl` rather
+    /// than on statements inside a function.
+    fn answer_agent(&mut self, rpc: agent::Rpc) {
         let Some(backend) = self.backend.as_deref_mut() else {
             let _ = rpc.reply.send(serde_json::json!({
                 "jsonrpc": "2.0", "id": rpc.req.get("id").cloned().unwrap_or(serde_json::Value::Null),
@@ -449,16 +529,6 @@ impl<A: App> ApplicationHandler<agent::UserEvent> for Win<A> {
         if let Some(w) = &self.window {
             w.request_redraw();
         }
-    }
-}
-
-#[cfg(not(feature = "agent"))]
-impl<A: App> ApplicationHandler for Win<A> {
-    fn resumed(&mut self, e: &ActiveEventLoop) {
-        Win::resumed_impl(self, e);
-    }
-    fn window_event(&mut self, e: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
-        Win::window_event_impl(self, e, id, event);
     }
 }
 

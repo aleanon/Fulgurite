@@ -15,6 +15,7 @@ members = [
     "benches",
     "examples/counter",
     "examples/minimal",
+    "examples/wake-gate",
     "examples/counter-window",
     "examples/glasswall",
     "examples/showcase",
