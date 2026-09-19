@@ -118,6 +118,26 @@ are independent of each other**, so either may go first:
   kill rule written before the probes. §6 records what the verifiers
   corrected, including four findings the review refuted and nine numbers
   cited for the wrong quantity.
+  **All four phases are done, 2026-09-19.** Phase D probed its fourteen
+  live findings out: **six closed on a measured ceiling** (1, 4, 5, 6, 8,
+  11), every one of them *true as written* and worth nothing measured;
+  **one was a defect** (12 — the text memo does not key on the display
+  scale, which the plan predicted needed "an event ordering nobody has
+  produced" and is in fact the ordinary monitor-to-monitor drag, since
+  `ScaleFactorChanged` carries a new scale *and* a new physical size);
+  **two shipped** (13, `FontStack::prepare` scanning the chosen face once
+  instead of twice, −5.9% on a text-heavy layout; and 10,
+  `lint_sheet_deep` asking for arenas once instead of once per rule,
+  **4.04×**); and **four are promoted with their numbers and not built**
+  (3, 9, 14, 15). The largest unbuilt one is 9 — the per-node arena ask
+  costs 5.9 ns/node and −40% of `cascade_deep`, but removing it needs a
+  const forwarded through 54 hand-written `Widget` impls, where a wrapper
+  that forwards it wrongly silently stops styling the arena beneath it.
+  Two Phase D lessons are general: **four runs a side could not separate
+  a real effect twice** (findings 3 and 13), and eight could; and **two
+  arms that disagree about one quantity are a fact about the arms** —
+  finding 9's two call sites differed by 20×, and the cause was code
+  alignment shifted by adding a bench arm.
 
 - **M27 — `docs/plan-widget-parity.md`** (T27.0–T27.12): the thirty-three
   widgets left between here and Lumen's set — Stepper and FindReplaceBar
