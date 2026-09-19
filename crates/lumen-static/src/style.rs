@@ -1060,6 +1060,40 @@ pub fn lint_sheet_deep<W: crate::widget::Widget + ?Sized>(
     sheet: Stylesheet,
     report: &mut dyn FnMut(SheetFinding),
 ) {
+    // **Ask once whether this tree has any arena at all** — M26/T26.17
+    // finding 10.
+    //
+    // The arena walk below sits inside the rule loop, so a 27-rule sheet
+    // asked all 901 nodes of the benchmark tree 27 times whether they
+    // owned an arena: 24 327 virtual calls at 5.2 ns, which measured as
+    // **three quarters of the whole lint** (166 124 -> 40 486 ns with the
+    // walk removed outright — `docs/results-frame-and-types.md` T26.17
+    // batch three). `lint_sheet_deep` runs on every `Host::set_stylesheet`.
+    //
+    // One walk, before the loop, with an early exit at the first arena
+    // found. A tree with no arenas now pays 901 asks instead of 901 per
+    // rule; a tree with arenas exits on the first one and then behaves
+    // exactly as before, so there is no case this makes slower.
+    //
+    // This is deliberately *not* the plan's half (b), which hoisted the
+    // walk by accumulating `matched`/`read` per rule — that needs an
+    // array as long as the sheet, and the sheet's length is not known
+    // here. Finding 9's const arena-index list is the fix that removes
+    // the remaining walk; it needs a per-type const forwarded through
+    // 54 `Widget` impls, and a wrapper that forwards it wrongly silently
+    // stops styling the arena under it.
+    #[cfg(feature = "alloc")]
+    let any_arena = {
+        let mut found = false;
+        for i in 0..W::SUB_TABLE.len() {
+            if tree.node_mut(i).arena_count() > 0 {
+                found = true;
+                break;
+            }
+        }
+        found
+    };
+
     for (r, rule) in sheet.iter().enumerate() {
         let mut matched = false;
         let mut read = Fields::NONE;
@@ -1074,6 +1108,9 @@ pub fn lint_sheet_deep<W: crate::widget::Widget + ?Sized>(
         }
         #[cfg(feature = "alloc")]
         for i in 0..W::SUB_TABLE.len() {
+            if !any_arena {
+                break;
+            }
             let node = tree.node_mut(i);
             for a in 0..node.arena_count() {
                 let Some(arena) = node.arena_mut(a) else { continue };

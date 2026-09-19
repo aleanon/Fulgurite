@@ -1241,3 +1241,52 @@ with a different hit rate: runs rarely repeat, **glyphs repeat
 constantly** — the digits and letters of an all-new run are the same
 glyphs at the same size. The GPU backend already has an atlas for this
 reason (`docs/results-gpu.md`); the software canvas has nothing.
+
+## T26.17 — finding 10, shipped: one arena walk, not one per rule
+
+Phase D promoted findings 9 and 10 as one defect. This ships the half
+that is contained.
+
+`lint_sheet_deep`'s arena walk sat **inside** the per-rule loop, so a
+27-rule sheet asked all 901 nodes 27 times whether they owned an arena —
+24 327 virtual calls at 5.2 ns, measured in batch three as three
+quarters of the entire lint.
+
+The fix asks once, before the loop, with an early exit at the first
+arena found. Four runs, `--bin cascade`, min column:
+
+| | ns |
+|---|---|
+| as shipped | 166 124 / 166 166 / 165 424 / 166 818 |
+| one walk | **41 404 / 41 189 / 41 351 / 41 163** |
+| the ceiling (walk removed outright) | 40 708 / 40 691 / 40 682 / 40 486 |
+
+**−124 261 ns, −74.8%, 4.04×** — and 98.9% of the theoretical ceiling,
+since the one remaining walk costs 5.3 µs of the 125.6 µs that was
+there. `lint_sheet_deep` runs on every `Host::set_stylesheet`, so this
+is 124 µs off every sheet swap.
+
+There is **no case it makes slower**: a tree with arenas exits the
+pre-walk at the first one and then behaves exactly as before.
+
+This is deliberately not the plan's half (b), which hoisted the walk by
+accumulating `matched`/`read` per rule — that needs an array as long as
+the sheet and would allocate, which the plan forbade. Finding 9's const
+arena-index list removes the remaining walk as well, and is **not built
+here**: it needs a per-type const forwarded through 54 hand-written
+`Widget` impls, and a wrapper that forwards it wrongly silently stops
+styling the arena beneath it. That is the exact failure AGENT.md records
+for `Deferring` — a provided method that is right for a leaf and wrong
+for a wrapper — so it wants its own gate (an arena under every wrapper,
+asserted to still cascade) and is task-sized work rather than a tail-end
+addition.
+
+**Injection**: `any_arena` forced to `false`. Three tests in
+`crates/lumen-static/tests/island_seeds.rs` fail by name —
+`a_rule_naming_the_islands_kind_matches`,
+`a_field_the_boxed_kind_never_reads_is_reported`, and
+`a_field_the_boxed_kind_reads_is_quiet`. The arena half of the lint was
+already gated, which is why this optimization could be made at all;
+`sheet_lint.rs`'s ten tests stay green under the same injection, because
+its tree has no arenas — the two files together are the refuses-bad /
+accepts-good pair.

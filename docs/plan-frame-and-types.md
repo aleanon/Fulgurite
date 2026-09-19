@@ -829,7 +829,7 @@ back inside the spread closes the finding permanently.
 | 7 | sorting the sheet by specificity once | compare against T26.6, which may already capture it | mostly subsumed by T26.6 |
 | ~~8~~ | *probed and **closed**: the check runs **10 times in the whole workspace suite**, over trees of 15, 9 and 4 nodes — 109 nodes cascaded in total, against a 12.4 s suite* | done | debug-only was the right frame; the remaining question was frequency, and it is ten |
 | **9** | a spliced const list of which table indices own arenas, so the three deep walks stop asking every node | **probed: PROMOTED.** The ask is **5.9 ns/node** on a 901-node tree with no arenas; removing it is −4 812 ns (−40%) on `cascade_deep` whole-table and −5 102 (−12%) on the showcase sheet | it and #10 are **one defect**; a third, isolating arm was needed to see it — two arms disagreed and the disagreement was code layout |
-| **10** | `lint_sheet_deep` re-walks every arena per rule | **probed: PROMOTED.** 166 124 → 40 486 ns, **−75.6%, 4.1×** — three quarters of the lint is 24 327 arena asks on a tree with no arenas | half (b) would allocate; narrowing the walk with #9's const list needs no allocation and fixes both |
+| ~~10~~ | *probed and **SHIPPED**: one pre-walk with an early exit instead of one walk per rule — **166 124 → 41 163 ns, −74.8%, 4.04×**, which is 98.9% of the measured ceiling. No case is made slower* | done | half (b) would allocate and was not built; #9's const list would remove the last 5.3 µs |
 | ~~11~~ | *probed and **closed on cost**. The named arm could not exhibit it — `Ten10` carries no ids, so the compare short-circuits on length. Purpose-built arms: worst case 1.47 ns/compare, real sparse shape 0.24, hash 0.14 — **−2.16 µs** per sheet-vs-table match* | done | the correction decided it: 8 B/node of `.rodata`, +800 B on the embedded fixture, for 2.16 µs on an **event** |
 | **12** | a measurer epoch for scale changes | **probed: CONFIRMED DEFECT, fixed.** The scale is now part of `MeasureKey`; `crates/lumen-static/tests/measure_scale.rs` is the gate | the ordering is not exotic — `ScaleFactorChanged` carries a new scale *and* a new physical size, and a monitor-to-monitor drag holds the **logical** size constant |
 | **13** | `FontStack::prepare` re-scans every character | **probed and SHIPPED.** One scan, not two: `layout`/`all_rows` **1372.6 → 1291.4 µs min (−5.9%)**, eight runs a side, fast clusters disjoint by 51.9 µs. Four runs would have read it as noise | exactly two scans, as the correction said — and the substitution gate that should have covered it was vacuous (`tests/shaping.rs`) |
@@ -851,8 +851,8 @@ refuted row is how a closed question gets re-opened by accident.
 |---|---|
 | closed on a measured ceiling | 1, 4, 5, 6, 8, 11 |
 | confirmed defect, **fixed** | 12 |
-| optimization, **shipped** | 13 |
-| promoted with its number, not built in M26 | 3, 9, 10, 14, 15 |
+| optimization, **shipped** | 10, 13 |
+| promoted with its number, not built in M26 | 3, 9, 14, 15 |
 | already closed before this round | 2, 7, 16, 17, 18 |
 
 Six of the fourteen were true as written and worth nothing measured.
