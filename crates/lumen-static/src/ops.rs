@@ -528,8 +528,8 @@ impl<S: TextStorage> Label<S> {
     /// is warm at 16 px is cold at 32, so "is it warm" has no answer
     /// without the style being asked about. A version that assumed the
     /// default would have been the defect again, in the test API.
-    pub fn measure_is_warm(&self, limits: Constraints, style: &Style) -> bool {
-        !self.text.is_dirty() && self.measure.is_warm(MeasureKey::of(limits, style))
+    pub fn measure_is_warm(&self, limits: Constraints, style: &Style, scale: f32) -> bool {
+        !self.text.is_dirty() && self.measure.is_warm(MeasureKey::of(limits, style, scale))
     }
 }
 
@@ -580,7 +580,7 @@ impl<S: TextStorage> Node for Label<S> {
         let text = self.text.get().as_ref();
         let dirty = self.text.is_dirty();
         let px = style[i].font_size;
-        let key = MeasureKey::of(limits, &style[i]);
+        let key = MeasureKey::of(limits, &style[i], cx.scale());
         let content = self.measure.get_or(key, dirty, || {
             cx.text.measure_weighted(text, px, style[i].font_weight, limits.max_w)
         });
@@ -840,7 +840,7 @@ impl<S: 'static, T: TextStorage> Node for Button<S, T> {
         let label = self.label.as_ref();
         let px = style[i].font_size;
         let weight = style[i].font_weight;
-        let key = MeasureKey::of(limits, &style[i]);
+        let key = MeasureKey::of(limits, &style[i], cx.scale());
         // The fold stands in for the dirty bit a `Label` has and a
         // `Button` does not — in `FoldedText` since M26/T26.8, because
         // `Badge` and `Chip` needed the same thing and had none.

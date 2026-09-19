@@ -508,7 +508,13 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             // Disjoint field borrows: the view borrows `invalidation`,
             // the palette `palette`, the tree borrows `app`.
             let mut cx = LayoutCx::with_changed(metrics, self.invalidation.view())
-                .with_palette(&self.palette);
+                .with_palette(&self.palette)
+                // M26/T26.17 Phase D #12: the measurer's answer depends
+                // on the scale, so the memo's key must carry it. Without
+                // this line a `ScaleFactorChanged` that holds the logical
+                // size constant — the ordinary monitor-to-monitor drag —
+                // leaves every text box measured for the old display.
+                .with_scale(self.scale);
             let tree = self.app.tree_mut();
             tree.layout(&mut cx, limits, &self.styles, &mut self.states, 0);
             tree.place(Point::default(), &self.styles, &mut self.states, 0);

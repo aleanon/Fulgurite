@@ -1052,3 +1052,63 @@ which is an event and not a frame. Recorded rather than deleted, with
 the number that would reopen it: a tree whose nodes carry dense,
 same-length, shared-prefix ids pays 1.47 ns a compare instead of 0.24,
 and at that point the 10.7× is worth 8 bytes a node.
+
+## T26.17 — Phase D, finding 12: a confirmed defect, not an optimization
+
+The one finding in the plausible set that was never about speed. It is
+**reachable, it was reachable all along, and the ordering is the
+ordinary one** — which is the opposite of the plan's own prediction that
+"the failure needs an event ordering nobody has produced".
+
+`MeasureKey` carried the limits, the font size and the weight (T26.3).
+It did not carry the display scale, and the measurer's answer depends on
+it: `FontMetrics` measures at `size * scale` and divides the answer back
+down, precisely because a hinted face's advances are **not** linear in
+size — 16 px doubled is not 32 px, and its rustdoc has said so since
+`docs/results-frame-cost.md` recorded "POSITIVE" rendering as
+"POSITIV".
+
+What made it look unreachable is true as far as it goes: a scale change
+alone moves the logical viewport, so the limits move with it and the key
+changes. But `winit`'s `ScaleFactorChanged` delivers a new scale **and**
+a new physical size in the same event, and the ordinary case — a window
+dragged from a 1× monitor to a 2× one — holds the *logical* size
+constant while doubling the physical one. Limits unchanged, scale
+doubled, memo hit, stale box.
+
+Reproduced before it was fixed:
+
+```
+1x: 129; 2x under identical limits: 129 (measurer calls 1 -> 1)
+```
+
+One measurer call for two different displays.
+
+**The fix**: `MeasureKey` gains the scale, `LayoutCx` carries it
+(`with_scale`, `scale()`), and `Host::pump_with` hands over its own. The
+scale is a **required** argument of `MeasureKey::of`, for the reason
+that made that constructor take the whole `Style` rather than a size:
+a parameter a caller may omit is a field that will be omitted, and this
+omission is invisible until a display changes under a running window.
+`LayoutCx`'s default of 1.0 is correct for every headless caller,
+because the defect needs a scale that *changes* and only a windowed host
+has one.
+
+Both halves, as the rule requires:
+
+| direction | test | result |
+|---|---|---|
+| refuses bad input | `a_scale_change_under_the_same_limits_re_measures` | red before the fix, green after |
+| accepts good input | `an_unchanged_scale_still_hits_the_memo` | green throughout — one measurer call for two identical layouts |
+
+**Injection**: `MeasureKey::of` made to discard the scale it is handed
+(`scale: { let _ = scale; 0 }`). The first test fails by name and prints
+`1x: 129; 2x under identical limits: 129`; the second stays green, so
+the injection is aimed at the key's field and not at the memo's
+existence.
+
+The test brings its own measurer for the reason T26.3's did:
+`BlockMetrics` is linear in size, so its logical answer is identical at
+every scale and it **cannot exhibit this defect**. A test written
+against it would have passed with the bug in place — the first vacuous
+shape, where both sides agree about a frame in which nothing happened.

@@ -102,9 +102,9 @@ fn observing_a_frame_does_not_force_a_re_measure_on_the_next_one() {
 fn the_memo_stays_warm_across_frame_done() {
     let mut f = Fixture::new();
     f.layout();
-    assert!(f.ui.a.measure_is_warm(VIEW, &f.styles[1]), "warm before");
+    assert!(f.ui.a.measure_is_warm(VIEW, &f.styles[1], 1.0), "warm before");
     f.observe();
-    assert!(f.ui.a.measure_is_warm(VIEW, &f.styles[1]), "and warm after — the probe left no trace");
+    assert!(f.ui.a.measure_is_warm(VIEW, &f.styles[1], 1.0), "and warm after — the probe left no trace");
 }
 
 #[test]

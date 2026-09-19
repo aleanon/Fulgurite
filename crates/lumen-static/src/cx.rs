@@ -166,6 +166,16 @@ pub struct LayoutCx<'a> {
     /// `None` outside a scroller, where the constraint's own maximum is
     /// the answer.
     fill_span: Option<Size>,
+    /// The display scale the measurer is answering at — M26/T26.17
+    /// Phase D #12.
+    ///
+    /// Part of every [`MeasureKey`](crate::text::MeasureKey), because a
+    /// hinted face's advances are not linear in size and the measurer
+    /// therefore returns a different logical width at a different scale
+    /// for the same text, size and limits. `1.0` unless a host says
+    /// otherwise, which is correct for every headless caller: the bug
+    /// needs a scale that *changes*, and only a windowed host has one.
+    scale: f32,
     /// Which subtrees changed this frame — `docs/plan-invalidation.md`
     /// T16.7.
     ///
@@ -200,9 +210,25 @@ impl<'a> LayoutCx<'a> {
         LayoutCx {
             text,
             fill_span: None,
+            scale: 1.0,
             changed: crate::invalidate::Changed::ALL,
             palette: &crate::style::Palette::LIGHT,
         }
+    }
+
+    /// The same context, measuring for a display with this scale factor
+    /// (M26/T26.17 Phase D #12).
+    ///
+    /// A shell calls this with its own scale; nothing else needs to.
+    pub fn with_scale(mut self, scale: f32) -> Self {
+        self.scale = if scale.is_finite() && scale > 0.0 { scale } else { 1.0 };
+        self
+    }
+
+    /// The display scale in force — pass it to
+    /// [`MeasureKey::of`](crate::text::MeasureKey::of).
+    pub fn scale(&self) -> f32 {
+        self.scale
     }
 
     /// The same context, resolving looks against `palette` (M25/T25.3).
@@ -220,7 +246,13 @@ impl<'a> LayoutCx<'a> {
         text: &'a mut dyn TextMeasure,
         changed: crate::invalidate::Changed<'a>,
     ) -> Self {
-        LayoutCx { text, fill_span: None, changed, palette: &crate::style::Palette::LIGHT }
+        LayoutCx {
+            text,
+            fill_span: None,
+            scale: 1.0,
+            changed,
+            palette: &crate::style::Palette::LIGHT,
+        }
     }
 
     /// Run `f` with `span` as the `Fill` reference, restoring whatever

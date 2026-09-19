@@ -88,24 +88,52 @@ impl<T> core::ops::Deref for Dirty<T> {
 /// The text is deliberately *not* in the key. `Label` knows when its text
 /// changed from its [`Dirty`] bit, which costs nothing per frame; `Button`
 /// has no dirty bit and folds its label beside this key instead.
+///
+/// # The display scale is in the key — M26/T26.17 Phase D #12
+///
+/// Added because the measurer's answer depends on it and nothing said
+/// so. `FontMetrics` measures at `size * scale` and divides the answer
+/// back down, because a hinted face's advances are **not** linear in
+/// size; 16 px doubled is not 32 px.
+///
+/// A scale change on its own moves the logical viewport and therefore
+/// the limits, which is why this looked unreachable. `winit`'s
+/// `ScaleFactorChanged` delivers a new scale *and* a new physical size
+/// together, and the ordinary case — a window dragged from a 1x monitor
+/// to a 2x one — holds the **logical** size constant. Limits unchanged,
+/// scale doubled, memo hit, stale box; the symptom is the one
+/// `docs/results-frame-cost.md` records under another cause, text drifting
+/// out of the box laid out for it.
+///
+/// `crates/lumen-static/tests/measure_scale.rs` is the gate.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct MeasureKey {
     limits: Constraints,
     px: u32,
     weight: u32,
+    scale: u32,
 }
 
 impl MeasureKey {
-    /// The key for text measured under `limits` and `style`.
+    /// The key for text measured under `limits` and `style` on a display
+    /// with this scale factor — [`LayoutCx::scale`](crate::LayoutCx::scale)
+    /// answers it.
+    ///
+    /// **Required, not defaulted.** The same reasoning that made this
+    /// constructor take the whole [`Style`] rather than a size: a
+    /// parameter a caller may omit is a field that will be omitted, and
+    /// the omission is invisible until a display changes underneath a
+    /// running window.
     ///
     /// Bit patterns, not values: a font size is a float, and the question
     /// is "is this the same input", which `to_bits` answers without `NaN`
     /// ever comparing unequal to itself.
-    pub fn of(limits: Constraints, style: &Style) -> MeasureKey {
+    pub fn of(limits: Constraints, style: &Style, scale: f32) -> MeasureKey {
         MeasureKey {
             limits,
             px: style.font_size.to_bits(),
             weight: style.font_weight.to_bits(),
+            scale: scale.to_bits(),
         }
     }
 }
