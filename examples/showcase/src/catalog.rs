@@ -92,6 +92,17 @@ fn grid_row(r: &mut GridRow, i: usize) {
     r.size.l.set(format!("{} KB", 1 + i % 97));
 }
 
+/// What M27/T27.11's file picker lists.
+const FILES: [&str; 7] = [
+    "Cargo.toml",
+    "AGENT.md",
+    "justfile",
+    "lib.rs",
+    "main.rs",
+    "style.rs",
+    "widget.rs",
+];
+
 /// The options M27/T27.9's three demos share.
 const FRUIT: [&str; 6] =
     ["Apple", "Banana", "Cherry", "Damson", "Elderberry", "apricot"];
@@ -110,6 +121,12 @@ const COMMANDS: [&str; 4] = ["Cut", "Copy", "Paste", "Select all"];
 fn opened<const K: u8>(mut c: lumen_static_widgets::Chooser<K>) -> lumen_static_widgets::Chooser<K> {
     c.open();
     c
+}
+
+/// The same for a picker: a demo that shows its cells.
+fn shown<const K: u8>(mut p: lumen_static_widgets::Picker<K>) -> lumen_static_widgets::Picker<K> {
+    p.open();
+    p
 }
 
 fn chip(t: &str) -> Chip<String> {
@@ -372,6 +389,28 @@ pub static CATALOG: &[Entry] = &[
         "A release chooses, a press does not — every menu in every toolkit commits on release, and choosing on the press also closes the list under a finger that is still down.",
         false,
         |s| on(s, Demo::Menu(DMenu { a: opened(Menu::new(&COMMANDS)) })),
+        none),
+    // ---- M27/T27.11 -----------------------------------------------
+    entry!("Input", "ColorPicker", "Six hues, four lightnesses.",
+        "A fixed palette, not a wheel: a wheel needs a saturation square and a hue strip — three geometries for a widget whose job is usually `pick one of the ones we use`.",
+        false,
+        |s| on(s, Demo::ColorPicker(DColorPicker { a: ColorPicker::new() })),
+        none),
+    entry!("Input", "DatePicker", "A month; the arrows page it.",
+        "A month grid is a lead-in of blanks and then the days, so the only real arithmetic is which weekday the 1st falls on — Sakamoto's, spelled out, because `chrono` is `std` and this runs on a microcontroller.",
+        false,
+        |s| on(s, Demo::DatePicker(DDatePicker { a: shown(DatePicker::new()) })),
+        none),
+    entry!("Input", "TimePicker", "Twenty-four hours over twelve marks.",
+        "Hours and five-minute marks in one grid: a clock is two lists, and two lists in one popup is one hit test instead of two.",
+        false,
+        |s| on(s, Demo::TimePicker(DTimePicker { a: TimePicker::new() })),
+        none),
+    entry!("Input", "FilePicker", "A list of names the application owns.",
+        "It owns no data either — the names are handed to it, the way a grid's rows are, because a file list belongs to whatever read the directory.",
+        false,
+        |s| on(s, Demo::FilePicker(DFilePicker {
+            a: FilePicker::new().with_files(&FILES) })),
         none),
     // ---- M27/T27.10 -----------------------------------------------
     entry!("Data", "Pagination", "Thirty pages; the window follows you.",

@@ -41,7 +41,8 @@ pub const TIME: u8 = 2;
 /// A list of names the application supplies.
 pub const FILE: u8 = 3;
 
-/// The swatches a `ColorPicker` offers: six hues at four lightnesses.
+/// The swatches a `ColorPicker` offers: six hues, four lightnesses
+/// each, one hue per row.
 ///
 /// **A fixed palette, not a colour wheel.** A wheel needs a continuous
 /// hit test, a saturation/value square and a hue strip — three more
@@ -67,8 +68,17 @@ pub const MAX_FILES: usize = 64;
 
 /// A cell's height, every kind.
 const CELL_H: f32 = 26.0;
-/// The month header's height — `‹ September 2026 ›`.
+/// The month header's height — `< Sep 2026 >`.
 const HEAD_H: f32 = 28.0;
+/// The weekday strip under it.
+///
+/// **A calendar without weekday headings is a grid of numbers.** The
+/// first render of this had none, and the only way to tell which column
+/// was Monday was to count from a date you already knew.
+const DOW_H: f32 = 20.0;
+/// Monday first, which is what the weekday arithmetic answers and what
+/// every calendar outside North America shows.
+const DOW: [&str; 7] = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
 
 /// Days in `month` of `year`, 1-based month.
 pub fn days_in_month(year: i32, month: u8) -> u8 {
@@ -158,7 +168,11 @@ impl<const KIND: u8> Pad<KIND> {
     /// Columns in the grid. One number decides the whole geometry.
     pub fn cols(&self) -> usize {
         match KIND {
-            COLOR => 6,
+            // **Four, because the palette is four lightnesses of a
+            // hue.** Six columns cut across the families: the first row
+            // read grey, grey, grey, grey, red, red, which is a grid of
+            // twenty-four colours and not a palette.
+            COLOR => 4,
             DATE => 7,
             TIME => 6,
             _ => 1,
@@ -186,7 +200,7 @@ impl<const KIND: u8> Pad<KIND> {
     /// colour grid four times too wide.
     pub fn cell_w(&self) -> f32 {
         match KIND {
-            COLOR => 28.0,
+            COLOR => 32.0,
             DATE => 30.0,
             TIME => 34.0,
             _ => 168.0,
@@ -197,7 +211,7 @@ impl<const KIND: u8> Pad<KIND> {
     /// nothing for the other three.
     pub fn head_h(&self) -> f32 {
         if KIND == DATE {
-            HEAD_H
+            HEAD_H + DOW_H
         } else {
             0.0
         }
@@ -423,8 +437,32 @@ impl<const KIND: u8> Node for Pad<KIND> {
                 700.0,
                 s.fg,
             );
+            // The weekday strip, one label per column, dimmed: it is a
+            // heading, not a row of cells, and nothing in it is
+            // pressable.
+            let dim = Color(s.fg.0, s.fg.1, s.fg.2, 0x99);
+            for (c, d) in DOW.iter().enumerate() {
+                let x = x0 + c as f32 * self.cell_w();
+                out.text_weighted(
+                    [x + 6.0, y0 + HEAD_H + 2.0, x + self.cell_w(), y0 + HEAD_H + DOW_H],
+                    d,
+                    s.font_size - 2.0,
+                    600.0,
+                    dim,
+                );
+            }
         }
         let gy = y0 + self.head_h();
+        // **The seam between the hours and the minutes.** Without it a
+        // clock reads as one grid of thirty-six numbers, which is what
+        // the first render looked like: `18 19 20 21 22 23` sitting
+        // directly above `:00 :05 :10`, with nothing saying the two rows
+        // mean different things.
+        if KIND == TIME {
+            let y = gy + 4.0 * CELL_H;
+            out.rect([x0, y - 1.0, x0 + self.cols() as f32 * self.cell_w(), y],
+                     Color(s.fg.0, s.fg.1, s.fg.2, 0x33));
+        }
         for k in 0..self.cells() {
             let (c, row) = (k % self.cols(), k / self.cols());
             let x = x0 + c as f32 * self.cell_w();
@@ -535,6 +573,30 @@ impl<const KIND: u8> Picker<KIND> {
     pub fn with_files(mut self, names: &[&'static str]) -> Self {
         self.pad.content.set_files(names);
         self
+    }
+
+    /// The cells, to seed or to read.
+    ///
+    /// The popup's content is `pub` on `Popup`; this is the shorter path
+    /// and the one an application uses — `picker.pad.content` reads as
+    /// two pieces of plumbing and one widget.
+    pub fn cells(&self) -> &Pad<KIND> {
+        &self.pad.content
+    }
+
+    pub fn cells_mut(&mut self) -> &mut Pad<KIND> {
+        &mut self.pad.content
+    }
+
+    /// Show the pad, without a press.
+    ///
+    /// For a demo or a test that wants the open state on screen —
+    /// `Chooser::open` exists for the same reason (T27.9). Not a
+    /// toggle: "open it" and "flip it" are different requests and a
+    /// caller that wanted the first and got the second closed the thing
+    /// it meant to show.
+    pub fn open(&mut self) {
+        self.pad.open = true;
     }
 
     pub fn is_open(&self) -> bool {
@@ -738,7 +800,7 @@ impl<const KIND: u8> Node for Picker<KIND> {
         None
     }
 
-    fn on_event(&mut self, ev: &Event, cx: &EventCtx) -> bool {
+    fn on_event(&mut self, ev: &Event, _cx: &EventCtx) -> bool {
         match ev {
             Event::Key { key: Key::Escape, down: true } if self.pad.open => {
                 self.pad.open = false;

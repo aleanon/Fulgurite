@@ -599,7 +599,7 @@ each names its injections in the commit body.
 | ~~**T27.8**~~ | ~~Wrap, Grid, SplitPane, PaneGrid, Accordion~~ **DONE 2026-09-19** | the layout group; needs `Widget`-level work, and is the tranche most likely to move the const-eval number | — |
 | ~~**T27.9**~~ | ~~Menu, PickList, Combobox~~ **DONE 2026-09-19** | one `Chooser<KIND>` — and T27.0's third landing, which this forced | T27.0 |
 | ~~**T27.10**~~ | ~~DataGrid, Tree, Pagination~~ **DONE 2026-09-19** | repeaters with addressable rows | T27.0, T27.1 |
-| **T27.11** | ColorPicker, DatePicker, TimePicker, FilePicker | all four are bordered composites over the above | T27.1, T27.8 |
+| ~~**T27.11**~~ | ~~ColorPicker, DatePicker, TimePicker, FilePicker~~ **DONE 2026-09-19** | one `Picker<KIND>` over a grid of cells | T27.1, T27.8 |
 | **T27.12** | RichText, Markdown, RichTextEditor, PaintBox | the text-heavy tail and the draw callback | — |
 
 ### T27.3, as built — and the prediction it was written to test
@@ -1013,6 +1013,65 @@ because sorting is not built (a header that swallowed a press would be a
 control that lies), and a `Tree` cannot be seeded collapsed because
 `Tree::new` takes rows and nothing else — which is a real gap, and is
 `Tree::toggle`'s job to fill when something needs it.
+
+### T27.11, as built — four pickers, one geometry
+
+`Picker<KIND>`: a trigger and a popup of cells. The four differ in three
+things — how many columns, what cell `k` says, and what picking it means
+— and in nothing else, because **a colour swatch grid, a month, a clock
+and a file list are the same geometry**. That is the observation the
+tranche is built on, and it held: one table, one hit test, one open/close
+rule, four `type` aliases.
+
+The cells are *painted*, not spliced. Forty-two day cells as forty-two
+table nodes would put a month's data in the type, which is the thing
+this architecture exists to keep out — so a pad is one node that paints
+its cells and hit-tests them by arithmetic, the way `Pagination` draws
+page numbers and `Strip` draws its items.
+
+**The date arithmetic is the only real computation in the tranche**, and
+it is the only place a widget can be wrong in a way nobody notices for a
+month. Sakamoto's method, spelled out rather than pulled in (`chrono` is
+`std`; this runs on a microcontroller), and asserted against five dates
+a person can check — **cross-checked against Python's `datetime` in the
+same session**, because a test that agrees with the implementation that
+produced its expectations is not a test.
+
+Eight injections (CP–CW) against the unit tests, four more (CX–DA)
+against the live drive. **Two left a test green**, and both were the
+same shape:
+
+  * the month header's paging arm returns *before* the cell arithmetic
+    is reached, so an injection that dropped the header's height from
+    `cell_at` could not be seen through a press on the header. The test
+    now presses the row *below* it and names the day: September 2026
+    starts on a Tuesday, so the first week's Wednesday is the 2nd, and a
+    grid that began its rows at the pad's top answers with the 9th.
+  * nothing pressed a **blank** lead-in cell, so "a blank picks nothing"
+    was never exercised. It is now, and the assertion is that the press
+    is *not taken* — which is also what tells the overlay it may close.
+
+**Three things the render caught that no test would have.** The swatch
+grid was six columns wide over a palette of four lightnesses per hue, so
+its first row read grey, grey, grey, grey, red, red — twenty-four
+colours and not a palette; it is four columns now, one hue per row. The
+month grid had no weekday strip, so the only way to tell which column
+was Monday was to count from a date you already knew. And the clock had
+no seam between its hours and its five-minute marks, so `18 19 20 21 22
+23` sat directly above `:00 :05 :10` with nothing saying they meant
+different things. All three are §3b's ghost-button lesson in a new form:
+*the frame is the artifact, and reading the code does not render it.*
+
+**And one gap found while drafting, fixed first**: `Style` gained
+`border_width` and `border_color` in T27.1 and `Patch::fields` never
+learned about them, so a rule that set only a border reported the empty
+set and `SheetIssue::Unread` could never fire for one. Every picker's
+trigger is a bordered control, and its seed had no bit to declare.
+`Fields::BORDER` is the seventeenth bit — which is why `Fields` is a
+`u32` now — and **which kinds declare it was measured, not guessed**:
+`style_reads.rs` probes every kind's output field by field and named the
+two that were wrong. It also corrected the test written for it, whose
+two directions had their controls backwards.
 
 ## 7. The showcase at fifty-one entries
 

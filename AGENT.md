@@ -174,6 +174,32 @@ are independent of each other**, so either may go first:
   a part id lives on a type's table, so a composite used twice is
   unaddressable by construction. `W1011` is scoped to match. Twenty-seven
   widgets, 64 actions, green both ways.
+  **T27.10 shipped 2026-09-19** — `Pagination`, `Tree`, `DataGrid`, and
+  a defect only the live assembly could find: the agent's per-frame
+  audit measures every leaf twice under 1e6/2e6 px boxes, and
+  `Repeat::layout` clamped its *stored* scroll offset against the box it
+  was handed — so **a grid could not be scrolled at all** while a unit
+  test, a headless `Host` and `tests/repeat_scroll.rs` all agreed it
+  could. Layout derives and no longer decides; the viewport comes from
+  `place`; `Repeat` overrides `Node::probe`, the hook that exists for
+  exactly this. **Its adversarial review (§5, run for real) found
+  fifteen more** — a pagination whose current page number was painted
+  *outside* its own pill in the pill's contrast colour (an empty blue
+  lozenge, shipped), a tree painting 116 px outside its box, and
+  `Event::Hover`: a `PointerMove` reaches a widget only under pointer
+  capture, so two widgets' hover highlights were unreachable code. The
+  review's planted weakness was caught, so the adversary passes its own
+  gate. `AgentHost::pump` now answers `(frame, handled)` — the only
+  direct answer to "did that input land", and the only way to test an
+  action whose correct outcome is that *nothing happens*.
+  **T27.11 shipped 2026-09-19** — `ColorPicker`, `DatePicker`,
+  `TimePicker`, `FilePicker` as one `Picker<KIND>`: a trigger and a
+  popup of *cells*, because a swatch grid, a month, a clock and a file
+  list are the same geometry. Three of its defects were caught by
+  looking at the render — a six-column palette that cut across its own
+  hue families, a month with no weekday strip, a clock with no seam
+  between hours and minutes. Thirty-four widgets, 88 actions, green both
+  ways.
 
 - **M28 — `docs/plan-tasks.md`** (T28.0–T28.12): **not started**, written
   2026-09-18 and **revised the same day after a seven-lens review: 42

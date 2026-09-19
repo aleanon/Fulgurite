@@ -52,6 +52,7 @@ mod data;
 mod field;
 mod indicator;
 mod nav;
+pub mod pick;
 pub mod split;
 pub mod surface;
 mod trim;
@@ -68,6 +69,10 @@ pub use data::{
 };
 #[cfg(feature = "alloc")]
 pub use field::{NumberInput, RangeSlider, SearchField};
+pub use pick::{
+    ColorPicker, DatePicker, FilePicker, Pad, Picker, TimePicker, COLOR, DATE, FILE, MAX_FILES,
+    MAX_PICKER_NODES, SWATCHES, TIME,
+};
 pub use nav::{AppBar, BottomNav, PullToRefresh, Item, NavigationRail, Strip, Tabs, MAX_ITEMS, BOTTOM, RAIL, TABS};
 pub use indicator::{ProgressBar, Skeleton, Spinner};
 pub use split::{Collapsible, SplitPane, MAX_SPLIT_NODES};
@@ -86,7 +91,7 @@ pub mod prelude {
     };
     #[cfg(feature = "alloc")]
     pub use crate::{
-        Branch, Combobox, DataGrid, Menu, NumberInput, OptionList, Pagination, PickList,
-        RangeSlider, SearchField, Tree,
+        Branch, ColorPicker, Combobox, DataGrid, DatePicker, FilePicker, Menu, NumberInput,
+        OptionList, Pagination, PickList, RangeSlider, SearchField, TimePicker, Tree,
     };
 }

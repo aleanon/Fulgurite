@@ -97,6 +97,37 @@ pair!(PairRadioC, Radio<Show>, "d_radio_c", "d_radio_cl");
 /// live. `docs/plan-widgets-gallery.md` §3 records what a wrapper that
 /// does not route handlers looks like: every control inside it is
 /// hit-testable, hoverable, pressable and wired to nothing.
+/// M27/T27.11's four. Each is a trigger and a popup of cells, and the
+/// only thing that differs is what a cell says — which is why they are
+/// one type with a `KIND` and four demos rather than four widgets.
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+pub struct DColorPicker {
+    #[widget_id("d_colorpicker_a")]
+    pub a: ColorPicker,
+}
+
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+pub struct DDatePicker {
+    #[widget_id("d_datepicker_a")]
+    pub a: DatePicker,
+}
+
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+pub struct DTimePicker {
+    #[widget_id("d_timepicker_a")]
+    pub a: TimePicker,
+}
+
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+pub struct DFilePicker {
+    #[widget_id("d_filepicker_a")]
+    pub a: FilePicker,
+}
+
 #[derive(StaticTree, Default)]
 #[widget(column, spacing = 0.0)]
 pub struct DPagination {
@@ -601,6 +632,10 @@ pub enum Demo {
     PickList(DPickList),
     Combobox(DCombobox),
     Menu(DMenu),
+    ColorPicker(DColorPicker),
+    DatePicker(DDatePicker),
+    TimePicker(DTimePicker),
+    FilePicker(DFilePicker),
     Pagination(DPagination),
     Tree(DTree),
     DataGrid(DDataGrid),
@@ -613,4 +648,4 @@ impl Default for Demo {
 }
 
 /// How many demos the stage has. Asserted against the catalogue.
-pub const DEMOS: usize = 42;
+pub const DEMOS: usize = 46;
