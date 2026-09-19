@@ -305,6 +305,13 @@ tree *position*. The code-size blowup from §4 disappears.
 ### What survives from §3
 
 - Zero allocation — offsets index into the same single struct.
+  **Gated over the whole frame since 2026-09-19 (M26/T26.13)**, and not
+  before: `crates/lumen-static-shell/tests/alloc_gate.rs` measured
+  `Host::pump`, which stops at the display list, so the software
+  rasteriser was outside every zero in `docs/results-allocation.md`. It
+  was allocating 1.00 per frame for its clip stack and 3.00 per glass
+  panel for the blur's buffers; both are zero now, and the gate covers
+  a rasterised frame.
 - Stable identity — a node's offset *is* its ID.
 - `NODE_COUNT` still const, so `[NodeState; N]` still fits a fixed budget.
 - Rigidity still computed at compile time; it is a flag byte now rather than a

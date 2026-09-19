@@ -76,6 +76,33 @@ Planting one `Vec::with_capacity(8)` in `Host::pump` fails all five
 tests. A gate that cannot fail is not a gate — the same lesson as
 `table_is_well_formed` (`docs/results-const-eval.md`).
 
+## The blind spot this table had until 2026-09-19 — M26/T26.13
+
+**Every zero above was measured over `Host::pump`**, and `pump` stops at
+the display list. The software rasteriser was outside all of it: the
+clip stack, the blur's scratch buffers, the capture accumulator. A table
+of zeros, and a whole stage of the frame that no row covered.
+
+Extended, and the first run of the new rows is the measurement:
+
+| arm | before | after |
+|---|---:|---:|
+| `rasterising_a_frame_allocates_nothing`, 50 frames | **50 — 1.00 per frame** | **0** |
+| `a_frame_carrying_glass_allocates_nothing`, 20 frames × 2 panels | **120 — 6.00 per frame, 3.00 per panel** | **0** |
+
+1.00 per frame was `Vec::with_capacity(4)` for the clip stack; 3.00 per
+panel was the blur's capture, its accumulator and its ping-pong target.
+The fixture carries **two** panels deliberately, so "per command" is
+distinguishable from "per frame" — which is what makes 3.00 a diagnosis
+rather than a number. `docs/results-frame-and-types.md` T26.13 has the
+rest, including the two injections that were themselves wrong first: an
+unused `Vec::with_capacity` LLVM elided, and a fix that took the blur's
+buffers and never put them back.
+
+**The lesson is the table's shape, not the two defects.** A gate named
+"a frame allocates nothing" that measures one stage of the frame reads
+as covering all of it. What a gate measures belongs in its own name.
+
 ## What is *not* covered
 
 Construction. `Host::new` allocates the two parallel arrays, `Either`
