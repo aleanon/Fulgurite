@@ -29,23 +29,69 @@ use lumen_static::{Edges, LayoutCx};
 /// The most page buttons shown at once.
 pub const MAX_PAGES: usize = 9;
 
+/// A page number rendered into a stack buffer.
+///
+/// **Not a table of literals.** It was a thirty-three entry table
+/// indexed with `.min(len - 1)`, which labelled every page past its end
+/// "32" — silently, because the showcase seeds thirty pages and nothing
+/// ever asked for a thirty-fourth (M27/T27.11's review, finding 15). A
+/// pagination whose data outgrows its labels is the normal case, not
+/// the exotic one.
+///
+/// Five digits: 65 535 pages is `u16::MAX`, and a paginator with more
+/// than that has a different problem.
+pub struct PageLabel([u8; 5], usize);
+
+impl PageLabel {
+    pub fn new(mut n: usize) -> PageLabel {
+        let mut buf = [b'0'; 5];
+        let mut i = buf.len();
+        if n == 0 {
+            i -= 1;
+        }
+        while n > 0 && i > 0 {
+            i -= 1;
+            buf[i] = b'0' + (n % 10) as u8;
+            n /= 10;
+        }
+        PageLabel(buf, i)
+    }
+
+    pub fn as_str(&self) -> &str {
+        // Every byte written is an ASCII digit and `i` never passes the
+        // end, so this cannot fail; `unwrap_or` rather than `unwrap`
+        // because the core carries no panic path it can avoid.
+        core::str::from_utf8(&self.0[self.1..]).unwrap_or("?")
+    }
+}
+
 /// Page numbers, with a previous and a next.
 pub struct Pagination {
     pages: usize,
     page: usize,
     /// Laid-out width, so `on_event` can turn `local.x` into a button.
     width: f32,
+    /// Each visible number's measured width, so `paint` can centre it.
+    ///
+    /// **Measured at layout, centred at paint** — `Strip` does the same,
+    /// and for the same reason: `Painter` cannot measure. Before this
+    /// the digit was drawn left-aligned in the *slot* while its
+    /// selection pill was centred in it, so the glyph landed 3 px
+    /// outside the pill and was painted in the pill's contrast colour on
+    /// the control's own background: **the current page read as an empty
+    /// lozenge** (M27/T27.11's review, finding 1).
+    widths: [f32; MAX_PAGES],
 }
 
 impl Default for Pagination {
     fn default() -> Self {
-        Pagination { pages: 1, page: 0, width: 0.0 }
+        Pagination { pages: 1, page: 0, width: 0.0, widths: [0.0; MAX_PAGES] }
     }
 }
 
 impl Pagination {
     pub fn new(pages: usize) -> Self {
-        Pagination { pages: pages.max(1), page: 0, width: 0.0 }
+        Pagination { pages: pages.max(1), page: 0, width: 0.0, widths: [0.0; MAX_PAGES] }
     }
 
     pub fn pages(&self) -> usize {
@@ -142,7 +188,7 @@ impl Widget for Pagination {
 impl Node for Pagination {
     fn layout(
         &mut self,
-        _cx: &mut LayoutCx,
+        cx: &mut LayoutCx,
         limits: Constraints,
         style: &[Style],
         st: &mut [NodeState],
@@ -158,6 +204,19 @@ impl Node for Pagination {
             Size { w: limits.max_w, h: 36.0 },
         );
         self.width = s.w;
+        let (first, n) = self.window();
+        for k in 0..n {
+            let label = PageLabel::new(first + k + 1);
+            self.widths[k] = cx
+                .text
+                .measure_weighted(
+                    label.as_str(),
+                    me.font_size,
+                    if first + k == self.page { 600.0 } else { me.font_weight },
+                    limits.max_w,
+                )
+                .w;
+        }
         lumen_static::ops::record_painted(st, i, limits, s, &me)
     }
 
@@ -200,11 +259,15 @@ impl Node for Pagination {
             // Page numbers are 1-based on screen and 0-based in the
             // field: every user-facing pagination counts from one, and
             // every array does not.
-            let n1 = p + 1;
-            let text: &str = DIGITS.get(n1.min(DIGITS.len() - 1)).copied().unwrap_or("?");
+            let label = PageLabel::new(p + 1);
+            // Centred in the slot, from the width `layout` measured —
+            // the same centre the pill above uses, so the two agree by
+            // construction rather than by coincidence.
+            let tw = self.widths[k].min(each);
+            let tx = x + (each - tw) / 2.0;
             out.text_weighted(
-                [x, r[1] + h / 2.0 - s.font_size * 0.6, x + each, r[3]],
-                text,
+                [tx, r[1] + h / 2.0 - s.font_size * 0.6, tx + tw, r[3]],
+                label.as_str(),
                 s.font_size,
                 if p == self.page { 600.0 } else { s.font_weight },
                 col,
@@ -256,13 +319,6 @@ impl Node for Pagination {
     }
 }
 
-/// `"1".."32"`, so a page number needs no formatter and no allocation in
-/// `paint`. Beyond that a pagination is a scrollbar.
-const DIGITS: [&str; 33] = [
-    "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16",
-    "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32",
-];
-
 impl<S> lumen_static::event::Handlers<S> for Pagination {
     fn handler(
         &self,
@@ -307,6 +363,9 @@ pub struct Tree {
     /// The row the pointer is over.
     hot: Option<usize>,
     height: f32,
+    /// The padding `layout` last resolved, so a hit test agrees with
+    /// what `paint` drew whatever a stylesheet set.
+    pad: Edges,
 }
 
 /// A tree row's height.
@@ -322,6 +381,7 @@ impl Default for Tree {
             open: [true; MAX_TREE_NODES],
             hot: None,
             height: 0.0,
+            pad: Edges::all(8.0),
         }
     }
 }
@@ -392,6 +452,12 @@ impl Tree {
         (0..self.count).filter(|&i| self.is_visible(i)).count()
     }
 
+    /// The row the pointer is over, if any — published so a test can
+    /// assert the highlight rather than the pixels under it.
+    pub fn hot(&self) -> Option<usize> {
+        self.hot
+    }
+
     fn row_at(&self, y: f32) -> Option<usize> {
         if self.height <= 0.0 || y < 0.0 {
             return None;
@@ -454,6 +520,7 @@ impl Node for Tree {
         };
         let s = lumen_static::ops::resolve_self(limits, &me, content);
         self.height = s.h;
+        self.pad = me.padding;
         lumen_static::ops::record_painted(st, i, limits, s, &me)
     }
 
@@ -465,6 +532,15 @@ impl Node for Tree {
         }
         out.rounded_rect(r, s.bg, s.radius);
         lumen_static::ops::border(st, i, out);
+        // **Clipped to its own box** — a tree in a pane is the normal
+        // case (a sidebar has a size), and a tree with more rows than
+        // the pane is taller than the pane by definition: `layout`
+        // resolves against the limits and the *rows* do not shrink. The
+        // review measured 116 px of rows painted over the note below the
+        // widget, on a fixture that happened to fit by 2 px
+        // (M27/T27.11, finding 2). `Repeat` clips for the same reason
+        // and by the same two calls.
+        out.push_clip(r);
         let p = s.pad;
         let mut k = 0usize;
         for idx in 0..self.count {
@@ -501,16 +577,27 @@ impl Node for Tree {
             );
             k += 1;
         }
+        out.pop_clip();
     }
 
     fn on_event(&mut self, ev: &Event, cx: &EventCtx) -> bool {
         match ev {
-            Event::PointerMove { .. } => {
+            // **The padding is read, not assumed.** `Tree::SEEDS`
+            // declares it reads `PADDING`, so a sheet can set it — and a
+            // hit test with `- 8.0` written into it would then pick a
+            // different row from the one `paint` drew (M27/T27.11,
+            // finding 14).
+            // **`Hover`, not `PointerMove`.** A move is delivered only
+            // under pointer capture, and capture follows a press — so
+            // this arm, written as a move, could fire only while the
+            // button was still held after a fold. Two widgets shipped
+            // that way (M27/T27.11, finding 3).
+            Event::Hover { .. } => {
                 let was = self.hot;
-                self.hot = self.row_at(cx.local.y - 8.0);
+                self.hot = self.row_at(cx.local.y - self.pad.top);
                 was != self.hot
             }
-            Event::PointerDown { .. } => match self.row_at(cx.local.y - 8.0) {
+            Event::PointerDown { .. } => match self.row_at(cx.local.y - self.pad.top) {
                 Some(idx) => self.toggle(idx),
                 None => false,
             },
@@ -592,6 +679,16 @@ impl<R: Widget + Default + 'static> DataGrid<R> {
     const ROWS: usize = 1;
     /// The header's height.
     const HEADER: f32 = 28.0;
+    /// How far the grid's **content** — header and rows alike — is
+    /// inset from its own edge.
+    ///
+    /// The inset is the grid's, not the cell's: it insets the header and
+    /// hands the rows a box already inset by the same amount, so column
+    /// k starts at one x for both. The alternative — the header insets
+    /// itself and every row is expected to inset its cells to match —
+    /// is what shipped in T27.10, and the `Size` values sat 72 px left
+    /// of the `Size` heading (M27/T27.11, finding 4).
+    pub const CELL_INSET: f32 = 8.0;
 
     pub fn new(
         columns: &[&'static str],
@@ -609,6 +706,26 @@ impl<R: Widget + Default + 'static> DataGrid<R> {
             g.column_count = i + 1;
         }
         g
+    }
+
+    /// How wide one column is, given the grid's own width.
+    ///
+    /// **Published, because a row cannot line up with a number it
+    /// cannot see.** A grid divides its header evenly; its *rows* are
+    /// the application's widget, bound by a plain `fn`, and nothing
+    /// reconciles the two — the review measured the `Size` column's
+    /// values 72 px left of the `Size` header, on a demo whose header
+    /// was correct and whose rows were correct and which together were
+    /// wrong (M27/T27.11, finding 4).
+    ///
+    /// A row lines up when its k-th child takes exactly one column —
+    /// which a `row` container does for itself if its children are
+    /// `FILL`, because the rows are handed a box already inset and
+    /// already divided. `the_header_sits_over_a_row_that_follows_the_column_rule`
+    /// pins it, and the showcase's `GridRow` is two `FILL` cells and no
+    /// stylesheet rule at all.
+    pub fn column_width(&self, grid_w: f32) -> f32 {
+        (grid_w - 2.0 * Self::CELL_INSET).max(0.0) / self.column_count.max(1) as f32
     }
 
     pub fn columns(&self) -> usize {
@@ -706,9 +823,10 @@ impl<R: Widget + Default + Node + 'static> Node for DataGrid<R> {
         // height, not the limits it was offered**, which is the
         // asymmetry M27/T27.4 fixed inside `Repeat` and which a caller
         // has to respect too or the repeater cannot scroll.
+        let inner = (s.w - 2.0 * Self::CELL_INSET).max(0.0);
         let body = Constraints {
-            min_w: s.w,
-            max_w: s.w,
+            min_w: inner,
+            max_w: inner,
             min_h: 0.0,
             max_h: (s.h - Self::HEADER).max(0.0),
         };
@@ -719,7 +837,7 @@ impl<R: Widget + Default + Node + 'static> Node for DataGrid<R> {
     fn place(&mut self, origin: Point, style: &[Style], st: &mut [NodeState], i: usize) {
         st[i].pos = origin;
         self.rows.place(
-            Point { x: origin.x, y: origin.y + Self::HEADER },
+            Point { x: origin.x + Self::CELL_INSET, y: origin.y + Self::HEADER },
             style,
             st,
             i + Self::ROWS,
@@ -735,11 +853,11 @@ impl<R: Widget + Default + Node + 'static> Node for DataGrid<R> {
         out.rounded_rect(r, s.bg, s.radius);
         lumen_static::ops::border(st, i, out);
         if self.column_count > 0 {
-            let each = (r[2] - r[0]) / self.column_count as f32;
+            let each = self.column_width(r[2] - r[0]);
             for k in 0..self.column_count {
-                let x = r[0] + each * k as f32;
+                let x = r[0] + Self::CELL_INSET + each * k as f32;
                 out.text_weighted(
-                    [x + 8.0, r[1] + Self::HEADER / 2.0 - s.font_size * 0.6,
+                    [x, r[1] + Self::HEADER / 2.0 - s.font_size * 0.6,
                      x + each, r[1] + Self::HEADER],
                     self.columns[k],
                     s.font_size,

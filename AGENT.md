@@ -278,6 +278,10 @@ while proving nothing:
 | every gate vs. a hidden subtree (M24/T24.3) | no tree had ever put an inactive enum variant near the end of the table |
 | invalidation oracle vs. hover and press (M25/T25.0) | its session never hovered, so `Boundaries` painted a stale shade on every real frame and the oracle agreed with it |
 | a repeater vs. the audit's probe (M27/T27.10) | the fixture pinned the list at `Fixed`, so no probe could change the height the clamp was computed from |
+| a tree's "pressing a leaf does nothing" (M27/T27.11) | a leaf has no children, so folding its bit changes nothing anyone can see — neither the row count nor the damage nor the reported changes could move under an injection that let a leaf toggle |
+| `a_grid_taller_than_its_box_can_scroll` (M27/T27.11) | its doc named the limits-versus-box distinction; it asserted content > viewport, which is true under both |
+| `a_press_hits_the_visible_row_not_the_raw_index` (M27/T27.11) | it pressed the *second* visible row, which is the second raw row whether or not anything below it is collapsed |
+| the first `Event::Hover` test (M27/T27.11) | it called `on_event` with a `Hover` in hand, so deleting the synthesis in `dispatch` left it green |
 | every test vs. per-widget damage (M27/T27.3) | nothing had ever asked what one interaction costs in pixels, so a click reported the whole window at **1 200×** the widget's own box and 151 test binaries were green |
 | every test vs. a container's own background (M27/T27.3) | the journal folded a container's signature from its *children's*, so every container looked busy whenever anything under it moved — **one defect hid the other**, and no test could have seen the second while the first stood |
 

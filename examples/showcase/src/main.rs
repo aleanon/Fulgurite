@@ -462,14 +462,27 @@ fn demo_shot(path: &str, entry: usize) {
     c.clear(palette().page);
     lumen_static::Renderer::render(&mut c, &host.list, W, H);
 
-    // The union of every node with a real box below the header — the
-    // demo row and nothing else.
-    let top = host.states[STAGE_NODE].pos.y;
+    // **The union of the demo's own subtree** — by the table, not by a
+    // size.
+    //
+    // It was "every node below the header narrower than 300 px", meant
+    // to exclude the two `FILL` spacers that centre the row. Any demo
+    // *at least* 300 px wide was excluded from its own crop: a
+    // `Pagination` and a `DataGrid` both lay out at 320, so `--demo 39`
+    // and `--demo 41` rendered the caption text and no widget at all —
+    // in a function whose whole purpose is that "a review ends up
+    // looking at the wrong 240 px" cannot happen (M27/T27.11, finding
+    // 11). The subtree is what the crop always meant.
+    let table = <<Show as lumen_static::event::App>::Tree as
+        lumen_static::widget::Widget>::SUB_TABLE;
+    let demo = table
+        .iter()
+        .position(|d| d.wid == "demo")
+        .expect("the stage has no `#demo` node");
+    let span = lumen_static::style::subtree_range(table, demo);
     let (mut x0, mut y0, mut x1, mut y1) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
-    for st in host.states.iter() {
-        // Skip the `FILL` spacers that centre the row (400 px each,
-        // and together they span the window) and the note beneath it.
-        if st.pos.y < top || st.size.w <= 0.0 || st.size.h <= 0.0 || st.size.w > 300.0 {
+    for st in host.states[span.clone()].iter() {
+        if st.size.w <= 0.0 || st.size.h <= 0.0 {
             continue;
         }
         x0 = x0.min(st.pos.x);
@@ -931,10 +944,13 @@ fn stylesheet() -> Vec<StyleRule> {
         StyleRule::new(Selector::Id("d_menu_a"), Patch::new().height(Length::Fixed(40.0))),
         // M27/T27.10's three. A grid fills whatever it is given and a
         // centring stage gives nothing.
-        StyleRule::new(
-            Selector::Id("d_datagrid_a"),
-            Patch::new().width(Length::Fixed(380.0)).height(Length::Fixed(220.0)),
-        ),
+        // **No width.** It was `Fixed(380.0)`, and the laid-out box was
+        // 320 every time: the stage's card is narrower, so the rule
+        // changed nothing and the header's two-column arithmetic was
+        // tuned against a width that does not occur (M27/T27.11,
+        // finding 12). The sheet lint cannot catch this one — the rule
+        // *matches*, and the node *does* read `WIDTH`.
+        StyleRule::new(Selector::Id("d_datagrid_a"), Patch::new().height(Length::Fixed(220.0))),
         // A tree is a *pane*: a file tree lives in a sidebar with a size,
         // and it is the sidebar that stops a collapse from moving the
         // rest of the window. Without one the stage centres a
@@ -988,6 +1004,7 @@ fn stylesheet() -> Vec<StyleRule> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use lumen_static_shell::text::{FontMetrics as FontMetrics2, FontStack as FontStack2};
     use lumen_static::display::Cmd;
     use lumen_static::style::Selector;
 
@@ -1024,6 +1041,41 @@ mod tests {
             };
         }
         h
+    }
+
+    /// **A grid row's cells take their column** (M27/T27.11, finding 4).
+    ///
+    /// The header is drawn over `column_width` bands of a box the rows
+    /// are handed already inset; a row whose children are `FILL`
+    /// divides that box the same way, so the two agree by construction.
+    /// A bare `Label` is `Shrink` and does not — which is what shipped,
+    /// and the `Size` values sat 72 px left of the `Size` heading.
+    #[test]
+    fn a_grid_rows_cells_take_their_column() {
+        let entry = CATALOG.iter().position(|e| e.name == "DataGrid").unwrap();
+        let mut h = host(0, false);
+        choose(&mut h.app, entry);
+        let mut m = FontStack2::system().map(FontMetrics2::new);
+        match m.as_mut() {
+            Some(m) => h.pump_with(m),
+            None => h.pump(),
+        };
+        let Demo::DataGrid(d) = &h.app.ui.body.stage.row.demo else {
+            panic!("choosing entry {entry} did not put a grid on the stage");
+        };
+        // Node 1 of `GridRow` is the first cell, node 3 the second.
+        let want = d.a.column_width(320.0);
+        let (c0, c1) = (d.a.rows.instance_state(0, 1), d.a.rows.instance_state(0, 3));
+        println!("column {want}, cells {} and {} px wide", c0.size.w, c1.size.w);
+        assert!(want > 0.0, "setup: the grid reported a zero-wide column");
+        for (k, c) in [(0, c0), (1, c1)] {
+            assert!(
+                (c.size.w - want).abs() < 0.5,
+                "cell {k} is {:.1} px wide, not the column's {want} — the row \
+                 does not divide the box the header is drawn over",
+                c.size.w
+            );
+        }
     }
 
     /// **A wheel over the grid scrolls it — through the real host.**
@@ -1095,15 +1147,28 @@ mod tests {
     /// matches. Prints each finding, so a failure says which rule.
     #[test]
     fn every_stylesheet_rule_changes_something() {
-        let h = host(0, true);
-        let sheet = h.stylesheet();
-        let found: Vec<String> = h
-            .sheet_findings()
-            .iter()
-            .map(|f| format!("rule {} {:?}: {:?}", f.rule, sheet[f.rule].selector, f.issue))
-            .collect();
-        println!("{} rules, {} findings", sheet.len(), found.len());
-        assert!(!sheet.is_empty(), "setup: the sheet was applied");
+        // `Unread` is wrong wherever it happens: the rule *matched* a
+        // node and set a field that node does not read. `Unmatched` is
+        // `every_rule_matches_a_node`'s job, because a rule for the demo
+        // that is not on the stage matches nothing *here* and is not
+        // thereby dead.
+        let mut found: Vec<String> = Vec::new();
+        let mut rules = 0;
+        for entry in [0usize, CATALOG.iter().position(|e| e.name == "DataGrid").unwrap()] {
+            let h = host(entry, entry == 0);
+            let sheet = h.stylesheet();
+            rules = sheet.len();
+            for f in h.sheet_findings() {
+                if matches!(f.issue, lumen_static::style::SheetIssue::Unread(_)) {
+                    found.push(format!(
+                        "entry {entry}: rule {} {:?}: {:?}",
+                        f.rule, sheet[f.rule].selector, f.issue
+                    ));
+                }
+            }
+        }
+        println!("{rules} rules, {} findings", found.len());
+        assert!(rules > 0, "setup: the sheet was applied");
         assert!(found.is_empty(), "stylesheet rules that change nothing:\n{}", found.join("\n"));
     }
 
@@ -1566,22 +1631,41 @@ mod tests {
     /// simply be compared.
     #[test]
     fn every_rule_matches_a_node() {
-        let ids: Vec<&str> = <Screen as Widget>::SUB_TABLE
-            .iter()
-            .map(|d| d.wid)
-            .filter(|w| !w.is_empty())
-            .collect();
+        // **Per entry, because one demo is live at a time.**
+        //
+        // This read `Screen::SUB_TABLE`'s `wid`s and nothing else, which
+        // works for every demo — the stage is an enum and its inactive
+        // variants stay in the table — and is blind to the one place a
+        // node is *not* in the table: a `Repeat`'s row template lives in
+        // an arena that exists only while its demo is on the stage. A
+        // rule naming a repeated row's id was reported dead however
+        // correct it was (M27/T27.11, finding 4's fix).
         let sheet = stylesheet();
-        let mut dead = Vec::new();
-        for r in &sheet {
-            if let Selector::Id(want) = r.selector {
-                if !ids.contains(&want) {
-                    dead.push(want);
+        let mut ever_matched = vec![false; sheet.len()];
+        for entry in 0..CATALOG.len() {
+            let h = host(entry, false);
+            let mut unmatched = vec![false; sheet.len()];
+            for f in h.sheet_findings() {
+                if matches!(f.issue, lumen_static::style::SheetIssue::Unmatched) {
+                    unmatched[f.rule] = true;
                 }
             }
+            for (r, m) in ever_matched.iter_mut().enumerate() {
+                *m |= !unmatched[r];
+            }
         }
-        println!("{} rules, {} ids in the tree, dead: {dead:?}", sheet.len(), ids.len());
-        assert!(dead.is_empty(), "stylesheet rules match no node: {dead:?}");
+        let dead: Vec<String> = ever_matched
+            .iter()
+            .enumerate()
+            .filter(|(_, m)| !**m)
+            .map(|(r, _)| format!("rule {r} {:?}", sheet[r].selector))
+            .collect();
+        println!("{} rules over {} entries, dead: {}", sheet.len(), CATALOG.len(), dead.len());
+        assert!(
+            dead.is_empty(),
+            "stylesheet rules that match no node under any entry:\n{}",
+            dead.join("\n")
+        );
     }
 
     /// **Picking a row changes what is on the stage.**

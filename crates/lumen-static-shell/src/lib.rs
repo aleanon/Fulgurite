@@ -90,6 +90,20 @@ pub struct Host<A: App, R: Retention = Incremental, I: Invalidation = Everything
     /// binary. It defaults to `Everything`, so `Host<A>` is the code
     /// this crate shipped before T16.7.
     invalidation: I,
+    /// Whether an arena still owes the cascade a pass.
+    ///
+    /// **Set by a change, cleared by the pass that follows it.** A
+    /// stylesheet is applied before the first frame and an arena belongs
+    /// to a widget the application can swap in afterwards — so a rule
+    /// naming a node inside a repeated row was dead until this existed
+    /// (`lumen_static::style::cascade_arenas_deep`, M27/T27.11). Run
+    /// after `App::update` and before layout, which is when the swapped
+    /// subtree exists and before anything measures it.
+    ///
+    /// Only the arenas: the main table was cascaded when the sheet was
+    /// set, and re-running that every frame an application changed is
+    /// the per-frame cascade M16 removed.
+    arenas_dirty: bool,
     /// The last stylesheet applied — M25/T25.2.
     ///
     /// Kept because the cascade consumes a sheet and keeps only its
@@ -129,6 +143,7 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             retain: R::default(),
             last_damage: Damage::All,
             invalidation: I::default(),
+            arenas_dirty: true,
             sheet: Vec::new(),
             #[cfg(feature = "agent")]
             sheet_findings: Vec::new(),
@@ -223,6 +238,7 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
     /// the parameter later.
     #[must_use = "a false return means the id matched no node and nothing was invalidated"]
     pub fn invalidate(&mut self, wid: &str) -> bool {
+        self.arenas_dirty = true;
         let table = <A::Tree as Widget>::SUB_TABLE;
         let Some(root) = lumen_static::style::index_of_wid(table, wid) else {
             return false;
@@ -234,6 +250,9 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
     /// Mark everything changed — the answer whenever the blast radius
     /// is not known.
     pub fn invalidate_all(&mut self) {
+        // A subtree may be new, and a new arena has never seen the
+        // sheet (M27/T27.11).
+        self.arenas_dirty = true;
         self.invalidation.mark_all();
     }
 
@@ -417,6 +436,7 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         // is OPEN (`docs/plan-invalidation.md` T16.7).
         if handled {
             self.invalidation.mark_all();
+            self.arenas_dirty = true;
         }
 
         // **State no handler reports** (M25/T25.0).
@@ -466,6 +486,20 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         // ticks and a repeat key that changed nothing all land here.
         if self.app.update() {
             self.invalidation.mark_all();
+            self.arenas_dirty = true;
+        }
+        // **The arenas, if any are owed.** Before layout, so a template
+        // styled by the previous frame's pass is laid out with those
+        // styles rather than one frame behind them.
+        if self.arenas_dirty {
+            self.arenas_dirty = false;
+            if !self.sheet.is_empty() {
+                lumen_static::style::cascade_arenas_deep(
+                    self.app.tree_mut(),
+                    &self.sheet,
+                    &self.palette,
+                );
+            }
         }
 
         let limits = self.limits();

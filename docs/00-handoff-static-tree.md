@@ -475,6 +475,21 @@ the new `fresh()` hands it, which for a dynamically built list is wrong.
 `Msg::Remove(idx)` survives because `idx` is data in the `keep` half. **Elm-style
 message dispatch is the precondition for hot reload here.**
 
+**EXTENDED 2026-09-19 (M27/T27.11): `Event::Hover`.** A `PointerMove`
+reaches a widget only under pointer capture, and capture is granted only
+to a node that consumed a `PointerDown` — so a widget that paints *rows*
+could not learn which row the pointer was over except while a button was
+held. `Tree` and `OptionList` both shipped with the code for a hot row
+and neither could ever receive the event that sets it; a hovered tree
+rendered byte-identically to an un-hovered one. Routing the move itself
+was tried first and is wrong — `Slider` reads a move as a drag, so a
+hover would have dragged it, and `tests/slider.rs` said so. The two
+questions are two events: *you are being dragged* is a `PointerMove`,
+*the pointer is over you* is an `Event::Hover`, synthesized by
+`dispatch` and offered to the hit node alone. A widget that does not
+match it is unaffected, which is the safe default. `Event` is still 16
+bytes (`tests/gesture.rs`), so `InputQueue`'s size is unchanged.
+
 **REFINED 2026-08-31** (`docs/events-decision.md`): the constraint stands —
 event *payloads* must be data, never captures — but the static tree removes
 the reason handlers capture (identity is positional; repeater rows re-bind

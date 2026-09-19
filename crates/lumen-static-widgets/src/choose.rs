@@ -261,7 +261,11 @@ impl Node for OptionList {
 
     fn on_event(&mut self, ev: &Event, cx: &EventCtx) -> bool {
         match ev {
-            Event::PointerMove { .. } => {
+            // `Hover`, not `PointerMove` — see `Event::Hover`. A move
+            // reaches a widget only under capture, so this arm never ran
+            // and an option list never highlighted the row under the
+            // pointer (M27/T27.11, finding 3).
+            Event::Hover { .. } => {
                 let was = self.hot;
                 self.hot = self.row_at(cx.local.y - 6.0);
                 was != self.hot

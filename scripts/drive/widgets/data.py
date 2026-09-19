@@ -38,7 +38,36 @@ PAGINATION = ("Pagination", "#d_pagination_a", [
             _page(c) != c._p0 and _page(c) >= 3,
             f"page {c._p0} -> {_page(c)} after pressing the fourth number",
         ),
+        isolate=lambda c: (c.__dict__.__setitem__("_p0", _page(c)),
+                           c.click_outside())[0],
         injection="make every slot the previous arrow",
+    ),
+    Action(
+        name="the keyboard jumps to the last page",
+        needs="a focused pagination away from the end",
+        do=lambda c: (c.click(), c.key("End"))[0],
+        expect=lambda c: (
+            _page(c) == 30,
+            f"page {_page(c)} of 30 after End; the node is focusable and "
+            f"handles Home/End/Left/Right, and until now nothing drove any "
+            f"of them",
+        ),
+        injection="drop the Home/End arms in Pagination::on_event",
+    ),
+    Action(
+        name="a number is the page it shows, not its position in the strip",
+        needs="a pagination on its last page, so the window starts at 22",
+        do=lambda c: (c.__dict__.__setitem__("_p0", _page(c)),
+                      _slot(c, 1, 11))[0],
+        expect=lambda c: (
+            _page(c) == 22 and c._p0 != _page(c),
+            f"page {c._p0} -> {_page(c)} after pressing the first *number* at the end of "
+            f"30 pages: the window there is 22..30, so the slot is page 22 and "
+            f"a strip that ignored the window's offset would read 1",
+        ),
+        isolate=lambda c: (c.__dict__.__setitem__("_p0", _page(c)),
+                           c.click_outside())[0],
+        injection="drop the window offset: `go(k - 1)`",
     ),
     Action(
         name="the previous arrow steps back, it does not jump",
@@ -49,6 +78,8 @@ PAGINATION = ("Pagination", "#d_pagination_a", [
             f"page {c._p0} -> {_page(c)}; the first slot is `previous`, and a "
             f"slot that were a *page* would jump to the window's first",
         ),
+        isolate=lambda c: (c.__dict__.__setitem__("_p0", _page(c)),
+                           c.click_outside())[0],
         injection="make the first slot go to the window's first page",
     ),
 ])
@@ -70,24 +101,69 @@ TREE = ("Tree", "#d_tree_a", [
         injection="hide only the row pressed, not what is under it",
     ),
     Action(
-        name="pressing a leaf changes nothing",
+        name="pressing a leaf reports nothing, because nothing happened",
         needs="a tree with a leaf on screen",
         do=lambda c: (c.__dict__.__setitem__("_n0", len(_visible(c))),
+                      c.__dict__.__setitem__("_m", c.mark()),
                       _row(c, 4))[0],
         expect=lambda c: (
-            len(_visible(c)) == c._n0,
-            f"{c._n0} -> {len(_visible(c))} rows after pressing a leaf",
+            len(_visible(c)) == c._n0 and c._handled is False,
+            "{} -> {} rows, and the press was handled={}. **The count is not "
+            "the assertion**: a leaf has no children, so folding its bit "
+            "changes the visible count by definition either way — an "
+            "injection that let a leaf toggle left the count-only version of "
+            "this green, and so did a version that asked what changed, "
+            "because nothing a leaf's bit does is visible. What a leaf must "
+            "not do is *take the press*, and `input.click` now answers that "
+            "(M27/T27.11)."
+            .format(c._n0, len(_visible(c)), c._handled),
         ),
         static=True,
-        injection="let a leaf toggle",
+        injection="drop the `has_children` guard in Tree::toggle",
+    ),
+    Action(
+        name="a hover lights the row under the pointer",
+        needs="a tree nobody is pressing",
+        do=lambda c: (c.__dict__.__setitem__("_m", c.mark()),
+                      _hover_row(c, 3))[0],
+        expect=lambda c: (
+            len(_changed_since(c)) > 0,
+            "the tree reported {} changed node(s) for a hover with no button "
+            "held. Until T27.11 a move reached a widget only under pointer "
+            "capture, so this could not happen at all and two screenshots of "
+            "a hovered tree were byte-identical."
+            .format(len(_changed_since(c))),
+        ),
+        isolate=lambda c: (c.__dict__.__setitem__("_m", c.mark()),
+                           c.c.rpc("input.hover", x=4.0, y=4.0))[0],
+        injection="stop synthesizing Event::Hover in dispatch_at",
     ),
 ])
 
 
-def _row(c, k: int):
-    """Press the k-th *visible* row."""
+def _changed_since(c) -> list:
+    """The nodes the window reported changed since `c._m`.
+
+    Not `Ctx.changed()`, which asks since frame 0 — the whole session's
+    changes, which is never empty by the time a drive reaches its second
+    action. That difference is the whole assertion for "pressing a leaf
+    does nothing", so it is spelled out here rather than borrowed.
+    """
+    return c.c.rpc("ui.lastChange", since=c._m).get("changed", [])
+
+
+def _hover_row(c, k: int):
+    """Put the pointer on the k-th visible row, pressing nothing."""
     b = c.box()
-    c.c.rpc("input.click", x=b[0] + 40, y=b[1] + 8 + 26 * k + 13)
+    c.c.rpc("input.hover", x=b[0] + 40, y=b[1] + 8 + 26 * k + 13)
+
+
+def _row(c, k: int):
+    """Press the k-th *visible* row, and keep whether anything took it."""
+    b = c.box()
+    r = c.c.rpc("input.click", x=b[0] + 40, y=b[1] + 8 + 26 * k + 13)
+    c._handled = r.get("handled")
+    return r
 
 
 def _row_shown(c, text: str) -> bool:
@@ -126,7 +202,11 @@ GRID = ("DataGrid", "#d_datagrid_a", [
             .format(c.value(), c.box(f"{c.sel} > #grid-rows")[1] - c.box()[1]),
         ),
         static=True,
-        injection="hand the rows the limits the grid was offered, not its own box",
+        # **Not "hand the rows the offered limits"**, which was written here
+        # first and reddens `a wheel scrolls the rows` instead: this action
+        # asserts the columns and the rows' *vertical* offset, and the body's
+        # max_h moves neither (M27/T27.11, finding 8).
+        injection="place the rows at the grid's own origin, without the header offset",
     ),
     Action(
         name="a wheel scrolls the rows under the header",
@@ -146,7 +226,13 @@ GRID = ("DataGrid", "#d_datagrid_a", [
                 c._w0, (_row_shown(c, "file-000.rs"),
                         _row_shown(c, "file-012.rs"))),
         ),
-        injection="drop the Scroll arm in Repeat::on_event",
+        # **Not "drop the Scroll arm in Repeat"**: the catalogue picker is a
+        # `Repeat` too, so that injection stops the drive from ever reaching
+        # this widget — it reddens, but never here (finding 8).
+        isolate=lambda c: (c.__dict__.__setitem__(
+            "_w0", (_row_shown(c, "file-000.rs"), _row_shown(c, "file-012.rs"))),
+            c.c.rpc("input.scroll", x=4.0, y=4.0, dy=-240.0))[0],
+        injection="make DataGrid::hit answer with its own node instead of the rows",
     ),
 ])
 

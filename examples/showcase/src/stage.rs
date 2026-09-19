@@ -114,13 +114,31 @@ pub struct DTree {
 /// A grid's rows are the **application's**, bound by the `fn` `Repeat`
 /// takes — which is why this demo declares a row type and the chooser
 /// demos do not.
+/// One cell of a grid row.
+///
+/// **A container, not a bare `Label`.** A derived container is `FILL`
+/// across its main axis, so a row of these divides its width evenly —
+/// which is exactly the column the grid's header is drawn over. A bare
+/// `Label` is `Shrink`, so cell 1 starts wherever cell 0's text ended
+/// and the values sat 72 px left of their heading (M27/T27.11, finding
+/// 4). Declared in the type rather than in the stylesheet because a
+/// rule naming a *repeated row's* node matches nothing while its demo
+/// is off stage, and an ambient `W1010` for a rule that is right is the
+/// false positive the audit exists to avoid.
 #[derive(StaticTree, Default)]
-#[widget(row, spacing = 12.0)]
+#[widget(column, spacing = 0.0)]
+pub struct GridCell {
+    #[widget_id("d_grid_cell")]
+    pub l: Label<String>,
+}
+
+#[derive(StaticTree, Default)]
+#[widget(row, spacing = 0.0)]
 pub struct GridRow {
     #[widget_id("d_grid_name")]
-    pub name: Label<String>,
+    pub name: GridCell,
     #[widget_id("d_grid_size")]
-    pub size: Label<String>,
+    pub size: GridCell,
 }
 
 #[derive(StaticTree, Default)]

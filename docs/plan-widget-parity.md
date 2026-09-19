@@ -945,6 +945,75 @@ safe because the file names are unique in that window. Addressing a row
 *within* a named owner needs the step to understand arenas, which is
 T27.0's fourth landing and is not built.
 
+### The adversarial review of T27.10 — §5, run for real
+
+A separate agent, given the inventory, the widget source, the harness,
+the tests and the live window, and told to answer §5's four questions
+with artifacts. It applied **sixteen headless injections and eleven live
+ones**, and it was itself tested: one assertion in the inventory was
+relaxed to a tautology and written down before the review started
+(`_page(c) <= c._p0` in place of `== c._p0 - 1`, which the very defect
+the action guards against would satisfy). **It found it**, quoted the
+run printing `page 4 -> 1` beside the prose ruling that out, and named
+the line. A gate that has never said no has not been tested; this one
+has.
+
+Fifteen findings. Four were defects in shipped widgets, three were
+defects in the *framework* that the widgets only revealed, and six were
+about the tests and the drive — which is the ratio §5 was written
+expecting.
+
+| | what | fixed by |
+|---|---|---|
+| 1 | **A pagination's current page number was invisible.** The selection pill is centred in its slot and the digit was left-aligned in it, so the glyph sat 3 px outside the pill — painted in the pill's contrast colour, on the control's own background. The review counted **zero** glyph pixels inside the pill. | measure at layout, centre at paint, the way `Strip` already did |
+| 2 | **A tree painted outside its own box** — 116 px of rows over the note beneath it, on a fixture that fit by 2 px. | `push_clip`, as `Repeat` does |
+| 3 | **A tree's hover highlight was unreachable**, and so was an option list's. A `PointerMove` reaches a widget only under capture, and capture follows a press. | `Event::Hover`, synthesized by `dispatch` for the hit node |
+| 4 | **A grid's header did not sit over its rows** — the `Size` values 72 px left of the `Size` heading, with a correct header and correct rows and nothing reconciling them. | the inset moves onto the **grid**: it insets its header and hands the rows a box already inset and already divided, so a row whose children are `FILL` lines up for itself |
+| — | and, found while fixing 4: **no arena had ever been cascaded** *after* the sheet was set. A stylesheet is applied before the first frame; a repeater's row template lives in an arena belonging to a widget the application may build later. Every rule naming a node inside a row built after that was dead. | `style::cascade_arenas_deep`, owed by any change that could be structural and paid after `App::update`, before layout |
+| 5, 6 | two drive assertions that could not fail — the planted one, and "pressing a leaf changes nothing", whose consequence is by definition invariant | the plant reverted; the leaf action now asserts `handled` |
+| 7 | the pagination's **window offset was never exercised live**: the drive never left page 4, so `first + k` was dead code under it | a new action that goes to the last page and presses the first *number*, where the window starts at 22 |
+| 8 | both grid actions named an injection that does not redden them — one of which breaks the catalogue picker, so the drive never reaches the grid at all | both rewritten, with the reason kept beside them |
+| 9, 10 | two headless tests vacuous for the property their names claim | one strengthened to assert the viewport against the grid; the other **deleted** — its other half is covered twice |
+| 11 | `demo_shot` cropped by "narrower than 300 px", so a `Pagination` and a `DataGrid` were excluded from their own crop and `--demo` rendered the caption | crop the demo's **subtree**, by the table |
+| 12 | a sheet rule the laid-out box never took (`Fixed(380)` on a 320 px card) | removed; the lint cannot catch this one and the comment says so |
+| 13 | `Action.isolate`'s doc said the runner counts the actions without one; nothing counted anything | it counts and prints them |
+| 14 | `Tree::on_event` hard-coded the padding its own seed declares it reads | read from the resolved style |
+| 15 | page numbers past a 33-entry table all rendered "32" | `PageLabel`, five digits into a stack buffer |
+
+**The one that changes the harness for every widget is 5/6's fix.**
+Until now "did that input land" was *inferred* — from a changed value, a
+damaged rect, a different readout — and an action whose correct outcome
+is that **nothing happens** has no consequence to infer from. So
+`AgentHost::pump` now answers `(frame, handled)` and `input.click`
+reports it. A leaf press that is silently taken is visible for the first
+time, and every future "this input must do nothing" row has a mechanism
+to assert rather than an absence to hope about. It is a **required**
+trait method, not a provided one: a default of `(self.pump(), false)`
+would make every test double claim nothing was handled and be believed.
+
+**Finding 4 was fixed twice, and the first fix is the instructive
+one.** The demo's row was given its column widths by *stylesheet* — two
+id rules and the arena cascade above to make them reach a repeated row.
+It worked, and the live drive then failed on two unrelated widgets:
+`ui.lint` reports `W1010` for a rule that matches nothing, and a rule
+naming a node inside the `DataGrid`'s row matches nothing during the
+forty-one frames when some other demo is on stage. Narrowing the lint
+was the obvious move and was wrong — `Unmatched` is how a misspelled
+selector is caught, with a test that says so. So the demo declares its
+columns in the **type** instead (a cell is a container, and a derived
+container is `FILL`), the grid owns the inset, and the sheet is not
+involved at all. The arena cascade stays, because the hole it closes is
+real, with its own fixture in
+`crates/lumen-static-shell/tests/arena_cascade.rs` rather than a
+showcase rule that would reintroduce the false positive.
+
+**Two findings were closed as correct-as-built**, with the reason
+recorded rather than a change: a press on a grid's header does nothing
+because sorting is not built (a header that swallowed a press would be a
+control that lies), and a `Tree` cannot be seeded collapsed because
+`Tree::new` takes rows and nothing else — which is a real gap, and is
+`Tree::toggle`'s job to fill when something needs it.
+
 ## 7. The showcase at fifty-one entries
 
 Measured today, not guessed: `Screen::NODE_COUNT` is **91**, `DEPTH`

@@ -449,13 +449,14 @@ impl Agent {
                     }
                 };
                 let applied = host.set_palette(palette);
-                Ok(json!({ "applied": applied, "palette": name, "frame": host.pump() }))
+                Ok(json!({ "applied": applied, "palette": name, "frame": host.pump().0 }))
             }
             "input.click" | "input.invokeAction" => {
                 let (x, y) = self.point_param(host, params)?;
                 host.enqueue(Event::down(x, y));
                 host.enqueue(Event::up(x, y));
-                Ok(json!({ "frame": host.pump(), "at": [x, y] }))
+                let (f, h) = host.pump();
+                Ok(json!({ "frame": f, "handled": h, "at": [x, y] }))
             }
             // A press held open, and its release — the two halves of a
             // click, separately. Without them an agent cannot observe a
@@ -465,23 +466,27 @@ impl Agent {
             "input.pointerDown" => {
                 let (x, y) = self.point_param(host, params)?;
                 host.enqueue(Event::down(x, y));
-                Ok(json!({ "frame": host.pump(), "at": [x, y] }))
+                let (f, h) = host.pump();
+                Ok(json!({ "frame": f, "handled": h, "at": [x, y] }))
             }
             "input.pointerUp" => {
                 let (x, y) = self.point_param(host, params)?;
                 host.enqueue(Event::up(x, y));
-                Ok(json!({ "frame": host.pump(), "at": [x, y] }))
+                let (f, h) = host.pump();
+                Ok(json!({ "frame": f, "handled": h, "at": [x, y] }))
             }
             "input.hover" => {
                 let (x, y) = self.point_param(host, params)?;
                 host.enqueue(Event::PointerMove { x, y });
-                Ok(json!({ "frame": host.pump(), "at": [x, y] }))
+                let (f, h) = host.pump();
+                Ok(json!({ "frame": f, "handled": h, "at": [x, y] }))
             }
             "input.scroll" => {
                 let (x, y) = self.point_param(host, params)?;
                 let dy = params.get("dy").and_then(Value::as_f64).unwrap_or(0.0) as f32;
                 host.enqueue(Event::Scroll { x, y, dy });
-                Ok(json!({ "frame": host.pump(), "at": [x, y], "dy": dy }))
+                let (f, h) = host.pump();
+                Ok(json!({ "frame": f, "handled": h, "at": [x, y], "dy": dy }))
             }
             "input.key" => {
                 let name = params.get("key").and_then(Value::as_str).ok_or((
@@ -494,7 +499,8 @@ impl Agent {
                 })?;
                 let down = params.get("down").and_then(Value::as_bool).unwrap_or(true);
                 host.enqueue(Event::Key { key, down });
-                Ok(json!({ "frame": host.pump() }))
+                let (f, h) = host.pump();
+                Ok(json!({ "frame": f, "handled": h }))
             }
             // P5 of docs/plan-agent-parity.md, arriving with the first
             // host that renders. The image is a PNG so the agent can
@@ -601,7 +607,7 @@ impl Agent {
                 for ch in text.chars() {
                     host.enqueue(Event::Text { ch });
                 }
-                let frame = host.pump();
+                let frame = host.pump().0;
 
                 // Did it take? Checked by reading the value back, not by
                 // asking whether the node *looks* editable: a `Label` is
@@ -710,7 +716,8 @@ impl Agent {
                 for ch in text.chars() {
                     host.enqueue(Event::Text { ch });
                 }
-                Ok(json!({ "frame": host.pump(), "chars": n }))
+                let (f, h) = host.pump();
+                Ok(json!({ "frame": f, "handled": h, "chars": n }))
             }
             _ => Err((METHOD_NOT_FOUND, format!("unknown method `{method}`"), Value::Null)),
         }
@@ -1408,8 +1415,27 @@ pub trait AgentHost {
         None
     }
     fn enqueue(&mut self, ev: Event);
-    /// Drain the queue, re-lay out, record the frame; returns its number.
-    fn pump(&mut self) -> u64;
+    /// Drain the queue, re-lay out, record the frame.
+    ///
+    /// Returns the frame's number **and whether any node took an event**
+    /// — `Host::pump`'s own answer, which this discarded until
+    /// M27/T27.11.
+    ///
+    /// The second half is the only direct answer to "did that input
+    /// land". Everything else a drive can ask is a *consequence*: a
+    /// changed value, a damaged rect, a different readout — and an
+    /// action whose correct outcome is that nothing happens has no
+    /// consequence to check, so "it landed" and "it did nothing" were
+    /// indistinguishable. `Tree`'s "pressing a leaf does nothing" stayed
+    /// green under an injection that made a leaf toggle, because a leaf
+    /// has no children and folding its bit changes nothing anyone can
+    /// see. It reports, and now that is visible.
+    ///
+    /// **Required, not provided.** A default of `(self.pump(), false)`
+    /// would make every test double answer "nothing was handled" and be
+    /// believed — the provided-method trap `Deferring` fell into, one
+    /// trait over.
+    fn pump(&mut self) -> (u64, bool);
     /// Swap the palette looks are resolved against — M25/T25.3, the
     /// `app.setPalette` method.
     ///

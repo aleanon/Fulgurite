@@ -201,21 +201,6 @@ fn a_leaf_does_not_toggle() {
 
 /// A press lands on the row you can *see*, which is the arithmetic a
 /// collapse is most likely to break.
-#[test]
-fn a_press_hits_the_visible_row_not_the_raw_index() {
-    let mut t = sample();
-    t.toggle(2); // hide the two children of `widgets`
-    lay(&mut t);
-    // The fourth visible row is now `README` (raw index 5).
-    press_at(&mut t, Point { x: 40.0, y: 8.0 + 26.0 * 3.0 + 13.0 });
-    // `README` is a leaf, so nothing toggles — but nothing else may
-    // toggle either.
-    assert_eq!(t.visible(), 4, "a press on a leaf changed the tree");
-    // And a press on `widgets` (second visible row) re-expands it.
-    press_at(&mut t, Point { x: 40.0, y: 8.0 + 26.0 * 2.0 + 13.0 });
-    assert_eq!(t.visible(), 6, "pressing `widgets` did not expand it again");
-}
-
 /// **A press lands on the visible row, and this fixture can tell.**
 ///
 /// The first version could not: after collapsing, the k-th visible row
@@ -223,6 +208,15 @@ fn a_press_hits_the_visible_row_not_the_raw_index() {
 /// way and an injection reading the raw index left it green. Here the
 /// two differ in *kind* — one is a parent, the other a leaf — so only
 /// the right reading toggles anything.
+///
+/// A second test, a_press_hits_the_visible_row_not_the_raw_index, stood beside this
+/// one until M27/T27.11's review and is gone: it pressed the *second*
+/// visible row, which is the second raw row whether or not anything
+/// below it was collapsed, so the raw-index injection left it green
+/// too. Its other half — a press on a leaf changes nothing — is
+/// `a_leaf_does_not_toggle` and the live drive's own leaf action. Two
+/// tests, one of which cannot fail, is one test and a false sense of
+/// two.
 #[test]
 fn a_press_after_a_collapse_reads_the_visible_row_not_the_raw_one() {
     let mut t = Tree::new(&[
@@ -313,11 +307,23 @@ fn the_grid_reports_its_columns_and_the_repeater_its_rows() {
 fn a_grid_taller_than_its_box_can_scroll() {
     let mut g = DataGrid::<Row>::new(&["Name"], 60, 24.0, bind);
     let st = lay(&mut g);
-    let viewport = st[1].size.h;
+    let (grid, viewport) = (st[0].size.h, st[1].size.h);
+    // **The viewport, against the grid — not the content against the
+    // viewport.** This asserted `max_scroll > 0`, which its own doc
+    // called "the rows get the grid's resolved height, not the limits it
+    // was offered": 60 rows of 24 px is 1440, over both the grid (200)
+    // and the offered limit (400), so the sign could not change and the
+    // injection the doc named left it green (M27/T27.11, finding 9).
+    assert!(
+        (viewport - (grid - 28.0)).abs() < 0.5,
+        "the rows resolved to {viewport} px inside a {grid} px grid with a \
+         28 px header — they were measured against the limits they were \
+         offered ({}), not against the box the grid resolved to",
+        VIEW.max_h
+    );
     assert!(
         g.rows.max_scroll(viewport) > 0.0,
-        "60 rows of 24 in a {viewport} px body reported nothing to scroll — \
-         the rows were measured against the limits, not against the grid"
+        "60 rows of 24 in a {viewport} px body reported nothing to scroll"
     );
 }
 
@@ -352,4 +358,283 @@ fn a_wheel_over_the_body_scrolls_it() {
         g.rows.first_row(),
         st[1].size.h
     );
+}
+
+// ---- what the T27.11 review found ------------------------------------
+
+/// **A tree taller than its pane stays inside it** (M27/T27.11, finding 2).
+///
+/// The showcase seeds seven rows into a 200 px pane and they come to
+/// 198 — so the over-full case, which is every real file tree, was
+/// unreachable from the one fixture anybody looked at. With five more
+/// rows the review measured 116 px of rows painted over the note below
+/// the widget.
+///
+/// Asserted on the *commands*, not on a pixel: `Recording` keeps the
+/// clip stack, so "nothing was drawn outside the box" is a question the
+/// display list can answer exactly.
+#[test]
+fn a_tree_taller_than_its_pane_is_clipped_to_it() {
+    use lumen_static::display::{Cmd, DisplayList};
+
+    let mut rows = [Branch::default(); MAX_TREE_NODES];
+    for (i, r) in rows.iter_mut().enumerate().take(14) {
+        *r = Branch { label: LONG[i], depth: 0 };
+    }
+    let mut t = Tree::new(&rows[..14]);
+    let styles = lumen_static::pass::default_styles(&t);
+    let mut st = vec![NodeState::default(); <Tree as Widget>::NODE_COUNT];
+    // A pane four rows tall, which is what a sidebar is.
+    let pane = Constraints { min_w: 0.0, max_w: 260.0, min_h: 0.0, max_h: 104.0 };
+    let mut m = lumen_static::cx::BlockMetrics;
+    {
+        let mut cx = lumen_static::LayoutCx::new(&mut m);
+        Node::layout(&mut t, &mut cx, pane, &styles, &mut st, 0);
+    }
+    Node::place(&mut t, Point { x: 0.0, y: 0.0 }, &styles, &mut st, 0);
+    let box_h = st[0].size.h;
+    assert_eq!(box_h, 104.0, "setup: the pane did not clamp the tree");
+    assert!(
+        t.visible() as f32 * 26.0 > box_h,
+        "setup: {} rows of 26 px do not overflow a {box_h} px pane — the \
+         fixture cannot exhibit what this test is about",
+        t.visible()
+    );
+
+    let mut list = DisplayList::new();
+    Node::paint(&t, &st, 0, &mut list);
+    // **The clip stack, walked.** `push_clip` records a command; it does
+    // not trim the rects that follow — so "is it clipped" is a question
+    // about what is *in force* when a run is recorded, and a test that
+    // only looked at rects would pass with or without the clip.
+    let mut stack: Vec<[f32; 4]> = Vec::new();
+    let (mut below, mut escaped, mut lowest) = (0, 0, 0.0f32);
+    for c in &list.cmds {
+        match c {
+            Cmd::PushClip { rect } => stack.push(*rect),
+            Cmd::PopClip => {
+                stack.pop();
+            }
+            Cmd::Text { rect, .. } => {
+                if rect[1] < box_h {
+                    continue;
+                }
+                below += 1;
+                lowest = lowest.max(rect[1]);
+                // Clipped away only if something in force ends above it.
+                if !stack.iter().any(|c| c[3] <= rect[1]) {
+                    escaped += 1;
+                }
+            }
+            _ => {}
+        }
+    }
+    assert!(below > 0, "setup: no row was drawn below the pane at all");
+    assert_eq!(
+        escaped, 0,
+        "{escaped} of {below} text runs below the tree's own {box_h} px box \
+         (the lowest at y {lowest}) are painted with no clip that excludes them"
+    );
+}
+
+/// Fourteen labels, long enough to be visible if they escape.
+const LONG: [&str; 14] = [
+    "alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel", "india", "juliett",
+    "kilo", "lima", "mike", "november",
+];
+
+/// **The current page's number is inside its own pill** (M27/T27.11,
+/// finding 1).
+///
+/// The pill was centred in the slot and the digit left-aligned in it, so
+/// the glyph sat 3 px outside the pill — and, being painted in the
+/// pill's contrast colour, on the control's own background. The review
+/// counted **zero** non-background pixels inside the pill: the selected
+/// page read as an empty lozenge.
+///
+/// Asserted on the commands, where "inside" is exact.
+#[test]
+fn the_current_page_number_is_inside_its_pill() {
+    use lumen_static::display::{Cmd, DisplayList};
+
+    let mut p = Pagination::new(30);
+    assert!(p.go(4), "setup: the pagination did not move off page 0");
+    let styles = lumen_static::pass::default_styles(&p);
+    let mut st = vec![NodeState::default(); <Pagination as Widget>::NODE_COUNT];
+    let mut m = lumen_static::cx::BlockMetrics;
+    {
+        let mut cx = lumen_static::LayoutCx::new(&mut m);
+        Node::layout(&mut p, &mut cx, VIEW, &styles, &mut st, 0);
+    }
+    Node::place(&mut p, Point { x: 0.0, y: 0.0 }, &styles, &mut st, 0);
+
+    let mut list = DisplayList::new();
+    Node::paint(&p, &st, 0, &mut list);
+    // The pill is the only rounded rect in the control's foreground
+    // colour; "5" is the run whose text is "5".
+    let fg = styles[0].color;
+    let pill = list
+        .cmds
+        .iter()
+        .find_map(|c| match c {
+            Cmd::RoundedRect { rect, color, .. } if *color == fg => Some(*rect),
+            _ => None,
+        })
+        .expect("no selection pill was painted");
+    let digit = list
+        .cmds
+        .iter()
+        .find_map(|c| match c {
+            Cmd::Text { rect, text, .. } if list.str_of(*text) == "5" => Some(*rect),
+            _ => None,
+        })
+        .expect("the current page's number was not painted at all");
+    println!("pill x {:.1}..{:.1}, digit x {:.1}..{:.1}", pill[0], pill[2], digit[0], digit[2]);
+    assert!(
+        digit[0] >= pill[0] && digit[2] <= pill[2],
+        "the digit's x {:.1}..{:.1} is not inside the pill's {:.1}..{:.1}; it is \
+         painted in the pill's contrast colour, so anything outside is invisible",
+        digit[0],
+        digit[2],
+        pill[0],
+        pill[2]
+    );
+    // And centred, not merely inside: a digit shoved against one edge
+    // would satisfy the bound above and still look wrong.
+    let slack = ((digit[0] - pill[0]) - (pill[2] - digit[2])).abs();
+    assert!(
+        slack < 1.0,
+        "the digit sits {:.1} px off the pill's centre",
+        slack
+    );
+}
+
+/// A page number past the old table's end is still its own number.
+#[test]
+fn a_page_number_is_not_clamped_to_a_table() {
+    for (n, want) in [(1usize, "1"), (9, "9"), (33, "33"), (34, "34"), (1234, "1234")] {
+        assert_eq!(
+            lumen_static_widgets::PageLabel::new(n).as_str(),
+            want,
+            "page {n} rendered wrong"
+        );
+    }
+}
+
+/// A row built the way `DataGrid::column_width` documents: two cells
+/// that each take their column. A derived container is `FILL` across
+/// its main axis, so the row divides evenly for itself.
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+struct Cell {
+    #[widget_id("cell-label")]
+    l: Label<String>,
+}
+
+#[derive(StaticTree, Default)]
+#[widget(row, spacing = 0.0)]
+struct Wide {
+    #[widget_id("wide-name")]
+    name: Cell,
+    #[widget_id("wide-size")]
+    size: Cell,
+}
+
+fn bind_wide(r: &mut Wide, i: usize) {
+    r.name.l.set(format!("file-{i:03}.rs"));
+    r.size.l.set(format!("{} KB", i + 1));
+}
+
+/// **The header sits over the rows, not beside them** (M27/T27.11,
+/// finding 4).
+///
+/// The grid draws its header at `k * column_width + CELL_INSET`; a row
+/// that follows the same rule lines up, and this is the assertion that
+/// says so — column by column, on the painted text, not on the
+/// arithmetic that produced it.
+#[test]
+fn the_header_sits_over_a_row_that_follows_the_column_rule() {
+    use lumen_static::display::{Cmd, DisplayList};
+
+    let mut g = DataGrid::<Wide>::new(&["Name", "Size"], 40, 24.0, bind_wide);
+    let each = g.column_width(320.0);
+    assert_eq!(
+        each, 152.0,
+        "setup: two columns of a 320 px grid inset by {} on each side",
+        DataGrid::<Wide>::CELL_INSET
+    );
+    let styles = lumen_static::pass::default_styles(&g);
+    let mut st = vec![NodeState::default(); <DataGrid<Wide> as Widget>::NODE_COUNT];
+    let grid = Constraints { min_w: 320.0, max_w: 320.0, min_h: 0.0, max_h: 220.0 };
+    let mut m = lumen_static::cx::BlockMetrics;
+    {
+        let mut cx = lumen_static::LayoutCx::new(&mut m);
+        Node::layout(&mut g, &mut cx, grid, &styles, &mut st, 0);
+    }
+    Node::place(&mut g, Point { x: 0.0, y: 0.0 }, &styles, &mut st, 0);
+
+    let mut list = DisplayList::new();
+    Node::paint(&g, &st, 0, &mut list);
+    let x_of = |want: &str| {
+        list.cmds.iter().find_map(|c| match c {
+            Cmd::Text { rect, text, .. } if list.str_of(*text) == want => Some(rect[0]),
+            _ => None,
+        })
+    };
+    let pairs = [("Name", "file-000.rs"), ("Size", "1 KB")];
+    for (head, cell) in pairs {
+        let h = x_of(head).unwrap_or_else(|| panic!("no header {head:?} was painted"));
+        let c = x_of(cell).unwrap_or_else(|| panic!("no cell {cell:?} was painted"));
+        println!("{head}: header x {h:.1}, cell x {c:.1}");
+        assert!(
+            (h - c).abs() < 0.5,
+            "the {head:?} header is at x {h:.1} and its first value at x {c:.1} — \
+             {:.1} px apart, so the column reads beside its heading",
+            (h - c).abs()
+        );
+    }
+}
+
+/// **The pointer's row is reachable without pressing anything**
+/// (M27/T27.11, finding 3).
+///
+/// `Tree::on_event` tracked a hot row from `PointerMove` — an event a
+/// widget receives only under pointer capture, which is granted only to
+/// a node that consumed a `PointerDown`. So the highlight could appear
+/// only while the button was still held after a fold, and two
+/// screenshots of a hovered tree were byte-identical. The move is now
+/// re-asked as `Event::Hover`, and this is the test that says so.
+#[test]
+fn a_hover_lights_the_row_under_the_pointer() {
+    let mut t = sample();
+    let st = lay(&mut t);
+    let row_y = |k: usize| 8.0 + 26.0 * k as f32 + 13.0;
+
+    // A move is *not* delivered: that is `Slider`'s contract and the
+    // reason this is a second event rather than a flag.
+    let mv = Event::PointerMove { x: 40.0, y: row_y(2) };
+    assert!(
+        !Node::on_event(&mut t, &mv, &EventCtx::for_event(0, mv)),
+        "a bare PointerMove reached the tree; it must not — see Event::Hover"
+    );
+
+    let mut lit = |k: usize| {
+        let ev = Event::Hover { x: 40.0, y: row_y(k) };
+        let mut cx = EventCtx::for_event(0, ev);
+        cx.local = Point { x: 40.0, y: row_y(k) };
+        let moved = Node::on_event(&mut t, &ev, &cx);
+        (moved, t.hot())
+    };
+    let (moved, hot) = lit(2);
+    assert!(moved, "the first hover reported nothing changed");
+    assert_eq!(hot, Some(2), "the hover lit row {hot:?}, not the one under it");
+    let (moved, hot) = lit(4);
+    assert!(moved, "moving to another row reported nothing changed");
+    assert_eq!(hot, Some(4), "the highlight did not follow to row 4");
+    // And a second hover on the same row is not a change: a tree that
+    // reported one on every move would repaint the window on every
+    // pointer sample.
+    let (moved, _) = lit(4);
+    assert!(!moved, "hovering the same row again reported a change");
+    let _ = st;
 }

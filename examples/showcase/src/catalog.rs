@@ -88,8 +88,8 @@ const TREE_ROWS: [lumen_static_widgets::Branch; 7] = [
 /// One grid row. A plain `fn`, so it cannot capture — which is the whole
 /// reason a grid does not own its data.
 fn grid_row(r: &mut GridRow, i: usize) {
-    r.name.set(format!("file-{i:03}.rs"));
-    r.size.set(format!("{} KB", 1 + i % 97));
+    r.name.l.set(format!("file-{i:03}.rs"));
+    r.size.l.set(format!("{} KB", 1 + i % 97));
 }
 
 /// The options M27/T27.9's three demos share.

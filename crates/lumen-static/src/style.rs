@@ -1210,6 +1210,31 @@ pub fn cascade_deep_with<W: crate::widget::Widget + ?Sized>(
     }
 }
 
+/// Re-run the cascade over every **arena** in `tree`, and nothing else.
+///
+/// **Because an arena is not there when the sheet is.** A stylesheet is
+/// applied once, before the first frame; a `Repeat`'s row template lives
+/// in an arena that does not exist until the repeater has been laid
+/// out. So every rule naming a node inside a repeated row has been dead
+/// since arenas landed — silently, because the main table carries every
+/// *other* node including an enum's inactive variants, and because the
+/// sheet lint runs after a pump and therefore sees an arena the cascade
+/// never did (M27/T27.11, found while making a `DataGrid`'s rows line up
+/// with its own header).
+///
+/// The main table is not touched: it was cascaded when the sheet was
+/// set, and re-running it every time the application changed would be
+/// the per-frame cascade M16 removed.
+pub fn cascade_arenas_deep<W: crate::widget::Widget + ?Sized>(
+    tree: &mut W,
+    sheet: Stylesheet,
+    palette: &Palette,
+) {
+    for i in 0..W::SUB_TABLE.len() {
+        cascade_arenas(tree.node_mut(i), sheet, palette);
+    }
+}
+
 /// Cascade every arena `node` owns, and every arena under those.
 // The parameters are unused without `alloc`: nothing implements the
 // arena hooks then, because Repeat, List and Dyn are all gated.

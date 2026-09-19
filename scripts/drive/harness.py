@@ -80,7 +80,10 @@ class Action:
     expect: Callable[["Ctx"], tuple[bool, str]]
     #: The same input somewhere it must not work. `None` only for actions
     #: with no spatial target (a keystroke to the focused node), and the
-    #: runner counts those.
+    #: runner **counts and prints** those — the claim used to say it did
+    #: and nothing counted anything, so four of seven actions in one
+    #: inventory had a spatial target and no isolate, invisibly
+    #: (M27/T27.11, finding 13).
     isolate: Callable[[Ctx], None] | None = None
     #: Prose: what must be broken for `expect` to go red. Checked by a
     #: human and by the adversary, not by the runner.
@@ -402,5 +405,9 @@ def run_widget(c: AgentClient, widget: str, sel: str, actions: list[Action],
     missing = [a.name for a in actions if a.name not in seen]
     if missing:
         raise Failed(f"{widget}: inventory rows never exercised: {missing}")
-    out.append(f"  {widget} [{strategy}]: {len(actions)} actions, all driven")
+    bare = [a.name for a in actions if a.isolate is None and not a.static]
+    out.append(
+        f"  {widget} [{strategy}]: {len(actions)} actions, all driven"
+        + (f"; {len(bare)} with no isolate: {', '.join(bare)}" if bare else "")
+    )
     return out

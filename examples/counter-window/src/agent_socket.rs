@@ -43,8 +43,8 @@ impl lumen_static_agent::AgentHost for Live<'_> {
         self.host.set_palette(palette);
         true
     }
-    fn pump(&mut self) -> u64 {
-        match self.metrics.as_mut() {
+    fn pump(&mut self) -> (u64, bool) {
+        let handled = match self.metrics.as_mut() {
             Some(m) => self.host.pump_with(m),
             None => self.host.pump(),
         };
@@ -67,7 +67,7 @@ impl lumen_static_agent::AgentHost for Live<'_> {
         }
         self.canvas.clear(PAGE);
         self.host.render(self.canvas);
-        self.host.frame_number()
+        (self.host.frame_number(), handled)
     }
     fn frame(&self) -> Option<(u32, u32, &[u8])> {
         Some((self.canvas.width, self.canvas.height, &self.canvas.pixels))

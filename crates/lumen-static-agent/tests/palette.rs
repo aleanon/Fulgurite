@@ -64,11 +64,12 @@ impl AgentHost for Host {
     fn enqueue(&mut self, ev: Event) {
         self.queue.push(ev);
     }
-    fn pump(&mut self) -> u64 {
+    fn pump(&mut self) -> (u64, bool) {
         while self.queue.pop().is_some() {}
         pass::layout(&mut self.app.ui, &self.styles, &mut self.states, VIEW);
         self.frame += 1;
-        self.frame
+        // A double that drops its queue handles nothing, and says so.
+        (self.frame, false)
     }
     fn set_palette(&mut self, palette: Palette) -> bool {
         match self.palette.as_mut() {
@@ -91,7 +92,7 @@ impl AgentHost for Bare {
     fn enqueue(&mut self, ev: Event) {
         self.0.enqueue(ev)
     }
-    fn pump(&mut self) -> u64 {
+    fn pump(&mut self) -> (u64, bool) {
         self.0.pump()
     }
 }

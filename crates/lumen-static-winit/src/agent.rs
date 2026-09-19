@@ -79,17 +79,13 @@ impl<A: App> AgentHost for Live<'_, A> {
     /// Presenting matters: `ui.screenshot` and every pixel assertion
     /// after an `input.click` read the frame this produced, and a pump
     /// alone would hand back the one before the click.
-    fn pump(&mut self) -> u64 {
-        match self.metrics.as_mut() {
-            Some(m) => {
-                self.host.pump_with(m);
-            }
-            None => {
-                self.host.pump();
-            }
+    fn pump(&mut self) -> (u64, bool) {
+        let handled = match self.metrics.as_mut() {
+            Some(m) => self.host.pump_with(m),
+            None => self.host.pump(),
         };
         self.backend.present(self.host, self.page, Instant::now());
-        self.host.frame_number()
+        (self.host.frame_number(), handled)
     }
 
     fn frame(&self) -> Option<(u32, u32, &[u8])> {

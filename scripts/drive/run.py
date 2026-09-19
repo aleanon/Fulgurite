@@ -54,9 +54,13 @@ def main() -> int:
 
     failures = 0
     actions = 0
+    bare = 0
     for widget, sel, acts in entries:
         actions += len(acts)
         try:
+            bare += sum(
+                1 for a in acts if a.isolate is None and not a.static
+            )
             for line in run_widget(c, widget, sel, acts, strategy):
                 print(line)
         except Failed as e:
@@ -71,7 +75,7 @@ def main() -> int:
             print(f"  ERROR {widget} [{strategy}]: {e}", file=sys.stderr)
             failures += 1
     print(f"widget-drive [{strategy}]: {len(entries)} widgets, {actions} actions, "
-          f"{failures} failed")
+          f"{bare} without an isolate, {failures} failed")
     return 1 if failures else 0
 
 

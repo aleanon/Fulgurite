@@ -83,9 +83,10 @@ impl AgentHost for Host {
     fn enqueue(&mut self, ev: Event) {
         self.queue.push(ev);
     }
-    fn pump(&mut self) -> u64 {
+    fn pump(&mut self) -> (u64, bool) {
+        let mut handled = false;
         while let Some(ev) = self.queue.pop() {
-            pass::dispatch(
+            handled |= pass::dispatch(
                 &mut self.app,
                 &self.styles,
                 &mut self.states,
@@ -95,7 +96,7 @@ impl AgentHost for Host {
         }
         lumen_static::event::App::update(&mut self.app);
         pass::layout(&mut self.app.ui, &self.styles, &mut self.states, VIEW);
-        1
+        (1, handled)
     }
 }
 

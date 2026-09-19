@@ -606,10 +606,21 @@ fn dispatch_at<S: crate::event::App>(
         },
     };
 
-    // An unrouted move: its only consumer is the hover state set above,
-    // which needs no handler.
-    if matches!(ev, Event::PointerMove { .. }) {
-        return false;
+    // **A move is not routed; a hover is** (M27/T27.11, finding 3).
+    //
+    // The move's only consumer is the hover state set above — routing it
+    // would make a `Slider` follow a pointer nobody pressed, which
+    // `tests/slider.rs` pins. But a widget that paints *rows* has to
+    // learn which row, and had no way to: capture is the only path a
+    // move ever took, and capture follows a press. So the move is
+    // re-asked as `Event::Hover` and offered to the node it is over,
+    // once, without the ancestor walk — a container has the hover bit in
+    // its own `NodeState` and does not need this.
+    if let Event::PointerMove { x, y } = *ev {
+        let hover = Event::Hover { x, y };
+        let mut hctx = ctx;
+        hctx.event = hover;
+        return state.tree_mut().node_mut(start).on_event(&hover, &hctx);
     }
 
     // Pass 1 — C3: the widget itself, deepest first.

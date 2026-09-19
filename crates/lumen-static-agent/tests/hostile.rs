@@ -196,10 +196,10 @@ mod input_limits {
         fn enqueue(&mut self, ev: Event) {
             self.queue.push(ev);
         }
-        fn pump(&mut self) -> u64 {
+        fn pump(&mut self) -> (u64, bool) {
             while self.queue.pop().is_some() {}
             self.frame += 1;
-            self.frame
+            (self.frame, false)
         }
     }
 

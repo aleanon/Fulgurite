@@ -116,13 +116,20 @@ impl AgentHost for Host {
     fn enqueue(&mut self, ev: Event) {
         self.queue.push(ev);
     }
-    fn pump(&mut self) -> u64 {
+    fn pump(&mut self) -> (u64, bool) {
+        let mut handled = false;
         while let Some(ev) = self.queue.pop() {
-            pass::dispatch(&mut self.app, &self.styles, &mut self.states, &mut self.input, &ev);
+            handled |= pass::dispatch(
+                &mut self.app,
+                &self.styles,
+                &mut self.states,
+                &mut self.input,
+                &ev,
+            );
         }
         self.layout();
         self.frame += 1;
-        self.frame
+        (self.frame, handled)
     }
 }
 

@@ -172,6 +172,29 @@ pub enum Event {
     PointerDown { x: f32, y: f32, button: PointerButton, clicks: u8 },
     PointerUp { x: f32, y: f32, button: PointerButton },
     PointerMove { x: f32, y: f32 },
+    /// The pointer is **over** this node, and nothing is captured.
+    ///
+    /// **A separate event, not a flag on the move** (M27/T27.11,
+    /// finding 3). A move was delivered only under pointer capture,
+    /// which is granted only to a node that consumed a `PointerDown` —
+    /// so a widget that paints *rows* could never learn which row the
+    /// pointer was over. `Tree` and `OptionList` both shipped with the
+    /// code for a hot row and neither could ever receive the event that
+    /// sets it; screenshots before and after a hover were byte-identical.
+    ///
+    /// Routing the move itself was tried first and is wrong: `Slider`
+    /// reads a move as a drag, correctly, and would have followed the
+    /// pointer without anyone pressing it —
+    /// `tests/slider.rs::a_move_with_nothing_captured_is_not_routed`
+    /// pins that and went red. So the two questions get two events: "you
+    /// are being dragged" is a `PointerMove`, "the pointer is over you"
+    /// is this, and a widget that does not match it is unaffected —
+    /// which is the safe default for the hundred widgets that will never
+    /// care.
+    ///
+    /// Synthesized by `dispatch`, never enqueued by a host: it *is* the
+    /// move, asked differently.
+    Hover { x: f32, y: f32 },
     Scroll { x: f32, y: f32, dy: f32 },
     Key { key: Key, down: bool },
     Text { ch: char },
@@ -239,6 +262,7 @@ impl Event {
             Event::PointerDown { x, y, .. }
             | Event::PointerUp { x, y, .. }
             | Event::PointerMove { x, y }
+            | Event::Hover { x, y }
             | Event::Touch { x, y, .. }
             | Event::Scroll { x, y, .. } => Some(Point { x, y }),
             Event::Key { .. } | Event::Text { .. } | Event::Modifiers(_) => None,
