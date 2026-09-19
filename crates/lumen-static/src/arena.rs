@@ -76,7 +76,7 @@ impl Arena {
     /// `probe`.
     ///
     /// The style row is per *template*, not per instance, which is sound
-    /// only because [`Node::defaults`] is required to depend on the type
+    /// only because [`crate::widget::Node::defaults`] is required to depend on the type
     /// alone. It was not, and the three hand-written versions of this
     /// each snapshotted one instance's state and never rebuilt — a
     /// `List<Option<Spacer>>` whose first item was `None` styled every

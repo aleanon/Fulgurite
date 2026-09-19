@@ -18,7 +18,7 @@
 use lumen_static::hatch::Dyn;
 use lumen_static::ops::Label;
 use lumen_static::style::{lint_sheet_deep, Fields, SheetFinding, SheetIssue};
-use lumen_static::{Color, Length, Patch, Rule, Selector, StaticTree, Widget};
+use lumen_static::{Color, Length, Patch, Rule, Selector, StaticTree};
 
 #[derive(StaticTree, Default)]
 #[widget(column, spacing = 0.0)]
