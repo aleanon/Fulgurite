@@ -1574,6 +1574,16 @@ enum Term<'s> {
     /// honest reading, and is why this is no longer called
     /// `ValueContains`.
     TextContains(&'s str),
+    /// `~=text` — the text is the *whole* label or value, trimmed.
+    ///
+    /// **Because one name can be a prefix of another** (M27/T27.12).
+    /// `~RichText` matched both `RichText` and `RichTextEditor` the
+    /// moment the second existed, and "click the row named RichText"
+    /// stopped being expressible — for the drive and for any agent
+    /// driving the same window. Contains stays the default because it
+    /// is what a person reaching for a selector means; this is the
+    /// escape hatch for when it is not.
+    TextIs(&'s str),
     Src { file: &'s str, line: Option<u32> },
     TableIndex(usize),
 }
@@ -1583,6 +1593,8 @@ fn parse_selector(sel: &str) -> Result<Vec<Term<'_>>, String> {
     for raw in sel.split_whitespace() {
         let term = if let Some(id) = raw.strip_prefix('#') {
             Term::Wid(id)
+        } else if let Some(text) = raw.strip_prefix("~=") {
+            Term::TextIs(text)
         } else if let Some(text) = raw.strip_prefix('~') {
             Term::TextContains(text)
         } else if let Some(loc) = raw.strip_prefix('@') {
@@ -1611,6 +1623,13 @@ fn matches(tree: &TreeRef, e: &Entry, term: &Term) -> bool {
         Term::TextContains(t) => {
             e.node.value().is_some_and(|v| v.contains(t))
                 || e.node.label().is_some_and(|v| v.contains(t))
+        }
+        // Trimmed on the node's side only: a caller writing `~=Switch`
+        // means the row that says "Switch", and the showcase's menu
+        // indents its rows with spaces.
+        Term::TextIs(t) => {
+            e.node.value().is_some_and(|v| v.trim() == *t)
+                || e.node.label().is_some_and(|v| v.trim() == *t)
         }
         Term::TableIndex(i) => e.idx == Some(*i),
         Term::Wid(_) | Term::Kind(_) | Term::Src { .. } => {
@@ -1649,7 +1668,7 @@ fn nearest(tree: &TreeRef, term: &Term) -> Value {
             json!({ "available_files": files })
         }
         Term::TableIndex(_) => json!({ "table_len": tree.table.len() }),
-        Term::TextContains(_) => Value::Null,
+        Term::TextContains(_) | Term::TextIs(_) => Value::Null,
     }
 }
 

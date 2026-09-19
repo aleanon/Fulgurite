@@ -1073,6 +1073,46 @@ trigger is a bordered control, and its seed had no bit to declare.
 two that were wrong. It also corrected the test written for it, whose
 two directions had their controls backwards.
 
+### PaneGrid, and the count that was checked instead of asserted
+
+**§1 lists thirty-three widgets and thirty-two were built.** `PaneGrid`
+appears in §1's table and in T27.8's tranche row, and in neither its
+as-built section nor any file: T27.8 shipped `wrap` and `grid` as derive
+axes, `SplitPane`, and `Collapsible`, recorded *why there is no
+Accordion*, and said nothing about the fifth name in its own row. The
+gap survived a tranche summary, a plan update and a commit message
+claiming the set was closed.
+
+It was caught by **checking the claim mechanically** rather than
+restating it — one `grep` per name in §1's list, run because "thirty-
+three are built" was about to be written down. That is the same habit as
+printing the measured quantity beside the bound: the claim and the check
+are different things, and only one of them is evidence.
+
+So `PaneGrid<A, B, C, D>` is built: four panes, three draggable
+dividers — a shared vertical, and a horizontal **per column**. iced's is
+a *tree* the user re-arranges at runtime, which is topology as data and
+the one thing this framework does not do; what is missing is therefore
+named in the rustdoc rather than faked. `SplitPane<SplitPane<A, C>,
+SplitPane<B, D>>` is the same four panes and almost the same widget,
+with the difference that matters: its two horizontal dividers live in
+separate subtrees, where nothing can keep them in step or report them
+together.
+
+Three injections headless (DO–DQ), one live. **The live one left the
+action green**, and the reason is worth keeping: the drive asserted the
+three *fractions*, and an injection that makes both columns share one
+divider never writes the second fraction — it only stops reading it. The
+state was unchanged and the picture moved. The action now also reads the
+panes' **boxes**, by the text in them, and prints all four numbers.
+
+Two more things the drive found, both the showcase's fault and both
+reported by the lint rather than by an assertion: a `FILL`×`FILL` pane
+grid takes the stage's whole column and squeezed the explanatory note to
+zero height (`W1001`, so the demo gets a pane's worth instead), and
+squeezing a column to a fifth truncates the labels in it (`W1005`, named
+in the action because that is the lint working).
+
 ### T27.12, as built — a span is a word, and the render found the bug
 
 The last four. **`RichText`'s model is the tranche's one real

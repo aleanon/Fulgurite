@@ -97,6 +97,15 @@ pair!(PairRadioC, Radio<Show>, "d_radio_c", "d_radio_cl");
 /// live. `docs/plan-widgets-gallery.md` §3 records what a wrapper that
 /// does not route handlers looks like: every control inside it is
 /// hit-testable, hoverable, pressable and wired to nothing.
+/// M27/T27.8's fifth, which the tranche's table named and its as-built
+/// section did not: four panes and three dividers.
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+pub struct DPaneGrid {
+    #[widget_id("d_panegrid_a")]
+    pub a: PaneGrid<Label<String>, Label<String>, Label<String>, Label<String>>,
+}
+
 /// M27/T27.12's four: the text tail and the draw callback.
 #[derive(StaticTree, Default)]
 #[widget(column, spacing = 0.0)]
@@ -661,6 +670,7 @@ pub enum Demo {
     PickList(DPickList),
     Combobox(DCombobox),
     Menu(DMenu),
+    PaneGrid(DPaneGrid),
     RichText(DRichText),
     Markdown(DMarkdown),
     RichTextEditor(DRichTextEditor),
@@ -681,4 +691,4 @@ impl Default for Demo {
 }
 
 /// How many demos the stage has. Asserted against the catalogue.
-pub const DEMOS: usize = 50;
+pub const DEMOS: usize = 51;

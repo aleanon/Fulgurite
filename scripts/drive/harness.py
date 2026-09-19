@@ -205,6 +205,24 @@ class Ctx:
         return self.c.rpc("input.hover", selector=sel or self.sel)
 
 
+def _menu_row(c: AgentClient, widget: str):
+    """The bounds of the menu row named `widget`, or `None`.
+
+    The menu's labels carry two decorations: the group, folded into the
+    first row of each (`"Layout - PaneGrid"`), and an indent on the
+    rest. Both are stripped before comparing, so the match is on the
+    widget's *name* and nothing else.
+    """
+    for n in c.rpc("ui.getTree", depth=12)["nodes"]:
+        label = (n.get("label") or "").strip()
+        if label != widget and not label.endswith(f" - {widget}"):
+            continue
+        b = n.get("bounds")
+        if b and b[2] > b[0] and b[3] > b[1]:
+            return b
+    return None
+
+
 def _pick(c: AgentClient, widget: str) -> None:
     """Put `widget` on the stage, by name.
 
@@ -256,12 +274,20 @@ def _pick(c: AgentClient, widget: str) -> None:
     for _ in range(30):
         c.rpc("input.scroll", x=mid[0], y=mid[1], dy=120.0)
     for attempt in range(24):
-        try:
-            c.rpc("input.click", selector=f"~{widget}")
+        # **The row is found by its label and clicked by its box.**
+        #
+        # Not by selector: `~Name` is ambiguous the moment one widget's
+        # name is a prefix of another's (`RichText`, `RichTextEditor`),
+        # and `~=Name` misses every row the menu *groups* — those read
+        # "Layout - PaneGrid", because `bind_row` folds the group into
+        # the first row of each. Both were live failures. Normalising
+        # here is exact, needs no grammar guess, and says what it means:
+        # the row whose name is this widget's (M27/T27.12).
+        box = _menu_row(c, widget)
+        if box is not None:
+            c.rpc("input.click", x=(box[0] + box[2]) / 2, y=(box[1] + box[3]) / 2)
             break
-        except RuntimeError as e:
-            if "matched nothing" not in str(e):
-                raise
+        if True:
             if attempt == 23:
                 # **Say what *was* visible.** "never came into view" is a
                 # true statement about a menu that never opened, one
@@ -276,7 +302,7 @@ def _pick(c: AgentClient, widget: str) -> None:
                 raise Failed(
                     f"{widget!r} never came into the menu's viewport after "
                     f"{attempt + 1} scrolls; visible labels were {seen[-14:]}"
-                ) from None
+                )
             c.rpc("input.scroll", x=mid[0], y=mid[1], dy=-90.0)
     label = ""
     for n in c.tree()["nodes"]:

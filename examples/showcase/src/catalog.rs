@@ -420,6 +420,17 @@ pub static CATALOG: &[Entry] = &[
         false,
         |s| on(s, Demo::Menu(DMenu { a: opened(Menu::new(&COMMANDS)) })),
         none),
+    entry!("Layout", "PaneGrid", "Four panes, three dividers.",
+        "iced's is a *tree* the user re-arranges, which is topology as data and the one thing this framework does not do — so this is the shape almost every pane grid ends up in, and what is missing is named rather than faked.",
+        false,
+        |s| on(s, Demo::PaneGrid(DPaneGrid { a: PaneGrid::new(
+            // One word each: a `~text` selector splits its terms on
+            // whitespace, so "north west" is two terms and the second
+            // is read as a kind. The drive addresses these panes by
+            // their text because a bare `Label` carries no id.
+            lbl_of("northwest"), lbl_of("northeast"),
+            lbl_of("southwest"), lbl_of("southeast")) })),
+        none),
     // ---- M27/T27.12 -----------------------------------------------
     entry!("Text", "RichText", "Words that wrap, and a span is a word.",
         "The measure hook answers `how wide is this string`, not `where would it break` — so a span never wraps inside itself and the breaker only decides whether the next one fits.",

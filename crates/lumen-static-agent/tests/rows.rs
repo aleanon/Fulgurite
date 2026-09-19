@@ -33,7 +33,11 @@ use serde_json::{json, Value};
 /// exists to make drivable.
 type Row = Button<App, String>;
 
-const NAMES: [&str; 6] = ["Alpha", "Beta", "Gamma", "Delta", "Epsilon", "Zeta"];
+/// Two of these are a **prefix pair** — `Rich` and `RichEditor` — which
+/// is the shape `~=` exists for (M27/T27.12): under `contains` alone,
+/// "the row named Rich" stops being expressible the moment the second
+/// one exists.
+const NAMES: [&str; 6] = ["Alpha", "Beta", "Gamma", "Delta", "Rich", "RichEditor"];
 const ROW_H: f32 = 20.0;
 
 #[derive(StaticTree, Default)]
@@ -219,4 +223,49 @@ fn text_no_row_shows_matches_nothing() {
     let r = call(&mut h, &agent, "input.click", json!({ "selector": "~Omega" }));
     assert!(r.get("error").is_some(), "`~Omega` matched something: {r}");
     assert_eq!(h.app.clicks, 0, "a selector that matched nothing still clicked");
+}
+
+/// **`~=` is exact and `~` is not** (M27/T27.12).
+///
+/// One widget's name can be a prefix of another's — `RichText` and
+/// `RichTextEditor` — and under `contains` "the row named RichText"
+/// stops being expressible the moment the second exists. Both
+/// directions here: the loose form must still match both, or the fix is
+/// a grammar that lost a capability rather than gaining one.
+#[test]
+fn an_exact_text_selector_picks_one_of_two_prefixed_rows() {
+    let h = Host::new();
+    let a = Agent::new();
+    let tree = TreeRef::of_root(&h.app.ui, &h.styles, &h.states);
+    let loose = a.dispatch(
+        &tree,
+        &json!({"jsonrpc":"2.0","id":1,"method":"ui.resolve",
+                "params":{"selector":"~Rich"}}),
+    );
+    assert_eq!(
+        loose["error"]["code"], -32002,
+        "`~Rich` must stay ambiguous across `Rich` and `RichEditor`: {loose}"
+    );
+    let exact = a.dispatch(
+        &tree,
+        &json!({"jsonrpc":"2.0","id":2,"method":"ui.resolve",
+                "params":{"selector":"~=Rich"}}),
+    );
+    assert!(
+        exact.get("result").is_some(),
+        "`~=Rich` must name exactly the row that says `Rich`: {exact}"
+    );
+    let longer = a.dispatch(
+        &tree,
+        &json!({"jsonrpc":"2.0","id":3,"method":"ui.resolve",
+                "params":{"selector":"~=RichEditor"}}),
+    );
+    assert!(
+        longer.get("result").is_some(),
+        "`~=RichEditor` must name the other one: {longer}"
+    );
+    assert_ne!(
+        exact["result"]["id"], longer["result"]["id"],
+        "the two exact selectors named the same node"
+    );
 }

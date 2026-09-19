@@ -958,6 +958,12 @@ fn stylesheet() -> Vec<StyleRule> {
         // 26 px up and repaints everything below the header — 11.94x the
         // stage, measured (M27/T27.10).
         StyleRule::new(Selector::Id("d_tree_a"), Patch::new().height(Length::Fixed(200.0))),
+        // A pane grid fills what it is given, and what the stage gives
+        // it is the whole column — which squeezed the note under it to
+        // zero height and `W1001` said so, on the first drive. A pane
+        // grid in an application fills a window; in a catalogue of
+        // fifty-one demos it gets a pane's worth.
+        StyleRule::new(Selector::Id("d_panegrid_a"), Patch::new().height(Length::Fixed(260.0))),
         StyleRule::new(Selector::Id("d_tabs_a"), Patch::new().width(Length::Fixed(420.0))),
         StyleRule::new(Selector::Id("d_bottomnav_a"), Patch::new().width(Length::Fixed(420.0))),
         StyleRule::new(Selector::Id("d_appbar_a"), Patch::new().width(Length::Fixed(420.0))),

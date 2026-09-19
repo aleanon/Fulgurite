@@ -4,7 +4,7 @@ use lumen_static::event::{Event, EventCtx, Handlers, Key, NodeSel};
 use lumen_static::ops::{Button, Fixed};
 use lumen_static::widget::{Node, Widget};
 use lumen_static::{Constraints, NodeState, Point};
-use lumen_static_widgets::{Collapsible, SplitPane};
+use lumen_static_widgets::{Collapsible, PaneGrid, SplitPane};
 
 const VIEW: Constraints = Constraints { min_w: 0.0, max_w: 400.0, min_h: 0.0, max_h: 300.0 };
 
@@ -188,4 +188,123 @@ fn a_collapsed_body_cannot_be_hit() {
     // header can answer.
     let hit = Node::hit(&c, &st, 0, 10.0, 10.0).expect("the header did not answer");
     assert_eq!(hit.node, 0, "a collapsed body answered a hit at node {}", hit.node);
+}
+
+// ---- PaneGrid --------------------------------------------------------
+
+/// Four panes, three dividers — and the dividers are *its*, not two
+/// nested splits'. A `SplitPane<SplitPane<A, C>, SplitPane<B, D>>` has
+/// the same four panes with its horizontals in separate subtrees, where
+/// nothing can report them together.
+#[test]
+fn a_pane_grid_is_four_panes_and_its_own_node() {
+    type G = PaneGrid<Fixed, Fixed, Fixed, Fixed>;
+    assert_eq!(
+        <G as Widget>::NODE_COUNT,
+        1 + 4 * <Fixed as Widget>::NODE_COUNT,
+        "itself and its four panes"
+    );
+    let g = G::default();
+    assert_eq!(g.vertical(), 0.5);
+    assert_eq!(g.horizontal(0), 0.5);
+    assert_eq!(g.horizontal(1), 0.5);
+}
+
+fn grid() -> PaneGrid<Fixed, Fixed, Fixed, Fixed> {
+    PaneGrid::new(Fixed::default(), Fixed::default(), Fixed::default(), Fixed::default())
+}
+
+fn lay_grid(g: &mut PaneGrid<Fixed, Fixed, Fixed, Fixed>) -> Vec<NodeState> {
+    let styles = lumen_static::pass::default_styles(g);
+    let n = <PaneGrid<Fixed, Fixed, Fixed, Fixed> as Widget>::NODE_COUNT;
+    let mut st = vec![NodeState::default(); n];
+    let limits = Constraints { min_w: 400.0, max_w: 400.0, min_h: 300.0, max_h: 300.0 };
+    let mut m = lumen_static::cx::BlockMetrics;
+    {
+        let mut cx = lumen_static::LayoutCx::new(&mut m);
+        Node::layout(g, &mut cx, limits, &styles, &mut st, 0);
+    }
+    Node::place(g, Point { x: 0.0, y: 0.0 }, &styles, &mut st, 0);
+    st
+}
+
+/// **Each column's horizontal divider is its own**, which is the whole
+/// reason this is not two nested splits. Dragging the left one must not
+/// move the right column's panes.
+#[test]
+fn a_column_s_divider_moves_only_that_column() {
+    let mut g = grid();
+    let st = lay_grid(&mut g);
+    // Panes are spliced in declaration order and `Fixed` is one node,
+    // so 1 is top-left, 2 top-right, 3 bottom-left, 4 bottom-right.
+    let (tr_h, br_y) = (st[2].size.h, st[4].pos.y);
+    assert!(tr_h > 0.0, "setup: the top-right pane has no height");
+    assert!(g.set_divider(1, 0.25), "the left divider did not move");
+    let st = lay_grid(&mut g);
+    assert!(
+        st[1].size.h < st[2].size.h,
+        "the left column did not shrink: {} vs {}",
+        st[1].size.h,
+        st[2].size.h
+    );
+    assert_eq!(st[2].size.h, tr_h, "the right column's top pane changed height");
+    assert_eq!(st[4].pos.y, br_y, "the right column's bottom pane moved");
+}
+
+#[test]
+fn the_vertical_divider_moves_both_columns() {
+    let mut g = grid();
+    let st = lay_grid(&mut g);
+    let left_w = st[1].size.w;
+    assert!(g.set_divider(0, 0.25), "the vertical divider did not move");
+    let st = lay_grid(&mut g);
+    assert!(st[1].size.w < left_w, "the left column did not narrow");
+    assert!(st[2].size.w > st[1].size.w, "the right column did not widen");
+    assert_eq!(st[3].size.w, st[1].size.w, "a column's two panes disagree on width");
+}
+
+/// The same stop `SplitPane` keeps: a pane dragged to zero area cannot
+/// be clicked to get it back.
+#[test]
+fn no_divider_can_be_dragged_flush_to_an_edge() {
+    let mut g = grid();
+    for which in 0..3u8 {
+        g.set_divider(which, -5.0);
+        let low = if which == 0 { g.vertical() } else { g.horizontal((which - 1) as usize) };
+        assert!(low > 0.0, "divider {which} reached {low}");
+        g.set_divider(which, 5.0);
+        let high = if which == 0 { g.vertical() } else { g.horizontal((which - 1) as usize) };
+        assert!(high < 1.0, "divider {which} reached {high}");
+    }
+}
+
+/// **The divider a drag started on is kept.** The vertical grab margin
+/// crosses both horizontals where they meet it, so a drag that
+/// re-decided on every move would jump between dividers mid-gesture.
+#[test]
+fn a_drag_keeps_the_divider_it_started_on() {
+    let mut g = grid();
+    lay_grid(&mut g);
+    // Press on the *left* horizontal, well away from the vertical.
+    let press = Event::PointerDown {
+        x: 0.0,
+        y: 0.0,
+        button: lumen_static::PointerButton::Left,
+        clicks: 1,
+    };
+    let mut cx = EventCtx::for_event(0, press);
+    cx.local = Point { x: 40.0, y: 147.0 };
+    assert!(Node::on_event(&mut g, &press, &cx), "the press on a divider was declined");
+    let before_v = g.vertical();
+    // Now move across the vertical divider's grab margin.
+    let mv = Event::PointerMove { x: 0.0, y: 0.0 };
+    let mut cx = EventCtx::for_event(0, mv);
+    cx.local = Point { x: 200.0, y: 60.0 };
+    Node::on_event(&mut g, &mv, &cx);
+    assert_eq!(g.vertical(), before_v, "the drag jumped to the vertical divider");
+    assert!(
+        (g.horizontal(0) - 0.2).abs() < 0.02,
+        "the left divider did not follow to y=60/300: it is at {}",
+        g.horizontal(0)
+    );
 }

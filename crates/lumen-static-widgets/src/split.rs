@@ -596,3 +596,441 @@ where
             .handler(lumen_static::event::NodeSel { i: sel.i - Self::BODY, inner: sel.inner })
     }
 }
+
+// ---- PaneGrid --------------------------------------------------------
+
+/// Four panes and three draggable dividers.
+///
+/// # Why four and not a tree
+///
+/// iced's `PaneGrid` is a *tree* of splits the user can re-arrange at
+/// runtime: split a pane, drop one onto another, close one. That is
+/// topology as data, and this framework's topology is the type — the
+/// one thing it does not do. What it *can* do is the shape almost every
+/// pane grid actually ends up in: a 2×2 with a shared vertical divider
+/// and a horizontal one per column, all three draggable.
+///
+/// So this is the honest static analogue, and the part that is missing
+/// is named rather than faked: **panes cannot be added, removed or
+/// swapped at runtime.** An application that needs that needs a
+/// different tree, which in this architecture means a different type —
+/// and `Either` is how one is chosen (M24/T24.3).
+///
+/// `SplitPane<SplitPane<A, C>, SplitPane<B, D>>` is the same four panes
+/// and *almost* the same widget, with one difference that matters: its
+/// two horizontal dividers are inside separate subtrees, so nothing can
+/// keep them in step or report them together. A pane grid is a thing
+/// with three dividers, not a tree with one.
+pub struct PaneGrid<A: Widget, B: Widget, C: Widget, D: Widget> {
+    pub top_left: A,
+    pub top_right: B,
+    pub bottom_left: C,
+    pub bottom_right: D,
+    /// The shared vertical divider, as a fraction of the width.
+    v: f32,
+    /// Each column's horizontal divider, as a fraction of the height.
+    left: f32,
+    right: f32,
+    /// Which divider a drag is on: 0 vertical, 1 left, 2 right.
+    grabbed: u8,
+    size: Size,
+}
+
+impl<A, B, C, D> Default for PaneGrid<A, B, C, D>
+where
+    A: Widget + Default,
+    B: Widget + Default,
+    C: Widget + Default,
+    D: Widget + Default,
+{
+    fn default() -> Self {
+        PaneGrid {
+            top_left: A::default(),
+            top_right: B::default(),
+            bottom_left: C::default(),
+            bottom_right: D::default(),
+            v: 0.5,
+            left: 0.5,
+            right: 0.5,
+            grabbed: 0,
+            size: Size { w: 0.0, h: 0.0 },
+        }
+    }
+}
+
+impl<A: Widget, B: Widget, C: Widget, D: Widget> PaneGrid<A, B, C, D> {
+    const TL: usize = 1;
+    const TR: usize = 1 + A::NODE_COUNT;
+    const BL: usize = 1 + A::NODE_COUNT + B::NODE_COUNT;
+    const BR: usize = 1 + A::NODE_COUNT + B::NODE_COUNT + C::NODE_COUNT;
+    const BAR: f32 = 6.0;
+    /// The same stop `SplitPane` keeps, and for the same reason: a pane
+    /// dragged to zero area cannot be clicked to get it back.
+    const MIN: f32 = 0.08;
+
+    pub fn new(top_left: A, top_right: B, bottom_left: C, bottom_right: D) -> Self {
+        PaneGrid {
+            top_left,
+            top_right,
+            bottom_left,
+            bottom_right,
+            v: 0.5,
+            left: 0.5,
+            right: 0.5,
+            grabbed: 0,
+            size: Size { w: 0.0, h: 0.0 },
+        }
+    }
+
+    /// The vertical divider's fraction.
+    pub fn vertical(&self) -> f32 {
+        self.v
+    }
+
+    /// A column's horizontal divider: 0 for the left, anything else the
+    /// right.
+    pub fn horizontal(&self, column: usize) -> f32 {
+        if column == 0 {
+            self.left
+        } else {
+            self.right
+        }
+    }
+
+    /// Move one divider, clamped away from both edges. `which` is 0 for
+    /// the vertical, 1 for the left column's, 2 for the right's.
+    pub fn set_divider(&mut self, which: u8, f: f32) -> bool {
+        let f = lumen_static::num::clamp(f, Self::MIN, 1.0 - Self::MIN);
+        let slot = match which {
+            0 => &mut self.v,
+            1 => &mut self.left,
+            _ => &mut self.right,
+        };
+        let moved = *slot != f;
+        *slot = f;
+        moved
+    }
+
+    /// The divider under a local point, if any — the same grab margin
+    /// `SplitPane` uses, which is three times the bar it draws.
+    fn divider_at(&self, x: f32, y: f32) -> Option<u8> {
+        let (w, h) = (self.size.w, self.size.h);
+        let vx = (w - Self::BAR) * self.v;
+        if x >= vx - Self::BAR && x <= vx + Self::BAR * 2.0 {
+            return Some(0);
+        }
+        let (which, frac) = if x < vx { (1u8, self.left) } else { (2, self.right) };
+        let hy = (h - Self::BAR) * frac;
+        if y >= hy - Self::BAR && y <= hy + Self::BAR * 2.0 {
+            return Some(which);
+        }
+        None
+    }
+}
+
+pub struct PaneTable<A, B, C, D>(core::marker::PhantomData<(A, B, C, D)>);
+
+impl<A: Widget, B: Widget, C: Widget, D: Widget> PaneTable<A, B, C, D> {
+    const N: usize =
+        1 + A::NODE_COUNT + B::NODE_COUNT + C::NODE_COUNT + D::NODE_COUNT;
+    const ARRAY: [NodeDesc; MAX_SPLIT_NODES] = {
+        assert!(Self::N <= MAX_SPLIT_NODES, "PaneGrid exceeds MAX_SPLIT_NODES");
+        let mut t = [NodeDesc::EMPTY; MAX_SPLIT_NODES];
+        t[0] = NodeDesc::new(1, NO_PARENT, 0, 4, NodeDesc::CONTAINER);
+        lumen_static::widget::splice_child(&mut t, 1, A::SUB_TABLE, 0);
+        lumen_static::widget::splice_child(&mut t, 1 + A::NODE_COUNT, B::SUB_TABLE, 0);
+        lumen_static::widget::splice_child(
+            &mut t,
+            1 + A::NODE_COUNT + B::NODE_COUNT,
+            C::SUB_TABLE,
+            0,
+        );
+        lumen_static::widget::splice_child(
+            &mut t,
+            1 + A::NODE_COUNT + B::NODE_COUNT + C::NODE_COUNT,
+            D::SUB_TABLE,
+            0,
+        );
+        // **The sibling chain, which `splice_child` cannot know.** It
+        // writes one child's subtree; only the parent knows what comes
+        // after it, and a table whose children do not point at each
+        // other fails `table_is_well_formed` — at compile time, which
+        // is where this was caught.
+        let (tr, bl, br) = (
+            1 + A::NODE_COUNT,
+            1 + A::NODE_COUNT + B::NODE_COUNT,
+            1 + A::NODE_COUNT + B::NODE_COUNT + C::NODE_COUNT,
+        );
+        t[1].next_sibling = tr as u32;
+        t[tr].next_sibling = bl as u32;
+        t[bl].next_sibling = br as u32;
+        t
+    };
+    pub const SLICE: &'static [NodeDesc] = Self::ARRAY.split_at(Self::N).0;
+
+    const SEED_ARRAY: [Seed; MAX_SPLIT_NODES] = {
+        let mut s = [Seed::WIDGET; MAX_SPLIT_NODES];
+        s[0] = Seed::new(
+            <PaneGrid<A, B, C, D> as Widget>::KIND,
+            <PaneGrid<A, B, C, D> as Widget>::type_defaults,
+        )
+        .reading(Fields::of(&[
+            Fields::WIDTH,
+            Fields::HEIGHT,
+            Fields::BACKGROUND,
+            Fields::BORDER,
+            Fields::COLOR,
+            Fields::RADIUS,
+            Fields::VISIBLE,
+        ]));
+        lumen_static::widget::splice_seeds(&mut s, 1, A::SEEDS);
+        lumen_static::widget::splice_seeds(&mut s, 1 + A::NODE_COUNT, B::SEEDS);
+        lumen_static::widget::splice_seeds(&mut s, 1 + A::NODE_COUNT + B::NODE_COUNT, C::SEEDS);
+        lumen_static::widget::splice_seeds(
+            &mut s,
+            1 + A::NODE_COUNT + B::NODE_COUNT + C::NODE_COUNT,
+            D::SEEDS,
+        );
+        s
+    };
+    pub const SEED_SLICE: &'static [Seed] = Self::SEED_ARRAY.split_at(Self::N).0;
+}
+
+impl<A: Widget, B: Widget, C: Widget, D: Widget> Widget for PaneGrid<A, B, C, D> {
+    const NODE_COUNT: usize = PaneTable::<A, B, C, D>::N;
+    const DEPTH: usize = 1 + max4(A::DEPTH, B::DEPTH, C::DEPTH, D::DEPTH);
+    const IS_RIGID: bool = true;
+    const SUB_TABLE: &'static [NodeDesc] = PaneTable::<A, B, C, D>::SLICE;
+    const KIND: &'static str = "panegrid";
+    const SEEDS: &'static [Seed] = PaneTable::<A, B, C, D>::SEED_SLICE;
+
+    fn type_defaults() -> Style {
+        Style {
+            width: Length::FILL,
+            height: Length::FILL,
+            background: Color(0xf3, 0xf5, 0xf9, 0xff),
+            color: Color(0xcb, 0xd2, 0xdb, 0xff),
+            ..Style::default()
+        }
+    }
+}
+
+const fn max4(a: usize, b: usize, c: usize, d: usize) -> usize {
+    let ab = if a > b { a } else { b };
+    let cd = if c > d { c } else { d };
+    if ab > cd {
+        ab
+    } else {
+        cd
+    }
+}
+
+impl<A, B, C, D> Node for PaneGrid<A, B, C, D>
+where
+    A: Widget + Node,
+    B: Widget + Node,
+    C: Widget + Node,
+    D: Widget + Node,
+{
+    fn kind_name(&self) -> &'static str {
+        <Self as Widget>::KIND
+    }
+
+    fn defaults(&self) -> Style {
+        <Self as Widget>::type_defaults()
+    }
+
+    fn layout(
+        &mut self,
+        cx: &mut LayoutCx,
+        limits: Constraints,
+        style: &[Style],
+        st: &mut [NodeState],
+        i: usize,
+    ) -> Size {
+        let me = style[i];
+        if !me.visible {
+            return lumen_static::ops::hide_subtree(st, i, limits, Self::NODE_COUNT);
+        }
+        let s = lumen_static::ops::resolve_self(
+            limits,
+            &me,
+            Size { w: limits.max_w, h: limits.max_h },
+        );
+        self.size = s;
+        let bar = Self::BAR;
+        let lw = ((s.w - bar) * self.v).max(0.0);
+        let rw = (s.w - bar - lw).max(0.0);
+        let lh = ((s.h - bar) * self.left).max(0.0);
+        let rh = ((s.h - bar) * self.right).max(0.0);
+        // Each pane is given exactly its share, fixed on both axes: a
+        // `FILL` child fills its pane and not the one beside it, which
+        // is `SplitPane`'s rule in two dimensions.
+        let pane = |w: f32, h: f32| Constraints { min_w: w, max_w: w, min_h: h, max_h: h };
+        self.top_left.layout(cx, pane(lw, lh), style, st, i + Self::TL);
+        self.top_right.layout(cx, pane(rw, rh), style, st, i + Self::TR);
+        self.bottom_left
+            .layout(cx, pane(lw, (s.h - bar - lh).max(0.0)), style, st, i + Self::BL);
+        self.bottom_right
+            .layout(cx, pane(rw, (s.h - bar - rh).max(0.0)), style, st, i + Self::BR);
+        lumen_static::ops::record_painted(st, i, limits, s, &me)
+    }
+
+    fn place(&mut self, origin: Point, style: &[Style], st: &mut [NodeState], i: usize) {
+        st[i].pos = origin;
+        let (w, h) = (st[i].size.w, st[i].size.h);
+        let bar = Self::BAR;
+        let lw = ((w - bar) * self.v).max(0.0);
+        let lh = ((h - bar) * self.left).max(0.0);
+        let rh = ((h - bar) * self.right).max(0.0);
+        let right_x = origin.x + lw + bar;
+        self.top_left.place(origin, style, st, i + Self::TL);
+        self.top_right.place(Point { x: right_x, y: origin.y }, style, st, i + Self::TR);
+        self.bottom_left.place(
+            Point { x: origin.x, y: origin.y + lh + bar },
+            style,
+            st,
+            i + Self::BL,
+        );
+        self.bottom_right.place(
+            Point { x: right_x, y: origin.y + rh + bar },
+            style,
+            st,
+            i + Self::BR,
+        );
+    }
+
+    fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
+        let s = &st[i];
+        let r = lumen_static::ops::rect_of(s);
+        if r[2] <= r[0] || r[3] <= r[1] {
+            return;
+        }
+        out.rounded_rect(r, s.bg, s.radius);
+        self.top_left.paint(st, i + Self::TL, out);
+        self.top_right.paint(st, i + Self::TR, out);
+        self.bottom_left.paint(st, i + Self::BL, out);
+        self.bottom_right.paint(st, i + Self::BR, out);
+        // The dividers last, over the panes. The horizontal ones stop
+        // at the vertical: they belong to their column, which is the
+        // whole difference between this and two nested splits.
+        let (w, h) = (r[2] - r[0], r[3] - r[1]);
+        let vx = r[0] + (w - Self::BAR) * self.v;
+        out.rect([vx, r[1], vx + Self::BAR, r[3]], s.fg);
+        let ly = r[1] + (h - Self::BAR) * self.left;
+        out.rect([r[0], ly, vx, ly + Self::BAR], s.fg);
+        let ry = r[1] + (h - Self::BAR) * self.right;
+        out.rect([vx + Self::BAR, ry, r[2], ry + Self::BAR], s.fg);
+    }
+
+    fn hit(&self, st: &[NodeState], i: usize, x: f32, y: f32) -> Option<lumen_static::Hit> {
+        if !lumen_static::hit::contains(&st[i], x, y) {
+            return None;
+        }
+        let r = lumen_static::ops::rect_of(&st[i]);
+        let local = Point { x: x - r[0], y: y - r[1] };
+        if self.divider_at(local.x, local.y).is_some() {
+            return Some(lumen_static::Hit { node: i as u32, inner: None, local });
+        }
+        self.top_left
+            .hit(st, i + Self::TL, x, y)
+            .or_else(|| self.top_right.hit(st, i + Self::TR, x, y))
+            .or_else(|| self.bottom_left.hit(st, i + Self::BL, x, y))
+            .or_else(|| self.bottom_right.hit(st, i + Self::BR, x, y))
+    }
+
+    fn on_event(&mut self, ev: &Event, cx: &EventCtx) -> bool {
+        match ev {
+            // **Which divider is decided on the press and kept.** A
+            // drag that re-decided on every move would hand the gesture
+            // to whichever divider the pointer wandered near — and the
+            // vertical one's grab margin crosses both horizontals at
+            // their intersection, so that is not a rare case.
+            Event::PointerDown { .. } => {
+                self.grabbed = self.divider_at(cx.local.x, cx.local.y).unwrap_or(0);
+                self.drag(cx);
+                true
+            }
+            Event::PointerMove { .. } => {
+                self.drag(cx);
+                true
+            }
+            Event::Key { key: Key::Left, down: true } => {
+                self.set_divider(0, self.v - 0.05)
+            }
+            Event::Key { key: Key::Right, down: true } => {
+                self.set_divider(0, self.v + 0.05)
+            }
+            _ => false,
+        }
+    }
+
+    fn node(&self, k: usize) -> &dyn Node {
+        if k == 0 {
+            self
+        } else if k < Self::TR {
+            self.top_left.node(k - Self::TL)
+        } else if k < Self::BL {
+            self.top_right.node(k - Self::TR)
+        } else if k < Self::BR {
+            self.bottom_left.node(k - Self::BL)
+        } else {
+            self.bottom_right.node(k - Self::BR)
+        }
+    }
+
+    fn node_mut(&mut self, k: usize) -> &mut dyn Node {
+        if k == 0 {
+            self
+        } else if k < Self::TR {
+            self.top_left.node_mut(k - Self::TL)
+        } else if k < Self::BL {
+            self.top_right.node_mut(k - Self::TR)
+        } else if k < Self::BR {
+            self.bottom_left.node_mut(k - Self::BL)
+        } else {
+            self.bottom_right.node_mut(k - Self::BR)
+        }
+    }
+
+    #[cfg(feature = "observe")]
+    fn observe(
+        &self,
+        _st: &[NodeState],
+        _i: usize,
+        _id: u64,
+        node: &mut accesskit::Node,
+        _extra: &mut alloc::vec::Vec<(accesskit::NodeId, accesskit::Node)>,
+    ) {
+        node.set_role(accesskit::Role::Group);
+        // The three fractions, so a drive can assert a drag without
+        // reading pixels.
+        node.set_value(alloc::format!(
+            "{:.2},{:.2},{:.2}",
+            self.v,
+            self.left,
+            self.right
+        ));
+    }
+}
+
+impl<A: Widget, B: Widget, C: Widget, D: Widget> PaneGrid<A, B, C, D> {
+    fn drag(&mut self, cx: &EventCtx) {
+        let (w, h) = (self.size.w, self.size.h);
+        match self.grabbed {
+            0 => self.set_divider(0, if w > 0.0 { cx.local.x / w } else { 0.5 }),
+            n => self.set_divider(n, if h > 0.0 { cx.local.y / h } else { 0.5 }),
+        };
+    }
+}
+
+impl<A: Widget, B: Widget, C: Widget, D: Widget, S> lumen_static::event::Handlers<S>
+    for PaneGrid<A, B, C, D>
+{
+    fn handler(
+        &self,
+        _sel: lumen_static::event::NodeSel,
+    ) -> Option<fn(&mut S, &EventCtx)> {
+        None
+    }
+}

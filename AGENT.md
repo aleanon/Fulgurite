@@ -210,8 +210,17 @@ are independent of each other**, so either may go first:
   a defect sixteen green tests did not**: `**bold**,` — emphasis
   followed by punctuation, the ordinary case — does not end with `**`,
   so an end-strip never closed it and every word after stayed bold. The
-  parser scans *inside* the word now and a marker toggles. Thirty-eight
-  widgets, 92 actions, green both ways.
+  parser scans *inside* the word now and a marker toggles.
+  **And `PaneGrid`, which §1 listed and T27.8 never built** — caught by
+  checking the count mechanically instead of restating it, one `grep`
+  per name because "thirty-three are built" was about to be written
+  down. Four panes and three dividers, a shared vertical and one per
+  column; iced's is a *tree* the user re-arranges, which is topology as
+  data, so what is missing is named in the rustdoc rather than faked.
+  It also forced `~=`, an exact-text selector: one widget's name can be
+  a prefix of another's, and `~RichText` matched `RichTextEditor` too.
+  **M27 is closed: thirty-three widgets, checked name by name.** Thirty-
+  nine drivable entries, 94 actions, green both ways.
 
 - **M28 — `docs/plan-tasks.md`** (T28.0–T28.12): **not started**, written
   2026-09-18 and **revised the same day after a seven-lens review: 42

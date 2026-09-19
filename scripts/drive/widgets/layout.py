@@ -159,4 +159,92 @@ ACCORDION = ("Accordion", "#d_acc_a", [
     ),
 ])
 
-ALL = [WRAP, GRID, SPLIT, ACCORDION]
+def _fracs(c):
+    """The grid's three dividers, as it publishes them."""
+    return [float(x) for x in c.value().split(",")]
+
+
+def _pane_h(c, text: str) -> float:
+    """How tall the pane holding `text` is.
+
+    By its label's text, because the demo's four panes are `Label`s and
+    a bare `Label` carries no id. Geometry rather than the widget's own
+    fractions: the fractions are *state*, and an injection that ignores
+    one while still reporting it moves the picture and not the number.
+    """
+    b = c.box(f"~{text}")
+    return b[3] - b[1]
+
+
+def _drag(c, x_frac: float, y_frac: float, grab: str):
+    """Press on one divider and drag to a point.
+
+    `grab` names which: the press decides, and the drag keeps it — which
+    is the property the second action is about.
+    """
+    b = c.box()
+    (w, h) = (b[2] - b[0], b[3] - b[1])
+    v, left, _ = _fracs(c)
+    if grab == "v":
+        start = (b[0] + w * v, b[1] + h * 0.25)
+    else:
+        start = (b[0] + w * 0.25, b[1] + h * left)
+    c.c.rpc("input.pointerDown", x=start[0], y=start[1])
+    c.c.rpc("input.hover", x=b[0] + w * x_frac, y=b[1] + h * y_frac)
+    c.c.rpc("input.pointerUp", x=b[0] + w * x_frac, y=b[1] + h * y_frac)
+
+
+PANEGRID = ("PaneGrid", "#d_panegrid_a", [
+    Action(
+        name="a column's divider moves only that column",
+        needs="a grid whose three dividers all sit at 0.5",
+        do=lambda c: (c.__dict__.__setitem__("_f0", _fracs(c)),
+                      c.__dict__.__setitem__(
+                          "_panes", [_pane_h(c, "northwest"),
+                                     _pane_h(c, "northeast")]),
+                      _drag(c, 0.25, 0.25, "h"))[0],
+        expect=lambda c: (
+            _fracs(c)[1] < c._f0[1] - 0.1
+            and _fracs(c)[2] == c._f0[2]
+            and _fracs(c)[0] == c._f0[0]
+            and _pane_h(c, "northwest") < c._panes[0] - 10.0
+            and abs(_pane_h(c, "northeast") - c._panes[1]) < 0.5,
+            "v,left,right {} -> {}; the top panes are {:.0f} and {:.0f} px "
+            "tall, from {:.0f} and {:.0f}. **The fractions alone are not the "
+            "assertion**: an injection that gave both columns one divider "
+            "left them unchanged and moved only the geometry, which is the "
+            "half a reader sees."
+            .format(c._f0, _fracs(c), _pane_h(c, "northwest"),
+                    _pane_h(c, "northeast"), c._panes[0], c._panes[1]),
+        ),
+        isolate=lambda c: (c.__dict__.__setitem__("_f0", _fracs(c)),
+                           c.__dict__.__setitem__(
+                               "_panes", [_pane_h(c, "northwest"),
+                                          _pane_h(c, "northeast")]),
+                           c.click_outside())[0],
+        injection="give both columns one horizontal divider",
+    ),
+    Action(
+        name="a drag keeps the divider it started on",
+        needs="a grid with a divider to grab",
+        do=lambda c: (c.__dict__.__setitem__("_f0", _fracs(c)),
+                      _drag(c, 0.8, 0.8, "v"))[0],
+        expect=lambda c: (
+            _fracs(c)[0] > c._f0[0] + 0.1
+            and _fracs(c)[1] == c._f0[1]
+            and _fracs(c)[2] == c._f0[2],
+            "v,left,right {} -> {}: the drag started on the vertical divider "
+            "and crossed both horizontals' grab margins"
+            .format(c._f0, _fracs(c)),
+        ),
+        isolate=lambda c: (c.__dict__.__setitem__("_f0", _fracs(c)),
+                           c.click_outside())[0],
+        # Squeezing the right column to a fifth of the grid does truncate
+        # the labels in it, and `W1005` saying so is the lint working —
+        # the code is named so the check stays on for every other one.
+        expects_lint=("W1005",),
+        injection="re-decide the grabbed divider on every move",
+    ),
+])
+
+ALL = [WRAP, GRID, SPLIT, ACCORDION, PANEGRID]
