@@ -238,3 +238,43 @@ fn the_retention_seam_allocates_nothing_in_either_mode() {
     }
     assert_eq!(allocs() - before, 0, "the retained copy reuses its buffers");
 }
+
+/// **Gate: rasterising a frame allocates nothing either** — M26/T26.13.
+///
+/// The gate above covers `pump`: input, layout, paint and retention. It
+/// stops at the display list. Everything after it — the software
+/// rasteriser, its clip stack, its glass scratch buffers — was outside
+/// what any test could see, on a repository whose stated invariant is
+/// zero steady-state allocation.
+///
+/// Written **before** the code it judges, which is the order this task
+/// was specified in: the first run of this is the measurement of what
+/// the raster path costs today.
+#[test]
+fn rasterising_a_frame_allocates_nothing() {
+    use lumen_static::Renderer;
+    use lumen_static_shell::software::Canvas;
+
+    let mut host: Host<_, Incremental> = Host::new(PlainApp::default(), 320, 200);
+    let mut canvas = Canvas::new(320, 200);
+    // Warm: the canvas, the list and every buffer either reaches its
+    // steady-state capacity here.
+    for i in 0..30 {
+        host.app.count = i;
+        host.pump();
+        canvas.render(&host.list, 320, 200);
+    }
+
+    let before = allocs();
+    for i in 0..50 {
+        host.app.count = i % 30;
+        host.pump();
+        canvas.render(&host.list, 320, 200);
+    }
+    let n = allocs() - before;
+    assert_eq!(
+        n, 0,
+        "50 rasterised frames allocated {n} times — {:.2} per frame",
+        n as f64 / 50.0
+    );
+}

@@ -988,17 +988,23 @@ impl Surface<'_> {
             Some(d) => [d[0].max(band[0]), d[1].max(band[1]), d[2].min(band[2]), d[3].min(band[3])],
             None => band,
         };
-        let mut clip: Vec<[f32; 4]> = Vec::with_capacity(4);
-        clip.push(outer);
+        // **A fixed stack, not a `Vec`** (M26/T26.13). This allocated
+        // once per rasterised frame — one heap call in the path this
+        // repository's central invariant says has none, and which no
+        // test could see until the allocation gate was extended to
+        // cover a raster frame. The shape is `InputQueue`'s and
+        // `Overlays`': a fixed depth, and an explicit answer when it is
+        // reached.
+        let mut clip = ClipStack::new(outer);
         for c in &list.cmds {
             match c {
                 Cmd::Rect { rect, color } => {
-                    if let Some(r) = clipped(*rect, &clip) {
+                    if let Some(r) = clipped(*rect, clip.as_slice()) {
                         self.fill(r, *color);
                     }
                 }
                 Cmd::RoundedRect { rect, color, radius } => {
-                    if let Some(r) = clipped(*rect, &clip) {
+                    if let Some(r) = clipped(*rect, clip.as_slice()) {
                         // Corners are rounded against the *original*
                         // rect and the fill is limited to the clipped
                         // one, so a clipped card does not square off.
@@ -1006,7 +1012,7 @@ impl Surface<'_> {
                     }
                 }
                 Cmd::StrokedRect { rect, color, radius, width } => {
-                    if let Some(r) = clipped(*rect, &clip) {
+                    if let Some(r) = clipped(*rect, clip.as_slice()) {
                         // Same split as `RoundedRect`: the ring is
                         // computed against the original box and written
                         // only inside the clipped one, so a clipped
@@ -1015,14 +1021,14 @@ impl Surface<'_> {
                     }
                 }
                 Cmd::Glass { rect, radius, material } => {
-                    if let Some(r) = clipped(*rect, &clip) {
+                    if let Some(r) = clipped(*rect, clip.as_slice()) {
                         self.glass_within(*rect, r, *radius, *material);
                     }
                 }
                 Cmd::Shadow { rect, color, radius, spread } => {
                     let reach =
                         [rect[0] - spread, rect[1] - spread, rect[2] + spread, rect[3] + spread];
-                    if let Some(r) = clipped(reach, &clip) {
+                    if let Some(r) = clipped(reach, clip.as_slice()) {
                         self.shadow_within(*rect, r, *color, *radius, *spread);
                     }
                 }
@@ -1044,14 +1050,14 @@ impl Surface<'_> {
                     // more than any face overhangs and costs nothing.
                     let pad = *size;
                     let reach = [rect[0] - pad, rect[1] - pad, rect[2] + pad, rect[3] + pad];
-                    if clipped(reach, &clip).is_none() {
+                    if clipped(reach, clip.as_slice()).is_none() {
                         continue;
                     }
                     let s = list.str_of(*text);
                     #[cfg(feature = "truetype")]
                     if let Some(font) = font {
                         let run = TextRun { rect, text: s, size: *size, weight: *weight, color: *color };
-                        self.draw_run(font, run, &clip);
+                        self.draw_run(font, run, clip.as_slice());
                         continue;
                     }
                     let _ = weight;
@@ -1066,7 +1072,7 @@ impl Surface<'_> {
                         }
                         // One block per glyph, inset so runs stay legible.
                         let g = [x + 0.5, rect[1] + 2.0, x + advance - 0.5, rect[1] + size - 2.0];
-                        if let Some(r) = clipped(g, &clip) {
+                        if let Some(r) = clipped(g, clip.as_slice()) {
                             self.fill(r, *color);
                         }
                     }
@@ -1075,12 +1081,12 @@ impl Surface<'_> {
                     let w = width / 2.0;
                     let bounds =
                         [a.x.min(b.x) - w, a.y.min(b.y) - w, a.x.max(b.x) + w, a.y.max(b.y) + w];
-                    if clipped(bounds, &clip).is_some() {
-                        self.stroke_line(*a, *b, *width, *color, &clip);
+                    if clipped(bounds, clip.as_slice()).is_some() {
+                        self.stroke_line(*a, *b, *width, *color, clip.as_slice());
                     }
                 }
                 Cmd::Gradient { rect, stops, angle } => {
-                    if let Some(r) = clipped(*rect, &clip) {
+                    if let Some(r) = clipped(*rect, clip.as_slice()) {
                         self.fill_gradient(*rect, r, *stops, *angle);
                     }
                 }
@@ -1088,7 +1094,7 @@ impl Surface<'_> {
                     // Culled before anything is fetched, like every
                     // other command and like text since the 46x fix
                     // (`docs/results-competitive.md` §6.1).
-                    let Some(r) = clipped(*rect, &clip) else { continue };
+                    let Some(r) = clipped(*rect, clip.as_slice()) else { continue };
                     let Some(src) = images else { continue };
                     // A missing asset draws nothing rather than taking
                     // the frame down: `ImageSource` returns `Option` for
@@ -1111,9 +1117,10 @@ impl Surface<'_> {
                     // `tests/paint_containment.rs` forbids, but a
                     // renderer must not trust) would otherwise let a
                     // later command paint outside this strip's rows.
-                    if clip.len() > 1 {
-                        clip.pop();
-                    }
+                    // `ClipStack::pop` keeps the floor itself — slot 0
+                    // is the band, never popped — and also declines the
+                    // pops that match pushes it refused for depth.
+                    clip.pop();
                 }
             }
         }
@@ -2030,6 +2037,70 @@ fn fill_px(dst: &mut [u8], p: [u8; 4]) {
     }
     for px in it.into_remainder().chunks_exact_mut(4) {
         px.copy_from_slice(&p);
+    }
+}
+
+/// Slots in the raster clip stack: the damage band, plus eight scopes
+/// from the list.
+///
+/// **Eight list scopes, and what happens at a ninth is stated rather
+/// than undefined.** Slot 0 is the band and is never one of the
+/// eight — an off-by-one the first version of this had, and the test
+/// below found by reporting a 48×48 fill where a 20×20 scope was
+/// supposed to be in force.
+/// A `Repeat` inside a `Popup` inside a `Card` is three; the deepest
+/// tree in this repository reaches four. A ninth `PushClip` is
+/// *ignored* — the scope it would have opened is not entered, so the
+/// content it would have bounded is clipped by the eight above it
+/// instead. That is the conservative direction: too much clipping
+/// draws less, never more, and drawing outside a clip is the bug a
+/// renderer must not have (`tests/paint_containment.rs`).
+const MAX_CLIPS: usize = 9;
+
+/// The raster path's clip stack.
+///
+/// A fixed array, because this is per-frame and the frame path
+/// allocates nothing — the same shape `InputQueue` and `Overlays` use,
+/// and for the same reason (M26/T26.13).
+struct ClipStack {
+    stack: [[f32; 4]; MAX_CLIPS],
+    /// Scopes actually entered. Never below 1: slot 0 is the damage
+    /// band, which is not part of the list's own balance.
+    n: usize,
+    /// Pushes refused for depth, so `pop` can decline the matching
+    /// number and keep the stack balanced. Without this a ninth push
+    /// followed by its pop would pop a scope it never opened.
+    refused: usize,
+}
+
+impl ClipStack {
+    fn new(outer: [f32; 4]) -> ClipStack {
+        let mut stack = [[0.0; 4]; MAX_CLIPS];
+        stack[0] = outer;
+        ClipStack { stack, n: 1, refused: 0 }
+    }
+
+    fn push(&mut self, rect: [f32; 4]) {
+        if self.n < MAX_CLIPS {
+            self.stack[self.n] = rect;
+            self.n += 1;
+        } else {
+            self.refused += 1;
+        }
+    }
+
+    /// Answers whether a scope was actually left, so the caller's floor
+    /// check reads the same as it did with a `Vec`.
+    fn pop(&mut self) {
+        if self.refused > 0 {
+            self.refused -= 1;
+        } else if self.n > 1 {
+            self.n -= 1;
+        }
+    }
+
+    fn as_slice(&self) -> &[[f32; 4]] {
+        &self.stack[..self.n]
     }
 }
 

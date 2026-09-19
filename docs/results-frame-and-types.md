@@ -400,6 +400,12 @@ it is one slot per transparent container per frame:
 `paint` agree with `hit`, which has had the same predicate since
 `examples/glass` found an empty wrapper swallowing the frame's input.
 
+**Re-measured after T26.11**, as the task's ordering note required:
+`--bin retain`'s `streaming: build + Streaming<4096>` arm is 280–291 ns,
+against 278.5 ns before — unchanged, which is the expected answer,
+because `Streaming` kept its single buffer and its length-change
+behaviour.
+
 Gate: `crates/lumen-static/tests/container_fill.rs` — four tests, two
 counters. A painter that counts *calls* (not commands, for the reason
 above) and a `Retention` that counts *slots*. Both directions: a
@@ -451,3 +457,44 @@ px² of 120,000, so the all-different assertion fires).
 its *index*, so inserting a command changed the hash of everything after
 it, the suffix match never fired, and a 3,200 px² popup reported 11,200.
 The colour comes from the rect now.
+
+## T26.13, part one — the raster clip stack allocated once per frame
+
+Measured 2026-09-19, and **the gate was written first**, which is how
+this task was specified.
+
+| | before | after |
+|---|---:|---:|
+| `alloc_gate.rs::rasterising_a_frame_allocates_nothing`, 50 frames | **50 allocations — 1.00 per frame** | **0** |
+
+The existing allocation gate covered `pump`: input, layout, paint and
+retention. It stopped at the display list, so the software rasteriser —
+and its `Vec::with_capacity(4)` clip stack, built per frame — was
+outside what any test could see, on a repository whose central
+invariant is zero steady-state allocation. The first run of the new
+test *is* that measurement.
+
+The stack is a fixed array now, the shape `InputQueue` and `Overlays`
+already use: **nine slots — the damage band plus eight list scopes**. A
+ninth list scope is *ignored*, so the content it would have bounded is
+clipped by the eight above it instead. That is the conservative
+direction: too much clipping draws less, never more, and drawing
+outside a clip is the bug a renderer must not have. The pops that match
+refused pushes are counted and declined, so the balance survives.
+
+**The limit was off by one first**, and the test found it: slot 0 is the
+band, so the original eight-slot array left room for seven list scopes
+while the comment said a ninth would be refused. A fill that should have
+been bounded to 20×20 covered 48×48.
+
+The deepest nesting in this repository is four (`Repeat` in a `Popup` in
+a `Card` is three).
+
+Four injections. `EL` — restore one `Vec` per frame — **left the gate
+green on the first attempt**, because an unused `Vec::with_capacity` is
+an allocation LLVM is allowed to elide; pushing to it and passing it
+through `black_box` makes it real, and then the gate reports 1.00 per
+frame. `EM` (the stack stops clipping) reddens
+`tests/paint_containment.rs`, which is the property rather than the
+allocation. `EN` (a refused push pops a real scope) and `EO` (the stack
+overwrites its top instead of refusing) redden the depth tests.
