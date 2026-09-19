@@ -323,7 +323,7 @@ impl<T: Widget + Default + 'static> Node for Repeat<T> {
         self.template.get_or_insert_with(T::default);
         let Repeat { arena, template, .. } = self;
         let t = template.as_ref()?;
-        arena.ensure_style(t);
+        arena.ensure_style(T::SEEDS);
         Some(crate::arena::ArenaMut {
             table: T::SUB_TABLE,
             template: t,
@@ -373,11 +373,12 @@ impl<T: Widget + Default + 'static> Node for Repeat<T> {
         let (first, vis) = self.visible_range(s.h);
         self.first = first;
         self.window.resize_with(vis, T::default);
-        // One probe styles every row: `Node::defaults` depends on the
-        // type, not the instance (F3.2). `T::default()` is the probe
-        // because a repeater's rows are bound, not stored.
-        let probe = T::default();
-        self.arena.ensure(vis, &probe);
+        // **The seeds style every row**, and building a `T::default()`
+        // per frame to be asked for them is what M26/T26.10 deleted.
+        // `Node::defaults` depends on the type and not the instance
+        // (F3.2), so the type is what to ask — `Seed::defaults` is the
+        // same `fn` the probe would have dispatched to.
+        self.arena.ensure(vis, T::SEEDS);
         // Bound every frame, so a data change needs no invalidation
         // call — the ring is what makes almost every one of these write
         // identical text, which `Label::set_str` then skips.

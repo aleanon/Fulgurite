@@ -558,3 +558,31 @@ Gated by the tests that already exist: an injection zeroing the new
 `degenerate_geometry_stays_finite`, which is how the branch was
 confirmed to be *reached* before anything was claimed about it — a new
 branch that no test enters is a change nobody has measured.
+
+## T26.10 — the arenas stop reading live instances
+
+Measured 2026-09-19, `--bin repeater`, six runs a side.
+
+| arm | before | after | verdict |
+|---|---:|---:|---|
+| `repeat/100000-rows` (35-row window) | 1,958 ns (fast) / 2,020 (dominant) | 1,933 ns | **at the edge of resolution** |
+
+The fast clusters give −1.3% against a ~27 ns spread; the dominant
+clusters give −4.3%. Neither is a number to quote on its own, and this
+change is **not justified by the frame figure**: what it removes is one
+`T::default()` per frame on a window of 35 rows, which is one `Row`
+construction, and the arm cannot cleanly resolve that.
+
+What justifies it is the correctness story, which is the same one M24
+was about: `Arena::ensure` and `ensure_style` took a **live probe** and
+read `Node::defaults` through it. `Node::defaults` is required to depend
+on the type alone — a seed's `defaults` is literally the same `fn` — so
+the probe was a live instance standing in for a type, which is the
+shape that produced the `List<Option<Spacer>>` defect F3.2 records. They
+take `&'static [Seed]` now.
+
+And it closed a lint hole worth more than the nanoseconds: a `Dyn`
+island passed `seeds: None`, so the sheet lint's arena walk used
+`Fields::ALL` and `SheetIssue::Unread` could not fire for anything
+inside an island. See T26.10 part one above and
+`crates/lumen-static/tests/island_seeds.rs`.

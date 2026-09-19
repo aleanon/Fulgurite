@@ -490,7 +490,7 @@ impl<W: Widget> List<W> {
             // One probe styles every item, which is sound only because
             // `Node::defaults` depends on the type rather than on this
             // instance's state (F3.2).
-            Some(probe) => arena.ensure(items.len(), probe),
+            Some(_) => arena.ensure(items.len(), W::SEEDS),
             None => arena.clear_instances(),
         }
     }
@@ -538,7 +538,7 @@ impl<W: Widget> Node for List<W> {
         }
         let List { items, arena, .. } = self;
         let t = items.first()?;
-        arena.ensure_style(t);
+        arena.ensure_style(W::SEEDS);
         Some(crate::arena::ArenaMut {
             table: W::SUB_TABLE,
             template: t,
@@ -786,7 +786,7 @@ impl<S> Dyn<S> {
             crate::desc::MAX_DEPTH,
         );
         let mut arena = crate::arena::Arena::new(W::NODE_COUNT);
-        arena.ensure(1, &w);
+        arena.ensure(1, W::SEEDS);
         Dyn {
             inner: Box::new(w),
             table: W::SUB_TABLE,
@@ -883,7 +883,7 @@ impl<S> Node for Dyn<S> {
         }
         let Dyn { inner, table, seeds, arena, .. } = self;
         let t: &dyn Node = &**inner;
-        arena.ensure_style(t);
+        arena.ensure_style(seeds);
         // **`seeds: Some`, since M26/T26.10.** This said `None` — "the
         // island's content is type-erased, so its kinds cannot reach a
         // const array" — and the erasure happens *after* `Dyn::new`,

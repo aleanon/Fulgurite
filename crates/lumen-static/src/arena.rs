@@ -27,7 +27,7 @@
 use alloc::vec::Vec;
 
 use crate::desc::NodeState;
-use crate::style::Style;
+use crate::style::{Seed, Style};
 use crate::widget::Node;
 
 /// State and style for `items` instances of a template with
@@ -82,15 +82,17 @@ impl Arena {
     /// each snapshotted one instance's state and never rebuilt — a
     /// `List<Option<Spacer>>` whose first item was `None` styled every
     /// item `Shrink` forever (`docs/plan-review-fixes.md` F3.2).
-    pub fn ensure(&mut self, items: usize, probe: &dyn Node) {
+    /// **Takes the template's seeds, not a live probe** (M26/T26.10).
+    /// A seed's `defaults` is the same `fn` the type's `type_defaults`
+    /// is, so this asks the type directly — and the probe it replaces
+    /// was the last live instance the style path read. `Repeat` built
+    /// one `T::default()` per frame purely to hand it over.
+    pub fn ensure(&mut self, items: usize, seeds: &'static [Seed]) {
         let want = items * self.node_count;
         if self.states.len() != want {
             self.states.resize(want, NodeState::default());
         }
-        if self.style.len() != self.node_count {
-            self.style.clear();
-            self.style.extend((0..self.node_count).map(|j| probe.node(j).defaults()));
-        }
+        self.ensure_style(seeds);
     }
 
     /// Drop every instance, keeping the allocation and the style row.
@@ -127,10 +129,11 @@ impl Arena {
     /// The cascade runs *before* the first layout, so the row must exist
     /// by then; `ensure` sizes it alongside the instances, which is too
     /// late. Separated because the cascade has no instance count to give.
-    pub fn ensure_style(&mut self, probe: &dyn Node) {
+    pub fn ensure_style(&mut self, seeds: &'static [Seed]) {
         if self.style.len() != self.node_count {
             self.style.clear();
-            self.style.extend((0..self.node_count).map(|j| probe.node(j).defaults()));
+            self.style
+                .extend((0..self.node_count).map(|j| (seeds[j.min(seeds.len() - 1)].defaults)()));
         }
     }
 
