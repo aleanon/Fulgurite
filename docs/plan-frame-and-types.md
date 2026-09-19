@@ -833,8 +833,8 @@ back inside the spread closes the finding permanently.
 | ~~11~~ | *probed and **closed on cost**. The named arm could not exhibit it — `Ten10` carries no ids, so the compare short-circuits on length. Purpose-built arms: worst case 1.47 ns/compare, real sparse shape 0.24, hash 0.14 — **−2.16 µs** per sheet-vs-table match* | done | the correction decided it: 8 B/node of `.rodata`, +800 B on the embedded fixture, for 2.16 µs on an **event** |
 | **12** | a measurer epoch for scale changes | **probed: CONFIRMED DEFECT, fixed.** The scale is now part of `MeasureKey`; `crates/lumen-static/tests/measure_scale.rs` is the gate | the ordering is not exotic — `ScaleFactorChanged` carries a new scale *and* a new physical size, and a monitor-to-monitor drag holds the **logical** size constant |
 | **13** | `FontStack::prepare` re-scans every character | **probed and SHIPPED.** One scan, not two: `layout`/`all_rows` **1372.6 → 1291.4 µs min (−5.9%)**, eight runs a side, fast clusters disjoint by 51.9 µs. Four runs would have read it as noise | exactly two scans, as the correction said — and the substitution gate that should have covered it was vacuous (`tests/shaping.rs`) |
-| 14 | `App::update`'s blast radius | generated per-field offsets behind a dotted mark | the 7.6×/293× cited are `Boundaries`-vs-`Everything`, a different comparison |
-| 15 | a shaped-run cache in the canvas | `just profile` on the tally frame | buys nothing on all-new text; the 7,315→158 µs figure is the *culling* win |
+| **14** | `App::update`'s blast radius | **probed: PROMOTED.** A row measured *inside* `Boundaries`: `mark_all` 6.93 µs — exactly `Everything`'s 6.93 — against one subtree's 0.71. **6.22 µs, 9.7×**, every frame a binding changes anything | the correction was right and the ratio survives it: same number, measured in the right frame |
+| 15 | a shaped-run cache in the canvas | **probed: the named cache is REFUTED, a glyph cache is PROMOTED.** Text is 10 of the 12 µs `render_within` costs; stubbing the raster takes `render_within` to **2 µs, 6×** | the correction killed the run cache correctly; the win is one level down — `FontStack::rasterize` has no cache and allocates per glyph per frame |
 | ~~16~~ | *moved to §5: refuted, not probed* | — | the win was attributed to F1.8, which was a stale index, not a space confusion |
 | 17 | `SEEDS.len()` asserts for hand-written impls | folded into T26.16 | the derive half is unfalsifiable |
 | 18 | duplicate `#[widget_id]` | folded into T26.16 | ambiguous only for addressing, never for styling |
@@ -845,10 +845,22 @@ and 14 are one finding seen from two subsystems. The count is stated
 because a table headed "the plausible set" that silently carries a
 refuted row is how a closed question gets re-opened by accident.
 
-**Batches one to three are probed: rows 1, 3, 4, 5, 6, 8, 9, 10 and
-11.** Six closed, three promoted — #3 with its number, and #9/#10,
-which are one defect and the round's largest win by an order of
-magnitude. Five live probes remain: 12, 13, 15, and rows 2/14 as one.
+**Phase D is probed out. All fourteen live findings have a verdict.**
+
+| verdict | findings |
+|---|---|
+| closed on a measured ceiling | 1, 4, 5, 6, 8, 11 |
+| confirmed defect, **fixed** | 12 |
+| optimization, **shipped** | 13 |
+| promoted with its number, not built in M26 | 3, 9, 10, 14, 15 |
+| already closed before this round | 2, 7, 16, 17, 18 |
+
+Six of the fourteen were true as written and worth nothing measured.
+One was a defect the plan predicted was unreachable and is reached by
+the ordinary monitor-to-monitor drag. One named the wrong cache and the
+probe found the win one level below it. **Reading found every
+mechanism; only measurement found the magnitudes**, and the magnitudes
+are what decided all fourteen.
 
 All five closes share a shape worth naming: **every one was true as
 written.** The review read the code correctly each time — a copy per

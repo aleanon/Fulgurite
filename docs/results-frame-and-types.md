@@ -1170,3 +1170,74 @@ measure non-zero, and `'???'` must differ from `'abc'` — without the
 second, a face whose every glyph had one width would make the
 comparison unfalsifiable, which is the "bound computed from the wrong
 quantity" shape.
+
+## T26.17 — Phase D, batch four: findings 14 and 15
+
+The last two live probes. Both promote, and the second **does not
+promote the thing the review named** — the plan's correction killed that
+correctly, and the probe found the win one level below it.
+
+### Finding 14 — `App::update`'s blast radius: **promoted**
+
+`Host::pump_with` calls `self.invalidation.mark_all()` whenever
+`App::update()` returns true. One binding writing one label therefore
+marks the whole tree, and under `Boundaries` the layout walk is the
+unbounded one.
+
+The plan's correction warned that the review's 7.6×/293× were
+`Boundaries`-versus-`Everything`, a different comparison. It was right,
+and the fix is a row measured **inside** `Boundaries`, so the strategy is
+held constant and only the marking varies. Four runs of
+`--bin invalidation`:
+
+| row | µs |
+|---|---|
+| `Everything` (the oracle) | 6.93 / 7.84 / 6.96 / 6.88 |
+| `Boundaries`, `mark_all` — **what `App::update` forces** | 6.95 / 7.00 / 6.93 / 6.88 |
+| `Boundaries`, one subtree marked | 0.71 / 0.72 / 0.71 / 0.71 |
+
+`mark_all` under `Boundaries` costs **exactly what `Everything` costs**,
+to within the arm's noise — which is the point stated as a measurement
+rather than an argument: marking everything is what `Everything` does,
+so the tracking is paid for and then discarded. The blast radius is
+**6.22 µs, 9.7×**, on every frame where a binding changed anything.
+
+The number matches the review's 9.7× and the attribution does not: this
+is the same ratio measured in the right frame. The shape of the fix is
+the plan's own — the derive knows which nodes each `#[bind]` writes, so
+`App::update` can report a range instead of a bool.
+
+### Finding 15 — a shaped-run cache in the canvas: **the named cache is refuted; a glyph cache is promoted**
+
+The plan's correction stands: a shaped-*run* cache buys nothing on the
+tally frame, whose whole subject is a number that changes every frame,
+and the 7 315 → 158 µs the review cited is T16.12's culling win.
+
+But `just profile` says text is **10 µs of the 12 µs** `render_within`
+costs — 83% of the damaged-region render, which is the per-interaction
+path that matters. So something in text is expensive, and it is not
+shaping: `FontStack::rasterize` has no cache, is called per glyph per
+frame, and allocates a `Vec<u8>` for the coverage each time. Its own
+rustdoc says so.
+
+Ceiling probe — the raster and its allocation removed, the blend loop
+kept:
+
+| | as shipped | rasterizing stubbed |
+|---|---|---|
+| `render(all)` text | 24 µs | 12 µs |
+| **`render_within`** | **12 µs** | **2 µs** |
+| `render_within` text | 10 µs | 0 µs |
+
+**6× on the damaged-region render.** The stub is deliberately
+*unfavourable* to itself: it returns an 8×12 coverage map with every
+byte at 128, so every pixel blends, where a real glyph's coverage is
+mostly zero and skips. Blending more than reality and still costing
+nothing measurable means fontdue's rasterization and the per-glyph
+allocation are essentially the whole of it.
+
+A glyph cache is a different object from the one the review asked for,
+with a different hit rate: runs rarely repeat, **glyphs repeat
+constantly** — the digits and letters of an all-new run are the same
+glyphs at the same size. The GPU backend already has an atlas for this
+reason (`docs/results-gpu.md`); the software canvas has nothing.
