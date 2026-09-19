@@ -28,7 +28,6 @@ use alloc::vec::Vec;
 
 use crate::desc::NodeState;
 use crate::style::{Seed, Style};
-use crate::widget::Node;
 
 /// State and style for `items` instances of a template with
 /// `node_count` nodes each, laid end to end.
@@ -174,7 +173,7 @@ pub struct ArenaMut<'a> {
     /// An instance to ask for `defaults()` and `kind_name()`. One
     /// instance answers for all, since `Node::defaults` depends on the
     /// type (F3.2). Only read when `seeds` is `None`.
-    pub template: &'a dyn Node,
+
     /// This arena's style seeds, when the content's type is known.
     ///
     /// `None` for a [`crate::hatch::Dyn`] island and nothing else:
@@ -183,7 +182,13 @@ pub struct ArenaMut<'a> {
     /// asking `template`. That fallback is sound where the main table's
     /// was not — a template is a live instance by construction, whereas
     /// the node the main cascade needed might be hidden (M24/T24.1).
-    pub seeds: Option<&'static [crate::style::Seed]>,
+    /// **Not an `Option` since M26/T26.10.** It was `None` for a `Dyn`
+    /// island, on the reasoning that type erasure put the boxed
+    /// content's kinds out of reach of a const array — it does not, and
+    /// the `None` arm cost more than tidiness: the sheet lint used
+    /// `Fields::ALL` for those nodes, so `SheetIssue::Unread` could not
+    /// fire for anything inside an island.
+    pub seeds: &'static [crate::style::Seed],
     /// The style row every instance in this arena shares.
     pub style: &'a mut [Style],
 }

@@ -581,6 +581,18 @@ the probe was a live instance standing in for a type, which is the
 shape that produced the `List<Option<Spacer>>` defect F3.2 records. They
 take `&'static [Seed]` now.
 
+**What part three deleted**, and the size it freed:
+
+| | before | after |
+|---|---:|---:|
+| `Repeat<Fixed>` | 128 B | **120 B** |
+
+Gone: `cascade_from_instance`, the sheet lint's `Fields::ALL` arm,
+`ArenaMut::template`, `ArenaMut::seeds`'s `Option`, and `Repeat`'s
+`template: Option<T>` — the recycled instance it built solely so a walk
+would have a live node to ask. The 8 bytes are that field on a
+zero-sized row type; a larger row frees more.
+
 And it closed a lint hole worth more than the nanoseconds: a `Dyn`
 island passed `seeds: None`, so the sheet lint's arena walk used
 `Fields::ALL` and `SheetIssue::Unread` could not fire for anything

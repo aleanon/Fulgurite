@@ -539,11 +539,11 @@ impl<W: Widget> Node for List<W> {
         let List { items, arena, .. } = self;
         let t = items.first()?;
         arena.ensure_style(W::SEEDS);
+        let _ = t;
         Some(crate::arena::ArenaMut {
             table: W::SUB_TABLE,
-            template: t,
             style: arena.style_mut(),
-            seeds: Some(W::SEEDS),
+            seeds: W::SEEDS,
         })
     }
 
@@ -892,7 +892,8 @@ impl<S> Node for Dyn<S> {
         // cascade fell back to reading the live instance, and the lint
         // reported every field as read for an island because it had no
         // mask to consult.
-        Some(crate::arena::ArenaMut { table, template: t, style: arena.style_mut(), seeds: Some(seeds) })
+        let _ = t;
+        Some(crate::arena::ArenaMut { table, style: arena.style_mut(), seeds })
     }
 
     fn kind_name(&self) -> &'static str {

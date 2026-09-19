@@ -47,9 +47,6 @@ pub struct Repeat<T: Widget + Default + 'static> {
     /// pointer: it cannot capture, so a hot reload re-supplies it.
     pub bind: fn(&mut T, usize),
     window: Vec<T>,
-    /// A default instance, kept only so `arena_mut` can hand out
-    /// something to ask for `defaults()` and `kind_name()`.
-    template: Option<T>,
     /// Materialized rows' state and the template style row they share.
     /// Instances are off-table, so the cascade cannot reach them; the
     /// row style is their source until per-row styling exists.
@@ -79,7 +76,6 @@ impl<T: Widget + Default> Repeat<T> {
             item_extent,
             bind,
             window: Vec::new(),
-            template: None,
             arena: crate::arena::Arena::new(T::NODE_COUNT),
             first: 0,
             viewport: 0.0,
@@ -317,18 +313,15 @@ impl<T: Widget + Default + 'static> Node for Repeat<T> {
         if a != 0 {
             return None;
         }
-        // A row is bound, not stored, so the template is a fresh
-        // instance — sound because `defaults()` and `kind_name()` are
-        // properties of the type (F3.2).
-        self.template.get_or_insert_with(T::default);
-        let Repeat { arena, template, .. } = self;
-        let t = template.as_ref()?;
-        arena.ensure_style(T::SEEDS);
+        // **No template instance.** This built one with
+        // `get_or_insert_with(T::default)` so the walk had a live node
+        // to ask for kinds and defaults; every one of those questions
+        // is answered by `T::SEEDS` (M26/T26.10).
+        self.arena.ensure_style(T::SEEDS);
         Some(crate::arena::ArenaMut {
             table: T::SUB_TABLE,
-            template: t,
-            style: arena.style_mut(),
-            seeds: Some(T::SEEDS),
+            style: self.arena.style_mut(),
+            seeds: T::SEEDS,
         })
     }
 

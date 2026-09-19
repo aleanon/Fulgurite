@@ -979,40 +979,6 @@ fn cascade_range(
     }
 }
 
-/// [`cascade`] for a table whose seeds are not knowable statically.
-///
-/// **One caller: an arena under a [`crate::hatch::Dyn`].** Type erasure
-/// is the island's purpose, so the boxed content's kinds cannot reach a
-/// const array — the boxed instance is the only thing that knows them,
-/// and it is live by construction, so asking it is sound here where it
-/// was not for the main table.
-///
-/// `alloc`-gated because its only caller is: `Dyn`, `Repeat` and `List`
-/// are all behind that feature (T13.4), so a tree with no allocator has
-/// no arena and no instance to fall back to.
-#[cfg(feature = "alloc")]
-fn cascade_from_instance(
-    table: &[NodeDesc],
-    defaults: &dyn Fn(usize) -> Defaults,
-    kind_of: &dyn Fn(usize) -> &'static str,
-    sheet: Stylesheet,
-    palette: &Palette,
-    out: &mut [Style],
-) {
-    debug_assert_eq!(table.len(), out.len());
-    for (i, d) in table.iter().enumerate() {
-        let mut s = defaults(i);
-        let kind = kind_of(i);
-        for spec in 0..=3u8 {
-            for r in sheet {
-                if r.selector.specificity() == spec && matches(&r.selector, d, kind) {
-                    r.patch.apply_to(&mut s, palette);
-                }
-            }
-        }
-        out[i] = s;
-    }
-}
 
 /// What the sheet lint found wrong with one rule — M25/T25.2.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1073,17 +1039,13 @@ pub fn lint_sheet_deep<W: crate::widget::Widget + ?Sized>(
             let node = tree.node_mut(i);
             for a in 0..node.arena_count() {
                 let Some(arena) = node.arena_mut(a) else { continue };
-                match arena.seeds {
-                    Some(seeds) => {
-                        for (k, d) in arena.table.iter().enumerate() {
-                            visit(d, seeds[k].kind, seeds[k].reads);
-                        }
-                    }
-                    None => {
-                        for (k, d) in arena.table.iter().enumerate() {
-                            visit(d, arena.template.node(k).kind_name(), Fields::ALL);
-                        }
-                    }
+                // **No `None` arm since M26/T26.10.** It used
+                // `Fields::ALL` for a `Dyn` island's nodes, because an
+                // island had no seeds to consult — so `Unread` could
+                // not fire for anything inside one. Every arena carries
+                // its seeds now.
+                for (k, d) in arena.table.iter().enumerate() {
+                    visit(d, arena.seeds[k].kind, arena.seeds[k].reads);
                 }
             }
         }
@@ -1282,22 +1244,9 @@ fn cascade_arenas(node: &mut dyn crate::widget::Node, sheet: Stylesheet, palette
     #[cfg(feature = "alloc")]
     for a in 0..node.arena_count() {
         let Some(arena) = node.arena_mut(a) else { continue };
-        let table = arena.table;
-        match arena.seeds {
-            Some(seeds) => cascade_with(table, seeds, sheet, palette, arena.style),
-            // A `Dyn` island: see `cascade_from_instance`.
-            None => {
-                let template = arena.template;
-                cascade_from_instance(
-                    table,
-                    &|i| template.node(i).defaults(),
-                    &|i| template.node(i).kind_name(),
-                    sheet,
-                    palette,
-                    arena.style,
-                );
-            }
-        }
+        // Every arena carries its seeds (M26/T26.10); the
+        // instance-reading fallback this used to have is deleted.
+        cascade_with(arena.table, arena.seeds, sheet, palette, arena.style);
     }
     // Arenas nested inside an arena's template are not reached: the
     // template is borrowed shared while its style row is borrowed

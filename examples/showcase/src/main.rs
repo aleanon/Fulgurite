@@ -1228,10 +1228,10 @@ mod tests {
                 for a in 0..node.arena_count() {
                     let Some(arena) = node.arena_mut(a) else { continue };
                     for (k, d) in arena.table.iter().enumerate() {
-                        let kind = match arena.seeds {
-                            Some(seeds) => seeds[k].kind,
-                            None => arena.template.node(k).kind_name(),
-                        };
+                        // Every arena carries its seeds since
+                        // M26/T26.10; the `None` arm that asked a live
+                        // template for its kind is gone.
+                        let kind = arena.seeds[k].kind;
                         out.push((d.wid, d.classes, kind, arena.style[k]));
                     }
                 }
