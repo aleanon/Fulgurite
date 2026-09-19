@@ -725,3 +725,44 @@ declared without a mask does not build.
 rationale: `Seed::new`'s rustdoc, `docs/plan-appearance.md` T25.2, and
 the book's custom-widget chapter, whose snippet gained the argument and
 whose paragraph beneath it now says why.
+
+## T26.16 — shape asserts, and the duplicate id
+
+Two halves, 2026-09-19.
+
+**The lengths.** The derive asserted `table_is_well_formed` and the
+depth bound, and neither says the array lengths agree with
+`NODE_COUNT`. The plan's claim that "the derive half is unfalsifiable"
+is true of **exactly one of four** cases, and the injections confirm
+it: changing the struct derive's `NODE_COUNT` fires the **seeds**
+assert, not the table one, because the table array is sized by
+`NODE_COUNT` and therefore tracks it. The seeds array and both of the
+enum derive's lengths are re-spelled sums and can drift.
+
+| injection | what fires |
+|---|---|
+| struct derive's `NODE_COUNT` off by one | "the spliced seeds array's length is not this tree's NODE_COUNT" |
+| enum derive's `NODE_COUNT` off by one | the seeds assert, then the table assert, then `table_is_well_formed` |
+
+**The duplicate id.** A duplicated `#[widget_id]` is accepted silently
+and every id-*addressing* operation acts on the first match — a
+`Host::invalidate` that marks one of two, forever. The rejection lives
+on the const addressing path (`wid_index!`), **not in the derive**,
+because the derive cannot tell an addressing use from a styling one:
+`examples/glasswall` styles four intentional duplicates by selector and
+addresses none of them.
+
+Both directions, as the task demanded, because a gate that refuses
+everything is the failure this rule exists for:
+
+* addressing a duplicated id does not compile — a `compile_fail`
+  doctest; an injection accepting any count turns it green, which is how
+  it was confirmed to be doing work;
+* `Id` styling still matches **all four** of a four-way duplicate
+  (`tests/wid_index.rs`), and `glasswall` still builds.
+
+One injection was wrong before the code was: the first attempt at the
+accepting-injection allowed counts of `1 | 4`, and the doctest's tree
+carries **two** duplicates, so nothing moved. An injection aimed at a
+number the fixture does not have proves nothing — the same shape as a
+bound computed from the wrong quantity, one level down.

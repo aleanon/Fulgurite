@@ -773,7 +773,7 @@ case whose whole content is an arity error.
 the book's custom-widget chapter, whose snippet and the sentence beneath
 it both change.
 
-### T26.16 — shape asserts for hand-written impls, and duplicate ids
+### T26.16 — shape asserts for hand-written impls, and duplicate ids — **DONE 2026-09-19, and Phase C with it**
 
 Two halves, one commit:
 - The table and seed lengths are const facts asserted only for derived
@@ -797,8 +797,12 @@ Two halves, one commit:
 
 **Gate, both directions:** addressing a duplicated id fails to compile
 *and* `glasswall` still builds and still styles all four. A gate that
-refuses everything is the failure mode this rule exists for. Both halves
-are trybuild cases with committed output.
+refuses everything is the failure mode this rule exists for. ~~Both
+halves are trybuild cases with committed output~~ — the refusing half is
+a **`compile_fail` doctest** (a committed `.stderr` churns with every
+rustc release), and the accepting half is a runtime test asserting an
+`Id` rule matches all four of a four-way duplicate, which trybuild
+cannot express at all.
 
 ---
 

@@ -1152,6 +1152,31 @@ pub const fn index_of_wid(table: &[NodeDesc], wid: &str) -> Option<usize> {
     None
 }
 
+/// How many nodes of `table` carry `wid`.
+///
+/// **For the addressing path, not for styling** (M26/T26.16). A
+/// duplicated `#[widget_id]` is accepted silently today and every
+/// id-*addressing* operation then acts on the first match — a
+/// `Host::invalidate` that marks one of two, forever. Styling must keep
+/// matching them all: `examples/glasswall` styles four intentional
+/// duplicates by selector and addresses none of them, which is why the
+/// rejection cannot live in the derive. The derive cannot tell an
+/// addressing use from a styling one; [`wid_index`] can, because being
+/// asked for an index *is* the addressing use.
+pub const fn count_wid(table: &[NodeDesc], wid: &str) -> usize {
+    if wid.is_empty() {
+        return 0;
+    }
+    let (mut i, mut n) = (0, 0);
+    while i < table.len() {
+        if bytes_eq(table[i].wid, wid) {
+            n += 1;
+        }
+        i += 1;
+    }
+    n
+}
+
 /// `a == b` for `&str`, in a `const` context.
 const fn bytes_eq(a: &str, b: &str) -> bool {
     let (a, b) = (a.as_bytes(), b.as_bytes());
@@ -1196,15 +1221,45 @@ const fn bytes_eq(a: &str, b: &str) -> bool {
 /// # }
 /// const OOPS: usize = wid_index!(Ui, "titel");
 /// ```
+///
+/// So does a duplicated one — addressing it would act on the first of
+/// them, silently (M26/T26.16):
+///
+/// ```compile_fail
+/// # use lumen_static::{wid_index, StaticTree, Widget};
+/// # use lumen_static::ops::Label;
+/// #[derive(StaticTree, Default)]
+/// #[widget(column, spacing = 0.0)]
+/// struct Two {
+///     #[widget_id("row")]
+///     a: Label,
+///     #[widget_id("row")]
+///     b: Label,
+/// }
+/// const AMBIGUOUS: usize = wid_index!(Two, "row");
+/// ```
 #[macro_export]
 macro_rules! wid_index {
     ($tree:ty, $wid:literal) => {{
-        const IDX: usize = match $crate::style::index_of_wid(
-            <$tree as $crate::widget::Widget>::SUB_TABLE,
-            $wid,
-        ) {
-            Some(i) => i,
-            None => panic!(concat!("no `#[widget_id(\"", $wid, "\")]` in this tree")),
+        const IDX: usize = {
+            let table = <$tree as $crate::widget::Widget>::SUB_TABLE;
+            // **Duplicates are refused here, and only here** — see
+            // `count_wid`. Addressing one of two identically named
+            // nodes silently acts on the first; styling both is
+            // deliberate and must keep working.
+            match $crate::style::count_wid(table, $wid) {
+                1 => {}
+                0 => panic!(concat!("no `#[widget_id(\"", $wid, "\")]` in this tree")),
+                _ => panic!(concat!(
+                    "`#[widget_id(\"", $wid, "\")]` is on more than one node: \
+                     addressing it would act on the first. Styling duplicates \
+                     by selector is fine; addressing them is not.",
+                )),
+            }
+            match $crate::style::index_of_wid(table, $wid) {
+                Some(i) => i,
+                None => panic!("unreachable: counted one"),
+            }
         };
         IDX
     }};

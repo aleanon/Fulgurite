@@ -848,6 +848,24 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
             // stack-overflow hazard into a compile error.
             const _: () = assert!(::lumen_static::widget::table_is_well_formed(&TABLE));
             const _: () = assert!(<#name as ::lumen_static::widget::Widget>::DEPTH <= ::lumen_static::MAX_DEPTH);
+            // **The lengths, asserted** (M26/T26.16).
+            //
+            // "The derive half is unfalsifiable" is true of exactly one
+            // of four cases: only the *struct* derive's table length
+            // literally is the node count. The struct derive's **seed**
+            // length and both of the enum derive's lengths are
+            // re-spelled sums and can drift from it — a splice written
+            // with one offset wrong produces a table of the right
+            // length and a seeds array of the wrong one, and nothing
+            // said so.
+            const _: () = assert!(
+                TABLE.len() == <#name as ::lumen_static::widget::Widget>::NODE_COUNT,
+                "the spliced table's length is not this tree's NODE_COUNT",
+            );
+            const _: () = assert!(
+                SEEDS.len() == <#name as ::lumen_static::widget::Widget>::NODE_COUNT,
+                "the spliced seeds array's length is not this tree's NODE_COUNT",
+            );
 
             /// Delegates by index range, like `node`. The where-clause
             /// is what makes a mis-typed `Button<Other>` a compile error
@@ -1378,6 +1396,24 @@ fn expand_enum(
 
             const _: () = assert!(::lumen_static::widget::table_is_well_formed(&TABLE));
             const _: () = assert!(<#name as ::lumen_static::widget::Widget>::DEPTH <= ::lumen_static::MAX_DEPTH);
+            // **The lengths, asserted** (M26/T26.16).
+            //
+            // "The derive half is unfalsifiable" is true of exactly one
+            // of four cases: only the *struct* derive's table length
+            // literally is the node count. The struct derive's **seed**
+            // length and both of the enum derive's lengths are
+            // re-spelled sums and can drift from it — a splice written
+            // with one offset wrong produces a table of the right
+            // length and a seeds array of the wrong one, and nothing
+            // said so.
+            const _: () = assert!(
+                TABLE.len() == <#name as ::lumen_static::widget::Widget>::NODE_COUNT,
+                "the spliced table's length is not this tree's NODE_COUNT",
+            );
+            const _: () = assert!(
+                SEEDS.len() == <#name as ::lumen_static::widget::Widget>::NODE_COUNT,
+                "the spliced seeds array's length is not this tree's NODE_COUNT",
+            );
 
             impl ::lumen_static::widget::Node for #name {
                 fn kind_name(&self) -> &'static str {
