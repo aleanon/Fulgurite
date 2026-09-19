@@ -70,15 +70,15 @@ fn the_macro_resolves_to_the_same_index() {
     assert_eq!(Some(LEAF), index_of_wid(table, "leaf"));
     // And they are distinct, so a macro that resolved everything to 0
     // would not pass.
-    assert_ne!(TITLE, WRAPPER);
-    assert_ne!(WRAPPER, LEAF);
+    const { assert!(TITLE != WRAPPER) };
+    const { assert!(WRAPPER != LEAF) };
 }
 
 /// The id reaches a node *inside* a child widget — a table is spliced,
 /// so `wrapper`'s own leaf is addressable from the root's type.
 #[test]
 fn an_id_inside_a_child_is_reachable() {
-    assert!(LEAF > WRAPPER, "the leaf should sit inside the wrapper's subtree");
+    const { assert!(LEAF > WRAPPER, "the leaf should sit inside the wrapper's subtree") };
 }
 
 /// An empty id matches nothing, deliberately: every unnamed node
