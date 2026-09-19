@@ -67,8 +67,19 @@ are independent of each other**, so either may go first:
 
 - **M26 — `docs/plan-frame-and-types.md`** (T26.0–T26.17): **Phases A
   and B are done** — A on 2026-09-17 (T26.0–T26.5), **B on 2026-09-19**
-  (T26.6–T26.13). Phase C, the compile-time guarantees, is next, then
-  Phase D's measurement round. Phase B's headline figures, each on the
+  (T26.6–T26.13). **Phase C landed the same day**
+  (T26.14–T26.16): `wid_index!` resolves a `#[widget_id]` at compile
+  time, so a typo is a build error rather than a frame that never
+  redraws — and a **duplicated** id cannot be addressed at all, while
+  styling still matches every node carrying it, which is why the refusal
+  lives on the addressing path and not in the derive. `Seed::new` now
+  **requires** its field mask: the `Fields::ALL` default was the
+  `W1010` lint's off switch, and it was what a new widget got by doing
+  nothing. The derive asserts both array lengths, and the injections
+  showed the plan's "unfalsifiable" claim true of exactly one of the
+  four cases. Only **Phase D** — the measurement round that decides
+  which of the review's 18 plausible findings are worth building — is
+  left. Phase B's headline figures, each on the
   arm its task named and eight runs a side:
   `TextInput` layout **47×** and `TextArea` **108×** (they measured what
   shaping had already returned); `Badge`/`Chip` **55×** (no memo at all);

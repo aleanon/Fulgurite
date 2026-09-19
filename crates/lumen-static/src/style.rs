@@ -1161,7 +1161,7 @@ pub const fn index_of_wid(table: &[NodeDesc], wid: &str) -> Option<usize> {
 /// matching them all: `examples/glasswall` styles four intentional
 /// duplicates by selector and addresses none of them, which is why the
 /// rejection cannot live in the derive. The derive cannot tell an
-/// addressing use from a styling one; [`wid_index`] can, because being
+/// addressing use from a styling one; [`crate::wid_index`] can, because being
 /// asked for an index *is* the addressing use.
 pub const fn count_wid(table: &[NodeDesc], wid: &str) -> usize {
     if wid.is_empty() {
