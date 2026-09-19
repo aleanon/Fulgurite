@@ -487,7 +487,7 @@ ns** for a field's still frame and **2,101 → 19.4 ns** for an area's
 (`docs/results-frame-and-types.md` T26.7). Size, measured: `TextInput`
 +8 B, `TextArea` **+0** — its `f32` landed in padding it already had.
 
-### T26.8 — `Badge` and `Chip` shape on every layout, with no memo at all
+### T26.8 — `Badge` and `Chip` shape on every layout, with no memo at all — **DONE 2026-09-19**
 
 Five text widgets, four different memo keys, two with none.
 `docs/bindings-decision.md` T7.3 priced the difference between a shape

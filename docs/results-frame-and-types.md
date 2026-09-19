@@ -305,8 +305,12 @@ with a text area about 2 µs — worth having, and nowhere near the
 | `TextInput<String>` | 152 B | 160 B | **+8** |
 | `TextArea<String>` | 160 B | 160 B | **0** — the `f32` landed in padding it already had |
 
-The embedded fixture's `UI == 1144` assert is unchanged: its `Ui`
-carries neither widget.
+**The embedded fixture's `Ui` moved, and was re-budgeted rather than
+edited**: 1,144 → **1,152 B** on `thumbv7em-none-eabihf`, which is the
+`TextInput<InlineText<64>>` it holds taking T26.7's +8 and nothing else.
+Confirmed by the compiler — the assert is a `const` one, so the build
+either agrees with the number or names it. The first run of `just
+check` failed on exactly this, which is the assert doing its job.
 
 Gate: `crates/lumen-static/tests/text_memo.rs`, a **counting**
 `TextMeasure` that records every call. Five still frames must ask it
@@ -315,3 +319,46 @@ equal the measured one, because a cached number that is wrong is worse
 than a measured one. Three injections (EA–EC): restore the field's
 re-measure, restore the area's, and cache a stale width — all three
 redden.
+
+## T26.8 — `Badge` and `Chip` had no memo at all
+
+Measured 2026-09-19, `cargo run --release -p benches --bin bindings`,
+the real-face arms T26.0 added for exactly this.
+
+| arm (one widget's `layout`, unchanged text) | before | after | Δ |
+|---|---:|---:|---:|
+| `Badge layout, unchanged` | 383 ns | 6.9 ns | **55×** |
+| `Chip layout, unchanged` | 384 ns | 7.0 ns | **55×** |
+
+Fast-cluster figures over eight runs a side. The before arm is
+*trimodal* rather than bimodal — 381–392, 409–416, 417–419 — which is
+what a shaping call against a real face looks like on this machine; the
+lowest cluster is quoted, so the improvement is stated against the
+best case the old code ever had. The after arm's whole range is
+6.84–7.29 ns, narrower than the before arm's slowest run is wide.
+
+Against `short, memo warm (hit)` at 4.97 ns in the same run: what is
+left is the fold, which is the price of not having a dirty bit.
+`docs/bindings-decision.md` T7.3 priced that pair at **4.8 ns against
+2,459 ns** for a short run, and this is the same trade taken in two more
+widgets.
+
+**One helper, because it was a convention.** `Button` open-coded a
+fold-keyed memo, `Label` had `Measured` and a `Dirty` bit, and `Badge`
+and `Chip` had nothing. `lumen_static::text::FoldedText` is now the one
+type for text a widget does not own — `text` is a plain public field the
+application binds, so a fold of the bytes stands in for the dirty bit.
+
+**A breaking change the task did not name**: `Badge` and `Chip` gained a
+private field, so `Badge { text }` no longer compiles. Both have `new`
+now, as `Label` has had since it had a memo to keep. Five call sites in
+this repository, all updated in the same commit.
+
+Gate: `crates/lumen-static-widgets/tests/text_memo.rs`, a counting
+`TextMeasure` over all four widgets — five still frames must measure
+**zero** times, and the failure names the widget. Plus the two
+directions that make a memo a memo: changed text misses, and a restyle
+misses (the key carries the size and the weight, which is what T26.3
+put in it). Three injections (ED–EF): bypass the helper in `Badge`, drop
+the fold from the key, drop the key and keep only the fold. All three
+redden, the first by two tests and by name.

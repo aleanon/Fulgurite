@@ -94,15 +94,31 @@ impl Node for Divider {
 pub struct Badge<S: TextStorage = &'static str> {
     /// What it reads. Bind it; the widget never writes it.
     pub text: S,
+    /// The text's measured box, keyed on a fold of its bytes.
+    ///
+    /// **It had none** until M26/T26.8: this widget shaped on every
+    /// layout, which `--bin bindings` measured at ~410 ns against a
+    /// 4.97 ns memo hit — a still frame paying a full shape for text
+    /// nobody touched. `text` is a plain public field the application
+    /// binds, so the fold stands in for the dirty bit a `Label` has
+    /// (`lumen_static::text::FoldedText`).
+    measured: lumen_static::text::FoldedText,
 }
 
 impl<S: TextStorage> Default for Badge<S> {
     fn default() -> Self {
-        Badge { text: S::default() }
+        Badge { text: S::default(), measured: lumen_static::text::FoldedText::new() }
     }
 }
 
 impl<S: TextStorage> Badge<S> {
+    /// **A constructor, because the memo is private** (M26/T26.8).
+    /// `Badge { text }` was the spelling until this widget had a memo
+    /// to keep; `Label` has had `new` since it had one.
+    pub fn new(text: S) -> Self {
+        Badge { text, measured: lumen_static::text::FoldedText::new() }
+    }
+
     /// Replace the text. Named `set` like `Label`'s, so the two are
     /// interchangeable at a call site.
     pub fn set(&mut self, text: S) {
@@ -166,12 +182,11 @@ impl<S: TextStorage> Node for Badge<S> {
         i: usize,
     ) -> Size {
         let me = style[i];
-        let m = cx.text.measure_weighted(
-            self.text.as_ref(),
-            me.font_size,
-            me.font_weight,
-            limits.max_w,
-        );
+        let text = self.text.as_ref();
+        let key = lumen_static::text::MeasureKey::of(limits, &me);
+        let m = self.measured.get_or(key, text, || {
+            cx.text.measure_weighted(text, me.font_size, me.font_weight, limits.max_w)
+        });
         let content = Size { w: m.w + me.padding.horizontal(), h: m.h + me.padding.vertical() };
         let size = resolve_self(limits, &me, content);
         record_painted(st, i, limits, size, &me)
@@ -202,15 +217,31 @@ impl<S: TextStorage> Node for Badge<S> {
 pub struct Chip<S: TextStorage = &'static str> {
     /// What it reads. Bind it.
     pub text: S,
+    /// The text's measured box, keyed on a fold of its bytes.
+    ///
+    /// **It had none** until M26/T26.8: this widget shaped on every
+    /// layout, which `--bin bindings` measured at ~410 ns against a
+    /// 4.97 ns memo hit — a still frame paying a full shape for text
+    /// nobody touched. `text` is a plain public field the application
+    /// binds, so the fold stands in for the dirty bit a `Label` has
+    /// (`lumen_static::text::FoldedText`).
+    measured: lumen_static::text::FoldedText,
 }
 
 impl<S: TextStorage> Default for Chip<S> {
     fn default() -> Self {
-        Chip { text: S::default() }
+        Chip { text: S::default(), measured: lumen_static::text::FoldedText::new() }
     }
 }
 
 impl<S: TextStorage> Chip<S> {
+    /// **A constructor, because the memo is private** (M26/T26.8).
+    /// `Chip { text }` was the spelling until this widget had a memo
+    /// to keep; `Label` has had `new` since it had one.
+    pub fn new(text: S) -> Self {
+        Chip { text, measured: lumen_static::text::FoldedText::new() }
+    }
+
     pub fn set(&mut self, text: S) {
         self.text = text;
     }
@@ -263,12 +294,11 @@ impl<S: TextStorage> Node for Chip<S> {
         i: usize,
     ) -> Size {
         let me = style[i];
-        let m = cx.text.measure_weighted(
-            self.text.as_ref(),
-            me.font_size,
-            me.font_weight,
-            limits.max_w,
-        );
+        let text = self.text.as_ref();
+        let key = lumen_static::text::MeasureKey::of(limits, &me);
+        let m = self.measured.get_or(key, text, || {
+            cx.text.measure_weighted(text, me.font_size, me.font_weight, limits.max_w)
+        });
         let content = Size { w: m.w + me.padding.horizontal(), h: m.h + me.padding.vertical() };
         let size = resolve_self(limits, &me, content);
         record_painted(st, i, limits, size, &me)

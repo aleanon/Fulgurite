@@ -766,14 +766,18 @@ pub struct Button<S: 'static, T: TextStorage = &'static str> {
     /// not. This was a private `ButtonKey` holding the same three fields
     /// the label's memo left out, so the right key and the wrong one sat
     /// in the same file until M26/T26.3 gave both widgets the one type.
-    measured: Option<(MeasureKey, u64, Size)>,
+    measured: crate::text::FoldedText,
 }
 
 pub fn ignore_click<S>(_: &mut S, _: &EventCtx) {}
 
 impl<S, T: TextStorage> Default for Button<S, T> {
     fn default() -> Self {
-        Button { label: T::default(), on_click: ignore_click::<S>, measured: None }
+        Button {
+            label: T::default(),
+            on_click: ignore_click::<S>,
+            measured: crate::text::FoldedText::new(),
+        }
     }
 }
 
@@ -837,15 +841,12 @@ impl<S: 'static, T: TextStorage> Node for Button<S, T> {
         let px = style[i].font_size;
         let weight = style[i].font_weight;
         let key = MeasureKey::of(limits, &style[i]);
-        let fold = label.bytes().fold(0u64, |h, b| crate::display::fold(h, b as u64));
-        let text = match self.measured {
-            Some((k, f, s)) if k == key && f == fold => s,
-            _ => {
-                let s = cx.text.measure_weighted(label, px, weight, limits.max_w);
-                self.measured = Some((key, fold, s));
-                s
-            }
-        };
+        // The fold stands in for the dirty bit a `Label` has and a
+        // `Button` does not — in `FoldedText` since M26/T26.8, because
+        // `Badge` and `Chip` needed the same thing and had none.
+        let text = self.measured.get_or(key, label, || {
+            cx.text.measure_weighted(label, px, weight, limits.max_w)
+        });
         let pad = style[i].padding;
         let content = Size { w: text.w + pad.horizontal(), h: text.h + pad.vertical() };
         record_painted(st, i, limits, resolve_self(limits, &style[i], content), &style[i])
@@ -859,7 +860,7 @@ impl<S: 'static, T: TextStorage> Node for Button<S, T> {
         // not the ink: that is what every toolkit centres, and it puts
         // capitals a hair below centre in faces with a deep descent
         // (Noto Sans: 0.03 em) — the same hair a browser leaves.
-        let text = self.measured.map(|(_, _, s)| s).unwrap_or_default();
+        let text = self.measured.size();
         let x = r[0] + ((r[2] - r[0]) - text.w).max(0.0) / 2.0;
         let y = r[1] + ((r[3] - r[1]) - text.h).max(0.0) / 2.0;
         out.text_weighted(

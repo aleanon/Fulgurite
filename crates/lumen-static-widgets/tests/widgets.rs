@@ -45,9 +45,9 @@ fn every_widget_is_visible_with_no_stylesheet() {
     };
     put("divider", painted(&mut Divider, box_), &mut counts[0]);
     n += 1;
-    put("badge", painted(&mut Badge { text: "9" }, box_), &mut counts[1]);
+    put("badge", painted(&mut Badge::new("9"), box_), &mut counts[1]);
     n += 1;
-    put("chip", painted(&mut Chip { text: "tag" }, box_), &mut counts[2]);
+    put("chip", painted(&mut Chip::new("tag"), box_), &mut counts[2]);
     n += 1;
     put("avatar", painted(&mut Avatar { initials: "AB" }, box_), &mut counts[3]);
     n += 1;
@@ -271,7 +271,7 @@ fn a_spinner_draws_a_ring_with_a_gap() {
 #[test]
 fn a_badge_is_round_and_alarming() {
     let box_ = Size { w: 200.0, h: 60.0 };
-    let l = painted(&mut Badge { text: "3" }, box_);
+    let l = painted(&mut Badge::new("3"), box_);
     let (rect, colour, radius) = l
         .cmds
         .iter()

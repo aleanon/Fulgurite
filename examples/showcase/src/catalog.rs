@@ -160,11 +160,11 @@ fn shown<const K: u8>(mut p: lumen_static_widgets::Picker<K>) -> lumen_static_wi
 }
 
 fn chip(t: &str) -> Chip<String> {
-    Chip::<String> { text: t.into() }
+    Chip::<String>::new(t.into())
 }
 
 fn gbadge(t: &str) -> Badge<String> {
-    Badge::<String> { text: t.into() }
+    Badge::<String>::new(t.into())
 }
 
 fn lbl_of(t: &str) -> Label<String> {
@@ -206,13 +206,13 @@ pub static CATALOG: &[Entry] = &[
         "It shrinks to its text, so `IS_RIGID` is false — a changed count is a relayout boundary, not just a repaint.",
         false,
         |s| on(s, Demo::Badge(DBadge {
-            a: Badge { text: "3".into() }, b: Badge { text: "12".into() }, c: Badge { text: "99+".into() } })),
+            a: Badge::new("3".into()), b: Badge::new("12".into()), c: Badge::new("99+".into()) })),
         none),
     entry!("Text", "Chip", "The same shape, in the quiet palette.",
         "A separate type rather than a field, because `kind_name` feeds the cascade and the agent's selectors.",
         false,
         |s| on(s, Demo::Chip(DChip {
-            a: Chip { text: "rust".into() }, b: Chip { text: "systems".into() }, c: Chip { text: "no_std".into() } })),
+            a: Chip::new("rust".into()), b: Chip::new("systems".into()), c: Chip::new("no_std".into()) })),
         none),
     entry!("Text", "Avatar", "Initials, trimmed on a char boundary.",
         "Two *chars*, not two bytes: \"ÅB\" sliced at byte two would panic, and an avatar is decoration.",

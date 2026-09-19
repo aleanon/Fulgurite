@@ -164,6 +164,72 @@ impl Measured {
     }
 }
 
+/// A text memo for a widget whose text is a **plain public field**.
+///
+/// [`Measured`] pairs with a [`Dirty`] flag: the widget owns its text
+/// and knows when it changed. `Button`, `Badge` and `Chip` do not —
+/// their text is bound by the application, which writes it directly —
+/// so the key carries a **fold of the bytes** in place of a dirty bit.
+/// A few nanoseconds of folding against a shaping call that allocates:
+/// `docs/bindings-decision.md` T7.3 priced the pair at 4.8 ns against
+/// 2,459 ns for a short run.
+///
+/// **One helper, because it was a convention.** `Button` open-coded
+/// exactly this and `Badge` and `Chip` had no memo at all — they
+/// shaped on every layout, which `--bin bindings` measured at 409 ns
+/// and 417 ns against a 4.97 ns hit (M26/T26.8). A memo that lives in
+/// a type cannot be left out of the next widget by forgetting to
+/// repeat it.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct FoldedText {
+    cache: Option<(MeasureKey, u64, Size)>,
+}
+
+impl FoldedText {
+    pub fn new() -> Self {
+        FoldedText { cache: None }
+    }
+
+    /// The fold this memo keys on — public so a test can key on the
+    /// same bytes rather than on a second copy of the arithmetic.
+    #[inline]
+    pub fn fold_of(text: &str) -> u64 {
+        text.bytes().fold(0u64, |h, b| crate::display::fold(h, b as u64))
+    }
+
+    /// The cached size for `text` under `key`, or compute and store one.
+    #[inline]
+    pub fn get_or(&mut self, key: MeasureKey, text: &str, f: impl FnOnce() -> Size) -> Size {
+        let fold = Self::fold_of(text);
+        if let Some((k, d, s)) = self.cache {
+            if k == key && d == fold {
+                return s;
+            }
+        }
+        let s = f();
+        self.cache = Some((key, fold, s));
+        s
+    }
+
+    /// The size last measured, or zero. `paint` centres the *measured*
+    /// line box, so it needs the same number `layout` used.
+    pub fn size(&self) -> Size {
+        self.cache.map_or(Size::default(), |(_, _, s)| s)
+    }
+
+    /// Drop the memo — a reload restores fields without going through
+    /// any setter, exactly as for [`Measured::invalidate`].
+    pub fn invalidate(&mut self) {
+        self.cache = None;
+    }
+
+    /// Whether a `get_or` for this text under `key` would hit — for
+    /// tests, and the reason the gate can name a widget.
+    pub fn is_warm(&self, key: MeasureKey, text: &str) -> bool {
+        self.cache == Some((key, Self::fold_of(text), self.cache.map_or(Size::default(), |c| c.2)))
+    }
+}
+
 /// What `TextInput<S>` and `TextArea<S>` use when the parameter is
 /// elided: `String` where there is an allocator, `InlineText<64>` where
 /// there is not (M13/T13.4).
