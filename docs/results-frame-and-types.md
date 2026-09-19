@@ -490,13 +490,13 @@ been bounded to 20×20 covered 48×48.
 The deepest nesting in this repository is four (`Repeat` in a `Popup` in
 a `Card` is three).
 
-Four injections. `EL` — restore one `Vec` per frame — **left the gate
+Four injections. injection EL — restore one `Vec` per frame — **left the gate
 green on the first attempt**, because an unused `Vec::with_capacity` is
 an allocation LLVM is allowed to elide; pushing to it and passing it
 through `black_box` makes it real, and then the gate reports 1.00 per
-frame. `EM` (the stack stops clipping) reddens
+frame. injection EM (the stack stops clipping) reddens
 `tests/paint_containment.rs`, which is the property rather than the
-allocation. `EN` (a refused push pops a real scope) and `EO` (the stack
+allocation. injection EN (a refused push pops a real scope) and injection EO (the stack
 overwrites its top instead of refusing) redden the depth tests.
 
 ## T26.13, part two — the blur allocated three buffers per glass panel
@@ -525,7 +525,7 @@ be three per panel per band.
 **The first attempt allocated exactly as much as before**, because it
 took the buffers and never put them back. The gate reported the same
 3.00 per panel, which is the gate doing its job on the fix rather than
-on the original defect. Two injections: `EP` (drop the scratch instead
-of restoring it) returns to 3.00 per panel; `EQ` (`fit` reallocates one
+on the original defect. Two injections: injection EP (drop the scratch instead
+of restoring it) returns to 3.00 per panel; injection EQ (`fit` reallocates one
 of the three) reports **1.00 per panel**, which is the count naming
 which buffer.
