@@ -34,6 +34,8 @@ use lumen_static::{pass, Widget};
 use serde_json::{json, Map, Value};
 
 mod audit;
+/// M12/T12.1: the locator and expectation API application tests use.
+pub mod harness;
 mod journal;
 pub mod png;
 pub mod session;

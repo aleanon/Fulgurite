@@ -218,3 +218,86 @@ pub fn drive() {
 
     println!("drive: 7 clicks by author id through ui.getLayout — all assertions passed");
 }
+
+/// `--drive2`: the same session, through **M12/T12.1's harness**.
+///
+/// The gate for that task: the hand-written session above rewritten
+/// against the harness, shorter and asserting the same things. Both are
+/// kept and both run, because the comparison is the evidence — a
+/// harness that were *only* shorter would be a convenience, and the
+/// claim is that it says more.
+///
+/// What it says that the hand-written one does not:
+///
+/// * every click checks `handled`, so a click that reaches no handler
+///   fails *here* rather than three assertions later on an unchanged
+///   count — the M16/T16.7 shape, where every click missed and the
+///   oracle compared two identical no-ops;
+/// * a failure carries the protocol's own words, including the nearest
+///   candidates for a missed selector;
+/// * a failure lists the steps that preceded it.
+pub fn drive_harness() {
+    use lumen_static_agent::harness::{Expect, TestApp};
+    use lumen_static_agent::{AgentHost, TreeRef};
+
+    let (w, h) = (440u32, 520u32);
+    let mut host = Host::new(build(), w, h);
+    host.set_stylesheet(&stylesheet_for(0));
+    host.pump();
+
+    /// The `AgentHost` seam. `Host` is the shell's, and the harness
+    /// drives anything that answers these three.
+    struct Driven<'a>(&'a mut Host<Tally>);
+    impl AgentHost for Driven<'_> {
+        fn tree(&self) -> TreeRef<'_> {
+            TreeRef::of_root(&self.0.app.ui, &self.0.styles, &self.0.states)
+        }
+        fn enqueue(&mut self, ev: lumen_static::Event) {
+            self.0.post(ev);
+        }
+        fn pump(&mut self) -> (u64, bool) {
+            let handled = self.0.pump();
+            (1, handled)
+        }
+    }
+
+    fn session(app: &mut TestApp<'_, Driven<'_>>, w: f32, h: f32) -> Expect {
+        app.click("#inc")?;
+        app.click("#inc")?;
+        app.click("#inc10")?;
+        app.expect_text("#value", "12")?;
+        app.expect_text("#pill", "POSITIVE")?;
+
+        app.click("#dec10")?;
+        app.click("#dec10")?;
+        app.click("#dec")?;
+        app.expect_text("#pill", "NEGATIVE")?;
+
+        app.click("#reset")?;
+        app.expect_text("#value", "0")?;
+        app.expect_text("#pill", "AT ZERO")?;
+
+        // Bounds, not just state: every control the agent can name is on
+        // screen and has area.
+        for id in ["#dec10", "#dec", "#inc", "#inc10", "#reset", "#value", "#pill", "#caption"] {
+            app.expect_visible(id, (w, h))?;
+        }
+
+        // And the accepting direction for the locator itself: a
+        // selector that names nothing must say so. Without this, a
+        // resolver that silently matched the root would pass every
+        // assertion above against the wrong node.
+        app.expect_absent("#no-such-control")?;
+        Ok(())
+    }
+
+    let mut driven = Driven(&mut host);
+    let mut app = TestApp::new(&mut driven);
+    match session(&mut app, w as f32, h as f32) {
+        Ok(()) => println!(
+            "drive2: {} harness steps, all assertions passed",
+            app.steps().len()
+        ),
+        Err(e) => panic!("drive2: {e}"),
+    }
+}

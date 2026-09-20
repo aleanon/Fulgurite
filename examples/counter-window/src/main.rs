@@ -27,6 +27,12 @@ fn main() {
             headless::drive();
             return;
         }
+        // M12/T12.1: the same session through the harness. Both run in
+        // , because the comparison is the task's evidence.
+        if flag == "--drive2" {
+            headless::drive_harness();
+            return;
+        }
         if flag == "--form" {
             let path = args.next().unwrap_or_else(|| "form.ppm".into());
             form::form(&path);

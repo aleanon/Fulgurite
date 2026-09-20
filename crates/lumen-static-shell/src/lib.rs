@@ -18,6 +18,8 @@ use lumen_static::style::{Rule, Style};
 use lumen_static::widget::{Node, Widget};
 use lumen_static::{pass, Constraints, Event, Point};
 
+/// M12/T12.2: golden images, with a diff artifact.
+pub mod golden;
 pub mod software;
 pub mod svg;
 #[cfg(feature = "truetype")]

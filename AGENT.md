@@ -323,7 +323,13 @@ are independent of each other**, so either may go first:
   timer on an idle window was never checked. Both are defects no
   headless test can exhibit.
 
-Unsequenced: `docs/plan-harness.md`.
+~~Unsequenced: `docs/plan-harness.md`.~~ — **M12 DONE 2026-09-20.**
+T12.3 and T12.4 landed 2026-09-04; T12.1 (a locator and expectation API,
+`lumen_static_agent::harness::TestApp`) and T12.2 (golden images with a
+diff artifact) on 2026-09-20. `docs/results-harness.md` owns the
+numbers. The premise held — its substrate was already finished, so it
+stayed cheap: what was missing was ergonomics and artifacts, and that is
+all that was built.
 
 Task ids (`T0.6`, `F1.3`, `T16.7`) go in commit subjects. Decision records live beside it in `docs/`; the
 design spec is `docs/00-handoff-static-tree.md`, whose DECIDED/SUPERSEDED

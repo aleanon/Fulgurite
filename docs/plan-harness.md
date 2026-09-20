@@ -1,9 +1,13 @@
 # M12 — the test harness
 
-*Planned 2026-09-04. Was Phase E of `docs/plan-lumen-parity.md`. Status:
-**not started**, and last of the three — not because it is least
-valuable, but because its substrate is already finished, so it stays
-cheap however long it waits.*
+*Planned 2026-09-04. Was Phase E of `docs/plan-lumen-parity.md`.
+Status: **DONE 2026-09-20** — T12.3 and T12.4 landed 2026-09-04, T12.1
+and T12.2 on 2026-09-20. `docs/results-harness.md` owns the numbers and
+the injections.*
+
+*The premise held: the substrate was finished, so it stayed cheap. What
+was missing was ergonomics and artifacts, and that is all that was
+built.*
 
 ## What already exists
 
@@ -37,7 +41,7 @@ though the crate is not adoptable** (it depends on `lumen-core`,
 `click`/`fill`/`press`/`expect_text`/`expect_value`/`expect_state`, and
 its `Tracer` writes JSONL with a screenshot embedded on failure.
 
-## T12.1 — a locator and expectation API
+## T12.1 — a locator and expectation API — **DONE 2026-09-20**
 
 A test should read like the thing it tests:
 
@@ -65,9 +69,14 @@ learned the hard way:
 
 **Gate:** `examples/counter-window --drive` — the existing hand-written
 agent session — rewritten against the harness, shorter and asserting the
-same things.
+same things. **Landed as `--drive2`, and both are kept**, because the
+comparison is the evidence: 7 hand-written clicks against 21 harness
+steps, with the hand-written version needing a `centre` closure that
+assembles `ui.getLayout` JSON and unwraps four array indices. Each of
+the three properties above was injected for real —
+`docs/results-harness.md` has the three failure messages.
 
-## T12.2 — golden images with a diff artifact
+## T12.2 — golden images with a diff artifact — **DONE 2026-09-20**
 
 The *comparison* exists: `damage_oracle.rs` compares whole pixel
 buffers. What it does on failure is `assert_eq!` two 264 KB `Vec<u8>`s
@@ -114,7 +123,15 @@ it deliberately, and producing something to look at when it fails.
   gate, and would have been *masked* by a re-recorded golden.
 
 **Gate:** deliberately break a paint (change a radius by 1 px) and check
-that the diff image shows where, not merely that.
+that the diff image shows where, not merely that. **Landed**: a 1 px
+radius change on a 120×80 frame is `92 of 9600 pixels differ, inside
+[20, 16, 100, 64]`, and the diff image marks exactly those 92 — at the
+rounded rect's four corners and nowhere else, which is the only place a
+radius change can move a pixel. `docs/results-harness.md` prints the
+map. Artifacts are PPM, not PNG, for the feature-unification reason
+above; `LUMEN_UPDATE_GOLDENS=1` re-records; a first run **records and
+does not pass**; and `compare` panics under `truetype` rather than
+baking in the recording machine's font install.
 
 ## T12.3 — session recording as a test artifact — **DONE 2026-09-04**
 
