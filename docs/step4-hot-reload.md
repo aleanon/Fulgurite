@@ -122,3 +122,31 @@ comfortably inside the 2 s criterion end to end.
    Deferred to the observability step, which shares the gating.
 3. **`fresh()` = `Default`** — sufficient until construction needs
    context (an allocator handle, §8's one type axis); revisit then.
+
+## How a descriptor crosses (M28/T28.7)
+
+Deferred work in flight across a swap is the case item 1 above warns
+about, so it crosses the way item 1 requires: **as primitives**.
+
+A `Descriptor` is `(kind, step, payload)` — three `u64`s — and it
+crosses as three arguments to an `extern "C"` verb, reassembled on the
+far side. It is never passed as a `lumen_static::spawn::Descriptor`
+value, even though both builds nominally have that type: v1 and v2 each
+link their own copy and no layout agreement is promised, which is item
+1's whole point.
+
+**The chain's state lives in the loader process**, outside both dylibs —
+the inbox, the epoch and the pending descriptor. That arrangement is
+forced by §7's sequence rather than chosen: step 2 of the sequence drops
+the entire app object while the old library is still loaded, so anything
+that must survive the swap cannot live in the app.
+
+The dylib contributes one thing: **what a step means**, through
+`hot_step(kind, step, payload) -> u64`. It takes no session pointer,
+deliberately — a step is a pure function of its descriptor, and handing
+it the app would invite a step that mutates state the host is about to
+restore over.
+
+`just hot-demo` asserts the whole path, and
+`docs/events-decision.md`'s async-boundary section has the numbers and
+the injection.

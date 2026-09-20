@@ -125,6 +125,12 @@ fn expect(report: &str, needle: &str, what: &str) {
     println!("  ok: {what} ({needle})");
 }
 
+/// The fixture's only chain — M28/T28.7. A stable, append-only id, which
+/// is `docs/plan-tasks.md` §2.1's rule: a descriptor whose `(kind, step)`
+/// the loaded build does not recognise is dropped and counted, never
+/// guessed at.
+const CHAIN_KIND: u64 = 1;
+
 fn main() {
     let mut args = std::env::args().skip(1);
     let (v1_path, v2_path) = (args.next().expect("v1 .so path"), args.next().expect("v2 .so path"));
@@ -163,6 +169,26 @@ fn main() {
     println!("v1 tick colour {mark_v1:#010x}");
     assert_eq!(mark_v1, 0xc8_1e_1e_ff, "v1's default paints a red tick");
 
+    // ---- M28/T28.7: start a chain against v1 -------------------------
+    //
+    // **The chain lives here, in the loader process, outside both
+    // dylibs.** That arrangement is forced by §7's sequence rather than
+    // chosen: step 2 below destroys the entire app object while the old
+    // library is still loaded, so anything the chain needs to survive
+    // the swap cannot live in the app.
+    //
+    // What is held across the swap is the *pending descriptor* — three
+    // `u64`s. Not a function pointer: that is the whole point, and the
+    // injection for this gate is to hold one and watch the assertion
+    // fire with v1's value.
+    let step_v1: Symbol<unsafe extern "C" fn(u64, u64, u64) -> u64> =
+        unsafe { v1.get(b"hot_step") }.unwrap();
+    let out0 = unsafe { step_v1(CHAIN_KIND, 0, 4) };
+    assert_eq!(out0, 5, "v1 ran step 0: 4 + 1");
+    // The completion says which step is next. An index, not a closure.
+    let pending: (u64, u64, u64) = (CHAIN_KIND, 1, out0);
+    println!("chain: v1 ran step 0 -> {out0}; pending descriptor {pending:?} held across the swap");
+
     // ---- the §7 sequence ----
     let bytes = app.save(); // 1. save while old lib loaded (host-owned buffer)
     println!("saved {} bytes of keep-state (JSON)", bytes.len());
@@ -187,6 +213,34 @@ fn main() {
         let need = unsafe { f(tiny.as_mut_ptr(), 1) };
         assert!(need > 1, "the fallback log should be longer than one byte, got {need}");
         println!("  ok: undersized buffer refused, {need} bytes still pending");
+    }
+
+    // ---- M28/T28.7: the pending completion lands in v2 ----------------
+    //
+    // The descriptor was made by v1 and is interpreted by v2. This is
+    // `docs/events-decision.md` rule 3's whole claim, as an assertion:
+    // work in flight carries a **value**, and whatever build is loaded
+    // when it lands decides what the value means.
+    //
+    // v1's step 1 is `payload * 10` and v2's is `payload * 1000`. Both
+    // builds agree about step 0, deliberately — if they differed too,
+    // this could not tell "v2 ran the second step" from "v2 ran
+    // everything".
+    {
+        let step_v2: Symbol<unsafe extern "C" fn(u64, u64, u64) -> u64> =
+            unsafe { v2.get(b"hot_step") }.unwrap();
+        let (kind, step, payload) = pending;
+        let out1 = unsafe { step_v2(kind, step, payload) };
+        println!("chain: v2 ran step {step} on payload {payload} -> {out1}");
+        assert_ne!(
+            out1, 50,
+            "the chain completed into V1's step function (5 * 10): the next step was held              as a code pointer captured at spawn, which is what rule 3 forbids"
+        );
+        assert_eq!(
+            out1, 5000,
+            "the chain must complete into v2's step function (5 * 1000); got {out1}"
+        );
+        println!("  ok: a chain started before the swap completed into the NEW build's step");
     }
 
     let log = app2.take_log();

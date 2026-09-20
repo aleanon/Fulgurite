@@ -300,8 +300,16 @@ pub mod sizes {
     // too or the saving cannot be told from a transfer. 1,104 B for 11
     // nodes, measured on the target 2026-09-15; a `const` panic cannot
     // print a value, so the expected one is in the message.
+    //
+    // **Re-budgeted 1,152 -> 1,168 on 2026-09-20** (M26/T26.17 finding
+    // 12): `MeasureKey` gained the display scale, because the measurer's
+    // answer depends on it and the memo did not key on it — a stale box
+    // after an ordinary monitor-to-monitor drag. Four bytes on each of
+    // the four memo-holding widgets in this eleven-node tree, attributed
+    // by removing the field and watching the number return to 1,152.
+    // `docs/results-embedded.md` carries the argument for paying it.
     #[cfg(target_pointer_width = "32")]
-    const _: () = assert!(UI == 1152, "Ui is no longer 1152 B on the target; re-budget docs/results-frame-and-types.md");
+    const _: () = assert!(UI == 1168, "Ui is no longer 1168 B on the target; re-budget docs/results-frame-and-types.md");
 
     // **The stack budget, enforced rather than recorded.**
     //

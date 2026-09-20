@@ -42,6 +42,28 @@ if [ "${toggles:-0}" -eq 0 ]; then
   exit 1
 fi
 
+# M28/T28.7: **no deferred-work code reaches a leaf profile.**
+#
+# `.text` is deliberately NOT the measure here. `inbox` and `spawn` are
+# behind the `std` feature and fixtures/embedded does not enable it, so
+# that number cannot move whatever M28 does -- a bound computed from the
+# wrong quantity, which is the shape AGENT.md records twice. The
+# falsifiable form of the same claim is the symbol count, and zero is a
+# bound an addition can actually cross.
+#
+# Printed beside its bound like the Toggle count above, so a run that
+# reports it is showing the quantity rather than asserting a pass.
+tasks=$(nm -C "$BIN" 2>/dev/null | grep -cE 'lumen_static::(inbox|spawn)::' || true)
+if [ "${tasks:-0}" -ne 0 ]; then
+  echo "text: $tasks deferred-work symbols linked into $BIN, expected 0" >&2
+  echo "" >&2
+  nm -C "$BIN" 2>/dev/null | grep -E 'lumen_static::(inbox|spawn)::' | head -5 >&2
+  echo "" >&2
+  echo "M28's inbox and spawner are behind \`std\`; an embedded leaf profile" >&2
+  echo "must link none of them (docs/plan-tasks.md T28.7)." >&2
+  exit 1
+fi
+
 text=$(size -A "$BIN" | awk '$1 == ".text" {print $2}')
 [ -n "$text" ] || { echo "text: could not read .text from $BIN" >&2; exit 1; }
 
@@ -55,4 +77,4 @@ if [ "$text" -gt "$CEILING" ]; then
   exit 1
 fi
 
-echo "text: .text $text B of $CEILING ($pct% of budget), $toggles Toggle symbols linked"
+echo "text: .text $text B of $CEILING ($pct% of budget), $toggles Toggle symbols linked, $tasks task symbols (bound 0)"

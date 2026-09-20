@@ -356,3 +356,54 @@ measurable:**
 Both are packing exercises with real API cost, and pairing either with a
 widget milestone would hide one behind the other. They are named here so
 the next reader of this budget knows the 164 is a choice.
+
+
+## M28 and the embedded profile (2026-09-20)
+
+**Zero deferred-work symbols link into a leaf profile**, and that is the
+measurement M28/T28.7 owes rather than a `.text` delta.
+
+`.text` is deliberately *not* the measure. `lumen_static::inbox` and
+`lumen_static::spawn` are behind the `std` feature and `fixtures/embedded`
+does not enable it, so that number cannot move whatever M28 does — a
+bound computed from the wrong quantity, which is the shape `AGENT.md`
+records twice. The falsifiable form of the same claim is a symbol count,
+and zero is a bound an addition can actually cross.
+
+`scripts/check_text.sh` now prints it beside the Toggle count:
+
+```
+text: .text 27036 B of 65536 (41.3% of budget), 3 Toggle symbols linked, 0 task symbols (bound 0)
+```
+
+**The gate is shown able to fire**, because a gate that refuses
+everything and a gate that refuses nothing look identical at zero. With
+the pattern pointed at a module that *is* linked
+(`lumen_static::ops::`), it reports `11 deferred-work symbols linked …
+expected 0`, prints the offenders and exits non-zero. That injection
+proves the counting, comparison and reporting work; the emptiness of the
+real pattern is the property being asserted, and the two claims are
+separate.
+
+### `Ui` re-budgeted 1,152 → 1,168 B on the target
+
+Not M28's cost. **M26/T26.17 finding 12**: `MeasureKey` gained the
+display scale, because the measurer's answer depends on it and the memo
+did not key on it — so an ordinary monitor-to-monitor drag served a box
+measured for the other display (`docs/results-frame-and-types.md`).
+
+Four bytes on each of the four memo-holding widgets in the eleven-node
+fixture. **Attributed rather than assumed**: removing the field returns
+the number to exactly 1,152.
+
+It is paid because the alternative is a text box that is wrong on one of
+two monitors. The `const` assert in `fixtures/embedded/src/lib.rs` moves
+with the argument, which is what a re-budget means here.
+
+**Found late, and that is worth recording.** The assert is a `const` on
+the `thumbv7em-none-eabihf` target, which only `just check-extra` and
+`just firmware-size` build. The per-commit path — `just static`,
+`cargo test --workspace`, `cargo clippy` — never targets it, so the
+regression survived four green commits. `just static` is pure bash by
+design and compiles nothing; the cross build is where this class of
+gate lives, and it has to be run deliberately.

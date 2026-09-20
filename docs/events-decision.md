@@ -54,6 +54,42 @@ host-owned inbox; the currently loaded code interprets them. This is the
 one place message-shaped events survive, because it is the one place the
 capture problem is real here.
 
+### The chain case, demonstrated 2026-09-20 (M28/T28.7)
+
+This rule anticipated a *chain* and nothing had ever tested one. iced
+chains with `task.then(|out| next)` — a closure held across an await,
+which is a code reference in flight and breaks this rule on the first
+reload.
+
+The answer is the move this architecture already made for handlers:
+identity became positional, so **the next step is an index, not a
+function**. A descriptor is `(kind, step, payload)`, and the currently
+loaded build dispatches on `(kind, step)`.
+
+`just hot-demo` now asserts it end to end. v1 runs step 0 of a chain; the
+pending descriptor — three `u64`s, held by the **loader process**,
+outside both dylibs — survives the swap; v2 runs step 1. v1's step 1 is
+`payload * 10` and v2's is `payload * 1000`, so the assertion can tell
+which build interpreted the old build's in-flight work:
+
+```
+chain: v1 ran step 0 -> 5; pending descriptor (1, 1, 5) held across the swap
+chain: v2 ran step 1 on payload 5 -> 5000
+  ok: a chain started before the swap completed into the NEW build's step
+```
+
+**And the defect this rule exists to prevent is demonstrated rather than
+argued.** Holding the next step as a function pointer captured at spawn
+— v1's `hot_step` symbol — instead of as an index:
+
+```
+chain: v2 ran step 1 on payload 5 -> 50
+the chain completed into V1's step function (5 * 10): the next step was
+held as a code pointer captured at spawn, which is what rule 3 forbids
+```
+
+Last week's logic, running after the swap, with no crash and no warning.
+
 ## What is given up, priced
 
 - **Introspectable actions.** `Msg::Save` names itself; an `fn` pointer
@@ -77,3 +113,7 @@ capture problem is real here.
   never be marked `keep` (already a compile error).
 - Nothing that outlives the frame may hold a code reference — the inbox
   is the only legal way for deferred work to re-enter the app.
+- **A continuation is an index, not a function** (M28/T28.6, T28.7). A
+  chain's next step is a `step` field in a descriptor, resolved by the
+  loaded build; the rule above forbids the closure form, and
+  `just hot-demo` is where that is checked rather than asserted.

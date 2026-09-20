@@ -504,3 +504,74 @@ plausible-looking result rather than an error.
 `App::job_for(kind: u64)` became `App::job_for(d: Descriptor)`. Keyed on
 the kind alone a chain cannot be dispatched at all, and the injection
 above is what that looks like from the outside.
+
+## T28.7 — a chain across a dylib swap
+
+**Landed 2026-09-20. The milestone's centre.**
+
+The plan's first draft claimed `fixtures/hot-app` and `fixtures/hot-host`
+"already drive a swap with state in flight". They do not: the sequence is
+strictly sequential — save, drop, load, fresh, restore — with no thread,
+no channel, no `Host`, no pump and no inbox, and step two destroys the
+entire app object while the old library is still loaded.
+
+So the arrangement is forced by §7's sequence rather than chosen: **the
+chain's state lives in the loader process**, outside both dylibs. The
+dylib contributes one thing — *what a step means* — through
+`hot_step(kind, step, payload) -> u64`, which takes no session pointer,
+because a step is a pure function of its descriptor and handing it the
+app would invite a step that mutates state the host is about to restore
+over.
+
+The descriptor crosses as **three `u64` arguments**, never as a
+`Descriptor` value: `docs/step4-hot-reload.md`'s honesty list item 1
+forbids a framework type crossing the seam, since v1 and v2 each link
+their own copy and no layout agreement is promised. That is a *separate*
+constraint from rule 3's ban on a code reference, and the plan found its
+own first draft applying only one of the two.
+
+### The gate, in `just hot-demo`
+
+v1's step 1 is `payload * 10`; v2's is `payload * 1000`. **Both builds
+agree about step 0, deliberately** — if they differed too, the assertion
+could not tell "v2 ran the second step" from "v2 ran everything".
+
+```
+chain: v1 ran step 0 -> 5; pending descriptor (1, 1, 5) held across the swap
+chain: v2 ran step 1 on payload 5 -> 5000
+  ok: a chain started before the swap completed into the NEW build's step
+```
+
+**Injection**, as the plan wrote it — the next step held as a function
+pointer captured at spawn (v1's `hot_step` symbol) rather than as an
+index:
+
+```
+chain: v2 ran step 1 on payload 5 -> 50
+the chain completed into V1's step function (5 * 10): the next step was
+held as a code pointer captured at spawn, which is what rule 3 forbids
+```
+
+The demo exits 101. This is the defect `docs/events-decision.md` rule 3
+exists to prevent — last week's logic running after a swap, with no
+crash and no warning — **demonstrated rather than argued**, which is
+what the rule had been missing since it was written.
+
+### The measurement: zero task symbols, and one re-budget
+
+`docs/results-embedded.md` owns both numbers.
+
+`.text` on thumbv7em is deliberately not the measure: the inbox and the
+spawner are behind `std` and `fixtures/embedded` does not enable it, so
+that number cannot move whatever M28 does. `0 task symbols (bound 0)`,
+printed beside the Toggle count, is the falsifiable form — and the gate
+is shown able to fire by pointing its pattern at a module that *is*
+linked (11 symbols, non-zero exit, offenders printed).
+
+Building the firmware for the first time in this milestone also found a
+**const-assert regression from M26/T26.17 finding 12**: `MeasureKey`'s
+new scale field grew `Ui` from 1,152 to 1,168 B on the target, four
+bytes on each of four memo-holding widgets, attributed by removing the
+field and watching the number return. Re-budgeted with the argument. It
+had survived four green commits because the per-commit path never
+targets thumbv7em.

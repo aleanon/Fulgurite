@@ -319,3 +319,51 @@ pub unsafe extern "C" fn hot_take_log(buf: *mut u8, cap: usize) -> usize {
         n
     })
 }
+
+// ---- M28/T28.7: the step verb -----------------------------------------------
+//
+// The chain lives in the **host**, not here: the inbox, the epoch and
+// the pending descriptor are all in `fixtures/hot-host`, outside both
+// dylibs. This is the one thing a dylib contributes — *what a step
+// means* — and it is reached through primitives, like every other verb
+// in this fixture.
+//
+// `docs/step4-hot-reload.md`'s honesty list forbids a framework type
+// crossing this seam: v1 and v2 each link their own copy and no layout
+// agreement is promised. So a `Descriptor` crosses as three `u64`s and
+// is reassembled on the far side, which is what
+// `docs/plan-tasks.md` §2.1 means by "crosses as primitives".
+
+/// Interpret one step of a chain, and return what it produced.
+///
+/// **v1 and v2 answer differently on purpose.** The gate starts a chain
+/// against v1, swaps, and delivers the pending completion here; the
+/// assertion is that the answer is v2's — that is, the new build
+/// interpreted the old build's in-flight work, which is the whole claim
+/// `docs/events-decision.md`'s rule 3 is about.
+///
+/// Takes no session pointer: a step is a pure function of the
+/// descriptor, and giving it the app would invite a step that mutates
+/// state the host is about to restore over.
+#[no_mangle]
+pub unsafe extern "C" fn hot_step(kind: u64, step: u64, payload: u64) -> u64 {
+    // Kind 1 is the fixture's only chain. An unrecognised `(kind, step)`
+    // answers 0, which the host reads as "this build does not know that
+    // step" and counts — never guessing, which is what would make a
+    // renumbering silently run the wrong step.
+    if kind != 1 {
+        return 0;
+    }
+    match step {
+        // Step 0 is the same in both builds, so the host can start a
+        // chain against v1 and see an *unremarkable* first result. If
+        // this differed too, the gate could not tell "v2 ran the second
+        // step" from "v2 ran everything".
+        0 => payload + 1,
+        #[cfg(not(feature = "v2"))]
+        1 => payload * 10,
+        #[cfg(feature = "v2")]
+        1 => payload * 1000,
+        _ => 0,
+    }
+}
