@@ -633,6 +633,21 @@ pub trait App: Sized {
         None
     }
 
+    /// What should be running — M28/T28.10.
+    ///
+    /// The host clears this, asks the application to re-declare into it,
+    /// and diffs the result against what it already started. Identity is
+    /// `(kind, key)`: values, not a hash of the code that produces the
+    /// stream.
+    ///
+    /// `None` by default, which is what an application with no
+    /// subscriptions answers — and it costs such an application no
+    /// field.
+    #[cfg(feature = "std")]
+    fn subscriptions(&mut self) -> Option<&mut crate::spawn::Subs> {
+        None
+    }
+
     /// Turn a job's failure into one of this application's messages —
     /// M28/T28.9.
     ///

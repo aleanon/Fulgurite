@@ -381,3 +381,87 @@ impl Outbox {
         n
     }
 }
+
+/// What should be running — M28/T28.10, `docs/plan-tasks.md` §2.4.
+///
+/// iced hashes a *recipe* to decide which streams keep running. Here
+/// identity is `(kind, key)` — values — and the host diffs this set each
+/// frame against what it already started: start what appeared, stop what
+/// vanished, leave the rest alone.
+///
+/// Hashing code would put the identity of a stream in the code that
+/// produces it, which is the same coupling `docs/events-decision.md`
+/// rule 3 removes from chains. Two builds that format a URL differently
+/// would restart every subscription on reload; two that format it the
+/// same would silently share one.
+///
+/// **Fixed capacity whose overflow is visible**, in the first of this
+/// workspace's three flavours: refuse the new item and count the
+/// refusal, as `Overlays<16>` does. (`InputQueue<64>` rejects the
+/// *newest* event; `Boundaries<N>` widens to everything, which is
+/// conservative rather than lossy. They are not interchangeable and the
+/// plan's first draft flattened them into one.)
+pub struct Subs {
+    set: [(u64, u64); Subs::CAPACITY],
+    len: usize,
+    refused: usize,
+}
+
+impl Default for Subs {
+    fn default() -> Self {
+        Subs::new()
+    }
+}
+
+impl Subs {
+    /// How many subscriptions may run at once.
+    pub const CAPACITY: usize = 16;
+
+    pub const fn new() -> Subs {
+        Subs { set: [(0, 0); Subs::CAPACITY], len: 0, refused: 0 }
+    }
+
+    /// Declare one. Returns whether it was taken.
+    ///
+    /// **Declaring the same `(kind, key)` twice is one subscription**,
+    /// not two: the set is a set. Without that, an application that
+    /// declares from a loop would start N copies of one stream and the
+    /// diff would never settle.
+    pub fn declare(&mut self, kind: u64, key: u64) -> bool {
+        if self.set[..self.len].contains(&(kind, key)) {
+            return true;
+        }
+        if self.len == Subs::CAPACITY {
+            self.refused += 1;
+            return false;
+        }
+        self.set[self.len] = (kind, key);
+        self.len += 1;
+        true
+    }
+
+    /// Forget everything declared. The host calls this before asking the
+    /// application to re-declare, so "what should run" is rebuilt from
+    /// scratch each frame rather than accumulated.
+    pub fn clear(&mut self) {
+        self.len = 0;
+    }
+
+    /// What is declared right now.
+    pub fn as_slice(&self) -> &[(u64, u64)] {
+        &self.set[..self.len]
+    }
+
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
+    /// How many declarations were refused for want of capacity.
+    pub fn refused(&self) -> usize {
+        self.refused
+    }
+}

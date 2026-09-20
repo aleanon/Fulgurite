@@ -683,3 +683,64 @@ The test silences the panic hook around the deliberate panic and
 restores it immediately, so an *unexpected* panic elsewhere still
 prints. The default hook is otherwise left alone: this reports the
 failure, it does not hide it.
+
+## T28.10 — subscriptions: start, stop, and identity
+
+**Landed 2026-09-20.** Identity is `(kind, key)` — values — and the host
+diffs the application's declared set each frame against what it already
+started.
+
+Hashing a recipe, as iced does, would put a stream's identity in the
+code that produces it, which is the coupling
+`docs/events-decision.md` rule 3 removes from chains: two builds that
+format a URL differently would restart every subscription on reload, and
+two that format it the same would silently share one.
+
+### The gate
+
+| claim | measured |
+|---|---|
+| a subscription that appears starts **once** | five frames, `started 1, stopped 0`, one message |
+| one that vanishes stops — and stays stopped | `(1, 1)` after clearing, still `(1, 1)` two frames later |
+| one whose **key** changes is stopped and restarted | `1 -> 2`: `started 2, stopped 1`, `landed == [1, 2]` |
+| declaring the same identity twice is one subscription | `subs.len() == 1`, one start |
+| the set refuses past capacity and counts | capacity 16: declared 16, refused 3, counter **3**, no eviction |
+
+The "stays stopped" and "twice is one" rows are the ones that make the
+others meaningful: a diff that restarted every frame would satisfy row
+one's *start* and fail its count, and an application declaring from a
+loop would start N copies of one stream with the set never settling.
+
+**Injection**, as the plan wrote it — diff by kind alone, ignoring the
+key:
+
+```
+after the key changed 1 -> 2: started 1, stopped 0
+  left: (1, 0)
+ right: (2, 1)
+a changed key must stop the old stream and start a new one; diffing by
+kind alone leaves the old one running and starts nothing
+```
+
+The other four stay green, which localises it to the key rather than to
+the diff. That case is also the one that matters in practice: a stream
+keyed on "which document is open" changes key far more often than it
+appears or vanishes.
+
+### The measurement
+
+The threshold was *"the per-frame cost of the diff with no subscriptions
+declared must be indistinguishable from today's frame"*.
+
+| | µs |
+|---|---:|
+| idle frame, 10 000 nodes, before M28 (`docs/results-frame-and-types.md` T26.17) | 349.97 / 351.47 |
+| the same, with the subscription diff, the inbox drain and the outbox drain all in `pump` | **351.19** (three runs: 351.19, 370.50, 378.63) |
+
+Inside the arm's own spread — and that is the whole of M28's per-frame
+cost, not the diff's alone. `App::subscriptions` defaults to `None`, so
+an application with no subscriptions pays one `Option` check and the
+early return happens before any allocation.
+
+The allocation gate agrees: `50 frames each applying one result: allocs
+0, frees 0`, unchanged by this task.

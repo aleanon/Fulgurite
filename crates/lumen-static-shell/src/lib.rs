@@ -61,6 +61,15 @@ pub struct Host<A: App, R: Retention = Incremental, I: Invalidation = Everything
     /// recognise — M28/T28.4, `docs/plan-tasks.md` §2.1's stability
     /// rule.
     unknown_kind: usize,
+    /// What the host has already started — M28/T28.10. Diffed each frame
+    /// against what the application declares.
+    running: Vec<(u64, u64)>,
+    /// Subscriptions started and stopped, since the host was made. A
+    /// test reads the pair; a start that repeats every frame is the
+    /// defect the diff exists to prevent, and a counter is how it
+    /// becomes visible.
+    sub_started: usize,
+    sub_stopped: usize,
     pub styles: Vec<Style>,
     pub states: Vec<NodeState>,
     pub list: DisplayList,
@@ -168,6 +177,9 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             spawner: None,
             unspawned: 0,
             unknown_kind: 0,
+            running: Vec::new(),
+            sub_started: 0,
+            sub_stopped: 0,
             styles,
             states: vec![NodeState::default(); n],
             list: DisplayList::new(),
@@ -477,6 +489,64 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         }
     }
 
+    /// Start what appeared, stop what vanished, leave the rest alone.
+    ///
+    /// Identity is `(kind, key)` — values — so the diff is a set
+    /// difference and nothing hashes any code. A subscription already
+    /// running is **left alone**: restarting it every frame is the
+    /// defect this exists to prevent, and `sub_started` is how a test
+    /// sees the difference.
+    fn diff_subscriptions(&mut self) {
+        // The application owns the set and mutates it when its state
+        // changes, exactly as it owns the outbox. The host only reads —
+        // which means there is no "re-declare" hook to forget to call,
+        // and no frame in which the set is momentarily empty.
+        let declared: Vec<(u64, u64)> = match self.app.subscriptions() {
+            Some(s) if !s.as_slice().is_empty() || !self.running.is_empty() => {
+                s.as_slice().to_vec()
+            }
+            // Nothing declared and nothing running: the overwhelmingly
+            // common case, and it must cost a `None` check and no more.
+            _ => return,
+        };
+
+        // Stopped: running and no longer declared.
+        let stopped: Vec<(u64, u64)> =
+            self.running.iter().copied().filter(|r| !declared.contains(r)).collect();
+        for s in &stopped {
+            self.running.retain(|r| r != s);
+            self.sub_stopped += 1;
+        }
+
+        // Started: declared and not already running. A subscription is
+        // spawned exactly like any other job — `docs/events-decision.md`
+        // is absolute that the inbox is the only way deferred work
+        // re-enters the app, and this plan adds no second path.
+        for d in &declared {
+            if self.running.contains(d) {
+                continue;
+            }
+            self.running.push(*d);
+            self.sub_started += 1;
+            let desc = lumen_static::spawn::Descriptor { kind: d.0, step: 0, payload: d.1 };
+            match A::job_for(desc) {
+                Some(job) => {
+                    self.spawn(lumen_static::spawn::Job {
+                        desc,
+                        job,
+                        on_fail: Some(A::failed),
+                    });
+                }
+                None => self.unknown_kind += 1,
+            }
+        }
+    }
+
+    /// Subscriptions started and stopped since this host was made.
+    pub fn subscription_counts(&self) -> (usize, usize) {
+        (self.sub_started, self.sub_stopped)
+    }
+
     /// Hand every descriptor a handler pushed to the spawner, pairing
     /// each with the job `fn` from the **currently loaded** build.
     ///
@@ -575,6 +645,13 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
                 &ev,
             );
         }
+
+        // **Subscriptions, diffed** — M28/T28.10.
+        //
+        // Before the outbox drain, so a subscription that starts this
+        // frame is spawned by the same drain that handles a handler's
+        // request — one spawn path, not two.
+        self.diff_subscriptions();
 
         // **The outbox, drained after dispatch** — M28/T28.4.
         //
