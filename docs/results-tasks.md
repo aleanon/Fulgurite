@@ -744,3 +744,63 @@ early return happens before any allocation.
 
 The allocation gate agrees: `50 frames each applying one result: allocs
 0, frees 0`, unchanged by this task.
+
+## T28.11 — timers, and the deadline the loop waits on
+
+**Landed 2026-09-20.** A timer is a **deadline**, not a thread that
+sleeps. A thread per timer costs a thread and a context switch per tick,
+and it puts the timer's identity in a thread handle rather than in data
+— the coupling the rest of this milestone is arranged to avoid.
+
+But a deadline needs a frame to be checked on, and **an idle window
+produces none**: the loop is `ControlFlow::Wait` and asks for a redraw
+only while something is animating. So the host publishes its earliest
+pending deadline (`Host::next_deadline_ms`) and a shell waits *until*
+that instant, falling back to indefinite when nothing is pending.
+
+The plan's first draft gated this on "a second of driven frames", which
+is the one situation where the defect cannot appear — a driven loop
+produces frames by definition.
+
+### The gate, both halves
+
+**Deterministic**: forty frames of a 25 ms tick is exactly one synthetic
+second, and both quantities print beside their bounds so a setup that
+silently did not tick is visible in the output rather than inferred.
+
+```
+40 frames x 25 ms: elapsed 1000.0 ms (of 1000.0), a 50 ms timer fired 20 times (of 20)
+```
+
+**The mechanism**:
+
+| claim | measured |
+|---|---|
+| zero threads for a timer, counted **through T28.3's spawner seam** | `20 timer firings went through 20 spawns (one job each, no timer thread)` |
+| the host publishes its earliest deadline | `None` when idle; `Some(50.0)` of a 50/200 pair; `20.0` after 30 ms; `170.0` when the soonest is cancelled; `None` again when the last is |
+| a long frame catches up rather than dropping ticks | one 80 ms frame with a 25 ms timer: `fired 3 times (of 3)` |
+| a nonsense period is refused and counted | 0, −5 and `NaN` refused (3 of 3); 16 ms accepted |
+
+The thread count is measured through the seam rather than by asking the
+OS, because **every thread this milestone creates goes through
+`Spawner::spawn`** — which makes counting spawns a measurement a test
+can actually make.
+
+The catch-up row is what lets the deterministic half exist at all: a
+timer that silently drops ticks under load has a count that depends on
+the frame rate, and a count that depends on the frame rate cannot be
+asserted.
+
+### Injections
+
+| injection | fires as |
+|---|---|
+| a thread spawned per tick, producing no message — the plan's own | `40 spawns for 20 firings means something is spawning per tick as well` |
+| the loop left waiting indefinitely (no deadline published) | `the_host_publishes_its_earliest_deadline` fails on "the soonest of the two" |
+
+The first injection was made **precise on the second attempt**. The
+first version pushed each due descriptor twice, which fired three tests
+— it doubled the firings as well as the spawns, so it did not show that
+the spawn count alone can see a thread-per-tick. Spawning a job that
+produces no message isolates it, and only the spawn-count assertion
+fires.

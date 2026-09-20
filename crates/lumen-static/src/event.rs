@@ -633,6 +633,20 @@ pub trait App: Sized {
         None
     }
 
+    /// This application's periodic work — M28/T28.11.
+    ///
+    /// Advanced by `Host::tick`, which pushes a descriptor for each
+    /// timer that came due into the outbox — so a tick is spawned by
+    /// exactly the same path a handler's request is, and **no thread is
+    /// created for a timer**.
+    ///
+    /// `None` by default, which costs an application with no timers no
+    /// field.
+    #[cfg(feature = "std")]
+    fn timers(&mut self) -> Option<&mut crate::spawn::Timers> {
+        None
+    }
+
     /// What should be running — M28/T28.10.
     ///
     /// The host clears this, asks the application to re-declare into it,

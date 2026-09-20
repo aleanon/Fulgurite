@@ -855,7 +855,51 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
     /// Costs nothing for an application that animates nothing: the
     /// default `App::tick` returns `false` and inlines away.
     pub fn tick(&mut self, dt_ms: f32) -> bool {
-        self.app.tick(dt_ms)
+        // **Timers first** — M28/T28.11. Each one that came due pushes a
+        // descriptor into the outbox, so a tick is spawned by exactly
+        // the path a handler's request is and **no thread is created for
+        // a timer**. `docs/plan-tasks.md` §2.4's rule that the inbox is
+        // the only way deferred work re-enters the app is why there is
+        // no second path here either.
+        let fired = match (self.app.timers(), ()) {
+            (Some(_), ()) => {
+                // Two borrows of `self.app` are needed and cannot
+                // overlap, so the timers are advanced into a local
+                // outbox and merged. `Outbox` is `Copy`-free but small
+                // and stack-resident; nothing allocates.
+                let mut scratch = lumen_static::spawn::Outbox::new();
+                let n = self
+                    .app
+                    .timers()
+                    .map_or(0, |t| t.advance(dt_ms, &mut scratch));
+                if n > 0 {
+                    let mut buf = [lumen_static::spawn::Descriptor::default();
+                        lumen_static::spawn::Outbox::CAPACITY];
+                    let k = scratch.drain_into(&mut buf);
+                    if let Some(o) = self.app.outbox() {
+                        for d in buf.iter().take(k) {
+                            o.push(*d);
+                        }
+                    }
+                }
+                n
+            }
+            _ => 0,
+        };
+        self.app.tick(dt_ms) || fired > 0
+    }
+
+    /// How long until this host's soonest timer is due, in milliseconds
+    /// — M28/T28.11.
+    ///
+    /// **This is what a windowed loop waits on.** `ControlFlow::Wait`
+    /// sleeps until input arrives, and an idle window produces no
+    /// frames, so a deadline with nothing to check it on never fires.
+    /// A shell reads this and waits *until* that instant instead;
+    /// `None` means nothing is pending and the loop may wait
+    /// indefinitely, which is today's behaviour.
+    pub fn next_deadline_ms(&mut self) -> Option<f32> {
+        self.app.timers().and_then(|t| t.earliest())
     }
 
     /// Route one composition step to the focused node — T14.8.

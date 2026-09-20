@@ -465,3 +465,111 @@ impl Subs {
         self.refused
     }
 }
+
+/// Periodic work, as **deadlines** rather than sleeping threads —
+/// M28/T28.11.
+///
+/// A thread per timer is the obvious implementation and the wrong one:
+/// it costs a thread and a context switch per tick, and it puts the
+/// timer's identity in a thread handle rather than in data, which is the
+/// coupling [`Subs`] exists to avoid.
+///
+/// A deadline needs a frame to be checked on, and **an idle window
+/// produces none** — the loop is `ControlFlow::Wait` and asks for a
+/// redraw only while something is animating. So a host publishes its
+/// earliest pending deadline ([`Timers::earliest`]) and the loop waits
+/// *until* that instant instead of indefinitely. The plan's first draft
+/// gated this on "a second of driven frames", which is the one situation
+/// where the defect cannot appear.
+pub struct Timers {
+    /// `(kind, key, period_ms, remaining_ms)`.
+    t: [(u64, u64, f32, f32); Timers::CAPACITY],
+    len: usize,
+    refused: usize,
+}
+
+impl Default for Timers {
+    fn default() -> Self {
+        Timers::new()
+    }
+}
+
+impl Timers {
+    pub const CAPACITY: usize = 8;
+
+    pub const fn new() -> Timers {
+        Timers { t: [(0, 0, 0.0, 0.0); Timers::CAPACITY], len: 0, refused: 0 }
+    }
+
+    /// Fire `(kind, key)` every `period_ms`. Returns whether it was
+    /// taken; a non-positive or non-finite period is refused, because a
+    /// zero period is an infinite loop and a `NaN` one never fires.
+    pub fn every(&mut self, kind: u64, key: u64, period_ms: f32) -> bool {
+        if !period_ms.is_finite() || period_ms <= 0.0 || self.len == Timers::CAPACITY {
+            self.refused += 1;
+            return false;
+        }
+        self.t[self.len] = (kind, key, period_ms, period_ms);
+        self.len += 1;
+        true
+    }
+
+    /// Stop `(kind, key)`. Returns whether one was removed.
+    pub fn cancel(&mut self, kind: u64, key: u64) -> bool {
+        for i in 0..self.len {
+            if (self.t[i].0, self.t[i].1) == (kind, key) {
+                self.t.swap(i, self.len - 1);
+                self.len -= 1;
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Advance every timer by `dt_ms` and push a descriptor for each one
+    /// that came due. Returns how many fired.
+    ///
+    /// **Catches up rather than skipping.** A frame that took 80 ms with
+    /// a 25 ms timer fires it three times, not once: a timer that
+    /// silently drops ticks under load is a timer whose count depends on
+    /// the frame rate, and the deterministic half of this task's gate
+    /// exists precisely to pin the count.
+    pub fn advance(&mut self, dt_ms: f32, out: &mut Outbox) -> usize {
+        if !dt_ms.is_finite() || dt_ms <= 0.0 {
+            return 0;
+        }
+        let mut fired = 0;
+        for i in 0..self.len {
+            let (kind, key, period) = (self.t[i].0, self.t[i].1, self.t[i].2);
+            self.t[i].3 -= dt_ms;
+            while self.t[i].3 <= 0.0 {
+                self.t[i].3 += period;
+                out.push(Descriptor { kind, step: 0, payload: key });
+                fired += 1;
+            }
+        }
+        fired
+    }
+
+    /// How long until the soonest timer is due, in milliseconds.
+    ///
+    /// `None` when nothing is pending, which is what tells a loop to
+    /// fall back to waiting indefinitely rather than spinning.
+    pub fn earliest(&self) -> Option<f32> {
+        self.t[..self.len].iter().map(|e| e.3).fold(None, |acc: Option<f32>, v| {
+            Some(acc.map_or(v, |a| a.min(v)))
+        })
+    }
+
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
+    pub fn refused(&self) -> usize {
+        self.refused
+    }
+}
