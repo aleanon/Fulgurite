@@ -16,6 +16,7 @@ members = [
     "examples/counter",
     "examples/minimal",
     "examples/wake-gate",
+    "examples/tasks-demo",
     "examples/counter-window",
     "examples/glasswall",
     "examples/showcase",

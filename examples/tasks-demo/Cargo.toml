@@ -1,0 +1,22 @@
+[package]
+name = "tasks-demo"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+# M28/T28.12 — "use the thing". An application that spawns, batches,
+# chains, cancels and subscribes, driven through the agent endpoint
+# against a live window. AGENT.md, after M24: defects hide in machinery
+# tested pass by pass and never assembled.
+[dependencies]
+lumen-static = { path = "../../crates/lumen-static" }
+lumen-static-widgets = { path = "../../crates/lumen-static-widgets" }
+lumen-static-winit = { path = "../../crates/lumen-static-winit", features = ["agent"] }
+
+# Passed straight through, so the drive script can run the same
+# application under both invalidation strategies -- which is a
+# COMPILE-TIME choice in lumen-static-winit, not a runtime one.
+[features]
+default = []
+boundaries = ["lumen-static-winit/boundaries"]

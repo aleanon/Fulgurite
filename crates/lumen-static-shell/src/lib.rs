@@ -646,6 +646,17 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             );
         }
 
+        // **A cancel the application asked for** — M28/T28.12.
+        //
+        // Before the drains, so a result that arrived this frame from a
+        // task the application has just cancelled is dropped rather
+        // than applied. After them it would be applied and *then*
+        // cancelled, which is the ordering that makes a cancel look
+        // unreliable under load.
+        if self.app.take_cancel() {
+            self.inbox.cancel();
+        }
+
         // **Subscriptions, diffed** — M28/T28.10.
         //
         // Before the outbox drain, so a subscription that starts this

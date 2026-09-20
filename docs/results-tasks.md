@@ -804,3 +804,67 @@ first version pushed each due descriptor twice, which fired three tests
 the spawn count alone can see a thread-per-tick. Spawning a job that
 produces no message isolates it, and only the spawn-count assertion
 fires.
+
+## T28.12 — use the thing
+
+**Landed 2026-09-20, and it closes M28.**
+
+`AGENT.md`, after M24: an end-to-end assembly is the only thing that can
+find a capability which is present, correct in isolation, and
+unreachable. Every one of M28's pieces had a passing test; none had been
+used together, by an application, through a real window.
+
+`examples/tasks-demo` spawns, batches, chains, cancels and subscribes.
+`just tasks-drive` clicks every button through the agent endpoint under
+**both** invalidation strategies — which is a compile-time feature of
+`lumen-static-winit`, so the script builds twice.
+
+```
+== everything ==
+  ok  clean start {'one': 0, 'batch': 0, 'chain': 0, 'slow': 0, 'ticks': 0, 'failed': 0, 'sub': 'off'}
+  ok  spawn: exactly 1 result (bound 1) after 41 ms (budget 4000)
+  ok  batch: all 3 results (bound 3) after 42 ms (budget 4000)
+  ok  chain: 3 steps (bound 3) after 164 ms (budget 4000)
+  ok  chain: composed to value=8 ('last: chain step=2 value=8')
+  ok  cancel: slow stayed at 0 across 1000 ms (the job itself takes 400)
+  ok  cancel is not permanent: one=2 (bound 2) after 41 ms (budget 4000)
+  ok  subscription on: >= 3 ticks (bound 3) after 286 ms (budget 4000)
+  ok  subscription off: ticks froze at 3 across 600 ms (period 120)
+  ok  no failures; final {'one': 2, 'batch': 3, 'chain': 3, 'slow': 0, 'ticks': 3, 'failed': 0, 'sub': 'off'}
+```
+
+Identical under `boundaries`.
+
+Every line asserts a **consequence** with its quantity beside its bound,
+not that something changed. The cancel line is the shape that matters:
+the job itself takes 400 ms and the assertion watches for 1000, so
+"nothing arrived" is a claim about a window the result had ample time to
+land in.
+
+### What the assembly required that none of the unit tests did
+
+Two pieces of wiring that every passing test had done for itself:
+
+* **`run()` installs the waker and the spawner.** `Host::new` installs
+  neither — a headless host has no loop to wake and a test wants to
+  choose its own spawner — so until now a real window could ask for work
+  and never get it.
+* **`about_to_wait` sets `WaitUntil` from the host's deadline.** Without
+  it a timer on an idle window is never checked, which is the exact
+  defect T28.11 describes and which no headless test can exhibit.
+
+This is what "use the thing" is for.
+
+### Injections — all three fire, and one is more interesting than the others
+
+| injection | fires as |
+|---|---|
+| the host ignores the application's cancel request | `a cancelled task's result landed (slow 0 -> 1); cancel did nothing` |
+| the subscription toggle does not stop the timer | `the subscription kept producing after it was switched off (4 -> 6)` |
+| the chain always re-runs step 0 | `chain: 3 steps (bound 3)` **passes**, then `the chain's last value should be 8 (1*2*2*2), got 'last: chain step=0 value=16' -- the steps did not compose` |
+
+**The third is the argument for asserting consequences rather than
+counts.** Three steps ran, the count was right, and the chain was
+completely broken — it ran step 0 three times. A drive script that
+checked "chain == 3" would have been green. The composition check
+catches it because 1→2→4→8 is a value only an ordered chain can produce.

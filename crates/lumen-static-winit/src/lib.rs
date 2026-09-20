@@ -280,12 +280,22 @@ pub fn run<A: App + 'static>(app: A, config: Config) {
         let proxy = event_loop.create_proxy();
         std::thread::spawn(move || agent::serve(addr, proxy));
     }
-    // T28.2 installs a [`ProxyWaker`] on the host's inbox here; the
-    // inbox is not a `Host` field yet, and a waker stored where nothing
-    // reads it would be a field the next reader has to reason about for
-    // nothing. The type and the loop variant it sends are what T28.1
-    // owes, and `examples/wake-gate` exercises both end to end.
     let mut win = Win::new(app, config);
+    // **Deferred work, wired up** — M28/T28.12.
+    //
+    // A windowed shell installs both halves: the waker, so a completion
+    // rouses a loop sleeping in `ControlFlow::Wait` (T28.1), and the
+    // default spawner, so an application that asks for work gets it
+    // (T28.3). Neither is installed by `Host::new`, because a headless
+    // host has no loop to wake and a test wants to choose its own
+    // spawner.
+    //
+    // `Threads` is the default because `docs/plan-tasks.md` §0.3 is
+    // explicit that no figure in this repository says what an async
+    // runtime would cost — so the default is the one whose cost is
+    // known and whose crate count is zero.
+    win.host.inbox.set_waker(std::sync::Arc::new(ProxyWaker::new(event_loop.create_proxy())));
+    win.host.set_spawner(Box::new(lumen_static::spawn::Threads));
     event_loop.run_app(&mut win).expect("run");
 }
 
@@ -460,7 +470,22 @@ impl<A: App> Win<A> {
         // Another frame only while something is moving. A still UI
         // idles, which is what keeps the idle frame numbers in
         // `docs/results-frame-cost.md` true.
-        if animating {
+        // **A deadline is a reason to redraw too** — M28/T28.11.
+        //
+        // `ControlFlow::Wait` sleeps until input arrives, so a timer on
+        // an idle window would never be checked. `WaitUntil` is what
+        // makes a deadline a deadline rather than a hope; nothing
+        // pending falls back to `Wait`, which is today's behaviour and
+        // what keeps the idle frame numbers in
+        // `docs/results-frame-cost.md` true.
+        //
+        // `more_deferred` is the other reason: the inbox drain is capped
+        // per frame (T28.2), so a backlog asks for another frame instead
+        // of the cap being raised.
+        // `more_deferred` joins `animating` here — M28/T28.2. The inbox
+        // drain is capped per frame, so a backlog asks for another frame
+        // instead of the cap being raised.
+        if animating || self.host.more_deferred() {
             window.request_redraw();
         }
     }
@@ -479,6 +504,27 @@ impl<A: App> ApplicationHandler<UserEvent> for Win<A> {
     /// **One impl since M28/T28.1**, where there were two: one over
     /// `agent::UserEvent` under that feature and one over winit's
     /// default `()` without it.
+    /// **What the loop waits on** — M28/T28.11.
+    ///
+    /// `ControlFlow::Wait` sleeps until input arrives, so a timer on an
+    /// idle window would never be checked: a deadline needs a frame, and
+    /// an idle window produces none. `WaitUntil` is what makes a
+    /// deadline a deadline rather than a hope.
+    ///
+    /// Nothing pending falls back to `Wait`, which is today's behaviour
+    /// and what keeps the idle frame numbers in
+    /// `docs/results-frame-cost.md` true — this changes when a still
+    /// window wakes, never how often a busy one draws.
+    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        match self.host.next_deadline_ms() {
+            Some(ms) => event_loop.set_control_flow(ControlFlow::WaitUntil(
+                std::time::Instant::now()
+                    + std::time::Duration::from_secs_f32(ms.max(0.0) / 1000.0),
+            )),
+            None => event_loop.set_control_flow(ControlFlow::Wait),
+        }
+    }
+
     fn user_event(&mut self, _e: &ActiveEventLoop, ev: UserEvent) {
         match ev {
             // A worker queued something. Ask for a frame and let the

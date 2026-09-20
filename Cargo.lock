@@ -2757,6 +2757,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3a6bfce3d99adfa72d24750a61f782f3036a81e7f86d8841ee1326deaebd171"
 
 [[package]]
+name = "tasks-demo"
+version = "0.1.0"
+dependencies = [
+ "lumen-static",
+ "lumen-static-widgets",
+ "lumen-static-winit",
+]
+
+[[package]]
 name = "tempfile"
 version = "3.27.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

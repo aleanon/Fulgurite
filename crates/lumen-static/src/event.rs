@@ -633,6 +633,22 @@ pub trait App: Sized {
         None
     }
 
+    /// Whether the application has asked to cancel everything in
+    /// flight — M28/T28.12.
+    ///
+    /// **Takes it**, so a request is acted on once. A handler is
+    /// `fn(&mut S, &EventCtx)` and cannot reach the host, so a cancel
+    /// travels the way a spawn request does: the handler sets a flag,
+    /// and the host asks on the next frame. There is no second path for
+    /// an application to reach the host, deliberately.
+    ///
+    /// Default `false`: an application that never cancels pays one
+    /// inlined `false` per frame.
+    #[cfg(feature = "std")]
+    fn take_cancel(&mut self) -> bool {
+        false
+    }
+
     /// This application's periodic work — M28/T28.11.
     ///
     /// Advanced by `Host::tick`, which pushes a descriptor for each

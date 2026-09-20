@@ -83,3 +83,93 @@ Step 1 of [the frame](./frame.md): the queue is drained before anything
 else, every event goes through `pass::dispatch`, and if any handler
 returns handled the tree is marked invalid. Then the bindings, then
 layout.
+
+## Deferred work: spawn, batch, chain, cancel, subscribe
+
+Everything above happens inside one frame. Work that *cannot* — a file
+read, an HTTP request, a timer — goes through a different seam, and the
+shape of that seam is decided by one rule:
+
+> **No code reference may be held by in-flight work.**
+> — `docs/events-decision.md`, rule 3
+
+`fresh()` rebuilds the widget tree on a hot reload, but it cannot reach
+into a pending future and swap the pointer that future captured. Work in
+flight would complete into the *old* library's logic — safe, because the
+old library is never unloaded, and still last week's code.
+
+So everything at this seam is **data**.
+
+### The two queues
+
+A handler is `fn(&mut S, &EventCtx)`: it reaches the application and
+nothing else. It has no host, no spawner, and it cannot be given one. So
+asking for work is a value pushed into a queue, exactly as input is a
+value pushed into one:
+
+| direction | type | carries |
+|---|---|---|
+| into the frame | `inbox::Inbox<A::Msg>` | results, applied by `App::apply` |
+| out of the frame | `spawn::Outbox` | requests, as `Descriptor { kind, step, payload }` |
+
+The host drains the outbox *after* dispatch, so a descriptor a handler
+pushed this frame is spawned on this frame, and pairs each one with a
+job `fn` that `App::job_for` returns **from the currently loaded build**.
+That is the moment the code pointer is read, and it is gone again before
+the result comes back.
+
+### A chain is an index, not a closure
+
+iced writes `task.then(|out| next)`. That closure is held across an
+await, which is precisely what rule 3 forbids. The way out is the move
+this architecture already made for handlers: identity became
+*positional*, so **the next step is an index**.
+
+A completion says which step produced it; `App::apply` decides what
+happens next, and what happens next is itself data — finish, or another
+descriptor. `App::job_for` dispatches on `(kind, step)`, so the step
+*is* the chain.
+
+`just hot-demo` checks this across a real dylib swap: a chain starts
+against v1, the pending descriptor survives as three `u64`s, and v2's
+step function completes it. Holding the continuation as a captured
+function pointer instead makes the same demo fail with v1's answer,
+which is rule 3's defect shown rather than described.
+
+### Batches, cancellation and subscriptions
+
+There is no batch *type*: a batch is several descriptors pushed
+together. It promises that all of them run and **nothing about the order
+their results arrive in**.
+
+Cancellation is an **epoch**. Every sender is minted at one, and a
+result carrying any other is dropped at the drain and counted. What that
+honestly means: the result is dropped, *the work is not stopped* — a
+thread already running runs to completion and its output is discarded.
+A hot reload deliberately does **not** bump the epoch, because a result
+is data and the new build can read it.
+
+A subscription's identity is `(kind, key)` — values, diffed each frame
+against what is already running. iced hashes a recipe; hashing code
+would mean two builds that format a URL differently restart every
+subscription on reload.
+
+A timer is a **deadline**, not a thread that sleeps. The host publishes
+its earliest pending deadline and the window's loop waits until that
+instant — without which a timer on an idle window would never be
+checked, because `ControlFlow::Wait` produces no frames.
+
+### Failure is a result too
+
+A job that panics, and a spawn the OS refuses, both deliver a failure
+through `App::failed` and are applied like any other message. Left
+alone, a panicking job unwinds, its sender drops, and a chain waiting on
+that completion stalls forever with nothing observing it.
+
+### Seeing it work
+
+`examples/tasks-demo` does all five, and `just tasks-drive` clicks every
+button through the agent endpoint under both invalidation strategies,
+checking each action's *consequence* rather than that something changed.
+The numbers it prints — and what each of M28's parts cost — are in
+`docs/results-tasks.md`.

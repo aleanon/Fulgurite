@@ -1,0 +1,295 @@
+//! **M28/T28.12 — use the thing.**
+//!
+//! `AGENT.md`, after M24: an end-to-end assembly is the only thing that
+//! can find a capability which is present, correct in isolation, and
+//! unreachable. Every one of M28's pieces has a passing test; none of
+//! them had ever been used together, by an application, through a real
+//! window.
+//!
+//! This application does all five: **spawn**, **batch**, **chain**,
+//! **cancel** and **subscribe**. Every one is driven by a click, and
+//! every one puts its consequence on screen where
+//! `scripts/tasks_drive.sh` can read it back over the agent endpoint.
+//!
+//! Run it: `cargo run -p tasks-demo`, or `just tasks-drive` to have the
+//! script click every button and check what happened.
+
+use lumen_static::event::App;
+use lumen_static::prelude::*;
+use lumen_static::spawn::{Descriptor, Failure, JobFn, Outbox, Subs, Timers};
+use lumen_static::style::{Edges, Length, Patch, Rule, Selector};
+use lumen_static::Color;
+use lumen_static_winit::{run, Config};
+
+// ---- the job table. Stable, append-only ids (plan-tasks.md §2.1) -----
+
+const KIND_ONE: u64 = 1;
+const KIND_BATCH: u64 = 2;
+const KIND_CHAIN: u64 = 3;
+const KIND_SLOW: u64 = 4;
+const KIND_SUB: u64 = 5;
+
+/// A message is data. Nothing here is a callback, and nothing crossing
+/// the frame boundary holds a code reference.
+#[derive(Clone, Copy, Debug)]
+enum Msg {
+    One(u64),
+    Batch(u64),
+    Chain { step: u64, value: u64 },
+    Slow(u64),
+    Tick(u64),
+    Failed(u64, Failure),
+}
+
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 8.0)]
+struct Ui {
+    #[widget_id("title")]
+    title: Label<String>,
+    #[widget_id("spawn-one")]
+    spawn_one: Button<Demo>,
+    #[widget_id("spawn-batch")]
+    spawn_batch: Button<Demo>,
+    #[widget_id("start-chain")]
+    start_chain: Button<Demo>,
+    #[widget_id("start-slow")]
+    start_slow: Button<Demo>,
+    #[widget_id("cancel")]
+    cancel: Button<Demo>,
+    #[widget_id("toggle-sub")]
+    toggle_sub: Button<Demo>,
+    #[widget_id("status")]
+    status: Label<String>,
+    #[widget_id("counts")]
+    counts: Label<String>,
+}
+
+#[derive(Default)]
+struct Demo {
+    ui: Ui,
+    outbox: Outbox,
+    subs: Subs,
+    timers: Timers,
+
+    /// What the last completed thing was — read by the drive script.
+    last: String,
+    /// A cancel asked for by a handler, acted on by the next frame —
+    /// a handler reaches the app and nothing else, so this is how the
+    /// request travels, exactly like a descriptor in the outbox.
+    cancel_requested: bool,
+    /// How many results of each kind have landed. The drive script
+    /// asserts on these, because "something changed" is not a claim.
+    one: u32,
+    batch: u32,
+    chain_steps: u32,
+    slow: u32,
+    ticks: u32,
+    failures: u32,
+    sub_on: bool,
+}
+
+// ---- job bodies. Non-capturing `fn` items, by type ------------------
+
+fn one(d: Descriptor, tx: &lumen_static::inbox::Sender<Msg>) {
+    let _ = tx.send(Msg::One(d.payload));
+}
+fn batch(d: Descriptor, tx: &lumen_static::inbox::Sender<Msg>) {
+    let _ = tx.send(Msg::Batch(d.payload));
+}
+fn chain(d: Descriptor, tx: &lumen_static::inbox::Sender<Msg>) {
+    let _ = tx.send(Msg::Chain { step: d.step, value: d.payload * 2 });
+}
+/// Long enough that a cancel can land while it is still running — which
+/// is the only way to demonstrate what cancel actually does.
+fn slow(d: Descriptor, tx: &lumen_static::inbox::Sender<Msg>) {
+    std::thread::sleep(std::time::Duration::from_millis(400));
+    let _ = tx.send(Msg::Slow(d.payload));
+}
+fn tick(d: Descriptor, tx: &lumen_static::inbox::Sender<Msg>) {
+    let _ = tx.send(Msg::Tick(d.payload));
+}
+
+impl App for Demo {
+    type Tree = Ui;
+    type Msg = Msg;
+
+    fn tree(&self) -> &Ui {
+        &self.ui
+    }
+    fn tree_mut(&mut self) -> &mut Ui {
+        &mut self.ui
+    }
+
+    fn outbox(&mut self) -> Option<&mut Outbox> {
+        Some(&mut self.outbox)
+    }
+    fn subscriptions(&mut self) -> Option<&mut Subs> {
+        Some(&mut self.subs)
+    }
+    fn timers(&mut self) -> Option<&mut Timers> {
+        Some(&mut self.timers)
+    }
+
+    fn job_for(d: Descriptor) -> Option<JobFn<Msg>> {
+        match (d.kind, d.step) {
+            (KIND_ONE, 0) => Some(one),
+            (KIND_BATCH, 0) => Some(batch),
+            // The chain's three steps share a body and differ by index —
+            // that is the point of §2.1: the step is data.
+            (KIND_CHAIN, 0..=2) => Some(chain),
+            (KIND_SLOW, 0) => Some(slow),
+            (KIND_SUB, 0) => Some(tick),
+            _ => None,
+        }
+    }
+
+    fn take_cancel(&mut self) -> bool {
+        core::mem::take(&mut self.cancel_requested)
+    }
+
+    fn failed(d: Descriptor, why: Failure) -> Option<Msg> {
+        Some(Msg::Failed(d.kind, why))
+    }
+
+    /// The step function, in the currently loaded build.
+    fn apply(&mut self, m: Msg) -> bool {
+        match m {
+            Msg::One(v) => {
+                self.one += 1;
+                self.last = format!("one={v}");
+            }
+            Msg::Batch(v) => {
+                self.batch += 1;
+                self.last = format!("batch={v}");
+            }
+            Msg::Chain { step, value } => {
+                self.chain_steps += 1;
+                self.last = format!("chain step={step} value={value}");
+                // What happens next is data: another descriptor, or
+                // nothing. "Nothing" is the absence of a push.
+                if step < 2 {
+                    self.outbox.push(Descriptor {
+                        kind: KIND_CHAIN,
+                        step: step + 1,
+                        payload: value,
+                    });
+                }
+            }
+            Msg::Slow(v) => {
+                self.slow += 1;
+                self.last = format!("slow={v}");
+            }
+            Msg::Tick(k) => {
+                self.ticks += 1;
+                self.last = format!("tick={k}");
+            }
+            Msg::Failed(kind, why) => {
+                self.failures += 1;
+                self.last = format!("failed kind={kind} why={why:?}");
+            }
+        }
+        self.refresh();
+        true
+    }
+}
+
+impl Demo {
+    /// The labels are written here rather than by `#[bind]`, so the
+    /// drive script's "the consequence landed" assertion is about
+    /// `apply` and not about a binding that would have run anyway.
+    fn refresh(&mut self) {
+        self.ui.status.set(format!("last: {}", self.last));
+        self.ui.counts.set(format!(
+            "one={} batch={} chain={} slow={} ticks={} failed={} sub={}",
+            self.one,
+            self.batch,
+            self.chain_steps,
+            self.slow,
+            self.ticks,
+            self.failures,
+            if self.sub_on { "on" } else { "off" },
+        ));
+    }
+}
+
+fn on_one(s: &mut Demo, _: &lumen_static::EventCtx) {
+    s.outbox.push(Descriptor::new(KIND_ONE, 7));
+}
+
+/// A batch: several descriptors pushed together. There is no batch type.
+fn on_batch(s: &mut Demo, _: &lumen_static::EventCtx) {
+    for i in 1..=3 {
+        s.outbox.push(Descriptor::new(KIND_BATCH, i));
+    }
+}
+
+fn on_chain(s: &mut Demo, _: &lumen_static::EventCtx) {
+    s.outbox.push(Descriptor::new(KIND_CHAIN, 1));
+}
+
+fn on_slow(s: &mut Demo, _: &lumen_static::EventCtx) {
+    s.outbox.push(Descriptor::new(KIND_SLOW, 99));
+}
+
+/// Cancel is a *request*, pushed like any other — the handler cannot
+/// reach the host, and `EventCtx` carries no inbox. The host's
+/// `pump` sees the flag on the next frame.
+fn on_cancel(s: &mut Demo, _: &lumen_static::EventCtx) {
+    s.cancel_requested = true;
+    s.last = "cancel requested".into();
+    s.refresh();
+}
+
+fn on_toggle_sub(s: &mut Demo, _: &lumen_static::EventCtx) {
+    s.sub_on = !s.sub_on;
+    s.subs.clear();
+    s.timers.cancel(KIND_SUB, 1);
+    if s.sub_on {
+        s.subs.declare(KIND_SUB, 1);
+        // A subscription that keeps producing is a timer plus a stream:
+        // the declare starts it once, the timer keeps it going.
+        s.timers.every(KIND_SUB, 1, 120.0);
+    }
+    s.last = format!("subscription {}", if s.sub_on { "on" } else { "off" });
+    s.refresh();
+}
+
+fn main() {
+    let mut app = Demo::default();
+    app.ui.title.set("M28: spawn, batch, chain, cancel, subscribe".into());
+    app.ui.spawn_one.label = "spawn one";
+    app.ui.spawn_one.on_click = on_one;
+    app.ui.spawn_batch.label = "spawn batch";
+    app.ui.spawn_batch.on_click = on_batch;
+    app.ui.start_chain.label = "start chain";
+    app.ui.start_chain.on_click = on_chain;
+    app.ui.start_slow.label = "start slow";
+    app.ui.start_slow.on_click = on_slow;
+    app.ui.cancel.label = "cancel";
+    app.ui.cancel.on_click = on_cancel;
+    app.ui.toggle_sub.label = "toggle subscription";
+    app.ui.toggle_sub.on_click = on_toggle_sub;
+    app.refresh();
+
+    run(
+        app,
+        Config {
+            title: "tasks-demo",
+            width: 520,
+            height: 360,
+            stylesheet: vec![
+                Rule::new(
+                    Selector::Kind("Button"),
+                    Patch::new()
+                        .background(Color(226, 232, 240, 255))
+                        .padding(Edges::all(8.0))
+                        .radius(6.0)
+                        .height(Length::Fixed(32.0)),
+                ),
+                Rule::new(Selector::Kind("Label"), Patch::new().font_size(14.0)),
+            ],
+            agent: std::env::var("LUMEN_AGENT").ok(),
+            ..Default::default()
+        },
+    );
+}

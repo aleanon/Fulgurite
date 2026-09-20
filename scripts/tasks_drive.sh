@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# M28/T28.12: drive examples/tasks-demo through the agent endpoint and
+# check that each of spawn / batch / chain / cancel / subscribe landed
+# AND had its consequence -- under BOTH invalidation strategies.
+#
+# AGENT.md, after M24: an end-to-end assembly is the only thing that can
+# find a capability which is present, correct in isolation, and
+# unreachable. Every piece of M28 has a passing test; none of them had
+# been used together by an application through a real window.
+#
+# Needs a display. Skips -- exit 0 -- without one, like the other live
+# gates.
+set -euo pipefail
+cd "$(cd "$(dirname "$0")/.." && pwd)"
+
+if [ -z "${DISPLAY:-}" ]; then
+    echo "tasks-drive: no X display -- skipped"
+    exit 0
+fi
+
+PORT="${LUMEN_TASKS_PORT:-7658}"
+
+# The strategy is a COMPILE-TIME feature of lumen-static-winit, not a
+# runtime switch, so this builds twice. Both arms matter: M25/T25.0 and
+# M26/T26.1 were both defects that `Everything` hid, because it walks
+# the tree regardless of what was marked.
+for strategy in everything boundaries; do
+    echo "== $strategy =="
+    if [ "$strategy" = boundaries ]; then
+        cargo build --release -q -p tasks-demo --features boundaries
+    else
+        cargo build --release -q -p tasks-demo
+    fi
+    LUMEN_AGENT="127.0.0.1:$PORT" ./target/release/tasks-demo \
+        >"/tmp/tasks_drive_$strategy.log" 2>&1 &
+    pid=$!
+    trap 'kill $pid 2>/dev/null || true' EXIT
+    sleep 3
+    python3 scripts/tasks_drive.py "$PORT" "$strategy"
+    kill $pid 2>/dev/null || true
+    wait $pid 2>/dev/null || true
+    PORT=$((PORT + 1))
+done
+
+echo "tasks-drive: all five capabilities landed under both strategies"
