@@ -48,10 +48,19 @@ pub trait Waker: Send + Sync + 'static {
 
 /// Host-owned receiver for results produced off the frame loop.
 pub struct Inbox<M> {
-    rx: mpsc::Receiver<M>,
-    tx: mpsc::SyncSender<M>,
+    rx: mpsc::Receiver<(u64, M)>,
+    tx: mpsc::SyncSender<(u64, M)>,
     waker: Option<Arc<dyn Waker>>,
     refused: Arc<AtomicUsize>,
+    /// The epoch senders are minted at, and the one a result must carry
+    /// to be applied — M28/T28.8.
+    epoch: u64,
+    /// Results dropped for carrying a stale epoch.
+    ///
+    /// A `Cell` because `drain` takes `&self` — it has since E3, so that
+    /// a host can drain while holding `&mut` to the state being applied
+    /// to. The counter is the only thing the drain writes to the inbox.
+    stale: core::cell::Cell<usize>,
 }
 
 impl<M> Inbox<M> {
@@ -82,9 +91,12 @@ impl<M> Inbox<M> {
 /// alternative, a `wake()` the caller must remember, is the shape that
 /// produces a message delivered on the next unrelated mouse move.
 pub struct Sender<M> {
-    tx: mpsc::SyncSender<M>,
+    tx: mpsc::SyncSender<(u64, M)>,
     waker: Option<Arc<dyn Waker>>,
     refused: Arc<AtomicUsize>,
+    /// The epoch this sender was minted at — M28/T28.8. Fixed at mint
+    /// time, so a worker cannot un-cancel itself.
+    epoch: u64,
 }
 
 impl<M> Clone for Sender<M> {
@@ -95,6 +107,7 @@ impl<M> Clone for Sender<M> {
             tx: self.tx.clone(),
             waker: self.waker.clone(),
             refused: self.refused.clone(),
+            epoch: self.epoch,
         }
     }
 }
@@ -115,18 +128,18 @@ impl<M> Sender<M> {
     /// other error, and is ordinary rather than exceptional. The wake is
     /// skipped in both cases: there is nothing to look at.
     pub fn send(&self, m: M) -> Result<(), SendError<M>> {
-        match self.tx.try_send(m) {
+        match self.tx.try_send((self.epoch, m)) {
             Ok(()) => {
                 if let Some(w) = &self.waker {
                     w.wake();
                 }
                 Ok(())
             }
-            Err(mpsc::TrySendError::Full(m)) => {
+            Err(mpsc::TrySendError::Full((_, m))) => {
                 self.refused.fetch_add(1, Ordering::Relaxed);
                 Err(SendError::Full(m))
             }
-            Err(mpsc::TrySendError::Disconnected(m)) => Err(SendError::Disconnected(m)),
+            Err(mpsc::TrySendError::Disconnected((_, m))) => Err(SendError::Disconnected(m)),
         }
     }
 
@@ -145,7 +158,43 @@ impl<M> Default for Inbox<M> {
 impl<M> Inbox<M> {
     pub fn new() -> Self {
         let (tx, rx) = mpsc::sync_channel(Self::CAPACITY);
-        Inbox { rx, tx, waker: None, refused: Arc::new(AtomicUsize::new(0)) }
+        Inbox { rx, tx, waker: None, refused: Arc::new(AtomicUsize::new(0)), epoch: 0, stale: core::cell::Cell::new(0) }
+    }
+
+    /// Cancel every task in flight — M28/T28.8, `docs/plan-tasks.md`
+    /// §2.3.
+    ///
+    /// Bumps the epoch, so results already queued or still running carry
+    /// the old one and are dropped at the drain. Returns the new epoch.
+    ///
+    /// **What "cancel" honestly means here**: the result is dropped, the
+    /// work is not stopped. A thread already running runs to completion
+    /// and its output is discarded. Stopping work needs cooperation from
+    /// the job body, which this milestone does not design.
+    ///
+    /// **A reload does *not* call this.** The plan's first draft had a
+    /// reload bump the epoch, which made T28.7's chain unpassable by
+    /// construction — the pre-swap result would be discarded before the
+    /// new build's step could interpret it — and voided §2.1's own
+    /// argument, which is precisely that a result is *data* and safe for
+    /// the new build to read. So the epoch is **explicit cancellation,
+    /// driven by the application**, and nothing else touches it.
+    pub fn cancel(&mut self) -> u64 {
+        self.epoch += 1;
+        self.epoch
+    }
+
+    /// The epoch new senders are minted at.
+    pub fn epoch(&self) -> u64 {
+        self.epoch
+    }
+
+    /// How many results were dropped for carrying a stale epoch.
+    ///
+    /// Counted rather than logged, for the reason every other refusal
+    /// here is: a silent drop is what a gate exists to make visible.
+    pub fn stale(&self) -> usize {
+        self.stale.get()
     }
 
     /// How many sends have been refused for want of capacity.
@@ -183,6 +232,7 @@ impl<M> Inbox<M> {
             tx: self.tx.clone(),
             waker: self.waker.clone(),
             refused: self.refused.clone(),
+            epoch: self.epoch,
         }
     }
 
@@ -207,9 +257,17 @@ impl<M> Inbox<M> {
         let mut n = 0;
         while n < cap {
             match self.rx.try_recv() {
-                Ok(m) => {
-                    apply(state, m);
-                    n += 1;
+                Ok((e, m)) => {
+                    // **Cancellation, at the drain** — M28/T28.8. A
+                    // result carrying any epoch but the current one is
+                    // dropped. Equality, not an ordering test: see
+                    // `Inbox::cancel`.
+                    if e == self.epoch {
+                        apply(state, m);
+                        n += 1;
+                    } else {
+                        self.stale.set(self.stale.get() + 1);
+                    }
                 }
                 Err(_) => break,
             }
@@ -224,7 +282,7 @@ impl<M> Inbox<M> {
     /// redundant there and harmless; a producer posting from anywhere
     /// else needs it for the same reason a worker does.
     pub fn post(&self, m: M) {
-        if self.tx.try_send(m).is_ok() {
+        if self.tx.try_send((self.epoch, m)).is_ok() {
             if let Some(w) = &self.waker {
                 w.wake();
             }

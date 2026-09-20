@@ -575,3 +575,60 @@ bytes on each of four memo-holding widgets, attributed by removing the
 field and watching the number return. Re-budgeted with the argument. It
 had survived four green commits because the per-commit path never
 targets thumbv7em.
+
+## T28.8 — cancellation by epoch
+
+**Landed 2026-09-20.** Every sender is minted at an epoch; a result
+carrying any other epoch is dropped at the drain and counted.
+
+**The comparison is equality, not an ordering test**, and the injection
+is why.
+
+### The gate, both directions and then some
+
+| claim | measured |
+|---|---|
+| a cancelled task's result never reaches the app | `landed` empty, `stale() == 1` |
+| an uncancelled one still does | `landed == [7]`, `stale() == 0` |
+| work spawned **after** a cancel arrives | `landed == [1, 2]` |
+| a sender minted before the cancel cannot un-cancel itself | `landed == [20]`, `stale == 1` |
+| **a reload does not cancel** | the app object replaced wholesale, epoch unchanged, `landed == [99]` |
+
+The third row exists because the first two could both be satisfied by a
+type that drops everything after the first cancel — the
+gate-that-refuses-everything shape. The fourth pins the epoch being
+fixed at *mint* time rather than read at send time: read at send time, a
+long-running job would quietly rejoin the current epoch and deliver a
+result the application asked to be rid of, which is the whole failure
+the mechanism is for.
+
+### Injections
+
+| injection | fires as |
+|---|---|
+| `e <= self.epoch` instead of `e == self.epoch` — the plan's own | `a cancelled result reached the app: [7]`, and `after cancel: landed [10, 20], stale 0` |
+| a reload bumps the epoch — the plan's **first draft's specification** | `replacing_the_app_does_not_cancel_work_in_flight` fails by name |
+
+Two accepting-direction tests stay green under the first, which
+localises it to the comparison rather than to the drain.
+
+The second injection is worth its own line: it implements what the plan
+originally specified, and the test says why that was wrong. A reload
+that bumped the epoch made T28.7's cross-swap chain **unpassable by
+construction** — the pre-swap result would be discarded before the new
+build's step could interpret it — and voided §2.1's own argument, which
+is precisely that a result is *data* and therefore safe for the new
+build to read. `just hot-demo` is the end-to-end version of the same
+claim, across a real dylib swap.
+
+### What "cancel" honestly means
+
+The result is dropped; **the work is not stopped**. A thread already
+running runs to completion and its output is discarded. Stopping work
+needs cooperation from the job body, which this milestone does not
+design. Saying so is better than a `cancel` that implies more than it
+does.
+
+Nothing in the framework calls `Inbox::cancel` — it is explicit
+cancellation, driven by the application, which is what makes "a reload
+does not cancel" true by construction rather than by care.
