@@ -157,7 +157,24 @@ strictly worse than a const.
 A partial fix read as a general one is the failure mode here, so each of
 these is asserted rather than assumed (T29.4).
 
-## T29.0 — the grid fixture
+## T29.0 — the grid fixture — **DONE 2026-09-21**
+
+> `benches --bin grid`: 2,226 table nodes of frozen grid, 5,000
+> virtualized rows, varied cell text, and one `#[bind]`-driven label on
+> the table. Both gates shown to fail
+> (`docs/results-damage-precision.md` T29.0).
+>
+> **The fixture could not fail twice before it could.** Its identity gate
+> first compared `"= 0"` with `"= 7"` — the same character count, so a
+> stale box is the same size and the arms agree however wrong the mark
+> is. Fixed, it still passed: the bound label hung **directly off the
+> root**, and a container lays out *all* its children, so any mark
+> anywhere relaid it out and no stale box could exist. The label now sits
+> in a toolbar container, which is both what makes the gate able to fail
+> and what a spreadsheet actually looks like.
+>
+> Neither was visible by reading the fixture. Both came from running the
+> injection and refusing to accept that it passed.
 
 A spreadsheet-shaped example with the four properties §2.1 requires, and
 a headless driver that can edit one cell and pump.
@@ -171,7 +188,29 @@ on the table" assertion fires, which is the vacuous shape §2.1 names.
 
 **Measure:** nothing yet; this task only builds the arm.
 
-## T29.1 — the probe: is the blast radius visible on a real frame?
+## T29.1 — the probe — **DONE 2026-09-21: the finding survives**
+
+> | stage | `mark_all` | narrowed | delta |
+> |---|---:|---:|---:|
+> | layout | 22.95–23.12 µs | **2.39–2.42 µs** | **9.6×** |
+> | paint | 27.72–28.36 µs | 27.68–27.83 µs | unchanged |
+> | raster | 1.51–1.63 µs | 1.49–1.54 µs | unchanged |
+> | **frame** | **52.20–53.12 µs** | **31.60–31.79 µs** | **−20.6 µs, 39%** |
+>
+> The kill rule wanted the frame to move by more than the arm's
+> fast-cluster spread (0.92 µs). It moved **twenty-two times** that, so
+> T29.2–T29.4 are justified and the 9.7× M26 measured on 901 synthetic
+> nodes holds up at 2,226 real ones — as a **layout** figure, which is
+> 39% of this frame rather than of any frame.
+>
+> **Two things the probe settled that were not its question.** Paint is
+> now 88% of the narrowed frame and is unchanged between the arms, which
+> meets §4's reopen condition for paint culling with a number. And raster
+> is already surgical: one edit damages 512–640 px of a 1.26 M px surface
+> and costs 1.5 µs — the stage the original question guessed at is the
+> one that was never the problem.
+
+## T29.1 — the probe: is the blast radius visible on a real frame? *(as specified)*
 
 Drive the fixture: edit one cell, pump, and measure a frame under
 `Boundaries` with `mark_all` (what `#[bind]` forces today) against the
@@ -256,9 +295,11 @@ surgical.
 
 ## 4. Deferred, with conditions
 
-- **Paint culling for table containers.** Reopen when the grid fixture
-  measures a frame whose paint walk over offscreen table nodes exceeds
-  the spread — which is the arm M26 Phase D did not have.
+- **Paint culling for table containers. The condition is now met**
+  (T29.1, 2026-09-21): paint is 27.7 µs of a 31.6 µs narrowed frame,
+  88%, unchanged between the arms. M26 Phase D closed it as "true and
+  worthless" on arms 2.5× smaller. It is the next 20 µs, and it wants its
+  own task rather than absorption into this one.
 - **Ranges from `after_update` hooks.** When an application has a hook
   whose blast radius is measured to matter.
 - **A dirty bit that propagates from the widget.** Only if a design

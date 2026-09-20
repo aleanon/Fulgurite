@@ -45,20 +45,74 @@ all**, which is the same failure shape one size up.
 
 ## T29.0 — the fixture's own shape
 
-*Filled when the fixture lands: table node count, arena row count, the
-bound label's index, and the injection that proved the arm can fail.*
+`benches --bin grid`, measured 2026-09-21.
 
 | quantity | measured |
 |---|---|
-| | |
+| table nodes (the frozen grid) | **2,226** |
+| virtualized rows, through `Repeat` | 5,000 |
+| the bound label | `#formula`, table index 2, inside a toolbar container |
+| cell text | varied across five shapes, so shaping is present |
+| damage from one edit | **512–640 px** of a 1400×900 surface |
 
-## T29.1 — the probe
+### Two ways the fixture could not fail, both found by injection
 
-*Filled when it runs. Layout, paint and raster separately, `mark_all`
-against hand-narrowed, eight runs, fast cluster and slow mode reported
-apart. The verdict against the kill rule goes here, whichever way it
-falls — a closed finding is a result.*
+**Neither was visible by reading it.** Each is the shape `AGENT.md` names
+first: the setup could not exhibit the effect.
 
-| stage | `mark_all` | narrowed | delta |
+| what was wrong | how it was found | the fix |
+|---|---|---|
+| the identity gate compared `"= 0"` with `"= 7"` — **the same character count**, so a stale box is the same size and the two arms agree however wrong the mark is | the injection that marks a different subtree **passed** | compare at a value whose formatted width differs (`1_234_567`) |
+| the bound label hung **directly off the root**, and a container lays out *all* its children — so any mark anywhere relaid it out and no stale box could exist | the same injection passed again, after the first fix | the label moved into a toolbar container, which is also what a spreadsheet looks like |
+
+### The gates, each shown to fail
+
+| gate | injection | result |
+|---|---|---|
+| the bound label is on the table | point the binding at a row inside the virtualized body | fires: *"#formula must be a TABLE node — in an arena it would never go through `#[bind]`"* |
+| the two arms draw the same frame | mark a sheet cell instead of the formula bar | fires: hashes `0x4f88…cd01` against `0xec8f…cd01`, *"the two arms do not draw the same frame"* |
+| — good input | the correct mark | identical hashes, `0x4f888817f53bcd01` |
+
+## T29.1 — the probe: **the finding survives**
+
+Eight runs per arm, forty edits each, medians per run; the fast cluster
+below, with the slow mode reported apart. The machine was building other
+work during this run, which is why three `mark_all` runs and one
+`narrowed` run landed in the slow mode — the fast clusters are stable
+across two sessions (22.94–23.16 µs in the first, 22.95–23.12 in this
+one), so the figure is the cluster, not the mean.
+
+| stage | `mark_all` (what `#[bind]` forces) | narrowed by hand | delta |
 |---|---:|---:|---:|
-| | | | |
+| layout | 22.95–23.12 µs | **2.39–2.42 µs** | **−20.55 µs, 9.6×** |
+| paint | 27.72–28.36 µs | 27.68–27.83 µs | unchanged |
+| raster (damage-bounded) | 1.51–1.63 µs | 1.49–1.54 µs | unchanged |
+| **frame** | **52.20–53.12 µs** | **31.60–31.79 µs** | **−20.6 µs, 1.65×** |
+
+*Runs in the fast cluster: `mark_all` 5 of 8 (slow mode 70.17, 71.50,
+100.82); narrowed 7 of 8 (slow mode 51.48).*
+
+**Against the kill rule:** the frame had to move by more than the arm's
+fast-cluster spread — 0.92 µs for `mark_all`, 0.19 µs for narrowed. It
+moved by **20.6 µs**, twenty-two times the larger spread. **The finding
+survives, and T29.2–T29.4 are justified.**
+
+**What one `#[bind]` costs today, stated once:** 39% of this frame.
+
+### What the probe also settled
+
+**Paint is now the frame.** After narrowing, paint is 27.7 µs of a
+31.6 µs frame — **88%** — and it is unchanged between the arms, exactly
+as T16.8's refusal predicts: a derived container paints its children
+whether or not anything changed, and `Painter::clip_bounds` has one
+caller in the workspace.
+
+That meets the reopen condition `docs/plan-damage-precision.md` §4 wrote
+for paint culling. M26 Phase D closed that finding as "true and
+worthless" on the arms it had; this arm is 2.5× larger and says paint is
+where the next 20 µs is.
+
+**Raster is not the problem and the damage machinery works.** One edit
+damages 512–640 px of a 1,260,000 px surface and costs 1.5 µs — so the
+stage the original question guessed at is already surgical, and the
+stages that are not are the two walks above it.

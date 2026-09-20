@@ -323,8 +323,9 @@ are independent of each other**, so either may go first:
   timer on an idle window was never checked. Both are defects no
   headless test can exhibit.
 
-~~- **M29 — `docs/plan-damage-precision.md`** (T29.0–T29.4): **not
-  started**, written 2026-09-20. M26's Phase D measured `#[bind]`'s blast
+- **M29 — `docs/plan-damage-precision.md`** (T29.0–T29.4): **T29.0 and
+  T29.1 done 2026-09-21 — the probe's kill rule did not fire, so the
+  rest is justified.** M26's Phase D measured `#[bind]`'s blast
   radius — one binding writing one label calls `mark_all`, and `mark_all`
   under `Boundaries` costs exactly what `Everything` costs: **6.22 µs,
   9.7×**. **The prescription it recorded is wrong and §5 says how**: the
@@ -336,8 +337,17 @@ are independent of each other**, so either may go first:
   T29.1 is a probe with a kill rule that can end the milestone. The fix,
   if it survives, is per-field offsets as consts, which associated types
   make possible where a proc macro cannot.
+  **It survived.** `benches --bin grid` is 2,226 table nodes and 5,000
+  virtualized rows, and one edit costs **20.6 µs — 39% of a 53 µs
+  frame** — where the kill rule asked only for more than the arm's
+  0.92 µs spread. The 9.7× holds at 9.6×, **as a layout figure**;
+  `docs/results-damage-precision.md` owns every number. Two things it
+  settled that were not its question: **raster is already surgical**
+  (512–640 px of 1.26 M, 1.5 µs), and **paint is now 88% of the narrowed
+  frame** and unchanged between the arms, which meets the reopen
+  condition §4 wrote for paint culling. T29.2–T29.4 remain.
 
-Unsequenced: `docs/plan-harness.md`.~~ — **M12 DONE 2026-09-20.**
+Unsequenced: ~~`docs/plan-harness.md`.~~ — **M12 DONE 2026-09-20.**
 T12.3 and T12.4 landed 2026-09-04; T12.1 (a locator and expectation API,
 `lumen_static_agent::harness::TestApp`) and T12.2 (golden images with a
 diff artifact) on 2026-09-20. `docs/results-harness.md` owns the
