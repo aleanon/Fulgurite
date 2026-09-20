@@ -633,6 +633,28 @@ pub trait App: Sized {
         None
     }
 
+    /// Turn a job's failure into one of this application's messages —
+    /// M28/T28.9.
+    ///
+    /// A job that panics, and a spawn the OS refuses, both produce a
+    /// **failure result applied like any other** — data, not a callback.
+    /// Without it, a panicking job under the thread default unwinds, its
+    /// sender drops, and a chain waiting on that completion stalls
+    /// forever with nothing observing it.
+    ///
+    /// `None` — the default — means this application does not model that
+    /// failure, and the result is simply absent. That is a choice an
+    /// application is allowed to make; it is not a choice the framework
+    /// should make silently on its behalf, which is why the hook exists
+    /// even though its default does nothing.
+    #[cfg(feature = "std")]
+    fn failed(_d: crate::spawn::Descriptor, _why: crate::spawn::Failure) -> Option<Self::Msg>
+    where
+        Self: Sized,
+    {
+        None
+    }
+
     /// Refresh the tree's *presentation copies* from the state they are
     /// derived from. Called by the frame loop after input is drained and
     /// before layout, so a handler that changes state cannot leave a

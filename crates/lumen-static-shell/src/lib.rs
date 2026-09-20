@@ -461,7 +461,17 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
                 true
             }
             None => {
+                // **The refusal is reported as a failure too**, not only
+                // counted — M28/T28.9. A chain whose next step was never
+                // spawned stalls exactly as one whose job panicked does,
+                // and the application cannot tell the difference from
+                // the outside unless it is told.
                 self.unspawned += 1;
+                if let Some(f) = job.on_fail {
+                    if let Some(m) = f(job.desc, lumen_static::spawn::Failure::NotStarted) {
+                        self.inbox.post(m);
+                    }
+                }
                 false
             }
         }
@@ -484,7 +494,11 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         for d in buf.iter().take(n) {
             match A::job_for(*d) {
                 Some(job) => {
-                    self.spawn(lumen_static::spawn::Job { desc: *d, job });
+                    self.spawn(lumen_static::spawn::Job {
+                        desc: *d,
+                        job,
+                        on_fail: Some(A::failed),
+                    });
                 }
                 // **An unrecognised `(kind, step)` is dropped and
                 // counted**, never guessed at — `docs/plan-tasks.md`

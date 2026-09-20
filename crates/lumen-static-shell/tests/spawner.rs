@@ -65,7 +65,7 @@ fn host() -> Host<Work, Rebuild> {
     h
 }
 
-const JOB: Job<u64> = Job { desc: Descriptor { kind: 1, step: 0, payload: 21 }, job: double };
+const JOB: Job<u64> = Job { desc: Descriptor { kind: 1, step: 0, payload: 21 }, job: double, on_fail: None };
 
 #[test]
 fn immediate_lands_on_the_pump_that_follows_the_spawn() {

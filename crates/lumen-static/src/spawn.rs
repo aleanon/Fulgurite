@@ -78,6 +78,34 @@ impl Descriptor {
 /// keeps a code reference out of flight when the result comes back.
 pub type JobFn<M> = fn(Descriptor, &Sender<M>);
 
+/// Why a job produced no result — M28/T28.9.
+///
+/// The plan had no failure story and the review was right that one is
+/// needed **before** anything is built on top: under the thread default
+/// a panicking job unwinds, its sender drops, and a chain waiting on
+/// that completion stalls forever with nothing observing it.
+///
+/// Both variants become a **failure result the application applies like
+/// any other** — data, not a callback. That is the same answer the rest
+/// of this milestone gives, for the same reason: a callback would be a
+/// code reference, and a chain that stalls silently is worse than one
+/// that reports.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Failure {
+    /// The job body panicked. It was caught at the spawner, so the
+    /// process lives and the chain is told.
+    Panicked,
+    /// The job never started — the OS refused a thread, or no spawner
+    /// was installed.
+    NotStarted,
+}
+
+/// How an application turns a failure into one of its own messages.
+///
+/// `None` means "this application does not model that failure", and the
+/// host counts the drop rather than inventing a message.
+pub type FailFn<M> = fn(Descriptor, Failure) -> Option<M>;
+
 /// One unit of deferred work: a descriptor and the code that runs it.
 ///
 /// `job` is read from the currently loaded build at spawn time, which is
@@ -87,6 +115,10 @@ pub struct Job<M: 'static> {
     pub desc: Descriptor,
     /// How, in the build that spawned it. Non-capturing by type.
     pub job: JobFn<M>,
+    /// What to send if it never produces a result — M28/T28.9. Supplied
+    /// by `Host::spawn` from `App::failed`, out of the same currently
+    /// loaded build as `job`.
+    pub on_fail: Option<FailFn<M>>,
 }
 
 impl<M: 'static> Clone for Job<M> {
@@ -147,7 +179,46 @@ pub struct Threads;
 
 impl<M: Send + 'static> Spawner<M> for Threads {
     fn spawn(&mut self, job: Job<M>, tx: Sender<M>) {
-        std::thread::spawn(move || (job.job)(job.desc, &tx));
+        // **The panic is caught here, at the seam** — M28/T28.9.
+        //
+        // Left to unwind, the thread dies, its `Sender` drops, and a
+        // chain waiting on that completion stalls forever with nothing
+        // observing it. `catch_unwind` turns that into a value the
+        // application applies like any other result.
+        //
+        // The default hook still prints the panic to stderr, which is
+        // wanted: this reports the failure, it does not hide it.
+        // A second handle, so the refusal path below still has one: the
+        // closure moves the first into the thread.
+        let fallback = tx.clone();
+        let started = std::thread::Builder::new().spawn(move || {
+            let out = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                (job.job)(job.desc, &tx)
+            }));
+            if out.is_err() {
+                report(&job, &tx, Failure::Panicked);
+            }
+        });
+        // `Builder::spawn` rather than `thread::spawn`, because the
+        // latter panics when the OS refuses and this is the one place
+        // that refusal has somewhere to go.
+        if started.is_err() {
+            report(&job, &fallback, Failure::NotStarted);
+        }
+    }
+}
+
+/// Send a failure result, if the application models this one.
+///
+/// A free function because three spawners need it and none of them owns
+/// it. A failure that cannot be expressed is dropped here rather than
+/// invented; the host's `unknown_kind`-style counters are for what the
+/// host can see, and a spawner has no host.
+fn report<M: Send + 'static>(job: &Job<M>, tx: &Sender<M>, why: Failure) {
+    if let Some(f) = job.on_fail {
+        if let Some(m) = f(job.desc, why) {
+            let _ = tx.send(m);
+        }
     }
 }
 
@@ -161,7 +232,15 @@ pub struct Immediate;
 
 impl<M: Send + 'static> Spawner<M> for Immediate {
     fn spawn(&mut self, job: Job<M>, tx: Sender<M>) {
-        (job.job)(job.desc, &tx);
+        // Caught here too, so a test that uses this spawner sees the
+        // same failure shape a threaded one would. A spawner that let
+        // the panic through would make the deterministic arm disagree
+        // with the shipping one about the thing under test.
+        let out =
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| (job.job)(job.desc, &tx)));
+        if out.is_err() {
+            report(&job, &tx, Failure::Panicked);
+        }
     }
 }
 
@@ -194,7 +273,12 @@ impl<M: Send + 'static> Queued<M> {
         let batch: Vec<_> = self.pending.drain(..).collect();
         let n = batch.len();
         for (job, tx) in batch {
-            (job.job)(job.desc, &tx);
+            let out = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                (job.job)(job.desc, &tx)
+            }));
+            if out.is_err() {
+                report(&job, &tx, Failure::Panicked);
+            }
         }
         n
     }

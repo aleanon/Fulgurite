@@ -632,3 +632,54 @@ does.
 Nothing in the framework calls `Inbox::cancel` — it is explicit
 cancellation, driven by the application, which is what makes "a reload
 does not cancel" true by construction rather than by care.
+
+## T28.9 — what happens when a job fails
+
+**Landed 2026-09-20.** The plan had no failure story and the review was
+right that one is needed *before* anything is built on top: under the
+thread default a panicking job unwinds, its sender drops, and **a chain
+waiting on that completion stalls forever with nothing observing it** —
+no crash, no log line anyone correlates, just work that never finishes.
+
+A job that panics and a spawn the OS refuses both produce a failure
+result the application applies like any other. Data, not a callback: a
+callback would be a code reference, which is what this whole milestone
+is arranged to avoid.
+
+### The gate
+
+| claim | spawner | measured |
+|---|---|---|
+| a panicking job delivers a failure, and the chain does not stall | `Threads` | `[Failed(0, Panicked)] after 2 pumps / 1 ms` (bound 500 pumps) |
+| the deterministic arm agrees with the shipping one | `Immediate` | same failure |
+| a spawn that never started reports too | none installed | `[Failed(0, NotStarted)]`, `unspawned() == 1` |
+| a job that succeeds reports no failure | `Immediate` | `[Ok(9)]` |
+
+The second row exists because a spawner that let the panic through would
+make a test written against it pass while the real one stalls — the two
+arms have to agree about the thing under test or the deterministic one
+is worthless.
+
+The third is the reachable form of "the job never started": a host with
+no spawner. The OS refusing a thread is the other, and both take the
+same path. **It is reported, not only counted**, because a chain whose
+next step never started stalls exactly as one whose job panicked does,
+and the application cannot tell from the outside unless it is told.
+
+**Injection**, as the plan wrote it — let the panic unwind unobserved:
+
+```
+panicking job: saw [] after 500 pumps / 528 ms (bound 500 pumps)
+a panicking job must deliver a failure; an empty `seen` here is the chain
+stalling forever, which is the defect this task exists to remove
+```
+
+It fires by **timing out against its printed bound**, which is the shape
+the plan specified. The `Immediate` case stays green under it, because
+the injection was aimed at the threads path only — which localises the
+catch rather than the reporting.
+
+The test silences the panic hook around the deliberate panic and
+restores it immediately, so an *unexpected* panic elsewhere still
+prints. The default hook is otherwise left alone: this reports the
+failure, it does not hide it.
