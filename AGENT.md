@@ -323,7 +323,21 @@ are independent of each other**, so either may go first:
   timer on an idle window was never checked. Both are defects no
   headless test can exhibit.
 
-~~Unsequenced: `docs/plan-harness.md`.~~ — **M12 DONE 2026-09-20.**
+~~- **M29 — `docs/plan-damage-precision.md`** (T29.0–T29.4): **not
+  started**, written 2026-09-20. M26's Phase D measured `#[bind]`'s blast
+  radius — one binding writing one label calls `mark_all`, and `mark_all`
+  under `Boundaries` costs exactly what `Everything` costs: **6.22 µs,
+  9.7×**. **The prescription it recorded is wrong and §5 says how**: the
+  derive sees `ui.card.value` as *tokens*, not types, so it cannot resolve
+  a path to a node index; `with =` and `after_update` can never be
+  narrowed; and the 9.7× is layout-only on 901 synthetic nodes. So the
+  milestone **builds a spreadsheet fixture first** — thousands of table
+  nodes, a virtualized body, and one bound label on the table — and
+  T29.1 is a probe with a kill rule that can end the milestone. The fix,
+  if it survives, is per-field offsets as consts, which associated types
+  make possible where a proc macro cannot.
+
+Unsequenced: `docs/plan-harness.md`.~~ — **M12 DONE 2026-09-20.**
 T12.3 and T12.4 landed 2026-09-04; T12.1 (a locator and expectation API,
 `lumen_static_agent::harness::TestApp`) and T12.2 (golden images with a
 diff artifact) on 2026-09-20. `docs/results-harness.md` owns the
