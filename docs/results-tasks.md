@@ -456,3 +456,51 @@ rather than assuming, because a test that accepts any permutation is
 exactly the shape that can stop noticing a missing element. It does not:
 it compares a sorted set against three known values, so a lost result
 fails on length.
+
+## T28.6 — chaining, as a step index
+
+**Landed 2026-09-20.** The milestone's central move, and the one §2.1
+exists for: iced chains with `task.then(|out| next)` — a closure held
+across an await. Ported literally that puts a code pointer in flight and
+breaks `docs/events-decision.md`'s rule 3 on the first reload, because
+`fresh()` cannot reach into a pending future to swap the pointer it
+captured, so the continuation would run last week's code.
+
+**The next step is an index, not a function** — the same move that let
+positional identity replace captures in handlers. `App::job_for` now
+takes the whole `Descriptor` and dispatches on `(kind, step)`, so the
+step *is* the chain.
+
+### The gate
+
+| claim | measured |
+|---|---|
+| a three-step chain runs in order, each step seeing the previous step's payload | `[(0, 5), (1, 50), (2, 55)]` — 4+1=5, 5×10=50, 50+5=55 |
+| an unrecognised `(kind, step)` is dropped and counted | nothing ran; `unknown_kind() == 1` |
+
+Under the **queued** spawner, so the step boundaries are a property
+rather than a race. "Finish" is the absence of a push — the same shape
+as a handler that does nothing.
+
+**Injection**, as the plan wrote it — `job_for` ignores the step field
+and always returns step 0:
+
+```
+chain saw [(0, 5), (0, 6), (0, 7)]
+  left: [(0, 5), (0, 6), (0, 7)]
+ right: [(0, 5), (1, 50), (2, 55)]
+unknown (kind, step) dropped: 0
+```
+
+**The chain loops**, exactly as the plan predicted. Both tests fail, and
+the second is the more interesting: with dispatch keyed on the kind
+alone, a descriptor at step 9 ran *step 0's body under step 9's name*
+and the unknown-step counter stayed at zero. That is §2.1's stability
+rule failing in the way that matters — a renumbering producing a
+plausible-looking result rather than an error.
+
+### One change to T28.4's API
+
+`App::job_for(kind: u64)` became `App::job_for(d: Descriptor)`. Keyed on
+the kind alone a chain cannot be dispatched at all, and the injection
+above is what that looks like from the outside.

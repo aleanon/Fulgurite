@@ -604,19 +604,29 @@ pub trait App: Sized {
         None
     }
 
-    /// The job body for a descriptor's `kind`, **from the currently
-    /// loaded build** — M28/T28.4.
+    /// The job body for a descriptor, **from the currently loaded
+    /// build** — M28/T28.4, keyed on `(kind, step)` since M28/T28.6.
     ///
     /// This is the seam that keeps a code pointer out of flight: the
     /// host calls it at spawn time, in whatever build is loaded then,
     /// and what travels is the descriptor.
     ///
-    /// An unrecognised `kind` answers `None` and the host counts the
-    /// drop rather than guessing — `docs/plan-tasks.md` §2.1's stability
-    /// rule. Guessing is what makes a renumbering silently run the wrong
-    /// job.
+    /// **It takes the whole descriptor, not just the kind**, because the
+    /// step *is* the chain. `docs/plan-tasks.md` §2.1: iced chains with
+    /// `.then(|out| next)`, a closure held across an await, which puts a
+    /// code pointer in flight and breaks
+    /// `docs/events-decision.md`'s rule 3 on the first reload. The way
+    /// out is the move this architecture already made for handlers —
+    /// identity became *positional* — so **the next step is an index,
+    /// not a function**, and dispatching on it is what makes it one.
+    ///
+    /// An unrecognised `(kind, step)` answers `None` and the host counts
+    /// the drop rather than guessing, which is §2.1's stability rule and
+    /// the same treatment the reload model gives an enum variant a new
+    /// build removed. Guessing is what makes a renumbering silently run
+    /// the wrong step.
     #[cfg(feature = "std")]
-    fn job_for(_kind: u64) -> Option<crate::spawn::JobFn<Self::Msg>>
+    fn job_for(_d: crate::spawn::Descriptor) -> Option<crate::spawn::JobFn<Self::Msg>>
     where
         Self: Sized,
     {

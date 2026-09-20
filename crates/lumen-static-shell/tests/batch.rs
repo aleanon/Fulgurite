@@ -59,8 +59,8 @@ impl App for Work {
     fn outbox(&mut self) -> Option<&mut Outbox> {
         Some(&mut self.outbox)
     }
-    fn job_for(kind: u64) -> Option<JobFn<u64>> {
-        (kind == KIND).then_some(echo as JobFn<u64>)
+    fn job_for(d: Descriptor) -> Option<JobFn<u64>> {
+        (d.kind == KIND).then_some(echo as JobFn<u64>)
     }
 }
 

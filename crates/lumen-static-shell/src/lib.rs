@@ -57,8 +57,9 @@ pub struct Host<A: App, R: Retention = Incremental, I: Invalidation = Everything
     /// the inbox counts refusals: a silent drop is the failure a gate
     /// exists to make visible.
     unspawned: usize,
-    /// Descriptors whose `kind` the loaded build does not recognise —
-    /// M28/T28.4, `docs/plan-tasks.md` §2.1's stability rule.
+    /// Descriptors whose `(kind, step)` the loaded build does not
+    /// recognise — M28/T28.4, `docs/plan-tasks.md` §2.1's stability
+    /// rule.
     unknown_kind: usize,
     pub styles: Vec<Style>,
     pub states: Vec<NodeState>,
@@ -481,20 +482,21 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             _ => return,
         };
         for d in buf.iter().take(n) {
-            match A::job_for(d.kind) {
+            match A::job_for(*d) {
                 Some(job) => {
                     self.spawn(lumen_static::spawn::Job { desc: *d, job });
                 }
-                // **An unrecognised kind is dropped and counted**, never
-                // guessed at — `docs/plan-tasks.md` §2.1. Guessing is
-                // what makes a renumbering silently run the wrong job.
+                // **An unrecognised `(kind, step)` is dropped and
+                // counted**, never guessed at — `docs/plan-tasks.md`
+                // §2.1. Guessing is what makes a renumbering silently
+                // run the wrong step.
                 None => self.unknown_kind += 1,
             }
         }
     }
 
     /// Descriptors dropped because the loaded build does not recognise
-    /// their `kind`.
+    /// their `(kind, step)`.
     pub fn unknown_kind(&self) -> usize {
         self.unknown_kind
     }

@@ -53,9 +53,9 @@ impl App for Work {
     fn outbox(&mut self) -> Option<&mut Outbox> {
         Some(&mut self.outbox)
     }
-    fn job_for(kind: u64) -> Option<lumen_static::spawn::JobFn<u64>> {
-        match kind {
-            KIND_FETCH => Some(fetch),
+    fn job_for(d: Descriptor) -> Option<lumen_static::spawn::JobFn<u64>> {
+        match (d.kind, d.step) {
+            (KIND_FETCH, 0) => Some(fetch),
             _ => None,
         }
     }
