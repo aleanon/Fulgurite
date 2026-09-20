@@ -284,3 +284,74 @@ past what the plan asked for. A default that ignored the message and
 returned `false` would compile for an application that declares a real
 `Msg` and forgets to interpret it, and the symptom would be deferred
 work that silently never lands. Requiring it means the compiler asks.
+
+## T28.3 — the spawner seam, and the three implementations
+
+**Landed 2026-09-20.** `docs/plan-agent-parity.md`'s appendix settled
+the location and this plan did not reopen it: `dyn` at the shell, never
+a widget field, never a fourth type parameter on `Host`.
+
+**A job is a non-capturing `fn` pointer supplied at spawn**,
+`fn(Descriptor, &Sender<M>)`, read out of the currently loaded build at
+the moment of spawn and gone by the time the result returns. Not a boxed
+closure: an `fn` parameter refuses a capturing closure *at the call
+site, by type*, which is the same guarantee the handler fields already
+have and the same reason — `fresh()` rebuilds the tree but cannot reach
+into work already in flight and swap the pointer it captured.
+
+A `Descriptor` is `(kind, step, payload)`, three `u64`s. Three
+primitives rather than a framework type, because
+`docs/step4-hot-reload.md`'s honesty list forbids a framework type
+crossing the dylib seam — v1 and v2 each link their own copy and no
+layout agreement is promised — and that is a *separate* constraint from
+`docs/events-decision.md` rule 3's ban on a code reference in flight.
+The plan found its first draft applying only one of the two.
+
+### The gate — all three, and they differ in exactly one dimension: *when*
+
+| spawner | claim | measured |
+|---|---|---|
+| `Immediate` | the result is applied by the pump that follows the spawn | the very next pump applies it; running is not applying |
+| `Queued` | nothing runs until asked, then the next pump applies it, **with no sleep** | three frames pass with nothing landed; `run_pending_jobs()` returns 1; the next pump applies it |
+| `Threads` | the same job arrives within a bounded number of pumps | **2 pumps (1 ms)** against a bound of 200 |
+
+`Queued` exists because of the middle row. Under `Threads` "not the
+frame that spawned it" is a race; under `Immediate` it is false by
+construction. A review of this plan's first draft found T28.5 asking for
+exactly that property with neither spawner able to give it.
+
+`Threads`'s 200 is a **timeout, not a latency budget**, and the 100× gap
+against the measured 2 would be the wrong-quantity smell if it claimed
+otherwise. It does not: it is the line between "arrives" and "never
+arrives", and tightening it would only make the test flaky on a loaded
+machine. The count prints beside the bound, which is the part of the
+rule that applies.
+
+A fourth case covers the refusal: **a spawn with no spawner installed is
+refused and counted** (`Host::unspawned()`), not queued. Queueing would
+mean work that runs whenever a shell happens to install one, and a host
+that never does would accumulate jobs forever.
+
+**Injection**, as the plan wrote it — the queued spawner runs at spawn
+instead of on demand:
+
+```
+queued_runs_nothing_until_asked_and_lands_on_the_next_pump --- FAILED
+a queued job ran without being asked: it landed [42] across three frames
+```
+
+The other three stay green, which localises it to `Queued`'s promise
+rather than to the seam.
+
+### One addition to the plan
+
+`Spawner::run_pending` is on the **trait**, provided, answering zero.
+The plan put the method on `Queued`, but a spawner lives behind `dyn` at
+the shell: a test that downcast to reach it would be asserting against a
+different object than the host uses, and a harness driving a queued
+spawner generically is what a deterministic test needs.
+
+This is a provided method that is right for every implementor — the case
+`AGENT.md`'s `Deferring` rule is *not* about. That warning concerns a
+provided method on a **wrapper**, where forwarding is always correct and
+the default acts on the wrapper instead. Nothing here wraps anything.

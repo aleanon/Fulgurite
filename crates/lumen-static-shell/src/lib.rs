@@ -45,6 +45,18 @@ pub struct Host<A: App, R: Retention = Incremental, I: Invalidation = Everything
     /// M28/T28.2. A shell asks for another frame rather than the host
     /// raising the cap.
     more_deferred: bool,
+    /// Where deferred work runs — M28/T28.3.
+    ///
+    /// `dyn` at the shell, which `docs/plan-agent-parity.md`'s appendix
+    /// settled: never a widget field, never a fourth type parameter on
+    /// `Host`. `None` until a shell installs one, and a spawn without a
+    /// spawner is refused and counted rather than silently dropped —
+    /// see [`Host::spawn`].
+    spawner: Option<Box<dyn lumen_static::spawn::Spawner<A::Msg>>>,
+    /// Spawns refused for want of a spawner. Counted for the same reason
+    /// the inbox counts refusals: a silent drop is the failure a gate
+    /// exists to make visible.
+    unspawned: usize,
     pub styles: Vec<Style>,
     pub states: Vec<NodeState>,
     pub list: DisplayList,
@@ -149,6 +161,8 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             app,
             inbox: lumen_static::inbox::Inbox::new(),
             more_deferred: false,
+            spawner: None,
+            unspawned: 0,
             styles,
             states: vec![NodeState::default(); n],
             list: DisplayList::new(),
@@ -412,6 +426,56 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
     /// completions into one long frame.
     pub fn more_deferred(&self) -> bool {
         self.more_deferred
+    }
+
+    /// Install the spawner deferred work runs on — M28/T28.3.
+    ///
+    /// A shell calls this once. [`Threads`](lumen_static::spawn::Threads)
+    /// is the default a windowed shell installs; a test installs
+    /// [`Immediate`](lumen_static::spawn::Immediate) or
+    /// [`Queued`](lumen_static::spawn::Queued) to control *when*.
+    pub fn set_spawner(&mut self, s: Box<dyn lumen_static::spawn::Spawner<A::Msg>>) {
+        self.spawner = Some(s);
+    }
+
+    /// Start one job. Its result comes back through the inbox and is
+    /// applied by a later [`Host::pump`].
+    ///
+    /// Returns whether it started. **A spawn with no spawner installed
+    /// is refused, not queued**: queueing it would mean work that runs
+    /// at an unpredictable later moment — when a shell happens to
+    /// install one — and a host that never installs one would
+    /// accumulate jobs forever. The refusal is counted
+    /// ([`Host::unspawned`]) rather than logged, because "how many did
+    /// we drop" is a number.
+    pub fn spawn(&mut self, job: lumen_static::spawn::Job<A::Msg>) -> bool {
+        let tx = self.inbox.sender();
+        match self.spawner.as_mut() {
+            Some(s) => {
+                s.spawn(job, tx);
+                true
+            }
+            None => {
+                self.unspawned += 1;
+                false
+            }
+        }
+    }
+
+    /// Run whatever the installed spawner is holding, and say how many.
+    ///
+    /// Only [`Queued`](lumen_static::spawn::Queued) holds anything; every
+    /// other spawner answers zero. A test drives it through the host
+    /// rather than keeping its own handle, because the spawner lives
+    /// behind `dyn` here and a test that kept a handle would be
+    /// asserting against a different object than the host uses.
+    pub fn run_pending_jobs(&mut self) -> usize {
+        self.spawner.as_mut().map_or(0, |s| s.run_pending())
+    }
+
+    /// How many spawns were refused for want of a spawner.
+    pub fn unspawned(&self) -> usize {
+        self.unspawned
     }
 
     /// A sender for deferred work, already carrying this host's waker.

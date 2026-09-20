@@ -121,6 +121,9 @@ pub mod invalidate;
 #[cfg(feature = "std")]
 pub mod inbox;
 pub mod num;
+// Threads and the inbox both, so `std` for the same reason (M13/T13.1).
+#[cfg(feature = "std")]
+pub mod spawn;
 #[cfg(feature = "observe")]
 pub mod observe;
 pub mod ops;
