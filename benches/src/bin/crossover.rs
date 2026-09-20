@@ -103,7 +103,7 @@ fn drain_rows() {
     // way. A row claiming to be the drain alone would be the "bound
     // computed from the wrong quantity" shape: the post is a `send` and
     // the drain is a `try_recv`, and both touch the same queue.
-    for n in [1usize, 8, 64] {
+    for n in [1usize, 3, 8, 64] {
         let inbox: Inbox<u32> = Inbox::new();
         let mut state = 0u64;
         bench(&format!("post+drain, {n} results"), 100_000 / n, || {

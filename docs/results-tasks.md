@@ -404,3 +404,55 @@ spawner's result is already waiting when the second drain runs.
 Recorded because the property is load-bearing and undocumented
 elsewhere: a later task that reorders those two drains will fail this
 assertion, and should.
+
+## T28.5 — one task, and a batch
+
+**Landed 2026-09-20.** There is no batch *type*: a batch is several
+descriptors pushed together, which is what it looks like from the
+outbox. That is `docs/plan-tasks.md` §1's "every one of those is
+described by values rather than by closures", applied.
+
+### The drain row at N = 1 and N = 3, which the task owed
+
+| row | ns (min, three runs) |
+|---|---:|
+| drain, empty queue | 4.54 |
+| post+drain, **1** result | **17.37–17.40** |
+| post+drain, **3** results | **46.84** |
+| post+drain, 8 results | 120.77 |
+| post+drain, 64 results | 944.99 |
+
+N = 3 sits exactly on the line the other rows describe: 17.40 + 2 ×
+14.7 = 46.8 against a measured 46.84. A batch of three costs three
+results and no more — there is no per-batch term, because there is no
+batch object.
+
+### The gate
+
+| claim | spawner | measured |
+|---|---|---|
+| one task's result reaches the app | `Queued` | `landed == [11]` |
+| three spawned together all reach it | `Queued` | all three spawned, `landed == [1, 2, 3]` |
+| **a batch promises arrival, not order** | `Threads` | `arrived [1, 2, 3] after 2 pumps` (bound 500), asserted as a sorted set |
+
+The third row is the honest half. A batch is concurrent, so asserting an
+order under `Threads` would be asserting the scheduler — it would pass
+on this machine and fail on a loaded one, which is worse than not
+asserting it. The deterministic order claim is made under `Queued`,
+where it is a real property, and the thread arm asserts only that
+nothing was lost.
+
+**Injection**, as the plan wrote it — drop one of the batch (the last
+descriptor is not spawned):
+
+```
+all three were spawned, not just the first     left: 2   right: 3
+setup: exactly one job was spawned             left: 0   right: 1
+threads batch: arrived [1, 2] after 500 pumps (bound 500)
+```
+
+**All three fail**, including the thread arm — which was worth checking
+rather than assuming, because a test that accepts any permutation is
+exactly the shape that can stop noticing a missing element. It does not:
+it compares a sorted set against three known values, so a lost result
+fails on length.
