@@ -523,6 +523,16 @@ pub trait Handlers<S> {
     fn handler(&self, sel: NodeSel) -> Option<fn(&mut S, &EventCtx)>;
 }
 
+/// The message type of an application that defers no work — M28/T28.2.
+///
+/// Uninhabited, which is stronger than an empty struct in the way that
+/// matters here: a `Sender<Never>` exists but nothing can be sent
+/// through it, so "this application has no deferred work" is enforced by
+/// the type rather than by everyone remembering. It is also why
+/// [`App::apply`]'s default body is total without being reachable.
+#[derive(Debug)]
+pub enum Never {}
+
 /// The application root: state plus the tree that presents it.
 ///
 /// Splitting the tree out of `S` is what lets dispatch hold `&mut S`
@@ -534,6 +544,51 @@ pub trait App: Sized {
     type Tree: crate::widget::Widget + Handlers<Self>;
     fn tree(&self) -> &Self::Tree;
     fn tree_mut(&mut self) -> &mut Self::Tree;
+
+    /// What deferred work sends back — M28/T28.2.
+    ///
+    /// `Host` is generic over the application alone, so an inbox of `M`
+    /// had no `M` in scope until this existed. Declaring it here rather
+    /// than as a fourth host parameter keeps the message with the code
+    /// that interprets it, which is the whole point of
+    /// `docs/events-decision.md`'s rule: **work in flight carries a
+    /// value, and whatever build is loaded when it lands decides what
+    /// the value means.**
+    ///
+    /// The default is [`Never`], which is uninhabited. An application
+    /// that defers nothing writes nothing, cannot construct a message,
+    /// and — because a `Sender<Never>` has no `send` anyone can call —
+    /// cannot accidentally acquire deferred work by forgetting to opt
+    /// out. The ~27 derived apps and 13 hand-written impls that defer
+    /// nothing write `type Msg = Never;` — which the derive emits, so
+    /// only the 20 hand-written impls say it out loud.
+    ///
+    /// **Required, not defaulted**, because associated type defaults are
+    /// unstable (rust-lang#29661). The plan assumed otherwise and said
+    /// the hand-written impls would be untouched; they are not, and two
+    /// lines each is the honest price.
+    type Msg: Send + 'static;
+
+    /// Interpret one message that arrived since the last frame.
+    ///
+    /// Returns **whether anything changed**, for the same reason
+    /// [`App::update`] does: under
+    /// [`Boundaries`](crate::invalidate::Boundaries) a `false` here is
+    /// the difference between skipping the tree and walking it.
+    ///
+    /// Called from the frame loop with `&mut self`, on the thread that
+    /// owns the tree — never from the worker that sent it.
+    ///
+    /// **No default body, deliberately.** A default that ignored the
+    /// message and returned `false` would compile for an application
+    /// that declares a real `Msg` and forgets to interpret it — and the
+    /// symptom would be deferred work that silently never lands, which
+    /// is the hardest class of bug this repository keeps finding. An
+    /// application with nothing to defer writes
+    /// `fn apply(&mut self, m: Never) -> bool { match m {} }`, which the
+    /// derive emits; `match` on an uninhabited type is how that says
+    /// "unreachable" to the compiler rather than to the reader.
+    fn apply(&mut self, m: Self::Msg) -> bool;
 
     /// Refresh the tree's *presentation copies* from the state they are
     /// derived from. Called by the frame loop after input is drained and

@@ -1820,6 +1820,16 @@ fn expand_app(input: DeriveInput) -> syn::Result<Ts2> {
         impl #impl_g ::lumen_static::event::App for #name #ty_g #where_g {
             type Tree = #tree_ty;
 
+            /// M28/T28.2: a derived app defers nothing until it says so,
+            /// and `Never` is uninhabited — so nothing can be sent and
+            /// the field costs the application nothing.
+            type Msg = ::lumen_static::event::Never;
+
+            /// Unreachable by construction: `Never` has no values.
+            fn apply(&mut self, m: Self::Msg) -> bool {
+                match m {}
+            }
+
             #[inline]
             fn tree(&self) -> &Self::Tree {
                 &self.#tree_ident

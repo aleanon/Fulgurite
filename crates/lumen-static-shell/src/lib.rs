@@ -27,6 +27,24 @@ pub mod text;
 /// queue, and the frame's display list.
 pub struct Host<A: App, R: Retention = Incremental, I: Invalidation = Everything> {
     pub app: A,
+    /// Results produced off the frame loop — M28/T28.2.
+    ///
+    /// Drained in [`Host::pump_with`], immediately before
+    /// [`App::update`] runs, so a message and the bindings that present
+    /// it settle in the **same** frame. Draining after `update` would
+    /// show every deferred result one frame late, which is the class of
+    /// bug `docs/layout-and-storage-decisions.md` §1 exists to prevent
+    /// for synchronous state.
+    ///
+    /// An application that defers nothing has `Msg = Never`, so this is
+    /// an inbox of an uninhabited type: the channel exists, nothing can
+    /// be put in it, and the drain is a `try_recv` that always answers
+    /// empty.
+    pub inbox: lumen_static::inbox::Inbox<A::Msg>,
+    /// The last drain hit its per-frame cap, so more may be waiting —
+    /// M28/T28.2. A shell asks for another frame rather than the host
+    /// raising the cap.
+    more_deferred: bool,
     pub styles: Vec<Style>,
     pub states: Vec<NodeState>,
     pub list: DisplayList,
@@ -129,6 +147,8 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         let styles = pass::default_styles(app.tree());
         Host {
             app,
+            inbox: lumen_static::inbox::Inbox::new(),
+            more_deferred: false,
             styles,
             states: vec![NodeState::default(); n],
             list: DisplayList::new(),
@@ -384,6 +404,25 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         self.invalidation.mark_all();
     }
 
+    /// Whether the last frame's drain hit its cap and more deferred
+    /// results may be waiting — M28/T28.2.
+    ///
+    /// A shell that sees `true` asks for another frame. The alternative,
+    /// raising the cap until the queue empties, is what turns a burst of
+    /// completions into one long frame.
+    pub fn more_deferred(&self) -> bool {
+        self.more_deferred
+    }
+
+    /// A sender for deferred work, already carrying this host's waker.
+    ///
+    /// The one way an application gets one, so a sender minted before
+    /// the waker was installed — which `inbox.rs` documents and
+    /// `tests/inbox_wake.rs` pins — cannot happen by accident here.
+    pub fn sender(&self) -> lumen_static::inbox::Sender<A::Msg> {
+        self.inbox.sender()
+    }
+
     /// A physical point (what an OS reports) in the logical coordinates
     /// everything above the renderer uses.
     ///
@@ -484,6 +523,38 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         // no binding changed anything is known to be still, and that is
         // the case worth catching. An idle window, an animation between
         // ticks and a repeat key that changed nothing all land here.
+        // **Deferred results, before `update`** — M28/T28.2.
+        //
+        // Before rather than after, so a message and the bindings that
+        // present it settle in one frame: `apply` writes state, and the
+        // `update` below is what refreshes the presentation copies from
+        // it. Reversed, every deferred result would appear one frame
+        // late.
+        //
+        // `apply` reports whether it changed anything, for the same
+        // reason `update` does — under `Boundaries` a `false` is the
+        // difference between skipping the tree and walking it. An
+        // application that defers nothing has `Msg = Never`, and this is
+        // a `try_recv` on a queue nothing can write to.
+        let mut applied_changed = false;
+        let applied = self.inbox.drain_at_most(
+            lumen_static::inbox::Inbox::<A::Msg>::PER_FRAME,
+            &mut (&mut self.app, &mut applied_changed),
+            |(app, changed), m| {
+                if app.apply(m) {
+                    **changed = true;
+                }
+            },
+        );
+        if applied_changed {
+            self.invalidation.mark_all();
+            self.arenas_dirty = true;
+        }
+        // A full drain may have left more behind; ask for another frame
+        // rather than raising the cap, which is what keeps a burst from
+        // becoming one long frame.
+        self.more_deferred = applied == lumen_static::inbox::Inbox::<A::Msg>::PER_FRAME;
+
         if self.app.update() {
             self.invalidation.mark_all();
             self.arenas_dirty = true;

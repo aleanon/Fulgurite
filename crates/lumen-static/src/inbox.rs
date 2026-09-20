@@ -25,6 +25,7 @@
 //! headless `Host` has no loop to wake, and a test needs to assert that
 //! the wake was *asked for* without opening a window.
 
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
 
@@ -48,8 +49,28 @@ pub trait Waker: Send + Sync + 'static {
 /// Host-owned receiver for results produced off the frame loop.
 pub struct Inbox<M> {
     rx: mpsc::Receiver<M>,
-    tx: mpsc::Sender<M>,
+    tx: mpsc::SyncSender<M>,
     waker: Option<Arc<dyn Waker>>,
+    refused: Arc<AtomicUsize>,
+}
+
+impl<M> Inbox<M> {
+    /// How many messages the queue holds before it starts refusing.
+    ///
+    /// **Bounded since M28/T28.2.** It was `mpsc::channel()` — unbounded
+    /// — and `drain` looped until empty, so a producer that outran the
+    /// frame loop grew the queue without limit *and* made the drain
+    /// unbounded work inside `pump`. Two failure modes from one default:
+    /// memory, and a frame that takes as long as the backlog.
+    pub const CAPACITY: usize = 256;
+
+    /// The most messages one frame will apply.
+    ///
+    /// The drain is inside `pump`, so "until empty" is unbounded work on
+    /// the frame thread. A backlog is spread over frames instead, which
+    /// keeps a burst from turning into one long frame. Anything left is
+    /// still there next frame, and the host asks for another.
+    pub const PER_FRAME: usize = 64;
 }
 
 /// Handed to deferred work; clone freely, move into tasks/threads.
@@ -61,30 +82,57 @@ pub struct Inbox<M> {
 /// alternative, a `wake()` the caller must remember, is the shape that
 /// produces a message delivered on the next unrelated mouse move.
 pub struct Sender<M> {
-    tx: mpsc::Sender<M>,
+    tx: mpsc::SyncSender<M>,
     waker: Option<Arc<dyn Waker>>,
+    refused: Arc<AtomicUsize>,
 }
 
 impl<M> Clone for Sender<M> {
     /// Hand-written: `#[derive(Clone)]` would demand `M: Clone`, and the
     /// message type has no reason to be cloneable.
     fn clone(&self) -> Self {
-        Sender { tx: self.tx.clone(), waker: self.waker.clone() }
+        Sender {
+            tx: self.tx.clone(),
+            waker: self.waker.clone(),
+            refused: self.refused.clone(),
+        }
     }
 }
 
 impl<M> Sender<M> {
     /// Queue a message and ask for a frame.
     ///
-    /// The error is the channel's: a host that has been dropped cannot
-    /// receive, and a worker outliving its window is ordinary. The wake
-    /// is skipped in that case, because there is nothing to wake.
-    pub fn send(&self, m: M) -> Result<(), mpsc::SendError<M>> {
-        self.tx.send(m)?;
-        if let Some(w) = &self.waker {
-            w.wake();
+    /// **Refuses rather than blocks** when the queue is full
+    /// ([`Inbox::CAPACITY`]). A worker that blocked here would be a
+    /// worker the frame loop can stall — backpressure applied to the
+    /// wrong side of the seam, and on a single-threaded spawner a
+    /// deadlock. The refusal is counted where a test can read it
+    /// ([`Inbox::refused`]) rather than logged, because "how many did we
+    /// drop" is a number, and a silent drop is the failure this gate
+    /// exists to make visible.
+    ///
+    /// A disconnected host — a worker outliving its window — is the
+    /// other error, and is ordinary rather than exceptional. The wake is
+    /// skipped in both cases: there is nothing to look at.
+    pub fn send(&self, m: M) -> Result<(), SendError<M>> {
+        match self.tx.try_send(m) {
+            Ok(()) => {
+                if let Some(w) = &self.waker {
+                    w.wake();
+                }
+                Ok(())
+            }
+            Err(mpsc::TrySendError::Full(m)) => {
+                self.refused.fetch_add(1, Ordering::Relaxed);
+                Err(SendError::Full(m))
+            }
+            Err(mpsc::TrySendError::Disconnected(m)) => Err(SendError::Disconnected(m)),
         }
-        Ok(())
+    }
+
+    /// How many sends this inbox has refused — see [`Inbox::refused`].
+    pub fn refused(&self) -> usize {
+        self.refused.load(Ordering::Relaxed)
     }
 }
 
@@ -96,8 +144,17 @@ impl<M> Default for Inbox<M> {
 
 impl<M> Inbox<M> {
     pub fn new() -> Self {
-        let (tx, rx) = mpsc::channel();
-        Inbox { rx, tx, waker: None }
+        let (tx, rx) = mpsc::sync_channel(Self::CAPACITY);
+        Inbox { rx, tx, waker: None, refused: Arc::new(AtomicUsize::new(0)) }
+    }
+
+    /// How many sends have been refused for want of capacity.
+    ///
+    /// Shared with every [`Sender`], because the refusals happen on the
+    /// workers' threads and the question is asked on the frame's.
+    /// Monotonic; a test reads it as a difference.
+    pub fn refused(&self) -> usize {
+        self.refused.load(Ordering::Relaxed)
     }
 
     /// Route every later [`Sender::send`] through `waker` — M28/T28.1.
@@ -122,18 +179,40 @@ impl<M> Inbox<M> {
     /// A sender for deferred work. Nothing about it references code that
     /// a reload could unload.
     pub fn sender(&self) -> Sender<M> {
-        Sender { tx: self.tx.clone(), waker: self.waker.clone() }
+        Sender {
+            tx: self.tx.clone(),
+            waker: self.waker.clone(),
+            refused: self.refused.clone(),
+        }
     }
 
-    /// Apply everything that arrived since the last frame, in order.
+    /// Apply what arrived since the last frame, in order, **at most
+    /// [`Inbox::PER_FRAME`] of them**.
+    ///
     /// `apply` comes from the *currently loaded* code — after a hot
     /// reload that is the new build's interpretation of an old build's
-    /// message. Returns how many were applied.
+    /// message. Returns how many were applied; a caller that gets
+    /// `PER_FRAME` back should ask for another frame, because there may
+    /// be more.
+    ///
+    /// The cap is what keeps a burst from becoming one long frame. It
+    /// was "until empty", which is unbounded work inside `pump`.
     pub fn drain<S>(&self, state: &mut S, apply: fn(&mut S, M)) -> usize {
+        self.drain_at_most(Self::PER_FRAME, state, apply)
+    }
+
+    /// [`Inbox::drain`] with the cap named, for the tests that need to
+    /// see the boundary from both sides.
+    pub fn drain_at_most<S>(&self, cap: usize, state: &mut S, apply: fn(&mut S, M)) -> usize {
         let mut n = 0;
-        while let Ok(m) = self.rx.try_recv() {
-            apply(state, m);
-            n += 1;
+        while n < cap {
+            match self.rx.try_recv() {
+                Ok(m) => {
+                    apply(state, m);
+                    n += 1;
+                }
+                Err(_) => break,
+            }
         }
         n
     }
@@ -145,10 +224,27 @@ impl<M> Inbox<M> {
     /// redundant there and harmless; a producer posting from anywhere
     /// else needs it for the same reason a worker does.
     pub fn post(&self, m: M) {
-        if self.tx.send(m).is_ok() {
+        if self.tx.try_send(m).is_ok() {
             if let Some(w) = &self.waker {
                 w.wake();
             }
+        } else {
+            self.refused.fetch_add(1, Ordering::Relaxed);
         }
     }
+}
+
+/// Why a [`Sender::send`] did not queue — M28/T28.2.
+///
+/// Both variants hand the message back, so a caller that wants to retry
+/// or to report the payload still has it. That is `mpsc`'s convention
+/// and there is no reason to depart from it.
+#[derive(Debug)]
+pub enum SendError<M> {
+    /// The queue is at [`Inbox::CAPACITY`]. The frame loop is behind;
+    /// this is backpressure, and it is counted.
+    Full(M),
+    /// The host is gone — an ordinary end for a worker that outlived its
+    /// window, not an error anyone needs to handle loudly.
+    Disconnected(M),
 }

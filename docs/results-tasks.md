@@ -191,3 +191,96 @@ removes, and nothing else would have noticed.
 *One section per task as it lands: what it measured, against which
 threshold, and the verdict. No figure appears here that was not produced
 by the arm named beside it.*
+
+## T28.2 — the host owns the inbox, and the app declares its message
+
+**Landed 2026-09-20.**
+
+### The queue is bounded, and that is cheaper as well as safer
+
+`Inbox::new` was `mpsc::channel()` — unbounded — and `drain` looped until
+empty. Two failure modes from one default: a producer that outran the
+frame loop grew the queue without limit, and the drain was unbounded work
+inside `pump`. It is now `sync_channel(256)` whose sender **refuses**
+rather than blocks, with the refusals counted, and the drain takes at
+most 64 per frame.
+
+Re-measured on the same `--bin crossover` rows T28.0 added, min of three
+runs:
+
+| row | unbounded (T28.0) | bounded | |
+|---|---:|---:|---|
+| drain, empty queue | 4.72 | **4.54** | −4% |
+| post+drain, 1 result | 25.89 | **17.40** | −33% |
+| post+drain, 8 results | 172.89 | **120.79** | −30% |
+| post+drain, 64 results | 1250.46 | **946.18** | −24% |
+
+Per-result slope **19.4 → 14.7 ns**, because an unbounded channel
+allocates a node per send and frees it per receive and a `sync_channel`'s
+buffer is allocated once, at construction. The bound was chosen for
+safety and is faster; that is worth stating because the opposite is the
+usual trade and would have been accepted here.
+
+### The allocation gate, extended the second way
+
+T28.0 added the free counter. This adds the case the plan asked for —
+*a pump that applies results* — because every case in that file has
+`Msg = Never` and therefore drains a queue nothing can write to, which
+proves only that an empty drain is free.
+
+| case | allocs | frees |
+|---|---:|---:|
+| 50 frames, each applying one `u32` result (1 660 applied) | **0** | **0** |
+
+The messages carry no heap payload, so anything the allocator saw here
+would belong to the queue. **The claim about channel types is measured,
+not argued**: `the_free_counter_sees_a_drain_that_only_frees` drains
+sixteen messages out of an unbounded `mpsc::channel` and reports
+`allocs 0, frees 16` — one free per message, on the draining thread —
+while this case drains fifty out of the bounded one and reports
+`frees 0`. Same counter, same thread, two channel types.
+
+### The gate
+
+`crates/lumen-static-shell/tests/deferred.rs`, six cases, on
+`Boundaries<16>` because a result that changes state must **mark** it.
+
+| claim | measured |
+|---|---|
+| a result posted between frames lands on the next pump | applied once; posting alone applies nothing |
+| exactly once | a second pump with nothing posted does not re-apply |
+| in order | `[0,1,2,3,4]` from five sends |
+| applying marks the tree | label width **0 → 80** under `Boundaries` |
+| an overrun is refused, not blocked | capacity 256: accepted 256, refused 10, counter **10** |
+| a backlog is spread over frames | 69 sent, 64 applied on frame one with `more_deferred()` true, the rest on frame two, still in order |
+
+**The fixture's applied field carries no `#[bind]`**, which the plan
+named as a trap before the test existed: `pump` ends with
+`if self.app.update() { mark_all() }`, so a bound field would mark the
+whole tree whatever `apply` did and the injection below would stay green.
+The label is written by `apply` directly and nothing refreshes it.
+
+**Injection** — apply without marking, exactly as the plan wrote it:
+
+| strategy | result |
+|---|---|
+| `Boundaries<16>` | `applying_marks_the_tree_under_boundaries` fails by name: `label width 0 -> 0` |
+| `Everything` | stays green — it relays out regardless |
+
+The pair is what localises the defect to the marking rather than to the
+apply.
+
+### Two corrections to the plan
+
+**§2.6 said the 13 hand-written `App` impls would be unchanged.** They
+are not, because associated type *defaults* are unstable
+(rust-lang#29661) — only default methods are stable. `type Msg` is
+required, the derive emits `type Msg = Never;` for the ~27 derived apps,
+and 19 hand-written impls gained two lines each. The count was also 19,
+not 13.
+
+**`App::apply` has no default body either**, which is a deliberate step
+past what the plan asked for. A default that ignored the message and
+returned `false` would compile for an application that declares a real
+`Msg` and forgets to interpret it, and the symptom would be deferred
+work that silently never lands. Requiring it means the compiler asks.

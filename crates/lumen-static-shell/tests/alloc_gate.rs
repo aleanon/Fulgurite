@@ -422,3 +422,85 @@ fn the_free_counter_sees_a_drain_that_only_frees() {
          reported {f}, so the counter cannot gate what M28 is about to add"
     );
 }
+
+/// **A pump that actually applies deferred results** — M28/T28.2.
+///
+/// Every case above has `Msg = Never`, so the drain `Host::pump` performs
+/// is a `try_recv` on a queue nothing can write to: it proves the drain
+/// is free when there is nothing to drain, which is the easy half.
+///
+/// This is the other half, and it is the one the free counter was added
+/// for. The messages are `u32` — no heap payload — so anything the
+/// allocator sees here belongs to the **queue**, not to the message. An
+/// unbounded `mpsc::channel` allocates a node per send and frees it per
+/// receive, which would put a free on the frame thread for every result
+/// applied; `sync_channel`'s buffer is allocated once, at construction.
+///
+/// That difference is the reason `Inbox` is bounded, and it is measured
+/// rather than argued: `the_free_counter_sees_a_drain_that_only_frees`
+/// above drains sixteen messages out of an **unbounded** `mpsc::channel`
+/// and reports `allocs 0, frees 16` — one free per message, on the
+/// draining thread. This test drains fifty out of the bounded one and
+/// reports `frees 0`. Same counter, same thread, two channel types.
+#[test]
+fn a_pump_that_applies_results_allocates_nothing() {
+    use lumen_static::event::App;
+    use lumen_static::prelude::*;
+
+    #[derive(StaticTree, Default)]
+    #[widget(column, spacing = 0.0)]
+    struct DeferUi {
+        a: Fixed,
+        b: Fixed,
+    }
+
+    #[derive(Default)]
+    struct Defer {
+        ui: DeferUi,
+        total: u64,
+    }
+
+    impl App for Defer {
+        type Tree = DeferUi;
+        type Msg = u32;
+        fn tree(&self) -> &DeferUi {
+            &self.ui
+        }
+        fn tree_mut(&mut self) -> &mut DeferUi {
+            &mut self.ui
+        }
+        fn apply(&mut self, m: u32) -> bool {
+            self.total += m as u64;
+            true
+        }
+    }
+
+    let mut host: Host<Defer, Incremental> = Host::new(Defer::default(), 320, 200);
+    let tx = host.sender();
+    // Warm: every buffer reaches its steady-state capacity, including
+    // the ones a marked-dirty frame grows.
+    for i in 0..30u32 {
+        tx.send(i).expect("capacity");
+        host.pump();
+    }
+
+    let before = counters();
+    let n = 50u32;
+    for i in 0..n {
+        tx.send(i).expect("capacity");
+        host.pump();
+    }
+    let after = counters();
+    let (a, f) = (after.0 - before.0, after.1 - before.1);
+
+    println!(
+        "{n} frames each applying one result: allocs {a}, frees {f} (applied total {})",
+        host.app.total
+    );
+    assert!(host.app.total > 0, "setup: results actually landed");
+    assert_eq!(
+        (a, f),
+        (0, 0),
+        "a frame that applies a deferred result touched the allocator: {a} allocs, {f} frees"
+    );
+}

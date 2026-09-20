@@ -46,6 +46,13 @@ struct Demo {
 }
 
 impl App for Demo {
+    // M28/T28.2: this fixture defers no work. `Never` is
+    // uninhabited, so nothing can be sent and `apply` cannot
+    // be called.
+    type Msg = lumen_static::event::Never;
+    fn apply(&mut self, m: Self::Msg) -> bool {
+        match m {}
+    }
     type Tree = Ui;
     fn tree(&self) -> &Ui {
         &self.ui
