@@ -277,25 +277,51 @@ are independent of each other**, so either may go first:
   **M27 is closed: thirty-three widgets, checked name by name.** Thirty-
   nine drivable entries, 94 actions, green both ways.
 
-- **M28 — `docs/plan-tasks.md`** (T28.0–T28.12): **not started**, written
-  2026-09-18 and **revised the same day after a seven-lens review: 42
-  findings, 13 blocking.** The first draft could not be built — nothing
-  could *spawn* a task (handlers reach the app, never the host), no
-  message type reached the host, and a reload bumping the epoch made the
-  cross-swap gate unpassable. §5 records all of it; §2.5's outbox,
-  §2.6's message type and §2.3's corrected epoch are the answers.
-  iced's `Task` and `Subscription`, in this architecture's
-  terms: spawn one, batch, chain, cancel, subscribe. **The seam is
-  already built and the rule already decided** — `inbox.rs` shipped as
-  plan-events E3, `docs/events-decision.md` forbids a code reference in
-  flight, and `docs/plan-agent-parity.md`'s appendix put the spawner
-  behind `dyn` at the shell. What is missing is the runtime, the
-  combinators, cancellation, subscription identity and an idle wake.
-  **§2.1 is the one that matters**: iced chains with a closure across an
-  await, which the boundary rule forbids, so a chain is a *step index* —
-  the same move that let positional identity replace captures in
-  handlers. T28.5's gate is a chain in flight across a dylib swap
-  completing into the new build's step function.
+- ~~**M28 — `docs/plan-tasks.md`** (T28.0–T28.12)~~ — **DONE
+  2026-09-20**, all thirteen tasks. iced's `Task` and `Subscription`
+  shapes in this architecture's terms, with **chains as data**: a
+  continuation is a *step index*, not a closure across an await, which
+  is the same move that let positional identity replace captures in
+  handlers. `docs/results-tasks.md` owns every number; its threshold
+  table was written before any of it was built and is unchanged.
+
+  Written 2026-09-18 and **revised the same day after a seven-lens
+  review: 42 findings, 13 blocking.** The first draft could not be
+  built — nothing could *spawn* a task, no message type reached the
+  host, and a reload bumping the epoch made the cross-swap gate
+  unpassable. §5 records all of it.
+
+  **T28.7 is the milestone's centre and the one to read**: a chain
+  started against v1 completes into v2's step function across a real
+  dylib swap, with the pending descriptor held by the loader process as
+  three `u64`s. Its injection — holding the continuation as a captured
+  function pointer — makes the demo answer with v1's value, which is
+  `docs/events-decision.md` rule 3's defect **demonstrated rather than
+  argued** for the first time since that rule was written.
+
+  **Three plan claims were falsified by building them**, and all three
+  are recorded where they were wrong rather than quietly fixed: §2.6
+  said the hand-written `App` impls would be untouched (associated type
+  *defaults* are unstable, so `type Msg` is required and 19 impls
+  changed — the count was 19, not 13); the first draft had a reload bump
+  the epoch (T28.8 now tests the opposite, with the first draft's own
+  specification as the injection); and `fixtures/hot-app`/`hot-host` did
+  **not** "already drive a swap with state in flight", so T28.7 built
+  what the gate needed.
+
+  **Bounding the inbox made it faster**, which is worth knowing because
+  the opposite is the usual trade: 19.4 → 14.7 ns per result, since an
+  unbounded channel allocates a node per send and frees it per receive.
+  M28's whole per-frame cost is inside the idle arm's own spread
+  (351.19 µs against 349.97–351.47 before it), and the embedded profile
+  links **zero** task symbols.
+
+  **T28.12 is why the milestone needed a "use the thing" task.** Every
+  piece had a passing test and the live window still could not run a
+  task: `run()` installed neither the waker nor a spawner, and
+  `about_to_wait` never set `WaitUntil` from the host's deadline, so a
+  timer on an idle window was never checked. Both are defects no
+  headless test can exhibit.
 
 Unsequenced: `docs/plan-harness.md`.
 
