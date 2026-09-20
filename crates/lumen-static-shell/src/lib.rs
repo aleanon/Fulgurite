@@ -57,6 +57,9 @@ pub struct Host<A: App, R: Retention = Incremental, I: Invalidation = Everything
     /// the inbox counts refusals: a silent drop is the failure a gate
     /// exists to make visible.
     unspawned: usize,
+    /// Descriptors whose `kind` the loaded build does not recognise —
+    /// M28/T28.4, `docs/plan-tasks.md` §2.1's stability rule.
+    unknown_kind: usize,
     pub styles: Vec<Style>,
     pub states: Vec<NodeState>,
     pub list: DisplayList,
@@ -163,6 +166,7 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             more_deferred: false,
             spawner: None,
             unspawned: 0,
+            unknown_kind: 0,
             styles,
             states: vec![NodeState::default(); n],
             list: DisplayList::new(),
@@ -462,6 +466,39 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         }
     }
 
+    /// Hand every descriptor a handler pushed to the spawner, pairing
+    /// each with the job `fn` from the **currently loaded** build.
+    ///
+    /// Copies out of the application's outbox before spawning, because
+    /// `App::job_for` and the spawner both need the app borrow released
+    /// — and because a job that pushed to the outbox while being spawned
+    /// would otherwise extend this drain without bound.
+    fn drain_outbox(&mut self) {
+        let mut buf = [lumen_static::spawn::Descriptor::default();
+            lumen_static::spawn::Outbox::CAPACITY];
+        let n = match self.app.outbox() {
+            Some(o) if !o.is_empty() => o.drain_into(&mut buf),
+            _ => return,
+        };
+        for d in buf.iter().take(n) {
+            match A::job_for(d.kind) {
+                Some(job) => {
+                    self.spawn(lumen_static::spawn::Job { desc: *d, job });
+                }
+                // **An unrecognised kind is dropped and counted**, never
+                // guessed at — `docs/plan-tasks.md` §2.1. Guessing is
+                // what makes a renumbering silently run the wrong job.
+                None => self.unknown_kind += 1,
+            }
+        }
+    }
+
+    /// Descriptors dropped because the loaded build does not recognise
+    /// their `kind`.
+    pub fn unknown_kind(&self) -> usize {
+        self.unknown_kind
+    }
+
     /// Run whatever the installed spawner is holding, and say how many.
     ///
     /// Only [`Queued`](lumen_static::spawn::Queued) holds anything; every
@@ -522,6 +559,17 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
                 &ev,
             );
         }
+
+        // **The outbox, drained after dispatch** — M28/T28.4.
+        //
+        // After, not before, and that ordering is the whole claim: a
+        // descriptor a handler pushed *this* frame is spawned on this
+        // frame. Drained before dispatch, every request would wait for
+        // the next event to arrive — a click's work starting one frame
+        // late, and only under load would anyone notice.
+        //
+        // Input has a queue into the frame; this is the queue out of it.
+        self.drain_outbox();
 
         // **A handler that ran invalidates everything** (T16.7).
         //

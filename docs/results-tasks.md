@@ -355,3 +355,52 @@ This is a provided method that is right for every implementor — the case
 `AGENT.md`'s `Deferring` rule is *not* about. That warning concerns a
 provided method on a **wrapper**, where forwarding is always correct and
 the default acts on the wrapper instead. Nothing here wraps anything.
+
+## T28.4 — the outbox: how an application asks for work
+
+**Landed 2026-09-20.** The review's first blocking finding against this
+plan's first draft was that **nothing could spawn a task at all**. Every
+application-authored code path is `fn(&mut S, &EventCtx)`: a handler
+reaches the app and nothing else, and it cannot be handed a spawner,
+because a spawner handle in the app would be a code reference in saved
+state — which `#[reload(keep)]` already refuses to compile.
+
+So the request is data. Input has a queue into the frame; `spawn::Outbox`
+is the queue out of it — fixed capacity, no allocation, refusing and
+counting on overflow like the inbox.
+
+### The gate
+
+| claim | measured |
+|---|---|
+| a handler that pushes causes exactly one spawn, on the frame its handler ran | one click → `landed == [105]`; a second frame with no click adds nothing |
+| the descriptor is spawned on **that** frame | under `Queued`, `1 job pending at the end of that frame` |
+| a full outbox refuses and counts | capacity 32: queued 32, refused 4, counter **4**, and a refusal does not overwrite |
+| an unrecognised `kind` is dropped and counted | the known kind ran, the unknown did not, `unknown_kind() == 1` |
+
+**Injection**, as the plan wrote it — the outbox drained *before*
+dispatch instead of after:
+
+```
+one click: 0 job(s) pending at the end of that frame
+the descriptor this frame's handler pushed was not spawned on this frame:
+the outbox was drained before dispatch, so the request waits for the next event
+```
+
+Both ordering tests fail by name; the capacity and unknown-kind cases
+stay green, because neither depends on the ordering. That pair is what
+localises the injection to the drain's position.
+
+### A test that was wrong before the code was
+
+The first version of the first case asserted *"spawning is not
+applying"* and expected a second pump. It failed, and the test was
+wrong: under `Immediate` the whole round trip closes **in one frame**,
+and that is a consequence of the two drains' order rather than a
+coincidence. `pump_with` dispatches, drains the outbox (T28.4), and only
+later drains the inbox before `App::update` (T28.2) — so an immediate
+spawner's result is already waiting when the second drain runs.
+
+Recorded because the property is load-bearing and undocumented
+elsewhere: a later task that reorders those two drains will fail this
+assertion, and should.

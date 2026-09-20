@@ -509,6 +509,19 @@ by `fresh()`), already validated live by `Repeat.bind` in the Step 4 demo.
 frame/thread/reload boundary, which `fresh()` cannot reach into.
 Implementation plan: `docs/plan-events.md`.
 
+**MADE CONCRETE 2026-09-20** (M28/T28.4, `docs/plan-tasks.md` §2.5, and
+`docs/results-tasks.md` for the measurements): the seam this paragraph
+anticipated is now two fixed-capacity queues and nothing else.
+`inbox::Inbox<A::Msg>` carries results *into* the frame;
+`spawn::Outbox` carries requests *out* of it, as
+`Descriptor { kind, step, payload }` — three `u64`s, no code. A handler
+is `fn(&mut S, &EventCtx)` and so cannot be handed a spawner; it pushes
+a value, and the host pairs each descriptor with a job `fn` from the
+**currently loaded** build at the moment of spawn, which is what keeps
+the pointer out of flight. An unrecognised `kind` is dropped and
+counted, never guessed at, exactly as the reload model already treats an
+enum variant a new build removed.
+
 ### Sequence — not negotiable
 
 The old tree's `Serialize` impls, `Drop` impls, and vtables all live in the old

@@ -68,6 +68,16 @@ impl Descriptor {
     }
 }
 
+/// The body of a job, as the type an application's table returns.
+///
+/// A named alias because the bare spelling —
+/// `fn(Descriptor, &Sender<M>)` inside an `Option` inside a return type
+/// — trips clippy's type-complexity lint, and because naming it is where
+/// the one rule about it belongs: **non-capturing, by type**. An `fn`
+/// pointer refuses a capturing closure at the call site, which is what
+/// keeps a code reference out of flight when the result comes back.
+pub type JobFn<M> = fn(Descriptor, &Sender<M>);
+
 /// One unit of deferred work: a descriptor and the code that runs it.
 ///
 /// `job` is read from the currently loaded build at spawn time, which is
@@ -76,7 +86,7 @@ pub struct Job<M: 'static> {
     /// What to do.
     pub desc: Descriptor,
     /// How, in the build that spawned it. Non-capturing by type.
-    pub job: fn(Descriptor, &Sender<M>),
+    pub job: JobFn<M>,
 }
 
 impl<M: 'static> Clone for Job<M> {
@@ -197,5 +207,93 @@ impl<M: Send + 'static> Spawner<M> for Queued<M> {
 
     fn run_pending(&mut self) -> usize {
         Queued::run_pending(self)
+    }
+}
+
+/// The queue **out** of a frame — M28/T28.4, `docs/plan-tasks.md` §2.5.
+///
+/// The review's first blocking finding against this plan's first draft
+/// was that **nothing could spawn a task at all**. Every
+/// application-authored code path is `fn(&mut S, &EventCtx)`: a handler
+/// reaches the app and nothing else. It has no host and no spawner, and
+/// it cannot be given one — a spawner handle in the app would be a code
+/// reference in saved state, which `#[reload(keep)]` already refuses to
+/// compile.
+///
+/// So the request is **data**, and it travels the way input already
+/// does. Input has a queue into the frame; this is the queue out of it:
+/// a handler pushes a [`Descriptor`], the host drains after dispatch and
+/// pairs each one with the job `fn` from the currently loaded build.
+///
+/// **Fixed capacity, no allocation.** It lives on the application, which
+/// is laid out beside the tree and counted by the same allocation gate
+/// as a frame. Overflow refuses and counts, like the inbox's.
+pub struct Outbox {
+    q: [Descriptor; Outbox::CAPACITY],
+    len: usize,
+    refused: usize,
+}
+
+impl Default for Outbox {
+    fn default() -> Self {
+        Outbox::new()
+    }
+}
+
+impl Outbox {
+    /// How many requests one frame may hold.
+    ///
+    /// A frame's worth of handler output, not a backlog: the host drains
+    /// it to empty every frame, so this bounds what a *single* dispatch
+    /// can ask for. Thirty-two is far past any handler that has been
+    /// written, and the refusal counter is what says so if that changes.
+    pub const CAPACITY: usize = 32;
+
+    pub const fn new() -> Outbox {
+        Outbox {
+            q: [Descriptor { kind: 0, step: 0, payload: 0 }; Outbox::CAPACITY],
+            len: 0,
+            refused: 0,
+        }
+    }
+
+    /// Ask for work. Returns whether it was queued.
+    ///
+    /// **Refuses rather than overwrites** when full. Overwriting would
+    /// drop a request that a handler believes it made, silently; the
+    /// count is what makes the drop visible.
+    pub fn push(&mut self, d: Descriptor) -> bool {
+        if self.len == Outbox::CAPACITY {
+            self.refused += 1;
+            return false;
+        }
+        self.q[self.len] = d;
+        self.len += 1;
+        true
+    }
+
+    /// How many requests are waiting for the host to drain.
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
+    /// How many pushes were refused for want of capacity. Monotonic.
+    pub fn refused(&self) -> usize {
+        self.refused
+    }
+
+    /// Take everything queued, oldest first, leaving it empty.
+    ///
+    /// The host calls this after dispatch. Returns the count and writes
+    /// into `out`, so the drain itself allocates nothing.
+    pub fn drain_into(&mut self, out: &mut [Descriptor; Outbox::CAPACITY]) -> usize {
+        let n = self.len;
+        out[..n].copy_from_slice(&self.q[..n]);
+        self.len = 0;
+        n
     }
 }

@@ -590,6 +590,39 @@ pub trait App: Sized {
     /// "unreachable" to the compiler rather than to the reader.
     fn apply(&mut self, m: Self::Msg) -> bool;
 
+    /// This application's queue **out** of the frame — M28/T28.4.
+    ///
+    /// A handler is `fn(&mut S, &EventCtx)`: it reaches the app and
+    /// nothing else, so it cannot be handed a spawner. It pushes a
+    /// [`Descriptor`](crate::spawn::Descriptor) here instead, and the
+    /// host drains it after dispatch.
+    ///
+    /// `None` by default, which is what an application that defers
+    /// nothing answers — and it costs such an application no field.
+    #[cfg(feature = "std")]
+    fn outbox(&mut self) -> Option<&mut crate::spawn::Outbox> {
+        None
+    }
+
+    /// The job body for a descriptor's `kind`, **from the currently
+    /// loaded build** — M28/T28.4.
+    ///
+    /// This is the seam that keeps a code pointer out of flight: the
+    /// host calls it at spawn time, in whatever build is loaded then,
+    /// and what travels is the descriptor.
+    ///
+    /// An unrecognised `kind` answers `None` and the host counts the
+    /// drop rather than guessing — `docs/plan-tasks.md` §2.1's stability
+    /// rule. Guessing is what makes a renumbering silently run the wrong
+    /// job.
+    #[cfg(feature = "std")]
+    fn job_for(_kind: u64) -> Option<crate::spawn::JobFn<Self::Msg>>
+    where
+        Self: Sized,
+    {
+        None
+    }
+
     /// Refresh the tree's *presentation copies* from the state they are
     /// derived from. Called by the frame loop after input is drained and
     /// before layout, so a handler that changes state cannot leave a
