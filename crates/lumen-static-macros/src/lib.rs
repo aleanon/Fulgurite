@@ -3,7 +3,7 @@
 //! root and its bindings).
 //!
 //! ```
-//! use lumen_static::ops::{Fixed, Label, Spacer};
+//! use lumen_static_widgets::ops::{Fixed, Label, Spacer};
 //! use lumen_static::StaticTree;
 //!
 //! #[derive(StaticTree, Default)]
@@ -1643,7 +1643,7 @@ impl syn::parse::Parse for BindSpec {
 /// `update` built from the `#[bind]` declarations on the state fields.
 ///
 /// ```
-/// use lumen_static::ops::Label;
+/// use lumen_static_widgets::ops::Label;
 /// use lumen_static::{App, StaticTree};
 ///
 /// #[derive(StaticTree, Default)]

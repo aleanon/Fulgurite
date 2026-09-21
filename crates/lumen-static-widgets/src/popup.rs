@@ -14,18 +14,18 @@
 //!
 //! # What happens with no overlay sink
 //!
-//! [`crate::Painter::defer`] returns `false` and the content paints
+//! [`lumen_static::Painter::defer`] returns `false` and the content paints
 //! **inline** — clipped by its ancestors and possibly under its later
 //! siblings, which is what it would have looked like before overlays
 //! existed. Degraded, not broken, and that is deliberate: a host that
 //! has not opted into an overlay sink still gets a working application.
 
-use crate::cx::LayoutCx;
-use crate::desc::{Constraints, NodeDesc, NodeState, Point, Size, NO_PARENT};
-use crate::display::Painter;
-use crate::hit::Hit;
-use crate::style::{Seed, Style};
-use crate::widget::{Node, Widget};
+use lumen_static::cx::LayoutCx;
+use lumen_static::desc::{Constraints, NodeDesc, NodeState, Point, Size, NO_PARENT};
+use lumen_static::display::Painter;
+use lumen_static::hit::Hit;
+use lumen_static::style::{Seed, Style};
+use lumen_static::widget::{Node, Widget};
 
 /// Where a popup puts itself relative to its anchor.
 ///
@@ -97,7 +97,7 @@ impl<W: Widget> PopupTable<W> {
         assert!(W::NODE_COUNT < MAX_POPUP_NODES, "Popup content exceeds MAX_POPUP_NODES");
         let mut t = [NodeDesc::EMPTY; MAX_POPUP_NODES];
         t[0] = NodeDesc::new(1, NO_PARENT, 0, 1, NodeDesc::CONTAINER);
-        crate::widget::splice_child(&mut t, 1, W::SUB_TABLE, 0);
+        lumen_static::widget::splice_child(&mut t, 1, W::SUB_TABLE, 0);
         t
     };
     pub const SLICE: &'static [NodeDesc] = Self::ARRAY.split_at(1 + W::NODE_COUNT).0;
@@ -105,8 +105,8 @@ impl<W: Widget> PopupTable<W> {
     /// The seed counterpart of [`Self::ARRAY`], spliced the same way.
     const SEED_ARRAY: [Seed; MAX_POPUP_NODES] = {
         let mut s = [Seed::WIDGET; MAX_POPUP_NODES];
-        s[0] = Seed::new(<Popup<W> as Widget>::KIND, <Popup<W> as Widget>::type_defaults, crate::style::Fields::of(&[crate::style::Fields::VISIBLE]));
-        crate::widget::splice_seeds(&mut s, 1, W::SEEDS);
+        s[0] = Seed::new(<Popup<W> as Widget>::KIND, <Popup<W> as Widget>::type_defaults, lumen_static::style::Fields::of(&[lumen_static::style::Fields::VISIBLE]));
+        lumen_static::widget::splice_seeds(&mut s, 1, W::SEEDS);
         s
     };
     pub const SEED_SLICE: &'static [Seed] = Self::SEED_ARRAY.split_at(1 + W::NODE_COUNT).0;
@@ -137,7 +137,7 @@ impl<W: Widget> Node for Popup<W> {
             // no hit, no paint — the machinery `Style::visible` already
             // has, reused rather than re-implemented.
             self.measured = Size::default();
-            return crate::ops::hide_subtree(st, i, limits, Self::NODE_COUNT);
+            return lumen_static::ops::hide_subtree(st, i, limits, Self::NODE_COUNT);
         }
 
         // Measured **loosely**, not against the parent's remaining
@@ -214,11 +214,11 @@ impl<W: Widget> Node for Popup<W> {
     }
 }
 
-impl<W: Widget + crate::event::Handlers<S>, S> crate::event::Handlers<S> for Popup<W> {
-    fn handler(&self, sel: crate::event::NodeSel) -> Option<fn(&mut S, &crate::event::EventCtx)> {
+impl<W: Widget + lumen_static::event::Handlers<S>, S> lumen_static::event::Handlers<S> for Popup<W> {
+    fn handler(&self, sel: lumen_static::event::NodeSel) -> Option<fn(&mut S, &lumen_static::event::EventCtx)> {
         if sel.i == 0 {
             return None;
         }
-        self.content.handler(crate::event::NodeSel { i: sel.i - Self::AT, ..sel })
+        self.content.handler(lumen_static::event::NodeSel { i: sel.i - Self::AT, ..sel })
     }
 }

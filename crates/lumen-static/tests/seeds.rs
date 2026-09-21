@@ -11,6 +11,7 @@
 //! is a stylesheet that works until someone asks the agent what it hit.
 
 use lumen_static::prelude::*;
+use lumen_static_widgets::prelude::*;
 use lumen_static::style::{Seed, Style};
 use lumen_static::widget::{Node, Widget};
 
@@ -100,8 +101,8 @@ fn every_leaf_agrees_with_its_seed() {
     n += agrees!(Radio<()>, Radio::default());
     n += agrees!(Slider, Slider::default());
     n += agrees!(TextInput<String>, TextInput::default());
-    n += agrees!(lumen_static::textarea::TextArea<String>, Default::default());
-    n += agrees!(lumen_static::image::Image, Default::default());
+    n += agrees!(lumen_static_widgets::textarea::TextArea<String>, Default::default());
+    n += agrees!(lumen_static_widgets::image::Image, Default::default());
     assert!(n >= 11, "only {n} leaf nodes checked");
     println!("leaves: {n} nodes checked");
 }
@@ -111,9 +112,9 @@ fn every_container_agrees_with_its_seed() {
     let mut n = 0;
     n += agrees!(Pair, Pair::default());
     n += agrees!(Nest, Nest::default());
-    n += agrees!(lumen_static::scroll::ScrollView<Pair>, Default::default());
-    n += agrees!(lumen_static::popup::Popup<Pair>, Default::default());
-    n += agrees!(lumen_static::glass::Glass<Pair>, Default::default());
+    n += agrees!(lumen_static_widgets::scroll::ScrollView<Pair>, Default::default());
+    n += agrees!(lumen_static_widgets::popup::Popup<Pair>, Default::default());
+    n += agrees!(lumen_static_widgets::glass::Glass<Pair>, Default::default());
     n += agrees!(lumen_static::hatch::Either<Label<String>, Pair>, Default::default());
     n += agrees!(lumen_static::hatch::List<Pair>, Default::default());
     n += agrees!(lumen_static::repeat::Repeat<Pair>, Default::default());
@@ -239,11 +240,11 @@ fn no_two_kinds_collide() {
         <Radio<()> as Widget>::KIND,
         <Slider as Widget>::KIND,
         <TextInput<String> as Widget>::KIND,
-        <lumen_static::textarea::TextArea<String> as Widget>::KIND,
-        <lumen_static::image::Image as Widget>::KIND,
-        <lumen_static::scroll::ScrollView<Pair> as Widget>::KIND,
-        <lumen_static::popup::Popup<Pair> as Widget>::KIND,
-        <lumen_static::glass::Glass<Pair> as Widget>::KIND,
+        <lumen_static_widgets::textarea::TextArea<String> as Widget>::KIND,
+        <lumen_static_widgets::image::Image as Widget>::KIND,
+        <lumen_static_widgets::scroll::ScrollView<Pair> as Widget>::KIND,
+        <lumen_static_widgets::popup::Popup<Pair> as Widget>::KIND,
+        <lumen_static_widgets::glass::Glass<Pair> as Widget>::KIND,
         <lumen_static::hatch::Either<Pair, Pair> as Widget>::KIND,
         <lumen_static::hatch::List<Pair> as Widget>::KIND,
         <lumen_static::repeat::Repeat<Pair> as Widget>::KIND,

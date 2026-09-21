@@ -270,12 +270,12 @@ fn changing_a_strength_reports_damage() {
     #[derive(lumen_static::StaticTree, Default)]
     #[widget(column, spacing = 0.0)]
     struct Inner {
-        pad: lumen_static::ops::Fixed,
+        pad: lumen_static_widgets::ops::Fixed,
     }
     #[derive(lumen_static::StaticTree, Default)]
     #[widget(column, spacing = 0.0)]
     struct Ui {
-        panel: lumen_static::Glass<Inner>,
+        panel: lumen_static_widgets::Glass<Inner>,
     }
     #[derive(lumen_static::App, Default)]
     struct A {

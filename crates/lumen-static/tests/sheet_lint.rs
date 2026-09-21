@@ -6,10 +6,11 @@
 
 extern crate alloc;
 
-use lumen_static::ops::{Fixed, Label};
+use lumen_static_widgets::ops::{Fixed, Label};
 use lumen_static::repeat::Repeat;
 use lumen_static::style::{lint_sheet_deep, Fields, SheetFinding, SheetIssue};
-use lumen_static::{CheckBox, Color, Length, Patch, Rule, Selector, StaticTree};
+use lumen_static::{Color, Length, Patch, Rule, Selector, StaticTree};
+use lumen_static_widgets::{CheckBox};
 
 #[derive(StaticTree, Default)]
 #[widget(column, spacing = 4.0)]
@@ -24,7 +25,7 @@ struct Ui {
     /// calls `ops::border`, so the lint was right to report that rule
     /// and the test was wrong to expect silence.
     #[widget_id("field")]
-    field: lumen_static::input::TextInput<alloc::string::String>,
+    field: lumen_static_widgets::input::TextInput<alloc::string::String>,
     /// A kind that exists only in an arena's template: a rule for it
     /// matches, even though the main table has no `fixed`.
     rows: Repeat<Fixed>,

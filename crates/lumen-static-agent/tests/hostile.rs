@@ -11,7 +11,7 @@
 //! An agent is untrusted input. Everything here asserts the host stays
 //! up and answers, never that it computes a particular number.
 
-use lumen_static::ops::{Fixed, Label, Spacer};
+use lumen_static_widgets::ops::{Fixed, Label, Spacer};
 use lumen_static::{pass, Constraints, NodeState, StaticTree, Widget};
 use lumen_static_agent::{Agent, TreeMut, TreeRef};
 use serde_json::{json, Value};

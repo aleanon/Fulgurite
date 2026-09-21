@@ -9,7 +9,7 @@
 
 use lumen_static::cx::{BlockMetrics, LayoutCx};
 use lumen_static::event::{Event, EventCtx, Key};
-use lumen_static::textarea::TextArea;
+use lumen_static_widgets::textarea::TextArea;
 use lumen_static::widget::Node;
 use lumen_static::{pass, Cmd, Constraints, DisplayList, NodeState, StaticTree, Widget};
 
@@ -51,7 +51,7 @@ fn enter_inserts_a_newline_where_a_single_line_field_refuses_one() {
 
     // A single-line field declines Enter, so a form's submit handler
     // still sees it.
-    let mut f: lumen_static::input::TextInput = lumen_static::input::TextInput::new("ab");
+    let mut f: lumen_static_widgets::input::TextInput = lumen_static_widgets::input::TextInput::new("ab");
     assert!(!f.on_event(
         &Event::Key { key: Key::Enter, down: true },
         &EventCtx::for_event(0, Event::Key { key: Key::Enter, down: true })

@@ -14,6 +14,7 @@ crate-type = ["cdylib"]
 v2 = []
 
 [dependencies]
+lumen-static-widgets = { path = "../../crates/lumen-static-widgets", features = ["reload"] }
 lumen-static = { path = "../../crates/lumen-static", features = ["reload"] }
 lumen-static-reload = { path = "../../crates/lumen-static-reload" }
 serde = { version = "1", features = ["derive"] }

@@ -17,7 +17,7 @@
 
 use std::cell::Cell;
 
-use lumen_static::ops::Label;
+use lumen_static_widgets::ops::Label;
 use lumen_static::{Constraints, LayoutCx, Node, NodeState, Size, Style, TextMeasure};
 
 const LIMITS: Constraints = Constraints { min_w: 0.0, max_w: 400.0, min_h: 0.0, max_h: 400.0 };
@@ -88,11 +88,11 @@ fn a_font_weight_change_under_the_same_limits_re_measures() {
 #[test]
 fn a_button_re_measures_on_a_font_change_and_hits_when_nothing_changed() {
     let mut m = Weighted::default();
-    let mut b = lumen_static::ops::Button::<(), String>::default();
+    let mut b = lumen_static_widgets::ops::Button::<(), String>::default();
     b.label = "go".into();
     let base = b.defaults();
     let large = Style { font_size: base.font_size * 2.0, ..base };
-    let lay = |b: &mut lumen_static::ops::Button<(), String>, m: &mut Weighted, s: Style| {
+    let lay = |b: &mut lumen_static_widgets::ops::Button<(), String>, m: &mut Weighted, s: Style| {
         let mut cx = LayoutCx::new(m);
         let (sty, mut st) = ([s], [NodeState::default()]);
         b.layout(&mut cx, LIMITS, &sty, &mut st, 0).w

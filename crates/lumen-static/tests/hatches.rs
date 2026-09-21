@@ -2,7 +2,7 @@
 //! `NODE_COUNT` stays a compile-time constant in every one.
 
 use lumen_static::hatch::{Either, List, Side};
-use lumen_static::ops::{Button, Fixed, Label};
+use lumen_static_widgets::ops::{Button, Fixed, Label};
 use lumen_static::widget::Node;
 use lumen_static::{pass, Constraints, EventCtx, NodeState, StaticTree, Widget};
 

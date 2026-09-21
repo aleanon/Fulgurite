@@ -13,7 +13,7 @@
 
 #![cfg(feature = "reload")]
 
-use lumen_static::ops::{Fixed, Label};
+use lumen_static_widgets::ops::{Fixed, Label};
 use lumen_static::reload::{take_log, Reloadable};
 use lumen_static::repeat::{noop_bind, Repeat};
 use lumen_static::{pass, Constraints, NodeState, StaticTree, Widget};

@@ -2,7 +2,7 @@
 //! widget subtrees, Vec arity from saved data, per-field fallback on
 //! schema change (§12.2 generalized), and the no-code-pointers property.
 
-use lumen_static::ops::{Fixed, Label, Spacer};
+use lumen_static_widgets::ops::{Fixed, Label, Spacer};
 use lumen_static::reload::{take_log, Reloadable, Value};
 use lumen_static::repeat::Repeat;
 use lumen_static::{Reloadable as DeriveReloadable, StaticTree};

@@ -49,13 +49,13 @@
 //! examine. A check that prevents its own verification is not a check.
 //! `crates/lumen-static-agent/tests/lint.rs` covers it now.
 
-use crate::desc::{NodeDesc, NodeState, NO_PARENT};
-use crate::display::Painter;
-use crate::hit::Hit;
-use crate::ops::{inner_limits, rect_of, resolve_self, Axis};
-use crate::style::{Length, Seed, Style};
-use crate::widget::{Node, Widget};
-use crate::{Constraints, LayoutCx, Point, Size};
+use lumen_static::desc::{NodeDesc, NodeState, NO_PARENT};
+use lumen_static::display::Painter;
+use lumen_static::hit::Hit;
+use lumen_static::ops::{Axis, inner_limits, rect_of, resolve_self};
+use lumen_static::style::{Length, Seed, Style};
+use lumen_static::widget::{Node, Widget};
+use lumen_static::{Constraints, LayoutCx, Point, Size};
 
 /// A clipped, offset window onto a taller (or wider) content subtree.
 pub struct ScrollView<W: Widget> {
@@ -75,10 +75,10 @@ pub struct ScrollView<W: Widget> {
     measured_overflow: f32,
     /// The scrollbar's track colour; a tint of the text colour when `None`
     /// — M25/T25.10.
-    pub track: Option<crate::display::Color>,
+    pub track: Option<lumen_static::display::Color>,
     /// The scrollbar's thumb colour; the text colour when `None` —
     /// M25/T25.10.
-    pub thumb: Option<crate::display::Color>,
+    pub thumb: Option<lumen_static::display::Color>,
 }
 
 impl<W: Widget + Default> Default for ScrollView<W> {
@@ -129,17 +129,17 @@ impl<W: Widget> ScrollView<W> {
         // The thumb is as long a fraction of the track as the viewport
         // is of the content -- the conventional proportion, and the one
         // that makes the bar readable as "how much of this am I seeing".
-        let pos = crate::num::clamp(self.scroll / over, 0.0, 1.0);
+        let pos = lumen_static::num::clamp(self.scroll / over, 0.0, 1.0);
         Some(match self.axis {
             Axis::Column => {
-                let frac = crate::num::clamp(vh / (vh + over), 0.0, 1.0);
-                let thumb_h = crate::num::clamp(vh * frac, Self::MIN_THUMB.min(vh), vh);
+                let frac = lumen_static::num::clamp(vh / (vh + over), 0.0, 1.0);
+                let thumb_h = lumen_static::num::clamp(vh * frac, Self::MIN_THUMB.min(vh), vh);
                 let y = r[1] + (vh - thumb_h) * pos;
                 ([r[2] - Self::BAR, r[1], r[2], r[3]], [r[2] - Self::BAR, y, r[2], y + thumb_h])
             }
             Axis::Row => {
-                let frac = crate::num::clamp(vw / (vw + over), 0.0, 1.0);
-                let thumb_w = crate::num::clamp(vw * frac, Self::MIN_THUMB.min(vw), vw);
+                let frac = lumen_static::num::clamp(vw / (vw + over), 0.0, 1.0);
+                let thumb_w = lumen_static::num::clamp(vw * frac, Self::MIN_THUMB.min(vw), vw);
                 let x = r[0] + (vw - thumb_w) * pos;
                 ([r[0], r[3] - Self::BAR, r[2], r[3]], [x, r[3] - Self::BAR, x + thumb_w, r[3]])
             }
@@ -178,7 +178,7 @@ impl<W: Widget> Widget for ScrollView<W> {
 }
 
 /// The merged table for one `ScrollView<W>`, built at compile time —
-/// the same technique [`crate::hatch::EitherTable`] uses, and for the
+/// the same technique [`lumen_static::hatch::EitherTable`] uses, and for the
 /// same reason: `SUB_TABLE` is a slice, so its length is a value.
 pub struct ScrollTable<W>(core::marker::PhantomData<W>);
 
@@ -187,7 +187,7 @@ impl<W: Widget> ScrollTable<W> {
         assert!(W::NODE_COUNT < MAX_SCROLL_NODES, "ScrollView content exceeds MAX_SCROLL_NODES");
         let mut t = [NodeDesc::EMPTY; MAX_SCROLL_NODES];
         t[0] = NodeDesc::new(1, NO_PARENT, 0, 1, NodeDesc::CONTAINER);
-        crate::widget::splice_child(&mut t, 1, W::SUB_TABLE, 0);
+        lumen_static::widget::splice_child(&mut t, 1, W::SUB_TABLE, 0);
         t
     };
     pub const SLICE: &'static [NodeDesc] = Self::ARRAY.split_at(1 + W::NODE_COUNT).0;
@@ -195,26 +195,26 @@ impl<W: Widget> ScrollTable<W> {
     /// The seed counterpart of [`Self::ARRAY`], spliced the same way.
     const SEED_ARRAY: [Seed; MAX_SCROLL_NODES] = {
         let mut s = [Seed::WIDGET; MAX_SCROLL_NODES];
-        s[0] = Seed::new(<ScrollView<W> as Widget>::KIND, <ScrollView<W> as Widget>::type_defaults, crate::style::Fields::of(&[
-                crate::style::Fields::WIDTH,
-                crate::style::Fields::HEIGHT,
-                crate::style::Fields::PADDING,
-                crate::style::Fields::CURSOR,
-                crate::style::Fields::VISIBLE,
-                crate::style::Fields::BACKGROUND,
-                crate::style::Fields::BORDER,
-                crate::style::Fields::RADIUS,
-                crate::style::Fields::PRESSED_DIM,
-                crate::style::Fields::HOVER_DIM,
+        s[0] = Seed::new(<ScrollView<W> as Widget>::KIND, <ScrollView<W> as Widget>::type_defaults, lumen_static::style::Fields::of(&[
+                lumen_static::style::Fields::WIDTH,
+                lumen_static::style::Fields::HEIGHT,
+                lumen_static::style::Fields::PADDING,
+                lumen_static::style::Fields::CURSOR,
+                lumen_static::style::Fields::VISIBLE,
+                lumen_static::style::Fields::BACKGROUND,
+                lumen_static::style::Fields::BORDER,
+                lumen_static::style::Fields::RADIUS,
+                lumen_static::style::Fields::PRESSED_DIM,
+                lumen_static::style::Fields::HOVER_DIM,
             ]));
-        crate::widget::splice_seeds(&mut s, 1, W::SEEDS);
+        lumen_static::widget::splice_seeds(&mut s, 1, W::SEEDS);
         s
     };
     pub const SEED_SLICE: &'static [Seed] = Self::SEED_ARRAY.split_at(1 + W::NODE_COUNT).0;
 }
 
 /// Upper bound on `1 + W::NODE_COUNT` for one [`ScrollView`]. See
-/// [`crate::hatch::MAX_EITHER_NODES`] for what the bound costs.
+/// [`lumen_static::hatch::MAX_EITHER_NODES`] for what the bound costs.
 pub const MAX_SCROLL_NODES: usize = 256;
 
 impl<W: Widget> Node for ScrollView<W> {
@@ -236,7 +236,7 @@ impl<W: Widget> Node for ScrollView<W> {
     ) -> Size {
         let me = style[i];
         if !me.visible {
-            return crate::ops::hide_subtree(st, i, limits, Self::NODE_COUNT);
+            return lumen_static::ops::hide_subtree(st, i, limits, Self::NODE_COUNT);
         }
         let inner = inner_limits(limits, me.padding);
 
@@ -270,9 +270,9 @@ impl<W: Widget> Node for ScrollView<W> {
         let over = (self.axis.main(content) - self.axis.main(viewport)).max(0.0);
         self.measured_overflow = over;
         self.scroll =
-            if self.scroll.is_finite() { crate::num::clamp(self.scroll, 0.0, over) } else { 0.0 };
+            if self.scroll.is_finite() { lumen_static::num::clamp(self.scroll, 0.0, over) } else { 0.0 };
 
-        crate::ops::record_painted(st, i, limits, size, &me)
+        lumen_static::ops::record_painted(st, i, limits, size, &me)
     }
 
     fn place(&mut self, at: Point, style: &[Style], st: &mut [NodeState], i: usize) {
@@ -289,7 +289,7 @@ impl<W: Widget> Node for ScrollView<W> {
     fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
         let r = rect_of(&st[i]);
         out.rounded_rect(r, st[i].bg, st[i].radius);
-        crate::ops::border(st, i, out);
+        lumen_static::ops::border(st, i, out);
         // The scoped containment invariant: content may extend past the
         // viewport by construction, and the clip is what stops it
         // (`docs/text-and-scrolling-decisions.md` A1). A renderer that
@@ -311,7 +311,7 @@ impl<W: Widget> Node for ScrollView<W> {
         // Outside the viewport is outside the scroller, whatever the
         // content's own geometry says — the half of A1 that keeps paint
         // and hit agreeing.
-        if !crate::hit::contains(&st[i], x, y) {
+        if !lumen_static::hit::contains(&st[i], x, y) {
             return None;
         }
         self.content.hit(st, i + Self::AT, x, y).or(Some(Hit {
@@ -335,10 +335,10 @@ impl<W: Widget> Node for ScrollView<W> {
     /// event handler has no `&[NodeState]`, and the last frame's extent
     /// is the right answer anyway — it is the frame the user is looking
     /// at while they turn the wheel.
-    fn on_event(&mut self, ev: &crate::event::Event, _cx: &crate::event::EventCtx) -> bool {
-        let crate::event::Event::Scroll { dy, .. } = ev else { return false };
+    fn on_event(&mut self, ev: &lumen_static::event::Event, _cx: &lumen_static::event::EventCtx) -> bool {
+        let lumen_static::event::Event::Scroll { dy, .. } = ev else { return false };
         // Wheel-up scrolls content down: the offset moves against `dy`.
-        let want = crate::num::clamp(self.scroll - dy, 0.0, self.measured_overflow);
+        let want = lumen_static::num::clamp(self.scroll - dy, 0.0, self.measured_overflow);
         if want == self.scroll {
             // At an end, or nothing to scroll: decline, and the parent
             // gets the rest of the gesture.
@@ -365,14 +365,14 @@ impl<W: Widget> Node for ScrollView<W> {
     }
 }
 
-impl<W, S> crate::event::Handlers<S> for ScrollView<W>
+impl<W, S> lumen_static::event::Handlers<S> for ScrollView<W>
 where
-    W: Widget + crate::event::Handlers<S>,
+    W: Widget + lumen_static::event::Handlers<S>,
 {
-    fn handler(&self, sel: crate::event::NodeSel) -> Option<fn(&mut S, &crate::event::EventCtx)> {
+    fn handler(&self, sel: lumen_static::event::NodeSel) -> Option<fn(&mut S, &lumen_static::event::EventCtx)> {
         if sel.i == 0 {
             return None;
         }
-        self.content.handler(crate::event::NodeSel { i: sel.i - 1, inner: sel.inner })
+        self.content.handler(lumen_static::event::NodeSel { i: sel.i - 1, inner: sel.inner })
     }
 }

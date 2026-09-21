@@ -18,7 +18,7 @@
 
 use lumen_static::display::{Cmd, DisplayList};
 use lumen_static::event::{Event, EventCtx, Handlers, Key, NodeSel};
-use lumen_static::ops::Button;
+use lumen_static_widgets::ops::Button;
 use lumen_static::widget::{Node, Widget};
 use lumen_static::{Constraints, NodeState, Point};
 use lumen_static_widgets::{Drawer, Modal, Sheet};

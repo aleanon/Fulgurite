@@ -19,7 +19,7 @@
 //! break it and they should find it already standing.
 
 use lumen_static::invalidate::{Boundaries, Everything, Invalidation};
-use lumen_static::ops::{Button, Label, Spacer};
+use lumen_static_widgets::ops::{Button, Label, Spacer};
 use lumen_static::style::{Edges, Length, Patch, Rule, Selector};
 use lumen_static::{App as DeriveApp, Color, NodeState, StaticTree};
 use lumen_static_shell::Host;

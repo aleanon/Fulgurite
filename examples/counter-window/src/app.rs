@@ -8,6 +8,7 @@
 
 use lumen_static::display::Color;
 use lumen_static::prelude::*;
+use lumen_static_widgets::prelude::*;
 
 // ---- palette: Lumen's counter tokens ---------------------------------
 

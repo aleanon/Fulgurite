@@ -1,4 +1,4 @@
-use lumen_static::ops::Label;
+use lumen_static_widgets::ops::Label;
 use lumen_static::{App, StaticTree};
 
 // `Label`'s default storage is `&'static str`, which can only accept a

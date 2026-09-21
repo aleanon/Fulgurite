@@ -21,7 +21,7 @@
 //! present — which is exactly the shape M25/T25.0 had.
 
 use lumen_static::invalidate::Boundaries;
-use lumen_static::ops::Label;
+use lumen_static_widgets::ops::Label;
 use lumen_static::style::{Length, Patch, Rule, Selector};
 use lumen_static::{App as DeriveApp, StaticTree, Widget};
 use lumen_static_shell::Host;

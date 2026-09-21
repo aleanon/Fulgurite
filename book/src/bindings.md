@@ -18,7 +18,8 @@ by `just test`, and by this page.
 
 ```rust
 # extern crate lumen_static;
-use lumen_static::ops::{Button, Label, Spacer};
+# extern crate lumen_static_widgets;
+use lumen_static_widgets::ops::{Button, Label, Spacer};
 use lumen_static::{App as AppDerive, EventCtx, StaticTree};
 
 {{#include ../../crates/lumen-static/tests/derive_app.rs:tree}}
@@ -62,7 +63,8 @@ The projection takes the target widget and a reference to the source:
 
 ```rust
 # extern crate lumen_static;
-# use lumen_static::ops::Label;
+# extern crate lumen_static_widgets;
+# use lumen_static_widgets::ops::Label;
 {{#include ../../crates/lumen-static/tests/derive_app.rs:projection}}
 # fn main() { let _: fn(&mut Label<String>, &str) = shout; }
 ```

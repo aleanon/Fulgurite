@@ -10,7 +10,9 @@ A `Rule` is a `Selector` and a `Patch`:
 
 ```rust
 # extern crate lumen_static;
+# extern crate lumen_static_widgets;
 use lumen_static::prelude::*;
+use lumen_static_widgets::prelude::*;
 
 fn main() {
     let sheet = vec![
@@ -117,6 +119,7 @@ where it would have named a colour:
 
 ```rust
 # extern crate lumen_static;
+# extern crate lumen_static_widgets;
 use lumen_static::style::{Palette, Patch, Role, Rule, Selector};
 use lumen_static::Color;
 
@@ -173,7 +176,9 @@ This is the whole sheet from `examples/counter`, unedited:
 
 ```rust
 # extern crate lumen_static;
+# extern crate lumen_static_widgets;
 # use lumen_static::prelude::*;
+# use lumen_static_widgets::prelude::*;
 {{#include ../../examples/counter/src/main.rs:style}}
 # fn main() { assert_eq!(stylesheet().len(), 2); }
 ```

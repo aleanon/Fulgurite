@@ -8,7 +8,7 @@
 //! followed the docs, and nothing in the repo used the attribute at all.
 //! These are its first uses (`docs/plan-review-fixes.md` F1.5).
 
-use lumen_static::ops::{Fixed, Label};
+use lumen_static_widgets::ops::{Fixed, Label};
 use lumen_static::style::{Length, Patch, Rule, Selector};
 use lumen_static::{pass, Constraints, NodeState, StaticTree, Widget};
 
@@ -101,7 +101,7 @@ fn a_struct_level_class_reaches_the_container() {
     #[widget_class("panel", "raised")]
     struct Card {
         #[widget_id("inner")]
-        inner: lumen_static::ops::Label,
+        inner: lumen_static_widgets::ops::Label,
     }
 
     let t = <Card as Widget>::SUB_TABLE;
@@ -130,7 +130,7 @@ fn a_container_without_the_attribute_has_no_classes() {
     #[derive(lumen_static::StaticTree, Default)]
     #[widget(column, spacing = 0.0)]
     struct Plain {
-        inner: lumen_static::ops::Label,
+        inner: lumen_static_widgets::ops::Label,
     }
 
     assert!(

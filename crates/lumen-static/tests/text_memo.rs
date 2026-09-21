@@ -12,8 +12,8 @@
 use core::cell::Cell;
 
 use lumen_static::cx::{BlockMetrics, TextMeasure};
-use lumen_static::input::TextInput;
-use lumen_static::textarea::TextArea;
+use lumen_static_widgets::input::TextInput;
+use lumen_static_widgets::textarea::TextArea;
 use lumen_static::widget::{Node, Widget};
 use lumen_static::{Constraints, NodeState, Point, Size, Style};
 

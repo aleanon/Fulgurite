@@ -40,14 +40,14 @@
 #[cfg(feature = "observe")]
 use alloc::vec::Vec;
 
-use crate::desc::{NodeDesc, NodeState, NO_PARENT};
-use crate::display::{Color, Painter};
-use crate::event::{EventCtx, NodeSel};
-use crate::hit::{contains, Hit};
-use crate::ops::{record_painted, rect_of, resolve_self};
-use crate::style::{Edges, Length, Seed, Style};
-use crate::widget::{Node, Widget};
-use crate::{Constraints, LayoutCx, Point, Size};
+use lumen_static::desc::{NodeDesc, NodeState, NO_PARENT};
+use lumen_static::display::{Color, Painter};
+use lumen_static::event::{EventCtx, NodeSel};
+use lumen_static::hit::{contains, Hit};
+use lumen_static::ops::{record_painted, rect_of, resolve_self};
+use lumen_static::style::{Edges, Length, Seed, Style};
+use lumen_static::widget::{Node, Widget};
+use lumen_static::{Constraints, LayoutCx, Point, Size};
 
 /// A square box with a tick.
 pub const CHECKBOX: u8 = 0;
@@ -133,23 +133,23 @@ impl<S: 'static, const SHAPE: u8> Widget for Toggle<S, SHAPE> {
             color: ON,
             pressed_dim: 0.18,
             hover_dim: 0.07,
-            cursor: crate::style::Cursor::Pointer,
+            cursor: lumen_static::style::Cursor::Pointer,
             ..Style::default()
         }
     }
 
     const SEEDS: &'static [Seed] =
-        &[Seed::new(Self::KIND, Self::type_defaults, crate::style::Fields::of(&[
-            crate::style::Fields::WIDTH,
-            crate::style::Fields::HEIGHT,
-            crate::style::Fields::CURSOR,
-            crate::style::Fields::FOCUS_RING,
-            crate::style::Fields::VISIBLE,
-            crate::style::Fields::COLOR,
-            crate::style::Fields::BACKGROUND,
-            crate::style::Fields::RADIUS,
-            crate::style::Fields::PRESSED_DIM,
-            crate::style::Fields::HOVER_DIM,
+        &[Seed::new(Self::KIND, Self::type_defaults, lumen_static::style::Fields::of(&[
+            lumen_static::style::Fields::WIDTH,
+            lumen_static::style::Fields::HEIGHT,
+            lumen_static::style::Fields::CURSOR,
+            lumen_static::style::Fields::FOCUS_RING,
+            lumen_static::style::Fields::VISIBLE,
+            lumen_static::style::Fields::COLOR,
+            lumen_static::style::Fields::BACKGROUND,
+            lumen_static::style::Fields::RADIUS,
+            lumen_static::style::Fields::PRESSED_DIM,
+            lumen_static::style::Fields::HOVER_DIM,
         ]))];
 }
 
@@ -182,7 +182,7 @@ impl<S: 'static, const SHAPE: u8> Node for Toggle<S, SHAPE> {
     }
 
     fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
-        crate::ops::focus_ring(st, i, out);
+        lumen_static::ops::focus_ring(st, i, out);
         let s = &st[i];
         let r = rect_of(s);
         let (w, h) = (r[2] - r[0], r[3] - r[1]);
@@ -260,10 +260,10 @@ impl<S: 'static, const SHAPE: u8> Node for Toggle<S, SHAPE> {
         _st: &[NodeState],
         _i: usize,
         _id: u64,
-        node: &mut crate::observe::accesskit::Node,
-        _extra: &mut Vec<(crate::observe::accesskit::NodeId, crate::observe::accesskit::Node)>,
+        node: &mut lumen_static::observe::accesskit::Node,
+        _extra: &mut Vec<(lumen_static::observe::accesskit::NodeId, lumen_static::observe::accesskit::Node)>,
     ) {
-        use crate::observe::accesskit::{Role, Toggled};
+        use lumen_static::observe::accesskit::{Role, Toggled};
         node.set_role(match SHAPE {
             RADIO => Role::RadioButton,
             SWITCH => Role::Switch,
@@ -272,7 +272,7 @@ impl<S: 'static, const SHAPE: u8> Node for Toggle<S, SHAPE> {
         // The state a screen reader announces. Without it a checkbox is
         // read as a checkbox and never as a *checked* one.
         node.set_toggled(if self.on { Toggled::True } else { Toggled::False });
-        node.add_action(crate::observe::accesskit::Action::Click);
+        node.add_action(lumen_static::observe::accesskit::Action::Click);
     }
 }
 
@@ -289,7 +289,7 @@ impl<S: 'static, const SHAPE: u8> Node for Toggle<S, SHAPE> {
 /// it is the same missing vocabulary an icon needs, and
 /// `docs/plan-widgets.md` records that as an unscheduled gap rather
 /// than pretending rects are enough for everything.
-fn tick(out: &mut dyn Painter, r: crate::display::Rect, mark: Color) {
+fn tick(out: &mut dyn Painter, r: lumen_static::display::Rect, mark: Color) {
     let (w, h) = (r[2] - r[0], r[3] - r[1]);
     let t = (w * 0.13).max(1.5);
     // Normalised: down-right to the corner, then up-right.
@@ -306,7 +306,7 @@ fn tick(out: &mut dyn Painter, r: crate::display::Rect, mark: Color) {
     seg(out, pts[1], pts[2], 7);
 }
 
-impl<S: 'static, const SHAPE: u8> crate::event::Handlers<S> for Toggle<S, SHAPE> {
+impl<S: 'static, const SHAPE: u8> lumen_static::event::Handlers<S> for Toggle<S, SHAPE> {
     fn handler(&self, sel: NodeSel) -> Option<fn(&mut S, &EventCtx)> {
         (sel.i == 0).then_some(self.on_toggle)
     }

@@ -14,7 +14,7 @@ lumen-static-shell = { path = "../crates/lumen-static-shell", features = ["truet
 # M26/T26.0: `Badge` and `Chip` shape on every layout with no memo at all
 # (M26/T26.8), and the memo arms live here — so the widgets that lack one
 # have to be measurable beside the ones that have it.
-lumen-static-widgets = { path = "../crates/lumen-static-widgets" }
+lumen-static-widgets = { path = "../crates/lumen-static-widgets", features = ["observe"] }
 
 [features]
 rdyn_opaque = ["lumen-static/rdyn_opaque"]

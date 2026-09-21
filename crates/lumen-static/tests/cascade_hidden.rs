@@ -14,6 +14,7 @@
 //! (`docs/plan-select.md` §1).
 
 use lumen_static::prelude::*;
+use lumen_static_widgets::prelude::*;
 use lumen_static::style::{cascade_deep, Length, Patch, Rule, Selector, Style};
 use lumen_static::widget::{Node, Widget};
 

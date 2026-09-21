@@ -12,7 +12,7 @@
 //! do not (`docs/plan-review-fixes.md` F4.4).
 
 use lumen_static::hatch::{Dyn, Either};
-use lumen_static::ops::{Fixed, Label};
+use lumen_static_widgets::ops::{Fixed, Label};
 use lumen_static::{pass, Constraints, NodeState, StaticTree, Widget};
 use lumen_static_agent::{Agent, TreeMut, TreeRef};
 use serde_json::json;
@@ -148,7 +148,7 @@ fn an_arena_container_with_no_area_does_not_suppress_the_lint() {
 /// different answers (F4.4).
 #[test]
 fn probe_and_the_snapshot_agree_on_a_repeater_row_id() {
-    use lumen_static::ops::Spacer;
+    use lumen_static_widgets::ops::Spacer;
     use lumen_static::repeat::{noop_bind, Repeat};
 
     #[derive(StaticTree, Default)]

@@ -16,6 +16,7 @@
 
 use lumen_static::event::App;
 use lumen_static::prelude::*;
+use lumen_static_widgets::prelude::*;
 use lumen_static::spawn::{Descriptor, Failure, JobFn, Outbox, Subs, Timers};
 use lumen_static::style::{Edges, Length, Patch, Rule, Selector};
 use lumen_static::Color;

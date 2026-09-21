@@ -186,7 +186,7 @@ fn an_app_bar_does_not_grow_with_its_title() {
 
 #[test]
 fn a_pull_past_the_threshold_arms_a_refresh_once() {
-    let mut p: PullToRefresh<lumen_static::ops::Spacer> = PullToRefresh::default();
+    let mut p: PullToRefresh<lumen_static_widgets::ops::Spacer> = PullToRefresh::default();
     lay(&mut p);
     let ev = Event::Scroll { x: 0.0, y: 0.0, dy: 80.0 };
     assert!(p.on_event(&ev, &EventCtx::for_event(0, ev)), "the pull was not taken");
@@ -203,7 +203,7 @@ fn a_pull_past_the_threshold_arms_a_refresh_once() {
 
 #[test]
 fn a_short_pull_does_not_arm_anything() {
-    let mut p: PullToRefresh<lumen_static::ops::Spacer> = PullToRefresh::default();
+    let mut p: PullToRefresh<lumen_static_widgets::ops::Spacer> = PullToRefresh::default();
     lay(&mut p);
     let ev = Event::Scroll { x: 0.0, y: 0.0, dy: 10.0 };
     p.on_event(&ev, &EventCtx::for_event(0, ev));
@@ -217,7 +217,7 @@ fn a_short_pull_does_not_arm_anything() {
 /// inside one could never be scrolled back up.
 #[test]
 fn an_upward_wheel_is_not_a_pull() {
-    let mut p: PullToRefresh<lumen_static::ops::Spacer> = PullToRefresh::default();
+    let mut p: PullToRefresh<lumen_static_widgets::ops::Spacer> = PullToRefresh::default();
     lay(&mut p);
     let ev = Event::Scroll { x: 0.0, y: 0.0, dy: -80.0 };
     assert!(
@@ -231,7 +231,7 @@ fn an_upward_wheel_is_not_a_pull() {
 /// rather than as a drag.
 #[test]
 fn the_content_follows_the_pull() {
-    let mut p: PullToRefresh<lumen_static::ops::Spacer> = PullToRefresh::default();
+    let mut p: PullToRefresh<lumen_static_widgets::ops::Spacer> = PullToRefresh::default();
     let before = lay(&mut p)[1].pos.y;
     let ev = Event::Scroll { x: 0.0, y: 0.0, dy: 40.0 };
     p.on_event(&ev, &EventCtx::for_event(0, ev));

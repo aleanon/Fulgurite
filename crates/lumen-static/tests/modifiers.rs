@@ -2,7 +2,7 @@
 //! chosen to protect.
 
 use lumen_static::event::InputState;
-use lumen_static::ops::{Button, Label};
+use lumen_static_widgets::ops::{Button, Label};
 use lumen_static::{pass, Constraints, Event, EventCtx, Mods, NodeState, StaticTree, Widget};
 
 #[derive(StaticTree, Default)]

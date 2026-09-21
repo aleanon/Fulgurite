@@ -5,7 +5,7 @@
 //! is now recursive descent over the derived `Widget` impls
 //! (`docs/results-traversal.md`).
 
-use lumen_static::ops::{Fixed, Label, Spacer};
+use lumen_static_widgets::ops::{Fixed, Label, Spacer};
 use lumen_static::{Constraints, Point, Size, StaticTree};
 
 // ---- static arm shapes -----------------------------------------------------

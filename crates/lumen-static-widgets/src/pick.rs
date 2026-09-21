@@ -27,7 +27,7 @@ use alloc::string::String;
 use lumen_static::desc::{Constraints, NodeDesc, NodeState, Point, Size, NO_PARENT};
 use lumen_static::display::{Color, Painter};
 use lumen_static::event::{Event, EventCtx, Key};
-use lumen_static::popup::Popup;
+use crate::popup::Popup;
 use lumen_static::style::{Fields, Length, Seed, Style};
 use lumen_static::widget::{Node, Widget};
 use lumen_static::{Edges, LayoutCx};

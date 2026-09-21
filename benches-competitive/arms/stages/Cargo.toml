@@ -5,6 +5,7 @@ edition = "2021"
 publish = false
 
 [dependencies]
+lumen-static-widgets = { path = "../../../crates/lumen-static-widgets" }
 lumen-static = { path = "../../../crates/lumen-static" }
 # `truetype`, for the same reason the frame arm takes it: every stage
 # number here is dominated by text, and measuring against the

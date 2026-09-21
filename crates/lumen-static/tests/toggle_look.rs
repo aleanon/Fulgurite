@@ -7,7 +7,8 @@
 //! is what paints.
 
 use lumen_static::display::{Cmd, Color, DisplayList};
-use lumen_static::{CheckBox, Constraints, LayoutCx, Node, NodeState, Point, Switch};
+use lumen_static::{Constraints, LayoutCx, Node, NodeState, Point};
+use lumen_static_widgets::{CheckBox, Switch};
 
 const RED: Color = Color(200, 30, 30, 255);
 const WHITE: Color = Color(255, 255, 255, 255);

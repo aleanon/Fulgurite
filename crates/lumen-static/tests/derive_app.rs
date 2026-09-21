@@ -1,7 +1,7 @@
 //! T6.3: `#[derive(App)]` — the tree accessors and the update step,
 //! generated from declarations at the field.
 
-use lumen_static::ops::{Button, Label, Spacer};
+use lumen_static_widgets::ops::{Button, Label, Spacer};
 use lumen_static::{App as AppDerive, EventCtx, StaticTree};
 
 // ANCHOR: tree

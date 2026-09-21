@@ -17,7 +17,7 @@
 //! This file is the documented claim, clause by clause.
 //! `docs/plan-review-fixes.md` F1.6.
 
-use lumen_static::ops::{Fixed, Label};
+use lumen_static_widgets::ops::{Fixed, Label};
 use lumen_static::style::{Patch, Rule, Selector};
 use lumen_static::{pass, Cmd, Constraints, DisplayList, NodeState, StaticTree, Style, Widget};
 

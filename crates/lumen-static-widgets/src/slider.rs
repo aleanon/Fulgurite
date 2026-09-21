@@ -29,14 +29,14 @@
 #[cfg(feature = "observe")]
 use alloc::vec::Vec;
 
-use crate::desc::{NodeDesc, NodeState, NO_PARENT};
-use crate::display::{Color, Painter};
-use crate::event::{Event, EventCtx, Key};
-use crate::hit::{contains, Hit};
-use crate::ops::{record_painted, rect_of, resolve_self};
-use crate::style::{Edges, Length, Seed, Style};
-use crate::widget::{Node, Widget};
-use crate::{Constraints, LayoutCx, Point, Size};
+use lumen_static::desc::{NodeDesc, NodeState, NO_PARENT};
+use lumen_static::display::{Color, Painter};
+use lumen_static::event::{Event, EventCtx, Key};
+use lumen_static::hit::{contains, Hit};
+use lumen_static::ops::{record_painted, rect_of, resolve_self};
+use lumen_static::style::{Edges, Length, Seed, Style};
+use lumen_static::widget::{Node, Widget};
+use lumen_static::{Constraints, LayoutCx, Point, Size};
 
 /// A value in `0.0..=1.0`, dragged or stepped.
 pub struct Slider {
@@ -97,7 +97,7 @@ fn clamp01(v: f32) -> f32 {
     if v.is_nan() {
         0.0
     } else {
-        crate::num::clamp(v, 0.0, 1.0)
+        lumen_static::num::clamp(v, 0.0, 1.0)
     }
 }
 
@@ -120,23 +120,23 @@ impl Widget for Slider {
             color: Color(53, 99, 239, 255),
             pressed_dim: 0.10,
             hover_dim: 0.05,
-            cursor: crate::style::Cursor::Pointer,
+            cursor: lumen_static::style::Cursor::Pointer,
             ..Style::default()
         }
     }
 
     const SEEDS: &'static [Seed] =
-        &[Seed::new(Self::KIND, Self::type_defaults, crate::style::Fields::of(&[
-            crate::style::Fields::WIDTH,
-            crate::style::Fields::HEIGHT,
-            crate::style::Fields::CURSOR,
-            crate::style::Fields::FOCUS_RING,
-            crate::style::Fields::VISIBLE,
-            crate::style::Fields::COLOR,
-            crate::style::Fields::BACKGROUND,
-            crate::style::Fields::RADIUS,
-            crate::style::Fields::PRESSED_DIM,
-            crate::style::Fields::HOVER_DIM,
+        &[Seed::new(Self::KIND, Self::type_defaults, lumen_static::style::Fields::of(&[
+            lumen_static::style::Fields::WIDTH,
+            lumen_static::style::Fields::HEIGHT,
+            lumen_static::style::Fields::CURSOR,
+            lumen_static::style::Fields::FOCUS_RING,
+            lumen_static::style::Fields::VISIBLE,
+            lumen_static::style::Fields::COLOR,
+            lumen_static::style::Fields::BACKGROUND,
+            lumen_static::style::Fields::RADIUS,
+            lumen_static::style::Fields::PRESSED_DIM,
+            lumen_static::style::Fields::HOVER_DIM,
         ]))];
 }
 
@@ -171,7 +171,7 @@ impl Node for Slider {
     }
 
     fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
-        crate::ops::focus_ring(st, i, out);
+        lumen_static::ops::focus_ring(st, i, out);
         let s = &st[i];
         let r = rect_of(s);
         let (w, h) = (r[2] - r[0], r[3] - r[1]);
@@ -189,7 +189,7 @@ impl Node for Slider {
             out.rounded_rect([r[0], mid - t / 2.0, x, mid + t / 2.0], s.fg, t / 2.0);
         }
         let d = h * 0.75;
-        let kx = crate::num::clamp(x - d / 2.0, r[0], r[2] - d);
+        let kx = lumen_static::num::clamp(x - d / 2.0, r[0], r[2] - d);
         out.rounded_rect([kx, mid - d / 2.0, kx + d, mid + d / 2.0], s.fg, d / 2.0);
     }
 
@@ -245,10 +245,10 @@ impl Node for Slider {
         _st: &[NodeState],
         _i: usize,
         _id: u64,
-        node: &mut crate::observe::accesskit::Node,
-        _extra: &mut Vec<(crate::observe::accesskit::NodeId, crate::observe::accesskit::Node)>,
+        node: &mut lumen_static::observe::accesskit::Node,
+        _extra: &mut Vec<(lumen_static::observe::accesskit::NodeId, lumen_static::observe::accesskit::Node)>,
     ) {
-        use crate::observe::accesskit::Role;
+        use lumen_static::observe::accesskit::Role;
         node.set_role(Role::Slider);
         node.set_numeric_value(self.value as f64);
         node.set_min_numeric_value(0.0);
@@ -257,10 +257,10 @@ impl Node for Slider {
     }
 }
 
-impl<S> crate::event::Handlers<S> for Slider {
+impl<S> lumen_static::event::Handlers<S> for Slider {
     /// None: a slider is not activated, it is *dragged*, and everything
     /// it does it does in `on_event`. The application reads `value()`.
-    fn handler(&self, _sel: crate::event::NodeSel) -> Option<fn(&mut S, &EventCtx)> {
+    fn handler(&self, _sel: lumen_static::event::NodeSel) -> Option<fn(&mut S, &EventCtx)> {
         None
     }
 }

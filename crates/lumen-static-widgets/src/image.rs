@@ -2,7 +2,7 @@
 //!
 //! **The core never carries pixels and never decodes.** An
 //! [`Image`] holds an [`ImageId`], which the *host* resolves through
-//! [`crate::ImageSource`]. That is what keeps images available in the `no_std`
+//! [`lumen_static::ImageSource`]. That is what keeps images available in the `no_std`
 //! profile: an embedded host resolves an id to a `&'static [u8]` in
 //! flash, a desktop host to a decoded buffer, and the widget, the
 //! command and the layout are identical in both.
@@ -11,13 +11,13 @@
 //! behind its default-off `image` feature, because that is where the
 //! decoder and the allocator are.
 
-use crate::cx::LayoutCx;
-use crate::desc::{Constraints, NodeDesc, NodeState, Size, NO_PARENT};
-use crate::display::{Color, ImageId, Painter};
-use crate::hit::Hit;
-use crate::ops::{rect_of, resolve_self};
-use crate::style::{Seed, Style};
-use crate::widget::{Node, Widget};
+use lumen_static::cx::LayoutCx;
+use lumen_static::desc::{Constraints, NodeDesc, NodeState, Size, NO_PARENT};
+use lumen_static::display::{Color, ImageId, Painter};
+use lumen_static::hit::Hit;
+use lumen_static::ops::{rect_of, resolve_self};
+use lumen_static::style::{Seed, Style};
+use lumen_static::widget::{Node, Widget};
 
 /// How an image fills a box whose aspect differs from its own.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -81,11 +81,11 @@ impl Widget for Image {
     const KIND: &'static str = "image";
 
     const SEEDS: &'static [Seed] =
-        &[Seed::new(Self::KIND, Self::type_defaults, crate::style::Fields::of(&[
-            crate::style::Fields::WIDTH,
-            crate::style::Fields::HEIGHT,
-            crate::style::Fields::CURSOR,
-            crate::style::Fields::VISIBLE,
+        &[Seed::new(Self::KIND, Self::type_defaults, lumen_static::style::Fields::of(&[
+            lumen_static::style::Fields::WIDTH,
+            lumen_static::style::Fields::HEIGHT,
+            lumen_static::style::Fields::CURSOR,
+            lumen_static::style::Fields::VISIBLE,
         ]))];
 }
 
@@ -108,7 +108,7 @@ impl Node for Image {
     ) -> Size {
         let me = style[i];
         if !me.visible {
-            return crate::ops::hide_subtree(st, i, limits, 1);
+            return lumen_static::ops::hide_subtree(st, i, limits, 1);
         }
         // The intrinsic size is what `Shrink` shrinks to. Without one an
         // image has no opinion and the box decides.
@@ -118,7 +118,7 @@ impl Node for Image {
         size
     }
 
-    fn place(&mut self, at: crate::desc::Point, _style: &[Style], st: &mut [NodeState], i: usize) {
+    fn place(&mut self, at: lumen_static::desc::Point, _style: &[Style], st: &mut [NodeState], i: usize) {
         st[i].pos = at;
     }
 
@@ -126,16 +126,16 @@ impl Node for Image {
         let r = rect_of(&st[i]);
         if st[i].bg.3 > 0 {
             out.rounded_rect(r, st[i].bg, st[i].radius);
-            crate::ops::border(st, i, out);
+            lumen_static::ops::border(st, i, out);
         }
         out.image(self.placed(r), self.id, self.tint);
     }
 
     fn hit(&self, st: &[NodeState], i: usize, x: f32, y: f32) -> Option<Hit> {
-        crate::hit::contains(&st[i], x, y).then(|| Hit {
+        lumen_static::hit::contains(&st[i], x, y).then(|| Hit {
             node: i as u32,
             inner: None,
-            local: crate::desc::Point { x: x - st[i].pos.x, y: y - st[i].pos.y },
+            local: lumen_static::desc::Point { x: x - st[i].pos.x, y: y - st[i].pos.y },
         })
     }
 
@@ -147,8 +147,8 @@ impl Node for Image {
     }
 }
 
-impl<S> crate::event::Handlers<S> for Image {
-    fn handler(&self, _: crate::event::NodeSel) -> Option<fn(&mut S, &crate::event::EventCtx)> {
+impl<S> lumen_static::event::Handlers<S> for Image {
+    fn handler(&self, _: lumen_static::event::NodeSel) -> Option<fn(&mut S, &lumen_static::event::EventCtx)> {
         None
     }
 }

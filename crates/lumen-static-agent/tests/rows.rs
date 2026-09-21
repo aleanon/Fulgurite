@@ -23,7 +23,7 @@
 //!    table index solely to recompute a centre that the entry's own
 //!    bounds already carried.
 
-use lumen_static::ops::Button;
+use lumen_static_widgets::ops::Button;
 use lumen_static::repeat::Repeat;
 use lumen_static::{pass, Constraints, Event, EventCtx, InputQueue, NodeState, StaticTree, Widget};
 use lumen_static_agent::{Agent, AgentHost, TreeRef};
@@ -44,7 +44,7 @@ const ROW_H: f32 = 20.0;
 #[widget(column, spacing = 0.0)]
 struct Ui {
     #[widget_id("head")]
-    head: lumen_static::ops::Label,
+    head: lumen_static_widgets::ops::Label,
     #[widget_id("menu")]
     menu: Repeat<Row>,
 }

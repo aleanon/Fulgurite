@@ -7,10 +7,8 @@
 //! did not.
 
 use lumen_static::event::InputState;
-use lumen_static::{
-    pass, Cluster, Constraints, Event, GlyphSink, InlineText, Key, LayoutCx, Mods, NodeState, Size,
-    StaticTree, TextInput, TextMeasure, Widget,
-};
+use lumen_static::{pass, Cluster, Constraints, Event, GlyphSink, InlineText, Key, LayoutCx, Mods, NodeState, Size, StaticTree, TextMeasure, Widget};
+use lumen_static_widgets::{TextInput};
 
 /// One cluster per character, 8 px apart.
 ///
@@ -272,7 +270,7 @@ fn selection_survives_a_fixed_capacity_storage() {
 /// has Up and Down, and they extend a selection like any other move.
 #[test]
 fn textarea_selects_across_lines() {
-    use lumen_static::TextArea;
+    use lumen_static_widgets::TextArea;
     let mut a: TextArea = TextArea::default();
     a.set_str("one\ntwo\nthree");
 
@@ -287,7 +285,7 @@ fn textarea_selects_across_lines() {
 
 #[test]
 fn textarea_backspace_takes_the_selection() {
-    use lumen_static::TextArea;
+    use lumen_static_widgets::TextArea;
     let mut a: TextArea = TextArea::default();
     a.set_str("hello");
     a.select_all();

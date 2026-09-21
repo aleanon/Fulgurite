@@ -18,7 +18,7 @@
 //! `>` and not a space: a space already means "and", and changing that
 //! would silently reinterpret every selector already written.
 
-use lumen_static::ops::Label;
+use lumen_static_widgets::ops::Label;
 use lumen_static::{pass, Constraints, NodeState, StaticTree, Widget};
 use lumen_static_agent::{Agent, TreeRef};
 use serde_json::{json, Value};

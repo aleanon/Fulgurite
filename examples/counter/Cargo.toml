@@ -6,6 +6,7 @@ license.workspace = true
 publish = false
 
 [dependencies]
+lumen-static-widgets = { path = "../../crates/lumen-static-widgets", features = ["observe"] }
 lumen-static = { path = "../../crates/lumen-static", features = ["observe"] }
 lumen-static-shell = { path = "../../crates/lumen-static-shell", features = ["agent"] }
 lumen-static-agent = { path = "../../crates/lumen-static-agent" }

@@ -5,12 +5,10 @@
 //! widget cannot do that — it paints between the scroller's `push_clip`
 //! and `pop_clip` — which is why overlays are a phase.
 
-use lumen_static::ops::{Fixed, Label};
+use lumen_static_widgets::ops::{Fixed, Label};
 use lumen_static::overlay::OverlaySink;
-use lumen_static::{
-    pass, Cmd, Constraints, DisplayList, NoOverlays, NodeState, Overlays, Popup, ScrollView,
-    StaticTree, Widget,
-};
+use lumen_static::{pass, Cmd, Constraints, DisplayList, NoOverlays, NodeState, Overlays, StaticTree, Widget};
+use lumen_static_widgets::{Popup, ScrollView};
 
 #[derive(StaticTree, Default)]
 #[widget(column, spacing = 0.0)]
@@ -161,7 +159,7 @@ fn an_overlay_is_hit_before_the_content_under_it() {
     ui.pop.open = true;
     // Above: the content is drawn back over `under`, which sits before
     // it in the flow and before it in the table.
-    ui.pop.anchor = lumen_static::Anchor::Above;
+    ui.pop.anchor = lumen_static_widgets::Anchor::Above;
     ui.pop.content.a.set("one");
     ui.pop.content.b.set("two");
 
@@ -219,7 +217,7 @@ mod dismissal {
     #[widget(column, spacing = 0.0)]
     struct Ui {
         #[widget_id("btn")]
-        btn: lumen_static::ops::Button<App>,
+        btn: lumen_static_widgets::ops::Button<App>,
         #[widget_id("pop")]
         pop: Popup<Menu>,
     }
@@ -236,7 +234,7 @@ mod dismissal {
         a.ui.btn.label = "open";
         a.ui.btn.on_click = |s: &mut App, _: &EventCtx| s.pressed += 1;
         a.ui.pop.open = true;
-        a.ui.pop.anchor = lumen_static::Anchor::Over;
+        a.ui.pop.anchor = lumen_static_widgets::Anchor::Over;
         a.ui.pop.content.a.set("one");
         a.ui.pop.content.b.set("two");
         let sty = pass::default_styles(&a.ui);
@@ -327,7 +325,8 @@ mod dismissal {
 mod focus_trap {
     use super::*;
     use lumen_static::event::InputState;
-    use lumen_static::{Event, Key, TextInput};
+    use lumen_static::{Event, Key};
+use lumen_static_widgets::{TextInput};
 
     #[derive(StaticTree, Default)]
     #[widget(column, spacing = 0.0)]
@@ -359,7 +358,7 @@ mod focus_trap {
     fn tab_cycles_inside_the_modal_and_never_leaves() {
         let mut a = App::default();
         a.ui.modal.open = true;
-        a.ui.modal.anchor = lumen_static::Anchor::Over;
+        a.ui.modal.anchor = lumen_static_widgets::Anchor::Over;
         let sty = pass::default_styles(&a.ui);
         let mut st = [NodeState::default(); Ui::NODE_COUNT];
         pass::layout(&mut a.ui, &sty, &mut st, VIEW);
@@ -539,14 +538,14 @@ mod overlay_activation {
     #[widget(column, spacing = 0.0)]
     struct Panel {
         #[widget_id("row")]
-        row: lumen_static::ops::Button<App>,
+        row: lumen_static_widgets::ops::Button<App>,
     }
 
     #[derive(StaticTree, Default)]
     #[widget(column, spacing = 0.0)]
     struct Ui {
         #[widget_id("head")]
-        head: lumen_static::ops::Fixed,
+        head: lumen_static_widgets::ops::Fixed,
         #[widget_id("pop")]
         pop: Popup<Panel>,
     }
@@ -562,7 +561,7 @@ mod overlay_activation {
     fn a_click_inside_an_open_overlay_reaches_the_handler() {
         let mut a = App::default();
         a.ui.pop.open = true;
-        a.ui.pop.anchor = lumen_static::Anchor::Below;
+        a.ui.pop.anchor = lumen_static_widgets::Anchor::Below;
         a.ui.pop.content.row.label = "pick";
         a.ui.pop.content.row.on_click = |s: &mut App, _: &EventCtx| s.popped += 1;
 

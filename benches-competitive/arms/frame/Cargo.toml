@@ -5,6 +5,7 @@ edition = "2021"
 publish = false
 
 [dependencies]
+lumen-static-widgets = { path = "../../../crates/lumen-static-widgets", features = ["observe"] }
 lumen-static = { path = "../../../crates/lumen-static" }
 # `truetype` deliberately: every other arm shapes text for real, and measuring
 # this one against the half-em-per-byte stand-in would compare fontdue shaping

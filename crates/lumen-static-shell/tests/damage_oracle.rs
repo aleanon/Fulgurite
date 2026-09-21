@@ -11,7 +11,7 @@
 //! retentions have to be alive in one process (`docs/plan-architecture-
 //! v2.md` T8b.0).
 
-use lumen_static::ops::{Button, Label, Spacer};
+use lumen_static_widgets::ops::{Button, Label, Spacer};
 use lumen_static::retain::Damage;
 use lumen_static::style::{Edges, Length, Patch, Rule, Selector};
 use lumen_static::{App as DeriveApp, Color, StaticTree};

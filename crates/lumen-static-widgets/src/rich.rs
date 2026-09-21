@@ -616,7 +616,7 @@ pub const MAX_EDITOR_NODES: usize = 3;
 /// against.
 #[derive(Default)]
 pub struct RichTextEditor {
-    pub input: lumen_static::textarea::TextArea,
+    pub input: crate::textarea::TextArea,
     pub preview: Markdown,
     /// What the preview was last built from, so a re-parse happens when
     /// the text changes and not on every frame.
@@ -629,7 +629,7 @@ impl RichTextEditor {
 
     pub fn new(src: &str) -> Self {
         let mut e = RichTextEditor {
-            input: lumen_static::textarea::TextArea::new(src),
+            input: crate::textarea::TextArea::new(src),
             ..Default::default()
         };
         e.sync();
@@ -689,7 +689,7 @@ impl EditorTable {
         s[0] = Seed::new(
             <RichTextEditor as Widget>::KIND,
             <RichTextEditor as Widget>::type_defaults, Fields::of(&[Fields::WIDTH, Fields::HEIGHT, Fields::SPACING, Fields::VISIBLE]));
-        s[1] = <lumen_static::textarea::TextArea as Widget>::SEEDS[0];
+        s[1] = <crate::textarea::TextArea as Widget>::SEEDS[0];
         s[2] = <Markdown as Widget>::SEEDS[0];
         s
     };

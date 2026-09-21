@@ -1,7 +1,7 @@
 //! M12/T12.4: a failure trace that answers the question instead of
 //! inviting a re-run.
 
-use lumen_static::ops::{Button, Label};
+use lumen_static_widgets::ops::{Button, Label};
 use lumen_static::style::{Patch, Rule, Selector};
 use lumen_static::{pass, Constraints, NodeState, StaticTree, Widget};
 use lumen_static_agent::trace::Trace;

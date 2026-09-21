@@ -24,7 +24,7 @@
 
 use lumen_static::event::Key;
 use lumen_static::invalidate::{Boundaries, Everything, Invalidation};
-use lumen_static::ops::{Button, Label};
+use lumen_static_widgets::ops::{Button, Label};
 use lumen_static::{App as DeriveApp, Color, Event, StaticTree};
 use lumen_static_shell::Host;
 

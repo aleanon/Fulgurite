@@ -1,7 +1,7 @@
 //! M27/T27.8 — `SplitPane` and `Collapsible`.
 
 use lumen_static::event::{Event, EventCtx, Handlers, Key, NodeSel};
-use lumen_static::ops::{Button, Fixed};
+use lumen_static_widgets::ops::{Button, Fixed};
 use lumen_static::widget::{Node, Widget};
 use lumen_static::{Constraints, NodeState, Point};
 use lumen_static_widgets::{Collapsible, PaneGrid, SplitPane};

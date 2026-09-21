@@ -32,7 +32,7 @@ fn the_well_formed_case_is_accepted() {
     assert!(table_is_well_formed(&good()));
     // And every real table in the workspace, via the derive's own const
     // assert — this is the one that was already covered.
-    assert!(table_is_well_formed(<lumen_static::ops::Label as lumen_static::Widget>::SUB_TABLE));
+    assert!(table_is_well_formed(<lumen_static_widgets::ops::Label as lumen_static::Widget>::SUB_TABLE));
 }
 
 #[test]

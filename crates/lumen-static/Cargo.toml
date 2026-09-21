@@ -40,6 +40,16 @@ reload = ["std", "dep:serde", "dep:serde_json"]
 rdyn_opaque = ["lumen-static-macros/rdyn_opaque"]
 
 [dev-dependencies]
+# **M30.** The widgets moved out; core's own tests and doctests still
+# exercise them, so this is a dev-cycle — which Cargo permits and which
+# is the honest shape: the dependency is real, and it is only a
+# dependency of the tests.
+#
+# `observe` is on because `tests/observe.rs` asserts the roles widgets
+# publish, and those impls are gated on THIS crate's `observe`, not on
+# lumen-static's. Without it a `Label` reports `GenericContainer` and
+# the test fails for a reason that is about features rather than roles.
+lumen-static-widgets = { path = "../lumen-static-widgets", features = ["observe"] }
 serde = { version = "1", features = ["derive"] }
 
 [[test]]

@@ -14,7 +14,7 @@
 //! node is the one whose value survives, whichever levels the sheet
 //! happens to contain.
 
-use lumen_static::ops::Label;
+use lumen_static_widgets::ops::Label;
 use lumen_static::style::{cascade, Length, Patch, Rule, Selector, Style};
 use lumen_static::{StaticTree, Widget};
 

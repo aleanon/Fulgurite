@@ -18,6 +18,7 @@
 
 use lumen_static::event::App;
 use lumen_static::prelude::*;
+use lumen_static_widgets::prelude::*;
 use lumen_static::spawn::{Descriptor, JobFn, Outbox, Queued};
 use lumen_static::Rebuild;
 use lumen_static_shell::Host;

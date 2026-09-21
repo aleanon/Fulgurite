@@ -41,7 +41,7 @@ fn the_default_is_the_default_cursor() {
 
 #[test]
 fn a_stylesheet_rule_sets_it() {
-    use lumen_static::ops::Label;
+    use lumen_static_widgets::ops::Label;
     use lumen_static::{StaticTree, Widget};
 
     #[derive(StaticTree, Default)]
@@ -66,9 +66,9 @@ fn a_stylesheet_rule_sets_it() {
 /// not write a rule to get an I-beam over a text field.
 #[test]
 fn the_widgets_that_should_have_one_do() {
-    use lumen_static::ops::Button;
+    use lumen_static_widgets::ops::Button;
     use lumen_static::widget::Node;
-    use lumen_static::{TextArea, TextInput};
+    use lumen_static_widgets::{TextArea, TextInput};
 
     struct S;
     let field: TextInput = TextInput::default();

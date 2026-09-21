@@ -38,11 +38,10 @@ use std::mem::size_of;
 use benches::bench;
 use lumen_static::assemble::Assembled;
 use lumen_static::cx::BlockMetrics;
-use lumen_static::ops::{Button, Label};
+use lumen_static_widgets::ops::{Button, Label};
 use lumen_static::style::Palette;
-use lumen_static::{
-    CheckBox, Constraints, LayoutCx, NodeState, Radio, StaticTree, Style, Switch, Toggle, Widget,
-};
+use lumen_static::{Constraints, LayoutCx, NodeState, StaticTree, Style, Widget};
+use lumen_static_widgets::{CheckBox, Radio, Switch, Toggle};
 
 const ROOT_C: Constraints = Constraints { min_w: 0.0, max_w: 1920.0, min_h: 0.0, max_h: 100_000.0 };
 const ROWS: usize = 100;
@@ -128,7 +127,7 @@ mod count {
     use std::sync::atomic::{AtomicU64, Ordering};
 
     use lumen_static::style::{Palette, Status};
-    use lumen_static::toggle::{default_look, ToggleLook};
+    use lumen_static_widgets::toggle::{default_look, ToggleLook};
 
     pub static CALLS: AtomicU64 = AtomicU64::new(0);
 
@@ -146,7 +145,7 @@ mod count {
 #[cfg(feature = "look")]
 fn install(
     slab: &mut Assembled<Toggles>,
-    f: fn(&Palette, lumen_static::style::Status) -> lumen_static::toggle::ToggleLook,
+    f: fn(&Palette, lumen_static::style::Status) -> lumen_static_widgets::toggle::ToggleLook,
 ) {
     for t in slab.instances.iter_mut() {
         t.a.set_look(f);
@@ -177,7 +176,7 @@ fn calls_per_iteration(slab: &mut Assembled<Toggles>, case: Case) -> u64 {
         black_box(frame(slab, case, it));
     }
     let per = count::take() / N;
-    install(slab, lumen_static::toggle::default_look);
+    install(slab, lumen_static_widgets::toggle::default_look);
     per
 }
 

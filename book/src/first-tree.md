@@ -12,7 +12,9 @@ This is `examples/counter`, taken apart.
 
 ```rust
 # extern crate lumen_static;
+# extern crate lumen_static_widgets;
 # use lumen_static::prelude::*;
+# use lumen_static_widgets::prelude::*;
 # #[derive(DeriveApp, Default)] struct Counter { #[tree] ui: Ui, #[bind(ui.value, "count: {}")] count: i64 }
 # fn main() {}
 {{#include ../../examples/counter/src/main.rs:tree}}
@@ -33,7 +35,9 @@ a stylesheet selector, a test, or the agent protocol. Fields without one
 
 ```rust
 # extern crate lumen_static;
+# extern crate lumen_static_widgets;
 # use lumen_static::prelude::*;
+# use lumen_static_widgets::prelude::*;
 # #[derive(StaticTree, Default)] #[widget(column)] struct Ui { value: Label<String> }
 # fn main() {}
 {{#include ../../examples/counter/src/main.rs:state}}
@@ -55,7 +59,9 @@ what lets the label cache its measurement
 
 ```rust
 # extern crate lumen_static;
+# extern crate lumen_static_widgets;
 # use lumen_static::prelude::*;
+# use lumen_static_widgets::prelude::*;
 # #[derive(StaticTree, Default)] #[widget(column)] struct Ui { value: Label<String> }
 # #[derive(DeriveApp, Default)] struct Counter { #[tree] ui: Ui, #[bind(ui.value, "count: {}")] count: i64 }
 # fn main() {}
@@ -71,7 +77,9 @@ generic in the state type: the button knows what it is allowed to mutate.
 
 ```rust
 # extern crate lumen_static;
+# extern crate lumen_static_widgets;
 # use lumen_static::prelude::*;
+# use lumen_static_widgets::prelude::*;
 # fn main() {}
 {{#include ../../examples/counter/src/main.rs:style}}
 ```

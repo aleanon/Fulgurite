@@ -1,13 +1,33 @@
-//! Widgets that are **not** in the core — M23.
+//! **Every widget** — M23, and all of them since M30.
 //!
-//! `lumen-static` carries the widgets an application cannot be written
-//! without: a label, a button, a field, a scroller, the containers the
-//! derive builds. Everything here is the next tier — a badge, a chart, a
-//! spinner — and it lives in its own crate for the reason every optional
-//! thing in this workspace does: **the crate is the gate**. A widget set
+//! This crate began as the second tier: `lumen-static` kept the widgets
+//! "an application cannot be written without" — a label, a button, a
+//! field, a scroller — and a badge or a chart lived here. **M30 moved
+//! the first tier in too**, so there is one place a widget can be.
+//!
+//! The old split was defensible and cost more than it was worth. It put
+//! the seam where no user could predict it — `Label` in core, `Badge`
+//! here — and made drawing a form a two-crate dependency. What decided
+//! it was measuring the thing the split was argued from: the embedded
+//! leaf profile links `.text` **27,024 B** with the widgets here against
+//! 27,036 B with them in core (`docs/results-widget-crate.md`), because
+//! the gate was never the crate — it is `#[cfg(feature)]` and the
+//! linker, which drop what a tree does not name either way.
+//!
+//! **The crate is still the gate for the *optional* tier.** A widget set
 //! grows without limit, and an embedded profile that links a pie chart
 //! it will never draw has paid `.text` for nothing (`AGENT.md`'s M15
-//! gating policy).
+//! gating policy) — so `alloc`-needing widgets stay behind `alloc`, and
+//! a leaf profile takes neither.
+//!
+//! # What stayed in the core
+//!
+//! Not widgets: the machinery the **derive** builds. `Either`, `List`,
+//! `Dyn` and `Repeat` are containers a user never places by hand — the
+//! derive emits them — and `lumen_static::ops` keeps the layout helpers
+//! derive-generated code calls (`inner_limits`, `resolve_self`,
+//! `record_painted`). A widget is something you put in a tree; those are
+//! how a tree is built.
 //!
 //! # Everything here is a leaf
 //!
@@ -43,6 +63,32 @@
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
+// ---- M30: the widgets that used to live in the core ------------------
+//
+// `lumen-static` kept a "cannot be written without" tier — a label, a
+// button, a field, a scroller — and this crate kept the next one. The
+// split cost every application two dependencies to draw a form and put
+// the seam in a place no user could predict: `Label` in core, `Badge`
+// here. One crate owns widgets now.
+//
+// What stayed in core is the machinery the *derive* builds, not
+// anything a user places: `Either`, `List`, `Dyn` and `Repeat`.
+pub mod glass;
+#[cfg(feature = "reload")]
+pub mod reload;
+pub mod image;
+pub mod input;
+pub mod ops;
+pub mod popup;
+pub mod scroll;
+// `select` alone of the moved ten needs `alloc`: its rows are a
+// `lumen_static::repeat::Repeat`, which core gates the same way.
+#[cfg(feature = "alloc")]
+pub mod select;
+pub mod slider;
+pub mod textarea;
+pub mod toggle;
+
 mod chart;
 #[cfg(feature = "alloc")]
 pub mod choose;
@@ -52,6 +98,7 @@ mod data;
 mod field;
 mod indicator;
 mod nav;
+#[cfg(feature = "alloc")]
 pub mod pick;
 #[cfg(feature = "alloc")]
 pub mod rich;
@@ -59,6 +106,18 @@ pub mod split;
 pub mod surface;
 mod trim;
 mod veil;
+
+pub use glass::Glass;
+pub use image::{Fit, Image};
+pub use input::TextInput;
+pub use ops::{Button, Fixed, Label, Spacer};
+pub use popup::{Anchor, Popup};
+pub use scroll::ScrollView;
+#[cfg(feature = "alloc")]
+pub use select::Select;
+pub use slider::Slider;
+pub use textarea::TextArea;
+pub use toggle::{CheckBox, Radio, Switch, Toggle};
 
 pub use chart::{BarChart, Chart, LineChart, PieChart, Series, MAX_POINTS};
 #[cfg(feature = "alloc")]
@@ -75,6 +134,7 @@ pub use field::{NumberInput, RangeSlider, SearchField};
 pub use rich::{
     Markdown, PaintBox, RichText, RichTextEditor, Span, MAX_EDITOR_NODES, MAX_SPANS,
 };
+#[cfg(feature = "alloc")]
 pub use pick::{
     ColorPicker, DatePicker, FilePicker, Pad, Picker, TimePicker, COLOR, DATE, FILE, MAX_FILES,
     MAX_PICKER_NODES, SWATCHES, TIME,
@@ -88,6 +148,16 @@ pub use trim::{Avatar, Badge, Chip, Divider, Icon, Symbol};
 
 /// Everything in this crate, for a `use` that keeps up.
 pub mod prelude {
+    // M30: the former core widgets. An application that used
+    // `lumen_static::prelude::*` for these now uses this one — and gets
+    // the rest of the set with them, which is the point.
+    pub use crate::{
+        Button, CheckBox, Fixed, Glass, Image, Label, Popup, Radio, ScrollView, Slider, Spacer,
+        Switch, TextArea, TextInput, Toggle,
+    };
+    #[cfg(feature = "alloc")]
+    pub use crate::Select;
+
     pub use crate::{
         Avatar, Badge, BarChart, Card, Chip, Divider, Icon, LineChart, PieChart, ProgressBar,
         AppBar, BottomNav, Collapsible, Drawer, Modal, NavigationRail, PullToRefresh, Series,

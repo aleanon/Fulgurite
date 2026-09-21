@@ -47,19 +47,19 @@
 #[cfg(feature = "observe")]
 use alloc::vec::Vec;
 
-use crate::cx::LayoutCx;
-use crate::desc::{NodeDesc, NodeState, NO_PARENT};
-use crate::display::{Color, Painter};
-use crate::event::{Event, EventCtx, Key, Mods};
-use crate::hit::Hit;
-use crate::ops::{rect_of, resolve_self};
-use crate::style::{Seed, Style};
-use crate::text::{ClusterBuf, TextBuffer};
-use crate::widget::{Node, Widget};
-use crate::{Constraints, Point, Size};
+use lumen_static::cx::LayoutCx;
+use lumen_static::desc::{NodeDesc, NodeState, NO_PARENT};
+use lumen_static::display::{Color, Painter};
+use lumen_static::event::{Event, EventCtx, Key, Mods};
+use lumen_static::hit::Hit;
+use lumen_static::ops::{rect_of, resolve_self};
+use lumen_static::style::{Seed, Style};
+use lumen_static::text::{ClusterBuf, TextBuffer};
+use lumen_static::widget::{Node, Widget};
+use lumen_static::{Constraints, Point, Size};
 
 /// A single-line editable text field.
-pub struct TextInput<S: TextBuffer = crate::text::DefaultTextStorage> {
+pub struct TextInput<S: TextBuffer = lumen_static::text::DefaultTextStorage> {
     text: S,
     /// Caret position as a byte offset into `text`. Always on a `char`
     /// boundary — every path that moves it steps by clusters.
@@ -216,7 +216,7 @@ impl<S: TextBuffer> TextInput<S> {
     /// place: the range is recorded from what the buffer actually took,
     /// not from what was offered, so a refused preedit leaves no range
     /// pointing past the end.
-    pub fn compose(&mut self, c: crate::event::Composition<'_>) -> bool {
+    pub fn compose(&mut self, c: lumen_static::event::Composition<'_>) -> bool {
         // Whatever was provisional goes first, in every arm: a preedit
         // replaces it, a commit supersedes it, a cancel drops it.
         let had = self.preedit.take();
@@ -226,8 +226,8 @@ impl<S: TextBuffer> TextInput<S> {
             self.invalidate();
         }
         let text = match c {
-            crate::event::Composition::Cancel => return had.is_some(),
-            crate::event::Composition::Preedit(t) | crate::event::Composition::Commit(t) => t,
+            lumen_static::event::Composition::Cancel => return had.is_some(),
+            lumen_static::event::Composition::Preedit(t) | lumen_static::event::Composition::Commit(t) => t,
         };
         if text.is_empty() {
             return had.is_some();
@@ -238,7 +238,7 @@ impl<S: TextBuffer> TextInput<S> {
             // points past the end.
             return had.is_some();
         }
-        if matches!(c, crate::event::Composition::Preedit(_)) {
+        if matches!(c, lumen_static::event::Composition::Preedit(_)) {
             // Only what the buffer took: `insert` moved the caret by
             // exactly that much.
             self.preedit = Some(at..self.caret);
@@ -422,30 +422,30 @@ impl<S: TextBuffer> Widget for TextInput<S> {
 
     fn type_defaults() -> Style {
         Style {
-            padding: crate::style::Edges { left: 8.0, right: 8.0, top: 6.0, bottom: 6.0 },
+            padding: lumen_static::style::Edges { left: 8.0, right: 8.0, top: 6.0, bottom: 6.0 },
             // An I-beam over editable text, without the application
             // having to write a rule for it (T14.6).
-            cursor: crate::style::Cursor::Text,
+            cursor: lumen_static::style::Cursor::Text,
             ..Style::default()
         }
     }
 
     const SEEDS: &'static [Seed] =
-        &[Seed::new(Self::KIND, Self::type_defaults, crate::style::Fields::of(&[
-            crate::style::Fields::WIDTH,
-            crate::style::Fields::HEIGHT,
-            crate::style::Fields::PADDING,
-            crate::style::Fields::CURSOR,
-            crate::style::Fields::FOCUS_RING,
-            crate::style::Fields::VISIBLE,
-            crate::style::Fields::COLOR,
-            crate::style::Fields::BACKGROUND,
-            crate::style::Fields::BORDER,
-            crate::style::Fields::RADIUS,
-            crate::style::Fields::FONT_SIZE,
-            crate::style::Fields::FONT_WEIGHT,
-            crate::style::Fields::PRESSED_DIM,
-            crate::style::Fields::HOVER_DIM,
+        &[Seed::new(Self::KIND, Self::type_defaults, lumen_static::style::Fields::of(&[
+            lumen_static::style::Fields::WIDTH,
+            lumen_static::style::Fields::HEIGHT,
+            lumen_static::style::Fields::PADDING,
+            lumen_static::style::Fields::CURSOR,
+            lumen_static::style::Fields::FOCUS_RING,
+            lumen_static::style::Fields::VISIBLE,
+            lumen_static::style::Fields::COLOR,
+            lumen_static::style::Fields::BACKGROUND,
+            lumen_static::style::Fields::BORDER,
+            lumen_static::style::Fields::RADIUS,
+            lumen_static::style::Fields::FONT_SIZE,
+            lumen_static::style::Fields::FONT_WEIGHT,
+            lumen_static::style::Fields::PRESSED_DIM,
+            lumen_static::style::Fields::HOVER_DIM,
         ]))];
 }
 
@@ -468,7 +468,7 @@ impl<S: TextBuffer> Node for TextInput<S> {
     ) -> Size {
         let me = style[i];
         if !me.visible {
-            return crate::ops::hide_subtree(st, i, limits, 1);
+            return lumen_static::ops::hide_subtree(st, i, limits, 1);
         }
         let px = me.font_size;
         let key = (
@@ -510,10 +510,10 @@ impl<S: TextBuffer> Node for TextInput<S> {
         if cx_pos < self.scroll {
             self.scroll = cx_pos;
         }
-        self.scroll = crate::num::clamp(self.scroll, 0.0, (run_w - inner_w).max(0.0));
+        self.scroll = lumen_static::num::clamp(self.scroll, 0.0, (run_w - inner_w).max(0.0));
         self.pad_left = me.padding.left;
 
-        crate::ops::record_painted(st, i, limits, size, &me)
+        lumen_static::ops::record_painted(st, i, limits, size, &me)
     }
 
     fn place(&mut self, at: Point, _style: &[Style], st: &mut [NodeState], i: usize) {
@@ -521,11 +521,11 @@ impl<S: TextBuffer> Node for TextInput<S> {
     }
 
     fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
-        crate::ops::focus_ring(st, i, out);
+        lumen_static::ops::focus_ring(st, i, out);
         let s = &st[i];
         let r = rect_of(s);
         out.rounded_rect(r, s.bg, s.radius);
-        crate::ops::border(st, i, out);
+        lumen_static::ops::border(st, i, out);
 
         let (pl, pt, pr, pb) = s.pad;
         let inner = [r[0] + pl, r[1] + pt, r[2] - pr, r[3] - pb];
@@ -570,7 +570,7 @@ impl<S: TextBuffer> Node for TextInput<S> {
     }
 
     fn hit(&self, st: &[NodeState], i: usize, x: f32, y: f32) -> Option<Hit> {
-        crate::hit::contains(&st[i], x, y).then(|| Hit {
+        lumen_static::hit::contains(&st[i], x, y).then(|| Hit {
             node: i as u32,
             inner: None,
             local: Point { x: x - st[i].pos.x, y: y - st[i].pos.y },
@@ -671,7 +671,7 @@ impl<S: TextBuffer> Node for TextInput<S> {
         self.selected_str()
     }
 
-    fn compose(&mut self, c: crate::event::Composition<'_>) -> bool {
+    fn compose(&mut self, c: lumen_static::event::Composition<'_>) -> bool {
         TextInput::compose(self, c)
     }
 
@@ -689,16 +689,16 @@ impl<S: TextBuffer> Node for TextInput<S> {
         _st: &[NodeState],
         _i: usize,
         _id: u64,
-        node: &mut crate::observe::accesskit::Node,
-        _extra: &mut Vec<(crate::observe::accesskit::NodeId, crate::observe::accesskit::Node)>,
+        node: &mut lumen_static::observe::accesskit::Node,
+        _extra: &mut Vec<(lumen_static::observe::accesskit::NodeId, lumen_static::observe::accesskit::Node)>,
     ) {
-        node.set_role(crate::observe::accesskit::Role::TextInput);
+        node.set_role(lumen_static::observe::accesskit::Role::TextInput);
         node.set_value(self.text.as_ref());
     }
 }
 
-impl<S: TextBuffer, A> crate::event::Handlers<A> for TextInput<S> {
-    fn handler(&self, _sel: crate::event::NodeSel) -> Option<fn(&mut A, &EventCtx)> {
+impl<S: TextBuffer, A> lumen_static::event::Handlers<A> for TextInput<S> {
+    fn handler(&self, _sel: lumen_static::event::NodeSel) -> Option<fn(&mut A, &EventCtx)> {
         None
     }
 }

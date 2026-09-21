@@ -26,9 +26,10 @@
 //!    produces correct pixels. The tint is translucent and the test
 //!    asserts the panel is not a flat colour.
 
-use lumen_static::ops::{Fixed, Label};
+use lumen_static_widgets::ops::{Fixed, Label};
 use lumen_static::retain::Damage;
-use lumen_static::{App as DeriveApp, Color, Glass, StaticTree};
+use lumen_static::{App as DeriveApp, Color, StaticTree};
+use lumen_static_widgets::{Glass};
 use lumen_static_shell::software::Canvas;
 use lumen_static_shell::Host;
 

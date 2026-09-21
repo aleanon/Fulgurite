@@ -11,7 +11,7 @@
 //! an author away from it (`docs/plan-review-fixes.md` F4.6).
 
 use lumen_static::cx::TextMeasure;
-use lumen_static::ops::Label;
+use lumen_static_widgets::ops::Label;
 use lumen_static::repeat::Repeat;
 use lumen_static::widget::Node;
 use lumen_static::{pass, Constraints, LayoutCx, NodeState, Size, StaticTree, Widget};

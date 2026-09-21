@@ -1,6 +1,6 @@
 //! Code-size probe: one 90-node tree, so `nm` can attribute framework
 //! bytes. Shapes are local so the binary links only what it uses.
-use lumen_static::ops::{Fixed, Label, Spacer};
+use lumen_static_widgets::ops::{Fixed, Label, Spacer};
 use lumen_static::{pass, Constraints, NodeState, StaticTree, Widget};
 
 #[derive(StaticTree, Default)]

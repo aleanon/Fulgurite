@@ -40,11 +40,10 @@
 use std::time::Instant;
 
 use lumen_static::hatch::List;
-use lumen_static::ops::Label;
+use lumen_static_widgets::ops::Label;
 use lumen_static::prelude::*;
-use lumen_static::{
-    pass, Constraints, DisplayList, Incremental, LayoutCx, Recording, Retention,
-};
+use lumen_static_widgets::prelude::*;
+use lumen_static::{pass, Constraints, DisplayList, Incremental, LayoutCx, Recording, Retention};
 use lumen_static_shell::software::Canvas;
 use lumen_static_shell::text::{FontMetrics, FontStack};
 

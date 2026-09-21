@@ -1234,7 +1234,7 @@ const fn bytes_eq(a: &str, b: &str) -> bool {
 ///
 /// ```
 /// # use lumen_static::{wid_index, StaticTree, Widget};
-/// # use lumen_static::ops::Label;
+/// # use lumen_static_widgets::ops::Label;
 /// #[derive(StaticTree, Default)]
 /// #[widget(column, spacing = 0.0)]
 /// struct Ui {
@@ -1249,7 +1249,7 @@ const fn bytes_eq(a: &str, b: &str) -> bool {
 ///
 /// ```compile_fail
 /// # use lumen_static::{wid_index, StaticTree, Widget};
-/// # use lumen_static::ops::Label;
+/// # use lumen_static_widgets::ops::Label;
 /// # #[derive(StaticTree, Default)]
 /// # #[widget(column, spacing = 0.0)]
 /// # struct Ui {
@@ -1264,7 +1264,7 @@ const fn bytes_eq(a: &str, b: &str) -> bool {
 ///
 /// ```compile_fail
 /// # use lumen_static::{wid_index, StaticTree, Widget};
-/// # use lumen_static::ops::Label;
+/// # use lumen_static_widgets::ops::Label;
 /// #[derive(StaticTree, Default)]
 /// #[widget(column, spacing = 0.0)]
 /// struct Two {

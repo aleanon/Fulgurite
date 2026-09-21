@@ -7,6 +7,7 @@ allocates nothing, and a tree that could overflow the stack does not compile.
 
 ```rust,no_run
 # extern crate lumen_static;
+# extern crate lumen_static_widgets;
 # extern crate lumen_static_winit;
 {{#include ../../examples/minimal/src/main.rs:app}}
 ```

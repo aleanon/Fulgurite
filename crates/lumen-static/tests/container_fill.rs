@@ -12,7 +12,7 @@
 //! still paint one, or the guard is a container that stopped working.
 
 use lumen_static::display::{Cmd, Color, DisplayList, Painter, Rect};
-use lumen_static::ops::Fixed;
+use lumen_static_widgets::ops::Fixed;
 use lumen_static::style::{Length, Patch, Rule, Selector, Style};
 use lumen_static::widget::{Node, Widget};
 use lumen_static::{Constraints, NodeState, Point, StaticTree};

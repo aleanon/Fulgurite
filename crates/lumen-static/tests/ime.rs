@@ -10,7 +10,8 @@
 //! the rest of an event loop.
 
 use lumen_static::event::Composition::{Cancel, Commit, Preedit};
-use lumen_static::{InlineText, TextArea, TextInput};
+use lumen_static::{InlineText};
+use lumen_static_widgets::{TextArea, TextInput};
 
 #[test]
 fn a_preedit_shows_in_the_buffer_and_is_marked_provisional() {

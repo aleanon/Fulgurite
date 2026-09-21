@@ -8,6 +8,7 @@ publish = false
 # clipboard included. This is the row a reader should compare against Qt and
 # GTK, because it is what an application actually ships.
 [dependencies]
+lumen-static-widgets = { path = "../../../crates/lumen-static-widgets" }
 lumen-static = { path = "../../../crates/lumen-static" }
 lumen-static-winit = { path = "../../../crates/lumen-static-winit" }
 

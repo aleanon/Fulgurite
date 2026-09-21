@@ -3,7 +3,7 @@
 
 use lumen_static::cx::{LayoutCx, TextMeasure};
 use lumen_static::display::{Cmd, DisplayList, Renderer};
-use lumen_static::ops::{Button, Fixed, Label};
+use lumen_static_widgets::ops::{Button, Fixed, Label};
 use lumen_static::{pass, Constraints, NodeState, Size, StaticTree, Widget};
 
 const VIEW: Constraints = Constraints { min_w: 0.0, max_w: 400.0, min_h: 0.0, max_h: 400.0 };

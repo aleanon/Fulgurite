@@ -16,6 +16,7 @@ proc-macro2 = { version = "1", features = ["span-locations"] }
 # graph) and is what lets this crate's doctests and, later, its trybuild
 # suite compile against the real derives instead of being ```ignore``d.
 [dev-dependencies]
+lumen-static-widgets = { path = "../lumen-static-widgets" }
 lumen-static = { path = "../lumen-static" }
 trybuild = "1"
 

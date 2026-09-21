@@ -22,7 +22,7 @@
 use lumen_static::desc::{Constraints, NodeDesc, NodeState, Point, Size, NO_PARENT};
 use lumen_static::display::{Color, Painter};
 use lumen_static::event::{Event, EventCtx, Key};
-use lumen_static::popup::{Anchor, Popup};
+use crate::popup::{Anchor, Popup};
 use lumen_static::style::{Fields, Length, Seed, Style};
 use lumen_static::widget::{Node, Widget};
 use lumen_static::{Edges, LayoutCx};
@@ -352,7 +352,7 @@ pub const PART_LIST: &str = "chooser-list";
 pub struct Chooser<const KIND: u8 = PICKLIST> {
     /// The closed control. A `Menu` has one too, laid out at zero size:
     /// a type per shape would be three tables to keep in step.
-    pub trigger: lumen_static::input::TextInput<alloc::string::String>,
+    pub trigger: crate::input::TextInput<alloc::string::String>,
     pub list: Popup<OptionList>,
     selected: Option<usize>,
     /// Whether the trigger holds a **typed query** rather than the
@@ -384,7 +384,7 @@ impl<const KIND: u8> Default for Chooser<KIND> {
         let mut list = Popup::<OptionList>::default();
         list.anchor = Anchor::Below;
         Chooser::<KIND> {
-            trigger: lumen_static::input::TextInput::default(),
+            trigger: crate::input::TextInput::default(),
             list,
             selected: None,
             typed: false,
@@ -482,7 +482,7 @@ impl<const KIND: u8> ChooserTable<KIND> {
         s[0] = Seed::new(
             <Chooser<KIND> as Widget>::KIND,
             <Chooser<KIND> as Widget>::type_defaults, Fields::of(&[Fields::WIDTH, Fields::HEIGHT, Fields::VISIBLE]));
-        s[1] = <lumen_static::input::TextInput<alloc::string::String> as Widget>::SEEDS[0];
+        s[1] = <crate::input::TextInput<alloc::string::String> as Widget>::SEEDS[0];
         lumen_static::widget::splice_seeds(&mut s, 2, <Popup<OptionList> as Widget>::SEEDS);
         s
     };

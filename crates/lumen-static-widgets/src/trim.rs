@@ -10,7 +10,7 @@ use lumen_static::display::{Color, Painter};
 use lumen_static::ops::{record_painted, rect_of, resolve_self};
 use lumen_static::style::{Align, Edges, Length, Seed, Style};
 use lumen_static::widget::{Node, Widget};
-use lumen_static::{leaf_common, Constraints, LayoutCx, Size, TextStorage};
+use lumen_static::{Constraints, LayoutCx, Size, TextStorage};
 
 /// One node, no children, not focusable — the shape every widget in this
 /// file has.
@@ -84,7 +84,7 @@ impl Node for Divider {
         }
     }
 
-    leaf_common!(Divider, 0, nohit);
+    lumen_static::leaf_common!(Divider, 0, nohit);
 }
 
 /// A small pill of text: a count, a status, a tag.
@@ -204,7 +204,7 @@ impl<S: TextStorage> Node for Badge<S> {
         out.text_weighted(inner, self.text.as_ref(), s.font_size, s.font_weight, s.fg);
     }
 
-    leaf_common!(Badge<S>, 0, nohit);
+    lumen_static::leaf_common!(Badge<S>, 0, nohit);
 }
 
 /// A badge with a quieter palette and a border-ish fill: a filter tag, a
@@ -316,7 +316,7 @@ impl<S: TextStorage> Node for Chip<S> {
         out.text_weighted(inner, self.text.as_ref(), s.font_size, s.font_weight, s.fg);
     }
 
-    leaf_common!(Chip<S>, 0, nohit);
+    lumen_static::leaf_common!(Chip<S>, 0, nohit);
 }
 
 /// A round token carrying initials.
@@ -431,7 +431,7 @@ impl<S: TextStorage> Node for Avatar<S> {
         );
     }
 
-    leaf_common!(Avatar<S>, 0, nohit);
+    lumen_static::leaf_common!(Avatar<S>, 0, nohit);
 }
 
 /// Which mark an [`Icon`] draws.
@@ -613,7 +613,7 @@ impl Node for Icon {
         }
     }
 
-    leaf_common!(Icon, 0, nohit);
+    lumen_static::leaf_common!(Icon, 0, nohit);
 }
 
 /// **No handlers.** Every widget in a tree must answer `Handlers`, and a

@@ -6,7 +6,7 @@
 //! exists.
 
 use lumen_static::event::{Event, Key};
-use lumen_static::slider::Slider;
+use lumen_static_widgets::slider::Slider;
 use lumen_static::style::{Length, Patch, Rule, Selector};
 use lumen_static::{pass, Constraints, NodeState, StaticTree, Widget};
 

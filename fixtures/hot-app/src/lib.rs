@@ -15,13 +15,11 @@
 #![allow(clippy::missing_safety_doc)]
 
 use lumen_static::display::{Cmd, Color};
-use lumen_static::ops::{Fixed, Label, Spacer};
+use lumen_static_widgets::ops::{Fixed, Label, Spacer};
 use lumen_static::reload;
 use lumen_static::repeat::Repeat;
-use lumen_static::{
-    pass, CheckBox, App as DeriveApp, Constraints, NodeState, Reloadable as DeriveReloadable, StaticTree,
-    Widget,
-};
+use lumen_static::{pass, App as DeriveApp, Constraints, NodeState, Reloadable as DeriveReloadable, StaticTree, Widget};
+use lumen_static_widgets::{CheckBox};
 use serde::{Deserialize, Serialize};
 
 #[cfg(not(feature = "v2"))]

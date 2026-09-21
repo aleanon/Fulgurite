@@ -12,7 +12,7 @@
 use core::cell::Cell;
 
 use lumen_static::cx::{BlockMetrics, TextMeasure};
-use lumen_static::ops::{Button, Label};
+use lumen_static_widgets::ops::{Button, Label};
 use lumen_static::widget::{Node, Widget};
 use lumen_static::{Constraints, NodeState, Point, Size};
 use lumen_static_widgets::{Badge, Chip};

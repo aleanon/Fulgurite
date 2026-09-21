@@ -13,6 +13,7 @@
 //! container reported.
 
 use lumen_static::prelude::*;
+use lumen_static_widgets::prelude::*;
 use lumen_static::widget::Node;
 use lumen_static::{Constraints, NodeState, Point};
 

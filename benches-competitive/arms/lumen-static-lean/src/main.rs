@@ -8,6 +8,7 @@
 //! shapes.
 
 use lumen_static::prelude::*;
+use lumen_static_widgets::prelude::*;
 use lumen_static_winit::{run, Config};
 
 #[derive(DeriveApp, Default)]

@@ -13,7 +13,7 @@ use lumen_static::display::{Color, Painter};
 use lumen_static::ops::{record_painted, rect_of, resolve_self};
 use lumen_static::style::{Length, Seed, Style};
 use lumen_static::widget::{Node, Widget};
-use lumen_static::{leaf_common, Constraints, LayoutCx, Point, Size};
+use lumen_static::{Constraints, LayoutCx, Point, Size};
 
 const LEAF: &[NodeDesc] = &[NodeDesc::new(0, NO_PARENT, 0, 0, 0)];
 
@@ -112,7 +112,7 @@ impl Node for ProgressBar {
         }
     }
 
-    leaf_common!(ProgressBar, 0, nohit);
+    lumen_static::leaf_common!(ProgressBar, 0, nohit);
 }
 
 /// An indeterminate spinner: a ring with a travelling gap.
@@ -212,7 +212,7 @@ impl Node for Spinner {
         }
     }
 
-    leaf_common!(Spinner, 0, nohit);
+    lumen_static::leaf_common!(Spinner, 0, nohit);
 }
 
 /// A placeholder block for content that has not arrived.
@@ -297,7 +297,7 @@ impl Node for Skeleton {
         out.pop_clip();
     }
 
-    leaf_common!(Skeleton, 0, nohit);
+    lumen_static::leaf_common!(Skeleton, 0, nohit);
 }
 
 /// **No handlers.** Every widget in a tree must answer `Handlers`, and a

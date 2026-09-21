@@ -1,7 +1,7 @@
 //! Plan E0–E3: queue, hit testing, dispatch, focus, and the async seam.
 
 use lumen_static::inbox::Inbox;
-use lumen_static::ops::{Button, Fixed, Label};
+use lumen_static_widgets::ops::{Button, Fixed, Label};
 use lumen_static::repeat::Repeat;
 use lumen_static::{pass, Constraints, Event, EventCtx, InputQueue, Key, NodeState, StaticTree, Widget};
 

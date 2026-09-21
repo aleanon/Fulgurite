@@ -337,7 +337,7 @@ pub trait TextRestore: TextStorage {
 /// binding site instead of an unbounded leak nobody sees:
 ///
 /// ```compile_fail
-/// # use lumen_static::ops::Label;
+/// # use lumen_static_widgets::ops::Label;
 /// # use lumen_static::bind::format_into;
 /// let mut l: Label = Label::new("start");      // default storage
 /// format_into(&mut l, format_args!("{}", 1));  // no TextBuffer impl

@@ -13,7 +13,7 @@
 //! unobservable. `docs/plan-review-fixes.md` F3.2.
 
 use lumen_static::hatch::{Either, List, Side};
-use lumen_static::ops::{Fixed, Spacer};
+use lumen_static_widgets::ops::{Fixed, Spacer};
 use lumen_static::widget::Node;
 use lumen_static::{pass, Constraints, NodeState, StaticTree, Widget};
 

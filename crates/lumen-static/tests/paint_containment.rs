@@ -25,7 +25,7 @@
 //! and every case is nameable in a failure message.
 
 use lumen_static::hatch::{Dyn, Either, List, Side};
-use lumen_static::ops::{Fixed, Label, Spacer};
+use lumen_static_widgets::ops::{Fixed, Label, Spacer};
 use lumen_static::repeat::{noop_bind, Repeat};
 use lumen_static::style::{Length, Patch, Rule, Selector};
 use lumen_static::widget::Node;

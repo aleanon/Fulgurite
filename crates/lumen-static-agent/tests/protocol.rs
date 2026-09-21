@@ -1,7 +1,7 @@
 //! P0/P1 protocol tests: envelope, queries, selector ergonomics, hit
 //! testing, diagnostics — all read-side, against a laid-out tree.
 
-use lumen_static::ops::{Fixed, Label, Spacer};
+use lumen_static_widgets::ops::{Fixed, Label, Spacer};
 use lumen_static::repeat::Repeat;
 use lumen_static::{pass, Constraints, NodeState, StaticTree, Widget};
 use lumen_static_agent::{Agent, TreeMut, TreeRef};

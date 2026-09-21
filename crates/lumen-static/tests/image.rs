@@ -6,9 +6,8 @@
 //! is behind its own feature and its own test.
 
 use lumen_static::display::ImageId;
-use lumen_static::{
-    pass, Cmd, Color, Constraints, DisplayList, Fit, Image, NodeState, StaticTree, Widget,
-};
+use lumen_static::{pass, Cmd, Color, Constraints, DisplayList, NodeState, StaticTree, Widget};
+use lumen_static_widgets::{Fit, Image};
 
 #[derive(StaticTree, Default)]
 #[widget(column, spacing = 0.0)]

@@ -12,9 +12,10 @@
 //! contained an enum: `benches`' `Item`, `Card` and `Toggles` are flat.
 
 use lumen_static::assemble::Assembled;
-use lumen_static::ops::Label;
+use lumen_static_widgets::ops::Label;
 use lumen_static::style::Length;
-use lumen_static::{CheckBox, StaticTree, Widget};
+use lumen_static::{StaticTree, Widget};
+use lumen_static_widgets::{CheckBox};
 
 #[derive(StaticTree, Default)]
 #[widget(column, spacing = 0.0)]

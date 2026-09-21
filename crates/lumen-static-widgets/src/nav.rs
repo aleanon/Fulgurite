@@ -222,7 +222,7 @@ impl<const KIND: u8> Widget for Strip<KIND> {
 }
 
 impl<const KIND: u8> Node for Strip<KIND> {
-    // `kind_name` and `defaults` come from `leaf_common!` below, which
+    // `kind_name` and `defaults` come from `lumen_static::leaf_common!` below, which
     // forwards them to `Widget::KIND` and `Widget::type_defaults` — and
     // here both are a `match KIND`, so one type answers for three kinds
     // at compile time. `Chart` does the same and says so.

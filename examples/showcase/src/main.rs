@@ -38,9 +38,9 @@
 use lumen_static::display::Color;
 use lumen_static::prelude::*;
 use lumen_static::Rule as StyleRule;
-use lumen_static::select::{Row as SelectRow, Select};
+use lumen_static_widgets::select::{Row as SelectRow, Select};
 use lumen_static::style::Palette;
-use lumen_static::Toggle;
+use lumen_static_widgets::Toggle;
 use lumen_static_widgets::prelude::*;
 use lumen_static_winit::{run, Config};
 
@@ -762,7 +762,7 @@ fn stylesheet() -> Vec<StyleRule> {
         // own ids or nothing can reach inside it, not a stylesheet and
         // not the agent. `select::PART_*` are those names.
         StyleRule::new(
-            Selector::Id(lumen_static::select::PART_TRIGGER),
+            Selector::Id(lumen_static_widgets::select::PART_TRIGGER),
             Patch::new()
                 .width(Length::Fixed(300.0))
                 .background_role(Role::Control)
@@ -796,7 +796,7 @@ fn stylesheet() -> Vec<StyleRule> {
         // out 932 px wide. The catalogue fits the panel today; a list
         // that outgrows it needs that asymmetry addressed first.
         StyleRule::new(
-            Selector::Id(lumen_static::select::PART_MENU),
+            Selector::Id(lumen_static_widgets::select::PART_MENU),
             Patch::new()
                 .width(Length::Fixed(300.0))
                 .height(Length::Fixed(PANEL_H))

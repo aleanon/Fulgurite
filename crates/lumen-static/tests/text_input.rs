@@ -7,7 +7,7 @@
 //! nothing to receive them.
 
 use lumen_static::event::{Event, EventCtx, Key};
-use lumen_static::input::TextInput;
+use lumen_static_widgets::input::TextInput;
 use lumen_static::widget::Node;
 use lumen_static::{pass, Cmd, Constraints, DisplayList, NodeState, StaticTree, Widget};
 

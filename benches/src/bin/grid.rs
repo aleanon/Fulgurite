@@ -50,7 +50,7 @@
 use std::hint::black_box;
 use std::time::Instant;
 
-use lumen_static::ops::{Button, Label};
+use lumen_static_widgets::ops::{Button, Label};
 use lumen_static::repeat::Repeat;
 use lumen_static::style::{Length, Patch, Rule, Selector};
 use lumen_static::{App as DeriveApp, EventCtx, StaticTree, Widget};

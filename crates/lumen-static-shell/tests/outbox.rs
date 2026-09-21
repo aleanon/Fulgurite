@@ -13,6 +13,7 @@
 
 use lumen_static::event::App;
 use lumen_static::prelude::*;
+use lumen_static_widgets::prelude::*;
 use lumen_static::spawn::{Descriptor, Immediate, Outbox, Queued};
 use lumen_static::{Event, PointerButton, Rebuild};
 use lumen_static_shell::Host;

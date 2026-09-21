@@ -20,7 +20,7 @@ unsafe impl GlobalAlloc for Counting {
 #[global_allocator]
 static A: Counting = Counting;
 
-use lumen_static::ops::{Fixed, Label};
+use lumen_static_widgets::ops::{Fixed, Label};
 use lumen_static::{pass, Constraints, NodeState, StaticTree, Widget};
 
 #[derive(StaticTree, Default)]

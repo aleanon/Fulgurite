@@ -13,6 +13,7 @@
 // One import line for the whole vocabulary. Before the prelude existed
 // this was three modules plus the root, for a forty-line app.
 use lumen_static::prelude::*;
+use lumen_static_widgets::prelude::*;
 use lumen_static_agent::{Agent, TreeRef};
 use lumen_static_shell::software::Canvas;
 use lumen_static_shell::{Host, CLEAR};

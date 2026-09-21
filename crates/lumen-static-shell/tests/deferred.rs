@@ -22,6 +22,7 @@ use lumen_static::event::App;
 use lumen_static::inbox::SendError;
 use lumen_static::invalidate::Boundaries;
 use lumen_static::prelude::*;
+use lumen_static_widgets::prelude::*;
 use lumen_static::{Everything, Rebuild};
 use lumen_static_shell::Host;
 

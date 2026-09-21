@@ -17,7 +17,7 @@
 //! near enough the start of the table that the overrun stayed in bounds
 //! and quietly hashed the wrong node.
 
-use lumen_static::ops::{Fixed, Label, Spacer};
+use lumen_static_widgets::ops::{Fixed, Label, Spacer};
 use lumen_static::{pass, Constraints, NodeState, StaticTree, Widget};
 use lumen_static_agent::{Agent, FrameTiming, TreeMut, TreeRef};
 use serde_json::json;

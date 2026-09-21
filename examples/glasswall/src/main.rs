@@ -63,7 +63,8 @@
 
 use lumen_static::display::{Color, Material};
 use lumen_static::prelude::*;
-use lumen_static::Glass;
+use lumen_static_widgets::prelude::*;
+use lumen_static_widgets::Glass;
 use lumen_static_winit::{run, Config};
 
 // ---- the device ------------------------------------------------------
@@ -398,7 +399,7 @@ struct Floating {
 #[widget(stack)]
 struct Screen {
     #[widget_id("wall")]
-    wall: lumen_static::Image,
+    wall: lumen_static_widgets::Image,
     apps: Apps,
     #[widget_id("status")]
     status: Glass<Status>,
@@ -570,14 +571,14 @@ const APPS: [(&str, &str); 24] = [
 
 fn build(k: f32) -> Home {
     let mut app = Home::default();
-    app.ui.wall = lumen_static::Image::new(
+    app.ui.wall = lumen_static_widgets::Image::new(
         WALL_ID,
         lumen_static::Size { w: WALL_W as f32, h: WALL_H as f32 },
     );
     // **`Cover`, not `Contain`.** A wallpaper fills the screen and is
     // cropped; letterboxing one would put the page colour down the
     // sides, and the icons over that edge would have nothing to refract.
-    app.ui.wall.fit = lumen_static::image::Fit::Cover;
+    app.ui.wall.fit = lumen_static_widgets::image::Fit::Cover;
     {
         let a = &mut app.ui.apps;
         let rows = [&mut a.r0, &mut a.r1, &mut a.r2, &mut a.r3, &mut a.r4, &mut a.r5];

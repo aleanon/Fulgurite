@@ -108,7 +108,7 @@ fn cluster_capacity_can_never_be_too_small() {
 /// `InlineText`'s own bounds assertion.
 #[test]
 fn a_full_buffer_does_not_strand_the_caret() {
-    use lumen_static::TextInput;
+    use lumen_static_widgets::TextInput;
 
     let mut f: TextInput<InlineText<8>> = TextInput::default();
     for ch in "abcdefgh".chars() {
@@ -133,7 +133,7 @@ fn a_full_buffer_does_not_strand_the_caret() {
 /// never ends up holding half a `char`.
 #[test]
 fn a_multibyte_char_that_does_not_fit_is_refused_whole() {
-    use lumen_static::TextInput;
+    use lumen_static_widgets::TextInput;
 
     let mut f: TextInput<InlineText<8>> = TextInput::default();
     f.insert("abcdefg"); // 7 of 8

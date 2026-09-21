@@ -21,6 +21,7 @@
 //! settled on, not the one it was offered") and left the height.
 
 use lumen_static::prelude::*;
+use lumen_static_widgets::prelude::*;
 use lumen_static::repeat::Repeat;
 use lumen_static::style::{cascade_deep, Length, Patch, Rule, Selector};
 use lumen_static::widget::Node;

@@ -11,7 +11,7 @@
 
 use lumen_static::display::{Cmd, DisplayList};
 use lumen_static::prelude::*;
-use lumen_static::select::{Row, Select};
+use lumen_static_widgets::select::{Row, Select};
 use lumen_static::style::{cascade_deep, Length, Patch, Rule, Selector, Style};
 use lumen_static::widget::{Node, Widget};
 use lumen_static::{pass, Constraints, Event, EventCtx, NodeState};

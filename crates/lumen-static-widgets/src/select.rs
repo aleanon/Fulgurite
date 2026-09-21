@@ -6,13 +6,13 @@
 //!
 //! | prerequisite | landed |
 //! |---|---|
-//! | paint order versus tree order | M15/T15.0 — the overlay phase, [`crate::Painter::defer`] |
+//! | paint order versus tree order | M15/T15.0 — the overlay phase, [`lumen_static::Painter::defer`] |
 //! | dismissal on click-outside | M15/T15.1 — `pass::dispatch_overlaid` |
 //! | a stack/absolute layout mode | M17/T11.6 — `#[widget(stack)]` |
 //!
 //! So what is left is widget code, and most of *that* is already
 //! written: [`crate::popup::Popup`] is the out-of-flow half and
-//! [`crate::repeat::Repeat`] is the rows.
+//! [`lumen_static::repeat::Repeat`] is the rows.
 //!
 //! # The option count is data
 //!
@@ -23,7 +23,7 @@
 //! eighteen `pick0..pick17` handlers and a `[&mut Row; 18]` rebind,
 //! ~160 lines whose only content was the number eighteen. A `Repeat` is
 //! four nodes whatever the count, and one handler serves every row
-//! because [`crate::EventCtx::row`] says which was hit — recomputed by
+//! because [`lumen_static::EventCtx::row`] says which was hit — recomputed by
 //! hit testing each frame, so it cannot go stale the way a captured
 //! index can.
 //!
@@ -47,16 +47,16 @@
 //! Choosing a row is the application's: the row's `on_click` runs on
 //! release with `ctx.row` set, and closing the menu there is one line.
 
-use crate::cx::LayoutCx;
-use crate::desc::{Constraints, NodeDesc, NodeState, Point, Size, NO_PARENT};
-use crate::display::Painter;
-use crate::event::{Event, EventCtx};
-use crate::hit::Hit;
+use lumen_static::cx::LayoutCx;
+use lumen_static::desc::{Constraints, NodeDesc, NodeState, Point, Size, NO_PARENT};
+use lumen_static::display::Painter;
+use lumen_static::event::{Event, EventCtx};
+use lumen_static::hit::Hit;
 use crate::ops::Button;
 use crate::popup::{Anchor, Popup};
-use crate::repeat::Repeat;
-use crate::style::{Seed, Style};
-use crate::widget::{Node, Widget};
+use lumen_static::repeat::Repeat;
+use lumen_static::style::{Seed, Style};
+use lumen_static::widget::{Node, Widget};
 
 /// One row of the menu. A `Button`, so a row gets hover, press and focus
 /// from the core rather than from this file.
@@ -161,9 +161,9 @@ impl<S: 'static> SelectTable<S> {
         assert!(Self::N <= MAX_SELECT_NODES, "Select exceeds MAX_SELECT_NODES");
         let mut t = [NodeDesc::EMPTY; MAX_SELECT_NODES];
         t[0] = NodeDesc::new(1, NO_PARENT, 0, 2, NodeDesc::CONTAINER);
-        crate::widget::splice_child(&mut t, 1, <Row<S> as Widget>::SUB_TABLE, 0);
+        lumen_static::widget::splice_child(&mut t, 1, <Row<S> as Widget>::SUB_TABLE, 0);
         let menu_at = 1 + <Row<S> as Widget>::NODE_COUNT;
-        crate::widget::splice_child(&mut t, menu_at, <SelectMenu<S> as Widget>::SUB_TABLE, 0);
+        lumen_static::widget::splice_child(&mut t, menu_at, <SelectMenu<S> as Widget>::SUB_TABLE, 0);
         t[1].next_sibling = menu_at as u32;
         // **The parts are addressable.** A `Select` is three `Button`s
         // and a panel, so `Kind("button")` cannot tell the trigger from
@@ -184,9 +184,9 @@ impl<S: 'static> SelectTable<S> {
 
     const SEED_ARRAY: [Seed; MAX_SELECT_NODES] = {
         let mut s = [Seed::WIDGET; MAX_SELECT_NODES];
-        s[0] = Seed::new(<Select<S> as Widget>::KIND, <Select<S> as Widget>::type_defaults, crate::style::Fields::of(&[crate::style::Fields::VISIBLE]));
-        crate::widget::splice_seeds(&mut s, 1, <Row<S> as Widget>::SEEDS);
-        crate::widget::splice_seeds(
+        s[0] = Seed::new(<Select<S> as Widget>::KIND, <Select<S> as Widget>::type_defaults, lumen_static::style::Fields::of(&[lumen_static::style::Fields::VISIBLE]));
+        lumen_static::widget::splice_seeds(&mut s, 1, <Row<S> as Widget>::SEEDS);
+        lumen_static::widget::splice_seeds(
             &mut s,
             1 + <Row<S> as Widget>::NODE_COUNT,
             <SelectMenu<S> as Widget>::SEEDS,
@@ -248,14 +248,14 @@ impl<S: 'static> Node for Select<S> {
     ) -> Size {
         let me = style[i];
         if !me.visible {
-            return crate::ops::hide_subtree(st, i, limits, <Self as Widget>::NODE_COUNT);
+            return lumen_static::ops::hide_subtree(st, i, limits, <Self as Widget>::NODE_COUNT);
         }
         // The trigger is the whole of what is in flow.
         let size = self.trigger.layout(cx, limits, style, st, i + Self::TRIGGER);
         // The menu measures itself loosely and reports zero, so it
         // cannot widen or lengthen this control.
         self.menu.layout(cx, limits, style, st, i + Self::MENU);
-        crate::ops::record_painted(st, i, limits, size, &me)
+        lumen_static::ops::record_painted(st, i, limits, size, &me)
     }
 
     fn place(&mut self, at: Point, style: &[Style], st: &mut [NodeState], i: usize) {
@@ -318,7 +318,7 @@ impl<S: 'static> Node for Select<S> {
     }
 
     #[cfg(feature = "alloc")]
-    fn arena_mut(&mut self, a: usize) -> Option<crate::arena::ArenaMut<'_>> {
+    fn arena_mut(&mut self, a: usize) -> Option<lumen_static::arena::ArenaMut<'_>> {
         self.menu.arena_mut(a)
     }
 
@@ -343,14 +343,14 @@ impl<S: 'static> Node for Select<S> {
     }
 }
 
-impl<S: 'static> crate::event::Handlers<S> for Select<S> {
-    fn handler(&self, sel: crate::event::NodeSel) -> Option<fn(&mut S, &EventCtx)> {
+impl<S: 'static> lumen_static::event::Handlers<S> for Select<S> {
+    fn handler(&self, sel: lumen_static::event::NodeSel) -> Option<fn(&mut S, &EventCtx)> {
         if sel.i == 0 {
             return None;
         }
         if sel.i < Self::MENU {
-            return self.trigger.handler(crate::event::NodeSel { i: sel.i - Self::TRIGGER, ..sel });
+            return self.trigger.handler(lumen_static::event::NodeSel { i: sel.i - Self::TRIGGER, ..sel });
         }
-        self.menu.handler(crate::event::NodeSel { i: sel.i - Self::MENU, ..sel })
+        self.menu.handler(lumen_static::event::NodeSel { i: sel.i - Self::MENU, ..sel })
     }
 }

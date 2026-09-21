@@ -5,7 +5,9 @@
 //! platform and neither the core nor this crate has one.
 
 use lumen_static::prelude::*;
-use lumen_static::{Mods, TextInput};
+use lumen_static_widgets::prelude::*;
+use lumen_static::{Mods};
+use lumen_static_widgets::{TextInput};
 use lumen_static_shell::Host;
 
 #[derive(StaticTree, Default)]

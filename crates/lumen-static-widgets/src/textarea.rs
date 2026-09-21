@@ -4,12 +4,12 @@
 //!
 //! `docs/text-and-scrolling-decisions.md` B7 decided "no multi-line in
 //! the first cut" and said the mechanism would be **one widget type
-//! with a `wrap` field reserved**. M9 shipped [`crate::TextInput`] with no such
+//! with a `wrap` field reserved**. M9 shipped [`lumen_static::TextInput`] with no such
 //! field — an unused field is a claim the code has not earned — and this
 //! is the other half of that: multi-line is a **separate widget**.
 //!
 //! The reason is not taste. Look at what actually differs:
-//! [`crate::TextInput`] shapes against an *unbounded* width because it must not
+//! [`lumen_static::TextInput`] shapes against an *unbounded* width because it must not
 //! wrap, scrolls **horizontally** to keep the caret visible, and moves
 //! the caret by byte boundaries. This shapes against the box, scrolls
 //! **vertically**, and moves the caret up and down *geometrically* —
@@ -38,19 +38,19 @@
 #[cfg(feature = "observe")]
 use alloc::vec::Vec;
 
-use crate::cx::{Cluster, LayoutCx};
-use crate::desc::{NodeDesc, NodeState, NO_PARENT};
-use crate::display::Painter;
-use crate::event::{Event, EventCtx, Key};
-use crate::hit::Hit;
-use crate::ops::{rect_of, resolve_self};
-use crate::style::{Seed, Style};
-use crate::text::{ClusterBuf, TextBuffer};
-use crate::widget::{Node, Widget};
-use crate::{Constraints, Point, Size};
+use lumen_static::cx::{Cluster, LayoutCx};
+use lumen_static::desc::{NodeDesc, NodeState, NO_PARENT};
+use lumen_static::display::Painter;
+use lumen_static::event::{Event, EventCtx, Key};
+use lumen_static::hit::Hit;
+use lumen_static::ops::{rect_of, resolve_self};
+use lumen_static::style::{Seed, Style};
+use lumen_static::text::{ClusterBuf, TextBuffer};
+use lumen_static::widget::{Node, Widget};
+use lumen_static::{Constraints, Point, Size};
 
 /// A wrapping, editable, multi-line text box.
-pub struct TextArea<S: TextBuffer = crate::text::DefaultTextStorage> {
+pub struct TextArea<S: TextBuffer = lumen_static::text::DefaultTextStorage> {
     text: S,
     caret: usize,
     /// The provisional text an input method is composing, as a byte
@@ -75,10 +75,10 @@ pub struct TextArea<S: TextBuffer = crate::text::DefaultTextStorage> {
     line_h: f32,
     pad: (f32, f32),
     /// The caret's colour; the text colour when `None` — M25/T25.10.
-    pub caret_color: Option<crate::display::Color>,
+    pub caret_color: Option<lumen_static::display::Color>,
     /// The selection highlight's colour; `input::selection_tint` of the
     /// text colour when `None` — M25/T25.10.
-    pub selection_color: Option<crate::display::Color>,
+    pub selection_color: Option<lumen_static::display::Color>,
 }
 
 impl<S: TextBuffer> Default for TextArea<S> {
@@ -196,7 +196,7 @@ impl<S: TextBuffer> TextArea<S> {
     /// place: the range is recorded from what the buffer actually took,
     /// not from what was offered, so a refused preedit leaves no range
     /// pointing past the end.
-    pub fn compose(&mut self, c: crate::event::Composition<'_>) -> bool {
+    pub fn compose(&mut self, c: lumen_static::event::Composition<'_>) -> bool {
         // Whatever was provisional goes first, in every arm: a preedit
         // replaces it, a commit supersedes it, a cancel drops it.
         let had = self.preedit.take();
@@ -205,13 +205,13 @@ impl<S: TextBuffer> TextArea<S> {
             self.caret = r.start;
         }
         let text = match c {
-            crate::event::Composition::Cancel => {
+            lumen_static::event::Composition::Cancel => {
                 if had.is_some() {
                     self.shaped_key = None;
                 }
                 return had.is_some();
             }
-            crate::event::Composition::Preedit(t) | crate::event::Composition::Commit(t) => t,
+            lumen_static::event::Composition::Preedit(t) | lumen_static::event::Composition::Commit(t) => t,
         };
         if text.is_empty() {
             if had.is_some() {
@@ -225,7 +225,7 @@ impl<S: TextBuffer> TextArea<S> {
             // points past the end.
             return had.is_some();
         }
-        if matches!(c, crate::event::Composition::Preedit(_)) {
+        if matches!(c, lumen_static::event::Composition::Preedit(_)) {
             // Only what the buffer took: `insert` moved the caret by
             // exactly that much.
             self.preedit = Some(at..self.caret);
@@ -379,7 +379,7 @@ impl<S: TextBuffer> TextArea<S> {
     fn moving(&mut self, cx: &EventCtx, f: impl FnOnce(&mut Self) -> bool) -> bool {
         let from = self.caret;
         let moved = f(self);
-        self.moved(cx.mods.has(crate::event::Mods::SHIFT), from);
+        self.moved(cx.mods.has(lumen_static::event::Mods::SHIFT), from);
         moved
     }
 
@@ -410,30 +410,30 @@ impl<S: TextBuffer> Widget for TextArea<S> {
 
     fn type_defaults() -> Style {
         Style {
-            padding: crate::style::Edges { left: 8.0, right: 8.0, top: 6.0, bottom: 6.0 },
-            height: crate::style::Length::Fixed(96.0),
+            padding: lumen_static::style::Edges { left: 8.0, right: 8.0, top: 6.0, bottom: 6.0 },
+            height: lumen_static::style::Length::Fixed(96.0),
             // An I-beam over editable text (T14.6).
-            cursor: crate::style::Cursor::Text,
+            cursor: lumen_static::style::Cursor::Text,
             ..Style::default()
         }
     }
 
     const SEEDS: &'static [Seed] =
-        &[Seed::new(Self::KIND, Self::type_defaults, crate::style::Fields::of(&[
-            crate::style::Fields::WIDTH,
-            crate::style::Fields::HEIGHT,
-            crate::style::Fields::PADDING,
-            crate::style::Fields::CURSOR,
-            crate::style::Fields::FOCUS_RING,
-            crate::style::Fields::VISIBLE,
-            crate::style::Fields::COLOR,
-            crate::style::Fields::BACKGROUND,
-            crate::style::Fields::BORDER,
-            crate::style::Fields::RADIUS,
-            crate::style::Fields::FONT_SIZE,
-            crate::style::Fields::FONT_WEIGHT,
-            crate::style::Fields::PRESSED_DIM,
-            crate::style::Fields::HOVER_DIM,
+        &[Seed::new(Self::KIND, Self::type_defaults, lumen_static::style::Fields::of(&[
+            lumen_static::style::Fields::WIDTH,
+            lumen_static::style::Fields::HEIGHT,
+            lumen_static::style::Fields::PADDING,
+            lumen_static::style::Fields::CURSOR,
+            lumen_static::style::Fields::FOCUS_RING,
+            lumen_static::style::Fields::VISIBLE,
+            lumen_static::style::Fields::COLOR,
+            lumen_static::style::Fields::BACKGROUND,
+            lumen_static::style::Fields::BORDER,
+            lumen_static::style::Fields::RADIUS,
+            lumen_static::style::Fields::FONT_SIZE,
+            lumen_static::style::Fields::FONT_WEIGHT,
+            lumen_static::style::Fields::PRESSED_DIM,
+            lumen_static::style::Fields::HOVER_DIM,
         ]))];
 }
 
@@ -456,7 +456,7 @@ impl<S: TextBuffer> Node for TextArea<S> {
     ) -> Size {
         let me = style[i];
         if !me.visible {
-            return crate::ops::hide_subtree(st, i, limits, 1);
+            return lumen_static::ops::hide_subtree(st, i, limits, 1);
         }
         let px = me.font_size;
         let inner_w = (limits.max_w - me.padding.horizontal()).max(0.0);
@@ -492,10 +492,10 @@ impl<S: TextBuffer> Node for TextArea<S> {
         if cy < self.scroll {
             self.scroll = cy;
         }
-        self.scroll = crate::num::clamp(self.scroll, 0.0, (content.h - inner_h).max(0.0));
+        self.scroll = lumen_static::num::clamp(self.scroll, 0.0, (content.h - inner_h).max(0.0));
         self.pad = (me.padding.left, me.padding.top);
 
-        crate::ops::record_painted(st, i, limits, size, &me)
+        lumen_static::ops::record_painted(st, i, limits, size, &me)
     }
 
     fn place(&mut self, at: Point, _style: &[Style], st: &mut [NodeState], i: usize) {
@@ -503,11 +503,11 @@ impl<S: TextBuffer> Node for TextArea<S> {
     }
 
     fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
-        crate::ops::focus_ring(st, i, out);
+        lumen_static::ops::focus_ring(st, i, out);
         let s = &st[i];
         let r = rect_of(s);
         out.rounded_rect(r, s.bg, s.radius);
-        crate::ops::border(st, i, out);
+        lumen_static::ops::border(st, i, out);
         let (pl, pt, pr, pb) = s.pad;
         let inner = [r[0] + pl, r[1] + pt, r[2] - pr, r[3] - pb];
         // The run may be taller than the box; the clip is what keeps it
@@ -548,7 +548,7 @@ impl<S: TextBuffer> Node for TextArea<S> {
     }
 
     fn hit(&self, st: &[NodeState], i: usize, x: f32, y: f32) -> Option<Hit> {
-        crate::hit::contains(&st[i], x, y).then(|| Hit {
+        lumen_static::hit::contains(&st[i], x, y).then(|| Hit {
             node: i as u32,
             inner: None,
             local: Point { x: x - st[i].pos.x, y: y - st[i].pos.y },
@@ -575,8 +575,8 @@ impl<S: TextBuffer> Node for TextArea<S> {
             Event::Key { key: Key::Up, down: true } => self.moving(cx, |s| s.move_line(-1)),
             Event::Key { key: Key::Down, down: true } => self.moving(cx, |s| s.move_line(1)),
             Event::Key { key: Key::Char('a'), down: true }
-                if cx.mods.has(crate::event::Mods::CTRL)
-                    || cx.mods.has(crate::event::Mods::META) =>
+                if cx.mods.has(lumen_static::event::Mods::CTRL)
+                    || cx.mods.has(lumen_static::event::Mods::META) =>
             {
                 self.select_all()
             }
@@ -585,7 +585,7 @@ impl<S: TextBuffer> Node for TextArea<S> {
                 let at = self.at_pointer(cx);
                 let from = self.caret;
                 self.caret = at;
-                if cx.mods.has(crate::event::Mods::SHIFT) {
+                if cx.mods.has(lumen_static::event::Mods::SHIFT) {
                     self.anchor.get_or_insert(from);
                 } else {
                     self.anchor = Some(at);
@@ -611,7 +611,7 @@ impl<S: TextBuffer> Node for TextArea<S> {
         self.selected_str()
     }
 
-    fn compose(&mut self, c: crate::event::Composition<'_>) -> bool {
+    fn compose(&mut self, c: lumen_static::event::Composition<'_>) -> bool {
         TextArea::compose(self, c)
     }
 
@@ -629,16 +629,16 @@ impl<S: TextBuffer> Node for TextArea<S> {
         _st: &[NodeState],
         _i: usize,
         _id: u64,
-        node: &mut crate::observe::accesskit::Node,
-        _extra: &mut Vec<(crate::observe::accesskit::NodeId, crate::observe::accesskit::Node)>,
+        node: &mut lumen_static::observe::accesskit::Node,
+        _extra: &mut Vec<(lumen_static::observe::accesskit::NodeId, lumen_static::observe::accesskit::Node)>,
     ) {
-        node.set_role(crate::observe::accesskit::Role::MultilineTextInput);
+        node.set_role(lumen_static::observe::accesskit::Role::MultilineTextInput);
         node.set_value(self.text.as_ref());
     }
 }
 
-impl<S: TextBuffer, A> crate::event::Handlers<A> for TextArea<S> {
-    fn handler(&self, _sel: crate::event::NodeSel) -> Option<fn(&mut A, &EventCtx)> {
+impl<S: TextBuffer, A> lumen_static::event::Handlers<A> for TextArea<S> {
+    fn handler(&self, _sel: lumen_static::event::NodeSel) -> Option<fn(&mut A, &EventCtx)> {
         None
     }
 }

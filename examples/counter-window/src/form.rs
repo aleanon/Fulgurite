@@ -3,6 +3,7 @@
 //! Moved out of `main.rs` by M14/T14.0.
 
 use lumen_static::prelude::*;
+use lumen_static_widgets::prelude::*;
 use lumen_static_shell::software::Canvas;
 use lumen_static_shell::text::{FontMetrics, FontStack};
 use lumen_static_shell::Host;
@@ -19,7 +20,7 @@ use crate::app::{ACCENT, INK, PAGE, SURFACE};
 #[widget(row, spacing = 8.0)]
 struct CheckRow {
     #[widget_id("check")]
-    check: lumen_static::toggle::CheckBox<Form>,
+    check: lumen_static_widgets::toggle::CheckBox<Form>,
     #[widget_id("check_label")]
     label: Label,
 }
@@ -28,7 +29,7 @@ struct CheckRow {
 #[widget(row, spacing = 8.0)]
 struct SwitchRow {
     #[widget_id("switch")]
-    switch: lumen_static::toggle::Switch<Form>,
+    switch: lumen_static_widgets::toggle::Switch<Form>,
     #[widget_id("switch_label")]
     label: Label,
 }
@@ -40,7 +41,7 @@ struct SliderRow {
     #[widget_id("vol_label")]
     label: Label,
     #[widget_id("vol")]
-    vol: lumen_static::slider::Slider,
+    vol: lumen_static_widgets::slider::Slider,
 }
 
 /// The second tab's content — deliberately different, so switching is
@@ -64,9 +65,9 @@ struct AboutTab {
 #[widget(row, spacing = 6.0)]
 struct TabStrip {
     #[widget_id("tab_settings")]
-    settings: lumen_static::ops::Button<Form, String>,
+    settings: lumen_static_widgets::ops::Button<Form, String>,
     #[widget_id("tab_about")]
-    about: lumen_static::ops::Button<Form, String>,
+    about: lumen_static_widgets::ops::Button<Form, String>,
 }
 
 /// The growing settings panel — M11's gate behind every task gate.
@@ -82,7 +83,7 @@ struct TabStrip {
 struct FormBody {
     tabs: TabStrip,
     #[widget_id("name")]
-    name: lumen_static::input::TextInput,
+    name: lumen_static_widgets::input::TextInput,
     check_row: CheckRow,
     switch_row: SwitchRow,
     slider_row: SliderRow,
@@ -102,7 +103,7 @@ struct FormBody {
 #[widget(column, spacing = 0.0)]
 struct FormUi {
     #[widget_id("scroll")]
-    scroll: lumen_static::scroll::ScrollView<FormBody>,
+    scroll: lumen_static_widgets::scroll::ScrollView<FormBody>,
 }
 
 #[derive(lumen_static::App, Default)]
@@ -118,7 +119,7 @@ struct Form {
     dark: bool,
 }
 
-fn set_on<S: 'static, const K: u8>(t: &mut lumen_static::toggle::Toggle<S, K>, v: &bool) {
+fn set_on<S: 'static, const K: u8>(t: &mut lumen_static_widgets::toggle::Toggle<S, K>, v: &bool) {
     t.on = *v;
 }
 

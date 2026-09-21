@@ -4,6 +4,7 @@
 //! `spacing` refusal beside it exists to prevent — someone spends an
 //! afternoon on a layout that was never going to change.
 use lumen_static::prelude::*;
+use lumen_static_widgets::prelude::*;
 
 #[derive(StaticTree, Default)]
 #[widget(row, columns = 3)]

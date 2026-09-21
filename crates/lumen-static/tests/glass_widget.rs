@@ -5,10 +5,9 @@
 //! command is emitted *after* everything it blurs.
 
 use lumen_static::display::Color;
-use lumen_static::ops::{Fixed, Label};
-use lumen_static::{
-    pass, Cmd, Constraints, DisplayList, Glass, Length, NodeState, ScrollView, StaticTree, Widget,
-};
+use lumen_static_widgets::ops::{Fixed, Label};
+use lumen_static::{pass, Cmd, Constraints, DisplayList, Length, NodeState, StaticTree, Widget};
+use lumen_static_widgets::{Glass, ScrollView};
 
 #[derive(StaticTree, Default)]
 #[widget(column, spacing = 0.0)]

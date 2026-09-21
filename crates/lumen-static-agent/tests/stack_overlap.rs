@@ -18,7 +18,7 @@
 //! — so the only way to hand the detector its input is to hand it the
 //! input. The lint reads `NodeState`; this gives it overlapping ones.
 
-use lumen_static::ops::Fixed;
+use lumen_static_widgets::ops::Fixed;
 use lumen_static::{pass, Constraints, NodeState, StaticTree, Widget};
 use lumen_static_agent::{Agent, TreeMut, TreeRef};
 use serde_json::{json, Value};

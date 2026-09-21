@@ -1,6 +1,6 @@
 //! A panel that blurs what is behind it — M19/T19.1.
 //!
-//! `Glass<W>` is one node with one child. It emits [`Cmd::Glass`](crate::display::Cmd::Glass) over
+//! `Glass<W>` is one node with one child. It emits [`Cmd::Glass`](lumen_static::display::Cmd::Glass) over
 //! its own rect and then paints its content on top, so a toolbar's
 //! buttons sit *on* the frosted panel rather than under it.
 //!
@@ -34,13 +34,13 @@
 //! [`Material::tint`]; `tests/glass_widget.rs` pins that the background is
 //! ignored rather than silently composited.
 
-use crate::desc::{Constraints, NodeDesc, NodeState, Point, Size, NO_PARENT};
-use crate::display::{Material, Painter};
-use crate::hit::Hit;
-use crate::ops::{inner_limits, rect_of, resolve_self};
-use crate::style::{Length, Seed, Style};
-use crate::widget::{Node, Widget};
-use crate::LayoutCx;
+use lumen_static::desc::{Constraints, NodeDesc, NodeState, Point, Size, NO_PARENT};
+use lumen_static::display::{Material, Painter};
+use lumen_static::hit::Hit;
+use lumen_static::ops::{inner_limits, rect_of, resolve_self};
+use lumen_static::style::{Length, Seed, Style};
+use lumen_static::widget::{Node, Widget};
+use lumen_static::LayoutCx;
 
 /// Content on a panel made of glass.
 ///
@@ -58,7 +58,7 @@ pub struct Glass<W: Widget> {
     /// Private: it is retargeted from the node array in `layout` and
     /// advanced by [`Glass::tick`], and a caller setting it directly
     /// would be overwritten on the next layout.
-    press: crate::anim::Animated<f32>,
+    press: lumen_static::anim::Animated<f32>,
 }
 
 impl<W: Widget + Default> Default for Glass<W> {
@@ -84,7 +84,7 @@ impl<W: Widget> Glass<W> {
 
     /// A panel with an explicit material.
     pub fn with(content: W, material: Material) -> Self {
-        let mut press = crate::anim::Animated::new(0.0);
+        let mut press = lumen_static::anim::Animated::new(0.0);
         // Faster than the 200 ms default: a press is a response to a
         // finger, and anything slower reads as lag rather than as
         // material.
@@ -126,12 +126,12 @@ impl<W: Widget> Glass<W> {
     /// Advance the press animation by `dt` milliseconds; returns whether
     /// it moved — M22/T22.4.
     ///
-    /// **The application calls this from [`crate::App::tick`].** There is
+    /// **The application calls this from [`lumen_static::App::tick`].** There is
     /// no framework-walked `Node::tick`, and that is a recorded decision
     /// rather than an omission: it would cost a virtual call per node
     /// per frame on trees that animate nothing — 3 000 of them on the
     /// benchmark's list — which the M15 gating policy forbids. See
-    /// [`crate::App::tick`].
+    /// [`lumen_static::App::tick`].
     ///
     /// It advances **this** panel only. A `Glass` nested inside another
     /// panel's content is a separate animation and needs its own call;
@@ -147,7 +147,7 @@ impl<W: Widget> Widget for Glass<W> {
     const DEPTH: usize = 1 + W::DEPTH;
     /// A panel is exactly as rigid as what is on it.
     ///
-    /// Not `true` like [`crate::ScrollView`]'s, whose size comes from
+    /// Not `true` like [`lumen_static::ScrollView`]'s, whose size comes from
     /// its parent whatever its content does. A glass panel's default
     /// height is `Shrink`, so a taller toolbar makes a taller panel —
     /// which is the relayout boundary's question, and answering `true`
@@ -176,7 +176,7 @@ impl<W: Widget> GlassTable<W> {
         assert!(W::NODE_COUNT < MAX_GLASS_NODES, "Glass content exceeds MAX_GLASS_NODES");
         let mut t = [NodeDesc::EMPTY; MAX_GLASS_NODES];
         t[0] = NodeDesc::new(1, NO_PARENT, 0, 1, NodeDesc::CONTAINER);
-        crate::widget::splice_child(&mut t, 1, W::SUB_TABLE, 0);
+        lumen_static::widget::splice_child(&mut t, 1, W::SUB_TABLE, 0);
         t
     };
     pub const SLICE: &'static [NodeDesc] = Self::ARRAY.split_at(1 + W::NODE_COUNT).0;
@@ -184,16 +184,16 @@ impl<W: Widget> GlassTable<W> {
     /// The seed counterpart of [`Self::ARRAY`], spliced the same way.
     const SEED_ARRAY: [Seed; MAX_GLASS_NODES] = {
         let mut s = [Seed::WIDGET; MAX_GLASS_NODES];
-        s[0] = Seed::new(<Glass<W> as Widget>::KIND, <Glass<W> as Widget>::type_defaults, crate::style::Fields::of(&[
-                crate::style::Fields::WIDTH,
-                crate::style::Fields::HEIGHT,
-                crate::style::Fields::PADDING,
-                crate::style::Fields::CURSOR,
-                crate::style::Fields::VISIBLE,
-                crate::style::Fields::RADIUS,
-                crate::style::Fields::SHADOW,
+        s[0] = Seed::new(<Glass<W> as Widget>::KIND, <Glass<W> as Widget>::type_defaults, lumen_static::style::Fields::of(&[
+                lumen_static::style::Fields::WIDTH,
+                lumen_static::style::Fields::HEIGHT,
+                lumen_static::style::Fields::PADDING,
+                lumen_static::style::Fields::CURSOR,
+                lumen_static::style::Fields::VISIBLE,
+                lumen_static::style::Fields::RADIUS,
+                lumen_static::style::Fields::SHADOW,
             ]),);
-        crate::widget::splice_seeds(&mut s, 1, W::SEEDS);
+        lumen_static::widget::splice_seeds(&mut s, 1, W::SEEDS);
         s
     };
     pub const SEED_SLICE: &'static [Seed] = Self::SEED_ARRAY.split_at(1 + W::NODE_COUNT).0;
@@ -221,7 +221,7 @@ impl<W: Widget> Node for Glass<W> {
     ) -> Size {
         let me = style[i];
         if !me.visible {
-            return crate::ops::hide_subtree(st, i, limits, Self::NODE_COUNT);
+            return lumen_static::ops::hide_subtree(st, i, limits, Self::NODE_COUNT);
         }
         // **Retarget here — M22/T22.4.** `layout` is the one method
         // holding both `&mut self` and the state array, and `dispatch`
@@ -239,7 +239,7 @@ impl<W: Widget> Node for Glass<W> {
         let content = self.content.layout(cx, inner, style, st, i + Self::AT);
         let padded =
             Size { w: content.w + me.padding.horizontal(), h: content.h + me.padding.vertical() };
-        crate::ops::record_painted(st, i, limits, resolve_self(limits, &me, padded), &me)
+        lumen_static::ops::record_painted(st, i, limits, resolve_self(limits, &me, padded), &me)
     }
 
     fn place(&mut self, at: Point, style: &[Style], st: &mut [NodeState], i: usize) {
@@ -269,12 +269,12 @@ impl<W: Widget> Node for Glass<W> {
         // outside it would be stale, holed and short of backdrop. The
         // renderer derives the blobs back out of the union.
         let m = self.material_now();
-        out.glass(crate::display::glass_union(r, &m), st[i].radius, m);
+        out.glass(lumen_static::display::glass_union(r, &m), st[i].radius, m);
         self.content.paint(st, i + Self::AT, out);
     }
 
     fn hit(&self, st: &[NodeState], i: usize, x: f32, y: f32) -> Option<Hit> {
-        if !crate::hit::contains(&st[i], x, y) {
+        if !lumen_static::hit::contains(&st[i], x, y) {
             return None;
         }
         // Content first: a button on the panel is above the panel.
@@ -304,14 +304,14 @@ impl<W: Widget> Node for Glass<W> {
 
 /// Handlers pass straight through to the content: a panel is a surface,
 /// not a control, and node 0 has nothing to answer.
-impl<W, S> crate::event::Handlers<S> for Glass<W>
+impl<W, S> lumen_static::event::Handlers<S> for Glass<W>
 where
-    W: Widget + crate::event::Handlers<S>,
+    W: Widget + lumen_static::event::Handlers<S>,
 {
-    fn handler(&self, sel: crate::event::NodeSel) -> Option<fn(&mut S, &crate::event::EventCtx)> {
+    fn handler(&self, sel: lumen_static::event::NodeSel) -> Option<fn(&mut S, &lumen_static::event::EventCtx)> {
         if sel.i == 0 {
             return None;
         }
-        self.content.handler(crate::event::NodeSel { i: sel.i - Self::AT, inner: sel.inner })
+        self.content.handler(lumen_static::event::NodeSel { i: sel.i - Self::AT, inner: sel.inner })
     }
 }

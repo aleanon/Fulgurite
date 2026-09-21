@@ -23,13 +23,13 @@ const CLEAR_OF_BUTTON: usize = 100;
 #[derive(lumen_static::StaticTree, Default)]
 #[widget(column, spacing = 0.0)]
 struct Inner {
-    button: lumen_static::prelude::Button<A>,
+    button: lumen_static_widgets::prelude::Button<A>,
 }
 
 #[derive(lumen_static::StaticTree, Default)]
 #[widget(column, spacing = 0.0)]
 struct Ui {
-    panel: lumen_static::Glass<Inner>,
+    panel: lumen_static_widgets::Glass<Inner>,
 }
 
 /// The application advances what it animates — there is no

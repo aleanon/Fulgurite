@@ -2,7 +2,7 @@
 //! winit front end wraps — it adds window events and a blit, nothing
 //! else — so the loop's behaviour is pinned without a display.
 
-use lumen_static::ops::{Button, Label, Spacer};
+use lumen_static_widgets::ops::{Button, Label, Spacer};
 use lumen_static::style::{Length, Patch, Rule, Selector};
 use lumen_static::{Event, EventCtx, StaticTree, Widget};
 use lumen_static_shell::software::Canvas;

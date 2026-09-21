@@ -12,7 +12,7 @@
 //! sheet rules styled both copies, which looks right — until the first
 //! run of `just widget-drive` could not address either checkbox.
 
-use lumen_static::ops::Label;
+use lumen_static_widgets::ops::Label;
 use lumen_static::{pass, Constraints, NodeState, StaticTree, Widget};
 use lumen_static_agent::{Agent, TreeMut, TreeRef};
 use serde_json::{json, Value};

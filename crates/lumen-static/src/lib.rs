@@ -6,6 +6,7 @@
 //!
 //! ```
 //! use lumen_static::prelude::*;
+//! use lumen_static_widgets::prelude::*;
 //!
 //! #[derive(StaticTree, Default)]
 //! #[widget(column, spacing = 4.0)]
@@ -113,38 +114,26 @@ pub mod gesture;
 pub mod hatch;
 pub mod hit;
 pub mod i18n;
-pub mod image;
 pub mod inline;
 pub mod invalidate;
 // `mpsc`, so `std` (M13/T13.1). Deferred work handed back to the frame
 // loop from another thread is not an embedded concern.
 #[cfg(feature = "std")]
 pub mod inbox;
+pub mod ops;
 pub mod num;
 // Threads and the inbox both, so `std` for the same reason (M13/T13.1).
 #[cfg(feature = "std")]
 pub mod spawn;
 #[cfg(feature = "observe")]
 pub mod observe;
-pub mod ops;
 pub mod overlay;
-pub mod glass;
-pub mod popup;
 pub mod pass;
 #[cfg(feature = "reload")]
 pub mod reload;
-pub mod input;
 pub mod retain;
-pub mod scroll;
-pub mod slider;
-pub mod textarea;
-pub mod toggle;
 #[cfg(feature = "alloc")]
 pub mod repeat;
-/// Behind `alloc`: its rows are a [`repeat::Repeat`], which is one of the
-/// escape hatches T13.4 gates.
-#[cfg(feature = "alloc")]
-pub mod select;
 pub mod style;
 pub mod text;
 pub mod widget;
@@ -159,12 +148,6 @@ pub use hatch::{Either, Side};
 pub use invalidate::{Boundaries, Everything, Invalidation};
 #[cfg(feature = "alloc")]
 pub use hatch::{Dyn, List, NodeFor};
-pub use input::TextInput;
-pub use glass::Glass;
-pub use scroll::ScrollView;
-pub use slider::Slider;
-pub use textarea::TextArea;
-pub use toggle::{CheckBox, Radio, Switch, Toggle};
 pub use hit::{Hit, Inner};
 pub use cx::{BlockMetrics, Cluster, GlyphSink, LayoutCx, NoSink, TextMeasure};
 // T13.8 removed the `&DisplayList` from `Retention`, so retention is
@@ -193,8 +176,6 @@ pub use overlay::{NoOverlays, OverlaySink, Overlays};
 pub use anim::{Animated, Easing, Lerp};
 pub use drag::{Drag, DragPhase};
 pub use i18n::{Catalogue, Direction};
-pub use image::{Fit, Image};
-pub use popup::{Anchor, Popup};
 pub use widget::{Node, Widget};
 
 /// Everything an application needs to build a tree.
@@ -214,12 +195,6 @@ pub mod prelude {
     pub use crate::hatch::{Either, Side};
     #[cfg(feature = "alloc")]
     pub use crate::hatch::{Dyn, List};
-    pub use crate::input::TextInput;
-    pub use crate::scroll::ScrollView;
-    pub use crate::slider::Slider;
-    pub use crate::textarea::TextArea;
-    pub use crate::toggle::{CheckBox, Radio, Switch};
-    pub use crate::ops::{Button, Fixed, Label, Spacer};
     #[cfg(feature = "alloc")]
     pub use crate::repeat::Repeat;
     pub use crate::style::{Align, Edges, Length, Patch, Rule, Selector, Style};

@@ -16,7 +16,7 @@
 //!   fire for anything inside one.
 
 use lumen_static::hatch::Dyn;
-use lumen_static::ops::Label;
+use lumen_static_widgets::ops::Label;
 use lumen_static::style::{lint_sheet_deep, Fields, SheetFinding, SheetIssue};
 use lumen_static::{Color, Length, Patch, Rule, Selector, StaticTree};
 

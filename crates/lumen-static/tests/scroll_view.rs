@@ -2,9 +2,9 @@
 //! clamp, A7's forbidden nesting.
 
 use lumen_static::hatch::Either;
-use lumen_static::ops::{Fixed, Label, Spacer};
+use lumen_static_widgets::ops::{Fixed, Label, Spacer};
 use lumen_static::repeat::{noop_bind, Repeat};
-use lumen_static::scroll::ScrollView;
+use lumen_static_widgets::scroll::ScrollView;
 use lumen_static::style::{Length, Patch, Rule, Selector};
 use lumen_static::widget::Node;
 use lumen_static::{pass, Cmd, Constraints, DisplayList, NodeState, StaticTree, Widget};

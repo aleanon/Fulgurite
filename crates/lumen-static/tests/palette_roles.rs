@@ -8,7 +8,7 @@
 //! wins.
 
 use lumen_static::display::Color;
-use lumen_static::ops::{Fixed, Label};
+use lumen_static_widgets::ops::{Fixed, Label};
 use lumen_static::repeat::Repeat;
 use lumen_static::style::{
     cascade_deep, cascade_deep_with, Fields, Palette, Patch, Role, Rule, Selector, Style,

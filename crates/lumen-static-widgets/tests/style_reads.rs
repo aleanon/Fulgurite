@@ -26,15 +26,12 @@
 //! measured set lacks it is a probe that never reached its node.
 
 use lumen_static::display::DisplayList;
-use lumen_static::ops::{Button, Fixed, Label, Spacer};
+use lumen_static_widgets::ops::{Button, Fixed, Label, Spacer};
 use lumen_static::repeat::Repeat;
-use lumen_static::select::Select;
+use lumen_static_widgets::select::Select;
 use lumen_static::style::{Cursor, Fields, Seed};
-use lumen_static::{
-    pass, Align, CheckBox, Color, Constraints, Dyn, Edges, Either, Glass, Image, ImageId, Length,
-    List, Node, NodeState, Patch, Point, Popup, Radio, Rule, ScrollView, Selector, Size, Slider,
-    StaticTree, Switch, TextArea, TextInput, Widget,
-};
+use lumen_static::{pass, Align, Color, Constraints, Dyn, Edges, Either, ImageId, Length, List, Node, NodeState, Patch, Point, Rule, Selector, Size, StaticTree, Widget};
+use lumen_static_widgets::{CheckBox, Glass, Image, Popup, Radio, ScrollView, Slider, Switch, TextArea, TextInput};
 use lumen_static_widgets::prelude::*;
 
 const LIMITS: Constraints = Constraints { min_w: 0.0, max_w: 400.0, min_h: 0.0, max_h: 300.0 };

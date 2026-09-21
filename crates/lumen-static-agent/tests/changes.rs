@@ -2,7 +2,7 @@
 //! content classification, coalescing across frames, ring truncation,
 //! structural (hot-reload) resets, and damage rects.
 
-use lumen_static::ops::{Fixed, Label, Spacer};
+use lumen_static_widgets::ops::{Fixed, Label, Spacer};
 use lumen_static::{pass, Constraints, NodeState, StaticTree, Widget};
 use lumen_static_agent::{Agent, TreeMut, TreeRef};
 use serde_json::{json, Value};

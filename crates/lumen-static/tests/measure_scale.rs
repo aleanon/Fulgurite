@@ -23,7 +23,7 @@
 
 use std::cell::Cell;
 
-use lumen_static::ops::Label;
+use lumen_static_widgets::ops::Label;
 use lumen_static::{Constraints, LayoutCx, Node, NodeState, Size, Style, TextMeasure};
 
 const LIMITS: Constraints = Constraints { min_w: 0.0, max_w: 400.0, min_h: 0.0, max_h: 400.0 };

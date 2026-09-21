@@ -9,7 +9,7 @@
 //! an accident (`docs/plan-review-fixes.md` F4.5).
 
 use lumen_static::hatch::{Either, List, Side};
-use lumen_static::ops::{Fixed, Label};
+use lumen_static_widgets::ops::{Fixed, Label};
 use lumen_static::repeat::{noop_bind, Repeat};
 use lumen_static::style::{cascade_deep, Length, Patch, Rule, Selector};
 use lumen_static::{pass, Constraints, NodeState, StaticTree, Widget};

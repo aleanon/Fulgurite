@@ -6,7 +6,7 @@
 //! which is the claim that matters and the one only a renderer can
 //! settle.
 
-use lumen_static::ops::{Fixed, Spacer};
+use lumen_static_widgets::ops::{Fixed, Spacer};
 use lumen_static::repeat::Repeat;
 use lumen_static::style::{Length, Patch, Rule, Selector};
 use lumen_static::{pass, Constraints, NodeState, StaticTree, Widget};

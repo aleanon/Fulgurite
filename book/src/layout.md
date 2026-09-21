@@ -50,7 +50,9 @@ Which is predictable enough to assert:
 
 ```rust
 # extern crate lumen_static;
+# extern crate lumen_static_widgets;
 use lumen_static::prelude::*;
+use lumen_static_widgets::prelude::*;
 use lumen_static::pass;
 
 #[derive(StaticTree, Default)]
@@ -100,7 +102,9 @@ leftover evenly.
 
 ```rust
 # extern crate lumen_static;
+# extern crate lumen_static_widgets;
 use lumen_static::prelude::*;
+use lumen_static_widgets::prelude::*;
 use lumen_static::pass;
 
 #[derive(StaticTree, Default)]
@@ -148,7 +152,8 @@ cannot overlap.
 
 ```rust
 # extern crate lumen_static;
-# use lumen_static::ops::Fixed;
+# extern crate lumen_static_widgets;
+# use lumen_static_widgets::ops::Fixed;
 # use lumen_static::{pass, Constraints, NodeState, StaticTree, Widget};
 {{#include ../../crates/lumen-static/tests/stack.rs:stack}}
 # fn main() {

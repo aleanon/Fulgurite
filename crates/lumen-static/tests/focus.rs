@@ -6,12 +6,10 @@
 //! *within* a group, and being able to *see* where focus is.
 
 use lumen_static::event::InputState;
-use lumen_static::ops::{Button, Label};
+use lumen_static_widgets::ops::{Button, Label};
 use lumen_static::style::{Patch, Rule, Selector};
-use lumen_static::{
-    pass, Cmd, Constraints, DisplayList, Event, Key, Mods, NodeState, StaticTree, TextInput,
-    Widget,
-};
+use lumen_static::{pass, Cmd, Constraints, DisplayList, Event, Key, Mods, NodeState, StaticTree, Widget};
+use lumen_static_widgets::{TextInput};
 
 #[derive(StaticTree, Default)]
 #[widget(row, spacing = 0.0)]

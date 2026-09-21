@@ -20,7 +20,7 @@
 
 use lumen_static::display::{Cmd, DisplayList};
 use lumen_static::event::{Event, EventCtx, Handlers, NodeSel};
-use lumen_static::ops::Button;
+use lumen_static_widgets::ops::Button;
 use lumen_static::prelude::*;
 use lumen_static::widget::Node;
 use lumen_static::{pass, Constraints, NodeState, Point};

@@ -1,7 +1,7 @@
 // Both documented spellings of the selector attributes, asserted at
 // runtime as well as compiled — the documented string form silently
 // produced an empty class list until F1.5.
-use lumen_static::ops::{Fixed, Label};
+use lumen_static_widgets::ops::{Fixed, Label};
 use lumen_static::{StaticTree, Widget};
 
 #[derive(StaticTree, Default)]

@@ -8,7 +8,8 @@
 //! which reads as on.
 
 use lumen_static::display::{Cmd, Color, DisplayList};
-use lumen_static::{Constraints, LayoutCx, Node, NodeState, Point, Switch};
+use lumen_static::{Constraints, LayoutCx, Node, NodeState, Point};
+use lumen_static_widgets::{Switch};
 
 /// The rounded rects a switch paints, in order: the track, then the
 /// knob.
@@ -102,9 +103,9 @@ fn a_checked_control_marks_in_light() {
     for (name, parts) in [
         (
             "checkbox",
-            parts_of(&mut lumen_static::CheckBox::<()> { on: true, ..Default::default() }),
+            parts_of(&mut lumen_static_widgets::CheckBox::<()> { on: true, ..Default::default() }),
         ),
-        ("radio", parts_of(&mut lumen_static::Radio::<()> { on: true, ..Default::default() })),
+        ("radio", parts_of(&mut lumen_static_widgets::Radio::<()> { on: true, ..Default::default() })),
     ] {
         assert_eq!(parts.len(), 2, "{name}: expected a body and a mark");
         let (body, mark) = (parts[0], parts[1]);

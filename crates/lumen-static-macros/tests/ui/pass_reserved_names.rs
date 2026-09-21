@@ -1,7 +1,7 @@
 // A widget may be named after a type the derive uses internally. The
 // emitted code used to `use ::lumen_static::{Size, Point, ..}`, which
 // shadowed the user's own type at the point the impl was written (F6.2).
-use lumen_static::ops::Label;
+use lumen_static_widgets::ops::Label;
 use lumen_static::StaticTree;
 
 #[derive(StaticTree, Default)]

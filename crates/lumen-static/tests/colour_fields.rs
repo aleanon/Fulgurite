@@ -7,11 +7,10 @@
 //! fails.
 
 use lumen_static::display::{Cmd, Color, DisplayList};
-use lumen_static::input::selection_tint;
-use lumen_static::ops::Fixed;
-use lumen_static::{
-    Constraints, LayoutCx, Length, Node, NodeState, Point, ScrollView, Style, TextArea, TextInput,
-};
+use lumen_static_widgets::input::selection_tint;
+use lumen_static_widgets::ops::Fixed;
+use lumen_static::{Constraints, LayoutCx, Length, Node, NodeState, Point, Style};
+use lumen_static_widgets::{ScrollView, TextArea, TextInput};
 
 const RED: Color = Color(200, 30, 30, 255);
 const TEAL: Color = Color(20, 160, 150, 120);

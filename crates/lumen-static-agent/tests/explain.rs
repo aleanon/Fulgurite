@@ -7,7 +7,7 @@
 //! second model of dispatch, free to drift from the first — the
 //! probe-vs-click class of bug, one layer up.
 
-use lumen_static::ops::{Button, Fixed, Label};
+use lumen_static_widgets::ops::{Button, Fixed, Label};
 use lumen_static::style::{Length, Patch, Rule, Selector};
 use lumen_static::{pass, Constraints, NodeState, StaticTree, Style, Widget};
 use lumen_static_agent::{Agent, TreeRef};

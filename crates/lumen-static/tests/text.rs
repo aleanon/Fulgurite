@@ -2,7 +2,7 @@
 //! measurement cache can be invalidated, and reload-clean for owning
 //! storage.
 
-use lumen_static::ops::{Fixed, Label};
+use lumen_static_widgets::ops::{Fixed, Label};
 use lumen_static::reload::{Reloadable, Value};
 use lumen_static::text::Measured;
 use lumen_static::{pass, Constraints, NodeState, StaticTree, Widget};
@@ -107,7 +107,7 @@ fn a_tree_with_text_is_send_and_sync() {
 /// (`docs/plan-review-fixes.md` F6.4).
 #[test]
 fn a_button_with_owned_storage_restores_without_leaking() {
-    use lumen_static::ops::Button;
+    use lumen_static_widgets::ops::Button;
 
     struct App;
     let mut b: Button<App, String> = Button::default();

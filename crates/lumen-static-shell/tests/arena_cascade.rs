@@ -14,7 +14,7 @@
 //! own header (`docs/plan-widget-parity.md` T27.11's review, finding 4).
 
 use lumen_static::event::App;
-use lumen_static::ops::Label;
+use lumen_static_widgets::ops::Label;
 use lumen_static::style::{Length, Patch, Rule, Selector};
 use lumen_static::{repeat::Repeat, StaticTree};
 use lumen_static_shell::Host;

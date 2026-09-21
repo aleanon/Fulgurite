@@ -5,7 +5,7 @@
 //! replays as a test" was true and unexercised for anything longer than
 //! a single click.
 
-use lumen_static::ops::{Button, Label};
+use lumen_static_widgets::ops::{Button, Label};
 use lumen_static::{pass, Constraints, Event, EventCtx, InputQueue, NodeState, StaticTree, Widget};
 use lumen_static_agent::session::{Header, Recording, ReplayError};
 use lumen_static_agent::{Agent, AgentHost, TreeRef};

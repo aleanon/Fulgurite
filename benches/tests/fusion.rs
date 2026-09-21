@@ -3,7 +3,7 @@
 //! values live, and computes rigidity across fusion.
 
 use benches::{Card, FusedCard, FusedItem, FusedTen, Ten};
-use lumen_static::ops::{Fixed, Label};
+use lumen_static_widgets::ops::{Fixed, Label};
 use lumen_static::{pass, Constraints, NodeState, StaticTree, Widget};
 
 const ROOT_C: Constraints = Constraints { min_w: 0.0, max_w: 800.0, min_h: 0.0, max_h: 600.0 };

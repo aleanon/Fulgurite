@@ -123,9 +123,8 @@ use std::time::Instant;
 
 use lumen_static::event::InputState;
 use lumen_static::prelude::*;
-use lumen_static::{
-    Damage, DisplayList, Incremental, LayoutCx, Rebuild, Recording, Retention, Scaled,
-};
+use lumen_static_widgets::prelude::*;
+use lumen_static::{Damage, DisplayList, Incremental, LayoutCx, Rebuild, Recording, Retention, Scaled};
 use lumen_static_shell::software::Canvas;
 use lumen_static_shell::text::{FontMetrics, FontStack};
 use lumen_static_shell::{Host, CLEAR};

@@ -14,7 +14,7 @@
 //! caller that resolves at compile time and a caller that resolves at
 //! runtime disagree about the same name.
 
-use lumen_static::ops::{Fixed, Label};
+use lumen_static_widgets::ops::{Fixed, Label};
 use lumen_static::style::index_of_wid;
 use lumen_static::widget::Widget;
 use lumen_static::{wid_index, StaticTree};

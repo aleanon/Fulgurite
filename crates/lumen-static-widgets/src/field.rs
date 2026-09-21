@@ -38,7 +38,7 @@ use crate::trim::{Icon, Symbol};
 
 /// A one-line field constrained to a number.
 pub struct NumberInput {
-    field: lumen_static::input::TextInput<alloc::string::String>,
+    field: crate::input::TextInput<alloc::string::String>,
     /// The committed value. The text may differ while it is being typed.
     value: f32,
     pub min: f32,
@@ -59,7 +59,7 @@ impl Default for NumberInput {
 impl NumberInput {
     pub fn new(value: f32, min: f32, max: f32, step: f32) -> Self {
         let mut n = NumberInput {
-            field: lumen_static::input::TextInput::default(),
+            field: crate::input::TextInput::default(),
             value: 0.0,
             min,
             max,
@@ -428,7 +428,7 @@ impl Widget for RangeSlider {
 }
 
 impl Node for RangeSlider {
-    // `kind_name` and `defaults` come from `leaf_common!` below.
+    // `kind_name` and `defaults` come from `lumen_static::leaf_common!` below.
     fn layout(
         &mut self,
         _cx: &mut LayoutCx,
@@ -551,14 +551,14 @@ pub const PART_SEARCH_FIELD: &str = "search-field";
 /// A text field that looks like one: a magnifier, then the text.
 pub struct SearchField {
     pub icon: Icon,
-    pub field: lumen_static::input::TextInput<alloc::string::String>,
+    pub field: crate::input::TextInput<alloc::string::String>,
 }
 
 impl Default for SearchField {
     fn default() -> Self {
         SearchField {
             icon: Icon::new(Symbol::Search),
-            field: lumen_static::input::TextInput::default(),
+            field: crate::input::TextInput::default(),
         }
     }
 }
@@ -615,7 +615,7 @@ impl SearchFieldTable {
                 Fields::VISIBLE,
             ]));
         s[SF_ICON] = <Icon as Widget>::SEEDS[0];
-        s[SF_FIELD] = <lumen_static::input::TextInput<alloc::string::String> as Widget>::SEEDS[0];
+        s[SF_FIELD] = <crate::input::TextInput<alloc::string::String> as Widget>::SEEDS[0];
         s
     };
     pub const SEED_SLICE: &'static [Seed] = &Self::SEED_ARRAY;

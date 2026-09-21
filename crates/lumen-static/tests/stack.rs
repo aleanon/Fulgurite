@@ -10,10 +10,8 @@
 //! them **backwards**. Every other container may walk forwards because
 //! its children cannot overlap.
 
-use lumen_static::ops::{Fixed, Label};
-use lumen_static::{
-    pass, Cmd, Constraints, DisplayList, Length, NodeState, Point, StaticTree, Style, Widget,
-};
+use lumen_static_widgets::ops::{Fixed, Label};
+use lumen_static::{pass, Cmd, Constraints, DisplayList, Length, NodeState, Point, StaticTree, Style, Widget};
 
 // ANCHOR: stack
 #[derive(StaticTree, Default)]

@@ -1,4 +1,4 @@
-use lumen_static::ops::Label;
+use lumen_static_widgets::ops::Label;
 use lumen_static::{App, StaticTree};
 
 #[derive(StaticTree, Default)]

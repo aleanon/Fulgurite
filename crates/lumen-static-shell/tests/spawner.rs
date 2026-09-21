@@ -20,6 +20,7 @@ use std::time::{Duration, Instant};
 
 use lumen_static::event::App;
 use lumen_static::prelude::*;
+use lumen_static_widgets::prelude::*;
 use lumen_static::spawn::{Descriptor, Immediate, Job, Queued, Threads};
 use lumen_static::Rebuild;
 use lumen_static_shell::Host;

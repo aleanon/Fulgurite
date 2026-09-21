@@ -16,7 +16,9 @@ derive, not measured at runtime:
 
 ```rust
 # extern crate lumen_static;
+# extern crate lumen_static_widgets;
 use lumen_static::prelude::*;
+use lumen_static_widgets::prelude::*;
 
 {{#include ../../examples/counter/src/main.rs:tree}}
 # #[derive(DeriveApp, Default)] struct Counter { #[tree] ui: Ui, #[bind(ui.value, "count: {}")] count: i64 }

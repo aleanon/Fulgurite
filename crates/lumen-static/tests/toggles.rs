@@ -2,7 +2,7 @@
 
 use lumen_static::event::{Event, EventCtx, Key};
 use lumen_static::style::{Patch, Rule, Selector};
-use lumen_static::toggle::{CheckBox, Radio, Switch};
+use lumen_static_widgets::toggle::{CheckBox, Radio, Switch};
 use lumen_static::widget::Node;
 use lumen_static::{pass, Cmd, Constraints, DisplayList, NodeState, StaticTree, Widget};
 

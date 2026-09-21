@@ -9,4 +9,5 @@ publish = false
 # exactly like a release build, which is the surface worth checking for
 # undefined behaviour (`docs/verification-notes.md`).
 [dependencies]
+lumen-static-widgets = { path = "../../crates/lumen-static-widgets" }
 lumen-static = { path = "../../crates/lumen-static" }

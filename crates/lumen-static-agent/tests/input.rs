@@ -1,7 +1,7 @@
 //! Plan E4 / parity P4: agent input synthesis. Everything the agent does
 //! goes through the host's one queue, so a session replays as a test.
 
-use lumen_static::ops::{Button, Label};
+use lumen_static_widgets::ops::{Button, Label};
 use lumen_static::{pass, Constraints, Event, EventCtx, InputQueue, NodeState, StaticTree, Widget};
 use lumen_static_agent::{Agent, AgentHost, TreeRef};
 use serde_json::{json, Value};
@@ -208,7 +208,7 @@ fn read_methods_still_work_through_the_input_entry_point() {
 #[widget(column, spacing = 0.0)]
 struct Form {
     #[widget_id("name")]
-    name: lumen_static::input::TextInput,
+    name: lumen_static_widgets::input::TextInput,
     #[widget_id("submit")]
     submit: Button<FormApp>,
 }
@@ -436,7 +436,7 @@ struct ScrolledBody {
     #[widget_id("top")]
     top: Label,
     #[widget_id("field")]
-    field: lumen_static::input::TextInput,
+    field: lumen_static_widgets::input::TextInput,
     #[widget_id("r1")]
     r1: Label,
     #[widget_id("r2")]
@@ -451,7 +451,7 @@ struct ScrolledBody {
 #[widget(column, spacing = 0.0)]
 struct ScrolledUi {
     #[widget_id("sc")]
-    sc: lumen_static::scroll::ScrollView<ScrolledBody>,
+    sc: lumen_static_widgets::scroll::ScrollView<ScrolledBody>,
 }
 
 #[derive(Default)]

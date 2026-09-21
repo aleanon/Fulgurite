@@ -26,7 +26,7 @@ use lumen_static::display::{Color, Painter};
 use lumen_static::ops::{record_painted, rect_of, resolve_self};
 use lumen_static::style::{Length, Seed, Style};
 use lumen_static::widget::{Node, Widget};
-use lumen_static::{leaf_common, Constraints, LayoutCx, Point, Size};
+use lumen_static::{Constraints, LayoutCx, Point, Size};
 
 const LEAF: &[NodeDesc] = &[NodeDesc::new(0, NO_PARENT, 0, 0, 0)];
 
@@ -304,7 +304,7 @@ impl<const KIND: u8> Node for Chart<KIND> {
         }
     }
 
-    leaf_common!(Chart<KIND>, 0, nohit);
+    lumen_static::leaf_common!(Chart<KIND>, 0, nohit);
 }
 
 /// One of [`STEPS_ROUND`] unit vectors around the circle, starting at

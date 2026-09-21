@@ -27,7 +27,7 @@ use lumen_static::{Edges, LayoutCx};
 
 /// Upper bound on `1 + W::NODE_COUNT` for one [`Card`] or [`Tooltip`].
 ///
-/// The same bound and the same reasoning as [`lumen_static::glass::MAX_GLASS_NODES`]:
+/// The same bound and the same reasoning as [`crate::glass::MAX_GLASS_NODES`]:
 /// `SUB_TABLE` is a slice, so its length has to be a value, and the
 /// array it slices has to be sized at compile time.
 pub const MAX_SURFACE_NODES: usize = 256;
@@ -274,7 +274,7 @@ impl<S: TextStorage> Widget for Toast<S> {
 }
 
 impl<S: TextStorage> Node for Toast<S> {
-    // `kind_name` and `defaults` come from `leaf_common!` below, which
+    // `kind_name` and `defaults` come from `lumen_static::leaf_common!` below, which
     // forwards them to `Widget::KIND` and `Widget::type_defaults` — the
     // agreement `crates/lumen-static/tests/seeds.rs` holds every leaf to.
     fn layout(
@@ -361,14 +361,14 @@ pub const PART_CONTENT: &str = "tooltip-content";
 /// pump, so the flag it reads is this frame's.
 pub struct Tooltip<W: Widget, S: TextStorage = &'static str> {
     pub content: W,
-    pub tip: lumen_static::popup::Popup<Toast<S>>,
+    pub tip: crate::popup::Popup<Toast<S>>,
 }
 
 impl<W: Widget + Default, S: TextStorage + Default> Default for Tooltip<W, S> {
     fn default() -> Self {
         Tooltip {
             content: W::default(),
-            tip: lumen_static::popup::Popup::default(),
+            tip: crate::popup::Popup::default(),
         }
     }
 }
@@ -381,7 +381,7 @@ impl<W: Widget, S: TextStorage> Tooltip<W, S> {
     const GAP: f32 = 6.0;
 
     pub fn new(content: W, text: S) -> Self {
-        let mut tip = lumen_static::popup::Popup::<Toast<S>>::new(Toast::new(text));
+        let mut tip = crate::popup::Popup::<Toast<S>>::new(Toast::new(text));
         tip.open = false;
         Tooltip { content, tip }
     }
@@ -396,7 +396,7 @@ pub struct TooltipTable<W, S>(core::marker::PhantomData<(W, S)>);
 
 impl<W: Widget, S: TextStorage> TooltipTable<W, S> {
     const N: usize =
-        1 + W::NODE_COUNT + <lumen_static::popup::Popup<Toast<S>> as Widget>::NODE_COUNT;
+        1 + W::NODE_COUNT + <crate::popup::Popup<Toast<S>> as Widget>::NODE_COUNT;
 
     const ARRAY: [NodeDesc; MAX_SURFACE_NODES] = {
         assert!(Self::N <= MAX_SURFACE_NODES, "Tooltip exceeds MAX_SURFACE_NODES");
@@ -407,7 +407,7 @@ impl<W: Widget, S: TextStorage> TooltipTable<W, S> {
         lumen_static::widget::splice_child(
             &mut t,
             tip_at,
-            <lumen_static::popup::Popup<Toast<S>> as Widget>::SUB_TABLE,
+            <crate::popup::Popup<Toast<S>> as Widget>::SUB_TABLE,
             0,
         );
         t[1].next_sibling = tip_at as u32;
@@ -427,7 +427,7 @@ impl<W: Widget, S: TextStorage> TooltipTable<W, S> {
         lumen_static::widget::splice_seeds(
             &mut s,
             1 + W::NODE_COUNT,
-            <lumen_static::popup::Popup<Toast<S>> as Widget>::SEEDS,
+            <crate::popup::Popup<Toast<S>> as Widget>::SEEDS,
         );
         s
     };
@@ -437,7 +437,7 @@ impl<W: Widget, S: TextStorage> TooltipTable<W, S> {
 impl<W: Widget, S: TextStorage> Widget for Tooltip<W, S> {
     const NODE_COUNT: usize = TooltipTable::<W, S>::N;
     const DEPTH: usize =
-        1 + max_of(W::DEPTH, <lumen_static::popup::Popup<Toast<S>> as Widget>::DEPTH);
+        1 + max_of(W::DEPTH, <crate::popup::Popup<Toast<S>> as Widget>::DEPTH);
     /// As rigid as its content: the tip is out of flow and cannot change
     /// this node's size.
     const IS_RIGID: bool = W::IS_RIGID;

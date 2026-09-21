@@ -2,7 +2,7 @@
 //! reuse, and the measurement memo it exists to protect.
 
 use lumen_static::bind::{format_into, set_if_changed};
-use lumen_static::ops::Label;
+use lumen_static_widgets::ops::Label;
 use lumen_static::text::TextBuffer;
 use lumen_static::{BlockMetrics, Constraints, LayoutCx, Node, NodeState, Style};
 

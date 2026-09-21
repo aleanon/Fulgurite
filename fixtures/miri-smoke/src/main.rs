@@ -9,7 +9,7 @@
 
 use lumen_static::assemble::Assembled;
 use lumen_static::inbox::Inbox;
-use lumen_static::ops::{Button, Fixed, Label, Spacer};
+use lumen_static_widgets::ops::{Button, Fixed, Label, Spacer};
 use lumen_static::repeat::Repeat;
 use lumen_static::{pass, Constraints, Event, EventCtx, NodeState, StaticTree, Widget};
 

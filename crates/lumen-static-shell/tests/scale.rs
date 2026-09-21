@@ -6,7 +6,7 @@
 //! 24-logical-pixel accessibility floor was compared against numbers
 //! twice too large, and passed.
 
-use lumen_static::ops::{Button, Label};
+use lumen_static_widgets::ops::{Button, Label};
 use lumen_static::style::{Edges, Length, Patch, Rule, Selector};
 use lumen_static::{App as DeriveApp, Cmd, StaticTree, Widget};
 use lumen_static_shell::Host;

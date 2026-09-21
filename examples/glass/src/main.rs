@@ -29,7 +29,8 @@
 
 use lumen_static::display::{Color, Material};
 use lumen_static::prelude::*;
-use lumen_static::{Glass, ScrollView};
+use lumen_static_widgets::prelude::*;
+use lumen_static_widgets::{Glass, ScrollView};
 use lumen_static_winit::{run, Config};
 
 // ---- palette ---------------------------------------------------------

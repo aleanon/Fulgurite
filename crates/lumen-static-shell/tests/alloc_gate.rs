@@ -76,6 +76,7 @@ static A: Counting = Counting;
 
 use lumen_static::hatch::{Dyn, Either, List};
 use lumen_static::prelude::*;
+use lumen_static_widgets::prelude::*;
 use lumen_static::repeat::{noop_bind, Repeat};
 use lumen_static::{Incremental, Rebuild};
 use lumen_static_shell::Host;

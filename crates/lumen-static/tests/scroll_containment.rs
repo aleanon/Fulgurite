@@ -19,7 +19,7 @@
 //! repeater's rows live in an off-table arena — the one mechanism that
 //! breaks the invariant is invisible to the test written to catch it.
 
-use lumen_static::ops::{Fixed, Label};
+use lumen_static_widgets::ops::{Fixed, Label};
 use lumen_static::repeat::{noop_bind, Repeat};
 use lumen_static::{pass, Cmd, Constraints, NodeState, StaticTree, Widget};
 

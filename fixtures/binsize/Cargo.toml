@@ -8,6 +8,7 @@ publish = false
 # Code-size comparison: two binaries doing the same work over the same
 # 90-node shape, one per path. No dev-dependencies, no features.
 [dependencies]
+lumen-static-widgets = { path = "../../crates/lumen-static-widgets" }
 lumen-static = { path = "../../crates/lumen-static" }
 
 

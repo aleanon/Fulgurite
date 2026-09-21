@@ -6,7 +6,7 @@
 //! nothing — its rows are a `Repeat` the application binds.
 
 use lumen_static::event::{Event, EventCtx, Key};
-use lumen_static::ops::Label;
+use lumen_static_widgets::ops::Label;
 use lumen_static::widget::{Node, Widget};
 use lumen_static::{Constraints, NodeState, Point, StaticTree};
 use lumen_static_widgets::{Branch, DataGrid, Pagination, Tree, MAX_TREE_NODES};

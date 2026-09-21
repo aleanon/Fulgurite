@@ -4,7 +4,7 @@
 
 use accesskit::{NodeId, Role};
 use lumen_static::observe::{dump, index_of_node, snapshot, snapshot_focused};
-use lumen_static::ops::{Fixed, Label, Spacer};
+use lumen_static_widgets::ops::{Fixed, Label, Spacer};
 use lumen_static::repeat::Repeat;
 use lumen_static::{pass, Constraints, NodeState, StaticTree, Widget};
 

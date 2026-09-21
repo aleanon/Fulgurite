@@ -12,7 +12,7 @@
 //! minutes instead of a property nobody re-checks. `just const-budget`
 //! times it against a threshold.
 
-use lumen_static::ops::{Fixed, Label, Spacer};
+use lumen_static_widgets::ops::{Fixed, Label, Spacer};
 use lumen_static::{pass, Constraints, NodeState, StaticTree, Widget};
 
 #[derive(StaticTree, Default)]

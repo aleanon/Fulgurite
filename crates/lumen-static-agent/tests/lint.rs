@@ -2,7 +2,7 @@
 //! quiet case — a check that cannot be shown not to fire is a check an
 //! agent will learn to ignore.
 
-use lumen_static::ops::{Fixed, Label, Spacer};
+use lumen_static_widgets::ops::{Fixed, Label, Spacer};
 use lumen_static::repeat::Repeat;
 use lumen_static::{pass, Constraints, NodeState, StaticTree, Widget};
 use lumen_static_agent::{Agent, TreeMut, TreeRef};
@@ -332,14 +332,14 @@ struct TallBody {
 #[widget(column, spacing = 0.0)]
 struct Scrolled {
     #[widget_id("scroller")]
-    scroller: lumen_static::scroll::ScrollView<TallBody>,
+    scroller: lumen_static_widgets::scroll::ScrollView<TallBody>,
 }
 
 #[derive(StaticTree, Default)]
 #[widget(column, spacing = 0.0)]
 struct BadNesting {
     #[widget_id("scroller")]
-    scroller: lumen_static::scroll::ScrollView<lumen_static::repeat::Repeat<TallBody>>,
+    scroller: lumen_static_widgets::scroll::ScrollView<lumen_static::repeat::Repeat<TallBody>>,
 }
 
 fn lint_of<W>(app: &mut W) -> Vec<String>

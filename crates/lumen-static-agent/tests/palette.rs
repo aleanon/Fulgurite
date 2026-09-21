@@ -1,7 +1,7 @@
 //! M25/T25.3: `app.setPalette` reaches a host that has a palette, and a
 //! host that has none says so.
 
-use lumen_static::ops::Label;
+use lumen_static_widgets::ops::Label;
 use lumen_static::style::Palette;
 use lumen_static::{pass, Constraints, Event, InputQueue, NodeState, StaticTree, Widget};
 use lumen_static_agent::{Agent, AgentHost, TreeRef};

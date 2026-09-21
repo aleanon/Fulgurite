@@ -15,7 +15,7 @@ use std::hint::black_box;
 
 use benches::bench;
 use lumen_static::bind::format_into;
-use lumen_static::ops::Label;
+use lumen_static_widgets::ops::Label;
 use lumen_static::{BlockMetrics, Constraints, LayoutCx, Node, NodeState, Style};
 
 const LIMITS: Constraints = Constraints { min_w: 0.0, max_w: 1920.0, min_h: 0.0, max_h: 1080.0 };
@@ -243,12 +243,12 @@ fn main() {
             // it is about, and against the real face, because with the
             // block stand-in a measure is 4 ns and the saving is
             // invisible by construction.
-            let mut field: lumen_static::input::TextInput<String> =
-                lumen_static::input::TextInput::new(short);
-            let fstyle = [<lumen_static::input::TextInput<String> as Node>::defaults(&field)];
-            let mut area: lumen_static::textarea::TextArea<String> =
-                lumen_static::textarea::TextArea::new(long.as_str());
-            let astyle = [<lumen_static::textarea::TextArea<String> as Node>::defaults(&area)];
+            let mut field: lumen_static_widgets::input::TextInput<String> =
+                lumen_static_widgets::input::TextInput::new(short);
+            let fstyle = [<lumen_static_widgets::input::TextInput<String> as Node>::defaults(&field)];
+            let mut area: lumen_static_widgets::textarea::TextArea<String> =
+                lumen_static_widgets::textarea::TextArea::new(long.as_str());
+            let astyle = [<lumen_static_widgets::textarea::TextArea<String> as Node>::defaults(&area)];
             for _ in 0..100 {
                 measure_node(&mut field, &mut real, &fstyle, &mut st, LIMITS);
                 measure_node(&mut area, &mut real, &astyle, &mut st, LIMITS);

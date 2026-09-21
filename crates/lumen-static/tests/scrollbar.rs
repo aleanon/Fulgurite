@@ -1,7 +1,8 @@
 //! T14.7: the scrollbar `ScrollView` has shipped without since M8.
 
-use lumen_static::ops::Fixed;
-use lumen_static::{pass, Constraints, DisplayList, NodeState, ScrollView, StaticTree, Widget};
+use lumen_static_widgets::ops::Fixed;
+use lumen_static::{pass, Constraints, DisplayList, NodeState, StaticTree, Widget};
+use lumen_static_widgets::{ScrollView};
 
 #[derive(StaticTree, Default)]
 #[widget(column, spacing = 0.0)]

@@ -17,6 +17,7 @@ pub mod face;
 
 use lumen_static::display::{Color, Painter, Rect};
 use lumen_static::prelude::*;
+use lumen_static_widgets::prelude::*;
 use lumen_static::cx::LayoutCx;
 use lumen_static::font::BakedFace;
 use lumen_static::{pass, Constraints, InlineText, NodeState, Style};

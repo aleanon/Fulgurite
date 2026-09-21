@@ -8,14 +8,23 @@ license.workspace = true
 lumen-static = { path = "../lumen-static", default-features = false }
 # Only under `observe`; `lumen-static` gates its own the same way.
 accesskit = { version = "0.25", optional = true }
+# Only under `reload`, exactly as `lumen-static` gates its own.
+serde_json = { version = "1", optional = true }
 
 [features]
 default = ["std"]
-# **The crate is the gate, as everywhere else in this workspace.** A
-# widget set is the one part of a toolkit that grows without limit, and
-# an embedded profile that pulls a pie chart it cannot draw has paid
-# `.text` for nothing. Nothing here is in `lumen-static`; an application
-# opts in by naming this crate.
+# **The crate is the gate for the optional tier** — but M30 measured
+# what that was worth for the essential one and moved it in. The leaf
+# `no_std` profile links `.text` 27,024 B with every widget here against
+# 27,036 B with the first tier in core (`docs/results-widget-crate.md`):
+# twelve bytes SMALLER, because the gate was never the crate. It is
+# `#[cfg(feature)]` and the linker, and both drop what a tree does not
+# name whichever crate it lives in.
+#
+# So: one crate owns widgets, an application names it once, and a widget
+# set that grows without limit still cannot cost an embedded profile
+# anything it did not ask for — `alloc`-needing widgets stay behind
+# `alloc`, and a leaf profile takes neither feature.
 #  implies , the tiering  uses: the two are
 # nested, not alternatives, and a crate that took  without 
 # would lose  for no reason anyone asked for.
@@ -29,3 +38,8 @@ alloc = ["lumen-static/alloc"]
 # for the same reason `lumen-static`'s is: it takes `NodeDesc` from 48 B
 # to 72 B in every binary that links it.
 observe = ["std", "dep:accesskit", "lumen-static/observe"]
+# **M30.** `Reloadable` for the widgets this crate owns — the impls that
+# moved with `Label`, `Button`, `Toggle`, `Fixed` and `Spacer`. Gated
+# exactly as `lumen-static`'s is, and for the same reason: the dev
+# surface must compile to nothing in a release build.
+reload = ["std", "dep:serde_json", "lumen-static/reload"]

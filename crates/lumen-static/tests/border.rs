@@ -21,6 +21,7 @@
 
 use lumen_static::display::{Cmd, Color, DisplayList, Painter};
 use lumen_static::prelude::*;
+use lumen_static_widgets::prelude::*;
 use lumen_static::style::cascade_deep;
 use lumen_static::widget::Node;
 use lumen_static::{Constraints, NodeState};

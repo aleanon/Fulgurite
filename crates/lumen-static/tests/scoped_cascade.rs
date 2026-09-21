@@ -6,7 +6,7 @@
 //! property rather than the implementation: if a descendant combinator
 //! is ever added, `a_scoped_cascade_equals_a_full_one` is what fails.
 
-use lumen_static::ops::{Fixed, Label, Spacer};
+use lumen_static_widgets::ops::{Fixed, Label, Spacer};
 use lumen_static::style::{
     cascade_deep, cascade_subtree, index_of_wid, subtree_range, Length, Patch, Rule, Selector,
 };

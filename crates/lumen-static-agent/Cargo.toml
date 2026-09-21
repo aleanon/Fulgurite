@@ -29,3 +29,6 @@ name = "lumen_static_agent"
 # `docs/plan-review-fixes.md` F2.5.
 lumen-static = { path = "../lumen-static", features = ["observe"] }
 serde_json = "1"
+
+[dev-dependencies]
+lumen-static-widgets = { path = "../lumen-static-widgets" }

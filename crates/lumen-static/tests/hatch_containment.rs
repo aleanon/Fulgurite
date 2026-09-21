@@ -9,7 +9,7 @@
 
 use lumen_static::assemble::Assembled;
 use lumen_static::hatch::{Dyn, List};
-use lumen_static::ops::Fixed;
+use lumen_static_widgets::ops::Fixed;
 use lumen_static::style::{Length, Patch, Rule, Selector};
 use lumen_static::{pass, Cmd, Constraints, NodeState, StaticTree, Widget};
 

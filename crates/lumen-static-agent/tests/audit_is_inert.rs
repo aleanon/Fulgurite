@@ -10,7 +10,7 @@
 //! agent attached. `docs/plan-review-fixes.md` F2.1.
 
 use lumen_static::cx::TextMeasure;
-use lumen_static::ops::{Fixed, Label};
+use lumen_static_widgets::ops::{Fixed, Label};
 use lumen_static::widget::Node;
 use lumen_static::{pass, Constraints, LayoutCx, NodeState, Size, StaticTree, Widget};
 use lumen_static_agent::{Agent, TreeMut};

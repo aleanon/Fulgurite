@@ -54,3 +54,6 @@ simd = ["dep:wide"]
 # draws every command that reaches its rows, in order. `just threads`
 # asserts it against the single-band build.
 threads = []
+
+[dev-dependencies]
+lumen-static-widgets = { path = "../lumen-static-widgets" }

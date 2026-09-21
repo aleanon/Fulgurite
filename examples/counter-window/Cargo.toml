@@ -9,6 +9,7 @@ publish = false
 # above it — the tree, the frame loop, the renderer — is the same code the
 # headless `counter` example runs.
 [dependencies]
+lumen-static-widgets = { path = "../../crates/lumen-static-widgets", features = ["observe"] }
 lumen-static = { path = "../../crates/lumen-static" }
 lumen-static-shell = { path = "../../crates/lumen-static-shell", features = ["truetype", "agent"] }
 lumen-static-agent = { path = "../../crates/lumen-static-agent" }
