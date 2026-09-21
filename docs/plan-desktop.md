@@ -355,7 +355,14 @@ turns on: Shift+Arrow and drag select the same span.
 **The selection colour is derived, not a `Style` field — and that is a
 budget decision, recorded rather than defaulted.** A selection colour
 *is* a style property, but paint only has `NodeState`, so a real one
-would have to live there too. `NodeState` is 76 B and asserted at that
+>
+> **Both figures below are M14-era and have since moved**: M27/T27.1's
+> border fields took `Style` to **80 B** and `NodeState` to **84 B**,
+> asserted in `crates/lumen-static/tests/cursor.rs` and
+> `tests/focus.rs`. The tests are the live answer; these paragraphs
+> record what the decision was taken against.
+
+would have to live there too. `NodeState` was 76 B and asserted at that
 size by `fixtures/embedded` against the RAM budget in
 `docs/results-embedded.md`; four bytes times every node of every tree
 is a poor trade for a colour that can be derived. `selection_tint` is
@@ -445,7 +452,7 @@ the hovered node's style (C6 already tracks `hovered`) and sets the
 window cursor.
 
 Set: `Default`, `Text`, `Pointer`, `Grab`, `Grabbing`, `ColResize`,
-`RowResize`, `NotAllowed`. `Style` is 72 B; a `u8` fits in existing
+`RowResize`, `NotAllowed`. `Style` was 72 B then; a `u8` fits in existing
 padding — **to be verified, not assumed**, since a growth here costs
 every node of every tree.
 
@@ -453,8 +460,8 @@ every node of every tree.
 check: hovering `#field` reports an I-beam, hovering the background
 does not.
 
-**Done, and it was free as predicted**: `Style` is still 72 B and
-`NodeState` still 76 B, both asserted in
+**Done, and it was free as predicted**: `Style` was still 72 B and
+`NodeState` still 76 B at the time, both asserted in
 `crates/lumen-static/tests/cursor.rs`. The `Cursor` fits in the tail
 padding beside `align` and `visible`.
 

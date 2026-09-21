@@ -440,6 +440,126 @@ and audit. **That is why nothing in this file comes from a single run.**
 
 ---
 
+## 7. Re-measured 2026-09-22 — and the arm was lying
+
+Run because M29 re-opened the question and five milestones (M25–M30)
+had landed since §5b's sweep of 2026-09-08. Same machine, same
+governor, same harness, `./competitors.sh`.
+
+### The finding is about the harness, not the frameworks
+
+The first run said lumen-static had regressed **22% on paint** since
+2026-09-05. It had not. `refactor(M30): one crate owns the widgets`
+(`6052492`) added `features = ["observe"]` to the *unconditional*
+dependency line of `benches-competitive/arms/frame/Cargo.toml`, so the
+**plain** arm was compiled with the widgets' observability methods in —
+the one thing that arm exists to be free of, given there is a second
+arm beside it for exactly that comparison.
+
+Bisected, with the arm rebuilt at each point:
+
+| commit | layout | +paint | idle floor |
+|---|---:|---:|---:|
+| `aed779d` — the commit before M30 | 14.7 µs | 33.1 µs | 49.4 µs |
+| `6052492` — the widget move | 21.1 µs | 46.6 µs | 63.6 µs |
+| with the feature moved to where it belongs | **14.5 µs** | **32.3 µs** | **49.1 µs** |
+
+**Two wrong explanations were measured and discarded before the right
+one**, which is the only reason this is in the file rather than a
+guess. First: `Style` grew 72 → 80 B and `NodeState` 76 → 84 B in
+M27/T27.1, and paint streams one `NodeState` per node, so cache
+pressure was the obvious cause. Adding a further **16 B** of padding to
+`NodeState` and re-running moved nothing — 41.4 against 41.2 µs. Per-node
+bytes are not this frame's cost. Second: a crate boundary blocking
+inlining; the arm builds with `lto = true, codegen-units = 1`, and the
+fix had nothing to do with the boundary.
+
+**What the observability feature costs when merely compiled in** — no
+agent attached, no journal running, nothing asking for a role:
+
+| arm at 3 000 rows | +paint |
+|---|---:|
+| widgets built without `observe` | **32.3 µs** |
+| widgets built with `observe` | 40.2 µs (**+24%**) |
+| …and the journal actually running | 112.5 µs |
+
+The feature adds `probe` and `observe` methods to every widget's `Node`
+impl. `probe`'s body calls `layout`, so an override gives `layout` a
+second call site — a plausible inlining change, **not verified**, and
+worth a task: an application that enables `observe` so an agent *can*
+attach pays 24% on every frame whether one ever does. The gating policy
+in `docs/plan-capabilities.md` is written about runtime cost and this is
+a compile-time inclusion cost, which it does not cover.
+
+### One row of N changes — the matched stopping point, no raster
+
+| arm | 100 | 1 000 | 3 000 |
+|---|---:|---:|---:|
+| **lumen-static** (layout + display list) | **1.7** | **11.2** | **32.3** |
+| GTK 4.14.5 (measure only) | 8.8 | 41.0 | 112.2 |
+| iced 0.14 | 15.6 | — | 290.1 |
+| Qt 6.4.2 (natural update) | 23.6 | 101.9 | 304.8 |
+| masonry 0.4 (Xilem's widget layer) | 32.9 | — | 896.3 |
+| egui | 36.7 | — | 812.3 |
+| Lumen (memoized) | 66.7 | — | 734.6 |
+| Lumen | 87.5 | — | 1 447.4 |
+| Lumen + semantics | 101.4 | — | 1 737.3 |
+
+At 3 000 rows: **9.0× iced, 9.4× Qt, 25.2× egui, 27.8× masonry, 44.8×
+Lumen.** GTK measures and never paints, so it belongs against
+lumen-static's `layout` alone — 1.2 / 5.3 / 14.5 µs — a **7.7×** gap at
+3 000.
+
+lumen-static's own stages, for reference: idle floor 1.6 / 16.5 / 49.1
+µs; `+render (damage)` 13.4 / 32.1 / 73.5; `+render (full)` 189.2 /
+200.5 / 229.4. A full-frame churn at 3 000 rows is 1 364 µs of layout
+and 1 477 with paint — every row's text replaced, which is the workload
+§2 describes.
+
+### The control, and what actually moved
+
+Every foreign arm is within a few percent of §5b's 2026-09-08 numbers,
+which is what makes the lumen-static comparison meaningful rather than
+a story about the machine:
+
+| arm, 3 000 rows | 2026-09-08 | 2026-09-22 |
+|---|---:|---:|
+| iced | 287.9 | 290.1 |
+| Qt (natural update) | 300.6 | 304.8 |
+| masonry | 889.8 | 896.3 |
+| egui | 779.1 | 812.3 |
+| Lumen (audit off) | 1 400.5 | 1 447.4 |
+| GTK | 126.5 | 112.2 |
+| **lumen-static** | **37.4** | **32.3** |
+
+**lumen-static is 9–14% faster than it was**, across all three sizes
+(1.9 → 1.7, 13.0 → 11.2, 37.4 → 32.3), which is M26 Phase B's
+optimizations arriving. Nothing regressed.
+
+### Idle RSS and distributable size
+
+| arm | idle RSS | size |
+|---|---:|---|
+| **lumen-static** | **24.7 MB** | 2.8 MB exe + 0.2 MB in 1 lib |
+| lumen-static (lean) | — | 2.6 MB exe + 0.2 MB in 1 lib |
+| Qt 6.4.2 | 46.5 MB | 0.0 MB exe + **70.1 MB in 45 libs** |
+| Slint | 68.3 MB | 14.8 MB exe + 2.0 MB in 9 libs |
+| GTK 4.14.5 | 136.9 MB | 0.0 MB exe + 32.1 MB in 65 libs |
+| iced 0.14 | 196.2 MB | 10.7 MB exe + 0.2 MB in 1 lib |
+| Xilem | 321.3 MB | 10.8 MB exe + 0.2 MB in 1 lib |
+
+The shape is unchanged from §3 and §4: the Rust GPU-backed toolkits
+carry a wgpu device and its shader pipeline in RSS, and the C++ ones
+carry their library set on disk instead.
+
+### What this run is worth
+
+The ranking did not change and was not the point. **The run's output was
+a harness defect that would have made every future comparison wrong**,
+and it was found only because the foreign arms held still while ours
+appeared to move. A benchmark whose control arms are all in the same
+repository as the thing being measured cannot do that.
+
 ## What is not measured here, and why
 
 - **Slint has no frame arm.** It has a size and RSS arm and appears in

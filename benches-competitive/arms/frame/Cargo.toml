@@ -5,7 +5,13 @@ edition = "2021"
 publish = false
 
 [dependencies]
-lumen-static-widgets = { path = "../../../crates/lumen-static-widgets", features = ["observe"] }
+# **Not `features = ["observe"]` here.** M30 put it on this line, which
+# compiled the widgets' `probe`/`observe` methods into the PLAIN arm and
+# cost it 25% of its frame (33.0 -> 41.2 us at 3 000 rows, bisected to
+# 6052492 -- `docs/results-competitive.md` §7). The whole point of the
+# two arms is that one of them is observe-free, so the feature belongs
+# in the `observe` feature below, beside the other two.
+lumen-static-widgets = { path = "../../../crates/lumen-static-widgets" }
 lumen-static = { path = "../../../crates/lumen-static" }
 # `truetype` deliberately: every other arm shapes text for real, and measuring
 # this one against the half-em-per-byte stand-in would compare fontdue shaping
@@ -24,4 +30,4 @@ lumen-static-agent = { path = "../../../crates/lumen-static-agent", optional = t
 # cross-arm rows stop before rasterising, so this cannot move them.
 simd = ["lumen-static-shell/simd"]
 default = []
-observe = ["dep:lumen-static-agent", "lumen-static/observe"]
+observe = ["dep:lumen-static-agent", "lumen-static/observe", "lumen-static-widgets/observe"]
