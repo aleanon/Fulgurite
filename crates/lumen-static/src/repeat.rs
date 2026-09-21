@@ -536,7 +536,7 @@ impl<T: Widget + Default + 'static> Node for Repeat<T> {
     ///
     /// The offset moves *against* `dy`, and declines at an end so the
     /// parent gets the rest of the gesture. Both are
-    /// [`crate::ScrollView`]'s conventions, because a list that scrolled
+    /// `ScrollView`'s conventions, because a list that scrolled
     /// the other way from every other list would be its own defect.
     fn on_event(&mut self, ev: &crate::event::Event, _cx: &crate::event::EventCtx) -> bool {
         let crate::event::Event::Scroll { dy, .. } = ev else { return false };

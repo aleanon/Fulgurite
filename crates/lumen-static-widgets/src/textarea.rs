@@ -4,12 +4,12 @@
 //!
 //! `docs/text-and-scrolling-decisions.md` B7 decided "no multi-line in
 //! the first cut" and said the mechanism would be **one widget type
-//! with a `wrap` field reserved**. M9 shipped [`lumen_static::TextInput`] with no such
+//! with a `wrap` field reserved**. M9 shipped [`TextInput`](crate::input::TextInput) with no such
 //! field — an unused field is a claim the code has not earned — and this
 //! is the other half of that: multi-line is a **separate widget**.
 //!
 //! The reason is not taste. Look at what actually differs:
-//! [`lumen_static::TextInput`] shapes against an *unbounded* width because it must not
+//! [`TextInput`](crate::input::TextInput) shapes against an *unbounded* width because it must not
 //! wrap, scrolls **horizontally** to keep the caret visible, and moves
 //! the caret by byte boundaries. This shapes against the box, scrolls
 //! **vertically**, and moves the caret up and down *geometrically* —

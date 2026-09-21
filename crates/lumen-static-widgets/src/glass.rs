@@ -147,7 +147,7 @@ impl<W: Widget> Widget for Glass<W> {
     const DEPTH: usize = 1 + W::DEPTH;
     /// A panel is exactly as rigid as what is on it.
     ///
-    /// Not `true` like [`lumen_static::ScrollView`]'s, whose size comes from
+    /// Not `true` like [`ScrollView`](crate::scroll::ScrollView)'s, whose size comes from
     /// its parent whatever its content does. A glass panel's default
     /// height is `Shrink`, so a taller toolbar makes a taller panel —
     /// which is the relayout boundary's question, and answering `true`

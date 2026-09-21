@@ -211,7 +211,7 @@ pub trait Node {
     /// from the constraints it is given.
     ///
     /// `Repeat` does; nothing else does. It exists so
-    /// [`ScrollView`](crate::scroll::ScrollView) can refuse to contain
+    /// `ScrollView` can refuse to contain
     /// one (A7 of `docs/text-and-scrolling-decisions.md`): a scroller
     /// hands its content the viewport, a `Repeat` reads that as "show
     /// this much", and a repeater inside a scroller therefore shows a
