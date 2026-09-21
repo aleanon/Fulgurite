@@ -39,7 +39,28 @@ Allocations per `Host::pump`, after five warmup frames, averaged over
 | plain tree, a state change through `#[bind]` every frame | **0** |
 | `Repeat` + `List` + `Either` + `Dyn` + `Option`, idle | **0** |
 | `Repeat` over 10,000 rows, scrolled one row per frame | **0** |
+| `Repeat` whose bind **writes text**, idle (M29/T29.5) | **0** |
 | two enum-widget nodes, idle | **0** |
+
+**The fourth row was added 2026-09-21 and is the one to read.** Every
+repeater arm above it binds with `noop_bind`, so this file's zero for a
+repeater was a zero for a list *whose rows are never filled in* —
+`AGENT.md`'s first vacuous shape, because the only thing that allocates
+on a repeater frame is a bind that writes. A repeater binds **every
+materialized row on every frame**, so a bind is steady-state code, and
+the obvious spelling of one allocates:
+
+| the bind | allocs/frame, 19-row window |
+|---|---|
+| `row.name.set(format!("row {i}"))` | **19** (one per row) |
+| `format_into(&mut row.name, format_args!("row {i}"))` | **0** |
+
+`format_into` is the same machinery `#[bind]` generates for a table
+node: a reused scratch buffer, and a comparison before the store. `set`
+also compares — but `format!` has already allocated by the time `set`
+sees the string, and no comparison undoes that. The allocating form is
+what this gate's injection uses, and it costs 10.8 µs a frame on an
+18-row window (`docs/results-damage-precision.md` T29.5).
 
 And from `benches --bin agent`, for the dev surface:
 

@@ -82,7 +82,10 @@ under, and prints its measured quantity beside its bound.*
 - `Dirty<T>` already gives a widget a changed-bit, and `Label` uses it
   for the measure memo.
 - **`Repeat::layout` consults nothing**: it re-binds and re-lays its
-  whole window every frame, clean or not. T29.5.
+  whole window every frame, clean or not. Measured (T29.5), that is
+  **~1.5 µs for 18 rows** and was decided against — the expensive thing
+  was never the repeater but the *bind it is given*, which allocates if
+  written the obvious way.
 - **And none of this is on by default.**
   `lumen_static_winit::Inval` is `Everything` unless the non-default
   `boundaries` feature is set, so a turnkey window marks everything
@@ -415,34 +418,42 @@ also accept good input. *Injection:* narrow the `with =` path — the
 corrected in this commit — it is the sentence that sent this milestone
 down the wrong path, and it should not outlive the correction.
 
-## T29.5 — the repeater re-lays out a clean window every frame
+## T29.5 — the repeater's bind, not the repeater — **DONE 2026-09-21**
 
-**Found by T29.1's fixture, and bigger than what it was built to
-measure** (`docs/results-damage-precision.md` T29.1): `Repeat::layout`
-takes no `Changed`. It re-binds every row in its window and calls
-`layout` on each, every frame, however clean — **12.2 µs of the 13.4 µs
-a fully narrowed frame still spends in layout**, on an 18-row window.
-
-It is listed here rather than in another milestone because this fixture
-is what can measure it, and because it is **not blocked by §2.5**: a
-repeater's window is re-laid out on a handler-driven frame too.
-
-The binds are already cheap — the ring writes identical text and
-`Label::set_str` skips it — so the work is in the per-row `layout`
-call. The question T29.5 answers first is whether a repeater can consult
-`Changed` at all, given its rows are in an arena and the invalidation
-set is keyed by *table* index. If it cannot, the fallback is a
-per-window dirty bit set by `bind`.
-
-**Gate:** a frame that changes nothing outside the repeater lays out
-zero rows, and a frame that changes a row's data lays out that row —
-both directions, with the count printed. *Injection:* make the bind
-always report a change — the "zero rows" assertion fires with the
-window's length.
-
-**Measure:** T29.1's `narrowed` arm, whose layout column is the
-quantity, and `just stages`, which is the arm a repeater regression
-would show up in.
+> **This task's own premise was wrong, and measuring it is what said
+> so.** T29.1 reported 12.2 µs of "work nothing asked for" in
+> `Repeat::layout`. Split four ways
+> (`docs/results-damage-precision.md` T29.5): **10.8 µs was the
+> fixture's own `format!`** — one heap allocation per row per frame —
+> and the framework's re-bind of an 18-row window is ~1.5 µs, with the
+> per-row `layout` call very nearly free because the measure memos hold.
+>
+> **What shipped** is the fix that needed no contract change:
+>
+> - `alloc_gate.rs` gained the arm it never had. Both its repeater arms
+>   bound with `noop_bind`, so its zero was a zero for a list whose rows
+>   are never filled in — the only thing that allocates on a repeater
+>   frame is a bind that *writes*. The new arm's injection is the
+>   ordinary spelling, and it fires at **19 allocs/frame on a 19-row
+>   window**, one per row.
+> - `Repeat::bind`'s rustdoc says the thing an author needs at the
+>   moment they write one: this runs every row every frame, so it must
+>   not allocate, and `format_into` is the tool — the same machinery
+>   `#[bind]` generates for a table node.
+> - `benches --bin grid`'s own bind was the offender and is fixed, which
+>   moved every figure in T29.1.
+>
+> **Decided against, with its number:** skipping the bind loop on a
+> clean frame. It is worth ~1.5 µs, and it would make a list silently
+> stale for any application that mutates data without marking — working
+> under the `Everything` default and failing under `Boundaries`, which
+> is the worst shape a difference can have.
+>
+> **The lesson is §6's, one layer down.** T29.1 found a real 12.2 µs and
+> attributed it to the nearest plausible mechanism, which was in the
+> file it had just been reading. Nothing in the measurement was wrong;
+> the *story* was, and only splitting the quantity four ways could tell
+> them apart.
 
 ## 3. What this is not
 

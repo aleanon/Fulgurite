@@ -130,10 +130,19 @@ pub struct BodyRow {
     c: Label<String>,
 }
 
+/// **Through `format_into`, not `set(format!(..))`** — M29/T29.5.
+///
+/// A repeater binds every materialized row on every frame, so a bind is
+/// steady-state code. The obvious spelling heap-allocates once per row
+/// per frame, which measured **10.8 µs** on this fixture's 18-row window
+/// — eight times the framework's own cost for re-binding it. That is
+/// what the first version of this file was measuring and attributing to
+/// `Repeat::layout` (`docs/results-damage-precision.md` T29.5).
 fn bind_body(row: &mut BodyRow, i: usize) {
-    row.a.set(format!("r{i}"));
-    row.b.set(format!("{:.2}", i as f32 * 1.37));
-    row.c.set(if i.is_multiple_of(3) { "pending".into() } else { "ok".into() });
+    use lumen_static::bind::format_into;
+    format_into(&mut row.a, format_args!("r{i}"));
+    format_into(&mut row.b, format_args!("{:.2}", i as f32 * 1.37));
+    format_into(&mut row.c, format_args!("{}", if i.is_multiple_of(3) { "pending" } else { "ok" }));
 }
 
 /// The toolbar. **Its own container, and that is load-bearing:** a leaf

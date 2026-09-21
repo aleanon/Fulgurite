@@ -100,17 +100,24 @@ session.
 
 | arm | layout | place | paint | raster | **frame** |
 |---|---:|---:|---:|---:|---:|
-| `mark_all` — what `#[bind]` forces | 33.80–34.05 µs | 2.40–2.43 | 28.46–28.76 | 1.38–1.51 | **66.31–66.63 µs** |
-| `narrowed` — the hand-marked scaffold | **13.30–13.57 µs** | 2.40–2.42 | 28.47–28.72 | 1.42–1.53 | **45.62–46.14 µs** |
-| `handled` — the frame a real click makes | 33.78–34.10 µs | 2.40–2.42 | 28.44–28.69 | 1.42–1.46 | **66.09–66.55 µs** |
+| `mark_all` — what `#[bind]` forces | 23.15–23.60 µs | 2.48–2.50 | 30.04–30.18 | 1.43–1.62 | **57.12–57.76 µs** |
+| `narrowed` — the hand-marked scaffold | **2.52–2.77 µs** | 2.47–2.52 | 30.07–30.18 | 1.40–1.51 | **36.52–36.84 µs** |
+| `handled` — the frame a real click makes | 23.09–23.54 µs | 2.48–2.51 | 30.09–30.23 | 1.39–1.56 | **57.11–57.66 µs** |
+
+*Measured after T29.5 corrected the fixture's row bind. The table two
+versions of this document ago had a `narrowed` layout of 13.4 µs, 10.8
+of which was the fixture's own `format!` allocations — see T29.5.*
 
 **Against the kill rule:** the frame had to move by more than the arm's
-fast-cluster spread — 0.32 µs for `mark_all`, 0.52 µs for narrowed. It
-moved by **20.5 µs**, forty times the larger spread. **The finding
+fast-cluster spread — 0.64 µs for `mark_all`, 0.32 µs for narrowed. It
+moved by **20.7 µs**, thirty times the larger spread. **The finding
 survives.**
 
-**What one `#[bind]` costs on a host-driven frame, stated once: 20.5 µs,
-31% of the frame.** Layout alone goes 34.0 → 13.4 µs, **2.53×**.
+**What one `#[bind]` costs on a host-driven frame, stated once: 20.7 µs,
+36% of the frame.** Layout alone goes 23.3 → 2.6 µs, **8.9×** — which
+lands close to the 9.7× M26 measured on 901 synthetic nodes, once the
+quantity is the same one (layout, without `place`, without a repeater's
+per-frame bind sitting in the floor).
 
 ### What the `handled` arm settles, and it is the milestone's central fact
 
@@ -135,45 +142,89 @@ This is not an argument against the work. It is the quantity that has to
 be stated beside it, and the first version of this probe could not state
 it because both of its arms wrote the value from outside.
 
-### `place` is a floor, and is 5% not 92%
+### `place` is a floor, and is 7% not 92%
 
-`place` is **2.41 µs, identical in all three arms** — it takes no
-`Changed` and walks every node, so no mark narrows it. It is 5.2% of the
-narrowed frame.
+`place` is **2.49 µs, identical in all three arms** — it takes no
+`Changed` and walks every node, so no mark narrows it. It is 6.8% of the
+narrowed frame — and now the *largest* part of the narrowed layout+place
+cost, at 2.49 µs against layout's 2.6.
 
 It is called out because the first version of this probe folded it into
 the layout column, which is what `Host::timings` returns: the published
 "2.4 µs narrowed layout" was almost entirely `place`, and read as
 residue a better mark would remove. `Host::timings3` now separates them.
 
-### The 12.2 µs a clean frame spends on the virtualized body
+## T29.5 — the 12.2 µs was real, and it was not where this document said
 
-The narrowed arm's layout is 13.4 µs, not the ~1 µs a fully-skipped tree
-would cost. **`Repeat::layout` takes no `Changed`**: it re-binds every
-row in its window and lays each one out, every frame, however clean.
+**The claim published 2026-09-21 was: "`Repeat::layout` takes no
+`Changed`… 12.2 µs, 91% of the narrowed arm's remaining layout, is the
+repeater redoing work nothing asked it to redo."** The measurement was
+right and the attribution was wrong. Splitting it four ways:
 
-Setting `BODY_H` to 0 in the fixture and re-running gives a narrowed
-layout of **1.23 µs** against 13.4 µs with an 18-row window — so
-**12.2 µs, 91% of the narrowed arm's remaining layout, is the repeater
-redoing work nothing asked it to redo.** The binds themselves are cheap
-(the ring writes identical text and `Label::set_str` skips it); the
-per-row `layout` call is not.
+| the fixture's row bind | narrowed layout | `mark_all` layout |
+|---|---:|---:|
+| `set(format!(…))` — what shipped | 13.4 µs | 34.0 µs |
+| `format_into(…)` — no allocation | **2.6 µs** | **23.3 µs** |
+| `noop_bind` — window still bound and laid out | 1.1 µs | — |
+| no body at all (`BODY_H = 0`) | 1.23 µs | 21.7–24.3 µs |
 
-That is a larger, cheaper win than the one this milestone set out to
-build, on a path that is *not* blocked by the `handled` ordering — and
-it was invisible until a fixture had a repeater with a real viewport in
-a frame that was otherwise clean.
+**10.8 µs of the 12.2 was the fixture's own `format!`, one heap
+allocation per row per frame.** The framework's part — re-binding and
+re-laying an 18-row window on a frame where nothing changed — is
+**~1.5 µs** (2.6 against `noop_bind`'s 1.1), and the per-row `layout`
+call is very nearly free, because the measure memos already hold.
+
+The three-way split is the whole finding: `noop_bind` keeps the window
+materialized and still calls `layout` on all 72 of its nodes, and costs
+almost exactly what having no body at all costs. **A repeater re-laying
+out a clean window is not expensive. A repeater re-running a bind that
+allocates is.**
+
+### Why nothing caught it
+
+`crates/lumen-static-shell/tests/alloc_gate.rs` asserts zero allocations
+per steady-state frame and has two repeater arms — **both binding with
+`noop_bind`**. So the zero it proved for a repeater was a zero for a
+list whose rows are never filled in, which is `AGENT.md`'s first vacuous
+shape: the only thing that allocates on a repeater frame is a bind that
+*writes*, and no arm had one.
+
+`a_repeater_whose_bind_writes_text_allocates_nothing` is the arm that
+now covers it. Its injection is the ordinary spelling:
+
+| the bind | result |
+|---|---|
+| `format_into(&mut row.name, format_args!("row {i}"))` | passes — 0.00 allocs/frame |
+| `row.name.set(format!("row {i}"))` | **fires: 19.00 allocs/frame, 19.00 frees/frame over a 19-row window** |
+
+One allocation per row per frame, with the quantity printed beside the
+bound. `docs/results-allocation.md` owns that table.
+
+### What was decided against, with its number
+
+**Skipping the bind loop on a clean frame is worth ~1.5 µs and is not
+built.** `Repeat` binds every row every frame *by contract* — it is what
+makes a data change visible without an invalidation call, and it is
+documented on `Repeat::bind`. Skipping it when the repeater's subtree is
+clean would make a list silently stale for any application that mutates
+its data without marking, which under the `Everything` default would
+work and under `Boundaries` would not — the worst kind of difference.
+1.5 µs does not buy that.
+
+**The fix is the one that needed no contract change:** a bind that does
+not allocate, a gate that refuses one that does, and the shape
+documented where the author is already looking.
 
 ### Paint is the frame, but culling is not the answer the share suggests
 
-Paint is 28.6 µs — **62% of the narrowed frame** — and unchanged across
+Paint is 30.1 µs — **82% of the narrowed frame** — and unchanged across
 all three arms, exactly as T16.8's refusal predicts.
 
 **The reopen condition in `docs/plan-damage-precision.md` §4 is *not*
 met, and the first version of this document said it was.** That
 condition is about **off-surface nodes**, and this fixture has **220 of
 2,227 — 9.9%**. A `clip_bounds` cull skips what is off the surface; it
-keeps every one of the 1,820 on-screen nodes, including the ~1,400 whose
+keeps every one of the 2,007 on-screen nodes, including the ~1,800 whose
 boxes are degenerate. Paint's share of the frame is not evidence about
 paint's *cullable* share, and reading one as the other is the
 "bound computed from the wrong quantity" shape in a deferral.
@@ -191,8 +242,8 @@ judged 56 findings and confirmed 49. What it changed in *this* document:
 
 | the first version said | what it is |
 |---|---|
-| layout 22.95 → 2.42 µs, **9.6×**, "the 9.7× holds up" | that column was layout **+ place**. With the passes apart, on a fixture whose body virtualizes and whose text shapes: **34.0 → 13.4 µs, 2.53×** |
-| frame −20.6 µs, **39%** | **−20.5 µs, 31%** — the delta survived almost exactly; the frame it is a share of grew, because the body and the font are now real |
+| layout 22.95 → 2.42 µs, **9.6×**, "the 9.7× holds up" | that column was layout **+ place**. With the passes apart, a body that virtualizes, text that shapes and a bind that does not allocate: **23.3 → 2.6 µs, 8.9×** |
+| frame −20.6 µs, **39%** | **−20.7 µs, 36%** — the delta survived almost exactly, across two rebuilds of the fixture |
 | "5,000 virtualized rows" in a column headed *measured* | a constructor argument. **18** were materialized, and before the stylesheet, **one** |
 | "varied across five shapes, so shaping is present" | no shaper ran. It does now |
 | "paint is 88% of the narrowed frame… the reopen condition is met" | paint is **62%**, and the condition is about off-surface nodes, of which there are **220** |

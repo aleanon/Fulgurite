@@ -45,6 +45,48 @@ pub struct Repeat<T: Widget + Default + 'static> {
     pub item_extent: f32,
     /// Configure a recycled template instance for a row. A plain `fn`
     /// pointer: it cannot capture, so a hot reload re-supplies it.
+    ///
+    /// **This runs for every materialized row on every frame**, which is
+    /// what keeps a data change visible without an invalidation call —
+    /// so it is on the steady-state path and **must not allocate**.
+    ///
+    /// The obvious spelling does:
+    ///
+    /// ```text
+    /// fn bind(row: &mut Row, i: usize) {
+    ///     row.name.set(format!("row {i}"));   // one heap allocation,
+    /// }                                       // per row, per frame
+    /// ```
+    ///
+    /// `set` compares before it stores, so the *write* is skipped — but
+    /// `format!` has already allocated by the time `set` is called, and
+    /// no comparison can undo that. Use
+    /// [`format_into`](crate::bind::format_into), which is the same
+    /// machinery the `#[bind]` derive generates for a table node: it
+    /// formats through a reused scratch buffer and compares before
+    /// storing.
+    ///
+    /// ```text
+    /// fn bind(row: &mut Row, i: usize) {
+    ///     lumen_static::bind::format_into(&mut row.name, format_args!("row {i}"));
+    /// }
+    /// ```
+    ///
+    /// Both blocks are `text` rather than doctests on purpose: `Label`
+    /// lives in `lumen-static-widgets`, which is a *dev*-dependency of
+    /// this crate, so no doctest here can name one — and the difference
+    /// being shown is an allocation count, which a doctest cannot
+    /// observe anyway. The gate named above is what checks it.
+    ///
+    /// Measured on an 18-row window (M29/T29.5,
+    /// `docs/results-damage-precision.md`): the allocating form costs
+    /// **10.8 µs a frame** against the framework's own ~1.5 µs for
+    /// re-binding the same window, and
+    /// `a_repeater_whose_bind_writes_text_allocates_nothing` (in
+    /// `crates/lumen-static-shell/tests/alloc_gate.rs`) is the gate that
+    /// now refuses it — every other repeater arm in
+    /// that file binds with [`noop_bind`], so until M29 nothing had ever
+    /// asked what a bind that *writes* costs.
     pub bind: fn(&mut T, usize),
     window: Vec<T>,
     /// Materialized rows' state and the template style row they share.

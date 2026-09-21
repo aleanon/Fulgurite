@@ -352,9 +352,20 @@ are independent of each other**, so either may go first:
   associated-type chain cannot be named past the first hop, and the
   plan had specified an injection it predicted would leave the gate
   green. **The fixture's best output was a defect it was not built to
-  find** — `Repeat::layout` takes no `Changed` and re-lays its whole
-  window every frame, which is 12.2 µs of a clean frame's 13.4 µs of
-  layout, is not blocked by the ordering finding, and is now T29.5.
+  find**, and **T29.5 then found that finding's own attribution wrong**:
+  the 12.2 µs was real, but 10.8 of it was the *fixture's* row bind
+  calling `format!` — one heap allocation per row per frame — and not
+  `Repeat` re-laying a clean window, which costs ~1.5 µs and was decided
+  against. **Nothing caught it because `alloc_gate.rs`'s two repeater
+  arms both bound with `noop_bind`**, so the zero it proved was a zero
+  for a list whose rows are never filled in; the only thing that
+  allocates on a repeater frame is a bind that *writes*. T29.5 shipped
+  the missing arm (its injection fires at 19 allocs/frame on a 19-row
+  window), the rustdoc on `Repeat::bind` that says a bind is
+  steady-state code, and the fixture's own fix. **A real number
+  attributed to the nearest plausible mechanism is the failure mode
+  here** — the measurement was never wrong, the story was, and only
+  splitting the quantity four ways separated them.
   **And the lesson that generalises**: T29.0 had injected its faults and
   watched them go red, and four of its seven defects survived that,
   because each was a question nobody had asked the fixture — how many

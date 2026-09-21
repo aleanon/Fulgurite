@@ -216,6 +216,40 @@ fn a_frame_holding_every_hatch_allocates_nothing() {
     assert_eq!((a, f), (0.0, 0.0), "Repeat + List + Either + Dyn + Option, idle: {a:.2} allocs/frame, {f:.2} frees/frame");
 }
 
+/// The bind that a repeater actually gets given — M29/T29.5.
+///
+/// **Every other repeater arm in this file uses [`noop_bind`]**, so
+/// until this existed the gate proved zero allocation for a list whose
+/// rows are never filled in. That is `AGENT.md`'s first vacuous shape:
+/// the only thing that allocates on a repeater frame is a bind that
+/// *writes*, and no arm had one.
+///
+/// A repeater binds **every row, every frame** — that is what keeps a
+/// data change visible without an invalidation call — so a bind is on
+/// the steady-state path and this gate is the one that says so.
+/// `format_into` writes through a reused scratch buffer and compares
+/// before storing, which is the same machinery `#[bind]` generates for
+/// a table node; `set(format!(…))` heap-allocates per row per frame and
+/// is what a bind author writes first.
+fn bind_row(row: &mut Row, i: usize) {
+    lumen_static::bind::format_into(&mut row.name, format_args!("row {i}"));
+}
+
+#[test]
+fn a_repeater_whose_bind_writes_text_allocates_nothing() {
+    let mut app = HatchApp::default();
+    app.ui.list = Repeat::new(10_000, 20.0, bind_row);
+    let mut host: Host<_, Incremental> = Host::new(app, 320, 400);
+    let (a, f) = per_pump(&mut host, 100);
+    assert_eq!(
+        (a, f),
+        (0.0, 0.0),
+        "a bind runs every row every frame, so it is steady state: \
+         {a:.2} allocs/frame, {f:.2} frees/frame over a {}-row window",
+        host.app.ui.list.window_len()
+    );
+}
+
 #[test]
 fn scrolling_a_ten_thousand_row_list_allocates_nothing() {
     let mut app = HatchApp::default();
