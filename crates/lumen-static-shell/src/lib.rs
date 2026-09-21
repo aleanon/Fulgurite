@@ -119,6 +119,7 @@ pub struct Host<A: App, R: Retention = Incremental, I: Invalidation = Everything
     scale: f32,
     frame: u64,
     last_layout_ns: u64,
+    last_place_ns: u64,
     last_paint_ns: u64,
     /// How much of the previous frame is kept, and what changed
     /// (`docs/plan-architecture-v2.md` M8b). A type parameter rather
@@ -192,6 +193,7 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             scale: 1.0,
             frame: 0,
             last_layout_ns: 0,
+            last_place_ns: 0,
             last_paint_ns: 0,
             retain: R::default(),
             last_damage: Damage::All,
@@ -400,8 +402,30 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         self.frame
     }
 
+    /// `(layout + place, paint)`, in nanoseconds.
+    ///
+    /// **The first element is both passes**, which is what every figure
+    /// taken from this accessor has always meant. It is stated here
+    /// because it is not what the name suggests, and a review read the
+    /// grid probe's "layout" column as layout alone and compared it with
+    /// a layout-only ratio from another milestone — AGENT.md's
+    /// "bound computed from the wrong quantity", in a results table.
+    /// [`Host::timings3`] separates them; prefer it for anything that
+    /// attributes a cost to one pass.
     pub fn timings(&self) -> (u64, u64) {
-        (self.last_layout_ns, self.last_paint_ns)
+        (self.last_layout_ns + self.last_place_ns, self.last_paint_ns)
+    }
+
+    /// `(layout, place, paint)`, in nanoseconds — the three passes apart.
+    ///
+    /// **`place` is unconditional and no invalidation narrows it**: the
+    /// derive's `place` takes no `Changed` and walks every node to give
+    /// it an absolute position (`docs/results-damage-precision.md`
+    /// T29.1). So a probe that narrows a mark and reports one combined
+    /// number is reporting a floor it cannot move as if it were residue
+    /// it had not yet removed.
+    pub fn timings3(&self) -> (u64, u64, u64) {
+        (self.last_layout_ns, self.last_place_ns, self.last_paint_ns)
     }
 
     /// Logical viewport: the physical surface divided by the scale.
@@ -806,9 +830,16 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
                 .with_scale(self.scale);
             let tree = self.app.tree_mut();
             tree.layout(&mut cx, limits, &self.styles, &mut self.states, 0);
+            self.last_layout_ns = t0.elapsed().as_nanos() as u64;
+            // Timed apart from layout because **invalidation cannot
+            // narrow it**: `place` takes no `Changed`, so it is the same
+            // whole-tree walk however clean the frame is. Folded into
+            // one number it reads as layout that a better mark would
+            // remove (M29/T29.1's review).
+            let t1 = std::time::Instant::now();
             tree.place(Point::default(), &self.styles, &mut self.states, 0);
+            self.last_place_ns = t1.elapsed().as_nanos() as u64;
         }
-        self.last_layout_ns = t0.elapsed().as_nanos() as u64;
 
         // A focus ring only for keyboard focus (T15.6). **After**
         // layout, which resolves the ring from the stylesheet and would

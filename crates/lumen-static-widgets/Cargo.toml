@@ -5,7 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-lumen-static = { path = "../lumen-static" }
+lumen-static = { path = "../lumen-static", default-features = false }
 # Only under `observe`; `lumen-static` gates its own the same way.
 accesskit = { version = "0.25", optional = true }
 

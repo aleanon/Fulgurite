@@ -199,7 +199,7 @@ impl Node for Spinner {
         let gap = steps / 4;
         // `rem_euclid`, so a clock that went backwards still lands
         // inside the ring rather than lighting nothing.
-        let lead = (self.phase.rem_euclid(1.0) * steps as f32) as usize;
+        let lead = (lumen_static::num::fract_euclid(self.phase) * steps as f32) as usize;
         for k in 0..steps - gap {
             let a = crate::chart::unit((lead + k) % steps);
             let b = crate::chart::unit((lead + k + 1) % steps);
@@ -291,7 +291,7 @@ impl Node for Skeleton {
         // arithmetic, because the renderer's clip is a hard test and
         // the arithmetic would have to repeat the rounded corner.
         let band = w * 0.28;
-        let x = r[0] - band + (w + band * 2.0) * self.phase.rem_euclid(1.0);
+        let x = r[0] - band + (w + band * 2.0) * lumen_static::num::fract_euclid(self.phase);
         out.push_clip(r);
         out.rounded_rect([x, r[1], x + band, r[3]], s.fg, s.radius.min(h / 2.0));
         out.pop_clip();

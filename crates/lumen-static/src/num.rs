@@ -49,6 +49,34 @@ pub const fn floor(x: f32) -> f32 {
     }
 }
 
+/// `x` modulo 1, always in `[0, 1)` — the fractional part of a phase.
+///
+/// `f32::rem_euclid` is **std-only**, like every other float method
+/// here, and two call sites do not justify a `libm` dependency — the
+/// same reasoning [`floor`] and [`sqrt`] are argued from.
+///
+/// Built on [`floor`] rather than on a truncation, which is what makes
+/// it right for negatives: `-0.25` gives `0.75`, where `x - x.trunc()`
+/// would give `-0.25` and put a phase behind its own start. An
+/// animation that ran backwards for the first frame after a wrap is the
+/// symptom that distinction prevents.
+///
+/// Non-finite input gives `0.0`: a phase has nowhere to be otherwise,
+/// and returning `NaN` would propagate into a position.
+pub fn fract_euclid(x: f32) -> f32 {
+    if !x.is_finite() {
+        return 0.0;
+    }
+    let f = x - floor(x);
+    // `floor` is exact, so `f` is already in `[0, 1)` — except that a
+    // large `x` can round `x - floor(x)` to exactly 1.0.
+    if f >= 1.0 {
+        0.0
+    } else {
+        f
+    }
+}
+
 /// The smallest integer not less than `x`. Bit-exact with `f32::ceil`.
 pub const fn ceil(x: f32) -> f32 {
     if !has_fraction(x) {
@@ -204,6 +232,38 @@ mod tests {
 
     /// The error bound `sqrt` actually achieves, pinned rather than
     /// asserted to be zero — it is an approximation and the doc says so.
+    /// `fract_euclid` is **Euclidean**, which is the whole reason it is
+    /// not `x - x.trunc()`.
+    ///
+    /// The negative cases are the test: a truncating version gives
+    /// `-0.25` for `-0.25` and puts a phase a quarter-turn behind its
+    /// own start, so an animation runs backwards for the first frame
+    /// after it wraps. Every assertion below except the first two would
+    /// pass against a truncating implementation.
+    #[test]
+    fn fract_euclid_is_euclidean_not_truncating() {
+        // The ordinary range, where both spellings agree.
+        assert_eq!(fract_euclid(0.25), 0.25);
+        assert_eq!(fract_euclid(2.5), 0.5);
+
+        // The negatives, where they do not.
+        assert_eq!(fract_euclid(-0.25), 0.75, "a truncating version gives -0.25");
+        assert_eq!(fract_euclid(-1.5), 0.5, "and -0.5 here");
+        assert_eq!(fract_euclid(-3.0), 0.0, "an exact negative integer is a zero phase");
+
+        // The range is closed at 0 and open at 1, at both ends and for
+        // a magnitude big enough that `x - floor(x)` can round up.
+        for x in [0.0, -0.0, 1.0, -1.0, 1e7, -1e7, 8_388_608.0, -8_388_608.0] {
+            let f = fract_euclid(x);
+            assert!((0.0..1.0).contains(&f), "fract_euclid({x}) = {f} is outside [0, 1)");
+        }
+
+        // Non-finite has nowhere to be; NaN must not reach a position.
+        for x in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+            assert_eq!(fract_euclid(x), 0.0, "fract_euclid({x}) must not propagate");
+        }
+    }
+
     #[test]
     fn sqrt_is_accurate_enough_to_measure_with() {
         let mut worst = 0.0f32;
