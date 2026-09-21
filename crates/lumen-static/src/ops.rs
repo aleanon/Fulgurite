@@ -479,6 +479,15 @@ pub struct Label<S: TextStorage = &'static str> {
     measure: Measured,
 }
 
+impl<S: crate::text::TextBuffer> crate::bind::TextTarget for Label<S> {
+    /// The binding seam — M30. `#[bind]` writes through this rather
+    /// than through the inherent method, because core cannot name this
+    /// type since the widgets moved out.
+    fn set_str(&mut self, text: &str) -> bool {
+        Label::set_str(self, text)
+    }
+}
+
 impl<S: TextStorage> Label<S> {
     pub fn new(text: S) -> Self {
         Label { text: Dirty::new(text), measure: Measured::new() }

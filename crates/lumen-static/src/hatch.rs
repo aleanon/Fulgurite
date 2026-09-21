@@ -817,10 +817,71 @@ impl<S> Dyn<S> {
     }
 }
 
+/// What an island holds before anything is put in it — M30.
+///
+/// A zero-sized leaf that lays out to nothing and paints nothing.
+/// `Dyn::default()` used `ops::Spacer`, and core cannot name that since
+/// the widgets moved to `lumen-static-widgets`.
+///
+/// **Private, and not a widget.** It exists only so `Dyn<S>` can be
+/// `Default` — which the app derives need, because an application
+/// struct holding an island derives `Default` like any other. `Dyn`
+/// type-erases its content, so nothing outside this module can observe
+/// the type, and adding a *user-placeable* widget back into core to
+/// solve this would have undone what M30 was for.
+///
+/// It is `IS_RIGID` and zero-sized where `Spacer` filled its parent:
+/// an empty island should occupy nothing, and the old default silently
+/// claimed the whole box until something was put in it.
+#[cfg(feature = "alloc")]
+#[derive(Default)]
+struct Vacant;
+
+#[cfg(feature = "alloc")]
+impl Widget for Vacant {
+    const NODE_COUNT: usize = 1;
+    const DEPTH: usize = 1;
+    const IS_RIGID: bool = true;
+    const SUB_TABLE: &'static [NodeDesc] = &[NodeDesc::new(0, NO_PARENT, 0, 0, 0)];
+    const KIND: &'static str = "vacant";
+    const SEEDS: &'static [crate::style::Seed] = &[crate::style::Seed::new(
+        Self::KIND,
+        Self::type_defaults,
+        crate::style::Fields::of(&[crate::style::Fields::VISIBLE]),
+    )];
+}
+
+#[cfg(feature = "alloc")]
+impl Node for Vacant {
+    fn layout(
+        &mut self,
+        _cx: &mut crate::cx::LayoutCx,
+        limits: Constraints,
+        style: &[Style],
+        st: &mut [NodeState],
+        i: usize,
+    ) -> Size {
+        crate::ops::record_painted(st, i, limits, Size::default(), &style[i])
+    }
+    fn paint(&self, _st: &[NodeState], _i: usize, _out: &mut dyn Painter) {}
+
+    // `nohit`: an empty island is not a click target. It has no box to
+    // speak of, but saying so is what keeps a `Dyn` that has not been
+    // filled from swallowing a press meant for whatever is under it.
+    crate::leaf_common!(Vacant, NodeDesc::RIGID, nohit);
+}
+
+#[cfg(feature = "alloc")]
+impl<S> crate::event::Handlers<S> for Vacant {
+    fn handler(&self, _: crate::event::NodeSel) -> Option<fn(&mut S, &crate::EventCtx)> {
+        None
+    }
+}
+
 #[cfg(feature = "alloc")]
 impl<S> Default for Dyn<S> {
     fn default() -> Self {
-        Dyn::new(crate::ops::Spacer)
+        Dyn::new(Vacant)
     }
 }
 

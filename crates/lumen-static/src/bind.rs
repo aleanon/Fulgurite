@@ -42,8 +42,26 @@ use core::fmt::Write;
 #[cfg(feature = "std")]
 use core::cell::RefCell;
 
-use crate::ops::Label;
-use crate::text::TextBuffer;
+
+/// Something a binding can write text into — M30.
+///
+/// `format_into` and `set_if_changed` took `&mut Label<S>` until the
+/// widgets moved to `lumen-static-widgets`, at which point core could no
+/// longer name the type its own `#[bind]` machinery writes to. Both
+/// functions only ever called `set_str`, so the dependency was on one
+/// method rather than on the widget, and this is that method.
+///
+/// **It returns whether the text changed**, which is the whole contract:
+/// a binding runs every frame and must not mark a node for
+/// re-measurement when nothing moved. An implementation that always
+/// answered `true` would defeat `App::update`'s "a frame in which no
+/// binding changed anything is still" — the property M16/T16.10 exists
+/// for.
+pub trait TextTarget {
+    /// Store `text` if it differs from what is held, and say whether it
+    /// did.
+    fn set_str(&mut self, text: &str) -> bool;
+}
 
 #[cfg(feature = "std")]
 std::thread_local! {
@@ -77,16 +95,33 @@ const SCRATCH_CAP: usize = 256;
 ///
 /// This is what `#[bind(target, "…{}…")]` expands to.
 ///
-/// ```
-/// use lumen_static::bind::format_into;
-/// use lumen_static::ops::Label;
+/// The target is anything implementing [`TextTarget`] — in practice
+/// `lumen_static_widgets::Label`, whose impl is the one this was written
+/// against. Core cannot name it since M30 moved the widgets out, and the
+/// dependency was only ever on `set_str`.
 ///
-/// let mut l: Label<String> = Label::new("count: 1".into());
+/// ```
+/// use lumen_static::bind::{format_into, TextTarget};
+///
+/// // A minimal target, standing in for a `Label` — which lives in
+/// // `lumen-static-widgets` and cannot be named from this crate's own
+/// // doctest.
+/// #[derive(Default)]
+/// struct Readout(String);
+/// impl TextTarget for Readout {
+///     fn set_str(&mut self, text: &str) -> bool {
+///         let changed = self.0 != text;
+///         if changed { self.0.clear(); self.0.push_str(text); }
+///         changed
+///     }
+/// }
+///
+/// let mut l = Readout("count: 1".into());
 /// assert!(!format_into(&mut l, format_args!("count: {}", 1)), "same text, no write");
 /// assert!(format_into(&mut l, format_args!("count: {}", 2)), "changed");
-/// assert_eq!(l.as_str(), "count: 2");
+/// assert_eq!(l.0, "count: 2");
 /// ```
-pub fn format_into<S: TextBuffer>(dst: &mut Label<S>, args: core::fmt::Arguments<'_>) -> bool {
+pub fn format_into<D: TextTarget + ?Sized>(dst: &mut D, args: core::fmt::Arguments<'_>) -> bool {
     // Taken rather than borrowed: a `Display` impl that itself runs a
     // binding would double-borrow a `RefCell` and panic. Taking hands
     // the inner call an empty buffer instead, which is merely slower.
@@ -106,7 +141,7 @@ pub fn format_into<S: TextBuffer>(dst: &mut Label<S>, args: core::fmt::Arguments
 
 /// Store `text` in `dst` only if it differs. The non-formatting form,
 /// for a binding whose source is already a string.
-pub fn set_if_changed<S: TextBuffer>(dst: &mut Label<S>, text: &str) -> bool {
+pub fn set_if_changed<D: TextTarget + ?Sized>(dst: &mut D, text: &str) -> bool {
     // `Label::set_str` compares as of F4.6; this is kept as the named
     // spelling for a binding whose source is already a string.
     dst.set_str(text)
