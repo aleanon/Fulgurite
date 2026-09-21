@@ -357,8 +357,12 @@ gpu-parity:
     ./scripts/gpu_parity.sh
 
 # Both backends over a resolution sweep — the table in docs/results-gpu.md.
+# `--bin` is required: the package gained a second binary (`bands`,
+# M16/T16 threading) and `cargo run -p` then refuses as ambiguous. This
+# recipe was broken from that day until 2026-09-22, which is how long it
+# had been since anyone ran it.
 raster-sweep:
-    cd benches-competitive && cargo run --release -p raster-scaling
+    cd benches-competitive && cargo run --release -p raster-scaling --bin raster-scaling
 
 # Our software rasteriser against Vello's — docs/results-vello.md.
 #

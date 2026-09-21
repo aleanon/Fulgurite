@@ -39,6 +39,50 @@ row.
 > 20.8×. Still over budget on the CPU, still comfortably under on the
 > GPU; the conclusion is unchanged and the ratio is not.
 
+### Re-run 2026-09-22, after M25–M30
+
+| canvas | Mpx | CPU | GPU | speedup | commands |
+|---|---:|---:|---:|---:|---:|
+| tally window (440×520) | 0.23 | 0.64 ms | 0.06 ms | 10.1× | 51 |
+| 720p | 0.92 | 2.24 ms | 0.14 ms | 16.2× | 201 |
+| 1080p | 2.07 | 4.89 ms | 0.28 ms | 17.4× | 481 |
+| 1440p | 3.69 | 8.57 ms | 0.49 ms | 17.5× | 881 |
+| 4K | 8.29 | **19.48 ms** | **1.10 ms** | 17.6× | 2041 |
+
+**The CPU side got faster and the GPU side did not move at all** — 1.10 ms
+at 4K in both runs, to two decimal places, which is what a GPU doing 8.3
+Mpx of nothing-much looks like. Per megapixel the software rasteriser is
+now 2.32–2.43 ms against 2.7 in 2026-09-07's run, so the ratio narrowed
+from 20.8× to 17.6× because *we* improved, not because the GPU regressed.
+A full 4K redraw is still 117% of a 16.7 ms budget on the CPU and **6.6%
+of one on the GPU**, so the conclusion this document was written to reach
+is unchanged.
+
+**`just raster-sweep` was broken the whole time between the two runs.**
+`raster-scaling` gained a second binary (`bands`, M16's threading work)
+and `cargo run -p` then refuses as ambiguous, so the recipe exited 101.
+Fixed with `--bin`. Nothing was wrong with the measurement; it simply
+could not be taken by the command that documents how to take it.
+
+### 1b. When is the GPU actually worth it — the crossover
+
+1080p, damaged fraction × command count, min of 20, same re-run. Each
+cell is CPU/GPU in ms:
+
+| cmds | 1% damage | 2% | 3% | 5% | 10% |
+|---:|---|---|---|---|---|
+| 16 | 0.03/0.04 **cpu** | 0.03/0.04 **cpu** | 0.04/0.04 **cpu** | 0.05/0.04 **gpu** | 0.06/0.04 **gpu** |
+| 160 | 0.03/0.04 **cpu** | 0.03/0.04 **cpu** | 0.04/0.04 **cpu** | 0.05/0.04 **gpu** | 0.09/0.05 **gpu** |
+| 1600 | 0.03/0.04 **cpu** | 0.04/0.04 **cpu** | 0.04/0.05 **cpu** | 0.05/0.05 **gpu** | 0.09/0.05 **gpu** |
+
+**The crossover is damage, not complexity.** It sits between 3% and 5% of
+the surface at every command count tested — a hundredfold change in
+command count moves it not at all, because the GPU's cost here is
+per-*pixel* dispatch overhead and the CPU's is per-pixel work. So the
+rule a shell needs is one number, not a heuristic: below ~3% damage the
+software path wins outright, and it is what a typical interaction
+produces (M29's grid damages 770–990 px of 1.26 M, which is 0.06%).
+
 **A full 4K redraw goes from 143% of a frame budget to 6.6% of one.**
 That is the whole argument, and it is the one number the deferral was
 missing.

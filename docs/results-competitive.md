@@ -516,6 +516,56 @@ lumen-static's own stages, for reference: idle floor 1.6 / 16.5 / 49.1
 and 1 477 with paint — every row's text replaced, which is the workload
 §2 describes.
 
+### Full frame — every row of N changes
+
+The workload that denies every framework its text cache. **Two arms
+cannot answer it**: `vs_toolkits` has no churn group for masonry and
+neither does `vs_egui`, so Xilem and egui are absent here rather than
+quietly folded into the point table's ranking.
+
+| arm | 100 | 3 000 |
+|---|---:|---:|
+| **lumen-static** (layout) | **42.7** | **1 333.7** |
+| **lumen-static** (layout + display list) | **46.1** | **1 446.8** |
+| GTK 4.14.5 (set + measure) | 459.8 | 14 311.6 |
+| iced 0.14 | 585.2 | 17 608.0 |
+| Qt 6.4.2 (set + layout) | 688.2 | 20 472.8 |
+| Qt 6.4.2 (set + layout + paint) | 968.9 | 20 848.2 |
+| Lumen | 1 584.1 | 15 932.0 |
+
+At 3 000 rows: **12.2× iced, 14.4× Qt, 11.0× Lumen**, and 10.7× GTK
+compared layout-to-layout, since GTK's arm measures and never paints.
+
+**The margin is a third of what the point workload shows, and that is
+the honest reading of both.** On a one-row change lumen-static is 9–45×
+ahead because nobody else has a tree that can decline to rebuild itself.
+When all 3 000 strings are new, everybody shapes 3 000 strings and no
+tree architecture helps — what is left is the text path and the
+rasteriser. A framework can lead one of these axes and be ordinary on
+the other; quoting only the flattering one is the easiest way to mislead
+with true numbers.
+
+GTK's bench5 arm also reports a sustained frame time its point arm
+cannot: **27.18 ms at 3 000 rows** against a 16.67 ms vsync floor, and
+20.13 ms at 100 — not vsync-bound at either size, i.e. missing frames on
+this workload.
+
+### Both backends, and what the comparison above does *not* depend on
+
+**Every row in both tables stops before rasterisation**, so the CPU/GPU
+choice moves none of them. That is what makes the comparison possible at
+all: Qt and GTK rasterise to pixels, iced and Xilem to a GPU surface,
+egui to a texture, and a matched stopping point is the only place the
+seven can be put on one axis.
+
+lumen-static's own backends are measured against each other on the same
+`DisplayList` in `docs/results-gpu.md` §1 (re-run 2026-09-22): **17.6×
+at 4K**, with the crossover at 3–5% surface damage regardless of command
+count. `benches-competitive/arms/raster` is the only arm here that
+rasterises on both sides; composing its figures onto the tables above
+would be mixing two different scenes, which is why it is cited rather
+than added as a column.
+
 ### The control, and what actually moved
 
 Every foreign arm is within a few percent of §5b's 2026-09-08 numbers,
