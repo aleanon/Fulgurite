@@ -20,7 +20,7 @@
 //! weights from the regular face when no bold is found, and depends on
 //! a caret-ranged `fontdue`. A golden recorded that way records which
 //! fonts the recording machine had installed. So goldens are recorded
-//! and compared with `truetype` **off**, and [`compare`] refuses either
+//! and compared with `truetype` **off**, and [`compare`](crate::golden::compare) refuses either
 //! with it on — otherwise `LUMEN_UPDATE_GOLDENS=1` becomes a button
 //! that bakes in the author's font install.
 //!

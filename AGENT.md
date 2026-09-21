@@ -337,15 +337,30 @@ are independent of each other**, so either may go first:
   T29.1 is a probe with a kill rule that can end the milestone. The fix,
   if it survives, is per-field offsets as consts, which associated types
   make possible where a proc macro cannot.
-  **It survived.** `benches --bin grid` is 2,226 table nodes and 5,000
-  virtualized rows, and one edit costs **20.6 µs — 39% of a 53 µs
-  frame** — where the kill rule asked only for more than the arm's
-  0.92 µs spread. The 9.7× holds at 9.6×, **as a layout figure**;
-  `docs/results-damage-precision.md` owns every number. Two things it
-  settled that were not its question: **raster is already surgical**
-  (512–640 px of 1.26 M, 1.5 µs), and **paint is now 88% of the narrowed
-  frame** and unchanged between the arms, which meets the reopen
-  condition §4 wrote for paint culling. T29.2–T29.4 remain.
+  **It survived — and a seven-lens review then found the fixture
+  measuring something other than what it said.** `benches --bin grid`
+  (`just grid`) is a 2,227-node spreadsheet; one edit costs 31% of the
+  frame, and the kill rule wanted anything above the arm's spread, so
+  T29.2–T29.5 are justified. `docs/results-damage-precision.md` owns
+  every figure. **The review's central finding is the milestone's
+  premise, not its details**: `pump_with` calls `mark_all()` for a
+  consumed event eighty lines before it asks `App::update` anything, and
+  every `#[bind]` in this workspace is written by a click handler — so
+  the saving is **zero on the frames applications actually produce**,
+  and the probe now measures that frame beside the others (§2.5). Two of
+  §2.3's mechanism and T29.3's injection did not survive either: an
+  associated-type chain cannot be named past the first hop, and the
+  plan had specified an injection it predicted would leave the gate
+  green. **The fixture's best output was a defect it was not built to
+  find** — `Repeat::layout` takes no `Changed` and re-lays its whole
+  window every frame, which is 12.2 µs of a clean frame's 13.4 µs of
+  layout, is not blocked by the ordering finding, and is now T29.5.
+  **And the lesson that generalises**: T29.0 had injected its faults and
+  watched them go red, and four of its seven defects survived that,
+  because each was a question nobody had asked the fixture — how many
+  rows did you materialize, did anything shape, which passes are in that
+  column, who wrote the value. Asking what a fixture *contains* is a
+  distinct method from asking whether its assertions can *fail*.
 
 Unsequenced: ~~`docs/plan-harness.md`.~~ — **M12 DONE 2026-09-20.**
 T12.3 and T12.4 landed 2026-09-04; T12.1 (a locator and expectation API,

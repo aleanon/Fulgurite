@@ -1,13 +1,14 @@
 # M29 — what one changed value should cost: a fixture big enough to see it, then a mark that fits
 
-> **Not started. Written 2026-09-20.**
+> **T29.0 and T29.1 done 2026-09-21. T29.2–T29.5 open.** Written
+> 2026-09-20; §6 records the seven-lens review that corrected it, and
+> the probe's numbers live in `docs/results-damage-precision.md`.
 >
 > M26's Phase D promoted finding 14 and measured it: `Host::pump_with`
 > calls `mark_all()` whenever `App::update()` returns true, so **one
 > `#[bind]` writing one label marks the whole tree**, and `mark_all`
 > under `Boundaries` costs exactly what `Everything` costs — the
-> tracking is paid for and then discarded. **6.22 µs, 9.7×**, on every
-> frame where a binding changed anything
+> tracking is paid for and then discarded
 > (`docs/results-frame-and-types.md`, finding 14).
 >
 > **The prescription recorded there does not survive review, and §5 says
@@ -21,6 +22,14 @@
 > anything.** The arm is 901 synthetic nodes; the tally is about twenty.
 > So this milestone builds the fixture first and lets it kill the work if
 > the blast radius is invisible on a realistic frame.
+>
+> **The probe survived its kill rule by forty times the arm's spread —
+> and found that the saving is unreachable on the only frames
+> applications actually produce.** A consumed event calls `mark_all()`
+> eighty lines before `App::update` is asked anything, so every binding
+> in this workspace, all of them written by click handlers, is already
+> outside what T29.3 can narrow. §2.5 is that finding; T29.3 now has to
+> answer it before it is worth building.
 
 *Each task is one commit unless it says otherwise; each ends with
 `just test` green and the arm named in its **Measure** line re-run. Task
@@ -56,6 +65,12 @@ under, and prints its measured quantity beside its bound.*
 - `App::update` ors those together into a **`bool`**, and
   `Host::pump_with` answers a `true` with `mark_all()` plus
   `arenas_dirty = true`.
+- **And it has already done that twice by then.** The same `pump_with`
+  calls `mark_all()` for a consumed event (`lib.rs:694`) and for a
+  deferred message that changed something (`:767`), both *before* it
+  asks `App::update` anything (`:776`) — and `Boundaries::mark` returns
+  early once `all` is set. The first draft of this plan did not mention
+  it, which is why §2.5 exists.
 - Layout skips clean subtrees; **paint never does** (T16.8 refused), and
   `Painter::clip_bounds` has one caller in the workspace, `List::paint`
   — so a derived container paints its children whether or not they are on
@@ -66,6 +81,8 @@ under, and prints its measured quantity beside its bound.*
   painted or stored.
 - `Dirty<T>` already gives a widget a changed-bit, and `Label` uses it
   for the measure memo.
+- **`Repeat::layout` consults nothing**: it re-binds and re-lays its
+  whole window every frame, clean or not. T29.5.
 - The invalidation oracle compares byte-identical frames under
   `Everything` and `Boundaries` over a driven session, and its fixture
   now contains an enum (M26/T26.1). **That is the gate a narrower mark
@@ -118,31 +135,63 @@ There is also an ordering problem: a container decides to skip a child
 The binding site is where the path is known, so that is where the mark is
 computed.
 
-### 2.3 The index is a const, and associated types do what the macro cannot
+### 2.3 The index is a const — but **not** the way the first draft said
 
 The blocker is that a proc macro has no type information: the `App`
 derive sees `ui.card.value` as tokens and cannot know that `card` is a
 `Card`, so it cannot reach that type's table offsets.
 
-**Associated types resolve it.** The `StaticTree` derive emits, per
-field, a marker and an impl carrying two things: the field's start offset
-within the container's table, and the field's **type**. A binding site
-then composes offsets along the path by naming only the *first* type —
-each step's associated type supplies the next. The result is a `const`
-index, so the runtime cost is zero.
+**The first draft answered "associated types", and the review showed
+that cannot be written.** Per field, the `StaticTree` derive would emit
+a marker type and an impl carrying the field's offset and its type; a
+bind site would compose along the path by naming only the first type.
+Hop 1 is spellable — the derive holds the `#[tree]` field's type as
+tokens. **Hop 2 is not**: the second container arrives only as the
+projection `<Ui as Field<M_top>>::Ty`, which has no path tokens, so no
+marker belonging to it can be named. The two-hop path in this
+milestone's own fixture (`ui.top.formula`) already fails, and
+`examples/glass` is three hops.
 
-What it costs is **compile time**: one marker and one impl per field per
-container, which is why §0.3 makes `just const-budget` a gate on this
-task rather than a note.
+Two routes survive, and **T29.2 must choose one before it is
+scheduled**:
 
-**The runtime alternative is worse and is recorded as rejected:**
-requiring `#[widget_id]` and looking the index up is a table scan —
-about 5 µs at 901 nodes (`docs/results-const-eval.md`), the same order as
-the 6.22 µs being saved. It is only viable cached, and cached it is
-strictly worse than a const.
+- **A const-generic key instead of a named marker.**
+  `<Ui as Field<{key("top")}>>::Ty` composes, because the key is a
+  *value* the macro can spell from a token. The design family is
+  otherwise unchanged, and so is its compile-time risk (§0.3).
+- **`wid_index!`, which M26 Phase C already shipped.** `index_of_wid` is
+  a `pub const fn` over the table, and `wid_index!` resolves it in a
+  `const` block — refusing a typo and a duplicate at compile time.
+  `const I: usize = wid_index!(Ui, "formula")` plus the existing
+  `subtree_range` is T29.2's whole product, with no derive work at all.
+  The fixture's bound label already carries `#[widget_id("formula")]`.
+
+**The first draft rejected the second route on a number that measures
+something else.** It called the id route "a table scan — about 5 µs at
+901 nodes"; `docs/results-const-eval.md` measures that figure as *901
+`Node::node` calls*, not one id lookup, and M26 Phase C moved the lookup
+to compile time regardless. **So the choice is no longer about cost.**
+It is about what a binding names: a field path is what the author
+already wrote and is unique by construction, while an id must be
+authored, is not unique by construction, and `wid_index!` refuses the
+duplicate rather than resolving it. That is a real argument for the
+derive route and it is the one §2.3 should have been making.
+
+**What neither route reaches: a container the derive did not write.**
+`reject_generics` refuses every generic type, so `Glass<W>` is a
+hand-written `Widget` with no per-field items — and
+`examples/glass`'s `#[bind(ui.bar.content.sigma, …)]` is a *format*
+binding, the narrowable kind, whose path crosses one. §2.4 lists it.
 
 ### 2.4 What stays conservative, permanently
 
+- **A handled event, and an applied message.** `pump_with` calls
+  `mark_all()` at `lib.rs:694` for any consumed event and at `:767` for
+  a deferred message that changed something — both *before* it asks
+  `App::update` anything at `:776`, and `Boundaries::mark` returns early
+  once `all` is set. A handler takes `&mut S` and may write the tree
+  directly, so narrowing it is not a matter of bookkeeping. **This is
+  §2.5, and it is the largest of these by far.**
 - **`with =` bindings.** The hook is `fn(&mut Target, &Source)` and may
   write anything reachable from the target; the derive already reports
   `true` unconditionally and says why. These keep `mark_all`.
@@ -150,6 +199,9 @@ strictly worse than a const.
   `examples/showcase` uses one, so the flagship example keeps the full
   radius unless a hook reports ranges — which would move the work to the
   application author, and this milestone does not.
+- **A path through a hand-written or generic container** (§2.3's last
+  paragraph). No per-field offsets exist for it, and a format binding in
+  the workspace crosses one today.
 - **Arenas.** The same branch sets `arenas_dirty`; a narrowed mark must
   either keep setting it or show that a binding cannot change a
   template's styles.
@@ -157,24 +209,52 @@ strictly worse than a const.
 A partial fix read as a general one is the failure mode here, so each of
 these is asserted rather than assumed (T29.4).
 
+### 2.5 The ordering finding: what is left to narrow
+
+**Measured, not argued** (`docs/results-damage-precision.md` T29.1): the
+`handled` arm lands on the `mark_all` row, so the saving is zero on the
+frame a click produces. Every non-test `#[bind]` in this workspace is
+written by a click handler.
+
+What remains reachable, and it is not nothing:
+
+- **`Host::tick`** marks nothing of its own, so an animation or timer
+  that changes a bound value reaches the narrowed path.
+- **Host-driven mutation** — `host.app.x = …` then `pump`, which is what
+  an embedded main loop and both probe arms do.
+- **Anything that changes a binding without an input event**: a polled
+  sensor, a clock, a computed total.
+
+What does *not*, without new work: every click, key and gesture, and
+every deferred message M28 delivers.
+
+**So T29.3 must publish both numbers**, and the milestone must not
+describe the saving without naming the frames it applies to. Narrowing
+`handled` itself is a separate question with a real answer — a handler
+that could not reach the tree would make every tree write a binding —
+and it is a type-system change, not an invalidation one. It is recorded
+in §4, not built here.
+
 ## T29.0 — the grid fixture — **DONE 2026-09-21**
 
-> `benches --bin grid`: 2,226 table nodes of frozen grid, 5,000
-> virtualized rows, varied cell text, and one `#[bind]`-driven label on
-> the table. Both gates shown to fail
-> (`docs/results-damage-precision.md` T29.0).
+> `benches --bin grid` (`just grid`): a frozen grid of table nodes, a
+> `Repeat` body with a real viewport, varied text through a real face,
+> and one `#[bind]`-driven label on the table. Every quantity is in
+> `docs/results-damage-precision.md` T29.0, which owns them.
 >
-> **The fixture could not fail twice before it could.** Its identity gate
-> first compared `"= 0"` with `"= 7"` — the same character count, so a
-> stale box is the same size and the arms agree however wrong the mark
-> is. Fixed, it still passed: the bound label hung **directly off the
-> root**, and a container lays out *all* its children, so any mark
-> anywhere relaid it out and no stale box could exist. The label now sits
-> in a toolbar container, which is both what makes the gate able to fail
-> and what a spreadsheet actually looks like.
+> **Seven ways it could not say what it said, and none was visible by
+> reading it.** Three were found during the task by running the
+> injection and refusing to accept that it passed. **Four more were
+> found by a review after it had shipped** — green, with its gates
+> already shown to fail, and still measuring something else: a body that
+> virtualized by declaration only, text that never reached a shaper, a
+> "layout" column that was layout + place, and two arms that both wrote
+> the bound value in the one way no application ever does.
 >
-> Neither was visible by reading the fixture. Both came from running the
-> injection and refusing to accept that it passed.
+> The lesson is the fourth entry in `AGENT.md`'s table of methods:
+> injection, printing the bound beside the quantity, and using the thing
+> all missed these. **What found them was a reader asking what the
+> fixture contained rather than what it declared.**
 
 A spreadsheet-shaped example with the four properties §2.1 requires, and
 a headless driver that can edit one cell and pump.
@@ -188,29 +268,25 @@ on the table" assertion fires, which is the vacuous shape §2.1 names.
 
 **Measure:** nothing yet; this task only builds the arm.
 
-## T29.1 — the probe — **DONE 2026-09-21: the finding survives**
+## T29.1 — the probe — **DONE 2026-09-21: the finding survives, and its scope is smaller than the number**
 
-> | stage | `mark_all` | narrowed | delta |
-> |---|---:|---:|---:|
-> | layout | 22.95–23.12 µs | **2.39–2.42 µs** | **9.6×** |
-> | paint | 27.72–28.36 µs | 27.68–27.83 µs | unchanged |
-> | raster | 1.51–1.63 µs | 1.49–1.54 µs | unchanged |
-> | **frame** | **52.20–53.12 µs** | **31.60–31.79 µs** | **−20.6 µs, 39%** |
+> `docs/results-damage-precision.md` T29.1 owns the figures. Three
+> things it settled, none of them restated here:
 >
-> The kill rule wanted the frame to move by more than the arm's
-> fast-cluster spread (0.92 µs). It moved **twenty-two times** that, so
-> T29.2–T29.4 are justified and the 9.7× M26 measured on 901 synthetic
-> nodes holds up at 2,226 real ones — as a **layout** figure, which is
-> 39% of this frame rather than of any frame.
+> 1. **The kill rule did not fire** — the frame moved by forty times the
+>    arm's spread. T29.2–T29.5 are justified.
+> 2. **The saving is unreachable on a handler-driven frame**, and the
+>    fixture now measures that frame beside the others. See §2.5.
+> 3. **A clean frame still spends 12.2 µs re-laying out the virtualized
+>    body**, because `Repeat::layout` takes no `Changed`. That is a
+>    larger and cheaper win than this milestone's own, on a path the
+>    `handled` ordering does not block — T29.5.
 >
-> **Two things the probe settled that were not its question.** Paint is
-> now 88% of the narrowed frame and is unchanged between the arms, which
-> meets §4's reopen condition for paint culling with a number. And raster
-> is already surgical: one edit damages 512–640 px of a 1.26 M px surface
-> and costs 1.5 µs — the stage the original question guessed at is the
-> one that was never the problem.
+> And two claims the first write-up made that the review removed:
+> `place` is a floor rather than residue, and paint's *share* of the
+> frame is not evidence about paint's *cullable* share (§4).
 
-## T29.1 — the probe: is the blast radius visible on a real frame? *(as specified)*
+### T29.1 as specified
 
 Drive the fixture: edit one cell, pump, and measure a frame under
 `Boundaries` with `mark_all` (what `#[bind]` forces today) against the
@@ -234,19 +310,31 @@ If it does not, the narrowing is wrong and the probe is measuring a
 broken frame. *Injection:* narrow to the wrong range — the byte-identity
 assertion fires.
 
-## T29.2 — per-field offsets, as consts
+## T29.2 — the const index
 
-§2.3's markers and impls, emitted by the `StaticTree` derive, with a
-composition helper the binding site can use.
+§2.3's mechanism, by whichever of its two routes the task picks — and
+**picking is the first half of the task**, with the argument written
+down, because the draft that named associated types could not have been
+built.
 
 **Gate:** for every field path in the workspace's fixtures, the const
-index equals what a runtime lookup answers — the two agree or the const
-is wrong. *Injection:* omit a preceding sibling's node count from the
-offset sum — the agreement assertion fires, naming the path.
+index names the same node as the value itself. **The oracle is pointer
+identity, not arithmetic** — `&app.ui.top.formula as *const _ as *const ()`
+against the data pointer `app.tree().node(IDX)` answers with. This is
+stated because the obvious oracle is vacuous: `Node::node`'s body
+accumulates `at += <#field_ty>::NODE_COUNT`, the *same sum* T29.2 would
+emit, so an oracle that recomputes the offset moves with the injection
+and agrees with it. *Injection:* omit a preceding sibling's node count
+from the offset sum — the identity assertion fires, naming the path.
+Both indices print side by side.
 
-**Measure:** `just const-budget`, four builds, against the figure it
-prints today. §0.3's budget is the bound, and the grid fixture is the
-tree that stresses it.
+**Measure:** `just const-budget`, four builds. **Its recipe must first
+be made to compile the tree it claims to stress** — it touches
+`fixtures/const-budget` and builds that crate alone, which reaches
+3,711 nodes from four derives totalling 31 declared fields, while the
+quantity T29.2 grows is *declared fields per derived type* and the
+workspace holds ~380 derives. A budget that cannot see the work is not
+a budget.
 
 ## T29.3 — `App::update` reports what it wrote
 
@@ -254,38 +342,85 @@ tree that stresses it.
 one range per binding that actually wrote, the conservative paths of
 §2.4 marking everything as they do now.
 
-**Gate:** the invalidation oracle — byte-identical frames under
-`Everything` and `Boundaries` across a driven session on the grid
-fixture, which is where a too-narrow mark shows as a stale frame.
-*Injection:* mark the bound node but not its ancestors' range — the
-oracle fires. (It should *not*: `is_clean` tests intersection, so a
-parent's range contains the child's. The injection is what proves that
-reasoning rather than asserting it.)
+**First, the scope question §2.5 raises**, because it decides whether
+the rest is worth building: publish the `handled` number beside the
+host-driven one, and say in the commit which frames the saving reaches.
 
-**Measure:** T29.1's arm, now with the real mechanism. The number must
+**Gate:** the invalidation oracle — byte-identical frames under
+`Everything` and `Boundaries` across a driven session on a grid-shaped
+tree. **The fixture has to move first:** `benches --bin grid` is a
+binary, so no test crate can import it, and T29.0's shape assertions run
+in its `fn main`. Lift the tree into a module a test can reach, and add
+`just grid` to what CI runs, or this gate cannot be written at all.
+
+*Injection:* **not** "mark the bound node but not its ancestors" — the
+plan's first draft named that one and predicted in the same breath that
+it would leave the gate green, because `is_clean` tests intersection and
+a parent's range contains the child's. A gate whose injection is
+specified to pass is not a gate. The injection that fires is **mark the
+bound node's range off by one** — `i..i` , or a sibling's range — so the
+label is skipped while the frame claims to be clean, and the oracle sees
+the stale box. The reasoning about ancestors goes in a comment, where an
+argument belongs; the gate keeps an injection that can go red.
+
+**Measure:** T29.1's arms, now with the real mechanism. The number must
 land where the hand-narrowed scaffold did.
 
 ## T29.4 — the conservative paths, asserted
 
-`with =`, `after_update` and the arena flag each keep `mark_all`, and
-each gets a test that says so — so a later reader cannot mistake the
-partial fix for a general one.
+`with =`, `after_update`, a path through a hand-written container, a
+handled event, an applied message, and the arena flag each keep
+`mark_all` — **six paths, six assertions**, so a later reader cannot
+mistake the partial fix for a general one.
 
-**Gate:** an app whose only binding is a `with =` still marks everything;
-the same app converted to a format binding marks one range. Both
-directions, in one test. *Injection:* narrow the `with =` path — the
-"still marks everything" assertion fires.
+**Gate:** each path gets its own test with an **observable quantity**,
+not a bare "it still works": the count of ranges the invalidation holds
+after the frame, printed beside its bound — 0 ranges with `all` set for
+a conservative path, exactly 1 for a narrowed one. Both directions in
+one test, per `AGENT.md`'s rule that a gate which refuses bad input must
+also accept good input. *Injection:* narrow the `with =` path — the
+"still marks everything" assertion fires, naming the path.
 
 **Docs:** `docs/results-frame-and-types.md`'s finding-14 prescription is
 corrected in this commit — it is the sentence that sent this milestone
 down the wrong path, and it should not outlive the correction.
 
+## T29.5 — the repeater re-lays out a clean window every frame
+
+**Found by T29.1's fixture, and bigger than what it was built to
+measure** (`docs/results-damage-precision.md` T29.1): `Repeat::layout`
+takes no `Changed`. It re-binds every row in its window and calls
+`layout` on each, every frame, however clean — **12.2 µs of the 13.4 µs
+a fully narrowed frame still spends in layout**, on an 18-row window.
+
+It is listed here rather than in another milestone because this fixture
+is what can measure it, and because it is **not blocked by §2.5**: a
+repeater's window is re-laid out on a handler-driven frame too.
+
+The binds are already cheap — the ring writes identical text and
+`Label::set_str` skips it — so the work is in the per-row `layout`
+call. The question T29.5 answers first is whether a repeater can consult
+`Changed` at all, given its rows are in an arena and the invalidation
+set is keyed by *table* index. If it cannot, the fallback is a
+per-window dirty bit set by `bind`.
+
+**Gate:** a frame that changes nothing outside the repeater lays out
+zero rows, and a frame that changes a row's data lays out that row —
+both directions, with the count printed. *Injection:* make the bind
+always report a change — the "zero rows" assertion fires with the
+window's length.
+
+**Measure:** T29.1's `narrowed` arm, whose layout column is the
+quantity, and `just stages`, which is the arm a repeater regression
+would show up in.
+
 ## 3. What this is not
 
 **Not paint culling.** A derived container still paints offscreen
 children; M26 Phase D closed that as true and worthless at the sizes it
-could measure. The grid fixture is bigger than anything it had, so §4
-records the condition for reopening rather than this plan absorbing it.
+could measure. The grid fixture is bigger than anything it had — and
+measured, it still does **not** meet that finding's condition, which is
+about off-surface nodes and not about paint's share of the frame (§4).
 
 **Not a reactive graph.** Nothing observes reads; the mark comes from the
 one place that already knows both the value and the path.
@@ -295,11 +430,24 @@ surgical.
 
 ## 4. Deferred, with conditions
 
-- **Paint culling for table containers. The condition is now met**
-  (T29.1, 2026-09-21): paint is 27.7 µs of a 31.6 µs narrowed frame,
-  88%, unchanged between the arms. M26 Phase D closed it as "true and
-  worthless" on arms 2.5× smaller. It is the next 20 µs, and it wants its
-  own task rather than absorption into this one.
+- **Paint culling for table containers. The condition is still not
+  met**, and the first write-up of T29.1 said it was. That deferral's
+  condition is **off-surface node count**; paint's *share of the frame*
+  is a different quantity, and this fixture has 220 off-surface nodes of
+  2,227 — 9.9% (`docs/results-damage-precision.md` T29.1). A
+  `clip_bounds` cull keeps every on-screen node, including the ~1,400
+  whose boxes are degenerate, so the 28.6 µs paint walk is not what the
+  share suggests. **Reopen when a fixture puts most of its nodes off the
+  surface** — a grid scrolled to the middle of a large sheet would, and
+  this one does not.
+- **Narrowing the handled-event path (§2.5).** The blocker is that a
+  handler takes `&mut S` and may write the tree directly. The type-level
+  answer — a handler that cannot reach the tree, so every tree write is
+  a binding — would make this milestone apply to every frame instead of
+  the minority it currently reaches. It is a change to the event
+  signature, not to invalidation, so it belongs to whatever milestone
+  takes on `docs/events-decision.md` next, and it should cite T29.1's
+  `handled` arm as its motivation.
 - **Ranges from `after_update` hooks.** When an application has a hook
   whose blast radius is measured to matter.
 - **A dirty bit that propagates from the widget.** Only if a design
@@ -322,3 +470,42 @@ code rather than by re-reading it:
 
 The direction survives — the defect is real and measured in the right
 frame — but the fix is four tasks behind a fixture, not one line.
+
+## 6. What the seven-lens review found (2026-09-21)
+
+Run after T29.0 and T29.1 shipped, against the code rather than the
+prose: seven lenses, an adversarial refuter per lens defaulting to
+REFUTED, 56 findings judged, **49 confirmed, 1 plausible, 6 refuted**.
+The plan keeps the corrections rather than quietly replacing itself,
+which is the convention M22 §12 and M28 §5 set.
+
+**Three blocking, and each was a different kind of wrong:**
+
+| finding | kind |
+|---|---|
+| a consumed event calls `mark_all` eighty lines before `App::update` is asked anything, so no binding in any existing application reaches the path this milestone narrows | **the premise**. Found independently by two lenses; §2.5 |
+| §2.3's associated-type chain cannot be named past the first hop | **the mechanism**. §2.3 now offers two routes that can be |
+| T29.3's only injection was one the plan itself predicted would leave the gate green | **the gate**. A plan that writes down a vacuous injection has documented it, not avoided it |
+
+**What it corrected about the measurement** is in
+`docs/results-damage-precision.md` under "What the review corrected" —
+four properties this plan's §2.1 *required* that the fixture satisfied
+by declaration rather than in the frame, and a column that was two
+passes folded into one.
+
+**Two lessons worth more than the findings.** The first: *a green
+fixture whose gates have been shown to fail can still be measuring
+something else.* T29.0 did everything `AGENT.md` asks — injected faults,
+watched them go red, printed bounds beside quantities — and four of its
+seven defects survived all of it, because every one of them was a
+question nobody had asked the fixture (how many rows did you
+materialize? did anything shape? which passes are in that column? who
+wrote the value?). **Asking what a fixture contains is a distinct method
+from asking whether its assertions can fail.**
+
+The second: the review's most valuable output was not a defect in the
+plan but **a defect the plan's own fixture had made visible and nobody
+had looked for** — T29.5's 12.2 µs. The fixture was built to answer one
+question and answered a larger one as a side effect, which is the
+argument for building the fixture before the mechanism, stated better
+than §0.1 stated it.

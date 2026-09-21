@@ -23,7 +23,7 @@
 //!    fix and an afternoon.
 //! 2. **Assertions state the semantic first.** State, semantics and
 //!    bounds before pixels — and that is a property of the API rather
-//!    than of the person using it: [`TestApp::expect_text`] is easier to
+//!    than of the person using it: [`TestApp::expect_text`](crate::harness::TestApp::expect_text) is easier to
 //!    reach for than a screenshot comparison, deliberately.
 //! 3. **No auto-wait, and this says so.** There is no animation
 //!    scheduler and `ui.waitSettled` is trivially true, so a retry loop

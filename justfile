@@ -222,6 +222,15 @@ bench:
     cargo run --release -p benches --bin bindings
     cargo run --release -p benches --bin agent
     cargo run --release -p benches --bin cascade
+    cargo run --release -p benches --bin grid
+
+# M29's spreadsheet fixture: the shape assertions T29.0 built and the
+# three-arm probe T29.1 measured. **A recipe because the gates live in
+# its `fn main`** — until this existed they had been shown to fail once,
+# by hand, and nothing re-ran them
+# (`docs/results-damage-precision.md`).
+grid:
+    cargo run --release -p benches --bin grid
 
 # Step 1 firewall regression experiment (its own generated workspace).
 firewall:

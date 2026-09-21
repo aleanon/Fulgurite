@@ -1,7 +1,9 @@
 # Results: M29 — what one changed value costs, on a tree big enough to tell
 
 *M29, `docs/plan-damage-precision.md`. Owns every figure that plan cites.
-Machine: i9-13900KF, governor `powersave`.*
+Machine: i9-13900KF, governor `powersave`. Re-measured 2026-09-21 after a
+seven-lens review found the first fixture measuring something other than
+what it said — §"What the review corrected" records what moved and why.*
 
 ## What is already measured, and why it is not enough
 
@@ -45,25 +47,40 @@ all**, which is the same failure shape one size up.
 
 ## T29.0 — the fixture's own shape
 
-`benches --bin grid`, measured 2026-09-21.
+`benches --bin grid` (`just grid`), measured 2026-09-21.
 
 | quantity | measured |
 |---|---|
-| table nodes (the frozen grid) | **2,226** |
-| virtualized rows, through `Repeat` | 5,000 |
+| table nodes | **2,227** |
+| of those, with a non-degenerate box | **407** |
+| of those, off the 1400×900 surface | **220** (9.9%) |
+| virtualized rows materialized, of 5,000 declared | **18**, viewport 296 px |
 | the bound label | `#formula`, table index 2, inside a toolbar container |
-| cell text | varied across five shapes, so shaping is present |
-| damage from one edit | **512–640 px** of a 1400×900 surface |
+| cell text | varied across five shapes, measured through a **real face** (`FontMetrics`, fontdue) |
+| damage from one edit | **770–990 px** of a 1400×900 (1.26 M px) surface |
 
-### Two ways the fixture could not fail, both found by injection
+**Damage is the value's digit count, not run-to-run variation.** A wider
+`#formula` shifts `#status` beside it, so a frame that adds a digit
+damages the toolbar row rather than the label alone. The first edit after
+a fresh host damages the whole surface; the per-run median excludes it.
 
-**Neither was visible by reading it.** Each is the shape `AGENT.md` names
-first: the setup could not exhibit the effect.
+### Four ways the fixture could not say what it said
+
+The first three were found by injection during T29.0 and are recorded
+because each is one of `AGENT.md`'s two named vacuous shapes. **The last
+four were found by a seven-lens review after T29.0 had shipped**, which
+is the more useful fact: the fixture was green, its gates had been shown
+to fail, and it was still measuring something other than what it claimed.
 
 | what was wrong | how it was found | the fix |
 |---|---|---|
 | the identity gate compared `"= 0"` with `"= 7"` — **the same character count**, so a stale box is the same size and the two arms agree however wrong the mark is | the injection that marks a different subtree **passed** | compare at a value whose formatted width differs (`1_234_567`) |
 | the bound label hung **directly off the root**, and a container lays out *all* its children — so any mark anywhere relaid it out and no stale box could exist | the same injection passed again, after the first fix | the label moved into a toolbar container, which is also what a spreadsheet looks like |
+| the raster column called `Host::render`, which draws the whole list — no shell does that | reading the column against what a shell does | `take_damage_for_age` + `clear_within`/`render_within` |
+| **the body was virtualized by declaration only**: nothing bounded the sheet, so a column child got `remaining_main.max(0.0)` = 0, the `Repeat` was laid out at 1400×**0** and materialized **one** row of its five thousand | review; `window_len()` had never been asked | a stylesheet bounds both panes, and `window_len() > 1` and `viewport() > 0` are now asserted |
+| **nothing shaped**: `Host::pump` measures with `BlockMetrics`, a fixed advance per byte, so "varied text" was varied strings through a stand-in that cannot see them | review, against the same trap `benches --bin bindings` names for the memo arms | the probe drives `FontMetrics` over a real face, and says so loudly if none is found |
+| **the "layout" column was layout + place** — what `Host::timings` has always returned | review | `Host::timings3` reports the three passes apart; `place` takes no `Changed` and is a floor |
+| **both arms wrote the bound value directly**, which is the one way a real application never changes it | review | `arm_c` reaches the same edit through a click and a handler |
 
 ### The gates, each shown to fail
 
@@ -71,48 +88,116 @@ first: the setup could not exhibit the effect.
 |---|---|---|
 | the bound label is on the table | point the binding at a row inside the virtualized body | fires: *"#formula must be a TABLE node — in an arena it would never go through `#[bind]`"* |
 | the two arms draw the same frame | mark a sheet cell instead of the formula bar | fires: hashes `0x4f88…cd01` against `0xec8f…cd01`, *"the two arms do not draw the same frame"* |
-| — good input | the correct mark | identical hashes, `0x4f888817f53bcd01` |
+| the body actually virtualizes | remove the stylesheet's `#sheet` height — the state the fixture shipped in | fires: *"the body materialized 1 row(s) — it is not virtualizing anything"* |
+| the click reaches the handler | point `#bump`'s centre outside its own box | fires: *"the click did not reach on_bump — arm C measures nothing"* |
+| — good input | the correct mark, the shipped sheet, the real centre | identical hashes, 18 rows, `cell 0 -> 1` |
 
-## T29.1 — the probe: **the finding survives**
+## T29.1 — the probe: **the finding survives, and is worth a third less than published**
 
-Eight runs per arm, forty edits each, medians per run; the fast cluster
-below, with the slow mode reported apart. The machine was building other
-work during this run, which is why three `mark_all` runs and one
-`narrowed` run landed in the slow mode — the fast clusters are stable
-across two sessions (22.94–23.16 µs in the first, 22.95–23.12 in this
-one), so the figure is the cluster, not the mean.
+Eight runs per arm, forty edits each, medians per run. **All 24 runs
+landed in the fast cluster** — the machine was quiet, unlike the first
+session.
 
-| stage | `mark_all` (what `#[bind]` forces) | narrowed by hand | delta |
-|---|---:|---:|---:|
-| layout | 22.95–23.12 µs | **2.39–2.42 µs** | **−20.55 µs, 9.6×** |
-| paint | 27.72–28.36 µs | 27.68–27.83 µs | unchanged |
-| raster (damage-bounded) | 1.51–1.63 µs | 1.49–1.54 µs | unchanged |
-| **frame** | **52.20–53.12 µs** | **31.60–31.79 µs** | **−20.6 µs, 1.65×** |
-
-*Runs in the fast cluster: `mark_all` 5 of 8 (slow mode 70.17, 71.50,
-100.82); narrowed 7 of 8 (slow mode 51.48).*
+| arm | layout | place | paint | raster | **frame** |
+|---|---:|---:|---:|---:|---:|
+| `mark_all` — what `#[bind]` forces | 33.80–34.05 µs | 2.40–2.43 | 28.46–28.76 | 1.38–1.51 | **66.31–66.63 µs** |
+| `narrowed` — the hand-marked scaffold | **13.30–13.57 µs** | 2.40–2.42 | 28.47–28.72 | 1.42–1.53 | **45.62–46.14 µs** |
+| `handled` — the frame a real click makes | 33.78–34.10 µs | 2.40–2.42 | 28.44–28.69 | 1.42–1.46 | **66.09–66.55 µs** |
 
 **Against the kill rule:** the frame had to move by more than the arm's
-fast-cluster spread — 0.92 µs for `mark_all`, 0.19 µs for narrowed. It
-moved by **20.6 µs**, twenty-two times the larger spread. **The finding
-survives, and T29.2–T29.4 are justified.**
+fast-cluster spread — 0.32 µs for `mark_all`, 0.52 µs for narrowed. It
+moved by **20.5 µs**, forty times the larger spread. **The finding
+survives.**
 
-**What one `#[bind]` costs today, stated once:** 39% of this frame.
+**What one `#[bind]` costs on a host-driven frame, stated once: 20.5 µs,
+31% of the frame.** Layout alone goes 34.0 → 13.4 µs, **2.53×**.
 
-### What the probe also settled
+### What the `handled` arm settles, and it is the milestone's central fact
 
-**Paint is now the frame.** After narrowing, paint is 27.7 µs of a
-31.6 µs frame — **88%** — and it is unchanged between the arms, exactly
-as T16.8's refusal predicts: a derived container paints its children
-whether or not anything changed, and `Painter::clip_bounds` has one
-caller in the workspace.
+`handled` is **66.1–66.6 µs — the `mark_all` row**, not the narrowed one.
 
-That meets the reopen condition `docs/plan-damage-precision.md` §4 wrote
-for paint culling. M26 Phase D closed that finding as "true and
-worthless" on the arms it had; this arm is 2.5× larger and says paint is
-where the next 20 µs is.
+`Host::pump_with` calls `mark_all()` for a consumed event at
+`crates/lumen-static-shell/src/lib.rs:694`, and asks `App::update`
+anything at `:776` — eighty lines later, same pump. `Boundaries::mark`
+returns early once `all` is set. So **on the frame a click produces, the
+narrowed mark T29.3 would compute is discarded before it is made**, and
+the 20.5 µs is worth exactly nothing.
 
-**Raster is not the problem and the damage machinery works.** One edit
-damages 512–640 px of a 1,260,000 px surface and costs 1.5 µs — so the
-stage the original question guessed at is already surgical, and the
+Every non-test `#[bind]` in this workspace is written by a click handler
+(`examples/counter`, `minimal`, `counter-window`, `fixtures/hot-app`,
+`examples/glass`). **So the measured 31% is the saving on the frames
+nobody currently produces**, and the milestone's real scope is the ones
+that remain: `Host::tick` (which marks nothing), host-driven mutation,
+and M28's task completions — except that those go through
+`applied_changed`, which marks everything too (`:767`).
+
+This is not an argument against the work. It is the quantity that has to
+be stated beside it, and the first version of this probe could not state
+it because both of its arms wrote the value from outside.
+
+### `place` is a floor, and is 5% not 92%
+
+`place` is **2.41 µs, identical in all three arms** — it takes no
+`Changed` and walks every node, so no mark narrows it. It is 5.2% of the
+narrowed frame.
+
+It is called out because the first version of this probe folded it into
+the layout column, which is what `Host::timings` returns: the published
+"2.4 µs narrowed layout" was almost entirely `place`, and read as
+residue a better mark would remove. `Host::timings3` now separates them.
+
+### The 12.2 µs a clean frame spends on the virtualized body
+
+The narrowed arm's layout is 13.4 µs, not the ~1 µs a fully-skipped tree
+would cost. **`Repeat::layout` takes no `Changed`**: it re-binds every
+row in its window and lays each one out, every frame, however clean.
+
+Setting `BODY_H` to 0 in the fixture and re-running gives a narrowed
+layout of **1.23 µs** against 13.4 µs with an 18-row window — so
+**12.2 µs, 91% of the narrowed arm's remaining layout, is the repeater
+redoing work nothing asked it to redo.** The binds themselves are cheap
+(the ring writes identical text and `Label::set_str` skips it); the
+per-row `layout` call is not.
+
+That is a larger, cheaper win than the one this milestone set out to
+build, on a path that is *not* blocked by the `handled` ordering — and
+it was invisible until a fixture had a repeater with a real viewport in
+a frame that was otherwise clean.
+
+### Paint is the frame, but culling is not the answer the share suggests
+
+Paint is 28.6 µs — **62% of the narrowed frame** — and unchanged across
+all three arms, exactly as T16.8's refusal predicts.
+
+**The reopen condition in `docs/plan-damage-precision.md` §4 is *not*
+met, and the first version of this document said it was.** That
+condition is about **off-surface nodes**, and this fixture has **220 of
+2,227 — 9.9%**. A `clip_bounds` cull skips what is off the surface; it
+keeps every one of the 1,820 on-screen nodes, including the ~1,400 whose
+boxes are degenerate. Paint's share of the frame is not evidence about
+paint's *cullable* share, and reading one as the other is the
+"bound computed from the wrong quantity" shape in a deferral.
+
+### Raster is not the problem
+
+One edit damages 770–990 px of a 1,260,000 px surface and costs 1.45 µs.
+The stage the original question guessed at is already surgical; the
 stages that are not are the two walks above it.
+
+## What the review corrected
+
+A seven-lens review with an adversarial refuter per lens (2026-09-21)
+judged 56 findings and confirmed 49. What it changed in *this* document:
+
+| the first version said | what it is |
+|---|---|
+| layout 22.95 → 2.42 µs, **9.6×**, "the 9.7× holds up" | that column was layout **+ place**. With the passes apart, on a fixture whose body virtualizes and whose text shapes: **34.0 → 13.4 µs, 2.53×** |
+| frame −20.6 µs, **39%** | **−20.5 µs, 31%** — the delta survived almost exactly; the frame it is a share of grew, because the body and the font are now real |
+| "5,000 virtualized rows" in a column headed *measured* | a constructor argument. **18** were materialized, and before the stylesheet, **one** |
+| "varied across five shapes, so shaping is present" | no shaper ran. It does now |
+| "paint is 88% of the narrowed frame… the reopen condition is met" | paint is **62%**, and the condition is about off-surface nodes, of which there are **220** |
+| the probe measured "what one `#[bind]` costs" | it measured what one costs **on a frame with no handled event**, which no application produces. `arm_c` now measures the other one |
+
+**None of it moved the verdict.** The kill rule asked for a frame delta
+above the arm's spread and got forty times it, on a fixture that is now
+bigger, slower and more honest than the one that first passed.

@@ -1203,9 +1203,34 @@ so the tracking is paid for and then discarded. The blast radius is
 **6.22 µs, 9.7×**, on every frame where a binding changed anything.
 
 The number matches the review's 9.7× and the attribution does not: this
-is the same ratio measured in the right frame. The shape of the fix is
-the plan's own — the derive knows which nodes each `#[bind]` writes, so
-`App::update` can report a range instead of a bool.
+is the same ratio measured in the right frame.
+
+**The prescription written here was wrong in four ways, and M29 was
+spent finding out** — corrected 2026-09-21 rather than left standing,
+because it is the sentence that set that milestone's direction. It read:
+*"the derive knows which nodes each `#[bind]` writes, so `App::update`
+can report a range instead of a bool."*
+
+- **The derive does not know.** It sees `ui.card.value` as *tokens* and
+  has no type information, so it cannot resolve a path to an index
+  without machinery nobody had specified
+  (`docs/plan-damage-precision.md` §2.3, whose own first answer to this
+  also turned out not to compose).
+- **A range is a set.** Several bindings can change in one frame, so
+  `update` must feed the invalidation rather than return.
+- **Most of the radius is not reachable from `update` at all.**
+  `pump_with` calls `mark_all()` for a consumed event *before* it asks
+  `App::update` anything, and every `#[bind]` in this workspace is
+  written by a click handler — so narrowing `update` changes nothing on
+  the frames applications actually produce
+  (`docs/results-damage-precision.md` T29.1, the `handled` arm).
+- **And the 9.7× above is layout-only, on 901 synthetic nodes.** On a
+  2,227-node fixture with a real font and a real viewport, the layout
+  ratio is 2.53× and the frame saving is 31% — still far past M29's kill
+  rule, but not this number
+  (`docs/results-damage-precision.md` T29.1, which owns it).
+
+The direction survived all four. The one-line fix did not.
 
 ### Finding 15 — a shaped-run cache in the canvas: **the named cache is refuted; a glyph cache is promoted**
 
