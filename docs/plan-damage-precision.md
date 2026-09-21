@@ -83,6 +83,16 @@ under, and prints its measured quantity beside its bound.*
   for the measure memo.
 - **`Repeat::layout` consults nothing**: it re-binds and re-lays its
   whole window every frame, clean or not. T29.5.
+- **And none of this is on by default.**
+  `lumen_static_winit::Inval` is `Everything` unless the non-default
+  `boundaries` feature is set, so a turnkey window marks everything
+  anyway and *nothing in this milestone changes its frame*. M26/T26.x
+  found the same thing — no example, fixture or test had ever
+  instantiated `Boundaries` — which is why the feature exists at all.
+  **A narrower mark is worth zero until that default flips**, and
+  flipping it is a decision with its own evidence to gather (four of
+  M26's five Phase A defects were invisible under `Everything`, so the
+  strategy that needs this work is also the less-exercised one).
 - The invalidation oracle compares byte-identical frames under
   `Everything` and `Boundaries` over a driven session, and its fixture
   now contains an enum (M26/T26.1). **That is the gate a narrower mark
@@ -228,6 +238,13 @@ What remains reachable, and it is not nothing:
 What does *not*, without new work: every click, key and gesture, and
 every deferred message M28 delivers.
 
+**And one bound to keep in view:** `Boundaries<N>` holds `N` ranges and
+`mark` promotes to `mark_all` when it would exceed them. That is
+graceful rather than wrong, but per-binding marks are the first thing in
+this repository that can produce many ranges in one frame, so T29.3
+should print how many a realistic frame produces against `N` — a limit
+nothing has approached is also a limit nothing has measured.
+
 **So T29.3 must publish both numbers**, and the milestone must not
 describe the saving without naming the frames it applies to. Narrowing
 `handled` itself is a separate question with a real answer — a handler
@@ -328,6 +345,14 @@ and agrees with it. *Injection:* omit a preceding sibling's node count
 from the offset sum — the identity assertion fires, naming the path.
 Both indices print side by side.
 
+**And a refusal, not a wrong answer.** `#[bind]`'s target is an
+unconstrained `syn::Expr`; the derive accepts whatever parses. Any path
+T29.2 cannot resolve to a const — through a hand-written container, a
+generic, an index expression — must produce a **compile error or a
+documented fall back to `mark_all`**, chosen deliberately and tested.
+Silently resolving the wrong index is the one outcome that produces a
+frame nobody can debug.
+
 **Measure:** `just const-budget`, four builds. **Its recipe must first
 be made to compile the tree it claims to stress** — it touches
 `fixtures/const-budget` and builds that crate alone, which reaches
@@ -363,7 +388,12 @@ label is skipped while the frame claims to be clean, and the oracle sees
 the stale box. The reasoning about ancestors goes in a comment, where an
 argument belongs; the gate keeps an injection that can go red.
 
-**Measure:** T29.1's arms, now with the real mechanism. The number must
+**Measure:** T29.1's arms, now with the real mechanism — **and the
+scaffold arm has to survive the change**. `arm_b` narrows by hand
+*because `arm_a` does not*; once `update` reports ranges, both arms
+narrow and the comparison collapses into itself. Keep a control that
+forces `mark_all` (an explicit `invalidate_all()` before the pump), so
+the arm still measures the difference it is named for. The number must
 land where the hand-narrowed scaffold did.
 
 ## T29.4 — the conservative paths, asserted
@@ -439,7 +469,11 @@ surgical.
   whose boxes are degenerate, so the 28.6 µs paint walk is not what the
   share suggests. **Reopen when a fixture puts most of its nodes off the
   surface** — a grid scrolled to the middle of a large sheet would, and
-  this one does not.
+  this one does not. **And price the correctness first, not the
+  frame:** out-of-flow content is zero-area *in flow*, so a container
+  that culls by its child's rect would skip an on-screen popup and never
+  call `defer` at all. T16.8 refused a paint skip for reasons that have
+  not changed just because the tree got bigger.
 - **Narrowing the handled-event path (§2.5).** The blocker is that a
   handler takes `&mut S` and may write the tree directly. The type-level
   answer — a handler that cannot reach the tree, so every tree write is

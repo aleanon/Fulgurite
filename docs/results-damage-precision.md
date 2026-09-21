@@ -37,7 +37,7 @@ re-measure honestly, because:
 | **the probe** (T29.1) | the grid fixture: one cell edited, `mark_all` against a hand-narrowed mark, **layout, paint and raster reported separately** | the *frame* moves by more than the arm's fast-cluster spread | it does not — the finding closes as promoted-but-not-worth-building |
 | frame correctness | the invalidation oracle on the grid fixture | byte-identical frames under `Everything` and `Boundaries` | any divergence |
 | rustc time | the figure `just const-budget` prints, four builds, with the grid fixture in the tree | no regression beyond that spread | the per-field items of T29.2 exceed it |
-| allocation | `crates/lumen-static-shell/tests/alloc_gate.rs` | zero on a frame that edits a cell | anything allocates |
+| allocation | `crates/lumen-static-shell/tests/alloc_gate.rs` — **which has no such arm today**; T29.3 adds one | zero on a frame that edits a cell | anything allocates |
 | embedded `.text` | `scripts/check_text.sh` | unchanged — a leaf profile has no bindings to narrow | it moves |
 
 **Why rustc time is a gate and not a note.** T29.2 emits a marker and an
