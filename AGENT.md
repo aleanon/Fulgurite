@@ -362,6 +362,40 @@ are independent of each other**, so either may go first:
   column, who wrote the value. Asking what a fixture *contains* is a
   distinct method from asking whether its assertions can *fail*.
 
+- ~~**M30 — one crate owns the widgets.**~~ **DONE 2026-09-21.** Every
+  user-placeable widget moved from `lumen-static` to
+  `lumen-static-widgets`: `Label`, `Button`, `Fixed`, `Spacer`, the
+  three toggles, `Slider`, `TextInput`, `TextArea`, `Image`,
+  `ScrollView`, `Select`, `Popup`, `Glass`. No plan doc; the reasoning
+  is in the commit and in `docs/results-widget-crate.md`.
+
+  **The number the old split was argued from does not support it.** The
+  widgets crate's manifest argued from the embedded budget; the leaf
+  `no_std` profile links `.text` **27,024 B** with every widget in the
+  optional crate against 27,036 B with the first tier in core —
+  *twelve bytes smaller*. The gate was never the crate: it is
+  `#[cfg(feature)]` and the linker, and both drop what a tree does not
+  name whichever crate it lives in.
+
+  **What stayed is not widgets**: `Either`, `List`, `Dyn` and `Repeat`
+  are what the *derive* builds, and `lumen_static::ops` keeps the layout
+  helpers derive-generated code calls. Splitting `ops` in two closes
+  `docs/plan-review-fixes.md` **F6.1**, which that module's own rustdoc
+  had named as "the honest end state" and deferred for churn.
+
+  Three things worth carrying forward. **The precondition was a latent
+  defect**: `lumen-static-widgets` advertised an `alloc` tier and could
+  never build `no_std`, because its dependency line omitted
+  `default-features = false` — and the failure named *core* ("std is
+  required by lumen_static"), which is why an advertised tier went
+  unexercised. **The derive needed no change at all**, because it had
+  never named a concrete widget type. And **a feature seam only a live
+  gate could find**: a widget's `observe` impl is gated on the widgets
+  crate's feature, not core's, so an agent build that forgets
+  `lumen-static-widgets/observe` reports every label as
+  `GenericContainer` with no value — caught by `counter-window --drive2`,
+  not by any unit test.
+
 Unsequenced: ~~`docs/plan-harness.md`.~~ — **M12 DONE 2026-09-20.**
 T12.3 and T12.4 landed 2026-09-04; T12.1 (a locator and expectation API,
 `lumen_static_agent::harness::TestApp`) and T12.2 (golden images with a
