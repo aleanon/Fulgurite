@@ -694,3 +694,96 @@ pub fn regions_for(
 ) -> Vec<lumen_static::display::Rect> {
     d.regions(viewport).collect()
 }
+
+// ---- M32 prototype: the builder entry point --------------------------
+
+/// A window described by what it needs, built by [`application`].
+///
+/// **Named `Program` and not `Application` because the trait already
+/// owns that name** (`lumen_static::event::Application`, M31). They are
+/// different things: the trait says how *one* application constructs
+/// itself, and this says how a program is started — build, style, size,
+/// backend, and then run.
+///
+/// # Why a builder at all
+///
+/// M31 collapsed construction to one path and left **styling with two**:
+/// `Application::style` for the headless and reload paths, and
+/// [`Config::stylesheet`] for the window, because [`run`] takes an
+/// already-built application and never asks the trait anything. Edit
+/// one, the other silently wins — the shape M31 exists to remove, one
+/// field over. A builder has one place to put each answer.
+pub struct Program<A: App + 'static> {
+    build: fn() -> A,
+    style: Option<fn(&A) -> lumen_static::style::Stylesheet<'_>>,
+    config: Config,
+}
+
+/// Start describing a program, given the function that builds it.
+///
+/// **`build` is an `fn` pointer, and that is the whole design.** A
+/// non-capturing closure coerces to one, so a parameterised constructor
+/// — the shape `docs/plan-application.md` T31.1 found the
+/// `Application` trait could not express — works with no associated
+/// type and no cost to anyone else:
+///
+/// ```ignore
+/// application(Counter::build)          // an `fn` item
+/// application(|| build(14.0))          // captures nothing: coerces
+/// application(|| build(entry, open))   // still coerces
+/// ```
+///
+/// And the constraint is enforced rather than documented: capture
+/// something and the coercion fails to compile, which is
+/// `docs/events-decision.md`'s no-capture rule expressed as a type.
+pub fn application<A: App + 'static>(build: fn() -> A) -> Program<A> {
+    Program { build, style: None, config: Config::default() }
+}
+
+impl<A: App + 'static> Program<A> {
+    pub fn title(mut self, title: &'static str) -> Self {
+        self.config.title = title;
+        self
+    }
+
+    pub fn size(mut self, width: u32, height: u32) -> Self {
+        self.config.width = width;
+        self.config.height = height;
+        self
+    }
+
+    pub fn page(mut self, page: Color) -> Self {
+        self.config.page = page;
+        self
+    }
+
+    pub fn palette(mut self, palette: lumen_static::style::Palette) -> Self {
+        self.config.palette = palette;
+        self
+    }
+
+    /// Where this program's stylesheet comes from.
+    ///
+    /// Takes the same shape as `Application::style`, so an application
+    /// that implements the trait passes it directly —
+    /// `application(A::build).style(A::style)` — and the window, the
+    /// headless host and a reload all read one definition.
+    pub fn style(mut self, style: fn(&A) -> lumen_static::style::Stylesheet<'_>) -> Self {
+        self.style = Some(style);
+        self
+    }
+
+    /// Build the application, ask it for a stylesheet, and open a window.
+    pub fn run(self) {
+        let app = (self.build)();
+        let mut config = self.config;
+        if let Some(style) = self.style {
+            // Owned here because `Config` owns its sheet and the borrow
+            // ends with `app` moving into `run` — the same copy-first
+            // step `Host::launch` makes, for the same borrow reason
+            // (`docs/plan-application.md` §5).
+            config.stylesheet = style(&app).to_vec();
+        }
+        run(app, config);
+    }
+}

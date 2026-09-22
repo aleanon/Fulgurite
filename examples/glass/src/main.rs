@@ -31,7 +31,7 @@ use lumen_static::display::{Color, Material};
 use lumen_static::prelude::*;
 use lumen_static_widgets::prelude::*;
 use lumen_static_widgets::{Glass, ScrollView};
-use lumen_static_winit::{run, Config};
+use lumen_static_winit::application;
 
 // ---- palette ---------------------------------------------------------
 
@@ -182,6 +182,11 @@ struct Demo {
     ui: Screen,
     #[bind(ui.bar.content.sigma, "blur {} px")]
     sigma: i64,
+    /// This build's stylesheet, owned so `style()` can hand back a
+    /// borrow. `stylesheet()` computes it, so it has to live somewhere —
+    /// which is the one ergonomic cost of the borrowed signature
+    /// (`docs/plan-application.md` §2.4).
+    sheet: Vec<Rule>,
 }
 
 // ---- style -----------------------------------------------------------
@@ -324,7 +329,7 @@ fn shot(path: &str, scroll: f32, sigma: f32) {
 
 /// The application, built once and shared by the window and `--shot`.
 fn build(sigma: f32) -> Demo {
-    let mut app = Demo { sigma: sigma as i64, ..Demo::default() };
+    let mut app = Demo { sigma: sigma as i64, sheet: stylesheet(), ..Demo::default() };
     let cards = &mut app.ui.content.content;
     let each: [&mut Card; 10] = [
         &mut cards.c0, &mut cards.c1, &mut cards.c2, &mut cards.c3, &mut cards.c4,
@@ -384,17 +389,17 @@ fn main() {
             return;
         }
     }
-    run(
-        build(14.0),
-        Config {
-            title: "glass",
-            width: 460,
-            height: 620,
-            page: PAGE,
-            stylesheet: stylesheet(),
-            ..Config::default()
-        },
-    );
+    // M32 prototype: `build(14.0)` is a *parameterised* constructor, the
+    // shape `Application::build` cannot express (M31/T31.1). A
+    // non-capturing closure coerces to `fn() -> Demo`, so it needs no
+    // associated type and no trait change — and capturing anything here
+    // would stop compiling, which is the no-capture rule as a type.
+    application(|| build(14.0))
+        .title("glass")
+        .size(460, 620)
+        .page(PAGE)
+        .style(|d| &d.sheet)
+        .run();
 }
 
 #[cfg(test)]
