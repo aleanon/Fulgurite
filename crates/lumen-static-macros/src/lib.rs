@@ -1213,6 +1213,30 @@ fn expand_reloadable(input: DeriveInput) -> syn::Result<Ts2> {
         }
     }
 
+    // **An application is the thing with a `#[tree]` field** — M31.
+    //
+    // `#[tree]` is the `App` derive's attribute, but a field attribute
+    // is visible to *every* derive on the struct, so this one can tell
+    // an application from a widget with no new attribute and no
+    // coordination between the two derives.
+    //
+    // The distinction decides where a fresh value comes from. A widget's
+    // is structural and `Default` is right: `Repeat` builds one per row
+    // with `window.resize_with(vis, T::default)`. An application's must
+    // come from the **code that is loaded now**, because that is where
+    // its handler `fn` pointers live — which is what
+    // `Reloadable::fresh`'s own doc has always claimed and what
+    // `Default::default()` quietly failed to deliver.
+    let is_application = fields
+        .named
+        .iter()
+        .any(|f| f.attrs.iter().any(|a| a.path().is_ident("tree")));
+    let fresh_body = if is_application {
+        quote! { <Self as ::lumen_static::event::Application>::build() }
+    } else {
+        quote! { <Self as ::core::default::Default>::default() }
+    };
+
     Ok(quote! {
         impl ::lumen_static::reload::Reloadable for #name {
             fn save(&self) -> ::lumen_static::reload::Value {
@@ -1221,7 +1245,7 @@ fn expand_reloadable(input: DeriveInput) -> syn::Result<Ts2> {
                 ::lumen_static::reload::Value::Object(m)
             }
             fn fresh() -> Self {
-                <Self as ::core::default::Default>::default()
+                #fresh_body
             }
             fn restore(&mut self, saved: &::lumen_static::reload::Value) {
                 let Some(obj) = saved.as_object() else {

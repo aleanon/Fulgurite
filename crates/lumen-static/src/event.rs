@@ -533,6 +533,75 @@ pub trait Handlers<S> {
 #[derive(Debug)]
 pub enum Never {}
 
+/// **How an application is constructed — M31.**
+///
+/// Distinct from [`App`], which is derived and describes the *mechanics*
+/// the framework drives (the tree, the message type, the update step).
+/// This one is always hand-written and describes what only the author
+/// knows: how to build the thing, and what it should look like.
+///
+/// # Why it is a second trait rather than two more methods on `App`
+///
+/// `#[derive(App)]` emits the whole `impl App for …` block. A required
+/// `build()` there would have to be emitted by the derive, which cannot
+/// know how to construct your application — and the only thing it could
+/// emit is `Default::default()`, which is the defect this trait exists
+/// to remove. A trait impl cannot be split across blocks, so the author's
+/// half needs a trait of its own.
+///
+/// # Why `build()` and not `Default`
+///
+/// [`Reloadable::fresh`](crate::reload::Reloadable::fresh) is documented
+/// as *"a brand-new value built by the currently loaded code"* and used
+/// to derive to `Default::default()`. That gave an application **two
+/// construction paths that nothing checked against each other**: its own
+/// `new()` in `main`, and `Default` on every hot swap. Handlers assigned
+/// in the first did not exist in the second, so a reload silently
+/// replaced every `on_click` with its placeholder.
+///
+/// `build()` is the one path. `fresh()` calls it, `Host::launch` calls
+/// it, and an application that derives `Default` alongside `App` is a
+/// compile error — so the two cannot drift apart again.
+///
+/// Note that exhaustiveness here reaches **one level**: returning a
+/// struct literal means a new field of *this* type will not compile
+/// until it is initialised, but `ui: Ui::default()` still leaves
+/// handlers three levels down unwired.
+/// `docs/plan-application.md` §5 records that limit rather than implying
+/// the trait closes it.
+pub trait Application: Sized {
+    /// Construct this application with the code that is loaded **now**.
+    ///
+    /// Handler `fn` pointers must be assigned here. A hot reload calls
+    /// this and then grafts `#[reload(keep)]` fields onto the result, so
+    /// anything assigned elsewhere belongs to the build that is being
+    /// replaced (`docs/events-decision.md` rule 3).
+    fn build() -> Self;
+
+    /// The stylesheet this build wants.
+    ///
+    /// Asked for at [`Host::launch`] and again on every reload, so an
+    /// edited stylesheet takes effect on the same swap that reloads the
+    /// code. Before this existed the host kept the sheet it was first
+    /// given and nothing re-asked — demonstrated, with its injections,
+    /// in `crates/lumen-static-shell/tests/reload_sheet.rs`.
+    ///
+    /// Returns a slice rather than an owned sheet so the signature costs
+    /// no allocation and compiles in `no_std`: an embedded profile
+    /// returns a `const &'static [Rule]`, a desktop one returns
+    /// `&self.sheet`. `docs/plan-application.md` §2.4 records why this is
+    /// not generic over a stylesheet trait.
+    ///
+    /// Runtime overrides — [`Host::set_stylesheet`], `restyle_subtree`,
+    /// the agent's `ui.setStylesheet` — win until the next reload.
+    ///
+    /// [`Host::launch`]: https://docs.rs/lumen-static-shell
+    /// [`Host::set_stylesheet`]: https://docs.rs/lumen-static-shell
+    fn style(&self) -> crate::style::Stylesheet<'_> {
+        &[]
+    }
+}
+
 /// The application root: state plus the tree that presents it.
 ///
 /// Splitting the tree out of `S` is what lets dispatch hold `&mut S`
@@ -540,6 +609,9 @@ pub enum Never {}
 /// `&*self` first, that borrow ends, and only then does `&mut S` exist.
 /// The borrow checker enforces the sequence that used to be a documented
 /// rule (`docs/plan-events.md` E2).
+///
+/// Construction is [`Application`]'s job, not this trait's — see there
+/// for why they are separate.
 pub trait App: Sized {
     type Tree: crate::widget::Widget + Handlers<Self>;
     fn tree(&self) -> &Self::Tree;

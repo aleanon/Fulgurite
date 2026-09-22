@@ -1,7 +1,11 @@
-//! **Does an edited stylesheet reach the frame on a hot reload?**
+//! **An edited stylesheet reaches the frame on a hot reload** —
+//! M31/T31.0.
 //!
-//! No. This test demonstrates that, and it is written to be inverted
-//! when the fix lands.
+//! This file was written the other way round, on 2026-09-22: it
+//! *demonstrated* that it did not, with two injections that fired by
+//! name, and its header said exactly how to invert it once the fix
+//! landed. This is that inversion. The setup is unchanged, which was
+//! the point of writing it first.
 //!
 //! # Why this was looked for
 //!
@@ -29,28 +33,25 @@
 //! # What this test does and does not prove
 //!
 //! It runs **in-process**, so it proves the half that does not need two
-//! dylibs: *a host that has been given a stylesheet keeps applying it
-//! after its application is replaced by a freshly built one, and there
-//! is no API by which the new build's sheet could reach it.* That is the
-//! defect a user hits.
+//! dylibs: *`Host::reload` rebuilds the application from the code loaded
+//! now and re-asks it for a stylesheet.* That is the defect a user
+//! hits, fixed.
 //!
 //! It does **not** prove the dangling-`&'static str` half, which needs
 //! two real libraries and a pointer-range check. That is a second test
 //! and is not written yet; this file's claim is deliberately the
 //! smaller one.
 //!
-//! # Inverting this test
+//! # The shape of the fix
 //!
-//! When `Application::build`/`Application::style` land, `Host` will
-//! re-ask for the sheet as part of the swap, and
-//! `V2` is what the panel must then be. The two `V1` expectations below
-//! become `V2`, `the_host_is_never_asked_for_a_sheet_again` is deleted,
-//! and the test name loses its "and that is the defect" suffix.
-//! Nothing else changes:
-//! the setup is already the shape the fix has to satisfy.
+//! `Application::build` supplies the application from the currently
+//! loaded code and `Application::style` supplies its sheet;
+//! `Host::reload` calls both. The `V2` sheet below is what an author
+//! edited to and rebuilt, and the assertion is that the frame shows it.
 
 use lumen_static::display::Color;
 use lumen_static::prelude::*;
+use lumen_static::event::Application;
 use lumen_static::reload::Reloadable as _;
 use lumen_static::style::{Patch, Rule, Selector};
 use lumen_static::{App as DeriveApp, Reloadable as DeriveReloadable, StaticTree};
@@ -66,7 +67,7 @@ struct Ui {
     panel: Fixed,
 }
 
-#[derive(DeriveApp, DeriveReloadable, Default)]
+#[derive(DeriveApp, DeriveReloadable)]
 struct Session {
     #[tree]
     ui: Ui,
@@ -76,6 +77,27 @@ struct Session {
     /// a reload that never happened look identical.
     #[reload(keep)]
     n: u32,
+    /// What `style()` hands back. Owned by the application so the
+    /// borrowed return costs nothing: `docs/plan-application.md` §2.4.
+    /// `#[reload(fresh)]` because a sheet is code-shaped data and must
+    /// come from the new build — which is this whole file's subject.
+    #[reload(fresh)]
+    sheet: Vec<Rule>,
+}
+
+/// **The build step, and the only one.** `Reloadable::fresh` routes
+/// here because this struct has a `#[tree]` field, so the swap below
+/// runs exactly this code — and `Session` deliberately does not derive
+/// `Default`, so there is no second path for it to disagree with.
+impl Application for Session {
+    fn build() -> Self {
+        // The edited code: this build wants V2.
+        Session { ui: Ui::default(), n: 0, sheet: sheet(V2) }
+    }
+
+    fn style(&self) -> lumen_static::style::Stylesheet<'_> {
+        &self.sheet
+    }
 }
 
 /// The sheet v1 ships.
@@ -100,9 +122,21 @@ fn panel_bg<A: lumen_static::event::App>(h: &Host<A>) -> Color {
     h.states[i].bg
 }
 
+/// The swap, as a loader performs it: `save` the old application,
+/// `fresh` one from the code loaded now — which routes to
+/// `Application::build` because `Session` has a `#[tree]` field — and
+/// graft the kept fields back.
+fn rebuilt(old: &Session) -> Session {
+    let saved = old.save();
+    let mut next = Session::fresh();
+    next.restore(&saved);
+    next
+}
+
 #[test]
-fn an_edited_stylesheet_does_not_reach_the_frame_on_reload_and_that_is_the_defect() {
-    let mut host: Host<Session> = Host::new(Session::default(), 200, 100);
+fn an_edited_stylesheet_reaches_the_frame_on_reload() {
+    // Launched by the *previous* build, which installed V1.
+    let mut host: Host<Session> = Host::new(Session::build(), 200, 100);
     host.set_stylesheet(&sheet(V1));
     host.app.n = 7;
     host.pump();
@@ -110,105 +144,75 @@ fn an_edited_stylesheet_does_not_reach_the_frame_on_reload_and_that_is_the_defec
     assert_eq!(
         panel_bg(&host),
         V1,
-        "setup: v1's sheet must be in effect before the swap, or the assertion below \
-         is comparing two frames that never had a sheet"
+        "setup: the previous build's sheet must be in effect, or the assertion \
+         below is comparing two frames that never had a sheet"
     );
 
-    // ---- the swap, exactly as the loader performs it -----------------
-    //
-    // `hot_save` on the old app, `hot_new` (which is `fresh()`) from the
-    // new library, `hot_restore` to graft the keep-fields back. In
-    // process there is one build, so this models the *sequence*; what it
-    // exercises is that the sequence touches the application and never
-    // the host's sheet.
-    let saved = host.app.save();
-    host.app = Session::fresh();
-    host.app.restore(&saved);
+    // The swap. `build()` is the edited code, and it asks for V2.
+    let next = rebuilt(&host.app);
+    host.adopt(next);
     host.pump();
 
     assert_eq!(
         host.app.n, 7,
-        "the reload sequence did not happen: a kept field did not survive, so a \
-         stale sheet below would prove nothing"
+        "the reload sequence did not happen: a kept field did not survive, so the \
+         sheet assertion below would prove nothing"
     );
+    assert_eq!(
+        panel_bg(&host),
+        V2,
+        "M31/T31.0: the host must re-ask the new build for its stylesheet. Before \
+         `Application::style` existed this was V1 — the previous build's rules, \
+         kept because nothing asked."
+    );
+}
 
-    // ---- the defect ---------------------------------------------------
+/// **The control, and the reason the test above is not vacuous.**
+///
+/// The same rebuild, adopted the way the host used to do it — assign
+/// the application and say nothing about the sheet. The frame keeps V1.
+/// That is the defect this milestone removed, kept as a test so the
+/// assertion above is known to be watching `style()` and not something
+/// incidental to `pump`.
+#[test]
+fn a_swap_that_does_not_re_ask_keeps_the_previous_builds_sheet() {
+    let mut host: Host<Session> = Host::new(Session::build(), 200, 100);
+    host.set_stylesheet(&sheet(V1));
+    host.pump();
+    assert_eq!(panel_bg(&host), V1, "setup: V1 is in effect");
+
+    // `adopt` minus its one operative line.
+    host.app = rebuilt(&host.app);
+    host.pump();
+
     assert_eq!(
         panel_bg(&host),
         V1,
-        "THE DEFECT: after a reload the frame still uses the sheet the *previous* \
-         build supplied. Invert this to V2 when `Application::style` lands."
-    );
-    assert_ne!(
-        panel_bg(&host),
-        V2,
-        "if this fires, the sheet now updates on reload and this whole test should \
-         be inverted rather than deleted"
-    );
-}
-
-/// **The other direction, and the reason the test above is not
-/// vacuous.**
-///
-/// `AGENT.md`: a gate that refuses bad input must also accept good
-/// input, checked in the same session. The test above asserts that a
-/// value *did not* change, and the way that assertion lies is if the
-/// value could never change — a cascade that never ran, a `bg` nothing
-/// writes, a panel the sheet does not match.
-///
-/// So: perform the identical swap, then hand the host the new sheet by
-/// hand. The panel turns `V2`. Every part of the machinery works; the
-/// only missing piece is that nothing *asks*, which is precisely the
-/// defect and precisely what `Application::style` would supply.
-#[test]
-fn the_same_swap_does_change_the_frame_when_someone_applies_the_new_sheet() {
-    let mut host: Host<Session> = Host::new(Session::default(), 200, 100);
-    host.set_stylesheet(&sheet(V1));
-    host.pump();
-    assert_eq!(panel_bg(&host), V1, "setup: v1's sheet is in effect");
-
-    let saved = host.app.save();
-    host.app = Session::fresh();
-    host.app.restore(&saved);
-    // The one line the reload sequence does not contain.
-    host.set_stylesheet(&sheet(V2));
-    host.pump();
-
-    assert_eq!(
-        panel_bg(&host),
-        V2,
-        "the cascade, the selector and the state array all work across a swap — so \
-         the stale frame above is caused by nothing re-asking, not by a tree that \
-         cannot be restyled"
+        "replacing the application alone cannot change the sheet — if this is V2, \
+         something other than `adopt` is applying it and the gate above is loose"
     );
 }
 
 #[test]
-fn the_host_is_never_asked_for_a_sheet_again() {
-    let mut host: Host<Session> = Host::new(Session::default(), 200, 100);
+fn the_host_is_asked_for_a_sheet_on_every_swap() {
+    let mut host: Host<Session> = Host::new(Session::build(), 200, 100);
     host.set_stylesheet(&sheet(V1));
     host.pump();
-    let before = host.stylesheet().len();
-
-    let saved = host.app.save();
-    host.app = Session::fresh();
-    host.app.restore(&saved);
-    host.pump();
-
-    // The mechanism behind the test above: the sheet is a `Vec<Rule>`
-    // the host owns, the swap never touches it, and no trait method
-    // exists that could hand it a new one. `set_stylesheet` is the only
-    // way in and only an application's own `main` calls it — which the
-    // reload path does not re-run.
-    assert_eq!(
-        host.stylesheet().len(),
-        before,
-        "the sheet changed across a swap; that would mean a path exists and this \
-         test is describing the wrong mechanism"
-    );
     assert_eq!(
         host.stylesheet()[0].patch.background,
         Some(V1),
-        "the host still holds the rule the pre-swap build handed it"
+        "setup: the host holds the previous build's rule"
+    );
+
+    host.adopt(rebuilt(&host.app));
+
+    // The mechanism behind the first test: the *stored* sheet changed,
+    // not merely the resolved style — so a later `set_palette`
+    // re-cascade resolves against the new build's rules too.
+    assert_eq!(
+        host.stylesheet()[0].patch.background,
+        Some(V2),
+        "the host still holds the pre-swap rule; `adopt` replaced the application \
+         without replacing the sheet it is styled by"
     );
 }

@@ -169,6 +169,76 @@ pub struct Host<A: App, R: Retention = Incremental, I: Invalidation = Everything
     palette: lumen_static::style::Palette,
 }
 
+impl<A: App + lumen_static::event::Application, R: Retention, I: Invalidation> Host<A, R, I> {
+    /// Build the application and install the stylesheet it asks for —
+    /// M31/T31.0.
+    ///
+    /// **The shape to prefer over [`Host::new`]**, because it is the one
+    /// where startup and hot reload run the same code. `new` takes an
+    /// already-built application, so `main` and
+    /// `Reloadable::fresh`
+    /// were two construction paths that nothing checked against each
+    /// other; `launch` and `Host::reload` are both
+    /// `Application::build` followed by `Application::style`.
+    pub fn launch(width: u32, height: u32) -> Self {
+        let app = <A as lumen_static::event::Application>::build();
+        // **The sheet is copied out before `app` moves into the host.**
+        // `self.app.style()` borrows `self.app` and `set_stylesheet`
+        // needs `&mut self`; they are disjoint fields but not through
+        // method calls, which `docs/plan-application.md` §5 named in
+        // advance. Copying first is the whole workaround, and it happens
+        // at launch and at reload — never per frame.
+        let sheet: Vec<Rule> = app.style().to_vec();
+        let mut host = Self::new(app, width, height);
+        if !sheet.is_empty() {
+            host.set_stylesheet(&sheet);
+        }
+        host
+    }
+
+    /// Adopt a newly built application and re-ask it for a stylesheet.
+    ///
+    /// **The primitive half of a hot swap**, and the line that was
+    /// missing: the host owns `sheet: Vec<Rule>`, nothing in the reload
+    /// sequence touched it, and an edited stylesheet therefore never
+    /// reached the frame. `crates/lumen-static-shell/tests/reload_sheet.rs`
+    /// demonstrated that before this existed and guards it now.
+    ///
+    /// Takes the application rather than building it, so the reload
+    /// sequence — `save`, `fresh`, `restore` — stays with the caller
+    /// that already has the `reload` surface, and this method needs
+    /// neither the feature nor the bound. `Host::reload` (behind the
+    /// `reload` feature) is the sugar for when it does — a plain code
+    /// span, not a link, because a link to a `cfg`-gated item does not
+    /// resolve in a default-feature doc build.
+    pub fn adopt(&mut self, app: A) {
+        self.app = app;
+        // Same copy-first dance as `launch`, for the same borrow reason.
+        let sheet: Vec<Rule> = self.app.style().to_vec();
+        self.set_stylesheet(&sheet);
+        // A new application is a new tree: nothing about last frame's
+        // marks describes it.
+        self.invalidation.mark_all();
+        self.arenas_dirty = true;
+    }
+
+    /// Rebuild the application from the code that is loaded **now**,
+    /// keeping what `save` kept, and re-ask for the stylesheet.
+    ///
+    /// Sugar over [`Host::adopt`] for an application that is
+    /// [`Reloadable`](lumen_static::reload::Reloadable).
+    #[cfg(feature = "reload")]
+    pub fn reload(&mut self)
+    where
+        A: lumen_static::reload::Reloadable,
+    {
+        let saved = self.app.save();
+        let mut next = A::fresh();
+        next.restore(&saved);
+        self.adopt(next);
+    }
+}
+
 impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
     pub fn new(app: A, width: u32, height: u32) -> Self {
         let n = <A::Tree as Widget>::NODE_COUNT;

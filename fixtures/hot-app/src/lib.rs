@@ -18,6 +18,7 @@ use lumen_static::display::{Cmd, Color};
 use lumen_static_widgets::ops::{Fixed, Label, Spacer};
 use lumen_static::reload;
 use lumen_static::repeat::Repeat;
+use lumen_static::event::Application;
 use lumen_static::{pass, App as DeriveApp, Constraints, NodeState, Reloadable as DeriveReloadable, StaticTree, Widget};
 use lumen_static_widgets::{CheckBox};
 use serde::{Deserialize, Serialize};
@@ -107,8 +108,16 @@ struct Session {
     cache_hits: u64,
 }
 
-impl Default for Session {
-    fn default() -> Self {
+/// **The one construction path** — M31/T31.0.
+///
+/// This was `impl Default for Session`, and it had to be: the derived
+/// `Reloadable::fresh()` called `Default::default()`, so anything built
+/// anywhere else was invisible to a swap. `fresh()` now routes here
+/// because this struct has a `#[tree]` field, and `Session`
+/// deliberately does **not** derive `Default` — so the two paths cannot
+/// drift apart, because there is only one.
+impl Application for Session {
+    fn build() -> Self {
         Session { ui: Ui::default(), counter: 0, mode: Mode::Basic, theme: THEME, cache_hits: 0 }
     }
 }
