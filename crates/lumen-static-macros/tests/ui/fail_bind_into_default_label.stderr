@@ -4,7 +4,7 @@ error[E0277]: the trait bound `&'static str: TextBuffer` is not satisfied
 13 | #[derive(App, Default)]
    |          ^^^ the trait `TextBuffer` is not implemented for `&'static str`
    |
-help: the trait `TextBuffer` is implemented for `String`
+help: the trait `TextBuffer` is implemented for `std::string::String`
   --> $WORKSPACE/crates/lumen-static/src/text.rs
    |
    | impl TextBuffer for String {

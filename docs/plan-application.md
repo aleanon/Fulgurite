@@ -1,6 +1,6 @@
 # M31 — `Application`: one construction path, and a stylesheet that survives a reload
 
-> **T31.0 and T31.1 done 2026-09-23. T31.2–T31.3 open.** Written the
+> **T31.0–T31.2 done 2026-09-23. T31.3 open.** Written the
 > same day; each task's entry records what building it changed.
 >
 > An application is currently built by whatever inherent method its
@@ -230,20 +230,45 @@ already proves it for chains.
 > names both, and `lumen_static::event::Application` is not a path
 > anyone should have to learn.
 
-## T31.2 — `Default` on an application is a compile error
+## T31.2 — `Default` on a reloadable application is a compile error — **DONE 2026-09-23**
 
-The refusal from §2.3, plus removing the derive from the 25 types.
-
-**Gate:** a `trybuild`-style compile-fail case — a type with `#[tree]`
-and `#[derive(Default)]` must fail with a message naming
-`Application::build`. *Injection:* delete the refusal — the case
-compiles, and the harness reports a test that should have failed to
-build. **And the other direction in the same session:** the same type
-without `Default` must compile, or the refusal is one that refuses
-everything.
-
-**Docs:** the attribute table in `lib.rs` and the book must gain the
-trait; `book/` currently teaches `Counter::new()` in two chapters.
+> **Scoped to reloadable applications**, for T31.1's reason: `fresh()`
+> is the second construction path, so it is the only place two paths can
+> exist. A fixture that never swaps has one already and keeps `Default`
+> — which it must, since `Repeat` materialises rows with `T::default()`
+> every frame.
+>
+> **Rust has no negative bounds**, so the refusal is a coherence
+> conflict the `Reloadable` derive emits for an application:
+>
+> ```rust
+> trait AnApplicationThatReloadsMustNotAlsoDeriveDefault {}
+> impl<T: Default> AnApplicationThatReloadsMustNotAlsoDeriveDefault for T {}
+> impl AnApplicationThatReloadsMustNotAlsoDeriveDefault for Session {}
+> ```
+>
+> The blanket covers `Session` only if `Session: Default`, and then the
+> two overlap and rustc refuses with **E0119 — printing the trait's
+> name**, which is why the name is a sentence rather than an identifier.
+> Without `Default` the blanket does not apply and nothing conflicts.
+>
+> **Both directions, one session**, as `AGENT.md` requires — and a
+> coherence trick deserves it more than most, because getting it wrong
+> yields a blanket that overlaps *everything*, a gate that refuses every
+> application including the correct ones:
+>
+> | case | result |
+> |---|---|
+> | `fail_reloadable_app_derives_default.rs` | E0119, locked in `.stderr` |
+> | `pass_reloadable_app_without_default.rs` | compiles, and asserts the nested widget still derives `Default` |
+>
+> *Injection:* delete the emitted block — trybuild reports **"Expected
+> test case to fail to compile, but it succeeded."**
+>
+> The macros crate's dev-dependencies gained `reload` on `lumen-static`
+> and `lumen-static-widgets`: a UI case that expands the `Reloadable`
+> derive needs the module the derive emits paths into, or it fails on a
+> missing module instead of on the diagnostic it is locking.
 
 ## T31.3 — the `&'static str` half, with two real libraries
 

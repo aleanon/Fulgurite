@@ -16,8 +16,13 @@ proc-macro2 = { version = "1", features = ["span-locations"] }
 # graph) and is what lets this crate's doctests and, later, its trybuild
 # suite compile against the real derives instead of being ```ignore``d.
 [dev-dependencies]
-lumen-static-widgets = { path = "../lumen-static-widgets" }
-lumen-static = { path = "../lumen-static" }
+lumen-static-widgets = { path = "../lumen-static-widgets", features = ["reload"] }
+# `reload` for the UI cases that exercise the `Reloadable` derive's
+# application routing (M31/T31.2). The derive emits paths into
+# `lumen_static::reload`, so a case that expands it needs the module to
+# exist — without this the case fails on a missing module instead of on
+# the diagnostic it is locking in place.
+lumen-static = { path = "../lumen-static", features = ["reload"] }
 trybuild = "1"
 
 [features]

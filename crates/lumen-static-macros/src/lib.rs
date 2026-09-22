@@ -1237,7 +1237,42 @@ fn expand_reloadable(input: DeriveInput) -> syn::Result<Ts2> {
         quote! { <Self as ::core::default::Default>::default() }
     };
 
+    // **A reloadable application must not also implement `Default`** —
+    // M31/T31.2.
+    //
+    // `fresh()` calls `Application::build` above, so a `Default` beside
+    // it is a *second* construction path that nothing reconciles: `main`
+    // takes one, the swap takes the other, and the two drift until a
+    // handler assigned in only one of them comes back as its
+    // placeholder. That is the whole defect this milestone removed, so
+    // leaving the door open would be shipping the fix and the bug.
+    //
+    // Rust has no negative bounds, so this is the coherence trick: the
+    // blanket covers `Self` only if `Self: Default`, and then the two
+    // impls overlap and rustc refuses with E0119. When `Self` is not
+    // `Default` the blanket does not apply and nothing conflicts. The
+    // trait's *name* is the error message — E0119 prints it — which is
+    // why it is a sentence rather than an identifier.
+    //
+    // Scoped to applications that reload, which is where the two paths
+    // can exist at all: a test fixture that never swaps has one path
+    // already and keeps `Default` (`docs/plan-application.md` T31.1).
+    let no_default = if is_application {
+        quote! {
+            const _: () = {
+                trait AnApplicationThatReloadsMustNotAlsoDeriveDefault {}
+                impl<T: ::core::default::Default>
+                    AnApplicationThatReloadsMustNotAlsoDeriveDefault for T {}
+                impl AnApplicationThatReloadsMustNotAlsoDeriveDefault for #name {}
+            };
+        }
+    } else {
+        quote! {}
+    };
+
     Ok(quote! {
+        #no_default
+
         impl ::lumen_static::reload::Reloadable for #name {
             fn save(&self) -> ::lumen_static::reload::Value {
                 let mut m = ::lumen_static::reload::Map::new();
