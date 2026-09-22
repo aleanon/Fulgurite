@@ -41,6 +41,27 @@ is 408 cards, 2 041 commands.
   composites straight onto an opaque page, Vello premultiplied onto
   transparency.
 
+## 0. Re-run 2026-09-22, after M25–M30
+
+Every figure below reproduces. Single-threaded, no `simd`, both sides on
+one core — the cleanest per-core rasteriser comparison this repository
+has:
+
+| canvas | lumen ms | vello ms | ratio |
+|---|---:|---:|---:|
+| tally window | 0.64 | 1.43 | **2.21×** |
+| 720p | 2.24 | 5.10 | **2.27×** |
+| 1080p | 4.89 | 12.96 | **2.65×** |
+| 1440p | 8.66 | 23.73 | **2.74×** |
+| 4K | 19.49 | 54.05 | **2.77×** |
+
+And at full tilt (ours `simd,threads`; vello ×16): 0.62/0.32, 1.18/1.02,
+1.34/2.57, 1.50/4.57, 2.46/8.47 ms — **vello wins below 1080p and loses
+above it**, which is §3's worker-heuristic finding reproducing exactly.
+Nothing here has moved in thirteen days, which is worth one line because
+everything else in `docs/results-competitive.md` was re-measured in the
+same session and one arm had silently changed underneath it.
+
 ## 1. Single-threaded
 
 | canvas | Mpx | lumen | lumen+`simd` | vello | ratio |
