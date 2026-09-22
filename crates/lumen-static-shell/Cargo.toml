@@ -56,4 +56,10 @@ simd = ["dep:wide"]
 threads = []
 
 [dev-dependencies]
-lumen-static-widgets = { path = "../lumen-static-widgets" }
+lumen-static-widgets = { path = "../lumen-static-widgets", features = ["reload"] }
+# `reload` for `tests/reload_sheet.rs`, which drives the swap sequence
+# (`save` / `fresh` / `restore`) against a live `Host` -- the one place
+# the stylesheet's behaviour across a reload can be observed, because
+# `fixtures/hot-host` never constructs a `Host` at all. Dev-only: the
+# shell itself does not depend on the reload surface.
+lumen-static = { path = "../lumen-static", features = ["reload"] }
