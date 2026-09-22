@@ -407,6 +407,28 @@ are independent of each other**, so either may go first:
   `GenericContainer` with no value — caught by `counter-window --drive2`,
   not by any unit test.
 
+- **M31 — `docs/plan-application.md`** (T31.0–T31.3): **not started**,
+  written 2026-09-23. An application has **two construction paths and
+  nothing checks they agree**: its author writes `Counter::new()`, and
+  the framework rebuilds it with `Default::default()` because
+  `Reloadable::fresh()` derives to exactly that. Two consequences, both
+  measured rather than argued — a handler assigned outside `Default`
+  does not survive a swap (which is why `fixtures/hot-app` writes
+  `impl Default` by hand), and **an edited stylesheet never reaches the
+  frame on a reload**, demonstrated by
+  `crates/lumen-static-shell/tests/reload_sheet.rs` with two injections
+  that fire by name. The fix is one trait on the application type:
+  `build()` supplies the code, `fresh()` routes through it — the derive
+  can tell an application by its `#[tree]` field, so no new attribute —
+  and `style()` is re-asked on every swap. `Default` on an application
+  becomes a compile error, so there is one path rather than three.
+  §2.4 records the **rejected** generalised stylesheet: `Vec<Rule>` in
+  the signature would force the trait to need `alloc`, so the borrowed
+  `Stylesheet<'a> = &'a [Rule]` is the *more* portable form, which
+  inverts the intuition that proposed it. §5 names the two traps in
+  advance — a borrow conflict at the host, and exhaustiveness that
+  reaches only depth 1.
+
 Unsequenced: ~~`docs/plan-harness.md`.~~ — **M12 DONE 2026-09-20.**
 T12.3 and T12.4 landed 2026-09-04; T12.1 (a locator and expectation API,
 `lumen_static_agent::harness::TestApp`) and T12.2 (golden images with a
