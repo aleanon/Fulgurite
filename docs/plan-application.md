@@ -1,6 +1,7 @@
 # M31 — `Application`: one construction path, and a stylesheet that survives a reload
 
-> **Not started. Written 2026-09-23.**
+> **T31.0 and T31.1 done 2026-09-23. T31.2–T31.3 open.** Written the
+> same day; each task's entry records what building it changed.
 >
 > An application is currently built by whatever inherent method its
 > author wrote — `Counter::new()` in the flagship example — while the
@@ -193,21 +194,41 @@ click runs **v2's** handler after the swap. *Injection:* assign it in
 `docs/events-decision.md` rule 3's defect in the one place that demo
 already proves it for chains.
 
-## T31.1 — the migration
+## T31.1 — the migration — **DONE 2026-09-23, scoped down**
 
-25 application types gain `impl Application`. Most are a one-line struct
-literal; `examples/counter`'s `new()` disappears into `build()` and
-`examples/counter-window`'s `stylesheet_for(…)` result moves into a
-field so `style()` can borrow it.
-
-**Gate:** `just test`, `just fixtures`, `just widget-drive` and
-`just agent-drive` all green — the four that actually construct
-applications. **Not a new gate**: this task is mechanical, and inventing
-one for it would be a gate over a refactor rather than over a behaviour.
-
-**Measure:** `just const-budget` and `scripts/check_text.sh`. A trait
-with a provided method should move neither; if either moves, the derive
-is emitting more than it looks like.
+> **The plan said 25 types; the right number is four, and measuring
+> which ones found two things the plan had wrong.**
+>
+> **What the derive already forces.** `Reloadable::fresh()` routes to
+> `Application::build()` for any struct with `#[tree]`, so every
+> *reloadable* application must implement the trait or fail to compile —
+> proved by T31.0's second injection, which reverted the routing and got
+> `the trait bound `Session: Default` is not satisfied`. That is exactly
+> the set where two construction paths can diverge, because `fresh()` is
+> the second path. `fixtures/hot-app` is the only one in the tree and it
+> migrated with T31.0.
+>
+> **Most `#[tree]` types are tests, not applications.** Of the 41 sites,
+> the large majority are fixtures inside `crates/*/tests`. A fixture that
+> never reloads has one construction path already, and forcing `build()`
+> on it is churn against a defect it cannot have. They keep `Default`.
+>
+> **Migrated, because they are applications a reader learns from:**
+> `examples/counter` (the motivating case — its `new()` is gone),
+> `examples/minimal` (wiring moved out of `main`),
+> `examples/counter-window`, and `fixtures/hot-app`.
+>
+> **Not migrated, and this is a finding about the trait:**
+> `examples/glass`, `glasswall` and `showcase` construct through
+> `build(sigma)`, `build(k)` and `build(entry, open)` — **parameterised
+> constructors, which `fn build() -> Self` cannot express.** They keep
+> `Host::new`, which is why that constructor stays. A demo that builds
+> variants is a real shape and the trait does not serve it; §4 records
+> the condition for revisiting.
+>
+> `Application` and `Stylesheet` joined the prelude: every application
+> names both, and `lumen_static::event::Application` is not a path
+> anyone should have to learn.
 
 ## T31.2 — `Default` on an application is a compile error
 
@@ -270,6 +291,15 @@ and a specialization problem, for a property one impl already provides.
   Reopen if a theme needs more than role re-resolution.
 - **`impl AsRef<[Rule]>`** — §2.4's widening, when an application wants
   to compute a sheet it does not own.
+- **A parameterised `build`.** Three examples construct through
+  `build(sigma)`, `build(k)` and `build(entry, open)`; `fn build() -> Self`
+  cannot express any of them and they keep `Host::new` (T31.1). An
+  associated `type Config: Default` with `fn build(cfg: Self::Config)`
+  would — at the cost of an associated type every application must name,
+  which is the trade M28 already paid for `App::Msg` and would rather not
+  pay twice. Reopen when a *reloadable* application needs it, because
+  that is when the missing path stops being a convenience and starts
+  being the defect this milestone removed.
 
 ## 5. Two traps, named before they are hit
 

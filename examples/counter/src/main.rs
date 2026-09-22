@@ -60,12 +60,17 @@ struct Ui {
 /// owning that copy is what lets the label cache its measurement. The
 /// binding is only about who keeps the two in agreement, and when.
 // ANCHOR: state
-#[derive(DeriveApp, Default)]
+#[derive(DeriveApp)]
 struct Counter {
     #[tree]
     ui: Ui,
     #[bind(ui.value, "count: {}")]
     count: i64,
+    /// What `style()` hands back. Owned by the application so the
+    /// borrowed return allocates nothing at call time — an embedded
+    /// profile would use a `const` slice instead and the signature is
+    /// the same (`docs/plan-application.md` §2.4).
+    sheet: Vec<Rule>,
 }
 // ANCHOR_END: state
 
@@ -79,9 +84,19 @@ fn on_dec(c: &mut Counter, _: &EventCtx) {
 }
 // ANCHOR_END: handlers
 
-impl Counter {
-    fn new() -> Self {
-        let mut c = Counter::default();
+// ANCHOR: build
+/// **Construction lives here, and only here** — M31/T31.0.
+///
+/// This was an inherent `Counter::new()`, which the framework could not
+/// see: `Reloadable::fresh()` derived to `Default::default()`, so a hot
+/// swap rebuilt the application *without* the four lines below and
+/// every button came back wired to `ignore_click`. `Application::build`
+/// is the path `fresh()` now takes, so what `main` builds and what a
+/// reload builds are the same code by construction rather than by
+/// remembering.
+impl Application for Counter {
+    fn build() -> Self {
+        let mut c = Counter { ui: Ui::default(), count: 0, sheet: stylesheet() };
         c.ui.title.set("Counter");
         c.ui.hint.set("click + or - to change the tally");
         c.ui.controls.dec.label = "-";
@@ -90,7 +105,15 @@ impl Counter {
         c.ui.controls.inc.on_click = on_inc;
         c
     }
+
+    /// The sheet this build wants. `Host::launch` installs it and a
+    /// reload re-asks, so editing these rules and rebuilding changes the
+    /// frame.
+    fn style(&self) -> Stylesheet<'_> {
+        &self.sheet
+    }
 }
+// ANCHOR_END: build
 
 // ANCHOR: style
 fn stylesheet() -> Vec<Rule> {
@@ -106,8 +129,9 @@ fn stylesheet() -> Vec<Rule> {
 // ANCHOR_END: style
 
 fn main() {
-    let mut host = Host::new(Counter::new(), 320, 200);
-    host.set_stylesheet(&stylesheet());
+    // `launch` is `Application::build` followed by `Application::style`
+    // — the same two calls a reload makes, which is the point of it.
+    let mut host = Host::launch(320, 200);
     // M25/T25.2: every rule does something. `just fixtures` runs this.
     assert!(host.sheet_findings().is_empty(), "stylesheet rules that change nothing: {:?}", host.sheet_findings());
     host.pump();

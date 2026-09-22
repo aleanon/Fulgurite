@@ -8,8 +8,7 @@ between them. That is the property this chapter is about.
 The smallest thing that produces pixels:
 
 ```text
-let mut host = Host::new(App::new(), 320, 200);
-host.set_stylesheet(&stylesheet());
+let mut host = Host::launch(320, 200);   // Application::build + ::style
 host.pump();
 
 let mut canvas = Canvas::new(320, 200);

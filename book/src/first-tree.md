@@ -73,6 +73,41 @@ message enum, no dispatch table. It is attached by assignment
 (`c.ui.controls.inc.on_click = on_inc;`), which is why `Button<Counter>` is
 generic in the state type: the button knows what it is allowed to mutate.
 
+## Building the application
+
+That assignment has to happen somewhere, and **where** turns out to matter
+more than it looks:
+
+```rust
+# extern crate lumen_static;
+# extern crate lumen_static_widgets;
+# use lumen_static::prelude::*;
+# use lumen_static_widgets::prelude::*;
+# #[derive(StaticTree, Default)] #[widget(row)] struct Controls { dec: Button<Counter>, inc: Button<Counter> }
+# #[derive(StaticTree, Default)] #[widget(column)] struct Ui { title: Label<String>, hint: Label<String>, value: Label<String>, controls: Controls }
+# #[derive(DeriveApp)] struct Counter { #[tree] ui: Ui, #[bind(ui.value, "count: {}")] count: i64, sheet: Vec<Rule> }
+# fn on_inc(c: &mut Counter, _: &EventCtx) { c.count += 1; }
+# fn on_dec(c: &mut Counter, _: &EventCtx) { c.count -= 1; }
+# fn stylesheet() -> Vec<Rule> { Vec::new() }
+# fn main() {}
+{{#include ../../examples/counter/src/main.rs:build}}
+```
+
+`Application::build` is the **only** construction path, and that is the
+whole point of it. A handler is a pointer into the code that is loaded
+right now; a hot reload throws that code away and calls `build()` again to
+get pointers into the new build. Anything assigned somewhere `build()` does
+not reach — an inherent `new()`, say — is invisible to a reload, and every
+button comes back wired to its placeholder with no crash and no warning.
+
+`style()` is there for the same reason. A stylesheet holds `&'static str`
+selectors that belong to whichever build created them, so a reload re-asks
+for it too: edit these rules, rebuild, and the frame changes.
+
+`Host::launch` is `build()` followed by `style()` — the same two calls a
+reload makes, which is why an application should prefer it over
+`Host::new`.
+
 ## Styling
 
 ```rust

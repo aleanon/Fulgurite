@@ -197,7 +197,10 @@ pub mod prelude {
     pub use crate::hatch::{Dyn, List};
     #[cfg(feature = "alloc")]
     pub use crate::repeat::Repeat;
-    pub use crate::style::{Align, Edges, Length, Patch, Rule, Selector, Style};
+    pub use crate::style::{Align, Edges, Length, Patch, Rule, Selector, Style, Stylesheet};
+    /// M31: every application implements this, so it belongs beside the
+    /// derives rather than behind a `lumen_static::event::` path.
+    pub use crate::event::Application;
     pub use crate::widget::{Node, Widget};
     pub use crate::{pass, App as DeriveApp, Reloadable, StaticTree};
 }
