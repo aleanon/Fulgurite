@@ -407,27 +407,39 @@ are independent of each other**, so either may go first:
   `GenericContainer` with no value — caught by `counter-window --drive2`,
   not by any unit test.
 
-- **M31 — `docs/plan-application.md`** (T31.0–T31.3): **not started**,
-  written 2026-09-23. An application has **two construction paths and
-  nothing checks they agree**: its author writes `Counter::new()`, and
-  the framework rebuilds it with `Default::default()` because
-  `Reloadable::fresh()` derives to exactly that. Two consequences, both
-  measured rather than argued — a handler assigned outside `Default`
-  does not survive a swap (which is why `fixtures/hot-app` writes
-  `impl Default` by hand), and **an edited stylesheet never reaches the
-  frame on a reload**, demonstrated by
-  `crates/lumen-static-shell/tests/reload_sheet.rs` with two injections
-  that fire by name. The fix is one trait on the application type:
-  `build()` supplies the code, `fresh()` routes through it — the derive
-  can tell an application by its `#[tree]` field, so no new attribute —
-  and `style()` is re-asked on every swap. `Default` on an application
-  becomes a compile error, so there is one path rather than three.
-  §2.4 records the **rejected** generalised stylesheet: `Vec<Rule>` in
-  the signature would force the trait to need `alloc`, so the borrowed
-  `Stylesheet<'a> = &'a [Rule]` is the *more* portable form, which
-  inverts the intuition that proposed it. §5 names the two traps in
-  advance — a borrow conflict at the host, and exhaustiveness that
-  reaches only depth 1.
+- ~~**M31 — `docs/plan-application.md`** (T31.0–T31.3)~~ — **DONE
+  2026-09-23**, all four tasks. An application had **two construction
+  paths and nothing checked they agreed**: its author wrote
+  `Counter::new()`, and the framework rebuilt it with
+  `Default::default()` because `Reloadable::fresh()` derived to exactly
+  that. `Application::build` is the one path now, `fresh()` routes to it,
+  and `Application::style` is re-asked on every swap so an edited
+  stylesheet reaches the frame. **The derive needs no new attribute** —
+  an application is the thing with a `#[tree]` field, and a field
+  attribute is visible to every derive on the struct.
+  **Two of the four tasks were rewritten by building them.** T31.1 said
+  25 types and the right number was four: the derive already *forces*
+  the trait on every reloadable application, which is exactly the set
+  where two paths can exist, and most `#[tree]` types are test fixtures
+  that never swap. It also found what the trait cannot express —
+  `build(sigma)`, `build(k)`, `build(entry, open)` are **parameterised
+  constructors**, so `examples/glass`, `glasswall` and `showcase` keep
+  `Host::new`, which is why that constructor stays. T31.3 specified a
+  pointer-range check against a host's sheet, and `fixtures/hot-host`
+  has **no `Host`** — a loader cannot name the application type across a
+  dylib boundary, and a `Host` inside the dylib dies with the swap, so
+  that arrangement cannot exhibit the defect at all. The scenario that
+  can is a host outliving the application it holds, which is what
+  `Host::adopt` serves. So the dylib test proves the **lifetime** fact
+  (v1's selector still reads `panel-v1` at its old address after v2
+  loads — the loader never `dlclose`s, so a kept sheet styles by last
+  week's rules in silence) and `tests/reload_sheet.rs` proves the
+  **behaviour**; neither proves both.
+  T31.2's refusal is a **coherence conflict**, because Rust has no
+  negative bounds: a blanket impl that overlaps only when `Self: Default`,
+  so rustc answers E0119 and *prints the trait's name* — which is why the
+  name is a sentence. Both directions checked in one session, since a
+  blanket written wrong refuses every application instead of none.
 
 Unsequenced: ~~`docs/plan-harness.md`.~~ — **M12 DONE 2026-09-20.**
 T12.3 and T12.4 landed 2026-09-04; T12.1 (a locator and expectation API,

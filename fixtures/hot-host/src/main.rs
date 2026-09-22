@@ -195,6 +195,25 @@ fn main() {
     app.call0(symbols::DROP); // 2. old Drop impls run, old lib still loaded
     // 3. v1 is Box::leak'd: never dlclose'd.
 
+    // ---- M31/T31.3: a stylesheet belongs to the build that made it ---
+    //
+    // `Selector::Id` holds a `&'static str`. Read v1's address and text
+    // now, keep the address, and read the same address again after the
+    // swap. `crates/lumen-static-shell/tests/reload_sheet.rs` proves the
+    // in-process half — that a host which is not re-asked keeps applying
+    // the old sheet — and says it cannot prove this one, which needs two
+    // real images.
+    let sheet_v1 = {
+        let f: Symbol<unsafe extern "C" fn(*mut u8, usize) -> usize> =
+            unsafe { v1.get(b"hot_sheet_selector") }.unwrap();
+        let mut buf = [0u8; 32];
+        let ptr = unsafe { f(buf.as_mut_ptr(), buf.len()) };
+        let text = String::from_utf8_lossy(&buf[..8]).to_string();
+        assert_eq!(text, "panel-v1", "v1's sheet names its own selector");
+        println!("sheet: v1's selector at {ptr:#x} reads {text:?}");
+        (ptr, text)
+    };
+
     // ---- v2: fresh + restore ----
     let v2: &'static Library = Box::leak(Box::new(unsafe { Library::new(&v2_path) }.unwrap()));
     let app2 = App::new(v2); // 4. fresh() from the new code…
@@ -213,6 +232,42 @@ fn main() {
         let need = unsafe { f(tiny.as_mut_ptr(), 1) };
         assert!(need > 1, "the fallback log should be longer than one byte, got {need}");
         println!("  ok: undersized buffer refused, {need} bytes still pending");
+    }
+
+    // ---- M31/T31.3: whose stylesheet is in hand after the swap? ------
+    {
+        let f: Symbol<unsafe extern "C" fn(*mut u8, usize) -> usize> =
+            unsafe { v2.get(b"hot_sheet_selector") }.unwrap();
+        let mut buf = [0u8; 32];
+        let ptr_v2 = unsafe { f(buf.as_mut_ptr(), buf.len()) };
+        let text_v2 = String::from_utf8_lossy(&buf[..8]).to_string();
+        println!("sheet: v2's selector at {ptr_v2:#x} reads {text_v2:?}");
+
+        assert_eq!(text_v2, "panel-v2", "v2's sheet must name v2's selector");
+        assert_ne!(
+            ptr_v2, sheet_v1.0,
+            "the two builds' selectors share an address, so this cannot tell a kept \
+             sheet from a re-asked one"
+        );
+
+        // **The point.** v1's string is still there, still readable, and
+        // still says `panel-v1` — the loader never `dlclose`s. So a host
+        // that kept v1's `Rule` would go on styling by v1's selector
+        // with no crash and no warning, which is the shape
+        // `docs/events-decision.md` calls "last week's logic".
+        let still = unsafe {
+            core::str::from_utf8_unchecked(core::slice::from_raw_parts(
+                sheet_v1.0 as *const u8,
+                8,
+            ))
+        };
+        assert_eq!(
+            still, "panel-v1",
+            "v1's selector stopped reading as v1 — if this fires the image was \
+             unmapped and the whole argument changes shape"
+        );
+        println!("  ok: v1's selector still reads {still:?} at its old address — a kept");
+        println!("      sheet would style by it silently; `Host::adopt` re-asks instead");
     }
 
     // ---- M28/T28.7: the pending completion lands in v2 ----------------

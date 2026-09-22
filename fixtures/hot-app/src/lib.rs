@@ -28,6 +28,25 @@ const FOOTER: &str = "footer-v1";
 #[cfg(feature = "v2")]
 const FOOTER: &str = "footer-v2";
 
+/// The selector this build's stylesheet names — M31/T31.3.
+///
+/// A `Selector::Id` holds a `&'static str`, so this constant lives in
+/// **this library's** `.rodata`. The loader reads its address before and
+/// after a swap: two builds, two images, two addresses, and the bytes at
+/// the old one still say `v1` afterwards — which is what makes keeping a
+/// sheet across a reload "last week's rules" rather than a crash.
+#[cfg(not(feature = "v2"))]
+const SHEET_ID: &str = "panel-v1";
+#[cfg(feature = "v2")]
+const SHEET_ID: &str = "panel-v2";
+
+/// This build's sheet, as a `const` — the `no_std`-shaped form of
+/// `Application::style` (`docs/plan-application.md` §2.4).
+const SHEET: &[lumen_static::style::Rule] = &[lumen_static::style::Rule::new(
+    lumen_static::style::Selector::Id(SHEET_ID),
+    lumen_static::style::Patch::new(),
+)];
+
 #[cfg(not(feature = "v2"))]
 const THEME: &str = "theme-v1";
 #[cfg(feature = "v2")]
@@ -117,6 +136,10 @@ struct Session {
 /// deliberately does **not** derive `Default` — so the two paths cannot
 /// drift apart, because there is only one.
 impl Application for Session {
+    fn style(&self) -> lumen_static::style::Stylesheet<'_> {
+        SHEET
+    }
+
     fn build() -> Self {
         Session { ui: Ui::default(), counter: 0, mode: Mode::Basic, theme: THEME, cache_hits: 0 }
     }
@@ -299,6 +322,26 @@ pub unsafe extern "C" fn hot_report(p: *mut c_void, buf: *mut u8, cap: usize) ->
 
 /// Drain this dylib's reload-fallback log into a host buffer (lines
 /// joined with '\n'; same two-call protocol).
+/// Address and text of this build's first stylesheet selector —
+/// M31/T31.3.
+///
+/// Returns the pointer; writes the bytes into `buf`. The loader holds
+/// the pointer across a swap and reads it again, which is the only way
+/// to show that a `Rule` kept from the previous build still resolves
+/// into the previous build's image.
+///
+/// # Safety
+/// `buf`/`cap` must describe a writable buffer.
+#[no_mangle]
+pub unsafe extern "C" fn hot_sheet_selector(buf: *mut u8, cap: usize) -> usize {
+    let lumen_static::style::Selector::Id(s) = SHEET[0].selector else {
+        return 0;
+    };
+    let n = s.len().min(cap);
+    unsafe { core::ptr::copy_nonoverlapping(s.as_ptr(), buf, n) };
+    s.as_ptr() as usize
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn hot_take_log(buf: *mut u8, cap: usize) -> usize {
     // Staged, because `reload::take_log` is a `mem::take`: the old

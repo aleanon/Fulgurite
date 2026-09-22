@@ -1,6 +1,7 @@
 # M31 — `Application`: one construction path, and a stylesheet that survives a reload
 
-> **T31.0–T31.2 done 2026-09-23. T31.3 open.** Written the
+> **DONE 2026-09-23 — all four tasks.** Each entry records what
+> building it changed, including the two the plan had wrong. Written the
 > same day; each task's entry records what building it changed.
 >
 > An application is currently built by whatever inherent method its
@@ -270,21 +271,45 @@ already proves it for chains.
 > derive needs the module the derive emits paths into, or it fails on a
 > missing module instead of on the diagnostic it is locking.
 
-## T31.3 — the `&'static str` half, with two real libraries
+## T31.3 — the `&'static str` half, with two real libraries — **DONE 2026-09-23**
 
-`tests/reload_sheet.rs` proves the in-process half and says so. The
-other half — that a kept `Rule`'s selector points into the *old*
-library's `.rodata` — needs `just hot-demo`'s two dylibs and a
-pointer-range check against the loaded maps.
-
-**Gate:** after the swap, every selector pointer in the host's sheet
-lies inside v2's mapped range. *Injection:* skip the re-ask (T31.0's
-`style()` call) — pointers still lie in v1's range and the assertion
-fires with both ranges printed.
-
-**Why it is a task and not a note:** the in-process test cannot see it,
-and it is the half that makes this a correctness defect rather than a
-missing feature.
+> `just hot-demo` now reads the address and text of each build's first
+> selector:
+>
+> ```
+> sheet: v1's selector at 0x70b230b95650 reads "panel-v1"
+> sheet: v2's selector at 0x70b230b17610 reads "panel-v2"
+>   ok: v1's selector still reads "panel-v1" at its old address
+> ```
+>
+> **Three facts, and the third is the one that matters.** The two builds'
+> selectors are at different addresses, because a `Selector::Id` holds a
+> `&'static str` in its own library's `.rodata`. v2's sheet names v2's
+> selector. And **v1's string is still there, still readable, still
+> saying `panel-v1`** — the loader never `dlclose`s, so a host that kept
+> v1's `Rule` would go on styling by v1's selector with no crash and no
+> warning. That is what makes this a correctness defect rather than a
+> missing feature, and it is what the in-process test said it could not
+> reach.
+>
+> *Injection:* read the selector from **v1** after the swap — which is
+> precisely what a host that kept its sheet does. Fires:
+> *"v2's sheet must name v2's selector"*.
+>
+> **The plan's version of this task could not have been built as
+> written.** It specified a pointer-range check against the host's sheet
+> after a swap, and `fixtures/hot-host` has no `Host` — it drives raw
+> FFI, because a loader cannot name the application type across a dylib
+> boundary. A `Host` inside the dylib is destroyed by the swap, so that
+> arrangement cannot exhibit the defect at all. **The scenario that can
+> is a `Host` that outlives the application it holds** — which is what
+> `lumen_static_winit::run` builds and what `Host::adopt` now serves, and
+> which `tests/reload_sheet.rs` models in-process. So the dylib test
+> proves the *lifetime* fact and the in-process test proves the
+> *behaviour*; neither proves both, and the pair is the whole claim.
+>
+> `fixtures/hot-app` gained a `const SHEET` — the `no_std`-shaped form of
+> `style()` from §2.4, which until now nothing in the tree had written.
 
 ## 3. What this is not
 
