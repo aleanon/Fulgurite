@@ -596,7 +596,76 @@ pub trait Application: Sized {
 /// Construction is [`Application`]'s job, not this trait's — see there
 /// for why they are separate.
 pub trait App: Sized {
-    type Tree: crate::widget::Widget + Handlers<Self>;
+    /// **What a handler is allowed to touch** — M33
+    /// (`docs/plan-state-split.md`).
+    ///
+    /// `Self` unless the application names a `#[state]` field, and then
+    /// something stronger than tidiness: a handler is
+    /// `fn(&mut Self::State, &EventCtx)`, the tree is a *sibling* of the
+    /// state, and so **a handler cannot name a widget on the tree**:
+    ///
+    /// ```compile_fail
+    /// use lumen_static::prelude::*;
+    /// use lumen_static_widgets::prelude::*;
+    /// #[derive(StaticTree, Default)]
+    /// #[widget(column)]
+    /// struct Ui { title: Label, inc: Button<Tally> }
+    /// #[derive(Default)]
+    /// struct Tally { count: i64 }
+    /// #[derive(DeriveApp)]
+    /// struct Counter { #[tree] ui: Ui, #[state] state: Tally }
+    /// fn on_inc(t: &mut Tally, _: &EventCtx) { t.ui.title.set("reached the tree"); }
+    /// # fn main() { let _ = on_inc; }
+    /// ```
+    ///
+    /// and the same program, differing only in that handler's body,
+    /// compiles — which is what makes the refusal above specific. Stable
+    /// rustdoc does not check a `compile_fail` block's error code, so
+    /// without this twin any unrelated error would pass it. (Observed on
+    /// the day: `error[E0609]: no field 'ui' on type '&mut Tally'`.)
+    ///
+    /// ```
+    /// use lumen_static::prelude::*;
+    /// use lumen_static_widgets::prelude::*;
+    /// #[derive(StaticTree, Default)]
+    /// #[widget(column)]
+    /// struct Ui { title: Label, inc: Button<Tally> }
+    /// #[derive(Default)]
+    /// struct Tally { count: i64 }
+    /// #[derive(DeriveApp)]
+    /// struct Counter { #[tree] ui: Ui, #[state] state: Tally }
+    /// fn on_inc(t: &mut Tally, _: &EventCtx) { t.count += 1; }
+    /// # fn main() { let _ = on_inc; }
+    /// ```
+    ///
+    /// **What it does not promise:** interior mutability shared between
+    /// the two. An `Rc<Cell<_>>` held by both a widget and the state lets
+    /// a handler change what a widget shows with no binding involved.
+    /// Nothing in the workspace does that; the invalidation oracle is
+    /// what would catch it.
+    ///
+    /// Not defaulted, because associated type defaults are unstable
+    /// (M28/T28.6 paid this for `Msg`): a derived application gets
+    /// `type State = Self` emitted for it, and every hand-written impl
+    /// says it out loud — thirty-two of them when this landed, counted
+    /// with `git grep` across both workspaces.
+    type State;
+    /// The state a handler receives. `self` unless the application
+    /// names a separate state type.
+    fn state_mut(&mut self) -> &mut Self::State;
+
+    /// **Whether a handler's state excludes the tree** — M33 §2.2.
+    ///
+    /// The derive answers `true` exactly when a `#[state]` field exists,
+    /// and refuses the two ways that could lie: `#[state]` on the
+    /// `#[tree]` field, and a second `#[state]` field. A hand-written
+    /// impl gets `false`, the conservative answer. One that sets `true`
+    /// is making a promise nothing checks — the invalidation oracle is
+    /// the backstop — and M29/T29.6 narrows the mark for a consumed event
+    /// only when this is `true`.
+    const STATE_IS_SPLIT: bool = false;
+
+    type Tree: crate::widget::Widget + Handlers<Self::State>;
     fn tree(&self) -> &Self::Tree;
     fn tree_mut(&mut self) -> &mut Self::Tree;
 

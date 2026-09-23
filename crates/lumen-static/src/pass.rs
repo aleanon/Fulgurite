@@ -702,7 +702,11 @@ fn dispatch_at<S: crate::event::App>(
         // before `&mut S` exists.
         let handler = state.tree().handler(sel);
         if let Some(h) = handler {
-            h(state, &ctx);
+            // **`state_mut()`, not `state`** — M33. A handler
+            // receives `A::State`, which is the application itself
+            // unless it named a `#[state]` field. When it did, the tree
+            // is not reachable from here at all.
+            h(state.state_mut(), &ctx);
             return true;
         }
         if table[i].parent == crate::desc::NO_PARENT {

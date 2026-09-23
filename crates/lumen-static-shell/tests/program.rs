@@ -29,6 +29,10 @@ struct Sheet1 {
 }
 
 impl App for Sheet1 {
+    type State = Self;
+    fn state_mut(&mut self) -> &mut Self::State {
+        self
+    }
     type Tree = Ui;
     type Msg = u64;
     fn tree(&self) -> &Ui {

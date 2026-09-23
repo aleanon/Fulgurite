@@ -496,6 +496,11 @@ fn a_pump_that_applies_results_allocates_nothing() {
     }
 
     impl App for Defer {
+    // M32 prototype: this app keeps handlers on the whole of itself.
+    type State = Self;
+    fn state_mut(&mut self) -> &mut Self::State {
+        self
+    }
         type Tree = DeferUi;
         type Msg = u32;
         fn tree(&self) -> &DeferUi {

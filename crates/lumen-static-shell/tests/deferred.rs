@@ -43,6 +43,11 @@ struct Deferring {
 }
 
 impl App for Deferring {
+    // M32 prototype: this app keeps handlers on the whole of itself.
+    type State = Self;
+    fn state_mut(&mut self) -> &mut Self::State {
+        self
+    }
     type Tree = Ui;
     type Msg = u32;
 

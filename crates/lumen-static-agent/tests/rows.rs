@@ -58,6 +58,11 @@ struct App {
 }
 
 impl lumen_static::event::App for App {
+    // M32 prototype: this app keeps handlers on the whole of itself.
+    type State = Self;
+    fn state_mut(&mut self) -> &mut Self::State {
+        self
+    }
     // M28/T28.2: this fixture defers no work. `Never` is
     // uninhabited, so nothing can be sent and `apply` cannot
     // be called.
@@ -384,6 +389,11 @@ struct TwoApp {
 }
 
 impl lumen_static::event::App for TwoApp {
+    // M32 prototype: this app keeps handlers on the whole of itself.
+    type State = Self;
+    fn state_mut(&mut self) -> &mut Self::State {
+        self
+    }
     // M28/T28.2: this fixture defers no work. `Never` is
     // uninhabited, so nothing can be sent and `apply` cannot
     // be called.

@@ -38,6 +38,11 @@ struct Work {
 }
 
 impl App for Work {
+    // M32 prototype: this app keeps handlers on the whole of itself.
+    type State = Self;
+    fn state_mut(&mut self) -> &mut Self::State {
+        self
+    }
     type Tree = Ui;
     type Msg = u64;
     fn tree(&self) -> &Ui {

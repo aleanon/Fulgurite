@@ -1745,7 +1745,7 @@ impl syn::parse::Parse for BindSpec {
 /// hand-written: a derive that only emitted the binding body would still
 /// leave the author to call it from `update`, which is the wiring this
 /// is meant to remove.
-#[proc_macro_derive(App, attributes(tree, bind, app))]
+#[proc_macro_derive(App, attributes(tree, state, bind, app))]
 pub fn derive_app(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     match expand_app(input) {
@@ -1874,10 +1874,59 @@ fn expand_app(input: DeriveInput) -> syn::Result<Ts2> {
         }
     });
 
+    // **`#[state]` names what a handler may touch** — M33
+    // (`docs/plan-state-split.md`).
+    //
+    // Absent, `State = Self` and a handler gets the whole application,
+    // which is what every app did before this existed. Present, the tree
+    // is out of a handler's reach *by type*, and `App::STATE_IS_SPLIT`
+    // says so — which is what lets `Host::pump_with` narrow the mark for
+    // a consumed event (M29/T29.6). So the two ways that constant could
+    // lie are refused here rather than trusted: `#[state]` on the tree
+    // itself, and a second `#[state]` field (the prototype silently took
+    // the first).
+    let mut state_field: Option<&syn::Field> = None;
+    for f in fields.named.iter() {
+        if !f.attrs.iter().any(|a| a.path().is_ident("state")) {
+            continue;
+        }
+        if f.attrs.iter().any(|a| a.path().is_ident("tree")) {
+            return Err(syn::Error::new_spanned(
+                f,
+                "`#[state]` on the `#[tree]` field would hand the tree to every handler — \
+                 the state must be a sibling of the tree, not the tree itself",
+            ));
+        }
+        if let Some(prev) = state_field {
+            let mut e = syn::Error::new_spanned(f, "a second `#[state]` field");
+            e.combine(syn::Error::new_spanned(prev, "the first is here"));
+            return Err(e);
+        }
+        state_field = Some(f);
+    }
+    let split = state_field.is_some();
+    let (state_ty, state_expr) = match state_field {
+        Some(f) => {
+            let ident = f.ident.as_ref().unwrap();
+            let ty = &f.ty;
+            (quote! { #ty }, quote! { &mut self.#ident })
+        }
+        None => (quote! { Self }, quote! { self }),
+    };
+
     let (impl_g, ty_g, where_g) = input.generics.split_for_impl();
     Ok(quote! {
         impl #impl_g ::lumen_static::event::App for #name #ty_g #where_g {
             type Tree = #tree_ty;
+
+            type State = #state_ty;
+
+            #[inline]
+            fn state_mut(&mut self) -> &mut Self::State {
+                #state_expr
+            }
+
+            const STATE_IS_SPLIT: bool = #split;
 
             /// M28/T28.2: a derived app defers nothing until it says so,
             /// and `Never` is uninhabited — so nothing can be sent and

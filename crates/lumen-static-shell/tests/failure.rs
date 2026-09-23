@@ -53,6 +53,11 @@ fn fine(d: Descriptor, tx: &lumen_static::inbox::Sender<Msg>) {
 }
 
 impl App for Work {
+    // M32 prototype: this app keeps handlers on the whole of itself.
+    type State = Self;
+    fn state_mut(&mut self) -> &mut Self::State {
+        self
+    }
     type Tree = Ui;
     type Msg = Msg;
     fn tree(&self) -> &Ui {
