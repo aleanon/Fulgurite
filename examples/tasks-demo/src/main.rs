@@ -275,17 +275,22 @@ fn build() -> Demo {
     app
 }
 
+/// The sheet. **Kinds are lowercase** (`button`, `label`): this said
+/// `"Button"` and `"Label"` until M32/T32.1's migration found that
+/// neither rule had ever matched anything — the demo had been unstyled
+/// since its sheet was written. The test below asserts the sheet lint
+/// finds nothing, which would have caught it on the day.
 fn stylesheet() -> Vec<Rule> {
     vec![
         Rule::new(
-            Selector::Kind("Button"),
+            Selector::Kind("button"),
             Patch::new()
                 .background(Color(226, 232, 240, 255))
                 .padding(Edges::all(8.0))
                 .radius(6.0)
                 .height(Length::Fixed(32.0)),
         ),
-        Rule::new(Selector::Kind("Label"), Patch::new().font_size(14.0)),
+        Rule::new(Selector::Kind("label"), Patch::new().font_size(14.0)),
     ]
 }
 
@@ -303,3 +308,23 @@ fn main() {
     program.run();
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// M25/T25.2's lint over this program's own sheet: every rule matches
+    /// a node and changes something.
+    #[test]
+    fn every_stylesheet_rule_changes_something() {
+        let host = program().host::<lumen_static::retain::Incremental, lumen_static::Everything>();
+        let sheet = host.stylesheet();
+        let found: Vec<String> = host
+            .sheet_findings()
+            .iter()
+            .map(|f| format!("rule {} {:?}: {:?}", f.rule, sheet[f.rule].selector, f.issue))
+            .collect();
+        println!("{} rules, {} findings", sheet.len(), found.len());
+        assert!(!sheet.is_empty(), "setup: the program installed its sheet");
+        assert!(found.is_empty(), "stylesheet rules that change nothing:\n{}", found.join("\n"));
+    }
+}
