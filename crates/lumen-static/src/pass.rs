@@ -214,6 +214,7 @@ pub fn dispatch_overlaid<S: crate::event::App, O: crate::overlay::OverlaySink>(
         let top = ov.at(ov.len() - 1) as usize;
         if state.tree_mut().node_mut(top).dismiss() {
             input.focus = None;
+            tell_owner(state, top, ev, input);
             return true;
         }
     }
@@ -229,12 +230,19 @@ pub fn dispatch_overlaid<S: crate::event::App, O: crate::overlay::OverlaySink>(
                 state.tree().node(i).hit(st, i, p.x, p.y).is_some()
             });
             if !inside {
-                let mut closed = false;
+                // A passive overlay (a tooltip) closes without taking the
+                // press: if every overlay this closed was passive, the
+                // press goes on to ordinary dispatch below.
+                let mut consumed = false;
                 for k in (0..ov.len()).rev() {
                     let i = ov.at(k) as usize;
-                    closed |= state.tree_mut().node_mut(i).dismiss();
+                    let consumes = state.tree().node(i).dismissal_consumes_press();
+                    if state.tree_mut().node_mut(i).dismiss() {
+                        consumed |= consumes;
+                        tell_owner(state, i, ev, input);
+                    }
                 }
-                if closed {
+                if consumed {
                     input.focus = None;
                     input.swallow_release = true;
                     return true;
@@ -732,6 +740,43 @@ fn dispatch_at<S: crate::event::App>(
             return false;
         }
         i = table[i].parent as usize;
+    }
+}
+
+/// **Tell a dismissed overlay's owner** — M33/T33.3.
+///
+/// The overlay the pass just closed is a node the owner *contains* — a
+/// `Select`'s popup — so the question goes to its parent, and only one
+/// level: a derived container answers `None` at its own index, and asking
+/// further up could reach an unrelated handler. Asked with
+/// [`NodeSel::dismissed`](crate::event::NodeSel::dismissed), which no
+/// activation ever sends, so an owner's dismissal handler cannot be run
+/// by a click.
+fn tell_owner<S: crate::event::App>(
+    state: &mut S,
+    overlay: usize,
+    ev: &crate::event::Event,
+    input: &crate::event::InputState,
+) {
+    let table = <S::Tree as crate::widget::Widget>::SUB_TABLE;
+    let owner = table[overlay].parent;
+    if owner == crate::desc::NO_PARENT {
+        return;
+    }
+    let handler = crate::event::Handlers::handler(state.tree(), crate::event::NodeSel::dismissed(owner as usize));
+    if let Some(h) = handler {
+        let ctx = crate::event::EventCtx {
+            event: *ev,
+            node: owner,
+            row: None,
+            inner: 0,
+            pos: ev.position().unwrap_or(Point { x: 0.0, y: 0.0 }),
+            local: Point { x: 0.0, y: 0.0 },
+            button: ev.button(),
+            clicks: input.clicks,
+            mods: input.mods,
+        };
+        h(state.state_mut(), &ctx);
     }
 }
 

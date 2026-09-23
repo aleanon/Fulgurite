@@ -49,6 +49,11 @@ pub struct Popup<W: Widget> {
     /// Whether it is showing. A closed popup costs a `bool` test.
     pub open: bool,
     pub anchor: Anchor,
+    /// A **passive** popup is dismissed by a press outside it without
+    /// consuming that press — a tooltip, which must not take the click
+    /// from the control it explains. `false` (consuming) by default,
+    /// which is what a menu wants (M33/T33.3).
+    pub passive: bool,
     /// The content's measured size, kept from `layout` so `place` can
     /// position it. The same reason `ScrollView` keeps its overflow:
     /// `place` does not re-measure.
@@ -61,6 +66,7 @@ impl<W: Widget + Default> Default for Popup<W> {
             content: W::default(),
             open: false,
             anchor: Anchor::default(),
+            passive: false,
             measured: Size::default(),
         }
     }
@@ -71,7 +77,7 @@ impl<W: Widget> Popup<W> {
     const AT: usize = 1;
 
     pub fn new(content: W) -> Self {
-        Popup { content, open: false, anchor: Anchor::default(), measured: Size::default() }
+        Popup { content, open: false, anchor: Anchor::default(), passive: false, measured: Size::default() }
     }
 }
 
@@ -195,6 +201,10 @@ impl<W: Widget> Node for Popup<W> {
 
     fn dismiss(&mut self) -> bool {
         core::mem::replace(&mut self.open, false)
+    }
+
+    fn dismissal_consumes_press(&self) -> bool {
+        !self.passive
     }
 
     fn node(&self, i: usize) -> &dyn Node {

@@ -27,30 +27,34 @@
 //! hit testing each frame, so it cannot go stale the way a captured
 //! index can.
 //!
-//! # What it owns and what the application owns
+//! # It is controlled — the application owns `open` (M33/T33.3)
 //!
-//! `Select` owns **opening**. A press on the trigger is consumed in
-//! [`Node::on_event`], which is the hook a widget has for its own state
-//! ([`crate::slider::Slider`] uses the same one) — an `on_click` is
-//! `fn(&mut S, ..)` and from `&mut S` a widget is only reachable as
-//! `&mut dyn Node`, so the application could not do it even if it
-//! wanted to.
+//! Following `Toggle`'s precedent, which never flips itself: whether the
+//! menu is open is the **application's** state, bound into the popup with
+//! the value form, `#[bind(ui.picker.menu.open, open)]`.
 //!
-//! It does **not** own closing, and that is not an omission: a press
-//! outside every overlay is dismissed and consumed by
-//! `pass::dispatch_overlaid` before any widget sees it, and Escape
-//! closes the topmost. So pressing the trigger while the menu is open
-//! closes it and does *not* reopen it — the press never arrives. That is
-//! what every desktop toolkit does, and getting it by not writing code
-//! is the reason `dismiss` was made the pass's job in M15.
+//! - **Opening** is the trigger's `on_click` (it is a [`Button`]): the
+//!   application sets its `open`.
+//! - **Choosing** is a row's `on_click`, with `ctx.row` set: the
+//!   application records the choice and clears `open`.
+//! - **Dismissal** — Escape, or a press outside every overlay — is done by
+//!   `pass::dispatch_overlaid`, which then asks the popup's owner for its
+//!   [`Select::on_dismiss`] and runs it, so the application can clear
+//!   `open`. Without that call the state would still say "open" and the
+//!   next binding would reopen the menu.
 //!
-//! Choosing a row is the application's: the row's `on_click` runs on
-//! release with `ctx.row` set, and closing the menu there is one line.
+//! Until M33 the widget owned opening (a press on the trigger, in
+//! `on_event`) and the application closed it by reaching into the tree —
+//! which a split application, whose handlers cannot reach the tree,
+//! cannot do. Pressing the trigger while the menu is open still closes it
+//! and leaves it closed: the press is dismissed and consumed, and so is
+//! its release (`InputState::swallow_release`), so the trigger's
+//! `on_click` never runs.
 
 use lumen_static::cx::LayoutCx;
 use lumen_static::desc::{Constraints, NodeDesc, NodeState, Point, Size, NO_PARENT};
 use lumen_static::display::Painter;
-use lumen_static::event::{Event, EventCtx};
+use lumen_static::event::EventCtx;
 use lumen_static::hit::Hit;
 use crate::ops::Button;
 use crate::popup::{Anchor, Popup};
@@ -85,26 +89,19 @@ pub type SelectMenu<S> = Popup<Repeat<Row<S>>>;
 pub struct Select<S: 'static> {
     /// What the closed control shows. The application writes the label.
     pub trigger: Row<S>,
-    /// The rows, and whether they are showing.
+    /// The rows, and whether they are showing. `menu.open` is what the
+    /// application binds.
     pub menu: SelectMenu<S>,
-    /// The trigger's rect, kept from `place`.
-    ///
-    /// `on_event` gets neither `&[Style]` nor `&[NodeState]` — the same
-    /// constraint [`crate::scroll::ScrollView`] records — and it must
-    /// still tell a press on the trigger from one on a row that bubbled
-    /// up through the popup. So the rect is recorded where it is known.
-    trigger_rect: (Point, Size),
+    /// Run when the pass dismisses the menu — Escape, or a press outside
+    /// it — so the application can clear its `open`. See the module docs.
+    pub on_dismiss: fn(&mut S, &EventCtx),
 }
 
 impl<S: 'static> Default for Select<S> {
     fn default() -> Self {
         let mut menu = SelectMenu::<S>::default();
         menu.anchor = Anchor::Below;
-        Select {
-            trigger: Row::<S>::default(),
-            menu,
-            trigger_rect: (Point { x: 0.0, y: 0.0 }, Size::default()),
-        }
+        Select { trigger: Row::<S>::default(), menu, on_dismiss: |_, _| {} }
     }
 }
 
@@ -135,12 +132,14 @@ impl<S: 'static> Select<S> {
         self.menu.open
     }
 
-    /// Close the menu — what a row's handler calls after choosing.
+    /// Close the menu directly. A controlled `Select` is closed by its
+    /// application's state through the binding; this is for a host that
+    /// drives the widget without one (a test, the agent's fixtures).
     pub fn close(&mut self) {
         self.menu.open = false;
     }
 
-    /// Open it. Rarely needed: a press on the trigger does this.
+    /// Open it directly — see [`Select::close`].
     pub fn open(&mut self) {
         self.menu.open = true;
     }
@@ -261,7 +260,6 @@ impl<S: 'static> Node for Select<S> {
     fn place(&mut self, at: Point, style: &[Style], st: &mut [NodeState], i: usize) {
         st[i].pos = at;
         self.trigger.place(at, style, st, i + Self::TRIGGER);
-        self.trigger_rect = (at, st[i + Self::TRIGGER].size);
         // **Below the trigger, not at the control's origin.** `Popup`
         // anchors on the position its parent gives it, so handing it
         // `at` would put the menu *over* the trigger.
@@ -280,32 +278,6 @@ impl<S: 'static> Node for Select<S> {
         self.menu
             .hit(st, i + Self::MENU, x, y)
             .or_else(|| self.trigger.hit(st, i + Self::TRIGGER, x, y))
-    }
-
-    /// A press on the trigger opens the menu.
-    ///
-    /// **Open, not toggle.** While the menu is open a press on the
-    /// trigger is *outside* the popup, so `pass::dispatch_overlaid`
-    /// dismisses every overlay and consumes it — this is never reached.
-    /// A toggle here would therefore close and immediately reopen, which
-    /// is the classic dropdown bug, and writing `open` rather than
-    /// `!open` is what avoids it.
-    ///
-    /// The rect test is what keeps a press on a *row* from being eaten:
-    /// it bubbles through the popup to here, and it is not on the
-    /// trigger.
-    fn on_event(&mut self, ev: &Event, cx: &EventCtx) -> bool {
-        if !matches!(ev, Event::PointerDown { .. }) || self.menu.open {
-            return false;
-        }
-        let (p, s) = self.trigger_rect;
-        let on_trigger =
-            cx.pos.x >= p.x && cx.pos.x < p.x + s.w && cx.pos.y >= p.y && cx.pos.y < p.y + s.h;
-        if !on_trigger {
-            return false;
-        }
-        self.menu.open = true;
-        true
     }
 
     fn dismiss(&mut self) -> bool {
@@ -346,7 +318,10 @@ impl<S: 'static> Node for Select<S> {
 impl<S: 'static> lumen_static::event::Handlers<S> for Select<S> {
     fn handler(&self, sel: lumen_static::event::NodeSel) -> Option<fn(&mut S, &EventCtx)> {
         if sel.i == 0 {
-            return None;
+            // Only the pass's dismissal question reaches this: an
+            // activation passes `inner` only at the node it hit, and the
+            // trigger and rows have handlers of their own.
+            return sel.is_dismissal().then_some(self.on_dismiss);
         }
         if sel.i < Self::MENU {
             return self.trigger.handler(lumen_static::event::NodeSel { i: sel.i - Self::TRIGGER, ..sel });

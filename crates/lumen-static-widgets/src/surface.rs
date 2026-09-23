@@ -366,10 +366,9 @@ pub struct Tooltip<W: Widget, S: TextStorage = &'static str> {
 
 impl<W: Widget + Default, S: TextStorage + Default> Default for Tooltip<W, S> {
     fn default() -> Self {
-        Tooltip {
-            content: W::default(),
-            tip: crate::popup::Popup::default(),
-        }
+        let mut tip = crate::popup::Popup::default();
+        tip.passive = true;
+        Tooltip { content: W::default(), tip }
     }
 }
 
@@ -383,6 +382,9 @@ impl<W: Widget, S: TextStorage> Tooltip<W, S> {
     pub fn new(content: W, text: S) -> Self {
         let mut tip = crate::popup::Popup::<Toast<S>>::new(Toast::new(text));
         tip.open = false;
+        // Passive: a press on the content closes the tip and still
+        // reaches the content (M33/T33.3).
+        tip.passive = true;
         Tooltip { content, tip }
     }
 

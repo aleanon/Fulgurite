@@ -197,6 +197,19 @@ pub trait Node {
         false
     }
 
+    /// Whether a press outside this overlay, which dismisses it, is
+    /// **consumed** — M33/T33.3.
+    ///
+    /// `true` for a menu or a modal: the click that closes a dropdown
+    /// must not also press what is under it (`tests/dismiss_click.rs`).
+    /// `false` for a *passive* overlay — a tooltip — whose dismissal must
+    /// not take the press from the control it was describing. Asked of
+    /// the overlay node itself, by its own index, so this is a leaf's
+    /// answer and never a wrapper's to forward.
+    fn dismissal_consumes_press(&self) -> bool {
+        true
+    }
+
     /// One step of an input-method composition (T14.8).
     ///
     /// `false` from a node that does not edit text, which is what lets

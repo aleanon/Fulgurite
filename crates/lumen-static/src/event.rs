@@ -524,6 +524,30 @@ pub struct NodeSel {
     pub inner: Option<(u64, u32)>,
 }
 
+impl NodeSel {
+    /// The `inner` a dismissal query carries — a row no repeater can have.
+    const DISMISSED: (u64, u32) = (u64::MAX, u32::MAX);
+
+    /// **"This node's overlay was just dismissed — who handles that?"** —
+    /// M33/T33.3.
+    ///
+    /// A controlled widget whose popup the *pass* closes (Escape, a press
+    /// outside) has to tell the application, or its state would still
+    /// say "open" and the next binding would reopen it. Asked through
+    /// [`Handlers::handler`] with a sentinel `inner`, so every container
+    /// forwards it the way it already forwards a row's selection, and no
+    /// activation can ever ask it: activation passes `inner` only at the
+    /// node it hit, and a real row index is never `u64::MAX`.
+    pub const fn dismissed(owner: usize) -> NodeSel {
+        NodeSel { i: owner, inner: Some(Self::DISMISSED) }
+    }
+
+    /// Whether this selection is [`NodeSel::dismissed`]'s question.
+    pub const fn is_dismissal(&self) -> bool {
+        matches!(self.inner, Some(Self::DISMISSED))
+    }
+}
+
 /// Which handler, if any, a node carries.
 ///
 /// Generic over the application state so that a `Button<A>` placed in a

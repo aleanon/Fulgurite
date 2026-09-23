@@ -176,6 +176,12 @@ pub struct Show {
     ui: Screen,
     /// Which catalogue entry is on the stage.
     selected: usize,
+    /// **Whether the dropdown is open — the application's, since
+    /// `Select` became controlled** (M33/T33.3). Bound into the popup; the
+    /// trigger's `on_click` sets it, a chosen row and the pass's
+    /// dismissal (`on_dismiss`) clear it.
+    #[bind(ui.body.header.picker.menu.open, open)]
+    menu: PickerState,
     /// Turns, for the demos that animate. Advanced by `App::tick`;
     /// nothing here drives its own clock.
     phase: f32,
@@ -189,6 +195,12 @@ pub struct Show {
     presses: u32,
     flag: bool,
     fraction: f32,
+}
+
+/// The dropdown's state (M33/T33.3).
+#[derive(Default)]
+pub struct PickerState {
+    open: bool,
 }
 
 /// After every pump: rebuild the demos whose state lives in the store,
@@ -271,7 +283,7 @@ fn rebuild(s: &mut Show) {
     // `examples/glasswall` already paid for that lesson: a missing glyph
     // renders as the fallback box, which looks like a bug in the widget
     // rather than in the font.
-    let open = s.ui.body.header.picker.is_open();
+    let open = s.menu.open;
     s.ui.body.header.picker.trigger.label =
         format!("{}      {}", e.name, if open { "^" } else { "v" });
     s.ui.body.header.blurb.set(e.blurb.into());
@@ -308,11 +320,9 @@ fn bind_row(r: &mut SelectRow<Show>, i: usize) {
 /// Put entry `i` on the stage and close the dropdown.
 fn choose(s: &mut Show, i: usize) {
     s.selected = i.min(CATALOG.len() - 1);
-    // Closing is the application's, deliberately: `Select` owns
-    // *opening* (a press on the trigger, in `on_event`) and dismissal
-    // (the pass, on Escape or a press outside), but what a chosen row
-    // means is not the widget's business.
-    s.ui.body.header.picker.close();
+    // The application owns `open` (M33/T33.3); the binding closes the
+    // popup on the next update.
+    s.menu.open = false;
     s.phase = 0.0;
     rebuild(s);
 }
@@ -324,10 +334,18 @@ fn build(entry: usize, open: bool) -> Show {
     // **The whole wiring of the dropdown.** One `fn` for the rows, the
     // count as data, and nothing about eighteen.
     app.ui.body.header.picker = Select::new(CATALOG.len(), ROW_H, bind_row);
+    // Controlled (M33/T33.3): opening and dismissal write the state, and
+    // the header's chevron follows it.
+    app.ui.body.header.picker.trigger.on_click = |s: &mut Show, _: &EventCtx| {
+        s.menu.open = true;
+        rebuild(s);
+    };
+    app.ui.body.header.picker.on_dismiss = |s: &mut Show, _: &EventCtx| {
+        s.menu.open = false;
+        rebuild(s);
+    };
     app.selected = entry.min(CATALOG.len() - 1);
-    if open {
-        app.ui.body.header.picker.open();
-    }
+    app.menu.open = open;
     // **Mid-travel, not zero.** The animated demos take their value from
     // `phase`, and a showcase opened on one of them at phase 0 shows an
     // empty bar and an unlit spinner — which reads as a broken widget
@@ -412,7 +430,7 @@ fn profile_popup() {
     let settled = host.take_damage_for_age(1);
     let before = host.list.len();
 
-    host.app.ui.body.header.picker.open();
+    host.app.menu.open = true;
     rebuild(&mut host.app);
     host.invalidate_all();
     pump(&mut host);

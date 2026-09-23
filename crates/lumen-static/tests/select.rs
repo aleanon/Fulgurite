@@ -4,7 +4,8 @@
 //! get right by hand and one of which it got wrong:
 //!
 //! 1. the option count is data — the tree's shape does not move with it;
-//! 2. a press on the trigger opens it;
+//! 2. a press on the trigger opens it — through the application's
+//!    state since M33/T33.3, when `Select` became controlled;
 //! 3. a press on the trigger *while open* closes it and does **not**
 //!    reopen it — the classic dropdown bug;
 //! 4. a press on a row reaches the application with the right index.
@@ -30,6 +31,11 @@ struct Ui {
 struct App {
     ui: Ui,
     picked: Vec<u64>,
+    /// **The application owns `open`** (M33/T33.3); `update` binds it
+    /// into the popup, exactly as `#[bind(ui.sel.menu.open, open)]`
+    /// would.
+    open: bool,
+    dismissed: u32,
 }
 
 impl lumen_static::event::App for App {
@@ -52,13 +58,16 @@ impl lumen_static::event::App for App {
     fn tree_mut(&mut self) -> &mut Ui {
         &mut self.ui
     }
+    fn update(&mut self) -> bool {
+        lumen_static::bind::BindValue::bind_value(&mut self.ui.sel.menu.open, &self.open)
+    }
 }
 
 fn bind(r: &mut Row<App>, i: usize) {
     r.label = format!("option {i}");
     r.on_click = |s: &mut App, cx: &EventCtx| {
         s.picked.push(cx.row.expect("a row index arrives from hit testing"));
-        s.ui.sel.close();
+        s.open = false;
     };
 }
 
@@ -82,6 +91,11 @@ impl Fx {
     fn new(count: usize) -> Fx {
         let mut app = App::default();
         app.ui.sel = Select::new(count, ROW_H, bind);
+        app.ui.sel.trigger.on_click = |s: &mut App, _: &EventCtx| s.open = true;
+        app.ui.sel.on_dismiss = |s: &mut App, _: &EventCtx| {
+            s.open = false;
+            s.dismissed += 1;
+        };
         let mut styles = vec![Style::default(); Ui::NODE_COUNT];
         cascade_deep(&mut app.ui, &sheet(), &mut styles);
         let mut f = Fx {
@@ -122,6 +136,9 @@ impl Fx {
             &self.ov,
             &ev,
         );
+        // The binding step, between input and layout — what `Host::pump`
+        // runs as `App::update`.
+        lumen_static::event::App::update(&mut self.app);
         self.frame();
         handled
     }
@@ -226,3 +243,24 @@ fn escape_closes_it() {
     assert!(!f.app.ui.sel.is_open(), "Escape did not dismiss the menu");
 }
 
+
+/// **A dismissal reaches the application** — M33/T33.3.
+///
+/// The pass closes the popup on a press outside; the application's `open`
+/// must follow, or the next binding reopens it. The assertion is on the
+/// *next frame*, after `update` has bound the state back in.
+#[test]
+fn a_press_outside_tells_the_application_and_the_menu_stays_closed() {
+    let mut f = Fx::new(5);
+    f.click(20.0, ROW_H / 2.0);
+    assert!(f.app.open && f.app.ui.sel.is_open(), "setup: the menu never opened");
+
+    f.click(280.0, 390.0);
+    f.click(280.0, 390.0); // a second frame, after the binding ran
+    println!("open: {}, dismissed: {}", f.app.ui.sel.is_open(), f.app.dismissed);
+    assert_eq!(f.app.dismissed, 1, "the pass did not tell the Select's owner it was dismissed");
+    assert!(
+        !f.app.ui.sel.is_open(),
+        "the menu reopened: the application still said open, and the binding wrote it back"
+    );
+}
