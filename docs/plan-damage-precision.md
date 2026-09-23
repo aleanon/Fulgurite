@@ -1,8 +1,17 @@
 # M29 — what one changed value should cost: a fixture big enough to see it, then a mark that fits
 
-> **T29.0 and T29.1 done 2026-09-21. T29.2–T29.5 open.** Written
-> 2026-09-20; §6 records the seven-lens review that corrected it, and
-> the probe's numbers live in `docs/results-damage-precision.md`.
+> **T29.0, T29.1 and T29.5 are done (2026-09-21). T29.2–T29.4 and
+> T29.6 are open, and they wait for M33** (`docs/plan-state-split.md`).
+> Written 2026-09-20. §6 records the seven-lens review that corrected
+> it, and the probe's numbers live in
+> `docs/results-damage-precision.md`.
+>
+> **Amended 2026-09-23 after three decisions.** The state/tree split
+> ships as M33, so the `handled` path §2.5 ruled out can now be
+> narrowed. It is scheduled here as T29.6, where it had been deferred in
+> §4. `Boundaries` becomes the default strategy as M34
+> (`docs/plan-boundaries-default.md`), so the saving reaches a turnkey
+> window. Paint culling stays shelved on §4's condition.
 >
 > M26's Phase D promoted finding 14 and measured it: `Host::pump_with`
 > calls `mark_all()` whenever `App::update()` returns true, so **one
@@ -96,6 +105,8 @@ under, and prints its measured quantity beside its bound.*
   flipping it is a decision with its own evidence to gather (four of
   M26's five Phase A defects were invisible under `Everything`, so the
   strategy that needs this work is also the less-exercised one).
+  **Decided 2026-09-23: it flips.** The evidence and the flip are M34
+  (`docs/plan-boundaries-default.md`).
 - The invalidation oracle compares byte-identical frames under
   `Everything` and `Boundaries` over a driven session, and its fixture
   now contains an enum (M26/T26.1). **That is the gate a narrower mark
@@ -252,8 +263,9 @@ nothing has approached is also a limit nothing has measured.
 describe the saving without naming the frames it applies to. Narrowing
 `handled` itself is a separate question with a real answer — a handler
 that could not reach the tree would make every tree write a binding —
-and it is a type-system change, not an invalidation one. It is recorded
-in §4, not built here.
+and it is a type-system change, not an invalidation one. **Amended
+2026-09-23:** the type-system change ships as M33, and the narrowing it
+enables is T29.6 below.
 
 ## T29.0 — the grid fixture — **DONE 2026-09-21**
 
@@ -455,6 +467,41 @@ down the wrong path, and it should not outlive the correction.
 > the *story* was, and only splitting the quantity four ways could tell
 > them apart.
 
+## T29.6 — a handled event narrows, for a split application
+
+**Needs M33 and T29.3.** M33 makes the tree unreachable from a handler
+and gives `App` a constant saying so. T29.3 makes `update` report one
+range per binding that wrote. With both in place, a consumed event no
+longer has to mean `mark_all`.
+
+**What still has to be marked.** A handler writes only the state, but
+`dispatch` also delivers the event to a widget. A `TextInput` inserts a
+character into itself, a `Toggle` flips itself and a `Slider` moves
+itself. Those are tree writes that no binding reports. So a narrowed
+`handled` marks the subtree range of **the node that consumed the
+event**, plus whatever `update`'s bindings report. `dispatch` has to
+return that node, which it does not do today. Hover, press and focus are
+already marked by T25.0's path and stay as they are.
+
+**What stays conservative.** An application whose `State` is `Self`
+keeps `mark_all`, answered by M33's constant. So do an applied message
+when M33/T33.2 has not landed, a `with =` binding, an `after_update`
+hook, and the arena flag. These are T29.4's six paths, and that task's
+assertions extend to cover this one.
+
+**Gate:** the invalidation oracle over a **click-driven** session on a
+split fixture that types into a `TextInput`, flips a `Toggle` and
+presses a button whose handler changes a bound label elsewhere. The
+frames must be byte-identical under `Everything` and `Boundaries`.
+*Injection:* mark only the binding ranges and not the consuming node.
+The typed character is then stale, and the oracle fires, naming the
+frame. *Second injection:* narrow for an unsplit application. The
+fixture's unsplit twin, whose handler writes the tree, goes stale.
+
+**Measure:** `just grid`'s `handled` arm must land where the
+host-driven arm did. Publish both, as T29.3 does, and state which frames
+the saving now reaches.
+
 ## 3. What this is not
 
 **Not paint culling.** A derived container still paints offscreen
@@ -472,7 +519,8 @@ surgical.
 ## 4. Deferred, with conditions
 
 - **Paint culling for table containers. The condition is still not
-  met**, and the first write-up of T29.1 said it was. That deferral's
+  met, and on 2026-09-23 it was decided to keep it shelved on that
+  condition**, and the first write-up of T29.1 said it was. That deferral's
   condition is **off-surface node count**; paint's *share of the frame*
   is a different quantity, and this fixture has 220 off-surface nodes of
   2,227 — 9.9% (`docs/results-damage-precision.md` T29.1). A
@@ -485,14 +533,9 @@ surgical.
   that culls by its child's rect would skip an on-screen popup and never
   call `defer` at all. T16.8 refused a paint skip for reasons that have
   not changed just because the tree got bigger.
-- **Narrowing the handled-event path (§2.5).** The blocker is that a
-  handler takes `&mut S` and may write the tree directly. The type-level
-  answer — a handler that cannot reach the tree, so every tree write is
-  a binding — would make this milestone apply to every frame instead of
-  the minority it currently reaches. It is a change to the event
-  signature, not to invalidation, so it belongs to whatever milestone
-  takes on `docs/events-decision.md` next, and it should cite T29.1's
-  `handled` arm as its motivation.
+- ~~**Narrowing the handled-event path (§2.5).**~~ **Scheduled
+  2026-09-23 as T29.6**, behind M33 (`docs/plan-state-split.md`), which
+  is the type-level change this entry asked for.
 - **Ranges from `after_update` hooks.** When an application has a hook
   whose blast radius is measured to matter.
 - **A dirty bit that propagates from the widget.** Only if a design

@@ -109,3 +109,5 @@ BackgroundImage      # SVG 1.1 filter input, named in the same comment for why i
 ValueContains        # renamed TextContains in M27/T27.0; the rustdoc records the rename
 PairCheck            # split into PairCheckA/PairCheckB in M27/T27.3; two comments record why
 VeilBody             # split into ModalBody/SheetBody/DrawerBody in M27/T27.7; W1011 is why
+PanicHookInfo        # std::panic::PanicHookInfo, named in docs/plan-panic-recovery.md -- not ours
+PanicReport          # promised by docs/plan-panic-recovery.md T36.1; comes off when it exists
