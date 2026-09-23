@@ -459,7 +459,9 @@ found" section rather than silently replacing itself.
 - M36 after M32, and M37 after M36.
 - M35 is independent of all the rest.
 
-- **M32 — `docs/plan-program.md`** (T32.0–T32.2):
+- ~~**M32 — `docs/plan-program.md`** (T32.0–T32.2)~~ **DONE 2026-09-24**,
+  62 of 62 migrated frames byte-identical; its migration found tasks-demo's
+  sheet had never matched anything (§6).
   `application(boot)`, iced-shaped, with constant-or-function
   `title`/`style` and a boot that may capture and may return initial
   jobs. **The program description is the only source** of construction

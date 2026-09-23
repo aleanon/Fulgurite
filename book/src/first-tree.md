@@ -84,8 +84,8 @@ more than it looks:
 # use lumen_static::prelude::*;
 # use lumen_static_widgets::prelude::*;
 # #[derive(StaticTree, Default)] #[widget(row)] struct Controls { dec: Button<Counter>, inc: Button<Counter> }
-# #[derive(StaticTree, Default)] #[widget(column)] struct Ui { title: Label<String>, hint: Label<String>, value: Label<String>, controls: Controls }
-# #[derive(DeriveApp)] struct Counter { #[tree] ui: Ui, #[bind(ui.value, "count: {}")] count: i64, sheet: Vec<Rule> }
+# #[derive(StaticTree, Default)] #[widget(column)] struct Ui { title: Label, hint: Label, value: Label<String>, controls: Controls }
+# #[derive(DeriveApp)] struct Counter { #[tree] ui: Ui, #[bind(ui.value, "count: {}")] count: i64 }
 # fn on_inc(c: &mut Counter, _: &EventCtx) { c.count += 1; }
 # fn on_dec(c: &mut Counter, _: &EventCtx) { c.count -= 1; }
 # fn stylesheet() -> Vec<Rule> { Vec::new() }
@@ -93,20 +93,38 @@ more than it looks:
 {{#include ../../examples/counter/src/main.rs:build}}
 ```
 
-`Application::build` is the **only** construction path, and that is the
-whole point of it. A handler is a pointer into the code that is loaded
-right now; a hot reload throws that code away and calls `build()` again to
-get pointers into the new build. Anything assigned somewhere `build()` does
-not reach — an inherent `new()`, say — is invisible to a reload, and every
-button comes back wired to its placeholder with no crash and no warning.
+`build()` is the **only** construction path, and that is the whole point
+of it. A handler is a pointer into the code that is loaded right now; a hot
+reload throws that code away and calls `build()` again to get pointers into
+the new build. Anything assigned somewhere `build()` does not reach — an
+inherent `new()`, say — is invisible to a reload, and every button comes
+back wired to its placeholder with no crash and no warning.
 
-`style()` is there for the same reason. A stylesheet holds `&'static str`
-selectors that belong to whichever build created them, so a reload re-asks
-for it too: edit these rules, rebuild, and the frame changes.
+The program is then described once, from that same function:
 
-`Host::launch` is `build()` followed by `style()` — the same two calls a
-reload makes, which is why an application should prefer it over
-`Host::new`.
+```rust
+# extern crate lumen_static;
+# extern crate lumen_static_shell;
+# extern crate lumen_static_widgets;
+# use lumen_static::prelude::*;
+# use lumen_static_widgets::prelude::*;
+# use lumen_static_shell::program::{application, Program};
+# #[derive(StaticTree, Default)] #[widget(column)] struct Ui { value: Label<String> }
+# #[derive(DeriveApp)] struct Counter { #[tree] ui: Ui, #[bind(ui.value, "count: {}")] count: i64 }
+# impl Application for Counter { fn build() -> Self { Counter { ui: Ui::default(), count: 0 } } }
+# fn stylesheet() -> Vec<Rule> { Vec::new() }
+# fn main() { let _ = program(); }
+{{#include ../../examples/counter/src/main.rs:program}}
+```
+
+`application(Counter::build)` boots with the same function a reload
+calls, and `.style(..)` is **the one place a stylesheet comes from**. The
+headless host, a window and a reload all ask it: a stylesheet holds
+`&'static str` selectors that belong to whichever build created them, so
+a swap re-asks too — edit these rules, rebuild, and the frame changes.
+Until M32 a window took its sheet from a field of its own configuration
+while everything else asked the application, and editing one left the
+other silently in force.
 
 ## Styling
 

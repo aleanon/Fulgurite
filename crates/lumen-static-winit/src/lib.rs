@@ -40,7 +40,6 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use lumen_static::event::App;
-use lumen_static::style::Rule;
 use lumen_static::Color;
 use lumen_static_shell::text::{FontMetrics, FontStack};
 use lumen_static_shell::Host;
@@ -166,17 +165,6 @@ pub struct Config {
     /// crate was built with the `gpu` feature and an adapter exists,
     /// and the software canvas otherwise.
     pub backend: Prefer,
-    /// The stylesheet, applied once before the first frame.
-    ///
-    /// Added 2026-09-11 for `examples/glass`, which needs one and had
-    /// only two ways to get it: hand-roll a window on [`Surface`] the
-    /// way `examples/counter-window` does — 480 lines M14 existed to
-    /// delete — or ship unstyled. A turnkey window that cannot be
-    /// styled is a turnkey window for one application.
-    ///
-    /// Empty by default, which is what every node's `Node::defaults`
-    /// already gives.
-    pub stylesheet: Vec<Rule>,
     /// The palette the stylesheet's roles resolve against (M25/T25.11),
     /// set before the sheet is applied so the first frame is already in
     /// it. `Palette::LIGHT` by default; a running window swaps it with
@@ -185,7 +173,7 @@ pub struct Config {
     /// Where `Cmd::Image` gets its pixels.
     ///
     /// Added 2026-09-13 for `examples/glasswall`, and for the same
-    /// reason `stylesheet` was: without it a turnkey window cannot draw
+    /// reason the stylesheet was: without it a turnkey window cannot draw
     /// an image *at all*. Both backends can — `Canvas::images` and
     /// `Gpu::set_images` have existed since M14 and T15.12 — and there
     /// was simply no way to reach either from `run`, so every windowed
@@ -217,7 +205,6 @@ impl Default for Config {
             height: 480,
             page: Color(255, 255, 255, 255),
             backend: Prefer::Auto,
-            stylesheet: Vec::new(),
             palette: lumen_static::style::Palette::LIGHT,
             images: None,
             agent: None,
@@ -246,7 +233,7 @@ impl Default for Config {
 /// a clean subtree is skipped before a wrong answer can be observed —
 /// was unreachable from every turnkey application. That is the fifth
 /// time a capability has landed in the shell with no way to reach it
-/// from the front door; `Config::stylesheet`, `Config::images`,
+/// from the front door; the stylesheet, `Config::images`,
 /// `Config::agent` and the overlay sink were the first four.
 ///
 /// 256 marks because `Boundaries<N>` stores ranges, not nodes, and M26/
@@ -260,7 +247,20 @@ pub type Inval = lumen_static::Boundaries<256>;
 /// reads the same at every site.
 pub type Ret = lumen_static::retain::Incremental;
 
+/// Open a window on an already-built application, with no stylesheet.
+///
+/// The lower-level door, kept for an application that is not described
+/// by a [`Program`]. Since M32 it cannot be styled: a stylesheet comes
+/// from a program's description, and a `Config` field that could style
+/// one window while the headless host was styled by something else is
+/// the two-path defect `docs/plan-program.md` removed.
 pub fn run<A: App + 'static>(app: A, config: Config) {
+    let mut host: Host<A, Ret, Inval> = Host::new(app, config.width, config.height);
+    host.set_palette(config.palette);
+    start(host, config, None);
+}
+
+fn start<A: App + 'static>(host: Host<A, Ret, Inval>, config: Config, program: Option<Program<A>>) {
     // **Always a user-event loop** — M28/T28.1.
     //
     // This was `with_user_event()` under the `agent` feature and
@@ -280,7 +280,7 @@ pub fn run<A: App + 'static>(app: A, config: Config) {
         let proxy = event_loop.create_proxy();
         std::thread::spawn(move || agent::serve(addr, proxy));
     }
-    let mut win = Win::new(app, config);
+    let mut win = Win::new(host, config, program);
     // **Deferred work, wired up** — M28/T28.12.
     //
     // A windowed shell installs both halves: the waker, so a completion
@@ -303,6 +303,12 @@ pub fn run<A: App + 'static>(app: A, config: Config) {
 struct Win<A: App> {
     host: Host<A, Ret, Inval>,
     config: Config,
+    /// The description the window was started from, when it was — M32.
+    /// Kept for its title, which may be a function of the state.
+    program: Option<Program<A>>,
+    /// The title the window is showing, so an unchanged one is not set
+    /// again.
+    title_shown: String,
     /// The *same* face the canvas rasterises with. Layout must measure
     /// with the metrics paint will draw with, or the two disagree — the
     /// first window measured with the block stand-in and painted with
@@ -336,12 +342,7 @@ struct Win<A: App> {
 }
 
 impl<A: App> Win<A> {
-    fn new(app: A, config: Config) -> Self {
-        let mut host = Host::new(app, config.width, config.height);
-        host.set_palette(config.palette);
-        if !config.stylesheet.is_empty() {
-            host.set_stylesheet(&config.stylesheet);
-        }
+    fn new(host: Host<A, Ret, Inval>, config: Config, program: Option<Program<A>>) -> Self {
         let font = FontStack::system();
         if font.is_none() {
             // A machine with no font we recognise still gets a window;
@@ -353,6 +354,8 @@ impl<A: App> Win<A> {
         Win {
             host,
             config,
+            program,
+            title_shown: String::new(),
             metrics,
             font,
             window: None,
@@ -447,6 +450,14 @@ impl<A: App> Win<A> {
         // an application that animates nothing.
         let animating = self.host.tick(0.0);
         backend.present(&mut self.host, self.config.page, start);
+        // A title that is a function of the state is re-asked after every
+        // frame and set only when it changed (`docs/plan-program.md`
+        // §2.1). A constant one compares equal every time.
+        let title = self.title_now();
+        if title != self.title_shown {
+            window.set_title(&title);
+            self.title_shown = title.into_owned();
+        }
         // After the frame: the hover bit is set by dispatch and the
         // shape is read from the resolved style, both of which the pump
         // above has just brought up to date (T14.6).
@@ -579,9 +590,16 @@ impl<A: App> Win<A> {
 }
 
 impl<A: App> Win<A> {
+    fn title_now(&self) -> std::borrow::Cow<'static, str> {
+        match &self.program {
+            Some(p) => p.title_of(&self.host.app),
+            None => std::borrow::Cow::Borrowed(self.config.title),
+        }
+    }
+
     fn resumed_impl(&mut self, event_loop: &ActiveEventLoop) {
         let attrs = Window::default_attributes()
-            .with_title(self.config.title)
+            .with_title(self.title_now().into_owned())
             .with_inner_size(winit::dpi::LogicalSize::new(
                 self.config.width as f64,
                 self.config.height as f64,
@@ -695,95 +713,72 @@ pub fn regions_for(
     d.regions(viewport).collect()
 }
 
-// ---- M32 prototype: the builder entry point --------------------------
+// ---- M32: running a described program ------------------------------
 
-/// A window described by what it needs, built by [`application`].
+pub use lumen_static_shell::program::{application, Program};
+
+/// Open a window on a described program and run until it closes — M32.
 ///
-/// **Named `Program` and not `Application` because the trait already
-/// owns that name** (`lumen_static::event::Application`, M31). They are
-/// different things: the trait says how *one* application constructs
-/// itself, and this says how a program is started — build, style, size,
-/// backend, and then run.
-///
-/// # Why a builder at all
-///
-/// M31 collapsed construction to one path and left **styling with two**:
-/// `Application::style` for the headless and reload paths, and
-/// [`Config::stylesheet`] for the window, because [`run`] takes an
-/// already-built application and never asks the trait anything. Edit
-/// one, the other silently wins — the shape M31 exists to remove, one
-/// field over. A builder has one place to put each answer.
-pub struct Program<A: App + 'static> {
-    build: fn() -> A,
-    style: Option<fn(&A) -> lumen_static::style::Stylesheet<'_>>,
-    config: Config,
+/// An extension trait because the description lives in the shell
+/// (`docs/plan-program.md` §2.4): a hot library must be able to build
+/// one without linking a window system, and a shell test must be able to
+/// call [`Program::host`] without one either.
+pub trait Run {
+    fn run(self);
 }
 
-/// Start describing a program, given the function that builds it.
-///
-/// **`build` is an `fn` pointer, and that is the whole design.** A
-/// non-capturing closure coerces to one, so a parameterised constructor
-/// — the shape `docs/plan-application.md` T31.1 found the
-/// `Application` trait could not express — works with no associated
-/// type and no cost to anyone else:
-///
-/// ```ignore
-/// application(Counter::build)          // an `fn` item
-/// application(|| build(14.0))          // captures nothing: coerces
-/// application(|| build(entry, open))   // still coerces
-/// ```
-///
-/// And the constraint is enforced rather than documented: capture
-/// something and the coercion fails to compile, which is
-/// `docs/events-decision.md`'s no-capture rule expressed as a type.
-pub fn application<A: App + 'static>(build: fn() -> A) -> Program<A> {
-    Program { build, style: None, config: Config::default() }
-}
-
-impl<A: App + 'static> Program<A> {
-    pub fn title(mut self, title: &'static str) -> Self {
-        self.config.title = title;
-        self
-    }
-
-    pub fn size(mut self, width: u32, height: u32) -> Self {
-        self.config.width = width;
-        self.config.height = height;
-        self
-    }
-
-    pub fn page(mut self, page: Color) -> Self {
-        self.config.page = page;
-        self
-    }
-
-    pub fn palette(mut self, palette: lumen_static::style::Palette) -> Self {
-        self.config.palette = palette;
-        self
-    }
-
-    /// Where this program's stylesheet comes from.
-    ///
-    /// Takes the same shape as `Application::style`, so an application
-    /// that implements the trait passes it directly —
-    /// `application(A::build).style(A::style)` — and the window, the
-    /// headless host and a reload all read one definition.
-    pub fn style(mut self, style: fn(&A) -> lumen_static::style::Stylesheet<'_>) -> Self {
-        self.style = Some(style);
-        self
-    }
-
-    /// Build the application, ask it for a stylesheet, and open a window.
-    pub fn run(self) {
-        let app = (self.build)();
-        let mut config = self.config;
-        if let Some(style) = self.style {
-            // Owned here because `Config` owns its sheet and the borrow
-            // ends with `app` moving into `run` — the same copy-first
-            // step `Host::launch` makes, for the same borrow reason
-            // (`docs/plan-application.md` §5).
-            config.stylesheet = style(&app).to_vec();
+impl<A: App + 'static> Run for Program<A> {
+    fn run(mut self) {
+        // `LUMEN_SHOT=frame.ppm`: one headless frame from the same
+        // `host()` the window would drive, then exit. Every program gets
+        // it without writing a `--shot` of its own, which is what let
+        // M32/T32.1 compare an example's frame before and after its
+        // migration.
+        if let Ok(path) = std::env::var("LUMEN_SHOT") {
+            let (w, h, page) = (self.width, self.height, self.page);
+            return shot(self.host(), w, h, page, &path);
         }
-        run(app, config);
+        // **The same `host()` a `--shot` calls**, so the window and every
+        // headless frame are built by one function — the property M32
+        // exists for. Nothing here installs a sheet of its own.
+        let host: Host<A, Ret, Inval> = self.host();
+        let config = Config {
+            title: "",
+            width: self.width,
+            height: self.height,
+            page: self.page,
+            backend: self.backend,
+            palette: self.palette,
+            images: self.images.take(),
+            agent: self.agent.take(),
+        };
+        start(host, config, Some(self));
     }
+}
+
+/// Render one frame headlessly and write it as a PPM — `LUMEN_SHOT`.
+///
+/// Two pumps, as every example's own `--shot` does: the first teaches a
+/// scroller how far its content goes, the second is the frame.
+fn shot<A: App>(mut host: Host<A, Ret, Inval>, w: u32, h: u32, page: Color, path: &str) {
+    use lumen_static_shell::software::Canvas;
+    let font = FontStack::system();
+    let mut canvas = match font.clone() {
+        Some(f) => Canvas::with_font(w, h, f),
+        None => Canvas::new(w, h),
+    };
+    let mut metrics = font.map(FontMetrics::new);
+    for _ in 0..2 {
+        match metrics.as_mut() {
+            Some(m) => {
+                host.pump_with(m);
+            }
+            None => {
+                host.pump();
+            }
+        }
+    }
+    canvas.clear(page);
+    host.render(&mut canvas);
+    std::fs::write(path, canvas.to_ppm()).expect("LUMEN_SHOT: write frame");
 }

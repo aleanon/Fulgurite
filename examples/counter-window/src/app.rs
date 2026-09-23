@@ -108,6 +108,20 @@ impl Application for Tally {
     }
 }
 
+/// **The program, described once** — M32 (`docs/plan-program.md`).
+///
+/// The window, `--headless` and the socket all build their host from
+/// this, so each starts styled the same way. The style is a *function of
+/// the state* — the sheet for the count's sign — which the host asks when
+/// it is built and again on `adopt`. The per-sign re-cascade between
+/// pumps stays in the window (`restyle_subtree`): a style re-asked every
+/// frame is deferred in the plan's §4, and this example is why.
+pub fn program(count: i64, w: u32, h: u32) -> lumen_static_shell::program::Program<Tally> {
+    lumen_static_shell::program::application(move || Tally { count, ..build() })
+        .size(w, h)
+        .style(|t: &Tally| stylesheet_for(t.count.signum()))
+}
+
 pub fn build() -> Tally {
     let mut t = Tally::default();
     t.ui.card.caption.set("TALLY");

@@ -42,7 +42,7 @@ use lumen_static_widgets::select::{Row as SelectRow, Select};
 use lumen_static::style::Palette;
 use lumen_static_widgets::Toggle;
 use lumen_static_widgets::prelude::*;
-use lumen_static_winit::{run, Config};
+use lumen_static_winit::{application, Program, Run};
 
 mod catalog;
 mod stage;
@@ -341,9 +341,7 @@ fn build(entry: usize, open: bool) -> Show {
 fn shot(path: &str, entry: usize, open: bool) {
     use lumen_static_shell::software::Canvas;
     use lumen_static_shell::text::{FontMetrics, FontStack};
-    let mut host: lumen_static_shell::Host<Show> = lumen_static_shell::Host::new(build(entry, open), W, H);
-    host.set_palette(palette());
-    host.set_stylesheet(&stylesheet());
+    let mut host: lumen_static_shell::Host<Show> = program(entry, open).host();
     let mut metrics = FontStack::system().map(FontMetrics::new);
     for _ in 0..2 {
         match metrics.as_mut() {
@@ -377,9 +375,7 @@ fn shot(path: &str, entry: usize, open: bool) {
 /// the popup's rect, and this is the number that says so.
 fn profile_popup() {
     let mut host: lumen_static_shell::Host<Show> =
-        lumen_static_shell::Host::new(build(0, false), W, H);
-    host.set_palette(palette());
-    host.set_stylesheet(&stylesheet());
+        program(0, false).host();
     let mut metrics = lumen_static_shell::text::FontStack::system()
         .map(lumen_static_shell::text::FontMetrics::new);
     let mut pump = |h: &mut lumen_static_shell::Host<Show>| match metrics.as_mut() {
@@ -445,9 +441,7 @@ fn demo_shot(path: &str, entry: usize) {
     use lumen_static_shell::software::Canvas;
     use lumen_static_shell::text::{FontMetrics, FontStack};
     let mut host: lumen_static_shell::Host<Show> =
-        lumen_static_shell::Host::new(build(entry, false), W, H);
-    host.set_palette(palette());
-    host.set_stylesheet(&stylesheet());
+        program(entry, false).host();
     let mut metrics = FontStack::system().map(FontMetrics::new);
     for _ in 0..2 {
         match metrics.as_mut() {
@@ -515,9 +509,7 @@ fn press_shot(path: &str, entry: usize, which: usize) {
     use lumen_static_shell::software::Canvas;
     use lumen_static_shell::text::{FontMetrics, FontStack};
     let mut host: lumen_static_shell::Host<Show> =
-        lumen_static_shell::Host::new(build(entry, false), W, H);
-    host.set_palette(palette());
-    host.set_stylesheet(&stylesheet());
+        program(entry, false).host();
     let mut metrics = FontStack::system().map(FontMetrics::new);
     let mut pump = |h: &mut lumen_static_shell::Host<Show>| match metrics.as_mut() {
         Some(m) => {
@@ -586,9 +578,7 @@ fn seq_shot(stem: String) {
     use lumen_static_shell::text::{FontMetrics, FontStack};
     let entry = CATALOG.iter().position(|e| e.name == "Button").unwrap();
     let mut host: lumen_static_shell::Host<Show> =
-        lumen_static_shell::Host::new(build(entry, false), W, H);
-    host.set_palette(palette());
-    host.set_stylesheet(&stylesheet());
+        program(entry, false).host();
     let mut metrics = FontStack::system().map(FontMetrics::new);
     let mut pump = |h: &mut lumen_static_shell::Host<Show>| match metrics.as_mut() {
         Some(m) => {
@@ -678,23 +668,28 @@ fn main() {
     // A bare number opens the window on that entry, so a review can
     // look at one widget without clicking through the picker.
     let start: usize = args.first().and_then(|a| a.parse::<usize>().ok()).unwrap_or(0);
-    let app = build(start.min(CATALOG.len() - 1), false);
-    run(
-        app,
-        Config {
-            title: "showcase",
-            width: W,
-            height: H,
-            page: palette().page,
-            palette: palette(),
-            stylesheet: stylesheet(),
-            // Built `--features agent`, the window can be steered from
-            // outside: `input.click` on the picker, `ui.screenshot` of
-            // the result. `LUMEN_AGENT` overrides the address.
-            agent: agent_addr(),
-            ..Config::default()
-        },
-    );
+    let mut program = program(start.min(CATALOG.len() - 1), false).title("showcase");
+    // Built `--features agent`, the window can be steered from outside:
+    // `input.click` on the picker, `ui.screenshot` of the result.
+    // `LUMEN_AGENT` overrides the address.
+    if let Some(addr) = agent_addr() {
+        program = program.agent(addr);
+    }
+    program.run();
+}
+
+/// **The program, described once** — M32 (`docs/plan-program.md`).
+///
+/// The window, every `--shot`/`--demo`/`--press` frame, the profile and
+/// the tests are all built by `program(..).host()`, so a shot is the
+/// window's frame. The boot captures `entry` and `open`: showcase opens
+/// on an entry read from argv, which is why a boot may capture.
+fn program(entry: usize, open: bool) -> Program<Show> {
+    application(move || build(entry, open))
+        .size(W, H)
+        .page(palette().page)
+        .palette(palette())
+        .style(|_: &Show| stylesheet())
 }
 
 /// Where to serve the agent endpoint, or `None` without the feature.
@@ -1036,9 +1031,7 @@ mod tests {
     pub(super) fn host(entry: usize, open: bool) -> lumen_static_shell::Host<Show> {
         use lumen_static_shell::text::{FontMetrics, FontStack};
         let mut h: lumen_static_shell::Host<Show> =
-            lumen_static_shell::Host::new(build(entry, open), W, H);
-        h.set_palette(SHOW_LIGHT);
-        h.set_stylesheet(&stylesheet());
+            program(entry, open).palette(SHOW_LIGHT).host();
         let mut m = FontStack::system().map(FontMetrics::new);
         for _ in 0..2 {
             match m.as_mut() {

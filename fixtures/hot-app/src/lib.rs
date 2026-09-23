@@ -40,8 +40,10 @@ const SHEET_ID: &str = "panel-v1";
 #[cfg(feature = "v2")]
 const SHEET_ID: &str = "panel-v2";
 
-/// This build's sheet, as a `const` — the `no_std`-shaped form of
-/// `Application::style` (`docs/plan-application.md` §2.4).
+/// This build's sheet, as a `const` — a `&'static [Rule]`, which is one
+/// of the two forms a program's `.style(..)` accepts (M32,
+/// `docs/plan-program.md` §2.1). This fixture has no `Host`, so nothing
+/// installs it; `hot_sheet_selector` reads its address.
 const SHEET: &[lumen_static::style::Rule] = &[lumen_static::style::Rule::new(
     lumen_static::style::Selector::Id(SHEET_ID),
     lumen_static::style::Patch::new(),
@@ -136,10 +138,6 @@ struct Session {
 /// deliberately does **not** derive `Default` — so the two paths cannot
 /// drift apart, because there is only one.
 impl Application for Session {
-    fn style(&self) -> lumen_static::style::Stylesheet<'_> {
-        SHEET
-    }
-
     fn build() -> Self {
         Session { ui: Ui::default(), counter: 0, mode: Mode::Basic, theme: THEME, cache_hits: 0 }
     }

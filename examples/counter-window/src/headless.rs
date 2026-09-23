@@ -11,13 +11,11 @@ use lumen_static_shell::software::Canvas;
 use lumen_static_shell::text::{FontMetrics, FontStack};
 use lumen_static_shell::Host;
 
-use crate::app::{build, stylesheet_for, Tally, PAGE};
+use crate::app::{program, Tally, PAGE};
 
 pub fn headless(path: &str, count: i64) {
     let (w, h) = (440u32, 520u32);
-    let mut host = Host::new(build(), w, h);
-    host.app.count = count;
-    host.set_stylesheet(&stylesheet_for(count.signum()));
+    let mut host: Host<Tally> = program(count, w, h).host();
     let mut canvas = match FontStack::system() {
         Some(f) => Canvas::with_font(w, h, f),
         None => Canvas::new(w, h),
@@ -164,8 +162,7 @@ pub fn drive() {
     use serde_json::json;
 
     let (w, h) = (440u32, 520u32);
-    let mut host = Host::new(build(), w, h);
-    host.set_stylesheet(&stylesheet_for(0));
+    let mut host: Host<Tally> = program(0, w, h).host();
     host.pump();
 
     let agent = Agent::new();
@@ -241,8 +238,7 @@ pub fn drive_harness() {
     use lumen_static_agent::{AgentHost, TreeRef};
 
     let (w, h) = (440u32, 520u32);
-    let mut host = Host::new(build(), w, h);
-    host.set_stylesheet(&stylesheet_for(0));
+    let mut host: Host<Tally> = program(0, w, h).host();
     host.pump();
 
     /// The `AgentHost` seam. `Host` is the shell's, and the harness

@@ -16,6 +16,7 @@ use lumen_static::prelude::*;
 use lumen_static_widgets::prelude::*;
 use lumen_static_agent::{Agent, TreeRef};
 use lumen_static_shell::software::Canvas;
+use lumen_static_shell::program::{application, Program};
 use lumen_static_shell::{Host, CLEAR};
 
 // ---- the tree: topology in the type, values in the fields (§3) -------
@@ -66,11 +67,6 @@ struct Counter {
     ui: Ui,
     #[bind(ui.value, "count: {}")]
     count: i64,
-    /// What `style()` hands back. Owned by the application so the
-    /// borrowed return allocates nothing at call time — an embedded
-    /// profile would use a `const` slice instead and the signature is
-    /// the same (`docs/plan-application.md` §2.4).
-    sheet: Vec<Rule>,
 }
 // ANCHOR_END: state
 
@@ -96,7 +92,7 @@ fn on_dec(c: &mut Counter, _: &EventCtx) {
 /// remembering.
 impl Application for Counter {
     fn build() -> Self {
-        let mut c = Counter { ui: Ui::default(), count: 0, sheet: stylesheet() };
+        let mut c = Counter { ui: Ui::default(), count: 0 };
         c.ui.title.set("Counter");
         c.ui.hint.set("click + or - to change the tally");
         c.ui.controls.dec.label = "-";
@@ -104,13 +100,6 @@ impl Application for Counter {
         c.ui.controls.inc.label = "+";
         c.ui.controls.inc.on_click = on_inc;
         c
-    }
-
-    /// The sheet this build wants. `Host::launch` installs it and a
-    /// reload re-asks, so editing these rules and rebuilding changes the
-    /// frame.
-    fn style(&self) -> Stylesheet<'_> {
-        &self.sheet
     }
 }
 // ANCHOR_END: build
@@ -128,10 +117,21 @@ fn stylesheet() -> Vec<Rule> {
 }
 // ANCHOR_END: style
 
+// ANCHOR: program
+/// **The program, described once** — M32 (`docs/plan-program.md`).
+///
+/// How to build it and how it is styled, in one value. The headless host
+/// below is built from it, and a window would be too
+/// (`lumen_static_winit::Run`), so the two cannot be styled differently.
+fn program() -> Program<Counter> {
+    application(Counter::build).title("Counter").size(320, 200).style(|_: &Counter| stylesheet())
+}
+// ANCHOR_END: program
+
 fn main() {
-    // `launch` is `Application::build` followed by `Application::style`
-    // — the same two calls a reload makes, which is the point of it.
-    let mut host = Host::launch(320, 200);
+    // The same `host()` a window drives: boot, palette, and the sheet
+    // from the one place a sheet comes from.
+    let mut host: Host<Counter> = program().host();
     // M25/T25.2: every rule does something. `just fixtures` runs this.
     assert!(host.sheet_findings().is_empty(), "stylesheet rules that change nothing: {:?}", host.sheet_findings());
     host.pump();

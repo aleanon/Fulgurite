@@ -13,8 +13,9 @@
 //! `examples/showcase` **restarted the process once per widget** rather
 //! than opening the dropdown and picking the next one.
 //!
-//! That is the third time this shape has appeared: `Config::stylesheet`
-//! was added because a turnkey window could not be styled, and
+//! That is the third time this shape has appeared: a stylesheet field
+//! (since M32, a program's `.style(..)`) was added because a turnkey
+//! window could not be styled, and
 //! `Config::images` because it could not draw a picture. The capability
 //! was never the missing part.
 //!

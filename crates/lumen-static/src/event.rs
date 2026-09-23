@@ -538,9 +538,16 @@ pub enum Never {}
 /// Distinct from [`App`], which is derived and describes the *mechanics*
 /// the framework drives (the tree, the message type, the update step).
 /// This one is always hand-written and describes what only the author
-/// knows: how to build the thing, and what it should look like.
+/// knows: how to build the thing.
 ///
-/// # Why it is a second trait rather than two more methods on `App`
+/// **What it should look like is not here any more** (M32). A stylesheet
+/// comes from the program's description — `lumen_static_shell::program`
+/// — which is the one place the window, every headless host and a swap
+/// all ask. It was a method on this trait until M32, and the window
+/// ignored it in favour of a field of its own, which is the two-path
+/// defect `docs/plan-program.md` exists to remove.
+///
+/// # Why it is a second trait rather than a method on `App`
 ///
 /// `#[derive(App)]` emits the whole `impl App for …` block. A required
 /// `build()` there would have to be emitted by the derive, which cannot
@@ -559,8 +566,7 @@ pub enum Never {}
 /// in the first did not exist in the second, so a reload silently
 /// replaced every `on_click` with its placeholder.
 ///
-/// `build()` is the one path. `fresh()` calls it, `Host::launch` calls
-/// it, and an application that derives `Default` alongside `App` is a
+/// `build()` is the one path `fresh()` takes, and an application that derives `Default` alongside `App` is a
 /// compile error — so the two cannot drift apart again.
 ///
 /// Note that exhaustiveness here reaches **one level**: returning a
@@ -577,29 +583,6 @@ pub trait Application: Sized {
     /// anything assigned elsewhere belongs to the build that is being
     /// replaced (`docs/events-decision.md` rule 3).
     fn build() -> Self;
-
-    /// The stylesheet this build wants.
-    ///
-    /// Asked for at [`Host::launch`] and again on every reload, so an
-    /// edited stylesheet takes effect on the same swap that reloads the
-    /// code. Before this existed the host kept the sheet it was first
-    /// given and nothing re-asked — demonstrated, with its injections,
-    /// in `crates/lumen-static-shell/tests/reload_sheet.rs`.
-    ///
-    /// Returns a slice rather than an owned sheet so the signature costs
-    /// no allocation and compiles in `no_std`: an embedded profile
-    /// returns a `const &'static [Rule]`, a desktop one returns
-    /// `&self.sheet`. `docs/plan-application.md` §2.4 records why this is
-    /// not generic over a stylesheet trait.
-    ///
-    /// Runtime overrides — [`Host::set_stylesheet`], `restyle_subtree`,
-    /// the agent's `ui.setStylesheet` — win until the next reload.
-    ///
-    /// [`Host::launch`]: https://docs.rs/lumen-static-shell
-    /// [`Host::set_stylesheet`]: https://docs.rs/lumen-static-shell
-    fn style(&self) -> crate::style::Stylesheet<'_> {
-        &[]
-    }
 }
 
 /// The application root: state plus the tree that presents it.

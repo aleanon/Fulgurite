@@ -1,6 +1,11 @@
 # M32 — `application(boot)`: one description of a program, used everywhere
 
-> **Written 2026-09-23, not started. Rewritten the same day** after a
+> **DONE 2026-09-24 — T32.0, T32.1 and T32.2 landed as one commit**,
+> because removing `Config::stylesheet` broke every example that the
+> migration then fixed; a T32.0 commit on its own would not have built.
+> §6 records what building it changed.
+>
+> **Written 2026-09-23. Rewritten the same day** after a
 > seven-lens review (§5) and the decision that the constructor should be
 > **shaped like iced's `application()`, for flexibility**. The prototype
 > is on `main` (`29c1238`, `examples/glass` only).
@@ -241,3 +246,40 @@ the same design (X-1, X-2). What changed:
 | 6 | counter-window exists for what the turnkey `run` cannot supply | T32.1: excluded, with the reason |
 | 7 | the borrowed style's cost was argued from a no-alloc reason that does not apply to a std-only builder | §2.2: the style is owned, and the fields go |
 | 8 | doc sites and the book's scope were misstated | T32.0 lists the sites. T32.2 is scoped |
+
+## 6. What building it changed (2026-09-24)
+
+- **Every migrated frame is byte-identical, 62 of 62.** 51 showcase
+  entries closed and 3 open, glass at two scroll positions, glasswall,
+  minimal, tasks-demo, and counter-window at counts 12, 0 and −3. Each
+  "before" was rendered from a worktree at the previous commit, and each
+  "after" through `program().host()`.
+- **The injection fired — on the second attempt, and the first attempt
+  was a finding.** Dropping tasks-demo's `Kind("Label")` rule left its
+  frame identical. The rule had never matched anything: widget kinds are
+  lowercase (`label`, `button`), and tasks-demo's sheet says `"Label"`
+  and `"Button"`. **tasks-demo has been unstyled since its sheet was written**, and
+  its migration was byte-identical because both sides were unstyled. It
+  is fixed in its own commit, with the sheet lint asserted. The
+  injection that fires: removing glass's bar height changes **1 380 of
+  285 200** pixels, and restoring it brings back byte identity.
+- **`LUMEN_SHOT` instead of a `--shot` per example.** The plan had
+  minimal and tasks-demo each gain a `--shot`. That broke the book, which
+  includes minimal whole, so the window crate's `run()` now renders one
+  headless frame from `host()` when `LUMEN_SHOT=frame.ppm` is set. Every
+  program gets it without writing one.
+- **counter-window was not excluded after all.** Its style is a
+  *function of the state* (the sheet for the count's sign), which the
+  constant-or-function `.style(..)` expresses directly. So its window,
+  `--headless` and socket all build their host through `program()`. What
+  stays hand-written is the per-sign re-cascade between pumps, as §4
+  says.
+- **A book snippet had been failing, unnoticed.** `first-tree.md`'s
+  hidden setup declared `title` and `hint` as `Label<String>`, but the
+  counter's are `Label`. Only `just book`, which needs `mdbook`, runs
+  these snippets, and nothing else noticed. Fixed, and `just book` is
+  green.
+- **`Host::launch` and `Application::style` are gone.** `Host::adopt`
+  re-asks the program's sheet source, which the host keeps.
+  `tests/reload_sheet.rs` still guards the M31 property through it: with
+  the re-ask removed, two of its three tests fire.

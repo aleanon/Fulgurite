@@ -20,6 +20,8 @@ use lumen_static::{pass, Constraints, Event, Point};
 
 /// M12/T12.2: golden images, with a diff artifact.
 pub mod golden;
+/// M32: `application(boot)` — the program described once.
+pub mod program;
 pub mod software;
 pub mod svg;
 #[cfg(feature = "truetype")]
@@ -167,36 +169,48 @@ pub struct Host<A: App, R: Retention = Incremental, I: Invalidation = Everything
     /// `layout` through [`LayoutCx::with_palette`]. `Palette::LIGHT` until
     /// set.
     palette: lumen_static::style::Palette,
+    /// Where the sheet comes from — M32 (`docs/plan-program.md`).
+    ///
+    /// Set by [`program::Program::host`], and re-asked by
+    /// [`Host::adopt`], so a swapped-in application is styled by the
+    /// same description that styled the first one. `None` for a host
+    /// built with [`Host::new`] directly, which is styled only by what
+    /// its caller sets.
+    sheet_source: Option<std::rc::Rc<dyn program::Sheet<A>>>,
+    /// Jobs a boot function returned before any spawner existed. Started
+    /// by [`Host::set_spawner`]; see [`Host::hold_until_spawner`].
+    held: Vec<lumen_static::spawn::Job<A::Msg>>,
 }
 
-impl<A: App + lumen_static::event::Application, R: Retention, I: Invalidation> Host<A, R, I> {
-    /// Build the application and install the stylesheet it asks for —
-    /// M31/T31.0.
-    ///
-    /// **The shape to prefer over [`Host::new`]**, because it is the one
-    /// where startup and hot reload run the same code. `new` takes an
-    /// already-built application, so `main` and
-    /// `Reloadable::fresh`
-    /// were two construction paths that nothing checked against each
-    /// other; `launch` and `Host::reload` are both
-    /// `Application::build` followed by `Application::style`.
-    pub fn launch(width: u32, height: u32) -> Self {
-        let app = <A as lumen_static::event::Application>::build();
-        // **The sheet is copied out before `app` moves into the host.**
-        // `self.app.style()` borrows `self.app` and `set_stylesheet`
-        // needs `&mut self`; they are disjoint fields but not through
-        // method calls, which `docs/plan-application.md` §5 named in
-        // advance. Copying first is the whole workaround, and it happens
-        // at launch and at reload — never per frame.
-        let sheet: Vec<Rule> = app.style().to_vec();
-        let mut host = Self::new(app, width, height);
+impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
+    /// Install the program's sheet, and keep its source so a later
+    /// [`Host::adopt`] can re-ask it — M32.
+    pub fn set_sheet_source(&mut self, source: std::rc::Rc<dyn program::Sheet<A>>) {
+        let sheet = source.sheet(&self.app);
+        self.sheet_source = Some(source);
         if !sheet.is_empty() {
-            host.set_stylesheet(&sheet);
+            self.set_stylesheet(&sheet);
         }
-        host
     }
 
-    /// Adopt a newly built application and re-ask it for a stylesheet.
+    /// Keep a job until a spawner is installed — M32.
+    ///
+    /// Only for what a boot function returned: it runs before the window
+    /// has installed its spawner, and a headless host may never install
+    /// one. [`Host::spawn`] still *refuses* without a spawner, for the
+    /// reason its rustdoc gives; a boot's jobs are the exception because
+    /// they are known before the first frame and the spawner is known to
+    /// be coming.
+    pub fn hold_until_spawner(&mut self, job: lumen_static::spawn::Job<A::Msg>) {
+        self.held.push(job);
+    }
+
+    /// Jobs held for a spawner that has not been installed yet.
+    pub fn held_jobs(&self) -> usize {
+        self.held.len()
+    }
+
+    /// Adopt a newly built application and re-ask for a stylesheet.
     ///
     /// **The primitive half of a hot swap**, and the line that was
     /// missing: the host owns `sheet: Vec<Rule>`, nothing in the reload
@@ -213,9 +227,12 @@ impl<A: App + lumen_static::event::Application, R: Retention, I: Invalidation> H
     /// resolve in a default-feature doc build.
     pub fn adopt(&mut self, app: A) {
         self.app = app;
-        // Same copy-first dance as `launch`, for the same borrow reason.
-        let sheet: Vec<Rule> = self.app.style().to_vec();
-        self.set_stylesheet(&sheet);
+        // Re-asked from the program's description (M32), the one place a
+        // sheet comes from. A host with no source keeps what it has.
+        if let Some(source) = self.sheet_source.clone() {
+            let sheet = source.sheet(&self.app);
+            self.set_stylesheet(&sheet);
+        }
         // A new application is a new tree: nothing about last frame's
         // marks describes it.
         self.invalidation.mark_all();
@@ -237,9 +254,7 @@ impl<A: App + lumen_static::event::Application, R: Retention, I: Invalidation> H
         next.restore(&saved);
         self.adopt(next);
     }
-}
 
-impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
     pub fn new(app: A, width: u32, height: u32) -> Self {
         let n = <A::Tree as Widget>::NODE_COUNT;
         let styles = pass::default_styles(app.tree());
@@ -273,6 +288,8 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             #[cfg(feature = "agent")]
             sheet_findings: Vec::new(),
             palette: lumen_static::style::Palette::LIGHT,
+            sheet_source: None,
+            held: Vec::new(),
         }
     }
 
@@ -549,6 +566,9 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
     /// [`Queued`](lumen_static::spawn::Queued) to control *when*.
     pub fn set_spawner(&mut self, s: Box<dyn lumen_static::spawn::Spawner<A::Msg>>) {
         self.spawner = Some(s);
+        for job in std::mem::take(&mut self.held) {
+            self.spawn(job);
+        }
     }
 
     /// Start one job. Its result comes back through the inbox and is

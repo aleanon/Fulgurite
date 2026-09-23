@@ -20,7 +20,7 @@ use lumen_static_widgets::prelude::*;
 use lumen_static::spawn::{Descriptor, Failure, JobFn, Outbox, Subs, Timers};
 use lumen_static::style::{Edges, Length, Patch, Rule, Selector};
 use lumen_static::Color;
-use lumen_static_winit::{run, Config};
+use lumen_static_winit::{application, Program, Run};
 
 // ---- the job table. Stable, append-only ids (plan-tasks.md §2.1) -----
 
@@ -255,7 +255,8 @@ fn on_toggle_sub(s: &mut Demo, _: &lumen_static::EventCtx) {
     s.refresh();
 }
 
-fn main() {
+/// The application, built once — the boot of the program below.
+fn build() -> Demo {
     let mut app = Demo::default();
     app.ui.title.set("M28: spawn, batch, chain, cancel, subscribe".into());
     app.ui.spawn_one.label = "spawn one";
@@ -271,26 +272,34 @@ fn main() {
     app.ui.toggle_sub.label = "toggle subscription";
     app.ui.toggle_sub.on_click = on_toggle_sub;
     app.refresh();
-
-    run(
-        app,
-        Config {
-            title: "tasks-demo",
-            width: 520,
-            height: 360,
-            stylesheet: vec![
-                Rule::new(
-                    Selector::Kind("Button"),
-                    Patch::new()
-                        .background(Color(226, 232, 240, 255))
-                        .padding(Edges::all(8.0))
-                        .radius(6.0)
-                        .height(Length::Fixed(32.0)),
-                ),
-                Rule::new(Selector::Kind("Label"), Patch::new().font_size(14.0)),
-            ],
-            agent: std::env::var("LUMEN_AGENT").ok(),
-            ..Default::default()
-        },
-    );
+    app
 }
+
+fn stylesheet() -> Vec<Rule> {
+    vec![
+        Rule::new(
+            Selector::Kind("Button"),
+            Patch::new()
+                .background(Color(226, 232, 240, 255))
+                .padding(Edges::all(8.0))
+                .radius(6.0)
+                .height(Length::Fixed(32.0)),
+        ),
+        Rule::new(Selector::Kind("Label"), Patch::new().font_size(14.0)),
+    ]
+}
+
+/// **The program, described once** — M32 (`docs/plan-program.md`). The
+/// window and `--shot` are both built from it.
+fn program() -> Program<Demo> {
+    application(build).title("tasks-demo").size(520, 360).style(|_: &Demo| stylesheet())
+}
+
+fn main() {
+    let mut program = program();
+    if let Ok(addr) = std::env::var("LUMEN_AGENT") {
+        program = program.agent(addr);
+    }
+    program.run();
+}
+

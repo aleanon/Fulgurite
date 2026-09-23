@@ -140,37 +140,6 @@ impl<A: App> Backend<A> for Software {
     }
 }
 
-/// Which backend a window should try for.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum Prefer {
-    /// GPU when this crate was built with the `gpu` feature *and* an
-    /// adapter exists; the software canvas otherwise. The default,
-    /// because falling back is the whole point: a machine with no
-    /// driver, a container with no `/dev/dri` and a remote session all
-    /// have to keep working.
-    #[default]
-    Auto,
-    /// The software canvas, whatever hardware is present.
-    Software,
-    /// The GPU, and **still fall back** if there is none. A refusal to
-    /// open a window would be a worse answer than a slower one; a
-    /// caller that needs to know which it got asks
-    /// [`Backend::name`].
-    Gpu,
-}
-
-impl Prefer {
-    /// `LUMEN_BACKEND=software` / `=gpu`, overriding the application.
-    ///
-    /// An escape hatch for the person running the program rather than
-    /// the person who wrote it: a driver bug on one machine should not
-    /// need a rebuild to work around. An unrecognised value is ignored
-    /// rather than fatal.
-    pub fn from_env(default: Prefer) -> Prefer {
-        match std::env::var("LUMEN_BACKEND").as_deref() {
-            Ok("software") | Ok("cpu") => Prefer::Software,
-            Ok("gpu") | Ok("wgpu") => Prefer::Gpu,
-            _ => default,
-        }
-    }
-}
+/// Which backend a window should try for. Part of the program's
+/// description since M32, so it lives in the shell; re-exported here.
+pub use lumen_static_shell::program::Prefer;

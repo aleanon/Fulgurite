@@ -31,7 +31,7 @@ use lumen_static::display::{Color, Material};
 use lumen_static::prelude::*;
 use lumen_static_widgets::prelude::*;
 use lumen_static_widgets::{Glass, ScrollView};
-use lumen_static_winit::application;
+use lumen_static_winit::{application, Program, Run};
 
 // ---- palette ---------------------------------------------------------
 
@@ -182,11 +182,6 @@ struct Demo {
     ui: Screen,
     #[bind(ui.bar.content.sigma, "blur {} px")]
     sigma: i64,
-    /// This build's stylesheet, owned so `style()` can hand back a
-    /// borrow. `stylesheet()` computes it, so it has to live somewhere —
-    /// which is the one ergonomic cost of the borrowed signature
-    /// (`docs/plan-application.md` §2.4).
-    sheet: Vec<Rule>,
 }
 
 // ---- style -----------------------------------------------------------
@@ -295,9 +290,10 @@ fn shot(path: &str, scroll: f32, sigma: f32) {
     use lumen_static_shell::text::{FontMetrics, FontStack};
     use lumen_static_shell::Host;
 
-    let (w, h) = (460u32, 620u32);
-    let mut host: Host<Demo> = Host::new(build(sigma), w, h);
-    host.set_stylesheet(&stylesheet());
+    let (w, h) = (W, H);
+    // The same `host()` the window drives (M32), so this frame is the
+    // window's frame and not a second construction that could drift.
+    let mut host: Host<Demo> = program(sigma).host();
     host.app.ui.content.scroll = scroll;
     let mut canvas = match FontStack::system() {
         Some(f) => Canvas::with_font(w, h, f),
@@ -327,9 +323,23 @@ fn shot(path: &str, scroll: f32, sigma: f32) {
     std::fs::write(path, canvas.to_ppm()).expect("write frame");
 }
 
+const W: u32 = 460;
+const H: u32 = 620;
+
+/// **The program, described once** — M32 (`docs/plan-program.md`). The
+/// window, `--shot` and the tests are all built from it.
+///
+/// `build(sigma)` is a parameterised constructor, the shape
+/// `Application::build` could not express (M31/T31.1). The boot closure
+/// captures `sigma`, which is allowed because boot is cold: it runs when
+/// the program starts and is never held across a reload.
+fn program(sigma: f32) -> Program<Demo> {
+    application(move || build(sigma)).title("glass").size(W, H).page(PAGE).style(|_: &Demo| stylesheet())
+}
+
 /// The application, built once and shared by the window and `--shot`.
 fn build(sigma: f32) -> Demo {
-    let mut app = Demo { sigma: sigma as i64, sheet: stylesheet(), ..Demo::default() };
+    let mut app = Demo { sigma: sigma as i64, ..Demo::default() };
     let cards = &mut app.ui.content.content;
     let each: [&mut Card; 10] = [
         &mut cards.c0, &mut cards.c1, &mut cards.c2, &mut cards.c3, &mut cards.c4,
@@ -389,17 +399,7 @@ fn main() {
             return;
         }
     }
-    // M32 prototype: `build(14.0)` is a *parameterised* constructor, the
-    // shape `Application::build` cannot express (M31/T31.1). A
-    // non-capturing closure coerces to `fn() -> Demo`, so it needs no
-    // associated type and no trait change — and capturing anything here
-    // would stop compiling, which is the no-capture rule as a type.
-    application(|| build(14.0))
-        .title("glass")
-        .size(460, 620)
-        .page(PAGE)
-        .style(|d| &d.sheet)
-        .run();
+    program(14.0).run();
 }
 
 #[cfg(test)]
@@ -409,12 +409,8 @@ mod tests {
     use lumen_static_shell::text::{FontMetrics, FontStack};
     use lumen_static_shell::Host;
 
-    const W: u32 = 460;
-    const H: u32 = 620;
-
     fn driven() -> Host<Demo> {
-        let mut host: Host<Demo> = Host::new(build(14.0), W, H);
-        host.set_stylesheet(&stylesheet());
+        let mut host: Host<Demo> = program(14.0).host();
         let mut metrics = FontStack::system().map(FontMetrics::new);
         for _ in 0..2 {
             match metrics.as_mut() {

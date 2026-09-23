@@ -8,7 +8,7 @@ between them. That is the property this chapter is about.
 The smallest thing that produces pixels:
 
 ```text
-let mut host = Host::launch(320, 200);   // Application::build + ::style
+let mut host: Host<Counter> = program().host();   // boot, palette, sheet
 host.pump();
 
 let mut canvas = Canvas::new(320, 200);
@@ -16,7 +16,11 @@ canvas.clear(CLEAR);
 host.render(&mut canvas);
 ```
 
-No window, no event loop, no display. `examples/counter` does exactly
+No window, no event loop, no display. `program()` is the application's
+description — how to build it and how it is styled — and `host()` is the
+same function a window calls to build the host it drives, so a headless
+frame is the window's frame and not a second construction that could
+drift from it (`docs/plan-program.md`). `examples/counter` does exactly
 this, clicks its own buttons through the agent protocol, asserts the
 result and writes a PPM — and `just fixtures` runs it in CI, which is
 what makes its assertions mean anything.
@@ -24,16 +28,18 @@ what makes its assertions mean anything.
 This is the mode to reach for in tests. It is also the mode an embedded
 target uses, with a different `Painter` on the other end.
 
-## Windowed: `run()`
+## Windowed: `program().run()`
 
 ```text
-run(app, Config {
-    title: "minimal",
-    width: 320,
-    height: 160,
-    ..Config::default()
-});
+application(boot)          // a function that builds the application
+    .title("minimal")      // a constant, or a function of the state
+    .size(320, 160)
+    .style(stylesheet)     // likewise
+    .run();
 ```
+
+The shape is iced's `application()`. `boot` may be a closure that
+captures: `examples/showcase` opens on an entry read from its arguments.
 
 `examples/minimal` is the whole application in about twenty lines. What
 the windowing crate adds to the headless case is exactly two things:
@@ -42,7 +48,7 @@ surface. Before that crate existed the same file would have been several
 hundred lines, because there was nowhere else for the scale factor, the
 buffer age, the damage and the font to live.
 
-`Config::page` is worth noticing: it is the colour cleared behind every
+`.page(..)` is worth noticing: it is the colour cleared behind every
 *damaged region* before redraw, not a background you paint once.
 
 ## GPU: a feature on the windowing crate

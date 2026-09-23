@@ -65,7 +65,7 @@ use lumen_static::display::{Color, Material};
 use lumen_static::prelude::*;
 use lumen_static_widgets::prelude::*;
 use lumen_static_widgets::Glass;
-use lumen_static_winit::{run, Config};
+use lumen_static_winit::{application, Program, Run};
 
 // ---- the device ------------------------------------------------------
 
@@ -612,8 +612,7 @@ fn build(k: f32) -> Home {
 
 fn host(w: u32, h: u32) -> lumen_static_shell::Host<Home> {
     use lumen_static_shell::text::{FontMetrics, FontStack};
-    let mut host = lumen_static_shell::Host::new(build(k(w, h)), w, h);
-    host.set_stylesheet(&stylesheet(k(w, h)));
+    let mut host: lumen_static_shell::Host<Home> = program(w, h).host();
     let mut metrics = FontStack::system().map(FontMetrics::new);
     // Twice: the first pump is what teaches the layout its sizes, and
     // the second is the one whose damage means anything.
@@ -732,19 +731,17 @@ fn main() {
             shot(&path, dim(2, dw), dim(3, dh));
         }
         Some("--bench") => bench(dim(1, dw), dim(2, dh)),
-        _ => run(
-            build(k(W, H)),
-            Config {
-                title: "glasswall",
-                width: W,
-                height: H,
-                page: PAGE,
-                stylesheet: stylesheet(k(W, H)),
-                images: Some(Box::new(Wallpaper::new())),
-                ..Config::default()
-            },
-        ),
+        _ => program(W, H).title("glasswall").images(Wallpaper::new()).run(),
     }
+}
+
+/// **The program, described once** — M32 (`docs/plan-program.md`). The
+/// window, `--shot`, `--bench` and the tests are built from it. The
+/// wallpaper is added by the window only: a headless canvas takes its
+/// own, because `ImageSource` is taken, not shared.
+fn program(w: u32, h: u32) -> Program<Home> {
+    let scale = k(w, h);
+    application(move || build(scale)).size(w, h).page(PAGE).style(move |_: &Home| stylesheet(scale))
 }
 
 #[cfg(test)]
@@ -940,7 +937,8 @@ mod tests {
     /// wallpaper can be measured on its own.
     fn host2() -> lumen_static_shell::Host<Home> {
         use lumen_static_shell::text::{FontMetrics, FontStack};
-        let mut app = build(k(W, H));
+        let mut host: lumen_static_shell::Host<Home> = program(W, H).host();
+        let app = &mut host.app;
         let clear = Material { blur: 0.0, rim: 0.0, tint: Color(0, 0, 0, 0), ..Material::FROSTED };
         {
             let a = &mut app.ui.apps;
@@ -952,8 +950,6 @@ mod tests {
         }
         app.ui.status.material = clear;
         app.ui.dock.row.dock.material = clear;
-        let mut host = lumen_static_shell::Host::new(app, W, H);
-        host.set_stylesheet(&stylesheet(k(W, H)));
         let mut metrics = FontStack::system().map(FontMetrics::new);
         for _ in 0..2 {
             match metrics.as_mut() {

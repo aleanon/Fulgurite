@@ -45,8 +45,9 @@
 //! # The shape of the fix
 //!
 //! `Application::build` supplies the application from the currently
-//! loaded code and `Application::style` supplies its sheet;
-//! `Host::reload` calls both. The `V2` sheet below is what an author
+//! loaded code, and the program's style source — kept by the host since
+//! M32, when `Application::style` was retired — supplies its sheet;
+//! `Host::adopt` re-asks it. The `V2` sheet below is what an author
 //! edited to and rebuilt, and the assertion is that the frame shows it.
 
 use lumen_static::display::Color;
@@ -55,6 +56,7 @@ use lumen_static::event::Application;
 use lumen_static::reload::Reloadable as _;
 use lumen_static::style::{Patch, Rule, Selector};
 use lumen_static::{App as DeriveApp, Reloadable as DeriveReloadable, StaticTree};
+use lumen_static_shell::program::application;
 use lumen_static_shell::Host;
 use lumen_static_widgets::prelude::*;
 
@@ -77,8 +79,7 @@ struct Session {
     /// a reload that never happened look identical.
     #[reload(keep)]
     n: u32,
-    /// What `style()` hands back. Owned by the application so the
-    /// borrowed return costs nothing: `docs/plan-application.md` §2.4.
+    /// What the program's style source reads (`launched_by_v1`).
     /// `#[reload(fresh)]` because a sheet is code-shaped data and must
     /// come from the new build — which is this whole file's subject.
     #[reload(fresh)]
@@ -95,9 +96,18 @@ impl Application for Session {
         Session { ui: Ui::default(), n: 0, sheet: sheet(V2) }
     }
 
-    fn style(&self) -> lumen_static::style::Stylesheet<'_> {
-        &self.sheet
-    }
+}
+
+/// **A host launched by the previous build**, through the one path a
+/// host is built by (M32): a program whose boot is v1's and whose style
+/// source reads the application's own sheet. That source is kept by the
+/// host, and `adopt` re-asks it of whatever application it is handed —
+/// which is the mechanism under test.
+fn launched_by_v1() -> Host<Session> {
+    application(|| Session { ui: Ui::default(), n: 0, sheet: sheet(V1) })
+        .size(200, 100)
+        .style(|s: &Session| s.sheet.clone())
+        .host()
 }
 
 /// The sheet v1 ships.
@@ -136,8 +146,7 @@ fn rebuilt(old: &Session) -> Session {
 #[test]
 fn an_edited_stylesheet_reaches_the_frame_on_reload() {
     // Launched by the *previous* build, which installed V1.
-    let mut host: Host<Session> = Host::new(Session::build(), 200, 100);
-    host.set_stylesheet(&sheet(V1));
+    let mut host: Host<Session> = launched_by_v1();
     host.app.n = 7;
     host.pump();
 
@@ -162,7 +171,7 @@ fn an_edited_stylesheet_reaches_the_frame_on_reload() {
         panel_bg(&host),
         V2,
         "M31/T31.0: the host must re-ask the new build for its stylesheet. Before \
-         `Application::style` existed this was V1 — the previous build's rules, \
+         the host re-asked a sheet source this was V1 — the previous build's rules, \
          kept because nothing asked."
     );
 }
@@ -172,12 +181,11 @@ fn an_edited_stylesheet_reaches_the_frame_on_reload() {
 /// The same rebuild, adopted the way the host used to do it — assign
 /// the application and say nothing about the sheet. The frame keeps V1.
 /// That is the defect this milestone removed, kept as a test so the
-/// assertion above is known to be watching `style()` and not something
+/// assertion above is known to be watching the sheet source and not something
 /// incidental to `pump`.
 #[test]
 fn a_swap_that_does_not_re_ask_keeps_the_previous_builds_sheet() {
-    let mut host: Host<Session> = Host::new(Session::build(), 200, 100);
-    host.set_stylesheet(&sheet(V1));
+    let mut host: Host<Session> = launched_by_v1();
     host.pump();
     assert_eq!(panel_bg(&host), V1, "setup: V1 is in effect");
 
@@ -195,8 +203,7 @@ fn a_swap_that_does_not_re_ask_keeps_the_previous_builds_sheet() {
 
 #[test]
 fn the_host_is_asked_for_a_sheet_on_every_swap() {
-    let mut host: Host<Session> = Host::new(Session::build(), 200, 100);
-    host.set_stylesheet(&sheet(V1));
+    let mut host: Host<Session> = launched_by_v1();
     host.pump();
     assert_eq!(
         host.stylesheet()[0].patch.background,

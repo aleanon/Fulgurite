@@ -27,7 +27,7 @@ use winit::keyboard::{Key as WKey, NamedKey};
 use winit::window::{Window, WindowId};
 
 use crate::agent_socket::{serve_agent, Live, Rpc, UserEvent};
-use crate::app::{build, stylesheet_for, Tally, PAGE};
+use crate::app::{program, stylesheet_for, Tally, PAGE};
 
 pub struct WinApp {
     pub host: Host<Tally>,
@@ -69,8 +69,7 @@ pub struct WinApp {
 impl WinApp {
     fn new(#[allow(unused)] proxy: winit::event_loop::EventLoopProxy<UserEvent>) -> Self {
         let (w, h) = (440, 520);
-        let mut host = Host::new(build(), w, h);
-        host.set_stylesheet(&stylesheet_for(0));
+        let host: Host<Tally> = program(0, w, h).host();
         let font = FontStack::system();
         if font.is_none() {
             eprintln!("no system font found — falling back to block glyphs");

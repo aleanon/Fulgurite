@@ -535,6 +535,14 @@ dylib:
 The classic bug is keeping the old tree alive across the swap as a safety net,
 which guarantees destructors run against unmapped code.
 
+**DECIDED 2026-09-24 (M32): what `fresh()` is not asked for.** A
+stylesheet is code-shaped data and comes from the program's
+*description* (`lumen_static_shell::program`), which is the one place the
+window, every headless host and a swap all ask: `Host::adopt` re-asks the
+description's sheet of the adopted application. `Application::style` and
+the window's `Config::stylesheet` are gone — they were two sources, and
+the window silently ignored the first (`docs/plan-program.md`).
+
 ### ABI details that bite
 
 - The byte buffer must be owned by the **host binary**, not passed as a `Vec`

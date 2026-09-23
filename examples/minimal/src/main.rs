@@ -14,7 +14,7 @@
 // ANCHOR: app
 use lumen_static::prelude::*;
 use lumen_static_widgets::prelude::*;
-use lumen_static_winit::{run, Config};
+use lumen_static_winit::{application, Program, Run};
 
 #[derive(DeriveApp)]
 struct Counter {
@@ -31,25 +31,21 @@ struct Ui {
     button: Button<Counter>,
 }
 
-/// Construction, in the one place the framework looks for it — M31.
-///
-/// The three lines below used to sit in `main`, where a hot reload could
-/// not see them: `Reloadable::fresh()` would have rebuilt this
-/// application without the handler and the button would have gone dead
-/// on the first swap.
-impl Application for Counter {
-    fn build() -> Self {
+/// **The program, described once** — M32. How to build it and what its
+/// window looks like, in one value that the window and the headless
+/// `--shot` below both start from.
+fn program() -> Program<Counter> {
+    application(|| {
         let mut app = Counter { ui: Ui::default(), count: 0 };
         app.ui.button.label = "click me";
         app.ui.button.on_click = |c: &mut Counter, _: &EventCtx| c.count += 1;
         app
-    }
+    })
+    .title("minimal")
+    .size(320, 160)
 }
 
 fn main() {
-    run(
-        Counter::build(),
-        Config { title: "minimal", width: 320, height: 160, ..Config::default() },
-    );
+    program().run();
 }
 // ANCHOR_END: app
