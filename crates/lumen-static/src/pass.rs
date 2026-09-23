@@ -191,6 +191,24 @@ pub fn dispatch_overlaid<S: crate::event::App, O: crate::overlay::OverlaySink>(
 ) -> bool {
     use crate::event::{Event, Key};
 
+    // **The release of a press that dismissed an overlay is consumed
+    // too** — M33/T33.3. The press was eaten below; without this the
+    // release activated whatever it landed on, so the click that closed
+    // a menu also pressed the button under it. The release still ends
+    // the press everywhere, as any release does.
+    match ev {
+        Event::PointerDown { .. } => input.swallow_release = false,
+        Event::PointerUp { .. } if input.swallow_release => {
+            input.swallow_release = false;
+            for n in st.iter_mut() {
+                n.pressed = false;
+            }
+            input.pressed = None;
+            return true;
+        }
+        _ => {}
+    }
+
     // Escape closes the topmost overlay and stops there.
     if matches!(ev, Event::Key { key: Key::Escape, down: true }) && !ov.is_empty() {
         let top = ov.at(ov.len() - 1) as usize;
@@ -218,6 +236,7 @@ pub fn dispatch_overlaid<S: crate::event::App, O: crate::overlay::OverlaySink>(
                 }
                 if closed {
                     input.focus = None;
+                    input.swallow_release = true;
                     return true;
                 }
             }

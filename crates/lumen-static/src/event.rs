@@ -353,6 +353,16 @@ impl EventCtx {
 pub struct InputState {
     /// The focused node's main-table index, if any.
     pub focus: Option<u32>,
+    /// Whether the next `PointerUp` ends a press that dismissed an
+    /// overlay, and must be consumed with it — M33/T33.3.
+    ///
+    /// Activation happens on the *release*, and nothing requires the
+    /// release to end a press that began on the same node. So when
+    /// `pass::dispatch_overlaid` consumed a press outside every open
+    /// overlay, the release still activated whatever it landed on: the
+    /// click that closed a menu also pressed the button under it
+    /// (`crates/lumen-static/tests/dismiss_click.rs`).
+    pub swallow_release: bool,
     /// The node holding the pointer for a drag, if any (T11.2).
     ///
     /// Checked *before* the hit test: a drag that leaves its control
