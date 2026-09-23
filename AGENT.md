@@ -527,6 +527,17 @@ found" section rather than silently replacing itself.
   failed builds are shown over the running application, and a
   successful swap clears M36's screen. v1 never unloads a library.
 
+- **M38 — `docs/plan-deep-review.md`** (R1–R18): a deep review of the
+  four goals, **in progress 2026-09-23**. It reviews and does not build.
+  Its output is `docs/results-deep-review.md`: a verdict per goal and per
+  platform, the findings that survived adversarial verification, a
+  claims ledger, the vacuous-test table extended, and its impact on
+  M29 and M32–M37. It was planned by seven lens surveys and a
+  completeness critic. Every finding is a falsified claim with its
+  injection or measurement, and S0/S1 findings get two verifiers with
+  different lenses. Fixes are follow-up milestones (M39+), not part of
+  this one.
+
 Unsequenced: ~~`docs/plan-harness.md`.~~ — **M12 DONE 2026-09-20.**
 T12.3 and T12.4 landed 2026-09-04; T12.1 (a locator and expectation API,
 `lumen_static_agent::harness::TestApp`) and T12.2 (golden images with a
