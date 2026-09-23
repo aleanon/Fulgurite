@@ -4,13 +4,35 @@
 //! nothing to allocate (F4.3).
 
 use std::alloc::{GlobalAlloc, Layout, System};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::cell::Cell;
 
-static ALLOCS: AtomicUsize = AtomicUsize::new(0);
+thread_local! {
+    /// **Per-thread, not a global counter.**
+    ///
+    /// `cargo test` runs a binary's tests on parallel threads sharing
+    /// one process and one allocator, so a global count includes the
+    /// harness's own allocations and anything another test is doing.
+    /// This file had a `static AtomicUsize` and failed once under load
+    /// while passing eight times out of eight in isolation — the same
+    /// defect `crates/lumen-static-shell/tests/alloc_gate.rs` documents
+    /// having already fixed, where it reported "0.16 allocations per
+    /// frame from code that allocates none".
+    ///
+    /// A gate that flakes is a gate that gets ignored, which is worse
+    /// than not having one.
+    static ALLOCS: Cell<usize> = const { Cell::new(0) };
+}
+
+fn allocs() -> usize {
+    ALLOCS.with(Cell::get)
+}
+
 struct Counting;
 unsafe impl GlobalAlloc for Counting {
     unsafe fn alloc(&self, l: Layout) -> *mut u8 {
-        ALLOCS.fetch_add(1, Ordering::Relaxed);
+        // `try_with`: during thread teardown the TLS is gone, and a
+        // panic in the allocator is not recoverable.
+        let _ = ALLOCS.try_with(|c| c.set(c.get() + 1));
         unsafe { System.alloc(l) }
     }
     unsafe fn dealloc(&self, p: *mut u8, l: Layout) {
@@ -63,10 +85,10 @@ fn laying_out_enum_nodes_allocates_nothing() {
         pass::layout(&mut ui, &sty, &mut st, VIEW);
     }
 
-    let before = ALLOCS.load(Ordering::Relaxed);
+    let before = allocs();
     for _ in 0..100 {
         pass::layout(&mut ui, &sty, &mut st, VIEW);
     }
-    let per_frame = (ALLOCS.load(Ordering::Relaxed) - before) as f64 / 100.0;
+    let per_frame = (allocs() - before) as f64 / 100.0;
     assert_eq!(per_frame, 0.0, "three enum nodes allocated {per_frame} times per layout");
 }
