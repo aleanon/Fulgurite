@@ -1,7 +1,7 @@
 //! T6.3: `#[derive(App)]` — the tree accessors and the update step,
 //! generated from declarations at the field.
 
-use lumen_static_widgets::ops::{Button, Label, Spacer};
+use lumen_static_widgets::ops::{Button, Fixed, Label, Spacer};
 use lumen_static::{App as AppDerive, EventCtx, StaticTree};
 
 // ANCHOR: tree
@@ -133,4 +133,111 @@ fn a_quiet_update_leaves_the_measurement_memo_warm() {
 
     c.update(); // nothing changed
     assert!(c.ui.value.measure_is_warm(LIMITS, &style[0], 1.0), "a binding that runs is not a binding that writes");
+}
+
+// ---- M32: a source path, and that it stays narrowable ----------------
+
+/// A nested state struct, the shape a split application has.
+#[derive(Default)]
+struct Nested {
+    depth: Depth,
+}
+
+#[derive(Default)]
+struct Depth {
+    n: i64,
+}
+
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+struct DeepUi {
+    #[widget_id("deep")]
+    deep: Label<String>,
+}
+
+#[derive(AppDerive, Default)]
+struct DeepApp {
+    #[tree]
+    ui: DeepUi,
+    /// `depth.n` is a path **within** this field, so the binding formats
+    /// `self.state.depth.n` — two levels down, which the format form
+    /// could not reach before M32 and which a split application needs.
+    #[bind(ui.deep, depth.n, "n = {}")]
+    state: Nested,
+}
+
+#[test]
+fn a_binding_can_name_a_path_inside_the_annotated_field() {
+    let mut app = DeepApp::default();
+    assert!(app.update(), "the first update writes `n = 0`");
+    assert_eq!(app.ui.deep.as_str(), "n = 0");
+
+    app.state.depth.n = 41;
+    assert!(app.update(), "a changed value writes");
+    assert_eq!(app.ui.deep.as_str(), "n = 41", "the binding read two levels down");
+}
+
+/// **The property that makes the source path worth having.**
+///
+/// A split application — state in its own struct, out of a handler's
+/// reach — could previously only bind through a `with =` hook, and
+/// `docs/plan-damage-precision.md` §2.4 lists those as *permanently
+/// unnarrowable*: the hook returns nothing, so the derive reports `true`
+/// unconditionally and `Host::pump_with` marks the whole tree.
+///
+/// The source-path form keeps `format_into`'s comparison, so an update
+/// that changes nothing reports `false` — which is what lets the mark be
+/// narrowed at all. Without this assertion the split would buy M29's win
+/// on the handler path and hand it straight back here.
+#[test]
+fn a_source_path_binding_still_reports_precisely() {
+    let mut app = DeepApp::default();
+    app.state.depth.n = 7;
+    assert!(app.update(), "setup: the value changed, so the update writes");
+
+    assert!(
+        !app.update(),
+        "a second update wrote nothing and must say so — a `with =` hook would \
+         answer `true` here and mark the whole tree every frame"
+    );
+    app.state.depth.n = 8;
+    assert!(app.update(), "and it still reports a real change");
+}
+
+/// A widget whose value is not text: the value form's target.
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+struct ValueUi {
+    #[widget_id("pane")]
+    pane: Fixed,
+}
+
+#[derive(Default)]
+struct Knobs {
+    blur: f32,
+}
+
+#[derive(AppDerive, Default)]
+struct ValueApp {
+    #[tree]
+    ui: ValueUi,
+    /// The value form, M33/T33.1: no format string, so `blur` is copied
+    /// into the target through `BindValue` — which compares first.
+    #[bind(ui.pane.w, blur)]
+    state: Knobs,
+}
+
+#[test]
+fn a_value_binding_copies_and_reports_precisely() {
+    let mut app = ValueApp::default();
+    app.state.blur = 12.0;
+    assert!(app.update(), "a changed value writes");
+    assert_eq!(app.ui.pane.w, 12.0, "the value reached the target");
+    assert!(
+        !app.update(),
+        "a second update wrote nothing and must say so — `with =` would answer `true`"
+    );
+    app.state.blur = 3.0;
+    assert!(app.update(), "and it still reports a real change");
+    assert_eq!(app.ui.pane.w, 3.0);
 }

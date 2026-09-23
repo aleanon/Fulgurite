@@ -89,6 +89,40 @@ std::thread_local! {
 #[cfg(not(feature = "std"))]
 const SCRATCH_CAP: usize = 256;
 
+/// A target a value binding (`#[bind(target, source)]`) can write —
+/// M33/T33.1.
+///
+/// **Compares before it writes and says whether it wrote**, exactly as
+/// [`format_into`] does, so a value binding reports precisely and a
+/// second update that changed nothing answers `false`. That is the
+/// property `with =` gives up by returning nothing, and the reason
+/// `docs/plan-damage-precision.md` §2.4 lists `with =` as unnarrowable.
+///
+/// Every `PartialEq + Clone` field is a target: a material's blur, a
+/// popup's `open`. A widget whose value feeds a memo implements it for
+/// itself so the memo sees the change.
+///
+/// ```
+/// use lumen_static::bind::BindValue;
+/// let mut blur = 4.0_f32;
+/// assert!(blur.bind_value(&8.0), "changed");
+/// assert!(!blur.bind_value(&8.0), "the same value writes nothing");
+/// ```
+pub trait BindValue<T: ?Sized> {
+    fn bind_value(&mut self, value: &T) -> bool;
+}
+
+impl<T: PartialEq + Clone> BindValue<T> for T {
+    #[inline]
+    fn bind_value(&mut self, value: &T) -> bool {
+        if *self == *value {
+            return false;
+        }
+        self.clone_from(value);
+        true
+    }
+}
+
 /// Format `args` into `dst`, but only actually store the result — and
 /// only mark the label for re-measurement — if it differs from the text
 /// the label already holds. Returns whether the label changed.

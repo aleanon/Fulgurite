@@ -1661,9 +1661,27 @@ struct BindSpec {
 enum BindKind {
     /// `#[bind(t, "fmt {}", extra…)]` — the annotated field is the first
     /// format argument; further arguments are written out in full.
-    Fmt(syn::LitStr, Vec<syn::Expr>),
+    ///
+    /// The optional [`syn::Expr`] is a path **within** the annotated
+    /// field, so `#[bind(ui.value, count, "count: {}")]` on a field
+    /// `state: Tally` formats `self.state.count` — M32. Relative to the
+    /// field for the same reason `target` is relative to `self`: the
+    /// thing you name is the thing the attribute is attached to, one
+    /// level in. Without it the field itself is the source, which is
+    /// every binding written before this existed.
+    /// Boxed: a bare `syn::Expr` is ~216 B and made this variant four
+    /// times the size of `With`, which `clippy::large_enum_variant`
+    /// refuses.
+    Fmt(Option<Box<syn::Expr>>, syn::LitStr, Vec<syn::Expr>),
     /// `#[bind(t, with = f)]` — `f: fn(&mut Target, &Source)`.
     With(syn::Path),
+    /// `#[bind(t, source)]` — copy a value, M33/T33.1. `source` is a path
+    /// within the annotated field, as the format form's is; the target
+    /// implements `lumen_static::bind::BindValue` for its type, which
+    /// compares before it writes, so the binding reports precisely — the
+    /// property `with =` gives up, and the reason this form exists (a
+    /// `Select`'s `open`, a glass material's blur).
+    Value(Box<syn::Expr>),
 }
 
 impl syn::parse::Parse for BindSpec {
@@ -1672,7 +1690,8 @@ impl syn::parse::Parse for BindSpec {
         input.parse::<syn::Token![,]>().map_err(|_| {
             syn::Error::new_spanned(
                 &target,
-                "expected `#[bind(target, \"format {}\")]` or `#[bind(target, with = func)]`",
+                "expected `#[bind(target, \"format {}\")]`, `#[bind(target, source)]` or \
+                 `#[bind(target, with = func)]`",
             )
         })?;
 
@@ -1685,6 +1704,27 @@ impl syn::parse::Parse for BindSpec {
             return Ok(BindSpec { target, kind: BindKind::With(input.parse()?) });
         }
 
+        // **A source path, if one is given** — M32. Unambiguous without
+        // lookahead games: the format string is a literal, so anything
+        // else in this position is a path into the annotated field.
+        let source: Option<Box<syn::Expr>> = if input.peek(syn::LitStr) {
+            None
+        } else {
+            let src: syn::Expr = input.parse()?;
+            // No format string after the source: the value form.
+            if input.is_empty() {
+                return Ok(BindSpec { target, kind: BindKind::Value(Box::new(src)) });
+            }
+            input.parse::<syn::Token![,]>().map_err(|_| {
+                syn::Error::new_spanned(
+                    &src,
+                    "expected `#[bind(target, source, \"format {}\")]` — a source path \
+                     must be followed by a format string",
+                )
+            })?;
+            Some(Box::new(src))
+        };
+
         let fmt: syn::LitStr = input.parse()?;
         let mut extra = Vec::new();
         while input.peek(syn::Token![,]) {
@@ -1694,7 +1734,7 @@ impl syn::parse::Parse for BindSpec {
             }
             extra.push(input.parse()?);
         }
-        Ok(BindSpec { target, kind: BindKind::Fmt(fmt, extra) })
+        Ok(BindSpec { target, kind: BindKind::Fmt(source, fmt, extra) })
     }
 }
 
@@ -1801,10 +1841,23 @@ fn expand_app(input: DeriveInput) -> syn::Result<Ts2> {
                 binds.push(match &spec.kind {
                     // `format_into` compares before it writes and says
                     // so, so a binding reports precisely (T16.10).
-                    BindKind::Fmt(fmt, extra) => quote! {
-                        changed |= ::lumen_static::bind::format_into(
+                    BindKind::Fmt(source, fmt, extra) => {
+                        // `self.field` or `self.field.path.into.it`.
+                        let src = match source {
+                            Some(p) => quote! { self.#ident.#p },
+                            None => quote! { self.#ident },
+                        };
+                        quote! {
+                            changed |= ::lumen_static::bind::format_into(
+                                &mut self.#target,
+                                ::core::format_args!(#fmt, &#src #(, #extra)*),
+                            );
+                        }
+                    }
+                    BindKind::Value(p) => quote! {
+                        changed |= ::lumen_static::bind::BindValue::bind_value(
                             &mut self.#target,
-                            ::core::format_args!(#fmt, &self.#ident #(, #extra)*),
+                            &self.#ident.#p,
                         );
                     },
                     BindKind::With(path) => quote! {

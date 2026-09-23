@@ -12,7 +12,10 @@ the two diverge — see the note at the end.
 | `#[widget_class("row", "striped")]` | a field **or the struct** | style classes, matched by `.row`; on the struct they land on the container's own node |
 | `#[reload(keep \| fresh \| reset)]` | a `Reloadable` field | survives a hot swap / comes from the new code / recomputed |
 | `#[tree]` | an `App` field | which field is the widget tree |
+| `#[state]` | an `App` field | what a handler receives, and the tree is not in it. Absent, a handler gets the whole application |
 | `#[bind(ui.value, "count: {}")]` | an `App` field | how this state reaches the screen |
+| `#[bind(ui.value, count, "count: {}")]` | an `App` field | the same, reading a path *inside* that field |
+| `#[bind(ui.pane.w, blur)]` | an `App` field | the value form: copy a path inside that field into a non-text target, compared first |
 | `#[app(after_update = f)]` | an `App` struct | `fn(&mut Self) -> bool`, run after the bindings; the `bool` says whether it changed anything |
 
 `#[bind]` also takes `with = f` for a `fn(&mut Target, &Source)`

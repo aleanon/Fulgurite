@@ -50,11 +50,20 @@
 //! | `#[widget_class("row", "striped")]` | a field **or the struct** | style classes, matched by `.row`; on the struct they land on the container's own node |
 //! | `#[reload(keep \| fresh \| reset)]` | a `Reloadable` field | survives a hot swap / comes from the new code / recomputed |
 //! | `#[tree]` | an `App` field | which field is the widget tree |
+//! | `#[state]` | an `App` field | what a handler receives, and the tree is not in it. Absent, a handler gets the whole application |
 //! | `#[bind(ui.value, "count: {}")]` | an `App` field | how this state reaches the screen |
 //! | `#[app(after_update = f)]` | an `App` struct | `fn(&mut Self) -> bool`, run after the bindings; the `bool` says whether it changed anything |
 //!
 //! `#[bind]` also takes `with = f` for a `fn(&mut Target, &Source)`
-//! projection, and extra format arguments after the string.
+//! projection, and extra format arguments after the string. A **source
+//! path** may sit between the target and the format string —
+//! `#[bind(ui.value, count, "count: {}")]` on a field `state: Tally`
+//! formats `self.state.count` — which is what lets an application whose
+//! state is its own struct keep the comparing form instead of falling
+//! back on `with =`. With a source path and **no** format string it is
+//! the **value form** — `#[bind(ui.pane.w, blur)]` copies
+//! `self.state.blur` through [`bind::BindValue`], which compares first —
+//! for a target that is not text (M33/T33.1).
 //!
 //! ## Two naming conventions for `kind_name`
 //!

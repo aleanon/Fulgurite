@@ -1,4 +1,4 @@
-error: expected `#[bind(target, "format {}")]` or `#[bind(target, with = func)]`
+error: expected `#[bind(target, "format {}")]`, `#[bind(target, source)]` or `#[bind(target, with = func)]`
   --> tests/ui/fail_bind_malformed.rs:14:12
    |
 14 |     #[bind(ui.a)]
