@@ -1,0 +1,7 @@
+error[E0609]: no field `ui` on type `&mut Work`
+  --> tests/ui/fail_split_apply_reaches_tree.rs:39:11
+   |
+39 |         s.ui.title.set("reached the tree");
+   |           ^^ unknown field
+   |
+   = note: available field is: `landed`

@@ -45,7 +45,7 @@ fn echo(d: Descriptor, tx: &lumen_static::inbox::Sender<u64>) {
 }
 
 impl App for Work {
-    // M32 prototype: this app keeps handlers on the whole of itself.
+    // M33: this app keeps handlers on the whole of itself.
     type State = Self;
     fn state_mut(&mut self) -> &mut Self::State {
         self
@@ -58,8 +58,8 @@ impl App for Work {
     fn tree_mut(&mut self) -> &mut Ui {
         &mut self.ui
     }
-    fn apply(&mut self, m: u64) -> bool {
-        self.landed.push(m);
+    fn apply(this: &mut Self, m: u64) -> bool {
+        this.landed.push(m);
         true
     }
     fn outbox(&mut self) -> Option<&mut Outbox> {

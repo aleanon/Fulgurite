@@ -41,8 +41,8 @@ impl App for Sheet1 {
     fn tree_mut(&mut self) -> &mut Ui {
         &mut self.ui
     }
-    fn apply(&mut self, m: u64) -> bool {
-        self.landed.push(m);
+    fn apply(this: &mut Self, m: u64) -> bool {
+        this.landed.push(m);
         true
     }
 }

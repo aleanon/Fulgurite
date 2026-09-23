@@ -111,7 +111,7 @@ fn tick(d: Descriptor, tx: &lumen_static::inbox::Sender<Msg>) {
 }
 
 impl App for Demo {
-    // M32 prototype: this app keeps handlers on the whole of itself.
+    // M33: this app keeps handlers on the whole of itself.
     type State = Self;
     fn state_mut(&mut self) -> &mut Self::State {
         self
@@ -158,23 +158,23 @@ impl App for Demo {
     }
 
     /// The step function, in the currently loaded build.
-    fn apply(&mut self, m: Msg) -> bool {
+    fn apply(this: &mut Self, m: Msg) -> bool {
         match m {
             Msg::One(v) => {
-                self.one += 1;
-                self.last = format!("one={v}");
+                this.one += 1;
+                this.last = format!("one={v}");
             }
             Msg::Batch(v) => {
-                self.batch += 1;
-                self.last = format!("batch={v}");
+                this.batch += 1;
+                this.last = format!("batch={v}");
             }
             Msg::Chain { step, value } => {
-                self.chain_steps += 1;
-                self.last = format!("chain step={step} value={value}");
+                this.chain_steps += 1;
+                this.last = format!("chain step={step} value={value}");
                 // What happens next is data: another descriptor, or
                 // nothing. "Nothing" is the absence of a push.
                 if step < 2 {
-                    self.outbox.push(Descriptor {
+                    this.outbox.push(Descriptor {
                         kind: KIND_CHAIN,
                         step: step + 1,
                         payload: value,
@@ -182,19 +182,19 @@ impl App for Demo {
                 }
             }
             Msg::Slow(v) => {
-                self.slow += 1;
-                self.last = format!("slow={v}");
+                this.slow += 1;
+                this.last = format!("slow={v}");
             }
             Msg::Tick(k) => {
-                self.ticks += 1;
-                self.last = format!("tick={k}");
+                this.ticks += 1;
+                this.last = format!("tick={k}");
             }
             Msg::Failed(kind, why) => {
-                self.failures += 1;
-                self.last = format!("failed kind={kind} why={why:?}");
+                this.failures += 1;
+                this.last = format!("failed kind={kind} why={why:?}");
             }
         }
-        self.refresh();
+        this.refresh();
         true
     }
 }

@@ -186,7 +186,7 @@ impl App for Rows {
     // uninhabited, so nothing can be sent and `apply` cannot
     // be called.
     type Msg = lumen_static::event::Never;
-    fn apply(&mut self, m: Self::Msg) -> bool {
+    fn apply(_: &mut Self, m: Self::Msg) -> bool {
         match m {}
     }
     type Tree = Ui;

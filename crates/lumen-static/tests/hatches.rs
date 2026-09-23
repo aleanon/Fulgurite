@@ -140,7 +140,7 @@ struct App {
 }
 
 impl lumen_static::event::App for App {
-    // M32 prototype: this app keeps handlers on the whole of itself.
+    // M33: this app keeps handlers on the whole of itself.
     type State = Self;
     fn state_mut(&mut self) -> &mut Self::State {
         self
@@ -149,7 +149,7 @@ impl lumen_static::event::App for App {
     // uninhabited, so nothing can be sent and `apply` cannot
     // be called.
     type Msg = lumen_static::event::Never;
-    fn apply(&mut self, m: Self::Msg) -> bool {
+    fn apply(_: &mut Self, m: Self::Msg) -> bool {
         match m {}
     }
     type Tree = Ui;

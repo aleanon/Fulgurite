@@ -53,7 +53,7 @@ fn fine(d: Descriptor, tx: &lumen_static::inbox::Sender<Msg>) {
 }
 
 impl App for Work {
-    // M32 prototype: this app keeps handlers on the whole of itself.
+    // M33: this app keeps handlers on the whole of itself.
     type State = Self;
     fn state_mut(&mut self) -> &mut Self::State {
         self
@@ -67,15 +67,15 @@ impl App for Work {
         &mut self.ui
     }
 
-    fn apply(&mut self, m: Msg) -> bool {
-        self.seen.push(m);
+    fn apply(this: &mut Self, m: Msg) -> bool {
+        this.seen.push(m);
         // **The chain continues past a failure**, which is the point: a
         // failure is a result, so the step function has something to
         // decide about. Here it gives up and reports rather than
         // retrying, which is a policy the application owns.
         if let Msg::Ok(v) = m {
             if v == 1 {
-                self.outbox.push(Descriptor { kind: KIND, step: STEP_NEXT, payload: v });
+                this.outbox.push(Descriptor { kind: KIND, step: STEP_NEXT, payload: v });
             }
         }
         true

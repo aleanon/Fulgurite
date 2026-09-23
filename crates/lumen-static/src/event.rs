@@ -700,8 +700,14 @@ pub trait App: Sized {
     /// [`Boundaries`](crate::invalidate::Boundaries) a `false` here is
     /// the difference between skipping the tree and walking it.
     ///
-    /// Called from the frame loop with `&mut self`, on the thread that
-    /// owns the tree — never from the worker that sent it.
+    /// Called from the frame loop on the thread that owns the tree —
+    /// never from the worker that sent it — with **the state, not the
+    /// application** (M33/T33.2). A deferred message is handler-shaped
+    /// work, so it gets what a handler gets: for a split application
+    /// (`#[state]`) the tree is not reachable from here, which is what
+    /// lets a message frame be narrowed like a handled one. For an
+    /// unsplit one, `State = Self` and nothing changes but the spelling:
+    /// `fn apply(_: &mut Self, m: …)`.
     ///
     /// **No default body, deliberately.** A default that ignored the
     /// message and returned `false` would compile for an application
@@ -709,10 +715,10 @@ pub trait App: Sized {
     /// symptom would be deferred work that silently never lands, which
     /// is the hardest class of bug this repository keeps finding. An
     /// application with nothing to defer writes
-    /// `fn apply(&mut self, m: Never) -> bool { match m {} }`, which the
+    /// `fn apply(_: &mut Self::State, m: Never) -> bool { match m {} }`, which the
     /// derive emits; `match` on an uninhabited type is how that says
     /// "unreachable" to the compiler rather than to the reader.
-    fn apply(&mut self, m: Self::Msg) -> bool;
+    fn apply(state: &mut Self::State, m: Self::Msg) -> bool;
 
     /// This application's queue **out** of the frame — M28/T28.4.
     ///

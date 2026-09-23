@@ -1987,7 +1987,7 @@ fn expand_app(input: DeriveInput) -> syn::Result<Ts2> {
             type Msg = ::lumen_static::event::Never;
 
             /// Unreachable by construction: `Never` has no values.
-            fn apply(&mut self, m: Self::Msg) -> bool {
+            fn apply(_: &mut Self::State, m: Self::Msg) -> bool {
                 match m {}
             }
 

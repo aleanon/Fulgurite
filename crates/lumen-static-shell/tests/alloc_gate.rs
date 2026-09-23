@@ -496,7 +496,7 @@ fn a_pump_that_applies_results_allocates_nothing() {
     }
 
     impl App for Defer {
-    // M32 prototype: this app keeps handlers on the whole of itself.
+    // M33: this app keeps handlers on the whole of itself.
     type State = Self;
     fn state_mut(&mut self) -> &mut Self::State {
         self
@@ -509,8 +509,8 @@ fn a_pump_that_applies_results_allocates_nothing() {
         fn tree_mut(&mut self) -> &mut DeferUi {
             &mut self.ui
         }
-        fn apply(&mut self, m: u32) -> bool {
-            self.total += m as u64;
+        fn apply(this: &mut Self, m: u32) -> bool {
+            this.total += m as u64;
             true
         }
     }

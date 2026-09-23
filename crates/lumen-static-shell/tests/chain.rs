@@ -61,7 +61,7 @@ fn step2(d: Descriptor, tx: &lumen_static::inbox::Sender<u64>) {
 }
 
 impl App for Work {
-    // M32 prototype: this app keeps handlers on the whole of itself.
+    // M33: this app keeps handlers on the whole of itself.
     type State = Self;
     fn state_mut(&mut self) -> &mut Self::State {
         self
@@ -79,15 +79,15 @@ impl App for Work {
     /// completion says which step it was and what it produced; this
     /// decides what happens next, and what happens next is data: finish,
     /// or another descriptor.
-    fn apply(&mut self, m: u64) -> bool {
+    fn apply(this: &mut Self, m: u64) -> bool {
         let (step, out) = unpack(m);
-        self.seen.push((step, out));
+        this.seen.push((step, out));
         match step {
             0 => {
-                self.outbox.push(Descriptor { kind: KIND, step: 1, payload: out });
+                this.outbox.push(Descriptor { kind: KIND, step: 1, payload: out });
             }
             1 => {
-                self.outbox.push(Descriptor { kind: KIND, step: 2, payload: out });
+                this.outbox.push(Descriptor { kind: KIND, step: 2, payload: out });
             }
             // Step 2 finishes. "Finish" is the absence of a push, which
             // is the same shape as a handler that does nothing.

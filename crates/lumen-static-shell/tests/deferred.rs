@@ -43,7 +43,7 @@ struct Deferring {
 }
 
 impl App for Deferring {
-    // M32 prototype: this app keeps handlers on the whole of itself.
+    // M33: this app keeps handlers on the whole of itself.
     type State = Self;
     fn state_mut(&mut self) -> &mut Self::State {
         self
@@ -60,9 +60,9 @@ impl App for Deferring {
 
     /// Writes the label **directly**. No `#[bind]` refreshes it — see
     /// the module docs.
-    fn apply(&mut self, m: u32) -> bool {
-        self.log.push(m);
-        self.ui.out.set(format!("got {m}"));
+    fn apply(this: &mut Self, m: u32) -> bool {
+        this.log.push(m);
+        this.ui.out.set(format!("got {m}"));
         true
     }
 }

@@ -873,7 +873,9 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             lumen_static::inbox::Inbox::<A::Msg>::PER_FRAME,
             &mut (&mut self.app, &mut applied_changed),
             |(app, changed), m| {
-                if app.apply(m) {
+                // The state, not the application (M33/T33.2): a message is
+                // handler-shaped work and gets what a handler gets.
+                if A::apply(app.state_mut(), m) {
                     **changed = true;
                 }
             },
