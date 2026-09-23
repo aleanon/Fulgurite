@@ -1,18 +1,32 @@
 # M36 — a panic shows where it happened, and the window survives it
 
-> **Written 2026-09-23, not started.** The ask: *on a panic, show a
-> screen saying the application panicked and where in the code the
-> panic is.* The moment it matters most is mid-edit. You save, the
-> reloaded code panics, and today the process dies and takes the state
-> you were iterating on with it.
+> **Written 2026-09-23, not started. Rewritten the same day** after a
+> seven-lens review (§5) and two decisions: **a release build shows the
+> screen when the `reload` feature is on**, and the reload half of the
+> story is its own milestone, M37 (`docs/plan-window-reload.md`),
+> modelled on `hot_ice`.
+>
+> The ask: *on a panic, show a screen saying the application panicked
+> and where in the code the panic is.*
+>
+> **The first draft's premise was wrong, and the rest followed from
+> it.** It said the window reloads through `Host::reload`. Nothing in
+> the workspace calls `Host::reload`, and `lumen-static-winit` has no
+> `reload` feature. So the motivating scenario, "you save, the reloaded
+> code panics", cannot happen in any window today. **This milestone
+> makes the window survive a panic and say where it happened, and it
+> recovers by retry.** M37 adds the reload, and with it "a successful
+> reload clears the screen".
 >
 > The prior art is `hot_ice` (`/mnt/Utvikling-linux/hot_ice`). Its macro
-> wraps every hot function in `catch_panic`. A `Once`-installed hook
-> records `PanicHookInfo::location()` into a thread-local, the payload is
-> downcast to `&str`/`String`, and a failed `view` renders a centred
-> "View Error" card with `panicked at {file}:{line}:{col}: {msg}`. It
-> keeps no last-good state. The next frame calls the code again, so the
-> screen clears once the code stops panicking.
+> wraps every hot function in `catch_panic` **inside the library**. A
+> hook installed once *per loaded library* records `location()` into a
+> thread-local, which is cleared before each call. The previous hook is
+> deliberately forgotten rather than chained, because it may belong to a
+> library that has since been unloaded. A failed `view` renders a
+> "View Error" card, and any other failed function records an error
+> entry in a bar over the application. The screen clears the moment a
+> frame succeeds.
 
 *Each task is one commit and ends with `just test` green. Task ids go in
 commit subjects. Every gate names the injection that must turn it red,
@@ -23,247 +37,305 @@ and prints the measured quantity beside its bound.*
 ## 0. The rules for this milestone
 
 1. **"Where" means a line a person can open.** The screen shows
-   `file:line:column`. When that location is inside the framework, for
-   example an index out of bounds in `lumen-static` that the
-   application caused, the screen also shows the nearest frame in the
-   *application's* code. A report that only ever points into
-   `crates/lumen-static/src` answers the wrong question.
-2. **The screen does not use the machinery that just failed.** It is
-   drawn from a `DisplayList` built directly, not from a widget tree
-   through layout and paint. §2.3 says why.
-3. **Only where it can work, and only where it helps.** Recovery is
-   compiled in under `cfg(panic = "unwind")` and in debug builds or with
-   the `reload` feature. A shipped release build keeps the default
-   behaviour, because a screen that swallows a crash also hides it from
-   whatever would have reported it. §2.4 records this decision.
-4. **Every site a panic can come from is exercised, not assumed.** There
-   are five sites in a frame, and T36.0's fixture reaches each one.
+   `file:line:column`. When that location is inside the framework, it
+   also shows the nearest frame in the *application's* code. A report
+   that only ever points into `crates/lumen-static/src` answers the
+   wrong question. T36.0 has a site that makes the framework filter do
+   real work (§5, finding 4).
+2. **The screen does not use the machinery that just failed.** It is a
+   `DisplayList` built directly, not a widget tree (§2.3).
+3. **Where it is compiled in** (decided 2026-09-23): in **debug
+   builds**, and in **release builds with the `reload` feature**, which
+   is a new feature of `lumen-static-winit` that forwards to
+   `lumen-static-shell/reload`. Always under `cfg(panic = "unwind")`. A
+   release build without `reload` keeps the default behaviour, because
+   a shipped application should crash where a crash reporter can see it.
+4. **One guarded entry, and every path goes through it.** The redraw,
+   window events, IME composition, paste, ticks, and **the agent's
+   `Live::pump`** all go through it. The review found that the agent's
+   inputs bypass redraw entirely (§5, finding 1).
+5. **Every site a panic can come from is exercised, not assumed.** There
+   are seven, listed in T36.0.
 
 ## 1. What exists today
 
-- **There is no windowed dylib reload.** `libloading` appears only in
-  `fixtures/hot-host`, which is headless, has no `Host` and leaks its
-  libraries. `lumen_static_winit::run` links the application
-  statically. The seam a user actually meets is in-process:
-  `Host::pump_with` and `Host::reload`, called from the window's redraw
-  (`tick` → `pump_with` → `backend.present`).
-- **The dylib boundary is `extern "C"`** (`export_reloadable_app!` in
-  `crates/lumen-static-reload/src/lib.rs`, and the hand-written verbs in
-  `fixtures/hot-app`). Since Rust 1.81, a panic that unwinds out of an
-  `extern "C"` function **aborts the process**. That is what
-  `just hot-demo` would do today on any panic in v2.
-- **No workspace profile sets `panic = "abort"`**, except
-  `benches-competitive`. So unwinding, and therefore `catch_unwind`, is
-  available in every build this milestone targets.
-- `catch_unwind` is used only by M28's spawners
-  (`crates/lumen-static/src/spawn.rs`), which turn a job's panic into
-  `Failure::Panicked`. `set_hook` appears only in tests, which silence
-  the hook.
-- **What a mid-frame panic leaves behind** (in `pump_with`'s order):
-  events partly dispatched, possibly with pointer capture held;
-  `arenas_dirty` already cleared if the panic happens during the
-  cascade; `list` half-filled, `retain` unfinished and `overlays`
-  partial if it happens during paint; the invalidation marks not
-  cleared, which is harmless. The application's own state may be
-  partly mutated, and nothing can undo that.
-- **A frame can be drawn without the application's tree.**
-  `DisplayList::new`/`rect`/`text_weighted`, `Canvas::with_font` and
-  `render_within` are enough. The backends present `host.list`, so an
-  error frame either replaces `host.list` or needs a present call that
-  takes a list.
+- **No window reloads.** `Host::reload` exists under the shell's
+  `reload` feature and nothing calls it. `lumen-static-winit` links the
+  application statically, and its `redraw` calls `tick`, `pump` or
+  `pump_with`, `tick(0)` and `present`.
+- **The agent drives the window through `user_event`.** `answer_agent`
+  builds an `agent::Live`, whose `pump` calls `host.pump_with` and
+  `backend.present` directly. `input.key` enqueues into the host's
+  queue. The agent's key parser knows named keys only, with no letters,
+  so `input.key R` is rejected today. Non-input methods see only the
+  tree, and `AgentHost` has no accessor for host state.
+- **Application code also runs outside `pump_with`:** `tick` before and
+  after the pump (`App::tick` and timers), `compose` (IME) and `paste`
+  from window events, and the agent's per-frame observe walk.
+- **`fixtures/hot-app` is a `cdylib`**, so it statically links its own
+  copy of std, including its own panic-hook global. A hook the loader
+  installs never sees the library's panics. The dylib's entry points
+  are `extern "C"`, and since Rust 1.81 a panic unwinding out of one
+  aborts the process.
+- **`pump_with` pops each event before dispatching it**, so when a
+  handler panics, the event that caused it has already left the queue.
+  Only events queued behind it remain.
+- **Dispatch writes pointer state before any handler runs.** A press
+  sets `hovered`, `pressed` and `input.pressed`, and only a release
+  clears them.
+- **`Backtrace::frames()` is unstable** (`backtrace_frames`). On stable,
+  frames are read by parsing the `{:#}` rendering, which prints absolute
+  source paths when debug info is present.
+- M28's spawners catch job panics in `spawn.rs`. `Immediate` and
+  `Queued` run jobs **synchronously inside `pump_with`**, so the hook
+  fires on the frame thread for a panic that is not the frame's.
+  `crates/lumen-static-shell/tests/failure.rs` swaps the process-wide
+  hook while its tests run in parallel.
 
 ## 2. The decisions
 
-### 2.1 Capture: a hook for the location, `catch_unwind` for control
+### 2.1 Capture: a hook for the location, a catch for control
 
-`std::panic::set_hook` is the only place `PanicHookInfo::location()`
-exists, and the payload that `catch_unwind` returns has no location in
-it. So a hook records, and a catch decides:
+- **The hook** records the message, `location()` and, where debug info
+  exists, a `Backtrace::force_capture()` rendering into a thread-local.
+  It then calls the previous hook, so stderr still gets the ordinary
+  report. *Chaining is safe here and was not in hot_ice*: this
+  milestone never unloads a library, so the previous hook cannot belong
+  to one. M37 has to revisit this if it unloads.
+- **The guarded entry clears that thread-local before it runs**, as
+  hot_ice does, so the stale record of a job panic that M28's spawner
+  already caught cannot be reported as the frame's.
+- **Robust to the hook being replaced.** If a panic is caught and the
+  thread-local holds nothing, the hook has been replaced, for example
+  by a test that swapped it. The report then says *location unavailable
+  — the panic hook was replaced*, instead of showing a blank line, and
+  the hook is reinstalled for next time. M36's tests live in their own
+  test binary, away from `failure.rs`.
+- **The application frame.** `application(..)` (M32) is
+  `#[track_caller]`, so it learns the application crate's source path
+  from `Location::caller()`, with no macro needed. The backtrace
+  rendering is filtered to frames whose paths fall under that crate's
+  directory, and the first one is reported. Without debug info, the
+  screen says so.
 
-- **The hook** records the message, `location()` and, in debug builds,
-  a `Backtrace::force_capture()`, into a thread-local. It then calls the
-  previous hook, so stderr still gets the ordinary report. It does not
-  decide anything. M28's task threads panic under the same hook, and
-  their panics are already `Failure::Panicked` data, which the hook must
-  not disturb.
-- **The catch** wraps the frame seam in the shell. It takes the
-  thread-local report and hands the window a `PanicReport` with the
-  message, file, line, column and application frames.
-
-**The application frame comes from the backtrace.** `unwrap`, `expect`
-and slice indexing are `#[track_caller]`, so `location()` already points
-at the application's line for the common cases. For a panic inside the
-framework, the backtrace is filtered to frames whose source path lies
-under the application's manifest directory, and the first one is
-reported. Without debug info that filter finds nothing, and the screen
-says so instead of showing a blank line.
-
-### 2.2 Recovery: reset the host, keep the state, drop the event
-
-After a catch:
+### 2.2 Recovery: reset the host, keep the state, swallow input, retry
 
 - **The host's own invariants are restored.** `list` and `overlays` are
-  cleared, `retain` is reset so the next frame is full damage,
-  `mark_all()` is called, `arenas_dirty` is set, and pointer capture is
-  released.
-- **The input queue is drained.** The event that caused the panic would
-  otherwise cause it again on the retry, which is a loop presented as a
-  recovery.
+  cleared, `retain` is reset so the next frame's damage is
+  `Damage::All`, `mark_all()` is called and `arenas_dirty` is set.
+  **Pointer state is reset**: capture is released, `input`'s hovered
+  and pressed are cleared, and every `NodeState.hovered` and `.pressed`
+  is cleared. Focus is kept.
+- **Events queued behind the trigger in the same pump are dropped.**
+  They were produced against a frame that never finished. (The first
+  draft said the drain stops the *triggering* event re-firing. That
+  event is already gone. §5, finding 6.)
+- **Input is swallowed while the screen is up**, all of it except the
+  retry key, close and resize, which are intercepted before
+  `translate`/`post`. Nothing piles up in the 64-slot queue to replay
+  on retry.
 - **The application's state is kept as it is.** It may be partly
-  mutated, and there is no last-good copy. hot_ice made the same
-  choice, for the same reason: taking a snapshot every frame costs
-  every frame, to protect against something that happens once per bad
-  edit.
-- **The screen stays up until something changes.** That means a
-  successful reload, or the user pressing **R** to retry with the
-  current state. A retry that panics again shows the screen again with
-  the new report. Nothing retries on its own, so a panic in `layout`
-  cannot spin the CPU.
+  mutated, and there is no last-good copy. hot_ice made the same call,
+  for the same reason: a snapshot costs every frame, to protect against
+  something that happens once per bad edit.
+- **Retry is explicit.** It happens on R in the window, or through the
+  agent's `app.retry` (§2.4). Nothing retries by itself, so a panic in
+  `layout` cannot spin the CPU. A retry that panics again shows the new
+  report. **Every agent `input.*` call is refused while the screen is
+  up**, because pumping would be an automatic retry. M37 adds "a
+  successful reload retries".
 
 ### 2.3 The screen is a display list, not a tree
 
-A widget tree for the screen would be the natural way to write it, and
-the agent could read it like any other tree. But it would go through
-the same layout, text measurement and paint that may just have panicked.
-A panic inside `Label::layout` would then panic again while drawing its
-own report. The screen is built as a `DisplayList` from a fixed set of
-lines: a title (*"The application panicked"*), the message wrapped to
-the window's width, the location, up to eight application frames, and
-the hint (*"Press R to retry, or save a change to reload"*). The agent
-reads the report through a method of its own (T36.3), not from a tree.
+A widget tree would go through the layout, measurement and paint code
+that may have just panicked. So the screen is a `DisplayList` with a
+fixed set of lines:
 
-**If drawing the screen panics**, the window gives up. The report has
-already gone to stderr through the previous hook, so it is not lost.
+- a title, *"The application panicked"*;
+- the message, wrapped to the window's width;
+- the location, or *location unavailable* with the reason;
+- up to eight application frames;
+- the hint, *"Press R to retry"*, extended by M37 to *"…or save a change
+  to reload"* only when reload is actually active.
 
-### 2.4 Debug and reload builds only
+If drawing the screen panics, the window gives up. The report has
+already gone to stderr through the chained hook.
 
-A release build without `reload` keeps today's behaviour. A shipped
-application that shows a panic screen instead of crashing looks as if it
-works, and it hides the crash from a crash reporter, from a supervisor
-that would restart it, and from its user's bug report. The ask was
-about the edit loop, and the edit loop is debug builds and `reload`.
+### 2.4 The agent sees the failure
 
-### 2.5 The dylib seam catches inside the library
+`AgentHost` gains an accessor for the host's failure state. `app.failure`
+returns the report, or null. `app.retry` retries. Both follow the
+existing `app.*` names (`app.logs`, `app.perf`, `app.setPalette`).
+Neither needs the agent's key parser to learn letters.
 
-Two options for `export_reloadable_app!` and the fixture's verbs, and
-the first is chosen:
+### 2.5 The dylib seam catches inside the library, with its own hook
 
-- **Catch inside each shim** and return a status code, with the report
-  written through an out-parameter as plain bytes (pointer and length,
-  copied by the loader straight away). This is hot_ice's shape.
-- **`extern "C-unwind"`**, letting the panic cross into the loader.
-  Rejected: the payload is a `Box<dyn Any>` allocated by the library,
-  and downcasting it needs a `TypeId`, which is not stable across
-  builds (`docs/00-handoff-static-tree.md`). A report crossing a build
-  boundary must be data.
+A `cdylib` has its own std, so the capture machinery (hook,
+thread-local and catch) lives in a crate the **library** links, and is
+installed from inside the library on the first shim call of each
+loaded build. A `Once` in the library runs once per loaded build,
+because every `dlopen`ed copy gets fresh statics. The shim returns a
+status, with the report written as plain bytes that the loader copies
+straight away. `extern "C-unwind"` is rejected: the payload is a
+`Box<dyn Any>` from another build, and a `TypeId` is not stable across
+builds (`docs/00-handoff-static-tree.md`).
 
 ## T36.0 — the fixture, and today's behaviour recorded
 
-A fixture application that can panic at each of the five frame sites,
-chosen by a key:
+A fixture application that can panic at seven sites, chosen by a key:
 
-1. a handler
-2. an applied message
-3. `update` (a `#[bind]` source that panics on format)
-4. a widget's `layout`
-5. a widget's `paint`
+1. a click handler;
+2. an applied message;
+3. `update` (a `#[bind]` source whose `Display` panics);
+4. a widget's `layout`;
+5. a widget's `paint`, both through a small custom widget in the
+   fixture;
+6. `App::tick`;
+7. **a panic inside the framework**, caused by the application: the
+   fixture hands a framework API an argument that makes a framework
+   function index out of bounds, and the test asserts that
+   `location()` is under `crates/` and not under the fixture.
 
-Each site records its own `line!()` in a constant, so a test can compare
-the reported line with the real one without anyone copying numbers.
+Each site records its own `line!()` in a constant.
 
-**Gate:** a test runs the fixture as a subprocess for each site and
-asserts that today the process **dies**, with a non-zero status, and
-that stderr contains the recorded line. This is the defect, shown, and
-it is the assertion that T36.3 turns around. *Injection:* point one
-site's key at a no-op. The "it died" assertion for that site fires,
-which shows each site is reached, not just declared.
+**Gate:** each site, run as a subprocess, **dies** today, and its stderr
+contains the recorded line. This is the defect, shown, and T36.3 turns
+it around. *Injection:* point one site's key at a no-op. That site's
+"it died" assertion fires, which shows each site is reached and not
+just declared.
 
-## T36.1 — capture and host recovery
+## T36.1 — capture and host recovery, headless
 
-§2.1 and §2.2 in `lumen-static-shell`: the hook, the `PanicReport` and a
-guarded frame entry that returns one. The core crate is untouched, and
-it keeps no `unsafe`, because `AssertUnwindSafe` is a safe wrapper.
+§2.1 and §2.2 in `lumen-static-shell`. The core crate is untouched, and
+it keeps no `unsafe` (`AssertUnwindSafe` is a safe wrapper).
 
-**Gate:** for each of T36.0's five sites, headless, the report's file
-and line equal the site's recorded constant, printed side by side. The
-next frame, after a retry with the trigger cleared, is byte-identical
-to a fresh host's frame of the same state. *Injections:*
+**Gate:** for each site, the report's file and line equal the recorded
+constant, printed side by side. Site 7's reported *application* frame is
+the fixture's calling line. Then a well-defined comparison: **host A
+panics and retries with the trigger cleared. Host B is built from the
+same program and given the same inputs with the trigger disabled.**
+A's retried frame must be byte-identical to B's frame. *Injections:*
 
 - **Do not install the hook.** The location assertion fires, naming the
   site.
-- **Do not reset `retain`.** The retried frame is a partial repaint over
-  the half-painted list, and the byte-identity assertion fires with a
-  pixel count.
-- **Do not drain the queue.** The retry panics again, and the test
-  counts the second report.
+- **Do not reset `retain`.** The retried frame's `host.damage()` is not
+  `Damage::All`. The gate prints it. (The first draft asserted on pixels
+  here, and a headless render repaints the whole list regardless, so
+  that injection could not fire. §5, finding 5.)
+- **Do not reset pointer state.** Site 1's click leaves `hovered` set,
+  and A's retried frame differs from B's by the hover shade, with the
+  pixel count printed.
+- **Do not drop the events behind the trigger.** The trigger key is
+  queued twice in one pump. Without the drop, the second fires on retry
+  and the test counts a second report.
+- **A job that panics inside a frame produces no report.** `Immediate`
+  runs it synchronously, and the stale-record clear is what keeps it out.
 
-**And the other direction:** a frame that does not panic goes through
-the guarded entry with a byte-identical result and no report. The alloc
-gate stays at zero, because a guard that allocates per frame is a cost
-paid for nothing.
+**The other direction:** a frame that does not panic goes through the
+guarded entry byte-identical and with no report, and the allocation gate
+stays at zero.
 
 ## T36.2 — the screen
 
-§2.3 as `failure_frame(&PanicReport, width, height) -> DisplayList`.
+§2.3, as `failure_frame(&report, width, height) -> DisplayList`.
 
 **Gate:**
 
-- A golden image at two window sizes.
-- **Every text command lies inside the viewport.** Print the rightmost
-  x beside the width. A long message wraps and does not run off the
-  edge.
-- Title and body text reach WCAG AA contrast against the background,
-  using the `verifying-apps` contrast measure.
-- The location line contains the fixture's file and recorded line.
+- a golden image at two window sizes;
+- **every text command lies inside the viewport**, with the rightmost x
+  printed beside the width;
+- title and body reach WCAG AA contrast, by the `verifying-apps`
+  measure;
+- the location line contains the fixture's file and line.
 
 *Injection:* remove the wrapping. The viewport assertion fires with the
 overrun printed.
 
-## T36.3 — the window
+## T36.3 — the window, and the agent
 
-`lumen-static-winit` wraps its redraw and its event handling in the
-guarded entry. After a catch it presents `failure_frame` with full
-damage on both backends, and **R** retries. With the `reload` feature,
-a successful `Host::reload` clears the screen. The agent gains a
-`ui.failure` method that returns the report, or null when there is
-none, so a live test can read it.
+Rule 4's single guarded entry, used by the redraw, window events,
+`compose`, `paste`, both ticks, the agent's observe walk and
+`Live::pump`. §2.2's input policy. §2.4's two agent methods. The
+`reload` feature on `lumen-static-winit`, and rule 3's `cfg`.
 
 **Gate:** a drive script, in the manner of `scripts/widget_drive.sh`,
-run under both invalidation strategies. For each site it triggers the
-panic, reads `ui.failure` and asserts the file and line, checks a
-screenshot pixel from the screen's title band so the screen is known to
-be drawn, clears the trigger, presses R, and asserts that the
-application's own tree answers again. *Injection:* have R skip the
-reset. The retried frame renders over a half-painted list and the
-screenshot check fires.
+built **`--release --features reload`**. It asserts through `app.failure`
+that recovery is compiled in (a build without it answers
+*unsupported*, and the script fails rather than watching the process
+die). It runs under both invalidation strategies, and for each site:
+
+1. triggers the panic;
+2. reads `app.failure` and asserts the file and line;
+3. checks that a screenshot pixel in the title band is the screen's;
+4. asserts that `input.click` is refused while the screen is up;
+5. clears the trigger and calls `app.retry`;
+6. takes a screenshot and compares it with a fresh window's, driven the
+   same way without the trigger, printing the differing-pixel count.
+
+*Injection:* make `app.retry` skip the `retain` reset. The backends
+present damage regions, so stale failure-screen pixels survive, and
+step 6 fires.
+
+**And the build that must not have it:** a release build *without*
+`reload` still dies on the first site. That is checked in the same
+session, so the `cfg` is known to be switched both ways.
 
 ## T36.4 — the dylib seam
 
 §2.5 in `export_reloadable_app!` and `fixtures/hot-app`. `just hot-demo`
-gains a third build that panics in its frame verb, and a fourth that
-fixes it. The loader prints the report and carries on with the fourth
-build.
+gains a third build that panics in its frame verb and a fourth that
+fixes it. The loader prints the report and carries on with the fourth.
 
 **Gate:** the demo asserts the report's line and the recovered frame's
-hash. *Injection:* remove the catch from the frame verb. The demo
-**aborts**, which is the Rust 1.81 behaviour, and the script reports the
-abort instead of hanging.
+hash. *Injections:*
 
-**Not built here:** a windowed dylib loader. §1 records that none
-exists. This task makes the seam safe for one, and `hot-host` shows the
-report as text.
+- **Install the hook only in the loader.** The report has no location.
+  That is the `cdylib` fact, demonstrated.
+- **Remove the catch from the frame verb.** The demo aborts, which is
+  Rust 1.81's behaviour, and the script reports the abort instead of
+  hanging.
 
 ## T36.5 — the docs
 
 `docs/step4-hot-reload.md` gains the panic story: what is caught, what
-is kept, and what is not recovered (partly mutated state). The book's
-reload chapter (`book/src/hot-reload.md`) shows the screen. `docs/00-handoff-static-tree.md` marks
-the decision as **DECIDED**, pointing at this plan.
+is kept, and what is not recovered. `book/src/hot-reload.md` shows the
+screen. `docs/00-handoff-static-tree.md` records the decision as
+**DECIDED** and points here.
 
 ## 3. What this is not
 
-- **Not state rollback.** §2.2 explains why.
-- **Not a crash reporter for shipped builds.** §2.4 explains why.
-- **Not a change to task panics.** M28's `Failure::Panicked` already
-  handles those as data. The hook must leave that path unchanged, and
-  T36.1's suite runs M28's failure tests unmodified to show it does.
+- **Not a reload.** That is M37.
+- **Not state rollback.** See §2.2.
+- **Not a crash reporter for shipped builds.** See rule 3.
+- **Not a change to task panics.** M28's `Failure::Panicked` still
+  handles those. T36.1's job case shows the frame guard leaves them
+  alone.
+
+## 4. Ordering
+
+M36 needs M32, for `application(..)`'s `#[track_caller]` source path and
+for `Program`'s seam. M37 needs M36's in-library catch (T36.4). M34's
+shadow oracle reports through the agent rather than panicking, so this
+milestone's catch never swallows it.
+
+## 5. What the review found (2026-09-23)
+
+A seven-lens review, with an adversarial verifier per finding, confirmed
+ten findings against the first draft (one blocking), plus two cross-plan
+ones (X-3, X-4). What changed:
+
+| # | finding | what changed |
+|---|---|---|
+| 1 | **blocking:** the agent's inputs go through `user_event` and `Live::pump`, not the redraw the draft wrapped. The key parser has no `R`. `app.failure` had no path to host state. And any agent input would auto-retry | rule 4, §2.2, §2.4 |
+| 2, X-3 | no window reloads, so "a reload clears the screen" and the hint were unreachable | header, §1, §2.3. The reload is M37 |
+| 3 | a `cdylib` has its own std, and a loader-installed hook never sees its panics | §2.5, and T36.4's first injection |
+| 4 | `Backtrace::frames` is unstable, the application's root never reached the shell, and no site exercised the framework filter | §2.1, and T36.0 site 7 |
+| 5 | "do not reset `retain`" could not fire headless, because every frame repaints the list | T36.1 asserts `damage()`. T36.3 compares a screenshot after the retry |
+| 6, X-4 | the drain's rationale was wrong, because the triggering event is already popped | §2.2 restated. The injection queues the trigger twice |
+| 7 | pointer state latched by dispatch was not reset (confirmed for `hovered`; `pressed` only from a widget's own `on_event`) | §2.2. T36.1 injection |
+| 8 | a `Once` hook is lost when tests swap it, and a caught job panic left a stale record | §2.1: clear at entry, reinstall, and say "replaced" |
+| 9 | tick, IME, paste and the agent's observe run outside `pump_with` | rule 4. T36.0 site 6 |
+| 10 | input on the screen piled up and replayed on retry | §2.2: swallowed, with R intercepted before `post` |
+
+Scope, decided 2026-09-23 and not by the plan: a release build shows the
+screen when `reload` is on (rule 3).

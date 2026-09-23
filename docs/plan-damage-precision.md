@@ -469,38 +469,83 @@ down the wrong path, and it should not outlive the correction.
 
 ## T29.6 — a handled event narrows, for a split application
 
-**Needs M33 and T29.3.** M33 makes the tree unreachable from a handler
-and gives `App` a constant saying so. T29.3 makes `update` report one
-range per binding that wrote. With both in place, a consumed event no
-longer has to mean `mark_all`.
+**Needs M33 and T29.3. Its *Measure* also waits for M34/T34.2**
+(`docs/plan-boundaries-default.md`), but its gate does not. M33 puts
+the tree out of a handler's reach and gives `App` a constant that says
+so. T29.3 makes `update` report one range per binding that wrote. With
+both in place, a consumed event no longer has to mean `mark_all`.
 
-**What still has to be marked.** A handler writes only the state, but
-`dispatch` also delivers the event to a widget. A `TextInput` inserts a
-character into itself, a `Toggle` flips itself and a `Slider` moves
-itself. Those are tree writes that no binding reports. So a narrowed
-`handled` marks the subtree range of **the node that consumed the
-event**, plus whatever `update`'s bindings report. `dispatch` has to
-return that node, which it does not do today. Hover, press and focus are
-already marked by T25.0's path and stay as they are.
+**What still has to be marked: the nodes the event itself changed.** A
+handler writes only the state, but `dispatch_overlaid` also delivers
+the event to widgets, and some of them write themselves. A `TextInput`
+inserts a character, a `Slider` moves on a track press or an arrow key,
+and a `Chooser` opens itself (`Select` stops doing so in M33/T33.3). A `Toggle` does **not** flip itself: it has no
+`on_event`, and its `on` is written back by a binding. So dispatch has
+to report **a set of consumed nodes, possibly empty**. It does not
+report one today: `dispatch_overlaid` returns a bare `bool`. The set
+has to cover every consuming path:
 
-**What stays conservative.** An application whose `State` is `Self`
-keeps `mark_all`, answered by M33's constant. So do an applied message
-when M33/T33.2 has not landed, a `with =` binding, an `after_update`
-hook, and the arena flag. These are T29.4's six paths, and that task's
-assertions extend to cover this one.
+- the node that consumed the event, in pass 1 or under pointer capture;
+- an overlay's own `on_event`;
+- **every overlay a dismissal closed**. Escape closes the topmost, and a
+  press outside closes all of them in a loop, so this can be several
+  nodes;
+- **no node at all** for focus moves (Tab, arrow groups, the overlay Tab
+  trap). T25.0's focus and pointer marks already cover those, and an
+  empty set means exactly that.
 
-**Gate:** the invalidation oracle over a **click-driven** session on a
-split fixture that types into a `TextInput`, flips a `Toggle` and
-presses a button whose handler changes a bound label elsewhere. The
-frames must be byte-identical under `Everything` and `Boundaries`.
-*Injection:* mark only the binding ranges and not the consuming node.
-The typed character is then stale, and the oracle fires, naming the
-frame. *Second injection:* narrow for an unsplit application. The
-fixture's unsplit twin, whose handler writes the tree, goes stale.
+**What stays conservative.** These are T29.4's six paths, named so the
+two lists cannot drift apart again:
 
-**Measure:** `just grid`'s `handled` arm must land where the
-host-driven arm did. Publish both, as T29.3 does, and state which frames
-the saving now reaches.
+1. a `with =` binding;
+2. an `#[app(after_update)]` hook;
+3. a path through a hand-written container;
+4. a handled event, **only when `State = Self`**, answered by M33's
+   constant;
+5. an applied message, only when `State = Self`. After M33/T33.2,
+   `apply` receives the state, so a split application's message frames
+   narrow the same way its handled frames do, and the gate below sends
+   one;
+6. `arenas_dirty`, **which a narrowed handled frame still sets**. A
+   consumed wheel moves a `Repeat`'s window, and the arena cascade is
+   what restyles the new rows. The measurement reports the cascade's
+   share of the frame, so the cost of that conservatism is visible.
+
+**T29.4 is rescoped by this task, not extended.** Its handled-event and
+applied-message assertions become "`mark_all` when `State = Self`,
+narrowed when split". Both halves are asserted, and each has its own
+injection.
+
+**Gate:** the invalidation oracle, byte-identical frames under
+`Everything` and `Boundaries`, over a **click-driven** session on a
+split fixture. The session:
+
+- focuses a `TextInput` (asserting that it is focused) and types into it;
+- presses a `Slider`'s track;
+- dismisses two open overlays with one outside press;
+- sends a deferred message;
+- presses a button whose handler changes a bound label **outside the
+  button's own subtree**, and asserts that it is outside.
+
+*Injections:*
+
+- **Mark only the binding ranges, not the consumed set.** What goes
+  stale is not the typed character, because paint draws `self.text`
+  every frame. It is the field's layout: the caret x and the scroll
+  offset. The oracle fires, and the gate prints those values beside the
+  `Everything` frame's.
+- **Report only the first overlay a dismissal closed.** The second
+  overlay's area goes stale.
+- **Narrow for an unsplit application.** An unsplit twin of the fixture,
+  whose handler writes a tree label outside the pressed subtree, goes
+  stale.
+
+**Measure:** the `handled` arm against T29.1's **`narrowed`** arm
+(`arm_b`). They are not expected to be equal: a click also marks the
+pressed button's subtree and T25.0's hover node. So the bound is
+`narrowed`'s fast-cluster spread plus the cost of those extra ranges,
+measured separately and printed beside the result. Publish both, and
+state which frames the saving now reaches.
 
 ## 3. What this is not
 
@@ -519,8 +564,8 @@ surgical.
 ## 4. Deferred, with conditions
 
 - **Paint culling for table containers. The condition is still not
-  met, and on 2026-09-23 it was decided to keep it shelved on that
-  condition**, and the first write-up of T29.1 said it was. That deferral's
+  met**, and the first write-up of T29.1 said it was. **Decided
+  2026-09-23: it stays shelved on that condition.** That deferral's
   condition is **off-surface node count**; paint's *share of the frame*
   is a different quantity, and this fixture has 220 off-surface nodes of
   2,227 — 9.9% (`docs/results-damage-precision.md` T29.1). A
@@ -597,3 +642,20 @@ had looked for** — T29.5's 12.2 µs. The fixture was built to answer one
 question and answered a larger one as a side effect, which is the
 argument for building the fixture before the mechanism, stated better
 than §0.1 stated it.
+
+## 7. What the 2026-09-23 review found in the amendment
+
+A seven-lens review of the M32–M36 plans, with an adversarial verifier
+per finding, confirmed eight findings against this document's
+2026-09-23 amendment. What changed:
+
+| finding | what changed |
+|---|---|
+| `dispatch` returning "the node" cannot express a dismiss-all (several nodes) or a focus move (none), and the host calls `dispatch_overlaid`, not `dispatch` | T29.6: a set of consumed nodes, possibly empty, with every consuming path named |
+| T29.6's "T29.4's six paths" listed five, and T29.4's handled-event assertion becomes false for a split application | T29.6 lists all six, and rescopes T29.4 |
+| a `Toggle` does not flip itself (a binding writes `on`) | the `Toggle` is removed from the premise and the gate. A `Slider` is the second witness |
+| the predicted symptom was wrong: paint draws the text every frame, and what goes stale is the layout (caret x, scroll) | T29.6's injection names the actual symptom and asserts focus first |
+| "the host-driven arm" was ambiguous, and the results doc gave the `handled` arm two different figures | the comparison is `arm_b` (`narrowed`) with a stated bound. The results doc's stale prose now points to its table |
+| T29.6's measurement depends on M34, which only the queue said | stated in T29.6 |
+| whether a narrowed handled frame keeps `arenas_dirty` was unstated | kept, and its share of the frame reported |
+| the §4 sentence about paint culling was spliced so that it misread | repaired |

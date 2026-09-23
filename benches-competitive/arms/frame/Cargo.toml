@@ -7,8 +7,8 @@ publish = false
 [dependencies]
 # **Not `features = ["observe"]` here.** M30 put it on this line, which
 # compiled the widgets' `probe`/`observe` methods into the PLAIN arm and
-# cost it 25% of its frame (33.0 -> 41.2 us at 3 000 rows, bisected to
-# 6052492 -- `docs/results-competitive.md` §7). The whole point of the
+# slowed its frame (bisected to 6052492; the figures and the cause are in
+# `docs/results-competitive.md` §7, which owns them). The whole point of the
 # two arms is that one of them is observe-free, so the feature belongs
 # in the `observe` feature below, beside the other two.
 lumen-static-widgets = { path = "../../../crates/lumen-static-widgets" }

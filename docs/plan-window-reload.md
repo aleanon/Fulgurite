@@ -1,0 +1,236 @@
+# M37 — hot reload inside a window, modelled on `hot_ice`
+
+> **Written 2026-09-23, not started.** Asked for on 2026-09-23. The
+> review of M36 found that no window can reload, so a panic screen could
+> only ever be left by retrying. The instruction was to look at
+> `hot_ice` (`/mnt/Utvikling-linux/hot_ice`) for inspiration. This plan
+> is what that reading suggests, adapted to where this framework
+> differs from iced.
+>
+> **What exists:** `fixtures/hot-host` and `just hot-demo` swap a real
+> `cdylib` headlessly, with `#[reload(keep)]` state carried by
+> `save`/`restore` and pending M28 chains carried as data (T28.7). There
+> is no window, no `Host`, no build step and no watcher. The loader
+> leaks every library it has loaded.
+>
+> **What hot_ice does, in brief:**
+>
+> 1. It builds the UI crate itself with
+>    `cargo rustc --crate-type cdylib` into a separate target directory,
+>    then re-runs the build on every save.
+> 2. It watches the output `.so` and accepts a build only when its CRC
+>    changes. Each build is copied to a unique path, which defeats
+>    `dlopen`'s cache, before it is loaded.
+> 3. It keeps the application state in the host and resolves each hot
+>    function by symbol on every call. Its reload handshake — pause,
+>    serialize, swap, deserialize, resume — runs at a frame boundary.
+> 4. It shows compile errors over the running application: the last
+>    good build keeps running.
+> 5. It catches panics per function, inside the library.
+> 6. It unloads retired libraries once their async work has drained.
+> 7. It runs `boot` exactly once, in the host.
+
+*Each task is one commit and ends with `just test` green. Task ids go in
+commit subjects. Every gate names the injection that must turn it red,
+and prints the measured quantity beside its bound.*
+
+---
+
+## 0. The rules for this milestone
+
+1. **Nothing constructs through a pointer held across a swap.** This is
+   `docs/events-decision.md` rule 3. The new library is asked for its
+   own `program()` (M32), and M28/T28.7's injection is this milestone's
+   injection too (T37.4).
+2. **A failed build or a failed swap never takes the window down.** The
+   last good library keeps running, and the failure is shown over it,
+   as hot_ice shows it.
+3. **The swap happens between frames, never inside one.**
+4. **Measured before it is called usable:** reload latency (save to
+   first new frame) and memory per reload, because v1 unloads nothing
+   (§2.5).
+
+## 1. Where this framework differs from iced, and why that decides the architecture
+
+hot_ice can keep the state in the host and call into the library
+because iced's `view` **rebuilds the widget tree every frame** from the
+state. No code pointer outlives a call.
+
+**Here the tree is retained, and it holds code.** Handler `fn` pointers
+live in the tree, and every widget's `layout` and `paint` is
+monomorphised over the application's types. A `Host<A>` compiled into
+the loader is the *loader's* code and would never change. So:
+
+- **The `Host` lives in the library.** The loader owns the window, the
+  backend, the event loop and the agent socket. That is the direction
+  M31/T31.3 already found: a loader cannot name the application type
+  across the boundary.
+- **Per frame, the loader hands in input and gets back a frame**: a
+  display list, its damage, the title and any failure. The backends
+  need a present call that takes a list rather than a `Host<A>`, since
+  `Backend::present` takes the host today.
+- **The agent's requests are forwarded** into the library as the JSON
+  they already are, because the tree they inspect is there.
+
+## 2. The decisions
+
+### 2.1 The application crate is a library and a binary
+
+`src/lib.rs` defines `pub fn program() -> Program<App>` (M32) and
+invokes `lumen_static_reload::export_program!(program)`. `src/main.rs` is
+`fn main() { app::program().run() }`. Without the `reload` feature
+that is the whole story: the application is statically linked. With
+it, `run()` starts the **static** application at once, as hot_ice's
+static fallback does, and then swaps to the first hot build when it
+lands, carrying state through the same `save`/`restore` as any other
+swap. So there is no start-up wait.
+
+### 2.2 Construction on a swap re-runs the new build's boot
+
+The new library's exported entry calls its own `program()`, runs boot,
+and grafts the saved `#[reload(keep)]` fields on top. Boot may capture
+(M32 §2.1), because it is re-created by the new build's code rather
+than held from the old one. **This retires `Reloadable::fresh()` from
+the window path**, which is the last place M32 §2.3 left a second
+constructor.
+
+### 2.3 The boundary: pointers with an ABI stamp, or bytes
+
+Two options, and T37.0 chooses **by measurement**:
+
+- **Rust ABI, borrowed pointers** (hot_ice's choice). The loader
+  borrows the library's `DisplayList` for the frame. Nothing is copied,
+  but this is sound only if both sides lay out the types identically.
+  So the library exports an **ABI stamp**: the rustc version, the
+  `lumen-static` version and feature set, and the `size_of` and
+  `align_of` of every type that crosses. The loader refuses a library
+  whose stamp differs and shows why.
+- **`extern "C"` with plain bytes**, as the fixture does today. This is
+  sound by construction, and it costs a copy of the display list every
+  frame.
+
+**Kill rule, written before the probe:** if copying showcase's display
+list costs less than the frame arm's fast-cluster spread, use bytes and
+drop the stamp. Otherwise, use pointers with the stamp.
+
+### 2.4 State that no longer fits
+
+A `#[reload(keep)]` field whose type changed incompatibly fails to
+restore. hot_ice falls back to the default and logs it. Here, **that
+field keeps its boot value, and an error bar names the field and the
+serde error.** The application keeps running on the new code. Nothing
+is refused, because refusing the swap would trap the user on the old
+code with a field they have already changed.
+
+### 2.5 Retired libraries are leaked in v1
+
+hot_ice unloads a retired library once its async worker has drained.
+Here three things would have to be proven first: every M28 thread that
+may run old code must be joined, no `&'static` from the old library may
+survive (M31/T31.3's stylesheet selectors are the known case), and the
+chained panic hook (M36 §2.1) must not point into it. **v1 never
+unloads**, measures what that costs per reload, and records unloading
+as deferred with those three conditions.
+
+### 2.6 Build and watch without `cargo-watch`
+
+hot_ice spawns `cargo watch`, which is an external install. Here, a
+`notify` watcher on the application crate's sources triggers
+`cargo rustc -p <app> --lib --crate-type cdylib --features reload` into
+`target/reload`. The build runs as a child process whose stderr the
+window shows. On completion, the output's CRC is checked, the file is
+copied to `lib<app>-hot-<N>.so`, and the swap is scheduled for the next
+frame boundary. Builds are coalesced: a save during a build queues
+exactly one more.
+
+## T37.0 — the boundary, measured
+
+Probe: the size of showcase's display list, its copy cost per frame, and
+the list of types that would cross. Apply §2.3's kill rule, and write
+down the choice and the number in `docs/step4-hot-reload.md`.
+
+**Gate:** if the stamp is chosen, a library built with a different
+feature set is refused, and the refusal names the first field that
+differs. *Other direction:* an identical build is accepted.
+
+## T37.1 — `export_program!`, the library side
+
+The entry points are:
+
+- boot-with-saved-state;
+- frame (events and `dt` in, frame out);
+- save;
+- agent request;
+- drop.
+
+Each is wrapped in M36/T36.4's per-library catch and hook.
+
+**Gate:** a headless loader test drives v1, swaps to v2, and compares
+v2's frame with a fresh v2 host given the restored state, byte for
+byte. *Injection:* **hold v1's handler `fn` pointer across the swap**,
+which is M28/T28.7's injection. The frame answers with v1's text, and
+the gate prints both strings.
+
+## T37.2 — the loader, in `lumen-static-winit`
+
+§2.6's build and watch, the swap at a frame boundary, the list-taking
+present, the agent forwarding, and the status surface: a
+*Reloading…* indicator in the title (hot_ice prefixes it), and the build
+log in an error bar when a build fails. M36's screen handles a panic,
+and **a successful swap retries it**, which is the "reload clears the
+screen" M36 deferred.
+
+**Gate:** see T37.4. This task's own gate is headless. A failed build
+leaves the running library in place, and the next good build swaps.
+*Injection:* swap on any build completion, including a failed one. The
+test asserts that the frame is still v1's after a failed build, and
+fires.
+
+## T37.3 — state across the swap
+
+§2.4, plus the M28 carry-over that `fixtures/hot-host` already proves.
+**Gate:** change a kept field's type between v1 and v2. The swap
+completes, that field holds its boot value, the error bar names it, and
+every other kept field survives with its value printed. *Injection:*
+make restore all-or-nothing. Every field resets, and the per-field
+assertion fires.
+
+## T37.4 — the live gate
+
+A drive script against a real window built with `--features reload`:
+
+1. Read a bound label through the agent.
+2. Bump a kept counter.
+3. **Edit the source**: change the format string with `sed`.
+4. Wait on an `app.reloads` counter.
+5. Read the label. It must show the new text **and** the old count.
+6. Introduce a panic, and see M36's screen through `app.failure`.
+7. Fix it, and see the screen clear on the next swap.
+
+*Injections:*
+
+- **Skip `restore`.** The count resets, and step 5 fires.
+- **Swap on a failed build.** The window dies or shows a stale frame,
+  and the script fails at the build-failure step, which it runs between
+  steps 4 and 6.
+
+## T37.5 — the docs and the book
+
+`docs/step4-hot-reload.md` gains the windowed architecture and §1's
+reason for it. `book/src/hot-reload.md` is rewritten around a window,
+not the headless fixture. `docs/00-handoff-static-tree.md` records the
+decision.
+
+## 3. What this is not
+
+- **Not unloading.** That is §2.5, deferred with its conditions.
+- **Not state migration.** A changed type gets its boot value (§2.4),
+  not a conversion.
+- **Not a replacement for the headless fixture.** `just hot-demo` keeps
+  proving the swap without a display.
+
+## 4. Ordering
+
+It needs **M32**, for `program()` and the description a new build is
+asked for, and **M36**, for the in-library catch (T36.4) and the screen
+a successful swap clears. It is independent of M33, M34 and M35.

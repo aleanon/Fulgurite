@@ -339,8 +339,8 @@ are independent of each other**, so either may go first:
   make possible where a proc macro cannot.
   **It survived — and a seven-lens review then found the fixture
   measuring something other than what it said.** `benches --bin grid`
-  (`just grid`) is a 2,227-node spreadsheet; one edit costs 31% of the
-  frame, and the kill rule wanted anything above the arm's spread, so
+  (`just grid`) is a 2,227-node spreadsheet; one edit costs about a third
+  of the frame (`docs/results-damage-precision.md` T29.1), and the kill rule wanted anything above the arm's spread, so
   T29.2–T29.5 are justified. `docs/results-damage-precision.md` owns
   every figure. **The review's central finding is the milestone's
   premise, not its details**: `pump_with` calls `mark_all()` for a
@@ -444,40 +444,62 @@ are independent of each other**, so either may go first:
   name is a sentence. Both directions checked in one session, since a
   blanket written wrong refuses every application instead of none.
 
-**Queued 2026-09-23, from the handoff's six decisions.** In dependency
-order: M32 and M33 go first. M29's remaining tasks follow M33, and M34
-must land before T29.6 is measured. M35 and M36 are independent of the
-rest.
+**Queued 2026-09-23, from the handoff's six decisions, and revised the
+same day after a seven-lens review of the plans** (62 findings: 58
+confirmed, 4 plausible, 2 blocking). Each plan keeps a "What the review
+found" section rather than silently replacing itself.
 
-- **M32 — `docs/plan-program.md`** (T32.0–T32.2): the `Program` builder
-  (prototype on `main`, `29c1238`) becomes the front door. **One source
-  for a stylesheet**: `Config::stylesheet` goes, and the window asks
-  `Application::style`, as the headless host and reload already do.
-  T32.0 must decide whether a reload constructs through the builder's
-  `fn` pointer (recommended) or through `Application::build`, or
-  construction gets two paths again.
-- **M33 — `docs/plan-state-split.md`** (T33.0–T33.3): ship
+**Dependency order:**
+
+- M32 first.
+- M33 after M32. T33.4's gate uses the `--shot` paths T32.1 adds.
+- M29's T29.2–T29.4 and T29.6 after M33. T29.6's *Measure* also waits
+  for M34/T34.2.
+- M34 alongside M33.
+- M36 after M32, and M37 after M36.
+- M35 is independent of all the rest.
+
+- **M32 — `docs/plan-program.md`** (T32.0–T32.2):
+  `application(boot)`, iced-shaped, with constant-or-function
+  `title`/`style` and a boot that may capture and may return initial
+  jobs. **The program description is the only source** of construction
+  and styling, for the window and for every headless host
+  (`Program::host()`). `Config::stylesheet` and `Application::style`
+  go, and boot supersedes `Application::build`. The first draft's
+  "reload through the builder's `fn` pointer" was **rule 3's defect**
+  and was removed.
+- **M33 — `docs/plan-state-split.md`** (T33.0–T33.4): ship
   `proto/state-split`. `App::State` puts the tree out of a handler's
-  reach by type, and `#[bind]`'s source path keeps split applications
-  on the comparing path. It narrows nothing itself; it is what makes
-  M29/T29.6 possible.
-- **M34 — `docs/plan-boundaries-default.md`** (T34.0–T34.2): take
-  inventory of every gate that has only run under `Everything`, add a
-  debug shadow oracle, then flip `Inval` to `Boundaries<256>` and keep
-  `everything` as a diagnostic feature.
-- **M35 — `docs/plan-observe-cost.md`** (T35.0–T35.2): **the cause is
-  already measured** (`docs/results-competitive.md` §7, "Attributed").
-  `List`/`Repeat`'s observe walk coerces each row to `&dyn Node`, and
-  that vtable stops LLVM from inlining the row's `layout` and `paint`.
-  The handoff's `probe` hypothesis was wrong. The fix is a static,
-  derive-generated observe walk.
-- **M36 — `docs/plan-panic-recovery.md`** (T36.0–T36.5): on a panic, a
-  screen showing the message and `file:line:col`, plus the nearest
-  application frame when the panic is inside the framework. It is
-  drawn as a raw display list, not a tree. The host is reset, the state
-  kept, the event dropped, and R retries. Debug and `reload` builds
-  only. The dylib seam catches inside the library, because unwinding
-  out of `extern "C"` aborts.
+  reach by type. `#[bind]` gains a source path and a value form.
+  **`Select` becomes a controlled widget**, following `Toggle`'s
+  precedent, which is what the showcase redesign needs. The prototype's
+  "no handler writes the tree" was false: showcase, tasks-demo and
+  glass all do.
+- **M34 — `docs/plan-boundaries-default.md`** (T34.0–T34.2): the
+  inventory (`agent-drive` turned out to be `Everything`-only). A
+  shadow oracle that re-lays out into scratch state **inside one host**
+  and reports through the agent rather than panicking. Then both
+  defaults flip, the winit alias and `Host`'s type parameter, with
+  `everything` kept as a diagnostic feature.
+- **M35 — `docs/plan-observe-cost.md`** (T35.0–T35.2): the cause is
+  measured (`docs/results-competitive.md` §7, "Attributed"). The fix
+  is a **required**, table-driven, statically dispatched observe walk,
+  which the agent moves onto as well, with an equivalence gate against
+  the `&dyn` walk. The symbol table is the gate, and the clock is the
+  record.
+- **M36 — `docs/plan-panic-recovery.md`** (T36.0–T36.5): a screen with
+  the message, `file:line:col` and the nearest application frame. It is
+  compiled in for debug builds, and for **release builds with
+  `lumen-static-winit/reload`**. One guarded entry covers every path,
+  the agent's `Live::pump` included. Input is swallowed while the screen
+  is up, and recovery is an explicit retry: R, or `app.retry`.
+- **M37 — `docs/plan-window-reload.md`** (T37.0–T37.5): hot reload
+  inside a window, modelled on `hot_ice`. The **`Host` lives in the
+  library**, because the tree holds code, which iced's does not. A swap
+  re-runs the new build's `program()`/boot and grafts the
+  `#[reload(keep)]` state onto it. The build and watcher are built in,
+  failed builds are shown over the running application, and a
+  successful swap clears M36's screen. v1 never unloads a library.
 
 Unsequenced: ~~`docs/plan-harness.md`.~~ — **M12 DONE 2026-09-20.**
 T12.3 and T12.4 landed 2026-09-04; T12.1 (a locator and expectation API,

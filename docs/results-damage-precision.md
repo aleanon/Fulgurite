@@ -121,19 +121,24 @@ per-frame bind sitting in the floor).
 
 ### What the `handled` arm settles, and it is the milestone's central fact
 
-`handled` is **66.1–66.6 µs — the `mark_all` row**, not the narrowed one.
+`handled` **lands on the `mark_all` row** of the table above, not the
+narrowed one. *(Corrected 2026-09-23: this line used to give 66.1–66.6
+µs, a figure from an earlier version of the table that the correction
+missed. A review found it. The table is the only statement of the
+number now.)*
 
 `Host::pump_with` calls `mark_all()` for a consumed event at
-`crates/lumen-static-shell/src/lib.rs:694`, and asks `App::update`
-anything at `:776` — eighty lines later, same pump. `Boundaries::mark`
+`crates/lumen-static-shell/src/lib.rs` (`if handled { … mark_all() }`
+in `pump_with`, at `:694` when this was written), and asks `App::update`
+anything eighty lines later, in the same pump. `Boundaries::mark`
 returns early once `all` is set. So **on the frame a click produces, the
 narrowed mark T29.3 would compute is discarded before it is made**, and
-the 20.5 µs is worth exactly nothing.
+the saving stated above is worth exactly nothing.
 
 Every non-test `#[bind]` in this workspace is written by a click handler
 (`examples/counter`, `minimal`, `counter-window`, `fixtures/hot-app`,
-`examples/glass`). **So the measured 31% is the saving on the frames
-nobody currently produces**, and the milestone's real scope is the ones
+`examples/glass`). **So the measured saving is on the frames nobody
+currently produces**, and the milestone's real scope is the ones
 that remain: `Host::tick` (which marks nothing), host-driven mutation,
 and M28's task completions — except that those go through
 `applied_changed`, which marks everything too (`:767`).

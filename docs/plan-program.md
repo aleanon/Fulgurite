@@ -1,140 +1,243 @@
-# M32 — `Program`: one front door, and one place a stylesheet comes from
+# M32 — `application(boot)`: one description of a program, used everywhere
 
-> **Written 2026-09-23, not started.** The builder exists as a prototype
-> on `main` (`29c1238`, `examples/glass` only). The decision to take it
-> forward was made on 2026-09-23.
+> **Written 2026-09-23, not started. Rewritten the same day** after a
+> seven-lens review (§5) and the decision that the constructor should be
+> **shaped like iced's `application()`, for flexibility**. The prototype
+> is on `main` (`29c1238`, `examples/glass` only).
 >
-> M31 (`docs/plan-application.md`) collapsed *construction* to one path
-> and left *styling* with two. `Application::style` serves the headless
-> host and the reload path. `Config::stylesheet` serves the window,
-> because `lumen_static_winit::run` takes an application that is already
-> built and never asks the trait anything. Edit one and the other
-> silently wins. That is the defect M31 existed to remove, one field
-> over.
+> **What M32 exists to fix.** M31 (`docs/plan-application.md`) collapsed
+> *construction* to one path and left *styling* with two:
+> `Application::style` serves the headless host and the reload path,
+> while `Config::stylesheet` serves the window. Edit one and the other
+> silently wins.
 >
-> The prototype also closed the gap T31.1 recorded, where `build(sigma)`,
-> `build(k)` and `build(entry, open)` could not be written as
-> `Application::build()`. **A non-capturing closure coerces to an `fn`
-> pointer**, so `application(|| build(14.0))` compiles, and a closure
-> that captures anything is refused by rustc:
-> *"closures can only be coerced to `fn` types if they do not capture
-> any variables"*. That refusal is `docs/events-decision.md`'s no-capture
-> rule, enforced at the call site.
+> **What the review showed about the first draft's answer.** The draft
+> recommended having a reload construct through the builder's `fn`
+> pointer. That cannot work. No window ever reloads, and in the one real
+> reload, a dylib swap, a pointer held from startup would rebuild with
+> the *old* code. That is `docs/events-decision.md` rule 3's defect,
+> and it is exactly M28/T28.7's *injection*, the fault that made that
+> demo answer with v1's value. The draft had M28's lesson backwards: M28
+> replaced a pointer with an index.
+>
+> **The answer here takes iced's shape and goes one step further than
+> iced has to.** A program is *described* by a value, and the
+> description is **the only place** construction, styling and window
+> settings come from: for the window, for every headless host and, in
+> M37, for a reload, which asks the **newly loaded** build for its
+> description instead of holding on to the old one.
 
 *Each task is one commit and ends with `just test` green. Task ids go in
-commit subjects. Every gate names the injection that must turn it red.*
+commit subjects. Every gate names the injection that must turn it red,
+and prints the measured quantity beside its bound.*
 
 ---
 
 ## 0. The rules for this milestone
 
-1. **When it is done, a stylesheet has one source.** If the milestone
-   finishes with `Config::stylesheet` and `Application::style` both still
-   able to style one window, it has not done its job, whatever else
-   ships.
-2. **The cost is paid knowingly.** `Stylesheet<'_>` is borrowed, so an
-   application whose sheet is *computed* has to keep it in a field
-   (`sheet: Vec<Rule>`). `Counter` and glass's `Demo` already do. Every
-   migrated application that computes its sheet gains that field, and
-   §2.2 says why the borrow stays.
-3. **Docs move in the same commit**, including the book chapters that
-   teach `run(app, Config { .. })`.
+1. **When it is done, construction and styling each have one source.**
+   That source is the program description. `Config::stylesheet` and
+   `Application::style` are both gone, and `Application::build` is
+   superseded by the boot function (§2.3).
+2. **A headless host and the window are built by the same code.**
+   `Program::host()` returns the `Host` that `run()` then drives. Every
+   `--shot` and `--headless` path goes through it, which is what makes
+   a byte-identity gate able to fail (§5, finding 4).
+3. **Nothing constructs through a pointer held across a code swap.**
+   Boot is *cold*: it runs when the program starts, and M37's reload
+   asks the new build for a new description.
+4. **Docs move in the same commit**, including every rustdoc site that
+   names `Config::stylesheet` (T32.0 lists them).
 
 ## 1. What exists today
 
-- `Program<A>` holds `build: fn() -> A`, an optional
-  `style: fn(&A) -> Stylesheet<'_>` and a `Config`. `run` builds the
-  application, copies `style(&app)` into `config.stylesheet`, and calls
-  `run(app, config)`.
-- Only `examples/glass` uses it. `minimal`, `showcase`, `glasswall` and
-  `tasks-demo` build a `Config { .. }` literal, and `counter-window`
-  drives the window from its own module.
-- `.style()` is optional. An application that implements
-  `Application::style` but forgets `.style(A::style)` gets an unstyled
-  window, while its headless host and its reloads stay styled. **The
-  prototype still has two paths.** It only makes the right one easier to
-  choose.
+- `Program<A>` (the prototype) holds `build: fn() -> A`, an optional
+  style `fn`, and a `Config`. `run()` calls `lumen_static_winit::run`,
+  which always builds an `EventLoop` and blocks. There is no headless
+  path through it. `Win` is private, and the sheet is installed only in
+  `Win::new`.
+- `Config` carries `title`, `width`, `height`, `page`, `backend`,
+  `stylesheet`, `palette`, `images` and `agent`. The prototype builder
+  exposes only title, size, page, palette and style.
+- **Every headless frame path builds its own `Host`**, for example
+  glass's and showcase's `shot()`, glasswall's `host()` and
+  counter-window's `headless.rs`. Each calls `set_stylesheet` itself,
+  so none of them goes through the window's code.
+- `Application::build()` is required, and `Host::launch` and the
+  derived `Reloadable::fresh()` call it. Only `counter`, `minimal`,
+  `counter-window` and test fixtures implement `Application`. glass,
+  glasswall and showcase construct through `build(sigma)`, `build(k)`
+  and `build(entry, open)`, and showcase's `entry` comes from argv.
+- **M28's jobs are spawned through `Host::spawn`**, so a boot that wants
+  to start work needs a way to hand jobs over before the first frame.
+- `counter-window` implements its own `ApplicationHandler` on purpose.
+  Its module rustdoc lists what the turnkey `run` cannot supply: its own
+  agent socket, an accessibility adapter, a stylesheet that is
+  re-cascaded when the count changes sign, and Up/Down keys.
 
 ## 2. The decisions
 
-### 2.1 The style comes from the trait, and the builder has no `.style()`
+### 2.1 The shape: iced's builder, with constant-or-function arguments
 
-`Program<A: Application>` always asks `A::style`. `Config::stylesheet`
-goes away, which removes the second path instead of documenting it. An
-application that wants a window must implement `Application`, which
-M31/T31.2 already requires of every reloadable application.
+```text
+application(boot)                 // boot: impl Boot<A>
+    .title("glass")               // impl Title<A>: &'static str, or Fn(&A) -> String
+    .style(SHEET)                 // impl Style<A>: &'static [Rule], or Fn(&A) -> Vec<Rule>
+    .size(460, 620)
+    .page(PAGE)
+    .palette(p)
+    .images(Wallpaper::new)       // fn() -> impl ImageSource
+    .agent(addr)
+    .backend(Prefer::Gpu)
+    .run();
+```
 
-`application(build)` keeps its `fn() -> A` argument. That is where a
-parameterised constructor goes, and the default spelling is
-`application(A::build)`.
+- **`Boot<A>`** is implemented for `Fn() -> A` and for
+  `Fn() -> (A, Vec<Job<A::Msg>>)`, iced's `(State, Task)`. The jobs are
+  handed to `Host::spawn` before the first frame. **Capturing closures
+  are allowed**, as in iced, which is what showcase's argv entry needs.
+  The prototype's rustc refusal of a capturing closure is dropped
+  deliberately. That refusal was protecting a *reload* constructor, and
+  boot is cold (rule 3). The commit that drops it says so, because the
+  prototype's commit presented the refusal as a result.
+- **Constant or function**, by iced's trick: one trait with an impl for
+  the constant type and a blanket impl for `Fn(&A) -> _`. The two do not
+  overlap, because `&'static str` and `&'static [Rule]` are not `Fn`.
+- **The title is re-asked after every frame whose `update` wrote**, and
+  `set_title` runs only when the text changed. It may allocate. That is
+  the window's cost, not the `Host`'s, and the allocation gate is on the
+  `Host`.
+- **The style is asked when a host is built and when M37 reloads.** It
+  is *not* re-asked per frame, because a re-cascade per frame is exactly
+  the cost counter-window's sign-dependent sheet pays by hand, and it
+  stays counter-window's to pay.
 
-**Construction is where a second path could reappear, and T32.0 has to
-settle it.** If `application(|| build(14.0))` constructs the window's
-application while `Host::reload` constructs through
-`Application::build()`, construction has two paths again. That is M31's
-own defect, moved into the builder. There are two ways to close it, and
-T32.0 must pick one and write the argument down:
+### 2.2 The style is owned, so the `sheet` field goes away
 
-- **Reload uses the `Program`'s `fn` pointer.** The builder hands it to
-  the host, and `fresh()` is not called on a window reload. One pointer
-  serves both construction sites.
-- **Parameterised constructors stay outside the builder.** Glass,
-  glasswall and showcase implement `Application::build` with their
-  constants inline, and `application` takes no argument. This is
-  simpler, and it gives back the closure-coercion finding.
+The prototype borrowed (`Fn(&A) -> Stylesheet<'_>`), and that forced
+every application with a computed sheet to keep it in a field. The
+borrow was inherited from `docs/plan-application.md` §2.4, whose reason
+was that the *core* trait must not need `alloc`. The builder is not in
+the core. It is std-only, and the style is asked twice in a program's
+life, not once per frame. So the function form returns `Vec<Rule>`, the
+`sheet` fields that `Counter` and glass's `Demo` gained are removed, and
+a sheet that is really constant is written as a `const` and passed as
+`&'static [Rule]`, which allocates nothing.
 
-The first is recommended. The closure coercion is the prototype's best
-result, and passing a pointer through is the same move M28 made when it
-passed a step index.
+### 2.3 Boot supersedes `Application::build`
 
-### 2.2 `Stylesheet<'_>` stays borrowed
+With the description as the single source, `Application::build` would be
+a second constructor. For glass, showcase and glasswall it would even be
+a *different* one, a zero-argument twin of `build(sigma)`. The review
+found that bounding `Program` on `Application` would force exactly that
+(§5, findings 2 and 3). So:
 
-`docs/plan-application.md` §2.4 kept `&[Rule]` rather than `Vec<Rule>`,
-so that the trait does not need `alloc`. That reason has not changed.
-The cost is the `sheet` field in rule 2. A `const` sheet costs nothing,
-because `Rule::new` and `Patch::new` are `const fn`, and the migration
-should use one wherever a sheet is not actually computed.
+- `Program<A: App>`, with no `Application` bound.
+- `Application::style` is removed. `Application::build` is retired for
+  applications that start through `application(..)`. `Host::launch` goes
+  with it, since `Program::host()` replaces it.
+- **M31's property is kept, not dropped.** T31.2 made a reloadable
+  application that also derives `Default` a compile error, so that
+  nothing constructs one through `Default`. That stays true, because
+  nothing constructs through `Default` or `build()` any more: M37's
+  reload re-runs the new build's boot. T32.0's gate re-states T31.2's
+  property against the new path.
+- `Reloadable::fresh()`, which the derive routes to `Application::build`,
+  stays for the in-process `Host::reload` and `fixtures/hot-host` until
+  M37 replaces that path. This is the one place two constructors remain
+  after M32, and the plan names it rather than hiding it.
 
-## T32.0 — the decision in §2.1, and the gate that proves one path
+### 2.4 Where it lives
 
-Pick the construction route, then remove `Config::stylesheet`.
+The description (`Program`, `Boot`, `Title`, `Style`, `host()`) lives in
+**`lumen-static-shell`**. `run()` is an extension trait in
+`lumen-static-winit`. This is so M37's hot library can build a
+description without linking a window system, and so a shell test can
+call `host()` without winit, which `just test` keeps out of
+`lumen-static-shell`'s dependency graph.
 
-**Gate:** a headless test that goes through the same entry the window
-uses. It builds a `Program` whose `Application::style` returns a sheet
-with one distinctive rule, renders the first frame, and asserts that the
-rule's colour is on the styled node. It then reloads and asserts the
-rule again. *Injection:* restore the prototype's optional `.style()` and
-leave it unset. The first assertion fires. *Second injection, for the
-construction route:* make the reload call `A::build()` where the
-`Program` was given a closure that builds differently. The reload
-assertion fires, naming the value that differs.
+## T32.0 — the description, `host()`, and the one-path gate
 
-## T32.1 — migrate every window
+Build §2.1–§2.4, remove `Config::stylesheet`, and move `glass` (already
+on the prototype) to it.
 
-`minimal`, `showcase`, `glasswall`, `tasks-demo`, `counter-window` and
-glass move to `application(..)…run()`. Where a sheet is a constant,
-write it as a `const`. Where it is computed, the application gains the
-`sheet` field and the commit counts how many did.
+**Doc sites, in the same commit:** the rustdoc that names
+`Config::stylesheet` (winit `lib.rs`, where one is an intra-doc link
+that would break, and `agent.rs`), and `docs/plan-widgets-gallery.md`.
 
-**Gate:** every example's `--shot` frame (`just example <name> --shot
-frame.ppm …`) is byte-identical before and after its migration. If one
-is not, that migration changed what renders, and that is a finding, not
-noise. *Injection:* drop one rule from a migrated sheet, and that
-example's comparison must fail. Only showcase, glass and glasswall have
-`--shot` today. Adding it to `minimal` and `tasks-demo` is part of their
-migration, and it has to happen *before* the migration, or there is no
-earlier frame to compare against. `counter-window` has `--headless`,
-which serves the same purpose.
+**Gate — one path.** In a shell test, build a program with a boot that
+takes an argument and a style with one distinctive rule, and call
+`host()`. The first frame must carry that rule's colour on the styled
+node, printed beside the rule's colour. *Injections:*
 
-## T32.2 — the book and the attribute table
+- **Skip installing the style in `host()`.** The colour assertion fires.
+- **Build the host with `Host::new(boot())` and no style.** The same
+  assertion fires, which shows the test goes through `host()` and not
+  around it.
 
-The chapters that teach `run(app, Config { .. })` teach the builder, and
-the included anchors move with the examples. `just book` and
-`just static` must pass.
+**Gate — M31's property, re-stated.** A program whose application also
+derives `Default` still does not compile when it is reloadable (T31.2's
+coherence refusal), and the refusal is checked in both directions in the
+same session.
+
+## T32.1 — migrate the windows, `--shot` included
+
+`minimal`, `showcase`, `glasswall` and `tasks-demo` move to
+`application(..)`. **Their `--shot` and `--headless` paths move to
+`program().host()`**, so the frame a shot compares is the one the window
+draws. Each application writes its program once, as
+`fn program() -> Program<_>`, and `main` calls `program().run()`. M37
+relies on that function.
+
+- `minimal` and `tasks-demo` gain `--shot` **before** their migration,
+  or there is no earlier frame to compare against.
+- **showcase's argv entry** becomes a capturing boot.
+- **glasswall's wallpaper** moves to `.images(..)`, and showcase's and
+  tasks-demo's agent addresses move to `.agent(..)`.
+- **counter-window is excluded, and says why.** It is the documented
+  lower level of the seam. It still reads its *initial* sheet from the
+  same place the others do: it builds its host through `host()` and
+  keeps its own event loop.
+
+**Gate:** each example's shot is byte-identical before and after its
+migration. *Injection:* drop one rule from the style **inside the
+program description**, which is now the only place it is installed.
+That example's shot comparison fires, and the differing-pixel count is
+printed. Unlike the first draft's injection, this one reaches the
+window's path, because the shot and the window are one path.
+
+## T32.2 — the book
+
+`book/src/backends.md` teaches `run(app, Config { .. })` in a ```text
+block, and `book/src/index.md` includes `minimal`'s `app` anchor. Both
+move to the builder. `just book` and `just static` must pass.
 
 ## 3. What this is not
 
-- **Not a new trait.** The builder is a value. `Application` stays the
-  only trait an application implements.
-- **Not iced's `Program` trait.** It borrows iced's builder spelling
-  and nothing else.
+- **Not iced's `update` and `view`.** Here update is the binding step
+  and view is the tree. The builder borrows iced's *entry* shape: a boot
+  function, plus settings that are constants or functions of the state.
+- **Not a reload.** That is M37, which this description is shaped for.
+
+## 4. Deferred
+
+- **A style re-asked per frame.** It would let counter-window move to
+  the builder. Reopen when a second application wants a state-dependent
+  sheet, and price the re-cascade first.
+
+## 5. What the review found (2026-09-23)
+
+A seven-lens review, with an adversarial verifier per finding, confirmed
+eight findings against the first draft, plus two cross-plan findings on
+the same design (X-1, X-2). What changed:
+
+| # | finding | what changed |
+|---|---|---|
+| 1 | **blocking:** the recommended route, a reload through the builder's `fn` pointer, has no window reload to serve, and across a dylib swap it *is* rule 3's defect | rule 3, and §2.3: boot is cold. M37 re-asks the new build |
+| 2, X-2 | bounding on `Application` forced a second, zero-argument constructor beside the closure | §2.3: `Program<A: App>`, and `build` retired |
+| 3 | the window's entry had no headless path, so the gate could not go through "the same entry" | rule 2, and `host()` |
+| 4 | every `--shot` built its own `Host`, so byte-identity held however wrong the migration was | T32.1: shots go through `host()` |
+| 5 | the builder lacked `images`, `agent` and `backend`, and showcase's argv entry needs a capturing boot | §2.1 |
+| 6 | counter-window exists for what the turnkey `run` cannot supply | T32.1: excluded, with the reason |
+| 7 | the borrowed style's cost was argued from a no-alloc reason that does not apply to a std-only builder | §2.2: the style is owned, and the fields go |
+| 8 | doc sites and the book's scope were misstated | T32.0 lists the sites. T32.2 is scoped |

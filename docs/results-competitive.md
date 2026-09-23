@@ -521,8 +521,12 @@ for a profile.
 widget type inside a runtime container*: `List` and `Repeat` reach their
 statically typed items through `emit_subtree`. (`Dyn`'s content is
 already a `dyn Node` in every build.) A widget on the
-derived table already has a vtable in every build, because the derive's
-`node(i)` coerces each field. So the 24% is the frame arm's shape (3 000
+derived table already has a vtable in every build: a non-`fuse` derived
+container coerces each child to `&dyn Node` in its layout and paint
+bodies (the derive's `call_child`), and a leaf's `node(0)` returns
+`self` as one, which dispatch reaches in every build. *Corrected
+2026-09-23: this first said the derive's `node(i)` does the coercing.
+It is a static call; a review found the error.* So the 24% is the frame arm's shape (3 000
 `Label`s in one `List`), and the whole-application cost is **not
 measured**. `docs/plan-observe-cost.md` owns the fix and the measurement
 that scopes it.
