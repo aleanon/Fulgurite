@@ -484,12 +484,48 @@ agent attached, no journal running, nothing asking for a role:
 | …and the journal actually running | 112.5 µs |
 
 The feature adds `probe` and `observe` methods to every widget's `Node`
-impl. `probe`'s body calls `layout`, so an override gives `layout` a
-second call site — a plausible inlining change, **not verified**, and
-worth a task: an application that enables `observe` so an agent *can*
-attach pays 24% on every frame whether one ever does. The gating policy
-in `docs/plan-capabilities.md` is written about runtime cost and this is
-a compile-time inclusion cost, which it does not cover.
+impl. The hypothesis first written here was that `probe`'s body calls
+`layout` and so gives it a second call site. **That was the right kind
+of cause and the wrong source**, as the attribution below shows. An
+application that enables `observe` so an agent *can* attach pays this on
+every frame, whether or not an agent ever attaches. The gating policy in
+`docs/plan-capabilities.md` is written about runtime cost; this is a
+compile-time inclusion cost, which that policy does not cover.
+
+#### Attributed, 2026-09-23 — a vtable, not `probe`
+
+Three builds of the frame arm at 3 000 rows, run interleaved and
+**unstripped**, so the symbol table can say what the optimiser did:
+
+| build | layout (µs) | +paint (µs) | `Label::layout` as its own symbol |
+|---|---:|---:|---|
+| plain | 13.5–14.3 | 30.7–33.1 | no — inlined into `List::layout` |
+| `lumen-static-widgets/observe`, no agent | 17.3–19.4 | 38.3–41.1 | **yes**, 0x21b B; `Label::paint` too, 0x118 B |
+| the same, with `List::observe`'s one `emit_subtree` call removed | 13.8–14.7 | 31.0–33.0 | no |
+
+Ranges are min–max. The plain and observe rows are over 14 runs each
+(8, then 6 beside the third build); the third build is over 6.
+
+**The mechanism.** `List::observe` hands each item to
+`observe::emit_subtree`, which walks it as a `&dyn Node`. The coercion
+builds `Label`'s vtable, and the vtable holds the addresses of `layout`
+and `paint`. Once those addresses are taken, both functions need
+standalone copies, and LLVM stops inlining them into `List`'s per-row
+loops. `probe` is not involved: `Label` overrides it, and its override
+does not call `layout`. Removing that single call site restores the
+plain build's frame and the inlining together. `perf` is unavailable on
+this machine (`perf_event_paranoid` = 4), so the symbol table stood in
+for a profile.
+
+**What this reaches, and what it does not.** The cost is per *row
+widget type inside a runtime container*: `List` and `Repeat` reach their
+statically typed items through `emit_subtree`. (`Dyn`'s content is
+already a `dyn Node` in every build.) A widget on the
+derived table already has a vtable in every build, because the derive's
+`node(i)` coerces each field. So the 24% is the frame arm's shape (3 000
+`Label`s in one `List`), and the whole-application cost is **not
+measured**. `docs/plan-observe-cost.md` owns the fix and the measurement
+that scopes it.
 
 ### One row of N changes — the matched stopping point, no raster
 
