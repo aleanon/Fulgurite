@@ -112,7 +112,7 @@ pub struct Header {
     /// rows are `Select`'s four nodes; the option count is data, so
     /// adding a widget to `CATALOG` no longer adds a field here.
     #[widget_id("picker")]
-    picker: Select<Show>,
+    picker: Select<Store>,
     #[widget_id("blurb")]
     blurb: Label<String>,
     #[widget_id("readout")]
@@ -174,14 +174,24 @@ pub struct Screen {
 pub struct Show {
     #[tree]
     ui: Screen,
+    /// **What a handler may touch** — M33/T33.4. Every handler in this
+    /// example — the demos' buttons and toggles, the picker's trigger,
+    /// its rows and its dismissal — takes `&mut Store`, and the tree is
+    /// not reachable from it. What a handler used to write into the tree
+    /// (the note, the trigger's label, the blurb, the readout, the demo on
+    /// the stage) is written by `refresh`, the `after_update` hook, which
+    /// keeps `&mut Show` — so showcase stays on the conservative path M29
+    /// §2.4 records for `after_update`, by design.
+    #[state]
+    #[bind(ui.body.header.picker.menu.open, menu_open)]
+    store: Store,
+}
+
+/// What the handlers own.
+#[derive(Default)]
+pub struct Store {
     /// Which catalogue entry is on the stage.
     selected: usize,
-    /// **Whether the dropdown is open — the application's, since
-    /// `Select` became controlled** (M33/T33.3). Bound into the popup; the
-    /// trigger's `on_click` sets it, a chosen row and the pass's
-    /// dismissal (`on_dismiss`) clear it.
-    #[bind(ui.body.header.picker.menu.open, open)]
-    menu: PickerState,
     /// Turns, for the demos that animate. Advanced by `App::tick`;
     /// nothing here drives its own clock.
     phase: f32,
@@ -190,17 +200,20 @@ pub struct Show {
     /// each frame would overwrite what was typed on the frame after it
     /// was typed.
     needs_seed: bool,
+    /// Set by a handler that changed what the header shows — the
+    /// selection or the dropdown's state — so `refresh` rebuilds it. A
+    /// handler cannot write the header itself: it is on the tree.
+    needs_rebuild: bool,
+    /// **Whether the dropdown is open — the application's, since
+    /// `Select` became controlled** (M33/T33.3). Bound into the popup; the
+    /// trigger's `on_click` sets it, a chosen row and the pass's
+    /// dismissal (`on_dismiss`) clear it.
+    menu_open: bool,
     /// The live demo's own state. One store rather than one per demo,
     /// because a showcase only ever has one demo alive.
     presses: u32,
     flag: bool,
     fraction: f32,
-}
-
-/// The dropdown's state (M33/T33.3).
-#[derive(Default)]
-pub struct PickerState {
-    open: bool,
 }
 
 /// After every pump: rebuild the demos whose state lives in the store,
@@ -217,9 +230,15 @@ pub struct PickerState {
 /// the widget's own box before this.
 fn refresh(s: &mut Show) -> bool {
     let mut changed = false;
-    if s.needs_seed {
-        s.needs_seed = false;
-        let e = &CATALOG[s.selected];
+    // What a handler asked for and could not do itself (M33/T33.4).
+    if s.store.needs_rebuild {
+        s.store.needs_rebuild = false;
+        rebuild(s);
+        changed = true;
+    }
+    if s.store.needs_seed {
+        s.store.needs_seed = false;
+        let e = &CATALOG[s.store.selected];
         (e.seed)(s);
         changed = true;
     }
@@ -228,8 +247,8 @@ fn refresh(s: &mut Show) -> bool {
     // a `Box<dyn Node>` there was no handle to ask.
     if let Demo::Slider(d) = &s.ui.body.stage.row.demo {
         let v = d.a.value();
-        if v != s.fraction {
-            s.fraction = v;
+        if v != s.store.fraction {
+            s.store.fraction = v;
             changed = true;
         }
     }
@@ -244,10 +263,10 @@ fn refresh(s: &mut Show) -> bool {
         _ => false,
     };
     if asked {
-        s.presses += 1;
+        s.store.presses += 1;
         changed = true;
     }
-    let e = &CATALOG[s.selected];
+    let e = &CATALOG[s.store.selected];
     let text = (e.status)(s);
     // `set_str` compares before writing and answers whether the text
     // differed, so the readout reports for itself rather than being
@@ -261,12 +280,12 @@ fn refresh(s: &mut Show) -> bool {
 /// moving — `App::tick`'s contract, which the frame loop relies on to
 /// decide whether to ask for another frame.
 fn advance(s: &mut Show, dt_ms: f32) -> bool {
-    let e = &CATALOG[s.selected];
+    let e = &CATALOG[s.store.selected];
     if !e.animated {
         return false;
     }
     if dt_ms > 0.0 {
-        s.phase = (s.phase + dt_ms / 1400.0).rem_euclid(1.0);
+        s.store.phase = (s.store.phase + dt_ms / 1400.0).rem_euclid(1.0);
         (e.seed)(s);
         let text = (e.status)(s);
         s.ui.body.header.readout.set(text);
@@ -276,14 +295,14 @@ fn advance(s: &mut Show, dt_ms: f32) -> bool {
 
 /// Put the selected entry on the stage and bring the header into step.
 fn rebuild(s: &mut Show) {
-    let e = &CATALOG[s.selected];
+    let e = &CATALOG[s.store.selected];
     s.ui.body.stage.note.set(e.note.into());
-    s.needs_seed = true;
+    s.store.needs_seed = true;
     // **ASCII, not `\u{25be}`.** The system font has no chevron and
     // `examples/glasswall` already paid for that lesson: a missing glyph
     // renders as the fallback box, which looks like a bug in the widget
     // rather than in the font.
-    let open = s.menu.open;
+    let open = s.store.menu_open;
     s.ui.body.header.picker.trigger.label =
         format!("{}      {}", e.name, if open { "^" } else { "v" });
     s.ui.body.header.blurb.set(e.blurb.into());
@@ -303,7 +322,7 @@ fn rebuild(s: &mut Show) {
 ///
 /// This replaces `pick0`..`pick17` and a `PICKERS` table: eighteen
 /// functions whose only difference was a literal.
-fn bind_row(r: &mut SelectRow<Show>, i: usize) {
+fn bind_row(r: &mut SelectRow<Store>, i: usize) {
     let e = &CATALOG[i];
     let first = i == 0 || CATALOG[i - 1].group != e.group;
     r.label = if first {
@@ -311,20 +330,22 @@ fn bind_row(r: &mut SelectRow<Show>, i: usize) {
     } else {
         format!("        {}", e.name)
     };
-    r.on_click = |s: &mut Show, cx: &EventCtx| {
+    r.on_click = |s: &mut Store, cx: &EventCtx| {
         let i = cx.row.map_or(0, |r| r as usize);
         choose(s, i);
     };
 }
 
 /// Put entry `i` on the stage and close the dropdown.
-fn choose(s: &mut Show, i: usize) {
+///
+/// **State only** (M33/T33.4): the header and the stage are on the tree,
+/// which a handler cannot reach, so `refresh` rebuilds them on this same
+/// pump.
+fn choose(s: &mut Store, i: usize) {
     s.selected = i.min(CATALOG.len() - 1);
-    // The application owns `open` (M33/T33.3); the binding closes the
-    // popup on the next update.
-    s.menu.open = false;
+    s.menu_open = false;
     s.phase = 0.0;
-    rebuild(s);
+    s.needs_rebuild = true;
 }
 
 /// Build the app, already on `entry`, with the dropdown `open` or not.
@@ -336,21 +357,21 @@ fn build(entry: usize, open: bool) -> Show {
     app.ui.body.header.picker = Select::new(CATALOG.len(), ROW_H, bind_row);
     // Controlled (M33/T33.3): opening and dismissal write the state, and
     // the header's chevron follows it.
-    app.ui.body.header.picker.trigger.on_click = |s: &mut Show, _: &EventCtx| {
-        s.menu.open = true;
-        rebuild(s);
+    app.ui.body.header.picker.trigger.on_click = |s: &mut Store, _: &EventCtx| {
+        s.menu_open = true;
+        s.needs_rebuild = true;
     };
-    app.ui.body.header.picker.on_dismiss = |s: &mut Show, _: &EventCtx| {
-        s.menu.open = false;
-        rebuild(s);
+    app.ui.body.header.picker.on_dismiss = |s: &mut Store, _: &EventCtx| {
+        s.menu_open = false;
+        s.needs_rebuild = true;
     };
-    app.selected = entry.min(CATALOG.len() - 1);
-    app.menu.open = open;
+    app.store.selected = entry.min(CATALOG.len() - 1);
+    app.store.menu_open = open;
     // **Mid-travel, not zero.** The animated demos take their value from
     // `phase`, and a showcase opened on one of them at phase 0 shows an
     // empty bar and an unlit spinner — which reads as a broken widget
     // rather than as a starting state.
-    app.phase = 0.35;
+    app.store.phase = 0.35;
     rebuild(&mut app);
     app
 }
@@ -430,7 +451,7 @@ fn profile_popup() {
     let settled = host.take_damage_for_age(1);
     let before = host.list.len();
 
-    host.app.menu.open = true;
+    host.app.store.menu_open = true;
     rebuild(&mut host.app);
     host.invalidate_all();
     pump(&mut host);
@@ -649,7 +670,7 @@ fn seq_shot(stem: String) {
             }
         }
         std::fs::write(format!("{stem}-{tag}.ppm"), out).expect("write");
-        println!("{stem}-{tag}: presses {}", host.app.presses);
+        println!("{stem}-{tag}: presses {}", host.app.store.presses);
     }
 }
 
@@ -1071,7 +1092,7 @@ mod tests {
     fn a_grid_rows_cells_take_their_column() {
         let entry = CATALOG.iter().position(|e| e.name == "DataGrid").unwrap();
         let mut h = host(0, false);
-        choose(&mut h.app, entry);
+        choose(&mut h.app.store, entry);
         let mut m = FontStack2::system().map(FontMetrics2::new);
         match m.as_mut() {
             Some(m) => h.pump_with(m),
@@ -1327,7 +1348,7 @@ mod tests {
         // loop rebuilt each time and could not see it.
         let mut h = host(0, false);
         for (i, e) in CATALOG.iter().enumerate() {
-            choose(&mut h.app, i);
+            choose(&mut h.app.store, i);
             h.pump();
             // **Commands on the stage, not in the frame.** The header
             // alone draws ten, so a whole-frame count is cleared by the
@@ -1456,7 +1477,7 @@ mod tests {
     fn pressing_a_demo_button_reaches_the_application() {
         let button = CATALOG.iter().position(|e| e.name == "Button").unwrap();
         let mut h = host(button, false);
-        assert_eq!(h.app.presses, 0);
+        assert_eq!(h.app.store.presses, 0);
 
         // The first button of the `Button` demo, found by geometry
         // rather than by a counted index.
@@ -1477,8 +1498,8 @@ mod tests {
         h.post(Event::down(x, y));
         h.post(Event::up(x, y));
         h.pump();
-        println!("presses after one click: {}", h.app.presses);
-        assert_eq!(h.app.presses, 1, "the click never reached the handler");
+        println!("presses after one click: {}", h.app.store.presses);
+        assert_eq!(h.app.store.presses, 1, "the click never reached the handler");
 
         // And the readout followed, which is the other half of the
         // wiring: `after_update` refreshes it on the same pump.
@@ -1510,20 +1531,20 @@ mod tests {
     #[test]
     fn a_dyn_island_routes_a_handler() {
         use lumen_static::event::{Handlers, NodeSel};
-        let mut b = Button::<Show, String>::default();
+        let mut b = Button::<Store, String>::default();
         b.label = "live".into();
-        b.on_click = |s: &mut Show, _: &EventCtx| s.presses += 1;
-        let direct: Option<fn(&mut Show, &EventCtx)> =
-            Handlers::<Show>::handler(&b, NodeSel { i: 0, inner: None });
-        let island: lumen_static::Dyn<Show> = lumen_static::Dyn::new(b);
-        let through: Option<fn(&mut Show, &EventCtx)> =
-            Handlers::<Show>::handler(&island, NodeSel { i: 0, inner: None });
+        b.on_click = |s: &mut Store, _: &EventCtx| s.presses += 1;
+        let direct: Option<fn(&mut Store, &EventCtx)> =
+            Handlers::<Store>::handler(&b, NodeSel { i: 0, inner: None });
+        let island: lumen_static::Dyn<Store> = lumen_static::Dyn::new(b);
+        let through: Option<fn(&mut Store, &EventCtx)> =
+            Handlers::<Store>::handler(&island, NodeSel { i: 0, inner: None });
         println!("direct {:?}, through a Dyn {:?}", direct.is_some(), through.is_some());
         assert!(direct.is_some(), "a wired button reports no handler at all");
         assert!(through.is_some(), "a Dyn island still swallows its content's handlers");
 
         // And it is the *same* handler, not merely some handler.
-        let mut s = Show::default();
+        let mut s = Store::default();
         (through.unwrap())(&mut s, &press_at(0.0, 0.0));
         assert_eq!(s.presses, 1, "the routed handler is not the button's");
     }
@@ -1693,14 +1714,17 @@ mod tests {
     #[test]
     fn picking_a_row_swaps_the_demo() {
         let mut s = build(0, true);
-        assert_eq!(s.selected, 0);
-        let mut row = SelectRow::<Show>::default();
+        assert_eq!(s.store.selected, 0);
+        let mut row = SelectRow::<Store>::default();
         bind_row(&mut row, 15);
         let mut cx = press_at(0.0, 0.0);
         cx.row = Some(15);
-        (row.on_click)(&mut s, &cx);
-        println!("after picking row 15: {} ({})", CATALOG[s.selected].name, s.selected);
-        assert_eq!(s.selected, 15, "the handler picked the wrong entry");
+        // The handler gets the state (M33); the binding step then closes
+        // the popup, as the next pump would.
+        (row.on_click)(&mut s.store, &cx);
+        lumen_static::event::App::update(&mut s);
+        println!("after picking row 15: {} ({})", CATALOG[s.store.selected].name, s.store.selected);
+        assert_eq!(s.store.selected, 15, "the handler picked the wrong entry");
         assert!(!s.ui.body.header.picker.is_open(), "picking a row left the dropdown open");
     }
 }

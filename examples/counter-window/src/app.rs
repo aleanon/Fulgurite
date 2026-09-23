@@ -32,13 +32,13 @@ pub const WHITE: Color = Color(0xff, 0xff, 0xff, 0xff);
 #[widget(row, spacing = 8.0)]
 pub struct Steps {
     #[widget_id("dec10")]
-    pub dec10: Button<Tally, String>,
+    pub dec10: Button<Count, String>,
     #[widget_id("dec")]
-    pub dec: Button<Tally, String>,
+    pub dec: Button<Count, String>,
     #[widget_id("inc")]
-    pub inc: Button<Tally, String>,
+    pub inc: Button<Count, String>,
     #[widget_id("inc10")]
-    pub inc10: Button<Tally, String>,
+    pub inc10: Button<Count, String>,
 }
 
 #[derive(StaticTree, Default)]
@@ -53,7 +53,7 @@ pub struct Card {
     #[widget_id("steps")]
     pub steps: Steps,
     #[widget_id("reset")]
-    pub reset: Button<Tally, String>,
+    pub reset: Button<Count, String>,
 }
 
 #[derive(StaticTree, Default)]
@@ -71,29 +71,39 @@ pub struct Page {
 
 // ---- state, and how it reaches the screen ----------------------------
 
-fn sign_word(v: &i64) -> &'static str {
-    match v.signum() {
-        1 => "POSITIVE",
-        -1 => "NEGATIVE",
-        _ => "AT ZERO",
-    }
-}
-
-/// The pill's text is a word, not the number — a `with =` projection
-/// rather than a format string.
-fn set_sign(dst: &mut Label<String>, src: &i64) {
-    lumen_static::bind::set_if_changed(dst, sign_word(src));
-}
-
 #[derive(DeriveApp, Default)]
 pub struct Tally {
     #[tree]
     pub ui: Page,
 
-    /// The one piece of state. Everything on screen derives from it.
-    #[bind(ui.card.value, "{}")]
-    #[bind(ui.card.pill, with = set_sign)]
-    pub count: i64,
+    /// **What a handler may touch** — M33/T33.4. The one piece of state;
+    /// everything on screen derives from it, through two bindings that
+    /// both compare before they write.
+    #[state]
+    #[bind(ui.card.value, n, "{}")]
+    #[bind(ui.card.pill, sign_word(), "{}")]
+    pub count: Count,
+}
+
+/// The tally, apart from the tree it is shown in.
+#[derive(Default)]
+pub struct Count {
+    pub n: i64,
+}
+
+impl Count {
+    /// The pill's text is a word, not the number. Named in a binding's
+    /// **source path** — a source path is an expression within the field,
+    /// so a method call is one — which keeps the pill on the comparing
+    /// form. It was a `with =` projection until M33/T33.4, and `with =`
+    /// reports a write unconditionally.
+    pub fn sign_word(&self) -> &'static str {
+        match self.n.signum() {
+            1 => "POSITIVE",
+            -1 => "NEGATIVE",
+            _ => "AT ZERO",
+        }
+    }
 }
 
 /// The one construction path — M31/T31.0.
@@ -117,24 +127,24 @@ impl Application for Tally {
 /// pumps stays in the window (`restyle_subtree`): a style re-asked every
 /// frame is deferred in the plan's §4, and this example is why.
 pub fn program(count: i64, w: u32, h: u32) -> lumen_static_shell::program::Program<Tally> {
-    lumen_static_shell::program::application(move || Tally { count, ..build() })
+    lumen_static_shell::program::application(move || Tally { count: Count { n: count }, ..build() })
         .size(w, h)
-        .style(|t: &Tally| stylesheet_for(t.count.signum()))
+        .style(|t: &Tally| stylesheet_for(t.count.n.signum()))
 }
 
 pub fn build() -> Tally {
     let mut t = Tally::default();
     t.ui.card.caption.set("TALLY");
     t.ui.card.steps.dec10.label = "\u{2212}10".into();
-    t.ui.card.steps.dec10.on_click = |t, _| t.count -= 10;
+    t.ui.card.steps.dec10.on_click = |t, _| t.n -= 10;
     t.ui.card.steps.dec.label = "\u{2212}1".into();
-    t.ui.card.steps.dec.on_click = |t, _| t.count -= 1;
+    t.ui.card.steps.dec.on_click = |t, _| t.n -= 1;
     t.ui.card.steps.inc.label = "+1".into();
-    t.ui.card.steps.inc.on_click = |t, _| t.count += 1;
+    t.ui.card.steps.inc.on_click = |t, _| t.n += 1;
     t.ui.card.steps.inc10.label = "+10".into();
-    t.ui.card.steps.inc10.on_click = |t, _| t.count += 10;
+    t.ui.card.steps.inc10.on_click = |t, _| t.n += 10;
     t.ui.card.reset.label = "Reset".into();
-    t.ui.card.reset.on_click = |t, _| t.count = 0;
+    t.ui.card.reset.on_click = |t, _| t.n = 0;
     t
 }
 

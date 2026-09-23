@@ -1,6 +1,9 @@
 # M33 — state apart from the tree, so a handler cannot write a widget
 
-> **Written 2026-09-23, not started. Revised the same day after a
+> **DONE 2026-09-24 — T33.0–T33.4.** §5 records what building it
+> changed, including a pass defect it found on the way.
+>
+> **Written 2026-09-23. Revised the same day after a
 > seven-lens review** (§4), and after the decision to **redesign
 > showcase** rather than leave it unsplit. Both halves exist as
 > prototypes on `proto/state-split` (`d861f4f`, `a1ded79`). The decision
@@ -255,3 +258,35 @@ eight findings against the first draft. What changed:
 It also removed a false claim that "`tick` keeps `mark_all`, which
 T29.4 asserts". `Host::tick` marks nothing, and T29.4 does not list
 `tick`. §2.3 now records that as an open question for M34.
+
+## 5. What building it changed (2026-09-24)
+
+- **T33.0.** There are 32 hand-written `App` impls, counted by
+  `git grep` over both workspaces, and the branch had missed two:
+  `benches-competitive`'s `stages` arm, and M32's `tests/program.rs`.
+  The refusals are **trybuild** cases, not doctests, because trybuild
+  checks the exact message. The doctest pair stays on `App::State` as
+  documentation.
+- **T33.1.** The value form landed as `#[bind(target, source)]`, backed
+  by a blanket `BindValue` for every `PartialEq + Clone` field. **A
+  source path is an expression, so it can be a method call**: counter-
+  window's pill binds `sign_word()`, and glass's blur binds `blur()`.
+  That took the pill off `with =`.
+- **T33.2.** Scripted and mechanical: 31 impls in 28 files. The 20 whose
+  `apply` never touches the state take `_`.
+- **T33.3 found a pass defect** (`f72fb05`). The press that dismisses an
+  overlay was consumed, but its *release* still activated whatever it
+  landed on. That broke nothing visible until a controlled trigger
+  opened on release, when pressing the trigger while the menu was open
+  closed it and reopened it in the same click. Fixing it then broke the
+  live Tooltip action, whose green had depended on the defect. A
+  tooltip is a *passive* overlay, and `Popup::passive` now says so.
+- **T33.4.** 59 showcase frames are identical before and after its
+  split, including five that press a demo's button. So are glass (2),
+  tasks-demo, counter-window (3) and the counter's own frame. The
+  grid's split twin draws the unsplit grid's frame byte for byte after
+  one click, and injecting one character into its format string makes
+  the check fire. **Two `with =` bindings remain in the examples**, both
+  in counter-window's `--form` fixture. Both bind a bare `bool` field,
+  and the value form needs a path *inside* the annotated field, which a
+  `bool` has none of.

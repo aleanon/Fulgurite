@@ -85,13 +85,13 @@ macro_rules! pair {
     };
 }
 
-pair!(PairCheckA, CheckBox<Show>, "d_checkbox_a", "d_checkbox_al");
-pair!(PairCheckB, CheckBox<Show>, "d_checkbox_b", "d_checkbox_bl");
-pair!(PairSwitchA, Switch<Show>, "d_switch_a", "d_switch_al");
-pair!(PairSwitchB, Switch<Show>, "d_switch_b", "d_switch_bl");
-pair!(PairRadioA, Radio<Show>, "d_radio_a", "d_radio_al");
-pair!(PairRadioB, Radio<Show>, "d_radio_b", "d_radio_bl");
-pair!(PairRadioC, Radio<Show>, "d_radio_c", "d_radio_cl");
+pair!(PairCheckA, CheckBox<Store>, "d_checkbox_a", "d_checkbox_al");
+pair!(PairCheckB, CheckBox<Store>, "d_checkbox_b", "d_checkbox_bl");
+pair!(PairSwitchA, Switch<Store>, "d_switch_a", "d_switch_al");
+pair!(PairSwitchB, Switch<Store>, "d_switch_b", "d_switch_bl");
+pair!(PairRadioA, Radio<Store>, "d_radio_a", "d_radio_al");
+pair!(PairRadioB, Radio<Store>, "d_radio_b", "d_radio_bl");
+pair!(PairRadioC, Radio<Store>, "d_radio_c", "d_radio_cl");
 
 /// A card with something on it — the point being that the something is
 /// live. `docs/plan-widgets-gallery.md` §3 records what a wrapper that
@@ -340,7 +340,7 @@ macro_rules! veil_body {
             pub title: Label<String>,
             #[widget_id($gid)]
             #[widget_class("veil-go")]
-            pub go: Button<Show, String>,
+            pub go: Button<Store, String>,
         }
     };
 }
@@ -418,7 +418,7 @@ pub struct CardBody {
     #[widget_id("d_card_title")]
     pub title: Label<String>,
     #[widget_id("d_card_go")]
-    pub go: Button<Show, String>,
+    pub go: Button<Store, String>,
 }
 
 #[derive(StaticTree, Default)]
@@ -434,7 +434,7 @@ pub struct DToast {
 #[widget(row, spacing = 12.0)]
 pub struct DTooltip {
     #[widget_id("d_tooltip_a")]
-    pub a: Tooltip<Button<Show, String>, String>,
+    pub a: Tooltip<Button<Store, String>, String>,
 }
 
 #[derive(StaticTree, Default)]
@@ -509,11 +509,11 @@ pub struct DDivider {
 #[widget(row, spacing = 12.0)]
 pub struct DButton {
     #[widget_id("d_button_a")]
-    pub a: Button<Show, String>,
+    pub a: Button<Store, String>,
     #[widget_id("d_button_b")]
-    pub b: Button<Show, String>,
+    pub b: Button<Store, String>,
     #[widget_id("d_button_c")]
-    pub c: Button<Show, String>,
+    pub c: Button<Store, String>,
 }
 
 #[derive(StaticTree, Default)]

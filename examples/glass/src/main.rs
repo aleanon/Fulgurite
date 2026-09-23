@@ -101,9 +101,9 @@ struct Toolbar {
     #[widget_id("sigma")]
     sigma: Label<String>,
     #[widget_id("less")]
-    less: Button<Demo, String>,
+    less: Button<Knobs, String>,
     #[widget_id("more")]
-    more: Button<Demo, String>,
+    more: Button<Knobs, String>,
 }
 
 /// The floating dock: a liquid pill pushed to the bottom centre.
@@ -180,8 +180,28 @@ fn advance(d: &mut Demo, dt_ms: f32) -> bool {
 struct Demo {
     #[tree]
     ui: Screen,
-    #[bind(ui.bar.content.sigma, "blur {} px")]
+    /// **What a handler may touch** — M33/T33.4. The `-`/`+` handlers
+    /// change `sigma`, and both the label and the material follow it
+    /// through bindings: until the split, the handlers wrote the
+    /// material's blur into the tree themselves.
+    #[state]
+    #[bind(ui.bar.content.sigma, sigma, "blur {} px")]
+    #[bind(ui.bar.material.blur, blur())]
+    knobs: Knobs,
+}
+
+/// The blur, apart from the tree it is shown on.
+#[derive(Default)]
+struct Knobs {
     sigma: i64,
+}
+
+impl Knobs {
+    /// The material's blur, as the value form's source — a method call is
+    /// an expression within the field, so it can be one.
+    fn blur(&self) -> f32 {
+        self.sigma as f32
+    }
 }
 
 // ---- style -----------------------------------------------------------
@@ -339,7 +359,7 @@ fn program(sigma: f32) -> Program<Demo> {
 
 /// The application, built once and shared by the window and `--shot`.
 fn build(sigma: f32) -> Demo {
-    let mut app = Demo { sigma: sigma as i64, ..Demo::default() };
+    let mut app = Demo { knobs: Knobs { sigma: sigma as i64 }, ..Demo::default() };
     let cards = &mut app.ui.content.content;
     let each: [&mut Card; 10] = [
         &mut cards.c0, &mut cards.c1, &mut cards.c2, &mut cards.c3, &mut cards.c4,
@@ -352,14 +372,8 @@ fn build(sigma: f32) -> Demo {
     app.ui.bar.content.heading.set("Library");
     app.ui.bar.content.less.label = "-".into();
     app.ui.bar.content.more.label = "+".into();
-    app.ui.bar.content.less.on_click = |d: &mut Demo, _: &EventCtx| {
-        d.sigma = (d.sigma - 4).max(0);
-        d.ui.bar.material.blur = d.sigma as f32;
-    };
-    app.ui.bar.content.more.on_click = |d: &mut Demo, _: &EventCtx| {
-        d.sigma = (d.sigma + 4).min(40);
-        d.ui.bar.material.blur = d.sigma as f32;
-    };
+    app.ui.bar.content.less.on_click = |k: &mut Knobs, _: &EventCtx| k.sigma = (k.sigma - 4).max(0);
+    app.ui.bar.content.more.on_click = |k: &mut Knobs, _: &EventCtx| k.sigma = (k.sigma + 4).min(40);
 
     // The material.
     //
@@ -370,7 +384,8 @@ fn build(sigma: f32) -> Demo {
     // visible *and* keeps the bar's own text at contrast — which is the
     // trade every real glass surface makes.
     // Frosted: a blur and a tint, no bevel.
-    app.ui.bar.material.blur = sigma;
+    // The blur is not set here: `#[bind(ui.bar.material.blur, blur())]`
+    // owns it, and the first update writes it before anything lays out.
     app.ui.bar.material.tint = TINT;
 
     // Liquid: **barely any blur**. The glassiness is the bevel -- an
@@ -492,7 +507,7 @@ mod tests {
     #[test]
     fn the_blur_buttons_work() {
         let mut host = driven();
-        let before = host.app.sigma;
+        let before = host.app.knobs.sigma;
         let (bx, by) = {
             let i = Screen::SUB_TABLE.iter().position(|d| d.wid == "more").expect("the + button");
             let st = &host.states[i];
@@ -501,8 +516,8 @@ mod tests {
         host.post(Event::PointerDown { x: bx, y: by, button: PointerButton::Left, clicks: 1 });
         host.post(Event::PointerUp { x: bx, y: by, button: PointerButton::Left });
         host.pump();
-        println!("sigma {before} -> {}", host.app.sigma);
-        assert!(host.app.sigma > before, "the + button did nothing");
-        assert_eq!(host.app.ui.bar.material.blur, host.app.sigma as f32, "and the panel followed it");
+        println!("sigma {before} -> {}", host.app.knobs.sigma);
+        assert!(host.app.knobs.sigma > before, "the + button did nothing");
+        assert_eq!(host.app.ui.bar.material.blur, host.app.knobs.sigma as f32, "and the panel followed it");
     }
 }

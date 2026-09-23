@@ -223,15 +223,22 @@ fn app() -> Grid {
     g.ui.top.bump.label = "+";
     g.ui.top.bump.on_click = on_bump;
     g.ui.body = Repeat::new(ROWS, ROW_H, bind_body);
+    fill_sheet(&mut g.ui.sheet);
+    g
+}
+
+/// The frozen pane's cell text, shared by the unsplit grid and its split
+/// twin so the two draw the same sheet.
+fn fill_sheet(sheet: &mut Sheet) {
     // Varied cell text: shaping is part of a real frame, and identical
     // strings would let the memo hide it.
     let mut n = 0usize;
     for b in [
-        &mut g.ui.sheet.b0, &mut g.ui.sheet.b1, &mut g.ui.sheet.b2, &mut g.ui.sheet.b3,
-        &mut g.ui.sheet.b4, &mut g.ui.sheet.b5, &mut g.ui.sheet.b6, &mut g.ui.sheet.b7,
-        &mut g.ui.sheet.b8, &mut g.ui.sheet.b9, &mut g.ui.sheet.b10, &mut g.ui.sheet.b11,
-        &mut g.ui.sheet.b12, &mut g.ui.sheet.b13, &mut g.ui.sheet.b14, &mut g.ui.sheet.b15,
-        &mut g.ui.sheet.b16, &mut g.ui.sheet.b17, &mut g.ui.sheet.b18, &mut g.ui.sheet.b19,
+        &mut sheet.b0, &mut sheet.b1, &mut sheet.b2, &mut sheet.b3,
+        &mut sheet.b4, &mut sheet.b5, &mut sheet.b6, &mut sheet.b7,
+        &mut sheet.b8, &mut sheet.b9, &mut sheet.b10, &mut sheet.b11,
+        &mut sheet.b12, &mut sheet.b13, &mut sheet.b14, &mut sheet.b15,
+        &mut sheet.b16, &mut sheet.b17, &mut sheet.b18, &mut sheet.b19,
     ] {
         for r in [
             &mut b.r0, &mut b.r1, &mut b.r2, &mut b.r3, &mut b.r4,
@@ -252,7 +259,78 @@ fn app() -> Grid {
             }
         }
     }
-    g
+}
+
+// ---- M33/T33.4: the same grid, split ---------------------------------
+
+/// **The grid's split twin** (`docs/plan-state-split.md` T33.4).
+///
+/// The tree types are duplicated only where a handler's state type
+/// appears — `TopBar` carries `Button<Cell>` — and the handler-free sheet
+/// and body are shared. The unsplit grid above stays: M29/T29.1's
+/// recorded figures were measured on it, and its twin is what T29.6
+/// measures a narrowed handled frame on.
+mod split {
+    use super::*;
+
+    #[derive(StaticTree, Default)]
+    #[widget(row, spacing = 4.0)]
+    pub struct TopBar {
+        #[widget_id("formula")]
+        pub formula: Label<String>,
+        #[widget_id("status")]
+        pub status: Label<String>,
+        #[widget_id("bump")]
+        pub bump: Button<Cell>,
+    }
+
+    #[derive(StaticTree, Default)]
+    #[widget(column, spacing = 2.0)]
+    pub struct Ui {
+        pub top: TopBar,
+        #[widget_id("sheet")]
+        pub sheet: Sheet,
+        #[widget_id("body")]
+        pub body: Repeat<BodyRow>,
+    }
+
+    /// What `on_bump` may touch. The tree is not in here.
+    #[derive(Default)]
+    pub struct Cell {
+        pub value: i64,
+    }
+
+    #[derive(DeriveApp, Default)]
+    pub struct Grid {
+        #[tree]
+        pub ui: Ui,
+        #[state]
+        #[bind(ui.top.formula, value, "= {}")]
+        pub cell: Cell,
+    }
+
+    pub fn app() -> Grid {
+        let mut g = Grid::default();
+        g.ui.top.status.set("Sheet1".into());
+        g.ui.top.bump.label = "+";
+        g.ui.top.bump.on_click = |c: &mut Cell, _: &EventCtx| c.value += 1;
+        g.ui.body = Repeat::new(ROWS, ROW_H, bind_body);
+        fill_sheet(&mut g.ui.sheet);
+        g
+    }
+}
+
+// The twin is split, checked where it costs nothing.
+const _: () = assert!(<split::Grid as lumen_static::event::App>::STATE_IS_SPLIT);
+
+type BoundedSplit = Host<split::Grid, lumen_static::Incremental, lumen_static::Boundaries<16>>;
+
+fn host_split(m: &mut dyn TextMeasure) -> BoundedSplit {
+    let mut h: BoundedSplit = Host::new(split::app(), W, H);
+    h.set_stylesheet(&sheet_rules());
+    h.pump_with(m);
+    h.pump_with(m);
+    h
 }
 
 type Bounded = Host<Grid, lumen_static::Incremental, lumen_static::Boundaries<16>>;
@@ -420,6 +498,23 @@ fn main() {
         "arm C: #bump at ({:.0},{:.0}), hit node {}, cell {before} -> {}",
         bump_at.0, bump_at.1, hit.node, hc.app.cell
     );
+
+    // ---- M33/T33.4: the split twin draws the same frame ---------------
+    //
+    // A fresh host of each, one click on #bump each: the split one's
+    // handler writes `cell.value` and the binding renders it, so the
+    // frames must agree byte for byte. Printed side by side.
+    {
+        let mut u = host(m);
+        let mut t = host_split(m);
+        arm_c(&mut u, bump_at, m);
+        t.click(bump_at.0, bump_at.1);
+        t.pump_with(m);
+        assert_eq!(t.app.cell.value, 1, "the click did not reach the split twin's handler");
+        let (hu, ht) = (u.list.hash_from(0), t.list.hash_from(0));
+        println!("split twin: unsplit {hu:#x}, split {ht:#x}, formula {:?}", t.app.ui.top.formula.as_str());
+        assert_eq!(hu, ht, "the split twin does not draw the unsplit grid's frame");
+    }
 
     // ---- T29.1: the probe --------------------------------------------
     const RUNS: usize = 8;

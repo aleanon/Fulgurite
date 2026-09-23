@@ -21,7 +21,8 @@ use lumen_static::prelude::*;
 use lumen_static_widgets::prelude::*;
 
 {{#include ../../examples/counter/src/main.rs:tree}}
-# #[derive(DeriveApp, Default)] struct Counter { #[tree] ui: Ui, #[bind(ui.value, "count: {}")] count: i64 }
+# #[derive(Default)] struct Tally { count: i64 }
+# #[derive(DeriveApp, Default)] struct Counter { #[tree] ui: Ui, #[state] #[bind(ui.value, count, "count: {}")] tally: Tally }
 
 fn main() {
     // Eight nodes: three labels, the control subtree, and its three.

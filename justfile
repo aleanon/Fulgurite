@@ -61,6 +61,11 @@ release-shape: const-budget
 dev-shape:
     cargo test --workspace --exclude lumen-static-wgpu
     cargo clippy --workspace --all-targets --exclude lumen-static-wgpu -- -D warnings
+    # A fresh doc dir: rustdoc 1.94 panics in its search index
+    # (`search_index.rs:478`) on a stale `target/doc` after large edits —
+    # seen twice on 2026-09-24, gone both times with the directory. An
+    # ICE in the gate is a gate that cries wolf.
+    rm -rf target/doc
     RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --exclude lumen-static-wgpu
 
 # The four fixtures. Until today none of these ran in the gate; three of them

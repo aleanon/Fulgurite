@@ -180,17 +180,17 @@ fn section(title: &str, body: &str) -> Collapsible<Label<String>, String> {
 }
 
 /// A `Button` wired to the press counter.
-fn btn(label: &str) -> Button<Show, String> {
-    let mut b = Button::<Show, String>::default();
+fn btn(label: &str) -> Button<Store, String> {
+    let mut b = Button::<Store, String>::default();
     b.label = label.into();
-    b.on_click = |s: &mut Show, _: &EventCtx| s.presses += 1;
+    b.on_click = |s: &mut Store, _: &EventCtx| s.presses += 1;
     b
 }
 
-fn toggle<const K: u8>(on_: bool) -> Toggle<Show, K> {
-    Toggle::<Show, K> {
+fn toggle<const K: u8>(on_: bool) -> Toggle<Store, K> {
+    Toggle::<Store, K> {
         on: on_,
-        on_toggle: |s: &mut Show, _: &EventCtx| s.flag = !s.flag,
+        on_toggle: |s: &mut Store, _: &EventCtx| s.flag = !s.flag,
         ..Default::default()
     }
 }
@@ -237,27 +237,27 @@ pub static CATALOG: &[Entry] = &[
         "An `on_click` is a plain `fn` pointer: it cannot capture, which is what lets a hot reload re-supply it.",
         false,
         |s| on(s, Demo::Button(DButton { a: btn("Primary"), b: btn("Default"), c: btn("Ghost") })),
-        |s| format!("presses: {}", s.presses)),
+        |s| format!("presses: {}", s.store.presses)),
     entry!("Input", "CheckBox", "A box and a tick, both bound to one flag.",
         "A toggle does not flip itself: the app owns the boolean and the binding writes this copy back, or the two could disagree.",
         false,
-        |s| on(s, Demo::CheckBox(DCheckBox { a: PairCheckA { t: toggle(s.flag), l: { let mut l = Label::<String>::default(); l.set("I agree".into()); l } }, b: PairCheckB { t: toggle(!s.flag), l: { let mut l = Label::<String>::default(); l.set("Send updates".into()); l } } })),
-        |s| format!("checked: {}", s.flag)),
+        |s| on(s, Demo::CheckBox(DCheckBox { a: PairCheckA { t: toggle(s.store.flag), l: { let mut l = Label::<String>::default(); l.set("I agree".into()); l } }, b: PairCheckB { t: toggle(!s.store.flag), l: { let mut l = Label::<String>::default(); l.set("Send updates".into()); l } } })),
+        |s| format!("checked: {}", s.store.flag)),
     entry!("Input", "Switch", "The same two states, as a sliding pill.",
         "One type with three presentations, chosen by a *const* parameter — so `kind_name` and `defaults` answer at compile time.",
         false,
-        |s| on(s, Demo::Switch(DSwitch { a: PairSwitchA { t: toggle(s.flag), l: { let mut l = Label::<String>::default(); l.set("Wi-Fi".into()); l } }, b: PairSwitchB { t: toggle(!s.flag), l: { let mut l = Label::<String>::default(); l.set("Bluetooth".into()); l } } })),
-        |s| format!("on: {}", s.flag)),
+        |s| on(s, Demo::Switch(DSwitch { a: PairSwitchA { t: toggle(s.store.flag), l: { let mut l = Label::<String>::default(); l.set("Wi-Fi".into()); l } }, b: PairSwitchB { t: toggle(!s.store.flag), l: { let mut l = Label::<String>::default(); l.set("Bluetooth".into()); l } } })),
+        |s| format!("on: {}", s.store.flag)),
     entry!("Input", "Radio", "One of a set; the selection lives in the app.",
         "There is no group container: each radio compares against a shared value, which is the honest cost of not inventing one.",
         false,
-        |s| on(s, Demo::Radio(DRadio { a: PairRadioA { t: toggle(s.flag), l: { let mut l = Label::<String>::default(); l.set("Red".into()); l } }, b: PairRadioB { t: toggle(!s.flag), l: { let mut l = Label::<String>::default(); l.set("Green".into()); l } }, c: PairRadioC { t: toggle(false), l: { let mut l = Label::<String>::default(); l.set("Blue".into()); l } } })),
-        |s| format!("selected: {}", s.flag)),
+        |s| on(s, Demo::Radio(DRadio { a: PairRadioA { t: toggle(s.store.flag), l: { let mut l = Label::<String>::default(); l.set("Red".into()); l } }, b: PairRadioB { t: toggle(!s.store.flag), l: { let mut l = Label::<String>::default(); l.set("Green".into()); l } }, c: PairRadioC { t: toggle(false), l: { let mut l = Label::<String>::default(); l.set("Blue".into()); l } } })),
+        |s| format!("selected: {}", s.store.flag)),
     entry!("Input", "Slider", "Drag it, or focus it and use the arrows.",
         "A slider only draggable by mouse is not an accessible slider, so `step` is a field.",
         false,
-        |s| on(s, Demo::Slider(DSlider { a: Slider::new(s.fraction) })),
-        |s| format!("value: {:.2}", s.fraction)),
+        |s| on(s, Demo::Slider(DSlider { a: Slider::new(s.store.fraction) })),
+        |s| format!("value: {:.2}", s.store.fraction)),
     entry!("Input", "TextInput", "One line, editable. Click it and type.",
         "The one place a widget owning state is right: the data originates *at* the widget, because the user typed it.",
         false,
@@ -266,19 +266,19 @@ pub static CATALOG: &[Entry] = &[
     entry!("Progress", "ProgressBar", "Determinate, driven by the tick.",
         "An empty bar paints nothing at all: a zero-width rounded rect still covers `2 × radius` px once the radius is clamped.",
         true,
-        |s| on(s, Demo::Progress(DProgressBar { a: ProgressBar::new(s.phase) })),
-        |s| format!("{:.0}%", s.phase * 100.0)),
+        |s| on(s, Demo::Progress(DProgressBar { a: ProgressBar::new(s.store.phase) })),
+        |s| format!("{:.0}%", s.store.phase * 100.0)),
     entry!("Progress", "Spinner", "Three phases of the same ring.",
         "It does not drive its own clock — there is no per-node tick, so the application advances the phase.",
         true,
         |s| on(s, Demo::Spinner(DSpinner {
-            a: Spinner::new(s.phase), b: Spinner::new(s.phase + 0.33), c: Spinner::new(s.phase + 0.66) })),
-        |s| format!("phase {:.2}", s.phase)),
+            a: Spinner::new(s.store.phase), b: Spinner::new(s.store.phase + 0.33), c: Spinner::new(s.store.phase + 0.66) })),
+        |s| format!("phase {:.2}", s.store.phase)),
     entry!("Progress", "Skeleton", "A placeholder with a travelling highlight.",
         "The shimmer is clipped to the block, because the renderer's clip is a hard test and the arithmetic would have to repeat the rounded corner.",
         true,
-        |s| on(s, Demo::Skeleton(DSkeleton { a: Skeleton::new(s.phase), b: Skeleton::new(s.phase) })),
-        |s| format!("phase {:.2}", s.phase)),
+        |s| on(s, Demo::Skeleton(DSkeleton { a: Skeleton::new(s.store.phase), b: Skeleton::new(s.store.phase) })),
+        |s| format!("phase {:.2}", s.store.phase)),
     entry!("Charts", "BarChart", "Bars from a zero baseline.",
         "`Series` is a fixed array, so a chart allocates nothing and is `Copy`; over-long input is truncated rather than refused.",
         false,
@@ -302,7 +302,7 @@ pub static CATALOG: &[Entry] = &[
             title: { let mut l = Label::<String>::default(); l.set("Storage".into()); l },
             go: btn("Manage"),
         }) })),
-        |s| format!("presses: {}", s.presses)),
+        |s| format!("presses: {}", s.store.presses)),
     entry!("Surface", "Toast", "A transient message, in two lengths.",
         "It does not dismiss itself: there is no per-node tick here, so the application owns the lifetime — the same reason `Spinner` does not drive its own phase.",
         false,
@@ -317,13 +317,13 @@ pub static CATALOG: &[Entry] = &[
         |s| on(s, Demo::Tooltip(DTooltip {
             a: Tooltip::new(btn("Hover me"), "Shows while the pointer is over it".into()),
         })),
-        |s| format!("presses: {}", s.presses)),
+        |s| format!("presses: {}", s.store.presses)),
     // ---- M27/T27.5 ------------------------------------------------
     entry!("Fields", "NumberInput", "Arrows step it; letters are refused.",
         "Not a Stepper: no +/- buttons. Blur commits, because focus is *state* — there is no blur event, and `layout` is the one method that can see it change.",
         false,
-        |s| on(s, Demo::Number(DNumberInput { a: NumberInput::new(s.fraction * 10.0, 0.0, 10.0, 0.5) })),
-        |s| format!("value: {:.2}", s.fraction * 10.0)),
+        |s| on(s, Demo::Number(DNumberInput { a: NumberInput::new(s.store.fraction * 10.0, 0.0, 10.0, 0.5) })),
+        |s| format!("value: {:.2}", s.store.fraction * 10.0)),
     entry!("Fields", "RangeSlider", "Two handles that cannot cross.",
         "A pair of sliders is not a range: nothing stops the low one passing the high one, and the moment it does the span between them is inverted.",
         false,
@@ -365,17 +365,17 @@ pub static CATALOG: &[Entry] = &[
         "A shut veil is *absent*, not merely unpainted — one that only skipped `paint` would still hit-test at full size and swallow every click in the window.",
         false,
         |s| on(s, Demo::Modal(DModal { a: veil(Modal::new(body_for!(ModalBody, "Delete this file?"))) })),
-        |s| format!("dismissals: {}", s.presses)),
+        |s| format!("dismissals: {}", s.store.presses)),
     entry!("Overlay", "Sheet", "The same panel, across the bottom.",
         "Its panel is measured against what its kind will give it, not against the window: a sheet measured full-height would size its content to a box it never gets.",
         false,
         |s| on(s, Demo::Sheet(DSheet { a: veil(Sheet::new(body_for!(SheetBody, "Share with"))) })),
-        |s| format!("dismissals: {}", s.presses)),
+        |s| format!("dismissals: {}", s.store.presses)),
     entry!("Overlay", "Drawer", "And down the side.",
         "Dismissal is a *request*: pressing the scrim asks, and the application decides — one that must confirm before discarding cannot undo a close that already happened.",
         false,
         |s| on(s, Demo::Drawer(DDrawer { a: veil(Drawer::new(body_for!(DrawerBody, "Navigate"))) })),
-        |s| format!("dismissals: {}", s.presses)),
+        |s| format!("dismissals: {}", s.store.presses)),
     // ---- M27/T27.8 ------------------------------------------------
     entry!("Layout", "Wrap", "Six chips that reflow onto a second line.",
         "A derive axis, not a widget: a container's children are its *fields* here, so a wrapping row is a way of arranging fields rather than something that holds them.",

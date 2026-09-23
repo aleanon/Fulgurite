@@ -50,7 +50,7 @@ impl lumen_static_agent::AgentHost for Live<'_> {
         };
         // Same sign-tracking the redraw path does, so a click that flips
         // the sign recolours before the agent's next query.
-        let sign = self.host.app.count.signum();
+        let sign = self.host.app.count.n.signum();
         if sign != *self.sign {
             *self.sign = sign;
             // Scoped to the card: the sign only changes `#value`'s

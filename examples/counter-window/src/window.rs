@@ -206,7 +206,7 @@ impl WinApp {
     /// `.lss` class here; this swaps the sign-dependent rules and lets
     /// the cascade run again. Either way it is not per-frame work.
     fn sync_sign(&mut self) {
-        let sign = self.host.app.count.signum();
+        let sign = self.host.app.count.n.signum();
         if sign != self.sign {
             self.sign = sign;
             // Scoped to the card: the sign only changes `#value`'s
@@ -286,8 +286,8 @@ impl WinApp {
     /// and not in `lumen-static-winit`.
     fn app_keys(&mut self, event_loop: &ActiveEventLoop, key: &WKey) {
         match key {
-            WKey::Named(NamedKey::ArrowUp) => self.host.app.count += 1,
-            WKey::Named(NamedKey::ArrowDown) => self.host.app.count -= 1,
+            WKey::Named(NamedKey::ArrowUp) => self.host.app.count.n += 1,
+            WKey::Named(NamedKey::ArrowDown) => self.host.app.count.n -= 1,
             WKey::Named(NamedKey::Escape) => event_loop.exit(),
             _ => {}
         }

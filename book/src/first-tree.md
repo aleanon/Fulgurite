@@ -15,7 +15,8 @@ This is `examples/counter`, taken apart.
 # extern crate lumen_static_widgets;
 # use lumen_static::prelude::*;
 # use lumen_static_widgets::prelude::*;
-# #[derive(DeriveApp, Default)] struct Counter { #[tree] ui: Ui, #[bind(ui.value, "count: {}")] count: i64 }
+# #[derive(Default)] struct Tally { count: i64 }
+# #[derive(DeriveApp, Default)] struct Counter { #[tree] ui: Ui, #[state] #[bind(ui.value, count, "count: {}")] tally: Tally }
 # fn main() {}
 {{#include ../../examples/counter/src/main.rs:tree}}
 ```
@@ -43,12 +44,18 @@ a stylesheet selector, a test, or the agent protocol. Fields without one
 {{#include ../../examples/counter/src/main.rs:state}}
 ```
 
-`#[tree]` says which field is the tree. `#[bind(ui.value, "count: {}")]` says
-how `count` reaches the screen, and the derive turns it into the frame loop's
-update step: the label is refreshed from `count` between input and layout, on
-every frame, so a handler cannot leave a stale value on the screen. The
-formatting is declared once, next to the value it formats, instead of in a
-method that has to be remembered at every call site.
+`#[tree]` says which field is the tree, and `#[state]` says which field is
+**the state** — what a handler may touch. They are siblings, so a handler,
+which receives only the state, cannot reach a widget at all; every write to
+the tree comes from a binding. That is a type, not a habit: writing
+`t.ui.title.set(..)` in a handler is `error[E0609]: no field 'ui'`.
+
+`#[bind(ui.value, count, "count: {}")]` says how `tally.count` reaches the
+screen — `count` is a path *inside* the annotated field — and the derive
+turns it into the frame loop's update step: the label is refreshed between
+input and layout, on every frame, so a handler cannot leave a stale value on
+the screen. The formatting is declared once, next to the value it formats,
+instead of in a method that has to be remembered at every call site.
 
 Note where the truth lives: `count: i64` on the state is the number, and
 `Label<String>` on the tree holds the *presentation copy*. Owning that copy is
@@ -63,15 +70,17 @@ what lets the label cache its measurement
 # use lumen_static::prelude::*;
 # use lumen_static_widgets::prelude::*;
 # #[derive(StaticTree, Default)] #[widget(column)] struct Ui { value: Label<String> }
-# #[derive(DeriveApp, Default)] struct Counter { #[tree] ui: Ui, #[bind(ui.value, "count: {}")] count: i64 }
+# #[derive(Default)] struct Tally { count: i64 }
+# #[derive(DeriveApp, Default)] struct Counter { #[tree] ui: Ui, #[state] #[bind(ui.value, count, "count: {}")] tally: Tally }
 # fn main() {}
 {{#include ../../examples/counter/src/main.rs:handlers}}
 ```
 
-A handler is a plain `fn(&mut State, &EventCtx)` — no closure capture, no
+A handler is a plain `fn(&mut Tally, &EventCtx)` — no closure capture, no
 message enum, no dispatch table. It is attached by assignment
-(`c.ui.controls.inc.on_click = on_inc;`), which is why `Button<Counter>` is
-generic in the state type: the button knows what it is allowed to mutate.
+(`c.ui.controls.inc.on_click = on_inc;`), which is why `Button<Tally>` is
+generic in the state type: the button knows what it is allowed to mutate,
+and the tree is not in it.
 
 ## Building the application
 
@@ -83,11 +92,12 @@ more than it looks:
 # extern crate lumen_static_widgets;
 # use lumen_static::prelude::*;
 # use lumen_static_widgets::prelude::*;
-# #[derive(StaticTree, Default)] #[widget(row)] struct Controls { dec: Button<Counter>, inc: Button<Counter> }
+# #[derive(StaticTree, Default)] #[widget(row)] struct Controls { dec: Button<Tally>, inc: Button<Tally> }
 # #[derive(StaticTree, Default)] #[widget(column)] struct Ui { title: Label, hint: Label, value: Label<String>, controls: Controls }
-# #[derive(DeriveApp)] struct Counter { #[tree] ui: Ui, #[bind(ui.value, "count: {}")] count: i64 }
-# fn on_inc(c: &mut Counter, _: &EventCtx) { c.count += 1; }
-# fn on_dec(c: &mut Counter, _: &EventCtx) { c.count -= 1; }
+# #[derive(Default)] struct Tally { count: i64 }
+# #[derive(DeriveApp)] struct Counter { #[tree] ui: Ui, #[state] #[bind(ui.value, count, "count: {}")] tally: Tally }
+# fn on_inc(t: &mut Tally, _: &EventCtx) { t.count += 1; }
+# fn on_dec(t: &mut Tally, _: &EventCtx) { t.count -= 1; }
 # fn stylesheet() -> Vec<Rule> { Vec::new() }
 # fn main() {}
 {{#include ../../examples/counter/src/main.rs:build}}
@@ -110,8 +120,9 @@ The program is then described once, from that same function:
 # use lumen_static_widgets::prelude::*;
 # use lumen_static_shell::program::{application, Program};
 # #[derive(StaticTree, Default)] #[widget(column)] struct Ui { value: Label<String> }
-# #[derive(DeriveApp)] struct Counter { #[tree] ui: Ui, #[bind(ui.value, "count: {}")] count: i64 }
-# impl Application for Counter { fn build() -> Self { Counter { ui: Ui::default(), count: 0 } } }
+# #[derive(Default)] struct Tally { count: i64 }
+# #[derive(DeriveApp)] struct Counter { #[tree] ui: Ui, #[state] #[bind(ui.value, count, "count: {}")] tally: Tally }
+# impl Application for Counter { fn build() -> Self { Counter { ui: Ui::default(), tally: Tally::default() } } }
 # fn stylesheet() -> Vec<Rule> { Vec::new() }
 # fn main() { let _ = program(); }
 {{#include ../../examples/counter/src/main.rs:program}}

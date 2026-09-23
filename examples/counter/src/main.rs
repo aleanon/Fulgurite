@@ -26,10 +26,10 @@ use lumen_static_shell::{Host, CLEAR};
 #[widget(row, spacing = 8.0)]
 struct Controls {
     #[widget_id("dec")]
-    dec: Button<Counter>,
+    dec: Button<Tally>,
     gap: Spacer,
     #[widget_id("inc")]
-    inc: Button<Counter>,
+    inc: Button<Tally>,
 }
 
 #[derive(StaticTree, Default)]
@@ -65,18 +65,28 @@ struct Ui {
 struct Counter {
     #[tree]
     ui: Ui,
-    #[bind(ui.value, "count: {}")]
+    /// **What a handler may touch** (M33). The tree is a sibling of it,
+    /// so a handler cannot write a widget: every tree write is a binding.
+    /// `count` is a path *inside* this field, which the binding formats.
+    #[state]
+    #[bind(ui.value, count, "count: {}")]
+    tally: Tally,
+}
+
+/// The state, apart from the tree that presents it.
+#[derive(Default)]
+struct Tally {
     count: i64,
 }
 // ANCHOR_END: state
 
 // ANCHOR: handlers
-fn on_inc(c: &mut Counter, _: &EventCtx) {
-    c.count += 1;
+fn on_inc(t: &mut Tally, _: &EventCtx) {
+    t.count += 1;
 }
 
-fn on_dec(c: &mut Counter, _: &EventCtx) {
-    c.count -= 1;
+fn on_dec(t: &mut Tally, _: &EventCtx) {
+    t.count -= 1;
 }
 // ANCHOR_END: handlers
 
@@ -92,7 +102,7 @@ fn on_dec(c: &mut Counter, _: &EventCtx) {
 /// remembering.
 impl Application for Counter {
     fn build() -> Self {
-        let mut c = Counter { ui: Ui::default(), count: 0 };
+        let mut c = Counter { ui: Ui::default(), tally: Tally::default() };
         c.ui.title.set("Counter");
         c.ui.hint.set("click + or - to change the tally");
         c.ui.controls.dec.label = "-";
@@ -149,7 +159,7 @@ fn main() {
             host.pump();
         }
     }
-    assert_eq!(host.app.count, 2, "three increments and one decrement");
+    assert_eq!(host.app.tally.count, 2, "three increments and one decrement");
     assert_eq!(host.app.ui.value.as_str(), "count: 2");
 
     // Render the frame to pixels.
@@ -174,7 +184,7 @@ fn main() {
 
     println!(
         "counter: count={} nodes={} depth={} cmds={} ink={:.1}% -> {path}",
-        host.app.count,
+        host.app.tally.count,
         diag["nodes"],
         Ui::DEPTH,
         host.list.len(),

@@ -470,7 +470,8 @@ found" section rather than silently replacing itself.
   go, and boot supersedes `Application::build`. The first draft's
   "reload through the builder's `fn` pointer" was **rule 3's defect**
   and was removed.
-- **M33 — `docs/plan-state-split.md`** (T33.0–T33.4): ship
+- ~~**M33 — `docs/plan-state-split.md`** (T33.0–T33.4)~~ **DONE 2026-09-24**;
+  it found and fixed a dismissal defect on the way (`f72fb05`). Ship
   `proto/state-split`. `App::State` puts the tree out of a handler's
   reach by type. `#[bind]` gains a source path and a value form.
   **`Select` becomes a controlled widget**, following `Toggle`'s

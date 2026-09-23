@@ -108,7 +108,7 @@ pub fn profile(host: &mut Host<Tally>, canvas: &mut Canvas, mut metrics: Option<
     // The partial path (M8b), against the damage a count change makes.
     // Bank the seed frame first, or the damage is the whole viewport.
     host.take_damage_for_age(1);
-    host.app.count += 1;
+    host.app.count.n += 1;
     match metrics.as_mut() {
         Some(m) => {
             host.pump_with(*m);
@@ -188,18 +188,18 @@ pub fn drive() {
     click(&mut host, "#inc");
     click(&mut host, "#inc");
     click(&mut host, "#inc10");
-    assert_eq!(host.app.count, 12, "+1 +1 +10");
+    assert_eq!(host.app.count.n, 12, "+1 +1 +10");
     assert_eq!(host.app.ui.card.value.as_str(), "12", "and the binding put it on screen");
     assert_eq!(host.app.ui.card.pill.as_str(), "POSITIVE");
 
     click(&mut host, "#dec10");
     click(&mut host, "#dec10");
     click(&mut host, "#dec");
-    assert_eq!(host.app.count, -9);
+    assert_eq!(host.app.count.n, -9);
     assert_eq!(host.app.ui.card.pill.as_str(), "NEGATIVE");
 
     click(&mut host, "#reset");
-    assert_eq!(host.app.count, 0);
+    assert_eq!(host.app.count.n, 0);
     assert_eq!(host.app.ui.card.value.as_str(), "0");
     assert_eq!(host.app.ui.card.pill.as_str(), "AT ZERO");
 

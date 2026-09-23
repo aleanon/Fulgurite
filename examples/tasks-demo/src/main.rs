@@ -48,26 +48,36 @@ struct Ui {
     #[widget_id("title")]
     title: Label<String>,
     #[widget_id("spawn-one")]
-    spawn_one: Button<Demo>,
+    spawn_one: Button<Tasks>,
     #[widget_id("spawn-batch")]
-    spawn_batch: Button<Demo>,
+    spawn_batch: Button<Tasks>,
     #[widget_id("start-chain")]
-    start_chain: Button<Demo>,
+    start_chain: Button<Tasks>,
     #[widget_id("start-slow")]
-    start_slow: Button<Demo>,
+    start_slow: Button<Tasks>,
     #[widget_id("cancel")]
-    cancel: Button<Demo>,
+    cancel: Button<Tasks>,
     #[widget_id("toggle-sub")]
-    toggle_sub: Button<Demo>,
+    toggle_sub: Button<Tasks>,
     #[widget_id("status")]
     status: Label<String>,
     #[widget_id("counts")]
     counts: Label<String>,
 }
 
+/// The tree, and the state its handlers may touch — split in
+/// M33/T33.4. Hand-written rather than derived because the derive
+/// cannot express a real `Msg`, which is why `STATE_IS_SPLIT` is set by
+/// hand below: a promise nothing checks, which M33 §2.2 names.
 #[derive(Default)]
 struct Demo {
     ui: Ui,
+    state: Tasks,
+}
+
+/// What a handler and `apply` may touch. The tree is not in here.
+#[derive(Default)]
+struct Tasks {
     outbox: Outbox,
     subs: Subs,
     timers: Timers,
@@ -111,11 +121,11 @@ fn tick(d: Descriptor, tx: &lumen_static::inbox::Sender<Msg>) {
 }
 
 impl App for Demo {
-    // M33: this app keeps handlers on the whole of itself.
-    type State = Self;
-    fn state_mut(&mut self) -> &mut Self::State {
-        self
+    type State = Tasks;
+    fn state_mut(&mut self) -> &mut Tasks {
+        &mut self.state
     }
+    const STATE_IS_SPLIT: bool = true;
     type Tree = Ui;
     type Msg = Msg;
 
@@ -127,13 +137,13 @@ impl App for Demo {
     }
 
     fn outbox(&mut self) -> Option<&mut Outbox> {
-        Some(&mut self.outbox)
+        Some(&mut self.state.outbox)
     }
     fn subscriptions(&mut self) -> Option<&mut Subs> {
-        Some(&mut self.subs)
+        Some(&mut self.state.subs)
     }
     fn timers(&mut self) -> Option<&mut Timers> {
-        Some(&mut self.timers)
+        Some(&mut self.state.timers)
     }
 
     fn job_for(d: Descriptor) -> Option<JobFn<Msg>> {
@@ -150,7 +160,7 @@ impl App for Demo {
     }
 
     fn take_cancel(&mut self) -> bool {
-        core::mem::take(&mut self.cancel_requested)
+        core::mem::take(&mut self.state.cancel_requested)
     }
 
     fn failed(d: Descriptor, why: Failure) -> Option<Msg> {
@@ -158,7 +168,10 @@ impl App for Demo {
     }
 
     /// The step function, in the currently loaded build.
-    fn apply(this: &mut Self, m: Msg) -> bool {
+    ///
+    /// Receives the state (M33/T33.2), so it cannot write the labels: the
+    /// binding step below does, from what this changed.
+    fn apply(this: &mut Tasks, m: Msg) -> bool {
         match m {
             Msg::One(v) => {
                 this.one += 1;
@@ -194,59 +207,66 @@ impl App for Demo {
                 this.last = format!("failed kind={kind} why={why:?}");
             }
         }
-        this.refresh();
         true
     }
-}
 
-impl Demo {
-    /// The labels are written here rather than by `#[bind]`, so the
-    /// drive script's "the consequence landed" assertion is about
-    /// `apply` and not about a binding that would have run anyway.
-    fn refresh(&mut self) {
-        self.ui.status.set(format!("last: {}", self.last));
-        self.ui.counts.set(format!(
-            "one={} batch={} chain={} slow={} ticks={} failed={} sub={}",
-            self.one,
-            self.batch,
-            self.chain_steps,
-            self.slow,
-            self.ticks,
-            self.failures,
-            if self.sub_on { "on" } else { "off" },
-        ));
+    /// **The binding step, hand-written** because this impl is.
+    ///
+    /// The labels used to be written by `apply` and two handlers calling
+    /// a `refresh()`, so that the drive script's "the consequence landed"
+    /// assertion was about `apply`. After the split neither can reach the
+    /// tree: `apply` changes the state and this renders it, so the drive
+    /// checks the same consequence, reached through the path that can be
+    /// narrowed. `format_into` compares before it writes, so this reports
+    /// only what changed.
+    fn update(&mut self) -> bool {
+        let s = &self.state;
+        let a = lumen_static::bind::format_into(&mut self.ui.status, format_args!("last: {}", s.last));
+        let b = lumen_static::bind::format_into(
+            &mut self.ui.counts,
+            format_args!(
+                "one={} batch={} chain={} slow={} ticks={} failed={} sub={}",
+                s.one,
+                s.batch,
+                s.chain_steps,
+                s.slow,
+                s.ticks,
+                s.failures,
+                if s.sub_on { "on" } else { "off" },
+            ),
+        );
+        a | b
     }
 }
 
-fn on_one(s: &mut Demo, _: &lumen_static::EventCtx) {
+fn on_one(s: &mut Tasks, _: &lumen_static::EventCtx) {
     s.outbox.push(Descriptor::new(KIND_ONE, 7));
 }
 
 /// A batch: several descriptors pushed together. There is no batch type.
-fn on_batch(s: &mut Demo, _: &lumen_static::EventCtx) {
+fn on_batch(s: &mut Tasks, _: &lumen_static::EventCtx) {
     for i in 1..=3 {
         s.outbox.push(Descriptor::new(KIND_BATCH, i));
     }
 }
 
-fn on_chain(s: &mut Demo, _: &lumen_static::EventCtx) {
+fn on_chain(s: &mut Tasks, _: &lumen_static::EventCtx) {
     s.outbox.push(Descriptor::new(KIND_CHAIN, 1));
 }
 
-fn on_slow(s: &mut Demo, _: &lumen_static::EventCtx) {
+fn on_slow(s: &mut Tasks, _: &lumen_static::EventCtx) {
     s.outbox.push(Descriptor::new(KIND_SLOW, 99));
 }
 
 /// Cancel is a *request*, pushed like any other — the handler cannot
 /// reach the host, and `EventCtx` carries no inbox. The host's
 /// `pump` sees the flag on the next frame.
-fn on_cancel(s: &mut Demo, _: &lumen_static::EventCtx) {
+fn on_cancel(s: &mut Tasks, _: &lumen_static::EventCtx) {
     s.cancel_requested = true;
     s.last = "cancel requested".into();
-    s.refresh();
 }
 
-fn on_toggle_sub(s: &mut Demo, _: &lumen_static::EventCtx) {
+fn on_toggle_sub(s: &mut Tasks, _: &lumen_static::EventCtx) {
     s.sub_on = !s.sub_on;
     s.subs.clear();
     s.timers.cancel(KIND_SUB, 1);
@@ -257,7 +277,6 @@ fn on_toggle_sub(s: &mut Demo, _: &lumen_static::EventCtx) {
         s.timers.every(KIND_SUB, 1, 120.0);
     }
     s.last = format!("subscription {}", if s.sub_on { "on" } else { "off" });
-    s.refresh();
 }
 
 /// The application, built once — the boot of the program below.
@@ -276,7 +295,6 @@ fn build() -> Demo {
     app.ui.cancel.on_click = on_cancel;
     app.ui.toggle_sub.label = "toggle subscription";
     app.ui.toggle_sub.on_click = on_toggle_sub;
-    app.refresh();
     app
 }
 
