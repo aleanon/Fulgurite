@@ -342,7 +342,40 @@ If it does not, the narrowing is wrong and the probe is measuring a
 broken frame. *Injection:* narrow to the wrong range — the byte-identity
 assertion fires.
 
-## T29.2 — the const index
+## T29.2 — the const index — **DONE 2026-09-24, by neither route: an address**
+
+> **Picked, with the argument.** §2.3's two routes both fail on the
+> workspace's own bindings. A per-field const cannot cross a
+> hand-written or generic container, and `examples/glass` binds through
+> `Glass<W>`. `wid_index!` needs an author id on every target, and a
+> value binding's target is often not a widget at all: the popup's
+> `open` is a field inside one.
+>
+> **`bind::node_of`** takes the target's *address* and returns the
+> deepest table node whose memory contains it, which is the widget that
+> owns it, whatever container sits between. **`bind::BindSite`** caches
+> the answer per binding site, as a `static`, so the walk runs once per
+> build and a frame pays one atomic load.
+>
+> **Indices that resolve to their container** (an inactive variant, a
+> `None`) are skipped by resolving to the same address, size *and kind*
+> as their parent. Address alone is wrong, because a struct's first
+> field shares its address.
+>
+> **Gate:** `crates/lumen-static/tests/bind_index.rs`. The oracle is
+> the table's **author ids**, which no address arithmetic can move with
+> an injection. The cases are a nested label, a single-field parent, an
+> enum's active variant followed by an inactive one, and a field inside
+> a widget.
+> *Injections:*
+> - **Drop the skip.** The enum case names index 10 where the id says 8.
+> - **Skip on address alone.** `formula` names its parent, 1, where the
+>   id says 2.
+>
+> **Measure:** `just const-budget` is moot, because the route emits no
+> per-field items.
+
+### T29.2 as specified
 
 §2.3's mechanism, by whichever of its two routes the task picks — and
 **picking is the first half of the task**, with the argument written

@@ -180,3 +180,87 @@ pub fn set_if_changed<D: TextTarget + ?Sized>(dst: &mut D, text: &str) -> bool {
     // spelling for a binding whose source is already a string.
     dst.set_str(text)
 }
+
+/// **Which table node a binding writes** — M29/T29.2
+/// (`docs/plan-damage-precision.md` §2.3).
+///
+/// The deepest node whose memory contains `target`. A binding's target
+/// is a field of the tree — a `Label`, or a field *inside* a widget, such
+/// as a popup's `open` — so its address lies inside exactly one chain of
+/// nested nodes, and the deepest of them is the widget that owns it.
+///
+/// **Why an address, not a const.** The plan's first route was a
+/// per-field const offset composed along the binding's path; its second,
+/// `wid_index!`. The first cannot cross a hand-written or generic
+/// container (`Glass<W>` has no derived per-field items, and glass binds
+/// through one), and the second needs an author id on every target. An
+/// address crosses any container, and [`BindSite`] computes it once per
+/// binding, so the per-frame cost after the first write is one atomic
+/// load.
+///
+/// Indices an enum's inactive variant owns, and a `None`'s, resolve to
+/// the container itself (`Node::node` returns `self`); they are skipped
+/// by resolving to the same address, size and kind as their parent.
+/// `None` when no table node contains `target` — an address in an arena
+/// row, which the caller answers conservatively.
+pub fn node_of<T: crate::widget::Widget>(tree: &T, target: *const u8) -> Option<usize> {
+    let table = T::SUB_TABLE;
+    let span = |i: usize| {
+        let n = crate::widget::Node::node(tree, i);
+        let p = n as *const dyn crate::widget::Node as *const u8;
+        (p, core::mem::size_of_val(n), n.kind_name())
+    };
+    let t = target as usize;
+    let mut best = None;
+    for (i, d) in table.iter().enumerate() {
+        let (p, size, kind) = span(i);
+        if i > 0 && d.parent != crate::desc::NO_PARENT {
+            let (pp, ps, pk) = span(d.parent as usize);
+            if p == pp && size == ps && kind == pk {
+                continue;
+            }
+        }
+        let lo = p as usize;
+        if t >= lo && t < lo + size {
+            best = Some(i);
+        }
+    }
+    best
+}
+
+/// One binding's node index, computed on first use — M29/T29.2.
+///
+/// The derive emits one per `#[bind]` of a non-generic application, as a
+/// `static`, so [`node_of`]'s walk runs once for the life of the build
+/// that owns it (a hot reload loads a new build with fresh statics, and
+/// a new layout). A generic application gets none, and walks per write.
+pub struct BindSite(core::sync::atomic::AtomicUsize);
+
+impl BindSite {
+    const UNKNOWN: usize = usize::MAX;
+    const NOWHERE: usize = usize::MAX - 1;
+
+    pub const fn new() -> BindSite {
+        BindSite(core::sync::atomic::AtomicUsize::new(Self::UNKNOWN))
+    }
+
+    /// The cached index, or `find`'s answer, cached.
+    pub fn get(&self, find: impl FnOnce() -> Option<usize>) -> Option<usize> {
+        use core::sync::atomic::Ordering::Relaxed;
+        match self.0.load(Relaxed) {
+            Self::UNKNOWN => {
+                let found = find();
+                self.0.store(found.unwrap_or(Self::NOWHERE), Relaxed);
+                found
+            }
+            Self::NOWHERE => None,
+            i => Some(i),
+        }
+    }
+}
+
+impl Default for BindSite {
+    fn default() -> Self {
+        Self::new()
+    }
+}
