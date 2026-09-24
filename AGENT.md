@@ -557,7 +557,35 @@ found" section rather than silently replacing itself.
   **Proposed follow-ups, M39–M55:** M39 (agent transport), M40 (physical
   damage), M42 (drive-harness identity) and M43 (static gates and CI) go
   first, and M41 (Boundaries completeness) is a prerequisite of M34's
-  flip. They are proposals, not yet queued.
+  flip. **Now planned: see the M39–M55 entry below.**
+
+- **M39–M55 — `docs/plan-m38-fixes.md`** (160 tasks in 17 plans):
+  **planned 2026-09-25, not started.** These plans fix M38's findings.
+  They are written against `main` at 1717808, not the review's
+  `ac91d51`, because M32–M37 landed while the review ran. So every
+  finding was re-triaged first: 165 OPEN, 14 WORSE, 7 PARTIAL, 3 FIXED.
+  - **Three S0s:**
+    - R1-F1: stale pixels at any scale other than 1.0.
+    - R14-F1: any web page can drive a dev app, on both agent servers.
+    - R1-F2: the IME commit is never marked. It was raised from S1,
+      because M34 made Boundaries the default before its repair landed.
+  - **M34's evidence is being gathered again.** T34.1's shadow oracle
+    repairs the frames it inspects, and T34.2's "29 frames quiet" was
+    measured on repaired frames. M41/T41.7 gathers that evidence again
+    once M42 can say which binary a drive drove.
+  - **Four of the six gates added since the review, when audited, were
+    vacuous** (I-NEW-1..4).
+  - **Order:**
+    - Phase 1 is the S0s: M39, M40 and M41's T41.0–T41.1.
+    - Phase 2: M42, then M41; M43 runs alongside.
+    - Phase 3: M44–M49. Phase 4: M50–M53. Phase 5: M54–M55.
+    - T47.1, an idle window's timer never firing, is five lines and may
+      go first.
+  - **Nine decisions are collected in §4 for the owner to overrule.** One
+    of them is keeping Boundaries as the default while M41 repairs it,
+    with a tripwire.
+  - **Rule:** each milestone's T<n>.0 re-checks its findings at the
+    current HEAD first. M56 has already fixed R3-F5 independently.
 
 Unsequenced: ~~`docs/plan-harness.md`.~~ — **M12 DONE 2026-09-20.**
 T12.3 and T12.4 landed 2026-09-04; T12.1 (a locator and expectation API,

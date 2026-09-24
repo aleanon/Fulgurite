@@ -1631,6 +1631,12 @@ const-budget; M37/T37.3's error bar. Everything else examined can fire.
 
 ## 8. Proposed follow-up milestones (M39+)
 
+> **Superseded as a proposal, 2026-09-25.** `docs/plan-m38-fixes.md`
+> plans M39–M55 against `main` at 1717808, after re-triaging every
+> finding there. The table below is the review's proposal as written, and
+> is kept for the record. Where it differs from the plans (membership,
+> order, owners), the plans are right.
+
 In dependency order. Each closes named findings and names the injection
 its gate must turn red. Every SHA is a reviewer's scratch commit.
 
