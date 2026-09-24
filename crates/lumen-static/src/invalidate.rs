@@ -155,6 +155,20 @@ pub trait Invalidation: Default {
     /// The borrowed read side, for threading through
     /// [`crate::cx::LayoutCx`].
     fn view(&self) -> Changed<'_>;
+
+    /// What this frame has marked, for a test or a probe to read —
+    /// M29/T29.3. A mark that was narrowed and a mark that fell back to
+    /// everything draw the same frame; only this can tell them apart.
+    fn marks(&self) -> Marks;
+}
+
+/// A summary of what an [`Invalidation`] holds — M29/T29.3.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Marks {
+    /// Everything is marked.
+    pub all: bool,
+    /// How many ranges are held, when not `all`.
+    pub ranges: usize,
 }
 
 /// Everything is dirty, always — today's whole-tree walk, and the
@@ -186,6 +200,9 @@ impl Invalidation for Everything {
     #[inline]
     fn view(&self) -> Changed<'_> {
         Changed::ALL
+    }
+    fn marks(&self) -> Marks {
+        Marks { all: true, ranges: 0 }
     }
 }
 
@@ -297,6 +314,9 @@ impl<const N: usize> Invalidation for Boundaries<N> {
 
     fn view(&self) -> Changed<'_> {
         Changed { ranges: &self.ranges[..self.len], all: self.all }
+    }
+    fn marks(&self) -> Marks {
+        Marks { all: self.all, ranges: if self.all { 0 } else { self.len } }
     }
 }
 

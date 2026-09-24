@@ -177,6 +177,8 @@ pub struct Host<A: App, R: Retention = Incremental, I: Invalidation = Everything
     /// built with [`Host::new`] directly, which is styled only by what
     /// its caller sets.
     sheet_source: Option<std::rc::Rc<dyn program::Sheet<A>>>,
+    /// What the last frame had marked when it cleared — M29/T29.3.
+    last_marks: lumen_static::invalidate::Marks,
     /// Jobs a boot function returned before any spawner existed. Started
     /// by [`Host::set_spawner`]; see [`Host::hold_until_spawner`].
     held: Vec<lumen_static::spawn::Job<A::Msg>>,
@@ -203,6 +205,13 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
     /// be coming.
     pub fn hold_until_spawner(&mut self, job: lumen_static::spawn::Job<A::Msg>) {
         self.held.push(job);
+    }
+
+    /// What the last frame had marked — M29/T29.3. A narrowed frame and
+    /// one that fell back to marking everything draw the same pixels;
+    /// this is what tells them apart.
+    pub fn last_marks(&self) -> lumen_static::invalidate::Marks {
+        self.last_marks
     }
 
     /// Jobs held for a spawner that has not been installed yet.
@@ -290,6 +299,7 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             palette: lumen_static::style::Palette::LIGHT,
             sheet_source: None,
             held: Vec::new(),
+            last_marks: lumen_static::invalidate::Marks::default(),
         }
     }
 
@@ -889,9 +899,20 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         // becoming one long frame.
         self.more_deferred = applied == lumen_static::inbox::Inbox::<A::Msg>::PER_FRAME;
 
-        if self.app.update() {
-            self.invalidation.mark_all();
-            self.arenas_dirty = true;
+        // **What the bindings wrote, and where** — M29/T29.3. One range
+        // per binding that wrote; `Everything` for a `with =` hook, an
+        // `after_update` that changed something, or a hand-written
+        // `update` that cannot say. The arena flag is kept on any write:
+        // §2.4 asks a narrowed mark to show that a binding cannot change
+        // a template's styles, and nothing here shows it.
+        let inv = &mut self.invalidation;
+        match self.app.update_marked(&mut |r| inv.mark(r)) {
+            lumen_static::event::Wrote::Nothing => {}
+            lumen_static::event::Wrote::Marked => self.arenas_dirty = true,
+            lumen_static::event::Wrote::Everything => {
+                self.invalidation.mark_all();
+                self.arenas_dirty = true;
+            }
         }
         // **The arenas, if any are owed.** Before layout, so a template
         // styled by the previous frame's pass is laid out with those
@@ -977,6 +998,7 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         // is spent once layout has read it. Marks arriving after this
         // point belong to the next frame, which is what makes
         // `invalidate` callable from anywhere between pumps.
+        self.last_marks = self.invalidation.marks();
         self.invalidation.clear();
 
         self.frame += 1;

@@ -1824,7 +1824,7 @@ fn expand_app(input: DeriveInput) -> syn::Result<Ts2> {
     }
 
     let mut tree_field: Option<&syn::Field> = None;
-    let mut binds = Vec::new();
+    let mut bind_specs: Vec<(BindSpec, syn::Ident)> = Vec::new();
     for f in &fields.named {
         let ident = f.ident.clone().unwrap();
         for attr in &f.attrs {
@@ -1837,48 +1837,7 @@ fn expand_app(input: DeriveInput) -> syn::Result<Ts2> {
                 tree_field = Some(f);
             } else if attr.path().is_ident("bind") {
                 let spec: BindSpec = attr.parse_args()?;
-                let target = &spec.target;
-                binds.push(match &spec.kind {
-                    // `format_into` compares before it writes and says
-                    // so, so a binding reports precisely (T16.10).
-                    BindKind::Fmt(source, fmt, extra) => {
-                        // `self.field` or `self.field.path.into.it`.
-                        let src = match source {
-                            Some(p) => quote! { self.#ident.#p },
-                            None => quote! { self.#ident },
-                        };
-                        quote! {
-                            changed |= ::lumen_static::bind::format_into(
-                                &mut self.#target,
-                                ::core::format_args!(#fmt, &#src #(, #extra)*),
-                            );
-                        }
-                    }
-                    BindKind::Value(p) => quote! {
-                        changed |= ::lumen_static::bind::BindValue::bind_value(
-                            &mut self.#target,
-                            &self.#ident.#p,
-                        );
-                    },
-                    BindKind::With(path) => quote! {
-                        // Spelled out so a mismatched `with =` names the
-                        // expected signature instead of failing inside
-                        // the generated call.
-                        //
-                        // **Reports `true` unconditionally**: the hook
-                        // returns nothing, so whether it wrote anything
-                        // is unknowable from here. A `with =` binding
-                        // therefore opts its application out of the
-                        // still-frame optimisation, which is the
-                        // conservative direction — the alternative is a
-                        // frame that skipped a change.
-                        {
-                            let f: fn(&mut _, &_) = #path;
-                            f(&mut self.#target, &self.#ident);
-                            changed = true;
-                        }
-                    },
-                });
+                bind_specs.push((spec, ident.clone()));
             }
         }
     }
@@ -1891,6 +1850,86 @@ fn expand_app(input: DeriveInput) -> syn::Result<Ts2> {
     };
     let tree_ident = tree.ident.clone().unwrap();
     let tree_ty = &tree.ty;
+    let generic = !input.generics.params.is_empty();
+    let binds: Vec<Ts2> = bind_specs
+        .iter()
+        .map(|(spec, ident)| {
+            let target = &spec.target;
+            // **M29/T29.3: a binding that wrote marks the node it wrote**,
+            // found by address (`bind::node_of`, T29.2) and cached per
+            // binding site. A generic application gets no static — one
+            // would be shared by every instantiation — and walks per
+            // write. An address outside the table (an arena row) marks
+            // everything, the conservative answer.
+            let site = if generic {
+                quote! { let __ln_site = ::lumen_static::bind::BindSite::new(); }
+            } else {
+                quote! { static __ln_site: ::lumen_static::bind::BindSite = ::lumen_static::bind::BindSite::new(); }
+            };
+            let locate = |write: Ts2| {
+                quote! {
+                    if #write {
+                        changed = true;
+                        #site
+                        let __ln_p = &self.#target as *const _ as *const u8;
+                        match __ln_site.get(|| ::lumen_static::bind::node_of(&self.#tree_ident, __ln_p)) {
+                            ::core::option::Option::Some(__ln_i) => __ln_mark(
+                                ::lumen_static::style::subtree_range(
+                                    <#tree_ty as ::lumen_static::widget::Widget>::SUB_TABLE,
+                                    __ln_i,
+                                ),
+                            ),
+                            ::core::option::Option::None => __ln_all = true,
+                        }
+                    }
+                }
+            };
+            let _ = ident;
+            match &spec.kind {
+                        // `format_into` compares before it writes and says
+                        // so, so a binding reports precisely (T16.10).
+                        BindKind::Fmt(source, fmt, extra) => {
+                            // `self.field` or `self.field.path.into.it`.
+                            let src = match source {
+                                Some(p) => quote! { self.#ident.#p },
+                                None => quote! { self.#ident },
+                            };
+                            let write = quote! {
+                                ::lumen_static::bind::format_into(
+                                    &mut self.#target,
+                                    ::core::format_args!(#fmt, &#src #(, #extra)*),
+                                )
+                            };
+                            locate(write)
+                        }
+                        BindKind::Value(p) => locate(quote! {
+                            ::lumen_static::bind::BindValue::bind_value(
+                                &mut self.#target,
+                                &self.#ident.#p,
+                            )
+                        }),
+                        BindKind::With(path) => quote! {
+                            // Spelled out so a mismatched `with =` names the
+                            // expected signature instead of failing inside
+                            // the generated call.
+                            //
+                            // **Reports `true` unconditionally**: the hook
+                            // returns nothing, so whether it wrote anything
+                            // is unknowable from here. A `with =` binding
+                            // therefore opts its application out of the
+                            // still-frame optimisation, which is the
+                            // conservative direction — the alternative is a
+                            // frame that skipped a change.
+                            {
+                                let f: fn(&mut _, &_) = #path;
+                                f(&mut self.#target, &self.#ident);
+                                changed = true;
+                                __ln_all = true;
+                            }
+                        },
+                    }
+        })
+        .collect();
 
     let after = after_update.map(|p| {
         quote! {
@@ -1907,7 +1946,12 @@ fn expand_app(input: DeriveInput) -> syn::Result<Ts2> {
             // click on a button. A hook that knows whether it changed
             // anything is the only thing that can say so.
             let f: fn(&mut Self) -> bool = #p;
-            changed |= f(self);
+            // A hook may write anything, so a hook that wrote marks
+            // everything (M29 §2.4): it reports a `bool`, not ranges.
+            if f(self) {
+                changed = true;
+                __ln_all = true;
+            }
         }
     });
 
@@ -2001,12 +2045,21 @@ fn expand_app(input: DeriveInput) -> syn::Result<Ts2> {
                 &mut self.#tree_ident
             }
 
-            fn update(&mut self) -> bool {
+            fn update_marked(
+                &mut self,
+                __ln_mark: &mut dyn FnMut(::core::ops::Range<usize>),
+            ) -> ::lumen_static::event::Wrote {
                 #[allow(unused_mut)]
                 let mut changed = false;
+                #[allow(unused_mut)]
+                let mut __ln_all = false;
                 #(#binds)*
                 #after
-                changed
+                ::lumen_static::event::Wrote::of(changed, __ln_all)
+            }
+
+            fn update(&mut self) -> bool {
+                !::core::matches!(self.update_marked(&mut |_| {}), ::lumen_static::event::Wrote::Nothing)
             }
 
             #tick_fn

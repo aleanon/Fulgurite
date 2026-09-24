@@ -395,6 +395,17 @@ fn arm_a(h: &mut Bounded, v: i64, m: &mut dyn TextMeasure) {
     h.pump_with(m);
 }
 
+/// **The control, since M29/T29.3.** Arm A used to *be* the `mark_all`
+/// frame, because `#[bind]` marked everything; now the binding marks its
+/// own node, so arm A narrows and this arm forces what it used to do —
+/// or the comparison would collapse into itself (the plan's T29.3
+/// warning).
+fn arm_forced(h: &mut Bounded, v: i64, m: &mut dyn TextMeasure) {
+    h.app.cell = v;
+    h.invalidate_all();
+    h.pump_with(m);
+}
+
 fn arm_b(h: &mut Bounded, v: i64, m: &mut dyn TextMeasure) {
     h.app.cell = v;
     h.app.ui.top.formula.set(format!("= {v}"));
@@ -524,7 +535,7 @@ fn main() {
         "arm", "layout µs", "place µs", "paint µs", "raster µs", "frame µs", "damage px"
     );
 
-    for arm in ["mark_all", "narrowed", "handled"] {
+    for arm in ["mark_all", "bound", "narrowed", "handled"] {
         for run in 0..RUNS {
             let mut h = host(m);
             let mut canvas = Canvas::new(W, H);
@@ -534,7 +545,8 @@ fn main() {
             for i in 0..ITERS {
                 let v = (run * ITERS + i) as i64 + 1;
                 match arm {
-                    "mark_all" => arm_a(&mut h, v, m),
+                    "mark_all" => arm_forced(&mut h, v, m),
+                    "bound" => arm_a(&mut h, v, m),
                     "narrowed" => arm_b(&mut h, v, m),
                     _ => arm_c(&mut h, bump_at, m),
                 }

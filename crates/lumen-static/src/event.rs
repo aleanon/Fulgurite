@@ -557,6 +557,28 @@ pub trait Handlers<S> {
     fn handler(&self, sel: NodeSel) -> Option<fn(&mut S, &EventCtx)>;
 }
 
+/// What [`App::update_marked`] wrote — M29/T29.3.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Wrote {
+    /// No binding wrote anything: the frame may be still.
+    Nothing,
+    /// Every write was reported as a range.
+    Marked,
+    /// Something wrote where it cannot say: mark the whole tree.
+    Everything,
+}
+
+impl Wrote {
+    /// From "did anything change" and "was any of it unlocatable".
+    pub const fn of(changed: bool, everywhere: bool) -> Wrote {
+        match (changed, everywhere) {
+            (false, _) => Wrote::Nothing,
+            (true, false) => Wrote::Marked,
+            (true, true) => Wrote::Everything,
+        }
+    }
+}
+
 /// The message type of an application that defers no work — M28/T28.2.
 ///
 /// Uninhabited, which is stronger than an empty struct in the way that
@@ -889,6 +911,28 @@ pub trait App: Sized {
     /// changes nothing here, which is true rather than merely safe.
     fn update(&mut self) -> bool {
         false
+    }
+
+    /// Run the bindings and **say where they wrote** — M29/T29.3
+    /// (`docs/plan-damage-precision.md`).
+    ///
+    /// `mark` receives one table range per binding that wrote. The
+    /// derive answers precisely: each binding's node is found by address
+    /// once ([`crate::bind::node_of`]) and cached per site. A `with =`
+    /// hook, an `after_update` hook that reports a change, and a target
+    /// outside the table answer [`Wrote::Everything`], because none of
+    /// them can say where.
+    ///
+    /// **The default is the conservative answer**: a hand-written
+    /// `update` that returned `true` wrote somewhere this cannot know, so
+    /// it is everything.
+    fn update_marked(&mut self, mark: &mut dyn FnMut(core::ops::Range<usize>)) -> Wrote {
+        let _ = mark;
+        if self.update() {
+            Wrote::Everything
+        } else {
+            Wrote::Nothing
+        }
     }
 
     /// Advance whatever this application animates by `dt` milliseconds,

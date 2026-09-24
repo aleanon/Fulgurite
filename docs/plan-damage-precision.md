@@ -409,7 +409,27 @@ quantity T29.2 grows is *declared fields per derived type* and the
 workspace holds ~380 derives. A budget that cannot see the work is not
 a budget.
 
-## T29.3 — `App::update` reports what it wrote
+## T29.3 — `App::update` reports what it wrote — **DONE 2026-09-24**
+
+> `App::update_marked` reports one range per binding that wrote
+> (`Wrote::{Nothing, Marked, Everything}`); the derive locates each
+> binding by T29.2's address, and `with =`, a changing `after_update` and
+> an unlocatable target answer `Everything`. The default for a
+> hand-written `update` is `Everything` on `true` — conservative.
+> `Invalidation::marks` and `Host::last_marks` let a test see *whether*
+> a frame narrowed, which frame equality alone cannot.
+>
+> **Gate:** `crates/lumen-static-shell/tests/bind_marks.rs` — four
+> host-driven writes of differing widths, byte-identical under
+> `Everything` and `Boundaries<16>`, each asserting exactly one range was
+> marked. *Injections:* an empty mark (`i..i`) — the Boundaries frame
+> differs (`0x3408…` against `0x3aa6…`); the host treating a narrowed
+> write as everything — "setup: the write did not narrow".
+>
+> **Measure** (`docs/results-damage-precision.md` T29.3): the real
+> mechanism lands where the scaffold did; `grid` gained a `mark_all`
+> *control* arm, because arm A now narrows by itself.
+
 
 `update` feeds the invalidation set instead of returning a bare `bool`:
 one range per binding that actually wrote, the conservative paths of

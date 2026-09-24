@@ -257,3 +257,21 @@ judged 56 findings and confirmed 49. What it changed in *this* document:
 **None of it moved the verdict.** The kill rule asked for a frame delta
 above the arm's spread and got forty times it, on a fixture that is now
 bigger, slower and more honest than the one that first passed.
+
+## T29.3 — the real mechanism, 2026-09-24
+
+Eight runs per arm, forty edits each, medians per run, `just grid`.
+Slow-cluster runs (two of eight in some arms, frames above 80 µs) are
+set aside by the mode rule `docs/results-frame-and-types.md` records.
+
+| arm | frame, fast cluster | what it is |
+|---|---:|---|
+| `mark_all` | 55.62–55.86 µs | **the control**: a host-driven write, then `invalidate_all()` — what `#[bind]` did before T29.3 |
+| `bound` | 34.78–35.18 µs | the same write, marked by the binding itself (`App::update_marked`) |
+| `narrowed` | 34.89–35.23 µs | T29.1's hand-marked scaffold |
+| `handled` | 56.01–56.32 µs | the same edit through a click — still `mark_all`, until T29.6 |
+
+**The mechanism lands where the scaffold did**, which is what T29.3's
+measure asked. And, as §2.5 predicted, **the click-driven frame did not
+move**: a consumed event still marks everything before a binding is
+asked anything. That is T29.6's job, not this one's.
