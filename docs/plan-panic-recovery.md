@@ -182,6 +182,16 @@ builds (`docs/00-handoff-static-tree.md`).
 
 ## T36.0 — the fixture, and today's behaviour recorded
 
+> **DONE 2026-09-24.** `fixtures/panic-app`: seven sites, each panic
+> line marked `// SITE n` and found by scanning the fixture's own source
+> (`panic_app::site_line`). The first version recorded `line!() + k`
+> constants and **four of seven were off by one to three lines** — the
+> hand-copying the constants were meant to avoid. `tests/dies.rs`: every
+> site dies today with its marker's line in stderr, site 7's location is
+> inside `crates/lumen-static/src/`, and an unarmed run exits cleanly.
+> *Injection:* site 4's key made a no-op — "site 4 did not die".
+
+
 A fixture application that can panic at seven sites, chosen by a key:
 
 1. a click handler;

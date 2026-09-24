@@ -1,0 +1,15 @@
+[package]
+name = "panic-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+# M36 (docs/plan-panic-recovery.md): an application that can panic at each
+# of the seven sites a frame runs application code, chosen by number. The
+# library is what the headless tests drive; the binary is what T36.0 runs
+# as a subprocess to record that today each site kills the process.
+[dependencies]
+lumen-static = { path = "../../crates/lumen-static" }
+lumen-static-widgets = { path = "../../crates/lumen-static-widgets" }
+lumen-static-shell = { path = "../../crates/lumen-static-shell" }
