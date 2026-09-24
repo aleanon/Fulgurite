@@ -217,3 +217,143 @@ pub mod panic {
         n
     }
 }
+
+/// **The ABI stamp** — M37/T37.0 (`docs/plan-window-reload.md` §2.3).
+///
+/// A window loader borrows a hot library's values in place — its display
+/// list, its trait objects — rather than copying them as bytes, because
+/// a stable encoding cost more than the frame's own noise
+/// (`docs/step4-hot-reload.md`, T37.0). That is sound only while both
+/// images lay out every crossing type identically, which Rust promises
+/// for one compiler, one source and one feature set, and nothing else.
+/// So each image describes its build as `name=value` lines, and the
+/// loader refuses a library whose lines differ from its own, **naming
+/// the first field that differs**.
+///
+/// It cannot see everything: a `#[global_allocator]` in the library is
+/// invisible to it, and a hot library must not set one, because values
+/// allocated on one side are freed on the other.
+pub mod abi {
+    /// This image's stamp: the compiler, the target, the panic strategy,
+    /// the core's build ([`lumen_static::reload::build_fields`]), and
+    /// whatever the caller adds for the crates above the core.
+    pub fn stamp(extra: &[(&'static str, String)]) -> String {
+        let mut out = String::new();
+        let mut put = |k: &str, v: &str| {
+            out.push_str(k);
+            out.push('=');
+            out.push_str(v);
+            out.push('\n');
+        };
+        put("rustc", env!("LUMEN_RUSTC"));
+        put("target", env!("LUMEN_TARGET"));
+        put("panic", if cfg!(panic = "unwind") { "unwind" } else { "abort" });
+        for (k, v) in lumen_static::reload::build_fields() {
+            put(k, &v);
+        }
+        for (k, v) in extra {
+            put(k, v);
+        }
+        out
+    }
+
+    /// Why a library was refused: the first field whose value differs,
+    /// or that one side has and the other does not.
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct Mismatch {
+        pub field: String,
+        pub loader: Option<String>,
+        pub library: Option<String>,
+    }
+
+    impl core::fmt::Display for Mismatch {
+        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+            let show = |v: &Option<String>| v.clone().unwrap_or_else(|| "(absent)".into());
+            write!(
+                f,
+                "the library was built differently: `{}` is `{}` here and `{}` in the library",
+                self.field,
+                show(&self.loader),
+                show(&self.library)
+            )
+        }
+    }
+
+    /// Compare the loader's stamp with a library's, field by field in the
+    /// loader's order, then any field only the library has.
+    pub fn check(loader: &str, library: &str) -> Result<(), Mismatch> {
+        let parse = |s: &str| -> Vec<(String, String)> {
+            s.lines()
+                .filter_map(|l| l.split_once('='))
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect()
+        };
+        let (a, b) = (parse(loader), parse(library));
+        let get = |v: &[(String, String)], k: &str| v.iter().find(|(x, _)| x == k).map(|(_, y)| y.clone());
+        for (k, v) in &a {
+            let theirs = get(&b, k);
+            if theirs.as_deref() != Some(v.as_str()) {
+                return Err(Mismatch { field: k.clone(), loader: Some(v.clone()), library: theirs });
+            }
+        }
+        for (k, v) in &b {
+            if get(&a, k).is_none() {
+                return Err(Mismatch { field: k.clone(), loader: None, library: Some(v.clone()) });
+            }
+        }
+        Ok(())
+    }
+
+    /// Read a loaded library's stamp through its `lumen_abi_stamp`.
+    ///
+    /// # Safety
+    /// `f` must be a library's `lumen_abi_stamp` export.
+    pub unsafe fn read(f: unsafe extern "C" fn(*mut u8, usize) -> usize) -> String {
+        let need = unsafe { f(core::ptr::null_mut(), 0) };
+        let mut buf = vec![0u8; need];
+        let wrote = unsafe { f(buf.as_mut_ptr(), buf.len()) };
+        buf.truncate(wrote.min(need));
+        String::from_utf8_lossy(&buf).into_owned()
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn the_first_differing_field_is_named_and_an_identical_stamp_passes() {
+            let here = stamp(&[("extra", "1".into())]);
+            assert_eq!(check(&here, &here), Ok(()), "an identical build must be accepted");
+            let other = here.replace("\nextra=1", "\nextra=2");
+            let m = check(&here, &other).unwrap_err();
+            assert_eq!(m.field, "extra");
+            let missing = here.replace("extra=1\n", "");
+            assert_eq!(check(&here, &missing).unwrap_err().library, None);
+            let more = format!("{here}new=1\n");
+            assert_eq!(check(&here, &more).unwrap_err().field, "new");
+        }
+    }
+}
+
+/// Export this image's ABI stamp as `lumen_abi_stamp` (M37/T37.0). The
+/// argument is the extra fields, as for [`abi::stamp`].
+#[macro_export]
+macro_rules! export_abi_stamp {
+    () => {
+        $crate::export_abi_stamp!(&[]);
+    };
+    ($extra:expr) => {
+        /// This library's ABI stamp. Two-call protocol.
+        ///
+        /// # Safety
+        /// `(buf, cap)` must be a valid writable range or `(null, 0)`.
+        #[no_mangle]
+        pub unsafe extern "C" fn lumen_abi_stamp(buf: *mut u8, cap: usize) -> usize {
+            let s = $crate::abi::stamp($extra);
+            if s.len() <= cap && !buf.is_null() {
+                unsafe { ::core::ptr::copy_nonoverlapping(s.as_ptr(), buf, s.len()) };
+            }
+            s.len()
+        }
+    };
+}

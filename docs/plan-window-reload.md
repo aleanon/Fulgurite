@@ -1,6 +1,6 @@
 # M37 — hot reload inside a window, modelled on `hot_ice`
 
-> **Written 2026-09-23, not started.** Asked for on 2026-09-23. The
+> **Written 2026-09-23; T37.0 done 2026-09-24.** Asked for on 2026-09-23. The
 > review of M36 found that no window can reload, so a panic screen could
 > only ever be left by retrying. The instruction was to look at
 > `hot_ice` (`/mnt/Utvikling-linux/hot_ice`) for inspiration. This plan
@@ -144,6 +144,17 @@ frame boundary. Builds are coalesced: a save during a build queues
 exactly one more.
 
 ## T37.0 — the boundary, measured
+
+> **DONE 2026-09-24 — pointers, behind a stamp.** A real byte encoding
+> (`lumen_static::wire`) exceeds the frame arm's spread on three of
+> showcase's four probed entries. A `memcpy` would not, but it is no byte
+> boundary at all. The numbers and the two things the rule did not count
+> are in `docs/step4-hot-reload.md` (T37.0). `lumen_static_reload::abi`
+> is the stamp, and `just abi-stamp` is the gate: an identical build is
+> accepted, and an `observe` build is refused by `lumen-static features`.
+> *Injections:* the feature field removed makes the `observe` build
+> accepted, because no listed size moves. A check that refuses
+> everything refuses the identical build.
 
 Probe: the size of showcase's display list, its copy cost per frame, and
 the list of types that would cross. Apply §2.3's kill rule, and write

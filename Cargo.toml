@@ -27,6 +27,8 @@ members = [
     "fixtures/binsize",
     "fixtures/const-budget",
     "fixtures/hot-host",
+    "fixtures/stamp-lib",
+    "fixtures/stamp-host",
     "fixtures/embedded",
     "fixtures/bake-font",
 ]

@@ -1,0 +1,11 @@
+[package]
+name = "stamp-host"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+lumen-static = { path = "../../crates/lumen-static", features = ["reload"] }
+lumen-static-reload = { path = "../../crates/lumen-static-reload" }
+libloading = "0.8"

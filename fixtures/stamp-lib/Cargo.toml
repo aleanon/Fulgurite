@@ -1,0 +1,20 @@
+[package]
+name = "stamp-lib"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+# M37/T37.0: a library whose only job is to describe how it was built.
+# `scripts/abi_stamp.sh` builds it twice -- as the loader was built, and
+# with the core's `observe` on -- and the loader must accept the first
+# and refuse the second by name.
+[lib]
+crate-type = ["cdylib"]
+
+[features]
+observe = ["lumen-static/observe"]
+
+[dependencies]
+lumen-static = { path = "../../crates/lumen-static", features = ["reload"] }
+lumen-static-reload = { path = "../../crates/lumen-static-reload" }

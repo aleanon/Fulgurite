@@ -1801,3 +1801,98 @@ mod flip {
         }
     }
 }
+
+/// **M37/T37.0 — what a byte boundary would cost per frame**
+/// (`docs/plan-window-reload.md` §2.3). The kill rule, written before
+/// this ran: if copying showcase's display list costs less than the frame
+/// arm's fast-cluster spread, the library boundary is bytes; otherwise it
+/// is borrowed pointers behind an ABI stamp.
+///
+/// The copy measured is a `memcpy` of the commands and the text into
+/// buffers already allocated — the **lower bound** of any byte encoding,
+/// since a stable encoding must also visit every field. If the lower
+/// bound loses, every encoding loses.
+#[cfg(test)]
+mod boundary {
+    use super::*;
+    use lumen_static::display::Cmd;
+    use lumen_static_shell::text::{FontMetrics, FontStack};
+    use lumen_static_shell::Host;
+
+    const RUNS: usize = 8;
+    const ITERS: usize = 40;
+
+    #[test]
+    #[ignore]
+    fn measure_the_copy() {
+        let Some(face) = FontStack::system() else { return };
+        let mut m = FontMetrics::new(face);
+        println!(
+            "{:<13} {:>5} {:>7} {:>6} {:>18} {:>14} {:>14} {:>6}",
+            "entry", "cmds", "mem B", "text", "frame µs", "memcpy µs", "wire µs", "wire B"
+        );
+        for entry in ["Button", "DataGrid", "Markdown", "ColorPicker"] {
+            let e = CATALOG.iter().position(|x| x.name == entry).unwrap();
+            let mut frames = Vec::new();
+            let mut copies = Vec::new();
+            let mut encodes = Vec::new();
+            let mut wire_len = 0;
+            let mut shape = (0, 0, 0);
+            for _ in 0..RUNS {
+                let mut h: Host<Show> = program(e, false).host();
+                for _ in 0..3 {
+                    h.pump_with(&mut m);
+                }
+                let mut cmds: Vec<Cmd> = Vec::with_capacity(4096);
+                let mut text = String::with_capacity(1 << 16);
+                let (mut f, mut c, mut en) = (Vec::new(), Vec::new(), Vec::new());
+                let mut wire = Vec::with_capacity(1 << 16);
+                let mut back = lumen_static::DisplayList::new();
+                for k in 0..ITERS {
+                    // The frame arm: a hover that moves, as T34.2's.
+                    let (x, y) = if k % 2 == 0 { (40.0, 120.0) } else { (300.0, 200.0) };
+                    h.post(lumen_static::Event::PointerMove { x, y });
+                    h.pump_with(&mut m);
+                    let (l, p, pa) = h.timings3();
+                    f.push((l + p + pa) as f64 / 1000.0);
+                    let t = std::time::Instant::now();
+                    cmds.clear();
+                    cmds.extend_from_slice(&h.list.cmds);
+                    text.clear();
+                    text.push_str(&h.list.text);
+                    std::hint::black_box((&cmds, &text));
+                    c.push(t.elapsed().as_nanos() as f64 / 1000.0);
+                    let t = std::time::Instant::now();
+                    wire.clear();
+                    lumen_static::wire::encode(&h.list, &mut wire);
+                    lumen_static::wire::decode_into(&wire, &mut back).unwrap();
+                    std::hint::black_box(&back);
+                    en.push(t.elapsed().as_nanos() as f64 / 1000.0);
+                    wire_len = wire.len();
+                    shape = (
+                        h.list.cmds.len(),
+                        h.list.cmds.len() * std::mem::size_of::<Cmd>() + h.list.text.len(),
+                        h.list.text.len(),
+                    );
+                }
+                let med = |mut v: Vec<f64>| {
+                    v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+                    v[v.len() / 2]
+                };
+                frames.push(med(f));
+                copies.push(med(c));
+                encodes.push(med(en));
+            }
+            frames.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            copies.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            encodes.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            let r = |v: &[f64]| format!("{:.3}-{:.3}", v[0], v[v.len() - 1]);
+            println!(
+                "{entry:<13} {:>5} {:>7} {:>6} {:>18} {:>14} {:>14} {:>6}   spread {:.3} µs | memcpy min {:.3} | wire min {:.3}",
+                shape.0, shape.1, shape.2, r(&frames), r(&copies), r(&encodes), wire_len,
+                frames[RUNS - 1] - frames[0], copies[0], encodes[0]
+            );
+        }
+        println!("size_of::<Cmd>() = {} B", std::mem::size_of::<Cmd>());
+    }
+}

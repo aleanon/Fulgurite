@@ -146,6 +146,11 @@ pub mod repeat;
 pub mod style;
 pub mod text;
 pub mod widget;
+// A display list as build-independent bytes: the hot-reload boundary
+// (M37/T37.0). Needs a `Vec`, and a `no_std` build that never names it
+// links none of it.
+#[cfg(feature = "alloc")]
+pub mod wire;
 
 pub use desc::{
     stack_bytes, Constraints, NodeDesc, NodeState, Point, Size, MAX_DEPTH, NO_PARENT,

@@ -85,6 +85,7 @@ fixtures:
     cargo run -p counter-window -- --form {{ justfile_directory() }}/target/form.ppm
     cargo run -p embedded --bin embedded
     ./scripts/hot_reload_demo.sh
+    ./scripts/abi_stamp.sh
 
 # ---------------------------------------------------------------------------
 # Pre-push / CI
@@ -399,6 +400,11 @@ stages ns="100,1000,3000,10000" iters="200" warm="20":
 # The Step 4 dylib swap demo; exit code is the verdict.
 hot-demo:
     ./scripts/hot_reload_demo.sh
+
+# M37/T37.0: a hot library built with a different feature set is refused by
+# name, and one built the same way is accepted -- two real builds.
+abi-stamp:
+    ./scripts/abi_stamp.sh
 
 # The tally window with the agent endpoint on 127.0.0.1:9230 (override with
 # LUMEN_AGENT_ADDR). Drive it with scripts/agent_client.py — see

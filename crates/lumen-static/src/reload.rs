@@ -166,6 +166,44 @@ impl<W: Reloadable> Reloadable for Option<W> {
 /// `None`, at load time, in a dylib swap. Naming them once makes the
 /// handshake a compile-time fact on the loader side and a single edit on
 /// the app side (`docs/plan-review-fixes.md` F6.7).
+/// **This build of the core, as `name=value` fields** — the core's part
+/// of a hot library's ABI stamp (M37/T37.0, `docs/plan-window-reload.md`
+/// §2.3).
+///
+/// A loader borrows a library's values in place, so the two must lay out
+/// every type that crosses identically. The core's features change
+/// layouts (`observe` adds methods to every widget's vtable), and cargo
+/// unifies features per invocation, so a loader and a library built by
+/// two invocations can disagree without either noticing. The sizes are
+/// here because a field added to a crossing type changes them.
+pub fn build_fields() -> alloc::vec::Vec<(&'static str, alloc::string::String)> {
+    use alloc::format;
+    let mut features = alloc::vec::Vec::new();
+    for (on, name) in [
+        (cfg!(feature = "std"), "std"),
+        (cfg!(feature = "alloc"), "alloc"),
+        (cfg!(feature = "observe"), "observe"),
+        (cfg!(feature = "reload"), "reload"),
+        (cfg!(feature = "rdyn_opaque"), "rdyn_opaque"),
+    ] {
+        if on {
+            features.push(name);
+        }
+    }
+    let lay = |s: usize, a: usize| format!("{s}/{a}");
+    use core::mem::{align_of, size_of};
+    alloc::vec![
+        ("lumen-static", alloc::string::String::from(env!("CARGO_PKG_VERSION"))),
+        ("lumen-static features", features.join(",")),
+        ("DisplayList", lay(size_of::<crate::DisplayList>(), align_of::<crate::DisplayList>())),
+        ("Cmd", lay(size_of::<crate::display::Cmd>(), align_of::<crate::display::Cmd>())),
+        ("Event", lay(size_of::<crate::Event>(), align_of::<crate::Event>())),
+        ("NodeState", lay(size_of::<crate::NodeState>(), align_of::<crate::NodeState>())),
+        ("Style", lay(size_of::<crate::style::Style>(), align_of::<crate::style::Style>())),
+        ("Damage", lay(size_of::<crate::retain::Damage>(), align_of::<crate::retain::Damage>())),
+    ]
+}
+
 pub mod symbols {
     /// `fn() -> *mut c_void` — `App::fresh()` from this build's code.
     pub const NEW: &[u8] = b"hot_new";
@@ -187,6 +225,10 @@ pub mod symbols {
     /// a shim caught inside the library, as `panicked at file:line:col:
     /// message`. Same two-call protocol; zero means none (M36/T36.4).
     pub const TAKE_PANIC: &[u8] = b"hot_take_panic";
+    /// `fn(*mut u8, usize) -> usize` — this library's ABI stamp
+    /// (M37/T37.0), `name=value` lines. Same two-call protocol. A loader
+    /// reads it **before** calling anything that returns a Rust value.
+    pub const ABI_STAMP: &[u8] = b"lumen_abi_stamp";
 }
 
 /// Serialize a saved value. Infallible in practice — a `Value` built by

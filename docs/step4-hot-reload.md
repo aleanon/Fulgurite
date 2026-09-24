@@ -161,6 +161,61 @@ does not wrap itself in `guard`, which still aborts the loader — the
 demo's script says so instead of leaving a bare `Aborted`. Task panics
 are M28's `Failure::Panicked`, not this.
 
+## The window's boundary: pointers behind a stamp (M37/T37.0)
+
+A window that reloads keeps its `Host` in the library, because the tree
+holds code (`docs/plan-window-reload.md` §1). So each frame, the loader
+either **borrows** the library's display list or **copies** it as bytes.
+`docs/plan-window-reload.md` §2.3's kill rule was written before the
+probe: bytes if copying costs less than the frame arm's fast-cluster
+spread, pointers with an ABI stamp otherwise.
+
+The probe is `examples/showcase`'s `boundary::measure_the_copy` (`cargo
+test --release -p showcase measure_the_copy -- --ignored --nocapture`).
+The frame arm is T34.2's instrument: a hover that moves, `Host::timings3`
+(layout + place + paint), the median of 40 frames, eight runs. It
+measures two copies. A `memcpy` of the commands and text into buffers
+already allocated is the lower bound of any copy, but it is **not** a byte
+boundary, because `repr(Rust)` promises no layout across builds. The
+second is `lumen_static::wire`, a tagged little-endian encoding, which is
+what a byte boundary would actually ship. It is encoded and then decoded
+into a reused list.
+
+| entry | cmds | text B | wire B | frame, 8 runs (µs) | spread (µs) | `memcpy` min (µs) | wire min (µs) |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Button | 15 | 200 | 697 | 0.663–0.732 | 0.069 | 0.020 | **0.153** |
+| DataGrid | 32 | 380 | 1,458 | 8.215–9.871 | 1.656 | 0.025 | 0.370 |
+| Markdown | 35 | 317 | 1,486 | 7.677–7.962 | 0.285 | 0.023 | **0.336** |
+| ColorPicker | 12 | 232 | 622 | 0.640–0.647 | 0.007 | 0.017 | **0.120** |
+
+**Verdict: pointers, behind a stamp.** The encoding exceeds the frame
+arm's spread on three of the four entries, and only DataGrid's wide
+spread covers it. The `memcpy` would pass on three, but it is not an
+option. Two things the rule did not count are recorded here, so the
+choice can be revisited on its own evidence. The absolute cost is
+0.12–0.45 µs, which is nothing next to a raster pass. And the frame arm
+is showcase's, whose frames are small enough that 0.15 µs is 23% of one.
+
+**The stamp** (`lumen_static_reload::abi`): each image describes itself
+as `name=value` lines covering:
+
+- the compiler (from a build script);
+- the target and the panic strategy;
+- the core's version and **feature set**;
+- the size and alignment of the core types that cross.
+
+The loader refuses a library whose lines differ, naming the first field
+that differs. `just abi-stamp` builds `fixtures/stamp-lib` twice: once as
+`fixtures/stamp-host` was built, which is accepted with 11 fields
+agreeing, and once with the core's `observe` on, which is refused with
+`lumen-static features` named.
+
+**The feature field is load-bearing, and the sizes are not enough.** With
+it removed, the `observe` build was *accepted*, because none of the seven
+listed sizes moves even though every widget's vtable does. The stamp
+cannot see a `#[global_allocator]`. A hot library must not set one,
+because values are allocated on one side and freed on the other.
+
 ## How a descriptor crosses (M28/T28.7)
 
 Deferred work in flight across a swap is the case item 1 above warns
