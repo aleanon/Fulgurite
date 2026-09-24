@@ -173,6 +173,18 @@ where it was measured.
 
 ## T34.2 — the flip
 
+> **DONE 2026-09-24.** `Inval` and `Host`'s default are both
+> `Boundaries<256>`; `everything` is the diagnostic feature; the three
+> drive scripts invert their legs (`everything` for the whole-tree leg).
+> **Every headless test that names `Host<A>` now runs `Boundaries`**, and
+> `just test` is green — that is the flip's own evidence run. Live:
+> `just widget-drive` 94 actions green both ways, `just agent-drive`
+> green both ways with the shadow oracle quiet over 29 frames, and the
+> tasks drive green both ways. **Measure**
+> (`docs/results-damage-precision.md` T34.2): the prediction held — idle,
+> hover and press frames moved; tick and click did not, by design.
+
+
 - `Inval` becomes `Boundaries<256>`, and `Host`'s default type parameter
   becomes the same (rule 3).
 - The `boundaries` feature becomes a diagnostic `everything` feature

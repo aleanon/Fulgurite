@@ -47,7 +47,7 @@ run_one() {
     wait "$pid" 2>/dev/null || true
 }
 
-run_one Everything  agent
-run_one Boundaries  agent,boundaries
+run_one Everything  agent,everything
+run_one Boundaries  agent
 
 exit "$status"

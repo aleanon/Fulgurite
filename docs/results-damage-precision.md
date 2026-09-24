@@ -298,3 +298,27 @@ shortfall: its handler may write any widget. So the saving §2.5 found
 unreachable "on every frame a click produces" is now reached on every
 click of a split application, and — for a turnkey window — once M34
 flips the default strategy.
+
+## T34.2 — what the flip buys a showcase window, 2026-09-24
+
+`examples/showcase` test `flip::measure_the_flip` (ignored; `cargo test
+--release -p showcase measure_the_flip -- --ignored --nocapture`): the
+same program's host under each strategy, 40 frames of each class, the
+median frame (layout + place + paint), eight runs a side. The prediction,
+written in the plan before the flip: click frames and binding writes do
+not move, because showcase's `after_update` and its tick mark everything.
+
+| class | entry | `Everything` (µs) | `Boundaries<256>` (µs) |
+|---|---|---:|---:|
+| idle | Button | 0.55–0.58 | **0.33–0.34** |
+| hover | Button | 0.57–0.58 | **0.53–0.54** |
+| unconsumed press | Button | 0.58–0.58 | **0.53–0.54** |
+| tick | ProgressBar | 0.81–0.83 | 0.80–0.82 |
+| click | Button | 1.17–1.18 | 1.16–1.20 |
+
+**The prediction held.** The frames that can move did; tick and click did
+not, because showcase marks everything on both *by design* (its tick
+writes the stage, its `after_update` the header). Showcase's tree is
+small, so the absolute saving is too — the grid (T29.3, T29.6) is where
+the size of the win shows; this row is what a user of the flagship
+example gets.

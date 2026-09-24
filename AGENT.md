@@ -482,7 +482,9 @@ found" section rather than silently replacing itself.
   precedent, which is what the showcase redesign needs. The prototype's
   "no handler writes the tree" was false: showcase, tasks-demo and
   glass all do.
-- **M34 — `docs/plan-boundaries-default.md`** (T34.0–T34.2): the
+- ~~**M34 — `docs/plan-boundaries-default.md`** (T34.0–T34.2)~~ **DONE
+  2026-09-24**: `Boundaries<256>` is the default for `Host` and the window;
+  the inventory found a tick that wrote the tree unmarked. the
   inventory (`agent-drive` turned out to be `Everything`-only). A
   shadow oracle that re-lays out into scratch state **inside one host**
   and reports through the agent rather than panicking. Then both

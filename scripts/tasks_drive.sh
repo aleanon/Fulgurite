@@ -26,8 +26,10 @@ PORT="${LUMEN_TASKS_PORT:-7658}"
 # the tree regardless of what was marked.
 for strategy in everything boundaries; do
     echo "== $strategy =="
-    if [ "$strategy" = boundaries ]; then
-        cargo build --release -q -p tasks-demo --features boundaries
+    # `Boundaries` is the default since M34/T34.2; `everything` is the
+    # diagnostic feature that selects the whole-tree walk.
+    if [ "$strategy" = everything ]; then
+        cargo build --release -q -p tasks-demo --features everything
     else
         cargo build --release -q -p tasks-demo
     fi

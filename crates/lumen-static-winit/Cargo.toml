@@ -13,12 +13,12 @@ name = "lumen_static_winit"
 # adding winit there would put a windowing system behind `cargo test`
 # (docs/plan-desktop.md T14.0).
 [features]
-# M27/T27.3: run the turnkey window under `Boundaries` instead of
-# `Everything`. A build-time switch because `Host`'s invalidation is a
-# type parameter; see `Inval` in lib.rs for why that is not a `Config`
-# field. `just widget-drive` builds both, because M26 found four of five
-# defects invisible under the default.
-boundaries = []
+# M34/T34.2: `Boundaries<256>` is the default. This selects `Everything`
+# instead, as a DIAGNOSTIC: if a stale frame goes away when you build with
+# it, you have found an invalidation defect. A build-time switch because
+# `Host`'s invalidation is a type parameter (see `Inval` in lib.rs). Any
+# example reaches it as `--features lumen-static-winit/everything`.
+everything = []
 # M34/T34.1: the shadow oracle, reported by the agent's `app.shadow`.
 shadow-oracle = ["lumen-static-shell/shadow-oracle"]
 # Clipboard is default-ON, unlike the a11y feature, and the difference

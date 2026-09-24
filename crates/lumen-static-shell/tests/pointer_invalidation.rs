@@ -5,7 +5,7 @@
 //! marked its dirty set only when a handler ran or a binding wrote. The
 //! derive skips a clean subtree before `record_painted` resolves the
 //! shade, so under `Boundaries` a hovered button kept its resting colour
-//! — correct only under the default `Everything`, which lays out every
+//! — correct only under `Everything` (the default until M34), which lays out every
 //! node every frame whatever was marked.
 //!
 //! # Why this tree, and not the oracle's

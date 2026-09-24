@@ -762,6 +762,13 @@ The two advantages that are real and that nothing else gives:
 damage tracking deserve at least as much attention as the static tree. Do not
 let the interesting part crowd out the effective part.
 
+**DECIDED 2026-09-24 (M29, M34): the bounded strategy is the default.**
+`Boundaries<256>` is `Host`'s default and the window's (`everything` is a
+diagnostic feature); a binding marks its own node, and a click on a
+split application narrows too. The evidence is
+`docs/plan-boundaries-default.md` T34.0–T34.2; the figures are
+`docs/results-damage-precision.md` T29.3, T29.6 and T34.2.
+
 **DECIDED 2026-09-03 — confirmed by the first profile of a live frame**
 (`docs/results-frame-cost.md`): layout and paint were 1 µs of a 190 ms frame.
 Everything else was rasterisation — an 18-layer shadow and an unoptimised

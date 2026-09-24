@@ -12,7 +12,7 @@ use lumen_static::cx::{BlockMetrics, LayoutCx, TextMeasure};
 use lumen_static::desc::NodeState;
 use lumen_static::display::{Cmd, Color, DisplayList, Renderer};
 use lumen_static::event::App;
-use lumen_static::invalidate::{Everything, Invalidation};
+use lumen_static::invalidate::Invalidation;
 use lumen_static::retain::{Damage, Incremental, Retention};
 use lumen_static::style::{Rule, Style};
 use lumen_static::widget::{Node, Widget};
@@ -50,7 +50,7 @@ pub struct Divergence {
 
 /// A running application: the tree, its parallel arrays, the one input
 /// queue, and the frame's display list.
-pub struct Host<A: App, R: Retention = Incremental, I: Invalidation = Everything> {
+pub struct Host<A: App, R: Retention = Incremental, I: Invalidation = lumen_static::Boundaries<256>> {
     pub app: A,
     /// Results produced off the frame loop — M28/T28.2.
     ///
@@ -156,8 +156,11 @@ pub struct Host<A: App, R: Retention = Incremental, I: Invalidation = Everything
     /// A second type parameter beside `R`, and for the same reason:
     /// `Everything` is the whole-tree walk *and* the oracle a bounded
     /// walk is checked against, so both must be constructible in one
-    /// binary. It defaults to `Everything`, so `Host<A>` is the code
-    /// this crate shipped before T16.7.
+    /// binary. It defaults to `Boundaries<256>` since M34/T34.2 — the
+    /// same type the window ships (`lumen_static_winit::Inval`) — so a
+    /// headless `Host<A>` and a window draw with one strategy. It was
+    /// `Everything` until then, and every headless test ran the
+    /// strategy no user did.
     invalidation: I,
     /// Whether an arena still owes the cascade a pass.
     ///

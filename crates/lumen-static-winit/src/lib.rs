@@ -236,12 +236,20 @@ impl Default for Config {
 /// from the front door; the stylesheet, `Config::images`,
 /// `Config::agent` and the overlay sink were the first four.
 ///
+/// **`Boundaries` by default since M34/T34.2.** The evidence the flip
+/// waited for is `docs/plan-boundaries-default.md` T34.0–T34.1: every
+/// gate that runs a window now runs both strategies, the oracle runs at
+/// this exact type, and a shadow oracle compared a live showcase session
+/// without a divergence. The `everything` feature selects the whole-tree
+/// walk instead — **a diagnostic**: if a stale frame goes away when you
+/// build with it, you have found an invalidation defect.
+///
 /// 256 marks because `Boundaries<N>` stores ranges, not nodes, and M26/
 /// T26.5 fixed it wrapping its length at exactly that count.
-#[cfg(not(feature = "boundaries"))]
-pub type Inval = lumen_static::Everything;
-#[cfg(feature = "boundaries")]
+#[cfg(not(feature = "everything"))]
 pub type Inval = lumen_static::Boundaries<256>;
+#[cfg(feature = "everything")]
+pub type Inval = lumen_static::Everything;
 
 /// The retention this crate's windows use. Named so `Host<A, Ret, Inval>`
 /// reads the same at every site.

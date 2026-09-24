@@ -1729,4 +1729,75 @@ mod tests {
     }
 }
 
+/// **What the flip to `Boundaries` buys, by frame class** — M34/T34.2
+/// (`docs/plan-boundaries-default.md`). Ignored: it is a measurement,
+/// not a gate. `cargo test --release -p showcase measure_the_flip --
+/// --ignored --nocapture`; eight runs a side, the median frame of each.
+#[cfg(test)]
+mod flip {
+    use super::*;
+    use lumen_static::invalidate::{Boundaries, Everything, Invalidation};
+    use lumen_static::retain::Incremental;
+    use lumen_static_shell::text::{FontMetrics, FontStack};
+    use lumen_static_shell::Host;
 
+    const RUNS: usize = 8;
+    const ITERS: usize = 40;
+
+    fn run<I: Invalidation>(entry: &str, class: &str, m: &mut FontMetrics) -> f64 {
+        let e = CATALOG.iter().position(|x| x.name == entry).unwrap();
+        let mut h: Host<Show, Incremental, I> = program(e, false).host();
+        for _ in 0..3 {
+            h.pump_with(m);
+        }
+        let table = <Screen as lumen_static::Widget>::SUB_TABLE;
+        let at = |h: &Host<Show, Incremental, I>, wid: &str| {
+            let i = lumen_static::style::index_of_wid(table, wid).unwrap();
+            let s = h.states[i];
+            (s.pos.x + s.size.w / 2.0, s.pos.y + s.size.h / 2.0)
+        };
+        let mut v = Vec::new();
+        for k in 0..ITERS {
+            match class {
+                "idle" => {}
+                "hover" => {
+                    let (x, y) = at(&h, if k % 2 == 0 { "d_button_a" } else { "d_button_b" });
+                    h.post(lumen_static::Event::PointerMove { x, y });
+                }
+                "press" => {
+                    let (x, y) = at(&h, "d_button_a");
+                    h.post(if k % 2 == 0 { lumen_static::Event::down(x, y) } else { lumen_static::Event::up(x + 400.0, y + 400.0) });
+                }
+                "tick" => {
+                    h.tick(16.0);
+                }
+                "click" => {
+                    let (x, y) = at(&h, "d_button_a");
+                    h.click(x, y);
+                }
+                _ => unreachable!(),
+            }
+            h.pump_with(m);
+            let (l, p, pa) = h.timings3();
+            v.push((l + p + pa) as f64 / 1000.0);
+        }
+        v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        v[v.len() / 2]
+    }
+
+    #[test]
+    #[ignore]
+    fn measure_the_flip() {
+        let Some(face) = FontStack::system() else { return };
+        let mut m = FontMetrics::new(face);
+        println!("{:<8} {:<13} {:>30} {:>30}", "class", "entry", "Everything µs (8 runs)", "Boundaries<256> µs");
+        for (class, entry) in [("idle", "Button"), ("hover", "Button"), ("press", "Button"), ("tick", "ProgressBar"), ("click", "Button")] {
+            let mut e: Vec<f64> = (0..RUNS).map(|_| run::<Everything>(entry, class, &mut m)).collect();
+            let mut b: Vec<f64> = (0..RUNS).map(|_| run::<Boundaries<256>>(entry, class, &mut m)).collect();
+            e.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            b.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            let f = |v: &[f64]| format!("{:.2}-{:.2}", v[0], v[v.len() - 1]);
+            println!("{class:<8} {entry:<13} {:>30} {:>30}", f(&e), f(&b));
+        }
+    }
+}

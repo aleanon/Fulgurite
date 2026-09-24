@@ -19,4 +19,4 @@ lumen-static-winit = { path = "../../crates/lumen-static-winit", features = ["ag
 # COMPILE-TIME choice in lumen-static-winit, not a runtime one.
 [features]
 default = []
-boundaries = ["lumen-static-winit/boundaries"]
+everything = ["lumen-static-winit/everything"]

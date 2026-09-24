@@ -2,7 +2,7 @@
 //! pump, in order, exactly once.**
 //!
 //! On `Boundaries<16>`, because a result that changes state must *mark*
-//! it. Under the default `Everything` the tree is walked regardless, so
+//! it. Under `Everything` (the default until M34) the tree is walked regardless, so
 //! an `apply` that wrote state and marked nothing would look correct —
 //! the shape M25/T25.0 and M26/T26.1 both were.
 //!

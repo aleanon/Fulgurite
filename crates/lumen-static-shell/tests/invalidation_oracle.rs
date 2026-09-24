@@ -355,10 +355,10 @@ fn the_skip_actually_fires_and_this_is_what_it_costs() {
     //
     //   **mutate without invalidating and you get a stale frame.**
     //
-    // That is why `Everything` is the default and `Boundaries` is
-    // opt-in, and why a handler running marks everything: the only
-    // mutations `Boundaries` can be trusted with are the ones something
-    // told it about.
+    // That is why `Boundaries` was opt-in until M34/T34.2 made it the
+    // default on evidence, and why an unsplit handler running marks
+    // everything: the only mutations `Boundaries` can be trusted with are
+    // the ones something told it about.
     let mut bounded: Host<Counter, lumen_static::Incremental, Boundaries<16>> =
         Host::new(app(), 300, 220);
     bounded.set_stylesheet(&sheet());

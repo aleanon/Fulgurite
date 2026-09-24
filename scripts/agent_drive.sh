@@ -148,6 +148,6 @@ kill $pid 2>/dev/null || true
 wait $pid 2>/dev/null || true
 }
 
-run_one Everything agent
-run_one Boundaries agent,boundaries,shadow-oracle
+run_one Everything agent,everything
+run_one Boundaries agent,shadow-oracle
 echo "agent-drive: both strategies"

@@ -22,7 +22,7 @@ agent = ["lumen-static-winit/agent", "lumen-static-widgets/observe"]
 # `just widget-drive` runs every drive script against both, because M26
 # found four of its five defects invisible under the default -- a clean
 # subtree is skipped before a wrong answer can be observed.
-boundaries = ["lumen-static-winit/boundaries"]
+everything = ["lumen-static-winit/everything"]
 shadow-oracle = ["lumen-static-winit/shadow-oracle"]
 
 [dev-dependencies]
