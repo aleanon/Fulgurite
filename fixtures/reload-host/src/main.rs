@@ -151,6 +151,12 @@ fn main() {
     // The same bytes again change nothing, so nothing swaps.
     r.outcome(Outcome::Built(std::path::PathBuf::from(&args[1])));
     assert!(r.pending().is_none(), "an unchanged library was queued to swap");
+    // A failure, then the source fixed back to what last built: the
+    // rebuilt library is byte-identical to the running one, so nothing
+    // swaps -- but the failure must not stay on screen.
+    r.outcome(Outcome::Failed { log: "error: expected `;`".into(), output: std::path::PathBuf::from(&args[1]) });
+    r.outcome(Outcome::Built(std::path::PathBuf::from(&args[1])));
+    assert!(r.pending().is_none() && r.error.is_none(), "a fixed build left the error up: {:?}", r.error);
     println!("  ok: a failed build kept v1; the good one swapped; an unchanged one did not");
 
     // ---- T37.3: kept state whose type changed -------------------------

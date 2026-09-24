@@ -1,0 +1,24 @@
+[package]
+name = "hot-window"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+# M37/T37.4: a window that reloads itself. `scripts/hot_window_drive.sh`
+# copies this crate into a workspace of its own under target/, runs it
+# with `--features hot,agent`, and edits the COPY's source with `sed` --
+# never this checked-in one. Its library is `program()` behind
+# `export_program!`; its binary is `program().run()`.
+
+[features]
+hot = ["lumen-static-winit/hot"]
+agent = ["lumen-static-winit/agent", "lumen-static-widgets/observe"]
+
+[dependencies]
+lumen-static = { path = "../../crates/lumen-static", features = ["reload"] }
+lumen-static-widgets = { path = "../../crates/lumen-static-widgets", features = ["reload"] }
+lumen-static-shell = { path = "../../crates/lumen-static-shell", features = ["truetype", "reload"] }
+lumen-static-reload = { path = "../../crates/lumen-static-reload", features = ["window"] }
+lumen-static-winit = { path = "../../crates/lumen-static-winit" }
+serde = { version = "1", features = ["derive"] }

@@ -1316,6 +1316,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "hot-window"
+version = "0.1.0"
+dependencies = [
+ "lumen-static",
+ "lumen-static-reload",
+ "lumen-static-shell",
+ "lumen-static-widgets",
+ "lumen-static-winit",
+ "serde",
+]
+
+[[package]]
 name = "indexmap"
 version = "2.14.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

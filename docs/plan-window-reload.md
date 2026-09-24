@@ -322,6 +322,34 @@ A drive script against a real window built with `--features reload`:
   and the script fails at the build-failure step, which it runs between
   steps 4 and 6.
 
+> **DONE 2026-09-24.** `just hot-window-drive` runs every step above
+> against a live window. `fixtures/hot-window` is **copied** into a
+> workspace of its own under `target/hot-live`, and its copy is edited,
+> never the checked-in source. The failed-build step comes between 5
+> and 6. It checks four things: the error names E0308, the label still
+> reads `clicks: 2`, a click still counts under the last good build, and
+> the bar is on screen. Fixing the source back is byte-identical to what
+> is running, so it must clear the bar **without** a swap. Latency and
+> memory are in `docs/step4-hot-reload.md` (T37.4).
+>
+> **Two defects, found by driving it.** First, fixing a failed build
+> back to the running source left the error up forever. The rebuilt
+> library hashed equal to the running one, so the outcome returned
+> before clearing anything. The hash is now recorded on a successful
+> swap, not on queueing, and a matching build clears the error. Second,
+> **the bar outlived its fix**: its pixels were the window's, never in
+> the session's damage, so nothing repainted where it had been. That
+> held in every older swapchain buffer too, so the window now calls
+> `Session::repaint_all` (`Host::repaint_all`, through the retained
+> history) on the frame the bar goes away. *Injection:* without that
+> call, the bar pixel still reads (101, 30, 33) after 2 s of polling.
+>
+> *The plan's injections:* skipping the restore gives `clicks: 0` at
+> step 5. Swapping on a failed build first surfaced as a ten-minute
+> **timeout**, because the swap cleared the error the drive was waiting
+> for. The wait now stops on any swap too, and the injection fails fast
+> and by name: "a failed build swapped: reloads 3".
+
 ## T37.5 — the docs and the book
 
 `docs/step4-hot-reload.md` gains the windowed architecture and §1's

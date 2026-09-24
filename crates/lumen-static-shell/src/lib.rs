@@ -377,6 +377,15 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
     #[cfg(panic = "unwind")]
     pub fn show(&mut self, list: DisplayList) {
         self.list = list;
+        self.repaint_all();
+    }
+
+    /// **The surface holds pixels this host did not draw**: repaint all
+    /// of it, in every buffer the swapchain still has. Through the
+    /// retained history rather than as one frame's full damage, because
+    /// a buffer two presents old holds the foreign pixels too — M37/T37.4,
+    /// where a reload's error bar outlived its fix on the older buffers.
+    pub fn repaint_all(&mut self) {
         self.retain.reset();
         self.last_damage = Damage::All;
     }

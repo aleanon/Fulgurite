@@ -314,6 +314,7 @@ fn start(session: Box<dyn Session>, config: Config, hot: Option<std::path::PathB
                     waker,
                     metrics: win.font.clone().map(FontMetrics::new),
                     _watcher: watcher,
+                    bar_shown: false,
                 });
             }
             Err(e) => eprintln!("lumen-static: no hot reload: {e}"),
@@ -483,6 +484,17 @@ impl Win {
             }
             None => None,
         };
+        // **The bar is the window's pixels, not the session's**: on the
+        // frame it goes away the session must repaint everything, in every
+        // buffer, or the bar outlives its fix wherever the session's own
+        // damage does not reach (found by `just hot-window-drive`).
+        #[cfg(feature = "hot")]
+        if let Some(hot) = self.hot.as_mut() {
+            if barred.is_none() && hot.bar_shown {
+                self.session.repaint_all();
+            }
+            hot.bar_shown = barred.is_some();
+        }
         #[cfg(feature = "hot")]
         match barred {
             Some(mut b) => backend.present(&mut b, self.config.page, start),
@@ -997,6 +1009,8 @@ pub mod hot {
         pub waker: std::sync::Arc<dyn lumen_static::inbox::Waker>,
         pub metrics: Option<FontMetrics>,
         pub _watcher: Option<notify::RecommendedWatcher>,
+        /// Whether the last frame drew the bar.
+        pub bar_shown: bool,
     }
 
     /// The session's frame with the error bar drawn over its foot — the

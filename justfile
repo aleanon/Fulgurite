@@ -412,6 +412,13 @@ abi-stamp:
 window-reload-demo:
     ./scripts/window_reload_demo.sh
 
+# M37/T37.4: a live window that reloads itself -- edits a COPY of
+# fixtures/hot-window with sed and drives it over the agent: new text with
+# the old count, a failed build kept out, a panic shown and cleared by the
+# next swap. Needs a display.
+hot-window-drive:
+    ./scripts/hot_window_drive.sh
+
 # The tally window with the agent endpoint on 127.0.0.1:9230 (override with
 # LUMEN_AGENT_ADDR). Drive it with scripts/agent_client.py — see
 # .claude/skills/verifying-apps/SKILL.md, rung 4.

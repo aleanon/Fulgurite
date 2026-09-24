@@ -588,11 +588,13 @@ pub mod hot {
     /// [`error`]: Reloader::error
     #[derive(Debug, Default)]
     pub struct Reloader {
-        /// The content hash of the last library accepted, so a build that
-        /// changed nothing does not swap.
+        /// The content hash of the library **running**, so a build that
+        /// changed nothing does not swap. Set by a successful swap, not by
+        /// queueing one: a library that was refused or panicked while
+        /// booting is retried when it is built again.
         hash: Option<u64>,
         copies: u32,
-        pending: Option<PathBuf>,
+        pending: Option<(PathBuf, u64)>,
         /// Why the last build or swap did not take: the compiler's log, a
         /// stamp refusal, a boot's panic. Cleared by a successful swap.
         pub error: Option<String>,
@@ -622,7 +624,7 @@ pub mod hot {
 
         /// A library waiting for the next frame boundary.
         pub fn pending(&self) -> Option<&Path> {
-            self.pending.as_deref()
+            self.pending.as_ref().map(|(p, _)| p.as_path())
         }
 
         /// Take a build's outcome. A success whose bytes differ from the
@@ -642,6 +644,12 @@ pub mod hot {
                     };
                     let h = hash(&bytes);
                     if self.hash == Some(h) {
+                        // The build succeeded and is what is running: an
+                        // earlier failure no longer describes anything —
+                        // the ordinary case of fixing a typo back to the
+                        // source that last built.
+                        self.error = None;
+                        self.pending = None;
                         return;
                     }
                     self.copies += 1;
@@ -652,8 +660,7 @@ pub mod hot {
                         self.error = Some(format!("{}: {e}", copy.display()));
                         return;
                     }
-                    self.hash = Some(h);
-                    self.pending = Some(copy);
+                    self.pending = Some((copy, h));
                 }
                 Outcome::Failed { log, .. } => {
                     self.error = Some(log);
@@ -670,7 +677,7 @@ pub mod hot {
         /// so a refused or panicking build leaves the old one running —
         /// rule 2. Both libraries stay loaded either way (§2.5).
         pub fn swap(&mut self, current: &mut Box<dyn Session>, adopt: impl FnOnce(&mut dyn Session)) -> bool {
-            let Some(path) = self.pending.take() else { return false };
+            let Some((path, h)) = self.pending.take() else { return false };
             let build = match Build::open(&path) {
                 Ok(b) => b,
                 Err(e) => {
@@ -685,6 +692,7 @@ pub mod hot {
                     adopt(&mut *next);
                     let log = next.take_restore_log();
                     *current = next;
+                    self.hash = Some(h);
                     self.reloads += 1;
                     self.error = None;
                     self.warning = (!log.is_empty()).then_some(log);
@@ -799,6 +807,9 @@ pub mod hot {
         }
         fn take_restore_log(&mut self) -> String {
             self.m().take_restore_log()
+        }
+        fn repaint_all(&mut self) {
+            self.m().repaint_all()
         }
     }
 }

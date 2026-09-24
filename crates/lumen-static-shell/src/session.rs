@@ -132,6 +132,10 @@ pub trait Session: FrameSource {
     /// line per field that fell back to its boot value, naming it and why
     /// (M37/T37.3, `docs/plan-window-reload.md` §2.4). Drained.
     fn take_restore_log(&mut self) -> String;
+    /// The surface holds pixels this session did not draw — a window's
+    /// own overlay, now gone: repaint all of it, in every buffer
+    /// (`Host::repaint_all`).
+    fn repaint_all(&mut self);
 }
 
 /// Whether this session catches panics in application code — the
@@ -438,6 +442,10 @@ impl<A: App + 'static> Session for Local<A> {
 
     fn take_restore_log(&mut self) -> String {
         std::mem::take(&mut self.restore_log)
+    }
+
+    fn repaint_all(&mut self) {
+        self.host.repaint_all();
     }
 }
 

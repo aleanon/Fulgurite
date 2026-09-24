@@ -216,6 +216,27 @@ listed sizes moves even though every widget's vtable does. The stamp
 cannot see a `#[global_allocator]`. A hot library must not set one,
 because values are allocated on one side and freed on the other.
 
+## Reloading inside a window: latency and memory (M37/T37.4)
+
+`just hot-window-drive` (`scripts/hot_window_drive.sh`) runs the live
+window on 2026-09-24. It is `fixtures/hot-window` built `--release
+--features hot,agent`, in a copy of the crate that the drive edits with
+its own writes. Plan rule 4 says the window must be measured before it
+is called usable:
+
+| quantity | measured | how |
+|---|---|---|
+| edit to swapped frame | **0.46–0.64 s** per reload (three reloads: a format edit, a panic introduced, the fix) | wall clock from the file write to `app.reloads` counting the swap, polled every 0.2 s, so up to 0.2 s of it is the poll |
+| resident memory per reload | **+13.2 MB** (62,624 → 102,320 kB over three reloads) | `VmRSS` before the first edit and after the last |
+
+The latency is almost all `cargo rustc` of one crate, incremental, into
+`target/reload`. The swap itself is a boot of the new program plus a
+restore. **The memory is not attributed.** Two things grow on every
+reload: the libraries are never unloaded (§2.5), and each new session
+loads the system face for its own text measurement. Neither has been
+measured apart from the other, and splitting the figure is the first
+step if it ever matters.
+
 ## How a descriptor crosses (M28/T28.7)
 
 Deferred work in flight across a swap is the case item 1 above warns
