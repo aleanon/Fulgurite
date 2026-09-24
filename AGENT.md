@@ -527,8 +527,26 @@ found" section rather than silently replacing itself.
   failed builds are shown over the running application, and a
   successful swap clears M36's screen. v1 never unloads a library.
 
-- **M56 — `docs/plan-showcase-design.md`** (T56.0–T56.5), queued
-  2026-09-24, not started. The showcase gets a component-gallery layout:
+- ~~**M56 — `docs/plan-showcase-design.md`**~~ — **DONE 2026-09-25**
+  on branch `m56-showcase-design`, all six tasks. It built what was
+  asked, and building it found **three framework defects no test had
+  seen**, each fixed with its own gate:
+  - a `Fixed` container laid its content out across its *offer* (two
+    halves of 250 px inside a 100 px box);
+  - a scrolled `Repeat` asked the wrong row for its handler (10 of 11
+    rows);
+  - `ui.lastDamage` counted nodes that draw nothing (7.47x on a 1.00x
+    frame).
+  All three were latent until a layout changed what containers were
+  offered. **Two tests had been passing on the chrome**: a "draws only
+  text" check credited RichText and PullToRefresh with the header's
+  hairline. The contrast gate's first run found three AA failures that
+  looked fine by eye, and the visual review found four demos illegible
+  in dark mode **before** M56 too. One attribution was corrected before
+  it left the machine: a sidebar click was being eaten by an open
+  popup's dismissal, not by the `Repeat` defect found while chasing it.
+  (T56.0–T56.5), queued
+  2026-09-24. The showcase gets a component-gallery layout:
   a grouped sidebar replaces the dropdown picker, the demo sits on a
   canvas card, the readout becomes a status chip, and the chrome follows
   4/8 px spacing and a 12/14/16/24 type scale. **The explanatory note

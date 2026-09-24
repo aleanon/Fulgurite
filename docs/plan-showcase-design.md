@@ -1,6 +1,12 @@
 # M56 — the widget showcase, redesigned
 
-> **Written 2026-09-24, not started.** Asked for on 2026-09-24: a more
+> **DONE 2026-09-25, T56.0–T56.5**, on branch `m56-showcase-design`.
+> Building it also found three framework defects, each fixed in its own
+> commit with its own gate: a `Fixed` container laid its content out
+> across its offer, a scrolled `Repeat` asked the wrong row for its
+> handler, and `ui.lastDamage` counted nodes that draw nothing.
+>
+> **Written 2026-09-24.** Asked for on 2026-09-24: a more
 > modern design that follows good design practice, and without the
 > explanatory note under each widget. Two decisions came from the ask:
 > keep the one-line blurb as the page subtitle, and replace the dropdown
@@ -366,6 +372,12 @@ sidebar row is a new hover target, so the oracle is the check that
 hover marks stay precise.
 
 ### T56.5 — docs
+
+> **DONE 2026-09-25.** `docs/plan-widgets-gallery.md` §3 carries a
+> superseded note: the layout is M56's, and its one-of-N reasoning
+> stands. `book/src/styling.md` cites the contrast gate beside the role
+> test. `book/src/agent.md`'s showcase passage (duplicate ids) is still
+> true and is unchanged. AGENT.md marks the milestone done.
 
 - Rewrite `docs/plan-widgets-gallery.md` §3 for the new layout.
 - `docs/plan-showcase-design.md` is written first, as T56.0's commit,

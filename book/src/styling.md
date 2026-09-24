@@ -148,7 +148,10 @@ that paints no background is reported like a `background` would be.
 
 `examples/showcase` is written this way: `LUMEN_PALETTE=dark just
 showcase` starts it dark, and its `every_role_rule_follows_the_palette`
-test checks every field a role decides against both palettes. What a role
+test checks every field a role decides against both palettes;
+`chrome_text_meets_contrast` checks that every text colour its chrome
+paints reads on its ground at WCAG AA in both
+(`docs/plan-showcase-design.md` T56.3). What a role
 cannot reach is a colour a widget keeps as its own field — a toggle's
 `mark`, a text field's `caret_color` — and a pressed look that is more
 than a shade; `docs/plan-appearance.md` T25.10 and T25.11 record why

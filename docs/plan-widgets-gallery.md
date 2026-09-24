@@ -84,6 +84,13 @@ Three decisions inside them worth keeping:
 `examples/showcase`: a picker at the top, the chosen widget centred on a
 stage, a live readout for the ones that carry state.
 
+> **Layout superseded by M56 (2026-09-25)**, `docs/plan-showcase-design.md`.
+> A grouped sidebar replaced the picker, the stage is a card, the readout
+> is a chip that is absent when a demo carries no state, and the note
+> that used to follow each widget is gone. `Select` is a demo of its
+> own now. The one-of-N reasoning below still holds; the stage is the
+> `Demo` enum that replaced the `Dyn` hatch in M24/T24.3.
+
 **"One of N" is the interesting problem in a static tree**, and the
 showcase got it wrong first. Three candidates:
 
