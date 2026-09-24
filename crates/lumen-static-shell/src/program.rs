@@ -166,6 +166,9 @@ pub struct Program<A: App> {
     /// Where to serve the agent endpoint, when the window crate was
     /// built with its `agent` feature. Inert otherwise.
     pub agent: Option<String>,
+    /// The application's source directory, from `application`'s caller —
+    /// M36: a panic report's application frame is found under it.
+    source_root: Option<&'static str>,
 }
 
 /// Start describing a program from the function that builds it.
@@ -175,13 +178,19 @@ pub struct Program<A: App> {
 /// application(|| build(14.0))            // a closure
 /// application(move || build(start, false)) // …which may capture
 /// ```
+#[track_caller]
 pub fn application<A, F, C>(boot: F) -> Program<A>
 where
     A: App,
     F: Fn() -> C + 'static,
     C: IntoBoot<A>,
 {
+    // The caller's file, as the compiler spelled it (`fixtures/x/src/
+    // main.rs`): the crate's directory is everything before `/src/`.
+    let file = std::panic::Location::caller().file();
+    let source_root = file.find("/src/").map(|i| &file[..i]);
     Program {
+        source_root,
         boot: Box::new(move || boot().into_boot()),
         title: Box::new("lumen-static"),
         sheet: None,
@@ -258,6 +267,9 @@ impl<A: App> Program<A> {
         host.set_palette(self.palette);
         if let Some(sheet) = &self.sheet {
             host.set_sheet_source(Rc::clone(sheet));
+        }
+        if let Some(root) = self.source_root {
+            host.set_source_root(root);
         }
         for job in jobs {
             host.hold_until_spawner(job);

@@ -113,6 +113,12 @@ fn echo(d: Descriptor, tx: &lumen_static::inbox::Sender<u8>) {
     let _ = tx.send(d.payload as u8);
 }
 
+/// A job that panics — trigger 8. M28's spawner catches it as
+/// `Failure::Panicked`; the frame guard must not report it (M36/T36.1).
+fn bad_job(_: Descriptor, _: &lumen_static::inbox::Sender<u8>) {
+    panic!("a job's panic, which the spawner owns");
+}
+
 fn on_go(s: &mut Fx, _: &EventCtx) {
     s.clicks += 1;
     if s.armed == 1 {
@@ -120,6 +126,9 @@ fn on_go(s: &mut Fx, _: &EventCtx) {
     }
     if s.armed == 2 {
         s.outbox.push(Descriptor::new(1, 2));
+    }
+    if s.armed == 8 {
+        s.outbox.push(Descriptor::new(8, 0));
     }
     if s.armed == 7 {
         // An index the framework trusts the caller about: the panic is
@@ -144,8 +153,8 @@ impl App for Fx {
     fn outbox(&mut self) -> Option<&mut lumen_static::spawn::Outbox> {
         Some(&mut self.outbox)
     }
-    fn job_for(_: Descriptor) -> Option<JobFn<u8>> {
-        Some(echo)
+    fn job_for(d: Descriptor) -> Option<JobFn<u8>> {
+        Some(if d.kind == 8 { bad_job } else { echo })
     }
     fn apply(this: &mut Self, m: u8) -> bool {
         if m == 2 && this.armed == 2 {

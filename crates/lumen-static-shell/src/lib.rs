@@ -22,6 +22,9 @@ use lumen_static::{pass, Constraints, Event, Point};
 pub mod golden;
 /// M32: `application(boot)` — the program described once.
 pub mod program;
+/// M36: a panic's report, and the host's recovery from it.
+#[cfg(panic = "unwind")]
+pub mod recover;
 pub mod software;
 pub mod svg;
 #[cfg(feature = "truetype")]
@@ -207,6 +210,12 @@ pub struct Host<A: App, R: Retention = Incremental, I: Invalidation = lumen_stat
     last_arenas_owed: bool,
     #[cfg(feature = "shadow-oracle")]
     shadow: Shadow,
+    /// The panic the last guarded entry caught, until `retry` — M36.
+    #[cfg(panic = "unwind")]
+    failure: Option<recover::PanicReport>,
+    /// The application's source directory, for the report's application
+    /// frame — M36. `application(..)` records it; a test sets it.
+    source_root: Option<&'static str>,
     /// Jobs a boot function returned before any spawner existed. Started
     /// by [`Host::set_spawner`]; see [`Host::hold_until_spawner`].
     held: Vec<lumen_static::spawn::Job<A::Msg>>,
@@ -316,6 +325,84 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         self.shadow
     }
 
+    /// Where the application's source lives, relative to where it was
+    /// built — `fixtures/panic-app` — so a panic report can name the
+    /// application's own line when the panic is inside the framework.
+    /// Recorded by `program::application` from its caller; M36.
+    pub fn set_source_root(&mut self, root: &'static str) {
+        self.source_root = Some(root);
+    }
+
+    /// **Run `f` guarded** — M36/T36.1 (`docs/plan-panic-recovery.md`).
+    ///
+    /// A panic inside `f` — a handler, `apply`, a binding, a widget's
+    /// `layout` or `paint`, `tick` — is caught, reported and recovered
+    /// from: the host's own invariants are restored and the report is
+    /// kept until [`Host::retry`]. `None` when it panicked. **While a
+    /// failure is kept, `f` is not run at all**: running it would be an
+    /// automatic retry, and a panic in `layout` would then spin.
+    #[cfg(panic = "unwind")]
+    pub fn guard<T>(&mut self, f: impl FnOnce(&mut Self) -> T) -> Option<T> {
+        if self.failure.is_some() {
+            return None;
+        }
+        recover::install();
+        recover::clear();
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(&mut *self))) {
+            Ok(t) => Some(t),
+            Err(payload) => {
+                let report = recover::report(&*payload, self.source_root);
+                self.recover_from_panic();
+                self.failure = Some(report);
+                None
+            }
+        }
+    }
+
+    /// The panic the last guarded entry caught, if it has not been
+    /// retried — M36.
+    #[cfg(panic = "unwind")]
+    pub fn failure(&self) -> Option<&recover::PanicReport> {
+        self.failure.as_ref()
+    }
+
+    /// Clear the failure, so the next guarded entry runs again — M36.
+    /// The host was reset when the panic was caught; the application's
+    /// own state is as the panic left it (plan §2.2: no rollback).
+    #[cfg(panic = "unwind")]
+    pub fn retry(&mut self) {
+        self.failure = None;
+    }
+
+    /// Restore what a mid-frame panic can leave inconsistent — M36 §2.2.
+    ///
+    /// The display list, the overlays and the retained journal were
+    /// possibly half-built, so the next frame is full damage. The marks
+    /// may be partial, so everything is marked. Pointer state that
+    /// dispatch latched before the panic — capture, the pressed and
+    /// hovered node — is released, or a retried frame keeps a hover shade
+    /// nothing will clear. Events queued behind the one that panicked
+    /// were produced against a frame that never finished, and are
+    /// dropped. Focus is kept.
+    #[cfg(panic = "unwind")]
+    fn recover_from_panic(&mut self) {
+        self.list.clear();
+        self.overlays = Default::default();
+        self.retain.reset();
+        self.last_damage = Damage::All;
+        self.invalidation.mark_all();
+        self.arenas_dirty = true;
+        self.input.capture = None;
+        self.input.pressed = None;
+        self.input.hovered = None;
+        self.input.swallow_release = false;
+        for n in self.states.iter_mut() {
+            n.pressed = false;
+            n.hovered = false;
+        }
+        while self.queue.pop().is_some() {}
+    }
+
     /// Jobs held for a spawner that has not been installed yet.
     pub fn held_jobs(&self) -> usize {
         self.held.len()
@@ -405,6 +492,9 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             last_arenas_owed: false,
             #[cfg(feature = "shadow-oracle")]
             shadow: Shadow::default(),
+            #[cfg(panic = "unwind")]
+            failure: None,
+            source_root: None,
         }
     }
 

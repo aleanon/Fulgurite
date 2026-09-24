@@ -216,6 +216,34 @@ just declared.
 
 ## T36.1 — capture and host recovery, headless
 
+> **DONE 2026-09-24.** `lumen_static_shell::recover` (the recording hook,
+> `PanicReport`) and `Host::{guard, failure, retry, set_source_root}`;
+> `program::application` is `#[track_caller]` and hands the host its
+> caller's source directory. Gates in `fixtures/panic-app/tests`:
+> `recover.rs` — all seven sites caught at their marker lines, site 7's
+> application frame at the fixture's calling line (`lib.rs:136`) though
+> the panic is in `style.rs`, no pointer state left, every retried frame
+> full damage and byte-identical to a never-armed host after the same
+> pointer move; events queued behind a trigger dropped; a job's panic not
+> reported. `hook_replaced.rs` — a replaced hook reported as replaced,
+> not as the stale job record. *Injections, each firing:* hook not
+> installed, `retain` not reset, hover not released, queue not drained,
+> record not cleared at entry.
+>
+> **Three findings from building it.** (1) **The shell is built with
+> `debug-assertions = false` in dev** (the workspace profile, for speed),
+> so a `cfg(debug_assertions)` in the shell was false in every debug
+> build: the recovery the plan scoped to debug builds was absent from all
+> of them. The shell now compiles recovery wherever panics unwind, and the
+> *window crate*, which is built with debug assertions, decides when to
+> use it (T36.3). (2) **The backtrace prints paths relative to the
+> current directory** (`./src/lib.rs`, from a test), so the application
+> frame was never found until relative paths were resolved first.
+> (3) **The first damage assertion was vacuous**: `take_damage_for_age`
+> accumulates what nobody took, so the retry frame read `All` with the
+> `retain` reset removed. It now takes the damage before the retry.
+
+
 §2.1 and §2.2 in `lumen-static-shell`. The core crate is untouched, and
 it keeps no `unsafe` (`AssertUnwindSafe` is a safe wrapper).
 
