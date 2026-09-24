@@ -1077,7 +1077,19 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             }
             _ => 0,
         };
-        self.app.tick(dt_ms) || fired > 0
+        // **A tick that advanced and changed something marks the tree** —
+        // M34/T34.0. `App::tick` takes `&mut self` and may write any
+        // widget (showcase's writes the readout and reseeds the stage),
+        // and it reports a `bool`, not ranges. Until this, nothing marked
+        // it, so under `Boundaries` a tick-written label kept its old box
+        // (`tests/tick_marks.rs`). A zero `dt` is a pure query by
+        // `App::tick`'s contract and changes nothing, so it marks nothing.
+        let ticked = self.app.tick(dt_ms);
+        if ticked && dt_ms > 0.0 {
+            self.invalidation.mark_all();
+            self.arenas_dirty = true;
+        }
+        ticked || fired > 0
     }
 
     /// How long until this host's soonest timer is due, in milliseconds

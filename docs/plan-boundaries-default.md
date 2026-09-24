@@ -69,6 +69,27 @@ commit subjects. Every gate names the injection that must turn it red.*
 
 ## T34.0 — the inventory, and running what has only run one way
 
+> **DONE 2026-09-24.** The inventory, and what running it found:
+>
+> | gate | strategy before | now |
+> |---|---|---|
+> | `tests/invalidation_oracle.rs` | `Everything` vs `Boundaries<16>` | **and `<256>`, the shipped type** |
+> | `tests/bind_marks.rs`, `conservative_marks.rs`, `handled_narrowing.rs` (M29) | both, by construction | both |
+> | `scripts/widget_drive.sh`, `scripts/tasks_drive.sh` | both | both |
+> | `scripts/agent_drive.sh` | **`Everything` only** | **both** |
+> | `tests/golden.rs`, `fixtures/hot-host`, GPU parity | strategy-free (no `Host`, or a first frame after a resize, which marks everything) | recorded, not converted |
+> | every example's headless frame, `counter-window --drive`, every test that names `Host<A>` | `Host`'s default, `Everything` | follow the flip (T34.2) |
+>
+> **One defect, found by asking the question M33 §2.3 left open:**
+> `Host::tick` marked nothing, and `App::tick` may write any widget —
+> showcase's writes its readout and reseeds the stage. Under
+> `Boundaries` a tick-written label kept its old box: the first tick
+> already differed from the whole-tree frame
+> (`crates/lumen-static-shell/tests/tick_marks.rs`, which failed before
+> the fix). An advancing tick that reports a change now marks
+> everything; a zero-`dt` query, by `App::tick`'s contract, marks
+> nothing.
+
 Write the inventory as a table in this plan, with gate, strategy and
 whether it can exercise one. Then:
 

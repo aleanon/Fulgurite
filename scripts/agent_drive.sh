@@ -25,11 +25,18 @@ if [ -z "${DISPLAY:-}" ]; then
     exit 0
 fi
 
+# **Both invalidation strategies** — M34/T34.0. This drive ran under
+# `Everything` only (the window's default until M34), so it said nothing
+# about the frames a `Boundaries` window draws; the other drive scripts
+# already ran both legs. The body is not indented: its heredoc's
+# terminator must start the line.
+run_one() {
 PORT="${LUMEN_AGENT_PORT:-7655}"
-cargo build --release -p showcase --features agent
+cargo build --release -p showcase --features "$2"
 RUST_BACKTRACE=1 LUMEN_AGENT="127.0.0.1:$PORT" ./target/release/showcase >/tmp/agent_drive.log 2>&1 &
 pid=$!
 trap 'kill $pid 2>/dev/null || true' EXIT
+echo "== $1 =="
 sleep 4
 
 python3 - "$PORT" <<'PY'
@@ -129,3 +136,10 @@ for name in ("dark", "light"):
 print(f"agent-drive: {before.split()[0]} -> {after.split()[0]}, "
       f"menu {int(box[2]-box[0])}x{int(box[3]-box[1])} px, press observable")
 PY
+kill $pid 2>/dev/null || true
+wait $pid 2>/dev/null || true
+}
+
+run_one Everything agent
+run_one Boundaries agent,boundaries
+echo "agent-drive: both strategies"

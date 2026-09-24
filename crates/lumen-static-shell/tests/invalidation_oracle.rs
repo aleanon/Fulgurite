@@ -240,11 +240,12 @@ fn drive<I: Invalidation>() -> Vec<(Vec<NodeState>, u64, usize)> {
 
 #[test]
 fn a_bounded_walk_produces_the_same_frames_as_the_whole_tree_walk() {
-    let oracle = drive::<Everything>();
-    let bounded = drive::<Boundaries<16>>();
+    same(&drive::<Everything>(), &drive::<Boundaries<16>>());
+}
 
+fn same(oracle: &[(Vec<lumen_static::NodeState>, u64, usize)], bounded: &[(Vec<lumen_static::NodeState>, u64, usize)]) {
     assert_eq!(oracle.len(), bounded.len(), "the two sessions took different numbers of steps");
-    for (step, (a, b)) in oracle.iter().zip(&bounded).enumerate() {
+    for (step, (a, b)) in oracle.iter().zip(bounded).enumerate() {
         assert_eq!(a.2, b.2, "step {step}: different command counts");
         assert_eq!(a.1, b.1, "step {step}: the display lists differ");
         assert_eq!(a.0.len(), b.0.len(), "step {step}: different node counts");
@@ -253,6 +254,17 @@ fn a_bounded_walk_produces_the_same_frames_as_the_whole_tree_walk() {
             assert_eq!(sa.pos, sb.pos, "step {step}, node {i}: position");
         }
     }
+}
+
+/// **The shipped `N`** — M34/T34.0. The window ships `Boundaries<256>`
+/// (`lumen_static_winit::Inval`) and M26/T26.5 was a wrap at exactly 256
+/// marks, so the type a user gets goes through the oracle too, not only
+/// the `<16>` every other test here uses.
+#[test]
+fn the_shipped_boundaries_256_produces_the_same_frames_too() {
+    let (oracle, bounded) = (drive::<Everything>(), drive::<Boundaries<256>>());
+    same(&oracle, &bounded);
+    println!("Boundaries<256>: {} steps, identical to Everything", oracle.len());
 }
 
 #[test]
