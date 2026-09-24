@@ -970,9 +970,17 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                             st, i, limits, <Self as ::lumen_static::widget::Widget>::NODE_COUNT,
                         );
                     }
+                    // **The content is laid out inside the container's
+                    // own size**, where that size is `Fixed` — not across
+                    // the whole offer (`ops::within_own_size`, M56). The
+                    // offer itself is still what is recorded and what the
+                    // box resolves against, so the relayout boundary
+                    // above keys on the same limits it always did.
+                    let offered = limits;
+                    let limits = ::lumen_static::ops::within_own_size(offered, &me);
                     #layout_body
                     ::lumen_static::ops::record_painted(
-                        st, i, limits, resolve_self(limits, &me, padded), &me,
+                        st, i, offered, resolve_self(offered, &me, padded), &me,
                     )
                 }
 

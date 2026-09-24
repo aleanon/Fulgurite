@@ -155,6 +155,35 @@ impl Axis {
     }
 }
 
+/// **What a container offers its own content**: on an axis where its
+/// own length is `Fixed`, that length — clamped into the offer exactly
+/// as [`resolve_self`] will clamp it — and not the whole offer.
+///
+/// Found by M56 (`docs/plan-showcase-design.md`,
+/// `crates/lumen-static/tests/fixed_container.rs`): the derive computed
+/// a container's content box from what it was *offered* and applied its
+/// own `Fixed` size only when it resolved its box afterwards, so a
+/// `Fixed(60)` column offered 400 px gave a `FILL` child 380 px of height
+/// and a `Fixed(320)` column holding a grid laid the grid's rows out
+/// 727 px wide. It stayed hidden while every such container sat in a
+/// parent offering less than its fixed size.
+#[inline]
+#[doc(hidden)]
+pub fn within_own_size(limits: Constraints, style: &Style) -> Constraints {
+    let mut c = limits;
+    if let Length::Fixed(v) = style.width {
+        let w = limits.clamp(Size { w: v, h: 0.0 }).w;
+        c.min_w = w;
+        c.max_w = w;
+    }
+    if let Length::Fixed(v) = style.height {
+        let h = limits.clamp(Size { w: 0.0, h: v }).h;
+        c.min_h = h;
+        c.max_h = h;
+    }
+    c
+}
+
 /// The content box: the node's limits minus its own padding.
 #[inline]
 #[doc(hidden)]
