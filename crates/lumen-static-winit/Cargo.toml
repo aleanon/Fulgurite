@@ -19,6 +19,8 @@ name = "lumen_static_winit"
 # field. `just widget-drive` builds both, because M26 found four of five
 # defects invisible under the default.
 boundaries = []
+# M34/T34.1: the shadow oracle, reported by the agent's `app.shadow`.
+shadow-oracle = ["lumen-static-shell/shadow-oracle"]
 # Clipboard is default-ON, unlike the a11y feature, and the difference
 # is measured: arboard costs **11 crates** (207 -> 218, 2026-09-05)
 # against a11y's 62 (95 -> 157). A text field without copy and paste is

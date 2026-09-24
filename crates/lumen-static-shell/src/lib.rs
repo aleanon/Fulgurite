@@ -27,6 +27,27 @@ pub mod svg;
 #[cfg(feature = "truetype")]
 pub mod text;
 
+/// What the shadow oracle has compared, and the first place a bounded
+/// frame disagreed with the whole-tree one — M34/T34.1.
+#[cfg(feature = "shadow-oracle")]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Shadow {
+    /// Frames compared. Zero means the oracle never ran — a drive that
+    /// asserts "no divergence" must assert this is not zero first.
+    pub compared: u64,
+    pub first: Option<Divergence>,
+}
+
+/// Where a bounded frame first differed from the whole-tree one.
+#[cfg(feature = "shadow-oracle")]
+#[derive(Clone, Copy, Debug)]
+pub struct Divergence {
+    pub frame: u64,
+    pub node: u32,
+    /// Which part of the node's state differed.
+    pub field: &'static str,
+}
+
 /// A running application: the tree, its parallel arrays, the one input
 /// queue, and the frame's display list.
 pub struct Host<A: App, R: Retention = Incremental, I: Invalidation = Everything> {
@@ -181,6 +202,8 @@ pub struct Host<A: App, R: Retention = Incremental, I: Invalidation = Everything
     last_marks: lumen_static::invalidate::Marks,
     /// Whether the last frame owed the arenas a cascade — M29/T29.4.
     last_arenas_owed: bool,
+    #[cfg(feature = "shadow-oracle")]
+    shadow: Shadow,
     /// Jobs a boot function returned before any spawner existed. Started
     /// by [`Host::set_spawner`]; see [`Host::hold_until_spawner`].
     held: Vec<lumen_static::spawn::Job<A::Msg>>,
@@ -221,6 +244,73 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
     /// binding cannot change a template's styles (§2.4).
     pub fn last_arenas_owed(&self) -> bool {
         self.last_arenas_owed
+    }
+
+    /// Lay out and place again **under an all-dirty view** into a scratch
+    /// copy of the node states, and compare with the bounded frame's —
+    /// M34/T34.1 (`docs/plan-boundaries-default.md`).
+    ///
+    /// One host, not two: `App` is not `Clone`, and a second host would
+    /// run every handler and spawn every task twice. The second pass does
+    /// not dispatch, apply, update or spawn, and leaves `last_damage` and
+    /// the retained journal alone. It *does* run layout again — measure
+    /// memos, a repeater's binds — which is the known cost of a
+    /// diagnostic. It reports rather than panics, because once M36 lands
+    /// a panic in a debug window becomes a panic screen; set
+    /// `LUMEN_SHADOW_ABORT=1` to make it abort instead.
+    ///
+    /// **What it costs:** one whole-tree layout and place per frame — on
+    /// the grid fixture, the `mark_all` control arm's layout plus place
+    /// (`docs/results-damage-precision.md` T29.3), paid on every frame
+    /// the oracle is compiled into.
+    #[cfg(feature = "shadow-oracle")]
+    fn shadow_check(&mut self, metrics: &mut dyn TextMeasure, limits: lumen_static::Constraints) {
+        let mut scratch = self.states.clone();
+        {
+            let mut cx = LayoutCx::with_changed(metrics, lumen_static::invalidate::Changed::ALL)
+                .with_palette(&self.palette)
+                .with_scale(self.scale);
+            let tree = self.app.tree_mut();
+            tree.layout(&mut cx, limits, &self.styles, &mut scratch, 0);
+            tree.place(Point::default(), &self.styles, &mut scratch, 0);
+        }
+        if !self.input.focus_visible {
+            if let Some(s) = self.input.focus.and_then(|f| scratch.get_mut(f as usize)) {
+                s.focus_ring = 0;
+            }
+        }
+        self.shadow.compared += 1;
+        if self.shadow.first.is_some() {
+            return;
+        }
+        for (i, (a, b)) in self.states.iter().zip(&scratch).enumerate() {
+            let field = if a.size != b.size {
+                "size"
+            } else if a.pos != b.pos {
+                "pos"
+            } else if a.bg != b.bg || a.fg != b.fg || a.border_color != b.border_color {
+                "colour"
+            } else if a.font_size != b.font_size || a.font_weight != b.font_weight {
+                "font"
+            } else if a.radius != b.radius || a.pad != b.pad || a.focus_ring != b.focus_ring {
+                "shape"
+            } else {
+                continue;
+            };
+            let d = Divergence { frame: self.frame, node: i as u32, field };
+            if std::env::var_os("LUMEN_SHADOW_ABORT").is_some() {
+                eprintln!("shadow oracle: {d:?}");
+                std::process::abort();
+            }
+            self.shadow.first = Some(d);
+            return;
+        }
+    }
+
+    /// What the shadow oracle has seen — M34/T34.1.
+    #[cfg(feature = "shadow-oracle")]
+    pub fn shadow_report(&self) -> Shadow {
+        self.shadow
     }
 
     /// Jobs held for a spawner that has not been installed yet.
@@ -310,6 +400,8 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             held: Vec::new(),
             last_marks: lumen_static::invalidate::Marks::default(),
             last_arenas_owed: false,
+            #[cfg(feature = "shadow-oracle")]
+            shadow: Shadow::default(),
         }
     }
 
@@ -1002,6 +1094,19 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
                     s.focus_ring = 0;
                 }
             }
+        }
+
+        // **The shadow oracle** — M34/T34.1. Only a strategy that can
+        // skip has anything to check. **After** the focus-ring rule just
+        // above, and it applies the same rule to its scratch: the rule
+        // rewrites a field after layout, so a node the bounded frame
+        // skipped keeps last frame's zero while a re-layout restores the
+        // sheet's value — equal pixels, unequal state. Compared before
+        // the rule, the first live run reported exactly that as a
+        // divergence (showcase, node 5, "shape").
+        #[cfg(feature = "shadow-oracle")]
+        if I::CAN_SKIP {
+            self.shadow_check(metrics, limits);
         }
 
         let t1 = std::time::Instant::now();

@@ -60,6 +60,8 @@ release-shape: const-budget
 # Dev surface: observe + reload, unified across the workspace by cargo.
 dev-shape:
     cargo test --workspace --exclude lumen-static-wgpu
+    # M34/T34.1: the shadow oracle is a feature, so its test needs it on.
+    cargo test -p lumen-static-shell --features shadow-oracle --test shadow
     cargo clippy --workspace --all-targets --exclude lumen-static-wgpu -- -D warnings
     # A fresh doc dir: rustdoc 1.94 panics in its search index
     # (`search_index.rs:478`) on a stale `target/doc` after large edits —

@@ -23,6 +23,7 @@ agent = ["lumen-static-winit/agent", "lumen-static-widgets/observe"]
 # found four of its five defects invisible under the default -- a clean
 # subtree is skipped before a wrong answer can be observed.
 boundaries = ["lumen-static-winit/boundaries"]
+shadow-oracle = ["lumen-static-winit/shadow-oracle"]
 
 [dev-dependencies]
 # The sheet lint is agent-gated (M26/T26.6); this crate's tests assert

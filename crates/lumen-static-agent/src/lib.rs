@@ -411,6 +411,10 @@ impl Agent {
     pub fn dispatch_input(&self, host: &mut dyn AgentHost, req: &Value) -> Value {
         let id = req.get("id").cloned().unwrap_or(Value::Null);
         let method = req.get("method").and_then(Value::as_str).unwrap_or("");
+        if method == "app.shadow" {
+            let result = host.shadow().unwrap_or_else(|| json!({ "supported": false }));
+            return json!({ "jsonrpc": "2.0", "id": id, "result": result });
+        }
         if !method.starts_with("input.") && method != "ui.screenshot" && method != "app.setPalette"
         {
             let tree = host.tree();
@@ -1447,6 +1451,16 @@ pub trait AgentHost {
     /// agent comes to believe a window changed when it did not.
     fn set_palette(&mut self, _palette: lumen_static::style::Palette) -> bool {
         false
+    }
+
+    /// The shadow oracle's report — M34/T34.1, the `app.shadow` method.
+    ///
+    /// `None` by default, for a host built without the oracle, which the
+    /// method reports as `supported: false` rather than as "no
+    /// divergence": a drive that asserted "quiet" against a host that
+    /// never compared anything would be proving nothing.
+    fn shadow(&self) -> Option<Value> {
+        None
     }
 }
 

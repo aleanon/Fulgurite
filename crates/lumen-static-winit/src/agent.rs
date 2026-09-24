@@ -114,6 +114,18 @@ impl<A: App> AgentHost for Live<'_, A> {
     fn presented(&mut self) -> Option<(u32, u32, Vec<u8>)> {
         self.backend.fetch_rgba()
     }
+
+    #[cfg(feature = "shadow-oracle")]
+    fn shadow(&self) -> Option<serde_json::Value> {
+        let r = self.host.shadow_report();
+        Some(serde_json::json!({
+            "supported": true,
+            "compared": r.compared,
+            "first": r.first.map(|d| serde_json::json!({
+                "frame": d.frame, "node": d.node, "field": d.field,
+            })),
+        }))
+    }
 }
 
 /// Serve newline-delimited JSON-RPC on `addr`, forwarding each request

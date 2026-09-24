@@ -115,6 +115,25 @@ Each injected session asserts its own precondition (`pump` returned
 
 ## T34.1 — a shadow oracle, reporting rather than panicking
 
+> **DONE 2026-09-24.** `Host::shadow_check` behind the shell's
+> `shadow-oracle` feature (forwarded by winit and showcase); the agent's
+> `app.shadow` reports `{supported, compared, first}`, and
+> `supported: false` from a host without it. Headless gate
+> `crates/lumen-static-shell/tests/shadow.rs`: a hover, a click and a
+> leave are compared and quiet, with the compared count asserted first;
+> *injection* — skip the hover mark — names the button (`node 2`,
+> `field: "colour"`) on the hover frame. Live: `just agent-drive`'s
+> `Boundaries` leg builds the oracle in and asserts **29 frames compared,
+> none diverged**.
+>
+> **Its first live run reported a divergence that was the checker's**:
+> the host zeroes the focused node's `focus_ring` *after* layout (T15.6),
+> so a node the bounded frame skipped kept last frame's zero while the
+> scratch re-layout restored the sheet's value — equal pixels, unequal
+> state. The oracle now runs after that rule and applies it to its
+> scratch too.
+
+
 This is the one piece of new machinery. It follows from rule 2, and from
 M26's lesson that `Boundaries` defects are invisible where people look.
 

@@ -135,11 +135,19 @@ for name in ("dark", "light"):
     prev_bg, prev_shot = bg, frame
 print(f"agent-drive: {before.split()[0]} -> {after.split()[0]}, "
       f"menu {int(box[2]-box[0])}x{int(box[3]-box[1])} px, press observable")
+# M34/T34.1: the shadow oracle, when this build has it. The count is
+# asserted before the silence, because a quiet oracle that compared
+# nothing proves nothing.
+sh = call("app.shadow")
+if sh.get("supported"):
+    assert sh["compared"] > 0, f"agent-drive: the shadow oracle never ran: {sh!r}"
+    assert sh["first"] is None, f"agent-drive: a bounded frame diverged from the whole-tree one: {sh['first']!r}"
+    print(f"agent-drive: shadow oracle compared {sh['compared']} frames, none diverged")
 PY
 kill $pid 2>/dev/null || true
 wait $pid 2>/dev/null || true
 }
 
 run_one Everything agent
-run_one Boundaries agent,boundaries
+run_one Boundaries agent,boundaries,shadow-oracle
 echo "agent-drive: both strategies"
