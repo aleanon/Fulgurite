@@ -224,6 +224,17 @@ pub struct DPickList {
     pub a: PickList,
 }
 
+/// `Select`, controlled (M33/T33.3): the application owns whether it is
+/// open and which option is chosen. It was the showcase's own picker
+/// until M56 moved navigation into a sidebar, and it is a demo now so the
+/// dropdown is still on screen and still driven.
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+pub struct DSelect {
+    #[widget_id("d_select_a")]
+    pub a: lumen_static_widgets::select::Select<crate::Store>,
+}
+
 #[derive(StaticTree, Default)]
 #[widget(column, spacing = 0.0)]
 pub struct DCombobox {
@@ -628,9 +639,25 @@ pub struct DPieChart {
 /// `DTree`, whose 32 `Branch`es are inline for the same reason
 /// (M27/T27.10). The cost is real and is the enum's by design: a
 /// one-of-N stage is as large as its largest demo.
-#[allow(clippy::large_enum_variant)]
-#[derive(StaticTree)]
-pub enum Demo {
+/// Declares the enum and, beside it, the kind of every variant's
+/// struct — so the list the stylesheet walks ([`DEMO_KINDS`]) cannot
+/// drift from the enum: they are one declaration.
+macro_rules! demos {
+    ($($v:ident($t:ident)),* $(,)?) => {
+        #[allow(clippy::large_enum_variant)]
+        #[derive(StaticTree)]
+        pub enum Demo {
+            $($v($t)),*
+        }
+
+        /// Every demo struct's kind, in `Demo`'s order — M56. The sheet
+        /// sets each to `Shrink` so the stage can centre what a demo
+        /// actually draws (`stylesheet()` says why it has to).
+        pub const DEMO_KINDS: &[&str] = &[$(<$t as lumen_static::widget::Widget>::KIND),*];
+    };
+}
+
+demos! {
     Label(DLabel),
     Badge(DBadge),
     Chip(DChip),
@@ -668,6 +695,7 @@ pub enum Demo {
     Split(DSplitPane),
     Accordion(DAccordion),
     PickList(DPickList),
+    Select(DSelect),
     Combobox(DCombobox),
     Menu(DMenu),
     PaneGrid(DPaneGrid),
@@ -691,4 +719,4 @@ impl Default for Demo {
 }
 
 /// How many demos the stage has. Asserted against the catalogue.
-pub const DEMOS: usize = 51;
+pub const DEMOS: usize = 52;

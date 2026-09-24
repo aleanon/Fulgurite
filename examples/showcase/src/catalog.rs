@@ -1,7 +1,7 @@
 //! The catalogue: every widget the showcase can put on the stage.
 //!
 //! A `static` table of plain `fn` pointers, which is what lets the
-//! dropdown's `Repeat` bind rows without capturing and what lets a hot
+//! sidebar's `Repeat` bind rows without capturing and what lets a hot
 //! reload re-supply every entry.
 
 use super::*;
@@ -39,6 +39,39 @@ macro_rules! entry {
     };
 }
 
+/// What one sidebar row is: a group's heading, or entry `k`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NavItem {
+    Heading(&'static str),
+    Entry(usize),
+}
+
+/// Sidebar row `i`: a heading wherever the group changes, then the
+/// entries under it. A walk over the static table — no allocation, so a
+/// bind can call it every frame (M29/T29.5).
+pub fn nav_item(i: usize) -> NavItem {
+    let mut row = 0;
+    for (k, e) in CATALOG.iter().enumerate() {
+        if k == 0 || CATALOG[k - 1].group != e.group {
+            if row == i {
+                return NavItem::Heading(e.group);
+            }
+            row += 1;
+        }
+        if row == i {
+            return NavItem::Entry(k);
+        }
+        row += 1;
+    }
+    NavItem::Entry(CATALOG.len() - 1)
+}
+
+/// How many sidebar rows there are: every entry, and one heading per group.
+pub fn nav_len() -> usize {
+    let groups = (0..CATALOG.len()).filter(|&k| k == 0 || CATALOG[k - 1].group != CATALOG[k].group).count();
+    CATALOG.len() + groups
+}
+
 /// Put one demo on the stage.
 ///
 /// **No `clear()` first.** An enum is one-of-N by construction, so
@@ -47,7 +80,7 @@ macro_rules! entry {
 /// end of the one bug that shape made possible (a field left out of
 /// `clear` left the previous demo underneath the new one).
 fn on(s: &mut Show, demo: Demo) {
-    s.ui.body.stage.row.demo = demo;
+    s.ui.main.stage.row.demo = demo;
 }
 
 /// A veil's body: a title and a live control. One per veil kind,
@@ -129,7 +162,7 @@ const FILES: [&str; 7] = [
 ];
 
 /// The options M27/T27.9's three demos share.
-const FRUIT: [&str; 6] =
+pub(crate) const FRUIT: [&str; 6] =
     ["Apple", "Banana", "Cherry", "Damson", "Elderberry", "apricot"];
 const COMMANDS: [&str; 4] = ["Cut", "Copy", "Paste", "Select all"];
 
@@ -152,6 +185,29 @@ fn opened<const K: u8>(mut c: lumen_static_widgets::Chooser<K>) -> lumen_static_
 fn shown<const K: u8>(mut p: lumen_static_widgets::Picker<K>) -> lumen_static_widgets::Picker<K> {
     p.open();
     p
+}
+
+/// The `Select` demo: controlled, so opening, dismissal and a choice all
+/// write `Store`, and `refresh` puts them on the tree.
+fn select_demo() -> lumen_static_widgets::select::Select<Store> {
+    let mut d = lumen_static_widgets::select::Select::new(FRUIT.len(), 30.0, bind_fruit);
+    d.trigger.on_click = |s: &mut Store, _: &EventCtx| s.select_open = true;
+    d.on_dismiss = |s: &mut Store, _: &EventCtx| s.select_open = false;
+    d
+}
+
+/// One option. **Writes the label only when it differs**: a bind is
+/// steady-state code and runs every frame, so an unconditional
+/// `String` write would allocate per row per frame (M29/T29.5).
+fn bind_fruit(r: &mut lumen_static_widgets::select::Row<Store>, i: usize) {
+    if r.label != FRUIT[i] {
+        r.label.clear();
+        r.label.push_str(FRUIT[i]);
+    }
+    r.on_click = |s: &mut Store, cx: &EventCtx| {
+        s.pick = cx.row.map_or(0, |r| r as usize).min(FRUIT.len() - 1);
+        s.select_open = false;
+    };
 }
 
 fn chip(t: &str) -> Chip<String> {
@@ -286,6 +342,10 @@ pub static CATALOG: &[Entry] = &[
         false,
         |s| on(s, Demo::PickList(DPickList { a: PickList::new(&FRUIT) })),
         none),
+    entry!("Choice", "Select", "A dropdown the application opens, closes and fills.",
+        false,
+        |s| on(s, Demo::Select(DSelect { a: select_demo() })),
+        |s| format!("selected: {}", FRUIT[s.store.pick])),
     entry!("Choice", "Combobox", "The same list, filtered as you type.",
         false,
         |s| on(s, Demo::Combobox(DCombobox { a: Combobox::new(&FRUIT) })),

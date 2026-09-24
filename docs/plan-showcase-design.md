@@ -157,6 +157,53 @@ the `#note` label back, and the test fires naming the entry.
 
 ### T56.2 — the sidebar replaces the picker
 
+> **DONE 2026-09-25.** `nav.rs`'s `NavRow` sits in one `Repeat` whose
+> bind writes only `&'static str`s and flags. The selection is a
+> thread-local the bind reads: a bind cannot capture, and the tests run
+> one `Show` per thread. Its selected tint and bar come from the style's
+> `border_color`, so a palette swap re-themes it. Building it found
+> more than this section expected:
+>
+> - **There was no `Select` entry.** The picker *was* `Select`'s only
+>   appearance, so removing it would have taken `Select` off screen and
+>   taken `profile_popup` (M26/T26.0's popup arm) with it. `Select` is a
+>   demo now (52 entries), controlled through `Store`.
+> - **Two framework defects, each with its own gate and commit.** A
+>   `Fixed` container laid its content out across its *offer*
+>   (`crates/lumen-static/tests/fixed_container.rs`: two halves of 250
+>   px inside a 100 px box). A scrolled `Repeat` asked the wrong row for
+>   its handler (`tests/repeat_handler.rs`: 10 of 11 rows).
+> - **Centring.** `#demo` was only centred by being one `FILL` third of
+>   the stage row: 320 px at the old window, which fit three buttons by
+>   luck, and "Gh / ost" on M56's card. Now every demo struct is
+>   `Shrink`. The list of their kinds comes from the same macro that
+>   declares `Demo`, so it cannot drift. Demos whose widget fills its
+>   box get widths of their own. **Wrap reflows onto a second line now**,
+>   which its blurb always claimed and which the old 248 px offer never
+>   let it do.
+> - **Two tests were passing on the chrome.** "A widget that draws only
+>   text" counted everything below the stage's top edge. The header's
+>   hairline sat exactly there, so RichText and PullToRefresh were each
+>   credited with it; a worktree run at T56.1 printed the divider as
+>   RichText's shape. The filter now takes only what is strictly inside
+>   the stage card. RichText is exempt, as `Label` is, since it is text
+>   by nature. PullToRefresh gets a ground, because a pull area that
+>   reads as a line of text is the finding.
+> - **Clicking the sidebar from a demo with an open popup** (DatePicker,
+>   Menu) first closes the popup and is consumed. That is the documented
+>   dropdown behaviour, kept. The walk clicks again only when a popup was
+>   open and the press closed it, reading the new `Host::open_overlays`.
+>
+> **Gate:** `every_sidebar_row_picks_its_own_entry`. Real wheel events
+> and real clicks cover all 63 rows (52 entries and 11 headings, 2
+> presses first closing a popup). It checks the store, the header's
+> title and the row's own highlight, and that a heading press answers
+> `handled == false`. *Injections:* an entry row showing the next
+> entry's name ("row 1 was clicked for \"Label\" and now reads
+> \"Badge\"" — the message was sharpened after this run); headings
+> given the item handler ("a press on the \"Text\" heading (row 0) was
+> handled").
+
 **The row widget.** A `NavRow` in a new `examples/showcase/src/nav.rs`
 has:
 - `label: &'static str`;
@@ -191,7 +238,7 @@ exactly as today, called from `NavRow`'s click.
 - `picking_a_row_swaps_the_demo` clicks a sidebar row.
 - `the_dropdown_is_absent_when_closed` is deleted, since there is no
   dropdown.
-- The `STAGE_NODE`/`STAGE` constant is replaced by resolving `#demo`'s
+- The hard-coded stage node index (a constant 8, in two places) is replaced by resolving `#demo`'s
   index through `wid_index!`, not a new hard-coded number.
 - The `pos.y > 200` and `width ≤ 300` geometry heuristics in the press
   tests are reworked to find nodes by id.

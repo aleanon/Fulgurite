@@ -732,6 +732,15 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         self.queue.push(ev);
     }
 
+    /// How many overlays — popups, menus, veils — were open on the last
+    /// painted frame. A press outside all of them dismisses them and is
+    /// consumed (`pass::dispatch_overlaid_into`), so a test that clicks
+    /// something must know whether its press will reach it or only close
+    /// a popup (M56's sidebar walk).
+    pub fn open_overlays(&self) -> usize {
+        lumen_static::overlay::OverlaySink::len(&self.overlays)
+    }
+
     pub fn frame_number(&self) -> u64 {
         self.frame
     }

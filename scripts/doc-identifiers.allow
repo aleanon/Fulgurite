@@ -115,6 +115,5 @@ PanicReport          # promised by docs/plan-panic-recovery.md T36.1; comes off 
 
 # --- planned, not yet built (docs/plan-showcase-design.md); each line goes
 # in the commit that makes the name real ---
-NavRow               # M56/T56.2's sidebar row
 SELECTED_BG          # M56/T56.3's selected-row fill
 CHIP_BG              # M56/T56.3's status-chip fill

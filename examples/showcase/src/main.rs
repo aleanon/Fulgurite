@@ -1,51 +1,38 @@
 //! **The widget showcase** — every built-in widget, one at a time.
 //!
-//! `just example showcase`. A picker at the top lists the whole
-//! catalogue grouped by kind; choosing one drops it, seeded with real
-//! data, into the middle of the stage. Widgets that carry state print a
-//! live readout under the picker, so a slider drag or a checkbox toggle
-//! can be watched landing in the store.
+//! `just example showcase`. A sidebar lists the whole catalogue under
+//! its groups; choosing an entry puts it, seeded with real data, on the
+//! stage card beside it. The page above the card names the entry, says in
+//! one line what the demo shows, and — for a widget that carries state —
+//! prints a live readout as a chip, so a slider drag or a checkbox toggle
+//! can be watched landing in the store. `docs/plan-showcase-design.md`
+//! (M56) is the layout's design and what building it found.
 //!
 //! Modelled on Lumen's `examples/widget_showcase`, which is where the
 //! shape of this comes from.
 //!
 //! # How "one of N" works in a static tree
 //!
-//! This is the interesting part, and it is the one place a static tree
-//! needs a hatch. The tree's topology is its type, so a stage that can
-//! hold any of twenty demos cannot simply *become* each of them.
-//!
-//! Three ways out, and the third is the one used here:
-//!
-//! 1. **Every demo in the tree at once, all but one hidden.** Honest and
-//!    allocation-free, and what `Either` does for two. For twenty it
-//!    means nineteen nested `Either`s, and the merged const table is
-//!    bounded by `MAX_EITHER_NODES` (64) per instantiation — the nesting
-//!    blows it long before twenty.
-//! 2. **A stylesheet rebuilt on every selection**, flipping
-//!    `Style::visible`. The cascade can express it, but the whole tree
-//!    still pays layout for twenty demos on every frame.
-//! 3. **`Dyn`** — a boxed `dyn Node` island with `replace`. One node in
-//!    the parent's table, its content swapped when the picker changes.
-//!    This is precisely what M13/T13.4 put the escape hatch behind the
-//!    `alloc` feature *for*: the cost of dynamism is named in the type
-//!    system, and a `--no-default-features` build does not have it.
-//!
-//! So the showcase is a demonstration of the hatch as much as of the
-//! widgets, and an application that needs a fixed set of screens should
-//! still reach for `Either`.
+//! The tree's topology is its type, so a stage that can hold any of
+//! fifty-two demos cannot simply *become* each of them. It is an enum
+//! (`stage::Demo`, M24/T24.3): one-of-N by construction, its active
+//! variant laid out in place in the parent's table, and the `Dyn` hatch
+//! this example once used left for content whose shape is genuinely
+//! unknown.
 
 use lumen_static::display::Color;
 use lumen_static::prelude::*;
 use lumen_static::Rule as StyleRule;
-use lumen_static_widgets::select::{Row as SelectRow, Select};
 use lumen_static::style::Palette;
 use lumen_static_widgets::Toggle;
 use lumen_static_widgets::prelude::*;
 use lumen_static_winit::{application, Program, Run};
 
 mod catalog;
+mod nav;
 mod stage;
+use lumen_static::repeat::Repeat;
+use nav::{NavRow, RowKind};
 use catalog::CATALOG;
 pub use stage::*;
 
@@ -94,32 +81,60 @@ fn palette() -> Palette {
 /// `every_role_rule_follows_the_palette` test prints rather than hides.
 const HAIRLINE: Color = Color(0xdf, 0xe4, 0xed, 0xff);
 const GHOST: Color = Color(0xea, 0xef, 0xfb, 0xff);
+/// The readout chip's ground: an accent tint that stays readable under
+/// the accent text in the light palette (T56.3 checks the pair).
+const CHIP_BG: Color = Color(0xe8, 0xef, 0xff, 0xff);
 
-const W: u32 = 960;
-const H: u32 = 720;
-/// Rows the dropdown shows before it scrolls.
-const PANEL_H: f32 = 560.0;
+/// The window: a 248 px sidebar and the page beside it (M56).
+const W: u32 = 1120;
+const H: u32 = 760;
+/// One sidebar row's height — an entry or a group heading.
+const NAV_ROW_H: f32 = 32.0;
 
 // ---- the tree --------------------------------------------------------
 
-/// The header band: the trigger, what it is, and a live readout.
+/// The sidebar: the brand, then every entry under its group — M56
+/// (`docs/plan-showcase-design.md`). One `Repeat` of [`NavRow`]s, so the
+/// catalogue is data here too, and the list scrolls by wheel (M27/T27.4)
+/// when it is taller than the window.
 #[derive(StaticTree, Default)]
-#[widget(column, spacing = 8.0)]
-pub struct Header {
+#[widget(column, spacing = 0.0)]
+pub struct Sidebar {
+    #[widget_id("brand")]
+    brand: Label,
+    #[widget_id("brand_sub")]
+    sub: Label,
+    #[widget_id("nav")]
+    nav: Repeat<NavRow<Store>>,
+}
+
+/// The page title and, at the far end of its line, the live readout as a
+/// chip.
+#[derive(StaticTree, Default)]
+#[widget(row, spacing = 12.0)]
+pub struct TitleRow {
     #[widget_id("title")]
-    title: Label,
-    /// **The dropdown, as one field.** Its trigger, its popup and its
-    /// rows are `Select`'s four nodes; the option count is data, so
-    /// adding a widget to `CATALOG` no longer adds a field here.
-    #[widget_id("picker")]
-    picker: Select<Store>,
-    #[widget_id("blurb")]
-    blurb: Label<String>,
+    title: Label<String>,
+    #[widget_id("tgap")]
+    gap: Spacer,
     #[widget_id("readout")]
     readout: Label<String>,
 }
 
-/// The stage: whatever the picker chose, centred by two `FILL` spacers.
+/// What is on the page: where it sits in the catalogue, its name, and the
+/// one line on what the demo shows. **No note under the demo** — M56
+/// removed it (`docs/plan-showcase-design.md` T56.1).
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 6.0)]
+pub struct Header {
+    #[widget_id("crumb")]
+    crumb: Label<String>,
+    heading: TitleRow,
+    #[widget_id("blurb")]
+    blurb: Label<String>,
+}
+
+/// The stage: whatever the sidebar chose, centred by two `FILL` spacers.
 #[derive(StaticTree, Default)]
 #[widget(row, spacing = 0.0)]
 pub struct StageRow {
@@ -132,7 +147,7 @@ pub struct StageRow {
 }
 
 #[derive(StaticTree, Default)]
-#[widget(column, spacing = 18.0)]
+#[widget(column, spacing = 0.0)]
 pub struct Stage {
     #[widget_id("st")]
     top: Spacer,
@@ -141,28 +156,30 @@ pub struct Stage {
     bottom: Spacer,
 }
 
+/// The page beside the sidebar: the header, then the stage as a card.
 #[derive(StaticTree, Default)]
-#[widget(column, spacing = 0.0)]
-pub struct Body {
+#[widget(column, spacing = 20.0)]
+pub struct Main {
     #[widget_id("header")]
     header: Header,
-    #[widget_id("hr")]
-    hr: Divider,
+    #[widget_id("stage")]
     stage: Stage,
 }
 
-/// The whole window.
+/// The whole window: sidebar, a hairline, the page.
 ///
-/// **No overlay layer any more.** The dropdown used to be a second
-/// child of a stack, positioned under the trigger by four `Spacer`s,
-/// because nothing else could put a panel over the stage. `Select`'s
-/// menu is a `Popup`: out of flow, painted in the overlay phase, hit
-/// first. So the tree is the body, and the four spacers, the wrapper row
-/// and the wrapper column are gone with it.
+/// **No overlay layer.** A `Select`'s menu — the stage's `Select` demo,
+/// since M56 moved navigation into the sidebar — is a `Popup`: out of
+/// flow, painted in the overlay phase, hit first.
 #[derive(StaticTree, Default)]
-#[widget(column, spacing = 0.0)]
+#[widget(row, spacing = 0.0)]
 pub struct Screen {
-    body: Body,
+    #[widget_id("sidebar")]
+    side: Sidebar,
+    #[widget_id("rule")]
+    rule: Divider,
+    #[widget_id("main")]
+    main: Main,
 }
 
 #[derive(DeriveApp, Default)]
@@ -171,15 +188,16 @@ pub struct Show {
     #[tree]
     ui: Screen,
     /// **What a handler may touch** — M33/T33.4. Every handler in this
-    /// example — the demos' buttons and toggles, the picker's trigger,
-    /// its rows and its dismissal — takes `&mut Store`, and the tree is
-    /// not reachable from it. What a handler used to write into the tree
-    /// (the trigger's label, the blurb, the readout, the demo on
-    /// the stage) is written by `refresh`, the `after_update` hook, which
-    /// keeps `&mut Show` — so showcase stays on the conservative path M29
-    /// §2.4 records for `after_update`, by design.
+    /// example — the demos' buttons and toggles, the sidebar's rows, the
+    /// `Select` demo's trigger, rows and dismissal — takes `&mut Store`,
+    /// and the tree is not reachable from it. What a handler used to write
+    /// into the tree (the header, the readout, the demo on the stage, the
+    /// `Select` demo's label and open state) is written by `refresh`, the
+    /// `after_update` hook, which keeps `&mut Show` — so showcase stays on
+    /// the conservative path M29 §2.4 records for `after_update`, by
+    /// design, and that whole-tree mark is also what re-binds the sidebar
+    /// when the selection moves (`nav.rs`).
     #[state]
-    #[bind(ui.body.header.picker.menu.open, menu_open)]
     store: Store,
 }
 
@@ -196,15 +214,21 @@ pub struct Store {
     /// each frame would overwrite what was typed on the frame after it
     /// was typed.
     needs_seed: bool,
-    /// Set by a handler that changed what the header shows — the
-    /// selection or the dropdown's state — so `refresh` rebuilds it. A
-    /// handler cannot write the header itself: it is on the tree.
+    /// Set by a handler that changed the selection, so `refresh` rebuilds
+    /// the header and the stage. A handler cannot write them itself: they
+    /// are on the tree.
     needs_rebuild: bool,
-    /// **Whether the dropdown is open — the application's, since
-    /// `Select` became controlled** (M33/T33.3). Bound into the popup; the
-    /// trigger's `on_click` sets it, a chosen row and the pass's
-    /// dismissal (`on_dismiss`) clear it.
-    menu_open: bool,
+    /// **Whether the `Select` demo is open — the application's, since
+    /// `Select` became controlled** (M33/T33.3). Its trigger sets it, a
+    /// chosen row and the pass's dismissal (`on_dismiss`) clear it, and
+    /// `refresh` puts it on the tree.
+    select_open: bool,
+    /// Which of the `Select` demo's options is chosen.
+    pick: usize,
+    /// Scroll the sidebar so the selected row is in view, once its
+    /// viewport is known — a window opened on the fifty-second entry
+    /// should show it highlighted, not the top of the list.
+    reveal: bool,
     /// The live demo's own state. One store rather than one per demo,
     /// because a showcase only ever has one demo alive.
     presses: u32,
@@ -238,10 +262,39 @@ fn refresh(s: &mut Show) -> bool {
         (e.seed)(s);
         changed = true;
     }
+    // The selected row, into view — once, after the first layout has
+    // told the list how tall its viewport is.
+    if s.store.reveal && s.ui.side.nav.viewport() > 0.0 {
+        s.store.reveal = false;
+        let nav = &mut s.ui.side.nav;
+        let row = (0..catalog::nav_len())
+            .find(|&r| catalog::nav_item(r) == catalog::NavItem::Entry(s.store.selected))
+            .unwrap_or(0);
+        let (vp, y) = (nav.viewport(), row as f32 * NAV_ROW_H);
+        if y < nav.scroll || y + NAV_ROW_H > nav.scroll + vp {
+            nav.scroll = (y - (vp - NAV_ROW_H) / 2.0).clamp(0.0, nav.max_scroll(vp));
+            changed = true;
+        }
+    }
+    // **The `Select` demo, controlled**: its open state and its label are
+    // the store's, put on the tree here — compared first, so an unchanged
+    // frame writes nothing and allocates nothing.
+    if let Demo::Select(d) = &mut s.ui.main.stage.row.demo {
+        if d.a.menu.open != s.store.select_open {
+            d.a.menu.open = s.store.select_open;
+            changed = true;
+        }
+        let want = catalog::FRUIT[s.store.pick];
+        if d.a.trigger.label != want {
+            d.a.trigger.label.clear();
+            d.a.trigger.label.push_str(want);
+            changed = true;
+        }
+    }
     // **Read the typed fields back before reporting.** This is what a
     // `Dyn` island could not do: a `Slider` owns its value, and through
     // a `Box<dyn Node>` there was no handle to ask.
-    if let Demo::Slider(d) = &s.ui.body.stage.row.demo {
+    if let Demo::Slider(d) = &s.ui.main.stage.row.demo {
         let v = d.a.value();
         if v != s.store.fraction {
             s.store.fraction = v;
@@ -252,7 +305,7 @@ fn refresh(s: &mut Show) -> bool {
     // asks, and the application decides. Polling here is where an
     // application does it: `after_update` runs on every pump, which is
     // exactly when the request can have been made (M27/T27.7).
-    let asked = match &mut s.ui.body.stage.row.demo {
+    let asked = match &mut s.ui.main.stage.row.demo {
         Demo::Modal(d) => d.a.take_dismissed(),
         Demo::Sheet(d) => d.a.take_dismissed(),
         Demo::Drawer(d) => d.a.take_dismissed(),
@@ -267,7 +320,7 @@ fn refresh(s: &mut Show) -> bool {
     // `set_str` compares before writing and answers whether the text
     // differed, so the readout reports for itself rather than being
     // assumed dirty — and the measurement memo survives an unchanged one.
-    changed | s.ui.body.header.readout.set_str(&text)
+    changed | s.ui.main.header.heading.readout.set_str(&text)
 }
 
 /// Advance what animates, and keep the live demo in step with the store.
@@ -284,7 +337,7 @@ fn advance(s: &mut Show, dt_ms: f32) -> bool {
         s.store.phase = (s.store.phase + dt_ms / 1400.0).rem_euclid(1.0);
         (e.seed)(s);
         let text = (e.status)(s);
-        s.ui.body.header.readout.set(text);
+        s.ui.main.header.heading.readout.set(text);
     }
     true
 }
@@ -292,76 +345,69 @@ fn advance(s: &mut Show, dt_ms: f32) -> bool {
 /// Put the selected entry on the stage and bring the header into step.
 fn rebuild(s: &mut Show) {
     let e = &CATALOG[s.store.selected];
+    // The sidebar's highlight: its bind reads this (`nav.rs`).
+    nav::set_selected(s.store.selected);
     s.store.needs_seed = true;
-    // **ASCII, not `\u{25be}`.** The system font has no chevron and
-    // `examples/glasswall` already paid for that lesson: a missing glyph
-    // renders as the fallback box, which looks like a bug in the widget
-    // rather than in the font.
-    let open = s.store.menu_open;
-    s.ui.body.header.picker.trigger.label =
-        format!("{}      {}", e.name, if open { "^" } else { "v" });
-    s.ui.body.header.blurb.set(e.blurb.into());
+    let h = &mut s.ui.main.header;
+    h.crumb.set(format!("{} / {}", e.group, e.name));
+    h.heading.title.set(e.name.into());
+    h.blurb.set(e.blurb.into());
     (e.seed)(s);
     let text = (e.status)(s);
-    s.ui.body.header.readout.set(text);
+    s.ui.main.header.heading.readout.set(text);
 }
 
-/// A row's caption, with its group folded in so the list reads as
-/// grouped without the panel needing heading nodes of a second type.
+/// One sidebar row: a group heading, or an entry under one.
 ///
-/// **One `fn` for every row.** It cannot capture — `Repeat::bind` is a
-/// plain `fn` pointer, which is what lets a hot reload re-supply it —
-/// and it does not need to: [`EventCtx::row`] tells the handler which
-/// row was hit, recomputed by hit testing every frame, so it cannot go
-/// stale the way a captured index can.
-///
-/// This replaces `pick0`..`pick17` and a `PICKERS` table: eighteen
-/// functions whose only difference was a literal.
-fn bind_row(r: &mut SelectRow<Store>, i: usize) {
-    let e = &CATALOG[i];
-    let first = i == 0 || CATALOG[i - 1].group != e.group;
-    r.label = if first {
-        format!("{} - {}", e.group, e.name)
-    } else {
-        format!("        {}", e.name)
-    };
+/// **Writes only `&'static str`s and flags** — a bind runs every frame,
+/// and a `format!` here would be one allocation per row per frame, the
+/// defect M29/T29.5 found in a fixture's bind. The heading rows are
+/// computed from `CATALOG`'s order, which `each_group_appears_once` keeps
+/// honest.
+fn bind_nav(r: &mut NavRow<Store>, i: usize) {
+    match catalog::nav_item(i) {
+        catalog::NavItem::Heading(g) => {
+            r.label = g;
+            r.kind = RowKind::Heading;
+            r.selected = false;
+        }
+        catalog::NavItem::Entry(k) => {
+            r.label = CATALOG[k].name;
+            r.kind = RowKind::Item;
+            r.selected = k == nav::selected();
+        }
+    }
     r.on_click = |s: &mut Store, cx: &EventCtx| {
-        let i = cx.row.map_or(0, |r| r as usize);
-        choose(s, i);
+        if let Some(catalog::NavItem::Entry(k)) = cx.row.map(|r| catalog::nav_item(r as usize)) {
+            choose(s, k);
+        }
     };
 }
 
-/// Put entry `i` on the stage and close the dropdown.
+/// Put entry `i` on the stage.
 ///
 /// **State only** (M33/T33.4): the header and the stage are on the tree,
 /// which a handler cannot reach, so `refresh` rebuilds them on this same
 /// pump.
 fn choose(s: &mut Store, i: usize) {
     s.selected = i.min(CATALOG.len() - 1);
-    s.menu_open = false;
+    s.select_open = false;
     s.phase = 0.0;
     s.needs_rebuild = true;
 }
 
-/// Build the app, already on `entry`, with the dropdown `open` or not.
+/// Build the app, already on `entry`, with the `Select` demo's menu
+/// `open` or not (it only shows on the `Select` entry).
 fn build(entry: usize, open: bool) -> Show {
     let mut app = Show::default();
-    app.ui.body.header.title.set("Widget showcase");
-    // **The whole wiring of the dropdown.** One `fn` for the rows, the
-    // count as data, and nothing about eighteen.
-    app.ui.body.header.picker = Select::new(CATALOG.len(), ROW_H, bind_row);
-    // Controlled (M33/T33.3): opening and dismissal write the state, and
-    // the header's chevron follows it.
-    app.ui.body.header.picker.trigger.on_click = |s: &mut Store, _: &EventCtx| {
-        s.menu_open = true;
-        s.needs_rebuild = true;
-    };
-    app.ui.body.header.picker.on_dismiss = |s: &mut Store, _: &EventCtx| {
-        s.menu_open = false;
-        s.needs_rebuild = true;
-    };
+    app.ui.side.brand.set("lumen-static");
+    app.ui.side.sub.set("Widgets");
+    // **The whole wiring of the sidebar.** One `fn` for the rows, the
+    // count as data.
+    app.ui.side.nav = Repeat::new(catalog::nav_len(), NAV_ROW_H, bind_nav);
     app.store.selected = entry.min(CATALOG.len() - 1);
-    app.store.menu_open = open;
+    app.store.select_open = open;
+    app.store.reveal = true;
     // **Mid-travel, not zero.** The animated demos take their value from
     // `phase`, and a showcase opened on one of them at phase 0 shows an
     // empty bar and an unlit spinner — which reads as a broken widget
@@ -398,18 +444,37 @@ fn shot(path: &str, entry: usize, open: bool) {
         entry, if open { "open" } else { "closed" });
 }
 
+/// The node indices of the `#demo` subtree — **by the table, not by a
+/// position.** The helpers below used to take "every node below the
+/// stage's top edge", which a full-height sidebar (M56) now also is.
+fn demo_span() -> core::ops::Range<usize> {
+    let table = <<Show as lumen_static::event::App>::Tree as lumen_static::widget::Widget>::SUB_TABLE;
+    let demo = lumen_static::style::index_of_wid(table, "demo").expect("the stage has no `#demo` node");
+    lumen_static::style::subtree_range(table, demo)
+}
+
+/// The leaves of the `#demo` subtree — its controls, not the rows that
+/// hold them. A size filter alone could not tell them apart once a demo
+/// shrank to its content (M56).
+fn demo_leaves() -> Vec<usize> {
+    let table = <<Show as lumen_static::event::App>::Tree as lumen_static::widget::Widget>::SUB_TABLE;
+    demo_span().filter(|&i| table[i].child_count == 0).collect()
+}
+
 /// The frame a popup opens on — M26/T26.0.
 ///
 /// `just profile` is fixed to counter-window's tally and takes no
 /// arguments, so M26/T26.11 — whose whole subject is that opening a
 /// popup damages the entire window — had no arm at all. This is one: it
-/// settles a closed frame, opens the picker, pumps, and prints the
+/// settles a closed frame, opens the `Select` demo's menu (the showcase's
+/// own picker until M56), pumps, and prints the
 /// damaged area beside the window's. Today that ratio is 100%, because a
 /// command-count change answers `Damage::All`; after T26.11 it must be
 /// the popup's rect, and this is the number that says so.
 fn profile_popup() {
+    let select = CATALOG.iter().position(|e| e.name == "Select").expect("a Select entry");
     let mut host: lumen_static_shell::Host<Show> =
-        program(0, false).host();
+        program(select, false).host();
     let mut metrics = lumen_static_shell::text::FontStack::system()
         .map(lumen_static_shell::text::FontMetrics::new);
     let mut pump = |h: &mut lumen_static_shell::Host<Show>| match metrics.as_mut() {
@@ -446,8 +511,8 @@ fn profile_popup() {
     let settled = host.take_damage_for_age(1);
     let before = host.list.len();
 
-    host.app.store.menu_open = true;
-    rebuild(&mut host.app);
+    // What the trigger's handler does; `refresh` puts it on the tree.
+    host.app.store.select_open = true;
     host.invalidate_all();
     pump(&mut host);
 
@@ -556,12 +621,12 @@ fn press_shot(path: &str, entry: usize, which: usize) {
     pump(&mut host);
     pump(&mut host);
 
-    let top = host.states[STAGE_NODE].pos.y;
+    let leaves = demo_leaves();
     let mut targets: Vec<(f32, f32, usize)> = host
         .states
         .iter()
         .enumerate()
-        .filter(|(_, st)| st.pos.y >= top && st.size.w > 0.0 && st.size.w <= 300.0 && st.size.h > 0.0)
+        .filter(|(i, st)| leaves.contains(i) && st.size.w > 0.0 && st.size.h > 0.0)
         .map(|(i, st)| (st.pos.x, st.pos.y, i))
         .collect();
     targets.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
@@ -624,11 +689,11 @@ fn seq_shot(stem: String) {
     };
     pump(&mut host);
     pump(&mut host);
-    let top = host.states[STAGE_NODE].pos.y;
-    let btns: Vec<usize> = (0..<Screen as Widget>::NODE_COUNT)
+    let btns: Vec<usize> = demo_leaves()
+        .into_iter()
         .filter(|&i| {
             let s = &host.states[i];
-            s.pos.y >= top && s.size.w > 40.0 && s.size.w <= 300.0 && s.size.h > 20.0
+            s.size.w > 40.0 && s.size.h > 20.0
         })
         .collect();
     let at = |h: &lumen_static_shell::Host<Show>, i: usize| {
@@ -737,10 +802,7 @@ fn agent_addr() -> Option<String> {
     None
 }
 
-/// The `Stage` node's index — where the header stops.
-const STAGE_NODE: usize = 8;
-
-/// One dropdown row's height.
+/// The `Select` demo's row height.
 ///
 /// `Repeat` is uniform-extent, so this single number decides both where
 /// a row is drawn and which row a click at `y` lands on — they cannot
@@ -776,16 +838,111 @@ fn btn() -> lumen_static::style::Patch {
 
 fn stylesheet() -> Vec<StyleRule> {
     use lumen_static::style::{Patch, Role, Selector};
-    vec![
-        StyleRule::new(Selector::Kind("Screen"), Patch::new().background_role(Role::Page)),
+    let mut rules = vec![
+        // ---- the chrome (M56, `docs/plan-showcase-design.md`) -------
+        //
+        // A 4/8 px spacing grid, a 12/14/16/24 type scale, radii of 8
+        // for controls and rows, 12 for popups and 16 for the stage card.
+        // The window is a row, and a row's height shrinks to its content
+        // unless told otherwise: without `FILL` here every full-height
+        // child — sidebar, rule, page — laid out 0 px tall.
         StyleRule::new(
-            Selector::Id("header"),
-            Patch::new()
-                .background_role(Role::Surface)
-                .padding(Edges { left: 28.0, right: 28.0, top: 20.0, bottom: 18.0 }),
+            Selector::Kind("Screen"),
+            Patch::new().background_role(Role::Page).width(Length::FILL).height(Length::FILL),
         ),
-        StyleRule::new(Selector::Id("title"), Patch::new().color_role(Role::Text).font_size(20.0).font_weight(700.0)),
-        // **The picker's parts, by the ids `Select` stamps.** A
+        // The sidebar: a surface column, its rows inset by `NavRow`.
+        StyleRule::new(
+            Selector::Id("sidebar"),
+            Patch::new()
+                .width(Length::Fixed(248.0))
+                .height(Length::FILL)
+                .background_role(Role::Surface)
+                .padding(Edges { left: 0.0, right: 0.0, top: 24.0, bottom: 12.0 }),
+        ),
+        StyleRule::new(
+            Selector::Id("brand"),
+            Patch::new()
+                .color_role(Role::Text)
+                .font_size(16.0)
+                .font_weight(700.0)
+                .padding(Edges { left: 20.0, right: 20.0, top: 0.0, bottom: 2.0 }),
+        ),
+        StyleRule::new(
+            Selector::Id("brand_sub"),
+            Patch::new()
+                .color_role(Role::Muted)
+                .font_size(12.0)
+                .font_weight(600.0)
+                .padding(Edges { left: 20.0, right: 20.0, top: 0.0, bottom: 16.0 }),
+        ),
+        StyleRule::new(Selector::Id("nav"), Patch::new().width(Length::FILL).height(Length::FILL)),
+        // **Every sidebar row, by kind** — a `Repeat`'s rows are arena
+        // nodes, which a kind reaches and an id cannot. The accent is the
+        // border colour: `NavRow` paints its selected tint and bar from
+        // it and never strokes the border (`nav.rs`).
+        StyleRule::new(
+            Selector::Kind("navrow"),
+            Patch::new()
+                .width(Length::FILL)
+                .height(Length::Fixed(NAV_ROW_H))
+                .background_role(Role::Surface)
+                .color_role(Role::Text)
+                .border_color_role(Role::Accent)
+                .font_size(14.0)
+                .radius(8.0),
+        ),
+        StyleRule::new(
+            Selector::Id("rule"),
+            Patch::new().width(Length::Fixed(1.0)).height(Length::FILL).background(HAIRLINE),
+        ),
+        // The page: the header on the page colour, then the stage card.
+        StyleRule::new(
+            Selector::Id("main"),
+            Patch::new()
+                .width(Length::FILL)
+                .height(Length::FILL)
+                .padding(Edges { left: 32.0, right: 32.0, top: 28.0, bottom: 32.0 }),
+        ),
+        StyleRule::new(Selector::Id("header"), Patch::new().width(Length::FILL)),
+        StyleRule::new(
+            Selector::Id("crumb"),
+            Patch::new().color_role(Role::Muted).font_size(12.0).font_weight(600.0),
+        ),
+        StyleRule::new(Selector::Id("title"), Patch::new().color_role(Role::Text).font_size(24.0).font_weight(700.0)),
+        StyleRule::new(Selector::Id("tgap"), Patch::new().width(Length::FILL)),
+        // The live readout as a chip at the end of the title's line.
+        StyleRule::new(
+            Selector::Id("readout"),
+            Patch::new()
+                .color_role(Role::Accent)
+                .background(CHIP_BG)
+                .radius(12.0)
+                .font_size(12.0)
+                .font_weight(600.0)
+                .padding(Edges { left: 10.0, right: 10.0, top: 4.0, bottom: 4.0 }),
+        ),
+        StyleRule::new(Selector::Id("blurb"), Patch::new().color_role(Role::Muted).font_size(14.0)),
+        // The stage: a surface card, the demo centred in what is left.
+        StyleRule::new(
+            Selector::Id("stage"),
+            Patch::new()
+                .width(Length::FILL)
+                .height(Length::FILL)
+                .background_role(Role::Surface)
+                .border_width(1)
+                .border_color(HAIRLINE)
+                .radius(16.0)
+                .shadow(12.0)
+                .padding(Edges::all(32.0)),
+        ),
+        StyleRule::new(Selector::Id("st"), Patch::new().height(Length::FILL)),
+        StyleRule::new(Selector::Id("sb"), Patch::new().height(Length::FILL)),
+        // **The demo takes its natural width; the spacers centre it** —
+        // with every demo struct `Shrink` too (the loop at the end).
+        StyleRule::new(Selector::Id("demo"), Patch::new().width(Length::Shrink)),
+        StyleRule::new(Selector::Id("sl"), Patch::new().width(Length::FILL)),
+        StyleRule::new(Selector::Id("sr"), Patch::new().width(Length::FILL)),
+        // The `Select` demo's parts, by the ids `Select` stamps. A
         // composite is more than one node, and the derive only names a
         // *field* — so a widget that is several nodes has to publish its
         // own ids or nothing can reach inside it, not a stylesheet and
@@ -793,44 +950,25 @@ fn stylesheet() -> Vec<StyleRule> {
         StyleRule::new(
             Selector::Id(lumen_static_widgets::select::PART_TRIGGER),
             Patch::new()
-                .width(Length::Fixed(300.0))
+                .width(Length::Fixed(220.0))
                 .background_role(Role::Control)
                 .color_role(Role::Text)
                 .radius(8.0)
                 .font_size(15.0)
                 .padding(Edges { left: 14.0, right: 14.0, top: 9.0, bottom: 9.0 }),
         ),
-        StyleRule::new(Selector::Id("blurb"), Patch::new().color_role(Role::Muted).font_size(13.0)),
-        StyleRule::new(
-            Selector::Id("readout"),
-            Patch::new().color_role(Role::Accent).font_size(13.0).font_weight(600.0),
-        ),
-        StyleRule::new(Selector::Id("hr"), Patch::new().background(HAIRLINE)),
-        // The stage: the demo centred in what is left.
-        StyleRule::new(Selector::Kind("Stage"), Patch::new().height(Length::FILL)),
-        StyleRule::new(Selector::Id("st"), Patch::new().height(Length::FILL)),
-        StyleRule::new(Selector::Id("sb"), Patch::new().height(Length::FILL)),
-        StyleRule::new(Selector::Id("sl"), Patch::new().width(Length::FILL)),
-        StyleRule::new(Selector::Id("sr"), Patch::new().width(Length::FILL)),
-        // The menu panel. **No spacers.** It used to take four — two
-        // to push a layer down and across to meet the trigger — because
-        // the panel lived in a stack beside the body and had to be
-        // aimed by hand. A `Popup` anchors itself on its parent, so the
-        // position is the widget's and the sheet only says how big.
-        //
-        // **No `ScrollView` around it**, and that is a scope note
-        // rather than a preference: a scroller lays its content out
-        // against the limits *it* was given, not against its own
-        // resolved box, so an 18-row list inside a 300 px scroller came
-        // out 932 px wide. The catalogue fits the panel today; a list
-        // that outgrows it needs that asymmetry addressed first.
+        // Its menu. A `Popup` anchors itself on its parent, so the sheet
+        // only says how big: six rows, the whole list.
         StyleRule::new(
             Selector::Id(lumen_static_widgets::select::PART_MENU),
             Patch::new()
-                .width(Length::Fixed(300.0))
-                .height(Length::Fixed(PANEL_H))
+                .width(Length::Fixed(220.0))
+                .height(Length::Fixed(6.0 * ROW_H))
                 .background_role(Role::Surface)
-                .radius(10.0),
+                .border_width(1)
+                .border_color(HAIRLINE)
+                .radius(12.0)
+                .shadow(12.0),
         ),
         // ---- the demos -------------------------------------------
         //
@@ -1003,6 +1141,19 @@ fn stylesheet() -> Vec<StyleRule> {
             Selector::Id("d_pull_a"),
             Patch::new().width(Length::Fixed(280.0)).height(Length::Fixed(120.0)),
         ),
+        // **A pull area needs a ground.** At rest the widget draws only
+        // its content, so the demo read as a line of text; M56's stricter
+        // stage filter said so (the old one had credited it with the
+        // header's hairline). The demo's own container is the area.
+        StyleRule::new(
+            Selector::Kind("DPullToRefresh"),
+            Patch::new().width(Length::Shrink).background_role(Role::Control).radius(12.0),
+        ),
+        // A bare `Label` in a demo — a pull area's content, a split
+        // pane's halves — takes the palette's text colour, so it does not
+        // stay black in the dark palette. Every chrome label has an id
+        // rule, which wins.
+        StyleRule::new(Selector::Kind("label"), Patch::new().color_role(Role::Text)),
         StyleRule::new(Selector::Id("d_progress_a"), Patch::new().width(Length::Fixed(280.0))),
         StyleRule::new(Selector::Id("d_divider_a"), Patch::new().width(Length::Fixed(280.0))),
         StyleRule::new(
@@ -1033,7 +1184,46 @@ fn stylesheet() -> Vec<StyleRule> {
                 .hover_dim(0.0)
                 .padding(Edges { left: 14.0, right: 10.0, top: 6.0, bottom: 6.0 }),
         ),
-    ]
+    ];
+    // **Every demo shrinks to what it draws** (M56). A derived struct is
+    // `FILL` wide by default, so a demo's own row spanned whatever share
+    // the stage gave it and its content sat at the share's left edge;
+    // `#demo` could only be centred by being one `FILL` third of the
+    // stage row, which fit three buttons at the old 960 px window by
+    // luck and wrapped "Ghost" on M56's card. With each demo `Shrink`,
+    // the stage measures its real width and the two spacers centre it. A
+    // demo that already has a rule of its own keeps it: a later rule of
+    // the same specificity would win.
+    // **Demos whose widget fills what it is given** get a width of their
+    // own: inside a `Shrink` demo a `FILL` widget has nothing to fill and
+    // lays out 0 px wide — which is what the one-third share above used
+    // to paper over. The veils cover the window whatever their node's
+    // box, so theirs simply fills.
+    for (kind, w) in [
+        ("DRichText", Length::Fixed(420.0)),
+        ("DMarkdown", Length::Fixed(420.0)),
+        ("DRichTextEditor", Length::Fixed(420.0)),
+        ("DPaintBox", Length::Fixed(320.0)),
+        ("DPaneGrid", Length::Fixed(480.0)),
+        ("DDataGrid", Length::Fixed(320.0)),
+        ("DModal", Length::FILL),
+        ("DSheet", Length::FILL),
+        ("DDrawer", Length::FILL),
+    ] {
+        rules.push(StyleRule::new(Selector::Kind(kind), Patch::new().width(w)));
+    }
+    // A toggle and its label are a derived row of their own (`pair!`),
+    // `FILL` like any derived struct, so the pairs shrink too.
+    for kind in ["PairCheckA", "PairCheckB", "PairSwitchA", "PairSwitchB", "PairRadioA", "PairRadioB", "PairRadioC"] {
+        rules.push(StyleRule::new(Selector::Kind(kind), Patch::new().width(Length::Shrink)));
+    }
+    for kind in stage::DEMO_KINDS {
+        let styled = rules.iter().any(|r| matches!(r.selector, Selector::Kind(k) if k == *kind));
+        if !styled {
+            rules.push(StyleRule::new(Selector::Kind(kind), Patch::new().width(Length::Shrink)));
+        }
+    }
+    rules
 }
 
 #[cfg(test)]
@@ -1058,9 +1248,28 @@ mod tests {
         }
     }
 
-    /// The `Stage` node's index. Its `pos.y` is where the header stops
-    /// and the demo's own commands start.
-    const STAGE: usize = 8;
+    /// The stage card's top-left corner — where the header and the sidebar
+    /// stop. A command whose own corner lies **strictly** past it is the
+    /// demo's: the card's own background starts exactly there, and a
+    /// bound that counted it would pass with nothing on the stage (M56:
+    /// this was a `y` threshold until the sidebar ran the window's full
+    /// height).
+    /// The Button demo's three buttons, **by id** — M56 made the demo
+    /// exactly as wide as a "button-shaped" size filter's 300 px bound,
+    /// and the filter then counted the demo and its row as buttons too.
+    fn button_ids() -> Vec<usize> {
+        let table = <<Show as lumen_static::event::App>::Tree as lumen_static::widget::Widget>::SUB_TABLE;
+        ["d_button_a", "d_button_b", "d_button_c"]
+            .iter()
+            .map(|w| lumen_static::style::index_of_wid(table, w).expect("a demo button"))
+            .collect()
+    }
+
+    fn stage_origin(h: &lumen_static_shell::Host<Show>) -> (f32, f32) {
+        let table = <<Show as lumen_static::event::App>::Tree as lumen_static::widget::Widget>::SUB_TABLE;
+        let i = lumen_static::style::index_of_wid(table, "stage").expect("no `#stage` node");
+        (h.states[i].pos.x, h.states[i].pos.y)
+    }
 
     pub(super) fn host(entry: usize, open: bool) -> lumen_static_shell::Host<Show> {
         use lumen_static_shell::text::{FontMetrics, FontStack};
@@ -1093,13 +1302,21 @@ mod tests {
             Some(m) => h.pump_with(m),
             None => h.pump(),
         };
-        let Demo::DataGrid(d) = &h.app.ui.body.stage.row.demo else {
+        let Demo::DataGrid(d) = &h.app.ui.main.stage.row.demo else {
             panic!("choosing entry {entry} did not put a grid on the stage");
         };
+        // **The grid's own laid-out width, not a literal.** This was
+        // `column_width(320.0)`: 320 px was the stage's one-third share
+        // at the old 960 px window, true only by coincidence — M56 moved
+        // it, and the literal went on describing a grid that was no
+        // longer there.
+        let table = <<Show as lumen_static::event::App>::Tree as lumen_static::widget::Widget>::SUB_TABLE;
+        let grid = lumen_static::style::index_of_wid(table, "d_datagrid_a").expect("no `#d_datagrid_a`");
+        let width = h.states[grid].size.w;
+        let want = d.a.column_width(width);
         // Node 1 of `GridRow` is the first cell, node 3 the second.
-        let want = d.a.column_width(320.0);
         let (c0, c1) = (d.a.rows.instance_state(0, 1), d.a.rows.instance_state(0, 3));
-        println!("column {want}, cells {} and {} px wide", c0.size.w, c1.size.w);
+        println!("grid {width} px, column {want}, cells {} and {} px wide", c0.size.w, c1.size.w);
         assert!(want > 0.0, "setup: the grid reported a zero-wide column");
         for (k, c) in [(0, c0), (1, c1)] {
             assert!(
@@ -1123,7 +1340,7 @@ mod tests {
     fn a_wheel_over_the_grid_scrolls_it_on_the_stage() {
         let entry = CATALOG.iter().position(|e| e.name == "DataGrid").unwrap();
         let mut h = host(entry, false);
-        let before = match &h.app.ui.body.stage.row.demo {
+        let before = match &h.app.ui.main.stage.row.demo {
             Demo::DataGrid(d) => d.a.rows.first_row(),
             other => panic!("entry {entry} put {:?} on the stage", other.kind_name()),
         };
@@ -1141,7 +1358,7 @@ mod tests {
         let hit = h.probe(x, y).expect("nothing is under the middle of the grid");
         h.post(Event::Scroll { x, y, dy: -120.0 });
         h.pump();
-        let after = match &h.app.ui.body.stage.row.demo {
+        let after = match &h.app.ui.main.stage.row.demo {
             Demo::DataGrid(d) => d.a.rows.first_row(),
             _ => unreachable!(),
         };
@@ -1162,11 +1379,21 @@ mod tests {
     /// to someone who counted. `Select` takes the count from
     /// `CATALOG.len()`, so only the stage can still drift.
     #[test]
-    fn the_menu_has_a_row_for_every_widget() {
-        let app = build(0, true);
-        let rows = app.ui.body.header.picker.count();
-        println!("{rows} rows, {} demos, {} entries", stage::DEMOS, CATALOG.len());
-        assert_eq!(rows, CATALOG.len(), "the menu lists a different number of options");
+    fn the_sidebar_has_a_row_for_every_entry() {
+        let app = build(0, false);
+        let rows = app.ui.side.nav.count;
+        let groups = (0..rows).filter(|&r| matches!(catalog::nav_item(r), catalog::NavItem::Heading(_))).count();
+        println!("{rows} rows: {} entries and {groups} headings; {} demos", CATALOG.len(), stage::DEMOS);
+        assert_eq!(rows, catalog::nav_len(), "the sidebar lists a different number of rows");
+        assert_eq!(rows, CATALOG.len() + groups, "the rows are not the entries plus one heading per group");
+        // Every entry exactly once, in catalogue order.
+        let entries: Vec<usize> = (0..rows)
+            .filter_map(|r| match catalog::nav_item(r) {
+                catalog::NavItem::Entry(k) => Some(k),
+                catalog::NavItem::Heading(_) => None,
+            })
+            .collect();
+        assert_eq!(entries, (0..CATALOG.len()).collect::<Vec<_>>(), "an entry is missing, repeated or out of order");
         assert_eq!(stage::DEMOS, CATALOG.len(), "`Demo`'s variants and `CATALOG` disagree");
     }
 
@@ -1420,7 +1647,7 @@ mod tests {
             // alone draws ten, so a whole-frame count is cleared by the
             // header whatever the stage does — an entry whose `seed`
             // did nothing passed a `> 6` bound on the total.
-            let top = h.states[STAGE].pos.y;
+            let (sx, sy) = stage_origin(&h);
             let demo = h
                 .list
                 .cmds
@@ -1428,8 +1655,8 @@ mod tests {
                 .filter(|c| match c {
                     Cmd::Rect { rect, .. }
                     | Cmd::RoundedRect { rect, .. }
-                    | Cmd::Text { rect, .. } => rect[1] >= top,
-                    Cmd::Line { a, .. } => a.y >= top,
+                    | Cmd::Text { rect, .. } => rect[0] > sx && rect[1] > sy,
+                    Cmd::Line { a, .. } => a.x > sx && a.y > sy,
                     _ => false,
                 })
                 .count();
@@ -1465,7 +1692,7 @@ mod tests {
             // is a copy-paste away. Collected here, checked below — no
             // per-entry literal to go stale, and two entries landing on
             // one variant is exactly what it catches.
-            seen.push((e.name, core::mem::discriminant(&h.app.ui.body.stage.row.demo)));
+            seen.push((e.name, core::mem::discriminant(&h.app.ui.main.stage.row.demo)));
             assert!(blurb, "{}'s blurb never reached the header", e.name);
             assert!(demo > 0, "{} put nothing on the stage", e.name);
 
@@ -1479,14 +1706,23 @@ mod tests {
             //
             // `Label` is the one entry exempt, because text is all it
             // is.
-            if e.name != "Label" {
+            //
+            // `RichText` is exempt too, and for the same reason: its
+            // spans are words and it draws nothing else. **Until M56 this
+            // check passed for it by counting the chrome**: its filter
+            // took everything below the stage's top edge, and the
+            // header's hairline divider sat exactly there, so a
+            // text-only demo was credited with the divider's rect.
+            // The filter now takes only what is strictly inside the
+            // stage card, which is what made that visible.
+            if e.name != "Label" && e.name != "RichText" {
                 let shapes = h
                     .list
                     .cmds
                     .iter()
                     .filter(|c| match c {
-                        Cmd::Rect { rect, .. } | Cmd::RoundedRect { rect, .. } => rect[1] >= top,
-                        Cmd::Line { a, .. } => a.y >= top,
+                        Cmd::Rect { rect, .. } | Cmd::RoundedRect { rect, .. } => rect[0] > sx && rect[1] > sy,
+                        Cmd::Line { a, .. } => a.x > sx && a.y > sy,
                         _ => false,
                     })
                     .count();
@@ -1516,24 +1752,22 @@ mod tests {
     /// panel that merely painted off-screen would still swallow clicks.
     #[test]
     fn the_dropdown_is_absent_when_closed() {
-        let (shut, open) = (host(0, false), host(0, true));
+        // The `Select` demo — the showcase's own picker until M56.
+        let select = CATALOG.iter().position(|e| e.name == "Select").unwrap();
+        let (shut, open) = (host(select, false), host(select, true));
         let (a, b) = (shut.list.cmds.len(), open.list.cmds.len());
         println!("closed {a} commands, open {b}");
-        assert!(open.app.ui.body.header.picker.is_open(), "an open picker is not open");
-        assert!(!shut.app.ui.body.header.picker.is_open(), "a closed picker is open");
-        // **The rows the menu *materialized*, not the catalogue's length.**
-        // Those were the same number until M27/T27.4 pushed the
-        // catalogue past what the menu can show; after that this bound
-        // was computed from the wrong quantity and failed at 23 extra
-        // commands for 24 entries — which is the honest answer, because
-        // only eighteen rows exist to draw. `Repeat` reports its own
-        // window, so the bound now comes from the thing it bounds.
-        let rows = open.app.ui.body.header.picker.menu.content.window_len();
-        assert!(
-            rows > 0 && rows <= CATALOG.len(),
-            "the menu materialized {rows} rows of {} — setup",
-            CATALOG.len()
-        );
+        let menu = |h: &lumen_static_shell::Host<Show>| match &h.app.ui.main.stage.row.demo {
+            Demo::Select(d) => (d.a.is_open(), d.a.menu.content.window_len()),
+            _ => panic!("the Select demo is not on the stage"),
+        };
+        assert!(menu(&open).0, "an open select is not open");
+        assert!(!menu(&shut).0, "a closed select is open");
+        // **The rows the menu *materialized*, not the option count** —
+        // `Repeat` reports its own window, so the bound comes from the
+        // thing it bounds (M27/T27.4).
+        let rows = menu(&open).1;
+        assert!(rows > 0 && rows <= catalog::FRUIT.len(), "the menu materialized {rows} rows — setup");
         assert!(b > a + rows, "an open menu drew {} more commands, not {rows}+", b - a);
     }
 
@@ -1558,15 +1792,10 @@ mod tests {
         // The first button of the `Button` demo, found by geometry
         // rather than by a counted index.
         assert!(
-            matches!(h.app.ui.body.stage.row.demo, Demo::Button(_)),
+            matches!(h.app.ui.main.stage.row.demo, Demo::Button(_)),
             "the Button demo is not on the stage"
         );
-        let node = (0..<Screen as Widget>::NODE_COUNT)
-            .find(|&i| {
-                let s = &h.states[i];
-                s.size.w > 40.0 && s.size.h > 20.0 && s.pos.y > 200.0 && s.size.w < 200.0
-            })
-            .expect("no button-shaped node on the stage");
+        let node = button_ids()[0];
         let s = &h.states[node];
         let (x, y) = (s.pos.x + s.size.w / 2.0, s.pos.y + s.size.h / 2.0);
         println!("clicking node {node} at ({x:.0}, {y:.0}), size {:?}", s.size);
@@ -1631,13 +1860,7 @@ mod tests {
     fn a_press_shows_on_the_button_being_pressed() {
         let entry = CATALOG.iter().position(|e| e.name == "Button").unwrap();
         let mut h = host(entry, false);
-        let top = h.states[STAGE_NODE].pos.y;
-        let btns: Vec<usize> = (0..<Screen as Widget>::NODE_COUNT)
-            .filter(|&i| {
-                let s = &h.states[i];
-                s.pos.y >= top && s.size.w > 40.0 && s.size.w <= 300.0 && s.size.h > 20.0
-            })
-            .collect();
+        let btns = button_ids();
         assert_eq!(btns.len(), 3, "expected three buttons, found {}", btns.len());
         let at = |h: &lumen_static_shell::Host<Show>, i: usize| {
             let s = &h.states[i];
@@ -1690,13 +1913,7 @@ mod tests {
         use lumen_static::retain::Damage;
         let entry = CATALOG.iter().position(|e| e.name == "Button").unwrap();
         let mut h = host(entry, false);
-        let top = h.states[STAGE_NODE].pos.y;
-        let btns: Vec<usize> = (0..<Screen as Widget>::NODE_COUNT)
-            .filter(|&i| {
-                let s = &h.states[i];
-                s.pos.y >= top && s.size.w > 40.0 && s.size.w <= 300.0 && s.size.h > 20.0
-            })
-            .collect();
+        let btns = button_ids();
         assert_eq!(btns.len(), 3);
         // **This frame does not settle, and that is a known cost.**
         // `#[app(after_update = ...)]` reports nothing, so the derive
@@ -1787,21 +2004,120 @@ mod tests {
     /// Drives the real handler, with the row index arriving the way it
     /// does at runtime — in `EventCtx::row` — rather than from a table
     /// of eighteen functions that no longer exists.
+    /// **Every sidebar row, clicked for real, picks its own entry** — and
+    /// a heading picks nothing (M56/T56.2).
+    ///
+    /// Real wheel events bring each row into the window, and a real press
+    /// and release land on the centre of its materialized instance. For an
+    /// entry the store's selection, the header's title and the row's own
+    /// highlight must all name it; for a heading, `pump` must answer that
+    /// nothing handled the press, and the selection must not move. The
+    /// walk starts away from the first entry, so "selected 0" cannot be a
+    /// row that did nothing.
+    #[test]
+    fn every_sidebar_row_picks_its_own_entry() {
+        let start = CATALOG.len() - 1;
+        let mut h = host(start, false);
+        let table = <<Show as lumen_static::event::App>::Tree as lumen_static::widget::Widget>::SUB_TABLE;
+        let nav = lumen_static::style::index_of_wid(table, "nav").expect("no `#nav`");
+        let (nx, ny, nh) = (h.states[nav].pos.x, h.states[nav].pos.y, h.states[nav].size.h);
+        let (mut items, mut headings, mut dismissals) = (0, 0, 0);
+        for r in 0..catalog::nav_len() {
+            // Scroll until row `r` is in the materialized window.
+            for _ in 0..200 {
+                let s = &h.app.ui.side.nav;
+                let (first, len) = (s.first_row(), s.window_len());
+                // Fully inside the viewport, not merely materialized: a row
+                // half under the edge is clipped where the press would land.
+                let k = r.wrapping_sub(first);
+                if k < len {
+                    let st = s.row_state(k);
+                    if st.pos.y >= ny && st.pos.y + st.size.h <= ny + nh {
+                        break;
+                    }
+                }
+                // A positive `dy` is a wheel turned toward the user, which
+                // moves a list back toward its top (`PullToRefresh` pulls
+                // on the same sign) — so reaching a lower row is negative.
+                let dy = if r < first { NAV_ROW_H } else { -NAV_ROW_H };
+                h.post(Event::Scroll { x: nx + 100.0, y: ny + nh / 2.0, dy });
+                h.pump();
+            }
+            let s = &h.app.ui.side.nav;
+            let k = r - s.first_row();
+            let st = s.row_state(k);
+            let (x, y) = (st.pos.x + st.size.w / 2.0, st.pos.y + st.size.h / 2.0);
+            let before = h.app.store.selected;
+            let open_before = h.open_overlays();
+            h.post(Event::down(x, y));
+            h.post(Event::up(x, y));
+            let mut handled = h.pump();
+            // **A demo seeded with its popup open** (a date picker, a
+            // menu) takes the next press anywhere outside it: the press
+            // closes the popup and is consumed — the documented dropdown
+            // behaviour — so a user clicks again, and so does this. Only
+            // when a popup *was* open and the press closed it: a retry
+            // anywhere else would hide exactly the miss this test is for.
+            // (A veil is different: its dismissal is a request the
+            // showcase counts and declines, and the press goes on.)
+            if h.app.store.selected == before && open_before > 0 && h.open_overlays() < open_before {
+                dismissals += 1;
+                h.post(Event::down(x, y));
+                h.post(Event::up(x, y));
+                handled = h.pump();
+            }
+            match catalog::nav_item(r) {
+                catalog::NavItem::Heading(g) => {
+                    headings += 1;
+                    assert!(!handled, "a press on the {g:?} heading (row {r}) was handled");
+                    assert_eq!(h.app.store.selected, before, "a press on the {g:?} heading moved the selection");
+                }
+                catalog::NavItem::Entry(e) => {
+                    items += 1;
+                    let name = CATALOG[e].name;
+                    assert!(handled, "a press on row {r} ({name}) was not handled at ({x:.0}, {y:.0})");
+                    assert_eq!(
+                        h.app.store.selected, e,
+                        "row {r} is labelled {name:?} and picked {:?}",
+                        CATALOG[h.app.store.selected].name
+                    );
+                    let title = &h.app.ui.main.header.heading.title;
+                    assert_eq!(title.as_str(), name, "the header did not follow row {r}");
+                    let s = &h.app.ui.side.nav;
+                    let row = s.instance(r - s.first_row());
+                    assert!(
+                        row.selected && row.label == name,
+                        "row {r} was clicked for {name:?} and now reads {:?}, selected: {}",
+                        row.label,
+                        row.selected
+                    );
+                }
+            }
+        }
+        println!("clicked {items} entry rows and {headings} headings ({dismissals} presses first closed a demo's popup); every entry picked itself");
+        assert_eq!(items, CATALOG.len(), "setup: the walk did not reach every entry");
+    }
+
     #[test]
     fn picking_a_row_swaps_the_demo() {
-        let mut s = build(0, true);
+        let mut s = build(0, false);
         assert_eq!(s.store.selected, 0);
-        let mut row = SelectRow::<Store>::default();
-        bind_row(&mut row, 15);
+        let target = 15;
+        let r = (0..catalog::nav_len())
+            .find(|&r| catalog::nav_item(r) == catalog::NavItem::Entry(target))
+            .expect("entry 15 has no sidebar row");
+        let mut row = NavRow::<Store>::default();
+        bind_nav(&mut row, r);
+        assert_eq!(row.label, CATALOG[target].name, "the row is not labelled with its entry");
         let mut cx = press_at(0.0, 0.0);
-        cx.row = Some(15);
-        // The handler gets the state (M33); the binding step then closes
-        // the popup, as the next pump would.
+        cx.row = Some(r as u64);
+        // The handler gets the state (M33); `refresh` then rebuilds the
+        // header and moves the highlight, as the next pump would.
         (row.on_click)(&mut s.store, &cx);
         lumen_static::event::App::update(&mut s);
-        println!("after picking row 15: {} ({})", CATALOG[s.store.selected].name, s.store.selected);
-        assert_eq!(s.store.selected, 15, "the handler picked the wrong entry");
-        assert!(!s.ui.body.header.picker.is_open(), "picking a row left the dropdown open");
+        println!("after picking sidebar row {r}: {} ({})", CATALOG[s.store.selected].name, s.store.selected);
+        assert_eq!(s.store.selected, target, "the handler picked the wrong entry");
+        assert_eq!(nav::selected(), target, "the sidebar's highlight did not follow");
     }
 }
 
@@ -1972,3 +2288,4 @@ mod boundary {
         println!("size_of::<Cmd>() = {} B", std::mem::size_of::<Cmd>());
     }
 }
+
