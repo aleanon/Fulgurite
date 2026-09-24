@@ -857,6 +857,15 @@ pub type ColorPicker = Picker<COLOR>;
 /// A month, with `<` and `>`.
 pub type DatePicker = Picker<DATE>;
 /// Hours over five-minute marks.
+///
+/// **One grid, not two lists.** A clock is an hour list and a minute list;
+/// putting both in one popup of cells — twenty-four hours, then twelve
+/// five-minute marks — makes it one hit test instead of two. The seam
+/// painted between them is what keeps it reading as two.
 pub type TimePicker = Picker<TIME>;
 /// A list of names the application supplies.
+///
+/// **It owns no data.** It does not read a directory; the names are handed
+/// to it (`Picker::with_files`), the way a `DataGrid`'s rows are, because
+/// a file list belongs to whatever read the directory.
 pub type FilePicker = Picker<FILE>;

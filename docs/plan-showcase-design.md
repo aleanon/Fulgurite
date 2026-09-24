@@ -109,6 +109,28 @@ byte-identical comparison is impossible by design.
 
 ### T56.1 — the note goes, and the catalogue is grouped once
 
+> **DONE 2026-09-24.** Two things were built differently from this
+> section.
+>
+> - **The catalogue stays a flat `&[Entry]`**, reordered so each group
+>   is contiguous. Nested `Group` slices would have churned every
+>   `CATALOG[i]` index that the tests, the drives and `--shot N` use.
+>   The property that mattered, each group named once, is now a test:
+>   `each_group_appears_once` prints the 11 groups in order.
+> - **The fixture is the opening 32 characters of each former note**,
+>   not the whole note, which is enough to recognise one.
+>   `every_entry_paints_a_demo` asserts that no text on any entry's
+>   frame starts with one.
+>
+> **The rustdoc check.** 42 of the 51 notes were already stated in
+> rustdoc, and 9 in plain comments, which the project's rule accepts.
+> Five were stated nowhere and moved into rustdoc: `Label`, `LINE`,
+> `item_at`, `TimePicker` and `FilePicker`. `LineChart`'s note was also
+> slightly wrong: one bad sample in the middle costs two segments, not
+> one, and the rustdoc says "a gap". **`W1005` left with the note.**
+> `choose.py`'s allowance for it is gone, and the PickList drive is
+> green under both strategies without it.
+
 `catalog.rs`:
 - Drop `Entry::note` and its `entry!` argument.
 - Restructure as `CATALOG: &[Group { name, entries: &[Entry] }]`, in a

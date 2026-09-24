@@ -102,6 +102,11 @@ impl Series {
 /// Vertical bars from a baseline of zero.
 pub const BAR: u8 = 0;
 /// A polyline through the points.
+///
+/// **A non-finite sample breaks the line, not the chart.** The scale
+/// skips it (`Series::max`) and the segments that touch it are not
+/// drawn, so one bad value costs a gap rather than the whole plot — a
+/// chart is a view of numbers it did not produce.
 pub const LINE: u8 = 1;
 /// Proportions of a whole, as a ring.
 pub const PIE: u8 = 2;

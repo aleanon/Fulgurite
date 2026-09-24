@@ -13,6 +13,7 @@ SUPER                # winit's name for the same key; ours is META
 platform_specific    # winit KeyEvent field with no public constructor; translate.rs says why
 KeyEvent             # winit's type, named where translate.rs says why it is not used
 libm                 # the crate M13/T13.2 declined to depend on; num.rs says why
+chrono               # the crate M27/T27.11 declined; pick.rs says why (was only in a showcase note until M56)
 Task                 # iced's type. M28 takes its *shape* and deliberately does not have it:
                      # a chain here is a step index, not a closure across an await
                      # (docs/plan-tasks.md §2.1). The name must stay in the prose that

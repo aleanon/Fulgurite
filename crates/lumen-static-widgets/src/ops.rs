@@ -31,6 +31,12 @@ use lumen_static::widget::{Node, Widget};
 /// a dirty bit and `measure` memoizes, because shaping is the expensive
 /// part of a real frame — the reason text lives here rather than in a
 /// sibling field reached by a getter.
+///
+/// **The text is a presentation copy.** The application owns the string
+/// and `#[bind]` writes it here through `TextTarget`; the widget never
+/// changes it on its own. `TextInput` is the opposite case, for the same
+/// rule: there the text originates at the widget, because the user typed
+/// it.
 #[derive(Default)]
 pub struct Label<S: TextStorage = &'static str> {
     pub text: Dirty<S>,

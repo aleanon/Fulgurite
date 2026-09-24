@@ -143,6 +143,13 @@ impl<const KIND: u8> Strip<KIND> {
         KIND == RAIL
     }
 
+    /// The item under a local point, read along the strip's own axis.
+    ///
+    /// **A rail reads `local.y` where the other two read `local.x`.** It is
+    /// the one line three presentations sharing one implementation can get
+    /// wrong with nothing else looking different, and only a press down a
+    /// rail can tell — `a_rail_reads_the_press_down_its_own_axis` in
+    /// `tests/nav.rs` is that press.
     fn item_at(&self, local: Point) -> Option<usize> {
         if self.count == 0 || self.extent <= 0.0 {
             return None;

@@ -137,10 +137,6 @@ pub struct Stage {
     #[widget_id("st")]
     top: Spacer,
     row: StageRow,
-    /// The subtlety under the demo — what makes Lumen's showcase teach
-    /// rather than merely list.
-    #[widget_id("note")]
-    note: Label<String>,
     #[widget_id("sb")]
     bottom: Spacer,
 }
@@ -178,7 +174,7 @@ pub struct Show {
     /// example — the demos' buttons and toggles, the picker's trigger,
     /// its rows and its dismissal — takes `&mut Store`, and the tree is
     /// not reachable from it. What a handler used to write into the tree
-    /// (the note, the trigger's label, the blurb, the readout, the demo on
+    /// (the trigger's label, the blurb, the readout, the demo on
     /// the stage) is written by `refresh`, the `after_update` hook, which
     /// keeps `&mut Show` — so showcase stays on the conservative path M29
     /// §2.4 records for `after_update`, by design.
@@ -296,7 +292,6 @@ fn advance(s: &mut Show, dt_ms: f32) -> bool {
 /// Put the selected entry on the stage and bring the header into step.
 fn rebuild(s: &mut Show) {
     let e = &CATALOG[s.store.selected];
-    s.ui.body.stage.note.set(e.note.into());
     s.store.needs_seed = true;
     // **ASCII, not `\u{25be}`.** The system font has no chevron and
     // `examples/glasswall` already paid for that lesson: a missing glyph
@@ -993,9 +988,9 @@ fn stylesheet() -> Vec<StyleRule> {
         // stage, measured (M27/T27.10).
         StyleRule::new(Selector::Id("d_tree_a"), Patch::new().height(Length::Fixed(200.0))),
         // A pane grid fills what it is given, and what the stage gives
-        // it is the whole column — which squeezed the note under it to
-        // zero height and `W1001` said so, on the first drive. A pane
-        // grid in an application fills a window; in a catalogue of
+        // it is the whole column — which squeezed the label then under
+        // it to zero height and `W1001` said so, on the first drive. A
+        // pane grid in an application fills a window; in a catalogue of
         // fifty-one demos it gets a pane's worth.
         StyleRule::new(Selector::Id("d_panegrid_a"), Patch::new().height(Length::Fixed(260.0))),
         StyleRule::new(Selector::Id("d_tabs_a"), Patch::new().width(Length::Fixed(420.0))),
@@ -1338,6 +1333,77 @@ mod tests {
         assert!(wrong.is_empty(), "fields that did not follow their rule:\n{}", wrong.join("\n"));
     }
 
+    /// The opening of every note the showcase used to print under its
+    /// demo, removed by M56/T56.1 (`docs/plan-showcase-design.md`). Kept
+    /// only so a test can say none of them comes back.
+    const FORMER_NOTES: [(&str, &str); 51] = [
+        ("Label", "A `Label`'s text is a presentati"),
+        ("Badge", "It shrinks to its text, so `IS_R"),
+        ("Chip", "A separate type rather than a fi"),
+        ("Avatar", "Two *chars*, not two bytes: \"ÅB\""),
+        ("Icon", "A closed enum, not a font codepo"),
+        ("Divider", "Named `Divider` where Lumen says"),
+        ("Button", "An `on_click` is a plain `fn` po"),
+        ("CheckBox", "A toggle does not flip itself: t"),
+        ("Switch", "One type with three presentation"),
+        ("Radio", "There is no group container: eac"),
+        ("Slider", "A slider only draggable by mouse"),
+        ("TextInput", "The one place a widget owning st"),
+        ("ProgressBar", "An empty bar paints nothing at a"),
+        ("Spinner", "It does not drive its own clock "),
+        ("Skeleton", "The shimmer is clipped to the bl"),
+        ("BarChart", "`Series` is a fixed array, so a "),
+        ("LineChart", "A non-finite sample costs one se"),
+        ("PieChart", "Wedges are runs of radial lines:"),
+        ("Card", "A wrapper that does not route `H"),
+        ("Toast", "It does not dismiss itself: ther"),
+        ("Tooltip", "The tip keys on the *content's* "),
+        ("NumberInput", "Not a Stepper: no +/- buttons. B"),
+        ("RangeSlider", "A pair of sliders is not a range"),
+        ("SearchField", "A click in the padding focuses t"),
+        ("Tabs", "An underline, not a fill: a fill"),
+        ("BottomNav", "One type, three presentations, c"),
+        ("NavigationRail", "A rail reads a press down `local"),
+        ("AppBar", "Not a selector, so not a strip: "),
+        ("PullToRefresh", "It does not refresh anything: `t"),
+        ("Modal", "A shut veil is *absent*, not mer"),
+        ("Sheet", "Its panel is measured against wh"),
+        ("Drawer", "Dismissal is a *request*: pressi"),
+        ("Wrap", "A derive axis, not a widget: a c"),
+        ("Grid", "`wrap` and `grid` are one loweri"),
+        ("SplitPane", "The divider stops short of both "),
+        ("Accordion", "Not a widget — a column of `Coll"),
+        ("PickList", "It owns its options, which is wh"),
+        ("Combobox", "An empty query shows everything:"),
+        ("Menu", "A release chooses, a press does "),
+        ("PaneGrid", "iced's is a *tree* the user re-a"),
+        ("RichText", "The measure hook answers `how wi"),
+        ("Markdown", "No italic, deliberately: `Painte"),
+        ("RichTextEditor", "It edits *markup*, not a documen"),
+        ("PaintBox", "A plain `fn` pointer and not a c"),
+        ("ColorPicker", "A fixed palette, not a wheel: a "),
+        ("DatePicker", "A month grid is a lead-in of bla"),
+        ("TimePicker", "Hours and five-minute marks in o"),
+        ("FilePicker", "It owns no data either — the nam"),
+        ("Pagination", "Centred, not paged in blocks: a "),
+        ("Tree", "Collapsing hides a whole subtree"),
+        ("DataGrid", "It owns no data: its rows are a "),
+    ];
+
+    /// The sidebar prints a heading where the group changes, so a group
+    /// that recurs later in the catalogue would be headed twice (M56).
+    #[test]
+    fn each_group_appears_once() {
+        let mut seen: Vec<&str> = Vec::new();
+        for e in CATALOG {
+            if seen.last() != Some(&e.group) {
+                assert!(!seen.contains(&e.group), "group {:?} recurs at {:?}: groups must be contiguous", e.group, e.name);
+                seen.push(e.group);
+            }
+        }
+        println!("  {} groups, each once: {:?}", seen.len(), seen);
+    }
+
     #[test]
     fn every_entry_paints_a_demo() {
         let mut seen: Vec<(&str, core::mem::Discriminant<Demo>)> = Vec::new();
@@ -1376,6 +1442,16 @@ mod tests {
                     _ => None,
                 })
                 .any(|t| t == e.blurb);
+            // **No note under the demo** (M56/T56.1): no text anywhere on
+            // the frame opens the way a removed note did.
+            for c in &h.list.cmds {
+                if let Cmd::Text { text, .. } = c {
+                    let t = h.list.str_of(*text);
+                    if let Some((whose, _)) = FORMER_NOTES.iter().find(|(_, p)| t.starts_with(p)) {
+                        panic!("{}: a removed note is on screen again ({whose}'s): {t:?}", e.name);
+                    }
+                }
+            }
             println!("  {:>12}  {demo} commands", e.name);
             // **Exactly one demo on the stage — now by construction.**
             // This used to assert `shown() == 1` over eighteen

@@ -91,12 +91,6 @@ PICKLIST = ("PickList", "#d_picklist_a", [
         ),
         isolate=lambda c: (c.__dict__.__setitem__("_v0", c.value()),
                            c.click_outside())[0],
-        # Choosing changes the trigger's text, which relays out the
-        # stage — and the showcase's own note is a wrapping `Label`
-        # whose *unwrapped* natural width always exceeds its box, so
-        # `W1005` re-reports it. The lint is right about the frame it
-        # sees; it is not a defect this action introduced.
-        expects_lint=("W1005",),
         injection="choose on the press instead of the release",
     ),
     Action(
