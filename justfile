@@ -86,6 +86,7 @@ fixtures:
     cargo run -p embedded --bin embedded
     ./scripts/hot_reload_demo.sh
     ./scripts/abi_stamp.sh
+    ./scripts/window_reload_demo.sh
 
 # ---------------------------------------------------------------------------
 # Pre-push / CI
@@ -405,6 +406,11 @@ hot-demo:
 # name, and one built the same way is accepted -- two real builds.
 abi-stamp:
     ./scripts/abi_stamp.sh
+
+# M37/T37.1: a window library swapped v1 -> v2 headlessly; the swapped
+# frame equals v2 run from the start, byte for byte.
+window-reload-demo:
+    ./scripts/window_reload_demo.sh
 
 # The tally window with the agent endpoint on 127.0.0.1:9230 (override with
 # LUMEN_AGENT_ADDR). Drive it with scripts/agent_client.py — see

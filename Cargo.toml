@@ -29,6 +29,8 @@ members = [
     "fixtures/hot-host",
     "fixtures/stamp-lib",
     "fixtures/stamp-host",
+    "fixtures/reload-app",
+    "fixtures/reload-host",
     "fixtures/embedded",
     "fixtures/bake-font",
 ]

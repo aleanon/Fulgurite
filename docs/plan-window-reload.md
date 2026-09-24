@@ -200,6 +200,28 @@ byte. *Injection:* **hold v1's handler `fn` pointer across the swap**,
 which is M28/T28.7's injection. The frame answers with v1's text, and
 the gate prints both strings.
 
+> **Landing 2, 2026-09-24: `export_program!` and the headless gate.**
+> `lumen_static_reload::hot` has both sides (feature `window`). The
+> library side is `boot`: the library's own `program()`, with the saved
+> bytes grafted on through the new `Host::restore`, so construction is
+> the new build's. The loader side is `Build::open`, which checks the
+> stamp (now with the shell's fields, including a hash of `session.rs`,
+> since the trait's vtable is part of the ABI), then `Build::boot`. A
+> `Hot` hands its session back to the library to be dropped there,
+> caught. `export_program!` exports the stamp, `lumen_boot`, `lumen_drop`
+> and `hot_take_panic`.
+>
+> The gate is `just window-reload-demo`. `fixtures/reload-app` has v1
+> formatting "count {}" and v2 formatting "clicks: {}". It is clicked
+> once in v1, swapped, and compared with v2 clicked once from fresh, and
+> the two agree over 3 commands, byte for byte. **The first run
+> disagreed**: the direct session still had the pointer over its button
+> and drew it hover-shaded. Hover is not kept state, so the pointer
+> leaves before the comparison, and the assertion has fired on something
+> real. *Injections:* constructing through **v1's** `lumen_boot` after
+> the swap (the plan's injection) gives a frame reading `count 1`, v1's
+> format; skipping the restore gives `clicks: 0`.
+
 ## T37.2 — the loader, in `lumen-static-winit`
 
 §2.6's build and watch, the swap at a frame boundary, the list-taking

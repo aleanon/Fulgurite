@@ -440,16 +440,34 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
     /// resolve in a default-feature doc build.
     pub fn adopt(&mut self, app: A) {
         self.app = app;
-        // Re-asked from the program's description (M32), the one place a
-        // sheet comes from. A host with no source keeps what it has.
+        self.reasked();
+    }
+
+    /// What adopting an application re-derives: the sheet, re-asked from
+    /// the program's description (M32), the one place a sheet comes from
+    /// — a host with no source keeps what it has — and every mark,
+    /// because nothing about last frame's describes a new state.
+    fn reasked(&mut self) {
         if let Some(source) = self.sheet_source.clone() {
             let sheet = source.sheet(&self.app);
             self.set_stylesheet(&sheet);
         }
-        // A new application is a new tree: nothing about last frame's
-        // marks describes it.
         self.invalidation.mark_all();
         self.arenas_dirty = true;
+    }
+
+    /// Graft saved `#[reload(keep)]` state onto the application this host
+    /// already runs — M37/T37.1. A window's swap boots the **new**
+    /// build's program (`docs/plan-window-reload.md` §2.2) and restores
+    /// onto it here, so construction never goes through a pointer held
+    /// across the swap.
+    #[cfg(feature = "reload")]
+    pub fn restore(&mut self, saved: &lumen_static::reload::Value)
+    where
+        A: lumen_static::reload::Reloadable,
+    {
+        self.app.restore(saved);
+        self.reasked();
     }
 
     /// Rebuild the application from the code that is loaded **now**,

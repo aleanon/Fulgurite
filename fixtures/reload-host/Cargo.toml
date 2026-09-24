@@ -1,0 +1,16 @@
+[package]
+name = "reload-host"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+# The loader half of M37/T37.1's gate. Its dependencies are the library's
+# (`fixtures/reload-app`), deliberately: the ABI stamp refuses a library
+# whose core or shell was built with other features, and cargo unifies
+# features per package.
+[dependencies]
+lumen-static = { path = "../../crates/lumen-static", features = ["reload"] }
+lumen-static-widgets = { path = "../../crates/lumen-static-widgets", features = ["reload"] }
+lumen-static-shell = { path = "../../crates/lumen-static-shell", features = ["truetype", "reload"] }
+lumen-static-reload = { path = "../../crates/lumen-static-reload", features = ["window"] }

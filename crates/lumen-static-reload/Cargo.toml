@@ -11,3 +11,13 @@ name = "lumen_static_reload"
 # no-unsafe invariant is a gate rather than a preference.
 [dependencies]
 lumen-static = { path = "../lumen-static", features = ["reload"] }
+# M37/T37.1: the window half -- `hot` (a library's session, and the loader
+# that opens one behind the ABI stamp) and `export_program!`. It knows the
+# shell's `Session`, which the shell cannot know about this crate without
+# a cycle; and the loader's `unsafe` lives here because nothing else in
+# `crates/` may hold any.
+lumen-static-shell = { path = "../lumen-static-shell", features = ["truetype", "reload"], optional = true }
+libloading = { version = "0.8", optional = true }
+
+[features]
+window = ["dep:lumen-static-shell", "dep:libloading"]

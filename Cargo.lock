@@ -1527,7 +1527,9 @@ dependencies = [
 name = "lumen-static-reload"
 version = "0.1.0"
 dependencies = [
+ "libloading",
  "lumen-static",
+ "lumen-static-shell",
 ]
 
 [[package]]
@@ -2362,6 +2364,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d678d17679829e73d371e96880897e98fee2ded7acc0a50bdf8af2affa4b2fe5"
 dependencies = [
  "bitflags 2.13.1",
+]
+
+[[package]]
+name = "reload-app"
+version = "0.1.0"
+dependencies = [
+ "lumen-static",
+ "lumen-static-reload",
+ "lumen-static-shell",
+ "lumen-static-widgets",
+ "serde",
+]
+
+[[package]]
+name = "reload-host"
+version = "0.1.0"
+dependencies = [
+ "lumen-static",
+ "lumen-static-reload",
+ "lumen-static-shell",
+ "lumen-static-widgets",
 ]
 
 [[package]]

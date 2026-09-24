@@ -1,0 +1,23 @@
+[package]
+name = "reload-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+# M37/T37.1: a window library -- a `program()` behind `export_program!`.
+# `scripts/window_reload_demo.sh` builds it as v1 and v2 (the bound
+# label's format changes, the kept count must not) and `fixtures/
+# reload-host` swaps between them headlessly.
+[lib]
+crate-type = ["cdylib"]
+
+[features]
+v2 = []
+
+[dependencies]
+lumen-static = { path = "../../crates/lumen-static", features = ["reload"] }
+lumen-static-widgets = { path = "../../crates/lumen-static-widgets", features = ["reload"] }
+lumen-static-shell = { path = "../../crates/lumen-static-shell", features = ["truetype", "reload"] }
+lumen-static-reload = { path = "../../crates/lumen-static-reload", features = ["window"] }
+serde = { version = "1", features = ["derive"] }

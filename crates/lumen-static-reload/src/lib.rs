@@ -357,3 +357,294 @@ macro_rules! export_abi_stamp {
         }
     };
 }
+
+/// **A window's hot library, from both sides** — M37/T37.1
+/// (`docs/plan-window-reload.md`).
+///
+/// The library side is [`boot`](hot::boot), which [`export_program!`]
+/// calls: the library's own `program()` is booted and the saved state
+/// restored onto it, so a swap re-runs the **new** build's construction
+/// (§2.2) and never goes through a pointer held from the old one — rule
+/// 1, and M28/T28.7's defect in a new place.
+///
+/// The loader side is [`Build`](hot::Build): open a library, refuse it
+/// unless its ABI stamp matches this image's, and boot sessions from it.
+/// A session is borrowed in place rather than copied
+/// (`docs/step4-hot-reload.md`, T37.0), which is what the stamp is for.
+/// **No library is ever unloaded** (§2.5): each `Build` leaks its handle.
+#[cfg(feature = "window")]
+pub mod hot {
+    use std::ffi::c_void;
+    use std::path::{Path, PathBuf};
+
+    use lumen_static::event::App;
+    use lumen_static::reload::{symbols, Reloadable};
+    use lumen_static_shell::program::Program;
+    use lumen_static_shell::session::{abi_fields, FrameSource, Local, Recover, Screen, Session};
+
+    /// This image's ABI stamp, with the shell's fields: what a window
+    /// library exports and what its loader compares against.
+    pub fn stamp() -> String {
+        crate::abi::stamp(&abi_fields())
+    }
+
+    /// **The library side**: boot `program`, then graft `saved` onto it.
+    /// Recovery is always on — a hot library's panic must be caught in
+    /// the library (M36/T36.4) — and the session can save, for the next
+    /// swap.
+    pub fn boot<A: App + Reloadable + 'static>(program: Program<A>, saved: Option<&[u8]>) -> Box<dyn Session> {
+        let mut s = Local::from_program(program, Recover::On)
+            .with_saver(|a| lumen_static::reload::to_vec(&Reloadable::save(a)));
+        if let Some(v) = saved.and_then(lumen_static::reload::from_slice) {
+            s.host.restore(&v);
+        }
+        Box::new(s)
+    }
+
+    type BootFn = unsafe extern "C" fn(*const u8, usize) -> *mut c_void;
+    type DropFn = unsafe extern "C" fn(*mut c_void);
+    type TakeFn = unsafe extern "C" fn(*mut u8, usize) -> usize;
+
+    /// Why a library was not opened.
+    #[derive(Debug)]
+    pub enum Refused {
+        /// The dynamic loader could not open it.
+        Load(String),
+        /// It was built differently (the stamp names how).
+        Stamp(crate::abi::Mismatch),
+        /// It does not export an entry point a window library must.
+        Missing(&'static str),
+    }
+
+    impl core::fmt::Display for Refused {
+        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+            match self {
+                Refused::Load(e) => write!(f, "could not load the library: {e}"),
+                Refused::Stamp(m) => write!(f, "{m}"),
+                Refused::Missing(s) => write!(f, "the library exports no `{s}` — is it built with `export_program!`?"),
+            }
+        }
+    }
+
+    /// One loaded build of a window library. Leaked, never unloaded.
+    pub struct Build {
+        path: PathBuf,
+        boot: BootFn,
+        drop: DropFn,
+        take_panic: TakeFn,
+    }
+
+    fn sym<T: Copy>(lib: &'static libloading::Library, name: &'static [u8]) -> Result<T, Refused> {
+        let shown = core::str::from_utf8(name).unwrap_or("?");
+        // SAFETY: `T` is the fn type `symbols` documents for `name`; the
+        // stamp was checked before any symbol but the stamp's is read.
+        unsafe { lib.get::<T>(name) }.map(|s| *s).map_err(|_| Refused::Missing(shown))
+    }
+
+    impl Build {
+        /// Open `path`, and refuse it unless it was built as this image
+        /// was. Nothing but the stamp is called before the check.
+        pub fn open(path: &Path) -> Result<Build, Refused> {
+            // SAFETY: loading runs the library's initialisers; a window
+            // library is built from this workspace's code.
+            let lib = unsafe { libloading::Library::new(path) }.map_err(|e| Refused::Load(e.to_string()))?;
+            let lib: &'static libloading::Library = Box::leak(Box::new(lib));
+            let read: TakeFn = sym(lib, symbols::ABI_STAMP)?;
+            // SAFETY: `lumen_abi_stamp` writes at most `cap` bytes.
+            let theirs = unsafe { crate::abi::read(read) };
+            crate::abi::check(&stamp(), &theirs).map_err(Refused::Stamp)?;
+            Ok(Build {
+                path: path.to_path_buf(),
+                boot: sym(lib, symbols::BOOT)?,
+                drop: sym(lib, symbols::DROP_SESSION)?,
+                take_panic: sym(lib, symbols::TAKE_PANIC)?,
+            })
+        }
+
+        pub fn path(&self) -> &Path {
+            &self.path
+        }
+
+        /// Boot this build's program, with `saved` restored onto it. `Err`
+        /// with the library's panic report if its boot panicked.
+        pub fn boot(&self, saved: Option<&[u8]>) -> Result<Hot, String> {
+            let (ptr, len) = saved.map_or((core::ptr::null(), 0), |b| (b.as_ptr(), b.len()));
+            // SAFETY: `(ptr, len)` is a live slice or null; the library
+            // copies what it needs before returning.
+            let p = unsafe { (self.boot)(ptr, len) };
+            if p.is_null() {
+                return Err(self.take_panic().unwrap_or_else(|| "the library's boot returned nothing".into()));
+            }
+            // SAFETY: a non-null `lumen_boot` result is a thin pointer to a
+            // `Box<dyn Session>` the library allocated, and the stamp says
+            // both sides lay one out alike.
+            let session = unsafe { *Box::from_raw(p as *mut Box<dyn Session>) };
+            Ok(Hot { session: Some(session), drop: self.drop })
+        }
+
+        /// The report of the last panic the library caught outside a
+        /// session's own guard — in `boot` or a drop.
+        pub fn take_panic(&self) -> Option<String> {
+            // SAFETY: `hot_take_panic` writes at most `cap` bytes.
+            let s = unsafe { crate::abi::read(self.take_panic) };
+            (!s.is_empty()).then_some(s)
+        }
+    }
+
+    /// A session a library built, returned to that library to be dropped.
+    pub struct Hot {
+        session: Option<Box<dyn Session>>,
+        drop: DropFn,
+    }
+
+    impl Hot {
+        fn s(&self) -> &dyn Session {
+            self.session.as_deref().expect("a live session")
+        }
+        fn m(&mut self) -> &mut dyn Session {
+            self.session.as_deref_mut().expect("a live session")
+        }
+    }
+
+    impl Drop for Hot {
+        fn drop(&mut self) {
+            if let Some(s) = self.session.take() {
+                let p = Box::into_raw(Box::new(s)) as *mut c_void;
+                // SAFETY: `p` is the box `Build::boot` took from this
+                // library, handed back once.
+                unsafe { (self.drop)(p) };
+            }
+        }
+    }
+
+    impl FrameSource for Hot {
+        fn list(&self) -> &lumen_static::DisplayList {
+            self.s().list()
+        }
+        fn take_damage_for_age(&mut self, age: u8) -> lumen_static::retain::Damage {
+            self.m().take_damage_for_age(age)
+        }
+        fn timings(&self) -> (u64, u64) {
+            self.s().timings()
+        }
+    }
+
+    impl Session for Hot {
+        fn post(&mut self, ev: lumen_static::Event) {
+            self.m().post(ev)
+        }
+        fn copy(&self) -> Option<String> {
+            self.s().copy()
+        }
+        fn paste(&mut self, text: &str) {
+            self.m().paste(text)
+        }
+        fn compose(&mut self, c: lumen_static::event::Composition<'_>) -> bool {
+            self.m().compose(c)
+        }
+        fn set_scale(&mut self, scale: f32) {
+            self.m().set_scale(scale)
+        }
+        fn scale(&self) -> f32 {
+            self.s().scale()
+        }
+        fn to_logical(&self, x: f32, y: f32) -> (f32, f32) {
+            self.s().to_logical(x, y)
+        }
+        fn resize(&mut self, width: u32, height: u32) {
+            self.m().resize(width, height)
+        }
+        fn frame(&mut self, dt_ms: f32, width: u32, height: u32) -> bool {
+            self.m().frame(dt_ms, width, height)
+        }
+        fn failed(&self) -> bool {
+            self.s().failed()
+        }
+        fn retry(&mut self) -> bool {
+            self.m().retry()
+        }
+        fn title(&self) -> String {
+            self.s().title()
+        }
+        fn cursor(&self) -> lumen_static::style::Cursor {
+            self.s().cursor()
+        }
+        fn next_deadline_ms(&mut self) -> Option<f32> {
+            self.m().next_deadline_ms()
+        }
+        fn more_deferred(&self) -> bool {
+            self.s().more_deferred()
+        }
+        fn set_waker(&mut self, waker: std::sync::Arc<dyn lumen_static::inbox::Waker>) {
+            self.m().set_waker(waker)
+        }
+        fn page(&self) -> lumen_static::Color {
+            self.s().page()
+        }
+        fn agent(&mut self, req: &str, screen: &mut dyn Screen) -> String {
+            self.m().agent(req, screen)
+        }
+        fn agent_frame_done(&mut self) {
+            self.m().agent_frame_done()
+        }
+        fn save(&self) -> Vec<u8> {
+            self.s().save()
+        }
+    }
+}
+
+/// Export a window library's entry points — M37/T37.1.
+///
+/// ```ignore
+/// pub fn program() -> Program<Counter> { application(Counter::build) }
+/// lumen_static_reload::export_program!(program);
+/// ```
+///
+/// The stamp (with the shell's fields), `lumen_boot`, `lumen_drop` and
+/// `hot_take_panic`. Every one catches a panic inside the library
+/// (M36/T36.4); a session's own methods catch theirs in the session.
+#[cfg(feature = "window")]
+#[macro_export]
+macro_rules! export_program {
+    ($program:path) => {
+        $crate::export_abi_stamp!(&::lumen_static_shell::session::abi_fields());
+
+        /// Boot this build's program with the saved state (null for none).
+        ///
+        /// # Safety
+        /// `(saved, len)` must be a valid readable range, or null.
+        #[no_mangle]
+        pub unsafe extern "C" fn lumen_boot(saved: *const u8, len: usize) -> *mut ::core::ffi::c_void {
+            let saved = if saved.is_null() {
+                ::core::option::Option::None
+            } else {
+                ::core::option::Option::Some(unsafe { ::core::slice::from_raw_parts(saved, len) })
+            };
+            $crate::panic::guard(::core::ptr::null_mut(), || {
+                let s = $crate::hot::boot($program(), saved);
+                ::std::boxed::Box::into_raw(::std::boxed::Box::new(s)) as *mut ::core::ffi::c_void
+            })
+        }
+
+        /// Drop a session this library booted.
+        ///
+        /// # Safety
+        /// `p` must come from this build's `lumen_boot`, handed back once.
+        #[no_mangle]
+        pub unsafe extern "C" fn lumen_drop(p: *mut ::core::ffi::c_void) {
+            let b = unsafe {
+                ::std::boxed::Box::from_raw(p as *mut ::std::boxed::Box<dyn ::lumen_static_shell::session::Session>)
+            };
+            $crate::panic::guard((), move || drop(b));
+        }
+
+        /// Drain the last caught panic's report.
+        ///
+        /// # Safety
+        /// `(buf, cap)` must be a valid writable range or `(null, 0)`.
+        #[no_mangle]
+        pub unsafe extern "C" fn hot_take_panic(buf: *mut u8, cap: usize) -> usize {
+            unsafe { $crate::panic::take(buf, cap) }
+        }
+    };
+}
