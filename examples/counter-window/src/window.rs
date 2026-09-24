@@ -225,13 +225,9 @@ impl WinApp {
             return;
         }
         let size = window.inner_size();
-        lumen_static_winit::sync_size(
-            &mut self.canvas,
-            &mut self.host,
-            self.font.as_ref(),
-            size.width,
-            size.height,
-        );
+        if lumen_static_winit::sync_size(&mut self.canvas, self.font.as_ref(), size.width, size.height) {
+            self.host.resize(size.width, size.height);
+        }
 
         let start = Instant::now();
         // Twice, with the cascade between: a handler may have flipped

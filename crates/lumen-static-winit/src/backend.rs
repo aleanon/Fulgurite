@@ -15,22 +15,21 @@
 //! seams, not one, and the second does not exist yet."* This is the
 //! second one.
 //!
-//! # Why it is generic rather than dynamic in `A`
+//! # Why it takes a `FrameSource` and not a `Host<A>`
 //!
-//! `Box<dyn Backend<A>>` rather than `Box<dyn Backend>`, because
-//! `present` takes a `&mut Host<A, crate::Ret, crate::Inval>` and needs it for two things at once
-//! — the display list and `take_damage_for_age` — which a closure
-//! cannot be handed without borrowing the host twice. Parameterising the
-//! *trait* keeps it object-safe and keeps the signature the one
-//! `Surface::present` already had.
+//! Until M37 this trait was `Backend<A>`, because `present` took the
+//! host itself — it needs two things from it at once, the display list
+//! and `take_damage_for_age`. A window that reloads keeps its host in
+//! the library, where the loader cannot name `A`
+//! (`docs/plan-window-reload.md` §1), so the two things are now a trait,
+//! [`FrameSource`], which a `Host` and a session both are.
 
 use std::time::Instant;
 
-use lumen_static::event::App;
 use lumen_static::Color;
+use lumen_static_shell::session::{FrameSource, Screen};
 use lumen_static_shell::software::Canvas;
 use lumen_static_shell::text::FontStack;
-use lumen_static_shell::Host;
 
 use crate::surface::Frame;
 
@@ -41,13 +40,14 @@ use crate::surface::Frame;
 /// default and the fallback, and it is not a lesser path — it is the
 /// only path on a machine with no GPU, and the only path in the
 /// embedded profile.
-pub trait Backend<A: App> {
-    /// Match the backend's buffers to the window, and tell the host.
-    /// Cheap and idempotent when the size has not changed.
-    fn resize(&mut self, host: &mut Host<A, crate::Ret, crate::Inval>, width: u32, height: u32);
+pub trait Backend {
+    /// Match the backend's buffers to the window. Cheap and idempotent
+    /// when the size has not changed; **whether it changed**, because
+    /// that is when the host must be told too.
+    fn resize(&mut self, width: u32, height: u32) -> bool;
 
-    /// Render what the host just pumped, and present it.
-    fn present(&mut self, host: &mut Host<A, crate::Ret, crate::Inval>, page: Color, frame_start: Instant) -> Frame;
+    /// Render the frame `src` just built, and present it.
+    fn present(&mut self, src: &mut dyn FrameSource, page: Color, frame_start: Instant) -> Frame;
 
     /// The presented window read back from the display server, when
     /// that is possible here.
@@ -114,9 +114,9 @@ impl Software {
     }
 }
 
-impl<A: App> Backend<A> for Software {
-    fn resize(&mut self, host: &mut Host<A, crate::Ret, crate::Inval>, width: u32, height: u32) {
-        crate::surface::sync_size(&mut self.canvas, host, self.font.as_ref(), width, height);
+impl Backend for Software {
+    fn resize(&mut self, width: u32, height: u32) -> bool {
+        crate::surface::sync_size(&mut self.canvas, self.font.as_ref(), width, height)
     }
 
     fn set_images(&mut self, images: Box<dyn lumen_static::ImageSource>) {
@@ -127,8 +127,8 @@ impl<A: App> Backend<A> for Software {
         Some((self.canvas.width, self.canvas.height, &self.canvas.pixels))
     }
 
-    fn present(&mut self, host: &mut Host<A, crate::Ret, crate::Inval>, page: Color, frame_start: Instant) -> Frame {
-        self.surface.present(host, &mut self.canvas, page, frame_start)
+    fn present(&mut self, src: &mut dyn FrameSource, page: Color, frame_start: Instant) -> Frame {
+        self.surface.present(src, &mut self.canvas, page, frame_start)
     }
 
     fn fetch_rgba(&mut self) -> Option<(u32, u32, Vec<u8>)> {
@@ -137,6 +137,22 @@ impl<A: App> Backend<A> for Software {
 
     fn name(&self) -> &str {
         &self.name
+    }
+}
+
+/// A backend, as the [`Screen`] a session's agent presents to and reads
+/// pixels back from (M37: the agent lives with the tree, in the session).
+pub struct AsScreen<'a>(pub &'a mut dyn Backend);
+
+impl Screen for AsScreen<'_> {
+    fn present(&mut self, src: &mut dyn FrameSource, page: Color) {
+        self.0.present(src, page, Instant::now());
+    }
+    fn frame_rgba(&self) -> Option<(u32, u32, &[u8])> {
+        self.0.frame_rgba()
+    }
+    fn fetch_rgba(&mut self) -> Option<(u32, u32, Vec<u8>)> {
+        self.0.fetch_rgba()
     }
 }
 

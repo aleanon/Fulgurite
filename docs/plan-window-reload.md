@@ -166,6 +166,24 @@ differs. *Other direction:* an identical build is accepted.
 
 ## T37.1 — `export_program!`, the library side
 
+> **Landing 1, 2026-09-24: the window drives a `Session`.** The winit
+> handler is no longer generic over the application. Everything it asks
+> of one goes through `lumen_static_shell::session::Session`, which is
+> object-safe and passes only `Copy` or caller-owned values, plus the
+> display list a renderer borrows. `Local<A>` is the statically linked
+> implementation. `Backend` takes a `&mut dyn FrameSource` in place of a
+> `Host<A>`, and `sync_size` reports whether the host must be told.
+> `Ret` and `Inval` moved to the shell, since a hot library builds the
+> same `Host` without linking a window system. The agent's `Live` moved
+> there as well, behind a new `live-agent` feature, because the tree
+> lives wherever the session does. M36's recovery policy is decided in
+> the window crate as ever (`RECOVER`) and handed to the session. This is
+> a refactor, so its evidence is the gates it had to keep green:
+> `just test`; `just agent-drive` (both strategies, shadow oracle quiet
+> over 29 frames); `just widget-drive` (94 actions, both strategies);
+> `just panic-drive` (all seven sites, plus release without `reload`
+> dying); and the tasks drive (five capabilities, both strategies).
+
 The entry points are:
 
 - boot-with-saved-state;

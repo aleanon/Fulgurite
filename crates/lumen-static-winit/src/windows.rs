@@ -28,7 +28,7 @@ use crate::{surface, Cursor, Surface};
 /// One window and everything it owns.
 ///
 /// **Software only.** It holds a [`Surface`] and a `Canvas` directly
-/// rather than a `Box<dyn crate::Backend<A>>`, so a second window is
+/// rather than a `Box<dyn crate::Backend>`, so a second window is
 /// always rasterised on the CPU even in a binary built with the `gpu`
 /// feature. Nothing prevents the swap; it was not needed, and a second
 /// window would be a second GPU context — 174 MB resident
@@ -73,13 +73,10 @@ impl<A: App> Pane<A> {
     /// One frame for this window.
     pub fn redraw(&mut self) {
         let size = self.window.inner_size();
-        surface::sync_size(
-            &mut self.canvas,
-            &mut self.host,
-            self.font.as_ref(),
-            size.width.max(1),
-            size.height.max(1),
-        );
+        let (w, h) = (size.width.max(1), size.height.max(1));
+        if surface::sync_size(&mut self.canvas, self.font.as_ref(), w, h) {
+            self.host.resize(w, h);
+        }
         let start = std::time::Instant::now();
         match self.metrics.as_mut() {
             Some(m) => self.host.pump_with(m),

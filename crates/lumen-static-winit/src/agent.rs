@@ -42,121 +42,16 @@
 //! to look at the inbox it already wrote to. `Rpc` is the exception and
 //! pays for it by being answered on the loop's own thread.
 
-use lumen_static::event::App;
-use lumen_static_agent::{AgentHost, TreeRef};
-use lumen_static_shell::text::FontMetrics;
-use lumen_static_shell::Host;
-use std::time::Instant;
-
-use crate::backend::Backend;
-
 /// One request from the socket thread, and where its reply goes.
 pub struct Rpc {
     pub req: serde_json::Value,
     pub reply: std::sync::mpsc::Sender<serde_json::Value>,
 }
 
-/// The live window, as the agent protocol sees it.
-///
-/// Generic over the application, which is what makes it reusable where
-/// the example's was not: `App::tree` reaches the tree without knowing
-/// its field name, and `Backend` reaches the pixels without knowing
-/// which renderer drew them.
-pub struct Live<'a, A: App> {
-    pub host: &'a mut Host<A, crate::Ret, crate::Inval>,
-    pub metrics: &'a mut Option<FontMetrics>,
-    pub backend: &'a mut dyn Backend<A>,
-    pub page: lumen_static::display::Color,
-}
-
-impl<A: App> AgentHost for Live<'_, A> {
-    fn tree(&self) -> TreeRef<'_> {
-        TreeRef::of_root(self.host.app.tree(), &self.host.styles, &self.host.states)
-            .with_sheet(self.host.stylesheet(), self.host.sheet_findings())
-    }
-
-    fn enqueue(&mut self, ev: lumen_static::Event) {
-        self.host.post(ev);
-    }
-
-    /// `app.setPalette` (M25/T25.3): the host owns the palette.
-    fn set_palette(&mut self, palette: lumen_static::style::Palette) -> bool {
-        self.host.set_palette(palette);
-        true
-    }
-
-    /// Pump **and present**, then report the frame number.
-    ///
-    /// Presenting matters: `ui.screenshot` and every pixel assertion
-    /// after an `input.click` read the frame this produced, and a pump
-    /// alone would hand back the one before the click.
-    fn pump(&mut self) -> (u64, bool) {
-        // **Guarded** (M36): an agent's input reaches application code
-        // through here, not through the window's redraw — the review's
-        // blocking finding was a guard that did not cover this path.
-        let metrics = &mut *self.metrics;
-        let handled = crate::guarded(self.host, |h| match metrics.as_mut() {
-            Some(m) => h.pump_with(m),
-            None => h.pump(),
-        })
-        .unwrap_or(false);
-        if crate::failed(self.host) {
-            let (w, h) = self.backend.frame_rgba().map_or((1, 1), |(w, h, _)| (w, h));
-            crate::show_failure(self.host, self.metrics, w, h);
-        }
-        self.backend.present(self.host, self.page, Instant::now());
-        (self.host.frame_number(), handled)
-    }
-
-    /// `app.failure` — M36/T36.3.
-    fn failure(&self) -> serde_json::Value {
-        #[cfg(all(panic = "unwind", any(debug_assertions, feature = "reload")))]
-        return serde_json::json!({
-            "supported": true,
-            "failure": self.host.failure().map(|r| serde_json::json!({
-                "message": r.message,
-                "location": r.location.as_ref().map(|(f, l, c)| serde_json::json!({"file": f, "line": l, "column": c})),
-                "app_frame": r.app_frame.as_ref().map(|(f, l)| serde_json::json!({"file": f, "line": l})),
-                "note": r.note,
-            })),
-        });
-        #[cfg(not(all(panic = "unwind", any(debug_assertions, feature = "reload"))))]
-        serde_json::json!({ "supported": false })
-    }
-
-    /// `app.retry` — M36/T36.3.
-    fn retry(&mut self) -> bool {
-        crate::retry(self.host)
-    }
-
-    fn frame(&self) -> Option<(u32, u32, &[u8])> {
-        self.backend.frame_rgba()
-    }
-
-    fn scale(&self) -> f32 {
-        self.host.scale()
-    }
-
-    /// The window read back from the display server — the one view that
-    /// sees the blit and the present. `None` where that is not possible
-    /// (Wayland, macOS, an unmapped window), which the protocol reports
-    /// as "not checkable" rather than guessing.
-    fn presented(&mut self) -> Option<(u32, u32, Vec<u8>)> {
-        self.backend.fetch_rgba()
-    }
-
-    #[cfg(feature = "shadow-oracle")]
-    fn shadow(&self) -> Option<serde_json::Value> {
-        let r = self.host.shadow_report();
-        Some(serde_json::json!({
-            "supported": true,
-            "compared": r.compared,
-            "first": r.first.map(|d| serde_json::json!({
-                "frame": d.frame, "node": d.node, "field": d.field,
-            })),
-        }))
-    }
-}
+// The live window as the agent sees it moved to the shell with M37
+// (`lumen_static_shell::session::Live`): the tree lives wherever the
+// session does, which for a reloading window is inside the library. This
+// module keeps the socket and the thread rule.
 
 /// Serve newline-delimited JSON-RPC on `addr`, forwarding each request
 /// to the event loop and writing back what it returns.

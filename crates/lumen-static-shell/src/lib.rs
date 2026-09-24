@@ -25,6 +25,11 @@ pub mod program;
 /// M36: a panic's report, and the host's recovery from it.
 #[cfg(panic = "unwind")]
 pub mod recover;
+// A running application with its type erased: what a window drives,
+// and what a hot library hands the loader (M37/T37.1). Measures text,
+// so it needs the face.
+#[cfg(feature = "truetype")]
+pub mod session;
 pub mod software;
 pub mod svg;
 #[cfg(feature = "truetype")]

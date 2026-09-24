@@ -12,6 +12,10 @@ fontdue = { version = "0.9", optional = true }
 lumen-static = { path = "../lumen-static" }
 # Safe SIMD types for the shadow SDF (T17.1). Optional; see the feature.
 wide = { version = "0.7", optional = true, default-features = false }
+# M37/T37.1: the agent's bridge to a session lives with the tree, so it
+# moved here from the window crate (`session::Live`). Behind `live-agent`.
+lumen-static-agent = { path = "../lumen-static-agent", optional = true }
+serde_json = { version = "1", optional = true }
 
 [features]
 default = []
@@ -35,6 +39,14 @@ reload = ["lumen-static/reload"]
 # that never calls it never instantiates it, and the `Seed::reads` masks
 # it compares against are two bytes of rodata per kind.
 agent = []
+# M37/T37.1: a session answers the agent's requests itself, because the
+# tree it inspects lives wherever the session does -- in a hot library,
+# on the far side of the loader. Separate from `agent`, which is only the
+# lint: a test that wants the lint should not get `observe` with it.
+live-agent = ["agent", "dep:lumen-static-agent", "dep:serde_json"]
+# The whole-tree invalidation walk instead of `Boundaries` -- a
+# diagnostic (M34/T34.2); `session::Inval` reads it.
+everything = []
 truetype = ["dep:fontdue"]
 # M34/T34.1: after every bounded frame, lay out again under an all-dirty
 # view into scratch state and compare — a live invalidation oracle. It

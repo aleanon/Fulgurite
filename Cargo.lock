@@ -1536,7 +1536,9 @@ version = "0.1.0"
 dependencies = [
  "fontdue",
  "lumen-static",
+ "lumen-static-agent",
  "lumen-static-widgets",
+ "serde_json",
  "wide",
 ]
 

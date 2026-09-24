@@ -10,11 +10,10 @@ use std::num::NonZeroU32;
 use std::sync::Arc;
 use std::time::Instant;
 
-use lumen_static::event::App;
 use lumen_static::Color;
+use lumen_static_shell::session::FrameSource;
 use lumen_static_shell::software::Canvas;
 use lumen_static_shell::text::FontStack;
-use lumen_static_shell::Host;
 use winit::window::Window;
 
 /// What one presented frame cost, in nanoseconds.
@@ -46,17 +45,12 @@ pub fn canvas(width: u32, height: u32, font: Option<&FontStack>) -> Canvas {
     }
 }
 
-/// Grow or shrink `canvas` to match the window, and tell the host.
-/// Cheap and idempotent when the size has not changed.
-pub fn sync_size<A: App>(
-    canvas: &mut Canvas,
-    host: &mut Host<A, crate::Ret, crate::Inval>,
-    font: Option<&FontStack>,
-    width: u32,
-    height: u32,
-) {
+/// Grow or shrink `canvas` to match the window. Cheap and idempotent
+/// when the size has not changed; **whether it changed**, because the
+/// host must then be told too (`Host::resize`, or `Session::resize`).
+pub fn sync_size(canvas: &mut Canvas, font: Option<&FontStack>, width: u32, height: u32) -> bool {
     if (canvas.width, canvas.height) == (width, height) {
-        return;
+        return false;
     }
     // **In place.** This was `*canvas = canvas(w, h, font)` until
     // 2026-09-13, which rebuilt the whole struct and therefore dropped
@@ -67,7 +61,7 @@ pub fn sync_size<A: App>(
     // window resizes.
     let _ = font;
     canvas.resize(width, height);
-    host.resize(width, height);
+    true
 }
 
 /// The softbuffer half: what the canvas is blitted into and presented
@@ -120,9 +114,9 @@ impl Surface {
     ///
     /// The host must already have pumped: this draws what `host.list`
     /// holds and asks the host what changed.
-    pub fn present<A: App>(
+    pub fn present(
         &mut self,
-        host: &mut Host<A, crate::Ret, crate::Inval>,
+        host: &mut dyn FrameSource,
         canvas: &mut Canvas,
         page: Color,
         frame_start: Instant,
@@ -173,7 +167,7 @@ impl Surface {
         let mut rendered = false;
         for area in damage.regions(viewport) {
             canvas.clear_within(area, page);
-            canvas.render_within(&host.list, area);
+            canvas.render_within(host.list(), area);
             damaged_px +=
                 ((area[2] - area[0]) as f64 * (area[3] - area[1]) as f64).max(0.0) as u64;
             rendered = true;

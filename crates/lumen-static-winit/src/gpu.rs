@@ -10,10 +10,9 @@
 
 use std::time::Instant;
 
-use lumen_static::event::App;
 use lumen_static::Color;
 use lumen_static_shell::text::FontStack;
-use lumen_static_shell::Host;
+use lumen_static_shell::session::FrameSource;
 use lumen_static_wgpu::Gpu;
 
 use crate::backend::Backend;
@@ -47,20 +46,20 @@ impl GpuBackend {
     }
 }
 
-impl<A: App> Backend<A> for GpuBackend {
+impl Backend for GpuBackend {
     fn set_images(&mut self, images: Box<dyn lumen_static::ImageSource>) {
         self.gpu.set_images(images);
     }
 
-    fn resize(&mut self, host: &mut Host<A, crate::Ret, crate::Inval>, width: u32, height: u32) {
+    fn resize(&mut self, width: u32, height: u32) -> bool {
         if self.gpu.size() == (width, height) {
-            return;
+            return false;
         }
         self.gpu.resize(width, height);
-        host.resize(width, height);
+        true
     }
 
-    fn present(&mut self, host: &mut Host<A, crate::Ret, crate::Inval>, page: Color, frame_start: Instant) -> Frame {
+    fn present(&mut self, host: &mut dyn FrameSource, page: Color, frame_start: Instant) -> Frame {
         let (layout_ns, paint_ns) = host.timings();
         let (width, height) = self.gpu.size();
         let viewport = [0.0, 0.0, width as f32, height as f32];
@@ -86,7 +85,7 @@ impl<A: App> Backend<A> for GpuBackend {
         let render_ns = if regions.is_empty() {
             0
         } else {
-            self.gpu.draw_regions(&host.list, &regions, Some(page));
+            self.gpu.draw_regions(host.list(), &regions, Some(page));
             t.elapsed().as_nanos() as u64
         };
 
