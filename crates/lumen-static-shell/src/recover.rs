@@ -156,3 +156,119 @@ fn app_frame(backtrace: &str, root: &str) -> Option<(String, u32)> {
     }
     None
 }
+
+// ---- the screen — M36/T36.2 -----------------------------------------
+
+use lumen_static::cx::TextMeasure;
+use lumen_static::display::{Color, DisplayList};
+
+/// The screen's background: a dark slate, so it cannot be mistaken for
+/// an application's own frame.
+pub const PAGE: Color = Color(0x1b, 0x1f, 0x2a, 0xff);
+/// The title — "the application panicked" — in a light red.
+pub const TITLE: Color = Color(0xff, 0x9e, 0x96, 0xff);
+/// The message and the location.
+pub const BODY: Color = Color(0xe8, 0xea, 0xed, 0xff);
+/// The hint.
+pub const DIM: Color = Color(0xb4, 0xbc, 0xc8, 0xff);
+
+const MARGIN: f32 = 24.0;
+const TITLE_PX: f32 = 22.0;
+const BODY_PX: f32 = 15.0;
+
+/// **The panic screen, as a display list** — M36/T36.2
+/// (`docs/plan-panic-recovery.md` §2.3).
+///
+/// A display list and not a widget tree, deliberately: a tree would go
+/// through the layout, text measurement and paint that may have just
+/// panicked. The lines are fixed — a title, the message wrapped to the
+/// window's width, the location (or why there is none), the application
+/// frame when the location is inside the framework, and the hint. The
+/// width is measured with `measure`, the same measurer the frame uses.
+pub fn failure_frame(
+    r: &PanicReport,
+    width: u32,
+    height: u32,
+    measure: &mut dyn TextMeasure,
+) -> DisplayList {
+    let mut out = DisplayList::new();
+    let (w, h) = (width as f32, height as f32);
+    out.rect([0.0, 0.0, w, h], PAGE);
+    let avail = (w - 2.0 * MARGIN).max(1.0);
+    let mut y = MARGIN;
+    let line = |out: &mut DisplayList, y: &mut f32, text: &str, px: f32, weight: f32, color: Color| {
+        let lh = px * 1.4;
+        out.text_weighted([MARGIN, *y, MARGIN + avail, *y + lh], text, px, weight, color);
+        *y += lh;
+    };
+    // **Every line wraps, the title too.** The first version wrapped
+    // only the message, and at 260 px the 22 px title ran 288 px wide —
+    // the viewport assertion found it.
+    for l in wrap("The application panicked", avail, TITLE_PX, measure) {
+        line(&mut out, &mut y, &l, TITLE_PX, 700.0, TITLE);
+    }
+    y += BODY_PX * 0.6;
+    for l in wrap(&r.message, avail, BODY_PX, measure) {
+        line(&mut out, &mut y, &l, BODY_PX, 400.0, BODY);
+    }
+    y += BODY_PX * 0.6;
+    let at = match (&r.location, r.note) {
+        (Some((f, l, c)), _) => format!("at {f}:{l}:{c}"),
+        (None, Some(note)) => note.to_string(),
+        (None, None) => "location unavailable".to_string(),
+    };
+    for l in wrap(&at, avail, BODY_PX, measure) {
+        line(&mut out, &mut y, &l, BODY_PX, 400.0, BODY);
+    }
+    if let Some((f, n)) = &r.app_frame {
+        let same = r.location.as_ref().is_some_and(|(lf, ll, _)| lf == f && ll == n);
+        if !same {
+            for l in wrap(&format!("in your code: {f}:{n}"), avail, BODY_PX, measure) {
+                line(&mut out, &mut y, &l, BODY_PX, 400.0, BODY);
+            }
+        }
+    }
+    if let (Some(note), Some(_)) = (r.note, &r.location) {
+        for l in wrap(note, avail, BODY_PX, measure) {
+            line(&mut out, &mut y, &l, BODY_PX, 400.0, DIM);
+        }
+    }
+    y += BODY_PX * 0.6;
+    for l in wrap("Press R to retry", avail, BODY_PX, measure) {
+        line(&mut out, &mut y, &l, BODY_PX, 400.0, DIM);
+    }
+    out
+}
+
+/// Greedy word wrap to `avail` px; a word wider than a line is broken by
+/// characters, so nothing runs past the edge.
+pub fn wrap(text: &str, avail: f32, px: f32, m: &mut dyn TextMeasure) -> Vec<String> {
+    let fits = |m: &mut dyn TextMeasure, s: &str| m.measure(s, px, f32::INFINITY).w <= avail;
+    let mut lines = Vec::new();
+    for para in text.lines() {
+        let mut cur = String::new();
+        for word in para.split(' ') {
+            let candidate = if cur.is_empty() { word.to_string() } else { format!("{cur} {word}") };
+            if fits(m, &candidate) {
+                cur = candidate;
+                continue;
+            }
+            if !cur.is_empty() {
+                lines.push(std::mem::take(&mut cur));
+            }
+            // The word alone: split it by characters if it is too wide.
+            let mut piece = String::new();
+            for ch in word.chars() {
+                piece.push(ch);
+                if !fits(m, &piece) {
+                    piece.pop();
+                    lines.push(std::mem::take(&mut piece));
+                    piece.push(ch);
+                }
+            }
+            cur = piece;
+        }
+        lines.push(cur);
+    }
+    lines
+}

@@ -275,6 +275,20 @@ stays at zero.
 
 ## T36.2 — the screen
 
+> **DONE 2026-09-24.** `recover::failure_frame(report, w, h, measure)` —
+> a display list, every line through one greedy `wrap` (a word wider
+> than a line breaks by characters). `crates/lumen-static-shell/tests/
+> failure_screen.rs`: every line inside the window at 480×320 and
+> 260×420 (rightmost 451.5 / 234.0 px printed beside the widths),
+> contrast 8.29 / 13.65 / 8.60 : 1 against AA's 4.5, the location and
+> the application frame on screen, and goldens at both sizes (`truetype`
+> off). **The viewport check found a defect on its first run**: only the
+> message wrapped, and at 260 px the 22 px title ran to 288. The goldens
+> recorded in that run were deleted and re-recorded after the fix.
+> *Injection:* no wrapping — "a line runs 1089.0 px, past the window's
+> 480", and the golden differs.
+
+
 §2.3, as `failure_frame(&report, width, height) -> DisplayList`.
 
 **Gate:**
