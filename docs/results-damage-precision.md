@@ -275,3 +275,26 @@ set aside by the mode rule `docs/results-frame-and-types.md` records.
 measure asked. And, as §2.5 predicted, **the click-driven frame did not
 move**: a consumed event still marks everything before a binding is
 asked anything. That is T29.6's job, not this one's.
+
+## T29.6 — a click on a split application, 2026-09-24
+
+The same probe, with a fifth arm: the click on `#bump`, on the grid's
+**split twin** (`mod split` in `benches --bin grid`). Eight runs a side;
+this session ran noisier than T29.3's, so every arm is shown whole and
+the slow cluster (frames above 80 µs, or the `narrowed` pair near 56 µs)
+is set aside by the same mode rule.
+
+| arm | frame, all eight runs (µs) |
+|---|---|
+| `mark_all` (control) | 57.57 57.58 57.70 57.91 58.21 60.34 · 82.98 84.56 |
+| `handled` (unsplit) | 54.92 55.30 57.12 57.48 57.55 57.61 57.69 57.87 |
+| `narrowed` (scaffold) | 36.79 37.19 37.22 37.25 37.34 37.59 · 55.47 58.38 |
+| `bound` | 35.61 35.64 37.22 37.23 37.31 37.39 37.41 37.42 |
+| **`handled/split`** | **35.19 35.24 36.51 36.87 37.01 37.04 37.06 37.16** |
+
+**The click frame of a split application lands on the narrowed row.**
+The unsplit click stays on the control's — which is correct, not a
+shortfall: its handler may write any widget. So the saving §2.5 found
+unreachable "on every frame a click produces" is now reached on every
+click of a split application, and — for a turnkey window — once M34
+flips the default strategy.

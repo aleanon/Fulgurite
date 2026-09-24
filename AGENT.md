@@ -372,6 +372,10 @@ are independent of each other**, so either may go first:
   rows did you materialize, did anything shape, which passes are in that
   column, who wrote the value. Asking what a fixture *contains* is a
   distinct method from asking whether its assertions can *fail*.
+  **DONE 2026-09-24 (T29.2–T29.4, T29.6):** a binding marks its own node
+  (found by address, cached per site), and a click on a split application
+  narrows too — its frame lands on the narrowed row
+  (`docs/results-damage-precision.md` T29.6).
   **Amended 2026-09-23:** T29.2–T29.4 wait for M33 (below). Narrowing
   the `handled` path, which §4 had deferred, is now **T29.6**, because
   M33 makes it possible. Paint culling stays shelved on §4's condition.

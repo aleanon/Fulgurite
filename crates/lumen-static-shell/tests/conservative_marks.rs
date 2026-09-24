@@ -132,15 +132,51 @@ fn an_after_update_that_changed_something_marks_everything() {
     assert_eq!(b.last_marks(), Marks::default(), "and a hook that changed nothing marks nothing");
 }
 
+/// **Path 4, rescoped by M29/T29.6**: a handled event marks everything
+/// only for an application whose handlers can reach the tree. A split one
+/// (`#[state]`) narrows to the nodes the event consumed plus what its
+/// bindings wrote.
 #[test]
-fn a_handled_event_marks_everything_until_t29_6() {
+fn a_handled_event_narrows_only_for_a_split_application() {
     let mut b: Host<Paths, Incremental, Boundaries<16>> = host();
     let i = lumen_static::style::index_of_wid(<Ui as Widget>::SUB_TABLE, "go").unwrap();
     let s = b.states[i];
     b.click(s.pos.x + s.size.w / 2.0, s.pos.y + s.size.h / 2.0);
     b.pump();
     assert_eq!(b.app.k.clicks, 1, "setup: the click did not land");
-    assert_eq!(b.last_marks(), ALL, "path 4: a handled event still marks everything");
+    println!("split, handled: {:?}", b.last_marks());
+    assert!(!b.last_marks().all, "a split application's click still marked everything");
+
+    let mut u: Host<Unsplit, Incremental, Boundaries<16>> = Host::new(unsplit(), 200, 60);
+    u.pump();
+    let i = lumen_static::style::index_of_wid(<UUi as Widget>::SUB_TABLE, "go").unwrap();
+    let s = u.states[i];
+    u.click(s.pos.x + s.size.w / 2.0, s.pos.y + s.size.h / 2.0);
+    u.pump();
+    assert_eq!(u.app.clicks, 1, "setup: the unsplit click did not land");
+    assert_eq!(u.last_marks(), ALL, "path 4: an unsplit application's handled event marks everything");
+}
+
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+struct UUi {
+    #[widget_id("go")]
+    go: Button<Unsplit>,
+}
+
+/// No `#[state]`: its handler receives the whole application, tree
+/// included.
+#[derive(DeriveApp, Default)]
+struct Unsplit {
+    #[tree]
+    ui: UUi,
+    clicks: u32,
+}
+
+fn unsplit() -> Unsplit {
+    let mut u = Unsplit::default();
+    u.ui.go.on_click = |a: &mut Unsplit, _: &EventCtx| a.clicks += 1;
+    u
 }
 
 // ---- path 5: an applied message --------------------------------------

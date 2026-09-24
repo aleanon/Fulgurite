@@ -189,6 +189,62 @@ pub fn dispatch_overlaid<S: crate::event::App, O: crate::overlay::OverlaySink>(
     ov: &O,
     ev: &crate::event::Event,
 ) -> bool {
+    dispatch_overlaid_into(state, style, st, input, ov, ev, &mut Consumed::default())
+}
+
+/// **The nodes an event changed by being consumed** — M29/T29.6
+/// (`docs/plan-damage-precision.md`).
+///
+/// A handler writes only the state of a split application, and a binding
+/// then says where the tree changed. But a widget that *consumes* an
+/// event writes itself — a `TextInput` takes a character, a `Slider`
+/// moves, a popup closes — and no binding reports that. This is the set
+/// of those nodes: possibly several (a press outside dismisses every
+/// open overlay), possibly none (a focus move, which T25.0's marks
+/// cover). Fixed capacity; past it the set **overflows**, and the host
+/// answers with everything rather than drop a node.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Consumed {
+    nodes: [u32; Consumed::CAP],
+    len: usize,
+    overflow: bool,
+}
+
+impl Consumed {
+    const CAP: usize = 8;
+
+    pub fn push(&mut self, i: usize) {
+        if self.nodes[..self.len].contains(&(i as u32)) {
+            return;
+        }
+        if self.len == Self::CAP {
+            self.overflow = true;
+        } else {
+            self.nodes[self.len] = i as u32;
+            self.len += 1;
+        }
+    }
+
+    pub fn nodes(&self) -> &[u32] {
+        &self.nodes[..self.len]
+    }
+
+    /// Whether a node was dropped for want of room: mark everything.
+    pub fn overflowed(&self) -> bool {
+        self.overflow
+    }
+}
+
+/// [`dispatch_overlaid`], recording what it consumed on into `consumed`.
+pub fn dispatch_overlaid_into<S: crate::event::App, O: crate::overlay::OverlaySink>(
+    state: &mut S,
+    style: &[Style],
+    st: &mut [NodeState],
+    input: &mut crate::event::InputState,
+    ov: &O,
+    ev: &crate::event::Event,
+    consumed: &mut Consumed,
+) -> bool {
     use crate::event::{Event, Key};
 
     // **The release of a press that dismissed an overlay is consumed
@@ -214,6 +270,7 @@ pub fn dispatch_overlaid<S: crate::event::App, O: crate::overlay::OverlaySink>(
         let top = ov.at(ov.len() - 1) as usize;
         if state.tree_mut().node_mut(top).dismiss() {
             input.focus = None;
+            consumed.push(top);
             tell_owner(state, top, ev, input);
             return true;
         }
@@ -233,16 +290,17 @@ pub fn dispatch_overlaid<S: crate::event::App, O: crate::overlay::OverlaySink>(
                 // A passive overlay (a tooltip) closes without taking the
                 // press: if every overlay this closed was passive, the
                 // press goes on to ordinary dispatch below.
-                let mut consumed = false;
+                let mut consumes_press = false;
                 for k in (0..ov.len()).rev() {
                     let i = ov.at(k) as usize;
                     let consumes = state.tree().node(i).dismissal_consumes_press();
                     if state.tree_mut().node_mut(i).dismiss() {
-                        consumed |= consumes;
+                        consumes_press |= consumes;
+                        consumed.push(i);
                         tell_owner(state, i, ev, input);
                     }
                 }
-                if consumed {
+                if consumes_press {
                     input.focus = None;
                     input.swallow_release = true;
                     return true;
@@ -284,6 +342,7 @@ pub fn dispatch_overlaid<S: crate::event::App, O: crate::overlay::OverlaySink>(
                     };
                     let n = h.node as usize;
                     if state.tree_mut().node_mut(n).on_event(ev, &cx) {
+                        consumed.push(n);
                         return true;
                     }
                     // Not consumed by the overlay's own widget: fall
@@ -297,7 +356,7 @@ pub fn dispatch_overlaid<S: crate::event::App, O: crate::overlay::OverlaySink>(
         }
     }
 
-    dispatch_at(state, style, st, input, ev, on_overlay)
+    dispatch_at(state, style, st, input, ev, on_overlay, consumed)
 }
 
 /// Hit-test with the overlays from the last [`paint_overlaid`] on top.
@@ -346,7 +405,7 @@ pub fn dispatch<S: crate::event::App>(
     input: &mut crate::event::InputState,
     ev: &crate::event::Event,
 ) -> bool {
-    dispatch_at(state, style, st, input, ev, None)
+    dispatch_at(state, style, st, input, ev, None, &mut Consumed::default())
 }
 
 /// [`dispatch`], with the hit supplied rather than computed.
@@ -371,6 +430,7 @@ fn dispatch_at<S: crate::event::App>(
     input: &mut crate::event::InputState,
     ev: &crate::event::Event,
     preset: Option<crate::hit::Hit>,
+    consumed: &mut Consumed,
 ) -> bool {
     use crate::event::{Event, EventCtx, Handlers, Key, NodeSel};
     use crate::widget::Widget;
@@ -538,6 +598,9 @@ fn dispatch_at<S: crate::event::App>(
                     mods,
                 };
                 let taken = state.tree_mut().node_mut(cap).on_event(ev, &cx);
+                if taken {
+                    consumed.push(cap);
+                }
                 if matches!(ev, Event::PointerUp { .. }) {
                     *capture = None;
                 }
@@ -674,6 +737,7 @@ fn dispatch_at<S: crate::event::App>(
                 ctx.inner = 0;
             }
             if state.tree_mut().node_mut(i).on_event(ev, &ctx) {
+                consumed.push(i);
                 // A node that consumed a press owns the gesture until
                 // the release, wherever the pointer then goes.
                 if matches!(ev, Event::PointerDown { .. }) {

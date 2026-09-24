@@ -363,6 +363,40 @@ fn host(m: &mut dyn TextMeasure) -> Bounded {
     h
 }
 
+/// One run of `iters` frames of `act`, as the probe loop in `main` does
+/// it — medians of layout, place, paint, damage-bounded raster, and
+/// damaged pixels. Generic so the split twin (M29/T29.6) is measured by
+/// the same code rather than a copy that could drift.
+fn measure<A: lumen_static::event::App>(
+    h: &mut Host<A, lumen_static::Incremental, lumen_static::Boundaries<16>>,
+    iters: usize,
+    m: &mut dyn TextMeasure,
+    mut act: impl FnMut(&mut Host<A, lumen_static::Incremental, lumen_static::Boundaries<16>>, &mut dyn TextMeasure),
+) -> (f64, f64, f64, f64, f64) {
+    let mut canvas = Canvas::new(W, H);
+    let (mut lay, mut plc, mut pnt, mut ras, mut px) =
+        (Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new());
+    for _ in 0..iters {
+        act(h, m);
+        let (l, pl, p) = h.timings3();
+        lay.push(l as f64 / 1000.0);
+        plc.push(pl as f64 / 1000.0);
+        pnt.push(p as f64 / 1000.0);
+        let dmg = h.take_damage_for_age(1).clip_to([0.0, 0.0, W as f32, H as f32]);
+        let t = Instant::now();
+        match dmg {
+            Some(area) => {
+                canvas.clear_within(area, PAGE);
+                canvas.render_within(&h.list, area);
+                px.push(((area[2] - area[0]) * (area[3] - area[1])) as f64);
+            }
+            None => px.push(0.0),
+        }
+        ras.push(t.elapsed().as_nanos() as f64 / 1000.0);
+    }
+    (med(&mut lay), med(&mut plc), med(&mut pnt), med(&mut ras), med(&mut px))
+}
+
 /// The median of `v`, which is sorted in place.
 fn med(v: &mut [f64]) -> f64 {
     v.sort_by(|a, b| a.partial_cmp(b).unwrap());
@@ -582,6 +616,25 @@ fn main() {
         }
         println!();
     }
+
+    // **M29/T29.6: the same click, on the split twin.** Its handler can
+    // reach only `cell`, so the host marks the node the event consumed
+    // and the binding marks the formula bar — and the frame should land
+    // on the `narrowed` row, not the `mark_all` one.
+    for run in 0..RUNS {
+        let _ = run;
+        let mut h = host_split(m);
+        let (l, pl, p, r, px) = measure(&mut h, ITERS, m, |h, m| {
+            h.click(bump_at.0, bump_at.1);
+            h.pump_with(m);
+        });
+        println!(
+            "{:<10} {l:>10.2} {pl:>10.2} {p:>10.2} {r:>10.2} {:>10.2} {px:>10.0}",
+            "handled/split",
+            l + pl + p + r,
+        );
+    }
+    println!();
 
     println!(
         "   `layout` is the only stage a narrower mark can help. `place` takes no\n   \

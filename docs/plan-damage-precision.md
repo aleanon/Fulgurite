@@ -535,7 +535,39 @@ down the wrong path, and it should not outlive the correction.
 > the *story* was, and only splitting the quantity four ways could tell
 > them apart.
 
-## T29.6 — a handled event narrows, for a split application
+## T29.6 — a handled event narrows, for a split application — **DONE 2026-09-24**
+
+> `pass::Consumed` — the nodes an event changed by being consumed (a
+> pass-1 `on_event`, the captured node, an overlay's own `on_event`, every
+> overlay a dismissal closed; none for a focus move), fixed capacity,
+> overflowing to "everything". `Host::pump_with` marks their subtrees and
+> lets the bindings mark the rest when `App::STATE_IS_SPLIT`; an applied
+> message of a split application narrows the same way. T29.4's
+> handled-event assertion is rescoped to unsplit applications, both
+> halves asserted.
+>
+> **Gate:** `crates/lumen-static-shell/tests/handled_narrowing.rs`, a
+> click-driven session — focus and type twelve characters, press a
+> slider's track, close two selects with one outside press, a handler
+> writing a bound label outside its button — every frame byte-identical
+> to `Everything`'s and each printed with its marks. *Injections:* not
+> marking the consumed set fires on the first keystroke; narrowing an
+> unsplit application fires on its twin ("must mark everything").
+>
+> **Two findings about the gate, per `AGENT.md`'s rule.** The first
+> version gave the field a fixed width and the "consumed set not marked"
+> injection **passed** — a fixed box does not move when its text grows —
+> so the field now sizes to its content with a label after it. And the
+> "record only the first dismissed overlay" injection **cannot** fire:
+> a closed popup paints nothing whatever its layout says and takes no
+> space in flow, so marking a dismissed overlay changes no frame. The
+> marks are kept, as the conservative answer; no gate is claimed for
+> them.
+>
+> **Measure** (`docs/results-damage-precision.md` T29.6): a split
+> application's click lands on the narrowed row; an unsplit one stays on
+> the control's, correctly.
+
 
 **Needs M33 and T29.3. Its *Measure* also waits for M34/T34.2**
 (`docs/plan-boundaries-default.md`), but its gate does not. M33 puts

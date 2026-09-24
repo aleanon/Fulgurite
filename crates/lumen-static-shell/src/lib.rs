@@ -765,6 +765,7 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
     /// Same, with a caller-supplied text stack.
     pub fn pump_with(&mut self, metrics: &mut dyn TextMeasure) -> bool {
         let mut handled = false;
+        let mut consumed = pass::Consumed::default();
         let before = PointerFocus::of(&self.input);
         while let Some(ev) = self.queue.pop() {
             // `dispatch_overlaid`: an overlay takes pointer hits first,
@@ -772,13 +773,14 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             // one dismisses them and is consumed. `self.overlays` is
             // what the *last* paint deferred, which is deliberate — what
             // can be clicked is what was drawn.
-            handled |= pass::dispatch_overlaid(
+            handled |= pass::dispatch_overlaid_into(
                 &mut self.app,
                 &self.styles,
                 &mut self.states,
                 &mut self.input,
                 &self.overlays,
                 &ev,
+                &mut consumed,
             );
         }
 
@@ -826,7 +828,22 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         // statically which tree field it writes; narrowing beyond that
         // is OPEN (`docs/plan-invalidation.md` T16.7).
         if handled {
-            self.invalidation.mark_all();
+            // **Narrowed for a split application** — M29/T29.6. Its
+            // handlers cannot reach the tree (`App::STATE_IS_SPLIT`), so
+            // what an event changed is the nodes that consumed it — marked
+            // here — plus whatever the bindings wrote, which
+            // `update_marked` marks below. An unsplit application's
+            // handler may write any widget, so it keeps the whole tree.
+            if A::STATE_IS_SPLIT && !consumed.overflowed() {
+                let table = <A::Tree as Widget>::SUB_TABLE;
+                for &n in consumed.nodes() {
+                    self.invalidation.mark(lumen_static::style::subtree_range(table, n as usize));
+                }
+            } else {
+                self.invalidation.mark_all();
+            }
+            // Kept either way: a consumed wheel moves a repeater's window,
+            // and the arena cascade is what styles the new rows.
             self.arenas_dirty = true;
         }
 
@@ -901,7 +918,12 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             },
         );
         if applied_changed {
-            self.invalidation.mark_all();
+            // A split application's `apply` received only the state
+            // (M33/T33.2), so the bindings will say where it landed —
+            // M29/T29.6. An unsplit one may have written anywhere.
+            if !A::STATE_IS_SPLIT {
+                self.invalidation.mark_all();
+            }
             self.arenas_dirty = true;
         }
         // A full drain may have left more behind; ask for another frame
