@@ -123,6 +123,44 @@ comfortably inside the 2 s criterion end to end.
 3. **`fresh()` = `Default`** — sufficient until construction needs
    context (an allocator handle, §8's one type axis); revisit then.
 
+## A panic, in a window and across the seam (M36)
+
+An edit that panics is the ordinary case in a reload loop, so a panic is
+caught, shown and survived — `docs/plan-panic-recovery.md` owns the
+design; this is what it means for a reload.
+
+**What is caught.** In a window: every path that runs application code
+— input, applied messages, `update`, layout, paint, `tick`, the agent's
+`Live::pump` — goes through one guard, `Host::guard`. That is compiled
+in for debug builds and for release builds with
+`lumen-static-winit/reload`; a release build without it dies, so a crash
+reporter can see it. Across the dylib seam: every generated shim in
+`export_reloadable_app!`, and any app verb that wraps its body in
+`lumen_static_reload::panic::guard`, as `fixtures/hot-app`'s `hot_frame`
+does. That catch has to be **inside the library**: a `cdylib` links its
+own std, so it has its own panic hook, and a hook installed by the loader
+never sees the library's panic — the location, which exists only inside
+a hook, would be lost. The report crosses as bytes through
+`hot_take_panic`. `just hot-demo` asserts both halves: v3's report names
+its own line, and the loader's hook saw zero panics.
+
+**What is kept.** The application's state, exactly as the panic left it
+— possibly half-written, with no rollback, because a last-good copy would
+cost every frame to protect against a once-per-bad-edit event. Focus is
+kept. The host's own invariants are rebuilt: the display list and
+overlays cleared, the next frame repaints in full, pointer capture and
+hover/press released. After the demo's v3 panic, v4 restores the same
+kept state and draws v2's frame exactly.
+
+**What is not recovered.** State the panicking handler half-wrote; events
+queued behind the trigger in the same pump (dropped — they were made
+against a frame that never finished); input while the screen is up
+(swallowed, except R, close and resize); a panic under `panic = "abort"`,
+or one raised while already unwinding; and a library panic in a verb that
+does not wrap itself in `guard`, which still aborts the loader — the
+demo's script says so instead of leaving a bare `Aborted`. Task panics
+are M28's `Failure::Panicked`, not this.
+
 ## How a descriptor crosses (M28/T28.7)
 
 Deferred work in flight across a swap is the case item 1 above warns

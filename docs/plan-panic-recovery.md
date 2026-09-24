@@ -1,6 +1,6 @@
 # M36 — a panic shows where it happened, and the window survives it
 
-> **Written 2026-09-23, not started. Rewritten the same day** after a
+> **DONE 2026-09-24, T36.0–T36.5.** Written 2026-09-23. **Rewritten the same day** after a
 > seven-lens review (§5) and two decisions: **a release build shows the
 > screen when the `reload` feature is on**, and the reload half of the
 > story is its own milestone, M37 (`docs/plan-window-reload.md`),
@@ -401,6 +401,12 @@ hash. *Injections:*
   hanging.
 
 ## T36.5 — the docs
+
+> **DONE 2026-09-24.** `docs/step4-hot-reload.md` has the panic story
+> (caught / kept / not recovered); `book/src/hot-reload.md` shows the
+> screen as a running snippet that builds it with `failure_frame` and
+> asserts its lines in order; `docs/00-handoff-static-tree.md` records
+> the decision as **DECIDED**.
 
 `docs/step4-hot-reload.md` gains the panic story: what is caught, what
 is kept, and what is not recovered. `book/src/hot-reload.md` shows the

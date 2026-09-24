@@ -59,6 +59,52 @@ the new code falls back to the fresh value and **logs** it.
 That last one is the interesting case, and it is the one people assume
 will simply work.
 
+## When the new code panics
+
+A reload loop is where a panic is most likely — you just changed the
+code — so in a debug build, or a release build with
+`lumen-static-winit/reload`, a panic does not end the window. It shows
+this instead, drawn as a plain display list so that nothing on it goes
+through the layout or paint that may just have failed:
+
+```rust
+# extern crate lumen_static;
+# extern crate lumen_static_shell;
+use lumen_static::cx::BlockMetrics;
+use lumen_static::display::Cmd;
+use lumen_static_shell::recover::{failure_frame, PanicReport};
+
+// A panic inside the framework, caused from the application's code.
+let report = PanicReport {
+    message: "index out of bounds: the len is 3 but the index is 7".into(),
+    location: Some(("crates/lumen-static/src/style.rs".into(), 1147, 18)),
+    app_frame: Some(("examples/counter/src/main.rs".into(), 42)),
+    note: None,
+};
+let screen = failure_frame(&report, 480, 320, &mut BlockMetrics);
+let lines: Vec<&str> = screen
+    .cmds
+    .iter()
+    .filter_map(|c| match c {
+        Cmd::Text { text, .. } => Some(screen.str_of(*text)),
+        _ => None,
+    })
+    .collect();
+assert_eq!(lines[0], "The application panicked");
+assert!(lines.contains(&"at crates/lumen-static/src/style.rs:1147:18"));
+// The line to open when the panic's own location is the framework's.
+assert!(lines.contains(&"in your code: examples/counter/src/main.rs:42"));
+assert_eq!(*lines.last().unwrap(), "Press R to retry");
+```
+
+Your state is kept as the panic left it, with no rollback, and nothing
+retries by itself: R (or the agent's `app.retry`) runs the frame again.
+A panic inside a hot-reloaded *library* is caught inside that library,
+because it has its own copy of std and its own panic hook — `just
+hot-demo` swaps in a build that panics, prints where, and carries the
+kept state on into the fix. `docs/step4-hot-reload.md` lists what is
+caught, what is kept, and what is not recovered.
+
 ## Why the boundary matters
 
 A reload is one dylib and one save/fresh/restore cycle, and it is fast

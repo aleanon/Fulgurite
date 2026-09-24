@@ -543,6 +543,16 @@ description's sheet of the adopted application. `Application::style` and
 the window's `Config::stylesheet` are gone — they were two sources, and
 the window silently ignored the first (`docs/plan-program.md`).
 
+**DECIDED 2026-09-24 (M36): a panic is caught, located and survived in
+development builds.** One guard, `Host::guard`, covers every path that
+runs application code; the screen is a display list naming the message,
+`file:line:col` and the nearest application frame; state is kept without
+rollback and retry is explicit. It is compiled in for debug builds and
+release builds with `lumen-static-winit/reload`, and a release build
+without it dies. Across a dylib the catch and the hook live **inside the
+library**, because a `cdylib` has its own std and its own hook
+(`docs/plan-panic-recovery.md`, `docs/step4-hot-reload.md`).
+
 ### ABI details that bite
 
 - The byte buffer must be owned by the **host binary**, not passed as a `Vec`

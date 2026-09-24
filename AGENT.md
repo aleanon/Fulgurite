@@ -497,7 +497,12 @@ found" section rather than silently replacing itself.
   which the agent moves onto as well, with an equivalence gate against
   the `&dyn` walk. The symbol table is the gate, and the clock is the
   record.
-- **M36 — `docs/plan-panic-recovery.md`** (T36.0–T36.5): a screen with
+- ~~**M36 — `docs/plan-panic-recovery.md`**~~ — **DONE 2026-09-24**,
+  all six tasks. `just panic-drive` drives seven panic sites in a live
+  window under both strategies, and `just hot-demo` catches a library's
+  panic inside the library — the loader's own hook, installed
+  throughout, is asserted to see **zero**, which is the `cdylib` fact.
+  (T36.0–T36.5): a screen with
   the message, `file:line:col` and the nearest application frame. It is
   compiled in for debug builds, and for **release builds with
   `lumen-static-winit/reload`**. One guarded entry covers every path,
