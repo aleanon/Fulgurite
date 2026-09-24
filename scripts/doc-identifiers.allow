@@ -111,3 +111,9 @@ PairCheck            # split into PairCheckA/PairCheckB in M27/T27.3; two commen
 VeilBody             # split into ModalBody/SheetBody/DrawerBody in M27/T27.7; W1011 is why
 PanicHookInfo        # std::panic::PanicHookInfo, named in docs/plan-panic-recovery.md -- not ours
 PanicReport          # promised by docs/plan-panic-recovery.md T36.1; comes off when it exists
+
+# --- planned, not yet built (docs/plan-showcase-design.md); each line goes
+# in the commit that makes the name real ---
+NavRow               # M56/T56.2's sidebar row
+SELECTED_BG          # M56/T56.3's selected-row fill
+CHIP_BG              # M56/T56.3's status-chip fill

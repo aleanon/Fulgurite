@@ -527,6 +527,16 @@ found" section rather than silently replacing itself.
   failed builds are shown over the running application, and a
   successful swap clears M36's screen. v1 never unloads a library.
 
+- **M56 — `docs/plan-showcase-design.md`** (T56.0–T56.5), queued
+  2026-09-24, not started. The showcase gets a component-gallery layout:
+  a grouped sidebar replaces the dropdown picker, the demo sits on a
+  canvas card, the readout becomes a status chip, and the chrome follows
+  4/8 px spacing and a 12/14/16/24 type scale. **The explanatory note
+  under each widget is removed**, and any claim a note held that no
+  rustdoc does is moved there first. The one-line blurb stays. A
+  contrast gate covers both palettes. The drive scripts follow the new
+  chrome and must stay green under both strategies.
+
 Unsequenced: ~~`docs/plan-harness.md`.~~ — **M12 DONE 2026-09-20.**
 T12.3 and T12.4 landed 2026-09-04; T12.1 (a locator and expectation API,
 `lumen_static_agent::harness::TestApp`) and T12.2 (golden images with a
