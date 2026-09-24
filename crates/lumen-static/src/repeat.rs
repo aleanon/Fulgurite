@@ -651,7 +651,15 @@ where
     fn handler(&self, sel: crate::event::NodeSel) -> Option<fn(&mut S, &crate::event::EventCtx)> {
         let (row, node) = sel.inner?;
         let k = (row as usize).checked_sub(self.first)?;
-        let item = self.window.get(k)?;
+        // **Through the ring, like paint, hit and `instance`.** This
+        // indexed `window` raw: after any scroll a press was answered by
+        // another row's handler, which nothing could see while every
+        // repeater gave all its rows the same one (M56,
+        // `crates/lumen-static/tests/repeat_handler.rs`).
+        if k >= self.window.len() {
+            return None;
+        }
+        let item = self.window.get(self.slot(k))?;
         item.handler(crate::event::NodeSel { i: node as usize, inner: None })
     }
 }
