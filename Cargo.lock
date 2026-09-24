@@ -2086,6 +2086,7 @@ dependencies = [
  "lumen-static",
  "lumen-static-shell",
  "lumen-static-widgets",
+ "lumen-static-winit",
 ]
 
 [[package]]

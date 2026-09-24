@@ -366,6 +366,16 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         self.failure.as_ref()
     }
 
+    /// Present `list` instead of the application's frame, as full damage
+    /// — the panic screen (M36/T36.3). The next real frame is full damage
+    /// too, because the retained journal no longer describes the surface.
+    #[cfg(panic = "unwind")]
+    pub fn show(&mut self, list: DisplayList) {
+        self.list = list;
+        self.retain.reset();
+        self.last_damage = Damage::All;
+    }
+
     /// Clear the failure, so the next guarded entry runs again — M36.
     /// The host was reset when the panic was caught; the application's
     /// own state is as the panic left it (plan §2.2: no rollback).

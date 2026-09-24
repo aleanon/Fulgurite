@@ -479,3 +479,9 @@ book-serve: book-deps
 # `--aa` builds plain twice (must pass); `--clock` adds the frame arm's clock.
 observe-inlining *args:
     ./scripts/check_observe_inlining.sh {{ args }}
+
+# M36/T36.3: a panic in a live window shows where it happened and the
+# window survives it, under both strategies (--release WITH `reload`);
+# and a release build WITHOUT `reload` must still die. Needs a display.
+panic-drive:
+    ./scripts/panic_drive.sh

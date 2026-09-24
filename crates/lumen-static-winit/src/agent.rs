@@ -91,12 +91,42 @@ impl<A: App> AgentHost for Live<'_, A> {
     /// after an `input.click` read the frame this produced, and a pump
     /// alone would hand back the one before the click.
     fn pump(&mut self) -> (u64, bool) {
-        let handled = match self.metrics.as_mut() {
-            Some(m) => self.host.pump_with(m),
-            None => self.host.pump(),
-        };
+        // **Guarded** (M36): an agent's input reaches application code
+        // through here, not through the window's redraw — the review's
+        // blocking finding was a guard that did not cover this path.
+        let metrics = &mut *self.metrics;
+        let handled = crate::guarded(self.host, |h| match metrics.as_mut() {
+            Some(m) => h.pump_with(m),
+            None => h.pump(),
+        })
+        .unwrap_or(false);
+        if crate::failed(self.host) {
+            let (w, h) = self.backend.frame_rgba().map_or((1, 1), |(w, h, _)| (w, h));
+            crate::show_failure(self.host, self.metrics, w, h);
+        }
         self.backend.present(self.host, self.page, Instant::now());
         (self.host.frame_number(), handled)
+    }
+
+    /// `app.failure` — M36/T36.3.
+    fn failure(&self) -> serde_json::Value {
+        #[cfg(all(panic = "unwind", any(debug_assertions, feature = "reload")))]
+        return serde_json::json!({
+            "supported": true,
+            "failure": self.host.failure().map(|r| serde_json::json!({
+                "message": r.message,
+                "location": r.location.as_ref().map(|(f, l, c)| serde_json::json!({"file": f, "line": l, "column": c})),
+                "app_frame": r.app_frame.as_ref().map(|(f, l)| serde_json::json!({"file": f, "line": l})),
+                "note": r.note,
+            })),
+        });
+        #[cfg(not(all(panic = "unwind", any(debug_assertions, feature = "reload"))))]
+        serde_json::json!({ "supported": false })
+    }
+
+    /// `app.retry` — M36/T36.3.
+    fn retry(&mut self) -> bool {
+        crate::retry(self.host)
     }
 
     fn frame(&self) -> Option<(u32, u32, &[u8])> {

@@ -13,3 +13,12 @@ publish = false
 lumen-static = { path = "../../crates/lumen-static" }
 lumen-static-widgets = { path = "../../crates/lumen-static-widgets" }
 lumen-static-shell = { path = "../../crates/lumen-static-shell" }
+# The window mode (M36/T36.3), off by default so the headless binary
+# T36.0 runs is exactly the unguarded one.
+lumen-static-winit = { path = "../../crates/lumen-static-winit", optional = true }
+
+[features]
+default = []
+window = ["dep:lumen-static-winit"]
+agent = ["window", "lumen-static-winit/agent", "lumen-static-widgets/observe"]
+reload = ["window", "lumen-static-winit/reload"]

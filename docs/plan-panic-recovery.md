@@ -305,6 +305,37 @@ overrun printed.
 
 ## T36.3 — the window, and the agent
 
+> **DONE 2026-09-24.** `lumen-static-winit` guards both ticks and the
+> pump in its redraw, IME composition, paste, the agent's per-frame
+> journal walk and **the agent's `Live::pump`** through one pair of
+> helpers (`guarded`, `failed`), compiled to a plain call where recovery
+> is off. While a failure is shown the window presents
+> `failure_frame` as full damage (`Host::show`), swallows every input
+> except R, close and resize, and the agent refuses `input.*`;
+> `app.failure` and `app.retry` answer from the host. `reload` is a
+> feature of the window crate now. `fixtures/panic-app --window` has an
+> arm button per site and one-shot sites, so a retry succeeds without
+> the agent, whose input is refused, having to disarm anything.
+>
+> **Gate:** `just panic-drive` — all seven sites under both strategies,
+> `--release --features reload`: the location is the site's marker line
+> (site 7: in the framework), the panic screen's page is on screen,
+> input is refused, `app.retry` brings the application back (no failure,
+> the tree answers, the app's page on screen). Then **a release build
+> without `reload` dies**, and `app.failure` there says
+> `supported: false` — the `cfg` checked both ways. *Injection:* the
+> agent's `Live::pump` unguarded — the window dies on site 1 and the
+> drive fails, which is the review's blocking finding reproduced.
+>
+> **Two departures.** The plan's step 6 compared the retried window with
+> a fresh one; the drive checks the corner pixel against the page it read
+> before arming, and that the tree answers — the byte-identity of a
+> retried frame is T36.1's headless gate, where it is exact. And a
+> `--release` build has no debug info, so site 7's application frame is
+> absent there; the screen then says so, and the drive asserts the note
+> rather than a frame (it asserts the frame in debug, headless, T36.1).
+
+
 Rule 4's single guarded entry, used by the redraw, window events,
 `compose`, `paste`, both ticks, the agent's observe walk and
 `Live::pump`. §2.2's input policy. §2.4's two agent methods. The

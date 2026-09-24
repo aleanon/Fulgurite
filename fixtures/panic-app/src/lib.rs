@@ -76,9 +76,30 @@ impl<S> Handlers<S> for Bomb {
     }
 }
 
+/// One button per site, so an agent can arm a site by clicking.
+#[derive(StaticTree, Default)]
+#[widget(row, spacing = 4.0)]
+pub struct Arms {
+    #[widget_id("arm1")]
+    pub a1: Button<Fx>,
+    #[widget_id("arm2")]
+    pub a2: Button<Fx>,
+    #[widget_id("arm3")]
+    pub a3: Button<Fx>,
+    #[widget_id("arm4")]
+    pub a4: Button<Fx>,
+    #[widget_id("arm5")]
+    pub a5: Button<Fx>,
+    #[widget_id("arm6")]
+    pub a6: Button<Fx>,
+    #[widget_id("arm7")]
+    pub a7: Button<Fx>,
+}
+
 #[derive(StaticTree, Default)]
 #[widget(column, spacing = 4.0)]
 pub struct Ui {
+    pub arms: Arms,
     #[widget_id("title")]
     pub title: Label<String>,
     #[widget_id("go")]
@@ -107,6 +128,18 @@ pub struct Fx {
     pub armed: u8,
     pub outbox: lumen_static::spawn::Outbox,
     pub clicks: u32,
+    /// Each site disarms itself just before it panics — the window mode
+    /// (M36/T36.3), so a retry can succeed without the agent, whose input
+    /// is refused while the screen is up, having to disarm anything.
+    pub one_shot: bool,
+}
+
+impl Fx {
+    fn fire(&mut self) {
+        if self.one_shot {
+            self.armed = 0;
+        }
+    }
 }
 
 fn echo(d: Descriptor, tx: &lumen_static::inbox::Sender<u8>) {
@@ -122,6 +155,7 @@ fn bad_job(_: Descriptor, _: &lumen_static::inbox::Sender<u8>) {
 fn on_go(s: &mut Fx, _: &EventCtx) {
     s.clicks += 1;
     if s.armed == 1 {
+        s.fire();
         panic!("site 1: a click handler"); // SITE 1
     }
     if s.armed == 2 {
@@ -131,6 +165,7 @@ fn on_go(s: &mut Fx, _: &EventCtx) {
         s.outbox.push(Descriptor::new(8, 0));
     }
     if s.armed == 7 {
+        s.fire();
         // An index the framework trusts the caller about: the panic is
         // raised inside `lumen-static`, and the application's line is this.
         let _ = lumen_static::style::subtree_range(<Ui as Widget>::SUB_TABLE, 10_000); // SITE 7
@@ -158,20 +193,26 @@ impl App for Fx {
     }
     fn apply(this: &mut Self, m: u8) -> bool {
         if m == 2 && this.armed == 2 {
+            this.fire();
             panic!("site 2: an applied message"); // SITE 2
         }
         true
     }
     fn tick(&mut self, dt_ms: f32) -> bool {
         if dt_ms > 0.0 && self.armed == 6 {
+            self.fire();
             panic!("site 6: App::tick"); // SITE 6
         }
         false
     }
     fn update(&mut self) -> bool {
-        let text = format!("{}", Shown(self.armed));
-        let a = lumen_static::bind::set_if_changed(&mut self.ui.title, &text);
+        let shown = Shown(self.armed);
         let bomb = if matches!(self.armed, 4 | 5) { self.armed } else { 0 };
+        if matches!(self.armed, 3..=5) {
+            self.fire();
+        }
+        let text = format!("{shown}");
+        let a = lumen_static::bind::set_if_changed(&mut self.ui.title, &text);
         let b = lumen_static::bind::BindValue::bind_value(&mut self.ui.bomb.arm, &bomb);
         a | b
     }
@@ -182,7 +223,26 @@ pub fn build() -> Fx {
     let mut f = Fx::default();
     f.ui.go.label = "go";
     f.ui.go.on_click = on_go;
+    type Arm<'a> = (&'a mut Button<Fx>, &'static str, fn(&mut Fx, &EventCtx));
+    let arms: [Arm<'_>; 7] = [
+        (&mut f.ui.arms.a1, "1", |s, _| s.armed = 1),
+        (&mut f.ui.arms.a2, "2", |s, _| s.armed = 2),
+        (&mut f.ui.arms.a3, "3", |s, _| s.armed = 3),
+        (&mut f.ui.arms.a4, "4", |s, _| s.armed = 4),
+        (&mut f.ui.arms.a5, "5", |s, _| s.armed = 5),
+        (&mut f.ui.arms.a6, "6", |s, _| s.armed = 6),
+        (&mut f.ui.arms.a7, "7", |s, _| s.armed = 7),
+    ];
+    for (b, label, h) in arms {
+        b.label = label;
+        b.on_click = h;
+    }
     f
+}
+
+/// The window mode's application: one-shot sites.
+pub fn build_window() -> Fx {
+    Fx { one_shot: true, ..build() }
 }
 
 /// The line each site's panic is raised on, in this file — for site 7,

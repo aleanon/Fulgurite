@@ -19,6 +19,11 @@ name = "lumen_static_winit"
 # `Host`'s invalidation is a type parameter (see `Inval` in lib.rs). Any
 # example reaches it as `--features lumen-static-winit/everything`.
 everything = []
+# M36: a release window that shows a panic screen instead of crashing.
+# A debug window always does; a shipped release build does not, unless it
+# asks, so a crash reaches whatever would have reported it
+# (docs/plan-panic-recovery.md rule 3).
+reload = ["lumen-static-shell/reload"]
 # M34/T34.1: the shadow oracle, reported by the agent's `app.shadow`.
 shadow-oracle = ["lumen-static-shell/shadow-oracle"]
 # Clipboard is default-ON, unlike the a11y feature, and the difference

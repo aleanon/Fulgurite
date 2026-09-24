@@ -414,7 +414,8 @@ impl<A: App> Win<A> {
             }
             'v' => {
                 if let Some(text) = self.clipboard.get() {
-                    self.host.paste(&text);
+                    // Guarded: paste runs the focused widget's editing code.
+                    let _ = guarded(&mut self.host, |h| h.paste(&text));
                 }
                 true
             }
@@ -430,17 +431,28 @@ impl<A: App> Win<A> {
         backend.resize(&mut self.host, size.width.max(1), size.height.max(1));
 
         let start = Instant::now();
+        // **A panic is being shown** (M36): present the screen and run no
+        // application code — running it would be an automatic retry.
+        if failed(&self.host) {
+            show_failure(&mut self.host, &mut self.metrics, size.width.max(1), size.height.max(1));
+            backend.present(&mut self.host, self.config.page, start);
+            return;
+        }
         // Animation, before the pump: a tick changes state, and the
         // bindings the pump runs are what put that state on screen.
         let dt = self.last_frame.replace(start).map_or(0.0, |t| {
             start.duration_since(t).as_secs_f32() * 1000.0
         });
-        self.host.tick(dt);
-
-        match self.metrics.as_mut() {
-            Some(m) => self.host.pump_with(m),
-            None => self.host.pump(),
-        };
+        // **One guarded entry for the frame's application code** (M36):
+        // both ticks and the pump. A panic in any of them is caught, the
+        // host is reset, and the screen below replaces the frame.
+        let metrics = &mut self.metrics;
+        let ran = guarded(&mut self.host, |h| {
+            h.tick(dt);
+            match metrics.as_mut() {
+                Some(m) => h.pump_with(m),
+                None => h.pump(),
+            };
         // **Ask again, after the pump — M22/T22.4.**
         //
         // The tick above is where animations *advance*, and it has to
@@ -456,7 +468,13 @@ impl<A: App> Win<A> {
         // A zero `dt` is a pure query — `App::tick` guarantees it — so
         // this advances nothing and costs one call that inlines away for
         // an application that animates nothing.
-        let animating = self.host.tick(0.0);
+            h.tick(0.0)
+        });
+        let Some(animating) = ran else {
+            show_failure(&mut self.host, &mut self.metrics, size.width.max(1), size.height.max(1));
+            backend.present(&mut self.host, self.config.page, start);
+            return;
+        };
         backend.present(&mut self.host, self.config.page, start);
         // A title that is a function of the state is re-asked after every
         // frame and set only when it changed (`docs/plan-program.md`
@@ -477,13 +495,14 @@ impl<A: App> Win<A> {
         // it has finished moving.
         #[cfg(feature = "agent")]
         {
-            let timing = lumen_static_agent::FrameTiming::default();
-            let mut tree = lumen_static_agent::TreeMut::of_root(
-                self.host.app.tree_mut(),
-                &self.host.styles,
-                &self.host.states,
-            );
-            self.agent.frame_done(&mut tree, timing);
+            // Guarded: the journal walks the tree through every widget's
+            // `observe` (M36).
+            let agent = &mut self.agent;
+            let _ = guarded(&mut self.host, |h| {
+                let timing = lumen_static_agent::FrameTiming::default();
+                let mut tree = lumen_static_agent::TreeMut::of_root(h.app.tree_mut(), &h.styles, &h.states);
+                agent.frame_done(&mut tree, timing);
+            });
         }
 
         // Another frame only while something is moving. A still UI
@@ -641,6 +660,29 @@ impl<A: App> Win<A> {
     }
 
     fn window_event_impl(&mut self, event_loop: &ActiveEventLoop, _: WindowId, event: WindowEvent) {
+        // **While a panic is shown** (M36 §2.2): close, resize and redraw
+        // as ever; **R retries**; everything else is swallowed, so nothing
+        // piles up in the queue to replay into the application on retry.
+        if failed(&self.host) {
+            match event {
+                WindowEvent::CloseRequested => event_loop.exit(),
+                WindowEvent::Resized(_) | WindowEvent::RedrawRequested => self.redraw(),
+                WindowEvent::KeyboardInput { event, .. }
+                    if event.state == winit::event::ElementState::Pressed
+                        && matches!(
+                            translate::key_of(&event.logical_key),
+                            Some(lumen_static::Key::Char('r' | 'R'))
+                        ) =>
+                {
+                    retry(&mut self.host);
+                    if let Some(w) = &self.window {
+                        w.request_redraw();
+                    }
+                }
+                _ => {}
+            }
+            return;
+        }
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
 
@@ -662,12 +704,15 @@ impl<A: App> Win<A> {
             WindowEvent::Ime(ref ime) => {
                 use lumen_static::event::Composition;
                 use winit::event::Ime;
-                let changed = match ime {
-                    Ime::Preedit(text, _) => self.host.compose(Composition::Preedit(text)),
-                    Ime::Commit(text) => self.host.compose(Composition::Commit(text)),
-                    Ime::Disabled => self.host.compose(Composition::Cancel),
+                // Guarded: composition runs the focused widget's editing
+                // code (M36).
+                let changed = guarded(&mut self.host, |h| match ime {
+                    Ime::Preedit(text, _) => h.compose(Composition::Preedit(text)),
+                    Ime::Commit(text) => h.compose(Composition::Commit(text)),
+                    Ime::Disabled => h.compose(Composition::Cancel),
                     Ime::Enabled => false,
-                };
+                })
+                .unwrap_or(true);
                 if changed {
                     if let Some(w) = &self.window {
                         w.request_redraw();
@@ -789,4 +834,65 @@ fn shot<A: App>(mut host: Host<A, Ret, Inval>, w: u32, h: u32, page: Color, path
     canvas.clear(page);
     host.render(&mut canvas);
     std::fs::write(path, canvas.to_ppm()).expect("LUMEN_SHOT: write frame");
+}
+
+// ---- M36: a panic shows where it happened, and the window survives ----
+
+/// Whether this window guards application code — M36
+/// (`docs/plan-panic-recovery.md` rule 3): a debug build does, a release
+/// build does with the `reload` feature, and never where panics abort.
+#[cfg(all(panic = "unwind", any(debug_assertions, feature = "reload")))]
+pub(crate) fn guarded<A: App, T>(
+    host: &mut Host<A, Ret, Inval>,
+    f: impl FnOnce(&mut Host<A, Ret, Inval>) -> T,
+) -> Option<T> {
+    host.guard(f)
+}
+
+#[cfg(not(all(panic = "unwind", any(debug_assertions, feature = "reload"))))]
+pub(crate) fn guarded<A: App, T>(
+    host: &mut Host<A, Ret, Inval>,
+    f: impl FnOnce(&mut Host<A, Ret, Inval>) -> T,
+) -> Option<T> {
+    Some(f(host))
+}
+
+/// Whether a panic is being shown.
+pub(crate) fn failed<A: App>(host: &Host<A, Ret, Inval>) -> bool {
+    #[cfg(all(panic = "unwind", any(debug_assertions, feature = "reload")))]
+    return host.failure().is_some();
+    #[cfg(not(all(panic = "unwind", any(debug_assertions, feature = "reload"))))]
+    {
+        let _ = host;
+        false
+    }
+}
+
+/// Put the panic screen in the host's list, sized to the surface.
+pub(crate) fn show_failure<A: App>(host: &mut Host<A, Ret, Inval>, metrics: &mut Option<FontMetrics>, w: u32, h: u32) {
+    #[cfg(all(panic = "unwind", any(debug_assertions, feature = "reload")))]
+    if let Some(r) = host.failure().cloned() {
+        use lumen_static_shell::recover::failure_frame;
+        let list = match metrics.as_mut() {
+            Some(m) => failure_frame(&r, w, h, m),
+            None => failure_frame(&r, w, h, &mut lumen_static::cx::BlockMetrics),
+        };
+        host.show(list);
+    }
+    #[cfg(not(all(panic = "unwind", any(debug_assertions, feature = "reload"))))]
+    let _ = (host, metrics, w, h);
+}
+
+/// Retry after a panic: the next guarded entry runs again.
+pub(crate) fn retry<A: App>(host: &mut Host<A, Ret, Inval>) -> bool {
+    #[cfg(all(panic = "unwind", any(debug_assertions, feature = "reload")))]
+    {
+        host.retry();
+        true
+    }
+    #[cfg(not(all(panic = "unwind", any(debug_assertions, feature = "reload"))))]
+    {
+        let _ = host;
+        false
+    }
 }

@@ -411,6 +411,24 @@ impl Agent {
     pub fn dispatch_input(&self, host: &mut dyn AgentHost, req: &Value) -> Value {
         let id = req.get("id").cloned().unwrap_or(Value::Null);
         let method = req.get("method").and_then(Value::as_str).unwrap_or("");
+        // M36: a panic is host state, so these answer from the host.
+        if method == "app.failure" {
+            return json!({ "jsonrpc": "2.0", "id": id, "result": host.failure() });
+        }
+        if method == "app.retry" {
+            let retried = host.retry();
+            host.pump();
+            return json!({ "jsonrpc": "2.0", "id": id, "result": { "retried": retried } });
+        }
+        // **While a panic is shown, input is refused** (M36 §2.2): pumping
+        // would be an automatic retry.
+        if method.starts_with("input.") && !host.failure()["failure"].is_null() {
+            return json!({ "jsonrpc": "2.0", "id": id, "error": {
+                "code": INVALID_PARAMS,
+                "message": "the application panicked — read app.failure, then call app.retry",
+                "data": Value::Null,
+            }});
+        }
         if method == "app.shadow" {
             let result = host.shadow().unwrap_or_else(|| json!({ "supported": false }));
             return json!({ "jsonrpc": "2.0", "id": id, "result": result });
@@ -1461,6 +1479,18 @@ pub trait AgentHost {
     /// never compared anything would be proving nothing.
     fn shadow(&self) -> Option<Value> {
         None
+    }
+
+    /// The panic being shown, if any — M36/T36.3, the `app.failure`
+    /// method. `{"supported": false}` by default, for a host that cannot
+    /// recover, so a drive does not mistake "cannot say" for "no panic".
+    fn failure(&self) -> Value {
+        json!({ "supported": false })
+    }
+
+    /// Retry after a panic — the `app.retry` method. `false` by default.
+    fn retry(&mut self) -> bool {
+        false
     }
 }
 
