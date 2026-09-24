@@ -183,6 +183,10 @@ pub mod symbols {
     /// two-call protocol as [`SAVE`], and it must not discard the log
     /// when the buffer is too small (F1.7).
     pub const TAKE_LOG: &[u8] = b"hot_take_log";
+    /// `fn(*mut u8, usize) -> usize` — drain the report of the last panic
+    /// a shim caught inside the library, as `panicked at file:line:col:
+    /// message`. Same two-call protocol; zero means none (M36/T36.4).
+    pub const TAKE_PANIC: &[u8] = b"hot_take_panic";
 }
 
 /// Serialize a saved value. Infallible in practice — a `Value` built by

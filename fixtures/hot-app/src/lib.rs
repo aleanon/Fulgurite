@@ -271,6 +271,17 @@ pub unsafe extern "C" fn hot_check_mark(p: *mut c_void) -> u32 {
 #[no_mangle]
 pub unsafe extern "C" fn hot_frame(p: *mut c_void) -> u64 {
     let s = unsafe { session(p) };
+    // M36/T36.4: caught *here*, inside this library, by its own hook — a
+    // panic unwinding out of an `extern "C"` fn aborts the loader. On a
+    // panic the frame answers 0 and the report waits in `hot_take_panic`.
+    lumen_static_reload::panic::guard(0, || frame(s))
+}
+
+fn frame(s: &mut Session) -> u64 {
+    // The third build's edit broke the frame; the fourth's fixed it.
+    if cfg!(feature = "v3") {
+        panic!("v3's frame is broken at counter {}", s.counter); // PANIC v3
+    }
     s.cache_hits += 1;
     // The update step: application state reaches the screen here. Widget
     // fields hold the *presentation copy*; sibling fields are the source

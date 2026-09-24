@@ -18,6 +18,35 @@ use libloading::{Library, Symbol};
 // they agreed, so a rename was a runtime `unwrap` at load time in the
 // middle of a dylib swap (`docs/plan-review-fixes.md` F6.7).
 use lumen_static::reload::symbols;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+/// Panics the **loader's** hook saw — M36/T36.4. A library panic must
+/// leave this at zero: a `cdylib` has its own std and its own hook, so
+/// the only hook that sees a library's panic is one installed from
+/// inside the library.
+static LOADER_SAW: AtomicUsize = AtomicUsize::new(0);
+
+/// The line of `// PANIC v3` in the fixture's source, found by scanning
+/// it rather than copied into a constant (T36.0's lesson: four of seven
+/// hand-copied lines were off).
+fn v3_panic_line() -> u32 {
+    let src = include_str!("../../hot-app/src/lib.rs");
+    let i = src.lines().position(|l| l.contains("// PANIC v3")).expect("the v3 marker");
+    i as u32 + 1
+}
+
+/// Drain the library's panic report (two-call protocol).
+fn take_panic(lib: &Library) -> String {
+    let f: Symbol<unsafe extern "C" fn(*mut u8, usize) -> usize> =
+        unsafe { lib.get(symbols::TAKE_PANIC) }.unwrap();
+    let need = unsafe { f(core::ptr::null_mut(), 0) };
+    if need == 0 {
+        return String::new();
+    }
+    let mut buf = vec![0u8; need];
+    let wrote = unsafe { f(buf.as_mut_ptr(), buf.len()) };
+    String::from_utf8_lossy(&buf[..wrote]).into_owned()
+}
 
 struct App<'l> {
     lib: &'l Library,
@@ -134,6 +163,12 @@ const CHAIN_KIND: u64 = 1;
 fn main() {
     let mut args = std::env::args().skip(1);
     let (v1_path, v2_path) = (args.next().expect("v1 .so path"), args.next().expect("v2 .so path"));
+    let (v3_path, v4_path) = (args.next(), args.next());
+    let prev = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        LOADER_SAW.fetch_add(1, Ordering::SeqCst);
+        prev(info);
+    }));
 
     // ---- v1: build up user state ----
     let v1: &'static Library = Box::leak(Box::new(unsafe { Library::new(&v1_path) }.unwrap()));
@@ -218,7 +253,8 @@ fn main() {
     let v2: &'static Library = Box::leak(Box::new(unsafe { Library::new(&v2_path) }.unwrap()));
     let app2 = App::new(v2); // 4. fresh() from the new code…
     app2.restore(&bytes); //    …then graft the old values on
-    app2.frame();
+    let hash_v2 = app2.frame();
+    assert_eq!(take_panic(v2), "", "v2 reported a panic it never had");
     let after = app2.buffered(b"hot_report");
 
     // The size probe is load-bearing, so exercise it directly: a first
@@ -329,6 +365,47 @@ fn main() {
     println!("v2 tick colour {mark_v2:#010x}");
     assert_eq!(mark_v2, 0x1e_3c_dc_ff, "fresh: the new build's default paints a blue tick");
     println!("  ok: the mark came from the new build and the on state from the old");
+
+    // ---- M36/T36.4: a build whose frame panics, then the fix ---------
+    if let (Some(v3_path), Some(v4_path)) = (v3_path, v4_path) {
+        let bytes = app2.save();
+        app2.call0(symbols::DROP);
+        let v3: &'static Library = Box::leak(Box::new(unsafe { Library::new(&v3_path) }.unwrap()));
+        let app3 = App::new(v3);
+        app3.restore(&bytes);
+        // Without the catch in the library this call aborts the process:
+        // a panic cannot unwind out of an `extern "C"` fn.
+        let h = app3.frame();
+        let report = take_panic(v3);
+        println!("v3's frame panicked; the library reported:\n  {report}");
+        assert_eq!(h, 0, "a caught frame answers 0");
+        let at = format!("fixtures/hot-app/src/lib.rs:{}:", v3_panic_line());
+        assert!(
+            report.contains(&at),
+            "the report must name the panic's line `{at}`, got `{report}` — a report \
+             without a location means the library's own hook did not record"
+        );
+        println!("  ok: the report names {at}");
+        assert!(report.contains("v3's frame is broken at counter 3"), "the message, with the kept state");
+        let saw = LOADER_SAW.load(Ordering::SeqCst);
+        println!("  loader's hook saw {saw} panics (bound: 0)");
+        assert_eq!(saw, 0, "the loader's hook saw a library panic — the cdylib seam is not what §2.5 says");
+        assert_eq!(take_panic(v3), "", "the report drains once");
+        // The library survived its panic: the same object answers.
+        let still = app3.buffered(b"hot_report");
+        expect(&still, "counter=3", "v3 survived its own panic");
+
+        let bytes = app3.save();
+        app3.call0(symbols::DROP);
+        let v4: &'static Library = Box::leak(Box::new(unsafe { Library::new(&v4_path) }.unwrap()));
+        let app4 = App::new(v4);
+        app4.restore(&bytes);
+        let hash_v4 = app4.frame();
+        assert_eq!(take_panic(v4), "", "v4 reported a panic");
+        println!("v4's frame {hash_v4:#018x}, v2's {hash_v2:#018x}");
+        assert_eq!(hash_v4, hash_v2, "the fix must draw exactly v2's frame from the kept state");
+        println!("  ok: the fixed build drew v2's frame from the state carried through the panic");
+    }
 
     println!("\nHOT RELOAD DEMO: PASS");
 }

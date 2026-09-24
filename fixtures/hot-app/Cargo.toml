@@ -12,6 +12,11 @@ crate-type = ["cdylib"]
 # The "edited code": different footer text and Default theme, and the
 # Mode::Fancy variant is deleted.
 v2 = []
+# M36/T36.4: the v2 code with a frame that panics, and the v2 code again
+# with it fixed. The loader catches the first and carries on with the
+# second; the fix draws exactly v2's frame.
+v3 = ["v2"]
+v4 = ["v2"]
 
 [dependencies]
 lumen-static-widgets = { path = "../../crates/lumen-static-widgets", features = ["reload"] }

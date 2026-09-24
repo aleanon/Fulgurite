@@ -365,6 +365,28 @@ session, so the `cfg` is known to be switched both ways.
 
 ## T36.4 — the dylib seam
 
+> **DONE 2026-09-24.** `lumen_static_reload::panic` holds the hook, the
+> record and the catch, and it lives in the crate the **library** links,
+> so each loaded build has its own. `export_reloadable_app!`'s four
+> lifecycle shims catch (`hot_new` → null, `hot_save` → `usize::MAX`,
+> `hot_restore` → 2), and a new generated `hot_take_panic` drains the
+> report as `panicked at file:line:col: message`. `fixtures/hot-app`'s
+> `hot_frame` wraps its body in `panic::guard`. `just hot-demo` runs four
+> builds: v3 panics in its frame, the loader prints the report, asserts
+> its line against the fixture's `// PANIC v3` marker, and carries the
+> kept state on into v4, whose frame hash **equals v2's**.
+>
+> The loader installs a counting hook of its own for the whole run, and
+> the demo asserts it saw **0** panics — the `cdylib` fact as an
+> assertion, not just an injection. *Injections:* the library's
+> `install()` removed — the report reads "location unavailable" and the
+> line assertion fires, with the loader's hook installed throughout; the
+> frame verb's catch removed — the loader aborts on signal 6 and the
+> script says so; a loader-side panic — the counter reads 1 and its
+> assertion fires; v4's restore skipped — the hashes differ. Only
+> `hot_frame`'s catch is driven by the demo; the lifecycle shims' are
+> the same `guard`, not separately exercised.
+
 §2.5 in `export_reloadable_app!` and `fixtures/hot-app`. `just hot-demo`
 gains a third build that panics in its frame verb and a fourth that
 fixes it. The loader prints the report and carries on with the fourth.
