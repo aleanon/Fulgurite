@@ -7,16 +7,24 @@ publish = false
 
 [dependencies]
 lumen-static = { path = "../crates/lumen-static" }
-lumen-static-agent = { path = "../crates/lumen-static-agent" }
+# Optional since M35/T35.0: see the `observe` feature.
+lumen-static-agent = { path = "../crates/lumen-static-agent", optional = true }
 # T7.3 measures the memo against the *real* measurer; the stand-in cannot
 # answer what the memo is worth (docs/text-render-adoption-decision.md).
 lumen-static-shell = { path = "../crates/lumen-static-shell", features = ["truetype"] }
 # M26/T26.0: `Badge` and `Chip` shape on every layout with no memo at all
 # (M26/T26.8), and the memo arms live here — so the widgets that lack one
 # have to be measurable beside the ones that have it.
-lumen-static-widgets = { path = "../crates/lumen-static-widgets", features = ["observe"] }
+lumen-static-widgets = { path = "../crates/lumen-static-widgets" }
 
 [features]
+# **Default-on, and optional since M35/T35.0** (`docs/plan-observe-cost.md`).
+# It was unconditional, so no bench here could be built without the
+# widgets' observability compiled in — and `--bin grid` could not say what
+# an application pays for it. `--no-default-features` builds without it;
+# `--bin agent` requires it.
+default = ["observe"]
+observe = ["dep:lumen-static-agent", "lumen-static-widgets/observe"]
 rdyn_opaque = ["lumen-static/rdyn_opaque"]
 # M25/T25.12: which variant `--bin appearance` is built against. None is
 # `main`; `look` is the pilot (a look resolved on every layout); `cached`
@@ -53,6 +61,7 @@ path = "src/bin/cascade.rs"
 [[bin]]
 name = "agent"
 path = "src/bin/agent.rs"
+required-features = ["observe"]
 
 [[bin]]
 name = "appearance"

@@ -531,6 +531,34 @@ It is a static call; a review found the error.* So the 24% is the frame arm's sh
 measured**. `docs/plan-observe-cost.md` owns the fix and the measurement
 that scopes it.
 
+#### T35.0 — the baselines, before the fix (2026-09-24)
+
+`just observe-inlining --clock` (`scripts/check_observe_inlining.sh`):
+eight interleaved runs of the frame arm; the fast cluster is every run
+within 5% of its build's minimum, by rule.
+
+| stage | plain fast cluster | `observe` fast cluster | delta of minima | plain width |
+|---|---:|---:|---:|---:|
+| layout | 13.50–14.10 µs | 17.30–17.40 µs | **+3.80 µs** | 0.60 µs |
+| +paint | 30.60–31.80 µs | 37.80–39.60 µs | **+7.20 µs** | 1.20 µs |
+
+**The grid, which an application is shaped like, shows none of it.**
+`just grid` built with `observe` and with `--no-default-features`, eight
+runs each; the prediction written before the number was *small*, because
+the grid's `BodyRow` is a non-`fuse` derived row whose labels are coerced
+by `call_child` in every build.
+
+| arm | with `observe` | without |
+|---|---|---|
+| `bound` | 36.67–37.14 µs | 37.83–38.24 µs (two slow-cluster runs set aside) |
+| `mark_all` | 57.71–59.38 µs (one slow run set aside) | 60.36–60.77 µs |
+
+The build *with* `observe` came out faster, which is not an effect: it is
+code alignment, Phase D's second lesson — two arms that disagree about
+one quantity are a fact about the arms. **So the frame arm's cost belongs
+to a list of leaves**, and T35.1 is justified by that shape, not by a
+claim about every application.
+
 ### One row of N changes — the matched stopping point, no raster
 
 | arm | 100 | 1 000 | 3 000 |

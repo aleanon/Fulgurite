@@ -473,3 +473,9 @@ book-deps:
 # Read it locally, rebuilding on save.
 book-serve: book-deps
     mdbook serve book --open
+
+# M35/T35.0: does compiling `observe` in stop a row widget being inlined
+# into its List/Repeat loop? The symbol table answers (docs/plan-observe-cost.md).
+# `--aa` builds plain twice (must pass); `--clock` adds the frame arm's clock.
+observe-inlining *args:
+    ./scripts/check_observe_inlining.sh {{ args }}

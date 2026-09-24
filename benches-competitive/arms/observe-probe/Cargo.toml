@@ -1,0 +1,19 @@
+[package]
+name = "observe-probe"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+# M35/T35.0 (`docs/plan-observe-cost.md`): two row containers, one binary
+# each, so `scripts/check_observe_inlining.sh` can ask the symbol table
+# whether compiling `observe` in stops the row widget's `layout` and
+# `paint` being inlined into its container's loop. Built with this
+# workspace's release profile (LTO, one codegen unit), unstripped by the
+# script, plain and with `observe`.
+[dependencies]
+lumen-static = { path = "../../../crates/lumen-static" }
+lumen-static-widgets = { path = "../../../crates/lumen-static-widgets" }
+lumen-static-shell = { path = "../../../crates/lumen-static-shell" }
+
+[features]
+observe = ["lumen-static/observe", "lumen-static-widgets/observe"]

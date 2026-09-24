@@ -19,6 +19,7 @@ members = [
     "arms/raster",
     "arms/stages",
     "arms/vello-cpu",
+    "arms/observe-probe",
 ]
 
 # Match what a shipped application is built with, and match the profile the

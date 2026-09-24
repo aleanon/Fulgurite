@@ -106,6 +106,16 @@ Rejected, with reasons:
 
 ## T35.0 — the gates and the baselines, before the fix
 
+> **DONE 2026-09-24.** `benches` has an `observe` feature (default-on;
+> `--bin agent` requires it). `benches-competitive/arms/observe-probe`
+> is the two arms (`list`, `repeat`), and `just observe-inlining` is the
+> symbol gate — **red on both arms today**, naming `Label<S>`'s `layout`
+> (0x21b B) and `paint` (0x111 B); `--aa` (plain twice) passes. The clock
+> and the grid baseline are in `docs/results-competitive.md` §7, T35.0:
+> the frame arm pays +3.80 µs of layout, the grid pays nothing
+> measurable, as predicted.
+
+
 1. **Make `observe` and the agent optional features of `benches`**, and
    mark with `required-features` the bins that need them (`agent`, and
    any others). Build `just grid` both ways, with
