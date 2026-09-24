@@ -1211,6 +1211,13 @@ because it is the sentence that set that milestone's direction. It read:
 *"the derive knows which nodes each `#[bind]` writes, so `App::update`
 can report a range instead of a bool."*
 
+**What was built instead (M29/T29.2–T29.4, 2026-09-24):** the derive
+still does not know. A binding finds its node by the target's *address*
+at run time, once, cached per site (`bind::node_of`), and
+`App::update_marked` feeds one range per binding that wrote; the paths
+that cannot say where they wrote are asserted to mark everything
+(`crates/lumen-static-shell/tests/conservative_marks.rs`).
+
 - **The derive does not know.** It sees `ui.card.value` as *tokens* and
   has no type information, so it cannot resolve a path to an index
   without machinery nobody had specified

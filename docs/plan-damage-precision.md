@@ -464,7 +464,22 @@ forces `mark_all` (an explicit `invalidate_all()` before the pump), so
 the arm still measures the difference it is named for. The number must
 land where the hand-narrowed scaffold did.
 
-## T29.4 — the conservative paths, asserted
+## T29.4 — the conservative paths, asserted — **DONE 2026-09-24**
+
+> `crates/lumen-static-shell/tests/conservative_marks.rs`, each path
+> asserting `Host::last_marks`: `with =` (all), `after_update` that
+> changed something (all — and one that changed nothing marks nothing),
+> a handled event (all, until T29.6), an applied message (all), and the
+> arena flag (`Host::last_arenas_owed`, set by any binding write).
+> **One path the list called conservative is not**: a path through a
+> hand-written container. T29.2's address walk crosses `Glass<W>`, so it
+> narrows — asserted as two ranges for two bindings, with the frame
+> byte-identical to `Everything`'s. *Injections:* narrowing `with =` —
+> "path 1: a `with =` hook still marks everything"; narrowing
+> `after_update` — "path 2". A `with =` binding marks everything on
+> *every* pump, which the first version of the file learnt by putting
+> one in the shared fixture and watching every other path read `all`.
+
 
 `with =`, `after_update`, a path through a hand-written container, a
 handled event, an applied message, and the arena flag each keep

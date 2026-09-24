@@ -179,6 +179,8 @@ pub struct Host<A: App, R: Retention = Incremental, I: Invalidation = Everything
     sheet_source: Option<std::rc::Rc<dyn program::Sheet<A>>>,
     /// What the last frame had marked when it cleared — M29/T29.3.
     last_marks: lumen_static::invalidate::Marks,
+    /// Whether the last frame owed the arenas a cascade — M29/T29.4.
+    last_arenas_owed: bool,
     /// Jobs a boot function returned before any spawner existed. Started
     /// by [`Host::set_spawner`]; see [`Host::hold_until_spawner`].
     held: Vec<lumen_static::spawn::Job<A::Msg>>,
@@ -212,6 +214,13 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
     /// this is what tells them apart.
     pub fn last_marks(&self) -> lumen_static::invalidate::Marks {
         self.last_marks
+    }
+
+    /// Whether the last frame owed the arenas a cascade — M29/T29.4. Set
+    /// by any binding write, narrowed or not, because nothing shows a
+    /// binding cannot change a template's styles (§2.4).
+    pub fn last_arenas_owed(&self) -> bool {
+        self.last_arenas_owed
     }
 
     /// Jobs held for a spawner that has not been installed yet.
@@ -300,6 +309,7 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             sheet_source: None,
             held: Vec::new(),
             last_marks: lumen_static::invalidate::Marks::default(),
+            last_arenas_owed: false,
         }
     }
 
@@ -917,6 +927,7 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         // **The arenas, if any are owed.** Before layout, so a template
         // styled by the previous frame's pass is laid out with those
         // styles rather than one frame behind them.
+        self.last_arenas_owed = self.arenas_dirty;
         if self.arenas_dirty {
             self.arenas_dirty = false;
             if !self.sheet.is_empty() {
