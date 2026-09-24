@@ -312,6 +312,40 @@ M24/M27. Anything clipped or low-contrast gets fixed in this task.
 
 ### T56.4 — the drives follow the new chrome
 
+> **DONE 2026-09-25.** `just widget-drive` is green on 39 widgets and 94
+> actions under both strategies, and `just agent-drive` is green under
+> both, with the shadow oracle quiet over 47 frames.
+>
+> - **The harness picks through the sidebar.** `_pick` scrolls it to
+>   the top, then down until the row whose label is exactly the name is
+>   wholly in view, skipping `Heading`-role rows. It confirms the page's
+>   title.
+> - **`agent_drive.sh` works the dropdown as a demo.** It picks Switch
+>   by `~=`, then scrolls to Select, opens it, and chooses "Cherry" by
+>   its text; the trigger reads Cherry, the chip reads `selected:
+>   Cherry`, and the menu closes. The palette check reads `#sidebar`.
+>
+> **What the drive found.**
+>
+> - **A defect in the agent.** `ui.lastDamage` counted nodes that draw
+>   nothing, so the stage's spacers and transparent row, which move when
+>   a demo grows, merged into the card's whole inner box: 7.47x the
+>   accordion's own box, on a frame the renderer redrew at 1.00x. Fixed
+>   with its own gate (`crates/lumen-static-agent/tests/damage_paints.rs`:
+>   1,280 px² against 84,800 without the fix) and recorded as the fourth
+>   amplification in `docs/damage-amplification-decision.md`.
+> - **A measurement artefact in the PaintBox action.** A box centred in
+>   an odd remainder starts on a half pixel (x = 524.5), and the counter
+>   called the straddling pixels "outside". A pixel is outside now only
+>   when it is wholly outside. *Injection:* the widget's clip removed
+>   leaves 16 px outside, and the action fails under both strategies.
+> - **An inconsistency in the audit, recorded and not changed.** Closing
+>   an accordion section now draws `W1001` ("laid out 0x0") where the
+>   old 248 px share drew `W1005` ("squeezed"). A collapsed
+>   `Collapsible` body is audited because its addresses still answer
+>   with the body, whereas an absent `Option` branch answers with its
+>   container and is exempt. The action accepts both codes.
+
 `scripts/drive/harness.py`:
 - `_pick` clicks the sidebar row by the exact-text selector `~=Name`
   (T27.12), then asserts the title shows the name.

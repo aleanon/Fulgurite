@@ -205,17 +205,17 @@ class Ctx:
         return self.c.rpc("input.hover", selector=sel or self.sel)
 
 
-def _menu_row(c: AgentClient, widget: str):
-    """The bounds of the menu row named `widget`, or `None`.
+def _nav_row(c: AgentClient, widget: str):
+    """The bounds of the sidebar row named `widget`, or `None`.
 
-    The menu's labels carry two decorations: the group, folded into the
-    first row of each (`"Layout - PaneGrid"`), and an indent on the
-    rest. Both are stripped before comparing, so the match is on the
-    widget's *name* and nothing else.
+    **Exactly the name, and not a heading.** A row's label is the
+    widget's bare name (M56), so equality is exact where `~Name` is
+    ambiguous (`RichText` is a prefix of `RichTextEditor`), and a group
+    heading announces the `Heading` role, so a group that shared a
+    widget's name could not be picked in its place.
     """
     for n in c.rpc("ui.getTree", depth=12)["nodes"]:
-        label = (n.get("label") or "").strip()
-        if label != widget and not label.endswith(f" - {widget}"):
+        if (n.get("label") or "").strip() != widget or n.get("role") == "Heading":
             continue
         b = n.get("bounds")
         if b and b[2] > b[0] and b[3] > b[1]:
@@ -224,92 +224,66 @@ def _menu_row(c: AgentClient, widget: str):
 
 
 def _pick(c: AgentClient, widget: str) -> None:
-    """Put `widget` on the stage, by name.
+    """Put `widget` on the stage, by name, through the sidebar (M56).
 
     By **name**, not by row index — M27/T27.0 exists so this line can be
     written. `agent_drive.sh` used to compute `box[1] + ROW_H * k`, which
     is the first vacuous shape AGENT.md names: reorder the catalogue and
     row k is a different widget, silently.
 
-    **Scrolling, because the catalogue has outgrown its own menu.**
+    **Scrolling, because the catalogue outgrows the sidebar.**
     `Repeat::observe` announces only the rows that intersect the
     viewport — deliberately, so the agent never sees a row no click can
-    land on (F4.7). `docs/plan-widget-parity.md` T27.0 predicted this
-    would bite when the menu could no longer show every widget and put it
-    at fifty-one entries; it arrived at **twenty-one**, the moment
-    T27.4's three landed. Scrolling the open menu is a real user action
-    and needs no new endpoint, so it is what this does until T27.0's
-    third landing gives rows an addressable scroll.
+    land on (F4.7) — so a row off the bottom is scrolled into view, a
+    real user action needing no new endpoint.
     """
     # **Settle first.** A drive leaves the window however the previous
     # widget's last action left it, and an open overlay is not a neutral
-    # state: a `Tooltip`'s tip is a `Popup`, and one left showing sits in
-    # the overlay layer above the menu that is about to open. The first
-    # run of this walked six widgets and then reported the next fifteen
-    # as "never came into the menu's viewport", which is a true statement
-    # about a menu nothing could reach.
-    #
-    # Escape dismisses; the pointer goes to the corner so nothing is
-    # hovered, which is what re-opens a tip.
+    # state: a press that misses every overlay dismisses them all and is
+    # *consumed* — so a pick made while a demo's list is open would only
+    # close the list. Escape dismisses the topmost; a press and a hover
+    # in the corner (the sidebar's own padding, which answers nothing)
+    # dismiss the rest and un-hover whatever a tip was showing for.
     c.key("Escape", True)
     c.key("Escape", False)
-    # **And a press in the corner.** Escape dismisses the *topmost*
-    # overlay; a press that misses them all dismisses every one and is
-    # consumed. A widget left with an open list — a chooser, a veil —
-    # otherwise leaves it open into the next widget's turn, where it
-    # covers the menu this is about to use. That reached the next drive
-    # as "never came into the menu's viewport", which is a true
-    # statement about a menu nothing could see.
     c.rpc("input.click", x=2.0, y=2.0)
     c.rpc("input.hover", x=2.0, y=2.0)
-    c.click("#select-trigger")
-    menu = c.rpc("ui.resolve", selector="#select-menu").get("bounds")
-    if not menu:
-        raise Failed("the picker did not open")
-    mid = ((menu[0] + menu[2]) / 2, (menu[1] + menu[3]) / 2)
-    # **Back to the top first.** The menu keeps its offset between
-    # openings, so a drive that only ever scrolls *down* can reach the
-    # last widget and then never the first again — which is what
-    # happened the first time this scrolled at all.
+    nav = c.rpc("ui.resolve", selector="#nav").get("bounds")
+    if not nav:
+        raise Failed("the sidebar has no bounds")
+    mid = ((nav[0] + nav[2]) / 2, (nav[1] + nav[3]) / 2)
+    # **Back to the top first.** The list keeps its offset, so a drive
+    # that only ever scrolls *down* could reach the last widget and then
+    # never the first again. A positive `dy` moves toward the top.
     for _ in range(30):
         c.rpc("input.scroll", x=mid[0], y=mid[1], dy=120.0)
-    for attempt in range(24):
-        # **The row is found by its label and clicked by its box.**
-        #
-        # Not by selector: `~Name` is ambiguous the moment one widget's
-        # name is a prefix of another's (`RichText`, `RichTextEditor`),
-        # and `~=Name` misses every row the menu *groups* — those read
-        # "Layout - PaneGrid", because `bind_row` folds the group into
-        # the first row of each. Both were live failures. Normalising
-        # here is exact, needs no grammar guess, and says what it means:
-        # the row whose name is this widget's (M27/T27.12).
-        box = _menu_row(c, widget)
-        if box is not None:
+    for attempt in range(40):
+        box = _nav_row(c, widget)
+        # Wholly inside the list's viewport: a row half under its edge
+        # is clipped where the click would land.
+        if box is not None and box[1] >= nav[1] and box[3] <= nav[3]:
             c.rpc("input.click", x=(box[0] + box[2]) / 2, y=(box[1] + box[3]) / 2)
             break
-        if True:
-            if attempt == 23:
-                # **Say what *was* visible.** "never came into view" is a
-                # true statement about a menu that never opened, one
-                # scrolled to the wrong end, and one covered by another
-                # overlay — three different bugs with one message. The
-                # labels tell them apart at a glance.
-                seen = [
-                    (n.get("label") or "").strip()
-                    for n in c.tree()["nodes"]
-                    if (n.get("label") or "").strip()
-                ]
-                raise Failed(
-                    f"{widget!r} never came into the menu's viewport after "
-                    f"{attempt + 1} scrolls; visible labels were {seen[-14:]}"
-                )
-            c.rpc("input.scroll", x=mid[0], y=mid[1], dy=-90.0)
-    label = ""
+        if attempt == 39:
+            # **Say what *was* visible**, so "never came into view" can
+            # tell a list scrolled the wrong way from one covered by an
+            # overlay.
+            seen = [
+                (n.get("label") or "").strip()
+                for n in c.tree()["nodes"]
+                if (n.get("label") or "").strip()
+            ]
+            raise Failed(
+                f"{widget!r} never came into the sidebar's viewport after "
+                f"{attempt + 1} scrolls; visible labels were {seen[-14:]}"
+            )
+        c.rpc("input.scroll", x=mid[0], y=mid[1], dy=-64.0)
+    title = ""
     for n in c.tree()["nodes"]:
-        if n.get("wid") == "select-trigger":
-            label = n.get("label", "")
-    if widget not in label:
-        raise Failed(f"picking {widget!r} left the trigger reading {label!r}")
+        if n.get("wid") == "title":
+            title = n.get("value") or n.get("label") or ""
+    if title != widget:
+        raise Failed(f"picking {widget!r} left the page titled {title!r}")
 
 
 def _area(r) -> float:

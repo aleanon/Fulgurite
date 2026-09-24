@@ -105,10 +105,17 @@ def _ink_inside(c):
         for x in range(max(0, int(b[0]) - 6), min(w, int(b[2]) + 6)):
             p = px[(y * w + x) * 4:(y * w + x) * 4 + 3]
             if abs(p[0] - ink[0]) < 24 and abs(p[1] - ink[1]) < 24 and abs(p[2] - ink[2]) < 24:
-                if b[0] <= x < b[2] and b[1] <= y < b[3]:
-                    inside += 1
-                else:
+                # **A pixel is outside only if it is wholly outside.** The
+                # box's edges need not fall on whole pixels -- a 320 px box
+                # centred in a 743 px stage starts at x = 524.5 (M56) --
+                # and a pixel straddling an edge is half inside, so the
+                # clip may ink it. Comparing the pixel's index with a
+                # fractional edge counted it outside: six such pixels
+                # failed this action on an exactly clipped sparkline.
+                if x + 1 <= b[0] or x >= b[2] or y + 1 <= b[1] or y >= b[3]:
                     outside += 1
+                else:
+                    inside += 1
     return (
         inside > 200 and outside == 0,
         f"{inside} px of the callback's ink inside the box and {outside} "

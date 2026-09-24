@@ -140,9 +140,15 @@ ACCORDION = ("Accordion", "#d_acc_a", [
             f"state {c.value()!r}",
         ),
         reflows=True,
-        # A collapsing section squeezes its body on the way out; the
-        # truncation lint is correct about the frame it sees.
-        expects_lint=("W1005",),
+        # A collapsing section's body leaves the screen, and the lint is
+        # correct about the frame it sees: squeezed on the way out
+        # (`W1005`) while the demo sat in the stage's old 248 px share,
+        # laid out at 0x0 (`W1001`) since M56 gives it its own 320 px. A
+        # collapsed body is audited because its addresses still answer
+        # with the body, where an absent `Option` branch answers with its
+        # container and is not — recorded in docs/plan-showcase-design.md
+        # T56.4, not changed here.
+        expects_lint=("W1005", "W1001"),
         injection="make the press set `open = true` instead of toggling",
     ),
     Action(
