@@ -527,16 +527,37 @@ found" section rather than silently replacing itself.
   failed builds are shown over the running application, and a
   successful swap clears M36's screen. v1 never unloads a library.
 
-- **M38 — `docs/plan-deep-review.md`** (R1–R18): a deep review of the
-  four goals, **in progress 2026-09-23**. It reviews and does not build.
-  Its output is `docs/results-deep-review.md`: a verdict per goal and per
-  platform, the findings that survived adversarial verification, a
-  claims ledger, the vacuous-test table extended, and its impact on
-  M29 and M32–M37. It was planned by seven lens surveys and a
-  completeness critic. Every finding is a falsified claim with its
-  injection or measurement, and S0/S1 findings get two verifiers with
-  different lenses. Fixes are follow-up milestones (M39+), not part of
-  this one.
+- **M38 — `docs/plan-deep-review.md`** (R1–R18): **DONE 2026-09-24.**
+  A deep review of the four goals. It reviewed and built nothing.
+  `docs/results-deep-review.md` owns every figure. 182 findings survived
+  adversarial verification (2 S0, 16 S1, 77 S2, 87 S3/S4). None was
+  refuted, but verifiers lowered 19 severities.
+  **Verdicts:** performance, configurability and embedded are *partly
+  met*; the agent, hot reload and mobile are *not met*.
+  **The two S0s:**
+  - **R14-F1:** any web page can drive a running dev app through the
+    agent endpoint. The line transport skips HTTP header lines as parse
+    errors, then executes the body. It was reproduced three times,
+    including from a real Firefox.
+  - **R1-F1:** damage is logical but presented to a physical surface, so
+    every scale other than 1.0 leaves stale pixels in the default
+    configuration.
+  **The S1s cluster where the queue is about to lean:**
+  - Boundaries misses compose, tick, `Repeat` data and the audit's probe
+    (R1-F2..F5), and M34/T34.1's shadow oracle, as planned, cannot see
+    three of those four (R1-F6).
+  - An idle window never fires its timers (R7-F1), and the two gates
+    cited for it stay green with the wiring removed (R7-F2).
+  - "Raster allocates nothing" holds only on stand-in fonts (R8-F1).
+  - No window can hot reload while the docs say one can (R4-F1).
+  **74 tests or gates were found proving nothing**, the table AGENT.md
+  keeps extended; each is listed with the injection that exposed it.
+  **Seven kill rules or injections in M29, M32–M34 and M37 cannot fire as
+  written** (§7).
+  **Proposed follow-ups, M39–M55:** M39 (agent transport), M40 (physical
+  damage), M42 (drive-harness identity) and M43 (static gates and CI) go
+  first, and M41 (Boundaries completeness) is a prerequisite of M34's
+  flip. They are proposals, not yet queued.
 
 Unsequenced: ~~`docs/plan-harness.md`.~~ — **M12 DONE 2026-09-20.**
 T12.3 and T12.4 landed 2026-09-04; T12.1 (a locator and expectation API,

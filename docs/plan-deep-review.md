@@ -1,6 +1,9 @@
 # M38 — A deep review of the four goals, with every finding refuted before it is kept
 
-> **Written 2026-09-23, not started.** This plan was synthesised from seven
+> **Written 2026-09-23; DONE 2026-09-24.** The results are in
+> `docs/results-deep-review.md`: 182 findings survived verification (2 S0,
+> 16 S1) and none was refuted, 74 vacuous tests or gates are listed, and
+> M39–M55 are proposed as follow-ups. This plan was synthesised from seven
 > lens surveys (frame-path performance; embedded and configurability; core
 > correctness; hot reload; the agent; public API and developer experience;
 > verification infrastructure) and a completeness critic. It **reviews**;
