@@ -418,6 +418,26 @@ macro_rules! leaf_common {
         fn node_mut(&mut self, _i: usize) -> &mut dyn $crate::Node {
             self
         }
+        $crate::__observe_items! {
+            fn observe_walk(
+                &self,
+                _table: &[$crate::desc::NodeDesc],
+                st: &[$crate::NodeState],
+                id_of: &dyn Fn(usize) -> u64,
+                out: &mut $crate::observe::ObsVec<($crate::observe::NodeId, $crate::observe::AkNode)>,
+            ) {
+                // A leaf is one node; its `observe` is called statically,
+                // so the leaf is never coerced to `&dyn Node` (M35/T35.1).
+                $crate::observe::emit_node(
+                    <$ty as $crate::widget::Widget>::SUB_TABLE,
+                    st,
+                    0,
+                    id_of,
+                    out,
+                    |n, o| $crate::widget::Node::observe(self, st, 0, id_of(0), n, o),
+                );
+            }
+        }
     };
     ($ty:ty, $flags:expr, hit) => {
         fn place(
@@ -452,6 +472,45 @@ macro_rules! leaf_common {
         fn node_mut(&mut self, _i: usize) -> &mut dyn $crate::Node {
             self
         }
+        $crate::__observe_items! {
+            fn observe_walk(
+                &self,
+                _table: &[$crate::desc::NodeDesc],
+                st: &[$crate::NodeState],
+                id_of: &dyn Fn(usize) -> u64,
+                out: &mut $crate::observe::ObsVec<($crate::observe::NodeId, $crate::observe::AkNode)>,
+            ) {
+                // A leaf is one node; its `observe` is called statically,
+                // so the leaf is never coerced to `&dyn Node` (M35/T35.1).
+                $crate::observe::emit_node(
+                    <$ty as $crate::widget::Widget>::SUB_TABLE,
+                    st,
+                    0,
+                    id_of,
+                    out,
+                    |n, o| $crate::widget::Node::observe(self, st, 0, id_of(0), n, o),
+                );
+            }
+        }
     };
 }
 
+/// Expands its items only when `lumen-static` is built with `observe` —
+/// M35/T35.1. Derive- and macro-emitted code lands in the *user's* crate,
+/// where a `cfg(feature = "observe")` would test the user's features, not
+/// this crate's; routing through a macro defined twice here decides it
+/// where the feature lives.
+#[cfg(feature = "observe")]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __observe_items {
+    ($($t:tt)*) => { $($t)* };
+}
+
+/// See the `observe` build of this macro.
+#[cfg(not(feature = "observe"))]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __observe_items {
+    ($($t:tt)*) => {};
+}

@@ -146,6 +146,37 @@ plain builds and watch it pass.
 
 ## T35.1 — the walk
 
+> **DONE 2026-09-24, with two departures the building forced.**
+>
+> - **Provided, not required.** `Node::observe_walk(table, st, id_of,
+>   out)` has a default that walks `table` through `node(i)` — correct
+>   for every widget, only slower as a row — and `leaf_common!` and the
+>   derive override it with static calls, gated through
+>   `lumen_static::__observe_items!` because they expand in the user's
+>   crate. Review finding 1's objection was to a default that *drops* a
+>   wrapper's children; this one drops nothing, and it spared ~30
+>   hand-written impls a mechanical forwarding body.
+> - **The fallback lives in the default, not in the caller.** The first
+>   version kept `emit_subtree`'s old table walk as a fallback branch for
+>   a widget with no walk. The symbol gate then went green on `Repeat`
+>   and stayed **red on `List`, for `paint` alone**: the coercion in a
+>   branch dead for `Label` was still enough to keep `Label::paint`
+>   address-taken. Removing the branch made it green; moving the fallback
+>   into the default body — compiled only for types that use it — kept
+>   it green.
+>
+> **Gates.** `just observe-inlining` is green on both arms and runs in
+> `just test`. *Injection:* the coercion back in `Repeat::observe` alone
+> — the `Repeat` arm fails with `Label`'s `layout` and `paint` named, the
+> `List` arm stays green. Equivalence:
+> `crates/lumen-static-widgets/tests/observe_walk.rs` — `None`, `Some`,
+> `Either`, an enum's inactive variant, `List`, `Repeat`, `Glass<W>` and
+> a hand-written leaf, 40 entries identical to `emit_table`'s.
+> *Injections:* the derive skipping a field, and a leaf emitting
+> nothing, each fire. The agent's `get_tree` and `Index::build` moved
+> onto `observe::emit_root`, so the agent and `snapshot` walk one way.
+
+
 §2's mechanism: the required method, the derive's generated walk, every
 hand-written impl, and the agent moved onto it.
 
@@ -169,6 +200,12 @@ hand-written impl, and the agent moved onto it.
   both strategies.
 
 ## T35.2 — what an application pays, measured
+
+> **DONE 2026-09-24** (`docs/results-competitive.md` §7, T35.1 and
+> T35.2): the frame arm's cost is gone; the grid paid nothing measurable
+> before or after. The fix is worth a list of leaves, not an
+> application shaped like the grid — which is what §7 now says.
+
 
 Measure the grid after T35.1 against T35.0's baseline, using T35.0's
 statistic, and record it in `docs/results-competitive.md` §7 beside the

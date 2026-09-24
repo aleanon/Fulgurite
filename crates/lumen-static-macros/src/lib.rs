@@ -1103,6 +1103,43 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                     let _ = at;
                     ::core::unreachable!("node index out of range")
                 }
+
+                // **The static observe walk** — M35/T35.1. This node's
+                // entry, then each field's subtree through
+                // `emit_subtree`, which walks a field statically when it
+                // has a walk of its own. So a derived row inside a `List`
+                // or `Repeat` is never coerced to `&dyn Node` for the
+                // agent's sake. Gated through `__observe_items!` because
+                // this expands in the user's crate, where a `cfg` would
+                // read the wrong features.
+                ::lumen_static::__observe_items! {
+                    fn observe_walk(
+                        &self,
+                        _table: &[::lumen_static::desc::NodeDesc],
+                        st: &[::lumen_static::NodeState],
+                        id_of: &dyn Fn(usize) -> u64,
+                        out: &mut ::lumen_static::observe::ObsVec<(
+                            ::lumen_static::observe::NodeId,
+                            ::lumen_static::observe::AkNode,
+                        )>,
+                    ) {
+                        let table = <Self as ::lumen_static::widget::Widget>::SUB_TABLE;
+                        ::lumen_static::observe::emit_node(table, st, 0, id_of, out, |n, o| {
+                            ::lumen_static::widget::Node::observe(self, st, 0, id_of(0), n, o)
+                        });
+                        let mut at: usize = 1;
+                        #(
+                            {
+                                let c = <#field_ty as ::lumen_static::widget::Widget>::NODE_COUNT;
+                                let base = at;
+                                let ids = |t: usize| id_of(base + t);
+                                ::lumen_static::observe::emit_subtree(&self.#field_ident, &st[at..at + c], &ids, out);
+                                at += c;
+                            }
+                        )*
+                        let _ = at;
+                    }
+                }
             }
         };
     };

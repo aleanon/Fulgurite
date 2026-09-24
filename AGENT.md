@@ -490,7 +490,8 @@ found" section rather than silently replacing itself.
   and reports through the agent rather than panicking. Then both
   defaults flip, the winit alias and `Host`'s type parameter, with
   `everything` kept as a diagnostic feature.
-- **M35 — `docs/plan-observe-cost.md`** (T35.0–T35.2): the cause is
+- ~~**M35 — `docs/plan-observe-cost.md`** (T35.0–T35.2)~~ **DONE 2026-09-24**:
+  the frame arm's `observe` cost is gone; the grid never paid it. the cause is
   measured (`docs/results-competitive.md` §7, "Attributed"). The fix
   is a **required**, table-driven, statically dispatched observe walk,
   which the agent moves onto as well, with an equivalence gate against

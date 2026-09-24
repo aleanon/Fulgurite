@@ -279,6 +279,39 @@ pub trait Node {
     ) {
     }
 
+    /// **This subtree's accessibility entries** — M35/T35.1
+    /// (`docs/plan-observe-cost.md`).
+    ///
+    /// The default walks `table` through [`Node::node`], which is correct
+    /// for any widget and only slower for a type used as a repeated row.
+    /// `leaf_common!` and the `StaticTree` derive override it with a walk
+    /// that calls each widget's `observe` statically, so a `List`'s or
+    /// `Repeat`'s row widget is never coerced to `&dyn Node` and stays
+    /// inlinable with `observe` compiled in. `table` is this subtree's
+    /// own; indices are local, and `id_of` maps them.
+    ///
+    /// **Provided, not required**, unlike the plan's first answer: a
+    /// provided default that *dropped* a wrapper's children would be
+    /// wrong, and this one drops nothing. **And the fallback lives here,
+    /// not in the caller**: a caller that coerced in a branch dead for
+    /// every widget with a walk still kept `Label::paint` address-taken
+    /// (`just observe-inlining`). A default body is compiled only for the
+    /// types that use it.
+    #[cfg(feature = "observe")]
+    fn observe_walk(
+        &self,
+        table: &[crate::desc::NodeDesc],
+        st: &[NodeState],
+        id_of: &dyn Fn(usize) -> u64,
+        out: &mut Vec<(accesskit::NodeId, accesskit::Node)>,
+    ) {
+        for i in 0..table.len() {
+            crate::observe::emit_node(table, st, i, id_of, out, |n, o| {
+                self.node(i).observe(st, i, id_of(i), n, o)
+            });
+        }
+    }
+
     /// Cheap scalar introspection for the per-frame audit.
     #[cfg(feature = "observe")]
     #[allow(unused_variables)]

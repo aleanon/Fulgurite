@@ -801,7 +801,7 @@ impl Agent {
     /// assembled from the snapshot the same way.
     fn get_tree(&self, tree: &TreeRef) -> Value {
         let mut nodes = Vec::with_capacity(tree.table.len());
-        observe::emit_table(tree.table, tree.root, tree.states, &|i| (i + 1) as u64, &mut nodes);
+        observe::emit_root(tree.table, tree.root, tree.states, &|i| (i + 1) as u64, &mut nodes);
         let out: Vec<Value> = nodes
             .iter()
             .map(|(id, n)| {
@@ -1524,7 +1524,7 @@ struct Index<'a> {
 impl<'a> Index<'a> {
     fn build(tree: &'a TreeRef<'a>) -> Self {
         let mut nodes = Vec::with_capacity(tree.table.len());
-        observe::emit_table(tree.table, tree.root, tree.states, &|i| (i + 1) as u64, &mut nodes);
+        observe::emit_root(tree.table, tree.root, tree.states, &|i| (i + 1) as u64, &mut nodes);
         let entries: Vec<Entry> = nodes
             .into_iter()
             .map(|(nid, node)| {

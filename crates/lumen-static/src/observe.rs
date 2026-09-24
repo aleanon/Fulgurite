@@ -19,7 +19,12 @@ use alloc::vec::Vec;
 
 pub use accesskit;
 
-use accesskit::{Node as AkNode, NodeId, Rect, Role, TreeId, TreeInfo, TreeUpdate};
+pub use accesskit::{Node as AkNode, NodeId};
+/// For derive- and macro-emitted walks (M35/T35.1): they expand in the
+/// user's crate, which may be `no_std` even when `observe` is on in a
+/// unified workspace build, so they name `Vec` through this crate.
+pub use alloc::vec::Vec as ObsVec;
+use accesskit::{Rect, Role, TreeId, TreeInfo, TreeUpdate};
 
 use crate::desc::{NodeDesc, NodeState};
 use crate::widget::{Node, Widget};
@@ -38,13 +43,82 @@ fn bounds_of(st: &NodeState) -> Rect {
 /// The walker pre-fills role `GenericContainer`, absolute bounds and
 /// table children; each widget's `observe` then overrides what it knows
 /// better and may push extra subtrees (a repeater's window).
+///
+/// **Statically dispatched where the widget has a walk of its own** —
+/// M35/T35.1 (`docs/plan-observe-cost.md`). `List` and `Repeat` call this
+/// once per row, and the table walk below reaches each row as a
+/// `&dyn Node`: the coercion builds the row widget's vtable, the vtable
+/// takes the addresses of its `layout` and `paint`, and LLVM stops
+/// inlining them into the container's per-row loop — the whole of
+/// `observe`'s compiled-in cost (`docs/results-competitive.md` §7). A
+/// widget that answers [`Node::observe_walk`] is never coerced.
 pub fn emit_subtree<W: Widget>(
     tree: &W,
     st: &[NodeState],
     id_of: &dyn Fn(usize) -> u64,
     out: &mut Vec<(NodeId, AkNode)>,
 ) {
-    emit_table(W::SUB_TABLE, tree, st, id_of, out)
+    // **One unconditional call.** The first version fell back to the
+    // table walk when `observe_walk` answered `false`, and the fallback's
+    // `&dyn Node` coercion — in a branch that is dead for any widget with
+    // a walk — was enough to keep `Label::paint` address-taken in the
+    // `List` probe (`just observe-inlining`). The fallback now lives in
+    // `observe_walk`'s default body, which is never compiled for a type
+    // that overrides it.
+    tree.observe_walk(W::SUB_TABLE, st, id_of, out);
+}
+
+/// The whole tree, from its root: the static walk if the root has one,
+/// the table walk otherwise — M35/T35.1. What the agent calls, so the
+/// agent and `snapshot` walk one way.
+pub fn emit_root(
+    table: &[NodeDesc],
+    root: &dyn Node,
+    st: &[NodeState],
+    id_of: &dyn Fn(usize) -> u64,
+    out: &mut Vec<(NodeId, AkNode)>,
+) {
+    root.observe_walk(table, st, id_of, out);
+}
+
+/// One node's entry: bounds, the hidden flag, its table children, then
+/// `observe`, which may push extra subtrees first. Shared by the table
+/// walk and every static walk, so the two cannot drift apart.
+pub fn emit_node(
+    table: &[NodeDesc],
+    st: &[NodeState],
+    i: usize,
+    id_of: &dyn Fn(usize) -> u64,
+    out: &mut Vec<(NodeId, AkNode)>,
+    observe: impl FnOnce(&mut AkNode, &mut Vec<(NodeId, AkNode)>),
+) {
+    let d = &table[i];
+    let mut n = AkNode::new(Role::GenericContainer);
+    n.set_bounds(bounds_of(&st[i]));
+    // A node with no area has nothing to announce, and a subtree that is
+    // *absent* — an empty `Option`, the hidden branch of an `Either`, a
+    // node styled `visible: false` — is expressed exactly that way:
+    // `hide_subtree` zeroes it every frame. Left unmarked, a screen
+    // reader walks into the branch the user is not looking at and reads
+    // it out. `set_hidden` keeps the node in the tree, so nothing is
+    // orphaned, and tells the reader to skip it. Added 2026-09-04 with
+    // `Either`'s merged table (T8.0), which put a second branch on the
+    // table for the first time — but `Option` had the same hole since M4.
+    if st[i].size.w <= 0.0 || st[i].size.h <= 0.0 {
+        n.set_hidden();
+    }
+    if d.child_count > 0 {
+        let mut c = d.first_child as usize;
+        loop {
+            n.push_child(NodeId(id_of(c)));
+            if table[c].next_sibling == 0 {
+                break;
+            }
+            c = table[c].next_sibling as usize;
+        }
+    }
+    observe(&mut n, out);
+    out.push((NodeId(id_of(i)), n));
 }
 
 /// Same, for a table that is not a widget's own `SUB_TABLE` (runtime
@@ -56,34 +130,8 @@ pub fn emit_table(
     id_of: &dyn Fn(usize) -> u64,
     out: &mut Vec<(NodeId, AkNode)>,
 ) {
-    for (i, d) in table.iter().enumerate() {
-        let mut n = AkNode::new(Role::GenericContainer);
-        n.set_bounds(bounds_of(&st[i]));
-        // A node with no area has nothing to announce, and a subtree
-        // that is *absent* — an empty `Option`, the hidden branch of an
-        // `Either`, a node styled `visible: false` — is expressed
-        // exactly that way: `hide_subtree` zeroes it every frame. Left
-        // unmarked, a screen reader walks into the branch the user is
-        // not looking at and reads it out. `set_hidden` keeps the node
-        // in the tree, so nothing is orphaned, and tells the reader to
-        // skip it. Added 2026-09-04 with `Either`'s merged table (T8.0),
-        // which put a second branch on the table for the first time —
-        // but `Option` had the same hole since M4.
-        if st[i].size.w <= 0.0 || st[i].size.h <= 0.0 {
-            n.set_hidden();
-        }
-        if d.child_count > 0 {
-            let mut c = d.first_child as usize;
-            loop {
-                n.push_child(NodeId(id_of(c)));
-                if table[c].next_sibling == 0 {
-                    break;
-                }
-                c = table[c].next_sibling as usize;
-            }
-        }
-        tree.node(i).observe(st, i, id_of(i), &mut n, out);
-        out.push((NodeId(id_of(i)), n));
+    for i in 0..table.len() {
+        emit_node(table, st, i, id_of, out, |n, o| tree.node(i).observe(st, i, id_of(i), n, o));
     }
 }
 

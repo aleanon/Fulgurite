@@ -13,7 +13,7 @@
 # ---------------------------------------------------------------------------
 
 # The every-commit gate.
-test: static release-shape dev-shape fixtures
+test: static release-shape dev-shape fixtures observe-inlining
 
 # Static checks first: sub-second, no compile. A dead doc reference should
 # not cost a 30-second build to discover.

@@ -559,6 +559,26 @@ one quantity are a fact about the arms. **So the frame arm's cost belongs
 to a list of leaves**, and T35.1 is justified by that shape, not by a
 claim about every application.
 
+#### T35.1 and T35.2 — after the fix (2026-09-24)
+
+`List` and `Repeat` now reach their rows through `Node::observe_walk`,
+which `leaf_common!` and the derive override with a static walk. **The
+symbol gate is green on both arms.** The same statistic:
+
+| stage | plain fast cluster | `observe` fast cluster | delta of minima | plain width |
+|---|---:|---:|---:|---:|
+| layout | 13.50–14.10 µs | 13.40–14.00 µs | −0.10 µs | 0.60 µs |
+| +paint | 30.60–31.40 µs | 30.30–31.00 µs | −0.30 µs | 0.80 µs |
+
+**The frame arm's compiled-in cost is gone** — both deltas are inside
+the plain build's own width. The grid, which paid nothing measurable
+before the fix, pays nothing after: `bound` 36.30–36.97 µs with
+`observe` against 35.66–37.97 µs without, `mark_all` 56.69–58.95 against
+58.25–58.70 (slow-cluster runs set aside). **So the fix is worth the
+frame arm's +3.80 µs of layout to a list of leaves, and nothing to an
+application shaped like the grid** — which is the scoping T35.2 exists
+to write down.
+
 ### One row of N changes — the matched stopping point, no raster
 
 | arm | 100 | 1 000 | 3 000 |
