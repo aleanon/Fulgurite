@@ -508,8 +508,19 @@ found" section rather than silently replacing itself.
   `lumen-static-winit/reload`**. One guarded entry covers every path,
   the agent's `Live::pump` included. Input is swallowed while the screen
   is up, and recovery is an explicit retry: R, or `app.retry`.
-- **M37 — `docs/plan-window-reload.md`** (T37.0–T37.5): hot reload
-  inside a window, modelled on `hot_ice`. The **`Host` lives in the
+- ~~**M37 — `docs/plan-window-reload.md`**~~ — **DONE 2026-09-24**,
+  all six tasks. The window drives a `Session`, and a hot library
+  exports one through `export_program!`. The boundary is borrowed
+  pointers behind an ABI stamp, **by measurement**: a real byte encoding
+  exceeded the frame arm's spread on three of four entries. `just
+  hot-window-drive` edits a copy of a live window's source and swaps in
+  0.46–0.64 s (`docs/step4-hot-reload.md`). Driving it found two
+  defects no headless gate could: a fixed-back build left its error up
+  forever, and the error bar **outlived its fix**, because its pixels
+  were the window's and in no session's damage. **A stamp's sizes alone
+  did not catch an `observe` build**: no listed type changed size while
+  every vtable did, so the feature field is the load-bearing one.
+  (T37.0–T37.5): hot reload inside a window, modelled on `hot_ice`. The **`Host` lives in the
   library**, because the tree holds code, which iced's does not. A swap
   re-runs the new build's `program()`/boot and grafts the
   `#[reload(keep)]` state onto it. The build and watcher are built in,

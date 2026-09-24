@@ -1,6 +1,6 @@
 # M37 — hot reload inside a window, modelled on `hot_ice`
 
-> **Written 2026-09-23; T37.0 done 2026-09-24.** Asked for on 2026-09-23. The
+> **DONE 2026-09-24, T37.0–T37.5.** Written 2026-09-23 and asked for the same day. The
 > review of M36 found that no window can reload, so a panic screen could
 > only ever be left by retrying. The instruction was to look at
 > `hot_ice` (`/mnt/Utvikling-linux/hot_ice`) for inspiration. This plan
@@ -351,6 +351,15 @@ A drive script against a real window built with `--features reload`:
 > and by name: "a failed build swapped: reloads 3".
 
 ## T37.5 — the docs and the book
+
+> **DONE 2026-09-24.** `docs/step4-hot-reload.md` has the windowed
+> architecture and §1's reason for it, next to T37.0's boundary numbers
+> and T37.4's latency and memory. `book/src/hot-reload.md` now opens on
+> a window: `fixtures/hot-window`'s program, main and features are
+> included by anchor, and the program snippet compiles and runs, since
+> `just book-deps` builds `hot-window`. *Injection:* its assertion
+> changed goes red. `docs/00-handoff-static-tree.md` records the
+> decision as **DECIDED**.
 
 `docs/step4-hot-reload.md` gains the windowed architecture and §1's
 reason for it. `book/src/hot-reload.md` is rewritten around a window,

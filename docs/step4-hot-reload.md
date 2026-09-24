@@ -161,6 +161,41 @@ does not wrap itself in `guard`, which still aborts the loader — the
 demo's script says so instead of leaving a bare `Aborted`. Task panics
 are M28's `Failure::Panicked`, not this.
 
+## Reloading inside a window: where the `Host` lives (M37)
+
+hot_ice keeps the application state in the host and calls into the
+library per function, which works because iced's `view` rebuilds the
+widget tree every frame, so no code pointer outlives a call. **Here the
+tree is retained and it holds code.** Handler `fn` pointers live in it,
+and every widget's `layout` and `paint` is monomorphised over the
+application's types. A `Host<A>` compiled into the loader would be the
+loader's code forever. So **the `Host` lives in the library**, and the
+window drives it through `lumen_static_shell::session::Session`.
+
+The window itself is no longer generic over the application: input
+goes in and a frame comes out, along with the title, the cursor and the
+agent's requests. A statically linked application is a `Local<A>`
+behind the same trait, so the static window and the reloading window are
+one code path.
+
+Four rules hold that path together:
+
+- **A swap boots the new build's own `program()`** and grafts the saved
+  state on through `Host::restore`. Nothing is constructed through a
+  pointer held from the old build, which `just window-reload-demo`'s
+  injection demonstrates. The window path therefore no longer uses
+  `Reloadable::fresh()`.
+- **Every session method that runs application code catches its panic
+  inside the library**, which has its own std (M36/T36.4).
+- **The swap happens between frames**, and the new session is booted
+  before the old one is dropped. A refused library, or a boot that
+  panics, therefore leaves the running one in place.
+- **No library is unloaded** (`docs/plan-window-reload.md` §2.5). The
+  memory this costs is measured below, and unloading is deferred on
+  three conditions: every worker thread that may run old code is joined,
+  no `&'static` from the old image survives, and no chained panic hook
+  points into it.
+
 ## The window's boundary: pointers behind a stamp (M37/T37.0)
 
 A window that reloads keeps its `Host` in the library, because the tree

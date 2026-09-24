@@ -487,7 +487,7 @@ book: book-deps
 # are a function of this line alone.
 book-deps:
     rm -rf target/book
-    cargo build -q -p counter -p minimal --target-dir target/book
+    cargo build -q -p counter -p minimal -p hot-window --target-dir target/book
 
 # Read it locally, rebuilding on save.
 book-serve: book-deps

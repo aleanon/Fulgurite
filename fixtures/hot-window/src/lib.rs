@@ -52,6 +52,7 @@ impl Application for Counter {
     }
 }
 
+// ANCHOR: program
 /// The program, described once: the binary runs it, the library exports
 /// it, and a reload boots the new build's copy of it (§2.2).
 pub fn program() -> Program<Counter> {
@@ -62,3 +63,4 @@ pub fn program() -> Program<Counter> {
 }
 
 lumen_static_reload::export_program!(program);
+// ANCHOR_END: program

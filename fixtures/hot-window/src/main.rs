@@ -1,6 +1,7 @@
 //! `hot-window` — with `--features hot`, the window rebuilds this
 //! crate's library on every save and swaps to it (M37). `LUMEN_AGENT`
 //! serves the agent when built with `agent`.
+// ANCHOR: main
 use lumen_static_winit::Run;
 
 fn main() {
@@ -10,3 +11,4 @@ fn main() {
     }
     p.run();
 }
+// ANCHOR_END: main

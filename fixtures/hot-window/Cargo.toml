@@ -11,9 +11,11 @@ publish = false
 # never this checked-in one. Its library is `program()` behind
 # `export_program!`; its binary is `program().run()`.
 
+# ANCHOR: features
 [features]
 hot = ["lumen-static-winit/hot"]
 agent = ["lumen-static-winit/agent", "lumen-static-widgets/observe"]
+# ANCHOR_END: features
 
 [dependencies]
 lumen-static = { path = "../../crates/lumen-static", features = ["reload"] }

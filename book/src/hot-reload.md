@@ -46,18 +46,80 @@ rather than closures — a `Repeat`'s row configuration function, a
 handler. A closure could capture, and a capture would be exactly the
 thing that cannot survive.
 
-## What a swap actually does
+## A window that reloads itself
 
-`fixtures/hot-app` and `scripts/hot_reload_demo.sh` run the whole cycle
-and assert each clause of it. Reading its output is the fastest way to
-understand the semantics — it checks that a counter is kept, that a
-renamed title is kept, that a repeater's row count is kept, that a scroll
-position is kept, that a new field is fresh, that a cache is recomputed,
-that a derived value is re-derived, and that an enum variant removed in
-the new code falls back to the fresh value and **logs** it.
+Build a window with `lumen-static-winit`'s `hot` feature, and it rebuilds
+its own crate as a library every time you save a source file. It swaps
+the library in between two frames, and your `#[reload(keep)]` state
+carries across. The application needs three things.
 
-That last one is the interesting case, and it is the one people assume
-will simply work.
+**The program lives in the library**, behind `export_program!`:
+
+```rust
+# extern crate lumen_static;
+# extern crate lumen_static_shell;
+# extern crate lumen_static_widgets;
+# extern crate lumen_static_reload;
+# use lumen_static::prelude::*;
+# use lumen_static::{App as DeriveApp, Reloadable as DeriveReloadable};
+# use lumen_static::style::{Length, Patch, Rule, Selector};
+# use lumen_static_widgets::prelude::*;
+# use lumen_static_shell::program::{application, Program};
+# #[derive(StaticTree, Default)] #[widget(column)] pub struct Ui { #[widget_id("inc")] inc: Button<Tally>, value: Label<String> }
+# #[derive(Default)] pub struct Tally { count: i64 }
+# #[derive(DeriveApp, DeriveReloadable)] pub struct Counter { #[tree] #[reload(fresh)] ui: Ui, #[state] #[reload(reset)] #[bind(ui.value, count, "count {}")] tally: Tally }
+# impl Application for Counter { fn build() -> Self { Counter { ui: Ui::default(), tally: Tally::default() } } }
+# fn main() { let p = program(); assert_eq!(p.width, 320); }
+{{#include ../../fixtures/hot-window/src/lib.rs:program}}
+```
+
+**The binary runs it.** `main` is the same with or without the feature:
+
+```text
+{{#include ../../fixtures/hot-window/src/main.rs:main}}
+```
+
+**The crate says what `hot` means** (`LUMEN_HOT_FEATURES` tells the
+window which features to build the library with; the default is `hot`):
+
+```toml
+{{#include ../../fixtures/hot-window/Cargo.toml:features}}
+```
+
+At start-up the statically linked application runs at once and the first
+build starts, so there is no wait. After that, every save follows the
+same path:
+
+1. The window runs `cargo rustc --lib --crate-type cdylib` into
+   `target/reload`, with "Reloading…" in the title.
+2. It opens the library only if its ABI stamp matches: the same
+   compiler, features and layouts. The window **borrows** the library's
+   display list rather than copying it, and a stamp is what makes that
+   sound.
+3. The library boots **its own** `program()` and grafts the saved state
+   on. Nothing is built through a pointer into the old code.
+
+Three things can go wrong, and none of them takes the window down:
+
+- **A build fails.** The last good build keeps running, with the
+  compiler's error in a bar over it.
+- **A field no longer fits.** If a kept field's type changed, that field
+  alone gets its boot value, and the bar says which one and why.
+- **The new code panics.** You get the panic screen, and the next good
+  reload clears it.
+
+`just hot-window-drive` does all of this to a real window, editing a
+copy of the source with `sed`. `docs/step4-hot-reload.md` has what a
+reload costs and why the boundary is borrowed rather than copied.
+
+`fixtures/hot-app` and `just hot-demo` still run the same cycle headless,
+with no window. They assert each clause in turn:
+
+- a counter, a renamed title, a repeater's row count and a scroll
+  position are kept;
+- a new field comes fresh, and a cache is recomputed;
+- an enum variant removed in the new code falls back to the fresh
+  value, and **logs** it.
 
 ## When the new code panics
 
@@ -100,9 +162,8 @@ assert_eq!(*lines.last().unwrap(), "Press R to retry");
 Your state is kept as the panic left it, with no rollback, and nothing
 retries by itself: R (or the agent's `app.retry`) runs the frame again.
 A panic inside a hot-reloaded *library* is caught inside that library,
-because it has its own copy of std and its own panic hook — `just
-hot-demo` swaps in a build that panics, prints where, and carries the
-kept state on into the fix. `docs/step4-hot-reload.md` lists what is
+because it has its own copy of std and its own panic hook, and in a
+window a successful reload clears the screen. `docs/step4-hot-reload.md` lists what is
 caught, what is kept, and what is not recovered.
 
 ## Why the boundary matters

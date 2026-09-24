@@ -553,6 +553,17 @@ without it dies. Across a dylib the catch and the hook live **inside the
 library**, because a `cdylib` has its own std and its own hook
 (`docs/plan-panic-recovery.md`, `docs/step4-hot-reload.md`).
 
+**DECIDED 2026-09-24 (M37): a window reloads itself, with the `Host`
+in the library.** The tree holds code, so a loader-side `Host<A>` would
+never change. The window drives a type-erased `Session`, and a hot
+library exports one through `export_program!`. The boundary is
+**borrowed pointers behind an ABI stamp** (compiler, target, profile,
+features, layouts, and a hash of the trait's own source), chosen by
+measurement over a byte encoding (`docs/step4-hot-reload.md` T37.0). A
+swap boots the new build's `program()` and restores per field. A failed
+build, a refused library or a panicking boot keeps the running one.
+Libraries are never unloaded (`docs/plan-window-reload.md`).
+
 ### ABI details that bite
 
 - The byte buffer must be owned by the **host binary**, not passed as a `Vec`
