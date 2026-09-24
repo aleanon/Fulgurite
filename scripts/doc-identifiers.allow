@@ -113,7 +113,3 @@ VeilBody             # split into ModalBody/SheetBody/DrawerBody in M27/T27.7; W
 PanicHookInfo        # std::panic::PanicHookInfo, named in docs/plan-panic-recovery.md -- not ours
 PanicReport          # promised by docs/plan-panic-recovery.md T36.1; comes off when it exists
 
-# --- planned, not yet built (docs/plan-showcase-design.md); each line goes
-# in the commit that makes the name real ---
-SELECTED_BG          # M56/T56.3's selected-row fill
-CHIP_BG              # M56/T56.3's status-chip fill

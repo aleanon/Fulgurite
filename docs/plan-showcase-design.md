@@ -84,10 +84,12 @@ squeezing the stage.
 **Canvas.** A surface card fills the rest of the window. The existing
 FILL spacers keep centring the demo inside it.
 
-**Palette.** Two role-less colours are added beside the existing
-`HAIRLINE` and `GHOST` in `main.rs`: `SELECTED_BG` and `CHIP_BG`, each
-with a light and a dark value. They are picked by `palette()`'s choice,
-so dark mode is at parity.
+**Palette.** The role-less chrome colours (a hairline, the chip's
+ground, the ghost tint) get a light and a dark value each, picked with
+the palette, so dark mode is at parity. *As built (T56.3):* one `Chrome`
+struct, `CHROME_LIGHT` and `CHROME_DARK`, which replaced the single-valued
+hairline and ghost constants. The selected row needed no constant: `NavRow`
+derives its tint from the accent role.
 
 **Within today's `Patch`.** Everything above uses existing setters only:
 radius, border, background, weight, `shadow` (spread only), and
@@ -250,6 +252,38 @@ asserted through `pump`'s `handled == false`. Its injection gives
 headings the item handler.
 
 ### T56.3 — chrome restyle
+
+> **DONE 2026-09-25.**
+>
+> - **The chip.** The readout is a `StatusChip` (`chip.rs`), which is
+>   absent while it has nothing to say. A `Label` painted an empty
+>   20 × 8 px lozenge beside every stateless entry.
+> - **Chrome colours.** They are the palette-picked `Chrome` values. The
+>   card's shadow went from 12 to 6. "Default" has an outline, having
+>   been white on the white card.
+> - **Contrast.** The gate `chrome_text_meets_contrast` checks every
+>   text/ground pair the chrome paints, from the values it paints with,
+>   **at AA's 4.5:1**. The plan's "3:1 for muted" was too lenient: the
+>   blurb and breadcrumb are content. Its first run measured three
+>   pairs under — light muted on the page at 4.33, and the chip's accent
+>   on its tint at 3.90 (light) and 4.44 (dark) — plus the ghost demo
+>   button at 3.91 and 4.19. The fixes were a darker light muted
+>   (`#636c80`, 4.87) and one `accent_text` per palette for accent text
+>   on a tint (5.88–7.15). *Injection:* light muted set to the page
+>   colour reports "blurb and breadcrumb on the page is 1.00:1" and "brand
+>   subtitle on the sidebar is 1.08:1".
+> - **Visual review.** All 52 entries were reviewed in both palettes
+>   against T56.0's baseline, and it found dark-mode defects. My own
+>   `Kind("label")` → Text rule turned DataGrid's and PaneGrid's labels
+>   light-on-light, so it was withdrawn. Icon, RichText, Markdown and
+>   RichTextEditor were near-invisible on dark **before M56 too**; they
+>   now take the Text role, the editor through its `textarea`, because
+>   the sheet lint refused a rule on the editor itself, which reads no
+>   `color`. The pull area and the split pane sit on a light panel in
+>   both palettes, because their content is a bare dark `Label`.
+> - **The veils.** Their scrim now covers the stage card rather than
+>   the window, a side effect of each demo having its own box. The
+>   sidebar stays reachable while a Modal, a Sheet or a Drawer is open.
 
 - The header becomes breadcrumb, title, blurb and chip.
 - The canvas becomes a card.

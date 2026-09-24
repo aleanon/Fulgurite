@@ -29,9 +29,11 @@ use lumen_static_widgets::prelude::*;
 use lumen_static_winit::{application, Program, Run};
 
 mod catalog;
+mod chip;
 mod nav;
 mod stage;
 use lumen_static::repeat::Repeat;
+use chip::StatusChip;
 use nav::{NavRow, RowKind};
 use catalog::CATALOG;
 pub use stage::*;
@@ -50,7 +52,9 @@ const SHOW_LIGHT: Palette = Palette {
     // the fill is what separates a control from the page.
     control: Color(0xf0, 0xf2, 0xf6, 0xff),
     text: Color(0x1b, 0x22, 0x30, 0xff),
-    muted: Color(0x6b, 0x74, 0x88, 0xff),
+    // #6b7488 until M56/T56.3: 4.33:1 on the page, under AA's 4.5 for
+    // the blurb and breadcrumb it colours (`chrome_text_meets_contrast`).
+    muted: Color(0x63, 0x6c, 0x80, 0xff),
     accent: Color(0x2f, 0x6b, 0xff, 0xff),
     on_accent: Color(0xff, 0xff, 0xff, 0xff),
     focus: Color(0x2f, 0x6b, 0xff, 0xff),
@@ -75,15 +79,60 @@ fn palette() -> Palette {
     }
 }
 
-/// The colours with no role, kept as values on purpose: a hairline is
-/// neither text nor a control's body, and a ghost button's tint is one
-/// button's. They stay put under every palette, which the
-/// `every_role_rule_follows_the_palette` test prints rather than hides.
-const HAIRLINE: Color = Color(0xdf, 0xe4, 0xed, 0xff);
-const GHOST: Color = Color(0xea, 0xef, 0xfb, 0xff);
-/// The readout chip's ground: an accent tint that stays readable under
-/// the accent text in the light palette (T56.3 checks the pair).
-const CHIP_BG: Color = Color(0xe8, 0xef, 0xff, 0xff);
+/// The chrome's colours with no role — M56/T56.3. A hairline is neither
+/// text nor a control's body, and a chip's or a ghost button's tint is one
+/// widget's, so they are values; but they are **picked with the palette**,
+/// because the light values on the dark page were a bright rule and a
+/// glaring chip. Chosen once, by the same `LUMEN_PALETTE` as
+/// [`palette`]. A palette swapped at run time through the agent's
+/// `app.setPalette` re-resolves the sheet's roles and not these —
+/// `every_role_rule_follows_the_palette` prints them rather than hides
+/// them.
+#[derive(Clone, Copy)]
+struct Chrome {
+    /// The sidebar's edge, the stage card's and a popup's border.
+    hairline: Color,
+    /// The readout chip's ground.
+    chip: Color,
+    /// Accent-coloured text on an accent tint — the chip's, the ghost
+    /// button's: the accent deepened (light) or lifted (dark) until it
+    /// reads there. The raw accent was 3.90:1 on the chip and 3.91:1 on
+    /// the ghost button in the light palette.
+    accent_text: Color,
+    /// The ghost button's faint ground.
+    ghost: Color,
+    /// A secondary button's edge on the white stage card.
+    outline: Color,
+    /// A light panel for demo content whose text is dark whatever the
+    /// palette (the pull area).
+    panel: Color,
+}
+
+const CHROME_LIGHT: Chrome = Chrome {
+    hairline: Color(0xe1, 0xe6, 0xee, 0xff),
+    chip: Color(0xe8, 0xef, 0xff, 0xff),
+    accent_text: Color(0x1f, 0x4f, 0xd1, 0xff),
+    ghost: Color(0xea, 0xef, 0xfb, 0xff),
+    outline: Color(0xcf, 0xd6, 0xe2, 0xff),
+    panel: Color(0xf0, 0xf2, 0xf6, 0xff),
+};
+
+const CHROME_DARK: Chrome = Chrome {
+    hairline: Color(0x2c, 0x33, 0x40, 0xff),
+    chip: Color(0x1f, 0x2b, 0x47, 0xff),
+    accent_text: Color(0x9b, 0xb8, 0xff, 0xff),
+    ghost: Color(0x23, 0x2f, 0x4d, 0xff),
+    outline: Color(0x3d, 0x46, 0x57, 0xff),
+    panel: Color(0xe6, 0xea, 0xf2, 0xff),
+};
+
+/// The chrome's colours for the palette in force at start.
+fn chrome() -> Chrome {
+    match std::env::var("LUMEN_PALETTE").as_deref() {
+        Ok("dark") => CHROME_DARK,
+        _ => CHROME_LIGHT,
+    }
+}
 
 /// The window: a 248 px sidebar and the page beside it (M56).
 const W: u32 = 1120;
@@ -118,7 +167,7 @@ pub struct TitleRow {
     #[widget_id("tgap")]
     gap: Spacer,
     #[widget_id("readout")]
-    readout: Label<String>,
+    readout: StatusChip,
 }
 
 /// What is on the page: where it sits in the catalogue, its name, and the
@@ -337,7 +386,7 @@ fn advance(s: &mut Show, dt_ms: f32) -> bool {
         s.store.phase = (s.store.phase + dt_ms / 1400.0).rem_euclid(1.0);
         (e.seed)(s);
         let text = (e.status)(s);
-        s.ui.main.header.heading.readout.set(text);
+        s.ui.main.header.heading.readout.set_str(&text);
     }
     true
 }
@@ -354,7 +403,7 @@ fn rebuild(s: &mut Show) {
     h.blurb.set(e.blurb.into());
     (e.seed)(s);
     let text = (e.status)(s);
-    s.ui.main.header.heading.readout.set(text);
+    s.ui.main.header.heading.readout.set_str(&text);
 }
 
 /// One sidebar row: a group heading, or an entry under one.
@@ -838,6 +887,7 @@ fn btn() -> lumen_static::style::Patch {
 
 fn stylesheet() -> Vec<StyleRule> {
     use lumen_static::style::{Patch, Role, Selector};
+    let c = chrome();
     let mut rules = vec![
         // ---- the chrome (M56, `docs/plan-showcase-design.md`) -------
         //
@@ -893,7 +943,7 @@ fn stylesheet() -> Vec<StyleRule> {
         ),
         StyleRule::new(
             Selector::Id("rule"),
-            Patch::new().width(Length::Fixed(1.0)).height(Length::FILL).background(HAIRLINE),
+            Patch::new().width(Length::Fixed(1.0)).height(Length::FILL).background(c.hairline),
         ),
         // The page: the header on the page colour, then the stage card.
         StyleRule::new(
@@ -914,8 +964,8 @@ fn stylesheet() -> Vec<StyleRule> {
         StyleRule::new(
             Selector::Id("readout"),
             Patch::new()
-                .color_role(Role::Accent)
-                .background(CHIP_BG)
+                .color(c.accent_text)
+                .background(c.chip)
                 .radius(12.0)
                 .font_size(12.0)
                 .font_weight(600.0)
@@ -930,9 +980,9 @@ fn stylesheet() -> Vec<StyleRule> {
                 .height(Length::FILL)
                 .background_role(Role::Surface)
                 .border_width(1)
-                .border_color(HAIRLINE)
+                .border_color(c.hairline)
                 .radius(16.0)
-                .shadow(12.0)
+                .shadow(6.0)
                 .padding(Edges::all(32.0)),
         ),
         StyleRule::new(Selector::Id("st"), Patch::new().height(Length::FILL)),
@@ -966,7 +1016,7 @@ fn stylesheet() -> Vec<StyleRule> {
                 .height(Length::Fixed(6.0 * ROW_H))
                 .background_role(Role::Surface)
                 .border_width(1)
-                .border_color(HAIRLINE)
+                .border_color(c.hairline)
                 .radius(12.0)
                 .shadow(12.0),
         ),
@@ -988,7 +1038,9 @@ fn stylesheet() -> Vec<StyleRule> {
         ),
         StyleRule::new(
             Selector::Id("d_button_b"),
-            btn().background_role(Role::Surface).color_role(Role::Text),
+            // An edge, because its ground is the card's own: white on
+            // white until M56/T56.3 gave it one.
+            btn().background_role(Role::Surface).color_role(Role::Text).border_width(1).border_color(c.outline),
         ),
         // **Ghost has a ground, faint as it is.** `pressed_dim` and
         // `hover_dim` *scale* a background; they cannot invent one. A
@@ -996,7 +1048,7 @@ fn stylesheet() -> Vec<StyleRule> {
         // which is a third of the reported "clicking does nothing".
         StyleRule::new(
             Selector::Id("d_button_c"),
-            btn().background(GHOST).color_role(Role::Accent),
+            btn().background(c.ghost).color(c.accent_text),
         ),
         // ---- M27/T27.4's three -------------------------------------
         // The card is sized so the stage can show it whole; its default
@@ -1145,15 +1197,28 @@ fn stylesheet() -> Vec<StyleRule> {
         // its content, so the demo read as a line of text; M56's stricter
         // stage filter said so (the old one had credited it with the
         // header's hairline). The demo's own container is the area.
+        // A light ground in both palettes, as a pane grid's panes have:
+        // its content is a bare `Label`, which no rule can reach without
+        // reaching every label, and whose default text is dark. (A
+        // `Kind("label")` → text-role rule was tried and turned the grid's
+        // and the pane grid's labels light-on-light in the dark palette.)
         StyleRule::new(
             Selector::Kind("DPullToRefresh"),
-            Patch::new().width(Length::Shrink).background_role(Role::Control).radius(12.0),
+            Patch::new().width(Length::Shrink).background(c.panel).radius(12.0),
         ),
-        // A bare `Label` in a demo — a pull area's content, a split
-        // pane's halves — takes the palette's text colour, so it does not
-        // stay black in the dark palette. Every chrome label has an id
-        // rule, which wins.
-        StyleRule::new(Selector::Kind("label"), Patch::new().color_role(Role::Text)),
+        // The split pane's halves are bare `Label`s too, so the same
+        // light panel under them.
+        StyleRule::new(
+            Selector::Kind("DSplitPane"),
+            Patch::new().width(Length::Shrink).background(c.panel).radius(8.0),
+        ),
+        // **Text that follows the palette.** These draw their words in
+        // their style's colour, which defaulted to a dark grey and was all
+        // but invisible on the dark card — before M56 as well as after it.
+        StyleRule::new(Selector::Kind("icon"), Patch::new().color_role(Role::Text)),
+        StyleRule::new(Selector::Kind("richtext"), Patch::new().color_role(Role::Text)),
+        StyleRule::new(Selector::Kind("markdown"), Patch::new().color_role(Role::Text)),
+        StyleRule::new(Selector::Kind("textarea"), Patch::new().color_role(Role::Text)),
         StyleRule::new(Selector::Id("d_progress_a"), Patch::new().width(Length::Fixed(280.0))),
         StyleRule::new(Selector::Id("d_divider_a"), Patch::new().width(Length::Fixed(280.0))),
         StyleRule::new(
@@ -1616,6 +1681,64 @@ mod tests {
         ("Tree", "Collapsing hides a whole subtree"),
         ("DataGrid", "It owns no data: its rows are a "),
     ];
+
+    /// WCAG relative luminance of an sRGB colour.
+    fn luminance(c: Color) -> f64 {
+        let lin = |v: u8| {
+            let v = v as f64 / 255.0;
+            if v <= 0.04045 { v / 12.92 } else { ((v + 0.055) / 1.055).powf(2.4) }
+        };
+        0.2126 * lin(c.0) + 0.7152 * lin(c.1) + 0.0722 * lin(c.2)
+    }
+
+    fn contrast(a: Color, b: Color) -> f64 {
+        let (x, y) = (luminance(a), luminance(b));
+        (x.max(y) + 0.05) / (x.min(y) + 0.05)
+    }
+
+    /// `fg` at `alpha` over an opaque `bg`, as the rasteriser blends it.
+    fn over(fg: Color, alpha: u8, bg: Color) -> Color {
+        let a = alpha as f64 / 255.0;
+        let m = |f: u8, b: u8| (f as f64 * a + b as f64 * (1.0 - a)).round() as u8;
+        Color(m(fg.0, bg.0), m(fg.1, bg.1), m(fg.2, bg.2), 255)
+    }
+
+    /// **The chrome's text reads, in both palettes** — M56/T56.3.
+    ///
+    /// Every text/ground pair the chrome paints, from the values it
+    /// paints them with: the palettes' roles, the `Chrome` values, and
+    /// `NavRow`'s own heading and tint alphas. AA's 4.5:1 for all of it:
+    /// the chrome's text is 11–16 px, and the blurb and breadcrumb are
+    /// content, not decoration. The first pass measured three pairs
+    /// under — light muted text on the page at 4.33, and the chip's
+    /// accent-on-tint at 3.90 (light) and 4.44 (dark) — and the ghost
+    /// demo button's, a pair it was added to cover, at 3.91 and 4.19.
+    #[test]
+    fn chrome_text_meets_contrast() {
+        let mut failed = Vec::new();
+        for (name, p, c) in [("light", SHOW_LIGHT, CHROME_LIGHT), ("dark", SHOW_DARK, CHROME_DARK)] {
+            let selected = over(p.accent, nav::SELECTED_TINT_ALPHA, p.surface);
+            let heading = over(p.text, nav::HEADING_ALPHA, p.surface);
+            let pairs = [
+                ("title on the page", p.text, p.page),
+                ("blurb and breadcrumb on the page", p.muted, p.page),
+                ("brand subtitle on the sidebar", p.muted, p.surface),
+                ("a sidebar row", p.text, p.surface),
+                ("the selected row", p.text, selected),
+                ("a group heading", heading, p.surface),
+                ("the readout chip", c.accent_text, c.chip),
+                ("a ghost button", c.accent_text, c.ghost),
+            ];
+            for (what, fg, bg) in pairs {
+                let r = contrast(fg, bg);
+                println!("  {name:5} {what:34} {r:5.2}:1 (bound 4.50)");
+                if r < 4.5 {
+                    failed.push(format!("{name}: {what} is {r:.2}:1"));
+                }
+            }
+        }
+        assert!(failed.is_empty(), "chrome text under AA's 4.5:1 — {failed:?}");
+    }
 
     /// The sidebar prints a heading where the group changes, so a group
     /// that recurs later in the catalogue would be headed twice (M56).

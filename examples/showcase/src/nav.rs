@@ -56,6 +56,13 @@ pub enum RowKind {
     Heading,
 }
 
+/// A heading's text alpha over the row's text colour: the muted role,
+/// derived, so it follows a palette swap. `chrome_text_meets_contrast`
+/// checks the result.
+pub const HEADING_ALPHA: u8 = 0xa8;
+/// The selected row's accent tint alpha, over the row's ground.
+pub const SELECTED_TINT_ALPHA: u8 = 0x24;
+
 /// Horizontal inset of a row's pill inside the sidebar.
 const INSET: f32 = 8.0;
 /// Where the text starts inside the pill.
@@ -124,7 +131,7 @@ impl<S> NavRow<S> {
         match self.kind {
             RowKind::Heading => {
                 let c = st.fg;
-                (st.font_size - 2.0, 700.0, Color(c.0, c.1, c.2, 0xa8))
+                (st.font_size - 2.0, 700.0, Color(c.0, c.1, c.2, HEADING_ALPHA))
             }
             RowKind::Item if self.selected => (st.font_size, 600.0, st.fg),
             RowKind::Item => (st.font_size, 400.0, st.fg),
@@ -151,7 +158,7 @@ impl<S: 'static> Node for NavRow<S> {
             out.rounded_rect(pill, s.bg, s.radius);
             if self.selected {
                 let a = s.border_color;
-                out.rounded_rect(pill, Color(a.0, a.1, a.2, 0x24), s.radius);
+                out.rounded_rect(pill, Color(a.0, a.1, a.2, SELECTED_TINT_ALPHA), s.radius);
                 let (y0, y1) = (pill[1] + 7.0, pill[3] - 7.0);
                 out.rounded_rect([pill[0] + 3.0, y0, pill[0] + 6.0, y1], a, 1.5);
             }
