@@ -24,6 +24,12 @@ everything = ["lumen-static-shell/everything"]
 # asks, so a crash reaches whatever would have reported it
 # (docs/plan-panic-recovery.md rule 3).
 reload = ["lumen-static-shell/reload"]
+# M37: hot reload inside the window (`docs/plan-window-reload.md`). The
+# window builds the application crate as a library on every save and
+# swaps to it between frames, keeping `#[reload(keep)]` state. Implies
+# `reload`, so a panic in the new code shows M36's screen, and requires
+# the program's application to be `Reloadable`.
+hot = ["reload", "dep:lumen-static-reload", "dep:notify"]
 # M34/T34.1: the shadow oracle, reported by the agent's `app.shadow`.
 shadow-oracle = ["lumen-static-shell/shadow-oracle"]
 # Clipboard is default-ON, unlike the a11y feature, and the difference
@@ -87,3 +93,7 @@ rfd = { version = "0.15", optional = true, default-features = false, features = 
 lumen-static-wgpu = { path = "../lumen-static-wgpu", optional = true }
 lumen-static-agent = { path = "../lumen-static-agent", optional = true }
 serde_json = { version = "1", optional = true }
+# M37/T37.2: a window that rebuilds its application as a library and swaps
+# to it (`hot`). The loader and its `unsafe` live in the reload crate.
+lumen-static-reload = { path = "../lumen-static-reload", features = ["window"], optional = true }
+notify = { version = "8", optional = true }

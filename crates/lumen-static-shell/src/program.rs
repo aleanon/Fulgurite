@@ -247,6 +247,13 @@ impl<A: App> Program<A> {
         self
     }
 
+    /// The application's source directory as the compiler spelled it
+    /// (`examples/x`, relative to where cargo ran) — M36 finds panic
+    /// frames under it, and M37's window rebuilds the crate there.
+    pub fn source_root(&self) -> Option<&'static str> {
+        self.source_root
+    }
+
     /// The window title for this state.
     pub fn title_of(&self, app: &A) -> Cow<'static, str> {
         self.title.title(app)

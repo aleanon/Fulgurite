@@ -74,6 +74,12 @@ pub enum UserEvent {
     /// flight and reintroduce the ordering question the inbox exists to
     /// answer.
     Wake,
+    /// The hot-reload builder started a build (M37/T37.2).
+    #[cfg(feature = "hot")]
+    Building,
+    /// …and finished one.
+    #[cfg(feature = "hot")]
+    Built(lumen_static_reload::hot::Outcome),
 }
 
 /// A [`Waker`](lumen_static::inbox::Waker) over the event loop's proxy —
@@ -255,11 +261,12 @@ pub fn run<A: App + 'static>(app: A, config: Config) {
     let mut host: Host<A, Ret, Inval> = Host::new(app, config.width, config.height);
     host.set_palette(config.palette);
     let session = Local::from_host(host, config.title, config.page, RECOVER);
-    start(Box::new(session), config);
+    start(Box::new(session), config, None);
 }
 
-/// Run a window around a session until it closes.
-fn start(session: Box<dyn Session>, config: Config) {
+/// Run a window around a session until it closes. `hot` is the
+/// application crate's directory when the window rebuilds it (M37).
+fn start(session: Box<dyn Session>, config: Config, hot: Option<std::path::PathBuf>) {
     // **Always a user-event loop** — M28/T28.1.
     //
     // This was `with_user_event()` under the `agent` feature and
@@ -280,7 +287,40 @@ fn start(session: Box<dyn Session>, config: Config) {
     // window's, because the window owns the loop; the spawner is the
     // session's own (`Local::from_host` installs `Threads`), because a
     // job runs the application's code, which is wherever the session is.
-    win.session.set_waker(std::sync::Arc::new(ProxyWaker::new(event_loop.create_proxy())));
+    let waker: std::sync::Arc<dyn lumen_static::inbox::Waker> =
+        std::sync::Arc::new(ProxyWaker::new(event_loop.create_proxy()));
+    win.session.set_waker(waker.clone());
+    #[cfg(feature = "hot")]
+    if let Some(dir) = hot {
+        match hot::crate_at(&dir) {
+            Ok(krate) => {
+                eprintln!(
+                    "lumen-static: hot reload of `{}` (features `{}`) into {}",
+                    krate.name,
+                    krate.features,
+                    krate.target_dir.display()
+                );
+                let build = hot::builder(krate, event_loop.create_proxy());
+                let watcher = hot::watch(&dir, build.clone());
+                if watcher.is_none() {
+                    eprintln!("lumen-static: could not watch {}/src — reload by restarting", dir.display());
+                }
+                // The first build starts at once: the static application
+                // runs until it lands (§2.1), so there is no start-up wait.
+                let _ = build.send(());
+                win.hot = Some(hot::Hot {
+                    reloader: lumen_static_reload::hot::Reloader::new(),
+                    build,
+                    waker,
+                    metrics: win.font.clone().map(FontMetrics::new),
+                    _watcher: watcher,
+                });
+            }
+            Err(e) => eprintln!("lumen-static: no hot reload: {e}"),
+        }
+    }
+    #[cfg(not(feature = "hot"))]
+    let _ = (hot, waker);
     event_loop.run_app(&mut win).expect("run");
 }
 
@@ -318,6 +358,9 @@ struct Win {
     cursor_shown: lumen_static::style::Cursor,
     /// When the last frame was drawn, for the animation tick (T15.4).
     last_frame: Option<Instant>,
+    /// The reload state, when the window rebuilds its application (M37).
+    #[cfg(feature = "hot")]
+    hot: Option<hot::Hot>,
 }
 
 impl Win {
@@ -342,6 +385,8 @@ impl Win {
             clipboard: Clipboard::new(),
             cursor_shown: lumen_static::style::Cursor::Default,
             last_frame: None,
+            #[cfg(feature = "hot")]
+            hot: None,
         }
     }
 
@@ -397,6 +442,21 @@ impl Win {
         if backend.resize(w, h) {
             self.session.resize(w, h);
         }
+        // **The swap, between frames** (M37 rule 3): a library that
+        // landed since the last frame takes over now, with the running
+        // session's kept state, the window's waker, scale and size.
+        #[cfg(feature = "hot")]
+        if let Some(hot) = self.hot.as_mut() {
+            let (waker, scale) = (hot.waker.clone(), window.scale_factor() as f32);
+            if hot.reloader.swap(&mut self.session, |s| {
+                s.set_waker(waker);
+                s.set_scale(scale);
+                s.resize(w, h);
+            }) {
+                eprintln!("lumen-static: reloaded ({})", hot.reloader.reloads);
+                self.last_frame = None;
+            }
+        }
 
         let start = Instant::now();
         // A panic being shown runs no application code (M36), so it does
@@ -410,6 +470,21 @@ impl Win {
         // inside the session: both ticks and the pump, or the panic
         // screen.
         let animating = self.session.frame(dt, w, h);
+        #[cfg(feature = "hot")]
+        let barred = match self.hot.as_mut() {
+            Some(hot) => hot
+                .reloader
+                .error
+                .clone()
+                .map(|e| hot::Barred::new(&mut *self.session, &e, w, h, &mut hot.metrics)),
+            None => None,
+        };
+        #[cfg(feature = "hot")]
+        match barred {
+            Some(mut b) => backend.present(&mut b, self.config.page, start),
+            None => backend.present(&mut *self.session, self.config.page, start),
+        };
+        #[cfg(not(feature = "hot"))]
         backend.present(&mut *self.session, self.config.page, start);
         if self.session.failed() {
             return;
@@ -492,6 +567,24 @@ impl ApplicationHandler<UserEvent> for Win {
             }
             #[cfg(feature = "agent")]
             UserEvent::Agent(rpc) => self.answer_agent(rpc),
+            #[cfg(feature = "hot")]
+            UserEvent::Building => {
+                if let Some(h) = self.hot.as_mut() {
+                    h.reloader.building = true;
+                }
+                if let Some(w) = &self.window {
+                    w.request_redraw();
+                }
+            }
+            #[cfg(feature = "hot")]
+            UserEvent::Built(outcome) => {
+                if let Some(h) = self.hot.as_mut() {
+                    h.reloader.outcome(outcome);
+                }
+                if let Some(w) = &self.window {
+                    w.request_redraw();
+                }
+            }
         }
     }
 }
@@ -513,6 +606,23 @@ impl Win {
             }));
             return;
         };
+        // `app.reloads` is the window's, not the session's: the count
+        // outlives every session it counts (M37/T37.4 waits on it).
+        #[cfg(feature = "hot")]
+        if rpc.req.get("method").and_then(|m| m.as_str()) == Some("app.reloads") {
+            let r = self.hot.as_ref().map(|h| &h.reloader);
+            let _ = rpc.reply.send(serde_json::json!({
+                "jsonrpc": "2.0", "id": rpc.req.get("id").cloned().unwrap_or(serde_json::Value::Null),
+                "result": {
+                    "supported": r.is_some(),
+                    "reloads": r.map_or(0, |r| r.reloads),
+                    "building": r.is_some_and(|r| r.building),
+                    "pending": r.is_some_and(|r| r.pending().is_some()),
+                    "error": r.and_then(|r| r.error.clone()),
+                }
+            }));
+            return;
+        }
         let text = self.session.agent(&rpc.req.to_string(), &mut backend::AsScreen(backend));
         let resp = serde_json::from_str(&text).unwrap_or_else(|e| {
             serde_json::json!({
@@ -530,11 +640,13 @@ impl Win {
 impl Win {
     fn title_now(&self) -> String {
         let t = self.session.title();
-        if t.is_empty() {
-            self.config.title.to_string()
-        } else {
-            t
+        let t = if t.is_empty() { self.config.title.to_string() } else { t };
+        // hot_ice's convention: the title says a build is running.
+        #[cfg(feature = "hot")]
+        if self.hot.as_ref().is_some_and(|h| h.reloader.building) {
+            return format!("Reloading… {t}");
         }
+        t
     }
 
     fn resumed_impl(&mut self, event_loop: &ActiveEventLoop) {
@@ -682,32 +794,63 @@ pub trait Run {
     fn run(self);
 }
 
+#[cfg(not(feature = "hot"))]
 impl<A: App + 'static> Run for Program<A> {
-    fn run(mut self) {
-        // `LUMEN_SHOT=frame.ppm`: one headless frame from the same
-        // `host()` the window would drive, then exit. Every program gets
-        // it without writing a `--shot` of its own, which is what let
-        // M32/T32.1 compare an example's frame before and after its
-        // migration.
-        if let Ok(path) = std::env::var("LUMEN_SHOT") {
-            let (w, h, page) = (self.width, self.height, self.page);
-            return shot(self.host(), w, h, page, &path);
-        }
-        // **The same `host()` a `--shot` calls** — `Local::from_program`
-        // boots through it — so the window and every headless frame are
-        // built by one function, the property M32 exists for.
-        let config = Config {
-            title: "",
-            width: self.width,
-            height: self.height,
-            page: self.page,
-            backend: self.backend,
-            palette: self.palette,
-            images: self.images.take(),
-            agent: self.agent.take(),
-        };
-        start(Box::new(Local::from_program(self, RECOVER)), config);
+    fn run(self) {
+        run_program(self, |p| Box::new(Local::from_program(p, RECOVER)), None);
     }
+}
+
+/// With `hot`, a program's application must be `Reloadable`: the static
+/// application runs at once and its kept state carries into the first
+/// hot build when it lands (`docs/plan-window-reload.md` §2.1).
+#[cfg(feature = "hot")]
+impl<A: App + lumen_static::reload::Reloadable + 'static> Run for Program<A> {
+    fn run(self) {
+        let dir = self.source_root().and_then(hot::locate);
+        if dir.is_none() {
+            eprintln!("lumen-static: cannot find the application's crate — running without hot reload");
+        }
+        run_program(
+            self,
+            |p| {
+                Box::new(
+                    Local::from_program(p, RECOVER)
+                        .with_saver(|a| lumen_static::reload::to_vec(&lumen_static::reload::Reloadable::save(a))),
+                )
+            },
+            dir,
+        );
+    }
+}
+
+fn run_program<A: App + 'static>(
+    mut program: Program<A>,
+    session: impl FnOnce(Program<A>) -> Box<dyn Session>,
+    hot: Option<std::path::PathBuf>,
+) {
+    // `LUMEN_SHOT=frame.ppm`: one headless frame from the same `host()`
+    // the window would drive, then exit. Every program gets it without
+    // writing a `--shot` of its own, which is what let M32/T32.1 compare
+    // an example's frame before and after its migration.
+    if let Ok(path) = std::env::var("LUMEN_SHOT") {
+        let (w, h, page) = (program.width, program.height, program.page);
+        return shot(program.host(), w, h, page, &path);
+    }
+    // **The same `host()` a `--shot` calls** — `Local::from_program` boots
+    // through it — so the window and every headless frame are built by
+    // one function, the property M32 exists for.
+    let config = Config {
+        title: "",
+        width: program.width,
+        height: program.height,
+        page: program.page,
+        backend: program.backend,
+        palette: program.palette,
+        images: program.images.take(),
+        agent: program.agent.take(),
+    };
+    start(session(program), config, hot);
 }
 
 /// Render one frame headlessly and write it as a PPM — `LUMEN_SHOT`.
@@ -735,4 +878,173 @@ fn shot<A: App>(mut host: Host<A, Ret, Inval>, w: u32, h: u32, page: Color, path
     canvas.clear(page);
     host.render(&mut canvas);
     std::fs::write(path, canvas.to_ppm()).expect("LUMEN_SHOT: write frame");
+}
+
+// ---- M37: hot reload inside the window ------------------------------
+
+/// **A window that rebuilds its application and swaps to it** — M37/T37.2
+/// (`docs/plan-window-reload.md` §2.6).
+///
+/// A builder thread runs `cargo rustc --lib --crate-type cdylib` for the
+/// application's crate whenever a watcher sees one of its sources change;
+/// its outcome reaches the loop as a [`UserEvent`]; and the swap happens
+/// at the next frame boundary, through [`lumen_static_reload::hot::Reloader`],
+/// which keeps the running library when a build fails, is refused, or
+/// panics while booting — and shows why, in a bar over the application.
+#[cfg(feature = "hot")]
+pub mod hot {
+    use std::path::{Path, PathBuf};
+    use std::sync::mpsc;
+
+    use lumen_static::display::{Color, DisplayList};
+    use lumen_static::retain::Damage;
+    use lumen_static_reload::hot::{Crate, Reloader};
+    use lumen_static_shell::session::{FrameSource, Session};
+    use lumen_static_shell::text::FontMetrics;
+
+    use crate::UserEvent;
+
+    /// The bar's colours: a dark red that no application page is, and
+    /// text on it that reads (contrast ≥ 7:1 on `BAR`).
+    pub const BAR: Color = Color(0x5c, 0x10, 0x14, 0xf0);
+    pub const BAR_TEXT: Color = Color(0xff, 0xe4, 0xe1, 0xff);
+
+    /// Find the application's crate from the program's `source_root` —
+    /// the compiler's spelling of its directory, relative to where cargo
+    /// ran — by looking under the current directory and above the
+    /// running binary.
+    pub fn locate(source_root: &str) -> Option<PathBuf> {
+        let root = Path::new(source_root);
+        if root.is_absolute() {
+            return root.join("Cargo.toml").exists().then(|| root.to_path_buf());
+        }
+        let mut bases: Vec<PathBuf> = Vec::new();
+        if let Ok(d) = std::env::current_dir() {
+            bases.push(d);
+        }
+        if let Ok(exe) = std::env::current_exe() {
+            bases.extend(exe.ancestors().map(Path::to_path_buf));
+        }
+        bases.into_iter().map(|b| b.join(root)).find(|d| d.join("Cargo.toml").exists())
+    }
+
+    /// The crate to rebuild: features from `LUMEN_HOT_FEATURES` (default
+    /// `hot`), the profile this binary was built with, and a target
+    /// directory of its own beside the binary's (`target/reload`), so a
+    /// library build never invalidates the running binary's artifacts.
+    pub fn crate_at(dir: &Path) -> Result<Crate, String> {
+        let features = std::env::var("LUMEN_HOT_FEATURES").unwrap_or_else(|_| "hot".into());
+        let target = std::env::current_exe()
+            .ok()
+            .and_then(|e| e.parent().and_then(Path::parent).map(|t| t.join("reload")))
+            .unwrap_or_else(|| dir.join("target").join("reload"));
+        Crate::at(dir, &features, !cfg!(debug_assertions), target)
+    }
+
+    /// Start the builder thread. Each message on the returned sender asks
+    /// for a build; **messages that arrive during a build coalesce into
+    /// exactly one more**, because the thread drains the queue before it
+    /// starts the next.
+    pub fn builder(krate: Crate, proxy: winit::event_loop::EventLoopProxy<UserEvent>) -> mpsc::Sender<()> {
+        let (tx, rx) = mpsc::channel::<()>();
+        std::thread::spawn(move || {
+            while rx.recv().is_ok() {
+                while rx.try_recv().is_ok() {}
+                if proxy.send_event(UserEvent::Building).is_err() {
+                    return;
+                }
+                let outcome = krate.build();
+                if proxy.send_event(UserEvent::Built(outcome)).is_err() {
+                    return;
+                }
+            }
+        });
+        tx
+    }
+
+    /// Watch the crate's `src/` and ask for a build when a `.rs` file
+    /// changes. Kept alive by the caller; dropping it stops the watch.
+    pub fn watch(dir: &Path, build: mpsc::Sender<()>) -> Option<notify::RecommendedWatcher> {
+        use notify::{EventKind, RecursiveMode, Watcher};
+        let mut w = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
+            let Ok(ev) = res else { return };
+            let relevant = matches!(ev.kind, EventKind::Modify(_) | EventKind::Create(_) | EventKind::Remove(_))
+                && ev.paths.iter().any(|p| p.extension().is_some_and(|e| e == "rs"));
+            if relevant {
+                let _ = build.send(());
+            }
+        })
+        .ok()?;
+        w.watch(&dir.join("src"), RecursiveMode::Recursive).ok()?;
+        Some(w)
+    }
+
+    /// The window's reload state.
+    pub struct Hot {
+        pub reloader: Reloader,
+        pub build: mpsc::Sender<()>,
+        pub waker: std::sync::Arc<dyn lumen_static::inbox::Waker>,
+        pub metrics: Option<FontMetrics>,
+        pub _watcher: Option<notify::RecommendedWatcher>,
+    }
+
+    /// The session's frame with the error bar drawn over its foot — the
+    /// last good build keeps running under it (rule 2). Copies the list,
+    /// which is only while a failure is being shown.
+    pub struct Barred {
+        list: DisplayList,
+    }
+
+    impl Barred {
+        pub fn new(
+            session: &mut dyn Session,
+            error: &str,
+            w: u32,
+            h: u32,
+            metrics: &mut Option<FontMetrics>,
+        ) -> Barred {
+            let src = session.list();
+            let mut list = DisplayList { cmds: src.cmds.clone(), text: src.text.clone(), bounds: src.bounds };
+            // The bar's own damage is the whole surface: the session's
+            // damage was computed without it.
+            let _ = session.take_damage_for_age(1);
+            let (wf, hf) = (w as f32, h as f32);
+            let px = 14.0 * session.scale();
+            let lh = px * 1.4;
+            let pad = 10.0 * session.scale();
+            let avail = (wf - 2.0 * pad).max(1.0);
+            let mut lines = Vec::new();
+            lines.push("reload failed — the last good build is still running".to_string());
+            for l in error.lines().filter(|l| !l.trim().is_empty()).take(8) {
+                let wrapped = match metrics.as_mut() {
+                    Some(m) => lumen_static_shell::recover::wrap(l, avail, px, m),
+                    None => lumen_static_shell::recover::wrap(l, avail, px, &mut lumen_static::cx::BlockMetrics),
+                };
+                lines.extend(wrapped);
+            }
+            lines.truncate(10);
+            let bar_h = pad * 2.0 + lh * lines.len() as f32;
+            let top = (hf - bar_h).max(0.0);
+            list.rect([0.0, top, wf, hf], BAR);
+            let mut y = top + pad;
+            for (i, l) in lines.iter().enumerate() {
+                let weight = if i == 0 { 700.0 } else { 400.0 };
+                list.text_weighted([pad, y, pad + avail, y + lh], l, px, weight, BAR_TEXT);
+                y += lh;
+            }
+            Barred { list }
+        }
+    }
+
+    impl FrameSource for Barred {
+        fn list(&self) -> &DisplayList {
+            &self.list
+        }
+        fn take_damage_for_age(&mut self, _age: u8) -> Damage {
+            Damage::All
+        }
+        fn timings(&self) -> (u64, u64) {
+            (0, 0)
+        }
+    }
 }

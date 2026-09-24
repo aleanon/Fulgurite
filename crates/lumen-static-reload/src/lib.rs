@@ -248,6 +248,10 @@ pub mod abi {
         put("rustc", env!("LUMEN_RUSTC"));
         put("target", env!("LUMEN_TARGET"));
         put("panic", if cfg!(panic = "unwind") { "unwind" } else { "abort" });
+        // A crate may lay a type out differently under debug assertions,
+        // and a window's loader and its library are two cargo invocations
+        // that could be given two profiles.
+        put("debug_assertions", if cfg!(debug_assertions) { "on" } else { "off" });
         for (k, v) in lumen_static::reload::build_fields() {
             put(k, &v);
         }
@@ -488,6 +492,193 @@ pub mod hot {
             // SAFETY: `hot_take_panic` writes at most `cap` bytes.
             let s = unsafe { crate::abi::read(self.take_panic) };
             (!s.is_empty()).then_some(s)
+        }
+    }
+
+    /// What one build of the application's library produced.
+    #[derive(Debug, Clone)]
+    pub enum Outcome {
+        /// The library, at cargo's output path.
+        Built(PathBuf),
+        /// The compiler's diagnostics. `output` is cargo's output path,
+        /// which may still hold an **earlier** build — the reason a
+        /// failed build must never be swapped to (T37.2's injection).
+        Failed { log: String, output: PathBuf },
+    }
+
+    /// The application crate a window rebuilds as a library (§2.6):
+    /// `cargo rustc -p <name> --lib --crate-type cdylib` into its own
+    /// target directory, so the running binary's artifacts are left alone.
+    #[derive(Debug, Clone)]
+    pub struct Crate {
+        pub manifest: PathBuf,
+        pub name: String,
+        pub features: String,
+        pub release: bool,
+        pub target_dir: PathBuf,
+    }
+
+    impl Crate {
+        /// The package at `dir` (its `Cargo.toml`'s `[package] name`).
+        pub fn at(dir: &Path, features: &str, release: bool, target_dir: PathBuf) -> Result<Crate, String> {
+            let manifest = dir.join("Cargo.toml");
+            let text = std::fs::read_to_string(&manifest).map_err(|e| format!("{}: {e}", manifest.display()))?;
+            let name = text
+                .lines()
+                .skip_while(|l| l.trim() != "[package]")
+                .find_map(|l| {
+                    let (k, v) = l.split_once('=')?;
+                    (k.trim() == "name").then(|| v.trim().trim_matches('"').to_string())
+                })
+                .ok_or_else(|| format!("{}: no [package] name", manifest.display()))?;
+            Ok(Crate { manifest, name, features: features.to_string(), release, target_dir })
+        }
+
+        /// Where cargo writes the library.
+        pub fn output(&self) -> PathBuf {
+            let lib = format!(
+                "{}{}{}",
+                std::env::consts::DLL_PREFIX,
+                self.name.replace('-', "_"),
+                std::env::consts::DLL_SUFFIX
+            );
+            self.target_dir.join(if self.release { "release" } else { "debug" }).join(lib)
+        }
+
+        /// Build it once, synchronously. The diagnostics are cargo's
+        /// stderr, in `--message-format short`.
+        pub fn build(&self) -> Outcome {
+            let mut cmd = std::process::Command::new(std::env::var("CARGO").unwrap_or_else(|_| "cargo".into()));
+            cmd.arg("rustc")
+                .arg("--manifest-path")
+                .arg(&self.manifest)
+                .args(["-p", &self.name, "--lib", "--crate-type", "cdylib", "--message-format", "short"])
+                .arg("--target-dir")
+                .arg(&self.target_dir);
+            if self.release {
+                cmd.arg("--release");
+            }
+            if !self.features.is_empty() {
+                cmd.args(["--features", &self.features]);
+            }
+            match cmd.output() {
+                Ok(o) if o.status.success() => Outcome::Built(self.output()),
+                Ok(o) => Outcome::Failed { log: String::from_utf8_lossy(&o.stderr).into_owned(), output: self.output() },
+                Err(e) => Outcome::Failed { log: format!("could not run cargo: {e}"), output: self.output() },
+            }
+        }
+    }
+
+    /// **When a window swaps, and to what** — M37/T37.2 (§2.6, rule 2).
+    ///
+    /// A build's outcome arrives from the builder thread; the swap happens
+    /// later, **between frames**, when the window calls [`Reloader::swap`].
+    /// A failed build, a refused library and a boot that panicked all
+    /// leave the running session in place and say why in [`error`].
+    ///
+    /// [`error`]: Reloader::error
+    #[derive(Debug, Default)]
+    pub struct Reloader {
+        /// The content hash of the last library accepted, so a build that
+        /// changed nothing does not swap.
+        hash: Option<u64>,
+        copies: u32,
+        pending: Option<PathBuf>,
+        /// Why the last build or swap did not take: the compiler's log, a
+        /// stamp refusal, a boot's panic. Cleared by a successful swap.
+        pub error: Option<String>,
+        /// Swaps completed.
+        pub reloads: u32,
+        /// A build is running.
+        pub building: bool,
+    }
+
+    fn hash(bytes: &[u8]) -> u64 {
+        let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+        for b in bytes {
+            h = (h ^ *b as u64).wrapping_mul(0x0000_0100_0000_01b3);
+        }
+        h
+    }
+
+    impl Reloader {
+        pub fn new() -> Self {
+            Self::default()
+        }
+
+        /// A library waiting for the next frame boundary.
+        pub fn pending(&self) -> Option<&Path> {
+            self.pending.as_deref()
+        }
+
+        /// Take a build's outcome. A success whose bytes differ from the
+        /// last accepted library is copied to a path of its own — the
+        /// dynamic loader caches by path, so reopening one name would hand
+        /// back the old image — and waits for [`Reloader::swap`].
+        pub fn outcome(&mut self, o: Outcome) {
+            self.building = false;
+            match o {
+                Outcome::Built(path) => {
+                    let bytes = match std::fs::read(&path) {
+                        Ok(b) => b,
+                        Err(e) => {
+                            self.error = Some(format!("{}: {e}", path.display()));
+                            return;
+                        }
+                    };
+                    let h = hash(&bytes);
+                    if self.hash == Some(h) {
+                        return;
+                    }
+                    self.copies += 1;
+                    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("lib");
+                    let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("so");
+                    let copy = path.with_file_name(format!("{stem}-hot-{}.{ext}", self.copies));
+                    if let Err(e) = std::fs::write(&copy, &bytes) {
+                        self.error = Some(format!("{}: {e}", copy.display()));
+                        return;
+                    }
+                    self.hash = Some(h);
+                    self.pending = Some(copy);
+                }
+                Outcome::Failed { log, .. } => {
+                    self.error = Some(log);
+                }
+            }
+        }
+
+        /// **At a frame boundary**: if a library is waiting, open it, boot
+        /// its program with `current`'s saved state, let `adopt` set it up
+        /// (waker, scale, size), and put it in `current`'s place. Whether
+        /// the session changed.
+        ///
+        /// The new session is booted **before** the old one is dropped,
+        /// so a refused or panicking build leaves the old one running —
+        /// rule 2. Both libraries stay loaded either way (§2.5).
+        pub fn swap(&mut self, current: &mut Box<dyn Session>, adopt: impl FnOnce(&mut dyn Session)) -> bool {
+            let Some(path) = self.pending.take() else { return false };
+            let build = match Build::open(&path) {
+                Ok(b) => b,
+                Err(e) => {
+                    self.error = Some(format!("{}: {e}", path.display()));
+                    return false;
+                }
+            };
+            let saved = current.save();
+            match build.boot(Some(&saved)) {
+                Ok(hot) => {
+                    let mut next: Box<dyn Session> = Box::new(hot);
+                    adopt(&mut *next);
+                    *current = next;
+                    self.reloads += 1;
+                    self.error = None;
+                    true
+                }
+                Err(report) => {
+                    self.error = Some(format!("the new build panicked while booting: {report}"));
+                    false
+                }
+            }
         }
     }
 

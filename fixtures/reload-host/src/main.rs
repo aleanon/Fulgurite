@@ -14,7 +14,7 @@ use std::path::Path;
 
 use lumen_static::display::Cmd;
 use lumen_static::Event;
-use lumen_static_reload::hot::{Build, Hot};
+use lumen_static_reload::hot::{Build, Hot, Outcome, Reloader};
 use lumen_static_shell::session::{FrameSource, Session};
 
 const W: u32 = 240;
@@ -23,6 +23,17 @@ const H: u32 = 120;
 const AT: (f32, f32) = (120.0, 30.0);
 
 fn text(s: &Hot) -> String {
+    let l = s.list();
+    let mut out = Vec::new();
+    for c in &l.cmds {
+        if let Cmd::Text { text, .. } = c {
+            out.push(l.str_of(*text).to_string());
+        }
+    }
+    out.join(" | ")
+}
+
+fn text_of(s: &dyn Session) -> String {
     let l = s.list();
     let mut out = Vec::new();
     for c in &l.cmds {
@@ -97,5 +108,50 @@ fn main() {
     );
     assert_eq!(b.list().text, c.list().text);
     println!("  ok: {} commands, byte for byte", b.list().cmds.len());
+    // ---- T37.2: when the window swaps, and when it must not ---------
+    //
+    // `Reloader` is the window's swap logic without the window. A failed
+    // build must leave the running library in place — its `output` names
+    // v2's library, as a stale file from an earlier build would — and
+    // the next good build must swap.
+    let mut r = Reloader::new();
+    let mut cur: Box<dyn Session> = Box::new(v1.boot(None).expect("v1 boots"));
+    cur.frame(0.0, W, H);
+    cur.post(Event::down(AT.0, AT.1));
+    cur.post(Event::up(AT.0, AT.1));
+    cur.frame(16.0, W, H);
+    assert!(text_of(&*cur).contains("count 1"), "the click did not land: `{}`", text_of(&*cur));
+    let adopt = |s: &mut dyn Session| {
+        s.frame(0.0, W, H);
+    };
+
+    r.outcome(Outcome::Failed {
+        log: "error[E0308]: mismatched types\n --> src/lib.rs:40:9".into(),
+        output: std::path::PathBuf::from(&args[1]),
+    });
+    let swapped = r.swap(&mut cur, adopt);
+    cur.frame(16.0, W, H);
+    let after_failure = text_of(&*cur);
+    println!("after a failed build: {after_failure} (swapped: {swapped}, reloads {})", r.reloads);
+    assert!(
+        after_failure.contains("count 1") && !swapped,
+        "a failed build swapped the running library: the frame is `{after_failure}`, not v1's"
+    );
+    assert!(r.error.as_deref().is_some_and(|e| e.contains("E0308")), "the build log must be kept to show");
+
+    r.outcome(Outcome::Built(std::path::PathBuf::from(&args[1])));
+    let pending = r.pending().map(|p| p.display().to_string());
+    assert!(r.swap(&mut cur, adopt), "the next good build must swap");
+    let after_good = text_of(&*cur);
+    println!("after a good build:   {after_good} (from {}, reloads {})", pending.unwrap_or_default(), r.reloads);
+    assert!(after_good.contains("clicks: 1"), "the good build's frame: `{after_good}`");
+    assert_eq!(r.error, None, "a successful swap clears the error");
+    assert_eq!(r.reloads, 1);
+
+    // The same bytes again change nothing, so nothing swaps.
+    r.outcome(Outcome::Built(std::path::PathBuf::from(&args[1])));
+    assert!(r.pending().is_none(), "an unchanged library was queued to swap");
+    println!("  ok: a failed build kept v1; the good one swapped; an unchanged one did not");
+
     println!("\nWINDOW RELOAD (headless): PASS");
 }

@@ -224,6 +224,38 @@ the gate prints both strings.
 
 ## T37.2 — the loader, in `lumen-static-winit`
 
+> **DONE 2026-09-24.** `lumen-static-winit`'s `hot` feature, which
+> implies `reload`, has these parts:
+>
+> - **Builder.** `hot::builder` is a thread running `Crate::build`
+>   (`cargo rustc -p <app> --lib --crate-type cdylib` into
+>   `target/reload`). Saves that arrive during a build coalesce into
+>   exactly one more.
+> - **Watcher.** `hot::watch` uses `notify` on the crate's `src/`.
+> - **Swap.** It happens in `redraw` before the frame, through
+>   `lumen_static_reload::hot::Reloader`. That hashes the library, skips
+>   an unchanged one, copies a changed one to a path of its own, and boots
+>   the new session **before** dropping the old, so a refused or
+>   panicking build leaves the old one running.
+> - **Status.** A bar over the application shows why a build did not
+>   take (`hot::Barred`, the session's list plus the bar). The title
+>   reads "Reloading…" during a build, and `app.reloads` reports the
+>   count, whether a build is running, what is pending, and the error.
+> - **Start-up.** With `hot`, `Program::run` requires a `Reloadable`
+>   application. It starts the static one at once and fires the first
+>   build (§2.1).
+> - **Features.** The library is built with `LUMEN_HOT_FEATURES`
+>   (default `hot`). The stamp refuses a library built otherwise, naming
+>   the field. The stamp gained `debug_assertions`, since the loader and
+>   library are two invocations that could be given two profiles.
+>
+> **Gate** (headless, in `just window-reload-demo`): a failed build whose
+> output path holds v2's library leaves the frame at v1's `+ | count 1`
+> with the log kept; the next good build swaps to `+ | clicks: 1` and
+> clears the error; the same bytes again queue nothing. *Injection:*
+> the plan's own, a failed outcome that swaps anyway. The frame after
+> the failed build reads `+ | clicks: 1`, and the assertion fires.
+
 §2.6's build and watch, the swap at a frame boundary, the list-taking
 present, the agent forwarding, and the status surface: a
 *Reloading…* indicator in the title (hot_ice prefixes it), and the build
