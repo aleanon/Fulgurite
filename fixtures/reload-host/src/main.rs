@@ -2,7 +2,7 @@
 //! and check the swapped session against v2 run from the start —
 //! M37/T37.1 (`docs/plan-window-reload.md`).
 //!
-//! `reload-host <v1.so> <v2.so>`. The exit code is the verdict.
+//! `reload-host <v1.so> <v2.so> <v3.so>`. The exit code is the verdict.
 //!
 //! **What is compared.** v1 is clicked once, saved, dropped; v2 boots
 //! its own program with those bytes. A second v2 session boots with
@@ -152,6 +152,26 @@ fn main() {
     r.outcome(Outcome::Built(std::path::PathBuf::from(&args[1])));
     assert!(r.pending().is_none(), "an unchanged library was queued to swap");
     println!("  ok: a failed build kept v1; the good one swapped; an unchanged one did not");
+
+    // ---- T37.3: kept state whose type changed -------------------------
+    //
+    // v3 changes the kept `name` from a `String` to a `u32`. The swap
+    // must complete; `name` must hold v3's boot value; the warning must
+    // name it; and `tally` must survive — per field, not all or nothing.
+    let saved = String::from_utf8_lossy(&cur.save()).into_owned();
+    r.outcome(Outcome::Built(std::path::PathBuf::from(&args[2])));
+    assert!(r.swap(&mut cur, adopt), "a changed field's type must not refuse the swap");
+    cur.frame(16.0, W, H);
+    let after = text_of(&*cur);
+    let warning = r.warning.clone().unwrap_or_default();
+    println!("saved before v3: {saved}");
+    println!("after v3:        {after}");
+    println!("warning:         {warning}");
+    assert!(warning.contains("name"), "the warning must name the field that reset: `{warning}`");
+    assert!(after.contains("name 7"), "`name` must hold v3's boot value: `{after}`");
+    assert!(after.contains("clicks: 1"), "every other kept field survives -- `tally` did not: `{after}`");
+    assert!(r.error.is_none(), "a reset field is a warning, not a failure");
+    println!("  ok: `name` reset to its boot value and was named; `tally` kept count 1");
 
     println!("\nWINDOW RELOAD (headless): PASS");
 }

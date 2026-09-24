@@ -472,11 +472,15 @@ impl Win {
         let animating = self.session.frame(dt, w, h);
         #[cfg(feature = "hot")]
         let barred = match self.hot.as_mut() {
-            Some(hot) => hot
-                .reloader
-                .error
-                .clone()
-                .map(|e| hot::Barred::new(&mut *self.session, &e, w, h, &mut hot.metrics)),
+            Some(hot) => {
+                let r = &hot.reloader;
+                let shown = match (&r.error, &r.warning) {
+                    (Some(e), _) => Some((hot::FAILED, e.clone())),
+                    (None, Some(w)) => Some((hot::RESET, w.clone())),
+                    _ => None,
+                };
+                shown.map(|(head, body)| hot::Barred::new(&mut *self.session, head, &body, w, h, &mut hot.metrics))
+            }
             None => None,
         };
         #[cfg(feature = "hot")]
@@ -619,6 +623,7 @@ impl Win {
                     "building": r.is_some_and(|r| r.building),
                     "pending": r.is_some_and(|r| r.pending().is_some()),
                     "error": r.and_then(|r| r.error.clone()),
+                    "warning": r.and_then(|r| r.warning.clone()),
                 }
             }));
             return;
@@ -909,6 +914,12 @@ pub mod hot {
     pub const BAR: Color = Color(0x5c, 0x10, 0x14, 0xf0);
     pub const BAR_TEXT: Color = Color(0xff, 0xe4, 0xe1, 0xff);
 
+    /// The bar's first line when a build or swap did not take.
+    pub const FAILED: &str = "reload failed — the last good build is still running";
+    /// …and when a swap took, but reset kept state that no longer fits
+    /// (§2.4).
+    pub const RESET: &str = "reloaded — kept state that no longer fits has its boot value";
+
     /// Find the application's crate from the program's `source_root` —
     /// the compiler's spelling of its directory, relative to where cargo
     /// ran — by looking under the current directory and above the
@@ -998,6 +1009,7 @@ pub mod hot {
     impl Barred {
         pub fn new(
             session: &mut dyn Session,
+            head: &str,
             error: &str,
             w: u32,
             h: u32,
@@ -1014,7 +1026,7 @@ pub mod hot {
             let pad = 10.0 * session.scale();
             let avail = (wf - 2.0 * pad).max(1.0);
             let mut lines = Vec::new();
-            lines.push("reload failed — the last good build is still running".to_string());
+            lines.push(head.to_string());
             for l in error.lines().filter(|l| !l.trim().is_empty()).take(8) {
                 let wrapped = match metrics.as_mut() {
                     Some(m) => lumen_static_shell::recover::wrap(l, avail, px, m),

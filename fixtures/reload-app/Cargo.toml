@@ -14,6 +14,8 @@ crate-type = ["cdylib"]
 
 [features]
 v2 = []
+# T37.3: v2's code, with the kept `name` changed from `String` to `u32`.
+v3 = ["v2"]
 
 [dependencies]
 lumen-static = { path = "../../crates/lumen-static", features = ["reload"] }

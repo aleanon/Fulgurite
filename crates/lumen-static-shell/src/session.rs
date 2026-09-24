@@ -128,6 +128,10 @@ pub trait Session: FrameSource {
     /// The application's `#[reload(keep)]` state, as bytes — empty for a
     /// session that cannot reload.
     fn save(&self) -> Vec<u8>;
+    /// What restoring saved state onto this session could not keep — one
+    /// line per field that fell back to its boot value, naming it and why
+    /// (M37/T37.3, `docs/plan-window-reload.md` §2.4). Drained.
+    fn take_restore_log(&mut self) -> String;
 }
 
 /// Whether this session catches panics in application code — the
@@ -167,6 +171,7 @@ pub struct Local<A: App> {
     metrics: Option<FontMetrics>,
     recover: Recover,
     saver: Option<Saver<A>>,
+    restore_log: String,
     #[cfg(feature = "live-agent")]
     agent: lumen_static_agent::Agent,
 }
@@ -198,6 +203,7 @@ impl<A: App + 'static> Local<A> {
             metrics,
             recover,
             saver: None,
+            restore_log: String::new(),
             #[cfg(feature = "live-agent")]
             agent: lumen_static_agent::Agent::new(),
         }
@@ -207,6 +213,12 @@ impl<A: App + 'static> Local<A> {
     pub fn with_saver(mut self, saver: Saver<A>) -> Self {
         self.saver = Some(saver);
         self
+    }
+
+    /// Record what a restore could not keep, for
+    /// [`Session::take_restore_log`].
+    pub fn note_restore(&mut self, log: String) {
+        self.restore_log = log;
     }
 
     /// The program this session was booted from.
@@ -422,6 +434,10 @@ impl<A: App + 'static> Session for Local<A> {
             Some(save) => self.caught(Vec::new(), |h| save(&h.app)),
             None => Vec::new(),
         }
+    }
+
+    fn take_restore_log(&mut self) -> String {
+        std::mem::take(&mut self.restore_log)
     }
 }
 

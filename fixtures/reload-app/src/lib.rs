@@ -4,7 +4,7 @@
 //!
 //! A button fills the top of a fixed 240×120 window, so a loader with no
 //! tree in hand can click it at a known point; the label under it is the
-//! only other text on the frame.
+//! only other text on the frame, with the kept `name` below it.
 
 use lumen_static::event::{Application, EventCtx};
 use lumen_static::style::{Edges, Length, Patch, Rule, Selector};
@@ -20,6 +20,8 @@ pub struct Ui {
     pub inc: Button<Tally>,
     #[widget_id("value")]
     pub value: Label<String>,
+    #[widget_id("name")]
+    pub name: Label<String>,
 }
 
 /// The state a handler may touch (M33), and what a swap keeps.
@@ -38,6 +40,26 @@ pub struct Counter {
     #[cfg_attr(not(feature = "v2"), bind(ui.value, count, "count {}"))]
     #[cfg_attr(feature = "v2", bind(ui.value, count, "clicks: {}"))]
     pub tally: Tally,
+    /// The edit v3 makes: this kept field's **type** changes, so v1's or
+    /// v2's saved value no longer fits (T37.3). It must reset to v3's
+    /// boot value while `tally` survives.
+    #[reload(keep)]
+    #[bind(ui.name, "name {}")]
+    pub name: Name,
+}
+
+#[cfg(not(feature = "v3"))]
+pub type Name = String;
+#[cfg(feature = "v3")]
+pub type Name = u32;
+
+#[cfg(not(feature = "v3"))]
+fn boot_name() -> Name {
+    String::from("first")
+}
+#[cfg(feature = "v3")]
+fn boot_name() -> Name {
+    7
 }
 
 fn on_inc(t: &mut Tally, _: &EventCtx) {
@@ -46,7 +68,7 @@ fn on_inc(t: &mut Tally, _: &EventCtx) {
 
 impl Application for Counter {
     fn build() -> Self {
-        let mut c = Counter { ui: Ui::default(), tally: Tally::default() };
+        let mut c = Counter { ui: Ui::default(), tally: Tally::default(), name: boot_name() };
         c.ui.inc.label = "+";
         c.ui.inc.on_click = on_inc;
         c

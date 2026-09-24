@@ -399,9 +399,18 @@ pub mod hot {
     pub fn boot<A: App + Reloadable + 'static>(program: Program<A>, saved: Option<&[u8]>) -> Box<dyn Session> {
         let mut s = Local::from_program(program, Recover::On)
             .with_saver(|a| lumen_static::reload::to_vec(&Reloadable::save(a)));
-        if let Some(v) = saved.and_then(lumen_static::reload::from_slice) {
-            s.host.restore(&v);
+        let Some(bytes) = saved else { return Box::new(s) };
+        // **Per field** (§2.4): the derive restores each kept field on its
+        // own, and one whose type changed keeps its boot value and is
+        // logged — naming the field and serde's reason. The log is this
+        // library's (a thread-local in its copy of the core), so it is
+        // drained here and handed over with the session.
+        let _ = lumen_static::reload::take_log();
+        match lumen_static::reload::from_slice(bytes) {
+            Some(v) => s.host.restore(&v),
+            None => lumen_static::reload::log_fallback("(all)", "(all)", "the saved state could not be read at all"),
         }
+        s.note_restore(lumen_static::reload::take_log().join("\n"));
         Box::new(s)
     }
 
@@ -587,6 +596,11 @@ pub mod hot {
         /// Why the last build or swap did not take: the compiler's log, a
         /// stamp refusal, a boot's panic. Cleared by a successful swap.
         pub error: Option<String>,
+        /// What the last swap **did** take but could not keep all of: one
+        /// line per kept field whose type no longer fits, which holds its
+        /// boot value (§2.4 — nothing is refused, because refusing would
+        /// trap the user on the old code). Replaced by the next swap.
+        pub warning: Option<String>,
         /// Swaps completed.
         pub reloads: u32,
         /// A build is running.
@@ -669,9 +683,11 @@ pub mod hot {
                 Ok(hot) => {
                     let mut next: Box<dyn Session> = Box::new(hot);
                     adopt(&mut *next);
+                    let log = next.take_restore_log();
                     *current = next;
                     self.reloads += 1;
                     self.error = None;
+                    self.warning = (!log.is_empty()).then_some(log);
                     true
                 }
                 Err(report) => {
@@ -780,6 +796,9 @@ pub mod hot {
         }
         fn save(&self) -> Vec<u8> {
             self.s().save()
+        }
+        fn take_restore_log(&mut self) -> String {
+            self.m().take_restore_log()
         }
     }
 }

@@ -271,6 +271,31 @@ fires.
 
 ## T37.3 — state across the swap
 
+> **DONE 2026-09-24.** Restore was already per field: the derive
+> restores each kept field on its own and logs one whose saved value no
+> longer fits. A window library's log is a thread-local in its own copy
+> of the core, so `hot::boot` drains it right after the restore and
+> hands it over with the session (`Session::take_restore_log`). Bytes
+> that cannot be read at all are logged too, where they used to be
+> silently ignored. `Reloader::warning` carries the log after a swap
+> that **took**, as distinct from `error`, which means a swap that did
+> not. The window bar heads each differently (`hot::FAILED`,
+> `hot::RESET`), and `app.reloads` reports both. **Gate**
+> (`just window-reload-demo`): `fixtures/reload-app` v3 changes the
+> kept `name` from `String` to `u32`. From v2's `+ | clicks: 1 | name
+> first` the swap completes to `+ | clicks: 1 | name 7`, and the warning
+> reads `Counter.name: incompatible saved value: invalid type: string
+> "first", expected u32`. *Injection:* restore made all-or-nothing, by
+> re-booting whenever any field fell back. The frame reads `clicks: 0`,
+> and "every other kept field survives" fires.
+>
+> **Not carried across a window swap: M28 work in flight.** The old
+> session's inbox and its running jobs stay with the old session, which
+> is dropped. `fixtures/hot-host` proves descriptors can cross as data
+> (T28.7), but the window's `Session` has no method that hands pending
+> descriptors over, so a chain started before a reload does not complete
+> after it. Recorded, not built.
+
 §2.4, plus the M28 carry-over that `fixtures/hot-host` already proves.
 **Gate:** change a kept field's type between v1 and v2. The swap
 completes, that field holds its boot value, the error bar names it, and
