@@ -1365,6 +1365,16 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
     /// redraw. `false` when nothing is focused or the focused thing does
     /// not edit text, which are the same answer from a caller's side.
     ///
+    /// **A change marks the focused node's subtree** — M41/T41.1
+    /// (`docs/plan-boundaries-repair.md` §1.1, R1-F2). The window routes
+    /// `Ime::Preedit`, `Ime::Commit` and `Ime::Disabled` here and then
+    /// pumps an empty queue, so none of the pump's own mark sites sees
+    /// the edit. Until this mark, `Boundaries` skipped the field's
+    /// `layout` — its scroll, its box and its clusters — and painted the
+    /// commit against last frame's; `Everything` hid it. The same
+    /// precise mark the pointer-state block uses, plus the arena flag the
+    /// consumed path sets. `false` marks nothing.
+    ///
     /// Not an `Event`: a composition step carries a string, and `Event`
     /// is `Copy` and 16 bytes. Same reason `paste` is a method.
     pub fn compose(&mut self, c: lumen_static::event::Composition<'_>) -> bool {
@@ -1373,7 +1383,12 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         if i >= table.len() {
             return false;
         }
-        self.app.tree_mut().node_mut(i).compose(c)
+        let changed = self.app.tree_mut().node_mut(i).compose(c);
+        if changed {
+            mark_node(&mut self.invalidation, table, Some(i as u32));
+            self.arenas_dirty = true;
+        }
+        changed
     }
 
     /// The pointer shape for whatever the pointer is currently over —

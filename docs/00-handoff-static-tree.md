@@ -799,6 +799,13 @@ diagnostic feature); a binding marks its own node, and a click on a
 split application narrows too. The evidence is
 `docs/plan-boundaries-default.md` T34.0–T34.2; the figures are
 `docs/results-damage-precision.md` T29.3, T29.6 and T34.2.
+**M41 is repairing what the flip exposed** (`docs/plan-boundaries-repair.md`):
+T34.0's inventory missed `Host::compose`, which marked nothing, so an IME
+commit was painted over a stale layout until M41/T41.1 made it mark the
+focused subtree; the host's writes are now audited method by method in
+`docs/plan-boundaries-default.md` T34.0. The other known unmarked writes
+(a `Repeat`'s data, the agent's probe, a paste's measurer) are gated and
+fixed by M41's later tasks.
 
 **DECIDED 2026-09-03 — confirmed by the first profile of a live frame**
 (`docs/results-frame-cost.md`): layout and paint were 1 µs of a 190 ms frame.

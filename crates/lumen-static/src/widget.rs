@@ -215,6 +215,12 @@ pub trait Node {
     /// `false` from a node that does not edit text, which is what lets
     /// `Host::compose` route to the focused node without asking what
     /// kind of thing it is.
+    ///
+    /// **The answer is also the mark** (M41/T41.1): `Host::compose`
+    /// marks this node's subtree when it returns `true`, and nothing
+    /// otherwise. A node that changes and answers `false` is laid out
+    /// only by a frame something else marked, so under `Boundaries` it
+    /// paints stale.
     fn compose(&mut self, c: crate::event::Composition<'_>) -> bool {
         let _ = c;
         false

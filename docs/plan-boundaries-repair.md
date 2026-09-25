@@ -1,6 +1,23 @@
 # M41 — `Boundaries`, completed after the flip
 
-> **Written 2026-09-24, not started.** Closes **R1-F2** and **R10-F9**
+> **T41.0–T41.1 DONE 2026-09-25** (Phase 1; T41.2–T41.7 not started).
+>
+> - **T41.0**: ten gates. Six red and ignored until their task —
+>   compose (T41.1), the oracle's widget-internal case (T41.2), `Repeat`
+>   data cases 2–3 (T41.3), the audit under `Boundaries` (T41.4), paste
+>   (T41.5), the table counterexamples (T41.6). Four green, each with an
+>   injection, closing I-NEW-2 and R1-F3's residue (`tick_marks.rs` and
+>   `App::tick`'s contract), R18-F6 (`invalidate_model.rs`: 47 814
+>   disagreements under mark-2), R18-F8 (clicks landed 3/3; I4a turns
+>   both headline tests red), R5-F6 (`reload_oracle.rs`: 0 / 0, and
+>   7 770 px on the sourceless arm with `reasked`'s mark deleted).
+> - **T41.1**: `Host::compose` marks the focused subtree. Closes R1-F2
+>   (S0) and R10-F9; the commit frame goes from x = None (nothing
+>   painted) to −64, equal to `Everything`, and the host's writes are
+>   audited in `docs/plan-boundaries-default.md` T34.0.
+> - §6 records what building found.
+>
+> **Written 2026-09-24.** Closes **R1-F2** and **R10-F9**
 > (one defect, now S0), **R1-F6**, **R1-F4**, **R1-F5**, **R2-F1**,
 > **R10-F4**, **R2-F5**, **R1-F3**'s residue, **R18-F6**, **R18-F8**,
 > **R5-F6**, and the re-triage's **I-NEW-1** and **I-NEW-2**. Sources:

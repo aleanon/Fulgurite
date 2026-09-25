@@ -89,6 +89,40 @@ commit subjects. Every gate names the injection that must turn it red.*
 > the fix). An advancing tick that reports a change now marks
 > everything; a zero-`dt` query, by `App::tick`'s contract, marks
 > nothing.
+>
+> **Amended 2026-09-25, M41/T41.1** (`docs/plan-boundaries-repair.md`
+> §1.1). The inventory above lists gates; it never listed the host's own
+> writes, and so it missed one. **`Host::compose` wrote the focused
+> field and marked nothing** — R1-F2, now S0 — so under this plan's
+> default an IME commit was painted over last frame's layout: the field
+> kept its box and scroll, and a 16 px empty field painted no text at
+> all (`crates/lumen-static-shell/tests/compose_marks.rs`). This is the
+> row that should have been here, with every other `&mut self` method on
+> `Host` audited the same way at b213ae0:
+>
+> | method | what it writes | what it marks |
+> |---|---|---|
+> | `compose` | the focused node's buffer, preedit, caret | **nothing, until T41.1**; now the focused subtree and the arena flag, when the widget reports a change |
+> | `pump`, `pump_with` | dispatch, `apply`, `update` | a consumed event: everything, or the consumed subtrees for a split application (M29/T29.6); pointer-state changes: old and new node; bindings: their own ranges or everything |
+> | `tick` | whatever `App::tick` writes | everything, when it reports a change on a positive `dt`; nothing otherwise, which `App::tick`'s rustdoc now makes the contract (M41/T41.0) |
+> | `paste` | the focused field, by posting `Text` events | each chunk's pump marks as a consumed event does; **the pumps lay out with `BlockMetrics`** (R2-F1, M41/T41.5) |
+> | `set_stylesheet` | every style, and the arenas (`cascade_deep_with`) | everything |
+> | `restyle_subtree` | one subtree's styles and the arenas in it (`cascade_subtree_with`) | that subtree; the arena flag is not needed, because the cascade reaches the subtree's arenas itself |
+> | `set_palette` | every style, re-cascaded with the arenas | everything; nothing for an equal palette |
+> | `invalidate`, `invalidate_all` | nothing: they are the reporting path | the named subtree, or everything; both set the arena flag |
+> | `adopt`, `restore`, `reload` | the application, and the sheet if a source exists | everything, through `reasked`; for a host without a sheet source that mark is the only one (R5-F6, `tests/reload_oracle.rs`) |
+> | `resize`, `set_scale` | the viewport | everything, and retention is reset |
+> | `guard` (a caught panic) | resets the list, overlays, pointer state and queue | everything, and the arena flag |
+> | `set_sheet_source` | the sheet, through `set_stylesheet` when non-empty | as `set_stylesheet` |
+> | `show`, `repaint_all`, `take_damage_for_age`, `retry` | the list or retention only, never the tree | nothing, and nothing is owed |
+> | `post`, `click`, `spawn`, `set_spawner`, `run_pending_jobs`, `hold_until_spawner` | the queue or the jobs; results re-enter through the inbox | nothing here; the pump that drains them marks |
+> | the public `app`, `styles`, `states`, `input` fields | anything a caller writes | **nothing** — a direct write is the unreported write `Boundaries` cannot see, and the caller reports it with `invalidate` |
+> | `shadow_check` (the `shadow-oracle` feature) | **lays the live widgets out again** | nothing — it repairs the frame it judges (R1-F6, M41/T41.2) |
+>
+> Outside `Host`, the agent's `frame_done` probes every leaf through
+> `Node::probe`, whose provided body is `layout`, and so writes a
+> `TextInput`'s and a `TextArea`'s scroll with nothing marked (R1-F5,
+> M41/T41.4).
 
 Write the inventory as a table in this plan, with gate, strategy and
 whether it can exercise one. Then:

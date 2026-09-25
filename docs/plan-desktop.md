@@ -576,6 +576,17 @@ window's origin. It needs the caret rect in physical pixels, which the
 host can produce but does not expose; the composition itself works
 without it.
 
+**Amended 2026-09-25, M41/T41.1: the routing is gated now, and it was
+wrong under `Boundaries`.** The tests above call the widgets' inherent
+`compose`; nothing called `Host::compose`, the path the window uses, so
+both `Node::compose` impls could be no-ops with every test green
+(R10-F9). And `Host::compose` marked nothing, so once `Boundaries<256>`
+became the default (M34/T34.2) a commit was painted over last frame's
+layout (R1-F2). It marks the focused subtree now, and
+`crates/lumen-static-shell/tests/compose_marks.rs` routes Tab, a preedit,
+a commit and a cancel through the host and compares every frame with
+`Everything` (`docs/plan-boundaries-repair.md` T41.0–T41.1).
+
 ---
 
 ## Sequence

@@ -1,5 +1,5 @@
-//! **A composition step is marked** — M41/T41.0, for R1-F2 and R10-F9
-//! (`docs/plan-boundaries-repair.md` §1.1).
+//! **A composition step is marked** — M41/T41.0's gate, closed by
+//! T41.1, for R1-F2 and R10-F9 (`docs/plan-boundaries-repair.md` §1.1).
 //!
 //! The window routes `Ime::Preedit`, `Ime::Commit` and `Ime::Disabled`
 //! to [`Host::compose`], and the redraw that follows pumps an empty
@@ -15,8 +15,9 @@
 //! compared frame by frame. **Each case asserts that it can fail**:
 //! `compose` answered `true`, focus is on the field meant, and the
 //! `Everything` arm's text really scrolled (its x is left of the
-//! field's padding). A commit that scrolls nothing would compare two
-//! frames that agree whatever the strategy does.
+//! field's padding). The short commit is the control: it scrolls
+//! nothing and still changes the content-sized field's box, so it shows
+//! the mark is not specific to a scroll.
 //!
 //! The routing test is R10-F9's: before this file, nothing called
 //! `Host::compose` at all — `ime.rs` calls the widgets' inherent
@@ -183,13 +184,11 @@ fn compare<A: Case>(name: &str, steps: &[lumen_static::event::Composition<'_>], 
 const LONG: &str = "abcdefghijklmnopqrstuvwx";
 
 #[test]
-#[ignore = "red until T41.1: R1-F2, Host::compose marks nothing"]
 fn a_commit_that_scrolls_the_field_draws_the_same_frame_under_both_strategies() {
     compare::<PlainApp>("plain", &[Commit(LONG), Preedit("yz"), Cancel], true);
 }
 
 #[test]
-#[ignore = "red until T41.1: R1-F2, Host::compose marks nothing"]
 fn a_commit_into_a_composite_draws_the_same_frame_under_both_strategies() {
     compare::<SearchApp>("search", &[Commit(LONG), Preedit("yz"), Cancel], true);
 }
@@ -197,7 +196,6 @@ fn a_commit_into_a_composite_draws_the_same_frame_under_both_strategies() {
 /// **The control**: a commit short enough that nothing scrolls. It
 /// proves the comparison is not simply refusing every compose.
 #[test]
-#[ignore = "red until T41.1: R1-F2, Host::compose marks nothing"]
 fn a_short_commit_draws_the_same_frame_under_both_strategies() {
     compare::<PlainApp>("short", &[Commit("ab")], false);
 }
@@ -211,6 +209,12 @@ fn composition_reaches_the_focused_field_through_the_host() {
     h.pump();
     assert!(!h.compose(Commit("x")), "nothing focused: compose must answer false");
     assert_eq!(h.app.ui.field.as_str(), "", "and change nothing");
+    // **The accept direction** (T41.1): a compose that changed nothing
+    // marks nothing, so the frame after it is still.
+    h.pump();
+    let m = h.last_marks();
+    println!("after a compose with nothing focused: {m:?} (bound: nothing marked)");
+    assert!(!m.all && m.ranges == 0, "a compose that changed nothing marked {m:?}");
     h.post(Event::Key { key: Key::Tab, down: true });
     h.pump();
     assert_eq!(h.input.focus, Some(PlainApp::editable() as u32), "setup: Tab did not focus the field");
@@ -220,6 +224,12 @@ fn composition_reaches_the_focused_field_through_the_host() {
     assert!(h.compose(Commit("你")), "a commit is a change");
     assert_eq!(h.app.ui.field.as_str(), "你");
     assert_eq!(h.app.ui.field.preedit(), None);
+    // And one that changed something marks precisely: the field's own
+    // subtree, not the whole tree.
+    h.pump();
+    let m = h.last_marks();
+    println!("after a commit: {m:?} (bound: one range, not all)");
+    assert!(!m.all && m.ranges == 1, "a commit marked {m:?}, not the field alone");
     assert!(!h.compose(Cancel), "nothing composing: a cancel changes nothing");
     println!("routed: {:?}", h.app.ui.field.as_str());
 }
