@@ -255,6 +255,17 @@ pub trait Node {
         false
     }
 
+    /// The agent's audit asking for this node's natural size, under a
+    /// million-pixel box. The provided body is `layout`.
+    ///
+    /// **A probe may not change what the next paint draws.** Since
+    /// M57/A3 the audit lays the node out again under its real limits
+    /// straight after probing, which restores any cache that is a
+    /// function of the limits — so a widget needs no override just
+    /// because it caches (`docs/widget-audit.md` X1 was five widgets
+    /// that did). Override it only where layout itself would decide
+    /// something a probe must not, as `Repeat` does with its scroll
+    /// clamp (T27.10).
     #[cfg(feature = "observe")]
     fn probe(
         &mut self,

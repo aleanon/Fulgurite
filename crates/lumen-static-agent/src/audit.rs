@@ -407,12 +407,18 @@ impl Auditor {
     /// nodes, so the old finding set is discarded and everything true now
     /// re-announces itself. An agent that just swapped a dylib wants the
     /// current state of the world, not a diff against a vanished one.
-    pub fn record(&mut self, frame: u64, tree: &mut TreeMut, structural_reset: bool) {
+    pub fn record(
+        &mut self,
+        frame: u64,
+        tree: &mut TreeMut,
+        structural_reset: bool,
+        host: Option<(&mut dyn lumen_static::TextMeasure, f32)>,
+    ) {
         // `found` is the buffer the previous frame's findings vacated:
         // the two alternate, so a frame with findings allocates nothing
         // once both have grown.
         let mut found = std::mem::take(&mut self.spare);
-        self.collect(tree, &mut found);
+        self.collect(tree, &mut found, host);
 
         if structural_reset {
             self.current.clear();
@@ -513,6 +519,7 @@ impl Auditor {
         styles: &[lumen_static::Style],
         scratch: &mut [NodeState],
         measure: &mut dyn lumen_static::TextMeasure,
+        scale: f32,
         i: usize,
     ) -> Natural {
         // Measured with the host's own text stack (`Agent::
@@ -521,9 +528,23 @@ impl Auditor {
         // stand-in while the window laid out with a real face reported
         // every button of the live tally as truncated — the block's
         // 0.5 em advance is wider than any real digit.
-        let mut cx = lumen_static::LayoutCx::new(measure);
+        let mut cx = lumen_static::LayoutCx::new(measure).with_scale(scale);
+        let real = scratch[i].constraints;
         let a = root.node_mut(i).probe(&mut cx, PROBE_A, styles, scratch, i);
         let b = root.node_mut(i).probe(&mut cx, PROBE_B, styles, scratch, i);
+        // **Put back what the probe disturbed** — M57/A3
+        // (`docs/plan-widget-fixes.md`). A widget that caches a layout
+        // result — `RichText`'s placed words, a text field's clusters, a
+        // strip's label widths, a slider's track — kept the probe's,
+        // measured inside a million-pixel box, and painted from it on
+        // every frame that did not lay it out again: paragraphs on one
+        // line, words split, a caret that always went to the end
+        // (`docs/widget-audit.md` X1). `Repeat` met this first (T27.10)
+        // and was fixed by an override, which left the shape waiting for
+        // the next widget. Laying the leaf out again under the limits the
+        // frame gave it restores any cache that is a function of its
+        // limits, with no per-widget code.
+        root.node_mut(i).layout(&mut cx, real, styles, scratch, i);
         Natural { intrinsic: a == b, size: a }
     }
 
@@ -533,7 +554,18 @@ impl Auditor {
         out
     }
 
-    fn collect(&mut self, tree: &mut TreeMut, out: &mut Vec<Finding>) {
+    fn collect(
+        &mut self,
+        tree: &mut TreeMut,
+        out: &mut Vec<Finding>,
+        host: Option<(&mut dyn lumen_static::TextMeasure, f32)>,
+    ) {
+        // The host's own measure and scale for this frame when it passed
+        // them (M57/A3), the installed one otherwise.
+        let (measure, scale): (&mut dyn lumen_static::TextMeasure, f32) = match host {
+            Some((m, s)) => (m, s),
+            None => (&mut *self.measure, 1.0),
+        };
         out.clear();
         let st = tree.states;
 
@@ -573,8 +605,7 @@ impl Auditor {
             // with content and no room is `W1001`, which must still
             // fire, and gating on area turned that lint off.
             if leaf && live[i] {
-                let nat =
-                    Self::natural(tree.root, tree.styles, &mut self.scratch, &mut *self.measure, i);
+                let nat = Self::natural(tree.root, tree.styles, &mut self.scratch, &mut *measure, scale, i);
                 let has_content = nat.intrinsic && nat.size.w > 0.0 && nat.size.h > 0.0;
 
                 if has_content && a > 0.0 {

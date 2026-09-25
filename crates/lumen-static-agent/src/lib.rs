@@ -386,7 +386,36 @@ impl Agent {
         }
         self.perf_next = (self.perf_next + 1) % PERF_RING;
         let structural_reset = self.journal.record(self.frame, &tree.as_ref());
-        self.auditor.record(self.frame, tree, structural_reset);
+        self.auditor.record(self.frame, tree, structural_reset, None);
+    }
+
+    /// [`Agent::frame_done`], with the **host's own text measure and
+    /// display scale for this frame** — M57/A3 (`docs/plan-widget-fixes.md`).
+    ///
+    /// The audit re-lays leaves out to find their natural size, and a
+    /// widget keeps what its last layout computed. Measured with anything
+    /// but what the host laid out with, it left `W1005` reporting labels
+    /// that fit and — worse — widgets painting from the wrong widths
+    /// (`docs/widget-audit.md` X1). A host that has a real face should
+    /// call this rather than install a second copy of it with
+    /// [`Agent::set_text_measure`], because the scale moves with the
+    /// window and a copy would not.
+    pub fn frame_done_measured(
+        &mut self,
+        tree: &mut TreeMut,
+        timing: FrameTiming,
+        measure: &mut dyn lumen_static::TextMeasure,
+        scale: f32,
+    ) {
+        self.frame += 1;
+        if self.perf.len() < PERF_RING {
+            self.perf.push(timing);
+        } else {
+            self.perf[self.perf_next] = timing;
+        }
+        self.perf_next = (self.perf_next + 1) % PERF_RING;
+        let structural_reset = self.journal.record(self.frame, &tree.as_ref());
+        self.auditor.record(self.frame, tree, structural_reset, Some((measure, scale)));
     }
 
     /// Dispatch one JSON-RPC 2.0 request, returning the response object.

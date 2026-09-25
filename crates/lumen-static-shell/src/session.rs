@@ -425,10 +425,17 @@ impl<A: App + 'static> Session for Local<A> {
         #[cfg(feature = "live-agent")]
         {
             let agent = &mut self.agent;
+            let metrics = &mut self.metrics;
             let _ = run_guarded(&mut self.host, self.recover, |h| {
                 let timing = lumen_static_agent::FrameTiming::default();
+                let scale = h.scale();
                 let mut tree = lumen_static_agent::TreeMut::of_root(h.app.tree_mut(), &h.styles, &h.states);
-                agent.frame_done(&mut tree, timing);
+                // The measure the host laid out with, so the audit's
+                // re-layout leaves every widget as the frame did (M57/A3).
+                match metrics {
+                    Some(m) => agent.frame_done_measured(&mut tree, timing, m, scale),
+                    None => agent.frame_done(&mut tree, timing),
+                }
             });
         }
     }
