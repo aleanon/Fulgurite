@@ -198,6 +198,21 @@ pub enum Event {
     Scroll { x: f32, y: f32, dy: f32 },
     Key { key: Key, down: bool },
     Text { ch: char },
+    /// Focus arrived at (`gained`) or left this node — M57/A7
+    /// (`docs/plan-widget-fixes.md`).
+    ///
+    /// Synthesized by `dispatch` once an event has **finished** moving
+    /// focus, and offered to the old node and then the new one, bubbling
+    /// like any event (so `ctx.target` names the node focus moved to or
+    /// from, and a container can tell its own part apart).
+    ///
+    /// **A transition, not a state.** A chooser opened its list from
+    /// `layout` whenever its field was focused, so a choice that closed
+    /// the list reopened it in the same pass (`docs/widget-audit.md` X5),
+    /// and a tooltip had no way to open on keyboard focus at all. An
+    /// event fires once, when focus moves, which is what "opens on focus"
+    /// means. Never enqueued by a host.
+    Focus { gained: bool },
     /// One finger, at one moment — `docs/plan-capabilities.md` T15.5.
     ///
     /// **`id` is a `u32`, and that was measured rather than chosen.**
@@ -265,7 +280,7 @@ impl Event {
             | Event::Hover { x, y }
             | Event::Touch { x, y, .. }
             | Event::Scroll { x, y, .. } => Some(Point { x, y }),
-            Event::Key { .. } | Event::Text { .. } | Event::Modifiers(_) => None,
+            Event::Key { .. } | Event::Text { .. } | Event::Modifiers(_) | Event::Focus { .. } => None,
         }
     }
 }

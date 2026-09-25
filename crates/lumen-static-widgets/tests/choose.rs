@@ -233,6 +233,10 @@ fn a_picklist_does_not_filter() {
     );
 }
 
+/// `on_event` only: this checks the widget's own Escape arm, and **no
+/// layout pass runs**, so it cannot see a list that closes and reopens in
+/// the same frame — which is what shipped (`docs/widget-audit.md` X5).
+/// The pumped check is `lumen-static-shell/tests/chooser_closes.rs`.
 #[test]
 fn escape_closes_an_open_chooser() {
     let mut p = PickList::new(&OPTS);

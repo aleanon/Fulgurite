@@ -245,8 +245,10 @@ pub fn dispatch_overlaid_into<S: crate::event::App, O: crate::overlay::OverlaySi
     ev: &crate::event::Event,
     consumed: &mut Consumed,
 ) -> bool {
+    let before = input.focus;
     let handled = dispatch_overlaid_inner(state, style, st, input, ov, ev, consumed);
     publish_focus(st, input);
+    tell_focus(state, input, before, consumed);
     handled
 }
 
@@ -420,9 +422,51 @@ pub fn dispatch<S: crate::event::App>(
     input: &mut crate::event::InputState,
     ev: &crate::event::Event,
 ) -> bool {
-    let handled = dispatch_at(state, style, st, input, ev, None, &mut Consumed::default());
+    let before = input.focus;
+    let mut consumed = Consumed::default();
+    let handled = dispatch_at(state, style, st, input, ev, None, &mut consumed);
     publish_focus(st, input);
+    tell_focus(state, input, before, &mut consumed);
     handled
+}
+
+/// **Tell the old and new focus that focus moved** — M57/A7.
+///
+/// [`Event::Focus`](crate::event::Event::Focus) to the node focus left,
+/// then to the node it reached, each bubbling to its ancestors until one
+/// consumes it. Nothing is sent when the event did not move focus, so a
+/// widget that opens "on focus" opens once, on the transition — not on
+/// every frame its part happens to be focused. A consumer is recorded in
+/// `consumed`, so the host marks it and it is laid out this frame.
+fn tell_focus<S: crate::event::App>(
+    state: &mut S,
+    input: &crate::event::InputState,
+    before: Option<u32>,
+    consumed: &mut Consumed,
+) {
+    use crate::event::{Event, EventCtx};
+    let after = input.focus;
+    if before == after {
+        return;
+    }
+    let table = <S::Tree as crate::widget::Widget>::SUB_TABLE;
+    for (node, gained) in [(before, false), (after, true)] {
+        let Some(start) = node.map(|n| n as usize).filter(|&n| n < table.len()) else { continue };
+        let ev = Event::Focus { gained };
+        let mut ctx = EventCtx::for_event_with(start as u32, ev, input.mods);
+        let mut i = start;
+        loop {
+            ctx.node = i as u32;
+            if state.tree_mut().node_mut(i).on_event(&ev, &ctx) {
+                consumed.push(i);
+                break;
+            }
+            if table[i].parent == crate::desc::NO_PARENT {
+                break;
+            }
+            i = table[i].parent as usize;
+        }
+    }
 }
 
 /// **Publish focus into the state array once the event has moved it** —

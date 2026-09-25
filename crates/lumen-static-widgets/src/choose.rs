@@ -555,23 +555,6 @@ impl<const KIND: u8> Node for Chooser<KIND> {
         if KIND == COMBOBOX && self.typed {
             self.list.content.filter(self.trigger.as_str());
         }
-        // **It opens on focus, not on a press.** The trigger is a
-        // `TextInput` and consumes the `PointerDown` itself — the
-        // bubbling walk stops at the node that took the event, so an
-        // arm here never ran and the list never opened. Focus is the
-        // signal that survives: `dispatch` sets it from the *hit chain*
-        // before any node is asked, so it is true by the time this runs.
-        //
-        // It also reads better than a press arm would: a chooser reached
-        // by Tab opens too, which a keyboard user needs and a press arm
-        // could not give them.
-        //
-        // A dismissing press clears focus (`dispatch_overlaid`), so this
-        // cannot re-open what that press just closed — the dropdown bug
-        // `Select` avoids, avoided here by the same accident of ordering.
-        if KIND != MENU && st[i + Self::TRIGGER].focused {
-            self.list.open = true;
-        }
         let t = if KIND == MENU {
             // A menu has no trigger to show. Zeroed rather than absent,
             // so the table's shape does not depend on the kind.
@@ -622,6 +605,19 @@ impl<const KIND: u8> Node for Chooser<KIND> {
 
     fn on_event(&mut self, ev: &Event, cx: &EventCtx) -> bool {
         match ev {
+            // **It opens when focus arrives at its field** — the
+            // transition, delivered once by `dispatch` (M57/A7). The
+            // trigger consumes the `PointerDown` itself, so a press arm
+            // here never ran; focus is the signal that survives, and a
+            // chooser reached by Tab opens too, which a keyboard user
+            // needs. This used to be `if focused { open }` in `layout`,
+            // a *level*: a choice or an Escape closed the list and the
+            // same pass, still reading the field as focused, reopened it
+            // (`docs/widget-audit.md` X5).
+            Event::Focus { gained: true } if KIND != MENU && cx.target == cx.node + Self::TRIGGER as u32 => {
+                self.list.open = true;
+                true
+            }
             Event::Key { key: Key::Escape, down: true } if self.list.open => {
                 self.list.open = false;
                 true
