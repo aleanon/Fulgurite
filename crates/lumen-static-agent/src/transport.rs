@@ -100,15 +100,28 @@ pub fn bind_with(addr: &str, allow_remote: bool) -> std::io::Result<TcpListener>
     TcpListener::bind(&resolved[..])
 }
 
+/// The exit status of a process whose agent endpoint could not bind
+/// (M42/T42.1): distinct from a panic (101) and from a kill (143).
+pub const BIND_FAILED: i32 = 3;
+
 /// Bind `addr` and serve on it until the process ends, reporting on
-/// stderr. A failed bind is reported and returns: the application keeps
-/// running without an endpoint.
+/// stderr.
+///
+/// **A failed bind ends the process with status [`BIND_FAILED`]** (M42/
+/// T42.1, `docs/plan-drive-identity.md` §2.2), after printing the address
+/// and the reason — M39/T39.2's loopback refusal included. Until M42 it
+/// was reported and returned, and the window kept running without an
+/// endpoint: a leftover window holding the port then answered every
+/// request meant for this one, and both legs of a two-strategy drive
+/// drove the same stranger and passed (R18-F1). A window built with an
+/// endpoint that cannot serve it misleads whoever asked for the endpoint.
+/// The fix for two windows on one port is `LUMEN_AGENT_ADDR`.
 pub fn serve_addr(addr: &str, handler: impl Handler) {
     let listener = match bind(addr) {
         Ok(l) => l,
         Err(e) => {
-            eprintln!("agent: cannot bind {addr}: {e}");
-            return;
+            eprintln!("agent: cannot bind {addr}: {e} -- exiting with status {BIND_FAILED}");
+            std::process::exit(BIND_FAILED);
         }
     };
     eprintln!("agent: listening on {addr}");

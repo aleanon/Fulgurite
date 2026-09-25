@@ -38,6 +38,12 @@ impl lumen_static_agent::AgentHost for Live<'_> {
     fn enqueue(&mut self, ev: Event) {
         self.host.post(ev);
     }
+    /// M42/T42.1: which process this is, for `app.diagnostics` —
+    /// `Host<Tally>`'s strategy is the shell's default, read from the
+    /// type rather than assumed.
+    fn process_info(&self) -> serde_json::Value {
+        lumen_static_agent::process_block(self.host.strategy(), &lumen_static_shell::process_features())
+    }
     /// `app.setPalette` (M25/T25.3): the host owns the palette.
     fn set_palette(&mut self, palette: lumen_static::style::Palette) -> bool {
         self.host.set_palette(palette);

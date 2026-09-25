@@ -128,8 +128,16 @@ result — but write the check anyway; it is what makes the run a test.
 
 **Port lifecycle:** one window owns `LUMEN_AGENT_ADDR` (default
 `127.0.0.1:9230`; the gate uses `:9231` so it never talks to your dev
-window). A stale window from a previous run answers instead of yours;
-`quit` it or set a different address. `wait-port` times out at 60 s — a
+window). **A window whose endpoint cannot bind exits with status 3**
+(M42/T42.1), naming the address — it used to keep running without an
+endpoint while a stale window from a previous run answered instead of
+yours. `quit` the stale one or set a different address. **Ask which
+process answered**: `app.diagnostics` carries a `process` block —
+`pid`, `exe`, `strategy` (the host's invalidation type, e.g.
+`lumen_static::invalidate::Boundaries<256>`) and `features`
+(`agent`, `everything`, `shadow-oracle`, `reload`) — or
+`{"supported": false}` from a host that cannot say, which is not an
+answer. The live drives check it on every leg (`scripts/live/launch.py`). `wait-port` times out at 60 s — a
 longer wait means the build failed; read its log. **A malformed line ends
 the connection** (M39): anything that is not one JSON object per line —
 an HTTP request, a batch, a stray `5` — gets one error reply and a close,

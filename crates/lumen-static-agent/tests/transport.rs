@@ -315,3 +315,74 @@ fn a_seventeenth_connection_is_refused_and_sixteen_answer() {
     let (_d, again) = ask(addr, 100, Duration::from_millis(1000));
     assert_eq!(again.map(|r| r["id"].clone()), Some(json!(100)), "slots were not given back");
 }
+
+/// **A failed bind ends the process with status 3** — M42/T42.1
+/// (`docs/plan-drive-identity.md` §2.2, R18-F1). Until then the socket
+/// thread logged `agent: cannot bind` and returned, the window kept
+/// running without an endpoint, and whatever already held the port was
+/// driven in its place.
+///
+/// Run in a child: the test binary re-executes itself with
+/// `LUMEN_BIND_CHILD` naming a port this test already holds. The child
+/// models a window — `serve_addr` on a thread, the main thread carrying
+/// on — so a bind that only returns shows as a child still running.
+#[test]
+fn a_failed_bind_exits_3() {
+    if let Ok(addr) = std::env::var("LUMEN_BIND_CHILD") {
+        std::thread::spawn(move || transport::serve_addr(&addr, |_req: Value| None));
+        std::thread::sleep(Duration::from_secs(10));
+        return;
+    }
+    let held = transport::bind("127.0.0.1:0").expect("bind");
+    let addr = held.local_addr().unwrap().to_string();
+    let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+        .args(["--exact", "a_failed_bind_exits_3", "--nocapture", "--test-threads=1"])
+        .env("LUMEN_BIND_CHILD", &addr)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("spawn the child");
+    let t0 = Instant::now();
+    let status = loop {
+        if let Some(s) = child.try_wait().unwrap() {
+            break s;
+        }
+        if t0.elapsed() > Duration::from_secs(2) {
+            let _ = child.kill();
+            let _ = child.wait();
+            panic!("child still running after 2 s: a bind on {addr}, which this test holds, did not exit");
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    };
+    let mut err = String::new();
+    child.stderr.take().unwrap().read_to_string(&mut err).unwrap();
+    println!("child on held {addr}: {status}, stderr {:?}", err.trim());
+    assert_eq!(status.code(), Some(transport::BIND_FAILED), "{status}: {err}");
+    assert!(err.contains(&format!("cannot bind {addr}")), "the address is not named: {err}");
+    drop(held);
+}
+
+/// The accept direction: a bind on a free port serves.
+#[test]
+fn a_bind_on_a_free_port_serves() {
+    let port = transport::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+    let addr = format!("127.0.0.1:{port}");
+    let a = addr.clone();
+    std::thread::spawn(move || {
+        transport::serve_addr(&a, |req: Value| Some(json!({ "jsonrpc": "2.0", "id": req["id"], "result": 1 })))
+    });
+    let t0 = Instant::now();
+    let mut s = loop {
+        match TcpStream::connect(&addr) {
+            Ok(s) => break s,
+            Err(_) if t0.elapsed() < Duration::from_secs(2) => std::thread::sleep(Duration::from_millis(10)),
+            Err(e) => panic!("nothing served on {addr}: {e}"),
+        }
+    };
+    s.write_all(b"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"x\"}\n").unwrap();
+    let mut line = String::new();
+    BufReader::new(s).read_line(&mut line).unwrap();
+    println!("served on {addr}: {}", line.trim());
+    assert!(line.contains("\"result\":1"), "{line}");
+}
+

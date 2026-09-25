@@ -194,6 +194,65 @@ fn diagnostics_and_perf() {
     assert_eq!(p["samples"], 1);
     let w = f.result("ui.waitSettled", json!({}));
     assert_eq!(w["settled"], true);
+
+    // M42/T42.1: a tree alone cannot say which process it is in.
+    assert_eq!(d["process"]["supported"], false, "a tree claimed a process: {d}");
+}
+
+/// A host over the fixture, with and without `process_info`.
+struct Hosted<'a>(&'a Fixture, Option<Value>);
+
+impl lumen_static_agent::AgentHost for Hosted<'_> {
+    fn tree(&self) -> TreeRef<'_> {
+        TreeRef::of_root(&self.0.app, &self.0.styles, &self.0.states)
+    }
+    fn enqueue(&mut self, _ev: lumen_static::Event) {}
+    fn pump(&mut self) -> (u64, bool) {
+        (1, false)
+    }
+    fn process_info(&self) -> Value {
+        match &self.1 {
+            Some(v) => v.clone(),
+            None => json!({ "supported": false }),
+        }
+    }
+}
+
+/// A host that does not implement `process_info` answers
+/// `supported: false`, which the drive harness refuses (rule 2 of
+/// `docs/plan-drive-identity.md` §0); one that does is merged into
+/// `app.diagnostics` under `process`, beside the tree's own fields.
+#[test]
+fn diagnostics_carries_the_hosts_process_block() {
+    let f = Fixture::new();
+    let req = json!({ "jsonrpc": "2.0", "id": 1, "method": "app.diagnostics", "params": {} });
+
+    struct Bare<'a>(&'a Fixture);
+    impl lumen_static_agent::AgentHost for Bare<'_> {
+        fn tree(&self) -> TreeRef<'_> {
+            TreeRef::of_root(&self.0.app, &self.0.styles, &self.0.states)
+        }
+        fn enqueue(&mut self, _ev: lumen_static::Event) {}
+        fn pump(&mut self) -> (u64, bool) {
+            (1, false)
+        }
+    }
+    let bare = f.agent.dispatch_input(&mut Bare(&f), &req);
+    println!("default: {}", bare["result"]["process"]);
+    assert_eq!(bare["result"]["process"], json!({ "supported": false }), "{bare}");
+    assert_eq!(bare["result"]["nodes"], App::NODE_COUNT, "the tree's fields are gone: {bare}");
+
+    let block = lumen_static_agent::process_block("x::Everything", &["everything"]);
+    let told = f.agent.dispatch_input(&mut Hosted(&f, Some(block)), &req);
+    let p = &told["result"]["process"];
+    println!("implemented: {p}");
+    assert_eq!(p["supported"], true, "{told}");
+    assert_eq!(p["strategy"], "x::Everything", "{told}");
+    assert_eq!(p["features"], json!(["everything"]), "{told}");
+    assert_eq!(p["pid"], std::process::id(), "{told}");
+    assert!(p["exe"].as_str().is_some_and(|e| !e.is_empty()), "{told}");
+    assert_eq!(told["result"]["nodes"], App::NODE_COUNT, "{told}");
+    let _ = Hosted(&f, None);
 }
 
 #[test]

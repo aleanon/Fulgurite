@@ -625,6 +625,12 @@ impl<A: App> lumen_static_agent::AgentHost for Live<'_, A> {
         self.screen.fetch_rgba()
     }
 
+    /// M42/T42.1: the strategy is the host's own type parameter — which
+    /// is [`Inval`] — and the features are the shell's `cfg!` set.
+    fn process_info(&self) -> serde_json::Value {
+        lumen_static_agent::process_block(self.host.strategy(), &crate::process_features())
+    }
+
     #[cfg(feature = "shadow-oracle")]
     fn shadow(&self) -> Option<serde_json::Value> {
         let r = self.host.shadow_report();

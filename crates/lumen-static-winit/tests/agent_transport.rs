@@ -33,7 +33,7 @@ use lumen_static_winit::agent::{self, Rpc};
 use lumen_static_winit::UserEvent;
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
-use winit::event_loop::{ActiveEventLoop, EventLoop, EventLoopProxy};
+use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::window::WindowId;
 
 const MAIN: &str = "127.0.0.1:7812";
@@ -167,7 +167,7 @@ fn line_exit() -> Option<()> {
     Some(())
 }
 
-fn drive(executed: Arc<AtomicUsize>, proxy: EventLoopProxy<UserEvent>) -> Vec<Outcome> {
+fn drive(executed: Arc<AtomicUsize>) -> Vec<Outcome> {
     let mut out = Vec::new();
     let ex = || executed.load(Ordering::SeqCst);
 
@@ -200,21 +200,41 @@ fn drive(executed: Arc<AtomicUsize>, proxy: EventLoopProxy<UserEvent>) -> Vec<Ou
     }
 
     // R14-F2: a wildcard address is bound and answered.
+    //
+    // **In a child** since M42/T42.1: a refused bind now ends the process
+    // with status 3 (`docs/plan-drive-identity.md` §2.2), so serving
+    // `0.0.0.0` in this process would end the test. The child is this
+    // binary with `LUMEN_WILD_CHILD` set, serving through `agent::serve`
+    // on its own event loop's proxy.
     {
-        let p = proxy.clone();
-        std::thread::spawn(move || agent::serve(format!("0.0.0.0:{WILD_PORT}"), p));
-        let deadline = Instant::now() + Duration::from_millis(1000);
+        let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+            .env("LUMEN_WILD_CHILD", "1")
+            .env_remove("LUMEN_AGENT_ALLOW_REMOTE")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .expect("spawn the wildcard child");
+        let deadline = Instant::now() + Duration::from_millis(2000);
         let mut answered = false;
-        while Instant::now() < deadline && !answered {
+        let mut status = None;
+        while Instant::now() < deadline && !answered && status.is_none() {
             answered = line_client(&format!("127.0.0.1:{WILD_PORT}"), 2).is_some();
+            status = child.try_wait().ok().flatten();
             if !answered {
                 std::thread::sleep(Duration::from_millis(50));
             }
         }
+        // Reaped on every path; a kill after the child exited is a no-op.
+        let _ = child.kill();
+        let _ = child.wait();
+        let code = status.and_then(|s| s.code());
         out.push(Outcome {
-            name: "a 0.0.0.0 bind is refused".into(),
-            green: !answered,
-            line: format!("0.0.0.0:{WILD_PORT} bound and answered: {answered} / expected false"),
+            name: "a 0.0.0.0 bind is refused, and the window exits 3".into(),
+            green: !answered && code == Some(3),
+            line: format!(
+                "0.0.0.0:{WILD_PORT} bound and answered: {answered} / expected false; \
+                 child exit {code:?} / expected Some(3)"
+            ),
             red_until: None,
         });
     }
@@ -276,6 +296,16 @@ fn main() {
         println!("agent_transport: test");
         return;
     }
+    if std::env::var("LUMEN_WILD_CHILD").is_ok() {
+        // The wildcard case's child: serve 0.0.0.0 on this loop's proxy.
+        // A refused bind exits 3 inside `serve`; one that binds serves
+        // until the parent kills it.
+        let event_loop = EventLoop::<UserEvent>::with_user_event().build().expect("display");
+        let proxy = event_loop.create_proxy();
+        std::thread::spawn(move || agent::serve(format!("0.0.0.0:{WILD_PORT}"), proxy));
+        event_loop.run_app(&mut Loop { executed: Arc::new(AtomicUsize::new(0)) }).expect("run");
+        return;
+    }
     let require = std::env::var("LUMEN_REQUIRE_DISPLAY").is_ok_and(|v| v == "1");
     let event_loop = match EventLoop::<UserEvent>::with_user_event().build() {
         Ok(el) => el,
@@ -300,7 +330,7 @@ fn main() {
     {
         let executed = executed.clone();
         std::thread::spawn(move || {
-            let _ = tx.send(drive(executed, proxy));
+            let _ = tx.send(drive(executed));
         });
     }
     event_loop.run_app(&mut Loop { executed }).expect("run");

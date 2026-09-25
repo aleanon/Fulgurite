@@ -78,6 +78,11 @@ pub struct Rpc {
 /// crosses to the loop through the proxy and is answered there. A line
 /// that is not a JSON object ends the connection, which is what keeps a
 /// web page's HTTP request from running anything (R14-F1).
+///
+/// **A failed bind ends the process with status 3** (M42/T42.1,
+/// `lumen_static_agent::transport::BIND_FAILED`): a window that was asked
+/// for an endpoint and cannot serve it exits and names the address,
+/// rather than running on while something else answers on its port.
 pub fn serve(addr: String, proxy: winit::event_loop::EventLoopProxy<crate::UserEvent>) {
     lumen_static_agent::transport::serve_addr(&addr, move |req| {
         let (tx, rx) = std::sync::mpsc::channel();

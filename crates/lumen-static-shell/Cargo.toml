@@ -97,3 +97,9 @@ required-features = ["shadow-oracle"]
 [[test]]
 name = "agent_panic"
 required-features = ["live-agent", "truetype"]
+
+# M42/T42.1: drives `Session::agent`'s `app.diagnostics`, which needs the
+# agent built in and a session at all (`truetype`).
+[[test]]
+name = "process_info"
+required-features = ["live-agent", "truetype"]

@@ -288,6 +288,18 @@ pub struct Host<A: App, R: Retention = Incremental, I: Invalidation = lumen_stat
 }
 
 impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
+    /// This host's invalidation strategy, by name: `type_name::<I>()`,
+    /// e.g. `lumen_static::invalidate::Boundaries<256>` — M42/T42.1.
+    ///
+    /// What the agent's `app.diagnostics` reports as `process.strategy`,
+    /// so a drive can check the strategy of the process it drove rather
+    /// than trusting a label it set for itself (R18-F1). Read from the
+    /// type parameter, not from a feature: the parameter is what the host
+    /// actually runs.
+    pub fn strategy(&self) -> &'static str {
+        core::any::type_name::<I>()
+    }
+
     /// Install the program's sheet, and keep its source so a later
     /// [`Host::adopt`] can re-ask it — M32.
     pub fn set_sheet_source(&mut self, source: std::rc::Rc<dyn program::Sheet<A>>) {
@@ -1719,6 +1731,30 @@ pub const CLEAR: Color = Color(255, 255, 255, 255);
 
 /// Everything a command list needs to be drawn, for renderers that want
 /// to walk it without matching on `Cmd` themselves.
+/// The features this shell was compiled with that change what a live
+/// drive observes — M42/T42.1, `process.features` in `app.diagnostics`.
+///
+/// `agent` (the lint, and with `live-agent` the endpoint), `everything`,
+/// `shadow-oracle` and `reload`. A drive leg declares which of these it
+/// expects, and `scripts/live/launch.py` refuses a process that reports
+/// otherwise: `shadow-oracle` and `reload` decide whether `app.shadow` and
+/// `app.failure` can say anything at all, and "cannot say" must not be
+/// read as "no" (`docs/plan-drive-identity.md` §0).
+pub fn process_features() -> Vec<&'static str> {
+    let mut f = Vec::new();
+    for (on, name) in [
+        (cfg!(feature = "agent"), "agent"),
+        (cfg!(feature = "everything"), "everything"),
+        (cfg!(feature = "shadow-oracle"), "shadow-oracle"),
+        (cfg!(feature = "reload"), "reload"),
+    ] {
+        if on {
+            f.push(name);
+        }
+    }
+    f
+}
+
 pub fn for_each_rect(list: &DisplayList, mut f: impl FnMut([f32; 4], Color)) {
     for c in &list.cmds {
         if let Cmd::Rect { rect, color } = c {

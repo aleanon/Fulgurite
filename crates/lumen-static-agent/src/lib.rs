@@ -522,6 +522,19 @@ impl Agent {
             let result = host.shadow().unwrap_or_else(|| json!({ "supported": false }));
             return json!({ "jsonrpc": "2.0", "id": id, "result": result });
         }
+        // M42/T42.1: the tree answers the diagnostics; the host adds which
+        // process it is, so a drive can check it drove the build it
+        // launched rather than whatever held the port.
+        if method == "app.diagnostics" {
+            let mut reply = {
+                let tree = host.tree();
+                self.dispatch(&tree, req)
+            };
+            if let Some(result) = reply.get_mut("result") {
+                result["process"] = host.process_info();
+            }
+            return reply;
+        }
         if !method.starts_with("input.") && method != "ui.screenshot" && method != "app.setPalette"
         {
             let tree = host.tree();
@@ -1432,6 +1445,10 @@ impl Agent {
         })
     }
 
+    /// `app.diagnostics`: the frame, node counts, repeaters and byte
+    /// sizes — and `process`, which a tree alone answers with
+    /// `{"supported": false}` and a host replaces with
+    /// [`AgentHost::process_info`] (pid, exe, strategy, features; M42).
     fn diagnostics(&self, tree: &TreeRef) -> Value {
         let ix = Index::build(tree);
         let rigid = tree.table.iter().filter(|d| d.is_rigid()).count();
@@ -1458,6 +1475,10 @@ impl Agent {
             "repeaters": repeaters,
             "table_bytes": std::mem::size_of_val(tree.table),
             "state_bytes": std::mem::size_of_val(tree.states),
+            // A tree alone cannot say which process it is in; the
+            // host-aware branch of `dispatch_input` replaces this with
+            // `AgentHost::process_info` (M42/T42.1).
+            "process": { "supported": false },
         })
     }
 }
@@ -1591,6 +1612,41 @@ pub trait AgentHost {
     fn retry(&mut self) -> bool {
         false
     }
+
+    /// Which process this is — M42/T42.1, the `process` block of
+    /// `app.diagnostics`: `{"supported": true, "strategy", "features",
+    /// "pid", "exe"}`, built by [`process_block`].
+    ///
+    /// **Provided**, with `{"supported": false}` as its default, and that
+    /// is safe here for a reason the provided-method rule names: every
+    /// implementation of this trait is a *leaf* that holds a host, not a
+    /// wrapper that could forward, and the drive harness refuses
+    /// `supported: false` (`scripts/live/launch.py`, rule 2 of
+    /// `docs/plan-drive-identity.md` §0). A window that forgets to
+    /// implement it fails loudly on its first drive.
+    ///
+    /// It exists because a drive could not tell which process it drove:
+    /// the strategy was a label the script set for itself, and a leftover
+    /// window holding the port answered for a build that never bound
+    /// (R18-F1).
+    fn process_info(&self) -> Value {
+        json!({ "supported": false })
+    }
+}
+
+/// The `process` block an [`AgentHost::process_info`] returns: the host's
+/// invalidation strategy (its `type_name`), the features the build was
+/// compiled with, and the pid and executable **as the process itself
+/// reports them** — which is the point: a label the drive script sets for
+/// itself proves nothing (M42/T42.1).
+pub fn process_block(strategy: &str, features: &[&str]) -> Value {
+    json!({
+        "supported": true,
+        "strategy": strategy,
+        "features": features,
+        "pid": std::process::id(),
+        "exe": std::env::current_exe().ok().map(|p| p.display().to_string()),
+    })
 }
 
 const KEY_NAMES: [&str; 12] = [
