@@ -89,6 +89,24 @@ fixtures:
     ./scripts/abi_stamp.sh
     ./scripts/window_reload_demo.sh
 
+# Every refusal, planted (M43, docs/plan-gate-hygiene.md §2.4): each check
+# runs green on an unmodified copy of the tree, then each plant under
+# scripts/selftest/plants/<tier>/ edits the copy and its check must go red
+# BY NAME. scripts/selftest/run.sh's header is the format. Not yet wired
+# into `test`/`check` -- T43.15 does that once every plant is red.
+
+# The no-compile plants: the drift checks in `static`, and the locks.
+selftest:
+    ./scripts/selftest/run.sh static
+
+# The plants that need cargo: forbid(unsafe), firmware, goldens, skips.
+selftest-build:
+    ./scripts/selftest/run.sh build
+
+# The const-budget plants, each built three times (minutes).
+selftest-slow:
+    ./scripts/selftest/run.sh slow
+
 # ---------------------------------------------------------------------------
 # Pre-push / CI
 # ---------------------------------------------------------------------------
