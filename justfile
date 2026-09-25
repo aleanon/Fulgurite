@@ -147,6 +147,11 @@ selftest-build:
 selftest-slow:
     ./scripts/selftest/run.sh slow
 
+# The live plants (M42): the drive harness's refusals, each shown red in a
+# scratch copy. Needs a display; exits 77 without one.
+selftest-live:
+    ./scripts/selftest/live.sh
+
 # ---------------------------------------------------------------------------
 # Pre-push / CI
 # ---------------------------------------------------------------------------

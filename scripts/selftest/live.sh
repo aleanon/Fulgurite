@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# The live plants (M42, docs/plan-drive-identity.md §0 rule 5 and §2.6):
+# every refusal the drive harness makes, planted in a scratch copy and
+# shown red by name, on M43's harness (`scripts/selftest/run.sh live`).
+# Needs a display; exits 77 without one (M43 §2's skip code).
+#
+#   plant               finding    red output once fixed
+#   stranger            R18-F1     port already answering on 127.0.0.1:P
+#   leg-drop  (I5a)     R18-F1     expected Everything, got ...Boundaries<256>
+#   shadow-absent       I-NEW-3    expected the shadow oracle in this build
+#   shadow-unexpected   I-NEW-3    shadow oracle present in a leg that does not expect it
+#   hover-noop          R18-F3     Button/hovering is visible...: changed in subtree 0
+#   quit-panic (I6)     R18-F9     live-gate: app exited 101
+#   late-panic          R18-F9     app log: 1 panic
+#
+# Two more need no display and run in `just selftest` (plants/static/):
+#   inventory-drop (I5b/I5c)  R18-F2  manifest expects Radio / Switch: missing action
+#   export-unowned            R18-F2  check_drive_coverage.sh names the widget
+#
+# The harness's own injection -- a plant whose edit matches nothing --
+# reports `edit did not apply`, never `stayed green`.
+set -uo pipefail
+if [ -z "${DISPLAY:-}" ]; then
+    echo "selftest-live: no X display -- skipped (77)"
+    exit 77
+fi
+# The drives' fixed default ports belong to whoever else is running one;
+# these are this harness's.
+export LUMEN_AGENT_PORT="${LUMEN_AGENT_PORT:-7881}"
+export LUMEN_AGENT_ADDR="${LUMEN_AGENT_ADDR:-127.0.0.1:7882}"
+exec "$(dirname "$0")/run.sh" live
