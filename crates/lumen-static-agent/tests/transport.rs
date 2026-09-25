@@ -140,3 +140,34 @@ fn a_refused_line_is_named() {
     }
     assert_eq!(executed.load(Ordering::SeqCst), 0);
 }
+
+/// **R14-F2.** A non-loopback address is refused unless overridden, and
+/// every loopback spelling is accepted — both directions in one table.
+#[test]
+fn a_remote_bind_is_refused() {
+    let mut failed = Vec::new();
+    for (addr, allow, want_ok) in [
+        ("0.0.0.0:0", false, false),
+        ("[::]:0", false, false),
+        ("127.0.0.1:0", false, true),
+        ("[::1]:0", false, true),
+        ("localhost:0", false, true),
+        ("0.0.0.0:0", true, true),
+    ] {
+        let r = transport::bind_with(addr, allow);
+        let verdict = match &r {
+            Ok(l) => format!("accepted, bound {}", l.local_addr().unwrap()),
+            Err(e) => format!("refused: {e}"),
+        };
+        let over = if allow { " (with the override)" } else { "" };
+        println!("{addr}{over} -> {verdict}");
+        // `[::1]` may be absent on a host without IPv6; that is not this
+        // gate's question, so only a *policy* refusal counts against it.
+        let policy_refused =
+            matches!(&r, Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied);
+        if want_ok == policy_refused || (!want_ok && r.is_ok()) {
+            failed.push(addr);
+        }
+    }
+    assert!(failed.is_empty(), "wrong verdicts: {failed:?}");
+}

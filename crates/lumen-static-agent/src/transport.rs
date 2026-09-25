@@ -55,9 +55,49 @@ use serde_json::{json, Value};
 pub trait Handler: FnMut(Value) -> Option<Value> + Clone + Send + 'static {}
 impl<F: FnMut(Value) -> Option<Value> + Clone + Send + 'static> Handler for F {}
 
-/// Bind the agent's listener.
+/// The environment variable that lets [`bind`] take a non-loopback
+/// address (M39/T39.2).
+pub const ALLOW_REMOTE: &str = "LUMEN_AGENT_ALLOW_REMOTE";
+
+/// Bind the agent's listener — **loopback only**, unless
+/// `LUMEN_AGENT_ALLOW_REMOTE=1` is set (M39/T39.2, R14-F2).
+///
+/// Every address `addr` resolves to must be loopback: `127.0.0.1`,
+/// `[::1]` and `localhost` are accepted, `0.0.0.0` and `[::]` are
+/// refused with an error naming the override. Before M39 whatever was
+/// asked for was bound, so `0.0.0.0:<port>` served the tree and every
+/// `input.*` method to the LAN with a single line on stderr. With the
+/// override the bind goes ahead and says, on stderr, which interfaces it
+/// is on and that the endpoint has no authentication.
 pub fn bind(addr: &str) -> std::io::Result<TcpListener> {
-    TcpListener::bind(addr)
+    bind_with(addr, std::env::var(ALLOW_REMOTE).is_ok_and(|v| v == "1"))
+}
+
+/// [`bind`] with the override given rather than read from the
+/// environment — for a test, which cannot set a process-wide variable
+/// without racing the tests beside it.
+pub fn bind_with(addr: &str, allow_remote: bool) -> std::io::Result<TcpListener> {
+    use std::net::ToSocketAddrs;
+    let resolved: Vec<_> = addr.to_socket_addrs()?.collect();
+    let remote: Vec<_> = resolved.iter().filter(|a| !a.ip().is_loopback()).collect();
+    if !remote.is_empty() {
+        if !allow_remote {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                format!(
+                    "`{addr}` is not a loopback address ({remote:?}); the agent endpoint has no \
+                     authentication, so it binds loopback only. Set {ALLOW_REMOTE}=1 to serve it \
+                     to other machines anyway"
+                ),
+            ));
+        }
+        eprintln!(
+            "agent: WARNING: {ALLOW_REMOTE}=1 -- serving on {remote:?}, which other machines can \
+             reach. The endpoint has NO AUTHENTICATION: anyone who can connect can read the tree \
+             and drive the application"
+        );
+    }
+    TcpListener::bind(&resolved[..])
 }
 
 /// Bind `addr` and serve on it until the process ends, reporting on

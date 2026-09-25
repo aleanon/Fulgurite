@@ -215,7 +215,7 @@ fn drive(executed: Arc<AtomicUsize>, proxy: EventLoopProxy<UserEvent>) -> Vec<Ou
             name: "a 0.0.0.0 bind is refused".into(),
             green: !answered,
             line: format!("0.0.0.0:{WILD_PORT} bound and answered: {answered} / expected false"),
-            red_until: Some("T39.2"),
+            red_until: None,
         });
     }
 

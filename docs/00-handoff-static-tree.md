@@ -705,7 +705,9 @@ another process running as the same user, which can already `ptrace` the
 application. **A per-session token is deferred, not rejected**: it is the
 only option that separates users on a shared host, and the plan's §4
 names what reopens it. Per vector, before and after:
-`docs/results-agent-transport.md`.
+`docs/results-agent-transport.md`. **It binds loopback only** (T39.2):
+a non-loopback address is refused unless `LUMEN_AGENT_ALLOW_REMOTE=1`,
+which binds it and warns that there is no authentication.
 
 ---
 

@@ -206,6 +206,12 @@ pub struct Config {
     /// so a web page open in a browser on this machine cannot drive the
     /// window. It is not authenticated: any process running as the same
     /// user can connect (`docs/00-handoff-static-tree.md` §9).
+    ///
+    /// **Loopback only** (M39/T39.2): `127.0.0.1`, `[::1]` and `localhost`
+    /// bind; `0.0.0.0` or any other non-loopback address is refused, with
+    /// a line on stderr naming the override, `LUMEN_AGENT_ALLOW_REMOTE=1`.
+    /// The override binds it and warns that the endpoint has no
+    /// authentication.
     pub agent: Option<String>,
 }
 

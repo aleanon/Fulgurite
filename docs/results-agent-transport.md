@@ -66,3 +66,25 @@ a JSON object, since an HTTP method token cannot begin with `{`.
 
 Both live steps first check with `ss -ltnp` that the port belongs to the
 pid the script launched.
+
+## §2 The bind (T39.2)
+
+`transport::bind` resolves the address and refuses, with
+`PermissionDenied` and a message naming `LUMEN_AGENT_ALLOW_REMOTE`, if
+any resolved address is not loopback. From
+`a_remote_bind_is_refused`:
+
+| address | override | before (`b213ae0`) | after |
+|---|---|---|---|
+| `0.0.0.0:0` | no | bound (event-loop gate: `0.0.0.0:7813` bound and answered) | **refused** |
+| `[::]:0` | no | bound | **refused** |
+| `127.0.0.1:0` | no | bound | bound |
+| `[::1]:0` | no | bound | bound |
+| `localhost:0` | no | bound | bound (`127.0.0.1`) |
+| `0.0.0.0:0` | `=1` | bound | bound, with a stderr warning that names the address and says there is no authentication |
+
+Injection: the loopback filter made always-empty. Both refused rows
+turned accepted ("0.0.0.0:0 -> accepted, bound 0.0.0.0:2335"), the
+display-free gate failed by name on `0.0.0.0:0` and `[::]:0`, and the
+event-loop gate's "a 0.0.0.0 bind is refused" went `FAIL ... bound and
+answered: true`. The loopback rows stayed green.

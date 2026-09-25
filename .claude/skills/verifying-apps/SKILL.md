@@ -134,7 +134,11 @@ longer wait means the build failed; read its log. **A malformed line ends
 the connection** (M39): anything that is not one JSON object per line —
 an HTTP request, a batch, a stray `5` — gets one error reply and a close,
 so a hand-typed request that fails to parse means reconnecting, not
-retyping. That is what keeps a web page from driving the window.
+retyping. That is what keeps a web page from driving the window. The
+address must be **loopback** (`127.0.0.1`, `[::1]`, `localhost`): a
+`0.0.0.0` bind is refused with `agent: cannot bind ...` unless
+`LUMEN_AGENT_ALLOW_REMOTE=1`, which binds it and warns that the endpoint
+has no authentication.
 
 ## Performance — budgets, and how to find out where the time goes
 
