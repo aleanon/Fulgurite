@@ -43,7 +43,7 @@
 //! `jsonrpc`, `id`, `method` — is the dispatcher's, so an in-process
 //! caller gets it too.
 
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 
 use serde_json::{json, Value};
@@ -115,10 +115,50 @@ pub fn serve_addr(addr: &str, handler: impl Handler) {
     serve(listener, handler);
 }
 
-/// Serve an already-bound listener: each connection in turn.
+/// Most connections served at once (M39/T39.3). The next one gets one
+/// `-32000` line and is closed.
+pub const MAX_CONNECTIONS: usize = 16;
+
+/// Longest line read, newline included (M39/T39.3). A longer one gets
+/// `-32600` and the connection is closed, so the worst case is bounded at
+/// `MAX_CONNECTIONS × MAX_LINE`. The largest legitimate request is
+/// `input.type` at its character cap, a few tens of KiB even escaped.
+pub const MAX_LINE: usize = 1 << 20;
+
+/// Serve an already-bound listener: **a thread per connection**, up to
+/// [`MAX_CONNECTIONS`] at once (M39/T39.3).
+///
+/// Until M39 connections were served one at a time, to EOF, so an idle
+/// client locked every other client out (R14-F3). Concurrent connections
+/// share no new state: every request still goes through the handler, and
+/// the window's handler serialises them on the event loop.
 pub fn serve(listener: TcpListener, handler: impl Handler) {
-    for stream in listener.incoming().flatten() {
-        connection(stream, handler.clone());
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+    /// Gives a connection's slot back however its thread ends.
+    struct Slot(Arc<AtomicUsize>);
+    impl Drop for Slot {
+        fn drop(&mut self) {
+            self.0.fetch_sub(1, Ordering::SeqCst);
+        }
+    }
+    let live = Arc::new(AtomicUsize::new(0));
+    for mut stream in listener.incoming().flatten() {
+        if live.fetch_add(1, Ordering::SeqCst) >= MAX_CONNECTIONS {
+            live.fetch_sub(1, Ordering::SeqCst);
+            let _ = writeln!(stream, "{}", refusal(-32000, "too many agent connections"));
+            continue;
+        }
+        let slot = Slot(live.clone());
+        let handler = handler.clone();
+        let spawned = std::thread::Builder::new().name("lumen-agent-conn".into()).spawn(move || {
+            let _slot = slot;
+            connection(stream, handler);
+        });
+        // A refused spawn drops the closure, and with it the slot.
+        if let Err(e) = spawned {
+            eprintln!("agent: cannot start a connection thread: {e}");
+        }
     }
 }
 
@@ -130,9 +170,15 @@ fn connection(stream: TcpStream, mut handler: impl Handler) {
     let mut line = Vec::new();
     loop {
         line.clear();
-        match reader.read_until(b'\n', &mut line) {
+        // **Bounded** (M39/T39.3): `lines()` grew a line with no newline
+        // by every byte sent (R14-F3).
+        let n = match (&mut reader).take(MAX_LINE as u64).read_until(b'\n', &mut line) {
             Ok(0) | Err(_) => return,
-            Ok(_) => {}
+            Ok(n) => n,
+        };
+        if n == MAX_LINE && line.last() != Some(&b'\n') {
+            let _ = writeln!(out, "{}", refusal(-32600, "line exceeds 1 MiB; the connection is closed"));
+            return;
         }
         let text = line.trim_ascii();
         if text.is_empty() {

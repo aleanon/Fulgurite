@@ -138,7 +138,11 @@ retyping. That is what keeps a web page from driving the window. The
 address must be **loopback** (`127.0.0.1`, `[::1]`, `localhost`): a
 `0.0.0.0` bind is refused with `agent: cannot bind ...` unless
 `LUMEN_AGENT_ALLOW_REMOTE=1`, which binds it and warns that the endpoint
-has no authentication.
+has no authentication. **One window serves up to sixteen clients at
+once** (M39), so a harness holding a connection open no longer blocks a
+second tool; requests from two clients interleave on the event loop, so
+a frame number one client reads may have been advanced by the other. A
+line over 1 MiB ends the connection.
 
 ## Performance — budgets, and how to find out where the time goes
 

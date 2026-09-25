@@ -88,3 +88,24 @@ turned accepted ("0.0.0.0:0 -> accepted, bound 0.0.0.0:2335"), the
 display-free gate failed by name on `0.0.0.0:0` and `[::]:0`, and the
 event-loop gate's "a 0.0.0.0 bind is refused" went `FAIL ... bound and
 answered: true`. The loopback rows stayed green.
+
+## §3 Connections and lines (T39.3)
+
+A thread per connection, up to `MAX_CONNECTIONS` = 16; a line read
+through `take(MAX_LINE)`, `MAX_LINE` = 1 MiB. From `transport.rs` and the
+event-loop gate:
+
+| quantity | bound | before (`b213ae0`) | after |
+|---|---|---|---|
+| a second client, while a first connects and sends nothing | answered < 1000 ms | unanswered at 1000 ms (event-loop gate) | answered in 0 ms |
+| heap growth, one line with no newline | < 2048 KiB | 32 MiB sent, **grew 32832 KiB**, connection held (event-loop gate) | 8 MiB sent, closed at the cap, grew 1207 KiB (display-free); event-loop gate grew 1089 KiB |
+| a 17th concurrent connection | one `-32000` line | queued behind the first | `-32000` "too many agent connections"; the other 16 all answer; a slot comes back when one closes |
+
+The growth after is the 1 MiB line buffer, which is the cap doing its
+job, plus kilobytes from the tests running beside it.
+
+Injections: (1) serve each connection inline instead of on a thread —
+`an_idle_client_does_not_block_a_second` red, "answered: false in 1048
+ms / bound 1000 ms"; (2) the bounded read replaced by an unbounded
+`read_until` — `a_line_without_newline_is_capped` red, "sent 8192 KiB;
+closed false; grew 8264 KiB / bound 2048 KiB".

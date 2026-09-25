@@ -647,6 +647,14 @@ Recorded as found, rather than folded into the sections above.
   have read as one that had not. `scripts/browser_replay.py` now waits
   500 ms, and the first injection turns both live steps red
   (`one=0 -> one=1`, `#value 0 -> 1`).
+- **T39.3, the flood size.** §T39.3 sends 2 MiB. Under the old
+  `lines()` a 2 MiB line grows its buffer to exactly 2 MiB (capacity
+  doubles through powers of two), which sits *on* the 2 MiB bound rather
+  than over it, so the red would have been decided by a few bytes of
+  unrelated allocation. The gate sends 8 MiB: red under the unbounded
+  read is 8264 KiB, green is 1207 KiB. And the growth is counted by a
+  global allocator in `transport.rs`, whose other tests run in parallel;
+  they allocate kilobytes against a bound of megabytes.
 - **T39.1, AGENT.md's queue entry** is not in this commit: the
   implementation brief reserves AGENT.md for the coordinator's merge.
 

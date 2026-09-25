@@ -231,7 +231,7 @@ fn drive(executed: Arc<AtomicUsize>, proxy: EventLoopProxy<UserEvent>) -> Vec<Ou
             name: "an idle client does not block a second".into(),
             green: ms.is_some(),
             line: format!("second client answered in {ms:?} ms / bound 1000 ms"),
-            red_until: Some("T39.3"),
+            red_until: None,
         });
     }
 
@@ -258,7 +258,7 @@ fn drive(executed: Arc<AtomicUsize>, proxy: EventLoopProxy<UserEvent>) -> Vec<Ou
             name: "a line without a newline is capped".into(),
             green: grew < 2 << 20,
             line: format!("sent {} KiB; grew {} KiB / bound 2048 KiB", sent >> 10, grew >> 10),
-            red_until: Some("T39.3"),
+            red_until: None,
         });
     }
 

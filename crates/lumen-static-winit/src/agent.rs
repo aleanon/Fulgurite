@@ -27,6 +27,13 @@
 //! is inherited from the counter-window endpoint and is the only
 //! arrangement that is sound without a lock.
 //!
+//! **Connections run in parallel since M39/T39.3; requests still do
+//! not.** The transport gives each connection its own thread, up to
+//! sixteen, so an idle client no longer locks every other one out. Each
+//! of those threads only sends an [`Rpc`] and waits, and the loop
+//! answers them one at a time — two clients' requests interleave on the
+//! loop, and neither ever touches the tree.
+//!
 //! **Widened from "the socket thread" by M28/T28.1**, which is a
 //! restatement rather than a change: the socket thread was the only
 //! other thread that existed when this was written, and

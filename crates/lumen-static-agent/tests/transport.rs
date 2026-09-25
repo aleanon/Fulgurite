@@ -20,6 +20,49 @@ use std::time::{Duration, Instant};
 use lumen_static_agent::transport;
 use serde_json::{json, Value};
 
+// ---- a counting allocator: live bytes, and the peak since a reset --------
+//
+// For `a_line_without_newline_is_capped`: the transport runs in-process,
+// so the test can count what a flood costs. Other tests in this binary
+// run beside it and allocate kilobytes; the bound is megabytes.
+
+struct Counting;
+static LIVE: AtomicUsize = AtomicUsize::new(0);
+static PEAK: AtomicUsize = AtomicUsize::new(0);
+
+fn grew(n: usize) {
+    let now = LIVE.fetch_add(n, Ordering::Relaxed) + n;
+    PEAK.fetch_max(now, Ordering::Relaxed);
+}
+
+unsafe impl std::alloc::GlobalAlloc for Counting {
+    unsafe fn alloc(&self, l: std::alloc::Layout) -> *mut u8 {
+        let p = unsafe { std::alloc::System.alloc(l) };
+        if !p.is_null() {
+            grew(l.size());
+        }
+        p
+    }
+    unsafe fn dealloc(&self, p: *mut u8, l: std::alloc::Layout) {
+        unsafe { std::alloc::System.dealloc(p, l) };
+        LIVE.fetch_sub(l.size(), Ordering::Relaxed);
+    }
+    unsafe fn realloc(&self, p: *mut u8, l: std::alloc::Layout, new: usize) -> *mut u8 {
+        let q = unsafe { std::alloc::System.realloc(p, l, new) };
+        if !q.is_null() {
+            if new >= l.size() {
+                grew(new - l.size());
+            } else {
+                LIVE.fetch_sub(l.size() - new, Ordering::Relaxed);
+            }
+        }
+        q
+    }
+}
+
+#[global_allocator]
+static GLOBAL: Counting = Counting;
+
 /// A server on an ephemeral loopback port whose handler counts.
 fn server() -> (SocketAddr, Arc<AtomicUsize>) {
     let listener = transport::bind("127.0.0.1:0").expect("bind");
@@ -170,4 +213,105 @@ fn a_remote_bind_is_refused() {
         }
     }
     assert!(failed.is_empty(), "wrong verdicts: {failed:?}");
+}
+
+/// One well-formed request on its own connection; the reply, or `None`
+/// within `timeout`.
+fn ask(addr: SocketAddr, id: u64, timeout: Duration) -> (TcpStream, Option<Value>) {
+    let s = TcpStream::connect(addr).unwrap();
+    let mut w = s.try_clone().unwrap();
+    s.set_read_timeout(Some(timeout)).unwrap();
+    let _ = writeln!(w, r#"{{"jsonrpc":"2.0","id":{id},"method":"ui.getTree"}}"#);
+    let mut r = BufReader::new(s.try_clone().unwrap());
+    let mut line = String::new();
+    let v = match r.read_line(&mut line) {
+        Ok(n) if n > 0 => serde_json::from_str(&line).ok(),
+        _ => None,
+    };
+    (s, v)
+}
+
+/// **R14-F3.** A client that connects and says nothing does not lock a
+/// second one out.
+#[test]
+fn an_idle_client_does_not_block_a_second() {
+    let (addr, _) = server();
+    let _idle = TcpStream::connect(addr).unwrap();
+    std::thread::sleep(Duration::from_millis(100));
+    let t = Instant::now();
+    let (_b, reply) = ask(addr, 21, Duration::from_millis(1000));
+    let ms = t.elapsed().as_millis();
+    println!("answered: {} in {ms} ms / bound 1000 ms", reply.is_some());
+    assert_eq!(reply.map(|r| r["id"].clone()), Some(json!(21)), "the second client was not answered");
+    assert!(ms < 1000);
+}
+
+/// **R14-F3.** A line with no newline is refused at the cap rather than
+/// grown by every byte sent. 8 MiB is sent (the plan's 2 MiB would sit
+/// at the bound under the old `lines()`, whose buffer doubles to exactly
+/// 2 MiB); growth is the peak of live heap bytes over the flood.
+#[test]
+fn a_line_without_newline_is_capped() {
+    const FLOOD: usize = 8 << 20;
+    let (addr, executed) = server();
+    let base = LIVE.load(Ordering::SeqCst);
+    PEAK.store(base, Ordering::SeqCst);
+    let mut s = TcpStream::connect(addr).unwrap();
+    s.set_write_timeout(Some(Duration::from_secs(5))).unwrap();
+    let chunk = vec![b'x'; 1 << 16];
+    let mut sent = 0;
+    while sent < FLOOD {
+        match s.write(&chunk) {
+            Ok(n) => sent += n,
+            Err(_) => break,
+        }
+    }
+    s.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+    let mut rest = Vec::new();
+    let closed = match s.read_to_end(&mut rest) {
+        Ok(_) => true,
+        Err(e) => e.kind() == std::io::ErrorKind::ConnectionReset,
+    };
+    let grew = PEAK.load(Ordering::SeqCst).saturating_sub(base);
+    println!(
+        "sent {} KiB of one line; closed {closed}; grew {} KiB / bound 2048 KiB",
+        sent >> 10,
+        grew >> 10
+    );
+    assert!(closed, "the connection stayed open after {} KiB with no newline", sent >> 10);
+    assert!(grew < 2 << 20, "grew {} KiB", grew >> 10);
+    assert_eq!(executed.load(Ordering::SeqCst), 0);
+    // Accept: a fresh connection is still answered.
+    let (_c, reply) = ask(addr, 22, Duration::from_millis(1000));
+    assert_eq!(reply.map(|r| r["id"].clone()), Some(json!(22)), "a fresh client after the flood");
+}
+
+/// The accept direction of the connection limit: sixteen at once are
+/// all answered, and the seventeenth gets one `-32000` line.
+#[test]
+fn a_seventeenth_connection_is_refused_and_sixteen_answer() {
+    let (addr, _) = server();
+    let held: Vec<TcpStream> = (0..transport::MAX_CONNECTIONS).map(|_| TcpStream::connect(addr).unwrap()).collect();
+    std::thread::sleep(Duration::from_millis(100));
+    let (_extra, reply) = ask(addr, 99, Duration::from_millis(1000));
+    let code = reply.as_ref().map(|r| r["error"]["code"].clone());
+    println!("17th connection -> {reply:?}");
+    assert_eq!(code, Some(json!(-32000)), "the 17th connection was not refused");
+    let mut answered = 0;
+    for (k, s) in held.iter().enumerate() {
+        let mut w = s.try_clone().unwrap();
+        writeln!(w, r#"{{"jsonrpc":"2.0","id":{k},"method":"ui.getTree"}}"#).unwrap();
+        s.set_read_timeout(Some(Duration::from_millis(1000))).unwrap();
+        let mut line = String::new();
+        if BufReader::new(s.try_clone().unwrap()).read_line(&mut line).is_ok_and(|n| n > 0) {
+            answered += 1;
+        }
+    }
+    println!("held connections answered: {answered} / {}", transport::MAX_CONNECTIONS);
+    assert_eq!(answered, transport::MAX_CONNECTIONS);
+    // And a slot comes back when one closes.
+    drop(held);
+    std::thread::sleep(Duration::from_millis(100));
+    let (_d, again) = ask(addr, 100, Duration::from_millis(1000));
+    assert_eq!(again.map(|r| r["id"].clone()), Some(json!(100)), "slots were not given back");
 }
