@@ -718,6 +718,14 @@ names what reopens it. Per vector, before and after:
 a non-loopback address is refused unless `LUMEN_AGENT_ALLOW_REMOTE=1`,
 which binds it and warns that there is no authentication.
 
+**DECIDED 2026-09-25 (M41/T41.4): observing must not change what is
+drawn.** The audit's intrinsic probe measures every leaf through
+`Node::probe`, and a widget whose `layout` writes state that paint reads
+overrides it (`TextInput`, `TextArea`, `Label`, `Repeat`). Until then
+an agent build reset every scrolled field it probed, which the
+`Boundaries` default then painted (`docs/plan-boundaries-repair.md`
+R1-F5).
+
 ---
 
 ## 10. Build order

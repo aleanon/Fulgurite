@@ -121,7 +121,7 @@ fn a_real_change_still_re_measures_exactly_one_label() {
 // probe under the `Boundaries` default, in the window's order.
 //
 // `Node::probe`'s provided body is `self.layout(..)`, and `TextInput`
-// and `TextArea` do not override it. Their `layout` writes the scroll
+// and `TextArea` did not override it until M41/T41.4. Their `layout` writes the scroll
 // offset from the limits it is handed, and the audit probes every leaf
 // at 1e6 and 2e6 px — so after `frame_done` a scrolled field holds a
 // scroll of zero. Under `Everything` the next frame's layout puts it
@@ -270,7 +270,6 @@ mod bounded {
     /// Three arms, one session: `Everything` with the agent,
     /// `Boundaries<256>` with the agent, and `Boundaries<256>` without.
     #[test]
-    #[ignore = "red until T41.4: R1-F5, the audit's probe writes a live TextInput's scroll"]
     fn the_audit_leaves_no_trace_under_boundaries() {
         let mut e: Host<Form, Incremental, Everything> = session();
         let mut b: Host<Form> = session();
@@ -332,5 +331,107 @@ mod bounded {
             let handled = self.pump_with(&mut Blocks);
             assert!(!handled, "setup: a hover must be unhandled, or it marks everything");
         }
+    }
+
+    // -----------------------------------------------------------------
+    // M41/T41.4: the sweep. The named case covers two widgets; this is
+    // what catches the *next* widget whose `layout` writes state that
+    // paint reads, since `Node::probe`'s provided body is `layout`.
+    // -----------------------------------------------------------------
+
+    /// A leaf of most kinds the widget crate ships, each holding state
+    /// a probe could disturb where it has any.
+    #[derive(StaticTree, Default)]
+    #[widget(column, spacing = 2.0)]
+    struct Kinds {
+        label: Label<String>,
+        button: Button<Sweep>,
+        #[widget_id("field")]
+        field: TextInput,
+        #[widget_id("area")]
+        area: TextArea,
+        slider: Slider,
+        check: CheckBox<Sweep>,
+        switch: Switch<Sweep>,
+        radio: Radio<Sweep>,
+        badge: Badge,
+        chip: Chip,
+        progress: ProgressBar,
+        divider: Divider,
+        spinner: Spinner,
+        skeleton: Skeleton,
+        avatar: Avatar,
+        number: NumberInput,
+        range: RangeSlider,
+        search: SearchField,
+        rich: RichText,
+        markdown: Markdown,
+        editor: RichTextEditor,
+    }
+
+    #[derive(DeriveApp, Default)]
+    struct Sweep {
+        #[tree]
+        ui: Kinds,
+    }
+
+    /// For every live leaf: paint it, probe it at the audit's two limits
+    /// into scratch state, paint it again from the frame's state, and
+    /// compare. A probe that writes anything paint reads moves the hash.
+    #[test]
+    fn a_probe_changes_nothing_any_leaf_paints() {
+        let mut h: Host<Sweep, Incremental, Everything> = Host::new(Sweep::default(), 200, 1200);
+        h.set_stylesheet(&[Rule::new(
+            Selector::Id("area"),
+            Patch::new().width(Length::FILL).height(Length::Fixed(40.0)),
+        )]);
+        h.pump_with(&mut Blocks);
+        // The two widgets whose probe the named case covers, scrolled —
+        // a field at rest has no scroll for a probe to reset.
+        let centre = |h: &Host<Sweep, Incremental, Everything>, wid: &str| {
+            let i = lumen_static::style::index_of_wid(<Kinds as Widget>::SUB_TABLE, wid).unwrap();
+            let s = h.states[i];
+            (s.pos.x + s.size.w / 2.0, s.pos.y + s.size.h / 2.0)
+        };
+        for (wid, text) in [("field", LINE), ("area", PARAGRAPH)] {
+            let (x, y) = centre(&h, wid);
+            h.click(x, y);
+            h.pump_with(&mut Blocks);
+            for ch in text.chars() {
+                h.post(Event::Text { ch });
+                h.pump_with(&mut Blocks);
+            }
+        }
+        h.pump_with(&mut Blocks);
+
+        const A: lumen_static::Constraints = lumen_static::Constraints { min_w: 0.0, max_w: 1.0e6, min_h: 0.0, max_h: 1.0e6 };
+        const B: lumen_static::Constraints = lumen_static::Constraints { min_w: 0.0, max_w: 2.0e6, min_h: 0.0, max_h: 2.0e6 };
+        let table = <Kinds as Widget>::SUB_TABLE;
+        let (mut swept, mut moved) = (0, Vec::new());
+        for (i, d) in table.iter().enumerate() {
+            if d.child_count != 0 {
+                continue;
+            }
+            let paint = |h: &Host<Sweep, Incremental, Everything>| {
+                let mut l = DisplayList::new();
+                h.app.tree().node(i).paint(&h.states, i, &mut l);
+                l.hash_from(0)
+            };
+            let before = paint(&h);
+            let mut scratch = h.states.clone();
+            let styles = h.styles.clone();
+            let mut m = Blocks;
+            let mut cx = lumen_static::LayoutCx::new(&mut m);
+            let node = h.app.tree_mut().node_mut(i);
+            node.probe(&mut cx, A, &styles, &mut scratch, i);
+            node.probe(&mut cx, B, &styles, &mut scratch, i);
+            swept += 1;
+            if paint(&h) != before {
+                moved.push((i, h.app.tree().node(i).kind_name()));
+            }
+        }
+        println!("swept {swept} leaves; paint moved under a probe: {moved:?} (bound: none)");
+        assert!(swept >= 20, "setup: only {swept} leaves swept");
+        assert!(moved.is_empty(), "a probe changed what these leaves paint: {moved:?}");
     }
 }

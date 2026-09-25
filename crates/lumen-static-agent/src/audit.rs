@@ -35,6 +35,16 @@
 //!    boundary allocates nothing whatever the finding count.
 //!    `docs/results-agent-cost.md`, `docs/plan-review-fixes.md` F2.
 //!
+//!    **"Does not touch the memo" was not "leaves no trace"** — M41/T41.4.
+//!    `Node::probe`'s provided body is `layout`, and `TextInput` and
+//!    `TextArea` wrote their scroll offset there, so the probe's 1e6 px
+//!    box reset a scrolled field. Invisible under `Everything`, whose
+//!    next layout put it back; painted under the `Boundaries` default,
+//!    where an unrelated hover left the field unmarked (R1-F5). Both
+//!    override `probe` now, and `tests/audit_is_inert.rs` sweeps every
+//!    leaf kind the widget crate ships, comparing each one's paint before
+//!    and after a probe.
+//!
 //! ## The intrinsic-size probe
 //!
 //! Several findings need to know what a node *wants* to be, which the

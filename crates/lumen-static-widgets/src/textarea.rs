@@ -498,6 +498,49 @@ impl<S: TextBuffer> Node for TextArea<S> {
         lumen_static::ops::record_painted(st, i, limits, size, &me)
     }
 
+    /// Measure without touching what paint reads — M41/T41.4, R1-F5.
+    ///
+    /// `layout` writes the vertical scroll, the padding and the shaped
+    /// clusters from its limits, and the audit's 1e6 px probe unwraps the
+    /// paragraph to one line, so the scroll clamp — computed from the
+    /// wrapped height — pinned the scroll to zero on a frame nothing then
+    /// laid out again (`audit_is_inert.rs`: the area painted at y = 41.2
+    /// against 5.2). The height depends on the width here, unlike
+    /// `TextInput`'s run, so the memo answers only for the width it was
+    /// shaped at; any other width is measured into a local and not kept.
+    #[cfg(feature = "observe")]
+    fn probe(
+        &mut self,
+        cx: &mut LayoutCx,
+        limits: Constraints,
+        style: &[Style],
+        st: &mut [NodeState],
+        i: usize,
+    ) -> Size {
+        let me = style[i];
+        if !me.visible {
+            return lumen_static::ops::hide_subtree(st, i, limits, 1);
+        }
+        let px = me.font_size;
+        let inner_w = (limits.max_w - me.padding.horizontal()).max(0.0);
+        let key = (
+            self.text.as_ref().len() as u64,
+            px.to_bits(),
+            me.font_weight.to_bits(),
+            inner_w.to_bits(),
+        );
+        let h = if self.shaped_key == Some(key) {
+            self.shaped_h.max(self.line_h)
+        } else {
+            let run = cx.text.measure_weighted(self.text.as_ref(), px, me.font_weight, inner_w);
+            run.h.max(cx.text.line_height(px))
+        };
+        let content = Size { w: inner_w, h };
+        let padded =
+            Size { w: content.w + me.padding.horizontal(), h: content.h + me.padding.vertical() };
+        lumen_static::ops::record_painted(st, i, limits, resolve_self(limits, &me, padded), &me)
+    }
+
     fn place(&mut self, at: Point, _style: &[Style], st: &mut [NodeState], i: usize) {
         st[i].pos = at;
     }

@@ -516,6 +516,50 @@ impl<S: TextBuffer> Node for TextInput<S> {
         lumen_static::ops::record_painted(st, i, limits, size, &me)
     }
 
+    /// Measure without touching what paint reads — M41/T41.4, R1-F5.
+    ///
+    /// The provided probe is `layout`, and `layout` writes the scroll
+    /// offset (and the padding it is drawn against, and the shaped
+    /// clusters) from the limits it is handed. The agent's audit probes
+    /// every leaf at 1e6 and 2e6 px, so after `frame_done` a scrolled
+    /// field held a scroll of zero; under `Everything` the next layout put
+    /// it back, and under `Boundaries` an unrelated hover left the field
+    /// unmarked and paint drew the probe's scroll
+    /// (`crates/lumen-static-agent/tests/audit_is_inert.rs`).
+    ///
+    /// The run is shaped against no width limit, so its width does not
+    /// depend on the probe's box: the memo answers when it is warm for
+    /// this text, size and weight, and a cold one is measured into a
+    /// local and not kept.
+    #[cfg(feature = "observe")]
+    fn probe(
+        &mut self,
+        cx: &mut LayoutCx,
+        limits: Constraints,
+        style: &[Style],
+        st: &mut [NodeState],
+        i: usize,
+    ) -> Size {
+        let me = style[i];
+        if !me.visible {
+            return lumen_static::ops::hide_subtree(st, i, limits, 1);
+        }
+        let px = me.font_size;
+        let warm = self.shaped_key.is_some_and(|(len, size, weight, _)| {
+            (len, size, weight)
+                == (self.text.as_ref().len() as u64, px.to_bits(), me.font_weight.to_bits())
+        });
+        let content = if warm {
+            Size { w: self.shaped_size.0, h: self.shaped_size.1 }
+        } else {
+            let run = cx.text.measure_weighted(self.text.as_ref(), px, me.font_weight, f32::INFINITY);
+            Size { w: run.w, h: cx.text.line_height(px) }
+        };
+        let padded =
+            Size { w: content.w + me.padding.horizontal(), h: content.h + me.padding.vertical() };
+        lumen_static::ops::record_painted(st, i, limits, resolve_self(limits, &me, padded), &me)
+    }
+
     fn place(&mut self, at: Point, _style: &[Style], st: &mut [NodeState], i: usize) {
         st[i].pos = at;
     }

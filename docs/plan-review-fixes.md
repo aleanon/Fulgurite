@@ -143,6 +143,14 @@ flaking); `just test` green.
   its two `layout` calls, or — as `audit.rs:235-236` already proposes —
   the probe is retired for reading `Shrink` results, which M2 made
   available. Prefer the second. *1B #3a, 2B #2.*
+  *Amended 2026-09-25, M41/T41.4:* the probe went through `Node::probe`
+  instead, which fixed the memo and left the rest of the mutation: a
+  widget whose `layout` writes state paint reads (`TextInput`'s and
+  `TextArea`'s scroll) was still reset by the probe, and under the
+  `Boundaries` default the reset reached the screen (R1-F5). Both
+  override `probe`; `Node::probe`'s rustdoc states the rule, and
+  `crates/lumen-static-agent/tests/audit_is_inert.rs` sweeps every leaf
+  kind.
 - **F2.2** `Journal` retains `geom`, `sums` and its `DisplayList` across
   frames and swaps rather than reassigns. Paints **once from the root**,
   recording each node's command range as the traversal goes, instead of

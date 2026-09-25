@@ -127,22 +127,6 @@ pub trait Node {
     /// node (the audit's intrinsic probe).
     fn node_mut(&mut self, i: usize) -> &mut dyn Node;
 
-    /// Contribute to the accessibility/agent tree.
-    /// Measure under `limits` **without disturbing any memo**.
-    ///
-    /// The ambient audit probes every leaf twice per frame to decide
-    /// whether it is sized by its own content. Doing that through
-    /// `layout` left each `Label`'s measurement cache keyed on the
-    /// probe's constraints rather than the frame's, so the memo missed
-    /// on every subsequent frame — measured: 0 text measurements per
-    /// idle frame without the agent attached, 400 of 400 with it. Under
-    /// a real shaper that is the whole shaping cost paid three times per
-    /// frame, in the one component whose module doc names "re-shaping
-    /// every text node" as a scar it learned from.
-    ///
-    /// The default *is* `layout`, which is right for every widget that
-    /// has nothing to cache. `Label` overrides it.
-    /// `docs/plan-review-fixes.md` F2.1.
     /// Handle an event addressed to this node, returning whether it was
     /// consumed (C3, C4 of `docs/text-and-scrolling-decisions.md`).
     ///
@@ -261,6 +245,30 @@ pub trait Node {
         false
     }
 
+    /// Measure under `limits` **without disturbing any memo, or anything
+    /// paint reads**.
+    ///
+    /// The ambient audit probes every leaf twice per frame, at 1e6 and
+    /// 2e6 px, to decide whether it is sized by its own content. Doing
+    /// that through `layout` left each `Label`'s measurement cache keyed
+    /// on the probe's constraints rather than the frame's, so the memo
+    /// missed on every subsequent frame — measured: 0 text measurements
+    /// per idle frame without the agent attached, 400 of 400 with it
+    /// (`docs/plan-review-fixes.md` F2.1).
+    ///
+    /// **A widget whose `layout` writes state that paint reads must
+    /// override this** — M41/T41.4, R1-F5. `TextInput` and `TextArea`
+    /// computed their scroll offset in `layout` from the limits they were
+    /// given, so the probe's 1e6 px box reset a scrolled field to zero;
+    /// under `Everything` the next layout put it back, and under the
+    /// `Boundaries` default an unrelated hover left the field unmarked
+    /// and paint drew the probe's scroll. `audit_is_inert.rs`'s sweep
+    /// probes every leaf kind the widget crate ships and compares its
+    /// paint before and after.
+    ///
+    /// The default *is* `layout`, which is right for a widget whose
+    /// layout writes only its `NodeState` row. `Label`, `Repeat`,
+    /// `TextInput` and `TextArea` override it.
     #[cfg(feature = "observe")]
     fn probe(
         &mut self,
