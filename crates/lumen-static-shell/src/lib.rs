@@ -1600,16 +1600,39 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
     ///
     /// Returns how many characters were delivered, which is every
     /// non-control one unless a widget refused them.
+    ///
+    /// **Pumps with the `BlockMetrics` stand-in**, so it is for a headless
+    /// caller whose frames use the stand-in too. A caller that lays out
+    /// with a real text stack uses [`Host::paste_with`] and passes it —
+    /// a window's session does.
     pub fn paste(&mut self, text: &str) -> usize {
+        self.paste_with(text, &mut BlockMetrics)
+    }
+
+    /// [`Host::paste`], pumping with the caller's text stack — M41/T41.5.
+    ///
+    /// The chunk pumps and the final one lay the field out, and they
+    /// must measure with the stack every other frame uses. `paste`
+    /// pumped with `BlockMetrics` while the window that called it owned
+    /// the real measurer, and a `TextInput`'s shaped memo is not keyed on
+    /// the measurer, so the next real frame was served the stand-in's box
+    /// and clusters: eight pasted `m`s 80 px wide against 131.2 typed,
+    /// and a click after a paste landing on the wrong byte
+    /// (`tests/paste_measurer.rs`; R2-F1, R10-F4). With the caller's
+    /// measurer here, "no second edit path" is true again: a paste is
+    /// typing, laid out by what typing is laid out by. Keying the memo
+    /// on the measurer as well is M45's (`docs/plan-boundaries-repair.md`
+    /// §4).
+    pub fn paste_with(&mut self, text: &str, metrics: &mut dyn TextMeasure) -> usize {
         let mut n = 0;
         for ch in text.chars().filter(|c| !c.is_control() || *c == '\n') {
             if self.queue.len() == lumen_static::InputQueue::<64>::CAP {
-                self.pump();
+                self.pump_with(metrics);
             }
             self.post(Event::Text { ch });
             n += 1;
         }
-        self.pump();
+        self.pump_with(metrics);
         n
     }
 

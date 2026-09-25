@@ -420,6 +420,16 @@ and `dropped()` stays 0. Copy of an empty selection is `None`, not
 - `Clipboard` in `lumen-static-winit`, because a clipboard *is* a
   platform and neither the core nor the shell has one.
 
+*Amended 2026-09-25, M41/T41.5:* "no second edit path" was false in
+one respect. `Host::paste` pumped with the `BlockMetrics` stand-in, and
+the window's session called it although the session owns the real
+measurer, so a pasted field was laid out by a different text stack than
+a typed one — and kept that box, since the shaped memo is not keyed on
+the measurer (R2-F1, R10-F4). `Host::paste_with` takes the caller's
+measurer, `Session::paste` passes the session's, and `paste` is
+`paste_with` with the stand-in, for headless callers.
+`crates/lumen-static-shell/tests/paste_measurer.rs` is the gate.
+
 **Default-on, and the difference from `a11y` is measured.** `arboard`
 costs **11 crates** (207 → 218, 2026-09-05) against `a11y`'s 62
 (95 → 157). A text field without copy and paste is not a working text

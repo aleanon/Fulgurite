@@ -299,8 +299,15 @@ impl<A: App + 'static> Session for Local<A> {
     }
 
     fn paste(&mut self, text: &str) {
-        // Guarded: paste runs the focused widget's editing code.
-        let _ = self.guarded(|h, _| h.paste(text));
+        // Guarded: paste runs the focused widget's editing code. With the
+        // session's own measurer, which every other frame of this session
+        // lays out with — M41/T41.5 (R2-F1, R10-F4). A hot library's
+        // session is one of these on the far side of the loader, and the
+        // reload crate's wrapper forwards to it, so it inherits this.
+        let _ = self.guarded(|h, m| match m.as_mut() {
+            Some(m) => h.paste_with(text, m),
+            None => h.paste(text),
+        });
     }
 
     fn compose(&mut self, c: Composition<'_>) -> bool {

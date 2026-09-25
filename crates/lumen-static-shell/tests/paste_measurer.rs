@@ -10,6 +10,9 @@
 //! Under `Boundaries` it is worse: nothing marks the field after the
 //! paste's own pumps, so the real frame does not lay it out at all.
 //!
+//! Since M41/T41.5 a caller with a real stack pastes through
+//! `Host::paste_with`, and `Session::paste` does.
+//!
 //! Each case pastes into one host and types the same text into another,
 //! then pumps both with a proportional measurer, under both strategies.
 //! Typing is the control: it is the path `paste` claims to be.
@@ -104,7 +107,8 @@ fn seen<I: Invalidation>(h: &mut Host<App, Incremental, I>, click_x: f32) -> See
 /// Paste into one host and type into another, then two real frames.
 fn case<I: Invalidation>(strategy: &str, text: &str, click_x: f32) -> (Seen, Seen) {
     let mut pasted: Host<App, Incremental, I> = host();
-    let n = pasted.paste(text);
+    // As a window's session does: with the measurer its frames use.
+    let n = pasted.paste_with(text, &mut Prop);
     assert_eq!(n, text.chars().count(), "setup: the paste was not delivered whole");
     pasted.pump_with(&mut Prop);
     pasted.pump_with(&mut Prop);
@@ -142,21 +146,54 @@ fn both(text: &str, click_x: f32) {
 }
 
 #[test]
-#[ignore = "red until T41.5: R2-F1, Host::paste pumps with BlockMetrics"]
 fn a_short_paste_measures_like_typing() {
     both("mmmmmmmm", 30.0);
 }
 
 /// Crosses the 64-character chunk pump, so the stand-in pumps twice.
 #[test]
-#[ignore = "red until T41.5: R2-F1, Host::paste pumps with BlockMetrics"]
 fn a_paste_longer_than_the_queue_measures_like_typing() {
     both(&"mi".repeat(50), 200.0);
 }
 
 /// R10-F4: a click after a paste lands on the byte typing would give.
 #[test]
-#[ignore = "red until T41.5: R10-F4, a click after a paste is placed by the stand-in's clusters"]
 fn a_click_after_a_paste_lands_where_it_would_after_typing() {
     both("the quick brown fox", 84.5);
+}
+
+/// **The window's path**: `Session::paste` on a `Local` session, which
+/// owns the system face. The `Host` cases above pass the measurer by
+/// hand; this is the call a window makes, and the one T41.5 changed.
+#[cfg(feature = "truetype")]
+#[test]
+fn a_session_paste_measures_with_the_sessions_face() {
+    use lumen_static_shell::session::{Local, Recover, Session};
+    let session = || {
+        let mut s = Local::from_host(Host::new(App::default(), 400, 60), "", lumen_static::Color(255, 255, 255, 255), Recover::Off);
+        s.frame(0.0, 400, 60);
+        s.post(Event::Key { key: lumen_static::Key::Tab, down: true });
+        s.frame(0.0, 400, 60);
+        assert_eq!(s.host.input.focus, Some(FIELD as u32), "setup: Tab did not focus the field");
+        s
+    };
+    let text = "mmmmmmmm";
+    let mut pasted = session();
+    pasted.paste(text);
+    pasted.frame(0.0, 400, 60);
+    let mut typed = session();
+    for ch in text.chars() {
+        typed.post(Event::Text { ch });
+        typed.frame(0.0, 400, 60);
+    }
+    typed.frame(0.0, 400, 60);
+    assert_eq!(pasted.host.app.ui.field.as_str(), text, "setup: the paste did not land");
+    let (pw, tw) = (pasted.host.states[FIELD].size.w, typed.host.states[FIELD].size.w);
+    // The stand-in's box: eight half-em glyphs at the default 16 px, plus
+    // 8 px of padding a side — what a paste measured with `BlockMetrics`
+    // is (80, the Host cases' red figure).
+    let stand_in = 8.0 * 16.0 * 0.5 + 16.0;
+    println!("session 8-char: paste w={pw} | typed w={tw} | stand-in w={stand_in} | bound: equal");
+    assert_ne!(tw, stand_in, "setup: the session has no face of its own, so this case cannot fail");
+    assert_eq!(pw, tw, "a session's paste laid out differently from typing the same text");
 }
