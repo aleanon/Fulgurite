@@ -32,11 +32,12 @@ static:
 # what docs/verification-notes.md scopes its argument to; `--workspace` cannot
 # produce it, because lumen-static-agent, examples/counter and fixtures/hot-app
 # turn on `observe`/`reload` and cargo unifies features across the selection.
-# The old `cargo test -p lumen-static --all-features` line was redundant with
-# `--workspace` and is gone.
-#
-# Grouped so the whole default-feature graph is built once. Interleaving these
-# with the dev-shape commands recompiles lumen-static both ways every time.
+# Nor can a plain `-p lumen-static` on its own: a dev-dependency's features
+# unify into the crate under test, and until M43/T43.7 core's dev edge asked
+# for the widgets' `observe`. scripts/release_shape.sh builds under
+# `--cfg lumen_release_shape`, where core refuses `observe`/`reload` (the
+# tripwire), prints core's resolved features and its test count, and fails
+# on zero tests. The `observe` tests live in fixtures/observe-tests.
 #
 # The steady-state allocation gate runs with the dev-shape tests, as
 # `crates/lumen-static-shell/tests/alloc_gate.rs` — its own binary, since
@@ -46,9 +47,7 @@ static:
 
 # Default features: the shipped shape, and the only one docs/verification-notes.md covers.
 release-shape: const-budget
-    cargo test -p lumen-static
-    cargo clippy -p lumen-static --all-targets -- -D warnings
-    cargo run -p miri-smoke
+    ./scripts/release_shape.sh
 
 # `--exclude lumen-static-wgpu` on all three: the GPU backend is a
 # workspace member so it is type-checked and tested, but wgpu is 37

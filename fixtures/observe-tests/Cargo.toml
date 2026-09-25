@@ -1,0 +1,27 @@
+[package]
+name = "observe-tests"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+# Core's tests that need the `observe` dev surface, kept apart from core
+# (M43/T43.7, docs/plan-gate-hygiene.md §2.6).
+#
+# They used to live in crates/lumen-static/tests/, with core's
+# dev-dependency on the widgets asking for `observe` -- and a
+# dev-dependency's features unify into the crate under test, so
+# `cargo test -p lumen-static`, which `just release-shape` calls "the ONLY
+# build" of the shipped shape, compiled core WITH `observe` (R12-F1).
+# Here the features are this package's own, stated rather than borrowed,
+# and core's dev edge carries none: `release-shape` sets a cfg under which
+# core refuses to build with `observe` or `reload` on at all.
+[dependencies]
+
+[dev-dependencies]
+lumen-static = { path = "../../crates/lumen-static", features = ["observe"] }
+# The widgets' `observe` impls are gated on the widgets crate's own
+# feature, not core's (`docs/results-widget-crate.md`, "One feature seam").
+lumen-static-widgets = { path = "../../crates/lumen-static-widgets", features = ["observe"] }
+accesskit = "0.25"
+serde_json = "1"

@@ -33,6 +33,7 @@ members = [
     "fixtures/reload-host",
     "fixtures/hot-window",
     "fixtures/embedded",
+    "fixtures/observe-tests",
     "fixtures/bake-font",
 ]
 # The Step 1 firewall experiment is its own generated workspace.

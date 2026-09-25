@@ -109,6 +109,19 @@
 // `scripts/check_no_unsafe.sh` checks that it does.
 #![forbid(unsafe_code)]
 
+// The release-shape tripwire (M43/T43.7). `just release-shape` builds with
+// `--cfg lumen_release_shape` in its own target directory; under it, core
+// refuses to compile with the dev surface on. A dev-dependency's features
+// unify into the crate under test, so an edge that asks for `observe` or
+// `reload` silently turns the "shipped shape" gate into a dev build --
+// which is what core's own dev edge on the widgets did until M43 (R12-F1).
+#[cfg(all(lumen_release_shape, any(feature = "observe", feature = "reload")))]
+compile_error!(
+    "release-shape tripwire: lumen-static was built with `observe` or `reload` on in a \
+     release-shape build -- some dependency edge (often a dev-dependency) enabled it. \
+     `cargo tree -p lumen-static -e features -i lumen-static` names the edge."
+);
+
 // Available in a `std` build too -- `std` re-exports it -- so this needs
 // no cfg of its own beyond the tier that supplies `Vec` and `String`.
 #[cfg(feature = "alloc")]

@@ -127,15 +127,8 @@ fn e0_queue_is_fifo_and_round_trips_for_replay() {
     q.push(Event::Text { ch: 'x' });
     assert_eq!(q.len(), 3);
 
-    // Recording is a dev concern, so the derives ride the observe gate —
-    // the vocabulary itself is always present.
-    #[cfg(feature = "observe")]
-    {
-        let recorded: Vec<Event> = q.iter().copied().collect();
-        let json = serde_json::to_string(&recorded).unwrap();
-        let replayed: Vec<Event> = serde_json::from_str(&json).unwrap();
-        assert_eq!(recorded, replayed, "a session serializes and comes back");
-    }
+    // Recording a session through JSON rides the `observe` gate, so it is
+    // tested in `fixtures/observe-tests/tests/event_replay.rs` (M43/T43.7).
 
     assert_eq!(q.pop(), Some(Event::down(1.0, 2.0)));
     assert_eq!(q.pop(), Some(Event::Key { key: Key::Enter, down: true }));

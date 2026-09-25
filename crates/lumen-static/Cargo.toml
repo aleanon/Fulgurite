@@ -45,11 +45,14 @@ rdyn_opaque = ["lumen-static-macros/rdyn_opaque"]
 # is the honest shape: the dependency is real, and it is only a
 # dependency of the tests.
 #
-# `observe` is on because `tests/observe.rs` asserts the roles widgets
-# publish, and those impls are gated on THIS crate's `observe`, not on
-# lumen-static's. Without it a `Label` reports `GenericContainer` and
-# the test fails for a reason that is about features rather than roles.
-lumen-static-widgets = { path = "../lumen-static-widgets", features = ["observe"] }
+# **No features, and that is load-bearing** (M43/T43.7, R12-F1). A
+# dev-dependency's features unify into the crate under test: when this
+# line asked for the widgets' `observe`, `cargo test -p lumen-static` --
+# the release-shape gate -- built core WITH `observe`. The tests that
+# need it live in `fixtures/observe-tests`, whose manifest states the
+# features itself; `just release-shape` builds with a cfg under which
+# core refuses to compile with `observe` or `reload` on.
+lumen-static-widgets = { path = "../lumen-static-widgets" }
 serde = { version = "1", features = ["derive"] }
 
 [[test]]
@@ -61,13 +64,12 @@ name = "text"
 required-features = ["reload"]
 
 [[test]]
-name = "hatches"
-required-features = ["observe"]
-
-[[test]]
 name = "display"
 required-features = []
 
-[[test]]
-name = "observe"
-required-features = ["observe"]
+
+# `just release-shape` sets `--cfg lumen_release_shape`, under which
+# lib.rs refuses `observe`/`reload` (M43/T43.7). Declared so rustc's
+# `unexpected_cfgs` lint knows it.
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(lumen_release_shape)"] }

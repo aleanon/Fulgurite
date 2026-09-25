@@ -3,7 +3,10 @@
 *2026-08-31. Exploratory assessment, not a commitment. Scope is the
 **release build only** — `observe` and `reload` off, so no serde, no
 accesskit, no agent crate, no dylib, no FFI. Those surfaces are dev-only
-and out of scope by construction.*
+and out of scope by construction. `just release-shape` is the build of
+exactly that scope, and since M43/T43.7 it refuses to compile core with
+`observe` or `reload` on (until then a dev-dependency turned `observe`
+on in it).*
 
 ## The release surface is small
 
