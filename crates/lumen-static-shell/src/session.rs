@@ -122,6 +122,13 @@ pub trait Session: FrameSource {
     /// Answer one agent request, as JSON text. A session built without
     /// the agent answers with an error, so the vtable does not depend on
     /// the feature.
+    ///
+    /// **A panic in the agent itself is a `-32603` reply** naming the
+    /// method and where it happened, and the session keeps answering
+    /// (M39/T39.5). **A panic in application code the agent reached is
+    /// not**: it unwinds out of this call under `Recover::Off`, as it
+    /// would from a frame (M36 rule 3), and under `Recover::On` it is
+    /// M36's to show.
     fn agent(&mut self, req: &str, screen: &mut dyn Screen) -> String;
     /// Feed the agent's journal the frame just drawn.
     fn agent_frame_done(&mut self);
@@ -409,7 +416,31 @@ impl<A: App + 'static> Session for Local<A> {
         // **One call.** `dispatch_input` already falls through to
         // `dispatch` for anything that is not an `input.*` method or a
         // screenshot.
-        self.agent.dispatch_input(&mut live, &req).to_string()
+        #[cfg(not(panic = "unwind"))]
+        return self.agent.dispatch_input(&mut live, &req).to_string();
+        // **The agent's own panic is a reply** — M39/T39.5 (R14-F5).
+        // Selector parsing, `ui.getTree`, `ui.explain` and every widget's
+        // `observe` ran bare here, so a panic in any of them ended the
+        // window. Caught whatever `Recover` says, because none of it is
+        // the application's — and **the application's is re-raised**:
+        // `Live::pump` marks it, so under `Recover::Off` a shipped
+        // application still crashes where a crash reporter can see it
+        // (M36 rule 3). Under `Recover::On` the pump's own guard has
+        // already caught it, so nothing marked arrives here. No journal
+        // reset: `dispatch_input` takes `&self`.
+        #[cfg(panic = "unwind")]
+        {
+            crate::recover::install();
+            crate::recover::clear();
+            let agent = &self.agent;
+            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| agent.dispatch_input(&mut live, &req))) {
+                Ok(reply) => reply.to_string(),
+                Err(payload) => match payload.downcast::<AppPanic>() {
+                    Ok(app) => std::panic::resume_unwind(app.0),
+                    Err(payload) => agent_panicked(&req, &*payload),
+                },
+            }
+        }
     }
 
     #[cfg(not(feature = "live-agent"))]
@@ -449,6 +480,41 @@ impl<A: App + 'static> Session for Local<A> {
     }
 }
 
+/// A panic raised by **application** code the agent reached — M39/T39.5.
+/// [`Live`]'s pump wraps whatever escapes it in this, so
+/// `Session::agent`'s catch can tell the application's panic (re-raised)
+/// from the agent's own (answered). **Only `Session::agent` unwraps it**;
+/// a caller that drives [`Live`] some other way would see the wrapper, not
+/// the application's payload — T39.5's first injection showed exactly that
+/// when the catch was removed.
+#[cfg(all(feature = "live-agent", panic = "unwind"))]
+struct AppPanic(Box<dyn std::any::Any + Send>);
+
+/// The `-32603` reply to a panic in the agent itself, with the method and
+/// the location M36's hook recorded.
+#[cfg(all(feature = "live-agent", panic = "unwind"))]
+fn agent_panicked(req: &serde_json::Value, payload: &(dyn std::any::Any + Send)) -> String {
+    let r = crate::recover::report(payload, None);
+    let method = req.get("method").and_then(|m| m.as_str()).unwrap_or("?");
+    let id = match req.get("id") {
+        Some(v @ (serde_json::Value::String(_) | serde_json::Value::Number(_))) => v.clone(),
+        _ => serde_json::Value::Null,
+    };
+    let at = r.location.as_ref().map(|(f, l, c)| format!(" at {f}:{l}:{c}")).unwrap_or_default();
+    serde_json::json!({
+        "jsonrpc": "2.0", "id": id,
+        "error": {
+            "code": -32603,
+            "message": format!("the agent panicked answering `{method}`{at}: {}", r.message),
+            "data": {
+                "location": r.location.as_ref().map(|(f, l, c)| serde_json::json!({"file": f, "line": l, "column": c})),
+                "note": r.note,
+            },
+        },
+    })
+    .to_string()
+}
+
 /// The agent's view of a session: the host and the tree, and the
 /// window's renderer for pixels. Moved here from the window crate by
 /// M37, because the tree now lives wherever the session does.
@@ -459,6 +525,31 @@ pub struct Live<'a, A: App> {
     pub screen: &'a mut dyn Screen,
     pub page: Color,
     pub recover: Recover,
+}
+
+#[cfg(feature = "live-agent")]
+impl<A: App> Live<'_, A> {
+    /// One pump and present — what the agent's `pump` runs, marked as
+    /// application code there (M39/T39.5).
+    fn pump_app(&mut self) -> (u64, bool) {
+        let metrics = &mut *self.metrics;
+        let handled = run_guarded(self.host, self.recover, |h| match metrics.as_mut() {
+            Some(m) => h.pump_with(m),
+            None => h.pump(),
+        })
+        .unwrap_or(false);
+        #[cfg(panic = "unwind")]
+        if let Some(r) = self.host.failure().cloned() {
+            let (w, h) = self.screen.frame_rgba().map_or((1, 1), |(w, h, _)| (w, h));
+            let list = match self.metrics.as_mut() {
+                Some(m) => crate::recover::failure_frame(&r, w, h, m),
+                None => crate::recover::failure_frame(&r, w, h, &mut lumen_static::cx::BlockMetrics),
+            };
+            self.host.show(list);
+        }
+        self.screen.present(self.host, self.page);
+        (self.host.frame_number(), handled)
+    }
 }
 
 #[cfg(feature = "live-agent")]
@@ -477,24 +568,17 @@ impl<A: App> lumen_static_agent::AgentHost for Live<'_, A> {
         true
     }
 
+    /// **Application code**, marked as such (M39/T39.5): anything that
+    /// escapes is re-raised wrapped in a private `AppPanic` marker, so `Session::agent`
+    /// hands it on instead of answering it.
     fn pump(&mut self) -> (u64, bool) {
-        let metrics = &mut *self.metrics;
-        let handled = run_guarded(self.host, self.recover, |h| match metrics.as_mut() {
-            Some(m) => h.pump_with(m),
-            None => h.pump(),
-        })
-        .unwrap_or(false);
         #[cfg(panic = "unwind")]
-        if let Some(r) = self.host.failure().cloned() {
-            let (w, h) = self.screen.frame_rgba().map_or((1, 1), |(w, h, _)| (w, h));
-            let list = match self.metrics.as_mut() {
-                Some(m) => crate::recover::failure_frame(&r, w, h, m),
-                None => crate::recover::failure_frame(&r, w, h, &mut lumen_static::cx::BlockMetrics),
-            };
-            self.host.show(list);
-        }
-        self.screen.present(self.host, self.page);
-        (self.host.frame_number(), handled)
+        return match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.pump_app())) {
+            Ok(v) => v,
+            Err(p) => std::panic::resume_unwind(Box::new(AppPanic(p))),
+        };
+        #[cfg(not(panic = "unwind"))]
+        self.pump_app()
     }
 
     fn failure(&self) -> serde_json::Value {

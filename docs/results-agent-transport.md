@@ -138,3 +138,23 @@ Injections: `unwrap_or("")` restored and the validation dropped — the
 first seven rows red, `-32601` or a result where `-32600` was expected;
 the finiteness check made always-true — the four coordinate rows red, a
 result where `-32602` was expected.
+
+## §5 The agent's own panic (T39.5)
+
+`crates/lumen-static-shell/tests/agent_panic.rs`, a leaf whose
+`observe` panics when armed (reached through `ui.getTree`) and whose
+`layout` panics on the other arm (application code, reached through
+`input.click`):
+
+| case | before (`b213ae0`) | after |
+|---|---|---|
+| agent's panic, `Recover::On` | the test thread dies with the panic | `-32603` "the agent panicked answering `ui.getTree` at …agent_panic.rs:79:13", id echoed; the next `ui.getTree` answered |
+| agent's panic, `Recover::Off` | the same | the same reply |
+| application's panic, `Recover::Off` (accept) | unwinds out of the session | still unwinds, with its own message |
+| application's panic, `Recover::On` (accept) | M36's: a result, `app.failure` names it | unchanged |
+
+Injections: (1) the catch removed — both `-32603` rows red (the test
+dies with "a widget's observe panicked on purpose"), and the
+`Recover::Off` row red too, because the marker now escapes unwrapped;
+(2) the re-raise removed — the `Recover::Off` row red, "the
+application's panic was swallowed into a reply: {… -32603 …}".

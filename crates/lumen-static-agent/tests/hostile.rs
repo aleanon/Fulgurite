@@ -16,6 +16,9 @@
 //! line that is not a JSON object, so a web page's HTTP request no longer
 //! reaches `dispatch` at all; its gates are `tests/transport.rs`. What
 //! reaches this file is a well-framed request, which is still untrusted.
+//! And a live session answers a panic *in the agent* with `-32603`
+//! rather than dying (M39/T39.5,
+//! `crates/lumen-static-shell/tests/agent_panic.rs`).
 
 use lumen_static_widgets::ops::{Fixed, Label, Spacer};
 use lumen_static::{pass, Constraints, NodeState, StaticTree, Widget};

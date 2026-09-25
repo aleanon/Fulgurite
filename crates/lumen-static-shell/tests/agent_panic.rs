@@ -147,7 +147,6 @@ fn ask(s: &mut Local<Fx>, method: &str, params: &str) -> Value {
 /// it happened, and the next call is answered — under both `Recover`
 /// values, because the agent is not application code (§2.5).
 #[test]
-#[ignore = "red until T39.5: R14-F5, the agent's own panic ends the process"]
 fn the_agents_own_panic_is_a_reply() {
     for recover in [Recover::On, Recover::Off] {
         let mut s = session(recover);

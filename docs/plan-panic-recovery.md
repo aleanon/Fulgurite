@@ -436,6 +436,22 @@ for `Program`'s seam. M37 needs M36's in-library catch (T36.4). M34's
 shadow oracle reports through the agent rather than panicking, so this
 milestone's catch never swallows it.
 
+## 3a. Later: the agent's own panics (M39/T39.5, 2026-09-25)
+
+This milestone guarded the application code the agent reaches
+(`Live::pump`), but not the agent itself: `Session::agent` called
+`Agent::dispatch_input` bare, so a panic in selector parsing,
+`ui.getTree`, `ui.explain` or a widget's `observe` ended the window
+(R14-F5). **The agent's own panics are now caught** — whatever `Recover`
+says, because none of that code is the application's — and answered
+`-32603` with the method and the location this milestone's hook
+records. **The application's are not**: `Live::pump` wraps anything that
+escapes it in a marker, and `Session::agent` re-raises a marked panic
+with its original payload, so rule 3 holds — under `Recover::Off` a
+shipped application still crashes where a crash reporter can see it.
+`crates/lumen-static-shell/tests/agent_panic.rs` checks both directions;
+`docs/plan-agent-transport.md` §2.5 has the reasoning.
+
 ## 5. What the review found (2026-09-23)
 
 A seven-lens review, with an adversarial verifier per finding, confirmed
