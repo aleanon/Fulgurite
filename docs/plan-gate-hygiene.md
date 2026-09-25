@@ -1,6 +1,45 @@
 # M43 — gates that run, refuse what they claim to, and say when they did not run
 
-> **Written 2026-09-24, not started.** This plan closes 27 findings from
+> **T43.0–T43.12 and T43.14 DONE 2026-09-26** (branch `impl/m43`).
+> T43.13 (`just live`, `just ci`, the bench lock, the qemu/thumb probe)
+> and T43.15 (wiring the self-tests into `test`/`check`/`ci`) are NOT
+> built: both wait on M42/T42.2. One line per task:
+>
+> - **T43.0** `scripts/selftest/`: 37 plants (21 static, 14 build, 2 slow; 38 with T43.12's);
+>   at b213ae0 one of the 37 went red by name. All 38 are red now.
+> - **T43.1** `forbid(unsafe_code)` on 8/8 crates (all but reload);
+>   the scan is literal-aware (`scripts/lib/rustsrc.py`).
+> - **T43.2** comments lexed (trailing, block), AGENT.md and manifests
+>   read, the allowlist checked (six live entries removed), `--bin`/`-p`
+>   checked against parsed metadata, any-fence `ignore` ban.
+> - **T43.3** one parser of the derives' own lists; declared = rustdoc =
+>   book = 8.
+> - **T43.4** firmware path from cargo's JSON; `nm` failure is a
+>   failure; the headline re-measured (27,024 B) and held to 1%.
+> - **T43.5** const-budget: clean non-incremental build, `wid_index!`
+>   ×3; both quadratics red on runs 2 and 3.
+> - **T43.6** the agent's dev edge takes `observe`; `just test-crates`
+>   (908 tests, nine crates alone, 22 s warm).
+> - **T43.7** core's dev edge featureless; `fixtures/observe-tests`;
+>   the `lumen_release_shape` tripwire; 416 core tests in the shipped
+>   shape.
+> - **T43.8** `fixtures/embedded/tests/bind_nostd.rs`: 256 of 1,000
+>   stored, under `LUMEN_REQUIRE_NOSTD=1` in `thumb`.
+> - **T43.9** goldens run with the shell alone; `Recorded` fails in
+>   both files; `check_test_counts.sh` (1 zero-test binary, allowed and
+>   verified).
+> - **T43.10** `LUMEN_REQUIRE_GPU=1` in `just gpu`; `the_gpu_half_ran`.
+> - **T43.11** DejaVu Sans committed (759,720 B); only
+>   `font_discovery.rs` needs the system; `just fonts`.
+> - **T43.12** the competitive lock regenerated; `check_locks.sh`;
+>   `--locked` everywhere there; `deny.toml` with two accepted
+>   advisories.
+> - **T43.14** the thumb target declared and checked; ci.yml dormant;
+>   no bare counts (`check_ci_claims.sh`).
+>
+> **What building found (2026-09-26)** is at the end of §3.
+>
+> **Written 2026-09-24.** This plan closes 27 findings from
 > M38's deep review (`docs/results-deep-review.md` §2.3, §2.4, §4 and
 > §5), re-triaged against `main` at 1717808 on 2026-09-24:
 >
@@ -1146,6 +1185,61 @@ harness injection, now inside the every-commit gate.
 **Effort:** S. **Depends on:** T43.1–T43.14; and M42/T42.2–T42.7,
 because `selftest-live` runs M42's plants, and a plant whose fix has
 not landed would hold `just ci` red.
+
+### What building found (2026-09-26)
+
+Recorded here rather than folded into the tasks above, which keep their
+original wording.
+
+- **§2.4's scratch copy is a copy of the working tree, not `git worktree
+  add --detach` of HEAD.** A gate run before a commit must see the
+  uncommitted change; a worktree at HEAD would test the previous commit.
+  The copy is its own throwaway git repository under
+  `target/selftest/wt`, reset between plants.
+- **The harness found a defect in itself** (T43.5): syncing with `rsync
+  -a` preserved the source's old mtimes, so cargo called a previous
+  plant's build fresh and a baseline ran against it. The sync now writes
+  only changed files, with the current time.
+- **Plants for fixes that do not exist yet are written post-fix**, so
+  at T43.0 four of them honestly reported `edit did not apply`
+  (agent-alone, observe-tripwire, zero-tests, targets-undeclared).
+- **`golden.rs` had I-NEW-4's shape too**, which §1.1 did not list: its
+  `Recorded` branch re-ran the comparison and passed. T43.9 fixed both.
+- **T43.6's "19 failed" needs `--no-fail-fast`**: a bare `cargo test -p`
+  stops at the first red binary and reports 3.
+- **T43.7's moved tests would not have failed in `release-shape` had they
+  stayed**: `required-features = ["observe"]` would have skipped them.
+  They moved anyway, so their feature needs are stated rather than
+  borrowed from unification.
+- **T43.8's test accepts the std answer in a unified build** (1,000
+  stored under `--workspace`, where other members turn `std` on) and
+  only `LUMEN_REQUIRE_NOSTD=1` in `thumb` insists on 256 — a no_std test
+  cannot be a gate inside `cargo test --workspace`.
+- **The shaping tests were shaping Noto, not DejaVu**, on the reference
+  machine (`FontStack::system`'s first candidate). T43.11 pins DejaVu.
+- **T43.14 ran before T43.13**, so ci.yml's header names `just ci` as not
+  yet built; T43.13's commit updates it.
+- **AGENT.md edits the plan assigns** (T43.1's doc-currency sentence,
+  T43.2's check count, T43.4's M30 `.text` figure, T43.9's M12 entry)
+  were left to the coordinator, who owns AGENT.md during parallel work.
+
+### What T43.13 and T43.15 will need
+
+- **From M42/T42.2:** every live script exiting 77 on a missing
+  capability, and free agent ports, so `just live` can aggregate them.
+- **Already here for them:** `just test-crates` and `just deny` (T43.13
+  runs both); `scripts/selftest/run.sh` tiers `static`, `build`, `slow`
+  (T43.15 wires them into `test`, `check` and `ci`; the static tier is
+  22 plants in 19 s, inside §5's 30 s budget; build 14 plants in ~50 s
+  warm; slow 2 plants in ~6 min); the requirement variables
+  (`LUMEN_REQUIRE_GPU`, `LUMEN_REQUIRE_FONTS`, `LUMEN_REQUIRE_NOSTD`)
+  and `LUMEN_ALLOW_SKIP`, which `just ci` must record as skip flags.
+- **To build in T43.13:** `just live`, `just ci`/`ci-verify` (the
+  dirty-tree assertion can reuse the harness's sync), `just
+  install-hooks`, the bench-lock recipe (§3 T43.13) and the
+  qemu/thumb probe; ci.yml's header should then point at `just ci`.
+- **A `live` selftest tier** does not exist yet; M42/T42.0 adds its
+  plants under `scripts/selftest/plants/live/`.
 
 ## 4. Boundaries of this plan
 
