@@ -175,6 +175,23 @@ thing that separates a set from its hull.
 The renderer's 37× above is unaffected by any of this and remains as
 recorded.
 
+**What the 1.00× measures, and what it does not** (M40/T40.1,
+2026-09-25). `ui.lastDamage` is derived from the agent's own journal of
+`NodeState` geometry, which is **logical**, and it never reads
+retention; the drive harness divides it by a logical widget box. So the
+ratio is *journal damage in logical pixels* — which node the agent saw
+change — and **not the damage a surface presents**, which since T40.1 is
+retention's, in **physical** pixels. The two agree at a scale of 1.0 and
+nowhere else. Before T40.1 they disagreed in the worse direction: at 1.5
+the journal reported the hovered button's own box while the surface
+redrew a logical-sized rect at the logical position and left the
+physical rect partly stale (R1-F1, `docs/plan-physical-damage.md` §2.1),
+and the 1.00× could not see it. T40.1 did not change `ui.lastDamage`;
+it changed `app.perf`'s `damaged_px`, the one agent-visible quantity
+counted from the presented regions, which grows by the scale squared
+because it had been counting logical rects as physical pixels. Reporting
+the presented damage beside the journal's is M48's (T48.3, T48.4).
+
 
 ## A third: a command-count change was the whole window — M26/T26.11, 2026-09-19
 

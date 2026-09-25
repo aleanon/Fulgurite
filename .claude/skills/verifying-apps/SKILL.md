@@ -138,7 +138,9 @@ longer wait means the build failed; read its log.
 `layout_ns`, `paint_ns`, `render_ns` (display list → pixels),
 `present_ns` (pixels → surface), `frame_ns` (the whole redraw),
 `input_latency_ns` (oldest input consumed → that frame presented) and
-`damaged_px` (how much of the frame was actually redrawn).
+`damaged_px` (how much of the frame was actually redrawn, in physical
+pixels since M40/T40.1 — `ui.lastDamage` is logical and is not the same
+quantity).
 `input_latency_ns` is the number a person feels; `damaged_px` is the
 one that explains a slow frame, and the one that catches a partial-redraw
 path that has quietly degraded to full frames — every *stage* still

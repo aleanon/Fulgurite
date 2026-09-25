@@ -97,3 +97,8 @@ serde_json = { version = "1", optional = true }
 # to it (`hot`). The loader and its `unsafe` live in the reload crate.
 lumen-static-reload = { path = "../lumen-static-reload", features = ["window"], optional = true }
 notify = { version = "8", optional = true }
+
+[dev-dependencies]
+# `tests/gpu_regions.rs` drives a `Host` at a device scale (M40/T40.1),
+# which needs a leaf widget to change.
+lumen-static-widgets = { path = "../lumen-static-widgets" }

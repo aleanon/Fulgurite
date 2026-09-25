@@ -1258,18 +1258,29 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         let t1 = std::time::Instant::now();
         self.list.clear();
         // Tell paint where the frame is going, so a container can cull
-        // children that cannot be seen (T16.12). **Logical** units: the
-        // list is painted through `Scaled`, which converts on the way
-        // in and converts this back on the way out.
+        // children that cannot be seen (T16.12). **Physical** units —
+        // `self.size` is the surface's — and a container still culls in
+        // its own logical space, because `Scaled::clip_bounds` divides
+        // this back by the scale on the way out.
         self.list.set_bounds(Some([0.0, 0.0, self.size.0 as f32, self.size.1 as f32]));
         {
             // Logical geometry in, physical commands out (M10b), with
-            // retention observing the stream on the way past (T13.8).
+            // retention observing the stream (T13.8) **after** `Scaled`
+            // has multiplied it: `paint → Scaled(Recording(list))`.
+            //
+            // So every region in `Damage` is in physical pixels, the
+            // space both surfaces draw in. The other order — `Recording`
+            // outside `Scaled` — hashed and bounded each command before
+            // it was scaled, and at any scale but 1.0 a partial frame
+            // redrew a logical-sized rect at the logical position and
+            // left the physical one stale (R1-F1, M40/T40.1;
+            // `tests/damage_scale.rs` is the gate).
+            //
             // At a scale of 1.0 `Scaled` is a forwarding wrapper, and
             // under `Rebuild` `Recording` forwards to an empty
             // `observe` the optimizer removes.
-            let mut scaled = lumen_static::Scaled::new(&mut self.list, self.scale);
-            let mut out = lumen_static::Recording::new(&mut scaled, &mut self.retain);
+            let mut rec = lumen_static::Recording::new(&mut self.list, &mut self.retain);
+            let mut out = lumen_static::Scaled::new(&mut rec, self.scale);
             pass::paint_overlaid(self.app.tree(), &self.states, &mut out, &mut self.overlays);
         }
         self.last_paint_ns = t1.elapsed().as_nanos() as u64;
@@ -1464,13 +1475,18 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         n
     }
 
-    /// What the frame just pumped changed, against the frame before it.
+    /// What the frame just pumped changed, against the frame before it,
+    /// in **physical** pixels — the surface's space, not layout's.
+    /// Retention observes the paint stream after `Scaled` has multiplied
+    /// it (M40/T40.1), so a region here is what a rasteriser must redraw
+    /// as it stands; nothing downstream converts it.
     pub fn damage(&self) -> Damage {
         self.last_damage
     }
 
     /// What a surface buffer `age` frames old needs redrawn, and bank
-    /// the accumulated damage as presented.
+    /// the accumulated damage as presented. In **physical** pixels, like
+    /// [`Host::damage`].
     ///
     /// The question a shell presenting into a multi-buffered surface
     /// must ask instead of [`Host::damage`]: `age` comes from the

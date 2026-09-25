@@ -73,3 +73,62 @@ fn regions_are_clamped_to_the_surface() {
         );
     }
 }
+
+/// M40/T40.1: at a device scale the regions a backend is handed are the
+/// **physical** rect that changed, not the logical one.
+///
+/// The GPU path is handed `regions_for(host.take_damage_for_age(..))`
+/// against a physical viewport and snaps each region outward
+/// (`lumen-static-wgpu`'s `snap_out`), so the only way it could still
+/// leave stale pixels after the wrappers were swapped is a region in
+/// the wrong space. At 1.5 a bound label's logical box must be covered
+/// at 1.5 × that. With the old order (`Recording` outside `Scaled`) this
+/// prints `regions [[0.0, 32.0, 48.0, 48.0]]` against the physical
+/// `[0.0, 48.0, 72.0, 72.0]` and fails.
+#[test]
+fn at_a_device_scale_the_regions_cover_the_physical_rect() {
+    use lumen_static::{App as DeriveApp, StaticTree};
+    use lumen_static_shell::Host;
+    use lumen_static_widgets::ops::Label;
+
+    #[derive(StaticTree, Default)]
+    #[widget(column, spacing = 0.0)]
+    struct Ui {
+        #[widget_id("pad")]
+        pad: Label,
+        #[widget_id("value")]
+        value: Label<String>,
+    }
+    #[derive(DeriveApp, Default)]
+    struct Tally {
+        #[tree]
+        ui: Ui,
+        #[bind(ui.value, "{}")]
+        count: i64,
+    }
+
+    let scale = 1.5;
+    let (w, h) = (450u32, 300u32);
+    let mut app = Tally::default();
+    app.ui.pad.set("a line above, so the label is not at the origin");
+    let mut host: Host<Tally> = Host::new(app, w, h);
+    host.set_scale(scale);
+    host.set_stylesheet(&[]);
+    host.pump();
+    host.pump();
+    host.take_damage_for_age(1);
+
+    host.app.count = 123_456;
+    host.pump();
+    let d = host.take_damage_for_age(1);
+    assert!(matches!(d, Damage::Regions(_)), "setup: a label change must damage regions, got {d:?}");
+    let out = regions_for(d, [0.0, 0.0, w as f32, h as f32]);
+
+    let table = <Ui as lumen_static::Widget>::SUB_TABLE;
+    let i = lumen_static::style::index_of_wid(table, "value").expect("id");
+    let st = host.states[i];
+    let phys = [st.pos.x * scale, st.pos.y * scale, (st.pos.x + st.size.w) * scale, (st.pos.y + st.size.h) * scale];
+    let covered = out.iter().any(|r| r[0] <= phys[0] && r[1] <= phys[1] && r[2] >= phys[2] && r[3] >= phys[3]);
+    println!("scale {scale}: regions {out:?}; the label's physical rect {phys:?} (must be inside one)");
+    assert!(covered, "no region covers the label's physical rect {phys:?}: {out:?}");
+}

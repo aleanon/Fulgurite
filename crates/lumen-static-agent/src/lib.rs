@@ -249,9 +249,13 @@ pub struct FrameTiming {
     /// The whole redraw, input drain to presented.
     pub frame_ns: u64,
     pub input_latency_ns: Option<u64>,
-    /// Pixels the frame actually redrew — the area of the damage rect,
-    /// or the viewport when everything was redrawn. `None` from a host
-    /// that renders whole frames and does not track damage.
+    /// Pixels the frame actually redrew — the area of the damage
+    /// regions, or the viewport when everything was redrawn, in
+    /// **physical** pixels (M40/T40.1; before it, logical rects counted
+    /// as physical, short by the scale squared). Not comparable with
+    /// `ui.lastDamage`, which is the journal's, in logical pixels.
+    /// `None` from a host that renders whole frames and does not track
+    /// damage.
     ///
     /// Here because "why is this frame slow" is answered by *how much*
     /// was drawn far more often than by which stage drew it, and a
@@ -1310,6 +1314,12 @@ impl Agent {
 
     /// The union of everything that changed — Lumen's `ui.lastDamage`,
     /// derived from the same diff rather than from paint bookkeeping.
+    ///
+    /// **Logical pixels**, because the journal is `NodeState` geometry.
+    /// It is which *nodes* changed, not what the surface redrew: that is
+    /// retention's, in physical pixels (M40/T40.1), and it reaches the
+    /// agent only as `app.perf`'s `damaged_px`. The two agree at a scale
+    /// of 1.0 and nowhere else (`docs/damage-amplification-decision.md`).
     fn last_damage(&self, params: &Value) -> Value {
         let since = self.since_param(params);
         let report = self.journal.since(since);

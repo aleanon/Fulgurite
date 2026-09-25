@@ -115,11 +115,12 @@ fn full(host: &Host<Moving>, canvas: &mut Canvas) {
 ///
 /// The panel is the top 16 px; this samples inside it and across the
 /// width the first label occupies, which is what the blur reads.
-fn under_panel(c: &Canvas) -> Vec<u8> {
+fn under_panel(c: &Canvas, scale: f32) -> Vec<u8> {
     let mut out = Vec::new();
-    for y in 2..14 {
-        for x in 2..120 {
-            let p = (y * W as usize + x) * 4;
+    let k = |v: f32| (v * scale) as usize;
+    for y in k(2.0)..k(14.0) {
+        for x in k(2.0)..k(120.0) {
+            let p = (y * c.width as usize + x) * 4;
             out.extend_from_slice(&c.pixels[p..p + 3]);
         }
     }
@@ -136,19 +137,22 @@ fn under_panel(c: &Canvas) -> Vec<u8> {
 /// what caught it. Length is the one thing block metrics do represent.
 const STEPS: [i64; 8] = [1, 10, 100, 1_000, 10_000, 100_000, 1_000_000, 10_000_000];
 
-#[test]
-fn a_panel_over_a_moving_backdrop_is_identical_both_ways() {
-    let mut host: Host<Moving> = Host::new(app(), W, H);
+/// The comparison at `scale`, on a surface of the logical size times it.
+/// Returns (partial steps, steps where the panel's pixels moved).
+fn drive(scale: f32) -> (usize, usize) {
+    let (w, h) = ((W as f32 * scale).round() as u32, (H as f32 * scale).round() as u32);
+    let mut host: Host<Moving> = Host::new(app(), w, h);
+    host.set_scale(scale);
     host.pump();
 
-    let mut oracle = Canvas::new(W, H);
-    let mut incremental = Canvas::new(W, H);
+    let mut oracle = Canvas::new(w, h);
+    let mut incremental = Canvas::new(w, h);
     full(&host, &mut oracle);
     full(&host, &mut incremental);
 
     let mut partial = 0;
     let mut moved = 0;
-    let mut before = under_panel(&oracle);
+    let mut before = under_panel(&oracle, scale);
 
     for step in STEPS {
         host.app.step = step;
@@ -163,14 +167,14 @@ fn a_panel_over_a_moving_backdrop_is_identical_both_ways() {
             }
             d @ Damage::Regions(_) => {
                 partial += 1;
-                for r in d.regions([0.0, 0.0, W as f32, H as f32]) {
+                for r in d.regions([0.0, 0.0, w as f32, h as f32]) {
                     incremental.clear_within(r, BG);
                     incremental.render_within(&host.list, r);
                 }
             }
         }
 
-        let now = under_panel(&oracle);
+        let now = under_panel(&oracle, scale);
         if now != before {
             moved += 1;
         }
@@ -182,16 +186,35 @@ fn a_panel_over_a_moving_backdrop_is_identical_both_ways() {
             .zip(incremental.pixels.chunks_exact(4))
             .filter(|(a, b)| a != b)
             .count();
-        assert_eq!(diff, 0, "step {step}: {diff} px differ between a partial and a full redraw");
+        assert_eq!(diff, 0, "scale {scale}, step {step}: {diff} px differ between a partial and a full redraw");
     }
+    println!("scale {scale}: {partial} partial steps, {moved} steps where the panel's pixels moved");
+    (partial, moved)
+}
 
+#[test]
+fn a_panel_over_a_moving_backdrop_is_identical_both_ways() {
+    let (partial, moved) = drive(1.0);
     // Guard 1 and 2: the setup happened, and it happened partially.
-    println!("{partial} partial steps, {moved} steps where the panel's pixels moved");
     assert!(
         moved >= 6,
         "the backdrop under the panel barely moved ({moved} of 8): nothing to go stale"
     );
     assert!(partial >= 5, "only {partial} of 8 steps had partial damage; the rest proved nothing");
+}
+
+/// M40/T40.1's glass risk (`docs/plan-physical-damage.md` §5): with
+/// `Recording` inside `Scaled`, the backdrop dependency is computed from
+/// the **scaled** `blur`, so the region the panel reads is physical like
+/// everything else. At 1.0 the two orders agree; this is where they
+/// would not.
+#[test]
+fn a_panel_over_a_moving_backdrop_is_identical_both_ways_at_device_scales() {
+    for scale in [1.25, 1.5, 2.0] {
+        let (partial, moved) = drive(scale);
+        assert!(moved >= 6, "scale {scale}: the backdrop barely moved ({moved} of 8)");
+        assert!(partial >= 5, "scale {scale}: only {partial} of 8 steps were partial");
+    }
 }
 
 /// Guard 3: the panel is showing a blurred backdrop, not a flat fill.
@@ -203,7 +226,7 @@ fn the_panel_is_not_a_flat_colour() {
     let mut c = Canvas::new(W, H);
     full(&host, &mut c);
 
-    let px = under_panel(&c);
+    let px = under_panel(&c, 1.0);
     let first = &px[..3];
     let distinct = px.chunks_exact(3).filter(|p| *p != first).count();
     println!("{distinct} of {} sampled pixels differ from the first", px.len() / 3);

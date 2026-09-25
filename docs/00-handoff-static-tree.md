@@ -67,7 +67,17 @@ Raster thread    ▼
   5. Raster and composite      GPU layers, damage rects only
                                (a command-count change is aligned, not
                                the whole window — M26/T26.11)
+                               (damage in physical pixels: retention
+                               observes after Scaled — M40/T40.1)
 ```
+
+**DECIDED (M40/T40.1): damage is in the space the surface draws in.**
+Layout, hit testing, `NodeState` and the agent's journal are logical;
+retention's journal, `Damage`, the display list and both rasterisers are
+physical, because `Recording` sits inside `Scaled`
+(`docs/plan-physical-damage.md` §2.1; the gate is
+`crates/lumen-static-shell/tests/damage_scale.rs`). The agent's
+`ui.lastDamage` is journal-derived and stays logical.
 
 The four properties that produce the performance, in rough order of importance:
 

@@ -28,11 +28,25 @@
 //! ([`Recording`], a [`Painter`] wrapper in the shape `Scaled` already
 //! uses) and keeps `(hash, ink)` per command instead of the command.
 //! No stored list, no text buffer, and it composes with the scaling
-//! wrapper that is already there:
+//! wrapper that is already there — **inside** it:
 //!
 //! ```text
-//! paint → Recording(Scaled(sink))
+//! paint → Scaled(Recording(sink))
 //! ```
+//!
+//! # Which space damage is in
+//!
+//! **Physical pixels**, the space the rasterisers draw in. The order
+//! above is what makes it so: `Recording` sees each command after
+//! `Scaled` has multiplied it, so a region's edges are the drawn
+//! command's, and a surface applies them to its buffer as they stand.
+//! Until M40/T40.1 the order was `Recording(Scaled(sink))`: every region
+//! was logical, both surfaces applied it to a physical buffer, and at
+//! any scale but 1.0 a partial frame left the physical rect stale
+//! (R1-F1; `crates/lumen-static-shell/tests/damage_scale.rs`). Layout,
+//! hit testing, `NodeState` and the agent's journal stay logical; a
+//! quantity derived from the journal, such as the agent's
+//! `ui.lastDamage`, is logical too and is not this.
 //!
 //! Two consequences worth stating:
 //!

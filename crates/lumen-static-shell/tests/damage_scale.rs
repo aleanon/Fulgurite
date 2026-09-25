@@ -297,7 +297,6 @@ fn block_glyphs_a_partial_redraw_at_scale_one_matches_a_full_one() {
 }
 
 #[test]
-#[ignore = "red until T40.1: R1-F1, retention observes logical rects"]
 fn block_glyphs_a_partial_redraw_at_device_scales_matches_a_full_one() {
     let bad = device_scales(|| None);
     assert!(bad.is_empty(), "stale pixels (scale, [hover, label, adopt]): {bad:?}");

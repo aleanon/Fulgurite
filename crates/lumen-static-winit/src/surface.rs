@@ -28,8 +28,11 @@ pub struct Frame {
     pub render_ns: u64,
     pub present_ns: u64,
     pub frame_ns: u64,
-    /// Pixels the damage rect covered, or 0 for a frame that rendered
+    /// Pixels the damage regions covered, or 0 for a frame that rendered
     /// nothing and was presented anyway (see [`Surface::present`]).
+    /// **Physical** pixels, like the regions (M40/T40.1): before that
+    /// the regions were logical and this counted them as physical, so it
+    /// was short by the scale squared on a HiDPI display.
     pub damaged_px: u64,
 }
 
