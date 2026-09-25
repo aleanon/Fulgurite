@@ -313,7 +313,6 @@ fn real_glyphs_a_partial_redraw_at_scale_one_matches_a_full_one() {
 
 #[cfg(feature = "truetype")]
 #[test]
-#[ignore = "red until T40.2: R1-F1 and R1-F8, the glyph blit truncates a fractional far edge"]
 fn real_glyphs_a_partial_redraw_at_device_scales_matches_a_full_one() {
     let bad = device_scales(pinned_face);
     assert!(bad.is_empty(), "stale pixels (scale, [hover, label, adopt]): {bad:?}");

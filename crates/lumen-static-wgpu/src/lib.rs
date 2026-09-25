@@ -145,12 +145,16 @@ fn clipped(rect: Rect, stack: &[Rect]) -> Option<Rect> {
 
 /// Round a region outward to whole pixels.
 ///
-/// The software canvas fills from `floor(x0)` to `ceil(x1)`, so its
-/// damage region is the outward-rounded one. Snapping here is what makes
-/// a partial redraw on this backend **exactly** equal to a full one
-/// rather than approximately: a boundary pixel is wholly inside the
-/// damage or wholly outside it, never partly covered by an antialiased
-/// clear.
+/// Both backends follow one convention: a region covers
+/// `floor(x0)..ceil(x1)`. The software canvas does so in every command
+/// and in its clear (its module docs; the glyph blit was the one
+/// exception, fixed in M40/T40.2), so its partial redraw is exact too.
+/// Snapping here is what makes a partial redraw on this backend
+/// **exactly** equal to a full one rather than approximately: a boundary
+/// pixel is wholly inside the damage or wholly outside it, never partly
+/// covered by an antialiased clear. Regions arrive in physical pixels
+/// (M40/T40.1), so at a fractional scale their edges are fractional as a
+/// rule, not an exception.
 fn snap_out(r: Rect) -> Rect {
     [r[0].floor(), r[1].floor(), r[2].ceil(), r[3].ceil()]
 }

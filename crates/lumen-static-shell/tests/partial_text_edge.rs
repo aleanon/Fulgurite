@@ -100,7 +100,6 @@ fn an_integer_edged_region_redraws_exactly() {
 }
 
 #[test]
-#[ignore = "red until T40.2: R1-F8, the glyph blit truncates a fractional far edge"]
 fn a_fractional_far_edge_is_redrawn_through_its_last_row() {
     let edge_ink = ink_in_row(173);
     let (n, bb, ink) = partial_vs_full([0.0, 87.2, 360.0, 173.2]);

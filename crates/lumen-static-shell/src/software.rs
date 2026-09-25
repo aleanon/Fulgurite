@@ -8,6 +8,19 @@
 //! Its job is to make the pipeline *verifiable* headlessly; a real
 //! rasterizer (parity Phase A adopts Lumen's `lumen-render`) replaces it
 //! without touching a widget. Per-stage costs: `docs/results-frame-cost.md`.
+//!
+//! # Which pixels a command covers
+//!
+//! **Every command covers `floor(x0)..ceil(x1)` × `floor(y0)..ceil(y1)`
+//! of its clipped rect**, and `Canvas::clear_within` rounds outward the
+//! same way — a pixel the edge touches at all is the command's. That one
+//! convention is what makes a partial redraw equal a full one when a
+//! damage region's edge is fractional, which since M40/T40.1 is the
+//! ordinary case: damage is physical, and every edge of a layout at 1.25
+//! or 1.5 lands between pixels. A command that rounded any other way
+//! would leave the row it disagreed about cleared and not redrawn. The
+//! glyph blit was that command until M40/T40.2. Damage regions are
+//! deliberately *not* snapped as well: one rule in one place is enough.
 
 use lumen_static::desc::Point;
 use lumen_static::display::{Cmd, Color, DisplayList, Renderer, Stops};
@@ -128,9 +141,20 @@ impl Surface<'_> {
             let Some(r) = clipped([gx, gy, gx + g.w as f32, gy + g.h as f32], clip) else {
                 continue;
             };
+            // `floor..ceil`, the convention every command here follows
+            // (module docs). The glyph's own rect is whole-pixel, so only
+            // a clip edge can be fractional — and a damage region's far
+            // edge is one whenever the scale is not whole. This took the
+            // far edge with a bare `as i64`, which truncates: a region
+            // ending at 173.2 was cleared through row 173 and the glyphs
+            // were redrawn through row 172, leaving row 173 blank until
+            // something damaged it again (R1-F8, M40/T40.2;
+            // `tests/partial_text_edge.rs`). Neither end can leave the
+            // glyph: its rect is integer, so `ceil` of a clip inside it
+            // stays inside it.
             let (w, h) = (self.width as i64, self.y_hi());
-            let (x0, y0) = ((r[0] as i64).max(0), (r[1] as i64).max(self.y0));
-            let (x1, y1) = ((r[2] as i64).min(w), (r[3] as i64).min(h));
+            let (x0, y0) = ((r[0].floor() as i64).max(0), (r[1].floor() as i64).max(self.y0));
+            let (x1, y1) = ((r[2].ceil() as i64).min(w), (r[3].ceil() as i64).min(h));
             for y in y0..y1 {
                 let row = (y - gy as i64) as usize;
                 for x in x0..x1 {
