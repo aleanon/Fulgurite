@@ -82,7 +82,8 @@ impl<A: Widget, B: Widget> SplitTable<A, B> {
     const ARRAY: [NodeDesc; MAX_SPLIT_NODES] = {
         assert!(Self::N <= MAX_SPLIT_NODES, "SplitPane exceeds MAX_SPLIT_NODES");
         let mut t = [NodeDesc::EMPTY; MAX_SPLIT_NODES];
-        t[0] = NodeDesc::new(1, NO_PARENT, 0, 2, NodeDesc::CONTAINER);
+        // Focusable (M57/A12): its keyboard arms were dead code while nothing could focus it.
+        t[0] = NodeDesc::new(1, NO_PARENT, 0, 2, NodeDesc::CONTAINER | NodeDesc::FOCUSABLE);
         lumen_static::widget::splice_child(&mut t, 1, A::SUB_TABLE, 0);
         let second = 1 + A::NODE_COUNT;
         lumen_static::widget::splice_child(&mut t, second, B::SUB_TABLE, 0);
@@ -356,7 +357,8 @@ impl<W: Widget> CollapsibleTable<W> {
     const ARRAY: [NodeDesc; MAX_SPLIT_NODES] = {
         assert!(W::NODE_COUNT < MAX_SPLIT_NODES, "Collapsible body exceeds MAX_SPLIT_NODES");
         let mut t = [NodeDesc::EMPTY; MAX_SPLIT_NODES];
-        t[0] = NodeDesc::new(1, NO_PARENT, 0, 1, NodeDesc::CONTAINER);
+        // Focusable (M57/A12): its keyboard arms were dead code while nothing could focus it.
+        t[0] = NodeDesc::new(1, NO_PARENT, 0, 1, NodeDesc::CONTAINER | NodeDesc::FOCUSABLE);
         lumen_static::widget::splice_child(&mut t, 1, W::SUB_TABLE, 0);
         t
     };
@@ -744,7 +746,8 @@ impl<A: Widget, B: Widget, C: Widget, D: Widget> PaneTable<A, B, C, D> {
     const ARRAY: [NodeDesc; MAX_SPLIT_NODES] = {
         assert!(Self::N <= MAX_SPLIT_NODES, "PaneGrid exceeds MAX_SPLIT_NODES");
         let mut t = [NodeDesc::EMPTY; MAX_SPLIT_NODES];
-        t[0] = NodeDesc::new(1, NO_PARENT, 0, 4, NodeDesc::CONTAINER);
+        // Focusable (M57/A12): its keyboard arms were dead code while nothing could focus it.
+        t[0] = NodeDesc::new(1, NO_PARENT, 0, 4, NodeDesc::CONTAINER | NodeDesc::FOCUSABLE);
         lumen_static::widget::splice_child(&mut t, 1, A::SUB_TABLE, 0);
         lumen_static::widget::splice_child(&mut t, 1 + A::NODE_COUNT, B::SUB_TABLE, 0);
         lumen_static::widget::splice_child(

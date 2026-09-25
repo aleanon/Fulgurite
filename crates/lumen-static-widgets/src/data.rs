@@ -469,7 +469,8 @@ impl Widget for Tree {
     const NODE_COUNT: usize = 1;
     const DEPTH: usize = 1;
     const IS_RIGID: bool = false;
-    const SUB_TABLE: &'static [NodeDesc] = &[NodeDesc::new(0, NO_PARENT, 0, 0, 0)];
+    // Focusable (M57/A12), so the keyboard can reach it at all.
+    const SUB_TABLE: &'static [NodeDesc] = &[NodeDesc::new(0, NO_PARENT, 0, 0, NodeDesc::FOCUSABLE)];
     const KIND: &'static str = "tree";
     const SEEDS: &'static [Seed] =
         &[Seed::new(<Tree as Widget>::KIND, <Tree as Widget>::type_defaults, Fields::of(

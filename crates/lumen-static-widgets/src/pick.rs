@@ -344,7 +344,8 @@ impl<const KIND: u8> Widget for Pad<KIND> {
     const NODE_COUNT: usize = 1;
     const DEPTH: usize = 1;
     const IS_RIGID: bool = false;
-    const SUB_TABLE: &'static [NodeDesc] = &[NodeDesc::new(0, NO_PARENT, 0, 0, 0)];
+    // Focusable (M57/A12): focus moves into an open pad, where the keys act.
+    const SUB_TABLE: &'static [NodeDesc] = &[NodeDesc::new(0, NO_PARENT, 0, 0, NodeDesc::FOCUSABLE)];
     const KIND: &'static str = match KIND {
         COLOR => "colorpad",
         DATE => "datepad",

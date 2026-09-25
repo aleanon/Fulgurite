@@ -78,6 +78,12 @@ pub struct Host<A: App, R: Retention = Incremental, I: Invalidation = lumen_stat
     /// M28/T28.2. A shell asks for another frame rather than the host
     /// raising the cap.
     more_deferred: bool,
+    /// The overlay focus was last moved into, and where it came from —
+    /// M57/A12. `None` when focus is not held by an overlay.
+    overlay_focus: Option<(u32, Option<u32>)>,
+    /// An overlay opened or closed on the last paint and focus is owed a
+    /// move next frame, so the shell should ask for one (M57/A12).
+    focus_owed: bool,
     /// Where deferred work runs — M28/T28.3.
     ///
     /// `dyn` at the shell, which `docs/plan-agent-parity.md`'s appendix
@@ -497,6 +503,8 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             app,
             inbox: lumen_static::inbox::Inbox::new(),
             more_deferred: false,
+            overlay_focus: None,
+            focus_owed: false,
             spawner: None,
             unspawned: 0,
             unknown_kind: 0,
@@ -806,7 +814,60 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
     /// raising the cap until the queue empties, is what turns a burst of
     /// completions into one long frame.
     pub fn more_deferred(&self) -> bool {
-        self.more_deferred
+        self.more_deferred || self.focus_owed
+    }
+
+    /// **Focus into an overlay that opened, and back when it closes** —
+    /// M57/A12 (`docs/plan-widget-fixes.md`).
+    ///
+    /// A dialog, a sheet or a picker that opened left focus where it was,
+    /// behind it, so a keyboard user met a modal they could not reach
+    /// (`docs/widget-audit.md` X8, Modal). The overlays are what the
+    /// *last* paint deferred, so this runs at the start of a pump: an
+    /// overlay topmost now that was not before takes focus onto its first
+    /// focusable, if it has one; when the overlay focus was moved into is
+    /// gone, focus goes back to where it came from.
+    ///
+    /// **Restored only if it was moved.** A chooser's list has nothing
+    /// focusable, so focus stays on its field; restoring "where focus
+    /// was" when that list closed would hand focus back to the field, and
+    /// a focus arriving at a chooser's field opens it (A7).
+    fn settle_overlay_focus(&mut self) {
+        use lumen_static::overlay::OverlaySink;
+        self.focus_owed = false;
+        let table = <A::Tree as Widget>::SUB_TABLE;
+        let top = (!self.overlays.is_empty()).then(|| self.overlays.at(self.overlays.len() - 1));
+        let before = self.input.focus;
+        match (top, self.overlay_focus) {
+            (Some(t), held) if held.map(|(o, _)| o) != Some(t) => {
+                let span = lumen_static::style::subtree_range(table, t as usize);
+                let inside = self.input.focus.is_some_and(|f| span.contains(&(f as usize)));
+                if inside {
+                    return;
+                }
+                let first = pass::next_focusable_in(table, &self.states, &self.styles, None, span);
+                if let Some(f) = first {
+                    let from = held.map_or(self.input.focus, |(_, from)| from);
+                    self.overlay_focus = Some((t, from));
+                    self.input.focus = Some(f);
+                }
+            }
+            (None, Some((o, from))) => {
+                self.overlay_focus = None;
+                // Back only if focus is gone or still inside what closed —
+                // not if the press that closed it focused something else.
+                let span = lumen_static::style::subtree_range(table, o as usize);
+                if self.input.focus.is_none_or(|f| span.contains(&(f as usize))) {
+                    self.input.focus = from.filter(|&f| (f as usize) < table.len());
+                }
+            }
+            _ => return,
+        }
+        if self.input.focus != before {
+            pass::publish_focus(&mut self.states, &self.input);
+            let mut consumed = pass::Consumed::default();
+            pass::tell_focus(&mut self.app, &self.input, before, &mut consumed);
+        }
     }
 
     /// Install the spawner deferred work runs on — M28/T28.3.
@@ -998,6 +1059,9 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         let mut handled = false;
         let mut consumed = pass::Consumed::default();
         let before = PointerFocus::of(&self.input);
+        // Focus into an overlay the last paint opened, or back out of one
+        // it closed — after `before`, so the move marks both nodes.
+        self.settle_overlay_focus();
         while let Some(ev) = self.queue.pop() {
             // `dispatch_overlaid`: an overlay takes pointer hits first,
             // Escape closes the topmost, and a press outside every open
@@ -1249,6 +1313,29 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             let mut out = lumen_static::Recording::new(&mut scaled, &mut self.retain);
             pass::paint_overlaid(self.app.tree(), &self.states, &mut out, &mut self.overlays);
             paint_focus_ring::<A>(&self.input, &self.states, &self.overlays, &self.palette, &mut out);
+        }
+        // An overlay opened or closed in this paint: focus owes it a move,
+        // which the next pump makes (M57/A12). Ask for that frame.
+        {
+            use lumen_static::overlay::OverlaySink;
+            let top = (!self.overlays.is_empty()).then(|| self.overlays.at(self.overlays.len() - 1));
+            let held = self.overlay_focus.map(|(o, _)| o);
+            let table = <A::Tree as Widget>::SUB_TABLE;
+            let opened = top.is_some_and(|t| {
+                held != Some(t)
+                    && pass::next_focusable_in(
+                        table,
+                        &self.states,
+                        &self.styles,
+                        None,
+                        lumen_static::style::subtree_range(table, t as usize),
+                    )
+                    .is_some()
+                    && !self.input.focus.is_some_and(|f| {
+                        lumen_static::style::subtree_range(table, t as usize).contains(&(f as usize))
+                    })
+            });
+            self.focus_owed = opened || (top.is_none() && held.is_some());
         }
         self.last_paint_ns = t1.elapsed().as_nanos() as u64;
 

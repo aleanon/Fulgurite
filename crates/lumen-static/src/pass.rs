@@ -438,7 +438,7 @@ pub fn dispatch<S: crate::event::App>(
 /// widget that opens "on focus" opens once, on the transition — not on
 /// every frame its part happens to be focused. A consumer is recorded in
 /// `consumed`, so the host marks it and it is laid out this frame.
-fn tell_focus<S: crate::event::App>(
+pub fn tell_focus<S: crate::event::App>(
     state: &mut S,
     input: &crate::event::InputState,
     before: Option<u32>,
@@ -1089,7 +1089,7 @@ fn next_focusable(
 /// `scope` is a half-open range of table indices. Tab wraps **within**
 /// it, which is what a modal needs: a dialog that lets Tab walk out to
 /// the window behind it is a dialog a keyboard user cannot use.
-fn next_focusable_in(
+pub fn next_focusable_in(
     table: &[crate::desc::NodeDesc],
     st: &[NodeState],
     style: &[Style],
