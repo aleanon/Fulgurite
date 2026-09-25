@@ -179,3 +179,26 @@ reports `-32001` with its nearest misses (`part-label` among
 the empty-side check — the three empty cases stay green and `#first > e`
 goes red, 4×, which is the case a fix guarding only the empty tail would
 have left.
+
+## §7 Every client, against the finished transport (T39.7)
+
+T39.1–T39.6 in place, 2026-09-25, `DISPLAY=:0`, ports 7810–7819. The
+injection column is the same sweep with the transport made to **close
+after the first reply on every connection** — the check that the sweep
+can see a transport that breaks clients.
+
+| client | how it was run | finished transport | injected |
+|---|---|---|---|
+| `scripts/agent_client.py` + `scripts/ui_check.py` | `just live-gate` (counter-window) | **pass**: every check ok, and the browser replay `#value 0 -> 0` | fail: "agent endpoint closed the connection" at `centring` |
+| the inline client in `scripts/agent_drive.sh` | `just agent-drive` (showcase, both strategies) | **pass**: palette, dropdown, press, shadow oracle "compared 29 frames, none diverged" | fail: `JSONDecodeError` on the second call's empty reply |
+| the drive harness (`scripts/drive/harness.py`, `run.py`) | `just widget-drive`, both strategies | **pass**: "39 widgets, 94 actions … 0 failed" under `Everything` and under `Boundaries` | fail: "agent endpoint closed the connection" |
+| `scripts/tasks_drive.py` | `just tasks-drive`, both strategies | **pass**: all five capabilities landed, and the replay spawned nothing | fail: `JSONDecodeError` |
+| `scripts/hot_window_drive.py` | `just hot-window-drive` | **pass**: swaps in 0.44 s, 0.44 s, 0.64 s; failed build kept; panic shown | fail: `JSONDecodeError` |
+| `scripts/panic_drive.py` + the inline client in `scripts/panic_drive.sh` | `just panic-drive` | **pass**: all seven sites caught under both strategies; release without `reload` still dies | fail: `JSONDecodeError` |
+
+**No client relied on a malformed line being skipped** (plan §5's first
+risk): every one sends one well-formed object per line with
+`jsonrpc: "2.0"` and an `id`, and none sends a batch or a notification.
+The injection turned all six red, not only the two the plan required
+(`agent-drive` and `widget-drive`, which hold one connection for many
+calls): every client makes more than one call on a connection.

@@ -1,6 +1,26 @@
 # M39 — the agent endpoint answers only what speaks its protocol
 
-> **Written 2026-09-24, not started.** Closes R14-F1 (S0), R14-F2,
+> **T39.0–T39.7 DONE 2026-09-25.** Every figure is in
+> `docs/results-agent-transport.md`.
+> - T39.0: gates first, red at the base; fixtures captured from a real
+>   Firefox 156 and Chrome 145 (16 methods executed by 10 vectors).
+> - T39.1: one transport in `lumen_static_agent::transport`, closing on
+>   any line that is not a JSON object; 0 executed; a static check
+>   refuses a second listener.
+> - T39.2: loopback only unless `LUMEN_AGENT_ALLOW_REMOTE=1`.
+> - T39.3: a thread per connection (16), a 1 MiB line cap; a refusal
+>   half-closes and drains so its reply arrives.
+> - T39.4: envelope validated at dispatch; coordinates finite within
+>   ±1e7.
+> - T39.5: the agent's own panic is `-32603`; the application's still
+>   unwinds under `Recover::Off`.
+> - T39.6: a descendant error names the selector once.
+> - T39.7: all six clients pass against the finished transport, and all
+>   six fail under a close-after-first-reply injection.
+>
+> §6 records what building found.
+>
+> **Written 2026-09-24.** Closes R14-F1 (S0), R14-F2,
 > R14-F3, R14-F5, R14-F6 and R14-F7, from M38's deep review
 > (`docs/results-deep-review.md`) as re-triaged against `1717808` on
 > 2026-09-24. **Phase 1**, in parallel with M40. It depends on nothing
@@ -663,6 +683,17 @@ Recorded as found, rather than folded into the sections above.
   Every refusal now half-closes and reads what the peer is still
   sending, for at most 250 ms and 64 KiB, before the socket drops; the
   over-limit one does it off the accept thread. 8 runs of 8 green after.
+- **T39.5, the marker.** §2.5 says `Live::pump` "marks the call as
+  application code". It is a payload wrapper rather than a flag: the
+  pump catches whatever escapes it and resumes the unwind with the
+  payload boxed in a private `AppPanic`, and `Session::agent` re-raises
+  the inner payload. A flag set for the call's duration would have to be
+  cleared on the unwinding path, which is exactly where a drop guard
+  would clear it too early. Its cost: a caller that drove `Live` without
+  `Session::agent` would see the wrapper — the first injection showed it.
+- **T39.7, the injection.** The plan required `agent-drive` and
+  `widget-drive` to fail under close-after-first-reply; **all six**
+  clients failed, since each makes more than one call per connection.
 - **T39.1, AGENT.md's queue entry** is not in this commit: the
   implementation brief reserves AGENT.md for the coordinator's merge.
 
@@ -670,9 +701,9 @@ Recorded as found, rather than folded into the sections above.
 
 | ID | sev now | status | task |
 |---|---|---|---|
-| R14-F1 | S0 | OPEN | T39.1 |
-| R14-F2 | S2 | OPEN | T39.2 |
-| R14-F3 | S2 | OPEN | T39.3 |
-| R14-F5 | S3 | PARTIAL | T39.5 |
-| R14-F6 | S3 | OPEN | T39.6 |
-| R14-F7 | S3 | OPEN | T39.4 |
+| R14-F1 | S0 | CLOSED 2026-09-25 | T39.1 |
+| R14-F2 | S2 | CLOSED 2026-09-25 | T39.2 |
+| R14-F3 | S2 | CLOSED 2026-09-25 | T39.3 |
+| R14-F5 | S3 | CLOSED 2026-09-25 | T39.5 |
+| R14-F6 | S3 | CLOSED 2026-09-25 | T39.6 |
+| R14-F7 | S3 | CLOSED 2026-09-25 | T39.4 |
