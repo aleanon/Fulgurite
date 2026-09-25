@@ -109,3 +109,32 @@ Injections: (1) serve each connection inline instead of on a thread —
 ms / bound 1000 ms"; (2) the bounded read replaced by an unbounded
 `read_until` — `a_line_without_newline_is_capped` red, "sent 8192 KiB;
 closed false; grew 8264 KiB / bound 2048 KiB".
+
+## §4 The envelope (T39.4)
+
+`hostile.rs` `the_envelope_is_validated`, one row per input, the code
+printed beside the expected one:
+
+| input | before (`b213ae0`) | after |
+|---|---|---|
+| `[]` | `-32601` "unknown method ``" | `-32600` |
+| `[{..a click..}]` | `-32601` | `-32600` |
+| `5` | `-32601` | `-32600` |
+| `method: 5` | `-32601` | `-32600` |
+| `jsonrpc: "1.0"` | a result | `-32600` |
+| no `id` | a result (the click ran) | `-32600` |
+| `params: "x"` | a result | `-32600` |
+| `input.click` `x: 1e300` | a result, `at: [null, 0]` | `-32602` |
+| `input.scroll` `dy: 1e39` | a result, `dy: null` | `-32602` |
+| `ui.probe` `x: 1e300` | a result | `-32602` |
+| `ui.explain` `at: [1e300, 0]` | a result, "a click at [inf,0]" | `-32602` |
+| a well-formed `input.click` (accept) | a result | a result |
+
+The wider accept direction is every other agent test in the workspace,
+which already sent `jsonrpc: "2.0"` and an `id`: `cargo test --workspace`
+green with the validation in place.
+
+Injections: `unwrap_or("")` restored and the validation dropped — the
+first seven rows red, `-32601` or a result where `-32600` was expected;
+the finiteness check made always-true — the four coordinate rows red, a
+result where `-32602` was expected.

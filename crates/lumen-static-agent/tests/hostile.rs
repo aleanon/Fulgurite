@@ -256,7 +256,6 @@ mod input_limits {
     /// answered `at: [null, null]`. Every row prints `input -> code
     /// (expected)`; the last row is the accept direction.
     #[test]
-    #[ignore = "red until T39.4: R14-F7, the envelope is not validated"]
     fn the_envelope_is_validated() {
         let agent = Agent::new();
         let mut h = bare();

@@ -142,7 +142,9 @@ has no authentication. **One window serves up to sixteen clients at
 once** (M39), so a harness holding a connection open no longer blocks a
 second tool; requests from two clients interleave on the event loop, so
 a frame number one client reads may have been advanced by the other. A
-line over 1 MiB ends the connection.
+line over 1 MiB ends the connection. Every request needs `"jsonrpc":
+"2.0"` and an `id` — one without is `-32600`, not a notification — and a
+coordinate must be finite and within ±1e7.
 
 ## Performance — budgets, and how to find out where the time goes
 

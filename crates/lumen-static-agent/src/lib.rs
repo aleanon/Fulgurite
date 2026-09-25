@@ -9,6 +9,12 @@
 //! already-laid-out tree, and `input.*` goes through the host's one
 //! queue.
 //!
+//! **The envelope is validated at dispatch** (M39/T39.4): a request is
+//! an object with `jsonrpc: "2.0"`, an `id` (string, number or null), a
+//! string `method`, and `params` absent or an object — anything else is
+//! `-32600`, so a batch and a notification are refused rather than run.
+//! A coordinate must be finite and within ±1e7, or it is `-32602`.
+//!
 //! Selector grammar (space-separated terms, all must match):
 //! - `#save`        author id (`#[widget_id("save")]`)
 //! - `label`        widget kind name
@@ -304,6 +310,75 @@ const INVALID_PARAMS: i64 = -32602;
 /// method for why this exists.
 const MAX_TYPE_CHARS: usize = 4096;
 const METHOD_NOT_FOUND: i64 = -32601;
+const INVALID_REQUEST: i64 = -32600;
+
+/// Largest coordinate magnitude a method accepts (M39/T39.4). Far past
+/// any window, and small enough that an `f32` still resolves a pixel.
+const MAX_COORD: f64 = 1e7;
+
+/// **The envelope, validated** — M39/T39.4 (R14-F7). The request's `id`
+/// and `method`, or the `-32600` reply that refuses it.
+///
+/// One function, called first by both [`Agent::dispatch`] and
+/// [`Agent::dispatch_input`], so an in-process caller (`TestApp`, a
+/// replayed recording) gets the same answer as the socket. Until M39 the
+/// method was read as `as_str().unwrap_or("")`, so a batch, a bare number
+/// or a non-string method fell through to "unknown method ``", a request
+/// with no `id` was executed and answered, and `jsonrpc: "1.0"` was
+/// accepted.
+///
+/// **A request with no `id` is refused, not run silently.** JSON-RPC
+/// says a notification gets no reply; a write method that runs and says
+/// nothing is the worse surprise, and no client sends one. A batch is
+/// refused because its `input.*` steps would run with no frame between
+/// them (`docs/plan-agent-transport.md` §2.4).
+fn envelope(req: &Value) -> Result<(Value, &str), Value> {
+    let refuse = |id: &Value, message: &str| {
+        json!({ "jsonrpc": "2.0", "id": id, "error": {
+            "code": INVALID_REQUEST, "message": message, "data": Value::Null } })
+    };
+    let Some(obj) = req.as_object() else {
+        return Err(refuse(
+            &Value::Null,
+            if req.is_array() {
+                "batches are not supported: send one request per line"
+            } else {
+                "a request is a JSON object"
+            },
+        ));
+    };
+    // An id of the wrong type is not echoed: it is not an id.
+    let id = match obj.get("id") {
+        Some(v @ (Value::String(_) | Value::Number(_) | Value::Null)) => Some(v.clone()),
+        Some(_) => return Err(refuse(&Value::Null, "`id` must be a string, a number or null")),
+        None => None,
+    };
+    let shown = id.clone().unwrap_or(Value::Null);
+    if obj.get("jsonrpc").and_then(Value::as_str) != Some("2.0") {
+        return Err(refuse(&shown, "`jsonrpc` must be \"2.0\""));
+    }
+    let Some(id) = id else {
+        return Err(refuse(&shown, "a request needs an `id`: notifications are not supported"));
+    };
+    let Some(method) = obj.get("method").and_then(Value::as_str) else {
+        return Err(refuse(&id, "`method` must be a string"));
+    };
+    if !matches!(obj.get("params"), None | Some(Value::Object(_))) {
+        return Err(refuse(&id, "`params` must be an object when present"));
+    }
+    Ok((id, method))
+}
+
+/// A coordinate, **finite and within [`MAX_COORD`]** — M39/T39.4. Four
+/// sites cast `as f32` with no check, so `x: 1e300` was a success
+/// answered `at: [null, null]`.
+fn coord(v: f64, key: &str) -> Result<f32, (i64, String, Value)> {
+    if v.is_finite() && v.abs() <= MAX_COORD {
+        Ok(v as f32)
+    } else {
+        Err((INVALID_PARAMS, format!("`{key}` must be a finite number within ±1e7, got {v}"), Value::Null))
+    }
+}
 
 type RpcResult = Result<Value, (i64, String, Value)>;
 
@@ -399,8 +474,10 @@ impl Agent {
 
     /// Dispatch one JSON-RPC 2.0 request, returning the response object.
     pub fn dispatch(&self, tree: &TreeRef, req: &Value) -> Value {
-        let id = req.get("id").cloned().unwrap_or(Value::Null);
-        let method = req.get("method").and_then(Value::as_str).unwrap_or("");
+        let (id, method) = match envelope(req) {
+            Ok(ok) => ok,
+            Err(refused) => return refused,
+        };
         let params = req.get("params").cloned().unwrap_or_else(|| json!({}));
 
         match self.handle(tree, method, &params) {
@@ -417,8 +494,10 @@ impl Agent {
     /// host's **one queue** — never straight into a handler — so an agent
     /// session replays as a test (plan E4).
     pub fn dispatch_input(&self, host: &mut dyn AgentHost, req: &Value) -> Value {
-        let id = req.get("id").cloned().unwrap_or(Value::Null);
-        let method = req.get("method").and_then(Value::as_str).unwrap_or("");
+        let (id, method) = match envelope(req) {
+            Ok(ok) => ok,
+            Err(refused) => return refused,
+        };
         // M36: a panic is host state, so these answer from the host.
         if method == "app.failure" {
             return json!({ "jsonrpc": "2.0", "id": id, "result": host.failure() });
@@ -515,7 +594,10 @@ impl Agent {
             }
             "input.scroll" => {
                 let (x, y) = self.point_param(host, params)?;
-                let dy = params.get("dy").and_then(Value::as_f64).unwrap_or(0.0) as f32;
+                let dy = match params.get("dy") {
+                    None => 0.0,
+                    Some(v) => coord(v.as_f64().unwrap_or(f64::NAN), "dy")?,
+                };
                 host.enqueue(Event::Scroll { x, y, dy });
                 let (f, h) = host.pump();
                 Ok(json!({ "frame": f, "handled": h, "at": [x, y], "dy": dy }))
@@ -765,7 +847,7 @@ impl Agent {
         if let (Some(x), Some(y)) =
             (params.get("x").and_then(Value::as_f64), params.get("y").and_then(Value::as_f64))
         {
-            return Ok((x as f32, y as f32));
+            return Ok((coord(x, "x")?, coord(y, "y")?));
         }
         let tree = host.tree();
         let tree = &tree;
@@ -916,9 +998,10 @@ impl Agent {
         let (w, h) = (st.size.w, st.size.h);
 
         let (px, py) = match params.get("at").and_then(Value::as_array) {
-            Some(a) if a.len() == 2 => {
-                (a[0].as_f64().unwrap_or(f64::NAN) as f32, a[1].as_f64().unwrap_or(f64::NAN) as f32)
-            }
+            Some(a) if a.len() == 2 => (
+                coord(a[0].as_f64().unwrap_or(f64::NAN), "at[0]")?,
+                coord(a[1].as_f64().unwrap_or(f64::NAN), "at[1]")?,
+            ),
             _ => (st.pos.x + w / 2.0, st.pos.y + h / 2.0),
         };
 
@@ -1079,7 +1162,7 @@ impl Agent {
     }
 
     fn probe(&self, tree: &TreeRef, params: &Value) -> RpcResult {
-        let (x, y) = (f64_param(params, "x")? as f32, f64_param(params, "y")? as f32);
+        let (x, y) = (coord(f64_param(params, "x")?, "x")?, coord(f64_param(params, "y")?, "y")?);
         match pass::hit_test(tree.root, tree.states, x, y) {
             Some(h) => Ok(self.hit_summary(tree, &h)),
             None => Ok(Value::Null),

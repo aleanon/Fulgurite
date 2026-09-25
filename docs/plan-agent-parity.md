@@ -85,7 +85,12 @@ Ordered by dependency, not value; P1 and P3 are the value.
 JSON-RPC 2.0 `Agent::dispatch(&TreeRef, &Value)` with Lumen's envelope;
 the host wrapper stayed thinner than planned — `TreeRef` borrows
 base/table/kinds/states per call, `Agent` holds only frame + timings.
-WebSocket deferred as planned.
+WebSocket deferred as planned. **Since M39/T39.4 the envelope is
+validated** rather than mirrored loosely: `jsonrpc: "2.0"`, an `id`, a
+string `method` and an object (or absent) `params`, else `-32600`; a
+batch and a notification are refused, not run (`docs/plan-agent-transport.md`
+§2.4). The socket, when it came, was a line transport and not a
+WebSocket (M39/T39.1, `lumen_static_agent::transport`).
 
 `lumen-static-agent` crate: JSON-RPC 2.0 `dispatch(&mut App?, &Value) ->
 Value` mirroring Lumen's envelope, method names, and error codes where
