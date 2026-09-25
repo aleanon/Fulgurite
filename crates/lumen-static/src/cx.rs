@@ -255,6 +255,28 @@ impl<'a> LayoutCx<'a> {
         }
     }
 
+    /// Run `f` — the layout of an **arena's** nodes — with everything
+    /// counted as changed, restoring the frame's set afterwards (M57/A5,
+    /// `docs/plan-widget-fixes.md`).
+    ///
+    /// `changed` is indexed by the *table*, and an arena's nodes are not
+    /// in the table: a `Repeat` row, a `List` item or a `Dyn`'s content is
+    /// laid out at its own local index `0`. So the derive's clean-subtree
+    /// skip, asked about an arena node, answered whether the *main
+    /// table's* first nodes were clean — almost always yes — and a row
+    /// whose bind had just written longer text kept last frame's size.
+    /// That is how a scrolled `DataGrid` drew "11 KB" in the 37 px box
+    /// "1 KB" had been given (`docs/widget-audit.md` X3). No set indexed
+    /// by the table can answer for an arena, so the arena is laid out
+    /// whole; a repeater's window is its visible rows, which bounds it.
+    pub fn in_arena<R>(&mut self, f: impl FnOnce(&mut Self) -> R) -> R {
+        let saved = self.changed;
+        self.changed = crate::invalidate::Changed::ALL;
+        let r = f(self);
+        self.changed = saved;
+        r
+    }
+
     /// Run `f` with `span` as the `Fill` reference, restoring whatever
     /// was there before.
     ///

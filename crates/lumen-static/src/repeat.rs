@@ -443,10 +443,14 @@ impl<T: Widget + Default + 'static> Node for Repeat<T> {
         let Repeat { window, arena, .. } = self;
         let (row_style, states) = arena.parts();
         let len = window.len();
-        for k in 0..len {
-            let sl = (first + k) % len;
-            window[sl].layout(cx, row_limits, row_style, &mut states[sl * n..(sl + 1) * n], 0);
-        }
+        // Rows are not in the table, so the frame's dirty set cannot
+        // speak for them — `LayoutCx::in_arena` (M57/A5).
+        cx.in_arena(|cx| {
+            for k in 0..len {
+                let sl = (first + k) % len;
+                window[sl].layout(cx, row_limits, row_style, &mut states[sl * n..(sl + 1) * n], 0);
+            }
+        });
 
         // **`record_painted`, not two field writes.** This wrote only
         // `constraints` and `size`, so a repeater's `background`,

@@ -567,17 +567,20 @@ impl<W: Widget> Node for List<W> {
         let last = items.len().saturating_sub(1);
         let mut sum = 0.0f32;
         let mut mx = 0.0f32;
-        for (k, item) in items.iter_mut().enumerate() {
-            let cc = Constraints {
-                min_w: 0.0,
-                max_w: limits.max_w,
-                min_h: 0.0,
-                max_h: (limits.max_h - sum).max(0.0),
-            };
-            let s = item.layout(cx, cc, istyle, &mut states[k * n..(k + 1) * n], 0);
-            sum += s.h + if k < last { spacing } else { 0.0 };
-            mx = mx.max(s.w);
-        }
+        // Items are not in the table — `LayoutCx::in_arena` (M57/A5).
+        cx.in_arena(|cx| {
+            for (k, item) in items.iter_mut().enumerate() {
+                let cc = Constraints {
+                    min_w: 0.0,
+                    max_w: limits.max_w,
+                    min_h: 0.0,
+                    max_h: (limits.max_h - sum).max(0.0),
+                };
+                let s = item.layout(cx, cc, istyle, &mut states[k * n..(k + 1) * n], 0);
+                sum += s.h + if k < last { spacing } else { 0.0 };
+                mx = mx.max(s.w);
+            }
+        });
         let size = crate::ops::resolve_self(limits, &style[i], Size { w: mx, h: sum });
         st[i].constraints = limits;
         st[i].size = size;
@@ -971,7 +974,8 @@ impl<S> Node for Dyn<S> {
     ) -> Size {
         let Dyn { inner, arena, .. } = self;
         let (istyle, states) = arena.parts();
-        let size = inner.layout(cx, limits, istyle, states, 0);
+        // The content is not in the table — `LayoutCx::in_arena` (M57/A5).
+        let size = cx.in_arena(|cx| inner.layout(cx, limits, istyle, states, 0));
         let size = crate::ops::resolve_self(limits, &style[i], size);
         st[i].constraints = limits;
         st[i].size = size;
