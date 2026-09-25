@@ -28,14 +28,18 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from agent_client import AgentClient  # noqa: E402
+from agent_client import AgentClient, wait_for_port  # noqa: E402
 
 
 def shown(addr, sel):
+    """`sel`'s shown text, on a connection of its own that is closed
+    before the replay opens one — the file object too, which holds the
+    socket open after `sock.close()`."""
     c = AgentClient(addr)
     try:
         r = c.rpc("ui.resolve", selector=sel)
     finally:
+        c.file.close()
         c.sock.close()
     return r.get("value", r.get("label"))
 
@@ -55,6 +59,7 @@ def main():
     p.add_argument("--pid")
     a = p.parse_args()
 
+    wait_for_port(a.addr, 60)
     if a.pid:
         ok, line = owner_ok(a.addr, a.pid)
         if not ok:
@@ -78,6 +83,10 @@ def main():
     except (socket.timeout, ConnectionResetError):
         pass
     s.close()
+    # A click can start deferred work (tasks-demo's `#spawn-one` lands
+    # ~40 ms later): read after that could have landed, or a replay that
+    # executed reads as one that did not.
+    time.sleep(0.5)
     after = shown(a.addr, a.watch)
     moved = before != after
     name = os.path.basename(a.fixture)

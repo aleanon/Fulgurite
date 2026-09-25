@@ -693,6 +693,20 @@ Gate the entire dev surface behind one `cfg` that compiles to nothing in
 release. The const tables already exist; only *exposure* is gated, so the
 release cost is genuinely zero rather than "small".
 
+**DECIDED (2026-09-25, M39/T39.1): the endpoint is a local line protocol
+that refuses HTTP.** Newline-delimited JSON-RPC over TCP, one transport
+(`lumen_static_agent::transport`) that every server calls, and a line
+that is not a JSON object **ends the connection**. That is framing, not
+policy: nothing reads an `Origin` or `Host` header, because every way a
+web page reaches a local port begins with an HTTP request line, and no
+request line is a JSON object — so a page the developer happens to have
+open can no longer drive the application (R14-F1, S0). **Out of scope:**
+another process running as the same user, which can already `ptrace` the
+application. **A per-session token is deferred, not rejected**: it is the
+only option that separates users on a shared host, and the plan's §4
+names what reopens it. Per vector, before and after:
+`docs/results-agent-transport.md`.
+
 ---
 
 ## 10. Build order

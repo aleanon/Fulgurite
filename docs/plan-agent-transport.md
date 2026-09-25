@@ -635,6 +635,21 @@ Recorded as found, rather than folded into the sections above.
   `#value 0 -> 1` (the fixture has one `#inc` line; the plan's
   `0 -> 10` assumed ten).
 
+- **T39.1, the injections.** §T39.1 predicted `methods executed: 1 /
+  bound 0` under the first injection. It is **2** on every body-carrying
+  vector, because each fixture carries two JSON lines (one per live
+  application). Injections 2 and 3 stayed green, as predicted. The
+  static check's injection, counter-window's loop restored, names
+  `examples/counter-window/src/agent_socket.rs:123`. The live
+  `tasks_drive.py` step was first vacuous in the other direction: it read
+  `#counts` the moment the replay's connection closed, and a spawned
+  job's result lands ~40 ms later, so a replay that *had* executed would
+  have read as one that had not. `scripts/browser_replay.py` now waits
+  500 ms, and the first injection turns both live steps red
+  (`one=0 -> one=1`, `#value 0 -> 1`).
+- **T39.1, AGENT.md's queue entry** is not in this commit: the
+  implementation brief reserves AGENT.md for the coordinator's merge.
+
 ## Appendix: finding → task
 
 | ID | sev now | status | task |

@@ -44,7 +44,7 @@ for strategy in everything boundaries; do
     pid=$!
     trap 'kill $pid 2>/dev/null || true' EXIT
     sleep 3
-    python3 scripts/tasks_drive.py "$PORT" "$strategy"
+    LUMEN_TASKS_PID=$pid python3 scripts/tasks_drive.py "$PORT" "$strategy"
     kill $pid 2>/dev/null || true
     wait $pid 2>/dev/null || true
     PORT=$((PORT + 1))

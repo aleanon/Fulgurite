@@ -27,6 +27,18 @@ The protocol is JSON-RPC 2.0. Methods divide into three groups:
 **Observe** — `app.diagnostics`, `app.logs`, `app.perf`,
 `ui.waitSettled`.
 
+**What the endpoint refuses.** The socket speaks one JSON object per
+line, and **a line that is anything else ends the connection** after a
+single error reply. That is the whole defence against a web page the
+developer happens to have open: every way a page can reach a local port
+— a `no-cors` `fetch`, a form, a beacon, a WebSocket upgrade — begins
+with an HTTP request line, which cannot be a JSON object, so nothing a
+page sends after it runs. Until M39 the endpoint skipped a line it could
+not parse and read the next, so a page's request body executed; what a
+real Firefox and Chrome send, and what each executed before and after,
+is `docs/results-agent-transport.md`. Pointing `curl` at the port gets
+a reply that says it is not HTTP.
+
 **Steer** — `app.setPalette` swaps a running window's palette, by name
 (`light`, `dark`), and the host re-resolves every stylesheet rule that
 names a role (M25/T25.11) — so `ui.getAppliedStyles` answers in the new

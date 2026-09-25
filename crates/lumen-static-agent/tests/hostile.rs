@@ -10,6 +10,12 @@
 //!
 //! An agent is untrusted input. Everything here asserts the host stays
 //! up and answers, never that it computes a particular number.
+//!
+//! **That is true of the socket as well as of dispatch since M39.** The
+//! transport (`lumen_static_agent::transport`) ends a connection on any
+//! line that is not a JSON object, so a web page's HTTP request no longer
+//! reaches `dispatch` at all; its gates are `tests/transport.rs`. What
+//! reaches this file is a well-framed request, which is still untrusted.
 
 use lumen_static_widgets::ops::{Fixed, Label, Spacer};
 use lumen_static::{pass, Constraints, NodeState, StaticTree, Widget};

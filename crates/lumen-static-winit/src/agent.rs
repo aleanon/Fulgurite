@@ -41,6 +41,16 @@
 //! honest: a worker cannot hand the loop anything to apply, only ask it
 //! to look at the inbox it already wrote to. `Rpc` is the exception and
 //! pays for it by being answered on the loop's own thread.
+//!
+//! # The socket is the agent crate's (M39)
+//!
+//! The loop that reads lines lives in `lumen_static_agent::transport`,
+//! and [`serve`] is its handler for this window. There used to be two
+//! copies of the loop — this one and `examples/counter-window`'s — and
+//! both skipped a line they could not parse, so a web page's HTTP request
+//! body executed (R14-F1). The transport ends a connection on any line
+//! that is not a JSON object instead, and `scripts/check_one_agent_server.sh`
+//! refuses a second listener anywhere outside tests.
 
 /// One request from the socket thread, and where its reply goes.
 pub struct Rpc {
@@ -53,45 +63,18 @@ pub struct Rpc {
 // session does, which for a reloading window is inside the library. This
 // module keeps the socket and the thread rule.
 
-/// Serve newline-delimited JSON-RPC on `addr`, forwarding each request
-/// to the event loop and writing back what it returns.
+/// Serve the agent on `addr`, forwarding each request to the event loop
+/// and writing back what it returns.
 ///
-/// Lumen's `run-agent` protocol, so its client works unchanged: one JSON
-/// object per line in, one per line out.
+/// **The socket is `lumen_static_agent::transport`'s** since M39/T39.1:
+/// this is its handler, and the handler is the thread rule — each request
+/// crosses to the loop through the proxy and is answered there. A line
+/// that is not a JSON object ends the connection, which is what keeps a
+/// web page's HTTP request from running anything (R14-F1).
 pub fn serve(addr: String, proxy: winit::event_loop::EventLoopProxy<crate::UserEvent>) {
-    use std::io::{BufRead, BufReader, Write};
-    let listener = match std::net::TcpListener::bind(&addr) {
-        Ok(l) => l,
-        Err(e) => {
-            eprintln!("agent: cannot bind {addr}: {e}");
-            return;
-        }
-    };
-    eprintln!("agent: listening on {addr}");
-    for stream in listener.incoming().flatten() {
-        let Ok(mut out) = stream.try_clone() else { continue };
-        for line in BufReader::new(stream).lines().map_while(Result::ok) {
-            if line.trim().is_empty() {
-                continue;
-            }
-            let req: serde_json::Value = match serde_json::from_str(&line) {
-                Ok(v) => v,
-                Err(e) => {
-                    let _ = writeln!(
-                        out,
-                        r#"{{"jsonrpc":"2.0","id":null,"error":{{"code":-32700,"message":"parse error: {e}"}}}}"#
-                    );
-                    continue;
-                }
-            };
-            let (tx, rx) = std::sync::mpsc::channel();
-            if proxy.send_event(crate::UserEvent::Agent(Rpc { req, reply: tx })).is_err() {
-                return;
-            }
-            let Ok(resp) = rx.recv() else { return };
-            if writeln!(out, "{resp}").is_err() {
-                break;
-            }
-        }
-    }
+    lumen_static_agent::transport::serve_addr(&addr, move |req| {
+        let (tx, rx) = std::sync::mpsc::channel();
+        proxy.send_event(crate::UserEvent::Agent(Rpc { req, reply: tx })).ok()?;
+        rx.recv().ok()
+    });
 }

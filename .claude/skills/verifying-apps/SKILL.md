@@ -130,7 +130,11 @@ result — but write the check anyway; it is what makes the run a test.
 `127.0.0.1:9230`; the gate uses `:9231` so it never talks to your dev
 window). A stale window from a previous run answers instead of yours;
 `quit` it or set a different address. `wait-port` times out at 60 s — a
-longer wait means the build failed; read its log.
+longer wait means the build failed; read its log. **A malformed line ends
+the connection** (M39): anything that is not one JSON object per line —
+an HTTP request, a batch, a stray `5` — gets one error reply and a close,
+so a hand-typed request that fails to parse means reconnecting, not
+retyping. That is what keeps a web page from driving the window.
 
 ## Performance — budgets, and how to find out where the time goes
 

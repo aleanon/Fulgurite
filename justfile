@@ -26,6 +26,7 @@ static:
     ./scripts/check_doc_paths.sh        # cited docs/*.md and bench binaries must exist
     ./scripts/check_book_includes.sh    # book includes, anchors and links must all resolve
     ./scripts/check_attr_table.sh       # the attribute table in lib.rs and the book must agree
+    ./scripts/check_one_agent_server.sh # M39: one agent transport; nothing else binds a listener
 
 # Default features == the shipped shape. This is the ONLY build that compiles
 # what docs/verification-notes.md scopes its argument to; `--workspace` cannot

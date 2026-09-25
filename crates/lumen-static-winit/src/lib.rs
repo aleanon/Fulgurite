@@ -200,6 +200,12 @@ pub struct Config {
     ///
     /// `None`, and without the feature the field is inert, which is what
     /// keeps a release build free of `observe`.
+    ///
+    /// **One JSON object per line, or the connection ends** (M39/T39.1):
+    /// the endpoint is a local line protocol and refuses HTTP by framing,
+    /// so a web page open in a browser on this machine cannot drive the
+    /// window. It is not authenticated: any process running as the same
+    /// user can connect (`docs/00-handoff-static-tree.md` §9).
     pub agent: Option<String>,
 }
 

@@ -111,50 +111,19 @@ impl From<accesskit_winit::Event> for UserEvent {
     }
 }
 
-/// Serve newline-delimited JSON-RPC on `addr`, forwarding each request
-/// to the event loop and writing back what it returns.
+/// Serve the agent on `addr` through the workspace's one transport
+/// (`lumen_static_agent::transport`, M39/T39.1), forwarding each request
+/// to the main thread via the proxy.
 ///
-/// Lumen's `run-agent` protocol, so its client works unchanged: one JSON
-/// object per line in, one per line out. The socket thread never touches
-/// the tree — every request crosses to the main thread via the proxy,
-/// and the tree is only ever read or driven from there.
+/// This example kept its own copy of the socket loop until M39, and the
+/// copy carried R14-F1 as faithfully as the original. What stays here is
+/// the handler, which is the part that is this window's: the socket
+/// thread never touches the tree, and the tree is only ever read or
+/// driven from the loop.
 pub fn serve_agent(addr: String, proxy: winit::event_loop::EventLoopProxy<UserEvent>) {
-    use std::io::{BufRead, BufReader, Write};
-    let listener = match std::net::TcpListener::bind(&addr) {
-        Ok(l) => l,
-        Err(e) => {
-            eprintln!("agent: cannot bind {addr}: {e}");
-            return;
-        }
-    };
-    eprintln!("agent: listening on {addr}");
-    for stream in listener.incoming().flatten() {
-        let mut out = match stream.try_clone() {
-            Ok(s) => s,
-            Err(_) => continue,
-        };
-        for line in BufReader::new(stream).lines().map_while(Result::ok) {
-            if line.trim().is_empty() {
-                continue;
-            }
-            let req: serde_json::Value = match serde_json::from_str(&line) {
-                Ok(v) => v,
-                Err(e) => {
-                    let _ = writeln!(
-                        out,
-                        r#"{{"jsonrpc":"2.0","id":null,"error":{{"code":-32700,"message":"parse error: {e}"}}}}"#
-                    );
-                    continue;
-                }
-            };
-            let (tx, rx) = std::sync::mpsc::channel();
-            if proxy.send_event(UserEvent::Agent(Rpc { req, reply: tx })).is_err() {
-                return;
-            }
-            let Ok(resp) = rx.recv() else { return };
-            if writeln!(out, "{resp}").is_err() {
-                break;
-            }
-        }
-    }
+    lumen_static_agent::transport::serve_addr(&addr, move |req| {
+        let (tx, rx) = std::sync::mpsc::channel();
+        proxy.send_event(UserEvent::Agent(Rpc { req, reply: tx })).ok()?;
+        rx.recv().ok()
+    });
 }

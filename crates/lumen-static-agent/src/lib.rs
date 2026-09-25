@@ -2,10 +2,12 @@
 //! P0/P1, `docs/plan-agent-parity.md`).
 //!
 //! Mirrors `lumen-agent`'s envelope and method vocabulary where the
-//! semantics coincide, so agent tooling transfers. In-process dispatch
-//! only for now (a WebSocket loop is a later, feature-gated shell
-//! concern). Everything is read-side: queries over an already-laid-out
-//! tree — input synthesis waits for the event system (P4).
+//! semantics coincide, so agent tooling transfers. Dispatch is
+//! in-process; the socket every live endpoint serves it on is
+//! [`transport`] (M39), newline-delimited JSON over TCP, which ends a
+//! connection on any line that is not a JSON object. Queries run over an
+//! already-laid-out tree, and `input.*` goes through the host's one
+//! queue.
 //!
 //! Selector grammar (space-separated terms, all must match):
 //! - `#save`        author id (`#[widget_id("save")]`)
@@ -40,6 +42,8 @@ mod journal;
 pub mod png;
 pub mod session;
 pub mod trace;
+/// M39: the one socket every agent endpoint serves through.
+pub mod transport;
 
 use audit::Auditor;
 use journal::{Coalesced, Journal};

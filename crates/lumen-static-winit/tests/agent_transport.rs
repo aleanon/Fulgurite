@@ -194,10 +194,8 @@ fn drive(executed: Arc<AtomicUsize>, proxy: EventLoopProxy<UserEvent>) -> Vec<Ou
                 "methods executed {n} / bound 0; replies before close {replies}; closed {closed} after {} ms",
                 t.elapsed().as_millis()
             ),
-            // A WebSocket upgrade carries no body, so it executes nothing
-            // even before T39.1 — but the connection stays open for the
-            // next line, which is the red half.
-            red_until: Some("T39.1"),
+            // Green since T39.1: the request line ends the connection.
+            red_until: None,
         });
     }
 

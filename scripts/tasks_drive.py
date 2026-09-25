@@ -2,6 +2,21 @@
 import base64, hashlib, json, socket, sys, time
 
 port, strategy = int(sys.argv[1]), sys.argv[2]
+
+# M39/T39.1 (R14-F1): a browser's no-cors POST, byte for byte, spawns
+# nothing -- run before this script's own connection opens, and with the
+# window's pid checked against the port. Its second JSON line is a click
+# on `#spawn-one`; step 1 below is the ordinary click that must move it.
+import os, subprocess  # noqa: E401,E402
+here = os.path.dirname(os.path.abspath(__file__))
+replay = [sys.executable, os.path.join(here, "browser_replay.py"), f"127.0.0.1:{port}",
+          os.path.join(here, "..", "crates/lumen-static-agent/tests/browser/firefox156-fetch-no-cors.bin"),
+          "#counts"]
+if os.environ.get("LUMEN_TASKS_PID"):
+    replay += ["--pid", os.environ["LUMEN_TASKS_PID"]]
+if subprocess.call(replay) != 0:
+    sys.exit(f"tasks-drive[{strategy}]: a browser's request reached the application")
+
 s = socket.create_connection(("127.0.0.1", port), timeout=15)
 f = s.makefile("rwb")
 n = [0]
