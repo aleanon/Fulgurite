@@ -14,12 +14,19 @@
 # Worth writing: the rustdoc table said `row | column` for four days
 # after `#[widget(stack)]` shipped in T11.6, because the commit that
 # added a container mode did not touch the table that lists them.
+#
+# THREE SETS, NOT TWO (M43/T43.3, R17-F4). Comparing the two tables with
+# each other passes when both omit an attribute the parser accepts. So
+# the DECLARED set -- every helper attribute in the derives' own
+# `attributes(..)` lists, read by scripts/lib/derive_attrs.py -- must
+# equal the rustdoc table and the book table. And a missing book is a
+# failure: it used to print "skipped" and exit 0.
 set -euo pipefail
 cd "$(cd "$(dirname "$0")/.." && pwd)"
 
 RUST=crates/lumen-static/src/lib.rs
 BOOK=book/src/attributes.md
-[ -f "$BOOK" ] || { echo "attr-table: no $BOOK, skipped"; exit 0; }
+[ -f "$BOOK" ] || { echo "attr-table: no book table at $BOOK -- a missing book is a failure, not a skip" >&2; exit 1; }
 
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 
@@ -37,13 +44,23 @@ extract() {
 
 extract "$RUST" > "$tmp/rust"
 extract "$BOOK" > "$tmp/book"
+python3 scripts/lib/derive_attrs.py declared | cut -f2 | grep -v '^$' | sort -u > "$tmp/decl"
 
-if ! diff -q "$tmp/rust" "$tmp/book" >/dev/null; then
-    echo "attribute tables disagree between $RUST and $BOOK:" >&2
-    comm -23 "$tmp/rust" "$tmp/book" | sed 's/^/    only in rustdoc: /' >&2
-    comm -13 "$tmp/rust" "$tmp/book" | sed 's/^/    only in the book: /' >&2
+status=0
+report() {  # report FILE-A FILE-B MESSAGE
+    comm -23 "$1" "$2" | while IFS= read -r a; do echo "    $a: $3" >&2; done
+    [ -z "$(comm -23 "$1" "$2")" ]
+}
+report "$tmp/decl" "$tmp/rust" "declared, not documented in the rustdoc table ($RUST)" || status=1
+report "$tmp/decl" "$tmp/book" "declared, not documented in the book table ($BOOK)" || status=1
+report "$tmp/rust" "$tmp/decl" "in the rustdoc table, but no derive declares it" || status=1
+report "$tmp/book" "$tmp/decl" "in the book table, but no derive declares it" || status=1
+
+n() { grep -c . "$1" || true; }
+if [ "$status" -ne 0 ]; then
+    echo "attribute tables disagree with the derives: declared $(n "$tmp/decl"), rustdoc $(n "$tmp/rust"), book $(n "$tmp/book")" >&2
     echo "" >&2
-    echo "Update both, in the same commit." >&2
+    echo "Update the derive's list and both tables, in the same commit." >&2
     exit 1
 fi
-echo "attr-table: $(wc -l < "$tmp/rust") attributes, documented in both places"
+echo "attr-table: declared $(n "$tmp/decl"), rustdoc $(n "$tmp/rust"), book $(n "$tmp/book") -- the same $(n "$tmp/decl") attributes"
