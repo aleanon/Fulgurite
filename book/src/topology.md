@@ -47,7 +47,10 @@ nodes there are.
 
 **Buys.** A frame allocates nothing in steady state — gated by a counting
 `#[global_allocator]` in the test suite, not asserted in prose
-(`docs/results-allocation.md`). A tree deep enough to overflow the stack is a
+(`docs/results-allocation.md`). The exception is text: the gate draws
+block glyphs, and the truetype rasteriser and measurer a window uses
+allocate per frame until M50's glyph cache lands (same file, "The
+truetype path is not covered"). A tree deep enough to overflow the stack is a
 compile error rather than a crash. And the node table can be walked as a flat
 array instead of chased as a pointer graph
 (`docs/00-handoff-static-tree.md` §5).

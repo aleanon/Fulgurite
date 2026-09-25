@@ -2,8 +2,9 @@
 
 A GUI framework where the widget tree's **shape lives in the type** and only
 its values live in memory. A `#[derive(StaticTree)]` struct *is* the tree:
-`NODE_COUNT` and the node table are computed at compile time, so a frame
-allocates nothing, and a tree that could overflow the stack does not compile.
+`NODE_COUNT` and the node table are computed at compile time, so the tree's
+passes allocate nothing (truetype text is the one exception still open —
+`docs/results-allocation.md`), and a tree that could overflow the stack does not compile.
 
 ```rust,no_run
 # extern crate lumen_static;

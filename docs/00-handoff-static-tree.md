@@ -327,7 +327,10 @@ tree *position*. The code-size blowup from §4 disappears.
   rasteriser was outside every zero in `docs/results-allocation.md`. It
   was allocating 1.00 per frame for its clip stack and 3.00 per glass
   panel for the blur's buffers; both are zero now, and the gate covers
-  a rasterised frame.
+  a rasterised frame **drawn with block glyphs**. **The truetype path
+  every window runs allocates on every frame that draws text**
+  (`docs/results-allocation.md`, "The truetype path is not covered");
+  M50 owns the fix (`docs/plan-raster-allocation.md` T50.2).
 - Stable identity — a node's offset *is* its ID.
 - `NODE_COUNT` still const, so `[NodeState; N]` still fits a fixed budget.
 - Rigidity still computed at compile time; it is a flag byte now rather than a
@@ -835,6 +838,10 @@ The two advantages that are real and that nothing else gives:
 - **Zero allocation for the entire UI** — not "few", zero. This is why Slint
   went this way: microcontrollers with no allocator and a fixed memory budget
   known before shipping.
+  *Qualified 2026-09-25 (M50/T50.1):* it holds for `pump` and for a
+  block-glyph raster; the truetype raster and `FontMetrics` allocate per
+  frame until M50/T50.2 (`docs/results-allocation.md`, "The truetype
+  path is not covered").
 - **Const-folded rigidity** — a dynamic tree checks the flag at runtime per node
   per frame. The static version does not have the check at all.
 

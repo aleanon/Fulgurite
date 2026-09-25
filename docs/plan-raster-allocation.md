@@ -1,6 +1,12 @@
 # M50 — the software rasteriser allocates what its gate says it does not
 
-> **Written 2026-09-24, not started.** Closes R8-F1, R8-F2, R8-F6,
+> **T50.1 DONE 2026-09-25 (early landing).** T50.1: the raster arm is
+> `rasterising_a_block_glyph_frame_allocates_nothing`, and the handoff,
+> `docs/results-allocation.md`, the book and the rustdoc say the
+> truetype path allocates (re-measured at `0091266`: 25.80 raster +
+> 4.60 pump allocations per frame, the review's figures unchanged).
+>
+> **Written 2026-09-24.** Closes R8-F1, R8-F2, R8-F6,
 > R8-F7, R8-F8, R8-F10, R18-F4, R18-F10 and R6-F5 from M38
 > (`docs/results-deep-review.md`), as re-triaged against `main` at
 > 1717808 on 2026-09-24. Where the review and the re-triage differ, the
@@ -377,6 +383,18 @@ arms stay marked as expected to fail.
 survives from §3", and §10's "Zero allocation for the entire UI" gains
 the same qualifier); `docs/results-allocation.md`; the `alloc_gate.rs`
 module doc.
+
+*What building found (2026-09-25).* Landed early, **before T50.0**,
+which waits for M43. So "T50.0's truetype arms stay marked as expected
+to fail" had no arms to refer to: none exist yet, and T50.0 still owns
+them. The claim was re-measured instead of assumed, with a throwaway
+probe (not committed) on the gate's own fixture: block glyphs 0/0 per
+frame, truetype 4.60 pump + 25.80 raster per frame. That table is in
+`docs/results-allocation.md`. The docs list above was also short: the
+book (`index.md`, `topology.md`, `costs.md`) and `lumen-static`'s crate
+rustdoc made the same unqualified claim and are qualified in the same
+commit. The old arm name went on `scripts/doc-identifiers.allow` as a
+recorded rename, since this plan and the history cite it.
 
 **Effort:** S. **Depends on:** T50.0. **May run before Phase 4,**
 because it only stops a false claim being made and has no code to

@@ -465,7 +465,7 @@ this task was specified.
 
 | | before | after |
 |---|---:|---:|
-| `alloc_gate.rs::rasterising_a_frame_allocates_nothing`, 50 frames | **50 allocations — 1.00 per frame** | **0** |
+| `alloc_gate.rs::rasterising_a_frame_allocates_nothing` (block glyphs; renamed `rasterising_a_block_glyph_frame_allocates_nothing` in M50/T50.1), 50 frames | **50 allocations — 1.00 per frame** | **0** |
 
 The existing allocation gate covered `pump`: input, layout, paint and
 retention. It stopped at the display list, so the software rasteriser —

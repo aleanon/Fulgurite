@@ -92,7 +92,10 @@ was done about it.
 
 * **Zero allocation for the entire UI** — not "few", zero, gated by a
   counting allocator in the test suite (`docs/results-allocation.md`).
-  This is why Slint went the same way: microcontrollers with no allocator
+  *One exception, stated rather than hidden:* the gate draws block
+  glyphs, and the truetype text path a window runs still allocates per
+  frame until M50 lands its glyph cache (`docs/results-allocation.md`,
+  "The truetype path is not covered"). This is why Slint went the same way: microcontrollers with no allocator
   and a memory budget that must be known before shipping.
 * **Const-folded rigidity** — a dynamic tree checks a flag at runtime,
   per node, per frame. The static version does not have the check.

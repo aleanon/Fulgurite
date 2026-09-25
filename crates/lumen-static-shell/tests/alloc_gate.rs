@@ -12,6 +12,14 @@
 //! The number asserted is **zero**, not a budget. Every path here is at
 //! zero today, so a budget would only encode a bug.
 //!
+//! **What "every path" does not include — M50/T50.1.** The raster arms
+//! render on `Canvas::new`, which draws block glyphs, and pump with
+//! `BlockMetrics`. The truetype path every window runs
+//! (`Canvas::with_font`, `FontMetrics`) is not measured here, and it
+//! allocates on every frame that draws text
+//! (`docs/results-allocation.md`, "The truetype path is not covered").
+//! M50/T50.2 owns the fix and the truetype arms.
+//!
 //! Its own binary, because `#[global_allocator]` is per-binary and would
 //! otherwise tax every other test. Counters are read outside any
 //! formatting — an earlier ad-hoc version measured a `println!` from the
@@ -355,8 +363,19 @@ fn the_retention_seam_allocates_nothing_in_either_mode() {
 /// Written **before** the code it judges, which is the order this task
 /// was specified in: the first run of this is the measurement of what
 /// the raster path costs today.
+///
+/// **Block glyphs only — M50/T50.1.** It renders on `Canvas::new`, whose
+/// text is the block-glyph stand-in, and pumps with `BlockMetrics`. Every
+/// window renders on `Canvas::with_font` and measures with `FontMetrics`,
+/// and that path **allocates on every frame**: fontdue `Layout`s, the
+/// placement and glyph `Vec`s, one coverage `Vec` per glyph
+/// (`docs/results-allocation.md`, "The truetype path is not covered").
+/// This arm was named `rasterising_a_frame_allocates_nothing` until
+/// T50.1, which read as covering the frame every window draws. M50/T50.2
+/// owns the glyph cache that makes the truetype path zero, and adds its
+/// arm here.
 #[test]
-fn rasterising_a_frame_allocates_nothing() {
+fn rasterising_a_block_glyph_frame_allocates_nothing() {
     use lumen_static::Renderer;
     use lumen_static_shell::software::Canvas;
 

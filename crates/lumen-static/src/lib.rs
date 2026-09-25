@@ -2,7 +2,9 @@
 //!
 //! A `#[derive(StaticTree)]` struct *is* the tree. Its fields are its
 //! children, `NODE_COUNT` and the node table are computed at compile
-//! time, and a frame allocates nothing.
+//! time, and the tree's passes allocate nothing in steady state. (The
+//! shell's truetype text path does not yet — `docs/results-allocation.md`,
+//! "The truetype path is not covered".)
 //!
 //! ```
 //! use lumen_static::prelude::*;

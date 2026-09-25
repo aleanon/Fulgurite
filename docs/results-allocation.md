@@ -108,7 +108,7 @@ Extended, and the first run of the new rows is the measurement:
 
 | arm | before | after |
 |---|---:|---:|
-| `rasterising_a_frame_allocates_nothing`, 50 frames | **50 — 1.00 per frame** | **0** |
+| `rasterising_a_block_glyph_frame_allocates_nothing` (named `rasterising_a_frame_allocates_nothing` until M50/T50.1), 50 frames, **block glyphs** | **50 — 1.00 per frame** | **0** |
 | `a_frame_carrying_glass_allocates_nothing`, 20 frames × 2 panels | **120 — 6.00 per frame, 3.00 per panel** | **0** |
 
 1.00 per frame was `Vec::with_capacity(4)` for the clip stack; 3.00 per
@@ -123,6 +123,39 @@ buffers and never put them back.
 **The lesson is the table's shape, not the two defects.** A gate named
 "a frame allocates nothing" that measures one stage of the frame reads
 as covering all of it. What a gate measures belongs in its own name.
+
+## The truetype path is not covered — M50/T50.1 (2026-09-25)
+
+**The "after: 0" above is true for block glyphs only**, and the lesson
+the previous paragraph draws was broken by the arm it was drawn from.
+`rasterising_a_block_glyph_frame_allocates_nothing` renders on
+`Canvas::new`, which draws the block-glyph stand-in, and pumps with
+`BlockMetrics`. Every window renders on `Canvas::with_font` and measures
+with `FontMetrics`, and nothing in this file measured that path until
+M38 did (`docs/results-deep-review.md`, R8-F1).
+
+Re-measured at `0091266` for T50.1, the gate's own `PlainApp` fixture,
+320×200, 30 warm frames then 50 counted, on the frame thread:
+
+| path | `pump` allocs | raster allocs | raster frees |
+|---|---:|---:|---:|
+| `Canvas::new` + `pump()` (block glyphs — what the gate draws) | 0 (0.00/frame) | 0 (0.00/frame) | 0 |
+| `Canvas::with_font` + `pump_with(FontMetrics)` (truetype — what a window draws) | 230 (**4.60/frame**) | 1,290 (**25.80/frame**) | 1,290 |
+
+Both truetype figures are the review's, unchanged. The sources are two
+fontdue `Layout`s per run (the run and `cap_shift`'s probe), the
+placement and glyph `Vec`s, and fontdue's accumulator and coverage
+`Vec` per glyph; `measure_run` builds one more `Layout` per measure on
+the pump side. The review's larger arms (a 3000-row list, `TextInput`
+per event) are in `docs/results-deep-review.md` §2.2 and are not
+restated here.
+
+**So the zero this file states is a zero for block glyphs, and the
+truetype path allocates on every frame that draws or measures text.**
+M50 owns the fix: a glyph cache and reusable shaping scratch
+(`docs/plan-raster-allocation.md` T50.2), with truetype arms in
+`alloc_gate.rs` that can fail. Until then no sentence in this repository
+should say a *window's* frame allocates nothing.
 
 ## What is *not* covered
 
