@@ -62,6 +62,11 @@ dev-shape:
     cargo test --workspace --exclude lumen-static-wgpu
     # M34/T34.1: the shadow oracle is a feature, so its test needs it on.
     cargo test -p lumen-static-shell --features shadow-oracle --test shadow
+    # M43/T43.9: the golden gates. Both need `truetype` OFF (a golden with
+    # system text records the machine's fonts), and `--workspace` turns it
+    # on, so above they compile to zero tests (golden.rs) or lose their
+    # golden test (failure_screen.rs). Here the shell is built alone.
+    cargo test -p lumen-static-shell --test golden --test failure_screen
     cargo clippy --workspace --all-targets --exclude lumen-static-wgpu -- -D warnings
     # A fresh doc dir: rustdoc 1.94 panics in its search index
     # (`search_index.rs:478`) on a stale `target/doc` after large edits —
@@ -69,6 +74,9 @@ dev-shape:
     # ICE in the gate is a gate that cries wolf.
     rm -rf target/doc
     RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --exclude lumen-static-wgpu
+    # Last: no test binary above may have been emptied by a cfg without
+    # saying why (scripts/zero-tests.allow).
+    ./scripts/check_test_counts.sh
 
 # Every library under crates/ tested ALONE, so no manifest passes by
 # leaning on a feature a neighbour turns on (M43/T43.6, R13-F7 -- the

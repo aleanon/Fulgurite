@@ -294,6 +294,12 @@ stays at zero.
 > recorded in that run were deleted and re-recorded after the fix.
 > *Injection:* no wrapping — "a line runs 1089.0 px, past the window's
 > 480", and the golden differs.
+>
+> **Corrected by M43/T43.9 (2026-09-25):** the golden half of this gate
+> ran in no automated build — `--workspace` turns `truetype` on, which
+> compiles `the_screen_matches_its_golden_image` out — and it passed on
+> a *missing* golden by re-recording it. `just dev-shape` now runs the
+> shell alone for it, and `Verdict::Recorded` fails.
 
 
 §2.3, as `failure_frame(&report, width, height) -> DisplayList`.

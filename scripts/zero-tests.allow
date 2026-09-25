@@ -1,0 +1,12 @@
+# Integration-test binaries allowed to list ZERO tests in the dev-shape
+# selection (`cargo test --workspace --exclude lumen-static-wgpu`), each
+# with why. Checked by scripts/check_test_counts.sh (M43/T43.9).
+#
+# Format: `package/test: reason`. A reason of exactly `justfile` is
+# CHECKED, not trusted: the justfile must run `-p package ... --test test`
+# on some line, so the binary is empty here because it runs alone there.
+
+# `#![cfg(not(feature = "truetype"))]`: a golden recorded with system text
+# would record the recording machine's fonts (golden.rs's module docs).
+# `--workspace` turns `truetype` on, so it runs alone in `dev-shape`.
+lumen-static-shell/golden: justfile

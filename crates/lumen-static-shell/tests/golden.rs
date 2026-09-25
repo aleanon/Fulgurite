@@ -46,15 +46,16 @@ fn a_matching_frame_matches_and_a_changed_one_shows_where() {
     let v = compare(&d, "rounded", &frame(12.0)).expect("io");
     match v {
         Verdict::Match => println!("  ok  unchanged frame: {v}"),
-        Verdict::Recorded(ref p) => {
-            // A first run records and does **not** pass — an unreviewed
-            // reference must not be indistinguishable from a checked
-            // one. Re-running is what turns it into an assertion.
-            println!("  recorded {}", p.display());
-            let again = compare(&d, "rounded", &frame(12.0)).expect("io");
-            assert!(again.is_match(), "a freshly recorded golden must match itself: {again}");
-            println!("  ok  and it matches itself on the second run");
-        }
+        // A first run records and does **not** pass -- an unreviewed
+        // reference must not be indistinguishable from a checked one
+        // (`Verdict::is_match`). Until M43/T43.9 this branch re-ran the
+        // comparison and passed, so a deleted golden was re-recorded
+        // green (I-NEW-4, the same shape as failure_screen.rs).
+        Verdict::Recorded(ref p) => panic!(
+            "a first run is not a pass: no reference existed, recorded {} -- review it, \
+             commit it and re-run",
+            p.display()
+        ),
         other => panic!("an unchanged frame should match, got: {other}"),
     }
 

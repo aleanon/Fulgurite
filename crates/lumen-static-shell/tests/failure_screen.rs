@@ -90,9 +90,27 @@ fn the_screen_matches_its_golden_image() {
         canvas.clear(PAGE);
         canvas.render(&list, w, h);
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden");
+        // `Match` passes. `Recorded` does NOT: until M43/T43.9 every
+        // verdict but `Differs` printed and passed, so a deleted golden was
+        // re-recorded and the test went green (I-NEW-4), against
+        // `Verdict::is_match`'s own rule. `Updated` happens only under
+        // LUMEN_UPDATE_GOLDENS=1, which is a deliberate re-record.
         match compare(&dir, &format!("panic_screen_{w}x{h}"), &canvas).unwrap() {
+            Verdict::Match => println!("{w}x{h}: Match"),
             Verdict::Differs { .. } => panic!("the panic screen at {w}x{h} differs from its golden"),
-            v => println!("{w}x{h}: {v:?}"),
+            Verdict::Recorded(p) => panic!(
+                "a first run is not a pass: the panic screen at {w}x{h} had no golden; recorded {} \
+                 -- review it, commit it and re-run",
+                p.display()
+            ),
+            v @ Verdict::Updated { .. } => {
+                assert_eq!(
+                    std::env::var("LUMEN_UPDATE_GOLDENS").as_deref(),
+                    Ok("1"),
+                    "a golden was re-recorded without LUMEN_UPDATE_GOLDENS=1"
+                );
+                println!("{w}x{h}: {v:?}");
+            }
         }
     }
 }

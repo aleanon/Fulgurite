@@ -126,6 +126,25 @@ An unreviewed reference must not be indistinguishable from a checked
 one. `Verdict::Recorded` is not a match, and the message says to review
 it and re-run.
 
+**Corrected 2026-09-25 (M43/T43.9).** The sentence above was true of
+`Verdict` and false of both tests that used it: `golden.rs` re-ran the
+comparison after a recording and passed, and `failure_screen.rs` printed
+every verdict but `Differs` and passed — so a deleted golden was
+re-recorded green (M38's I-NEW-4). Both now fail on `Recorded` with
+"a first run is not a pass".
+
+### Where the gate runs
+
+**Nowhere, until M43/T43.9** (M38's R17-F1 and R9-F4). Both files need
+`truetype` off (below), and every `--workspace` build turns it on, so
+`golden.rs` compiled to zero tests and `failure_screen.rs` lost its
+golden test in every automated run. `just dev-shape` now runs
+`cargo test -p lumen-static-shell --test golden --test failure_screen`
+with the shell built alone, and ends with `scripts/check_test_counts.sh`,
+which fails on any integration-test binary listing zero tests unless
+`scripts/zero-tests.allow` says why — `golden` is allowed there only
+while a justfile line runs it alone, which the check verifies.
+
 ### Two rules enforced rather than written down
 
 **`truetype` is refused.** `FontStack::system` takes the first of five
@@ -134,7 +153,8 @@ weights from the regular face when no bold is found, so a golden
 recorded under that feature records the recording machine's font
 install. `golden::compare` panics with the feature on, and the test file
 is `#![cfg(not(feature = "truetype"))]` — so `cargo test --features
-truetype` reports `0 passed` rather than quietly comparing.
+truetype` reports `0 passed` rather than quietly comparing. (A `0 passed`
+is itself refused now, above.)
 
 **PPM, not PNG.** `Canvas::to_ppm` already writes it and it needs no
 dependency. The PNG encoder lives in `lumen-static-agent`, which depends
