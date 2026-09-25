@@ -278,7 +278,6 @@ fn tolerance_is_bounded_at_fractional_edges() {
 /// edges to device pixels (`docs/plan-physical-damage.md` §2.2) makes
 /// the two agree, because a whole-pixel edge is where they already do.
 #[test]
-#[ignore = "red until T40.3: R9-F5, a fractional rect edge is filled whole by software and ramped by the GPU"]
 fn hairlines_through_scaled_agree_at_fractional_scales() {
     let Some(mut g) = gpu() else { return };
     let mut worst_frac: f32 = 0.0;

@@ -79,6 +79,12 @@ physical, because `Recording` sits inside `Scaled`
 `crates/lumen-static-shell/tests/damage_scale.rs`). The agent's
 `ui.lastDamage` is journal-derived and stays logical.
 
+**DECIDED (M40/T40.3): a plain rect's edges land on device pixels.**
+`Scaled::rect` rounds each scaled edge to the nearest pixel (ties to
+even), independently, keeping at least one pixel per axis — so a hairline
+is crisp, shared edges stay shared, and the two backends agree at every
+scale (`docs/results-gpu.md` §2a). Other shapes keep exact geometry.
+
 The four properties that produce the performance, in rough order of importance:
 
 1. **Nothing rebuilds by default.** A mutation sets a dirty flag that propagates

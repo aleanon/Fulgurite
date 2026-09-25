@@ -1009,6 +1009,10 @@ pub trait Renderer {
 /// what is drawn, not a property of what draws it, and nothing but this
 /// type has to know.
 ///
+/// A plain rect's edges land on device pixels ([`Painter::rect`] on
+/// this type, M40/T40.3); every other shape keeps its exact scaled
+/// geometry.
+///
 /// Text is scaled too — `size` is in logical pixels and reaches the
 /// rasteriser in physical ones. Whether the *metrics* were measured at
 /// the physical size is the measurer's business (see
@@ -1020,9 +1024,12 @@ pub struct Scaled<'a> {
 }
 
 impl<'a> Scaled<'a> {
-    /// Wrap `inner`, multiplying by `scale`. A `scale` of 1.0 is a
-    /// forwarding no-op, which is the desktop case and costs one
-    /// multiply per coordinate.
+    /// Wrap `inner`, multiplying by `scale`. At a `scale` of 1.0 every
+    /// method forwards its input unchanged **except `rect`**, which
+    /// snaps a fractional edge to a whole pixel at every scale
+    /// (M40/T40.3) — so this is no longer a pure forwarding wrapper at
+    /// 1.0, and costs one multiply per coordinate plus, for a plain
+    /// rect, four roundings.
     pub fn new(inner: &'a mut dyn Painter, scale: f32) -> Self {
         Scaled { inner, scale: if scale.is_finite() && scale > 0.0 { scale } else { 1.0 } }
     }
@@ -1033,10 +1040,77 @@ impl<'a> Scaled<'a> {
     }
 }
 
+/// `x` to the nearest integer, **ties to even** — the FPU's own rounding,
+/// borrowed by adding and subtracting 1.5 · 2²³: at that magnitude an
+/// `f32` has no fractional bits, so the addition itself rounds.
+///
+/// Not `f32::round`, which is std-only in a `no_std` core, and not a
+/// floor-and-compare on `crate::num::floor`: that was built first, branchy
+/// and then branch-free, and both cost several times a plain forward on
+/// a rect-heavy list, where this costs a few nanoseconds a rect
+/// (`docs/results-gpu.md` §2a has the arms). Ties go to even rather than
+/// up, which changes which of two equally near pixels a `.5` edge takes
+/// and nothing else: the rule is one function of one value, so two rects
+/// that share an edge still agree on it.
+///
+/// For finite `x` only — [`Scaled`]'s `rect` checks first. Valid for
+/// |x| < 2²²; anything larger has no fraction to round and is returned
+/// as it is. Rust never reassociates float arithmetic, so the
+/// two operations cannot be folded away.
+#[inline]
+fn nearest(x: f32) -> f32 {
+    const MAGIC: f32 = 12_582_912.0; // 1.5 · 2²³
+    // Finite by the caller's check; at 2²² and above there is no
+    // fraction left to round.
+    if x.abs() >= 4_194_304.0 {
+        return x;
+    }
+    (x + MAGIC) - MAGIC
+}
+
+/// One axis of a snapped rect: each edge to its nearest device pixel,
+/// independently, and at least one pixel between them.
+#[inline]
+fn snap_axis(a: f32, b: f32) -> (f32, f32) {
+    let (p, q) = (nearest(a), nearest(b));
+    (p, q.max(p + 1.0))
+}
+
 impl Painter for Scaled<'_> {
+    /// **Snapped to device pixels** — M40/T40.3. Each scaled edge rounds
+    /// to the nearest whole pixel, and an axis whose two edges round
+    /// together keeps one pixel.
+    ///
+    /// Without it a 1-logical-px divider at logical y = 22 and scale
+    /// 1.25 became `27.5..28.75`, which the software `fill` covers
+    /// `floor..ceil` — two whole rows where it now inks one — while the
+    /// GPU ramped the same edges, so the backends disagreed on every
+    /// hairline at every fractional scale (R9-F5; the ratios, before and
+    /// after, are `docs/results-gpu.md` §2a). A whole-pixel edge is one
+    /// both backends draw identically.
+    ///
+    /// **Edges, not origin and size**: two rects that share an edge still
+    /// share it after rounding, with no gap row and no overlap row. The
+    /// price is that a hairline is one or two pixels depending on where
+    /// it sits at 1.5, which is what platform toolkits draw too.
+    ///
+    /// Plain rects only. Rounded and stroked rects go through the SDF the
+    /// two backends share and already agree; text, lines, gradients,
+    /// images and glass keep their exact geometry. An empty or
+    /// non-finite rect is forwarded unsnapped, so snapping can never
+    /// turn nothing into a pixel. Applies at 1.0 too, where a fractional
+    /// *layout* edge over-inked by the same mechanism
+    /// (`crates/lumen-static-shell/tests/fractional_ink.rs`;
+    /// the kill rule and its cost are `docs/results-gpu.md` §2a).
     fn rect(&mut self, rect: Rect, color: Color) {
         let r = self.r(rect);
-        self.inner.rect(r, color);
+        if !(r[0] < r[2] && r[1] < r[3] && r.iter().all(|v| v.is_finite())) {
+            self.inner.rect(r, color);
+            return;
+        }
+        let (x0, x1) = snap_axis(r[0], r[2]);
+        let (y0, y1) = snap_axis(r[1], r[3]);
+        self.inner.rect([x0, y0, x1, y1], color);
     }
     fn text_weighted(&mut self, rect: Rect, s: &str, size: f32, weight: f32, color: Color) {
         let r = self.r(rect);

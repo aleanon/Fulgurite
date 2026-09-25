@@ -1896,3 +1896,95 @@ mod boundary {
         println!("size_of::<Cmd>() = {} B", std::mem::size_of::<Cmd>());
     }
 }
+
+/// **M40/T40.3's kill rule** (`docs/plan-physical-damage.md` §5), written
+/// before the snap was built: showcase's *paint* time at scale 1.0, eight
+/// runs a side, before and after `Scaled::rect` snaps its edges. If the
+/// after-median lies outside the before-arm's spread, the rounding is
+/// restricted to scales other than 1.0. Paint alone, because the snap is
+/// in paint and nowhere else. `docs/results-gpu.md` §2a has the numbers.
+#[cfg(test)]
+mod snap_cost {
+    use super::*;
+    use lumen_static_shell::text::{FontMetrics, FontStack};
+    use lumen_static_shell::Host;
+
+    const RUNS: usize = 8;
+    const ITERS: usize = 40;
+
+    #[test]
+    #[ignore]
+    fn measure_the_snap() {
+        let Some(face) = FontStack::system() else { return };
+        let mut m = FontMetrics::new(face);
+        for entry in ["Button", "DataGrid"] {
+            let e = CATALOG.iter().position(|x| x.name == entry).unwrap();
+            let mut runs = Vec::new();
+            let mut rects = (0, 0);
+            for _ in 0..RUNS {
+                let mut h: Host<Show> = program(e, false).host();
+                for _ in 0..3 {
+                    h.pump_with(&mut m);
+                }
+                let mut v = Vec::new();
+                for k in 0..ITERS {
+                    // A hover that moves, the frame arm T34.2 and T37.0 use.
+                    let (x, y) = if k % 2 == 0 { (40.0, 120.0) } else { (300.0, 200.0) };
+                    h.post(lumen_static::Event::PointerMove { x, y });
+                    h.pump_with(&mut m);
+                    v.push(h.timings3().2 as f64 / 1000.0);
+                }
+                rects = (
+                    h.list.cmds.iter().filter(|c| matches!(c, lumen_static::Cmd::Rect { .. })).count(),
+                    h.list.cmds.len(),
+                );
+                v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+                runs.push(v[v.len() / 2]);
+            }
+            runs.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            let median = (runs[RUNS / 2 - 1] + runs[RUNS / 2]) / 2.0;
+            println!(
+                "{entry:<9} Rect cmds {} of {}   paint µs per run (sorted) {:?}   spread {:.3}-{:.3}   median {:.3}",
+                rects.0,
+                rects.1,
+                runs.iter().map(|x| (x * 1000.0).round() / 1000.0).collect::<Vec<_>>(),
+                runs[0],
+                runs[RUNS - 1],
+                median
+            );
+        }
+
+        // Showcase paints almost no plain rects (the count above), so the
+        // entries cannot see a per-rect cost. The worst case, isolated:
+        // 2 000 `rect` calls through `Scaled` at 1.0 into a list.
+        let mut runs = Vec::new();
+        let mut list = lumen_static::DisplayList::new();
+        for _ in 0..RUNS {
+            let mut v = Vec::new();
+            for _ in 0..ITERS {
+                list.clear();
+                let t = std::time::Instant::now();
+                {
+                    let mut s = lumen_static::Scaled::new(&mut list, 1.0);
+                    let p: &mut dyn lumen_static::Painter = &mut s;
+                    for k in 0..2000 {
+                        let y = (k % 400) as f32 * 1.7;
+                        p.rect([3.0, y, 180.3, y + 1.0], lumen_static::Color(40, 40, 40, 255));
+                    }
+                }
+                std::hint::black_box(&list);
+                v.push(t.elapsed().as_nanos() as f64 / 1000.0);
+            }
+            v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            runs.push(v[v.len() / 2]);
+        }
+        runs.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        println!(
+            "2000 rects through Scaled(1.0): µs per run (sorted) {:?}   spread {:.3}-{:.3}   median {:.3}",
+            runs.iter().map(|x| (x * 1000.0).round() / 1000.0).collect::<Vec<_>>(),
+            runs[0],
+            runs[RUNS - 1],
+            (runs[RUNS / 2 - 1] + runs[RUNS / 2]) / 2.0
+        );
+    }
+}

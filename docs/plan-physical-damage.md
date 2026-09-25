@@ -1,6 +1,22 @@
 # M40 — Damage in the space the surface draws in
 
-> **Written 2026-09-24, not started.** Closes **R1-F1** (S0), **R1-F8**,
+> **T40.0–T40.3 DONE 2026-09-25.**
+> - **T40.0**: five gates; R1-F7 (`scale_memo.rs`, d2 turns it red) and
+>   R18-F5 (`every_pushed_rect_stays_covered`, mutant push-1 turns it
+>   red) closed there.
+> - **T40.1**: `Scaled(Recording(list))`; damage is physical. The
+>   block-glyph oracle is 0 px at 1.25/1.5/2.0, and it was 1 125–7 155 px
+>   per step with the old order. Glass and GPU-region arms were added and
+>   fire under the same injection.
+> - **T40.2**: the glyph blit ceils its far edge. The row-173 residue
+>   (107 px) and the device-scale glyph residue (3 px) are gone.
+> - **T40.3**: `Scaled::rect` snaps edges, ties to even. GPU parity at
+>   1.25/1.5 went from 11.0%/6.6% over 8 levels to 0; the kill rule did
+>   not fire; +3.8 ns per plain rect at 1.0 (`docs/results-gpu.md` §2a).
+>
+> §6 records what building found.
+>
+> **Written 2026-09-24.** Closes **R1-F1** (S0), **R1-F8**,
 > **R9-F5**, **R1-F7** and **R18-F5** from M38's deep review
 > (`docs/results-deep-review.md`), as re-triaged against `main` at
 > 1717808 on 2026-09-24. Where the review and the re-triage differ, this
@@ -418,12 +434,39 @@ readable beside what it turned into.
   physical, and 2 194 px differ in the box `[10,43,77,95]`; at 2.0,
   4 761 px in `[14,58,102,126]`.
 
+- **T40.3 rounds ties to even, not half away from zero.** Rounding with
+  `crate::num::floor` and a compare (the core is `no_std`, so
+  `f32::round` is not available) cost 2.6× a plain forward on 2 000
+  rects, branchy or branch-free. Adding and subtracting 1.5 · 2²³ uses
+  the FPU's own rounding, which is ties-to-even, for +3.8 ns a rect. The
+  tie rule only changes which of two equally near pixels a `.5` edge
+  takes. It is still one function of one value, so shared edges stay
+  shared. The gate states the same rule (`round_ties_even`).
+- **The kill rule's showcase arm cannot see a per-rect cost.** Showcase
+  paints 0 of 15 (`Button`) and 1 of 32 (`DataGrid`) commands as plain
+  rects, so its paint time is blind to what the snap costs. The rule was
+  applied as written and did not fire. The probe also carries an
+  isolated 2 000-rect arm, which is the one that prices it
+  (`docs/results-gpu.md` §2a). One after-session was disturbed by load,
+  so it is reported and not used.
+- **The hairline example in §1.2 depends on phase.** Under either tie
+  rule, the divider at logical y = 10 at 1.25 (`12.5..13.75`) still inks
+  two rows. The snap only guarantees that ink equals the *snapped*
+  geometry and that the backends agree. It does not guarantee that
+  every hairline is one row. At 1.25 the six dividers ink 1.067× their
+  geometric area (it was 1.613×), and at 1.5 they ink 0.889×.
+- **`audit_is_inert.rs` fails when `lumen-static-agent` is tested alone**
+  (`cargo test -p lumen-static-agent`: 3 of 3 red), and passes in the
+  workspace run. That is a feature-unification dependence that predates
+  this milestone, since this milestone touched only that crate's
+  rustdoc. It is reported and not fixed here.
+
 ## Appendix: finding → task
 
 | ID | sev now | status | task |
 |---|---|---|---|
-| R1-F1 | S0 | OPEN | T40.1 |
-| R1-F7 | S3 | OPEN | T40.0 |
-| R1-F8 | S2 | OPEN (read only) | T40.2 |
-| R18-F5 | S3 | OPEN | T40.0 |
-| R9-F5 | S2 | OPEN | T40.3 |
+| R1-F1 | S0 | CLOSED 2026-09-25 | T40.1 |
+| R1-F7 | S3 | CLOSED 2026-09-25 | T40.0 |
+| R1-F8 | S2 | CLOSED 2026-09-25 | T40.2 |
+| R18-F5 | S3 | CLOSED 2026-09-25 (rustdoc corrected; over-merging kept, §4) | T40.0 |
+| R9-F5 | S2 | CLOSED 2026-09-25 | T40.3 |

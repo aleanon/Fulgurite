@@ -145,6 +145,63 @@ Nothing else differs, and three things were done to keep it that way:
   and is not what `software::Canvas` does; matching the other arm is
   worth more here than being right in isolation.
 
+### 2a. At a fractional display scale — M40/T40.3, 2026-09-25
+
+**The 0.2% bound above was measured on whole-pixel edges, and nothing
+painted through `Scaled` at a scale other than 1.** At 1.25 every edge of
+a 1-logical-px divider lands between pixels; the software canvas filled
+both boundary rows whole and the GPU ramped them, so the documented ramp
+difference became every hairline in the frame (R9-F5,
+`docs/results-deep-review.md`).
+
+**What changed:** `Scaled::rect` rounds each scaled edge to the nearest
+device pixel (ties to even), independently per edge, and keeps at least
+one pixel per axis (`docs/plan-physical-damage.md` §2.2). A plain rect
+therefore reaches both rasterisers with whole-pixel edges, which is the
+case the two already agreed on. Rounded and stroked rects, text, lines,
+gradients, images and glass are unchanged. **A hairline is one or two
+device pixels at 1.25 and 1.5, depending on where it sits** — the price
+of edges that stay shared.
+
+| gate | before | after | bound |
+|---|---:|---:|---:|
+| `parity.rs` `hairlines_through_scaled_agree_at_fractional_scales`, 1.25 | 4 772 px (11.046%) over 8, worst 250 | 0 (0.000%), worst 0 | 0.2% |
+| same, 1.5 | 2 853 px (6.604%), worst 210 | 0 (0.000%), worst 0 | 0.2% |
+| `fractional_ink.rs`, worst divider ink / snapped geometry, 1.25 | 2.016 | 1.000 | 1.00 |
+| same, six dividers' ink / geometric area, 1.25 | 1.613 | 1.067 | — (informational) |
+| same, a shared fractional edge at 1.25 (edge 10 → 12.5) | overlap row 12 | no gap, no overlap | none |
+
+The 0.2% bound therefore holds at 1.25 and 1.5 for plain rects. The 1.0
+and 2.0 arms are exact before and after.
+
+**The kill rule** (plan §5, written before the build): showcase's paint
+time at 1.0, eight runs a side; if the after-median left the before-arm's
+spread, the snap would be restricted to scales other than 1.0. Release,
+`examples/showcase` `snap_cost::measure_the_snap`, a moving hover, paint
+alone (`Host::timings3`), before and after alternated twice under
+`flock`, load 1.2–1.7:
+
+| arm | before, two sessions (µs, spread) | after (µs, median) |
+|---|---|---:|
+| showcase `Button`, 0 of 15 cmds a plain rect | 0.294–0.297, 0.294–0.297 | **0.295** |
+| showcase `DataGrid`, 1 of 32 | 0.738–0.757, 0.737–0.749 | **0.752** |
+| 2 000 rects through `Scaled(1.0)` | 21.837–21.849, 21.835–21.845 | **29.458** |
+
+The first after session was disturbed (its `DataGrid` spread was
+0.905–1.280, five times either before session's) and is not used; the
+second is. Against the pooled before spread (0.294–0.297; 0.737–0.757)
+**both showcase medians are inside it, so the rule does not fire** and
+the snap applies at 1.0 too, where a fractional *layout* edge over-inked
+by the same mechanism.
+
+**What the rule could not see**: showcase paints almost no plain rects
+(the counts above), so its arms bound nothing about a per-rect cost. The
+isolated arm does: **+3.8 ns a rect** at 1.0 (21.84 → 29.46 µs for
+2 000). That is the final form, which rounds by adding and subtracting
+1.5 · 2²³. The first form rounded with `crate::num::floor` and a compare,
+and cost 20.2 → 52.2 µs on the same arm (2.6×), branch-free or not, so
+it was replaced before it shipped.
+
 ## 3. Damage on the GPU path
 
 T15.12's second gate: *"`damage_oracle`'s partial-redraw property holds
