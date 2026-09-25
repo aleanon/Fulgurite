@@ -810,11 +810,16 @@ separate pass the rule exists to prevent. If a commit is big enough that
 the docs feel like a second task, that is the signal to split the commit,
 not to defer the docs.
 
-Six checks in `just static` mechanise the part a human reliably misses:
-a backticked identifier in a comment must exist in the code, a declared
-derive attribute must have a user, a cited `docs/*.md` or bench binary
-must exist, every `{{#include}}` in the book must name a live file and a
-live anchor, the attribute table must say the same thing in the rustdoc
-and in the book, and the core must contain no `unsafe`. They run before
+Seven checks in `just static` mechanise the part a human reliably misses:
+- a backticked identifier in a comment must exist in the code;
+- a declared derive attribute must have a user;
+- a cited `docs/*.md` or bench binary must exist;
+- every `{{#include}}` in the book must name a live file and a live
+  anchor;
+- the attribute table must say the same thing in the rustdoc and in the
+  book;
+- the core must contain no `unsafe`;
+- since M57/A17, every widget must implement `observe` or be listed with
+  the reason it has nothing to say. They run before
 any compile. The first three read `book/src/*.md` as well as `docs/*.md`,
 from 2026-09-10.

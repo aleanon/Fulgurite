@@ -267,6 +267,23 @@ impl<S: 'static> Node for Select<S> {
         self.menu.place(under, style, st, i + Self::MENU);
     }
 
+    /// What a screen reader and the agent are told — M57/A17.
+    #[cfg(feature = "observe")]
+    fn observe(
+        &self,
+        _st: &[NodeState],
+        _i: usize,
+        _id: u64,
+        node: &mut lumen_static::observe::accesskit::Node,
+        _extra: &mut alloc::vec::Vec<(lumen_static::observe::accesskit::NodeId, lumen_static::observe::accesskit::Node)>,
+    ) {
+        // A combo box: its value is what the trigger shows, and whether
+        // its menu is open is the part a reader needs to know.
+        node.set_role(lumen_static::observe::accesskit::Role::ComboBox);
+        node.set_value(AsRef::<str>::as_ref(&self.trigger.label));
+        node.set_expanded(self.menu.open);
+    }
+
     fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
         self.trigger.paint(st, i + Self::TRIGGER, out);
         self.menu.paint(st, i + Self::MENU, out);

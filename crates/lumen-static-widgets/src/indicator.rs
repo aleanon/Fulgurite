@@ -93,6 +93,27 @@ impl Node for ProgressBar {
         record_painted(st, i, limits, size, &me)
     }
 
+    /// What a screen reader and the agent are told — M57/A17
+    /// (`docs/plan-widget-fixes.md`). This published nothing at all
+    /// (`GenericContainer`, no value) until M57.
+    #[cfg(feature = "observe")]
+    fn observe(
+        &self,
+        _st: &[NodeState],
+        _i: usize,
+        _id: u64,
+        node: &mut lumen_static::observe::accesskit::Node,
+        _extra: &mut alloc::vec::Vec<(lumen_static::observe::accesskit::NodeId, lumen_static::observe::accesskit::Node)>,
+    ) {
+        use lumen_static::observe::accesskit as ak;
+        node.set_role(ak::Role::ProgressIndicator);
+        let v = if self.value.is_finite() { self.value.clamp(0.0, 1.0) } else { 0.0 };
+        node.set_min_numeric_value(0.0);
+        node.set_max_numeric_value(1.0);
+        node.set_numeric_value(v as f64);
+        node.set_value(alloc::format!("{:.0}%", v * 100.0));
+    }
+
     fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
         let s = &st[i];
         let r = rect_of(s);
@@ -173,6 +194,25 @@ impl Node for Spinner {
         let me = style[i];
         let size = resolve_self(limits, &me, Size { w: SPIN, h: SPIN });
         record_painted(st, i, limits, size, &me)
+    }
+
+    /// What a screen reader and the agent are told — M57/A17
+    /// (`docs/plan-widget-fixes.md`). This published nothing at all
+    /// (`GenericContainer`, no value) until M57.
+    #[cfg(feature = "observe")]
+    fn observe(
+        &self,
+        _st: &[NodeState],
+        _i: usize,
+        _id: u64,
+        node: &mut lumen_static::observe::accesskit::Node,
+        _extra: &mut alloc::vec::Vec<(lumen_static::observe::accesskit::NodeId, lumen_static::observe::accesskit::Node)>,
+    ) {
+        use lumen_static::observe::accesskit as ak;
+        // Indeterminate: a progress indicator with no value, and busy.
+        node.set_role(ak::Role::ProgressIndicator);
+        node.set_busy();
+        node.set_value("busy");
     }
 
     fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
@@ -275,6 +315,26 @@ impl Node for Skeleton {
         let me = style[i];
         let size = resolve_self(limits, &me, Size { w: 0.0, h: 16.0 });
         record_painted(st, i, limits, size, &me)
+    }
+
+    /// What a screen reader and the agent are told — M57/A17
+    /// (`docs/plan-widget-fixes.md`). This published nothing at all
+    /// (`GenericContainer`, no value) until M57.
+    #[cfg(feature = "observe")]
+    fn observe(
+        &self,
+        _st: &[NodeState],
+        _i: usize,
+        _id: u64,
+        node: &mut lumen_static::observe::accesskit::Node,
+        _extra: &mut alloc::vec::Vec<(lumen_static::observe::accesskit::NodeId, lumen_static::observe::accesskit::Node)>,
+    ) {
+        use lumen_static::observe::accesskit as ak;
+        // A placeholder has nothing to read yet: busy, and hidden from a
+        // reader, so it announces the loading rather than a grey block.
+        node.set_role(ak::Role::GenericContainer);
+        node.set_busy();
+        node.set_hidden();
     }
 
     fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {

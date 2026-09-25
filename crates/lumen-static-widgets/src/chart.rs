@@ -214,6 +214,28 @@ impl<const KIND: u8> Node for Chart<KIND> {
         record_painted(st, i, limits, size, &me)
     }
 
+    /// What a screen reader and the agent are told — M57/A17
+    /// (`docs/plan-widget-fixes.md`). This published nothing at all
+    /// (`GenericContainer`, no value) until M57.
+    #[cfg(feature = "observe")]
+    fn observe(
+        &self,
+        _st: &[NodeState],
+        _i: usize,
+        _id: u64,
+        node: &mut lumen_static::observe::accesskit::Node,
+        _extra: &mut alloc::vec::Vec<(lumen_static::observe::accesskit::NodeId, lumen_static::observe::accesskit::Node)>,
+    ) {
+        use lumen_static::observe::accesskit as ak;
+        node.set_role(ak::Role::Figure);
+        let kind = match KIND {
+            BAR => "bar chart",
+            LINE => "line chart",
+            _ => "pie chart",
+        };
+        node.set_value(alloc::format!("{kind}, {} values, largest {}", self.data.len(), self.data.max()));
+    }
+
     fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
         let s = &st[i];
         let r = rect_of(s);

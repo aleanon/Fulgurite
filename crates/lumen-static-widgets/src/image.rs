@@ -122,6 +122,19 @@ impl Node for Image {
         st[i].pos = at;
     }
 
+    /// What a screen reader and the agent are told — M57/A17.
+    #[cfg(feature = "observe")]
+    fn observe(
+        &self,
+        _st: &[NodeState],
+        _i: usize,
+        _id: u64,
+        node: &mut lumen_static::observe::accesskit::Node,
+        _extra: &mut alloc::vec::Vec<(lumen_static::observe::accesskit::NodeId, lumen_static::observe::accesskit::Node)>,
+    ) {
+        node.set_role(lumen_static::observe::accesskit::Role::Image);
+    }
+
     fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
         let r = rect_of(&st[i]);
         if st[i].bg.3 > 0 {

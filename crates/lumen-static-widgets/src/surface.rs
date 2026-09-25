@@ -300,6 +300,25 @@ impl<S: TextStorage> Node for Toast<S> {
         lumen_static::ops::record_painted(st, i, limits, s, &me)
     }
 
+    /// What a screen reader and the agent are told — M57/A17
+    /// (`docs/plan-widget-fixes.md`). This published nothing at all
+    /// (`GenericContainer`, no value) until M57.
+    #[cfg(feature = "observe")]
+    fn observe(
+        &self,
+        _st: &[NodeState],
+        _i: usize,
+        _id: u64,
+        node: &mut lumen_static::observe::accesskit::Node,
+        _extra: &mut alloc::vec::Vec<(lumen_static::observe::accesskit::NodeId, lumen_static::observe::accesskit::Node)>,
+    ) {
+        use lumen_static::observe::accesskit as ak;
+        // A status message: a live region, read out when it appears.
+        node.set_role(ak::Role::Status);
+        node.set_live(ak::Live::Polite);
+        node.set_value(self.text.as_ref());
+    }
+
     fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
         if st[i].size.w <= 0.0 || st[i].size.h <= 0.0 {
             return;

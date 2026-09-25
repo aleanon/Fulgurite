@@ -401,6 +401,20 @@ impl<const KIND: u8> Node for Pad<KIND> {
         lumen_static::ops::record_painted(st, i, limits, s, &me)
     }
 
+    /// What a screen reader and the agent are told — M57/A17.
+    #[cfg(feature = "observe")]
+    fn observe(
+        &self,
+        _st: &[NodeState],
+        _i: usize,
+        _id: u64,
+        node: &mut lumen_static::observe::accesskit::Node,
+        _extra: &mut alloc::vec::Vec<(lumen_static::observe::accesskit::NodeId, lumen_static::observe::accesskit::Node)>,
+    ) {
+        // The pad is a grid of choices: swatches, days, times, files.
+        node.set_role(lumen_static::observe::accesskit::Role::Grid);
+    }
+
     fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
         let s = &st[i];
         let r = lumen_static::ops::rect_of(s);

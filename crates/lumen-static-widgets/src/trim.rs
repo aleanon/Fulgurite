@@ -195,6 +195,23 @@ impl<S: TextStorage> Node for Badge<S> {
         record_painted(st, i, limits, size, &me)
     }
 
+    /// What a screen reader and the agent are told — M57/A17
+    /// (`docs/plan-widget-fixes.md`). This published nothing at all
+    /// (`GenericContainer`, no value) until M57.
+    #[cfg(feature = "observe")]
+    fn observe(
+        &self,
+        _st: &[NodeState],
+        _i: usize,
+        _id: u64,
+        node: &mut lumen_static::observe::accesskit::Node,
+        _extra: &mut alloc::vec::Vec<(lumen_static::observe::accesskit::NodeId, lumen_static::observe::accesskit::Node)>,
+    ) {
+        use lumen_static::observe::accesskit as ak;
+        node.set_role(ak::Role::Label);
+        node.set_value(self.text.as_ref());
+    }
+
     fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
         let s = &st[i];
         let r = rect_of(s);
@@ -307,6 +324,23 @@ impl<S: TextStorage> Node for Chip<S> {
         record_painted(st, i, limits, size, &me)
     }
 
+    /// What a screen reader and the agent are told — M57/A17
+    /// (`docs/plan-widget-fixes.md`). This published nothing at all
+    /// (`GenericContainer`, no value) until M57.
+    #[cfg(feature = "observe")]
+    fn observe(
+        &self,
+        _st: &[NodeState],
+        _i: usize,
+        _id: u64,
+        node: &mut lumen_static::observe::accesskit::Node,
+        _extra: &mut alloc::vec::Vec<(lumen_static::observe::accesskit::NodeId, lumen_static::observe::accesskit::Node)>,
+    ) {
+        use lumen_static::observe::accesskit as ak;
+        node.set_role(ak::Role::Label);
+        node.set_value(self.text.as_ref());
+    }
+
     fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
         let s = &st[i];
         let r = rect_of(s);
@@ -409,6 +443,23 @@ impl<S: TextStorage> Node for Avatar<S> {
         let me = style[i];
         let size = resolve_self(limits, &me, Size { w: AVATAR, h: AVATAR });
         record_painted(st, i, limits, size, &me)
+    }
+
+    /// What a screen reader and the agent are told — M57/A17
+    /// (`docs/plan-widget-fixes.md`). This published nothing at all
+    /// (`GenericContainer`, no value) until M57.
+    #[cfg(feature = "observe")]
+    fn observe(
+        &self,
+        _st: &[NodeState],
+        _i: usize,
+        _id: u64,
+        node: &mut lumen_static::observe::accesskit::Node,
+        _extra: &mut alloc::vec::Vec<(lumen_static::observe::accesskit::NodeId, lumen_static::observe::accesskit::Node)>,
+    ) {
+        use lumen_static::observe::accesskit as ak;
+        node.set_role(ak::Role::Image);
+        node.set_value(self.shown());
     }
 
     fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
@@ -527,6 +578,23 @@ impl Node for Icon {
         let me = style[i];
         let size = resolve_self(limits, &me, Size { w: ICON, h: ICON });
         record_painted(st, i, limits, size, &me)
+    }
+
+    /// What a screen reader and the agent are told — M57/A17
+    /// (`docs/plan-widget-fixes.md`). This published nothing at all
+    /// (`GenericContainer`, no value) until M57.
+    #[cfg(feature = "observe")]
+    fn observe(
+        &self,
+        _st: &[NodeState],
+        _i: usize,
+        _id: u64,
+        node: &mut lumen_static::observe::accesskit::Node,
+        _extra: &mut alloc::vec::Vec<(lumen_static::observe::accesskit::NodeId, lumen_static::observe::accesskit::Node)>,
+    ) {
+        use lumen_static::observe::accesskit as ak;
+        node.set_role(ak::Role::Image);
+        node.set_value(alloc::format!("{:?}", self.symbol));
     }
 
     fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
