@@ -550,9 +550,20 @@ impl Agent {
                 let key = parse_key(name).ok_or_else(|| {
                     (INVALID_PARAMS, format!("unknown key `{name}`"), json!({ "known": KEY_NAMES }))
                 })?;
-                let down = params.get("down").and_then(Value::as_bool).unwrap_or(true);
-                host.enqueue(Event::Key { key, down });
-                let (f, h) = host.pump();
+                // **Without `down`, a whole press: down, then up** —
+                // M57/A10. A host tracks which activation keys are held,
+                // and a second down with no up between is an auto-repeat
+                // that does not activate; an agent that sent only downs
+                // would have pressed Enter once however often it asked.
+                // `handled` is the down's answer. `down: true` or `false`
+                // sends that half alone, for a test of the halves.
+                let half = params.get("down").and_then(Value::as_bool);
+                host.enqueue(Event::Key { key, down: half.unwrap_or(true) });
+                let (mut f, h) = host.pump();
+                if half.is_none() {
+                    host.enqueue(Event::Key { key, down: false });
+                    f = host.pump().0;
+                }
                 Ok(json!({ "frame": f, "handled": h }))
             }
             // P5 of docs/plan-agent-parity.md, arriving with the first

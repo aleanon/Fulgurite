@@ -448,6 +448,10 @@ pub struct InputState {
     /// that slides onto a button is not a click. `pressed` cannot serve:
     /// it is cleared at the top of the release, before activation runs.
     pub press_origin: Option<(u32, Option<u64>)>,
+    /// The activation keys now held down — bit 0 Enter, bit 1 Space —
+    /// M57/A10. A down for a key already held is an auto-repeat, which
+    /// does not activate again.
+    pub held: u8,
 }
 
 /// The single input queue (see the module note).

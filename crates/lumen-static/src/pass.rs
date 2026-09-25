@@ -526,6 +526,28 @@ fn dispatch_at<S: crate::event::App>(
         input.mods = *m;
         return true;
     }
+    // **Whether this key-down is an auto-repeat** — M57/A10. A host sends
+    // a down per repeat and one up at the end, so a down for a key the
+    // mask says is already held is a repeat. Only the activation keys are
+    // tracked; the mask is a byte.
+    let held_bit = |k: &Key| match k {
+        Key::Enter => 1u8,
+        Key::Space => 2u8,
+        _ => 0u8,
+    };
+    let repeat = match ev {
+        Event::Key { key, down: true } => {
+            let bit = held_bit(key);
+            let was = input.held & bit != 0;
+            input.held |= bit;
+            was
+        }
+        Event::Key { key, down: false } => {
+            input.held &= !held_bit(key);
+            false
+        }
+        _ => false,
+    };
     // Where the press this release ends began — taken here, before the
     // pointer-state block below clears the press (M57/A9).
     let origin = if matches!(ev, Event::PointerUp { .. }) { input.press_origin.take() } else { None };
@@ -859,19 +881,20 @@ fn dispatch_at<S: crate::event::App>(
     // activation, which is what makes a `Button` reachable without a
     // pointer at all.
     //
-    // **Space does not**, and should: every desktop toolkit toggles a
-    // checkbox with it. The `Key` enum in `event.rs` has no variant for
-    // it to match on, so this is an event-vocabulary gap rather than an
-    // omission here — planned as M11/T11.1 (`docs/plan-widgets.md`). Until
-    // 2026-09-04 this comment claimed Space already worked, which no
-    // static check could catch: the checks verify that backticked
-    // *identifiers* exist, not that prose is true.
+    // Space activates as well, since M11/T11.1 gave `Key` a variant for
+    // it: every desktop toolkit toggles a checkbox with it. (Until M57/A10
+    // this comment still said it did not — the audit found that stale.)
+    //
+    // **Once per press, not once per auto-repeat** — M57/A10. Both keys
+    // activate on the down, and a held key sends a down per repeat, so
+    // holding Enter pressed a button a dozen times. `repeat` is derived
+    // below from the held-key mask: a down for a key already down.
     let activates = matches!(
         ev,
         Event::PointerUp { .. }
             | Event::Key { key: Key::Enter, down: true }
             | Event::Key { key: Key::Space, down: true }
-    );
+    ) && !repeat;
     if !activates {
         return false;
     }
