@@ -177,7 +177,6 @@ fn steps_chain() {
 /// `#x > e` put the selector in place of every `e`. The last case is the
 /// one a fix that guarded only the empty tail would leave red.
 #[test]
-#[ignore = "red until T39.6: R14-F6, a descendant error garbles and amplifies"]
 fn a_descendant_error_names_the_selector_once() {
     let mut failed = Vec::new();
     // `#first` and not the plan's `#x`: the head has to *resolve*, or
@@ -205,4 +204,17 @@ fn a_descendant_error_names_the_selector_once() {
         }
     }
     assert!(failed.is_empty(), "garbled or amplified descendant errors: {failed:?}");
+}
+
+/// The accept direction of T39.6: a genuinely missing inner id still
+/// reports its nearest misses, and names the whole selector once.
+#[test]
+fn a_missing_inner_id_still_reports_its_nearest_misses() {
+    let sel = "#first > #part-labl";
+    let r = resolve(sel);
+    let msg = r["error"]["message"].as_str().unwrap_or("");
+    println!("{sel:?} -> {} {msg:?}; data {}", r["error"]["code"], r["error"]["data"]);
+    assert_eq!(r["error"]["code"], -32001, "{r}");
+    assert_eq!(msg.matches(sel).count(), 1, "{msg}");
+    assert!(r["error"]["data"].to_string().contains("part-label"), "no nearest miss: {r}");
 }

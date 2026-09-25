@@ -158,3 +158,24 @@ dies with "a widget's observe panicked on purpose"), and the
 `Recover::Off` row red too, because the marker now escapes unwrapped;
 (2) the re-raise removed — the `Recover::Off` row red, "the
 application's panic was swallowed into a reply: {… -32603 …}".
+
+## §6 The descendant step's error (T39.6)
+
+`descendant.rs` `a_descendant_error_names_the_selector_once`; the
+message must contain the whole selector exactly once and be shorter than
+`4 × selector + 64` bytes:
+
+| selector | before (`b213ae0`) | after |
+|---|---|---|
+| `#first >` | 134 B / bound 96 B, selector 15× (`#first >e#first >m…`) | 65 B, 1×: "descendant step `>` needs a selector on both sides" |
+| `> #first` | "empty selector", 0× | 65 B, 1×, the same refusal |
+| `#first >   ` | 179 B / bound 108 B, 15× | 68 B, 1× |
+| `#first > e` | 64 B, 4× (`s#first > el#first > ector …`) | 45 B, 1×: "in `#first > e`: selector `e` matched nothing" |
+
+Accept: every existing descendant test (`#first > #part-label`, chained
+and unspaced steps) resolves as before, and `#first > #part-labl` still
+reports `-32001` with its nearest misses (`part-label` among
+`available_ids`). Injection: `m.replace(tail, selector)` restored beside
+the empty-side check — the three empty cases stay green and `#first > e`
+goes red, 4×, which is the case a fix guarding only the empty tail would
+have left.

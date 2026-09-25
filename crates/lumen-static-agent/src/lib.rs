@@ -20,7 +20,8 @@
 //! - `label`        widget kind name
 //! - `~text`        the text it shows contains "text" (value *or* label)
 //! - `#a > #b`     the `#b` **inside** `#a`; a part id need only be
-//!   unique within its owner (M27/T27.0)
+//!   unique within its owner (M27/T27.0). **Both sides are required**:
+//!   `#a >` and `> #b` are `-32602` (M39/T39.6)
 //! - `@app.rs:42`   source provenance (file suffix, optional line)
 //! - `7`            table index
 //!
@@ -1977,7 +1978,18 @@ fn resolve_one<'e>(ix: &'e Index<'_>, selector: &str) -> Result<&'e Entry, (i64,
     // `>` and not a space: a space already means "and", and changing
     // that would silently reinterpret every selector already written.
     if let Some((head, tail)) = selector.split_once('>') {
-        let outer = resolve_one(ix, head.trim())?;
+        // **Both sides, or refused** (M39/T39.6): an empty side used to
+        // recurse into "empty selector", and the error was then garbled by
+        // the substitution below.
+        if head.trim().is_empty() || tail.trim().is_empty() {
+            return Err((
+                INVALID_PARAMS,
+                format!("descendant step `>` needs a selector on both sides, in `{selector}`"),
+                Value::Null,
+            ));
+        }
+        let outer = resolve_one(ix, head.trim())
+            .map_err(|(c, m, d)| (c, format!("in `{selector}`: {m}"), d))?;
         let Some(oi) = outer.idx else {
             return Err((
                 INVALID_PARAMS,
@@ -1995,15 +2007,19 @@ fn resolve_one<'e>(ix: &'e Index<'_>, selector: &str) -> Result<&'e Entry, (i64,
                 .cloned()
                 .collect(),
         };
-        // Resolved against the subtree, so the error text names the
-        // whole selector rather than the tail alone.
+        // Resolved against the subtree, so the error names the whole
+        // selector **as a prefix** — not by `m.replace(tail, selector)`,
+        // which put the selector in place of every occurrence of the tail
+        // in the message: every character of it for an empty tail (a
+        // 1,079 B request drew a 15,192 B reply), every `e` for `#x > e`
+        // (M39/T39.6, R14-F6).
         return match resolve_one(&inner, tail.trim()) {
             Ok(e) => ix
                 .entries
                 .iter()
                 .find(|x| x.id == e.id)
                 .ok_or((NOT_FOUND, format!("selector `{selector}` matched nothing"), Value::Null)),
-            Err((c, m, d)) => Err((c, m.replace(tail.trim(), selector), d)),
+            Err((c, m, d)) => Err((c, format!("in `{selector}`: {m}"), d)),
         };
     }
     let terms = parse_selector(selector).map_err(|e| (INVALID_PARAMS, e, Value::Null))?;
