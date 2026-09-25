@@ -1,6 +1,25 @@
 # M41 — `Boundaries`, completed after the flip
 
-> **T41.0–T41.1 DONE 2026-09-25** (Phase 1; T41.2–T41.7 not started).
+> **T41.0–T41.1 DONE 2026-09-25** (Phase 1). **T41.2–T41.6 DONE
+> 2026-09-25**; T41.2b (the `agent_drive.sh` legs) and T41.7 wait for
+> M42.
+>
+> - **T41.2**: the oracle runs after paint, paints a scratch list through
+>   `Scaled`, and names a list-only difference `field: "paint"`;
+>   `tests/shadow.rs` shows it firing in three cases, under four
+>   injections. Its first headless sweep found a divergence in showcase
+>   (the DataGrid after a wheel, node 217), fixed by T41.3.
+> - **T41.3**: `Repeat::generation`, bound from state, marks exactly the
+>   repeater; rows, `List` items and `Dyn` islands get a view in their
+>   own index space (`Changed::arena_view`). `just grid`'s edit frame
+>   2.64 → 2.01 µs (`docs/results-damage-precision.md` T41.3).
+>   `alloc_gate.rs`'s layout arms had been vacuous since M34's flip.
+> - **T41.4**: `TextInput` and `TextArea` override `probe`; a sweep over
+>   23 leaves shows no leaf's paint moves under a probe.
+> - **T41.5**: `Host::paste_with`; `Session::paste` passes the session's
+>   measurer (8 `m`s: 131.2 px, not 80).
+> - **T41.6**: `table_is_well_formed` requires pre-order and a last
+>   child's link of 0; the review's I3 now fails with 52 const errors.
 >
 > - **T41.0**: ten gates. Six red and ignored until their task —
 >   compose (T41.1), the oracle's widget-internal case (T41.2), `Repeat`
