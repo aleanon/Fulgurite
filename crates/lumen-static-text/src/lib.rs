@@ -24,6 +24,7 @@
 //! It shapes and it orders. It does **not** replace the rasteriser:
 //! glyphs still reach the screen through `lumen-static-shell`'s canvas,
 //! so this changes *where the glyphs go*, not how they are drawn.
+#![forbid(unsafe_code)]
 
 use lumen_static::cx::{Cluster, GlyphSink, TextMeasure};
 use lumen_static::desc::Size;

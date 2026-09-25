@@ -7,6 +7,7 @@
 //! [`Canvas::pixels`](software::Canvas). Keeping that seam explicit is what lets the loop be
 //! tested headlessly, which is how every other subsystem here got its
 //! acceptance test.
+#![forbid(unsafe_code)]
 
 use lumen_static::cx::{BlockMetrics, LayoutCx, TextMeasure};
 use lumen_static::desc::NodeState;

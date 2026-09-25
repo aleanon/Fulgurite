@@ -35,6 +35,7 @@
 //! `LUMEN_BACKEND=software` in the environment all still get a window;
 //! the one difference is which line [`Backend::name`] prints. See
 //! [`Prefer`] and `docs/results-gpu.md` §6.
+#![forbid(unsafe_code)]
 
 use std::sync::Arc;
 use std::time::Instant;

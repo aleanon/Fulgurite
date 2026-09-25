@@ -33,6 +33,7 @@
 //! carries the nearest misses, ambiguity carries the candidates.
 //! Selectors resolve over main-table nodes; repeater instances are
 //! reachable through `ui.probe`/`ui.getTree` (documented P1 limit).
+#![forbid(unsafe_code)]
 
 use lumen_static::desc::{NodeDesc, NodeState};
 use lumen_static::event::{Event, Key};

@@ -210,8 +210,9 @@ steady-state allocation, so per-thread state must be pre-allocated. The
 output must stay byte-identical or `damage_oracle.rs` and the agent's
 journal both break — which disjoint bands give for free, since they
 touch disjoint pixels. And it needs no `unsafe`: disjoint horizontal
-bands are safe slices of the pixel buffer, which matters because
-`scripts/check_no_unsafe.sh` covers every crate.
+bands are safe slices of the pixel buffer, which matters because every
+crate but `lumen-static-reload` carries `#![forbid(unsafe_code)]` (since
+M43/T43.1; `scripts/check_no_unsafe.sh` checks that it does).
 
 ## What is not measured here
 

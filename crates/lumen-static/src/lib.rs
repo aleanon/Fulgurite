@@ -101,6 +101,13 @@
 // one would let a dependent strip `std` from crates that never asked.
 // `docs/plan-embedded.md` T13.1 has the argument.
 #![cfg_attr(not(feature = "std"), no_std)]
+// M0's "no `unsafe` in the core", held by the compiler since M43/T43.1
+// rather than by a text scan: `forbid` cannot be overridden by an inner
+// `allow`, and it covers `#[path]` modules and code a build script writes
+// to OUT_DIR for the crate to include, which a scan of `src/` never reads.
+// Every crate but `lumen-static-reload` (the FFI shims) carries it;
+// `scripts/check_no_unsafe.sh` checks that it does.
+#![forbid(unsafe_code)]
 
 // Available in a `std` build too -- `std` re-exports it -- so this needs
 // no cfg of its own beyond the tier that supplies `Vec` and `String`.

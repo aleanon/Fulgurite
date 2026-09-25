@@ -45,6 +45,7 @@
 //! Like the rest of `crates/*/src`, checked by `scripts/check_no_unsafe.sh`.
 //! That is why [`Gpu::for_window`] wants a `Send + Sync` window handle
 //! rather than reaching for `create_surface_unsafe`.
+#![forbid(unsafe_code)]
 
 pub mod atlas;
 

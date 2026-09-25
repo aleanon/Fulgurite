@@ -32,6 +32,7 @@
 //! `subtree_range` and every chain walk assume (tightened by M41/T41.6;
 //! see `table_is_well_formed`) — and `DEPTH` fits `MAX_DEPTH`, so a tree
 //! that could overflow the stack does not compile.
+#![forbid(unsafe_code)]
 
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as Ts2;
