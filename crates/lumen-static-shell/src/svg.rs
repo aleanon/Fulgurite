@@ -19,8 +19,13 @@
 //! turned out to be the useful half: it proves [`Renderer`] admits a
 //! second implementation — so the GPU backend was bounded work — and it
 //! is useful on its own, for export, print, and documentation
-//! screenshots that stay sharp. It exercises the **whole** command
-//! vocabulary including the ones T15.2 and T15.3 added.
+//! screenshots that stay sharp. It handles the **whole** command
+//! vocabulary, and since M51/T51.6 `tests/svg.rs` checks that
+//! mechanically rather than by listing: its `kind` matches every `Cmd`
+//! variant with no wildcard, so a new command does not compile there
+//! until it has a sample, and each sample must emit its own element.
+//! (Until then the test drew seven kinds, no border and no glass, and
+//! both arms could emit nothing with the suite green — R9-F10.)
 //!
 //! It is also the first renderer here that is not a rasteriser at all,
 //! which is a stronger test of the seam than a second rasteriser would

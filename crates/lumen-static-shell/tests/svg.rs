@@ -4,8 +4,13 @@
 //! other side: a renderer is a consumer of the command list, not the
 //! definition of one. This is the first non-rasterising one, which is a
 //! stronger test than a second rasteriser would have been.
+//!
+//! Since M51/T51.6 the vocabulary test is exhaustive **by construction**:
+//! `kind` matches every `Cmd` variant with no wildcard, so a new command
+//! does not compile here until it is placed, and each command must emit
+//! its own element.
 
-use lumen_static::display::{Color, ImageId, Renderer, Stops};
+use lumen_static::display::{Cmd, Color, ImageId, Material, Renderer, Stops};
 use lumen_static::{DisplayList, Point};
 use lumen_static_shell::svg::Svg;
 
@@ -27,21 +32,89 @@ fn it_produces_a_document_with_the_right_viewport() {
     assert!(out.ends_with("</svg>"));
 }
 
-/// **Every command in the vocabulary, including the ones M15 added.**
+/// How many `Cmd` variants there are. Bumped by hand, which is the point:
+/// a new variant does not compile in [`kind`] until it has an index, and
+/// once it has one [`the_whole_command_vocabulary_renders`] refuses to
+/// pass until [`one_of_each`] draws it.
+const KINDS: usize = 11;
+
+/// A stable index per command kind, from an **exhaustive** match with no
+/// wildcard arm — M51/T51.6. "The whole vocabulary" is made true by the
+/// compiler rather than by a sentence that goes stale: the first version
+/// of this test drew seven kinds and said "every", and missed the border
+/// and glass.
+fn kind(c: &Cmd) -> (usize, &'static str) {
+    match c {
+        Cmd::Rect { .. } => (0, "Rect"),
+        Cmd::RoundedRect { .. } => (1, "RoundedRect"),
+        Cmd::StrokedRect { .. } => (2, "StrokedRect"),
+        Cmd::Shadow { .. } => (3, "Shadow"),
+        Cmd::Text { .. } => (4, "Text"),
+        Cmd::Line { .. } => (5, "Line"),
+        Cmd::Gradient { .. } => (6, "Gradient"),
+        Cmd::Image { .. } => (7, "Image"),
+        Cmd::Glass { .. } => (8, "Glass"),
+        Cmd::PushClip { .. } => (9, "PushClip"),
+        Cmd::PopClip => (10, "PopClip"),
+    }
+}
+
+/// One of every command: the list to render, the index of the command
+/// being judged in it, and the element its SVG must contain.
+///
+/// `PopClip` is judged in context: a pop with nothing open emits nothing
+/// by design, so its sample opens a clip first and its evidence is that
+/// the group closes *before* the rect drawn after it — a pop that
+/// emitted nothing would leave the rect inside the group, closed only at
+/// the end of the document.
+fn one_of_each() -> Vec<(Vec<Cmd>, usize, &'static str)> {
+    let r = [0.0, 0.0, 10.0, 10.0];
+    let clip = Cmd::PushClip { rect: r };
+    vec![
+        (vec![Cmd::Rect { rect: r, color: RED }], 0, r#"<rect x="0.00" y="0.00" width="10.00" height="10.00" fill="#),
+        (vec![Cmd::RoundedRect { rect: r, color: RED, radius: 4.0 }], 0, r#"rx="4.00" fill="#),
+        (vec![Cmd::StrokedRect { rect: r, color: RED, radius: 4.0, width: 2.0 }], 0, r#"stroke-width="2.00""#),
+        (vec![Cmd::Shadow { rect: r, color: RED, radius: 4.0, spread: 3.0 }], 0, r#"opacity="0.35""#),
+        (vec![Cmd::Text { rect: [0.0, 0.0, 50.0, 16.0], text: (0, 2), size: 12.0, weight: 400.0, color: RED }], 0, ">hi</text>"),
+        (vec![Cmd::Line { a: Point { x: 0.0, y: 0.0 }, b: Point { x: 9.0, y: 9.0 }, width: 2.0, color: RED }], 0, "<line"),
+        (vec![Cmd::Gradient { rect: r, stops: Stops::two(RED, Color(0, 0, 255, 255)), angle: 0.0 }], 0, "<linearGradient"),
+        (vec![Cmd::Image { rect: r, id: ImageId(3), tint: RED }], 0, r#"data-image="3""#),
+        (vec![Cmd::Glass { rect: r, radius: 4.0, material: Material::FROSTED }], 0, r#"data-blur="12.00""#),
+        (vec![clip], 0, r#"<g clip-path="url(#c0)">"#),
+        (vec![clip, Cmd::PopClip, Cmd::Rect { rect: r, color: RED }], 1, r#"</g><rect"#),
+    ]
+}
+
+/// **Every command in the vocabulary emits its element** — M51/T51.6
+/// (R9-F10).
+///
+/// The test this replaces drew seven kinds and matched six substrings
+/// against the whole document; it had no border and no glass, so with
+/// both SVG arms emitting nothing (scratch commit c75d6c4) the suite was
+/// green. Each command is now rendered on its own and must produce its
+/// own element, and the kinds drawn must be all of them.
 #[test]
 fn the_whole_command_vocabulary_renders() {
-    let out = render(|l| {
-        l.rect([0.0, 0.0, 10.0, 10.0], RED);
-        l.rounded_rect([0.0, 0.0, 10.0, 10.0], RED, 4.0);
-        l.shadow([0.0, 0.0, 10.0, 10.0], 4.0, 3.0);
-        l.text([0.0, 0.0, 50.0, 16.0], "hi", 12.0, RED);
-        l.line(Point { x: 0.0, y: 0.0 }, Point { x: 9.0, y: 9.0 }, 2.0, RED);
-        l.gradient([0.0, 0.0, 10.0, 10.0], Stops::two(RED, Color(0, 0, 255, 255)), 0.0);
-        l.image([0.0, 0.0, 10.0, 10.0], ImageId(3), RED);
-    });
-    for tag in ["<rect", "rx=", "<text", "<line", "linearGradient", r#"data-image="3""#] {
-        assert!(out.contains(tag), "{tag} missing from: {out}");
+    let mut covered = [false; KINDS];
+    let mut missing = Vec::new();
+    for (cmds, judged, marker) in one_of_each() {
+        let (k, name) = kind(&cmds[judged]);
+        covered[k] = true;
+        let mut l = DisplayList::new();
+        l.text.push_str("hi");
+        l.cmds.extend(cmds.iter().copied());
+        let mut s = Svg::new();
+        s.render(&l, 100, 50);
+        let out = s.finish();
+        if !out.contains(marker) {
+            missing.push(name);
+            println!("{name}: {marker} missing from: {out}");
+        }
     }
+    let undrawn: Vec<usize> = (0..KINDS).filter(|k| !covered[*k]).collect();
+    println!("{KINDS} command kinds, {} drawn; missing elements: {missing:?}", KINDS - undrawn.len());
+    assert!(undrawn.is_empty(), "command kinds with no sample in one_of_each: {undrawn:?}");
+    assert!(missing.is_empty(), "commands whose SVG element is missing: {missing:?}");
 }
 
 /// The failure that shows up in someone else's tool, days later.

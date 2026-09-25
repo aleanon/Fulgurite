@@ -1,10 +1,14 @@
 # M51 — the GPU path: what its parity gate can see, and what it costs
 
-> **T51.3 DONE 2026-09-25 (early landing).** `glass_deps.rs` fires
+> **T51.3 and T51.6 DONE 2026-09-25 (early landings).** **T51.3:** `glass_deps.rs` fires
 > `dilate`'s `MAX_DEPS` escape: 4 panels go partial 5/5, 5 panels go
 > `Damage::All` 5/5, 0 px differ; with the escape deleted (`ecaf67f`)
 > 1,822 px differ. Software only, so llvmpipe is irrelevant to it: it
 > proves the same thing on any adapter.
+> **T51.6:** `tests/svg.rs` draws
+> every `Cmd` by an exhaustive `match` (11 kinds, 11 drawn) and each
+> must emit its own element; `c75d6c4` reports `["StrokedRect",
+> "Glass"]` missing. Also software only: no adapter is involved.
 >
 > **Written 2026-09-24.** Closes R9-F1, R9-F2, R9-F3,
 > R9-F6, R9-F7, R9-F8, R9-F9 and R9-F10 from M38
@@ -494,6 +498,15 @@ nothing). The assertion names both. Accept: base passes.
 
 **Docs in the same commit:** `svg.rs`'s module doc; `tests/svg.rs`'s
 doc comment.
+
+*What building found (2026-09-25).* `PopClip` has no element of its
+own: a pop with nothing open emits nothing by design. So its sample
+opens a clip first and its evidence is that the group closes *before*
+the rect drawn after it; a pop that emitted nothing leaves the rect
+inside the group, closed only at the end of the document. An injection
+that empties the `PopClip` arm reports `["PopClip"]`. The exhaustive
+`match` is `kind`, keyed to a hand-bumped `KINDS`; deleting one of its
+arms is E0004, and deleting a sample reports the uncovered index.
 
 **Effort:** S. **Depends on:** T51.0. **May run in Phase 2 or 3,**
 because it is a software-only test with no dependency on M43's scripts.
