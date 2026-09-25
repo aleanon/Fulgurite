@@ -2,7 +2,7 @@
 # firmware and nothing compared them. Moving the headline .text by ~5%
 # must be named (T43.4, tolerance 1%).
 CHECK='./scripts/check_text.sh'
-EXPECT='headline.*delta'
+EXPECT='the headline in docs/results-embedded.md is -?[0-9.]+% off'
 plant() {
     python3 - <<'PY'
 import re, sys

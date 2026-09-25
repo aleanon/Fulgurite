@@ -11,35 +11,53 @@
 # The old budget was `<= 2 KB` and measured 0 — a threshold nothing has
 # approached. This checks the property that number was standing in for:
 # zero framework statics, with a named exemption list.
+#
+# M43/T43.4: the binary judged is the one cargo reports having built
+# (scripts/lib/firmware.sh), not a hard-coded ./target path that a
+# CARGO_TARGET_DIR leaves stale (R11-F6); and `nm` failing is a failure,
+# not an empty -- and therefore clean -- symbol list (R17-F9). At least one
+# symbol must be found, because the fixture's own exempted `SINK` is
+# always there: zero symbols means the listing is wrong, not the firmware
+# clean.
 set -uo pipefail
 cd "$(cd "$(dirname "$0")/.." && pwd)"
 export LC_ALL=C
 
-TARGET=thumbv7em-none-eabihf
-BIN=target/$TARGET/release/firmware
 ALLOW=scripts/bss.allow
-
-cargo build --release -q -p embedded --bin firmware --features firmware --target $TARGET || exit 1
-[ -f "$BIN" ] || { echo "bss: $BIN not built" >&2; exit 1; }
+# shellcheck source=lib/firmware.sh
+source scripts/lib/firmware.sh
+firmware_build || exit 1
+BIN=$FIRMWARE
 
 allowed=$(grep -vE '^\s*(#|$)' "$ALLOW" | tr -d ' ')
 
+if ! syms=$(nm -C --size-sort -S --radix=d "$BIN" 2>&1); then
+    echo "bss: nm failed on $BIN:" >&2
+    echo "$syms" | head -5 | sed 's/^/    /' >&2
+    exit 1
+fi
+
 # B/b = bss, D/d = data, G/g and S/s = small-object variants of each.
-found=$(nm -C --size-sort -S --radix=d "$BIN" 2>/dev/null \
-        | awk '$3 ~ /^[BbDdGgSs]$/ {print $4}' | sort -u)
+found=$(echo "$syms" | awk '$3 ~ /^[BbDdGgSs]$/ {print $4}' | sort -u)
+
+n_allowed=$(echo "$allowed" | grep -c . || true)
+n_found=$(echo "$found" | grep -c . || true)
+
+if [ "$n_found" -eq 0 ]; then
+    echo "bss: nm listed no .bss/.data symbol at all in $BIN -- the fixture's exempted" >&2
+    echo "static is always present, so the listing is wrong, not the firmware clean" >&2
+    exit 1
+fi
 
 bad=""
 for sym in $found; do
   echo "$allowed" | grep -qxF "$sym" || bad="$bad $sym"
 done
 
-n_allowed=$(echo "$allowed" | grep -c . || true)
-n_found=$(echo "$found" | grep -c . || true)
-
 if [ -n "$bad" ]; then
-  echo "bss: framework statics in .bss/.data, which must claim no RAM before main:" >&2
+  echo "bss: framework statics in .bss/.data of $BIN, which must claim no RAM before main:" >&2
   for sym in $bad; do
-    size=$(nm -C --size-sort -S --radix=d "$BIN" | awk -v s="$sym" '$4 == s {print $2}')
+    size=$(echo "$syms" | awk -v s="$sym" '$4 == s {print $2}')
     echo "  $sym  ($size bytes)" >&2
   done
   echo "" >&2
@@ -47,4 +65,4 @@ if [ -n "$bad" ]; then
   exit 1
 fi
 
-echo "bss: $n_found symbol(s) in .bss/.data, all $n_allowed exempted by name"
+echo "bss: $n_found symbol(s) (nm: $BIN), all $n_found exempted ($n_allowed names in $ALLOW)"

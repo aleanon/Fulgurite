@@ -200,8 +200,14 @@ bake-font font="/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf" px="16":
 
 # Section sizes of a linked Cortex-M4F firmware (docs/results-embedded.md).
 firmware-size:
-    cargo build --release -p embedded --bin firmware --features firmware --target thumbv7em-none-eabihf
-    @size -A target/thumbv7em-none-eabihf/release/firmware | grep -E '\.text|\.rodata|\.bss|\.data|Total'
+    #!/usr/bin/env bash
+    # The path is cargo's report, not a guess (scripts/lib/firmware.sh),
+    # so a CARGO_TARGET_DIR cannot leave this printing a stale binary.
+    set -euo pipefail
+    source scripts/lib/firmware.sh
+    firmware_build
+    echo "firmware: $FIRMWARE"
+    size -A "$FIRMWARE" | grep -E '\.text|\.rodata|\.bss|\.data|Total'
 
 # Cortex-M4F no_std build of the core + fixture (docs/results-embedded.md).
 thumb:
@@ -218,11 +224,13 @@ thumb:
     cargo check -p embedded --lib --target thumbv7em-none-eabihf
     # Zero framework statics, with a named exemption list. Needs a
     # linked binary, so it lives beside the firmware build rather than
-    # in `just static`, which runs no cargo at all.
+    # in `just static`, which runs no cargo at all. Both scripts judge the
+    # binary cargo reports building (scripts/lib/firmware.sh), and print it.
     ./scripts/check_bss.sh
     # And the flash ceiling, which docs/results-embedded.md has stated
     # since 2026-09-05 and nothing checked until 2026-09-10 -- by which
-    # point the doc's figure had drifted 9.4% below reality.
+    # point the doc's figure had drifted 9.4% below reality. Since M43 it
+    # also holds that doc's headline to within 1% of the linked .text.
     ./scripts/check_text.sh
 
 # Line coverage, as an artifact to read -- not a threshold. A workspace

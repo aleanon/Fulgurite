@@ -25,24 +25,49 @@ it is: `cargo check` proves none of them — it type-checks and stops, with
 no codegen, no link, no `.text`. Section sizes below come from a real
 `cargo build --release` for the target.
 
-## The measurement — 2026-09-05
+## The headline — measured 2026-09-25 (M43/T43.4)
+
+**This table is the current measurement, and `scripts/check_text.sh`
+holds it to the linked firmware:** it reads the `.text` row below and
+fails when the build differs from it by more than 1%. This document was
+caught three times with a headline a milestone behind the binary (the
+history is below, dated); the ceiling was gated and the number beside it
+was a habit. When a change moves `.text` past the tolerance, the gate
+asks for this table to be re-measured and rewritten in the same commit.
 
 `just firmware-size`: a **linked** `thumbv7em-none-eabihf` binary
 (`fixtures/embedded/src/bin/firmware.rs`), release, one frame of the
-8-node fixture with a baked face. Not a board bring-up — no memory map,
-no vector table, no peripheral — but a real link, which is the only
-thing that produces real sections.
+fixture with a baked face. Not a board bring-up — no memory map, no
+vector table, no peripheral — but a real link, which is the only thing
+that produces real sections.
 
 | | Threshold | Measured | |
 |---|---:|---:|---|
-| `.text` | ≤ 64 KB | **20,524 B** (20.0 KB) | **pass**, at 31% of budget — *2026-09-05; now 22,458, see below* |
-| `.bss` + `.data` | zero framework symbols | **1 symbol, 4 B, exempted** | **pass** — the only static is the fixture's own harness; still 1 symbol, 4 B |
-| `.rodata` | — | 12,940 B | of which **9,010 B is the font face** (T13.7) — *now 13,016* |
-| Flash, total | ≤ 512 KB | **33,677 B** (32.9 KB) | 6.4% of the part — *now 35,691* |
-| RAM, 100 nodes | ≤ 24 KB | **14.5 KB** state + style | **pass**; widget structs are the app's, below |
-| Stack, actual depth | ≤ 4 KB | **816 B at depth 3** | **pass**, and asserted at compile time since 2026-09-07 |
+| `.text` | ≤ 64 KB | **27,024 B** (26.4 KB) | **pass**, at 41.2% of budget |
+| `.bss` + `.data` | zero framework symbols | **1 symbol, 4 B, exempted** | **pass** — the fixture's own `SINK` (`scripts/bss.allow`) |
+| `.rodata` | — | 12,860 B | of which the baked face is most; 9,010 B at T13.7 |
+| Flash, total | ≤ 512 KB | **40,101 B** (39.2 KB) | 7.6% of the part |
+| RAM, 100 nodes | ≤ 24 KB | **16.0 KB** state + style | **pass**; measured at M27/T27.1 (2026-09-18), below |
+| Stack, actual depth | ≤ 4 KB | asserted at compile time | since 2026-09-07; see "The stack budget is enforced now" |
 | `f64` in the frame path | zero | **zero** | the only `f64` is `observe`'s accesskit call, which needs `std` |
 | Fixture builds and runs | yes | **yes** | links for the target; runs on the host with an aborting allocator |
+
+## The first measurement — 2026-09-05 (history)
+
+The table as first recorded. Its "now" annotations were dropped when the
+headline above replaced them; the rows in between live in the dated
+sections below.
+
+| | Threshold | Measured 2026-09-05 | |
+|---|---:|---:|---|
+| `.text` | ≤ 64 KB | 20,524 B (20.0 KB) | pass, at 31% of budget |
+| `.bss` + `.data` | zero framework symbols | 1 symbol, 4 B, exempted | pass — the only static is the fixture's own harness |
+| `.rodata` | — | 12,940 B | of which 9,010 B is the font face (T13.7) |
+| Flash, total | ≤ 512 KB | 33,677 B (32.9 KB) | 6.4% of the part |
+| RAM, 100 nodes | ≤ 24 KB | 14.5 KB state + style | pass; widget structs are the app's, below |
+| Stack, actual depth | ≤ 4 KB | 816 B at depth 3 | pass, and asserted at compile time since 2026-09-07 |
+| `f64` in the frame path | zero | zero | the only `f64` is `observe`'s accesskit call, which needs `std` |
+| Fixture builds and runs | yes | yes | links for the target; runs on the host with an aborting allocator |
 
 Every threshold met. Three things worth more than the pass.
 

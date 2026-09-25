@@ -13,19 +13,31 @@
 # So this asserts the ceiling AND prints the measurement beside it, per
 # `AGENT.md`: a gate that prints only "pass" cannot show a reader that
 # the margin is closing.
+#
+# M43/T43.4, two more things:
+#   * the binary is the one cargo reports having built
+#     (scripts/lib/firmware.sh), so CARGO_TARGET_DIR cannot leave this
+#     judging a stale ./target (R11-F6);
+#   * the measurement is compared with the HEADLINE of
+#     docs/results-embedded.md, and a delta above 1% fails (R17-F13).
+#     Numbers are stated once, in the results doc -- and a headline a
+#     milestone behind the firmware is how this doc was caught stale three
+#     times. 1% lets a toolchain bump through and stops a milestone.
 set -uo pipefail
 cd "$(cd "$(dirname "$0")/.." && pwd)"
 export LC_ALL=C
 
-TARGET=thumbv7em-none-eabihf
-BIN=target/$TARGET/release/firmware
+DOC=docs/results-embedded.md
+TOLERANCE_PCT=1
 # An eighth of the T13.0 device's 512 KB flash. Raising this is a
 # re-budget and belongs in docs/results-embedded.md with the argument,
 # not in this line.
 CEILING=${LUMEN_TEXT_CEILING:-65536}
 
-cargo build --release -q -p embedded --bin firmware --features firmware --target $TARGET || exit 1
-[ -f "$BIN" ] || { echo "text: $BIN not built" >&2; exit 1; }
+# shellcheck source=lib/firmware.sh
+source scripts/lib/firmware.sh
+firmware_build || exit 1
+BIN=$FIRMWARE
 
 # The widgets a measurement is meant to judge must be IN the binary it
 # measures (M25/T25.1). `Toggle` is generic: if the fixture's tree stops
@@ -77,4 +89,22 @@ if [ "$text" -gt "$CEILING" ]; then
   exit 1
 fi
 
-echo "text: .text $text B of $CEILING ($pct% of budget), $toggles Toggle symbols linked, $tasks task symbols (bound 0)"
+# The headline: the first `| `.text` | ... | **N B** |` row of the doc,
+# which is the headline table by construction (it precedes the history).
+head=$(python3 - "$DOC" <<'PY'
+import re, sys
+m = re.search(r"^\| `\.text` \| [^|]*\| \*\*([0-9,]+) B\*\*", open(sys.argv[1]).read(), re.M)
+print(m.group(1).replace(",", "") if m else "")
+PY
+)
+[ -n "$head" ] || { echo "text: no headline .text row in $DOC" >&2; exit 1; }
+delta=$(awk -v t="$text" -v h="$head" 'BEGIN { printf "%.2f", 100 * (t - h) / h }')
+over=$(awk -v d="$delta" -v tol="$TOLERANCE_PCT" 'BEGIN { d = d < 0 ? -d : d; print (d > tol) ? 1 : 0 }')
+
+echo "text: .text $text B of $CEILING ($pct% of budget) in $BIN, $toggles Toggle symbols linked, $tasks task symbols (bound 0)"
+echo "text: $text B measured, $head B in the results doc's headline (delta $delta%, tolerance $TOLERANCE_PCT%)"
+if [ "$over" -eq 1 ]; then
+  echo "text: the headline in $DOC is $delta% off the linked firmware -- re-measure" >&2
+  echo "and rewrite the headline (keeping the history below it, dated)." >&2
+  exit 1
+fi
