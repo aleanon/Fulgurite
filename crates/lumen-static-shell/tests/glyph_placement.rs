@@ -10,6 +10,9 @@ use lumen_static::TextMeasure;
 use lumen_static_shell::software::Canvas;
 use lumen_static_shell::text::{FontMetrics, FontStack};
 
+#[path = "fonts/pinned.rs"]
+mod pinned;
+
 const BG: Color = Color(0, 0, 0, 255);
 const FG: Color = Color(255, 255, 255, 255);
 
@@ -29,10 +32,9 @@ fn ink_rows(c: &Canvas) -> (u32, u32) {
 
 #[test]
 fn a_run_is_vertically_centred_on_its_measured_box() {
-    let Some(font) = FontStack::system() else {
-        eprintln!("no system font; skipping");
-        return;
-    };
+    // The committed face (M43/T43.11), not the system's: this returned
+    // early -- and passed -- on a machine with no system face.
+    let font = FontStack::from_bytes(pinned::bytes(), None).expect("the pinned face parses");
     let mut metrics = FontMetrics::new(font.clone());
     let px = 16.0;
     let size = metrics.measure_weighted("1H", px, 700.0, f32::INFINITY);

@@ -156,6 +156,16 @@ is `#![cfg(not(feature = "truetype"))]` — so `cargo test --features
 truetype` reports `0 passed` rather than quietly comparing. (A `0 passed`
 is itself refused now, above.)
 
+**Text tests shape a committed face (M43/T43.11).** The same hazard one
+level down: the shaping, glyph-placement, complex-text and baked-face
+tests read the machine's fonts and *returned early, passing,* when none
+was installed (M38's R17-F7). They now load
+`crates/lumen-static-shell/tests/fonts/DejaVuSans.ttf` through
+`FontStack::from_bytes` and print `face: DejaVuSans.ttf, glyphs: 6253`;
+a missing file panics with `pinned face not found`. Only
+`font_discovery.rs` is about the system, and `just fonts` (in
+`dev-shape`) runs it under `LUMEN_REQUIRE_FONTS=1`.
+
 **PPM, not PNG.** `Canvas::to_ppm` already writes it and it needs no
 dependency. The PNG encoder lives in `lumen-static-agent`, which depends
 on `lumen-static` with `features = ["observe"]` — not optional — and

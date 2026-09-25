@@ -6,8 +6,14 @@
 use lumen_static::{Cluster, GlyphSink, TextMeasure};
 use lumen_static_shell::text::{FontMetrics, FontStack};
 
-fn metrics() -> Option<FontMetrics> {
-    FontStack::system().map(FontMetrics::new)
+#[path = "fonts/pinned.rs"]
+mod pinned;
+
+/// The committed face, never the system's (M43/T43.11): these tests used
+/// to return early when no system face existed -- a pass that shaped
+/// nothing -- and shaped whichever face the machine had when one did.
+fn metrics() -> FontMetrics {
+    FontMetrics::new(FontStack::from_bytes(pinned::bytes(), None).expect("the pinned face parses"))
 }
 
 /// A sink with a hard ceiling, to exercise `is_full`.
@@ -27,7 +33,7 @@ impl GlyphSink for Capped {
 
 #[test]
 fn a_run_reports_one_cluster_per_char_plus_the_trailing_caret() {
-    let Some(mut m) = metrics() else { return };
+    let mut m = metrics();
     let mut out: Vec<Cluster> = Vec::new();
     let size = m.shape("Hi there", 16.0, 400.0, f32::INFINITY, &mut out);
 
@@ -53,7 +59,7 @@ fn a_run_reports_one_cluster_per_char_plus_the_trailing_caret() {
 
 #[test]
 fn every_byte_offset_lands_on_a_char_boundary_even_after_substitution() {
-    let Some(mut m) = metrics() else { return };
+    let mut m = metrics();
     // U+2212 MINUS SIGN is three bytes and substitutes to one-byte '-'
     // in a face that lacks it. Offsets must still index the caller's
     // string, or a caret lands mid-character and slicing panics.
@@ -76,7 +82,7 @@ fn every_byte_offset_lands_on_a_char_boundary_even_after_substitution() {
 
 #[test]
 fn wrapping_reports_the_line_each_cluster_landed_on() {
-    let Some(mut m) = metrics() else { return };
+    let mut m = metrics();
     let mut out: Vec<Cluster> = Vec::new();
     let size = m.shape("aaaa bbbb cccc dddd", 16.0, 400.0, 60.0, &mut out);
     let lines = out.iter().map(|c| c.line).max().unwrap();
@@ -89,7 +95,7 @@ fn wrapping_reports_the_line_each_cluster_landed_on() {
 
 #[test]
 fn a_full_sink_stops_receiving_and_the_size_is_still_right() {
-    let Some(mut m) = metrics() else { return };
+    let mut m = metrics();
     let mut capped = Capped { out: Vec::new(), cap: 3 };
     let size = m.shape("Hi there", 16.0, 400.0, f32::INFINITY, &mut capped);
     assert_eq!(capped.out.len(), 3, "the sink refused to grow past its capacity");
@@ -98,7 +104,7 @@ fn a_full_sink_stops_receiving_and_the_size_is_still_right() {
 
 #[test]
 fn an_empty_run_still_has_one_caret_position() {
-    let Some(mut m) = metrics() else { return };
+    let mut m = metrics();
     let mut out: Vec<Cluster> = Vec::new();
     let size = m.shape("", 16.0, 400.0, f32::INFINITY, &mut out);
     assert_eq!(out, vec![Cluster { byte: 0, x: 0.0, line: 0 }], "an empty field has a caret");
@@ -137,7 +143,7 @@ fn the_stand_in_measures_without_clusters() {
 /// instead.
 #[test]
 fn a_character_no_face_has_is_substituted() {
-    let Some(mut m) = metrics() else { return };
+    let mut m = metrics();
     let pua = m.measure_weighted("\u{E000}\u{E000}\u{E000}", 16.0, 400.0, f32::INFINITY);
     let subs = m.measure_weighted("???", 16.0, 400.0, f32::INFINITY);
     let plain = m.measure_weighted("abc", 16.0, 400.0, f32::INFINITY);

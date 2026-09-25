@@ -8,29 +8,28 @@
 //! against a fresh `fontdue` rasterisation of the same TTF at the same
 //! size — which is the one comparison a bitmap face can fail invisibly.
 //!
-//! The source font is a system font, so this **skips** rather than fails
-//! where it is absent, the way `just check` skips the live gate without
-//! a display. The skip prints the path it looked for.
+//! The source font is the committed test face (M43/T43.11) -- the same
+//! file `just bake-font` reads by default from the system -- so this runs
+//! on every machine. It used to read the system copy and skip, passing,
+//! where it was absent.
 
 use embedded::face::FACE;
 
 /// The font and size `face.rs` was generated from. If you regenerate at
 /// a different size, change this too — a mismatch here is the failure
 /// this test exists to catch.
-const SOURCE: &str = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf";
 const PX: f32 = 16.0;
 
-fn font() -> Option<fontdue::Font> {
-    let bytes = std::fs::read(SOURCE).ok()?;
-    fontdue::Font::from_bytes(bytes, fontdue::FontSettings::default()).ok()
+#[path = "../../../crates/lumen-static-shell/tests/fonts/pinned.rs"]
+mod pinned;
+
+fn font() -> fontdue::Font {
+    fontdue::Font::from_bytes(pinned::bytes(), fontdue::FontSettings::default()).expect("the pinned face parses")
 }
 
 #[test]
 fn every_baked_glyph_matches_a_live_render() {
-    let Some(font) = font() else {
-        println!("baked_face: {SOURCE} not present, skipped");
-        return;
-    };
+    let font = font();
 
     assert_eq!(FACE.px, PX, "the face was baked at a different size than this test assumes");
     let lm = font.horizontal_line_metrics(PX).expect("line metrics");

@@ -1,8 +1,8 @@
 //! T15.8: that the complex stack shapes what the default one cannot,
 //! and that it stays out of everyone else's way.
 //!
-//! The font is a system face, so these skip rather than fail where it
-//! is absent — the rule `baked_face.rs` and the live gate already use.
+//! The font is the committed test face (M43/T43.11), so these run on
+//! every machine; until then they skipped, passing, without a system face.
 
 use lumen_static::cx::{Cluster, GlyphSink, TextMeasure};
 use lumen_static_text::ComplexText;
@@ -16,28 +16,18 @@ impl GlyphSink for Clusters {
     }
 }
 
-/// A face with wide coverage. `None` skips.
-fn face() -> Option<ComplexText> {
-    for p in [
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
-    ] {
-        if let Ok(bytes) = std::fs::read(p) {
-            // Leaked on purpose: a `rustybuzz::Face` borrows its tables
-            // for as long as it lives.
-            let bytes: &'static [u8] = Box::leak(bytes.into_boxed_slice());
-            if let Some(f) = ComplexText::new(bytes, 16.0) {
-                return Some(f);
-            }
-        }
-    }
-    println!("shaping: no system face found, skipped");
-    None
+#[path = "../../lumen-static-shell/tests/fonts/pinned.rs"]
+mod pinned;
+
+/// The committed face (M43/T43.11). These used to try two system paths
+/// and return early -- passing -- when neither existed.
+fn face() -> ComplexText {
+    ComplexText::new(pinned::bytes(), 16.0).expect("the pinned face parses")
 }
 
 #[test]
 fn latin_still_measures_sensibly() {
-    let Some(mut t) = face() else { return };
+    let mut t = face();
     let s = t.measure("hello", 16.0, f32::INFINITY);
     assert!(s.w > 10.0 && s.w < 200.0, "a plausible width: {}", s.w);
     assert!(s.h > 0.0);
@@ -45,7 +35,7 @@ fn latin_still_measures_sensibly() {
 
 #[test]
 fn an_empty_string_still_reports_a_caret_position() {
-    let Some(mut t) = face() else { return };
+    let mut t = face();
     let mut c = Clusters::default();
     t.shape("", 16.0, 400.0, f32::INFINITY, &mut c);
     assert_eq!(c.0.len(), 1);
@@ -58,7 +48,7 @@ fn an_empty_string_still_reports_a_caret_position() {
 /// to get wrong.
 #[test]
 fn cluster_offsets_index_the_callers_string() {
-    let Some(mut t) = face() else { return };
+    let mut t = face();
     let text = "abc";
     let mut c = Clusters::default();
     t.shape(text, 16.0, 400.0, f32::INFINITY, &mut c);
@@ -75,7 +65,7 @@ fn cluster_offsets_index_the_callers_string() {
 /// **The thing the default stack cannot do.**
 #[test]
 fn a_right_to_left_run_is_laid_out_and_stays_on_boundaries() {
-    let Some(mut t) = face() else { return };
+    let mut t = face();
     let text = "\u{5e9}\u{5dc}\u{5d5}\u{5dd}";
     let mut c = Clusters::default();
     let size = t.shape(text, 16.0, 400.0, f32::INFINITY, &mut c);
@@ -88,7 +78,7 @@ fn a_right_to_left_run_is_laid_out_and_stays_on_boundaries() {
 
 #[test]
 fn a_mixed_line_produces_runs_in_both_directions() {
-    let Some(mut t) = face() else { return };
+    let mut t = face();
     // A Hebrew word inside an English sentence: two runs reading in
     // opposite directions, which `BakedFace` and `FontMetrics` cannot
     // express at all.
@@ -108,7 +98,7 @@ fn a_mixed_line_produces_runs_in_both_directions() {
 
 #[test]
 fn line_height_comes_from_the_face_not_a_guess() {
-    let Some(mut t) = face() else { return };
+    let mut t = face();
     let h = t.line_height(16.0);
     assert!(h > 16.0 && h < 40.0, "a real face's metrics: {h}");
 }

@@ -67,6 +67,9 @@ dev-shape:
     # on, so above they compile to zero tests (golden.rs) or lose their
     # golden test (failure_screen.rs). Here the shell is built alone.
     cargo test -p lumen-static-shell --test golden --test failure_screen
+    # M43/T43.11: text tests shape a committed face; the discovery test
+    # must find a system one (not skip) unless LUMEN_ALLOW_SKIP=1.
+    just fonts
     cargo clippy --workspace --all-targets --exclude lumen-static-wgpu -- -D warnings
     # A fresh doc dir: rustdoc 1.94 panics in its search index
     # (`search_index.rs:478`) on a stale `target/doc` after large edits —
@@ -84,6 +87,20 @@ dev-shape:
 # features nine times. `just ci` (T43.13) runs it.
 test-crates *names:
     ./scripts/test_crates.sh {{ names }}
+
+# The text tests against the committed face, and system font discovery
+# under a requirement (M43/T43.11, docs/plan-gate-hygiene.md §2.2). The
+# shaping tests used to return early -- passing -- with no system face;
+# now only `font_discovery` needs one, and here it must find it unless
+# LUMEN_ALLOW_SKIP=1. In `dev-shape`.
+fonts:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ "${LUMEN_ALLOW_SKIP:-}" = 1 ]; then echo "fonts: LUMEN_ALLOW_SKIP=1 -- discovery may skip"; else export LUMEN_REQUIRE_FONTS=1; fi
+    cargo test -q -p lumen-static-shell --features truetype --test shaping --test glyph_placement --test font_discovery
+    cargo test -q -p lumen-static-shell --features truetype --test font_discovery -- --nocapture | grep '^fonts:'
+    cargo test -q -p lumen-static-text --test shaping
+    cargo test -q -p embedded --test baked_face
 
 # The four fixtures. Until today none of these ran in the gate; three of them
 # assert. miri-smoke runs in `release-shape` above -- it contains zero
