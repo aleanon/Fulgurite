@@ -144,6 +144,13 @@ and prints the measured quantity beside its bound.*
   report. **Every agent `input.*` call is refused while the screen is
   up**, because pumping would be an automatic retry. M37 adds "a
   successful reload retries".
+- **Timers do not run while the screen is up, and a retry does not
+  credit them with its time** (M47/T47.1, `docs/plan-timers-wake.md`
+  §2.1). The window arms no deadline while a panic is shown, and drops
+  its frame clock, so the first frame after R or `app.retry` ticks by
+  `dt` 0. Until T47.1 that frame was handed the whole time the screen
+  was up: a 120 ms timer fired 19 times at once after a 2 s screen
+  (`scripts/panic_drive.py`, the timer step).
 
 ### 2.3 The screen is a display list, not a tree
 

@@ -1341,6 +1341,12 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
     /// A shell reads this and waits *until* that instant instead;
     /// `None` means nothing is pending and the loop may wait
     /// indefinitely, which is today's behaviour.
+    ///
+    /// **Waiting is half of it** (M47/T47.1, R7-F1): the timers are
+    /// checked by [`Host::tick`], so a shell that wakes at the instant
+    /// must also draw a frame there, or the deadline passes unchecked.
+    /// The figure is measured from the last tick, so the instant is that
+    /// frame's start plus this, not "now" plus this.
     pub fn next_deadline_ms(&mut self) -> Option<f32> {
         self.app.timers().and_then(|t| t.earliest())
     }

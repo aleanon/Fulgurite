@@ -481,6 +481,15 @@ impl Subs {
 /// *until* that instant instead of indefinitely. The plan's first draft
 /// gated this on "a second of driven frames", which is the one situation
 /// where the defect cannot appear.
+///
+/// **Waking at the instant is not checking the timer** (M47/T47.1,
+/// R7-F1): the timers are ticked by a frame, so the loop must also *ask
+/// for one* when it wakes there. Until T47.1 the window did not, and an
+/// idle window's 120 ms timer ticked once in three seconds while the
+/// live gate stayed green, because its every read asked for a frame
+/// (`docs/results-tasks.md` T28.12, the correction). While a panic is
+/// shown the window ticks nothing and arms no deadline, and a retry
+/// starts from `dt` 0.
 pub struct Timers {
     /// `(kind, key, period_ms, remaining_ms)`.
     t: [(u64, u64, f32, f32); Timers::CAPACITY],
@@ -504,6 +513,12 @@ impl Timers {
     /// Fire `(kind, key)` every `period_ms`. Returns whether it was
     /// taken; a non-positive or non-finite period is refused, because a
     /// zero period is an infinite loop and a `NaN` one never fires.
+    ///
+    /// **Every other period is accepted, up to `f32::MAX`**, so a shell
+    /// turning [`Timers::earliest`] into a wait must convert fallibly: a
+    /// period above about 1.8e22 ms is no `Duration` and no `Instant`
+    /// (R7-F10; `lumen-static-winit` waits without a deadline then, since
+    /// M47/T47.1).
     pub fn every(&mut self, kind: u64, key: u64, period_ms: f32) -> bool {
         if !period_ms.is_finite() || period_ms <= 0.0 || self.len == Timers::CAPACITY {
             self.refused += 1;

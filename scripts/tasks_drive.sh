@@ -8,6 +8,12 @@
 # unreachable. Every piece of M28 has a passing test; none of them had
 # been used together by an application through a real window.
 #
+# M47/T47.1 (R7-F1, R7-F2): the last two phases are UNOBSERVED -- one
+# read after a sleep with no RPC traffic. Every agent reply ends in a
+# redraw request, so the earlier phases watch a window that is never
+# idle, and they stayed green with the waker uninstalled and with the
+# deadline ignored. A check of a wake or a deadline must not poll.
+#
 # Needs a display. Skips -- exit 0 -- without one, like the other live
 # gates.
 set -euo pipefail

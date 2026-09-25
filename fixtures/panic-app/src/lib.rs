@@ -96,6 +96,17 @@ pub struct Arms {
     pub a7: Button<Fx>,
 }
 
+/// A 120 ms timer and its count — M47/T47.1's panic-path step: a retry
+/// must not credit the timers with the time the screen was up.
+#[derive(StaticTree, Default)]
+#[widget(row, spacing = 4.0)]
+pub struct Clock {
+    #[widget_id("timer")]
+    pub toggle: Button<Fx>,
+    #[widget_id("ticks")]
+    pub ticks: Label<String>,
+}
+
 #[derive(StaticTree, Default)]
 #[widget(column, spacing = 4.0)]
 pub struct Ui {
@@ -106,6 +117,7 @@ pub struct Ui {
     pub go: Button<Fx>,
     #[widget_id("bomb")]
     pub bomb: Bomb,
+    pub clock: Clock,
 }
 
 /// What `update` formats: a value whose `Display` panics when armed.
@@ -132,7 +144,13 @@ pub struct Fx {
     /// (M36/T36.3), so a retry can succeed without the agent, whose input
     /// is refused while the screen is up, having to disarm anything.
     pub one_shot: bool,
+    /// The timer behind `#timer`, and how many times it has landed.
+    pub timers: lumen_static::spawn::Timers,
+    pub ticks: u32,
 }
+
+/// The timer's descriptor kind and key, and so the message it lands as.
+pub const TICK: u8 = 9;
 
 impl Fx {
     fn fire(&mut self) {
@@ -188,6 +206,9 @@ impl App for Fx {
     fn outbox(&mut self) -> Option<&mut lumen_static::spawn::Outbox> {
         Some(&mut self.outbox)
     }
+    fn timers(&mut self) -> Option<&mut lumen_static::spawn::Timers> {
+        Some(&mut self.timers)
+    }
     fn job_for(d: Descriptor) -> Option<JobFn<u8>> {
         Some(if d.kind == 8 { bad_job } else { echo })
     }
@@ -195,6 +216,9 @@ impl App for Fx {
         if m == 2 && this.armed == 2 {
             this.fire();
             panic!("site 2: an applied message"); // SITE 2
+        }
+        if m == TICK {
+            this.ticks += 1;
         }
         true
     }
@@ -214,7 +238,8 @@ impl App for Fx {
         let text = format!("{shown}");
         let a = lumen_static::bind::set_if_changed(&mut self.ui.title, &text);
         let b = lumen_static::bind::BindValue::bind_value(&mut self.ui.bomb.arm, &bomb);
-        a | b
+        let c = lumen_static::bind::set_if_changed(&mut self.ui.clock.ticks, &format!("{}", self.ticks));
+        a | b | c
     }
 }
 
@@ -237,6 +262,13 @@ pub fn build() -> Fx {
         b.label = label;
         b.on_click = h;
     }
+    f.ui.clock.toggle.label = "timer";
+    f.ui.clock.toggle.on_click = |s, _| {
+        let t = TICK as u64;
+        if !s.timers.cancel(t, t) {
+            s.timers.every(t, t, 120.0);
+        }
+    };
     f
 }
 

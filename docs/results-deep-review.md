@@ -1418,6 +1418,15 @@ caught none. **The new shape this review adds to AGENT.md's two:**
 firmware that never links the code under test. It looks like the first
 shape, but the cause is the build graph rather than the fixture.
 
+### §4 addendum (dated rows, added as the fixes land)
+
+Rows found or re-run after this review, in the table's shape. M43/T43.15
+completes the addendum; a milestone that lands first adds its own row.
+
+| what | why it proved nothing | how caught | injection / evidence |
+|---|---|---|---|
+| `just tasks-drive` vs `run()`'s waker and `WaitUntil` (R7-F2; re-run 2026-09-25, M47/T47.1) | every read requested a frame, so the window was never idle while the drive watched it | injection | at `b213ae0`: waker uninstalled, or deadline ignored → 10/10 green; an unobserved read showed 1 tick of 25. Since T47.1 the drive's unobserved phases go red under both (`docs/results-tasks.md` T28.12) |
+
 ## 5. Gate reality
 
 Each gate the reviewers touched: where it runs, whether it can skip, and

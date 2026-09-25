@@ -449,6 +449,12 @@ under both invalidation strategies.
 **Gate:** the drive script asserts each action landed *and* its
 consequence, with the quantity printed beside its bound.
 
+> **Corrected 2026-09-25 (M47/T47.1).** The claim this task was credited
+> with — that `run()`'s `WaitUntil` makes a timer fire on an idle window —
+> was false until M47/T47.1, and this gate could not see it: every read
+> the drive makes asks for a frame. `docs/results-tasks.md` T28.12 has the
+> correction and the unobserved figures.
+
 **Docs:** the book gains the chapter, or `book/src/events.md` gains the
 section — decided when the surface is real rather than promised.
 

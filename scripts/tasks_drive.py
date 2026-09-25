@@ -128,6 +128,44 @@ if now != frozen:
 print(f"  ok  subscription off: ticks froze at {frozen} across 600 ms "
       f"(period 120)")
 
+# ---- 6. unobserved: a wake and a deadline on an IDLE window ----------
+# M47/T47.1 (R7-F1, R7-F2). Every read above ends in a redraw request,
+# so the window was never idle while phases 1-5 watched it: they pass
+# with the waker uninstalled and with the deadline ignored. These two
+# make ONE read after a sleep with no RPC traffic, and that read is
+# answered before the frame it requests -- so what it reports is what a
+# wake or a deadline produced on its own (docs/plan-timers-wake.md
+# rule 1). Do not "fix" either into a settle(): polling is the defect.
+PERIOD = 120
+before = counts()["ticks"]
+click("toggle-sub")
+t0 = time.time()
+time.sleep(3.0)
+got = counts()["ticks"] - before
+x = (time.time() - t0) * 1000
+want = int(x // PERIOD)
+bound = 1 + want - 2
+print(f"  ..  ticks {got} (expected {want}, bound {bound}) after {x:.0f} ms unobserved")
+if got < bound:
+    sys.exit(f"tasks-drive[{strategy}]: an idle window's {PERIOD} ms timer ticked "
+             f"{got} times in {x:.0f} ms with nothing reading it (bound {bound}): "
+             f"nothing turns the deadline into a frame")
+print(f"  ok  unobserved timer: {got} >= {bound}")
+click("toggle-sub")
+time.sleep(0.3)
+
+before = counts()["slow"]
+click("start-slow")
+t0 = time.time()
+time.sleep(1.5)
+got = counts()["slow"]
+x = (time.time() - t0) * 1000
+print(f"  ..  slow {got} (want {before + 1}) after {x:.0f} ms unobserved, job takes 400")
+if got != before + 1:
+    sys.exit(f"tasks-drive[{strategy}]: a finished job's result did not reach an "
+             f"idle window in {x:.0f} ms (slow {before} -> {got}): the waker is not wired")
+print(f"  ok  unobserved wake: slow {before} -> {got}")
+
 final = counts()
 if final["failed"] != 0:
     sys.exit(f"tasks-drive[{strategy}]: {final['failed']} job(s) failed: {status()!r}")

@@ -114,4 +114,41 @@ for site in range(1, 8):
     px = corner()
     assert px == app_page, f"site {site}: after retry the corner is {px}, not the app's {app_page}"
     print(f"  ok  site {site}: {loc['file']}:{loc['line']}, screen drawn, input refused, retried")
+
+# ---- M47/T47.1: a retry does not credit the timers with the screen's time
+# While the screen is up the timers' clock is frozen (M36 §2.2). Until
+# T47.1 the window kept the last frame's instant, so the retry's first
+# frame ticked by the whole time the screen was up and a 120 ms timer
+# fired ~16 times at once. The count is read unobserved-style: one read
+# before the wait, one after, and the time between them printed.
+def ticks():
+    return int(call("ui.resolve", {"selector": "#ticks"}).get("value", "0") or 0)
+
+
+PERIOD, UP_S = 120, 2.0
+call("input.click", {"selector": "#timer"})
+time.sleep(0.5)
+assert ticks() >= 2, f"panic-drive [{strategy}]: setup: the timer is not ticking ({ticks()})"
+call("input.click", {"selector": "#arm1"})
+rpc("input.click", {"selector": "#go"})
+deadline = time.time() + 5
+while time.time() < deadline and not call("app.failure")["failure"]:
+    time.sleep(0.05)
+assert call("app.failure")["failure"], f"panic-drive [{strategy}]: timer step: site 1 never failed"
+t_fail = ticks()
+time.sleep(UP_S)
+frozen = ticks()
+assert frozen == t_fail, f"panic-drive [{strategy}]: the timer ran while the screen was up ({t_fail} -> {frozen})"
+assert call("app.retry")["retried"] is True
+t0 = time.time()
+time.sleep(0.25)
+after = ticks()
+x = (time.time() - t0) * 1000
+added = after - frozen - int(x // PERIOD)
+print(f"  ..  retry after {UP_S * 1000:.0f} ms up: ticks {frozen} -> {after} in {x:.0f} ms, "
+      f"{added} beyond the {int(x // PERIOD)} due (bound 2)")
+assert added <= 2, (f"panic-drive [{strategy}]: the retry's first frame fired {added} extra ticks "
+                    f"(bound 2): it was handed the time the panic screen was up")
+call("input.click", {"selector": "#timer"})
+print(f"  ok  retry: the timer resumed from dt 0 ({added} extra, bound 2)")
 print(f"panic-drive [{strategy}]: all seven sites caught, shown and recovered")

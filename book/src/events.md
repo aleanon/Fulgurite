@@ -157,7 +157,12 @@ subscription on reload.
 A timer is a **deadline**, not a thread that sleeps. The host publishes
 its earliest pending deadline and the window's loop waits until that
 instant — without which a timer on an idle window would never be
-checked, because `ControlFlow::Wait` produces no frames.
+checked, because `ControlFlow::Wait` produces no frames. Waking is not
+enough on its own: the timers are ticked by a frame, so the window also
+asks for one when it wakes there. Until M47 it did not, and a 120 ms
+timer on an idle window ticked once in three seconds while the live
+gate stayed green (`docs/results-tasks.md` T28.12 has the figures and
+why the gate could not see it).
 
 ### Failure is a result too
 

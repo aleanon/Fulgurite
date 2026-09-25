@@ -855,6 +855,33 @@ Two pieces of wiring that every passing test had done for itself:
 
 This is what "use the thing" is for.
 
+> **Corrected 2026-09-25 (M47/T47.1, `docs/plan-timers-wake.md`).** The
+> second bullet was **false until T47.1**, and the drive above could not
+> see it (R7-F1, R7-F2). `WaitUntil` woke the loop at the deadline and
+> nothing asked for a frame, so the timer was not checked until something
+> else drew one — and every read `tasks_drive.py` makes ends in a redraw
+> request, so the window was never idle while the drive watched it. Both
+> of M38's injections (waker uninstalled; deadline ignored) left all ten
+> checks green. `examples/wake-gate` covers the `ProxyWaker` wire (T28.1)
+> with its own handler and its own waker, not `run()`'s wiring.
+>
+> The drive now ends with two **unobserved** phases: one read after a
+> sleep with no RPC traffic, answered before the frame it requests.
+>
+> | build | unobserved 120 ms timer, 3.0 s | unobserved 400 ms job, 1.5 s |
+> |---|---|---|
+> | `b213ae0` (before T47.1) | **1** tick (expected 25, bound 24) | slow 1 (want 1) |
+> | T47.1 | **26** ticks (expected 25, bound 24), both strategies | slow 1 (want 1), both strategies |
+> | T47.1, waker install removed (injection A) | 25 | **0** (want 1) |
+> | T47.1, deadline ignored and `new_events` deleted (injection B) | **1** | — |
+>
+> The fix: the window fixes an absolute `WaitUntil` instant after each
+> frame, from that frame's start, and `new_events` turns a wake at or past
+> it into a frame. No deadline is armed while the panic screen is up, and
+> the retry's first frame ticks by 0 (`docs/plan-panic-recovery.md`
+> §2.2). Counts from `just tasks-drive` on 2026-09-25, machine idle
+> (load 0.68); they are counts, not clocks.
+
 ### Injections — all three fire, and one is more interesting than the others
 
 | injection | fires as |

@@ -325,6 +325,26 @@ fn start(session: Box<dyn Session>, config: Config, hot: Option<std::path::PathB
     event_loop.run_app(&mut win).expect("run");
 }
 
+/// What the loop waits on after a frame that started at `from`, when the
+/// host's soonest timer was `ms` away at the end of it — M47/T47.1.
+///
+/// **An instant, not a remainder.** `ms` is what the timers said after
+/// the frame ticked them by the time since the previous frame's start,
+/// so it is measured from *this* frame's start, and the deadline is
+/// fixed there. Until T47.1 the loop re-armed `now + ms` on every wake,
+/// so each wake that produced no frame pushed the deadline later.
+///
+/// **Fallible, because `Timers::every` accepts any finite positive
+/// period** (R7-F10): the panicking float-to-`Duration` conversion took
+/// the loop down on a period above about 1.8e22 ms. A deadline no
+/// `Instant` can hold waits without one, which is what a timer that far
+/// away means in practice.
+fn control_flow_for(from: Instant, ms: Option<f32>) -> ControlFlow {
+    ms.and_then(|ms| std::time::Duration::try_from_secs_f32(ms.max(0.0) / 1000.0).ok())
+        .and_then(|d| from.checked_add(d))
+        .map_or(ControlFlow::Wait, ControlFlow::WaitUntil)
+}
+
 /// The turnkey handler behind [`run`] — **not generic over the
 /// application** since M37: everything it asks of one goes through
 /// [`Session`], which is what lets the same handler drive an application
@@ -358,7 +378,16 @@ struct Win {
     /// frame does not ask the platform to set it again.
     cursor_shown: lumen_static::style::Cursor,
     /// When the last frame was drawn, for the animation tick (T15.4).
+    ///
+    /// **Cleared while a panic is shown** (M47/T47.1), so the first frame
+    /// after a retry — by R or by `app.retry` — ticks by 0 rather than by
+    /// the whole time the screen was up (`docs/plan-panic-recovery.md`
+    /// §2.2).
     last_frame: Option<Instant>,
+    /// What the loop waits on, fixed after each frame by
+    /// [`control_flow_for`]: `WaitUntil` the soonest timer's instant, or
+    /// `Wait` when there is none or a panic is shown (M47/T47.1).
+    wait: ControlFlow,
     /// The reload state, when the window rebuilds its application (M37).
     #[cfg(feature = "hot")]
     hot: Option<hot::Hot>,
@@ -386,6 +415,7 @@ impl Win {
             clipboard: Clipboard::new(),
             cursor_shown: lumen_static::style::Cursor::Default,
             last_frame: None,
+            wait: ControlFlow::Wait,
             #[cfg(feature = "hot")]
             hot: None,
         }
@@ -471,6 +501,17 @@ impl Win {
         // inside the session: both ticks and the pump, or the panic
         // screen.
         let animating = self.session.frame(dt, w, h);
+        // **The deadline, fixed at this frame** (M47/T47.1). While a panic
+        // is shown, none: the timers do not run (their clock is frozen
+        // above), so a deadline would only redraw the screen at the
+        // timer's rate. And the clock is dropped, so the retry's first
+        // frame starts from `dt` 0 whichever way the retry came.
+        self.wait = if self.session.failed() {
+            self.last_frame = None;
+            ControlFlow::Wait
+        } else {
+            control_flow_for(start, self.session.next_deadline_ms())
+        };
         #[cfg(feature = "hot")]
         let barred = match self.hot.as_mut() {
             Some(hot) => {
@@ -543,24 +584,47 @@ impl ApplicationHandler<UserEvent> for Win {
         Win::window_event_impl(self, e, id, event);
     }
 
-    /// **What the loop waits on** — M28/T28.11.
+    /// **What the loop waits on** — M28/T28.11, made true by M47/T47.1.
     ///
     /// `ControlFlow::Wait` sleeps until input arrives, so a timer on an
     /// idle window would never be checked: a deadline needs a frame, and
-    /// an idle window produces none. `WaitUntil` is what makes a
-    /// deadline a deadline rather than a hope.
+    /// an idle window produces none. `WaitUntil` wakes the loop at the
+    /// deadline, and **waking is not a frame**: until T47.1 nothing asked
+    /// for one at that instant, so an idle window's 120 ms timer ticked
+    /// once in three seconds (R7-F1, `docs/results-tasks.md` T28.12).
+    /// [`new_events`](Self::new_events) is what turns the wake into a
+    /// frame, and the instant is fixed after each frame rather than
+    /// re-armed from now on every wake.
     ///
     /// Nothing pending falls back to `Wait`, which is today's behaviour
     /// and what keeps the idle frame numbers in
     /// `docs/results-frame-cost.md` true — this changes when a still
     /// window wakes, never how often a busy one draws.
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
-        match self.session.next_deadline_ms() {
-            Some(ms) => event_loop.set_control_flow(ControlFlow::WaitUntil(
-                std::time::Instant::now()
-                    + std::time::Duration::from_secs_f32(ms.max(0.0) / 1000.0),
-            )),
-            None => event_loop.set_control_flow(ControlFlow::Wait),
+        event_loop.set_control_flow(self.wait);
+    }
+
+    /// **A deadline that has passed asks for a frame** — M47/T47.1.
+    ///
+    /// On `ResumeTimeReached`, and on any wake at or after the instant
+    /// (an event that arrived just as the timer came due), request a
+    /// redraw: the frame is where the timers are ticked, so this is the
+    /// only thing between a deadline and the timer it belongs to.
+    fn new_events(&mut self, _e: &ActiveEventLoop, cause: winit::event::StartCause) {
+        let due = match self.wait {
+            ControlFlow::WaitUntil(t) => {
+                matches!(cause, winit::event::StartCause::ResumeTimeReached { .. }) || Instant::now() >= t
+            }
+            ControlFlow::Wait | ControlFlow::Poll => false,
+        };
+        if due {
+            // Consumed: the frame this asks for fixes the next instant. A
+            // past `WaitUntil` left armed would spin the loop wherever the
+            // platform holds the redraw back (a hidden window).
+            self.wait = ControlFlow::Wait;
+            if let Some(w) = &self.window {
+                w.request_redraw();
+            }
         }
     }
 
@@ -1072,5 +1136,30 @@ pub mod hot {
         fn timings(&self) -> (u64, u64) {
             (0, 0)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// R7-F10: every period `Timers::every` accepts must give a control
+    /// flow, not a panic, and an ordinary one must give its instant.
+    #[test]
+    fn control_flow_for_takes_every_accepted_deadline() {
+        let now = Instant::now();
+        for ms in [f32::MAX, 1e30, 1e22, 1e20] {
+            let flow = control_flow_for(now, Some(ms));
+            println!("deadline {ms:e} ms -> {flow:?}");
+        }
+        match control_flow_for(now, Some(120.0)) {
+            ControlFlow::WaitUntil(t) => {
+                let got = t.duration_since(now).as_secs_f64() * 1000.0;
+                println!("120 ms -> WaitUntil(now + {got:.3} ms) (bound 120 +- 1)");
+                assert!((got - 120.0).abs() <= 1.0, "120 ms armed {got:.3} ms");
+            }
+            other => panic!("120 ms gave {other:?}, not WaitUntil"),
+        }
+        assert_eq!(control_flow_for(now, None), ControlFlow::Wait, "no timer must wait without a deadline");
     }
 }

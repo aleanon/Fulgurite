@@ -1,6 +1,16 @@
 # M47 — a timer fires on an idle window, and the loop around it keeps count
 
-> **Written 2026-09-24, not started.** Closes R7-F1, R7-F2, R7-F3,
+> **T47.1 DONE 2026-09-25**, landed ahead of phase 3 with its own T47.0
+> rows (the two unobserved `tasks-drive` phases, the panic-path step, the
+> `control_flow_for` unit test): an idle window's 120 ms timer reads 26
+> ticks where it read 1 (bound 24, both strategies), a retry after a 2 s
+> panic screen adds 0 extra ticks where it added 19 (bound 2), and
+> periods of 1e30 and `f32::MAX` wait without a deadline instead of
+> panicking. Its drive evidence is re-gathered with the identity line
+> once M42/T42.2 lands. T47.0's other rows and T47.2–T47.8 are not
+> started. See "What building found" at the end of T47.1.
+>
+> **Written 2026-09-24.** Closes R7-F1, R7-F2, R7-F3,
 > R7-F4, R7-F5, R7-F7, R7-F8, R7-F9, R7-F10, R7-F11 and R15-F6 from
 > `docs/results-deep-review.md`, as re-triaged against `main` at
 > `1717808` on 2026-09-24. Where the review and the re-triage differ, the
@@ -344,6 +354,32 @@ if this lands first), not a row in `AGENT.md`'s table, which M43 §2.8
 keeps to one summary row. Rule 1 above says the same.
 
 **Effort:** S. **Depends on:** T47.0.
+
+**What building found (2026-09-25).**
+
+- **The clock is dropped on the frame that shows the panic, not in the R
+  handler.** `app.retry` reaches the session through the agent's
+  dispatch, which the window never sees, so a reset "on retry" in the
+  window's R arm would have covered one of the two retry paths. Clearing
+  `last_frame` on every frame a panic is shown covers both with one line,
+  and it is the line injection C removes.
+- **The drive retries with `app.retry`, not R.** The plan said "presses
+  R"; the agent refuses every `input.*` call while the screen is up
+  (M36 §2.2), so a drive cannot press it. With the reset where it is,
+  the two paths share the code the step tests.
+- **A consumed deadline is disarmed.** `new_events` sets the wait back
+  to `Wait` when it asks for the frame, and the frame arms the next
+  instant. Left armed, a past `WaitUntil` spins the loop wherever the
+  platform holds a redraw back (a hidden window).
+- **Injection A leaves the tick phase green** (25 against 24): the
+  deadline frames apply the jobs' results one period late without a
+  waker. That is why the waker has its own phase with a 400 ms job and
+  no timer running.
+- **"No deadline while the panic screen is up" has no gate here.** What
+  it prevents is the screen being redrawn at the timer's rate, and
+  nothing the agent reports counts frames while a panic is shown (the
+  journal is not fed on those frames). T47.8's idle section is the place
+  to count it.
 
 ### T47.2 — catch-up by arithmetic, and every firing accounted for
 

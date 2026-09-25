@@ -522,6 +522,16 @@ the pointer out of flight. An unrecognised `kind` is dropped and
 counted, never guessed at, exactly as the reload model already treats an
 enum variant a new build removed.
 
+**CORRECTED 2026-09-25 (M47/T47.1, `docs/plan-timers-wake.md` §2.1):** a
+timer on an idle *window* fires. Until T47.1 it did not — the loop woke
+at the deadline and drew no frame, and the live gate could not tell
+because its every read asked for one (`docs/results-tasks.md` T28.12,
+the correction). The window now fixes the deadline as an instant after
+each frame and turns a wake at it into a frame; while a panic is shown
+the timers are frozen and a retry starts from `dt` 0. Still deferred to
+the rest of M47: catch-up by arithmetic (T47.2), the per-firing thread
+(T47.3).
+
 ### Sequence — not negotiable
 
 The old tree's `Serialize` impls, `Drop` impls, and vtables all live in the old
