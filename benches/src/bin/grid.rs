@@ -45,9 +45,19 @@
 //!    this milestone exists to build is already unreachable. `arm_c`
 //!    measures that frame and the probe reports it beside the others.
 //!
+//! **And the fifth, from M38 (R6-F2): the `frame` column was not the
+//! frame.** It is layout + place + paint + raster, and `pump_with` also
+//! dispatches, drains, runs the bindings, cascades the arenas and closes
+//! retention. Since M53/T53.0 every arm pumps through [`pump`], which
+//! times the whole call, and each run prints the pump and its gap from
+//! the stage sum, bounded at [`GAP_BOUND`] of the pump
+//! (`docs/plan-frame-cost.md`). The binary exits non-zero when a run's
+//! gap is over it.
+//!
 //! Run: `just grid`, or `cargo run --release -p benches --bin grid`
 
 use std::hint::black_box;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
 use lumen_static_widgets::ops::{Button, Label};
@@ -363,6 +373,30 @@ fn host(m: &mut dyn TextMeasure) -> Bounded {
     h
 }
 
+/// The whole `pump_with`, timed from outside — M53/T53.0 (R6-F2).
+///
+/// Every arm pumps through this, so the probe can print what a frame
+/// actually costs beside the stage sum it used to publish as "the
+/// frame". `Host::timings3` covers layout, place and paint; the pump
+/// also dispatches, drains, runs the bindings, cascades the arenas and
+/// closes retention, and none of that was in the sum
+/// (`docs/plan-frame-cost.md` §1.1).
+static PUMP_NS: AtomicU64 = AtomicU64::new(0);
+
+fn pump<A: lumen_static::event::App>(
+    h: &mut Host<A, lumen_static::Incremental, lumen_static::Boundaries<16>>,
+    m: &mut dyn TextMeasure,
+) {
+    let t = Instant::now();
+    h.pump_with(m);
+    PUMP_NS.store(t.elapsed().as_nanos() as u64, Ordering::Relaxed);
+}
+
+/// The gap bound: the pump minus the stages published as its cost may be
+/// at most this share of the pump. Five per cent, from
+/// `docs/plan-frame-cost.md` T53.0; a stage nothing times shows up here.
+const GAP_BOUND: f64 = 0.05;
+
 /// One run of `iters` frames of `act`, as the probe loop in `main` does
 /// it — medians of layout, place, paint, damage-bounded raster, and
 /// damaged pixels. Generic so the split twin (M29/T29.6) is measured by
@@ -372,16 +406,20 @@ fn measure<A: lumen_static::event::App>(
     iters: usize,
     m: &mut dyn TextMeasure,
     mut act: impl FnMut(&mut Host<A, lumen_static::Incremental, lumen_static::Boundaries<16>>, &mut dyn TextMeasure),
-) -> (f64, f64, f64, f64, f64) {
+) -> (f64, f64, f64, f64, f64, f64, f64) {
     let mut canvas = Canvas::new(W, H);
     let (mut lay, mut plc, mut pnt, mut ras, mut px) =
         (Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new());
+    let (mut pumps, mut gaps) = (Vec::new(), Vec::new());
     for _ in 0..iters {
         act(h, m);
         let (l, pl, p) = h.timings3();
         lay.push(l as f64 / 1000.0);
         plc.push(pl as f64 / 1000.0);
         pnt.push(p as f64 / 1000.0);
+        let pu = PUMP_NS.load(Ordering::Relaxed) as f64 / 1000.0;
+        pumps.push(pu);
+        gaps.push(pu - (l + pl + p) as f64 / 1000.0);
         let dmg = h.take_damage_for_age(1).clip_to([0.0, 0.0, W as f32, H as f32]);
         let t = Instant::now();
         match dmg {
@@ -394,7 +432,7 @@ fn measure<A: lumen_static::event::App>(
         }
         ras.push(t.elapsed().as_nanos() as f64 / 1000.0);
     }
-    (med(&mut lay), med(&mut plc), med(&mut pnt), med(&mut ras), med(&mut px))
+    (med(&mut lay), med(&mut plc), med(&mut pnt), med(&mut ras), med(&mut px), med(&mut pumps), med(&mut gaps))
 }
 
 /// The median of `v`, which is sorted in place.
@@ -426,7 +464,7 @@ fn med(v: &mut [f64]) -> f64 {
 /// of this milestone is reachable at all.
 fn arm_a(h: &mut Bounded, v: i64, m: &mut dyn TextMeasure) {
     h.app.cell = v;
-    h.pump_with(m);
+    pump(h, m);
 }
 
 /// **The control, since M29/T29.3.** Arm A used to *be* the `mark_all`
@@ -437,19 +475,19 @@ fn arm_a(h: &mut Bounded, v: i64, m: &mut dyn TextMeasure) {
 fn arm_forced(h: &mut Bounded, v: i64, m: &mut dyn TextMeasure) {
     h.app.cell = v;
     h.invalidate_all();
-    h.pump_with(m);
+    pump(h, m);
 }
 
 fn arm_b(h: &mut Bounded, v: i64, m: &mut dyn TextMeasure) {
     h.app.cell = v;
     h.app.ui.top.formula.set(format!("= {v}"));
     assert!(h.invalidate("formula"), "setup: #formula is on the table");
-    h.pump_with(m);
+    pump(h, m);
 }
 
 fn arm_c(h: &mut Bounded, at: (f32, f32), m: &mut dyn TextMeasure) {
     h.click(at.0, at.1);
-    h.pump_with(m);
+    pump(h, m);
 }
 
 fn main() {
@@ -565,9 +603,12 @@ fn main() {
     const RUNS: usize = 8;
     const ITERS: usize = 40;
     println!(
-        "\n{:<10} {:>10} {:>10} {:>10} {:>10} {:>10} {:>10}",
-        "arm", "layout µs", "place µs", "paint µs", "raster µs", "frame µs", "damage px"
+        "\n{:<10} {:>10} {:>10} {:>10} {:>10} {:>10} {:>10} {:>10} {:>10}",
+        "arm", "layout µs", "place µs", "paint µs", "raster µs", "frame µs", "damage px", "pump µs", "gap µs"
     );
+    // Every run whose pump the stage sum does not account for, by more
+    // than `GAP_BOUND` of the pump (M53/T53.0).
+    let mut over: Vec<String> = Vec::new();
 
     for arm in ["mark_all", "bound", "narrowed", "handled"] {
         for run in 0..RUNS {
@@ -576,6 +617,7 @@ fn main() {
             let (mut lay, mut plc, mut pnt, mut ras) =
                 (Vec::new(), Vec::new(), Vec::new(), Vec::new());
             let mut px: Vec<f64> = Vec::new();
+            let (mut pumps, mut gaps) = (Vec::new(), Vec::new());
             for i in 0..ITERS {
                 let v = (run * ITERS + i) as i64 + 1;
                 match arm {
@@ -590,6 +632,9 @@ fn main() {
                 lay.push(l as f64 / 1000.0);
                 plc.push(pl as f64 / 1000.0);
                 pnt.push(p as f64 / 1000.0);
+                let pu = PUMP_NS.load(Ordering::Relaxed) as f64 / 1000.0;
+                pumps.push(pu);
+                gaps.push(pu - (l + pl + p) as f64 / 1000.0);
                 // **Damage-bounded, as a host rasterises**: clear and
                 // render only what retention says changed. `Host::render`
                 // draws the whole list, which no shell does and which
@@ -608,11 +653,13 @@ fn main() {
             }
             let (l, pl, p, r) =
                 (med(&mut lay), med(&mut plc), med(&mut pnt), med(&mut ras));
+            let (pu, gap) = (med(&mut pumps), med(&mut gaps));
             println!(
-                "{arm:<10} {l:>10.2} {pl:>10.2} {p:>10.2} {r:>10.2} {:>10.2} {:>10.0}",
+                "{arm:<10} {l:>10.2} {pl:>10.2} {p:>10.2} {r:>10.2} {:>10.2} {:>10.0} {pu:>10.2} {gap:>10.2}",
                 l + pl + p + r,
                 med(&mut px)
             );
+            gap_check(&mut over, arm, run, l + pl + p, pu, gap);
         }
         println!();
     }
@@ -624,15 +671,16 @@ fn main() {
     for run in 0..RUNS {
         let _ = run;
         let mut h = host_split(m);
-        let (l, pl, p, r, px) = measure(&mut h, ITERS, m, |h, m| {
+        let (l, pl, p, r, px, pu, gap) = measure(&mut h, ITERS, m, |h, m| {
             h.click(bump_at.0, bump_at.1);
-            h.pump_with(m);
+            pump(h, m);
         });
         println!(
-            "{:<10} {l:>10.2} {pl:>10.2} {p:>10.2} {r:>10.2} {:>10.2} {px:>10.0}",
+            "{:<10} {l:>10.2} {pl:>10.2} {p:>10.2} {r:>10.2} {:>10.2} {px:>10.0} {pu:>10.2} {gap:>10.2}",
             "handled/split",
             l + pl + p + r,
         );
+        gap_check(&mut over, "handled/split", run, l + pl + p, pu, gap);
     }
     println!();
 
@@ -650,4 +698,29 @@ fn main() {
          damages the toolbar row. The first edit after a fresh host damages the\n   \
          whole surface; the per-run median excludes it."
     );
+
+    // ---- M53/T53.0: the stage sum against the pump ---------------------
+    println!(
+        "\n   `pump` is the whole `Host::pump_with`, timed from outside; `gap` is the\n   \
+         pump minus layout + place + paint, the sum the `frame` column was built\n   \
+         from. Bound: {:.0}% of the pump per run (docs/plan-frame-cost.md T53.0).",
+        GAP_BOUND * 100.0
+    );
+    if !over.is_empty() {
+        println!("\n!! {} of the runs above: the stage sum does not account for the pump", over.len());
+        for o in &over {
+            println!("   {o}");
+        }
+        std::process::exit(1);
+    }
+}
+
+/// One run's stage-sum-against-pump line, and a failure if the gap is
+/// over [`GAP_BOUND`] of the pump — the quantity beside its bound.
+fn gap_check(over: &mut Vec<String>, arm: &str, run: usize, sum: f64, pump: f64, gap: f64) {
+    let bound = GAP_BOUND * pump;
+    let line = format!("{arm} run {run}: stage-sum {sum:.2} vs pump {pump:.2}, gap {gap:.2} µs (bound {bound:.2})");
+    if gap.abs() > bound {
+        over.push(line);
+    }
 }

@@ -19,6 +19,8 @@ use lumen_static::style::{Rule, Style};
 use lumen_static::widget::{Node, Widget};
 use lumen_static::{pass, Constraints, Event, Point};
 
+/// M53/T53.0: what a pump did, counted.
+pub mod frame_cost;
 /// M12/T12.2: golden images, with a diff artifact.
 pub mod golden;
 /// M32: `application(boot)` — the program described once.
@@ -210,6 +212,8 @@ pub struct Host<A: App, R: Retention = Incremental, I: Invalidation = lumen_stat
     last_layout_ns: u64,
     last_place_ns: u64,
     last_paint_ns: u64,
+    /// Passes run since construction — M53/T53.0. See [`Host::pass_counts`].
+    passes: frame_cost::PassCounts,
     /// How much of the previous frame is kept, and what changed
     /// (`docs/plan-architecture-v2.md` M8b). A type parameter rather
     /// than a feature so `Rebuild` stays available in the same binary
@@ -675,6 +679,7 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             last_layout_ns: 0,
             last_place_ns: 0,
             last_paint_ns: 0,
+            passes: frame_cost::PassCounts::default(),
             retain: R::default(),
             last_damage: Damage::All,
             invalidation: I::default(),
@@ -917,6 +922,14 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
     /// it had not yet removed.
     pub fn timings3(&self) -> (u64, u64, u64) {
         (self.last_layout_ns, self.last_place_ns, self.last_paint_ns)
+    }
+
+    /// How many times each pass has run since the host was built —
+    /// M53/T53.0 (`docs/plan-frame-cost.md`, rule 3: counts gate, clocks
+    /// record). Read it before and after, and subtract with
+    /// [`frame_cost::PassCounts::since`].
+    pub fn pass_counts(&self) -> frame_cost::PassCounts {
+        self.passes
     }
 
     /// Logical viewport: the physical surface divided by the scale.
@@ -1337,6 +1350,7 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         if self.arenas_dirty {
             self.arenas_dirty = false;
             if !self.sheet.is_empty() {
+                self.passes.cascades += 1;
                 lumen_static::style::cascade_arenas_deep(
                     self.app.tree_mut(),
                     &self.sheet,
@@ -1362,6 +1376,7 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
                 // test can tell whether the scale arrived.
                 .with_scale(self.scale);
             let tree = self.app.tree_mut();
+            self.passes.layouts += 1;
             tree.layout(&mut cx, limits, &self.styles, &mut self.states, 0);
             self.last_layout_ns = t0.elapsed().as_nanos() as u64;
             // Timed apart from layout because **invalidation cannot
@@ -1370,6 +1385,7 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             // one number it reads as layout that a better mark would
             // remove (M29/T29.1's review).
             let t1 = std::time::Instant::now();
+            self.passes.places += 1;
             tree.place(Point::default(), &self.styles, &mut self.states, 0);
             self.last_place_ns = t1.elapsed().as_nanos() as u64;
         }
@@ -1417,6 +1433,7 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             // `observe` the optimizer removes.
             let mut rec = lumen_static::Recording::new(&mut self.list, &mut self.retain);
             let mut out = lumen_static::Scaled::new(&mut rec, self.scale);
+            self.passes.paints += 1;
             pass::paint_overlaid(self.app.tree(), &self.states, &mut out, &mut self.overlays);
         }
         self.last_paint_ns = t1.elapsed().as_nanos() as u64;
@@ -1448,6 +1465,7 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         self.invalidation.clear();
 
         self.frame += 1;
+        self.passes.pumps += 1;
         handled
     }
 

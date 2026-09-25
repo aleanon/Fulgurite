@@ -1,6 +1,15 @@
 # M53 — what a frame costs, measured whole, and a still frame that costs nothing
 
-> **Written 2026-09-24, not started.** Closes R6-F1, R6-F2, R6-F3, R6-F4
+> **T53.0 DONE 2026-09-26 (early landing, headless rows only).**
+> `Host::pass_counts` counts cascades and passes; `arena_marks.rs`
+> (clicks 40/40 cascades against a bound of 0, ignored until T53.2) and
+> `idle_pump.rs` (40/40 places and paints per 40 idle pumps, ignored
+> until T53.3) are red; `just grid` fails every run on a 23–30 µs gap
+> the stage sum does not see; the `stages` arm fails because its host
+> cascades and no stage brackets it. **The R7-F6 live gate is not
+> built**: it launches through M42/T42.2, which does not exist yet.
+>
+> **Written 2026-09-24.** Closes R6-F1, R6-F2, R6-F3, R6-F4
 > and R7-F6 from `docs/results-deep-review.md`, as re-triaged against
 > `main` at `1717808` on 2026-09-24. The re-triage read the code for all
 > five and measured nothing new, so every figure here is cited, not
@@ -205,6 +214,31 @@ behaviour.
 `Repeat` do cascade 40 times; a pump after `invalidate` still paints; a
 motion that crosses a `Button`'s edge produces exactly one frame with
 non-zero damage (the hover shade). Each shows its check can pass.
+
+*What building found (2026-09-26, early landing).*
+
+- **The `stages` gap cannot carry a bound.** `pump` and `sum.pump` are
+  minima from two different loops on two different hosts. Given the
+  sheet, the first run (load average 9, LOADED) put `pump − sum.pump`
+  between **−36.93 µs and +32.07 µs**, negative on half the cells,
+  where the cascade itself costs a few µs. A 10% + 1 µs bound fired on
+  7 of 18 cells for noise and would have fired on a different 7 the
+  next run. So the arm's R6-F4 check is **structural**: the host counts
+  its arena cascades in loop C, and if it ran any, the arm's stage list must
+  contain a `cascade` stage. Red on all 12 cells run (55 cascades per
+  one-row and all-rows cell, 1 per idle cell — the first pump's). The
+  gap stays printed and unbounded, as before. T53.1's gap bound is on
+  the host's own stages against its own pump, in one iteration, which
+  the grid shows is stable (below).
+- **The grid's gap is stable, because it is one iteration.** Stage sum
+  and pump come from the same `pump_with`: 22.6–30.9 µs on 40 of 40
+  runs, against bounds of 2.8–5.1 µs.
+- **The live gate (R7-F6) waits.** It launches through M42/T42.2's
+  launcher, not built on this branch, so it is not written here and
+  T53.0 is done for its four headless rows only.
+- The instrumentation is a module, `lumen-static-shell/src/frame_cost.rs`,
+  so the shell's `lib.rs` (which M41 is editing) gains five counter
+  increments, one field and one accessor.
 
 **Effort:** M. **Depends on:** M42 for the live gate's identity line
 (it is launched through M42/T42.2's launcher, which also gives it exit

@@ -162,6 +162,36 @@ struct Ui {
     rows: List<Label<String>>,
 }
 
+/// The stylesheet both sides are styled by — M53/T53.0 (R6-F4).
+///
+/// **An arena rule, deliberately.** Every row lives in the `List`'s
+/// arena, so this rule reaches them only through the arena cascade that
+/// `Host::pump_with` runs whenever a binding wrote. Until T53.0 this arm
+/// built its host with no sheet, so the cascade step did not exist here
+/// and its six-stage sum could claim to be "exactly what
+/// `Host::pump_with` does" while a real application's pump paid a stage
+/// the sum never saw. A colour, so the geometry is what it was.
+fn sheet() -> [lumen_static::style::Rule; 1] {
+    use lumen_static::style::{Patch, Rule, Selector};
+    [Rule::new(Selector::Kind("label"), Patch::new().color(lumen_static::display::Color(20, 20, 30, 255)))]
+}
+
+/// Every pass `Host::pump_with` ran in loop C must be a stage of the
+/// decomposition — M53/T53.0 (R6-F4).
+///
+/// **A count, not the `pump-sum6` gap.** The plan asked for that gap to
+/// be bounded, and the first run showed why it cannot carry a bound:
+/// `pump` and `sum.pump` are minima from two different loops on two
+/// different hosts, and under load the gap ran from −37 µs to +32 µs on
+/// cells where the cascade costs a few µs, *negative* on half of them
+/// (`docs/plan-frame-cost.md` T53.0, "What building found"). A gate that
+/// fires on noise proves nothing either way. So the gate is structural:
+/// the host counts its arena cascades (`Host::pass_counts`), and if it
+/// ran one the decomposition must have a stage for it.
+fn brackets_cascade() -> bool {
+    STAGES.contains(&"cascade")
+}
+
 /// The application: a model, and the tree that presents it.
 ///
 /// `App::update` is written by hand rather than by `#[bind(...)]`
@@ -294,7 +324,9 @@ impl<R: Retention> Rig<R> {
         let items: Vec<Label<String>> = model.iter().map(|s| Label::new(s.clone())).collect();
         let mut app = Rows { ui: Ui::default(), model };
         app.ui.rows.items = items;
-        let styles = pass::default_styles(&app.ui);
+        let mut styles = pass::default_styles(&app.ui);
+        // The same sheet the host gets, cascaded once: table and arenas.
+        lumen_static::style::cascade_deep(&mut app.ui, &sheet(), &mut styles);
         Rig {
             styles,
             states: vec![NodeState::default(); <Ui as Widget>::NODE_COUNT],
@@ -396,6 +428,8 @@ struct Cell {
     frame: f64,
     /// Minimum `Host::pump_with`, from its own loop on its own `Host`.
     pump: f64,
+    /// Arena cascades that host ran in that loop (M53/T53.0).
+    host_cascades: u64,
     /// Minimum `Gpu::draw` + `Gpu::wait`; `None` when there is no
     /// adapter, or when every frame's damage was empty and the stage
     /// therefore never ran. `gpu_available` tells the two apart.
@@ -492,10 +526,13 @@ fn run_cell<R: Retention>(
     let mut host: Host<Rows, R> = {
         let mut rig2: Rig<R> = Rig::new(n, font);
         let app = std::mem::take(&mut rig2.app);
-        Host::new(app, W, LAYOUT_H)
+        let mut h = Host::new(app, W, LAYOUT_H);
+        h.set_stylesheet(&sheet());
+        h
     };
     let mut hm = FontMetrics::new(font.clone());
     let mut pump = f64::INFINITY;
+    let cascades_before = host.pass_counts().cascades;
     for k in 0..(warm + iters) {
         mutate(&mut host.app.model, load, k);
         host.post(Event::down(HIT.0, HIT.1));
@@ -511,6 +548,8 @@ fn run_cell<R: Retention>(
             rig.canvas.blit_0rgb_within(&mut rig.buf, a);
         }
     }
+
+    let host_cascades = host.pass_counts().cascades - cascades_before;
 
     // The GPU raster, over the same list and the same rect. Its own
     // loop: it is an alternative to `raster.sw`, so timing it inside the
@@ -550,6 +589,7 @@ fn run_cell<R: Retention>(
         inner,
         frame,
         pump,
+        host_cascades,
         gpu: gpu_us,
         gpu_available,
         gpu_px,
@@ -570,7 +610,7 @@ fn row(stage: &str, n: usize, load: Load, ret: &str, us: f64, px: &str, note: &s
     );
 }
 
-fn report(n: usize, load: Load, ret: &str, c: &Cell) {
+fn report(n: usize, load: Load, ret: &str, c: &Cell, over: &mut Vec<String>) {
     let total_px = (W as u64) * (H as u64);
     println!(
         "\n# cell n={n} workload={} retention={ret} cmds={} tree_h={:.0} \
@@ -622,6 +662,19 @@ fn report(n: usize, load: Load, ret: &str, c: &Cell) {
         c.inner - sum8,
         c.pump - sum6,
     );
+    println!(
+        "# passes n={n} workload={} retention={ret} host-cascades={} bracketed={} (bound: bracketed if > 0)",
+        load.name(),
+        c.host_cascades,
+        brackets_cascade(),
+    );
+    if c.host_cascades > 0 && !brackets_cascade() {
+        over.push(format!(
+            "n={n} {} {ret}: the host ran {} arena cascades and no stage brackets one",
+            load.name(),
+            c.host_cascades
+        ));
+    }
 }
 
 /// Cost of one `Instant::now()`, so a reader can size the instrumentation
@@ -693,12 +746,22 @@ fn main() {
     println!("# columns: stage n workload retention us px note");
     println!("# a NaN in the us column means the stage did not run; the note says why.");
 
+    let mut over = Vec::new();
     for &n in &ns {
         for load in [Load::Idle, Load::OneRow, Load::AllRows] {
             let c = run_cell::<Rebuild>(n, load, &font, gpu.as_mut(), iters, warm);
-            report(n, load, "rebuild", &c);
+            report(n, load, "rebuild", &c, &mut over);
             let c = run_cell::<Incremental>(n, load, &font, gpu.as_mut(), iters, warm);
-            report(n, load, "incremental", &c);
+            report(n, load, "incremental", &c, &mut over);
         }
+    }
+    // M53/T53.0 (R6-F4): the decomposition must account for the pump it
+    // claims to decompose, within `pump_gap_bound`.
+    if !over.is_empty() {
+        println!("\n!! {} cell(s): the six stages do not account for Host::pump_with", over.len());
+        for o in &over {
+            println!("!!   {o}");
+        }
+        std::process::exit(1);
     }
 }
