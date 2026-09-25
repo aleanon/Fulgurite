@@ -438,6 +438,16 @@ pub struct InputState {
     /// release (the agent, a screen reader) does not have to know the
     /// count of the press it is completing.
     pub clicks: u8,
+    /// Where the press now in progress **began**: the node hit, and the
+    /// row inside it for virtualized content — M57/A9
+    /// (`docs/plan-widget-fixes.md`).
+    ///
+    /// A release activates only a handler whose node contains this — the
+    /// rule every toolkit keeps, so that pressing one button and letting
+    /// go over another presses neither, and a press on the background
+    /// that slides onto a button is not a click. `pressed` cannot serve:
+    /// it is cleared at the top of the release, before activation runs.
+    pub press_origin: Option<(u32, Option<u64>)>,
 }
 
 /// The single input queue (see the module note).

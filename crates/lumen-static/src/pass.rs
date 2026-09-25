@@ -526,6 +526,9 @@ fn dispatch_at<S: crate::event::App>(
         input.mods = *m;
         return true;
     }
+    // Where the press this release ends began — taken here, before the
+    // pointer-state block below clears the press (M57/A9).
+    let origin = if matches!(ev, Event::PointerUp { .. }) { input.press_origin.take() } else { None };
     // The press's click count survives to its release, where activation
     // happens (T14.3).
     if let Event::PointerDown { clicks, .. } = ev {
@@ -709,6 +712,7 @@ fn dispatch_at<S: crate::event::App>(
                 Event::PointerDown { .. } => {
                     input.hovered = hit.map(|h| h.node);
                     set_hovered(st, input.hovered);
+                    input.press_origin = hit.map(|h| (h.node, h.inner.map(|x| x.row)));
                     if let Some(h) = hit {
                         st[h.node as usize].pressed = true;
                         input.pressed = Some(h.node);
@@ -888,6 +892,23 @@ fn dispatch_at<S: crate::event::App>(
         // before `&mut S` exists.
         let handler = state.tree().handler(sel);
         if let Some(h) = handler {
+            // **A release activates only what its press began in** —
+            // M57/A9. Pass 2 used to run whatever handler the release
+            // landed on, so pressing Primary and letting go over Default
+            // pressed Default, and a press on the card that slid onto a
+            // button clicked it (`docs/widget-audit.md` X7). The handler's
+            // node must contain the press's origin, and for a repeater's
+            // own row the rows must match; a drag that leaves and comes
+            // back still activates, as on every desktop.
+            if matches!(ev, Event::PointerUp { .. }) {
+                let span = crate::style::subtree_range(table, i);
+                let began_here = origin.is_some_and(|(n, row)| {
+                    span.contains(&(n as usize)) && (i != start || row == ctx.row)
+                });
+                if !began_here {
+                    return false;
+                }
+            }
             // **`state_mut()`, not `state`** — M33. A handler
             // receives `A::State`, which is the application itself
             // unless it named a `#[state]` field. When it did, the tree
