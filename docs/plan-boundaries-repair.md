@@ -820,6 +820,41 @@ was re-checked as the re-triage left it and none had moved.
   layouts or allocations (`palette_host`, `alloc_gate`), which a second
   layout changes by construction.
 
+- **T41.3's rows got a view in their own index space, not only
+  `Changed::ALL` when marked.** A row the repeater lays out unmarked —
+  because a sibling changed, or the ring moved a new row into its slot —
+  was also being asked about main-table ranges. So a row gets `ALL` when
+  the repeater is marked, its `generation` moved, or its slot holds a new
+  row, and `NONE` otherwise. The `NONE` half is what moved `just grid`'s
+  edit frame from 2.64 to 2.01 µs, which fired §5's kill rule
+  *downward*; the attribution is in `docs/results-damage-precision.md`
+  T41.3.
+- **The accept direction is zero ranges, not one.** A split
+  application's click on a button whose hover is already set marks
+  nothing: the handler writes only state, and the hover did not move.
+  The click that changes the data marks two (the arriving hover and the
+  list).
+- **Two T41.3 gates had to be tightened by their own injections.**
+  Making the repeater ignore its own mark left case 3 green, because the
+  injection is not strategy-specific: `Everything`'s rows kept last
+  frame's box too, and the two arms agreed about a stale row. Case 3 and
+  case 4 now assert that `Everything`'s row *widened* (40 → 224 px).
+- **`tests/alloc_gate.rs`'s layout arms had been vacuous since M34's
+  flip.** Under the `Boundaries<256>` default an idle pump lays nothing
+  out, so the repeater, `List`, `Dyn` and enum arms measured a frame in
+  which none of their layout ran: T29.5's own injection (a bind that
+  calls `format!`) stayed green. Those arms run under `Everything` now,
+  and the injection fires again at 19 allocs/frame on a 19-row window.
+- **`List` and `Dyn` had the same index-space mistake, and T41.3 fixed
+  it there too.** Both handed their arena content the frame's `Changed`.
+  `repeat_data.rs` case 5 (a `List` of container items after
+  `Host::invalidate`) was red at 40 against 224 px; case 6 (a `Dyn`
+  island) was *green* on its first draft, because the island sat at main
+  index 2 and its mark, 2..3, happened to overlap the island's own arena
+  indices 0..3. With two nodes ahead of it the injection fires (tail at
+  x = 12 against 92). One helper, `Changed::arena_view`, now gives all
+  three owners the same view.
+
 ## Appendix: finding → task
 
 | ID | sev now | status | task |

@@ -46,9 +46,20 @@ pub struct Repeat<T: Widget + Default + 'static> {
     /// Configure a recycled template instance for a row. A plain `fn`
     /// pointer: it cannot capture, so a hot reload re-supplies it.
     ///
-    /// **This runs for every materialized row on every frame**, which is
-    /// what keeps a data change visible without an invalidation call —
-    /// so it is on the steady-state path and **must not allocate**.
+    /// **This runs for every materialized row on every frame the
+    /// repeater is laid out**, so it is on the steady-state path and
+    /// **must not allocate**.
+    ///
+    /// **A data change must be reported** — M41/T41.3
+    /// (`docs/plan-boundaries-repair.md` §2.3). This said the per-frame
+    /// bind kept a data change visible "without an invalidation call",
+    /// which was true only while every frame laid out every node. Under
+    /// the `Boundaries` default a repeater nothing marked is not laid out
+    /// at all, and one laid out because a sibling changed keeps its
+    /// container rows as they were. Report a change in one of two ways:
+    /// bump [`Repeat::generation`] (from the application's state, through
+    /// a value `#[bind]`, which marks exactly this repeater), or call
+    /// `Host::invalidate` on its id.
     ///
     /// The obvious spelling does:
     ///
@@ -102,6 +113,27 @@ pub struct Repeat<T: Widget + Default + 'static> {
     /// for the same reason. It is last frame's, which is this frame's
     /// for any gesture that did not also resize the window.
     viewport: f32,
+    /// The data's version — M41/T41.3.
+    ///
+    /// **Bump it when what [`Repeat::bind`] reads changes**, or the rows
+    /// may not show it (see `bind`). Bound from the application's state
+    /// with the value form, `#[bind(ui.list.generation, version)]`, it
+    /// is written only when it moves, and the binding marks exactly this
+    /// repeater — T29.3's per-site mark, found by address. The repeater
+    /// also compares it with the version it last laid out, so a bump that
+    /// arrives by another route lays every row out again the next time
+    /// the repeater is reached — which, unmarked, is only when something
+    /// beside it was.
+    ///
+    /// M44/T44.2's click latch reads the same counter.
+    pub generation: u64,
+    /// The `generation` the last layout saw.
+    seen_generation: u64,
+    /// Which row each arena slot was last laid out as; `usize::MAX` for a
+    /// slot that has not been. A slot whose row changed — the ring moved
+    /// — is laid out again even on a frame that did not mark the
+    /// repeater; one whose row did not is left to its own boundary.
+    slot_rows: Vec<usize>,
 }
 
 impl<T: Widget + Default> Default for Repeat<T> {
@@ -121,6 +153,9 @@ impl<T: Widget + Default> Repeat<T> {
             arena: crate::arena::Arena::new(T::NODE_COUNT),
             first: 0,
             viewport: 0.0,
+            generation: 0,
+            seen_generation: 0,
+            slot_rows: Vec::new(),
         }
     }
 
@@ -135,10 +170,10 @@ impl<T: Widget + Default> Repeat<T> {
     /// that actually entered. Measured 31 of 31 before, 1 of 31 after
     /// (`docs/plan-review-fixes.md` F4.6).
     ///
-    /// Rows are still rebound every frame, which is what keeps a data
-    /// change visible without an explicit invalidation call; the ring is
-    /// what makes almost all of those binds write identical text, which
-    /// `Label::set_str` then skips.
+    /// Rows are rebound on every layout; the ring is what makes almost
+    /// all of those binds write identical text, which `Label::set_str`
+    /// then skips. A layout is not every frame under `Boundaries`, which
+    /// is why a data change must be reported (see [`Repeat::bind`]).
     #[inline]
     fn slot(&self, k: usize) -> usize {
         let len = self.window.len();
@@ -414,9 +449,11 @@ impl<T: Widget + Default + 'static> Node for Repeat<T> {
         // (F3.2), so the type is what to ask — `Seed::defaults` is the
         // same `fn` the probe would have dispatched to.
         self.arena.ensure(vis, T::SEEDS);
-        // Bound every frame, so a data change needs no invalidation
-        // call — the ring is what makes almost every one of these write
-        // identical text, which `Label::set_str` then skips.
+        // Bound on every layout — the ring is what makes almost every one
+        // of these write identical text, which `Label::set_str` then
+        // skips. **Not every frame**: under `Boundaries` a repeater
+        // nothing marked is not reached, so a data change is reported
+        // through `generation` or `Host::invalidate` (M41/T41.3).
         let bind = self.bind;
         let len = self.window.len();
         for k in 0..len {
@@ -437,16 +474,45 @@ impl<T: Widget + Default + 'static> Node for Repeat<T> {
         let row_limits =
             Constraints { min_w: 0.0, max_w: s.w, min_h: 0.0, max_h: self.item_extent };
         let n = T::NODE_COUNT;
+        // **What a row is told changed — M41/T41.3.** A row's indices are
+        // its arena slot's, `0..T::NODE_COUNT`, and the frame's `Changed`
+        // ranges are *main-table* indices, so handing a row `cx` as it
+        // came asked a derived row whether an unrelated main-table range
+        // was clean. It usually answered yes and kept last frame's box —
+        // after `Host::invalidate` on this list (`repeat_data.rs` case
+        // 3), and on showcase's DataGrid after a wheel, which the shadow
+        // oracle named on its first sweep. So a row gets a view in its own
+        // index space: everything, when this repeater was marked, its
+        // `generation` moved, or the row now in the slot is not the one
+        // last laid out there; nothing otherwise, which leaves a derived
+        // row to its constraint check. Under `Everything` every repeater
+        // is marked, so nothing changes there.
+        let marked = !cx.changed.is_clean(i..i + 1) || self.generation != self.seen_generation;
+        self.seen_generation = self.generation;
         // Instances use the template's own default styles: the cascade
         // is keyed by *table* index, and instances are not in the table
         // (`docs/layout-and-storage-decisions.md` §3's recorded limit).
-        let Repeat { window, arena, .. } = self;
+        let Repeat { window, arena, slot_rows, .. } = self;
         let (row_style, states) = arena.parts();
         let len = window.len();
+        if slot_rows.len() != len {
+            // A new length re-deals every row to a new slot.
+            slot_rows.clear();
+            slot_rows.resize(len, usize::MAX);
+        }
+        let frame = cx.changed;
         for k in 0..len {
             let sl = (first + k) % len;
+            let row = first + k;
+            cx.changed = if marked || slot_rows[sl] != row {
+                crate::invalidate::Changed::ALL
+            } else {
+                crate::invalidate::Changed::NONE
+            };
             window[sl].layout(cx, row_limits, row_style, &mut states[sl * n..(sl + 1) * n], 0);
+            slot_rows[sl] = row;
         }
+        cx.changed = frame;
 
         // **`record_painted`, not two field writes.** This wrote only
         // `constraints` and `size`, so a repeater's `background`,

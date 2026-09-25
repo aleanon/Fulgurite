@@ -110,6 +110,26 @@ impl Changed<'_> {
         !self.ranges.iter().any(|&(rs, re)| rs < e && s < re)
     }
 
+    /// The view to hand content laid out in an **arena** owned by node
+    /// `i` — M41/T41.3.
+    ///
+    /// An arena's indices start again at zero, and this view's ranges
+    /// are the main table's, so asking it about an arena node answers a
+    /// question about an unrelated main-table range. The honest answer
+    /// for arena content is the owner's own: everything, when node `i`
+    /// is marked; nothing, otherwise — which leaves a derived container
+    /// inside the arena to its constraint check. A view that is already
+    /// all-or-nothing (an arena nested in an arena) passes through the
+    /// same rule unchanged.
+    #[inline]
+    pub fn arena_view(self, i: usize) -> Changed<'static> {
+        if self.is_clean(i..i + 1) {
+            Changed::NONE
+        } else {
+            Changed::ALL
+        }
+    }
+
     /// Whether this view can ever answer `true`. A caller can hoist the
     /// check out of a loop rather than asking per child.
     #[inline]

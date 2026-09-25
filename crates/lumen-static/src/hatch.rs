@@ -567,6 +567,16 @@ impl<W: Widget> Node for List<W> {
         let last = items.len().saturating_sub(1);
         let mut sum = 0.0f32;
         let mut mx = 0.0f32;
+        // **An item's indices are its arena's** — M41/T41.3, the shape
+        // `Repeat` had. The frame's `Changed` holds main-table ranges, so
+        // handing an item `cx` as it came asked a derived item whether an
+        // unrelated main-table range was clean, and after
+        // `Host::invalidate` on this list it kept last frame's box
+        // (`repeat_data.rs` case 5). A marked list tells its items
+        // everything changed; an unmarked one tells them nothing did,
+        // which leaves each to its own constraint check.
+        let frame = cx.changed;
+        cx.changed = crate::invalidate::Changed::arena_view(frame, i);
         for (k, item) in items.iter_mut().enumerate() {
             let cc = Constraints {
                 min_w: 0.0,
@@ -578,6 +588,7 @@ impl<W: Widget> Node for List<W> {
             sum += s.h + if k < last { spacing } else { 0.0 };
             mx = mx.max(s.w);
         }
+        cx.changed = frame;
         let size = crate::ops::resolve_self(limits, &style[i], Size { w: mx, h: sum });
         st[i].constraints = limits;
         st[i].size = size;
@@ -971,7 +982,12 @@ impl<S> Node for Dyn<S> {
     ) -> Size {
         let Dyn { inner, arena, .. } = self;
         let (istyle, states) = arena.parts();
+        // The island's indices are its arena's: the same view `List` and
+        // `Repeat` give their content (M41/T41.3).
+        let frame = cx.changed;
+        cx.changed = crate::invalidate::Changed::arena_view(frame, i);
         let size = inner.layout(cx, limits, istyle, states, 0);
+        cx.changed = frame;
         let size = crate::ops::resolve_self(limits, &style[i], size);
         st[i].constraints = limits;
         st[i].size = size;

@@ -216,6 +216,18 @@ its data without marking, which under the `Everything` default would
 work and under `Boundaries` would not — the worst kind of difference.
 1.5 µs does not buy that.
 
+*Amended 2026-09-25, M41/T41.3:* the contract this paragraph defended
+did not survive M34's flip. Under the `Boundaries` default a clean
+subtree is never laid out, so the bind loop was already skipped on
+every frame that did not reach the list, and the stale list this
+paragraph warned of was the default's behaviour (R1-F4). The contract
+is now the other one: a data change is reported, through
+`Repeat::generation` or `Host::invalidate` (`Repeat::bind`'s rustdoc).
+The bind still runs on every layout that reaches the list, so the
+allocation gate above still applies, and since T41.3 that gate runs
+under `Everything` — under the default it had stopped reaching the list
+at all (T41.3 below).
+
 **The fix is the one that needed no contract change:** a bind that does
 not allocate, a gate that refuses one that does, and the shape
 documented where the author is already looking.
@@ -298,6 +310,38 @@ shortfall: its handler may write any widget. So the saving §2.5 found
 unreachable "on every frame a click produces" is now reached on every
 click of a split application, and — for a turnkey window — once M34
 flips the default strategy.
+
+## T41.3 — a `Repeat`'s rows get their own view of what changed, 2026-09-25
+
+`docs/plan-boundaries-repair.md` §5 set T41.3's kill rule before the
+build: `just grid`, eight runs a side; if the edit frame's median lies
+outside the before-arm's spread, the generation bind marks more than the
+`Repeat`. The binary prints eight frames per arm per run, so each arm is
+64 samples. **LOADED**: load average 8.0 before and 11.7 after, with
+other agents compiling; the layout column is the one T41.3 can move.
+
+| arm | layout µs before (min · median · max) | after |
+|---|---|---|
+| `mark_all` | 22.88 · 23.63 · 36.12 | 21.93 · 23.99 · 25.37 |
+| `bound` | 2.51 · 2.66 · 5.34 | 1.91 · 2.03 · 2.20 |
+| `narrowed` | 2.47 · 2.64 · 4.98 | 1.85 · 2.01 · 2.14 |
+| `handled` | 22.90 · 23.41 · 36.74 | 21.79 · 22.26 · 26.20 |
+| `handled/split` | 2.53 · 2.61 · 5.50 | 1.89 · 2.00 · 2.16 |
+
+**The rule fires, downward.** The edit frames' medians (2.03, 2.01,
+2.00 µs) lie below the before-arms' minima (2.51, 2.47, 2.53). The rule
+was written against a bind marking *more*; this is the opposite, and it
+is attributed rather than assumed: with the rows handed the frame's
+`Changed` again (the pre-T41.3 code, 32 samples a side) the edit frame
+returns to 2.66 and 2.64 µs. Before T41.3 each body row, a derived
+container indexed `0..T::NODE_COUNT` in its arena, asked the frame's
+*main-table* ranges whether it was clean; the edit marks `#formula`,
+low in the main table, so every row overlapped it and was laid out
+again. Now a row whose slot holds the same row as last layout, on a
+frame that did not mark the repeater, is told nothing changed and stops
+at its own boundary. The frame hashes are unchanged
+(`0x37b6f8508b1fe6cf` for `mark_all` and `narrowed`, before and after),
+and the `mark_all` arms, which cannot skip, did not move beyond noise.
 
 ## T34.2 — what the flip buys a showcase window, 2026-09-24
 

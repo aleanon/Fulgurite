@@ -418,6 +418,15 @@ The resulting scaling property is the important one:
 > `NODE_COUNT` grows with how much UI you **wrote**, not how much data you
 > **display**.
 
+**DECIDED 2026-09-25 (M41/T41.3): a data change is reported.** A
+repeater's bind runs on every layout that reaches it, and under the
+`Boundaries` default an unmarked repeater is not reached. The data's
+version is `Repeat::generation`, which a value `#[bind]` writes from the
+application's state and which marks exactly that repeater; the other
+report is `Host::invalidate`. A marked repeater lays its rows out under
+`Changed::ALL`, since a row's indices are its arena's, not the main
+table's (`docs/plan-boundaries-repair.md` §2.3, §6).
+
 ---
 
 ## 7. Hot reload

@@ -78,7 +78,20 @@ use lumen_static::hatch::{Dyn, Either, List};
 use lumen_static::prelude::*;
 use lumen_static_widgets::prelude::*;
 use lumen_static::repeat::{noop_bind, Repeat};
+use lumen_static::invalidate::Everything;
 use lumen_static::{Incremental, Rebuild};
+
+/// **The arms that must reach layout run under `Everything`** — M41/T41.3.
+///
+/// Since M34/T34.2 a headless `Host<A>` is `Boundaries<256>`, and an idle
+/// pump there marks nothing and lays nothing out. So every arm below that
+/// exists to measure *layout* — a repeater's window and binds, `List`,
+/// `Dyn`, an enum — measured a frame in which none of it ran:
+/// `a_repeater_whose_bind_writes_text_allocates_nothing` stayed green
+/// with its bind rewritten to `set(format!(..))`, T29.5's own injection.
+/// Those arms name this type; the plain idle arm keeps the default,
+/// because an idle frame that lays nothing out is the product's.
+type Whole<A> = Host<A, Incremental, Everything>;
 use lumen_static_shell::Host;
 
 #[derive(StaticTree, Default)]
@@ -154,8 +167,8 @@ struct HatchApp {
 /// draining a completed job out of an mpsc queue **frees** the queue's
 /// node on the frame thread and allocates nothing, so a counter that
 /// watched only `alloc` would report a clean frame.
-fn per_pump<A: lumen_static::event::App, R: lumen_static::Retention>(
-    host: &mut Host<A, R>,
+fn per_pump<A: lumen_static::event::App, R: lumen_static::Retention, I: lumen_static::invalidate::Invalidation>(
+    host: &mut Host<A, R, I>,
     n: usize,
 ) -> (f64, f64) {
     for _ in 0..5 {
@@ -211,7 +224,7 @@ fn a_frame_holding_every_hatch_allocates_nothing() {
     app.ui.island = Dyn::new(Pane::default());
     app.ui.maybe = Some(Fixed { w: 4.0, h: 4.0 });
 
-    let mut host: Host<_, Incremental> = Host::new(app, 320, 400);
+    let mut host: Whole<_> = Host::new(app, 320, 400);
     let (a, f) = per_pump(&mut host, 100);
     assert_eq!((a, f), (0.0, 0.0), "Repeat + List + Either + Dyn + Option, idle: {a:.2} allocs/frame, {f:.2} frees/frame");
 }
@@ -224,9 +237,12 @@ fn a_frame_holding_every_hatch_allocates_nothing() {
 /// the only thing that allocates on a repeater frame is a bind that
 /// *writes*, and no arm had one.
 ///
-/// A repeater binds **every row, every frame** — that is what keeps a
-/// data change visible without an invalidation call — so a bind is on
-/// the steady-state path and this gate is the one that says so.
+/// A repeater binds **every row on every layout that reaches it** — on
+/// every frame under `Everything`, and on every frame that marks or
+/// passes through it under `Boundaries` (a scroll, a reported data
+/// change, a sibling's change) — so a bind is on the steady-state path
+/// and this gate is the one that says so. It runs under `Everything`
+/// ([`Whole`]), the frame that reaches the list every time.
 /// `format_into` writes through a reused scratch buffer and compares
 /// before storing, which is the same machinery `#[bind]` generates for
 /// a table node; `set(format!(…))` heap-allocates per row per frame and
@@ -239,12 +255,12 @@ fn bind_row(row: &mut Row, i: usize) {
 fn a_repeater_whose_bind_writes_text_allocates_nothing() {
     let mut app = HatchApp::default();
     app.ui.list = Repeat::new(10_000, 20.0, bind_row);
-    let mut host: Host<_, Incremental> = Host::new(app, 320, 400);
+    let mut host: Whole<_> = Host::new(app, 320, 400);
     let (a, f) = per_pump(&mut host, 100);
     assert_eq!(
         (a, f),
         (0.0, 0.0),
-        "a bind runs every row every frame, so it is steady state: \
+        "a bind runs every row on every layout, so it is steady state: \
          {a:.2} allocs/frame, {f:.2} frees/frame over a {}-row window",
         host.app.ui.list.window_len()
     );
@@ -254,7 +270,7 @@ fn a_repeater_whose_bind_writes_text_allocates_nothing() {
 fn scrolling_a_ten_thousand_row_list_allocates_nothing() {
     let mut app = HatchApp::default();
     app.ui.list = Repeat::new(10_000, 20.0, noop_bind);
-    let mut host: Host<_, Incremental> = Host::new(app, 320, 400);
+    let mut host: Whole<_> = Host::new(app, 320, 400);
     for _ in 0..5 {
         host.pump();
     }
@@ -291,7 +307,7 @@ fn an_enum_widget_allocates_nothing() {
     let mut app = EnumApp::default();
     // One of each variant, so both index ranges are exercised.
     app.ui.two = Slot::Block(Fixed { w: 8.0, h: 8.0 });
-    let mut host: Host<_, Incremental> = Host::new(app, 320, 200);
+    let mut host: Whole<_> = Host::new(app, 320, 200);
     let (a, f) = per_pump(&mut host, 100);
     assert_eq!((a, f), (0.0, 0.0), "two enum nodes, idle: {a:.2} allocs/frame, {f:.2} frees/frame");
 }
