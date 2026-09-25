@@ -65,8 +65,8 @@ depends on are in; the dependencies are named in each B entry.
   the store held 3 (reproduced with XTest clicks).
 - **Cause.** Damage is recorded inside `Scaled`, so it is in logical
   pixels, but applied to the physical surface. Recorded as R1-F1 in
-  `docs/results-deep-review.md` on `m38-deep-review`.
-- **Fix.** Use the M40 fix from `docs/plan-m38-fixes.md`: record damage
+  `results-deep-review.md` (on that branch) on `m38-deep-review`.
+- **Fix.** Use the M40 fix from `plan-m38-fixes.md` (on `m38-deep-review`): record damage
   in physical space, by wrapping `Scaled` outside `Recording`. Snap each
   region outward to whole physical pixels. If M40 lands first, this entry
   closes on it; do not implement it twice.
@@ -279,10 +279,10 @@ depends on are in; the dependencies are named in each B entry.
   - Add the roles the audit found missing:
     - `Track` (an unfilled slider or progress track)
     - `Scrim`
-    - `SurfaceRaised` (a card or panel on a surface)
+    - SurfaceRaised (a card or panel on a surface)
     - `Placeholder` (skeleton)
     - `Danger` (badge)
-    - `OnDanger`
+    - OnDanger
   - Give them values in `Palette::light` and `Palette::dark`, chosen
     against WCAG:
     - text ≥ 4.5:1;
@@ -815,7 +815,7 @@ render check of that widget.
 ### Surface and navigation
 
 - **B33 Card.**
-  - Dark mode closes on A8 (`SurfaceRaised`, plus a dark-palette shadow
+  - Dark mode closes on A8 (SurfaceRaised, plus a dark-palette shadow
     or border so it separates).
   - Elevation levels: `elevation: 0..=3` mapping to shadow and border.
 - **B34 Toast.**
@@ -879,7 +879,7 @@ render check of that widget.
 
 - **B41 Modal, B42 Sheet, B43 Drawer (`Veil`).**
   - Panel-press dismissal closes on A4, Escape on A13, focus-in on A12,
-    and the dark title and scrim on A8 (`Scrim`, `SurfaceRaised`).
+    and the dark title and scrim on A8 (`Scrim`, SurfaceRaised).
   - Shift+Tab: the Tab trap (`pass.rs:315`) moves backwards on
     Shift+Tab (`mods`).
   - Modal is "sized to its content": the body column is `Shrink`, with a
