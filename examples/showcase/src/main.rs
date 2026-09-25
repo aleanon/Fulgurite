@@ -1303,6 +1303,7 @@ mod tests {
         EventCtx {
             event: Event::down(x, y),
             node: 0,
+            target: 0,
             row: None,
             inner: 0,
             pos: lumen_static::Point { x, y },

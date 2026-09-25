@@ -346,6 +346,7 @@ fn dispatch_overlaid_inner<S: crate::event::App, O: crate::overlay::OverlaySink>
                     let cx = crate::event::EventCtx {
                         event: *ev,
                         node: h.node,
+                        target: h.node,
                         row: h.inner.map(|x| x.row),
                         inner: h.inner.map_or(0, |x| x.node),
                         pos: p,
@@ -619,6 +620,7 @@ fn dispatch_at<S: crate::event::App>(
                 let cx = EventCtx {
                     event: *ev,
                     node: cap as u32,
+                    target: cap as u32,
                     row: None,
                     inner: 0,
                     pos: p,
@@ -698,6 +700,7 @@ fn dispatch_at<S: crate::event::App>(
             let ctx = EventCtx {
                 event: *ev,
                 node: h.node,
+                target: h.node,
                 row: h.inner.map(|x| x.row),
                 inner: h.inner.map_or(0, |x| x.node),
                 pos: p,
@@ -759,7 +762,16 @@ fn dispatch_at<S: crate::event::App>(
     // ancestors behind for pass 2. Saved and restored rather than
     // rebuilt: a fresh ctx would have to re-derive `local`, which only
     // the hit knows.
-    let (row0, inner0) = (ctx.row, ctx.inner);
+    let (row0, inner0, local0) = (ctx.row, ctx.inner, ctx.local);
+    // **`local` is re-derived at each node the event reaches** — M57/A4.
+    // It stayed the hit node's, so a container that declined nothing read
+    // its child's coordinates as its own. `target` keeps naming the node
+    // the event was aimed at, so the container can tell the two apart.
+    let pointed = ev.position().is_some();
+    let local_at = |st: &[NodeState], i: usize, ctx: &EventCtx| Point {
+        x: ctx.pos.x - st[i].pos.x,
+        y: ctx.pos.y - st[i].pos.y,
+    };
     {
         let mut i = start;
         loop {
@@ -767,6 +779,9 @@ fn dispatch_at<S: crate::event::App>(
             if i != start {
                 ctx.row = None;
                 ctx.inner = 0;
+                if pointed {
+                    ctx.local = local_at(st, i, &ctx);
+                }
             }
             if state.tree_mut().node_mut(i).on_event(ev, &ctx) {
                 consumed.push(i);
@@ -785,6 +800,7 @@ fn dispatch_at<S: crate::event::App>(
     }
     ctx.row = row0;
     ctx.inner = inner0;
+    ctx.local = local0;
 
     // Pass 2 — activation: the application's handler.
     //
@@ -819,6 +835,9 @@ fn dispatch_at<S: crate::event::App>(
             // Only the node actually hit owns the row detail.
             ctx.row = None;
             ctx.inner = 0;
+            if pointed {
+                ctx.local = local_at(st, i, &ctx);
+            }
         }
         let sel = NodeSel { i, inner: if i == start { inner } else { None } };
         // Copy the handler out; the shared borrow of the tree ends here,
@@ -864,6 +883,8 @@ fn tell_owner<S: crate::event::App>(
         let ctx = crate::event::EventCtx {
             event: *ev,
             node: owner,
+            // The overlay was dismissed; the owner is told on its behalf.
+            target: overlay as u32,
             row: None,
             inner: 0,
             pos: ev.position().unwrap_or(Point { x: 0.0, y: 0.0 }),

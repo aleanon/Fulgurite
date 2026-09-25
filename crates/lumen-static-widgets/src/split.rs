@@ -221,6 +221,14 @@ impl<A: Widget, B: Widget> Node for SplitPane<A, B> {
 
     fn on_event(&mut self, ev: &Event, cx: &EventCtx) -> bool {
         let frac = |x: f32, w: f32| if w > 0.0 { x / w } else { 0.5 };
+        // **Only what was aimed at the divider** — M57/A4. `hit` returns
+        // this node only inside the grab zone; anything else reaching here
+        // bubbled from a pane (a label that declined a press, a field that
+        // declined an arrow) and moved the divider to wherever that child's
+        // coordinates pointed (`docs/widget-audit.md` X2).
+        if cx.target != cx.node {
+            return false;
+        }
         match ev {
             Event::PointerDown { .. } | Event::PointerMove { .. } => {
                 self.set_split(frac(cx.local.x, self.width));
@@ -536,13 +544,15 @@ impl<W: Widget, S: TextStorage> Node for Collapsible<W, S> {
 
     fn on_event(&mut self, ev: &Event, cx: &EventCtx) -> bool {
         match ev {
-            // **Only a press on the header toggles.** A press anywhere
-            // in an open section would collapse it the moment anyone
-            // clicked what is inside — and `hit` gives the body first
-            // refusal, so a press arriving here with `local.y` past the
-            // header is on the section's own padding, not on a control.
-            Event::PointerDown { .. } if cx.local.y <= self.header_h => self.toggle(),
-            Event::Key { key: Key::Enter, down: true } => self.toggle(),
+            // **Only a press on the header toggles**: one aimed at this
+            // node (not bubbled from the body) and inside the header band.
+            // `hit` gives the body first refusal, but a `Label` in the body
+            // *is* hit and declines, and its press arrived here — in the
+            // label's own coordinates, where `y = 8` read as a header
+            // press, so clicking an open section's text collapsed it
+            // (M57/A4, `docs/widget-audit.md` X2).
+            Event::PointerDown { .. } if cx.target == cx.node && cx.local.y <= self.header_h => self.toggle(),
+            Event::Key { key: Key::Enter, down: true } if cx.target == cx.node => self.toggle(),
             _ => false,
         }
     }
@@ -942,8 +952,17 @@ where
             // to whichever divider the pointer wandered near — and the
             // vertical one's grab margin crosses both horizontals at
             // their intersection, so that is not a rare case.
+            // **A press not on a divider is not this node's** — M57/A4.
+            // It was `divider_at(..).unwrap_or(0)`: a press that bubbled
+            // up from a pane's label found no divider in the label's
+            // coordinates and dragged the vertical one to wherever those
+            // coordinates pointed (`docs/widget-audit.md` X2).
             Event::PointerDown { .. } => {
-                self.grabbed = self.divider_at(cx.local.x, cx.local.y).unwrap_or(0);
+                if cx.target != cx.node {
+                    return false;
+                }
+                let Some(d) = self.divider_at(cx.local.x, cx.local.y) else { return false };
+                self.grabbed = d;
                 self.drag(cx);
                 true
             }
@@ -951,10 +970,10 @@ where
                 self.drag(cx);
                 true
             }
-            Event::Key { key: Key::Left, down: true } => {
+            Event::Key { key: Key::Left, down: true } if cx.target == cx.node => {
                 self.set_divider(0, self.v - 0.05)
             }
-            Event::Key { key: Key::Right, down: true } => {
+            Event::Key { key: Key::Right, down: true } if cx.target == cx.node => {
                 self.set_divider(0, self.v + 0.05)
             }
             _ => false,

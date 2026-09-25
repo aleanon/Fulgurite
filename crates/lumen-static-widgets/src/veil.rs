@@ -304,16 +304,21 @@ impl<W: Widget, const KIND: u8> Node for Veil<W, KIND> {
         }))
     }
 
-    fn on_event(&mut self, ev: &Event, _cx: &EventCtx) -> bool {
+    fn on_event(&mut self, ev: &Event, cx: &EventCtx) -> bool {
         if !self.open {
             return false;
         }
         match ev {
-            // A press that reached *this* node is a press on the scrim:
-            // `hit` gives the panel first refusal, so anything landing
-            // here missed it.
+            // **A press aimed at this node is a press on the scrim.** One
+            // that *bubbled* here from the panel — a label, the panel's
+            // own background, anything that declined it — is not, and is
+            // swallowed without dismissing (M57/A4). This said "anything
+            // landing here missed it", and a press on a modal's own title
+            // asked to close it (`docs/widget-audit.md` X2).
             Event::PointerDown { .. } => {
-                self.dismissed = true;
+                if cx.target == cx.node {
+                    self.dismissed = true;
+                }
                 true
             }
             Event::Key { key: Key::Escape, down: true } => {

@@ -286,6 +286,19 @@ pub struct EventCtx {
     pub event: Event,
     /// Main-table index of the node that received the event.
     pub node: u32,
+    /// Main-table index of the node the event was **aimed at**: the node
+    /// hit by a pointer, or the focused node for a key — M57/A4
+    /// (`docs/plan-widget-fixes.md`).
+    ///
+    /// Equal to `node` for the node itself, and different once the event
+    /// bubbles: a press that a label ignored reaches its container with
+    /// `target` still naming the label. A container that acts on presses
+    /// on *its own* chrome asks `ctx.target == ctx.node`, or tests `local`
+    /// against its chrome's rect. Before this, `Veil`, `SplitPane`,
+    /// `Collapsible` and `PaneGrid` each read any press that reached them
+    /// as a press on themselves: a click on a modal's panel dismissed it,
+    /// a click inside a pane moved the divider (`docs/widget-audit.md` X2).
+    pub target: u32,
     /// For virtualized content: which row. `None` for ordinary nodes.
     ///
     /// This is the field that replaces `move |s| s.remove(idx)`: the row
@@ -296,7 +309,10 @@ pub struct EventCtx {
     pub inner: u32,
     /// Absolute pointer position, when the event carries one.
     pub pos: Point,
-    /// Pointer position relative to the receiving node's origin.
+    /// Pointer position relative to the **receiving** node's origin —
+    /// `node`'s, re-derived at every node the event bubbles through
+    /// (M57/A4). It used to stay relative to the node first hit, so a
+    /// container read its child's coordinates as its own.
     pub local: Point,
     /// Which button, for a pointer event; [`PointerButton::Left`] otherwise.
     pub button: PointerButton,
@@ -327,6 +343,7 @@ impl EventCtx {
         EventCtx {
             event,
             node,
+            target: node,
             row: None,
             inner: 0,
             pos: Point::default(),
