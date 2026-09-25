@@ -332,6 +332,37 @@ impl<W: Widget, const KIND: u8> Node for Veil<W, KIND> {
         }
     }
 
+    /// **Escape, and a press outside, ask to dismiss** — M57/A13
+    /// (`docs/plan-widget-fixes.md`).
+    ///
+    /// The pass's overlay path offers Escape to the topmost overlay through
+    /// this, before any widget sees the key. Without an override the veil
+    /// answered `false`, so on a freshly opened modal — nothing inside it
+    /// focused — Escape reached nothing at all, and worked only once a
+    /// control inside had focus and the key bubbled to `on_event`
+    /// (`docs/widget-audit.md`, Modal). A veil's dismissal is a *request*,
+    /// as its scrim press is: the application answers it through
+    /// [`Veil::take_dismissed`], so this raises the flag rather than
+    /// closing.
+    fn dismiss(&mut self) -> bool {
+        if !self.open {
+            return false;
+        }
+        self.dismissed = true;
+        true
+    }
+
+    /// **A press outside the veil is not the veil's to take.** The veil
+    /// already claims everything *inside* its box through `hit` — that is
+    /// the scrim, and what makes it modal. A press that misses the box
+    /// entirely landed on something the veil does not cover, and must
+    /// reach it. Found the moment `dismiss` above began answering `true`:
+    /// the showcase's modal covers its stage card, not the window, and a
+    /// sidebar click beside it was eaten (`every_sidebar_row_picks_its_own_entry`).
+    fn dismissal_consumes_press(&self) -> bool {
+        false
+    }
+
     fn node(&self, k: usize) -> &dyn Node {
         if k == 0 {
             self
