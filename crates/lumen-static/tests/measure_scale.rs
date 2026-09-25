@@ -21,37 +21,16 @@
 //! under another cause: text laid out to a box measured for a different
 //! rasterisation drifts out of it, and "POSITIVE" renders as "POSITIV".
 
-use std::cell::Cell;
-
 use lumen_static_widgets::ops::Label;
-use lumen_static::{Constraints, LayoutCx, Node, NodeState, Size, Style, TextMeasure};
+use lumen_static::{Constraints, LayoutCx, Node, NodeState, Style};
+
+/// The non-linear measurer, shared with the shell's `scale_memo.rs`,
+/// which drives the same memo through a `Host` (M40/T40.0).
+#[path = "support/hinted.rs"]
+mod hinted;
+use hinted::Hinted;
 
 const LIMITS: Constraints = Constraints { min_w: 0.0, max_w: 400.0, min_h: 0.0, max_h: 400.0 };
-
-/// A measurer with a scale factor whose answer is **non-linear** in it,
-/// the way a hinted face's is.
-///
-/// `w = len * size + scale`: the `+ scale` term stands in for hinting.
-/// It is deliberately not a multiple of `scale`, because a measurer
-/// whose answer scaled linearly would report the same logical width at
-/// every scale and could not exhibit this defect at all — the vacuous
-/// shape `AGENT.md` names first. `BlockMetrics` is exactly that
-/// measurer, which is why this test brings its own.
-#[derive(Default)]
-struct Hinted {
-    scale: f32,
-    calls: Cell<usize>,
-}
-
-impl TextMeasure for Hinted {
-    fn measure(&mut self, text: &str, size: f32, max_w: f32) -> Size {
-        self.measure_weighted(text, size, 400.0, max_w)
-    }
-    fn measure_weighted(&mut self, text: &str, size: f32, _weight: f32, _max_w: f32) -> Size {
-        self.calls.set(self.calls.get() + 1);
-        Size { w: text.len() as f32 * size + self.scale, h: size }
-    }
-}
 
 /// One layout at the measurer's current scale.
 ///
@@ -69,7 +48,7 @@ fn width(l: &mut Label<String>, m: &mut Hinted) -> f32 {
 
 #[test]
 fn a_scale_change_under_the_same_limits_re_measures() {
-    let mut m = Hinted { scale: 1.0, ..Hinted::default() };
+    let mut m = Hinted::at(1.0);
     let mut l: Label<String> = Label::new("POSITIVE".into());
 
     let at_1x = width(&mut l, &mut m);
@@ -98,7 +77,7 @@ fn a_scale_change_under_the_same_limits_re_measures() {
 /// that never hits: an unchanged scale must still be served from cache.
 #[test]
 fn an_unchanged_scale_still_hits_the_memo() {
-    let mut m = Hinted { scale: 2.0, ..Hinted::default() };
+    let mut m = Hinted::at(2.0);
     let mut l: Label<String> = Label::new("POSITIVE".into());
 
     let first = width(&mut l, &mut m);

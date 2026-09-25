@@ -1208,6 +1208,9 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
                 // this line a `ScaleFactorChanged` that holds the logical
                 // size constant — the ordinary monitor-to-monitor drag —
                 // leaves every text box measured for the old display.
+                // `tests/scale_memo.rs` is this line's gate (M40/T40.0):
+                // `BlockMetrics` is linear in the scale, so no other host
+                // test can tell whether the scale arrived.
                 .with_scale(self.scale);
             let tree = self.app.tree_mut();
             tree.layout(&mut cx, limits, &self.styles, &mut self.states, 0);

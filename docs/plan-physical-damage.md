@@ -381,6 +381,43 @@ device pixel). **Effort:** M. **Depends on:** T40.1
   against it. *Revealed by:* a `damage_scale.rs` step whose changed node
   touches the right edge of the window.
 
+## 6. What building found (2026-09-25)
+
+Recorded here rather than folded into §3, so the plan as written stays
+readable beside what it turned into.
+
+- **Re-checked at `b213ae0`.** No file under `crates/` changed between
+  1717808 and the branch point, so every finding was re-located at the
+  lines §1 names and none was fixed elsewhere.
+- **`fractional_ink.rs` cannot assert `round(scale)` rows per divider.**
+  §2.2 rounds each edge independently, and that is what keeps a shared
+  edge shared — but then a divider's row count depends on where it sits:
+  at 1.25 the one at logical y = 13 spans `16.25..17.5` and snaps to two
+  rows, at 1.5 dividers snap to one or two. The gate asserts each
+  divider's ink equals its *snapped* geometry,
+  `max(1, round(s·(y+1)) − round(s·y))` whole rows, and prints the
+  six-divider ink over the geometric area beside it (1.613 at 1.25
+  before the fix — the review's 1.61×, reproduced).
+- **`damage_scale.rs` with real glyphs must lay out with the face's own
+  metrics.** Laid out by `BlockMetrics` and drawn with DejaVu, a glyph's
+  ink falls outside every region at 1.0 (78 px below the bound label),
+  which is a fixture that fails for a reason that has nothing to do with
+  scale. With `FontMetrics` the 1.0 control is 0 on every step.
+- **The real-glyph arm stays red after T40.1, as §3's T40.2 predicted.**
+  With the wrappers swapped, 1.25 and 1.5 leave 3 px on the `adopt` step,
+  in the one row at the title's fractional far edge (y = 32 for a region
+  ending at 32.75; y = 38 for 38.5): R1-F8, at a device scale. So the
+  gate is two tests: the block-glyph arm is T40.1's, the real-glyph arm
+  is T40.2's.
+- **The GPU arm runs under `just gpu`**, which is `cargo test -p
+  lumen-static-wgpu`. `just gpu-parity` is the live `xwd` comparison and
+  does not run `parity.rs`.
+- **The measured red, on this fixture** (not the re-triage's, whose
+  button sat elsewhere), block arm: at 1.5 the hover's damage is
+  `[7,29,51,63]` while the button is at `[10.5,43.5,76.5,94.5]`
+  physical, and 2 194 px differ in the box `[10,43,77,95]`; at 2.0,
+  4 761 px in `[14,58,102,126]`.
+
 ## Appendix: finding → task
 
 | ID | sev now | status | task |

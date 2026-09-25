@@ -171,10 +171,16 @@ impl Regions {
     /// Absorbed if an existing region already contains it; absorbing in
     /// turn if it contains one. Overlapping regions are merged, because
     /// keeping them apart would render their intersection twice for no
-    /// benefit. When the set is full, the two regions whose merge adds
-    /// the least area are merged — the cheapest way to lose the least
-    /// precision, and the reason a hundred scattered changes degrade
-    /// smoothly instead of collapsing to the whole frame at the fifth.
+    /// benefit. When the set is full, `r` is first merged into the
+    /// **last** slot, and then the two regions whose merge adds the least
+    /// area are merged — so a full set loses precision twice per push
+    /// (five disjoint squares end as three regions, not four), and never
+    /// coverage: every rect ever pushed stays inside the union
+    /// (`crates/lumen-static/tests/damage_regions.rs`,
+    /// `every_pushed_rect_stays_covered`, M40/T40.0). Degrading this way
+    /// is why a hundred scattered changes cost a few boxes instead of
+    /// collapsing to the whole frame at the fifth; merging better would
+    /// be a performance claim, and needs its own measurement.
     pub fn push(&mut self, r: Rect) {
         if area_of(r) <= 0.0 {
             return;

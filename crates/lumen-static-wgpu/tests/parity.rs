@@ -263,3 +263,50 @@ fn tolerance_is_bounded_at_fractional_edges() {
     assert_eq!(at(&c.pixels, 10, 30), 0, "software fills the boundary pixel whole");
     assert!(at(&gp, 10, 30) > 0, "the GPU ramps it");
 }
+
+/// M40/T40.0, R9-F5's GPU twin: hairlines painted **through `Scaled`**
+/// at a fractional display scale agree within the stated tolerance.
+///
+/// `tolerance_is_bounded_at_fractional_edges` isolates the ramp
+/// difference on a hand-built list, which is the documented one. What no
+/// test did was paint through `Scaled` at a scale other than 1, which is
+/// how every edge of a HiDPI frame is produced: at 1.25 each
+/// 1-logical-px divider's edges land between pixels, the software canvas
+/// fills both boundary rows whole and the GPU ramps them, and the review
+/// measured 7.92% of a frame's pixels over 8 levels against this file's
+/// 0.2% (`docs/results-deep-review.md` R9-F5). Snapping a rect's scaled
+/// edges to device pixels (`docs/plan-physical-damage.md` §2.2) makes
+/// the two agree, because a whole-pixel edge is where they already do.
+#[test]
+#[ignore = "red until T40.3: R9-F5, a fractional rect edge is filled whole by software and ramped by the GPU"]
+fn hairlines_through_scaled_agree_at_fractional_scales() {
+    let Some(mut g) = gpu() else { return };
+    let mut worst_frac: f32 = 0.0;
+    for scale in [1.25f32, 1.5] {
+        let mut l = DisplayList::new();
+        {
+            let mut s = lumen_static::Scaled::new(&mut l, scale);
+            let p: &mut dyn lumen_static::Painter = &mut s;
+            for y in [10.0f32, 13.0, 17.0, 22.0, 28.0, 35.0, 41.0, 50.0, 63.0, 77.0, 90.0, 111.0] {
+                p.rect([3.0, y, 180.0, y + 1.0], Color(40, 40, 40, 255));
+            }
+            // Two fills that share a fractional edge, and a column rule.
+            p.rect([3.0, 120.0, 90.0, 131.0], Color(200, 60, 60, 255));
+            p.rect([3.0, 131.0, 90.0, 139.0], Color(40, 90, 200, 255));
+            p.rect([150.0, 115.0, 151.0, 140.0], Color(0, 0, 0, 255));
+        }
+        let mut c = canvas();
+        c.clear(PAGE);
+        c.render(&l, W, H);
+        g.clear(PAGE);
+        g.render(&l, W, H);
+        let (worst, over) = compare(&c.pixels, &g.read_rgba(), 8);
+        let frac = over as f32 / (W * H) as f32;
+        eprintln!(
+            "scale {scale}: worst channel delta {worst}, {over} px ({:.3}%) over 8 (bound 0.2%)",
+            frac * 100.0
+        );
+        worst_frac = worst_frac.max(frac);
+    }
+    assert!(worst_frac < 0.002, "too many pixels differ at a fractional scale: {:.3}%", worst_frac * 100.0);
+}

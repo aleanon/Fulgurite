@@ -140,3 +140,81 @@ fn all_yields_the_viewport_and_none_yields_nothing() {
     assert_eq!(Damage::All.regions(VIEW).collect::<Vec<_>>(), vec![VIEW]);
     assert_eq!(Damage::None.regions(VIEW).count(), 0);
 }
+
+/// Whether `r` lies inside the union of `set` — by sampling, since a
+/// union of boxes need not be a box: every pixel centre of `r` must fall
+/// in some region.
+fn covered(set: &[[f32; 4]], r: [f32; 4]) -> bool {
+    let mut y = r[1] + 0.5;
+    while y < r[3] {
+        let mut x = r[0] + 0.5;
+        while x < r[2] {
+            if !set.iter().any(|s| x >= s[0] && x < s[2] && y >= s[1] && y < s[3]) {
+                return false;
+            }
+            x += 1.0;
+        }
+        y += 1.0;
+    }
+    true
+}
+
+/// Push the rects one at a time and, **after every push**, report any
+/// rect pushed so far that the set no longer covers. After every push and
+/// not only at the end, because later merges grow boxes that can cover a
+/// dropped rect again by accident — 64 random rects end as one box.
+fn uncovered(rects: &[[f32; 4]]) -> (usize, Vec<[f32; 4]>) {
+    let mut g = Regions::default();
+    let mut lost = Vec::new();
+    for (k, r) in rects.iter().enumerate() {
+        g.push(*r);
+        for p in &rects[..=k] {
+            if !covered(g.as_slice(), *p) && !lost.contains(p) {
+                lost.push(*p);
+            }
+        }
+    }
+    (g.len(), lost)
+}
+
+/// M40/T40.0, R18-F5: **a pushed rect is never dropped.** Merging may
+/// lose precision — that is the ceiling [`MAX_REGIONS`] trades for — but
+/// a region that stops being covered is a stale pixel, because nothing
+/// else will redraw it.
+///
+/// `a_full_set_degrades_by_merging_rather_than_collapsing` bounds the
+/// merged *area*, and dropping a region makes that bound easier to meet,
+/// so a `push` that discarded the fifth rect on the full-set branch
+/// passed the whole suite. This asserts coverage instead, on the
+/// review's five disjoint squares and on 64 rects from a fixed LCG.
+#[test]
+fn every_pushed_rect_stays_covered() {
+    let five = [
+        [0.0, 0.0, 10.0, 10.0],
+        [200.0, 0.0, 210.0, 10.0],
+        [400.0, 0.0, 410.0, 10.0],
+        [600.0, 400.0, 610.0, 410.0],
+        [800.0, 400.0, 810.0, 410.0],
+    ];
+    let (n, lost) = uncovered(&five);
+    println!("five squares: pushed {}, regions {n}, uncovered {} (must be 0): {lost:?}", five.len(), lost.len());
+    let five_lost = lost;
+
+    // A fixed LCG, so the sequence is the same on every run.
+    let mut s: u64 = 0x2545_f491_4f6c_dd1d;
+    let mut next = || {
+        s = s.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
+        (s >> 33) as u32
+    };
+    let rects: Vec<[f32; 4]> = (0..64)
+        .map(|_| {
+            let (x, y) = ((next() % 1100) as f32, (next() % 700) as f32);
+            let (w, h) = ((next() % 60 + 1) as f32, (next() % 60 + 1) as f32);
+            [x, y, x + w, y + h]
+        })
+        .collect();
+    let (n, lost) = uncovered(&rects);
+    println!("LCG: pushed {}, regions {n}, uncovered {} (must be 0)", rects.len(), lost.len());
+    assert!(five_lost.is_empty(), "five squares: a pushed rect was dropped: {five_lost:?}");
+    assert!(lost.is_empty(), "LCG: a pushed rect was dropped: {lost:?}");
+}

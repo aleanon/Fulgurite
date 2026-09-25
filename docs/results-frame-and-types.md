@@ -1113,6 +1113,19 @@ every scale and it **cannot exhibit this defect**. A test written
 against it would have passed with the bug in place — the first vacuous
 shape, where both sides agree about a frame in which nothing happened.
 
+**The host's half had no gate until M40/T40.0** (R1-F7). The tests above
+build their own `LayoutCx`, so the one line that gives an application's
+memo the scale — `.with_scale(self.scale)` in `Host::pump_with` — could
+be deleted with every test binary green. The shell's `scale_memo.rs`
+drives the drag through a real `Host` with the same measurer (now
+`crates/lumen-static/tests/support/hinted.rs`, shared by both files) and
+compares the dragged label's box with a fresh 2× host's. **Injection**
+d2, deleting that line: `dragged 1x -> 2x: width 129; fresh 2x: 130`,
+measurer calls on the drag frame 0, and the test fails by name; the
+no-drag control at 1× stays equal (129 / 129). It covers `Label` only;
+`TextInput` and `TextArea` build their shaped keys without the scale
+(R2-F6), which is M45's.
+
 ## T26.17 — Phase D, finding 13: the second scan of the same face
 
 `FontStack::prepare` chose a face with `has_all(wanted)` and then asked
