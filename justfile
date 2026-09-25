@@ -151,10 +151,11 @@ check-extra: floats thumb gpu simd threads book
 # Its own tests are the backend-parity gate: the same display list
 # rendered by `software::Canvas` and by wgpu, compared pixel by pixel
 # against a stated tolerance, plus the partial-redraw property that
-# `damage_oracle.rs` holds the software path to. **They skip rather than
-# fail when no adapter is present** — a machine with no GPU is the
-# configuration the CPU fallback exists for, so a red suite there would
-# be reporting the wrong thing (docs/results-gpu.md).
+# `damage_oracle.rs` holds the software path to. The tests themselves skip
+# when no adapter is present — a machine with no GPU is the configuration
+# the CPU fallback exists for — but THIS recipe is the gate that claims a
+# comparison happened, so it requires one (LUMEN_REQUIRE_GPU=1) unless
+# LUMEN_ALLOW_SKIP=1 says otherwise (docs/results-gpu.md).
 
 # The rasteriser's SIMD path (M17/T17.1). Default-OFF, so `just test`
 # builds the scalar one; this proves the vector one is byte-identical
@@ -180,7 +181,16 @@ threads:
 
 # The GPU backend: build, lint, and compare its pixels with the software canvas.
 gpu:
+    #!/usr/bin/env bash
+    # **A skip is not a pass** (M43/T43.10, docs/plan-gate-hygiene.md §2.2).
+    # With no adapter the parity tests return early, and libtest swallows
+    # their "skipping" line on a pass -- so this recipe used to be green on
+    # a machine that compared nothing (R17-F6). It requires the adapter
+    # unless LUMEN_ALLOW_SKIP=1, and prints the one it used.
+    set -euo pipefail
+    if [ "${LUMEN_ALLOW_SKIP:-}" = 1 ]; then echo "gpu: LUMEN_ALLOW_SKIP=1 -- an absent adapter skips"; else export LUMEN_REQUIRE_GPU=1; fi
     cargo test -p lumen-static-wgpu
+    cargo test -q -p lumen-static-wgpu --test parity the_gpu_half_ran -- --nocapture | grep '^adapter:'
     cargo clippy -p lumen-static-wgpu --all-targets -- -D warnings
     cargo clippy -p lumen-static-winit --features gpu --all-targets -- -D warnings
 

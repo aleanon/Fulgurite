@@ -99,6 +99,14 @@ fn frame(dispersion: u8) -> DisplayList {
     l
 }
 
+/// Whether the recipe that runs this demands an adapter (M43/T43.10):
+/// `just gpu` sets LUMEN_REQUIRE_GPU=1 unless LUMEN_ALLOW_SKIP=1. A plain
+/// `cargo test` keeps the skip, because a developer's partial run is not
+/// a gate.
+fn gpu_required() -> bool {
+    std::env::var("LUMEN_REQUIRE_GPU").is_ok_and(|v| v == "1")
+}
+
 fn gpu() -> Option<Gpu> {
     match Gpu::headless(W, H) {
         Some(g) => {
@@ -106,6 +114,12 @@ fn gpu() -> Option<Gpu> {
             Some(g)
         }
         None => {
+            assert!(
+                !gpu_required(),
+                "LUMEN_REQUIRE_GPU=1 but no adapter: this run was asked to compare the GPU \
+                 with the CPU and there is no GPU to compare (set LUMEN_ALLOW_SKIP=1 on the \
+                 recipe to skip deliberately)"
+            );
             eprintln!("gpu: no adapter — skipping (a supported configuration)");
             None
         }

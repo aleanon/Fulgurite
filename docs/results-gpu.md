@@ -106,6 +106,17 @@ which would flatter this arm by about an order of magnitude.
 The gate T15.12 set: *"the same frame renders pixel-comparably on both
 backends (within an antialiasing tolerance, stated)."*
 
+**A skip is not a pass (M43/T43.10).** Without an adapter the parity
+tests in `crates/lumen-static-wgpu/tests/` return early, and libtest
+captures their "skipping" line on a pass — so `just gpu` was green on a
+machine that compared nothing (M38's R17-F6). The policy now: a plain
+`cargo test` still skips, because a developer's partial run is not a gate;
+`just gpu`, the recipe that claims the comparison happened, sets
+`LUMEN_REQUIRE_GPU=1`, under which a missing adapter panics with
+`LUMEN_REQUIRE_GPU=1 but no adapter`, and prints the adapter it used
+(`adapter: <name> (<backend>)`, from `the_gpu_half_ran`).
+`LUMEN_ALLOW_SKIP=1` is the explicit way to run it without one.
+
 **Stated: fewer than 0.2% of pixels may differ by more than 8 levels.**
 Measured, on a frame using every command in the vocabulary:
 

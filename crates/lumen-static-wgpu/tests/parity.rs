@@ -62,8 +62,19 @@ fn frame() -> DisplayList {
     l
 }
 
-/// `None` when there is no GPU here. Prints why, so a skipped test does
-/// not look like a passing one.
+/// Whether the recipe that runs this demands an adapter (M43/T43.10):
+/// `just gpu` sets LUMEN_REQUIRE_GPU=1 unless LUMEN_ALLOW_SKIP=1. A plain
+/// `cargo test` keeps the skip, because a developer's partial run is not
+/// a gate.
+fn gpu_required() -> bool {
+    std::env::var("LUMEN_REQUIRE_GPU").is_ok_and(|v| v == "1")
+}
+
+/// `None` when there is no GPU here, and the test returns early. Its
+/// "skipping" line is captured by libtest on a pass, so on its own a skip
+/// looked exactly like a pass (R17-F6); under LUMEN_REQUIRE_GPU=1, which
+/// `just gpu` sets, a missing adapter panics instead, and
+/// `the_gpu_half_ran` below says which adapter did run.
 fn gpu() -> Option<Gpu> {
     match Gpu::headless(W, H) {
         Some(mut g) => {
@@ -74,6 +85,12 @@ fn gpu() -> Option<Gpu> {
             Some(g)
         }
         None => {
+            assert!(
+                !gpu_required(),
+                "LUMEN_REQUIRE_GPU=1 but no adapter: this run was asked to compare the GPU \
+                 with the CPU and there is no GPU to compare (set LUMEN_ALLOW_SKIP=1 on the \
+                 recipe to skip deliberately)"
+            );
             eprintln!("gpu: no adapter — skipping (this is a supported configuration)");
             None
         }
@@ -308,4 +325,16 @@ fn hairlines_through_scaled_agree_at_fractional_scales() {
         worst_frac = worst_frac.max(frac);
     }
     assert!(worst_frac < 0.002, "too many pixels differ at a fractional scale: {:.3}%", worst_frac * 100.0);
+}
+
+/// The GPU half of this file ran at all (M43/T43.10). Every other test
+/// here returns early without an adapter, and a run of early returns is
+/// green; this one prints the adapter and backend a comparison used, and
+/// under LUMEN_REQUIRE_GPU=1 fails when there is none.
+#[test]
+fn the_gpu_half_ran() {
+    match gpu() {
+        Some(g) => println!("adapter: {}", g.adapter()),
+        None => println!("adapter: none -- the GPU half of this file compared nothing"),
+    }
 }
