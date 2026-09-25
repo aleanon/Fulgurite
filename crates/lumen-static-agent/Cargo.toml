@@ -32,3 +32,10 @@ serde_json = "1"
 
 [dev-dependencies]
 lumen-static-widgets = { path = "../lumen-static-widgets" }
+# M41/T41.0: `tests/audit_is_inert.rs` drives the audit against a real
+# `Host` under the `Boundaries` default, in the window's order -- pump,
+# `frame_done`, an unrelated hover, pump. A dev-dependency cycle (the
+# shell depends on this crate under `live-agent`), which cargo permits
+# for integration tests; no feature is asked for here, so the shell is
+# built without the oracle (plan-boundaries-repair.md §0 rule 2).
+lumen-static-shell = { path = "../lumen-static-shell" }

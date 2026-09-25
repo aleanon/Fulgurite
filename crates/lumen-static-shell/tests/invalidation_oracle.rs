@@ -8,6 +8,12 @@
 //! see wrong, and no test that renders only one of them would ever catch
 //! it.
 //!
+//! **The session asserts that it happened** (M41/T41.0, R18-F8): every
+//! click must be handled and move the count, and each pointer step must
+//! land on the node it meant. A session whose clicks miss is two
+//! strategies agreeing about frames in which nothing occurred — the
+//! failure T16.7 shipped with and the review re-created by injection.
+//!
 //! This is the same shape `damage_oracle.rs` uses for retention, and for
 //! the same reason: a cargo feature could not express it, because both
 //! have to be alive in one process.
@@ -169,13 +175,21 @@ fn drive<I: Invalidation>() -> Vec<(Vec<NodeState>, u64, usize)> {
     host.pump();
     out.push(record(&host));
 
+    // **Every click must land** — M41/T41.0, for R18-F8. This session's
+    // clicks were never checked: `Length::Fixed(220.0)` on the card (the
+    // review's I4a, T16.7's original defect) put `inc` outside its parent
+    // and both headline tests stayed green, comparing two sessions in
+    // which no click did anything.
+    let mut landed = 0;
     for step in 0..12 {
+        let mut clicked = None;
         match step % 4 {
             // A click, which runs a handler: the conservative path,
             // where the set collapses to everything.
             0 => {
                 let (x, y) = centre_of(&host, "inc");
                 host.click(x, y);
+                clicked = Some(host.app.count);
             }
             // A direct mutation with an explicit invalidate, which is
             // the precise path.
@@ -199,9 +213,20 @@ fn drive<I: Invalidation>() -> Vec<(Vec<NodeState>, u64, usize)> {
             // A frame where nothing at all happened.
             _ => {}
         }
-        host.pump();
+        let handled = host.pump();
+        if let Some(before) = clicked {
+            assert!(handled, "click {} did not land: pump reported nothing handled", step / 4);
+            assert_eq!(host.app.count, before + 1, "click {} did not land: the count did not move", step / 4);
+            landed += 1;
+        }
         out.push(record(&host));
     }
+    println!(
+        "{}: clicks landed {landed}/3, final count {}",
+        std::any::type_name::<I>().rsplit("::").next().unwrap_or("?"),
+        host.app.count
+    );
+    assert_eq!((landed, host.app.count), (3, 3), "the session's clicks did not all land");
 
     // **Pointer state no handler reports** — M25/T25.0.
     //

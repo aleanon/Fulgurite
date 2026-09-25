@@ -693,6 +693,69 @@ if it records a frame time.
 - **Risk: M42 slips.** T41.7 waits, and the tripwire's first condition
   still applies.
 
+## 6. What building found (2026-09-25)
+
+Written while building T41.0 and T41.1, at b213ae0. The code under
+`crates/`, `examples/` and `fixtures/` is unchanged since 1717808 (the
+one difference is `scripts/doc-identifiers.allow`), so every finding
+was re-checked as the re-triage left it and none had moved.
+
+- **Two gates as specified could not fail, for one shared reason.** A
+  derived container skips at the top of its *own* `layout`, and a leaf
+  is laid out whenever its parent is. So the f4b case with the `Repeat`
+  directly under the root (`repeat_data.rs` case 2) was green: the
+  click marked the button, the root's range overlaps it, and the root
+  laid its leaf `Repeat` out again. The audit case with the fields
+  beside the hovered button was green for the same reason. Each gate now
+  puts the victim in a sibling container, as the re-triage's own probes
+  had, and says why in its fixture's doc comment. **The shape a
+  `Boundaries` gate needs is "the write lands in a container the frame
+  did not mark"**, and a fixture with one container cannot produce it.
+- **The short-commit control is red without T41.1 too** (§3, T41.1's
+  "accepts good input"). The field is content-sized, as T41.0 asks, so
+  every commit changes its box: `Commit("ab")` gives w = 32 under
+  `Everything` against a stale 16 under `Boundaries<256>`. The plan's
+  "equal both ways with and without the fix" holds only for a fixed-width
+  field. The control is kept, ignored with the others, and after T41.1 it
+  shows the mark is not specific to a scroll.
+- **The stale field paints no text at all**, which is worse than the
+  re-triage's x = 8. An empty content-sized field is 16 px wide, all of it
+  padding, so its inner rect has no area and `DisplayList::text_weighted`
+  drops the run: the gate prints `x=None` for every `Boundaries` frame.
+- **`TextInput` has no public cluster count**, so `paste_measurer.rs`
+  compares what the clusters produce instead: the box, the painted text
+  x (the scroll, which the caret's cluster x decides) and the caret byte
+  a click lands on. Red at b213ae0: w = 80 pasted against 131.2 typed (8
+  chars); x = −412 against −532 (100 chars); a click at 84.5 puts the
+  caret at byte 19 of 19 pasted against 10 typed. Identical under both
+  strategies, because the stale memo is served either way.
+- **`TextArea`'s half of R1-F5 needs a measurer that reports clusters.**
+  `BlockMetrics` reports none, so under it an area's caret never leaves
+  line 0 and nothing scrolls vertically: the gate's setup assertion
+  fired. `audit_is_inert.rs` carries a local `Blocks` measurer (the
+  stand-in's advance and wrap, with clusters). With it the probe's 1e6 px
+  width unwraps the paragraph, and the area paints at y = 41.2 against
+  5.2.
+- **R1-F4's arena-geometry defect was re-run, and it has a mechanism.**
+  A `Repeat` lays its rows out with the frame's `LayoutCx`, whose
+  `Changed` ranges are main-table indices, while a row's own indices are
+  its arena slot's (`0..T::NODE_COUNT`). A derived row therefore asks
+  whether an unrelated main-table range is clean, and after
+  `Host::invalidate("list")` it keeps last frame's box: 40 px against
+  224 (`repeat_data.rs` case 3). §2.3 (b)'s "a marked `Repeat` lays out
+  its arena under `Changed::ALL`" is the fix, as written.
+- **R5-F6's prediction held.** The sourceless arm is green at b213ae0, so
+  there is no `adopt` defect. Deleting `reasked`'s own mark turns it red
+  at 7 770 px, and the `restore` arm at 8 640 px over three frames. The
+  sourced arm needs `set_stylesheet`'s mark deleted as well, and is then
+  red at 11 520 px.
+- **A pre-existing seam, not this milestone's:** `cargo test -p
+  lumen-static-agent --test audit_is_inert` fails its three original tests
+  at b213ae0 when run alone. `Label`'s `probe` override is behind
+  `lumen-static-widgets/observe`, which only a workspace build unifies on.
+  `just test` runs the workspace shape, so the gate is honest there. This
+  is the same kind of seam as M30's `counter-window --drive2` finding.
+
 ## Appendix: finding → task
 
 | ID | sev now | status | task |

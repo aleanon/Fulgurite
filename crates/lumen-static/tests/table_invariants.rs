@@ -125,3 +125,124 @@ fn a_deep_chain_is_accepted() {
     }
     assert!(table_is_well_formed(&t));
 }
+
+// ---------------------------------------------------------------------
+// M41/T41.0 (`docs/plan-boundaries-repair.md` §1.4, R2-F5): tables the
+// check accepts although `subtree_range` — which the `Boundaries`
+// default's precise marks are computed from — is wrong for them, or a
+// child-chain walk runs off them. The review's four counterexamples
+// (scratch commit f7d5def), judged against descendants computed from the
+// parent links alone, which is an oracle that shares no code with
+// either the check or `subtree_range`.
+// ---------------------------------------------------------------------
+
+/// Descendants of `root`, itself included, from parent links only.
+fn descendants(t: &[NodeDesc], root: usize) -> Vec<usize> {
+    let mut out = vec![root];
+    for j in 0..t.len() {
+        let mut a = j;
+        while t[a].parent != NO_PARENT {
+            a = t[a].parent as usize;
+            if a == root {
+                out.push(j);
+                break;
+            }
+        }
+    }
+    out.sort_unstable();
+    out.dedup();
+    out
+}
+
+/// Every node whose `subtree_range` disagrees with the oracle, and every
+/// sibling chain that leaves the table or does not visit each child
+/// exactly once.
+fn mismatches(t: &[NodeDesc]) -> Vec<String> {
+    let mut bad = vec![];
+    for i in 0..t.len() {
+        let r: Vec<usize> = lumen_static::style::subtree_range(t, i).collect();
+        let o = descendants(t, i);
+        if r != o {
+            bad.push(format!("node {i}: subtree_range {:?}, parent links {o:?}", lumen_static::style::subtree_range(t, i)));
+        }
+    }
+    let mut seen = vec![0u32; t.len()];
+    for p in 0..t.len() {
+        if t[p].child_count == 0 {
+            continue;
+        }
+        let mut c = t[p].first_child as usize;
+        for _ in 0..t.len() {
+            if c >= t.len() {
+                bad.push(format!("the chain of {p} leaves the table at {c}"));
+                break;
+            }
+            seen[c] += 1;
+            if t[c].next_sibling == 0 {
+                break;
+            }
+            c = t[c].next_sibling as usize;
+        }
+    }
+    for (i, s) in seen.iter().enumerate().skip(1) {
+        if *s != 1 {
+            bad.push(format!("node {i} visited {s} times by sibling chains"));
+        }
+    }
+    bad
+}
+
+/// A: not pre-order. root { A { a, a' }, B } stored as root, A, a, B, a'
+/// — a' (A's child) after its uncle B.
+fn cx_a() -> Vec<NodeDesc> {
+    vec![n(1, NO_PARENT, 0, 2), n(2, 0, 3, 2), n(0, 1, 4, 0), n(0, 0, 0, 0), n(0, 1, 0, 0)]
+}
+
+/// B: a last child whose link points at a later node that is not its
+/// parent's end. root { A { a }, B, C }; a.next = C.
+fn cx_b() -> Vec<NodeDesc> {
+    vec![n(1, NO_PARENT, 0, 3), n(2, 0, 3, 1), n(0, 1, 4, 0), n(0, 0, 4, 0), n(0, 0, 0, 0)]
+}
+
+/// C: a last child whose link leaves the table.
+fn cx_c() -> Vec<NodeDesc> {
+    vec![n(1, NO_PARENT, 0, 2), n(0, 0, 2, 0), n(0, 0, 99, 0)]
+}
+
+/// D: the "parent's own next sibling" allowance. The range is right, and
+/// a child-chain walk (the observe walk's) runs on into the uncle.
+fn cx_d() -> Vec<NodeDesc> {
+    vec![n(1, NO_PARENT, 0, 2), n(2, 0, 3, 1), n(0, 1, 3, 0), n(0, 0, 0, 0)]
+}
+
+#[test]
+#[ignore = "red until T41.6: R2-F5, table_is_well_formed accepts tables whose subtree_range is wrong"]
+fn tables_with_a_wrong_subtree_range_are_rejected() {
+    let mut accepted = vec![];
+    for (name, t) in [("A", cx_a()), ("B", cx_b()), ("C", cx_c()), ("D", cx_d())] {
+        let verdict = table_is_well_formed(&t);
+        let bad = mismatches(&t);
+        println!("counterexample {name}: table_is_well_formed = {verdict} | oracle mismatches {bad:?}");
+        assert!(!bad.is_empty(), "setup: counterexample {name} is not actually malformed");
+        if verdict {
+            accepted.push(name);
+        }
+    }
+    assert!(accepted.is_empty(), "accepted {} of 4 malformed tables: {accepted:?}", accepted.len());
+}
+
+/// The oracle's accept direction: it agrees with `subtree_range` on
+/// tables that are well-formed, so a mismatch above is about the table.
+#[test]
+fn the_parent_link_oracle_agrees_on_real_tables() {
+    let tables: [(&str, &[NodeDesc]); 3] = [
+        ("good", &good()),
+        ("Label", <lumen_static_widgets::ops::Label as lumen_static::Widget>::SUB_TABLE),
+        ("SearchField", <lumen_static_widgets::SearchField as lumen_static::Widget>::SUB_TABLE),
+    ];
+    for (name, t) in tables {
+        let bad = mismatches(t);
+        println!("{name}: {} nodes, mismatches {}", t.len(), bad.len());
+        assert!(bad.is_empty(), "{name}: {bad:?}");
+    }
+}

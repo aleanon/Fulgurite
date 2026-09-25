@@ -456,6 +456,14 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
     /// the program's description (M32), the one place a sheet comes from
     /// — a host with no source keeps what it has — and every mark,
     /// because nothing about last frame's describes a new state.
+    ///
+    /// **For a host without a sheet source this mark is the only one**
+    /// (M41/T41.0, R5-F6). With a source, `set_stylesheet` marks
+    /// everything too and hides this line: deleting it left every
+    /// reload gate green. A host built with [`Host::new`] has no source,
+    /// and without this mark an adopted or restored application is
+    /// drawn over last frame's layout — `tests/reload_oracle.rs`'s
+    /// sourceless arms, which print the pixels a missing mark differs by.
     fn reasked(&mut self) {
         if let Some(source) = self.sheet_source.clone() {
             let sheet = source.sheet(&self.app);

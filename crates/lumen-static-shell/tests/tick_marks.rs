@@ -5,6 +5,14 @@
 //! does: it writes the readout and reseeds the stage. `Host::tick` marked
 //! nothing of its own, so under `Boundaries` a tick-written label kept
 //! the box its previous text was laid out in.
+//!
+//! **The test asserts that the tick ran** — M41/T41.0, for the
+//! re-triage's I-NEW-2 (`docs/plan-boundaries-repair.md` §1.1). With
+//! `Host::tick` made to skip `App::tick` entirely, both arms drew the
+//! same empty label and the equality below held: two strategies agreeing
+//! about a frame in which nothing happened. So each tick now asserts the
+//! counter and the label's length moved to `k`, and that the frame's
+//! hash moved with them, before it compares the arms.
 
 use lumen_static::invalidate::{Boundaries, Everything, Invalidation};
 use lumen_static::prelude::*;
@@ -59,13 +67,26 @@ fn host<I: Invalidation>() -> Host<Anim, Incremental, I> {
 fn a_tick_that_writes_a_label_draws_the_same_frame_under_both_strategies() {
     let mut e: Host<Anim, Incremental, Everything> = host();
     let mut b: Host<Anim, Incremental, Boundaries<256>> = host();
-    for k in 1..=4 {
+    let mut prev = e.list.hash_from(0);
+    for k in 1..=4u32 {
         e.tick(16.0);
         b.tick(16.0);
         e.pump();
         b.pump();
         let (he, hb) = (e.list.hash_from(0), b.list.hash_from(0));
-        println!("tick {k}: {:?}  Everything {he:#x}  Boundaries {hb:#x}", b.app.ui.readout.value.as_str());
+        let len = b.app.ui.readout.value.as_str().len();
+        println!(
+            "tick {k}: label len {len}, hash changed: {} | Everything {he:#x}  Boundaries {hb:#x}",
+            he != prev
+        );
+        assert!(
+            e.app.t == k && b.app.t == k && len == k as usize,
+            "setup: the tick did not run (counter {}/{}, label len {len}, want {k})",
+            e.app.t,
+            b.app.t
+        );
+        assert_ne!(he, prev, "setup: tick {k} changed nothing in the Everything frame");
+        prev = he;
         assert_eq!(he, hb, "tick {k}: a tick-written label kept a stale box under Boundaries");
     }
 }

@@ -265,6 +265,18 @@ impl<const N: usize> Boundaries<N> {
 impl<const N: usize> Invalidation for Boundaries<N> {
     const CAN_SKIP: bool = true;
 
+    /// Add `r` to the set: the stored ranges it overlaps are absorbed,
+    /// and their union with `r` is stored in their place.
+    ///
+    /// **What the absorb loop guarantees**: afterwards every index that
+    /// was dirty before, or is in `r`, is dirty, and nothing else is —
+    /// the set is the exact union of everything marked since the last
+    /// `clear`, until it overflows `N` and collapses to "everything".
+    /// Both ends are widened (`min` of the starts, `max` of the ends),
+    /// because a nested mark must not *shrink* the ancestor it lands
+    /// in: marking 2..10 and then 3..4 leaves 2..10 dirty. Deleting the
+    /// `max` passed the whole dev-shape suite until M41/T41.0 (R18-F6);
+    /// `tests/invalidate_model.rs` checks it against a bitset now.
     fn mark(&mut self, r: Range<usize>) {
         if self.all || r.start >= r.end {
             return;

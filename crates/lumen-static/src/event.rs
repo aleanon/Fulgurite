@@ -961,6 +961,21 @@ pub trait App: Sized {
     /// loop asks again afterwards with a zero `dt`. Forwarding to
     /// [`crate::anim::Animated::tick`] satisfies this without a thought:
     /// it adds `clamp(0, 0, duration)` and returns `!settled()`.
+    ///
+    /// **The contract under `Boundaries`** — M41/T41.0
+    /// (`docs/plan-boundaries-repair.md` §1.1). `tick` takes `&mut self`
+    /// and may write any widget, and it reports a `bool`, not ranges, so
+    /// the host marks the whole tree when a tick with a positive `dt`
+    /// answers `true` (M34/T34.0) — and marks nothing otherwise. Two
+    /// things therefore follow, and a tick that breaks either paints a
+    /// stale frame under the default strategy while `Everything` hides it:
+    ///
+    /// - **a tick that writes the tree returns `true`**, and
+    /// - **a tick never writes on a zero `dt`**, which is a pure query
+    ///   (above) and is not marked.
+    ///
+    /// Writing state here and presenting it through `update`'s bindings
+    /// is always safe: the bindings mark what they write.
     fn tick(&mut self, dt_ms: f32) -> bool {
         let _ = dt_ms;
         false

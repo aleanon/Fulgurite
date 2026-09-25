@@ -115,3 +115,222 @@ fn a_real_change_still_re_measures_exactly_one_label() {
     f.ui.b.set("a different second label");
     assert_eq!(f.layout(), 1, "only the label that changed");
 }
+
+// ---------------------------------------------------------------------
+// M41/T41.0 (`docs/plan-boundaries-repair.md` §1.2, R1-F5): the audit's
+// probe under the `Boundaries` default, in the window's order.
+//
+// `Node::probe`'s provided body is `self.layout(..)`, and `TextInput`
+// and `TextArea` do not override it. Their `layout` writes the scroll
+// offset from the limits it is handed, and the audit probes every leaf
+// at 1e6 and 2e6 px — so after `frame_done` a scrolled field holds a
+// scroll of zero. Under `Everything` the next frame's layout puts it
+// back and nothing shows. Under `Boundaries` an unrelated hover marks
+// only the hovered node, the field is skipped, and paint draws the
+// probe's scroll.
+//
+// Built without `shadow-oracle` (rule 2): the oracle's second layout
+// would repair the field before paint and hide the defect.
+// ---------------------------------------------------------------------
+
+mod bounded {
+    use lumen_static::invalidate::{Everything, Invalidation};
+    use lumen_static::prelude::*;
+    use lumen_static::retain::Incremental;
+    use lumen_static::style::{Length, Patch, Rule, Selector};
+    use lumen_static::{Cmd, DisplayList, Event};
+    use lumen_static_agent::{Agent, FrameTiming, TreeMut};
+    use lumen_static_shell::Host;
+    use lumen_static_widgets::prelude::*;
+
+    /// The fields in a container of their own. A derived container
+    /// skips at the top of its own `layout`, and a leaf is laid out
+    /// whenever its parent is — so fields beside the hovered button, in
+    /// one column, would be laid out again by the hover's mark and the
+    /// case could not fail.
+    #[derive(StaticTree, Default)]
+    #[widget(column, spacing = 4.0)]
+    struct Fields {
+        #[widget_id("field")]
+        field: TextInput,
+        #[widget_id("area")]
+        area: TextArea,
+    }
+
+    #[derive(StaticTree, Default)]
+    #[widget(row, spacing = 4.0)]
+    struct Buttons {
+        #[widget_id("hover")]
+        hover: Button<Form>,
+        #[widget_id("other")]
+        other: Button<Form>,
+    }
+
+    #[derive(StaticTree, Default)]
+    #[widget(column, spacing = 4.0)]
+    struct Ui {
+        fields: Fields,
+        buttons: Buttons,
+    }
+
+    #[derive(DeriveApp, Default)]
+    struct Form {
+        #[tree]
+        ui: Ui,
+    }
+
+    /// `BlockMetrics`' advance and wrap, **with clusters**: a text area
+    /// places its caret — and so its scroll — from the clusters, and the
+    /// stand-in reports none, so under it no area ever scrolls and the
+    /// area's half of this case could not fail.
+    struct Blocks;
+
+    impl lumen_static::TextMeasure for Blocks {
+        fn measure(&mut self, text: &str, size: f32, max_w: f32) -> lumen_static::Size {
+            lumen_static::BlockMetrics.measure(text, size, max_w)
+        }
+
+        fn shape(
+            &mut self,
+            text: &str,
+            size: f32,
+            weight: f32,
+            max_w: f32,
+            sink: &mut dyn lumen_static::cx::GlyphSink,
+        ) -> lumen_static::Size {
+            let adv = size * 0.5;
+            let per_line = if max_w.is_finite() && max_w > 0.0 { (max_w / adv).floor().max(1.0) as usize } else { usize::MAX };
+            for b in 0..=text.len() {
+                let (line, col) = (b / per_line, b % per_line);
+                sink.cluster(lumen_static::cx::Cluster { byte: b as u32, x: col as f32 * adv, line: line as u16 });
+            }
+            self.measure_weighted(text, size, weight, max_w)
+        }
+    }
+
+    const LINE: &str = "a line of text long enough to scroll the field sideways";
+    const PARAGRAPH: &str = "a paragraph long enough to wrap onto several lines in a two hundred pixel window";
+
+    /// The x of the field's run and the y of the area's, and both nodes'
+    /// padding edges.
+    fn text_at(list: &DisplayList, field: &str, area: &str) -> (Option<f32>, Option<f32>) {
+        let mut out = (None, None);
+        for c in &list.cmds {
+            if let Cmd::Text { rect, text, .. } = c {
+                let s = list.str_of(*text);
+                if s == field {
+                    out.0 = Some(rect[0]);
+                } else if s == area {
+                    out.1 = Some(rect[1]);
+                }
+            }
+        }
+        out
+    }
+
+    fn centre<I: Invalidation>(h: &Host<Form, Incremental, I>, wid: &str) -> (f32, f32) {
+        let i = lumen_static::style::index_of_wid(<Ui as Widget>::SUB_TABLE, wid).unwrap();
+        let s = h.states[i];
+        (s.pos.x + s.size.w / 2.0, s.pos.y + s.size.h / 2.0)
+    }
+
+    fn typed<I: Invalidation>(h: &mut Host<Form, Incremental, I>, wid: &str, text: &str) {
+        let (x, y) = centre(h, wid);
+        h.click(x, y);
+        h.pump_with(&mut Blocks);
+        for ch in text.chars() {
+            // A newline is Enter, as a window delivers it.
+            h.post(match ch {
+                '\n' => Event::Key { key: lumen_static::Key::Enter, down: true },
+                ch => Event::Text { ch },
+            });
+            h.pump_with(&mut Blocks);
+        }
+    }
+
+    /// A session with a scrolled field and a scrolled area, focus parked
+    /// on neither, so the next frames change nothing about them.
+    fn session<I: Invalidation>() -> Host<Form, Incremental, I> {
+        let mut h: Host<Form, Incremental, I> = Host::new(Form::default(), 200, 240);
+        // A fixed height and a paragraph that wraps at the window's
+        // width: the probe's 1e6 px width unwraps it to one line, and the
+        // scroll clamp — computed from the wrapped height — then pins the
+        // scroll to zero.
+        h.set_stylesheet(&[Rule::new(
+            Selector::Id("area"),
+            Patch::new().width(Length::FILL).height(Length::Fixed(40.0)),
+        )]);
+        h.pump_with(&mut Blocks);
+        typed(&mut h, "field", LINE);
+        typed(&mut h, "area", PARAGRAPH);
+        h.pump_with(&mut Blocks);
+        h
+    }
+
+    /// Three arms, one session: `Everything` with the agent,
+    /// `Boundaries<256>` with the agent, and `Boundaries<256>` without.
+    #[test]
+    #[ignore = "red until T41.4: R1-F5, the audit's probe writes a live TextInput's scroll"]
+    fn the_audit_leaves_no_trace_under_boundaries() {
+        let mut e: Host<Form, Incremental, Everything> = session();
+        let mut b: Host<Form> = session();
+        let mut plain: Host<Form> = session();
+        let (mut ae, mut ab) = (Agent::new(), Agent::new());
+        let (field, area) = (e.app.ui.fields.field.as_str().to_owned(), e.app.ui.fields.area.as_str().to_owned());
+        let hover = lumen_static::style::index_of_wid(<Ui as Widget>::SUB_TABLE, "hover").unwrap();
+        let other = lumen_static::style::index_of_wid(<Ui as Widget>::SUB_TABLE, "other").unwrap();
+        let fs = e.states[lumen_static::style::index_of_wid(<Ui as Widget>::SUB_TABLE, "field").unwrap()];
+        let edge = fs.pos.x + fs.pad.0;
+        let as_ = e.states[lumen_static::style::index_of_wid(<Ui as Widget>::SUB_TABLE, "area").unwrap()];
+        let top = as_.pos.y + as_.pad.1;
+        let (ex, ey) = text_at(&e.list, &field, &area);
+        println!("settled: Everything field x {ex:?} (pad edge {edge}), area y {ey:?} (pad edge {top})");
+        assert!(ex.is_some_and(|x| x < edge), "Everything's field did not scroll, so this case cannot fail");
+        assert!(ey.is_some_and(|y| y < top), "Everything's area did not scroll, so its half cannot fail");
+        let mut differing = 0;
+        for f in 0..3 {
+            // The window's order: frame, then the agent, then the next
+            // input, then the next frame.
+            {
+                let mut t = TreeMut::of_root(e.app.tree_mut(), &e.styles, &e.states);
+                ae.frame_done(&mut t, FrameTiming::passes(1, 1));
+            }
+            {
+                let mut t = TreeMut::of_root(b.app.tree_mut(), &b.styles, &b.states);
+                ab.frame_done(&mut t, FrameTiming::passes(1, 1));
+            }
+            // An unrelated hover, alternating so each frame moves it.
+            let (x, y) = centre(&e, if f % 2 == 0 { "hover" } else { "other" });
+            let target = if f % 2 == 0 { hover } else { other };
+            for h in [&mut e as &mut dyn Pumped, &mut b, &mut plain] {
+                h.hover(x, y);
+            }
+            assert!(e.states[target].hovered && b.states[target].hovered, "setup: frame {f}'s hover did not land");
+            let (xe, ye) = text_at(&e.list, &field, &area);
+            let (xb, yb) = text_at(&b.list, &field, &area);
+            let (xp, yp) = text_at(&plain.list, &field, &area);
+            println!(
+                "frame {f}: field x — Everything+agent {xe:?}, Boundaries+agent {xb:?}, Boundaries alone {xp:?} | \
+                 area y — {ye:?}, {yb:?}, {yp:?} | bound: all equal -> {}",
+                (xe, ye) == (xb, yb) && (xe, ye) == (xp, yp)
+            );
+            if (xe, ye) != (xb, yb) || (xe, ye) != (xp, yp) {
+                differing += 1;
+            }
+        }
+        assert_eq!(differing, 0, "{differing} of 3 frames painted the audit's probe instead of the fields' scroll");
+    }
+
+    /// Object-safe pumping for the three arms.
+    trait Pumped {
+        fn hover(&mut self, x: f32, y: f32);
+    }
+
+    impl<I: Invalidation> Pumped for Host<Form, Incremental, I> {
+        fn hover(&mut self, x: f32, y: f32) {
+            self.post(Event::PointerMove { x, y });
+            let handled = self.pump_with(&mut Blocks);
+            assert!(!handled, "setup: a hover must be unhandled, or it marks everything");
+        }
+    }
+}
