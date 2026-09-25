@@ -20,11 +20,13 @@
 set -euo pipefail
 cd "$(cd "$(dirname "$0")/.." && pwd)"
 
-[ -d book/src ] || { echo "book-includes: no book/src, skipped"; exit 0; }
+[ -d book/src ] || { echo "book-includes: no book/src -- a missing book is a failure, not a skip" >&2; exit 1; }
 
 status=0
 n=0
 l=0
+f_rust=0
+f_norun=0
 seen=$(mktemp); trap 'rm -f "$seen"' EXIT
 while IFS= read -r md; do
     # One include per line is the convention; grep -o handles several.
@@ -84,11 +86,19 @@ while IFS= read -r md; do
     # a fragment will not compile on its own. Chapter 2's first draft had
     # three, each duplicating an anchor directly above it. The two honest
     # options are a finer anchor plus hidden setup lines, or inline prose.
-    if grep -qE '^```[a-z, ]*ignore' "$md"; then
+    #
+    # Any CommonMark fence (M43/T43.2, R17-F16): up to three spaces of
+    # indent, and three or more backticks OR tildes. The ban used to match
+    # only a backtick fence at column 0, so `~~~rust,ignore` and an
+    # indented fence both passed.
+    fence='^ {0,3}(`{3,}|~{3,})'
+    if grep -qE "${fence}[a-z, _]*ignore" "$md"; then
         echo "$md: \`\`\`rust,ignore compiles nothing -- include it, or make it run" >&2
-        grep -nE '^```[a-z, ]*ignore' "$md" | head -3 | sed 's/^/    /' >&2
+        grep -nE "${fence}[a-z, _]*ignore" "$md" | head -3 | sed 's/^/    /' >&2
         status=1
     fi
+    f_rust=$((f_rust + $(grep -cE "${fence}rust" "$md" || true)))
+    f_norun=$((f_norun + $(grep -cE "${fence}[a-z, _]*no_run" "$md" || true)))
 
     # Intra-book links. A chapter that links to a page nobody has
     # written yet renders as a link that goes nowhere -- silently, like
@@ -138,4 +148,4 @@ if [ "$status" -ne 0 ]; then
     echo "Fix the reference, or restore what it names." >&2
     exit 1
 fi
-echo "book-refs: $n includes and $l links all resolve; no orphaned anchors"
+echo "book-refs: $n includes and $l links all resolve; no orphaned anchors; fences: $f_rust rust, $f_norun no_run, 0 ignore"

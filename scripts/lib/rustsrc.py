@@ -25,6 +25,8 @@ decide whether a `//` or a `"` is what it looks like:
             on that line), or "block".
 
 Usage as a script:  python3 rustsrc.py code FILE     -> the blanked code
+                    python3 rustsrc.py nocomments FILE... -> the code of
+                        every file, comments blanked, literals KEPT
                     python3 rustsrc.py comments FILE... -> file<TAB>line<TAB>kind<TAB>text
                     python3 rustsrc.py grep REGEX FILE...
                         -> file:line:original line, for every line whose
@@ -38,7 +40,7 @@ def _ident(c):
     return c.isalnum() or c == "_"
 
 
-def split(src):
+def split(src, keep_literals=False):
     out = list(src)
     comments = []
     n = len(src)
@@ -50,6 +52,10 @@ def split(src):
         for k in range(a, b):
             if out[k] != "\n":
                 out[k] = " "
+
+    def blank_lit(a, b):
+        if not keep_literals:
+            blank(a, b)
 
     while i < n:
         c = src[i]
@@ -99,7 +105,7 @@ def split(src):
                 end = src.find(close, k + 1)
                 end = n if end < 0 else end
                 line += src.count("\n", k + 1, end)
-                blank(k + 1, end)
+                blank_lit(k + 1, end)
                 i = end + len(close)
                 line_has_code = True
                 continue
@@ -115,7 +121,7 @@ def split(src):
                     k += 1
                 k += 1
             line += src.count("\n", i + 1, k)
-            blank(i + 1, k)
+            blank_lit(i + 1, k)
             i = k + 1
             line_has_code = True
             continue
@@ -129,12 +135,12 @@ def split(src):
                 k = i + 2
                 while k < n and src[k] != "'":
                     k += 1
-                blank(i + 1, k)
+                blank_lit(i + 1, k)
                 i = k + 1
                 line_has_code = True
                 continue
             if i + 2 < n and src[i + 2] == "'":
-                blank(i + 1, i + 2)
+                blank_lit(i + 1, i + 2)
                 i += 3
                 line_has_code = True
                 continue
@@ -156,6 +162,10 @@ def main(argv):
     mode = argv[1]
     if mode == "code":
         sys.stdout.write(split(_read(argv[2]))[0])
+    elif mode == "nocomments":
+        for path in argv[2:]:
+            sys.stdout.write(split(_read(path), keep_literals=True)[0])
+            sys.stdout.write("\n")
     elif mode == "comments":
         for path in argv[2:]:
             for ln, kind, text in split(_read(path))[1]:

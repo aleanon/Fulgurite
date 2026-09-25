@@ -25,9 +25,9 @@ default = ["std"]
 # set that grows without limit still cannot cost an embedded profile
 # anything it did not ask for — `alloc`-needing widgets stay behind
 # `alloc`, and a leaf profile takes neither feature.
-#  implies , the tiering  uses: the two are
-# nested, not alternatives, and a crate that took  without 
-# would lose  for no reason anyone asked for.
+# `std` implies `alloc`, the tiering `lumen-static` uses: the two are
+# nested, not alternatives, and a crate that took `std` without `alloc`
+# would lose `Vec` for no reason anyone asked for.
 std = ["alloc", "lumen-static/std"]
 alloc = ["lumen-static/alloc"]
 # **The agent-facing half — M27/T27.5.** Without this no widget in this

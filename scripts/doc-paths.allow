@@ -3,3 +3,18 @@
 #
 # docs/plan-review-fixes.md forward references:
 
+
+# Cargo targets (`bin NAME` / `package NAME`) cited but not in either
+# workspace, each with why. Checked by the second half of check_doc_paths.sh.
+#
+# A plan and its results quoting, verbatim, the plants the review asked for
+# (M38): `--bin serde` was R17-F3's injection -- a dependency's name that
+# the old check accepted as a binary. Rewording a historical plan is the
+# worse choice.
+bin serde
+# The Step 1 firewall experiment's GENERATED workspace
+# (experiments/firewall/generated, from scripts/gen_firewall.py): its
+# packages exist only after the generator runs, in a workspace of its own.
+package root
+package compNNN
+package monolith
