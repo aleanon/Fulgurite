@@ -26,7 +26,7 @@ use lumen_static::cx::LayoutCx;
 use lumen_static::desc::{Constraints, NodeDesc, NodeState, Size, NO_PARENT};
 use lumen_static::display::{Color, Painter};
 use lumen_static::event::{EventCtx, Handlers, NodeSel};
-use lumen_static::ops::{focus_ring, record_painted, rect_of, resolve_self};
+use lumen_static::ops::{record_painted, rect_of, resolve_self};
 use lumen_static::style::{Fields, Seed, Style};
 use lumen_static::text::{FoldedText, MeasureKey};
 use lumen_static::widget::{Node, Widget};
@@ -154,7 +154,6 @@ impl<S: 'static> Node for NavRow<S> {
         let r = rect_of(s);
         let pill = [r[0] + INSET, r[1] + 2.0, r[2] - INSET, r[3] - 2.0];
         if self.kind == RowKind::Item {
-            focus_ring(st, i, out);
             out.rounded_rect(pill, s.bg, s.radius);
             if self.selected {
                 let a = s.border_color;

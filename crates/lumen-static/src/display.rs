@@ -73,11 +73,12 @@ pub enum Cmd {
     /// An **inset** stroked rounded rect: a border, drawn inside `rect`.
     ///
     /// Inset rather than expanded, and that is the whole reason this is a
-    /// command instead of a second `RoundedRect` underneath. The underlay
-    /// trick works — [`crate::ops::focus_ring`] uses it — but it paints
-    /// *outside* the node's box, which is right for a ring that means
-    /// "this has focus" and wrong for a border, because a bordered and an
-    /// unbordered control in the same row would no longer line up.
+    /// command instead of a second `RoundedRect` underneath. An underlay
+    /// paints *outside* the node's box, which is wrong for a border,
+    /// because a bordered and an unbordered control in the same row would
+    /// no longer line up. The focus ring was that underlay until M57/A6,
+    /// and is now this command too, given a rect outside the node
+    /// ([`crate::ops::focus_ring`]).
     ///
     /// **Four `Line`s were tried first, elsewhere, and failed visibly.**
     /// `focus_ring`'s first version drew them and the live gate caught it

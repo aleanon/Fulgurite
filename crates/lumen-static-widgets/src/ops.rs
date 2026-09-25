@@ -18,7 +18,7 @@ use lumen_static::cx::LayoutCx;
 use lumen_static::desc::{Constraints, NodeDesc, NodeState, Size, NO_PARENT};
 use lumen_static::display::{Color, Painter};
 use lumen_static::event::{EventCtx, Handlers, NodeSel};
-use lumen_static::ops::{border, focus_ring, record_painted, rect_of, resolve_self};
+use lumen_static::ops::{border, record_painted, rect_of, resolve_self};
 use lumen_static::style::{Length, Seed, Style};
 use lumen_static::text::{Dirty, MeasureKey, Measured, TextStorage};
 use lumen_static::widget::{Node, Widget};
@@ -425,7 +425,6 @@ impl<S: 'static, T: TextStorage> Node for Button<S, T> {
         record_painted(st, i, limits, resolve_self(limits, &style[i], content), &style[i])
     }
     fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
-        focus_ring(st, i, out);
         let r = rect_of(&st[i]);
         out.rounded_rect(r, st[i].bg, st[i].radius);
         border(st, i, out);

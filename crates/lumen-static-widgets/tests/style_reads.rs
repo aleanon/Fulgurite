@@ -120,6 +120,14 @@ fn render<R: Widget + Node + Default>(setup: fn(&mut R), sheet: &[Rule], sc: Sce
     pass::layout(&mut root, &styles, &mut st, LIMITS);
     let mut list = DisplayList::new();
     pass::paint(&root, &st, &mut list);
+    // **The host's ring, as the host draws it** — M57/A6. No widget draws
+    // its own ring any more; the host does, once, around the keyboard-
+    // focused node, reading that node's `focus_ring` and `radius`. So a
+    // focused kind's output is its paint *plus* that ring, or every
+    // focusable kind would measure as not reading `focus_ring`.
+    if matches!(sc, Scenario::Focused) {
+        lumen_static::ops::focus_ring(&st[i], Color(0, 0, 255, 255), &mut list);
+    }
     let geometry = st.iter().map(|s| (s.size, s.pos)).collect();
     let c = st[i];
     let (x, y) = (c.pos.x + c.size.w / 2.0, c.pos.y + c.size.h / 2.0);

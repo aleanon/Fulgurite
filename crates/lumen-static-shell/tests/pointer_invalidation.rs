@@ -195,13 +195,16 @@ fn keyboard_focus_becoming_visible_reaches_the_ring() {
     let btn = index("btn");
     let (x, y) = centre(&h, "btn");
 
-    // Pointer focus: the host zeroes the ring after layout.
+    // Pointer focus: no ring. Since M57/A6 the host draws the one ring
+    // itself, after paint, from `input.focus` and `focus_visible` — so
+    // what this asserts is the *painted* list, which is what a stale
+    // frame would get wrong.
     h.click(x, y);
     h.pump();
     h.pump();
     assert_eq!(h.input.focus, Some(btn as u32), "setup: the click focused the button");
     assert!(!h.input.focus_visible);
-    assert_eq!(h.states[btn].focus_ring, 0, "setup: pointer focus shows no ring");
+    assert!(!ring_around(&h, btn), "setup: pointer focus shows no ring");
 
     // An arrow key makes focus visible **without being handled**: the
     // button is alone in its group, so the arrow does not move focus.
@@ -212,9 +215,18 @@ fn keyboard_focus_becoming_visible_reaches_the_ring() {
     assert!(h.input.focus_visible, "setup: the arrow made focus visible");
     assert_eq!(h.input.focus, Some(btn as u32), "setup: focus did not move");
 
-    let ring = h.states[btn].focus_ring;
     let styled = h.styles[btn].focus_ring;
-    println!("focus ring: painted={ring} styled={styled}");
+    println!("focus ring: styled={styled} painted={}", ring_around(&h, btn));
     assert!(styled > 0, "setup: the button's style draws a ring");
-    assert_eq!(ring, styled, "keyboard focus became visible and the ring stayed hidden");
+    assert!(ring_around(&h, btn), "keyboard focus became visible and the ring stayed hidden");
+}
+
+/// Whether the frame's list holds the host's ring — an outline outside
+/// node `i`'s box.
+fn ring_around<I: Invalidation>(h: &Host<Pointer, lumen_static::Incremental, I>, i: usize) -> bool {
+    let s = h.states[i];
+    h.list.cmds.iter().any(|c| match c {
+        lumen_static::Cmd::StrokedRect { rect, .. } => rect[0] < s.pos.x && rect[2] > s.pos.x + s.size.w,
+        _ => false,
+    })
 }

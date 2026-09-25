@@ -267,7 +267,6 @@ impl<const KIND: u8> Node for Strip<KIND> {
     }
 
     fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
-        lumen_static::ops::focus_ring(st, i, out);
         let s = &st[i];
         let r = lumen_static::ops::rect_of(s);
         let (w, h) = (r[2] - r[0], r[3] - r[1]);

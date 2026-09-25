@@ -72,8 +72,10 @@ application and not, and this is the cheapest way to make it the default
 rather than a thing each widget must remember.
 
 `focus_visible` distinguishes keyboard focus from pointer focus, so a
-click does not leave a ring behind. It is one write per frame rather than
-a per-node flag — there is one focus, and storing the answer per node
+click does not leave a ring behind. The ring itself is drawn by the host,
+once per frame, around the focused node — no widget draws its own
+(M57/A6; the frame chapter says why). Visibility is one field on the
+input state rather than a per-node flag — there is one focus, and storing the answer per node
 would have grown `NodeState` for every node of every tree to say
 something about one of them.
 

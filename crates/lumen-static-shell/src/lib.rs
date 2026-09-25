@@ -291,11 +291,6 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             tree.layout(&mut cx, limits, &self.styles, &mut scratch, 0);
             tree.place(Point::default(), &self.styles, &mut scratch, 0);
         }
-        if !self.input.focus_visible {
-            if let Some(s) = self.input.focus.and_then(|f| scratch.get_mut(f as usize)) {
-                s.focus_ring = 0;
-            }
-        }
         self.shadow.compared += 1;
         if self.shadow.first.is_some() {
             return;
@@ -1223,22 +1218,6 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             self.last_place_ns = t1.elapsed().as_nanos() as u64;
         }
 
-        // A focus ring only for keyboard focus (T15.6). **After**
-        // layout, which resolves the ring from the stylesheet and would
-        // otherwise overwrite this — the first version zeroed it before
-        // and had no effect at all.
-        //
-        // One write per frame rather than a per-node flag: there is one
-        // focus, and `NodeState` would have grown from 76 bytes to 80
-        // for every node of every tree to say something about one of
-        // them, which the M15 gating policy forbids.
-        if !self.input.focus_visible {
-            if let Some(f) = self.input.focus {
-                if let Some(s) = self.states.get_mut(f as usize) {
-                    s.focus_ring = 0;
-                }
-            }
-        }
 
         // **The shadow oracle** — M34/T34.1. Only a strategy that can
         // skip has anything to check. **After** the focus-ring rule just
@@ -1269,6 +1248,7 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             let mut scaled = lumen_static::Scaled::new(&mut self.list, self.scale);
             let mut out = lumen_static::Recording::new(&mut scaled, &mut self.retain);
             pass::paint_overlaid(self.app.tree(), &self.states, &mut out, &mut self.overlays);
+            paint_focus_ring::<A>(&self.input, &self.states, &self.overlays, &self.palette, &mut out);
         }
         self.last_paint_ns = t1.elapsed().as_nanos() as u64;
 
@@ -1515,6 +1495,48 @@ fn mark_node<I: Invalidation>(inv: &mut I, table: &[lumen_static::desc::NodeDesc
 
 /// Background colour a shell clears to before rendering.
 pub const CLEAR: Color = Color(255, 255, 255, 255);
+
+/// **The one focus ring**, drawn after the tree and its overlays —
+/// M57/A6 (`docs/plan-widget-fixes.md`).
+///
+/// Only for keyboard focus (T15.6): a press hides it, a Tab or an
+/// arrow shows it, which `dispatch` records as `focus_visible`. This
+/// used to be done by zeroing the focused node's resolved
+/// `focus_ring` after layout, while every widget drew its own ring
+/// from the flag `dispatch` published — and that flag was one event
+/// late (A1), so the zeroing hid the ring on the new node while the
+/// old one drew its own. Drawing it here reads `input.focus`
+/// directly, so the two can no longer disagree.
+///
+/// **Not over an overlay it is not inside.** A trigger keeps focus
+/// while its menu is open, and a ring drawn after the overlays would
+/// cross the menu's top edge; the ring shows when focus is inside
+/// the topmost overlay, or no overlay is open.
+///
+/// Damage needs nothing: the ring goes through the same recording
+/// painter as the tree, so a ring that appears, moves or goes is a
+/// changed command like any other.
+fn paint_focus_ring<A: App>(
+input: &lumen_static::event::InputState,
+states: &[NodeState],
+overlays: &impl lumen_static::overlay::OverlaySink,
+palette: &lumen_static::style::Palette,
+out: &mut dyn lumen_static::Painter,
+) {
+    if !input.focus_visible {
+        return;
+    }
+    let Some(f) = input.focus else { return };
+    let Some(s) = states.get(f as usize) else { return };
+    if !overlays.is_empty() {
+        let table = <A::Tree as lumen_static::Widget>::SUB_TABLE;
+        let top = overlays.at(overlays.len() - 1) as usize;
+        if !lumen_static::style::subtree_range(table, top).contains(&(f as usize)) {
+            return;
+        }
+    }
+    lumen_static::ops::focus_ring(s, palette.focus, out);
+}
 
 /// Everything a command list needs to be drawn, for renderers that want
 /// to walk it without matching on `Cmd` themselves.

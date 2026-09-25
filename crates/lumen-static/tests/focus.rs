@@ -143,42 +143,48 @@ fn an_arrow_in_a_lone_focusable_still_belongs_to_the_widget() {
     assert_ne!(f.app.ui.field.caret(), before, "the field moved its caret instead");
 }
 
-/// Rounded rects in the frame. The ring is one of these — drawn
-/// *behind* the control at its own radius plus the ring width — rather
-/// than four lines on top, which covered the antialiased corner and
-/// which `ui_check.py` caught within a frame.
-fn ring_rects(f: &F) -> usize {
+/// What `ops::focus_ring` draws for node `i`. Since M57/A6 the ring is
+/// drawn once, by the host, around the focused node — no widget draws
+/// its own — so this asks the helper the host calls. The host's side
+/// (keyboard-only, one ring, the palette's colour, not over an overlay)
+/// is `lumen-static-shell/tests/focus_ring.rs`.
+fn ring_cmds(f: &F, i: usize) -> Vec<Cmd> {
     let mut list = DisplayList::new();
-    pass::paint(&f.app.ui, &f.st, &mut list);
-    list.cmds.iter().filter(|c| matches!(c, Cmd::RoundedRect { .. })).count()
+    lumen_static::ops::focus_ring(&f.st[i], lumen_static::Color(1, 2, 3, 255), &mut list);
+    list.cmds.clone()
 }
 
 #[test]
-fn a_focus_ring_is_drawn_only_on_the_focused_node() {
+fn the_ring_is_an_outline_outside_the_node_with_a_gap() {
     let mut f = F::new();
-    f.input.focus = Some(3);
-    // Focus is applied by dispatch; set the bit the way the pass does.
-    f.st[3].focused = true;
     pass::layout(&mut f.app.ui, &f.styles, &mut f.st, VIEW);
-    f.st[3].focused = true;
-
-    let with = ring_rects(&f);
-    f.st[3].focused = false;
-    let without = ring_rects(&f);
-    assert_eq!(with, without + 1, "focus adds exactly one rounded rect: the ring");
+    let cmds = ring_cmds(&f, 3);
+    assert_eq!(cmds.len(), 1, "one command: {cmds:?}");
+    let s = f.st[3];
+    let Cmd::StrokedRect { rect, width, .. } = cmds[0] else {
+        panic!("the ring is not an outline: {:?}", cmds[0]);
+    };
+    // The stroke is inset in its rect, so its inner edge is `rect` shrunk
+    // by `width` — and that must clear the node's own box by the gap.
+    let inner_left = rect[0] + width;
+    println!("node x {} ring inner edge {inner_left} gap {}", s.pos.x, s.pos.x - inner_left);
+    assert!(
+        s.pos.x - inner_left >= lumen_static::ops::FOCUS_GAP - 0.01,
+        "the ring touches the control: its inner edge is at {inner_left}, the node at {}",
+        s.pos.x
+    );
 }
 
 #[test]
 fn a_stylesheet_can_turn_the_ring_off() {
     let mut f = F::new();
-    f.st[3].focused = true;
-    let with_ring = ring_rects(&f);
+    pass::layout(&mut f.app.ui, &f.styles, &mut f.st, VIEW);
+    assert_eq!(ring_cmds(&f, 3).len(), 1, "setup: the default draws a ring");
 
     let sheet = [Rule::new(Selector::Id("a"), Patch::new().focus_ring(0))];
     lumen_static::style::cascade_deep(&mut f.app.ui, &sheet, &mut f.styles);
     pass::layout(&mut f.app.ui, &f.styles, &mut f.st, VIEW);
-    f.st[3].focused = true;
-    assert_eq!(ring_rects(&f), with_ring - 1, "a rule turned it off, as a rule should");
+    assert!(ring_cmds(&f, 3).is_empty(), "a rule turned it off, as a rule should");
 }
 
 #[test]

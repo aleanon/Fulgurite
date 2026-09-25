@@ -939,8 +939,9 @@ remains** — which is why §10 Step 1 is the kill criterion.
    with `border_width`/`border_color` on `Style` and a role variant that
    follows the palette. Inset rather than outset is the load-bearing
    choice: a bordered and an unbordered control in the same row line up,
-   where `ops::focus_ring`'s deliberately-outset underlay would widen
-   one. `Painter::stroked_rect` is a **required** method, not a provided
+   where the focus ring's deliberately-outset underlay would widen
+   one (since M57/A6 the ring is itself a `StrokedRect`, outside the
+   node, drawn by the host). `Painter::stroked_rect` is a **required** method, not a provided
    one, so every wrapper is a compile error until it forwards — the
    `Deferring` lesson, and an injection in
    `crates/lumen-static/tests/border.rs` reproduces that bug exactly by

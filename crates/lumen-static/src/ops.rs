@@ -43,34 +43,43 @@ pub fn hide_subtree(st: &mut [NodeState], i: usize, limits: Constraints, count: 
     Size::default()
 }
 
-/// Draw the focus ring behind `i`, if it has focus and a ring width.
+/// Draw the keyboard focus ring around `s` — **called once per frame by
+/// the host, not by widgets** (M57/A6, `docs/plan-widget-fixes.md`).
 ///
-/// One helper rather than five copies: `Button`, `TextInput`,
-/// `TextArea`, `Toggle` and `Slider` all need the same thing, and a
-/// ring that differs between widgets is a ring a user cannot learn.
+/// **An outline with a gap, outside the node, in the palette's `focus`
+/// colour, drawn after the tree.** The ring used to be a larger rounded
+/// rect *underneath* each widget, in `s.fg`, relying on the widget to
+/// paint an opaque full-box body over its middle. The widget audit
+/// (`docs/widget-audit.md` X4) found every way that fails: a `Tabs`
+/// strip has no body and turned into a solid dark block; a `Slider`
+/// paints only a thin track and became a solid blue bar with the knob
+/// gone; a primary button's `fg` is white, so its ring was white on a
+/// white card; a checked toggle's ring was its own blue with no gap.
 ///
-/// **A larger rounded rect *underneath*, not an outline on top.** The
-/// first version drew four `Cmd::Line`s around the box, and the live
-/// gate caught it within a frame: a square ring over a rounded button
-/// covers the antialiased corner, and `ui_check.py`'s corner test
-/// dropped to five blended pixels. Drawing behind reuses the rounded
-/// rect the renderer already antialiases, follows the control's own
-/// radius, and cannot cover the content it is marking.
-pub fn focus_ring(st: &[crate::desc::NodeState], i: usize, out: &mut dyn crate::Painter) {
-    let s = &st[i];
-    if !s.focused || s.focus_ring == 0 {
+/// Before that, a ring of four `Cmd::Line`s over a rounded button covered
+/// the antialiased corner (`ui_check.py`'s corner test). A
+/// `stroked_rect` follows the radius the renderer already antialiases,
+/// and the `gap` keeps it off the control's own pixels, so it can neither
+/// cover the content nor merge with a body of the same colour.
+///
+/// There is one focus, so there is one ring, and the host — which knows
+/// `input.focus`, whether focus is keyboard-visible, and the palette —
+/// draws it. A widget opts out with `Style::focus_ring == 0`.
+pub fn focus_ring(s: &crate::desc::NodeState, color: crate::display::Color, out: &mut dyn crate::Painter) {
+    if s.focus_ring == 0 || s.size.w <= 0.0 || s.size.h <= 0.0 {
         return;
     }
-    let w = s.focus_ring as f32;
+    let (w, gap) = (s.focus_ring as f32, FOCUS_GAP);
     let r = rect_of(s);
-    out.rounded_rect(
-        [r[0] - w, r[1] - w, r[2] + w, r[3] + w],
-        s.fg,
-        // The control's own radius plus the ring's width, so the ring
-        // stays concentric rather than squaring off at the corners.
-        s.radius + w,
-    );
+    let o = gap + w;
+    // `stroked_rect` strokes *inside* its rect (T27.1), so the rect is
+    // the ring's outer edge and the stroke fills `[gap, gap + w]`.
+    out.stroked_rect([r[0] - o, r[1] - o, r[2] + o, r[3] + o], color, s.radius + o, w);
 }
+
+/// The transparent space between a control and its focus ring, so a
+/// ring the colour of the control's body still reads as a ring.
+pub const FOCUS_GAP: f32 = 2.0;
 
 /// Draw `i`'s border, if it has one.
 ///
