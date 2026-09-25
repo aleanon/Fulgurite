@@ -1,0 +1,6 @@
+PRI * HTTP/2.0
+
+SM
+
+{"jsonrpc":"2.0","id":1,"method":"input.click","params":{"selector":"#inc"}}
+{"jsonrpc":"2.0","id":2,"method":"input.click","params":{"selector":"#spawn-one"}}

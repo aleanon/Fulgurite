@@ -1,0 +1,18 @@
+POST /fetch HTTP/1.1
+Host: 127.0.0.1:7810
+User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:156.0) Gecko/20100101 Firefox/156.0
+Accept: */*
+Accept-Language: en-US,en;q=0.9
+Accept-Encoding: gzip, deflate, br, zstd
+Referer: http://127.0.0.1:7811/
+Content-Type: text/plain;charset=UTF-8
+Content-Length: 160
+Origin: http://127.0.0.1:7811
+Connection: keep-alive
+Sec-Fetch-Dest: empty
+Sec-Fetch-Mode: no-cors
+Sec-Fetch-Site: same-site
+Priority: u=4
+
+{"jsonrpc":"2.0","id":1,"method":"input.click","params":{"selector":"#inc"}}
+{"jsonrpc":"2.0","id":2,"method":"input.click","params":{"selector":"#spawn-one"}}

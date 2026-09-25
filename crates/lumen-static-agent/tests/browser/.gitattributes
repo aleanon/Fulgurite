@@ -1,0 +1,2 @@
+# Captured bytes, replayed byte for byte: never convert line endings.
+*.bin -text -diff

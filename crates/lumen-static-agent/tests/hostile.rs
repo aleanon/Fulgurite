@@ -238,4 +238,55 @@ mod input_limits {
         assert_eq!(resp["error"]["code"], -32602, "refused: {resp}");
         assert_eq!(resp["error"]["data"]["chars"], 100_000);
     }
+
+    /// **The envelope is validated, and a coordinate must be finite** —
+    /// M39/T39.0 (R14-F7).
+    ///
+    /// `dispatch` took the method as `as_str().unwrap_or("")`, so a
+    /// batch, a bare number or a non-string method fell through to
+    /// "unknown method ``", a request with no `id` was answered, and
+    /// `jsonrpc: "1.0"` was accepted. Four sites cast a coordinate
+    /// `as f32` with no finiteness check, so `x: 1e300` was a success
+    /// answered `at: [null, null]`. Every row prints `input -> code
+    /// (expected)`; the last row is the accept direction.
+    #[test]
+    #[ignore = "red until T39.4: R14-F7, the envelope is not validated"]
+    fn the_envelope_is_validated() {
+        let agent = Agent::new();
+        let mut h = bare();
+        let click = json!({ "jsonrpc": "2.0", "id": 1, "method": "input.click",
+                            "params": { "x": 1.0, "y": 1.0 } });
+        let rows: Vec<(Value, Option<i64>)> = vec![
+            (json!([]), Some(-32600)),
+            (json!([click.clone()]), Some(-32600)),
+            (json!(5), Some(-32600)),
+            (json!({ "jsonrpc": "2.0", "id": 1, "method": 5 }), Some(-32600)),
+            (json!({ "jsonrpc": "1.0", "id": 1, "method": "ui.lastChange" }), Some(-32600)),
+            (json!({ "jsonrpc": "2.0", "method": "input.click", "params": { "x": 1.0, "y": 1.0 } }),
+             Some(-32600)),
+            (json!({ "jsonrpc": "2.0", "id": 1, "method": "ui.lastChange", "params": "x" }),
+             Some(-32600)),
+            (json!({ "jsonrpc": "2.0", "id": 1, "method": "input.click",
+                     "params": { "x": 1e300, "y": 0.0 } }), Some(-32602)),
+            (json!({ "jsonrpc": "2.0", "id": 1, "method": "input.scroll",
+                     "params": { "x": 1.0, "y": 1.0, "dy": 1e39 } }), Some(-32602)),
+            (json!({ "jsonrpc": "2.0", "id": 1, "method": "ui.probe",
+                     "params": { "x": 1e300, "y": 0.0 } }), Some(-32602)),
+            (json!({ "jsonrpc": "2.0", "id": 1, "method": "ui.explain",
+                     "params": { "selector": "#title", "at": [1e300, 0.0] } }), Some(-32602)),
+            // The accept row: a well-formed click is still a result.
+            (click, None),
+        ];
+        let mut failed = Vec::new();
+        for (req, want) in rows {
+            let resp = agent.dispatch_input(&mut h, &req);
+            let got = resp["error"]["code"].as_i64();
+            let shown = |c: Option<i64>| c.map_or("result".to_string(), |c| c.to_string());
+            println!("{req} -> {} (expected {})", shown(got), shown(want));
+            if got != want {
+                failed.push(format!("{req}: got {} want {} ({resp})", shown(got), shown(want)));
+            }
+        }
+        assert!(failed.is_empty(), "the envelope is not validated:\n{}", failed.join("\n"));
+    }
 }

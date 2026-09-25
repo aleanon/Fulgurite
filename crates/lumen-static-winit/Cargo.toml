@@ -102,3 +102,11 @@ notify = { version = "8", optional = true }
 # `tests/gpu_regions.rs` drives a `Host` at a device scale (M40/T40.1),
 # which needs a leaf widget to change.
 lumen-static-widgets = { path = "../lumen-static-widgets" }
+
+# M39/T39.0: the agent endpoint through a real event loop. Its own `main`,
+# because winit wants the main thread; needs a display, and says so when
+# it skips (see the file's header).
+[[test]]
+name = "agent_transport"
+harness = false
+required-features = ["agent"]

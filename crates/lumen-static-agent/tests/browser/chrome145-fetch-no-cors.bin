@@ -1,0 +1,19 @@
+POST /fetch HTTP/1.1
+Host: 127.0.0.1:7810
+Connection: keep-alive
+Content-Length: 160
+sec-ch-ua-platform: "Linux"
+User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/145.0.7632.6 Safari/537.36
+sec-ch-ua: "Not:A-Brand";v="99", "HeadlessChrome";v="145", "Chromium";v="145"
+Content-Type: text/plain;charset=UTF-8
+sec-ch-ua-mobile: ?0
+Accept: */*
+Origin: http://127.0.0.1:7811
+Sec-Fetch-Site: same-site
+Sec-Fetch-Mode: no-cors
+Sec-Fetch-Dest: empty
+Referer: http://127.0.0.1:7811/
+Accept-Encoding: gzip, deflate, br, zstd
+
+{"jsonrpc":"2.0","id":1,"method":"input.click","params":{"selector":"#inc"}}
+{"jsonrpc":"2.0","id":2,"method":"input.click","params":{"selector":"#spawn-one"}}

@@ -595,6 +595,46 @@ rule. What would stop it, and what would reveal each risk:
   the other client's frames. No harness does this today. M48/T48.1
   documents what a reply's frame means.
 
+## 6. What building found (2026-09-25)
+
+Recorded as found, rather than folded into the sections above.
+
+- **T39.0, the fixtures.** A real headless browser *was* available, so
+  every "captured" fixture is captured, from two: **Firefox 156.0**
+  (`/usr/lib/firefox/firefox --headless`) and **Chrome for Testing
+  145.0.7632.6** (`chrome-headless-shell`). `scripts/capture_browser_requests.py`
+  serves a page on one loopback port and records what the browser sends
+  to another, so the page is cross-origin to the endpoint as a page the
+  developer happens to have open is. Eight captured files (four vectors
+  × two browsers) and the two hand-written ones live in
+  `crates/lumen-static-agent/tests/browser/`, named by browser and
+  version, since a header comment inside a byte-exact file would stop
+  it being byte-exact. Each body carries two JSON-RPC lines, a click on
+  counter-window's `#inc` and one on tasks-demo's `#spawn-one`, so one
+  fixture serves both live steps. Red at the base (`b213ae0`): **16
+  methods executed** across the eight body-carrying vectors, two each;
+  the two WebSocket upgrades executed nothing but left the connection
+  open for the next line.
+- **T39.0, the replay helper.** `play` in the winit test first
+  half-closed its socket after writing, which hands the server an EOF
+  and made *every* loop, the broken one included, "close the
+  connection". A browser keeps its write side open while it waits for
+  a response, so the gate does too. That is the "setup silently did not
+  happen" shape: the closed-connection half of the gate could not fail.
+- **T39.0, the descendant gate.** §T39.0 item 6 names `#x >`, `> #x`,
+  `#x >   ` and `#x > e`. Against `descendant.rs`'s fixture `#x` does
+  not exist, so the *head's* error returns before the tail is looked at
+  and no case reaches the `replace`; four of the plan's cases were red
+  for a different reason than the finding. The gate uses `#first`, an
+  owner that resolves, and every case then shows the finding: `#first >`
+  draws a 134 B message against a 96 B bound with the selector in it 15
+  times, and `#first > e` puts the selector in place of every `e`.
+- **T39.0, the live step.** `scripts/live_gate.sh` ran counter-window
+  through `cargo run`, so `$!` was cargo's pid and the port-ownership
+  check could never pass. It runs the built binary now. Red:
+  `#value 0 -> 1` (the fixture has one `#inc` line; the plan's
+  `0 -> 10` assumed ten).
+
 ## Appendix: finding → task
 
 | ID | sev now | status | task |

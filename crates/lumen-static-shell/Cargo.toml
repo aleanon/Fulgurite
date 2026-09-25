@@ -91,3 +91,9 @@ lumen-static = { path = "../lumen-static", features = ["reload"] }
 [[test]]
 name = "shadow"
 required-features = ["shadow-oracle"]
+
+# M39/T39.0: drives `Session::agent`, which exists with the agent built in
+# and a session at all (`truetype`).
+[[test]]
+name = "agent_panic"
+required-features = ["live-agent", "truetype"]

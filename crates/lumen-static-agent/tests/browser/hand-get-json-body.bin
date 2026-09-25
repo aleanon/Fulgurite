@@ -1,0 +1,6 @@
+GET / HTTP/1.1
+Host: 127.0.0.1
+Content-Length: 160
+
+{"jsonrpc":"2.0","id":1,"method":"input.click","params":{"selector":"#inc"}}
+{"jsonrpc":"2.0","id":2,"method":"input.click","params":{"selector":"#spawn-one"}}

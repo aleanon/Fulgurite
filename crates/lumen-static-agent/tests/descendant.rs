@@ -167,3 +167,42 @@ fn steps_chain() {
         "`#first>#part-label` and `#first > #part-label` disagree"
     );
 }
+
+/// **A descendant error names the selector once** — M39/T39.0 (R14-F6).
+///
+/// The recursive failure was reported as `m.replace(tail, selector)`.
+/// An empty tail makes `str::replace` insert the whole selector between
+/// every character of the message — a 1,079 B request drew a 15,192 B
+/// reply — and a short non-empty tail is replaced wherever it occurs:
+/// `#x > e` put the selector in place of every `e`. The last case is the
+/// one a fix that guarded only the empty tail would leave red.
+#[test]
+#[ignore = "red until T39.6: R14-F6, a descendant error garbles and amplifies"]
+fn a_descendant_error_names_the_selector_once() {
+    let mut failed = Vec::new();
+    // `#first` and not the plan's `#x`: the head has to *resolve*, or
+    // the head's own error returns before the tail is ever looked at and
+    // no case reaches the `replace` (the first run of this test, with
+    // `#x`, had four of five cases failing for that other reason).
+    for sel in ["#first >", "> #first", "#first >   ", "#first > e"] {
+        let r = resolve(sel);
+        let req = json!({ "jsonrpc": "2.0", "id": 1, "method": "ui.resolve",
+                          "params": { "selector": sel } })
+            .to_string();
+        let reply = r.to_string();
+        let msg = r["error"]["message"].as_str().unwrap_or("").to_string();
+        let count = msg.matches(sel).count();
+        let bound = 4 * sel.len() + 64;
+        println!(
+            "{sel:?}: reply {} B / request {} B; message {} B / bound {bound} B; \
+             selector appears {count}x; message: {msg:?}",
+            reply.len(),
+            req.len(),
+            msg.len()
+        );
+        if r.get("error").is_none() || count != 1 || msg.len() >= bound {
+            failed.push(sel);
+        }
+    }
+    assert!(failed.is_empty(), "garbled or amplified descendant errors: {failed:?}");
+}
