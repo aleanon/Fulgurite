@@ -360,7 +360,7 @@ impl<const KIND: u8> Widget for Pad<KIND> {
             Fields::FONT_SIZE,
             Fields::RADIUS,
             Fields::VISIBLE,
-        ]))];
+        ])).with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Text).background(lumen_static::style::Role::Raised))];
 
     fn type_defaults() -> Style {
         Style {
@@ -651,7 +651,7 @@ impl<const KIND: u8> PickerTable<KIND> {
                 Fields::RADIUS,
                 Fields::BORDER,
                 Fields::VISIBLE,
-            ]));
+            ])).with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Text).background(lumen_static::style::Role::Raised).border(lumen_static::style::Role::Border));
         lumen_static::widget::splice_seeds(&mut s, 2, <Popup<Pad<KIND>> as Widget>::SEEDS);
         s
     };

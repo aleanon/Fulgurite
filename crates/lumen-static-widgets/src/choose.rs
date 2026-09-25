@@ -186,7 +186,7 @@ impl Widget for OptionList {
                 Fields::RADIUS,
                 Fields::SHADOW,
                 Fields::VISIBLE,
-            ]),)];
+            ]),).with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Text).background(lumen_static::style::Role::Raised))];
 
     fn type_defaults() -> Style {
         Style {

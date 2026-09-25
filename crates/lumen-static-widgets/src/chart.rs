@@ -183,7 +183,7 @@ impl<const KIND: u8> Widget for Chart<KIND> {
                 lumen_static::style::Fields::BORDER,
                 lumen_static::style::Fields::RADIUS,
             ]),
-        })];
+        }).with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Accent))];
 }
 
 const CHART: Size = Size { w: 280.0, h: 160.0 };

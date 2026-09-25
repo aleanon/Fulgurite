@@ -189,7 +189,7 @@ impl<const KIND: u8> Widget for Strip<KIND> {
                 Fields::FOCUS_RING,
                 Fields::CURSOR,
                 Fields::VISIBLE,
-            ]))];
+            ])).with_roles(match KIND { TABS => lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Text), _ => lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Text).background(lumen_static::style::Role::Surface) })];
 
     fn type_defaults() -> Style {
         let base = Style {
@@ -425,7 +425,7 @@ impl<S: lumen_static::text::TextStorage> Widget for AppBar<S> {
                 Fields::FONT_WEIGHT,
                 Fields::SHADOW,
                 Fields::VISIBLE,
-            ]),)];
+            ]),).with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::OnAccent).background(lumen_static::style::Role::Accent))];
 
     fn type_defaults() -> Style {
         Style {
@@ -598,7 +598,7 @@ impl<W: Widget> PullTable<W> {
         let mut s = [Seed::WIDGET; MAX_PULL_NODES];
         s[0] = Seed::new(
             <PullToRefresh<W> as Widget>::KIND,
-            <PullToRefresh<W> as Widget>::type_defaults, Fields::of(&[Fields::WIDTH, Fields::HEIGHT, Fields::COLOR, Fields::VISIBLE]));
+            <PullToRefresh<W> as Widget>::type_defaults, Fields::of(&[Fields::WIDTH, Fields::HEIGHT, Fields::COLOR, Fields::VISIBLE])).with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Accent));
         lumen_static::widget::splice_seeds(&mut s, 1, W::SEEDS);
         s
     };

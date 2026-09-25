@@ -94,7 +94,8 @@ fn an_inactive_variant_keeps_its_own_defaults() {
     let mut tree = Pick::default();
     let bi = index_of::<Pick>("b");
     let out = resolved(&mut tree, &[]);
-    let own = <CheckBox<()> as Widget>::type_defaults();
+    // Its own seed resolved — defaults plus its palette roles (M57/A8).
+    let own = <CheckBox<()> as Widget>::SEEDS[0].style(&lumen_static::style::Palette::LIGHT);
     assert_eq!(
         out[bi].width, own.width,
         "hidden CheckBox resolved width {:?}; its own default is {:?}",

@@ -74,7 +74,7 @@ impl Widget for ProgressBar {
             lumen_static::style::Fields::BACKGROUND,
             lumen_static::style::Fields::BORDER,
             lumen_static::style::Fields::RADIUS,
-        ]))];
+        ])).with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Accent).background(lumen_static::style::Role::Track))];
 }
 
 const BAR_H: f32 = 8.0;
@@ -155,7 +155,7 @@ impl Widget for Spinner {
             lumen_static::style::Fields::HEIGHT,
             lumen_static::style::Fields::VISIBLE,
             lumen_static::style::Fields::COLOR,
-        ]))];
+        ])).with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Accent))];
 }
 
 const SPIN: f32 = 28.0;
@@ -260,7 +260,7 @@ impl Widget for Skeleton {
             lumen_static::style::Fields::BACKGROUND,
             lumen_static::style::Fields::BORDER,
             lumen_static::style::Fields::RADIUS,
-        ]))];
+        ])).with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Raised).background(lumen_static::style::Role::Placeholder))];
 }
 
 impl Node for Skeleton {

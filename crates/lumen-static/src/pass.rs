@@ -91,7 +91,7 @@ pub fn default_styles_into<W: Widget>(tree: &W, out: &mut [Style]) {
     // inactive variant's width and got the enum's.
     let _ = tree;
     for (i, slot) in out.iter_mut().enumerate().take(W::NODE_COUNT) {
-        *slot = (W::SEEDS[i].defaults)();
+        *slot = W::SEEDS[i].style(&crate::style::Palette::LIGHT);
     }
 }
 

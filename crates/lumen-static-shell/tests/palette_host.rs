@@ -132,8 +132,12 @@ fn settled_with_text() -> Bounded {
     h
 }
 
+/// **`Accent`, not `Text`**: since M57/A8 a label's own default *is* the
+/// `Text` role, so a rule naming `Text` would change nothing a test could
+/// see. The claim is about the rule's role, so it names one no label
+/// defaults to.
 fn text_role() -> [Rule; 1] {
-    [Rule::new(Selector::Id("note"), Patch::new().color_role(Role::Text))]
+    [Rule::new(Selector::Id("note"), Patch::new().color_role(Role::Accent))]
 }
 
 /// M25/T25.11: a rule that names a role follows the host's palette — at
@@ -146,9 +150,9 @@ fn text_role() -> [Rule; 1] {
 fn a_role_in_the_sheet_follows_set_palette() {
     let mut h = settled_with_text();
     let default = note_colour(&h);
-    assert_ne!(default, Some(Palette::DARK.text), "setup: the label's default is not dark text");
-    assert_ne!(default, Some(Palette::LIGHT.text), "setup: the label's default is not light text");
-    assert_ne!(Palette::DARK.text, Palette::LIGHT.text, "setup: the palettes differ where probed");
+    assert_ne!(default, Some(Palette::DARK.accent), "setup: the label's default is not dark text");
+    assert_ne!(default, Some(Palette::LIGHT.accent), "setup: the label's default is not light text");
+    assert_ne!(Palette::DARK.accent, Palette::LIGHT.accent, "setup: the palettes differ where probed");
 
     h.set_palette(Palette::DARK);
     h.set_stylesheet(&text_role());
@@ -157,7 +161,7 @@ fn a_role_in_the_sheet_follows_set_palette() {
     println!("default {default:?}; after the sheet, under dark: {under_dark:?}");
     assert_eq!(
         under_dark,
-        Some(Palette::DARK.text),
+        Some(Palette::DARK.accent),
         "set_stylesheet resolved the role against a palette other than the host's"
     );
 
@@ -169,7 +173,7 @@ fn a_role_in_the_sheet_follows_set_palette() {
     println!("after set_palette(LIGHT): {under_light:?}");
     assert_eq!(
         under_light,
-        Some(Palette::LIGHT.text),
+        Some(Palette::LIGHT.accent),
         "set_palette did not re-resolve the sheet's role: the label kept last palette's colour"
     );
 }
@@ -187,7 +191,7 @@ fn restyle_subtree_resolves_roles_against_the_host_palette() {
     println!("restyled under dark: {painted:?}");
     assert_eq!(
         painted,
-        Some(Palette::DARK.text),
+        Some(Palette::DARK.accent),
         "restyle_subtree resolved the role against a palette other than the host's"
     );
 }

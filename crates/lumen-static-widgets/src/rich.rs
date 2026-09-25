@@ -179,7 +179,7 @@ impl Widget for RichText {
         Fields::FONT_WEIGHT,
         Fields::RADIUS,
         Fields::VISIBLE,
-    ]))];
+    ])).with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Text))];
 
     fn type_defaults() -> Style {
         Style {
@@ -526,7 +526,7 @@ impl Widget for Markdown {
         Fields::FONT_WEIGHT,
         Fields::RADIUS,
         Fields::VISIBLE,
-    ]))];
+    ])).with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Text))];
 
     fn type_defaults() -> Style {
         <RichText as Widget>::type_defaults()
@@ -855,7 +855,7 @@ impl Widget for PaintBox {
         Fields::BORDER,
         Fields::RADIUS,
         Fields::VISIBLE,
-    ]))];
+    ])).with_roles(lumen_static::style::SeedRoles::NONE.background(lumen_static::style::Role::Raised))];
 
     fn type_defaults() -> Style {
         Style {

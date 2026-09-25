@@ -103,7 +103,7 @@ impl<A: Widget, B: Widget> SplitTable<A, B> {
             Fields::COLOR,
             Fields::CURSOR,
             Fields::VISIBLE,
-        ]));
+        ])).with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Border));
         lumen_static::widget::splice_seeds(&mut s, 1, A::SEEDS);
         lumen_static::widget::splice_seeds(&mut s, 1 + A::NODE_COUNT, B::SEEDS);
         s
@@ -376,7 +376,7 @@ impl<W: Widget> CollapsibleTable<W> {
             Fields::RADIUS,
             Fields::CURSOR,
             Fields::VISIBLE,
-        ]));
+        ])).with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Text).background(lumen_static::style::Role::Surface));
         lumen_static::widget::splice_seeds(&mut s, 1, W::SEEDS);
         s
     };
@@ -788,7 +788,7 @@ impl<A: Widget, B: Widget, C: Widget, D: Widget> PaneTable<A, B, C, D> {
             Fields::COLOR,
             Fields::RADIUS,
             Fields::VISIBLE,
-        ]));
+        ])).with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Border).background(lumen_static::style::Role::Raised));
         lumen_static::widget::splice_seeds(&mut s, 1, A::SEEDS);
         lumen_static::widget::splice_seeds(&mut s, 1 + A::NODE_COUNT, B::SEEDS);
         lumen_static::widget::splice_seeds(&mut s, 1 + A::NODE_COUNT + B::NODE_COUNT, C::SEEDS);

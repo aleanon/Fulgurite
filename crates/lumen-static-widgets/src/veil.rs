@@ -173,7 +173,7 @@ impl<W: Widget, const KIND: u8> VeilTable<W, KIND> {
             Fields::HEIGHT,
             Fields::BACKGROUND,
             Fields::VISIBLE,
-        ]));
+        ])).with_roles(lumen_static::style::SeedRoles::NONE.background(lumen_static::style::Role::Scrim));
         lumen_static::widget::splice_seeds(&mut s, 1, W::SEEDS);
         s
     };

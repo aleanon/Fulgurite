@@ -187,7 +187,7 @@ impl Widget for NumberInput {
                 Fields::FOCUS_RING,
                 Fields::CURSOR,
                 Fields::VISIBLE,
-            ]))];
+            ])).with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Text).background(lumen_static::style::Role::Raised).border(lumen_static::style::Role::Border))];
 
     /// A field's look, plus the border M27/T27.1 made possible. Narrower
     /// than a text field, because a number is short and a wide box
@@ -414,7 +414,7 @@ impl Widget for RangeSlider {
                 Fields::FOCUS_RING,
                 Fields::CURSOR,
                 Fields::VISIBLE,
-            ]))];
+            ])).with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Accent).background(lumen_static::style::Role::Track))];
 
     fn type_defaults() -> Style {
         Style {
@@ -612,7 +612,7 @@ impl SearchFieldTable {
                 Fields::RADIUS,
                 Fields::CURSOR,
                 Fields::VISIBLE,
-            ]));
+            ])).with_roles(lumen_static::style::SeedRoles::NONE.background(lumen_static::style::Role::Raised).border(lumen_static::style::Role::Border));
         s[SF_ICON] = <Icon as Widget>::SEEDS[0];
         s[SF_FIELD] = <crate::input::TextInput<alloc::string::String> as Widget>::SEEDS[0];
         s

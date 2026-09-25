@@ -114,7 +114,8 @@ mask disagrees with what the output did (`docs/results-appearance.md`).
 
 A `style::Palette` is the colours a theme is made of, named by role —
 `page`, `surface`, `control`, `text`, `muted`, `accent`, `on_accent`,
-`focus` — and the host holds one. A rule themes by naming a `style::Role`
+`focus`, and since M57 `raised`, `border`, `track`, `placeholder`,
+`scrim`, `danger` and `on_danger` — and the host holds one. A rule themes by naming a `style::Role`
 where it would have named a colour:
 
 ```rust
@@ -137,6 +138,20 @@ fn sheet() -> [Rule; 2] {
 #     assert_eq!(Palette::DARK.get(Role::Text), Palette::DARK.text);
 # }
 ```
+
+**A widget's own colours are roles too** (M57/A8). A kind declares
+them on its `Seed` with `with_roles`, and the cascade resolves them
+against the host's palette before any rule applies. So a label is the
+palette's `text`, a card its `raised`, a badge its `danger`, with no rule
+in the sheet, and a rule that names a colour or a role still wins because
+rules apply after. Until M57 the palette reached a widget only through a
+rule, and every widget's defaults were light-palette literals. An
+application had to restyle every kind for dark mode, and the showcase did
+it for four (`docs/widget-audit.md` X6).
+`lumen-static-widgets/tests/palette_defaults.rs` checks every kind in both
+palettes: each colour it paints must be a role, and each pair it shows
+must meet its bound. Colours that are *data*, such as a chart's series or
+a colour picker's swatches, stay literal.
 
 The cascade resolves a role into the node's `Style` — `color_role` into
 `color`, `background_role` into `background` — so nothing on the frame

@@ -58,7 +58,7 @@ impl Widget for Divider {
             lumen_static::style::Fields::BACKGROUND,
             lumen_static::style::Fields::BORDER,
             lumen_static::style::Fields::RADIUS,
-        ]))];
+        ])).with_roles(lumen_static::style::SeedRoles::NONE.background(lumen_static::style::Role::Track))];
 }
 
 impl Node for Divider {
@@ -169,7 +169,7 @@ impl<S: TextStorage> Widget for Badge<S> {
             lumen_static::style::Fields::RADIUS,
             lumen_static::style::Fields::FONT_SIZE,
             lumen_static::style::Fields::FONT_WEIGHT,
-        ]))];
+        ])).with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::OnDanger).background(lumen_static::style::Role::Danger))];
 }
 
 impl<S: TextStorage> Node for Badge<S> {
@@ -281,7 +281,7 @@ impl<S: TextStorage> Widget for Chip<S> {
             lumen_static::style::Fields::RADIUS,
             lumen_static::style::Fields::FONT_SIZE,
             lumen_static::style::Fields::FONT_WEIGHT,
-        ]))];
+        ])).with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Text).background(lumen_static::style::Role::Surface))];
 }
 
 impl<S: TextStorage> Node for Chip<S> {
@@ -389,7 +389,7 @@ impl<S: TextStorage> Widget for Avatar<S> {
             lumen_static::style::Fields::BORDER,
             lumen_static::style::Fields::FONT_SIZE,
             lumen_static::style::Fields::FONT_WEIGHT,
-        ]))];
+        ])).with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Page).background(lumen_static::style::Role::Muted))];
 }
 
 const AVATAR: f32 = 40.0;
@@ -507,7 +507,7 @@ impl Widget for Icon {
             lumen_static::style::Fields::HEIGHT,
             lumen_static::style::Fields::VISIBLE,
             lumen_static::style::Fields::COLOR,
-        ]))];
+        ])).with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Text))];
 }
 
 const ICON: f32 = 20.0;

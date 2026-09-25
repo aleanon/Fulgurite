@@ -129,7 +129,7 @@ impl<S: TextStorage> Widget for Label<S> {
             lumen_static::style::Fields::FONT_WEIGHT,
             lumen_static::style::Fields::PRESSED_DIM,
             lumen_static::style::Fields::HOVER_DIM,
-        ]))];
+        ])).with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Text))];
 }
 
 impl<S: TextStorage> Node for Label<S> {
@@ -398,7 +398,7 @@ impl<S: 'static, T: TextStorage> Widget for Button<S, T> {
             lumen_static::style::Fields::FONT_WEIGHT,
             lumen_static::style::Fields::PRESSED_DIM,
             lumen_static::style::Fields::HOVER_DIM,
-        ]))];
+        ])).with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Text).background(lumen_static::style::Role::Surface))];
 }
 
 impl<S: 'static, T: TextStorage> Node for Button<S, T> {

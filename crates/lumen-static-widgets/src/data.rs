@@ -168,7 +168,7 @@ impl Widget for Pagination {
                 Fields::FOCUS_RING,
                 Fields::CURSOR,
                 Fields::VISIBLE,
-            ]),)];
+            ]),).with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Accent).background(lumen_static::style::Role::Raised))];
 
     fn type_defaults() -> Style {
         Style {
@@ -483,7 +483,7 @@ impl Widget for Tree {
                 Fields::RADIUS,
                 Fields::VISIBLE,
             ],
-        ))];
+        )).with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Text).background(lumen_static::style::Role::Raised))];
 
     fn type_defaults() -> Style {
         Style {
@@ -762,7 +762,7 @@ impl<R: Widget + Default + 'static> GridTable<R> {
                 Fields::FONT_SIZE,
                 Fields::RADIUS,
                 Fields::VISIBLE,
-            ]));
+            ])).with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Muted).background(lumen_static::style::Role::Raised));
         s[1] = <lumen_static::repeat::Repeat<R> as Widget>::SEEDS[0];
         s
     };

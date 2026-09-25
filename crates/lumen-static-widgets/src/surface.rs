@@ -78,7 +78,7 @@ impl<W: Widget> CardTable<W> {
                 Fields::SHADOW,
                 Fields::CURSOR,
                 Fields::VISIBLE,
-            ]),);
+            ]),).with_roles(lumen_static::style::SeedRoles::NONE.background(lumen_static::style::Role::Raised));
         lumen_static::widget::splice_seeds(&mut s, 1, W::SEEDS);
         s
     };
@@ -253,7 +253,7 @@ impl<S: TextStorage> Widget for Toast<S> {
         Fields::FONT_SIZE,
         Fields::FONT_WEIGHT,
         Fields::VISIBLE,
-    ]))];
+    ])).with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Page).background(lumen_static::style::Role::Text))];
 
     /// Dark on light, which is the convention every toolkit shares and
     /// the inverse of everything else in this crate — a toast is a

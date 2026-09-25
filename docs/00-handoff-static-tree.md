@@ -977,3 +977,9 @@ remains** — which is why §10 Step 1 is the kill criterion.
    cost about four times the frame threshold, and probes put that cost in
    the cache check and the look-shaped paint, not in the widget's size
    (`docs/results-appearance.md` T25.12).
+   **Amended 2026-09-25 (M57/A8):** a widget's *own* colours are palette
+   roles now, declared on its `Seed` and resolved by the cascade before any
+   rule. Before this, the palette reached a widget only through a sheet
+   rule, so every kind's defaults were light-only
+   (`docs/widget-audit.md` X6). Appearance still lives in `Style`; the
+   roles only decide what goes into it.

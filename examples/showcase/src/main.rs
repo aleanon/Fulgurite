@@ -48,9 +48,10 @@ pub use stage::*;
 const SHOW_LIGHT: Palette = Palette {
     page: Color(0xf4, 0xf6, 0xfa, 0xff),
     surface: Color(0xff, 0xff, 0xff, 0xff),
-    // A field's and the trigger's pale ground: `Style` has no border, so
-    // the fill is what separates a control from the page.
-    control: Color(0xf0, 0xf2, 0xf6, 0xff),
+    // A toggle's resting body, at 3:1 on the stage (WCAG 1.4.11) — M57/A8.
+    // This was the fields' pale ground (0xf0f2f6), which every toggle then
+    // drew as its off state at 1.1:1; the fields moved to `raised`.
+    control: Color(0x8a, 0x94, 0xa6, 0xff),
     text: Color(0x1b, 0x22, 0x30, 0xff),
     // #6b7488 until M56/T56.3: 4.33:1 on the page, under AA's 4.5 for
     // the blurb and breadcrumb it colours (`chrome_text_meets_contrast`).
@@ -58,17 +59,35 @@ const SHOW_LIGHT: Palette = Palette {
     accent: Color(0x2f, 0x6b, 0xff, 0xff),
     on_accent: Color(0xff, 0xff, 0xff, 0xff),
     focus: Color(0x2f, 0x6b, 0xff, 0xff),
+    // M57/A8's roles: every widget's own colours now follow these, with
+    // no rule in the sheet.
+    raised: Color(0xff, 0xff, 0xff, 0xff),
+    border: Color(0x83, 0x8d, 0x9f, 0xff),
+    track: Color(0xd5, 0xdb, 0xe4, 0xff),
+    placeholder: Color(0xe4, 0xe9, 0xf0, 0xff),
+    scrim: Color(0x0f, 0x17, 0x2a, 110),
+    danger: Color(0xdc, 0x26, 0x26, 0xff),
+    on_danger: Color(0xff, 0xff, 0xff, 0xff),
 };
 
 const SHOW_DARK: Palette = Palette {
     page: Color(0x12, 0x15, 0x1c, 0xff),
     surface: Color(0x1c, 0x21, 0x2b, 0xff),
-    control: Color(0x2a, 0x30, 0x3c, 0xff),
+    control: Color(0x6b, 0x75, 0x89, 0xff),
     text: Color(0xe6, 0xea, 0xf2, 0xff),
     muted: Color(0x94, 0xa0, 0xb4, 0xff),
     accent: Color(0x5b, 0x8c, 0xff, 0xff),
     on_accent: Color(0x0a, 0x0e, 0x18, 0xff),
     focus: Color(0x82, 0xaa, 0xff, 0xff),
+    // Raised a step *above* the stage card (`surface`), which is how a
+    // dark theme shows elevation.
+    raised: Color(0x26, 0x2d, 0x3a, 0xff),
+    border: Color(0x6b, 0x75, 0x89, 0xff),
+    track: Color(0x3a, 0x42, 0x54, 0xff),
+    placeholder: Color(0x2e, 0x35, 0x44, 0xff),
+    scrim: Color(0, 0, 0, 150),
+    danger: Color(0xf8, 0x71, 0x71, 0xff),
+    on_danger: Color(0x1a, 0x0a, 0x0a, 0xff),
 };
 
 /// The palette to start in: [`SHOW_DARK`] under `LUMEN_PALETTE=dark`.
@@ -1001,7 +1020,7 @@ fn stylesheet() -> Vec<StyleRule> {
             Selector::Id(lumen_static_widgets::select::PART_TRIGGER),
             Patch::new()
                 .width(Length::Fixed(220.0))
-                .background_role(Role::Control)
+                .background_role(Role::Raised)
                 .color_role(Role::Text)
                 .radius(8.0)
                 .font_size(15.0)
@@ -1082,7 +1101,7 @@ fn stylesheet() -> Vec<StyleRule> {
                 // recorded as a gap in `docs/plan-widgets-gallery.md`
                 // §3c, where our field was put beside Lumen's and read
                 // as text on the page.
-                .background_role(Role::Control)
+                .background_role(Role::Raised)
                 .color_role(Role::Text)
                 .border_width(1)
                 .border_color_role(Role::Muted)
@@ -1122,7 +1141,7 @@ fn stylesheet() -> Vec<StyleRule> {
             Patch::new()
                 .width(Length::Fixed(220.0))
                 .height(Length::Fixed(36.0))
-                .background_role(Role::Control)
+                .background_role(Role::Raised)
                 .color_role(Role::Text)
                 .border_width(1)
                 .border_color_role(Role::Muted)
@@ -1510,7 +1529,7 @@ mod tests {
         use lumen_static::style::{Fields, Role, Rule};
         use lumen_static::widget::Node as _;
 
-        const ROLES: [Role; 8] = [
+        const ROLES: [Role; 15] = [
             Role::Page,
             Role::Surface,
             Role::Control,
@@ -1519,6 +1538,13 @@ mod tests {
             Role::Accent,
             Role::OnAccent,
             Role::Focus,
+            Role::Raised,
+            Role::Border,
+            Role::Track,
+            Role::Placeholder,
+            Role::Scrim,
+            Role::Danger,
+            Role::OnDanger,
         ];
         for r in ROLES {
             assert_ne!(SHOW_LIGHT.get(r), SHOW_DARK.get(r), "setup: the palettes differ at {r:?}");

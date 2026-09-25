@@ -89,7 +89,7 @@ impl<C: Widget + Default + 'static> Assembled<C> {
         v.push(Style::default());
         for _ in 0..count {
             for j in 0..C::NODE_COUNT {
-                v.push((C::SEEDS[j].defaults)());
+                v.push(C::SEEDS[j].style(&crate::style::Palette::LIGHT));
             }
         }
         v

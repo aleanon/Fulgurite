@@ -137,7 +137,7 @@ impl Widget for Slider {
             lumen_static::style::Fields::RADIUS,
             lumen_static::style::Fields::PRESSED_DIM,
             lumen_static::style::Fields::HOVER_DIM,
-        ]))];
+        ])).with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Accent).background(lumen_static::style::Role::Track))];
 }
 
 /// Logical pixels; 24 is the WCAG 2.5.8 pointer-target floor.
