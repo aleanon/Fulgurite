@@ -107,6 +107,11 @@ pub fn emit_node(
     if st[i].size.w <= 0.0 || st[i].size.h <= 0.0 {
         n.set_hidden();
     }
+    // M57/A16: a disabled control is announced as one — the one place
+    // every node passes, so no widget can forget it.
+    if st[i].disabled {
+        n.set_disabled();
+    }
     if d.child_count > 0 {
         let mut c = d.first_child as usize;
         loop {

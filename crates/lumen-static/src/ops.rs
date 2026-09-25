@@ -364,6 +364,23 @@ pub fn record_painted(
     size: Size,
     style: &Style,
 ) -> Size {
+    st[i].disabled = style.disabled;
+    if style.disabled {
+        // **Unavailable reads as faded** — M57/A16. Both colours at 40%
+        // alpha, and no hover or press shade: nothing will happen.
+        let fade = |c: crate::display::Color| crate::display::Color(c.0, c.1, c.2, (c.3 as u16 * 2 / 5) as u8);
+        st[i].fg = fade(style.color);
+        st[i].bg = fade(style.background);
+        st[i].border_color = fade(style.border_color);
+        st[i].radius = style.radius;
+        st[i].focus_ring = style.focus_ring;
+        st[i].border_width = style.border_width;
+        st[i].font_size = style.font_size;
+        st[i].font_weight = style.font_weight;
+        st[i].shadow = style.shadow;
+        st[i].pad = (style.padding.left, style.padding.top, style.padding.right, style.padding.bottom);
+        return record(st, i, limits, size);
+    }
     st[i].fg = style.color;
     // C6: the pointer affordance is resolved here, with the rest of the
     // paint attributes, so `paint` — which has no `&[Style]` — needs no

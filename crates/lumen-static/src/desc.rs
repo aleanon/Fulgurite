@@ -271,6 +271,10 @@ pub struct NodeState {
     /// something to do quietly inside a widget milestone.
     pub border_color: crate::display::Color,
     pub border_width: u8,
+    /// `Style::disabled`, resolved — M57/A16. The pass reads it (with
+    /// every ancestor's) to refuse hits, focus and activation. In the
+    /// struct's tail padding, so `NodeState` stays 84 bytes.
+    pub disabled: bool,
 }
 
 /// Scalar facts a kind knows about itself that geometry cannot show —

@@ -1099,12 +1099,14 @@ impl Agent {
             "border_color": color(s.border_color),
             "align": format!("{:?}", s.align),
             "visible": s.visible,
+            "disabled": s.disabled,
             // The interaction state that changes what is painted (C6),
             // so a screenshot taken mid-gesture can be explained.
             "state": {
                 "pressed": st.pressed,
                 "hovered": st.hovered,
                 "focused": st.focused,
+                "disabled": st.disabled,
                 "painted_background": color(st.bg),
             },
         }))

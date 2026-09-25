@@ -219,6 +219,16 @@ pub struct Style {
     /// The sheet lint reports such a rule (M25/T25.2,
     /// `docs/results-appearance.md`).
     pub visible: bool,
+    /// Whether this node and everything under it **refuses input** —
+    /// M57/A16 (`docs/plan-widget-fixes.md`).
+    ///
+    /// A disabled node is not hit, not focused and not activated, and
+    /// neither is anything inside it; it paints at a reduced alpha so it
+    /// reads as unavailable, and the agent publishes it as disabled. No
+    /// widget had any way to say this (`docs/widget-audit.md` X12). Free:
+    /// it takes a byte of the padding `border_width`'s slot already had,
+    /// and `Style` stays 80 bytes (`tests/focus.rs`).
+    pub disabled: bool,
 }
 
 impl Default for Style {
@@ -242,6 +252,7 @@ impl Default for Style {
             border_color: crate::display::Color::TRANSPARENT,
             cursor: Cursor::Default,
             visible: true,
+            disabled: false,
         }
     }
 }
@@ -758,6 +769,8 @@ pub struct Patch {
     pub border_width: Option<u8>,
     pub border_color: Option<crate::display::Color>,
     pub border_color_role: Option<Role>,
+    /// [`Style::disabled`] — M57/A16.
+    pub disabled: Option<bool>,
 }
 
 impl Patch {
@@ -784,7 +797,14 @@ impl Patch {
             border_width: None,
             border_color: None,
             border_color_role: None,
+            disabled: None,
         }
+    }
+
+    /// Refuse input, and look it — M57/A16 ([`Style::disabled`]).
+    pub const fn disabled(mut self, d: bool) -> Self {
+        self.disabled = Some(d);
+        self
     }
 
     pub const fn width(mut self, l: Length) -> Self {
@@ -930,6 +950,9 @@ impl Patch {
         }
         if let Some(v) = self.border_width {
             s.border_width = v;
+        }
+        if let Some(v) = self.disabled {
+            s.disabled = v;
         }
         if let Some(r) = self.border_color_role {
             s.border_color = palette.get(r);

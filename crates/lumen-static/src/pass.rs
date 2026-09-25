@@ -345,6 +345,10 @@ fn dispatch_overlaid_inner<S: crate::event::App, O: crate::overlay::OverlaySink>
             for k in (0..ov.len()).rev() {
                 let i = ov.at(k) as usize;
                 if let Some(h) = state.tree().node(i).hit(st, i, p.x, p.y) {
+                    let table = <S::Tree as crate::widget::Widget>::SUB_TABLE;
+                    if disabled_at(table, st, h.node as usize) {
+                        return false;
+                    }
                     let cx = crate::event::EventCtx {
                         event: *ev,
                         node: h.node,
@@ -591,7 +595,9 @@ fn dispatch_at<S: crate::event::App>(
         let gone = i >= table.len()
             || !style[i].visible
             || st[i].size.w <= 0.0
-            || st[i].size.h <= 0.0;
+            || st[i].size.h <= 0.0
+            // Disabled since it was focused (M57/A16).
+            || disabled_at(table, st, i);
         if gone {
             *focus = None;
         }
@@ -764,6 +770,12 @@ fn dispatch_at<S: crate::event::App>(
             }
 
             let Some(h) = hit else { return false };
+            // A disabled control takes nothing — no press, no focus, no
+            // activation (M57/A16). Its pointer state above still tracks,
+            // so the frame is consistent; nothing acts on it.
+            if disabled_at(table, st, h.node as usize) {
+                return false;
+            }
             if matches!(ev, Event::PointerDown { .. }) {
                 // Focus moves to the deepest focusable node on the hit
                 // chain, or clears — what clicking the background does.
@@ -1004,6 +1016,24 @@ fn tell_owner<S: crate::event::App>(
 /// Skips anything with no area or `visible: false` — a Tab stop you
 /// cannot see is a Tab stop that loses the user.
 /// Whether node `i` can take focus right now.
+/// Whether `i`, or any node it sits inside, is disabled — M57/A16.
+///
+/// Disabling a container disables what is in it: a form section switched
+/// off must not leave its buttons live. Walked up the table, which is
+/// the depth of the tree and nothing more.
+pub fn disabled_at(table: &[crate::desc::NodeDesc], st: &[NodeState], mut i: usize) -> bool {
+    while i < table.len() && i < st.len() {
+        if st[i].disabled {
+            return true;
+        }
+        if table[i].parent == crate::desc::NO_PARENT {
+            return false;
+        }
+        i = table[i].parent as usize;
+    }
+    false
+}
+
 fn focusable(
     table: &[crate::desc::NodeDesc],
     st: &[NodeState],
@@ -1015,6 +1045,7 @@ fn focusable(
         && style[i].visible
         && st[i].size.w > 0.0
         && st[i].size.h > 0.0
+        && !disabled_at(table, st, i)
 }
 
 /// The focusable **immediate children** of `parent`, in table order.
@@ -1065,12 +1096,9 @@ fn prev_focusable_in(
     };
     (0..n)
         .map(|k| lo + (start + n - k) % n)
-        .find(|&i| {
-            table[i].is_focusable()
-                && style[i].visible
-                && st[i].size.w > 0.0
-                && st[i].size.h > 0.0
-        })
+        // `focusable`, not a copy of it: the copy is how a disabled
+        // node stayed a Tab stop when M57/A16 taught `focusable` better.
+        .find(|&i| focusable(table, st, style, i))
         .map(|i| i as u32)
 }
 
@@ -1110,12 +1138,9 @@ pub fn next_focusable_in(
     };
     (0..n)
         .map(|k| lo + (start + k) % n)
-        .find(|&i| {
-            table[i].is_focusable()
-                && style[i].visible
-                && st[i].size.w > 0.0
-                && st[i].size.h > 0.0
-        })
+        // `focusable`, not a copy of it: the copy is how a disabled
+        // node stayed a Tab stop when M57/A16 taught `focusable` better.
+        .find(|&i| focusable(table, st, style, i))
         .map(|i| i as u32)
 }
 
