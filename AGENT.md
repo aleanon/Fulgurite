@@ -555,6 +555,21 @@ found" section rather than silently replacing itself.
   contrast gate covers both palettes. The drive scripts follow the new
   chrome and must stay green under both strategies.
 
+- **M57 — `docs/plan-widget-fixes.md`**, queued 2026-09-25, not
+  started. It fixes what `docs/widget-audit.md` found across the
+  showcase's 52 widgets: 12 broken, 35 with flaws. Phase A holds the
+  framework defects:
+  - focus is published before it moves (the late-ring bug);
+  - the agent's probe leaves estimated layout behind;
+  - bubbled presses carry child coordinates;
+  - `Repeat` rows skip on the main table's dirty set;
+  - the focus ring is a filled underlay;
+  - defaults are blind to the palette.
+
+  **Framework defects are fixed in the framework, never worked around
+  in the example.** Phase C is the only showcase change, and it covers
+  only the showcase's own wiring and stylesheet.
+
 Unsequenced: ~~`docs/plan-harness.md`.~~ — **M12 DONE 2026-09-20.**
 T12.3 and T12.4 landed 2026-09-04; T12.1 (a locator and expectation API,
 `lumen_static_agent::harness::TestApp`) and T12.2 (golden images with a
