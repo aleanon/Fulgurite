@@ -31,7 +31,18 @@ lumen-static = { path = "../lumen-static", features = ["observe"] }
 serde_json = "1"
 
 [dev-dependencies]
-lumen-static-widgets = { path = "../lumen-static-widgets" }
+# `observe` is on because the tests read the roles and values widgets
+# publish, and those impls are gated on THIS crate's `observe`, not on
+# lumen-static's (`docs/results-widget-crate.md`, "One feature seam").
+# Without it a `Label` reports `GenericContainer` with no value.
+#
+# **Until M43/T43.6 it was off here and the tests passed only through
+# feature unification**: `cargo test --workspace` built widgets with
+# `observe` because core's own dev-dependency asked for it, and
+# `cargo test -p lumen-static-agent` alone failed 19 tests (R13-F7).
+# `just test-crates` builds every library alone so a manifest cannot lean
+# on its neighbours again.
+lumen-static-widgets = { path = "../lumen-static-widgets", features = ["observe"] }
 # M41/T41.0: `tests/audit_is_inert.rs` drives the audit against a real
 # `Host` under the `Boundaries` default, in the window's order -- pump,
 # `frame_done`, an unrelated hover, pump. A dev-dependency cycle (the

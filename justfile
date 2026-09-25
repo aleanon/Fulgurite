@@ -71,6 +71,13 @@ dev-shape:
     rm -rf target/doc
     RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --exclude lumen-static-wgpu
 
+# Every library under crates/ tested ALONE, so no manifest passes by
+# leaning on a feature a neighbour turns on (M43/T43.6, R13-F7 -- the
+# agent's tests passed in `--workspace` only). Not in `test`: it re-resolves
+# features nine times. `just ci` (T43.13) runs it.
+test-crates *names:
+    ./scripts/test_crates.sh {{ names }}
+
 # The four fixtures. Until today none of these ran in the gate; three of them
 # assert. miri-smoke runs in `release-shape` above -- it contains zero
 # `assert!`, so it proves only that no path panics or aborts, which is still

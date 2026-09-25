@@ -131,3 +131,11 @@ after it, an application building the agent must also enable
 and it is now what every agent-building consumer does. Found by
 `counter-window --drive2` failing with exactly that symptom, which is
 the live gate earning its place: no unit test can see a feature seam.
+
+**The agent's own tests had the same seam, hidden by unification**
+(M38's R13-F7, fixed in M43/T43.6): its dev-dependency on the widgets
+took no `observe`, and `cargo test --workspace` supplied it through
+core's dev edge, so `cargo test -p lumen-static-agent` alone failed 19
+tests while every gate was green. A unit test *can* see a feature seam,
+if the crate is built alone — which is what `just test-crates` does for
+every library under `crates/`.
