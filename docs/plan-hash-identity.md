@@ -490,6 +490,53 @@ unkeyed mix passes all three, since it is faster than today's fold at
   tree with duplicated ids. None is known at `1717808`: the harness
   refuses to drive a tree carrying `W1011`.
 
+## 6. What building found
+
+Dated notes, kept beside the plan they correct rather than folded into it.
+
+**2026-09-26, T46.0.**
+
+- **Every finding reproduced at `5f6b4f2`** (this branch's base), with
+  the probes' own numbers: R2-F2 1,440 stale pixels and `Damage::None`
+  for the solved pair; R2-F3 a stale width on every colliding row of
+  all three widgets; R2-F7 `instance 4 clean=true` and the debug
+  witness blaming the sheet. None was fixed or moved elsewhere. M41 is
+  **not** merged into this base; the gates here do not use the shadow
+  oracle, so they do not wait on it, but T46.2's marks are `Boundaries`
+  marks that M41 is still repairing.
+- **Item 1's NUL-prefix pair is not a collision in retention**, and is
+  green at HEAD. The plan put a leading-zero pair in every gate, but only
+  a fold that *starts from 0* cannot see a leading zero byte:
+  `FoldedText::fold_of` does, `Recording::text_weighted` folds the
+  command's tag and rect first, and `h·K + 0 ≠ h`. The pair stays in
+  `text_hash_collision.rs` as the guard that a new function keeps
+  separating it, and it is measured with a zero-width NUL so the rect
+  does not move and hide the text hash behind rect damage.
+- **The review's word mix is not a search away from a collision; it is
+  one xor.** Its per-word step `(rot(h) ^ w)·K` is a bijection of the
+  word, so after any first word the second can be *computed* to cancel
+  the difference. `--bin text-hash` constructs such a pair at start-up
+  (`"aaaaaaaabbbbbbbb"` against a printable 16-byte string) and prints
+  `constructed=true` for that arm. §2.1 A's sentence "a determined
+  attacker with the source can still search for a collision" was true
+  of a function that needs a search; for the review's mix it is not.
+  The bench adds a **folded-multiply** arm (the 128-bit product's halves
+  xored, wyhash's step), which is not a bijection, and T46.1 decides
+  between them on the kill rule.
+- **K3 cannot move.** The leaf `no_std` firmware (`scripts/check_text.sh`)
+  links neither `Recording` nor `FoldedText`, so no change to either can
+  reach its `.text` — a bound computed from the wrong quantity, as
+  AGENT.md records it. T46.1 reports the firmware delta (it must be 0)
+  **and** the size of the new function in a `thumbv7em-none-eabihf`
+  build of the core, which is the quantity K3 was after.
+- **K2's noise floor, measured before T46.1** (`--bin retain --text`,
+  2,000 text commands, `build + Incremental`, eight runs a side of the
+  base binary against a copy of itself, pinned to one core under the
+  bench lock, load 13.1 → 10.5 on 32 cores): 32,249 ns against 32,292,
+  a difference of medians of **+42.6 ns (+0.13%)**. That is the floor.
+- **Items 5 and 6 travel with T46.3**, as §3 allows an early T46.3 to
+  carry them, so that whichever branch lands T46.3 carries its gates.
+
 ## Appendix: finding → task
 
 | ID | sev now | status | task |

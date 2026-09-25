@@ -66,3 +66,7 @@ required-features = ["observe"]
 [[bin]]
 name = "appearance"
 path = "src/bin/appearance.rs"
+
+[[bin]]
+name = "text-hash"
+path = "src/bin/text_hash.rs"

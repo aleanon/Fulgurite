@@ -95,6 +95,50 @@ fn emit(p: &mut dyn Painter, n: usize) {
     }
 }
 
+/// Label texts of the lengths a real tree shows — a button, a count, a
+/// menu row, a sentence — cycled through. M46/T46.1's retention half of
+/// the kill rule (`docs/plan-hash-identity.md` §5, K2): the per-byte fold
+/// was paid per byte of every text command every frame, so an arm whose
+/// text is five bytes (`emit`'s `"label"`) cannot price a change to it.
+const LABELS: [&str; 6] = [
+    "Save",
+    "count: 41",
+    "Preferences",
+    "Last synced 3 minutes ago",
+    "Downloading update 2 of 7 (41%)",
+    "The quick brown fox jumps over the lazy dog and keeps runnin",
+];
+
+/// `n` text commands, every one of them text.
+fn emit_text(p: &mut dyn Painter, n: usize) {
+    for i in 0..n {
+        let x = (i % 40) as f32 * 20.0;
+        let y = (i / 40) as f32 * 24.0;
+        p.text([x, y, x + 18.0, y + 22.0], LABELS[i % LABELS.len()], 14.0, Color(240, 240, 240, 255));
+    }
+}
+
+/// The text-heavy arm alone (`--text`): what K2 compares across builds.
+fn run_text(n: usize) {
+    println!("\n--- {n} text commands (text-heavy, M46) ---");
+    let mut bare = DisplayList::new();
+    bench("text-heavy: build the list", 20_000, || {
+        bare.clear();
+        emit_text(&mut bare, n);
+        bare.cmds.len() as u64
+    });
+    let mut ret = Incremental::default();
+    let mut out = DisplayList::new();
+    bench("text-heavy: build + Incremental", 20_000, || {
+        out.clear();
+        {
+            let mut rec = Recording::new(&mut out, &mut ret);
+            emit_text(&mut rec, n);
+        }
+        matches!(ret.finish(), Damage::None) as u64
+    });
+}
+
 fn run(n: usize) {
     println!("\n--- {n} commands ---");
 
@@ -190,9 +234,15 @@ fn run(n: usize) {
 }
 
 fn main() {
+    if std::env::args().any(|a| a == "--text") {
+        println!("retain --text: the text-heavy arm only (M46/T46.1, K2)");
+        run_text(2_000);
+        return;
+    }
     println!("retain: streaming (T13.8) vs the list-copying form it replaced");
     run(34);
     run(2_000);
+    run_text(2_000);
     println!(
         "\n   `build the list` is the shared floor: subtract it from every row but the last.\n   \
          The last row is what only streaming can do -- damage with no list to keep."
