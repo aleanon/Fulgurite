@@ -228,6 +228,10 @@ thumb:
     cargo check -p lumen-static --no-default-features --target thumbv7em-none-eabihf
     cargo clippy -p lumen-static --no-default-features --target thumbv7em-none-eabihf -- -D warnings
     cargo check -p embedded --lib --target thumbv7em-none-eabihf
+    # The fixture's host tests, built ALONE so core stays no_std: this is
+    # the only run of core's no_std `#[bind]` branch (M43/T43.8). The
+    # requirement refuses the std answer a unified build would give.
+    LUMEN_REQUIRE_NOSTD=1 cargo test -p embedded
     # Zero framework statics, with a named exemption list. Needs a
     # linked binary, so it lives beside the firmware build rather than
     # in `just static`, which runs no cargo at all. Both scripts judge the

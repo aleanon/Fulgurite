@@ -86,6 +86,11 @@ std::thread_local! {
 /// same rule `InlineText::set_from_str` follows for the same reason —
 /// a binding is a presentation path, and a value too long for its field
 /// should show its prefix.
+///
+/// Executed by `fixtures/embedded/tests/bind_nostd.rs` (M43/T43.8), which
+/// `just thumb` runs with core built alone and without `std`: a 1,000-byte
+/// value stores exactly this many bytes. Core's own tests build with `std`
+/// and cannot reach this branch.
 #[cfg(not(feature = "std"))]
 const SCRATCH_CAP: usize = 256;
 

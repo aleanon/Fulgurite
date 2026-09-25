@@ -1822,6 +1822,13 @@ impl syn::parse::Parse for BindSpec {
 /// # }
 /// ```
 ///
+/// **A format binding is capped at 256 bytes without `std`.** With `std`
+/// it formats into a reused `String` and stores the whole value; in a
+/// `no_std` build it formats into a 256-byte stack buffer and stores the
+/// prefix up to the last `char` boundary that fits, the rule
+/// `InlineText::set_from_str` follows. `fixtures/embedded/tests/bind_nostd.rs`
+/// runs that branch (M43/T43.8).
+///
 /// The whole impl is generated so that nothing about the update step is
 /// hand-written: a derive that only emitted the binding body would still
 /// leave the author to call it from `update`, which is the wiring this

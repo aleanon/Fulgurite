@@ -52,6 +52,14 @@ that produces real sections.
 | `f64` in the frame path | zero | **zero** | the only `f64` is `observe`'s accesskit call, which needs `std` |
 | Fixture builds and runs | yes | **yes** | links for the target; runs on the host with an aborting allocator |
 
+**`#[bind]` is exercised without `std`** (M43/T43.8):
+`fixtures/embedded/tests/bind_nostd.rs`, run by `just thumb` with the
+fixture built alone, stores exactly 256 bytes of a 1,000-byte bound value
+and cuts at a `char` boundary (255 bytes when the 256th is inside an
+`é`). It is a test, not part of the fixture's library, so the firmware
+above does not change. Until then no gate ran core's `no_std` bind branch
+at all (R12-F2).
+
 ## The first measurement — 2026-09-05 (history)
 
 The table as first recorded. Its "now" annotations were dropped when the
