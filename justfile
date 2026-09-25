@@ -535,6 +535,11 @@ window-reload-demo:
 hot-window-drive:
     ./scripts/hot_window_drive.sh
 
+# M49/T49.0 (R5-F8): an application deriving `Reloadable` builds without
+# hot reload and carries none of it; with `hot`, it does.
+reload-gating:
+    ./scripts/reload_gating.sh
+
 # The tally window with the agent endpoint on 127.0.0.1:9230 (override with
 # LUMEN_AGENT_ADDR). Drive it with scripts/agent_client.py — see
 # .claude/skills/verifying-apps/SKILL.md, rung 4.

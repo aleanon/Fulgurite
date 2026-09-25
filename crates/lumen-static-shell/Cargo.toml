@@ -85,6 +85,9 @@ lumen-static-widgets = { path = "../lumen-static-widgets", features = ["reload"]
 # `fixtures/hot-host` never constructs a `Host` at all. Dev-only: the
 # shell itself does not depend on the reload surface.
 lumen-static = { path = "../lumen-static", features = ["reload"] }
+# M49/T49.0: `tests/reload_schema.rs` keeps serde structs whose shape
+# changes between two builds.
+serde = { version = "1", features = ["derive"] }
 
 # M34/T34.1: needs the oracle compiled in; `just test` runs it with the
 # feature (`dev-shape`).

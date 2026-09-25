@@ -2,7 +2,7 @@
 //! and check the swapped session against v2 run from the start —
 //! M37/T37.1 (`docs/plan-window-reload.md`).
 //!
-//! `reload-host <v1.so> <v2.so> <v3.so>`. The exit code is the verdict.
+//! `reload-host <v1.so> <v2.so> <v3.so> <v-panic.so>`. The exit code is the verdict.
 //!
 //! **What is compared.** v1 is clicked once, saved, dropped; v2 boots
 //! its own program with those bytes. A second v2 session boots with
@@ -178,6 +178,30 @@ fn main() {
     assert!(after.contains("clicks: 1"), "every other kept field survives -- `tally` did not: `{after}`");
     assert!(r.error.is_none(), "a reset field is a warning, not a failure");
     println!("  ok: `name` reset to its boot value and was named; `tally` kept count 1");
+
+    // ---- M49/T49.0: a boot that panics keeps the running session ----
+    //
+    // R4-F5's window half. The re-triage probed it and found it fixed;
+    // this is the gate nothing had committed. `v-panic.so` is v3 with a
+    // boot that panics: the swap must not happen, the error must carry
+    // the library's own report -- the phrase and a `file:line` -- and the
+    // running session must still take a click.
+    r.outcome(Outcome::Built(std::path::PathBuf::from(&args[3])));
+    let swapped = r.swap(&mut cur, adopt);
+    let err = r.error.clone().unwrap_or_default();
+    println!("after a panicking boot: swapped {swapped}, reloads {}, error: {err}", r.reloads);
+    assert!(!swapped, "a panicking boot swapped: reloads {}", r.reloads);
+    assert!(
+        err.contains("panicked while booting") && err.contains("lib.rs:"),
+        "the error must say the boot panicked and where: `{err}`"
+    );
+    cur.post(Event::down(AT.0, AT.1));
+    cur.post(Event::up(AT.0, AT.1));
+    cur.frame(16.0, W, H);
+    let after = text_of(&*cur);
+    println!("after a click:          {after}");
+    assert!(after.contains("clicks: 2"), "a panicking boot lost the session: `{after}`");
+    println!("  ok: the panicking build was refused and the running session still counts");
 
     println!("\nWINDOW RELOAD (headless): PASS");
 }

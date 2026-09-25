@@ -16,6 +16,8 @@ crate-type = ["cdylib"]
 v2 = []
 # T37.3: v2's code, with the kept `name` changed from `String` to `u32`.
 v3 = ["v2"]
+# M49/T49.0: v3, whose boot panics -- the swap must not happen (R4-F5).
+panic-boot = ["v3"]
 
 [dependencies]
 lumen-static = { path = "../../crates/lumen-static", features = ["reload"] }

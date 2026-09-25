@@ -145,6 +145,9 @@ macro_rules! export_reloadable_app {
 /// `Box<dyn Any>` from another build, and a `TypeId` is not stable
 /// across builds. Without a catch, a panic reaching an `extern "C"`
 /// boundary aborts the loader (Rust 1.81).
+#[cfg(test)]
+mod shim_tests;
+
 pub mod panic {
     use std::cell::RefCell;
     use std::sync::{Mutex, Once};

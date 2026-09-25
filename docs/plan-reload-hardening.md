@@ -346,6 +346,52 @@ commit body. The re-triage's scratch probes become committed tests.
 
 R5-F9 is prose and has no check (T49.13).
 
+> **What building T49.0 found (2026-09-26, at `5f6b4f2`).** Each finding
+> was re-checked at HEAD before its gate was written; none had moved.
+>
+> - **R4-F5, stamp.** `just abi-stamp` rsyncs `crates/` into a workspace
+>   of its own under `target/abi-stamp/ws` and builds `stamp-lib` there.
+>   An unchanged copy is accepted (the stamp must describe source, not
+>   where it lives); `Cmd::Rect` moved after `Cmd::Text` is **accepted**
+>   at HEAD, "all 12 fields agree" — known red, printed, until T49.1; and
+>   an edit to `lumen-static-widgets` alone is accepted. `stamp-lib` now
+>   names a widget type, so that crate is in its graph at all.
+> - **R4-F5, boot.** Green, as the re-triage found. Two injections:
+>   dropping the library's report from `Reloader::swap`'s error fires
+>   "the error must say the boot panicked and where"; removing
+>   `Build::boot`'s null check makes the loader take a null session, and
+>   the gate dies with SIGSEGV (139).
+> - **R4-F8: miri cannot build this crate here.** Every crate with a
+>   build script fails under `cargo +nightly miri` (nightly 2026-02-11)
+>   with "contains outdated or invalid JSON" — reproduced on a fresh
+>   crate whose only dependency is serde_json, so it is not this
+>   workspace. A dependency-free crate runs under miri and reports UB.
+>   T49.3 therefore takes §5's fallback, and the committed R4-F6 module
+>   runs in debug `cargo test`, where the standard library's precondition
+>   checks abort on all three null calls.
+> - **R5-F2's table is 23 rows**, not the re-triage's 9: every widget
+>   with user state, including four §2.3(c) did not list (`PaneGrid`'s
+>   dividers, `Pagination`'s page, `Picker`'s value, `RichTextEditor`'s
+>   text). All 23 are lost with 0 lines under the taught
+>   `#[reload(fresh)]`. `DataGrid` has **no selection** to save — §2.3(c)
+>   lists one — so its row is its scroll.
+> - **R5-F3 and R5-F4** are two tests, so T49.6 can go green before
+>   T49.7.
+> - **R5-F7's case has no `TextInput` field**: T49.5 gives `TextInput` an
+>   impl, after which an untagged one compiles. It uses an application's
+>   own widget with no impl instead, beside the `u32`.
+> - **R5-F8: the planned count could not see the finding.** `nm` found 0
+>   serde_json symbols in the release binary *without* `hot`, while
+>   `reload` was on unconditionally: the linker drops the derive's unused
+>   `save`/`restore`. `just reload-gating` counts serde_json in the
+>   dependency graph instead (2 without `hot` at HEAD, bound 0).
+> - **R4-F7 has no gate yet**: "the reload answer reports a shape change"
+>   has nothing to be written against at HEAD — there is no answer to
+>   read. T49.11 adds the fixture and the gate together.
+> - **Waiting, not faked:** R4-F2's latency row needs M42's drive
+>   identity and T49.12; T49.5's live step needs M42. R4-F3's chain case
+>   is not written, because T49.10 is not built (see its entry).
+
 **Other direction, recorded in the same commit:** an unchanged rebuild is
 accepted by the stamp case; the schema test's `u32 → u64` row keeps its
 value with 0 lines; an application that derives `Default` still fails

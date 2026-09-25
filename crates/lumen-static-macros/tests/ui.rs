@@ -20,3 +20,22 @@ fn ui() {
     t.compile_fail("tests/ui/fail_*.rs");
     t.pass("tests/ui/pass_*.rs");
 }
+
+/// M49 (`docs/plan-reload-hardening.md`): the `Reloadable` derive as a hot
+/// window library meets it. Its own directory, so a red case here can be
+/// ignored without ignoring the twenty above.
+#[test]
+#[ignore = "red until T49.4: R5-F10, the derive requires Application::build"]
+fn reload_program() {
+    let t = trybuild::TestCases::new();
+    t.pass("tests/ui-reload/pass_*.rs");
+}
+
+/// M49/T49.8 (R5-F7): the derive's errors land on the field and name the
+/// attribute that fixes them.
+#[test]
+#[ignore = "red until T49.8: R5-F7, the error lands on the derive and names no fix"]
+fn reload_diagnostics() {
+    let t = trybuild::TestCases::new();
+    t.compile_fail("tests/ui-reload/fail_*.rs");
+}

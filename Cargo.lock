@@ -1578,9 +1578,12 @@ name = "lumen-static-macros"
 version = "0.1.0"
 dependencies = [
  "lumen-static",
+ "lumen-static-reload",
+ "lumen-static-shell",
  "lumen-static-widgets",
  "proc-macro2",
  "quote",
+ "serde",
  "syn 2.0.119",
  "trybuild",
 ]
@@ -1602,6 +1605,7 @@ dependencies = [
  "lumen-static",
  "lumen-static-agent",
  "lumen-static-widgets",
+ "serde",
  "serde_json",
  "wide",
 ]
@@ -2876,6 +2880,7 @@ version = "0.1.0"
 dependencies = [
  "lumen-static",
  "lumen-static-reload",
+ "lumen-static-widgets",
 ]
 
 [[package]]

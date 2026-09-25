@@ -18,3 +18,5 @@ observe = ["lumen-static/observe"]
 [dependencies]
 lumen-static = { path = "../../crates/lumen-static", features = ["reload"] }
 lumen-static-reload = { path = "../../crates/lumen-static-reload" }
+# M49/T49.1: in the graph so an edit to it alone can be shown to be accepted.
+lumen-static-widgets = { path = "../../crates/lumen-static-widgets" }

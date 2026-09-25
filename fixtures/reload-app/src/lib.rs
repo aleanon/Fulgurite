@@ -68,6 +68,10 @@ fn on_inc(t: &mut Tally, _: &EventCtx) {
 
 impl Application for Counter {
     fn build() -> Self {
+        // M49/T49.0: a build whose boot panics, so the loader can be shown
+        // to keep the running session (R4-F5) — `v-panic.so`.
+        #[cfg(feature = "panic-boot")]
+        panic!("this build's boot panics on purpose");
         let mut c = Counter { ui: Ui::default(), tally: Tally::default(), name: boot_name() };
         c.ui.inc.label = "+";
         c.ui.inc.on_click = on_inc;
