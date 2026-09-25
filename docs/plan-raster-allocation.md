@@ -1,10 +1,15 @@
 # M50 — the software rasteriser allocates what its gate says it does not
 
-> **T50.1 DONE 2026-09-25 (early landing).** T50.1: the raster arm is
+> **T50.1 and T50.8 DONE 2026-09-25 (early landings).** **T50.1:** the raster arm is
 > `rasterising_a_block_glyph_frame_allocates_nothing`, and the handoff,
 > `docs/results-allocation.md`, the book and the rustdoc say the
 > truetype path allocates (re-measured at `0091266`: 25.80 raster +
 > 4.60 pump allocations per frame, the review's figures unchanged).
+> **T50.8:** `clip_test.rs` pins the
+> clip stack for all nine drawing commands (glass twice) and for a
+> shadow in a `ScrollView` on a full redraw: 0 px outside the clip on
+> every row; `c472f80` turns the `Shadow` row and the `ScrollView` case
+> red (3,356 px and 2,888 px).
 >
 > **Written 2026-09-24.** Closes R8-F1, R8-F2, R8-F6,
 > R8-F7, R8-F8, R8-F10, R18-F4, R18-F10 and R6-F5 from M38
@@ -612,6 +617,21 @@ which shows the setup draws something there.
 
 **Docs in the same commit:** `clipped`'s rustdoc names which commands
 `clip_test.rs` covers.
+
+*What building found (2026-09-25).* Three things the task text did not
+say. (1) **Glass cannot be pinned against the clear colour**: a blur of
+a flat backdrop is that backdrop, so a glass command over nothing inks
+nothing and its setup check (ink outside without the clip) read 0. The
+glass rows draw striped rects *before* the clip, and every row counts
+pixels that differ from a render of its backdrop alone. (2) **A shadow
+inks only around its rect**, so a shadow covering the clip left nothing
+inside it to prove the command drew; its rect sits inside the clip and
+the ring crosses it. (3) `clipped`'s rustdoc was **detached**: it sat
+on `TextRun`, above that struct's own comment, so rustdoc showed it on
+the wrong item. It moved to `fn clipped` with the coverage list. The
+injections went beyond `c472f80`: glass, line, gradient, image and
+block-glyph text each over their unclipped rect or clip, each red on
+its own row (commit body).
 
 **Effort:** S. **Depends on:** none. **May run in Phase 2 or 3,**
 because it is a test with no code change and no dependency on M43's

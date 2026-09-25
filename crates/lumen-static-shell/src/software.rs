@@ -1621,14 +1621,6 @@ impl Renderer for Canvas {
     }
 }
 
-/// Intersect a rect with every clip on the stack; `None` if nothing
-/// survives.
-///
-/// Honouring the clip stack is not cosmetic. A `Repeat` places rows
-/// outside its viewport by construction and `hit` rejects points there,
-/// so a renderer that ignores clips draws content no click can reach —
-/// the probe-vs-click class of bug, one layer down. `tests/clip_test.rs`
-/// pins it at the pixel level.
 /// One `Cmd::Text` as the glyph blitter wants it: the fields of the
 /// command, borrowed, so the call site does not spell out six scalars.
 #[cfg(feature = "truetype")]
@@ -2202,6 +2194,23 @@ impl ClipStack {
     }
 }
 
+/// Intersect a rect with every clip on the stack; `None` if nothing
+/// survives.
+///
+/// Honouring the clip stack is not cosmetic. A `Repeat` places rows
+/// outside its viewport by construction and `hit` rejects points there,
+/// so a renderer that ignores clips draws content no click can reach —
+/// the probe-vs-click class of bug, one layer down.
+///
+/// `tests/clip_test.rs` pins it at the pixel level **for every drawing
+/// command** since M50/T50.8: `Rect`, `RoundedRect`, `StrokedRect`,
+/// `Shadow`, `Gradient`, `Line`, `Text` (block glyphs; the truetype
+/// blit is not in that binary), `Image` and `Glass` (frosted and
+/// liquid), each inside a `PushClip`, plus a shadow inside a
+/// `ScrollView`'s viewport on a full redraw — the case `tests/damage_oracle.rs`
+/// cannot see, because a full and a partial render escape identically.
+/// Until T50.8 it covered the first three only. (This comment also sat
+/// on `TextRun` until then, detached from the function it describes.)
 fn clipped(rect: [f32; 4], stack: &[[f32; 4]]) -> Option<[f32; 4]> {
     // Reject non-finite and empty input on entry. `f32::max`/`min` return
     // the non-NaN operand, so without this a NaN coordinate would be
