@@ -109,6 +109,20 @@ crate, forever" — proof-carrying code, and it costs nothing at runtime.
 It fits §5's spirit exactly: facts the compiler already knows should be
 facts the compiler checks.
 
+> **Tightened 2026-09-25, M41/T41.6.** The check that shipped as
+> `table_is_well_formed` asked that a parent *precede* its child and let
+> a last child's `next_sibling` point at "a later node". Both were
+> weaker than what `subtree_range` and every child-chain walk assume, so
+> it accepted four tables whose ranges were wrong or whose sibling
+> chains ran into an uncle (R2-F5). It now requires DFS pre-order (node
+> `j`'s parent is `j - 1` or an ancestor of it) and a last child's link
+> to be 0. The review's derive mutation I3 — a last child linked to its
+> parent's end — compiled everywhere under the old check and now fails
+> with 52 const-evaluation errors across 18 targets.
+> `crates/lumen-static/tests/table_invariants.rs` holds the four
+> counterexamples, judged against descendants computed from parent
+> links alone.
+
 ### Tier 1 — bounded model checking of the passes (Kani)
 
 Harnesses over small symbolic tables (3–6 nodes) proving, for all inputs:

@@ -27,8 +27,11 @@
 //! descent — a container calls its children through `&mut dyn Node` —
 //! so there is no kind list and no `fn`-pointer table
 //! (`docs/results-traversal.md`). Two const assertions ride along with
-//! every expansion: the spliced table is well-formed, and `DEPTH` fits
-//! `MAX_DEPTH`, so a tree that could overflow the stack does not compile.
+//! every expansion: the spliced table is well-formed — DFS pre-order,
+//! forward sibling links, and a last child's link 0, which is what
+//! `subtree_range` and every chain walk assume (tightened by M41/T41.6;
+//! see `table_is_well_formed`) — and `DEPTH` fits `MAX_DEPTH`, so a tree
+//! that could overflow the stack does not compile.
 
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as Ts2;

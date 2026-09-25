@@ -13,6 +13,12 @@
 //! over each node-as-child. These cases pin both the verdicts and the
 //! reasons, so the linear form cannot quietly accept something the
 //! quadratic one rejected.
+//!
+//! **And it said yes too often** — M41/T41.6, R2-F5. It checked that a
+//! parent precedes its child, not DFS pre-order, and let a last child
+//! link to "a later node". The four counterexamples at the end of this
+//! file were all accepted although `subtree_range` — which decides what
+//! the `Boundaries` default's precise marks cover — is wrong for them.
 
 use lumen_static::widget::table_is_well_formed;
 use lumen_static::{NodeDesc, NO_PARENT};
@@ -216,7 +222,6 @@ fn cx_d() -> Vec<NodeDesc> {
 }
 
 #[test]
-#[ignore = "red until T41.6: R2-F5, table_is_well_formed accepts tables whose subtree_range is wrong"]
 fn tables_with_a_wrong_subtree_range_are_rejected() {
     let mut accepted = vec![];
     for (name, t) in [("A", cx_a()), ("B", cx_b()), ("C", cx_c()), ("D", cx_d())] {

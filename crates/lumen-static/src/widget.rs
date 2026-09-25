@@ -418,6 +418,18 @@ pub const fn splice_child(
 /// Structural well-formedness of a table, as a `const fn` so the derive
 /// can assert it at compile time for every table it generates —
 /// proof-carrying tables (`docs/verification-notes.md`, Tier 0).
+///
+/// **What it guarantees** is what [`crate::style::subtree_range`] and
+/// every child-chain walk assume: the table is DFS pre-order — node
+/// `j`'s parent is `j - 1` or an ancestor of `j - 1`, so a subtree is one
+/// contiguous range — each parent's children are linked forward from
+/// `first_child = parent + 1`, and **a last child's `next_sibling` is
+/// 0**. Until M41/T41.6 it checked only that a parent *precedes* its
+/// child, and let a last child point at "a later node", which accepted
+/// four tables whose `subtree_range` is wrong or whose sibling chain
+/// runs into an uncle (`crates/lumen-static/tests/table_invariants.rs`,
+/// R2-F5). The reach of that gap grew when the `Boundaries` default made
+/// `subtree_range` decide what a precise mark covers.
 #[doc(hidden)]
 pub const fn table_is_well_formed(t: &[NodeDesc]) -> bool {
     if t.is_empty() {
@@ -427,13 +439,29 @@ pub const fn table_is_well_formed(t: &[NodeDesc]) -> bool {
         return false;
     }
 
-    // Parent precedes child (DFS pre-order), and the declared child
-    // counts add up to "every node but the root is somebody's child".
+    // DFS pre-order: node j's parent is j - 1 or one of j - 1's
+    // ancestors. "Parent precedes child" is weaker — it accepts a
+    // child stored after its uncle, which splits its parent's subtree
+    // into two ranges. The walk up is bounded by the depth, and each
+    // step moves strictly toward the root, so it terminates on any
+    // table that passed the precedes check on the way.
+    // The declared child counts add up to "every node but the root is
+    // somebody's child".
     let mut declared = 0usize;
     let mut i = 0;
     while i < t.len() {
-        if i > 0 && t[i].parent as usize >= i {
-            return false;
+        if i > 0 {
+            let p = t[i].parent as usize;
+            if p >= i {
+                return false;
+            }
+            let mut a = i - 1;
+            while a != p {
+                if a == 0 {
+                    return false;
+                }
+                a = t[a].parent as usize;
+            }
         }
         declared += t[i].child_count as usize;
         i += 1;
@@ -469,9 +497,11 @@ pub const fn table_is_well_formed(t: &[NodeDesc]) -> bool {
                     if next <= k || next >= t.len() {
                         return false;
                     }
-                } else if next != 0 && next <= k {
-                    // The last child terminates with 0, or points at a
-                    // later node (its parent's own next sibling).
+                } else if next != 0 {
+                    // The last child terminates with 0. The allowance
+                    // this replaced — "or points at a later node, its
+                    // parent's own next sibling" — let a chain walk run
+                    // on into the uncle (M41/T41.6).
                     return false;
                 }
                 k = next;
