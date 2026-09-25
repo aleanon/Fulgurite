@@ -9,7 +9,7 @@ set -uo pipefail
 export LC_ALL=C
 R=${R:-5}
 for _ in $(seq "$R"); do
-  cargo run --release -q --manifest-path "$(dirname "$0")/Cargo.toml" "$@" 2>/dev/null
+  cargo run --locked --release -q --manifest-path "$(dirname "$0")/Cargo.toml" "$@" 2>/dev/null
 done | python3 -c '
 import re, sys
 best = {}

@@ -27,6 +27,7 @@ static:
     ./scripts/check_book_includes.sh    # book includes, anchors and links must all resolve
     ./scripts/check_attr_table.sh       # the attribute table in lib.rs and the book must agree
     ./scripts/check_one_agent_server.sh # M39: one agent transport; nothing else binds a listener
+    ./scripts/check_locks.sh            # both Cargo.lock files match their manifests (--locked)
 
 # Default features == the shipped shape. This is the ONLY build that compiles
 # what docs/verification-notes.md scopes its argument to; `--workspace` cannot
@@ -101,6 +102,11 @@ fonts:
     cargo test -q -p lumen-static-shell --features truetype --test font_discovery -- --nocapture | grep '^fonts:'
     cargo test -q -p lumen-static-text --test shaping
     cargo test -q -p embedded --test baked_face
+
+# Security advisories, offline, against deny.toml's accepted list: a NEW
+# advisory fails (M43/T43.12). `cargo deny fetch` refreshes the database.
+deny:
+    ./scripts/check_deny.sh
 
 # The four fixtures. Until today none of these ran in the gate; three of them
 # assert. miri-smoke runs in `release-shape` above -- it contains zero
@@ -455,13 +461,18 @@ const-budget:
 gpu-parity:
     ./scripts/gpu_parity.sh
 
+# **`--locked` on every benches-competitive build** (M43/T43.12): its
+# lock went stale at M30 and every recipe that built there rewrote the
+# committed file, `just test` included. `check_locks.sh` in `static` now
+# refuses a stale lock, and these refuse to write one.
+
 # Both backends over a resolution sweep — the table in docs/results-gpu.md.
 # `--bin` is required: the package gained a second binary (`bands`,
 # M16/T16 threading) and `cargo run -p` then refuses as ambiguous. This
 # recipe was broken from that day until 2026-09-22, which is how long it
 # had been since anyone ran it.
 raster-sweep:
-    cd benches-competitive && cargo run --release -p raster-scaling --bin raster-scaling
+    cd benches-competitive && cargo run --locked --release -p raster-scaling --bin raster-scaling
 
 # Our software rasteriser against Vello's — docs/results-vello.md.
 #
@@ -472,7 +483,7 @@ raster-sweep:
 # twice. Both frames are checked against each other every run — see the
 # three bounds in the arm.
 vello f="simd,threads" threads="16":
-    cd benches-competitive && VELLO_THREADS={{ threads }} cargo run --release -p vello-cpu-arm --features "{{ f }}"
+    cd benches-competitive && VELLO_THREADS={{ threads }} cargo run --locked --release -p vello-cpu-arm --features "{{ f }}"
 
 # Every stage of one frame, separately, over N x workload x retention.
 #
@@ -486,7 +497,7 @@ vello f="simd,threads" threads="16":
 
 # Per-stage cost of one frame over N x workload x retention.
 stages ns="100,1000,3000,10000" iters="200" warm="20":
-    cd benches-competitive && cargo run --release -q -p lumen-static-stages -- {{ ns }} {{ iters }} {{ warm }}
+    cd benches-competitive && cargo run --locked --release -q -p lumen-static-stages -- {{ ns }} {{ iters }} {{ warm }}
 
 # The Step 4 dylib swap demo; exit code is the verdict.
 hot-demo:

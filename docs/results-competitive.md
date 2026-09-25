@@ -390,7 +390,10 @@ rows under `Everything`, of which raster and blit are 0.01 each. Under
 `Boundaries` that frame is the 0.01 µs row in the table above.
 
 Reproduce: `benches-competitive/competitors.sh`, `just stages`,
-`benches --bin invalidation`.
+`benches --bin invalidation`. Every build in `benches-competitive` passes
+`--locked` since M43/T43.12: its `Cargo.lock` had drifted from its
+manifests at M30 and each rebuild rewrote it; `scripts/check_locks.sh`
+now refuses a stale one.
 
 ## 6. What the benchmark found
 

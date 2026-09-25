@@ -1,0 +1,21 @@
+# cargo-deny: advisories only (M43/T43.12, docs/plan-gate-hygiene.md §4 --
+# a licence policy is a decision nobody has asked for yet).
+#
+# Run offline by `scripts/check_deny.sh` (so by `just deny`, and by `just
+# ci` once it exists): the advisory database is whatever
+# ~/.cargo/advisory-db last fetched; `cargo deny fetch` refreshes it.
+#
+# The point of the `ignore` list is that it is SHORT and each entry says
+# why: an advisory accepted here is a decision, and a NEW advisory -- one
+# not listed -- fails the check.
+[advisories]
+ignore = [
+    # rustybuzz is unmaintained. It is lumen-static-text's shaper
+    # (T15.8), a default-off crate; its successor is harfrust, and the
+    # port is not scheduled. Accepted 2026-09-25.
+    { id = "RUSTSEC-2026-0206", reason = "rustybuzz: lumen-static-text's shaper; the harfrust port is not scheduled" },
+    # ttf-parser is unmaintained. It arrives through fontdue (the shell's
+    # `truetype` rasteriser), rustybuzz, and winit's sctk-adwaita window
+    # decorations; none is ours to replace in place. Accepted 2026-09-25.
+    { id = "RUSTSEC-2026-0192", reason = "ttf-parser: via fontdue, rustybuzz and winit's decorations; not ours to replace" },
+]

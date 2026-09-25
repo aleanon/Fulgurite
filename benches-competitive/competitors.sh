@@ -116,10 +116,10 @@ record() { printf '%s\t%s\t%s\n' "$1" "$2" "$(date -Is)" >> "$STATUS"; }
 
 build_lumen_static() {
   # Trap 3: same output path for both feature sets, so copy immediately.
-  cargo build --release -q --manifest-path "$HERE/Cargo.toml" -p lumen-static-frame \
+  cargo build --locked --release -q --manifest-path "$HERE/Cargo.toml" -p lumen-static-frame \
     && cp "$HERE/target/release/lumen-static-frame" "$BUILD/lumen-static-frame" \
     && record lumen-static ok || { record lumen-static FAILED; return 1; }
-  cargo build --release -q --manifest-path "$HERE/Cargo.toml" -p lumen-static-frame --features observe \
+  cargo build --locked --release -q --manifest-path "$HERE/Cargo.toml" -p lumen-static-frame --features observe \
     && cp "$HERE/target/release/lumen-static-frame" "$BUILD/lumen-static-frame-observe" \
     && record lumen-static-observe ok || { record lumen-static-observe FAILED; return 1; }
 }
@@ -129,7 +129,7 @@ build_size_arms() {
   local ok=0
   for p in lumen-static-app lumen-static-lean; do
     rm -f "$HERE/target/release/$p"
-    if cargo build --release -q --manifest-path "$HERE/Cargo.toml" -p "$p"; then
+    if cargo build --locked --release -q --manifest-path "$HERE/Cargo.toml" -p "$p"; then
       cp "$HERE/target/release/$p" "$BUILD/$p"; record "$p" ok
     else record "$p" FAILED; ok=1; fi
   done

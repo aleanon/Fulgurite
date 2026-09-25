@@ -18,9 +18,9 @@ mode="${1:-gate}"
 second="--features observe"
 [ "$mode" = --aa ] && second=""
 export CARGO_PROFILE_RELEASE_STRIP=false
-CARGO_TARGET_DIR=target/probe-plain cargo build -q --release -p observe-probe
+CARGO_TARGET_DIR=target/probe-plain cargo build -q --locked --release -p observe-probe
 # shellcheck disable=SC2086
-CARGO_TARGET_DIR=target/probe-second cargo build -q --release -p observe-probe $second
+CARGO_TARGET_DIR=target/probe-second cargo build -q --locked --release -p observe-probe $second
 fail=0
 for build in plain second; do
     for bin in list repeat; do
@@ -40,8 +40,8 @@ if [ "$mode" = --clock ]; then
     # fast-cluster minima, beside the plain build's fast-cluster width.
     # The fast cluster is every run within 5% of that build's minimum —
     # a rule in the script, not a judgement by eye.
-    CARGO_TARGET_DIR=target/clock-plain cargo build -q --release -p lumen-static-frame
-    CARGO_TARGET_DIR=target/clock-obs cargo build -q --release -p lumen-static-frame --features lumen-static-widgets/observe
+    CARGO_TARGET_DIR=target/clock-plain cargo build -q --locked --release -p lumen-static-frame
+    CARGO_TARGET_DIR=target/clock-obs cargo build -q --locked --release -p lumen-static-frame --features lumen-static-widgets/observe
     for i in 1 2 3 4 5 6 7 8; do
         for b in plain obs; do
             printf "%s " $b

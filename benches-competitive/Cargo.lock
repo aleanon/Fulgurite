@@ -1059,6 +1059,7 @@ name = "lumen-static-app"
 version = "0.0.0"
 dependencies = [
  "lumen-static",
+ "lumen-static-widgets",
  "lumen-static-winit",
 ]
 
@@ -1069,6 +1070,7 @@ dependencies = [
  "lumen-static",
  "lumen-static-agent",
  "lumen-static-shell",
+ "lumen-static-widgets",
 ]
 
 [[package]]
@@ -1076,6 +1078,7 @@ name = "lumen-static-lean"
 version = "0.0.0"
 dependencies = [
  "lumen-static",
+ "lumen-static-widgets",
  "lumen-static-winit",
 ]
 
@@ -1104,6 +1107,7 @@ dependencies = [
  "lumen-static",
  "lumen-static-shell",
  "lumen-static-wgpu",
+ "lumen-static-widgets",
 ]
 
 [[package]]
@@ -1115,6 +1119,14 @@ dependencies = [
  "lumen-static-shell",
  "pollster",
  "wgpu",
+]
+
+[[package]]
+name = "lumen-static-widgets"
+version = "0.1.0"
+dependencies = [
+ "accesskit",
+ "lumen-static",
 ]
 
 [[package]]
@@ -1558,6 +1570,15 @@ dependencies = [
  "objc2 0.5.2",
  "objc2-core-location",
  "objc2-foundation 0.2.2",
+]
+
+[[package]]
+name = "observe-probe"
+version = "0.0.0"
+dependencies = [
+ "lumen-static",
+ "lumen-static-shell",
+ "lumen-static-widgets",
 ]
 
 [[package]]
