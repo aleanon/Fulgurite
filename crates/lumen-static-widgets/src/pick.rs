@@ -438,8 +438,9 @@ impl<const KIND: u8> Node for Pad<KIND> {
             );
             // The weekday strip, one label per column, dimmed: it is a
             // heading, not a row of cells, and nothing in it is
-            // pressable.
-            let dim = Color(s.fg.0, s.fg.1, s.fg.2, 0x99);
+            // pressable. 72% rather than 60%: at 60% the headings were
+            // 4.30:1 on the pad, under AA (M57/A8's demo contrast gate).
+            let dim = Color(s.fg.0, s.fg.1, s.fg.2, 0xb8);
             for (c, d) in DOW.iter().enumerate() {
                 let x = x0 + c as f32 * self.cell_w();
                 out.text_weighted(

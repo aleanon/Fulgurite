@@ -56,9 +56,12 @@ const SHOW_LIGHT: Palette = Palette {
     // #6b7488 until M56/T56.3: 4.33:1 on the page, under AA's 4.5 for
     // the blurb and breadcrumb it colours (`chrome_text_meets_contrast`).
     muted: Color(0x63, 0x6c, 0x80, 0xff),
-    accent: Color(0x2f, 0x6b, 0xff, 0xff),
+    // 5.0:1 under white — M57/A8. It was #2f6bff at 4.498:1, which
+    // prints as 4.50 and is under AA; the demo contrast gate found it on
+    // every primary button, the app bar and the current page.
+    accent: Color(0x2b, 0x64, 0xf5, 0xff),
     on_accent: Color(0xff, 0xff, 0xff, 0xff),
-    focus: Color(0x2f, 0x6b, 0xff, 0xff),
+    focus: Color(0x2b, 0x64, 0xf5, 0xff),
     // M57/A8's roles: every widget's own colours now follow these, with
     // no rule in the sheet.
     raised: Color(0xff, 0xff, 0xff, 0xff),
@@ -76,7 +79,9 @@ const SHOW_DARK: Palette = Palette {
     control: Color(0x6b, 0x75, 0x89, 0xff),
     text: Color(0xe6, 0xea, 0xf2, 0xff),
     muted: Color(0x94, 0xa0, 0xb4, 0xff),
-    accent: Color(0x5b, 0x8c, 0xff, 0xff),
+    // 5.1:1 on `raised` — M57/A8; #5b8cff was 4.37:1 as the pagination's
+    // page numbers.
+    accent: Color(0x6b, 0x98, 0xff, 0xff),
     on_accent: Color(0x0a, 0x0e, 0x18, 0xff),
     focus: Color(0x82, 0xaa, 0xff, 0xff),
     // Raised a step *above* the stage card (`surface`), which is how a
@@ -122,9 +127,6 @@ struct Chrome {
     ghost: Color,
     /// A secondary button's edge on the white stage card.
     outline: Color,
-    /// A light panel for demo content whose text is dark whatever the
-    /// palette (the pull area).
-    panel: Color,
 }
 
 const CHROME_LIGHT: Chrome = Chrome {
@@ -133,7 +135,6 @@ const CHROME_LIGHT: Chrome = Chrome {
     accent_text: Color(0x1f, 0x4f, 0xd1, 0xff),
     ghost: Color(0xea, 0xef, 0xfb, 0xff),
     outline: Color(0xcf, 0xd6, 0xe2, 0xff),
-    panel: Color(0xf0, 0xf2, 0xf6, 0xff),
 };
 
 const CHROME_DARK: Chrome = Chrome {
@@ -142,7 +143,6 @@ const CHROME_DARK: Chrome = Chrome {
     accent_text: Color(0x9b, 0xb8, 0xff, 0xff),
     ghost: Color(0x23, 0x2f, 0x4d, 0xff),
     outline: Color(0x3d, 0x46, 0x57, 0xff),
-    panel: Color(0xe6, 0xea, 0xf2, 0xff),
 };
 
 /// The chrome's colours for the palette in force at start.
@@ -905,8 +905,14 @@ fn btn() -> lumen_static::style::Patch {
 }
 
 fn stylesheet() -> Vec<StyleRule> {
+    stylesheet_with(chrome())
+}
+
+/// The sheet, with its role-less colours taken from `c` — so a test can
+/// build the dark sheet without the `LUMEN_PALETTE` environment variable
+/// (M57/A8's demo contrast gate).
+fn stylesheet_with(c: Chrome) -> Vec<StyleRule> {
     use lumen_static::style::{Patch, Role, Selector};
-    let c = chrome();
     let mut rules = vec![
         // ---- the chrome (M56, `docs/plan-showcase-design.md`) -------
         //
@@ -1216,28 +1222,22 @@ fn stylesheet() -> Vec<StyleRule> {
         // its content, so the demo read as a line of text; M56's stricter
         // stage filter said so (the old one had credited it with the
         // header's hairline). The demo's own container is the area.
-        // A light ground in both palettes, as a pane grid's panes have:
-        // its content is a bare `Label`, which no rule can reach without
-        // reaching every label, and whose default text is dark. (A
-        // `Kind("label")` → text-role rule was tried and turned the grid's
-        // and the pane grid's labels light-on-light in the dark palette.)
+        // A raised ground under the pull area and the split pane's
+        // halves, following the palette. They were a light panel "in both
+        // palettes" because their content is bare `Label`s and a label's
+        // text was dark whatever the palette; since M57/A8 a label is the
+        // palette's text, and the light panel made it light-on-light in
+        // dark (`every_demo_text_reads_in_both_palettes`). The four
+        // `Kind` rules that painted icon, rich text, markdown and text
+        // area in the text role went the same way: that is their default.
         StyleRule::new(
             Selector::Kind("DPullToRefresh"),
-            Patch::new().width(Length::Shrink).background(c.panel).radius(12.0),
+            Patch::new().width(Length::Shrink).background_role(Role::Raised).radius(12.0),
         ),
-        // The split pane's halves are bare `Label`s too, so the same
-        // light panel under them.
         StyleRule::new(
             Selector::Kind("DSplitPane"),
-            Patch::new().width(Length::Shrink).background(c.panel).radius(8.0),
+            Patch::new().width(Length::Shrink).background_role(Role::Raised).radius(8.0),
         ),
-        // **Text that follows the palette.** These draw their words in
-        // their style's colour, which defaulted to a dark grey and was all
-        // but invisible on the dark card — before M56 as well as after it.
-        StyleRule::new(Selector::Kind("icon"), Patch::new().color_role(Role::Text)),
-        StyleRule::new(Selector::Kind("richtext"), Patch::new().color_role(Role::Text)),
-        StyleRule::new(Selector::Kind("markdown"), Patch::new().color_role(Role::Text)),
-        StyleRule::new(Selector::Kind("textarea"), Patch::new().color_role(Role::Text)),
         StyleRule::new(Selector::Id("d_progress_a"), Patch::new().width(Length::Fixed(280.0))),
         StyleRule::new(Selector::Id("d_divider_a"), Patch::new().width(Length::Fixed(280.0))),
         StyleRule::new(
@@ -1765,6 +1765,77 @@ mod tests {
             }
         }
         assert!(failed.is_empty(), "chrome text under AA's 4.5:1 — {failed:?}");
+    }
+
+    /// **Every demo's text reads on what it is painted over, in both
+    /// palettes** — M57/A8 (`docs/plan-widget-fixes.md`, D4).
+    ///
+    /// `chrome_text_meets_contrast` above checks the chrome and nothing
+    /// else, which is how a Label demo shipped at 1.30:1 in the dark
+    /// palette and a modal's title black on its dark panel
+    /// (`docs/widget-audit.md` X6). This reads what was *painted*: every
+    /// text command on the stage, against the opaque fills painted before
+    /// it that contain its centre, composited in paint order over the
+    /// stage card. AA's 4.5:1, or 3:1 for large text (24 px, or 18.66 px
+    /// bold).
+    #[test]
+    fn every_demo_text_reads_in_both_palettes() {
+        use lumen_static_shell::text::{FontMetrics, FontStack};
+        let mut failed = Vec::new();
+        let mut checked = 0usize;
+        for (name, p, c) in [("light", SHOW_LIGHT, CHROME_LIGHT), ("dark", SHOW_DARK, CHROME_DARK)] {
+            let mut h = host(0, false);
+            h.set_palette(p);
+            h.set_stylesheet(&stylesheet_with(c));
+            let mut m = FontStack::system().map(FontMetrics::new);
+            for (e, entry) in CATALOG.iter().enumerate() {
+                choose(&mut h.app.store, e);
+                for _ in 0..2 {
+                    match m.as_mut() {
+                        Some(m) => h.pump_with(m),
+                        None => h.pump(),
+                    };
+                }
+                let (sx, sy) = stage_origin(&h);
+                let inside = |r: &[f32; 4], x: f32, y: f32| r[0] <= x && x <= r[2] && r[1] <= y && y <= r[3];
+                for (k, cmd) in h.list.cmds.iter().enumerate() {
+                    let Cmd::Text { rect, text, size, weight, color } = cmd else { continue };
+                    if rect[0] <= sx || rect[1] <= sy || color.3 == 0 {
+                        continue;
+                    }
+                    let (cx, cy) = ((rect[0] + rect[2]) / 2.0, (rect[1] + rect[3]) / 2.0);
+                    let mut ground = p.surface;
+                    for prev in &h.list.cmds[..k] {
+                        match prev {
+                            Cmd::Rect { rect: r, color: f } | Cmd::RoundedRect { rect: r, color: f, .. }
+                                if f.3 > 0 && inside(r, cx, cy) =>
+                            {
+                                ground = over(*f, f.3, ground);
+                            }
+                            _ => {}
+                        }
+                    }
+                    let fg = over(*color, color.3, ground);
+                    let large = *size >= 24.0 || (*size >= 18.66 && *weight >= 700.0);
+                    let bound = if large { 3.0 } else { 4.5 };
+                    let r = contrast(fg, ground);
+                    checked += 1;
+                    if r < bound {
+                        failed.push(format!(
+                            "{name} {}: {:?} is {r:.2}:1 ({fg:?} on {ground:?}), under {bound}",
+                            entry.name,
+                            h.list.str_of(*text)
+                        ));
+                    }
+                }
+            }
+        }
+        println!("  {checked} text runs checked across both palettes; {} under their bound", failed.len());
+        for f in &failed {
+            println!("  {f}");
+        }
+        assert!(checked > 200, "setup: only {checked} text runs on the stage — the walk found no demos");
+        assert!(failed.is_empty(), "{} demo text runs under their bound", failed.len());
     }
 
     /// The sidebar prints a heading where the group changes, so a group
