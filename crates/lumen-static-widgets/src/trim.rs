@@ -26,8 +26,11 @@ const LEAF: &[NodeDesc] = &[NodeDesc::new(0, NO_PARENT, 0, 0, 0)];
 ///
 /// **Its thickness is `Style::height`, not a field**, so a stylesheet
 /// sets it and a theme can set it once for every rule in an
-/// application. The default is 1 logical pixel, which the renderer
-/// antialiases to whatever the scale factor makes of it.
+/// application. The default is 1 logical pixel, which lands on exactly
+/// `scale` device rows: its edges are snapped to the pixel grid where
+/// logical becomes physical (M57/A15). This said the renderer antialiased
+/// it, and a divider centred on a half pixel drew two full rows
+/// (`docs/widget-audit.md`, Divider).
 #[derive(Default)]
 pub struct Divider;
 

@@ -1052,25 +1052,60 @@ impl<'a> Scaled<'a> {
     fn r(&self, r: Rect) -> Rect {
         [r[0] * self.scale, r[1] * self.scale, r[2] * self.scale, r[3] * self.scale]
     }
+
+    /// [`Scaled::r`], with every edge **on the device pixel grid** —
+    /// M57/A15 (`docs/plan-widget-fixes.md`).
+    ///
+    /// Layout centres things, and centring lands on halves: a divider at
+    /// y 428.5–429.5 was rasterised as two full rows, because the
+    /// software renderer rounds an axis-aligned edge outward
+    /// (`docs/widget-audit.md` X10) — so a 1 px hairline drew 2 px wide
+    /// and a bordered button's edge smeared. Rounding the edges here,
+    /// where logical becomes physical, is the one place every fill and
+    /// border passes, at any scale. An edge pair that would round to
+    /// nothing keeps its physical extent instead, so a hairline narrower
+    /// than a pixel is never erased.
+    #[inline]
+    fn snapped(&self, r: Rect) -> Rect {
+        let p = self.r(r);
+        let (x0, x1) = snap_pair(p[0], p[2]);
+        let (y0, y1) = snap_pair(p[1], p[3]);
+        [x0, y0, x1, y1]
+    }
+}
+
+/// Round an edge pair to whole pixels, unless that would leave nothing.
+#[inline]
+fn snap_pair(a: f32, b: f32) -> (f32, f32) {
+    let (ra, rb) = (crate::num::round(a), crate::num::round(b));
+    if rb > ra || b <= a {
+        (ra, rb)
+    } else {
+        (a, b)
+    }
 }
 
 impl Painter for Scaled<'_> {
     fn rect(&mut self, rect: Rect, color: Color) {
-        let r = self.r(rect);
+        let r = self.snapped(rect);
         self.inner.rect(r, color);
     }
     fn text_weighted(&mut self, rect: Rect, s: &str, size: f32, weight: f32, color: Color) {
+        // The run's *origin* on the grid, its size kept: a glyph run
+        // starting on a half pixel is rasterised soft (M57/A15).
         let r = self.r(rect);
+        let (dx, dy) = (crate::num::round(r[0]) - r[0], crate::num::round(r[1]) - r[1]);
+        let r = [r[0] + dx, r[1] + dy, r[2] + dx, r[3] + dy];
         let size = size * self.scale;
         self.inner.text_weighted(r, s, size, weight, color);
     }
     fn rounded_rect(&mut self, rect: Rect, color: Color, radius: f32) {
-        let r = self.r(rect);
+        let r = self.snapped(rect);
         let radius = radius * self.scale;
         self.inner.rounded_rect(r, color, radius);
     }
     fn stroked_rect(&mut self, rect: Rect, color: Color, radius: f32, width: f32) {
-        let r = self.r(rect);
+        let r = self.snapped(rect);
         // The width scales too. A border that kept its logical width on a
         // 2x display would be half as thick as everything around it.
         self.inner.stroked_rect(r, color, radius * self.scale, width * self.scale);
