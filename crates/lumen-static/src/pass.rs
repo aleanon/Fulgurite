@@ -634,6 +634,20 @@ fn dispatch_at<S: crate::event::App>(
             _ => 0,
         };
         if dir != 0 {
+            // **The focused widget first** — M57/A11. Grouping ran before
+            // anything was asked, so a text field or a slider in a row
+            // beside a button lost Left and Right to focus movement the
+            // moment the row had two focusable children
+            // (`docs/widget-audit.md` X11). The widget is offered the key;
+            // only one that declines it — a button, a toggle — lets the
+            // arrow move focus through its group.
+            if let Some(f) = (*focus).filter(|&f| (f as usize) < table.len()) {
+                let cx = crate::event::EventCtx::for_event_with(f, *ev, mods);
+                if state.tree_mut().node_mut(f as usize).on_event(ev, &cx) {
+                    consumed.push(f as usize);
+                    return true;
+                }
+            }
             if let Some(f) = *focus {
                 let i = f as usize;
                 if i < table.len() && table[i].parent != crate::desc::NO_PARENT {
