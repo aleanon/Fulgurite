@@ -1,6 +1,12 @@
 # M51 — the GPU path: what its parity gate can see, and what it costs
 
-> **Written 2026-09-24, not started.** Closes R9-F1, R9-F2, R9-F3,
+> **T51.3 DONE 2026-09-25 (early landing).** `glass_deps.rs` fires
+> `dilate`'s `MAX_DEPS` escape: 4 panels go partial 5/5, 5 panels go
+> `Damage::All` 5/5, 0 px differ; with the escape deleted (`ecaf67f`)
+> 1,822 px differ. Software only, so llvmpipe is irrelevant to it: it
+> proves the same thing on any adapter.
+>
+> **Written 2026-09-24.** Closes R9-F1, R9-F2, R9-F3,
 > R9-F6, R9-F7, R9-F8, R9-F9 and R9-F10 from M38
 > (`docs/results-deep-review.md`), as re-triaged against `main` at
 > 1717808 on 2026-09-24.
@@ -402,6 +408,15 @@ at base, the `MAX_DEPS` arm passes with partial frames and the
 **Docs in the same commit:** `dilate`'s and `MAX_DEPS`'s rustdoc;
 `docs/results-glass.md` where the dependency rule is described; the
 handoff if it cites "no fallback" (to be checked when the task lands).
+
+*What building found (2026-09-25).* Nothing in the task was wrong. One
+more doc made the claim: `docs/plan-glass.md` item 4 of the dilation
+rule ("No round cap, and no fallback"), which is true of the round loop
+and was read as true of the table. It gains a dated correction rather
+than a rewrite. The handoff does not cite "no fallback". A second
+injection, `dilate` answering `All` whenever any dependency exists,
+turns the `MAX_DEPS` arm's setup assertion red, so the arm cannot pass
+by never going partial.
 
 **Effort:** S. **Depends on:** T51.0. **May run in Phase 2 or 3,**
 because it is a software-only test plus rustdoc and uses nothing from

@@ -504,6 +504,17 @@ struct Diffing {
 /// design problem rather than a case to optimise. Four matches
 /// [`MAX_REGIONS`], which is not a coincidence — each panel contributes
 /// at most one region.
+///
+/// **The escape fires, and is gated** (M51/T51.3):
+/// `crates/lumen-static-shell/tests/glass_deps.rs` draws `MAX_DEPS` and
+/// `MAX_DEPS + 1` frosted panels and checks each frame's partial render
+/// against a full one. The first arm must go partial and the second
+/// `Damage::All`; with the escape deleted the second goes partial over
+/// a table missing a panel and its pixels differ
+/// (`docs/results-glass.md` §0h, "The dependency cap's escape"). Growing
+/// the table is not done: `examples/glasswall` has 26 panels, so every
+/// one of its frames takes the escape, and that is a cost bound as well
+/// as a correctness one (`docs/plan-gpu-fidelity.md` §4).
 pub const MAX_DEPS: usize = 4;
 
 impl Diffing {
@@ -554,12 +565,20 @@ impl Diffing {
     /// smears a little more every frame. Damaging only where it draws
     /// fixes neither.
     ///
-    /// **Terminates in at most `n_deps + 1` rounds, provably**, so there
-    /// is no cap and no fallback: `d` only grows, the regions are fixed
-    /// for the frame, and re-adding a contained region is a no-op — so
-    /// every round that changes `d` consumes one of a finite set. A cap
-    /// with a `Damage::All` escape would be a branch that cannot fire,
-    /// and `AGENT.md` says such a branch cannot be shown to fail.
+    /// Two bounds, and only one of them is a fallback (corrected in
+    /// M51/T51.3 — this comment said "there is no cap and no fallback"
+    /// directly above the fallback):
+    ///
+    /// - **The dilation loop has no cap.** It terminates in at most
+    ///   `n_deps + 1` rounds, provably: `d` only grows, the regions are
+    ///   fixed for the frame, and re-adding a contained region is a
+    ///   no-op, so every round that changes `d` consumes one of a finite
+    ///   set. A round cap would be a branch that cannot fire.
+    /// - **The dependency table has one**, [`MAX_DEPS`]. A frame with
+    ///   more backdrop readers than that cannot list them all, and the
+    ///   first line below answers [`Damage::All`] — correct and merely
+    ///   slow. That branch *can* fire, and
+    ///   `crates/lumen-static-shell/tests/glass_deps.rs` fires it.
     fn dilate(&self, mut d: Damage) -> Damage {
         if self.dep_overflow && self.n_deps > 0 {
             return Damage::All;

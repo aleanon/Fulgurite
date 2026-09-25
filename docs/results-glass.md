@@ -507,6 +507,25 @@ rather than a case to optimise". Twenty-six is well past it, every frame
 is a full redraw, and **2.2 ms is that worst case** — no incremental
 path is being credited here.
 
+**The dependency cap's escape** (M51/T51.3, 2026-09-25). That full
+redraw is `dilate`'s `Damage::All` escape, and until T51.3 no test
+fired it: `retain.rs` said "no cap and no fallback" directly above it,
+and with it deleted every suite stayed green (R9-F3,
+`docs/results-deep-review.md`). `crates/lumen-static-shell/tests/glass_deps.rs`
+now renders `MAX_DEPS` = 4 and 5 frosted panels with a bar moving under
+the last, partial over the reported damage against full, five frames
+each:
+
+| panels | partial frames | `All` frames | worst px differing (bound 0) |
+|---|---:|---:|---:|
+| 4 (`MAX_DEPS`) | 5 | 0 | 0 |
+| 5 (`MAX_DEPS` + 1) | 0 | 5 | 0 |
+| 5, escape deleted (the injection) | 5 | 0 | **1,822** |
+
+The injected row is the review's figure to the pixel. Software only, so
+it proves the same thing on this project's llvmpipe-only machine as on
+a real GPU: the rule is the core retention's, and no wgpu code runs.
+
 ### How it is structured
 
 A texture cannot be sampled by the pass that is writing it, so the frame

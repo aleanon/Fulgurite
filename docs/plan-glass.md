@@ -329,6 +329,11 @@ Four corrections to the first draft, all from the review:
    `AGENT.md` a branch that cannot fire cannot be shown to fail. The
    first draft specified a cap and a `Damage::All` fallback for it;
    assert the bound instead.
+   *Corrected 2026-09-25 (M51/T51.3):* true of the **round** loop, and
+   not of the implementation as a whole. The dependency *table* was
+   built bounded (`MAX_DEPS`, 4) with exactly the `Damage::All` escape
+   this item calls untriggerable, and it fires on any frame with five
+   panels. `crates/lumen-static-shell/tests/glass_deps.rs` gates it.
 
 `observe_dep` gets a **provided body** so `Rebuild`, `Streaming<N>` and
 any host strategy are unaffected until they opt in — the shape
