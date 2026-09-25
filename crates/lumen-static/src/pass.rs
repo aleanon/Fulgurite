@@ -245,6 +245,20 @@ pub fn dispatch_overlaid_into<S: crate::event::App, O: crate::overlay::OverlaySi
     ev: &crate::event::Event,
     consumed: &mut Consumed,
 ) -> bool {
+    let handled = dispatch_overlaid_inner(state, style, st, input, ov, ev, consumed);
+    publish_focus(st, input);
+    handled
+}
+
+fn dispatch_overlaid_inner<S: crate::event::App, O: crate::overlay::OverlaySink>(
+    state: &mut S,
+    style: &[Style],
+    st: &mut [NodeState],
+    input: &mut crate::event::InputState,
+    ov: &O,
+    ev: &crate::event::Event,
+    consumed: &mut Consumed,
+) -> bool {
     use crate::event::{Event, Key};
 
     // **The release of a press that dismissed an overlay is consumed
@@ -405,7 +419,29 @@ pub fn dispatch<S: crate::event::App>(
     input: &mut crate::event::InputState,
     ev: &crate::event::Event,
 ) -> bool {
-    dispatch_at(state, style, st, input, ev, None, &mut Consumed::default())
+    let handled = dispatch_at(state, style, st, input, ev, None, &mut Consumed::default());
+    publish_focus(st, input);
+    handled
+}
+
+/// **Publish focus into the state array once the event has moved it** —
+/// M57/A1 (`docs/plan-widget-fixes.md`).
+///
+/// A widget's `paint` reads `NodeState::focused` (a caret is drawn only
+/// in the focused field, a ring only around the focused control). Every
+/// node, so a focus that moved does not leave the old one lit.
+///
+/// **After dispatch, not before.** This loop used to run at the top of
+/// `dispatch_at`, before the press, Tab or arrow that moves focus — so
+/// the published flag was always one event behind. The host hides the
+/// ring on `input.focus` (the *new* node) for a pointer press, and the
+/// old node kept `focused = true` with its ring intact: clicking B lit
+/// A's ring, which is the defect the widget audit was asked about
+/// (`docs/widget-audit.md`, bug 1).
+pub fn publish_focus(st: &mut [NodeState], input: &crate::event::InputState) {
+    for (i, n) in st.iter_mut().enumerate() {
+        n.focused = input.focus == Some(i as u32);
+    }
 }
 
 /// [`dispatch`], with the hit supplied rather than computed.
@@ -491,12 +527,8 @@ fn dispatch_at<S: crate::event::App>(
         }
     }
 
-    // Publish focus into the state array, so a widget's `paint` can see
-    // it (a caret is drawn only in the focused field). Every node, so a
-    // focus that moved does not leave the old one lit.
-    for (i, n) in st.iter_mut().enumerate() {
-        n.focused = *focus == Some(i as u32);
-    }
+    // Focus is published into the state array by `publish_focus`, **after**
+    // this event has finished moving it — see there (M57/A1).
 
     // C5: Tab moves focus in declaration order, which for a pre-order
     // table is simply the next focusable index, wrapping. Consumed here
