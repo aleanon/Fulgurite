@@ -691,6 +691,26 @@ impl Cmd {
 /// can assign; an immediate-mode implementation has nowhere to intern
 /// it. So the trait takes the bytes and `DisplayList`'s impl does the
 /// interning it already did.
+/// The rect a shadow of `spread` under `rect` is drawn around: dropped
+/// by a third of its spread, like light from above.
+pub fn shadow_drop(rect: Rect, spread: f32) -> Rect {
+    [rect[0], rect[1] + spread * 0.35, rect[2], rect[3] + spread * 0.35]
+}
+
+/// **Everything a shadow of `spread` under `rect` can touch** — M57/A14.
+///
+/// The drop above, then the spread on every side. Retention's damage for
+/// a shadow was the *undropped* rect inflated by the spread, so the lowest
+/// third of every shadow was outside it: a popup that shrank left the
+/// bottom of its old shadow on screen as a few grey rows
+/// (`docs/widget-audit.md`, Combobox). One function, used by both the
+/// list that draws the shadow and the recording that damages it, so the
+/// two cannot drift apart again.
+pub fn shadow_ink(rect: Rect, spread: f32) -> Rect {
+    let r = shadow_drop(rect, spread);
+    [r[0] - spread, r[1] - spread, r[2] + spread, r[3] + spread]
+}
+
 pub trait Painter {
     fn rect(&mut self, rect: Rect, color: Color);
     fn text_weighted(&mut self, rect: Rect, s: &str, size: f32, weight: f32, color: Color);
@@ -896,7 +916,7 @@ impl DisplayList {
         }
         // Dropped a little, like light from above; ~30% black at the
         // edge. The renderer owns the falloff curve.
-        let r = [rect[0], rect[1] + spread * 0.35, rect[2], rect[3] + spread * 0.35];
+        let r = shadow_drop(rect, spread);
         self.cmds.push(Cmd::Shadow { rect: r, color: Color(0, 0, 0, 80), radius, spread });
     }
 
