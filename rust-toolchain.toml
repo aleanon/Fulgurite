@@ -1,4 +1,9 @@
 [toolchain]
 channel = "1.94.0"
 components = ["rustfmt", "clippy"]
+# `just thumb`, `just firmware-size` and the firmware scripts cross-build
+# for the M13 device. Declared here so a clean checkout gets it with the
+# toolchain (M43/T43.14, R17-F10); scripts/check_toolchain_targets.sh
+# refuses a `--target` the justfile or a script uses that is not listed.
+targets = ["thumbv7em-none-eabihf"]
 profile = "minimal"

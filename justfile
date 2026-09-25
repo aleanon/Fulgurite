@@ -28,6 +28,8 @@ static:
     ./scripts/check_attr_table.sh       # the attribute table in lib.rs and the book must agree
     ./scripts/check_one_agent_server.sh # M39: one agent transport; nothing else binds a listener
     ./scripts/check_locks.sh            # both Cargo.lock files match their manifests (--locked)
+    ./scripts/check_toolchain_targets.sh  # every --target used is declared in rust-toolchain.toml
+    ./scripts/check_ci_claims.sh        # no bare dependency/[[bin]] count in the justfile or ci.yml
 
 # Default features == the shipped shape. This is the ONLY build that compiles
 # what docs/verification-notes.md scopes its argument to; `--workspace` cannot
@@ -51,8 +53,9 @@ release-shape: const-budget
     ./scripts/release_shape.sh
 
 # `--exclude lumen-static-wgpu` on all three: the GPU backend is a
-# workspace member so it is type-checked and tested, but wgpu is 37
-# crates and minutes of compile (docs/results-gpu.md), and this runs on
+# workspace member so it is type-checked and tested, but wgpu is the
+# largest dependency tree in the workspace and minutes of compile
+# (docs/results-gpu.md §5 counts it, and says how), and this runs on
 # every commit. It is built and tested in `check` instead, by the `gpu`
 # recipe below. The crate being *in* the workspace is what keeps its
 # Cargo.lock shared and its version drift visible; being out of this
@@ -229,8 +232,9 @@ floats:
 # rather than bare `--no-default-features`: with the std > alloc > none
 # tiers the bare form means NEITHER, and Vec/String/VecDeque are still in
 # the core until T13.4 -- so the stricter build is that task's gate, not
-# this one. Needs `rustup target add thumbv7em-none-eabihf`, which is why
-# it is here and not in `just test`.
+# this one. The thumb target is declared in rust-toolchain.toml (M43/T43.14),
+# so no manual `rustup target add` is needed; it is here and not in
+# `just test` for the cross build's cost.
 
 # Regenerate the embedded fixture's baked face (M13/T13.7). Only needed
 # when the size or the source font changes; the committed face.rs is
@@ -527,8 +531,9 @@ run-agent:
     cargo run -p counter-window
 
 # The tally with the platform screen-reader adapter (T7.5). Default-off:
-# on Linux it pulls accesskit_unix and a D-Bus stack, 95 -> 157 crates,
-# and `just test` builds this example every run.
+# on Linux it pulls accesskit_unix and a D-Bus/async stack
+# (docs/plan-architecture-v2.md, T7.5, has the measured count), and
+# `just test` builds this example every run.
 tally-a11y:
     cargo run -p counter-window --features a11y
 

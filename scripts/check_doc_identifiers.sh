@@ -117,6 +117,11 @@ for t in "${tomls[@]}"; do
         status=1
     done < <(grep -E '#.*([A-Za-z0-9] [,.;:)]|[A-Za-z0-9]  +[A-Za-z0-9]|#  +[a-z]|[^[:space:]#][[:space:]]+$)' "$tmp/tc" || true)
 done
+# ci.yml (M43/T43.14): its comments cite names like any other prose.
+if [ -f .github/workflows/ci.yml ]; then
+    { grep -E '^[[:space:]]*#' .github/workflows/ci.yml || true; } | { grep -oE '`[^`]+`' || true; } \
+      | bare | itemish >> "$tmp/tomlcands"
+fi
 sort -u -o "$tmp/tomlcands" "$tmp/tomlcands"
 
 sort -u "$tmp/cands" "$tmp/mdcands" "$tmp/tomlcands" > "$tmp/cands.all"
@@ -185,4 +190,4 @@ if [ "$status" -ne 0 ]; then
     echo "doc-identifiers: FAILED -- $(n "$tmp/dead") dead, $nstale stale allowlist entries, $stripped stripped manifest comments" >&2
     exit 1
 fi
-echo "doc-identifiers: candidates $(n "$tmp/cands.all") (line $(n "$tmp/cands.line"), trailing $(n "$tmp/cands.trailing"), block $(n "$tmp/cands.block"), markdown $(n "$tmp/mdcands"), toml $(n "$tmp/tomlcands")), allowlist $(n "$tmp/allow"), stale 0, all live"
+echo "doc-identifiers: candidates $(n "$tmp/cands.all") (line $(n "$tmp/cands.line"), trailing $(n "$tmp/cands.trailing"), block $(n "$tmp/cands.block"), markdown $(n "$tmp/mdcands"), toml+ci.yml $(n "$tmp/tomlcands")), allowlist $(n "$tmp/allow"), stale 0, all live"

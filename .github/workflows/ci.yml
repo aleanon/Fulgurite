@@ -1,5 +1,15 @@
-# CI for lumen-static. There was none before this file; `just test` was the
-# gate and was run by hand.
+# A DORMANT SPECIFICATION (M43/T43.14, docs/plan-gate-hygiene.md §2.7).
+#
+# **This workflow has never run.** The repository has no git remote, so
+# nothing triggers it. The executed gate is local: `just test` on every
+# commit and `just check` before calling work done; `just ci` (M43/T43.13,
+# not built yet) will run the whole set in a clean worktree and record the
+# result. This file is kept for what a future hosted runner needs -- the
+# job split, and the reasoning below for each job -- and its steps are
+# `just` recipes so the justfile stays the one definition of the gate.
+# Its comments state only what this file shows; every number lives in a
+# `docs/results-*.md` and is cited, and scripts/check_ci_claims.sh refuses
+# a bare count here.
 #
 # Two rules shape everything here:
 #
@@ -37,13 +47,10 @@ jobs:
   # ---------------------------------------------------------------------
   # The gate. Everything required to merge lives in this one job.
   #
-  # No OS matrix: crates/ contains zero `cfg(target_os)`, `std::fs`,
-  # `std::process` or `std::os` -- there is no platform code to matrix over --
-  # and the one thing that is platform-shaped, the hot-reload swap, is
-  # linux-only by construction (scripts/hot_reload_demo.sh hardcodes
-  # libhot_app.so, and "never dlclose" is a dlopen-specific contract).
-  # See the `portability` job below for the part that is genuinely worth
-  # a second OS.
+  # No OS matrix in the gate. The hot-reload swap is linux-only by
+  # construction (scripts/hot_reload_demo.sh names a `.so`, and "never
+  # dlclose" is a dlopen-specific contract), and the `portability` job
+  # below is the part genuinely worth a second OS.
   # ---------------------------------------------------------------------
   gate:
     runs-on: ubuntu-latest
@@ -57,11 +64,9 @@ jobs:
       - name: Install the pinned toolchain
         run: rustup show
 
-      # The dependency tree is six crates (syn, quote, proc-macro2, serde,
-      # serde_json, accesskit, libloading), so a cold build is ~5s on the
-      # reference machine and roughly a minute on a 4-vCPU runner. The cache
-      # is worth having but it is not the difference between a usable and an
-      # unusable CI -- do not let it become load-bearing.
+      # The cache is worth having but must not become load-bearing: a cold
+      # build is the configuration a new runner starts in. The thumb target
+      # `check-extra` needs comes from rust-toolchain.toml's `targets`.
       - uses: Swatinem/rust-cache@v2
         with:
           # `just test` builds three distinct graphs (default features,
@@ -117,10 +122,9 @@ jobs:
   # Timings from a shared vCPU are not comparable to the reference machine and
   # are barely comparable to themselves, so nothing here is a performance
   # gate. What IS gated is the exit code, and that catches a real class of rot
-  # for free: benches/Cargo.toml declares only `crossover` and `bindings` as
-  # [[bin]] -- `fusion` and `repeater` exist by autodiscovery -- and two
-  # results docs already cite bench binaries (`memory`, `safety`) that no
-  # longer exist. A bench that no longer compiles or panics fails this job.
+  # for free: a bench that no longer compiles or panics fails this job.
+  # (A doc citing a bench binary that no longer exists is refused earlier,
+  # by scripts/check_doc_paths.sh in `just static`.)
   # ---------------------------------------------------------------------
   bench:
     runs-on: ubuntu-latest
@@ -198,7 +202,9 @@ jobs:
   # a portability check in the usual sense -- it is an f32 check. The layout
   # engine is float arithmetic and the tests assert on positions; if any of
   # them are only true because of x86-64 rounding, this is where that shows
-  # up. The hot-reload fixture is excluded: it is linux-only by construction.
+  # up. The hot-reload *demo* script is not run here (it is linux-only by
+  # construction); the reload crates and fixtures are built and tested
+  # like every other member.
   #
   # Make this blocking the day the project claims cross-platform support.
   # Until then a red X here is information, not a broken build.
