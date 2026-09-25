@@ -63,10 +63,21 @@ flock 9
 t0=$(date +%s)
 
 # --- sync the copy ----------------------------------------------------------
+#
+# NOT `rsync -a`: that preserves the source's mtimes, and a file untouched
+# for days is older than the artifacts a previous PLANT built from its
+# edited copy -- so cargo called the planted build fresh and the next
+# baseline ran against it (found when the slow tier's baseline came back
+# red with the quadratic plant's error in it). Only files whose content
+# differs are written, and they get the current time; files that match
+# keep the copy's mtimes, so the build tier stays warm.
 cd "$ROOT"
-find "$WT" -mindepth 1 -maxdepth 1 ! -name .git ! -name target -exec rm -rf {} +
-git ls-files -co --exclude-standard -z \
-  | rsync -a --from0 --files-from=- --ignore-missing-args ./ "$WT/"
+git ls-files -co --exclude-standard -z | sort -z > "$base/want"
+if [ -d "$WT/.git" ]; then
+    ( cd "$WT" && git ls-files -co --exclude-standard -z ) | sort -z > "$base/have"
+    comm -z -13 "$base/want" "$base/have" | ( cd "$WT" && xargs -0 -r rm -f -- )
+fi
+rsync -rlpD --checksum --from0 --files-from="$base/want" --ignore-missing-args ./ "$WT/"
 cd "$WT"
 if [ ! -d .git ]; then
     git init -q

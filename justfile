@@ -367,18 +367,36 @@ counter:
 # Compile-time budget for the const table check: 3,711 nodes must build
 # in well under 5 s. A budget, not a comparison — the failure mode is a
 # hard rustc limit (docs/results-const-eval.md).
+#
+# **A clean, non-incremental build every run** (M43/T43.5): `cargo clean
+# -p const-budget` in its own target directory, CARGO_INCREMENTAL=0. The
+# old recipe touched main.rs and timed an INCREMENTAL rebuild, which
+# reuses the last build's const-eval: a quadratic went red on the first
+# run and green on every rerun (R11-F5). The fixture must use `wid_index!`
+# so `count_wid` is evaluated at all; the grep below holds it to that.
 const-budget:
     #!/usr/bin/env bash
     set -euo pipefail
-    touch fixtures/const-budget/src/main.rs
+    src=fixtures/const-budget/src/main.rs
+    uses=$(grep -c 'wid_index!(' "$src" || true)
+    if [ "$uses" -lt 1 ]; then
+        echo "const-budget: $src uses no wid_index!, so count_wid is never evaluated" >&2
+        exit 1
+    fi
+    export CARGO_TARGET_DIR=target/const-budget CARGO_INCREMENTAL=0
+    # Its dependencies, untimed (the same default features the fixture
+    # asks for, so the timed build reuses them); then only the fixture.
+    cargo build -q -p lumen-static -p lumen-static-widgets
+    cargo clean -q -p const-budget
     start=$(date +%s%N)
-    cargo build -p const-budget
+    cargo build -q -p const-budget
     ms=$(( ($(date +%s%N) - start) / 1000000 ))
-    echo "const-budget: ${ms} ms for 3711 nodes"
+    echo "const-budget: ${ms} ms for 3711 nodes (non-incremental, bound 5000; wid_index uses: $uses)"
     if [ "$ms" -gt 5000 ]; then
         echo "over the 5000 ms budget — see docs/results-const-eval.md" >&2
         exit 1
     fi
+    "$CARGO_TARGET_DIR"/debug/const-budget
 
 # The two backends compared through a real window — the half a headless
 # test cannot see, because "rendered" and "shown" are different claims.

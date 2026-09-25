@@ -76,7 +76,24 @@ work. A guarantee nothing can falsify is not a guarantee.
 `just const-budget` builds 3,711 nodes and fails past **5 s**. A budget,
 not a comparison: the failure mode is a hard compiler limit, so a wide
 absolute threshold is the right instrument and machine variance does not
-matter at this margin. Current: 0.13–0.21 s, i.e. ~25× of headroom.
+matter at this margin.
+
+**Current (M43/T43.5, 2026-09-25): 0.46–0.94 s** over five runs under
+the bench lock (load average 3–7 while other builds ran, so LOADED), i.e.
+~5× of headroom at the worst run. **What it measures changed**: a clean,
+non-incremental build of the fixture crate alone (`cargo clean -p
+const-budget`, `CARGO_INCREMENTAL=0`, its own target directory), and
+the fixture now calls `wid_index!` three times, so the build also
+evaluates `count_wid` over the whole table.
+
+The previous figure, 0.13–0.21 s, timed an *incremental* rebuild after
+touching `main.rs`. Incremental compilation reuses the const-eval of the
+previous build, so a quadratic in the table builder (M38's R11-F5 plant,
+with the `long_running_const_eval` lint allowed) was red on its first run
+— 51.7 s — and green on every rerun. Under the new recipe the same plant
+is red on the second and third runs (46.0 s, 46.1 s), and a quadratic
+`count_wid` — which the old fixture never evaluated — is red on both
+reruns too (68.2 s, 69.5 s): `scripts/selftest/plants/slow/`.
 
 ## F5.4: the accessor stays a linear scan — the planned fix was slower
 
