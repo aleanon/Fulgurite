@@ -1426,6 +1426,7 @@ completes the addendum; a milestone that lands first adds its own row.
 | what | why it proved nothing | how caught | injection / evidence |
 |---|---|---|---|
 | `just tasks-drive` vs `run()`'s waker and `WaitUntil` (R7-F2; re-run 2026-09-25, M47/T47.1) | every read requested a frame, so the window was never idle while the drive watched it | injection | at `b213ae0`: waker uninstalled, or deadline ignored → 10/10 green; an unobserved read showed 1 tick of 25. Since T47.1 the drive's unobserved phases go red under both (`docs/results-tasks.md` T28.12) |
+| the shadow oracle (M34/T34.1; I-NEW-1 and R1-F6, fixed 2026-09-25, M41/T41.2) | it re-ran the code it checked before the output it checked, so it repaired every defect it could see; and its one test asserted only that it compared and stayed quiet | re-triage injection | a scratch cloned from the states left `tests/shadow.rs` green. Since T41.2 that injection names nothing in three positive cases, and moving the check back before paint fails `the oracle repaired the frame it judged` |
 
 ## 5. Gate reality
 

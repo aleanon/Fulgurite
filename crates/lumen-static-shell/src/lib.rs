@@ -52,8 +52,65 @@ pub struct Shadow {
 pub struct Divergence {
     pub frame: u64,
     pub node: u32,
-    /// Which part of the node's state differed.
+    /// Which part of the node's state differed: `size`, `pos`,
+    /// `colour`, `font` or `shape` from `NodeState`, or `paint` when the
+    /// states agreed and the painted lists did not — state a widget keeps
+    /// for itself (M41/T41.2).
     pub field: &'static str,
+}
+
+/// The oracle's buffers, kept across frames — M41/T41.2.
+#[cfg(feature = "shadow-oracle")]
+#[derive(Default)]
+struct ShadowScratch {
+    list: DisplayList,
+    live: Vec<bool>,
+    before: Vec<u64>,
+    after: Vec<u64>,
+}
+
+/// Which table indices `node(i)` answers for with a node of their own,
+/// rather than with an enclosing container standing in for a branch that
+/// is not laid out. The rule `lumen_static_agent::live_nodes` documents:
+/// a stand-in is the same object, and the same kind, as its parent's.
+#[cfg(feature = "shadow-oracle")]
+fn shadow_live(root: &dyn Node, table: &[lumen_static::desc::NodeDesc], out: &mut Vec<bool>) {
+    let ident = |n: &dyn Node| (n as *const dyn Node as *const (), n.kind_name());
+    out.clear();
+    out.resize(table.len(), true);
+    for (i, d) in table.iter().enumerate() {
+        if d.parent == lumen_static::NO_PARENT {
+            continue;
+        }
+        let p = d.parent as usize;
+        out[i] = out[p] && ident(root.node(i)) != ident(root.node(p));
+    }
+}
+
+/// Each live leaf's own paint, hashed — the journal's per-node signature
+/// (`lumen_static_agent`'s `measure_into`), in logical units. A container
+/// signs nothing here: its own paint is resolved into `NodeState`, which
+/// the oracle compares field by field.
+#[cfg(feature = "shadow-oracle")]
+fn sign_leaves(
+    root: &dyn Node,
+    table: &[lumen_static::desc::NodeDesc],
+    live: &[bool],
+    states: &[NodeState],
+    list: &mut DisplayList,
+    out: &mut Vec<u64>,
+) {
+    out.clear();
+    out.resize(table.len(), 0);
+    list.clear();
+    list.set_bounds(None);
+    for (i, d) in table.iter().enumerate() {
+        if d.child_count == 0 && live[i] {
+            let from = list.len();
+            root.node(i).paint(states, i, list);
+            out[i] = list.hash_from(from);
+        }
+    }
 }
 
 /// A running application: the tree, its parallel arrays, the one input
@@ -215,6 +272,9 @@ pub struct Host<A: App, R: Retention = Incremental, I: Invalidation = lumen_stat
     last_arenas_owed: bool,
     #[cfg(feature = "shadow-oracle")]
     shadow: Shadow,
+    /// The oracle's retained buffers — M41/T41.2.
+    #[cfg(feature = "shadow-oracle")]
+    shadow_scratch: ShadowScratch,
     /// The panic the last guarded entry caught, until `retry` — M36.
     #[cfg(panic = "unwind")]
     failure: Option<recover::PanicReport>,
@@ -263,25 +323,63 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         self.last_arenas_owed
     }
 
-    /// Lay out and place again **under an all-dirty view** into a scratch
-    /// copy of the node states, and compare with the bounded frame's —
-    /// M34/T34.1 (`docs/plan-boundaries-default.md`).
+    /// Judge the frame just painted against a whole-tree one — M34/T34.1,
+    /// redesigned by M41/T41.2 (`docs/plan-boundaries-repair.md` §2.2).
     ///
-    /// One host, not two: `App` is not `Clone`, and a second host would
-    /// run every handler and spawn every task twice. The second pass does
-    /// not dispatch, apply, update or spawn, and leaves `last_damage` and
-    /// the retained journal alone. It *does* run layout again — measure
-    /// memos, a repeater's binds — which is the known cost of a
-    /// diagnostic. It reports rather than panics, because once M36 lands
-    /// a panic in a debug window becomes a panic screen; set
+    /// **When it runs: after paint and `retain.finish`**, so the frame it
+    /// judges is the bounded pass's own output, painted before anything
+    /// here touched a widget. T34.1's first version ran *before* paint,
+    /// and its second layout re-ran every `layout` on the live widgets —
+    /// a `TextInput`'s scroll, a `Repeat`'s binds — so paint then drew
+    /// the repaired widgets and the oracle judged a frame it had already
+    /// fixed. Every defect it could see, it hid (R1-F6).
+    ///
+    /// **What it compares, in order:**
+    ///
+    /// 1. Each live **leaf's own paint** — every node with no table
+    ///    children, which includes an arena container such as `Repeat` —
+    ///    is signed from the bounded widgets *before* the second layout.
+    /// 2. It lays out and places again under [`Changed::ALL`] into a
+    ///    scratch copy of the states, applies the focus-ring rule, and
+    ///    paints the whole tree into a scratch list through `Scaled` —
+    ///    **not** `Recording`, so retention, `last_damage` and the
+    ///    journal are untouched — with scratch overlays.
+    /// 3. `NodeState`, field by field: the first node that differs is
+    ///    named with `size`, `pos`, `colour`, `font` or `shape`.
+    /// 4. Otherwise the two lists' hashes. If they differ the leaf whose
+    ///    signature moved is named with `field: "paint"` — state a widget
+    ///    keeps for itself, which `NodeState` cannot show. A list that
+    ///    differs with no leaf's signature moved is a container's own
+    ///    internal state, and is reported against the root, still
+    ///    `"paint"`.
+    ///
+    /// **What it cannot avoid: it repairs the frames *after* the one it
+    /// judges.** Widgets are not `Clone` and `App` is not either, so the
+    /// second layout runs on the live widgets, and the next frame starts
+    /// from what it wrote. A defect is one report on its first frame, not
+    /// pixels that persist — which is why a drive judging `Boundaries`
+    /// keeps a leg without this feature (`plan-boundaries-repair.md` §0
+    /// rule 2).
+    ///
+    /// One host, not two: a second host would run every handler and
+    /// spawn every task twice. It reports rather than panics, because a
+    /// panic in a debug window becomes a panic screen; set
     /// `LUMEN_SHADOW_ABORT=1` to make it abort instead.
     ///
-    /// **What it costs:** one whole-tree layout and place per frame — on
-    /// the grid fixture, the `mark_all` control arm's layout plus place
-    /// (`docs/results-damage-precision.md` T29.3), paid on every frame
-    /// the oracle is compiled into.
+    /// **What it costs:** one whole-tree layout, place and paint, plus a
+    /// paint of every leaf twice, on every frame the oracle is compiled
+    /// into. A diagnostic behind its own feature; recorded, not gated.
+    ///
+    /// [`Changed::ALL`]: lumen_static::invalidate::Changed::ALL
     #[cfg(feature = "shadow-oracle")]
     fn shadow_check(&mut self, metrics: &mut dyn TextMeasure, limits: lumen_static::Constraints) {
+        let table = <A::Tree as Widget>::SUB_TABLE;
+        let mut sc = core::mem::take(&mut self.shadow_scratch);
+        // 1. The bounded widgets' own paint, before anything repairs it.
+        shadow_live(self.app.tree(), table, &mut sc.live);
+        sign_leaves(self.app.tree(), table, &sc.live, &self.states, &mut sc.list, &mut sc.before);
+
+        // 2. The whole-tree frame, into scratch.
         let mut scratch = self.states.clone();
         {
             let mut cx = LayoutCx::with_changed(metrics, lumen_static::invalidate::Changed::ALL)
@@ -296,12 +394,29 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
                 s.focus_ring = 0;
             }
         }
+        sc.list.clear();
+        sc.list.set_bounds(self.list.bounds);
+        {
+            let mut ov = lumen_static::overlay::Overlays::<16>::default();
+            let mut out = lumen_static::Scaled::new(&mut sc.list, self.scale);
+            pass::paint_overlaid(self.app.tree(), &scratch, &mut out, &mut ov);
+        }
+        let lists_differ = sc.list.hash_from(0) != self.list.hash_from(0);
         self.shadow.compared += 1;
         if self.shadow.first.is_some() {
+            self.shadow_scratch = sc;
             return;
         }
-        for (i, (a, b)) in self.states.iter().zip(&scratch).enumerate() {
-            let field = if a.size != b.size {
+
+        // 3. `NodeState`, the more specific answer when it has one.
+        //
+        // The *deepest* differing node on the first chain, not the first
+        // in table order: a leaf that grew grows every ancestor, and the
+        // root is not what changed. Pre-order makes it one forward scan —
+        // a differing node inside the current one's subtree is a
+        // descendant of it.
+        let differs = |a: &NodeState, b: &NodeState| -> Option<&'static str> {
+            Some(if a.size != b.size {
                 "size"
             } else if a.pos != b.pos {
                 "pos"
@@ -312,15 +427,34 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             } else if a.radius != b.radius || a.pad != b.pad || a.focus_ring != b.focus_ring {
                 "shape"
             } else {
-                continue;
-            };
-            let d = Divergence { frame: self.frame, node: i as u32, field };
+                return None;
+            })
+        };
+        let mut found: Option<(u32, &'static str)> = None;
+        let mut end = self.states.len();
+        for (i, (a, b)) in self.states.iter().zip(&scratch).enumerate() {
+            if i >= end {
+                break;
+            }
+            if let Some(field) = differs(a, b) {
+                found = Some((i as u32, field));
+                end = lumen_static::style::subtree_range(table, i).end.min(end);
+            }
+        }
+        // 4. The lists, attributed to the leaf whose own paint moved.
+        if found.is_none() && lists_differ {
+            sign_leaves(self.app.tree(), table, &sc.live, &scratch, &mut sc.list, &mut sc.after);
+            let leaf = sc.before.iter().zip(&sc.after).position(|(a, b)| a != b);
+            found = Some((leaf.unwrap_or(0) as u32, "paint"));
+        }
+        self.shadow_scratch = sc;
+        if let Some((node, field)) = found {
+            let d = Divergence { frame: self.frame, node, field };
             if std::env::var_os("LUMEN_SHADOW_ABORT").is_some() {
                 eprintln!("shadow oracle: {d:?}");
                 std::process::abort();
             }
             self.shadow.first = Some(d);
-            return;
         }
     }
 
@@ -542,6 +676,8 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             last_arenas_owed: false,
             #[cfg(feature = "shadow-oracle")]
             shadow: Shadow::default(),
+            #[cfg(feature = "shadow-oracle")]
+            shadow_scratch: ShadowScratch::default(),
             #[cfg(panic = "unwind")]
             failure: None,
             source_root: None,
@@ -1242,19 +1378,6 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             }
         }
 
-        // **The shadow oracle** — M34/T34.1. Only a strategy that can
-        // skip has anything to check. **After** the focus-ring rule just
-        // above, and it applies the same rule to its scratch: the rule
-        // rewrites a field after layout, so a node the bounded frame
-        // skipped keeps last frame's zero while a re-layout restores the
-        // sheet's value — equal pixels, unequal state. Compared before
-        // the rule, the first live run reported exactly that as a
-        // divergence (showcase, node 5, "shape").
-        #[cfg(feature = "shadow-oracle")]
-        if I::CAN_SKIP {
-            self.shadow_check(metrics, limits);
-        }
-
         let t1 = std::time::Instant::now();
         self.list.clear();
         // Tell paint where the frame is going, so a container can cull
@@ -1288,6 +1411,21 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         // What this frame changed. Retention has already seen every
         // command; this closes the frame. Free under `Rebuild`.
         self.last_damage = self.retain.finish();
+
+        // **The shadow oracle** — M34/T34.1, moved here by M41/T41.2.
+        // Only a strategy that can skip has anything to check. **After
+        // paint and `finish`**: its second layout runs on the live
+        // widgets, and before paint it repaired the frame it judged. It
+        // applies the focus-ring rule above to its scratch too: the rule
+        // rewrites a field after layout, so a node the bounded frame
+        // skipped keeps last frame's zero while a re-layout restores the
+        // sheet's value — equal pixels, unequal state. Compared before
+        // the rule, the first live run reported exactly that as a
+        // divergence (showcase, node 5, "shape").
+        #[cfg(feature = "shadow-oracle")]
+        if I::CAN_SKIP {
+            self.shadow_check(metrics, limits);
+        }
 
         // The set describes what changed *since the last frame*, so it
         // is spent once layout has read it. Marks arriving after this

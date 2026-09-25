@@ -826,6 +826,8 @@ damage tracking deserve at least as much attention as the static tree. Do not
 let the interesting part crowd out the effective part.
 
 **DECIDED 2026-09-24 (M29, M34): the bounded strategy is the default.**
+*Evidence under re-validation, `docs/plan-boundaries-default.md` T34.2 as
+amended (M41/T41.2): the flip's live oracle repaired the frames it judged.*
 `Boundaries<256>` is `Host`'s default and the window's (`everything` is a
 diagnostic feature); a binding marks its own node, and a click on a
 split application narrows too. The evidence is

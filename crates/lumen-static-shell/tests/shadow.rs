@@ -1,12 +1,28 @@
-//! **The shadow oracle** — M34/T34.1 (`docs/plan-boundaries-default.md`).
+//! **The shadow oracle** — M34/T34.1 (`docs/plan-boundaries-default.md`),
+//! redesigned by M41/T41.2 (`docs/plan-boundaries-repair.md` §2.2).
 //!
-//! A bounded host re-lays out every frame under an all-dirty view into
-//! scratch state and compares. This checks the checker: it must count
-//! the frames it compared (a zero means it never ran, and "no divergence"
-//! then proves nothing), stay quiet on a correct session, and name the
-//! node when a mark is wrong — on a frame that *can* show it. A consumed
-//! press marks everything, so the injection targets a **hover**, which
-//! only T25.0's precise mark covers.
+//! After a bounded host paints, it lays out, places and paints again
+//! under an all-dirty view into scratch state and a scratch list, and
+//! compares `NodeState` and then the lists. **This file is the standing
+//! test that the oracle can fire** (the re-triage's I-NEW-1): until
+//! T41.2 its one test asserted `compared > 0` and `first.is_none()`, so
+//! replacing the scratch layout with a clone of the states — an oracle
+//! comparing the frame with itself — left it green.
+//!
+//! Four cases, each printing `divergence at frame F, node N ("wid"),
+//! field X`:
+//!
+//! - a correct session is compared and quiet (the accept direction). A
+//!   consumed press marks everything, so it also moves a **hover**,
+//!   which only T25.0's precise mark covers; skipping that mark is
+//!   T34.1's own injection, and it turns this case red.
+//! - a write to state a widget keeps for itself, with no mark, is named
+//!   `paint` — the shape of `TextInput::scroll` and a `Repeat`'s rows,
+//!   which `NodeState` cannot show and which the first oracle repaired
+//!   before it judged.
+//! - a direct write to a label, with no mark, is named.
+//! - a tick that writes on a zero `dt`, against `App::tick`'s contract,
+//!   is named on that frame.
 
 use lumen_static::invalidate::Boundaries;
 use lumen_static::prelude::*;
@@ -137,35 +153,91 @@ struct Inner {
 #[widget(column, spacing = 4.0)]
 struct OffsetUi {
     #[widget_id("label")]
-    label: Label,
+    label: Label<String>,
     inner: Inner,
 }
 
 #[derive(DeriveApp, Default)]
+#[app(tick = zero_dt_write)]
 struct OffsetApp {
     #[tree]
     ui: OffsetUi,
+    /// Set by a test: the next tick writes the label, on any `dt`.
+    write_on_tick: bool,
+}
+
+/// Against `App::tick`'s contract: it writes the tree on a zero `dt`,
+/// which `Host::tick` does not mark.
+fn zero_dt_write(a: &mut OffsetApp, _dt: f32) -> bool {
+    if core::mem::take(&mut a.write_on_tick) {
+        a.ui.label.set("written by a zero-dt tick".into());
+    }
+    false
+}
+
+fn offset_host() -> Host<OffsetApp, Incremental, Boundaries<16>> {
+    let mut a = OffsetApp::default();
+    a.ui.label.set("label".into());
+    let mut h: Host<OffsetApp, Incremental, Boundaries<16>> = Host::new(a, 200, 80);
+    h.pump();
+    h.pump();
+    let r = h.shadow_report();
+    assert!(r.compared > 0 && r.first.is_none(), "setup: a quiet start, got {r:?}");
+    h
+}
+
+/// Print the divergence in the form every case shares, and return it.
+fn named(h: &Host<OffsetApp, Incremental, Boundaries<16>>, what: &str) -> lumen_static_shell::Divergence {
+    let r = h.shadow_report();
+    assert!(r.compared > 0, "the shadow oracle never ran");
+    let d = r.first.unwrap_or_else(|| panic!("{what} went unnamed (compared {} frames)", r.compared));
+    let wid = <OffsetUi as Widget>::SUB_TABLE
+        .get(d.node as usize)
+        .map(|n| n.wid)
+        .unwrap_or("?");
+    println!("divergence at frame {}, node {} ({wid:?}), field {}", d.frame, d.node, d.field);
+    d
 }
 
 #[test]
-#[ignore = "red until T41.2: R1-F6, the oracle compares NodeState only and repairs the frame it judges"]
 fn the_oracle_names_a_widget_internal_divergence() {
-    let mut h: Host<OffsetApp, Incremental, Boundaries<16>> = Host::new(OffsetApp::default(), 200, 80);
-    h.pump();
-    h.pump();
+    let mut h = offset_host();
     let before = h.list.hash_from(0);
     // The canonical unreported write: nothing marks it.
     h.app.ui.inner.offset.input.set(20.0);
     h.pump();
-    let r = h.shadow_report();
     let leaf = lumen_static::style::index_of_wid(<OffsetUi as Widget>::SUB_TABLE, "offset").unwrap();
-    println!(
-        "compared {} frames, first divergence {:?}, leaf is node {leaf}, list moved: {}",
-        r.compared,
-        r.first,
-        h.list.hash_from(0) != before
-    );
-    assert!(r.compared > 0, "the shadow oracle never ran");
-    let d = r.first.expect("an unreported write to widget-internal state went unnamed");
-    assert_eq!(d.node, leaf as u32, "the oracle named the wrong node: {d:?}");
+    // The bounded frame must be the stale one: the oracle judges it and
+    // may not repair it. Before T41.2 the list moved here, because the
+    // oracle's layout ran before paint.
+    println!("leaf is node {leaf}, bounded list moved: {}", h.list.hash_from(0) != before);
+    assert_eq!(h.list.hash_from(0), before, "the oracle repaired the frame it judged");
+    let d = named(&h, "an unreported write to widget-internal state");
+    assert_eq!((d.node, d.field), (leaf as u32, "paint"), "the oracle named the wrong node or field: {d:?}");
+}
+
+#[test]
+fn a_wrong_mark_is_named() {
+    let mut h = offset_host();
+    let label = lumen_static::style::index_of_wid(<OffsetUi as Widget>::SUB_TABLE, "label").unwrap();
+    // A direct write with no mark — the canonical unreported write.
+    h.app.ui.label.set("a much longer label than before".into());
+    h.pump();
+    let d = named(&h, "a direct write to a label");
+    assert_eq!(d.node, label as u32, "the oracle named the wrong node: {d:?}");
+    assert!(matches!(d.field, "size" | "paint"), "unexpected field: {d:?}");
+}
+
+#[test]
+fn a_zero_dt_tick_write_is_named() {
+    let mut h = offset_host();
+    let label = lumen_static::style::index_of_wid(<OffsetUi as Widget>::SUB_TABLE, "label").unwrap();
+    h.app.write_on_tick = true;
+    h.tick(0.0);
+    assert_eq!(h.app.ui.label.as_str(), "written by a zero-dt tick", "setup: the tick did not run");
+    let frame = h.shadow_report().compared;
+    h.pump();
+    let d = named(&h, "a tick's write on a zero dt");
+    assert_eq!(d.node, label as u32, "the oracle named the wrong node: {d:?}");
+    assert_eq!(d.frame, frame, "named on a later frame than the write's: {d:?}");
 }

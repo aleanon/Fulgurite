@@ -489,6 +489,17 @@ Each case prints `divergence at frame F, node N ("<wid>"), field X`.
 scratch paint goes through the corrected `Scaled` path; M42/T42.4, for
 the per-leg `supported` check the new `agent_drive.sh` legs use.
 
+**Split on 2026-09-25 (§6): T41.2 is the oracle and its headless gate;
+T41.2b is the drive legs.** TODO(T41.2b, waits for M42/T42.4): give
+`scripts/agent_drive.sh` a plain `Boundaries` leg (`agent` alone,
+asserting `app.shadow` answers `supported: false`) and make the oracle
+leg a third leg, both declaring their features to M42's launcher. Not
+built here, because the `supported` assertions are T42.4's per-leg
+identity check and a second copy of it would be the thing M42 exists to
+remove. Until T41.2b lands, `agent_drive.sh`'s only `Boundaries` leg is
+still `agent,shadow-oracle`, so no live drive judges `Boundaries`
+without the oracle's repair of the frames after a defect (§0 rule 2).
+
 ### T41.3 — a `Repeat` whose data changed is marked
 
 **Closes:** R1-F4.
@@ -772,6 +783,42 @@ was re-checked as the re-triage left it and none had moved.
   `lumen-static-widgets/observe`, which only a workspace build unifies on.
   `just test` runs the workspace shape, so the gate is honest there. This
   is the same kind of seam as M30's `counter-window --drive2` finding.
+
+### While building T41.2–T41.6 (2026-09-25, at 0091266)
+
+- **T41.2's first injection fired where the plan did not predict.**
+  Moving the call back before paint turns every case red at *setup*:
+  before paint, `self.list` still holds the previous frame, so frame 0
+  compares against an empty list. The plan's predicted failure — the
+  widget-internal case going quiet because the second layout repaired
+  it — needs T34.1's comparison too (no list check): with both, it fails
+  `the oracle repaired the frame it judged`, the assertion added for
+  exactly that shape.
+- **The oracle names the deepest differing node, not the first.** A leaf
+  that grows grows every ancestor, so the first `NodeState` difference
+  in table order was the root (`a_wrong_mark_is_named` named node 0,
+  `size`). It now descends the first differing chain to its deepest
+  node.
+- **The redesigned oracle found a divergence in a shipped example on its
+  first headless sweep** (§2.1's tripwire condition). `cargo test
+  --workspace --features lumen-static-shell/shadow-oracle` with
+  `LUMEN_SHADOW_ABORT=1`: showcase's
+  `a_wheel_over_the_grid_scrolls_it_on_the_stage` aborts with node 217
+  (`grid-rows`, the DataGrid's `Repeat`), `field: "paint"`, on the wheel
+  frame. The wheel is consumed, so the `Repeat`'s own range is marked
+  (`Marks { all: false, ranges: 1 }`), the `Repeat` re-binds its rows to
+  the scrolled window, and each row — a derived container in the
+  `Repeat`'s arena — asks the frame's main-table ranges whether *its*
+  arena indices are dirty, answers clean, and keeps last frame's layout.
+  That is §6's arena-geometry mechanism (T41.3), reached by a wheel on a
+  shipped example rather than by global data. T41.3 fixes it; the
+  result is recorded there. The old oracle could not see it: its second
+  layout ran before paint and re-laid the rows. The other aborts in the
+  sweep are tests that write the tree unmarked on purpose (`loop_test`,
+  `pointer_invalidation`, `invalidation_oracle`'s skip proof,
+  `repeat_data`'s unreported arm, `shadow.rs`) and tests that count
+  layouts or allocations (`palette_host`, `alloc_gate`), which a second
+  layout changes by construction.
 
 ## Appendix: finding → task
 

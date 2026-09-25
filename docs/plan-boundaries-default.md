@@ -166,6 +166,21 @@ Each injected session asserts its own precondition (`pump` returned
 > scratch re-layout restored the sheet's value — equal pixels, unequal
 > state. The oracle now runs after that rule and applies it to its
 > scratch too.
+>
+> **Amended 2026-09-25, M41/T41.2** (`docs/plan-boundaries-repair.md`
+> §1.3, §2.2). Two claims in this block and below were false. "Paint
+> attributes … are resolved in layout, so this comparison covers them"
+> is false for **state a widget keeps for itself** — a `TextInput`'s
+> scroll, a `Repeat`'s bound rows — which is not in `NodeState`. And
+> the second layout ran **before paint, on the live widgets**, so it
+> repaired the frame it judged: the compose, `Repeat` and audit-probe
+> cases each reported `first: None` *and* painted `Everything`'s list.
+> The oracle now runs after paint and `retain.finish`, paints a scratch
+> list through `Scaled`, compares `NodeState` and then the lists, and
+> names a list-only difference `field: "paint"`. It still repairs the
+> frames *after* the one it judges, and its rustdoc says so. The
+> headless gate `tests/shadow.rs` is now the standing test that it can
+> fire (four cases, four injections, recorded in T41.2's commit).
 
 
 This is the one piece of new machinery. It follows from rule 2, and from
@@ -217,6 +232,11 @@ where it was measured.
 > tasks drive green both ways. **Measure**
 > (`docs/results-damage-precision.md` T34.2): the prediction held — idle,
 > hover and press frames moved; tick and click did not, by design.
+>
+> **Its 29 frames were judged by the oracle T41.2 replaced** — one that
+> repaired every defect it could see before it compared — and are under
+> re-validation in `docs/plan-boundaries-repair.md` T41.7. §5 records
+> what the re-triage found.
 
 
 - `Inval` becomes `Boundaries<256>`, and `Host`'s default type parameter
@@ -272,3 +292,17 @@ confirmed nine findings against the first draft. What changed:
 | 7 | only the winit alias flipped, and `Host`'s default, the scripts and the comments were missing from the edit list | rule 3. T34.2's edit list |
 | 8 | the oracle had never run at the shipped `Boundaries<256>` | T34.0 |
 | 9 | "no window uses the strategy" was false (two examples forward the feature), and T29.6 does not need T34.1 | §2 |
+
+## 5. What the re-triage found (2026-09-24)
+
+The re-triage of M38's findings against `main` at 1717808
+(`docs/plan-boundaries-repair.md` §1) re-ran this milestone's evidence.
+Fixes are M41's; this table records what changed here.
+
+| # | finding | what changed |
+|---|---|---|
+| 1 | T34.0's inventory missed `Host::compose`, which marked nothing — an S0 in the default (R1-F2, R10-F9) | M41/T41.1 marks the focused subtree; the T34.0 table gained a row per `&mut self` method |
+| 2 | the oracle repaired the frame it judged, and could not see widget-internal state (R1-F6) | M41/T41.2: runs after paint and compares display lists; T34.1 amended above |
+| 3 | no test showed the oracle could fire: a scratch that cloned the states left `tests/shadow.rs` green (I-NEW-1) | M41/T41.2: three positive cases beside the quiet one |
+| 4 | `agent_drive.sh`'s only `Boundaries` leg built the oracle in, so no drive judged `Boundaries` without the repair | M41/T41.2b, waiting for M42/T42.4's per-leg identity check |
+| 5 | "29 frames compared, none diverged" was measured on repaired frames | M41/T41.7 gathers it again |
