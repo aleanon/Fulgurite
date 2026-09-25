@@ -146,7 +146,10 @@ pub fn serve(listener: TcpListener, handler: impl Handler) {
     for mut stream in listener.incoming().flatten() {
         if live.fetch_add(1, Ordering::SeqCst) >= MAX_CONNECTIONS {
             live.fetch_sub(1, Ordering::SeqCst);
-            let _ = writeln!(stream, "{}", refusal(-32000, "too many agent connections"));
+            // Off the accept thread, because closing cleanly waits.
+            let _ = std::thread::Builder::new().spawn(move || {
+                refuse(&mut stream, refusal(-32000, "too many agent connections"));
+            });
             continue;
         }
         let slot = Slot(live.clone());
@@ -177,7 +180,7 @@ fn connection(stream: TcpStream, mut handler: impl Handler) {
             Ok(n) => n,
         };
         if n == MAX_LINE && line.last() != Some(&b'\n') {
-            let _ = writeln!(out, "{}", refusal(-32600, "line exceeds 1 MiB; the connection is closed"));
+            refuse(&mut out, refusal(-32600, "line exceeds 1 MiB; the connection is closed"));
             return;
         }
         let text = line.trim_ascii();
@@ -189,7 +192,7 @@ fn connection(stream: TcpStream, mut handler: impl Handler) {
             parsed => {
                 // Only a message: the `return` below refuses it anyway.
                 if looks_like_http(text) {
-                    let _ = writeln!(out, "{}", refusal(-32600, HTTP_REFUSAL));
+                    refuse(&mut out, refusal(-32600, HTTP_REFUSAL));
                     return;
                 }
                 let reply = match parsed {
@@ -197,7 +200,7 @@ fn connection(stream: TcpStream, mut handler: impl Handler) {
                     Ok(_) => refusal(-32600, "a request is a JSON object, one per line"),
                     Err(e) => refusal(-32700, &format!("parse error: {e}")),
                 };
-                let _ = writeln!(out, "{reply}");
+                refuse(&mut out, reply);
                 // **Close on error.** This, not the HTTP check above, is
                 // what keeps a browser's body from running (R14-F1).
                 return;
@@ -212,6 +215,30 @@ fn connection(stream: TcpStream, mut handler: impl Handler) {
 
 const HTTP_REFUSAL: &str = "this is a JSON-RPC line protocol, not HTTP: send one JSON object per line \
                             (see scripts/agent_client.py); the connection is closed";
+
+/// Write a refusal and end the connection so that the reply **arrives**.
+///
+/// Dropping a socket whose peer's bytes are still unread sends a reset,
+/// and on Linux a reset discards what the peer had received but not yet
+/// read — the refusal with it. The 17th-connection gate saw exactly that:
+/// the client had sent its request, the server closed at once, and the
+/// client read an error instead of `-32000`. So: send the reply, half
+/// close, and read what the peer is still sending, for at most 250 ms and
+/// 64 KiB, before the socket drops.
+fn refuse(out: &mut TcpStream, reply: Value) {
+    use std::net::Shutdown;
+    let _ = writeln!(out, "{reply}");
+    let _ = out.shutdown(Shutdown::Write);
+    let _ = out.set_read_timeout(Some(std::time::Duration::from_millis(250)));
+    let mut sink = [0u8; 4096];
+    let mut left = 64 << 10;
+    while left > 0 {
+        match out.read(&mut sink) {
+            Ok(0) | Err(_) => break,
+            Ok(n) => left -= n.min(left),
+        }
+    }
+}
 
 fn refusal(code: i64, message: &str) -> Value {
     json!({ "jsonrpc": "2.0", "id": null, "error": { "code": code, "message": message } })

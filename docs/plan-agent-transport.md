@@ -655,6 +655,14 @@ Recorded as found, rather than folded into the sections above.
   read is 8264 KiB, green is 1207 KiB. And the growth is counted by a
   global allocator in `transport.rs`, whose other tests run in parallel;
   they allocate kilobytes against a bound of megabytes.
+- **T39.3, a refusal has to arrive.** The 17th-connection gate failed
+  four runs in six after T39.3 landed: the server wrote `-32000` and
+  dropped the socket while the client's request was still unread, the
+  kernel answered that with a reset, and Linux discards received-but-
+  unread data on a reset, so the client read an error, not the reply.
+  Every refusal now half-closes and reads what the peer is still
+  sending, for at most 250 ms and 64 KiB, before the socket drops; the
+  over-limit one does it off the accept thread. 8 runs of 8 green after.
 - **T39.1, AGENT.md's queue entry** is not in this commit: the
   implementation brief reserves AGENT.md for the coordinator's merge.
 
