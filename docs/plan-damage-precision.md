@@ -567,6 +567,11 @@ down the wrong path, and it should not outlive the correction.
 > **Measure** (`docs/results-damage-precision.md` T29.6): a split
 > application's click lands on the narrowed row; an unsplit one stays on
 > the control's, correctly.
+>
+> *The cascade's share, reported 2026-09-26 (M53/T53.1):* that
+> measurement was a stage sum. On the whole pump the split click saves
+> 29% of the frame, not 42%, and the arena cascade it still runs is 33%
+> of it (`docs/results-damage-precision.md`, T53.1).
 
 
 **Needs M33 and T29.3. Its *Measure* also waits for M34/T34.2**

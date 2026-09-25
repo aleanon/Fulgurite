@@ -214,6 +214,8 @@ pub struct Host<A: App, R: Retention = Incremental, I: Invalidation = lumen_stat
     last_paint_ns: u64,
     /// Passes run since construction — M53/T53.0. See [`Host::pass_counts`].
     passes: frame_cost::PassCounts,
+    /// The last pump's stages and whole — M53/T53.1. See [`Host::stage_timings`].
+    stages: frame_cost::StageTimes,
     /// How much of the previous frame is kept, and what changed
     /// (`docs/plan-architecture-v2.md` M8b). A type parameter rather
     /// than a feature so `Rebuild` stays available in the same binary
@@ -680,6 +682,7 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             last_place_ns: 0,
             last_paint_ns: 0,
             passes: frame_cost::PassCounts::default(),
+            stages: frame_cost::StageTimes::default(),
             retain: R::default(),
             last_damage: Damage::All,
             invalidation: I::default(),
@@ -914,6 +917,10 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
 
     /// `(layout, place, paint)`, in nanoseconds — the three passes apart.
     ///
+    /// **Three of the pump's six stages, not the frame** (M53/T53.1): the
+    /// input-and-bindings stage, the arena cascade and `finish` are not
+    /// in it. Use [`Host::stage_timings`] for a frame's cost.
+    ///
     /// **`place` is unconditional and no invalidation narrows it**: the
     /// derive's `place` takes no `Changed` and walks every node to give
     /// it an absolute position (`docs/results-damage-precision.md`
@@ -930,6 +937,19 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
     /// [`frame_cost::PassCounts::since`].
     pub fn pass_counts(&self) -> frame_cost::PassCounts {
         self.passes
+    }
+
+    /// The last pump, stage by stage and whole — M53/T53.1.
+    ///
+    /// **Prefer this to [`Host::timings3`] for "what a frame costs".**
+    /// `timings3` is three of the six stages; the arena cascade, the
+    /// input-and-bindings stage and `finish` are outside it, and a stage
+    /// sum published as the frame overstated a narrowed click's saving
+    /// as a share three times (`docs/results-damage-precision.md`,
+    /// T53.1). `pump` is measured around the whole call and
+    /// [`frame_cost::StageTimes::gap`] is what no stage covers.
+    pub fn stage_timings(&self) -> frame_cost::StageTimes {
+        self.stages
     }
 
     /// Logical viewport: the physical surface divided by the scale.
@@ -1161,6 +1181,7 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
 
     /// Same, with a caller-supplied text stack.
     pub fn pump_with(&mut self, metrics: &mut dyn TextMeasure) -> bool {
+        let t_pump = std::time::Instant::now();
         let mut handled = false;
         let mut consumed = pass::Consumed::default();
         let before = PointerFocus::of(&self.input);
@@ -1346,6 +1367,8 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         // **The arenas, if any are owed.** Before layout, so a template
         // styled by the previous frame's pass is laid out with those
         // styles rather than one frame behind them.
+        self.stages.input = t_pump.elapsed().as_nanos() as u64;
+        let t_cascade = std::time::Instant::now();
         self.last_arenas_owed = self.arenas_dirty;
         if self.arenas_dirty {
             self.arenas_dirty = false;
@@ -1359,6 +1382,7 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             }
         }
 
+        self.stages.cascade = t_cascade.elapsed().as_nanos() as u64;
         let limits = self.limits();
         let t0 = std::time::Instant::now();
         {
@@ -1440,6 +1464,7 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
 
         // What this frame changed. Retention has already seen every
         // command; this closes the frame. Free under `Rebuild`.
+        let t_finish = std::time::Instant::now();
         self.last_damage = self.retain.finish();
 
         // **The shadow oracle** — M34/T34.1, moved here by M41/T41.2.
@@ -1466,6 +1491,11 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
 
         self.frame += 1;
         self.passes.pumps += 1;
+        self.stages.finish = t_finish.elapsed().as_nanos() as u64;
+        self.stages.layout = self.last_layout_ns;
+        self.stages.place = self.last_place_ns;
+        self.stages.paint = self.last_paint_ns;
+        self.stages.pump = t_pump.elapsed().as_nanos() as u64;
         handled
     }
 

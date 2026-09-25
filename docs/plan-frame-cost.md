@@ -1,6 +1,13 @@
 # M53 — what a frame costs, measured whole, and a still frame that costs nothing
 
-> **T53.0 DONE 2026-09-26 (early landing, headless rows only).**
+> **T53.0 and T53.1 DONE 2026-09-26 (early landings; T53.0 headless
+> rows only).** **T53.1:** the host times its six stages and the whole
+> pump (`Host::stage_timings`); the grid, the `stages` arm and
+> `flip::measure_the_flip` read it, and the gap is 0.07–0.11 µs
+> everywhere. Restated in `docs/results-damage-precision.md` T53.1: one
+> binding saves **26%** of the frame, not 36%; a split click **29%**,
+> not 42%; and the arena cascade is **~21 µs on every grid arm**, a
+> third of a narrowed frame. **T53.0:**
 > `Host::pass_counts` counts cascades and passes; `arena_marks.rs`
 > (clicks 40/40 cascades against a bound of 0, ignored until T53.2) and
 > `idle_pump.rs` (40/40 places and paints per 40 idle pumps, ignored
@@ -275,6 +282,27 @@ worked.
 
 **Accepts good input:** on the clean build the gap stays within its
 bound on all five `grid` arms and in `stages`.
+
+*What building found (2026-09-26).*
+
+- **The review's I3 cannot move the grid.** "Force `arenas_dirty` on
+  every pump: the cascade column doubles" assumed some arm did not
+  cascade. At `0091266` all five do, every frame: `bound` and
+  `handled/split` because a binding wrote or an event was handled,
+  `narrowed` because `Host::invalidate` sets the flag, the other two
+  for both reasons. So the injection used is the one the plan names
+  second — **the cascade timed by no stage** — and it reads a 20.87–
+  23.30 µs gap against bounds of 2.81–4.51 µs on 40 of 40 runs.
+- **The `stages` arm's host gap cannot see that injection**, and says
+  so: its `List` has one arena template whatever N is, so its cascade
+  is 0.03–0.08 µs, inside the 0.25 µs floor. What catches a missing
+  cascade there is T53.0's structural count, which is the arm's gate
+  for R6-F4; the host gap is its gate for "a stage nothing times",
+  which the grid exercises.
+- **`flip::measure_the_flip` prints both figures**, so T34.2's table
+  is restated rather than replaced; a tick or a click frame is more
+  than twice what T34.2 printed.
+- The `stages` arm's `List::place` ×10 injection was not re-run.
 
 **Docs in the same commit:** `docs/results-damage-precision.md` T29.1,
 T29.6 and T34.2; `docs/plan-damage-precision.md` T29.6 ("report the

@@ -360,6 +360,15 @@ thousand is not a comparison.
 stages and an independently timed whole frame agree to under 1%, which
 is what makes the decomposition usable.
 
+*Qualified 2026-09-26 (M53/T53.1, R6-F4):* this table was taken with no
+stylesheet, so the arena cascade `Host::pump_with` runs after a binding
+writes did not exist in the arm. It has a `cascade` stage and a sheet
+now, and prints the host's own stages beside its decomposition
+(`Host::stage_timings`). On this fixture the cascade is 0.03–0.08 µs —
+the `List`'s arena is one template, whatever N is — so the rows below
+stand; on the grid's 2,227-node table it is ~21 µs, a third of a
+narrowed frame (`docs/results-damage-precision.md`, T53.1).
+
 | stage | 100 | 1 000 | 3 000 | 10 000 |
 |---|---:|---:|---:|---:|
 | dispatch | 0.03 | 0.03 | 0.03 | 0.04 |

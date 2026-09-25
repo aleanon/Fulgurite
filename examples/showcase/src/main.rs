@@ -1740,6 +1740,12 @@ mod tests {
 /// (`docs/plan-boundaries-default.md`). Ignored: it is a measurement,
 /// not a gate. `cargo test --release -p showcase measure_the_flip --
 /// --ignored --nocapture`; eight runs a side, the median frame of each.
+///
+/// **Two figures per cell since M53/T53.1**: the whole pump
+/// (`Host::stage_timings`), which is the frame, and layout + place +
+/// paint (`Host::timings3`), which is what T34.2 published as the frame
+/// and leaves out input, the arena cascade and `finish`
+/// (`docs/results-damage-precision.md`, T53.1).
 #[cfg(test)]
 mod flip {
     use super::*;
@@ -1751,7 +1757,8 @@ mod flip {
     const RUNS: usize = 8;
     const ITERS: usize = 40;
 
-    fn run<I: Invalidation>(entry: &str, class: &str, m: &mut FontMetrics) -> f64 {
+    /// Median (whole pump, layout + place + paint), µs.
+    fn run<I: Invalidation>(entry: &str, class: &str, m: &mut FontMetrics) -> (f64, f64) {
         let e = CATALOG.iter().position(|x| x.name == entry).unwrap();
         let mut h: Host<Show, Incremental, I> = program(e, false).host();
         for _ in 0..3 {
@@ -1763,7 +1770,7 @@ mod flip {
             let s = h.states[i];
             (s.pos.x + s.size.w / 2.0, s.pos.y + s.size.h / 2.0)
         };
-        let mut v = Vec::new();
+        let (mut v, mut whole) = (Vec::new(), Vec::new());
         for k in 0..ITERS {
             match class {
                 "idle" => {}
@@ -1787,9 +1794,11 @@ mod flip {
             h.pump_with(m);
             let (l, p, pa) = h.timings3();
             v.push((l + p + pa) as f64 / 1000.0);
+            whole.push(h.stage_timings().pump as f64 / 1000.0);
         }
         v.sort_by(|a, b| a.partial_cmp(b).unwrap());
-        v[v.len() / 2]
+        whole.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        (whole[whole.len() / 2], v[v.len() / 2])
     }
 
     #[test]
@@ -1797,14 +1806,19 @@ mod flip {
     fn measure_the_flip() {
         let Some(face) = FontStack::system() else { return };
         let mut m = FontMetrics::new(face);
-        println!("{:<8} {:<13} {:>30} {:>30}", "class", "entry", "Everything µs (8 runs)", "Boundaries<256> µs");
+        println!(
+            "{:<8} {:<13} {:>16} {:>16} {:>16} {:>16}",
+            "class", "entry", "Everything pump", "(l+p+p)", "Boundaries pump", "(l+p+p)"
+        );
         for (class, entry) in [("idle", "Button"), ("hover", "Button"), ("press", "Button"), ("tick", "ProgressBar"), ("click", "Button")] {
-            let mut e: Vec<f64> = (0..RUNS).map(|_| run::<Everything>(entry, class, &mut m)).collect();
-            let mut b: Vec<f64> = (0..RUNS).map(|_| run::<Boundaries<256>>(entry, class, &mut m)).collect();
-            e.sort_by(|a, b| a.partial_cmp(b).unwrap());
-            b.sort_by(|a, b| a.partial_cmp(b).unwrap());
-            let f = |v: &[f64]| format!("{:.2}-{:.2}", v[0], v[v.len() - 1]);
-            println!("{class:<8} {entry:<13} {:>30} {:>30}", f(&e), f(&b));
+            let e: Vec<(f64, f64)> = (0..RUNS).map(|_| run::<Everything>(entry, class, &mut m)).collect();
+            let b: Vec<(f64, f64)> = (0..RUNS).map(|_| run::<Boundaries<256>>(entry, class, &mut m)).collect();
+            let f = |v: &[(f64, f64)], k: usize| {
+                let mut x: Vec<f64> = v.iter().map(|p| if k == 0 { p.0 } else { p.1 }).collect();
+                x.sort_by(|a, b| a.partial_cmp(b).unwrap());
+                format!("{:.2}-{:.2}", x[0], x[x.len() - 1])
+            };
+            println!("{class:<8} {entry:<13} {:>16} {:>16} {:>16} {:>16}", f(&e, 0), f(&e, 1), f(&b, 0), f(&b, 1));
         }
     }
 }

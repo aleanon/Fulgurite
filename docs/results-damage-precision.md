@@ -98,7 +98,12 @@ Eight runs per arm, forty edits each, medians per run. **All 24 runs
 landed in the fast cluster** — the machine was quiet, unlike the first
 session.
 
-| arm | layout | place | paint | raster | **frame** |
+*The **frame** column below is the stage sum layout + place + paint +
+raster, not the pump; **T53.1 at the end of this file restates it as the
+whole pump plus raster**, where the same saving is 26% of the frame, not
+36%.*
+
+| arm | layout | place | paint | raster | **frame** (stage sum) |
 |---|---:|---:|---:|---:|---:|
 | `mark_all` — what `#[bind]` forces | 23.15–23.60 µs | 2.48–2.50 | 30.04–30.18 | 1.43–1.62 | **57.12–57.76 µs** |
 | `narrowed` — the hand-marked scaffold | **2.52–2.77 µs** | 2.47–2.52 | 30.07–30.18 | 1.40–1.51 | **36.52–36.84 µs** |
@@ -296,7 +301,10 @@ this session ran noisier than T29.3's, so every arm is shown whole and
 the slow cluster (frames above 80 µs, or the `narrowed` pair near 56 µs)
 is set aside by the same mode rule.
 
-| arm | frame, all eight runs (µs) |
+*Stage sum again (layout + place + paint + raster); T53.1 below restates
+it as the whole pump.*
+
+| arm | frame (stage sum), all eight runs (µs) |
 |---|---|
 | `mark_all` (control) | 57.57 57.58 57.70 57.91 58.21 60.34 · 82.98 84.56 |
 | `handled` (unsplit) | 54.92 55.30 57.12 57.48 57.55 57.61 57.69 57.87 |
@@ -348,7 +356,8 @@ and the `mark_all` arms, which cannot skip, did not move beyond noise.
 `examples/showcase` test `flip::measure_the_flip` (ignored; `cargo test
 --release -p showcase measure_the_flip -- --ignored --nocapture`): the
 same program's host under each strategy, 40 frames of each class, the
-median frame (layout + place + paint), eight runs a side. The prediction,
+median frame (layout + place + paint — **three of the pump's six stages**;
+T53.1 below restates it as the whole pump), eight runs a side. The prediction,
 written in the plan before the flip: click frames and binding writes do
 not move, because showcase's `after_update` and its tick mark everything.
 
@@ -366,3 +375,72 @@ writes the stage, its `after_update` the header). Showcase's tree is
 small, so the absolute saving is too — the grid (T29.3, T29.6) is where
 the size of the win shows; this row is what a user of the flagship
 example gets.
+
+## T53.1 — the same tables, as shares of the whole pump, 2026-09-26
+
+**Every "frame" above was a stage sum.** T29.1's and T29.6's are layout +
+place + paint + raster; T34.2's is layout + place + paint. `pump_with`
+also runs input and the bindings, the arena cascade and `finish`, and
+none of those was in any of them (R6-F2, `docs/results-deep-review.md`;
+`docs/plan-frame-cost.md` T53.1). Since T53.1 the host times itself
+(`Host::stage_timings`), and every probe here prints the pump, its six
+stages, and the gap between them, bounded at 5% of the pump.
+
+**The grid** (`just grid`), eight runs a side, median of each run's 40
+frames; ranges are over the eight runs. **LOADED**: load average 13.6 at
+the start on a 32-core machine, other agents compiling; a second run at
+load 11–14 read about 1.5× higher on every column and is not used. The
+ratios are what this section states, and they held in both runs.
+
+| arm | input | **cascade** | layout | place | paint | finish | raster | stage sum (old frame) | **pump** | **frame** = pump + raster | gap (bound 5%) |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `mark_all` | 0.05 | **21.12–22.07** | 23.57–23.85 | 2.35 | 29.82–30.07 | 1.62 | 1.39–1.77 | 57.29–58.04 | 78.81–79.96 | **80.32–81.46** | 0.08–0.09 |
+| `bound` | 0.05 | **21.18–22.78** | 2.61–2.91 | 2.34 | 29.67–30.09 | 1.62 | 1.38–1.50 | 36.11–36.77 | 58.18–60.41 | **59.68–61.84** | 0.08 |
+| `narrowed` | 0.04 | **21.02–22.28** | 2.56–2.93 | 2.34 | 29.57–30.11 | 1.62 | 1.40–1.51 | 35.87–36.81 | 57.42–59.71 | **58.82–61.12** | 0.08–0.09 |
+| `handled` | 6.45–6.83 | **20.12–21.64** | 22.29–23.64 | 2.35 | 28.31–29.97 | 1.60 | 1.31–1.47 | 54.16–57.33 | 81.11–85.95 | **82.42–87.42** | 0.08–0.09 |
+| `handled/split` | 6.47 | **19.95–20.69** | 2.39–2.57 | 2.28 | 27.24–27.28 | 1.54 | 1.26–1.41 | 33.23–33.47 | 60.09–60.91 | **61.43–62.30** | 0.08–0.09 |
+
+The restated shares, from the medians of the eight runs:
+
+| claim | on the stage sum (as published) | on the whole pump + raster |
+|---|---:|---:|
+| T29.1: one `#[bind]` on a host-driven frame (`mark_all` → `narrowed`) | 20.94 µs of 57.40, **36%** | 21.08 µs of 80.92, **26%** |
+| T29.6: a split click (`handled` → `handled/split`) | 23.92 µs of 57.26, **42%** | 25.18 µs of 87.23, **29%** |
+| the arena cascade, of a narrowed frame (`narrowed`) | not in the sum | 21.39 µs of 59.84, **36%** |
+| the arena cascade, of a split click (`handled/split`) | not in the sum | 20.53 µs of 62.05, **33%** |
+
+**The saving is the same number of microseconds, and a smaller share.**
+T29.1's 20.7 µs and T29.6's narrowing are real; what the stage sum
+overstated was the share, because the frame was a third larger than the
+sum. **And the cascade runs on all five arms**, at ~21 µs — about what a
+narrowed binding saves. `bound` and `handled/split` cascade because a
+binding wrote or an event was handled; `narrowed` cascades because
+`Host::invalidate` keeps `arenas_dirty`. That is R6-F3, and T53.2 is
+where it is priced; the review's statement that "the cascade exceeds the
+saving T29.6 was built for" is, on these medians, a tie (21.39 against
+21.08).
+
+**`gap` is 0.08–0.09 µs on every run**: the six stages account for the
+pump to within the focus-ring fixup and the timers. With the cascade
+left untimed (the injection in T53.1's commit), it reads 20.87–23.30 µs
+against bounds of 2.81–4.51 µs, on all 40 runs.
+
+**T34.2, restated** (`flip::measure_the_flip`, eight runs a side; the
+same ranges as T34.2's table, µs; LOADED, load 5–15 during the run):
+
+| class | entry | `Everything` pump | (layout + place + paint) | `Boundaries<256>` pump | (layout + place + paint) |
+|---|---|---:|---:|---:|---:|
+| idle | Button | 0.72–0.74 | 0.57–0.58 | **0.49–0.50** | 0.33–0.33 |
+| hover | Button | 0.87–0.88 | 0.58–0.59 | **0.83–0.85** | 0.54–0.55 |
+| unconsumed press | Button | 0.90–0.91 | 0.58–0.59 | **0.86–0.88** | 0.55–0.56 |
+| tick | ProgressBar | 1.98–2.08 | 0.83–0.84 | 1.91–2.02 | 0.81–0.82 |
+| click | Button | 2.56–2.59 | 1.16–1.18 | 2.56–2.61 | 1.15–1.17 |
+
+The flip's idle saving is **0.23 µs of 0.73, 32%** on the pump, not 42%;
+hover's is 4%, not 7%. The tick and click frames are **more than twice**
+the sum T34.2 printed, because both run the cascade and a click runs
+input and the bindings, and T34.2's prediction — that they would not
+move — still holds on the pump. The idle row is the whole pump here,
+and it is not zero: R6-F1 (an idle pump places, paints and finishes) is
+T53.3's.
+

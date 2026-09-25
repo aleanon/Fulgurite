@@ -24,6 +24,7 @@
 //! |---|---|
 //! | `dispatch`  | `pass::dispatch` for a `PointerDown` + `PointerUp` pair, which hit-tests into the list |
 //! | `update`    | `App::update` — the binding step, model to widget |
+//! | `cascade`   | `cascade_arenas_deep` when the binding step wrote — the arena cascade `Host::pump_with` runs (M53/T53.1) |
 //! | `layout`    | `Node::layout` on the root |
 //! | `place`     | `Node::place` on the root |
 //! | `paint`     | `DisplayList::clear` plus `Node::paint` through `Scaled` and `Recording` |
@@ -32,10 +33,24 @@
 //! | `blit`      | `Canvas::blit_0rgb_within`, over the same rect — the shell's present-side copy |
 //! | `raster.gpu`| `Gpu::draw` plus `Gpu::wait`, over the same list and rect. **Not in any sum**: it is an alternative to `raster.sw`, not an addition to it |
 //!
-//! The first six are exactly what `Host::pump_with` does, in the order it
+//! The first seven mirror what `Host::pump_with` does, in the order it
 //! does it, and the `pump` row measures that function independently so a
 //! reader can see whether this decomposition is faithful to the shipped
 //! loop.
+//!
+//! **"Exactly" was the word here until M53/T53.1, and it was false**
+//! (R6-F4): the host was built with no stylesheet, so the arena cascade
+//! did not exist in this arm, and `pump_with` had since gained the
+//! binding marks, T29.6's narrowing and T34.1's shadow check. What the
+//! seven stages still do **not** bracket: popping the `InputQueue`, the
+//! cancel, the subscriptions diff, the outbox drain, the pointer-state
+//! marks, the deferred-result drain, the focus-ring fixup and, with
+//! `shadow-oracle`, the oracle's second layout. So the arm now also
+//! prints the host's **own** stages (`Host::stage_timings`, the
+//! `host.*` rows) from its fastest iteration, and bounds *that* gap —
+//! one frame's stages against the same frame's pump — at 5% + 0.25 µs.
+//! And it fails if the host ran an arena cascade that no stage here
+//! brackets, which is what it could not see before.
 //!
 //! # Honesty about skipped work
 //!
@@ -82,14 +97,14 @@
 //! Stages must add up to something a reader can check, so three sums are
 //! printed beside three independently-measured wholes:
 //!
-//! - `sum` (stages 1-8) against `frame`, an outer timer around the same
+//! - `sum` (stages 1-9) against `frame`, an outer timer around the same
 //!   frame function in its own loop;
 //! - `sum` against `frame.inner`, the per-iteration total from the
 //!   instrumented loop — this pair isolates the *min-of-mins* effect,
 //!   because each stage's minimum may come from a different iteration
 //!   and the sum of minima is therefore a lower bound on any single
 //!   frame;
-//! - `sum.pump` (stages 1-6) against `pump`, `Host::pump_with` measured
+//! - `sum.pump` (stages 1-7) against `pump`, `Host::pump_with` measured
 //!   in its own loop on its own `Host`. This one is a **fidelity** check
 //!   rather than an accounting one — it asks whether the six brackets
 //!   above add up to the loop the framework actually ships — and it is
@@ -192,6 +207,15 @@ fn brackets_cascade() -> bool {
     STAGES.contains(&"cascade")
 }
 
+/// How far the host's whole pump may sit from its own six stages, in one
+/// iteration — M53/T53.1. Five per cent, as the grid's, plus a 0.25 µs
+/// floor: the focus-ring fixup and the stage timers themselves run in
+/// the gap by design (`frame_cost::StageTimes`), and on a 2.6 µs idle
+/// pump at N = 100 that constant alone is a few per cent.
+fn host_gap_bound(pump: f64) -> f64 {
+    0.05 * pump + 0.25
+}
+
 /// The application: a model, and the tree that presents it.
 ///
 /// `App::update` is written by hand rather than by `#[bind(...)]`
@@ -290,9 +314,17 @@ fn mutate(model: &mut [String], load: Load, k: usize) {
     }
 }
 
-/// The eight stages that sum, in the order a frame runs them.
-const STAGES: [&str; 8] =
-    ["dispatch", "update", "layout", "place", "paint", "damage", "raster.sw", "blit"];
+/// The nine stages that sum, in the order a frame runs them.
+///
+/// `cascade` since M53/T53.1 (R6-F4): `Host::pump_with` runs the arena
+/// cascade after the bindings whenever one wrote, and until then this
+/// arm had no stage for it and no sheet to make one run.
+const STAGES: [&str; NSTAGES] =
+    ["dispatch", "update", "cascade", "layout", "place", "paint", "damage", "raster.sw", "blit"];
+const NSTAGES: usize = 9;
+/// How many of [`STAGES`] mirror `Host::pump_with`: dispatch through
+/// damage. The rest is the shell's, after the pump returns.
+const PUMP_STAGES: usize = 7;
 
 /// Everything one cell's frame needs, so the frame body exists **once**
 /// and both the instrumented loop and the independent whole-frame loop
@@ -346,15 +378,15 @@ impl<R: Retention> Rig<R> {
         Constraints { min_w: 0.0, max_w: W as f32, min_h: 0.0, max_h: LAYOUT_H as f32 }
     }
 
-    /// One whole frame, stamping `ts[0..=8]` around the eight stages.
+    /// One whole frame, stamping `ts[0..=NSTAGES]` around the stages.
     ///
-    /// Stages 1-6 mirror `Host::pump_with` call for call and in its
+    /// Stages 1-7 mirror `Host::pump_with` in its
     /// order. What `pump_with` also does and this does not: pop the
     /// events off an `InputQueue` (they are handed to `dispatch`
     /// directly here) and zero the focused node's `focus_ring` when
     /// focus is not keyboard-visible. Both are named in the header as
     /// part of the `pump` gap rather than smuggled into a stage.
-    fn frame(&mut self, ts: &mut [Instant; 9]) {
+    fn frame(&mut self, ts: &mut [Instant; NSTAGES + 1]) {
         ts[0] = Instant::now();
 
         // 1. dispatch — a press and a release, hit-tested into the list.
@@ -364,21 +396,34 @@ impl<R: Retention> Rig<R> {
         ts[1] = Instant::now();
 
         // 2. the binding step.
-        self.app.update();
+        let wrote = self.app.update();
         ts[2] = Instant::now();
 
-        // 3. layout.
+        // 3. the arena cascade — M53/T53.1. The host runs it whenever a
+        //    binding wrote (`App::update_marked`'s default answers
+        //    `Everything` for a `true`), so the rows in the `List`'s
+        //    arena are re-styled every frame the model changed.
+        if wrote {
+            lumen_static::style::cascade_arenas_deep(
+                &mut self.app.ui,
+                &sheet(),
+                &lumen_static::style::Palette::LIGHT,
+            );
+        }
+        ts[3] = Instant::now();
+
+        // 4. layout.
         {
             let mut cx = LayoutCx::new(&mut self.metrics);
             self.app.ui.layout(&mut cx, Self::limits(), &self.styles, &mut self.states, 0);
         }
-        ts[3] = Instant::now();
-
-        // 4. place.
-        self.app.ui.place(Point::default(), &self.styles, &mut self.states, 0);
         ts[4] = Instant::now();
 
-        // 5. paint — the display-list build, through the same two
+        // 5. place.
+        self.app.ui.place(Point::default(), &self.styles, &mut self.states, 0);
+        ts[5] = Instant::now();
+
+        // 6. paint — the display-list build, through the same two
         //    wrappers the host uses. At a scale of 1.0 `Scaled` forwards,
         //    and under `Rebuild` `Recording` forwards to an empty
         //    `observe`; both are in the bracket because both are in the
@@ -389,25 +434,25 @@ impl<R: Retention> Rig<R> {
             let mut out = Recording::new(&mut scaled, &mut self.retain);
             self.app.ui.paint(&self.states, 0, &mut out);
         }
-        ts[5] = Instant::now();
-
-        // 6. what changed.
-        let damage = self.retain.finish();
         ts[6] = Instant::now();
 
-        // 7. the software raster, over exactly what changed.
+        // 7. what changed.
+        let damage = self.retain.finish();
+        ts[7] = Instant::now();
+
+        // 8. the software raster, over exactly what changed.
         let area = damage.clip_to([0.0, 0.0, W as f32, H as f32]);
         if let Some(a) = area {
             self.canvas.clear_within(a, CLEAR);
             self.canvas.render_within(&self.list, a);
         }
-        ts[7] = Instant::now();
+        ts[8] = Instant::now();
 
-        // 8. the present-side copy into the surface buffer.
+        // 9. the present-side copy into the surface buffer.
         if let Some(a) = area {
             self.canvas.blit_0rgb_within(&mut self.buf, a);
         }
-        ts[8] = Instant::now();
+        ts[9] = Instant::now();
 
         self.last_area = area;
         self.last_damage = damage;
@@ -421,7 +466,7 @@ fn us(d: std::time::Duration) -> f64 {
 /// One (N, workload, retention) cell's results.
 struct Cell {
     /// Minimum observed cost of each of [`STAGES`], microseconds.
-    stage: [f64; 8],
+    stage: [f64; NSTAGES],
     /// Minimum of the per-iteration totals from the instrumented loop.
     inner: f64,
     /// Minimum whole frame from an independent loop with one outer timer.
@@ -430,6 +475,9 @@ struct Cell {
     pump: f64,
     /// Arena cascades that host ran in that loop (M53/T53.0).
     host_cascades: u64,
+    /// That host's own stages and whole pump, at its fastest iteration
+    /// (M53/T53.1).
+    host_stages: lumen_static_shell::frame_cost::StageTimes,
     /// Minimum `Gpu::draw` + `Gpu::wait`; `None` when there is no
     /// adapter, or when every frame's damage was empty and the stage
     /// therefore never ran. `gpu_available` tells the two apart.
@@ -456,7 +504,7 @@ fn run_cell<R: Retention>(
     warm: usize,
 ) -> Cell {
     let mut rig: Rig<R> = Rig::new(n, font);
-    let mut ts = [Instant::now(); 9];
+    let mut ts = [Instant::now(); NSTAGES + 1];
 
     // Warm-up: the shaping cache, the allocator's high-water mark, the
     // retention buffer's growth, and the branch predictor. The first
@@ -477,15 +525,15 @@ fn run_cell<R: Retention>(
     // nothing. Caught by running with one warm-up, where the two ranges
     // straddled the frame at which the column's width settled and the
     // two differed by 15x.
-    let mut stage = [f64::INFINITY; 8];
+    let mut stage = [f64::INFINITY; NSTAGES];
     let mut inner = f64::INFINITY;
     for k in warm..(warm + iters) {
         mutate(&mut rig.app.model, load, k);
         rig.frame(&mut ts);
-        for i in 0..8 {
+        for i in 0..NSTAGES {
             stage[i] = stage[i].min(us(ts[i + 1] - ts[i]));
         }
-        inner = inner.min(us(ts[8] - ts[0]));
+        inner = inner.min(us(ts[NSTAGES] - ts[0]));
     }
 
     // The shape of the frame, read after the timed loop so nothing here
@@ -533,6 +581,11 @@ fn run_cell<R: Retention>(
     let mut hm = FontMetrics::new(font.clone());
     let mut pump = f64::INFINITY;
     let cascades_before = host.pass_counts().cascades;
+    // The host's own stages, from the iteration whose whole pump was the
+    // minimum — M53/T53.1. One iteration, so stages and pump describe
+    // the same frame and their gap is what no stage covers, not the
+    // difference between two loops' minima.
+    let mut host_stages = lumen_static_shell::frame_cost::StageTimes::default();
     for k in 0..(warm + iters) {
         mutate(&mut host.app.model, load, k);
         host.post(Event::down(HIT.0, HIT.1));
@@ -540,7 +593,11 @@ fn run_cell<R: Retention>(
         let t = Instant::now();
         host.pump_with(&mut hm);
         if k >= warm {
-            pump = pump.min(us(t.elapsed()));
+            let whole = us(t.elapsed());
+            if whole < pump {
+                host_stages = host.stage_timings();
+            }
+            pump = pump.min(whole);
         }
         if let Some(a) = host.damage().clip_to([0.0, 0.0, W as f32, H as f32]) {
             rig.canvas.clear_within(a, CLEAR);
@@ -590,6 +647,7 @@ fn run_cell<R: Retention>(
         frame,
         pump,
         host_cascades,
+        host_stages,
         gpu: gpu_us,
         gpu_available,
         gpu_px,
@@ -631,18 +689,18 @@ fn report(n: usize, load: Load, ret: &str, c: &Cell, over: &mut Vec<String>) {
     };
     for (i, name) in STAGES.iter().enumerate() {
         let (px, note) = match i {
-            6 | 7 => (c.px.to_string(), raster_note),
+            7 | 8 => (c.px.to_string(), raster_note),
             _ => ("-".to_string(), "-"),
         };
         row(name, n, load, ret, c.stage[i], &px, note);
     }
 
     let sum8: f64 = c.stage.iter().sum();
-    let sum6: f64 = c.stage[..6].iter().sum();
-    row("sum", n, load, ret, sum8, "-", "sum-of-stage-minima-1..8");
+    let sum6: f64 = c.stage[..PUMP_STAGES].iter().sum();
+    row("sum", n, load, ret, sum8, "-", "sum-of-stage-minima-1..9");
     row("frame.inner", n, load, ret, c.inner, "-", "instrumented-per-iteration-total");
     row("frame", n, load, ret, c.frame, "-", "independent-outer-timer");
-    row("sum.pump", n, load, ret, sum6, "-", "sum-of-stage-minima-1..6");
+    row("sum.pump", n, load, ret, sum6, "-", "sum-of-stage-minima-1..7");
     row("pump", n, load, ret, c.pump, "-", "Host::pump_with-independent");
     match c.gpu {
         Some(g) => row("raster.gpu", n, load, ret, g, &c.gpu_px.to_string(), "NOT-in-any-sum"),
@@ -662,6 +720,36 @@ fn report(n: usize, load: Load, ret: &str, c: &Cell, over: &mut Vec<String>) {
         c.inner - sum8,
         c.pump - sum6,
     );
+    // The host's own account of the same pump (M53/T53.1): its six
+    // stages, its whole, and the gap, bounded.
+    let h = &c.host_stages;
+    let ns = |v: u64| v as f64 / 1000.0;
+    for (name, v) in [
+        ("host.input", h.input),
+        ("host.cascade", h.cascade),
+        ("host.layout", h.layout),
+        ("host.place", h.place),
+        ("host.paint", h.paint),
+        ("host.finish", h.finish),
+        ("host.pump", h.pump),
+    ] {
+        row(name, n, load, ret, ns(v), "-", "Host::stage_timings");
+    }
+    let (gap, bound) = (h.gap() as f64 / 1000.0, host_gap_bound(ns(h.pump)));
+    println!(
+        "# host-gap n={n} workload={} retention={ret} pump={:.2}us stages={:.2}us gap={gap:+.2}us (bound {bound:.2})",
+        load.name(),
+        ns(h.pump),
+        ns(h.sum()),
+    );
+    if gap.abs() > bound {
+        over.push(format!(
+            "n={n} {} {ret}: host pump {:.2} vs its stages {:.2}, gap {gap:+.2} us (bound {bound:.2})",
+            load.name(),
+            ns(h.pump),
+            ns(h.sum())
+        ));
+    }
     println!(
         "# passes n={n} workload={} retention={ret} host-cascades={} bracketed={} (bound: bracketed if > 0)",
         load.name(),
@@ -728,18 +816,18 @@ fn main() {
     println!("# method: min of {iters} iterations after {warm} warm-ups, per stage, per cell");
     println!("# raster surface: {W}x{H}; layout limits: {W} x {LAYOUT_H} (natural row heights)");
     println!("# gpu adapter: {adapter}");
-    println!("# Instant::now(): {:.1} ns, nine of them per instrumented frame", timer_overhead_ns());
-    println!("# stages 1-8 sum; raster.gpu is an ALTERNATIVE to raster.sw and is in no sum");
+    println!("# Instant::now(): {:.1} ns, ten of them per instrumented frame", timer_overhead_ns());
+    println!("# stages 1-9 sum; raster.gpu is an ALTERNATIVE to raster.sw and is in no sum");
     println!("# reading the gaps:");
-    println!("#   frame-sum   the accounting check. `sum` adds eight minima that may each come");
+    println!("#   frame-sum   the accounting check. `sum` adds nine minima that may each come");
     println!("#               from a different frame, so it is a LOWER bound and this should be");
     println!("#               a small positive number. A large one is unaccounted work.");
     println!("#   inner-sum   the same check within one loop; isolates min-of-minima alone.");
-    println!("#   pump-sum6   a FIDELITY check, not an accounting one: stages 1-6 against");
+    println!("#   pump-sum6   a FIDELITY check, not an accounting one: stages 1-7 against");
     println!("#               Host::pump_with, which is the shipped loop this arm re-creates.");
     println!("#               It is not expected to be zero. Host::pump_with also pops its");
     println!("#               events off an InputQueue and runs the focus-ring fixup, neither");
-    println!("#               of which the arm brackets; and the arm's stages 1-6 are cut by");
+    println!("#               of which the arm brackets; and the arm's stages 1-7 are cut by");
     println!("#               five extra Instant::now() calls, which are barriers as well as");
     println!("#               timers. Its loop rasterises the host's list untimed so that both");
     println!("#               sides meet the same cache. A residual beyond those is a finding.");
@@ -758,7 +846,7 @@ fn main() {
     // M53/T53.0 (R6-F4): the decomposition must account for the pump it
     // claims to decompose, within `pump_gap_bound`.
     if !over.is_empty() {
-        println!("\n!! {} cell(s): the six stages do not account for Host::pump_with", over.len());
+        println!("\n!! {} cell(s): the decomposition does not account for Host::pump_with", over.len());
         for o in &over {
             println!("!!   {o}");
         }

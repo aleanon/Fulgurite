@@ -40,3 +40,52 @@ impl PassCounts {
         }
     }
 }
+
+/// What the last [`crate::Host::pump_with`] cost, stage by stage and
+/// whole, in nanoseconds — M53/T53.1 (R6-F2, R6-F4).
+///
+/// **A published frame is the whole pump** (`docs/plan-frame-cost.md`
+/// §2.1). Every probe used to add up `Host::timings3` — layout, place,
+/// paint — and call it the frame, and each new step `pump_with` gained
+/// (the arena cascade, the binding marks, the narrowing) had to be added
+/// to every probe by hand, which is how the sum went stale twice. So the
+/// host times itself: the stages below, and `pump` around all of them.
+/// A stage nothing times shows up as [`StageTimes::gap`], which a probe
+/// prints and bounds.
+///
+/// | field | what runs inside it |
+/// |---|---|
+/// | `input` | dispatch, the cancel, subscriptions, the outbox drain, the pointer-state marks, the deferred-result drain and the bindings |
+/// | `cascade` | `cascade_arenas_deep`, when an arena is owed one and a sheet is set; 0 otherwise |
+/// | `layout` | `layout` on the root |
+/// | `place` | `place` on the root |
+/// | `paint` | clearing the list and painting through `Scaled(Recording(list))` |
+/// | `finish` | `Retention::finish` and spending the marks |
+/// | `pump` | all of `pump_with`, measured around it |
+///
+/// Between `place` and `paint` the focus-ring fixup (and, with
+/// `shadow-oracle`, the oracle's second layout) runs untimed: that is
+/// what the gap holds by design.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct StageTimes {
+    pub input: u64,
+    pub cascade: u64,
+    pub layout: u64,
+    pub place: u64,
+    pub paint: u64,
+    pub finish: u64,
+    pub pump: u64,
+}
+
+impl StageTimes {
+    /// The six stages added up.
+    pub fn sum(&self) -> u64 {
+        self.input + self.cascade + self.layout + self.place + self.paint + self.finish
+    }
+
+    /// `pump - sum`: what ran inside the pump and in no stage. Signed,
+    /// because a printed negative gap is a finding about the timers.
+    pub fn gap(&self) -> i64 {
+        self.pump as i64 - self.sum() as i64
+    }
+}

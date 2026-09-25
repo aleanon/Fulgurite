@@ -397,42 +397,144 @@ fn pump<A: lumen_static::event::App>(
 /// `docs/plan-frame-cost.md` T53.0; a stage nothing times shows up here.
 const GAP_BOUND: f64 = 0.05;
 
-/// One run of `iters` frames of `act`, as the probe loop in `main` does
-/// it — medians of layout, place, paint, damage-bounded raster, and
-/// damaged pixels. Generic so the split twin (M29/T29.6) is measured by
-/// the same code rather than a copy that could drift.
-fn measure<A: lumen_static::event::App>(
-    h: &mut Host<A, lumen_static::Incremental, lumen_static::Boundaries<16>>,
-    iters: usize,
-    m: &mut dyn TextMeasure,
-    mut act: impl FnMut(&mut Host<A, lumen_static::Incremental, lumen_static::Boundaries<16>>, &mut dyn TextMeasure),
-) -> (f64, f64, f64, f64, f64, f64, f64) {
-    let mut canvas = Canvas::new(W, H);
-    let (mut lay, mut plc, mut pnt, mut ras, mut px) =
-        (Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new());
-    let (mut pumps, mut gaps) = (Vec::new(), Vec::new());
-    for _ in 0..iters {
-        act(h, m);
-        let (l, pl, p) = h.timings3();
-        lay.push(l as f64 / 1000.0);
-        plc.push(pl as f64 / 1000.0);
-        pnt.push(p as f64 / 1000.0);
-        let pu = PUMP_NS.load(Ordering::Relaxed) as f64 / 1000.0;
-        pumps.push(pu);
-        gaps.push(pu - (l + pl + p) as f64 / 1000.0);
+/// One run's per-frame samples, and the line it prints — M53/T53.1.
+///
+/// Every column comes from `Host::stage_timings`, the host timing
+/// itself, so a stage `pump_with` gains later is gap here rather than a
+/// sum that silently goes stale (`docs/plan-frame-cost.md` §2.1). The
+/// `stage3` column is what the table published as "the frame" until
+/// T53.1 (layout + place + paint + raster), kept beside the new one so a
+/// reader can see which figure an older citation used.
+#[derive(Default)]
+struct Samples {
+    input: Vec<f64>,
+    cascade: Vec<f64>,
+    layout: Vec<f64>,
+    place: Vec<f64>,
+    paint: Vec<f64>,
+    finish: Vec<f64>,
+    raster: Vec<f64>,
+    pump: Vec<f64>,
+    gap: Vec<f64>,
+    outer: Vec<f64>,
+    px: Vec<f64>,
+}
+
+/// The medians of one run, in µs.
+struct Run {
+    input: f64,
+    cascade: f64,
+    layout: f64,
+    place: f64,
+    paint: f64,
+    finish: f64,
+    raster: f64,
+    pump: f64,
+    gap: f64,
+    outer: f64,
+    px: f64,
+}
+
+impl Samples {
+    /// Read the frame `h` just pumped, then rasterise its damage.
+    ///
+    /// **Damage-bounded, as a host rasterises**: clear and render only
+    /// what retention says changed. `Host::render` draws the whole list,
+    /// which no shell does and which would inflate the frame this probe
+    /// is judged against.
+    fn record<A: lumen_static::event::App>(
+        &mut self,
+        h: &mut Host<A, lumen_static::Incremental, lumen_static::Boundaries<16>>,
+        canvas: &mut Canvas,
+    ) {
+        let us = |ns: u64| ns as f64 / 1000.0;
+        let st = h.stage_timings();
+        self.input.push(us(st.input));
+        self.cascade.push(us(st.cascade));
+        self.layout.push(us(st.layout));
+        self.place.push(us(st.place));
+        self.paint.push(us(st.paint));
+        self.finish.push(us(st.finish));
+        self.pump.push(us(st.pump));
+        self.gap.push(st.gap() as f64 / 1000.0);
+        self.outer.push(us(PUMP_NS.load(Ordering::Relaxed)));
         let dmg = h.take_damage_for_age(1).clip_to([0.0, 0.0, W as f32, H as f32]);
         let t = Instant::now();
         match dmg {
             Some(area) => {
                 canvas.clear_within(area, PAGE);
                 canvas.render_within(&h.list, area);
-                px.push(((area[2] - area[0]) * (area[3] - area[1])) as f64);
+                self.px.push(((area[2] - area[0]) * (area[3] - area[1])) as f64);
             }
-            None => px.push(0.0),
+            None => self.px.push(0.0),
         }
-        ras.push(t.elapsed().as_nanos() as f64 / 1000.0);
+        self.raster.push(t.elapsed().as_nanos() as f64 / 1000.0);
     }
-    (med(&mut lay), med(&mut plc), med(&mut pnt), med(&mut ras), med(&mut px), med(&mut pumps), med(&mut gaps))
+
+    fn run(mut self) -> Run {
+        Run {
+            input: med(&mut self.input),
+            cascade: med(&mut self.cascade),
+            layout: med(&mut self.layout),
+            place: med(&mut self.place),
+            paint: med(&mut self.paint),
+            finish: med(&mut self.finish),
+            raster: med(&mut self.raster),
+            pump: med(&mut self.pump),
+            gap: med(&mut self.gap),
+            outer: med(&mut self.outer),
+            px: med(&mut self.px),
+        }
+    }
+}
+
+impl Run {
+    /// Layout + place + paint + raster: the old "frame" column.
+    fn stage3(&self) -> f64 {
+        self.layout + self.place + self.paint + self.raster
+    }
+
+    /// The whole pump plus the raster: the frame, since T53.1.
+    fn frame(&self) -> f64 {
+        self.pump + self.raster
+    }
+
+    fn print(&self, arm: &str) {
+        println!(
+            "{arm:<13} {:>7.2} {:>7.2} {:>7.2} {:>7.2} {:>7.2} {:>7.2} {:>7.2} {:>8.2} {:>8.2} {:>8.2} {:>7.2} {:>8.2} {:>9.0}",
+            self.input,
+            self.cascade,
+            self.layout,
+            self.place,
+            self.paint,
+            self.finish,
+            self.raster,
+            self.stage3(),
+            self.pump,
+            self.frame(),
+            self.gap,
+            self.outer,
+            self.px,
+        );
+    }
+}
+
+/// One run of `iters` frames of `act`, as the probe loop in `main` does
+/// it. Generic so the split twin (M29/T29.6) is measured by the same code
+/// rather than a copy that could drift.
+fn measure<A: lumen_static::event::App>(
+    h: &mut Host<A, lumen_static::Incremental, lumen_static::Boundaries<16>>,
+    iters: usize,
+    m: &mut dyn TextMeasure,
+    mut act: impl FnMut(&mut Host<A, lumen_static::Incremental, lumen_static::Boundaries<16>>, &mut dyn TextMeasure),
+) -> Run {
+    let mut canvas = Canvas::new(W, H);
+    let mut s = Samples::default();
+    for _ in 0..iters {
+        act(h, m);
+        s.record(h, &mut canvas);
+    }
+    s.run()
 }
 
 /// The median of `v`, which is sorted in place.
@@ -603,8 +705,9 @@ fn main() {
     const RUNS: usize = 8;
     const ITERS: usize = 40;
     println!(
-        "\n{:<10} {:>10} {:>10} {:>10} {:>10} {:>10} {:>10} {:>10} {:>10}",
-        "arm", "layout µs", "place µs", "paint µs", "raster µs", "frame µs", "damage px", "pump µs", "gap µs"
+        "\n{:<13} {:>7} {:>7} {:>7} {:>7} {:>7} {:>7} {:>7} {:>8} {:>8} {:>8} {:>7} {:>8} {:>9}",
+        "arm", "input", "cascade", "layout", "place", "paint", "finish", "raster", "stage3", "pump", "frame",
+        "gap", "outer", "damage px"
     );
     // Every run whose pump the stage sum does not account for, by more
     // than `GAP_BOUND` of the pump (M53/T53.0).
@@ -613,53 +716,19 @@ fn main() {
     for arm in ["mark_all", "bound", "narrowed", "handled"] {
         for run in 0..RUNS {
             let mut h = host(m);
-            let mut canvas = Canvas::new(W, H);
-            let (mut lay, mut plc, mut pnt, mut ras) =
-                (Vec::new(), Vec::new(), Vec::new(), Vec::new());
-            let mut px: Vec<f64> = Vec::new();
-            let (mut pumps, mut gaps) = (Vec::new(), Vec::new());
-            for i in 0..ITERS {
-                let v = (run * ITERS + i) as i64 + 1;
+            let r = measure(&mut h, ITERS, m, |h, m| {
+                // `v` from a counter the closure owns: each frame must
+                // write a value the label does not already hold.
+                let v = (run * ITERS) as i64 + h.frame_number() as i64 + 1;
                 match arm {
-                    "mark_all" => arm_forced(&mut h, v, m),
-                    "bound" => arm_a(&mut h, v, m),
-                    "narrowed" => arm_b(&mut h, v, m),
-                    _ => arm_c(&mut h, bump_at, m),
+                    "mark_all" => arm_forced(h, v, m),
+                    "bound" => arm_a(h, v, m),
+                    "narrowed" => arm_b(h, v, m),
+                    _ => arm_c(h, bump_at, m),
                 }
-                // `place` apart from `layout`: it takes no `Changed`, so
-                // it is the floor, not residue (`Host::timings3`).
-                let (l, pl, p) = h.timings3();
-                lay.push(l as f64 / 1000.0);
-                plc.push(pl as f64 / 1000.0);
-                pnt.push(p as f64 / 1000.0);
-                let pu = PUMP_NS.load(Ordering::Relaxed) as f64 / 1000.0;
-                pumps.push(pu);
-                gaps.push(pu - (l + pl + p) as f64 / 1000.0);
-                // **Damage-bounded, as a host rasterises**: clear and
-                // render only what retention says changed. `Host::render`
-                // draws the whole list, which no shell does and which
-                // would inflate the frame this probe is judged against.
-                let dmg = h.take_damage_for_age(1).clip_to([0.0, 0.0, W as f32, H as f32]);
-                let t = Instant::now();
-                match dmg {
-                    Some(area) => {
-                        canvas.clear_within(area, PAGE);
-                        canvas.render_within(&h.list, area);
-                        px.push(((area[2] - area[0]) * (area[3] - area[1])) as f64);
-                    }
-                    None => px.push(0.0),
-                }
-                ras.push(t.elapsed().as_nanos() as f64 / 1000.0);
-            }
-            let (l, pl, p, r) =
-                (med(&mut lay), med(&mut plc), med(&mut pnt), med(&mut ras));
-            let (pu, gap) = (med(&mut pumps), med(&mut gaps));
-            println!(
-                "{arm:<10} {l:>10.2} {pl:>10.2} {p:>10.2} {r:>10.2} {:>10.2} {:>10.0} {pu:>10.2} {gap:>10.2}",
-                l + pl + p + r,
-                med(&mut px)
-            );
-            gap_check(&mut over, arm, run, l + pl + p, pu, gap);
+            });
+            r.print(arm);
+            gap_check(&mut over, arm, run, &r);
         }
         println!();
     }
@@ -669,18 +738,13 @@ fn main() {
     // and the binding marks the formula bar — and the frame should land
     // on the `narrowed` row, not the `mark_all` one.
     for run in 0..RUNS {
-        let _ = run;
         let mut h = host_split(m);
-        let (l, pl, p, r, px, pu, gap) = measure(&mut h, ITERS, m, |h, m| {
+        let r = measure(&mut h, ITERS, m, |h, m| {
             h.click(bump_at.0, bump_at.1);
             pump(h, m);
         });
-        println!(
-            "{:<10} {l:>10.2} {pl:>10.2} {p:>10.2} {r:>10.2} {:>10.2} {px:>10.0} {pu:>10.2} {gap:>10.2}",
-            "handled/split",
-            l + pl + p + r,
-        );
-        gap_check(&mut over, "handled/split", run, l + pl + p, pu, gap);
+        r.print("handled/split");
+        gap_check(&mut over, "handled/split", run, &r);
     }
     println!();
 
@@ -699,11 +763,14 @@ fn main() {
          whole surface; the per-run median excludes it."
     );
 
-    // ---- M53/T53.0: the stage sum against the pump ---------------------
+    // ---- M53/T53.0/T53.1: the stage sum against the pump --------------
     println!(
-        "\n   `pump` is the whole `Host::pump_with`, timed from outside; `gap` is the\n   \
-         pump minus layout + place + paint, the sum the `frame` column was built\n   \
-         from. Bound: {:.0}% of the pump per run (docs/plan-frame-cost.md T53.0).",
+        "\n   Every column but `raster`, `outer` and `damage px` is the host's own\n   \
+         `stage_timings` (M53/T53.1). `pump` is all of `pump_with`; `frame` is\n   \
+         pump + raster, the figure to cite; `stage3` is layout + place + paint +\n   \
+         raster, which this table published as the frame until T53.1. `gap` is\n   \
+         pump minus the six stages, bounded at {:.0}% of the pump per run; `outer`\n   \
+         is the same pump timed from outside the call, as a check on the host's.",
         GAP_BOUND * 100.0
     );
     if !over.is_empty() {
@@ -715,12 +782,17 @@ fn main() {
     }
 }
 
-/// One run's stage-sum-against-pump line, and a failure if the gap is
+/// One run's stage sum against its pump, and a failure if the gap is
 /// over [`GAP_BOUND`] of the pump — the quantity beside its bound.
-fn gap_check(over: &mut Vec<String>, arm: &str, run: usize, sum: f64, pump: f64, gap: f64) {
-    let bound = GAP_BOUND * pump;
-    let line = format!("{arm} run {run}: stage-sum {sum:.2} vs pump {pump:.2}, gap {gap:.2} µs (bound {bound:.2})");
-    if gap.abs() > bound {
+fn gap_check(over: &mut Vec<String>, arm: &str, run: usize, r: &Run) {
+    let bound = GAP_BOUND * r.pump;
+    let line = format!(
+        "{arm} run {run}: stage-sum {:.2} vs pump {:.2}, gap {:.2} µs (bound {bound:.2})",
+        r.pump - r.gap,
+        r.pump,
+        r.gap
+    );
+    if r.gap.abs() > bound {
         over.push(line);
     }
 }
