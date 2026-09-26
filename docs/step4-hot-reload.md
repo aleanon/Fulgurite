@@ -60,6 +60,18 @@ logs it missing), and `reload::restore_keep` refuses a `null` over a
 non-null fresh value, logged "serialized as null".
 `crates/lumen-static-shell/tests/reload_schema.rs` has the rows.
 
+**A kept struct restores field by field (M49/T49.7, R5-F4).** A struct
+that gained a field no longer deserializes whole, and used to fall back
+whole: `Settings {a, b} → {a, b, c}` came back all defaults, and the
+taught pattern keeps all state in one such struct. When a plain read
+fails, `restore_keep` lays the saved object over the fresh value's own
+serialization, key by key and recursively through objects, reads the
+result, and logs each key the saved state lacked. Only after a plain read
+fails, so an enum that changed variant is never merged into the fresh
+variant's shape. `just window-reload-demo`'s `v-grow.so` adds a field to
+the kept `Tally` in a live swap: the count survives and the warning names
+`tally.step`.
+
 ### The no-code-pointers property is compile-time
 
 Only `#[reload(keep)]` fields go through serde. A fn pointer or closure

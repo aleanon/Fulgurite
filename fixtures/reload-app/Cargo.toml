@@ -18,6 +18,8 @@ v2 = []
 v3 = ["v2"]
 # M49/T49.0: v3, whose boot panics -- the swap must not happen (R4-F5).
 panic-boot = ["v3"]
+# M49/T49.7: v3, whose kept `Tally` gained a field -- the count must survive.
+grow = ["v3"]
 
 [dependencies]
 lumen-static = { path = "../../crates/lumen-static", features = ["reload"] }

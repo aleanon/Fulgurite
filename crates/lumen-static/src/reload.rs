@@ -123,9 +123,46 @@ pub fn restore_keep<T: serde::Serialize + serde::de::DeserializeOwned>(
         log_fallback(ty, field, "serialized as null (a NaN, or a value that did not save)");
         return;
     }
-    match from_value(v.clone()) {
-        Ok(x) => *slot = x,
-        Err(e) => log_fallback(ty, field, &format!("incompatible saved value: {e}")),
+    let plain = match from_value(v.clone()) {
+        Ok(x) => {
+            *slot = x;
+            return;
+        }
+        Err(e) => e,
+    };
+    // **Field by field** (M49/T49.7, R5-F4). A kept struct that gained a
+    // field no longer reads as a whole, and restoring it whole reset every
+    // field it *did* keep — the taught pattern keeps all application state
+    // in one such struct. So the saved object is laid over the fresh
+    // value's own serialization, key by key, and the result read back;
+    // each key the saved state lacks keeps its fresh value and is named.
+    // Only after a plain read failed, so an enum that changed variant, or
+    // anything else that reads as a whole, is never merged into the fresh
+    // variant's shape.
+    if let (Ok(Value::Object(mut fresh)), Value::Object(saved)) = (to_value(&*slot), v) {
+        let mut missing = Vec::new();
+        merge(&mut fresh, saved, field, &mut missing);
+        if let Ok(x) = from_value(Value::Object(fresh)) {
+            *slot = x;
+            for path in missing {
+                log_fallback(ty, &path, "missing from saved state; the rest of the struct was kept");
+            }
+            return;
+        }
+    }
+    log_fallback(ty, field, &format!("incompatible saved value: {plain}"));
+}
+
+/// Lay `saved`'s keys over `fresh`, recursing where both are objects;
+/// record the path of every key `fresh` has and `saved` does not.
+fn merge(fresh: &mut Map<String, Value>, saved: &Map<String, Value>, path: &str, missing: &mut Vec<String>) {
+    for (k, f) in fresh.iter_mut() {
+        let here = format!("{path}.{k}");
+        match (f, saved.get(k)) {
+            (Value::Object(fo), Some(Value::Object(so))) => merge(fo, so, &here, missing),
+            (f, Some(s)) => *f = s.clone(),
+            (_, None) => missing.push(here),
+        }
     }
 }
 

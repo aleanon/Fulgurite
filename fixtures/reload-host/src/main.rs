@@ -2,7 +2,7 @@
 //! and check the swapped session against v2 run from the start —
 //! M37/T37.1 (`docs/plan-window-reload.md`).
 //!
-//! `reload-host <v1.so> <v2.so> <v3.so> <v-panic.so>`. The exit code is the verdict.
+//! `reload-host <v1.so> <v2.so> <v3.so> <v-panic.so> <v-grow.so>`. The exit code is the verdict.
 //!
 //! **What is compared.** v1 is clicked once, saved, dropped; v2 boots
 //! its own program with those bytes. A second v2 session boots with
@@ -147,6 +147,9 @@ fn main() {
     assert!(after_good.contains("clicks: 1"), "the good build's frame: `{after_good}`");
     assert_eq!(r.error, None, "a successful swap clears the error");
     assert_eq!(r.reloads, 1);
+    // M49/T49.7's other direction: nothing about the kept state changed
+    // between v1 and v2, so nothing may be logged.
+    assert_eq!(r.warning, None, "an unchanged kept struct logged: {:?}", r.warning);
 
     // The same bytes again change nothing, so nothing swaps.
     r.outcome(Outcome::Built(std::path::PathBuf::from(&args[1])));
@@ -202,6 +205,24 @@ fn main() {
     println!("after a click:          {after}");
     assert!(after.contains("clicks: 2"), "a panicking boot lost the session: `{after}`");
     println!("  ok: the panicking build was refused and the running session still counts");
+
+    // ---- M49/T49.7: a kept struct that gained a field ---------------
+    //
+    // `v-grow.so` is v3 with a field added to the kept `Tally`. The
+    // taught pattern keeps all application state in one such struct, so
+    // restoring it whole-or-not-at-all reset every kept value on the
+    // first edit that added one (R5-F4). The count must survive, and the
+    // warning must name the new field.
+    r.outcome(Outcome::Built(std::path::PathBuf::from(&args[4])));
+    assert!(r.swap(&mut cur, adopt), "a grown kept struct must not refuse the swap");
+    cur.frame(16.0, W, H);
+    let after = text_of(&*cur);
+    let warning = r.warning.clone().unwrap_or_default();
+    println!("after v-grow:  {after}");
+    println!("warning:       {warning}");
+    assert!(after.contains("clicks: 2"), "a field added to the kept struct reset its count: `{after}`");
+    assert!(warning.contains("tally.step"), "the warning must name the new field: `{warning}`");
+    println!("  ok: `Tally` gained `step`; the count 2 survived and `tally.step` was named");
 
     println!("\nWINDOW RELOAD (headless): PASS");
 }

@@ -28,6 +28,11 @@ as `null`, and a saved `null` over a fresh value that is not `null` —
 which is how serde writes `f32::NAN` — keeps the fresh value. Without
 both, a kept `Option` came back `None`, with no line.
 
+A kept struct restores **field by field** too. Add a field to the
+`#[reload(keep)]` struct that holds your state, and the fields it already
+had keep their values; the new one gets its boot value, and the log names
+it (`Counter.tally.step: missing from saved state`).
+
 ## `#[reload(...)]` on each field
 
 ```text

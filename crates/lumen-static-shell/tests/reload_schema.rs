@@ -123,7 +123,6 @@ fn a_value_that_did_not_save_keeps_its_fresh_value_and_says_so() {
 /// R5-F4: a kept struct that gained a field keeps the fields it had, and
 /// names the one it did not.
 #[test]
-#[ignore = "red until T49.7: R5-F4, a struct that gained a field resets whole"]
 fn a_struct_that_gained_a_field_keeps_the_fields_it_had() {
     let (v2, log) = swap();
     let s = &v2.settings;

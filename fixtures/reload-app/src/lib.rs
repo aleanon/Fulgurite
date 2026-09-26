@@ -28,6 +28,10 @@ pub struct Ui {
 #[derive(Default, Serialize, Deserialize)]
 pub struct Tally {
     pub count: i64,
+    /// The edit `grow` makes (M49/T49.7): a field added to the kept
+    /// struct. Every field it already had must survive the swap.
+    #[cfg(feature = "grow")]
+    pub step: i64,
 }
 
 #[derive(DeriveApp, DeriveReloadable)]
