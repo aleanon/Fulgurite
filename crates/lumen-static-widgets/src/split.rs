@@ -385,6 +385,8 @@ impl<W: Widget, S: TextStorage> Collapsible<W, S> {
     const BODY: usize = 1;
     /// The header's height.
     const HEADER: f32 = 40.0;
+    /// Space under an open body.
+    const BODY_BOTTOM: f32 = 12.0;
 
     pub fn new(title: S, body: W) -> Self {
         Collapsible { title, body, open: false, header_h: Self::HEADER }
@@ -509,7 +511,9 @@ impl<W: Widget, S: TextStorage> Node for Collapsible<W, S> {
             // taking clicks through the one below it.
             lumen_static::ops::hide_subtree(st, i + Self::BODY, limits, W::NODE_COUNT)
         };
-        let h = self.header_h + if self.open { body.h + 8.0 } else { 0.0 };
+        // 8 px above the body and `BODY_BOTTOM` below it (M57/B47): the
+        // open body sat flush against the section's bottom edge.
+        let h = self.header_h + if self.open { body.h + 8.0 + Self::BODY_BOTTOM } else { 0.0 };
         let s = lumen_static::ops::resolve_self(limits, &me, Size { w: limits.max_w, h });
         lumen_static::ops::record_painted(st, i, limits, s, &me)
     }
@@ -609,7 +613,9 @@ impl<W: Widget, S: TextStorage> Node for Collapsible<W, S> {
             // press, so clicking an open section's text collapsed it
             // (M57/A4, `docs/widget-audit.md` X2).
             Event::PointerDown { .. } if cx.target == cx.node && cx.local.y <= self.header_h => self.toggle(),
-            Event::Key { key: Key::Enter, down: true } if cx.target == cx.node => self.toggle(),
+            // Enter and Space, as on any button-like header (M57/B47: only
+            // Enter toggled).
+            Event::Key { key: Key::Enter | Key::Space, down: true } if cx.target == cx.node => self.toggle(),
             _ => false,
         }
     }
