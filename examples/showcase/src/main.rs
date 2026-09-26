@@ -312,6 +312,8 @@ pub struct Store {
     range: (f32, f32),
     /// Veil dismissal requests, apart from the panel's presses (M57/C6).
     dismissals: u32,
+    /// The accordion's open section, if any (M57/C7).
+    section: Option<usize>,
 }
 
 /// After every pump: rebuild the demos whose state lives in the store,
@@ -396,6 +398,20 @@ fn refresh(s: &mut Show) -> bool {
             }
             _ => {}
         }
+    }
+    // **One section open at a time** — the application's rule, as
+    // `Collapsible`'s rustdoc says: an accordion is a column of them, and
+    // the "three lines in the application" are these (M57/C7). A section
+    // that opened since last frame becomes the open one; the others shut.
+    if let Demo::Accordion(d) = &mut s.ui.main.stage.row.demo {
+        let opens = [d.a.is_open(), d.b.is_open(), d.c.is_open()];
+        if let Some(k) = (0..3).find(|&k| opens[k] && Some(k) != s.store.section) {
+            s.store.section = Some(k);
+        } else if s.store.section.is_some_and(|j| !opens[j]) {
+            s.store.section = None;
+        }
+        let want = s.store.section;
+        changed |= d.a.set_open(want == Some(0)) | d.b.set_open(want == Some(1)) | d.c.set_open(want == Some(2));
     }
     // **Read the typed fields back before reporting.** This is what a
     // `Dyn` island could not do: a `Slider` owns its value, and through
@@ -1215,6 +1231,10 @@ fn stylesheet_with(c: Chrome) -> Vec<StyleRule> {
         // a grid needs one wide enough to show that it does *not*, and a
         // split pane is as big as it is given.
         StyleRule::new(Selector::Kind("DWrap"), Patch::new().width(Length::Fixed(260.0))),
+        // Tall enough for any one section open, so opening one does not
+        // re-centre the column and move the header out from under the
+        // pointer that pressed it (M57/C7: 15 px up, measured).
+        StyleRule::new(Selector::Kind("DAccordion"), Patch::new().height(Length::Fixed(200.0))),
         StyleRule::new(Selector::Kind("DGrid"), Patch::new().width(Length::Fixed(420.0))),
         StyleRule::new(
             Selector::Id("d_split_a"),
@@ -2218,6 +2238,40 @@ mod tests {
             Damage::None => false,
         };
         assert!(covers, "the press damaged something, but not the button it was on");
+    }
+
+    /// **An accordion keeps one section open, and its headers still** —
+    /// M57/C7.
+    ///
+    /// No section started open, although the demo's comment said the first
+    /// did; the one-open rule the rustdoc gives the application was not
+    /// written; and the stage re-centred the column when a section opened,
+    /// moving the pressed header 15 px (`docs/widget-audit.md`, Accordion).
+    #[test]
+    fn an_accordion_keeps_one_section_open_and_its_headers_still() {
+        let entry = CATALOG.iter().position(|e| e.name == "Accordion").unwrap();
+        let mut h = host(entry, false);
+        let table = <<Show as lumen_static::event::App>::Tree as lumen_static::widget::Widget>::SUB_TABLE;
+        let b = lumen_static::style::index_of_wid(table, "d_acc_b").expect("the second section");
+        let open = |h: &lumen_static_shell::Host<Show>| match &h.app.ui.main.stage.row.demo {
+            Demo::Accordion(d) => [d.a.is_open(), d.b.is_open(), d.c.is_open()],
+            _ => panic!("setup: not the Accordion demo"),
+        };
+        assert_eq!(open(&h), [true, false, false], "the first section does not start open");
+        let a = lumen_static::style::index_of_wid(table, "d_acc_a").unwrap();
+        let (y0, ya0) = (h.states[b].pos.y, h.states[a].pos.y);
+        let (x, y) = (h.states[b].pos.x + 30.0, y0 + 10.0);
+        h.post(Event::down(x, y));
+        h.post(Event::up(x, y));
+        h.pump();
+        h.pump();
+        println!("after pressing the second header: {:?}; header y {y0} -> {}", open(&h), h.states[b].pos.y);
+        assert_eq!(open(&h), [false, true, false], "more or other than the pressed section is open");
+        // The second header moves up by the first section's closing, which
+        // is right; what must not happen is a re-centring, which would move
+        // the *first* header too.
+        println!("first header y {ya0} -> {}", h.states[a].pos.y);
+        assert_eq!(h.states[a].pos.y, ya0, "the column re-centred when a section opened");
     }
 
     /// **A confirm is not a dismissal** — M57/C6.

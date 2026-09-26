@@ -224,10 +224,13 @@ fn lbl_of(t: &str) -> Label<String> {
     l
 }
 
-/// One accordion section, open on the first so the demo shows both
-/// states at once.
-fn section(title: &str, body: &str) -> Collapsible<Label<String>, String> {
-    Collapsible::new(title.into(), lbl_of(body))
+/// One accordion section. The first is opened by the entry, so the demo
+/// shows both states at once — this comment said so, and until M57/C7 no
+/// section started open.
+fn section(title: &str, body: &str, open: bool) -> Collapsible<Label<String>, String> {
+    let mut c = Collapsible::new(title.into(), lbl_of(body));
+    c.set_open(open);
+    c
 }
 
 /// A `Button` wired to the press counter.
@@ -480,12 +483,12 @@ pub static CATALOG: &[Entry] = &[
         false,
         |s| on(s, Demo::Split(DSplitPane { a: SplitPane::new(lbl_of("left"), lbl_of("right")) })),
         none),
-    entry!("Layout", "Accordion", "Three sections; press a header.",
+    entry!("Layout", "Accordion", "Three sections, one open at a time.",
         false,
         |s| on(s, Demo::Accordion(DAccordion {
-            a: section("Account", "Your name and email"),
-            b: section("Privacy", "Who can see your activity"),
-            c: section("Advanced", "Developer options") })),
+            a: section("Account", "Your name and email", true),
+            b: section("Privacy", "Who can see your activity", false),
+            c: section("Advanced", "Developer options", false) })),
         none),
     entry!("Layout", "PaneGrid", "Four panes, three dividers.",
         false,
