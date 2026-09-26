@@ -487,13 +487,11 @@ fn dispatch_at<S: crate::event::App>(
     // *area* catches the ones hidden by `layout` zeroing their subtree,
     // which is how `Option`, `Either` and a hidden subtree all express
     // absence — and none of those touches `Style::visible`.
+    //
+    // **The same test ends a capture** (M44/T44.3, R3-F4): see the
+    // capture block below.
     if let Some(f) = *focus {
-        let i = f as usize;
-        let gone = i >= table.len()
-            || !style[i].visible
-            || st[i].size.w <= 0.0
-            || st[i].size.h <= 0.0;
-        if gone {
+        if gone(table.len(), style, st, f as usize) {
             *focus = None;
         }
     }
@@ -589,9 +587,25 @@ fn dispatch_at<S: crate::event::App>(
     // also how M9's objection to routing `PointerMove` stays answered:
     // moves cost one call when a gesture is in flight and nothing
     // otherwise.
+    //
+    // **A capture ends when its node leaves the screen** — M44/T44.3,
+    // R3-F4, C5's rule applied to the pointer. A slider hidden mid-drag
+    // (an `Either` switched away, a styled-away subtree) used to keep
+    // every move until the release, changing a value nobody could see.
+    // So a captured node that is gone loses the capture and the press
+    // with it — pressed bits, the press shade, the press latch — and the
+    // event falls through to ordinary dispatch rather than reaching it.
     if let Some(cap) = *capture {
         let cap = cap as usize;
-        if cap >= table.len() {
+        if cap < table.len() && gone(table.len(), style, st, cap) {
+            *capture = None;
+            for n in st.iter_mut() {
+                n.pressed = false;
+            }
+            input.state_writes.add(st.len());
+            input.pressed = None;
+            input.press = None;
+        } else if cap >= table.len() {
             *capture = None;
         } else if let Some(p) = ev.position() {
             if matches!(ev, Event::PointerMove { .. } | Event::PointerUp { .. }) {
@@ -930,6 +944,18 @@ fn tell_owner<S: crate::event::App>(
         };
         h(state.state_mut(), &ctx);
     }
+}
+
+/// C5's test: whether node `i` is **gone** from the screen — outside the
+/// table, styled invisible, or laid out with no area.
+///
+/// Both of the last two are needed: `visible` catches a styled-away
+/// node, and area catches one hidden by `layout` zeroing its subtree,
+/// which is how `Option`, `Either` and a hidden subtree express absence.
+/// One function, so focus (C5) and capture (M44/T44.3) cannot disagree
+/// about what "gone" means.
+fn gone(len: usize, style: &[Style], st: &[NodeState], i: usize) -> bool {
+    i >= len || !style[i].visible || st[i].size.w <= 0.0 || st[i].size.h <= 0.0
 }
 
 /// The focusable node after `from` in declaration order, wrapping.

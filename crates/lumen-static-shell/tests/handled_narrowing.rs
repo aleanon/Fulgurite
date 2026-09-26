@@ -7,7 +7,8 @@
 //! `TextInput` taking characters and arrows (beside a button, so the
 //! arrow-group rule is in play, M44/T44.1), a `Slider` moving on a track press, two
 //! overlays closed by one press outside, a drag from one button to
-//! another that activates neither (M44/T44.2), and a button whose handler
+//! another that activates neither (M44/T44.2), a slider hidden mid-drag
+//! that stops tracking (M44/T44.3), and a button whose handler
 //! changes a bound label *outside* the button's subtree. Each step prints
 //! what the `Boundaries` frame marked, so a narrowed frame is told apart
 //! from one that fell back to everything.
@@ -214,6 +215,29 @@ fn a_click_driven_session_narrows_and_draws_the_same_frames() {
         post(Event::up(sx, sy));
     });
     assert_ne!(p.b.app.ui.slider.value(), before, "setup: the slider did not move");
+
+    // 2b. A slider hidden mid-drag loses the capture (M44/T44.3): the
+    // move after it is consumed by nobody and changes nothing, and the
+    // frame still matches `Everything`.
+    p.step("press the slider to drag", |post| post(Event::down(sx, sy)));
+    assert_eq!(p.b.input.capture, Some(si as u32), "setup: the press did not capture the slider");
+    let mut hidden = sheet();
+    hidden.push(Rule::new(Selector::Id("slider"), Patch::new().visible(false)));
+    p.e.set_stylesheet(&hidden);
+    p.b.set_stylesheet(&hidden);
+    p.step("hide the slider", |_| {});
+    let held = p.b.app.ui.slider.value();
+    p.step("move while hidden", |post| post(Event::PointerMove { x: sx - 100.0, y: sy }));
+    println!(
+        "    value {held} -> {} (expected unchanged); capture {:?} (expected None)",
+        p.b.app.ui.slider.value(),
+        p.b.input.capture
+    );
+    assert_eq!(p.b.app.ui.slider.value(), held, "a hidden slider kept tracking the pointer");
+    assert_eq!(p.b.input.capture, None, "a hidden slider kept the capture");
+    p.e.set_stylesheet(&sheet());
+    p.b.set_stylesheet(&sheet());
+    p.step("show it again, release", |post| post(Event::up(sx - 100.0, sy)));
 
     // 3. Open both selects (host-driven), then close both with one press outside.
     p.e.app.store.a_open = true;

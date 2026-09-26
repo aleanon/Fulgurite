@@ -80,7 +80,6 @@ impl F {
 }
 
 #[test]
-#[ignore = "red until T44.3: R3-F4 (capture outlives the node it captured)"]
 fn a_slider_hidden_mid_drag_stops_tracking() {
     let mut f = F::new();
     assert_eq!(<Ui as Widget>::SUB_TABLE.len(), 4, "setup: root, either, slider, label");
