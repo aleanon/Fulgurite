@@ -780,8 +780,15 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         }
     }
 
-    /// Mark the subtree rooted at the node carrying `#[widget_id(wid)]`
-    /// as changed (T16.7).
+    /// Mark the subtree rooted at **every** node carrying
+    /// `#[widget_id(wid)]` as changed (T16.7; every match since
+    /// M46/T46.2).
+    ///
+    /// An id is a set: a composite used twice carries its part ids twice,
+    /// and styling already reads `Selector::Id` as every match. Marking
+    /// only the first left the second instance's frame stale under
+    /// `Boundaries` — the default — while this returned `true`
+    /// (`tests/duplicate_id_host.rs`).
     ///
     /// Returns whether the id matched — a typo'd id is otherwise a
     /// silent no-op that shows up as a frame which quietly failed to
@@ -790,15 +797,17 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
     /// Under `Everything` this does nothing and everything is redrawn
     /// anyway, so an application can call it unconditionally and switch
     /// the parameter later.
-    #[must_use = "a false return means the id matched no node and nothing was invalidated"]
+    #[must_use = "false means the id matched no node and nothing was invalidated; \
+                  true means every node carrying it was"]
     pub fn invalidate(&mut self, wid: &str) -> bool {
         self.arenas_dirty = true;
         let table = <A::Tree as Widget>::SUB_TABLE;
-        let Some(root) = lumen_static::style::index_of_wid(table, wid) else {
-            return false;
-        };
-        self.invalidation.mark(lumen_static::style::subtree_range(table, root));
-        true
+        let mut any = false;
+        for root in lumen_static::style::WidMatches::new(table, wid) {
+            self.invalidation.mark(lumen_static::style::subtree_range(table, root));
+            any = true;
+        }
+        any
     }
 
     /// Mark everything changed — the answer whenever the blast radius
@@ -838,7 +847,7 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         self.invalidation.mark_all();
     }
 
-    /// Re-cascade one subtree, by the `#[widget_id]` on its root.
+    /// Re-cascade the subtree under every node carrying `#[widget_id(wid)]`.
     ///
     /// The operation a class toggle performs — the tally swaps two
     /// rules when the sign flips — and the reason it is worth scoping:
@@ -847,30 +856,39 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
     /// whole-tree layout and paint cost there
     /// (`docs/results-cascade-cost.md`).
     ///
+    /// **Every match, not the first** (M46/T46.2): a rule on
+    /// `Selector::Id(wid)` matches all of them, so restyling one left the
+    /// rest on the old sheet — and a debug build panicked blaming the
+    /// sheet for what was a duplicated id. See
+    /// `style::cascade_wid_with`.
+    ///
     /// `sheet` must differ from the last one cascaded only in rules that
-    /// match inside the subtree; debug builds check that against a full
-    /// cascade (`style::cascade_subtree`). Returns whether the id was
+    /// match inside those subtrees; debug builds check that against a
+    /// full cascade, once, over the union. Returns whether the id was
     /// found — a typo'd id is a silent no-op otherwise, which is the
     /// failure mode this whole crate keeps finding.
-    #[must_use = "a false return means the id matched no node and nothing was restyled"]
+    #[must_use = "false means the id matched no node and nothing was restyled; \
+                  true means every node carrying it was"]
     pub fn restyle_subtree(&mut self, sheet: &[Rule], wid: &str) -> bool {
         let table = <A::Tree as Widget>::SUB_TABLE;
-        let Some(root) = lumen_static::style::index_of_wid(table, wid) else {
-            return false;
-        };
-        lumen_static::style::cascade_subtree_with(
+        let n = lumen_static::style::cascade_wid_with(
             self.app.tree_mut(),
             sheet,
             &self.palette,
             &mut self.styles,
-            root,
+            wid,
         );
+        if n == 0 {
+            return false;
+        }
         // The whole sheet is the one now in force, so it is the one kept
         // and linted.
         self.keep_sheet(sheet);
-        // Scoped, so the invalidation is too — the same range the
+        // Scoped, so the invalidation is too — the same ranges the
         // cascade just rewrote.
-        self.invalidation.mark(lumen_static::style::subtree_range(table, root));
+        for root in lumen_static::style::WidMatches::new(table, wid) {
+            self.invalidation.mark(lumen_static::style::subtree_range(table, root));
+        }
         true
     }
 

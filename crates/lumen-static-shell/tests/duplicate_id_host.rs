@@ -91,7 +91,6 @@ fn frame(h: &H) -> Vec<String> {
 }
 
 #[test]
-#[ignore = "red until T46.2: R2-F7, Host::invalidate marks the first of two"]
 fn invalidate_marks_every_node_carrying_the_id() {
     let hits = leaves();
     let mut h = settled(app("a", "b"));
@@ -105,7 +104,6 @@ fn invalidate_marks_every_node_carrying_the_id() {
 }
 
 #[test]
-#[ignore = "red until T46.2: R2-F7, the second instance keeps its stale frame"]
 fn invalidate_by_a_duplicated_id_repaints_both_instances() {
     let _ = leaves();
     let mut h = settled(app("a", "b"));
@@ -130,7 +128,6 @@ fn invalidate_by_a_duplicated_id_repaints_both_instances() {
 }
 
 #[test]
-#[ignore = "red until T46.2: R2-F7, restyle_subtree restyles the first of two (and panics in debug)"]
 fn restyle_subtree_restyles_every_node_carrying_the_id() {
     let hits = leaves();
     let mut h = settled(app("a", "b"));

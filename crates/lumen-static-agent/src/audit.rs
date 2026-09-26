@@ -177,7 +177,11 @@ pub mod codes {
     /// selector for the cascade. Two nodes sharing one makes both
     /// **unaddressable**: `ui.resolve` refuses the ambiguity, every
     /// `input.*` that takes a selector refuses with it, and a stylesheet
-    /// rule silently styles whichever nodes it finds.
+    /// rule silently styles whichever nodes it finds. The host's own
+    /// id operations are the exception: `Host::invalidate` and
+    /// `Host::restyle_subtree` act on the id as a set, every match
+    /// (M46/T46.2), so they are addressable there — the agent's single-node
+    /// selectors are not.
     ///
     /// **It is easy to write by accident and nothing caught it.** An id
     /// lives on a *type's* field, so any composite instantiated twice

@@ -1192,9 +1192,13 @@ pub const fn index_of_wid(table: &[NodeDesc], wid: &str) -> Option<usize> {
 /// How many nodes of `table` carry `wid`.
 ///
 /// **For the addressing path, not for styling** (M26/T26.16). A
-/// duplicated `#[widget_id]` is accepted silently today and every
-/// id-*addressing* operation then acts on the first match — a
-/// `Host::invalidate` that marks one of two, forever. Styling must keep
+/// duplicated `#[widget_id]` is accepted, and an operation that wants
+/// *one index* for it would have to pick one of the set. Until
+/// M46/T46.2 the host's did — `Host::invalidate` marked one of two,
+/// forever. Now `Host::invalidate` and `Host::restyle_subtree` act on
+/// every match ([`WidMatches`], [`cascade_wid_with`]), which is how
+/// styling already reads an id; only [`crate::wid_index`], which returns
+/// a single index, still refuses a duplicate. Styling must keep
 /// matching them all: `examples/glasswall` styles four intentional
 /// duplicates by selector and addresses none of them, which is why the
 /// rejection cannot live in the derive. The derive cannot tell an
@@ -1340,8 +1344,78 @@ pub fn cascade_subtree_with<W: crate::widget::Widget + ?Sized>(
     out: &mut [Style],
     root: usize,
 ) {
+    cascade_roots(tree, sheet, palette, out, core::iter::once(root));
+}
+
+/// [`cascade_subtree_with`] for **every** node carrying `#[widget_id(wid)]`
+/// — what `Host::restyle_subtree` runs (M46/T46.2). Returns how many
+/// subtrees were re-cascaded; 0 means the id matched nothing.
+///
+/// An id is a set wherever styling reads it: a rule on `Selector::Id`
+/// matches every node carrying it, so re-cascading only the first of two
+/// left the second on the old sheet. Every root is cascaded **before**
+/// the debug witness runs, and the witness checks the union of the
+/// ranges: checking after each root would compare the first root's
+/// result against a full cascade that has already restyled the second,
+/// and fire on a correct call.
+pub fn cascade_wid_with<W: crate::widget::Widget + ?Sized>(
+    tree: &mut W,
+    sheet: Stylesheet,
+    palette: &Palette,
+    out: &mut [Style],
+    wid: &str,
+) -> usize {
     let table = W::SUB_TABLE;
-    let range = subtree_range(table, root);
+    let roots = WidMatches { table, wid, at: 0 };
+    let n = roots.clone().count();
+    if n > 0 {
+        cascade_roots(tree, sheet, palette, out, roots);
+    }
+    n
+}
+
+/// Every main-table index carrying `wid`, in table order — the set
+/// [`count_wid`] counts. An empty `wid` matches nothing, as there.
+#[derive(Clone)]
+pub struct WidMatches<'a> {
+    table: &'a [NodeDesc],
+    wid: &'a str,
+    at: usize,
+}
+
+impl<'a> WidMatches<'a> {
+    pub fn new(table: &'a [NodeDesc], wid: &'a str) -> Self {
+        WidMatches { table, wid, at: 0 }
+    }
+}
+
+impl Iterator for WidMatches<'_> {
+    type Item = usize;
+    fn next(&mut self) -> Option<usize> {
+        if self.wid.is_empty() {
+            return None;
+        }
+        while self.at < self.table.len() {
+            let i = self.at;
+            self.at += 1;
+            if bytes_eq(self.table[i].wid, self.wid) {
+                return Some(i);
+            }
+        }
+        None
+    }
+}
+
+/// The scoped cascade over one or more roots, then the debug witness
+/// over the union of their ranges.
+fn cascade_roots<W: crate::widget::Widget + ?Sized>(
+    tree: &mut W,
+    sheet: Stylesheet,
+    palette: &Palette,
+    out: &mut [Style],
+    roots: impl Iterator<Item = usize> + Clone,
+) {
+    let table = W::SUB_TABLE;
 
     // Gated on `alloc` as well as the profile (M13/T13.3): this check
     // allocates a whole second style array, and it is gated on
@@ -1357,20 +1431,42 @@ pub fn cascade_subtree_with<W: crate::widget::Widget + ?Sized>(
         full
     };
 
-    cascade_range(table, W::SEEDS, sheet, palette, out, range.clone());
-    for i in range.clone() {
-        cascade_arenas(tree.node_mut(i), sheet, palette);
+    for root in roots.clone() {
+        let range = subtree_range(table, root);
+        cascade_range(table, W::SEEDS, sheet, palette, out, range.clone());
+        for i in range {
+            cascade_arenas(tree.node_mut(i), sheet, palette);
+        }
     }
 
     #[cfg(all(debug_assertions, feature = "alloc"))]
     for (i, w) in witness.iter().enumerate() {
-        if !range.contains(&i) {
-            debug_assert_eq!(
-                out[i], *w,
-                "cascade_subtree({root}) left node {i} disagreeing with a full cascade: the \
-                 sheet changed a rule that matches outside the subtree"
+        if roots.clone().any(|r| subtree_range(table, r).contains(&i)) {
+            continue;
+        }
+        if out[i] == *w {
+            continue;
+        }
+        // Before blaming the sheet, ask whether the root's id is on
+        // another node: then the rule that "matches outside the subtree"
+        // matches a second copy of the same id, which is a caller that
+        // addressed one of a set (M46/T46.2).
+        let root = roots.clone().next().unwrap_or(0);
+        let wid = table[root].wid;
+        let copies = count_wid(table, wid);
+        if copies > 1 {
+            panic!(
+                "cascade_subtree({root}) left node {i} disagreeing with a full cascade: \
+                 `#[widget_id(\"{wid}\")]` is on {copies} nodes, and a scoped cascade of \
+                 one of them restyles only that one -- re-cascade every match \
+                 (`cascade_wid_with`, which `Host::restyle_subtree` uses)"
             );
         }
+        panic!(
+            "cascade_subtree({root}) left node {i} disagreeing with a full cascade: the \
+             sheet changed a rule that matches outside the subtree\n  scoped: {:?}\n  full:   {w:?}",
+            out[i]
+        );
     }
 }
 

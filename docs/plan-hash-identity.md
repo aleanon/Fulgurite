@@ -547,6 +547,12 @@ Dated notes, kept beside the plan they correct rather than folded into it.
   `fold_of` rose +0.64 ns; with it, +0.11 ns. The memo hit, which is
   K1's quantity, moved +0.07 and −0.10 ns across the two builds.
 
+**2026-09-26, T46.2.** §2.2 A as written. The scan is
+`style::WidMatches` (the set `count_wid` counts) and the multi-root
+cascade is `style::cascade_wid_with`; `cascade_subtree_with` is its
+one-root case, so the witness has one body. §3's union argument held
+under injection: witness per root fires on the correct call.
+
 - **Items 5 and 6 travel with T46.3**, as §3 allows an early T46.3 to
   carry them, so that whichever branch lands T46.3 carries its gates.
 
