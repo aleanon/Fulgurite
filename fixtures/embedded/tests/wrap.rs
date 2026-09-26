@@ -42,7 +42,6 @@ fn widest_word(text: &str) -> f32 {
 }
 
 #[test]
-#[ignore = "red until T45.12: BakedFace wraps mid-word (R10-F10)"]
 fn aaa_bbbb_at_60_is_two_lines_and_41_wide() {
     let (s, cl) = shape("aaa bbbb", 60.0);
     let lines = cl.iter().map(|c| c.line).max().unwrap_or(0) + 1;
@@ -54,7 +53,6 @@ fn aaa_bbbb_at_60_is_two_lines_and_41_wide() {
 }
 
 #[test]
-#[ignore = "red until T45.12: BakedFace wraps mid-word (R10-F10)"]
 fn no_line_starts_mid_word_and_every_line_fits() {
     let corpus = [
         "aaa bbbb",

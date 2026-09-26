@@ -440,3 +440,26 @@ the `thumbv7em-none-eabihf` target, which only `just check-extra` and
 regression survived four green commits. `just static` is pure bash by
 design and compiles nothing; the cross build is where this class of
 gate lives, and it has to be run deliberately.
+
+## M45/T45.12 — the baked face wraps at the space, measured 2026-09-26
+
+`BakedFace::shape` moved a word that would overflow whole to the next
+line, instead of breaking it mid-word (R10-F10). Measured with `just
+firmware-size`, before and after on the same toolchain, by swapping
+`font.rs` on either side of the same link:
+
+| | `.text` | `.rodata` |
+|---|---:|---:|
+| before (`0091266`) | 27,024 | 12,860 |
+| **after T45.12** | **27,332** | **12,860** |
+| Δ | **+308** | **0** |
+| *the first version, rejected* | *31,590 (+4,566)* | *15,634 (+2,774)* |
+
+The first version found the word's end with `text[byte..].split(' ')`.
+A slice and a `split` link `str`'s pattern machinery and the panicking
+char-boundary check, neither of which the firmware had; the kept version
+clones the `char_indices` iterator and sums advances to the next space.
+**The plan left the choice (a buffer or a first pass) to `.text`, and
+the choice of how to write the first pass was fifteen times the cost of
+the pass itself.** `scripts/check_text.sh`: 27,332 B of 65,536, 41.7%.
+

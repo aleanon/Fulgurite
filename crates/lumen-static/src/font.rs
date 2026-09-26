@@ -114,7 +114,13 @@ impl TextMeasure for BakedFace {
     /// Measure and report clusters, wrapping at `max_w`.
     ///
     /// Wraps at the last space that fits, and hard-breaks a word with no
-    /// break in it — the minimum a text box needs to be usable. It is
+    /// break in it — the minimum a text box needs to be usable. **True
+    /// since M45/T45.12** (R10-F10): until then an overflow rewound only
+    /// the widest-line counter, so the word's glyphs already placed
+    /// stayed on the old line and the break landed mid-word, with the
+    /// moved half-word counted in the width. A wrapped line's width is
+    /// its last word's end, not its trailing space
+    /// (`fixtures/embedded/tests/wrap.rs`). It is
     /// not fontdue's line breaker and does not claim to match it; what
     /// T13.7's gate checks is that the *glyph coverage* agrees, which is
     /// the part a bitmap face can be wrong about silently.
@@ -136,32 +142,58 @@ impl TextMeasure for BakedFace {
         }
 
         let wrap = max_w > 0.0;
-        let (mut x, mut line, mut widest) = (0.0f32, 0u16, 0.0f32);
-        // Where the last space was, so a wrap can rewind to it.
-        let mut last_space: Option<(usize, f32)> = None;
+        // `ink` is where the current line's last non-space glyph ends: a
+        // line finished by a wrap is as wide as its words, not its
+        // trailing space. `widest` is updated only when a line finishes,
+        // so a word that moves to the next line never widens this one.
+        let (mut x, mut ink, mut line, mut widest) = (0.0f32, 0.0f32, 0u16, 0.0f32);
+        let mut prev_space = true;
 
-        for (byte, ch) in text.char_indices() {
+        let mut chars = text.char_indices();
+        while let Some((byte, ch)) = chars.next() {
             let adv = self.advance(ch, size);
-            if wrap && x + adv > max_w && x > 0.0 {
-                // Rewind to the last space if there was one on this
-                // line; otherwise hard-break here.
-                if let Some((_, sx)) = last_space.take() {
-                    widest = widest.max(sx);
+            if wrap && ch != ' ' && x > 0.0 {
+                // A word that would overflow moves whole to a new line —
+                // measured in a first pass over its own bytes, since
+                // there is no allocator to buffer its clusters in
+                // (M45/T45.12). A word wider than the box still breaks
+                // at a glyph: the second test, once it is on its own
+                // line.
+                let breaks = if prev_space {
+                    // A clone of the iterator, not a slice and a `split`:
+                    // those link the pattern machinery and a panicking
+                    // char-boundary check into a firmware that had
+                    // neither, and cost 4.5 KB of `.text` when tried.
+                    let mut ww = adv;
+                    for (_, c) in chars.clone() {
+                        if c == ' ' {
+                            break;
+                        }
+                        ww += self.advance(c, size);
+                    }
+                    x + ww > max_w
                 } else {
-                    widest = widest.max(x);
+                    x + adv > max_w
+                };
+                if breaks {
+                    widest = widest.max(ink);
+                    x = 0.0;
+                    ink = 0.0;
+                    line += 1;
                 }
-                x = 0.0;
-                line += 1;
             }
             if !sink.is_full() {
                 sink.cluster(Cluster { byte: byte as u32, x, line });
             }
-            if ch == ' ' {
-                last_space = Some((byte, x));
-            }
             x += adv;
-            widest = widest.max(x);
+            if ch != ' ' {
+                ink = x;
+            }
+            prev_space = ch == ' ';
         }
+        // The last line keeps its trailing spaces, as an unwrapped run
+        // always did: a caret after "abc " sits past the space.
+        widest = widest.max(x);
         // The insertion point after the last character.
         if !sink.is_full() {
             sink.cluster(Cluster { byte: text.len() as u32, x, line });

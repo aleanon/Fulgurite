@@ -1,6 +1,12 @@
 # M45 — text that measures, paints and edits as one thing
 
-> **Written 2026-09-24, not started.** Closes R10-F1, R10-F2, R10-F5,
+> **T45.12 DONE 2026-09-26 (early landing).** `BakedFace` moves an
+> overflowing word whole to the next line; `"aaa bbbb"` at 60 is two
+> lines and 41 wide (was: a break at byte 6, 55 wide), 0 of 25 phrase ×
+> width cases start mid-word (was 27 failures). `.text` +308 B
+> (`docs/results-embedded.md`).
+>
+> **Written 2026-09-24.** Closes R10-F1, R10-F2, R10-F5,
 > R10-F6, R10-F7, R10-F8, R10-F10, R10-F11, R10-F12, R10-F13, R10-F14,
 > R10-F15, R16-F7, R2-F6, R2-F10, R8-F3, R8-F4 and R8-F5 from M38's
 > deep review (`docs/results-deep-review.md`), as re-triaged against
@@ -755,6 +761,16 @@ breaks at glyphs without panicking.
 
 **Docs in the same commit.** `font.rs`'s rustdoc (the claim becomes
 true). `docs/results-embedded.md`'s `.text` figure if it moves.
+
+*What building found (2026-09-26).* The first pass was the right
+choice, and how it was written decided the cost: slicing the text and
+calling `split` added 4,566 B of `.text` to the firmware, cloning the
+`char_indices` iterator 308 B. A wrapped line's width is its last
+word's end, not its trailing space; the last line keeps its trailing
+spaces, as an unwrapped run always did, so a caret after `"abc "` is
+unchanged. The gate's width clause never fired at `0091266` — its
+failures were all mid-word breaks — so the width is held by the fixed
+`"aaa bbbb"` case (55 then, 41 now), not by the corpus.
 
 **Effort:** S. **Depends on:** nothing in this plan. **It may land
 before Phase 3**: it is the embedded core's own measurer, used by no
