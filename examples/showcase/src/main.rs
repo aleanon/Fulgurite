@@ -1230,7 +1230,12 @@ fn stylesheet_with(c: Chrome) -> Vec<StyleRule> {
         // M27/T27.8's four. A wrap needs a box narrow enough to wrap in,
         // a grid needs one wide enough to show that it does *not*, and a
         // split pane is as big as it is given.
-        StyleRule::new(Selector::Kind("DWrap"), Patch::new().width(Length::Fixed(260.0))),
+        // Centred lines (M57/C9): a flow reads `align` for its lines since
+        // A19, and a left-packed wrap sat 31 px off the card's centre.
+        StyleRule::new(
+            Selector::Kind("DWrap"),
+            Patch::new().width(Length::Fixed(260.0)).align(lumen_static::style::Align::Center),
+        ),
         // Tall enough for any one section open, so opening one does not
         // re-centre the column and move the header out from under the
         // pointer that pressed it (M57/C7: 15 px up, measured).
@@ -1309,7 +1314,12 @@ fn stylesheet_with(c: Chrome) -> Vec<StyleRule> {
         // area in the text role went the same way: that is their default.
         StyleRule::new(
             Selector::Kind("DPullToRefresh"),
-            Patch::new().width(Length::Shrink).background_role(Role::Raised).radius(12.0),
+            // Padded (M57/C8): the label sat jammed in the corner.
+            Patch::new()
+                .width(Length::Shrink)
+                .background_role(Role::Raised)
+                .radius(12.0)
+                .padding(Edges::all(16.0)),
         ),
         StyleRule::new(
             Selector::Kind("DSplitPane"),
@@ -2238,6 +2248,25 @@ mod tests {
             Damage::None => false,
         };
         assert!(covers, "the press damaged something, but not the button it was on");
+    }
+
+    /// **The wrap demo's lines are centred** — M57/C9.
+    ///
+    /// A flow packed every line from the left, so the demo's chips sat off
+    /// the card's centre (`docs/widget-audit.md`, Wrap). The first line's
+    /// margins, left and right, must match.
+    #[test]
+    fn the_wrap_demos_lines_are_centred() {
+        let entry = CATALOG.iter().position(|e| e.name == "Wrap").unwrap();
+        let h = host(entry, false);
+        let table = <<Show as lumen_static::event::App>::Tree as lumen_static::widget::Widget>::SUB_TABLE;
+        let idx = |w: &str| lumen_static::style::index_of_wid(table, w).expect(w);
+        let (a, c) = (h.states[idx("d_wrap_a")], h.states[idx("d_wrap_c")]);
+        let wrap = h.states[table[idx("d_wrap_a")].parent as usize];
+        let left = a.pos.x - wrap.pos.x;
+        let right = (wrap.pos.x + wrap.size.w) - (c.pos.x + c.size.w);
+        println!("first line: {left:.1} px left, {right:.1} px right");
+        assert!(left > 1.0 && (left - right).abs() <= 1.0, "the first line is not centred ({left:.1} / {right:.1})");
     }
 
     /// **An accordion keeps one section open, and its headers still** —
