@@ -106,18 +106,6 @@ impl Count {
     }
 }
 
-/// The one construction path — M31/T31.0.
-///
-/// A free `build()` became `Application::build`, so `Reloadable::fresh`
-/// reaches the eleven assignments below. Six of them are handler `fn`
-/// pointers into the build that is loaded now, which is exactly what a
-/// reload must re-supply.
-impl Application for Tally {
-    fn build() -> Self {
-        build()
-    }
-}
-
 /// **The program, described once** — M32 (`docs/plan-program.md`).
 ///
 /// The window, `--headless` and the socket all build their host from

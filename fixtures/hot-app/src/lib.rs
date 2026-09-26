@@ -18,7 +18,6 @@ use lumen_static::display::{Cmd, Color};
 use lumen_static_widgets::ops::{Fixed, Label, Spacer};
 use lumen_static::reload;
 use lumen_static::repeat::Repeat;
-use lumen_static::event::Application;
 use lumen_static::{pass, App as DeriveApp, Constraints, NodeState, Reloadable as DeriveReloadable, StaticTree, Widget};
 use lumen_static_widgets::{CheckBox};
 use serde::{Deserialize, Serialize};
@@ -129,16 +128,16 @@ struct Session {
     cache_hits: u64,
 }
 
-/// **The one construction path** — M31/T31.0.
+/// **The one construction path** — M31/T31.0, M49/T49.4.
 ///
 /// This was `impl Default for Session`, and it had to be: the derived
 /// `Reloadable::fresh()` called `Default::default()`, so anything built
-/// anywhere else was invisible to a swap. `fresh()` now routes here
-/// because this struct has a `#[tree]` field, and `Session`
-/// deliberately does **not** derive `Default` — so the two paths cannot
-/// drift apart, because there is only one.
-impl Application for Session {
-    fn build() -> Self {
+/// anywhere else was invisible to a swap. It is now the boot function
+/// `export_reloadable_app!` is handed, and `Session` deliberately does
+/// **not** derive `Default` — so the two paths cannot drift apart,
+/// because there is only one.
+impl Session {
+    pub fn build() -> Self {
         Session { ui: Ui::default(), counter: 0, mode: Mode::Basic, theme: THEME, cache_hits: 0 }
     }
 }
@@ -159,7 +158,7 @@ use std::ffi::c_void;
 // protocol in them had drifted from the loader's
 // (`docs/plan-review-fixes.md` F6.7). The app-specific verbs below stay
 // hand-written: there is nothing to share about `hot_bump`.
-lumen_static_reload::export_reloadable_app!(Session);
+lumen_static_reload::export_reloadable_app!(Session, Session::build);
 
 thread_local! {
     /// Fallback lines taken from the core but not yet delivered to the

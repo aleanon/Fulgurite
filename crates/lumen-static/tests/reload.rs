@@ -1,3 +1,4 @@
+#![allow(clippy::field_reassign_with_default)] // a fresh build, then what the test stands in for
 //! Step 4 correctness, in-process: keep/fresh/reset semantics, nested
 //! widget subtrees, Vec arity from saved data, per-field fallback on
 //! schema change (§12.2 generalized), and the no-code-pointers property.
@@ -39,7 +40,7 @@ struct Session {
 }
 
 fn user_session() -> Session {
-    let mut s = Session::fresh();
+    let mut s = Session::default();
     s.header.title.set("renamed by user");
     s.header.badge.w = 99.0;
     s.counter = 3;
@@ -57,7 +58,7 @@ fn keep_fresh_reset_semantics() {
     drop(old); // §7 sequence: old tree dropped before the "new code" takes over
 
     let saved: Value = serde_json::from_slice(&bytes).unwrap();
-    let mut fresh = Session::fresh();
+    let mut fresh = Session::default();
     fresh.theme = "new-theme"; // stand-in for the new dylib's Default
     fresh.restore(&saved);
 
@@ -81,7 +82,7 @@ fn incompatible_fields_fall_back_per_field_and_log() {
         // "names" missing: field added in the new build
         "header": { "title": "kept title", "badge": { "w": 7.0, "h": 7.0 } },
     });
-    let mut s = Session::fresh();
+    let mut s = Session::default();
     s.counter = 11;
     s.restore(&saved);
 
@@ -99,8 +100,8 @@ fn incompatible_fields_fall_back_per_field_and_log() {
 
 #[test]
 fn vec_of_widgets_arity_comes_from_saved_data() {
-    let mut rows: Vec<Label> = Vec::fresh();
-    assert!(rows.is_empty(), "fresh() gives the zero-row list");
+    let mut rows: Vec<Label> = Vec::new();
+    assert!(rows.is_empty(), "an empty list is the zero-row list");
     let saved = Value::Array(
         (0..47).map(|i| Value::String(format!("row {i}"))).collect(),
     );
@@ -115,7 +116,7 @@ fn repeat_keeps_logical_state_and_drops_the_window() {
     old.scroll = 612.0;
     let saved = old.save();
 
-    let mut fresh = Repeat::<Header>::fresh();
+    let mut fresh = Repeat::<Header>::default();
     fresh.restore(&saved);
     assert_eq!(fresh.count, 10_000, "keep: data size");
     assert_eq!(fresh.scroll, 612.0, "keep: the user's place in the list");

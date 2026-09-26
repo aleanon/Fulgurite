@@ -145,7 +145,11 @@ impl Prefer {
 }
 
 /// A boot function, erased: the application and the jobs to start.
-type Boot<A> = Box<dyn Fn() -> (A, Vec<Job<<A as App>::Msg>>)>;
+///
+/// Shared, because the host keeps it (M49/T49.4): [`Host::reload`]
+/// rebuilds through it, as a window swap rebuilds through the new
+/// library's `program()`, so there is one construction path.
+pub type Boot<A> = Rc<dyn Fn() -> (A, Vec<Job<<A as App>::Msg>>)>;
 
 /// A program, described: how to build it and what its window looks
 /// like. Built by [`application`].
@@ -191,7 +195,7 @@ where
     let source_root = file.find("/src/").map(|i| &file[..i]);
     Program {
         source_root,
-        boot: Box::new(move || boot().into_boot()),
+        boot: Rc::new(move || boot().into_boot()),
         title: Box::new("lumen-static"),
         sheet: None,
         width: 640,
@@ -264,13 +268,15 @@ impl<A: App> Program<A> {
     /// frame the window draws (`docs/plan-program.md` rule 2).
     ///
     /// Boots the application, sets the palette, installs the sheet and
-    /// keeps its source so [`Host::adopt`] can re-ask it. Jobs the boot
+    /// keeps its source so [`Host::adopt`] can re-ask it, and keeps the
+    /// boot so `Host::reload` can rebuild through it (M49/T49.4). Jobs the boot
     /// returned are held until a spawner is installed
     /// ([`Host::set_spawner`]), because a headless host has none and the
     /// window installs its own after this returns.
     pub fn host<R: Retention, I: Invalidation>(&self) -> Host<A, R, I> {
         let (app, jobs) = (self.boot)();
         let mut host = Host::new(app, self.width, self.height);
+        host.set_boot(Rc::clone(&self.boot));
         host.set_palette(self.palette);
         if let Some(sheet) = &self.sheet {
             host.set_sheet_source(Rc::clone(sheet));

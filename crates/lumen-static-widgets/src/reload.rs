@@ -21,9 +21,6 @@ impl<S: lumen_static::text::TextRestore> Reloadable for Label<S> {
     fn save(&self) -> Value {
         Value::String(self.as_str().to_owned())
     }
-    fn fresh() -> Self {
-        Self::default()
-    }
     fn restore(&mut self, saved: &Value) {
         match saved.as_str() {
             // No leak for owning storage (`String`, `Cow`): M3 made this
@@ -35,16 +32,13 @@ impl<S: lumen_static::text::TextRestore> Reloadable for Label<S> {
     }
 }
 
-/// `on_click` is code: `fresh()` supplies the new dylib's pointer and
+/// `on_click` is code: the new build's boot supplies its pointer and
 /// `restore` never touches it — the whole point of
 /// `docs/events-decision.md`. Written by hand because the derive's
 /// untagged-field rule would demand `Reloadable` of an `fn` type.
 impl<S: 'static, T: lumen_static::text::TextRestore> Reloadable for crate::ops::Button<S, T> {
     fn save(&self) -> Value {
         Value::String(self.label.as_ref().to_owned())
-    }
-    fn fresh() -> Self {
-        Self::default()
     }
     /// Through `T::from_string`, so `Button<S, String>` restores without
     /// leaking. The default storage is still `&'static str`, which can
@@ -61,8 +55,8 @@ impl<S: 'static, T: lumen_static::text::TextRestore> Reloadable for crate::ops::
     }
 }
 
-/// `on` is kept — M25/T25.5. `on_toggle` is code, so `fresh()` supplies
-/// the new build's and `restore` never touches it; `mark` is not saved
+/// `on` is kept — M25/T25.5. `on_toggle` is code, so the new build's boot
+/// supplies its own and `restore` never touches it; `mark` is not saved
 /// either, so an edited default colour shows after a swap
 /// (`fixtures/hot-app` asserts both). Written by hand for the reason
 /// `Button`'s is: the derive's untagged-field rule would demand
@@ -70,9 +64,6 @@ impl<S: 'static, T: lumen_static::text::TextRestore> Reloadable for crate::ops::
 impl<S: 'static, const SHAPE: u8> Reloadable for crate::toggle::Toggle<S, SHAPE> {
     fn save(&self) -> Value {
         Value::Bool(self.on)
-    }
-    fn fresh() -> Self {
-        Self::default()
     }
     fn restore(&mut self, saved: &Value) {
         match saved.as_bool() {
@@ -85,9 +76,6 @@ impl<S: 'static, const SHAPE: u8> Reloadable for crate::toggle::Toggle<S, SHAPE>
 impl Reloadable for Fixed {
     fn save(&self) -> Value {
         json!({ "w": self.w, "h": self.h })
-    }
-    fn fresh() -> Self {
-        Self::default()
     }
     fn restore(&mut self, saved: &Value) {
         match (saved.get("w").and_then(Value::as_f64), saved.get("h").and_then(Value::as_f64)) {
@@ -103,9 +91,6 @@ impl Reloadable for Fixed {
 impl Reloadable for Spacer {
     fn save(&self) -> Value {
         Value::Null
-    }
-    fn fresh() -> Self {
-        Spacer
     }
     fn restore(&mut self, _saved: &Value) {}
 }

@@ -6,9 +6,14 @@ graft the old values back on.**
 ## Three functions
 
 * `save()` — returns a value holding only the *keep* half of the state.
-* `fresh()` — the constructor from whichever dylib is currently loaded.
-* `restore()` — grafts saved values onto a fresh tree, **per field, with
-  fallback**.
+* the program's **boot** — the application's one constructor, run again
+  by whichever build is loaded now: a window's swap boots the new
+  library's `program()`, and `Host::reload` re-runs the boot the host was
+  built from. There is no separate reload constructor (M49 retired
+  `fresh()` and `Application::build`, a second path nothing checked
+  against the boot).
+* `restore()` — grafts saved values onto that freshly booted application,
+  **per field, with fallback**.
 
 Per field with fallback is the important phrase. Any incompatibility —
 a missing field, a removed enum variant, a changed type — keeps the
@@ -68,7 +73,7 @@ carries across. The application needs three things.
 # #[derive(StaticTree, Default)] #[widget(column)] pub struct Ui { #[widget_id("inc")] inc: Button<Tally>, value: Label<String> }
 # #[derive(Default)] pub struct Tally { count: i64 }
 # #[derive(DeriveApp, DeriveReloadable)] pub struct Counter { #[tree] #[reload(fresh)] ui: Ui, #[state] #[reload(reset)] #[bind(ui.value, count, "count {}")] tally: Tally }
-# impl Application for Counter { fn build() -> Self { Counter { ui: Ui::default(), tally: Tally::default() } } }
+# fn boot() -> Counter { Counter { ui: Ui::default(), tally: Tally::default() } }
 # fn main() { let p = program(); assert_eq!(p.width, 320); }
 {{#include ../../fixtures/hot-window/src/lib.rs:program}}
 ```

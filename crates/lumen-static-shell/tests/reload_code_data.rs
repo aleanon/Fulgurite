@@ -55,12 +55,6 @@ fn build(v2: bool) -> Page {
     Page { ui, count: 0 }
 }
 
-impl lumen_static::event::Application for Page {
-    fn build() -> Self {
-        build(false)
-    }
-}
-
 #[test]
 #[ignore = "red until T49.5: R5-F1, a kept subtree restores what v1's code wrote"]
 fn a_swap_shows_the_new_codes_values_and_keeps_the_users() {

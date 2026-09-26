@@ -104,9 +104,10 @@ more than it looks:
 ```
 
 `build()` is the **only** construction path, and that is the whole point
-of it. A handler is a pointer into the code that is loaded right now; a hot
-reload throws that code away and calls `build()` again to get pointers into
-the new build. Anything assigned somewhere `build()` does not reach — an
+of it. It is an ordinary function — the program below is described with
+it, and no trait asks for it. A handler is a pointer into the code that is
+loaded right now; a hot reload throws that code away and runs the new
+build's boot — this function — to get pointers into the new build. Anything assigned somewhere `build()` does not reach — an
 inherent `new()`, say — is invisible to a reload, and every button comes
 back wired to its placeholder with no crash and no warning.
 
@@ -122,7 +123,7 @@ The program is then described once, from that same function:
 # #[derive(StaticTree, Default)] #[widget(column)] struct Ui { value: Label<String> }
 # #[derive(Default)] struct Tally { count: i64 }
 # #[derive(DeriveApp)] struct Counter { #[tree] ui: Ui, #[state] #[bind(ui.value, count, "count: {}")] tally: Tally }
-# impl Application for Counter { fn build() -> Self { Counter { ui: Ui::default(), tally: Tally::default() } } }
+# impl Counter { fn build() -> Self { Counter { ui: Ui::default(), tally: Tally::default() } } }
 # fn stylesheet() -> Vec<Rule> { Vec::new() }
 # fn main() { let _ = program(); }
 {{#include ../../examples/counter/src/main.rs:program}}

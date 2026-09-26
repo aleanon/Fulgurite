@@ -10,7 +10,7 @@
 //! # Why this was looked for
 //!
 //! `docs/events-decision.md` rule 3 says nothing that outlives a frame
-//! may hold a code reference, and `fresh()` exists so handler `fn`
+//! may hold a code reference, and a reload rebuilds through the new build so handler `fn`
 //! pointers come from the build that is loaded *now*. A stylesheet is
 //! the same kind of thing and was never treated as such:
 //!
@@ -44,15 +44,14 @@
 //!
 //! # The shape of the fix
 //!
-//! `Application::build` supplies the application from the currently
-//! loaded code, and the program's style source — kept by the host since
+//! The edited build's own constructor supplies the application from the
+//! currently loaded code (M49/T49.4: the boot, not a trait), and the program's style source — kept by the host since
 //! M32, when `Application::style` was retired — supplies its sheet;
 //! `Host::adopt` re-asks it. The `V2` sheet below is what an author
 //! edited to and rebuilt, and the assertion is that the frame shows it.
 
 use lumen_static::display::Color;
 use lumen_static::prelude::*;
-use lumen_static::event::Application;
 use lumen_static::reload::Reloadable as _;
 use lumen_static::style::{Patch, Rule, Selector};
 use lumen_static::{App as DeriveApp, Reloadable as DeriveReloadable, StaticTree};
@@ -86,11 +85,10 @@ struct Session {
     sheet: Vec<Rule>,
 }
 
-/// **The build step, and the only one.** `Reloadable::fresh` routes
-/// here because this struct has a `#[tree]` field, so the swap below
-/// runs exactly this code — and `Session` deliberately does not derive
-/// `Default`, so there is no second path for it to disagree with.
-impl Application for Session {
+/// **The build step, and the only one** — what the edited build's boot
+/// runs. `Session` deliberately does not derive `Default`, so there is no
+/// second path for it to disagree with.
+impl Session {
     fn build() -> Self {
         // The edited code: this build wants V2.
         Session { ui: Ui::default(), n: 0, sheet: sheet(V2) }
@@ -133,12 +131,10 @@ fn panel_bg<A: lumen_static::event::App>(h: &Host<A>) -> Color {
 }
 
 /// The swap, as a loader performs it: `save` the old application,
-/// `fresh` one from the code loaded now — which routes to
-/// `Application::build` because `Session` has a `#[tree]` field — and
-/// graft the kept fields back.
+/// build one with the code loaded now, and graft the kept fields back.
 fn rebuilt(old: &Session) -> Session {
     let saved = old.save();
-    let mut next = Session::fresh();
+    let mut next = Session::build();
     next.restore(&saved);
     next
 }

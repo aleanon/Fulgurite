@@ -5,7 +5,7 @@
 //! file: the bound label's format (`EDIT format`), and a line in the
 //! click handler that becomes a type error or a panic (`EDIT handler`).
 
-use lumen_static::event::{Application, EventCtx};
+use lumen_static::event::EventCtx;
 use lumen_static::style::{Length, Patch, Rule, Selector};
 use lumen_static::{App as DeriveApp, Reloadable as DeriveReloadable, StaticTree};
 use lumen_static_shell::program::{application, Program};
@@ -43,20 +43,20 @@ fn on_inc(t: &mut Tally, _: &EventCtx) {
     t.count += step;
 }
 
-impl Application for Counter {
-    fn build() -> Self {
-        let mut c = Counter { ui: Ui::default(), tally: Tally::default() };
-        c.ui.inc.label = "+";
-        c.ui.inc.on_click = on_inc;
-        c
-    }
+/// The boot: the one place a `Counter` is built — by `main`, by the
+/// library a reload loads, and by `Host::reload` (M49/T49.4).
+fn boot() -> Counter {
+    let mut c = Counter { ui: Ui::default(), tally: Tally::default() };
+    c.ui.inc.label = "+";
+    c.ui.inc.on_click = on_inc;
+    c
 }
 
 // ANCHOR: program
 /// The program, described once: the binary runs it, the library exports
 /// it, and a reload boots the new build's copy of it (§2.2).
 pub fn program() -> Program<Counter> {
-    application(Counter::build)
+    application(boot)
         .title("hot-window")
         .size(320, 160)
         .style(|_: &Counter| vec![Rule::new(Selector::Id("inc"), Patch::new().width(Length::FILL))])

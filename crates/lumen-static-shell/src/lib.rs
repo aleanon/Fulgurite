@@ -273,6 +273,11 @@ pub struct Host<A: App, R: Retention = Incremental, I: Invalidation = lumen_stat
     /// built with [`Host::new`] directly, which is styled only by what
     /// its caller sets.
     sheet_source: Option<std::rc::Rc<dyn program::Sheet<A>>>,
+    /// The program's boot — M49/T49.4. Set by [`program::Program::host`]
+    /// beside the sheet source, and what `Host::reload` rebuilds
+    /// through: the one construction path, in process as in a window
+    /// swap. `None` for a host built with [`Host::new`] directly.
+    boot: Option<program::Boot<A>>,
     /// What the last frame had marked when it cleared — M29/T29.3.
     last_marks: lumen_static::invalidate::Marks,
     /// Whether the last frame owed the arenas a cascade — M29/T29.4.
@@ -314,6 +319,11 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         if !sheet.is_empty() {
             self.set_stylesheet(&sheet);
         }
+    }
+
+    /// Keep the program's boot, for `Host::reload` — M49/T49.4.
+    pub fn set_boot(&mut self, boot: program::Boot<A>) {
+        self.boot = Some(boot);
     }
 
     /// Keep a job until a spawner is installed — M32.
@@ -594,9 +604,9 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
     /// demonstrated that before this existed and guards it now.
     ///
     /// Takes the application rather than building it, so the reload
-    /// sequence — `save`, `fresh`, `restore` — stays with the caller
-    /// that already has the `reload` surface, and this method needs
-    /// neither the feature nor the bound. `Host::reload` (behind the
+    /// sequence — `save`, boot, `restore` — stays with the caller that
+    /// already has the `reload` surface, and this method needs neither
+    /// the feature nor the bound. `Host::reload` (behind the
     /// `reload` feature) is the sugar for when it does — a plain code
     /// span, not a link, because a link to a `cfg`-gated item does not
     /// resolve in a default-feature doc build.
@@ -640,20 +650,37 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         self.reasked();
     }
 
-    /// Rebuild the application from the code that is loaded **now**,
-    /// keeping what `save` kept, and re-ask for the stylesheet.
+    /// Rebuild the application through the **program's boot**, keeping
+    /// what `save` kept, and re-ask for the stylesheet — M49/T49.4.
     ///
-    /// Sugar over [`Host::adopt`] for an application that is
-    /// [`Reloadable`](lumen_static::reload::Reloadable).
+    /// The same construction a hot window's swap performs — it boots the
+    /// new library's `program()` and restores onto it — so the two cannot
+    /// disagree (`docs/plan-reload-hardening.md` §2.2). Jobs the boot
+    /// returns start as a window's do: now if a spawner is installed,
+    /// held until one is otherwise.
+    ///
+    /// **A host not built from a program has nothing to rebuild from**,
+    /// and says so: `false`, with the application untouched. It used to
+    /// call `Reloadable::fresh`, a second constructor routed to
+    /// `Application::build`, which nothing checked against the boot.
     #[cfg(feature = "reload")]
-    pub fn reload(&mut self)
+    pub fn reload(&mut self) -> bool
     where
         A: lumen_static::reload::Reloadable,
     {
+        let Some(boot) = self.boot.clone() else { return false };
         let saved = self.app.save();
-        let mut next = A::fresh();
+        let (mut next, jobs) = boot();
         next.restore(&saved);
         self.adopt(next);
+        for job in jobs {
+            if self.spawner.is_some() {
+                self.spawn(job);
+            } else {
+                self.hold_until_spawner(job);
+            }
+        }
+        true
     }
 
     pub fn new(app: A, width: u32, height: u32) -> Self {
@@ -692,6 +719,7 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             sheet_findings: Vec::new(),
             palette: lumen_static::style::Palette::LIGHT,
             sheet_source: None,
+            boot: None,
             held: Vec::new(),
             last_marks: lumen_static::invalidate::Marks::default(),
             last_arenas_owed: false,

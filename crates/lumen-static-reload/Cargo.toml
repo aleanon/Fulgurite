@@ -21,3 +21,12 @@ libloading = { version = "0.8", optional = true }
 
 [features]
 window = ["dep:lumen-static-shell", "dep:libloading"]
+
+[dev-dependencies]
+# M49/T49.4: `tests/one_path.rs` builds a real application.
+lumen-static-widgets = { path = "../lumen-static-widgets", features = ["reload"] }
+serde = { version = "1", features = ["derive"] }
+
+[[test]]
+name = "one_path"
+required-features = ["window"]

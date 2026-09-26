@@ -1,8 +1,8 @@
 //! M31/T31.2: a reloadable application must not also derive `Default`.
 //!
-//! `Reloadable::fresh()` routes to `Application::build()` for a struct
-//! with `#[tree]`, so a `Default` beside it is a **second construction
-//! path** — `main` takes one, the hot swap takes the other, and a
+//! A reloadable application is built by its program's boot (M49/T49.4),
+//! so a `Default` beside it is a **second construction path** —
+//! the boot takes one, anything calling `Default` the other, and a
 //! handler assigned in only one of them comes back as its placeholder.
 //!
 //! Rust has no negative bounds, so the derive emits a blanket impl that
@@ -28,7 +28,7 @@ struct Session {
     n: u32,
 }
 
-impl lumen_static::event::Application for Session {
+impl Session {
     fn build() -> Self {
         Session { ui: Ui::default(), n: 0 }
     }

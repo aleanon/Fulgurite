@@ -27,7 +27,7 @@ struct Session {
     n: u32,
 }
 
-impl lumen_static::event::Application for Session {
+impl Session {
     fn build() -> Self {
         Session { ui: Ui::default(), n: 0 }
     }
@@ -38,5 +38,5 @@ fn main() {
     // the refusal is scoped to applications, and `Repeat` materialises
     // rows with `T::default()` every frame.
     let _ = Ui::default();
-    let _ = <Session as lumen_static::event::Application>::build();
+    let _ = Session::build();
 }

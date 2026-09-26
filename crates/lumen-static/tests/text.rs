@@ -69,7 +69,7 @@ fn owning_storage_reloads_without_leaking() {
     let saved = old.save();
     drop(old);
 
-    let mut fresh: Label<String> = Reloadable::fresh();
+    let mut fresh: Label<String> = Label::default();
     fresh.restore(&saved);
     assert_eq!(fresh.as_str(), "user typed this");
     // Restored through `TextStorage::from_string`, so `String` storage

@@ -523,6 +523,17 @@ place two constructors remain"); the `Application` rustdoc in
 
 **Effort:** M. **Depends on:** T49.0.
 
+> **What building found (2026-09-26).** The "second trait the derive
+> emits for non-`#[tree]` structs" is `Default`: every row a container
+> builds already derives it, and a row's `fresh()` was only ever
+> `Default::default()`. So there is no new trait — `Vec`, `Option` and
+> `Repeat` take `W: Default`. `Host::reload` now returns whether it had a
+> boot to rebuild from. The plan's second injection ("make `Host::reload`
+> construct through `Default`") cannot be written: nothing gives `A` a
+> `Default` bound, and a reloadable application cannot implement it
+> (E0119). The injection used instead drops the boot from
+> `Program::host`, and the gate fires by name. `Application` is retired.
+
 ### T49.5 — a widget saves its user's half
 
 **Closes:** R5-F1, R5-F2.

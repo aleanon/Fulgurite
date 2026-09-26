@@ -77,12 +77,6 @@ fn build() -> Probe {
     Probe { ui, count: 0 }
 }
 
-impl lumen_static::event::Application for Probe {
-    fn build() -> Self {
-        build()
-    }
-}
-
 /// One row: the widget and field, how to read it, and what a user did.
 struct Row {
     name: &'static str,

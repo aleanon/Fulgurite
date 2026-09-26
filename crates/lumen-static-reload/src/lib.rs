@@ -13,14 +13,19 @@
 //! the loader needs them without taking on this crate.
 //!
 //! ```ignore
-//! lumen_static_reload::export_reloadable_app!(Session);
+//! lumen_static_reload::export_reloadable_app!(Session, Session::build);
 //! ```
 
 /// Emit the `extern "C"` shims a reloadable app must export.
 ///
 /// ```ignore
-/// export_reloadable_app!(Session);
+/// export_reloadable_app!(Session, Session::build);
 /// ```
+///
+/// The second argument is the **boot function**, `fn() -> Session`, from
+/// this build's code (M49/T49.4): `hot_new` calls it. It used to call
+/// `Reloadable::fresh`, which the derive routed to `Application::build` —
+/// a constructor trait nothing else used.
 ///
 /// Replaces about 90 lines of hand-written FFI per app, and — more to
 /// the point — makes the size-probe protocol one implementation rather
@@ -37,17 +42,18 @@
 /// [`panic::guard`](crate::panic::guard), as `fixtures/hot-app`'s `hot_frame` does.
 #[macro_export]
 macro_rules! export_reloadable_app {
-    ($ty:ty) => {
-        /// `App::fresh()` from this dylib's code.
+    ($ty:ty, $boot:expr) => {
+        /// The application, built by this dylib's boot function.
         ///
         /// # Safety
         /// The returned pointer must be passed only to this build's
         /// other entry points, and freed only via `hot_drop`.
         #[no_mangle]
         pub unsafe extern "C" fn hot_new() -> *mut ::core::ffi::c_void {
-            // Null on a panic in `fresh()`; the report is in `hot_take_panic`.
+            // Null on a panic in the boot; the report is in `hot_take_panic`.
             $crate::panic::guard(::core::ptr::null_mut(), || {
-                $crate::raw::give(<$ty as ::lumen_static::reload::Reloadable>::fresh())
+                let boot: fn() -> $ty = $boot;
+                $crate::raw::give(boot())
             })
         }
 

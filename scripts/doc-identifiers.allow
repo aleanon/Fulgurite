@@ -25,6 +25,8 @@ flt2dec              # core's float formatter, named where num::clamp says why i
 # Prose of the form "`X` is gone". Keep these: the sentence is the record of
 # the removal, and deleting the sentence loses the history.
 long_running_const_eval  # rustc lint name, not ours (widget.rs, F5.1)
+Application          # retired by M49/T49.4 (a constructor trait nothing called); event.rs and
+                     # docs/plan-program.md §2.3 record why. M31's plan keeps the name.
 present_with_damage  # softbuffer's API, named where counter-window says why it does NOT use it
 # The hand-wired dropdown and Option stage `examples/showcase` carried until
 # M24/T24.2-3, named in the prose that records what replaced them and why.

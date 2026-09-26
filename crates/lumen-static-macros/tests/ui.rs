@@ -25,7 +25,6 @@ fn ui() {
 /// window library meets it. Its own directory, so a red case here can be
 /// ignored without ignoring the twenty above.
 #[test]
-#[ignore = "red until T49.4: R5-F10, the derive requires Application::build"]
 fn reload_program() {
     let t = trybuild::TestCases::new();
     t.pass("tests/ui-reload/pass_*.rs");

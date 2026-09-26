@@ -259,7 +259,6 @@ fn an_adopted_application_is_drawn_whole_without_a_sheet_source() {
 #[cfg(feature = "reload")]
 mod restore {
     use super::*;
-    use lumen_static::event::Application;
     use lumen_static::reload::Reloadable as _;
     use lumen_static::Reloadable as DeriveReloadable;
 
@@ -282,7 +281,7 @@ mod restore {
         clicks: u32,
     }
 
-    impl Application for Kept {
+    impl Kept {
         fn build() -> Self {
             let mut a = Kept { ui: RUi::default(), clicks: 0 };
             a.ui.title.set("before the restore".into());

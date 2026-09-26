@@ -589,58 +589,6 @@ impl Wrote {
 #[derive(Debug)]
 pub enum Never {}
 
-/// **How an application is constructed — M31.**
-///
-/// Distinct from [`App`], which is derived and describes the *mechanics*
-/// the framework drives (the tree, the message type, the update step).
-/// This one is always hand-written and describes what only the author
-/// knows: how to build the thing.
-///
-/// **What it should look like is not here any more** (M32). A stylesheet
-/// comes from the program's description — `lumen_static_shell::program`
-/// — which is the one place the window, every headless host and a swap
-/// all ask. It was a method on this trait until M32, and the window
-/// ignored it in favour of a field of its own, which is the two-path
-/// defect `docs/plan-program.md` exists to remove.
-///
-/// # Why it is a second trait rather than a method on `App`
-///
-/// `#[derive(App)]` emits the whole `impl App for …` block. A required
-/// `build()` there would have to be emitted by the derive, which cannot
-/// know how to construct your application — and the only thing it could
-/// emit is `Default::default()`, which is the defect this trait exists
-/// to remove. A trait impl cannot be split across blocks, so the author's
-/// half needs a trait of its own.
-///
-/// # Why `build()` and not `Default`
-///
-/// [`Reloadable::fresh`](crate::reload::Reloadable::fresh) is documented
-/// as *"a brand-new value built by the currently loaded code"* and used
-/// to derive to `Default::default()`. That gave an application **two
-/// construction paths that nothing checked against each other**: its own
-/// `new()` in `main`, and `Default` on every hot swap. Handlers assigned
-/// in the first did not exist in the second, so a reload silently
-/// replaced every `on_click` with its placeholder.
-///
-/// `build()` is the one path `fresh()` takes, and an application that derives `Default` alongside `App` is a
-/// compile error — so the two cannot drift apart again.
-///
-/// Note that exhaustiveness here reaches **one level**: returning a
-/// struct literal means a new field of *this* type will not compile
-/// until it is initialised, but `ui: Ui::default()` still leaves
-/// handlers three levels down unwired.
-/// `docs/plan-application.md` §5 records that limit rather than implying
-/// the trait closes it.
-pub trait Application: Sized {
-    /// Construct this application with the code that is loaded **now**.
-    ///
-    /// Handler `fn` pointers must be assigned here. A hot reload calls
-    /// this and then grafts `#[reload(keep)]` fields onto the result, so
-    /// anything assigned elsewhere belongs to the build that is being
-    /// replaced (`docs/events-decision.md` rule 3).
-    fn build() -> Self;
-}
-
 /// The application root: state plus the tree that presents it.
 ///
 /// Splitting the tree out of `S` is what lets dispatch hold `&mut S`
@@ -649,8 +597,14 @@ pub trait Application: Sized {
 /// The borrow checker enforces the sequence that used to be a documented
 /// rule (`docs/plan-events.md` E2).
 ///
-/// Construction is [`Application`]'s job, not this trait's — see there
-/// for why they are separate.
+/// **Construction is not this trait's job, nor any trait's.** An
+/// application is built by the boot function its program is described
+/// with — `lumen_static_shell::program::application(boot)` — and every
+/// path that builds one asks that description: the window, every
+/// headless host, `Host::reload`, and a hot window's swap, which boots
+/// the new library's `program()` (M32, M37). M31's `Application::build`
+/// was a second, trait-shaped path beside it that only the reload derive
+/// called; M49/T49.4 retired it (`docs/plan-reload-hardening.md` §2.2).
 pub trait App: Sized {
     /// **What a handler is allowed to touch** — M33
     /// (`docs/plan-state-split.md`).

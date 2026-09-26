@@ -152,6 +152,16 @@ found that bounding `Program` on `Application` would force exactly that
   M37 replaces that path. This is the one place two constructors remain
   after M32, and the plan names it rather than hiding it.
 
+  > **Closed 2026-09-26 by M49/T49.4** (`docs/plan-reload-hardening.md`
+  > §2.2). M37 did not replace it: the window swap booted the program,
+  > but `Host::reload` still called `fresh()`, and the derive still
+  > required `Application::build` of every hot application — so a
+  > program booted by a free function could not be hot-reloaded at all
+  > (E0277, R5-F10). `fresh()` is gone from `Reloadable`, the host keeps
+  > the program's boot and `Host::reload` rebuilds through it,
+  > `export_reloadable_app!` takes a boot function, and
+  > `Application` is retired: nothing called it.
+
 ### 2.4 Where it lives
 
 The description (`Program`, `Boot`, `Title`, `Style`, `host()`) lives in

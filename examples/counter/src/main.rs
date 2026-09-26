@@ -91,17 +91,16 @@ fn on_dec(t: &mut Tally, _: &EventCtx) {
 // ANCHOR_END: handlers
 
 // ANCHOR: build
-/// **Construction lives here, and only here** — M31/T31.0.
+/// **Construction lives here, and only here** — M31/T31.0, M49/T49.4.
 ///
-/// This was an inherent `Counter::new()`, which the framework could not
-/// see: `Reloadable::fresh()` derived to `Default::default()`, so a hot
-/// swap rebuilt the application *without* the four lines below and
-/// every button came back wired to `ignore_click`. `Application::build`
-/// is the path `fresh()` now takes, so what `main` builds and what a
-/// reload builds are the same code by construction rather than by
-/// remembering.
-impl Application for Counter {
-    fn build() -> Self {
+/// The program below is described with this function, and every host is
+/// built from the program: the window, a `--shot`, and `Host::reload`,
+/// which re-runs it and grafts the kept state on. A swap once rebuilt
+/// the application through `Default::default()`, *without* the four
+/// lines below, and every button came back wired to `ignore_click`; the
+/// program's boot is now the only constructor there is.
+impl Counter {
+    pub fn build() -> Self {
         let mut c = Counter { ui: Ui::default(), tally: Tally::default() };
         c.ui.title.set("Counter");
         c.ui.hint.set("click + or - to change the tally");

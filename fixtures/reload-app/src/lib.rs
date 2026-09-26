@@ -6,7 +6,7 @@
 //! tree in hand can click it at a known point; the label under it is the
 //! only other text on the frame, with the kept `name` below it.
 
-use lumen_static::event::{Application, EventCtx};
+use lumen_static::event::EventCtx;
 use lumen_static::style::{Edges, Length, Patch, Rule, Selector};
 use lumen_static::{App as DeriveApp, Reloadable as DeriveReloadable, StaticTree};
 use lumen_static_shell::program::{application, Program};
@@ -66,23 +66,22 @@ fn on_inc(t: &mut Tally, _: &EventCtx) {
     t.count += 1;
 }
 
-impl Application for Counter {
-    fn build() -> Self {
-        // M49/T49.0: a build whose boot panics, so the loader can be shown
-        // to keep the running session (R4-F5) — `v-panic.so`.
-        #[cfg(feature = "panic-boot")]
-        panic!("this build's boot panics on purpose");
-        let mut c = Counter { ui: Ui::default(), tally: Tally::default(), name: boot_name() };
-        c.ui.inc.label = "+";
-        c.ui.inc.on_click = on_inc;
-        c
-    }
+/// The boot — the one construction path (M49/T49.4).
+fn boot() -> Counter {
+    // M49/T49.0: a build whose boot panics, so the loader can be shown
+    // to keep the running session (R4-F5) — `v-panic.so`.
+    #[cfg(feature = "panic-boot")]
+    panic!("this build's boot panics on purpose");
+    let mut c = Counter { ui: Ui::default(), tally: Tally::default(), name: boot_name() };
+    c.ui.inc.label = "+";
+    c.ui.inc.on_click = on_inc;
+    c
 }
 
 /// The program, described once — what a static `main` would run, and
 /// what the library exports.
 pub fn program() -> Program<Counter> {
-    application(Counter::build).title("reload-app").size(240, 120).style(|_: &Counter| {
+    application(boot).title("reload-app").size(240, 120).style(|_: &Counter| {
         vec![
             Rule::new(Selector::Kind("Ui"), Patch::new().padding(Edges::all(0.0))),
             Rule::new(Selector::Id("inc"), Patch::new().width(Length::FILL).height(Length::Fixed(60.0))),

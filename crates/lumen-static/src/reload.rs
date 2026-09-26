@@ -2,18 +2,19 @@
 //! graft old *values* back on.
 //!
 //! `save()` returns a JSON value holding only the keep-half of the state;
-//! `fresh()` is the constructor from whichever dylib is currently loaded
-//! (`Default::default()`); `restore()` grafts saved values onto a fresh
-//! tree **per field, with fallback**: any incompatibility — missing field,
+//! `restore()` grafts saved values onto a value the **currently loaded**
+//! code built — an application's through its program's boot, a row's
+//! through `Default` — **per field, with fallback**: any incompatibility — missing field,
 //! removed enum variant, changed type — keeps the fresh value for that
 //! field alone and logs it (the §12.2 rule, generalized). A fn pointer or
 //! vtable marked `#[reload(keep)]` fails to compile (`Serialize` is not
 //! implemented), so the "Saved cannot contain code pointers" property is
 //! structural, exactly as §7 demands.
 //!
-//! The reload *sequence* (save while old lib loaded → drop old tree →
-//! load new lib, never dlclose → fresh → restore, bytes owned by the
-//! host) lives in the host, not here — see `fixtures/hot-host`.
+//! The reload *sequence* (save while the old lib is loaded → load the new
+//! lib, never dlclose → boot the new build → restore → only then drop the
+//! old tree; bytes owned by the host) lives in the host, not here — see
+//! `lumen_static_reload::hot::Reloader` and `fixtures/hot-host`.
 
 // `alloc`, not the std prelude: this crate is `no_std` when the
 // `std` feature is off (M13/T13.1), and absent entirely without the
@@ -39,15 +40,25 @@ pub fn from_value<T: serde::de::DeserializeOwned>(v: Value) -> Result<T, serde_j
     serde_json::from_value(v)
 }
 
+/// A value that survives a hot swap: what it keeps, and how that is
+/// grafted onto a new build's value.
+///
+/// **There is no constructor here** (M49/T49.4). It had one, `fresh()`,
+/// which the derive routed to `Application::build` for an application —
+/// a second construction path beside the program's boot, which is what a
+/// window swap and `Host::reload` actually run, and which nothing
+/// checked against it (R5-F10, `docs/plan-reload-hardening.md` §2.2). An
+/// application is built by its program's boot, always (`Host::reload`
+/// in the shell re-runs it); a container that
+/// needs a fresh row (`Vec`, `Option`, `Repeat`) takes `Default`, which
+/// is the only thing a row's `fresh()` ever was.
+///
 pub trait Reloadable {
     /// The keep-half of this value, as pointer-free data.
     fn save(&self) -> Value;
-    /// A brand-new value built by the *currently loaded* code.
-    fn fresh() -> Self
-    where
-        Self: Sized;
-    /// Graft saved keep-values onto `self` (which came from [`fresh`](Reloadable::fresh)).
-    /// Incompatible or missing fields keep their fresh value, logged.
+    /// Graft saved keep-values onto `self`, which the currently loaded
+    /// code built. Incompatible or missing fields keep their fresh value,
+    /// logged.
     fn restore(&mut self, saved: &Value);
 }
 
@@ -80,9 +91,6 @@ impl<T: Widget + Default + 'static> Reloadable for Repeat<T> {
     fn save(&self) -> Value {
         json!({ "count": self.count, "scroll": self.scroll, "item_extent": self.item_extent })
     }
-    fn fresh() -> Self {
-        Self::default()
-    }
     fn restore(&mut self, saved: &Value) {
         match saved.get("count").and_then(Value::as_u64) {
             Some(c) => self.count = c as usize,
@@ -110,14 +118,12 @@ impl<T: Widget + Default + 'static> Reloadable for Repeat<T> {
     }
 }
 
-/// §7's container rule: saved data drives arity. `fresh()` gives an empty
-/// list; restore rebuilds every element with fresh *code* and saved *data*.
-impl<W: Reloadable> Reloadable for Vec<W> {
+/// §7's container rule: saved data drives arity. Restore rebuilds every
+/// element with fresh *code* (`Default`, from the build loaded now) and
+/// saved *data*.
+impl<W: Reloadable + Default> Reloadable for Vec<W> {
     fn save(&self) -> Value {
         Value::Array(self.iter().map(Reloadable::save).collect())
-    }
-    fn fresh() -> Self {
-        Vec::new()
     }
     fn restore(&mut self, saved: &Value) {
         let Some(arr) = saved.as_array() else {
@@ -126,28 +132,25 @@ impl<W: Reloadable> Reloadable for Vec<W> {
         };
         self.clear();
         self.extend(arr.iter().map(|v| {
-            let mut w = W::fresh();
+            let mut w = W::default();
             w.restore(v);
             w
         }));
     }
 }
 
-impl<W: Reloadable> Reloadable for Option<W> {
+impl<W: Reloadable + Default> Reloadable for Option<W> {
     fn save(&self) -> Value {
         match self {
             Some(w) => w.save(),
             None => Value::Null,
         }
     }
-    fn fresh() -> Self {
-        None
-    }
     fn restore(&mut self, saved: &Value) {
         if saved.is_null() {
             *self = None;
         } else {
-            let mut w = W::fresh();
+            let mut w = W::default();
             w.restore(saved);
             *self = Some(w);
         }
@@ -236,7 +239,8 @@ pub fn crossing_types() -> [Crossing; 6] {
 }
 
 pub mod symbols {
-    /// `fn() -> *mut c_void` — `App::fresh()` from this build's code.
+    /// `fn() -> *mut c_void` — the application, built by this build's
+    /// boot function (M49/T49.4: `export_reloadable_app!` takes it).
     pub const NEW: &[u8] = b"hot_new";
     /// `fn(*mut c_void)` — drop the tree while this library is still
     /// loaded. Step 2 of §7's sequence. Null is accepted and does nothing

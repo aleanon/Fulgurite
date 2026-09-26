@@ -28,9 +28,6 @@ impl Reloadable for Probe {
     fn save(&self) -> Value {
         json!({ "n": self.n })
     }
-    fn fresh() -> Self {
-        Probe { n: 7 }
-    }
     fn restore(&mut self, saved: &Value) {
         match saved.get("n").and_then(Value::as_u64) {
             Some(n) => self.n = n as u32,
@@ -39,7 +36,11 @@ impl Reloadable for Probe {
     }
 }
 
-crate::export_reloadable_app!(Probe);
+fn boot() -> Probe {
+    Probe { n: 7 }
+}
+
+crate::export_reloadable_app!(Probe, boot);
 crate::export_abi_stamp!();
 
 /// The shims this module must reach, by name.

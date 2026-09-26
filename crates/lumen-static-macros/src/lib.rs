@@ -1261,32 +1261,30 @@ fn expand_reloadable(input: DeriveInput) -> syn::Result<Ts2> {
     // an application from a widget with no new attribute and no
     // coordination between the two derives.
     //
-    // The distinction decides where a fresh value comes from. A widget's
-    // is structural and `Default` is right: `Repeat` builds one per row
-    // with `window.resize_with(vis, T::default)`. An application's must
-    // come from the **code that is loaded now**, because that is where
-    // its handler `fn` pointers live — which is what
-    // `Reloadable::fresh`'s own doc has always claimed and what
-    // `Default::default()` quietly failed to deliver.
+    // It used to decide where `fresh()` came from: `Application::build`
+    // for an application, `Default` for a widget. **`fresh()` is gone**
+    // (M49/T49.4, R5-F10): an application is built by its program's boot
+    // — the window swap boots the new library's `program()`, and
+    // `Host::reload` re-runs the boot the host was built from — so
+    // routing a second constructor here was M31's two-path defect back
+    // in a new shape, and it made `application(boot)` with a free
+    // function un-reloadable (E0277 on `Application`). A container that
+    // needs a fresh row takes `Default`. What remains keyed on `#[tree]`
+    // is the guard below.
     let is_application = fields
         .named
         .iter()
         .any(|f| f.attrs.iter().any(|a| a.path().is_ident("tree")));
-    let fresh_body = if is_application {
-        quote! { <Self as ::lumen_static::event::Application>::build() }
-    } else {
-        quote! { <Self as ::core::default::Default>::default() }
-    };
 
     // **A reloadable application must not also implement `Default`** —
-    // M31/T31.2.
+    // M31/T31.2, kept by M49/T49.4.
     //
-    // `fresh()` calls `Application::build` above, so a `Default` beside
-    // it is a *second* construction path that nothing reconciles: `main`
-    // takes one, the swap takes the other, and the two drift until a
-    // handler assigned in only one of them comes back as its
-    // placeholder. That is the whole defect this milestone removed, so
-    // leaving the door open would be shipping the fix and the bug.
+    // A `Default` beside the program's boot is a *second* construction
+    // path that nothing reconciles: whatever calls one and whatever calls
+    // the other drift until a handler assigned in only one of them comes
+    // back as its placeholder. Nothing in the framework calls `Default`
+    // on an application any more, which is exactly why a `Default` there
+    // could only be a trap.
     //
     // Rust has no negative bounds, so this is the coherence trick: the
     // blanket covers `Self` only if `Self: Default`, and then the two
@@ -1319,9 +1317,6 @@ fn expand_reloadable(input: DeriveInput) -> syn::Result<Ts2> {
                 let mut m = ::lumen_static::reload::Map::new();
                 #(#save_stmts)*
                 ::lumen_static::reload::Value::Object(m)
-            }
-            fn fresh() -> Self {
-                #fresh_body
             }
             fn restore(&mut self, saved: &::lumen_static::reload::Value) {
                 let Some(obj) = saved.as_object() else {

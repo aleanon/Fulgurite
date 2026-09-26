@@ -1595,6 +1595,8 @@ dependencies = [
  "libloading",
  "lumen-static",
  "lumen-static-shell",
+ "lumen-static-widgets",
+ "serde",
 ]
 
 [[package]]
