@@ -6,7 +6,7 @@
 //! and the location — which exists only inside a hook — is lost. So the
 //! hook, the record and the catch all live here, in the crate the
 //! **library** links, and every loaded build gets fresh copies of these
-//! statics. [`guard`](crate::panic::guard) installs the hook on the first shim call of each
+//! statics. [`guard`] installs the hook on the first shim call of each
 //! build.
 //!
 //! The report crosses the boundary as plain bytes, drained by the

@@ -146,7 +146,7 @@ impl Prefer {
 
 /// A boot function, erased: the application and the jobs to start.
 ///
-/// Shared, because the host keeps it (M49/T49.4): [`Host::reload`]
+/// Shared, because the host keeps it (M49/T49.4): `Host::reload` (behind `reload`)
 /// rebuilds through it, as a window swap rebuilds through the new
 /// library's `program()`, so there is one construction path.
 pub type Boot<A> = Rc<dyn Fn() -> (A, Vec<Job<<A as App>::Msg>>)>;
