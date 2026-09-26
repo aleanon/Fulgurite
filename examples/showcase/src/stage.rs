@@ -363,7 +363,8 @@ pub struct DNavigationRail {
 #[widget(column, spacing = 12.0)]
 pub struct DAppBar {
     #[widget_id("d_appbar_a")]
-    pub a: AppBar<String>,
+    /// With both slots (M57/B39): a leading Back and a Save action.
+    pub a: AppBar<String, Button<Store, String>, Button<Store, String>>,
 }
 
 #[derive(StaticTree, Default)]
