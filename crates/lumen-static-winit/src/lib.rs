@@ -142,6 +142,23 @@ pub use translate::{Cursor, Translated};
 ///
 /// Without the `gpu` feature this is always the software canvas, and
 /// `prefer` only decides whether to say so.
+/// The backend half of `resumed`: make a backend and hand it the images —
+/// extracted verbatim by M47/T47.0 so a unit test can drive it with a
+/// fake backend (R15-F6).
+///
+/// Taken, not cloned: `ImageSource` is a trait object and the renderer
+/// is where the pixels are wanted.
+fn resume_backend(
+    images: &mut Option<Box<dyn lumen_static::ImageSource>>,
+    make: impl FnOnce() -> Box<dyn Backend>,
+) -> Box<dyn Backend> {
+    let mut backend = make();
+    if let Some(images) = images.take() {
+        backend.set_images(images);
+    }
+    backend
+}
+
 fn pick_backend(
     window: Arc<Window>,
     font: Option<FontStack>,
@@ -759,13 +776,9 @@ impl Win {
         // physical, and this is the only thing that relates them (M10b).
         self.session.set_scale(window.scale_factor() as f32);
 
-        let mut backend = pick_backend(window.clone(), self.font.clone(), Prefer::from_env(self.config.backend));
+        let (font, prefer) = (self.font.clone(), Prefer::from_env(self.config.backend));
+        let backend = resume_backend(&mut self.config.images, || pick_backend(window.clone(), font, prefer));
         eprintln!("lumen-static: {}", backend.name());
-        // Taken, not cloned: `ImageSource` is a trait object and the
-        // renderer is where the pixels are wanted.
-        if let Some(images) = self.config.images.take() {
-            backend.set_images(images);
-        }
         self.backend = Some(backend);
         // Tell the platform this window accepts composed input, or an
         // IME never starts and CJK entry is impossible rather than
@@ -1177,5 +1190,67 @@ mod tests {
             other => panic!("120 ms gave {other:?}, not WaitUntil"),
         }
         assert_eq!(control_flow_for(now, None), ControlFlow::Wait, "no timer must wait without a deadline");
+    }
+
+    /// One pixel's worth of image source, so a backend's `set_images`
+    /// can be seen to receive *something*.
+    struct OnePixel;
+    impl lumen_static::ImageSource for OnePixel {
+        fn image(&self, _id: lumen_static::ImageId) -> Option<(u32, u32, &[u8])> {
+            Some((1, 1, &[255, 0, 0, 255]))
+        }
+    }
+
+    /// A backend that records, in a log shared with the test, which
+    /// backend was handed images; and keeps them.
+    struct Fake {
+        id: usize,
+        log: std::rc::Rc<std::cell::RefCell<Vec<usize>>>,
+        images: Option<Box<dyn lumen_static::ImageSource>>,
+    }
+    impl Backend for Fake {
+        fn resize(&mut self, _w: u32, _h: u32) -> bool {
+            false
+        }
+        fn present(&mut self, _s: &mut dyn lumen_static_shell::session::FrameSource, _p: Color, _t: Instant) -> surface::Frame {
+            surface::Frame::default()
+        }
+        fn set_images(&mut self, images: Box<dyn lumen_static::ImageSource>) {
+            // Only a source that answers counts as images.
+            if images.image(lumen_static::ImageId(0)).is_some() {
+                self.log.borrow_mut().push(self.id);
+            }
+            self.images = Some(images);
+        }
+        fn name(&self) -> &str {
+            "fake"
+        }
+    }
+
+    /// **R15-F6: a second `resumed` must still have the images.**
+    ///
+    /// `resumed` makes a new backend every time and hands it
+    /// `config.images.take()`; there is no suspend handler, so the
+    /// first backend's images go down with it and the second gets none.
+    /// Driven here as resume, suspend (today: the backend is dropped),
+    /// resume, printing what each backend was given.
+    #[test]
+    #[ignore = "red until T47.7: R15-F6, a second resumed gets no images"]
+    fn a_second_resume_still_has_the_images() {
+        let mut images: Option<Box<dyn lumen_static::ImageSource>> = Some(Box::new(OnePixel));
+        let log = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let mut made = 0;
+        for round in 1..=2 {
+            let backend = resume_backend(&mut images, || {
+                made += 1;
+                Box::new(Fake { id: round, log: log.clone(), images: None })
+            });
+            let given = log.borrow().contains(&round);
+            println!("backend #{round} images: {}", if given { "Some" } else { "None" });
+            // The suspend a window does today: the backend is dropped.
+            drop(backend);
+        }
+        assert_eq!(made, 2, "setup: two backends were made");
+        assert_eq!(*log.borrow(), vec![1, 2], "backend #2 was given no images");
     }
 }
