@@ -91,7 +91,7 @@ EDITOR = ("RichTextEditor", "#d_editor_a", [
 PAINTBOX = ("PaintBox", "#d_paintbox_a", [
     Action(
         name="the application's drawing is on screen and inside the box",
-        needs="a paint box with a callback that draws past its own edge",
+        needs="a paint box whose callback draws dots across its own edges",
         do=lambda c: c.hover(),
         expect=lambda c: _ink_inside(c),
         static=True,
@@ -136,8 +136,9 @@ def _ink_inside(c):
     return (
         inside > 200 and outside == 0,
         f"{inside} px of the callback's ink inside the box and {outside} "
-        f"outside it — the sparkline draws 500 px past the right edge and "
-        f"the widget clips it",
+        f"outside it — the sparkline's first and last dots straddle the "
+        f"box's edges by 3 px, and only the clip keeps that half in "
+        f"(18 px outside with the clip removed, M57/B9)",
     )
 
 

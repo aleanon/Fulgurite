@@ -901,6 +901,14 @@ impl<S> lumen_static::event::Handlers<S> for RichTextEditor {
 /// ends up reading the wrong file (M27/T27.2).
 pub struct PaintBox {
     /// Called with the widget's rect, in window coordinates.
+    ///
+    /// **Clipped to that rect, not to its rounded corners** — M57/B9. The
+    /// ground is drawn with the style's `radius` (8 by default), and the
+    /// clip is the box: the painter's clip is a rectangle, and every
+    /// backend would need a rounded one for this one widget. So ink drawn
+    /// into a corner shows past the ground's curve. A drawing that reaches
+    /// its edges should inset itself by the radius, or the application
+    /// should set `radius: 0`.
     pub draw: fn(&mut dyn Painter, [f32; 4]),
 }
 
@@ -980,7 +988,8 @@ impl Node for PaintBox {
         // **Clipped, because the callback is the application's.** It is
         // handed a rect and nothing stops it drawing outside one; a
         // `Tree` that painted 116 px past its own box is the same
-        // mistake made by code this repository owns (M27/T27.11).
+        // mistake made by code this repository owns (M27/T27.11). The
+        // clip is the rectangle, not the rounded ground: see `draw`.
         out.push_clip(r);
         (self.draw)(out, r);
         out.pop_clip();
