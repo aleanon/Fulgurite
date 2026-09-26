@@ -203,7 +203,6 @@ fn run<A: Edit>() -> (usize, usize) {
 }
 
 #[test]
-#[ignore = "red until T45.5: R10-F7, editing steps by codepoint"]
 fn backspace_and_delete_remove_whole_graphemes_in_every_text_widget() {
     let mut total = (0, 0);
     for (c, r) in [run::<InputApp>(), run::<AreaApp>(), run::<SearchApp>(), run::<ComboApp>(), run::<EditorApp>()] {

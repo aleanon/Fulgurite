@@ -1640,6 +1640,7 @@ dependencies = [
  "accesskit",
  "lumen-static",
  "serde_json",
+ "unicode-segmentation",
 ]
 
 [[package]]

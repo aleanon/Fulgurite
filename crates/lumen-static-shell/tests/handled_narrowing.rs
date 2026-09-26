@@ -155,6 +155,16 @@ fn a_click_driven_session_narrows_and_draws_the_same_frames() {
         assert!(!p.b.last_marks().all, "typing into a split application marked everything");
     }
     assert_eq!(p.b.app.ui.entry.field.as_str(), "1234567 wide", "setup: the typing did not land");
+    // A flag, typed and then deleted by one Backspace — M45/T45.5: the
+    // grapheme step, narrowed, draws the same frame as the whole walk.
+    for ch in ['\u{1f1f3}', '\u{1f1f4}'] {
+        p.step(&format!("type {ch:?}"), |post| post(Event::Text { ch }));
+    }
+    p.step("Backspace over the flag", |post| {
+        post(Event::Key { key: lumen_static::Key::Backspace, down: true })
+    });
+    assert!(!p.b.last_marks().all, "a Backspace in a split application marked everything");
+    assert_eq!(p.b.app.ui.entry.field.as_str(), "1234567 wide", "one Backspace did not delete the whole flag");
 
     // 2. Press the slider's track at three quarters — the slider moves itself.
     let si = lumen_static::style::index_of_wid(<Ui as Widget>::SUB_TABLE, "slider").unwrap();

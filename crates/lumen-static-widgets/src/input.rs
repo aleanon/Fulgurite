@@ -61,8 +61,9 @@ use lumen_static::{Constraints, Point, Size};
 /// A single-line editable text field.
 pub struct TextInput<S: TextBuffer = lumen_static::text::DefaultTextStorage> {
     text: S,
-    /// Caret position as a byte offset into `text`. Always on a `char`
-    /// boundary — every path that moves it steps by clusters.
+    /// Caret position as a byte offset into `text`. Always on a grapheme
+    /// boundary where there is an allocator, and on a `char` boundary
+    /// always — every path that moves it steps through `crate::edit`.
     pub(crate) caret: usize,
     /// The provisional text an input method is composing, as a byte
     /// range into `text` (M14/T14.8).
@@ -342,20 +343,17 @@ impl<S: TextBuffer> TextInput<S> {
         core::mem::replace(&mut self.caret, end) != end
     }
 
-    /// The `char` boundary before `at`, if any.
-    ///
-    /// Byte arithmetic, not `- 1`: a caret sits on a boundary and a
-    /// multi-byte character must be crossed whole, or the next slice
-    /// panics. This is the operation the shaping seam's byte offsets are
-    /// mapped back to the caller's string for (T7.2b).
+    /// The grapheme boundary before `at`, if any — `crate::edit`
+    /// (M45/T45.5): a combining accent, a ZWJ sequence and a flag are each
+    /// crossed whole, and a multi-byte character is never split, or the
+    /// next slice panics. This is the operation the shaping seam's byte
+    /// offsets are mapped back to the caller's string for (T7.2b).
     fn prev_boundary(&self, at: usize) -> Option<usize> {
-        let s = self.text.as_ref();
-        s[..at.min(s.len())].char_indices().next_back().map(|(i, _)| i)
+        crate::edit::prev_boundary(self.text.as_ref(), at)
     }
 
     fn next_boundary(&self, at: usize) -> Option<usize> {
-        let s = self.text.as_ref();
-        s.get(at..)?.chars().next().map(|c| at + c.len_utf8())
+        crate::edit::next_boundary(self.text.as_ref(), at)
     }
 
     fn invalidate(&mut self) {

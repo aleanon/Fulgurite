@@ -269,14 +269,14 @@ impl<S: TextBuffer> TextArea<S> {
         true
     }
 
+    /// The grapheme boundary before `at` — `crate::edit`, which
+    /// `TextInput` steps by too (M45/T45.5).
     fn prev_boundary(&self, at: usize) -> Option<usize> {
-        let s = self.text.as_ref();
-        s[..at.min(s.len())].char_indices().next_back().map(|(i, _)| i)
+        crate::edit::prev_boundary(self.text.as_ref(), at)
     }
 
     fn next_boundary(&self, at: usize) -> Option<usize> {
-        let s = self.text.as_ref();
-        s.get(at..)?.chars().next().map(|c| at + c.len_utf8())
+        crate::edit::next_boundary(self.text.as_ref(), at)
     }
 
     fn cluster_at(&self, byte: usize) -> Option<Cluster> {

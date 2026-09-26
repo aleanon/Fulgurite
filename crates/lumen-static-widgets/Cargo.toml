@@ -8,6 +8,10 @@ license.workspace = true
 lumen-static = { path = "../lumen-static", default-features = false }
 # Only under `observe`; `lumen-static` gates its own the same way.
 accesskit = { version = "0.25", optional = true }
+# M45/T45.5: editing steps by extended grapheme cluster. `no_std` and
+# allocation-free, and behind `alloc` anyway, so the leaf profile — which
+# takes neither — links none of its tables (docs/results-embedded.md).
+unicode-segmentation = { version = "1", optional = true, default-features = false }
 # Only under `reload`, exactly as `lumen-static` gates its own.
 serde_json = { version = "1", optional = true }
 
@@ -29,7 +33,7 @@ default = ["std"]
 # nested, not alternatives, and a crate that took `std` without `alloc`
 # would lose `Vec` for no reason anyone asked for.
 std = ["alloc", "lumen-static/std"]
-alloc = ["lumen-static/alloc"]
+alloc = ["lumen-static/alloc", "dep:unicode-segmentation"]
 # **The agent-facing half — M27/T27.5.** Without this no widget in this
 # crate publishes a role or a value, so `ui.getTree` sees geometry and
 # nothing else and a drive script cannot read a number field's number.

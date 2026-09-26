@@ -587,6 +587,11 @@ since T7.2b, and this is its fourth implementation after `BlockMetrics`,
 `FontMetrics` and `BakedFace` — the first to do something the others
 structurally cannot.
 
+**Scope note (M45/T45.5):** "grapheme-correct segmentation" above is
+the shaper's clusters, which place a caret. *Editing* stepped by `char`
+until M45/T45.5, which made both editors step by extended grapheme
+cluster (`unicode-segmentation`, behind the widgets crate's `alloc`).
+
 **Byte offsets are the caller's, and a bidi split is where that is
 easiest to get wrong.** A caret computed from a shaper's own indices
 lands mid-character; the `Run` struct carries the offset of each

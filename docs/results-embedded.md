@@ -452,6 +452,19 @@ a `u32` length), the number is exactly 1,168. A `u64` length, which the
 old tuple had, made it 1,192; the length is a `u32` because no field
 holds 4 GB. `.text` after it: 27,964 B, inside the headline's 1%.
 
+### Grapheme editing is behind `alloc` — M45/T45.5
+
+The editors step by extended grapheme cluster through
+`unicode-segmentation`, an optional dependency of `lumen-static-widgets`
+enabled by its `alloc` feature. **The leaf firmware's `.text` did not
+change**: 27,964 B before and after (`scripts/check_text.sh`), because
+`fixtures/embedded` takes neither `std` nor `alloc` and its `TextInput`
+keeps stepping by `char`. The alloc tier has no linked binary in this
+repository to measure; on the host, `examples/counter-window` (which has
+a `TextInput`) links **6,962 B** of `unicode_segmentation` symbols —
+tables and cursor — in release, x86-64. That is the tier's price for
+Backspace removing a whole flag.
+
 ## M45/T45.12 — the baked face wraps at the space, measured 2026-09-26
 
 `BakedFace::shape` moved a word that would overflow whole to the next

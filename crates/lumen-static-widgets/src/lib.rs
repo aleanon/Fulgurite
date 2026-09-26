@@ -77,6 +77,7 @@ pub mod glass;
 #[cfg(feature = "reload")]
 pub mod reload;
 pub mod image;
+pub(crate) mod edit;
 pub mod input;
 pub mod ops;
 pub mod popup;

@@ -129,3 +129,19 @@ presentation forms in visual order, unwrapped), turns both red: painted
 `[5256, 5260, 5277, 5288, 5341]` equals the shaper's, and the claim then
 fails on its next clause instead (ink to y 49 in a box ending at 47.25).
 T45.0 item 3's assertions stay green: RTL x falls, the Arabic word joins.
+
+## T45.5 — edit by grapheme (R10-F7)
+
+`crate::edit::{prev_boundary, next_boundary}` in `lumen-static-widgets`,
+`GraphemeCursor` over the whole buffer, behind `alloc`; both editors and
+so all five text widgets step through them.
+
+| gate | before | after | bound |
+|---|---|---|---|
+| `graphemes.rs`, five widgets × four clusters × {Backspace, Right+Delete} | 0 / 40 | **40 / 40** | 40 |
+| with `prev_boundary` reverted | — | 20 Backspace cases wrong, 0 Right+Delete | — |
+| with `next_boundary` reverted | — | 0 Backspace, 20 Right+Delete wrong | — |
+| `handled_narrowing.rs`, Backspace over a flag under `Boundaries<16>` | — | same frame, one range marked | equal |
+
+Leaf `.text` unchanged at 27,964 B; the alloc tier's host cost is in
+`docs/results-embedded.md`.

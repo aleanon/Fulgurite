@@ -55,8 +55,11 @@ pattern.
 
 * `text` — the buffer, generic over `TextBuffer` so `no_std` has a
   choice.
-* `caret` — a byte offset, always on a `char` boundary; every path that
-  moves it steps by clusters, not bytes.
+* `caret` — a byte offset, always on a grapheme boundary: every path that
+  moves it or deletes steps by extended grapheme cluster, so Backspace
+  after a flag or an accented letter removes all of it. The leaf
+  profile, with no allocator, steps by `char` instead — never splitting
+  one — because the segmentation tables live behind `alloc`.
 * `anchor` — the fixed end of a selection, `None` when the caret is a
   point.
 * `preedit` — the range an input method is composing. The provisional
