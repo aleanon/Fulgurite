@@ -28,12 +28,17 @@ impl GpuBackend {
     /// `None` when there is no usable adapter — which is not an error
     /// and must not be treated as one. See
     /// [`Prefer`](crate::backend::Prefer).
+    ///
+    /// `accept_cpu`: whether a CPU rasteriser such as llvmpipe counts as
+    /// an adapter (M51/T51.2). [`crate::choose_backend`] passes it for
+    /// `Prefer::Gpu` only.
     pub fn new(
         window: std::sync::Arc<winit::window::Window>,
         font: Option<FontStack>,
+        accept_cpu: bool,
     ) -> Option<Self> {
         let size = window.inner_size();
-        let mut gpu = Gpu::for_window(window, size.width.max(1), size.height.max(1))?;
+        let mut gpu = Gpu::for_window(window, size.width.max(1), size.height.max(1), accept_cpu)?;
         if let Some(f) = font {
             gpu.set_font(f);
         }

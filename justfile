@@ -298,6 +298,18 @@ gpu:
     if [ "${LUMEN_ALLOW_SKIP:-}" = 1 ]; then echo "gpu: LUMEN_ALLOW_SKIP=1 -- an absent adapter skips"; else export LUMEN_REQUIRE_GPU=1; fi
     cargo test -p lumen-static-wgpu
     cargo test -q -p lumen-static-wgpu --test parity the_gpu_half_ran -- --nocapture | grep '^adapter:'
+    # M51/T51.2 (R9-F6): Prefer::Auto on a machine whose ONLY adapter is a
+    # CPU rasteriser keeps the software canvas. This machine is made into
+    # one by pointing the Vulkan loader at lavapipe and the EGL loader at
+    # nothing; LUMEN_REQUIRE_CPU_ONLY=1 makes a visible GPU a failure
+    # rather than "not run". Without lavapipe installed the step cannot
+    # happen, which is a refusal unless LUMEN_ALLOW_SKIP=1.
+    lvp=/usr/share/vulkan/icd.d/lvp_icd.json
+    if [ -f "$lvp" ]; then
+        VK_ICD_FILENAMES="$lvp" VK_DRIVER_FILES="$lvp" __EGL_VENDOR_LIBRARY_FILENAMES=/nonexistent.json LUMEN_REQUIRE_CPU_ONLY=1 \
+            cargo test -q -p lumen-static-winit --features gpu --test cpu_adapter -- --nocapture 2>&1 | grep -E '^(Auto:|adapters:|test result)'
+    elif [ "${LUMEN_ALLOW_SKIP:-}" = 1 ]; then echo "gpu: no lavapipe ($lvp) -- the CPU-only step skipped"
+    else echo "gpu: no lavapipe ($lvp): cannot make a CPU-only machine (LUMEN_ALLOW_SKIP=1 to skip)"; exit 1; fi
     cargo clippy -p lumen-static-wgpu --all-targets -- -D warnings
     cargo clippy -p lumen-static-winit --features gpu --all-targets -- -D warnings
 

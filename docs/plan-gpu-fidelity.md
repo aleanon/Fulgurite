@@ -421,6 +421,17 @@ the unit test and the integration test both fail by name. Accept:
 rustdoc and the crate header in `lumen-static-winit`; the comment above
 `request_adapter` in `lumen-static-wgpu`; `docs/results-gpu.md` §6.
 
+*What building found (2026-09-27).* The plan's rule held and needed
+nothing changed. Two details it did not say: the check runs **before**
+`request_device`, so a refused adapter costs no context, and
+`pick_backend`'s decision had to be pulled out as `choose_backend` (with
+the constructors passed in) before any test could reach it without a
+window. The live test could run here because the loader can be pointed
+at lavapipe alone; NVIDIA's GL adapter, which the EGL loader also finds,
+reports `DeviceType::Other`, so the EGL vendor list is pointed at nothing
+as well. Both halves are live on this machine: `Auto` refuses llvmpipe
+under the lavapipe-only loader and takes the RTX under the default one.
+
 **Effort:** S. **Depends on:** T51.0.
 
 ### T51.3 — the dependency cap's fallback is gated, and its rustdoc stops saying it does not exist

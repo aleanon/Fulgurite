@@ -33,8 +33,10 @@
 //! **The choice is at run time and it falls back.** A machine with no
 //! driver, a container with no `/dev/dri`, a remote session, or a
 //! `LUMEN_BACKEND=software` in the environment all still get a window;
-//! the one difference is which line [`Backend::name`] prints. See
-//! [`Prefer`] and `docs/results-gpu.md` §6.
+//! the one difference is which line [`Backend::name`] prints. A machine
+//! whose only adapter is a CPU rasteriser (Mesa's llvmpipe) counts as one
+//! with no driver under `Prefer::Auto`, since M51/T51.2. See [`Prefer`]
+//! and `docs/results-gpu.md` §6.
 #![forbid(unsafe_code)]
 
 use std::sync::Arc;
@@ -130,19 +132,6 @@ pub use windows::{Pane, Panes};
 pub use surface::{canvas, sync_size, Frame, Surface};
 pub use translate::{Cursor, Translated};
 
-/// Open a window on the best backend available, falling back to the
-/// software canvas.
-///
-/// **The fallback is the design, not a safety net.** The GPU renderer
-/// is a separate crate so that nothing pays for it unasked, and it is
-/// chosen at *runtime* so that nothing breaks when it is not there. A
-/// machine with no driver, a container with no `/dev/dri`, a remote
-/// session, an `LUMEN_BACKEND=software` in the environment: all of them
-/// get a window, and the one difference is which line
-/// [`Backend::name`] prints.
-///
-/// Without the `gpu` feature this is always the software canvas, and
-/// `prefer` only decides whether to say so.
 /// The backend half of `resumed`: make a backend and hand it the images —
 /// extracted verbatim by M47/T47.0 so a unit test can drive it with a
 /// fake backend (R15-F6).
@@ -197,23 +186,74 @@ fn suspend_backend(images: &mut Option<Box<dyn lumen_static::ImageSource>>, mut 
     drop(backend);
 }
 
+/// Open a window on the best backend available, falling back to the
+/// software canvas.
+///
+/// **The fallback is the design, not a safety net.** The GPU renderer
+/// is a separate crate so that nothing pays for it unasked, and it is
+/// chosen at *runtime* so that nothing breaks when it is not there. A
+/// machine with no driver, a container with no `/dev/dri`, a remote
+/// session, an `LUMEN_BACKEND=software` in the environment: all of them
+/// get a window, and the one difference is which line
+/// [`Backend::name`] prints.
+///
+/// **A machine whose only adapter is a CPU rasteriser is one with no
+/// GPU**, under [`Prefer::Auto`] (M51/T51.2, R9-F6). Where Mesa is
+/// installed and no driver works, wgpu finds llvmpipe, and until M51
+/// `Auto` took it; the software canvas is faster there. [`Prefer::Gpu`]
+/// still takes it, because the person asked. [`choose_backend`] is the
+/// decision.
+///
+/// Without the `gpu` feature this is always the software canvas, and
+/// `prefer` only decides whether to say so.
 fn pick_backend(
     window: Arc<Window>,
     font: Option<FontStack>,
     prefer: Prefer,
 ) -> Box<dyn Backend> {
     #[cfg(feature = "gpu")]
-    if prefer != Prefer::Software {
-        match gpu::GpuBackend::new(window.clone(), font.clone()) {
-            Some(g) => return Box::new(g),
-            None => eprintln!("no GPU adapter — falling back to the software canvas"),
-        }
+    {
+        choose_backend(
+            prefer,
+            |accept_cpu| {
+                gpu::GpuBackend::new(window.clone(), font.clone(), accept_cpu)
+                    .map(|g| Box::new(g) as Box<dyn Backend>)
+            },
+            || Box::new(Software::new(window.clone(), font.clone())),
+        )
     }
     #[cfg(not(feature = "gpu"))]
-    if prefer == Prefer::Gpu {
-        eprintln!("gpu requested, but this binary was built without the `gpu` feature");
+    {
+        if prefer == Prefer::Gpu {
+            eprintln!("gpu requested, but this binary was built without the `gpu` feature");
+        }
+        Box::new(Software::new(window, font))
     }
-    Box::new(Software::new(window, font))
+}
+
+/// Which backend `prefer` yields — [`pick_backend`]'s decision, with the
+/// two constructors passed in so it can be tested without a window.
+///
+/// `gpu` is called with **whether a CPU adapter is acceptable**, which is
+/// `true` for [`Prefer::Gpu`] only (M51/T51.2, R9-F6): under
+/// [`Prefer::Auto`] a machine whose only adapter is Mesa's llvmpipe keeps
+/// the software canvas, which the review measured 3.3× faster at 1080p
+/// and 160 MB lighter (`docs/results-gpu.md` §6). It is not called at all
+/// for [`Prefer::Software`]. `None` from it falls back, with one line
+/// saying so.
+#[doc(hidden)]
+pub fn choose_backend<B>(
+    prefer: Prefer,
+    gpu: impl FnOnce(bool) -> Option<B>,
+    software: impl FnOnce() -> B,
+) -> B {
+    if prefer != Prefer::Software {
+        match gpu(prefer == Prefer::Gpu) {
+            Some(g) => return g,
+            None => eprintln!("no usable GPU adapter — falling back to the software canvas"),
+        }
+    }
+    software()
 }
 
 /// How a window is set up. Everything has a default except the tree.

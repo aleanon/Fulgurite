@@ -115,16 +115,23 @@ impl<A, F: Fn(&A) -> Vec<Rule>> Sheet<A> for F {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Prefer {
     /// GPU when the window crate was built with the `gpu` feature *and*
-    /// an adapter exists; the software canvas otherwise. The default,
+    /// a GPU adapter exists; the software canvas otherwise. The default,
     /// because falling back is the whole point: a machine with no
     /// driver, a container with no `/dev/dri` and a remote session all
     /// have to keep working.
+    ///
+    /// **A CPU rasteriser is not a GPU adapter here** (M51/T51.2,
+    /// R9-F6). On a machine with Mesa and no working driver, wgpu's only
+    /// adapter is llvmpipe; `Auto` used to take it, and the software
+    /// canvas is several times faster there (`docs/results-gpu.md` §6).
     #[default]
     Auto,
     /// The software canvas, whatever hardware is present.
     Software,
     /// The GPU, and **still fall back** if there is none. A refusal to
-    /// open a window would be a worse answer than a slower one.
+    /// open a window would be a worse answer than a slower one. Unlike
+    /// `Auto`, this takes a CPU rasteriser such as llvmpipe when that is
+    /// the only adapter, because the person asked for this one.
     Gpu,
 }
 

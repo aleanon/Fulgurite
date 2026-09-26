@@ -49,6 +49,10 @@
 
 pub mod atlas;
 
+/// Re-exported so a caller of [`accept_adapter`] can name a device type
+/// without a second, possibly different, `wgpu` in its manifest.
+pub use wgpu;
+
 use lumen_static::display::{Cmd, Color, DisplayList, ImageId, ImageSource, Renderer, Stops};
 use lumen_static_shell::text::{FontStack, GlyphId};
 
@@ -270,18 +274,44 @@ struct Split {
 }
 
 /// Whether a renderer should open on an adapter of type `device` —
-/// M51 (R9-F6). `accept_cpu` is whether a CPU rasteriser (Mesa's
-/// llvmpipe, WARP) is acceptable: yes when the person asked for the GPU
-/// by name, no under `Prefer::Auto`.
+/// M51/T51.2 (R9-F6). `accept_cpu` is whether a CPU rasteriser (Mesa's
+/// llvmpipe, WARP) is acceptable.
 ///
-/// **At M51/T51.0 this accepts everything**, which is the behaviour it
-/// was written against: `Prefer::Auto` on a machine whose only adapter is
-/// llvmpipe opens llvmpipe. Not yet called; T51.2 wires it and makes it
-/// answer.
-#[doc(hidden)]
+/// **Under `Prefer::Auto` it is not.** On a machine with no working
+/// driver and Mesa installed, the only adapter wgpu finds is llvmpipe,
+/// and taking it cost several times the software canvas's frame time
+/// with a GPU context's memory and threads (`docs/results-deep-review.md`
+/// R9-F6, measured in `docs/results-gpu.md` §6). The window keeps the
+/// software canvas instead. Under `Prefer::Gpu`, or `LUMEN_BACKEND=gpu`,
+/// the person asked for it, and [`Gpu::headless`] accepts any adapter,
+/// because that is what makes parity executable on such a machine.
+///
+/// Every other device type is accepted, `Other` and `VirtualGpu`
+/// included: a virtualised GPU that reports an odd type is a GPU, and
+/// the once-per-session backend line says which one was taken.
 pub fn accept_adapter(device: wgpu::DeviceType, accept_cpu: bool) -> Result<(), &'static str> {
-    let _ = (device, accept_cpu);
-    Ok(())
+    match device {
+        wgpu::DeviceType::Cpu if !accept_cpu => Err(
+            "a CPU rasteriser, not a GPU: under Prefer::Auto the software canvas is faster \
+             (LUMEN_BACKEND=gpu takes it anyway)",
+        ),
+        _ => Ok(()),
+    }
+}
+
+/// Every adapter this process can see, as `(name, device type)` — for a
+/// test that must know whether a machine is CPU-only before it asserts
+/// what `Prefer::Auto` does there.
+#[doc(hidden)]
+pub fn adapters() -> Vec<(String, wgpu::DeviceType)> {
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+    pollster::block_on(instance.enumerate_adapters(wgpu::Backends::all()))
+        .into_iter()
+        .map(|a| {
+            let i = a.get_info();
+            (format!("{} ({:?})", i.name, i.backend), i.device_type)
+        })
+        .collect()
 }
 
 /// The atlas ran out of room mid-frame. Answered by resetting it and
@@ -294,8 +324,19 @@ impl Gpu {
     ///
     /// This is what the tests use, and it is why the GPU path can be
     /// held to the software path's pixels without a display.
+    ///
+    /// **Any adapter, a CPU rasteriser included** (M51/T51.2): parity on
+    /// a machine whose only adapter is llvmpipe is still parity, because
+    /// the atlas, the quads and the damage logic are CPU-side code.
     pub fn headless(width: u32, height: u32) -> Option<Gpu> {
-        Self::build(width, height, None)
+        Self::build(width, height, None, true)
+    }
+
+    /// [`Gpu::headless`], refusing a CPU adapter unless `accept_cpu` —
+    /// the window's rule without a window, for the test that proves it.
+    #[doc(hidden)]
+    pub fn headless_accepting(width: u32, height: u32, accept_cpu: bool) -> Option<Gpu> {
+        Self::build(width, height, None, accept_cpu)
     }
 
     /// A renderer that owns a swapchain on `window`.
@@ -303,17 +344,23 @@ impl Gpu {
     /// `window` must be `Send + Sync` and outlive the renderer, which is
     /// what wgpu's safe surface constructor asks for; `lumen-static-winit`
     /// holds its window in an `Arc` for exactly this.
-    pub fn for_window<W>(window: W, width: u32, height: u32) -> Option<Gpu>
+    ///
+    /// `accept_cpu`: whether a CPU rasteriser counts as an adapter
+    /// ([`accept_adapter`]). `lumen-static-winit` passes it for
+    /// `Prefer::Gpu` only, so `Prefer::Auto` on a Mesa-only machine gets
+    /// `None` and keeps the software canvas.
+    pub fn for_window<W>(window: W, width: u32, height: u32, accept_cpu: bool) -> Option<Gpu>
     where
         W: wgpu::DisplayAndWindowHandle + 'static,
     {
-        Self::build(width, height, Some(Box::new(window)))
+        Self::build(width, height, Some(Box::new(window)), accept_cpu)
     }
 
     fn build(
         width: u32,
         height: u32,
         window: Option<Box<dyn wgpu::DisplayAndWindowHandle>>,
+        accept_cpu: bool,
     ) -> Option<Gpu> {
         let (width, height) = (width.max(1), height.max(1));
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
@@ -330,6 +377,11 @@ impl Gpu {
         // machine with no driver, a container with no `/dev/dri`, a
         // remote session — all of them arrive here, and none of them is
         // an error worth taking a window down for.
+        //
+        // **"No adapter" includes a CPU one, unless asked** (M51/T51.2,
+        // R9-F6). Where Mesa is installed and no driver works, the one
+        // adapter wgpu finds is llvmpipe; `request_adapter` does not say
+        // so, so its device type is checked below by `accept_adapter`.
         let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
             power_preference: wgpu::PowerPreference::default(),
             force_fallback_adapter: false,
@@ -337,6 +389,15 @@ impl Gpu {
             apply_limit_buckets: false,
         }))
         .ok()?;
+        let info = adapter.get_info();
+        if let Err(why) = accept_adapter(info.device_type, accept_cpu) {
+            // Before a device is made, so a refused adapter costs no
+            // context. Once per construction, which is once per window
+            // (and per resume): the caller's fallback line says what it
+            // chose, and this says why.
+            eprintln!("lumen-static: not using {} ({:?}): {why}", info.name, info.backend);
+            return None;
+        }
 
         let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
             label: Some("lumen-static"),
@@ -348,7 +409,6 @@ impl Gpu {
         }))
         .ok()?;
 
-        let info = adapter.get_info();
         // Name, backend **and device type** (M51 §0 rule 1): llvmpipe is
         // an adapter for parity and not evidence about a discrete GPU, so
         // every gate's first line must say which kind it ran on.
@@ -1728,7 +1788,6 @@ mod tests {
     /// adapter not acceptable) and under `Gpu` (acceptable), with the
     /// expected answer written down.
     #[test]
-    #[ignore = "red until T51.2: R9-F6, a CPU adapter is accepted under Auto"]
     fn a_cpu_adapter_is_not_a_gpu_under_auto() {
         let table = [
             (D::DiscreteGpu, false, true),

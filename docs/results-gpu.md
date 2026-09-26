@@ -402,6 +402,39 @@ cannot, and returns the software canvas. **A window always opens.**
 Which one you got is printed at startup and available from
 `Backend::name`, because "it is slow" should not require guessing.
 
+### A CPU rasteriser is not a GPU under `Auto` — M51/T51.2, 2026-09-27
+
+**The paragraph above was false on exactly the machine it describes.**
+`Gpu::build` asked wgpu for any adapter and never looked at its device
+type, so where Mesa is installed and no driver works the one adapter
+found was llvmpipe, and `Prefer::Auto` took it. The review measured it
+at 1080p: a full frame 2.673 ms against the software canvas's 0.822
+(3.3×), a caret 0.146 against 0.037 ms (3.9×), and RSS 3.7 → 219.7 MB
+with 133 threads after one frame (`docs/results-deep-review.md` R9-F6,
+8 alternating rounds, LOADED).
+
+Now `accept_adapter(device_type, accept_cpu)` refuses a `Cpu` adapter
+unless `accept_cpu`, before any device is made, and prints why once.
+`pick_backend` passes `accept_cpu` for `Prefer::Gpu` only (the decision
+is `choose_backend`), so `LUMEN_BACKEND=gpu` still opens llvmpipe on
+purpose, and `Gpu::headless` accepts any adapter so parity stays
+executable there. `Other` and `VirtualGpu` are accepted: NVIDIA's GL
+adapter reports `Other` on this machine, and a virtualised GPU that
+reports an odd type is still a GPU.
+
+| gate | base | the device-type check deleted |
+|---|---|---|
+| `accept_adapter` unit table, 10 cases | 10 right | `wrong answers: [(Cpu, false)]` |
+| `cpu_adapter.rs`, the decision, 5 cases | 5 right | (flag always `true`) `Auto … left: Gpu { accept_cpu: true }` |
+| `cpu_adapter.rs` live, lavapipe-only loader | `Auto: software; Gpu: gpu (llvmpipe … (Vulkan, Cpu))` | `Auto: gpu (llvmpipe …)` → `Prefer::Auto opened a CPU rasteriser` |
+
+The live half needs a CPU-only machine. `just gpu` makes this one into
+one — the Vulkan loader (VK_ICD_FILENAMES) at lavapipe, the EGL vendor list at nothing —
+under `LUMEN_REQUIRE_CPU_ONLY=1`, where a visible GPU fails instead of
+reporting "NOT RUN". The other half, that `Auto` still takes a discrete
+GPU, is live on this machine's default loader (the RTX 4070) and covered
+by the table.
+
 The live check that the two are interchangeable is `just gpu-parity`: it
 builds `examples/minimal` once, runs *that one binary* twice — plain and
 `LUMEN_BACKEND=software` — and reads the window back off the X server
