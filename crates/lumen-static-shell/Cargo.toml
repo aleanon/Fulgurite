@@ -116,3 +116,13 @@ required-features = ["live-agent", "truetype"]
 [[test]]
 name = "agent_motion"
 required-features = ["live-agent", "truetype"]
+
+# M48/T48.0: drive `Session::agent` as the window does (the RPC, the
+# redraw, `agent_frame_done`), which needs the agent built in.
+[[test]]
+name = "agent_frames"
+required-features = ["live-agent", "truetype"]
+
+[[test]]
+name = "agent_settled"
+required-features = ["live-agent", "truetype"]
