@@ -128,3 +128,72 @@ fn tab_to_a_picklist_opens_it() {
     assert_eq!(h.input.focus, Some(part("pick", "chooser-trigger") as u32), "setup: Tab did not reach the field");
     assert!(h.app.ui.pick.is_open(), "Tab reached the picklist's field and it did not open");
 }
+
+// ---- M57/B20, B22: the keyboard, a read-only pick list, a query that reverts
+
+fn key(h: &mut Host<App>, k: Key) {
+    h.post(Event::Key { key: k, down: true });
+    h.post(Event::Key { key: k, down: false });
+    h.pump();
+}
+
+fn focus_field(h: &mut Host<App>, owner: &str) {
+    h.input.focus = Some(part(owner, "chooser-trigger") as u32);
+    h.pump();
+}
+
+/// A pick list's field shows the choice and takes no typing: typing "xy"
+/// appended to the shown option and left the selection where it was
+/// (`docs/widget-audit.md`, PickList).
+#[test]
+fn a_pick_list_takes_no_typing() {
+    let mut h = host();
+    focus_field(&mut h, "pick");
+    for ch in ['x', 'y'] {
+        h.post(Event::Text { ch });
+    }
+    h.pump();
+    println!("after typing xy: {:?}, selected {:?}", h.app.ui.pick.text(), h.app.ui.pick.selected());
+    assert_eq!(h.app.ui.pick.text(), "Apple", "typing edited a pick list's shown choice");
+}
+
+/// Down opens and walks the rows, Enter chooses — for both kinds.
+#[test]
+fn the_keyboard_opens_walks_and_chooses() {
+    for owner in ["pick", "combo"] {
+        let mut h = host();
+        focus_field(&mut h, owner);
+        key(&mut h, Key::Down);
+        assert!(is_open(&h, owner), "#{owner}: Down did not open the list");
+        key(&mut h, Key::Down);
+        key(&mut h, Key::Down);
+        key(&mut h, Key::Enter);
+        let chosen = match owner {
+            "pick" => h.app.ui.pick.selected(),
+            _ => h.app.ui.combo.selected(),
+        };
+        println!("#{owner}: Down, Down, Down, Enter -> {chosen:?}, open {}", is_open(&h, owner));
+        assert_eq!(chosen, Some(2), "#{owner}: the keyboard did not choose the third option");
+        assert!(!is_open(&h, owner), "#{owner}: the list stayed open after Enter");
+    }
+}
+
+/// A query typed into a combobox and abandoned — focus leaves without a
+/// choice — reverts to the selection's text: the field and the selection
+/// disagreed ("apqq" shown, Apple chosen).
+#[test]
+fn an_abandoned_combobox_query_reverts() {
+    let mut h = host();
+    focus_field(&mut h, "combo");
+    for ch in ['q', 'q'] {
+        h.post(Event::Text { ch });
+    }
+    h.pump();
+    assert_ne!(h.app.ui.combo.text(), "Apple", "setup: typing did not change the field");
+    h.post(Event::Key { key: Key::Tab, down: true });
+    h.post(Event::Key { key: Key::Tab, down: false });
+    h.pump();
+    h.pump();
+    println!("after Tab away: {:?}", h.app.ui.combo.text());
+    assert_eq!(h.app.ui.combo.text(), "Apple", "the abandoned query stayed in the field");
+}

@@ -218,8 +218,8 @@ fn choosing_clears_a_query() {
     );
 }
 
-/// A `PickList` does **not** filter — its trigger is a label, not a
-/// query. Without this the combobox test passes on an implementation
+/// A `PickList` does **not** filter — its trigger shows the choice and is
+/// read only (M57/B20), not a query. Without this the combobox test passes on an implementation
 /// that filters everything.
 #[test]
 fn a_picklist_does_not_filter() {

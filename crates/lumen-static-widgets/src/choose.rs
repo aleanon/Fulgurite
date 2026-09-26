@@ -58,6 +58,11 @@ pub struct OptionList {
     picked: Option<usize>,
     /// Laid-out height, so `on_event` can turn `local.y` into a row.
     height: f32,
+    /// The keyboard's row, by option index — M57/B20. Drawn as a hovered
+    /// row is, and chosen by Enter; the list had no keyboard at all.
+    highlight: Option<usize>,
+    /// The chosen option, marked when the list opens again — M57/B20.
+    current: Option<usize>,
     /// How far the rows are scrolled — M57/A18. A list taller than the
     /// window is given the window (`Popup` caps it), and scrolls by wheel
     /// inside it rather than running off the bottom of the screen.
@@ -76,6 +81,8 @@ impl Default for OptionList {
             hot: None,
             picked: None,
             height: 0.0,
+            highlight: None,
+            current: None,
             scroll: 0.0,
             content_h: 0.0,
         }
@@ -124,6 +131,10 @@ impl OptionList {
                 self.shown_count += 1;
             }
         }
+        // A keyboard row the filter hid is no longer a row to choose.
+        if self.highlight.is_some_and(|h| !self.shown[h]) {
+            self.highlight = None;
+        }
         self.shown_count != before
     }
 
@@ -149,6 +160,60 @@ impl OptionList {
     /// Take the pending choice, if there is one.
     pub fn take_picked(&mut self) -> Option<usize> {
         self.picked.take()
+    }
+
+    /// The keyboard's row (M57/B20).
+    pub fn highlight(&self) -> Option<usize> {
+        self.highlight
+    }
+
+    /// Put the keyboard's row on option `i`, if it is shown.
+    pub fn set_highlight(&mut self, i: Option<usize>) {
+        self.highlight = i.filter(|&k| k < self.count && self.shown[k]);
+    }
+
+    /// Move the keyboard's row by `d` among the shown options, stopping at
+    /// the ends; from nothing, down starts at the first and up at the last.
+    pub fn move_highlight(&mut self, d: i32) -> bool {
+        let shown: alloc::vec::Vec<usize> = (0..self.count).filter(|&k| self.shown[k]).collect();
+        if shown.is_empty() {
+            return false;
+        }
+        let at = self.highlight.and_then(|h| shown.iter().position(|&k| k == h));
+        let next = match at {
+            Some(p) => (p as i32 + d).clamp(0, shown.len() as i32 - 1) as usize,
+            None if d >= 0 => 0,
+            None => shown.len() - 1,
+        };
+        let was = self.highlight;
+        self.highlight = Some(shown[next]);
+        was != self.highlight
+    }
+
+    /// Choose the keyboard's row, as a press on it would.
+    pub fn pick_highlight(&mut self) -> bool {
+        match self.highlight {
+            Some(k) => {
+                self.picked = Some(k);
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Mark option `i` as the chosen one.
+    pub fn set_current(&mut self, i: Option<usize>) {
+        self.current = i;
+    }
+
+    /// The first shown option whose text starts with `ch`, after `from`,
+    /// wrapping — type-ahead (M57/B20).
+    pub fn find_prefix(&self, ch: char, from: Option<usize>) -> Option<usize> {
+        let n = self.count;
+        let start = from.map_or(0, |f| f + 1);
+        (0..n).map(|k| (start + k) % n).find(|&k| {
+            self.shown[k] && self.options[k].chars().next().is_some_and(|c| c.to_lowercase().eq(ch.to_lowercase()))
+        })
     }
 
     fn row_at(&self, y: f32) -> Option<usize> {
@@ -229,9 +294,11 @@ impl Node for OptionList {
         if !me.visible {
             return lumen_static::ops::hide_subtree(st, i, limits, 1);
         }
+        // One row for "No matches" when a filter hid every option (B22).
+        let rows = if self.shown_count == 0 && self.count > 0 { 1 } else { self.shown_count };
         let content = Size {
             w: limits.max_w,
-            h: self.shown_count as f32 * ROW_H + me.padding.vertical(),
+            h: rows as f32 * ROW_H + me.padding.vertical(),
         };
         let s = lumen_static::ops::resolve_self(limits, &me, content);
         self.height = s.h;
@@ -264,10 +331,24 @@ impl Node for OptionList {
                 k += 1;
                 continue;
             }
-            if Some(idx) == self.hot {
+            let lit = Some(idx) == self.hot || Some(idx) == self.highlight;
+            if lit {
                 out.rounded_rect([r[0] + 4.0, y, r[2] - 4.0, y + ROW_H], s.fg, 6.0);
+            } else if Some(idx) == self.current {
+                // The chosen option, when the list opens again (M57/B20).
+                out.rounded_rect(
+                    [r[0] + 4.0, y, r[2] - 4.0, y + ROW_H],
+                    lumen_static::display::Color(s.fg.0, s.fg.1, s.fg.2, 0x1f),
+                    6.0,
+                );
             }
-            let col = if Some(idx) == self.hot { s.bg } else { s.fg };
+            let col = if lit { s.bg } else { s.fg };
+            if Some(idx) == self.current {
+                // A tick at the row's right, in the text's colour.
+                let (tx, ty) = (r[2] - p.2 - 12.0, y + ROW_H / 2.0);
+                out.line(lumen_static::desc::Point { x: tx, y: ty }, lumen_static::desc::Point { x: tx + 3.5, y: ty + 3.5 }, 2.0, col);
+                out.line(lumen_static::desc::Point { x: tx + 3.5, y: ty + 3.5 }, lumen_static::desc::Point { x: tx + 10.0, y: ty - 4.0 }, 2.0, col);
+            }
             out.text_weighted(
                 [r[0] + p.0, y + ROW_H / 2.0 - s.font_size * 0.6, r[2] - p.2, y + ROW_H],
                 self.options[idx],
@@ -276,6 +357,18 @@ impl Node for OptionList {
                 col,
             );
             k += 1;
+        }
+        // **Nothing matched** (M57/B22): the panel was an empty 12 px
+        // sliver with a shadow; it says so instead.
+        if self.shown_count == 0 && self.count > 0 {
+            let y = r[1] + p.1;
+            out.text_weighted(
+                [r[0] + p.0, y + ROW_H / 2.0 - s.font_size * 0.6, r[2] - p.2, y + ROW_H],
+                "No matches",
+                s.font_size,
+                s.font_weight,
+                lumen_static::display::Color(s.fg.0, s.fg.1, s.fg.2, 0xa0),
+            );
         }
         out.pop_clip();
     }
@@ -419,7 +512,7 @@ impl<const KIND: u8> Default for Chooser<KIND> {
         let mut list = Popup::<OptionList>::default();
         list.anchor = Anchor::Below;
         Chooser::<KIND> {
-            trigger: crate::input::TextInput::default(),
+            trigger: { let mut t = crate::input::TextInput::default(); t.read_only = KIND == PICKLIST; t },
             list,
             selected: None,
             typed: false,
@@ -434,6 +527,8 @@ impl<const KIND: u8> Chooser<KIND> {
 
     pub fn new(options: &[&'static str]) -> Self {
         let mut c = Chooser::<KIND>::default();
+        // A pick list shows its choice; it does not take typing (M57/B20).
+        c.trigger.read_only = KIND == PICKLIST;
         c.list.content.set_options(options);
         if KIND != MENU && c.list.content.count() > 0 {
             c.select(0);
@@ -590,6 +685,8 @@ impl<const KIND: u8> Node for Chooser<KIND> {
         if KIND == COMBOBOX && self.typed {
             self.list.content.filter(self.trigger.as_str());
         }
+        // The chosen option is marked when the list opens again (M57/B20).
+        self.list.content.set_current(if KIND == MENU { None } else { self.selected });
         let t = if KIND == MENU {
             // A menu has no trigger to show. Zeroed rather than absent,
             // so the table's shape does not depend on the kind.
@@ -624,6 +721,19 @@ impl<const KIND: u8> Node for Chooser<KIND> {
         if KIND != MENU {
             self.trigger.paint(st, i + Self::TRIGGER, out);
         }
+        // **A chevron says "this opens"** (M57/B20); a pick list had none
+        // and read as a text field.
+        if KIND == PICKLIST {
+            let t = &st[i + Self::TRIGGER];
+            let (cx, cy) = (t.pos.x + t.size.w - 16.0, t.pos.y + t.size.h / 2.0);
+            if t.size.w > 32.0 {
+                let a = lumen_static::desc::Point { x: cx - 4.0, y: cy - 2.0 };
+                let m = lumen_static::desc::Point { x: cx, y: cy + 2.0 };
+                let b = lumen_static::desc::Point { x: cx + 4.0, y: cy - 2.0 };
+                out.line(a, m, 1.75, t.fg);
+                out.line(m, b, 1.75, t.fg);
+            }
+        }
         self.list.paint(st, i + Self::POPUP, out);
     }
 
@@ -642,6 +752,54 @@ impl<const KIND: u8> Node for Chooser<KIND> {
 
     fn on_event(&mut self, ev: &Event, cx: &EventCtx) -> bool {
         match ev {
+            // **The keyboard** — M57/B20, B22. Down and Up open the list and
+            // move a highlighted row; Enter chooses it (a combobox with no
+            // row highlighted takes the first match). There was no keyboard
+            // at all: Down, Up and Enter answered `handled: false`.
+            Event::Key { key: k @ (Key::Down | Key::Up), down: true } => {
+                let d = if *k == Key::Down { 1 } else { -1 };
+                if !self.list.open {
+                    self.list.open = true;
+                    self.list.content.set_highlight(self.selected);
+                    if self.list.content.highlight().is_none() {
+                        self.list.content.move_highlight(d);
+                    }
+                    return true;
+                }
+                self.list.content.move_highlight(d);
+                true
+            }
+            Event::Key { key: Key::Enter, down: true } if self.list.open => {
+                if self.list.content.highlight().is_none() && KIND == COMBOBOX {
+                    self.list.content.move_highlight(1);
+                }
+                self.list.content.pick_highlight()
+            }
+            // **Type-ahead** on a pick list (M57/B20): its trigger is read
+            // only and declines the character, which lands here.
+            Event::Text { ch } if KIND == PICKLIST && !ch.is_control() => {
+                let from = if self.list.open { self.list.content.highlight() } else { self.selected };
+                match self.list.content.find_prefix(*ch, from) {
+                    Some(k) if self.list.open => {
+                        self.list.content.set_highlight(Some(k));
+                        true
+                    }
+                    Some(k) => self.select(k),
+                    None => false,
+                }
+            }
+            // **A query abandoned reverts** (M57/B22): focus leaving a
+            // combobox that holds typed text which chose nothing restores
+            // the selection's text, so the field and the selection agree.
+            Event::Focus { gained: false } if KIND == COMBOBOX && cx.target == cx.node + Self::TRIGGER as u32 => {
+                if self.typed {
+                    if let Some(k) = self.selected {
+                        self.select(k);
+                        return true;
+                    }
+                }
+                false
+            }
             // **It opens when focus arrives at its field** — the
             // transition, delivered once by `dispatch` (M57/A7). The
             // trigger consumes the `PointerDown` itself, so a press arm

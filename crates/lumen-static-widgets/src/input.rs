@@ -109,6 +109,14 @@ pub struct TextInput<S: TextBuffer = lumen_static::text::DefaultTextStorage> {
     /// The selection highlight's colour; [`selection_tint`] of the text
     /// colour when `None` — M25/T25.10.
     pub selection_color: Option<Color>,
+    /// Shows its text and takes focus, but **edits nothing** — M57/B20.
+    ///
+    /// For a control that displays a value it owns elsewhere: a pick list's
+    /// trigger was an editable field, so typing into one appended to the
+    /// shown option ("Applexy") while the selection did not move
+    /// (`docs/widget-audit.md`, PickList). Read-only, it declines text and
+    /// deletion, which then reach its owner, and draws no caret.
+    pub read_only: bool,
 }
 
 impl<S: TextBuffer> Default for TextInput<S> {
@@ -125,6 +133,7 @@ impl<S: TextBuffer> Default for TextInput<S> {
             pad_left: 0.0,
             caret_color: None,
             selection_color: None,
+            read_only: false,
         }
     }
 }
@@ -561,7 +570,7 @@ impl<S: TextBuffer> Node for TextInput<S> {
             let (a, b) = (self.x_of(pre.start, run_w), self.x_of(pre.end, run_w));
             out.rect([x + a, inner[3] - 2.0, x + b, inner[3] - 1.0], s.fg);
         }
-        if s.focused {
+        if s.focused && !self.read_only {
             let cx_pos = inner[0] - self.scroll + self.caret_x(inner[2] - inner[0]);
             out.rect([cx_pos, inner[1], cx_pos + 1.0, inner[3]], self.caret_color.unwrap_or(s.fg));
         }
@@ -583,6 +592,7 @@ impl<S: TextBuffer> Node for TextInput<S> {
     /// scroller's chaining relies on (C4).
     fn on_event(&mut self, ev: &Event, cx: &EventCtx) -> bool {
         let changed = match ev {
+            Event::Text { .. } | Event::Key { key: Key::Backspace | Key::Delete, down: true } if self.read_only => false,
             Event::Text { ch } if !ch.is_control() => {
                 let mut buf = [0u8; 4];
                 self.insert(ch.encode_utf8(&mut buf));
