@@ -45,6 +45,9 @@ default = ["clipboard"]
 # `NodeDesc` from 48 B to 72 B in every binary that links it — the
 # condition `docs/step5-observability.md`'s zero-release-cost claim
 # depends on. An application opts in; a release build does not.
+# **An application building this must also enable
+# `lumen-static-widgets/observe`**, or the widgets crate refuses to compile
+# (M48/T48.9): without it every widget reported `GenericContainer`.
 agent = ["dep:lumen-static-agent", "dep:serde_json", "lumen-static-shell/live-agent"]
 clipboard = ["dep:arboard"]
 # Platform drag and drop (T15.7). Default-OFF: it is a platform
@@ -101,7 +104,10 @@ notify = { version = "8", optional = true }
 [dev-dependencies]
 # `tests/gpu_regions.rs` drives a `Host` at a device scale (M40/T40.1),
 # which needs a leaf widget to change.
-lumen-static-widgets = { path = "../lumen-static-widgets" }
+# `observe` since M48/T48.9: `tests/agent_transport.rs` runs a real window
+# with `agent`, which turns the core's `observe` on, and the widgets crate
+# refuses to build with the core's on and its own off.
+lumen-static-widgets = { path = "../lumen-static-widgets", features = ["observe"] }
 
 # M39/T39.0: the agent endpoint through a real event loop. Its own `main`,
 # because winit wants the main thread; needs a display, and says so when

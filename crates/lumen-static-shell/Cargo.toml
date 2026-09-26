@@ -78,7 +78,11 @@ simd = ["dep:wide"]
 threads = []
 
 [dev-dependencies]
-lumen-static-widgets = { path = "../lumen-static-widgets", features = ["reload"] }
+# `observe` since M48/T48.9: the tests built with `live-agent` turn the
+# core's `observe` on through the agent, and the widgets crate now refuses
+# to compile with the core's on and its own off -- which is what these
+# tests had been doing, reading every widget as `GenericContainer`.
+lumen-static-widgets = { path = "../lumen-static-widgets", features = ["reload", "observe"] }
 # `reload` for `tests/reload_sheet.rs`, which drives the swap sequence
 # (`save` / `fresh` / `restore`) against a live `Host` -- the one place
 # the stylesheet's behaviour across a reload can be observed, because

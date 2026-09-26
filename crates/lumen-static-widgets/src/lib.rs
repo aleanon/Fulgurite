@@ -63,6 +63,19 @@
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
+// **The feature seam fails the build** — M48/T48.9 (R12-F3,
+// `docs/plan-agent-truth.md` §2.4). Every widget's `observe` impl is
+// gated on THIS crate's `observe`, not the core's, so a build that turned
+// on the core's (every agent build does) without this one's got a working
+// agent that reported every widget here as `GenericContainer` with no
+// text, and no warning. This fires in exactly the unified graph that has
+// that defect. `scripts/check_feature_seam.sh` shows it both ways.
+const _: () = assert!(
+    !lumen_static::OBSERVE || cfg!(feature = "observe"),
+    "lumen-static has `observe` on and lumen-static-widgets does not, so every widget would \
+     report `GenericContainer` to the agent: enable `lumen-static-widgets/observe` (M48/T48.9)"
+);
+
 // ---- M30: the widgets that used to live in the core ------------------
 //
 // `lumen-static` kept a "cannot be written without" tier — a label, a

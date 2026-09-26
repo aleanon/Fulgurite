@@ -139,3 +139,13 @@ core's dev edge, so `cargo test -p lumen-static-agent` alone failed 19
 tests while every gate was green. A unit test *can* see a feature seam,
 if the crate is built alone — which is what `just test-crates` does for
 every library under `crates/`.
+
+**Enforced since M48/T48.9** (R12-F3). `lumen-static` exports
+`OBSERVE`, and `lumen-static-widgets` refuses to compile when it is true
+and its own `observe` is off, with a message naming
+`lumen-static-widgets/observe`. `scripts/check_feature_seam.sh` (in
+`dev-shape`) shows both directions. On its first build it found two more
+graphs with the seam: the shell's and the window crate's own tests with
+the agent on read every widget as `GenericContainer`, and
+`fixtures/stamp-lib`'s `observe` feature turned on only the core's. All
+three now ask for the widgets' too.

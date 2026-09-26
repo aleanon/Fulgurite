@@ -13,7 +13,9 @@ publish = false
 crate-type = ["cdylib"]
 
 [features]
-observe = ["lumen-static/observe"]
+# The widgets' too, since M48/T48.9: the widgets crate refuses to build
+# with the core's `observe` on and its own off.
+observe = ["lumen-static/observe", "lumen-static-widgets/observe"]
 
 [dependencies]
 lumen-static = { path = "../../crates/lumen-static", features = ["reload"] }

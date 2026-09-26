@@ -90,6 +90,9 @@ dev-shape:
     # ICE in the gate is a gate that cries wolf.
     rm -rf target/doc
     RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --exclude lumen-static-wgpu
+    # M48/T48.9: the core's `observe` without the widgets' must not
+    # build, and the matched build must. Compiles, so not in `static`.
+    ./scripts/check_feature_seam.sh
     # Last: no test binary above may have been emptied by a cfg without
     # saying why (scripts/zero-tests.allow).
     ./scripts/check_test_counts.sh

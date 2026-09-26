@@ -178,4 +178,11 @@ nothing in release. The const tables exist either way — only *exposure*
 is gated — which is what makes the release cost genuinely zero rather
 than small.
 
+**It is two features, and the build insists on both.** A widget's
+`observe` impl is gated on `lumen-static-widgets/observe`, not on the
+core's, so an agent build that turned on only the core's reported every
+widget as `GenericContainer`. The widgets crate now refuses to compile in
+that graph and names the feature to add (M48/T48.9,
+`docs/results-widget-crate.md`).
+
 `docs/results-agent-cost.md` measures what it costs when it is on.

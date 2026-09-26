@@ -85,6 +85,14 @@ def click(wid):
         sys.exit(f"tasks-drive[{strategy}]: the click on #{wid} was not handled")
 
 
+# M48/T48.9 (R12-F3): the widgets' `observe` is on in this build, or a
+# Label reads as GenericContainer -- which the widgets crate now refuses
+# to compile. The accept direction of scripts/check_feature_seam.sh.
+role = call("ui.resolve", {"selector": "#status"}).get("role")
+print(f"  ..  #status role {role!r} (must be 'Label')")
+if role != "Label":
+    sys.exit(f"tasks-drive[{strategy}]: #status reports role {role!r}: the widgets' observe is off")
+
 base = counts()
 if base != {"one": 0, "batch": 0, "chain": 0, "slow": 0, "ticks": 0,
             "failed": 0, "sub": "off"}:

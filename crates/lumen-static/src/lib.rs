@@ -158,6 +158,16 @@ pub mod num;
 pub mod spawn;
 #[cfg(feature = "observe")]
 pub mod observe;
+
+/// Whether this build of the core has `observe` on — M48/T48.9 (R12-F3).
+///
+/// A dependent crate's `cfg` cannot see another crate's features, so a
+/// crate whose `observe` impls are gated on its *own* feature asks this
+/// instead. `lumen-static-widgets` does: an agent build that turns on the
+/// core's `observe` without the widgets' reported every widget as
+/// `GenericContainer`, silently, and now fails to compile, naming the
+/// feature (`docs/results-widget-crate.md`, "One feature seam").
+pub const OBSERVE: bool = cfg!(feature = "observe");
 pub mod overlay;
 pub mod pass;
 #[cfg(feature = "reload")]
