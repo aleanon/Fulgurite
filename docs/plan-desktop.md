@@ -413,6 +413,17 @@ to the free space, pumps, and repeats. That is the whole reason
 its first real caller, and a paste that silently lost its tail is
 exactly the failure that counter exists to make visible.
 
+**The agent's `input.type` and `input.fill` did not chunk, and the
+counter had no reader** (R3-F2, closed by M44/T44.5). A 100-character
+`input.type` left 64 in the field and a reply saying 100; nothing outside
+`event.rs` read `dropped()`. They now chunk the same way (half the queue,
+then pump), reply with the characters that *arrived* beside `sent` and
+`dropped`, and `Host::dropped_inputs` puts the counter in
+`app.diagnostics`. The same milestone made `Host::post` merge a move into
+a trailing move and let a release evict a queued move rather than be
+refused (`InputQueue::push_merged`), so a burst of pointer input can no
+longer strand a capture.
+
 **Gate:** pasting a string longer than `InputQueue::CAP` lands whole
 and `dropped()` stays 0. Copy of an empty selection is `None`, not
 `Some("")`.

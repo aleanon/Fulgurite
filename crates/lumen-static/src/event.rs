@@ -557,7 +557,14 @@ impl<const CAP: usize> InputQueue<CAP> {
     /// Returns whether it was queued. The drop is *counted*, not
     /// silent: see [`dropped`](Self::dropped). Same rule as the change
     /// journal's `truncated` flag — a gate that hides its own overflow
-    /// is worse than no gate.
+    /// is worse than no gate. **And something reads the count now**
+    /// (M44/T44.5): a `Host` publishes it as `dropped_inputs` and the
+    /// agent reports it in `app.diagnostics`; until then the sentence
+    /// above was true of the counter and false of the system.
+    ///
+    /// A host that must not lose a release uses
+    /// [`push_merged`](Self::push_merged), which merges moves and evicts
+    /// one to make room, instead of this.
     pub fn push(&mut self, ev: Event) -> bool {
         if self.len == CAP {
             self.dropped = self.dropped.saturating_add(1);
@@ -565,6 +572,56 @@ impl<const CAP: usize> InputQueue<CAP> {
         }
         self.q[(self.head + self.len) % CAP] = ev;
         self.len += 1;
+        true
+    }
+
+    /// [`push`](Self::push), **merging moves and keeping releases** —
+    /// M44/T44.5 (`docs/plan-input-semantics.md` §2.5).
+    ///
+    /// Two rules, both about which event is worth a slot:
+    ///
+    /// - a `PointerMove` **replaces** a `PointerMove` at the back of the
+    ///   queue rather than taking a slot of its own. Only the latest
+    ///   position of an unbroken run of moves matters, and unmerged moves
+    ///   are what filled the queue: a window posts every `CursorMoved`.
+    /// - when the queue is full, an event that **ends** something — a
+    ///   `PointerUp`, a `PointerCancel`, a key release, a touch's `End`
+    ///   or `Cancel` — evicts the newest queued move instead of being
+    ///   refused. Refusing it would strand the capture: the drag would
+    ///   go on with no button held.
+    ///
+    /// A bigger queue would only move the cliff, and the embedded budget
+    /// pays for every slot. Returns whether `ev` is now queued; an
+    /// eviction counts the evicted move as dropped.
+    pub fn push_merged(&mut self, ev: Event) -> bool {
+        if let Event::PointerMove { .. } = ev {
+            if self.len > 0 {
+                let last = (self.head + self.len - 1) % CAP;
+                if let Event::PointerMove { .. } = self.q[last] {
+                    self.q[last] = ev;
+                    return true;
+                }
+            }
+        }
+        if self.len == CAP && ends_a_gesture(&ev) && self.evict_newest_move() {
+            self.dropped = self.dropped.saturating_add(1);
+        }
+        self.push(ev)
+    }
+
+    /// Remove the newest queued `PointerMove`, keeping the order of the
+    /// rest. `false` when there is none.
+    fn evict_newest_move(&mut self) -> bool {
+        let Some(k) = (0..self.len)
+            .rev()
+            .find(|&k| matches!(self.q[(self.head + k) % CAP], Event::PointerMove { .. }))
+        else {
+            return false;
+        };
+        for j in k..self.len - 1 {
+            self.q[(self.head + j) % CAP] = self.q[(self.head + j + 1) % CAP];
+        }
+        self.len -= 1;
         true
     }
 
@@ -580,6 +637,11 @@ impl<const CAP: usize> InputQueue<CAP> {
 
     pub fn len(&self) -> usize {
         self.len
+    }
+
+    /// Free slots: how many more events [`push`](Self::push) will take.
+    pub fn room(&self) -> usize {
+        CAP - self.len
     }
 
     pub fn is_empty(&self) -> bool {
@@ -1019,8 +1081,20 @@ pub trait App: Sized {
     }
 }
 
+/// Whether `ev` ends a gesture, so that losing it would strand one —
+/// [`InputQueue::push_merged`].
+fn ends_a_gesture(ev: &Event) -> bool {
+    matches!(
+        ev,
+        Event::PointerUp { .. }
+            | Event::PointerCancel { .. }
+            | Event::Key { down: false, .. }
+            | Event::Touch { phase: TouchPhase::End | TouchPhase::Cancel, .. }
+    )
+}
+
 impl<const CAP: usize> Extend<Event> for InputQueue<CAP> {
-    /// Events past [`InputQueue::<64>::CAP`] are counted as dropped, exactly
+    /// Events past this queue's own `CAP` are counted as dropped, exactly
     /// as [`InputQueue::push`] does — `Extend` cannot report a refusal,
     /// so the count is the only channel it has.
     fn extend<T: IntoIterator<Item = Event>>(&mut self, iter: T) {

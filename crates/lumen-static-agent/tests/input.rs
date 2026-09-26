@@ -283,6 +283,9 @@ impl AgentHost for FormHost {
     fn enqueue(&mut self, ev: Event) {
         self.queue.push(ev);
     }
+    fn dropped_inputs(&self) -> Option<u32> {
+        Some(self.queue.dropped())
+    }
     fn pump(&mut self) -> (u64, bool) {
         let mut handled = false;
         while let Some(ev) = self.queue.pop() {
@@ -633,7 +636,6 @@ fn fill_reports_a_control_that_did_not_accept_the_text() {
 /// pumps once — so a 100-character string left 64 in the field while the
 /// reply said 100 (R3-F2, `docs/results-deep-review.md`).
 #[test]
-#[ignore = "red until T44.5: R3-F2 (input.type overflows the 64-slot queue and reports every character)"]
 fn typing_more_than_the_queue_holds_delivers_every_character() {
     let mut h = FormHost::new();
     let agent = Agent::new();
@@ -656,7 +658,6 @@ fn typing_more_than_the_queue_holds_delivers_every_character() {
 /// **`input.fill` over a value as long as the new one.** Forty
 /// backspaces and forty characters is eighty events in one pump.
 #[test]
-#[ignore = "red until T44.5: R3-F2 (input.fill's clear and type overflow the 64-slot queue)"]
 fn fill_of_forty_over_forty_replaces_the_value() {
     let mut h = FormHost::new();
     let agent = Agent::new();
@@ -673,4 +674,28 @@ fn fill_of_forty_over_forty_replaces_the_value() {
     );
     assert!(r.get("error").is_none(), "{r}");
     assert_eq!(h.app.ui.name.as_str(), new, "the fill did not replace the value");
+}
+
+/// **The reply says what arrived, not what was sent** (M44/T44.5). A
+/// queue already nearly full when `input.type` starts drops part of it;
+/// the reply must count only what reached the field, and name the loss.
+#[test]
+fn a_reply_counts_what_arrived_when_the_queue_drops_some() {
+    let mut h = FormHost::new();
+    let agent = Agent::new();
+    fcall(&mut h, &agent, "input.click", json!({ "selector": "#name" }));
+    assert_eq!(h.input.focus, Some(1), "setup: the click did not focus the field");
+    // Sixty harmless events already queued: four slots left.
+    for _ in 0..60 {
+        h.queue.push(Event::Modifiers(lumen_static::Mods::NONE));
+    }
+    let r = fcall(&mut h, &agent, "input.type", json!({ "text": "abcdefghij" }));
+    let landed = h.app.ui.name.as_str().chars().count();
+    println!(
+        "input.type of 10 into a queue with 4 free: field holds {landed}, reply chars {} sent {} dropped {}",
+        r["result"]["chars"], r["result"]["sent"], r["result"]["dropped"]
+    );
+    assert_eq!(landed, 4, "setup: the queue did not drop the tail");
+    assert_eq!(r["result"]["chars"], 4, "the reply claims characters that never arrived");
+    assert_eq!(r["result"]["dropped"], 6, "the reply does not name the loss");
 }

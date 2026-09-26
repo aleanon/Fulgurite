@@ -311,6 +311,38 @@ const INVALID_PARAMS: i64 = -32602;
 /// that the queue cannot be used to exhaust the host's memory. See the
 /// method for why this exists.
 const MAX_TYPE_CHARS: usize = 4096;
+
+/// How many events an input method queues before it pumps — M44/T44.5.
+///
+/// Half the default queue (`InputQueue::<64>::CAP`), so a burst leaves
+/// room for whatever the host had queued already. `input.type` and
+/// `input.fill` used to queue every character and pump once, into a
+/// 64-slot queue: 100 characters left 64 in the field and a reply saying
+/// 100. `Host::paste` chunks the same way for the same reason.
+const INPUT_CHUNK: usize = lumen_static::InputQueue::<64>::CAP / 2;
+
+/// Queue `events`, pumping every [`INPUT_CHUNK`] and once at the end.
+/// Returns the last frame's number and whether anything took an event.
+fn feed(host: &mut dyn AgentHost, events: impl IntoIterator<Item = Event>) -> (u64, bool) {
+    let mut handled = false;
+    let mut queued = 0;
+    for ev in events {
+        if queued == INPUT_CHUNK {
+            handled |= host.pump().1;
+            queued = 0;
+        }
+        host.enqueue(ev);
+        queued += 1;
+    }
+    let (frame, h) = host.pump();
+    (frame, handled | h)
+}
+
+/// How many inputs the host lost between two readings of its drop
+/// count, or `None` from a host that cannot say.
+fn lost(before: Option<u32>, after: Option<u32>) -> Option<u32> {
+    Some(after?.saturating_sub(before?))
+}
 const METHOD_NOT_FOUND: i64 = -32601;
 const INVALID_REQUEST: i64 = -32600;
 
@@ -532,6 +564,9 @@ impl Agent {
             };
             if let Some(result) = reply.get_mut("result") {
                 result["process"] = host.process_info();
+                // M44/T44.5: input the host's queue lost for want of
+                // room, ever; `null` from a host that cannot say.
+                result["dropped_inputs"] = json!(host.dropped_inputs());
             }
             return reply;
         }
@@ -727,16 +762,29 @@ impl Agent {
                     let existing = e.node.value().map(|v| v.chars().count()).unwrap_or(0);
                     (x, y, existing)
                 };
-                host.enqueue(Event::down(x, y));
-                host.enqueue(Event::up(x, y));
-                host.enqueue(Event::Key { key: Key::End, down: true });
-                for _ in 0..existing {
-                    host.enqueue(Event::Key { key: Key::Backspace, down: true });
+                // Chunked (M44/T44.5): the backspaces and the characters
+                // together can exceed the host's queue, and a fill that
+                // lost its tail used to blame the control for it.
+                let before = host.dropped_inputs();
+                let frame = feed(
+                    host,
+                    [Event::down(x, y), Event::up(x, y), Event::Key { key: Key::End, down: true }]
+                        .into_iter()
+                        .chain((0..existing).map(|_| Event::Key { key: Key::Backspace, down: true }))
+                        .chain(text.chars().map(|ch| Event::Text { ch })),
+                )
+                .0;
+                let dropped = lost(before, host.dropped_inputs());
+                if dropped.is_some_and(|d| d > 0) {
+                    return Err((
+                        INVALID_PARAMS,
+                        "the host's input queue dropped part of the fill, so the field holds \
+                         something other than the text; see `dropped_inputs` in \
+                         `app.diagnostics`"
+                            .into(),
+                        json!({ "dropped": dropped, "at": [x, y] }),
+                    ));
                 }
-                for ch in text.chars() {
-                    host.enqueue(Event::Text { ch });
-                }
-                let frame = host.pump().0;
 
                 // Did it take? Checked by reading the value back, not by
                 // asking whether the node *looks* editable: a `Label` is
@@ -826,13 +874,16 @@ impl Agent {
                     "missing `text`".into(),
                     Value::Null,
                 ))?;
-                // One JSON character becomes one queued Event, and the
-                // queue has no cap and no backpressure — 2,000,000 chars
-                // measured as 2,000,000 events in 51 ms. A real keyboard
-                // has a rate limit; so does this. It is also the one
-                // agent method whose *availability* effect a user with a
-                // keyboard could not reproduce, which is the invariant
-                // the input surface is otherwise held to
+                // One JSON character becomes one queued Event. When this
+                // limit was written the queue had no cap, and 2,000,000
+                // chars measured as 2,000,000 events in 51 ms; it has had
+                // one since M13 — 64 slots — so the limit now bounds the
+                // *work* one call can ask for, and the characters are fed
+                // in chunks the queue can hold (M44/T44.5). A real
+                // keyboard has a rate limit; so does this. It is also the
+                // one agent method whose *availability* effect a user
+                // with a keyboard could not reproduce, which is the
+                // invariant the input surface is otherwise held to
                 // (`docs/plan-review-fixes.md` F2.6).
                 let n = text.chars().count();
                 if n > MAX_TYPE_CHARS {
@@ -842,11 +893,14 @@ impl Agent {
                         json!({ "chars": n, "limit": MAX_TYPE_CHARS }),
                     ));
                 }
-                for ch in text.chars() {
-                    host.enqueue(Event::Text { ch });
-                }
-                let (f, h) = host.pump();
-                Ok(json!({ "frame": f, "handled": h, "chars": n }))
+                // `chars` is what **arrived**: the characters sent less
+                // any the host's queue dropped, which it counts. It used
+                // to be the length of the request whatever happened.
+                let before = host.dropped_inputs();
+                let (f, h) = feed(host, text.chars().map(|ch| Event::Text { ch }));
+                let dropped = lost(before, host.dropped_inputs());
+                let delivered = n.saturating_sub(dropped.unwrap_or(0) as usize);
+                Ok(json!({ "frame": f, "handled": h, "chars": delivered, "sent": n, "dropped": dropped }))
             }
             // **A paste is one edit** — M45/T45.7. The string reaches the
             // focused node whole, through its `Node::paste`, and the
@@ -1694,6 +1748,15 @@ pub trait AgentHost {
     /// (R18-F1).
     fn process_info(&self) -> Value {
         json!({ "supported": false })
+    }
+
+    /// How many input events the host's queue has ever dropped —
+    /// M44/T44.5, reported in `app.diagnostics` and used by `input.type`
+    /// and `input.fill` to say what actually arrived. `None` by default,
+    /// for a host that cannot say, which the replies report as `null`
+    /// rather than as zero.
+    fn dropped_inputs(&self) -> Option<u32> {
+        None
     }
 }
 

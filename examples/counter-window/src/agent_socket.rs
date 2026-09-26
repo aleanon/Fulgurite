@@ -38,6 +38,10 @@ impl lumen_static_agent::AgentHost for Live<'_> {
     fn enqueue(&mut self, ev: Event) {
         self.host.post(ev);
     }
+    /// M44/T44.5: what the host's queue has lost, for `app.diagnostics`.
+    fn dropped_inputs(&self) -> Option<u32> {
+        Some(self.host.dropped_inputs())
+    }
     /// M42/T42.1: which process this is, for `app.diagnostics` —
     /// `Host<Tally>`'s strategy is the shell's default, read from the
     /// type rather than assumed.

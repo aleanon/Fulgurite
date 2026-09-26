@@ -27,6 +27,14 @@ The protocol is JSON-RPC 2.0. Methods divide into three groups:
 **Observe** — `app.diagnostics`, `app.logs`, `app.perf`,
 `ui.waitSettled`.
 
+**A synthesised input reports what arrived.** Everything above goes
+through the host's input queue, which has a fixed size, so `input.type`
+and `input.fill` feed long text in chunks and pump between them. The
+`input.type` reply's `chars` is the number of characters that reached
+the queue — `sent` less `dropped` — and `app.diagnostics` carries the
+host's `dropped_inputs` count, ever. A fill the queue cut short is an
+error that says so, rather than blaming the control.
+
 **What the endpoint refuses.** The socket speaks one JSON object per
 line, and **a line that is anything else ends the connection** after a
 single error reply. That is the whole defence against a web page the

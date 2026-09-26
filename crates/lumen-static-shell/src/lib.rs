@@ -989,8 +989,31 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
 
     /// Queue one input. OS input, agent-synthesized input and test input
     /// all arrive here — the single queue that makes a session replay.
+    ///
+    /// **Moves merge and releases are kept** — M44/T44.5, through
+    /// [`InputQueue::push_merged`](lumen_static::InputQueue::push_merged).
+    /// This was a bare `push` with its refusal discarded, and a window
+    /// posts every `CursorMoved`: more than 64 events between redraws
+    /// lost the tail, and when the tail held the `PointerUp` the capture
+    /// was stranded — a later move with no button held still dragged the
+    /// slider (R3-F2). What is still refused is counted, and
+    /// [`Host::dropped_inputs`] says how much.
     pub fn post(&mut self, ev: Event) {
-        self.queue.push(ev);
+        self.queue.push_merged(ev);
+    }
+
+    /// How many input events this host has ever lost for want of queue
+    /// room — M44/T44.5. Non-zero means input was lost, not that the
+    /// queue is full now; the agent reports it in `app.diagnostics`.
+    pub fn dropped_inputs(&self) -> u32 {
+        self.queue.dropped()
+    }
+
+    /// How many more events [`Host::post`] can take before a pump,
+    /// counting none that would merge — what a caller feeding a burst
+    /// (a paste, the agent's `input.type`) chunks against.
+    pub fn input_room(&self) -> usize {
+        self.queue.room()
     }
 
     pub fn frame_number(&self) -> u64 {

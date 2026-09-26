@@ -7,9 +7,12 @@
 //! holds the `PointerUp`, capture is never released: a later move with no
 //! button held still drags the slider.
 //!
-//! `Host` does not expose its queue's length or dropped count yet (T44.5
-//! adds a dropped-inputs accessor), so the counts printed here are the ones posted
-//! and the capacity; what was dropped is `posted - CAP` until then.
+//! Two shapes, because T44.5 has two mechanisms and each needs a case
+//! the other cannot rescue: a run of bare moves (which **merge** into one
+//! slot), and moves interleaved with a modifier change (which cannot
+//! merge, so the release must **evict** a move to find room). The first
+//! version had only the bare run, and removing the eviction left it
+//! green. `Host::dropped_inputs` is printed beside `CAP` in each.
 
 use lumen_static::prelude::*;
 use lumen_static::style::{Length, Patch, Rule, Selector};
@@ -48,9 +51,11 @@ fn host() -> (Host<App>, f32, f32, f32) {
     (h, s.pos.x, s.size.w, s.pos.y + s.size.h / 2.0)
 }
 
-/// Press at 10%, post `moves` moves and a release without pumping, pump
-/// once; then an unpressed move to 90%. Returns what the gesture left.
-fn gesture(moves: usize) -> (Option<u32>, Option<u32>, f32, f32) {
+/// Press at 10%, post `moves` moves (each followed by a modifier change
+/// when `interleave`) and a release without pumping, pump once; then an
+/// unpressed move to 90%. Returns what the gesture left, and the host's
+/// dropped count.
+fn gesture(moves: usize, interleave: bool) -> (Option<u32>, Option<u32>, f32, f32, u32) {
     let (mut h, x0, w, y) = host();
     h.post(Event::down(x0 + w * 0.1, y));
     h.pump();
@@ -59,6 +64,9 @@ fn gesture(moves: usize) -> (Option<u32>, Option<u32>, f32, f32) {
     for k in 0..moves {
         let f = 0.1 + 0.3 * (k as f32 / moves.max(1) as f32);
         h.post(Event::PointerMove { x: x0 + w * f, y });
+        if interleave {
+            h.post(Event::Modifiers(lumen_static::Mods::NONE));
+        }
     }
     h.post(Event::up(x0 + w * 0.4, y));
     h.pump();
@@ -67,33 +75,58 @@ fn gesture(moves: usize) -> (Option<u32>, Option<u32>, f32, f32) {
     // No button held: this move must not drag anything.
     h.post(Event::PointerMove { x: x0 + w * 0.9, y });
     h.pump();
-    (capture, pressed, released_at, h.app.ui.slider.value())
+    (capture, pressed, released_at, h.app.ui.slider.value(), h.dropped_inputs())
 }
 
 #[test]
-#[ignore = "red until T44.5: R3-F2 (the queue refuses the release, so capture is stranded)"]
 fn a_release_behind_two_hundred_moves_still_releases() {
-    let posted: usize = 1 + 200 + 1;
-    let (capture, pressed, at_release, after) = gesture(200);
+    let (capture, pressed, at_release, after, dropped) = gesture(200, false);
     println!(
-        "posted {posted} events (1 down pumped alone, then 200 moves + 1 up) into CAP {CAP}: \
-         would drop {} of them; after the pump capture {capture:?} pressed {pressed:?}; \
-         value at release {at_release}, after an unpressed move to 0.9: {after}",
-        (posted - 1).saturating_sub(CAP)
+        "200 moves + 1 up into CAP {CAP}: dropped {dropped}; capture {capture:?} pressed {pressed:?}; \
+         value at release {at_release}, after an unpressed move to 0.9: {after}"
     );
     assert_eq!(capture, None, "the release was dropped and capture is stranded");
     assert_eq!(pressed, None, "the release was dropped and the press is stranded");
     assert_eq!(after, at_release, "an unpressed move dragged the slider");
+    assert_eq!(dropped, 0, "a run of moves lost events instead of merging");
+}
+
+/// Moves that cannot merge fill the queue, and the release must still
+/// get in — by evicting the newest move.
+#[test]
+fn a_release_behind_a_full_queue_of_unmergeable_moves_still_releases() {
+    let (capture, pressed, at_release, after, dropped) = gesture(100, true);
+    println!(
+        "100 x (move, modifiers) + 1 up into CAP {CAP}: dropped {dropped} (nonzero: counted, not silent); \
+         capture {capture:?} pressed {pressed:?}; value at release {at_release}, after {after}"
+    );
+    assert_eq!(capture, None, "a full queue refused the release and capture is stranded");
+    assert_eq!(pressed, None, "a full queue refused the release and the press is stranded");
+    assert_eq!(after, at_release, "an unpressed move dragged the slider");
+    assert!(dropped > 0, "setup: the queue never filled, so this exercised no eviction");
 }
 
 /// The accept direction: a gesture that fits the queue releases, and the
 /// move after it drags nothing.
 #[test]
 fn a_release_behind_sixty_three_moves_releases() {
-    let (capture, pressed, at_release, after) = gesture(63);
+    let (capture, pressed, at_release, after, dropped) = gesture(63, false);
     println!(
-        "63 moves + 1 up into CAP {CAP}: capture {capture:?} pressed {pressed:?}; value at release {at_release}, after {after}"
+        "63 moves + 1 up into CAP {CAP}: dropped {dropped}; capture {capture:?} pressed {pressed:?}; value at release {at_release}, after {after}"
     );
     assert_eq!((capture, pressed), (None, None), "a gesture that fits did not release");
     assert_eq!(after, at_release, "an unpressed move dragged the slider");
+}
+
+/// And a single move is delivered at its exact position: merging never
+/// moves a move.
+#[test]
+fn a_single_move_lands_where_it_was_posted() {
+    let (mut h, x0, w, y) = host();
+    h.post(Event::down(x0 + w * 0.1, y));
+    h.pump();
+    h.post(Event::PointerMove { x: x0 + w * 0.6, y });
+    h.pump();
+    println!("one move to 0.6 under capture: value {}", h.app.ui.slider.value());
+    assert!((h.app.ui.slider.value() - 0.6).abs() < 1e-4, "the move landed at {}", h.app.ui.slider.value());
 }

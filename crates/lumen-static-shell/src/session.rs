@@ -632,6 +632,10 @@ impl<A: App> lumen_static_agent::AgentHost for Live<'_, A> {
         Some(go())
     }
 
+    fn dropped_inputs(&self) -> Option<u32> {
+        Some(self.host.dropped_inputs())
+    }
+
     fn set_palette(&mut self, palette: lumen_static::style::Palette) -> bool {
         self.host.set_palette(palette);
         true

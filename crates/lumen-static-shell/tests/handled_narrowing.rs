@@ -263,6 +263,8 @@ fn a_click_driven_session_narrows_and_draws_the_same_frames() {
     // does under `Everything` -- T25.0's pointer marks must cover it.
     let (gx, gy) = centre(&p.b, "go");
     let (cx, cy) = centre(&p.b, "clear");
+    let clear = lumen_static::style::index_of_wid(<Ui as Widget>::SUB_TABLE, "clear").unwrap() as u32;
+    assert_eq!(p.b.probe(cx, cy).map(|h| h.node), Some(clear), "setup: the release point is not on clear");
     p.step("press go", |post| post(Event::down(gx, gy)));
     let go = lumen_static::style::index_of_wid(<Ui as Widget>::SUB_TABLE, "go").unwrap();
     assert!(p.b.states[go].pressed, "setup: the press did not land on go");
@@ -289,6 +291,32 @@ fn a_click_driven_session_narrows_and_draws_the_same_frames() {
     });
     assert_eq!(p.b.app.ui.top.formula.as_str(), "= 1234567", "setup: the handler's write did not render");
     assert!(!p.b.last_marks().all, "a split application's click marked everything");
+
+    // Last, because a field eighty characters wider pushes `clear` out
+    // of the window.
+    // 5. More characters than the queue holds, in one call (M44/T44.5):
+    // a paste chunks against the queue, nothing is dropped, and every
+    // frame it pumped narrows to the same picture as `Everything`.
+    let (fx, fy) = centre(&p.b, "field");
+    p.step("focus the field again", |post| {
+        post(Event::down(fx, fy));
+        post(Event::up(fx, fy));
+    });
+    let long: String = (0..80).map(|k| (b'a' + (k % 26) as u8) as char).collect();
+    let before = p.b.app.ui.entry.field.as_str().len();
+    let (ne, nb) = (p.e.paste(&long), p.b.paste(&long));
+    let (he, hb) = (p.e.list.hash_from(0), p.b.list.hash_from(0));
+    println!(
+        "paste 80 chars (queue CAP {}): delivered {ne} / {nb}; field +{} chars; dropped {} / {}; hashes {he:#018x} / {hb:#018x}",
+        lumen_static::InputQueue::<64>::CAP,
+        p.b.app.ui.entry.field.as_str().len() - before,
+        p.e.dropped_inputs(),
+        p.b.dropped_inputs()
+    );
+    assert_eq!(p.b.app.ui.entry.field.as_str().len() - before, 80, "setup: the paste did not land whole");
+    assert_eq!((p.e.dropped_inputs(), p.b.dropped_inputs()), (0, 0), "a paste lost characters to the queue");
+    assert!(!p.b.last_marks().all, "a paste into a split application marked everything");
+    assert_eq!(he, hb, "after the paste the narrowed frame differs from the whole-tree frame");
 }
 
 // ---- the unsplit twin -------------------------------------------------
