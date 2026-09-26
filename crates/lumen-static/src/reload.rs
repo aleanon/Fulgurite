@@ -175,7 +175,9 @@ impl<W: Reloadable> Reloadable for Option<W> {
 /// layouts (`observe` adds methods to every widget's vtable), and cargo
 /// unifies features per invocation, so a loader and a library built by
 /// two invocations can disagree without either noticing. The sizes are
-/// here because a field added to a crossing type changes them.
+/// here because a field added to a crossing type changes them; a
+/// reordering changes none, and is caught by the source hash
+/// `lumen_static_reload::abi::stamp` carries beside these (M49/T49.1).
 pub fn build_fields() -> alloc::vec::Vec<(&'static str, alloc::string::String)> {
     use alloc::format;
     let mut features = alloc::vec::Vec::new();
@@ -190,17 +192,46 @@ pub fn build_fields() -> alloc::vec::Vec<(&'static str, alloc::string::String)> 
             features.push(name);
         }
     }
-    let lay = |s: usize, a: usize| format!("{s}/{a}");
-    use core::mem::{align_of, size_of};
-    alloc::vec![
+    let mut out = alloc::vec![
         ("lumen-static", alloc::string::String::from(env!("CARGO_PKG_VERSION"))),
         ("lumen-static features", features.join(",")),
-        ("DisplayList", lay(size_of::<crate::DisplayList>(), align_of::<crate::DisplayList>())),
-        ("Cmd", lay(size_of::<crate::display::Cmd>(), align_of::<crate::display::Cmd>())),
-        ("Event", lay(size_of::<crate::Event>(), align_of::<crate::Event>())),
-        ("NodeState", lay(size_of::<crate::NodeState>(), align_of::<crate::NodeState>())),
-        ("Style", lay(size_of::<crate::style::Style>(), align_of::<crate::style::Style>())),
-        ("Damage", lay(size_of::<crate::retain::Damage>(), align_of::<crate::retain::Damage>())),
+    ];
+    out.extend(crossing_types().iter().map(|c| (c.name, format!("{}/{}", c.size, c.align))));
+    out
+}
+
+/// One type a hot library's values cross the boundary as.
+pub struct Crossing {
+    /// The stamp's field name.
+    pub name: &'static str,
+    /// [`core::any::type_name`]'s path: which crate defines it.
+    pub path: &'static str,
+    pub size: usize,
+    pub align: usize,
+}
+
+fn crossing<T>(name: &'static str) -> Crossing {
+    Crossing {
+        name,
+        path: core::any::type_name::<T>(),
+        size: core::mem::size_of::<T>(),
+        align: core::mem::align_of::<T>(),
+    }
+}
+
+/// **The core's types that cross a hot library's boundary**, once:
+/// [`build_fields`] stamps their sizes, and `lumen-static-reload`'s tests
+/// check each is defined in a crate its source hash covers (M49/T49.1) —
+/// a crossing type defined anywhere else could change with no line of
+/// the stamp moving.
+pub fn crossing_types() -> [Crossing; 6] {
+    [
+        crossing::<crate::DisplayList>("DisplayList"),
+        crossing::<crate::display::Cmd>("Cmd"),
+        crossing::<crate::Event>("Event"),
+        crossing::<crate::NodeState>("NodeState"),
+        crossing::<crate::style::Style>("Style"),
+        crossing::<crate::retain::Damage>("Damage"),
     ]
 }
 

@@ -233,12 +233,20 @@ pub mod panic {
 /// loader refuses a library whose lines differ from its own, **naming
 /// the first field that differs**.
 ///
-/// It cannot see everything: a `#[global_allocator]` in the library is
-/// invisible to it, and a hot library must not set one, because values
+/// "One source" is checked, not assumed (M49/T49.1): sizes cannot see a
+/// reordered enum, so [`source_fields`](abi::source_fields) carries a
+/// hash of each crate whose types cross, taken by this crate's build
+/// script. Any edit to those crates refuses every later library until
+/// the window restarts, and the refusal says so; `lumen-static-widgets`
+/// is not hashed, because no widget type crosses.
+///
+/// It cannot see everything: transitive dependency versions are not in
+/// it (`docs/step4-hot-reload.md`, the stamp), a `#[global_allocator]`
+/// in the library is invisible to it, and a hot library must not set one, because values
 /// allocated on one side are freed on the other.
 pub mod abi {
     /// This image's stamp: the compiler, the target, the panic strategy,
-    /// the core's build ([`lumen_static::reload::build_fields`]), and
+    /// the framework's source, the core's build ([`lumen_static::reload::build_fields`]), and
     /// whatever the caller adds for the crates above the core.
     pub fn stamp(extra: &[(&'static str, String)]) -> String {
         let mut out = String::new();
@@ -255,6 +263,13 @@ pub mod abi {
         // and a window's loader and its library are two cargo invocations
         // that could be given two profiles.
         put("debug_assertions", if cfg!(debug_assertions) { "on" } else { "off" });
+        // **The source, not only the sizes** (M49/T49.1, R4-F5): a
+        // reordered enum keeps every size below and changes every tag.
+        // `build.rs` hashes each crate whose types cross, the lockfile
+        // that pins their dependencies, and the rustflags.
+        for (k, v) in source_fields() {
+            put(k, v);
+        }
         for (k, v) in lumen_static::reload::build_fields() {
             put(k, &v);
         }
@@ -262,6 +277,19 @@ pub mod abi {
             put(k, v);
         }
         out
+    }
+
+    /// The source half of the stamp: one line per crate whose types
+    /// cross, then the lockfile and the rustflags (see `build.rs`).
+    /// `lumen-static-widgets` is not here: no widget type crosses.
+    pub fn source_fields() -> [(&'static str, &'static str); 5] {
+        [
+            ("source lumen-static", env!("LUMEN_SRC_CORE")),
+            ("source lumen-static-shell", env!("LUMEN_SRC_SHELL")),
+            ("source lumen-static-reload", env!("LUMEN_SRC_RELOAD")),
+            ("source Cargo.lock", env!("LUMEN_SRC_LOCK")),
+            ("rustflags", env!("LUMEN_RUSTFLAGS")),
+        ]
     }
 
     /// Why a library was refused: the first field whose value differs,
@@ -276,6 +304,18 @@ pub mod abi {
     impl core::fmt::Display for Mismatch {
         fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
             let show = |v: &Option<String>| v.clone().unwrap_or_else(|| "(absent)".into());
+            // The source moved under a running window: nothing is wrong
+            // with the library, but the loader still runs the old
+            // framework, and only a restart changes that.
+            if let Some(what) = self.field.strip_prefix("source ") {
+                return write!(
+                    f,
+                    "the framework was edited since this window started: `{what}` hashes `{}` here and `{}` \
+                     in the library; restart the window to pick up the edit",
+                    show(&self.loader),
+                    show(&self.library)
+                );
+            }
             write!(
                 f,
                 "the library was built differently: `{}` is `{}` here and `{}` in the library",
@@ -338,6 +378,41 @@ pub mod abi {
             assert_eq!(check(&here, &missing).unwrap_err().library, None);
             let more = format!("{here}new=1\n");
             assert_eq!(check(&here, &more).unwrap_err().field, "new");
+        }
+
+        /// §5's risk, checked: a type that crosses must be defined in a
+        /// crate `build.rs` hashes, or it could change under a stamp that
+        /// did not. Prints each type's path beside the crates allowed.
+        #[test]
+        fn every_crossing_type_is_defined_in_a_hashed_crate() {
+            let hashed: Vec<String> = source_fields()
+                .iter()
+                .filter_map(|(k, _)| k.strip_prefix("source lumen-static"))
+                .map(|rest| format!("lumen_static{}::", rest.replace('-', "_")))
+                .collect();
+            let mut paths: Vec<String> =
+                lumen_static::reload::crossing_types().iter().map(|c| c.path.to_string()).collect();
+            #[cfg(feature = "window")]
+            paths.push(core::any::type_name::<Box<dyn lumen_static_shell::session::Session>>().to_string());
+            println!("hashed crates: {hashed:?}");
+            for p in &paths {
+                let ok = hashed.iter().any(|h| p.contains(h.as_str()));
+                println!("  {p}: {}", if ok { "hashed" } else { "NOT HASHED" });
+                assert!(ok, "`{p}` crosses the boundary from a crate the stamp does not hash");
+            }
+            assert!(paths.len() >= 6, "the list of crossing types is shorter than the stamp's: {}", paths.len());
+        }
+
+        #[test]
+        fn a_source_edit_names_the_crate_and_says_to_restart() {
+            let here = stamp(&[]);
+            let (k, v) = source_fields()[0];
+            let edited = here.replace(&format!("{k}={v}"), &format!("{k}=0"));
+            let m = check(&here, &edited).unwrap_err();
+            let shown = m.to_string();
+            println!("{shown}");
+            assert_eq!(m.field, "source lumen-static");
+            assert!(shown.contains("`lumen-static`") && shown.contains("restart"), "{shown}");
         }
     }
 }

@@ -69,8 +69,7 @@ s = s[:text_end] + rect + s[text_end:]
 open(p, "w").write(s)
 PY
 build_ws reordered
-./target/release/stamp-host "$OUT/reordered.so" refuse "source lumen-static" \
-    || echo "ABI STAMP: KNOWN RED until M49/T49.1 (R4-F5): a reordered Cmd was accepted"
+./target/release/stamp-host "$OUT/reordered.so" refuse "source lumen-static"
 
 # A widget edited alone: no type of that crate crosses, so it is accepted.
 sync_ws

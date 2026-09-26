@@ -645,9 +645,11 @@ impl<A: App> lumen_static_agent::AgentHost for Live<'_, A> {
 }
 
 /// The shell's part of a hot library's ABI stamp (M37/T37.0/T37.1): its
-/// version and features, and **this file's own text, hashed** — the
-/// [`Session`] trait is defined here, and an edit to it moves vtable
-/// slots that no size would show.
+/// version and features, and the size of the boxed [`Session`].
+///
+/// An edit to this crate — the `Session` trait's vtable included — is
+/// caught by the source hash `lumen_static_reload`'s build script takes
+/// of the whole crate (M49/T49.1), which replaced a hash of this one file.
 pub fn abi_fields() -> Vec<(&'static str, String)> {
     let mut features = Vec::new();
     for (on, name) in [
@@ -664,14 +666,9 @@ pub fn abi_fields() -> Vec<(&'static str, String)> {
             features.push(name);
         }
     }
-    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
-    for b in include_bytes!("session.rs") {
-        h = (h ^ *b as u64).wrapping_mul(0x0000_0100_0000_01b3);
-    }
     vec![
         ("lumen-static-shell", String::from(env!("CARGO_PKG_VERSION"))),
         ("lumen-static-shell features", features.join(",")),
-        ("session.rs", format!("{h:016x}")),
         ("Box<dyn Session>", format!("{}", core::mem::size_of::<Box<dyn Session>>())),
     ]
 }

@@ -3,12 +3,20 @@
 //! verdict, so `scripts/hot_reload_demo.sh` doubles as an integration
 //! test.
 //!
-//! The sequence, exactly as the handoff fixes it:
+//! The sequence, as the handoff fixes it, **in the order the window's
+//! `Reloader::swap` runs it** (M49/T49.1):
 //!   1. `save()` while the old lib is still loaded → pointer-free bytes
 //!      in a HOST-owned buffer;
-//!   2. drop the entire old tree (old Drop impls run), old lib loaded;
-//!   3. never `dlclose` — the old library is leaked deliberately;
-//!   4. load the new lib, `fresh()`, then `restore(bytes)`.
+//!   4. load the new lib, resolve **every** entry point it must export,
+//!      `fresh()`, then `restore(bytes)`;
+//!   2. only then drop the entire old tree (old Drop impls run), old lib
+//!      loaded — so a new build that cannot be loaded, lacks a symbol or
+//!      panics leaves the old one running;
+//!   3. never `dlclose` — the old library is leaked deliberately.
+//!
+//! The loader used to drop v1 before loading v2 and look every symbol up
+//! on first use, so a v2 missing one failed after v1's state was gone
+//! (R4-F5, `docs/plan-reload-hardening.md` §1.1).
 
 use std::ffi::c_void;
 
@@ -48,18 +56,54 @@ fn take_panic(lib: &Library) -> String {
     String::from_utf8_lossy(&buf[..wrote]).into_owned()
 }
 
+/// A build's lifecycle entry points, **resolved all at once when it is
+/// loaded** (M49/T49.1): a build missing one is refused before anything
+/// is dropped, rather than failing mid-swap on a lazy lookup after the
+/// old build's state is already gone.
+struct Syms {
+    new: unsafe extern "C" fn() -> *mut c_void,
+    drop: unsafe extern "C" fn(*mut c_void),
+    save: unsafe extern "C" fn(*mut c_void, *mut u8, usize) -> usize,
+    restore: unsafe extern "C" fn(*mut c_void, *const u8, usize) -> i32,
+    take_log: unsafe extern "C" fn(*mut u8, usize) -> usize,
+    frame: unsafe extern "C" fn(*mut c_void) -> u64,
+}
+
+impl Syms {
+    fn resolve(lib: &Library) -> Syms {
+        fn get<T: Copy>(lib: &Library, name: &[u8]) -> T {
+            match unsafe { lib.get::<T>(name) } {
+                Ok(s) => *s,
+                Err(e) => panic!("the build exports no `{}`: {e}", String::from_utf8_lossy(name)),
+            }
+        }
+        Syms {
+            new: get(lib, symbols::NEW),
+            drop: get(lib, symbols::DROP),
+            save: get(lib, symbols::SAVE),
+            restore: get(lib, symbols::RESTORE),
+            take_log: get(lib, symbols::TAKE_LOG),
+            frame: get(lib, b"hot_frame"),
+        }
+    }
+}
+
 struct App<'l> {
     lib: &'l Library,
+    syms: Syms,
     ptr: *mut c_void,
 }
 
 impl<'l> App<'l> {
     fn new(lib: &'l Library) -> Self {
-        let ptr = unsafe {
-            let f: Symbol<unsafe extern "C" fn() -> *mut c_void> = lib.get(symbols::NEW).unwrap();
-            f()
-        };
-        App { lib, ptr }
+        let syms = Syms::resolve(lib);
+        let ptr = unsafe { (syms.new)() };
+        App { lib, syms, ptr }
+    }
+
+    /// Drop the tree inside the build that made it.
+    fn drop_tree(&self) {
+        unsafe { (self.syms.drop)(self.ptr) }
     }
 
     fn call0(&self, name: &[u8]) {
@@ -77,11 +121,7 @@ impl<'l> App<'l> {
     }
 
     fn frame(&self) -> u64 {
-        unsafe {
-            let f: Symbol<unsafe extern "C" fn(*mut c_void) -> u64> =
-                self.lib.get(b"hot_frame").unwrap();
-            f(self.ptr)
-        }
+        unsafe { (self.syms.frame)(self.ptr) }
     }
 
     fn buffered(&self, name: &[u8]) -> String {
@@ -99,8 +139,7 @@ impl<'l> App<'l> {
 
     fn save(&self) -> Vec<u8> {
         unsafe {
-            let f: Symbol<unsafe extern "C" fn(*mut c_void, *mut u8, usize) -> usize> =
-                self.lib.get(symbols::SAVE).unwrap();
+            let f = self.syms.save;
             let need = f(self.ptr, core::ptr::null_mut(), 0);
             let mut buf = vec![0u8; need]; // HOST-owned, never crosses allocators
             let wrote = f(self.ptr, buf.as_mut_ptr(), buf.len());
@@ -110,11 +149,7 @@ impl<'l> App<'l> {
     }
 
     fn restore(&self, bytes: &[u8]) {
-        let rc = unsafe {
-            let f: Symbol<unsafe extern "C" fn(*mut c_void, *const u8, usize) -> i32> =
-                self.lib.get(symbols::RESTORE).unwrap();
-            f(self.ptr, bytes.as_ptr(), bytes.len())
-        };
+        let rc = unsafe { (self.syms.restore)(self.ptr, bytes.as_ptr(), bytes.len()) };
         assert_eq!(rc, 0, "restore failed");
     }
 
@@ -124,8 +159,7 @@ impl<'l> App<'l> {
     /// the dylib had already drained the log. Both halves are fixed;
     /// this is the host's.
     fn take_log(&self) -> String {
-        let f: Symbol<unsafe extern "C" fn(*mut u8, usize) -> usize> =
-            unsafe { self.lib.get(symbols::TAKE_LOG) }.unwrap();
+        let f = self.syms.take_log;
         let need = unsafe { f(core::ptr::null_mut(), 0) };
         if need == 0 {
             return String::new();
@@ -227,8 +261,9 @@ fn main() {
     // ---- the §7 sequence ----
     let bytes = app.save(); // 1. save while old lib loaded (host-owned buffer)
     println!("saved {} bytes of keep-state (JSON)", bytes.len());
-    app.call0(symbols::DROP); // 2. old Drop impls run, old lib still loaded
-    // 3. v1 is Box::leak'd: never dlclose'd.
+    // 2 and 3 wait until v2 is booted (M49/T49.1): a v2 that cannot be
+    // loaded, lacks a symbol or panics while booting leaves v1 running,
+    // as the window's `Reloader::swap` does.
 
     // ---- M31/T31.3: a stylesheet belongs to the build that made it ---
     //
@@ -251,8 +286,10 @@ fn main() {
 
     // ---- v2: fresh + restore ----
     let v2: &'static Library = Box::leak(Box::new(unsafe { Library::new(&v2_path) }.unwrap()));
-    let app2 = App::new(v2); // 4. fresh() from the new code…
+    let app2 = App::new(v2); // 4. every symbol resolved, fresh() from the new code…
     app2.restore(&bytes); //    …then graft the old values on
+    app.drop_tree(); // 2. only now: v1's Drop impls run, v1 still loaded
+    // 3. v1 is Box::leak'd: never dlclose'd.
     let hash_v2 = app2.frame();
     assert_eq!(take_panic(v2), "", "v2 reported a panic it never had");
     let after = app2.buffered(b"hot_report");
@@ -369,10 +406,10 @@ fn main() {
     // ---- M36/T36.4: a build whose frame panics, then the fix ---------
     if let (Some(v3_path), Some(v4_path)) = (v3_path, v4_path) {
         let bytes = app2.save();
-        app2.call0(symbols::DROP);
         let v3: &'static Library = Box::leak(Box::new(unsafe { Library::new(&v3_path) }.unwrap()));
         let app3 = App::new(v3);
         app3.restore(&bytes);
+        app2.drop_tree();
         // Without the catch in the library this call aborts the process:
         // a panic cannot unwind out of an `extern "C"` fn.
         let h = app3.frame();
@@ -396,10 +433,10 @@ fn main() {
         expect(&still, "counter=3", "v3 survived its own panic");
 
         let bytes = app3.save();
-        app3.call0(symbols::DROP);
         let v4: &'static Library = Box::leak(Box::new(unsafe { Library::new(&v4_path) }.unwrap()));
         let app4 = App::new(v4);
         app4.restore(&bytes);
+        app3.drop_tree();
         let hash_v4 = app4.frame();
         assert_eq!(take_panic(v4), "", "v4 reported a panic");
         println!("v4's frame {hash_v4:#018x}, v2's {hash_v2:#018x}");

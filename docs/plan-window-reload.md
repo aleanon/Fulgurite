@@ -104,7 +104,9 @@ Two options, and T37.0 chooses **by measurement**:
   So the library exports an **ABI stamp**: the rustc version, the
   `lumen-static` version and feature set, and the `size_of` and
   `align_of` of every type that crosses. The loader refuses a library
-  whose stamp differs and shows why.
+  whose stamp differs and shows why. *(M49/T49.1: sizes cannot see a
+  reordered enum, so the stamp now also hashes the source of the crates
+  whose types cross — `docs/step4-hot-reload.md`, the stamp.)*
 - **`extern "C"` with plain bytes**, as the fixture does today. This is
   sound by construction, and it costs a copy of the display list every
   frame.

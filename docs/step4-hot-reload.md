@@ -237,11 +237,16 @@ as `name=value` lines covering:
 - the compiler (from a build script);
 - the target and the panic strategy;
 - the core's version and **feature set**;
-- the size and alignment of the core types that cross.
+- the size and alignment of the core types that cross;
+- **the source** (M49/T49.1): a hash of `src/` and `Cargo.toml` of each
+  crate whose types cross — `lumen-static`, `lumen-static-shell`,
+  `lumen-static-reload` — plus the locked versions of the external
+  crates those manifests name, and the encoded rustflags. It is taken by
+  `lumen-static-reload`'s build script, so it costs nothing at run time.
 
 The loader refuses a library whose lines differ, naming the first field
 that differs. `just abi-stamp` builds `fixtures/stamp-lib` twice: once as
-`fixtures/stamp-host` was built, which is accepted with 11 fields
+`fixtures/stamp-host` was built, which is accepted with (at M49) 17 fields
 agreeing, and once with the core's `observe` on, which is refused with
 `lumen-static features` named.
 
@@ -250,6 +255,31 @@ it removed, the `observe` build was *accepted*, because none of the seven
 listed sizes moves even though every widget's vtable does. The stamp
 cannot see a `#[global_allocator]`. A hot library must not set one,
 because values are allocated on one side and freed on the other.
+
+**Sizes could not see a reordering** (R4-F5). A library built after
+`Cmd::Rect` was moved below `Cmd::Text` agreed on all 12 fields and was
+then misread command by command. `just abi-stamp` now builds a copy of
+the workspace three ways: unchanged (accepted — the hash is of content
+and relative paths, not of where the workspace lives), with the two
+variants reordered (refused by `source lumen-static`, and the message
+says the framework was edited and the window must restart), and with
+only `lumen-static-widgets` edited (accepted, because no widget type
+crosses; `every_crossing_type_is_defined_in_a_hashed_crate` checks that
+claim against `type_name`). *Injection:* the source lines left out of
+the stamp, and the reordered library is accepted again.
+
+What it deliberately does not cover, and why:
+
+- **Any edit to the three crates refuses every later build** until the
+  window restarts, a comment included. That is the right answer: the
+  loader still runs the old framework.
+- **Transitive dependency versions are not hashed**, only direct ones.
+  Two wider forms were built and both refused an unchanged copy of the
+  workspace: a lockfile lists a member's dev-dependencies, and resolves
+  a registry crate's optional dependencies only where a member turns
+  them on. No crossing type holds a third-party type today.
+- **`lumen-static-macros` is not hashed.** A derive's output lands in
+  the application's own types, which live in the library alone.
 
 ## Reloading inside a window: latency and memory (M37/T37.4)
 

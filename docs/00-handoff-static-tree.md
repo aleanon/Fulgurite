@@ -596,7 +596,9 @@ in the library.** The tree holds code, so a loader-side `Host<A>` would
 never change. The window drives a type-erased `Session`, and a hot
 library exports one through `export_program!`. The boundary is
 **borrowed pointers behind an ABI stamp** (compiler, target, profile,
-features, layouts, and a hash of the trait's own source), chosen by
+features, layouts, and — since M49/T49.1 — a hash of the source of
+every crate whose types cross, because sizes cannot see a reordered
+enum), chosen by
 measurement over a byte encoding (`docs/step4-hot-reload.md` T37.0). A
 swap boots the new build's `program()` and restores per field. A failed
 build, a refused library or a panicking boot keeps the running one.
