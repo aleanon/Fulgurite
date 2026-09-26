@@ -332,3 +332,20 @@ fn a_group_of_twenty_is_navigable_end_to_end() {
     println!("Right from member 18: handled {handled}, focus {:?} (expected {})", input.focus, members[19]);
     assert_eq!(input.focus, Some(members[19]), "Right from member 18 did not reach 19");
 }
+
+/// **Focus is published after the event that moved it** (M44/T44.6).
+///
+/// The publish ran at the top of dispatch, before Tab moved focus, so the
+/// frame after a Tab drew the ring on the node focus had just left and
+/// none on the node it reached, until some later event republished it.
+#[test]
+fn a_focus_move_is_visible_in_the_state_array_at_once() {
+    let mut f = F::new();
+    f.key(Key::Tab, Mods::NONE);
+    let first = f.input.focus.expect("Tab focused something") as usize;
+    f.key(Key::Tab, Mods::NONE);
+    let second = f.input.focus.unwrap() as usize;
+    let lit: Vec<usize> = (0..f.st.len()).filter(|&i| f.st[i].focused).collect();
+    println!("after two Tabs: focus {second} (was {first}); nodes with the focused bit: {lit:?}");
+    assert_eq!(lit, vec![second], "the focused bit is not on exactly the node focus is on");
+}

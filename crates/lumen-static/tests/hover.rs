@@ -240,7 +240,6 @@ struct BigApp {
 /// `InputState::state_writes`, because a sweep that rewrites a bit with
 /// the value it already had is invisible to any before/after comparison.
 #[test]
-#[ignore = "red until T44.6: R3-F12 (every event sweeps the state array)"]
 fn a_pointer_move_writes_at_most_four_states() {
     let mut app = BigApp::default();
     let styles = pass::default_styles(&app.ui);

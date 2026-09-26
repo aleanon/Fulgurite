@@ -19,8 +19,10 @@
 //! **Two more rows since M26/T26.0**, because M26 changes both and
 //! neither had ever been priced: `place`, which takes no relayout
 //! boundary at all (it is handed no context, so it cannot see what
-//! changed), and `dispatch`, which publishes hover, press and focus by
-//! walking every node in the state array on every pointer event.
+//! changed), and `dispatch`, which published hover, press and focus by
+//! walking every node in the state array on every pointer event — until
+//! M44/T44.6, which writes only the nodes an event changed and added the
+//! two-node row beside it.
 
 use std::time::Instant;
 
@@ -153,4 +155,37 @@ fn main() {
         dispatched * 1000.0 / Ten10::NODE_COUNT as f64,
         Ten10::NODE_COUNT
     );
+
+    // The same move over a two-node tree — M44/T44.6. The difference
+    // between the two rows is what a per-node sweep costs; with the
+    // sweeps gone the two should be close.
+    let mut tapp = TinyApp::default();
+    tapp.ui.leaf.w = 40.0;
+    tapp.ui.leaf.h = 40.0;
+    let tstyles: Vec<Style> = pass::default_styles(&tapp.ui);
+    let mut tst = vec![NodeState::default(); Tiny::NODE_COUNT];
+    {
+        let mut m = BlockMetrics;
+        let mut cx = LayoutCx::new(&mut m);
+        tapp.ui.layout(&mut cx, VIEW, &tstyles, &mut tst, 0);
+        tapp.ui.place(lumen_static::Point::default(), &tstyles, &mut tst, 0);
+    }
+    let mut tinput = lumen_static::event::InputState::default();
+    let tiny = best(2000, || {
+        let _ = pass::dispatch(&mut tapp, &tstyles, &mut tst, &mut tinput, &ev);
+    });
+    println!("{:<34}{tiny:9.2} us   over {} nodes", "dispatch, one PointerMove (tiny)", Tiny::NODE_COUNT);
+}
+
+/// Two nodes: the smallest tree a pointer can hover — M44/T44.6.
+#[derive(lumen_static::StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+struct Tiny {
+    leaf: lumen_static_widgets::ops::Fixed,
+}
+
+#[derive(lumen_static::App, Default)]
+struct TinyApp {
+    #[tree]
+    ui: Tiny,
 }

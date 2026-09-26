@@ -259,3 +259,32 @@ remainder is re-armed from each frame's start, so a past deadline fires
 again at once and the loop spins.
 
 M53/T53.4 adds a per-motion row here.
+
+## M44/T44.6 — an event writes the nodes it changed (2026-09-26)
+
+`pass::dispatch` published hover, press and focus by writing every node
+of the state array — the hover sweep on every move and press, the focus
+sweep on every event, the press sweep on every release (R3-F12). T44.6
+writes the node an index left and the node it reached, and publishes
+focus after the event instead of before it.
+
+**The gate is a count, not this clock** (M35's rule 3): one
+`PointerMove` on a 1,728-node table writes **2** states against a bound
+of 4, where it wrote 3,457 before
+(`crates/lumen-static/tests/hover.rs`, `InputState::state_writes`).
+
+**The clock, as a record.** `benches --bin invalidation`, rows
+"dispatch, one PointerMove" (901 nodes, `Ten10`) and "(tiny)" (2 nodes),
+min of 2,000 per run, eight runs a side under the bench lock, before at
+`ad36bd7` and after with T44.6. **LOADED**: load average 4.9–7.4 while
+other agents compiled.
+
+| row | before (µs, 8 runs) | after (µs, 8 runs) |
+|---|---|---|
+| one move, 901 nodes | 1.18–1.90 | 0.03–0.06 |
+| one move, 2 nodes | 0.02–0.03 | 0.02–0.03 |
+
+The 901-node row now costs what the 2-node row does, within its spread:
+the per-node term was the sweep. The plan named a 1,685-node arm; the
+bench's existing table is 901 nodes and the count gate uses 1,728, so no
+third table was added for the clock.

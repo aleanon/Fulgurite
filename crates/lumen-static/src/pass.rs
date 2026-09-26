@@ -245,6 +245,21 @@ pub fn dispatch_overlaid_into<S: crate::event::App, O: crate::overlay::OverlaySi
     ev: &crate::event::Event,
     consumed: &mut Consumed,
 ) -> bool {
+    let handled = overlaid(state, style, st, input, ov, ev, consumed);
+    publish_focus(st, input);
+    handled
+}
+
+/// [`dispatch_overlaid_into`]'s body, before focus is published.
+fn overlaid<S: crate::event::App, O: crate::overlay::OverlaySink>(
+    state: &mut S,
+    style: &[Style],
+    st: &mut [NodeState],
+    input: &mut crate::event::InputState,
+    ov: &O,
+    ev: &crate::event::Event,
+    consumed: &mut Consumed,
+) -> bool {
     use crate::event::{Event, Key};
 
     // **The release of a press that dismissed an overlay is consumed
@@ -262,11 +277,7 @@ pub fn dispatch_overlaid_into<S: crate::event::App, O: crate::overlay::OverlaySi
         Event::PointerUp { .. } | Event::PointerCancel { .. } if input.swallow_release => {
             input.swallow_release = false;
             input.press = None;
-            for n in st.iter_mut() {
-                n.pressed = false;
-            }
-            input.state_writes.add(st.len());
-            input.pressed = None;
+            release_press(st, &mut input.pressed, &mut input.state_writes);
             return true;
         }
         _ => {}
@@ -418,7 +429,9 @@ pub fn dispatch<S: crate::event::App>(
     input: &mut crate::event::InputState,
     ev: &crate::event::Event,
 ) -> bool {
-    dispatch_at(state, style, st, input, ev, None, &mut Consumed::default())
+    let handled = dispatch_at(state, style, st, input, ev, None, &mut Consumed::default());
+    publish_focus(st, input);
+    handled
 }
 
 /// [`dispatch`], with the hit supplied rather than computed.
@@ -463,11 +476,7 @@ fn dispatch_at<S: crate::event::App>(
     // told (it may keep drag state of its own), and the capture ends. No
     // hit test and no activation: a cancelled tap is not a click.
     if let Event::PointerCancel { x, y } = *ev {
-        for n in st.iter_mut() {
-            n.pressed = false;
-        }
-        input.state_writes.add(st.len());
-        input.pressed = None;
+        release_press(st, &mut input.pressed, &mut input.state_writes);
         input.press = None;
         let Some(cap) = input.capture.take() else { return false };
         let cap = cap as usize;
@@ -537,13 +546,8 @@ fn dispatch_at<S: crate::event::App>(
         }
     }
 
-    // Publish focus into the state array, so a widget's `paint` can see
-    // it (a caret is drawn only in the focused field). Every node, so a
-    // focus that moved does not leave the old one lit.
-    for (i, n) in st.iter_mut().enumerate() {
-        n.focused = *focus == Some(i as u32);
-    }
-    input.state_writes.add(st.len());
+    // Focus is published into the state array by the public entry
+    // points, **after** the event has moved it — `publish_focus`.
 
     // C5: Tab moves focus in declaration order, which for a pre-order
     // table is simply the next focusable index, wrapping. Consumed here
@@ -636,22 +640,14 @@ fn dispatch_at<S: crate::event::App>(
         let cap = cap as usize;
         if cap < table.len() && gone(table.len(), style, st, cap) {
             *capture = None;
-            for n in st.iter_mut() {
-                n.pressed = false;
-            }
-            input.state_writes.add(st.len());
-            input.pressed = None;
+            release_press(st, &mut input.pressed, &mut input.state_writes);
             input.press = None;
         } else if cap >= table.len() {
             *capture = None;
         } else if let Some(p) = ev.position() {
             if matches!(ev, Event::PointerMove { .. } | Event::PointerUp { .. }) {
                 if matches!(ev, Event::PointerUp { .. }) {
-                    for n in st.iter_mut() {
-                        n.pressed = false;
-                    }
-                    input.state_writes.add(st.len());
-                    input.pressed = None;
+                    release_press(st, &mut input.pressed, &mut input.state_writes);
                     // The gesture the capture held ends here, and a
                     // captured release activates nothing (T44.2).
                     input.press = None;
@@ -696,17 +692,25 @@ fn dispatch_at<S: crate::event::App>(
             // Hover follows the pointer; press latches on down and
             // releases on up *wherever* the pointer then is — a button
             // must un-press when you drag off it and let go, which is
-            // why the release clears every node rather than the hit one.
-            // The indices go into `input` beside the bits, so the host can
-            // see that they changed (M25/T25.0).
+            // why the release clears the *pressed* node rather than the
+            // hit one. The indices go into `input` beside the bits, so the
+            // host can see that they changed (M25/T25.0) — and so that a
+            // change writes the two nodes it concerns and no others
+            // (M44/T44.6): these were sweeps of the whole state array,
+            // twice per move.
             match ev {
                 Event::PointerMove { .. } => {
+                    let was = input.hovered;
                     input.hovered = hit.map(|h| h.node);
-                    input.state_writes.add(set_hovered(st, input.hovered));
+                    input.state_writes.add(set_hovered(st, was, input.hovered));
                 }
                 Event::PointerDown { .. } => {
+                    let was = input.hovered;
                     input.hovered = hit.map(|h| h.node);
-                    input.state_writes.add(set_hovered(st, input.hovered));
+                    input.state_writes.add(set_hovered(st, was, input.hovered));
+                    // A press with one still held (a second pointer)
+                    // lets the first go, so no bit is left behind.
+                    release_press(st, &mut input.pressed, &mut input.state_writes);
                     if let Some(h) = hit {
                         st[h.node as usize].pressed = true;
                         input.state_writes.add(1);
@@ -721,11 +725,7 @@ fn dispatch_at<S: crate::event::App>(
                     });
                 }
                 Event::PointerUp { .. } => {
-                    for n in st.iter_mut() {
-                        n.pressed = false;
-                    }
-                    input.state_writes.add(st.len());
-                    input.pressed = None;
+                    release_press(st, &mut input.pressed, &mut input.state_writes);
                     released = Some(input.press.take());
                 }
                 _ => {}
@@ -1123,20 +1123,62 @@ fn next_focusable_in(
         .map(|i| i as u32)
 }
 
-/// Mark `node` hovered and nothing else.
-///
-/// Every node, not just the previously-hovered one: a frame may have
-/// changed the tree under us, and a stale bit is a control that stays
-/// lit after the pointer has left it.
+/// Move the hover bit from `was` to `now`, writing those two nodes and
+/// no others — M44/T44.6.
 ///
 /// Returns how many state writes it made, for
 /// [`InputState::state_writes`](crate::event::InputState::state_writes).
-fn set_hovered(st: &mut [NodeState], node: Option<u32>) -> usize {
-    for n in st.iter_mut() {
-        n.hovered = false;
+/// Each index is bounds-checked. A sweep of every node used to run here
+/// on every move and press, "because a frame may have changed the tree
+/// under us"; but a state array is only ever replaced whole (a new
+/// `Host`, whose bits all start clear) or swept by panic recovery, so the
+/// recorded index is enough.
+fn set_hovered(st: &mut [NodeState], was: Option<u32>, now: Option<u32>) -> usize {
+    let mut writes = 0;
+    if let Some(i) = was.filter(|&i| Some(i) != now && (i as usize) < st.len()) {
+        st[i as usize].hovered = false;
+        writes += 1;
     }
-    if let Some(i) = node {
-        st[i as usize].hovered = true;
+    if let Some(i) = now.filter(|&i| (i as usize) < st.len()) {
+        if !st[i as usize].hovered {
+            st[i as usize].hovered = true;
+            writes += 1;
+        }
     }
-    st.len() + node.is_some() as usize
+    writes
+}
+
+/// End the press shade: clear the pressed node's bit and forget it —
+/// one write, not a sweep (M44/T44.6).
+fn release_press(st: &mut [NodeState], pressed: &mut Option<u32>, writes: &mut crate::event::WriteCount) {
+    if let Some(i) = pressed.take().filter(|&i| (i as usize) < st.len()) {
+        st[i as usize].pressed = false;
+        writes.add(1);
+    }
+}
+
+/// Publish `input.focus` into the state array, so a widget's `paint`
+/// can see it (a caret is drawn only in the focused field) — M44/T44.6.
+///
+/// Clears the node focus was last published on and sets the new one: at
+/// most two writes, where this was a write to every node on every event.
+/// And it runs **after** the event, from the public entry points: it used
+/// to run at the top of `dispatch_at`, before Tab or an arrow moved focus,
+/// so the frame after a focus move drew the ring on the node focus had
+/// just left, until the next event republished it. The new node's bit is
+/// checked rather than assumed, so a state array replaced under a kept
+/// focus gets its bit back.
+fn publish_focus(st: &mut [NodeState], input: &mut crate::event::InputState) {
+    let now = input.focus.filter(|&f| (f as usize) < st.len());
+    if let Some(old) = input.focus_published.filter(|&o| Some(o) != now && (o as usize) < st.len()) {
+        st[old as usize].focused = false;
+        input.state_writes.add(1);
+    }
+    if let Some(f) = now {
+        if !st[f as usize].focused {
+            st[f as usize].focused = true;
+            input.state_writes.add(1);
+        }
+    }
+    input.focus_published = now;
 }

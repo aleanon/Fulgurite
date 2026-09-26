@@ -630,6 +630,8 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         self.input.pressed = None;
         self.input.hovered = None;
         self.input.swallow_release = false;
+        // T44.2's latch goes with the press it identified.
+        self.input.press = None;
         for n in self.states.iter_mut() {
             n.pressed = false;
             n.hovered = false;

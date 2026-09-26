@@ -458,6 +458,10 @@ pub struct InputState {
     /// identity, and it is separate because the shade is cleared by the
     /// release before activation asks.
     pub press: Option<PressLatch>,
+    /// The node whose `focused` bit the pass last set — M44/T44.6, so a
+    /// focus move clears that one node rather than every node.
+    #[doc(hidden)]
+    pub focus_published: Option<u32>,
 }
 
 /// The item a press landed on — [`InputState::press`].
