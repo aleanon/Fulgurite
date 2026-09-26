@@ -162,3 +162,69 @@ fn a_hit_finds_a_child_on_the_second_line() {
     let hit = Node::hit(&w, &st, 0, 10.0, 35.0).expect("nothing under the second line");
     assert_eq!(hit.node, 4, "the point landed on node {}, not the fourth child", hit.node);
 }
+
+// ---- M57/A19: a grid's columns line up; a wrap's lines follow `align` --
+
+#[derive(StaticTree, Default)]
+#[widget(grid, columns = 3, spacing = 10.0)]
+struct Grid3 {
+    a: Fixed,
+    b: Fixed,
+    c: Fixed,
+    d: Fixed,
+    e: Fixed,
+    f: Fixed,
+}
+
+/// **Unequal cells, the case `Grid2` above never built** — its cells were
+/// all equal, and so were the showcase demo's badges, which is how a grid
+/// whose column x depended on the cells before it on the line shipped
+/// (`docs/widget-audit.md`, Grid). Widths 20/60/40 over 50/10/30: every
+/// cell in column k must share an x, and the grid is as wide as its
+/// columns.
+#[test]
+fn a_grid_of_unequal_cells_keeps_its_columns() {
+    let mut g = Grid3 {
+        a: cell(20.0, 10.0),
+        b: cell(60.0, 10.0),
+        c: cell(40.0, 10.0),
+        d: cell(50.0, 10.0),
+        e: cell(10.0, 10.0),
+        f: cell(30.0, 10.0),
+    };
+    let st = lay(&mut g, 400.0);
+    let xs: Vec<f32> = (1..=6).map(|k| st[k].pos.x).collect();
+    println!("cell x: {xs:?}");
+    for c in 0..3 {
+        assert_eq!(xs[c], xs[c + 3], "column {c}: row 1 at x {}, row 2 at x {}", xs[c], xs[c + 3]);
+    }
+    // Columns 50, 60, 40 wide and two 10 px gaps: the last column ends at
+    // 170 in both rows. (The container itself fills its offer.)
+    assert_eq!(st[3].pos.x + 40.0, 170.0, "the third column does not end where the columns do");
+}
+
+#[derive(StaticTree, Default)]
+#[widget(wrap, spacing = 10.0)]
+struct Centred {
+    a: Fixed,
+    b: Fixed,
+}
+
+/// And a wrap follows `align`: centred, a 90 px line sits in the middle of
+/// a 200 px box. It was always packed from the left, which put the
+/// showcase's wrap demo 31 px off-centre.
+#[test]
+fn a_centred_wrap_centres_its_lines() {
+    let mut w = Centred { a: cell(40.0, 10.0), b: cell(40.0, 10.0) };
+    let mut styles = lumen_static::pass::default_styles(&w);
+    styles[0].align = lumen_static::Align::Center;
+    styles[0].width = lumen_static::Length::Fixed(200.0);
+    let mut st = vec![NodeState::default(); <Centred as Widget>::NODE_COUNT];
+    let view = Constraints { min_w: 0.0, max_w: 400.0, min_h: 0.0, max_h: 400.0 };
+    let mut m = lumen_static::cx::BlockMetrics;
+    let mut cx = lumen_static::LayoutCx::new(&mut m);
+    Node::layout(&mut w, &mut cx, view, &styles, &mut st, 0);
+    Node::place(&mut w, Point::default(), &styles, &mut st, 0);
+    println!("line starts at {} in a {} px box", st[1].pos.x, st[0].size.w);
+    assert_eq!(st[1].pos.x, 55.0, "a 90 px centred line in 200 px starts at 55");
+}

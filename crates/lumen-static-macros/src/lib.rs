@@ -399,6 +399,12 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
         Axis::Flow(_) => quote! {},
     };
 
+    // A grid's column count, and whether this flow is one (M57/A19): a
+    // grid places every cell at its *column's* x, a wrap packs each line.
+    let (flow_cols, flow_grid) = match axis {
+        Axis::Flow(Some(c)) => (quote! { #c }, quote! { true }),
+        _ => (quote! { 1usize }, quote! { false }),
+    };
     // `None` wraps on the line's width; `Some(n)` breaks every `n`.
     let flow_break = match axis {
         Axis::Flow(Some(c)) => quote! { in_line >= #c },
@@ -551,11 +557,17 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
             let mut in_line: usize = 0;
             let mut cw = 0.0f32;
             let mut ch = 0.0f32;
+            // A grid's column widths: the widest cell in each (M57/A19).
+            let mut col_w = [0.0f32; #flow_cols];
             #(
                 {
                     #mut_calls
                     #opaque_stmt
                     let s = d.layout(cx, loose, style, st, at);
+                    if #flow_grid {
+                        let c = in_line % #flow_cols;
+                        if s.w > col_w[c] { col_w[c] = s.w; }
+                    }
                     if #flow_break {
                         // Close the line: its width is what was placed
                         // minus the trailing gap, and the next line
@@ -577,6 +589,12 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
             // The last line, which no break closed.
             cw = cw.max(cur - me.spacing).max(0.0);
             ch += line_h;
+            // A grid is as wide as its columns, not as its widest line:
+            // cells are placed on shared column edges (M57/A19).
+            if #flow_grid {
+                let used = col_w.iter().filter(|w| **w > 0.0).count();
+                cw = col_w.iter().sum::<f32>() + me.spacing * used.saturating_sub(1) as f32;
+            }
             let padded = ::lumen_static::Size {
                 w: cw + me.padding.horizontal(),
                 h: ch + me.padding.vertical(),
@@ -685,11 +703,48 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                 max_h: (st[i].size.h - p.vertical()).max(0.0),
             };
             let me = style[i];
+            // **Pass 1: each line's width, and a grid's column widths** —
+            // M57/A19. A grid placed each cell after the previous one on
+            // its line, so a column's x depended on the widths of the cells
+            // before it and unequal cells made jagged columns; and every
+            // line was packed from the left, whatever `align` said.
+            let mut line_w = [0.0f32; #n + 1];
+            let mut col_w = [0.0f32; #flow_cols];
+            {
+                let mut at = i + 1;
+                let mut cur = 0.0f32;
+                let mut in_line: usize = 0;
+                let mut line: usize = 0;
+                #(
+                    {
+                        let s = st[at].size;
+                        if #flow_break {
+                            line_w[line] = cur - me.spacing;
+                            line += 1;
+                            cur = 0.0;
+                            in_line = 0;
+                        }
+                        if #flow_grid {
+                            let c = in_line % #flow_cols;
+                            if s.w > col_w[c] { col_w[c] = s.w; }
+                        }
+                        cur += s.w + me.spacing;
+                        in_line += 1;
+                        at += <#field_ty as ::lumen_static::widget::Widget>::NODE_COUNT;
+                    }
+                )*
+                line_w[line] = (cur - me.spacing).max(0.0);
+                let _ = in_line;
+            }
+            let grid_w = col_w.iter().sum::<f32>()
+                + me.spacing * col_w.iter().filter(|w| **w > 0.0).count().saturating_sub(1) as f32;
+            let line_off = |w: f32| ::lumen_static::ops::align_offset(me.align, inner.max_w, w);
             let mut at = i + 1;
             let mut cur = 0.0f32;
             let mut line_y = 0.0f32;
             let mut line_h = 0.0f32;
             let mut in_line: usize = 0;
+            let mut line: usize = 0;
             #(
                 {
                     let s = st[at].size;
@@ -698,12 +753,21 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                         cur = 0.0;
                         line_h = 0.0;
                         in_line = 0;
+                        line += 1;
                     }
                     #mut_calls
                     #opaque_stmt
+                    // A grid cell sits at its column's edge; a wrapped
+                    // item after the one before it, its line aligned.
+                    let x = if #flow_grid {
+                        let c = in_line % #flow_cols;
+                        line_off(grid_w) + col_w[..c].iter().map(|w| w + me.spacing).sum::<f32>()
+                    } else {
+                        line_off(line_w[line]) + cur
+                    };
                     d.place(
                         ::lumen_static::Point {
-                            x: at_pos.x + p.left + cur,
+                            x: at_pos.x + p.left + x,
                             y: at_pos.y + p.top + line_y,
                         },
                         style,
@@ -716,7 +780,7 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                     at += <#field_ty as ::lumen_static::widget::Widget>::NODE_COUNT;
                 }
             )*
-            let _ = (at, in_line, line_y, inner);
+            let _ = (at, in_line, line_y, inner, line);
         },
     };
 
