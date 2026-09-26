@@ -128,7 +128,7 @@ pub use choose::{
 };
 #[cfg(feature = "alloc")]
 pub use data::{
-    Branch, DataGrid, PageLabel, Pagination, Tree, MAX_COLUMNS, MAX_PAGES, MAX_TREE_NODES,
+    Branch, DataGrid, PageLabel, PageSlot, Pagination, Tree, MAX_COLUMNS, MAX_PAGES, MAX_TREE_NODES,
 };
 #[cfg(feature = "alloc")]
 pub use field::{NumberInput, RangeSlider, SearchField};

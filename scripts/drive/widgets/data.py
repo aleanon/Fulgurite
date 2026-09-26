@@ -54,20 +54,23 @@ PAGINATION = ("Pagination", "#d_pagination_a", [
         ),
         injection="drop the Home/End arms in Pagination::on_event",
     ),
+    # M57/B49: the strip is first, gap, five, gap, last. On the last
+    # page the middle is 24..28, so the third number slot is page 24 --
+    # and the first is page 1, always, where the centred window read 22.
     Action(
         name="a number is the page it shows, not its position in the strip",
-        needs="a pagination on its last page, so the window starts at 22",
+        needs="a pagination on its last page, so the middle is 24..28",
         do=lambda c: (c.__dict__.__setitem__("_p0", _page(c)),
-                      _slot(c, 1, 11))[0],
+                      _slot(c, 3, 11))[0],
         expect=lambda c: (
-            _page(c) == 22 and c._p0 != _page(c),
-            f"page {c._p0} -> {_page(c)} after pressing the first *number* at the end of "
-            f"30 pages: the window there is 22..30, so the slot is page 22 and "
-            f"a strip that ignored the window's offset would read 1",
+            _page(c) == 24 and c._p0 != _page(c),
+            f"page {c._p0} -> {_page(c)} after pressing the third number at the end of "
+            f"30 pages: the strip there is 1 … 24 25 26 27 28 29 30, so the slot is page 24 "
+            f"and a strip that ignored the window's offset would read 3",
         ),
         isolate=lambda c: (c.__dict__.__setitem__("_p0", _page(c)),
                            c.click_outside())[0],
-        injection="drop the window offset: `go(k - 1)`",
+        injection="drop the window offset in Pagination::slot",
     ),
     Action(
         name="the previous arrow steps back, it does not jump",
@@ -81,6 +84,16 @@ PAGINATION = ("Pagination", "#d_pagination_a", [
         isolate=lambda c: (c.__dict__.__setitem__("_p0", _page(c)),
                            c.click_outside())[0],
         injection="make the first slot go to the window's first page",
+    ),
+    Action(
+        name="the first page is always one press away",
+        needs="a pagination far from its start",
+        do=lambda c: (c.__dict__.__setitem__("_p0", _page(c)), _slot(c, 1, 11))[0],
+        expect=lambda c: (
+            _page(c) == 1 and c._p0 > 9,
+            f"page {c._p0} -> {_page(c)} after pressing the first number",
+        ),
+        injection="drop the first-page slot: make slot 0 a middle page",
     ),
 ])
 

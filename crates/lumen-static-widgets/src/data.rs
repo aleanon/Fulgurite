@@ -66,9 +66,27 @@ impl PageLabel {
 }
 
 /// Page numbers, with a previous and a next.
+///
+/// # The window — M57/B49
+///
+/// Up to [`MAX_PAGES`] pages are all shown. Past that the strip is nine
+/// slots: **the first page, a gap, five pages, a gap, the last page** —
+/// a gap is `…`, or the page it stands for when it hides only one. The
+/// first and last are always one press away.
+///
+/// **A press never moves the numbers.** The strip was re-centred on
+/// every change, so pressing "5" shifted the numbers and put another one
+/// under the pointer — what this type's own rustdoc said it did not do.
+/// Now only the keyboard and the ‹ › arrows slide the five middle pages,
+/// and only when the page reaches their edge; a press on a number goes
+/// there and leaves the strip still. A press on a gap jumps past it.
 pub struct Pagination {
     pages: usize,
     page: usize,
+    /// The first of the five middle pages, when windowed.
+    start: usize,
+    /// The slot under the pointer, for the hover tint.
+    hot: Option<usize>,
     /// Laid-out width, so `on_event` can turn `local.x` into a button.
     width: f32,
     /// Each visible number's measured width, so `paint` can centre it.
@@ -85,13 +103,26 @@ pub struct Pagination {
 
 impl Default for Pagination {
     fn default() -> Self {
-        Pagination { pages: 1, page: 0, width: 0.0, widths: [0.0; MAX_PAGES] }
+        Pagination { pages: 1, page: 0, start: 2, hot: None, width: 0.0, widths: [0.0; MAX_PAGES] }
     }
 }
 
+/// What one slot of the page strip shows.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PageSlot {
+    Page(usize),
+    /// `…`, standing for the pages between its neighbours.
+    Gap,
+}
+
+/// The middle pages a windowed strip shows.
+const MIDDLE: usize = 5;
+/// A gap's label.
+const GAP: &str = "…";
+
 impl Pagination {
     pub fn new(pages: usize) -> Self {
-        Pagination { pages: pages.max(1), page: 0, width: 0.0, widths: [0.0; MAX_PAGES] }
+        Pagination { pages: pages.max(1), page: 0, start: 2, hot: None, width: 0.0, widths: [0.0; MAX_PAGES] }
     }
 
     pub fn pages(&self) -> usize {
@@ -102,12 +133,43 @@ impl Pagination {
         self.page
     }
 
-    /// Go to `p`, clamped. Returns whether it moved.
+    /// Go to `p`, clamped, and slide the middle pages if `p` is at or
+    /// past their edge — the keyboard's and the arrows' move. Returns
+    /// whether the page changed.
     pub fn go(&mut self, p: usize) -> bool {
+        let moved = self.set_page(p);
+        self.reveal();
+        moved
+    }
+
+    /// Go to `p` and leave the strip where it is — a press on a number.
+    fn set_page(&mut self, p: usize) -> bool {
         let p = p.min(self.pages - 1);
         let moved = p != self.page;
         self.page = p;
         moved
+    }
+
+    fn windowed(&self) -> bool {
+        self.pages > MAX_PAGES
+    }
+
+    /// The largest `start`: the five end at the second-to-last page.
+    fn max_start(&self) -> usize {
+        self.pages.saturating_sub(2 + MIDDLE)
+    }
+
+    /// Slide the middle pages so the page is inside them and off their
+    /// edge, if it is not already.
+    fn reveal(&mut self) {
+        if !self.windowed() {
+            return;
+        }
+        let (s, e) = (self.start, self.start + MIDDLE - 1);
+        let p = self.page;
+        if p <= s || p >= e {
+            self.start = p.saturating_sub(MIDDLE / 2).clamp(2, self.max_start());
+        }
     }
 
     pub fn next_page(&mut self) -> bool {
@@ -118,23 +180,31 @@ impl Pagination {
         self.go(self.page.saturating_sub(1))
     }
 
-    /// The window of page numbers shown: at most [`MAX_PAGES`], centred
-    /// on the current page and clamped to the ends.
-    ///
-    /// **Centred, not paged in blocks.** A block-paged strip jumps under
-    /// the finger — you press "5" and the numbers shift so that 5 is now
-    /// somewhere else — which is the one thing every pagination gets
-    /// wrong and nobody writes a test for.
-    pub fn window(&self) -> (usize, usize) {
-        let n = self.pages.min(MAX_PAGES);
-        let half = n / 2;
-        let first = self.page.saturating_sub(half).min(self.pages - n);
-        (first, n)
+    /// How many number slots the strip has.
+    pub fn count(&self) -> usize {
+        self.pages.min(MAX_PAGES)
     }
 
-    /// Slots across the control: `<`, the page window, `>`.
+    /// What slot `k` (0-based, arrows excluded) shows.
+    pub fn slot(&self, k: usize) -> PageSlot {
+        if !self.windowed() {
+            return PageSlot::Page(k);
+        }
+        let s = self.start;
+        match k {
+            0 => PageSlot::Page(0),
+            1 if s == 2 => PageSlot::Page(1),
+            1 => PageSlot::Gap,
+            7 if s + MIDDLE == self.pages - 2 => PageSlot::Page(self.pages - 2),
+            7 => PageSlot::Gap,
+            8 => PageSlot::Page(self.pages - 1),
+            _ => PageSlot::Page(s + k - 2),
+        }
+    }
+
+    /// Slots across the control: `<`, the numbers, `>`.
     fn slots(&self) -> usize {
-        self.window().1 + 2
+        self.count() + 2
     }
 
     fn slot_at(&self, x: f32) -> Option<usize> {
@@ -142,7 +212,7 @@ impl Pagination {
             return None;
         }
         let each = self.width / self.slots() as f32;
-        if each <= 0.0 {
+        if each <= 0.0 || x < 0.0 {
             return None;
         }
         Some(((x / each) as usize).min(self.slots() - 1))
@@ -203,17 +273,15 @@ impl Node for Pagination {
             Size { w: limits.max_w, h: 36.0 },
         );
         self.width = s.w;
-        let (first, n) = self.window();
-        for k in 0..n {
-            let label = PageLabel::new(first + k + 1);
+        for k in 0..self.count() {
+            let (text, current) = match self.slot(k) {
+                PageSlot::Page(p) => (PageLabel::new(p + 1), p == self.page),
+                PageSlot::Gap => (PageLabel::new(0), false),
+            };
+            let t = if self.slot(k) == PageSlot::Gap { GAP } else { text.as_str() };
             self.widths[k] = cx
                 .text
-                .measure_weighted(
-                    label.as_str(),
-                    me.font_size,
-                    if first + k == self.page { 600.0 } else { me.font_weight },
-                    limits.max_w,
-                )
+                .measure_weighted(t, me.font_size, if current { 600.0 } else { me.font_weight }, limits.max_w)
                 .w;
         }
         lumen_static::ops::record_painted(st, i, limits, s, &me)
@@ -228,7 +296,6 @@ impl Node for Pagination {
         }
         out.rounded_rect(r, s.bg, s.radius);
         lumen_static::ops::border(st, i, out);
-        let (first, n) = self.window();
         let each = w / self.slots() as f32;
         // `<`, the numbers, `>`. Arrows are two lines each, so no glyph
         // and no font — `Icon`'s argument, one widget over.
@@ -247,17 +314,29 @@ impl Node for Pagination {
             false,
             if self.page + 1 >= self.pages { dim } else { s.fg },
         );
-        for k in 0..n {
-            let p = first + k;
+        // Hover (M57/B49): a tint on the slot under the pointer, arrows
+        // included, unless it is the current page's pill.
+        if let Some(k) = self.hot {
+            let current = k >= 1 && k <= self.count() && self.slot(k - 1) == PageSlot::Page(self.page);
+            if !current {
+                let x = r[0] + each * k as f32;
+                out.rounded_rect([x + 3.0, r[1] + 4.0, x + each - 3.0, r[3] - 4.0], Color(s.fg.0, s.fg.1, s.fg.2, 0x1c), 6.0);
+            }
+        }
+        for k in 0..self.count() {
             let x = r[0] + each * (k as f32 + 1.0);
-            if p == self.page {
+            let (label, current) = match self.slot(k) {
+                PageSlot::Page(p) => (PageLabel::new(p + 1), p == self.page),
+                PageSlot::Gap => (PageLabel::new(0), false),
+            };
+            if current {
                 out.rounded_rect([x + 3.0, r[1] + 4.0, x + each - 3.0, r[3] - 4.0], s.fg, 6.0);
             }
-            let col = if p == self.page { s.bg } else { s.fg };
+            let col = if current { s.bg } else { s.fg };
             // Page numbers are 1-based on screen and 0-based in the
             // field: every user-facing pagination counts from one, and
             // every array does not.
-            let label = PageLabel::new(p + 1);
+            let text = if self.slot(k) == PageSlot::Gap { GAP } else { label.as_str() };
             // Centred in the slot, from the width `layout` measured —
             // the same centre the pill above uses, so the two agree by
             // construction rather than by coincidence.
@@ -265,9 +344,9 @@ impl Node for Pagination {
             let tx = x + (each - tw) / 2.0;
             out.text_weighted(
                 [tx, r[1] + h / 2.0 - s.font_size * 0.6, tx + tw, r[3]],
-                label.as_str(),
+                text,
                 s.font_size,
-                if p == self.page { 600.0 } else { s.font_weight },
+                if current { 600.0 } else { s.font_weight },
                 col,
             );
         }
@@ -284,13 +363,29 @@ impl Node for Pagination {
                     self.next_page();
                     true
                 }
+                // A number: go there and leave the strip still. A gap: jump
+                // past it, and let the middle follow.
                 Some(k) => {
-                    let (first, _) = self.window();
-                    self.go(first + k - 1);
+                    match self.slot(k - 1) {
+                        PageSlot::Page(p) => {
+                            self.set_page(p);
+                        }
+                        PageSlot::Gap if k - 1 == 1 => {
+                            self.go(self.start - 1);
+                        }
+                        PageSlot::Gap => {
+                            self.go(self.start + MIDDLE);
+                        }
+                    }
                     true
                 }
                 None => false,
             },
+            Event::Hover { .. } => {
+                let k = self.slot_at(cx.local.x);
+                core::mem::replace(&mut self.hot, k) != k
+            }
+            Event::Leave => self.hot.take().is_some(),
             Event::Key { key: Key::Right, down: true } => self.next_page(),
             Event::Key { key: Key::Left, down: true } => self.prev_page(),
             Event::Key { key: Key::Home, down: true } => self.go(0),
