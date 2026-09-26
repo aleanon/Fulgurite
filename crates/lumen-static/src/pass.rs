@@ -753,8 +753,16 @@ fn dispatch_at<S: crate::event::App>(
             // see that they changed (M25/T25.0).
             match ev {
                 Event::PointerMove { .. } => {
+                    let left = input.hovered;
                     input.hovered = hit.map(|h| h.node);
                     set_hovered(st, input.hovered);
+                    // **The node the pointer left is told** — M57/B50.
+                    if let Some(l) = left.filter(|&l| Some(l) != input.hovered && (l as usize) < table.len()) {
+                        let lctx = EventCtx::for_event_with(l, Event::Leave, mods);
+                        if state.tree_mut().node_mut(l as usize).on_event(&Event::Leave, &lctx) {
+                            consumed.push(l as usize);
+                        }
+                    }
                 }
                 Event::PointerDown { .. } => {
                     input.hovered = hit.map(|h| h.node);

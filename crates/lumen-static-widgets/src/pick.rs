@@ -524,6 +524,8 @@ impl<const KIND: u8> Node for Pad<KIND> {
     fn on_event(&mut self, ev: &Event, cx: &EventCtx) -> bool {
         let pad = self.pad;
         match ev {
+            // The pointer left: no cell is hot (M57/B50).
+            Event::Leave => self.hot.take().is_some(),
             Event::PointerMove { .. } => {
                 let was = self.hot;
                 self.hot = self.cell_at(cx.local.x, cx.local.y, pad);

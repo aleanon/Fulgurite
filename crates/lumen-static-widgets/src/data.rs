@@ -591,6 +591,8 @@ impl Node for Tree {
             // this arm, written as a move, could fire only while the
             // button was still held after a fold. Two widgets shipped
             // that way (M27/T27.11, finding 3).
+            // The pointer left: no row is hot (M57/B50).
+            Event::Leave => self.hot.take().is_some(),
             Event::Hover { .. } => {
                 let was = self.hot;
                 self.hot = self.row_at(cx.local.y - self.pad.top);

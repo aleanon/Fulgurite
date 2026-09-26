@@ -213,6 +213,15 @@ pub enum Event {
     /// event fires once, when focus moves, which is what "opens on focus"
     /// means. Never enqueued by a host.
     Focus { gained: bool },
+    /// The pointer left this node — M57/B50 (`docs/plan-widget-fixes.md`).
+    ///
+    /// Synthesized by `dispatch` when a move changes which node the pointer
+    /// is over, and sent to the node it left. A widget that tracks a hovered
+    /// *row* from [`Event::Hover`] learned when the row changed, never when
+    /// the pointer left altogether: a tree kept its highlight after the
+    /// pointer moved away (`docs/widget-audit.md`, Tree). Never enqueued by
+    /// a host.
+    Leave,
     /// One finger, at one moment — `docs/plan-capabilities.md` T15.5.
     ///
     /// **`id` is a `u32`, and that was measured rather than chosen.**
@@ -280,7 +289,7 @@ impl Event {
             | Event::Hover { x, y }
             | Event::Touch { x, y, .. }
             | Event::Scroll { x, y, .. } => Some(Point { x, y }),
-            Event::Key { .. } | Event::Text { .. } | Event::Modifiers(_) | Event::Focus { .. } => None,
+            Event::Key { .. } | Event::Text { .. } | Event::Modifiers(_) | Event::Focus { .. } | Event::Leave => None,
         }
     }
 }
