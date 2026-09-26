@@ -270,9 +270,12 @@ fn each_kind_reads_its_own_value() {
 fn a_file_list_truncates_rather_than_refusing() {
     let many: Vec<&'static str> = core::iter::repeat_n("x.rs", MAX_FILES + 10).collect();
     let f = Picker::<FILE>::new().with_files(&many);
+    // What it *holds*: `cells()` became the window on show when the list
+    // started scrolling (M57/B19), and counting it would test the window.
     assert_eq!(
-        f.cells().cells(),
+        f.cells().file_count(),
         MAX_FILES,
         "a list longer than the cap should be cut to it, not dropped"
     );
+    assert_eq!(f.cells().cells(), lumen_static_widgets::pick::FILE_ROWS, "the window is not capped");
 }

@@ -74,6 +74,9 @@ const HEAD_H: f32 = 28.0;
 /// twice the arrow's drawn width, so it is a target and not a glyph
 /// (M57/B17).
 const ARROW_HIT: f32 = 28.0;
+/// Rows a file list shows before it scrolls — M57/B19. A long list was a
+/// popup taller than the window.
+pub const FILE_ROWS: usize = 8;
 
 /// The weekday strip under it.
 ///
@@ -143,6 +146,8 @@ pub struct Pad<const KIND: u8> {
     files: [&'static str; MAX_FILES],
     file_count: usize,
     pub file: usize,
+    /// `FILE`: the first file on show, moved by the wheel (M57/B19).
+    first: usize,
     /// The cell under the pointer, for the hover shade.
     hot: Option<usize>,
     /// Set when a cell was chosen; the `Picker` takes it in `layout`,
@@ -173,6 +178,7 @@ impl<const KIND: u8> Default for Pad<KIND> {
             files: [""; MAX_FILES],
             file_count: 0,
             file: 0,
+            first: 0,
             hot: None,
             picked: false,
             digit_w: (0.0, 0.0),
@@ -205,7 +211,8 @@ impl<const KIND: u8> Pad<KIND> {
             DATE => 42,
             // Twenty-four hours, then twelve five-minute marks.
             TIME => 36,
-            _ => self.file_count,
+            // A window of the list: visible cell `k` is file `k + first`.
+            _ => self.file_count.min(FILE_ROWS),
         }
     }
 
@@ -246,6 +253,12 @@ impl<const KIND: u8> Pad<KIND> {
         Some((k - lead + 1) as u8)
     }
 
+    /// How many names a `FilePicker` holds — not how many it shows, which
+    /// is [`Pad::cells`], at most [`FILE_ROWS`] (M57/B19).
+    pub fn file_count(&self) -> usize {
+        self.file_count
+    }
+
     /// The name in cell `k`.
     pub fn file_at(&self, k: usize) -> &'static str {
         if k < self.file_count {
@@ -262,7 +275,7 @@ impl<const KIND: u8> Pad<KIND> {
             DATE => self.shown_month() == (self.year, self.month) && self.day_at(k) == Some(self.day),
             TIME if k < 24 => k as u8 == self.hour,
             TIME => (k - 24) as u8 * 5 == self.minute,
-            _ => k == self.file,
+            _ => k + self.first == self.file,
         }
     }
 
@@ -339,20 +352,25 @@ impl<const KIND: u8> Pad<KIND> {
                 }
                 None => false,
             },
+            // **An hour does not close the clock** — M57/B18. Picking the
+            // hour closed the popup, so a time was always HH:00 unless the
+            // user opened it twice. The hour is set and the popup stays;
+            // the minute is the commit.
             TIME => {
                 if k < 24 {
                     self.hour = k as u8;
                 } else {
                     self.minute = (k - 24) as u8 * 5;
+                    self.picked = true;
                 }
-                self.picked = true;
                 true
             }
             _ => {
-                if k >= self.file_count {
+                let f = k + self.first;
+                if f >= self.file_count {
                     return false;
                 }
-                self.file = k;
+                self.file = f;
                 self.picked = true;
                 true
             }
@@ -517,15 +535,16 @@ impl<const KIND: u8> Node for Pad<KIND> {
             let cell = [x, y, x + self.cell_w(), y + CELL_H];
             let selected = self.is_selected(k);
             if KIND == COLOR {
-                let inset = if selected { 1.0 } else { 3.0 };
+                // **A ring, a gap, then the swatch** — M57/B16. The ring
+                // was the text colour straight against the swatch, so on a
+                // dark swatch the selection all but vanished. The gap in
+                // the pad's own ground separates them whatever the swatch.
+                let sw = [cell[0] + 5.0, cell[1] + 3.0, cell[2] - 5.0, cell[3] - 3.0];
                 if selected {
-                    out.rounded_rect(cell, s.fg, 7.0);
+                    out.rounded_rect([sw[0] - 3.0, sw[1] - 3.0, sw[2] + 3.0, sw[3] + 3.0], s.fg, 8.0);
+                    out.rounded_rect([sw[0] - 1.5, sw[1] - 1.5, sw[2] + 1.5, sw[3] + 1.5], s.bg, 6.5);
                 }
-                out.rounded_rect(
-                    [cell[0] + inset + 2.0, cell[1] + inset, cell[2] - inset - 2.0, cell[3] - inset],
-                    SWATCHES[k.min(SWATCHES.len() - 1)],
-                    5.0,
-                );
+                out.rounded_rect(sw, SWATCHES[k.min(SWATCHES.len() - 1)], 5.0);
                 continue;
             }
             let text = match KIND {
@@ -535,7 +554,7 @@ impl<const KIND: u8> Node for Pad<KIND> {
                 },
                 TIME if k < 24 => alloc::format!("{k}"),
                 TIME => alloc::format!(":{:02}", (k - 24) * 5),
-                _ => String::from(self.file_at(k)),
+                _ => String::from(self.file_at(k + self.first)),
             };
             if selected {
                 out.rounded_rect(cell, s.fg, 6.0);
@@ -565,6 +584,15 @@ impl<const KIND: u8> Node for Pad<KIND> {
         match ev {
             // The pointer left: no cell is hot (M57/B50).
             Event::Leave => self.hot.take().is_some(),
+            // A long file list scrolls by rows (M57/B19). Declined at an
+            // end, so the wheel chains to what is behind, as a scroller's
+            // does (C4).
+            Event::Scroll { dy, .. } if KIND == FILE => {
+                let rows = ((dy.abs() / CELL_H).round() as usize).max(1);
+                let last = self.file_count.saturating_sub(FILE_ROWS);
+                let to = if *dy < 0.0 { (self.first + rows).min(last) } else { self.first.saturating_sub(rows) };
+                core::mem::replace(&mut self.first, to) != to
+            }
             Event::PointerMove { .. } => {
                 let was = self.hot;
                 self.hot = self.cell_at(cx.local.x, cx.local.y, pad);
@@ -618,11 +646,13 @@ pub struct Picker<const KIND: u8 = COLOR> {
     /// The trigger's laid-out box, so a press can be told from a press
     /// somewhere else.
     trigger: Size,
+    /// The trigger text's line height, from layout.
+    line_h: f32,
 }
 
 impl<const KIND: u8> Default for Picker<KIND> {
     fn default() -> Self {
-        Picker { pad: Popup::new(Pad::<KIND>::default()), trigger: Size { w: 0.0, h: 0.0 } }
+        Picker { pad: Popup::new(Pad::<KIND>::default()), trigger: Size { w: 0.0, h: 0.0 }, line_h: 0.0 }
     }
 }
 
@@ -717,6 +747,9 @@ impl<const KIND: u8> PickerTable<KIND> {
                 Fields::RADIUS,
                 Fields::BORDER,
                 Fields::VISIBLE,
+                Fields::CURSOR,
+                Fields::HOVER_DIM,
+                Fields::PRESSED_DIM,
             ])).with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Text).background(lumen_static::style::Role::Raised).border(lumen_static::style::Role::Border));
         lumen_static::widget::splice_seeds(&mut s, 2, <Popup<Pad<KIND>> as Widget>::SEEDS);
         s
@@ -757,6 +790,10 @@ impl<const KIND: u8> Picker<KIND> {
             border_color: Color(0xcb, 0xd2, 0xdb, 0xff),
             font_size: 14.0,
             radius: 8.0,
+            // A control that opens something says so (M57/B16).
+            cursor: lumen_static::style::Cursor::Pointer,
+            hover_dim: 0.04,
+            pressed_dim: 0.10,
             ..Style::default()
         }
     }
@@ -804,6 +841,7 @@ impl<const KIND: u8> Node for Picker<KIND> {
             &style[i + Self::TRIGGER],
         );
         self.trigger = t;
+        self.line_h = cx.text.line_height(style[i + Self::TRIGGER].font_size);
         // Flipping above clears the trigger (M57/A18).
         self.pad.above_by = t.h;
         self.pad.layout(cx, limits, style, st, i + Self::POPUP);
@@ -836,14 +874,17 @@ impl<const KIND: u8> Node for Picker<KIND> {
                 out.rounded_rect([x, mid - 8.0, x + 16.0, mid + 8.0], c, 4.0);
                 x += 24.0;
             }
+            // Centred on the line box, as a button centres its label —
+            // the renderer puts the capitals in its middle (M57/B19: it
+            // was placed from a 0.6 em guess and sat high).
             let text = self.text();
-            out.text_weighted(
-                [x, (r[1] + r[3]) / 2.0 - s.font_size * 0.6, r[2] - s.pad.2, r[3]],
-                &text,
-                s.font_size,
-                s.font_weight,
-                s.fg,
-            );
+            let y = (r[1] + r[3] - self.line_h) / 2.0;
+            let chev = 16.0;
+            out.text_weighted([x, y, r[2] - s.pad.2 - chev, y + self.line_h], &text, s.font_size, s.font_weight, s.fg);
+            // A chevron: this opens (M57/B16).
+            let (cx, cy, d) = (r[2] - s.pad.2 - chev / 2.0, (r[1] + r[3]) / 2.0, 3.5);
+            out.line(Point { x: cx - d, y: cy - d / 2.0 }, Point { x: cx, y: cy + d / 2.0 }, 1.5, s.fg);
+            out.line(Point { x: cx, y: cy + d / 2.0 }, Point { x: cx + d, y: cy - d / 2.0 }, 1.5, s.fg);
         }
         self.pad.paint(st, i + Self::POPUP, out);
     }
@@ -865,11 +906,23 @@ impl<const KIND: u8> Node for Picker<KIND> {
         None
     }
 
-    fn on_event(&mut self, ev: &Event, _cx: &EventCtx) -> bool {
+    fn on_event(&mut self, ev: &Event, cx: &EventCtx) -> bool {
         match ev {
             Event::Key { key: Key::Escape, down: true } if self.pad.open => {
                 self.pad.open = false;
                 true
+            }
+            // **Only the trigger toggles** — M57/B16. A press on the pad's
+            // own padding or its weekday strip is declined by the pad and
+            // bubbled here, and this flipped `open` for any release: the
+            // popup closed under a press inside it. The trigger is this
+            // node's own index (`node(1)` is `self`), so a release aimed
+            // at it arrives with `node == target`; one bubbled up from the
+            // pad does not.
+            Event::PointerUp { .. } | Event::Key { key: Key::Enter | Key::Space, down: true }
+                if cx.target != cx.node =>
+            {
+                false
             }
             // **A press on the trigger opens it; a press anywhere else
             // does not reach here.** `dispatch_overlaid` consumes a
@@ -877,7 +930,7 @@ impl<const KIND: u8> Node for Picker<KIND> {
             // re-open what that press just closed, which is the
             // second-press-closes behaviour a dropdown needs and the one
             // `Chooser` had to reach for focus to get (T27.9).
-            Event::PointerUp { .. } | Event::Key { key: Key::Enter, down: true } => {
+            Event::PointerUp { .. } | Event::Key { key: Key::Enter | Key::Space, down: true } => {
                 self.pad.open = !self.pad.open;
                 true
             }

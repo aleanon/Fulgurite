@@ -122,23 +122,25 @@ DATE = ("DatePicker", "#d_datepicker_a", _shared(
     ),
 ])
 
+# M57/B18: the clock's commit is the *minute*. The shared action pressed
+# hour 14 and expected the popup closed -- which asserted the defect, that
+# picking the hour closed the clock before a minute could be chosen.
 TIME = ("TimePicker", "#d_timepicker_a", _shared(
-    "TimePicker", "#d_timepicker_a", 6, 34.0, 14, "14:00") + [
+    "TimePicker", "#d_timepicker_a", 6, 34.0, 27, "09:15") + [
     Action(
-        name="a minute mark changes the minute and not the hour",
-        needs="an open time picker on some hour",
+        name="an hour sets the hour and keeps the clock open",
+        needs="an open time picker on a minute other than the hour's",
         do=lambda c: (c.__dict__.__setitem__("_v0", c.value()),
-                      _cell(c, 27, 6, 34.0))[0],
+                      _cell(c, 14, 6, 34.0))[0],
         expect=lambda c: (
-            c.value()[:2] == c._v0[:2]
-            and c.value()[3:] == "15"
-            and c._v0[3:] != "15",
-            f"{c._v0} -> {c.value()}: cell 27 is the fourth minute mark, :15 — "
-            f"and the hour is untouched",
+            c.value()[:2] == "14" and c._v0[:2] != "14"
+            and c.value()[3:] == c._v0[3:] and _is_open(c),
+            f"{c._v0} -> {c.value()}, open={_is_open(c)}: cell 14 is hour 14, "
+            f"the minute is untouched and the clock stays open for it",
         ),
         isolate=lambda c: (c.__dict__.__setitem__("_v0", c.value()),
                            c.click_outside())[0],
-        injection="treat every cell as an hour",
+        injection="set `picked` on an hour press, so the picker closes on it",
     ),
 ])
 
