@@ -210,6 +210,18 @@ pub trait Node {
         true
     }
 
+    /// The row a key activation should reach instead of the focused node —
+    /// M57/B21 — as `(repeater's table index, row, template node)`.
+    ///
+    /// For a widget whose choices are virtual rows the keyboard cannot
+    /// focus: a `Select` walks a highlight with the arrows, and Enter on its
+    /// trigger must run the highlighted row's handler, not the trigger's.
+    /// `i` is this node's own table index. `None` by default.
+    fn activation_redirect(&self, i: usize) -> Option<(u32, u64, u32)> {
+        let _ = i;
+        None
+    }
+
     /// How far this node's content is scrolled from its top, for a node
     /// that scrolls; `None` for one that does not — M57/B40.
     ///

@@ -972,6 +972,33 @@ fn dispatch_at<S: crate::event::App>(
         return false;
     }
 
+    // **A key may activate a row the keyboard is on** — M57/B21. A
+    // `Select`'s rows are the application's, virtual and never focused;
+    // Enter on its trigger ran the trigger's handler, so a keyboard user
+    // could open the menu and never choose from it. An ancestor of the
+    // focus that answers `activation_redirect` names the row, and the walk
+    // starts there with the row in `ctx`, exactly as a click on it would.
+    let (start, inner) = {
+        let (mut start, mut inner) = (start, inner);
+        if matches!(ev, Event::Key { .. }) {
+            let mut k = start;
+            loop {
+                if let Some((node, row, tnode)) = state.tree().node(k).activation_redirect(k) {
+                    start = node as usize;
+                    inner = Some((row, tnode));
+                    ctx.row = Some(row);
+                    ctx.inner = tnode;
+                    break;
+                }
+                if table[k].parent == crate::desc::NO_PARENT {
+                    break;
+                }
+                k = table[k].parent as usize;
+            }
+        }
+        (start, inner)
+    };
+
     let mut i = start;
     loop {
         ctx.node = i as u32;

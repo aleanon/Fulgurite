@@ -369,6 +369,8 @@ fn refresh(s: &mut Show) -> bool {
             d.a.menu.open = s.store.select_open;
             changed = true;
         }
+        // The current choice, for the menu to mark (M57/B21).
+        d.a.current = Some(s.store.pick);
         let want = catalog::FRUIT[s.store.pick];
         if d.a.trigger.label != want {
             d.a.trigger.label.clear();

@@ -102,6 +102,13 @@ pub struct Repeat<T: Widget + Default + 'static> {
     /// for the same reason. It is last frame's, which is this frame's
     /// for any gesture that did not also resize the window.
     viewport: f32,
+    /// A row drawn as the keyboard's — M57/B21 — tinted over its content.
+    /// For an owner like `Select` whose rows are the application's: only
+    /// the repeater paints them, in the overlay pass, so only it can mark
+    /// one.
+    pub highlight: Option<usize>,
+    /// A row drawn as the current choice, tinted more faintly (M57/B21).
+    pub current: Option<usize>,
 }
 
 impl<T: Widget + Default> Default for Repeat<T> {
@@ -121,6 +128,8 @@ impl<T: Widget + Default> Repeat<T> {
             arena: crate::arena::Arena::new(T::NODE_COUNT),
             first: 0,
             viewport: 0.0,
+            highlight: None,
+            current: None,
         }
     }
 
@@ -551,6 +560,17 @@ impl<T: Widget + Default + 'static> Node for Repeat<T> {
         out.push_clip(r);
         for k in 0..self.window.len() {
             self.window[self.slot(k)].paint(self.slice(k), 0, out);
+        }
+        // The keyboard's row and the current choice, over their rows and in
+        // each row's own text colour, so the tint reads in either palette.
+        for (row, alpha) in [(self.current, 0x1a), (self.highlight, 0x33)] {
+            let Some(row) = row else { continue };
+            if row < self.first || row >= self.first + self.window.len() {
+                continue;
+            }
+            let rs = self.slice(row - self.first)[0];
+            let c = rs.fg;
+            out.rounded_rect(crate::ops::rect_of(&rs), crate::display::Color(c.0, c.1, c.2, alpha), 6.0);
         }
         out.pop_clip();
     }

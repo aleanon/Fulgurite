@@ -54,7 +54,7 @@
 use lumen_static::cx::LayoutCx;
 use lumen_static::desc::{Constraints, NodeDesc, NodeState, Point, Size, NO_PARENT};
 use lumen_static::display::Painter;
-use lumen_static::event::EventCtx;
+use lumen_static::event::{Event, EventCtx, Key};
 use lumen_static::hit::Hit;
 use crate::ops::Button;
 use crate::popup::{Anchor, Popup};
@@ -101,13 +101,19 @@ pub struct Select<S: 'static> {
     /// Run when the pass dismisses the menu — Escape, or a press outside
     /// it — so the application can clear its `open`. See the module docs.
     pub on_dismiss: fn(&mut S, &EventCtx),
+    /// **The current choice, for the menu to mark** — M57/B21. Controlled,
+    /// like the trigger's label: the application writes it. The reopened
+    /// menu marked nothing (`docs/widget-audit.md`, Select).
+    pub current: Option<usize>,
+    /// The keyboard's row while the menu is open (M57/B21).
+    highlight: Option<usize>,
 }
 
 impl<S: 'static> Default for Select<S> {
     fn default() -> Self {
         let mut menu = SelectMenu::<S>::default();
         menu.anchor = Anchor::Below;
-        Select { trigger: Trigger::<S>::default(), menu, on_dismiss: |_, _| {} }
+        Select { trigger: Trigger::<S>::default(), menu, on_dismiss: |_, _| {}, current: None, highlight: None }
     }
 }
 
@@ -261,6 +267,12 @@ impl<S: 'static> Node for Select<S> {
         // cannot widen or lengthen this control.
         // Flipping above clears the trigger (M57/A18).
         self.menu.above_by = size.h;
+        // The current choice and the keyboard's row, for the menu to draw.
+        if !self.menu.open {
+            self.highlight = None;
+        }
+        self.menu.content.current = self.current;
+        self.menu.content.highlight = self.highlight;
         self.menu.layout(cx, limits, style, st, i + Self::MENU);
         lumen_static::ops::record_painted(st, i, limits, size, &me)
     }
@@ -303,6 +315,38 @@ impl<S: 'static> Node for Select<S> {
         self.menu
             .hit(st, i + Self::MENU, x, y)
             .or_else(|| self.trigger.hit(st, i + Self::TRIGGER, x, y))
+    }
+
+    /// **Down and Up walk the open menu** — M57/B21. The menu's rows are
+    /// the application's and cannot take focus, so the keyboard stays on
+    /// the trigger and moves a highlight; Enter on the trigger reaches the
+    /// highlighted row through `activation_redirect`. Tab was trapped in
+    /// the overlay and focus never reached a row, so a keyboard user could
+    /// open a Select and not choose from it.
+    fn on_event(&mut self, ev: &Event, _cx: &EventCtx) -> bool {
+        match ev {
+            Event::Key { key: k @ (Key::Down | Key::Up), down: true } if self.menu.open => {
+                let n = self.menu.content.count;
+                if n == 0 {
+                    return false;
+                }
+                let d: i64 = if *k == Key::Down { 1 } else { -1 };
+                let from = self.highlight.or(self.current);
+                self.highlight = Some(match from {
+                    Some(h) => (h as i64 + d).clamp(0, n as i64 - 1) as usize,
+                    None if d > 0 => 0,
+                    None => n - 1,
+                });
+                true
+            }
+            _ => false,
+        }
+    }
+
+    fn activation_redirect(&self, i: usize) -> Option<(u32, u64, u32)> {
+        // The repeater is the popup's content: one past the popup's node.
+        let h = self.highlight.filter(|_| self.menu.open)?;
+        Some(((i + Self::MENU + 1) as u32, h as u64, 0))
     }
 
     fn dismiss(&mut self) -> bool {
