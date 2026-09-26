@@ -61,6 +61,10 @@ repeater's origin; `paint` walks the window.
 - **f32 extent ceiling.** `count * item_extent` at 10M rows is 2.4e8 px,
   past f32's exact-integer range; deep-scroll positions quantize. Real
   fix (f64 scroll domain or window-relative coordinates) deferred.
+  **Since M44/T44.7 the rows past the ceiling are cut** rather than laid
+  out on top of each other (`Repeat::reachable_rows`), in every build,
+  and the agent's `W1009` names the cut; `Repeat::MAX_ADDRESSABLE_EXTENT`
+  has the reasoning and the measured overlap it replaced.
 
 ## Measurements
 

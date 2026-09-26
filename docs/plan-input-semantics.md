@@ -910,3 +910,11 @@ records the case that forced it.
   before/after diff. A sweep adds the table's length once.
 - **Host's overlay list is private**, so item 11's setup asserts the
   tooltip's and the modal panel's area rather than the list.
+- **T44.7 does not debug-assert the ceiling.** The plan asked for a
+  `debug_assert!` in `layout` plus a release clamp. A repeater's count is
+  the application's data, so a debug build would crash on a large file
+  that a release build shows correctly — and the agent's `W1009`, which
+  exists to report exactly this and runs in debug builds, could never be
+  seen (its own test lays out a million-row list in debug). The clamp is
+  in every build instead, and the gate runs in both: T44.0's debug
+  `should_panic` test became `a_repeater_past_the_ceiling_disagrees_nowhere`.

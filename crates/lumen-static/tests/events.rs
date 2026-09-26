@@ -462,7 +462,6 @@ fn misrouted_after_scrolling(rows: usize) -> usize {
 }
 
 #[test]
-#[ignore = "red until T44.7: R3-F5 (Handlers::handler indexes the ring by position, not slot)"]
 fn a_rotated_ring_routes_each_click_to_its_own_rows_handler() {
     let n = misrouted_after_scrolling(3);
     println!("misrouted {n} of 10 (bound 0)");

@@ -236,10 +236,26 @@ impl<T: Widget + Default> Repeat<T> {
     /// The number, since this had been deferred twice without one
     /// (`docs/step3-repeaters.md`): at the common 24 px row, **699,050
     /// rows** is the ceiling; at 1 px it is 16.7 million. Below the
-    /// ceiling every row is reachable. Above it, `layout` debug-asserts;
-    /// a release build scrolls with gaps rather than panicking, which is
-    /// the lesser of the two wrongs for a list nobody can scroll to the
-    /// end of anyway.
+    /// ceiling every row is reachable.
+    ///
+    /// **Above it, the rows past the ceiling do not exist** — M44/T44.7.
+    /// Every geometric use of `count` (the content height, the scroll
+    /// range, the window) goes through [`Repeat::reachable_rows`], which
+    /// clamps it, so every row that is laid out is reachable, is placed
+    /// one extent below the one before it, and is hit where it is
+    /// painted. This rustdoc used to say `layout` debug-asserts and a
+    /// release build "scrolls with gaps"; neither was true. No assertion
+    /// existed, and the failure was **overlapping rows**: `place`
+    /// computes `row * extent - scroll` in `f32`, and at a billion pixels
+    /// one ulp is 64 px, so at 50 million rows 13 of 18 visible rows were
+    /// hit somewhere other than where they were painted
+    /// (`crates/lumen-static/tests/scroll_view.rs`). The clamp is in
+    /// every build, not a debug panic, because the count is the
+    /// application's *data* — a debug build that crashed when a user
+    /// opened a large file would be worse than one that shows the first
+    /// sixteen million pixels of it. The agent's audit reports the cut as
+    /// `W1009` (`crates/lumen-static-agent/src/audit.rs`), and the
+    /// accessibility tree still reports the true `count`.
     ///
     /// Raising it means an `f64` offset, which is a change to
     /// `NodeState`'s width and therefore to the memory budget §2 cares
@@ -254,6 +270,14 @@ impl<T: Widget + Default> Repeat<T> {
     #[inline]
     fn extent_is_usable(&self) -> bool {
         self.item_extent.is_finite() && self.item_extent >= Self::MIN_ITEM_EXTENT
+    }
+
+    /// The rows this repeater lays out: `count`, clamped to
+    /// [`Repeat::max_addressable_rows`] (M44/T44.7). See
+    /// [`Repeat::MAX_ADDRESSABLE_EXTENT`] for why rows past the ceiling
+    /// are cut rather than drawn on top of each other.
+    pub fn reachable_rows(&self) -> usize {
+        self.count.min(self.max_addressable_rows())
     }
 
     /// Rows this repeater can address at its current `item_extent`.
@@ -280,7 +304,7 @@ impl<T: Widget + Default> Repeat<T> {
         if self.count == 0 || !self.extent_is_usable() || !viewport_h.is_finite() {
             return 0.0;
         }
-        (self.count as f32 * self.item_extent - viewport_h).max(0.0)
+        (self.reachable_rows() as f32 * self.item_extent - viewport_h).max(0.0)
     }
 
     /// The offset actually used, clamped to what there is to scroll.
@@ -309,16 +333,17 @@ impl<T: Widget + Default> Repeat<T> {
         // Spelled out rather than `!(extent >= MIN)`: NaN must land in
         // the reject arm, and `is_finite` says so where a negated
         // comparison would only imply it.
-        if self.count == 0 || !self.extent_is_usable() {
+        let count = self.reachable_rows();
+        if count == 0 || !self.extent_is_usable() {
             return (0, 0);
         }
         let first = (crate::num::floor(self.offset(viewport_h) / self.item_extent).max(0.0)
             as usize)
-            .min(self.count - 1);
+            .min(count - 1);
         // saturating_add, not `+ 1`: the ceil can saturate the cast.
         let vis = (crate::num::ceil(viewport_h / self.item_extent) as usize)
             .saturating_add(1)
-            .min(self.count - first)
+            .min(count - first)
             .min(Self::MAX_WINDOW);
         (first, vis)
     }
@@ -438,7 +463,7 @@ impl<T: Widget + Default + 'static> Node for Repeat<T> {
         // `count * item_extent` and `content.w` is the limit. So the box
         // can be resolved first, and everything below measured against
         // it.
-        let content = Size { w: limits.max_w, h: self.count as f32 * self.item_extent };
+        let content = Size { w: limits.max_w, h: self.reachable_rows() as f32 * self.item_extent };
         let s = crate::ops::resolve_self(limits, &style[i], content);
         let (first, vis) = self.visible_range(s.h);
         self.first = first;
@@ -547,7 +572,7 @@ impl<T: Widget + Default + 'static> Node for Repeat<T> {
         _st: &mut [NodeState],
         i: usize,
     ) -> Size {
-        let content = Size { w: limits.max_w, h: self.count as f32 * self.item_extent };
+        let content = Size { w: limits.max_w, h: self.reachable_rows() as f32 * self.item_extent };
         crate::ops::resolve_self(limits, &style[i], content)
     }
 
@@ -717,7 +742,17 @@ where
     fn handler(&self, sel: crate::event::NodeSel) -> Option<fn(&mut S, &crate::event::EventCtx)> {
         let (row, node) = sel.inner?;
         let k = (row as usize).checked_sub(self.first)?;
-        let item = self.window.get(k)?;
+        // **Through the ring, like paint, hit and `instance`** —
+        // M44/T44.7, R3-F5. Window position `k` lives in slot
+        // `(first + k) % len`; this indexed `window` raw, so once the ring
+        // had rotated a click ran another row's handler, which nothing
+        // saw while every repeater bound the same handler to every row
+        // (`crates/lumen-static/tests/events.rs`). The explicit bound
+        // replaces the one the raw `get` gave, since `slot` wraps.
+        if k >= self.window.len() {
+            return None;
+        }
+        let item = self.window.get(self.slot(k))?;
         item.handler(crate::event::NodeSel { i: node as usize, inner: None })
     }
 }

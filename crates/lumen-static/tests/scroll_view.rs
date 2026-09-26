@@ -280,7 +280,7 @@ fn a_wheel_over_content_that_fits_is_declined() {
 //
 // `Repeat::MAX_ADDRESSABLE_EXTENT`'s rustdoc said that above the ceiling
 // `layout` debug-asserts and a release build "scrolls with gaps". No
-// assertion existed, and the failure is not gaps: `place` computes each
+// assertion existed, and the failure was not gaps: `place` computes each
 // row's offset as `(first + k) * extent - scroll` in `f32`, and at a
 // billion pixels one ulp is 64 px, so rows land on top of each other and
 // a click at the centre of a painted row reaches a different row.
@@ -337,34 +337,27 @@ fn probe_versus_paint(r: &Repeat<Fixed>, st: &[NodeState]) -> (usize, usize, f32
     (checked, bad, worst)
 }
 
-/// **Debug builds refuse a repeater past the ceiling, by name.**
+/// **A repeater past the ceiling clamps, so every materialised row is
+/// where it is painted** — in every build.
+///
+/// T44.0 wrote this as two tests: a debug `should_panic` naming the
+/// ceiling, and this one for release only. T44.7 decided against the
+/// panic (the count is data; `Repeat::MAX_ADDRESSABLE_EXTENT` says why),
+/// so the clamp is what every build does and this runs in both.
 #[test]
-#[cfg(debug_assertions)]
-#[should_panic(expected = "MAX_ADDRESSABLE_EXTENT")]
-#[ignore = "red until T44.7: R3-F10 (no debug assertion guards the ceiling)"]
-fn a_repeater_past_the_ceiling_panics_in_debug() {
-    let r = Repeat::<Fixed>::new(HUGE, ROW, size_row);
-    println!("count {HUGE}, max_addressable_rows {}", r.max_addressable_rows());
-    assert!(HUGE > r.max_addressable_rows(), "setup: the count is past the ceiling");
-    let _ = repeat_at_max_scroll(HUGE);
-}
-
-/// **A release build clamps, so every materialised row is where it is
-/// painted.** Release only: in a debug build the assertion above fires
-/// first, which is the point of it.
-#[test]
-#[cfg(not(debug_assertions))]
-#[ignore = "red until T44.7: R3-F10 (rows past the ceiling overlap; probe and paint disagree)"]
-fn a_repeater_past_the_ceiling_disagrees_nowhere_in_release() {
+fn a_repeater_past_the_ceiling_disagrees_nowhere() {
     let (r, st) = repeat_at_max_scroll(HUGE);
     let (checked, bad, worst) = probe_versus_paint(&r, &st);
     println!(
-        "count {HUGE}, extent {ROW}: {bad} of {checked} rows disagree (bound 0); worst spacing error {worst:.1} px (bound 0.5); window {}",
-        r.window_len()
+        "count {HUGE}, extent {ROW}: {bad} of {checked} rows disagree (bound 0); worst spacing error {worst:.1} px (bound 0.5); window {}; reachable {} of {HUGE}",
+        r.window_len(),
+        r.reachable_rows()
     );
     assert!(checked > 0, "setup: no materialised row was inside the viewport");
     assert_eq!(bad, 0, "a hit at a painted row's centre reached another row");
     assert!(worst <= 0.5, "rows are {worst} px off one extent apart, so they overlap");
+    assert_eq!(r.reachable_rows(), r.max_addressable_rows(), "the count was not clamped to the ceiling");
+    assert!(r.first_row() + r.window_len() <= r.max_addressable_rows(), "a row past the ceiling was materialised");
 }
 
 /// The accept direction, in both build modes: an ordinary list neither

@@ -269,7 +269,7 @@ impl Finding {
             What::UnaddressableRows { rows, addressable, extent } => format!(
                 "{rows} rows at {extent} px: only the first {addressable} have a scroll \
                  offset that selects them, because f32 holds consecutive integers to 2^24. \
-                 The rest are unreachable by scrolling"
+                 The rest are not laid out: the repeater stops at the ceiling"
             ),
             What::NestedVirtualizer { scroller, items } => format!(
                 "a virtualizing collection of {items} rows is inside the scroll region at \
@@ -365,6 +365,10 @@ impl Default for Auditor {
 }
 
 /// Rows a virtualizer holds that no scroll offset can select.
+///
+/// Since M44/T44.7 a `Repeat` clamps its geometry to the ceiling, so
+/// these rows are cut rather than overlapping; this is the only report
+/// that they were (`Repeat::MAX_ADDRESSABLE_EXTENT`).
 ///
 /// Asks the node for its row count and extent through the same
 /// `NodeStats`/`Node` surface everything else here uses, so a widget
