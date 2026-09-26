@@ -74,6 +74,15 @@ pub fn clipboard_decision(s: Shortcut) -> Option<Clip> {
 
 /// Deliver one keyboard event to `session`, as the window does.
 ///
+/// **Key text arrives whole** (M45/T45.8, R10-F8). A single character is
+/// an `Event::Text`, queued, as it always was. Text of several characters
+/// — a dead key followed by a consonant it cannot combine with (`"^a"` on
+/// a US-International layout), a decomposed accent, a flag, an Indic
+/// conjunct a layout commits per key — is committed to the focused node
+/// in one step through [`Session::compose`], which the widgets accept and
+/// `Host::compose` marks. `translate` stays one event out; the routing is
+/// here, where a test can call it.
+///
 /// Returns whether anything reached the session, which is whether the
 /// window asks for a redraw.
 pub fn deliver_key(session: &mut dyn Session, logical: &WKey, text: Option<&str>, down: bool, held: Mods) -> bool {
@@ -82,6 +91,9 @@ pub fn deliver_key(session: &mut dyn Session, logical: &WKey, text: Option<&str>
     for ev in t.iter() {
         session.post(ev);
         any = true;
+    }
+    if let translate::KeyText::Whole(s) = translate::key_text(text, down, held) {
+        any |= session.compose(lumen_static::event::Composition::Commit(s));
     }
     any
 }

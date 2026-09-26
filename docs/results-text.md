@@ -169,3 +169,22 @@ chunk-and-pump loop restored (4,096 pumps against 1); `TextInput`
 counting what was offered (9 against 6); `NumberInput`'s forward removed
 (count 5 against 4); the paste left unmarked (all six hook widgets'
 frames differ under `Boundaries`, and `handled_narrowing.rs` fires).
+
+## T45.8 — key text arrives whole (R10-F8)
+
+`translate::key_text` sorts a key press's text into none, one character
+(an `Event::Text`, unchanged) or `Whole`, which `keys::deliver_key`
+commits to the focused node through `Session::compose`.
+`lumen-static-winit/tests/key_text.rs`, a `Local` session under its
+default `Boundaries`:
+
+| key text | before | after (width 16 → ) |
+|---|---|---|
+| `"^a"` | `"^"` | `"^a"`, 35 |
+| `"e\u{301}"` | `"e"` | whole, 26 |
+| a flag | half | whole, 30 |
+| `"क्ष"` | `"क"` | whole, 39 |
+
+`whole 4 / 4` (was 0 / 4). A single `a` is still `[Key(Char('a')),
+Text('a')]`. Injection: `key_text` answering the first character for
+several: `whole 0 / 4`, `"^a"` → `"^"`.

@@ -533,6 +533,14 @@ the remaining half rather than left implied.
 
 ## T14.8 — IME — **DONE 2026-09-05** (was OPEN)
 
+> **M45/T45.8 (2026-09-26): key text that is not one character is a
+> commit.** winit's `KeyEvent::text` can hold several characters without
+> any IME — a dead key that did not combine (`"^a"`), a decomposed
+> accent, a flag — and the window kept the first and dropped the rest
+> (R10-F8). It now routes such text through `Session::compose` as a
+> commit, the path this task built; one character is still an
+> `Event::Text`. `docs/results-text.md` T45.8.
+>
 > **M45/T45.3 (2026-09-26): what IME commits is now drawable.** Until
 > then the font stack was one face and substituted `?` for every
 > character it lacked, so a CJK commit reached the buffer and rendered

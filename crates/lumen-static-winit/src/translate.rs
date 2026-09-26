@@ -199,11 +199,47 @@ pub fn keyboard(logical: &WKey, text: Option<&str>, down: bool, held: Mods) -> T
             // "shortcut" because Shift+A *is* how a capital arrives —
             // which is why `Mods::is_shortcut` masks it off rather than
             // testing for an empty set.
-    let text = text
-        .filter(|_| down && !held.is_shortcut())
-        .and_then(|t| t.chars().find(|c| !c.is_control()))
-        .map(|ch| Event::Text { ch });
+    //
+    // **One character only** (M45/T45.8). Text of more than one — a dead
+    // key that did not combine, a decomposed accent, a flag — is
+    // `key_text`'s `Whole`, which the window routes as a composition
+    // commit (`keys::deliver_key`), because an `Event` carries one `char`
+    // and this used to keep the first and drop the rest (R10-F8).
+    let text = match key_text(text, down, held) {
+        KeyText::Char(ch) => Some(Event::Text { ch }),
+        KeyText::None | KeyText::Whole(_) => None,
+    };
     Translated { events: [key, text], is_input: true }
+}
+
+/// What a key press's text becomes — M45/T45.8.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum KeyText<'a> {
+    /// Nothing to type: a key up, a shortcut, a control character.
+    None,
+    /// One character: an `Event::Text`, as it always was, so a recorded
+    /// session of ordinary typing does not change.
+    Char(char),
+    /// Several: the whole string, which the window commits to the
+    /// focused node in one step (`Session::compose`).
+    Whole(&'a str),
+}
+
+/// The text half of a key press, as [`keyboard`] and the window see it.
+///
+/// Text only on the way down, and never while a shortcut modifier is
+/// held. A string of several characters is `Whole` when none of them is
+/// a control character; one that mixes in a control character keeps its
+/// first printable one, as every key did before M45/T45.8.
+pub fn key_text(text: Option<&str>, down: bool, held: Mods) -> KeyText<'_> {
+    let Some(t) = text.filter(|_| down && !held.is_shortcut()) else { return KeyText::None };
+    let mut printable = t.chars().filter(|c| !c.is_control());
+    match (printable.next(), printable.next()) {
+        (None, _) => KeyText::None,
+        (Some(c), None) => KeyText::Char(c),
+        (Some(c), Some(_)) if t.chars().any(|c| c.is_control()) => KeyText::Char(c),
+        _ => KeyText::Whole(t),
+    }
 }
 
 /// A file the platform dropped on the window — T15.7's other half.

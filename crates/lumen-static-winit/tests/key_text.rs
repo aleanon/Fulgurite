@@ -59,7 +59,6 @@ fn press(text: &str) -> (String, f32, f32) {
 }
 
 #[test]
-#[ignore = "red until T45.8: R10-F8, key text past its first character is lost"]
 fn multi_character_key_text_reaches_the_field_whole() {
     let cases = ["^a", "e\u{301}", "\u{1f1f3}\u{1f1f4}", "\u{915}\u{94d}\u{937}"];
     let mut whole = 0;
