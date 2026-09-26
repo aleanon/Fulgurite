@@ -30,19 +30,31 @@ $LAUNCH --display-only || exit $?
 # runtime switch, so this builds twice. Both arms matter: M25/T25.0 and
 # M26/T26.1 were both defects that `Everything` hid, because it walks
 # the tree regardless of what was marked.
-for strategy in everything boundaries; do
-    echo "== $strategy =="
+#
+# A third leg builds the shadow oracle in (M41/T41.7): it lays the live
+# widgets out again after each frame it judges, so it is never the
+# `Boundaries` leg itself, only a leg beside it. `scripts/live/shadow.py`
+# asks each window's oracle the leg's question after the drive.
+for leg in everything boundaries boundaries+oracle; do
+    echo "== $leg =="
     # `Boundaries` is the default since M34/T34.2; `everything` is the
     # diagnostic feature that selects the whole-tree walk.
-    if [ "$strategy" = everything ]; then
+    case "$leg" in
+    everything)
         cargo build --release -q -p tasks-demo --features everything
-        expect=(--expect-strategy Everything --expect-features everything)
-    else
+        expect=(--expect-strategy Everything --expect-features everything) ;;
+    boundaries)
         cargo build --release -q -p tasks-demo
-        expect=(--expect-strategy Boundaries --expect-features "")
-    fi
-    $LAUNCH --leg "$strategy" --exe target/release/tasks-demo "${expect[@]}" \
-        -- env LUMEN_TASKS_PID={pid} python3 scripts/tasks_drive.py {port} "$strategy"
+        expect=(--expect-strategy Boundaries --expect-features "") ;;
+    boundaries+oracle)
+        cargo build --release -q -p tasks-demo --features lumen-static-winit/shadow-oracle
+        expect=(--expect-strategy Boundaries --expect-features shadow-oracle) ;;
+    esac
+    $LAUNCH --leg "$leg" --exe target/release/tasks-demo "${expect[@]}" \
+        -- env LUMEN_TASKS_PID={pid} bash -c \
+           'python3 scripts/tasks_drive.py "$1" "$2"; r=$?
+            python3 scripts/live/shadow.py tasks-drive || exit 1; exit $r' \
+           _ {port} "${leg%%+*}"
 done
 
-echo "tasks-drive: all five capabilities landed under both strategies"
+echo "tasks-drive: all five capabilities landed under both strategies, and under the shadow oracle"

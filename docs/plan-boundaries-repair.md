@@ -1,9 +1,20 @@
 # M41 — `Boundaries`, completed after the flip
 
-> **T41.0–T41.1 DONE 2026-09-25** (Phase 1). **T41.2–T41.6 DONE
-> 2026-09-25**; T41.2b (the `agent_drive.sh` legs) and T41.7 wait for
-> M42.
+> **M41 DONE 2026-09-26.** T41.0–T41.1 2026-09-25 (Phase 1);
+> T41.2–T41.6 2026-09-25; **T41.2b and T41.7 2026-09-26**.
 >
+> - **T41.2b**: `agent_drive.sh` runs `Everything`, a plain `Boundaries`
+>   leg (`supported: false`) and a `Boundaries+oracle` leg; the per-leg
+>   check is one copy, `scripts/live/shadow.py`.
+> - **T41.7**: every live drive has an oracle leg beside its plain
+>   `Boundaries` leg. Quiet over 6 083 live frames at the end (agent 42,
+>   widget 5 933, tasks 108) and 2 080 headless; figures in
+>   `docs/plan-boundaries-default.md` T34.2. **Not quiet the first
+>   time**: it found R1-F5's class in five widgets (`Pagination`,
+>   `Strip`, `RichText`, `Markdown`, `NumberInput`), fixed in the same
+>   session. **One divergence is open** (`OptionList`, `size`, once in
+>   four full oracle legs, not reproduced; §6) — §2.1's tripwire, reported
+>   rather than acted on (§6 says why).
 > - **T41.2**: the oracle runs after paint, paints a scratch list through
 >   `Scaled`, and names a list-only difference `field: "paint"`;
 >   `tests/shadow.rs` shows it firing in three cases, under four
@@ -689,6 +700,16 @@ out the cascade (R6-F2).
 **Effort:** M. **Depends on:** M42 (all of it), T41.1–T41.6; M53/T53.1
 if it records a frame time.
 
+**Done 2026-09-26.** As specified, with three differences recorded in
+§6: `agent-drive` gained a hover step, because none of its frames could
+show T34.1's injection; the widget and tasks drives' oracle legs use the
+same `scripts/live/shadow.py`, run whether the drive passed or not; and
+`tasks-demo` reaches the oracle as `--features
+lumen-static-winit/shadow-oracle` rather than through a feature of its
+own. The headless sweep's compared-frame total needed a counter across
+processes, so `Host::shadow_check` appends to `LUMEN_SHADOW_TALLY` when
+it is set. No frame time is recorded here, so M53/T53.1 was not needed.
+
 ## 4. Boundaries of this plan
 
 - **Measurer identity in the text memo keys is M45's**: R2-F1's
@@ -931,6 +952,44 @@ was re-checked as the re-triage left it and none had moved.
   probe and a `FILL` one does not; the widget drive's click checks
   passed on every leg, but which of these the showcase sizes `FILL` was
   not checked.
+- **T34.1's own injection could not fire in `agent-drive`.** Every step
+  of that drive is a click, a held press or a palette swap, and each
+  marks the node it touches for its own reason, so skipping the precise
+  hover mark left the oracle leg quiet over 30 frames. The drive now
+  hovers a demo button whose hover shade differs from rest, alone on its
+  frame, with `handled == false` asserted; the injection then names
+  node 42, `button #d_button_a`, `field: "colour"`. The first attempt
+  hovered the select trigger, which inherits the menu rows'
+  `hover_dim(0.0)`, and stayed quiet for the same reason T34.0 warned
+  of: a stale hover there is invisible.
+- **The live windows share a display with a person.** On :0 a real
+  pointer moving over a drive's window posts its own `PointerMove`
+  (seen at ~700 frames/s), which moved the hover away between the
+  drive's move and its read. The hover step retries three times. One
+  `agent-drive` run's `Everything` leg also failed with `~Switch`
+  matching nothing, while a selftest was driving another showcase on
+  the same display; it did not recur, and the cause is not established.
+
+- **One divergence is open: `OptionList`, `field: "size"`.** After the
+  five probe fixes, one full widget-drive oracle leg named node 164
+  (`optionlist #chooser-list`, the list inside a `Chooser`) at frame
+  608, after 5 772 compared frames. It did not recur in three further
+  full oracle legs (5 512, 5 909 and 5 933 frames), nor in 36 chooser
+  drives (PickList, Combobox and Menu, twelve times each, in four fresh
+  windows, polling `app.shadow` after each). `size` means the bounded
+  and whole-tree layouts gave the list different boxes in one frame; its
+  box depends on `shown_count` (the combobox filter) and on the limits
+  `Chooser::layout` hands it, and `Chooser::layout` also *derives*
+  state — the pick, the filter, open-on-focus — so a frame that skips it
+  and a pass that runs it can disagree. Not established: whether the
+  trigger is a real pointer on the shared display (above), a timing
+  path, or a defect. **§2.1's tripwire names this case** ("a divergence
+  in a shipped example that is not fixed in the same session") and says
+  revert the default. It was not reverted here: the finding is one
+  unreproduced report, the revert is a cross-milestone change the brief
+  reserves for the coordinator, and the plain `Boundaries` legs of every
+  drive passed throughout. The owner decides.
+
 ## Appendix: finding → task
 
 | ID | sev now | status | task |

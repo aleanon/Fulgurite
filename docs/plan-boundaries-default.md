@@ -244,9 +244,37 @@ where it was measured.
 > hover and press frames moved; tick and click did not, by design.
 >
 > **Its 29 frames were judged by the oracle T41.2 replaced** — one that
-> repaired every defect it could see before it compared — and are under
-> re-validation in `docs/plan-boundaries-repair.md` T41.7. §5 records
+> repaired every defect it could see before it compared. §5 records
 > what the re-triage found.
+>
+> **Re-validated 2026-09-26, M41/T41.7** (`docs/plan-boundaries-repair.md`
+> T41.7 and §6), with the redesigned oracle — after paint, comparing
+> state and then display lists — as a **third leg** beside a plain
+> `Boundaries` leg built without it (M41 §0 rule 2), each leg's process
+> named by `scripts/live/launch.py` and its oracle asked by
+> `scripts/live/shadow.py`. At `efa1e5a` plus T41.7's scripts:
+>
+> | drive | legs green | oracle leg: frames compared, divergences |
+> |---|---|---|
+> | `just agent-drive` | `Everything`, `Boundaries`, `Boundaries+oracle` | 42, none |
+> | `just widget-drive` (39 entries, 94 actions each leg) | all three | 5 933, none |
+> | `just tasks-drive` (five capabilities) | all three | 108, none |
+> | `cargo test --workspace --features lumen-static-shell/shadow-oracle` (254 test binaries) | — | 2 080; 8 first divergences, every one in a test that writes the tree unmarked on purpose (`shadow.rs`'s three positive cases, `repeat_data.rs`'s unreported arm, `pointer_invalidation.rs` ×2, `loop_test.rs`, `invalidation_oracle.rs`'s skip proof); `alloc_gate.rs` (5) and `palette_host.rs` (2) fail by construction, because they count allocations and layouts and the oracle adds a layout |
+>
+> 6 083 live frames judged across the three drives. **It was not quiet
+> the first time.** The first widget-drive oracle leg named
+> `pagination #d_pagination_a`, `field: "paint"`, and the second
+> `numberinput #d_number_a` — the agent's audit probe leaving
+> measurements that paint reads, R1-F5's class, in five widgets. Fixed
+> in `efa1e5a` with its own injections. **One divergence is open**:
+> a single run named `optionlist #chooser-list`, `field: "size"`, at
+> frame 608, and 36 chooser drives (each of the three twelve times, in
+> four fresh windows) plus three more full
+> oracle legs did not reproduce it (plan §6). The T34.1 injection
+> (skip the precise hover mark) now names `button #d_button_a`,
+> `field: "colour"`, in `agent-drive`'s oracle leg, whose plain leg
+> stays green — two binaries, and a drive that until this task had no
+> frame the injection could show on.
 
 
 - `Inval` becomes `Boundaries<256>`, and `Host`'s default type parameter
@@ -315,4 +343,4 @@ Fixes are M41's; this table records what changed here.
 | 2 | the oracle repaired the frame it judged, and could not see widget-internal state (R1-F6) | M41/T41.2: runs after paint and compares display lists; T34.1 amended above |
 | 3 | no test showed the oracle could fire: a scratch that cloned the states left `tests/shadow.rs` green (I-NEW-1) | M41/T41.2: three positive cases beside the quiet one |
 | 4 | `agent_drive.sh`'s only `Boundaries` leg built the oracle in, so no drive judged `Boundaries` without the repair | **M41/T41.2b, done 2026-09-26**: three legs — `Everything`, a plain `Boundaries` leg that asserts `supported: false`, and a `Boundaries+oracle` leg; the per-leg check is `scripts/live/shadow.py`, one copy for every drive |
-| 5 | "29 frames compared, none diverged" was measured on repaired frames | M41/T41.7 gathers it again |
+| 5 | "29 frames compared, none diverged" was measured on repaired frames | **M41/T41.7, 2026-09-26**: gathered again, T34.2's block above; five probe defects found and fixed, one unreproduced `size` divergence open |

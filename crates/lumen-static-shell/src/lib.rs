@@ -72,6 +72,35 @@ struct ShadowScratch {
     after: Vec<u64>,
 }
 
+/// `LUMEN_SHADOW_TALLY`'s writer — see `Host::shadow_check`. `None` is
+/// a compared frame, `Some` a host's first divergence.
+#[cfg(feature = "shadow-oracle")]
+fn shadow_tally(d: Option<&Divergence>) {
+    use std::io::Write;
+    static FILE: std::sync::OnceLock<Option<std::sync::Mutex<std::fs::File>>> =
+        std::sync::OnceLock::new();
+    let Some(file) = FILE.get_or_init(|| {
+        let path = std::env::var_os("LUMEN_SHADOW_TALLY")?;
+        let f = std::fs::OpenOptions::new().create(true).append(true).open(path).ok()?;
+        Some(std::sync::Mutex::new(f))
+    }) else {
+        return;
+    };
+    let line = match d {
+        None => "c\n".to_string(),
+        Some(d) => {
+            let exe = std::env::current_exe().ok();
+            let exe = exe.as_ref().and_then(|p| p.file_name()).and_then(|n| n.to_str()).unwrap_or("?");
+            let thread = std::thread::current();
+            let thread = thread.name().unwrap_or("?").replace(' ', "_");
+            format!("d {exe} {thread} {} {} {}\n", d.frame, d.node, d.field)
+        }
+    };
+    if let Ok(mut f) = file.lock() {
+        let _ = f.write_all(line.as_bytes());
+    }
+}
+
 /// Which table indices `node(i)` answers for with a node of their own,
 /// rather than with an enclosing container standing in for a branch that
 /// is not laid out. The rule `lumen_static_agent::live_nodes` documents:
@@ -395,6 +424,13 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
     /// panic in a debug window becomes a panic screen; set
     /// `LUMEN_SHADOW_ABORT=1` to make it abort instead.
     ///
+    /// **`LUMEN_SHADOW_TALLY=<file>`** appends one line per compared
+    /// frame to that file — `c`, or `d <exe> <thread> <frame> <node>
+    /// <field>` for a host's first divergence — so a sweep over many
+    /// processes, such as `cargo test --workspace` with this feature, can
+    /// say how many frames it judged and where (M41/T41.7). Every host in
+    /// every process appends to the one file; each line is written whole.
+    ///
     /// **What it costs:** one whole-tree layout, place and paint, plus a
     /// paint of every leaf twice, on every frame the oracle is compiled
     /// into. A diagnostic behind its own feature; recorded, not gated.
@@ -432,6 +468,7 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         }
         let lists_differ = sc.list.hash_from(0) != self.list.hash_from(0);
         self.shadow.compared += 1;
+        shadow_tally(None);
         if self.shadow.first.is_some() {
             self.shadow_scratch = sc;
             return;
@@ -479,6 +516,7 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         self.shadow_scratch = sc;
         if let Some((node, field)) = found {
             let d = Divergence { frame: self.frame, node, field };
+            shadow_tally(Some(&d));
             if std::env::var_os("LUMEN_SHADOW_ABORT").is_some() {
                 eprintln!("shadow oracle: {d:?}");
                 std::process::abort();

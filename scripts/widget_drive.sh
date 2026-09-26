@@ -37,18 +37,29 @@ ONLY="${1:-}"
 status=0
 
 # run_one LEG CARGO-FEATURES EXPECTED-FEATURES
-#   LEG is the strategy the process must report; the expected features are
+#   LEG is the strategy the process must report, with a `+oracle` suffix
+#   on the leg that builds the shadow oracle in; the expected features are
 #   declared apart from the build's, so a leg built wrong is refused
-#   rather than re-described.
+#   rather than re-described. After the drive, pass or fail, `scripts/live/shadow.py`
+#   asks the window's oracle the leg's question (M42/T42.4): `supported`,
+#   `compared > 0` and no divergence where the leg declares it, and
+#   `supported: false` everywhere else.
 run_one() {
-    local strategy="$1" features="$2" expect="$3"
+    local leg="$1" features="$2" expect="$3"
     cargo build --release -p showcase --features "$features" >/dev/null
-    $LAUNCH --leg "$strategy" --exe target/release/showcase \
-        --expect-strategy "$strategy" --expect-features "$expect" \
-        -- python3 scripts/drive/run.py "$ONLY" || status=1
+    $LAUNCH --leg "$leg" --exe target/release/showcase \
+        --expect-strategy "${leg%%+*}" --expect-features "$expect" \
+        -- bash -c 'python3 scripts/drive/run.py "$1"; r=$?
+                   python3 scripts/live/shadow.py widget-drive || exit 1; exit $r' \
+           _ "$ONLY" || status=1
 }
 
-run_one Everything  agent,everything  everything
-run_one Boundaries  agent             ""
+# The oracle leg is a third leg, not a feature of the second (M41/T41.7,
+# docs/plan-boundaries-repair.md §0 rule 2): the oracle lays the live
+# widgets out again after each frame it judges, so a `Boundaries` leg
+# with it compiled in would be judging a repaired window.
+run_one Everything         agent,everything     everything
+run_one Boundaries         agent                ""
+run_one Boundaries+oracle  agent,shadow-oracle  shadow-oracle
 
 exit "$status"

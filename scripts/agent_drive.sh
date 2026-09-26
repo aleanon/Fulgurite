@@ -143,6 +143,48 @@ for name in ("dark", "light"):
     assert bg != prev_bg, f"agent-drive: the {name} palette did not re-resolve the header's role"
     assert frame != prev_shot, f"agent-drive: the {name} palette left the frame's pixels unchanged"
     prev_bg, prev_shot = bg, frame
+# A hover, alone on its frame (M41/T41.7). Every step above is a click, a
+# press or a palette swap, and each of those marks the node it touches
+# for a reason of its own -- so no frame of this drive depended on the
+# precise hover mark, and T34.1's own injection (skip that mark) left the
+# oracle leg quiet over 30 frames. An unconsumed pointer move over a
+# button whose hover shade differs from rest is the frame a hover-mark
+# defect can show on, and the oracle leg judges it. (The trigger was
+# tried first and stayed quiet under the injection: the menu rows'
+# `hover_dim(0.0)` reaches it, so a stale hover there is invisible.)
+# Whether the shade *shows* is `just widget-drive`'s Button check; this
+# drive only supplies the frame.
+# The held press above was a whole click on the trigger, so the menu may
+# already be open; open it only if it is not.
+if menu_box() is None:
+    call("input.click", {"selector": TRIGGER})
+assert menu_box(), "agent-drive: setup: the dropdown did not open for the Button demo"
+# The Button row reads "Input - Button": the menu folds a group's name
+# into its first row (`bind_row`), `~Button` is ambiguous, and a selector
+# cannot carry the spaces. So the row is found by its label and clicked
+# by its box, as `scripts/drive/harness.py` does.
+rows = [n for n in call("ui.getTree", {"depth": 64})["nodes"]
+        if (n.get("label") or "").strip().split(" - ")[-1] == "Button" and n.get("bounds")]
+assert len(rows) == 1, f"agent-drive: setup: expected one Button row, got {rows!r}"
+rb = rows[0]["bounds"]
+call("input.click", {"x": (rb[0] + rb[2]) / 2, "y": (rb[1] + rb[3]) / 2})
+assert trigger_label().split()[0] == "Button", f"agent-drive: setup: expected the Button demo, got {trigger_label()!r}"
+#
+# Up to three tries: the window is on a real display, and a real pointer
+# moving over it posts its own `PointerMove`, which moves the hover
+# somewhere else between this drive's move and its read (seen on :0 on
+# 2026-09-26, at ~700 frames/s while someone used the mouse).
+b = call("ui.resolve", {"selector": "#d_button_a"})["bounds"]
+for attempt in range(3):
+    r = call("input.hover", {"x": (b[0] + b[2]) / 2, "y": (b[1] + b[3]) / 2})
+    st = call("ui.getAppliedStyles", {"selector": "#d_button_a"})["state"]
+    print(f"agent-drive: hover over #d_button_a: handled={r['handled']}, hovered={st['hovered']}")
+    if st["hovered"]:
+        break
+    call("input.hover", {"x": 2, "y": 2})
+assert r["handled"] is False, f"agent-drive: setup: the hover was consumed, so it marks for another reason: {r!r}"
+assert st["hovered"], "agent-drive: setup: the hover did not land on #d_button_a"
+call("input.hover", {"x": 2, "y": 2})
 print(f"agent-drive: {before.split()[0]} -> {after.split()[0]}, "
       f"menu {int(box[2]-box[0])}x{int(box[3]-box[1])} px, press observable")
 PY

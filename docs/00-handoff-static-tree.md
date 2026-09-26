@@ -856,8 +856,11 @@ damage tracking deserve at least as much attention as the static tree. Do not
 let the interesting part crowd out the effective part.
 
 **DECIDED 2026-09-24 (M29, M34): the bounded strategy is the default.**
-*Evidence under re-validation, `docs/plan-boundaries-default.md` T34.2 as
-amended (M41/T41.2): the flip's live oracle repaired the frames it judged.*
+*Evidence re-gathered 2026-09-26 (M41/T41.7, `docs/plan-boundaries-default.md`
+T34.2 as amended): 6 083 live frames judged by the redesigned oracle,
+beside plain `Boundaries` legs; five probe defects it found are fixed, and
+one unreproduced divergence (`OptionList`, `size`) is open in
+`docs/plan-boundaries-repair.md` §6.*
 `Boundaries<256>` is `Host`'s default and the window's (`everything` is a
 diagnostic feature); a binding marks its own node, and a click on a
 split application narrows too. The evidence is
@@ -869,7 +872,8 @@ commit was painted over a stale layout until M41/T41.1 made it mark the
 focused subtree; the host's writes are now audited method by method in
 `docs/plan-boundaries-default.md` T34.0. The other known unmarked writes
 (a `Repeat`'s data, the agent's probe, a paste's measurer) are gated and
-fixed by M41's later tasks.
+fixed by M41's later tasks, and the re-validation found the probe's class
+in five more widgets (T41.7).
 
 **DECIDED 2026-09-03 — confirmed by the first profile of a live frame**
 (`docs/results-frame-cost.md`): layout and paint were 1 µs of a 190 ms frame.
