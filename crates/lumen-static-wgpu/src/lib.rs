@@ -78,7 +78,8 @@ const LIGHT_XY: f32 = 0.784_599_3;
 /// glyphs at UI sizes — far more than a screen has.
 const GLYPH_ATLAS: u32 = 1024;
 /// Image atlas edge. **Allocated on the first image command**, so an
-/// application with no images pays nothing for the capability.
+/// application with no images pays nothing for the capability. The blur
+/// scratch follows the same rule since M51/T51.5 ([`Gpu::scratch_bytes`]).
 const IMAGE_ATLAS: u32 = 1024;
 
 /// The target texture's format, and the readback's.
@@ -204,8 +205,19 @@ pub struct Gpu {
     /// texture copy cannot happen inside a render pass, so every glass
     /// command splits the frame: the target is blurred into these and
     /// read back out.
-    scratch: [wgpu::Texture; 2],
-    scratch_view: [wgpu::TextureView; 2],
+    ///
+    /// **Made on the first frame with a `Cmd::Glass` in it** (M51/T51.5,
+    /// R9-F9), and resized only once it exists — the image atlas's rule,
+    /// for the same reason: an application with no glass pays nothing
+    /// for the capability. Until M51 `build` and every `resize` made two
+    /// surface-sized targets whether or not a backdrop filter was ever
+    /// drawn, which is 8 bytes a pixel of committed VRAM on a discrete
+    /// GPU (`docs/results-gpu.md` §5).
+    scratch: Option<([wgpu::Texture; 2], [wgpu::TextureView; 2])>,
+    /// A 1×1 texture group 1 names where no scratch exists yet: every
+    /// pass binds group 1, and a pass that reads nothing still needs a
+    /// texture there that is not the target it writes.
+    placeholder: wgpu::TextureView,
     /// Group 1 for each of the three things a pass can read: the
     /// target, and the two scratch textures.
     src_binds: [wgpu::BindGroup; 3],
@@ -587,7 +599,8 @@ impl Gpu {
         let quads = make_quad_buffer(&device, 256);
         let grads = make_grad_buffer(&device, 4);
         let mats = make_mat_buffer(&device, 2);
-        let (scratch, scratch_view) = make_scratch(&device, width, height);
+        let placeholder = make_atlas_texture(&device, 1, TARGET_FORMAT)
+            .create_view(&wgpu::TextureViewDescriptor::default());
         let glyph_tex = make_atlas_texture(&device, GLYPH_ATLAS, wgpu::TextureFormat::R8Unorm);
         // A 1x1 placeholder until an image command asks for a real one.
         let image_tex = make_atlas_texture(&device, 1, wgpu::TextureFormat::Rgba8Unorm);
@@ -596,7 +609,8 @@ impl Gpu {
             &device, &bind_layout, &globals, &glyph_tex, &image_tex, &sampler, &grads, &mats,
         );
         let blit_bind = make_blit_bind(&device, &blit_layout, &target_view, &sampler);
-        let src_binds = make_src_binds(&device, &src_layout, &target_view, &scratch_view, &linear);
+        let src_binds =
+            make_src_binds(&device, &src_layout, &target_view, [&placeholder, &placeholder], &linear);
 
         Some(Gpu {
             device,
@@ -621,8 +635,8 @@ impl Gpu {
             grad_cap: 4,
             mats,
             mat_cap: 2,
-            scratch,
-            scratch_view,
+            scratch: None,
+            placeholder,
             src_binds,
             src_layout,
             linear,
@@ -660,7 +674,11 @@ impl Gpu {
     /// bytes a texel, not a driver query.
     #[doc(hidden)]
     pub fn scratch_bytes(&self) -> u64 {
-        self.scratch.iter().map(|t| t.width() as u64 * t.height() as u64 * 4).sum()
+        self.scratch
+            .iter()
+            .flat_map(|(t, _)| t.iter())
+            .map(|t| t.width() as u64 * t.height() as u64 * 4)
+            .sum()
     }
 
     /// Draw text with `font`. Without one, runs fall back to a filled
@@ -705,17 +723,13 @@ impl Gpu {
             make_blit_bind(&self.device, &self.blit_layout, &self.target_view, &self.sampler);
         // The scratch targets are the target's size, and group 1 names
         // all three views — a resize that rebuilt one and not the others
-        // would blur last frame's dimensions into this one's.
-        let (st, sv) = make_scratch(&self.device, width, height);
-        self.scratch = st;
-        self.scratch_view = sv;
-        self.src_binds = make_src_binds(
-            &self.device,
-            &self.src_layout,
-            &self.target_view,
-            &self.scratch_view,
-            &self.linear,
-        );
+        // would blur last frame's dimensions into this one's. **Only if
+        // they exist**: a window with no glass resizes no scratch
+        // (M51/T51.5), but group 1 still names the new target.
+        if self.scratch.is_some() {
+            self.scratch = Some(make_scratch(&self.device, width, height));
+        }
+        self.rebuild_src_binds();
         if let Some(s) = &self.surface {
             self.config.width = width;
             self.config.height = height;
@@ -1223,6 +1237,11 @@ impl Gpu {
         if quads.is_empty() {
             return;
         }
+        if !splits.is_empty() && self.scratch.is_none() {
+            // The first backdrop filter this renderer has drawn.
+            self.scratch = Some(make_scratch(&self.device, self.size.0, self.size.1));
+            self.rebuild_src_binds();
+        }
         if quads.len() > self.quad_cap {
             self.quad_cap = quads.len().next_power_of_two();
             self.quads = make_quad_buffer(&self.device, self.quad_cap);
@@ -1310,6 +1329,7 @@ impl Gpu {
 
         let mut at = 0u32;
         for sp in splits {
+            let Some((_, scratch_view)) = &self.scratch else { break };
             // Everything under the panel, into the target. **Up to the
             // first blur instance, not up to the glass**: the six blur
             // quads are pushed immediately before the panel and belong
@@ -1323,7 +1343,7 @@ impl Gpu {
             let mut src = SRC_TARGET;
             for (i, b) in sp.blur.iter().enumerate() {
                 let dst = if i % 2 == 0 { 1usize } else { 0usize };
-                run(&mut enc, &self.scratch_view[dst], src, *b..*b + 1);
+                run(&mut enc, &scratch_view[dst], src, *b..*b + 1);
                 src = if dst == 1 { SRC_SCRATCH_B } else { SRC_SCRATCH_A };
             }
             // The panel, reading whichever scratch the last pass wrote.
@@ -1332,6 +1352,16 @@ impl Gpu {
         }
         run(&mut enc, &self.target_view, SRC_SCRATCH_A, at..quads.len() as u32);
         self.queue.submit([enc.finish()]);
+    }
+
+    /// Group 1 again, from the target and whichever scratch exists.
+    fn rebuild_src_binds(&mut self) {
+        let views = match &self.scratch {
+            Some((_, v)) => [&v[0], &v[1]],
+            None => [&self.placeholder, &self.placeholder],
+        };
+        self.src_binds =
+            make_src_binds(&self.device, &self.src_layout, &self.target_view, views, &self.linear);
     }
 
     /// Block until the device has finished everything submitted.
@@ -1579,7 +1609,7 @@ fn make_src_binds(
     device: &wgpu::Device,
     layout: &wgpu::BindGroupLayout,
     target: &wgpu::TextureView,
-    scratch: &[wgpu::TextureView; 2],
+    scratch: [&wgpu::TextureView; 2],
     samp: &wgpu::Sampler,
 ) -> [wgpu::BindGroup; 3] {
     let one = |v: &wgpu::TextureView| {
@@ -1592,7 +1622,7 @@ fn make_src_binds(
             ],
         })
     };
-    [one(target), one(&scratch[0]), one(&scratch[1])]
+    [one(target), one(scratch[0]), one(scratch[1])]
 }
 
 fn make_target(device: &wgpu::Device, w: u32, h: u32) -> (wgpu::Texture, wgpu::TextureView) {

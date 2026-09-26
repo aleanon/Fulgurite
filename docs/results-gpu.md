@@ -305,6 +305,25 @@ should not. The choice is per-application (`Config::backend`), per-run
 (`LUMEN_BACKEND`), and per-build (the `gpu` feature), and none of the
 three is the framework's to make.
 
+**The blur scratch is paid for by glass only — M51/T51.5, 2026-09-27.**
+The backdrop filter's two ping-pong targets are surface-sized
+`Rgba8Unorm`, 8 bytes a pixel together: 16.6 MB at 1080p and 66.4 MB at
+4K (arithmetic on their descriptors, not a driver query). `build` and
+every `resize` made them whether or not a `Cmd::Glass` was ever drawn
+(R9-F9). They are now made by the first frame that holds a glass
+command and resized only once they exist; until then group 1 names a
+1×1 placeholder, because every pass binds it. `glass_parity.rs`
+`the_blur_scratch_is_made_on_the_first_glass_command`, at 320×240 then
+360×260: no glass after a frame 0 B, after a resize 0 B, one panel
+748,800 B, a second glass frame 748,800 B (want 0, 0, 748,800, 748,800);
+before, 614,400 and 748,800 B with no glass at all. Injections: eager
+allocation at `build` (614,400 B), an unguarded resize (748,800 B), and
+the lazy creation removed (B1 100% of the panel over 8, B2 fringe 0.0),
+each red by name. On llvmpipe the pages are lazily committed and RSS
+cannot show the saving; on the RTX 4070 it is committed VRAM that this
+change stops allocating, and its size is the arithmetic above — no
+per-process VRAM figure was taken.
+
 For scale against the other optional features on the same crate, by the
 same count: clipboard +5 crates, dialogs +24, GPU +37. (The +11 and +79
 recorded in `crates/lumen-static-winit/Cargo.toml` for the first two are

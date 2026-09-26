@@ -232,7 +232,6 @@ fn the_backdrop_filter_agrees_on_both_backends() {
 /// principle; this holds the scratch to the same one. Each check prints
 /// the scratch bytes beside what it expects.
 #[test]
-#[ignore = "red until T51.5: R9-F9, the scratch is made at build and on every resize"]
 fn the_blur_scratch_is_made_on_the_first_glass_command() {
     let Some(mut g) = gpu() else { return };
     let mut plain = DisplayList::new();

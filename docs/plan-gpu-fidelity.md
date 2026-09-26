@@ -528,6 +528,14 @@ Accept: `glass_parity.rs` is green with the lazy scratch.
 atlas's pay-for-use sentence at `lib.rs:75-76`; `docs/results-gpu.md`
 §5.
 
+*What building found (2026-09-27).* One thing the plan did not say:
+**every pass binds group 1**, the plain ones included (they name
+scratch A and never sample it), so "absent" cannot mean an empty
+binding. A 1×1 placeholder view stands in until the first glass
+command, as the image atlas's 1×1 placeholder does, and group 1 is
+rebuilt when the scratch appears and on every resize, because it also
+names the target. `scratch_bytes()` counts only the real scratch.
+
 **Effort:** S. **Depends on:** T51.0.
 
 ### T51.6 — the SVG test draws every command, by construction
