@@ -99,6 +99,9 @@ fn a_tooltip_by_the_right_edge_stays_inside() {
     let s = host.states[b];
     host.post(Event::PointerMove { x: s.pos.x + 4.0, y: s.pos.y + 4.0 });
     host.pump();
+    // The tip waits for the pointer to rest (M57/B35).
+    host.tick(600.0);
+    host.pump();
     host.pump();
     let tip = (0..host.states.len())
         .filter(|&k| k > b)

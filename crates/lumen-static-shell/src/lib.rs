@@ -87,6 +87,9 @@ pub struct Host<A: App, R: Retention = Incremental, I: Invalidation = lumen_stat
     /// The node that took the last wheel, and how long until the gesture
     /// counts as ended — M57/B40 (`Event::ScrollEnd`).
     scroll_end: Option<(u32, f32)>,
+    /// The node the pointer is resting on, and how long until that counts
+    /// as hover intent — M57/B35 (`Event::Linger`).
+    linger: Option<(u32, f32)>,
     /// Where deferred work runs — M28/T28.3.
     ///
     /// `dyn` at the shell, which `docs/plan-agent-parity.md`'s appendix
@@ -510,6 +513,7 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             overlay_focus: None,
             focus_owed: false,
             scroll_end: None,
+            linger: None,
             spawner: None,
             unspawned: 0,
             unknown_kind: 0,
@@ -1083,6 +1087,11 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
                 &ev,
                 &mut consumed,
             );
+            // A move restarts the wait for hover intent on whatever the
+            // pointer is over now; nothing under it, nothing to wait for.
+            if matches!(ev, Event::PointerMove { .. }) {
+                self.linger = self.input.hovered.map(|n| (n, lumen_static::event::LINGER_MS));
+            }
             // A wheel someone took: its gesture ends when no other comes
             // for `SCROLL_END_MS` (M57/B40).
             if matches!(ev, Event::Scroll { .. }) {
@@ -1441,6 +1450,23 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
                 }
             }
         }
+        // **The pointer has rested** — M57/B35.
+        if let Some((n, left)) = self.linger {
+            let left = left - dt_ms;
+            if left > 0.0 {
+                self.linger = Some((n, left));
+            } else {
+                self.linger = None;
+                let mut consumed = pass::Consumed::default();
+                if pass::deliver(&mut self.app, n, Event::Linger, self.input.mods, &mut consumed) {
+                    let table = <A::Tree as Widget>::SUB_TABLE;
+                    for &k in consumed.nodes() {
+                        self.invalidation.mark(lumen_static::style::subtree_range(table, k as usize));
+                    }
+                    ended = true;
+                }
+            }
+        }
         let ticked = self.app.tick(dt_ms);
         if ticked && dt_ms > 0.0 {
             self.invalidation.mark_all();
@@ -1461,10 +1487,11 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
     pub fn next_deadline_ms(&mut self) -> Option<f32> {
         let timers = self.app.timers().and_then(|t| t.earliest());
         // A wheel gesture waiting to end is a deadline too (M57/B40).
-        match (timers, self.scroll_end.map(|(_, left)| left.max(0.0))) {
-            (Some(a), Some(b)) => Some(a.min(b)),
-            (a, b) => a.or(b),
-        }
+        // So is hover intent waiting to arrive (M57/B35).
+        [timers, self.scroll_end.map(|(_, l)| l.max(0.0)), self.linger.map(|(_, l)| l.max(0.0))]
+            .into_iter()
+            .flatten()
+            .reduce(f32::min)
     }
 
     /// Route one composition step to the focused node — T14.8.

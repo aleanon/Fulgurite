@@ -381,13 +381,24 @@ pub const PART_CONTENT: &str = "tooltip-content";
 pub struct Tooltip<W: Widget, S: TextStorage = &'static str> {
     pub content: W,
     pub tip: crate::popup::Popup<Toast<S>>,
+    /// The pointer has rested on the content (`Event::Linger`) — M57/B35.
+    lingered: bool,
+    /// Keyboard focus is on the content: the tip shows for it too, which a
+    /// keyboard user had no way to see (M57/B35).
+    focused: bool,
+    /// Closed by a press or by Escape, until the pointer leaves: the tip
+    /// re-opened on every hovered frame, so neither closed it (M57/B35).
+    suppressed: bool,
+    /// Whether the last layout showed the tip, to see it closed from
+    /// outside — the pass's Escape dismisses the popup directly.
+    shown: bool,
 }
 
 impl<W: Widget + Default, S: TextStorage + Default> Default for Tooltip<W, S> {
     fn default() -> Self {
         let mut tip = crate::popup::Popup::default();
         tip.passive = true;
-        Tooltip { content: W::default(), tip }
+        Tooltip { content: W::default(), tip, lingered: false, focused: false, suppressed: false, shown: false }
     }
 }
 
@@ -404,7 +415,7 @@ impl<W: Widget, S: TextStorage> Tooltip<W, S> {
         // Passive: a press on the content closes the tip and still
         // reaches the content (M33/T33.3).
         tip.passive = true;
-        Tooltip { content, tip }
+        Tooltip { content, tip, lingered: false, focused: false, suppressed: false, shown: false }
     }
 
     /// Whether the tip is showing.
@@ -511,7 +522,23 @@ impl<W: Widget, S: TextStorage> Node for Tooltip<W, S> {
         // tip opened" against a bare `Tooltip<Label>` would still pass,
         // because a label *is* the deepest node.
         let hovered = (i + Self::AT..i + Self::TIP).any(|k| st[k].hovered);
-        self.tip.open = hovered;
+        // **After a rest, or for keyboard focus; not after a press** —
+        // M57/B35. This was `open = hovered`: it opened on the first frame
+        // the pointer crossed the control, never for keyboard focus, and a
+        // press or Escape could not close it, since the next layout
+        // re-opened it (its own comment promised a press closed it).
+        if self.shown && !self.tip.open {
+            // Closed from outside since the last layout: Escape.
+            self.suppressed = true;
+        }
+        if !hovered {
+            self.lingered = false;
+            if !self.focused {
+                self.suppressed = false;
+            }
+        }
+        self.tip.open = ((hovered && self.lingered) || self.focused) && !self.suppressed;
+        self.shown = self.tip.open;
 
         let c = self.content.layout(cx, limits, style, st, i + Self::AT);
         // The tip measures against the same limits and is placed out of
@@ -538,8 +565,10 @@ impl<W: Widget, S: TextStorage> Node for Tooltip<W, S> {
         // not see this (it calls `Node::hit` directly, below the overlay
         // pass); `just widget-drive` reported the press counter not
         // moving, which is the same defect from the outside.
+        // **Centred under the control** (M57/B35), not left-aligned to it;
+        // the popup keeps it on the window.
         let below = Point {
-            x: origin.x,
+            x: origin.x + (st[i + Self::AT].size.w - self.tip.measured().w) / 2.0,
             y: origin.y + st[i + Self::AT].size.h + Self::GAP,
         };
         self.tip.place(below, style, st, i + Self::TIP);
@@ -550,6 +579,31 @@ impl<W: Widget, S: TextStorage> Node for Tooltip<W, S> {
         // The tip defers itself into the overlay phase; painting it here
         // is what makes that offer.
         self.tip.paint(st, i + Self::TIP, out);
+    }
+
+    /// Hover intent, focus and presses, from the content — M57/B35. None of
+    /// these is *consumed*: the content keeps its own press and focus.
+    fn on_event(&mut self, ev: &lumen_static::event::Event, cx: &lumen_static::event::EventCtx) -> bool {
+        use lumen_static::event::Event;
+        let mine = cx.target != cx.node;
+        match ev {
+            Event::Linger if mine && !self.lingered => {
+                self.lingered = true;
+                true
+            }
+            Event::PointerDown { .. } if mine => {
+                self.suppressed = true;
+                false
+            }
+            Event::Focus { gained } if mine => {
+                self.focused = *gained;
+                if !*gained {
+                    self.suppressed = false;
+                }
+                false
+            }
+            _ => false,
+        }
     }
 
     fn hit(&self, st: &[NodeState], i: usize, x: f32, y: f32) -> Option<lumen_static::Hit> {

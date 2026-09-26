@@ -165,6 +165,10 @@ pub enum PointerButton {
 /// events, short enough that a spring-back feels like a release.
 pub const SCROLL_END_MS: f32 = 150.0;
 
+/// How long the pointer rests on a node before [`Event::Linger`] — the
+/// half second toolkits wait before a tooltip.
+pub const LINGER_MS: f32 = 500.0;
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[cfg_attr(feature = "observe", derive(serde::Serialize, serde::Deserialize))]
 pub enum Event {
@@ -238,6 +242,17 @@ pub enum Event {
     /// wheel, bubbling, once none has come for [`SCROLL_END_MS`]. Never
     /// enqueued by a host's input path.
     ScrollEnd,
+    /// The pointer has rested on this node for [`LINGER_MS`] — hover
+    /// intent — M57/B35 (`docs/plan-widget-fixes.md`).
+    ///
+    /// Sent by the host to the node under a pointer that has stopped,
+    /// bubbling. A tooltip opened on the very first hover frame and closed
+    /// on the next, which is how a pointer passing over a toolbar strobes
+    /// every tip on the way (`docs/widget-audit.md`, Tooltip); toolkits
+    /// wait for the pointer to rest. Widgets have no clock, so the host
+    /// keeps this one, as it keeps [`Event::ScrollEnd`]'s. Never enqueued
+    /// by a host's input path.
+    Linger,
     /// One finger, at one moment — `docs/plan-capabilities.md` T15.5.
     ///
     /// **`id` is a `u32`, and that was measured rather than chosen.**
@@ -310,7 +325,8 @@ impl Event {
             | Event::Modifiers(_)
             | Event::Focus { .. }
             | Event::Leave
-            | Event::ScrollEnd => None,
+            | Event::ScrollEnd
+            | Event::Linger => None,
         }
     }
 }

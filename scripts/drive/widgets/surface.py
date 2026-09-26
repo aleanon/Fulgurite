@@ -107,9 +107,15 @@ def _tip_area(c) -> float:
 
 TOOLTIP = ("Tooltip", "#tooltip-content", [
     Action(
-        name="hovering the content opens the tip",
+        name="resting on the content opens the tip",
         needs="a tooltip whose tip is closed",
-        do=lambda c: (c.__dict__.__setitem__("_a0", _tip_area(c)), c.hover())[0],
+        # M57/B35: the tip waits for the pointer to rest (500 ms), as
+        # toolkits do -- it opened on the first hover frame, strobing every
+        # tip a pointer crossed. The request after the wait runs a frame
+        # whose tick covers the rest.
+        do=lambda c: (c.__dict__.__setitem__("_a0", _tip_area(c)), c.hover(),
+                      __import__("time").sleep(0.7),
+                      c.c.rpc("ui.waitSettled", timeout_ms=1000))[0],
         expect=lambda c: (
             _tip_area(c) > 0.0 and c._a0 == 0.0,
             f"tip area {c._a0:.0f} -> {_tip_area(c):.0f} px²",

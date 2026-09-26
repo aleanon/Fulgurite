@@ -88,6 +88,12 @@ impl<W: Widget> Popup<W> {
     /// Content index, relative to this node.
     const AT: usize = 1;
 
+    /// The content's size as the last layout measured it — so an owner can
+    /// place the popup against it, as `Tooltip` centres its tip (M57/B35).
+    pub fn measured(&self) -> Size {
+        self.measured
+    }
+
     pub fn new(content: W) -> Self {
         Popup {
             content,
