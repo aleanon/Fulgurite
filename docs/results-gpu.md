@@ -421,6 +421,37 @@ Answering with the pre-present texture would make
 `ui.screenshot { source: "surface" }` report that a frame reached the
 screen when it did not. `None` means "not checkable", which is true.
 
+### A dropped present is asked for again — M47/T47.4, 2026-09-26
+
+`Gpu::present` returned `()` and swallowed Outdated, Lost and Timeout,
+saying that dropping one frame "is what every other backend does here
+too" — false, softbuffer panics. The window asks for another frame only
+while something moves, so on an idle window a dropped present stayed
+unpainted until input (R7-F7). `present` now answers whether the frame
+got there, `GpuBackend` sets `Frame::dropped`, and the window asks again
+up to `MAX_PRESENT_RETRIES` (3) times in a row (`present_retry`). The
+target still holds the whole frame, so the retry shows it without a
+re-render.
+
+`just gpu-parity` gained the live half, on a debug `examples/minimal`
+with the fault switch `LUMEN_GPU_DROP_FIRST=n` (320×160, idle 3 s, one
+`xwd` read, against the presented GPU frame; bound 1% of pixels over a
+channel delta of 8):
+
+| n dropped | before T47.4 | after | |
+|---|---|---|---|
+| 0 | 0 px differ | 0 px | the accept leg |
+| 2 | **51,105 px (99.8%)** | **0 px** | |
+| 20 | — | 4 presents attempted in 3 s (bound 8) | the retry stops: 1 + 3 retries |
+
+Injections: the redraw on a drop removed — `50395 px (98.428%) differ …
+nothing asked for another one (R7-F7)`; the bound removed — the unit
+test fires (`[true ×6]` against three), and live `the window attempted
+20 presents` (bound 8). The plan's first form of the check, "more than
+one distinct pixel value", could not go red: with every present dropped
+the window read back 2,578 distinct values, the X server's pixels under
+it, so the step compares against the real frame instead.
+
 ## 7. What has not been done
 
 - **No layer tree, and no second thread.** Handoff §2's item 4 — "the GPU

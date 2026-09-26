@@ -159,6 +159,33 @@ fn resume_backend(
     backend
 }
 
+/// **Whether a dropped present asks for another frame** — M47/T47.4
+/// (R7-F7).
+///
+/// An idle window asks for no frame of its own, so a present the surface
+/// refused (outdated, lost, timed out) would leave the window unpainted
+/// until input arrived. On a drop this asks again, up to
+/// [`MAX_PRESENT_RETRIES`] in a row, so a surface that never comes back
+/// cannot spin the loop; a present that lands resets the count. Returns
+/// whether to request a redraw.
+pub fn present_retry(dropped: bool, streak: &mut u32) -> bool {
+    if !dropped {
+        *streak = 0;
+        return false;
+    }
+    *streak += 1;
+    if *streak == MAX_PRESENT_RETRIES + 1 {
+        eprintln!(
+            "lumen-static: {} presents dropped in a row; waiting for the next event",
+            *streak
+        );
+    }
+    *streak <= MAX_PRESENT_RETRIES
+}
+
+/// How many dropped presents in a row [`present_retry`] asks again for.
+pub const MAX_PRESENT_RETRIES: u32 = 3;
+
 /// The backend half of `suspended`: take the images back, then drop the
 /// backend — M47/T47.7 (R15-F6). What [`resume_backend`] took out of
 /// `images`, this puts back, so the next resume hands it on again.
@@ -438,6 +465,8 @@ struct Win {
     /// desktop, where the platform never sends one.
     #[cfg(debug_assertions)]
     test_resume: Option<Instant>,
+    /// Dropped presents in a row, for [`present_retry`] (M47/T47.4).
+    present_drops: u32,
     /// The reload state, when the window rebuilds its application (M37).
     #[cfg(feature = "hot")]
     hot: Option<hot::Hot>,
@@ -471,6 +500,7 @@ impl Win {
                 .ok()
                 .and_then(|v| v.parse::<u64>().ok())
                 .map(|ms| Instant::now() + std::time::Duration::from_millis(ms)),
+            present_drops: 0,
             #[cfg(feature = "hot")]
             hot: None,
         }
@@ -592,12 +622,19 @@ impl Win {
             hot.bar_shown = barred.is_some();
         }
         #[cfg(feature = "hot")]
-        match barred {
+        let presented = match barred {
             Some(mut b) => backend.present(&mut b, self.config.page, start),
             None => backend.present(&mut *self.session, self.config.page, start),
         };
         #[cfg(not(feature = "hot"))]
-        backend.present(&mut *self.session, self.config.page, start);
+        let presented = backend.present(&mut *self.session, self.config.page, start);
+        // **A dropped present asks again** (M47/T47.4): the frame was
+        // rendered and did not reach the screen, and nothing else will ask
+        // on an idle window. Before the failure check, so a panic screen
+        // whose present was dropped is shown too.
+        if present_retry(presented.dropped, &mut self.present_drops) {
+            window.request_redraw();
+        }
         if self.session.failed() {
             return;
         }
@@ -1246,6 +1283,19 @@ mod tests {
             other => panic!("120 ms gave {other:?}, not WaitUntil"),
         }
         assert_eq!(control_flow_for(now, None), ControlFlow::Wait, "no timer must wait without a deadline");
+    }
+
+    /// **The retry decision** (M47/T47.4): a drop asks again, up to the
+    /// bound in a row; a present that lands resets the count.
+    #[test]
+    fn a_dropped_present_asks_again_a_bounded_number_of_times() {
+        let mut streak = 0;
+        let asks: Vec<bool> = (0..6).map(|_| present_retry(true, &mut streak)).collect();
+        println!("six drops in a row ask again: {asks:?} (bound {MAX_PRESENT_RETRIES} in a row)");
+        assert_eq!(asks, [true, true, true, false, false, false], "retry on a drop, stop after the bound");
+        assert!(!present_retry(false, &mut streak), "a present that landed asks for nothing");
+        assert_eq!(streak, 0, "and resets the count");
+        assert!(present_retry(true, &mut streak), "so the next drop is retried again");
     }
 
     /// One pixel's worth of image source, so a backend's `set_images`

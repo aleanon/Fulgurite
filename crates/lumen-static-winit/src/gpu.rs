@@ -99,7 +99,7 @@ impl Backend for GpuBackend {
         // the content, which the application's own damage knows nothing
         // about.
         let t = Instant::now();
-        self.gpu.present();
+        let presented = self.gpu.present();
         let present_ns = t.elapsed().as_nanos() as u64;
 
         Frame {
@@ -117,6 +117,8 @@ impl Backend for GpuBackend {
                 .iter()
                 .map(|a| ((a[2] - a[0]) as f64 * (a[3] - a[1]) as f64).max(0.0) as u64)
                 .sum(),
+            // M47/T47.4: the window asks for another frame on this.
+            dropped: !presented,
         }
     }
 

@@ -34,6 +34,12 @@ pub struct Frame {
     /// the regions were logical and this counted them as physical, so it
     /// was short by the scale squared on a HiDPI display.
     pub damaged_px: u64,
+    /// The frame was rendered and **did not reach the screen** — the
+    /// surface was outdated, lost or timed out (M47/T47.4, R7-F7). The
+    /// window asks for another frame on it, a bounded number of times in
+    /// a row ([`crate::present_retry`]). Always `false` from softbuffer,
+    /// which panics rather than dropping.
+    pub dropped: bool,
 }
 
 /// A canvas of `width` x `height` that rasterises with `font`.
@@ -205,6 +211,8 @@ impl Surface {
             // The sum over regions, so an overlap is counted twice --
             // which is what it costs.
             damaged_px,
+            // softbuffer's present panics on failure; it never drops.
+            dropped: false,
         }
     }
 }

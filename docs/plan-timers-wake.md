@@ -526,6 +526,20 @@ the present path.
 **Effort:** S. **Depends on:** T47.0. M51 touches the same backend;
 whichever lands second rebases.
 
+**What building found (2026-09-26).**
+
+- **"More than one distinct pixel value" cannot go red.** A window that
+  never presented reads back whatever the X server has under it: with
+  every present dropped (n = 1000) the capture held 2,578 distinct
+  values. The step compares with the presented GPU frame instead (1% of
+  pixels over a delta of 8), with n = 0 as the accept leg.
+- **The bound's live check counts attempts, not pixels.** A retry with no
+  bound burns through the armed drops and then presents, so the picture
+  is right either way; the switch logs one line per drop, and 20 armed
+  drops must see at most 8 attempts in 3 s (measured: 4).
+- `tasks-demo` has no GPU build; the step uses `examples/minimal`, which
+  `just gpu-parity` already builds with `gpu` and is as idle.
+
 ### T47.5 — a NaN `dt` advances nothing
 
 **Closes:** R7-F8.

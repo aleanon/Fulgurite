@@ -97,7 +97,8 @@ PY
 # server has under it -- 2578 distinct values with every present dropped
 # -- so only a comparison with the real frame can tell. n=0 is the
 # accepting leg: the same debug build with nothing dropped must match.
-# LUMEN_GPU_DROP_MORE=k adds a leg past the retry bound (T47.4).
+# LUMEN_GPU_DROP_MORE=k adds a leg (it fails the comparison when k passes
+# the retry bound, which is what the last step below is for).
 cargo build -q -p minimal --features gpu
 for n in 0 2 ${LUMEN_GPU_DROP_MORE:-}; do
     echo "== dropped the first $n presents, idle =="
@@ -126,3 +127,21 @@ if over / len(a) > 0.01:
              f"frame -- nothing asked for another one (R7-F7)")
 PY
 done
+
+# ---- M47/T47.4: a surface that never comes back must not spin ---------
+# Past MAX_PRESENT_RETRIES (3) dropped presents in a row the window stops
+# asking. With twenty drops armed, count the presents it attempted in 3 s
+# of idle (the switch logs one line per drop): the first frame, three
+# retries, and whatever the window manager's own exposes ask for -- well
+# under twenty. A window that retried without a bound would burn through
+# all twenty and then present, which is why the count and not the
+# picture is the check here.
+echo "== dropped the first 20 presents: the window stops asking =="
+$LAUNCH --no-agent --settle 3 --leg drop20 --exe target/debug/minimal \
+    --env LUMEN_GPU_DROP_FIRST=20 -- true
+tried=$(grep -c "LUMEN_GPU_DROP_FIRST: present dropped" target/live/gpu-parity-drop20.log || true)
+echo "gpu-parity: 20 drops armed: the window attempted $tried presents in 3 s idle (bound 8: 1 + 3 retries + exposes)"
+if [ "$tried" -gt 8 ]; then
+    echo "gpu-parity: a surface that never came back kept the window retrying ($tried presents)" >&2
+    exit 1
+fi

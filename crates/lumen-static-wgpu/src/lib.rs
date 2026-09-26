@@ -1232,15 +1232,30 @@ impl Gpu {
         let _ = self.device.poll(wgpu::PollType::wait_indefinitely());
     }
 
-    /// Put the target on screen. A no-op when there is no window.
-    pub fn present(&mut self) {
-        let Some(surface) = &self.surface else { return };
+    /// Put the target on screen, and say whether it got there. A no-op
+    /// answering `true` when there is no window (nothing was asked of a
+    /// display).
+    ///
+    /// **`false` is a dropped frame the caller must ask for again**
+    /// (M47/T47.4, R7-F7). The surface was Outdated or Lost — the window
+    /// changed under it — or timed out. It is reconfigured here, and the
+    /// target still holds the whole frame (it is never handed to the
+    /// presentation engine), so the next present of an unchanged frame
+    /// shows it. Until T47.4 this returned `()` and said dropping a frame
+    /// "is what every other backend does here too", which was false —
+    /// softbuffer panics — and an idle window, which asks for no further
+    /// frame, stayed unpainted until input arrived.
+    pub fn present(&mut self) -> bool {
+        let Some(surface) = &self.surface else { return true };
         #[cfg(debug_assertions)]
         if self.drop_first > 0 {
             // The Outdated arm below, taken on purpose (LUMEN_GPU_DROP_FIRST).
+            // One line per drop, so a live gate can count how many
+            // presents the window attempted.
             self.drop_first -= 1;
+            eprintln!("lumen-static: LUMEN_GPU_DROP_FIRST: present dropped ({} left)", self.drop_first);
             surface.configure(&self.device, &self.config);
-            return;
+            return false;
         }
         use wgpu::CurrentSurfaceTexture as Cst;
         let frame = match surface.get_current_texture() {
@@ -1248,13 +1263,12 @@ impl Gpu {
             // how a window goes black after a monitor change.
             Cst::Success(f) | Cst::Suboptimal(f) => f,
             Cst::Outdated | Cst::Lost => {
-                // The window changed under us. Reconfigure and let the
-                // next redraw present; dropping one frame is what every
-                // other backend does here too.
+                // The window changed under us. Reconfigure, and tell the
+                // caller the frame did not reach the screen.
                 surface.configure(&self.device, &self.config);
-                return;
+                return false;
             }
-            _ => return,
+            _ => return false,
         };
         let view = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
         let mut enc = self
@@ -1283,6 +1297,7 @@ impl Gpu {
         }
         self.queue.submit([enc.finish()]);
         self.queue.present(frame);
+        true
     }
 
     /// The target, as RGBA8 — the same layout as
