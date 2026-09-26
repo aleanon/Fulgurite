@@ -143,7 +143,7 @@ pub use pick::{
 };
 pub use nav::{AppBar, BottomNav, PullToRefresh, Item, NavigationRail, Strip, Tabs, MAX_ITEMS, BOTTOM, RAIL, TABS};
 pub use indicator::{ProgressBar, Skeleton, Spinner};
-pub use split::{Collapsible, PaneGrid, SplitPane, MAX_SPLIT_NODES};
+pub use split::{Collapsible, PaneGrid, SplitPane, VSplitPane, MAX_SPLIT_NODES};
 pub use surface::{Card, Toast, Tooltip, MAX_SURFACE_NODES};
 pub use veil::{Drawer, Edge, Modal, Sheet, Veil, DRAWER, MODAL, SHEET};
 pub use trim::{Avatar, Badge, Chip, Divider, Icon, Symbol};
