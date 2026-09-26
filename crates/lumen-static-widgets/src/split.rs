@@ -81,8 +81,9 @@ impl<A: Widget, B: Widget, const V: bool> SplitPane<A, B, V> {
     fn bounds(&self) -> (f32, f32) {
         let span = self.length - Self::BAR;
         if span <= 0.0 {
-            // Not laid out yet: only keep it off the very edges.
-            return (0.0, 1.0);
+            // Not laid out yet: no size to take `min_px` from, so the old
+            // 8% stop keeps it off the edges until a layout re-clamps it.
+            return (0.08, 0.92);
         }
         let m = (self.min_px / span).min(0.5);
         (m, 1.0 - m)
@@ -704,6 +705,15 @@ pub struct PaneGrid<A: Widget, B: Widget, C: Widget, D: Widget> {
     right: f32,
     /// Which divider a drag is on: 0 vertical, 1 left, 2 right.
     grabbed: u8,
+    /// Which divider the keyboard moves — M57/B48. Tab walks 0 → 1 → 2
+    /// and then lets focus go, as `RangeSlider`'s two handles do (B25);
+    /// Left/Right move the vertical one, Up/Down a horizontal one.
+    kbd: u8,
+    /// Where on the grabbed divider the press landed, from its centre.
+    grab: f32,
+    /// The smallest a pane may be dragged, in px — M57/B48, as
+    /// `SplitPane::min_px`.
+    pub min_px: f32,
     size: Size,
 }
 
@@ -724,6 +734,9 @@ where
             left: 0.5,
             right: 0.5,
             grabbed: 0,
+            kbd: 0,
+            grab: 0.0,
+            min_px: 48.0,
             size: Size { w: 0.0, h: 0.0 },
         }
     }
@@ -735,9 +748,6 @@ impl<A: Widget, B: Widget, C: Widget, D: Widget> PaneGrid<A, B, C, D> {
     const BL: usize = 1 + A::NODE_COUNT + B::NODE_COUNT;
     const BR: usize = 1 + A::NODE_COUNT + B::NODE_COUNT + C::NODE_COUNT;
     const BAR: f32 = 6.0;
-    /// The same stop `SplitPane` keeps, and for the same reason: a pane
-    /// dragged to zero area cannot be clicked to get it back.
-    const MIN: f32 = 0.08;
 
     pub fn new(top_left: A, top_right: B, bottom_left: C, bottom_right: D) -> Self {
         PaneGrid {
@@ -749,6 +759,9 @@ impl<A: Widget, B: Widget, C: Widget, D: Widget> PaneGrid<A, B, C, D> {
             left: 0.5,
             right: 0.5,
             grabbed: 0,
+            kbd: 0,
+            grab: 0.0,
+            min_px: 48.0,
             size: Size { w: 0.0, h: 0.0 },
         }
     }
@@ -770,8 +783,15 @@ impl<A: Widget, B: Widget, C: Widget, D: Widget> PaneGrid<A, B, C, D> {
 
     /// Move one divider, clamped away from both edges. `which` is 0 for
     /// the vertical, 1 for the left column's, 2 for the right's.
+    ///
+    /// Clamped to leave each pane `min_px` (M57/B48; it was an 8% stop):
+    /// a pane dragged to zero area cannot be clicked to get it back.
     pub fn set_divider(&mut self, which: u8, f: f32) -> bool {
-        let f = lumen_static::num::clamp(f, Self::MIN, 1.0 - Self::MIN);
+        let len = if which == 0 { self.size.w } else { self.size.h } - Self::BAR;
+        // Before a layout there is no size to take `min_px` from: keep the
+        // old 8% stop, so no divider can reach an edge even then.
+        let m = if len > 0.0 { (self.min_px / len).min(0.5) } else { 0.08 };
+        let f = lumen_static::num::clamp(f, m, 1.0 - m);
         let slot = match which {
             0 => &mut self.v,
             1 => &mut self.left,
@@ -928,6 +948,12 @@ where
             Size { w: limits.max_w, h: limits.max_h },
         );
         self.size = s;
+        // Re-clamp at the size it now has (M57/B48): a window that shrank
+        // must not leave a pane under `min_px`.
+        let (v, l, r) = (self.v, self.left, self.right);
+        self.set_divider(0, v);
+        self.set_divider(1, l);
+        self.set_divider(2, r);
         let bar = Self::BAR;
         let lw = ((s.w - bar) * self.v).max(0.0);
         let rw = (s.w - bar - lw).max(0.0);
@@ -1009,6 +1035,16 @@ where
             .or_else(|| self.bottom_right.hit(st, i + Self::BR, x, y))
     }
 
+    /// Column-resize over the vertical divider, row-resize over the
+    /// horizontal ones (M57/B48): one style cursor cannot say both.
+    fn cursor_at(&self, local: Point) -> Option<lumen_static::style::Cursor> {
+        match self.divider_at(local.x, local.y) {
+            Some(0) => Some(lumen_static::style::Cursor::ColResize),
+            Some(_) => Some(lumen_static::style::Cursor::RowResize),
+            None => None,
+        }
+    }
+
     fn on_event(&mut self, ev: &Event, cx: &EventCtx) -> bool {
         match ev {
             // **Which divider is decided on the press and kept.** A
@@ -1027,18 +1063,39 @@ where
                 }
                 let Some(d) = self.divider_at(cx.local.x, cx.local.y) else { return false };
                 self.grabbed = d;
-                self.drag(cx);
+                let along = if d == 0 { cx.local.x } else { cx.local.y };
+                self.grab = lumen_static::num::clamp(along - self.centre(d), -Self::BAR * 1.5, Self::BAR * 1.5);
                 true
             }
             Event::PointerMove { .. } => {
                 self.drag(cx);
                 true
             }
-            Event::Key { key: Key::Left, down: true } if cx.target == cx.node => {
-                self.set_divider(0, self.v - 0.05)
+            // **Each divider along its own axis** — M57/B48: only the
+            // vertical one had keys. Tab walks the dividers, then lets
+            // focus go at either end, as a range slider's handles do.
+            Event::Key { key: Key::Tab, down: true } if cx.target == cx.node => {
+                let back = cx.mods.has(lumen_static::event::Mods::SHIFT);
+                match (back, self.kbd) {
+                    (false, k) if k < 2 => {
+                        self.kbd += 1;
+                        true
+                    }
+                    (true, k) if k > 0 => {
+                        self.kbd -= 1;
+                        true
+                    }
+                    _ => false,
+                }
             }
-            Event::Key { key: Key::Right, down: true } if cx.target == cx.node => {
-                self.set_divider(0, self.v + 0.05)
+            Event::Key { key: Key::Left | Key::Right, down: true } if cx.target == cx.node && self.kbd == 0 => {
+                let d = if matches!(ev, Event::Key { key: Key::Left, .. }) { -0.05 } else { 0.05 };
+                self.set_divider(0, self.v + d)
+            }
+            Event::Key { key: Key::Up | Key::Down, down: true } if cx.target == cx.node && self.kbd > 0 => {
+                let d = if matches!(ev, Event::Key { key: Key::Up, .. }) { -0.05 } else { 0.05 };
+                let f = if self.kbd == 1 { self.left } else { self.right };
+                self.set_divider(self.kbd, f + d)
             }
             _ => false,
         }
@@ -1094,12 +1151,23 @@ where
 }
 
 impl<A: Widget, B: Widget, C: Widget, D: Widget> PaneGrid<A, B, C, D> {
-    fn drag(&mut self, cx: &EventCtx) {
-        let (w, h) = (self.size.w, self.size.h);
-        match self.grabbed {
-            0 => self.set_divider(0, if w > 0.0 { cx.local.x / w } else { 0.5 }),
-            n => self.set_divider(n, if h > 0.0 { cx.local.y / h } else { 0.5 }),
+    /// The grabbed divider's centre along its axis.
+    fn centre(&self, which: u8) -> f32 {
+        let (len, f) = match which {
+            0 => (self.size.w, self.v),
+            1 => (self.size.h, self.left),
+            _ => (self.size.h, self.right),
         };
+        (len - Self::BAR) * f + Self::BAR / 2.0
+    }
+
+    /// Follow the pointer, keeping the grab — `SplitPane`'s mapping
+    /// (M57/B46): the bar's centre travels `(len − bar)`, and `x / len`
+    /// against it drifted.
+    fn drag(&mut self, cx: &EventCtx) {
+        let (along, len) = if self.grabbed == 0 { (cx.local.x, self.size.w) } else { (cx.local.y, self.size.h) };
+        let span = (len - Self::BAR).max(1.0);
+        self.set_divider(self.grabbed, (along - self.grab - Self::BAR / 2.0) / span);
     }
 }
 

@@ -508,6 +508,11 @@ pub struct InputState {
     /// M57/A10. A down for a key already held is an auto-repeat, which
     /// does not activate again.
     pub held: u8,
+    /// Where the pointer last was, in window coordinates — M57/B48. For
+    /// [`crate::widget::Node::cursor_at`]: a node whose cursor depends on
+    /// *where* on it the pointer is (a pane grid's two kinds of divider)
+    /// needs the point, and the hover bit alone does not carry it.
+    pub pointer: Option<Point>,
 }
 
 /// The single input queue (see the module note).

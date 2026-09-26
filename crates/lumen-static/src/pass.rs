@@ -832,6 +832,7 @@ fn dispatch_at<S: crate::event::App>(
                 Event::PointerMove { .. } => {
                     let left = input.hovered;
                     input.hovered = hit.map(|h| h.node);
+                    input.pointer = Some(p);
                     set_hovered(st, input.hovered);
                     // **The node the pointer left is told** — M57/B50.
                     if let Some(l) = left.filter(|&l| Some(l) != input.hovered && (l as usize) < table.len()) {
@@ -843,6 +844,7 @@ fn dispatch_at<S: crate::event::App>(
                 }
                 Event::PointerDown { .. } => {
                     input.hovered = hit.map(|h| h.node);
+                    input.pointer = Some(p);
                     set_hovered(st, input.hovered);
                     input.press_origin = hit.map(|h| (h.node, h.inner.map(|x| x.row)));
                     if let Some(h) = hit {

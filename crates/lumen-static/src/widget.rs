@@ -255,6 +255,16 @@ pub trait Node {
         false
     }
 
+    /// The cursor at `local` (from this node's origin), where it depends
+    /// on the point — M57/B48. A pane grid shows a column-resize cursor
+    /// over its vertical divider and a row-resize one over the others;
+    /// a style has one cursor per node. `None`, the default, leaves the
+    /// style's.
+    fn cursor_at(&self, local: crate::desc::Point) -> Option<crate::style::Cursor> {
+        let _ = local;
+        None
+    }
+
     /// One step of an input-method composition (T14.8).
     ///
     /// `false` from a node that does not edit text, which is what lets

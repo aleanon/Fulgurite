@@ -1525,13 +1525,18 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
     /// leaf the pointer is actually on — a button inside a text field's
     /// row must read as a button.
     pub fn cursor(&self) -> lumen_static::style::Cursor {
-        self.states
-            .iter()
-            .enumerate()
-            .rev()
-            .find(|(_, s)| s.hovered)
-            .and_then(|(i, _)| self.styles.get(i))
-            .map_or(lumen_static::style::Cursor::Default, |s| s.cursor)
+        let Some((i, st)) = self.states.iter().enumerate().rev().find(|(_, s)| s.hovered) else {
+            return lumen_static::style::Cursor::Default;
+        };
+        // The node's own answer for this point first (M57/B48), then its
+        // style's.
+        if let Some(p) = self.input.pointer {
+            let local = lumen_static::Point { x: p.x - st.pos.x, y: p.y - st.pos.y };
+            if let Some(c) = self.app.tree().node(i).cursor_at(local) {
+                return c;
+            }
+        }
+        self.styles.get(i).map_or(lumen_static::style::Cursor::Default, |s| s.cursor)
     }
 
     /// The focused node's selected text — what a copy sends to the
