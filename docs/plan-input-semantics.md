@@ -874,3 +874,14 @@ records the case that forced it.
 | R15-F7 | S3 | OPEN | T44.8 |
 | R18-F7 | S3 | OPEN | T44.0 |
 | R3-F11 | S4 | OPEN | T44.5 |
+
+## What building found (2026-09-26)
+
+- **T44.0 lands in parts, not in one commit.** M45's T45.6 depends on
+  T44.1's `owns_arrows`, and a second session was building M45 at the
+  same time, so T44.0's items 1 and 2 (the arrow and group gates) landed
+  first with T44.1 straight after them, and the other items landed as a
+  second T44.0 commit. Every item is still committed red before its
+  fix. Item 1's `Host` legs live in
+  `crates/lumen-static-shell/tests/arrow_ownership_host.rs`, because
+  core's tests cannot depend on the shell.

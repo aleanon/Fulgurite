@@ -258,3 +258,78 @@ fn stack_cost_follows_a_trees_own_depth_not_the_cap() {
     assert_eq!(stack_bytes(MAX_DEPTH), MAX_DEPTH * STACK_BYTES_PER_LEVEL);
     assert!(stack_bytes(MAX_DEPTH) > 4096, "which is why it is not the budget");
 }
+
+// ---- R3-F9: a group has no cap ----------------------------------------
+
+/// Twenty focusable siblings. The group used to be collected into a
+/// sixteen-slot buffer, so members past the sixteenth were unreachable by
+/// arrows and an arrow *on* one of them was a dead key (M44/T44.1).
+#[derive(StaticTree, Default)]
+#[widget(row, spacing = 0.0)]
+struct Twenty {
+    b0: Button<Wide>,
+    b1: Button<Wide>,
+    b2: Button<Wide>,
+    b3: Button<Wide>,
+    b4: Button<Wide>,
+    b5: Button<Wide>,
+    b6: Button<Wide>,
+    b7: Button<Wide>,
+    b8: Button<Wide>,
+    b9: Button<Wide>,
+    b10: Button<Wide>,
+    b11: Button<Wide>,
+    b12: Button<Wide>,
+    b13: Button<Wide>,
+    b14: Button<Wide>,
+    b15: Button<Wide>,
+    b16: Button<Wide>,
+    b17: Button<Wide>,
+    b18: Button<Wide>,
+    b19: Button<Wide>,
+}
+
+#[derive(lumen_static::App, Default)]
+struct Wide {
+    #[tree]
+    ui: Twenty,
+}
+
+fn twenty() -> (Wide, Vec<lumen_static::Style>, [NodeState; Twenty::NODE_COUNT]) {
+    let mut app = Wide::default();
+    let styles = pass::default_styles(&app.ui);
+    let mut st = [NodeState::default(); Twenty::NODE_COUNT];
+    let wide = Constraints { min_w: 0.0, max_w: 4000.0, min_h: 0.0, max_h: 100.0 };
+    pass::layout(&mut app.ui, &styles, &mut st, wide);
+    (app, styles, st)
+}
+
+fn right(app: &mut Wide, styles: &[lumen_static::Style], st: &mut [NodeState], input: &mut InputState) -> bool {
+    pass::dispatch(app, styles, st, input, &Event::Key { key: Key::Right, down: true })
+}
+
+#[test]
+#[ignore = "red until T44.1: R3-F9 (the group is a sixteen-slot buffer)"]
+fn a_group_of_twenty_is_navigable_end_to_end() {
+    let (mut app, styles, mut st) = twenty();
+    let members: Vec<u32> = (1..Twenty::NODE_COUNT as u32).collect();
+    assert_eq!(members.len(), 20, "setup: twenty focusable members");
+    assert!(members.iter().all(|&i| st[i as usize].size.w > 0.0), "setup: every member has area");
+
+    let mut input = InputState::default();
+    input.focus = Some(members[0]);
+    let mut visited = std::collections::BTreeSet::new();
+    for _ in 0..20 {
+        assert!(right(&mut app, &styles, &mut st, &mut input), "Right was not handled");
+        visited.insert(input.focus.expect("focus survived"));
+    }
+    println!("visited {} / 20, back at {:?} (start {})", visited.len(), input.focus, members[0]);
+    assert_eq!(visited.len(), 20, "Right x20 did not visit every member");
+    assert_eq!(input.focus, Some(members[0]), "Right x20 did not return to the start");
+
+    // And a member past the sixteenth is not a dead key.
+    input.focus = Some(members[18]);
+    let handled = right(&mut app, &styles, &mut st, &mut input);
+    println!("Right from member 18: handled {handled}, focus {:?} (expected {})", input.focus, members[19]);
+    assert_eq!(input.focus, Some(members[19]), "Right from member 18 did not reach 19");
+}
