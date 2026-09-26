@@ -268,6 +268,14 @@ fn drive(executed: Arc<AtomicUsize>, proxy: EventLoopProxy<UserEvent>) -> Vec<Ou
 }
 
 fn main() {
+    // `harness = false` means libtest's flags arrive here. `--list` is
+    // how scripts/check_test_counts.sh (M43/T43.9) counts a binary's tests,
+    // so answer it in libtest's terse format and stop: the cases are one
+    // test with many vectors, and listing must never open a window.
+    if std::env::args().any(|a| a == "--list") {
+        println!("agent_transport: test");
+        return;
+    }
     let require = std::env::var("LUMEN_REQUIRE_DISPLAY").is_ok_and(|v| v == "1");
     let event_loop = match EventLoop::<UserEvent>::with_user_event().build() {
         Ok(el) => el,
