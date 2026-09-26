@@ -112,6 +112,22 @@ impl Node for ProgressBar {
         }
     }
 
+    /// How full, as a number — M48/T48.6.
+    #[cfg(feature = "observe")]
+    fn observe(
+        &self,
+        _st: &[NodeState],
+        _i: usize,
+        _id: u64,
+        node: &mut lumen_static::observe::accesskit::Node,
+        _extra: &mut alloc::vec::Vec<(lumen_static::observe::accesskit::NodeId, lumen_static::observe::accesskit::Node)>,
+    ) {
+        node.set_role(lumen_static::observe::accesskit::Role::ProgressIndicator);
+        node.set_numeric_value(self.fraction() as f64);
+        node.set_min_numeric_value(0.0);
+        node.set_max_numeric_value(1.0);
+    }
+
     lumen_static::leaf_common!(ProgressBar, 0, nohit);
 }
 
@@ -212,6 +228,20 @@ impl Node for Spinner {
         }
     }
 
+    /// An indeterminate progress indicator, marked busy — M48/T48.6.
+    #[cfg(feature = "observe")]
+    fn observe(
+        &self,
+        _st: &[NodeState],
+        _i: usize,
+        _id: u64,
+        node: &mut lumen_static::observe::accesskit::Node,
+        _extra: &mut alloc::vec::Vec<(lumen_static::observe::accesskit::NodeId, lumen_static::observe::accesskit::Node)>,
+    ) {
+        node.set_role(lumen_static::observe::accesskit::Role::ProgressIndicator);
+        node.set_busy();
+    }
+
     lumen_static::leaf_common!(Spinner, 0, nohit);
 }
 
@@ -297,6 +327,9 @@ impl Node for Skeleton {
         out.pop_clip();
     }
 
+    // **No `observe`, on purpose** (M48/T48.6): a loading placeholder is
+    // decoration; the busy state belongs to what replaces it. It stays
+    // `GenericContainer`, allowed by name in the agent's coverage walk.
     lumen_static::leaf_common!(Skeleton, 0, nohit);
 }
 

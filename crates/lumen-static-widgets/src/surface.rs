@@ -115,6 +115,20 @@ impl<W: Widget> Widget for Card<W> {
 }
 
 impl<W: Widget> Node for Card<W> {
+    /// A group: the card announces its content, which describes itself —
+    /// M48/T48.6. `Card` has no title of its own to label it with.
+    #[cfg(feature = "observe")]
+    fn observe(
+        &self,
+        _st: &[NodeState],
+        _i: usize,
+        _id: u64,
+        node: &mut lumen_static::observe::accesskit::Node,
+        _extra: &mut alloc::vec::Vec<(lumen_static::observe::accesskit::NodeId, lumen_static::observe::accesskit::Node)>,
+    ) {
+        node.set_role(lumen_static::observe::accesskit::Role::Group);
+    }
+
     fn kind_name(&self) -> &'static str {
         <Self as Widget>::KIND
     }
@@ -320,6 +334,20 @@ impl<S: TextStorage> Node for Toast<S> {
         );
     }
 
+    /// A status message, with its text — M48/T48.6.
+    #[cfg(feature = "observe")]
+    fn observe(
+        &self,
+        _st: &[NodeState],
+        _i: usize,
+        _id: u64,
+        node: &mut lumen_static::observe::accesskit::Node,
+        _extra: &mut alloc::vec::Vec<(lumen_static::observe::accesskit::NodeId, lumen_static::observe::accesskit::Node)>,
+    ) {
+        node.set_role(lumen_static::observe::accesskit::Role::Status);
+        node.set_value(self.text.as_ref());
+    }
+
     lumen_static::leaf_common!(Toast<S>, 0);
 
 }
@@ -465,6 +493,21 @@ const fn max_of(a: usize, b: usize) -> usize {
 }
 
 impl<W: Widget, S: TextStorage> Node for Tooltip<W, S> {
+    /// A group described by its tip's text, whether or not the tip is
+    /// showing — what a screen reader reads as the control's hint (M48/T48.6).
+    #[cfg(feature = "observe")]
+    fn observe(
+        &self,
+        _st: &[NodeState],
+        _i: usize,
+        _id: u64,
+        node: &mut lumen_static::observe::accesskit::Node,
+        _extra: &mut alloc::vec::Vec<(lumen_static::observe::accesskit::NodeId, lumen_static::observe::accesskit::Node)>,
+    ) {
+        node.set_role(lumen_static::observe::accesskit::Role::Group);
+        node.set_description(self.tip.content.text.as_ref());
+    }
+
     fn kind_name(&self) -> &'static str {
         <Self as Widget>::KIND
     }

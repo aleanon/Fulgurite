@@ -881,6 +881,14 @@ rewritten.
   1.00x (M42/T42.6's `prep` moved the hover off the button first). The
   actions declared `repaints=False` are the veils' two scrim presses
   (a request only the application hears; the veil stays).
+- **T48.6: the coverage walk is over the widget crate's leaves, not the
+  showcase.** The showcase is a binary crate, and no test can name its
+  tree; `tree_fields.rs` builds one of each leaf kind instead — the same
+  question, asked of every kind rather than of the ones a demo happens
+  to place. It found `Icon` as a ninth, which now publishes an image
+  labelled by its symbol. `Card` has no title of its own, so it is a
+  `Group` whose content describes itself; `Tooltip` is a `Group`
+  described by its tip's text.
 
 ## Appendix: finding → task
 

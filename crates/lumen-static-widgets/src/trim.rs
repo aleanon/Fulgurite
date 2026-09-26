@@ -84,6 +84,10 @@ impl Node for Divider {
         }
     }
 
+    // **No `observe`, on purpose** (M48/T48.6): a divider is decoration and
+    // has nothing to announce, so it stays `GenericContainer`, and the
+    // coverage walk in `lumen-static-agent/tests/tree_fields.rs` allows it
+    // by name with this reason.
     lumen_static::leaf_common!(Divider, 0, nohit);
 }
 
@@ -204,6 +208,21 @@ impl<S: TextStorage> Node for Badge<S> {
         out.text_weighted(inner, self.text.as_ref(), s.font_size, s.font_weight, s.fg);
     }
 
+    /// What it reads — M48/T48.6 (R13-F4): it had no `observe`, so the agent
+    /// saw a `GenericContainer` with no text.
+    #[cfg(feature = "observe")]
+    fn observe(
+        &self,
+        _st: &[NodeState],
+        _i: usize,
+        _id: u64,
+        node: &mut lumen_static::observe::accesskit::Node,
+        _extra: &mut alloc::vec::Vec<(lumen_static::observe::accesskit::NodeId, lumen_static::observe::accesskit::Node)>,
+    ) {
+        node.set_role(lumen_static::observe::accesskit::Role::Label);
+        node.set_value(self.text.as_ref());
+    }
+
     lumen_static::leaf_common!(Badge<S>, 0, nohit);
 }
 
@@ -314,6 +333,20 @@ impl<S: TextStorage> Node for Chip<S> {
         lumen_static::ops::border(st, i, out);
         let inner = [r[0] + s.pad.0, r[1] + s.pad.1, r[2] - s.pad.2, r[3] - s.pad.3];
         out.text_weighted(inner, self.text.as_ref(), s.font_size, s.font_weight, s.fg);
+    }
+
+    /// What it reads — M48/T48.6, as [`Badge`].
+    #[cfg(feature = "observe")]
+    fn observe(
+        &self,
+        _st: &[NodeState],
+        _i: usize,
+        _id: u64,
+        node: &mut lumen_static::observe::accesskit::Node,
+        _extra: &mut alloc::vec::Vec<(lumen_static::observe::accesskit::NodeId, lumen_static::observe::accesskit::Node)>,
+    ) {
+        node.set_role(lumen_static::observe::accesskit::Role::Label);
+        node.set_value(self.text.as_ref());
     }
 
     lumen_static::leaf_common!(Chip<S>, 0, nohit);
@@ -429,6 +462,20 @@ impl<S: TextStorage> Node for Avatar<S> {
             s.font_weight,
             s.fg,
         );
+    }
+
+    /// An image, labelled by its initials — M48/T48.6.
+    #[cfg(feature = "observe")]
+    fn observe(
+        &self,
+        _st: &[NodeState],
+        _i: usize,
+        _id: u64,
+        node: &mut lumen_static::observe::accesskit::Node,
+        _extra: &mut alloc::vec::Vec<(lumen_static::observe::accesskit::NodeId, lumen_static::observe::accesskit::Node)>,
+    ) {
+        node.set_role(lumen_static::observe::accesskit::Role::Image);
+        node.set_label(self.initials.as_ref());
     }
 
     lumen_static::leaf_common!(Avatar<S>, 0, nohit);
@@ -611,6 +658,22 @@ impl Node for Icon {
                 out.line(at(ox + r * d, oy + r * d), at(k * 0.92, k * 0.92), stroke, c);
             }
         }
+    }
+
+    /// An image, labelled by its symbol's name — M48/T48.6. The review
+    /// listed eight widgets with no `observe`; the coverage walk found this
+    /// ninth.
+    #[cfg(feature = "observe")]
+    fn observe(
+        &self,
+        _st: &[NodeState],
+        _i: usize,
+        _id: u64,
+        node: &mut lumen_static::observe::accesskit::Node,
+        _extra: &mut alloc::vec::Vec<(lumen_static::observe::accesskit::NodeId, lumen_static::observe::accesskit::Node)>,
+    ) {
+        node.set_role(lumen_static::observe::accesskit::Role::Image);
+        node.set_label(alloc::format!("{:?}", self.symbol));
     }
 
     lumen_static::leaf_common!(Icon, 0, nohit);

@@ -2,7 +2,10 @@
 //! plus a JSON dump carrying source provenance for agents and tooling.
 //!
 //! One implementation serves screen readers and coding agents alike — no
-//! bespoke agent channel. Node identity is positional and survives hot
+//! bespoke agent channel. **Including the state a widget publishes**
+//! (M48/T48.5, T48.6): [`node_json`] and [`state_json`] are the one
+//! serialiser behind [`dump`], `ui.getTree`, `ui.resolve` and
+//! `ui.getLayout`, so a checked box reads checked on every path. Node identity is positional and survives hot
 //! reload: main-table nodes are `table index + 1`; repeater instances get
 //! row-stable synthetic ids, so "the third row" keeps its id across
 //! scrolls *and* dylib swaps.

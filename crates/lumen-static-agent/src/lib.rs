@@ -1976,6 +1976,12 @@ impl<'a> Index<'a> {
         if let Some(b) = e.bounds() {
             o.insert("bounds".into(), json!([b.x0, b.y0, b.x1, b.y1]));
         }
+        // **And the state** — M48/T48.6 (R13-F4): `toggled`, `numeric`,
+        // `expanded` and the rest, from the same function `ui.getTree`
+        // uses (`observe::state_json`). This summary wrote a fixed set of
+        // fields and dropped them, so `ui.resolve` on a checked box and
+        // `ui.getLayout` on a moved slider could not tell.
+        observe::state_json(&e.node, &mut o);
         if let Some(i) = e.idx {
             let d = &self.tree.table[i];
             o.insert("index".into(), i.into());

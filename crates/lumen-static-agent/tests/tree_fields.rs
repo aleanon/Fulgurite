@@ -195,7 +195,6 @@ fn dump_and_get_tree_are_one_serialiser() {
 
 /// T48.6: `ui.resolve` is a second call path, and reads the same fields.
 #[test]
-#[ignore = "red until T48.6: R13-F4, ui.resolve drops toggled and numeric"]
 fn resolve_sees_a_checked_box_and_a_moved_slider() {
     let mut h = host();
     let before = call(&h, "ui.resolve", json!({ "selector": "#check" }));
@@ -283,7 +282,6 @@ const ALLOWED_GENERIC: &[(&str, &str)] = &[
 /// T48.6: a coverage walk. Each leaf kind here either publishes a role
 /// other than `GenericContainer`, or is on the allow list with a reason.
 #[test]
-#[ignore = "red until T48.6: R13-F4, eight widgets have no observe impl"]
 fn every_leaf_kind_describes_itself() {
     let mut ui = Everyone::default();
     let styles = lumen_static::pass::default_styles(&ui);
