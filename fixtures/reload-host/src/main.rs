@@ -2,7 +2,7 @@
 //! and check the swapped session against v2 run from the start —
 //! M37/T37.1 (`docs/plan-window-reload.md`).
 //!
-//! `reload-host <v1.so> <v2.so> <v3.so> <v-panic.so> <v-grow.so>`. The exit code is the verdict.
+//! `reload-host <v1.so> <v2.so> <v3.so> <v-panic.so> <v-grow.so> <v4.so>`. The exit code is the verdict.
 //!
 //! **What is compared.** v1 is clicked once, saved, dropped; v2 boots
 //! its own program with those bytes. A second v2 session boots with
@@ -150,6 +150,9 @@ fn main() {
     // M49/T49.7's other direction: nothing about the kept state changed
     // between v1 and v2, so nothing may be logged.
     assert_eq!(r.warning, None, "an unchanged kept struct logged: {:?}", r.warning);
+    // M49/T49.11's other direction: a format edit keeps the tree's shape.
+    println!("v1 -> v2 shape changed: {} (bound: false)", r.shape_changed);
+    assert!(!r.shape_changed, "a format edit reported a shape change");
 
     // The same bytes again change nothing, so nothing swaps.
     r.outcome(Outcome::Built(std::path::PathBuf::from(&args[1])));
@@ -223,6 +226,34 @@ fn main() {
     assert!(after.contains("clicks: 2"), "a field added to the kept struct reset its count: `{after}`");
     assert!(warning.contains("tally.step"), "the warning must name the new field: `{warning}`");
     println!("  ok: `Tally` gained `step`; the count 2 survived and `tally.step` was named");
+
+    // ---- M49/T49.11: a swap says when the shape changed ---------------
+    //
+    // v4 adds a label before `#value`, so every index after it moves: an
+    // agent holding `#value`'s index from before the swap would now
+    // address another node (R4-F7). The swap must say the shape changed.
+    let value_index = |p: &str| -> usize {
+        // SAFETY: the fixture's own `extern "C" fn() -> usize`.
+        let lib = unsafe { libloading::Library::new(p) }.expect("load");
+        let f: libloading::Symbol<extern "C" fn() -> usize> =
+            unsafe { lib.get(b"reload_app_value_index") }.expect("the fixture exports its #value index");
+        let i = f();
+        std::mem::forget(lib); // never unloaded, as every build here
+        i
+    };
+    let (before, after_i) = (value_index(&args[4]), value_index(&args[5]));
+    let shape_before_grow = r.shape_changed;
+    r.outcome(Outcome::Built(std::path::PathBuf::from(&args[5])));
+    assert!(r.swap(&mut cur, adopt), "v4 must swap");
+    cur.frame(16.0, W, H);
+    let after = text_of(&*cur);
+    println!("#value index: v-grow {before}, v4 {after_i}; v3 -> v-grow shape changed {shape_before_grow}, v-grow -> v4 {}", r.shape_changed);
+    println!("after v4:      {after}");
+    assert_ne!(before, after_i, "setup: v4 did not move #value, so this cannot test a shape change");
+    assert!(!shape_before_grow, "a kept-struct edit reported a shape change");
+    assert!(r.shape_changed, "a swap that moved #value from {before} to {after_i} reported no shape change");
+    assert!(after.contains("clicks: 2"), "the swap lost the count: `{after}`");
+    println!("  ok: the swap reported the shape change; #value moved {before} -> {after_i}");
 
     println!("\nWINDOW RELOAD (headless): PASS");
 }

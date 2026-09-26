@@ -713,6 +713,9 @@ impl Win {
                     "pending": r.is_some_and(|r| r.pending().is_some()),
                     "error": r.and_then(|r| r.error.clone()),
                     "warning": r.and_then(|r| r.warning.clone()),
+                    // M49/T49.11: node indices from before the last swap
+                    // address other nodes; resolve by author id again.
+                    "shape_changed": r.is_some_and(|r| r.shape_changed),
                 }
             }));
             return;

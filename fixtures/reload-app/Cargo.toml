@@ -20,6 +20,9 @@ v3 = ["v2"]
 panic-boot = ["v3"]
 # M49/T49.7: v3, whose kept `Tally` gained a field -- the count must survive.
 grow = ["v3"]
+# M49/T49.11: `grow`, with a label added before `#value` -- the tree's
+# shape changes, so node indices shift and the swap must say so.
+v4 = ["grow"]
 
 [dependencies]
 lumen-static = { path = "../../crates/lumen-static", features = ["reload"] }

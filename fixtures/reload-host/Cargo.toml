@@ -14,3 +14,5 @@ lumen-static = { path = "../../crates/lumen-static", features = ["reload"] }
 lumen-static-widgets = { path = "../../crates/lumen-static-widgets", features = ["reload"] }
 lumen-static-shell = { path = "../../crates/lumen-static-shell", features = ["truetype", "reload"] }
 lumen-static-reload = { path = "../../crates/lumen-static-reload", features = ["window"] }
+# M49/T49.11: to read a fixture-only symbol, `reload_app_value_index`.
+libloading = "0.8"

@@ -2505,6 +2505,7 @@ dependencies = [
 name = "reload-host"
 version = "0.1.0"
 dependencies = [
+ "libloading",
  "lumen-static",
  "lumen-static-reload",
  "lumen-static-shell",

@@ -16,5 +16,7 @@ cargo build --release -q -p reload-app --features panic-boot
 cp target/release/libreload_app.so "$OUT/v-panic.so"
 cargo build --release -q -p reload-app --features grow
 cp target/release/libreload_app.so "$OUT/v-grow.so"
+cargo build --release -q -p reload-app --features v4
+cp target/release/libreload_app.so "$OUT/v4.so"
 cargo build --release -q -p reload-host
-./target/release/reload-host "$OUT/v1.so" "$OUT/v2.so" "$OUT/v3.so" "$OUT/v-panic.so" "$OUT/v-grow.so"
+./target/release/reload-host "$OUT/v1.so" "$OUT/v2.so" "$OUT/v3.so" "$OUT/v-panic.so" "$OUT/v-grow.so" "$OUT/v4.so"

@@ -143,6 +143,12 @@ pub trait Session: FrameSource {
     /// own overlay, now gone: repaint all of it, in every buffer
     /// (`Host::repaint_all`).
     fn repaint_all(&mut self);
+    /// **The tree's shape**, hashed — M49/T49.11 (R4-F7): the node count
+    /// and every table entry's links, flags and author id. A node's
+    /// identity is its offset in the table, so an agent holding node
+    /// indices across a swap must resolve them again when this changes;
+    /// the author id and a `#a > #b` path are the names that survive.
+    fn shape(&self) -> u64;
 }
 
 /// Whether this session catches panics in application code — the
@@ -485,6 +491,32 @@ impl<A: App + 'static> Session for Local<A> {
     fn repaint_all(&mut self) {
         self.host.repaint_all();
     }
+
+    fn shape(&self) -> u64 {
+        table_shape(<A::Tree as lumen_static::widget::Widget>::SUB_TABLE)
+    }
+}
+
+/// FNV-1a over a table's structure: its length, and each entry's links,
+/// flags and author id — what an index means (M49/T49.11).
+pub fn table_shape(table: &[lumen_static::desc::NodeDesc]) -> u64 {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    let mut eat = |bytes: &[u8]| {
+        for b in bytes {
+            h = (h ^ *b as u64).wrapping_mul(0x0000_0100_0000_01b3);
+        }
+    };
+    eat(&(table.len() as u64).to_le_bytes());
+    for d in table {
+        eat(&d.first_child.to_le_bytes());
+        eat(&d.parent.to_le_bytes());
+        eat(&d.next_sibling.to_le_bytes());
+        eat(&d.child_count.to_le_bytes());
+        eat(&[d.flags]);
+        eat(d.wid.as_bytes());
+        eat(&[0]);
+    }
+    h
 }
 
 /// A panic raised by **application** code the agent reached — M39/T39.5.

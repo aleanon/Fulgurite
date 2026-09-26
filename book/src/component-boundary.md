@@ -27,7 +27,9 @@ so one dependent's choice becomes everyone's.
 
 **The observability namespace.** A stable path that survives a reload,
 so an agent, a screen reader and a change journal all name the same node
-the same way.
+the same way. The path is the author id (`#id`, `#a > #b`); a node's table
+index survives only an edit that keeps the tree's shape, and a swap that
+changes it says so (`app.reloads`' `shape_changed`).
 
 The argument for making them coincide is short: *if these four boundaries
 do not coincide, you end up with four mechanisms that disagree with each
@@ -59,7 +61,9 @@ where the node was declared. It turns an agent's report from "a button
 has zero hit area" into a file and a line — and it composes with hot
 reload, because the node is identified by an offset in a table rather
 than by a generated key, so patching that line and swapping the dylib
-leaves the identity intact.
+leaves the identity intact — for an edit that keeps the tree's shape.
+One that adds or reorders a field shifts the offsets after it, and the
+swap reports it (M49/T49.11).
 
 The whole development surface is behind one cfg that compiles to nothing
 in release. The const tables exist either way; only *exposure* is gated,

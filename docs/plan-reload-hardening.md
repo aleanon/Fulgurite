@@ -756,6 +756,16 @@ across v3 → v4, and the case fires.
 
 **Effort:** S. **Depends on:** T49.0.
 
+> **Built 2026-09-26.** The shape hash is the table's structure: its
+> length and each entry's links, flags and author id (`NodeDesc` has no
+> kind name to hash). The gate is headless, in `just window-reload-demo`:
+> `v4.so` adds a label before `#value`, which the fixture's own
+> `reload_app_value_index` export shows moving 2 → 3. Building it found a
+> wart the plan did not name: a widget *added* by the new build that
+> keeps nothing (that label) was logged "missing from saved state", so
+> every added node would have raised the window's warning bar. The nested
+> arm now stays silent when the missing child's own save is `null`.
+
 ### T49.12 — reload latency on a real application
 
 **Closes:** R4-F2.

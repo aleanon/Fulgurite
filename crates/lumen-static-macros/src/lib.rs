@@ -1258,6 +1258,10 @@ fn expand_reloadable(input: DeriveInput) -> syn::Result<Ts2> {
                 restore_stmts.push(quote_spanned! {ty.span()=>
                     match obj.get(#key) {
                         Some(v) => <#ty as ::lumen_static::reload::Reloadable>::restore(&mut self.#ident, v),
+                        // A widget added by this build that keeps nothing
+                        // (a label, say) lost nothing: no line, so the
+                        // bar does not cry wolf on every added node.
+                        None if <#ty as ::lumen_static::reload::Reloadable>::save(&self.#ident).is_null() => {}
                         None => ::lumen_static::reload::log_fallback(#name_str, #key, "missing from saved state"),
                     }
                 });

@@ -605,6 +605,11 @@ pub mod hot {
         pub warning: Option<String>,
         /// Swaps completed.
         pub reloads: u32,
+        /// Whether the last swap **changed the tree's shape** — M49/T49.11
+        /// (R4-F7). A node's identity is its table offset, so an agent
+        /// holding node indices must resolve them again; the author id and
+        /// a `#a > #b` path survive. `false` for an edit that kept the shape.
+        pub shape_changed: bool,
         /// A build is running.
         pub building: bool,
     }
@@ -686,10 +691,12 @@ pub mod hot {
                 }
             };
             let saved = current.save();
+            let shape = current.shape();
             match build.boot(Some(&saved)) {
                 Ok(hot) => {
                     let mut next: Box<dyn Session> = Box::new(hot);
                     adopt(&mut *next);
+                    self.shape_changed = next.shape() != shape;
                     let log = next.take_restore_log();
                     *current = next;
                     self.hash = Some(h);
@@ -810,6 +817,9 @@ pub mod hot {
         }
         fn repaint_all(&mut self) {
             self.m().repaint_all()
+        }
+        fn shape(&self) -> u64 {
+            self.s().shape()
         }
     }
 }

@@ -18,6 +18,11 @@ use serde::{Deserialize, Serialize};
 pub struct Ui {
     #[widget_id("inc")]
     pub inc: Button<Tally>,
+    /// The edit v4 makes (M49/T49.11): a node before `#value`, so every
+    /// index after it shifts.
+    #[cfg(feature = "v4")]
+    #[widget_id("note")]
+    pub note: Label<String>,
     #[widget_id("value")]
     pub value: Label<String>,
     #[widget_id("name")]
@@ -93,3 +98,10 @@ pub fn program() -> Program<Counter> {
 }
 
 lumen_static_reload::export_program!(program);
+
+/// Where `#value` sits in this build's table — M49/T49.11's gate prints it
+/// for each build, to show the index an agent would hold moved.
+#[no_mangle]
+pub extern "C" fn reload_app_value_index() -> usize {
+    lumen_static::style::index_of_wid(<Ui as lumen_static::widget::Widget>::SUB_TABLE, "value").unwrap_or(usize::MAX)
+}

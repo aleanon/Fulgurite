@@ -675,13 +675,17 @@ A component boundary is simultaneously:
    root, so editing a leaf recompiles one small crate rather than the whole UI.
    This is the direct fix for the §4 compile-time cost. Without it, "extremely
    large" is unbuildable regardless of runtime performance.
-2. **Hot-reload unit** — one dylib, one `save`/`fresh`/`restore` cycle,
+2. **Hot-reload unit** — one dylib, one `save`/boot/`restore` cycle,
    sub-second because the rebuild is one crate.
 3. **Erasure boundary** — inside, `#[fuse]` monomorphizes freely; at the seam,
    kind dispatch. This is the overhead dial, and it is *local* rather than
    global, which is exactly what a feature flag cannot be (§8).
 4. **Observability namespace** — a stable path like `app::sidebar::filter_row`
-   that survives reloads.
+   that survives reloads. **DECIDED 2026-09-26 (M49/T49.11):** the stable
+   path is the author id (`#id`, `#a > #b`). A node's *offset* survives
+   only an edit that keeps the tree's shape; a window swap reports a shape
+   change (`app.reloads` → `shape_changed`, `Session::shape`), so an agent
+   knows to resolve again (`docs/plan-reload-hardening.md` §1.6).
 
 If these four boundaries do not coincide, you end up with four mechanisms that
 disagree with each other.

@@ -105,7 +105,11 @@ multiplying a row height (`docs/plan-widget-parity.md` T27.0).
 in `observe` builds, so a report is not "a button has zero hit area" but
 a file and a line. It composes with hot reload, because a node is
 identified by an offset in a table rather than by a generated key — patch
-that line, swap the dylib, and the identity survives.
+that line, swap the dylib, and the identity survives **as long as the
+edit keeps the tree's shape**. An edit that adds, removes or reorders a
+field moves every offset after it, and the window's `app.reloads` answer
+then carries `"shape_changed": true`: resolve again, by author id or a
+`#a > #b` path, which are the names that survive any edit (M49/T49.11).
 
 ## `ui.explain`
 
