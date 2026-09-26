@@ -454,7 +454,7 @@ pub static CATALOG: &[Entry] = &[
     entry!("Navigation", "PullToRefresh", "Drag the content down past its top.",
         false,
         |s| on(s, Demo::Pull(DPullToRefresh { a: PullToRefresh::new({ let mut l = Label::<String>::default(); l.set("pull me down".into()); l }) })),
-        none),
+        |s| format!("refreshes: {}", s.store.refreshes)),
     entry!("Overlay", "Modal", "A centred panel over a dimmed window.",
         false,
         |s| on(s, Demo::Modal(DModal { a: veil(Modal::new(body_for!(ModalBody, "Delete this file?"))) })),

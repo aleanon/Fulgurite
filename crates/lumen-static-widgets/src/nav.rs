@@ -540,6 +540,15 @@ pub struct PullToRefresh<W: Widget> {
     pub threshold: f32,
     /// Set when `pull` crosses `threshold`; cleared by `take_triggered`.
     triggered: bool,
+    /// Where a pointer drag started, less the pull it started from — set
+    /// by a press, cleared by the release (M57/B40).
+    drag_from: Option<f32>,
+    /// **Held open while the application refreshes** — M57/B40. Set it
+    /// when you take the trigger, clear it when the work is done; while it
+    /// is set the indicator is full and the content stays pulled down,
+    /// which is the "refreshing" state a user waits on. Controlled, like
+    /// `Toggle::on`: the widget never clears it.
+    pub refreshing: bool,
 }
 
 impl<W: Widget + Default> Default for PullToRefresh<W> {
@@ -552,7 +561,7 @@ impl<W: Widget> PullToRefresh<W> {
     const AT: usize = 1;
 
     pub fn new(content: W) -> Self {
-        PullToRefresh { content, pull: 0.0, threshold: 64.0, triggered: false }
+        PullToRefresh { content, pull: 0.0, threshold: 64.0, triggered: false, drag_from: None, refreshing: false }
     }
 
     /// How far it has been pulled, in px.
@@ -573,6 +582,18 @@ impl<W: Widget> PullToRefresh<W> {
     }
 
     /// Let go: arm a refresh if the pull got far enough, and spring back.
+    /// Whether the content is scrolled to its top, or does not scroll —
+    /// the only time a pull may begin (M57/B40).
+    fn at_top(&self) -> bool {
+        self.content.node(0).scroll_offset().is_none_or(|o| o <= 0.5)
+    }
+
+    /// The offset the content is drawn at: the pull, or the threshold while
+    /// the application is refreshing.
+    fn shown(&self) -> f32 {
+        if self.refreshing { self.threshold.max(self.pull) } else { self.pull }
+    }
+
     pub fn release(&mut self) -> bool {
         let armed = self.is_armed();
         self.triggered |= armed;
@@ -644,19 +665,28 @@ impl<W: Widget> Node for PullToRefresh<W> {
         if !me.visible {
             return lumen_static::ops::hide_subtree(st, i, limits, Self::NODE_COUNT);
         }
-        let c = self.content.layout(cx, limits, style, st, i + Self::AT);
-        let s = lumen_static::ops::resolve_self(limits, &me, c);
+        // **Within its own box, less its padding** — M57/B40. The content
+        // was offered the pull's *limits*, so a 50 px pull laid a scroll
+        // view out 300 px tall, and the padding a sheet set was ignored in
+        // both layout and place (the showcase's padding did nothing).
+        let own = lumen_static::ops::within_own_size(limits, &me);
+        let inner = lumen_static::ops::inner_limits(own, me.padding);
+        let loose = Constraints { min_w: 0.0, max_w: inner.max_w, min_h: 0.0, max_h: inner.max_h };
+        let c = self.content.layout(cx, loose, style, st, i + Self::AT);
+        let padded = Size { w: c.w + me.padding.horizontal(), h: c.h + me.padding.vertical() };
+        let s = lumen_static::ops::resolve_self(limits, &me, padded);
         lumen_static::ops::record_painted(st, i, limits, s, &me)
     }
 
     fn place(&mut self, origin: Point, style: &[Style], st: &mut [NodeState], i: usize) {
         st[i].pos = origin;
+        let pad = style[i].padding;
         // **The content moves with the pull.** An indicator that
         // appeared without the content moving reads as an overlay, not
         // as a drag — and the whole affordance is that the surface
         // itself follows the finger.
         self.content.place(
-            Point { x: origin.x, y: origin.y + self.pull },
+            Point { x: origin.x + pad.left, y: origin.y + pad.top + self.shown() },
             style,
             st,
             i + Self::AT,
@@ -666,28 +696,61 @@ impl<W: Widget> Node for PullToRefresh<W> {
     fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
         let s = &st[i];
         let r = lumen_static::ops::rect_of(s);
-        if self.pull > 0.0 && r[2] > r[0] {
+        let pull = self.shown();
+        if pull > 0.0 && r[2] > r[0] {
             // A bar across the top, filling as the pull approaches the
             // threshold — a progress reading, not a spinner, because a
             // spinner would have to be animated and this widget has no
             // clock. `Spinner`'s own note says the same.
-            let frac = lumen_static::num::clamp(self.pull / self.threshold.max(1.0), 0.0, 1.0);
-            let h = (self.pull * 0.4).min(6.0);
+            let frac = lumen_static::num::clamp(pull / self.threshold.max(1.0), 0.0, 1.0);
+            let h = (pull * 0.4).min(6.0);
             out.rounded_rect([r[0], r[1], r[0] + (r[2] - r[0]) * frac, r[1] + h], s.fg, h / 2.0);
         }
+        // Clipped to its own box: pulled down, the content drew past the
+        // bottom of the widget (M57/B40).
+        out.push_clip(r);
         self.content.paint(st, i + Self::AT, out);
+        out.pop_clip();
     }
 
-    fn on_event(&mut self, ev: &Event, _cx: &EventCtx) -> bool {
+    fn on_event(&mut self, ev: &Event, cx: &EventCtx) -> bool {
+        let max = self.threshold * 2.0;
         match ev {
-            // Only a downward wheel *at the top* pulls. Everything else
-            // is the content's, including an upward one, or a list could
-            // never be scrolled back.
-            Event::Scroll { dy, .. } if *dy > 0.0 => {
-                self.pull = (self.pull + dy).min(self.threshold * 2.0);
+            // **Only at the top** (M57/B40): the comment said so, and any
+            // downward wheel pulled, so inside a list this took every
+            // scroll. Half the wheel's distance, so the pull resists.
+            Event::Scroll { dy, .. } if *dy > 0.0 && self.at_top() => {
+                self.pull = (self.pull + dy * 0.5).min(max);
                 true
             }
-            Event::PointerUp { .. } => self.release(),
+            // An upward wheel while pulled takes the pull back first.
+            Event::Scroll { dy, .. } if *dy < 0.0 && self.pull > 0.0 => {
+                self.pull = (self.pull + dy * 0.5).max(0.0);
+                true
+            }
+            // **A wheel has no release; the gesture going quiet is one**
+            // (M57/B40). Released only on a `PointerUp`, a wheel pull stayed
+            // armed, its content held down, until an unrelated click.
+            Event::ScrollEnd if self.pull > 0.0 => self.release(),
+            // **A drag pulls** (M57/B40). There was no arm for it, so the
+            // gesture the widget is named for did not exist. A press the
+            // content declined starts one — but not a control's, which
+            // must keep its own press or never activate.
+            Event::PointerDown { .. } if !cx.target_is_control && self.at_top() => {
+                self.drag_from = Some(cx.pos.y - self.pull * 2.0);
+                true
+            }
+            Event::PointerMove { .. } => match self.drag_from {
+                Some(from) => {
+                    self.pull = ((cx.pos.y - from) * 0.5).clamp(0.0, max);
+                    true
+                }
+                None => false,
+            },
+            Event::PointerUp { .. } => {
+                self.drag_from = None;
+                self.release()
+            }
             _ => false,
         }
     }

@@ -543,6 +543,21 @@ impl ApplicationHandler<UserEvent> for Win {
         Win::window_event_impl(self, e, id, event);
     }
 
+    /// **A deadline that came due asks for a frame** — M57/B40.
+    ///
+    /// `about_to_wait` sets `WaitUntil` from the host's soonest deadline,
+    /// and the loop woke on it — to nothing: no redraw was requested, so no
+    /// frame ran, no `tick` advanced the timer or ended the wheel gesture,
+    /// and the loop set the same deadline again. A wake whose cause is the
+    /// resume time is the only one here that brings no event of its own.
+    fn new_events(&mut self, _e: &ActiveEventLoop, cause: winit::event::StartCause) {
+        if matches!(cause, winit::event::StartCause::ResumeTimeReached { .. }) {
+            if let Some(w) = self.window.as_ref() {
+                w.request_redraw();
+            }
+        }
+    }
+
     /// **What the loop waits on** — M28/T28.11.
     ///
     /// `ControlFlow::Wait` sleeps until input arrives, so a timer on an

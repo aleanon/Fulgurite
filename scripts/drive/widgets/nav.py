@@ -77,33 +77,66 @@ APPBAR = ("AppBar", "#d_appbar_a", [
 ])
 
 
+def _wheel(c, dy):
+    b = c.box()
+    return c.c.rpc("input.scroll", x=(b[0] + b[2]) / 2, y=(b[1] + b[3]) / 2, dy=dy)
+
+
+def _settle(c, ms):
+    """Wait on the window's clock, not ours: the spring-back is the window
+    waking on its own deadline (M57/B40), which only a real window does."""
+    import time
+    time.sleep(ms / 1000.0)
+    c.c.rpc("ui.waitSettled", timeout_ms=1000)
+
+
+# M57/B40: a wheel pull resists (half the wheel's distance), an upward
+# wheel takes the pull back, and a wheel pull springs back and fires when
+# the wheel goes quiet. The last is the end-to-end check of the window
+# asking for a frame when a deadline comes due -- nothing did, so an idle
+# window never ran the tick that ends the gesture.
+def _refreshes(c) -> int:
+    r = c.readout()
+    return int("".join(ch for ch in r if ch.isdigit()) or -1)
+
+
 PULL = ("PullToRefresh", "#d_pull_a", [
+    # The live window answers slower than the gesture ends: a wheel pull
+    # springs back 150 ms after the last wheel (M57/B40), so "armed" is
+    # gone before a drive can read it. What a user sees is the refresh, so
+    # that is what is asserted; `tests/pull_refresh.rs` holds the states.
     Action(
-        name="a downward drag pulls the content",
+        name="a wheel pull past the threshold refreshes when the wheel stops",
         needs="content that has not been pulled",
-        do=lambda c: (c.__dict__.__setitem__("_p0", c.value()),
-                      c.c.rpc("input.scroll",
-                              x=(c.box()[0] + c.box()[2]) / 2,
-                              y=(c.box()[1] + c.box()[3]) / 2,
-                              dy=80.0))[0],
+        do=lambda c: (c.__dict__.__setitem__("_n", _refreshes(c)),
+                      _wheel(c, 160.0), _settle(c, 400))[0],
         expect=lambda c: (
-            c.value() == "armed",
-            f"state {c._p0!r} -> {c.value()!r} after an 80 px pull "
-            f"(the threshold is 64)",
+            _refreshes(c) == c._n + 1 and c.value() == "idle",
+            f"refreshes {c._n} -> {_refreshes(c)}, state {c.value()!r} after a "
+            f"160 px wheel and 400 ms -- it must fire once and spring back",
         ),
-        injection="drop the Scroll arm in PullToRefresh::on_event",
+        injection="drop the ScrollEnd arm, or the window's wake on a deadline",
+    ),
+    Action(
+        name="a short pull springs back without refreshing",
+        needs="content that has not been pulled",
+        do=lambda c: (c.__dict__.__setitem__("_n", _refreshes(c)),
+                      _wheel(c, 40.0), _settle(c, 400))[0],
+        expect=lambda c: (
+            _refreshes(c) == c._n and c.value() == "idle",
+            f"refreshes {c._n} -> {_refreshes(c)}, state {c.value()!r} after a "
+            f"20 px pull",
+        ),
+        static=True,
+        injection="release every pull as armed",
     ),
     Action(
         name="an upward wheel is not a pull",
-        needs="a pulled-down surface",
-        do=lambda c: c.c.rpc("input.scroll",
-                             x=(c.box()[0] + c.box()[2]) / 2,
-                             y=(c.box()[1] + c.box()[3]) / 2,
-                             dy=-200.0),
+        needs="content at rest",
+        do=lambda c: (c.__dict__.__setitem__("_n", _refreshes(c)), _wheel(c, -200.0))[0],
         expect=lambda c: (
-            c.value() == "armed",
-            f"state {c.value()!r} — an upward wheel belongs to the content, "
-            f"or a list inside one could never scroll back",
+            c.value() == "idle" and _refreshes(c) == c._n,
+            f"state {c.value()!r} -- an upward wheel belongs to the content",
         ),
         static=True,
         injection="take every Scroll, not just a downward one",

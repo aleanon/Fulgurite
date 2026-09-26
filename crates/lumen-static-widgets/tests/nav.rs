@@ -188,7 +188,9 @@ fn an_app_bar_does_not_grow_with_its_title() {
 fn a_pull_past_the_threshold_arms_a_refresh_once() {
     let mut p: PullToRefresh<lumen_static_widgets::ops::Spacer> = PullToRefresh::default();
     lay(&mut p);
-    let ev = Event::Scroll { x: 0.0, y: 0.0, dy: 80.0 };
+    // Half the wheel's distance pulls (M57/B40: the pull resists), so a
+    // 160 px wheel is an 80 px pull.
+    let ev = Event::Scroll { x: 0.0, y: 0.0, dy: 160.0 };
     assert!(p.on_event(&ev, &EventCtx::for_event(0, ev)), "the pull was not taken");
     assert!(p.is_armed(), "80 px of pull did not pass the 64 px threshold: {}", p.pull());
     let up = Event::PointerUp { x: 0.0, y: 0.0, button: lumen_static::PointerButton::Left };
@@ -233,9 +235,11 @@ fn an_upward_wheel_is_not_a_pull() {
 fn the_content_follows_the_pull() {
     let mut p: PullToRefresh<lumen_static_widgets::ops::Spacer> = PullToRefresh::default();
     let before = lay(&mut p)[1].pos.y;
-    let ev = Event::Scroll { x: 0.0, y: 0.0, dy: 40.0 };
+    // An 80 px wheel is a 40 px pull: the pull resists (M57/B40).
+    let ev = Event::Scroll { x: 0.0, y: 0.0, dy: 80.0 };
     p.on_event(&ev, &EventCtx::for_event(0, ev));
     let after = lay(&mut p)[1].pos.y;
+    assert_eq!(p.pull(), 40.0, "setup: an 80 px wheel is not a 40 px pull");
     assert_eq!(
         after - before, 40.0,
         "the content moved {} px for a 40 px pull",

@@ -210,6 +210,17 @@ pub trait Node {
         true
     }
 
+    /// How far this node's content is scrolled from its top, for a node
+    /// that scrolls; `None` for one that does not — M57/B40.
+    ///
+    /// Asked by a parent that must act only at the top of what it holds: a
+    /// pull-to-refresh pulled on every downward wheel, so inside a list it
+    /// would have taken every scroll (`docs/widget-audit.md`,
+    /// PullToRefresh). `ScrollView` and `Repeat` answer.
+    fn scroll_offset(&self) -> Option<f32> {
+        None
+    }
+
     /// Whether a press **outside** this overlay dismisses it — M57/A13.
     ///
     /// `dismiss` answers two requests: Escape, and a press outside every

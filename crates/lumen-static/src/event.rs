@@ -160,6 +160,11 @@ pub enum PointerButton {
     Middle,
 }
 
+/// How long after the last wheel event a gesture counts as ended —
+/// [`Event::ScrollEnd`]. Long enough to span the gaps between a touchpad's
+/// events, short enough that a spring-back feels like a release.
+pub const SCROLL_END_MS: f32 = 150.0;
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[cfg_attr(feature = "observe", derive(serde::Serialize, serde::Deserialize))]
 pub enum Event {
@@ -222,6 +227,17 @@ pub enum Event {
     /// pointer moved away (`docs/widget-audit.md`, Tree). Never enqueued by
     /// a host.
     Leave,
+    /// A wheel gesture on this node ended: no wheel event has arrived for
+    /// a moment — M57/B40 (`docs/plan-widget-fixes.md`).
+    ///
+    /// The browser's scroll-end event. A wheel has no release, so a widget that
+    /// acts when a scroll *finishes* — a pull-to-refresh springing back and
+    /// firing — had nothing to act on, and stayed armed with its content
+    /// held down until an unrelated click (`docs/widget-audit.md`,
+    /// PullToRefresh). The host sends it to the node that took the last
+    /// wheel, bubbling, once none has come for [`SCROLL_END_MS`]. Never
+    /// enqueued by a host's input path.
+    ScrollEnd,
     /// One finger, at one moment — `docs/plan-capabilities.md` T15.5.
     ///
     /// **`id` is a `u32`, and that was measured rather than chosen.**
@@ -289,7 +305,12 @@ impl Event {
             | Event::Hover { x, y }
             | Event::Touch { x, y, .. }
             | Event::Scroll { x, y, .. } => Some(Point { x, y }),
-            Event::Key { .. } | Event::Text { .. } | Event::Modifiers(_) | Event::Focus { .. } | Event::Leave => None,
+            Event::Key { .. }
+            | Event::Text { .. }
+            | Event::Modifiers(_)
+            | Event::Focus { .. }
+            | Event::Leave
+            | Event::ScrollEnd => None,
         }
     }
 }
@@ -323,6 +344,15 @@ pub struct EventCtx {
     /// as a press on themselves: a click on a modal's panel dismissed it,
     /// a click inside a pane moved the divider (`docs/widget-audit.md` X2).
     pub target: u32,
+    /// Whether [`EventCtx::target`] is a **control** — a focusable node —
+    /// M57/B40 (`docs/plan-widget-fixes.md`).
+    ///
+    /// For a container that may take a press its content declined: a
+    /// pull-to-refresh can start a drag from a label or from its own
+    /// surface, and must leave a button's press to the button, since
+    /// taking it would capture the pointer and the click would never
+    /// activate.
+    pub target_is_control: bool,
     /// For virtualized content: which row. `None` for ordinary nodes.
     ///
     /// This is the field that replaces `move |s| s.remove(idx)`: the row
@@ -368,6 +398,7 @@ impl EventCtx {
             event,
             node,
             target: node,
+            target_is_control: false,
             row: None,
             inner: 0,
             pos: Point::default(),

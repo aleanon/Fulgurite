@@ -361,6 +361,7 @@ fn dispatch_overlaid_inner<S: crate::event::App, O: crate::overlay::OverlaySink>
                         event: *ev,
                         node: h.node,
                         target: h.node,
+                        target_is_control: <S::Tree as crate::widget::Widget>::SUB_TABLE.get(h.node as usize).is_some_and(|d| d.is_focusable()),
                         row: h.inner.map(|x| x.row),
                         inner: h.inner.map_or(0, |x| x.node),
                         pos: p,
@@ -456,28 +457,44 @@ pub fn tell_focus<S: crate::event::App>(
     before: Option<u32>,
     consumed: &mut Consumed,
 ) {
-    use crate::event::{Event, EventCtx};
+    use crate::event::Event;
     let after = input.focus;
     if before == after {
         return;
     }
-    let table = <S::Tree as crate::widget::Widget>::SUB_TABLE;
     for (node, gained) in [(before, false), (after, true)] {
-        let Some(start) = node.map(|n| n as usize).filter(|&n| n < table.len()) else { continue };
-        let ev = Event::Focus { gained };
-        let mut ctx = EventCtx::for_event_with(start as u32, ev, input.mods);
-        let mut i = start;
-        loop {
-            ctx.node = i as u32;
-            if state.tree_mut().node_mut(i).on_event(&ev, &ctx) {
-                consumed.push(i);
-                break;
-            }
-            if table[i].parent == crate::desc::NO_PARENT {
-                break;
-            }
-            i = table[i].parent as usize;
+        if let Some(n) = node {
+            deliver(state, n, Event::Focus { gained }, input.mods, consumed);
         }
+    }
+}
+
+/// **Offer a synthesized event to `node`, then to each ancestor until one
+/// consumes it** — M57, shared by `Event::Focus` (A7) and
+/// `Event::ScrollEnd` (B40). `ctx.target` names `node` throughout; the
+/// consumer is recorded so the host marks it. Answers whether anything
+/// took it.
+pub fn deliver<S: crate::event::App>(
+    state: &mut S,
+    node: u32,
+    ev: crate::event::Event,
+    mods: crate::event::Mods,
+    consumed: &mut Consumed,
+) -> bool {
+    let table = <S::Tree as crate::widget::Widget>::SUB_TABLE;
+    let Some(start) = Some(node as usize).filter(|&n| n < table.len()) else { return false };
+    let mut ctx = crate::event::EventCtx::for_event_with(node, ev, mods);
+    let mut i = start;
+    loop {
+        ctx.node = i as u32;
+        if state.tree_mut().node_mut(i).on_event(&ev, &ctx) {
+            consumed.push(i);
+            return true;
+        }
+        if table[i].parent == crate::desc::NO_PARENT {
+            return false;
+        }
+        i = table[i].parent as usize;
     }
 }
 
@@ -730,6 +747,7 @@ fn dispatch_at<S: crate::event::App>(
                     event: *ev,
                     node: cap as u32,
                     target: cap as u32,
+                    target_is_control: table[cap].is_focusable(),
                     row: None,
                     inner: 0,
                     pos: p,
@@ -825,6 +843,7 @@ fn dispatch_at<S: crate::event::App>(
                 event: *ev,
                 node: h.node,
                 target: h.node,
+                target_is_control: table.get(h.node as usize).is_some_and(|d| d.is_focusable()),
                 row: h.inner.map(|x| x.row),
                 inner: h.inner.map_or(0, |x| x.node),
                 pos: p,
@@ -1027,6 +1046,7 @@ fn tell_owner<S: crate::event::App>(
             node: owner,
             // The overlay was dismissed; the owner is told on its behalf.
             target: overlay as u32,
+            target_is_control: false,
             row: None,
             inner: 0,
             pos: ev.position().unwrap_or(Point { x: 0.0, y: 0.0 }),

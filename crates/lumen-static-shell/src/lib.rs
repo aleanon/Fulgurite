@@ -84,6 +84,9 @@ pub struct Host<A: App, R: Retention = Incremental, I: Invalidation = lumen_stat
     /// An overlay opened or closed on the last paint and focus is owed a
     /// move next frame, so the shell should ask for one (M57/A12).
     focus_owed: bool,
+    /// The node that took the last wheel, and how long until the gesture
+    /// counts as ended — M57/B40 (`Event::ScrollEnd`).
+    scroll_end: Option<(u32, f32)>,
     /// Where deferred work runs — M28/T28.3.
     ///
     /// `dyn` at the shell, which `docs/plan-agent-parity.md`'s appendix
@@ -506,6 +509,7 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             more_deferred: false,
             overlay_focus: None,
             focus_owed: false,
+            scroll_end: None,
             spawner: None,
             unspawned: 0,
             unknown_kind: 0,
@@ -1064,6 +1068,7 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         // it closed — after `before`, so the move marks both nodes.
         self.settle_overlay_focus();
         while let Some(ev) = self.queue.pop() {
+            let took = consumed.nodes().len();
             // `dispatch_overlaid`: an overlay takes pointer hits first,
             // Escape closes the topmost, and a press outside every open
             // one dismisses them and is consumed. `self.overlays` is
@@ -1078,6 +1083,13 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
                 &ev,
                 &mut consumed,
             );
+            // A wheel someone took: its gesture ends when no other comes
+            // for `SCROLL_END_MS` (M57/B40).
+            if matches!(ev, Event::Scroll { .. }) {
+                if let Some(&n) = consumed.nodes().get(took..).and_then(|t| t.last()) {
+                    self.scroll_end = Some((n, lumen_static::event::SCROLL_END_MS));
+                }
+            }
         }
 
         // **A cancel the application asked for** — M28/T28.12.
@@ -1411,12 +1423,30 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         // it, so under `Boundaries` a tick-written label kept its old box
         // (`tests/tick_marks.rs`). A zero `dt` is a pure query by
         // `App::tick`'s contract and changes nothing, so it marks nothing.
+        // **A wheel gesture that has gone quiet ends** — M57/B40.
+        let mut ended = false;
+        if let Some((n, left)) = self.scroll_end {
+            let left = left - dt_ms;
+            if left > 0.0 {
+                self.scroll_end = Some((n, left));
+            } else {
+                self.scroll_end = None;
+                let mut consumed = pass::Consumed::default();
+                if pass::deliver(&mut self.app, n, Event::ScrollEnd, self.input.mods, &mut consumed) {
+                    let table = <A::Tree as Widget>::SUB_TABLE;
+                    for &k in consumed.nodes() {
+                        self.invalidation.mark(lumen_static::style::subtree_range(table, k as usize));
+                    }
+                    ended = true;
+                }
+            }
+        }
         let ticked = self.app.tick(dt_ms);
         if ticked && dt_ms > 0.0 {
             self.invalidation.mark_all();
             self.arenas_dirty = true;
         }
-        ticked || fired > 0
+        ticked || fired > 0 || ended
     }
 
     /// How long until this host's soonest timer is due, in milliseconds
@@ -1429,7 +1459,12 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
     /// `None` means nothing is pending and the loop may wait
     /// indefinitely, which is today's behaviour.
     pub fn next_deadline_ms(&mut self) -> Option<f32> {
-        self.app.timers().and_then(|t| t.earliest())
+        let timers = self.app.timers().and_then(|t| t.earliest());
+        // A wheel gesture waiting to end is a deadline too (M57/B40).
+        match (timers, self.scroll_end.map(|(_, left)| left.max(0.0))) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (a, b) => a.or(b),
+        }
     }
 
     /// Route one composition step to the focused node — T14.8.

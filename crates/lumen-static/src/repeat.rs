@@ -339,6 +339,11 @@ impl<T: Widget + Default + 'static> Widget for Repeat<T> {
 pub const MAX_ADDRESSABLE_EXTENT: f32 = 16_777_216.0;
 
 impl<T: Widget + Default + 'static> Node for Repeat<T> {
+    /// How far the rows are scrolled — M57/B40 (`Node::scroll_offset`).
+    fn scroll_offset(&self) -> Option<f32> {
+        Some(self.scroll)
+    }
+
     fn kind_name(&self) -> &'static str {
         <Self as Widget>::KIND
     }

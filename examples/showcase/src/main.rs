@@ -314,6 +314,8 @@ pub struct Store {
     dismissals: u32,
     /// The accordion's open section, if any (M57/C7).
     section: Option<usize>,
+    /// Refreshes the pull-to-refresh demo has fired (M57/B40).
+    refreshes: u32,
 }
 
 /// After every pump: rebuild the demos whose state lives in the store,
@@ -412,6 +414,14 @@ fn refresh(s: &mut Show) -> bool {
         }
         let want = s.store.section;
         changed |= d.a.set_open(want == Some(0)) | d.b.set_open(want == Some(1)) | d.c.set_open(want == Some(2));
+    }
+    // **A pull that fired is a refresh** (M57/B40): taken once, counted,
+    // so the readout shows the widget doing what it is for.
+    if let Demo::Pull(d) = &mut s.ui.main.stage.row.demo {
+        if d.a.take_triggered() {
+            s.store.refreshes += 1;
+            changed = true;
+        }
     }
     // **Read the typed fields back before reporting.** This is what a
     // `Dyn` island could not do: a `Slider` owns its value, and through
@@ -1398,6 +1408,7 @@ mod tests {
             event: Event::down(x, y),
             node: 0,
             target: 0,
+            target_is_control: false,
             row: None,
             inner: 0,
             pos: lumen_static::Point { x, y },
