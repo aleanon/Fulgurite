@@ -5,7 +5,7 @@
 # build is driven. The stranger is started by run_check (the "edit" is a
 # process, not a file), and it must be answering before the check runs.
 PORT=7890
-CHECK="LUMEN_AGENT_PORT=$PORT ./scripts/widget_drive.sh Switch"
+CHECK="LUMEN_LIVE_PORT=$PORT ./scripts/widget_drive.sh Switch"
 EXPECT="port already answering on 127\.0\.0\.1:$PORT"
 plant() { :; }
 applied() {

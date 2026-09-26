@@ -13,41 +13,37 @@
 # answer can be observed. A protocol written after M26 that runs only the
 # default has ignored M26's finding.
 #
-# Needs a display. Skips -- exit 0 -- without one, like every other live
-# gate here.
+# **Each leg names the process it drove** (M42/T42.2,
+# docs/plan-drive-identity.md): `scripts/live/launch.py` refuses a port
+# that already answers, launches the binary itself, checks that the
+# socket's owner is its child, and that the child's own `app.diagnostics`
+# reports the strategy and features the leg declares below -- and prints
+# `drove pid P (socket owner P), strategy S, ...`. Until then the strategy
+# was a label this script set, and a leftover showcase on the port was
+# driven twice and reported "both ways" (R18-F1).
+#
+# Needs a display. Skips with exit 77 without one (M43 §2).
 set -euo pipefail
 cd "$(cd "$(dirname "$0")/.." && pwd)"
-
-if [ -z "${DISPLAY:-}" ]; then
-    echo "widget-drive: no X display — skipped"
-    exit 0
-fi
+LAUNCH="python3 scripts/live/launch.py --script widget-drive"
+$LAUNCH --display-only || exit $?
 
 ONLY="${1:-}"
-PORT="${LUMEN_AGENT_PORT:-7656}"
 status=0
 
+# run_one LEG CARGO-FEATURES EXPECTED-FEATURES
+#   LEG is the strategy the process must report; the expected features are
+#   declared apart from the build's, so a leg built wrong is refused
+#   rather than re-described.
 run_one() {
-    local strategy="$1" features="$2"
+    local strategy="$1" features="$2" expect="$3"
     cargo build --release -p showcase --features "$features" >/dev/null
-    RUST_BACKTRACE=1 LUMEN_AGENT="127.0.0.1:$PORT" \
-        ./target/release/showcase >"/tmp/widget_drive_$strategy.log" 2>&1 &
-    local pid=$!
-    # Wait for the socket rather than sleeping a guess: a fixed sleep is
-    # how this script would start reporting "connection refused" the day
-    # the machine is busy.
-    LUMEN_AGENT_ADDR="127.0.0.1:$PORT" python3 scripts/agent_client.py wait-port --timeout 60
-    if LUMEN_AGENT_ADDR="127.0.0.1:$PORT" LUMEN_DRIVE_STRATEGY="$strategy" \
-        python3 scripts/drive/run.py "$ONLY"; then
-        :
-    else
-        status=1
-    fi
-    kill "$pid" 2>/dev/null || true
-    wait "$pid" 2>/dev/null || true
+    $LAUNCH --leg "$strategy" --bin target/release/showcase \
+        --expect-strategy "$strategy" --expect-features "$expect" \
+        -- python3 scripts/drive/run.py "$ONLY" || status=1
 }
 
-run_one Everything  agent,everything
-run_one Boundaries  agent
+run_one Everything  agent,everything  everything
+run_one Boundaries  agent             ""
 
 exit "$status"

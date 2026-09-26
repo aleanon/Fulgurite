@@ -15,31 +15,34 @@
 #   * a press is *observable while held* -- the frame differs from the
 #     released one, which is the thing a screenshot after the fact cannot show.
 #
-# Needs a display. Skips -- exit 0 -- without one, because that is the
-# configuration CI runs in.
+# **Each leg names the process it drove** (M42/T42.2,
+# docs/plan-drive-identity.md): `scripts/live/launch.py` refuses a port
+# that already answers, launches the binary itself, and checks the socket's
+# owner and the process's own `app.diagnostics` against the leg's declared
+# strategy and features before the drive below runs.
+#
+# Needs a display. Skips with exit 77 without one (M43 §2).
 set -euo pipefail
 cd "$(cd "$(dirname "$0")/.." && pwd)"
-
-if [ -z "${DISPLAY:-}" ]; then
-    echo "agent-drive: no X display — skipped"
-    exit 0
-fi
+LAUNCH="python3 scripts/live/launch.py --script agent-drive"
+$LAUNCH --display-only || exit $?
 
 # **Both invalidation strategies** — M34/T34.0. This drive ran under
 # `Everything` only (the window's default until M34), so it said nothing
 # about the frames a `Boundaries` window draws; the other drive scripts
 # already ran both legs. The body is not indented: its heredoc's
-# terminator must start the line.
+# terminator must start the line. The heredoc is the launcher's stdin,
+# which it hands to the drive.
+#
+# run_one LEG CARGO-FEATURES EXPECTED-FEATURES -- the expected features are
+# declared apart from the build's, so a leg built wrong is refused rather
+# than re-described.
 run_one() {
-PORT="${LUMEN_AGENT_PORT:-7655}"
 cargo build --release -p showcase --features "$2"
-RUST_BACKTRACE=1 LUMEN_AGENT="127.0.0.1:$PORT" ./target/release/showcase >/tmp/agent_drive.log 2>&1 &
-pid=$!
-trap 'kill $pid 2>/dev/null || true' EXIT
 echo "== $1 =="
-sleep 4
-
-python3 - "$PORT" <<'PY'
+$LAUNCH --leg "$1" --bin target/release/showcase \
+    --expect-strategy "$1" --expect-features "$3" \
+    -- python3 - "{port}" <<'PY'
 import socket, json, sys, base64, hashlib
 port = int(sys.argv[1])
 s = socket.create_connection(("127.0.0.1", port), timeout=15)
@@ -144,10 +147,8 @@ if sh.get("supported"):
     assert sh["first"] is None, f"agent-drive: a bounded frame diverged from the whole-tree one: {sh['first']!r}"
     print(f"agent-drive: shadow oracle compared {sh['compared']} frames, none diverged")
 PY
-kill $pid 2>/dev/null || true
-wait $pid 2>/dev/null || true
 }
 
-run_one Everything agent,everything
-run_one Boundaries agent,shadow-oracle
+run_one Everything agent,everything everything
+run_one Boundaries agent,shadow-oracle shadow-oracle
 echo "agent-drive: both strategies"

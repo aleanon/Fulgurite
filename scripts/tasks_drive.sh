@@ -14,17 +14,17 @@
 # idle, and they stayed green with the waker uninstalled and with the
 # deadline ignored. A check of a wake or a deadline must not poll.
 #
-# Needs a display. Skips -- exit 0 -- without one, like the other live
-# gates.
+# **Each leg names the process it drove** (M42/T42.2): through
+# `scripts/live/launch.py`, which refuses a port that already answers and
+# checks the socket's owner and the process's own `app.diagnostics`
+# against the leg's strategy. That makes the legs *identifiable*; it does
+# not make the last two phases observe an idle window (R7-F2, M47).
+#
+# Needs a display. Skips with exit 77 without one (M43 §2).
 set -euo pipefail
 cd "$(cd "$(dirname "$0")/.." && pwd)"
-
-if [ -z "${DISPLAY:-}" ]; then
-    echo "tasks-drive: no X display -- skipped"
-    exit 0
-fi
-
-PORT="${LUMEN_TASKS_PORT:-7658}"
+LAUNCH="python3 scripts/live/launch.py --script tasks-drive"
+$LAUNCH --display-only || exit $?
 
 # The strategy is a COMPILE-TIME feature of lumen-static-winit, not a
 # runtime switch, so this builds twice. Both arms matter: M25/T25.0 and
@@ -36,18 +36,13 @@ for strategy in everything boundaries; do
     # diagnostic feature that selects the whole-tree walk.
     if [ "$strategy" = everything ]; then
         cargo build --release -q -p tasks-demo --features everything
+        expect=(--expect-strategy Everything --expect-features everything)
     else
         cargo build --release -q -p tasks-demo
+        expect=(--expect-strategy Boundaries --expect-features "")
     fi
-    LUMEN_AGENT="127.0.0.1:$PORT" ./target/release/tasks-demo \
-        >"/tmp/tasks_drive_$strategy.log" 2>&1 &
-    pid=$!
-    trap 'kill $pid 2>/dev/null || true' EXIT
-    sleep 3
-    LUMEN_TASKS_PID=$pid python3 scripts/tasks_drive.py "$PORT" "$strategy"
-    kill $pid 2>/dev/null || true
-    wait $pid 2>/dev/null || true
-    PORT=$((PORT + 1))
+    $LAUNCH --leg "$strategy" --bin target/release/tasks-demo "${expect[@]}" \
+        -- env LUMEN_TASKS_PID={pid} python3 scripts/tasks_drive.py {port} "$strategy"
 done
 
 echo "tasks-drive: all five capabilities landed under both strategies"

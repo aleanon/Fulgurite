@@ -1,24 +1,31 @@
 #!/usr/bin/env bash
 # Open the tally window, run every live check against it, close it.
-# Exit code is the verdict. Needs a display (or xvfb-run).
+# Exit code is the verdict. Needs a display; skips with exit 77 without
+# one (M43 §2).
+#
+# The window is launched by `scripts/live/launch.py` (M42/T42.2): the
+# binary itself, not `cargo run`, on a free port (never the dev window's),
+# refused if the port already answers, and checked -- socket owner and
+# `app.diagnostics`' process block -- to be the pid it launched. The
+# checks below run as the launcher's drive: this script again, with
+# `--drive`, and LUMEN_AGENT_ADDR pointing at that window.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-export LUMEN_AGENT_ADDR="${LUMEN_AGENT_ADDR:-127.0.0.1:9231}"   # not the dev window's port
 
-cargo build -q -p counter-window
-# The binary itself, not `cargo run`: the replay below checks that the
-# port belongs to the pid this script launched, and `cargo run`'s pid is
-# cargo's.
-./target/debug/counter-window &
-pid=$!
-trap 'kill "$pid" 2>/dev/null || true' EXIT
+if [ "${1:-}" != --drive ]; then
+    LAUNCH="python3 scripts/live/launch.py --script live-gate"
+    $LAUNCH --display-only || exit $?
+    cargo build -q -p counter-window
+    exec $LAUNCH --bin target/debug/counter-window \
+        --expect-strategy Boundaries --expect-features "" \
+        -- "$0" --drive
+fi
 
-python3 scripts/agent_client.py wait-port --timeout 60 >/dev/null
 # M39/T39.1 (R14-F1): a browser's no-cors POST, byte for byte, must not
 # move the tally -- and the first click below must (the accept half).
 python3 scripts/browser_replay.py "$LUMEN_AGENT_ADDR" \
     crates/lumen-static-agent/tests/browser/firefox156-fetch-no-cors.bin '#value' \
-    --pid "$pid"
+    --pid "$LUMEN_LIVE_PID"
 before=$(python3 scripts/agent_client.py call ui.resolve '{"selector":"#value"}' | python3 -c 'import json,sys; print(json.load(sys.stdin)["value"])')
 python3 scripts/agent_client.py click '#inc' >/dev/null
 after=$(python3 scripts/agent_client.py call ui.resolve '{"selector":"#value"}' | python3 -c 'import json,sys; print(json.load(sys.stdin)["value"])')
@@ -28,4 +35,3 @@ echo "live-gate: an ordinary click moves the tally: #value $before -> $after"
 for _ in $(seq 20); do python3 scripts/agent_client.py click '#inc' >/dev/null; done
 python3 scripts/ui_check.py all
 python3 scripts/agent_client.py quit >/dev/null
-wait "$pid" || true

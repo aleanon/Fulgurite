@@ -1491,7 +1491,7 @@ missed.
 | `protocol.rs` waitSettled | `just test` | no | red only by pinning a constant |
 | `changes.rs`/`hidden_subtree.rs`/`lint.rs`/`off_table_visibility.rs` | `just test` | no | yes: `2b21ded`, `1e1c180` |
 | `session.rs` refusals | `just test` | no | viewport, measurer, start frame yes; per-step and stylesheet absent |
-| `scripts/widget_drive.sh` | manual | exits 0 without DISPLAY; per action on empty regions | **no** for `1beed32`, I5a, leftover process, I5b/I5c, colour (`fd31a02`) |
+| `scripts/widget_drive.sh` | manual | exits 0 without DISPLAY; per action on empty regions | **no** for `1beed32`, I5a, leftover process, I5b/I5c, colour (`fd31a02`). **Since M42/T42.2: shown to fail: yes, by the stranger and leg-drop plants** (`scripts/selftest/plants/live/`); exits 77 without a display |
 | `scripts/ui_check.py` | `just live-gate` with a display | 2 of 3 budgets pass on zeros | latency fails on nan |
 | `benches --bin agent` allocation count | manual | never fails | no (reads 4.00) |
 | `hostile.rs` | `just test` | never reaches the transport | not injected |

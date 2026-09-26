@@ -12,15 +12,17 @@
 # screen (crates/lumen-static-winit/src/surface.rs). A headless test cannot
 # see that. Measured 2026-09-07: worst channel delta 1, docs/results-gpu.md.
 #
-# Needs a display, an adapter, and `xwd`. Skips -- exit 0 -- when any is
-# missing, because all three are configurations the fallback exists for.
+# Needs a display, an adapter, and `xwd`. Skips with exit 77 when the
+# display is missing (M43 §2), and exit 0 for a missing adapter or `xwd`,
+# the two configurations the fallback exists for.
+#
+# Each window is launched by `scripts/live/launch.py` (M42/T42.2) with
+# `--no-agent`: the grab runs while the launcher checks the window is
+# still alive, and the log is per worktree (`target/live/gpu-parity-*.log`).
 set -euo pipefail
 cd "$(cd "$(dirname "$0")/.." && pwd)"
-
-if [ -z "${DISPLAY:-}" ]; then
-    echo "gpu-parity: no X display (xwd cannot read a Wayland surface) — skipped"
-    exit 0
-fi
+LAUNCH="python3 scripts/live/launch.py --script gpu-parity"
+$LAUNCH --display-only || exit $?
 if ! command -v xwd >/dev/null; then
     echo "gpu-parity: no xwd — skipped"
     exit 0
@@ -30,21 +32,18 @@ cargo build --release -p minimal --features gpu
 bin=target/release/minimal
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 
+# grab LEG OUT [K=V]: the window on one backend, read back off the X server.
 grab() {
-    env ${2:-} "$bin" >"$tmp/log" 2>&1 &
-    local pid=$!
-    sleep 3
-    xwd -name minimal -out "$1" 2>/dev/null || true
-    kill "$pid" 2>/dev/null || true
-    wait "$pid" 2>/dev/null || true
+    $LAUNCH --no-agent --settle 3 --leg "$1" --bin "$bin" ${3:+--env "$3"} \
+        -- bash -c "xwd -name minimal -out '$2' 2>/dev/null || true"
 }
 
-grab "$tmp/gpu.xwd"
-if ! grep -q '^lumen-static: gpu' "$tmp/log"; then
-    echo "gpu-parity: no adapter on this machine — skipped ($(cat "$tmp/log"))"
+grab gpu "$tmp/gpu.xwd"
+if ! grep -q '^lumen-static: gpu' target/live/gpu-parity-gpu.log; then
+    echo "gpu-parity: no adapter on this machine — skipped ($(cat target/live/gpu-parity-gpu.log))"
     exit 0
 fi
-grab "$tmp/cpu.xwd" "LUMEN_BACKEND=software"
+grab software "$tmp/cpu.xwd" "LUMEN_BACKEND=software"
 
 python3 - "$tmp/gpu.xwd" "$tmp/cpu.xwd" <<'PY'
 import struct, sys

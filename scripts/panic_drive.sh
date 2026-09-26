@@ -3,34 +3,36 @@
 # where it happened and the window survives it — under both invalidation
 # strategies, built --release WITH `reload` (rule 3). Then the build that
 # must not recover: --release WITHOUT `reload` must still die, so the cfg
-# is known to switch both ways. Needs a display; skips without one.
+# is known to switch both ways. Needs a display; skips with exit 77
+# without one (M43 §2).
+#
+# **Each leg names the process it drove** (M42/T42.2): through
+# `scripts/live/launch.py`, which refuses a port that already answers and
+# checks the socket's owner and the process's own `app.diagnostics` --
+# strategy, and `reload` present exactly where the leg says it is. The
+# last leg is expected to die, and the launcher asserts that it did.
 set -euo pipefail
 cd "$(cd "$(dirname "$0")/.." && pwd)"
-if [ -z "${DISPLAY:-}" ]; then
-    echo "panic-drive: no X display — skipped"
-    exit 0
-fi
-PORT="${LUMEN_PANIC_PORT:-7661}"
+LAUNCH="python3 scripts/live/launch.py --script panic-drive"
+$LAUNCH --display-only || exit $?
 for strategy in everything boundaries; do
     echo "== $strategy =="
     feats="agent,reload"
-    [ "$strategy" = everything ] && feats="$feats,lumen-static-winit/everything"
+    expect=(--expect-strategy Boundaries --expect-features reload)
+    if [ "$strategy" = everything ]; then
+        feats="$feats,lumen-static-winit/everything"
+        expect=(--expect-strategy Everything --expect-features everything,reload)
+    fi
     cargo build --release -q -p panic-app --features "$feats"
-    LUMEN_AGENT="127.0.0.1:$PORT" ./target/release/panic-app --window >"/tmp/panic_drive_$strategy.log" 2>&1 &
-    pid=$!
-    trap 'kill $pid 2>/dev/null || true' EXIT
-    sleep 3
-    python3 scripts/panic_drive.py "$PORT" "$strategy"
-    kill $pid 2>/dev/null || true
-    wait $pid 2>/dev/null || true
+    $LAUNCH --leg "$strategy" --bin target/release/panic-app --arg=--window "${expect[@]}" \
+        -- python3 scripts/panic_drive.py {port} "$strategy"
 done
 
 echo "== release without reload: must still die =="
 cargo build --release -q -p panic-app --features agent
-LUMEN_AGENT="127.0.0.1:$PORT" ./target/release/panic-app --window >/tmp/panic_drive_norecover.log 2>&1 &
-pid=$!
-sleep 3
-python3 - "$PORT" <<'PY'
+$LAUNCH --leg norecover --bin target/release/panic-app --arg=--window \
+    --expect-strategy Boundaries --expect-features "" --expect-exit nonzero \
+    -- python3 - {port} <<'PY'
 import json, socket, sys
 s = socket.create_connection(("127.0.0.1", int(sys.argv[1])), timeout=5)
 f = s.makefile("rwb")
@@ -45,10 +47,4 @@ try:
 except Exception:
     pass
 PY
-sleep 1
-if kill -0 $pid 2>/dev/null; then
-    kill $pid
-    echo "panic-drive: FAIL — a release build without reload survived a panic"
-    exit 1
-fi
 echo "panic-drive: release without reload died, as it must"

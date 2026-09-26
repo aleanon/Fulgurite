@@ -6,19 +6,17 @@
 # sleeping in `ControlFlow::Wait` and that a frame follows.
 #
 # The fixture asserts itself and owns its own timeout -- see its crate
-# docs for why this cannot be a `cargo test`. Skips (exit 0) without a
-# display, which is the configuration CI runs in, exactly as
-# scripts/agent_drive.sh and scripts/live_gate.sh do.
+# docs for why this cannot be a `cargo test`. It has no agent endpoint,
+# so `scripts/live/launch.py` (M42/T42.2) runs it with `--no-agent`: the
+# display check, the per-worktree log, and the fixture's own exit status
+# as the verdict. Skips with exit 77 without a display (M43 §2).
 set -euo pipefail
 cd "$(cd "$(dirname "$0")/.." && pwd)"
-
-if [ -z "${DISPLAY:-}" ]; then
-    echo "wake-gate: no X display — skipped"
-    exit 0
-fi
+LAUNCH="python3 scripts/live/launch.py --script wake-gate"
+$LAUNCH --display-only || exit $?
 
 cargo build -q -p wake-gate
 # The fixture exits non-zero on its own deadline, so a hang here is a
-# bug in the fixture rather than the thing under test; `timeout` bounds
-# that too, and 30s is six times the fixture's own 5s deadline.
-timeout 30 ./target/debug/wake-gate
+# bug in the fixture rather than the thing under test; the launcher's
+# 30 s bound covers that too, six times the fixture's own 5 s deadline.
+$LAUNCH --no-agent --bin target/debug/wake-gate --stop wait --timeout 30

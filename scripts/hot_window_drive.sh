@@ -3,16 +3,19 @@
 # itself. fixtures/hot-window is COPIED into a workspace of its own under
 # target/hot-live and its copy's source is edited -- never the checked-in
 # file. Built --release --features hot,agent; driven over the agent by
-# scripts/hot_window_drive.py. Needs a display; skips without one.
+# scripts/hot_window_drive.py. Needs a display; skips with exit 77
+# without one (M43 §2).
+#
+# **The window is launched by `scripts/live/launch.py`** (M42/T42.2): a
+# port that already answers is refused, and the socket's owner and the
+# process's own `app.diagnostics` (answered by the session inside the
+# library) must name the launched pid, the default strategy and `reload`.
 set -euo pipefail
 cd "$(cd "$(dirname "$0")/.." && pwd)"
-if [ -z "${DISPLAY:-}" ]; then
-    echo "hot-window-drive: no X display — skipped"
-    exit 0
-fi
+LAUNCH="python3 scripts/live/launch.py --script hot-window-drive"
+$LAUNCH --display-only || exit $?
 ROOT="$(pwd)"
 WS="$ROOT/target/hot-live/ws"
-PORT="${LUMEN_HOT_PORT:-7671}"
 mkdir -p "$WS"
 rm -rf "$WS/app"
 cp -r fixtures/hot-window "$WS/app"
@@ -36,10 +39,6 @@ echo "== building the window, and the library it will first swap to =="
 (cd "$WS" && cargo rustc --release -q -p hot-window --lib --crate-type cdylib \
     --features "hot agent" --target-dir "$WS/target/reload")
 
-LUMEN_AGENT="127.0.0.1:$PORT" LUMEN_HOT_FEATURES="hot agent" \
-    "$WS/target/release/hot-window" >/tmp/hot_window_drive.log 2>&1 &
-pid=$!
-trap 'kill $pid 2>/dev/null || true' EXIT
-sleep 2
-python3 scripts/hot_window_drive.py "$PORT" "$WS/app/src/lib.rs" "$pid" || {
-    echo "--- window log ---"; tail -30 /tmp/hot_window_drive.log; exit 1; }
+$LAUNCH --bin "$WS/target/release/hot-window" --env "LUMEN_HOT_FEATURES=hot agent" \
+    --expect-strategy Boundaries --expect-features reload \
+    -- python3 scripts/hot_window_drive.py {port} "$WS/app/src/lib.rs" {pid}

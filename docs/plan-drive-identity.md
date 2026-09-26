@@ -784,6 +784,49 @@ rule. What would stop the milestone:
   rot is loud. It is still a maintenance cost, and it is the price of
   rule 5.
 
+## 6. What building found (2026-09-26)
+
+Kept beside the plan rather than folded into it, as the repository does
+for every plan a build corrected.
+
+- **T42.1: `Live` cannot be built over `Everything` in a test.** The
+  shell's `Live` is fixed to the `Inval` alias, so "a shell test builds a
+  `Live` over `Host<_, _, Everything>`" is not expressible. The strategy
+  is reported through `Host::strategy()` (`type_name::<I>()`), so the two
+  strategy tests build `Host<_, _, Everything>` and
+  `Host<_, _, Boundaries<256>>` and ask it; a third drives a real
+  `Session::agent` and checks the block against `type_name::<Inval>()`
+  and the test's pid (`crates/lumen-static-shell/tests/process_info.rs`).
+  The bind test lives in the agent crate, beside M39's one bind step,
+  rather than in winit.
+- **T42.1 moved a gate.** winit's `agent_transport` served `0.0.0.0`
+  in-process to show M39/T39.2's refusal; with the refusal now exiting 3
+  that would end the test binary, so the case re-executes the binary as a
+  child and asserts exit 3 as well.
+- **T42.2: the three stranger defences do not fire in the order §3
+  predicted.** A stranger answers from the first instant, so the
+  launcher's wait for the port ends before the child has even tried to
+  bind; with the pre-launch refusal removed, the next thing to fire is
+  the **socket owner** check (`socket owner Q is not the launched pid
+  P`), not `child exited 3`. With the owner check removed too (and T42.1's
+  exit reverted), the **diagnostics pid** fires. A child's exit 3 is seen
+  by T42.3's stop step (a child that died mid-drive), not by the wait.
+- **T42.2: the launcher reads its expectation from the leg, not from the
+  build's features.** Each `run_one` line declares its expected features
+  in a column of its own, because a plant (or a mistake) that edits the
+  build's feature list must be refused rather than re-described. The
+  strategy check compares the last path segment of the process's
+  `type_name`, with or without its parameters (`Boundaries` matches
+  `lumen_static::invalidate::Boundaries<256>`).
+- **T42.2: the launcher checks features as well as strategy**, so
+  shadow-absent and shadow-unexpected go red in the launcher before
+  T42.4's in-drive check exists. T42.4's injection therefore removes one
+  defence at a time, like T42.2's.
+- **AGENT.md is the coordinator's.** The tasks' "docs in the same
+  commit" name AGENT.md entries; the implementation brief reserves that
+  file for the merge, so those edits are listed in the final report
+  instead.
+
 ## Appendix: finding → task
 
 | ID | sev now | status | task |

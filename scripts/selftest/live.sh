@@ -24,8 +24,7 @@ if [ -z "${DISPLAY:-}" ]; then
     echo "selftest-live: no X display -- skipped (77)"
     exit 77
 fi
-# The drives' fixed default ports belong to whoever else is running one;
-# these are this harness's.
-export LUMEN_AGENT_PORT="${LUMEN_AGENT_PORT:-7881}"
-export LUMEN_AGENT_ADDR="${LUMEN_AGENT_ADDR:-127.0.0.1:7882}"
+# The launcher picks a free port per leg (scripts/live/launch.py); these
+# are the ones it may pick from here. The stranger plant uses 7890.
+export LUMEN_LIVE_PORT_RANGE="${LUMEN_LIVE_PORT_RANGE:-7880-7889}"
 exec "$(dirname "$0")/run.sh" live

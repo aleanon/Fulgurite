@@ -77,6 +77,7 @@ commit subjects. Every gate names the injection that must turn it red.*
 > | `tests/bind_marks.rs`, `conservative_marks.rs`, `handled_narrowing.rs` (M29) | both, by construction | both |
 > | `scripts/widget_drive.sh`, `scripts/tasks_drive.sh` | both | both |
 > | `scripts/agent_drive.sh` | **`Everything` only** | **both** |
+> | *(M42/T42.2)* all live drives | a leg's strategy was a label the script set | each leg launched by `scripts/live/launch.py`, which checks the socket's owner and the process's own `app.diagnostics` strategy and features (`docs/plan-drive-identity.md`) |
 > | `tests/golden.rs`, `fixtures/hot-host`, GPU parity | strategy-free (no `Host`, or a first frame after a resize, which marks everything) | recorded, not converted |
 > | every example's headless frame, `counter-window --drive`, every test that names `Host<A>` | `Host`'s default, `Everything` | follow the flip (T34.2) |
 >

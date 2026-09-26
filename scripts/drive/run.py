@@ -37,8 +37,15 @@ def inventories():
 
 def main() -> int:
     only = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1] else None
-    strategy = os.environ.get("LUMEN_DRIVE_STRATEGY", "?")
-    c = AgentClient(os.environ.get("LUMEN_AGENT_ADDR", "127.0.0.1:7656"))
+    # The strategy the *process* reported, through the launcher (M42/
+    # T42.2) -- never a label a script set for itself. Printed short.
+    strategy = os.environ.get("LUMEN_LIVE_STRATEGY", "?").rsplit("::", 1)[-1]
+    addr = os.environ.get("LUMEN_AGENT_ADDR")
+    if not addr:
+        print("widget-drive: no LUMEN_AGENT_ADDR -- run through scripts/widget_drive.sh, "
+              "whose launcher names the process it drives", file=sys.stderr)
+        return 2
+    c = AgentClient(addr)
     entries = inventories()
     if only:
         entries = [e for e in entries if e[0].lower() == only.lower()]
