@@ -1,0 +1,56 @@
+# Exported by lumen-static-widgets and driven by no inventory under
+# scripts/drive/widgets/ -- M42/T42.5 (R18-F2, docs/plan-drive-identity.md
+# §2.4). scripts/check_drive_coverage.sh (in `just static`) refuses an
+# exported type that is in neither place.
+#
+#   Name | owner | reason          -- not driven, and who owes it
+#   Name = Entry                    -- driven, by an inventory of another name
+#
+# Removing a line is the point: an owner who writes the inventory removes
+# the entry in the same commit.
+
+# --- interactive, owed (§4: an inventory now would steer around defects
+#     other milestones own) ----------------------------------------------
+Select | M44 | keyboard row picking is R3-F6; an inventory that avoided it would be vacuous for exactly that action
+TextArea | M45 | paste into a TextArea is R8-F4/R10-F5
+ScrollView | M44/T44.10 | the index assigned its inventory to M44 (docs/plan-m38-fixes.md §7)
+Popup | M44 | reached only through Select and the choosers today; its own inventory comes with Select's
+Glass | M27 | a wrapper; takes its child's input, which the child's inventory drives
+
+# --- take no input: nothing to drive, a static claim at most -------------
+Label | M27 | takes no input
+Image | M27 | takes no input
+Fixed | M27 | a layout box; takes no input
+Spacer | M27 | a layout box; takes no input
+BarChart | M27 | takes no input
+LineChart | M27 | takes no input
+PieChart | M27 | takes no input
+ProgressBar | M27 | takes no input; the showcase animates it by tick
+Skeleton | M27 | takes no input
+Spinner | M27 | takes no input
+Avatar | M27 | takes no input
+Badge | M27 | takes no input
+Chip | M27 | takes no input
+Divider | M27 | takes no input
+Icon | M27 | takes no input
+
+# --- not placeable widgets: generics behind their aliases, and data -------
+Toggle | n/a | generic; driven as CheckBox, Switch and Radio
+Chart | n/a | generic; the three charts are its aliases
+Chooser | n/a | generic; driven as PickList, Combobox and Menu
+Picker | n/a | generic; driven as its four pickers
+Strip | n/a | generic; driven as Tabs, BottomNav and NavigationRail
+Veil | n/a | generic; driven as Modal, Sheet and Drawer
+Fit | n/a | data (an Image's fit)
+Anchor | n/a | data (a Popup's anchor)
+Series | n/a | data (a chart's series)
+OptionList | n/a | data (a chooser's options)
+Branch | n/a | data (a Tree's node)
+PageLabel | n/a | data (a Pagination's label)
+Span | n/a | data (a RichText span)
+Pad | n/a | data (a picker's cell pad)
+Item | n/a | data (a strip's item)
+Symbol | n/a | data (an Icon's glyph)
+
+# --- driven under another name -------------------------------------------
+Collapsible = Accordion

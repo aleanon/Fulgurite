@@ -30,6 +30,7 @@ static:
     ./scripts/check_locks.sh            # both Cargo.lock files match their manifests (--locked)
     ./scripts/check_toolchain_targets.sh  # every --target used is declared in rust-toolchain.toml
     ./scripts/check_ci_claims.sh        # no bare dependency/[[bin]] count in the justfile or ci.yml
+    ./scripts/check_drive_coverage.sh   # M42: every exported widget is driven, or owed with an owner
 
 # Default features == the shipped shape. This is the ONLY build that compiles
 # what docs/verification-notes.md scopes its argument to; `--workspace` cannot

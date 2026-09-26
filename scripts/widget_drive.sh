@@ -28,6 +28,11 @@ cd "$(cd "$(dirname "$0")/.." && pwd)"
 LAUNCH="python3 scripts/live/launch.py --script widget-drive"
 $LAUNCH --display-only || exit $?
 
+# The manifest first, before anything is built or opened (M42/T42.5): a
+# removed or added inventory row fails here, against a file this drive
+# does not write.
+python3 scripts/drive/run.py --manifest-only
+
 ONLY="${1:-}"
 status=0
 

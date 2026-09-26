@@ -591,7 +591,7 @@ each names its injections in the commit body.
 | **T27.0** | *(no widget)* | per-row addressing for `Repeat` — **landing 1 of 3 done 2026-09-18** | — |
 | ~~**T27.1**~~ | *(no widget)* | ~~the stroked rect~~ **DONE 2026-09-18** | — |
 | ~~**T27.2**~~ | *(no widget)* | ~~the three taken names~~ **DONE 2026-09-18** | — |
-| ~~**T27.3**~~ | *(no widget)* | ~~the drive harness~~ **HARNESS DONE 2026-09-19**; six widgets retrofitted (18 actions), twelve left | T27.0 |
+| ~~**T27.3**~~ | *(no widget)* | ~~the drive harness~~ **HARNESS DONE 2026-09-19**; six widgets retrofitted (18 actions), twelve left — *since M42/T42.5 the widgets still without an inventory are `scripts/drive/undriven.allow`'s entries, each with an owner, and `scripts/check_drive_coverage.sh` refuses one that is in neither place* | T27.0 |
 | ~~**T27.4**~~ | ~~Card, Toast, Tooltip~~ **DONE 2026-09-19** | leaves with a shadow and a tip — and two more framework defects | T27.1 |
 | ~~**T27.5**~~ | ~~NumberInput, RangeSlider, SearchField~~ **DONE 2026-09-19** | composites over `TextInput` and `Slider` | T27.1 |
 | ~~**T27.6**~~ | ~~Tabs, AppBar, BottomNav, NavigationRail, PullToRefresh~~ **DONE 2026-09-19** | ~~one shape five times~~ — **three of the five are**; see below | T27.0 |

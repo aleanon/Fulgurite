@@ -1,0 +1,213 @@
+{
+ "_comment": [
+  "M42/T42.5 (R18-F2, docs/plan-drive-identity.md §2.4): what scripts/drive/run.py must discover under widgets/ before it opens any window.",
+  "Edited by hand, never generated from the inventories: a manifest read from what it checks is the tautology this replaces.",
+  "A removal fails; an addition fails until this file names it, so the change is visible in the diff.",
+  "`static` lists every action that is not checked for landing; `counts` pins actions, landed-checked (non-static) and isolated (T42.6)."
+ ],
+ "counts": {
+  "entries": 39,
+  "actions": 94,
+  "landed_checked": 71,
+  "isolated": 40
+ },
+ "entries": {
+  "PickList": [
+   "releasing over a row chooses it",
+   "a picklist does not filter on its trigger"
+  ],
+  "Combobox": [
+   "typing filters the list",
+   "clearing the query shows everything again"
+  ],
+  "Menu": [
+   "it shows its commands with no trigger"
+  ],
+  "Pagination": [
+   "the next arrow steps one page",
+   "pressing a number goes to that page",
+   "the keyboard jumps to the last page",
+   "a number is the page it shows, not its position in the strip",
+   "the previous arrow steps back, it does not jump"
+  ],
+  "Tree": [
+   "pressing a parent folds its whole subtree away",
+   "pressing a leaf reports nothing, because nothing happened",
+   "a hover lights the row under the pointer"
+  ],
+  "DataGrid": [
+   "it shows its columns over virtualized rows",
+   "a wheel scrolls the rows under the header"
+  ],
+  "NumberInput": [
+   "a click focuses the field",
+   "ArrowUp steps it up by exactly one step",
+   "a letter is refused outright",
+   "Enter commits and normalises"
+  ],
+  "RangeSlider": [
+   "a press takes the nearer handle and moves it",
+   "a handle driven past the other stops at it"
+  ],
+  "SearchField": [
+   "a click reaches the text, not the container",
+   "typing reaches the query",
+   "the magnifier is left of the text and inside the pill"
+  ],
+  "Wrap": [
+   "six chips land on more than one line",
+   "every child is inside the container it reported"
+  ],
+  "Grid": [
+   "six badges land on exactly two rows of three"
+  ],
+  "SplitPane": [
+   "dragging the divider moves it",
+   "it stops short of the edge"
+  ],
+  "Accordion": [
+   "a press on the header opens the section",
+   "a press on the header again closes it",
+   "the other sections are independent"
+  ],
+  "PaneGrid": [
+   "a column's divider moves only that column",
+   "a drag keeps the divider it started on"
+  ],
+  "Tabs": [
+   "a press selects the item under it",
+   "a press on the item already selected changes nothing but is taken"
+  ],
+  "BottomNav": [
+   "a press selects the item under it",
+   "a press on the item already selected changes nothing but is taken"
+  ],
+  "NavigationRail": [
+   "a press selects the item under it",
+   "a press on the item already selected changes nothing but is taken"
+  ],
+  "AppBar": [
+   "it shows its title and does not grow with it"
+  ],
+  "PullToRefresh": [
+   "a downward drag pulls the content",
+   "an upward wheel is not a pull"
+  ],
+  "ColorPicker": [
+   "a press opens the popup",
+   "a cell sets the value and closes the popup",
+   "a press outside closes it and changes nothing"
+  ],
+  "DatePicker": [
+   "a press opens the popup",
+   "a cell sets the value and closes the popup",
+   "a press outside closes it and changes nothing",
+   "the arrows page the month and keep the day"
+  ],
+  "TimePicker": [
+   "a press opens the popup",
+   "a cell sets the value and closes the popup",
+   "a press outside closes it and changes nothing",
+   "a minute mark changes the minute and not the hour"
+  ],
+  "FilePicker": [
+   "a press opens the popup",
+   "a cell sets the value and closes the popup",
+   "a press outside closes it and changes nothing"
+  ],
+  "RichText": [
+   "it publishes what a reader sees, and wraps to fit"
+  ],
+  "Markdown": [
+   "the markers are markup, not text"
+  ],
+  "RichTextEditor": [
+   "typing markup updates the preview under it"
+  ],
+  "PaintBox": [
+   "the application's drawing is on screen and inside the box"
+  ],
+  "Card": [
+   "a button on the card reaches the application",
+   "the content is inset by the card's padding"
+  ],
+  "Toast": [
+   "it shrinks to its text rather than filling the stage",
+   "it paints a ground, so its light text is readable"
+  ],
+  "Tooltip": [
+   "hovering the content opens the tip",
+   "the tip does not take the pointer from its content"
+  ],
+  "TextInput": [
+   "a click focuses the field",
+   "typing inserts at the caret",
+   "backspace removes the character before the caret",
+   "fill replaces the whole value"
+  ],
+  "Slider": [
+   "a click sets the value to where it landed",
+   "End takes it to the maximum",
+   "Home takes it to the minimum",
+   "an arrow moves it by one step, not to an end"
+  ],
+  "Button": [
+   "a click reaches the application",
+   "a held press shows on the button",
+   "releasing clears the press",
+   "hovering is visible and is not a press"
+  ],
+  "CheckBox": [
+   "a click flips the bound flag",
+   "a second click flips it back",
+   "the second checkbox is independently addressable"
+  ],
+  "Switch": [
+   "a click flips the bound flag",
+   "the track changes colour with the state"
+  ],
+  "Radio": [
+   "clicking the other option moves the selection"
+  ],
+  "Modal": [
+   "a press on the scrim asks to dismiss",
+   "it does not close itself",
+   "the control on the panel still reaches the application"
+  ],
+  "Sheet": [
+   "a press on the scrim asks to dismiss",
+   "it does not close itself",
+   "the control on the panel still reaches the application"
+  ],
+  "Drawer": [
+   "a press on the scrim asks to dismiss",
+   "it does not close itself",
+   "the control on the panel still reaches the application"
+  ]
+ },
+ "static": [
+  "PickList/a picklist does not filter on its trigger",
+  "Menu/it shows its commands with no trigger",
+  "Tree/pressing a leaf reports nothing, because nothing happened",
+  "DataGrid/it shows its columns over virtualized rows",
+  "SearchField/the magnifier is left of the text and inside the pill",
+  "Wrap/six chips land on more than one line",
+  "Wrap/every child is inside the container it reported",
+  "Grid/six badges land on exactly two rows of three",
+  "Tabs/a press on the item already selected changes nothing but is taken",
+  "BottomNav/a press on the item already selected changes nothing but is taken",
+  "NavigationRail/a press on the item already selected changes nothing but is taken",
+  "AppBar/it shows its title and does not grow with it",
+  "PullToRefresh/an upward wheel is not a pull",
+  "ColorPicker/a press outside closes it and changes nothing",
+  "DatePicker/a press outside closes it and changes nothing",
+  "TimePicker/a press outside closes it and changes nothing",
+  "FilePicker/a press outside closes it and changes nothing",
+  "RichText/it publishes what a reader sees, and wraps to fit",
+  "Markdown/the markers are markup, not text",
+  "PaintBox/the application's drawing is on screen and inside the box",
+  "Card/the content is inset by the card's padding",
+  "Toast/it shrinks to its text rather than filling the stage",
+  "Toast/it paints a ground, so its light text is readable"
+ ]
+}

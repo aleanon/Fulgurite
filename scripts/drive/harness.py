@@ -8,9 +8,13 @@ that works, is tested, and is tested for the wrong thing. AGENT.md's
 table of vacuous gates is thirteen rows long and every row passed.
 
 So a drive script is an **inventory stored as data**. Coverage is an
-assertion the runner makes, not something a reviewer has to notice:
-`ACTIONS` is a list, and every entry must be exercised or the widget
-fails.
+assertion the runner makes, not something a reviewer has to notice —
+against `scripts/drive/expected.json`, a manifest the drive does not
+write, which names every entry and every action and pins the counts
+(M42/T42.5). Until then coverage was checked here, against the list the
+loop had just walked, which could never fail (R18-F2); and every
+exported widget type now has an inventory or a line in
+`scripts/drive/undriven.allow` (`scripts/check_drive_coverage.sh`).
 
 Each action asserts three things, and the three map one-to-one onto the
 three ways this repository has actually been fooled:
@@ -354,7 +358,6 @@ def run_widget(c: AgentClient, widget: str, sel: str, actions: list[Action],
             f"{len(dupes)} duplicated author id(s) in the tree — every selector "
             f"here is ambiguous. First: {dupes[0].get('message', '')[:120]}")
 
-    seen: set[str] = set()
     for a in actions:
         before_lint = len(c.lint().get("findings", []))
         since = ctx.mark()
@@ -425,12 +428,9 @@ def run_widget(c: AgentClient, widget: str, sel: str, actions: list[Action],
                     f"{widget}/{a.name}: the same input OUTSIDE the widget produced "
                     f"the same result ({m_out}) — the handler fires on everything")
             out.append(f"      isolated: outside gives {m_out}")
-        seen.add(a.name)
 
-    # Coverage, as an assertion rather than a review question.
-    missing = [a.name for a in actions if a.name not in seen]
-    if missing:
-        raise Failed(f"{widget}: inventory rows never exercised: {missing}")
+    # Coverage is `expected.json`'s (run.py, before any window opens): the
+    # check that stood here compared this list with itself (M42/T42.5).
     bare = [a.name for a in actions if a.isolate is None and not a.static]
     out.append(
         f"  {widget} [{strategy}]: {len(actions)} actions, all driven"
