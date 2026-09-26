@@ -41,6 +41,10 @@ pub enum Anchor {
     Above,
     /// Over the parent, top-left aligned — a modal's backdrop child.
     Over,
+    /// The window's bottom centre, 24 px up — a toast (M57/B34). Where
+    /// the parent is does not matter; with no known window it falls back
+    /// to `Below`.
+    WindowBottom,
 }
 
 /// A subtree painted in the overlay phase.
@@ -209,6 +213,11 @@ impl<W: Widget> Node for Popup<W> {
             Anchor::Below => Point { x: at.x, y: at.y },
             Anchor::Above => Point { x: at.x, y: above },
             Anchor::Over => at,
+            Anchor::WindowBottom if self.viewport.w.is_finite() && self.viewport.h.is_finite() => Point {
+                x: (self.viewport.w - self.measured.w) / 2.0,
+                y: self.viewport.h - self.measured.h - 24.0,
+            },
+            Anchor::WindowBottom => at,
         };
         // **Kept on the window** — M57/A18. `Below` flips above its
         // trigger when it would cross the bottom edge and there is more
@@ -260,6 +269,14 @@ impl<W: Widget> Node for Popup<W> {
 
     fn dismissal_consumes_press(&self) -> bool {
         !self.passive
+    }
+
+    /// **A window-anchored popup has no outside** — M57/B34. It hangs
+    /// from nothing, so a press elsewhere is not a press "outside" it:
+    /// the showcase's Save button dismissed the toast it had just asked
+    /// for, in the same press. Escape still closes it.
+    fn dismissed_by_outside_press(&self) -> bool {
+        !matches!(self.anchor, Anchor::WindowBottom)
     }
 
     fn node(&self, i: usize) -> &dyn Node {

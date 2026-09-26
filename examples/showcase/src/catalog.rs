@@ -228,6 +228,14 @@ fn tag_1(s: &mut Store, _: &EventCtx) {
 fn tag_2(s: &mut Store, _: &EventCtx) {
     s.tags ^= 4;
 }
+/// The toast demo's button (M57/B34): the application asks, and
+/// `refresh` shows the toast for `TOAST_MS`.
+fn show_toast(s: &mut Store, _: &EventCtx) {
+    s.toast_request = true;
+    s.toasts += 1;
+}
+pub const TOAST_MS: f32 = 3000.0;
+
 fn remove_tag(s: &mut Store, _: &EventCtx) {
     s.removed += 1;
 }
@@ -450,10 +458,20 @@ pub static CATALOG: &[Entry] = &[
     entry!("Surface", "Toast", "A transient message, in two lengths.",
         false,
         |s| on(s, Demo::Toast(DToast {
-            a: Toast::new("Saved".into()),
+            show: { let mut b = btn("Save"); b.on_click = show_toast; b },
+            a: {
+                let mut t = Toast::new("Saved".into());
+                t.closable = true;
+                t.hide();
+                let mut p = Popup::new(ToastSlot { t });
+                p.anchor = lumen_static_widgets::Anchor::WindowBottom;
+                p.open = false;
+                p.passive = true;
+                p
+            },
             b: Toast::new("Could not reach the server — retrying".into()),
         })),
-        none),
+        |s| format!("toasts shown: {}", s.store.toasts)),
     entry!("Surface", "Tooltip", "Hover the button; the tip follows.",
         false,
         |s| on(s, Demo::Tooltip(DTooltip {

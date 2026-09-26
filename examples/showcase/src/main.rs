@@ -322,6 +322,9 @@ pub struct Store {
     /// The chip demo's selected tags, a bit each, and its × presses (B2).
     tags: u8,
     removed: u32,
+    /// The toast demo: a show request, and how many were shown (B34).
+    toast_request: bool,
+    toasts: u32,
 }
 
 /// After every pump: rebuild the demos whose state lives in the store,
@@ -441,6 +444,21 @@ fn refresh(s: &mut Show) -> bool {
             changed = true;
         }
     }
+    // **A toast shown on request** (M57/B34): the button asks, this
+    // shows it for `TOAST_MS`, and `advance` runs its countdown.
+    if let Demo::Toast(d) = &mut s.ui.main.stage.row.demo {
+        if core::mem::take(&mut s.store.toast_request) {
+            d.a.content.t.show(Some(catalog::TOAST_MS));
+            changed = true;
+        }
+        // The overlay is open exactly while the toast shows, so a closed
+        // or timed-out toast leaves no empty overlay taking Escape.
+        let shown = d.a.content.t.is_shown();
+        if d.a.open != shown {
+            d.a.open = shown;
+            changed = true;
+        }
+    }
     // **A pull that fired is a refresh** (M57/B40): taken once, counted,
     // so the readout shows the widget doing what it is for.
     if let Demo::Pull(d) = &mut s.ui.main.stage.row.demo {
@@ -506,6 +524,14 @@ fn refresh(s: &mut Show) -> bool {
 /// moving — `App::tick`'s contract, which the frame loop relies on to
 /// decide whether to ask for another frame.
 fn advance(s: &mut Show, dt_ms: f32) -> bool {
+    // A toast's countdown runs on this clock, animated entry or not: a
+    // widget has none of its own (M57/B34, `Toast::tick`).
+    if let Demo::Toast(d) = &mut s.ui.main.stage.row.demo {
+        if d.a.content.t.is_counting() {
+            d.a.content.t.tick(dt_ms);
+            return true;
+        }
+    }
     let e = &CATALOG[s.store.selected];
     if !e.animated {
         return false;
@@ -1410,6 +1436,9 @@ fn stylesheet_with(c: Chrome) -> Vec<StyleRule> {
     // A toggle and its label were a derived row of their own, `FILL`
     // like any derived struct, and needed a rule each to shrink. A
     // `Labelled` shrinks by default (M57/B11).
+    // The floating toast's slot shrinks to the toast: the popup centres
+    // its content, and a FILL slot would put the toast at its left (B34).
+    rules.push(StyleRule::new(Selector::Kind("ToastSlot"), Patch::new().width(Length::Shrink)));
     for kind in stage::DEMO_KINDS {
         let styled = rules.iter().any(|r| matches!(r.selector, Selector::Kind(k) if k == *kind));
         if !styled {
@@ -2442,6 +2471,36 @@ mod tests {
         println!("after clicking Blue: choice {} drawn {} {} {}", h.app.store.choice, d.a.control.on, d.b.control.on, d.c.control.on);
         assert_eq!(h.app.store.choice, 2, "clicking Blue did not choose it");
         assert!(d.c.control.on && !d.a.control.on && !d.b.control.on, "Blue is chosen and not the one drawn");
+    }
+
+    /// **The toast demo shows a floating toast on Save, and it goes away
+    /// by itself** — M57/B34, through the showcase's own wiring: the
+    /// button asks, `refresh` shows it, `advance` runs its countdown.
+    #[test]
+    fn save_shows_a_toast_that_times_out() {
+        let table = <<Show as lumen_static::event::App>::Tree as lumen_static::widget::Widget>::SUB_TABLE;
+        let idx = |w: &str| lumen_static::style::index_of_wid(table, w).expect(w);
+        let entry = CATALOG.iter().position(|e| e.name == "Toast").unwrap();
+        let mut h = host(entry, false);
+        let shown = |h: &lumen_static_shell::Host<Show>| match &h.app.ui.main.stage.row.demo {
+            Demo::Toast(d) => d.a.content.t.is_shown(),
+            _ => panic!("setup: not the Toast demo"),
+        };
+        assert!(!shown(&h), "setup: the toast is showing before Save");
+        let s = h.states[idx("d_toast_show")];
+        let (x, y) = (s.pos.x + s.size.w / 2.0, s.pos.y + s.size.h / 2.0);
+        h.post(Event::down(x, y));
+        h.post(Event::up(x, y));
+        h.pump();
+        h.pump();
+        let t = h.states[idx("d_toast_a")];
+        println!("after Save: shown {}, toasts {}, box {:?}+{:?}", shown(&h), h.app.store.toasts, t.pos, t.size);
+        assert_eq!(h.app.store.toasts, 1, "setup: the Save click did not land");
+        assert!(shown(&h) && t.size.w > 0.0, "Save did not show the toast");
+        h.tick(3200.0);
+        h.pump();
+        println!("after 3.2 s: shown {}", shown(&h));
+        assert!(!shown(&h), "the toast outlived its 3000 ms");
     }
 
     /// **Every demo button shows hover** — M57/C1.

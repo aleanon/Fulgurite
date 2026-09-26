@@ -413,10 +413,24 @@ pub struct CardBody {
 #[derive(StaticTree, Default)]
 #[widget(row, spacing = 12.0)]
 pub struct DToast {
-    #[widget_id("d_toast_a")]
-    pub a: Toast<String>,
+    /// Shows the floating toast (M57/B34).
+    #[widget_id("d_toast_show")]
+    pub show: Button<Store, String>,
+    /// A toast that floats at the window's bottom centre, closable, and
+    /// gone after a few seconds — the kind an application raises.
+    pub a: Popup<ToastSlot>,
+    /// The long message, in the flow, for its width.
     #[widget_id("d_toast_b")]
     pub b: Toast<String>,
+}
+
+/// The floating toast, under an author id: a `Popup` has no part id for
+/// its content, so the id rides on this one-field struct.
+#[derive(StaticTree, Default)]
+#[widget(column)]
+pub struct ToastSlot {
+    #[widget_id("d_toast_a")]
+    pub t: Toast<String>,
 }
 
 #[derive(StaticTree, Default)]

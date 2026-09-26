@@ -247,19 +247,92 @@ const fn i_zero() -> usize {
 /// here — the same reason `Spinner` does not drive its own phase. The
 /// application decides when it is up, through `Style::visible` or by not
 /// building it; this draws one.
+///
+/// # Showing, timing out and closing — M57/B34
+///
+/// A toast drew a pill in the flow and could do nothing else
+/// (`docs/widget-audit.md`, Toast). It now:
+///
+/// - **owns whether it is shown**: [`Toast::show`] shows it, optionally
+///   for a time, and [`Toast::hide`] hides it; hidden, it lays out as a
+///   hidden subtree. Shown by default, which is what a tooltip's tip
+///   (`Popup<Toast>`) relies on.
+/// - **times out on the application's clock.** Widgets have no clock
+///   here, which is why a `Spinner` takes its phase; [`Toast::tick`] is
+///   that, for a countdown, and answers whether the toast went away so
+///   the application knows to ask for a frame. The plan's alternative, a
+///   M28 job returned by `show`, needs the application's timer set and a
+///   message type for one widget's countdown.
+/// - **can be closed**: with `closable`, a × at its right hides it.
+/// - **floats**: put it in a [`crate::popup::Popup`] with
+///   [`crate::popup::Anchor::WindowBottom`] to overlay the bottom centre
+///   of the window rather than take a place in the flow. Keep the popup's
+///   `open` in step with [`Toast::is_shown`], or an empty overlay stays
+///   open and takes Escape; the showcase's `refresh` is the three lines.
 pub struct Toast<S: TextStorage = &'static str> {
     pub text: S,
+    /// Draw a × that hides it.
+    pub closable: bool,
+    hidden: bool,
+    /// Milliseconds left, when it was shown for a time.
+    remaining: Option<f32>,
+    /// A press began on the ×.
+    on_close: bool,
+    width: f32,
 }
 
 impl<S: TextStorage + Default> Default for Toast<S> {
     fn default() -> Self {
-        Toast { text: S::default() }
+        Toast::new(S::default())
     }
 }
 
 impl<S: TextStorage> Toast<S> {
+    /// The ×'s column, inside the right padding.
+    pub const CLOSE_W: f32 = 20.0;
+
     pub fn new(text: S) -> Self {
-        Toast { text }
+        Toast { text, closable: false, hidden: false, remaining: None, on_close: false, width: 0.0 }
+    }
+
+    /// Show it — for `ms` milliseconds, or until hidden when `None`.
+    pub fn show(&mut self, ms: Option<f32>) {
+        self.hidden = false;
+        self.remaining = ms.filter(|m| m.is_finite() && *m > 0.0);
+    }
+
+    /// Hide it now. Answers whether it was showing.
+    pub fn hide(&mut self) -> bool {
+        self.remaining = None;
+        !core::mem::replace(&mut self.hidden, true)
+    }
+
+    pub fn is_shown(&self) -> bool {
+        !self.hidden
+    }
+
+    /// Whether a countdown is running — a host should keep ticking.
+    pub fn is_counting(&self) -> bool {
+        !self.hidden && self.remaining.is_some()
+    }
+
+    /// Advance the countdown by `dt_ms`. Answers whether the toast just
+    /// went away.
+    pub fn tick(&mut self, dt_ms: f32) -> bool {
+        let Some(left) = self.remaining.as_mut() else { return false };
+        *left -= dt_ms.max(0.0);
+        if *left <= 0.0 {
+            return self.hide();
+        }
+        false
+    }
+
+    fn extra(&self) -> f32 {
+        if self.closable { Self::CLOSE_W } else { 0.0 }
+    }
+
+    fn on_x(&self, x: f32) -> bool {
+        self.closable && x >= self.width - self.extra() - 12.0
     }
 }
 
@@ -317,7 +390,7 @@ impl<S: TextStorage> Node for Toast<S> {
         i: usize,
     ) -> Size {
         let me = style[i];
-        if !me.visible {
+        if !me.visible || self.hidden {
             return lumen_static::ops::hide_subtree(st, i, limits, 1);
         }
         let t = cx.text.measure_weighted(
@@ -326,8 +399,9 @@ impl<S: TextStorage> Node for Toast<S> {
             me.font_weight,
             limits.max_w,
         );
-        let content = Size { w: t.w + me.padding.horizontal(), h: t.h + me.padding.vertical() };
+        let content = Size { w: t.w + me.padding.horizontal() + self.extra(), h: t.h + me.padding.vertical() };
         let s = lumen_static::ops::resolve_self(limits, &me, content);
+        self.width = s.w;
         lumen_static::ops::record_painted(st, i, limits, s, &me)
     }
 
@@ -362,12 +436,34 @@ impl<S: TextStorage> Node for Toast<S> {
         lumen_static::ops::border(st, i, out);
         let p = st[i].pad;
         out.text_weighted(
-            [r[0] + p.0, r[1] + p.1, r[2] - p.2, r[3] - p.3],
+            [r[0] + p.0, r[1] + p.1, r[2] - p.2 - self.extra(), r[3] - p.3],
             self.text.as_ref(),
             st[i].font_size,
             st[i].font_weight,
             st[i].fg,
         );
+        if self.closable {
+            let (cx, cy, d) = (r[2] - p.2 - Self::CLOSE_W / 2.0 + 2.0, (r[1] + r[3]) / 2.0, 4.0);
+            let c = st[i].fg;
+            out.line(Point { x: cx - d, y: cy - d }, Point { x: cx + d, y: cy + d }, 1.5, c);
+            out.line(Point { x: cx - d, y: cy + d }, Point { x: cx + d, y: cy - d }, 1.5, c);
+        }
+    }
+
+    /// A press and release on the × hide it; anything else is declined,
+    /// so a tip or a toast without one takes nothing from what is under.
+    fn on_event(&mut self, ev: &lumen_static::Event, cx: &lumen_static::EventCtx) -> bool {
+        match ev {
+            lumen_static::Event::PointerDown { .. } => {
+                self.on_close = self.on_x(cx.local.x);
+                self.on_close
+            }
+            lumen_static::Event::PointerUp { .. } => {
+                let hit = core::mem::take(&mut self.on_close) && self.on_x(cx.local.x);
+                hit && self.hide()
+            }
+            _ => false,
+        }
     }
 
     lumen_static::leaf_common!(Toast<S>, 0);
