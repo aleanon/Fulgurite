@@ -55,8 +55,10 @@ assertion in `main` that nothing runs is not a test.
 
 **`just live-gate` is the automated form**: opens the window on its own
 port, warms it, runs every check in `scripts/ui_check.py`, closes it,
-and exits non-zero on any failure. `just check` runs it when a display
-is present. Run it before claiming a paint/text/input change is done.
+and exits non-zero on any failure. `just check` runs it through `just
+live`, with every other live gate, and **fails without a display** (exit
+77) unless `LUMEN_ALLOW_SKIP=1` — a skip is not a pass (M43/T43.13). Run
+it before claiming a paint/text/input change is done.
 
 By hand, for anything the gate does not cover:
 

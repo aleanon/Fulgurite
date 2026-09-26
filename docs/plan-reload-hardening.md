@@ -10,8 +10,9 @@
 > - T49.2: every pointer operation in `raw.rs`; `(null, 0)` and null
 >   accepted by every shim.
 > - T49.3: miri runs `raw.rs` and `panic.rs` by path in the
->   dependency-free `fixtures/miri-reload` (14 of 14 shapes); **CI
->   wiring into M43's `just ci` pending** (no `just ci` yet).
+>   dependency-free `fixtures/miri-reload` (14 of 14 shapes); wired
+>   into M43's `just ci` as the `miri-reload` step (M43/T43.13,
+>   2026-09-26; exit 77 without nightly miri).
 > - T49.4: `fresh()` and `Application` retired; `Host::reload` rebuilds
 >   through the program's boot; `Host::reload` and a window swap draw the
 >   same frame.
@@ -530,9 +531,10 @@ the job goes red.
 > `src/panic.rs` (std only), and `fixtures/miri-reload` includes **the
 > same two files** by path. There is nothing to keep in step with the
 > macro, because the macro's shims call these functions. What miri cannot
-> reach is the `libloading` calls themselves. **Pending: the M43 runner.**
-> `just miri-reload` exists and the dormant CI job runs it; putting it in
-> `just ci` waits for T43.13.
+> reach is the `libloading` calls themselves. `just miri-reload` exists,
+> the dormant CI job runs it, and since M43/T43.13 (2026-09-26) it is a
+> step of `just ci`, probed first: a machine without nightly miri skips it
+> with exit 77, which `just ci` refuses unless LUMEN_ALLOW_SKIP=1.
 
 ### T49.4 — one construction path
 

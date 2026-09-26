@@ -12,9 +12,11 @@
 # screen (crates/lumen-static-winit/src/surface.rs). A headless test cannot
 # see that. Measured 2026-09-07: worst channel delta 1, docs/results-gpu.md.
 #
-# Needs a display, an adapter, and `xwd`. Skips with exit 77 when the
-# display is missing (M43 §2), and exit 0 for a missing adapter or `xwd`,
-# the two configurations the fallback exists for.
+# Needs a display, an adapter, and `xwd`, and skips with exit 77 when any
+# of the three is missing (M43 §2.2). A machine with no adapter is the
+# configuration the CPU fallback exists for, but this gate claims a
+# comparison happened, and until M43/T43.13 it exited 0 without making
+# one; `just live` refuses a 77 unless LUMEN_ALLOW_SKIP=1.
 #
 # Each window is launched by `scripts/live/launch.py` (M42/T42.2) with
 # `--no-agent`: the grab runs while the launcher checks the window is
@@ -24,8 +26,8 @@ cd "$(cd "$(dirname "$0")/.." && pwd)"
 LAUNCH="python3 scripts/live/launch.py --script gpu-parity"
 $LAUNCH --display-only || exit $?
 if ! command -v xwd >/dev/null; then
-    echo "gpu-parity: no xwd — skipped"
-    exit 0
+    echo "gpu-parity: no xwd -- skipped (77)"
+    exit 77
 fi
 
 cargo build --release -p minimal --features gpu
@@ -40,8 +42,8 @@ grab() {
 
 grab gpu "$tmp/gpu.xwd"
 if ! grep -q '^lumen-static: gpu' target/live/gpu-parity-gpu.log; then
-    echo "gpu-parity: no adapter on this machine — skipped ($(cat target/live/gpu-parity-gpu.log))"
-    exit 0
+    echo "gpu-parity: no adapter on this machine -- skipped (77) ($(cat target/live/gpu-parity-gpu.log))"
+    exit 77
 fi
 grab software "$tmp/cpu.xwd" "LUMEN_BACKEND=software"
 

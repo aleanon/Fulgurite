@@ -4,7 +4,10 @@
 # fixed, the launcher refuses a port that already answers, before any
 # build is driven. The stranger is started by run_check (the "edit" is a
 # process, not a file), and it must be answering before the check runs.
-PORT=7890
+# The port comes from scripts/selftest/live.sh, which keeps it out of the
+# range the launcher picks from (M43/T43.13: `just ci` runs this inside a
+# port range it was given).
+PORT=${LUMEN_SELFTEST_STRANGER_PORT:-7890}
 CHECK="LUMEN_LIVE_PORT=$PORT ./scripts/widget_drive.sh Switch"
 EXPECT="port already answering on 127\.0\.0\.1:$PORT"
 plant() { :; }

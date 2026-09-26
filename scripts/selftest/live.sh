@@ -25,6 +25,19 @@ if [ -z "${DISPLAY:-}" ]; then
     exit 77
 fi
 # The launcher picks a free port per leg (scripts/live/launch.py); these
-# are the ones it may pick from here. The stranger plant uses 7890.
+# are the ones it may pick from here. The stranger plant needs one port
+# OUTSIDE that range, so a range given by the caller (`just ci` runs with
+# the one it was given, M43/T43.13) gives its top port to the stranger and
+# the rest to the launcher; with none, 7880-7889 and 7890.
+if [ -n "${LUMEN_LIVE_PORT_RANGE:-}" ] && [ -z "${LUMEN_SELFTEST_STRANGER_PORT:-}" ]; then
+    lo=${LUMEN_LIVE_PORT_RANGE%-*}; hi=${LUMEN_LIVE_PORT_RANGE#*-}
+    if [ "$hi" -le "$lo" ]; then
+        echo "selftest-live: LUMEN_LIVE_PORT_RANGE=$LUMEN_LIVE_PORT_RANGE needs two ports or more" >&2
+        exit 2
+    fi
+    export LUMEN_SELFTEST_STRANGER_PORT=$hi LUMEN_LIVE_PORT_RANGE="$lo-$((hi - 1))"
+fi
 export LUMEN_LIVE_PORT_RANGE="${LUMEN_LIVE_PORT_RANGE:-7880-7889}"
+export LUMEN_SELFTEST_STRANGER_PORT="${LUMEN_SELFTEST_STRANGER_PORT:-7890}"
+echo "selftest-live: launcher ports $LUMEN_LIVE_PORT_RANGE, stranger on $LUMEN_SELFTEST_STRANGER_PORT"
 exec "$(dirname "$0")/run.sh" live

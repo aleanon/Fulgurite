@@ -537,6 +537,38 @@ counts. They cite the results doc that does. A new check,
 `scripts/check_ci_claims.sh`, refuses a bare "N crates" or "N
 `[[bin]]`" in either file.
 
+### 2.10 The firmware gates run in `test` (added 2026-09-26, T43.13)
+
+**The finding.** `check_text.sh` and `check_bss.sh` ran only under
+`thumb`, which is in `check-extra`, not in `test`. Two branches each grew
+the firmware's `.text` against the same 27,024 B headline without
+touching it: T45.12 by 308 B and T46.1 by 400 B. The early batch merged
+T45.12 and left the headline 1.14% stale with every every-commit gate
+green; rebasing M46 onto it made the gap 2.62%. It was caught only
+because `check_text.sh` was run by hand (c0c2cfd). §2.9's comparison
+was right; it ran in the wrong tier.
+
+The options were:
+
+- **(a)** leave them in `thumb`, and rely on `just ci`, which runs
+  `check`'s closure;
+- **(b)** move them into `test`, as a `firmware` recipe.
+
+**Decided: (b).** The cost is one thumb release build of core, widgets
+and the fixture. Measured at this branch's base (826c7c3), LOADED (load
+average 2.3–11.9 on 32 cores, other agents compiling): **1.35 s** for
+`check_text.sh` against a firmware built earlier in the session, **0.84 s**
+after a one-line change to `crates/lumen-static/src/lib.rs` (cargo
+recompiled core, widgets and the fixture), **0.12 s** with nothing
+changed, and 0.10 s for `check_bss.sh` after it. That is noise beside
+`dev-shape`. (a) would keep the gap open for exactly the case that
+produced the finding: a merge checked with `just test` and nothing else.
+
+`thumb` keeps the cross `check`/`clippy` tiers and the no_std bind test.
+Both recipes start with `scripts/probe.sh thumb`, so a machine without
+the target skips with 77, rather than failing with a linker error that
+names something else.
+
 ## 3. Tasks
 
 ### T43.0 — the gates first: the self-test harness, and every plant red
@@ -1240,6 +1272,56 @@ original wording.
   qemu/thumb probe; ci.yml's header should then point at `just ci`.
 - **A `live` selftest tier** does not exist yet; M42/T42.0 adds its
   plants under `scripts/selftest/plants/live/`.
+
+### What building T43.13 found (2026-09-26)
+
+- **`just ci`'s steps are derived, not listed.** §2.1 says `ci` runs
+  "`check`, `live`, the self-test tiers and the per-crate loop". A list
+  of those in `scripts/ci.sh` would drift from the justfile the way
+  ci.yml did. So the steps are the recipes in `check`'s dependency
+  closure, read from the justfile *at the commit under test* (`just
+  --dump --dump-format json`), each run with `just --no-deps` so the
+  record names the stage. Only the ci-only steps are listed: `test-crates`,
+  `deny`, `selftest-slow`, `selftest-live`, `adversary-plant` (M42/T42.7,
+  which also needs a window and had no runner) and `miri-reload` (M49's
+  pending wiring, docs/plan-reload-hardening.md T49.3).
+- **The first `LUMEN_ALLOW_SKIP=1` run recorded a skip as a pass.** With
+  no display, `live` printed `8 skipped (allowed)` and exited 0, and the
+  record said 0 skipped — the green-record-hides-a-skip case §2.2 exists
+  to prevent. Under LUMEN_ALLOW_SKIP=1 a step that exits 0 and prints an
+  accepted-skip marker (`skipped (allowed)`, or `gpu`/`fonts`'s
+  `LUMEN_ALLOW_SKIP=1 --`) is now recorded as a skip, and `ci-verify`
+  refuses any skip unless it is given `--allow-skip` too.
+- **An `--only` run writes `<sha>.only.json`**, which `ci-verify` never
+  reads, so a partial run cannot replace or pass for a full record.
+- **The bench lock is not under `target/`.** One file per worktree's
+  `target/` serialises nothing across worktrees, and that is where the
+  parallel work is. It lives at `<git common dir>/lumen-bench.lock`,
+  which every worktree of the repository shares; LUMEN_BENCH_LOCK
+  overrides it (this session's agents were briefed to use a path outside
+  the repository, which the variable reaches). LOADED means the
+  one-minute load average, before or after, exceeded 0.25 of the online
+  cores (LUMEN_BENCH_LOAD_FRACTION).
+- **No recipe uses qemu yet.** `grep` finds none; the capability exists
+  on the reference machine and nothing runs it. `scripts/probe.sh qemu`
+  is ready for M52's first qemu recipe to call on its first line, and
+  `just ci` records every capability the probe finds in the record. The
+  probe also covers `miri` (`miri-reload` starts with it). The thumb probe
+  asks the toolchain the build will use (`rustc --print sysroot` under
+  rust-toolchain.toml), not rustup's default.
+- **`gpu_parity.sh` still exited 0 on a missing adapter or `xwd`.** §1.2
+  listed it; M42/T42.2 moved only the display check to 77. Both now exit
+  77, so `just live` refuses them unless LUMEN_ALLOW_SKIP=1.
+- **The `stranger` live plant held a fixed port (7890)**, outside any
+  range a caller gives. `scripts/selftest/live.sh` now gives the stranger
+  the top port of LUMEN_LIVE_PORT_RANGE and the launcher the rest.
+- **`just install-hooks` writes `core.hooksPath` to the config every
+  worktree shares.** It was not run in this session, so as not to put a
+  hook on other agents' worktrees; it was exercised in a scratch clone.
+- **`just ci` registers `target/ci/wt` as a git worktree**, in the
+  repository's shared worktree list. It is persistent by design
+  (§2.1), and `git worktree prune` drops it once `target/` is removed.
+- **The firmware gates moved into `test`** (§2.10).
 
 ## 4. Boundaries of this plan
 

@@ -3,8 +3,8 @@
 # **This workflow has never run.** The repository has no git remote, so
 # nothing triggers it. The executed gate is local: `just test` on every
 # commit and `just check` before calling work done; `just ci` (M43/T43.13,
-# not built yet) will run the whole set in a clean worktree and record the
-# result. This file is kept for what a future hosted runner needs -- the
+# scripts/ci.sh) runs the whole set against a commit in a clean worktree
+# and records the result, which `just ci-verify` checks. This file is kept for what a future hosted runner needs -- the
 # job split, and the reasoning below for each job -- and its steps are
 # `just` recipes so the justfile stays the one definition of the gate.
 # Its comments state only what this file shows; every number lives in a
@@ -201,7 +201,7 @@ jobs:
       - run: cargo +nightly miri run -p miri-smoke
       # M49/T49.3: lumen-static-reload's unsafe. Dependency-free, so it does
       # not hit the build-script failure miri-smoke does. Belongs in M43's
-      # local runner too; that wiring waits for `just ci`.
+      # local runner too, and runs there: a `just ci` step since M43/T43.13.
       - run: cargo +nightly miri run -p miri-reload
 
   # aarch64 macOS, non-blocking. crates/ has no platform code, so this is not

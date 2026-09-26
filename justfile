@@ -3,17 +3,23 @@
 #   just test   -- the every-commit gate. Deterministic, no numbers, no
 #                  network. Everything here either passes or names a file
 #                  and a line.
-#   just check  -- pre-push / CI-only. Slower, or produces artifacts to read
-#                  rather than a pass/fail.
-#   manual      -- bench, firewall, miri. Machine-dependent or broken
-#                  tooling; never gates a commit.
+#   just check  -- before calling work done. Slower: `test`, the cross,
+#                  GPU, SIMD, thread and book builds, and `live` -- every
+#                  live gate, which needs a display and FAILS without one
+#                  unless LUMEN_ALLOW_SKIP=1 (a skip is not a pass).
+#   just ci     -- the executed gate (M43/T43.13): `check`'s closure step by
+#                  step, plus the ci-only steps, against a COMMIT in a clean
+#                  worktree, with a record `just ci-verify` reads. There is
+#                  no remote; .github/workflows/ci.yml is a dormant spec.
+#   manual      -- bench, firewall. Machine-dependent; never gates a commit.
+#                  Time them under `just bench-lock`.
 
 # ---------------------------------------------------------------------------
 # The gate
 # ---------------------------------------------------------------------------
 
 # The every-commit gate.
-test: static release-shape dev-shape fixtures observe-inlining
+test: static release-shape dev-shape fixtures observe-inlining firmware
 
 # Static checks first: sub-second, no compile. A dead doc reference should
 # not cost a 30-second build to discover.
@@ -112,6 +118,19 @@ fonts:
 deny:
     ./scripts/check_deny.sh
 
+# The firmware's two linked-binary gates (M43/T43.13): zero framework
+# statics (check_bss.sh) and .text under its ceiling AND within 1% of
+# docs/results-embedded.md's headline (check_text.sh). In `test`, not only
+# in `thumb`: a merge of two branches that each grew .text left the
+# headline 1.14% stale with every every-commit gate green, because these
+# ran only under `check` (c0c2cfd). One thumb release build of core and
+# the fixture -- under a second warm, and the plan's "What building found"
+# records the measurement.
+firmware:
+    ./scripts/probe.sh thumb
+    ./scripts/check_bss.sh
+    ./scripts/check_text.sh
+
 # The four fixtures. Until today none of these ran in the gate; three of them
 # assert. miri-smoke runs in `release-shape` above -- it contains zero
 # `assert!`, so it proves only that no path panics or aborts, which is still
@@ -136,7 +155,7 @@ fixtures:
 # runs green on an unmodified copy of the tree, then each plant under
 # scripts/selftest/plants/<tier>/ edits the copy and its check must go red
 # BY NAME. scripts/selftest/run.sh's header is the format. Not yet wired
-# into `test`/`check` -- T43.15 does that once every plant is red.
+# into `test`/`check` -- T43.15 does that; `just ci` runs `slow` and `live`.
 
 # The no-compile plants: the drift checks in `static`, and the locks.
 selftest:
@@ -164,11 +183,44 @@ adversary-plant:
 # Pre-push / CI
 # ---------------------------------------------------------------------------
 
-# Pre-push: everything in `test`, plus release-shape rustdoc and binsize,
-# plus the live gate when there is a display to open a window on.
-check: test check-extra
-    #!/usr/bin/env bash
-    if [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; then ./scripts/live_gate.sh; else echo "live-gate: no display, skipped"; fi
+# Before calling work done: everything in `test`, the `check-extra` builds,
+# and every live gate. **No display is a failure**, not "skipped" and green
+# (R17-F8): `live` exits 77, and so does `check`, unless LUMEN_ALLOW_SKIP=1.
+check: test check-extra live
+
+# Every live gate, one line each and a total (M43/T43.13, §2.2 of
+# docs/plan-gate-hygiene.md): `name: pass | FAIL | skip(77) -- reason`.
+# Fails on a FAIL; a skip fails too (exit 77) unless LUMEN_ALLOW_SKIP=1.
+# `just live widget-drive tasks-drive` runs those two. Ports come from
+# LUMEN_LIVE_PORT_RANGE when set (scripts/live/launch.py).
+live *names:
+    ./scripts/live.sh {{ names }}
+
+# The whole gate set against a commit, in the clean worktree target/ci/wt,
+# with a record at target/ci/<sha>.json (scripts/ci.sh's header is the
+# design). `just ci`, `just ci <sha>`, `just ci --only static,firmware`.
+ci *args:
+    ./scripts/ci.sh {{ args }}
+
+# Is there a green `just ci` record for this commit? A milestone is not
+# done until there is (docs/plan-m38-fixes.md §5). `--allow-skip` accepts
+# a record whose skips LUMEN_ALLOW_SKIP=1 let through.
+ci-verify *args:
+    ./scripts/ci_verify.py {{ args }}
+
+# Opt in to a pre-commit hook that runs `just static`. A convenience that
+# `--no-verify` bypasses; `just ci` is the gate. Sets core.hooksPath, which
+# every worktree of this repository shares.
+install-hooks:
+    git config core.hooksPath scripts/hooks
+    @echo "install-hooks: core.hooksPath=scripts/hooks (pre-commit runs just static)"
+
+# Run a timing under the one bench lock every worktree shares, with
+# `uptime` before and after, marked LOADED when the load average says the
+# machine was busy (scripts/bench_lock.sh). M44, M45, M46 and M55 cite it.
+# `just bench-lock cargo run --release -p benches --bin grid`.
+bench-lock +cmd:
+    ./scripts/bench_lock.sh {{ cmd }}
 
 # The `check`-only half, split out so CI can run it as its own step.
 #
@@ -265,6 +317,7 @@ bake-font font="/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf" px="16":
 # Section sizes of a linked Cortex-M4F firmware (docs/results-embedded.md).
 firmware-size:
     #!/usr/bin/env bash
+    ./scripts/probe.sh thumb || exit $?
     # The path is cargo's report, not a guess (scripts/lib/firmware.sh),
     # so a CARGO_TARGET_DIR cannot leave this printing a stale binary.
     set -euo pipefail
@@ -275,6 +328,7 @@ firmware-size:
 
 # Cortex-M4F no_std build of the core + fixture (docs/results-embedded.md).
 thumb:
+    ./scripts/probe.sh thumb
     # The middle tier: no std, an allocator present. This is the M13
     # device's shape (T13.0/T13.1).
     cargo check -p lumen-static --no-default-features --features alloc --target thumbv7em-none-eabihf
@@ -290,16 +344,11 @@ thumb:
     # the only run of core's no_std `#[bind]` branch (M43/T43.8). The
     # requirement refuses the std answer a unified build would give.
     LUMEN_REQUIRE_NOSTD=1 cargo test -p embedded
-    # Zero framework statics, with a named exemption list. Needs a
-    # linked binary, so it lives beside the firmware build rather than
-    # in `just static`, which runs no cargo at all. Both scripts judge the
-    # binary cargo reports building (scripts/lib/firmware.sh), and print it.
-    ./scripts/check_bss.sh
-    # And the flash ceiling, which docs/results-embedded.md has stated
-    # since 2026-09-05 and nothing checked until 2026-09-10 -- by which
-    # point the doc's figure had drifted 9.4% below reality. Since M43 it
-    # also holds that doc's headline to within 1% of the linked .text.
-    ./scripts/check_text.sh
+    # The linked-firmware gates (.bss statics, .text ceiling and headline)
+    # moved to `firmware`, in `test` (M43/T43.13). The flash ceiling
+    # docs/results-embedded.md stated on 2026-09-05 went unchecked until
+    # 2026-09-10, by which point the doc was 9.4% below reality; under
+    # `check` alone, a merge left its headline 1.14% stale in 2026-09.
 
 # Line coverage, as an artifact to read -- not a threshold. A workspace
 # percentage is dominated by whether the fixtures ran, not by core quality;
@@ -351,7 +400,9 @@ miri:
 # M49/T49.3: lumen-static-reload's raw-pointer code under miri. Works where
 # `miri` does not: the fixture has no dependencies and no build script, and
 # includes the reload crate's raw.rs and panic.rs by path.
+# In `just ci` (M43/T43.13); a machine without nightly miri skips (77).
 miri-reload:
+    ./scripts/probe.sh miri
     cargo +nightly miri run -p miri-reload
 
 # Individual fixtures, for when you want just one.
@@ -563,7 +614,7 @@ tally-a11y:
 
 # Every live check against a fresh window (scripts/ui_check.py is the list
 # — do not restate it here, it drifted to six once already). Rung 4's gate;
-# needs a display. In `check` when one is present.
+# needs a display. In `check` through `live`.
 live-gate:
     ./scripts/live_gate.sh
 

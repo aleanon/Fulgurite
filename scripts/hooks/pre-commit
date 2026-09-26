@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Opt-in pre-commit hook (M43/T43.13, docs/plan-gate-hygiene.md §2.1):
+# `just static`, the no-compile drift checks, before every commit.
+# Installed by `just install-hooks` (core.hooksPath=scripts/hooks).
+#
+# A convenience, not the gate: `git commit --no-verify` bypasses it, and it
+# checks the WORKING TREE, which may hold more than the commit does. The
+# gate is `just ci`, which runs against the commit in a clean worktree and
+# records the result (`just ci-verify`).
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+exec just static
