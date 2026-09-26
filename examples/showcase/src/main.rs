@@ -310,6 +310,8 @@ pub struct Store {
     fraction: f32,
     /// The range slider's two bounds, read back each frame (M57/C4).
     range: (f32, f32),
+    /// Veil dismissal requests, apart from the panel's presses (M57/C6).
+    dismissals: u32,
 }
 
 /// After every pump: rebuild the demos whose state lives in the store,
@@ -433,7 +435,9 @@ fn refresh(s: &mut Show) -> bool {
         _ => false,
     };
     if asked {
-        s.store.presses += 1;
+        // Its own count (M57/C6): this bumped `presses`, which the panel's
+        // Confirm button bumps too, so a confirm read as a dismissal.
+        s.store.dismissals += 1;
         changed = true;
     }
     let e = &CATALOG[s.store.selected];
@@ -2214,6 +2218,34 @@ mod tests {
             Damage::None => false,
         };
         assert!(covers, "the press damaged something, but not the button it was on");
+    }
+
+    /// **A confirm is not a dismissal** — M57/C6.
+    ///
+    /// The veil demos' readout counted both on one counter, so pressing
+    /// the panel's Confirm read as "dismissals: 1"
+    /// (`docs/widget-audit.md`, Modal).
+    #[test]
+    fn a_confirm_is_counted_apart_from_a_dismissal() {
+        let entry = CATALOG.iter().position(|e| e.name == "Modal").unwrap();
+        let mut h = host(entry, false);
+        let table = <<Show as lumen_static::event::App>::Tree as lumen_static::widget::Widget>::SUB_TABLE;
+        let idx = |w: &str| lumen_static::style::index_of_wid(table, w).expect(w);
+        let press = |h: &mut lumen_static_shell::Host<Show>, x: f32, y: f32| {
+            h.post(Event::down(x, y));
+            h.post(Event::up(x, y));
+            h.pump();
+            h.pump();
+        };
+        let go = h.states[idx("d_modal_go")];
+        press(&mut h, go.pos.x + go.size.w / 2.0, go.pos.y + go.size.h / 2.0);
+        let after_go = h.app.ui.main.header.heading.readout.as_str().to_string();
+        let veil = h.states[idx("d_modal_a")];
+        press(&mut h, veil.pos.x + 4.0, veil.pos.y + 4.0);
+        let after_scrim = h.app.ui.main.header.heading.readout.as_str().to_string();
+        println!("after Confirm: {after_go:?}; after the scrim: {after_scrim:?}");
+        assert_eq!(after_go, "dismissals: 0 · confirmed: 1", "a confirm was counted as something else");
+        assert_eq!(after_scrim, "dismissals: 1 · confirmed: 1", "the scrim press was not counted as a dismissal");
     }
 
     /// **A search field is one pill, not a box inside a box** — M57/C5.

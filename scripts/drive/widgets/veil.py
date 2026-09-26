@@ -8,9 +8,23 @@ reach what is behind it**, and only the dispatch path can say so.
 from harness import Action
 
 
-def _dismissals(c) -> int:
+def _count(c, name) -> int:
+    """The number after `name:` in the readout — `dismissals: 2 ·
+    confirmed: 1` since M57/C6, which split the two. This used to join
+    every digit in the readout, which was right only while it held one
+    number."""
     r = c.readout()
-    return int("".join(ch for ch in r if ch.isdigit()) or -1)
+    tail = r.split(name + ":", 1)[1] if (name + ":") in r else ""
+    digits = "".join(ch for ch in tail.strip().split(" ")[0] if ch.isdigit())
+    return int(digits or -1)
+
+
+def _dismissals(c) -> int:
+    return _count(c, "dismissals")
+
+
+def _confirmed(c) -> int:
+    return _count(c, "confirmed")
 
 
 def _press_scrim(c, title_sel):
@@ -64,16 +78,13 @@ def _veil(name, sel, title_sel, go_sel):
         Action(
             name="the control on the panel still reaches the application",
             needs="a veil with a live button on its panel",
-            do=lambda c: (c.__dict__.__setitem__("_n", _dismissals(c)),
+            do=lambda c: (c.__dict__.__setitem__("_n", (_confirmed(c), _dismissals(c))),
                           c.click(go_sel))[0],
-            # The button bumps the same counter the dismissals use, so a
-            # press on it looks like a dismissal from the readout — which
-            # is fine here: what this asserts is that the press *reached*
-            # something, where a veil that swallowed it would show no
-            # change at all.
+            # Its own counter since M57/C6: a confirm is counted, and it is
+            # *not* a dismissal — a press on the panel used to read as one.
             expect=lambda c: (
-                _dismissals(c) != c._n,
-                f"counter {c._n} -> {_dismissals(c)} after pressing the panel's button",
+                _confirmed(c) == c._n[0] + 1 and _dismissals(c) == c._n[1],
+                f"confirmed {c._n[0]} -> {_confirmed(c)}, dismissals {c._n[1]} -> {_dismissals(c)}",
             ),
             injection="make Veil::handler return None — the shape `Dyn` shipped as",
         ),

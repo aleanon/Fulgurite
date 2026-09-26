@@ -308,27 +308,32 @@ impl<W: Widget, const KIND: u8> Node for Veil<W, KIND> {
         if !self.open {
             return false;
         }
+        let own = cx.target == cx.node;
         match ev {
             // **A press aimed at this node is a press on the scrim.** One
             // that *bubbled* here from the panel — a label, the panel's
-            // own background, anything that declined it — is not, and is
-            // swallowed without dismissing (M57/A4). This said "anything
+            // own background — is not (M57/A4): this said "anything
             // landing here missed it", and a press on a modal's own title
             // asked to close it (`docs/widget-audit.md` X2).
-            Event::PointerDown { .. } => {
-                if cx.target == cx.node {
-                    self.dismissed = true;
-                }
+            Event::PointerDown { .. } if own => {
+                self.dismissed = true;
                 true
             }
             Event::Key { key: Key::Escape, down: true } => {
                 self.dismissed = true;
                 true
             }
-            // Everything else is swallowed while it is open, which is
-            // what modal means — a wheel over the scrim must not scroll
-            // the page behind it.
-            _ => true,
+            // A wheel is swallowed wherever it came from: a wheel over the
+            // dialog must not scroll the page behind it.
+            Event::Scroll { .. } => true,
+            // Anything else aimed at the scrim is swallowed too.
+            _ if own => true,
+            // **But not what bubbled up from the panel** — M57/C6. Taking
+            // it here ended pass 1 before activation ran, so the panel's
+            // own Confirm button never activated, by pointer or by Enter.
+            // The drive said it did: its counter moved because the press
+            // also asked to dismiss, and both bumped one number.
+            _ => false,
         }
     }
 
