@@ -243,6 +243,7 @@ impl<S: 'static> Widget for Select<S> {
 }
 
 impl<S: 'static> Node for Select<S> {
+    lumen_static::node_count!();
     fn kind_name(&self) -> &'static str {
         <Self as Widget>::KIND
     }

@@ -522,6 +522,7 @@ impl<S: TextBuffer> Widget for TextInput<S> {
 }
 
 impl<S: TextBuffer> Node for TextInput<S> {
+    lumen_static::node_count!();
     /// Arrows move a caret, so they never leave this control
     /// (M44/T44.1; [`Node::owns_arrows`]).
     fn owns_arrows(&self) -> bool {

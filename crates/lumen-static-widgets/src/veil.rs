@@ -209,6 +209,7 @@ impl<W: Widget, const KIND: u8> Widget for Veil<W, KIND> {
 }
 
 impl<W: Widget, const KIND: u8> Node for Veil<W, KIND> {
+    lumen_static::node_count!();
     fn kind_name(&self) -> &'static str {
         <Self as Widget>::KIND
     }

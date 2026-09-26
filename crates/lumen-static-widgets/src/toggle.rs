@@ -160,6 +160,7 @@ const BOX: f32 = 24.0;
 const TRACK_W: f32 = 40.0;
 
 impl<S: 'static, const SHAPE: u8> Node for Toggle<S, SHAPE> {
+    lumen_static::node_count!();
     fn kind_name(&self) -> &'static str {
         <Self as Widget>::KIND
     }

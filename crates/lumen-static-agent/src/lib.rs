@@ -114,49 +114,63 @@ pub struct TreeRef<'a> {
 /// look identical from the state array, and gating on area turned the
 /// invisible-content lint off.
 ///
-/// # What it actually tests
+/// # What it actually tests — by structure (M48/T48.7)
 ///
-/// A node is a stand-in iff `node(i)` is **the same object** as
-/// `node(parent(i))` — same address *and* same kind. A live node is
-/// always a distinct object from its parent's.
+/// A node is a stand-in iff the object `node(i)` returns has a subtree
+/// **larger** than the table's subtree at `i`
+/// ([`Node::node_count`](lumen_static::widget::Node::node_count) against
+/// one reverse pass over the table). A stand-in is always an ancestor
+/// object, and an ancestor's subtree strictly contains `i`; a live node's
+/// object has exactly the table's subtree. That is a fact about the
+/// table, not an inference from addresses.
 ///
-/// The kind is checked as well as the address because a zero-sized first
-/// field shares its parent's address: `struct Row { s: Spacer }` puts
-/// `&row.s` and `&row` at the same place. Their kinds differ, so they
-/// are told apart — and dropping the kind from this comparison is shown
-/// to break `changes.rs`, so it is load-bearing rather than defensive.
-/// The residue it cannot see is a wrapper both at offset zero and of the
-/// same kind as its own child, which needs a type to contain itself.
+/// It replaced an identity rule — "the same address *and* kind as the
+/// parent's" — whose rustdoc said its residue "needs a type to contain
+/// itself". It did not: `Glass<Glass<Label>>` puts the inner glass at
+/// offset 0 of the outer with the same kind, so it and everything under
+/// it read as hidden and the journal stopped seeing the label (R13-F5,
+/// `tests/nested_wrappers.rs`); `Card<Card<..>>` and
+/// `ScrollView<ScrollView<..>>` likewise. A zero-sized first field
+/// (`struct Row { s: Spacer }`) shares its parent's address and is live
+/// by this rule without a special case: its object's count is its own.
 ///
-/// One `node()` call per index, walking the table in order, so this is
-/// O(n) rather than the O(n·depth) an ancestor walk would cost.
-pub fn live_nodes(root: &dyn Node, table: &[NodeDesc], out: &mut Vec<bool>) {
+/// A part its owner paints itself — a `Picker`'s trigger, whose `node()`
+/// is the picker — is a stand-in by this rule too, which is what it is:
+/// the owner answers for it (the journal signs such an owner by painting
+/// it, `journal.rs`).
+///
+/// O(n): one `node()` call per index and one reverse pass for the sizes.
+/// `sizes` is scratch, kept by the caller so a frame allocates nothing.
+pub fn live_nodes_with(root: &dyn Node, table: &[NodeDesc], sizes: &mut Vec<u32>, out: &mut Vec<bool>) {
     // **The one place that must keep asking the instance** — M26/T26.2.
     // Everything that *reports* a kind reads `TreeRef::seeds`, because a
     // hidden node's instance is its container standing in. Here the
-    // stand-in is precisely what is being detected: a hidden node and the
-    // container it stands in for share an address *and* a kind, and the
-    // seed kinds differ per index, so a seed-built identity could never
-    // match and nothing would be reported hidden.
-    fn ident(n: &dyn Node) -> (*const (), &'static str) {
-        (n as *const dyn Node as *const (), n.kind_name())
+    // stand-in is precisely what is being detected.
+    sizes.clear();
+    sizes.resize(table.len(), 1);
+    // Pre-order: every child follows its parent, so a reverse pass has
+    // each node's size complete before it is added to its parent's.
+    for i in (1..table.len()).rev() {
+        let p = table[i].parent;
+        if p != lumen_static::NO_PARENT {
+            sizes[p as usize] += sizes[i];
+        }
     }
     out.clear();
     out.resize(table.len(), true);
-    let mut id: Vec<(*const (), &'static str)> = Vec::with_capacity(table.len());
     for i in 0..table.len() {
-        id.push(ident(root.node(i)));
-    }
-    for i in 0..table.len() {
+        let own = root.node(i).node_count() == sizes[i] as usize;
         let p = table[i].parent;
-        if p == lumen_static::NO_PARENT {
-            continue;
-        }
         // A stand-in *and* everything under it: the parent's liveness
-        // carries down, so one pass in table order (DFS pre-order, so
-        // parents first) settles the whole subtree.
-        out[i] = out[p as usize] && id[i] != id[p as usize];
+        // carries down, one pass in table order (parents first).
+        out[i] = own && (p == lumen_static::NO_PARENT || out[p as usize]);
     }
+}
+
+/// [`live_nodes_with`] with its own scratch — for a one-off caller. The
+/// per-frame callers (the journal, the audit) keep theirs.
+pub fn live_nodes(root: &dyn Node, table: &[NodeDesc], out: &mut Vec<bool>) {
+    live_nodes_with(root, table, &mut Vec::new(), out);
 }
 
 impl<'a> TreeRef<'a> {

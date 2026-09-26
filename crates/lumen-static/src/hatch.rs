@@ -63,6 +63,7 @@ impl<W: Widget + Default> Widget for Option<W> {
 }
 
 impl<W: Widget + Default> Node for Option<W> {
+    crate::node_count!();
     fn kind_name(&self) -> &'static str {
         <Self as Widget>::KIND
     }
@@ -318,6 +319,7 @@ impl<A: Widget, B: Widget> Widget for Either<A, B> {
 }
 
 impl<A: Widget, B: Widget> Node for Either<A, B> {
+    crate::node_count!();
     fn kind_name(&self) -> &'static str {
         <Self as Widget>::KIND
     }
@@ -524,6 +526,7 @@ impl<W: Widget> Widget for List<W> {
 
 #[cfg(feature = "alloc")]
 impl<W: Widget> Node for List<W> {
+    crate::node_count!();
     fn defaults(&self) -> Style {
         <Self as Widget>::type_defaults()
     }
@@ -941,6 +944,7 @@ impl<S> Widget for Dyn<S> {
 
 #[cfg(feature = "alloc")]
 impl<S> Node for Dyn<S> {
+    crate::node_count!();
     fn defaults(&self) -> Style {
         <Self as Widget>::type_defaults()
     }

@@ -115,6 +115,7 @@ impl<W: Widget> Widget for Card<W> {
 }
 
 impl<W: Widget> Node for Card<W> {
+    lumen_static::node_count!();
     /// A group: the card announces its content, which describes itself —
     /// M48/T48.6. `Card` has no title of its own to label it with.
     #[cfg(feature = "observe")]
@@ -493,6 +494,7 @@ const fn max_of(a: usize, b: usize) -> usize {
 }
 
 impl<W: Widget, S: TextStorage> Node for Tooltip<W, S> {
+    lumen_static::node_count!();
     /// A group described by its tip's text, whether or not the tip is
     /// showing — what a screen reader reads as the control's hint (M48/T48.6).
     #[cfg(feature = "observe")]

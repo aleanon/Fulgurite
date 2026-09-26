@@ -736,6 +736,7 @@ impl<const KIND: u8> Picker<KIND> {
 }
 
 impl<const KIND: u8> Node for Picker<KIND> {
+    lumen_static::node_count!();
     fn kind_name(&self) -> &'static str {
         <Self as Widget>::KIND
     }

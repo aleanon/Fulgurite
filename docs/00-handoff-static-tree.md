@@ -743,6 +743,16 @@ names what reopens it. Per vector, before and after:
 a non-loopback address is refused unless `LUMEN_AGENT_ALLOW_REMOTE=1`,
 which binds it and warns that there is no authentication.
 
+**DECIDED 2026-09-26 (M48/T48.7): a stand-in is recognised by
+structure.** `Node::node(i)` answers with an enclosing container inside a
+branch that is not laid out, and the agent must not paint or probe that
+container at `i`. It told them apart by address and kind, which a
+same-kind wrapper at offset 0 defeated (`Glass<Glass<Label>>`, R13-F5).
+Now `Node::node_count` — required under `observe`, emitted by the derive
+and `leaf_common!`, one `node_count!()` line in a hand-written impl —
+is compared with the table's subtree size at `i`: an ancestor's is
+always larger (`lumen_static_agent::live_nodes_with`).
+
 **DECIDED 2026-09-26 (M48/T48.2): `ui.waitSettled` answers from the
 host, and "cannot say" is `null`.** It answered `true` in every state
 under a comment saying no animation scheduler existed, long after

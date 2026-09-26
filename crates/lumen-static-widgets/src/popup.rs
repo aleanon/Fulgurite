@@ -129,6 +129,7 @@ impl<W: Widget> PopupTable<W> {
 pub const MAX_POPUP_NODES: usize = 256;
 
 impl<W: Widget> Node for Popup<W> {
+    lumen_static::node_count!();
     fn defaults(&self) -> Style {
         <Self as Widget>::type_defaults()
     }

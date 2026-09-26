@@ -907,6 +907,9 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                     <Self as ::lumen_static::widget::Widget>::KIND
                 }
 
+                // M48/T48.7: the agent's structural stand-in test.
+                ::lumen_static::node_count!();
+
                 fn defaults(&self) -> ::lumen_static::Style {
                     <Self as ::lumen_static::widget::Widget>::type_defaults()
                 }
@@ -1602,6 +1605,9 @@ fn expand_enum(
                 fn kind_name(&self) -> &'static str {
                     <Self as ::lumen_static::widget::Widget>::KIND
                 }
+
+                // M48/T48.7: the agent's structural stand-in test.
+                ::lumen_static::node_count!();
 
                 fn defaults(&self) -> ::lumen_static::Style {
                     <Self as ::lumen_static::widget::Widget>::type_defaults()

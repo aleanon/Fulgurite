@@ -213,6 +213,7 @@ impl Widget for NumberInput {
 }
 
 impl Node for NumberInput {
+    lumen_static::node_count!();
     /// Arrows move the caret of the field it wraps (its `node` answers itself for that index), and Up/Down step, so they never leave this control
     /// (M44/T44.1; [`Node::owns_arrows`]).
     fn owns_arrows(&self) -> bool {
@@ -721,6 +722,7 @@ impl Widget for SearchField {
 }
 
 impl Node for SearchField {
+    lumen_static::node_count!();
     fn kind_name(&self) -> &'static str {
         <Self as Widget>::KIND
     }

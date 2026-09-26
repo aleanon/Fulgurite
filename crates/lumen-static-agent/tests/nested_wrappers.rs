@@ -29,7 +29,6 @@ macro_rules! nested {
         }
 
         #[test]
-        #[ignore = "red until T48.7: R13-F5, a same-kind wrapper at offset 0 reads as a stand-in"]
         fn $test() {
             let mut ui = $name::default();
             fn $label(ui: &mut $name) -> &mut Label<String> {

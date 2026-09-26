@@ -133,6 +133,7 @@ impl<A: Widget, B: Widget> Widget for SplitPane<A, B> {
 }
 
 impl<A: Widget, B: Widget> Node for SplitPane<A, B> {
+    lumen_static::node_count!();
     /// Arrows move a divider, so they never leave this control
     /// (M44/T44.1; [`Node::owns_arrows`]).
     fn owns_arrows(&self) -> bool {
@@ -414,6 +415,7 @@ impl<W: Widget, S: TextStorage> Widget for Collapsible<W, S> {
 }
 
 impl<W: Widget, S: TextStorage> Node for Collapsible<W, S> {
+    lumen_static::node_count!();
     fn kind_name(&self) -> &'static str {
         <Self as Widget>::KIND
     }
@@ -834,6 +836,7 @@ where
     C: Widget + Node,
     D: Widget + Node,
 {
+    lumen_static::node_count!();
     /// Arrows move a divider, so they never leave this control
     /// (M44/T44.1; [`Node::owns_arrows`]).
     fn owns_arrows(&self) -> bool {

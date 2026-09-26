@@ -638,6 +638,7 @@ impl<W: Widget> Widget for PullToRefresh<W> {
 }
 
 impl<W: Widget> Node for PullToRefresh<W> {
+    lumen_static::node_count!();
     fn kind_name(&self) -> &'static str {
         <Self as Widget>::KIND
     }

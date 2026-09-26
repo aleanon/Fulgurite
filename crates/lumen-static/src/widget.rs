@@ -438,6 +438,24 @@ pub trait Node {
         }
     }
 
+    /// **This object's own node count** — `Self::NODE_COUNT`, answered
+    /// dynamically (M48/T48.7, `docs/plan-agent-truth.md` §2.3).
+    ///
+    /// The agent tells a stand-in from a live node by structure: `node(i)`
+    /// answers with the nearest enclosing container for an index inside a
+    /// branch that is not laid out, and a container's subtree is always
+    /// *larger* than the table's subtree at `i`, while a live node's object
+    /// has exactly the table's. That needs each object's count, and `Node`
+    /// is object-safe, so it cannot name `Self::NODE_COUNT` itself.
+    ///
+    /// **Required, not provided**: no default can be right, because a
+    /// guessed default is the provided-method trap `Deferring` fell into.
+    /// Write [`node_count!`](crate::node_count) in a hand-written impl —
+    /// it names no child, so it cannot be forwarded wrongly;
+    /// `leaf_common!` and the derive emit it.
+    #[cfg(feature = "observe")]
+    fn node_count(&self) -> usize;
+
     /// Cheap scalar introspection for the per-frame audit.
     #[cfg(feature = "observe")]
     #[allow(unused_variables)]

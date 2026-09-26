@@ -203,6 +203,7 @@ impl<W: Widget> GlassTable<W> {
 pub const MAX_GLASS_NODES: usize = 256;
 
 impl<W: Widget> Node for Glass<W> {
+    lumen_static::node_count!();
     fn kind_name(&self) -> &'static str {
         <Self as Widget>::KIND
     }

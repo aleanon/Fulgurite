@@ -90,6 +90,7 @@ impl Widget for Image {
 }
 
 impl Node for Image {
+    lumen_static::node_count!();
     fn kind_name(&self) -> &'static str {
         <Self as Widget>::KIND
     }

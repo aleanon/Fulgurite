@@ -418,6 +418,7 @@ macro_rules! leaf_common {
         fn node_mut(&mut self, _i: usize) -> &mut dyn $crate::Node {
             self
         }
+        $crate::node_count!();
         $crate::__observe_items! {
             fn observe_walk(
                 &self,
@@ -472,6 +473,7 @@ macro_rules! leaf_common {
         fn node_mut(&mut self, _i: usize) -> &mut dyn $crate::Node {
             self
         }
+        $crate::node_count!();
         $crate::__observe_items! {
             fn observe_walk(
                 &self,
@@ -500,6 +502,22 @@ macro_rules! leaf_common {
 /// where a `cfg(feature = "observe")` would test the user's features, not
 /// this crate's; routing through a macro defined twice here decides it
 /// where the feature lives.
+/// [`Node::node_count`](crate::widget::Node::node_count) for a hand-written
+/// impl — M48/T48.7. One line inside `impl Node for X`, where `X:
+/// Widget`: it answers `X::NODE_COUNT` and names no child, so it cannot
+/// forward wrongly. Expands to nothing without core's `observe`, whichever
+/// crate it is written in.
+#[macro_export]
+macro_rules! node_count {
+    () => {
+        $crate::__observe_items! {
+            fn node_count(&self) -> usize {
+                <Self as $crate::widget::Widget>::NODE_COUNT
+            }
+        }
+    };
+}
+
 #[cfg(feature = "observe")]
 #[doc(hidden)]
 #[macro_export]

@@ -420,6 +420,7 @@ impl<T: Widget + Default + 'static> Widget for Repeat<T> {
 pub const MAX_ADDRESSABLE_EXTENT: f32 = 16_777_216.0;
 
 impl<T: Widget + Default + 'static> Node for Repeat<T> {
+    crate::node_count!();
     fn kind_name(&self) -> &'static str {
         <Self as Widget>::KIND
     }

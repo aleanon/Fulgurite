@@ -554,6 +554,7 @@ impl Widget for Markdown {
 }
 
 impl Node for Markdown {
+    lumen_static::node_count!();
     fn kind_name(&self) -> &'static str {
         <Self as Widget>::KIND
     }
@@ -745,6 +746,7 @@ impl Widget for RichTextEditor {
 }
 
 impl Node for RichTextEditor {
+    lumen_static::node_count!();
     fn kind_name(&self) -> &'static str {
         <Self as Widget>::KIND
     }

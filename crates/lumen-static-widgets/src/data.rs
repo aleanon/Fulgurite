@@ -904,6 +904,7 @@ impl<R: Widget + Default + 'static> Widget for DataGrid<R> {
 }
 
 impl<R: Widget + Default + Node + 'static> Node for DataGrid<R> {
+    lumen_static::node_count!();
     fn kind_name(&self) -> &'static str {
         <Self as Widget>::KIND
     }

@@ -258,6 +258,7 @@ impl<W: Widget> ScrollTable<W> {
 pub const MAX_SCROLL_NODES: usize = 256;
 
 impl<W: Widget> Node for ScrollView<W> {
+    lumen_static::node_count!();
     fn kind_name(&self) -> &'static str {
         <Self as Widget>::KIND
     }
