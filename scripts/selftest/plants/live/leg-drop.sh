@@ -5,5 +5,5 @@
 CHECK='./scripts/widget_drive.sh Switch'
 EXPECT='expected Everything, got .*Boundaries<256>'
 plant() {
-    replace scripts/widget_drive.sh 'run_one Everything  agent,everything' 'run_one Everything  agent'
+    replace scripts/widget_drive.sh 'run_one Everything         agent,everything ' 'run_one Everything         agent '
 }
