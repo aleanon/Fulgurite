@@ -660,8 +660,9 @@ impl Win {
         // Another frame only while something is moving, or while the
         // inbox has a backlog (M28/T28.2: the drain is capped per frame,
         // so a backlog asks for another frame instead of the cap being
-        // raised). A still UI idles, which is what keeps the idle frame
-        // numbers in `docs/results-frame-cost.md` true.
+        // raised), or after a dropped present (above, M47/T47.4). A still
+        // UI idles, which is what keeps the idle frame numbers in
+        // `docs/results-frame-cost.md` true.
         if animating || self.session.more_deferred() {
             window.request_redraw();
         }

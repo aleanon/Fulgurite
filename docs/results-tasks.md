@@ -905,6 +905,15 @@ This is what "use the thing" is for.
 > the retry's first frame ticks by 0 (`docs/plan-panic-recovery.md`
 > §2.2). Counts from `just tasks-drive` on 2026-09-25, machine idle
 > (load 0.68); they are counts, not clocks.
+>
+> **Re-gathered 2026-09-26 with M42's identity line** (M47/T47.0), each
+> leg naming the process it drove — `drove pid P (socket owner P),
+> strategy …Everything / …Boundaries<256>, features agent[,everything],
+> exe …/target/release/tasks-demo`: unobserved timer **26** (expected 25,
+> bound 24) under both strategies, unobserved wake `slow 0 -> 1` under
+> both. `just panic-drive`, same day, identity lines likewise: the retry
+> after 2 s up added **0** ticks beyond the 2 due (bound 2) under both,
+> and the loop woke **0** times while the screen was up (T47.8).
 
 ### Injections — all three fire, and one is more interesting than the others
 

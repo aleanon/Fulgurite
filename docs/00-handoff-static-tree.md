@@ -572,7 +572,9 @@ answer and M49's re-issue across a swap read.
 **DECIDED 2026-09-26 (M47/T47.7, `docs/mobile-decision.md`):** a window
 keeps its images across suspend and resume — `Backend::take_images` is
 required, and `suspended` takes the source back before the backend is
-dropped.
+dropped. And a dropped GPU present is asked for again, a bounded number
+of times (T47.4); a still window's idle cost is measured at last —
+`docs/results-frame-cost.md`, Idle (T47.8).
 
 ### Sequence — not negotiable
 

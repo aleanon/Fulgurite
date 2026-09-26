@@ -1,19 +1,28 @@
 # M47 — a timer fires on an idle window, and the loop around it keeps count
 
-> **T47.1 DONE 2026-09-25**, landed ahead of phase 3 with its own T47.0
-> rows (the two unobserved `tasks-drive` phases, the panic-path step, the
-> `control_flow_for` unit test): an idle window's 120 ms timer reads 26
-> ticks where it read 1 (bound 24, both strategies), a retry after a 2 s
-> panic screen adds 0 extra ticks where it added 19 (bound 2), and
-> periods of 1e30 and `f32::MAX` wait without a deadline instead of
-> panicking. Its drive evidence is re-gathered with the identity line
-> once M42/T42.2 lands. See "What building found" at the end of T47.1.
+> **T47.0–T47.8 DONE 2026-09-26** (T47.1 on 2026-09-25). Every finding
+> below is closed; each task's "What building found" records where the
+> plan was wrong.
 >
-> **T47.3 DONE 2026-09-26**, early, because M48/T48.2 and M49/T49.10
-> read its ledger: `Threads` is a lazy pool of at most 4 workers (20
-> timer firings ran on 3 threads, were 20), 6.0x faster spawn-to-apply
-> than a thread per job, and the host keeps a ledger whose length is the
-> in-flight count (`Host::in_flight`).
+> - T47.0: every row committed red first; T47.1's live evidence
+>   re-gathered with M42's identity line (26 of 25 ticks, 0 extra on
+>   retry, both strategies).
+> - T47.1: an idle window's 120 ms timer reads 26 ticks where it read 1.
+> - T47.2: `advance(1e9)` returns in 0.002 ms (hung); a 10 ms timer's
+>   `tick(1000)` delivers 32 and counts 68 (counted 0).
+> - T47.3: `Threads` is a lazy pool of at most 4 (20 firings on 3
+>   threads, were 20), 6.0x faster spawn-to-apply; the host's ledger
+>   length is the in-flight count (`Host::in_flight`), for M48/M49.
+> - T47.4: two dropped GPU presents leave an idle window 0 px off the
+>   frame (99.8%); 20 armed drops see 4 attempts (bound 8).
+> - T47.5: a NaN `dt` settles in 13 frames / fires in 32 (never).
+> - T47.6: an unmodelled failure counts 1 (0).
+> - T47.7: a suspend/resume round trip keeps 0 of 458,620 pixels
+>   different on software and GPU (99%).
+> - T47.8: `docs/results-frame-cost.md` has an Idle section (a still
+>   window: 0 frames in 60 s; a 120 ms timer: 2 frames a period, no
+>   thread per firing), the citation rule is in `just static`, and the
+>   panic screen wakes its loop 0 times in 2 s (786 with a deadline).
 >
 > **Written 2026-09-24.** Closes R7-F1, R7-F2, R7-F3,
 > R7-F4, R7-F5, R7-F7, R7-F8, R7-F9, R7-F10, R7-F11 and R15-F6 from
@@ -666,6 +675,24 @@ if their wording changes.
 **Effort:** S. **Depends on:** T47.1 (the timer row), T47.3 (the thread
 count beside it). M53/T53.4 adds the motion row later.
 
+**What building found (2026-09-26).**
+
+- **The shared display is not idle.** On `:0`, with other windows opening
+  and the pointer moving, the still window drew 84 and 552 frames in two
+  60 s runs — window-system events, not the framework. The section's
+  figures are from a private nested server (`Xephyr :47`), where the
+  same binary drew **0**; the section says so.
+- **A timer costs two frames a period**, not one: the deadline's frame
+  ticks and spawns, and the job's result wakes a second frame to apply
+  it (1000 frames for 500 periods).
+- **T47.1's ungated half is counted where the loop sleeps**: the event
+  loop thread's context switches while the panic screen is up, in
+  `scripts/panic_drive.py` — 0 in 2 s, bound 4. The injection (a deadline
+  armed while failed) read **786**, not the ~16 predicted: the frozen
+  remainder is re-armed from each frame's start, so the loop spins.
+- **The static rule reads comment blocks, not lines**: three of the four
+  citations wrap the path onto the next line.
+
 ## 4. Boundaries of this plan
 
 - **Not the motion-present cost.** R7-F6, a full pump and a whole
@@ -717,14 +744,14 @@ Risks, and what would reveal each:
 
 | ID | sev now | status | task |
 |---|---|---|---|
-| R7-F1 | S1 | OPEN | T47.1 |
-| R7-F2 | S1 | OPEN | T47.1 |
-| R7-F3 | S2 | OPEN | T47.2 |
-| R7-F4 | S2 | OPEN | T47.2 |
-| R7-F5 | S2 | OPEN | T47.3 |
-| R7-F7 | S2 | OPEN | T47.4 |
-| R7-F8 | S3 | OPEN | T47.5 |
-| R7-F9 | S3 | OPEN | T47.6 |
-| R7-F10 | S4 | OPEN | T47.1 |
-| R7-F11 | S4 | OPEN | T47.8 |
-| R15-F6 | S3 | OPEN | T47.7 |
+| R7-F1 | S1 | CLOSED | T47.1 |
+| R7-F2 | S1 | CLOSED | T47.1 |
+| R7-F3 | S2 | CLOSED | T47.2 |
+| R7-F4 | S2 | CLOSED | T47.2 |
+| R7-F5 | S2 | CLOSED | T47.3 |
+| R7-F7 | S2 | CLOSED | T47.4 |
+| R7-F8 | S3 | CLOSED | T47.5 |
+| R7-F9 | S3 | CLOSED | T47.6 |
+| R7-F10 | S4 | CLOSED | T47.1 |
+| R7-F11 | S4 | CLOSED | T47.8 |
+| R15-F6 | S3 | CLOSED | T47.7 |

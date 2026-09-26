@@ -125,6 +125,22 @@ def ticks():
     return int(call("ui.resolve", {"selector": "#ticks"}).get("value", "0") or 0)
 
 
+def loop_wakes():
+    """The window's event-loop thread's context switches, from /proc.
+
+    M47/T47.8: nothing the agent reports counts frames while a panic is
+    shown (the journal is not fed on those frames), so "no deadline while
+    the screen is up" is counted where the loop sleeps: every wake of the
+    main thread is a voluntary switch. A deadline armed at the timer's
+    rate would add about 8 a second.
+    """
+    import os
+    pid = os.environ["LUMEN_LIVE_PID"]
+    st = open(f"/proc/{pid}/task/{pid}/status").read()
+    return sum(int(l.split()[1]) for l in st.splitlines()
+               if l.startswith(("voluntary_ctxt_switches", "nonvoluntary_ctxt_switches")))
+
+
 PERIOD, UP_S = 120, 2.0
 call("input.click", {"selector": "#timer"})
 time.sleep(0.5)
@@ -136,7 +152,16 @@ while time.time() < deadline and not call("app.failure")["failure"]:
     time.sleep(0.05)
 assert call("app.failure")["failure"], f"panic-drive [{strategy}]: timer step: site 1 never failed"
 t_fail = ticks()
+time.sleep(0.2)  # the read's own frame, and anything it set off
+w0 = loop_wakes()
 time.sleep(UP_S)
+woke = loop_wakes() - w0
+WAKE_BOUND = 4  # a 120 ms deadline would give ~16 in 2 s
+print(f"  ..  panic screen up {UP_S * 1000:.0f} ms with a {PERIOD} ms timer: the loop woke {woke} "
+      f"times (bound {WAKE_BOUND}; ~{int(UP_S * 1000 // PERIOD)} if a deadline were armed)")
+assert woke <= WAKE_BOUND, (f"panic-drive [{strategy}]: the loop woke {woke} times in {UP_S:.0f} s "
+                            f"with the panic screen up (bound {WAKE_BOUND}): a deadline is armed "
+                            f"while the timers are frozen")
 frozen = ticks()
 assert frozen == t_fail, f"panic-drive [{strategy}]: the timer ran while the screen was up ({t_fail} -> {frozen})"
 assert call("app.retry")["retried"] is True

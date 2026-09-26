@@ -201,3 +201,61 @@ process to compare them (`docs/plan-architecture-v2.md` T8b.0).
   58 368 px, 25% of the frame, against a 9 464 px median. A rect list
   would fix it and is not worth it until a screen exists where it
   matters.
+
+## Idle — what a window costs when nothing happens (M47/T47.8, 2026-09-26)
+
+The figures four comments cite ("the idle frame numbers in this file",
+`crates/lumen-static-winit/src/lib.rs`, `crates/lumen-static/src/event.rs`,
+`crates/lumen-static/src/anim.rs`). Until M47 this file had none;
+`scripts/check_idle_citations.sh`, in `just static`, now refuses a
+comment that cites idle numbers from a file with no Idle heading.
+
+**Counts, not clocks.** `scripts/idle_count.sh` (`just idle-count`)
+launches `examples/tasks-demo` (release, `Boundaries`) and makes **one
+read before and one after** 60 s with no RPC traffic — a read asks for a
+frame, so a polled window is never idle (`docs/plan-timers-wake.md`
+rule 1). Frames are the agent's frame counter less the first read's own
+frame; wakes are the event-loop thread's context switches from `/proc`;
+threads are the process's task list, sampled every 50 ms.
+
+**Run on a private nested X server** (`Xephyr :47`). On the shared `:0`
+display, with other windows opening and the pointer moving, the still
+window drew 84 and 552 frames in two 60 s runs, all window-system events
+(`Resized`, expose, pointer) — a real cost, but not the framework's idle
+cost. On `:47` the same binary drew none.
+
+| phase, 60 s | frames | loop-thread wakes | process context switches | threads alive / created |
+|---|---:|---:|---:|---|
+| still (nothing scheduled) | **0** | 3 | 9 | 4 / 0 |
+| a 120 ms timer (500 periods) | **1000** | 2413 | 2916 | 5 / **0** |
+
+- **Still is zero frames.** `about_to_wait` arms `Wait` when no deadline
+  is pending (M47/T47.1), and nothing else asks.
+- **A timer costs two frames a period**, not one: the deadline's frame
+  ticks the timer and spawns its job; the job's result wakes the loop
+  and a second frame applies it. 1000 frames for 500 periods is that
+  exactly. Folding the two needs a timer that applies without a job, which
+  `docs/plan-tasks.md` §2.4's one-path rule does not want.
+- **No thread per firing** (M47/T47.3): the timer phase created no thread
+  in 500 firings; the one pool worker (4 → 5 alive) was started by the
+  subscription's first job before the phase began. Before T47.3 each
+  firing was a `std::thread` (R7-F5).
+
+### While the panic screen is up
+
+T47.1 arms no deadline while a panic is shown, because the timers' clock
+is frozen and a deadline would only redraw the screen at the timer's
+rate. Nothing the agent reports counts those frames (the journal is not
+fed on them), so `scripts/panic_drive.py` counts the loop thread's
+context switches over the 2 s the screen is up with a 120 ms timer on:
+
+| build | loop-thread wakes in 2 s | bound |
+|---|---:|---:|
+| T47.8, both strategies | **0** | 4 |
+| a deadline armed while failed (injection) | **786** | 4 |
+
+The injection was worse than the ~16 the plan predicted: the frozen
+remainder is re-armed from each frame's start, so a past deadline fires
+again at once and the loop spins.
+
+M53/T53.4 adds a per-motion row here.

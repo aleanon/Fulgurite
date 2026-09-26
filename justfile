@@ -37,6 +37,7 @@ static:
     ./scripts/check_toolchain_targets.sh  # every --target used is declared in rust-toolchain.toml
     ./scripts/check_ci_claims.sh        # no bare dependency/[[bin]] count in the justfile or ci.yml
     ./scripts/check_drive_coverage.sh   # M42: every exported widget is driven, or owed with an owner
+    ./scripts/check_idle_citations.sh   # M47: a comment citing idle numbers cites a file that has them
 
 # Default features == the shipped shape. This is the ONLY build that compiles
 # what docs/verification-notes.md scopes its argument to; `--workspace` cannot
@@ -536,6 +537,12 @@ const-budget:
 # Render one window on both backends and diff the pixels (docs/results-gpu.md).
 gpu-parity:
     ./scripts/gpu_parity.sh
+
+# M47/T47.8: the Idle section of docs/results-frame-cost.md -- frames,
+# wakes, context switches and threads of a still window and of one with a
+# 120 ms timer, over SECONDS. Needs a display (run it on a private one).
+idle-count seconds="60":
+    ./scripts/idle_count.sh {{ seconds }}
 
 # M47/T47.7 (R15-F6): examples/glasswall's images survive a suspend and
 # resume round trip (a debug-only LUMEN_TEST_RESUME hook runs it), on the
