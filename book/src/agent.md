@@ -75,6 +75,14 @@ until a drive script could not click either checkbox (M27/T27.3).
 `ui.lastChange` answers which nodes moved or repainted since a frame;
 `ui.lastDamage` answers what that costs in pixels.
 
+**An `input.*` reply's `frame` is the first journal frame that includes
+the input**, so `since = frame - 1` finds what it changed once the window
+has drawn that frame. It used to be the host's own counter, which moves
+twice per input — the pump inside the request and the redraw after it —
+so from the second click on, `since = frame - 1` pointed past every change
+the click made (M48/T48.1). The host's number is still in the reply, as
+`host_frame`.
+
 **Read `regions`, not `rect`.** `regions` is the damaged *set*, capped
 the way the renderer caps it; `rect` is that set's bounding box and is
 kept only because existing callers read it. A bound computed against

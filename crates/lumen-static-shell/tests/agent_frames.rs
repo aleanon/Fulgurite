@@ -64,7 +64,6 @@ fn redraw(s: &mut Local<Tally>) {
 }
 
 #[test]
-#[ignore = "red until T48.1: R13-F3, a reply names the host's frame, not the journal's"]
 fn a_replys_frame_finds_its_change_on_every_click() {
     let mut app = Tally::default();
     app.ui.inc.on_click = |t: &mut Tally, _: &lumen_static::EventCtx| t.n += 1;

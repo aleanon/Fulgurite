@@ -124,9 +124,12 @@ scrolled out of its viewport cannot be clicked at all, since a selector
 resolves to the node's centre and that centre is a point the hit test
 correctly rejects.
 
-**Actions do not auto-wait.** The reply's `frame` is the frame the
-input was dispatched on; re-query (`layout`, `tree`, `screenshot`) after
-acting. In the live window the RPC is answered on the event-loop thread
+**Actions do not auto-wait.** The reply's `frame` is **the first
+journal frame that includes this input; ask with `since = frame - 1`**
+(M48/T48.1) — `ui.lastChange` and `ui.lastDamage` answer from that frame
+once the window has drawn it. `host_frame` is the host's own counter, for
+debugging only: it moves twice per input and means nothing to `since`.
+Re-query (`layout`, `tree`, `screenshot`) after acting. In the live window the RPC is answered on the event-loop thread
 after `pump`, so a `layout` right after a `click` already sees the
 result — but write the check anyway; it is what makes the run a test.
 

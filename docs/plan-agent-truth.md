@@ -828,6 +828,26 @@ risks, and what would reveal each:
   which is the use the contract serves. `just widget-drive` under both
   strategies would reveal one that did.
 
+## 6. What building found (2026-09-26)
+
+Corrections to this plan, kept where they were wrong rather than
+rewritten.
+
+- **T48.0: two findings were larger than listed.** R13-F4's coverage
+  walk found **nine** widgets with no `observe`, not eight: `Icon` too.
+  R13-F11's check found the skill missing `app.reloads` as well as the
+  five §1.4 lists (it is the window's, answered in `answer_agent`).
+- **T48.0: the feature-seam check compiles**, so it runs in `dev-shape`
+  rather than in `static`, whose contract is "sub-second, no compile".
+- **T48.0: the live rows are written with their tasks.** R13-F2, R13-F8,
+  R13-F9 and R14-F8 each need a window and an edit to a drive script;
+  each task's commit shows its live gate red before the fix.
+- **T48.1: the drive harness needed no change.** It marks with
+  `ui.lastChange`'s own `frame` *before* the action, which is the
+  journal's counter already and equals `reply.frame - 1` for a
+  one-input action — and stays right for an action of several inputs,
+  where the first reply's frame would not.
+
 ## Appendix: finding → task
 
 | ID | sev now | status | task |

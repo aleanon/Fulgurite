@@ -443,6 +443,24 @@ impl Agent {
         self.perf[(self.perf_next + self.perf.len() - 1) % self.perf.len()]
     }
 
+    /// **The frame an `input.*` reply names** — M48/T48.1 (R13-F3,
+    /// `docs/plan-agent-truth.md` §2.1): the first journal frame that
+    /// includes the input, `self.frame + 1`, because the journal records
+    /// the frame the host draws after the pump the reply ran.
+    ///
+    /// It was the host's own counter, which moves twice per input in a
+    /// window — once for the pump inside the RPC and once for the redraw
+    /// after it — while this one moves once per `frame_done`. The two
+    /// drifted apart on every click after the first, and
+    /// `since = reply.frame - 1` found nothing (`tests/agent_frames.rs`
+    /// in the shell). Only this counter means anything to `since`; the
+    /// host's number stays in the reply as `host_frame`, for debugging.
+    /// Two inputs answered before one redraw both name the same frame,
+    /// correctly: both land in it.
+    pub fn reply_frame(&self) -> u64 {
+        self.frame + 1
+    }
+
     /// `app.perf`: the last frame, and p50/p95/max over the ring — the
     /// summary a latency budget is checked against.
     fn perf(&self) -> Value {
@@ -610,7 +628,8 @@ impl Agent {
                     }
                 };
                 let applied = host.set_palette(palette);
-                Ok(json!({ "applied": applied, "palette": name, "frame": host.pump().0 }))
+                let host_frame = host.pump().0;
+                Ok(json!({ "applied": applied, "palette": name, "frame": self.reply_frame(), "host_frame": host_frame }))
             }
             // `clicks` (1 to 3, default 1) makes it a double or triple
             // click (M45/T45.6): one press and release per click, the
@@ -633,7 +652,7 @@ impl Agent {
                     host.enqueue(Event::up(x, y));
                 }
                 let (f, h) = host.pump();
-                Ok(json!({ "frame": f, "handled": h, "at": [x, y] }))
+                Ok(json!({ "frame": self.reply_frame(), "host_frame": f, "handled": h, "at": [x, y] }))
             }
             // A press held open, and its release — the two halves of a
             // click, separately. Without them an agent cannot observe a
@@ -644,19 +663,19 @@ impl Agent {
                 let (x, y) = self.point_param(host, params)?;
                 host.enqueue(Event::down(x, y));
                 let (f, h) = host.pump();
-                Ok(json!({ "frame": f, "handled": h, "at": [x, y] }))
+                Ok(json!({ "frame": self.reply_frame(), "host_frame": f, "handled": h, "at": [x, y] }))
             }
             "input.pointerUp" => {
                 let (x, y) = self.point_param(host, params)?;
                 host.enqueue(Event::up(x, y));
                 let (f, h) = host.pump();
-                Ok(json!({ "frame": f, "handled": h, "at": [x, y] }))
+                Ok(json!({ "frame": self.reply_frame(), "host_frame": f, "handled": h, "at": [x, y] }))
             }
             "input.hover" => {
                 let (x, y) = self.point_param(host, params)?;
                 host.enqueue(Event::PointerMove { x, y });
                 let (f, h) = host.pump();
-                Ok(json!({ "frame": f, "handled": h, "at": [x, y] }))
+                Ok(json!({ "frame": self.reply_frame(), "host_frame": f, "handled": h, "at": [x, y] }))
             }
             "input.scroll" => {
                 let (x, y) = self.point_param(host, params)?;
@@ -666,7 +685,7 @@ impl Agent {
                 };
                 host.enqueue(Event::Scroll { x, y, dy });
                 let (f, h) = host.pump();
-                Ok(json!({ "frame": f, "handled": h, "at": [x, y], "dy": dy }))
+                Ok(json!({ "frame": self.reply_frame(), "host_frame": f, "handled": h, "at": [x, y], "dy": dy }))
             }
             "input.key" => {
                 let name = params.get("key").and_then(Value::as_str).ok_or((
@@ -693,7 +712,7 @@ impl Agent {
                     host.enqueue(Event::Modifiers(lumen_static::event::Mods::NONE));
                 }
                 let (f, h) = host.pump();
-                Ok(json!({ "frame": f, "handled": h }))
+                Ok(json!({ "frame": self.reply_frame(), "host_frame": f, "handled": h }))
             }
             // P5 of docs/plan-agent-parity.md, arriving with the first
             // host that renders. The image is a PNG so the agent can
@@ -844,7 +863,8 @@ impl Agent {
                     ));
                 }
                 Ok(json!({
-                    "frame": frame,
+                    "frame": self.reply_frame(),
+                    "host_frame": frame,
                     "at": [x, y],
                     "cleared": existing,
                     "chars": n,
@@ -929,7 +949,7 @@ impl Agent {
                 let (f, h) = feed(host, text.chars().map(|ch| Event::Text { ch }));
                 let dropped = lost(before, host.dropped_inputs());
                 let delivered = n.saturating_sub(dropped.unwrap_or(0) as usize);
-                Ok(json!({ "frame": f, "handled": h, "chars": delivered, "sent": n, "dropped": dropped }))
+                Ok(json!({ "frame": self.reply_frame(), "host_frame": f, "handled": h, "chars": delivered, "sent": n, "dropped": dropped }))
             }
             // **A paste is one edit** — M45/T45.7. The string reaches the
             // focused node whole, through its `Node::paste`, and the
@@ -1487,6 +1507,11 @@ impl Agent {
 
     /// `since` defaults to the previous frame, so a bare call means
     /// "what changed in the last frame".
+    ///
+    /// **The contract with `input.*`** — M48/T48.1 (R13-F3): a reply's
+    /// `frame` is the first journal frame that includes its input
+    /// ([`Agent::reply_frame`]), so `since = frame - 1` finds what the
+    /// input changed once that frame has been drawn.
     fn since_param(&self, params: &Value) -> u64 {
         params.get("since").and_then(Value::as_u64).unwrap_or_else(|| self.frame.saturating_sub(1))
     }
