@@ -1,5 +1,30 @@
 # M45 — text that measures, paints and edits as one thing
 
+> **T45.0–T45.5 and T45.7–T45.11 DONE 2026-09-26; T45.6 NOT BUILT** — it
+> waits for M44/T44.1 (`owns_arrows`), which is not on this branch's
+> base; its gate (`text_motion.rs`) is committed red. Every figure is in
+> `docs/results-text.md`.
+> - **T45.0** fourteen gates red at `826c7c3`, the baseline recorded.
+> - **T45.1** runs measured from the pen: 0 of 1,200 re-wrapped (was 600);
+>   the painter's half-pixel slack; `TextInput` paints in its run's width.
+> - **T45.2** `MeasureKey::new(cx, ..)`: scale, measurer generation, bit
+>   patterns; `TextInput`/`TextArea` served = fresh after a drag, a NaN
+>   limit 1 call (was 5). `Ui` 1,168 → 1,176 B on the target.
+> - **T45.3** fallback faces, read on first need: `你好` and `שלום` drawn,
+>   Latin pixel-identical; the kill rule fired once (+3.4%) and was fixed.
+> - **T45.4** `lumen-static-text` is measurement only, pinned by a
+>   `should_panic` test and the limitation stated as a test.
+> - **T45.5** editing by grapheme: 40 / 40 (was 0); leaf `.text` unchanged.
+> - **T45.7** a paste is one edit through `Node::paste`: newlines kept,
+>   one pump for 256 KB (was 4,096), `input.paste`, `TextArea` driven live.
+> - **T45.8** multi-character key text committed whole: 4 / 4 (was 0).
+> - **T45.9** clipboard shortcuts route on, Cmd/Ctrl per OS; `NumberInput`
+>   copies and takes composed digits.
+> - **T45.10** no quadratics: keystroke ratios 10.1 / 10.1 (were 59.5 /
+>   93.2); 100 KB 34.8 → 5.4 ms.
+> - **T45.11** `TextArea` paints visible lines: 225 glyphs for a caret move
+>   in 64 KB (was 53,595).
+
 > **T45.12 DONE 2026-09-26 (early landing).** `BakedFace` moves an
 > overflowing word whole to the next line; `"aaa bbbb"` at 60 is two
 > lines and 41 wide (was: a break at byte 6, 55 wide), 0 of 25 phrase ×
@@ -648,6 +673,13 @@ selection. Drop the Ctrl branch: Ctrl+Left moves one grapheme.
 **Docs in the same commit.** The key tables in both editors' rustdoc.
 `book/src/input-widgets.md`. `docs/plan-widget-parity.md`'s inventories
 for `TextInput` and `TextArea`.
+
+*Not built (2026-09-26).* M44/T44.1 is on `impl/m44`, not on this
+branch's base, and the brief says not to build `owns_arrows` here. The
+gate is written and committed red (`crates/lumen-static-shell/tests/text_motion.rs`,
+12 of 12 motions wrong at `826c7c3`), with each field alone in its tree
+so it measures this task and not M44's; `TextArea`'s drive inventory,
+which this task extends, exists since T45.7.
 
 **Effort:** M. **Depends on:** T45.5; T45.7 (`TextArea`'s drive
 inventory); **M44's T44.1** (an arrow must
