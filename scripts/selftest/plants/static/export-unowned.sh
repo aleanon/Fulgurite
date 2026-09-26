@@ -3,7 +3,9 @@
 # exported widget type has an inventory or an entry in
 # scripts/drive/undriven.allow, and removing an entry is named.
 CHECK='./scripts/check_drive_coverage.sh'
-EXPECT='Select.*(no inventory|undriven)'
+EXPECT='Glass.*(no inventory|undriven)'
 plant() {
-    drop_lines scripts/drive/undriven.allow 'Select '
+    # Select was the victim until M44/T44.10 gave it an inventory; Glass
+    # is exported and owed only by its allow line, so dropping it must be named.
+    drop_lines scripts/drive/undriven.allow 'Glass |'
 }
