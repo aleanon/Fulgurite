@@ -415,3 +415,21 @@ fn a_badge_is_at_least_as_wide_as_it_is_tall() {
         assert!(s.w >= s.h - 0.01, "{text:?} is {} wide and {} tall", s.w, s.h);
     }
 }
+
+/// **A pie closes its ring** — M57/B32.
+///
+/// Each wedge's boundary was truncated, and the fractions summed in f32
+/// end just below 1.0, so the last of the 96 segments was never drawn: a
+/// 1.35% gap at 12 o'clock (`docs/widget-audit.md`, PieChart). A full
+/// ring is 96 segment lines, whatever the data.
+#[test]
+fn a_pie_draws_every_segment_of_its_ring() {
+    for data in [&[10.0f32, 6.0, 4.0, 3.0, 2.0][..], &[1.0, 1.0, 1.0][..], &[7.0][..], &[0.3, 0.3, 0.4][..]] {
+        let mut pie: PieChart = PieChart::default();
+        pie.data = Series::new(data);
+        let l = painted(&mut pie, Size { w: 160.0, h: 160.0 });
+        let lines = l.cmds.iter().filter(|c| matches!(c, Cmd::Line { .. })).count();
+        println!("  {data:?}: {lines} segments");
+        assert_eq!(lines, 96, "{data:?}: the ring has {lines} of its 96 segments");
+    }
+}

@@ -288,6 +288,9 @@ impl<const KIND: u8> Node for Chart<KIND> {
                 let inner = d * 0.24;
                 const STEPS: usize = 96;
                 let mut at = 0.0f32;
+                // The last wedge that draws anything: it ends at the full
+                // turn exactly (M57/B32).
+                let last = vals.iter().rposition(|v| v.is_finite() && *v > 0.0);
                 for (k, v) in vals.iter().enumerate() {
                     if !v.is_finite() || *v <= 0.0 {
                         continue;
@@ -295,8 +298,15 @@ impl<const KIND: u8> Node for Chart<KIND> {
                     let frac = v / total;
                     let series = if self.series.is_empty() { &WEDGES[..] } else { self.series };
                     let colour = series[k % series.len()];
-                    let from = (at * STEPS as f32) as usize;
-                    let to = ((at + frac) * STEPS as f32) as usize;
+                    // **Rounded, not truncated, and the last one closes the
+                    // ring** — M57/B32. Truncating each boundary and summing
+                    // fractions in f32, which ends just short of 1.0, left
+                    // the final segment undrawn: a 1.35% gap at 12 o'clock
+                    // (`docs/widget-audit.md`, PieChart). Rounded, adjacent
+                    // wedges share each boundary exactly.
+                    let seg = |t: f32| lumen_static::num::round(t * STEPS as f32) as usize;
+                    let from = seg(at);
+                    let to = if Some(k) == last { STEPS } else { seg(at + frac) };
                     for seg in from..to.min(STEPS) {
                         let (cs, sn) = unit(seg);
                         out.line(
