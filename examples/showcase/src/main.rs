@@ -394,17 +394,17 @@ fn refresh(s: &mut Show) -> bool {
         };
         match &mut s.ui.main.stage.row.demo {
             Demo::CheckBox(d) => {
-                put(&mut d.a.t.on, a);
-                put(&mut d.b.t.on, b);
+                put(&mut d.a.control.on, a);
+                put(&mut d.b.control.on, b);
             }
             Demo::Switch(d) => {
-                put(&mut d.a.t.on, a);
-                put(&mut d.b.t.on, b);
+                put(&mut d.a.control.on, a);
+                put(&mut d.b.control.on, b);
             }
             Demo::Radio(d) => {
-                put(&mut d.a.t.on, c == 0);
-                put(&mut d.b.t.on, c == 1);
-                put(&mut d.c.t.on, c == 2);
+                put(&mut d.a.control.on, c == 0);
+                put(&mut d.b.control.on, c == 1);
+                put(&mut d.c.control.on, c == 2);
             }
             Demo::Chip(d) => {
                 let t = s.store.tags;
@@ -1234,7 +1234,7 @@ fn stylesheet_with(c: Chrome) -> Vec<StyleRule> {
         // its own type so its control has a unique address; the labels
         // all want the same look, which is what a class is for and what
         // an id is not.
-        StyleRule::new(Selector::Class("pair-label"), lbl()),
+        StyleRule::new(Selector::Kind("labelled"), lbl()),
         StyleRule::new(Selector::Id("d_slider_a"), Patch::new().width(Length::Fixed(280.0))),
         // The same, for M27/T27.5's two that fill: a range and a search
         // box are both as wide as they are given, and on a centring
@@ -1407,11 +1407,9 @@ fn stylesheet_with(c: Chrome) -> Vec<StyleRule> {
     ] {
         rules.push(StyleRule::new(Selector::Kind(kind), Patch::new().width(w)));
     }
-    // A toggle and its label are a derived row of their own (`pair!`),
-    // `FILL` like any derived struct, so the pairs shrink too.
-    for kind in ["PairCheckA", "PairCheckB", "PairSwitchA", "PairSwitchB", "PairRadioA", "PairRadioB", "PairRadioC"] {
-        rules.push(StyleRule::new(Selector::Kind(kind), Patch::new().width(Length::Shrink)));
-    }
+    // A toggle and its label were a derived row of their own, `FILL`
+    // like any derived struct, and needed a rule each to shrink. A
+    // `Labelled` shrinks by default (M57/B11).
     for kind in stage::DEMO_KINDS {
         let styled = rules.iter().any(|r| matches!(r.selector, Selector::Kind(k) if k == *kind));
         if !styled {
@@ -2432,18 +2430,18 @@ mod tests {
         let mut h = host(entry, false);
         click(&mut h, idx("d_checkbox_a"));
         let Demo::CheckBox(d) = &h.app.ui.main.stage.row.demo else { panic!("setup: not the CheckBox demo") };
-        println!("after one click: store {} drawn a={} b={}", h.app.store.flag, d.a.t.on, d.b.t.on);
+        println!("after one click: store {} drawn a={} b={}", h.app.store.flag, d.a.control.on, d.b.control.on);
         assert!(h.app.store.flag, "setup: the click did not reach the store");
-        assert!(d.a.t.on, "the store says checked and the box is drawn unchecked");
-        assert!(!d.b.t.on, "the other box followed a click that was not on it");
+        assert!(d.a.control.on, "the store says checked and the box is drawn unchecked");
+        assert!(!d.b.control.on, "the other box followed a click that was not on it");
 
         let entry = CATALOG.iter().position(|e| e.name == "Radio").unwrap();
         let mut h = host(entry, false);
         click(&mut h, idx("d_radio_c"));
         let Demo::Radio(d) = &h.app.ui.main.stage.row.demo else { panic!("setup: not the Radio demo") };
-        println!("after clicking Blue: choice {} drawn {} {} {}", h.app.store.choice, d.a.t.on, d.b.t.on, d.c.t.on);
+        println!("after clicking Blue: choice {} drawn {} {} {}", h.app.store.choice, d.a.control.on, d.b.control.on, d.c.control.on);
         assert_eq!(h.app.store.choice, 2, "clicking Blue did not choose it");
-        assert!(d.c.t.on && !d.a.t.on && !d.b.t.on, "Blue is chosen and not the one drawn");
+        assert!(d.c.control.on && !d.a.control.on && !d.b.control.on, "Blue is chosen and not the one drawn");
     }
 
     /// **Every demo button shows hover** — M57/C1.

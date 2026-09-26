@@ -386,13 +386,7 @@ pub fn record_painted(
     // paint attributes, so `paint` — which has no `&[Style]` — needs no
     // second array and no per-frame cascade. Pressed wins over hovered:
     // a control under a held pointer is pressed, not merely hovered.
-    st[i].bg = if st[i].pressed && style.pressed_dim > 0.0 {
-        dim(style.background, style.pressed_dim)
-    } else if st[i].hovered && style.hover_dim > 0.0 {
-        dim(style.background, style.hover_dim)
-    } else {
-        style.background
-    };
+    st[i].bg = shaded(style.background, &st[i], style);
     st[i].radius = style.radius;
     st[i].focus_ring = style.focus_ring;
     st[i].border_color = style.border_color;
@@ -402,6 +396,24 @@ pub fn record_painted(
     st[i].shadow = style.shadow;
     st[i].pad = (style.padding.left, style.padding.top, style.padding.right, style.padding.bottom);
     record(st, i, limits, size)
+}
+
+/// `c` as the pointer affordance shows it on `n`: darkened by the style's
+/// `pressed_dim` while pressed, else by `hover_dim` while hovered.
+///
+/// What [`record_painted`] does to `background`, public — M57/B11 —
+/// for a widget whose visible body is another colour. A toggle that is
+/// on is drawn in `color`, so it showed no hover and no press at all:
+/// `record_painted` shades only the background, which an on toggle does
+/// not paint.
+pub fn shaded(c: crate::display::Color, n: &NodeState, style: &Style) -> crate::display::Color {
+    if n.pressed && style.pressed_dim > 0.0 {
+        dim(c, style.pressed_dim)
+    } else if n.hovered && style.hover_dim > 0.0 {
+        dim(c, style.hover_dim)
+    } else {
+        c
+    }
 }
 
 /// `c` darkened by `f` (0.0–1.0), alpha untouched.

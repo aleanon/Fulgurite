@@ -54,44 +54,18 @@ use super::*;
 /// control is ignored outright — `resolve_self` returns the `Fixed`
 /// width whatever the padding says. So the pair is its own row with its
 /// own spacing, and the outer row spaces the pairs.
-/// One labelled control per *instance*, stamped from one macro.
+/// A toggle and its words, as one control — M57/B11.
 ///
-/// **Seven types where there were three, and that is not duplication —
-/// it is what an author id means here.** A `#[widget_id]` lives on a
-/// *type's* field, so a composite instantiated twice carries the same id
-/// twice; `PairCheck` was used for both checkboxes and both of them
-/// answered to `d_checkbox_a`. `ui.resolve` refuses that ambiguity, so
-/// neither control could be clicked by name, no stylesheet rule could
-/// reach one without the other, and nothing said so.
-///
-/// Found on the **first run** of `just widget-drive` (M27/T27.3), which
-/// could not address either checkbox. Eight ids were duplicated across
-/// the three demos. `W1011` now reports it for everyone.
-///
-/// The labels keep unique ids *and* share a class: an id is an address
-/// and must be unique, a class is a style handle and is meant to repeat.
-/// The sheet uses the class.
-macro_rules! pair {
-    ($name:ident, $ctrl:ty, $cid:literal, $lid:literal) => {
-        #[derive(StaticTree, Default)]
-        #[widget(row, spacing = 10.0)]
-        pub struct $name {
-            #[widget_id($cid)]
-            pub t: $ctrl,
-            #[widget_id($lid)]
-            #[widget_class("pair-label")]
-            pub l: Label<String>,
-        }
-    };
-}
-
-pair!(PairCheckA, CheckBox<Store>, "d_checkbox_a", "d_checkbox_al");
-pair!(PairCheckB, CheckBox<Store>, "d_checkbox_b", "d_checkbox_bl");
-pair!(PairSwitchA, Switch<Store>, "d_switch_a", "d_switch_al");
-pair!(PairSwitchB, Switch<Store>, "d_switch_b", "d_switch_bl");
-pair!(PairRadioA, Radio<Store>, "d_radio_a", "d_radio_al");
-pair!(PairRadioB, Radio<Store>, "d_radio_b", "d_radio_bl");
-pair!(PairRadioC, Radio<Store>, "d_radio_c", "d_radio_cl");
+/// These were a macro-stamped row per instance: a `Toggle` beside a
+/// `Label`, seven types so each control had its own address (M27/T27.3's
+/// `W1011`). Clicking the words did nothing, because the label was a
+/// separate node with no handler. [`Labelled`] makes the words part of
+/// the control's target, and since the author id now sits on the demo's
+/// own fields, one generic type per shape is enough; the control is
+/// `#d_checkbox_a > #labelled-control`.
+pub type PairCheck = Labelled<CheckBox<Store>>;
+pub type PairSwitch = Labelled<Switch<Store>>;
+pub type PairRadio = Labelled<Radio<Store>>;
 
 /// A card with something on it — the point being that the something is
 /// live. `docs/plan-widgets-gallery.md` §3 records what a wrapper that
@@ -537,23 +511,30 @@ pub struct DButton {
 #[derive(StaticTree, Default)]
 #[widget(row, spacing = 34.0)]
 pub struct DCheckBox {
-    pub a: PairCheckA,
-    pub b: PairCheckB,
+    #[widget_id("d_checkbox_a")]
+    pub a: PairCheck,
+    #[widget_id("d_checkbox_b")]
+    pub b: PairCheck,
 }
 
 #[derive(StaticTree, Default)]
 #[widget(row, spacing = 34.0)]
 pub struct DSwitch {
-    pub a: PairSwitchA,
-    pub b: PairSwitchB,
+    #[widget_id("d_switch_a")]
+    pub a: PairSwitch,
+    #[widget_id("d_switch_b")]
+    pub b: PairSwitch,
 }
 
 #[derive(StaticTree, Default)]
 #[widget(row, spacing = 34.0)]
 pub struct DRadio {
-    pub a: PairRadioA,
-    pub b: PairRadioB,
-    pub c: PairRadioC,
+    #[widget_id("d_radio_a")]
+    pub a: PairRadio,
+    #[widget_id("d_radio_b")]
+    pub b: PairRadio,
+    #[widget_id("d_radio_c")]
+    pub c: PairRadio,
 }
 
 #[derive(StaticTree, Default)]

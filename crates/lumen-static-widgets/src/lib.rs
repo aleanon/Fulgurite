@@ -78,6 +78,7 @@ pub mod glass;
 pub mod reload;
 pub mod image;
 pub mod input;
+pub mod labelled;
 pub mod ops;
 pub mod popup;
 pub mod scroll;
@@ -110,6 +111,7 @@ mod veil;
 pub use glass::Glass;
 pub use image::{Fit, Image};
 pub use input::TextInput;
+pub use labelled::Labelled;
 pub use ops::{Button, Fixed, Label, Spacer};
 pub use popup::{Anchor, Popup};
 pub use scroll::ScrollView;
@@ -153,7 +155,7 @@ pub mod prelude {
     // the rest of the set with them, which is the point.
     pub use crate::{
         Button, CheckBox, Fixed, Glass, Image, Label, Popup, Radio, ScrollView, Slider, Spacer,
-        Switch, TextArea, TextInput, Toggle,
+        Labelled, Switch, TextArea, TextInput, Toggle,
     };
     #[cfg(feature = "alloc")]
     pub use crate::Select;

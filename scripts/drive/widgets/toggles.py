@@ -94,7 +94,7 @@ def _flipped(ctx):
     return _flag(ctx) != ctx._f0, f"readout {ctx._f0!r} -> {_flag(ctx)!r}"
 
 
-CHECKBOX = ("CheckBox", "#d_checkbox_a", [
+CHECKBOX = ("CheckBox", "#d_checkbox_a > #labelled-control", [
     Action(
         name="a click flips the bound flag",
         needs="a checkbox bound to the app's flag",
@@ -119,7 +119,26 @@ CHECKBOX = ("CheckBox", "#d_checkbox_a", [
         injection="give both PairCheck instances the same #[widget_id] again "
                   "— `ui.resolve` then refuses both (W1011)",
     ),
+    # M57/B11: the words are part of the target. They were a separate
+    # `Label` with no handler, so "I agree" could not be clicked.
+    Action(
+        name="a click on its words flips it",
+        needs="a checkbox whose label is part of it (Labelled)",
+        do=lambda c: (c.__dict__.__setitem__("_f0", _flag(c)),
+                      _click_words(c, 0))[0],
+        expect=_flipped,
+        isolate=lambda c: (c.__dict__.__setitem__("_f0", _flag(c)),
+                           _click_words(c, 8))[0],
+        injection="Labelled::hit answers None off the control",
+    ),
 ])
+
+
+def _click_words(c, past: float):
+    """A click on the last letters of `#d_checkbox_a`'s words, or `past`
+    px beyond the words' end — in the gap before the next pair."""
+    b = c.box("#d_checkbox_a")
+    return c.c.rpc("input.click", x=b[2] - 4 + past, y=(b[1] + b[3]) / 2)
 
 
 # --- Switch ---------------------------------------------------------
@@ -128,7 +147,7 @@ CHECKBOX = ("CheckBox", "#d_checkbox_a", [
 # safe assertion here and the isolate arm proved it — moving the pointer
 # away removes the hover shade, which changes the painted background
 # without toggling anything. The readout is the honest signal.
-SWITCH = ("Switch", "#d_switch_a", [
+SWITCH = ("Switch", "#d_switch_a > #labelled-control", [
     Action(
         name="a click flips the bound flag",
         needs="a switch bound to the app's flag",
@@ -158,7 +177,7 @@ SWITCH = ("Switch", "#d_switch_a", [
 # --- Radio ----------------------------------------------------------
 # Three options sharing one value. Clicking the *unselected* one must
 # move the selection; the readout is the shared value.
-RADIO = ("Radio", "#d_radio_b", [
+RADIO = ("Radio", "#d_radio_b > #labelled-control", [
     Action(
         name="clicking the other option moves the selection",
         needs="a radio group whose second option is not selected",

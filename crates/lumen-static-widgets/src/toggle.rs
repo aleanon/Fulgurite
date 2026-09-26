@@ -178,7 +178,13 @@ impl<S: 'static, const SHAPE: u8> Node for Toggle<S, SHAPE> {
     ) -> Size {
         let me = style[i];
         let size = resolve_self(limits, &me, Size { w: BOX, h: BOX });
-        record_painted(st, i, limits, size, &me)
+        let out = record_painted(st, i, limits, size, &me);
+        // An *on* body is `color`, which `record_painted` does not shade
+        // (M57/B11): hover and press read on it as they do on the rest.
+        if !me.disabled {
+            st[i].fg = lumen_static::ops::shaded(me.color, &st[i], &me);
+        }
+        out
     }
 
     fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
