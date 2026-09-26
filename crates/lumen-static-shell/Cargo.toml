@@ -134,3 +134,9 @@ required-features = ["live-agent", "truetype"]
 [[test]]
 name = "agent_compose"
 required-features = ["live-agent", "truetype"]
+
+# M50/T50.0: a banded frame's allocations on every thread, counted
+# process-wide in a binary of its own; `just threads` runs it.
+[[test]]
+name = "alloc_gate_threads"
+required-features = ["threads"]

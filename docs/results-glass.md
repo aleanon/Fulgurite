@@ -706,6 +706,36 @@ blend that did not pay: the next person to reach for this should know it
 was measured, what the ceiling was, and which of the two reasons would
 have to change.
 
+## 5a. A small change under a panel, through `Host` — M50/T50.0
+
+`benches --bin glass_damage`, 2026-09-27, quiet (`just bench-lock`,
+load1 2.45 before, 2.23 after, bound 8). A 24×24 label under a `Glass`
+bar at 1920×1080, changed every frame, pumped through the real `Host`
+and drawn over the damage it reports; median of 16 on the software
+canvas with the pinned face.
+
+| material | bar | bar px | damage the renderer receives | damage px | ms |
+|---|---|---:|---|---:|---:|
+| FROSTED | 1920×64 (the `examples/glass` toolbar) | 122 880 | [0,0,1920,104] | 199 680 | **4.04** |
+| LIQUID | 1920×64 | 122 880 | [0,0,1920,89] | 170 880 | 10.94 |
+| FROSTED | 1920×360 (a sheet) | 691 200 | [0,0,1920,400] | 768 000 | **21.63** |
+| LIQUID | 1920×360 | 691 200 | [0,0,1920,385] | 739 200 | 47.63 |
+| FROSTED | 1920×1080 (the window) | 2 073 600 | the window | 2 073 600 | **64.40** |
+| LIQUID | 1920×1080 | 2 073 600 | the window | 2 073 600 | 145.21 |
+
+**The renderer receives the panel's whole source region for a 576 px
+change**, on every row — the panel plus its reach below it — which is
+the verifier's finding (R8-F6): `dilate` grows the damage before the
+renderer sees it. The cost is the panel's, not the change's.
+
+**The T50.9 kill rule** (`docs/plan-raster-allocation.md` §5) builds the
+damage-bounded variant if a small change under a frosted panel costs
+more than a quarter of a 16.7 ms frame, 4.17 ms. The toolbar is 3% under
+it; a frosted sheet is 5.2× over it and a full-window panel 15×. The rule
+names no panel size, and a sheet is an ordinary panel, so it fires.
+`LIQUID` cannot take the bounded rule at all (§0e: its tint is a mean
+over the panel).
+
 ## 5b. The bevel — what makes it look like glass rather than frost
 
 **Measured 2026-09-11.** M21 added `refraction` and `specular` over a

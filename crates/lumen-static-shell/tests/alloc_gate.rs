@@ -18,7 +18,8 @@
 //! (`Canvas::with_font`, `FontMetrics`) is not measured here, and it
 //! allocates on every frame that draws text
 //! (`docs/results-allocation.md`, "The truetype path is not covered").
-//! M50/T50.2 owns the fix and the truetype arms.
+//! The truetype arms are at the bottom (`mod truetype`, M50/T50.0),
+//! ignored until M50/T50.2's glyph cache turns them green.
 //!
 //! Its own binary, because `#[global_allocator]` is per-binary and would
 //! otherwise tax every other test. Counters are read outside any
@@ -578,4 +579,361 @@ fn a_pump_that_applies_results_allocates_nothing() {
         (0, 0),
         "a frame that applies a deferred result touched the allocator: {a} allocs, {f} frees"
     );
+}
+
+/// **The pixel buffer grows exactly and gives memory back** — M50/T50.0,
+/// for R8-F7.
+///
+/// `Canvas::resize` cleared and `resize`d its `Vec`, so a grow past
+/// capacity took `Vec`'s amortised doubling — one pixel wider at 4K
+/// reserved a second 4K frame — and a shrink kept whatever it had. A
+/// resize is not the steady state (`docs/results-allocation.md`), so
+/// this bounds what a resize costs rather than asserting zero: exact
+/// growth, memory returned on a large shrink, and a drag that allocates
+/// only when it passes what it already holds. Each check prints its
+/// capacity beside its length.
+#[test]
+#[ignore = "red until T50.6: R8-F7, a one-pixel grow doubles the reservation"]
+fn resizing_the_canvas_grows_exactly_and_gives_memory_back() {
+    use lumen_static_shell::software::Canvas;
+
+    // (1) 4K, then one pixel wider: exact, in one allocation.
+    let mut c = Canvas::new(3840, 2160);
+    let a = counters();
+    c.resize(3841, 2160);
+    let n = allocs() - a.0;
+    let (len, cap) = (c.pixels.len(), c.pixels.capacity());
+    println!("(1) 3840x2160 -> 3841x2160: len {len}, capacity {cap} (bound: capacity == len), {n} allocations (bound 1)");
+    assert_eq!((cap, n), (len, 1), "a one-pixel grow at 4K reserved {cap} bytes for {len} in {n} allocations");
+
+    // (2) Shrink to 720p: the 4K reservation goes back.
+    c.resize(1280, 720);
+    let (len, cap) = (c.pixels.len(), c.pixels.capacity());
+    println!("(2) -> 1280x720: len {len}, capacity {cap} (bound: capacity <= 2 x len = {})", 2 * len);
+    assert!(cap <= 2 * len, "a shrink to 720p kept {cap} bytes for {len}");
+
+    // (3) A drag of +-1 px around 800x600: an allocation only for a step
+    // whose length passes everything the buffer has held since.
+    let mut c = Canvas::new(800, 600);
+    let (mut high, mut past) = (c.pixels.len(), 0usize);
+    let a = counters();
+    for k in 0..40u32 {
+        let w = if k.is_multiple_of(2) { 801 } else { 800 };
+        let h = 600 + (k % 3);
+        let want = w as usize * h as usize * 4;
+        if want > high {
+            past += 1;
+            high = want;
+        }
+        c.resize(w, h);
+    }
+    let n = allocs() - a.0;
+    println!("(3) 40-step drag at 800x600: {n} allocations (bound {past}, the steps past capacity); len {}, capacity {}", c.pixels.len(), c.pixels.capacity());
+    assert!(n <= past, "a drag allocated {n} times for {past} steps past capacity");
+
+    // Accept: a resize to the same size allocates nothing.
+    let a = counters();
+    c.resize(c.width, c.height);
+    assert_eq!(allocs() - a.0, 0, "a resize to the same size allocated");
+    let _ = frees();
+}
+
+/// **The truetype arms — M50/T50.0, for R8-F1.**
+///
+/// Everything above renders block glyphs on `Canvas::new` and pumps with
+/// `BlockMetrics`. A window renders on `Canvas::with_font` and measures
+/// with `FontMetrics`, so these three arms draw that path, on the pinned
+/// face (`tests/fonts`) so the count does not depend on the machine's
+/// fonts. Each asserts its setup first — runs were shaped, the frame
+/// really drew text — and prints what the frame did beside the count:
+/// runs shaped, glyphs rasterised and glyphs drawn per frame.
+///
+/// `dev-shape` runs this binary with `--features truetype` by name and
+/// `scripts/check_test_counts.sh` refuses it at zero tests, so a feature
+/// split cannot compile these out and leave the file green (M43/R17-F1's
+/// shape).
+#[cfg(feature = "truetype")]
+#[path = "fonts/pinned.rs"]
+mod pinned;
+
+#[cfg(feature = "truetype")]
+mod truetype {
+    use super::{allocs, counters, frees, PlainApp};
+    use lumen_static::event::{Event, Key};
+    use lumen_static::hatch::List;
+    use lumen_static::prelude::*;
+    use lumen_static::{Color, Incremental, Renderer};
+    use lumen_static_shell::software::Canvas;
+    use lumen_static_shell::text::{text_counters, FontMetrics, FontStack, TextCounters};
+    use lumen_static_shell::Host;
+    use lumen_static_widgets::prelude::*;
+    use lumen_static_widgets::TextInput;
+
+    use super::pinned;
+
+    /// The text counters are process-wide and these arms run on threads:
+    /// one arm at a time, so a frame's counts are its own. The block-glyph
+    /// arms above never shape, so they cannot move them.
+    static ONE: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn face() -> FontStack {
+        FontStack::from_bytes(pinned::bytes(), None).expect("the pinned face parses")
+    }
+
+    /// What `frames` frames did, per frame, for the line an arm prints.
+    fn per_frame(a: TextCounters, b: TextCounters, frames: usize) -> String {
+        let n = frames as f64;
+        format!(
+            "runs shaped {:.2}/frame, runs measured {:.2}/frame, glyphs rasterised {:.2}/frame, glyphs drawn {:.2}/frame",
+            (b.shaped - a.shaped) as f64 / n,
+            (b.measured - a.measured) as f64 / n,
+            (b.rasterised - a.rasterised) as f64 / n,
+            (b.drawn - a.drawn) as f64 / n,
+        )
+    }
+
+    /// **Arm (i): the gate's own `PlainApp`, a changing label every frame,
+    /// full redraws.** The review measured 4.60 pump + 25.80 raster
+    /// allocations per frame here.
+    #[test]
+    #[ignore = "red until T50.2: R8-F1, the truetype path allocates on every frame"]
+    fn a_truetype_frame_allocates_nothing() {
+        let _one = super::lock(&ONE);
+        let f = face();
+        let mut m = FontMetrics::new(f.clone());
+        let mut host: Host<_, Incremental> = Host::new(PlainApp::default(), 320, 200);
+        let mut canvas = Canvas::with_font(320, 200, f);
+        // Warm through every value the counted frames show, so each glyph
+        // they need has been seen once.
+        for i in 0..30 {
+            host.app.count = i;
+            host.pump_with(&mut m);
+            canvas.render(&host.list, 320, 200);
+        }
+        let t0 = text_counters();
+        let (mut pump, mut raster) = ((0, 0), (0, 0));
+        for i in 0..50 {
+            host.app.count = i % 30;
+            let a = counters();
+            host.pump_with(&mut m);
+            let b = counters();
+            canvas.render(&host.list, 320, 200);
+            let c = counters();
+            pump = (pump.0 + b.0 - a.0, pump.1 + b.1 - a.1);
+            raster = (raster.0 + c.0 - b.0, raster.1 + c.1 - b.1);
+        }
+        let t1 = text_counters();
+        let what = per_frame(t0, t1, 50);
+        println!(
+            "truetype PlainApp, 50 changing frames: pump allocs {} frees {}, raster allocs {} frees {} (bound 0 each); {what}",
+            pump.0, pump.1, raster.0, raster.1
+        );
+        assert!(t1.shaped - t0.shaped >= 50, "setup: the frames shaped no text ({what})");
+        assert!(t1.measured - t0.measured >= 50, "setup: the changing label was never measured ({what})");
+        assert!(t1.drawn - t0.drawn >= 50, "setup: no glyph was drawn ({what})");
+        assert_eq!((pump, raster), ((0, 0), (0, 0)), "a truetype frame touched the allocator: {what}");
+    }
+
+    #[derive(StaticTree, Default)]
+    #[widget(row, spacing = 0.0)]
+    struct ListRow {
+        icon: Fixed,
+        name: Label<String>,
+    }
+
+    #[derive(StaticTree, Default)]
+    #[widget(column, spacing = 0.0)]
+    struct ListUi {
+        items: List<ListRow>,
+    }
+
+    #[derive(DeriveApp, Default)]
+    struct ListApp {
+        #[tree]
+        ui: ListUi,
+    }
+
+    /// **Arm (ii): a 3000-row list, one row changed per frame, drawn over
+    /// the damage regions** — what a window presents. The review measured
+    /// 6.00 pump (0.00 since M29 and M34) and 156.00 raster allocations per
+    /// frame.
+    #[test]
+    #[ignore = "red until T50.2: R8-F1, the truetype path allocates on every frame"]
+    fn a_truetype_list_with_one_row_changed_allocates_nothing() {
+        let _one = super::lock(&ONE);
+        let (w, h) = (800u32, 800u32);
+        let f = face();
+        let mut m = FontMetrics::new(f.clone());
+        let mut app = ListApp::default();
+        app.ui.items = List::new(
+            (0..3000)
+                .map(|i| {
+                    let mut r = ListRow { icon: Fixed { w: 12.0, h: 12.0 }, ..Default::default() };
+                    r.name.set(format!("row number {i} of the list"));
+                    r
+                })
+                .collect(),
+        );
+        let mut host: Host<_, Incremental> = Host::new(app, w, h);
+        let mut canvas = Canvas::with_font(w, h, f);
+        let vp = [0.0, 0.0, w as f32, h as f32];
+        host.pump_with(&mut m);
+        canvas.render(&host.list, w, h);
+        host.take_damage_for_age(1);
+        let mut step = |host: &mut Host<ListApp, Incremental>, canvas: &mut Canvas, k: usize| {
+            let s = if k.is_multiple_of(2) { "row number 5 of the list" } else { "row number 5 OF the list" };
+            host.app.ui.items.items[5].name.set_str(s);
+            let a = counters();
+            host.pump_with(&mut m);
+            let b = counters();
+            let mut regions = 0usize;
+            for r in host.take_damage_for_age(1).regions(vp) {
+                canvas.clear_within(r, Color(255, 255, 255, 255));
+                canvas.render_within(&host.list, r);
+                regions += 1;
+            }
+            let c = counters();
+            ((b.0 - a.0, b.1 - a.1), (c.0 - b.0, c.1 - b.1), regions)
+        };
+        for k in 0..20 {
+            step(&mut host, &mut canvas, k);
+        }
+        let t0 = text_counters();
+        let (mut pump, mut raster, mut regions) = ((0, 0), (0, 0), 0);
+        for k in 0..50 {
+            let (p, r, n) = step(&mut host, &mut canvas, k);
+            pump = (pump.0 + p.0, pump.1 + p.1);
+            raster = (raster.0 + r.0, raster.1 + r.1);
+            regions += n;
+        }
+        let t1 = text_counters();
+        let what = per_frame(t0, t1, 50);
+        println!(
+            "truetype 3000-row list, one row changed, 50 frames over {regions} damage regions: \
+             pump allocs {} frees {}, raster allocs {} frees {} (bound 0 each); {what}",
+            pump.0, pump.1, raster.0, raster.1
+        );
+        assert!(regions >= 50, "setup: a changed row damaged nothing ({regions} regions)");
+        assert!(t1.shaped - t0.shaped >= 50, "setup: the damaged row was never drawn ({what})");
+        assert_eq!((pump, raster), ((0, 0), (0, 0)), "a one-row change touched the allocator: {what}");
+    }
+
+    #[derive(StaticTree, Default)]
+    #[widget(column, spacing = 0.0)]
+    struct EditUi {
+        #[widget_id("input")]
+        input: TextInput,
+        #[widget_id("lbl")]
+        lbl: Label<String>,
+    }
+
+    #[derive(DeriveApp, Default)]
+    struct EditApp {
+        #[tree]
+        ui: EditUi,
+    }
+
+    /// One edit cycle that leaves the field as it found it, so a count is
+    /// the frames' and not the value's growth: an edit that makes the
+    /// string longer allocates for the string, which is the application's
+    /// data and not the frame.
+    type Cycle = fn(&mut Host<EditApp, Incremental>, &mut FontMetrics);
+
+    fn key(host: &mut Host<EditApp, Incremental>, m: &mut FontMetrics, k: Key) {
+        host.post(Event::Key { key: k, down: true });
+        host.pump_with(m);
+    }
+
+    const CYCLES: &[(&str, Cycle)] = &[
+        ("Text then Backspace", |h, m| {
+            h.post(Event::Text { ch: 'x' });
+            h.pump_with(m);
+            key(h, m, Key::Backspace);
+        }),
+        ("Left then Right", |h, m| {
+            key(h, m, Key::Left);
+            key(h, m, Key::Right);
+        }),
+        ("paste \"hello\" then five Backspaces", |h, m| {
+            h.paste_with("hello", m);
+            for _ in 0..5 {
+                key(h, m, Key::Backspace);
+            }
+        }),
+    ];
+
+    /// **Arm (iii): a focused `TextInput`, per event** — typing, caret
+    /// moves, deleting and a paste, each cycle drawn over its damage. The
+    /// review measured `Text` 7.00 + 106.76, `Left` 0 + 162.00, `Backspace`
+    /// 5.66 + 62.28 and a paste 0.08 + 475.56 allocations per event (pump +
+    /// raster).
+    #[test]
+    #[ignore = "red until T50.2: R8-F1, the truetype path allocates on every frame"]
+    fn truetype_text_input_events_allocate_nothing() {
+        let _one = super::lock(&ONE);
+        let (w, h) = (400u32, 120u32);
+        let f = face();
+        let mut m = FontMetrics::new(f.clone());
+        let mut app = EditApp::default();
+        app.ui.input.set_str("the quick brown fox");
+        app.ui.lbl.set_str("a label beside it");
+        let mut host: Host<_, Incremental> = Host::new(app, w, h);
+        let mut canvas = Canvas::with_font(w, h, f);
+        let vp = [0.0, 0.0, w as f32, h as f32];
+        host.pump_with(&mut m);
+        key(&mut host, &mut m, Key::Tab);
+        assert!(host.input.focus.is_some(), "setup: Tab focused nothing");
+        canvas.render(&host.list, w, h);
+        host.take_damage_for_age(1);
+        let mut failures = Vec::new();
+        for (name, cycle) in CYCLES {
+            let mut run = |host: &mut Host<EditApp, Incremental>, canvas: &mut Canvas| {
+                let a = counters();
+                cycle(host, &mut m);
+                let b = counters();
+                let mut regions = 0usize;
+                for r in host.take_damage_for_age(1).regions(vp) {
+                    canvas.clear_within(r, Color(255, 255, 255, 255));
+                    canvas.render_within(&host.list, r);
+                    regions += 1;
+                }
+                let c = counters();
+                ((b.0 - a.0, b.1 - a.1), (c.0 - b.0, c.1 - b.1), regions)
+            };
+            for _ in 0..2 {
+                run(&mut host, &mut canvas);
+            }
+            let before = host.app.ui.input.as_str().to_string();
+            let t0 = text_counters();
+            let (mut pump, mut raster, mut regions) = ((0, 0), (0, 0), 0);
+            for _ in 0..20 {
+                let (p, r, n) = run(&mut host, &mut canvas);
+                pump = (pump.0 + p.0, pump.1 + p.1);
+                raster = (raster.0 + r.0, raster.1 + r.1);
+                regions += n;
+            }
+            let t1 = text_counters();
+            let what = per_frame(t0, t1, 20);
+            println!(
+                "truetype TextInput, {name}, 20 cycles over {regions} damage regions: \
+                 pump allocs {} frees {}, raster allocs {} frees {} (bound 0 each); per cycle: {what}",
+                pump.0, pump.1, raster.0, raster.1
+            );
+            assert_eq!(host.app.ui.input.as_str(), before, "setup: {name} did not leave the field as it found it");
+            assert!(regions >= 20, "setup: {name} damaged nothing ({regions} regions)");
+            assert!(t1.shaped > t0.shaped, "setup: {name} drew no text ({what})");
+            if (pump, raster) != ((0, 0), (0, 0)) {
+                failures.push(format!("{name}: pump {pump:?}, raster {raster:?}"));
+            }
+        }
+        let _ = (allocs(), frees());
+        assert!(failures.is_empty(), "a text-input event touched the allocator: {failures:?}");
+    }
+}
+
+/// A poisoned lock is still a lock: one arm failing must not fail the
+/// next one for a reason that is not its own.
+#[cfg(feature = "truetype")]
+fn lock(m: &'static std::sync::Mutex<()>) -> std::sync::MutexGuard<'static, ()> {
+    m.lock().unwrap_or_else(|e| e.into_inner())
 }

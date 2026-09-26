@@ -86,6 +86,12 @@ dev-shape:
     # M43/T43.11: text tests shape a committed face; the discovery test
     # must find a system one (not skip) unless LUMEN_ALLOW_SKIP=1.
     just fonts
+    # M50/T50.0: the allocation gate's truetype arms, with the feature named
+    # for this binary rather than left to `--workspace`'s unification, and
+    # refused at fewer than three -- a feature split must not compile them
+    # out while the binary's block-glyph arms keep it green (M43/R17-F1).
+    cargo test -q -p lumen-static-shell --features truetype --test alloc_gate
+    n=$(cargo test -q -p lumen-static-shell --features truetype --test alloc_gate -- --list 2>/dev/null | grep -c '^truetype::'); echo "alloc_gate: $n truetype arms (bound >= 3)"; [ "$n" -ge 3 ]
     cargo clippy --workspace --all-targets --exclude lumen-static-wgpu -- -D warnings
     # A fresh doc dir: rustdoc 1.94 panics in its search index
     # (`search_index.rs:478`) on a stale `target/doc` after large edits —
@@ -295,6 +301,10 @@ threads:
     ./scripts/check_banded.sh
     cargo clippy -p lumen-static-shell --features threads,truetype --all-targets -- -D warnings
     cargo test -q -p lumen-static-shell --features threads,truetype --test damage_oracle
+    # M50/T50.0: shaping per visible run when banded (R8-F2), and a banded
+    # frame's allocations on every thread (R18-F4), in its own binary.
+    cargo test -q -p lumen-static-shell --features threads,truetype --test banded
+    cargo test -q -p lumen-static-shell --features threads,truetype --test alloc_gate_threads -- --nocapture
 
 # The GPU backend: build, lint, and compare its pixels with the software canvas.
 gpu:

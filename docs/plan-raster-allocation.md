@@ -363,6 +363,38 @@ finding, so that nothing claims to be red when it is not.
   time. At 1717808 it prints the whole source for both. §5's kill rule
   reads this number.
 
+*What building found (2026-09-27).* Re-checked at `80ff4c1` (M40, M43,
+M45 and M51/T51.3 landed): every finding still reproduces, at the
+review's figures where it gave one.
+
+- **The counters are not behind a test-only feature.** §2.4 puts the
+  SIMD branch counters behind one, and this section put the banded
+  shaping counter behind the same feature. But the truetype arms print
+  runs shaped and glyphs drawn too, and a feature every gate binary has
+  to name is a feature some binary forgets. `text::text_counters` is
+  unconditional instead, like `glyphs_rasterised` before it (M45): one
+  relaxed add per run or per blitted glyph, beside work that costs
+  microseconds. Only the per-row SIMD counters (T50.5) keep the feature.
+- **R8-F1:** arm (i) reads exactly the review's 230 pump + 1,290 raster
+  allocations over 50 frames. Arm (ii) reads 0 pump (M29 and M34 narrowed
+  it) and 7,800 raster, rasterising 57 glyphs a frame to draw 17 — the
+  out-of-clip half of R8-F3 in one line. Arm (iii) had to be written as
+  **cycles that leave the field as they found it** (`Text` then
+  `Backspace`, `Left` then `Right`, a paste then five `Backspace`s): per
+  event, an edit that lengthens the string allocates for the string,
+  which is the application's data and not the frame, and the plan's
+  per-event wording would have failed on that forever.
+- **R18-F4:** 25.00 allocations per banded frame process-wide on block
+  glyphs, every one on the frame thread — the spawns, `3w + 1` at eight
+  bands — and 5,375 with the pinned face, where the workers shape.
+- **R8-F2:** 2.27 shaping calls per visible run at 1080p (8 bands) and
+  3.63 at 4K (32); 1.00 without `threads`, which is the accept direction.
+- **R8-F6: the kill rule fires.** `benches --bin glass_damage` measures
+  through `Host`; the table is in `docs/results-glass.md` §5a. A frosted
+  toolbar costs 4.04 ms, 3% under the rule's 4.17, and a frosted sheet
+  21.63. The rule names no panel size and a sheet is an ordinary panel,
+  so T50.9 is built.
+
 **Effort:** M. **Depends on:** M43 (T43.13's CI runner; T43.9's
 zero-test-count check for R17-F1, which this reuses for the truetype
 arms).

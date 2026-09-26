@@ -425,6 +425,7 @@ impl FontStack {
         let (faces, prepared) = self.prepare(text, weight);
         let text: &str = &prepared;
         let layout = Self::run(&faces, text, px, Self::paint_width(max_w));
+        SHAPED.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
         // From the run's first face, for every glyph: one baseline, one
         // shift, however many faces drew it.
         let shift = cap_shift(faces.first(), px);
@@ -526,6 +527,7 @@ impl FontStack {
         let (faces, prepared) = self.prepare(text, weight);
         let text: &str = &prepared;
         let layout = Self::run(&faces, text, px, max_w);
+        MEASURED.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
         Self::extent(&faces, &layout, px)
     }
 
@@ -554,6 +556,7 @@ impl FontStack {
         let (faces, prepared) = self.prepare(text, weight);
         let laid: &str = &prepared;
         let layout = Self::run(&faces, laid, px, max_w);
+        MEASURED.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
         // **Offsets in the caller's string, by walking it in step** —
         // M45/T45.10, R16-F7. fontdue emits one glyph per character of
         // the laid-out text, and substitution and a face split are both
@@ -623,6 +626,51 @@ static RASTERISED: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64
 /// frame it bounds, alone in its binary.
 pub fn glyphs_rasterised() -> u64 {
     RASTERISED.load(core::sync::atomic::Ordering::Relaxed)
+}
+
+/// Runs laid out for painting, in this process — [`text_counters`].
+static SHAPED: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
+/// Runs laid out for a measure or a shape query — [`text_counters`].
+static MEASURED: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
+/// Glyphs the software canvas blitted — [`text_counters`].
+static DRAWN: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
+
+/// What the text stack has done in this process, as counts — M50/T50.0.
+///
+/// For a test that must assert its own setup before it reads a quantity
+/// (`docs/plan-raster-allocation.md` §0 rule 3): that a frame shaped a
+/// run, measured one, drew glyphs. Counts and not clocks, so they answer
+/// the same under load. One relaxed add per run or per glyph, beside
+/// work that costs microseconds — the same trade [`glyphs_rasterised`]
+/// makes. Process-wide: a test reads them before and after the frames it
+/// bounds, one test at a time.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct TextCounters {
+    /// Runs laid out to be painted (`place_run` and the canvas's own
+    /// shaping).
+    pub shaped: u64,
+    /// Runs laid out to be measured or shaped for clusters.
+    pub measured: u64,
+    /// Glyph coverage masks produced by fontdue ([`glyphs_rasterised`]).
+    pub rasterised: u64,
+    /// Glyphs the software canvas blitted.
+    pub drawn: u64,
+}
+
+/// The process's [`TextCounters`], now.
+pub fn text_counters() -> TextCounters {
+    use core::sync::atomic::Ordering::Relaxed;
+    TextCounters {
+        shaped: SHAPED.load(Relaxed),
+        measured: MEASURED.load(Relaxed),
+        rasterised: RASTERISED.load(Relaxed),
+        drawn: DRAWN.load(Relaxed),
+    }
+}
+
+/// Count `n` glyphs blitted — the software canvas's call.
+pub(crate) fn count_drawn(n: u64) {
+    DRAWN.fetch_add(n, core::sync::atomic::Ordering::Relaxed);
 }
 
 /// Divides cluster positions back to logical units on the way out.

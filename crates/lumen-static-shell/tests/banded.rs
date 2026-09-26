@@ -52,7 +52,16 @@ fn scene(w: u32, h: u32) -> DisplayList {
     l
 }
 
+/// Every render in this file holds this: the text counters the
+/// shaping case reads are process-wide, and tests run on threads.
+static ONE: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn one() -> std::sync::MutexGuard<'static, ()> {
+    ONE.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 fn render(w: u32, h: u32, damage: Option<[f32; 4]>) -> Vec<u8> {
+    let _one = one();
     // Real glyphs when the feature is on, block glyphs otherwise. Both
     // are worth banding: the block path is `fill`, the real one is the
     // per-glyph coverage blit, and they take different routes through
@@ -210,4 +219,67 @@ fn print_checksums_for_cross_build_comparison() {
         }
     }
     print!("{out}");
+}
+
+/// **Each visible run is shaped once per frame, however the frame is
+/// banded** — M50/T50.0, for R8-F2.
+///
+/// A band culls a run against its own rows padded by one em and then
+/// shapes and rasterises the whole run, so a run whose padded reach
+/// straddles a strip boundary is shaped by every strip it touches. The
+/// scene is rows of labels 26 px apart, whose 46 px padded reach crosses
+/// a boundary at every strip height the splitter picks.
+///
+/// Counts, from `text::text_counters`: runs shaped over one full frame,
+/// divided by the runs the frame shows — the text commands whose padded
+/// reach meets the surface, which is the pre-pass's own cull. Printed
+/// beside the bound. Without `threads` there is one band and the ratio is
+/// 1.00 today, which is the accept direction; with it, it is the review's
+/// straddle ratio until T50.3 shapes on the frame thread.
+#[cfg(feature = "truetype")]
+#[test]
+#[cfg_attr(feature = "threads", ignore = "red until T50.3: R8-F2, a run straddling strips is shaped per strip")]
+fn each_visible_run_is_shaped_once_per_frame() {
+    use lumen_static_shell::text::{text_counters, FontStack};
+    #[path = "fonts/pinned.rs"]
+    mod pinned;
+
+    let mut over = Vec::new();
+    for (w, h) in [(1920u32, 1080u32), (3840, 2160)] {
+        let mut l = DisplayList::new();
+        l.rect([0.0, 0.0, w as f32, h as f32], GROUND);
+        let mut y = 4.0;
+        let mut k = 0;
+        while y + 24.0 < h as f32 {
+            l.text([16.0, y + 2.0, w as f32 - 16.0, y + 20.0], &format!("row {k}: the quick brown fox"), 14.0, Color(20, 20, 30, 255));
+            y += 26.0;
+            k += 1;
+        }
+        // The runs a frame shows: padded reach meets the surface.
+        let visible = l
+            .cmds
+            .iter()
+            .filter(|c| match c {
+                lumen_static::display::Cmd::Text { rect, size, .. } => {
+                    rect[0] - size < w as f32 && rect[2] + size > 0.0 && rect[1] - size < h as f32 && rect[3] + size > 0.0
+                }
+                _ => false,
+            })
+            .count();
+        let f = FontStack::from_bytes(pinned::bytes(), None).expect("the pinned face parses");
+        let mut c = Canvas::with_font(w, h, f);
+        let bands = c.bands_for_list(&l, None);
+        let _one = one();
+        lumen_static::Renderer::render(&mut c, &l, w, h);
+        let before = text_counters();
+        lumen_static::Renderer::render(&mut c, &l, w, h);
+        let shaped = text_counters().shaped - before.shaped;
+        let ratio = shaped as f64 / visible as f64;
+        println!("{w}x{h}: bands {bands}, {shaped} runs shaped for {visible} visible runs = {ratio:.2} per run (bound 1.00)");
+        assert!(visible > 0, "setup: the scene shows no run");
+        if shaped != visible as u64 {
+            over.push(format!("{w}x{h}: {ratio:.2} shaping calls per visible run with {bands} bands"));
+        }
+    }
+    assert!(over.is_empty(), "runs shaped more than once per frame (bound 1.00): {over:?}");
 }

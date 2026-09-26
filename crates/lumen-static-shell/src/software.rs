@@ -165,6 +165,7 @@ impl Surface<'_> {
                     }
                 }
             }
+            crate::text::count_drawn(1);
         }
     }
 
