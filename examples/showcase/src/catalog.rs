@@ -316,12 +316,12 @@ pub static CATALOG: &[Entry] = &[
         |s| on(s, Demo::Avatar(DAvatar {
             a: Avatar::new("ÅB".into()), b: Avatar::new("JD".into()), c: Avatar::new("K".into()) })),
         none),
-    entry!("Text", "Icon", "All eight marks, drawn from primitives.",
+    entry!("Text", "Icon", "All nine marks, drawn from primitives.",
         false,
         |s| on(s, Demo::Icon(DIcon {
             a: Icon::new(Symbol::Play), b: Icon::new(Symbol::Pause), c: Icon::new(Symbol::Stop),
             d: Icon::new(Symbol::Check), e: Icon::new(Symbol::Close), f: Icon::new(Symbol::Down),
-            g: Icon::new(Symbol::Plus), h: Icon::new(Symbol::Minus) })),
+            g: Icon::new(Symbol::Plus), h: Icon::new(Symbol::Minus), i: Icon::new(Symbol::Search) })),
         none),
     entry!("Text", "Divider", "A hairline; its thickness is its style's.",
         false,

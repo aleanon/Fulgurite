@@ -730,22 +730,23 @@ impl Node for Icon {
         let c = s.fg;
         let at = |x: f32, y: f32| Point { x: cx + x, y: cy + y };
         match self.symbol {
-            // A triangle from three horizontal runs: the renderer has no
-            // polygon, and a run per row at this size is under twenty
-            // commands. `Cmd::Line` with a width is the primitive that
-            // exists, so the fill is lines.
+            // A triangle as **horizontal** runs, half a logical pixel
+            // tall: the renderer has no polygon. It was vertical `Line`s
+            // whose widths were fractions of a pixel, and snapping them
+            // to the grid (M57/A15) left alternate columns empty — a
+            // striped mark (M57/B4). Rows that share an edge snap to the
+            // same pixel, so they tile with no gap and no overlap at any
+            // scale; a row that snaps to nothing is covered by the next.
             Symbol::Play => {
-                let steps = (k * 2.0).max(2.0) as i32;
-                for n in 0..steps {
-                    let t = n as f32 / (steps - 1).max(1) as f32;
-                    let half = k * (1.0 - t);
-                    let x = cx - k * 0.7 + t * k * 1.4;
-                    out.line(
-                        lumen_static::Point { x, y: cy - half },
-                        lumen_static::Point { x, y: cy + half },
-                        (k * 1.4 / steps as f32).max(1.0),
-                        c,
-                    );
+                let (x0, len) = (cx - k * 0.7, k * 1.4);
+                let rows = (k * 4.0).ceil().max(2.0) as i32;
+                let dy = 2.0 * k / rows as f32;
+                for n in 0..rows {
+                    let y = cy - k + n as f32 * dy;
+                    // The width at the row's centre: full at the middle,
+                    // nothing at the two corners.
+                    let t = 1.0 - ((y + dy / 2.0) - cy).abs() / k;
+                    out.rect([x0, y, x0 + len * t, y + dy], c);
                 }
             }
             Symbol::Pause => {
@@ -782,8 +783,13 @@ impl Node for Icon {
                 //
                 // The ring is offset up and left so the handle has room
                 // inside the icon's own box rather than overhanging it.
-                let (ox, oy) = (-k * 0.18, -k * 0.18);
-                let r = k * 0.58;
+                //
+                // A thinner stroke and a wider ring than the other marks
+                // (M57/B4): at the shared 0.12 d stroke a 24 px icon's
+                // ring had a hole under 2 px and read as a filled dot.
+                let (ox, oy) = (-k * 0.16, -k * 0.16);
+                let r = k * 0.68;
+                let stroke = (d * 0.085).max(1.0);
                 let n = 16;
                 let ring = |seg: usize| {
                     let u = crate::chart::unit(seg * (crate::chart::STEPS_ROUND / n));

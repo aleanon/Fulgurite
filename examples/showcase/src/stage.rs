@@ -511,6 +511,9 @@ pub struct DIcon {
     pub g: Icon,
     #[widget_id("d_icon_h")]
     pub h: Icon,
+    /// The ninth mark (M57/B4): the blurb said eight and the enum has nine.
+    #[widget_id("d_icon_i")]
+    pub i: Icon,
 }
 
 #[derive(StaticTree, Default)]
