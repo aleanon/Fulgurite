@@ -259,6 +259,7 @@ pub fn dispatch_overlaid_into<S: crate::event::App, O: crate::overlay::OverlaySi
             for n in st.iter_mut() {
                 n.pressed = false;
             }
+            input.state_writes.add(st.len());
             input.pressed = None;
             return true;
         }
@@ -497,6 +498,7 @@ fn dispatch_at<S: crate::event::App>(
     for (i, n) in st.iter_mut().enumerate() {
         n.focused = *focus == Some(i as u32);
     }
+    input.state_writes.add(st.len());
 
     // C5: Tab moves focus in declaration order, which for a pre-order
     // table is simply the next focusable index, wrapping. Consumed here
@@ -591,6 +593,7 @@ fn dispatch_at<S: crate::event::App>(
                     for n in st.iter_mut() {
                         n.pressed = false;
                     }
+                    input.state_writes.add(st.len());
                     input.pressed = None;
                 }
                 let s = &st[cap];
@@ -636,13 +639,14 @@ fn dispatch_at<S: crate::event::App>(
             match ev {
                 Event::PointerMove { .. } => {
                     input.hovered = hit.map(|h| h.node);
-                    set_hovered(st, input.hovered);
+                    input.state_writes.add(set_hovered(st, input.hovered));
                 }
                 Event::PointerDown { .. } => {
                     input.hovered = hit.map(|h| h.node);
-                    set_hovered(st, input.hovered);
+                    input.state_writes.add(set_hovered(st, input.hovered));
                     if let Some(h) = hit {
                         st[h.node as usize].pressed = true;
+                        input.state_writes.add(1);
                         input.pressed = Some(h.node);
                     }
                 }
@@ -650,6 +654,7 @@ fn dispatch_at<S: crate::event::App>(
                     for n in st.iter_mut() {
                         n.pressed = false;
                     }
+                    input.state_writes.add(st.len());
                     input.pressed = None;
                 }
                 _ => {}
@@ -991,11 +996,15 @@ fn next_focusable_in(
 /// Every node, not just the previously-hovered one: a frame may have
 /// changed the tree under us, and a stale bit is a control that stays
 /// lit after the pointer has left it.
-fn set_hovered(st: &mut [NodeState], node: Option<u32>) {
+///
+/// Returns how many state writes it made, for
+/// [`InputState::state_writes`](crate::event::InputState::state_writes).
+fn set_hovered(st: &mut [NodeState], node: Option<u32>) -> usize {
     for n in st.iter_mut() {
         n.hovered = false;
     }
     if let Some(i) = node {
         st[i as usize].hovered = true;
     }
+    st.len() + node.is_some() as usize
 }

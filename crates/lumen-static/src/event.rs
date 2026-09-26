@@ -406,6 +406,38 @@ pub struct InputState {
     /// release (the agent, a screen reader) does not have to know the
     /// count of the press it is completing.
     pub clicks: u8,
+    /// How many `NodeState` fields the pass has written — a diagnostic,
+    /// M44/T44.0 item 7 (`docs/plan-input-semantics.md` T44.6).
+    ///
+    /// Counted per loop rather than per write (a sweep adds the table's
+    /// length once), so it costs one add per sweep. It exists so that
+    /// "an event writes the nodes it changed" is a number a test can
+    /// bound; a sweep that writes every node's `hovered` bit writes it
+    /// whether or not the value changes, which no before/after diff can
+    /// see. Compares equal whatever it holds, so two snapshots of an
+    /// input state still compare by what they *mean*.
+    #[doc(hidden)]
+    pub state_writes: WriteCount,
+}
+
+/// [`InputState::state_writes`]: a wrapping count that is never part of
+/// an input state's equality.
+#[doc(hidden)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct WriteCount(pub u32);
+
+impl WriteCount {
+    /// Record `n` writes.
+    #[inline]
+    pub fn add(&mut self, n: usize) {
+        self.0 = self.0.wrapping_add(n as u32);
+    }
+}
+
+impl PartialEq for WriteCount {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
 }
 
 /// The single input queue (see the module note).

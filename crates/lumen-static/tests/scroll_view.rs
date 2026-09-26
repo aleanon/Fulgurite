@@ -275,3 +275,106 @@ fn a_wheel_over_content_that_fits_is_declined() {
     let mut st = vec![NodeState::default(); <ScrollView<Tall> as Widget>::NODE_COUNT];
     assert!(!wheel(&mut p, &mut st, -50.0), "nothing to scroll, nothing consumed");
 }
+
+// ---- R3-F10: the ceiling, enforced (M44/T44.7) -------------------------
+//
+// `Repeat::MAX_ADDRESSABLE_EXTENT`'s rustdoc said that above the ceiling
+// `layout` debug-asserts and a release build "scrolls with gaps". No
+// assertion existed, and the failure is not gaps: `place` computes each
+// row's offset as `(first + k) * extent - scroll` in `f32`, and at a
+// billion pixels one ulp is 64 px, so rows land on top of each other and
+// a click at the centre of a painted row reaches a different row.
+
+/// 50 million 20 px rows: a billion pixels, sixty times the ceiling.
+const HUGE: usize = 50_000_000;
+const ROW: f32 = 20.0;
+
+fn size_row(f: &mut Fixed, _: usize) {
+    f.w = 50.0;
+    f.h = ROW;
+}
+
+fn repeat_at_max_scroll(count: usize) -> (Repeat<Fixed>, Vec<NodeState>) {
+    let mut r = Repeat::<Fixed>::new(count, ROW, size_row);
+    // Clamped at use to `max_scroll`, so this is "scrolled to the end".
+    r.scroll = f32::MAX;
+    let styles = pass::default_styles(&r);
+    let mut st = vec![NodeState::default(); <Repeat<Fixed> as Widget>::NODE_COUNT];
+    let mut m = lumen_static::cx::BlockMetrics;
+    let mut cx = lumen_static::LayoutCx::new(&mut m);
+    // 380 px: a window of twenty rows, the review's shape.
+    let tall = Constraints { min_w: 0.0, max_w: 200.0, min_h: 0.0, max_h: 380.0 };
+    Node::layout(&mut r, &mut cx, tall, &styles, &mut st, 0);
+    Node::place(&mut r, lumen_static::Point { x: 0.0, y: 0.0 }, &styles, &mut st, 0);
+    (r, st)
+}
+
+/// For every materialised row whose painted centre is inside the
+/// viewport: does a hit there reach that row? And how far is each row
+/// from one extent below the row before it — the spacing a list of
+/// uniform rows must have, whatever its scroll? Returns
+/// `(checked, disagreements, worst spacing error in px)`.
+fn probe_versus_paint(r: &Repeat<Fixed>, st: &[NodeState]) -> (usize, usize, f32) {
+    let vh = st[0].size.h;
+    let (mut checked, mut bad, mut worst) = (0, 0, 0.0f32);
+    for k in 0..r.window_len() {
+        let row = r.first_row() + k;
+        let rs = r.row_state(k);
+        if k > 0 {
+            let gap = rs.pos.y - r.row_state(k - 1).pos.y;
+            worst = worst.max((gap - ROW).abs());
+        }
+        let (cx, cy) = (rs.pos.x + rs.size.w / 2.0, rs.pos.y + rs.size.h / 2.0);
+        if cy < 0.0 || cy >= vh {
+            continue;
+        }
+        checked += 1;
+        let hit_row = r.hit(st, 0, cx, cy).and_then(|h| h.inner).map(|x| x.row as usize);
+        if hit_row != Some(row) {
+            bad += 1;
+        }
+    }
+    (checked, bad, worst)
+}
+
+/// **Debug builds refuse a repeater past the ceiling, by name.**
+#[test]
+#[cfg(debug_assertions)]
+#[should_panic(expected = "MAX_ADDRESSABLE_EXTENT")]
+#[ignore = "red until T44.7: R3-F10 (no debug assertion guards the ceiling)"]
+fn a_repeater_past_the_ceiling_panics_in_debug() {
+    let r = Repeat::<Fixed>::new(HUGE, ROW, size_row);
+    println!("count {HUGE}, max_addressable_rows {}", r.max_addressable_rows());
+    assert!(HUGE > r.max_addressable_rows(), "setup: the count is past the ceiling");
+    let _ = repeat_at_max_scroll(HUGE);
+}
+
+/// **A release build clamps, so every materialised row is where it is
+/// painted.** Release only: in a debug build the assertion above fires
+/// first, which is the point of it.
+#[test]
+#[cfg(not(debug_assertions))]
+#[ignore = "red until T44.7: R3-F10 (rows past the ceiling overlap; probe and paint disagree)"]
+fn a_repeater_past_the_ceiling_disagrees_nowhere_in_release() {
+    let (r, st) = repeat_at_max_scroll(HUGE);
+    let (checked, bad, worst) = probe_versus_paint(&r, &st);
+    println!(
+        "count {HUGE}, extent {ROW}: {bad} of {checked} rows disagree (bound 0); worst spacing error {worst:.1} px (bound 0.5); window {}",
+        r.window_len()
+    );
+    assert!(checked > 0, "setup: no materialised row was inside the viewport");
+    assert_eq!(bad, 0, "a hit at a painted row's centre reached another row");
+    assert!(worst <= 0.5, "rows are {worst} px off one extent apart, so they overlap");
+}
+
+/// The accept direction, in both build modes: an ordinary list neither
+/// panics nor disagrees.
+#[test]
+fn a_repeater_below_the_ceiling_agrees_everywhere() {
+    let (r, st) = repeat_at_max_scroll(100);
+    let (checked, bad, worst) = probe_versus_paint(&r, &st);
+    println!("count 100, extent {ROW}: {bad} of {checked} rows disagree (bound 0); worst spacing error {worst:.1} px (bound 0.5)");
+    assert!(checked > 0, "setup: no materialised row was inside the viewport");
+    assert_eq!(bad, 0);
+    assert!(worst <= 0.5);
+}

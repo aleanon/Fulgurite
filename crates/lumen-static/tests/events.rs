@@ -381,3 +381,99 @@ fn tab_skips_a_focusable_with_no_area() {
     f.send(Event::Key { key: Key::Tab, down: true });
     assert_ne!(f.input.focus, Some(first), "a Tab stop you cannot see is not a Tab stop");
 }
+
+// ---- R3-F5: a rotated ring routes a click to its own row's handler ----
+
+/// A row whose handler depends on the row it is bound to — the case a
+/// bind that gives every row the same handler cannot tell apart.
+#[derive(StaticTree, Default)]
+#[widget(row, spacing = 0.0)]
+struct RingRow {
+    pick: Button<Ring>,
+}
+
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+struct RingUi {
+    #[widget_id("list")]
+    list: Repeat<RingRow>,
+}
+
+#[derive(lumen_static::App, Default)]
+struct Ring {
+    #[tree]
+    ui: RingUi,
+    /// `(row the click reached, parity of the handler that ran)`.
+    ran: Vec<(u64, u64)>,
+}
+
+fn on_even(r: &mut Ring, ctx: &EventCtx) {
+    r.ran.push((ctx.row.expect("a row index arrives from hit testing"), 0));
+}
+
+fn on_odd(r: &mut Ring, ctx: &EventCtx) {
+    r.ran.push((ctx.row.expect("a row index arrives from hit testing"), 1));
+}
+
+fn bind_parity(r: &mut RingRow, row: usize) {
+    r.pick.label = "p";
+    r.pick.on_click = if row % 2 == 0 { on_even } else { on_odd };
+}
+
+/// Ten clicks on ten visible rows after scrolling `rows` rows; returns
+/// how many ran another row's handler.
+fn misrouted_after_scrolling(rows: usize) -> usize {
+    const EXTENT: f32 = 20.0;
+    let mut app = Ring::default();
+    app.ui.list = Repeat::new(100, EXTENT, bind_parity);
+    let styles = pass::default_styles(&app.ui);
+    let mut st = [NodeState::default(); RingUi::NODE_COUNT];
+    let mut input = lumen_static::event::InputState::default();
+    pass::layout(&mut app.ui, &styles, &mut st, VIEW);
+    app.ui.list.scroll = rows as f32 * EXTENT;
+    pass::layout(&mut app.ui, &styles, &mut st, VIEW);
+    let (first, len) = (app.ui.list.first_row(), app.ui.list.window_len());
+    let rotated = len > 0 && first % len != 0;
+    println!("scrolled {rows} rows: first {first}, window {len}, ring rotated: {rotated}");
+    if rows > 0 {
+        assert!(rotated, "setup: the ring did not rotate, so this cannot see a slot/position mix-up");
+    }
+    let list = st[1];
+    let mut misrouted = 0;
+    for k in 0..10u64 {
+        let row = first as u64 + k;
+        let y = list.pos.y + row as f32 * EXTENT - app.ui.list.scroll + EXTENT / 2.0;
+        let x = list.pos.x + 20.0;
+        let hit = pass::hit_test(&app.ui, &st, x, y).expect("the click hits the list");
+        assert_eq!(hit.inner.map(|i| i.row), Some(row), "setup: the click hit row {:?}, not {row}", hit.inner);
+        app.ran.clear();
+        for ev in [Event::down(x, y), Event::up(x, y)] {
+            pass::dispatch(&mut app, &styles, &mut st, &mut input, &ev);
+            pass::layout(&mut app.ui, &styles, &mut st, VIEW);
+        }
+        assert_eq!(app.ran.len(), 1, "setup: the click on row {row} ran {} handlers", app.ran.len());
+        let (got, parity) = app.ran[0];
+        assert_eq!(got, row, "setup: the handler was told row {got}");
+        if parity != row % 2 {
+            misrouted += 1;
+        }
+    }
+    misrouted
+}
+
+#[test]
+#[ignore = "red until T44.7: R3-F5 (Handlers::handler indexes the ring by position, not slot)"]
+fn a_rotated_ring_routes_each_click_to_its_own_rows_handler() {
+    let n = misrouted_after_scrolling(3);
+    println!("misrouted {n} of 10 (bound 0)");
+    assert_eq!(n, 0, "a click ran another row's handler once the ring rotated");
+}
+
+/// The unrotated arm: green before and after the fix, which is what
+/// shows the rotation is what the gate above exercises.
+#[test]
+fn an_unrotated_ring_routes_each_click_to_its_own_rows_handler() {
+    let n = misrouted_after_scrolling(0);
+    println!("misrouted {n} of 10 (bound 0)");
+    assert_eq!(n, 0);
+}

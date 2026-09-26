@@ -264,3 +264,62 @@ fn a_press_outside_tells_the_application_and_the_menu_stays_closed() {
         "the menu reopened: the application still said open, and the binding wrote it back"
     );
 }
+
+/// **A keyboard user can choose a row** — M44/T44.0 item 13, R3-F6
+/// (`docs/plan-input-semantics.md` §1.6).
+///
+/// Tab to the trigger, Enter opens the menu, Down twice moves the active
+/// row onto row 1 (the first Down lands on row 0 when nothing is chosen),
+/// and Enter chooses it. Each key's `handled` is printed, because a Down
+/// that nobody took is the failure this names.
+#[test]
+#[ignore = "red until T44.10: R3-F6 (rows cannot be reached from the keyboard)"]
+fn tab_enter_down_down_enter_chooses_row_one() {
+    use lumen_static::Key;
+    let mut f = Fx::new(5);
+    let key = |f: &mut Fx, k: Key| f.send(Event::Key { key: k, down: true });
+    key(&mut f, Key::Tab);
+    let trigger = f.input.focus;
+    assert!(trigger.is_some(), "setup: Tab focused nothing");
+    let opened = key(&mut f, Key::Enter);
+    assert!(opened && f.app.ui.sel.is_open(), "setup: Enter on the trigger did not open the menu");
+    let handled = [key(&mut f, Key::Down), key(&mut f, Key::Down), key(&mut f, Key::Enter)];
+    println!(
+        "Down, Down, Enter handled {handled:?}; picked {:?} (expected [1]); open {} (expected false)",
+        f.app.picked,
+        f.app.ui.sel.is_open()
+    );
+    assert_eq!(f.app.picked, vec![1], "the keyboard did not choose row 1");
+    assert!(!f.app.ui.sel.is_open(), "choosing a row did not close the menu");
+}
+
+/// Tab while the menu is open closes it and moves on, rather than
+/// setting focus to `None` (R3-F6 with R3-F7).
+///
+/// **Not "keeps focus inside the menu"**, which is what T44.0 item 13
+/// first said: that contradicts §2.3's decision that Tab dismisses a
+/// non-modal, non-passive overlay (a menu) through the path Escape takes.
+/// The plan's "What building found" records the correction. The
+/// dismissal must reach the application (`on_dismiss`), or the next
+/// binding reopens the controlled `Select`.
+#[test]
+#[ignore = "red until T44.9: R3-F7 (Tab while a menu is open loses focus and leaves it open)"]
+fn tab_while_the_menu_is_open_closes_it_and_keeps_focus() {
+    use lumen_static::Key;
+    let mut f = Fx::new(5);
+    f.send(Event::Key { key: Key::Tab, down: true });
+    let trigger = f.input.focus;
+    f.send(Event::Key { key: Key::Enter, down: true });
+    assert!(f.app.ui.sel.is_open(), "setup: Enter on the trigger did not open the menu");
+    let handled = f.send(Event::Key { key: Key::Tab, down: true });
+    f.send(Event::Modifiers(lumen_static::Mods::NONE)); // a second frame, after the binding ran
+    println!(
+        "Tab with the menu open: handled {handled}, focus {:?} (trigger {trigger:?}; expected Some), open {} (expected false), dismissed {} (expected 1)",
+        f.input.focus,
+        f.app.ui.sel.is_open(),
+        f.app.dismissed
+    );
+    assert!(f.input.focus.is_some(), "Tab with the menu open set focus to None");
+    assert_eq!(f.app.dismissed, 1, "the Tab's dismissal did not reach the application");
+    assert!(!f.app.ui.sel.is_open(), "the menu is still open after Tab");
+}

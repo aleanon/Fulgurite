@@ -623,3 +623,54 @@ fn fill_reports_a_control_that_did_not_accept_the_text() {
     assert!(msg.contains("did not accept"), "a button is not fillable: {r}");
     assert_eq!(r["error"]["data"]["wanted"], "xyz");
 }
+
+// ---- R3-F2: typing more than the queue holds (M44/T44.5) ------------
+
+/// **`input.type` delivers every character and says how many arrived.**
+///
+/// The agent posts one event per character into the host's queue, which
+/// holds `InputQueue::CAP` (64) and counts the rest as dropped, and then
+/// pumps once — so a 100-character string left 64 in the field while the
+/// reply said 100 (R3-F2, `docs/results-deep-review.md`).
+#[test]
+#[ignore = "red until T44.5: R3-F2 (input.type overflows the 64-slot queue and reports every character)"]
+fn typing_more_than_the_queue_holds_delivers_every_character() {
+    let mut h = FormHost::new();
+    let agent = Agent::new();
+    fcall(&mut h, &agent, "input.click", json!({ "selector": "#name" }));
+    assert_eq!(h.input.focus, Some(1), "setup: the click did not focus the field");
+    let text: String = (0..100).map(|k| (b'a' + (k % 26) as u8) as char).collect();
+    let r = fcall(&mut h, &agent, "input.type", json!({ "text": text }));
+    assert!(r.get("error").is_none(), "{r}");
+    let landed = h.app.ui.name.as_str().chars().count();
+    println!(
+        "input.type of 100: field holds {landed}, reply says {}, queue CAP {}",
+        r["result"]["chars"],
+        InputQueue::<64>::CAP
+    );
+    assert_eq!(landed, 100, "characters were lost in the queue");
+    assert_eq!(r["result"]["chars"], 100, "the reply does not say what arrived");
+    assert_eq!(h.app.ui.name.as_str(), text, "the characters arrived out of order or altered");
+}
+
+/// **`input.fill` over a value as long as the new one.** Forty
+/// backspaces and forty characters is eighty events in one pump.
+#[test]
+#[ignore = "red until T44.5: R3-F2 (input.fill's clear and type overflow the 64-slot queue)"]
+fn fill_of_forty_over_forty_replaces_the_value() {
+    let mut h = FormHost::new();
+    let agent = Agent::new();
+    let old: String = "x".repeat(40);
+    let new: String = (0..40).map(|k| (b'a' + (k % 26) as u8) as char).collect();
+    fcall(&mut h, &agent, "input.fill", json!({ "selector": "#name", "text": old }));
+    assert_eq!(h.app.ui.name.as_str(), old, "setup: the first fill (40 events) did not land");
+    let r = fcall(&mut h, &agent, "input.fill", json!({ "selector": "#name", "text": new }));
+    println!(
+        "input.fill 40 over 40: field {:?} ({} chars), reply {}",
+        h.app.ui.name.as_str(),
+        h.app.ui.name.as_str().chars().count(),
+        r
+    );
+    assert!(r.get("error").is_none(), "{r}");
+    assert_eq!(h.app.ui.name.as_str(), new, "the fill did not replace the value");
+}

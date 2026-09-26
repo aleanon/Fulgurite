@@ -896,3 +896,17 @@ records the case that forced it.
   `NodeState::focused` before Tab or an arrow moves focus, so the frame
   after a focus move draws the ring on the node focus just left. T44.6,
   which rewrites the publish, fixes it.
+- **T44.0 item 13's second half contradicted §2.3.** It asked that Tab
+  while a `Select`'s menu is open "keeps focus inside the menu"; §2.3
+  decides that Tab dismisses a non-modal, non-passive overlay (a menu)
+  through the Escape path and moves on. §2.3 is the decision, so the
+  gate asserts that: the menu closes, the dismissal reaches the
+  application, and focus is not `None`. It is red until T44.9, not
+  T44.10.
+- **T44.0 item 7's counter is on `InputState`** (`state_writes`, a
+  wrapping count that compares equal whatever it holds), because the
+  core is `no_std` with no atomics guarantee on every target, and a
+  sweep that rewrites a bit with its old value is invisible to any
+  before/after diff. A sweep adds the table's length once.
+- **Host's overlay list is private**, so item 11's setup asserts the
+  tooltip's and the modal panel's area rather than the list.
