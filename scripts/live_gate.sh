@@ -9,6 +9,13 @@
 # `app.diagnostics`' process block -- to be the pid it launched. The
 # checks below run as the launcher's drive: this script again, with
 # `--drive`, and LUMEN_AGENT_ADDR pointing at that window.
+#
+# **The app's exit status is part of the verdict** (M42/T42.3, R18-F9).
+# After the checks the launcher reads the window's log (`app log: 0
+# panics`), then asks it to quit over `app.quit` and waits: anything but
+# `app exit status: 0` fails the run as `app exited N`. This ended in
+# `wait "$pid" || true` until then, so a panic on the way out -- the
+# review's I6 -- was discarded and the gate stayed green.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -16,7 +23,7 @@ if [ "${1:-}" != --drive ]; then
     LAUNCH="python3 scripts/live/launch.py --script live-gate"
     $LAUNCH --display-only || exit $?
     cargo build -q -p counter-window
-    exec $LAUNCH --bin target/debug/counter-window \
+    exec $LAUNCH --bin target/debug/counter-window --stop quit \
         --expect-strategy Boundaries --expect-features "" \
         -- "$0" --drive
 fi
@@ -34,4 +41,3 @@ echo "live-gate: an ordinary click moves the tally: #value $before -> $after"
 # Warm the clocks: the first frames after launch run ~4x slower.
 for _ in $(seq 20); do python3 scripts/agent_client.py click '#inc' >/dev/null; done
 python3 scripts/ui_check.py all
-python3 scripts/agent_client.py quit >/dev/null

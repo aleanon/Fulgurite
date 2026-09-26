@@ -39,6 +39,8 @@ echo "== building the window, and the library it will first swap to =="
 (cd "$WS" && cargo rustc --release -q -p hot-window --lib --crate-type cdylib \
     --features "hot agent" --target-dir "$WS/target/reload")
 
-$LAUNCH --bin "$WS/target/release/hot-window" --env "LUMEN_HOT_FEATURES=hot agent" \
+# One panic, provoked: the drive plants one in the library and checks the
+# screen shows it. Exact, so a second is a failure (M42/T42.3).
+$LAUNCH --bin "$WS/target/release/hot-window" --env "LUMEN_HOT_FEATURES=hot agent" --expect-panics 1 \
     --expect-strategy Boundaries --expect-features reload \
     -- python3 scripts/hot_window_drive.py {port} "$WS/app/src/lib.rs" {pid}

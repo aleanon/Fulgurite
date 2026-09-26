@@ -4,7 +4,7 @@
 # `kill; wait || true`, so nothing read the log. Once fixed, the
 # launcher scans the log before it stops the app.
 CHECK='./scripts/widget_drive.sh Switch'
-EXPECT='app log: [1-9][0-9]* panic'
+EXPECT='FAIL -- app log: [1-9][0-9]* panic'
 plant() {
     sub examples/showcase/src/main.rs \
         '^(fn main\(\) \{\n)' \

@@ -3,7 +3,7 @@
 # true`, so the panic was discarded and the gate stayed green. Once
 # fixed, the app's exit status is the verdict.
 CHECK='./scripts/live_gate.sh'
-EXPECT='live-gate: app exited 101'
+EXPECT='live-gate.*app exited 101'
 plant() {
     sub examples/counter-window/src/window.rs \
         '("result": \{ "ok": true \}\n\s*\}\)\);\n)(\s*)event_loop\.exit\(\);' \

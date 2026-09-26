@@ -40,7 +40,17 @@ In order, for one leg:
    `LUMEN_LIVE_STRATEGY` (the process's, not the script's),
    `LUMEN_LIVE_FEATURES` and `LUMEN_LIVE_EXPECT_FEATURES` in its
    environment.
-7. **Stop.**
+7. **Stop** (M42/T42.3, R18-F9): the child must still be alive — one
+   that died mid-drive fails the leg with its status — and its log must
+   hold exactly `--expect-panics` lines containing `panicked at` (0 unless
+   the leg provokes panics on purpose); it prints `app log: N panics`.
+   **Only then** is it stopped: killed, or with `--stop quit` asked to
+   quit over `app.quit` and required to **exit 0** — a panic on the way
+   out is visible only in that status, which is why the log is read
+   first. §2.5: every turnkey window lacks `app.quit` until M48 (R13-F9),
+   so today only counter-window (`live_gate.sh`) quits; when M48 lands
+   the launcher should quit every window and keep the log scan as a
+   second check.
 
 Exit status: the drive's when it failed, 1 for a refusal of the
 launcher's own, 77 for no display, 0 otherwise.
@@ -208,11 +218,15 @@ def main() -> int:
                          "its parameters: `Everything`, `Boundaries` or `Boundaries<256>`")
     ap.add_argument("--expect-features", default="",
                     help=f"comma-separated, among {', '.join(TRACKED)}: exactly these, no others")
-    ap.add_argument("--stop", choices=("kill", "wait"), default="kill",
-                    help="kill: stop the app after the drive; wait: the app is the test, and "
-                         "runs to its own exit within --timeout")
+    ap.add_argument("--stop", choices=("kill", "quit", "wait"), default="kill",
+                    help="kill: check the app is alive and its log clean, then kill it; "
+                         "quit: the same checks, then `app.quit` and its exit status must be 0; "
+                         "wait: the app is the test, and runs to its own exit within --timeout")
     ap.add_argument("--expect-exit",
                     help="the app must exit by itself after the drive: an integer, or `nonzero`")
+    ap.add_argument("--expect-panics", type=int, default=0,
+                    help="how many `panicked at` lines the log must hold -- the panics this leg "
+                         "provokes on purpose. Exact, so one more is still a failure")
     ap.add_argument("drive", nargs=argparse.REMAINDER)
     a = ap.parse_args()
     tag = f"{a.script} [{a.leg}]"
@@ -350,14 +364,41 @@ def main() -> int:
                 say(tag, f"the drive exited {rc}; the app's log ends:")
                 print(log_tail(log, 30), flush=True)
 
-        # 7. stop
-        if a.stop == "wait" or a.expect_exit:
+        # 7. stop -- liveness and the log first, then the app's own exit
+        # (M42/T42.3, R18-F9). A panic after the drive's last assertion is
+        # still a panic, and a kill hides the app's exit status.
+        verdict = []
+        if a.stop in ("kill", "quit") and not a.expect_exit and child.poll() is not None:
+            verdict.append(f"the app died during the drive: child exited {child.returncode}: "
+                           f"{last_line(log)}")
+        if a.expect_exit and child.poll() is None:
             try:
-                child.wait(timeout=a.timeout if a.stop == "wait" else 5)
+                child.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                pass
+        logf.flush()
+        text = log.read_text(errors="replace")
+        panics = [ln for ln in text.splitlines() if "panicked at" in ln]
+        allowed = a.expect_panics
+        if a.expect_exit == "nonzero" or (a.expect_exit and a.expect_exit not in ("0",)):
+            allowed = max(allowed, len(panics))  # this leg exists to die
+        say(tag, f"app log: {len(panics)} panic{'s' if len(panics) != 1 else ''} "
+                 f"(expected {allowed})")
+        if len(panics) != allowed:
+            verdict.append(f"app log: {len(panics)} panic{'s' if len(panics) != 1 else ''}, "
+                           f"expected {allowed}; first: {panics[0] if panics else '-'}")
+        if a.stop == "quit" and child.poll() is None:
+            try:
+                rpc(port, "app.quit")
+            except (OSError, RuntimeError, ValueError) as e:
+                verdict.append(f"app.quit was not answered: {e}")
+        if a.stop in ("quit", "wait") or a.expect_exit:
+            try:
+                child.wait(timeout=a.timeout if a.stop == "wait" else 10)
             except subprocess.TimeoutExpired:
                 stop()
-                fail(tag, f"the app was expected to exit by itself and was still running "
-                          f"after {a.timeout if a.stop == 'wait' else 5:.0f} s")
+                verdict.append("the app was expected to exit and was still running after "
+                               f"{a.timeout if a.stop == 'wait' else 10:.0f} s")
             code = child.returncode
             want = a.expect_exit or "0"
             ok = code != 0 if want == "nonzero" else code == int(want)
@@ -366,9 +407,13 @@ def main() -> int:
                 print(log_tail(log, 40), flush=True)
             say(tag, f"app exit status: {code} (expected {want})")
             if not ok:
-                print(log_tail(log), file=sys.stderr)
-                fail(tag, f"app exited {code}, expected {want}")
+                verdict.append(f"app exited {code}, expected {want}")
         stop()
+        if verdict:
+            print(log_tail(log), file=sys.stderr)
+            for v in verdict[:-1]:
+                print(f"{tag}: FAIL -- {v}", file=sys.stderr)
+            fail(tag, verdict[-1])
         return rc
     except SystemExit:
         stop()

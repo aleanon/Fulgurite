@@ -24,7 +24,9 @@ for strategy in everything boundaries; do
         expect=(--expect-strategy Everything --expect-features everything,reload)
     fi
     cargo build --release -q -p panic-app --features "$feats"
-    $LAUNCH --leg "$strategy" --bin target/release/panic-app --arg=--window "${expect[@]}" \
+    # Eight panics, all provoked: the seven sites, and site 1 again for
+    # the timer step. Exact, so a ninth is a failure (M42/T42.3).
+    $LAUNCH --leg "$strategy" --bin target/release/panic-app --arg=--window "${expect[@]}" --expect-panics 8 \
         -- python3 scripts/panic_drive.py {port} "$strategy"
 done
 

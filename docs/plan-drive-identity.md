@@ -822,6 +822,24 @@ for every plan a build corrected.
   shadow-absent and shadow-unexpected go red in the launcher before
   T42.4's in-drive check exists. T42.4's injection therefore removes one
   defence at a time, like T42.2's.
+- **T42.3: the launcher quits, not the drive.** `live_gate.sh`'s drive
+  used to send `app.quit` itself, which would put the quit-panic's panic
+  in the log *before* the launcher's scan — and then reverting the exit
+  check would leave the plant red, on the log. The launcher now reads the
+  log first and quits after (`--stop quit`), so the exit status is the
+  only thing that can see a panic on the way out, as §3 intends.
+- **T42.3: a leg that provokes panics declares how many.** The log scan
+  refuses any `panicked at` line, and `panic_drive.sh` provokes eight
+  (the seven sites, and site 1 again for the timer step) and
+  `hot_window_drive.sh` one. `--expect-panics N` is exact, so one more is
+  still a failure.
+- **T42.3 found a defect in M43/T43.0's harness.** It synced its copy
+  with `rsync -a`, which put a file a plant had edited back at its
+  original, older mtime; cargo then judged the copy's target — built from
+  the planted text — up to date, and the *next* run's baseline drove the
+  planted binary (a live baseline went red on the late-panic plant's
+  panic). `scripts/selftest/run.sh` now syncs by content and without the
+  source's mtimes (`rsync -rlpD --checksum`). One line, reported to M43.
 - **AGENT.md is the coordinator's.** The tasks' "docs in the same
   commit" name AGENT.md entries; the implementation brief reserves that
   file for the merge, so those edits are listed in the final report
