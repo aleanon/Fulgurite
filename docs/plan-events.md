@@ -50,6 +50,13 @@ drained by the host once per frame. `EventCtx` carries what dispatch
 learned: node index, `row: Option<u64>` for repeater content, pointer
 position in node-local coordinates.
 
+**A paste is not in the queue** (M45/T45.7). It used to be — one
+`Event::Text` per character, which is how a `TextArea` lost every pasted
+line break and a 256 KB paste became 4,096 frames. It is one edit now,
+`Node::paste` on the focused node, and it replays as a string: the agent
+records it as `input.paste`, beside the `input.*` calls it already kept.
+A widget with no paste of its own still gets typing, dispatched at once.
+
 Deliverable test: queue round-trips through serde (the replay seed) —
 done, gated on `observe` so the *vocabulary* stays available in release
 while only *recording* is a dev feature. (`observe` gained `dep:serde`

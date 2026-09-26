@@ -165,6 +165,18 @@ fn a_click_driven_session_narrows_and_draws_the_same_frames() {
     });
     assert!(!p.b.last_marks().all, "a Backspace in a split application marked everything");
     assert_eq!(p.b.app.ui.entry.field.as_str(), "1234567 wide", "one Backspace did not delete the whole flag");
+    // A paste — M45/T45.7: one edit outside dispatch, marked as the
+    // focused field's subtree, narrowed for a split application.
+    let (ne, nb) = (p.e.paste("!?"), p.b.paste("!?"));
+    let (he, hb) = (p.e.list.hash_from(0), p.b.list.hash_from(0));
+    println!("paste \"!?\" (kept {ne}/{nb})          Everything {he:#018x}  Boundaries {hb:#018x}  marks {:?}", p.b.last_marks());
+    assert_eq!((ne, nb), (2, 2), "setup: the paste did not land");
+    assert_eq!(he, hb, "paste: the narrowed frame differs from the whole-tree frame");
+    assert!(!p.b.last_marks().all, "a paste into a split application marked everything");
+    for k in 0..2 {
+        p.step(&format!("Backspace ({k})"), |post| post(Event::Key { key: lumen_static::Key::Backspace, down: true }));
+    }
+    assert_eq!(p.b.app.ui.entry.field.as_str(), "1234567 wide", "setup: the paste was not undone");
 
     // 2. Press the slider's track at three quarters — the slider moves itself.
     let si = lumen_static::style::index_of_wid(<Ui as Widget>::SUB_TABLE, "slider").unwrap();

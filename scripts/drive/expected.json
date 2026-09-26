@@ -6,10 +6,10 @@
   "`static` lists every action that is not checked for landing; `counts` pins actions, landed-checked (non-static) and isolated (T42.6)."
  ],
  "counts": {
-  "entries": 39,
-  "actions": 94,
-  "landed_checked": 71,
-  "isolated": 40
+  "entries": 40,
+  "actions": 97,
+  "landed_checked": 74,
+  "isolated": 42
  },
  "entries": {
   "PickList": [
@@ -144,6 +144,11 @@
    "typing inserts at the caret",
    "backspace removes the character before the caret",
    "fill replaces the whole value"
+  ],
+  "TextArea": [
+   "a click focuses the area",
+   "a paste keeps its line breaks, as one edit",
+   "Enter breaks a line"
   ],
   "Slider": [
    "a click sets the value to where it landed",

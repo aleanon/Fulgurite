@@ -1305,6 +1305,49 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         (x / self.scale, y / self.scale)
     }
 
+    /// Dispatch one event now, outside the queue: what `pump_with` does
+    /// with each event it drains, and what a paste that falls back to
+    /// typing does with each character (M45/T45.7). Whether a node took
+    /// it.
+    fn dispatch_now(&mut self, ev: &Event, consumed: &mut pass::Consumed) -> bool {
+        // `dispatch_overlaid`: an overlay takes pointer hits first,
+        // Escape closes the topmost, and a press outside every open
+        // one dismisses them and is consumed. `self.overlays` is
+        // what the *last* paint deferred, which is deliberate — what
+        // can be clicked is what was drawn.
+        pass::dispatch_overlaid_into(
+            &mut self.app,
+            &self.styles,
+            &mut self.states,
+            &mut self.input,
+            &self.overlays,
+            ev,
+            consumed,
+        )
+    }
+
+    /// Mark what a handled event may have changed — the rule below, used
+    /// by the pump and by a paste's typing fallback alike.
+    fn mark_handled(&mut self, consumed: &pass::Consumed) {
+        // **Narrowed for a split application** — M29/T29.6. Its
+        // handlers cannot reach the tree (`App::STATE_IS_SPLIT`), so
+        // what an event changed is the nodes that consumed it — marked
+        // here — plus whatever the bindings wrote, which
+        // `update_marked` marks below. An unsplit application's
+        // handler may write any widget, so it keeps the whole tree.
+        if A::STATE_IS_SPLIT && !consumed.overflowed() {
+            let table = <A::Tree as Widget>::SUB_TABLE;
+            for &n in consumed.nodes() {
+                self.invalidation.mark(lumen_static::style::subtree_range(table, n as usize));
+            }
+        } else {
+            self.invalidation.mark_all();
+        }
+        // Kept either way: a consumed wheel moves a repeater's window,
+        // and the arena cascade is what styles the new rows.
+        self.arenas_dirty = true;
+    }
+
     /// One frame: drain input, lay out, paint. Returns whether any event
     /// was consumed, which a real shell uses to decide whether to
     /// redraw.
@@ -1319,20 +1362,7 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         let mut consumed = pass::Consumed::default();
         let before = PointerFocus::of(&self.input);
         while let Some(ev) = self.queue.pop() {
-            // `dispatch_overlaid`: an overlay takes pointer hits first,
-            // Escape closes the topmost, and a press outside every open
-            // one dismisses them and is consumed. `self.overlays` is
-            // what the *last* paint deferred, which is deliberate — what
-            // can be clicked is what was drawn.
-            handled |= pass::dispatch_overlaid_into(
-                &mut self.app,
-                &self.styles,
-                &mut self.states,
-                &mut self.input,
-                &self.overlays,
-                &ev,
-                &mut consumed,
-            );
+            handled |= self.dispatch_now(&ev, &mut consumed);
         }
 
         // **A cancel the application asked for** — M28/T28.12.
@@ -1379,23 +1409,7 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         // statically which tree field it writes; narrowing beyond that
         // is OPEN (`docs/plan-invalidation.md` T16.7).
         if handled {
-            // **Narrowed for a split application** — M29/T29.6. Its
-            // handlers cannot reach the tree (`App::STATE_IS_SPLIT`), so
-            // what an event changed is the nodes that consumed it — marked
-            // here — plus whatever the bindings wrote, which
-            // `update_marked` marks below. An unsplit application's
-            // handler may write any widget, so it keeps the whole tree.
-            if A::STATE_IS_SPLIT && !consumed.overflowed() {
-                let table = <A::Tree as Widget>::SUB_TABLE;
-                for &n in consumed.nodes() {
-                    self.invalidation.mark(lumen_static::style::subtree_range(table, n as usize));
-                }
-            } else {
-                self.invalidation.mark_all();
-            }
-            // Kept either way: a consumed wheel moves a repeater's window,
-            // and the arena cascade is what styles the new rows.
-            self.arenas_dirty = true;
+            self.mark_handled(&consumed);
         }
 
         // **State no handler reports** (M25/T25.0).
@@ -1789,23 +1803,31 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         self.app.tree().node(i).selection()
     }
 
-    /// Type `text` into the focused node, as if a person had.
+    /// Paste `text` into the focused node **as one edit** — M45/T45.7.
     ///
-    /// **Per character, into the one queue**, so a paste replays as
-    /// ordinary typing and a recorded session needs no clipboard to
-    /// reproduce (`docs/plan-events.md` E0). It also means a paste
-    /// replaces a selection, moves the caret and fires bindings by
-    /// exactly the paths typing already uses — no second edit path to
-    /// get subtly different.
+    /// The focused node's [`Node::paste`](lumen_static::Node::paste) takes
+    /// the whole string and answers how many characters it **kept**: a
+    /// `TextArea` normalises line endings and keeps them, a `TextInput`
+    /// strips them, a `NumberInput` keeps what its number rule allows.
+    /// That count is what this returns. A node with no paste of its own
+    /// gets the string as typing instead, one event per character with
+    /// each line ending (`\r\n`, `\r`, `\n`) as `Key::Enter` and other
+    /// control characters dropped, dispatched straight away rather than
+    /// queued; the count is then the events a node took. Nothing focused
+    /// keeps nothing, and answers 0.
     ///
-    /// **Chunked against [`lumen_static::InputQueue::<64>::CAP`]**, because a
-    /// paste is not bounded by it. Filling the queue and pumping, then
-    /// filling it again, is what keeps a 10 kB paste from losing its
-    /// tail — and this is the first real caller of the `push` refusal
-    /// M13/T13.4 added the drop counter for.
+    /// **One pump, whatever the length.** This used to post one
+    /// `Event::Text` per character and pump every 64 of them, each pump
+    /// linear in the text — a 256 KB paste was 4,096 frames and quadratic
+    /// (R8-F5) — and a `TextArea`, which takes a newline only as Enter,
+    /// dropped every pasted line break while the count said it was
+    /// delivered (R8-F4, R10-F5; `docs/results-text.md` T45.0 item 7).
     ///
-    /// Returns how many characters were delivered, which is every
-    /// non-control one unless a widget refused them.
+    /// **The paste is marked**, the focused node's subtree, as
+    /// [`Host::compose`] marks: the edit happens outside dispatch, so no
+    /// pump mark site sees it. It is still an edit of the node that owns
+    /// it, by the method typing uses, so a selection is replaced and the
+    /// caret moves exactly as typing would.
     ///
     /// **Pumps with the `BlockMetrics` stand-in**, so it is for a headless
     /// caller whose frames use the stand-in too. A caller that lays out
@@ -1817,30 +1839,60 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
 
     /// [`Host::paste`], pumping with the caller's text stack — M41/T41.5.
     ///
-    /// The chunk pumps and the final one lay the field out, and they
-    /// must measure with the stack every other frame uses. `paste`
-    /// pumped with `BlockMetrics` while the window that called it owned
-    /// the real measurer, and a `TextInput`'s shaped memo is not keyed on
-    /// the measurer, so the next real frame was served the stand-in's box
+    /// The one pump a paste makes lays the field out, and it must measure
+    /// with the stack every other frame uses. `paste` pumped with
+    /// `BlockMetrics` while the window that called it owned the real
+    /// measurer, and the next real frame was served the stand-in's box
     /// and clusters: eight pasted `m`s 80 px wide against 131.2 typed,
     /// and a click after a paste landing on the wrong byte
-    /// (`tests/paste_measurer.rs`; R2-F1, R10-F4). With the caller's
-    /// measurer here, "no second edit path" is true again: a paste is
-    /// typing, laid out by what typing is laid out by. And since
-    /// M45/T45.2 the memo keys on the measurer as well
-    /// (`TextMeasure::generation`), so a stand-in's box is not served to a
-    /// real frame even from a caller that pumps with the wrong one.
+    /// (`tests/paste_measurer.rs`; R2-F1, R10-F4). And since M45/T45.2
+    /// the memo keys on the measurer as well (`TextMeasure::generation`),
+    /// so a stand-in's box is not served to a real frame even from a
+    /// caller that pumps with the wrong one.
     pub fn paste_with(&mut self, text: &str, metrics: &mut dyn TextMeasure) -> usize {
-        let mut n = 0;
-        for ch in text.chars().filter(|c| !c.is_control() || *c == '\n') {
-            if self.queue.len() == lumen_static::InputQueue::<64>::CAP {
-                self.pump_with(metrics);
+        let table = <A::Tree as lumen_static::Widget>::SUB_TABLE;
+        let focus = self.input.focus.map(|f| f as usize).filter(|&i| i < table.len());
+        let hooked = focus.and_then(|i| self.app.tree_mut().node_mut(i).paste(text).map(|n| (i, n)));
+        let kept = match hooked {
+            Some((i, n)) => {
+                if n > 0 {
+                    mark_node(&mut self.invalidation, table, Some(i as u32));
+                    self.arenas_dirty = true;
+                }
+                n
             }
-            self.post(Event::Text { ch });
-            n += 1;
-        }
+            None => self.paste_as_typing(text),
+        };
         self.pump_with(metrics);
-        n
+        kept
+    }
+
+    /// A paste into a node with no paste of its own: typing, dispatched
+    /// now rather than queued, so no pump happens mid-paste.
+    fn paste_as_typing(&mut self, text: &str) -> usize {
+        let mut consumed = pass::Consumed::default();
+        let (mut handled, mut kept) = (false, 0);
+        let mut chars = text.chars().peekable();
+        while let Some(c) = chars.next() {
+            let ev = match c {
+                '\r' => {
+                    if chars.peek() == Some(&'\n') {
+                        chars.next();
+                    }
+                    Event::Key { key: lumen_static::Key::Enter, down: true }
+                }
+                '\n' => Event::Key { key: lumen_static::Key::Enter, down: true },
+                c if c.is_control() => continue,
+                ch => Event::Text { ch },
+            };
+            let took = self.dispatch_now(&ev, &mut consumed);
+            handled |= took;
+            kept += took as usize;
+        }
+        if handled {
+            self.mark_handled(&consumed);
+        }
+        kept
     }
 
     /// What the frame just pumped changed, against the frame before it,

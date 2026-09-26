@@ -111,6 +111,11 @@ class AgentClient:
         """Insert at the caret. Use `fill` to replace a value."""
         return self.rpc("input.type", text=text)
 
+    def paste(self, text: str):
+        """Paste into the focused node as one edit (M45/T45.7); the answer
+        carries `kept`, the characters the node took."""
+        return self.rpc("input.paste", text=text)
+
     def fill(self, selector: str, text: str):
         """Replace a field's whole value — focus, clear, type."""
         return self.rpc("input.fill", selector=selector, text=text)

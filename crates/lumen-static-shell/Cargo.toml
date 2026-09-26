@@ -106,3 +106,8 @@ required-features = ["live-agent", "truetype"]
 [[test]]
 name = "process_info"
 required-features = ["live-agent", "truetype"]
+
+# M45/T45.7: drives `Session::agent`'s `input.paste`.
+[[test]]
+name = "agent_paste"
+required-features = ["live-agent", "truetype"]

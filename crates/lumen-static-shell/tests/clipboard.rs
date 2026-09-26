@@ -138,7 +138,6 @@ fn paste_skips_tab_and_bell() {
 /// `paste` offering the newline and the widget keeping it are both
 /// visible.
 #[test]
-#[ignore = "red until T45.7: R10-F6, a pasted newline never reaches a TextArea"]
 fn paste_keeps_newlines_in_a_text_area() {
     let mut h: Host<AreaApp> = Host::new(AreaApp::default(), 400, 100);
     h.pump();

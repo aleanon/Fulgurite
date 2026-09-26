@@ -257,6 +257,22 @@ impl<S: TextBuffer> TextInput<S> {
         true
     }
 
+    /// Paste `text` as one edit — M45/T45.7. A single line keeps no line
+    /// break: `\r\n`, `\r` and `\n` are dropped, as is every other
+    /// control character, and the rest goes through [`TextInput::insert`],
+    /// the path typing takes, so it replaces a selection and moves the
+    /// caret exactly as typing would. Returns the characters kept: 0 when
+    /// the storage refused, since a bounded storage takes all or nothing.
+    pub fn paste(&mut self, text: &str) -> usize {
+        let kept = crate::edit::printable(text, false);
+        let n = kept.chars().count();
+        if n > 0 && self.insert(&kept) {
+            n
+        } else {
+            0
+        }
+    }
+
     /// Move the caret, extending the selection or collapsing it.
     ///
     /// `extend` is "Shift is held". This is the one place the anchor is
@@ -731,6 +747,10 @@ impl<S: TextBuffer> Node for TextInput<S> {
 
     fn compose(&mut self, c: lumen_static::event::Composition<'_>) -> bool {
         TextInput::compose(self, c)
+    }
+
+    fn paste(&mut self, text: &str) -> Option<usize> {
+        Some(TextInput::paste(self, text))
     }
 
     fn node(&self, _i: usize) -> &dyn Node {

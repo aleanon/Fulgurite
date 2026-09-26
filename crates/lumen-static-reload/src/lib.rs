@@ -758,7 +758,7 @@ pub mod hot {
         fn copy(&self) -> Option<String> {
             self.s().copy()
         }
-        fn paste(&mut self, text: &str) {
+        fn paste(&mut self, text: &str) -> usize {
             self.m().paste(text)
         }
         fn compose(&mut self, c: lumen_static::event::Composition<'_>) -> bool {

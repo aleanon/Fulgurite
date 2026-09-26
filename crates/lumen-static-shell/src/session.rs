@@ -94,7 +94,9 @@ pub trait Session: FrameSource {
     fn post(&mut self, ev: Event);
     /// The focused field's selected text.
     fn copy(&self) -> Option<String>;
-    fn paste(&mut self, text: &str);
+    /// Paste into the focused node as one edit; the characters it kept
+    /// (`Host::paste_with`, M45/T45.7). 0 when a panic was caught.
+    fn paste(&mut self, text: &str) -> usize;
     /// An input-method step. Whether anything changed.
     fn compose(&mut self, c: Composition<'_>) -> bool;
     fn set_scale(&mut self, scale: f32);
@@ -304,16 +306,17 @@ impl<A: App + 'static> Session for Local<A> {
         self.caught(None, |h| h.copy().map(str::to_owned))
     }
 
-    fn paste(&mut self, text: &str) {
+    fn paste(&mut self, text: &str) -> usize {
         // Guarded: paste runs the focused widget's editing code. With the
         // session's own measurer, which every other frame of this session
         // lays out with — M41/T41.5 (R2-F1, R10-F4). A hot library's
         // session is one of these on the far side of the loader, and the
         // reload crate's wrapper forwards to it, so it inherits this.
-        let _ = self.guarded(|h, m| match m.as_mut() {
+        self.guarded(|h, m| match m.as_mut() {
             Some(m) => h.paste_with(text, m),
             None => h.paste(text),
-        });
+        })
+        .unwrap_or(0)
     }
 
     fn compose(&mut self, c: Composition<'_>) -> bool {
@@ -600,6 +603,26 @@ impl<A: App> lumen_static_agent::AgentHost for Live<'_, A> {
 
     fn enqueue(&mut self, ev: Event) {
         self.host.post(ev);
+    }
+
+    /// Application code, marked as `pump` marks it: a paste runs the
+    /// focused widget's editing code.
+    fn paste(&mut self, text: &str) -> Option<(u64, usize)> {
+        let go = || {
+            let kept = match self.metrics.as_mut() {
+                Some(m) => self.host.paste_with(text, m),
+                None => self.host.paste(text),
+            };
+            self.screen.present(self.host, self.page);
+            (self.host.frame_number(), kept)
+        };
+        #[cfg(panic = "unwind")]
+        return Some(match std::panic::catch_unwind(std::panic::AssertUnwindSafe(go)) {
+            Ok(v) => v,
+            Err(p) => std::panic::resume_unwind(Box::new(AppPanic(p))),
+        });
+        #[cfg(not(panic = "unwind"))]
+        Some(go())
     }
 
     fn set_palette(&mut self, palette: lumen_static::style::Palette) -> bool {

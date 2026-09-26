@@ -552,6 +552,15 @@ pub struct DTextInput {
     pub a: TextInput<String>,
 }
 
+/// M45/T45.7: the multi-line field, on the stage so the drive harness
+/// can paste into it (`scripts/drive/widgets/text_and_slider.py`).
+#[derive(StaticTree, Default)]
+#[widget(row, spacing = 12.0)]
+pub struct DTextArea {
+    #[widget_id("d_textarea_a")]
+    pub a: TextArea<String>,
+}
+
 #[derive(StaticTree, Default)]
 #[widget(row, spacing = 12.0)]
 pub struct DProgressBar {
@@ -643,6 +652,7 @@ pub enum Demo {
     Radio(DRadio),
     Slider(DSlider),
     TextInput(DTextInput),
+    TextArea(DTextArea),
     Progress(DProgressBar),
     Spinner(DSpinner),
     Skeleton(DSkeleton),
@@ -691,4 +701,4 @@ impl Default for Demo {
 }
 
 /// How many demos the stage has. Asserted against the catalogue.
-pub const DEMOS: usize = 51;
+pub const DEMOS: usize = 52;

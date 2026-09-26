@@ -21,7 +21,7 @@ The protocol is JSON-RPC 2.0. Methods divide into three groups:
 `ui.lastChange`, `ui.lastDamage`, `ui.lint`, `ui.explain`.
 
 **Synthesise** — `input.click`, `input.hover`, `input.key`,
-`input.type`, `input.fill`, `input.scroll`, `input.scrollIntoView`,
+`input.type`, `input.fill`, `input.paste`, `input.scroll`, `input.scrollIntoView`,
 `input.pointerDown`, `input.pointerUp`, `input.invokeAction`.
 
 **Observe** — `app.diagnostics`, `app.logs`, `app.perf`,

@@ -145,3 +145,27 @@ so all five text widgets step through them.
 
 Leaf `.text` unchanged at 27,964 B; the alloc tier's host cost is in
 `docs/results-embedded.md`.
+
+## T45.7 — a paste is one edit (R8-F4, R8-F5, R10-F5, R10-F6)
+
+`Node::paste` takes the whole string; `Host::paste_with` asks the focused
+node, marks its subtree, and pumps once. A node without one gets typing,
+dispatched at once, each line ending as Enter.
+
+| gate | before | after | bound |
+|---|---|---|---|
+| `paste.rs`, `"ab\ncd\r\nef"` into a `TextArea` / `TextInput`, both strategies | `"abcdef"` / count 8 for 6 kept; 6 mismatches | `"ab\ncd\nef"` (8) / `"abcdef"` (6); 0 mismatches | 0 |
+| `paste.rs`, 256 KB into a `TextArea` | 4,096 pumps, 258,048 of 262,144 bytes | **1 pump**, whole | 1 |
+| `paste_widgets.rs`, seven widgets (six with a paste, one without) | — | 0 wrong, frames equal under both strategies | 0 |
+| `clipboard.rs`, `"a\nb\tc"` into a `TextArea` | `"abc"` | `"a\nbc"`, 4 | — |
+| `handled_narrowing.rs`, a paste into a split application's field | — | same frame, one range marked | equal |
+| `agent_paste.rs`, `input.paste` through a `Local` session | — | kept 5 of 7, one pump | — |
+| `just widget-drive TextArea`, both strategies | not driven | 3 actions green, damage 1.00× | 4.0× |
+
+Injections: the typing fallback mapping `'\n'` to `Event::Text` (the
+widget with no paste reads `"abcd\nef"`); `TextArea::paste` dropping
+newlines (`clipboard.rs` and the live drive, "kept 6 (want 7)"); the
+chunk-and-pump loop restored (4,096 pumps against 1); `TextInput`
+counting what was offered (9 against 6); `NumberInput`'s forward removed
+(count 5 against 4); the paste left unmarked (all six hook widgets'
+frames differ under `Boundaries`, and `handled_narrowing.rs` fires).

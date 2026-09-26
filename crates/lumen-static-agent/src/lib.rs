@@ -848,6 +848,33 @@ impl Agent {
                 let (f, h) = host.pump();
                 Ok(json!({ "frame": f, "handled": h, "chars": n }))
             }
+            // **A paste is one edit** — M45/T45.7. The string reaches the
+            // focused node whole, through its `Node::paste`, and the
+            // answer is what it kept: a `TextArea` keeps line breaks, a
+            // `TextInput` drops them. `input.type` is the other thing — a
+            // keystroke per character — and a recorded session keeps the
+            // two apart, so a paste replays as a paste.
+            "input.paste" => {
+                let text = params.get("text").and_then(Value::as_str).ok_or((
+                    INVALID_PARAMS,
+                    "missing `text`".into(),
+                    Value::Null,
+                ))?;
+                let n = text.chars().count();
+                if n > MAX_TYPE_CHARS {
+                    return Err((
+                        INVALID_PARAMS,
+                        format!("`text` is {n} characters; the limit is {MAX_TYPE_CHARS}"),
+                        json!({ "chars": n, "limit": MAX_TYPE_CHARS }),
+                    ));
+                }
+                let (f, kept) = host.paste(text).ok_or((
+                    INVALID_REQUEST,
+                    "this host cannot paste".into(),
+                    json!({ "supported": false }),
+                ))?;
+                Ok(json!({ "frame": f, "kept": kept, "chars": n }))
+            }
             _ => Err((METHOD_NOT_FOUND, format!("unknown method `{method}`"), Value::Null)),
         }
     }
@@ -1602,6 +1629,20 @@ pub trait AgentHost {
     /// believed — the provided-method trap `Deferring` fell into, one
     /// trait over.
     fn pump(&mut self) -> (u64, bool);
+
+    /// Paste `text` into the focused node as one edit, then draw the
+    /// frame — M45/T45.7, the `input.paste` method. Returns the frame's
+    /// number and the characters the node kept (`Host::paste_with`).
+    ///
+    /// `None` by default, for a host that cannot paste, which the method
+    /// reports as an error rather than as "kept nothing": a drive that
+    /// asserted an empty paste against a host that never pasted would be
+    /// proving nothing.
+    fn paste(&mut self, text: &str) -> Option<(u64, usize)> {
+        let _ = text;
+        None
+    }
+
     /// Swap the palette looks are resolved against — M25/T25.3, the
     /// `app.setPalette` method.
     ///

@@ -149,6 +149,21 @@ impl<S: TextBuffer> TextArea<S> {
         true
     }
 
+    /// Paste `text` as one edit — M45/T45.7. Line endings are normalised
+    /// (`\r\n` and a lone `\r` become `\n`) and kept; every other
+    /// control character is dropped; the rest goes through
+    /// [`TextArea::insert`], the path typing takes. Returns the characters
+    /// kept, a newline counting as one.
+    pub fn paste(&mut self, text: &str) -> usize {
+        let kept = crate::edit::printable(text, true);
+        let n = kept.chars().count();
+        if n > 0 && self.insert(&kept) {
+            n
+        } else {
+            0
+        }
+    }
+
     /// The selected byte range, ordered, or `None`.
     pub fn selection(&self) -> Option<core::ops::Range<usize>> {
         let a = self.anchor?;
@@ -603,7 +618,9 @@ impl<S: TextBuffer> Node for TextArea<S> {
     fn on_event(&mut self, ev: &Event, cx: &EventCtx) -> bool {
         match ev {
             // A newline is the one key a single-line field must refuse
-            // and this one must accept.
+            // and this one must accept. Typed, it arrives as Enter; pasted,
+            // it arrives whole through `Node::paste` (M45/T45.7) — never as
+            // an `Event::Text`, which refuses control characters here.
             Event::Key { key: Key::Enter, down: true } => {
                 self.insert("\n");
                 true
@@ -658,6 +675,10 @@ impl<S: TextBuffer> Node for TextArea<S> {
 
     fn compose(&mut self, c: lumen_static::event::Composition<'_>) -> bool {
         TextArea::compose(self, c)
+    }
+
+    fn paste(&mut self, text: &str) -> Option<usize> {
+        Some(TextArea::paste(self, text))
     }
 
     fn node(&self, _i: usize) -> &dyn Node {

@@ -210,6 +210,33 @@ pub trait Node {
         false
     }
 
+    /// Take a pasted string **whole**, as one edit — M45/T45.7.
+    ///
+    /// `Some(n)` from a node that edits text, where `n` is how many
+    /// characters it **kept** — its own newline policy applied (a
+    /// multi-line editor normalises line endings and keeps them, a
+    /// single-line one strips them) and whatever its storage refused left
+    /// out. `None` from anything else, and `Host::paste_with` then falls
+    /// back to delivering the string as typing, one event per character
+    /// with each line ending as `Key::Enter`, so a custom widget keeps
+    /// working.
+    ///
+    /// Asked of `node_mut(i)` at the focused index, which resolves to the
+    /// widget that owns the index — so a composite whose editable part is
+    /// a node of its own (`SearchField`, `Combobox`, `RichTextEditor`)
+    /// needs nothing. **A wrapper that shares its child's index must
+    /// forward this**, as it forwards `compose` and `selection`: the
+    /// provided `None` is right for a leaf and wrong for a wrapper, which
+    /// would silently turn every paste into it back into typing
+    /// (`NumberInput`'s shape, R10-F13 and R10-F15).
+    ///
+    /// **The answer is also the mark**, as for `compose`: `Some(n)` with
+    /// `n > 0` marks this node's subtree.
+    fn paste(&mut self, text: &str) -> Option<usize> {
+        let _ = text;
+        None
+    }
+
     /// Whether this node derives how much of its content to materialize
     /// from the constraints it is given.
     ///

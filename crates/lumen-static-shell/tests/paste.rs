@@ -102,7 +102,6 @@ fn case<I: Invalidation>(strategy: &str, target: usize, want: &str, control: &st
 }
 
 #[test]
-#[ignore = "red until T45.7: R8-F4/R10-F5, a pasted newline is dropped and still counted"]
 fn a_paste_keeps_newlines_in_a_text_area_and_strips_them_in_a_field() {
     let mut bad = 0;
     bad += case::<Everything>("Everything", AREA, "ab\ncd\nef", "ab\ncd\nef");
@@ -127,7 +126,6 @@ fn pumps<I: Invalidation>(strategy: &str, len: usize) -> (u64, bool) {
 }
 
 #[test]
-#[ignore = "red until T45.7: R8-F5, a paste pumps once per 64 characters"]
 fn a_large_paste_pumps_once() {
     let (e, ew) = pumps::<Everything>("Everything", 256 * 1024);
     let (b, bw) = pumps::<lumen_static::Boundaries<256>>("Boundaries<256>", 256 * 1024);

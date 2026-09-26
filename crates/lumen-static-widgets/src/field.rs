@@ -286,6 +286,17 @@ impl Node for NumberInput {
         }
     }
 
+    /// **Forwarded, filtered** — M45/T45.7. This node shares its index
+    /// with the field it owns, so the host's paste reaches here and not
+    /// the field; the provided `None` would have turned a paste back into
+    /// typing. The number rule `on_event` applies to a keystroke applies
+    /// here to the whole string: what is not a digit, a point or a sign
+    /// is dropped, and the rest is one edit.
+    fn paste(&mut self, text: &str) -> Option<usize> {
+        let digits: alloc::string::String = text.chars().filter(|c| is_number_char(*c)).collect();
+        Some(self.field.paste(&digits))
+    }
+
     fn node(&self, _i: usize) -> &dyn Node {
         self
     }

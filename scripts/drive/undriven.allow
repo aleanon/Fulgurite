@@ -12,7 +12,6 @@
 # --- interactive, owed (§4: an inventory now would steer around defects
 #     other milestones own) ----------------------------------------------
 Select | M44 | keyboard row picking is R3-F6; an inventory that avoided it would be vacuous for exactly that action
-TextArea | M45 | paste into a TextArea is R8-F4/R10-F5
 ScrollView | M44/T44.10 | the index assigned its inventory to M44 (docs/plan-m38-fixes.md §7)
 Popup | M44 | reached only through Select and the choosers today; its own inventory comes with Select's
 Glass | M27 | a wrapper; takes its child's input, which the child's inventory drives

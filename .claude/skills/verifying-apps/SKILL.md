@@ -91,7 +91,7 @@ checkable", which is not a pass.
 `ui.getTree` `ui.getLayout` `ui.resolve` `ui.probe` `ui.probeRegion`
 `ui.explain` `ui.getAppliedStyles` `ui.lint` `ui.lastChange`
 `ui.lastDamage` `ui.waitSettled` `ui.screenshot` · `input.click` `input.pointerDown` `input.pointerUp`
-`input.hover` `input.key` `input.type` `input.fill`
+`input.hover` `input.key` `input.type` `input.fill` `input.paste`
 `input.scrollIntoView` `input.scroll` `input.invokeAction` ·
 `app.diagnostics` `app.logs`
 `app.perf` `app.quit` (the last is the window's, not the crate's).

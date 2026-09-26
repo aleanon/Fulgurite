@@ -65,6 +65,65 @@ TEXTINPUT = ("TextInput", "#d_textinput_a", [
 ])
 
 
+# --- TextArea -------------------------------------------------------
+# M45/T45.7: the inventory M42 listed as owed to M45 for its paste
+# (docs/plan-drive-identity.md §4). A paste is one edit that keeps its
+# line breaks; Enter is how a keystroke makes one.
+def _lines(c) -> int:
+    return c.value().count("\n")
+
+
+def _pasted(c, text):
+    c.__dict__["_v0"] = c.value()
+    c.__dict__["_kept"] = c.c.paste(text).get("kept")
+
+
+def _pasted_outside(c, text):
+    c.__dict__["_v0"] = c.value()
+    c.click_outside()
+    c.__dict__["_kept"] = c.c.paste(text).get("kept")
+
+
+TEXTAREA = ("TextArea", "#d_textarea_a", [
+    Action(
+        name="a click focuses the area",
+        needs="an unfocused text area",
+        do=lambda c: c.click(),
+        expect=lambda c: (_focused(c), f"state.focused={_focused(c)}"),
+        isolate=lambda c: c.click_outside(),
+        injection="stop setting focus on PointerDown in dispatch",
+    ),
+    Action(
+        name="a paste keeps its line breaks, as one edit",
+        needs="a focused area with a known value",
+        prep=lambda c: c.click(),
+        do=lambda c: _pasted(c, "one\r\ntwo"),
+        # `kept` is what the area took: seven characters, the CRLF as one
+        # newline. A paste delivered as typing drops the newline (R8-F4)
+        # and one delivered whole but unnormalised keeps a '\r'.
+        expect=lambda c: (
+            c._kept == 7 and "one\ntwo" in c.value()
+            and c.value().count("\n") == c._v0.count("\n") + 1,
+            f"kept {c._kept} (want 7), lines {c._v0.count(chr(10))} -> "
+            f"{c.value().count(chr(10))} (want +1), value {c.value()!r}",
+        ),
+        isolate=lambda c: _pasted_outside(c, "one\r\ntwo"),
+        injection="make TextArea::paste drop newlines (edit::printable(text, false))",
+    ),
+    Action(
+        name="Enter breaks a line",
+        needs="a focused area",
+        prep=lambda c: c.click(),
+        do=lambda c: (c.__dict__.__setitem__("_v0", c.value()), c.key("Enter"))[0],
+        expect=lambda c: (
+            c.value().count("\n") == c._v0.count("\n") + 1,
+            f"lines {c._v0.count(chr(10))} -> {c.value().count(chr(10))} (want +1)",
+        ),
+        injection="drop the Key::Enter arm in TextArea::on_event",
+    ),
+])
+
+
 # --- Slider ---------------------------------------------------------
 # The readout is `value: 0.00`..`1.00`.
 def _val(c) -> float:
@@ -149,4 +208,4 @@ SLIDER = ("Slider", "#d_slider_a", [
     ),
 ])
 
-ALL = [TEXTINPUT, SLIDER]
+ALL = [TEXTINPUT, TEXTAREA, SLIDER]

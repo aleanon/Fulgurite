@@ -912,6 +912,21 @@ fn stylesheet() -> Vec<StyleRule> {
                 .font_size(15.0)
                 .padding(Edges { left: 12.0, right: 12.0, top: 9.0, bottom: 9.0 }),
         ),
+        // The multi-line field, the same ground, three lines tall
+        // (M45/T45.7).
+        StyleRule::new(
+            Selector::Id("d_textarea_a"),
+            Patch::new()
+                .width(Length::Fixed(260.0))
+                .height(Length::Fixed(96.0))
+                .background_role(Role::Control)
+                .color_role(Role::Text)
+                .border_width(1)
+                .border_color_role(Role::Muted)
+                .radius(8.0)
+                .font_size(15.0)
+                .padding(Edges { left: 12.0, right: 12.0, top: 9.0, bottom: 9.0 }),
+        ),
         // The ones whose width is the demo: a bar, a divider, a
         // skeleton and a slider all fill whatever they are given, and on
         // an empty stage that is the whole window.
@@ -1003,7 +1018,7 @@ fn stylesheet() -> Vec<StyleRule> {
         // it is the whole column — which squeezed the note under it to
         // zero height and `W1001` said so, on the first drive. A pane
         // grid in an application fills a window; in a catalogue of
-        // fifty-one demos it gets a pane's worth.
+        // fifty-two demos it gets a pane's worth.
         StyleRule::new(Selector::Id("d_panegrid_a"), Patch::new().height(Length::Fixed(260.0))),
         StyleRule::new(Selector::Id("d_tabs_a"), Patch::new().width(Length::Fixed(420.0))),
         StyleRule::new(Selector::Id("d_bottomnav_a"), Patch::new().width(Length::Fixed(420.0))),

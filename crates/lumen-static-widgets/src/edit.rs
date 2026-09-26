@@ -48,3 +48,60 @@ pub(crate) fn next_boundary(s: &str, at: usize) -> Option<usize> {
     }
     s.get(at..)?.chars().next().map(|c| at + c.len_utf8())
 }
+
+/// What a paste keeps of `text` — M45/T45.7: every non-control
+/// character, and, when `lines` is set, each line ending as one `'\n'`
+/// (`\r\n` and a lone `\r` normalised). A single-line field passes
+/// `false` and keeps no line break at all.
+///
+/// Borrowed when nothing is dropped, which is the common paste; an owned
+/// copy otherwise. The leaf profile has no allocator to copy into, so
+/// there it keeps the text up to the first character it would drop.
+pub(crate) fn printable(text: &str, lines: bool) -> Str<'_> {
+    let clean = |c: char| !c.is_control() || (lines && c == '\n');
+    if !text.contains('\r') && text.chars().all(clean) {
+        return Str::Borrowed(text);
+    }
+    #[cfg(feature = "alloc")]
+    {
+        let mut out = alloc::string::String::with_capacity(text.len());
+        let mut chars = text.chars().peekable();
+        while let Some(c) = chars.next() {
+            match c {
+                '\r' if lines => {
+                    if chars.peek() == Some(&'\n') {
+                        chars.next();
+                    }
+                    out.push('\n');
+                }
+                c if clean(c) => out.push(c),
+                _ => {}
+            }
+        }
+        Str::Owned(out)
+    }
+    #[cfg(not(feature = "alloc"))]
+    {
+        let end = text.char_indices().find(|&(_, c)| c == '\r' || !clean(c)).map_or(text.len(), |(i, _)| i);
+        Str::Borrowed(&text[..end])
+    }
+}
+
+/// A borrowed or, with an allocator, owned string — `Cow` without
+/// requiring `alloc`.
+pub(crate) enum Str<'a> {
+    Borrowed(&'a str),
+    #[cfg(feature = "alloc")]
+    Owned(alloc::string::String),
+}
+
+impl core::ops::Deref for Str<'_> {
+    type Target = str;
+    fn deref(&self) -> &str {
+        match self {
+            Str::Borrowed(s) => s,
+            #[cfg(feature = "alloc")]
+            Str::Owned(s) => s,
+        }
+    }
+}
