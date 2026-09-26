@@ -266,6 +266,10 @@ pub struct Config {
     /// window. It is not authenticated: any process running as the same
     /// user can connect (`docs/00-handoff-static-tree.md` §9).
     ///
+    /// **`LUMEN_AGENT_ADDR` overrides it** (M48/T48.11): the window reads
+    /// the variable in one place, and a script sets it to choose a port;
+    /// this field is the program's default. With neither, no endpoint.
+    ///
     /// **Loopback only** (M39/T39.2): `127.0.0.1`, `[::1]` and `localhost`
     /// bind; `0.0.0.0` or any other non-loopback address is refused, with
     /// a line on stderr naming the override, `LUMEN_AGENT_ALLOW_REMOTE=1`.
@@ -349,6 +353,8 @@ fn start(session: Box<dyn Session>, config: Config, hot: Option<std::path::PathB
     let event_loop = EventLoop::<UserEvent>::with_user_event().build().expect("event loop");
     event_loop.set_control_flow(ControlFlow::Wait);
     #[cfg(feature = "agent")]
+    let config = Config { agent: agent_address(config.agent.clone()), ..config };
+    #[cfg(feature = "agent")]
     if let Some(addr) = config.agent.clone() {
         let proxy = event_loop.create_proxy();
         std::thread::spawn(move || agent::serve(addr, proxy));
@@ -394,6 +400,30 @@ fn start(session: Box<dyn Session>, config: Config, hot: Option<std::path::PathB
     #[cfg(not(feature = "hot"))]
     let _ = (hot, waker);
     event_loop.run_app(&mut win).expect("run");
+}
+
+/// **Where the agent endpoint is served** — M48/T48.11 (R13-F10,
+/// `docs/plan-agent-truth.md` §2.5), read in this one place.
+///
+/// `LUMEN_AGENT_ADDR` wins, so a script can choose a port; the program's
+/// own address (`Program::agent`, `Config::agent`) is the default; with
+/// neither there is no endpoint. Launchers read `LUMEN_AGENT` and the
+/// client read `LUMEN_AGENT_ADDR` until then, so `LUMEN_AGENT_ADDR=…
+/// showcase` bound one port while the client dialled another.
+/// `LUMEN_AGENT` is honoured for one release, with a line on stderr.
+#[cfg(feature = "agent")]
+fn agent_address(program: Option<String>) -> Option<String> {
+    if let Some(a) = std::env::var("LUMEN_AGENT_ADDR").ok().filter(|a| !a.is_empty()) {
+        return Some(a);
+    }
+    if let Some(a) = std::env::var("LUMEN_AGENT").ok().filter(|a| !a.is_empty()) {
+        eprintln!(
+            "lumen-static: LUMEN_AGENT is deprecated and will stop working next release -- \
+             set LUMEN_AGENT_ADDR={a} instead"
+        );
+        return Some(a);
+    }
+    program
 }
 
 /// What the loop waits on after a frame that started at `from`, when the

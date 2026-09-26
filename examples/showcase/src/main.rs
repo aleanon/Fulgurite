@@ -748,7 +748,8 @@ fn main() {
     let mut program = program(start.min(CATALOG.len() - 1), false).title("showcase");
     // Built `--features agent`, the window can be steered from outside:
     // `input.click` on the picker, `ui.screenshot` of the result.
-    // `LUMEN_AGENT` overrides the address.
+    // `LUMEN_AGENT_ADDR` overrides the address, read by the window
+    // (M48/T48.11).
     if let Some(addr) = agent_addr() {
         program = program.agent(addr);
     }
@@ -772,7 +773,7 @@ fn program(entry: usize, open: bool) -> Program<Show> {
 /// Where to serve the agent endpoint, or `None` without the feature.
 #[cfg(feature = "agent")]
 fn agent_addr() -> Option<String> {
-    Some(std::env::var("LUMEN_AGENT").unwrap_or_else(|_| "127.0.0.1:7654".into()))
+    Some("127.0.0.1:7654".into())
 }
 
 #[cfg(not(feature = "agent"))]

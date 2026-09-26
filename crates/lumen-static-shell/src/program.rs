@@ -249,6 +249,10 @@ impl<A: App> Program<A> {
         self
     }
 
+    /// Where a window built with the `agent` feature serves its endpoint
+    /// **by default**: `LUMEN_AGENT_ADDR` in the environment overrides it,
+    /// read by the window alone (M48/T48.11). An application does not read
+    /// the variable itself.
     pub fn agent(mut self, addr: impl Into<String>) -> Self {
         self.agent = Some(addr.into());
         self

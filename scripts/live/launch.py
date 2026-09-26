@@ -19,8 +19,8 @@ In order, for one leg:
    anything is launched: `port already answering on 127.0.0.1:P (owner
    pid Q)`.
 3. **The binary itself**, not `cargo run` (whose pid is cargo's), with
-   `LUMEN_AGENT` and `LUMEN_AGENT_ADDR` both set until M48 settles on one
-   (R13-F10), and its log at `target/live/<script>-<leg>.log` — per
+   `LUMEN_AGENT_ADDR` set (M48/T48.11 settled on the one name, R13-F10),
+   and its log at `target/live/<script>-<leg>.log` — per
    worktree, per leg, so two worktrees or two legs never share one.
 4. **Waits for the port while its own child is alive**, and prints the
    log's tail if the child dies first: `child exited 3: agent: cannot
@@ -261,7 +261,6 @@ def main() -> int:
                       f"(owner pid {', '.join(map(str, o)) or '?'}, by {how}) -- refusing to "
                       f"launch into it: whatever answers is not the build this leg names")
         addr = f"127.0.0.1:{port}"
-        env["LUMEN_AGENT"] = addr
         env["LUMEN_AGENT_ADDR"] = addr
 
     # 3. the binary itself, its log per script and leg

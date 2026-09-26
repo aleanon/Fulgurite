@@ -147,7 +147,13 @@ say — not "yes". It does not block: poll it. In the live window the RPC is ans
 after `pump`, so a `layout` right after a `click` already sees the
 result — but write the check anyway; it is what makes the run a test.
 
-**Port lifecycle:** one window owns `LUMEN_AGENT_ADDR` (default
+**Port lifecycle:** `LUMEN_AGENT_ADDR` is **the one name** for the
+address (M48/T48.11): every turnkey window reads it in
+`lumen-static-winit`, overriding the program's own `Program::agent`
+default (showcase's is `127.0.0.1:7654`; with neither set there is no
+endpoint), and the client and drive scripts read it too. `LUMEN_AGENT`
+still works for one release and prints a deprecation line.
+One window owns `LUMEN_AGENT_ADDR` (default
 `127.0.0.1:9230`; the gate uses `:9231` so it never talks to your dev
 window). **A window whose endpoint cannot bind exits with status 3**
 (M42/T42.1), naming the address — it used to keep running without an

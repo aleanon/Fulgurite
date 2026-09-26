@@ -38,6 +38,7 @@ static:
     ./scripts/check_ci_claims.sh        # no bare dependency/[[bin]] count in the justfile or ci.yml
     ./scripts/check_drive_coverage.sh   # M42: every exported widget is driven, or owed with an owner
     ./scripts/check_idle_citations.sh   # M47: a comment citing idle numbers cites a file that has them
+    ./scripts/check_agent_env.sh        # M48/T48.11: LUMEN_AGENT_ADDR is read by the window alone
     python3 scripts/ui_check.py selftest # M48/T48.3: an unmeasured app.perf is NOT MEASURED, not a pass
 
 # Default features == the shipped shape. This is the ONLY build that compiles

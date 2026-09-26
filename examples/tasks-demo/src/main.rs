@@ -324,11 +324,9 @@ fn program() -> Program<Demo> {
 }
 
 fn main() {
-    let mut program = program();
-    if let Ok(addr) = std::env::var("LUMEN_AGENT") {
-        program = program.agent(addr);
-    }
-    program.run();
+    // The endpoint's address is `LUMEN_AGENT_ADDR`, read by the window
+    // (M48/T48.11); unset, this window serves none.
+    program().run();
 }
 
 #[cfg(test)]
