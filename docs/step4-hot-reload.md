@@ -21,6 +21,18 @@ class. The demo printed PASS on the reference machine.*
   zero-row list, restore rebuilds each element with fresh code and saved
   data. Tested with the handoff's own 47-row example.
 
+> **Revised by M49** (`docs/plan-reload-hardening.md`). `fresh()` is gone
+> (T49.4): an application is rebuilt by its program's **boot**, in a
+> window swap and in `Host::reload` alike, and a container's fresh row is
+> `Default`. And a kept widget saves **only its user's half** (T49.5):
+> text and caret, values, scroll, open, selection, expansion, dividers —
+> never a label's text, a button's label, a fixed size or a repeater's
+> count and row height, which are code and must show an edit. The tree's
+> default mode is keep, so `#[tree] #[reload(fresh)]` is no longer the
+> taught pattern; `lumen-static-widgets`' `reload.rs` has the table, and
+> `crates/lumen-static-shell/tests/reload_widget_state.rs` a row per
+> widget (24 kept, 0 lost, where the taught pattern lost 23 of 23).
+
 ## Decisions (and two the handoff left open)
 
 ### Per-field fallback IS the §12.2 rule, generalized

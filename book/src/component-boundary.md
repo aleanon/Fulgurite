@@ -16,7 +16,7 @@ whole interface. This is the direct fix for the compile-time cost that
 [What it costs](./costs.md) lists — and without it, a very large
 application is unbuildable regardless of how fast it runs.
 
-**The hot-reload unit.** One dylib, one save/fresh/restore cycle, and it
+**The hot-reload unit.** One dylib, one save/boot/restore cycle, and it
 is fast because the rebuild is one crate rather than the world.
 
 **The erasure boundary.** Inside a component, `#[widget(fuse)]`

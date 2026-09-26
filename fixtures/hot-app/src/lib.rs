@@ -8,7 +8,10 @@
 //! - `status` is a `#[bind]` on the kept counter        → regenerated, not migrated
 //! - `FOOTER` text and the fresh `theme` differ         → fresh code wins
 //! - `Mode::Fancy` is deleted in v2                      → §12.2 fallback + log
-//! - user data (counter, title, rows, scroll) is kept    → survives the swap
+//! - user data (counter, typed title, rows, scroll) is kept → survives the swap
+//!   (M49/T49.5: the title is a `TextInput` a user types into, and the
+//!   row count is kept *data* the update step binds to the list; a
+//!   label's text and a repeater's count are the code's)
 //! - `cache_hits` is reset                               → recomputed after
 
 // The FFI safety contract is documented once at the extern-surface section.
@@ -16,6 +19,7 @@
 
 use lumen_static::display::{Cmd, Color};
 use lumen_static_widgets::ops::{Fixed, Label, Spacer};
+use lumen_static_widgets::TextInput;
 use lumen_static::reload;
 use lumen_static::repeat::Repeat;
 use lumen_static::{pass, App as DeriveApp, Constraints, NodeState, Reloadable as DeriveReloadable, StaticTree, Widget};
@@ -85,7 +89,7 @@ fn bind_row(item: &mut RowW, row: usize) {
 #[derive(StaticTree, DeriveReloadable)]
 #[widget(column, spacing = 2.0)]
 struct Ui {
-    title: Label, // nested keep: user's edits survive
+    title: TextInput<String>, // nested keep: what the user typed survives
     /// Derived from `Session.counter` by a `#[bind]` on that field, so it
     /// is regenerated after a swap rather than migrated. A binding is
     /// code: the new dylib supplies it, and nothing about it appears in
@@ -104,7 +108,7 @@ struct Ui {
 impl Default for Ui {
     fn default() -> Self {
         Ui {
-            title: Label::new("untitled"),
+            title: TextInput::new("untitled"),
             status: Label::default(),
             list: Repeat::new(0, 24.0, bind_row),
             check: CheckBox { mark: CHECK_MARK, ..Default::default() },
@@ -122,6 +126,10 @@ struct Session {
     counter: u32,
     #[reload(keep)]
     mode: Mode,
+    /// How many rows the list shows: data, kept, and bound to the list by
+    /// the update step (M49/T49.5 — a `Repeat` keeps only its scroll).
+    #[reload(keep)]
+    rows: usize,
     #[reload(fresh)]
     theme: &'static str,
     #[reload(reset)]
@@ -138,7 +146,7 @@ struct Session {
 /// because there is only one.
 impl Session {
     pub fn build() -> Self {
-        Session { ui: Ui::default(), counter: 0, mode: Mode::Basic, theme: THEME, cache_hits: 0 }
+        Session { ui: Ui::default(), counter: 0, mode: Mode::Basic, rows: 0, theme: THEME, cache_hits: 0 }
     }
 }
 
@@ -198,13 +206,13 @@ pub unsafe extern "C" fn hot_set_title(p: *mut c_void, ptr: *const u8, len: usiz
     // handed to `slice::from_raw_parts` (M49/T49.2, R4-F6).
     let bytes = unsafe { lumen_static_reload::raw::bytes(ptr, len) };
     if let Ok(s) = core::str::from_utf8(bytes) {
-        unsafe { session(p) }.ui.title.set(Box::leak(s.to_owned().into_boxed_str()));
+        unsafe { session(p) }.ui.title.set_str(s);
     }
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn hot_set_rows(p: *mut c_void, rows: usize) {
-    unsafe { session(p) }.ui.list.count = rows;
+    unsafe { session(p) }.rows = rows;
 }
 
 #[no_mangle]
@@ -291,6 +299,8 @@ fn frame(s: &mut Session) -> u64 {
     // loop calls this from `pump`; this fixture drives frames by hand
     // across an FFI boundary, so it calls it here.
     lumen_static::event::App::update(s);
+    // The list's count is bound from data here, as a `#[bind]` would.
+    s.ui.list.count = s.rows;
     let mut st = [NodeState::default(); Ui::NODE_COUNT];
     let sty = pass::default_styles(&s.ui);
     let c = Constraints { min_w: 0.0, max_w: 800.0, min_h: 0.0, max_h: 600.0 };

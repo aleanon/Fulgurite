@@ -355,10 +355,10 @@ impl Branch {
 /// between this and [`DataGrid`], whose rows it does not own at all.
 pub struct Tree {
     rows: [Branch; MAX_TREE_NODES],
-    count: usize,
+    pub(crate) count: usize,
     /// Whether each row is expanded. A row with no children is a leaf
     /// and this is ignored for it.
-    open: [bool; MAX_TREE_NODES],
+    pub(crate) open: [bool; MAX_TREE_NODES],
     /// The row the pointer is over.
     hot: Option<usize>,
     height: f32,

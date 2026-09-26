@@ -1162,12 +1162,18 @@ enum ReloadMode {
     Nested,
 }
 
-/// Emits `save` (keep fields as a JSON object), `fresh` (`Default`), and
-/// `restore` with per-field fallback: an incompatible or missing saved
-/// field keeps its fresh value and is logged — the §12.2 rule applied to
-/// every field, enum variants included. A fn pointer marked `keep` fails
-/// to compile (no `Serialize`), keeping §7's "Saved cannot contain code
-/// pointers" property structural.
+/// Emits `save` (keep fields as a JSON object) and `restore` with
+/// per-field fallback: an incompatible or missing saved field keeps its
+/// fresh value and is logged — the §12.2 rule applied to every field,
+/// enum variants included. A fn pointer marked `keep` fails to compile
+/// (no `Serialize`), keeping §7's "Saved cannot contain code pointers"
+/// property structural. No constructor: an application is built by its
+/// program's boot (M49/T49.4).
+///
+/// **On a widget enum** (M49/T49.5) — the shape `StaticTree` accepts,
+/// one widget per variant — it saves which variant shows, by name, and
+/// that variant's own state; a variant the new build lacks keeps the
+/// fresh one, logged.
 #[proc_macro_derive(Reloadable, attributes(reload))]
 pub fn derive_reloadable(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
@@ -1201,12 +1207,11 @@ fn expand_reloadable(input: DeriveInput) -> syn::Result<Ts2> {
     reject_generics(&input, "Reloadable")?;
     let name = &input.ident;
     let name_str = name.to_string();
+    if let Data::Enum(data) = &input.data {
+        return expand_reloadable_enum(name, &name_str, data);
+    }
     let Data::Struct(data) = &input.data else {
-        return Err(syn::Error::new_spanned(
-            &input.ident,
-            "Reloadable derives structs with named fields; enums travel as \
-             #[reload(keep)] serde data inside a struct",
-        ));
+        return Err(syn::Error::new_spanned(&input.ident, "Reloadable derives structs and widget enums, not unions"));
     };
     let Fields::Named(fields) = &data.fields else {
         return Err(syn::Error::new_spanned(&input.ident, "Reloadable needs named fields"));
@@ -1324,6 +1329,69 @@ fn expand_reloadable(input: DeriveInput) -> syn::Result<Ts2> {
                     return;
                 };
                 #(#restore_stmts)*
+            }
+        }
+    })
+}
+
+/// `#[derive(Reloadable)]` on a widget enum — M49/T49.5
+/// (`docs/plan-reload-hardening.md` §2.3).
+///
+/// The shape `StaticTree` accepts: each variant holds exactly one widget.
+/// It saves **which variant is showing, by name**, and that variant's own
+/// save; restore switches to the saved variant (built with `Default`, as
+/// every other fresh row is) and restores into it. A name the new build
+/// does not have keeps the fresh variant and logs it — the §12.2 rule a
+/// kept serde enum already follows. By name rather than index, so
+/// reordering the variants in an edit keeps the user's place.
+///
+/// Before T49.5 the derive refused enums, so a `StaticTree` enum could
+/// not sit inside a kept subtree at all.
+fn expand_reloadable_enum(name: &syn::Ident, name_str: &str, data: &syn::DataEnum) -> syn::Result<Ts2> {
+    let mut idents = Vec::new();
+    let mut tys = Vec::new();
+    for v in &data.variants {
+        let syn::Fields::Unnamed(f) = &v.fields else {
+            return Err(syn::Error::new_spanned(v, "a Reloadable enum's variants each hold one widget: `Variant(Widget)`"));
+        };
+        if f.unnamed.len() != 1 {
+            return Err(syn::Error::new_spanned(v, "a Reloadable enum's variants each hold exactly one widget"));
+        }
+        idents.push(v.ident.clone());
+        tys.push(f.unnamed[0].ty.clone());
+    }
+    let names: Vec<String> = idents.iter().map(|i| i.to_string()).collect();
+    Ok(quote! {
+        impl ::lumen_static::reload::Reloadable for #name {
+            fn save(&self) -> ::lumen_static::reload::Value {
+                match self {
+                    #(Self::#idents(w) => ::lumen_static::reload::json!({
+                        "variant": #names,
+                        "state": ::lumen_static::reload::Reloadable::save(w),
+                    }),)*
+                }
+            }
+            fn restore(&mut self, saved: &::lumen_static::reload::Value) {
+                let Some(variant) = saved.get("variant").and_then(::lumen_static::reload::Value::as_str) else {
+                    ::lumen_static::reload::log_fallback(#name_str, "<variant>", "saved state names no variant");
+                    return;
+                };
+                let state = saved.get("state").unwrap_or(&::lumen_static::reload::Value::Null);
+                match variant {
+                    #(#names => {
+                        if !matches!(self, Self::#idents(_)) {
+                            *self = Self::#idents(<#tys as ::core::default::Default>::default());
+                        }
+                        if let Self::#idents(w) = self {
+                            ::lumen_static::reload::Reloadable::restore(w, state);
+                        }
+                    })*
+                    other => ::lumen_static::reload::log_fallback(
+                        #name_str,
+                        "<variant>",
+                        &format!("variant `{other}` is not in this build"),
+                    ),
+                }
             }
         }
     })

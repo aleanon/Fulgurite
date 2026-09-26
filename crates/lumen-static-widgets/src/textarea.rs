@@ -52,7 +52,7 @@ use lumen_static::{Constraints, Point, Size};
 /// A wrapping, editable, multi-line text box.
 pub struct TextArea<S: TextBuffer = lumen_static::text::DefaultTextStorage> {
     text: S,
-    caret: usize,
+    pub(crate) caret: usize,
     /// The provisional text an input method is composing, as a byte
     /// range into `text` (M14/T14.8).
     ///

@@ -12,7 +12,7 @@ use lumen_static_shell::program::{application, Program};
 use lumen_static_widgets::prelude::*;
 use serde::{Deserialize, Serialize};
 
-#[derive(StaticTree, Default)]
+#[derive(StaticTree, Default, DeriveReloadable)]
 #[widget(column, spacing = 8.0)]
 pub struct Ui {
     #[widget_id("inc")]
@@ -30,7 +30,6 @@ pub struct Tally {
 #[derive(DeriveApp, DeriveReloadable)]
 pub struct Counter {
     #[tree]
-    #[reload(fresh)]
     pub ui: Ui,
     #[state]
     #[reload(keep)]

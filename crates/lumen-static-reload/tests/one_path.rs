@@ -42,7 +42,6 @@ pub struct Tally {
 #[derive(DeriveApp, lumen_static::Reloadable)]
 pub struct Counter {
     #[tree]
-    #[reload(fresh)]
     pub ui: Ui,
     #[state]
     #[reload(keep)]

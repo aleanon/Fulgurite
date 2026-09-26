@@ -56,7 +56,6 @@ fn build(v2: bool) -> Page {
 }
 
 #[test]
-#[ignore = "red until T49.5: R5-F1, a kept subtree restores what v1's code wrote"]
 fn a_swap_shows_the_new_codes_values_and_keeps_the_users() {
     let mut v1 = build(false);
     v1.count = 5;

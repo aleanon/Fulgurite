@@ -63,22 +63,19 @@ fn the_measure_cache_is_the_point() {
     assert!(!l.measure_is_warm(narrow, &sty[0], 1.0));
 }
 
+/// A label's text is **code** (M49/T49.5, R5-F1): a hot swap keeps what
+/// the new build wrote, not what the old one did. This test used to
+/// restore "user typed this" into a `Label<String>`; a text a user types
+/// is a `TextInput`'s, and one that changes at run time is `#[bind]`'s.
 #[test]
-fn owning_storage_reloads_without_leaking() {
-    let old: Label<String> = Label::new("user typed this".into());
+fn a_label_saves_nothing_so_the_new_codes_text_shows() {
+    let old: Label<String> = Label::new("v1's text".into());
     let saved = old.save();
-    drop(old);
+    assert_eq!(saved, Value::Null, "a label saved its text");
 
-    let mut fresh: Label<String> = Label::default();
+    let mut fresh: Label<String> = Label::new("v2's text".into());
     fresh.restore(&saved);
-    assert_eq!(fresh.as_str(), "user typed this");
-    // Restored through `TextStorage::from_string`, so `String` storage
-    // owns it — no `Box::leak` on this path any more.
-    assert_eq!(saved, Value::String("user typed this".into()));
-
-    // …and restoring marks it dirty, so the memo cannot serve a stale
-    // size for text that arrived behind the widget's back.
-    assert!(!fresh.measure_is_warm(VIEW, &lumen_static::Style::default(), 1.0));
+    assert_eq!(fresh.as_str(), "v2's text");
 }
 
 /// A tree holding a `Label` is `Sync`.
@@ -98,32 +95,20 @@ fn a_tree_with_text_is_send_and_sync() {
     assert_send_sync::<Measured>();
 }
 
-/// `Button` restores without leaking when its storage can own.
+/// A `Button` saves nothing and restores nothing — M49/T49.5.
 ///
-/// `Button::restore` used `Box::leak` unconditionally, with no comment,
-/// while `Label`'s two equivalent impls document theirs prominently. It
-/// leaked its label on every reload, and there was no non-leaking path
-/// because `Button` had no storage parameter at all
-/// (`docs/plan-review-fixes.md` F6.4).
+/// F6.4 made `Button::restore` stop leaking its label; T49.5 removed the
+/// restore altogether, because a button's label is code (R5-F1): after a
+/// swap it reads what the new build says, and nothing is leaked because
+/// nothing is restored.
 #[test]
-fn a_button_with_owned_storage_restores_without_leaking() {
+fn a_button_restores_nothing_so_nothing_leaks() {
     use lumen_static_widgets::ops::Button;
 
     struct App;
     let mut b: Button<App, String> = Button::default();
+    b.label = "Store".into();
+    assert_eq!(b.save(), Value::Null);
     b.restore(&Value::String("Save".into()));
-    assert_eq!(b.label, "Save");
-
-    // Restoring repeatedly reuses the owned buffer rather than leaking a
-    // new `&'static str` each time.
-    for i in 0..100 {
-        b.restore(&Value::String(format!("v{i}")));
-    }
-    assert_eq!(b.label, "v99");
-
-    // The default storage still exists and still leaks — deliberately,
-    // as a dev-only path, and now as a choice the type records.
-    let mut d: Button<App> = Button::default();
-    d.restore(&Value::String("Save".into()));
-    assert_eq!(d.label, "Save");
+    assert_eq!(b.label, "Store", "the new build's label stays");
 }

@@ -21,7 +21,20 @@ use lumen_static_widgets::prelude::*;
 
 fn no_bind(_: &mut Label, _: usize) {}
 
-#[derive(StaticTree, Default)]
+/// A widget enum: which variant is showing is the user's too.
+#[derive(StaticTree, lumen_static::Reloadable)]
+pub enum Page {
+    Home(Label),
+    Settings(Slider),
+}
+
+impl Default for Page {
+    fn default() -> Self {
+        Page::Home(Label::default())
+    }
+}
+
+#[derive(StaticTree, Default, lumen_static::Reloadable)]
 #[widget(column, spacing = 0.0)]
 pub struct Ui {
     pub text: TextInput<String>,
@@ -45,12 +58,15 @@ pub struct Ui {
     pub pages: Pagination,
     pub color: ColorPicker,
     pub editor: RichTextEditor,
+    pub page: Page,
 }
 
 #[derive(DeriveApp, lumen_static::Reloadable)]
 pub struct Probe {
+    /// The default mode, keep — what T49.5 teaches. T49.0 committed this
+    /// with the then-taught `#[reload(fresh)]`, under which 23 of 23
+    /// rows were lost with no line.
     #[tree]
-    #[reload(fresh)]
     pub ui: Ui,
     #[state]
     #[reload(keep)]
@@ -111,11 +127,11 @@ fn rows() -> Vec<Row> {
         Row { name: "Pagination.page", logs_as: "Pagination", read: |p| p.ui.pages.page().to_string(), change: |p| { p.ui.pages.go(4); } },
         Row { name: "Picker.color", logs_as: "Picker", read: |p| p.ui.color.pad.content.color.to_string(), change: |p| p.ui.color.pad.content.color = 3 },
         Row { name: "RichTextEditor.text", logs_as: "RichTextEditor", read: |p| p.ui.editor.input.as_str().to_string(), change: |p| p.ui.editor.input.set_str("# notes") },
+        Row { name: "enum variant + state", logs_as: "Page", read: |p| match &p.ui.page { Page::Home(_) => "Home".into(), Page::Settings(s) => format!("Settings {}", s.value()) }, change: |p| { let mut s = Slider::default(); s.set_value(0.25); p.ui.page = Page::Settings(s); } },
     ]
 }
 
 #[test]
-#[ignore = "red until T49.5: R5-F2, a swap drops what the user did and logs nothing"]
 fn every_widget_keeps_its_users_state_or_says_it_did_not() {
     let rows = rows();
     let mut v1 = build();

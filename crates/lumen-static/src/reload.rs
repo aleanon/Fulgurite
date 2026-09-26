@@ -83,37 +83,27 @@ pub fn take_log() -> Vec<String> {
 // ---- framework impls --------------------------------------------------------
 
 
-/// §12.4, decided for now: the materialized window is disposable — it
-/// re-binds from data every frame, so only the *logical* state (count,
-/// scroll position, extent) is worth keeping. `bind` is code and comes
-/// from the fresh dylib untouched.
+/// **The scroll, and only the scroll** — M49/T49.5
+/// (`docs/plan-reload-hardening.md` §2.3).
+///
+/// §12.4 decided the materialized window is disposable: it re-binds from
+/// data every frame. It also kept `count` and `item_extent`, and both
+/// are the **code's**: the build says how tall a row is, and the next
+/// update's binding sets the count from the application's data. Kept,
+/// an edited row height never appeared after a swap (R5-F1). `bind` is
+/// code and comes from the new build untouched.
 impl<T: Widget + Default + 'static> Reloadable for Repeat<T> {
     fn save(&self) -> Value {
-        json!({ "count": self.count, "scroll": self.scroll, "item_extent": self.item_extent })
+        json!({ "scroll": self.scroll })
     }
     fn restore(&mut self, saved: &Value) {
-        match saved.get("count").and_then(Value::as_u64) {
-            Some(c) => self.count = c as usize,
-            None => log_fallback("Repeat", "count", "missing or not an integer"),
-        }
+        // Saved state is the one input the core does not write itself, so
+        // it is the one place a value has to be checked rather than
+        // trusted (`docs/plan-review-fixes.md` F1.4).
         match saved.get("scroll").and_then(Value::as_f64) {
             Some(s) if (s as f32).is_finite() => self.scroll = (s as f32).max(0.0),
             Some(_) => log_fallback("Repeat", "scroll", "not finite"),
             None => log_fallback("Repeat", "scroll", "missing or not a number"),
-        }
-        // Saved state is the one input the core does not write itself, so
-        // it is the one place a value has to be checked rather than
-        // trusted. A subnormal extent overflowed `visible_range`'s cast;
-        // a small one asked for hundreds of millions of rows from 40
-        // bytes of JSON (`docs/plan-review-fixes.md` F1.4).
-        match saved.get("item_extent").and_then(Value::as_f64) {
-            Some(e) if (e as f32) >= Repeat::<T>::MIN_ITEM_EXTENT => self.item_extent = e as f32,
-            Some(e) => log_fallback(
-                "Repeat",
-                "item_extent",
-                &format!("{e} is below MIN_ITEM_EXTENT; keeping the fresh value"),
-            ),
-            None => log_fallback("Repeat", "item_extent", "missing or not a number"),
         }
     }
 }

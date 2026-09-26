@@ -564,6 +564,21 @@ enums; `docs/plan-window-reload.md` §2.4.
 R5-F6 gate (a restore must mark, or the live step reads last frame's
 text under `Boundaries`; M41 fixes `adopt` there if its arm is red).
 
+> **Built 2026-09-26.** 24 rows, all kept: the 23 of T49.0's table plus a
+> widget enum, which the derive now accepts (saved **by variant name**,
+> not index, so reordering variants in an edit keeps the user's place).
+> `Fixed` saves nothing as well: its size is code. Containers save their
+> children under their own keys. `Repeat`'s count and row height come
+> from the build, so F1.4's hostile-extent tests became "a saved extent
+> or count is not read at all". Two fixtures kept what had become code:
+> `fixtures/hot-app`'s user-renamed title is now a `TextInput`, and its
+> row count kept data the update binds to the list;
+> `tests/reload_oracle.rs`'s restore arm (M41's) restored a `Label` to
+> change pixels, and now restores a `TextInput` — its injection (no
+> mark in `reasked`) still fires, 14,688 px. **The live step waits for
+> M42** (drive identity); `just hot-window-drive` was run as a
+> regression check and passed.
+
 ### T49.6 — a failed save keeps the fresh value
 
 **Closes:** R5-F3.

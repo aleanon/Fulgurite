@@ -378,7 +378,7 @@ fn main() {
     // keep: user state survived
     expect(&after, "counter=3", "keep: counter");
     expect(&after, "title='renamed by user'", "keep: nested title");
-    expect(&after, "rows=47", "keep: repeater count (fresh gave 0, restore gave 47)");
+    expect(&after, "rows=47", "keep: the row count, kept as data and bound to the list (T49.5)");
     expect(&after, "scroll=240", "keep: scroll position");
     // fresh: the edited code won
     expect(&after, "footer='footer-v2'", "fresh: new footer");

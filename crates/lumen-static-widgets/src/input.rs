@@ -63,7 +63,7 @@ pub struct TextInput<S: TextBuffer = lumen_static::text::DefaultTextStorage> {
     text: S,
     /// Caret position as a byte offset into `text`. Always on a `char`
     /// boundary — every path that moves it steps by clusters.
-    caret: usize,
+    pub(crate) caret: usize,
     /// The provisional text an input method is composing, as a byte
     /// range into `text` (M14/T14.8).
     ///

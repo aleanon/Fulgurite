@@ -265,8 +265,11 @@ mod restore {
     #[derive(StaticTree, Default, DeriveReloadable)]
     #[widget(column, spacing = 6.0)]
     struct RUi {
+        /// A `TextInput`, so the restore changes pixels: since M49/T49.5 a
+        /// `Label`'s text is code and is not restored, and a restore that
+        /// changed nothing visible would compare two identical frames.
         #[widget_id("title")]
-        title: Label<String>,
+        title: TextInput<String>,
         #[widget_id("go")]
         go: Button<Kept, String>,
         #[widget_id("foot")]
@@ -284,7 +287,7 @@ mod restore {
     impl Kept {
         fn build() -> Self {
             let mut a = Kept { ui: RUi::default(), clicks: 0 };
-            a.ui.title.set("before the restore".into());
+            a.ui.title.set_str("before the restore");
             a.ui.go.label = "go".into();
             a.ui.go.on_click = |s: &mut Kept, _: &EventCtx| s.clicks += 1;
             a.ui.foot.set("foot".into());
@@ -339,7 +342,7 @@ mod restore {
         // What a swap carries across: the kept state of a session whose
         // tree says something else.
         let mut other = Kept::build();
-        other.ui.title.set("a title the saved session had".into());
+        other.ui.title.set_str("a title the saved session had");
         other.clicks = 4;
         let saved = other.save();
         e.restore(&saved);

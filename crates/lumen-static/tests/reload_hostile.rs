@@ -5,9 +5,15 @@
 //! `item_extent` came back unchecked: a subnormal cleared the `<= 0.0`
 //! guard and overflowed `visible_range`'s `as usize + 1` **inside the
 //! core**, and `1e-6` with a large `count` asked for hundreds of
-//! millions of instances from forty bytes of JSON. The three
-//! `log_fallback` arms in `Repeat::restore` had never executed.
+//! millions of instances from forty bytes of JSON.
 //! `docs/plan-review-fixes.md` F1.4.
+//!
+//! **Since M49/T49.5 a saved `count` or `item_extent` is not read at
+//! all**: both are the build's (a row height is code, and the count comes
+//! from the next update's binding), so `Repeat` saves and restores only
+//! its scroll. The hostile values below must therefore change nothing,
+//! which is a stronger answer than F1.4's range check; `visible_range`'s
+//! own clamp is still tested, because a caller can set the field.
 //!
 //! Hand-written JSON throughout — that is the point.
 
@@ -34,10 +40,10 @@ struct Ui {
 
 const VIEW: Constraints = Constraints { min_w: 0.0, max_w: 400.0, min_h: 0.0, max_h: 600.0 };
 
-/// Restore the given saved value, lay out a full frame, and report the
-/// window size that survived.
+/// A list the build made with 1000 rows of 24 px; restore hostile saved
+/// state onto it, lay out a full frame, and report the window size.
 fn restore_and_lay_out(count: serde_json::Value, extent: serde_json::Value) -> usize {
-    let mut ui = Ui { list: Repeat::new(0, 24.0, noop_bind) };
+    let mut ui = Ui { list: Repeat::new(1000, 24.0, noop_bind) };
     ui.list.restore(&json!({ "count": count, "scroll": 0.0, "item_extent": extent }));
     let sty = pass::default_styles(&ui);
     let mut st = [NodeState::default(); Ui::NODE_COUNT];
@@ -46,16 +52,18 @@ fn restore_and_lay_out(count: serde_json::Value, extent: serde_json::Value) -> u
 }
 
 #[test]
-fn a_subnormal_extent_does_not_overflow_the_window_calculation() {
-    // 1e-40 is > 0.0, so it cleared the old guard; the division then
-    // saturated the cast and `+ 1` overflowed. Now it is rejected at
-    // restore, which under §7's per-field fallback means the field keeps
-    // the *fresh* value — so the frame lays out normally rather than
-    // degrading, and the rejection is visible in the log.
-    let _ = take_log();
-    let w = restore_and_lay_out(json!(1000), json!(1e-40));
-    assert_eq!(w, 26, "the fresh 24px extent was kept, so the frame is ordinary");
-    assert!(take_log().iter().any(|l| l.contains("item_extent")), "and it is logged");
+fn a_saved_extent_or_count_is_not_read_at_all() {
+    for (count, extent) in [
+        (json!(1000), json!(1e-40)),
+        (json!(u32::MAX), json!(1e-6)),
+        (json!(1000), json!(0.0)),
+        (json!(1000), json!(-1.0)),
+        (json!(1000), json!(1e-7)),
+        (json!(u32::MAX), json!(24.0)),
+    ] {
+        let w = restore_and_lay_out(count.clone(), extent.clone());
+        assert_eq!(w, 26, "count {count}, extent {extent}: the build's 1000 x 24 px frame, window {w}");
+    }
 }
 
 #[test]
@@ -76,27 +84,6 @@ fn visible_range_itself_is_bounded_even_if_a_bad_extent_reaches_it() {
 }
 
 #[test]
-fn a_tiny_extent_cannot_ask_for_a_hundred_million_rows() {
-    let _ = take_log();
-    let w = restore_and_lay_out(json!(u32::MAX), json!(1e-6));
-    assert!(w <= Repeat::<Row>::MAX_WINDOW, "window {w} is capped");
-    assert!(take_log().iter().any(|l| l.contains("item_extent")));
-}
-
-#[test]
-fn every_out_of_domain_extent_is_rejected_and_logged() {
-    for bad in [json!(0.0), json!(-1.0), json!(1e-40), json!(1e-7)] {
-        let _ = take_log();
-        let w = restore_and_lay_out(json!(1000), bad.clone());
-        assert!(w <= Repeat::<Row>::MAX_WINDOW, "{bad}: window {w}");
-        assert!(
-            take_log().iter().any(|l| l.contains("item_extent")),
-            "{bad}: rejection must be visible in the log"
-        );
-    }
-}
-
-#[test]
 fn a_non_finite_scroll_is_rejected() {
     // NaN and infinity are not representable in JSON, so they arrive as
     // an overflowing float literal instead.
@@ -108,19 +95,9 @@ fn a_non_finite_scroll_is_rejected() {
 }
 
 #[test]
-fn a_huge_count_with_a_sane_extent_still_works_and_stays_bounded() {
-    let w = restore_and_lay_out(json!(u32::MAX), json!(24.0));
-    assert!(w > 0, "a big list still renders");
-    assert!(w <= Repeat::<Row>::MAX_WINDOW);
-}
-
-#[test]
 fn ordinary_saved_state_is_unaffected() {
     let _ = take_log();
     let w = restore_and_lay_out(json!(1000), json!(24.0));
     assert_eq!(w, 26, "600px viewport / 24px rows, plus the partial one");
-    assert!(
-        !take_log().iter().any(|l| l.contains("item_extent")),
-        "a good value logs nothing"
-    );
+    assert!(take_log().is_empty(), "a good value logs nothing");
 }

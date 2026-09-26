@@ -35,6 +35,39 @@ constant or a new field is `fresh`; a cache is `reset`, because carrying
 a cache across a code change is how you get a stale answer that looks
 plausible.
 
+## What a widget keeps: its user's half
+
+The tree is kept by default, and a kept widget saves **exactly what a
+user can change, and nothing the code set**. An edit to a button's label,
+a static label or a row height shows after the swap; what the user
+typed, scrolled, opened or chose survives it:
+
+| widget | keeps |
+|---|---|
+| `TextInput`, `TextArea`, `SearchField`, `RichTextEditor` | the text and the caret |
+| `Slider`, `RangeSlider`, `NumberInput` | the value |
+| `ScrollView`, `Repeat`, `DataGrid` | the scroll |
+| `Popup`, `Veil` (`Modal`, `Sheet`, `Drawer`), `Collapsible` | whether it is open |
+| `Strip` (`Tabs`, …), `Chooser` (`PickList`, …), `Pagination`, `Picker` | the selection |
+| `Tree` | which rows are expanded |
+| `SplitPane`, `PaneGrid` | where the dividers are |
+| `Toggle` | on or off |
+| a widget enum (`#[derive(StaticTree, Reloadable)]`) | which variant shows, and its state |
+| `Button`, `Label`, `Fixed`, `Spacer` | nothing: they are code |
+
+A container keeps its children's halves too. A `Repeat`'s row count is
+not kept: it comes from the next update's binding, from your data. Each
+row's fallback — a saved value this build cannot use — keeps the fresh
+value and is logged, and in a window the bar shows the log.
+
+**One consequence, if your application is not split** (M33's `#[state]`):
+a handler that writes a label's text directly writes *code's* half, and
+after a swap the label reads what the build says again. Text that changes
+at run time belongs in `#[bind]`, whose source is state and is kept. A
+split application cannot write the tree from a handler, so it loses
+nothing. (`crates/lumen-static-shell/tests/reload_widget_state.rs` has a
+row per widget above; `reload_code_data.rs` checks the code half.)
+
 ## Code pointers cannot be kept, structurally
 
 A `fn` pointer or a vtable marked `#[reload(keep)]` **fails to compile** —
@@ -70,9 +103,9 @@ carries across. The application needs three things.
 # use lumen_static::style::{Length, Patch, Rule, Selector};
 # use lumen_static_widgets::prelude::*;
 # use lumen_static_shell::program::{application, Program};
-# #[derive(StaticTree, Default)] #[widget(column)] pub struct Ui { #[widget_id("inc")] inc: Button<Tally>, value: Label<String> }
+# #[derive(StaticTree, Default, DeriveReloadable)] #[widget(column)] pub struct Ui { #[widget_id("inc")] inc: Button<Tally>, value: Label<String> }
 # #[derive(Default)] pub struct Tally { count: i64 }
-# #[derive(DeriveApp, DeriveReloadable)] pub struct Counter { #[tree] #[reload(fresh)] ui: Ui, #[state] #[reload(reset)] #[bind(ui.value, count, "count {}")] tally: Tally }
+# #[derive(DeriveApp, DeriveReloadable)] pub struct Counter { #[tree] ui: Ui, #[state] #[reload(reset)] #[bind(ui.value, count, "count {}")] tally: Tally }
 # fn boot() -> Counter { Counter { ui: Ui::default(), tally: Tally::default() } }
 # fn main() { let p = program(); assert_eq!(p.width, 320); }
 {{#include ../../fixtures/hot-window/src/lib.rs:program}}
@@ -120,8 +153,8 @@ reload costs and why the boundary is borrowed rather than copied.
 `fixtures/hot-app` and `just hot-demo` still run the same cycle headless,
 with no window. They assert each clause in turn:
 
-- a counter, a renamed title, a repeater's row count and a scroll
-  position are kept;
+- a counter, a title the user typed, a row count kept as data, and a
+  scroll position are kept;
 - a new field comes fresh, and a cache is recomputed;
 - an enum variant removed in the new code falls back to the fresh
   value, and **logs** it.
@@ -173,7 +206,7 @@ caught, what is kept, and what is not recovered.
 
 ## Why the boundary matters
 
-A reload is one dylib and one save/fresh/restore cycle, and it is fast
+A reload is one dylib and one save/boot/restore cycle, and it is fast
 because the rebuild is one crate. That is the same seam as the compile
 firewall, the erasure dial and the observability namespace — see [The
 component boundary](./component-boundary.md), which is where the argument

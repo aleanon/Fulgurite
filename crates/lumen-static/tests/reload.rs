@@ -4,6 +4,7 @@
 //! schema change (§12.2 generalized), and the no-code-pointers property.
 
 use lumen_static_widgets::ops::{Fixed, Label, Spacer};
+use lumen_static_widgets::TextInput;
 use lumen_static::reload::{take_log, Reloadable, Value};
 use lumen_static::repeat::Repeat;
 use lumen_static::{Reloadable as DeriveReloadable, StaticTree};
@@ -22,6 +23,9 @@ struct Header {
     title: Label,
     gap: Spacer,
     badge: Fixed,
+    /// The one field here a user changes (M49/T49.5: a widget saves its
+    /// user's half; the title and the badge's size are the code's).
+    query: TextInput<String>,
 }
 
 #[derive(DeriveReloadable, Default)]
@@ -41,8 +45,9 @@ struct Session {
 
 fn user_session() -> Session {
     let mut s = Session::default();
-    s.header.title.set("renamed by user");
+    s.header.title.set("written by v1's code");
     s.header.badge.w = 99.0;
+    s.header.query.set_str("typed by user");
     s.counter = 3;
     s.mode = Mode::Fancy;
     s.names = vec!["a".into(), "b".into()];
@@ -65,8 +70,9 @@ fn keep_fresh_reset_semantics() {
     assert_eq!(fresh.counter, 3, "keep");
     assert_eq!(fresh.mode, Mode::Fancy, "keep enum");
     assert_eq!(fresh.names, vec!["a".to_owned(), "b".to_owned()], "keep vec");
-    assert_eq!(fresh.header.title.as_str(), "renamed by user", "nested keep");
-    assert_eq!(fresh.header.badge.w, 99.0, "nested keep leaf");
+    assert_eq!(fresh.header.query.as_str(), "typed by user", "nested keep: what the user typed");
+    assert_eq!(fresh.header.title.as_str(), "", "nested: a label's text is the new code's (T49.5)");
+    assert_eq!(fresh.header.badge.w, Fixed::default().w, "nested: a fixed size is the new code's (T49.5)");
     assert_eq!(fresh.theme, "new-theme", "fresh: new code wins");
     assert_eq!(fresh.cache_hits, 0, "reset: recomputed from zero");
     assert!(take_log().is_empty(), "clean restore logs nothing");
@@ -80,7 +86,7 @@ fn incompatible_fields_fall_back_per_field_and_log() {
         "counter": "not a number",          // type change
         "mode": "Baroque",                  // removed/unknown variant
         // "names" missing: field added in the new build
-        "header": { "title": "kept title", "badge": { "w": 7.0, "h": 7.0 } },
+        "header": { "title": null, "gap": null, "badge": null, "query": { "text": "kept query", "caret": 3 } },
     });
     let mut s = Session::default();
     s.counter = 11;
@@ -90,7 +96,8 @@ fn incompatible_fields_fall_back_per_field_and_log() {
     assert_eq!(s.counter, 11, "type-changed field keeps fresh value");
     assert_eq!(s.mode, Mode::Basic, "unknown variant keeps fresh value (§12.2)");
     assert!(s.names.is_empty(), "missing field keeps fresh value");
-    assert_eq!(s.header.title.as_str(), "kept title", "unaffected fields still restore");
+    assert_eq!(s.header.query.as_str(), "kept query", "unaffected fields still restore");
+    assert_eq!(s.header.query.caret(), 3);
 
     let log = take_log();
     assert!(log.iter().any(|l| l.contains("Session.counter")), "log: {log:?}");
@@ -100,10 +107,10 @@ fn incompatible_fields_fall_back_per_field_and_log() {
 
 #[test]
 fn vec_of_widgets_arity_comes_from_saved_data() {
-    let mut rows: Vec<Label> = Vec::new();
+    let mut rows: Vec<TextInput<String>> = Vec::new();
     assert!(rows.is_empty(), "an empty list is the zero-row list");
     let saved = Value::Array(
-        (0..47).map(|i| Value::String(format!("row {i}"))).collect(),
+        (0..47).map(|i| serde_json::json!({ "text": format!("row {i}"), "caret": 0 })).collect(),
     );
     rows.restore(&saved);
     assert_eq!(rows.len(), 47, "…and restore gives back all 47 (§7)");
@@ -111,16 +118,18 @@ fn vec_of_widgets_arity_comes_from_saved_data() {
 }
 
 #[test]
-fn repeat_keeps_logical_state_and_drops_the_window() {
+fn repeat_keeps_the_scroll_and_takes_the_rest_from_the_build() {
     let mut old = Repeat::<Header>::new(10_000, 24.0, lumen_static::repeat::noop_bind);
     old.scroll = 612.0;
     let saved = old.save();
 
-    let mut fresh = Repeat::<Header>::default();
+    // M49/T49.5: the count and the row height are the build's (the next
+    // update's binding sets the count from data); the scroll is the user's.
+    let mut fresh = Repeat::<Header>::new(9_000, 30.0, lumen_static::repeat::noop_bind);
     fresh.restore(&saved);
-    assert_eq!(fresh.count, 10_000, "keep: data size");
+    assert_eq!(fresh.count, 9_000, "the build's count");
     assert_eq!(fresh.scroll, 612.0, "keep: the user's place in the list");
-    assert_eq!(fresh.item_extent, 24.0, "keep");
+    assert_eq!(fresh.item_extent, 30.0, "the build's row height");
     assert_eq!(fresh.window_len(), 0, "window is disposable (§12.4 decision)");
 }
 

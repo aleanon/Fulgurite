@@ -124,6 +124,10 @@ serde error.** The application keeps running on the new code. Nothing
 is refused, because refusing the swap would trap the user on the old
 code with a field they have already changed.
 
+*(M49: what "kept" means for the tree was settled later — a widget
+keeps only what a user can change (T49.5), and a kept struct restores
+field by field (T49.7); `docs/plan-reload-hardening.md` §2.3.)*
+
 ### 2.5 Retired libraries are leaked in v1
 
 hot_ice unloads a retired library once its async worker has drained.
