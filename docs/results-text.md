@@ -208,3 +208,36 @@ Injections: copy whenever the modifier is held (the nothing-focused and
 no-selection rows fire, 2 wrong); the `selection` forward removed (copy
 `None`); the `compose` override removed (`"12"` refused); the filter
 removed (`"ab"` accepted, `"0.0012ab"`).
+
+## T45.10 — shaping without the quadratics (R16-F7)
+
+Two changes in `FontStack::shape_into`, measured separately: a line
+cursor that advances with the glyph index instead of a search per glyph,
+and caller offsets walked in step with the glyphs instead of a
+`position` and an `nth` per glyph. Clusters for seven texts (empty
+lines, a trailing newline, wrapped prose, substitution, a multi-face
+run) are byte-identical before and after both.
+
+`tests/textarea_scale.rs`, ratio of minima of five keystroke+layout
+timings (bound 25; linear ≈ 10):
+
+| build | plain 20 → 200 KB | substituted 2 → 20 KB |
+|---|---|---|
+| before | 59.5 | 93.2 |
+| line cursor only | **11.1** | 94.2 |
+| both | **10.1** | **10.1** |
+| both, the line search restored | 53.6 | 18.2 |
+| both, the per-glyph remap restored | 10.3 | 92.4 |
+
+`--bin textarea`, keystroke plus layout with the system face, the median
+of each run's median, eight runs a side interleaved under the bench lock
+(LOADED, load average 6–8):
+
+| size | before | after |
+|---|---|---|
+| 1 KB | 0.059 ms | 0.058 ms |
+| 100 KB | 34.8 ms | **5.4 ms** |
+| 1 MB | not run (minutes) | 82.2 ms |
+
+§5's kill rule: a 100 KB keystroke is inside a 16.7 ms frame, so no
+paragraph cache.

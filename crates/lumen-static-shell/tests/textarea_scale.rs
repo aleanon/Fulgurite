@@ -101,7 +101,6 @@ fn ratio(font: &FontStack, name: &str, small: usize, extra: Option<char>) -> f64
 }
 
 #[test]
-#[ignore = "red until T45.10: R16-F7, two quadratics in shape_into"]
 fn a_keystroke_scales_linearly_with_the_document() {
     let font = FontStack::from_bytes(pinned::bytes(), None).expect("the pinned face parses");
     // Substitution must actually run in the second arm, or it measures

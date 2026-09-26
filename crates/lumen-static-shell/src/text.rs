@@ -554,36 +554,39 @@ impl FontStack {
         let (faces, prepared) = self.prepare(text, weight);
         let laid: &str = &prepared;
         let layout = Self::run(&faces, laid, px, max_w);
-        // A multi-face run was appended as segments, and fontdue counts a
-        // glyph's byte offset from its segment's start. fontdue emits one
-        // glyph per character, so the laid-out text's own character
-        // offsets, in order, are the glyphs' offsets.
-        let starts: Vec<usize> = match faces {
-            Faces::One(..) => Vec::new(),
-            Faces::Many(..) => laid.char_indices().map(|(i, _)| i).collect(),
-        };
+        // **Offsets in the caller's string, by walking it in step** —
+        // M45/T45.10, R16-F7. fontdue emits one glyph per character of
+        // the laid-out text, and substitution and a face split are both
+        // one character for one, so glyph `n`'s offset is the caller's
+        // `n`th character's. Two cases need it: a substituted run, whose
+        // laid-out copy has different byte lengths (`\u{2212}` is three,
+        // `-` one, so the copy's offsets would put a caret mid-character),
+        // and a multi-face run, which fontdue counts from each segment's
+        // start. This used to find each glyph's character with a
+        // `position` and an `nth` over the whole text, glyphs × chars:
+        // one substituted glyph anywhere made a 20 KB keystroke cost 94
+        // times a 2 KB one (`docs/results-text.md` T45.10). A borrowed,
+        // one-face run keeps fontdue's own offset, which is already the
+        // caller's.
+        let step = matches!(prepared, Cow::Owned(_)) || matches!(faces, Faces::Many(..));
+        let mut caller = text.char_indices().map(|(i, _)| i);
 
-        // Offset in the laid-out copy → offset in the caller's string.
-        // Identity in the common case; a lookup table only when the
-        // fallback path ran.
-        let remap = |b: usize| -> u32 {
-            if matches!(prepared, Cow::Borrowed(_)) {
-                return b as u32;
+        // **A cursor, not a search** — M45/T45.10, R16-F7. Lines and
+        // glyphs are both in order, so a glyph's line is the current one
+        // or a later one. This searched every line for every glyph, glyphs
+        // × lines, and a keystroke in a 200 KB area cost 60 times one in
+        // 20 KB (`docs/results-text.md` T45.10). An empty line's range is
+        // backwards (its end before its start) and is stepped over; a
+        // glyph in no line reports line 0, as the search did.
+        let lines = layout.lines().map_or(&[][..], |l| l.as_slice());
+        let mut li = 0usize;
+        let mut line_of = |gi: usize| -> u16 {
+            while li < lines.len() && gi > lines[li].glyph_end {
+                li += 1;
             }
-            match laid.char_indices().position(|(i, _)| i == b) {
-                Some(n) => text.char_indices().nth(n).map(|(i, _)| i as u32).unwrap_or(b as u32),
-                None => text.len() as u32,
-            }
-        };
-
-        let lines = layout.lines();
-        let line_of = |gi: usize| -> u16 {
-            match lines {
-                Some(ls) => {
-                    ls.iter().position(|l| gi >= l.glyph_start && gi <= l.glyph_end).unwrap_or(0)
-                        as u16
-                }
-                None => 0,
+            match lines.get(li) {
+                Some(l) if gi >= l.glyph_start => li as u16,
+                _ => 0,
             }
         };
 
@@ -592,10 +595,10 @@ impl FontStack {
             let adv = faces.get(g.font_index).0.metrics_indexed(g.key.glyph_index, px).advance_width;
             let line = line_of(gi);
             if !sink.is_full() {
-                // The segment's offset plus the glyph's within it: fontdue
-                // counts from the start of the text it was appended.
-                let b = starts.get(gi).copied().unwrap_or(g.byte_offset);
-                sink.cluster(Cluster { byte: remap(b), x: g.x, line });
+                let byte = if step { caller.next().unwrap_or(text.len()) } else { g.byte_offset };
+                sink.cluster(Cluster { byte: byte as u32, x: g.x, line });
+            } else if step {
+                caller.next();
             }
             end = (g.x + adv, line);
         }

@@ -22,6 +22,16 @@
 //! through [`TextBuffer`], so `insert_str` and `remove_range` are
 //! written once.
 //!
+//! # The size it is built for
+//!
+//! A note, a message, a form's comment box — not a document editor.
+//! Every edit reshapes the whole value, which is linear in its length:
+//! about 0.06 ms at 1 KB, 5 ms at 100 KB and 82 ms at 1 MB with the
+//! system face (`docs/results-text.md` T45.10, `--bin textarea`). Until
+//! M45/T45.10 it was quadratic, 35 ms at 100 KB. Past a few hundred KB a
+//! keystroke misses a frame; a paragraph cache is what would change that,
+//! and nothing here has one.
+//!
 //! # Still not here
 //!
 //! No selection and no IME, for the same reasons as the single-line

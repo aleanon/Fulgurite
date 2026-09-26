@@ -772,6 +772,13 @@ under the bound.
 it is built for). `crates/lumen-static/src/cx.rs:93-99` (accurate; add
 the per-edit cost). The results doc.
 
+*What building found (2026-09-26).* The "table built in one pass" is
+not needed: fontdue emits one glyph per character and substitution is
+one character for one, so the caller's offsets are its own
+`char_indices`, walked in step with the glyphs. The same walk also
+serves T45.3's multi-face runs, whose glyphs fontdue counts from each
+segment's start. The bench arm is `--bin textarea`.
+
 **Effort:** S. **Depends on:** T45.1 (it edits `shape_into` first).
 
 ### T45.11 — a TextArea paints what is visible

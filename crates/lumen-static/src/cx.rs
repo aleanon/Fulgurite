@@ -98,6 +98,12 @@ pub trait TextMeasure {
     /// rather than returning a buffer is what keeps it allocation-free
     /// (T7.2b).
     ///
+    /// **Once per edit is once per edit of the whole text.** A `TextArea`
+    /// reshapes its whole value on every keystroke, which is linear —
+    /// about 5 ms at 100 KB with `FontMetrics` since M45/T45.10 removed two
+    /// quadratics from it (`docs/results-text.md` T45.10) — and is what a
+    /// paragraph cache would bound, if a document size ever needs one.
+    ///
     /// The default measures and reports nothing, so a stand-in stays
     /// usable: a caller that gets no clusters falls back to the run's
     /// size, which is what `BlockMetrics` deserves.
