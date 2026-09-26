@@ -1,6 +1,40 @@
 # M48 — the agent says what is true, and costs nothing when unused
 
-> **Written 2026-09-24, not started.** Closes R12-F3, R13-F1, R13-F2,
+> **T48.0–T48.14 DONE 2026-09-27**, except `input.compose`'s live leg,
+> which waits for M41/T41.2b. §6 records what building found.
+>
+> - **T48.0** — every finding red at `826c7c3`: nine checks committed
+>   `#[ignore]`d or unwired; the live rows red in their own tasks.
+> - **T48.1** — a reply's `frame` is `Agent::reply_frame` (the journal's
+>   next); clicks 2–5 went 0 → 1 change. `input.paste` (M45) too.
+> - **T48.2** — `ui.waitSettled` from the host, `null` when it cannot
+>   say; pending from M47/T47.3's ledger less running subscriptions.
+> - **T48.3** — `app.perf` fills from the presented frame; unmeasured is
+>   `null` and NOT MEASURED, not 0 ns. Live frame p50 ~40 µs.
+> - **T48.4** — a repainting action with no damage fails the drive;
+>   presented px printed beside the journal ratio; three defects fixed.
+> - **T48.5** — one serialiser, `observe::node_json`: fields 0 → 6 / 6,
+>   dump and `ui.getTree` byte-identical.
+> - **T48.6** — `ui.resolve` carries them; nine widgets gained `observe`
+>   (11 generic → 2, both allowed).
+> - **T48.7** — stand-ins by structure (`Node::node_count`, required):
+>   nested wrappers `live` all true, 1/1 changes.
+> - **T48.8** — `frame_done` allocations 4.04 → 0.00, asserted.
+> - **T48.9** — core `observe` without the widgets' does not compile;
+>   it found the shell's, winit's and stamp-lib's graphs.
+> - **T48.10** — a diverging replay is `Diverged { step }`; the sheet is
+>   checked; an export asserts every step and a final tree digest.
+> - **T48.11** — `LUMEN_AGENT_ADDR`, read by the window alone; 8 → 0
+>   readers (and glasswall's, after the rebase).
+> - **T48.12** — no endpoint, no journal (3 → 0 of 3 frames); 0 agent
+>   symbols without the feature (66 with).
+> - **T48.13** — `app.quit` in every window (exits in 7–32 ms, status 0,
+>   every drive); `input.compose` headless — **live leg waits for
+>   M41/T41.2b**.
+> - **T48.14** — code, skill and book: 33 / 33 / 33, checked in
+>   `static`.
+
+> **Written 2026-09-24.** Closes R12-F3, R13-F1, R13-F2,
 > R13-F3, R13-F4, R13-F5, R13-F6, R13-F8, R13-F9, R13-F10, R13-F11,
 > R14-F4, R14-F8 and R15-F10, from M38's deep review
 > (`docs/results-deep-review.md`) as re-triaged against `1717808` on
