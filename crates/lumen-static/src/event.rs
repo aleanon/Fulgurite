@@ -467,6 +467,9 @@ pub struct InputState {
     /// focus move clears that one node rather than every node.
     #[doc(hidden)]
     pub focus_published: Option<u32>,
+    /// For each open overlay, the focus it opened over — M44/T44.9. A
+    /// dismissal returns focus there (`pass::settle_overlays`).
+    pub overlay_return: [Option<(u32, Option<u32>)>; 4],
 }
 
 /// The item a press landed on — [`InputState::press`].

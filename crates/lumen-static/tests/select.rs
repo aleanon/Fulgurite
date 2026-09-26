@@ -303,7 +303,6 @@ fn tab_enter_down_down_enter_chooses_row_one() {
 /// dismissal must reach the application (`on_dismiss`), or the next
 /// binding reopens the controlled `Select`.
 #[test]
-#[ignore = "red until T44.9: R3-F7 (Tab while a menu is open loses focus and leaves it open)"]
 fn tab_while_the_menu_is_open_closes_it_and_keeps_focus() {
     use lumen_static::Key;
     let mut f = Fx::new(5);

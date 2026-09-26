@@ -244,6 +244,20 @@ pub trait Node {
         None
     }
 
+    /// Whether this overlay is **modal**: Tab is trapped inside it —
+    /// M44/T44.9 (`docs/plan-input-semantics.md` §2.3).
+    ///
+    /// `false` by default. A modal answers `true` (`Veil`, and a `Popup`
+    /// whose `modal` field is set); a menu answers `false` and is
+    /// dismissed by Tab; a passive overlay — one whose
+    /// [`dismissal_consumes_press`](Node::dismissal_consumes_press) is
+    /// `false`, a tooltip — lets Tab through. Asked of the overlay node
+    /// itself, like that method, so it is a leaf's answer and never a
+    /// wrapper's to forward.
+    fn is_modal(&self) -> bool {
+        false
+    }
+
     /// One step of an input-method composition (T14.8).
     ///
     /// `false` from a node that does not edit text, which is what lets

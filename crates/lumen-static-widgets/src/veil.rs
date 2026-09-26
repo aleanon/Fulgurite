@@ -289,6 +289,11 @@ impl<W: Widget, const KIND: u8> Node for Veil<W, KIND> {
         self.panel.paint(st, i + Self::AT, out);
     }
 
+    /// A veil is modal by definition: Tab stays on it (M44/T44.9).
+    fn is_modal(&self) -> bool {
+        true
+    }
+
     fn hit(&self, st: &[NodeState], i: usize, x: f32, y: f32) -> Option<lumen_static::Hit> {
         if !self.open || !lumen_static::hit::contains(&st[i], x, y) {
             return None;

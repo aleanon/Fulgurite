@@ -785,6 +785,12 @@ Two decisions worth the argument:
   because an application that must confirm before discarding cannot undo
   a close that already happened — the same take-don't-read shape as
   `PullToRefresh::take_triggered`.
+- **A veil is modal, and says so** (M44/T44.9, 2026-09-26). `Veil`
+  answers `Node::is_modal`, so Tab is trapped on it while every other
+  overlay lets Tab go: a menu is dismissed by Tab, a tooltip is passed.
+  And the focus a veil opened over comes back when its application
+  closes it — until then Escape left focus on a panel button with no
+  area.
 
 **A modal's panel is capped at 80% of the window.** Found by a test whose
 panel was a plain `Button`: `FILL` measured to the whole window, so there

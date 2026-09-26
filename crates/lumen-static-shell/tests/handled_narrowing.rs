@@ -6,7 +6,8 @@
 //! every way an event can change the tree without a binding: a
 //! `TextInput` taking characters and arrows (beside a button, so the
 //! arrow-group rule is in play, M44/T44.1), a `Slider` moving on a track press, two
-//! overlays closed by one press outside, a drag from one button to
+//! overlays closed by one press outside, Tab past an open select
+//! (M44/T44.9), a drag from one button to
 //! another that activates neither (M44/T44.2), a slider hidden mid-drag
 //! that stops tracking (M44/T44.3), a tap by touch (M44/T44.4), and a
 //! button whose handler
@@ -257,6 +258,26 @@ fn a_click_driven_session_narrows_and_draws_the_same_frames() {
         !p.b.app.ui.picks.s1.is_open() && !p.b.app.ui.picks.s2.is_open(),
         "setup: one press outside did not close both"
     );
+
+    // 3a. Tab with a controlled Select open closes it (M44/T44.9): the
+    // dismissal reaches the application through `tell_owner`, so its
+    // `open` is false and the next frame's binding does not reopen it.
+    p.e.app.store.a_open = true;
+    p.b.app.store.a_open = true;
+    p.step("open the first select", |_| {});
+    p.step("(settle)", |_| {});
+    assert!(p.b.app.ui.picks.s1.is_open(), "setup: the first select did not open");
+    p.step("Tab with the select open", |post| post(Event::Key { key: lumen_static::Key::Tab, down: true }));
+    p.step("(the binding runs again)", |_| {});
+    println!(
+        "    open in the app {} (expected false); open on screen {} (expected false); focus {:?}",
+        p.b.app.store.a_open,
+        p.b.app.ui.picks.s1.is_open(),
+        p.b.input.focus
+    );
+    assert!(!p.b.app.store.a_open, "Tab closed the menu without telling the application");
+    assert!(!p.b.app.ui.picks.s1.is_open(), "the binding reopened the menu Tab closed");
+    assert!(p.b.input.focus.is_some(), "Tab past a menu set focus to None");
 
     // 3b. A drag from one button to another activates neither
     // (M44/T44.2), and the press shade clears under `Boundaries` as it

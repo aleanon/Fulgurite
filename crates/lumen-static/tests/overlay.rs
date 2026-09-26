@@ -359,6 +359,11 @@ use lumen_static_widgets::{TextInput};
         let mut a = App::default();
         a.ui.modal.open = true;
         a.ui.modal.anchor = lumen_static_widgets::Anchor::Over;
+        // **Modal, said so** (M44/T44.9). Only a modal traps Tab now; a
+        // `Popup` is also a menu's and a tooltip's primitive, so it traps
+        // only when asked. Without this line the dialog is a menu, and
+        // Tab dismisses it instead.
+        a.ui.modal.modal = true;
         let sty = pass::default_styles(&a.ui);
         let mut st = [NodeState::default(); Ui::NODE_COUNT];
         pass::layout(&mut a.ui, &sty, &mut st, VIEW);

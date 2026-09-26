@@ -1391,6 +1391,13 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         let mut handled = false;
         let mut consumed = pass::Consumed::default();
         let before = PointerFocus::of(&self.input);
+        // **Focus back from an overlay that closed without input** —
+        // M44/T44.9. A `Veil` is closed by its application, after the
+        // Escape that asked; the frame that dropped it from the overlay
+        // list asked for this one (below, after paint), and here the
+        // focus it opened over comes back — inside `before`/`after`, so
+        // T25.0's marks redraw both nodes.
+        pass::settle_overlays(&self.app, &self.styles, &mut self.states, &mut self.input, &self.overlays);
         while let Some(ev) = self.queue.pop() {
             handled |= self.dispatch_now(&ev, &mut consumed);
             // **The primary touch drives the pointer** — M44/T44.4
@@ -1653,6 +1660,9 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             pass::paint_overlaid(self.app.tree(), &self.states, &mut out, &mut self.overlays);
         }
         self.last_paint_ns = t1.elapsed().as_nanos() as u64;
+        // An overlay opened or closed this frame: the next frame records
+        // or returns focus for it (T44.9), so ask for one.
+        self.more_deferred |= pass::overlays_unsettled(&self.input, &self.overlays);
 
         // What this frame changed. Retention has already seen every
         // command; this closes the frame. Free under `Rebuild`.

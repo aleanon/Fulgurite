@@ -289,11 +289,18 @@ fn overlaid<S: crate::event::App, O: crate::overlay::OverlaySink>(
         return dispatch_at(state, style, st, input, ev, None, consumed);
     }
 
-    // Escape closes the topmost overlay and stops there.
+    // Record the focus each newly painted overlay opened over, and
+    // return focus from any overlay that has closed since (T44.9).
+    settle_overlays(state, style, st, input, ov);
+
+    // Escape closes the topmost overlay and stops there — and focus goes
+    // back to where it was when the overlay opened (M44/T44.9). It used
+    // to be cleared, so a keyboard user who closed a menu had to Tab
+    // from the top of the window again.
     if matches!(ev, Event::Key { key: Key::Escape, down: true }) && !ov.is_empty() {
         let top = ov.at(ov.len() - 1) as usize;
         if state.tree_mut().node_mut(top).dismiss() {
-            input.focus = None;
+            input.focus = take_return(state, style, st, input, top as u32);
             consumed.push(top);
             tell_owner(state, top, ev, input);
             return true;
@@ -315,6 +322,9 @@ fn overlaid<S: crate::event::App, O: crate::overlay::OverlaySink>(
                 // press: if every overlay this closed was passive, the
                 // press goes on to ordinary dispatch below.
                 let mut consumes_press = false;
+                // Topmost first, so the focus the *bottom* overlay opened
+                // over is the one that is kept (T44.9).
+                let mut back = input.focus;
                 for k in (0..ov.len()).rev() {
                     let i = ov.at(k) as usize;
                     let consumes = state.tree().node(i).dismissal_consumes_press();
@@ -322,10 +332,11 @@ fn overlaid<S: crate::event::App, O: crate::overlay::OverlaySink>(
                         consumes_press |= consumes;
                         consumed.push(i);
                         tell_owner(state, i, ev, input);
+                        back = take_return(state, style, st, input, i as u32);
                     }
                 }
                 if consumes_press {
-                    input.focus = None;
+                    input.focus = back;
                     input.swallow_release = true;
                     return true;
                 }
@@ -333,15 +344,66 @@ fn overlaid<S: crate::event::App, O: crate::overlay::OverlaySink>(
         }
     }
 
-    // Tab is trapped inside the topmost overlay. A modal that lets Tab
-    // walk out to the window behind it is a modal a keyboard user
-    // cannot use, and it is the half of "modal" that is not painting.
+    // **Tab and the topmost overlay** — M44/T44.9
+    // (`docs/plan-input-semantics.md` §2.3). Three kinds, three answers:
+    //
+    // - a **modal** (`Node::is_modal`) traps Tab: a modal that lets Tab
+    //   walk out to the window behind it is one a keyboard user cannot
+    //   use. The trap never sets focus to `None`: a modal with nothing
+    //   focusable keeps focus where it is.
+    // - a **menu** (not modal, not passive) is dismissed through the path
+    //   Escape takes — `tell_owner` runs, so a controlled `Select` clears
+    //   its `open` — focus returns to where it was, and Tab moves on from
+    //   there, skipping the closed menu's own nodes.
+    // - a **passive** overlay (a tooltip) is not Tab's business: Tab
+    //   passes through as if it were not there.
+    //
+    // This trapped Tab in the topmost overlay of *any* kind, so Tab while
+    // a tooltip showed set focus to `None` (R3-F7).
     if matches!(ev, Event::Key { key: Key::Tab, down: true }) && !ov.is_empty() {
         let top = ov.at(ov.len() - 1) as usize;
         let table = <S::Tree as crate::widget::Widget>::SUB_TABLE;
         let span = crate::style::subtree_range(table, top);
-        input.focus = next_focusable_in(table, st, style, input.focus, span);
-        return true;
+        let back = input.mods.has(crate::event::Mods::SHIFT);
+        let node = state.tree().node(top);
+        if node.is_modal() {
+            let to = if back {
+                prev_focusable_in(table, st, style, input.focus, span)
+            } else {
+                next_focusable_in(table, st, style, input.focus, span)
+            };
+            if to.is_some() {
+                input.focus = to;
+            }
+            input.focus_visible = true;
+            return true;
+        }
+        if node.dismissal_consumes_press() && state.tree_mut().node_mut(top).dismiss() {
+            consumed.push(top);
+            tell_owner(state, top, ev, input);
+            input.focus = take_return(state, style, st, input, top as u32);
+            // The closed menu is still laid out until the next frame, so
+            // the walk steps over its nodes rather than into them.
+            let step = |f: Option<u32>| {
+                if back {
+                    prev_focusable(table, st, style, f)
+                } else {
+                    next_focusable(table, st, style, f)
+                }
+            };
+            let mut to = step(input.focus);
+            for _ in 0..table.len() {
+                match to {
+                    Some(x) if span.contains(&(x as usize)) => to = step(Some(x)),
+                    _ => break,
+                }
+            }
+            if to.is_some_and(|x| !span.contains(&(x as usize))) {
+                input.focus = to;
+            }
+            input.focus_visible = true;
+            return true;
+        }
     }
 
     // Otherwise ordinary dispatch, with overlays taking pointer hits
@@ -942,6 +1004,110 @@ fn press_is_within(
         }
         j = table[j].parent as usize;
     }
+}
+
+/// **Where focus goes back to when overlays open and close** —
+/// M44/T44.9 (`docs/plan-input-semantics.md` §2.3).
+///
+/// For each overlay in `ov` that has no record yet, records the focus it
+/// opened over. For each record whose overlay is no longer in `ov` — it
+/// was closed by something other than the pass, as a `Veil` is closed by
+/// its application — drops the record, and if focus was inside that
+/// overlay or is gone (C5), returns it: to the recorded node if that is
+/// still on screen, else to the overlay's owner if the owner can take
+/// focus. A focus the user moved elsewhere is left alone.
+///
+/// The pass calls this at the start of every overlaid dispatch; a host
+/// that paints calls it at the start of a frame as well, so a veil its
+/// application closed hands focus back without waiting for input.
+/// Returns whether focus changed, and publishes the change into `st`
+/// when it did. Four records are kept, which is four
+/// overlays open at once; past that an overlay opens with no record, and
+/// closing it keeps whatever focus is then.
+pub fn settle_overlays<S: crate::event::App, O: crate::overlay::OverlaySink>(
+    state: &S,
+    style: &[Style],
+    st: &mut [NodeState],
+    input: &mut crate::event::InputState,
+    ov: &O,
+) -> bool {
+    let table = <S::Tree as crate::widget::Widget>::SUB_TABLE;
+    let open = |o: u32| (0..ov.len()).any(|k| ov.at(k) == o);
+    let before = input.focus;
+    for k in 0..input.overlay_return.len() {
+        let Some((o, back)) = input.overlay_return[k] else { continue };
+        if open(o) {
+            continue;
+        }
+        input.overlay_return[k] = None;
+        let span = crate::style::subtree_range(table, o as usize);
+        let lost = input.focus.is_some_and(|f| span.contains(&(f as usize)) || gone(table.len(), style, st, f as usize));
+        if lost {
+            input.focus = return_target(table, style, st, back, o);
+        }
+    }
+    for k in 0..ov.len() {
+        let o = ov.at(k);
+        if input.overlay_return.iter().flatten().any(|&(r, _)| r == o) {
+            continue;
+        }
+        if let Some(slot) = input.overlay_return.iter_mut().find(|s| s.is_none()) {
+            *slot = Some((o, input.focus));
+        }
+    }
+    let _ = state;
+    let moved = input.focus != before;
+    if moved {
+        publish_focus(st, input);
+    }
+    moved
+}
+
+/// Whether [`settle_overlays`] has anything to do for `ov`: an overlay
+/// with no record, or a record whose overlay closed. A host asks after
+/// painting, and wants another frame when this is `true`.
+pub fn overlays_unsettled<O: crate::overlay::OverlaySink>(input: &crate::event::InputState, ov: &O) -> bool {
+    let open = |o: u32| (0..ov.len()).any(|k| ov.at(k) == o);
+    input.overlay_return.iter().flatten().any(|&(o, _)| !open(o))
+        || (0..ov.len()).any(|k| {
+            let o = ov.at(k);
+            !input.overlay_return.iter().flatten().any(|&(r, _)| r == o)
+        }) && input.overlay_return.iter().any(|s| s.is_none())
+}
+
+/// Drop overlay `o`'s record and answer where focus returns to — the
+/// pass's own dismissals (Escape, a press outside, Tab past a menu).
+fn take_return<S: crate::event::App>(
+    state: &S,
+    style: &[Style],
+    st: &[NodeState],
+    input: &mut crate::event::InputState,
+    o: u32,
+) -> Option<u32> {
+    let table = <S::Tree as crate::widget::Widget>::SUB_TABLE;
+    let _ = state;
+    let back = match input.overlay_return.iter_mut().find(|s| s.is_some_and(|(r, _)| r == o)) {
+        Some(slot) => slot.take().and_then(|(_, b)| b),
+        None => None,
+    };
+    return_target(table, style, st, back, o)
+}
+
+/// The recorded focus if it is still on screen and not inside the
+/// overlay, else the overlay's owner if it can take focus, else nothing.
+fn return_target(
+    table: &[crate::desc::NodeDesc],
+    style: &[Style],
+    st: &[NodeState],
+    back: Option<u32>,
+    overlay: u32,
+) -> Option<u32> {
+    let span = crate::style::subtree_range(table, overlay as usize);
+    if let Some(b) = back.filter(|&b| !span.contains(&(b as usize)) && !gone(table.len(), style, st, b as usize)) {
+        return Some(b);
+    }
+    let owner = table.get(overlay as usize).map(|d| d.parent)?;
+    (owner != crate::desc::NO_PARENT && focusable(table, st, style, owner as usize)).then_some(owner)
 }
 
 /// **Tell a dismissed overlay's owner** — M33/T33.3.

@@ -115,6 +115,24 @@ not the agent's `#id` selectors. `Select` stamps
 `select::PART_TRIGGER`, `PART_POPUP` and `PART_MENU`, namespaced so they
 cannot collide with an application's own ids.
 
+## Tab, Escape, and where focus goes
+
+Overlays are not all alike to the keyboard, so the pass asks the topmost
+one what it is (M44):
+
+* a **modal** traps Tab — `Veil` always, and a `Popup` whose `modal`
+  field is set. A dialog that lets Tab walk out to the window behind it
+  is one a keyboard user cannot use.
+* a **menu** — neither modal nor passive — is *dismissed* by Tab, through
+  the same path Escape takes, so the owner hears about it (a controlled
+  `Select` clears its `open`), and Tab moves on from where focus was.
+* a **passive** overlay, a tooltip, is not Tab's business at all.
+
+When an overlay opens, the pass records the focus it opened over; when
+it closes — by Escape, by a press outside, by Tab, or by its application
+— focus goes back there, or to the overlay's owner if that node is gone.
+Before this, Escape cleared focus and Tab over a tooltip lost it.
+
 ## What `Host` does with all this
 
 `Host::pump` paints through `paint_overlaid` and routes input through

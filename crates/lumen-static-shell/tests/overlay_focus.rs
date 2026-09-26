@@ -115,7 +115,6 @@ fn tab_from_first_with_nothing_open() -> Option<u32> {
 }
 
 #[test]
-#[ignore = "red until T44.9: R3-F7 (a tooltip traps Tab and focus becomes None)"]
 fn tab_passes_through_an_open_tooltip() {
     let expected = tab_from_first_with_nothing_open();
     assert_eq!(expected, Some(tipped_button()), "setup: Tab from first reaches the tipped button");
@@ -142,7 +141,6 @@ fn tab_passes_through_an_open_tooltip() {
 }
 
 #[test]
-#[ignore = "red until T44.9: R3-F7 (focus is not returned to the trigger)"]
 fn escape_from_a_modal_returns_focus_to_its_trigger() {
     let mut h = host();
     h.input.focus = Some(idx("trigger"));

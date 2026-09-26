@@ -54,6 +54,12 @@ pub struct Popup<W: Widget> {
     /// from the control it explains. `false` (consuming) by default,
     /// which is what a menu wants (M33/T33.3).
     pub passive: bool,
+    /// A **modal** popup traps Tab inside itself — a dialog. `false` by
+    /// default, which is what a menu and a tooltip want: Tab dismisses a
+    /// menu and passes a tooltip by (M44/T44.9). `Popup` is the general
+    /// overlay primitive, so it cannot answer for every use; a `Veil` is
+    /// always modal.
+    pub modal: bool,
     /// The content's measured size, kept from `layout` so `place` can
     /// position it. The same reason `ScrollView` keeps its overflow:
     /// `place` does not re-measure.
@@ -67,6 +73,7 @@ impl<W: Widget + Default> Default for Popup<W> {
             open: false,
             anchor: Anchor::default(),
             passive: false,
+            modal: false,
             measured: Size::default(),
         }
     }
@@ -77,7 +84,7 @@ impl<W: Widget> Popup<W> {
     const AT: usize = 1;
 
     pub fn new(content: W) -> Self {
-        Popup { content, open: false, anchor: Anchor::default(), passive: false, measured: Size::default() }
+        Popup { content, open: false, anchor: Anchor::default(), passive: false, modal: false, measured: Size::default() }
     }
 }
 
@@ -205,6 +212,10 @@ impl<W: Widget> Node for Popup<W> {
 
     fn dismissal_consumes_press(&self) -> bool {
         !self.passive
+    }
+
+    fn is_modal(&self) -> bool {
+        self.modal
     }
 
     fn node(&self, i: usize) -> &dyn Node {
