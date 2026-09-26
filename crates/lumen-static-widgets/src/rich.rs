@@ -189,6 +189,15 @@ impl RichText {
 const LINE: f32 = 1.45;
 /// A bullet's indent and its dot's radius.
 const BULLET_X: f32 = 14.0;
+/// How far below the line box's middle a bullet's centre sits, in ems —
+/// M57/B7. The renderer centres a run's *capitals* in its line box
+/// (`cap_shift` in `lumen-static-shell`'s text module), so the middle of a
+/// lower-case letter is below it by half of cap height less x-height:
+/// (0.714 − 0.536) / 2 em for Noto Sans, plus the 0.08 em the run's box
+/// sits below the dot's box here. The dot was centred on the box and read
+/// 2.5 px high at 15 px; `tests/markdown_bullet.rs` in the shell checks
+/// the dot against a rasterised `x`, since this is a fact about ink.
+const BULLET_DROP: f32 = 0.17;
 /// Padding around a `code` chip.
 const CHIP: f32 = 3.0;
 
@@ -257,6 +266,10 @@ impl Node for RichText {
             self.measured_under = key;
         }
         let (mut x, mut y) = (0.0f32, 0.0f32);
+        // **A wrapped bullet hangs** (M57/B7): its continuation lines
+        // start under its text, not under the dot. Set by a bullet span,
+        // cleared by the next line break.
+        let mut hang = 0.0f32;
         let mut line_h = me.font_size * LINE;
         self.lines = if self.count == 0 { 0 } else { 1 };
         for k in 0..self.count {
@@ -267,19 +280,23 @@ impl Node for RichText {
             let lead = if s.bullet { BULLET_X } else { 0.0 };
             if s.br && k > 0 {
                 x = 0.0;
+                hang = 0.0;
                 y += line_h;
                 line_h = size * LINE;
                 self.lines += 1;
-            } else if x > 0.0 && x + w > inner {
+            } else if x > hang && x + w > inner {
                 // Wraps *between* spans: a span is a word and never
                 // breaks inside itself.
-                x = 0.0;
+                x = hang;
                 y += line_h;
                 line_h = size * LINE;
                 self.lines += 1;
             }
             line_h = line_h.max(size * LINE);
             self.placed[k] = (x + lead, y, w);
+            if s.bullet {
+                hang = x + lead;
+            }
             x += lead + w + gap;
         }
         let content =
@@ -311,7 +328,7 @@ impl Node for RichText {
             let size = s.font_size * sp.scale;
             let h = size * LINE;
             if sp.bullet {
-                let mid = y0 + y + h / 2.0;
+                let mid = y0 + y + h / 2.0 + size * BULLET_DROP;
                 out.rounded_rect(
                     [x0 + x - BULLET_X + 2.0, mid - 2.0, x0 + x - BULLET_X + 6.0, mid + 2.0],
                     s.fg,
