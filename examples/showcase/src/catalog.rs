@@ -551,11 +551,20 @@ pub static CATALOG: &[Entry] = &[
         false,
         |s| on(s, Demo::Tree(DTree { a: Tree::new(&TREE_ROWS) })),
         none),
-    entry!("Data", "DataGrid", "A header over virtualized rows.",
+    entry!("Data", "DataGrid", "A header over virtualized rows; press one.",
         false,
         |s| on(s, Demo::DataGrid(DDataGrid {
-            a: DataGrid::new(&["Name", "Size"], 200, 24.0, grid_row) })),
-        none),
+            a: {
+                let mut g = DataGrid::new(&["Name", "Size"], 200, 24.0, grid_row);
+                // Sizes are numbers: the header sits over them at the end
+                // of its column, where `EndCell` puts them (B51).
+                g.align[1] = lumen_static::style::Align::End;
+                g
+            } })),
+        |s| match s.store.grid_row {
+            Some(r) => format!("selected: file-{r:03}.rs"),
+            None => "selected: none".into(),
+        }),
 ];
 
 /// The series the charts share, so the three demos are comparable.

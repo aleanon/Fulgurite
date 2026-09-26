@@ -250,6 +250,22 @@ GRID = ("DataGrid", "#d_datagrid_a", [
             c.c.rpc("input.scroll", x=4.0, y=4.0, dy=-240.0))[0],
         injection="make DataGrid::hit answer with its own node instead of the rows",
     ),
+    # M57/B51: a press on a row selects it. The row is a target whatever
+    # its cells are -- they are labels, which decline a hit, so a press
+    # on a row reached nothing.
+    Action(
+        name="a press on a row selects it",
+        needs="a grid with rows on screen and nothing selected yet",
+        do=lambda c: (c.__dict__.__setitem__("_r0", c.readout()),
+                      c.c.rpc("input.click", x=(c.box()[0] + c.box()[2]) / 2,
+                              y=c.box()[1] + 28 + 24 * 1.5))[0],
+        expect=lambda c: (
+            c.readout() != c._r0 and c.readout().startswith("selected: file-"),
+            f"readout {c._r0!r} -> {c.readout()!r}",
+        ),
+        isolate=lambda c: (c.__dict__.__setitem__("_r0", c.readout()), c.click_outside())[0],
+        injection="drop the row-band fallback in Repeat::hit, or select_rows",
+    ),
 ])
 
 ALL = [PAGINATION, TREE, GRID]

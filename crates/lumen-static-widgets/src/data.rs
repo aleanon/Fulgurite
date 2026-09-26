@@ -822,19 +822,30 @@ pub const PART_ROWS: &str = "grid-rows";
 /// it in would be a second copy to keep in step. That is the opposite
 /// call from `Chooser`, which owns its options, and the reason is the
 /// same in both: who the data belongs to.
+///
+/// # Rows as a table — M57/B51
+///
+/// The rows hover and select (`Repeat::hover_rows` and `select_rows`,
+/// switched on here), [`DataGrid::take_selected`] reports a press on a
+/// row once — the grid has no application-state parameter for a handler,
+/// and a control *inside* a row still gets its press — a wheel over the
+/// header scrolls the rows, a thumb shows while they overflow, rows are
+/// separated by hairlines, and a column's header can align to its end
+/// ([`DataGrid::align`]) to sit over numbers the application right-aligns
+/// in its own cells.
 pub struct DataGrid<R: Widget + Default + 'static> {
     columns: [&'static str; MAX_COLUMNS],
     column_count: usize,
     pub rows: lumen_static::repeat::Repeat<R>,
+    /// Each column header's alignment: `Start` or `End`.
+    pub align: [lumen_static::style::Align; MAX_COLUMNS],
+    /// Each header's measured width, for an `End` header.
+    header_w: [f32; MAX_COLUMNS],
 }
 
 impl<R: Widget + Default + 'static> Default for DataGrid<R> {
     fn default() -> Self {
-        DataGrid {
-            columns: [""; MAX_COLUMNS],
-            column_count: 0,
-            rows: lumen_static::repeat::Repeat::new(0, 24.0, |_, _| {}),
-        }
+        DataGrid::new(&[], 0, 24.0, |_, _| {})
     }
 }
 
@@ -859,10 +870,15 @@ impl<R: Widget + Default + 'static> DataGrid<R> {
         row_extent: f32,
         bind: fn(&mut R, usize),
     ) -> Self {
+        let mut rows = lumen_static::repeat::Repeat::new(count, row_extent, bind);
+        rows.hover_rows = true;
+        rows.select_rows = true;
         let mut g = DataGrid {
             columns: [""; MAX_COLUMNS],
             column_count: 0,
-            rows: lumen_static::repeat::Repeat::new(count, row_extent, bind),
+            rows,
+            align: [lumen_static::style::Align::Start; MAX_COLUMNS],
+            header_w: [0.0; MAX_COLUMNS],
         };
         for (i, c) in columns.iter().take(MAX_COLUMNS).enumerate() {
             g.columns[i] = c;
@@ -893,6 +909,16 @@ impl<R: Widget + Default + 'static> DataGrid<R> {
 
     pub fn columns(&self) -> usize {
         self.column_count
+    }
+
+    /// The row a press selected since the last call — and clears it.
+    pub fn take_selected(&mut self) -> Option<usize> {
+        self.rows.take_selected()
+    }
+
+    /// The selected row, drawn with the current-row tint.
+    pub fn selected(&self) -> Option<usize> {
+        self.rows.current
     }
 
     pub fn column(&self, i: usize) -> &'static str {
@@ -994,6 +1020,11 @@ impl<R: Widget + Default + Node + 'static> Node for DataGrid<R> {
             max_h: (s.h - Self::HEADER).max(0.0),
         };
         self.rows.layout(cx, body, style, st, i + Self::ROWS);
+        for k in 0..self.column_count {
+            if self.align[k] == lumen_static::style::Align::End {
+                self.header_w[k] = cx.text.measure_weighted(self.columns[k], me.font_size, me.font_weight, f32::INFINITY).w;
+            }
+        }
         lumen_static::ops::record_painted(st, i, limits, s, &me)
     }
 
@@ -1018,7 +1049,10 @@ impl<R: Widget + Default + Node + 'static> Node for DataGrid<R> {
         if self.column_count > 0 {
             let each = self.column_width(r[2] - r[0]);
             for k in 0..self.column_count {
-                let x = r[0] + Self::CELL_INSET + each * k as f32;
+                let mut x = r[0] + Self::CELL_INSET + each * k as f32;
+                if self.align[k] == lumen_static::style::Align::End {
+                    x += (each - self.header_w[k]).max(0.0);
+                }
                 out.text_weighted(
                     [x, r[1] + Self::HEADER / 2.0 - s.font_size * 0.6,
                      x + each, r[1] + Self::HEADER],
@@ -1034,16 +1068,59 @@ impl<R: Widget + Default + Node + 'static> Node for DataGrid<R> {
                      Color(s.fg.0, s.fg.1, s.fg.2, 0x33));
         }
         self.rows.paint(st, i + Self::ROWS, out);
+        // Hairlines between rows (M57/B51), clipped to the body: one per
+        // boundary the viewport shows, following the scroll.
+        let b = lumen_static::ops::rect_of(&st[i + Self::ROWS]);
+        // The thumb, in the grid's right inset beside the rows, while
+        // they overflow: its length the viewport's share of the content,
+        // its position the scroll's.
+        let content = self.rows.count as f32 * self.rows.item_extent;
+        let view = b[3] - b[1];
+        if content > view + 0.5 && view > 0.0 {
+            let len = (view * view / content).max(24.0).min(view);
+            let y = b[1] + (view - len) * (self.rows.scroll / (content - view)).clamp(0.0, 1.0);
+            let x = b[2] + (Self::CELL_INSET - 4.0) / 2.0;
+            out.rounded_rect([x, y + 2.0, x + 4.0, y + len - 2.0], Color(s.fg.0, s.fg.1, s.fg.2, 0x70), 2.0);
+        }
+        let ext = self.rows.item_extent;
+        if ext > 0.0 && b[3] > b[1] {
+            out.push_clip(b);
+            let c = Color(s.fg.0, s.fg.1, s.fg.2, 0x22);
+            let first = (self.rows.scroll / ext) as usize + 1;
+            let mut k = first;
+            while k < self.rows.count {
+                let y = b[1] + k as f32 * ext - self.rows.scroll;
+                if y > b[3] {
+                    break;
+                }
+                out.rect([b[0], y - 0.5, b[2], y + 0.5], c);
+                k += 1;
+            }
+            out.pop_clip();
+        }
     }
 
     fn hit(&self, st: &[NodeState], i: usize, x: f32, y: f32) -> Option<lumen_static::Hit> {
         if !lumen_static::hit::contains(&st[i], x, y) {
             return None;
         }
-        // The rows first; the header is not a target (sorting is not
-        // built, and a header that swallowed a press would be one that
-        // did nothing).
-        self.rows.hit(st, i + Self::ROWS, x, y)
+        // The rows first. The header answers as the grid itself, so a
+        // wheel over it reaches `on_event` and scrolls the rows (M57/B51);
+        // it takes no press (sorting is not built).
+        self.rows.hit(st, i + Self::ROWS, x, y).or(Some(lumen_static::Hit {
+            node: i as u32,
+            inner: None,
+            local: Point { x: x - st[i].pos.x, y: y - st[i].pos.y },
+        }))
+    }
+
+    /// A wheel over the header scrolls the rows (M57/B51): it scrolled
+    /// nothing, since only the rows' own box took a wheel.
+    fn on_event(&mut self, ev: &Event, cx: &EventCtx) -> bool {
+        match ev {
+            Event::Scroll { .. } if cx.target == cx.node => self.rows.on_event(ev, cx),
+            _ => false,
+        }
     }
 
     fn node(&self, k: usize) -> &dyn Node {

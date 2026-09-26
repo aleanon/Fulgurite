@@ -325,6 +325,8 @@ pub struct Store {
     /// The toast demo: a show request, and how many were shown (B34).
     toast_request: bool,
     toasts: u32,
+    /// The data grid's selected row, taken from the grid (B51).
+    grid_row: Option<usize>,
 }
 
 /// After every pump: rebuild the demos whose state lives in the store,
@@ -456,6 +458,13 @@ fn refresh(s: &mut Show) -> bool {
         let shown = d.a.content.t.is_shown();
         if d.a.open != shown {
             d.a.open = shown;
+            changed = true;
+        }
+    }
+    // A press on a grid row, taken once (M57/B51).
+    if let Demo::DataGrid(d) = &mut s.ui.main.stage.row.demo {
+        if let Some(r) = d.a.take_selected() {
+            s.store.grid_row = Some(r);
             changed = true;
         }
     }

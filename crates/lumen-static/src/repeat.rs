@@ -109,6 +109,18 @@ pub struct Repeat<T: Widget + Default + 'static> {
     pub highlight: Option<usize>,
     /// A row drawn as the current choice, tinted more faintly (M57/B21).
     pub current: Option<usize>,
+    /// **Opt-in row behaviour** for a list that is a table — M57/B51.
+    /// `hover_rows` tints the row under the pointer (from `Hover` with
+    /// the row the hit resolved to; `Leave` clears it); `select_rows`
+    /// makes a press set `current` and flag it for `take_selected`,
+    /// *without* consuming the press, so a control inside the row still
+    /// gets it. With either on, a point in a row's band is that row even
+    /// where its cells decline a hit. Both off by default: `Select`'s
+    /// menu and every existing list keep exactly the behaviour they had.
+    pub hover_rows: bool,
+    pub select_rows: bool,
+    hot: Option<usize>,
+    selected_now: bool,
 }
 
 impl<T: Widget + Default> Default for Repeat<T> {
@@ -130,7 +142,21 @@ impl<T: Widget + Default> Repeat<T> {
             viewport: 0.0,
             highlight: None,
             current: None,
+            hover_rows: false,
+            select_rows: false,
+            hot: None,
+            selected_now: false,
         }
+    }
+
+    /// The row a press selected since the last call — and clears it.
+    pub fn take_selected(&mut self) -> Option<usize> {
+        if core::mem::take(&mut self.selected_now) { self.current } else { None }
+    }
+
+    /// The row under the pointer, when `hover_rows` is on.
+    pub fn hot(&self) -> Option<usize> {
+        self.hot
     }
 
     /// Materialized instances (visible window), for tests/inspection.
@@ -563,7 +589,7 @@ impl<T: Widget + Default + 'static> Node for Repeat<T> {
         }
         // The keyboard's row and the current choice, over their rows and in
         // each row's own text colour, so the tint reads in either palette.
-        for (row, alpha) in [(self.current, 0x1a), (self.highlight, 0x33)] {
+        for (row, alpha) in [(self.hot, 0x12), (self.current, 0x1a), (self.highlight, 0x33)] {
             let Some(row) = row else { continue };
             if row < self.first || row >= self.first + self.window.len() {
                 continue;
@@ -588,6 +614,22 @@ impl<T: Widget + Default + 'static> Node for Repeat<T> {
                 });
             }
         }
+        // **A table's row is a target whatever is in it** (M57/B51): with
+        // hover or selection on, a point in a row's band is that row, even
+        // where its cells (labels) decline a hit.
+        if self.hover_rows || self.select_rows {
+            let along = y - st[i].pos.y + self.scroll;
+            if along >= 0.0 && self.item_extent > 0.0 {
+                let row = (along / self.item_extent) as usize;
+                if row < self.count {
+                    return Some(Hit {
+                        node: i as u32,
+                        inner: Some(Inner { row: row as u64, node: 0 }),
+                        local: Point { x: x - st[i].pos.x, y: y - st[i].pos.y },
+                    });
+                }
+            }
+        }
         Some(Hit {
             node: i as u32,
             inner: None,
@@ -609,7 +651,23 @@ impl<T: Widget + Default + 'static> Node for Repeat<T> {
     /// parent gets the rest of the gesture. Both are
     /// `ScrollView`'s conventions, because a list that scrolled
     /// the other way from every other list would be its own defect.
-    fn on_event(&mut self, ev: &crate::event::Event, _cx: &crate::event::EventCtx) -> bool {
+    fn on_event(&mut self, ev: &crate::event::Event, cx: &crate::event::EventCtx) -> bool {
+        match ev {
+            crate::event::Event::Hover { .. } if self.hover_rows => {
+                let row = cx.row.map(|r| r as usize);
+                return core::mem::replace(&mut self.hot, row) != row;
+            }
+            crate::event::Event::Leave if self.hover_rows => return self.hot.take().is_some(),
+            // Recorded, not consumed: a button in the row still gets it.
+            crate::event::Event::PointerDown { .. } if self.select_rows => {
+                if let Some(r) = cx.row {
+                    self.current = Some(r as usize);
+                    self.selected_now = true;
+                }
+                return false;
+            }
+            _ => {}
+        }
         let crate::event::Event::Scroll { dy, .. } = ev else { return false };
         let want = crate::num::clamp(self.scroll - dy, 0.0, self.max_scroll(self.viewport));
         if want == self.scroll {
