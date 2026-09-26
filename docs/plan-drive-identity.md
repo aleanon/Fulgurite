@@ -840,6 +840,25 @@ for every plan a build corrected.
   planted binary (a live baseline went red on the late-panic plant's
   panic). `scripts/selftest/run.sh` now syncs by content and without the
   source's mtimes (`rsync -rlpD --checksum`). One line, reported to M43.
+- **T42.6 found two more vacuous checks, and a showcase defect behind
+  one.** With check (1) looking at the widget's subtree, the unmodified
+  drive went red twice. (i) `Button/hovering is visible`: the release
+  before it left the pointer on the button, so the hover changed nothing
+  — and, underneath, the showcase's menu-row rule
+  `Kind("button").hover_dim(0.0)` reached every id-addressed button,
+  whose rules set no `hover_dim`, so **no demo button showed a hover at
+  all**. The hover-noop plant's premise (remove the shade) described a
+  showcase that already had none. Fixed in the showcase's `btn()` and by
+  a new `prep` step on `Action`, run before the change window opens.
+  (ii) `Tooltip`: driven through its content, whose tip is a sibling, not
+  a child — so an inventory entry may name its widget's root as a fourth
+  element, and the subtree is the root's.
+- **T42.6: the hover-noop plant exercises the readout half of check (1),
+  not the subtree half.** With the subtree filter dropped the plant stays
+  red, because a hover on an unshaded button changes nothing anywhere in
+  the frame; restoring "any non-empty readout" is what turns it green.
+  The subtree filter's own evidence is (ii) above: one change in the
+  frame, outside the content's subtree.
 - **AGENT.md is the coordinator's.** The tasks' "docs in the same
   commit" name AGENT.md entries; the implementation brief reserves that
   file for the merge, so those edits are listed in the final report

@@ -771,6 +771,13 @@ fn lbl() -> lumen_static::style::Patch {
 fn btn() -> lumen_static::style::Patch {
     use lumen_static::style::Patch;
     Patch::new()
+        // **The hover shade, restated.** The menu rows' `Kind("button")`
+        // rule below sets `hover_dim(0.0)`, and an id rule beats a kind
+        // only for the fields it sets -- so every id-addressed button here
+        // inherited the rows' 0.0 and showed no hover at all. Found by
+        // M42/T42.6, when the drive's "hovering is visible" check had to
+        // see the button itself change (`Button`'s type default is 0.07).
+        .hover_dim(0.07)
         .width(Length::Shrink)
         .height(Length::Shrink)
         .radius(8.0)

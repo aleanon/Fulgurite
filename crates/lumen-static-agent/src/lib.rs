@@ -1483,6 +1483,28 @@ impl Agent {
     }
 }
 
+/// One past the last table node under `i`: descendants follow their
+/// ancestor contiguously in the table, so this walks forward until a node
+/// whose parent chain does not reach `i` (M42/T42.6, `ui.resolve`'s
+/// `subtree`).
+fn subtree_end(table: &[lumen_static::desc::NodeDesc], i: usize) -> usize {
+    let under = |mut j: usize| loop {
+        let p = table[j].parent;
+        if p == lumen_static::desc::NO_PARENT || (p as usize) < i {
+            return false;
+        }
+        if p as usize == i {
+            return true;
+        }
+        j = p as usize;
+    };
+    let mut end = i + 1;
+    while end < table.len() && under(end) {
+        end += 1;
+    }
+    end
+}
+
 fn change_kind(c: &Coalesced) -> &'static str {
     match (c.geometry, c.content) {
         (true, true) => "both",
@@ -1743,6 +1765,11 @@ impl<'a> Index<'a> {
         if let Some(i) = e.idx {
             let d = &self.tree.table[i];
             o.insert("index".into(), i.into());
+            // `[first, end)`: this node and every table node under it, which
+            // the table stores contiguously. So a drive can ask whether a
+            // change landed *on this widget* — `ui.lastChange` reports
+            // indices — rather than anywhere in the frame (M42/T42.6).
+            o.insert("subtree".into(), json!([i, subtree_end(self.tree.table, i)]));
             o.insert("kind".into(), self.tree.seeds[i].kind.into());
             if !d.wid.is_empty() {
                 o.insert("wid".into(), d.wid.into());

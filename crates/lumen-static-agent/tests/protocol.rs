@@ -133,6 +133,22 @@ fn selector_terms_and_conjunction() {
     assert_eq!(r["wid"], "list");
 }
 
+/// `ui.resolve` reports the node's table subtree as `[first, end)` — the
+/// range a drive filters `ui.lastChange` by, so "it landed" means on
+/// this widget (M42/T42.6). The bar is table node 1 with three children;
+/// a leaf's range is itself; the root's is the whole table.
+#[test]
+fn resolve_reports_the_subtree_range() {
+    let f = Fixture::new();
+    let bar = f.result("ui.resolve", json!({ "selector": "1" }));
+    let leaf = f.result("ui.resolve", json!({ "selector": "#title" }));
+    let root = f.result("ui.resolve", json!({ "selector": "0" }));
+    println!("bar {} leaf {} root {} (table {})", bar["subtree"], leaf["subtree"], root["subtree"], App::NODE_COUNT);
+    assert_eq!(bar["subtree"], json!([1, 1 + Bar::NODE_COUNT]), "{bar}");
+    assert_eq!(leaf["subtree"], json!([2, 3]), "{leaf}");
+    assert_eq!(root["subtree"], json!([0, App::NODE_COUNT]), "{root}");
+}
+
 #[test]
 fn not_found_teaches() {
     let f = Fixture::new();

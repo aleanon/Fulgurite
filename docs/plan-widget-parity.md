@@ -441,6 +441,14 @@ reason.
 
 ### (c) The drive script — three assertions per action
 
+> *M42/T42.6 (R18-F3):* not every action gets all three. Check (1)
+> is skipped for `static` actions and check (3) runs only where an
+> isolate exists; `scripts/drive/expected.json` lists every static
+> action and pins the three counts — actions, landed-checked, isolated —
+> so the unchecked share is visible and cannot grow silently. Check (1)
+> now looks at the widget's own table subtree and compares the readout
+> before and after, where it had passed on any non-empty readout.
+
 `scripts/drive/<widget>.py`, run by `just widget-drive <name>` against
 the live window through the agent socket, using the surface that already
 exists: `ui.getTree`, `ui.resolve`, `ui.getAppliedStyles`,

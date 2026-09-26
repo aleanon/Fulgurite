@@ -133,6 +133,6 @@ TOOLTIP = ("Tooltip", "#tooltip-content", [
         ),
         injection="hit-test the tip before the content in Tooltip::hit",
     ),
-])
+], "#d_tooltip_a")
 
 ALL = [CARD, TOAST, TOOLTIP]

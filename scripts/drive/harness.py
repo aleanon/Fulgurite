@@ -19,9 +19,15 @@ exported widget type now has an inventory or a line in
 Each action asserts three things, and the three map one-to-one onto the
 three ways this repository has actually been fooled:
 
-1. **It landed.** The input reached *this widget* — `ui.lastChange` names
-   a node, or the demo's readout moved. Never merely that the RPC
-   returned. (M16/T16.7: an invalidation oracle compared two identical
+1. **It landed.** The input reached *this widget* — `ui.lastChange`
+   names a node **inside the widget's own table subtree** (resolved once,
+   `ui.resolve`'s `subtree`), or the demo's readout **moved** (compared
+   before and after). Never merely that the RPC returned. Until M42/T42.6
+   this passed on *any* non-empty readout and on the whole frame's change
+   set, so a hover that changed nothing on a button passed on the readout
+   alone (R18-F3). An action that legitimately changes nothing on its
+   widget is `static`, and `scripts/drive/expected.json` lists every one,
+   so the count of unchecked actions cannot grow silently. (M16/T16.7: an invalidation oracle compared two identical
    no-ops because every click missed its target and the test only
    checked that the two sides agreed.)
 2. **The consequence is the specific one named**, with the measured
@@ -112,6 +118,11 @@ class Action:
     #: would be the bound removed, which is the shape this whole protocol
     #: exists to refuse.
     reflows: bool = False
+    #: Run before the action's change window opens -- to put the widget
+    #: in the state `needs` names without that setup counting as the
+    #: action landing (M42/T42.6: a hover that starts on the widget is
+    #: no transition, and a leave inside `do` would be one).
+    prep: Callable[["Ctx"], None] | None = None
     #: Lint codes this action may legitimately introduce.
     #:
     #: **Named codes only, never "any".** Squeezing a split pane to 8%
@@ -325,9 +336,14 @@ def _overlaps(a, b) -> bool:
 
 
 def run_widget(c: AgentClient, widget: str, sel: str, actions: list[Action],
-               strategy: str) -> list[str]:
+               strategy: str, root: str | None = None) -> list[str]:
     """Drive every action and return the log. Raises `Failed` on the first
-    assertion that does not hold."""
+    assertion that does not hold.
+
+    `root` is the widget's own node when `sel` names one of its parts —
+    an inventory entry's optional fourth element. Check (1)'s subtree is
+    the root's: a `Tooltip` is driven through its content, and its tip is
+    the content's sibling, not its child (M42/T42.6)."""
     out: list[str] = []
     _pick(c, widget)
     ctx = Ctx(c, widget, sel)
@@ -358,19 +374,31 @@ def run_widget(c: AgentClient, widget: str, sel: str, actions: list[Action],
             f"{len(dupes)} duplicated author id(s) in the tree — every selector "
             f"here is ambiguous. First: {dupes[0].get('message', '')[:120]}")
 
+    # The widget's own table subtree, `[first, end)`, resolved once: what
+    # check (1) filters `ui.lastChange` by (M42/T42.6).
+    first, end = c.rpc("ui.resolve", selector=root or sel)["subtree"]
+
     for a in actions:
+        if a.prep is not None:
+            a.prep(ctx)
         before_lint = len(c.lint().get("findings", []))
+        readout_before = ctx.readout()
         since = ctx.mark()
         a.do(ctx)
 
-        # (1) it landed -- on this widget, not on the root.
+        # (1) it landed -- on this widget, not anywhere in the frame.
         if not a.static:
             changed = c.rpc("ui.lastChange", since=since).get("changed", [])
+            mine = [ch for ch in changed if first <= ch.get("index", -1) < end]
             readout = ctx.readout()
-            if not changed and not readout:
+            moved = readout != readout_before
+            out.append(f"      changed in subtree: {len(mine)} node(s) of {len(changed)}, "
+                       f"readout {readout_before!r} -> {readout!r}")
+            if not mine and not moved:
                 raise Failed(
-                    f"{widget}/{a.name}: nothing changed and the readout is empty — "
-                    f"the input did not reach the widget (injection: {a.injection})")
+                    f"{widget}/{a.name}: changed in subtree 0 (of {len(changed)} in the frame, "
+                    f"subtree [{first}, {end})), readout unchanged ({readout!r}) — the input "
+                    f"did not reach the widget (injection: {a.injection})")
 
         # (2) the specific consequence, with the number beside the bound.
         ok, measured = a.expect(ctx)

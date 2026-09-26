@@ -38,7 +38,7 @@ def inventories():
 
 def counts(entries) -> dict:
     """The quantities the manifest pins, measured from the inventories."""
-    acts = [a for _, _, aa in entries for a in aa]
+    acts = [a for e in entries for a in e[2]]
     return {
         "entries": len(entries),
         "actions": len(acts),
@@ -59,7 +59,7 @@ def check_manifest(entries) -> list[str]:
     """
     m = json.loads((HERE / "expected.json").read_text())
     want = m["entries"]
-    have = {w: [a.name for a in acts] for w, _, acts in entries}
+    have = {e[0]: [a.name for a in e[2]] for e in entries}
     bad = []
     for w in want:
         if w not in have:
@@ -76,7 +76,7 @@ def check_manifest(entries) -> list[str]:
         if w not in want:
             bad.append(f"{w}: an inventory the manifest does not name -- add it to "
                        f"scripts/drive/expected.json")
-    static = sorted(f"{w}/{a.name}" for w, _, acts in entries for a in acts if a.static)
+    static = sorted(f"{e[0]}/{a.name}" for e in entries for a in e[2] if a.static)
     for s_ in sorted(set(m["static"]) - set(static)):
         bad.append(f"{s_}: the manifest lists it static, and it is checked for landing now "
                    f"-- remove it from `static`")
@@ -131,13 +131,13 @@ def main() -> int:
     failures = 0
     actions = 0
     bare = 0
-    for widget, sel, acts in entries:
+    for widget, sel, acts, *root in entries:
         actions += len(acts)
         try:
             bare += sum(
                 1 for a in acts if a.isolate is None and not a.static
             )
-            for line in run_widget(c, widget, sel, acts, strategy):
+            for line in run_widget(c, widget, sel, acts, strategy, *root):
                 print(line)
         except Failed as e:
             print(f"  FAIL {widget} [{strategy}]: {e}", file=sys.stderr)
@@ -150,8 +150,11 @@ def main() -> int:
             # did the first time this happened.
             print(f"  ERROR {widget} [{strategy}]: {e}", file=sys.stderr)
             failures += 1
+    n = counts(entries)
     print(f"widget-drive [{strategy}]: {len(entries)} widgets, {actions} actions, "
-          f"{bare} without an isolate, {failures} failed")
+          f"{bare} without an isolate, {failures} failed; "
+          f"actions {n['actions']}, landed-checked {n['landed_checked']}, "
+          f"isolated {n['isolated']}")
     return 1 if failures else 0
 
 

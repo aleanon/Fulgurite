@@ -61,7 +61,14 @@ BUTTON = ("Button", "#d_button_a", [
     ),
     Action(
         name="hovering is visible and is not a press",
-        needs="a button with hover_dim",
+        needs="a button with hover_dim, not already hovered",
+        # **From off the button.** The release before this leaves the
+        # pointer on the button, so hovering it again changed nothing and
+        # this passed on the readout alone -- found when M42/T42.6 made
+        # check (1) look at the button's own subtree (R18-F3). The pointer
+        # leaves in `prep`, before the change window opens, so the hover
+        # is a transition and the leave is not counted as one.
+        prep=lambda c: c.c.rpc("input.hover", x=2.0, y=2.0),
         do=lambda c: c.hover(),
         expect=lambda c: (
             _state(c, "hovered") and not _state(c, "pressed"),
