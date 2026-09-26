@@ -50,7 +50,7 @@ that produces real sections.
 | `.rodata` | — | 12,880 B | of which the baked face is most; 9,010 B at T13.7 |
 | Total (`size -A`) | ≤ 512 KB flash | **41,065 B** (40.1 KB) | 7.8% of the part |
 | RAM, 100 nodes | ≤ 24 KB | **16.0 KB** state + style | **pass**; measured at M27/T27.1 (2026-09-18), below |
-| Stack, actual depth | ≤ 4 KB | asserted at compile time | since 2026-09-07; see "The stack budget is enforced now" |
+| Stack, release | ≤ 4 KB | **1,192 B** a cold frame (model 1,328) | **pass**, measured under qemu by `just stack` since M52/T52.6; dev 6,996 B, recorded not gated — below |
 | `f64` in the frame path | zero | **0 soft-f64 symbols**, and 0 float-formatting | in all four binaries, counted by `scripts/check_text.sh` (M52/T52.2); the only `f64` is `observe`'s accesskit call, which needs `std` |
 | Fixture builds and runs | yes | **yes** | links for the target; runs on the host with an aborting allocator |
 
@@ -115,9 +115,59 @@ its first space (`<embedded::Device`), so no exemption could have matched
 the binding cache. The three findings in the second table above are
 committed as expected red, each naming the task that turns it green.
 
-The stack rows are measured by T52.6's `fwq` under qemu and are recorded
-in that task's section; nothing between this commit and that one changes
-the core.
+### The stack, measured — M52/T52.6
+
+**The stack row reported a model as a measurement** (R11-F3): it was
+`stack_bytes(DEPTH)`, depth × 272 B, and the fixture asserted that model
+at compile time. `fixtures/embedded/src/bin/fwq.rs` runs under qemu
+(`-M mps2-an386`, a Cortex-M4F), paints the stack before each call and
+scans for the deepest word the call overwrote; `just stack`
+(`scripts/check_stack.sh`, in `check-extra`) holds the figures. Measured
+2026-09-27 on the core T52.0 measured (T52.1 and T52.2 changed scripts
+and the fixture only), `Device`'s tree, depth 3:
+
+| call | release | dev (recorded, not gated) | model before | model now |
+|---|---:|---:|---:|---:|
+| calibration: a known 2,000 B local | **2,032** (bound 2,000–2,100) | 2,204 | | |
+| cold frame | **1,192** | 6,996 | 816 | 1,328 |
+| warm frame | 1,072 | 6,724 | 816 | 1,328 |
+| a typed character (`pass::dispatch`) | 556 | 3,332 | | |
+| a bound update (`update_marked`) | 552 | 984 | | |
+
+The depth sweep — `Panel`'s `Ui` wrapped in one, two and three more
+columns, a cold frame each, release:
+
+| depth | 3 | 4 | 5 | 6 |
+|---|---:|---:|---:|---:|
+| measured | 1,184 | 1,384 | 1,600 | 1,816 |
+| `depth × 272` (the old model) | 816 | 1,088 | 1,360 | 1,632 |
+| `512 + depth × 272` (the model now) | 1,328 | 1,600 | 1,872 | 2,144 |
+
+A least-squares line through the sweep is **211 B per level plus
+546 B**: the slope is under the 272 B the model already used, and the
+old model had **no intercept**, so it was below the measurement at every
+depth — by 368 B at depth 3. `desc::STACK_BASE_BYTES` is 512: the largest
+residual over the 272 B slope (376 B, the device's cold frame) rounded up
+for toolchain headroom. `just stack` fails if any release frame stops
+fitting under the model, so the constant cannot drift back into a claim.
+
+**What the gate catches that the assert cannot.** The review's `937885b`,
+a 4 KB local in `TextInput::layout`: the cold frame measures **5,096 B**
+(1,000 over the budget; the review measured 5,016 on its probe), `just
+stack` fails naming `cold frame` and `warm frame`, and the compile-time
+assert stays green because `DEPTH` did not change. Skipping the paint
+makes the calibration read 61,688 B and fail before any figure is read.
+
+**The budget is a release budget.** The dev profile's frame is almost six
+times the release one, over 4 KB at every depth; a dev firmware for this
+part needs `opt-level = 1` for the `embedded` package
+(`docs/plan-embedded-footprint.md` §2.6). The qemu figures are a model of
+a Cortex-M4F, not a board: the exception frame and lazy FPU stacking a
+real interrupt adds are not in them, and a board run is owed, not
+claimed.
+
+`Boundaries<256>` does not reach this profile: it is only `Host`'s
+default, and `Host` is `std`.
 
 **`#[bind]` is exercised without `std`** (M43/T43.8):
 `fixtures/embedded/tests/bind_nostd.rs`, run by `just thumb` with the
@@ -324,6 +374,12 @@ never connected. `desc::stack_bytes(depth)` connects them, and
 `fixtures/embedded` asserts it **at compile time** against the tree that
 actually has to fit — 816 B at depth 3, verified by re-injection
 (lowering the bound to 512 fails the build).
+
+**A depth backstop since M52/T52.6, and not the measurement.** The 816 B
+was the model's output, reported here as measured; the real release frame
+was 1,192 B, and a widget whose own frame grows leaves this assert green.
+`just stack` measures under qemu, and the model gained an intercept
+fitted from its sweep ("The stack, measured", above).
 
 Against a tree's **actual** `DEPTH`, not `MAX_DEPTH`. Those are
 different numbers, and conflating them is the mistake the next section

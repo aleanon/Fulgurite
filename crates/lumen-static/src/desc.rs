@@ -128,8 +128,8 @@ pub const NO_PARENT: u32 = u32::MAX;
 /// the two were conflated until 2026-09-07. It exists so a tree that
 /// could overflow the stack does not compile; it says nothing about how
 /// much stack a *given* tree uses, because that depends on the tree's
-/// actual `DEPTH` and not on this cap. At [`STACK_BYTES_PER_LEVEL`] a
-/// 64-deep tree would want ~17 KB, which is nothing on a desktop and
+/// actual `DEPTH` and not on this cap. At [`stack_bytes`]'s rate a
+/// 64-deep tree would want ~18 KB, which is nothing on a desktop and
 /// twice `docs/results-embedded.md`'s whole 8 KB budget — so reading
 /// this constant as the embedded budget would be wrong in both
 /// directions.
@@ -138,18 +138,38 @@ pub const NO_PARENT: u32 = u32::MAX;
 /// tree's own `DEPTH`. `fixtures/embedded` does that at compile time.
 pub const MAX_DEPTH: usize = 64;
 
-/// Stack a single level of recursive descent costs, in bytes.
+/// Stack a single level of recursive descent costs, in bytes — the
+/// model's **slope**.
 ///
-/// **256–272 B measured, and this is the upper end** — T13.0, recorded
+/// **256–272 B measured at T13.0, and this is the upper end**, recorded
 /// in `docs/results-embedded.md`. The worst end deliberately: a budget
-/// checked against the optimistic figure is not a budget.
+/// checked against the optimistic figure is not a budget. M52/T52.6's
+/// depth sweep under qemu measured a smaller slope for the fixture's
+/// tree, so 272 still bounds it (the figures are in that doc's T52.6
+/// section, not here).
 ///
-/// It is a `const` rather than something computed because the recursion
-/// is monomorphised: each level's frame is the widget's own locals plus
-/// the call, and it does not vary with the tree.
+/// **A level's frame does vary with the tree.** It is the widget's own
+/// locals plus the call, and a widget with a large local — the review's
+/// 4 KB array in `TextInput::layout` — costs what it costs at whatever
+/// depth it sits. So this is a model to assert a *shape* against, not a
+/// measurement; `just stack` measures.
 pub const STACK_BYTES_PER_LEVEL: usize = 272;
 
-/// Stack a tree of `depth` levels costs, in bytes.
+/// Stack a frame costs before any level of the tree — the model's
+/// **intercept**, M52/T52.6 (R11-F3).
+///
+/// The model was `depth × STACK_BYTES_PER_LEVEL` alone, and the real
+/// stack exceeded it at every depth: a frame also pays for the layout
+/// and paint entry points, the measurer and the painter's own calls,
+/// none of which is a level. Fitted from the depth sweep in
+/// `docs/results-embedded.md` (M52/T52.6), whose largest residual over
+/// the slope is rounded up for toolchain headroom; `just stack` fails if
+/// a release frame stops fitting under the model.
+pub const STACK_BASE_BYTES: usize = 512;
+
+/// Stack a tree of `depth` levels costs, in bytes: a base plus a slope
+/// per level, **in a release build** (the dev profile's frames are
+/// several times larger; `docs/results-embedded.md` records both).
 ///
 /// `const`, so an application can assert its own budget at compile time
 /// rather than discovering an overflow on a device:
@@ -162,10 +182,13 @@ pub const STACK_BYTES_PER_LEVEL: usize = 272;
 /// const _: () = assert!(stack_bytes(Ui::DEPTH) <= 4096);
 /// ```
 ///
-/// The number that matters is a tree's **actual** `DEPTH`, not
-/// [`MAX_DEPTH`] — which is why this takes one.
+/// **A backstop on depth, not a measurement of stack.** It cannot see a
+/// widget whose own frame grew, because `DEPTH` does not change; that is
+/// what `just stack`'s qemu run is for. The number that matters here is
+/// a tree's **actual** `DEPTH`, not [`MAX_DEPTH`] — which is why this
+/// takes one.
 pub const fn stack_bytes(depth: usize) -> usize {
-    depth * STACK_BYTES_PER_LEVEL
+    STACK_BASE_BYTES + depth * STACK_BYTES_PER_LEVEL
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]

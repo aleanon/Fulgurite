@@ -241,7 +241,7 @@ fn focus_visible_follows_the_kind_of_input() {
 /// compile time for the tree that actually has to fit.
 #[test]
 fn stack_cost_follows_a_trees_own_depth_not_the_cap() {
-    use lumen_static::{stack_bytes, MAX_DEPTH, STACK_BYTES_PER_LEVEL};
+    use lumen_static::{stack_bytes, MAX_DEPTH, STACK_BASE_BYTES, STACK_BYTES_PER_LEVEL};
 
     // A real screen. This test's own fixture is the evidence: nothing
     // here is anywhere near the cap. Compared through a `let` rather
@@ -253,9 +253,9 @@ fn stack_cost_follows_a_trees_own_depth_not_the_cap() {
     assert!(depth < MAX_DEPTH / 8, "and is nowhere near the cap: {depth}");
 
     // The cap, read as a budget, would be wrong in both directions:
-    // ~17 KB is nothing on a desktop and twice the embedded device's
-    // whole 8 KB stack.
-    assert_eq!(stack_bytes(MAX_DEPTH), MAX_DEPTH * STACK_BYTES_PER_LEVEL);
+    // ~18 KB is nothing on a desktop and twice the embedded device's
+    // whole 8 KB stack. A base plus a slope since M52/T52.6.
+    assert_eq!(stack_bytes(MAX_DEPTH), STACK_BASE_BYTES + MAX_DEPTH * STACK_BYTES_PER_LEVEL);
     assert!(stack_bytes(MAX_DEPTH) > 4096, "which is why it is not the budget");
 }
 

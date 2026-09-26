@@ -242,7 +242,7 @@ bench-lock +cmd:
 # decision CI gets to make.
 
 # Release-shape rustdoc, binsize, and the exhaustive f32 check.
-check-extra: floats thumb gpu simd threads book agent-symbols release-window-shape
+check-extra: floats thumb stack gpu simd threads book agent-symbols release-window-shape
     # Release-shape rustdoc: `--workspace` hides broken links that point at
     # items which only exist behind `observe`/`reload`.
     RUSTDOCFLAGS="-D warnings" cargo doc -p lumen-static --no-deps
@@ -387,6 +387,17 @@ thumb:
     # docs/results-embedded.md stated on 2026-09-05 went unchecked until
     # 2026-09-10, by which point the doc was 9.4% below reality; under
     # `check` alone, a merge left its headline 1.14% stale in 2026-09.
+
+# The embedded stack, MEASURED (M52/T52.6, R11-F3): fixtures/embedded's
+# `fwq` runs under qemu (mps2-an386), paints the stack, and reports what a
+# frame, a keystroke and a bound update used. Calibrated against a known
+# 2,000 B local first; every release call <= 4,096 B; the model
+# `stack_bytes` must bound every release frame. Exits 77 without
+# qemu-system-arm, which counts as not run (docs/plan-gate-hygiene.md §2.2).
+
+# The embedded stack under qemu: calibrated, each release call <= 4 KB.
+stack:
+    ./scripts/check_stack.sh
 
 # Line coverage, as an artifact to read -- not a threshold. A workspace
 # percentage is dominated by whether the fixtures ran, not by core quality;

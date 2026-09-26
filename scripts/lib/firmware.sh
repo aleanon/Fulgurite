@@ -66,3 +66,27 @@ for w in want:
 firmware_path() {
     printf '%s\n' "$FIRMWARE_PATHS" | awk -v n="$1" '$1 == n {print $2}'
 }
+
+# firmware_build_one NAME [cargo args...] -- build one fixture bin for the
+# target (e.g. `fwq`, with `--release` or without for the dev profile) and
+# print cargo's path to it. M52/T52.6.
+firmware_build_one() {
+    local name=$1; shift
+    cargo build -q -p embedded --bin "$name" --features firmware \
+        --target "$FIRMWARE_TARGET" --message-format=json "$@" | python3 -c '
+import json, sys
+name = sys.argv[1]
+exe = None
+for line in sys.stdin:
+    try:
+        m = json.loads(line)
+    except ValueError:
+        continue
+    t = m.get("target", {})
+    if m.get("reason") == "compiler-artifact" and t.get("name") == name and m.get("executable"):
+        exe = m["executable"]
+if not exe:
+    sys.exit("firmware: cargo reported no executable for " + name)
+print(exe)
+' "$name"
+}

@@ -69,4 +69,7 @@ embedded application. The frame interval comes from the bus rather than
 the CPU, and the stack budget is a hard constraint the design had to be
 shaped around — a tree deep enough to overflow it does not compile, which
 is one of the two things [Topology in the type](./topology.md) said the
-static shape buys.
+static shape buys. That check is on *depth*, through a model; a widget
+with a large local of its own overflows at any depth, so the stack a
+frame really uses is measured under qemu by `just stack`, and
+`docs/results-embedded.md` has the figures.

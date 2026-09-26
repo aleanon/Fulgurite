@@ -66,7 +66,7 @@ fn main() {
     let warm = (out.hash, out.cmds);
 
     println!(
-        "embedded: {NODES} nodes, depth {} = {} B of stack (budget 4096)",
+        "embedded: {NODES} nodes, depth {} = {} B of stack by the model (budget 4096; `just stack` measures)",
         <embedded::Ui as lumen_static::Widget>::DEPTH,
         embedded::sizes::STACK
     );

@@ -67,5 +67,15 @@ name = "firmware_cascade"
 path = "src/bin/firmware_cascade.rs"
 required-features = ["firmware"]
 
+# M52/T52.6: the one firmware that RUNS -- under qemu (mps2-an386), with
+# its own memory map (`fwq.ld`, linked by build.rs for this bin only). It
+# paints the stack, runs a frame, a typed character and a bound update,
+# and scans what each used; `just stack` holds the release figures to
+# the 4 KB budget (docs/results-embedded.md).
+[[bin]]
+name = "fwq"
+path = "src/bin/fwq.rs"
+required-features = ["firmware"]
+
 [features]
 firmware = []

@@ -186,7 +186,7 @@ pub mod wire;
 
 pub use desc::{
     stack_bytes, Constraints, NodeDesc, NodeState, Point, Size, MAX_DEPTH, NO_PARENT,
-    STACK_BYTES_PER_LEVEL,
+    STACK_BASE_BYTES, STACK_BYTES_PER_LEVEL,
 };
 // `Dyn` and `List` own runtime-sized content, so they follow `alloc`
 // (T13.4). `Either` and `Side` are compile-time and always present.

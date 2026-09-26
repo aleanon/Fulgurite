@@ -662,6 +662,24 @@ written; where it was wrong, the note says so and says what was done.
   and passes while the finding stands, and fails with `remove the
   XFAIL` once the count reaches 0, so no marker can outlive its task.
 
+- **T52.6 — landed third, before T52.3–T52.5**, as T52.0's note says, so
+  its baseline is the core T52.0 measured.
+- **T52.6 — `stack_bytes` gained its intercept, not a new slope.** The
+  sweep's slope is 211 B per level, under the 272 B the model already
+  used; what the model lacked was the **intercept** (546 B fitted). So
+  `STACK_BASE_BYTES = 512` is added and `STACK_BYTES_PER_LEVEL` stays,
+  and `just stack` also fails when a release frame stops fitting under the
+  model — the plan asked only for the budget, but a model left unchecked
+  is how R11-F3 happened.
+- **T52.6 — qemu's semihosting console writes to stderr**, not stdout;
+  `check_stack.sh` reads both. And `.data` is linked straight into RAM:
+  qemu's ELF loader places each segment where it is linked, so the
+  harness needs no copy-and-zero (a board would).
+- **T52.6 — the harness also asserts its calls landed.** qemu exits 1
+  unless the typed character reached the field and the binding reported
+  `Wrote::Marked`; deleting the focus line fails the gate, so the
+  keystroke figure cannot be the price of an ignored event.
+
 ## Appendix: finding → task
 
 | ID | sev now | status | task |
