@@ -8,7 +8,8 @@
 //! arrow-group rule is in play, M44/T44.1), a `Slider` moving on a track press, two
 //! overlays closed by one press outside, a drag from one button to
 //! another that activates neither (M44/T44.2), a slider hidden mid-drag
-//! that stops tracking (M44/T44.3), and a button whose handler
+//! that stops tracking (M44/T44.3), a tap by touch (M44/T44.4), and a
+//! button whose handler
 //! changes a bound label *outside* the button's subtree. Each step prints
 //! what the `Boundaries` frame marked, so a narrowed frame is told apart
 //! from one that fell back to everything.
@@ -269,6 +270,16 @@ fn a_click_driven_session_narrows_and_draws_the_same_frames() {
     println!("    n = {} (0: neither ran; 1234567: go's; -1: clear's); go pressed {}", p.b.app.store.n, p.b.states[go].pressed);
     assert_eq!(p.b.app.store.n, 0, "a drag from go released on clear activated a button");
     assert!(!p.b.states[go].pressed, "the release left go's press shade");
+
+    // 3c. A tap by touch clicks (M44/T44.4): the primary touch drives
+    // the pointer, and the frame narrows as a mouse click does.
+    p.step("tap clear by touch", |post| {
+        post(Event::Touch { id: 1, x: cx, y: cy, phase: lumen_static::event::TouchPhase::Begin });
+        post(Event::Touch { id: 1, x: cx, y: cy, phase: lumen_static::event::TouchPhase::End });
+    });
+    println!("    n = {} (expected -1, clear's handler)", p.b.app.store.n);
+    assert_eq!(p.b.app.store.n, -1, "setup: a touch tap on clear did not click it");
+    assert!(!p.b.last_marks().all, "a touch tap in a split application marked everything");
 
     // 4. A button whose handler changes a bound label outside its subtree.
     let (gx, gy) = centre(&p.b, "go");

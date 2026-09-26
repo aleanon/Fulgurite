@@ -105,7 +105,6 @@ ValueContains        # renamed TextContains in M27/T27.0; the rustdoc records th
 PairCheck            # split into PairCheckA/PairCheckB in M27/T27.3; two comments record why
 VeilBody             # split into ModalBody/SheetBody/DrawerBody in M27/T27.7; W1011 is why
 PanicHookInfo        # std::panic::PanicHookInfo, named in docs/plan-panic-recovery.md -- not ours
-PointerCancel        # promised by docs/plan-input-semantics.md T44.4; comes off when it exists
 RecoverPolicy        # promised by docs/plan-embedded-footprint.md T52.7; comes off when it exists
 
 # --- M39: the agent transport's threat model names things outside the code ---

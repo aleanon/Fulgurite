@@ -29,6 +29,7 @@ recorded. That is why several things you might expect to be tracked
 PointerDown { x, y, button, clicks }
 PointerUp   { x, y, button }
 PointerMove { x, y }
+PointerCancel { x, y }
 Scroll      { x, y, dy }
 Key         { key, down }
 Text        { ch }

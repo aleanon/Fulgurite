@@ -90,6 +90,16 @@ condition above is met, the claim is:
 That is weaker and it is true, which is the trade this repository makes
 everywhere else.
 
+**What is not deferred: touch as a pointer.** The deferral is of
+packaging, toolchains and devices, not of input. Since M44/T44.4
+(`docs/plan-input-semantics.md` §2.4) a `Host` turns the primary touch
+into pointer events — a tap presses a button, toggles a checkbox and
+moves a slider on any touchscreen a desktop shell reaches, including
+Wayland — and a touch `Cancel` is a `PointerCancel` that activates
+nothing. Before it no stock widget handled `Event::Touch`, so a tap did
+nothing at all (R15-F4). `crates/lumen-static-shell/tests/touch_as_pointer.rs`
+is the gate.
+
 ## What would probably happen if it were done
 
 Recorded as a prediction, so a future measurement can contradict it

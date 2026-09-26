@@ -259,7 +259,7 @@ pub fn dispatch_overlaid_into<S: crate::event::App, O: crate::overlay::OverlaySi
             // dispatch; one that dismissed an overlay latches nothing.
             input.press = None;
         }
-        Event::PointerUp { .. } if input.swallow_release => {
+        Event::PointerUp { .. } | Event::PointerCancel { .. } if input.swallow_release => {
             input.swallow_release = false;
             input.press = None;
             for n in st.iter_mut() {
@@ -270,6 +270,12 @@ pub fn dispatch_overlaid_into<S: crate::event::App, O: crate::overlay::OverlaySi
             return true;
         }
         _ => {}
+    }
+
+    // A cancel is not a press or a release anywhere: it goes to the
+    // capture, never to what an overlay has under the point (T44.4).
+    if matches!(ev, Event::PointerCancel { .. }) {
+        return dispatch_at(state, style, st, input, ev, None, consumed);
     }
 
     // Escape closes the topmost overlay and stops there.
@@ -451,6 +457,41 @@ fn dispatch_at<S: crate::event::App>(
     if let Event::Modifiers(m) = ev {
         input.mods = *m;
         return true;
+    }
+    // **A cancel ends the gesture and activates nothing** — M44/T44.4.
+    // The press is cleared as a release clears it, the capture holder is
+    // told (it may keep drag state of its own), and the capture ends. No
+    // hit test and no activation: a cancelled tap is not a click.
+    if let Event::PointerCancel { x, y } = *ev {
+        for n in st.iter_mut() {
+            n.pressed = false;
+        }
+        input.state_writes.add(st.len());
+        input.pressed = None;
+        input.press = None;
+        let Some(cap) = input.capture.take() else { return false };
+        let cap = cap as usize;
+        if cap >= table.len() {
+            return false;
+        }
+        let s = &st[cap];
+        let p = Point { x, y };
+        let cx = EventCtx {
+            event: *ev,
+            node: cap as u32,
+            row: None,
+            inner: 0,
+            pos: p,
+            local: Point { x: p.x - s.pos.x, y: p.y - s.pos.y },
+            button: ev.button(),
+            clicks: input.clicks,
+            mods: input.mods,
+        };
+        let taken = state.tree_mut().node_mut(cap).on_event(ev, &cx);
+        if taken {
+            consumed.push(cap);
+        }
+        return taken;
     }
     // The press's click count survives to its release, where activation
     // happens (T14.3).

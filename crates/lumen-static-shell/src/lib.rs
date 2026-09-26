@@ -231,6 +231,9 @@ pub struct Host<A: App, R: Retention = Incremental, I: Invalidation = lumen_stat
     /// open overlays is a menu inside a menu inside a modal, four deep.
     overlays: lumen_static::overlay::Overlays<16>,
     queue: lumen_static::InputQueue,
+    /// The touch id that drives the pointer, from its `Begin` until it
+    /// lifts or is cancelled — M44/T44.4. See [`Host::pump_with`].
+    primary_touch: Option<u32>,
     /// Surface size in **physical** pixels — what a window reports.
     size: (u32, u32),
     /// Physical pixels per logical pixel (M10b).
@@ -748,6 +751,7 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             input: lumen_static::event::InputState::default(),
             overlays: Default::default(),
             queue: lumen_static::InputQueue::new(),
+            primary_touch: None,
             size: (width, height),
             scale: 1.0,
             frame: 0,
@@ -1363,6 +1367,16 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         let before = PointerFocus::of(&self.input);
         while let Some(ev) = self.queue.pop() {
             handled |= self.dispatch_now(&ev, &mut consumed);
+            // **The primary touch drives the pointer** — M44/T44.4
+            // (`docs/plan-input-semantics.md` §2.4). The raw `Touch` went
+            // first, so a recogniser in `lumen_static::gesture` still sees
+            // every finger; then the first finger down, until it lifts,
+            // is also a mouse. Here in the intake rather than in the
+            // winit translation, so an embedded touch panel that feeds
+            // `Event::Touch` into a `Host` gets the same behaviour.
+            for synth in promote_touch(&mut self.primary_touch, &ev).into_iter().flatten() {
+                handled |= self.dispatch_now(&synth, &mut consumed);
+            }
         }
 
         // **A cancel the application asked for** — M28/T28.12.
@@ -1937,6 +1951,36 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
     /// The node under a point, for tests and tooling.
     pub fn probe(&self, x: f32, y: f32) -> Option<lumen_static::Hit> {
         pass::hit_test(self.app.tree(), &self.states, x, y)
+    }
+}
+
+/// The pointer events the **primary touch** stands for — M44/T44.4.
+///
+/// `Begin` of a finger when none is primary makes it primary and is a
+/// move and a left press at its point; the primary's `Move` is a move,
+/// its `End` a release and its `Cancel` a `PointerCancel`, and either of
+/// the last two ends it. Every other finger, and every other event,
+/// stands for nothing. On X11 winit also synthesises a `CursorMoved` for
+/// the first touch; that arrives as one more move and never as a second
+/// press (`tests/touch_as_pointer.rs`).
+fn promote_touch(primary: &mut Option<u32>, ev: &Event) -> [Option<Event>; 2] {
+    use lumen_static::event::TouchPhase;
+    let Event::Touch { id, x, y, phase } = *ev else { return [None, None] };
+    match phase {
+        TouchPhase::Begin if primary.is_none() => {
+            *primary = Some(id);
+            [Some(Event::PointerMove { x, y }), Some(Event::down(x, y))]
+        }
+        TouchPhase::Move if *primary == Some(id) => [Some(Event::PointerMove { x, y }), None],
+        TouchPhase::End if *primary == Some(id) => {
+            *primary = None;
+            [Some(Event::up(x, y)), None]
+        }
+        TouchPhase::Cancel if *primary == Some(id) => {
+            *primary = None;
+            [Some(Event::PointerCancel { x, y }), None]
+        }
+        _ => [None, None],
     }
 }
 

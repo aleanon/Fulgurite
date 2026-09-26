@@ -440,6 +440,14 @@ per-session sequence that never approaches 2³².
 The system took the touch away, and a widget that treats that as a
 release commits an action the user did not finish.
 
+**Recognizers were all there was, until M44/T44.4 (2026-09-26).** No
+stock widget handled `Event::Touch`, so on a touchscreen a tap activated
+nothing — R15-F4. A `Host` now also turns the *primary* touch (the first
+finger down, until it lifts) into pointer events after dispatching the
+raw one, so recognizers keep their stream; and `Cancel` became
+`Event::PointerCancel`, which ends a gesture and activates nothing — the
+distinction above, carried through to the pointer.
+
 Recognizers are types an application owns — `Touches`, `Pinch`,
 `LongPress` — fed the same event stream everything else sees. No pass,
 no registry, nothing for a tree that wants none to opt out of.

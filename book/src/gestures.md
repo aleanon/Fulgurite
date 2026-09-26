@@ -28,6 +28,15 @@ Note that raw `Event::Touch` is in the core event vocabulary but
 *recognition* is not. That line is drawn deliberately, and the module
 header says so.
 
+**The first finger is also a mouse.** A `Host` dispatches every
+`Event::Touch` as it arrives, so a recognizer sees all of them, and then
+turns the *primary* touch — the first finger down, until it lifts — into
+the pointer events a mouse would have sent: a move and a press on
+`Begin`, a move on `Move`, a release on `End`. That is why a tap presses
+a `Button` although no widget handles touch itself. A `Cancel` becomes
+`Event::PointerCancel`, which ends the gesture and activates nothing: a
+cancelled tap is not a click. Other fingers never drive the pointer.
+
 ## `Drag<T>`, and the two halves not to conflate
 
 **Within an application** is `Drag<T>`: a payload, drop targets and hover

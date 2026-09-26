@@ -172,6 +172,17 @@ pub enum Event {
     PointerDown { x: f32, y: f32, button: PointerButton, clicks: u8 },
     PointerUp { x: f32, y: f32, button: PointerButton },
     PointerMove { x: f32, y: f32 },
+    /// A pointer gesture ended **without a release** — M44/T44.4
+    /// (`docs/plan-input-semantics.md` §2.4).
+    ///
+    /// What a platform sends when a touch is taken away (a palm, a
+    /// system gesture, a window losing the pointer). Delivered to the
+    /// node holding the capture, like a release, so a widget that keeps
+    /// drag state of its own learns the gesture ended; it releases the
+    /// capture, clears the press, and **activates nothing** — which is
+    /// the whole difference from `PointerUp`. The host synthesises it
+    /// from the primary touch's `Cancel`.
+    PointerCancel { x: f32, y: f32 },
     /// The pointer is **over** this node, and nothing is captured.
     ///
     /// **A separate event, not a flag on the move** (M27/T27.11,
@@ -205,6 +216,15 @@ pub enum Event {
     /// 20 and the enum 24, which would take [`InputQueue`] from 1 048
     /// bytes to 1 560. The windowing layer truncates the platform's id,
     /// which is a per-session sequence and never approaches 2³².
+    ///
+    /// **The primary touch also drives the pointer** (M44/T44.4). A host
+    /// dispatches this event as it is, so a recogniser still sees every
+    /// finger, and then — for the first finger down, until it lifts —
+    /// synthesises the pointer events a mouse would have sent: `Begin` is
+    /// a move and a left press, `Move` a move, `End` a release, and
+    /// `Cancel` a [`Event::PointerCancel`]. Other fingers never drive the
+    /// pointer. That is what makes a tap on a touchscreen press a button:
+    /// no stock widget handles `Touch` itself.
     ///
     /// Gesture *recognition* — pinch, rotate, swipe, long-press — is
     /// not here. Those are stateful, and a framework pass that
@@ -262,6 +282,7 @@ impl Event {
             Event::PointerDown { x, y, .. }
             | Event::PointerUp { x, y, .. }
             | Event::PointerMove { x, y }
+            | Event::PointerCancel { x, y }
             | Event::Hover { x, y }
             | Event::Touch { x, y, .. }
             | Event::Scroll { x, y, .. } => Some(Point { x, y }),
