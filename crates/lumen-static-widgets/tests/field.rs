@@ -281,7 +281,9 @@ fn tab_switches_which_handle_the_keyboard_moves() {
 
 #[test]
 fn a_click_anywhere_in_a_search_field_reaches_the_text() {
-    let mut s = SearchField::new("query");
+    // **Empty**: with a query, the far right is the × (M57/B26), which is
+    // the pill's own and answers with node 0 by design — checked below.
+    let mut s = SearchField::new("");
     let styles = vec![<SearchField as Widget>::type_defaults(); 3];
     let mut st = vec![NodeState::default(); <SearchField as Widget>::NODE_COUNT];
     let mut m = lumen_static::cx::BlockMetrics;
@@ -300,6 +302,15 @@ fn a_click_anywhere_in_a_search_field_reaches_the_text() {
         "a click in the padding landed on node {} — the container, which focuses nothing",
         hit.node
     );
+    // With a query the same point is the ×, and it is the pill's.
+    let mut s = SearchField::new("query");
+    {
+        let mut cx = lumen_static::LayoutCx::new(&mut m);
+        Node::layout(&mut s, &mut cx, VIEW, &styles, &mut st, 0);
+    }
+    Node::place(&mut s, Point { x: 0.0, y: 0.0 }, &styles, &mut st, 0);
+    let hit = Node::hit(&s, &st, 0, r[2] - 2.0, (r[1] + r[3]) / 2.0).unwrap();
+    assert_eq!(hit.node, 0, "the × did not answer as the pill's own part");
 }
 
 #[test]

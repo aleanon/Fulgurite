@@ -135,7 +135,10 @@ impl<W: Widget> Node for Card<W> {
         if !me.visible {
             return lumen_static::ops::hide_subtree(st, i, limits, Self::NODE_COUNT);
         }
-        let inner = lumen_static::ops::inner_limits(limits, me.padding);
+        // Inside its own `Fixed` size, not across the offer (M57/B26:
+        // the same defect M56 found in the derive, in a hand-written
+        // wrapper; `tests/wrapper_own_size.rs`).
+        let inner = lumen_static::ops::inner_limits(lumen_static::ops::within_own_size(limits, &me), me.padding);
         let c = self.content.layout(cx, inner, style, st, i + Self::AT);
         let content =
             Size { w: c.w + me.padding.horizontal(), h: c.h + me.padding.vertical() };

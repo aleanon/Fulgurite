@@ -139,6 +139,11 @@ RANGE = ("RangeSlider", "#d_range_a", [
 ])
 
 
+def _click_above(c, sel, pad=6.0):
+    b = c.box(sel)
+    return c.c.rpc("input.click", x=(b[0] + b[2]) / 2, y=b[1] - pad)
+
+
 SEARCH = ("SearchField", "#search-field", [
     Action(
         name="a click reaches the text, not the container",
@@ -149,7 +154,11 @@ SEARCH = ("SearchField", "#search-field", [
             f"state.focused={c.styles()['state']['focused']} — the *field*, "
             f"not the pill around it",
         ),
-        isolate=lambda c: c.click_outside(),
+        # Outside the *pill*: 6 px above the field is the pill's padding,
+        # where a press focuses the field by design. This clicked there and
+        # passed only while the field was laid out past the pill's right
+        # edge (M57/B26), so its centre was outside the pill too.
+        isolate=lambda c: _click_above(c, "#d_search_a"),
         injection="let SearchField::hit fall through to the container",
     ),
     Action(
@@ -184,6 +193,22 @@ SEARCH = ("SearchField", "#search-field", [
         static=True,
         injection="hand the icon the wrapper's own `inner` limits — its "
                   "min_w then forces a 20 px magnifier to the full width",
+    ),
+    # M57/B26: `clear()` had no caller. And the field is inside the pill
+    # now: it ended 148 px past it while laid out across the offer.
+    Action(
+        name="Escape clears the query, and the field ends inside the pill",
+        needs="a focused search field with a query",
+        do=lambda c: (c.click(), c.__dict__.__setitem__("_v0", _text(c)),
+                      c.key("Escape"))[0],
+        expect=lambda c: (
+            c._v0 != "" and _text(c) == ""
+            and c.box("#search-field")[2] <= c.box("#d_search_a")[2],
+            f"query {c._v0!r} -> {_text(c)!r}; field ends "
+            f"{round(c.box('#search-field')[2])}, pill {round(c.box('#d_search_a')[2])}",
+        ),
+        injection="drop the Escape arm in SearchField::on_event, or lay the "
+                  "field out across the offer",
     ),
 ])
 

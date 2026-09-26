@@ -235,7 +235,10 @@ impl<W: Widget> Node for Glass<W> {
         let hi = (i + Self::NODE_COUNT).min(st.len());
         let down = st[i..hi].iter().any(|n| n.pressed);
         self.press.go(if down { 1.0 } else { 0.0 });
-        let inner = inner_limits(limits, me.padding);
+        // Inside its own `Fixed` size, not across the offer (M57/B26:
+        // the same defect M56 found in the derive, in a hand-written
+        // wrapper; `tests/wrapper_own_size.rs`).
+        let inner = inner_limits(lumen_static::ops::within_own_size(limits, &me), me.padding);
         let content = self.content.layout(cx, inner, style, st, i + Self::AT);
         let padded =
             Size { w: content.w + me.padding.horizontal(), h: content.h + me.padding.vertical() };

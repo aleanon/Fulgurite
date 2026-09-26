@@ -580,9 +580,20 @@ pub const PART_SEARCH_ICON: &str = "search-icon";
 pub const PART_SEARCH_FIELD: &str = "search-field";
 
 /// A text field that looks like one: a magnifier, then the text.
+///
+/// **Escape clears, and so does its ×** — M57/B26. `clear()` existed and
+/// nothing called it (`docs/widget-audit.md`, SearchField). The field
+/// declines Escape when it has no selection, so the pill takes it; the ×
+/// is drawn at the right while there is a query, and a press on it is
+/// routed to the pill rather than the field. Enter is
+/// [`SearchField::take_submitted`].
 pub struct SearchField {
     pub icon: Icon,
     pub field: crate::input::TextInput<alloc::string::String>,
+    /// Its own width from layout, for which part a press is on.
+    width: f32,
+    /// A press began on the ×: the release clears only if so.
+    on_clear: bool,
 }
 
 impl Default for SearchField {
@@ -590,6 +601,8 @@ impl Default for SearchField {
         SearchField {
             icon: Icon::new(Symbol::Search),
             field: crate::input::TextInput::default(),
+            width: 0.0,
+            on_clear: false,
         }
     }
 }
@@ -615,8 +628,24 @@ impl SearchField {
         true
     }
 
+    /// Whether Enter was pressed since the last call — and clears it.
+    pub fn take_submitted(&mut self) -> bool {
+        self.field.take_submitted()
+    }
+
     /// Gap between the magnifier and the text.
     const GAP: f32 = 8.0;
+    /// The ×'s column, inside the right padding.
+    const CLEAR_W: f32 = 20.0;
+
+    fn has_clear(&self) -> bool {
+        !self.field.as_str().is_empty()
+    }
+
+    /// Whether a point `x` from the pill's left edge is on the ×.
+    fn on_x(&self, x: f32) -> bool {
+        self.has_clear() && x >= self.width - Self::CLEAR_W - 12.0
+    }
 }
 
 pub struct SearchFieldTable;
@@ -705,7 +734,13 @@ impl Node for SearchField {
         if !me.visible {
             return lumen_static::ops::hide_subtree(st, i, limits, Self::NODE_COUNT);
         }
-        let inner = lumen_static::ops::inner_limits(limits, me.padding);
+        // **Its own width first** — M57/B26. The children were laid out
+        // across the *offered* width, so a `Fixed(220)` pill in a 400 px
+        // row put a 328 px field in it, running 148 px past its right
+        // edge; the caret at a long query's end was drawn outside the
+        // pill. `within_own_size` is M56's answer to the same defect in
+        // the derive; a hand-written wrapper has to ask for it.
+        let inner = lumen_static::ops::inner_limits(lumen_static::ops::within_own_size(limits, &me), me.padding);
         // **Loose limits for the icon.** A `SearchField` is `FILL`, so
         // its own `min_w` is the width its parent insisted on — and
         // `resolve_self` clamps a `Fixed` *up* to `min_w`. Handing the
@@ -719,9 +754,10 @@ impl Node for SearchField {
         let loose = Constraints { min_w: 0.0, max_w: inner.max_w, min_h: 0.0, max_h: inner.max_h };
         let ic = self.icon.layout(cx, loose, style, st, i + SF_ICON);
         // The field takes what is left after the icon and the gap.
+        let clear = if self.has_clear() { Self::CLEAR_W } else { 0.0 };
         let rest = Constraints {
             min_w: 0.0,
-            max_w: (inner.max_w - ic.w - Self::GAP).max(0.0),
+            max_w: (inner.max_w - ic.w - Self::GAP - clear).max(0.0),
             min_h: 0.0,
             max_h: inner.max_h,
         };
@@ -731,6 +767,7 @@ impl Node for SearchField {
             h: ic.h.max(f.h) + me.padding.vertical(),
         };
         let s = lumen_static::ops::resolve_self(limits, &me, content);
+        self.width = s.w;
         lumen_static::ops::record_painted(st, i, limits, s, &me)
     }
 
@@ -766,11 +803,45 @@ impl Node for SearchField {
         lumen_static::ops::border(st, i, out);
         self.icon.paint(st, i + SF_ICON, out);
         self.field.paint(st, i + SF_FIELD, out);
+        if self.has_clear() {
+            // The ×, in the icon's colour: it is the same kind of mark.
+            let c = st[i + SF_ICON].fg;
+            let (cx, cy, d) = (r[2] - st[i].pad.2 - Self::CLEAR_W / 2.0, (r[1] + r[3]) / 2.0, 4.0);
+            out.line(Point { x: cx - d, y: cy - d }, Point { x: cx + d, y: cy + d }, 1.5, c);
+            out.line(Point { x: cx - d, y: cy + d }, Point { x: cx + d, y: cy - d }, 1.5, c);
+        }
+    }
+
+    fn on_event(&mut self, ev: &Event, cx: &EventCtx) -> bool {
+        match ev {
+            // The field declined it: it had no selection to drop.
+            Event::Key { key: Key::Escape, down: true } => self.clear(),
+            // Only a press aimed at the pill itself — the × — and not one
+            // the field declined on its way up.
+            Event::PointerDown { .. } if cx.target == cx.node => {
+                self.on_clear = self.on_x(cx.local.x);
+                self.on_clear
+            }
+            Event::PointerUp { .. } if cx.target == cx.node => {
+                let hit = core::mem::take(&mut self.on_clear) && self.on_x(cx.local.x);
+                hit && self.clear()
+            }
+            _ => false,
+        }
     }
 
     fn hit(&self, st: &[NodeState], i: usize, x: f32, y: f32) -> Option<lumen_static::Hit> {
         if !lumen_static::hit::contains(&st[i], x, y) {
             return None;
+        }
+        // The × is the pill's own: a press there must not put a caret in
+        // the field.
+        if self.on_x(x - st[i].pos.x) {
+            return Some(lumen_static::Hit {
+                node: i as u32,
+                inner: None,
+                local: Point { x: x - st[i].pos.x, y: y - st[i].pos.y },
+            });
         }
         // **The field, wherever inside the box the click landed.** The
         // icon is decoration and `Icon` declines a hit anyway; falling
