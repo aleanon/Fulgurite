@@ -187,7 +187,7 @@ impl FontStack {
     }
 
     /// Find a system sans-serif face, with the platform's fallback faces
-    /// behind it ([`FALLBACKS`]).
+    /// behind it (this module's `FALLBACKS` list).
     ///
     /// Returns `None` rather than panicking: a caller can fall back to
     /// the block stand-in and still show *something*, which is better
@@ -206,7 +206,7 @@ impl FontStack {
 
     /// Which face draws `ch` at `weight`: 0 for a primary face, `1 + k`
     /// for fallback `k`, `None` when no face in the stack has it and it is
-    /// substituted. Loads fallback faces as [`FontStack::prepare`] would.
+    /// substituted. Loads fallback faces as laying a run out would.
     ///
     /// For a test that prints where each character came from
     /// (`tests/font_fallback.rs`), and the answer to "why is this a `?`".

@@ -1805,7 +1805,7 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
 
     /// Paste `text` into the focused node **as one edit** — M45/T45.7.
     ///
-    /// The focused node's [`Node::paste`](lumen_static::Node::paste) takes
+    /// The focused node's [`lumen_static::Node::paste`] takes
     /// the whole string and answers how many characters it **kept**: a
     /// `TextArea` normalises line endings and keeps them, a `TextInput`
     /// strips them, a `NumberInput` keeps what its number rule allows.
