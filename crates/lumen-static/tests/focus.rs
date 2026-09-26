@@ -315,8 +315,7 @@ fn a_group_of_twenty_is_navigable_end_to_end() {
     assert_eq!(members.len(), 20, "setup: twenty focusable members");
     assert!(members.iter().all(|&i| st[i as usize].size.w > 0.0), "setup: every member has area");
 
-    let mut input = InputState::default();
-    input.focus = Some(members[0]);
+    let mut input = InputState { focus: Some(members[0]), ..Default::default() };
     let mut visited = std::collections::BTreeSet::new();
     for _ in 0..20 {
         assert!(right(&mut app, &styles, &mut st, &mut input), "Right was not handled");

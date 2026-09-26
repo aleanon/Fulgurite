@@ -1,6 +1,19 @@
 # M44 — input semantics and keyboard reach
 
-> **Written 2026-09-24, not started.** Closes R3-F1, R3-F2, R3-F3,
+> **T44.0–T44.10 DONE 2026-09-27** (branch `impl/m44`):
+> - T44.0: every gate committed red first, in two landings; `overlay_stack.rs` closes R18-F7 green, with its three mutants red.
+> - T44.1: `Node::owns_arrows` for the eight arrow-driven widgets; the group is walked, not capped at 16 (R3-F1, R10-F3, R3-F9).
+> - T44.2: a click is a press and a release on the same `(node, row, row_generation)` (R3-F3).
+> - T44.3: a captured node that leaves the screen loses the capture (R3-F4).
+> - T44.4: the primary touch drives the pointer; `Event::PointerCancel` (R15-F4).
+> - T44.5: moves merge, a release evicts a move, the drop count is published; the agent chunks input (R3-F2, R3-F11).
+> - T44.6: an event writes at most the nodes it changed — 2 writes per move on 1,728 nodes, was 3,457; focus is published after the event (R3-F12).
+> - T44.7: `Repeat`'s handler goes through the ring slot (the same fix as M56's `af902b9`), and rows past the addressable ceiling are cut (R3-F5, R3-F10).
+> - T44.8: the cursor over a repeater row is the row's (R15-F7).
+> - T44.9: only a modal traps Tab; a menu is dismissed by it; focus returns when an overlay closes (R3-F7).
+> - T44.10: rows a keyboard can choose — `Repeat`'s active row, `Node::active_row`, the choosers, pickers, `Tree` and `DataGrid`; `Select` and `ScrollView` are driven live, both strategies (R3-F6).
+>
+> **Written 2026-09-24.** Closes R3-F1, R3-F2, R3-F3,
 > R3-F4, R3-F5, R3-F6, R3-F7, R3-F9, R3-F10, R3-F11, R3-F12, R10-F3,
 > R15-F4, R15-F7 and R18-F7 from M38's deep review
 > (`docs/results-deep-review.md`), as re-triaged against `main` at

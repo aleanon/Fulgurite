@@ -417,7 +417,7 @@ fn on_odd(r: &mut Ring, ctx: &EventCtx) {
 
 fn bind_parity(r: &mut RingRow, row: usize) {
     r.pick.label = "p";
-    r.pick.on_click = if row % 2 == 0 { on_even } else { on_odd };
+    r.pick.on_click = if row.is_multiple_of(2) { on_even } else { on_odd };
 }
 
 /// Ten clicks on ten visible rows after scrolling `rows` rows; returns
