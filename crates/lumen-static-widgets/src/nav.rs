@@ -79,10 +79,16 @@ pub struct Strip<const KIND: u8 = TABS> {
     /// same trade `Popup::measured` and `ScrollView::measured_overflow`
     /// make, and for the same reason.
     widths: [f32; MAX_ITEMS],
+    /// The item under the pointer, for hover and press feedback — M57/B36.
+    /// Paint ignored `hovered` and `pressed` entirely.
+    hot: Option<usize>,
 }
 
 /// `Tabs`: a horizontal strip with the selection underlined.
 pub type Tabs = Strip<TABS>;
+
+/// A rail item's height (M57/B38).
+const RAIL_ITEM: f32 = 56.0;
 /// `BottomNav`: a horizontal strip with the selection filled.
 pub type BottomNav = Strip<BOTTOM>;
 /// `NavigationRail`: a vertical strip with the selection filled.
@@ -96,6 +102,7 @@ impl<const KIND: u8> Default for Strip<KIND> {
             selected: 0,
             extent: 0.0,
             widths: [0.0; MAX_ITEMS],
+            hot: None,
         }
     }
 }
@@ -150,16 +157,29 @@ impl<const KIND: u8> Strip<KIND> {
     /// wrong with nothing else looking different, and only a press down a
     /// rail can tell — `a_rail_reads_the_press_down_its_own_axis` in
     /// `tests/nav.rs` is that press.
+    /// One item's extent along the strip. A rail stacks fixed 56 px items
+    /// from its top, as Material's does (M57/B38); it divided its whole
+    /// height among them, so four items in a tall rail were 65 px each and
+    /// grew with the window. Strips divide their width.
+    fn each(&self) -> f32 {
+        let even = self.extent / self.count.max(1) as f32;
+        if KIND == RAIL { even.min(RAIL_ITEM) } else { even }
+    }
+
     fn item_at(&self, local: Point) -> Option<usize> {
         if self.count == 0 || self.extent <= 0.0 {
             return None;
         }
         let along = if Self::vertical() { local.y } else { local.x };
-        let each = self.extent / self.count as f32;
-        if each <= 0.0 {
+        let each = self.each();
+        if each <= 0.0 || along < 0.0 {
             return None;
         }
         let k = (along / each) as usize;
+        if KIND == RAIL && k >= self.count {
+            // Below the last item of a rail is not an item.
+            return None;
+        }
         Some(k.min(self.count - 1))
     }
 }
@@ -189,7 +209,7 @@ impl<const KIND: u8> Widget for Strip<KIND> {
                 Fields::FOCUS_RING,
                 Fields::CURSOR,
                 Fields::VISIBLE,
-            ])).with_roles(match KIND { TABS => lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Text), _ => lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Text).background(lumen_static::style::Role::Surface) })];
+            ])).with_roles(match KIND { TABS => lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Muted).border(lumen_static::style::Role::Accent), _ => lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Text).background(lumen_static::style::Role::Surface) })];
 
     fn type_defaults() -> Style {
         let base = Style {
@@ -275,7 +295,7 @@ impl<const KIND: u8> Node for Strip<KIND> {
         }
         out.rounded_rect(r, s.bg, s.radius);
         lumen_static::ops::border(st, i, out);
-        let each = if Self::vertical() { h } else { w } / self.count as f32;
+        let each = self.each();
         for k in 0..self.count {
             let cell = if Self::vertical() {
                 [r[0], r[1] + each * k as f32, r[2], r[1] + each * (k as f32 + 1.0)]
@@ -283,14 +303,27 @@ impl<const KIND: u8> Node for Strip<KIND> {
                 [r[0] + each * k as f32, r[1], r[0] + each * (k as f32 + 1.0), r[3]]
             };
             let on = k == self.selected;
+            // **Hover and press** (M57/B36): a tint on the item under the
+            // pointer, stronger while it is held.
+            if !on && self.hot == Some(k) {
+                let a = if s.pressed { 0x2e } else { 0x16 };
+                out.rounded_rect(
+                    [cell[0] + 4.0, cell[1] + 4.0, cell[2] - 4.0, cell[3] - 4.0],
+                    lumen_static::display::Color(s.fg.0, s.fg.1, s.fg.2, a),
+                    8.0,
+                );
+            }
             match KIND {
                 // **An underline, not a fill.** A filled tab reads as a
                 // button; the underline is what says "this is the page
                 // you are on" without competing with the content.
                 TABS => {
                     if on {
+                        // In the accent (M57/B36): the underline and the
+                        // label were the text colour, and only the weight
+                        // told the current tab apart.
                         let t = 3.0;
-                        out.rect([cell[0] + 8.0, cell[3] - t, cell[2] - 8.0, cell[3]], s.fg);
+                        out.rect([cell[0] + 8.0, cell[3] - t, cell[2] - 8.0, cell[3]], s.border_color);
                     }
                 }
                 _ => {
@@ -309,7 +342,11 @@ impl<const KIND: u8> Node for Strip<KIND> {
             // which is why a filled kind's `type_defaults` must give it
             // an opaque one, and why `a_filled_strip_has_a_ground_for_its_selected_label`
             // asserts that rather than trusting it.
-            let col = if on && KIND != TABS { s.bg } else { s.fg };
+            let col = match (on, KIND) {
+                (true, TABS) => s.border_color,
+                (true, _) => s.bg,
+                _ => s.fg,
+            };
             // Centred on its cell, from the width `layout` measured.
             let tw = self.widths[k].min(cell[2] - cell[0]);
             let tx = cell[0] + ((cell[2] - cell[0]) - tw) / 2.0;
@@ -326,6 +363,12 @@ impl<const KIND: u8> Node for Strip<KIND> {
 
     fn on_event(&mut self, ev: &Event, cx: &EventCtx) -> bool {
         match ev {
+            Event::Hover { .. } => {
+                let was = self.hot;
+                self.hot = self.item_at(cx.local);
+                was != self.hot
+            }
+            Event::Leave => self.hot.take().is_some(),
             Event::PointerDown { .. } => match self.item_at(cx.local) {
                 Some(k) => {
                     // **True even when the selection did not move.** A

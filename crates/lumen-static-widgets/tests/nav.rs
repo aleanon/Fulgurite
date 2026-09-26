@@ -69,9 +69,11 @@ fn a_rail_reads_the_press_down_its_own_axis() {
     let st = lay(&mut r);
     let h = st[0].size.h;
     assert!(h > 0.0, "setup: the rail has no height");
-    // 60% *down*, with x near zero: a rail that read `local.x` would
-    // land on item 0 and this is the only test that could tell.
-    assert!(press_at(&mut r, Point { x: 4.0, y: h * 0.6 }));
+    // Two and a half items *down*, with x near zero: a rail that read
+    // `local.x` would land on item 0 and this is the only test that
+    // could tell. (Items are 56 px from the top since M57/B38.)
+    assert!(h > 56.0 * 4.0, "setup: the rail is shorter than its items");
+    assert!(press_at(&mut r, Point { x: 4.0, y: 56.0 * 2.5 }));
     assert_eq!(r.selected(), 2, "a rail selected {} reading down its axis", r.selected());
 }
 
@@ -275,4 +277,80 @@ fn a_filled_strip_has_a_ground_for_its_selected_label() {
             "{name}'s ground and its fill are the same colour"
         );
     }
+}
+
+// ---- M57/B36–B38: hover, the accent, a rail's items ---------------------
+
+fn ev_at<W: Widget + Node>(w: &mut W, ev: Event, local: Point) -> bool {
+    let mut cx = EventCtx::for_event(0, ev);
+    cx.local = local;
+    w.on_event(&ev, &cx)
+}
+
+fn painted<W: Widget + Node>(w: &W, st: &[NodeState]) -> Vec<lumen_static::display::Cmd> {
+    let mut list = lumen_static::display::DisplayList::new();
+    Node::paint(w, st, 0, &mut list);
+    list.cmds
+}
+
+/// A rail stacks 56 px items from its top: it divided its whole height
+/// among them, so the items grew with the window and a press below the
+/// last one selected it (`docs/widget-audit.md`, NavigationRail).
+#[test]
+fn a_rail_stacks_fixed_items_from_its_top() {
+    let mut r = NavigationRail::new(&LABELS);
+    let st = lay(&mut r);
+    let h = st[0].size.h;
+    println!("rail height {h}, a press at y=60 and at y={}", h - 10.0);
+    assert!(h > 56.0 * 4.0 + 20.0, "setup: the rail has no room below its items");
+    assert!(press_at(&mut r, Point { x: 4.0, y: 60.0 }));
+    assert_eq!(r.selected(), 1, "y=60 is the second 56 px item");
+    assert!(!press_at(&mut r, Point { x: 4.0, y: h - 10.0 }), "a press below the last item was taken");
+    assert_eq!(r.selected(), 1, "a press below the last item changed the selection");
+}
+
+/// Hover and press are shown: paint ignored both (B36).
+#[test]
+fn a_hovered_item_is_tinted_and_a_pressed_one_more() {
+    let mut t = Tabs::new(&LABELS);
+    let mut st = lay(&mut t);
+    let w = st[0].size.w;
+    let fills = |cmds: &[lumen_static::display::Cmd]| -> Vec<u8> {
+        cmds.iter()
+            .filter_map(|c| match c {
+                lumen_static::display::Cmd::RoundedRect { color, .. } if color.3 > 0 && color.3 < 0xff => Some(color.3),
+                _ => None,
+            })
+            .collect()
+    };
+    let before = fills(&painted(&t, &st));
+    assert!(ev_at(&mut t, Event::Hover { x: 0.0, y: 0.0 }, Point { x: w * 0.6, y: 10.0 }), "a hover over a new item reported no change");
+    let hover = fills(&painted(&t, &st));
+    st[0].pressed = true;
+    let press = fills(&painted(&t, &st));
+    println!("translucent fills: idle {before:?}, hovered {hover:?}, pressed {press:?}");
+    assert!(before.is_empty(), "setup: an idle strip already paints a tint");
+    assert_eq!(hover.len(), 1, "no tint under the pointer");
+    assert!(press[0] > hover[0], "a press is not shown over the hover");
+    assert!(ev_at(&mut t, Event::Leave, Point { x: 0.0, y: 0.0 }), "leaving reported no change");
+    st[0].pressed = false;
+    assert!(fills(&painted(&t, &st)).is_empty(), "the tint outlived the pointer");
+}
+
+/// The current tab is marked in the accent — its underline and its label —
+/// where it was the text colour and only the weight told it apart (B37).
+#[test]
+fn the_current_tab_is_marked_in_the_accent() {
+    let mut t = Tabs::new(&LABELS);
+    let mut st = lay(&mut t);
+    let accent = lumen_static::display::Color(0x25, 0x63, 0xeb, 0xff);
+    st[0].border_color = accent;
+    let cmds = painted(&t, &st);
+    let under = cmds.iter().filter(|c| matches!(c, lumen_static::display::Cmd::Rect { color, .. } if *color == accent)).count();
+    let label = cmds.iter().filter(|c| matches!(c, lumen_static::display::Cmd::Text { color, .. } if *color == accent)).count();
+    println!("accent rects {under}, accent labels {label}");
+    assert_eq!((under, label), (1, 1), "the current tab is not drawn in the accent");
+    // And the palette hands Tabs an accent at all.
+    let s = <Tabs as Widget>::SEEDS[0].style(&lumen_static::style::Palette::LIGHT);
+    assert_eq!(s.border_color, lumen_static::style::Palette::LIGHT.accent, "Tabs' seed does not resolve its mark to the accent");
 }
