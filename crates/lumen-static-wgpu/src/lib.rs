@@ -74,8 +74,15 @@ const KIND_STROKE: u32 = 8;
 const LIGHT_Z: f32 = 0.62;
 const LIGHT_XY: f32 = 0.784_599_3;
 
-/// Glyph atlas edge, in texels. 1 MB of R8, which holds a few thousand
-/// glyphs at UI sizes — far more than a screen has.
+/// The glyph atlas's **starting** edge, in texels: 1 MB of R8, a few
+/// thousand glyphs at UI sizes.
+///
+/// It said "far more than a screen has", and a 4K HiDPI screen of type
+/// specimens was more (R9-F1): its glyphs did not fit an empty 1024²
+/// atlas, and the frame was drawn with a twentieth of its text missing.
+/// Since M51/T51.1 the atlas doubles when that happens, up to the
+/// device's limit, and [`Gpu::atlas_stats`] counts what it did
+/// (`docs/results-gpu.md` §4).
 const GLYPH_ATLAS: u32 = 1024;
 /// Image atlas edge. **Allocated on the first image command**, so an
 /// application with no images pays nothing for the capability. The blur
@@ -248,24 +255,36 @@ pub struct Gpu {
     /// window does with a dropped present.
     #[cfg(debug_assertions)]
     drop_first: u32,
-    /// What the glyph atlas has had to do, since this renderer was made
-    /// — M51/T51.0's read-only probe (R9-F1). See [`AtlasStats`].
+    /// What the atlases have had to do since this renderer was made — M51
+    /// (R9-F1). See [`AtlasStats`].
     atlas_stats: AtlasStats,
+    /// The largest glyph atlas this device can hold:
+    /// `max_texture_dimension_2d` of its limits.
+    max_atlas: u32,
 }
 
-/// How often the glyph atlas ran out of room, and what was done about it
-/// — M51 (R9-F1).
+/// How often the atlases ran out of room, and what was done about it —
+/// M51 (R9-F1), read with [`Gpu::atlas_stats`].
 ///
-/// A **reset** is an atlas emptied so the frame could be built again; a
-/// **give-up** is a frame that did not fit an *empty* atlas either, and
-/// was submitted with what fitted — glyphs missing. Before M51 the
-/// give-up branch counted nothing and logged nothing.
-#[doc(hidden)]
+/// A **reset** empties both atlases so the frame can be built again. A
+/// **growth** doubles the glyph atlas when a frame's glyphs do not fit an
+/// empty one, and builds the frame again. A **give-up** is a frame that
+/// did not fit even so — the glyph atlas at the device's texture limit,
+/// or an image set larger than the image atlas — and was submitted with
+/// what fitted: glyphs or images missing. Before M51 the give-up branch
+/// counted nothing and logged nothing, and three documents said it never
+/// happened. It now logs once per renderer, and this counts every one.
+///
+/// The agent's `app.perf` does not report it yet: that waits for
+/// M48/T48.3, which makes `app.perf` carry measured stages at all
+/// (`docs/plan-gpu-fidelity.md` §2.1).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct AtlasStats {
     pub resets: u64,
+    pub growths: u64,
     pub give_ups: u64,
-    /// The glyph atlas's edge, in texels, now.
+    /// The glyph atlas's edge, in texels, now. It never shrinks within a
+    /// renderer's life.
     pub glyph_size: u32,
 }
 
@@ -326,9 +345,18 @@ pub fn adapters() -> Vec<(String, wgpu::DeviceType)> {
         .collect()
 }
 
-/// The atlas ran out of room mid-frame. Answered by resetting it and
-/// building the frame again, not by dropping a glyph.
-struct Overflow;
+/// An atlas ran out of room mid-frame, and which one.
+///
+/// Answered by resetting both atlases and building the frame again; if a
+/// frame's glyphs do not fit an *empty* glyph atlas either, by growing it
+/// and building again, up to the device's texture limit (M51/T51.1).
+/// Only past that limit is anything dropped, and then it is counted
+/// ([`AtlasStats::give_ups`]) and logged once.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Overflow {
+    Glyph,
+    Image,
+}
 
 impl Gpu {
     /// A renderer with no window: draws into a texture, read back with
@@ -589,6 +617,7 @@ impl Gpu {
             cache: None,
         });
 
+        let max_atlas = device.limits().max_texture_dimension_2d;
         let (target, target_view) = make_target(&device, width, height);
         let globals = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("lumen-static globals"),
@@ -650,6 +679,7 @@ impl Gpu {
             #[cfg(debug_assertions)]
             drop_first: std::env::var("LUMEN_GPU_DROP_FIRST").ok().and_then(|v| v.parse().ok()).unwrap_or(0),
             atlas_stats: AtlasStats { glyph_size: GLYPH_ATLAS, ..AtlasStats::default() },
+            max_atlas,
         })
     }
 
@@ -663,8 +693,9 @@ impl Gpu {
         self.size
     }
 
-    /// The glyph atlas's resets and give-ups so far — M51/T51.0's probe.
-    #[doc(hidden)]
+    /// The atlases' resets, growths and give-ups so far, and the glyph
+    /// atlas's edge — M51/T51.1 (R9-F1). A non-zero `give_ups` means a
+    /// frame was drawn with glyphs or images missing.
     pub fn atlas_stats(&self) -> AtlasStats {
         self.atlas_stats
     }
@@ -787,16 +818,14 @@ impl Gpu {
             return;
         }
         let mut quads = Vec::new();
-        // Twice at most: an atlas that fills is reset and the frame is
-        // built again from an empty one. Rebuilding is what keeps the
-        // frame correct — the alternative is a frame with glyphs
-        // missing, which is a rendering bug rather than a slow frame.
-        for attempt in 0..2 {
-            if attempt == 1 {
-                self.atlas_stats.resets += 1;
-                self.glyph_atlas.reset();
-                self.image_atlas.reset();
-            }
+        // An atlas that fills is reset and the frame is built again from
+        // an empty one; a glyph set that does not fit an empty glyph
+        // atlas grows it and is built again, once per doubling, up to the
+        // device's limit (M51/T51.1). Rebuilding is what keeps the frame
+        // correct — the alternative is a frame with glyphs missing, which
+        // is a rendering bug rather than a slow frame.
+        let mut attempt = 0u32;
+        loop {
             quads.clear();
             let mut grads = Vec::new();
             // **Cleared with the quads, not declared outside the loop.**
@@ -837,23 +866,58 @@ impl Gpu {
                     break;
                 }
             }
-            match outcome {
+            let overflow = match outcome {
                 Ok(()) => {
                     self.submit(&quads, &grads, &mats, &splits);
                     return;
                 }
-                Err(Overflow) if attempt == 0 => continue,
-                // A single frame that does not fit an empty atlas. Draw
-                // what fits rather than nothing: a frame missing its
-                // last glyphs is worse than one that is whole, and far
-                // better than a black window.
-                Err(Overflow) => {
-                    self.atlas_stats.give_ups += 1;
-                    self.submit(&quads, &grads, &mats, &splits);
-                    return;
-                }
+                Err(o) => o,
+            };
+            attempt += 1;
+            if attempt == 1 {
+                // The atlas may only be full of glyphs earlier frames
+                // needed: empty it before concluding anything.
+                self.atlas_stats.resets += 1;
+                self.glyph_atlas.reset();
+                self.image_atlas.reset();
+                continue;
             }
+            if overflow == Overflow::Glyph && self.grow_glyph_atlas() {
+                continue;
+            }
+            // Past the device's limit, or an image set larger than the
+            // image atlas. Draw what fits rather than nothing — a frame
+            // missing its last glyphs is worse than one that is whole,
+            // and far better than a black window — and say so.
+            self.atlas_stats.give_ups += 1;
+            if self.atlas_stats.give_ups == 1 {
+                eprintln!(
+                    "lumen-static: a frame did not fit the {} atlas at {}² texels (the device's \
+                     limit is {}); drawn with what fitted. Counted in Gpu::atlas_stats.",
+                    if overflow == Overflow::Glyph { "glyph" } else { "image" },
+                    if overflow == Overflow::Glyph { self.glyph_atlas.size() } else { self.image_atlas.size() },
+                    self.max_atlas,
+                );
+            }
+            self.submit(&quads, &grads, &mats, &splits);
+            return;
         }
+    }
+
+    /// Double the glyph atlas, empty, and say whether it could be: `false`
+    /// at the device's `max_texture_dimension_2d`. The texture is
+    /// replaced, so the bind group is rebuilt before the next draw.
+    fn grow_glyph_atlas(&mut self) -> bool {
+        let next = self.glyph_atlas.size().saturating_mul(2);
+        if next > self.max_atlas {
+            return false;
+        }
+        self.glyph_tex = make_atlas_texture(&self.device, next, wgpu::TextureFormat::R8Unorm);
+        self.glyph_atlas = Atlas::new(next);
+        self.bind_dirty = true;
+        self.atlas_stats.growths += 1;
+        self.atlas_stats.glyph_size = next;
+        true
     }
 
     /// Walk the list into instances, in paint order.
@@ -1101,7 +1165,7 @@ impl Gpu {
                         Some(f) => {
                             if self.glyphs(f, rect, s, *size, *weight, *color, &clip, out).is_err()
                             {
-                                result = Err(Overflow);
+                                result = Err(Overflow::Glyph);
                             }
                         }
                         None => blocks(rect, s, *size, *color, &clip, out),
@@ -1123,7 +1187,13 @@ impl Gpu {
                         // A missing asset draws nothing rather than
                         // taking the frame down.
                         Ok(None) => {}
-                        Err(Overflow) => result = Err(Overflow),
+                        // A glyph overflow outranks an image one: only
+                        // the glyph atlas can grow.
+                        Err(o) => {
+                            if result != Err(Overflow::Glyph) {
+                                result = Err(o);
+                            }
+                        }
                     }
                 }
                 Cmd::PushClip { rect } => clip.push(*rect),
@@ -1168,7 +1238,7 @@ impl Gpu {
                 None => {
                     let Some((w, h, cov)) = font.rasterize(g.id) else { continue };
                     let Some(slot) = self.glyph_atlas.insert(g.id, w, h) else {
-                        return Err(Overflow);
+                        return Err(Overflow::Glyph);
                     };
                     write_texture(&self.queue, &self.glyph_tex, slot, &cov, 1);
                     slot.uv(self.glyph_atlas.size())
@@ -1216,7 +1286,7 @@ impl Gpu {
             return if iw > self.image_atlas.size() || ih > self.image_atlas.size() {
                 Ok(None)
             } else {
-                Err(Overflow)
+                Err(Overflow::Image)
             };
         };
         write_texture(&self.queue, &self.image_tex, slot, px, 4);

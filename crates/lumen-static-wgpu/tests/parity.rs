@@ -1,26 +1,37 @@
-//! T15.12's gate: the same frame on both backends.
+//! T15.12's gate: the same frame on both backends — **by region** since
+//! M51/T51.1.
 //!
 //! Three claims, in increasing strength:
 //!
 //! 1. **The GPU path draws.** A frame is not blank and its ink is where
 //!    the commands put it.
-//! 2. **It agrees with the software canvas** within a stated tolerance.
-//!    Not bit-exact, and the reason is written down rather than waved
-//!    at: the GPU antialiases edges the software rasteriser rounds to
-//!    whole pixels, so a fractional edge differs by up to one pixel of
-//!    ramp. Every difference is bounded and counted here.
+//! 2. **It agrees with the software canvas, shape by shape.** Not
+//!    bit-exact, and the reason is written down rather than waved at:
+//!    the GPU antialiases edges the software rasteriser rounds to whole
+//!    pixels, so a fractional edge differs by up to one pixel of ramp.
+//!    Each named shape in [`frame`] is counted in its own box against its
+//!    own bound ([`REGIONS`]); everything outside every box is the page
+//!    and must agree exactly.
 //! 3. **A partial redraw equals a full one, exactly**, on the GPU path —
 //!    the property `lumen-static-shell/tests/damage_oracle.rs` holds the
 //!    software path to. This one *is* bit-exact, because the clip test
 //!    in the shader is hard and the damage rect is snapped to whole
 //!    pixels.
 //!
+//! **Why regions (M51/T51.1, R9-F7).** Until M51 one bound covered the
+//! whole frame: fewer than 0.2% of 240×180 pixels (86 px) over 8 levels.
+//! On llvmpipe the frame's baseline already spent 56 of those, and on
+//! the RTX 4070 making the software border's ring coverage binary moved
+//! the frame from 4 px to 60 — green. The border, which this frame exists
+//! to hold to the shared `sd_round_box`, could lose its antialiasing and
+//! nothing noticed. A bound belongs to a region.
+//!
 //! Every test here **skips** when no adapter can be found rather than
-//! failing. A machine with no GPU is a supported configuration — it is
-//! the configuration the CPU fallback exists for — and a test suite that
-//! went red on it would be reporting the wrong thing.
+//! failing, under a plain `cargo test`; `just gpu` sets
+//! LUMEN_REQUIRE_GPU=1, under which a missing adapter fails
+//! (M43/T43.10), and `the_gpu_half_ran` prints the one that ran.
 
-use lumen_static::display::{Color, DisplayList, Renderer, Stops};
+use lumen_static::display::{Cmd, Color, DisplayList, ImageId, Renderer, Stops};
 use lumen_static::Point;
 use lumen_static_shell::software::Canvas;
 use lumen_static_wgpu::Gpu;
@@ -29,7 +40,94 @@ const W: u32 = 240;
 const H: u32 = 180;
 const PAGE: Color = Color(250, 250, 250, 255);
 
-/// A frame using every command in the vocabulary.
+/// How many `Cmd` variants there are. Bumped by hand, which is the point:
+/// a new variant does not compile in [`kind`] until it has an index, and
+/// once it has one [`the_frame_uses_every_command`] refuses to pass until
+/// [`frame`] draws it or [`kind`] names the file that does.
+const KINDS: usize = 11;
+
+/// A stable index per command kind, from an **exhaustive** match with no
+/// wildcard arm — M51/T51.1, as `lumen-static-shell/tests/svg.rs` does
+/// since T51.6. "Every command in the vocabulary" is a claim this file
+/// made in prose and was false about (no `Image`, R9-F2); now the
+/// compiler holds it. The third field is where a kind is compared when it
+/// is *not* in this frame, which only glass is: a backdrop filter needs a
+/// backdrop built for it and bounds of its own (`docs/plan-liquid.md` §8).
+fn kind(c: &Cmd) -> (usize, &'static str, Option<&'static str>) {
+    match c {
+        Cmd::Rect { .. } => (0, "Rect", None),
+        Cmd::RoundedRect { .. } => (1, "RoundedRect", None),
+        Cmd::StrokedRect { .. } => (2, "StrokedRect", None),
+        Cmd::Shadow { .. } => (3, "Shadow", None),
+        Cmd::Text { .. } => (4, "Text", None),
+        Cmd::Line { .. } => (5, "Line", None),
+        Cmd::Gradient { .. } => (6, "Gradient", None),
+        Cmd::Image { .. } => (7, "Image", None),
+        Cmd::Glass { .. } => (8, "Glass", Some("tests/glass_parity.rs")),
+        Cmd::PushClip { .. } => (9, "PushClip", None),
+        Cmd::PopClip => (10, "PopClip", None),
+    }
+}
+
+/// The image the frame's `Image` region draws.
+const CARD_ID: ImageId = ImageId(1);
+
+/// One named shape in [`frame`]: the box its pixels are counted in (whole
+/// pixels, `[x0, y0, x1, y1)`, with two pixels of reach so an edge that
+/// moved is inside it), and its bound.
+///
+/// **The bounds, and where they come from.** Each is `2 × b + 2`, where
+/// `b` is the larger of the region's measured baselines on the two
+/// adapter classes this machine has (`BASE_DISCRETE`, `BASE_CPU`,
+/// `docs/results-gpu.md` §2). Twice, so a baseline that doubles is still
+/// green and a shape that moved by a pixel — a whole edge over the line —
+/// is not; plus two, so a region whose baseline is 0 is not a bound of 0
+/// that one antialiased corner on a third driver would trip. On an
+/// adapter class with no measured baseline the line says so, and the
+/// bound still applies (§2.2: a larger baseline raises the bound, and a
+/// region whose injection then stops firing is split, not loosened).
+struct Region {
+    name: &'static str,
+    bbox: [u32; 4],
+}
+
+const REGIONS: [Region; 10] = [
+    Region { name: "rect", bbox: [8, 8, 62, 42] },
+    Region { name: "rounded rect", bbox: [68, 8, 132, 47] },
+    Region { name: "clip scope", bbox: [138, 2, 232, 58] },
+    Region { name: "text", bbox: [8, 58, 142, 80] },
+    Region { name: "shadow", bbox: [148, 60, 240, 121] },
+    Region { name: "line", bbox: [8, 84, 74, 136] },
+    Region { name: "gradient", bbox: [78, 86, 142, 130] },
+    Region { name: "translucent rect", bbox: [8, 138, 72, 172] },
+    Region { name: "image", bbox: [86, 138, 126, 176] },
+    Region { name: "border", bbox: [150, 123, 234, 172] },
+];
+
+/// Per-region baselines, pixels over 8, in [`REGIONS`]' order — measured
+/// 2026-09-27 on this machine: the RTX 4070 (Vulkan, `DiscreteGpu`) and
+/// llvmpipe through lavapipe (Vulkan, `Cpu`), `docs/results-gpu.md` §2.
+///
+/// **The shadow's 54 is one row, and it is a tie, not a gradient.** The
+/// shadow's box is dropped 3.5 px (`DisplayList::shadow`), so the row
+/// one pixel inside its bottom edge sits at a signed distance of exactly
+/// −1, which is the threshold both backends skip "interior" pixels at
+/// (`d >= -1` in software, `d < -1` discards in `shader.wgsl`). Which side
+/// of it a GPU lands on is float noise that depends on where the quad is:
+/// at this frame's position the RTX drops the row and llvmpipe keeps it,
+/// and at the pre-M51 frame's position it was the other way round (which
+/// is llvmpipe's 56-px whole-frame baseline in the review). The row it
+/// decides is below the card, so it shows; `docs/results-gpu.md` §2 has
+/// the rest.
+const BASE_DISCRETE: [usize; 10] = [0, 0, 0, 0, 54, 4, 0, 0, 0, 0];
+const BASE_CPU: [usize; 10] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+
+fn bound(i: usize) -> usize {
+    2 * BASE_DISCRETE[i].max(BASE_CPU[i]) + 2
+}
+
+/// A frame using every command in the vocabulary but glass, one named
+/// shape per [`REGIONS`] entry, their boxes disjoint.
 ///
 /// Coordinates are whole pixels wherever the shape's *edge* is, because
 /// a fractional edge is exactly where the two backends are allowed to
@@ -38,27 +136,31 @@ const PAGE: Color = Color(250, 250, 250, 255);
 /// fractional ones on purpose.
 fn frame() -> DisplayList {
     let mut l = DisplayList::new();
-    l.rect([10.0, 10.0, 70.0, 40.0], Color(200, 60, 60, 255));
-    l.rounded_rect([80.0, 10.0, 150.0, 45.0], Color(40, 90, 200, 255), 10.0);
-    l.shadow([90.0, 60.0, 160.0, 100.0], 8.0, 10.0);
-    l.rounded_rect([90.0, 60.0, 160.0, 100.0], Color(30, 38, 54, 255), 8.0);
-    l.line(Point { x: 12.0, y: 60.0 }, Point { x: 70.0, y: 100.0 }, 3.0, Color(20, 160, 90, 255));
-    l.gradient([10.0, 120.0, 110.0, 160.0], Stops::two(Color(255, 200, 0, 255), Color(200, 0, 120, 255)), 0.0);
+    l.rect([10.0, 10.0, 60.0, 40.0], Color(200, 60, 60, 255));
+    l.rounded_rect([70.0, 10.0, 130.0, 45.0], Color(40, 90, 200, 255), 10.0);
+    // A clip scope with something escaping it on every side, so the clip
+    // stack is exercised on both backends.
+    l.push_clip([150.0, 10.0, 190.0, 50.0]);
+    l.rect([140.0, 4.0, 230.0, 56.0], Color(120, 120, 120, 255));
+    l.pop_clip();
+    l.text([10.0, 60.0, 140.0, 78.0], "parity", 14.0, Color(0, 0, 0, 255));
+    l.shadow([160.0, 70.0, 230.0, 110.0], 8.0, 10.0);
+    l.rounded_rect([160.0, 70.0, 230.0, 110.0], Color(30, 38, 54, 255), 8.0);
+    l.line(Point { x: 12.0, y: 90.0 }, Point { x: 70.0, y: 130.0 }, 3.0, Color(20, 160, 90, 255));
+    l.gradient([80.0, 88.0, 140.0, 128.0], Stops::two(Color(255, 200, 0, 255), Color(200, 0, 120, 255)), 0.0);
     // Half-transparent, so the blend arithmetic is compared too and not
     // just the coverage.
-    l.rect([120.0, 120.0, 200.0, 160.0], Color(0, 120, 200, 128));
-    // A clip scope with something escaping it, so the clip stack is
-    // exercised on both sides.
-    l.push_clip([160.0, 10.0, 200.0, 50.0]);
-    l.rect([150.0, 0.0, 230.0, 60.0], Color(120, 120, 120, 255));
-    l.pop_clip();
-    l.text([10.0, 45.0, 140.0, 62.0], "parity", 14.0, Color(0, 0, 0, 255));
+    l.rect([10.0, 140.0, 70.0, 170.0], Color(0, 120, 200, 128));
+    // The 16×16 card at 2× (M51/T51.1, R9-F2): no pixel corpus held an
+    // image until M51, and deleting the GPU's image arm left the
+    // workspace green. `images_agree_across_the_backends` has the other
+    // placements.
+    l.image([90.0, 140.0, 122.0, 172.0], CARD_ID, Color(255, 255, 255, 255));
     // A border (M27/T27.1). The two backends compute the ring from the
     // *same* expression -- `sd_round_box` in `shader.wgsl`, transcribed
-    // into `software::rr_cov` -- and this is what holds them to it. The
-    // comment above says "every command in the vocabulary", so a new
-    // command that is not here makes that sentence false.
-    l.stroked_rect([172.0, 62.0, 232.0, 110.0], Color(220, 40, 40, 255), 8.0, 3.0);
+    // into `software::rr_cov` -- and the border region's own bound is what
+    // holds them to it.
+    l.stroked_rect([160.0, 125.0, 230.0, 170.0], Color(220, 40, 40, 255), 8.0, 3.0);
     l
 }
 
@@ -86,6 +188,7 @@ fn gpu_sized(w: u32, h: u32) -> Option<Gpu> {
             if let Some(f) = lumen_static_shell::text::FontStack::system() {
                 g.set_font(f);
             }
+            g.set_images(Box::new(Card::new()));
             Some(g)
         }
         None => {
@@ -102,14 +205,47 @@ fn gpu_sized(w: u32, h: u32) -> Option<Gpu> {
 }
 
 fn canvas() -> Canvas {
-    match lumen_static_shell::text::FontStack::system() {
+    let mut c = match lumen_static_shell::text::FontStack::system() {
         Some(f) => Canvas::with_font(W, H, f),
         None => Canvas::new(W, H),
+    };
+    c.images = Some(Box::new(Card::new()));
+    c
+}
+
+/// Which baseline row applies to the adapter that ran, from the device
+/// type the adapter line carries (M51 §0 rule 1).
+fn baseline_for(adapter: &str) -> (&'static str, Option<&'static [usize; 10]>) {
+    if adapter.contains("DiscreteGpu") {
+        ("discrete", Some(&BASE_DISCRETE))
+    } else if adapter.contains("Cpu") {
+        ("cpu", Some(&BASE_CPU))
+    } else {
+        ("unmeasured class", None)
     }
 }
 
-/// Per-pixel comparison: the worst channel difference, and how many
-/// pixels differ by more than `soft`.
+/// Pixels over `soft` inside `r` (`[x0, y0, x1, y1)`, whole pixels,
+/// clamped to the frame), and the worst channel delta there.
+fn region_over(a: &[u8], b: &[u8], w: u32, r: [u32; 4], soft: u8) -> (usize, u8) {
+    let h = (a.len() / 4) as u32 / w;
+    let mut over = 0;
+    let mut worst = 0u8;
+    for y in r[1]..r[3].min(h) {
+        for x in r[0]..r[2].min(w) {
+            let i = ((y * w + x) * 4) as usize;
+            let d = (0..3).map(|k| a[i + k].abs_diff(b[i + k])).max().unwrap_or(0);
+            worst = worst.max(d);
+            if d > soft {
+                over += 1;
+            }
+        }
+    }
+    (over, worst)
+}
+
+/// Per-pixel comparison over the whole frame: the worst channel
+/// difference, and how many pixels differ by more than `soft`.
 fn compare(a: &[u8], b: &[u8], soft: u8) -> (u8, usize) {
     let mut worst = 0u8;
     let mut over = 0usize;
@@ -124,6 +260,47 @@ fn compare(a: &[u8], b: &[u8], soft: u8) -> (u8, usize) {
         }
     }
     (worst, over)
+}
+
+/// M51/T51.1: [`frame`] draws every kind [`kind`] knows, except those
+/// `kind` names another file for. Runs without an adapter.
+#[test]
+fn the_frame_uses_every_command() {
+    let mut seen = [false; KINDS];
+    for c in &frame().cmds {
+        seen[kind(c).0] = true;
+    }
+    // One sample of every kind, to ask `kind` for its name and owner:
+    // the exhaustive match cannot be iterated, so the samples are the
+    // list, and a missing sample is an uncovered index below.
+    let r = [0.0, 0.0, 1.0, 1.0];
+    let samples = [
+        Cmd::Rect { rect: r, color: PAGE },
+        Cmd::RoundedRect { rect: r, color: PAGE, radius: 0.0 },
+        Cmd::StrokedRect { rect: r, color: PAGE, radius: 0.0, width: 1.0 },
+        Cmd::Shadow { rect: r, color: PAGE, radius: 0.0, spread: 1.0 },
+        Cmd::Text { rect: r, text: (0, 0), size: 1.0, weight: 400.0, color: PAGE },
+        Cmd::Line { a: Point { x: 0.0, y: 0.0 }, b: Point { x: 1.0, y: 1.0 }, width: 1.0, color: PAGE },
+        Cmd::Gradient { rect: r, stops: Stops::two(PAGE, PAGE), angle: 0.0 },
+        Cmd::Image { rect: r, id: CARD_ID, tint: PAGE },
+        Cmd::Glass { rect: r, radius: 0.0, material: lumen_static::display::Material::LIQUID },
+        Cmd::PushClip { rect: r },
+        Cmd::PopClip,
+    ];
+    let mut named = [false; KINDS];
+    let mut missing = Vec::new();
+    for c in &samples {
+        let (i, name, elsewhere) = kind(c);
+        named[i] = true;
+        match elsewhere {
+            Some(file) => println!("{name}: compared in {file}"),
+            None if seen[i] => println!("{name}: in the frame"),
+            None => missing.push(name),
+        }
+    }
+    let unsampled: Vec<usize> = (0..KINDS).filter(|i| !named[*i]).collect();
+    assert!(unsampled.is_empty(), "kinds with no sample here: {unsampled:?}");
+    assert!(missing.is_empty(), "commands the parity frame does not draw: {missing:?}");
 }
 
 #[test]
@@ -149,37 +326,59 @@ fn the_gpu_path_draws_a_frame() {
     };
     assert_eq!(at(40, 25), Color(200, 60, 60, 255), "inside the rect");
     assert_eq!(at(5, 5), Color(250, 250, 250, 255), "outside everything");
-    // Clipped away: the grey rect spans x 150..230 but its scope stops
-    // at 160, so 155 must still be the page.
-    assert_eq!(at(155, 30), Color(250, 250, 250, 255), "escaped its clip scope");
+    // Clipped away: the grey rect spans x 140..230 but its scope starts
+    // at 150, so 145 must still be the page.
+    assert_eq!(at(145, 30), Color(250, 250, 250, 255), "escaped its clip scope");
     assert_eq!(at(170, 30), Color(120, 120, 120, 255), "inside its clip scope");
 }
 
+/// M51/T51.1 (R9-F7, R9-F2): every region within its own bound, and the
+/// page outside every region identical.
 #[test]
-fn the_two_backends_agree_within_the_stated_tolerance() {
+fn every_region_is_within_its_own_bound() {
     let Some(mut g) = gpu() else { return };
     let mut c = canvas();
     c.clear(PAGE);
     c.render(&frame(), W, H);
     g.clear(PAGE);
     g.render(&frame(), W, H);
+    let gp = g.read_rgba();
+    let (class, base) = baseline_for(g.adapter());
+    println!("adapter: {} -- baselines: {class}", g.adapter());
 
-    let (worst, over) = compare(&c.pixels, &g.read_rgba(), 8);
-    let frac = over as f32 / (W * H) as f32;
-    eprintln!("parity: worst channel delta {worst}, {over} px ({:.2}%) over 8", frac * 100.0);
-
-    // **The stated tolerance: fewer than 0.2% of pixels may differ by
-    // more than 8 levels.** Measured at 0.01% (4 pixels) on this frame
-    // and 0.000% on the richer one in `examples/compare`
-    // (`docs/results-gpu.md`) — so the bound has ~20x headroom and is
-    // still tight enough to catch a shape that moved by a pixel, which
-    // would put a whole edge over the line rather than four corners.
-    //
-    // *How much* an edge pixel differs is deliberately not bounded: an
-    // edge pixel is the full difference between a shape and the page,
-    // and a bound on it would be a bound on antialiasing quality rather
-    // than on agreement.
-    assert!(frac < 0.002, "too many pixels differ: {:.3}% (worst {worst})", frac * 100.0);
+    let mut red = Vec::new();
+    for (i, r) in REGIONS.iter().enumerate() {
+        let (over, worst) = region_over(&c.pixels, &gp, W, r.bbox, 8);
+        let b = match base {
+            Some(row) => format!("baseline {} on {class}", row[i]),
+            None => format!("no baseline for {class}"),
+        };
+        println!("{}: {over} px over 8 (bound {}, {b}), worst {worst}", r.name, bound(i));
+        if over > bound(i) {
+            red.push((r.name, over, bound(i)));
+        }
+    }
+    // The page: every pixel in no region's box.
+    let mut page_over = 0;
+    for y in 0..H {
+        for x in 0..W {
+            let inside = REGIONS.iter().any(|r| x >= r.bbox[0] && x < r.bbox[2] && y >= r.bbox[1] && y < r.bbox[3]);
+            if !inside {
+                let i = ((y * W + x) * 4) as usize;
+                if (0..3).any(|k| c.pixels[i + k].abs_diff(gp[i + k]) > 8) {
+                    page_over += 1;
+                }
+            }
+        }
+    }
+    println!("page (outside every region): {page_over} px over 8 (bound 0)");
+    let (worst, over) = compare(&c.pixels, &gp, 8);
+    println!(
+        "whole frame, for the record: {over} px ({:.2}%) over 8, worst {worst} -- no longer a bound",
+        over as f32 / (W * H) as f32 * 100.0
+    );
+    assert!(red.is_empty(), "regions over their bounds (name, px, bound): {red:?}");
+    assert_eq!(page_over, 0, "{page_over} px differ outside every named region: a shape escaped its box");
 }
 
 #[test]
@@ -187,7 +386,7 @@ fn interiors_are_identical_not_merely_close() {
     // The stronger half of the comparison: away from every edge, the
     // two backends must agree almost exactly. If they do not, the
     // difference is a blend or a colour-space bug rather than
-    // antialiasing, and the tolerance above would have hidden it.
+    // antialiasing, and the region bounds would have hidden it.
     let Some(mut g) = gpu() else { return };
     let mut c = canvas();
     c.clear(PAGE);
@@ -196,13 +395,13 @@ fn interiors_are_identical_not_merely_close() {
     g.render(&frame(), W, H);
     let gp = g.read_rgba();
 
-    // Interiors of three shapes and one translucent overlay.
     for (x, y, what) in [
         (40u32, 25u32, "opaque rect"),
-        (115, 30, "rounded rect"),
-        (125, 80, "card over its shadow"),
-        (160, 140, "translucent rect over the page"),
-        (60, 140, "gradient"),
+        (100, 28, "rounded rect"),
+        (195, 90, "card over its shadow"),
+        (40, 155, "translucent rect over the page"),
+        (110, 108, "gradient"),
+        (98, 148, "image"),
     ] {
         let i = ((y * W + x) * 4) as usize;
         for k in 0..3 {
@@ -238,8 +437,8 @@ fn a_partial_redraw_is_bit_identical_to_a_full_one() {
     // the pixel differs from a full render. That is the artefact
     // `snap_out` exists to prevent, and this is where it shows.
     let mut second = frame();
-    second.rect([140.0, 132.0, 180.0, 148.0], Color(0, 0, 0, 255));
-    let damage = [135.3, 128.7, 185.2, 152.4];
+    second.rect([20.0, 148.0, 60.0, 162.0], Color(0, 0, 0, 255));
+    let damage = [15.3, 144.7, 65.2, 166.4];
 
     g.draw(&second, Some(damage), Some((PAGE, damage)));
     let partial = g.read_rgba();
@@ -285,6 +484,7 @@ fn tolerance_is_bounded_at_fractional_edges() {
     assert!(at(&gp, 10, 30) > 0, "the GPU ramps it");
 }
 
+
 /// M40/T40.0, R9-F5's GPU twin: hairlines painted **through `Scaled`**
 /// at a fractional display scale agree within the stated tolerance.
 ///
@@ -298,10 +498,12 @@ fn tolerance_is_bounded_at_fractional_edges() {
 /// 0.2% (`docs/results-deep-review.md` R9-F5). Snapping a rect's scaled
 /// edges to device pixels (`docs/plan-physical-damage.md` §2.2) makes
 /// the two agree, because a whole-pixel edge is where they already do.
+const HAIRLINE_BOUND: usize = 2;
+
 #[test]
 fn hairlines_through_scaled_agree_at_fractional_scales() {
     let Some(mut g) = gpu() else { return };
-    let mut worst_frac: f32 = 0.0;
+    let mut worst_over = 0usize;
     for scale in [1.25f32, 1.5] {
         let mut l = DisplayList::new();
         {
@@ -321,14 +523,19 @@ fn hairlines_through_scaled_agree_at_fractional_scales() {
         g.clear(PAGE);
         g.render(&l, W, H);
         let (worst, over) = compare(&c.pixels, &g.read_rgba(), 8);
-        let frac = over as f32 / (W * H) as f32;
-        eprintln!(
-            "scale {scale}: worst channel delta {worst}, {over} px ({:.3}%) over 8 (bound 0.2%)",
-            frac * 100.0
+        // M51/T51.1: a region of its own, like every shape in `frame`.
+        // The whole list is the region; its baseline is 0 on both adapter
+        // classes (M40/T40.3 measured 0 before the move, and it reads 0
+        // after it), so the bound is `2 × 0 + 2` where it was 0.2% of the
+        // frame, 86 px.
+        let bound = HAIRLINE_BOUND;
+        println!(
+            "hairlines at {scale}: {over} px over 8 (bound {bound}, baseline 0 on discrete and cpu), \
+             worst {worst}"
         );
-        worst_frac = worst_frac.max(frac);
+        worst_over = worst_over.max(over);
     }
-    assert!(worst_frac < 0.002, "too many pixels differ at a fractional scale: {:.3}%", worst_frac * 100.0);
+    assert!(worst_over <= HAIRLINE_BOUND, "hairlines differ on {worst_over} px at a fractional scale (bound {HAIRLINE_BOUND})");
 }
 
 /// The GPU half of this file ran at all (M43/T43.10). Every other test
@@ -342,6 +549,7 @@ fn the_gpu_half_ran() {
         None => println!("adapter: none -- the GPU half of this file compared nothing"),
     }
 }
+
 
 /// M51/T51.0 (R9-F1): a glyph set larger than one frame's atlas.
 ///
@@ -395,12 +603,16 @@ fn atlas_case(scale: f32) -> Option<(lumen_static_wgpu::AtlasStats, usize, usize
         g.clear(PAGE);
         g.render(&list, AW, AH);
         let after = g.atlas_stats();
-        per_frame.push((after.resets - before.resets, after.give_ups - before.give_ups));
+        per_frame.push((
+            after.resets - before.resets,
+            after.growths - before.growths,
+            after.give_ups - before.give_ups,
+        ));
     }
     let stats = g.atlas_stats();
     let (sw, gw) = (ink(&c.pixels), ink(&g.read_rgba()));
     eprintln!(
-        "atlas at scale {scale}: resets/give-ups per frame {per_frame:?}, glyph atlas {}², \
+        "atlas at scale {scale}: resets/growths/give-ups per frame {per_frame:?}, glyph atlas {}², \
          ink software {sw} px, gpu {gw} px ({:.1}% missing)",
         stats.glyph_size,
         (sw as f64 - gw as f64) / sw as f64 * 100.0
@@ -411,63 +623,29 @@ fn atlas_case(scale: f32) -> Option<(lumen_static_wgpu::AtlasStats, usize, usize
 #[test]
 fn a_glyph_set_that_fits_is_drawn_whole_at_scale_1() {
     let Some((stats, sw, gw)) = atlas_case(1.0) else { return };
-    assert_eq!((stats.resets, stats.give_ups), (0, 0), "scale 1 fits the atlas: nothing to reset");
+    assert_eq!(
+        (stats.resets, stats.growths, stats.give_ups),
+        (0, 0, 0),
+        "scale 1 fits the starting atlas: nothing to reset, grow or give up"
+    );
     assert!(sw > 10_000, "the corpus drew almost nothing ({sw} px): the setup did not happen");
     let d = sw.abs_diff(gw) as f64 / sw as f64;
     assert!(d < 0.001, "text ink differs by {:.3}% (bound 0.1%)", d * 100.0);
 }
 
 #[test]
-#[ignore = "red until T51.1: R9-F1, the atlas gives up and drops glyphs at scale 2"]
 fn a_glyph_set_larger_than_the_atlas_is_drawn_whole_at_scale_2() {
     let Some((stats, sw, gw)) = atlas_case(2.0) else { return };
     assert!(sw > 10_000, "the corpus drew almost nothing ({sw} px): the setup did not happen");
     assert_eq!(stats.give_ups, 0, "the atlas gave up {} times: glyphs were dropped", stats.give_ups);
+    // The setup: this corpus must overflow the starting atlas, or the
+    // growth path was never taken and the case proves nothing about it.
+    assert!(stats.growths >= 1, "the atlas never grew: the corpus did not overflow it");
     let d = sw.abs_diff(gw) as f64 / sw as f64;
     assert!(d < 0.001, "text ink differs by {:.3}% (bound 0.1%)", d * 100.0);
 }
 
-/// Pixels over `soft` inside `r` (`[x0, y0, x1, y1]`, whole pixels,
-/// clamped to the frame), and the region's area.
-fn region_over(a: &[u8], b: &[u8], w: u32, r: [u32; 4], soft: u8) -> (usize, u8) {
-    let h = (a.len() / 4) as u32 / w;
-    let mut over = 0;
-    let mut worst = 0u8;
-    for y in r[1]..r[3].min(h) {
-        for x in r[0]..r[2].min(w) {
-            let i = ((y * w + x) * 4) as usize;
-            let d = (0..3).map(|k| a[i + k].abs_diff(b[i + k])).max().unwrap_or(0);
-            worst = worst.max(d);
-            if d > soft {
-                over += 1;
-            }
-        }
-    }
-    (over, worst)
-}
 
-/// M51/T51.0 (R9-F7): the border has a bound of its own.
-///
-/// The whole-frame bound (0.2% of 240×180, so 86 px) sat over a baseline
-/// of 56 px on llvmpipe, and making the software border's ring coverage
-/// binary added fewer pixels than the 30 left: the one command this
-/// frame "holds them to" the shared `sd_round_box` could lose its
-/// antialiasing entirely and the gate stayed green. Here the border's
-/// own box is counted alone, beside its bound.
-#[test]
-fn the_border_is_bounded_on_its_own() {
-    let Some(mut g) = gpu() else { return };
-    let mut c = canvas();
-    c.clear(PAGE);
-    c.render(&frame(), W, H);
-    g.clear(PAGE);
-    g.render(&frame(), W, H);
-    // The border's box, one pixel of reach outside it.
-    let (over, worst) = region_over(&c.pixels, &g.read_rgba(), W, [171, 61, 233, 111], 8);
-    let bound = 4;
-    eprintln!("border: {over} px over 8 (bound {bound}), worst {worst}, on {}", g.adapter());
-    assert!(over <= bound, "the border differs on {over} px (bound {bound})");
-}
 
 /// A 16×16 RGBA test card: four quadrants of distinct colour, one of them
 /// half transparent, and a one-texel dark frame so a wrong scale or a
@@ -572,3 +750,4 @@ fn images_agree_across_the_backends() {
         assert_eq!(over, 0, "image {name}: {over} px differ by more than 8 inside the placement");
     }
 }
+

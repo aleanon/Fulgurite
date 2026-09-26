@@ -63,7 +63,10 @@ measured (`docs/results-gpu.md`), and `docs/results-competitive.md`
 measures both against other toolkits.
 
 `Prefer::Auto` uses the GPU when the crate was built with the feature and
-an adapter exists, and the software canvas otherwise. And there is an
+a GPU adapter exists, and the software canvas otherwise. A CPU rasteriser
+such as Mesa's llvmpipe, which is all a machine with no working driver
+may offer, does not count: the software canvas is faster there
+(`docs/results-gpu.md` §6). `Prefer::Gpu` takes it anyway. And there is an
 escape hatch for the person *running* the program rather than the person
 who wrote it:
 

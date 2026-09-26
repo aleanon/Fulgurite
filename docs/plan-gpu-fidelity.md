@@ -391,6 +391,54 @@ at `:153`.
 **Effort:** L. **Depends on:** T51.0; M40 (its parity arm); M43's
 R17-F6.
 
+*What building found (2026-09-27).*
+
+- **The discrete baselines are measured, not owed.** Both adapter
+  classes ran every region (`docs/results-gpu.md` §2b). The bound rule
+  became `2 × b + 2`, with `b` the larger of the two baselines: the
+  plan's "baseline × headroom" gives a bound of 0 for the eight regions
+  whose baseline is 0 on both, which a third driver's one antialiased
+  corner would trip. The border's injection fires at its bound (56 px
+  against 2) on both adapters, so no region had to be split.
+- **The frame was re-laid out**, because its shapes' boxes overlapped
+  (the text sat on the rounded rect's bottom edge, the shadow under the
+  line's) and a count per region needs disjoint boxes. Everything
+  outside every box is now a region of its own, "page", bounded at 0.
+  The partial-redraw test's change and damage moved with the translucent
+  rect, and still sit inside it, which is where that test has teeth.
+- **The shadow's baseline is a tie, and the tie exposed a seam.** The
+  RTX drops one row of the shadow (54 px) that llvmpipe keeps; at the
+  pre-M51 frame's shadow position it was the reverse, which is the 56 px
+  the review attributed to llvmpipe's "baseline noise". The row sits at
+  a signed distance of exactly −1 from the *dropped* shadow box, the
+  threshold at which both backends skip "interior" pixels on the ground
+  that the caster paints over them. The caster is not dropped, so the
+  two rows between the card's bottom edge and that line are painted by
+  nothing: **every card with a shadow has a two-pixel page-coloured seam
+  along its bottom edge, on both backends identically.** That is a
+  rendering defect outside R9's findings and M51's scope — fixing it
+  changes every shadow on both rasterisers and every golden holding one
+  — so it is reported for the index, not fixed here. The shadow region's
+  bound follows the larger baseline (110), as §2.2 says.
+- **The atlas grew once and the kill rule did not fire:** 1024 → 2048
+  removed the give-up (scale 2: `(1,1,0)` then `(0,0,0)`, 297,133 dark
+  px both sides). Device limits: 32,768 on the RTX, 16,384 on llvmpipe.
+- **Injection 3 changed shape.** With growth, an atlas started at 64
+  simply grows, so no give-up happens and the scale-2 case stays green.
+  It goes red through the scale-1 case instead, which asserts that a
+  corpus that fits the starting atlas resets, grows and gives up zero
+  times: `(1,4,0)`. That is the plan's accept line made an assertion.
+- **The `Overflow` answer needed to know which atlas.** Growing the glyph
+  atlas cannot help an image set larger than the image atlas, so
+  `Overflow` names its atlas and only a glyph overflow grows anything; an
+  image overflow after the reset still gives up, and is counted.
+- **`app.perf` is not wired.** M48/T48.3 is not on this branch's base
+  (80ff4c1), and it changes `Session`'s shape, so the give-up count is
+  exposed as `Gpu::atlas_stats` with its renderer-side gate and the
+  agent half **waits for M48/T48.3**. §4's line saying nobody plans it
+  predates the index assigning it here (2026-09-25).
+
+
 ### T51.2 — a CPU adapter is not a GPU under `Auto`
 
 **Closes:** R9-F6.

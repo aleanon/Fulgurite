@@ -11,7 +11,10 @@
 //! one height, so a row-based packer wastes almost nothing on the input
 //! this actually gets, and it is thirty lines instead of three hundred.
 //! An application whose atlas fills is handled by [`Atlas::reset`] and a
-//! rebuild of the frame, not by a better packer.
+//! rebuild of the frame, not by a better packer — and one whose frame
+//! does not fit an *empty* atlas by a larger one, which the renderer
+//! makes (M51/T51.1; the packer is not what ran out, `docs/results-gpu.md`
+//! §4).
 
 use std::collections::HashMap;
 use std::hash::Hash;
@@ -83,8 +86,10 @@ impl<K: Eq + Hash> Atlas<K> {
     }
 
     /// Reserve `w` x `h` for `key`. `None` means the atlas is full —
-    /// which the caller answers with [`Atlas::reset`] and a retry, not
-    /// with a dropped glyph.
+    /// which the caller answers with [`Atlas::reset`] and a retry, then
+    /// with a larger atlas, and drops a glyph only at the device's texture
+    /// limit, where it counts the drop (M51/T51.1; until then this said a
+    /// glyph was never dropped, and one was, silently).
     pub fn insert(&mut self, key: K, w: u32, h: u32) -> Option<Slot> {
         if w == 0 || h == 0 || w > self.size || h > self.size {
             return None;

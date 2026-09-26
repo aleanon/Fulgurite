@@ -257,7 +257,8 @@ agent-symbols:
 # The GPU backend (T15.12), which `test` excludes for compile time.
 # Its own tests are the backend-parity gate: the same display list
 # rendered by `software::Canvas` and by wgpu, compared pixel by pixel
-# against a stated tolerance, plus the partial-redraw property that
+# region by region, each against its own bound (M51/T51.1, docs/results-gpu.md
+# §2b), plus the partial-redraw property that
 # `damage_oracle.rs` holds the software path to. The tests themselves skip
 # when no adapter is present — a machine with no GPU is the configuration
 # the CPU fallback exists for — but THIS recipe is the gate that claims a

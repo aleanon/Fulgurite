@@ -117,6 +117,12 @@ machine that compared nothing (M38's R17-F6). The policy now: a plain
 (`adapter: <name> (<backend>, <device type>)`, from `the_gpu_half_ran`; the device type since M51, because llvmpipe is an adapter for parity and not evidence about a discrete GPU).
 `LUMEN_ALLOW_SKIP=1` is the explicit way to run it without one.
 
+> **Superseded 2026-09-27 by per-region bounds (M51/T51.1, §2b below).**
+> The whole-frame bound this section states could not see the one shape
+> the frame existed to hold (R9-F7), and "every command in the
+> vocabulary" was false: the frame drew no `Image` (R9-F2). The table
+> and prose below are kept as the record of what was claimed.
+
 **Stated: fewer than 0.2% of pixels may differ by more than 8 levels.**
 Measured, on a frame using every command in the vocabulary:
 
@@ -155,6 +161,82 @@ Nothing else differs, and three things were done to keep it that way:
   not `*Srgb`. Blending in linear space is the more correct thing to do
   and is not what `software::Canvas` does; matching the other arm is
   worth more here than being right in isolation.
+
+### 2b. By region, on both adapter classes — M51/T51.1, 2026-09-27
+
+**The machine has a working GPU again**, so the plan's "discrete
+baseline owed" rows are measured, not owed: the RTX 4070 (Vulkan,
+`DiscreteGpu`) on the default loader, and llvmpipe (Vulkan, `Cpu`)
+through lavapipe (`VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json`).
+Each gate's first line names the adapter and its device type.
+
+`tests/parity.rs` `every_region_is_within_its_own_bound`: the frame is
+ten named shapes in disjoint boxes, each counted alone (pixels over 8
+levels) against `2 × b + 2`, where `b` is the larger of the two
+adapters' baselines — twice, so a doubled baseline is green and a shape
+that moved a pixel is not; plus two, so a zero baseline is not a bound
+of zero. Everything outside every box is the page and must agree
+exactly. "Every command" is now `kind`, an exhaustive `match` over
+`Cmd`: a new command does not compile there, and
+`the_frame_uses_every_command` fails until the frame draws it or `kind`
+names the file that does (glass: `tests/glass_parity.rs`).
+
+| region | RTX 4070 | llvmpipe | bound |
+|---|---:|---:|---:|
+| rect | 0 | 0 | 2 |
+| rounded rect | 0 | 0 | 2 |
+| clip scope | 0 | 0 | 2 |
+| text | 0 | 0 | 2 |
+| shadow | **54** | 0 | 110 |
+| line | 4 | 0 | 10 |
+| gradient | 0 | 0 | 2 |
+| translucent rect | 0 | 0 | 2 |
+| image (16×16 card at 2×) | 0 | 0 | 2 |
+| border | 0 | 0 | 2 |
+| page, outside every box | 0 | 0 | 0 |
+| whole frame, for the record | 58 (0.13%) | 0 | — |
+| hairlines through `Scaled`, 1.25 and 1.5 (M40's arm) | 0, 0 | 0, 0 | 2 |
+
+Injections, each red by region name on both adapters:
+
+| injection | red output |
+|---|---|
+| binary ring coverage in the software border | `border: 56 px over 8 (bound 2)`; the whole frame, which the pre-M51 test bounded, read 60 px (0.14%) on the RTX in the T51.0 frame: green under its 86 |
+| the GPU draws no `Image` | `image: 1024 px over 8 (bound 2)`; `images_agree_across_the_backends`: `image 1:1 is not drawn: inked 196/0 of 196` |
+| the software canvas draws no `Image` | the same region, and `lumen-static-shell/tests/image_pixels.rs` (in `just test`): `256 of 256 px differ from their texel` |
+| the image removed from the frame | `commands the parity frame does not draw: ["Image"]` |
+
+`images_agree_across_the_backends` draws the card at 1:1, 2×, tinted 3×,
+alpha 128 over a dark bar, and a fractional placement: 0 px over 8
+inside each on both adapters, and every interior pixel inked. The
+software twin asserts every pixel of four placements equals the texel it
+names, blended as `Canvas` documents: 0 of 4,608 differ.
+
+**The shadow's 54 px are one row, and they are a tie.**
+`DisplayList::shadow` drops the box by `0.35 × spread` (3.5 px at a
+spread of 10), so with whole-pixel card edges the row one pixel inside
+the dropped box's bottom edge lands at a signed distance of exactly −1 —
+the threshold both backends use to skip "interior" pixels (`d >= -1`
+keeps a pixel in software; `d < -1` discards it in `shader.wgsl`).
+Which side a GPU lands on is float noise that depends on where the quad
+is: here the RTX drops the row and llvmpipe keeps it; at the pre-M51
+frame's shadow position it was the reverse, which is the 56 px of
+llvmpipe's whole-frame baseline in the review (`docs/results-deep-review.md`
+R9-F7). The bound therefore follows the larger baseline, as
+`docs/plan-gpu-fidelity.md` §2.2 says it must.
+
+**The tie exposed a defect it is not part of, on both backends.** The
+skip exists because "whatever cast the shadow paints over" its
+interior — but the box is *dropped*, and the caster is not, so the rows
+between the card's bottom edge and the dropped box's `d = −1` line are
+skipped and nothing paints them: a column under this frame's card reads
+card, card, **page, page**, shadow (30, 30, 250, 250, 171 on the red
+channel, both backends identically). Every card with a shadow has a
+two-pixel page-coloured seam along its bottom edge, and at some positions
+a third row on the GPU. Not fixed here: it changes every shadow on both
+rasterisers and every golden that holds one, so it is reported to the
+index rather than folded into a parity task
+(`docs/plan-gpu-fidelity.md` T51.1, "What building found").
 
 ### 2a. At a fractional display scale — M40/T40.3, 2026-09-25
 
@@ -260,9 +342,42 @@ gradient in it, and paying for them per instance would make every rect
 60% larger to describe something it is not.
 
 The glyph atlas is shelf-packed and reset-on-overflow: when a frame needs
-more room than an empty atlas has, the frame is *built again* rather than
-finishing with glyphs missing. Rebuilding costs one extra shaping pass in
-a frame that was already exceptional.
+more room than the atlas has left, it is emptied and the frame is *built
+again*. Rebuilding costs one extra shaping pass in a frame that was
+already exceptional.
+
+> **Corrected 2026-09-27 (M51/T51.1, R9-F1).** The paragraph above went
+> on to say the frame is built again "rather than finishing with glyphs
+> missing". That was false whenever a frame's glyphs did not fit an
+> *empty* 1024² atlas: the second build gave up, submitted what fitted,
+> and counted and logged nothing. Printable ASCII in eight sizes and two
+> weights through `Scaled(2)` at 3840×2160 did it on every frame, with
+> 5.0% of the text's ink missing (the review's corpus, other sizes,
+> measured 10.6%).
+>
+> Now a frame that does not fit an empty glyph atlas **doubles it and is
+> built again**, once per doubling, up to the device's
+> `max_texture_dimension_2d` (32,768 on the RTX, 16,384 on llvmpipe). Only past
+> that limit, or with an image set larger than the image atlas, is
+> anything dropped, and then `Gpu::atlas_stats().give_ups` counts it and
+> the first one is logged. The atlas never shrinks within a renderer's
+> life. `tests/parity.rs`, both adapters identically:
+>
+> | corpus | resets / growths / give-ups, frame 1 then 2 | atlas | ink software / GPU |
+> |---|---|---|---|
+> | scale 1 | (0,0,0), (0,0,0) | 1024² | 74,005 / 74,005 |
+> | scale 2, before | (1,–,1), (1,–,1) | 1024² | 297,133 / 282,306 |
+> | scale 2, after | (1,1,0), (0,0,0) | **2048²** | 297,133 / 297,133 |
+>
+> One doubling is enough, so the plan's scope rule (a better packer
+> first, if 2048 did not fit) did not fire. A 2048² R8 atlas is 4 MB
+> against 1 MB, paid only by a renderer whose frame needed it. With
+> growth disabled the scale-2 case reads `(1,0,1), (1,0,1)` and fails
+> `the atlas gave up 2 times`; with the atlas started at 64 the scale-1
+> case reads `(1,4,0)` and fails on its "nothing to reset, grow or give
+> up" assertion, which is the old inverse check (an atlas of 64 left
+> parity green) now red. `app.perf` does not carry the give-up count
+> yet: that waits for M48/T48.3.
 
 ## 5. What it costs, and why the CPU is still the default
 
