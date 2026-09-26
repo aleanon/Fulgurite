@@ -909,6 +909,10 @@ Everything else was rasterisation — an 18-layer shadow and an unoptimised
 dev build. The static tree's own cost is invisible; the calibration above
 was right. `app.perf` now reports every stage plus input → presented
 latency, and `scripts/ui_check.py latency` judges it against 16 ms / 100 ms.
+*Amended 2026-09-26 (M48/T48.3):* that was true of counter-window only;
+every turnkey window reported 0 for every stage until its redraw kept the
+frame `present` returns (R13-F2). A stage nobody measured is now `null`,
+and `ui_check.py` fails it as NOT MEASURED rather than passing on zeros.
 
 ### What actually kills GUI framework projects
 

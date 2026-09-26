@@ -246,6 +246,22 @@ print(f"  ok  timer beside a busy worker: {got} >= {bound}")
 click("toggle-sub")
 time.sleep(0.3)
 
+# ---- 8. app.perf measured the frames it reports ----------------------
+# M48/T48.3 (R13-F2): every stage read 0 in every turnkey window, and a
+# budget passes on 0. Ten clicks, each followed by the redraw it asks for.
+for _ in range(10):
+    click("spawn-one")
+    time.sleep(0.03)
+w = call("app.perf")["window"]
+fp50, fn = w["frame_ns"]["p50"], w["frame_ns"]["n"]
+lp50 = w["layout_ns"]["p50"]
+print(f"  ..  frame p50 {fp50} ns (must be > 0), n={fn}; layout p50 {lp50} ns (must be > 0); "
+      f"damaged_px p50 {w['damaged_px']['p50']}")
+if not fp50 or not lp50:
+    sys.exit(f"tasks-drive[{strategy}]: app.perf reports frame p50 {fp50} ns / layout p50 "
+             f"{lp50} ns over n={fn} -- a stage nobody measured")
+print(f"  ok  app.perf measured: frame p50 {fp50 / 1e3:.0f} us over {fn} frames")
+
 final = counts()
 if final["failed"] != 0:
     sys.exit(f"tasks-drive[{strategy}]: {final['failed']} job(s) failed: {status()!r}")

@@ -809,8 +809,8 @@ pub mod hot {
         fn agent(&mut self, req: &str, screen: &mut dyn Screen) -> String {
             self.m().agent(req, screen)
         }
-        fn agent_frame_done(&mut self) {
-            self.m().agent_frame_done()
+        fn agent_frame_done(&mut self, timing: lumen_static_shell::session::FrameTimes) {
+            self.m().agent_frame_done(timing)
         }
         fn save(&self) -> Vec<u8> {
             self.s().save()

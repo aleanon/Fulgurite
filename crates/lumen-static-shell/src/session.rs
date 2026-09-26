@@ -135,8 +135,9 @@ pub trait Session: FrameSource {
     /// would from a frame (M36 rule 3), and under `Recover::On` it is
     /// M36's to show.
     fn agent(&mut self, req: &str, screen: &mut dyn Screen) -> String;
-    /// Feed the agent's journal the frame just drawn.
-    fn agent_frame_done(&mut self);
+    /// Feed the agent's journal the frame just drawn, with what it cost
+    /// as the window measured it (M48/T48.3).
+    fn agent_frame_done(&mut self, timing: FrameTimes);
     /// The application's `#[reload(keep)]` state, as bytes — empty for a
     /// session that cannot reload.
     fn save(&self) -> Vec<u8>;
@@ -154,6 +155,27 @@ pub trait Session: FrameSource {
     /// indices across a swap must resolve them again when this changes;
     /// the author id and a `#a > #b` path are the names that survive.
     fn shape(&self) -> u64;
+}
+
+/// What one presented frame cost, as the window measured it — the
+/// argument to [`Session::agent_frame_done`] (M48/T48.3).
+///
+/// **Plain integers, defined here**, so no agent type crosses the library
+/// seam: a hot library's session is on the far side of the loader, and
+/// the loader links no agent. `None` is a stage this window did not
+/// measure, which `app.perf` reports as `null` — never `0`. Until T48.3
+/// the session built `FrameTiming::default()` itself, so every turnkey
+/// window reported 0 ns for every stage and a budget check passed on it
+/// (R13-F2). Nanoseconds; `damaged_px` in physical pixels (M40/T40.1).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct FrameTimes {
+    pub layout_ns: Option<u64>,
+    pub paint_ns: Option<u64>,
+    pub render_ns: Option<u64>,
+    pub present_ns: Option<u64>,
+    pub frame_ns: Option<u64>,
+    pub damaged_px: Option<u64>,
+    pub input_latency_ns: Option<u64>,
 }
 
 /// Whether this session catches panics in application code — the
@@ -479,14 +501,24 @@ impl<A: App + 'static> Session for Local<A> {
         )
     }
 
-    fn agent_frame_done(&mut self) {
+    fn agent_frame_done(&mut self, t: FrameTimes) {
+        #[cfg(not(feature = "live-agent"))]
+        let _ = t;
         // Guarded: the journal walks the tree through every widget's
         // `observe` (M36).
         #[cfg(feature = "live-agent")]
         {
             let agent = &mut self.agent;
             let _ = run_guarded(&mut self.host, self.recover, |h| {
-                let timing = lumen_static_agent::FrameTiming::default();
+                let timing = lumen_static_agent::FrameTiming {
+                    layout_ns: t.layout_ns,
+                    paint_ns: t.paint_ns,
+                    render_ns: t.render_ns,
+                    present_ns: t.present_ns,
+                    frame_ns: t.frame_ns,
+                    input_latency_ns: t.input_latency_ns,
+                    damaged_px: t.damaged_px,
+                };
                 let mut tree = lumen_static_agent::TreeMut::of_root(h.app.tree_mut(), &h.styles, &h.states);
                 agent.frame_done(&mut tree, timing);
             });

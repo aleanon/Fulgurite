@@ -60,7 +60,7 @@ fn ask(s: &mut Local<Tally>, method: &str, params: &str) -> Value {
 /// The redraw `answer_agent` asks for, as `Win::redraw` runs it.
 fn redraw(s: &mut Local<Tally>) {
     s.frame(16.0, 300, 200);
-    s.agent_frame_done();
+    s.agent_frame_done(Default::default());
 }
 
 #[test]

@@ -241,7 +241,10 @@ pub struct Agent {
 const PERF_RING: usize = 128;
 
 /// Where one frame's time went, as the host measured it. All in
-/// nanoseconds; a host that lacks a stage reports zero for it, and
+/// nanoseconds; **a host that did not measure a stage reports `None`**,
+/// which `app.perf` answers as `null` — never `0`, which a budget check
+/// passes (M48/T48.3, R13-F2: every turnkey window reported zeros for
+/// every stage, and `scripts/ui_check.py`'s budgets passed on them).
 /// `input_latency_ns` is `None` for a frame that consumed no input.
 ///
 /// `input_latency_ns` is the number a person feels: from the oldest
@@ -252,14 +255,14 @@ const PERF_RING: usize = 128;
 /// (`docs/results-frame-cost.md`).
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct FrameTiming {
-    pub layout_ns: u64,
-    pub paint_ns: u64,
+    pub layout_ns: Option<u64>,
+    pub paint_ns: Option<u64>,
     /// Display list to pixels.
-    pub render_ns: u64,
+    pub render_ns: Option<u64>,
     /// Pixels to the surface.
-    pub present_ns: u64,
+    pub present_ns: Option<u64>,
     /// The whole redraw, input drain to presented.
-    pub frame_ns: u64,
+    pub frame_ns: Option<u64>,
     pub input_latency_ns: Option<u64>,
     /// Pixels the frame actually redrew — the area of the damage
     /// regions, or the viewport when everything was redrawn, in
@@ -279,7 +282,7 @@ pub struct FrameTiming {
 impl FrameTiming {
     /// Layout and paint only — what a headless host can measure.
     pub fn passes(layout_ns: u64, paint_ns: u64) -> Self {
-        FrameTiming { layout_ns, paint_ns, ..Default::default() }
+        FrameTiming { layout_ns: Some(layout_ns), paint_ns: Some(paint_ns), ..Default::default() }
     }
 
     fn json(&self) -> Value {
@@ -464,20 +467,22 @@ impl Agent {
     /// `app.perf`: the last frame, and p50/p95/max over the ring — the
     /// summary a latency budget is checked against.
     fn perf(&self) -> Value {
-        fn pct(sorted: &[u64], p: f64) -> u64 {
+        // An empty window is `null`, not 0: a stage nothing measured
+        // must not read as a stage that took no time (M48/T48.3).
+        fn pct(sorted: &[u64], p: f64) -> Option<u64> {
             if sorted.is_empty() {
-                return 0;
+                return None;
             }
-            sorted[((sorted.len() - 1) as f64 * p).round() as usize]
+            Some(sorted[((sorted.len() - 1) as f64 * p).round() as usize])
         }
         type Get = fn(&FrameTiming) -> Option<u64>;
         let mut summary = Map::new();
         let fields: [(&str, Get); 7] = [
-            ("layout_ns", |t| Some(t.layout_ns)),
-            ("paint_ns", |t| Some(t.paint_ns)),
-            ("render_ns", |t| Some(t.render_ns)),
-            ("present_ns", |t| Some(t.present_ns)),
-            ("frame_ns", |t| Some(t.frame_ns)),
+            ("layout_ns", |t| t.layout_ns),
+            ("paint_ns", |t| t.paint_ns),
+            ("render_ns", |t| t.render_ns),
+            ("present_ns", |t| t.present_ns),
+            ("frame_ns", |t| t.frame_ns),
             ("input_latency_ns", |t| t.input_latency_ns),
             ("damaged_px", |t| t.damaged_px),
         ];
@@ -489,7 +494,7 @@ impl Agent {
                 json!({
                     "p50": pct(&v, 0.5),
                     "p95": pct(&v, 0.95),
-                    "max": v.last().copied().unwrap_or(0),
+                    "max": v.last().copied(),
                     "n": v.len(),
                 }),
             );

@@ -188,6 +188,14 @@ looks reasonable when that happens.
 | layout + paint | ≤ 100 µs | the static tree's promise; anything more is a memo missing |
 | `damaged_px` p50 | ≪ viewport | a partial redraw that damages the whole frame is not one |
 
+**A stage nobody measured is `null`, and `null` fails** (M48/T48.3). Every
+turnkey window (`lumen_static_winit::run`, a `Program`) reported 0 ns for
+every stage until then, and the budgets above passed on the zeros.
+`ui_check.py latency` now prints `NOT MEASURED` and fails on a window with
+no samples, a `null` stage or a frame that took 0 ns; `ui_check.py
+selftest` shows it both ways. A turnkey window does not measure
+`input_latency_ns` (counter-window does), so there it is `null`.
+
 Read the *warm* window: the first ~5 frames after launch are 4× slower
 (cold clocks, first touch of the pixel buffer). `ui_check.py latency`
 clicks before it reads; the gate warms with 20 clicks.

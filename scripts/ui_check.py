@@ -15,6 +15,7 @@ from `app.perf`. Stdlib + Pillow (screenshot decoding only).
     ui_check.py press              # a control changes while held (C6)
     ui_check.py latency [selector] # click -> presented <= 100 ms; frame <= 16 ms
     ui_check.py lint               # the agent's own ambient audit is empty
+    ui_check.py selftest           # the perf judge on canned replies (no window)
 
 Budgets and the rules behind them: .claude/skills/verifying-apps/SKILL.md.
 """
@@ -247,6 +248,26 @@ def check_contrast(c: AgentClient) -> list[str]:
     return fails
 
 
+def not_measured(w: dict) -> str | None:
+    """Why an `app.perf` window cannot be judged, or `None` if it can.
+
+    **"Not measured" fails** (M48/T48.3, R13-F2). Every turnkey window
+    reported 0 ns for every stage, and this file's budgets -- frame p95 <=
+    16 ms, p50 <= the regression bound -- passed on the zeros. A window
+    with no samples, a stage the host reported as `null`, or a frame that
+    took zero time is not a fast frame: it is a frame nobody timed.
+    """
+    f = w.get("frame_ns") or {}
+    n = f.get("n", 0)
+    if not n:
+        return f"frame_ns n={n}: no frame was timed"
+    if f.get("p50") is None or f.get("max") is None:
+        return f"frame_ns p50={f.get('p50')} max={f.get('max')}: the host reported null"
+    if f["max"] == 0:
+        return f"frame_ns max 0 over n={n}: every frame took no time, i.e. nothing timed it"
+    return None
+
+
 def check_latency(c: AgentClient, selector: str = "#inc") -> list[str]:
     fails = []
     lat, frames = [], []
@@ -259,6 +280,10 @@ def check_latency(c: AgentClient, selector: str = "#inc") -> list[str]:
             lat.append(last["input_latency_ns"] / 1e6)
         frames.append(last["frame_ns"] / 1e6)
     w = c.rpc("app.perf")["window"]
+    why = not_measured(w)
+    if why is not None:
+        print(f"  FAIL NOT MEASURED  {why}")
+        return fails + [f"app.perf NOT MEASURED: {why}"]
     lat_p95 = max(lat) if lat else float("nan")
     frame_p95 = w["frame_ns"]["p95"] / 1e6
     frame_p50 = w["frame_ns"]["p50"] / 1e6
@@ -371,7 +396,31 @@ CHECKS = {
 }
 
 
+def selftest() -> int:
+    """The judge against canned replies: both ways, no window.
+
+    An all-zero window (what every turnkey window sent before T48.3) and
+    an all-`null` one must print NOT MEASURED; a measured one must not.
+    """
+    stage = lambda p50, mx, n: {"p50": p50, "p95": mx, "max": mx, "n": n}  # noqa: E731
+    cases = [
+        ("all-zero", {"frame_ns": stage(0, 0, 128)}, True),
+        ("all-null", {"frame_ns": stage(None, None, 0)}, True),
+        ("measured", {"frame_ns": stage(61_000, 900_000, 128)}, False),
+    ]
+    bad = 0
+    for name, w, want in cases:
+        why = not_measured(w)
+        got = why is not None
+        print(f"  {'ok ' if got == want else 'FAIL'} {name}: "
+              f"{'NOT MEASURED -- ' + why if got else 'measured'} (expected {'NOT MEASURED' if want else 'measured'})")
+        bad += got != want
+    return 1 if bad else 0
+
+
 def main(argv: list[str]) -> int:
+    if argv and argv[0] == "selftest":
+        return selftest()
     if not argv or argv[0] not in CHECKS and argv[0] != "all":
         print(__doc__)
         return 2

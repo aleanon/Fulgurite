@@ -639,6 +639,9 @@ impl Win {
             }
             hot.bar_shown = barred.is_some();
         }
+        // **What the frame cost is kept** (M48/T48.3): `present` fills it
+        // in, and it was dropped here, so `app.perf` read 0 for every
+        // stage of every turnkey window (R13-F2).
         #[cfg(feature = "hot")]
         let presented = match barred {
             Some(mut b) => backend.present(&mut b, self.config.page, start),
@@ -673,7 +676,7 @@ impl Win {
         // `ui.lastChange`, `ui.lastDamage` and `ui.waitSettled` read, and
         // without it an agent can drive the window but cannot tell when
         // it has finished moving.
-        self.session.agent_frame_done();
+        self.session.agent_frame_done(frame_times(&presented));
 
         // Another frame only while something is moving, or while the
         // inbox has a backlog (M28/T28.2: the drain is capped per frame,
@@ -994,6 +997,28 @@ impl Win {
                 }
             }
         }
+    }
+}
+
+/// A presented frame's cost as the session's agent wants it — M48/T48.3.
+///
+/// A frame that presented nothing (a zero-sized surface) measured
+/// nothing, so every stage is `None` rather than the zeros `Frame`'s
+/// default holds: `app.perf` reports `null` for it, never `0`. Input
+/// latency is not measured by this window (`counter-window` measures it
+/// itself), so it is `None` too.
+fn frame_times(f: &Frame) -> lumen_static_shell::session::FrameTimes {
+    if f.frame_ns == 0 {
+        return Default::default();
+    }
+    lumen_static_shell::session::FrameTimes {
+        layout_ns: Some(f.layout_ns),
+        paint_ns: Some(f.paint_ns),
+        render_ns: Some(f.render_ns),
+        present_ns: Some(f.present_ns),
+        frame_ns: Some(f.frame_ns),
+        damaged_px: Some(f.damaged_px),
+        input_latency_ns: None,
     }
 }
 

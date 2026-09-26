@@ -248,11 +248,11 @@ impl WinApp {
         // and the timings are recorded, so `ui.lastChange`, `ui.lint`
         // and `app.perf` describe what a person can see.
         let timing = lumen_static_agent::FrameTiming {
-            layout_ns: f.layout_ns,
-            paint_ns: f.paint_ns,
-            render_ns: f.render_ns,
-            present_ns: f.present_ns,
-            frame_ns: f.frame_ns,
+            layout_ns: Some(f.layout_ns),
+            paint_ns: Some(f.paint_ns),
+            render_ns: Some(f.render_ns),
+            present_ns: Some(f.present_ns),
+            frame_ns: Some(f.frame_ns),
             input_latency_ns: self.input_at.take().map(|t| t.elapsed().as_nanos() as u64),
             damaged_px: Some(f.damaged_px),
         };
