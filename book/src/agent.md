@@ -22,12 +22,20 @@ The protocol is JSON-RPC 2.0. Methods divide into three groups:
 
 **Synthesise** — `input.click`, `input.hover`, `input.key`,
 `input.type`, `input.fill`, `input.paste`, `input.scroll`, `input.scrollIntoView`,
-`input.pointerDown`, `input.pointerUp`, `input.invokeAction`.
+`input.pointerDown`, `input.pointerUp`, `input.invokeAction`,
+`input.compose` (an input-method step: `{text, commit}` or `{cancel:
+true}`, through the same route the window's IME takes).
 `input.key` takes `mods` (`["ctrl", "shift"]`), held for that key only,
 and `input.click` takes `clicks` (2 or 3) for a double or triple click.
 
 **Observe** — `app.diagnostics`, `app.logs`, `app.perf`,
-`ui.waitSettled`.
+`ui.waitSettled`, and after a panic `app.failure` and `app.retry`
+(M36); `app.shadow` is the shadow oracle's report, from a build with it.
+
+**The window's own** — `app.quit` replies and then exits the process
+with status 0 (every turnkey window since M48/T48.13); `app.reloads`
+counts hot swaps. The list above, the skill's and the code are held to
+one another by `scripts/check_agent_methods.sh`.
 
 **A synthesised input reports what arrived.** Everything above goes
 through the host's input queue, which has a fixed size, so `input.type`

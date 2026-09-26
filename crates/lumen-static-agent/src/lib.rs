@@ -31,8 +31,16 @@
 //!
 //! Resolution errors teach (Lumen's ergonomic, adopted): not-found
 //! carries the nearest misses, ambiguity carries the candidates.
-//! Selectors resolve over main-table nodes; repeater instances are
-//! reachable through `ui.probe`/`ui.getTree` (documented P1 limit).
+//! A repeater's rows are selectable too: `~text` matches the node a row
+//! publishes, and `#list > %3` names a row by index (M24/T24.4). The
+//! terms that read the const table — `#id`, a kind, `@file:line`, an
+//! index — match the row's template only.
+//!
+//! **The method set** is what `Agent::dispatch` and
+//! `Agent::dispatch_input` answer, plus the window's own `app.quit` and
+//! `app.reloads` (`lumen-static-winit`'s `answer_agent`);
+//! `scripts/check_agent_methods.sh` holds the skill and the book to it
+//! (M48/T48.14).
 #![forbid(unsafe_code)]
 
 use lumen_static::desc::{NodeDesc, NodeState};
@@ -1750,16 +1758,11 @@ fn change_kind(c: &Coalesced) -> &'static str {
 /// name is a documentation hazard even before anything implements both
 /// (`docs/plan-review-fixes.md` F6.5).
 ///
-/// **Nothing in the workspace implements this outside a test mock**, and
-/// that is the finding rather than the trait's shape. The shell's `Host`
-/// has all three of these — `post`, `pump`, and the fields to build a
-/// `TreeRef` — but cannot implement it, because the shell does not
-/// depend on this crate and adding the dependency would unify `observe`
-/// into every binary linking the shell (F2.5). So `examples/counter`
-/// reaches into three public fields to rebuild by hand the value
-/// `AgentHost::tree` exists to return, and never exercises `input.*` at
-/// all. Closing that needs the trait to move to the core, or a bridge
-/// crate; both are larger than a rename.
+/// **Implemented by the shell's `session::Live`** since M37 — the live
+/// window's view of a session, behind the shell's `live-agent` feature,
+/// so a binary that does not ask for the agent does not unify `observe`
+/// in (F2.5) — and by test hosts here. This paragraph said nothing
+/// implemented it outside a test mock until M48/T48.14 found it stale.
 pub trait AgentHost {
     fn tree(&self) -> TreeRef<'_>;
 
