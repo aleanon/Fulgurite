@@ -128,6 +128,11 @@ one what it is (M44):
   `Select` clears its `open`), and Tab moves on from where focus was.
 * a **passive** overlay, a tooltip, is not Tab's business at all.
 
+An overlay opened **from the keyboard** takes focus: its first focusable
+node — a menu's list, a dialog's first control — so the next key acts on
+what just opened. One opened by a click does not, and a passive one never
+does.
+
 When an overlay opens, the pass records the focus it opened over; when
 it closes — by Escape, by a press outside, by Tab, or by its application
 — focus goes back there, or to the overlay's owner if that node is gone.

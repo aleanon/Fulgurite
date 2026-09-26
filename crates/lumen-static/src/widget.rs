@@ -258,6 +258,17 @@ pub trait Node {
         false
     }
 
+    /// The row the keyboard has made **active**, if this node keeps one —
+    /// M44/T44.10 (`docs/plan-input-semantics.md`).
+    ///
+    /// Enter or Space on a focused node that answers `Some` activates that
+    /// row's handler: the pass builds the selection with the row's part
+    /// and sets `ctx.row`, exactly as a click on the row would. `None` by
+    /// default; a virtualizer that keeps an active row answers it.
+    fn active_row(&self) -> Option<crate::hit::Inner> {
+        None
+    }
+
     /// One step of an input-method composition (T14.8).
     ///
     /// `false` from a node that does not edit text, which is what lets

@@ -129,6 +129,16 @@ pub struct Repeat<T: Widget + Default + 'static> {
     pub generation: u64,
     /// The `generation` the last layout saw.
     seen_generation: u64,
+    /// **The keyboard's row** — M44/T44.10 (`docs/plan-input-semantics.md`).
+    ///
+    /// Rows are not Tab stops: focus is a main-table index and a row
+    /// lives in an arena. So a focused repeater keeps an *active* row
+    /// instead — Up, Down, Home, End, PageUp and PageDown move it and
+    /// scroll it into view, it is drawn with the focus ring while the
+    /// repeater has focus, and Enter or Space activates its handler
+    /// (`Node::active_row`). `None` until a key sets it; an application
+    /// may set it to its current selection when it opens a list.
+    pub active: Option<usize>,
     /// Bumped by `layout` whenever `count` differs from the last
     /// layout's — M44/T44.2. Added to `generation` in `row_generation`,
     /// so an insertion or a removal the application did not report still
@@ -165,6 +175,7 @@ impl<T: Widget + Default> Repeat<T> {
             seen_generation: 0,
             count_epoch: 0,
             seen_count: count,
+            active: None,
             slot_rows: Vec::new(),
         }
     }
@@ -542,6 +553,7 @@ impl<T: Widget + Default + 'static> Node for Repeat<T> {
         // is marked, so nothing changes there.
         let marked = !cx.changed.is_clean(i..i + 1) || self.generation != self.seen_generation;
         self.seen_generation = self.generation;
+        let self_active = self.active.filter(|&a| a < self.reachable_rows());
         // Instances use the template's own default styles: the cascade
         // is keyed by *table* index, and instances are not in the table
         // (`docs/layout-and-storage-decisions.md` §3's recorded limit).
@@ -554,9 +566,16 @@ impl<T: Widget + Default + 'static> Node for Repeat<T> {
             slot_rows.resize(len, usize::MAX);
         }
         let frame = cx.changed;
+        // The active row wears the focus ring, and only while this
+        // repeater holds focus (T44.10). Written before the row lays out,
+        // since a row resolves its look there.
+        let (lit, active) = (st[i].focused, self_active);
         for k in 0..len {
             let sl = (first + k) % len;
             let row = first + k;
+            if n > 0 {
+                states[sl * n].focused = lit && active == Some(row);
+            }
             cx.changed = if marked || slot_rows[sl] != row {
                 crate::invalidate::Changed::ALL
             } else {
@@ -700,13 +719,66 @@ impl<T: Widget + Default + 'static> Node for Repeat<T> {
     /// `ScrollView`'s conventions, because a list that scrolled
     /// the other way from every other list would be its own defect.
     fn on_event(&mut self, ev: &crate::event::Event, _cx: &crate::event::EventCtx) -> bool {
-        let crate::event::Event::Scroll { dy, .. } = ev else { return false };
-        let want = crate::num::clamp(self.scroll - dy, 0.0, self.max_scroll(self.viewport));
-        if want == self.scroll {
-            return false;
+        use crate::event::{Event, Key};
+        match *ev {
+            Event::Scroll { dy, .. } => {
+                let want = crate::num::clamp(self.scroll - dy, 0.0, self.max_scroll(self.viewport));
+                if want == self.scroll {
+                    return false;
+                }
+                self.scroll = want;
+                true
+            }
+            // **The keyboard moves the active row** (M44/T44.10), reached
+            // through the pass's Pass 1 when this repeater is focused.
+            Event::Key { key, down: true } => {
+                let count = self.reachable_rows();
+                if count == 0 || !self.extent_is_usable() {
+                    return false;
+                }
+                let page = ((self.viewport / self.item_extent) as usize).max(1);
+                let last = count - 1;
+                let cur = self.active.filter(|&a| a < count);
+                let next = match key {
+                    Key::Down => cur.map_or(0, |a| (a + 1).min(last)),
+                    Key::Up => cur.map_or(0, |a| a.saturating_sub(1)),
+                    Key::Home => 0,
+                    Key::End => last,
+                    Key::PageDown => cur.map_or(0, |a| a.saturating_add(page).min(last)),
+                    Key::PageUp => cur.map_or(0, |a| a.saturating_sub(page)),
+                    _ => return false,
+                };
+                if Some(next) == cur {
+                    return false;
+                }
+                self.active = Some(next);
+                // Into view: the least scroll that shows the whole row.
+                let (top, bottom) = (next as f32 * self.item_extent, (next + 1) as f32 * self.item_extent);
+                let off = self.offset(self.viewport);
+                if top < off {
+                    self.scroll = top;
+                } else if bottom > off + self.viewport {
+                    self.scroll = bottom - self.viewport;
+                }
+                true
+            }
+            _ => false,
         }
-        self.scroll = want;
+    }
+
+    /// Arrows move the active row, so they never leave a focused
+    /// repeater (M44/T44.1). A repeater is focusable only where its
+    /// owner's table says so — a `Select`'s list is — so this answers for
+    /// no other.
+    fn owns_arrows(&self) -> bool {
         true
+    }
+
+    /// The active row, for Enter and Space (M44/T44.10).
+    fn active_row(&self) -> Option<crate::hit::Inner> {
+        self.active
+            .filter(|&a| a < self.reachable_rows())
+            .map(|a| crate::hit::Inner { row: a as u64, node: 0 })
     }
 
     fn node(&self, _i: usize) -> &dyn Node {

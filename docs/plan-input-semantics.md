@@ -929,3 +929,11 @@ records the case that forced it.
   rather than "the release's chain contains the latched node": the two
   differ for a container whose handler spans two children, where the
   web's answer is the one users expect.
+- **T44.10 is split, as §3 allows.** Its steps 1–3 (the active row in
+  `Repeat`, key activation through `Node::active_row`, focus into a
+  keyboard-opened overlay) landed with `Select` and `ScrollView`'s
+  keyboard support as one commit; the drive inventories as a second;
+  the adapters of step 4 as their own commits. `ScrollView` gained a
+  **bar drag** there too: M42 listed "a drag on the bar" among its
+  actions, and there was no such thing — `on_event` read only the wheel,
+  and the bar was hit-tested as the content beneath it.

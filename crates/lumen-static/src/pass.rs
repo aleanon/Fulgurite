@@ -833,7 +833,18 @@ fn dispatch_at<S: crate::event::App>(
             // below would then panic on a safe API.
             // `docs/plan-review-fixes.md` F1.8.
             Some(f) if (f as usize) < table.len() => {
-                (f as usize, EventCtx::for_event_with(f, *ev, mods), None)
+                let mut cx = EventCtx::for_event_with(f, *ev, mods);
+                // **Enter or Space on a list activates its active row**
+                // (M44/T44.10): the selection and `ctx.row` a click on
+                // that row would have produced.
+                let act = if matches!(ev, Event::Key { key: Key::Enter | Key::Space, down: true }) {
+                    state.tree().node(f as usize).active_row()
+                } else {
+                    None
+                };
+                cx.row = act.map(|x| x.row);
+                cx.inner = act.map_or(0, |x| x.node);
+                (f as usize, cx, act.map(|x| (x.row, x.node)))
             }
             Some(_) => {
                 *focus = None;
@@ -1054,8 +1065,20 @@ pub fn settle_overlays<S: crate::event::App, O: crate::overlay::OverlaySink>(
         if let Some(slot) = input.overlay_return.iter_mut().find(|s| s.is_none()) {
             *slot = Some((o, input.focus));
         }
+        // **Opened from the keyboard, focus goes in** (M44/T44.10): to
+        // the overlay's first focusable node — a menu's list, a dialog's
+        // first control — so the next arrow or Tab acts on what just
+        // opened. Only from the keyboard (`focus_visible`), and never
+        // into a passive overlay: a tooltip that appeared under a hover
+        // must not take focus from what the user is typing into.
+        let node = state.tree().node(o as usize);
+        if input.focus_visible && node.dismissal_consumes_press() {
+            let span = crate::style::subtree_range(table, o as usize);
+            if let Some(f) = next_focusable_in(table, st, style, None, span) {
+                input.focus = Some(f);
+            }
+        }
     }
-    let _ = state;
     let moved = input.focus != before;
     if moved {
         publish_focus(st, input);

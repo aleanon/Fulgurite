@@ -43,6 +43,14 @@
 //!   `open`. Without that call the state would still say "open" and the
 //!   next binding would reopen the menu.
 //!
+//! - **The keyboard** (M44/T44.10): Enter on the trigger opens it as a
+//!   click does; the menu then takes focus — its list is this widget's
+//!   one focusable part besides the trigger, and a Tab stop only while
+//!   open — Up, Down, Home, End and the page keys move the list's
+//!   active row, and Enter or Space runs that row's `on_click` with
+//!   `ctx.row` set, exactly as a click on it would. Escape, Tab and a
+//!   choice all return focus to the trigger.
+//!
 //! Until M33 the widget owned opening (a press on the trigger, in
 //! `on_event`) and the application closed it by reaching into the tree —
 //! which a split application, whose handlers cannot reach the tree,
@@ -177,6 +185,12 @@ impl<S: 'static> SelectTable<S> {
         t[1] = t[1].with_id(PART_TRIGGER);
         t[menu_at] = t[menu_at].with_id(PART_POPUP);
         t[menu_at + 1] = t[menu_at + 1].with_id(PART_MENU);
+        // **The list takes focus** (M44/T44.10), so a keyboard can choose
+        // a row: focus is a table index and the rows are an arena, so the
+        // list is the Tab stop and keeps an active row. It is one only
+        // while open — a closed popup has no area, which is what the
+        // focus walk checks.
+        t[menu_at + 1].flags |= NodeDesc::FOCUSABLE;
         t
     };
     pub const SLICE: &'static [NodeDesc] = Self::ARRAY.split_at(Self::N).0;

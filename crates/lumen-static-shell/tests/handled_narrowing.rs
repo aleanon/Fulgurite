@@ -7,7 +7,7 @@
 //! `TextInput` taking characters and arrows (beside a button, so the
 //! arrow-group rule is in play, M44/T44.1), a `Slider` moving on a track press, two
 //! overlays closed by one press outside, Tab past an open select
-//! (M44/T44.9), a drag from one button to
+//! (M44/T44.9), a select's row chosen by keyboard (M44/T44.10), a drag from one button to
 //! another that activates neither (M44/T44.2), a slider hidden mid-drag
 //! that stops tracking (M44/T44.3), a tap by touch (M44/T44.4), and a
 //! button whose handler
@@ -80,6 +80,8 @@ struct Store {
     n: i64,
     a_open: bool,
     b_open: bool,
+    /// The row a select's row handler reported (M44/T44.10).
+    chosen: Option<u64>,
 }
 
 #[derive(DeriveApp, Default)]
@@ -95,6 +97,11 @@ struct Split {
 
 fn row(r: &mut Row<Store>, i: usize) {
     r.label = format!("option {i}");
+    r.on_click = |s: &mut Store, cx: &EventCtx| {
+        s.chosen = cx.row;
+        s.a_open = false;
+        s.b_open = false;
+    };
 }
 
 fn build() -> Split {
@@ -278,6 +285,38 @@ fn a_click_driven_session_narrows_and_draws_the_same_frames() {
     assert!(!p.b.app.store.a_open, "Tab closed the menu without telling the application");
     assert!(!p.b.app.ui.picks.s1.is_open(), "the binding reopened the menu Tab closed");
     assert!(p.b.input.focus.is_some(), "Tab past a menu set focus to None");
+
+    // 3a'. A keyboard chooses a controlled Select's row (M44/T44.10):
+    // the menu opened with keyboard focus on its trigger takes focus,
+    // Down Down moves the active row, Enter runs that row's handler —
+    // which clears `open` — and every frame matches `Everything`.
+    let trigger = lumen_static::style::index_of_wid(<Ui as Widget>::SUB_TABLE, "s1").unwrap() as u32 + 1;
+    for h in [&mut p.e.input, &mut p.b.input] {
+        h.focus = Some(trigger);
+        h.focus_visible = true;
+    }
+    p.e.app.store.a_open = true;
+    p.b.app.store.a_open = true;
+    p.step("open the first select from the keyboard", |_| {});
+    p.step("(the menu takes focus)", |_| {});
+    let list = p.b.input.focus;
+    println!("    focus {list:?} (the trigger is {trigger}; the list is inside the menu)");
+    assert!(list.is_some_and(|f| f > trigger), "setup: the keyboard-opened menu did not take focus");
+    for k in 0..2 {
+        p.step(&format!("Down in the menu ({k})"), |post| post(Event::Key { key: lumen_static::Key::Down, down: true }));
+    }
+    p.step("Enter chooses", |post| post(Event::Key { key: lumen_static::Key::Enter, down: true }));
+    p.step("(the binding closes it)", |_| {});
+    println!(
+        "    chosen {:?} (expected Some(1)); open {} / {} (expected false); focus {:?} (expected the trigger {trigger})",
+        p.b.app.store.chosen,
+        p.b.app.store.a_open,
+        p.b.app.ui.picks.s1.is_open(),
+        p.b.input.focus
+    );
+    assert_eq!(p.b.app.store.chosen, Some(1), "the keyboard did not choose row 1");
+    assert!(!p.b.app.store.a_open && !p.b.app.ui.picks.s1.is_open(), "choosing did not close the menu");
+    assert_eq!(p.b.input.focus, Some(trigger), "focus did not come back to the trigger");
 
     // 3b. A drag from one button to another activates neither
     // (M44/T44.2), and the press shade clears under `Boundaries` as it

@@ -371,3 +371,117 @@ fn a_repeater_below_the_ceiling_agrees_everywhere() {
     assert_eq!(bad, 0);
     assert!(worst <= 0.5);
 }
+
+// ---- M44/T44.10: the keyboard, and a drag on the bar -------------------
+
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+struct Buttons {
+    a: lumen_static_widgets::ops::Button<ScApp>,
+    b: lumen_static_widgets::ops::Button<ScApp>,
+    c: lumen_static_widgets::ops::Button<ScApp>,
+    d: lumen_static_widgets::ops::Button<ScApp>,
+}
+
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+struct ScUi {
+    #[widget_id("sv")]
+    sv: ScrollView<Buttons>,
+}
+
+#[derive(lumen_static::App, Default)]
+struct ScApp {
+    #[tree]
+    ui: ScUi,
+}
+
+struct Sc {
+    app: ScApp,
+    sty: Vec<lumen_static::Style>,
+    st: Vec<NodeState>,
+    input: lumen_static::event::InputState,
+}
+
+impl Sc {
+    /// Four 60 px buttons, 240 px of content, in a 100 px viewport.
+    fn new() -> Sc {
+        let mut app = ScApp::default();
+        for b in [&mut app.ui.sv.content.a, &mut app.ui.sv.content.b, &mut app.ui.sv.content.c, &mut app.ui.sv.content.d] {
+            b.label = "b";
+        }
+        let sheet = [
+            // Full width, so the bar is drawn **over** the buttons: a press
+            // there must take the bar, not the button under it. With
+            // narrower buttons the bar sat over empty space and the view
+            // was hit anyway, so dropping the bar's priority left the drag
+            // gate green.
+            Rule::new(Selector::Kind("button"), Patch::new().height(Length::Fixed(60.0)).width(Length::Fixed(200.0))),
+            Rule::new(Selector::Id("sv"), Patch::new().height(Length::Fixed(100.0)).width(Length::Fixed(200.0))),
+        ];
+        let mut sty = pass::default_styles(&app.ui);
+        lumen_static::style::cascade_deep(&mut app.ui, &sheet, &mut sty);
+        let mut f = Sc { app, sty, st: vec![NodeState::default(); ScUi::NODE_COUNT], input: Default::default() };
+        f.frame();
+        f
+    }
+    fn frame(&mut self) {
+        pass::layout(&mut self.app.ui, &self.sty, &mut self.st, VIEW);
+    }
+    fn send(&mut self, ev: lumen_static::Event) -> bool {
+        let h = pass::dispatch(&mut self.app, &self.sty, &mut self.st, &mut self.input, &ev);
+        self.frame();
+        h
+    }
+}
+
+/// **PageDown, End and Home scroll the view** from a focused control
+/// inside it, and focus stays where it was.
+#[test]
+fn the_keyboard_scrolls_a_scroll_view_from_a_control_inside_it() {
+    use lumen_static::{Event, Key};
+    let mut f = Sc::new();
+    assert!(f.st[1].size.h == 100.0 && f.st[2].size.h == 240.0, "setup: 240 px of content in a 100 px view");
+    f.input.focus = Some(3); // the first button
+    let mut seen = Vec::new();
+    for key in [Key::PageDown, Key::End, Key::Home] {
+        let handled = f.send(Event::Key { key, down: true });
+        seen.push((key, handled, f.app.ui.sv.scroll));
+    }
+    println!("from the first button: {seen:?} (expected 90, 140, 0); focus {:?}", f.input.focus);
+    assert_eq!(seen.iter().map(|x| x.2).collect::<Vec<_>>(), vec![90.0, 140.0, 0.0], "the keyboard did not scroll");
+    assert_eq!(f.input.focus, Some(3), "scrolling moved focus");
+    // At the top, PageUp declines: a parent scroller would get it.
+    assert!(!f.send(Event::Key { key: Key::PageUp, down: true }), "PageUp at the top was consumed");
+}
+
+/// **The bar can be dragged**: a press on the thumb takes it, a move
+/// scrolls in proportion, and after the release a move scrolls nothing.
+/// A press on the content beside the bar does not grab it.
+#[test]
+fn a_drag_on_the_bar_scrolls_and_a_press_beside_it_does_not() {
+    use lumen_static::Event;
+    let mut f = Sc::new();
+    let sv = f.st[1];
+    // The thumb: 100 / 240 of a 100 px track, at the top.
+    let (bx, by) = (sv.pos.x + sv.size.w - 4.0, sv.pos.y + 10.0);
+    let hit = pass::hit_test(&f.app.ui, &f.st, bx, by).expect("the bar");
+    println!("press on the bar at ({bx}, {by}) hits node {} (the view is 1)", hit.node);
+    assert_eq!(hit.node, 1, "a press on the bar hit the button under it instead of the bar");
+    f.send(Event::down(bx, by));
+    assert_eq!(f.input.capture, Some(1), "the press on the bar did not take the drag");
+    f.send(Event::PointerMove { x: bx, y: by + 29.0 });
+    let dragged = f.app.ui.sv.scroll;
+    f.send(Event::up(bx, by + 29.0));
+    f.send(Event::PointerMove { x: bx, y: by + 60.0 });
+    println!("dragged 29 px of a 58 px run: scroll {dragged} (expected 70 of 140); after release {}", f.app.ui.sv.scroll);
+    assert!((dragged - 70.0).abs() < 1.0, "the drag scrolled {dragged}, not half the overflow");
+    assert_eq!(f.app.ui.sv.scroll, dragged, "a move after the release still dragged");
+
+    let mut g = Sc::new();
+    g.send(Event::down(sv.pos.x + 20.0, by));
+    g.send(Event::PointerMove { x: sv.pos.x + 20.0, y: by + 29.0 });
+    g.send(Event::up(sv.pos.x + 20.0, by + 29.0));
+    println!("press on the content beside the bar, dragged: scroll {} (expected 0)", g.app.ui.sv.scroll);
+    assert_eq!(g.app.ui.sv.scroll, 0.0, "a press on the content scrolled like the bar");
+}

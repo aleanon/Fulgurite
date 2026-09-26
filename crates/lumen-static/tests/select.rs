@@ -8,7 +8,11 @@
 //!    state since M33/T33.3, when `Select` became controlled;
 //! 3. a press on the trigger *while open* closes it and does **not**
 //!    reopen it — the classic dropdown bug;
-//! 4. a press on a row reaches the application with the right index.
+//! 4. a press on a row reaches the application with the right index;
+//! 5. a keyboard does the same (M44/T44.10): opened with Enter, the menu
+//!    takes focus, Down moves its active row, Enter chooses it, and focus
+//!    comes back to the trigger — and Tab while it is open closes it
+//!    (M44/T44.9).
 
 use lumen_static::display::{Cmd, DisplayList};
 use lumen_static::prelude::*;
@@ -273,7 +277,6 @@ fn a_press_outside_tells_the_application_and_the_menu_stays_closed() {
 /// and Enter chooses it. Each key's `handled` is printed, because a Down
 /// that nobody took is the failure this names.
 #[test]
-#[ignore = "red until T44.10: R3-F6 (rows cannot be reached from the keyboard)"]
 fn tab_enter_down_down_enter_chooses_row_one() {
     use lumen_static::Key;
     let mut f = Fx::new(5);
@@ -291,6 +294,11 @@ fn tab_enter_down_down_enter_chooses_row_one() {
     );
     assert_eq!(f.app.picked, vec![1], "the keyboard did not choose row 1");
     assert!(!f.app.ui.sel.is_open(), "choosing a row did not close the menu");
+    // And focus comes back to the trigger, which is where the keyboard
+    // user was (T44.9's return; the menu took focus when it opened).
+    f.send(Event::Modifiers(lumen_static::Mods::NONE));
+    println!("after choosing: focus {:?} (trigger {trigger:?})", f.input.focus);
+    assert_eq!(f.input.focus, trigger, "focus did not come back to the trigger");
 }
 
 /// Tab while the menu is open closes it and moves on, rather than

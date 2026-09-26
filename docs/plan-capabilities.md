@@ -502,6 +502,15 @@ Shift+Tab leave it. The group is walked rather than collected into
 sixteen slots, so it has no size cap (R3-F9).
 `docs/plan-input-semantics.md` §2.1 has the decision.
 
+**And rows are reachable from the keyboard** (M44/T44.10). Focus is a
+table index and a list's rows live in an arena, so rows cannot be Tab
+stops; a focused `Repeat` keeps an *active row* instead, which the arrow,
+Home, End and page keys move and Enter or Space activates
+(`Node::active_row`). A `Select`'s list is focusable while open, and an
+overlay opened from the keyboard takes focus. `ScrollView` scrolls on
+PageUp, PageDown, Home and End from a focused control inside it, and its
+bar can be dragged.
+
 **The ring is a rounded rect drawn *behind* the control, not an outline
 on top**, and the live gate is what said so. The first version drew four
 `Cmd::Line`s around the box; `ui_check.py`'s corner test dropped to five

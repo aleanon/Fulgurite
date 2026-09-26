@@ -79,6 +79,13 @@ pub struct ScrollView<W: Widget> {
     /// The scrollbar's thumb colour; the text colour when `None` —
     /// M25/T25.10.
     pub thumb: Option<lumen_static::display::Color>,
+    /// The viewport's size at the last layout, for `on_event`, which has
+    /// no state array: the bar's geometry and a page's length both come
+    /// from it (M44/T44.10).
+    box_size: Size,
+    /// Where along the thumb a bar drag took hold, while one is in
+    /// progress (M44/T44.10).
+    grab: Option<f32>,
 }
 
 impl<W: Widget + Default> Default for ScrollView<W> {
@@ -96,6 +103,8 @@ impl<W: Widget> ScrollView<W> {
             measured_overflow: 0.0,
             track: None,
             thumb: None,
+            box_size: Size { w: 0.0, h: 0.0 },
+            grab: None,
         }
     }
 
@@ -148,6 +157,37 @@ impl<W: Widget> ScrollView<W> {
 
     /// Content index, relative to this node.
     const AT: usize = 1;
+
+    /// The bar's track and thumb in this node's own coordinates, from
+    /// the last layout — what `on_event` measures a drag against.
+    fn local_bar(&self) -> Option<([f32; 4], [f32; 4])> {
+        let s = NodeState { size: self.box_size, ..NodeState::default() };
+        self.bar_rects(&s)
+    }
+
+    /// Scroll to put the thumb's leading edge at `edge` along the track
+    /// (local px) — the arithmetic `bar_rects` does, inverted.
+    fn scroll_to_thumb(&mut self, edge: f32) -> bool {
+        let Some((track, thumb)) = self.local_bar() else { return false };
+        let (t0, t1, len) = match self.axis {
+            Axis::Column => (track[1], track[3], thumb[3] - thumb[1]),
+            Axis::Row => (track[0], track[2], thumb[2] - thumb[0]),
+        };
+        let room = (t1 - t0 - len).max(0.0);
+        let frac = if room > 0.0 { lumen_static::num::clamp((edge - t0) / room, 0.0, 1.0) } else { 0.0 };
+        let want = frac * self.measured_overflow;
+        let moved = want != self.scroll;
+        self.scroll = want;
+        moved
+    }
+
+    /// Scroll by `by` px, clamped; whether it moved.
+    fn scroll_by(&mut self, by: f32) -> bool {
+        let want = lumen_static::num::clamp(self.scroll + by, 0.0, self.measured_overflow);
+        let moved = want != self.scroll;
+        self.scroll = want;
+        moved
+    }
 
     /// How far the content exceeds the viewport, from the last layout —
     /// the range `scroll` is clamped to.
@@ -264,6 +304,7 @@ impl<W: Widget> Node for ScrollView<W> {
         });
 
         let size = outer;
+        self.box_size = size;
 
         // A6: clamp here, because this is the first moment the content's
         // extent is known.
@@ -314,6 +355,18 @@ impl<W: Widget> Node for ScrollView<W> {
         if !lumen_static::hit::contains(&st[i], x, y) {
             return None;
         }
+        // **The bar is this node's, before any content under it**
+        // (M44/T44.10): it is drawn over the content's edge, and a press
+        // there is a drag of the bar, not a click on a row beneath it.
+        if let Some((track, _)) = self.bar_rects(&st[i]) {
+            if x >= track[0] && x < track[2] && y >= track[1] && y < track[3] {
+                return Some(Hit {
+                    node: i as u32,
+                    inner: None,
+                    local: Point { x: x - st[i].pos.x, y: y - st[i].pos.y },
+                });
+            }
+        }
         self.content.hit(st, i + Self::AT, x, y).or(Some(Hit {
             node: i as u32,
             inner: None,
@@ -335,17 +388,64 @@ impl<W: Widget> Node for ScrollView<W> {
     /// event handler has no `&[NodeState]`, and the last frame's extent
     /// is the right answer anyway — it is the frame the user is looking
     /// at while they turn the wheel.
-    fn on_event(&mut self, ev: &lumen_static::event::Event, _cx: &lumen_static::event::EventCtx) -> bool {
-        let lumen_static::event::Event::Scroll { dy, .. } = ev else { return false };
-        // Wheel-up scrolls content down: the offset moves against `dy`.
-        let want = lumen_static::num::clamp(self.scroll - dy, 0.0, self.measured_overflow);
-        if want == self.scroll {
-            // At an end, or nothing to scroll: decline, and the parent
-            // gets the rest of the gesture.
-            return false;
+    fn on_event(&mut self, ev: &lumen_static::event::Event, cx: &lumen_static::event::EventCtx) -> bool {
+        use lumen_static::event::{Event, Key};
+        let main = |p: Point, axis: Axis| match axis {
+            Axis::Column => p.y,
+            Axis::Row => p.x,
+        };
+        match *ev {
+            Event::Scroll { dy, .. } => {
+                // Wheel-up scrolls content down: the offset moves against
+                // `dy`. At an end, or with nothing to scroll, this
+                // declines, and the parent gets the rest of the gesture.
+                self.scroll_by(-dy)
+            }
+            // **A drag on the bar** (M44/T44.10). The press takes the
+            // thumb where it landed — or, on the track beside it, centres
+            // the thumb there first — and consumes, so the pass captures
+            // and every move until the release reaches this node.
+            Event::PointerDown { .. } => {
+                let Some((track, thumb)) = self.local_bar() else { return false };
+                let (x, y) = (cx.local.x, cx.local.y);
+                if !(x >= track[0] && x < track[2] && y >= track[1] && y < track[3]) {
+                    return false;
+                }
+                let at = main(cx.local, self.axis);
+                let (lo, hi) = match self.axis {
+                    Axis::Column => (thumb[1], thumb[3]),
+                    Axis::Row => (thumb[0], thumb[2]),
+                };
+                let grab = if at >= lo && at < hi { at - lo } else { (hi - lo) / 2.0 };
+                self.grab = Some(grab);
+                self.scroll_to_thumb(at - grab);
+                true
+            }
+            Event::PointerMove { .. } => match self.grab {
+                Some(grab) => {
+                    self.scroll_to_thumb(main(cx.local, self.axis) - grab);
+                    true
+                }
+                None => false,
+            },
+            Event::PointerUp { .. } | Event::PointerCancel { .. } => self.grab.take().is_some(),
+            // **The keyboard scrolls** (M44/T44.10): PageUp and PageDown by
+            // most of a viewport, Home and End to the ends. A scroller is
+            // not focusable, so these arrive from a focused control inside
+            // it, bubbling — and a scroller at its end declines, so an
+            // outer one gets the key, as with the wheel.
+            Event::Key { key, down: true } => {
+                let page = 0.9 * main(Point { x: self.box_size.w, y: self.box_size.h }, self.axis);
+                match key {
+                    Key::PageDown => self.scroll_by(page),
+                    Key::PageUp => self.scroll_by(-page),
+                    Key::Home => self.scroll_by(-self.scroll),
+                    Key::End => self.scroll_by(self.measured_overflow - self.scroll),
+                    _ => false,
+                }
+            }
+            _ => false,
         }
-        self.scroll = want;
-        true
     }
 
     fn node(&self, i: usize) -> &dyn Node {

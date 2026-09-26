@@ -48,6 +48,15 @@ beside a button would lose Left and Right to focus navigation, because
 arrows otherwise move focus within a group of sibling controls. Tab and
 Shift+Tab are how a user leaves a control that owns its arrows.
 
+A list is reached from the keyboard through its **active row**. Rows are
+not Tab stops — focus is a table index and a row lives in an arena — so a
+focused `Repeat` keeps one row active: Up, Down, Home, End and the page
+keys move it and scroll it into view, it wears the focus ring, and Enter
+or Space runs that row's handler with `ctx.row` set, as a click on it
+would. A `Select`'s list takes focus when the menu is opened from the
+keyboard. A `ScrollView` scrolls on the page keys, Home and End from any
+focused control inside it, and its bar can be dragged.
+
 It also caches `track_w` from the last layout, which looks like
 redundancy and is not: `on_event` receives the node's local point and
 nothing else — no style array, no state array — so the width a fraction
