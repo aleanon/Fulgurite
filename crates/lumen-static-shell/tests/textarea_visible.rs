@@ -11,7 +11,17 @@
 //! render, bounded by visible lines × longest line × damage regions and
 //! printed beside the bound. Alone in its binary, because the counter is
 //! process-wide.
+//!
+//! **And its load-independent twin, the allocator** (M45/T45.11): the same
+//! render's heap allocations, counted by this binary's own global
+//! allocator and bounded by twice the glyph bound — a rasterised glyph is
+//! one coverage buffer, and a run a few more. Here and not in
+//! `alloc_gate.rs`: that file asserts zero on every path, and its truetype
+//! arms are M50/T50.2's.
 #![cfg(feature = "truetype")]
+
+use std::alloc::{GlobalAlloc, Layout, System};
+use std::cell::Cell;
 
 use lumen_static::prelude::*;
 use lumen_static::{Color, Event, Key, TextMeasure};
@@ -38,12 +48,35 @@ struct App {
 
 const LINE: &str = "the quick brown fox jumps over the lazy dog 0123456789\n";
 
+thread_local! {
+    static ALLOCS: Cell<usize> = const { Cell::new(0) };
+}
+
+struct Counting;
+unsafe impl GlobalAlloc for Counting {
+    unsafe fn alloc(&self, l: Layout) -> *mut u8 {
+        let _ = ALLOCS.try_with(|c| c.set(c.get() + 1));
+        unsafe { System.alloc(l) }
+    }
+    unsafe fn dealloc(&self, p: *mut u8, l: Layout) {
+        unsafe { System.dealloc(p, l) }
+    }
+}
+
+#[global_allocator]
+static A: Counting = Counting;
+
+fn allocs() -> usize {
+    ALLOCS.with(Cell::get)
+}
+
 /// The counter is process-wide and tests run on threads: one frame at a
 /// time.
 static ONE: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
-/// One Left in a `bytes`-long area: (glyphs rasterised, bound).
-fn frame(bytes: usize) -> (u64, u64) {
+/// One Left in a `bytes`-long area: (glyphs rasterised, bound,
+/// allocations during the render).
+fn frame(bytes: usize) -> (u64, u64, usize) {
     let _one = ONE.lock().unwrap_or_else(|e| e.into_inner());
     let font = FontStack::from_bytes(pinned::bytes(), None).expect("the pinned face parses");
     let body = LINE.repeat(bytes / LINE.len());
@@ -67,9 +100,11 @@ fn frame(bytes: usize) -> (u64, u64) {
     let regions: Vec<[f32; 4]> = host.damage().regions([0.0, 0.0, w as f32, h as f32]).collect();
     assert!(!regions.is_empty(), "setup: a caret move damaged nothing");
     let before = glyphs_rasterised();
+    let a0 = allocs();
     for r in &regions {
         canvas.render_within(&host.list, *r);
     }
+    let heap = allocs() - a0;
     let drawn = glyphs_rasterised() - before;
 
     let s = host.states[1];
@@ -79,19 +114,20 @@ fn frame(bytes: usize) -> (u64, u64) {
     let longest = LINE.chars().count() as u64;
     let bound = visible * longest * regions.len() as u64;
     println!(
-        "{} B area, one Left: {drawn} glyphs rasterised over {} damage regions (bound {bound} = {visible} lines x {longest} x {})",
+        "{} B area, one Left: {drawn} glyphs rasterised over {} damage regions (bound {bound} = {visible} lines x {longest} x {}); {heap} allocations (bound {})",
         bytes,
         regions.len(),
-        regions.len()
+        regions.len(),
+        2 * bound
     );
-    (drawn, bound)
+    (drawn, bound, heap)
 }
 
 #[test]
-#[ignore = "red until T45.11: R8-F3, a TextArea paints its whole value as one run"]
 fn a_caret_move_in_a_long_area_rasterises_what_is_visible() {
-    let (drawn, bound) = frame(64 * 1024);
+    let (drawn, bound, heap) = frame(64 * 1024);
     assert!(drawn <= bound, "{drawn} glyphs rasterised for a caret move; the visible bound is {bound}");
+    assert!(heap as u64 <= 2 * bound, "{heap} allocations for a caret move; the visible bound is {}", 2 * bound);
 }
 
 /// **The accept direction**: an area whose whole text is visible is
@@ -102,6 +138,7 @@ fn a_caret_move_in_a_long_area_rasterises_what_is_visible() {
 /// long document too, and red for the same reason.
 #[test]
 fn a_caret_move_in_an_area_that_fits_is_under_the_bound() {
-    let (drawn, bound) = frame(5 * LINE.len());
+    let (drawn, bound, heap) = frame(5 * LINE.len());
     assert!(drawn <= bound, "{drawn} > {bound}");
+    assert!(heap as u64 <= 2 * bound, "{heap} allocations > {}", 2 * bound);
 }

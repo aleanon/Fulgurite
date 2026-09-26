@@ -1137,6 +1137,14 @@ impl Surface<'_> {
                     // (an italic tail, a wide bearing), and culling on the
                     // bare rect would clip those at the boundary. One em is
                     // more than any face overhangs and costs nothing.
+                    //
+                    // **Per run, so it bounds nothing about a long run**: a
+                    // run that meets the damage is shaped and rasterised
+                    // whole, and its glyphs are clipped one by one below. A
+                    // widget with a lot of text paints it as several runs —
+                    // `TextArea` one per visible line since M45/T45.11,
+                    // `RichText` one per word — so that this cull has
+                    // something to cull.
                     let pad = *size;
                     let reach = [rect[0] - pad, rect[1] - pad, rect[2] + pad, rect[3] + pad];
                     if clipped(reach, clip.as_slice()).is_none() {

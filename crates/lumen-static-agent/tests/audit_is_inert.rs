@@ -221,17 +221,22 @@ mod bounded {
     const LINE: &str = "a line of text long enough to scroll the field sideways";
     const PARAGRAPH: &str = "a paragraph long enough to wrap onto several lines in a two hundred pixel window";
 
-    /// The x of the field's run and the y of the area's, and both nodes'
-    /// padding edges.
-    fn text_at(list: &DisplayList, field: &str, area: &str) -> (Option<f32>, Option<f32>) {
+    /// The x of the field's run, and the y and text of the area's first
+    /// painted line.
+    ///
+    /// **A line, not the value** (M45/T45.11): a text area paints one run
+    /// per visible line, so its scroll shows as which line comes first and
+    /// where. A probe that pinned the scroll to zero paints the
+    /// paragraph's first line at the padding edge.
+    fn text_at(list: &DisplayList, field: &str, area: &str) -> (Option<f32>, Option<(f32, String)>) {
         let mut out = (None, None);
         for c in &list.cmds {
             if let Cmd::Text { rect, text, .. } = c {
                 let s = list.str_of(*text);
                 if s == field {
                     out.0 = Some(rect[0]);
-                } else if s == area {
-                    out.1 = Some(rect[1]);
+                } else if out.1.is_none() && !s.is_empty() && area.contains(s) {
+                    out.1 = Some((rect[1], s.to_owned()));
                 }
             }
         }
@@ -295,7 +300,10 @@ mod bounded {
         let (ex, ey) = text_at(&e.list, &field, &area);
         println!("settled: Everything field x {ex:?} (pad edge {edge}), area y {ey:?} (pad edge {top})");
         assert!(ex.is_some_and(|x| x < edge), "Everything's field did not scroll, so this case cannot fail");
-        assert!(ey.is_some_and(|y| y < top), "Everything's area did not scroll, so its half cannot fail");
+        assert!(
+            ey.as_ref().is_some_and(|(y, s)| *y < top || !area.starts_with(s.as_str())),
+            "Everything's area did not scroll, so its half cannot fail"
+        );
         let mut differing = 0;
         for f in 0..3 {
             // The window's order: frame, then the agent, then the next
@@ -318,12 +326,13 @@ mod bounded {
             let (xe, ye) = text_at(&e.list, &field, &area);
             let (xb, yb) = text_at(&b.list, &field, &area);
             let (xp, yp) = text_at(&plain.list, &field, &area);
+            let (e_, b_, p_) = ((xe, ye.clone()), (xb, yb.clone()), (xp, yp.clone()));
             println!(
                 "frame {f}: field x — Everything+agent {xe:?}, Boundaries+agent {xb:?}, Boundaries alone {xp:?} | \
-                 area y — {ye:?}, {yb:?}, {yp:?} | bound: all equal -> {}",
-                (xe, ye) == (xb, yb) && (xe, ye) == (xp, yp)
+                 area first line — {ye:?}, {yb:?}, {yp:?} | bound: all equal -> {}",
+                e_ == b_ && e_ == p_
             );
-            if (xe, ye) != (xb, yb) || (xe, ye) != (xp, yp) {
+            if e_ != b_ || e_ != p_ {
                 differing += 1;
             }
         }

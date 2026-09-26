@@ -241,3 +241,27 @@ of each run's median, eight runs a side interleaved under the bench lock
 
 §5's kill rule: a 100 KB keystroke is inside a 16.7 ms frame, so no
 paragraph cache.
+
+## T45.11 — a `TextArea` paints what is visible (R8-F3, part a)
+
+One text command per visible line, from the clusters' line starts and
+the scroll offset; the whole value as one run only when a measurer
+reports no clusters (the stand-in). `tests/textarea_visible.rs`, one
+Left and a damage-driven render:
+
+| area | before | after | bound |
+|---|---|---|---|
+| 64 KB, glyphs rasterised | 53,595 | **225** | 330 (6 lines × 55 × 1 region) |
+| 64 KB, allocations during the render | 107,235 (with the whole run restored) | 530 | 660 |
+| five lines (accept) | 225 glyphs | 225 glyphs, 472–530 allocations | 330 / 660 |
+
+Injection: the whole value painted as one run again — 53,595 glyphs and
+107,235 allocations. `audit_is_inert.rs` read the area's scroll from its
+whole-value run; it reads the first painted line now, and still fires
+when `TextArea`'s probe override is removed (the Boundaries arm paints
+the unwrapped paragraph at the padding edge). `RichText` and `Markdown`
+already paint one run per span, a word, and are unchanged.
+
+Part (b) — rasterising only the glyphs of a run that meet the clip —
+needs no task once M50's glyph cache lands (`docs/plan-text-correctness.md`
+§4, and the consistency review).

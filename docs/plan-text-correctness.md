@@ -804,6 +804,16 @@ under the same bound before and after.
 cull comment in `software.rs` (a per-run cull does not bound a long
 run). `docs/results-frame-and-types.md` Finding 15.
 
+*What building found (2026-09-26).* Each line is placed at its index
+times `line_h`, the spacing the caret, the selection and a click already
+used; the single run had been laid out by fontdue at its own ceiled line
+height, so on a deep line the text and the caret drifted apart by the
+difference — per-line painting puts them back together. The allocation
+twin lives in `textarea_visible.rs`, not `alloc_gate.rs`: that file
+asserts zero on every path, and its truetype arms are M50/T50.2's.
+`audit_is_inert.rs` read the area's scroll from its whole-value run and
+reads the first painted line now; it still fires on its injection.
+
 **Effort:** M. **Depends on:** T45.10.
 
 ### T45.12 — the embedded face wraps at the space

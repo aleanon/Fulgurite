@@ -1296,6 +1296,13 @@ constantly** — the digits and letters of an all-new run are the same
 glyphs at the same size. The GPU backend already has an atlas for this
 reason (`docs/results-gpu.md`); the software canvas has nothing.
 
+> **M45/T45.11 (2026-09-26): the widget half.** A glyph cache bounds what
+> a *glyph* costs; it does not bound how many a frame draws, and a
+> `TextArea` painted its whole value as one run, so a caret move in 64 KB
+> rasterised 53,595 glyphs — the per-run cull cannot bound a long run.
+> It paints one run per visible line now: 225 glyphs for the same move
+> (`docs/results-text.md` T45.11). The glyph cache itself stays M50's.
+
 ## T26.17 — finding 10, shipped: one arena walk, not one per rule
 
 Phase D promoted findings 9 and 10 as one defect. This ships the half

@@ -369,6 +369,57 @@ impl<S: TextBuffer> TextArea<S> {
         }
     }
 
+    /// **One text command per visible line** — M45/T45.11, R8-F3.
+    ///
+    /// This painted the whole value as one run. A backend culls per run
+    /// and shapes and rasterises every glyph of a run before clipping, so
+    /// a caret move in a long document rasterised the document: 53,595
+    /// glyphs for one Left in 64 KB (`docs/results-text.md` T45.0 item
+    /// 14). The line starts are already here, in the shaped clusters, and
+    /// so is the scroll offset, so the lines that meet the box are cheap
+    /// to find and only they are emitted.
+    ///
+    /// Each line is placed at its index times `line_h` — the spacing the
+    /// caret, the selection and a click already use — and laid out in the
+    /// inner width, where it fits by construction: the shaper broke the
+    /// paragraph there. A line's trailing newline is left out.
+    ///
+    /// With no clusters (the `BlockMetrics` stand-in reports none) there
+    /// are no line starts to use, and the value is one run as before.
+    fn paint_lines(&self, inner: [f32; 4], s: &NodeState, out: &mut dyn Painter) {
+        let text = self.text.as_ref();
+        let cl = self.clusters.as_slice();
+        let lh = self.line_h;
+        if cl.is_empty() || lh <= 0.0 {
+            let y = inner[1] - self.scroll;
+            out.text_weighted(
+                [inner[0], y, inner[2], y + (inner[3] - inner[1]) + self.scroll],
+                text,
+                s.font_size,
+                s.font_weight,
+                s.fg,
+            );
+            return;
+        }
+        let first = lumen_static::num::floor(self.scroll / lh).max(0.0) as u32;
+        let last = lumen_static::num::ceil((self.scroll + (inner[3] - inner[1])) / lh).max(0.0) as u32;
+        // Clusters are in byte order, and so in line order: the first of
+        // a line is found by bisection, not by a walk from the top.
+        let mut k = cl.partition_point(|c| (c.line as u32) < first);
+        while k < cl.len() && (cl[k].line as u32) <= last {
+            let line = cl[k].line;
+            let start = cl[k].byte as usize;
+            let next = k + cl[k..].partition_point(|c| c.line == line);
+            let end = cl.get(next).map_or(text.len(), |c| c.byte as usize);
+            let run = text.get(start..end.max(start)).unwrap_or("").trim_end_matches(['\n', '\r']);
+            if !run.is_empty() {
+                let top = inner[1] + line as f32 * lh - self.scroll;
+                out.text_weighted([inner[0], top, inner[2], top + lh], run, s.font_size, s.font_weight, s.fg);
+            }
+            k = next;
+        }
+    }
+
     /// Byte offset nearest a point in the run — where a click lands.
     /// The selection as one rect per line it covers.
     ///
@@ -583,14 +634,7 @@ impl<S: TextBuffer> Node for TextArea<S> {
         // The run may be taller than the box; the clip is what keeps it
         // inside, as a scroller's content is (A1, one widget down).
         out.push_clip(inner);
-        let y = inner[1] - self.scroll;
-        out.text_weighted(
-            [inner[0], y, inner[2], y + (inner[3] - inner[1]) + self.scroll],
-            self.text.as_ref(),
-            s.font_size,
-            s.font_weight,
-            s.fg,
-        );
+        self.paint_lines(inner, s, out);
         // The selection, behind the run — same rule as `TextInput`: a
         // highlight painted after the glyphs would hide them.
         if let Some(sel) = self.selection() {
