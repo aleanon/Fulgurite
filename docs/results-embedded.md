@@ -25,15 +25,17 @@ it is: `cargo check` proves none of them — it type-checks and stops, with
 no codegen, no link, no `.text`. Section sizes below come from a real
 `cargo build --release` for the target.
 
-## The headline — measured 2026-09-27 (after M45)
+## The headline — re-measured 2026-09-27 (M52/T52.0)
 
-**This table is the current measurement, and `scripts/check_text.sh`
-holds it to the linked firmware:** it reads the `.text` row below and
-fails when the build differs from it by more than 1%. This document was
-caught three times with a headline a milestone behind the binary (the
-history is below, dated); the ceiling was gated and the number beside it
-was a habit. When a change moves `.text` past the tolerance, the gate
-asks for this table to be re-measured and rewritten in the same commit.
+**This section is the current measurement, and M52's gates cite it
+rather than restating it** (`docs/plan-embedded-footprint.md` §0 rule 3).
+`scripts/check_text.sh` holds the paint-only `.text` row below to the
+linked firmware: it fails when the build differs from it by more than
+1%. This document was caught three times with a headline a milestone
+behind the binary (the history is below, dated); the ceiling was gated
+and the number beside it was a habit. When a change moves `.text` past
+the tolerance, the gate asks for this table to be re-measured and
+rewritten in the same commit.
 
 `just firmware-size`: a **linked** `thumbv7em-none-eabihf` binary
 (`fixtures/embedded/src/bin/firmware.rs`), release, one frame of the
@@ -46,11 +48,61 @@ that produces real sections.
 | `.text` | ≤ 64 KB | **27,968 B** (27.3 KB) | **pass**, at 42.7% of budget |
 | `.bss` + `.data` | zero framework symbols | **1 symbol, 4 B, exempted** | **pass** — the fixture's own `SINK` (`scripts/bss.allow`) |
 | `.rodata` | — | 12,880 B | of which the baked face is most; 9,010 B at T13.7 |
-| Flash, total | ≤ 512 KB | **41,065 B** (40.1 KB) | 7.8% of the part |
+| Total (`size -A`) | ≤ 512 KB flash | **41,065 B** (40.1 KB) | 7.8% of the part |
 | RAM, 100 nodes | ≤ 24 KB | **16.0 KB** state + style | **pass**; measured at M27/T27.1 (2026-09-18), below |
 | Stack, actual depth | ≤ 4 KB | asserted at compile time | since 2026-09-07; see "The stack budget is enforced now" |
 | `f64` in the frame path | zero | **zero** | the only `f64` is `observe`'s accesskit call, which needs `std` |
 | Fixture builds and runs | yes | **yes** | links for the target; runs on the host with an aborting allocator |
+
+The 2026-09-26 headline read 27,732 B `.text` and 12,860 B `.rodata`; the
+build had moved +236 B (+0.85%) since, inside the gate's 1%, so nothing
+asked for it to be rewritten. M52/T52.0's rule is that the budgets are
+re-measured before any of its tasks moves them, whatever the tolerance.
+
+### The binaries a device actually is — M52/T52.0
+
+**The paint-only firmware above never dispatches, binds or cascades**
+(R11-F4, `docs/plan-embedded-footprint.md` §1.1), so the gates reading it
+could not see M29 and M33 grow binding and dispatch. Three more binaries
+link what a device does, over the same tree (`fixtures/embedded/src/lib.rs`
+writes it once, for `Panel` and for `Device`, whose tree adds one bound
+label). Same target, same release profile, measured 2026-09-27 at the
+commit that adds them, before any M52 task changed the core:
+
+| binary | what it runs | `.text` | of 64 KB | `.rodata` | `.data` | total (`size -A`) |
+|---|---|---:|---:|---:|---:|---:|
+| `firmware` | one frame | 27,968 | 42.7% | 12,864 | 0 | 41,049 |
+| `firmware_interactive` | cascade, press + release, a typed character, one `#[bind]`, `Boundaries<16>` | **52,814** | **80.6%** | 19,410 | **4** | 72,445 |
+| `firmware_bind` | one `#[bind]` update, no dispatch | 46,610 | 71.1% | 18,042 | **4** | 64,873 |
+| `firmware_cascade` | `cascade_deep_with`, no dispatch | 43,886 | 67.0% | 17,926 | 0 | 62,029 |
+
+What each links that it should not, counted with `nm -C`:
+
+| binary | `__ln_site` in `.data` (F-NEW-1) | `Node>::hit` (F-NEW-2) | `on_event` (R12-F4) | float formatting / soft `f64` |
+|---|---:|---:|---:|---:|
+| `firmware` | 0 | 0 | 0 | 0 / 0 |
+| `firmware_interactive` | 1 (4 B) | 10 | 17 | 0 / 0 |
+| `firmware_bind` | 1 (4 B) | **10** — it hit-tests nothing | 17 | 0 / 0 |
+| `firmware_cascade` | 0 | 10 | **17** — it dispatches nothing | 0 / 0 |
+
+The interactive build is **80.6%** of the ceiling, not the 88.6% the
+re-triage measured: its probe was not committed, and these binaries are
+rebuilt from the plan's description, so the two are different programs.
+The *shape* reproduces exactly — each finding shows in the binary that
+should exhibit it, and in no other.
+
+**The release window** (F-NEW-3): `examples/minimal`, `cargo build
+--release`, the window crate's default features, no `reload`, no agent.
+`.text` 2,743,702 B, of which **14 `lumen_static_shell::recover::`
+symbols, 13,964 B**, where rule 3 of `docs/plan-panic-recovery.md` says
+there should be none — the re-triage's count and byte total, to the
+byte. With `--features lumen-static-winit/reload` the count is the same
+14, which is the finding: the `cfg` decides behaviour and not the link.
+`just release-window-shape` holds both, marked expected red until T52.7.
+
+The stack rows are measured by T52.6's `fwq` under qemu and are recorded
+in that task's section; nothing between this commit and that one changes
+the core.
 
 **`#[bind]` is exercised without `std`** (M43/T43.8):
 `fixtures/embedded/tests/bind_nostd.rs`, run by `just thumb` with the

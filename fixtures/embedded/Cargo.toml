@@ -44,5 +44,24 @@ name = "firmware"
 path = "src/bin/firmware.rs"
 required-features = ["firmware"]
 
+# M52/T52.1: the three binaries the firmware gates also read. The paint-only
+# one above lays out and paints; these dispatch, bind and cascade, which
+# is what a device does and what M29 and M33 grew with every gate green
+# (R11-F4). `scripts/lib/firmware.sh` builds all four in one cargo call.
+[[bin]]
+name = "firmware_interactive"
+path = "src/bin/firmware_interactive.rs"
+required-features = ["firmware"]
+
+[[bin]]
+name = "firmware_bind"
+path = "src/bin/firmware_bind.rs"
+required-features = ["firmware"]
+
+[[bin]]
+name = "firmware_cascade"
+path = "src/bin/firmware_cascade.rs"
+required-features = ["firmware"]
+
 [features]
 firmware = []

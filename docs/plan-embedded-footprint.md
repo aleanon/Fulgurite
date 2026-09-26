@@ -621,6 +621,35 @@ Risks, and what would reveal each:
   T52.3's `.data == 0` assertion, now run over a firmware that has a
   `#[bind]`.
 
+## 6. What building found (2026-09-27)
+
+Dated notes, added as the tasks were built. The plan above is left as
+written; where it was wrong, the note says so and says what was done.
+
+- **T52.0 — the review's probe firmwares were not committed**, so the
+  three binaries are rebuilt from §1.1's description
+  (`fixtures/embedded/src/bin/firmware_{interactive,bind,cascade}.rs`).
+  They land **with T52.0**, not T52.1, so that T52.0's figures are
+  reproducible at its own commit; T52.1 puts them into the gates. The
+  interactive build is **52,814 B** (80.6% of 64 KB), not §1.1's 58,052
+  (88.6%): a different program with the same shape. Each finding shows
+  in the binary that should exhibit it and in no other
+  (`docs/results-embedded.md`, "The binaries a device actually is").
+- **T52.0 — the tree is written once, as a macro.** `Button<A>` and the
+  toggles are typed on their application, so the interactive
+  application could not hold `Panel`'s `Ui`. `panel_tree!` expands both
+  trees from one text; the paint-only `.text` is byte-identical
+  (27,968 B before and after).
+- **T52.0 — `check_bss.sh`'s `$4` cut is still there at HEAD.** M43/T43.4
+  fixed the binary path and the `nm` failure, not the name extraction.
+  T52.1 fixes it, as planned.
+- **T52.0 — the stack rows move to T52.6's commit.** They need `fwq`,
+  which is T52.6's deliverable, so T52.6 lands **before** T52.3–T52.5:
+  T52.1 and T52.2 change no core code, so the stack T52.6 measures is the
+  stack T52.0 would have.
+- **T52.0 — the release window's recover count is 14 symbols, 13,964 B**,
+  the re-triage's figures to the byte, and the same 14 with `reload` on.
+
 ## Appendix: finding → task
 
 | ID | sev now | status | task |

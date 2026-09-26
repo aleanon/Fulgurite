@@ -33,72 +33,111 @@ pub struct Panel {
     pub clicks: u32,
 }
 
-#[derive(StaticTree, Default)]
-#[widget(row, spacing = 4.0)]
-struct Controls {
-    #[widget_id("dec")]
-    dec: Button<Panel>,
-    gap: Spacer,
-    #[widget_id("inc")]
-    inc: Button<Panel>,
+/// **The tree, written once for two applications** — M52/T52.1.
+///
+/// `Button<A>` and the toggles are typed on the application whose state
+/// their handlers take, so the interactive firmware's [`Device`] cannot
+/// hold a `Ui` built for [`Panel`]. The template is one macro, so "the
+/// same tree plus one bound label" is true by construction: [`Ui`] and
+/// [`DeviceUi`] expand from the same text, and the paint-only firmware's
+/// `.text` does not move (`docs/results-embedded.md`, "Re-measured
+/// 2026-09-27").
+macro_rules! panel_tree {
+    ($app:ident, $ui:ident, $controls:ident $(, $(#[$m:meta])* $extra:ident : $ety:ty)?) => {
+        #[derive(StaticTree, Default)]
+        #[widget(row, spacing = 4.0)]
+        pub struct $controls {
+            #[widget_id("dec")]
+            dec: Button<$app>,
+            gap: Spacer,
+            #[widget_id("inc")]
+            inc: Button<$app>,
+        }
+
+        /// `Label` and `Button` both default their text storage to
+        /// `&'static str`, so neither needs an allocator. A `Label<String>`
+        /// would, which is why this fixture uses the defaults rather than
+        /// spelling them out — the defaults *are* the alloc-free set.
+        #[derive(StaticTree, Default)]
+        #[widget(column, spacing = 6.0)]
+        pub struct $ui {
+            #[widget_id("title")]
+            title: Label,
+            #[widget_id("badge")]
+            badge: Fixed,
+            /// T13.5's gate: an editable field with no allocator behind it.
+            /// `InlineText<64>` pairs with `InlineClusters<64>` through
+            /// `TextBuffer::Clusters`, which is what B9 built the associated
+            /// type for and what nothing inhabited until M13.
+            #[widget_id("field")]
+            pub field: TextInput<InlineText<64>>,
+            controls: $controls,
+            /// One of each toggle shape — M25/T25.1.
+            ///
+            /// Here so the firmware **links** them. `Toggle<S, SHAPE>` is generic,
+            /// and each `SHAPE` is its own instantiation, so a tree that does not
+            /// hold all three measures a `.text` none of them can reach. M25's
+            /// pilot migrates `Toggle` and is stopped by a flash threshold, which
+            /// before this was measured on a firmware with zero Toggle symbols in
+            /// it (`docs/plan-appearance.md` §5). `scripts/check_text.sh` fails if
+            /// they stop being linked.
+            #[widget_id("check")]
+            check: CheckBox<$app>,
+            #[widget_id("radio")]
+            radio: Radio<$app>,
+            #[widget_id("switch")]
+            switch: Switch<$app>,
+            $($(#[$m])* pub $extra: $ety,)?
+        }
+
+        impl $app {
+            fn on_inc(p: &mut $app, _: &EventCtx) {
+                p.clicks += 1;
+            }
+
+            fn on_dec(p: &mut $app, _: &EventCtx) {
+                p.clicks = p.clicks.saturating_sub(1);
+            }
+
+            pub fn new() -> Self {
+                let mut p = $app::default();
+                p.ui.title.set("embedded");
+                p.ui.badge.w = 24.0;
+                p.ui.badge.h = 8.0;
+                p.ui.controls.dec.label = "-";
+                p.ui.controls.dec.on_click = $app::on_dec;
+                p.ui.controls.inc.label = "+";
+                p.ui.controls.inc.on_click = $app::on_inc;
+                p
+            }
+        }
+    };
 }
 
-/// `Label` and `Button` both default their text storage to
-/// `&'static str`, so neither needs an allocator. A `Label<String>`
-/// would, which is why this fixture uses the defaults rather than
-/// spelling them out — the defaults *are* the alloc-free set.
-#[derive(StaticTree, Default)]
-#[widget(column, spacing = 6.0)]
-pub struct Ui {
-    #[widget_id("title")]
-    title: Label,
-    #[widget_id("badge")]
-    badge: Fixed,
-    /// T13.5's gate: an editable field with no allocator behind it.
-    /// `InlineText<64>` pairs with `InlineClusters<64>` through
-    /// `TextBuffer::Clusters`, which is what B9 built the associated
-    /// type for and what nothing inhabited until M13.
-    #[widget_id("field")]
-    pub field: TextInput<InlineText<64>>,
-    controls: Controls,
-    /// One of each toggle shape — M25/T25.1.
-    ///
-    /// Here so the firmware **links** them. `Toggle<S, SHAPE>` is generic,
-    /// and each `SHAPE` is its own instantiation, so a tree that does not
-    /// hold all three measures a `.text` none of them can reach. M25's
-    /// pilot migrates `Toggle` and is stopped by a flash threshold, which
-    /// before this was measured on a firmware with zero Toggle symbols in
-    /// it (`docs/plan-appearance.md` §5). `scripts/check_text.sh` fails if
-    /// they stop being linked.
-    #[widget_id("check")]
-    check: CheckBox<Panel>,
-    #[widget_id("radio")]
-    radio: Radio<Panel>,
-    #[widget_id("switch")]
-    switch: Switch<Panel>,
+panel_tree!(Panel, Ui, Controls);
+
+/// **The interactive firmware's application** — M52/T52.1
+/// (`docs/plan-embedded-footprint.md`, R11-F4).
+///
+/// [`Panel`]'s tree plus one bound label. The paint-only firmware has no
+/// `#[bind]` and never dispatches, and M29 and M33 grew binding and
+/// dispatch with every embedded gate green; `src/bin/firmware_interactive.rs`
+/// and `src/bin/firmware_bind.rs` link this so the gates can see them.
+/// Non-generic on purpose: a generic application gets no per-site
+/// `BindSite` static, and that static is one of the things priced.
+#[derive(DeriveApp, Default)]
+pub struct Device {
+    #[tree]
+    pub ui: DeviceUi,
+    #[bind(ui.readout, "{}")]
+    pub clicks: u32,
 }
 
-fn on_inc(p: &mut Panel, _: &EventCtx) {
-    p.clicks += 1;
-}
-
-fn on_dec(p: &mut Panel, _: &EventCtx) {
-    p.clicks = p.clicks.saturating_sub(1);
-}
-
-impl Panel {
-    pub fn new() -> Self {
-        let mut p = Panel::default();
-        p.ui.title.set("embedded");
-        p.ui.badge.w = 24.0;
-        p.ui.badge.h = 8.0;
-        p.ui.controls.dec.label = "-";
-        p.ui.controls.dec.on_click = on_dec;
-        p.ui.controls.inc.label = "+";
-        p.ui.controls.inc.on_click = on_inc;
-        p
-    }
-}
+panel_tree!(Device, DeviceUi, DeviceControls,
+    /// The bound label: `clicks`, formatted into inline storage.
+    #[widget_id("readout")]
+    readout: Label<InlineText<12>>
+);
 
 /// Type one character into the focused field, through the real
 /// dispatch path rather than by calling a method on the widget — which
@@ -243,6 +282,49 @@ pub fn frame(p: &mut Panel, st: &mut [NodeState], sty: &mut [Style], out: &mut C
     let mut cx = LayoutCx::new(&mut face);
     pass::layout_with(&mut p.ui, &mut cx, sty, st, VIEW);
     pass::paint(&p.ui, st, out);
+}
+
+/// [`Device`]'s node count, for the interactive firmwares' arrays.
+pub const DEVICE_NODES: usize = DeviceUi::NODE_COUNT;
+
+/// A three-rule sheet — an id, a kind and a class-free `Any` — for the
+/// firmwares that cascade (M52/T52.1). Three specificity levels, so
+/// `cascade_range`'s level scan has more than one pass to run.
+pub const SHEET: &[lumen_static::Rule] = &[
+    lumen_static::Rule::new(
+        lumen_static::Selector::Any,
+        lumen_static::Patch::new().spacing(5.0),
+    ),
+    lumen_static::Rule::new(
+        lumen_static::Selector::Kind("button"),
+        lumen_static::Patch::new().radius(3.0),
+    ),
+    lumen_static::Rule::new(
+        lumen_static::Selector::Id("title"),
+        lumen_static::Patch::new().font_size(18.0),
+    ),
+];
+
+/// Lay out and paint over styles the caller already has — the cascade's
+/// output, which [`frame`] would overwrite with the defaults — laying out
+/// only what `changed` says moved (M52/T52.1).
+pub fn frame_changed<W: lumen_static::Widget>(
+    ui: &mut W,
+    st: &mut [NodeState],
+    sty: &[Style],
+    changed: lumen_static::invalidate::Changed<'_>,
+    out: &mut Checksum,
+) {
+    let mut face: BakedFace = face::FACE;
+    let mut cx = LayoutCx::with_changed(&mut face, changed);
+    pass::layout_with(ui, &mut cx, sty, st, VIEW);
+    pass::paint(ui, st, out);
+}
+
+/// The centre of node `i`'s laid-out box: where a press lands on it.
+pub fn centre(st: &[NodeState], i: usize) -> (f32, f32) {
+    let r = lumen_static::ops::rect_of(&st[i]);
+    ((r[0] + r[2]) * 0.5, (r[1] + r[3]) * 0.5)
 }
 
 /// Target-measured type sizes — `docs/plan-embedded.md` T13.9.

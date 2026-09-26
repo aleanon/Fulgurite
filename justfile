@@ -242,7 +242,7 @@ bench-lock +cmd:
 # decision CI gets to make.
 
 # Release-shape rustdoc, binsize, and the exhaustive f32 check.
-check-extra: floats thumb gpu simd threads book agent-symbols
+check-extra: floats thumb gpu simd threads book agent-symbols release-window-shape
     # Release-shape rustdoc: `--workspace` hides broken links that point at
     # items which only exist behind `observe`/`reload`.
     RUSTDOCFLAGS="-D warnings" cargo doc -p lumen-static --no-deps
@@ -253,6 +253,15 @@ check-extra: floats thumb gpu simd threads book agent-symbols
 # the agent build is the positive control. Two release builds.
 agent-symbols:
     ./scripts/check_agent_symbols.sh
+
+# A release window without `reload` links no panic-recovery code, and one
+# with it does -- the `cfg` shown switching both ways (M52, F-NEW-3;
+# docs/plan-embedded-footprint.md §2.2). Two release builds of
+# examples/minimal, so `check-extra` and not `test`.
+
+# Recovery symbols in a release window: 0 without `reload`, above 0 with it.
+release-window-shape:
+    ./scripts/release_window_shape.sh
 
 # The GPU backend (T15.12), which `test` excludes for compile time.
 # Its own tests are the backend-parity gate: the same display list
