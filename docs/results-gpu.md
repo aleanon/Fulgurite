@@ -114,7 +114,7 @@ machine that compared nothing (M38's R17-F6). The policy now: a plain
 `just gpu`, the recipe that claims the comparison happened, sets
 `LUMEN_REQUIRE_GPU=1`, under which a missing adapter panics with
 `LUMEN_REQUIRE_GPU=1 but no adapter`, and prints the adapter it used
-(`adapter: <name> (<backend>)`, from `the_gpu_half_ran`).
+(`adapter: <name> (<backend>, <device type>)`, from `the_gpu_half_ran`; the device type since M51, because llvmpipe is an adapter for parity and not evidence about a discrete GPU).
 `LUMEN_ALLOW_SKIP=1` is the explicit way to run it without one.
 
 **Stated: fewer than 0.2% of pixels may differ by more than 8 levels.**

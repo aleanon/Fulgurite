@@ -232,6 +232,25 @@ pub struct Gpu {
     /// window does with a dropped present.
     #[cfg(debug_assertions)]
     drop_first: u32,
+    /// What the glyph atlas has had to do, since this renderer was made
+    /// — M51/T51.0's read-only probe (R9-F1). See [`AtlasStats`].
+    atlas_stats: AtlasStats,
+}
+
+/// How often the glyph atlas ran out of room, and what was done about it
+/// — M51 (R9-F1).
+///
+/// A **reset** is an atlas emptied so the frame could be built again; a
+/// **give-up** is a frame that did not fit an *empty* atlas either, and
+/// was submitted with what fitted — glyphs missing. Before M51 the
+/// give-up branch counted nothing and logged nothing.
+#[doc(hidden)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct AtlasStats {
+    pub resets: u64,
+    pub give_ups: u64,
+    /// The glyph atlas's edge, in texels, now.
+    pub glyph_size: u32,
 }
 
 /// Which texture group 1 names for a pass — M22/T22.6.
@@ -248,6 +267,21 @@ struct Split {
     /// box passes each way, at the widths SVG specifies and
     /// `software::box_windows` computes.
     blur: [u32; 6],
+}
+
+/// Whether a renderer should open on an adapter of type `device` —
+/// M51 (R9-F6). `accept_cpu` is whether a CPU rasteriser (Mesa's
+/// llvmpipe, WARP) is acceptable: yes when the person asked for the GPU
+/// by name, no under `Prefer::Auto`.
+///
+/// **At M51/T51.0 this accepts everything**, which is the behaviour it
+/// was written against: `Prefer::Auto` on a machine whose only adapter is
+/// llvmpipe opens llvmpipe. Not yet called; T51.2 wires it and makes it
+/// answer.
+#[doc(hidden)]
+pub fn accept_adapter(device: wgpu::DeviceType, accept_cpu: bool) -> Result<(), &'static str> {
+    let _ = (device, accept_cpu);
+    Ok(())
 }
 
 /// The atlas ran out of room mid-frame. Answered by resetting it and
@@ -315,7 +349,10 @@ impl Gpu {
         .ok()?;
 
         let info = adapter.get_info();
-        let adapter_name = format!("{} ({:?})", info.name, info.backend);
+        // Name, backend **and device type** (M51 §0 rule 1): llvmpipe is
+        // an adapter for parity and not evidence about a discrete GPU, so
+        // every gate's first line must say which kind it ran on.
+        let adapter_name = format!("{} ({:?}, {:?})", info.name, info.backend, info.device_type);
 
         // `get_default_config` and then override the format: a
         // configuration built by hand goes stale every time wgpu adds a
@@ -538,6 +575,7 @@ impl Gpu {
             images: None,
             #[cfg(debug_assertions)]
             drop_first: std::env::var("LUMEN_GPU_DROP_FIRST").ok().and_then(|v| v.parse().ok()).unwrap_or(0),
+            atlas_stats: AtlasStats { glyph_size: GLYPH_ATLAS, ..AtlasStats::default() },
         })
     }
 
@@ -549,6 +587,20 @@ impl Gpu {
 
     pub fn size(&self) -> (u32, u32) {
         self.size
+    }
+
+    /// The glyph atlas's resets and give-ups so far — M51/T51.0's probe.
+    #[doc(hidden)]
+    pub fn atlas_stats(&self) -> AtlasStats {
+        self.atlas_stats
+    }
+
+    /// Bytes held by the backdrop filter's two scratch targets —
+    /// M51/T51.0's probe (R9-F9). Arithmetic on their descriptors, four
+    /// bytes a texel, not a driver query.
+    #[doc(hidden)]
+    pub fn scratch_bytes(&self) -> u64 {
+        self.scratch.iter().map(|t| t.width() as u64 * t.height() as u64 * 4).sum()
     }
 
     /// Draw text with `font`. Without one, runs fall back to a filled
@@ -667,6 +719,7 @@ impl Gpu {
         // missing, which is a rendering bug rather than a slow frame.
         for attempt in 0..2 {
             if attempt == 1 {
+                self.atlas_stats.resets += 1;
                 self.glyph_atlas.reset();
                 self.image_atlas.reset();
             }
@@ -721,6 +774,7 @@ impl Gpu {
                 // last glyphs is worse than one that is whole, and far
                 // better than a black window.
                 Err(Overflow) => {
+                    self.atlas_stats.give_ups += 1;
                     self.submit(&quads, &grads, &mats, &splits);
                     return;
                 }
@@ -1663,4 +1717,39 @@ fn make_blit_bind(
             wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(sampler) },
         ],
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::accept_adapter;
+    use wgpu::DeviceType as D;
+
+    /// M51 (R9-F6): every device type wgpu defines, under `Auto` (a CPU
+    /// adapter not acceptable) and under `Gpu` (acceptable), with the
+    /// expected answer written down.
+    #[test]
+    #[ignore = "red until T51.2: R9-F6, a CPU adapter is accepted under Auto"]
+    fn a_cpu_adapter_is_not_a_gpu_under_auto() {
+        let table = [
+            (D::DiscreteGpu, false, true),
+            (D::IntegratedGpu, false, true),
+            (D::VirtualGpu, false, true),
+            (D::Other, false, true),
+            (D::Cpu, false, false),
+            (D::DiscreteGpu, true, true),
+            (D::IntegratedGpu, true, true),
+            (D::VirtualGpu, true, true),
+            (D::Other, true, true),
+            (D::Cpu, true, true),
+        ];
+        let mut wrong = Vec::new();
+        for (device, accept_cpu, want) in table {
+            let got = accept_adapter(device, accept_cpu);
+            println!("{device:?}, accept_cpu {accept_cpu}: {got:?} (want accepted: {want})");
+            if got.is_ok() != want {
+                wrong.push((device, accept_cpu));
+            }
+        }
+        assert!(wrong.is_empty(), "wrong answers: {wrong:?}");
+    }
 }

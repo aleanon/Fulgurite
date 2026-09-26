@@ -294,6 +294,44 @@ and costs one counter increment on a path that is already slow.
 switch in `just gpu`), M43's CI runner, and M40 (its parity arm is in
 the file T51.1 restructures).
 
+*What building found (2026-09-27).* **This machine has a working GPU
+again.** `nvidia-smi` answers (driver 595.91.07), and `Gpu::headless`
+opens `NVIDIA GeForce RTX 4070 (Vulkan, DiscreteGpu)`. llvmpipe is still
+reachable, as Mesa's Vulkan driver, by pointing the loader at it:
+`VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json` opens
+`llvmpipe (LLVM 20.1.2, 256 bits) (Vulkan, Cpu)`, and
+`…/nvidia_icd.json` pins the RTX. So every gate below was run on
+**both** adapter classes, and the plan's "discrete baseline owed" rows
+can be filled in rather than left owed. The whole-frame baseline is
+4 px over 8 on the RTX and 56 on llvmpipe, which is the review's pair
+exactly. Re-checked at 80ff4c1 (every row reproduces, on both
+adapters, unless it says otherwise):
+
+- **R9-F1** reproduces on both, identically, because the atlas is CPU
+  code: at scale 2 one reset and one give-up per frame, and 5.0% of the
+  text's ink missing (software 297,133 dark px, GPU 282,306; this
+  corpus's sizes are 10–28 px, not the review's, whose figure was
+  10.6%). Scale 1 resets 0 times and matches to the pixel.
+- **R9-F7:** the border's own box has a baseline of **0** px over 8 on
+  both adapters. The 56 px of llvmpipe's whole-frame baseline are
+  elsewhere, which is the argument for per-region bounds in one line.
+  Binary ring coverage adds 56 px to the border's box on both; the
+  whole-frame bound then reads 60 px on the RTX (green, under 86) and
+  112 on llvmpipe (red only because its baseline already spent 56).
+- **R9-F2:** five image placements agree inside, 0 px over 8 on both;
+  with the GPU image arm deleted, the 1:1 placement inks 0 of 196.
+- **R9-F6** does not reproduce on this machine's default configuration,
+  because `Auto` now finds the RTX. It reproduces exactly when the
+  loader sees only lavapipe, which is the configuration the finding
+  describes; T51.2's live test runs there.
+- **R9-F8:** the caret frame allocates **10** more than the empty
+  frame's floor of 62, on both adapters (the floor settles after three
+  frames: 65, 62, 62).
+- **R9-F9:** a frame with no glass holds 614,400 B of scratch at
+  320×240, and a resize with no glass makes 748,800 B more.
+- **R9-F3, R9-F10:** landed early as T51.3 and T51.6; not re-gated.
+
+
 ### T51.1 — parity by region, with images and a glyph set larger than one atlas, and an atlas that grows
 
 **Closes:** R9-F7, R9-F2, R9-F1.

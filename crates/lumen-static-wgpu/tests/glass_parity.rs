@@ -223,3 +223,35 @@ fn the_backdrop_filter_agrees_on_both_backends() {
     assert!(frac <= B1, "the panel disagrees on {:.1}% of its pixels", frac * 100.0);
     assert!(gap <= B2, "the fringes differ by {gap:.1} levels");
 }
+
+/// M51 (R9-F9): the blur scratch is paid for only by a frame with glass.
+///
+/// Two full-surface textures, created by `build` and again by every
+/// `resize` whether or not a `Cmd::Glass` is ever drawn. The image atlas
+/// beside them has been made on first use since T15.12 and says so as a
+/// principle; this holds the scratch to the same one. Each check prints
+/// the scratch bytes beside what it expects.
+#[test]
+#[ignore = "red until T51.5: R9-F9, the scratch is made at build and on every resize"]
+fn the_blur_scratch_is_made_on_the_first_glass_command() {
+    let Some(mut g) = gpu() else { return };
+    let mut plain = DisplayList::new();
+    plain.rect([10.0, 10.0, 100.0, 60.0], Color(200, 60, 60, 255));
+
+    g.clear(PAGE);
+    g.render(&plain, W, H);
+    let built = g.scratch_bytes();
+    eprintln!("no glass, after a frame: scratch {built} B (want 0)");
+    g.render(&plain, W + 40, H + 20);
+    let resized = g.scratch_bytes();
+    eprintln!("no glass, after a resize: scratch {resized} B (want 0)");
+    g.render(&frame(255), W + 40, H + 20);
+    let first = g.scratch_bytes();
+    let want = 2 * (W as u64 + 40) * (H as u64 + 20) * 4;
+    eprintln!("one glass panel: scratch {first} B (want {want})");
+    g.render(&frame(255), W + 40, H + 20);
+    let again = g.scratch_bytes();
+    eprintln!("a second glass frame: scratch {again} B (want {want}, unchanged)");
+    assert_eq!((built, resized), (0, 0), "a frame with no glass paid for the blur scratch");
+    assert_eq!((first, again), (want, want), "the scratch is not two surface-sized targets");
+}

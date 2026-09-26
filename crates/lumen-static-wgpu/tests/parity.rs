@@ -76,7 +76,11 @@ fn gpu_required() -> bool {
 /// `just gpu` sets, a missing adapter panics instead, and
 /// `the_gpu_half_ran` below says which adapter did run.
 fn gpu() -> Option<Gpu> {
-    match Gpu::headless(W, H) {
+    gpu_sized(W, H)
+}
+
+fn gpu_sized(w: u32, h: u32) -> Option<Gpu> {
+    match Gpu::headless(w, h) {
         Some(mut g) => {
             eprintln!("gpu: {}", g.adapter());
             if let Some(f) = lumen_static_shell::text::FontStack::system() {
@@ -336,5 +340,235 @@ fn the_gpu_half_ran() {
     match gpu() {
         Some(g) => println!("adapter: {}", g.adapter()),
         None => println!("adapter: none -- the GPU half of this file compared nothing"),
+    }
+}
+
+/// M51/T51.0 (R9-F1): a glyph set larger than one frame's atlas.
+///
+/// The review's corpus: printable ASCII in eight sizes and two weights,
+/// painted **through `Scaled` at 2** into a 3840×2160 frame, which is a
+/// 4K HiDPI screen of type specimens. At scale 1 it fits the 1024² glyph
+/// atlas; at 2 it does not fit an *empty* one either, and until M51 the
+/// give-up branch submitted what fitted, counted nothing and logged
+/// nothing — so a tenth of the text's ink was missing every frame while
+/// three documents said a glyph is never dropped.
+///
+/// Two frames: the first fills the atlas from empty, the second is the
+/// steady state. Printed: resets and give-ups per frame, the atlas edge,
+/// and the dark-pixel count on both backends beside each other.
+fn specimen(scale: f32) -> DisplayList {
+    let ascii: String = (0x20u8..0x7f).map(char::from).collect();
+    let mut l = DisplayList::new();
+    {
+        let mut s = lumen_static::Scaled::new(&mut l, scale);
+        let p: &mut dyn lumen_static::Painter = &mut s;
+        let mut y = 4.0f32;
+        for size in [10.0f32, 12.0, 14.0, 16.0, 18.0, 20.0, 24.0, 28.0] {
+            for weight in [400.0f32, 700.0] {
+                p.text_weighted([4.0, y, 1916.0, y + size * 1.4], &ascii, size, weight, Color(0, 0, 0, 255));
+                y += size * 1.4;
+            }
+        }
+    }
+    l
+}
+
+/// Dark pixels, which on a light page is text ink.
+fn ink(px: &[u8]) -> usize {
+    px.chunks_exact(4).filter(|p| p[0] < 128).count()
+}
+
+fn atlas_case(scale: f32) -> Option<(lumen_static_wgpu::AtlasStats, usize, usize)> {
+    const AW: u32 = 3840;
+    const AH: u32 = 2160;
+    let mut g = gpu_sized(AW, AH)?;
+    let face = lumen_static_shell::text::FontStack::system()
+        .expect("the atlas case needs a real face: block glyphs never touch the atlas");
+    g.set_font(face.clone());
+    let list = specimen(scale);
+    let mut c = Canvas::with_font(AW, AH, face);
+    c.clear(PAGE);
+    c.render(&list, AW, AH);
+    let mut per_frame = Vec::new();
+    for _ in 0..2 {
+        let before = g.atlas_stats();
+        g.clear(PAGE);
+        g.render(&list, AW, AH);
+        let after = g.atlas_stats();
+        per_frame.push((after.resets - before.resets, after.give_ups - before.give_ups));
+    }
+    let stats = g.atlas_stats();
+    let (sw, gw) = (ink(&c.pixels), ink(&g.read_rgba()));
+    eprintln!(
+        "atlas at scale {scale}: resets/give-ups per frame {per_frame:?}, glyph atlas {}², \
+         ink software {sw} px, gpu {gw} px ({:.1}% missing)",
+        stats.glyph_size,
+        (sw as f64 - gw as f64) / sw as f64 * 100.0
+    );
+    Some((stats, sw, gw))
+}
+
+#[test]
+fn a_glyph_set_that_fits_is_drawn_whole_at_scale_1() {
+    let Some((stats, sw, gw)) = atlas_case(1.0) else { return };
+    assert_eq!((stats.resets, stats.give_ups), (0, 0), "scale 1 fits the atlas: nothing to reset");
+    assert!(sw > 10_000, "the corpus drew almost nothing ({sw} px): the setup did not happen");
+    let d = sw.abs_diff(gw) as f64 / sw as f64;
+    assert!(d < 0.001, "text ink differs by {:.3}% (bound 0.1%)", d * 100.0);
+}
+
+#[test]
+#[ignore = "red until T51.1: R9-F1, the atlas gives up and drops glyphs at scale 2"]
+fn a_glyph_set_larger_than_the_atlas_is_drawn_whole_at_scale_2() {
+    let Some((stats, sw, gw)) = atlas_case(2.0) else { return };
+    assert!(sw > 10_000, "the corpus drew almost nothing ({sw} px): the setup did not happen");
+    assert_eq!(stats.give_ups, 0, "the atlas gave up {} times: glyphs were dropped", stats.give_ups);
+    let d = sw.abs_diff(gw) as f64 / sw as f64;
+    assert!(d < 0.001, "text ink differs by {:.3}% (bound 0.1%)", d * 100.0);
+}
+
+/// Pixels over `soft` inside `r` (`[x0, y0, x1, y1]`, whole pixels,
+/// clamped to the frame), and the region's area.
+fn region_over(a: &[u8], b: &[u8], w: u32, r: [u32; 4], soft: u8) -> (usize, u8) {
+    let h = (a.len() / 4) as u32 / w;
+    let mut over = 0;
+    let mut worst = 0u8;
+    for y in r[1]..r[3].min(h) {
+        for x in r[0]..r[2].min(w) {
+            let i = ((y * w + x) * 4) as usize;
+            let d = (0..3).map(|k| a[i + k].abs_diff(b[i + k])).max().unwrap_or(0);
+            worst = worst.max(d);
+            if d > soft {
+                over += 1;
+            }
+        }
+    }
+    (over, worst)
+}
+
+/// M51/T51.0 (R9-F7): the border has a bound of its own.
+///
+/// The whole-frame bound (0.2% of 240×180, so 86 px) sat over a baseline
+/// of 56 px on llvmpipe, and making the software border's ring coverage
+/// binary added fewer pixels than the 30 left: the one command this
+/// frame "holds them to" the shared `sd_round_box` could lose its
+/// antialiasing entirely and the gate stayed green. Here the border's
+/// own box is counted alone, beside its bound.
+#[test]
+fn the_border_is_bounded_on_its_own() {
+    let Some(mut g) = gpu() else { return };
+    let mut c = canvas();
+    c.clear(PAGE);
+    c.render(&frame(), W, H);
+    g.clear(PAGE);
+    g.render(&frame(), W, H);
+    // The border's box, one pixel of reach outside it.
+    let (over, worst) = region_over(&c.pixels, &g.read_rgba(), W, [171, 61, 233, 111], 8);
+    let bound = 4;
+    eprintln!("border: {over} px over 8 (bound {bound}), worst {worst}, on {}", g.adapter());
+    assert!(over <= bound, "the border differs on {over} px (bound {bound})");
+}
+
+/// A 16×16 RGBA test card: four quadrants of distinct colour, one of them
+/// half transparent, and a one-texel dark frame so a wrong scale or a
+/// half-texel shift moves ink across an edge the comparison can see.
+struct Card(Vec<u8>);
+
+const CARD: u32 = 16;
+
+impl Card {
+    fn new() -> Card {
+        let mut px = Vec::with_capacity((CARD * CARD * 4) as usize);
+        for y in 0..CARD {
+            for x in 0..CARD {
+                let c = if x == 0 || y == 0 || x == CARD - 1 || y == CARD - 1 {
+                    [20, 20, 30, 255]
+                } else {
+                    match (x < CARD / 2, y < CARD / 2) {
+                        (true, true) => [220, 40, 40, 255],
+                        (false, true) => [40, 180, 60, 255],
+                        (true, false) => [40, 80, 220, 255],
+                        (false, false) => [240, 200, 0, 128],
+                    }
+                };
+                px.extend_from_slice(&c);
+            }
+        }
+        Card(px)
+    }
+}
+
+impl lumen_static::display::ImageSource for Card {
+    fn image(&self, _: lumen_static::display::ImageId) -> Option<(u32, u32, &[u8])> {
+        Some((CARD, CARD, &self.0))
+    }
+}
+
+/// The image placements: 1:1, 2×, tinted at 3×, with a translucent tint,
+/// and one fractional placement. Each is `(name, rect, tint)`.
+fn image_cases() -> [(&'static str, [f32; 4], Color); 5] {
+    [
+        ("1:1", [10.0, 10.0, 26.0, 26.0], Color(255, 255, 255, 255)),
+        ("2x", [40.0, 10.0, 72.0, 42.0], Color(255, 255, 255, 255)),
+        ("tinted 3x", [80.0, 10.0, 128.0, 58.0], Color(255, 160, 60, 255)),
+        ("alpha", [140.0, 10.0, 172.0, 42.0], Color(255, 255, 255, 128)),
+        ("fractional", [10.3, 70.6, 42.3, 102.6], Color(255, 255, 255, 255)),
+    ]
+}
+
+fn image_frame() -> DisplayList {
+    let mut l = DisplayList::new();
+    // A dark bar under the translucent placement, so alpha is blended
+    // over something that is not the page.
+    l.rect([130.0, 20.0, 190.0, 32.0], Color(30, 30, 30, 255));
+    for (_, r, tint) in image_cases() {
+        l.image(r, lumen_static::display::ImageId(1), tint);
+    }
+    l
+}
+
+/// M51/T51.0 (R9-F2): images agree across the backends.
+///
+/// No pixel corpus held a `Cmd::Image` until now, so deleting the GPU's
+/// image arm left the workspace green. Each placement's interior (one
+/// pixel in from its box) must agree to 8 levels, and its ink — pixels
+/// that are not the page — must cover more than half its area, so an
+/// image that is not drawn at all cannot pass by agreeing with a page
+/// that is not drawn either.
+#[test]
+fn images_agree_across_the_backends() {
+    let Some(mut g) = gpu() else { return };
+    g.set_images(Box::new(Card::new()));
+    let mut c = canvas();
+    c.images = Some(Box::new(Card::new()));
+    c.clear(PAGE);
+    c.render(&image_frame(), W, H);
+    g.clear(PAGE);
+    g.render(&image_frame(), W, H);
+    let gp = g.read_rgba();
+    for (name, r, _) in image_cases() {
+        let inner = [r[0].ceil() as u32 + 1, r[1].ceil() as u32 + 1, r[2].floor() as u32 - 1, r[3].floor() as u32 - 1];
+        let area = ((inner[2] - inner[0]) * (inner[3] - inner[1])) as usize;
+        let (over, worst) = region_over(&c.pixels, &gp, W, inner, 8);
+        let inked = |px: &[u8]| {
+            let mut n = 0;
+            for y in inner[1]..inner[3] {
+                for x in inner[0]..inner[2] {
+                    let i = ((y * W + x) * 4) as usize;
+                    if px[i..i + 3] != [PAGE.0, PAGE.1, PAGE.2] {
+                        n += 1;
+                    }
+                }
+            }
+            n
+        };
+        let (ci, gi) = (inked(&c.pixels), inked(&gp));
+        eprintln!(
+            "image {name}: {over} px over 8 inside (bound 0), worst {worst}; inked software {ci}, \
+             gpu {gi} of {area} (bound > {})",
+            area / 2
+        );
+        assert!(gi > area / 2 && ci > area / 2, "image {name} is not drawn: inked {ci}/{gi} of {area}");
+        assert_eq!(over, 0, "image {name}: {over} px differ by more than 8 inside the placement");
     }
 }
