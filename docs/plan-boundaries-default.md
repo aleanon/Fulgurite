@@ -234,7 +234,9 @@ where it was measured.
 > `just test` is green — that is the flip's own evidence run. Live:
 > `just widget-drive` 94 actions green both ways, `just agent-drive`
 > green both ways with the shadow oracle quiet over 29 frames, and the
-> tasks drive green both ways. **Measure**
+> tasks drive green both ways. *(Re-run at `6116a8b` by M42/T42.8 with
+> each leg's process identified by its socket: all six legs green, two
+> distinct binaries per drive — `docs/results-drive-identity.md` §1.)* **Measure**
 > (`docs/results-damage-precision.md` T34.2): the prediction held — idle,
 > hover and press frames moved; tick and click did not, by design.
 >

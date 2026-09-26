@@ -1,6 +1,18 @@
 # M42 — the drive harness knows which process it drove
 
-> **Written 2026-09-24, not started.** Closes I-NEW-3, R18-F1, R18-F2,
+> **T42.0–T42.8 DONE 2026-09-26.**
+> - T42.0: nine plants on M43/T43.0's harness (`just selftest-live`, and two in `just selftest`), red state recorded.
+> - T42.1: `app.diagnostics.process` (pid, exe, strategy, features) from `AgentHost::process_info`; a failed agent bind exits 3.
+> - T42.2: `scripts/live/launch.py` for all eight live scripts; every leg prints and checks `drove pid P (socket owner P), strategy S, features F`.
+> - T42.3: a leg fails on a dead app, an unexpected `panicked at`, or a non-zero exit after `app.quit`.
+> - T42.4: agent-drive refuses a leg whose oracle presence differs from the leg's declaration.
+> - T42.5: `scripts/drive/expected.json` pins 39 entries / 94 actions by name; `check_drive_coverage.sh` ties 73 exports to inventories or owners.
+> - T42.6: check (1) is filtered to the widget's subtree; found the showcase buttons had no hover shade at all.
+> - T42.7: `just adversary-plant`; the T27.10 plant as written (`<=`) was no longer a blind spot, stored as `<`.
+> - T42.8: all ten commits' cited legs green at their own SHAs, one process per leg (`docs/results-drive-identity.md`).
+> §6 records what building found.
+>
+> **Written 2026-09-24.** Closes I-NEW-3, R18-F1, R18-F2,
 > R18-F3, R18-F9 and R18-F11. They come from M38's deep review
 > (`docs/results-deep-review.md` §2.3, §4, §5), re-triaged against
 > `main` at 1717808 on 2026-09-24. Where the review and the re-triage
@@ -868,6 +880,11 @@ for every plan a build corrected.
   The stored plant is `_page(c) < c._p0`, which accepts the defect's
   jump (22 -> 18) and rejects the unchanged page, so it is the blind spot
   `<=` was meant to be.
+- **T42.8: no commit's claim was false.** Every leg of every cited
+  drive is green at its own SHA, on the process it launched, with two
+  distinct binaries per drive (`docs/results-drive-identity.md`). The
+  re-run's one red was an artefact of running an old drive from HEAD's
+  directory (a relative source path) and is recorded there.
 - **AGENT.md is the coordinator's.** The tasks' "docs in the same
   commit" name AGENT.md entries; the implementation brief reserves that
   file for the merge, so those edits are listed in the final report
