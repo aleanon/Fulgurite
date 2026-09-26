@@ -130,6 +130,11 @@ def _drag_divider(c, frac):
 # accordion is. So the inventory drives the *second* section, which starts
 # closed, and its last action asserts the one-open rule; "the other
 # sections are independent" asserted the rule's absence.
+def _click_header(c):
+    b = c.box()
+    return c.c.rpc("input.click", x=(b[0] + b[2]) / 2, y=b[1] + 20)
+
+
 ACCORDION = ("Accordion", "#d_acc_b", [
     Action(
         name="a press on the header opens the section",
@@ -153,7 +158,11 @@ ACCORDION = ("Accordion", "#d_acc_b", [
     Action(
         name="a press on the header again closes it",
         needs="an open section",
-        do=lambda c: c.click(),
+        # **On the header**, 20 px into its 40: this clicked the open
+        # section's centre, which landed in the header only while the
+        # body was short -- a 12 px gap under the body (M57/B47) moved the
+        # centre onto the body and the press did nothing.
+        do=lambda c: _click_header(c),
         expect=lambda c: (
             c.value() == "collapsed",
             f"state {c.value()!r}",
