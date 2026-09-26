@@ -1312,8 +1312,16 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             // At a scale of 1.0 `Scaled` is a forwarding wrapper, and
             // under `Rebuild` `Recording` forwards to an empty
             // `observe` the optimizer removes.
-            let mut scaled = lumen_static::Scaled::new(&mut self.list, self.scale);
-            let mut out = lumen_static::Recording::new(&mut scaled, &mut self.retain);
+            //
+            // **Retention inside `Scaled`, so it sees physical pixels** —
+            // M57/A2 (R1-F1 of the M38 review). It sat outside, observed
+            // logical rects, and banked damage that was applied to a
+            // physical surface: at scale 2 a change repainted a region
+            // half its size, up and to the left, and the pixels it missed
+            // stayed stale until something else repainted them
+            // (`docs/widget-audit.md`, bug 1(b); `tests/scaled_damage.rs`).
+            let mut rec = lumen_static::Recording::new(&mut self.list, &mut self.retain);
+            let mut out = lumen_static::Scaled::new(&mut rec, self.scale);
             pass::paint_overlaid(self.app.tree(), &self.states, &mut out, &mut self.overlays);
             paint_focus_ring::<A>(&self.input, &self.states, &self.overlays, &self.palette, &mut out);
         }
@@ -1511,7 +1519,8 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         n
     }
 
-    /// What the frame just pumped changed, against the frame before it.
+    /// What the frame just pumped changed, against the frame before it —
+    /// **in the surface's physical pixels**, at any scale (M57/A2).
     pub fn damage(&self) -> Damage {
         self.last_damage
     }
