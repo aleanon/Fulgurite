@@ -105,20 +105,18 @@ type Face = Option<lumen_static_shell::text::FontStack>;
 #[cfg(not(feature = "truetype"))]
 type Face = Option<()>;
 
+/// Only the `real_glyphs_*` tests call it, and they need `truetype`; built
+/// without it (`just simd`'s clippy line) an unconditional one is dead code
+/// under `-D warnings`, which `just ci`'s first run found (M43/T43.13).
+#[cfg(feature = "truetype")]
 fn pinned_face() -> Face {
-    #[cfg(feature = "truetype")]
-    {
-        let regular = std::fs::read("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf").ok();
-        let bold = std::fs::read("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf").ok();
-        let f = regular
-            .and_then(|r| lumen_static_shell::text::FontStack::from_bytes(&r, bold.as_deref()));
-        if f.is_none() {
-            eprintln!("pinned face missing; drawing block glyphs");
-        }
-        f
+    let regular = std::fs::read("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf").ok();
+    let bold = std::fs::read("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf").ok();
+    let f = regular.and_then(|r| lumen_static_shell::text::FontStack::from_bytes(&r, bold.as_deref()));
+    if f.is_none() {
+        eprintln!("pinned face missing; drawing block glyphs");
     }
-    #[cfg(not(feature = "truetype"))]
-    None
+    f
 }
 
 /// A canvas that draws what the window would: real glyphs when there is
