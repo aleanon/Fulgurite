@@ -79,6 +79,14 @@ pub struct RichText {
     /// is the question a test about wrapping actually asks.
     lines: usize,
     height: f32,
+    /// Each span's measured width and the space after it, and the fold
+    /// they were measured under — M57/B6. Every layout re-measured every
+    /// word, and a probe lays out twice more per frame under `observe`.
+    /// The widths do not depend on the box (a span never wraps inside
+    /// itself), so the key is the text, the spans, the font size and the
+    /// display scale, folded; a still frame measures nothing.
+    widths: [(f32, f32); MAX_SPANS],
+    measured_under: u64,
 }
 
 impl Default for RichText {
@@ -90,6 +98,8 @@ impl Default for RichText {
             placed: [(0.0, 0.0, 0.0); MAX_SPANS],
             lines: 0,
             height: 0.0,
+            widths: [(0.0, 0.0); MAX_SPANS],
+            measured_under: 0,
         }
     }
 }
@@ -100,6 +110,28 @@ impl RichText {
         let mut r = RichText { text: text.to_string(), ..Default::default() };
         r.split_plain();
         r
+    }
+
+    /// The measure memo's key: FNV-1a over everything a width depends on.
+    fn fold(&self, font_size: f32, scale: f32) -> u64 {
+        let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+        let mut eat = |b: &[u8]| {
+            for &x in b {
+                h = (h ^ x as u64).wrapping_mul(0x100_0000_01b3);
+            }
+        };
+        eat(self.text.as_bytes());
+        eat(&font_size.to_bits().to_le_bytes());
+        eat(&scale.to_bits().to_le_bytes());
+        for s in &self.spans[..self.count] {
+            eat(&s.range.0.to_le_bytes());
+            eat(&s.range.1.to_le_bytes());
+            eat(&s.scale.to_bits().to_le_bytes());
+            eat(&s.weight.to_bits().to_le_bytes());
+            eat(&[s.space as u8]);
+        }
+        // Never 0, which is "never measured".
+        h | 1
     }
 
     /// The spans, as parsed.
@@ -213,17 +245,25 @@ impl Node for RichText {
         // width it is given and shrinks in height, which is what
         // `type_defaults` says and what this relies on.
         let inner = (limits.max_w - me.padding.horizontal()).max(0.0);
+        let key = self.fold(me.font_size, cx.scale());
+        if key != self.measured_under {
+            for k in 0..self.count {
+                let s = self.spans[k];
+                let size = me.font_size * s.scale;
+                let w = cx.text.measure_weighted(self.span_str(k), size, s.weight, f32::INFINITY).w;
+                let gap = if s.space { cx.text.measure_weighted(" ", size, s.weight, f32::INFINITY).w } else { 0.0 };
+                self.widths[k] = (w, gap);
+            }
+            self.measured_under = key;
+        }
         let (mut x, mut y) = (0.0f32, 0.0f32);
         let mut line_h = me.font_size * LINE;
         self.lines = if self.count == 0 { 0 } else { 1 };
         for k in 0..self.count {
             let s = self.spans[k];
             let size = me.font_size * s.scale;
-            let w = cx
-                .text
-                .measure_weighted(self.span_str(k), size, s.weight, f32::INFINITY)
-                .w
-                + if s.code { CHIP * 2.0 } else { 0.0 };
+            let (w, gap) = self.widths[k];
+            let w = w + if s.code { CHIP * 2.0 } else { 0.0 };
             let lead = if s.bullet { BULLET_X } else { 0.0 };
             if s.br && k > 0 {
                 x = 0.0;
@@ -240,10 +280,7 @@ impl Node for RichText {
             }
             line_h = line_h.max(size * LINE);
             self.placed[k] = (x + lead, y, w);
-            x += lead + w;
-            if s.space {
-                x += cx.text.measure_weighted(" ", size, s.weight, f32::INFINITY).w;
-            }
+            x += lead + w + gap;
         }
         let content =
             Size { w: limits.max_w, h: if self.count == 0 { 0.0 } else { y + line_h } };
@@ -316,10 +353,19 @@ impl Node for RichText {
         // The *rendered* text, not the markup: what a screen reader
         // should say is what a reader sees, and for `Markdown` those
         // differ by every asterisk.
+        //
+        // **A space only where the previous span has one** — M57/B6. The
+        // join put a space between every pair, so "`code`." was read as
+        // "code ." — the separator the layout honours (`Span::space`) and
+        // the one it published disagreed.
         let mut v = String::new();
         for k in 0..self.count {
             if k > 0 {
-                v.push(if self.spans[k].br { '\n' } else { ' ' });
+                if self.spans[k].br {
+                    v.push('\n');
+                } else if self.spans[k - 1].space {
+                    v.push(' ');
+                }
             }
             v.push_str(self.span_str(k));
         }

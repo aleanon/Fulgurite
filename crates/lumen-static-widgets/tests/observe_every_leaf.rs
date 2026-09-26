@@ -90,3 +90,19 @@ fn every_leaf_publishes_a_role_or_a_value() {
     assert!(leaves >= 20, "setup: only {leaves} leaves were emitted");
     assert!(silent.is_empty(), "leaves that tell a reader nothing: {silent:?}");
 }
+
+/// **What a reader hears is what the layout spaces** — M57/B6. The join
+/// put a space between every pair of spans, so "**bold**, `code`." was
+/// published as "bold , code ." while the screen showed "bold, code.".
+#[test]
+fn rich_text_publishes_its_own_spacing() {
+    use lumen_static::observe::accesskit as ak;
+    let m = Markdown::new("**bold**, `code`. plain words");
+    let st = [lumen_static::NodeState::default()];
+    let mut n = ak::Node::new(ak::Role::Unknown);
+    let mut extra = Vec::new();
+    lumen_static::widget::Node::observe(&m, &st, 0, 1, &mut n, &mut extra);
+    let v = n.value().unwrap_or("").to_string();
+    println!("spans {:?} -> {v:?}", (0..m.rich().spans().len()).map(|k| m.rich().span_str(k)).collect::<Vec<_>>());
+    assert_eq!(v, "bold, code. plain words");
+}
