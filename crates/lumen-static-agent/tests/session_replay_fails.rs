@@ -13,7 +13,7 @@
 
 use lumen_static_widgets::ops::{Button, Label};
 use lumen_static::{pass, Constraints, Event, EventCtx, InputQueue, NodeState, StaticTree, Widget};
-use lumen_static_agent::session::{Header, Recording};
+use lumen_static_agent::session::{Header, Recording, ReplayError};
 use lumen_static_agent::{Agent, AgentHost, TreeRef};
 use serde_json::{json, Value};
 
@@ -130,12 +130,18 @@ fn header() -> Header {
 
 
 fn drive(h: &mut Host, agent: &Agent, rec: &mut Recording, method: &str, params: Value) -> Value {
-    rec.note(method, &params);
-    agent.dispatch_input(h, &json!({ "jsonrpc": "2.0", "id": 1, "method": method, "params": params }))
+    let reply = agent.dispatch_input(h, &json!({ "jsonrpc": "2.0", "id": 1, "method": method, "params": params }));
+    rec.note(method, &params, &reply);
+    reply
+}
+
+const PROPS: &str = "(200, 200, \"default\", \"block\")";
+
+fn final_tree(h: &mut Host, agent: &Agent) -> Value {
+    agent.dispatch_input(h, &json!({ "jsonrpc": "2.0", "id": 0, "method": "ui.getTree" }))["result"].clone()
 }
 
 #[test]
-#[ignore = "red until T48.10: R13-F6, replay discards every reply"]
 fn a_corrupted_recording_diverges() {
     let agent = Agent::new();
     let mut h = Host::new();
@@ -148,36 +154,83 @@ fn a_corrupted_recording_diverges() {
     rec.calls[1].1 = json!({ "selector": "#nope" });
     rec.calls[2].1 = json!({ "x": 199.0, "y": 199.0 });
     let mut fresh = Host::new();
-    let r = rec.replay(&agent, &mut fresh, W, H, "block");
+    let r = rec.replay(&agent, &mut fresh, W, H, "default", "block");
     println!("replay -> {r:?}, fresh n={} / recorded {}", fresh.app.n, h.app.n);
-    assert!(r.is_err(), "a corrupted recording replayed Ok, fresh n={} / recorded 3", fresh.app.n);
+    match r {
+        Err(ReplayError::Diverged { step: 2, .. }) => {}
+        other => panic!("a corrupted recording must diverge at step 2, got {other:?} (fresh n={})", fresh.app.n),
+    }
 }
 
 #[test]
-#[ignore = "red until T48.10: R13-F6, check takes no stylesheet"]
 fn a_stylesheet_mismatch_is_refused() {
     let agent = Agent::new();
     let mut rec = Recording::new(Header { stylesheet: "dark-compact".into(), ..header() });
-    rec.note("input.click", &json!({ "selector": "#inc" }));
+    rec.note("input.click", &json!({ "selector": "#inc" }), &json!({ "result": { "handled": true } }));
     let mut fresh = Host::new();
-    let r = rec.replay(&agent, &mut fresh, W, H, "block");
+    let r = rec.replay(&agent, &mut fresh, W, H, "default", "block");
     println!("replay -> {r:?} (recorded `dark-compact`, host `default`), fresh n={}", fresh.app.n);
-    assert!(r.is_err(), "a stylesheet mismatch replayed Ok");
+    assert!(matches!(r, Err(ReplayError::Mismatch { field: "stylesheet", .. })), "{r:?}");
     assert_eq!(fresh.app.n, 0, "and a refused replay runs nothing");
 }
 
-#[test]
-#[ignore = "red until T48.10: R13-F6, an export asserts nothing"]
-fn an_export_asserts_every_step() {
+// ---- exports, run: the generated source, included and called ----------
+
+/// The recording both exports below are made from; `missing` adds a step
+/// on a selector that does not exist.
+fn recorded(missing: bool) -> (Recording, Value) {
     let agent = Agent::new();
     let mut h = Host::new();
     let mut rec = Recording::new(header());
     drive(&mut h, &agent, &mut rec, "input.click", json!({ "selector": "#inc" }));
-    drive(&mut h, &agent, &mut rec, "input.click", json!({ "selector": "#does-not-exist" }));
-    let src = rec.export_test("replays_the_counter", "Host::new()");
-    let lets = src.matches("let _ =").count();
-    let placeholder = src.contains("Assertions on final state go here");
-    println!("export: {lets} discarded replies, placeholder {placeholder}\n{src}");
-    assert_eq!(lets, 0, "the export discards {lets} replies");
-    assert!(!placeholder, "the export ends with a placeholder where its assertion belongs");
+    drive(&mut h, &agent, &mut rec, "input.click", json!({ "selector": "#inc" }));
+    if missing {
+        drive(&mut h, &agent, &mut rec, "input.click", json!({ "selector": "#does-not-exist" }));
+    }
+    let tree = final_tree(&mut h, &agent);
+    (rec, tree)
+}
+
+mod exported {
+    use super::Host;
+    include!("exported/untouched.rs");
+    include!("exported/missing_selector.rs");
+}
+
+/// **The committed exports are the exporter's output**, regenerated and
+/// compared byte for byte — so the two included files cannot drift into
+/// hand-written tests. `LUMEN_BLESS=1` rewrites them.
+#[test]
+fn the_included_exports_are_what_the_exporter_writes() {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/exported");
+    for (file, name, missing) in [("untouched.rs", "untouched", false), ("missing_selector.rs", "missing_selector", true)] {
+        let (rec, tree) = recorded(missing);
+        let src = rec.export_fn(name, "Host::new()", PROPS, &tree);
+        let path = dir.join(file);
+        if std::env::var("LUMEN_BLESS").is_ok_and(|v| v == "1") {
+            std::fs::write(&path, &src).unwrap();
+        }
+        let have = std::fs::read_to_string(&path).unwrap_or_default();
+        assert_eq!(have, src, "{} is not the exporter's output; re-run with LUMEN_BLESS=1", path.display());
+    }
+}
+
+/// Accept: an untouched export passes.
+#[test]
+fn an_untouched_export_passes() {
+    exported::untouched();
+}
+
+/// An export whose recording clicked a selector that no longer exists
+/// panics, naming its step.
+#[test]
+fn an_export_with_a_missing_selector_fails_naming_its_step() {
+    let r = std::panic::catch_unwind(exported::missing_selector);
+    let msg = match &r {
+        Err(p) => p.downcast_ref::<String>().cloned().or_else(|| p.downcast_ref::<&str>().map(|s| s.to_string())).unwrap_or_default(),
+        Ok(()) => String::new(),
+    };
+    println!("exported missing_selector -> {}", if r.is_ok() { "passed".into() } else { msg.clone() });
+    assert!(r.is_err(), "an export with a missing selector passed");
+    assert!(msg.contains("step 3"), "the panic does not name the step: {msg}");
 }

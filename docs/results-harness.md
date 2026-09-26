@@ -81,6 +81,25 @@ through all of them was R13-F1. It now answers from the host (the
 animation, the inbox, jobs in flight, the next timer) or `null` from a
 host that cannot say. The harness still does not poll for its caller.
 
+## T12.3, amended — a replay that diverges is an error (M48/T48.10)
+
+T12.3 is recorded in `docs/plan-harness.md`; its gate could not fail.
+`crates/lumen-static-agent/tests/session_replay_fails.rs` inverts the
+review's probes (R13-F6), and each inversion was red at M48/T48.0:
+
+| case | at T48.0 | now |
+|---|---|---|
+| corrupted recording (steps 2 and 3 edited) | `Ok(())`, fresh n=1 / recorded 3 | `Diverged { step: 2, .. }` (error -32001, recorded `handled: true`) |
+| recorded sheet `dark-compact`, host `default` | `Ok(())`, fresh n=1 | `Mismatch { field: "stylesheet" }`, fresh n=0 |
+| export with `#does-not-exist` as step 3 | 2 discarded replies, a placeholder, passes | panics: "step 3 (`input.click`) failed: …" |
+
+**The final-tree digest alone would not have caught the third**: a click
+on a selector that matches nothing changes nothing, so the tree at the
+end is the recorded one. With the per-step assertion removed from the
+exporter, that export passed. Both assertions are in every export, and
+the two included exports are compared byte for byte with what the
+exporter writes (`LUMEN_BLESS=1` regenerates them).
+
 ## T12.2 — golden images with a diff artifact
 
 **Landed 2026-09-20.** The *comparison* already existed —

@@ -135,6 +135,16 @@ baking in the recording machine's font install.
 
 ## T12.3 — session recording as a test artifact — **DONE 2026-09-04**
 
+> **Amended 2026-09-26 (M48/T48.10, R13-F6): what shipped here could not
+> fail.** `replay` discarded every reply, `check` took no stylesheet
+> though the header below lists it, and `export_test` emitted `let _ =`
+> per step and a placeholder comment. A corrupted recording replayed
+> `Ok`, a mismatched sheet replayed `Ok`, and an export clicking a missing
+> selector passed. Each step now keeps its reply's `handled` and error
+> code, a divergence is an error naming the step, the stylesheet is
+> checked, and an export asserts every step and a final `ui.getTree`
+> digest (`crates/lumen-static-agent/tests/session_replay_fails.rs`).
+
 The invariant holds and is **already exercised for a single click at
 the `Event` level** — `crates/lumen-static-agent/tests/input.rs`
 replays a synthesized click's trace on a fresh host and asserts the same

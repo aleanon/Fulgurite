@@ -124,11 +124,12 @@ fn header() -> Header {
 
 /// Drive a host, recording every call the way a shell would.
 fn drive(h: &mut Host, agent: &Agent, rec: &mut Recording, method: &str, params: Value) -> Value {
-    rec.note(method, &params);
-    agent.dispatch_input(
+    let reply = agent.dispatch_input(
         h,
         &json!({ "jsonrpc": "2.0", "id": 1, "method": method, "params": params }),
-    )
+    );
+    rec.note(method, &params, &reply);
+    reply
 }
 
 #[test]
@@ -149,7 +150,7 @@ fn a_multi_step_session_replays_to_the_same_state() {
     assert_eq!(rec.len(), 4, "four inputs recorded, the query excluded");
 
     let mut fresh = Host::new();
-    rec.replay(&agent, &mut fresh, W, H, "block").expect("replays");
+    rec.replay(&agent, &mut fresh, W, H, "default", "block").expect("replays");
     assert_eq!(fresh.app.n, 2, "the replay reproduced the state");
     assert_eq!(fresh.app.ui.count.as_str(), h.app.ui.count.as_str());
 }
@@ -166,7 +167,7 @@ fn a_replay_against_a_different_viewport_is_refused_not_diffed() {
     drive(&mut h, &agent, &mut rec, "input.click", json!({ "selector": "#inc" }));
 
     let mut fresh = Host::new();
-    let err = rec.replay(&agent, &mut fresh, W + 40, H, "block").unwrap_err();
+    let err = rec.replay(&agent, &mut fresh, W + 40, H, "default", "block").unwrap_err();
     assert!(matches!(err, ReplayError::Mismatch { field: "viewport", .. }), "{err:?}");
     assert!(err.to_string().contains("land somewhere else"), "the error teaches: {err}");
     assert_eq!(fresh.app.n, 0, "and nothing ran");
@@ -178,9 +179,9 @@ fn a_replay_with_a_different_measurer_is_refused() {
     // already been burned by exactly this mismatch, in the audit.
     let agent = Agent::new();
     let mut rec = Recording::new(header());
-    rec.note("input.click", &json!({ "selector": "#inc" }));
+    rec.note("input.click", &json!({ "selector": "#inc" }), &json!({ "result": { "handled": true } }));
     let mut fresh = Host::new();
-    let err = rec.replay(&agent, &mut fresh, W, H, "NotoSans").unwrap_err();
+    let err = rec.replay(&agent, &mut fresh, W, H, "default", "NotoSans").unwrap_err();
     assert!(matches!(err, ReplayError::Mismatch { field: "measurer", .. }), "{err:?}");
 }
 
@@ -191,9 +192,9 @@ fn a_recording_that_did_not_start_at_the_beginning_is_refused() {
     // Default and a fresh host cannot reproduce where it started.
     let agent = Agent::new();
     let mut rec = Recording::new(Header { start_frame: 21, ..header() });
-    rec.note("input.click", &json!({ "selector": "#inc" }));
+    rec.note("input.click", &json!({ "selector": "#inc" }), &json!({ "result": { "handled": true } }));
     let mut fresh = Host::new();
-    let err = rec.replay(&agent, &mut fresh, W, H, "block").unwrap_err();
+    let err = rec.replay(&agent, &mut fresh, W, H, "default", "block").unwrap_err();
     assert!(matches!(err, ReplayError::NotFromStart(21)), "{err:?}");
     assert!(err.to_string().contains("record from construction"), "{err}");
 }
@@ -209,12 +210,13 @@ fn the_export_is_source_a_compiler_would_check() {
     drive(&mut h, &agent, &mut rec, "input.click", json!({ "selector": "#inc" }));
     drive(&mut h, &agent, &mut rec, "input.key", json!({ "key": "Tab" }));
 
-    let src = rec.export_test("replays_the_counter", "Host::new()");
+    let tree = agent.dispatch_input(&mut h, &json!({ "jsonrpc": "2.0", "id": 0, "method": "ui.getTree" }));
+    let src = rec.export_test("replays_the_counter", "Host::new()", "(200, 200, \"default\", \"block\")", &tree["result"]);
     assert!(src.contains("#[test]"), "{src}");
     assert!(src.contains("fn replays_the_counter()"), "{src}");
     assert!(src.contains("\"input.click\""), "{src}");
     assert!(src.contains("\"selector\":\"#inc\""), "the params survive: {src}");
     assert!(src.contains("200x200"), "the header is in the source: {src}");
     assert!(src.contains("Re-record rather than edit"), "{src}");
-    assert_eq!(src.matches("dispatch_input").count(), 2, "one call per step");
+    assert_eq!(src.matches("dispatch_input").count(), 3, "one call per step, and the final tree");
 }
