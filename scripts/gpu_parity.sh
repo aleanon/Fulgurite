@@ -85,3 +85,44 @@ print(f"gpu-parity: {w}x{h}, worst channel delta {worst}, "
 if frac > 0.01:
     sys.exit(f"gpu-parity: the two backends disagree on {frac * 100:.2f}% of the window")
 PY
+
+# ---- M47/T47.0 (R7-F7): a dropped present on an IDLE window ------------
+# `Gpu::present` swallowed Outdated/Lost and returned nothing, and the
+# window asks for another frame only while something animates, so an idle
+# window whose present was dropped stayed unpainted until input arrived.
+# A DEBUG build with LUMEN_GPU_DROP_FIRST=n drops the first n presents;
+# the window is left alone for 3 s and read back once, then compared with
+# the GPU capture above. Not "more than one distinct value", which the
+# plan named: a window that never presented reads back whatever the X
+# server has under it -- 2578 distinct values with every present dropped
+# -- so only a comparison with the real frame can tell. n=0 is the
+# accepting leg: the same debug build with nothing dropped must match.
+# LUMEN_GPU_DROP_MORE=k adds a leg past the retry bound (T47.4).
+cargo build -q -p minimal --features gpu
+for n in 0 2 ${LUMEN_GPU_DROP_MORE:-}; do
+    echo "== dropped the first $n presents, idle =="
+    $LAUNCH --no-agent --settle 3 --leg "drop$n" --exe target/debug/minimal \
+        --env LUMEN_GPU_DROP_FIRST=$n \
+        -- bash -c "xwd -name minimal -out '$tmp/drop.xwd' 2>/dev/null || true"
+    python3 - "$tmp/drop.xwd" "$tmp/gpu.xwd" "$n" <<'PY'
+import struct, sys
+
+def load(path):
+    d = open(path, 'rb').read()
+    h = struct.unpack('>25I', d[:100])
+    hdr, w, ht, bpp, bpl, ncolors = h[0], h[4], h[5], h[11], h[12], h[19]
+    px, step = d[hdr + ncolors * 12:], bpp // 8
+    return w, ht, [bytes(px[y * bpl + x * step:y * bpl + x * step + 3]) for y in range(ht) for x in range(w)]
+
+w, h, a = load(sys.argv[1])
+_, _, b = load(sys.argv[2])
+if len(a) != len(b):
+    sys.exit("gpu-parity: the dropped-present window is a different size")
+over = sum(1 for pa, pb in zip(a, b) if max(abs(x - y) for x, y in zip(pa, pb)) > 8)
+print(f"gpu-parity: dropped the first {sys.argv[3]} presents, idle 3 s: {over} px "
+      f"({over / len(a) * 100:.3f}%) differ from the presented frame (bound 1%)")
+if over / len(a) > 0.01:
+    sys.exit(f"gpu-parity: after {sys.argv[3]} dropped presents the idle window is not the "
+             f"frame -- nothing asked for another one (R7-F7)")
+PY
+done

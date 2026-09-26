@@ -226,6 +226,12 @@ pub struct Gpu {
     font: Option<FontStack>,
     /// Where `Cmd::Image` is resolved to pixels.
     images: Option<Box<dyn ImageSource>>,
+    /// **A fault switch, debug builds only** — M47/T47.0 (R7-F7).
+    /// `LUMEN_GPU_DROP_FIRST=n` makes the first `n` presents answer as if
+    /// the surface were Outdated, so a live gate can see what an idle
+    /// window does with a dropped present.
+    #[cfg(debug_assertions)]
+    drop_first: u32,
 }
 
 /// Which texture group 1 names for a pass — M22/T22.6.
@@ -530,6 +536,8 @@ impl Gpu {
             bind_dirty: false,
             font: None,
             images: None,
+            #[cfg(debug_assertions)]
+            drop_first: std::env::var("LUMEN_GPU_DROP_FIRST").ok().and_then(|v| v.parse().ok()).unwrap_or(0),
         })
     }
 
@@ -1227,6 +1235,13 @@ impl Gpu {
     /// Put the target on screen. A no-op when there is no window.
     pub fn present(&mut self) {
         let Some(surface) = &self.surface else { return };
+        #[cfg(debug_assertions)]
+        if self.drop_first > 0 {
+            // The Outdated arm below, taken on purpose (LUMEN_GPU_DROP_FIRST).
+            self.drop_first -= 1;
+            surface.configure(&self.device, &self.config);
+            return;
+        }
         use wgpu::CurrentSurfaceTexture as Cst;
         let frame = match surface.get_current_texture() {
             // Suboptimal is still a frame, and refusing to draw it is
