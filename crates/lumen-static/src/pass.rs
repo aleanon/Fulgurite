@@ -340,7 +340,14 @@ fn dispatch_overlaid_inner<S: crate::event::App, O: crate::overlay::OverlaySink>
         let top = ov.at(ov.len() - 1) as usize;
         let table = <S::Tree as crate::widget::Widget>::SUB_TABLE;
         let span = crate::style::subtree_range(table, top);
-        input.focus = next_focusable_in(table, st, style, input.focus, span);
+        // **Shift+Tab goes back inside the trap too** — M57/B41. The trap
+        // only ever went forward, so a modal's fields could be walked but
+        // not corrected: Shift+Tab moved forward like Tab.
+        input.focus = if input.mods.has(crate::event::Mods::SHIFT) {
+            prev_focusable_in(table, st, style, input.focus, span)
+        } else {
+            next_focusable_in(table, st, style, input.focus, span)
+        };
         return true;
     }
 

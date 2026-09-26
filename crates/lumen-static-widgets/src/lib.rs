@@ -145,7 +145,7 @@ pub use nav::{AppBar, BottomNav, PullToRefresh, Item, NavigationRail, Strip, Tab
 pub use indicator::{ProgressBar, Skeleton, Spinner};
 pub use split::{Collapsible, PaneGrid, SplitPane, MAX_SPLIT_NODES};
 pub use surface::{Card, Toast, Tooltip, MAX_SURFACE_NODES};
-pub use veil::{Drawer, Modal, Sheet, Veil, DRAWER, MODAL, SHEET};
+pub use veil::{Drawer, Edge, Modal, Sheet, Veil, DRAWER, MODAL, SHEET};
 pub use trim::{Avatar, Badge, Chip, Divider, Icon, Symbol};
 
 /// Everything in this crate, for a `use` that keeps up.

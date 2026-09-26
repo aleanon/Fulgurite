@@ -1321,6 +1321,12 @@ fn stylesheet_with(c: Chrome) -> Vec<StyleRule> {
                 .radius(12.0)
                 .shadow(12.0),
         ),
+        // A modal is sized to its content (M57/B41): its body is a
+        // derived column, FILL like any, which filled the veil's 80% cap.
+        StyleRule::new(
+            Selector::Kind("ModalBody"),
+            Patch::new().width(Length::Shrink).height(Length::Shrink),
+        ),
         StyleRule::new(Selector::Class("veil-title"), Patch::new().font_weight(600.0)),
         StyleRule::new(
             Selector::Class("veil-go"),

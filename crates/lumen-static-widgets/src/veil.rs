@@ -42,8 +42,16 @@ use lumen_static::LayoutCx;
 pub const MODAL: u8 = 0;
 /// Across the bottom, full width — `Sheet`.
 pub const SHEET: u8 = 1;
-/// Down the left, full height — `Drawer`.
+/// Down one side, full height — `Drawer`.
 pub const DRAWER: u8 = 2;
+
+/// Which side a drawer comes from — M57/B43. It was always the left.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Edge {
+    #[default]
+    Left,
+    Right,
+}
 
 /// Upper bound on `1 + W::NODE_COUNT` for one veil.
 pub const MAX_VEIL_NODES: usize = 256;
@@ -65,6 +73,11 @@ pub struct Veil<W: Widget, const KIND: u8 = MODAL> {
     /// The panel's measured size, kept from `layout` so `place` can
     /// position it. `Popup::measured` exists for the same reason.
     measured: Size,
+    /// A drawer's side (M57/B43). Ignored by the other kinds.
+    pub edge: Edge,
+    /// The panel's corner radius, from layout: how far a sheet or a
+    /// drawer runs past the window so only its inner corners are round.
+    bleed: f32,
 }
 
 /// A centred panel over a dimmed window.
@@ -81,6 +94,8 @@ impl<W: Widget + Default, const KIND: u8> Default for Veil<W, KIND> {
             open: false,
             dismissed: false,
             measured: Size::default(),
+            edge: Edge::Left,
+            bleed: 0.0,
         }
     }
 }
@@ -103,8 +118,14 @@ impl<W: Widget, const KIND: u8> Veil<W, KIND> {
     /// what is behind — every platform lands near 40%.
     const SCRIM: u8 = 0x66;
 
+    /// A sheet's visible height: its content's, within 20–42% of the
+    /// window.
+    fn sheet_h(&self, h: f32) -> f32 {
+        (h * Self::SPAN).min(self.measured.h.max(1.0)).max(h * 0.2)
+    }
+
     pub fn new(panel: W) -> Self {
-        Veil { panel, open: false, dismissed: false, measured: Size::default() }
+        Veil { panel, open: false, dismissed: false, measured: Size::default(), edge: Edge::Left, bleed: 0.0 }
     }
 
     pub fn open(&mut self) -> bool {
@@ -132,16 +153,27 @@ impl<W: Widget, const KIND: u8> Veil<W, KIND> {
     /// panel" and "on the scrim" without repeating this arithmetic —
     /// and an assertion that recomputed it could agree with a wrong
     /// implementation.
+    ///
+    /// **A sheet and a drawer run past the window by their radius** —
+    /// M57/B42, B43. Only the corners facing the page should be round;
+    /// the panel is laid out that much longer, off the window's edge, and
+    /// painted clipped to the veil, so its outer corners are cut off by
+    /// the window rather than drawn round. The part of this rect inside
+    /// `outer` is what shows.
     pub fn panel_rect(&self, outer: lumen_static::display::Rect) -> lumen_static::display::Rect {
         let (w, h) = (outer[2] - outer[0], outer[3] - outer[1]);
+        let b = self.bleed;
         match KIND {
             SHEET => {
-                let ph = (h * Self::SPAN).min(self.measured.h.max(1.0) + 0.0).max(h * 0.2);
-                [outer[0], outer[3] - ph, outer[2], outer[3]]
+                let ph = self.sheet_h(h);
+                [outer[0], outer[3] - ph, outer[2], outer[3] + b]
             }
             DRAWER => {
                 let pw = w * Self::SPAN;
-                [outer[0], outer[1], outer[0] + pw, outer[3]]
+                match self.edge {
+                    Edge::Left => [outer[0] - b, outer[1], outer[0] + pw, outer[3]],
+                    Edge::Right => [outer[2] - pw, outer[1], outer[2] + b, outer[3]],
+                }
             }
             _ => {
                 let (pw, ph) = (self.measured.w.min(w), self.measured.h.min(h));
@@ -258,6 +290,16 @@ impl<W: Widget, const KIND: u8> Node for Veil<W, KIND> {
             },
         };
         self.measured = self.panel.layout(cx, panel_limits, style, st, i + Self::AT);
+        // A sheet or a drawer is laid out again at the size it shows plus
+        // its radius — the bleed past the window's edge (see
+        // `panel_rect`). Only these two kinds, and only when rounded.
+        self.bleed = if KIND == MODAL { 0.0 } else { style[i + Self::AT].radius.max(0.0) };
+        if KIND != MODAL {
+            let r = self.panel_rect([0.0, 0.0, outer.w, outer.h]);
+            let (pw, ph) = (r[2] - r[0], r[3] - r[1]);
+            let exact = Constraints { min_w: pw, max_w: pw, min_h: ph, max_h: ph };
+            self.panel.layout(cx, exact, style, st, i + Self::AT);
+        }
         lumen_static::ops::record_painted(st, i, limits, outer, &me)
     }
 
@@ -286,7 +328,11 @@ impl<W: Widget, const KIND: u8> Node for Veil<W, KIND> {
             return;
         }
         out.rect(r, st[i].bg);
+        // Clipped to the window: a sheet's or a drawer's outer corners
+        // and its shadow on that side are cut, not drawn (B42, B43).
+        out.push_clip(r);
         self.panel.paint(st, i + Self::AT, out);
+        out.pop_clip();
     }
 
     fn hit(&self, st: &[NodeState], i: usize, x: f32, y: f32) -> Option<lumen_static::Hit> {
