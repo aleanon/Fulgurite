@@ -70,3 +70,9 @@ path = "src/bin/appearance.rs"
 [[bin]]
 name = "text-hash"
 path = "src/bin/text_hash.rs"
+
+# M47/T47.3's kill rule: a no-op job from spawn to apply, pool against a
+# thread per job (docs/results-tasks.md T47.3).
+[[bin]]
+name = "spawn"
+path = "src/bin/spawn.rs"

@@ -13,6 +13,8 @@
 # redraw request, so the earlier phases watch a window that is never
 # idle, and they stayed green with the waker uninstalled and with the
 # deadline ignored. A check of a wake or a deadline must not poll.
+# M47/T47.3 (R7-F5) adds a seventh: a tick must land while a 400 ms job
+# occupies one of the pool's workers.
 #
 # **Each leg names the process it drove** (M42/T42.2): through
 # `scripts/live/launch.py`, which refuses a port that already answers and

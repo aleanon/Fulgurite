@@ -786,6 +786,13 @@ OS, because **every thread this milestone creates goes through
 `Spawner::spawn`** — which makes counting spawns a measurement a test
 can actually make.
 
+> **Corrected 2026-09-26 (M47/T47.3, R7-F5).** The first row counted
+> **spawns**, and called them threads. A timer creates no thread of its
+> own, but each firing is a job, and the `Threads` a window installs made
+> every job a `std::thread`: strace counted 28 clones for 28 ticks of
+> `tasks-demo`. The test is renamed `a_timer_firing_is_one_spawn`, and the
+> thread count is now measured where threads are made — T47.3 below.
+
 The catch-up row is what lets the deterministic half exist at all: a
 timer that silently drops ticks under load has a count that depends on
 the frame rate, and a count that depends on the frame rate cannot be
@@ -895,3 +902,80 @@ counts.** Three steps ran, the count was right, and the chain was
 completely broken — it ran step 0 three times. A drive script that
 checked "chain == 3" would have been green. The composition check
 catches it because 1→2→4→8 is a value only an ordered chain can produce.
+
+## M47/T47.3 — a pool instead of a thread per job
+
+**Landed 2026-09-26** (`docs/plan-timers-wake.md` T47.3, R7-F5). `Threads`
+keeps its name and its place (`Local::from_host` installs it) and is now
+a pool: at most `Threads::cap` long-lived workers — the machine's
+parallelism clamped to 2..=4 — fed through a channel, started **lazily**
+(one when a job arrives and no worker is free). A panicking job is
+caught inside the task, so the worker survives it.
+
+### The kill rule, judged before the gate
+
+Written before the build (`docs/plan-timers-wake.md` §5): if the pool's
+median spawn-to-apply is slower than the thread-per-job median by more
+than the per-job arm's own spread over eight runs, only the claim is
+corrected. `--bin spawn` times one no-op job from `Host::spawn` to its
+result applied by a pump, one arm per process, eight runs a side,
+alternating, under `flock bench.lock`. **LOADED**: load average 5.1 on
+32 cores before and after.
+
+| arm | medians of eight runs (ns) | median | spread |
+|---|---|---:|---:|
+| thread per job (the pre-T47.3 body) | 15088 15188 15215 15245 15449 15512 16035 16180 | **15347** | 1092 |
+| pool (`Threads`) | 1862 2022 2494 2532 2541 2753 2832 3068 | **2537** | 1206 |
+
+The pool is **6.0× faster** than the arm it replaced, not slower: a
+thread's creation was most of what a job cost. The kill rule does not
+fire, and the pool ships.
+
+### The gate: threads created, where threads are made
+
+| check | measured | bound |
+|---|---|---|
+| `timers.rs` `twenty_firings_create_at_most_the_pool` — distinct `ThreadId`s the 20 jobs ran on | **3** (was 20) | the pool's cap, 4 here |
+| `ledger.rs` `a_slow_job_does_not_hold_a_quick_one_back` | a 1 ms job lands after **23 ms** beside a 400 ms one | 300 ms |
+| `just tasks-drive`, new phase 7 — one unobserved read 330 ms after a 400 ms job started, then the timer | **3** ticks, job still running; 26 of 25 at 3 s | ≥ 1; ≥ 24 |
+
+Distinct `ThreadId`s rather than the OS task list, which the plan named:
+a thread per job exits before the next firing, so the task list reads
+the same before and after on the stock build and cannot go red. A
+`ThreadId` is never reused within a process, so distinct ids are threads
+created. The pool creates *at most* its cap, not "exactly the pool size,
+once" as the plan's accepting line put it: workers start lazily, and 20
+sequential firings started 3.
+
+### The ledger — what "in flight" means now
+
+Every job a host spawns is listed in its `spawn::Ledger` (a descriptor
+and a shared `inbox::JobTrack`) and leaves it once its body has returned
+**and** every result it sent has been drained — applied, or dropped as
+stale. `Host::in_flight` is the ledger's length, pruned as it answers.
+The sender a host hands each job is the job's own
+(`Inbox::tracked_sender`): every message it sends is counted against the
+job, and its drop says the body returned, so a spawner written outside
+this crate ends its jobs by doing what it already does.
+
+| `ledger.rs` | in flight |
+|---|---|
+| after spawn / after the body ran, result in the inbox / after the pump applied it (`Queued`) | 1 / **1** / 0 |
+| a job that sends nothing, before / after its body | 1 / 0 |
+| a cancelled result, drained as stale | 0 |
+| three `Threads` jobs (60, 1, 2 ms) at spawn / at the end | 3 / 0 |
+
+The middle `1` is the row a count kept by the spawner would get wrong,
+and the one a reload re-issuing work needs most.
+
+### Injections
+
+| injection | fires as |
+|---|---|
+| the pool's `queue.send(task)` replaced by `std::thread::spawn(task)` — a thread per job again | `threads created 20 for 20 firings (bound 4, the pool's cap)` |
+| the drain stops counting consumed results | `after the pump applied [7] 1 (want 0)`; the cancelled and `Threads` cases likewise |
+| `JobTrack::settled` ignores the drain (body returned is enough) | `after the body ran 0 (want 1)` |
+| the owning sender's drop does not end the job | `silent job: in flight 1 before its body ran, 1 after (want 1, 0)`, and three more |
+| a pool of one worker (`with_cap(1)`) | headless: `quick job landed after 403 ms ... (bound 300 ms, pool cap 1); landed [400, 1]`; live: `no tick landed in 331 ms while a 400 ms job ran: a busy worker held the timer back` |
+
+Restored, all green again, both strategies.

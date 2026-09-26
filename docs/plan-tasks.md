@@ -134,7 +134,7 @@ have.
 
 | spawner | for |
 |---|---|
-| threads | the default: one `std::thread` per job, no dependency |
+| threads | the default: one `std::thread` per job, no dependency. **A pool since M47/T47.3** (R7-F5): at most `Threads::cap` long-lived workers, started lazily, fed through a channel (`docs/results-tasks.md` T47.3) |
 | immediate | runs the job synchronously at spawn — for tests that do not care when |
 | queued | records the job and runs nothing until the test says so. **Deterministic *and* deferred**, which is the combination a test needs to assert "not the frame that spawned it" without a sleep |
 | a real async runtime | opt-in behind a feature, if something ever needs it. §0.3's crate budget applies, and no figure exists for it yet |
@@ -434,6 +434,10 @@ indefinitely, falling back to today's behaviour when nothing is pending.
   on, asserted without a window; and **zero threads** are spawned for a
   timer — counted through T28.3's spawner seam, which every thread this
   milestone creates goes through, rather than by asking the OS.
+  *(Corrected by M47/T47.3: what the seam counts is spawns. Each firing
+  is a job, and under the shipped `Threads` each job was a thread — 28
+  clones for 28 ticks. The pool that replaced it creates at most its
+  cap; `docs/results-tasks.md` T47.3.)*
 
 *Injection:* spawn a thread per tick — the seam's spawn count fires.
 *Second injection:* leave the loop waiting indefinitely — the deadline

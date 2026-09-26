@@ -175,6 +175,9 @@ pub struct Host<A: App, R: Retention = Incremental, I: Invalidation = lumen_stat
     /// spawner is refused and counted rather than silently dropped —
     /// see [`Host::spawn`].
     spawner: Option<Box<dyn lumen_static::spawn::Spawner<A::Msg>>>,
+    /// Every job spawned and not yet landed — M47/T47.3. Its length is
+    /// the in-flight count ([`Host::in_flight`]).
+    ledger: lumen_static::spawn::Ledger,
     /// Spawns refused for want of a spawner. Counted for the same reason
     /// the inbox counts refusals: a silent drop is the failure a gate
     /// exists to make visible.
@@ -729,6 +732,7 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             inbox: lumen_static::inbox::Inbox::new(),
             more_deferred: false,
             spawner: None,
+            ledger: lumen_static::spawn::Ledger::new(),
             unspawned: 0,
             unknown_kind: 0,
             running: Vec::new(),
@@ -1103,9 +1107,13 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
     /// ([`Host::unspawned`]) rather than logged, because "how many did
     /// we drop" is a number.
     pub fn spawn(&mut self, job: lumen_static::spawn::Job<A::Msg>) -> bool {
-        let tx = self.inbox.sender();
         match self.spawner.as_mut() {
             Some(s) => {
+                // **Listed before it can land** — M47/T47.3. The sender
+                // is the job's own, so the drain can say which job each
+                // result came from, and its drop says the body returned.
+                let (tx, track) = self.inbox.tracked_sender();
+                self.ledger.record(job.desc, track);
                 s.spawn(job, tx);
                 true
             }
@@ -1231,6 +1239,23 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
     /// asserting against a different object than the host uses.
     pub fn run_pending_jobs(&mut self) -> usize {
         self.spawner.as_mut().map_or(0, |s| s.run_pending())
+    }
+
+    /// How many spawned jobs are in flight — M47/T47.3: spawned, and not
+    /// yet both finished and drained. **The ledger's length**, pruned
+    /// first, so the answer is as of this call and not of the last frame.
+    ///
+    /// Jobs held for a spawner that is not installed yet are not in
+    /// flight; [`Host::held_jobs`] counts those.
+    pub fn in_flight(&mut self) -> usize {
+        self.ledger.prune();
+        self.ledger.len()
+    }
+
+    /// The ledger itself: what [`Host::in_flight`] counts, and the
+    /// descriptors a reload would re-issue. As of the last prune.
+    pub fn ledger(&self) -> &lumen_static::spawn::Ledger {
+        &self.ledger
     }
 
     /// How many spawns were refused for want of a spawner.
@@ -1442,6 +1467,11 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         // rather than raising the cap, which is what keeps a burst from
         // becoming one long frame.
         self.more_deferred = applied == lumen_static::inbox::Inbox::<A::Msg>::PER_FRAME;
+        // What landed leaves the ledger (M47/T47.3). An empty ledger — every
+        // application that spawns nothing — is a length check.
+        if !self.ledger.is_empty() {
+            self.ledger.prune();
+        }
 
         // **What the bindings wrote, and where** — M29/T29.3. One range
         // per binding that wrote; `Everything` for a `with =` hook, an
@@ -1603,10 +1633,13 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
     pub fn tick(&mut self, dt_ms: f32) -> bool {
         // **Timers first** — M28/T28.11. Each one that came due pushes a
         // descriptor into the outbox, so a tick is spawned by exactly
-        // the path a handler's request is and **no thread is created for
-        // a timer**. `docs/plan-tasks.md` §2.4's rule that the inbox is
-        // the only way deferred work re-enters the app is why there is
-        // no second path here either.
+        // the path a handler's request is: **no timer thread** exists,
+        // and each firing is one job on the installed spawner. Under the
+        // window's `Threads` that was one OS thread per firing until
+        // M47/T47.3 (R7-F5); it is a job on a pool of at most
+        // `Threads::cap` long-lived workers now. `docs/plan-tasks.md`
+        // §2.4's rule that the inbox is the only way deferred work
+        // re-enters the app is why there is no second path here either.
         let fired = match (self.app.timers(), ()) {
             (Some(_), ()) => {
                 // Two borrows of `self.app` are needed and cannot

@@ -121,15 +121,16 @@ fn a_50ms_timer_fires_exactly_20_times_in_a_synthetic_second() {
     assert!(h.app.fired.iter().all(|&k| k == 1), "every firing carried the timer's key");
 }
 
-/// **Zero threads for a timer**, counted through the spawner seam.
+/// **One spawn per firing**, counted through the spawner seam.
 ///
-/// Every thread this milestone creates goes through `Spawner::spawn`, so
-/// counting spawns is counting threads — and it is a measurement the
-/// test can make, unlike asking the OS.
+/// This test's label said "zero threads for a timer" until M47/T47.3
+/// (R7-F5), and what it counts is **spawns**: a timer creates no timer
+/// thread of its own, and each firing is one job. How many *threads*
+/// those jobs cost depends on the spawner — one each under the old
+/// `Threads`, at most the pool's cap now — and
+/// `twenty_firings_create_at_most_the_pool` below counts that.
 #[test]
-fn a_timer_spawns_no_thread_of_its_own() {
-    use lumen_static::spawn::Threads;
-
+fn a_timer_firing_is_one_spawn() {
     let mut h: Host<Work, Rebuild> = Host::new(Work::default(), 100, 50);
     let spawns = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     h.set_spawner(Box::new(Counting { spawns: spawns.clone() }));
@@ -145,12 +146,9 @@ fn a_timer_spawns_no_thread_of_its_own() {
     println!("20 timer firings went through {n} spawns (one job each, no timer thread)");
     assert_eq!(
         n, 20,
-        "a timer must spawn exactly one job per firing and no thread of its own; {n} \
+        "a timer must spawn exactly one job per firing and no job of its own; {n} \
          spawns for 20 firings means something is spawning per tick as well"
     );
-    // `Threads` is named so this test's claim is about the seam and not
-    // about the counting spawner being unusual.
-    let _: Threads = Threads;
 }
 
 /// **The mechanism.** The host's earliest deadline is what a loop waits
@@ -345,7 +343,7 @@ impl App for Where {
 }
 
 /// **Threads created for 20 timer firings** under the spawner a window
-/// installs — R7-F5.
+/// installs — R7-F5, closed by M47/T47.3.
 ///
 /// `Local::from_host` installs `Threads`, and until T47.3 that was one
 /// `std::thread` per job: strace counted 28 clones for 28 ticks of
@@ -354,14 +352,14 @@ impl App for Where {
 /// threads created, not threads alive, and threads other tests in this
 /// binary create cannot enter it.
 #[test]
-#[ignore = "red until T47.3: R7-F5, one OS thread per timer firing"]
 fn twenty_firings_create_at_most_the_pool() {
     use lumen_static::spawn::Threads;
     const FIRINGS: usize = 20;
-    const POOL: usize = 4; // T47.3's cap; replaced by the pool's own figure there.
 
+    let pool = Threads::new();
+    let cap = pool.cap();
     let mut h: Host<Where, Rebuild> = Host::new(Where::default(), 100, 50);
-    h.set_spawner(Box::new(Threads));
+    h.set_spawner(Box::new(pool));
     h.pump();
     assert!(h.app.inner.timers.every(TICK_WHERE, 1, 50.0), "setup: the timer was accepted");
 
@@ -380,10 +378,10 @@ fn twenty_firings_create_at_most_the_pool() {
     ids.sort_by_key(|i| format!("{i:?}"));
     ids.dedup();
     let created = ids.len();
-    println!("threads created {created} for {FIRINGS} firings (bound {POOL}); jobs ran {ran}");
+    println!("threads created {created} for {FIRINGS} firings (bound {cap}, the pool's cap); jobs ran {ran}");
     assert_eq!(h.app.inner.fired.len(), FIRINGS, "setup: every firing landed");
     assert!(
-        created <= POOL,
+        created <= cap,
         "{created} threads for {FIRINGS} timer firings: the spawner creates a thread per job"
     );
 }

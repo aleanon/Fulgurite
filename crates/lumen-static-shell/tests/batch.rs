@@ -119,7 +119,7 @@ fn three_spawned_together_all_reach_the_app() {
 #[test]
 fn a_batch_promises_arrival_not_order() {
     let mut h = host();
-    h.set_spawner(Box::new(Threads));
+    h.set_spawner(Box::new(Threads::new()));
 
     for p in [1u64, 2, 3] {
         assert!(h.app.outbox.push(Descriptor::new(KIND, p)));

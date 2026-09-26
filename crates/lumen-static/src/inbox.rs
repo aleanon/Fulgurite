@@ -48,8 +48,8 @@ pub trait Waker: Send + Sync + 'static {
 
 /// Host-owned receiver for results produced off the frame loop.
 pub struct Inbox<M> {
-    rx: mpsc::Receiver<(u64, M)>,
-    tx: mpsc::SyncSender<(u64, M)>,
+    rx: mpsc::Receiver<Item<M>>,
+    tx: mpsc::SyncSender<Item<M>>,
     waker: Option<Arc<dyn Waker>>,
     refused: Arc<AtomicUsize>,
     /// Failures no application message reported — M47/T47.0, R7-F9.
@@ -95,13 +95,62 @@ impl<M> Inbox<M> {
 /// alternative, a `wake()` the caller must remember, is the shape that
 /// produces a message delivered on the next unrelated mouse move.
 pub struct Sender<M> {
-    tx: mpsc::SyncSender<(u64, M)>,
+    tx: mpsc::SyncSender<Item<M>>,
     waker: Option<Arc<dyn Waker>>,
     refused: Arc<AtomicUsize>,
     unmodelled: Arc<AtomicUsize>,
     /// The epoch this sender was minted at — M28/T28.8. Fixed at mint
     /// time, so a worker cannot un-cancel itself.
     epoch: u64,
+    /// The job this sender reports for, when a host spawned one with it —
+    /// M47/T47.3. Every message it sends carries this, so the drain can
+    /// say which job's result it applied.
+    track: Option<Arc<JobTrack>>,
+    /// Whether dropping this sender ends the job: true only for the one
+    /// [`Inbox::tracked_sender`] minted, which the spawner owns and
+    /// drops when the job body has returned. A clone the body makes
+    /// reports for the same job but does not end it.
+    owns: bool,
+}
+
+/// What travels through the channel: the epoch, the job it came from (if
+/// any), and the message.
+type Item<M> = (u64, Option<Arc<JobTrack>>, M);
+
+/// One spawned job's progress, shared by its sender and the host's
+/// ledger — M47/T47.3.
+///
+/// A job is **in flight** from the moment a host hands it to a spawner
+/// until its body has returned *and* every message it sent has been
+/// consumed by a drain (applied, or dropped as stale). That is the
+/// definition `spawn::Ledger` counts, and it is why a result sitting in
+/// the inbox still counts: an agent asking "is anything pending" and a
+/// reload re-issuing unfinished work both need the job to stay listed
+/// until its result has actually landed.
+///
+/// Three counters rather than a message at the end, because a "done"
+/// marker would have to go through the bounded channel, where it could
+/// be refused — and a refused marker is a job listed for ever.
+#[derive(Debug, Default)]
+pub struct JobTrack {
+    sent: AtomicUsize,
+    consumed: AtomicUsize,
+    finished: core::sync::atomic::AtomicBool,
+}
+
+impl JobTrack {
+    /// Whether the job has finished and its every result has been
+    /// drained. Read on the frame's thread.
+    ///
+    /// `finished` is read first, with `Acquire`: the owning sender's
+    /// sends all happen before its drop stores it, so once it reads
+    /// true, `sent` is final — unless a clone outlives the body, whose
+    /// later sends are then applied untracked, which is the documented
+    /// limit.
+    pub fn settled(&self) -> bool {
+        self.finished.load(Ordering::Acquire)
+            && self.sent.load(Ordering::Acquire) == self.consumed.load(Ordering::Relaxed)
+    }
 }
 
 impl<M> Clone for Sender<M> {
@@ -114,6 +163,25 @@ impl<M> Clone for Sender<M> {
             refused: self.refused.clone(),
             unmodelled: self.unmodelled.clone(),
             epoch: self.epoch,
+            track: self.track.clone(),
+            owns: false,
+        }
+    }
+}
+
+/// The owning sender's drop is what ends its job — M47/T47.3.
+///
+/// A drop rather than a call the spawner must remember, so a spawner
+/// written outside this crate ends its jobs by doing what it already
+/// does: letting the sender go once the body has returned. `Queued`
+/// holds its senders until it runs them, so a queued job stays in flight
+/// until then, which is the truth.
+impl<M> Drop for Sender<M> {
+    fn drop(&mut self) {
+        if self.owns {
+            if let Some(t) = &self.track {
+                t.finished.store(true, Ordering::Release);
+            }
         }
     }
 }
@@ -134,18 +202,32 @@ impl<M> Sender<M> {
     /// other error, and is ordinary rather than exceptional. The wake is
     /// skipped in both cases: there is nothing to look at.
     pub fn send(&self, m: M) -> Result<(), SendError<M>> {
-        match self.tx.try_send((self.epoch, m)) {
+        // Counted **before** the message is visible, so the drain can
+        // never see more consumed than sent; taken back if it is refused.
+        if let Some(t) = &self.track {
+            t.sent.fetch_add(1, Ordering::Release);
+        }
+        let unsend = || {
+            if let Some(t) = &self.track {
+                t.sent.fetch_sub(1, Ordering::Release);
+            }
+        };
+        match self.tx.try_send((self.epoch, self.track.clone(), m)) {
             Ok(()) => {
                 if let Some(w) = &self.waker {
                     w.wake();
                 }
                 Ok(())
             }
-            Err(mpsc::TrySendError::Full((_, m))) => {
+            Err(mpsc::TrySendError::Full((_, _, m))) => {
+                unsend();
                 self.refused.fetch_add(1, Ordering::Relaxed);
                 Err(SendError::Full(m))
             }
-            Err(mpsc::TrySendError::Disconnected((_, m))) => Err(SendError::Disconnected(m)),
+            Err(mpsc::TrySendError::Disconnected((_, _, m))) => {
+                unsend();
+                Err(SendError::Disconnected(m))
+            }
         }
     }
 
@@ -258,7 +340,25 @@ impl<M> Inbox<M> {
             refused: self.refused.clone(),
             unmodelled: self.unmodelled.clone(),
             epoch: self.epoch,
+            track: None,
+            owns: false,
         }
+    }
+
+    /// A sender for **one job**, and the handle its ledger entry keeps —
+    /// M47/T47.3.
+    ///
+    /// Every message the sender (or a clone of it) sends is counted
+    /// against the job, and the drain counts each one it consumes.
+    /// Dropping *this* sender, not a clone, says the body has returned.
+    /// [`JobTrack::settled`] is the conjunction, and a host drops the
+    /// entry from its ledger when it holds.
+    pub fn tracked_sender(&self) -> (Sender<M>, Arc<JobTrack>) {
+        let track = Arc::new(JobTrack::default());
+        let mut tx = self.sender();
+        tx.track = Some(track.clone());
+        tx.owns = true;
+        (tx, track)
     }
 
     /// Apply what arrived since the last frame, in order, **at most
@@ -282,7 +382,7 @@ impl<M> Inbox<M> {
         let mut n = 0;
         while n < cap {
             match self.rx.try_recv() {
-                Ok((e, m)) => {
+                Ok((e, track, m)) => {
                     // **Cancellation, at the drain** — M28/T28.8. A
                     // result carrying any epoch but the current one is
                     // dropped. Equality, not an ordering test: see
@@ -292,6 +392,11 @@ impl<M> Inbox<M> {
                         n += 1;
                     } else {
                         self.stale.set(self.stale.get() + 1);
+                    }
+                    // Consumed either way: a stale result is as landed as
+                    // it will ever be (M47/T47.3).
+                    if let Some(t) = track {
+                        t.consumed.fetch_add(1, Ordering::Relaxed);
                     }
                 }
                 Err(_) => break,
@@ -307,7 +412,7 @@ impl<M> Inbox<M> {
     /// redundant there and harmless; a producer posting from anywhere
     /// else needs it for the same reason a worker does.
     pub fn post(&self, m: M) {
-        if self.tx.try_send((self.epoch, m)).is_ok() {
+        if self.tx.try_send((self.epoch, None, m)).is_ok() {
             if let Some(w) = &self.waker {
                 w.wake();
             }

@@ -557,8 +557,15 @@ because its every read asked for one (`docs/results-tasks.md` T28.12,
 the correction). The window now fixes the deadline as an instant after
 each frame and turns a wake at it into a frame; while a panic is shown
 the timers are frozen and a retry starts from `dt` 0. Still deferred to
-the rest of M47: catch-up by arithmetic (T47.2), the per-firing thread
-(T47.3).
+the rest of M47: catch-up by arithmetic (T47.2).
+
+**DECIDED 2026-09-26 (M47/T47.3, `docs/results-tasks.md` T47.3):** the
+default spawner is a small pool — at most `Threads::cap` long-lived
+workers, started lazily — not a thread per job, so a timer tick no
+longer costs an OS thread. And the host keeps a **ledger** of every job
+spawned and not yet landed (body returned, every result drained); its
+length is `Host::in_flight`, the one in-flight count M48's "settled"
+answer and M49's re-issue across a swap read.
 
 ### Sequence — not negotiable
 

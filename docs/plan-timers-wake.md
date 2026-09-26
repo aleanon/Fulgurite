@@ -7,8 +7,13 @@
 > panic screen adds 0 extra ticks where it added 19 (bound 2), and
 > periods of 1e30 and `f32::MAX` wait without a deadline instead of
 > panicking. Its drive evidence is re-gathered with the identity line
-> once M42/T42.2 lands. T47.0's other rows and T47.2–T47.8 are not
-> started. See "What building found" at the end of T47.1.
+> once M42/T42.2 lands. See "What building found" at the end of T47.1.
+>
+> **T47.3 DONE 2026-09-26**, early, because M48/T48.2 and M49/T49.10
+> read its ledger: `Threads` is a lazy pool of at most 4 workers (20
+> timer firings ran on 3 threads, were 20), 6.0x faster spawn-to-apply
+> than a thread per job, and the host keeps a ledger whose length is the
+> in-flight count (`Host::in_flight`).
 >
 > **Written 2026-09-24.** Closes R7-F1, R7-F2, R7-F3,
 > R7-F4, R7-F5, R7-F7, R7-F8, R7-F9, R7-F10, R7-F11 and R15-F6 from
@@ -439,6 +444,44 @@ T28.11 ("zero threads for a timer" becomes what is measured); the
 `Threads` rustdoc; `docs/plan-tasks.md` §2.4.
 
 **Effort:** M. **Depends on:** T47.0.
+
+**What building found (2026-09-26).**
+
+- **The in-flight bookkeeping is a host ledger, and its length is the
+  in-flight count.** M48/T48.2 needs "is any job pending" and M49/T49.10
+  needs "which descriptors were in flight"; the consistency review asked
+  for one structure. It is `spawn::Ledger`, owned by the host: a
+  descriptor goes in when `Host::spawn` hands its job to a spawner, and
+  comes out when the job's body has returned **and** every result it sent
+  has been drained (applied or stale). `Host::in_flight` is its length,
+  pruned as it answers. The link from a result back to its job is the
+  sender: the host hands each job its own (`Inbox::tracked_sender`), whose
+  messages carry a shared `inbox::JobTrack` through the channel, and whose
+  **drop** ends the job — so it holds under any spawner, `Queued` and a
+  custom one included, and nothing about the pool is load-bearing for it.
+  A "done" marker through the inbox was rejected: the inbox is bounded,
+  and a refused marker is a job listed for ever. T49.10 still has to add
+  what it re-issues from (`Ledger::descriptors`) to `Session::save`, and
+  T48.2's counter is this length, not a new integer.
+- **The thread count is distinct `ThreadId`s, not the task list.** T47.0's
+  row said "OS threads counted from the process's task list before and
+  after". A thread per job exits before the next firing, so the list
+  reads the same before and after on the stock build, and the check could
+  not go red. A `ThreadId` is never reused, so the ids the jobs ran on are
+  threads created.
+- **"Creates exactly the pool size, once" is "at most the cap".** Workers
+  start lazily — one when a job arrives and none is free — so a window
+  that never spawns creates no thread, and 20 sequential firings started
+  3 of 4.
+- **The live accepting check could not see a starved tick by its count.**
+  Run as written — the unobserved 3 s tick phase with the 400 ms job in
+  flight — a pool of one worker still read 26 of 25, because the ticks
+  queued behind the job are applied late, not lost. Phase 7 of
+  `scripts/tasks_drive.py` adds one read 330 ms after the job starts,
+  which a one-worker pool fails ("no tick landed in 331 ms while a 400 ms
+  job ran"); `tests/ledger.rs` has the headless form.
+- **The kill rule did not fire:** the pool is 6.0x faster spawn-to-apply
+  (`docs/results-tasks.md` T47.3).
 
 ### T47.4 — a dropped GPU present asks for another frame
 

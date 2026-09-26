@@ -209,7 +209,7 @@ impl<A: App + 'static> Local<A> {
     pub fn from_host(mut host: Host<A, Ret, Inval>, title: &'static str, page: Color, recover: Recover) -> Self {
         // **Deferred work, wired up** — M28/T28.12. The waker comes from
         // the window, which owns the loop ([`Session::set_waker`]).
-        host.set_spawner(Box::new(lumen_static::spawn::Threads));
+        host.set_spawner(Box::new(lumen_static::spawn::Threads::new()));
         let font = FontStack::system();
         let metrics = font.map(FontMetrics::new);
         Local {

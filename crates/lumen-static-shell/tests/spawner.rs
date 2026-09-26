@@ -117,7 +117,7 @@ fn queued_runs_nothing_until_asked_and_lands_on_the_next_pump() {
 #[test]
 fn threads_arrives_within_a_bounded_number_of_pumps() {
     let mut h = host();
-    h.set_spawner(Box::new(Threads));
+    h.set_spawner(Box::new(Threads::new()));
     assert!(h.spawn(JOB));
 
     // **A timeout, not a latency budget**, and the difference matters

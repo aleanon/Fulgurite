@@ -112,7 +112,7 @@ fn host() -> Host<Work, Rebuild> {
 #[test]
 fn a_panicking_job_delivers_a_failure_and_the_chain_does_not_stall() {
     let mut h = host();
-    h.set_spawner(Box::new(Threads));
+    h.set_spawner(Box::new(Threads::new()));
 
     // Silence the default hook's backtrace for the deliberate panic —
     // the panic is expected, and its message would read like a real
@@ -260,7 +260,7 @@ impl App for Unmodelled {
 fn an_unmodelled_failure_is_counted() {
     let mut h: Host<Unmodelled, Rebuild> = Host::new(Unmodelled::default(), 100, 50);
     h.pump();
-    h.set_spawner(Box::new(Threads));
+    h.set_spawner(Box::new(Threads::new()));
 
     let prev = std::panic::take_hook();
     std::panic::set_hook(Box::new(|_| {}));

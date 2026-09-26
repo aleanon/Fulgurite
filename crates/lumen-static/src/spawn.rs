@@ -135,7 +135,7 @@ impl<M: 'static> Copy for Job<M> {}
 ///
 /// | spawner | for |
 /// |---|---|
-/// | [`Threads`] | the default: one `std::thread` per job, no dependency |
+/// | [`Threads`] | the default: a small pool of long-lived workers, no dependency (a thread per job until M47/T47.3) |
 /// | [`Immediate`] | runs the job synchronously at spawn — tests that do not care when |
 /// | [`Queued`] | records the job and runs nothing until asked. The only one that can assert "*not* the frame that spawned it" without a sleep |
 ///
@@ -168,43 +168,228 @@ pub trait Spawner<M: 'static>: Send {
     }
 }
 
-/// One `std::thread` per job — the default, and no dependency.
+/// A small pool of long-lived workers — the default, and no dependency.
 ///
 /// `docs/plan-tasks.md` §0.3: no figure in this repository says what an
-/// async runtime would cost, because nobody has measured one. A thread
-/// per job is not the fastest arrangement imaginable; it is the one
-/// whose cost is already known and whose crate count is zero.
-#[derive(Default)]
-pub struct Threads;
+/// async runtime would cost, because nobody has measured one, so the
+/// default takes no crate at all.
+///
+/// **A pool since M47/T47.3** (R7-F5, `docs/plan-timers-wake.md` §2.3).
+/// It was one `std::thread` per job, and a timer firing is a job, so a
+/// window with a 120 ms timer created a thread per tick: strace counted
+/// 28 clones for 28 ticks of `tasks-demo`. Now jobs go through a channel
+/// to at most [`Threads::cap`] workers, started **lazily** — one when a
+/// job arrives and no worker is free — so a window that never spawns
+/// creates no thread, and one that spawns only timer ticks creates one.
+///
+/// **What it costs**: a job that blocks occupies a worker, and with every
+/// worker busy the next job waits in the channel — timer jobs included.
+/// The cap is at least two so that one slow job cannot hold a tick back
+/// (T47.3's accepting check runs a 400 ms job beside a 120 ms timer).
+/// `docs/results-tasks.md` T47.3 has the spawn-to-apply figure the kill
+/// rule judged it on.
+///
+/// **What it does not track**: whether a job is in flight. That is the
+/// host's ledger (`Host::in_flight`), built on the sender the host hands
+/// every job ([`crate::inbox::Inbox::tracked_sender`]), so it holds under
+/// any spawner, not only this one.
+///
+/// Dropping it closes the channel: workers finish what is queued and
+/// exit. They are not joined, so a drop never waits on a slow job.
+pub struct Threads {
+    queue: std::sync::mpsc::Sender<PoolTask>,
+    rx: std::sync::Arc<std::sync::Mutex<std::sync::mpsc::Receiver<PoolTask>>>,
+    /// Workers waiting on the channel right now.
+    idle: std::sync::Arc<core::sync::atomic::AtomicUsize>,
+    /// Jobs sent and not yet taken by a worker.
+    waiting: std::sync::Arc<core::sync::atomic::AtomicUsize>,
+    started: usize,
+    cap: usize,
+}
+
+/// One job as a worker sees it: its body, its sender and its failure
+/// report, already paired.
+type PoolTask = Box<dyn FnOnce() + Send>;
+
+impl Default for Threads {
+    fn default() -> Self {
+        Threads::new()
+    }
+}
+
+impl Threads {
+    /// The most workers any pool starts, whatever the machine.
+    pub const MAX_WORKERS: usize = 4;
+
+    /// A pool sized from the machine's parallelism, between 2 and
+    /// [`Threads::MAX_WORKERS`]. Starts no thread until the first job.
+    pub fn new() -> Threads {
+        let n = std::thread::available_parallelism().map_or(2, |n| n.get());
+        Threads::with_cap(n.clamp(2, Threads::MAX_WORKERS))
+    }
+
+    /// A pool of at most `cap` workers (at least one).
+    pub fn with_cap(cap: usize) -> Threads {
+        let (queue, rx) = std::sync::mpsc::channel();
+        Threads {
+            queue,
+            rx: std::sync::Arc::new(std::sync::Mutex::new(rx)),
+            idle: Default::default(),
+            waiting: Default::default(),
+            started: 0,
+            cap: cap.max(1),
+        }
+    }
+
+    /// The most workers this pool will start.
+    pub fn cap(&self) -> usize {
+        self.cap
+    }
+
+    /// How many workers it has started — threads created, since a
+    /// worker never exits while the pool lives.
+    pub fn started(&self) -> usize {
+        self.started
+    }
+
+    /// Start one worker. `false` if the OS refused the thread.
+    fn start_worker(&mut self) -> bool {
+        use core::sync::atomic::Ordering::SeqCst;
+        let rx = self.rx.clone();
+        let idle = self.idle.clone();
+        let waiting = self.waiting.clone();
+        let spawned = std::thread::Builder::new()
+            .name(format!("lumen-job-{}", self.started))
+            .spawn(move || loop {
+                idle.fetch_add(1, SeqCst);
+                // The lock is held only while waiting for the next task;
+                // a panicking job cannot poison it, because the task runs
+                // after the guard is gone and is caught inside it anyway.
+                let next = match rx.lock() {
+                    Ok(guard) => guard.recv(),
+                    Err(_) => return,
+                };
+                idle.fetch_sub(1, SeqCst);
+                match next {
+                    Ok(task) => {
+                        waiting.fetch_sub(1, SeqCst);
+                        task();
+                    }
+                    // The pool was dropped and the queue is empty.
+                    Err(_) => return,
+                }
+            });
+        if spawned.is_ok() {
+            self.started += 1;
+        }
+        spawned.is_ok()
+    }
+}
 
 impl<M: Send + 'static> Spawner<M> for Threads {
     fn spawn(&mut self, job: Job<M>, tx: Sender<M>) {
+        use core::sync::atomic::Ordering::SeqCst;
+        // **A worker when none is free**, up to the cap. `waiting` counts
+        // jobs already queued ahead of this one, so a burst of N starts
+        // up to N workers rather than piling onto the one that happened
+        // to be idle when the burst began.
+        let ahead = self.waiting.load(SeqCst);
+        if self.started < self.cap && self.idle.load(SeqCst) <= ahead {
+            // `Builder::spawn` rather than `thread::spawn`, because the
+            // latter panics when the OS refuses and this is the one
+            // place that refusal has somewhere to go. A refusal with
+            // workers already running only means the job waits; with
+            // none, nothing would ever take it.
+            if !self.start_worker() && self.started == 0 {
+                report(&job, &tx, Failure::NotStarted);
+                return;
+            }
+        }
         // **The panic is caught here, at the seam** — M28/T28.9.
         //
-        // Left to unwind, the thread dies, its `Sender` drops, and a
+        // Left to unwind, the worker dies, the `Sender` drops, and a
         // chain waiting on that completion stalls forever with nothing
         // observing it. `catch_unwind` turns that into a value the
-        // application applies like any other result.
+        // application applies like any other result, and keeps the
+        // worker for the next job.
         //
         // The default hook still prints the panic to stderr, which is
         // wanted: this reports the failure, it does not hide it.
-        // A second handle, so the refusal path below still has one: the
-        // closure moves the first into the thread.
-        let fallback = tx.clone();
-        let started = std::thread::Builder::new().spawn(move || {
+        let task: PoolTask = Box::new(move || {
             let out = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 (job.job)(job.desc, &tx)
             }));
             if out.is_err() {
                 report(&job, &tx, Failure::Panicked);
             }
+            // `tx` drops here, after the body and any failure report:
+            // that is what ends the job in the host's ledger.
         });
-        // `Builder::spawn` rather than `thread::spawn`, because the
-        // latter panics when the OS refuses and this is the one place
-        // that refusal has somewhere to go.
-        if started.is_err() {
-            report(&job, &fallback, Failure::NotStarted);
-        }
+        self.waiting.fetch_add(1, SeqCst);
+        // Cannot fail: `self.rx` keeps the receiving end alive for as
+        // long as `self` can be called.
+        let _ = self.queue.send(task);
+    }
+}
+
+/// Every job a host has spawned and not yet seen land — M47/T47.3.
+///
+/// **Its length is the in-flight count.** A descriptor goes in when the
+/// host hands its job to a spawner, and comes out once the job's body
+/// has returned *and* every result it sent has been drained
+/// ([`JobTrack::settled`](crate::inbox::JobTrack::settled)). So a job
+/// whose result is still sitting in the inbox is listed, and one whose
+/// body is still running is listed, and nothing else is.
+///
+/// It is one structure for three readers, on purpose, so they cannot
+/// disagree: `Host::in_flight` answers from its length (and M48/T48.2's
+/// "is anything pending" is that answer); M49/T49.10 re-issues
+/// [`Ledger::descriptors`] to a new build across a swap; and a test asks
+/// it where it would otherwise have to sleep.
+///
+/// **What it cannot see**: a clone of a job's sender that outlives the
+/// body. Its later results are still applied, untracked — the entry ends
+/// with the body, which is the only end a spawner can observe. And a
+/// subscription whose job never returns stays listed for as long as it
+/// runs, which is the truth about it.
+///
+/// Costs one `Arc` and one `Vec` slot per spawn, both off the frame
+/// path; pruning is a walk of what is listed, which is what is in flight.
+#[derive(Default)]
+pub struct Ledger {
+    entries: Vec<(Descriptor, std::sync::Arc<crate::inbox::JobTrack>)>,
+}
+
+impl Ledger {
+    pub const fn new() -> Ledger {
+        Ledger { entries: Vec::new() }
+    }
+
+    /// List a job the host has just handed to a spawner.
+    pub fn record(&mut self, desc: Descriptor, track: std::sync::Arc<crate::inbox::JobTrack>) {
+        self.entries.push((desc, track));
+    }
+
+    /// Drop every entry that has settled, oldest order kept. Returns how
+    /// many went.
+    pub fn prune(&mut self) -> usize {
+        let before = self.entries.len();
+        self.entries.retain(|(_, t)| !t.settled());
+        before - self.entries.len()
+    }
+
+    /// How many jobs were in flight at the last [`Ledger::prune`].
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
+    /// What is listed, oldest first: the data a reload re-issues.
+    pub fn descriptors(&self) -> impl Iterator<Item = Descriptor> + '_ {
+        self.entries.iter().map(|(d, _)| *d)
     }
 }
 

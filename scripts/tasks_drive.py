@@ -181,6 +181,47 @@ if got != before + 1:
              f"idle window in {x:.0f} ms (slow {before} -> {got}): the waker is not wired")
 print(f"  ok  unobserved wake: slow {before} -> {got}")
 
+# ---- 7. unobserved: a tick beside a busy worker ---------------------
+# M47/T47.3 (R7-F5): jobs run on a small pool now, not a thread each,
+# and a job that blocks occupies a worker. The 400 ms job starts FIRST,
+# then the subscription (whose start is itself a tick job, then one per
+# 120 ms). ONE read at 330 ms after the slow click, while that job still
+# runs, must already see a tick. A pool that queued the ticks behind the
+# slow job reads 0 here and catches up later -- which the 3 s count
+# below cannot see, so this read is the one that can. (Each click is
+# answered after a frame, ~40 ms, which is why the clock starts at the
+# first click and not the second.)
+time.sleep(0.3)
+before_t, before_s = counts()["ticks"], counts()["slow"]
+t0 = time.time()
+click("start-slow")
+click("toggle-sub")
+t_sub = time.time()
+time.sleep(max(0.0, 0.33 - (t_sub - t0)))
+mid = counts()
+x = (time.time() - t0) * 1000
+early, running = mid["ticks"] - before_t, mid["slow"] == before_s
+print(f"  ..  ticks {early} (bound 1) {x:.0f} ms after the 400 ms job started "
+      f"({(t_sub - t0) * 1000:.0f} ms of clicks), job still running: {running}")
+if not running:
+    sys.exit(f"tasks-drive[{strategy}]: setup: the 400 ms job finished within {x:.0f} ms")
+if early < 1:
+    sys.exit(f"tasks-drive[{strategy}]: no tick landed in {x:.0f} ms while a 400 ms job ran: "
+             f"a busy worker held the timer back")
+print(f"  ok  a tick beside a busy worker: {early} >= 1")
+time.sleep(max(0.0, 3.0 - (time.time() - t_sub)))
+got = counts()["ticks"] - before_t
+x = (time.time() - t_sub) * 1000
+want = int(x // PERIOD)
+bound = 1 + want - 2
+print(f"  ..  ticks {got} (expected {want}, bound {bound}) after {x:.0f} ms, one read in between")
+if got < bound:
+    sys.exit(f"tasks-drive[{strategy}]: beside a 400 ms job the {PERIOD} ms timer ticked "
+             f"{got} times in {x:.0f} ms (bound {bound})")
+print(f"  ok  timer beside a busy worker: {got} >= {bound}")
+click("toggle-sub")
+time.sleep(0.3)
+
 final = counts()
 if final["failed"] != 0:
     sys.exit(f"tasks-drive[{strategy}]: {final['failed']} job(s) failed: {status()!r}")
