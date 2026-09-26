@@ -277,8 +277,10 @@ def _pick(c: AgentClient, widget: str) -> None:
     # statement about a menu nothing could see.
     c.rpc("input.click", x=2.0, y=2.0)
     c.rpc("input.hover", x=2.0, y=2.0)
-    c.click("#select-trigger")
-    menu = c.rpc("ui.resolve", selector="#select-menu").get("bounds")
+    # Through the owner (M44/T44.10): the stage has a `Select` of its own
+    # now, so the bare part ids are ambiguous.
+    c.click("#picker > #select-trigger")
+    menu = c.rpc("ui.resolve", selector="#picker > #select-menu").get("bounds")
     if not menu:
         raise Failed("the picker did not open")
     mid = ((menu[0] + menu[2]) / 2, (menu[1] + menu[3]) / 2)
@@ -319,10 +321,8 @@ def _pick(c: AgentClient, widget: str) -> None:
                     f"{attempt + 1} scrolls; visible labels were {seen[-14:]}"
                 )
             c.rpc("input.scroll", x=mid[0], y=mid[1], dy=-90.0)
-    label = ""
-    for n in c.tree()["nodes"]:
-        if n.get("wid") == "select-trigger":
-            label = n.get("label", "")
+    r = c.rpc("ui.resolve", selector="#picker > #select-trigger")
+    label = r.get("label") or r.get("value") or ""
     if widget not in label:
         raise Failed(f"picking {widget!r} left the trigger reading {label!r}")
 

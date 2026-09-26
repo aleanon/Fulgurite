@@ -425,6 +425,17 @@ Coverage stops being a review question and becomes an assertion. What
 the reviewer is then for is the question a runner cannot ask: *which
 action is missing from the list*, which is §5's job.
 
+**Keyboard actions, added by M44/T44.10 (2026-09-27).** R3-F6 found that
+no inventory drove a list from the keyboard, so none could see that it
+was impossible. `Select` and `ScrollView` have inventories now
+(`scripts/drive/widgets/select_scroll.py`: Select opened by a press,
+chosen by a release, opened-walked-chosen by Enter/Down/Enter, closed by
+Escape with focus back on the trigger; ScrollView scrolled by PageDown
+from a focused row, by the wheel, and by a drag on its bar), and
+`PickList`, `ColorPicker`, `Tree` (fold and unfold) and `DataGrid` (End
+from a focused row) each gained a keyboard action. The manifest
+(`scripts/drive/expected.json`) went from 39/94 to 41/106.
+
 ### (b) The showcase entry, seeded to reach every state
 
 The ask says "use whatever data it needs to test all functionality", and

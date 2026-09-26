@@ -11,9 +11,6 @@
 
 # --- interactive, owed (§4: an inventory now would steer around defects
 #     other milestones own) ----------------------------------------------
-Select | M44 | keyboard row picking is R3-F6; an inventory that avoided it would be vacuous for exactly that action
-ScrollView | M44/T44.10 | the index assigned its inventory to M44 (docs/plan-m38-fixes.md §7)
-Popup | M44 | reached only through Select and the choosers today; its own inventory comes with Select's
 Glass | M27 | a wrapper; takes its child's input, which the child's inventory drives
 
 # --- take no input: nothing to drive, a static claim at most -------------
@@ -53,3 +50,4 @@ Symbol | n/a | data (an Icon's glyph)
 
 # --- driven under another name -------------------------------------------
 Collapsible = Accordion
+Popup = Select

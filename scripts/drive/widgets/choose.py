@@ -110,6 +110,25 @@ PICKLIST = ("PickList", "#d_picklist_a", [
         static=True,
         injection="filter on every kind, not only on a combobox",
     ),
+    Action(
+        name="the keyboard walks the list and chooses a row",
+        needs="an open picklist whose trigger has focus",
+        # Up six times first: the highlight starts wherever the pointer
+        # last lit it, and a walk from an unknown row asserts nothing.
+        # Up and Down bubble from the trigger, which declines them, to
+        # the chooser, which hands them to the list (M44/T44.10).
+        do=lambda c: (c.__dict__.__setitem__("_v0", c.value()), _focus_trigger(c),
+                      [c.key("Up") for _ in range(6)], c.key("Down"), c.key("Enter"))[0],
+        expect=lambda c: (
+            c.value() == "Banana" and c._v0 != "Banana",
+            f"trigger {c._v0!r} -> {c.value()!r} after Up x6, Down, Enter "
+            f"(wanted 'Banana', the second row)",
+        ),
+        injection="make OptionList::key a no-op",
+        # Choosing rewrites the trigger — the same `W1005` re-report the
+        # pointer's choosing action names.
+        expects_lint=("W1005",),
+    ),
 ])
 
 

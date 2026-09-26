@@ -214,6 +214,10 @@ pub struct Store {
     presses: u32,
     flag: bool,
     fraction: f32,
+    /// The stage's own `Select` (M44/T44.10): whether it is open — the
+    /// application's, as for the header's — and what it last chose.
+    select_open: bool,
+    select_choice: Option<usize>,
 }
 
 /// After every pump: rebuild the demos whose state lives in the store,
@@ -256,6 +260,20 @@ fn refresh(s: &mut Show) -> bool {
     // asks, and the application decides. Polling here is where an
     // application does it: `after_update` runs on every pump, which is
     // exactly when the request can have been made (M27/T27.7).
+    // The stage's `Select` is controlled: its `open` is bound here by
+    // hand, because it lives in one variant of the demo switch and a
+    // `#[bind]` path cannot name a variant.
+    if let Demo::Select(d) = &mut s.ui.body.stage.row.demo {
+        if d.a.menu.open != s.store.select_open {
+            d.a.menu.open = s.store.select_open;
+            changed = true;
+        }
+        let want = s.store.select_choice.map_or("Choose a fruit", |k| catalog::FRUIT[k]);
+        if d.a.trigger.label != want {
+            d.a.trigger.label = want.into();
+            changed = true;
+        }
+    }
     let asked = match &mut s.ui.body.stage.row.demo {
         Demo::Modal(d) => d.a.take_dismissed(),
         Demo::Sheet(d) => d.a.take_dismissed(),
@@ -939,6 +957,12 @@ fn stylesheet() -> Vec<StyleRule> {
         // an id is not.
         StyleRule::new(Selector::Class("pair-label"), lbl()),
         StyleRule::new(Selector::Id("d_slider_a"), Patch::new().width(Length::Fixed(280.0))),
+        // M44/T44.10: a view shorter than its twelve rows, so it scrolls.
+        StyleRule::new(
+            Selector::Id("d_scrollview_a"),
+            Patch::new().width(Length::Fixed(260.0)).height(Length::Fixed(180.0)),
+        ),
+
         // The same, for M27/T27.5's two that fill: a range and a search
         // box are both as wide as they are given, and on a centring
         // stage that is nothing at all.

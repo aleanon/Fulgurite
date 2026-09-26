@@ -138,6 +138,30 @@ TREE = ("Tree", "#d_tree_a", [
                            c.c.rpc("input.hover", x=4.0, y=4.0))[0],
         injection="stop synthesizing Event::Hover in dispatch_at",
     ),
+    Action(
+        name="the keyboard folds the lit parent",
+        needs="a focused tree with its first root expanded",
+        # Focus by a press on the tree's padding, which toggles no row;
+        # Home lights the first root, Left folds it (M44/T44.10).
+        do=lambda c: (c.__dict__.__setitem__("_n0", len(_visible(c))),
+                      c.c.rpc("input.click", x=c.box()[0] + 3, y=c.box()[1] + 3),
+                      c.key("Home"), c.key("Left"))[0],
+        expect=lambda c: (
+            len(_visible(c)) < c._n0 and _visible(c)[0] == "crates",
+            f"{c._n0} -> {len(_visible(c))} rows after Home, Left: {_visible(c)}",
+        ),
+        injection="make Tree::key ignore Left",
+    ),
+    Action(
+        name="the keyboard unfolds it again",
+        needs="a focused tree with its first root folded",
+        do=lambda c: (c.__dict__.__setitem__("_n0", len(_visible(c))), c.key("Right"))[0],
+        expect=lambda c: (
+            len(_visible(c)) > c._n0,
+            f"{c._n0} -> {len(_visible(c))} rows after Right: {_visible(c)}",
+        ),
+        injection="make Tree::key ignore Right",
+    ),
 ])
 
 
@@ -234,6 +258,19 @@ GRID = ("DataGrid", "#d_datagrid_a", [
             "_w0", (_row_shown(c, "file-000.rs"), _row_shown(c, "file-012.rs"))),
             c.c.rpc("input.scroll", x=4.0, y=4.0, dy=-240.0))[0],
         injection="make DataGrid::hit answer with its own node instead of the rows",
+    ),
+    Action(
+        name="End from a focused row brings the last row into view",
+        needs="a grid of 200 rows scrolled near the top, its rows focused by a press",
+        do=lambda c: (c.__dict__.__setitem__("_w0", _row_shown(c, "file-199.rs")),
+                      c.click(f"{c.sel} > #grid-rows"), c.key("End"))[0],
+        expect=lambda c: (
+            c._w0 is False and _row_shown(c, "file-199.rs"),
+            "the last row shown: {} -> {} after End; the grid's rows are a Tab stop "
+            "with an active row, and End moves it to the last and scrolls it in "
+            "(M44/T44.10)".format(c._w0, _row_shown(c, "file-199.rs")),
+        ),
+        injection="leave the grid's rows unfocusable",
     ),
 ])
 

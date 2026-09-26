@@ -217,6 +217,43 @@ pub struct DDataGrid {
     pub a: DataGrid<GridRow>,
 }
 
+/// A `Select` on the stage — M44/T44.10. The header's picker is one too,
+/// but it is the drive's own navigation; this one is a demo it can
+/// drive, controlled like any application's.
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+pub struct DSelect {
+    #[widget_id("d_select_a")]
+    pub a: Select<Store>,
+}
+
+/// Twelve buttons in a `ScrollView` too short for them — M44/T44.10.
+/// The first carries an id, so a drive can put focus inside the view.
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 4.0)]
+pub struct ScrollRows {
+    #[widget_id("d_scroll_first")]
+    pub r0: Button<Store, String>,
+    pub r1: Button<Store, String>,
+    pub r2: Button<Store, String>,
+    pub r3: Button<Store, String>,
+    pub r4: Button<Store, String>,
+    pub r5: Button<Store, String>,
+    pub r6: Button<Store, String>,
+    pub r7: Button<Store, String>,
+    pub r8: Button<Store, String>,
+    pub r9: Button<Store, String>,
+    pub r10: Button<Store, String>,
+    pub r11: Button<Store, String>,
+}
+
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+pub struct DScrollView {
+    #[widget_id("d_scrollview_a")]
+    pub a: ScrollView<ScrollRows>,
+}
+
 #[derive(StaticTree, Default)]
 #[widget(column, spacing = 0.0)]
 pub struct DPickList {
@@ -692,6 +729,8 @@ pub enum Demo {
     Pagination(DPagination),
     Tree(DTree),
     DataGrid(DDataGrid),
+    Select(DSelect),
+    Scroll(DScrollView),
 }
 
 impl Default for Demo {
@@ -701,4 +740,4 @@ impl Default for Demo {
 }
 
 /// How many demos the stage has. Asserted against the catalogue.
-pub const DEMOS: usize = 52;
+pub const DEMOS: usize = 54;

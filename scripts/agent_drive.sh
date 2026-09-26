@@ -76,14 +76,18 @@ def call(method, params=None):
 # own nodes -- a composite is more than one node and the derive names only
 # a field, so a widget that is several has to publish its parts or nothing
 # can address them: not a stylesheet, not this script.
-TRIGGER = "#select-trigger"
-MENU = "#select-menu"
+#
+# **Through the owner** -- `#picker > ...` -- since M44/T44.10 put a
+# second `Select` on the showcase's stage: a part id is unique only within
+# its owner, and the bare `#select-trigger` became ambiguous.
+TRIGGER = "#picker > #select-trigger"
+MENU = "#picker > #select-menu"
 
 def trigger_label():
-    for node in call("ui.getTree", {"depth": 4})["nodes"]:
-        if node.get("wid") == "select-trigger":
-            return node.get("label", "")
-    sys.exit(f"agent-drive: no {TRIGGER} in the tree")
+    r = call("ui.resolve", {"selector": TRIGGER})
+    if r.get("label") is None and r.get("value") is None:
+        sys.exit(f"agent-drive: no {TRIGGER} in the tree")
+    return r.get("label") or r.get("value") or ""
 
 def menu_box():
     """The menu's bounds, or None when it is closed."""

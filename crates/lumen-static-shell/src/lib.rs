@@ -1660,9 +1660,6 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             pass::paint_overlaid(self.app.tree(), &self.states, &mut out, &mut self.overlays);
         }
         self.last_paint_ns = t1.elapsed().as_nanos() as u64;
-        // An overlay opened or closed this frame: the next frame records
-        // or returns focus for it (T44.9), so ask for one.
-        self.more_deferred |= pass::overlays_unsettled(&self.input, &self.overlays);
 
         // What this frame changed. Retention has already seen every
         // command; this closes the frame. Free under `Rebuild`.
@@ -1690,6 +1687,23 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         // `invalidate` callable from anywhere between pumps.
         self.last_marks = self.invalidation.marks();
         self.invalidation.clear();
+
+        // **An overlay opened or closed this frame** — M44/T44.9/T44.10.
+        // Settled now, after the clear, so the focus it records or hands
+        // back is right the moment this pump returns (an agent asking
+        // "where is focus" after the click that closed a menu gets the
+        // trigger, not the dead list); and the nodes it moved between are
+        // marked for the next frame, which it asks for, so their rings
+        // are redrawn under `Boundaries`.
+        if pass::overlays_unsettled(&self.input, &self.overlays) {
+            let was = self.input.focus;
+            if pass::settle_overlays(&self.app, &self.styles, &mut self.states, &mut self.input, &self.overlays) {
+                let table = <A::Tree as Widget>::SUB_TABLE;
+                mark_node(&mut self.invalidation, table, was);
+                mark_node(&mut self.invalidation, table, self.input.focus);
+            }
+            self.more_deferred = true;
+        }
 
         self.frame += 1;
         self.passes.pumps += 1;

@@ -86,7 +86,27 @@ def _shared(name, sel, cols, cw, cell, want, head=0.0):
 
 
 COLOR = ("ColorPicker", "#d_colorpicker_a", _shared(
-    "ColorPicker", "#d_colorpicker_a", 4, 32.0, 5, "#dc2626"))
+    "ColorPicker", "#d_colorpicker_a", 4, 32.0, 5, "#dc2626") + [
+    Action(
+        name="the keyboard walks the swatches and chooses one",
+        needs="a closed picker on swatch 5 (#dc2626), its trigger focused",
+        # Escape, then a click on the trigger to focus it and open the
+        # pad; the first arrow lights the current swatch, the next ones
+        # move (M44/T44.10).
+        prep=lambda c: (c.key("Escape"), c.click())[0],
+        do=lambda c: (c.__dict__.__setitem__("_v0", c.value()),
+                      c.key("Right"), c.key("Right"), c.key("Down"), c.key("Enter"))[0],
+        expect=lambda c: (
+            c.value() == "#fb923c" and c._v0 == "#dc2626" and not _is_open(c),
+            f"value {c._v0!r} -> {c.value()!r} after Right Right Down Enter from swatch 5 "
+            f"(wanted '#fb923c', swatch 10), open={_is_open(c)}",
+        ),
+        injection="make Pad::key ignore the arrows",
+        # The value's text changes width and relays out the stage, which
+        # re-reports the showcase's wrapping note as `W1005`.
+        expects_lint=("W1005",),
+    ),
+])
 
 DATE = ("DatePicker", "#d_datepicker_a", _shared(
     "DatePicker", "#d_datepicker_a", 7, 30.0, 8, "2026-09-08", head=48.0) + [

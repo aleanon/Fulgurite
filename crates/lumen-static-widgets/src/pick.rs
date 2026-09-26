@@ -770,6 +770,11 @@ impl<const KIND: u8> Node for Picker<KIND> {
         if self.pad.content.take_picked() {
             self.pad.open = false;
         }
+        // A closed pad forgets its lit cell, so the keyboard starts from
+        // the selection when it opens again (M44/T44.10).
+        if !self.pad.open {
+            self.pad.content.hot = None;
+        }
         let t = lumen_static::ops::resolve_self(
             limits,
             &style[i + Self::TRIGGER],

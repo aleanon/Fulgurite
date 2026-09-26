@@ -134,7 +134,7 @@ const FILES: [&str; 7] = [
 ];
 
 /// The options M27/T27.9's three demos share.
-const FRUIT: [&str; 6] =
+pub(crate) const FRUIT: [&str; 6] =
     ["Apple", "Banana", "Cherry", "Damson", "Elderberry", "apricot"];
 const COMMANDS: [&str; 4] = ["Cut", "Copy", "Paste", "Select all"];
 
@@ -165,6 +165,44 @@ fn chip(t: &str) -> Chip<String> {
 
 fn gbadge(t: &str) -> Badge<String> {
     Badge::<String>::new(t.into())
+}
+
+/// The stage's `Select`, wired as an application wires one: the trigger
+/// opens it, a row chooses and closes it, a dismissal closes it
+/// (M44/T44.10).
+fn demo_select() -> Select<Store> {
+    let mut sel = Select::new(FRUIT.len(), 30.0, select_row);
+    sel.trigger.label = "Choose a fruit".into();
+    sel.trigger.on_click = |s: &mut Store, _: &EventCtx| s.select_open = true;
+    sel.on_dismiss = |s: &mut Store, _: &EventCtx| s.select_open = false;
+    sel
+}
+
+/// A row of the stage's `Select`. Compares before writing: a bind runs
+/// on every layout, and a row that allocated each time would be the
+/// steady-state allocation M29/T29.5 found in a fixture's bind.
+fn select_row(r: &mut SelectRow<Store>, i: usize) {
+    if r.label != FRUIT[i] {
+        r.label = FRUIT[i].into();
+    }
+    r.on_click = |s: &mut Store, cx: &EventCtx| {
+        s.select_choice = cx.row.map(|k| k as usize);
+        s.select_open = false;
+    };
+}
+
+fn scroll_rows() -> ScrollRows {
+    let mut r = ScrollRows::default();
+    for (k, b) in [
+        &mut r.r0, &mut r.r1, &mut r.r2, &mut r.r3, &mut r.r4, &mut r.r5,
+        &mut r.r6, &mut r.r7, &mut r.r8, &mut r.r9, &mut r.r10, &mut r.r11,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        *b = btn(&format!("row {}", k + 1));
+    }
+    r
 }
 
 fn lbl_of(t: &str) -> Label<String> {
@@ -425,6 +463,24 @@ pub static CATALOG: &[Entry] = &[
         false,
         |s| on(s, Demo::Menu(DMenu { a: opened(Menu::new(&COMMANDS)) })),
         none),
+    // ---- M44/T44.10 ------------------------------------------------
+    entry!("Choice", "Select", "Press it, or Enter on it; pick one of six.",
+        "Controlled: whether it is open is the application's, so a dismissal has to reach the application or the next binding reopens it. The keyboard reaches its rows through the list's active row, since a row is not a Tab stop.",
+        false,
+        |s| {
+            s.store.select_open = false;
+            s.store.select_choice = None;
+            on(s, Demo::Select(DSelect { a: demo_select() }))
+        },
+        |s| format!("chose: {}", s.store.select_choice.map_or("nothing", |k| FRUIT[k]))),
+    entry!("Layout", "ScrollView", "Twelve rows in a view for four.",
+        "The wheel, a drag on its bar, and PageUp, PageDown, Home and End from a focused control inside it — the view is not focusable itself, so the keys bubble up to it.",
+        false,
+        |s| on(s, Demo::Scroll(DScrollView { a: ScrollView::new(scroll_rows()) })),
+        |s| match &s.ui.body.stage.row.demo {
+            Demo::Scroll(d) => format!("scroll: {:.0} px", d.a.scroll),
+            _ => String::new(),
+        }),
     entry!("Layout", "PaneGrid", "Four panes, three dividers.",
         "iced's is a *tree* the user re-arranges, which is topology as data and the one thing this framework does not do — so this is the shape almost every pane grid ends up in, and what is missing is named rather than faked.",
         false,

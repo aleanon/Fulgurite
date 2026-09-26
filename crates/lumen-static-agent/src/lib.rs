@@ -1775,7 +1775,10 @@ pub fn process_block(strategy: &str, features: &[&str]) -> Value {
     })
 }
 
-const KEY_NAMES: [&str; 12] = [
+/// The keys `input.key` names. PageUp and PageDown since M44/T44.10: a
+/// list's active row and a scroll view both answer them, and a drive that
+/// could not press them could not check either.
+const KEY_NAMES: [&str; 14] = [
     "Enter",
     "Space",
     "Escape",
@@ -1788,6 +1791,8 @@ const KEY_NAMES: [&str; 12] = [
     "Down",
     "Home",
     "End",
+    "PageUp",
+    "PageDown",
 ];
 
 fn parse_key(name: &str) -> Option<Key> {
@@ -1798,6 +1803,8 @@ fn parse_key(name: &str) -> Option<Key> {
         "Tab" => Key::Tab,
         "Backspace" => Key::Backspace,
         "Delete" => Key::Delete,
+        "PageUp" => Key::PageUp,
+        "PageDown" => Key::PageDown,
         "Left" => Key::Left,
         "Right" => Key::Right,
         "Up" => Key::Up,

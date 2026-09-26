@@ -3,18 +3,20 @@
   "M42/T42.5 (R18-F2, docs/plan-drive-identity.md §2.4): what scripts/drive/run.py must discover under widgets/ before it opens any window.",
   "Edited by hand, never generated from the inventories: a manifest read from what it checks is the tautology this replaces.",
   "A removal fails; an addition fails until this file names it, so the change is visible in the diff.",
-  "`static` lists every action that is not checked for landing; `counts` pins actions, landed-checked (non-static) and isolated (T42.6)."
+  "`static` lists every action that is not checked for landing; `counts` pins actions, landed-checked (non-static) and isolated (T42.6).",
+  "M44/T44.10 added Select and ScrollView (owed since M42) and a keyboard action each to PickList, ColorPicker, Tree (two) and DataGrid."
  ],
  "counts": {
-  "entries": 40,
-  "actions": 97,
-  "landed_checked": 74,
-  "isolated": 42
+  "entries": 42,
+  "actions": 109,
+  "landed_checked": 86,
+  "isolated": 46
  },
  "entries": {
   "PickList": [
    "releasing over a row chooses it",
-   "a picklist does not filter on its trigger"
+   "a picklist does not filter on its trigger",
+   "the keyboard walks the list and chooses a row"
   ],
   "Combobox": [
    "typing filters the list",
@@ -33,11 +35,14 @@
   "Tree": [
    "pressing a parent folds its whole subtree away",
    "pressing a leaf reports nothing, because nothing happened",
-   "a hover lights the row under the pointer"
+   "a hover lights the row under the pointer",
+   "the keyboard folds the lit parent",
+   "the keyboard unfolds it again"
   ],
   "DataGrid": [
    "it shows its columns over virtualized rows",
-   "a wheel scrolls the rows under the header"
+   "a wheel scrolls the rows under the header",
+   "End from a focused row brings the last row into view"
   ],
   "NumberInput": [
    "a click focuses the field",
@@ -96,7 +101,8 @@
   "ColorPicker": [
    "a press opens the popup",
    "a cell sets the value and closes the popup",
-   "a press outside closes it and changes nothing"
+   "a press outside closes it and changes nothing",
+   "the keyboard walks the swatches and chooses one"
   ],
   "DatePicker": [
    "a press opens the popup",
@@ -188,6 +194,17 @@
    "a press on the scrim asks to dismiss",
    "it does not close itself",
    "the control on the panel still reaches the application"
+  ],
+  "Select": [
+   "pressing the trigger opens the menu",
+   "releasing over a row chooses it and closes the menu",
+   "the keyboard opens it, walks the rows and chooses one",
+   "Escape closes it and focus returns to the trigger"
+  ],
+  "ScrollView": [
+   "PageDown from a focused row scrolls the view",
+   "the wheel scrolls it back",
+   "a drag on the bar scrolls it"
   ]
  },
  "static": [
