@@ -119,6 +119,7 @@ pub mod gpu;
 pub mod surface;
 pub mod windows;
 pub mod translate;
+pub mod keys;
 
 pub use backend::{Backend, Prefer, Software};
 pub use clipboard::Clipboard;
@@ -518,17 +519,34 @@ impl Win {
         if event.state != winit::event::ElementState::Pressed {
             return false;
         }
-        if !(self.mods.has(lumen_static::Mods::CTRL) || self.mods.has(lumen_static::Mods::META)) {
-            return false;
-        }
-        let Some(lumen_static::Key::Char(c)) = translate::key_of(&event.logical_key) else {
-            return false;
+        // The decision is `keys::clipboard_decision`, a function a test
+        // can call (M45/T45.0 item 11). Only what it needs is read: the
+        // selection for c/x, the clipboard for v.
+        let key = translate::key_of(&event.logical_key);
+        let copied = match key {
+            Some(lumen_static::Key::Char('c' | 'x')) => self.session.copy(),
+            _ => None,
         };
-        match c {
-            'c' | 'x' => {
-                let Some(text) = self.session.copy() else { return true };
-                self.clipboard.set(&text);
-                if c == 'x' {
+        let pasted = match key {
+            Some(lumen_static::Key::Char('v')) => self.clipboard.get().filter(|t| !t.is_empty()),
+            _ => None,
+        };
+        let decision = keys::clipboard_decision(keys::Shortcut {
+            mods: self.mods,
+            key,
+            focused: true,
+            selection: copied.is_some(),
+            clipboard: pasted.is_some(),
+            os: keys::Os::CURRENT,
+        });
+        match decision {
+            None => false,
+            Some(keys::Clip::Swallow) => true,
+            Some(keys::Clip::Copy) | Some(keys::Clip::Cut) => {
+                if let Some(text) = copied {
+                    self.clipboard.set(&text);
+                }
+                if decision == Some(keys::Clip::Cut) {
                     // Cut is copy plus the delete the field already
                     // does: one edit path, so the caret and the shaped
                     // cache cannot disagree with a bespoke one.
@@ -539,13 +557,12 @@ impl Win {
                 }
                 true
             }
-            'v' => {
-                if let Some(text) = self.clipboard.get() {
+            Some(keys::Clip::Paste) => {
+                if let Some(text) = pasted {
                     self.session.paste(&text);
                 }
                 true
             }
-            _ => false,
         }
     }
 
@@ -943,6 +960,17 @@ impl Win {
             ref event if self.clipboard_shortcut(event) => {
                 if let Some(w) = &self.window {
                     w.request_redraw();
+                }
+            }
+
+            // A key press, through the same function a test drives
+            // (`keys::deliver_key`, M45/T45.0 item 10).
+            WindowEvent::KeyboardInput { event: ref k, .. } => {
+                let down = k.state == winit::event::ElementState::Pressed;
+                if keys::deliver_key(&mut *self.session, &k.logical_key, k.text.as_deref(), down, self.mods) {
+                    if let Some(w) = &self.window {
+                        w.request_redraw();
+                    }
                 }
             }
 

@@ -413,6 +413,39 @@ so every later task has a baseline to cite.
 **Effort:** L (fifteen gates). **Depends on:** M41 (items 7 and 12 need
 its `paste_with` and compose marks), M40 (item 4's shared measurer).
 
+*What building found (2026-09-26).* Every finding re-checked at
+`826c7c3` still reproduced; `docs/results-text.md` has each red number.
+Where the gates differ from the list above:
+
+- **Items 8, 9 and 11's `NumberInput` half live in the shell's tests**,
+  not the widgets crate's: they run through a `Host`, and the widgets
+  crate has none.
+- **Every editing gate puts its field alone in its tree.** Adding a
+  `TextArea` beside `clipboard.rs`'s field turned that file's existing
+  Shift+Right test red: with a focusable sibling, an arrow moves focus
+  instead of the caret (M44's R3 finding). A gate that shares a tree
+  with a sibling measures M44, not M45.
+- **Item 1 does not exhibit the fractional-scale mechanism.** With the
+  pinned DejaVu face, `Settings` bold at 13 px and 1.5 measures wide
+  enough today (the review measured Noto); all 600 wrapped runs are the
+  six strings ending in `j`. T45.1's slack injection has to find its
+  own case.
+- **Item 4's `TextArea` leg is red, not "by reading":** `Hinted` with
+  clusters (`x = n × size + scale`) moves the caret, 129 served against
+  130 fresh.
+- **Item 13's substituted arm is at 2 and 20 KB**, a tenth of the
+  plain arm: at 200 KB its quadratic runs for minutes, and a gate that
+  takes an hour to go red is not run. The ratio of ten is the same.
+- **Item 14's accept direction was wrong.** A 4 KB area is 74 lines and
+  rasterised 3,330 glyphs against a bound of 330: it is a long document
+  too. The accept arm is an area whose five lines all fit.
+- **Items 10 and 11 needed functions to call.** `keys::deliver_key` and
+  `keys::clipboard_decision` are the window's own code factored out,
+  behaviour unchanged, so the gates drive what the window runs.
+- **Item 2 needs the shaper's glyph ids**, which `ComplexText` did not
+  expose: `ComplexText::shaped_glyphs`, and `GlyphId::index` for the
+  painter's.
+
 ### T45.1 — the measurer and the painter agree on the box
 
 **Closes:** R10-F1.

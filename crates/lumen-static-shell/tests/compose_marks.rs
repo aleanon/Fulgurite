@@ -233,3 +233,43 @@ fn composition_reaches_the_focused_field_through_the_host() {
     assert!(!h.compose(Cancel), "nothing composing: a cancel changes nothing");
     println!("routed: {:?}", h.app.ui.field.as_str());
 }
+
+/// A number field, alone: `NumberInput` owns a `TextInput` and forwards
+/// every `Node` method to it at the same index — every one but `compose`.
+#[derive(StaticTree, Default)]
+#[widget(row, spacing = 4.0)]
+struct Number {
+    #[widget_id("number")]
+    number: NumberInput,
+}
+
+#[derive(DeriveApp, Default)]
+struct NumberApp {
+    #[tree]
+    ui: Number,
+}
+
+/// **R10-F15: a number field takes composed digits and refuses composed
+/// letters** — M45/T45.0 item 12. `NumberInput` did not override
+/// `compose`, so the provided `false` refused every commit, digits
+/// included, and an IME user could not enter a number at all.
+#[test]
+#[ignore = "red until T45.9: R10-F15, NumberInput refuses every composition"]
+fn a_number_field_takes_composed_digits_and_refuses_letters() {
+    let mut h: Host<NumberApp> = Host::new(NumberApp::default(), W, 60);
+    h.pump();
+    h.post(Event::Key { key: Key::Tab, down: true });
+    h.pump();
+    assert_eq!(h.input.focus, Some(1), "setup: Tab did not focus the number field");
+    let before = h.app.ui.number.as_str().to_owned();
+    let digits = h.compose(Commit("12"));
+    h.pump();
+    let after = h.app.ui.number.as_str().to_owned();
+    let letters = h.compose(Commit("ab"));
+    h.pump();
+    let last = h.app.ui.number.as_str().to_owned();
+    println!("commit \"12\": accepted {digits}, {before:?} -> {after:?} (want accepted, containing \"12\")");
+    println!("commit \"ab\": accepted {letters}, {after:?} -> {last:?} (want refused, unchanged)");
+    assert!(digits && after.contains("12"), "a composed number was refused");
+    assert!(!letters && last == after, "composed letters reached a number field");
+}

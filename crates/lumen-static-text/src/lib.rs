@@ -76,14 +76,7 @@ impl ComplexText {
     /// `TextMeasure::shape`'s contract exists to prevent.
     fn shape_run(&self, run: Run<'_>, sink: &mut dyn GlyphSink) -> f32 {
         let Run { text, base, px, x0, line, rtl } = run;
-        let mut buf = rustybuzz::UnicodeBuffer::new();
-        buf.push_str(text);
-        buf.set_direction(if rtl {
-            rustybuzz::Direction::RightToLeft
-        } else {
-            rustybuzz::Direction::LeftToRight
-        });
-        let glyphs = rustybuzz::shape(&self.face, &[], buf);
+        let glyphs = self.shape_glyphs(text, rtl);
 
         let upem = self.face.units_per_em() as f32;
         let scale = if upem > 0.0 { px / upem } else { 0.0 };
@@ -100,6 +93,49 @@ impl ComplexText {
         }
         let _ = self.px_per_em;
         x - x0
+    }
+}
+
+impl ComplexText {
+    /// The glyphs `text` shapes into, **in visual order**, as `(glyph id,
+    /// x)` at `px` — what a painter that consumed this shaper would draw.
+    ///
+    /// None does: glyphs reach the screen through
+    /// `lumen-static-shell`'s canvas, which draws the *string* with its
+    /// own cmap lookup (`docs/plan-text-correctness.md` §2.1). This is
+    /// what `tests/paint_shaped.rs` compares the painted glyphs with, so
+    /// the claim "the shaper is right, the painter does not use it" is a
+    /// checked one.
+    pub fn shaped_glyphs(&self, text: &str, px: f32) -> Vec<(u16, f32)> {
+        let mut out = Vec::new();
+        let upem = self.face.units_per_em() as f32;
+        let scale = if upem > 0.0 { px / upem } else { 0.0 };
+        let info = unicode_bidi::BidiInfo::new(text, None);
+        let mut x = 0.0f32;
+        for para in &info.paragraphs {
+            let (levels, ranges) = info.visual_runs(para, para.range.clone());
+            for range in ranges {
+                let glyphs = self.shape_glyphs(&text[range.clone()], levels[range.start].is_rtl());
+                for (g, p) in glyphs.glyph_infos().iter().zip(glyphs.glyph_positions()) {
+                    out.push((g.glyph_id as u16, x));
+                    x += p.x_advance as f32 * scale;
+                }
+            }
+        }
+        out
+    }
+
+    /// One direction's run through rustybuzz — the one call both
+    /// `shape_run` and [`ComplexText::shaped_glyphs`] make.
+    fn shape_glyphs(&self, text: &str, rtl: bool) -> rustybuzz::GlyphBuffer {
+        let mut buf = rustybuzz::UnicodeBuffer::new();
+        buf.push_str(text);
+        buf.set_direction(if rtl {
+            rustybuzz::Direction::RightToLeft
+        } else {
+            rustybuzz::Direction::LeftToRight
+        });
+        rustybuzz::shape(&self.face, &[], buf)
     }
 }
 

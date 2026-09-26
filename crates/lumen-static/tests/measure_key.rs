@@ -121,3 +121,26 @@ fn an_unchanged_style_still_hits_the_memo() {
     println!("measure calls over five identical layouts: {}", m.calls.get());
     assert_eq!(m.calls.get(), 1, "an unchanged style re-measured: the memo no longer hits");
 }
+
+/// **A NaN limit still hits the memo** — M45/T45.0 item 5, R2-F10
+/// (`docs/plan-text-correctness.md` §1.2).
+///
+/// `MeasureKey` stored its `Constraints` by value and compared them with
+/// `f32`'s `PartialEq`, under which a NaN is unequal to itself — so a
+/// label laid out under a NaN limit never hit, while the rustdoc's "bit
+/// patterns, not values" covered only the other fields. Nothing in the
+/// tree produces a NaN limit today: this is a memo miss, not a stale box.
+#[test]
+#[ignore = "red until T45.2: R2-F10, a NaN limit never hits the memo"]
+fn five_layouts_under_a_nan_limit_measure_once() {
+    let mut m = Weighted::default();
+    let mut l: Label<String> = Label::new("hello".into());
+    let nan = Constraints { max_w: f32::NAN, ..LIMITS };
+    for _ in 0..5 {
+        let mut cx = LayoutCx::new(&mut m);
+        let (sty, mut st) = ([Style::default()], [NodeState::default()]);
+        l.layout(&mut cx, nan, &sty, &mut st, 0);
+    }
+    println!("five layouts at NaN max_w: {} measurer calls (bound 1)", m.calls.get());
+    assert_eq!(m.calls.get(), 1, "the memo missed on every NaN layout");
+}

@@ -225,6 +225,7 @@ impl FontStack {
             (false, _) => self.regular.as_ref(),
         };
         let (m, cov) = font.rasterize_indexed(id.index, f32::from_bits(id.px_bits));
+        RASTERISED.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
         Some((m.width as u32, m.height as u32, cov))
     }
 
@@ -349,6 +350,21 @@ impl FontStack {
     }
 }
 
+/// Every glyph [`FontStack::rasterize`] has produced in this process.
+static RASTERISED: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
+
+/// How many glyphs this process has rasterised — a counter for a test
+/// that bounds what a frame draws by what is visible
+/// (`docs/plan-text-correctness.md` T45.0 item 14, R8-F3).
+///
+/// A count and not a clock, so it answers the same under load. One
+/// relaxed add per rasterised glyph, beside a rasterisation that costs
+/// microseconds. Process-wide: a test reads it before and after the
+/// frame it bounds, alone in its binary.
+pub fn glyphs_rasterised() -> u64 {
+    RASTERISED.load(core::sync::atomic::Ordering::Relaxed)
+}
+
 /// Divides cluster positions back to logical units on the way out.
 struct LogicalClusters<'a> {
     inner: &'a mut dyn GlyphSink,
@@ -403,6 +419,16 @@ pub struct GlyphId {
     /// rasterise differently.
     px_bits: u32,
     bold: bool,
+}
+
+impl GlyphId {
+    /// The glyph's index in its face — for a test that compares what was
+    /// painted with what a shaper produced (`docs/plan-text-correctness.md`
+    /// T45.0 item 2). Equal indices in the same face and size are the
+    /// same bitmap; the index alone does not say which face.
+    pub fn index(&self) -> u16 {
+        self.index
+    }
 }
 
 /// Where one inked glyph of a run goes, without its pixels.

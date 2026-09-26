@@ -7,7 +7,7 @@
 use lumen_static::prelude::*;
 use lumen_static_widgets::prelude::*;
 use lumen_static::{Mods};
-use lumen_static_widgets::{TextInput};
+use lumen_static_widgets::{NumberInput, TextArea, TextInput};
 use lumen_static_shell::Host;
 
 #[derive(StaticTree, Default)]
@@ -17,6 +17,35 @@ struct Ui {
     a: TextInput,
     #[widget_id("b")]
     b: Label,
+}
+
+/// A text area and a number field, each **alone** in its own tree: with a
+/// focusable sibling, an arrow key moves focus instead of editing, which
+/// is M44's to fix, and a case here must not depend on it.
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+struct AreaUi {
+    #[widget_id("area")]
+    area: TextArea,
+}
+
+#[derive(DeriveApp, Default)]
+struct AreaApp {
+    #[tree]
+    ui: AreaUi,
+}
+
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+struct NumberUi {
+    #[widget_id("number")]
+    number: NumberInput,
+}
+
+#[derive(DeriveApp, Default)]
+struct NumberApp {
+    #[tree]
+    ui: NumberUi,
 }
 
 #[derive(DeriveApp, Default)]
@@ -96,14 +125,47 @@ fn a_paste_longer_than_the_queue_lands_whole() {
 }
 
 #[test]
-fn paste_skips_control_characters_but_keeps_newlines() {
+fn paste_skips_tab_and_bell() {
     let mut h = host();
     h.input.focus = Some(1);
-    // A single-line field refuses the newline itself; what matters here
-    // is that `paste` offers it rather than filtering it out, so a
-    // `TextArea` would get it.
     h.paste("a\tb\u{7}c");
     assert_eq!(h.app.ui.a.as_str(), "abc", "tab and bell dropped");
+}
+
+/// **The newline test, against a widget that keeps newlines** — M45/T45.0
+/// item 7 (R10-F6). This used to paste into a single-line field, where a
+/// dropped newline and a kept one look the same; a `TextArea` is where
+/// `paste` offering the newline and the widget keeping it are both
+/// visible.
+#[test]
+#[ignore = "red until T45.7: R10-F6, a pasted newline never reaches a TextArea"]
+fn paste_keeps_newlines_in_a_text_area() {
+    let mut h: Host<AreaApp> = Host::new(AreaApp::default(), 400, 100);
+    h.pump();
+    h.input.focus = Some(1);
+    let n = h.paste("a\nb\tc");
+    println!("pasted \"a\\nb\\tc\": area holds {:?}, count {n} (want \"a\\nbc\", 4)", h.app.ui.area.as_str());
+    assert_eq!(h.app.ui.area.as_str(), "a\nbc", "the newline kept, the tab dropped");
+    assert_eq!(n, 4, "the count is what was kept");
+}
+
+/// **A number field copies** — M45/T45.0 item 11 (R10-F13). `NumberInput`
+/// forwarded neither `selection` nor `compose` to the field it owns, so
+/// Ctrl+A highlighted its text and a copy found nothing.
+#[test]
+#[ignore = "red until T45.9: R10-F13, NumberInput does not forward selection"]
+fn a_number_field_copies_its_selection() {
+    let mut h: Host<NumberApp> = Host::new(NumberApp::default(), 400, 100);
+    h.pump();
+    h.input.focus = Some(1);
+    h.post(Event::Modifiers(Mods::CTRL));
+    h.post(Event::Key { key: Key::Char('a'), down: true });
+    h.post(Event::Modifiers(Mods::NONE));
+    h.pump();
+    let shown = h.app.ui.number.as_str().to_owned();
+    println!("NumberInput after Ctrl+A: shows {shown:?}, copy gives {:?}", h.copy());
+    assert!(!shown.is_empty(), "setup: the number field shows nothing");
+    assert_eq!(h.copy(), Some(shown.as_str()), "Ctrl+A then copy must give the field's text");
 }
 
 #[test]
