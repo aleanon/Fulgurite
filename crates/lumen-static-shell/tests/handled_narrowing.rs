@@ -4,7 +4,8 @@
 //! The invalidation oracle over a **click-driven** session: every frame
 //! byte-identical under `Everything` and `Boundaries`. The session covers
 //! every way an event can change the tree without a binding: a
-//! `TextInput` taking characters, a `Slider` moving on a track press, two
+//! `TextInput` taking characters and arrows (beside a button, so the
+//! arrow-group rule is in play, M44/T44.1), a `Slider` moving on a track press, two
 //! overlays closed by one press outside, and a button whose handler
 //! changes a bound label *outside* the button's subtree. Each step prints
 //! what the `Boundaries` frame marked, so a narrowed frame is told apart
@@ -51,6 +52,11 @@ struct Entry {
     field: TextInput,
     #[widget_id("after")]
     after: Label<String>,
+    /// A focusable sibling, so the field is in an arrow group of two:
+    /// the shape in which the group rule used to take Left from the
+    /// field (M44/T44.1).
+    #[widget_id("clear")]
+    clear: Button<Store>,
 }
 
 #[derive(StaticTree, Default)]
@@ -91,6 +97,7 @@ fn build() -> Split {
     let mut s = Split::default();
     s.ui.top.status.set("Sheet1".into());
     s.ui.entry.after.set("after".into());
+    s.ui.entry.clear.label = "clear";
     s.ui.picks.s1 = Select::new(3, 20.0, row);
     s.ui.picks.s2 = Select::new(3, 20.0, row);
     s.ui.picks.s1.on_dismiss = |s: &mut Store, _: &EventCtx| s.a_open = false;
@@ -102,6 +109,7 @@ fn build() -> Split {
 fn sheet() -> Vec<Rule> {
     vec![
         Rule::new(Selector::Id("field"), Patch::new().width(Length::Shrink).height(Length::Fixed(24.0))),
+        Rule::new(Selector::Id("clear"), Patch::new().width(Length::Fixed(50.0)).height(Length::Fixed(24.0))),
         Rule::new(Selector::Id("slider"), Patch::new().width(Length::Fixed(200.0)).height(Length::Fixed(20.0))),
         Rule::new(Selector::Kind("select"), Patch::new().width(Length::Fixed(90.0))),
         Rule::new(Selector::Kind("repeat"), Patch::new().width(Length::Fixed(90.0)).height(Length::Fixed(60.0))),
@@ -177,6 +185,18 @@ fn a_click_driven_session_narrows_and_draws_the_same_frames() {
         p.step(&format!("Backspace ({k})"), |post| post(Event::Key { key: lumen_static::Key::Backspace, down: true }));
     }
     assert_eq!(p.b.app.ui.entry.field.as_str(), "1234567 wide", "setup: the paste was not undone");
+
+    // 1b. Arrows in a field beside a button stay in the field (M44/T44.1),
+    // and the field records them as consumed.
+    let field = lumen_static::style::index_of_wid(<Ui as Widget>::SUB_TABLE, "field").unwrap() as u32;
+    for k in 0..3 {
+        let before = p.b.app.ui.entry.field.caret();
+        p.step(&format!("Left in the field ({k})"), |post| post(Event::Key { key: lumen_static::Key::Left, down: true }));
+        println!("    (focus, caret) = {:?}, expected {:?}", (p.b.input.focus, p.b.app.ui.entry.field.caret()), (Some(field), before - 1));
+        assert_eq!(p.b.input.focus, Some(field), "setup: Left left the field for its sibling");
+        assert_eq!(p.b.app.ui.entry.field.caret(), before - 1, "setup: Left did not move the caret");
+        assert!(!p.b.last_marks().all, "an arrow in a split application marked everything");
+    }
 
     // 2. Press the slider's track at three quarters — the slider moves itself.
     let si = lumen_static::style::index_of_wid(<Ui as Widget>::SUB_TABLE, "slider").unwrap();

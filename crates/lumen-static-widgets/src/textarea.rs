@@ -520,6 +520,12 @@ impl<S: TextBuffer> Widget for TextArea<S> {
 }
 
 impl<S: TextBuffer> Node for TextArea<S> {
+    /// Arrows move a caret, on two axes, so they never leave this control
+    /// (M44/T44.1; [`Node::owns_arrows`]).
+    fn owns_arrows(&self) -> bool {
+        true
+    }
+
     fn kind_name(&self) -> &'static str {
         <Self as Widget>::KIND
     }

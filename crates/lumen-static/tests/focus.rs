@@ -309,7 +309,6 @@ fn right(app: &mut Wide, styles: &[lumen_static::Style], st: &mut [NodeState], i
 }
 
 #[test]
-#[ignore = "red until T44.1: R3-F9 (the group is a sixteen-slot buffer)"]
 fn a_group_of_twenty_is_navigable_end_to_end() {
     let (mut app, styles, mut st) = twenty();
     let members: Vec<u32> = (1..Twenty::NODE_COUNT as u32).collect();

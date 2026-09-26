@@ -143,7 +143,6 @@ fn index(path: &str) -> u32 {
 }
 
 #[test]
-#[ignore = "red until T44.1: R3-F1, R10-F3 (the arrow-group rule takes the key first)"]
 fn left_in_a_text_field_beside_a_button_moves_the_caret() {
     let mut f = F::new();
     let field = f.focus("text.field");
@@ -157,7 +156,6 @@ fn left_in_a_text_field_beside_a_button_moves_the_caret() {
 }
 
 #[test]
-#[ignore = "red until T44.1: R3-F1, R10-F3 (the arrow-group rule takes the key first)"]
 fn a_number_input_beside_a_button_edits_in_the_middle() {
     // `NumberInput` is a composite: its `node_mut` returns itself for the
     // inner field's index, so it must answer for arrows itself.
@@ -179,7 +177,6 @@ fn a_number_input_beside_a_button_edits_in_the_middle() {
 }
 
 #[test]
-#[ignore = "red until T44.1: R3-F1, R10-F3 (the arrow-group rule takes the key first)"]
 fn right_on_a_slider_beside_a_button_moves_the_value() {
     let mut f = F::new();
     let slider = f.focus("slider.slider");
@@ -192,7 +189,6 @@ fn right_on_a_slider_beside_a_button_moves_the_value() {
 }
 
 #[test]
-#[ignore = "red until T44.1: R3-F1, R10-F3 (the arrow-group rule takes the key first)"]
 fn arrows_stay_in_a_column_of_text_widgets() {
     // R10-F3: Left in the first field, and Up on a `TextArea`'s first
     // line. The second is the case "ask the widget first" does not close:

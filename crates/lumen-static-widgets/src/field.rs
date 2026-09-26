@@ -213,6 +213,12 @@ impl Widget for NumberInput {
 }
 
 impl Node for NumberInput {
+    /// Arrows move the caret of the field it wraps (its `node` answers itself for that index), and Up/Down step, so they never leave this control
+    /// (M44/T44.1; [`Node::owns_arrows`]).
+    fn owns_arrows(&self) -> bool {
+        true
+    }
+
     fn kind_name(&self) -> &'static str {
         <Self as Widget>::KIND
     }
@@ -492,6 +498,12 @@ impl Widget for RangeSlider {
 }
 
 impl Node for RangeSlider {
+    /// Arrows move a thumb, so they never leave this control
+    /// (M44/T44.1; [`Node::owns_arrows`]).
+    fn owns_arrows(&self) -> bool {
+        true
+    }
+
     // `kind_name` and `defaults` come from `lumen_static::leaf_common!` below.
     fn layout(
         &mut self,

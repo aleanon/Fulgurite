@@ -885,3 +885,14 @@ records the case that forced it.
   fix. Item 1's `Host` legs live in
   `crates/lumen-static-shell/tests/arrow_ownership_host.rs`, because
   core's tests cannot depend on the shell.
+- **T44.1's injection (c) was green on the first gate.** A caret move
+  repaints correctly with no mark at all, because `paint` reads the
+  caret; and the host's stand-in measurer reports no clusters, so a
+  caret is drawn at the run's end wherever it is. The `Host` leg now
+  measures with clusters and walks the caret across the field's left
+  edge, where only `layout` moves the scroll — and there the prototype
+  without `consumed.push` fires at the nineteenth Left.
+- **Focus is published one event late.** `dispatch_at` writes
+  `NodeState::focused` before Tab or an arrow moves focus, so the frame
+  after a focus move draws the ring on the node focus just left. T44.6,
+  which rewrites the publish, fixes it.

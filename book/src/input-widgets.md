@@ -41,6 +41,13 @@ Owns its `value`, and its `step` is public because **a slider that can
 only be dragged with a mouse is not an accessible slider** — arrow keys
 have to move it, and how far is the application's business.
 
+A slider **owns** its arrow keys, and so does every widget that uses
+them — the text fields, the number input, the range slider, the split
+panes and pagination (`Node::owns_arrows`, M44). Without that, a slider
+beside a button would lose Left and Right to focus navigation, because
+arrows otherwise move focus within a group of sibling controls. Tab and
+Shift+Tab are how a user leaves a control that owns its arrows.
+
 It also caches `track_w` from the last layout, which looks like
 redundancy and is not: `on_event` receives the node's local point and
 nothing else — no style array, no state array — so the width a fraction

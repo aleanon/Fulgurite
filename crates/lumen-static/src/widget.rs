@@ -194,6 +194,28 @@ pub trait Node {
         true
     }
 
+    /// Whether this node **owns the arrow keys** while it has focus —
+    /// M44/T44.1 (`docs/plan-input-semantics.md` §2.1).
+    ///
+    /// `false` by default: an arrow on a focused control moves focus
+    /// within its parent's group of focusable children, which is what a
+    /// radio group, a toolbar or a menu row wants (T15.6). `true` for a
+    /// widget that *uses* arrows — a text field's caret, a slider's
+    /// value, a divider's position — and then the group rule does not run
+    /// at all, whether or not the widget consumes the key. That is the
+    /// platform convention: an arrow never leaves a text field, even from
+    /// its first character or its first line; Tab and Shift+Tab do.
+    ///
+    /// Asked of the node at the focused index, like
+    /// [`dismissal_consumes_press`](Node::dismissal_consumes_press), so it
+    /// is a **leaf's answer and never a wrapper's to forward**. The one
+    /// trap is a composite whose `node(i)` resolves to *itself* for an
+    /// inner field's index — `NumberInput` does — which must answer for
+    /// the field it wraps.
+    fn owns_arrows(&self) -> bool {
+        false
+    }
+
     /// One step of an input-method composition (T14.8).
     ///
     /// `false` from a node that does not edit text, which is what lets

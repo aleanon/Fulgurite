@@ -521,9 +521,28 @@ fn dispatch_at<S: crate::event::App>(
     // Arrows move focus **within the current group** — T15.6.
     //
     // A group is the focused node's parent: that is what a radio group,
-    // a toolbar or a menu is, and it needs no new field to express. Only
-    // when the parent has more than one focusable child, so an arrow
-    // inside a text field still edits text rather than jumping away.
+    // a toolbar or a menu is, and it needs no new field to express. It
+    // takes effect only when the parent has another focusable child.
+    //
+    // **A widget that uses arrows owns them** — M44/T44.1
+    // (`docs/plan-input-semantics.md` §2.1). Until then this ran before
+    // the widget and never asked, so a text field beside a button could
+    // not move its caret: the arrow moved focus instead (R3-F1, R10-F3).
+    // Now a focused node answering [`Node::owns_arrows`] skips the rule
+    // entirely and the key reaches Pass 1 below, which records it in
+    // `Consumed` like any other key the widget takes — the fix adds no
+    // call site that could forget to (§0 rule 2). Whether the widget then
+    // consumes the key does not matter: an arrow at a field's edge stays
+    // in the field, as on every desktop platform.
+    //
+    // **The group is walked, not collected** (R3-F9). It used to be
+    // gathered into a sixteen-slot buffer, so a member past the
+    // sixteenth was unreachable and an arrow on one was a dead key. The
+    // walk scans the parent's subtree from the focused index, in the
+    // arrow's direction, wrapping, for the next focusable child of the
+    // same parent: O(subtree), no allocation, no cap.
+    //
+    // [`Node::owns_arrows`]: crate::widget::Node::owns_arrows
     if let crate::event::Event::Key { key, down: true } = ev {
         use crate::event::Key;
         let dir = match key {
@@ -534,23 +553,14 @@ fn dispatch_at<S: crate::event::App>(
         if dir != 0 {
             if let Some(f) = *focus {
                 let i = f as usize;
-                if i < table.len() && table[i].parent != crate::desc::NO_PARENT {
+                if i < table.len()
+                    && table[i].parent != crate::desc::NO_PARENT
+                    && !state.tree().node(i).owns_arrows()
+                {
                     let p = table[i].parent as usize;
-                    let group: heapless_vec::Small = focusable_siblings(table, st, style, p)
-                        .fold(heapless_vec::Small::new(), |mut v, x| {
-                            v.push(x as u32);
-                            v
-                        });
-                    // One focusable child is not a group: the key
-                    // belongs to the widget, which is what keeps Left
-                    // and Right editing text inside a field.
-                    if group.len() > 1 {
-                        if let Some(k) = group.iter().position(|&x| x == f) {
-                            let n = group.len();
-                            let j = if dir > 0 { (k + 1) % n } else { (k + n - 1) % n };
-                            *focus = Some(group.at(j));
-                            return true;
-                        }
+                    if let Some(j) = next_in_group(table, st, style, p, i, dir > 0) {
+                        *focus = Some(j as u32);
+                        return true;
                     }
                 }
             }
@@ -862,21 +872,33 @@ fn focusable(
         && st[i].size.h > 0.0
 }
 
-/// The focusable **immediate children** of `parent`, in table order.
+/// The next member of `i`'s focus group after `i` — forwards or
+/// backwards, wrapping — or `None` when `i` is not a member or is the
+/// only one (M44/T44.1).
 ///
-/// Immediate children, not the whole subtree — that distinction is the
-/// difference between arrows navigating a radio group and arrows
-/// jumping out of a text field. A field's parent is usually the root,
-/// whose *subtree* holds every focusable in the tree; its *children*
-/// hold only the field.
-fn focusable_siblings<'a>(
-    table: &'a [crate::desc::NodeDesc],
-    st: &'a [NodeState],
-    style: &'a [Style],
+/// A member is a focusable **immediate child** of `parent`, not any
+/// focusable in its subtree — that distinction is the difference
+/// between arrows navigating a radio group and arrows jumping out of a
+/// nested control. The scan covers the parent's subtree range, which
+/// holds every child; it is linear in that range and has no cap.
+fn next_in_group(
+    table: &[crate::desc::NodeDesc],
+    st: &[NodeState],
+    style: &[Style],
     parent: usize,
-) -> impl Iterator<Item = usize> + 'a {
-    crate::style::subtree_range(table, parent)
-        .filter(move |&i| table[i].parent as usize == parent && focusable(table, st, style, i))
+    i: usize,
+    forward: bool,
+) -> Option<usize> {
+    let range = crate::style::subtree_range(table, parent);
+    let (lo, n) = (range.start, range.end.min(table.len()).saturating_sub(range.start));
+    let member = |j: usize| table[j].parent as usize == parent && focusable(table, st, style, j);
+    if n == 0 || i < lo || i >= lo + n || !member(i) {
+        return None;
+    }
+    let at = i - lo;
+    (1..n)
+        .map(|k| lo + if forward { (at + k) % n } else { (at + n - k) % n })
+        .find(|&j| member(j))
 }
 
 /// The previous focusable, wrapping — Shift+Tab, and Up/Left.
@@ -975,43 +997,5 @@ fn set_hovered(st: &mut [NodeState], node: Option<u32>) {
     }
     if let Some(i) = node {
         st[i as usize].hovered = true;
-    }
-}
-
-/// A tiny fixed-capacity vector, for the focus group walk.
-///
-/// The core is `no_std` with no allocator, and collecting a group of
-/// siblings needs somewhere to put them. Sixteen is far more than any
-/// radio group, toolbar or menu row has; a container with more
-/// focusable children than that navigates the first sixteen, which is
-/// a better failure than allocating on a keystroke.
-mod heapless_vec {
-    pub const CAP: usize = 16;
-
-    #[derive(Clone, Copy)]
-    pub struct Small {
-        buf: [u32; CAP],
-        len: usize,
-    }
-
-    impl Small {
-        pub fn new() -> Self {
-            Small { buf: [0; CAP], len: 0 }
-        }
-        pub fn push(&mut self, v: u32) {
-            if self.len < CAP {
-                self.buf[self.len] = v;
-                self.len += 1;
-            }
-        }
-        pub fn len(&self) -> usize {
-            self.len
-        }
-        pub fn at(&self, k: usize) -> u32 {
-            self.buf[k.min(CAP - 1)]
-        }
-        pub fn iter(&self) -> impl Iterator<Item = &u32> + '_ {
-            self.buf[..self.len].iter()
-        }
     }
 }

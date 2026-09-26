@@ -481,6 +481,19 @@ usually the root and the root's subtree holds every focusable in the
 tree. With one focusable sibling there is no group, and the key belongs
 to the widget — which is what keeps Left and Right editing text.
 
+**That was not enough, and M44/T44.1 replaced it (2026-09-26).** "One
+focusable sibling means no group" kept arrows in a lone field and in no
+other: a field *beside a button* is in a group of two, and the rule took
+every arrow before the field saw it — R3-F1 and R10-F3 in
+`docs/results-deep-review.md`. The claim above that arrows keep editing
+text was true only of the fixture it was tested on. A widget that uses
+arrows now says so (`Node::owns_arrows`: `TextInput`, `TextArea`,
+`NumberInput`, `Slider`, `RangeSlider`, `SplitPane`, `PaneGrid`,
+`Pagination`), and the group rule does not run for it at all; Tab and
+Shift+Tab leave it. The group is walked rather than collected into
+sixteen slots, so it has no size cap (R3-F9).
+`docs/plan-input-semantics.md` §2.1 has the decision.
+
 **The ring is a rounded rect drawn *behind* the control, not an outline
 on top**, and the live gate is what said so. The first version drew four
 `Cmd::Line`s around the box; `ui_check.py`'s corner test dropped to five

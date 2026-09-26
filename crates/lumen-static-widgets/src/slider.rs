@@ -144,6 +144,12 @@ impl Widget for Slider {
 const H: f32 = 24.0;
 
 impl Node for Slider {
+    /// Arrows move a value, so they never leave this control
+    /// (M44/T44.1; [`Node::owns_arrows`]).
+    fn owns_arrows(&self) -> bool {
+        true
+    }
+
     fn kind_name(&self) -> &'static str {
         <Self as Widget>::KIND
     }

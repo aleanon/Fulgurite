@@ -133,6 +133,12 @@ impl<A: Widget, B: Widget> Widget for SplitPane<A, B> {
 }
 
 impl<A: Widget, B: Widget> Node for SplitPane<A, B> {
+    /// Arrows move a divider, so they never leave this control
+    /// (M44/T44.1; [`Node::owns_arrows`]).
+    fn owns_arrows(&self) -> bool {
+        true
+    }
+
     fn kind_name(&self) -> &'static str {
         <Self as Widget>::KIND
     }
@@ -828,6 +834,12 @@ where
     C: Widget + Node,
     D: Widget + Node,
 {
+    /// Arrows move a divider, so they never leave this control
+    /// (M44/T44.1; [`Node::owns_arrows`]).
+    fn owns_arrows(&self) -> bool {
+        true
+    }
+
     fn kind_name(&self) -> &'static str {
         <Self as Widget>::KIND
     }
