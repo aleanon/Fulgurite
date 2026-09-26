@@ -28,20 +28,20 @@ def _confirmed(c) -> int:
 
 
 def _press_scrim(c, title_sel):
-    """A point inside the veil but outside its panel.
+    """A point inside the veil but outside its panel: the veil's top-right
+    corner, which is scrim for all three kinds -- a modal's panel is
+    centred, a sheet's sits along the bottom, a drawer's down the left.
 
-    Read from the two resolved boxes rather than computed from a
-    fraction: a fraction that happened to land on the panel would report
-    that the scrim does not dismiss, which is a true statement about the
-    wrong pixel.
+    Asserted rather than assumed. The first version aimed right of the
+    panel at the veil's *bottom* edge, which on a sheet is the panel; it
+    counted anyway only because a press on the panel used to ask to
+    dismiss too (the defect M57/A4 fixed), so the check proved nothing.
     """
     v = c.box()
     p = c.box(title_sel)
-    # Below the panel's title and to the right of the panel, whichever
-    # the kind leaves free. The veil is always at least as wide as the
-    # panel for a drawer, and always taller for a sheet.
-    x = min(v[2] - 4, p[2] + 20) if p[2] + 20 < v[2] else (v[0] + v[2]) / 2
-    y = v[3] - 6
+    x, y = v[2] - 6.0, v[1] + 6.0
+    assert not (p[0] <= x <= p[2] and p[1] <= y <= p[3]), \
+        f"setup: the scrim point ({x:.0f}, {y:.0f}) is on the panel's title"
     c.c.rpc("input.click", x=x, y=y)
 
 

@@ -314,6 +314,9 @@ fn dispatch_overlaid_inner<S: crate::event::App, O: crate::overlay::OverlaySink>
                 let mut consumes_press = false;
                 for k in (0..ov.len()).rev() {
                     let i = ov.at(k) as usize;
+                    if !state.tree().node(i).dismissed_by_outside_press() {
+                        continue;
+                    }
                     let consumes = state.tree().node(i).dismissal_consumes_press();
                     if state.tree_mut().node_mut(i).dismiss() {
                         consumes_press |= consumes;

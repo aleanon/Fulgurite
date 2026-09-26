@@ -368,6 +368,13 @@ impl<W: Widget, const KIND: u8> Node for Veil<W, KIND> {
         false
     }
 
+    /// **And it does not ask to close for it either.** Escape is the only
+    /// dismissal the pass asks of a veil; a press on its scrim is the
+    /// veil's own, through `on_event`.
+    fn dismissed_by_outside_press(&self) -> bool {
+        false
+    }
+
     fn node(&self, k: usize) -> &dyn Node {
         if k == 0 {
             self

@@ -1335,20 +1335,14 @@ fn stylesheet_with(c: Chrome) -> Vec<StyleRule> {
             Selector::Id("d_skeleton_b"),
             Patch::new().width(Length::Fixed(120.0)).height(Length::Fixed(18.0)),
         ),
-        // **The menu rows, by their own kind** — M57/C1. A `Repeat`'s rows
-        // live in an arena and carry no `#[widget_id]`, so a kind is the
-        // only selector that reaches them. This was `Kind("button")`, which
-        // also reached every button it did not name field by field — and
-        // its `hover_dim(0.0)` switched hover off on all of them, so no
-        // demo button showed one. A `Select`'s rows are `selectrow` now,
-        // with their own look; this only sets the demo's row height.
-        StyleRule::new(
-            Selector::Kind("selectrow"),
-            Patch::new()
-                .height(Length::Fixed(ROW_H))
-                .font_size(13.0)
-                .padding(Edges { left: 14.0, right: 10.0, top: 6.0, bottom: 6.0 }),
-        ),
+        // **No rule for the menu rows** — M57/C1. The showcase styled
+        // `Select`'s rows with `Kind("button")`, the only selector that
+        // reaches arena rows, and its `hover_dim(0.0)` switched hover off on
+        // every demo button. A row is its own kind (`selectrow`) now, whose
+        // look is the widget's and whose height is the repeater's row
+        // extent. A `Kind("selectrow")` rule was tried in its place, and the
+        // sheet lint reported it unmatched on every entry but Select's:
+        // arena rows exist only while their demo is on the stage.
     ];
     // **Every demo shrinks to what it draws** (M56). A derived struct is
     // `FILL` wide by default, so a demo's own row spanned whatever share

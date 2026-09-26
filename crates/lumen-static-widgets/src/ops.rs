@@ -376,7 +376,9 @@ impl<S: 'static, T: TextStorage, const ROW: bool> Widget for Button<S, T, ROW> {
     fn type_defaults() -> Style {
         if ROW {
             return Style {
+                // The whole row: the repeater's row extent is the height.
                 width: lumen_static::style::Length::FILL,
+                height: lumen_static::style::Length::FILL,
                 padding: lumen_static::style::Edges { left: 14.0, right: 10.0, top: 6.0, bottom: 6.0 },
                 pressed_dim: 0.18,
                 hover_dim: 0.08,

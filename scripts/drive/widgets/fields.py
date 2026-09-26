@@ -155,7 +155,12 @@ SEARCH = ("SearchField", "#search-field", [
     Action(
         name="typing reaches the query",
         needs="a focused search field",
-        do=lambda c: (c.click(), c.__dict__.__setitem__("_v0", _text(c)),
+        # End first: since M57/A3 a click puts the caret where it lands,
+        # which is the middle of the query. The caret was always at the end
+        # before only because the agent's audit had emptied the field's
+        # clusters, and this action's expectation had leaned on that.
+        do=lambda c: (c.click(), c.c.rpc("input.key", key="End"),
+                      c.__dict__.__setitem__("_v0", _text(c)),
                       c.c.type("X"))[0],
         expect=lambda c: (
             _text(c) == c._v0 + "X",

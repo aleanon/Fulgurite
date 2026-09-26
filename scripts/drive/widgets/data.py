@@ -134,8 +134,12 @@ TREE = ("Tree", "#d_tree_a", [
             "a hovered tree were byte-identical."
             .format(len(_changed_since(c))),
         ),
-        isolate=lambda c: (c.__dict__.__setitem__("_m", c.mark()),
-                           c.c.rpc("input.hover", x=4.0, y=4.0))[0],
+        # Off the tree first, and *then* marked: since M57/B50 the pointer
+        # leaving clears the highlight, which is a change and a correct
+        # one. What must change nothing is a hover that was never on it.
+        isolate=lambda c: (c.c.rpc("input.hover", x=4.0, y=4.0),
+                           c.__dict__.__setitem__("_m", c.mark()),
+                           c.c.rpc("input.hover", x=6.0, y=6.0))[0],
         injection="stop synthesizing Event::Hover in dispatch_at",
     ),
 ])

@@ -116,6 +116,8 @@ DATE = ("DatePicker", "#d_datepicker_a", _shared(
         ),
         isolate=lambda c: (c.__dict__.__setitem__("_v0", c.value()),
                            c.click_outside())[0],
+        # The pad closes on the pick, and its body is audited at 0x0.
+        expects_lint=("W1001",),
         injection="commit the day in the chosen month rather than the shown one",
     ),
 ])

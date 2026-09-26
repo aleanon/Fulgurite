@@ -210,6 +210,19 @@ pub trait Node {
         true
     }
 
+    /// Whether a press **outside** this overlay dismisses it — M57/A13.
+    ///
+    /// `dismiss` answers two requests: Escape, and a press outside every
+    /// open overlay. A menu wants both. A veil claims its whole box through
+    /// `hit` — a press inside it is on the scrim or the panel — so a press
+    /// outside that box never reached it, and must not ask it to close:
+    /// the widget drive caught a showcase modal requesting dismissal for a
+    /// click on the stage beside it. `false` makes Escape the only way
+    /// the pass dismisses this node.
+    fn dismissed_by_outside_press(&self) -> bool {
+        true
+    }
+
     /// One step of an input-method composition (T14.8).
     ///
     /// `false` from a node that does not edit text, which is what lets
