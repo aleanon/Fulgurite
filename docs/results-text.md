@@ -58,3 +58,26 @@ right edge painted on a second line under the clip. It paints in its
 run's width now (`a_part_scrolled_field_paints_its_run_on_one_line`).
 `just gpu-parity` after the change: worst channel delta 1, 0 px over 8
 (its baseline, `docs/results-gpu.md`).
+
+## T45.2 — one key for every text memo (R2-F6, R2-F10)
+
+`MeasureKey::new(cx, limits, style)` is the constructor every text memo
+uses: limits, size, weight and scale as bit patterns, and the measurer's
+`TextMeasure::generation`. `TextInput` and `TextArea` build their shaped
+keys from it plus the text length; `TextInput`'s has no width.
+
+| gate | before | after | bound |
+|---|---|---|---|
+| `measure_scale_widgets`, `TextInput` (width, caret) | 129 served, 130 fresh | 130 / 130 | equal |
+| `measure_scale_widgets`, `TextArea` caret | 129 served, 130 fresh | 130 / 130 | equal |
+| `measure_key`, five NaN layouts | 5 calls | **1** | 1 |
+| `measurer_generation`, `set_stack` between layouts | — | 1 call, then 2 | more than 1 |
+| an unchanged scale, three layouts | 1 call | 1 call | 1 |
+
+Injections: the scale dropped from the key fires both widget legs and
+`measure_scale.rs`; the limits stored by value (`Constraints`, `f32`
+equality) fires the NaN gate at 5 calls; the generation dropped fires
+`measurer_generation` at 1 call after the bump.
+
+RAM: `Ui` on the target 1,168 → 1,176 B, the generation's cost
+(`docs/results-embedded.md`).

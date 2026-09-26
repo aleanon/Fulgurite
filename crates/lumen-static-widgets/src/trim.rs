@@ -183,7 +183,7 @@ impl<S: TextStorage> Node for Badge<S> {
     ) -> Size {
         let me = style[i];
         let text = self.text.as_ref();
-        let key = lumen_static::text::MeasureKey::of(limits, &me, cx.scale());
+        let key = lumen_static::text::MeasureKey::new(cx, limits, &me);
         let m = self.measured.get_or(key, text, || {
             cx.text.measure_weighted(text, me.font_size, me.font_weight, limits.max_w)
         });
@@ -295,7 +295,7 @@ impl<S: TextStorage> Node for Chip<S> {
     ) -> Size {
         let me = style[i];
         let text = self.text.as_ref();
-        let key = lumen_static::text::MeasureKey::of(limits, &me, cx.scale());
+        let key = lumen_static::text::MeasureKey::new(cx, limits, &me);
         let m = self.measured.get_or(key, text, || {
             cx.text.measure_weighted(text, me.font_size, me.font_weight, limits.max_w)
         });

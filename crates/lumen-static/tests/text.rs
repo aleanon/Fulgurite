@@ -43,24 +43,24 @@ fn the_measure_cache_is_the_point() {
     let sty = vec![lumen_static::Style::default()];
 
     // First measurement is cold — the text has never been measured.
-    assert!(!l.measure_is_warm(VIEW, &sty[0], 1.0));
+    assert!(!l.measure_is_warm(VIEW, &sty[0], 1.0, 0));
     pass::layout(&mut l, &sty, &mut st, VIEW);
-    assert!(l.measure_is_warm(VIEW, &sty[0], 1.0), "measuring warms the memo");
+    assert!(l.measure_is_warm(VIEW, &sty[0], 1.0, 0), "measuring warms the memo");
 
     // Re-laying out unchanged text under the same limits is a cache hit.
     pass::layout(&mut l, &sty, &mut st, VIEW);
-    assert!(l.measure_is_warm(VIEW, &sty[0], 1.0));
+    assert!(l.measure_is_warm(VIEW, &sty[0], 1.0, 0));
 
     // Mutating through the widget invalidates it — which is exactly what
     // a getter into sibling state could not do.
     l.set("goodbye".into());
-    assert!(!l.measure_is_warm(VIEW, &sty[0], 1.0), "a write marks the node dirty");
+    assert!(!l.measure_is_warm(VIEW, &sty[0], 1.0, 0), "a write marks the node dirty");
 
     // Different limits are a miss too: the same text measures
     // differently in a different box once shaping wraps it (M5).
     pass::layout(&mut l, &sty, &mut st, VIEW);
     let narrow = Constraints { max_w: 40.0, ..VIEW };
-    assert!(!l.measure_is_warm(narrow, &sty[0], 1.0));
+    assert!(!l.measure_is_warm(narrow, &sty[0], 1.0, 0));
 }
 
 /// A label's text is **code** (M49/T49.5, R5-F1): a hot swap keeps what

@@ -131,7 +131,6 @@ fn an_unchanged_style_still_hits_the_memo() {
 /// patterns, not values" covered only the other fields. Nothing in the
 /// tree produces a NaN limit today: this is a memo miss, not a stale box.
 #[test]
-#[ignore = "red until T45.2: R2-F10, a NaN limit never hits the memo"]
 fn five_layouts_under_a_nan_limit_measure_once() {
     let mut m = Weighted::default();
     let mut l: Label<String> = Label::new("hello".into());

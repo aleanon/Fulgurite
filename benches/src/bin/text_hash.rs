@@ -240,7 +240,7 @@ fn main() {
     let long = "The quick brown fox jumps over the lazy dog and keeps runnin";
     assert_eq!((short.len(), long.len()), (9, 60));
 
-    let key = MeasureKey::of(Constraints::tight(100.0, 20.0), &Style::default(), 1.0);
+    let key = MeasureKey::of(Constraints::tight(100.0, 20.0), &Style::default(), 1.0, 0);
 
     println!("\n-- cost, ns per call: min / median / max of 8 runs (each the median of 21 blocks) --");
     println!("   K1 (plan §5): a FoldedText hit may cost at most +0.5 ns against the pre-T46.1 build");

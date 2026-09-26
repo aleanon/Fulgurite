@@ -105,35 +105,66 @@ impl<T> core::ops::Deref for Dirty<T> {
 /// `docs/results-frame-cost.md` records under another cause, text drifting
 /// out of the box laid out for it.
 ///
-/// `crates/lumen-static/tests/measure_scale.rs` is the gate.
-#[derive(Debug, Clone, Copy, PartialEq)]
+/// `crates/lumen-static/tests/measure_scale.rs` is the gate for `Label`;
+/// `crates/lumen-static-widgets/tests/measure_scale_widgets.rs` for
+/// `TextInput` and `TextArea`, whose shaped memos are built on this key
+/// since M45/T45.2.
+///
+/// # Bit patterns throughout — M45/T45.2, R2-F10
+///
+/// The limits were stored as `Constraints` and compared with `f32`'s
+/// `PartialEq`, under which a NaN is unequal to itself: five layouts
+/// under a NaN limit measured five times (`docs/results-text.md` T45.0).
+/// Every field is a bit pattern now, so "is this the same input" has one
+/// answer for every value.
+///
+/// # Which measurer answered — M45/T45.2
+///
+/// [`TextMeasure::generation`](crate::cx::TextMeasure::generation) is in
+/// the key, so a box measured by one stack is not served to a frame
+/// measured by another: a paste pumped with the `BlockMetrics` stand-in
+/// once handed the real frame its box (R2-F1, fixed at the call site by
+/// M41/T41.5; this is the key's half), and a font stack that loads a
+/// fallback face changes what it measures without being replaced.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MeasureKey {
-    limits: Constraints,
+    limits: [u32; 4],
     px: u32,
     weight: u32,
     scale: u32,
+    generation: u32,
 }
 
 impl MeasureKey {
-    /// The key for text measured under `limits` and `style` on a display
-    /// with this scale factor — [`LayoutCx::scale`](crate::LayoutCx::scale)
-    /// answers it.
+    /// The key for text measured under `limits` and `style` by the
+    /// measurer `cx` holds, at the scale `cx` holds — **the one
+    /// constructor** every text memo builds its key from (M45/T45.2).
     ///
     /// **Required, not defaulted.** The same reasoning that made this
     /// constructor take the whole [`Style`] rather than a size: a
     /// parameter a caller may omit is a field that will be omitted, and
     /// the omission is invisible until a display changes underneath a
-    /// running window.
+    /// running window. Taking the context rather than its scale is the
+    /// same move one step further: the next field a measurement depends
+    /// on goes here, once, and not into every widget's tuple.
     ///
-    /// Bit patterns, not values: a font size is a float, and the question
-    /// is "is this the same input", which `to_bits` answers without `NaN`
-    /// ever comparing unequal to itself.
-    pub fn of(limits: Constraints, style: &Style, scale: f32) -> MeasureKey {
+    /// Bit patterns, not values: see the type's docs.
+    pub fn new(cx: &crate::LayoutCx, limits: Constraints, style: &Style) -> MeasureKey {
+        MeasureKey::of(limits, style, cx.scale(), cx.text.generation())
+    }
+
+    /// [`MeasureKey::new`] with the scale and the measurer's generation
+    /// given explicitly — for a caller holding no [`LayoutCx`]: a test
+    /// asking whether a memo is warm, a bench building a key.
+    ///
+    /// [`LayoutCx`]: crate::LayoutCx
+    pub fn of(limits: Constraints, style: &Style, scale: f32, generation: u32) -> MeasureKey {
         MeasureKey {
-            limits,
+            limits: [limits.min_w.to_bits(), limits.max_w.to_bits(), limits.min_h.to_bits(), limits.max_h.to_bits()],
             px: style.font_size.to_bits(),
             weight: style.font_weight.to_bits(),
             scale: scale.to_bits(),
+            generation,
         }
     }
 }

@@ -85,9 +85,19 @@ pub struct TextInput<S: TextBuffer = lumen_static::text::DefaultTextStorage> {
     /// caret geometry pay for an array).
     clusters: S::Clusters,
     /// What `clusters` was shaped from, so an unchanged frame reshapes
-    /// nothing. Text length and the style inputs; the text's *content*
-    /// is covered because every edit goes through a method here.
-    shaped_key: Option<(u64, u32, u32, u32)>,
+    /// nothing: the text's length beside the [`MeasureKey`] every text
+    /// memo builds (M45/T45.2) — the size, weight, display scale and
+    /// measurer — and the text's *content* is covered because every edit
+    /// goes through a method here.
+    ///
+    /// **No width.** A single line shapes the same run at any width, so
+    /// the limit only made the agent's 1e6 px probe miss; the key's
+    /// limits are [`SINGLE_LINE`]. And a scale change reshapes, which the
+    /// hand-written tuple this replaced could not (R2-F6,
+    /// `crates/lumen-static-widgets/tests/measure_scale_widgets.rs`).
+    ///
+    /// [`MeasureKey`]: lumen_static::text::MeasureKey
+    shaped_key: Option<(lumen_static::text::MeasureKey, u32)>,
     /// What that shaping *returned*: the run's width and the line
     /// height, cached with the key that produced them (M26/T26.7).
     ///
@@ -393,6 +403,11 @@ impl<S: TextBuffer> TextInput<S> {
     }
 }
 
+/// The limits a single-line field's shaped key is built with: none. Its
+/// run is shaped unbounded (B7), so no width it is offered changes it.
+const SINGLE_LINE: Constraints =
+    Constraints { min_w: 0.0, max_w: f32::INFINITY, min_h: 0.0, max_h: f32::INFINITY };
+
 /// The selection highlight when a field sets none: the foreground colour
 /// at low alpha.
 ///
@@ -471,12 +486,7 @@ impl<S: TextBuffer> Node for TextInput<S> {
             return lumen_static::ops::hide_subtree(st, i, limits, 1);
         }
         let px = me.font_size;
-        let key = (
-            self.text.as_ref().len() as u64,
-            px.to_bits(),
-            me.font_weight.to_bits(),
-            limits.max_w.to_bits(),
-        );
+        let key = (lumen_static::text::MeasureKey::new(cx, SINGLE_LINE, &me), self.text.as_ref().len() as u32);
         // A single line: shaped against no width limit, because wrapping
         // is what a field does not do (B7) and clamping the shape to the
         // box would move the clusters every time the field scrolled.
@@ -528,9 +538,10 @@ impl<S: TextBuffer> Node for TextInput<S> {
     /// (`crates/lumen-static-agent/tests/audit_is_inert.rs`).
     ///
     /// The run is shaped against no width limit, so its width does not
-    /// depend on the probe's box: the memo answers when it is warm for
-    /// this text, size and weight, and a cold one is measured into a
-    /// local and not kept.
+    /// depend on the probe's box: the memo answers when it is warm — its
+    /// key has no width since M45/T45.2, so the probe asks it the same
+    /// question `layout` does — and a cold one is measured into a local
+    /// and not kept.
     #[cfg(feature = "observe")]
     fn probe(
         &mut self,
@@ -545,10 +556,8 @@ impl<S: TextBuffer> Node for TextInput<S> {
             return lumen_static::ops::hide_subtree(st, i, limits, 1);
         }
         let px = me.font_size;
-        let warm = self.shaped_key.is_some_and(|(len, size, weight, _)| {
-            (len, size, weight)
-                == (self.text.as_ref().len() as u64, px.to_bits(), me.font_weight.to_bits())
-        });
+        let key = (lumen_static::text::MeasureKey::new(cx, SINGLE_LINE, &me), self.text.as_ref().len() as u32);
+        let warm = self.shaped_key == Some(key);
         let content = if warm {
             Size { w: self.shaped_size.0, h: self.shaped_size.1 }
         } else {

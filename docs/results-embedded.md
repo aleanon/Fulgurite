@@ -441,6 +441,17 @@ regression survived four green commits. `just static` is pure bash by
 design and compiles nothing; the cross build is where this class of
 gate lives, and it has to be run deliberately.
 
+### `Ui` re-budgeted 1,168 → 1,176 B on the target — M45/T45.2
+
+`MeasureKey` gained the measurer's generation (`TextMeasure::generation`),
+so a box measured by one font stack is not served to a frame measured by
+another — the key half of R2-F1 (`docs/plan-text-correctness.md` §2.3).
+**Attributed**: with the field removed and everything else in T45.2 kept
+(the limits as bit patterns, `TextInput`'s key built on `MeasureKey` with
+a `u32` length), the number is exactly 1,168. A `u64` length, which the
+old tuple had, made it 1,192; the length is a `u32` because no field
+holds 4 GB. `.text` after it: 27,964 B, inside the headline's 1%.
+
 ## M45/T45.12 — the baked face wraps at the space, measured 2026-09-26
 
 `BakedFace::shape` moved a word that would overflow whole to the next

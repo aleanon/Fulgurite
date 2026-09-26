@@ -118,6 +118,30 @@ pub trait TextMeasure {
     fn line_height(&mut self, size: f32) -> f32 {
         size * 1.2
     }
+
+    /// Which measurer is answering, and in which state — M45/T45.2.
+    ///
+    /// Part of every [`MeasureKey`](crate::text::MeasureKey): two answers
+    /// with different generations are two different measurers' answers
+    /// and must not be served for each other. A measurer that changes
+    /// what it measures — a font stack that loaded a face — returns a new
+    /// value; one that never changes, and every stand-in, answers the
+    /// default 0.
+    ///
+    /// **Why the measurer reports it and the host does not**: a host is
+    /// handed a `&mut dyn TextMeasure` every frame and cannot tell a new
+    /// measurer from the old one except by address, and a lazily loaded
+    /// fallback face changes measurement with no change of measurer at
+    /// all (`docs/plan-text-correctness.md` §2.3).
+    ///
+    /// **A wrapper must forward this.** The provided 0 is right for a
+    /// leaf and wrong for a wrapper, which would report every wrapped
+    /// stack as the stand-in — the provided-method hazard `AGENT.md`
+    /// records for `Painter`. None of the measurers in this workspace
+    /// wraps another today.
+    fn generation(&self) -> u32 {
+        0
+    }
 }
 
 /// The stand-in used until a shaping stack is composed in: a fixed
@@ -225,8 +249,8 @@ impl<'a> LayoutCx<'a> {
         self
     }
 
-    /// The display scale in force — pass it to
-    /// [`MeasureKey::of`](crate::text::MeasureKey::of).
+    /// The display scale in force — [`MeasureKey::new`](crate::text::MeasureKey::new)
+    /// reads it.
     pub fn scale(&self) -> f32 {
         self.scale
     }

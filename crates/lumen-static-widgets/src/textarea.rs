@@ -67,7 +67,13 @@ pub struct TextArea<S: TextBuffer = lumen_static::text::DefaultTextStorage> {
     /// one dimension over from `TextInput`'s horizontal one).
     scroll: f32,
     clusters: S::Clusters,
-    shaped_key: Option<(u64, u32, u32, u32)>,
+    /// What `clusters` was shaped from: the text's length beside the
+    /// [`MeasureKey`](lumen_static::text::MeasureKey) every text memo
+    /// builds (M45/T45.2), with the *inner* width as its limit — a text
+    /// area wraps, so unlike `TextInput`'s the width stays in. The inner
+    /// width and not the node's: padding is not in the key, and the
+    /// paragraph wraps at what is left inside it.
+    shaped_key: Option<(lumen_static::text::MeasureKey, u32)>,
     /// The height that shaping returned, cached with the key that
     /// produced it (M26/T26.7). `TextInput` keeps the width; a text
     /// area wraps, so what it needs back is the height.
@@ -461,10 +467,8 @@ impl<S: TextBuffer> Node for TextArea<S> {
         let px = me.font_size;
         let inner_w = (limits.max_w - me.padding.horizontal()).max(0.0);
         let key = (
-            self.text.as_ref().len() as u64,
-            px.to_bits(),
-            me.font_weight.to_bits(),
-            inner_w.to_bits(),
+            lumen_static::text::MeasureKey::new(cx, Constraints { min_w: 0.0, max_w: inner_w, min_h: 0.0, max_h: 0.0 }, &me),
+            self.text.as_ref().len() as u32,
         );
         // Shaped against the *box*, unlike `TextInput` — wrapping is the
         // whole difference.
@@ -524,10 +528,8 @@ impl<S: TextBuffer> Node for TextArea<S> {
         let px = me.font_size;
         let inner_w = (limits.max_w - me.padding.horizontal()).max(0.0);
         let key = (
-            self.text.as_ref().len() as u64,
-            px.to_bits(),
-            me.font_weight.to_bits(),
-            inner_w.to_bits(),
+            lumen_static::text::MeasureKey::new(cx, Constraints { min_w: 0.0, max_w: inner_w, min_h: 0.0, max_h: 0.0 }, &me),
+            self.text.as_ref().len() as u32,
         );
         let h = if self.shaped_key == Some(key) {
             self.shaped_h.max(self.line_h)

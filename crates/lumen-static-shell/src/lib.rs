@@ -1826,9 +1826,10 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
     /// and a click after a paste landing on the wrong byte
     /// (`tests/paste_measurer.rs`; R2-F1, R10-F4). With the caller's
     /// measurer here, "no second edit path" is true again: a paste is
-    /// typing, laid out by what typing is laid out by. Keying the memo
-    /// on the measurer as well is M45's (`docs/plan-boundaries-repair.md`
-    /// §4).
+    /// typing, laid out by what typing is laid out by. And since
+    /// M45/T45.2 the memo keys on the measurer as well
+    /// (`TextMeasure::generation`), so a stand-in's box is not served to a
+    /// real frame even from a caller that pumps with the wrong one.
     pub fn paste_with(&mut self, text: &str, metrics: &mut dyn TextMeasure) -> usize {
         let mut n = 0;
         for ch in text.chars().filter(|c| !c.is_control() || *c == '\n') {

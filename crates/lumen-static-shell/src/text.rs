@@ -506,19 +506,40 @@ pub struct FontMetrics {
     /// glyph, which is exactly how "POSITIVE" once became "POSITIV"
     /// (`docs/results-frame-cost.md`).
     scale: f32,
+    /// This measurer's [`TextMeasure::generation`] — M45/T45.2. Fresh
+    /// from a process-wide counter on construction and on every
+    /// [`FontMetrics::set_stack`], never 0 (the stand-ins' value), so a
+    /// memo keyed on it cannot serve one stack's box to another.
+    generation: u32,
+}
+
+/// The next [`FontMetrics`] generation. Starts at 1: 0 is every
+/// stand-in's.
+static NEXT_GENERATION: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(1);
+
+fn next_generation() -> u32 {
+    NEXT_GENERATION.fetch_add(1, core::sync::atomic::Ordering::Relaxed).max(1)
 }
 
 impl FontMetrics {
     /// A measurer for a 1:1 display.
     pub fn new(stack: FontStack) -> Self {
-        FontMetrics { stack, scale: 1.0 }
+        FontMetrics { stack, scale: 1.0, generation: next_generation() }
     }
 
     /// A measurer that reports logical sizes for a display with this
     /// scale factor.
     pub fn with_scale(stack: FontStack, scale: f32) -> Self {
         let scale = if scale.is_finite() && scale > 0.0 { scale } else { 1.0 };
-        FontMetrics { stack, scale }
+        FontMetrics { stack, scale, generation: next_generation() }
+    }
+
+    /// Measure with a different font stack from now on. A new
+    /// [`TextMeasure::generation`], so every text memo measured with the
+    /// old one re-measures (M45/T45.2).
+    pub fn set_stack(&mut self, stack: FontStack) {
+        self.stack = stack;
+        self.generation = next_generation();
     }
 
     /// Update the scale factor in place — a window can move between
@@ -564,6 +585,10 @@ impl TextMeasure for FontMetrics {
         let mut scaled = LogicalClusters { inner: sink, scale: k };
         let s = self.stack.shape_into(text, size * k, weight, max_w * k, &mut scaled);
         Size { w: s.w / k, h: s.h / k }
+    }
+
+    fn generation(&self) -> u32 {
+        self.generation
     }
 
     fn line_height(&mut self, size: f32) -> f32 {

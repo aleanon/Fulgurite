@@ -80,7 +80,6 @@ fn drag<N: Node>(name: &str, mut fresh: impl FnMut() -> N) -> bool {
 }
 
 #[test]
-#[ignore = "red until T45.2: R2-F6, the editable widgets' memo has no scale"]
 fn a_scale_change_reshapes_the_editable_widgets() {
     let input = drag("TextInput", || TextInput::<String>::new("POSITIVE"));
     let area = drag("TextArea", || TextArea::<String>::new("POSITIVE"));

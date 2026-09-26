@@ -1055,6 +1055,15 @@ and at that point the 10.7× is worth 8 bytes a node.
 
 ## T26.17 — Phase D, finding 12: a confirmed defect, not an optimization
 
+> **M45/T45.2 (2026-09-26):** the gate now covers the editable widgets.
+> `TextInput` and `TextArea` keyed their shaped memos on a hand-written
+> tuple without the scale, so this defect survived in them (R2-F6): 129
+> served against 130 fresh after a drag
+> (`crates/lumen-static-widgets/tests/measure_scale_widgets.rs`). Both
+> build their key from `MeasureKey::new` now, which takes the
+> `LayoutCx` and so the scale and the measurer's generation with it;
+> `MeasureKey::of` takes the generation as a required argument too.
+
 The one finding in the plausible set that was never about speed. It is
 **reachable, it was reachable all along, and the ordering is the
 ordinary one** — which is the opposite of the plan's own prediction that

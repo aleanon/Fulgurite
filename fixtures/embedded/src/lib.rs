@@ -309,8 +309,13 @@ pub mod sizes {
     // the four memo-holding widgets in this eleven-node tree, attributed
     // by removing the field and watching the number return to 1,152.
     // `docs/results-embedded.md` carries the argument for paying it.
+    //
+    // **Re-budgeted 1,168 -> 1,176 on 2026-09-26** (M45/T45.2): the key
+    // gained the measurer's generation, so one stack's box is not served
+    // to another's frame. Attributed the same way: without the field, 1,168.
+    // `docs/results-embedded.md` has the argument.
     #[cfg(target_pointer_width = "32")]
-    const _: () = assert!(UI == 1168, "Ui is no longer 1168 B on the target; re-budget docs/results-frame-and-types.md");
+    const _: () = assert!(UI == 1176, "Ui is no longer 1176 B on the target; re-budget docs/results-frame-and-types.md");
 
     // **The stack budget, enforced rather than recorded.**
     //
