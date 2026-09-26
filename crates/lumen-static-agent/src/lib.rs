@@ -558,10 +558,39 @@ impl Agent {
                 // `handled` is the down's answer. `down: true` or `false`
                 // sends that half alone, for a test of the halves.
                 let half = params.get("down").and_then(Value::as_bool);
+                // **`mods`: held for this press, released after** —
+                // M57/B8. A shortcut (Ctrl+B) could not be driven at all:
+                // modifiers are state the pass tracks from
+                // `Event::Modifiers`, and nothing here sent one.
+                let mut mods = lumen_static::event::Mods::NONE;
+                if let Some(list) = params.get("mods").and_then(Value::as_array) {
+                    for m in list {
+                        mods = mods.with(match m.as_str().unwrap_or("") {
+                            "ctrl" => lumen_static::event::Mods::CTRL,
+                            "shift" => lumen_static::event::Mods::SHIFT,
+                            "alt" => lumen_static::event::Mods::ALT,
+                            "meta" => lumen_static::event::Mods::META,
+                            other => {
+                                return Err((
+                                    INVALID_PARAMS,
+                                    format!("unknown modifier `{other}`"),
+                                    json!({ "known": ["ctrl", "shift", "alt", "meta"] }),
+                                ))
+                            }
+                        });
+                    }
+                }
+                if !mods.is_empty() {
+                    host.enqueue(Event::Modifiers(mods));
+                }
                 host.enqueue(Event::Key { key, down: half.unwrap_or(true) });
                 let (mut f, h) = host.pump();
                 if half.is_none() {
                     host.enqueue(Event::Key { key, down: false });
+                    f = host.pump().0;
+                }
+                if !mods.is_empty() {
+                    host.enqueue(Event::Modifiers(lumen_static::event::Mods::NONE));
                     f = host.pump().0;
                 }
                 Ok(json!({ "frame": f, "handled": h }))
@@ -1536,7 +1565,9 @@ pub trait AgentHost {
     }
 }
 
-const KEY_NAMES: [&str; 12] = [
+/// Named keys; any single character is also a key, `Key::Char` —
+/// M57/B8, so a shortcut (`a` with `mods: ["ctrl"]`) can be driven.
+const KEY_NAMES: [&str; 15] = [
     "Enter",
     "Space",
     "Escape",
@@ -1549,6 +1580,9 @@ const KEY_NAMES: [&str; 12] = [
     "Down",
     "Home",
     "End",
+    "PageUp",
+    "PageDown",
+    "a single character",
 ];
 
 fn parse_key(name: &str) -> Option<Key> {
@@ -1565,7 +1599,17 @@ fn parse_key(name: &str) -> Option<Key> {
         "Down" => Key::Down,
         "Home" => Key::Home,
         "End" => Key::End,
-        _ => return None,
+        "PageUp" => Key::PageUp,
+        "PageDown" => Key::PageDown,
+        // One character, lower-cased as a key is: `Key::Char` names the
+        // key, and Shift is a modifier.
+        _ => {
+            let mut cs = name.chars();
+            match (cs.next(), cs.next()) {
+                (Some(c), None) if !c.is_control() => Key::Char(c.to_ascii_lowercase()),
+                _ => return None,
+            }
+        }
     })
 }
 

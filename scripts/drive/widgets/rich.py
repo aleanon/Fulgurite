@@ -69,6 +69,23 @@ EDITOR = ("RichTextEditor", "#d_editor_a", [
             c.c.rpc("input.type", text="x"))[0],
         injection="stop re-parsing in RichTextEditor::layout",
     ),
+    # M57/B8: `bold()` existed and nothing called it; and the agent could
+    # not hold a modifier, so a shortcut could not be driven at all.
+    Action(
+        name="Ctrl+B bolds the selection",
+        needs="an editor with focus in its text area",
+        do=lambda c: (c.click(f"{c.sel} > #editor-input"),
+                      c.c.rpc("input.key", key="a", mods=["ctrl"]),
+                      c.c.rpc("input.key", key="b", mods=["ctrl"]))[0],
+        expect=lambda c: (
+            c.value(f"{c.sel} > #editor-input").startswith("**")
+            and c.value(f"{c.sel} > #editor-input").endswith("**")
+            and "**" not in c.value(f"{c.sel} > #editor-preview"),
+            "the source reads {!r}".format(c.value(f"{c.sel} > #editor-input")[:40]),
+        ),
+        injection="drop the Ctrl+B arm in RichTextEditor::on_event, or the "
+                  "`mods` parameter of input.key",
+    ),
 ])
 
 PAINTBOX = ("PaintBox", "#d_paintbox_a", [

@@ -49,7 +49,10 @@ fn kinds() -> Vec<Kind> {
         k(<Label as Widget>::SEEDS, &[(F::Fg, F::Page, TEXT, "text on the page")]),
         k(<Button<()> as Widget>::SEEDS, &[(F::Fg, F::Bg, TEXT, "label on its body")]),
         k(<TextInput as Widget>::SEEDS, &[(F::Fg, F::Page, TEXT, "text")]),
-        k(<TextArea as Widget>::SEEDS, &[(F::Fg, F::Page, TEXT, "text")]),
+        k(<TextArea as Widget>::SEEDS, &[
+            (F::Fg, F::Bg, TEXT, "text on its ground"),
+            (F::Border, F::Page, UI, "the field's edge (M57/B8)"),
+        ]),
         k(<RichText as Widget>::SEEDS, &[(F::Fg, F::Page, TEXT, "text")]),
         k(<Markdown as Widget>::SEEDS, &[(F::Fg, F::Page, TEXT, "text")]),
         k(<CheckBox<()> as Widget>::SEEDS, &[

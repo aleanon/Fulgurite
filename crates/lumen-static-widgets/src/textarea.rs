@@ -310,6 +310,24 @@ impl<S: TextBuffer> TextArea<S> {
         }
     }
 
+    /// To the start of the caret's line — M57/B8. Home and End were
+    /// unhandled, so End did nothing in the editor the audit drove
+    /// (`docs/widget-audit.md`, RichTextEditor). The line is the text's
+    /// own, between newlines, not the visual line a wrap made: that is
+    /// the line a user typed and the one a `\n` ends.
+    pub fn move_home(&mut self) -> bool {
+        let t = self.text.as_ref();
+        let at = t[..self.caret].rfind('\n').map_or(0, |k| k + 1);
+        core::mem::replace(&mut self.caret, at) != at
+    }
+
+    /// To the end of the caret's line, before its newline.
+    pub fn move_end(&mut self) -> bool {
+        let t = self.text.as_ref();
+        let at = t[self.caret..].find('\n').map_or(t.len(), |k| self.caret + k);
+        core::mem::replace(&mut self.caret, at) != at
+    }
+
     pub fn move_left(&mut self) -> bool {
         match self.prev_boundary(self.caret) {
             Some(p) => {
@@ -414,6 +432,14 @@ impl<S: TextBuffer> Widget for TextArea<S> {
             height: lumen_static::style::Length::Fixed(96.0),
             // An I-beam over editable text (T14.6).
             cursor: lumen_static::style::Cursor::Text,
+            // **A field looks like a field** — M57/B8: an edge and a
+            // ground, through the palette's roles below. It had neither,
+            // so the editor's text area was text on the page with nothing
+            // to say where typing would go.
+            border_width: 1,
+            radius: 8.0,
+            background: lumen_static::display::Color(0xff, 0xff, 0xff, 0xff),
+            border_color: lumen_static::display::Color(0x83, 0x8d, 0x9f, 0xff),
             ..Style::default()
         }
     }
@@ -434,7 +460,12 @@ impl<S: TextBuffer> Widget for TextArea<S> {
             lumen_static::style::Fields::FONT_WEIGHT,
             lumen_static::style::Fields::PRESSED_DIM,
             lumen_static::style::Fields::HOVER_DIM,
-        ])).with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Text))];
+        ])).with_roles(
+            lumen_static::style::SeedRoles::NONE
+                .color(lumen_static::style::Role::Text)
+                .background(lumen_static::style::Role::Raised)
+                .border(lumen_static::style::Role::Border),
+        )];
 }
 
 impl<S: TextBuffer> Node for TextArea<S> {
@@ -573,6 +604,8 @@ impl<S: TextBuffer> Node for TextArea<S> {
             Event::Key { key: Key::Right, down: true } => self.moving(cx, Self::move_right),
             Event::Key { key: Key::Up, down: true } => self.moving(cx, |s| s.move_line(-1)),
             Event::Key { key: Key::Down, down: true } => self.moving(cx, |s| s.move_line(1)),
+            Event::Key { key: Key::Home, down: true } => self.moving(cx, Self::move_home),
+            Event::Key { key: Key::End, down: true } => self.moving(cx, Self::move_end),
             Event::Key { key: Key::Char('a'), down: true }
                 if cx.mods.has(lumen_static::event::Mods::CTRL)
                     || cx.mods.has(lumen_static::event::Mods::META) =>

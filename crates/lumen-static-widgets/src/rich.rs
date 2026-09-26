@@ -831,6 +831,21 @@ impl Node for RichTextEditor {
         self.input.hit(st, i + Self::INPUT, x, y)
     }
 
+    /// **Formatting from the keyboard** — M57/B8. [`RichTextEditor::bold`]
+    /// and [`RichTextEditor::code`] existed and nothing called them: the
+    /// editor had no formatting UI at all. Ctrl+B and Ctrl+E (⌘ on a Mac)
+    /// reach here because the text area declines a shortcut it does not
+    /// know, and the pass walks up to its container.
+    fn on_event(&mut self, ev: &lumen_static::Event, cx: &lumen_static::event::EventCtx) -> bool {
+        use lumen_static::event::{Key, Mods};
+        let short = cx.mods.has(Mods::CTRL) || cx.mods.has(Mods::META);
+        match ev {
+            lumen_static::Event::Key { key: Key::Char('b'), down: true } if short => self.bold(),
+            lumen_static::Event::Key { key: Key::Char('e'), down: true } if short => self.code(),
+            _ => false,
+        }
+    }
+
     fn node(&self, k: usize) -> &dyn Node {
         match k {
             0 => self,
