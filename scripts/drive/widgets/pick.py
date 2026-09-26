@@ -90,18 +90,33 @@ COLOR = ("ColorPicker", "#d_colorpicker_a", _shared(
 
 DATE = ("DatePicker", "#d_datepicker_a", _shared(
     "DatePicker", "#d_datepicker_a", 7, 30.0, 8, "2026-09-08", head=48.0) + [
+    # M57/B17: paging changed the *chosen* date -- this action asserted
+    # exactly that ("the month moved"), which is how the defect passed.
+    # Paging moves the month on show; only a day press commits.
     Action(
-        name="the arrows page the month and keep the day",
+        name="the arrows page the month and leave the chosen date",
         needs="an open date picker",
         do=lambda c: (c.__dict__.__setitem__("_v0", c.value()),
                       _page(c, forward=True))[0],
         expect=lambda c: (
-            c.value()[5:7] != c._v0[5:7] and c.value()[8:] == c._v0[8:],
-            f"{c._v0} -> {c.value()}: the month moved and the day did not",
+            c.value() == c._v0 and _is_open(c),
+            f"{c._v0} -> {c.value()}: paging must not change the date",
+        ),
+        injection="make shift_month move the chosen year and month",
+    ),
+    Action(
+        name="a day picked after paging commits the paged month",
+        needs="an open date picker",
+        do=lambda c: (c.__dict__.__setitem__("_v0", c.value()),
+                      _page(c, forward=True),
+                      _cell(c, 10, 7, 30.0, 48.0))[0],
+        expect=lambda c: (
+            c.value()[5:7] != c._v0[5:7],
+            f"{c._v0} -> {c.value()}: the picked day is in the month on show",
         ),
         isolate=lambda c: (c.__dict__.__setitem__("_v0", c.value()),
                            c.click_outside())[0],
-        injection="fold the header into row 0, so paging picks a day too",
+        injection="commit the day in the chosen month rather than the shown one",
     ),
 ])
 

@@ -70,6 +70,11 @@ pub const MAX_FILES: usize = 64;
 const CELL_H: f32 = 26.0;
 /// The month header's height — `< Sep 2026 >`.
 const HEAD_H: f32 = 28.0;
+/// How far in from each end of the date header a press pages the month —
+/// twice the arrow's drawn width, so it is a target and not a glyph
+/// (M57/B17).
+const ARROW_HIT: f32 = 28.0;
+
 /// The weekday strip under it.
 ///
 /// **A calendar without weekday headings is a grid of numbers.** The
@@ -120,10 +125,17 @@ pub fn weekday_of(year: i32, month: u8, day: u8) -> u8 {
 pub struct Pad<const KIND: u8> {
     /// `COLOR`: which swatch.
     pub color: usize,
-    /// `DATE`: the month on show, and the chosen day.
+    /// `DATE`: the **chosen** date.
     pub year: i32,
     pub month: u8,
     pub day: u8,
+    /// `DATE`: the month **on show**, when it is not the chosen one —
+    /// M57/B17 (`docs/plan-widget-fixes.md`). Paging moved `year`/`month`,
+    /// which the trigger reads: one press on `›` changed the chosen date
+    /// from 2026-09-19 to 2026-10-19, and clamped a 31st to a 28th, without
+    /// a day being picked (`docs/widget-audit.md`, DatePicker). The view is
+    /// separate now, and only a day press commits.
+    pub view: Option<(i32, u8)>,
     /// `TIME`.
     pub hour: u8,
     pub minute: u8,
@@ -142,6 +154,10 @@ pub struct Pad<const KIND: u8> {
     /// would pick the wrong cell for every styled pad.
     size: Size,
     pad: Edges,
+    /// Widths of a one- and a two-digit label, measured at layout, so the
+    /// grid can centre numbers in their cells (M57/B17: they sat 4 px in
+    /// from the left, a ragged column under each weekday heading).
+    digit_w: (f32, f32),
 }
 
 impl<const KIND: u8> Default for Pad<KIND> {
@@ -151,6 +167,7 @@ impl<const KIND: u8> Default for Pad<KIND> {
             year: 2026,
             month: 9,
             day: 19,
+            view: None,
             hour: 9,
             minute: 0,
             files: [""; MAX_FILES],
@@ -158,6 +175,7 @@ impl<const KIND: u8> Default for Pad<KIND> {
             file: 0,
             hot: None,
             picked: false,
+            digit_w: (0.0, 0.0),
             size: Size { w: 0.0, h: 0.0 },
             pad: Edges::all(8.0),
         }
@@ -219,8 +237,9 @@ impl<const KIND: u8> Pad<KIND> {
 
     /// The day in cell `k`, or `None` for a lead-in or trailing blank.
     pub fn day_at(&self, k: usize) -> Option<u8> {
-        let lead = weekday_of(self.year, self.month, 1) as usize;
-        let dim = days_in_month(self.year, self.month) as usize;
+        let (year, month) = self.shown_month();
+        let lead = weekday_of(year, month, 1) as usize;
+        let dim = days_in_month(year, month) as usize;
         if k < lead || k >= lead + dim {
             return None;
         }
@@ -240,7 +259,7 @@ impl<const KIND: u8> Pad<KIND> {
     pub fn is_selected(&self, k: usize) -> bool {
         match KIND {
             COLOR => k == self.color,
-            DATE => self.day_at(k) == Some(self.day),
+            DATE => self.shown_month() == (self.year, self.month) && self.day_at(k) == Some(self.day),
             TIME if k < 24 => k as u8 == self.hour,
             TIME => (k - 24) as u8 * 5 == self.minute,
             _ => k == self.file,
@@ -265,12 +284,17 @@ impl<const KIND: u8> Pad<KIND> {
         self.file = self.file.min(self.file_count.saturating_sub(1));
     }
 
-    /// The month, shifted by `d` months, keeping the day in range.
+    /// The month the grid shows: the view, or the chosen month.
+    pub fn shown_month(&self) -> (i32, u8) {
+        self.view.unwrap_or((self.year, self.month))
+    }
+
+    /// Page the **shown** month by `d` — M57/B17. The chosen date does not
+    /// move; only a day press commits one.
     pub fn shift_month(&mut self, d: i32) {
-        let total = self.year * 12 + (self.month as i32 - 1) + d;
-        self.year = total.div_euclid(12);
-        self.month = (total.rem_euclid(12) + 1) as u8;
-        self.day = self.day.min(days_in_month(self.year, self.month));
+        let (y, m) = self.shown_month();
+        let total = y * 12 + (m as i32 - 1) + d;
+        self.view = Some((total.div_euclid(12), (total.rem_euclid(12) + 1) as u8));
     }
 
     /// Which cell a local point is in, or `None` outside the grid.
@@ -306,7 +330,10 @@ impl<const KIND: u8> Pad<KIND> {
             }
             DATE => match self.day_at(k) {
                 Some(d) => {
+                    // The day, *in the month on show*: this is the commit.
+                    (self.year, self.month) = self.shown_month();
                     self.day = d;
+                    self.view = None;
                     self.picked = true;
                     true
                 }
@@ -381,7 +408,7 @@ impl<const KIND: u8> Widget for Pad<KIND> {
 impl<const KIND: u8> Node for Pad<KIND> {
     fn layout(
         &mut self,
-        _cx: &mut LayoutCx,
+        cx: &mut LayoutCx,
         limits: Constraints,
         style: &[Style],
         st: &mut [NodeState],
@@ -390,6 +417,10 @@ impl<const KIND: u8> Node for Pad<KIND> {
         let me = style[i];
         if !me.visible {
             return lumen_static::ops::hide_subtree(st, i, limits, 1);
+        }
+        if KIND == DATE || KIND == TIME {
+            let mut m = |t: &str| cx.text.measure_weighted(t, me.font_size, me.font_weight, f32::INFINITY).w;
+            self.digit_w = (m("8"), m("28"));
         }
         let content = Size {
             w: self.cols() as f32 * self.cell_w() + me.padding.horizontal(),
@@ -428,7 +459,8 @@ impl<const KIND: u8> Node for Pad<KIND> {
         lumen_static::ops::border(st, i, out);
         let (x0, y0) = (r[0] + s.pad.0, r[1] + s.pad.1);
         if KIND == DATE {
-            let m = MONTHS[(self.month.clamp(1, 12) - 1) as usize];
+            let (year, month) = self.shown_month();
+            let m = MONTHS[(month.clamp(1, 12) - 1) as usize];
             out.text_weighted(
                 [x0, y0 + 4.0, x0 + 14.0, y0 + HEAD_H],
                 "<",
@@ -436,7 +468,7 @@ impl<const KIND: u8> Node for Pad<KIND> {
                 700.0,
                 s.fg,
             );
-            let title = alloc::format!("{m} {}", self.year);
+            let title = alloc::format!("{m} {year}");
             out.text_weighted(
                 [x0 + 20.0, y0 + 4.0, r[2] - s.pad.2 - 20.0, y0 + HEAD_H],
                 &title,
@@ -511,8 +543,15 @@ impl<const KIND: u8> Node for Pad<KIND> {
                 out.rounded_rect(cell, Color(s.fg.0, s.fg.1, s.fg.2, 0x22), 6.0);
             }
             let col = if selected { s.bg } else { s.fg };
+            // A number is centred in its cell; a file name or a minute
+            // label stays left-aligned, where a list reads from.
+            let tx = match (KIND, text.len()) {
+                (DATE, 1) | (TIME, 1) => cell[0] + ((cell[2] - cell[0]) - self.digit_w.0) / 2.0,
+                (DATE, 2) | (TIME, 2) => cell[0] + ((cell[2] - cell[0]) - self.digit_w.1) / 2.0,
+                _ => cell[0] + 4.0,
+            };
             out.text_weighted(
-                [cell[0] + 4.0, y + CELL_H / 2.0 - s.font_size * 0.6, cell[2] - 4.0, cell[3]],
+                [tx, y + CELL_H / 2.0 - s.font_size * 0.6, cell[2] - 4.0, cell[3]],
                 &text,
                 s.font_size,
                 s.font_weight,
@@ -536,8 +575,17 @@ impl<const KIND: u8> Node for Pad<KIND> {
             // drags off the cell must not choose it.
             Event::PointerUp { .. } => {
                 if KIND == DATE && cx.local.y - pad.top < HEAD_H {
-                    let right = cx.local.x > self.size.w / 2.0;
-                    self.shift_month(if right { 1 } else { -1 });
+                    // **Only the arrows page** — M57/B17. Any press in the
+                    // header paged, split at the middle, so the right half
+                    // of "Oct 2026" went forward and the left half back.
+                    // The arrows are drawn 14 px wide at each end; their
+                    // targets are 28 px, and the title between does nothing.
+                    let x = cx.local.x;
+                    if x < pad.left + ARROW_HIT {
+                        self.shift_month(-1);
+                    } else if x > self.size.w - pad.right - ARROW_HIT {
+                        self.shift_month(1);
+                    }
                     return true;
                 }
                 match self.cell_at(cx.local.x, cx.local.y, pad) {

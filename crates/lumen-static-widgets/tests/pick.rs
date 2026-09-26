@@ -75,22 +75,33 @@ fn a_month_grid_starts_where_the_month_does() {
     assert_eq!(p.day_at(41), None, "and the grid's last cell is blank");
 }
 
+/// **Paging moves the month on show, never the chosen date** — M57/B17.
+///
+/// This test used to assert the defect as the design: paging from 31
+/// January moved the *chosen* date to 28 February. One press on `›`
+/// changed what the trigger read, with no day picked
+/// (`docs/widget-audit.md`, DatePicker).
 #[test]
-fn paging_the_month_keeps_the_day_in_range() {
+fn paging_moves_the_view_and_not_the_chosen_date() {
     let mut p = Pad::<DATE>::default();
     p.year = 2026;
     p.month = 1;
     p.day = 31;
     p.shift_month(1);
-    assert_eq!((p.year, p.month, p.day), (2026, 2, 28), "31 January + 1 month");
+    assert_eq!((p.year, p.month, p.day), (2026, 1, 31), "paging changed the chosen date");
+    assert_eq!(p.shown_month(), (2026, 2), "the view did not move to February");
     p.shift_month(-1);
-    assert_eq!((p.year, p.month), (2026, 1), "and back");
-    // Across both year boundaries.
-    p.month = 12;
+    assert_eq!(p.shown_month(), (2026, 1), "and back");
+    // Across both year boundaries, on the view.
+    p.shift_month(11);
+    assert_eq!(p.shown_month(), (2026, 12), "January + 11 is December");
     p.shift_month(1);
-    assert_eq!((p.year, p.month), (2027, 1), "December + 1 is next January");
+    assert_eq!(p.shown_month(), (2027, 1), "December + 1 is next January");
     p.shift_month(-1);
-    assert_eq!((p.year, p.month), (2026, 12), "and January - 1 is last December");
+    assert_eq!(p.shown_month(), (2026, 12), "and January - 1 is last December");
+    // A day picked in the shown month commits both.
+    let k = (0..42).find(|&k| p.day_at(k) == Some(5)).unwrap();
+    assert!(p.is_selected(k) == false, "a day in another month is not shown as chosen");
 }
 
 // ---- the grid, which every kind shares --------------------------------
@@ -120,15 +131,22 @@ fn the_month_header_is_not_a_cell() {
         cx.local = Point { x, y };
         Node::on_event(p, &ev, &cx)
     }
-    let (y0, m0) = (p.year, p.month);
-    // In the header, on the right: the month pages and no day is picked.
+    let (y0, m0) = p.shown_month();
+    // On the header's right arrow: the month on show pages and no day is
+    // picked. (Its middle is the title, which pages nothing — M57/B17.)
     let day = p.day;
-    assert!(press(&mut p, 200.0, 8.0 + 4.0), "a press in the header did nothing");
+    let right = st[0].size.w - 12.0;
+    assert!(press(&mut p, right, 8.0 + 4.0), "a press in the header did nothing");
     assert_eq!(p.day, day, "paging the month also picked a day");
     assert!(
-        (p.year, p.month) != (y0, m0),
+        p.shown_month() != (y0, m0),
         "the header press did not page the month: still {y0}-{m0:02}"
     );
+    assert_eq!((p.year, p.month), (y0, m0), "paging changed the chosen month");
+    // The title between the arrows pages nothing.
+    let before = p.shown_month();
+    press(&mut p, st[0].size.w / 2.0, 8.0 + 4.0);
+    assert_eq!(p.shown_month(), before, "a press on the title paged the month");
 
     // **And the row below it is row 0.** The assertion above cannot see
     // a grid that forgot to skip the header — the paging arm returns
@@ -139,6 +157,8 @@ fn the_month_header_is_not_a_cell() {
     // the pad's top would answer with the 9th.
     p.year = 2026;
     p.month = 9;
+    // Back to showing the chosen month: the press above paged the view.
+    p.view = None;
     // From the widget, not from a literal: the strip of weekday
     // headings is part of the head and a test with `28.0` in it
     // would start pressing the wrong row the day one was added.
