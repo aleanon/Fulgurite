@@ -308,6 +308,8 @@ pub struct Store {
     /// shared by three radios, so "Blue" could never be selected.
     choice: usize,
     fraction: f32,
+    /// The range slider's two bounds, read back each frame (M57/C4).
+    range: (f32, f32),
 }
 
 /// After every pump: rebuild the demos whose state lives in the store,
@@ -400,6 +402,23 @@ fn refresh(s: &mut Show) -> bool {
         let v = d.a.value();
         if v != s.store.fraction {
             s.store.fraction = v;
+            changed = true;
+        }
+    }
+    // The number field and the range slider own their values the same way,
+    // and their readouts never moved until these read them back (M57/C4:
+    // `value: 0.00` through every edit, `docs/widget-audit.md`).
+    if let Demo::Number(d) = &s.ui.main.stage.row.demo {
+        let v = d.a.value() / 10.0;
+        if v != s.store.fraction {
+            s.store.fraction = v;
+            changed = true;
+        }
+    }
+    if let Demo::Range(d) = &s.ui.main.stage.row.demo {
+        let r = (d.a.low(), d.a.high());
+        if r != s.store.range {
+            s.store.range = r;
             changed = true;
         }
     }
@@ -2195,6 +2214,30 @@ mod tests {
             Damage::None => false,
         };
         assert!(covers, "the press damaged something, but not the button it was on");
+    }
+
+    /// **The number field's readout follows it** — M57/C4.
+    ///
+    /// `refresh` read the `Slider` back and nothing else, so the number
+    /// field's readout said `value: 0.00` through every edit
+    /// (`docs/widget-audit.md`, NumberInput).
+    #[test]
+    fn the_number_readout_follows_the_field() {
+        use lumen_static::event::Key;
+        let entry = CATALOG.iter().position(|e| e.name == "NumberInput").unwrap();
+        let mut h = host(entry, false);
+        let table = <<Show as lumen_static::event::App>::Tree as lumen_static::widget::Widget>::SUB_TABLE;
+        let i = lumen_static::style::index_of_wid(table, "d_number_a").expect("the number field");
+        h.input.focus = Some(i as u32);
+        h.post(Event::Key { key: Key::Up, down: true });
+        h.post(Event::Key { key: Key::Up, down: false });
+        h.pump();
+        h.pump();
+        let text = h.app.ui.main.header.heading.readout.as_str().to_string();
+        let Demo::Number(d) = &h.app.ui.main.stage.row.demo else { panic!("setup: not the NumberInput demo") };
+        println!("field {}, readout {text:?}", d.a.value());
+        assert_eq!(d.a.value(), 0.5, "setup: Up did not step the field");
+        assert_eq!(text, "value: 0.50", "the readout did not follow the field");
     }
 
     /// **A toggle's drawn state follows its click** — M57/C2.

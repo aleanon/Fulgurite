@@ -382,7 +382,7 @@ pub static CATALOG: &[Entry] = &[
     entry!("Fields", "RangeSlider", "Two handles that cannot cross.",
         false,
         |s| on(s, Demo::Range(DRangeSlider { a: RangeSlider::new(0.25, 0.75) })),
-        none),
+        |s| format!("range: {:.2}..{:.2}", s.store.range.0, s.store.range.1)),
     entry!("Fields", "SearchField", "A magnifier, then the text.",
         false,
         |s| on(s, Demo::Search(DSearchField { a: SearchField::new("search") })),
