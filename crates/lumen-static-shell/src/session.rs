@@ -715,6 +715,12 @@ impl<A: App> lumen_static_agent::AgentHost for Live<'_, A> {
         true
     }
 
+    /// The window's own route (`Session::compose`): `Host::compose`,
+    /// guarded, with the session's measurer untouched — M48/T48.13.
+    fn compose(&mut self, c: lumen_static::event::Composition<'_>) -> Option<bool> {
+        Some(run_guarded(self.host, self.recover, |h| h.compose(c)).unwrap_or(true))
+    }
+
     /// **Application code**, marked as such (M39/T39.5): anything that
     /// escapes is re-raised wrapped in a private `AppPanic` marker, so `Session::agent`
     /// hands it on instead of answering it.

@@ -150,13 +150,61 @@ class AgentClient:
         return self.rpc("ui.getAppliedStyles", selector=selector)
 
     def quit(self):
+        """Ask the window to quit.
+
+        **Only a closed connection is success** (M48/T48.13, R13-F9): the
+        window may close the socket before its reply arrives. An error
+        *reply* -- `-32601` from a window with no `app.quit` -- is raised.
+        This used to map both to `{"ok": True}`, so a quit that did
+        nothing reported success.
+        """
         try:
             return self.rpc("app.quit")
-        except (RuntimeError, SystemExit):
-            return {"ok": True}
+        except (SystemExit, ConnectionError, OSError):
+            return {"ok": True, "closed": True}
+
+
+def selftest() -> int:
+    """`quit` against two canned servers: one that answers `-32601` must
+    raise, one that closes the connection is success (M48/T48.13)."""
+    import threading
+
+    def serve(reply):
+        srv = socket.socket()
+        srv.bind(("127.0.0.1", 0))
+        srv.listen(1)
+
+        def run():
+            conn, _ = srv.accept()
+            f = conn.makefile("rw", encoding="utf-8", newline="\n")
+            f.readline()
+            if reply is not None:
+                f.write(json.dumps(reply) + "\n")
+                f.flush()
+            conn.close()
+            srv.close()
+        threading.Thread(target=run, daemon=True).start()
+        return f"127.0.0.1:{srv.getsockname()[1]}"
+
+    bad = 0
+    addr = serve({"jsonrpc": "2.0", "id": 1, "error": {"code": -32601, "message": "unknown method `app.quit`"}})
+    try:
+        r = AgentClient(addr).quit()
+        print(f"  FAIL a -32601 reply to quit returned {r} (must raise)")
+        bad += 1
+    except RuntimeError as e:
+        print(f"  ok   a -32601 reply to quit raises: {e}")
+    addr = serve(None)
+    r = AgentClient(addr).quit()
+    ok = r.get("ok") is True
+    print(f"  {'ok  ' if ok else 'FAIL'} a closed connection is success: {r}")
+    bad += not ok
+    return 1 if bad else 0
 
 
 def main(argv: list[str]) -> int:
+    if argv and argv[0] == "selftest":
+        return selftest()
     p = argparse.ArgumentParser()
     p.add_argument("--addr", default=DEFAULT_ADDR)
     sub = p.add_subparsers(dest="cmd", required=True)

@@ -511,6 +511,9 @@ struct Win {
     /// address paid for both on every frame, for answers nothing could
     /// ask for.
     journal: bool,
+    /// `app.quit` was answered: leave the loop at the next
+    /// `about_to_wait`, which has it in hand (M48/T48.13).
+    quit: bool,
     /// Frames drawn and frames journaled, for `LUMEN_FRAME_REPORT`.
     frames: (u64, u64),
     /// `LUMEN_FRAME_REPORT=N`: after N frames, print how many were
@@ -551,6 +554,7 @@ impl Win {
             #[cfg(feature = "hot")]
             hot: None,
             journal: false,
+            quit: false,
             frames: (0, 0),
             report_after: std::env::var("LUMEN_FRAME_REPORT").ok().and_then(|v| v.parse().ok()),
         }
@@ -793,6 +797,10 @@ impl ApplicationHandler<UserEvent> for Win {
     /// `docs/results-frame-cost.md` true — this changes when a still
     /// window wakes, never how often a busy one draws.
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        if self.quit {
+            event_loop.exit();
+            return;
+        }
         #[cfg(debug_assertions)]
         if let Some(at) = self.test_resume {
             if Instant::now() >= at {
@@ -895,6 +903,23 @@ impl Win {
             }));
             return;
         };
+        // **`app.quit` is the window's** — M48/T48.13 (R13-F9). The skill
+        // listed it and only counter-window had it; every turnkey window
+        // answered -32601, which `agent_client.py quit` reported as
+        // success. The reply goes first, then the loop exits at its next
+        // `about_to_wait`. Answered whatever the session's state, so a
+        // window showing a panic can still be closed by a drive.
+        if rpc.req.get("method").and_then(|m| m.as_str()) == Some("app.quit") {
+            let _ = rpc.reply.send(serde_json::json!({
+                "jsonrpc": "2.0", "id": rpc.req.get("id").cloned().unwrap_or(serde_json::Value::Null),
+                "result": { "ok": true }
+            }));
+            self.quit = true;
+            if let Some(w) = &self.window {
+                w.request_redraw();
+            }
+            return;
+        }
         // `app.reloads` is the window's, not the session's: the count
         // outlives every session it counts (M37/T37.4 waits on it).
         #[cfg(feature = "hot")]

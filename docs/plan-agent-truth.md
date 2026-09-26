@@ -897,6 +897,15 @@ rewritten.
   window prints `N frames drawn, M journaled` and exits — read by the
   event-loop test on a spinning window rather than on tasks-demo, which
   draws no frame unasked.
+- **T48.13: the `input.compose` live leg waits for M41/T41.2b.** The
+  method and a headless gate (`crates/lumen-static-shell/tests/agent_compose.rs`)
+  are built; `agent_drive.sh`'s Boundaries leg typing "abc" by preedit
+  and commit with the oracle reporting `first: None` over those frames
+  needs T41.2b's live legs, which are not on this base.
+- **T48.13: M42's launcher quits every window by default**, times the
+  exit against 2 s and requires the port to stop listening, so the
+  `tasks_drive.sh` step the plan names is the launcher's, for every
+  drive.
 
 ## Appendix: finding → task
 

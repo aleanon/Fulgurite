@@ -87,14 +87,20 @@ after any change to presenting, damage or the blit** — and note that
 read-back exists on X11 and Web only, so elsewhere it says "not
 checkable", which is not a pass.
 
-**Methods that exist** (`crates/lumen-static-agent/src/lib.rs`):
+**Methods that exist** (`crates/lumen-static-agent/src/lib.rs`, and
+`crates/lumen-static-winit/src/lib.rs`'s `answer_agent`; this list is
+checked against both by `scripts/check_agent_methods.sh`, M48/T48.14):
 `ui.getTree` `ui.getLayout` `ui.resolve` `ui.probe` `ui.probeRegion`
 `ui.explain` `ui.getAppliedStyles` `ui.lint` `ui.lastChange`
 `ui.lastDamage` `ui.waitSettled` `ui.screenshot` · `input.click` `input.pointerDown` `input.pointerUp`
-`input.hover` `input.key` `input.type` `input.fill` `input.paste`
+`input.hover` `input.key` `input.type` `input.fill` `input.paste` `input.compose`
 `input.scrollIntoView` `input.scroll` `input.invokeAction` ·
-`app.diagnostics` `app.logs`
-`app.perf` `app.quit` (the last is the window's, not the crate's).
+`app.diagnostics` `app.logs` `app.perf` `app.setPalette` `app.shadow`
+`app.failure` `app.retry` · the window's own: `app.quit` (every turnkey
+window since M48/T48.13; the reply comes first, then the process exits 0)
+and `app.reloads`. `input.compose` takes `{text, commit}` or
+`{cancel: true}` and routes through the same `Host::compose` the window's
+IME path does.
 `input.key` takes `mods` (`["ctrl"]`, held for that key only) and
 `input.click` takes `clicks` (2 or 3) — M45/T45.6.
 

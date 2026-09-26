@@ -47,10 +47,11 @@ In order, for one leg:
    **Only then** is it stopped: killed, or with `--stop quit` asked to
    quit over `app.quit` and required to **exit 0** — a panic on the way
    out is visible only in that status, which is why the log is read
-   first. §2.5: every turnkey window lacks `app.quit` until M48 (R13-F9),
-   so today only counter-window (`live_gate.sh`) quits; when M48 lands
-   the launcher should quit every window and keep the log scan as a
-   second check.
+   first. **Every window with an endpoint quits** (M48/T48.13, R13-F9:
+   until then only counter-window had `app.quit`): the default `--stop`
+   is `quit` with an agent and `kill` without; the exit is timed against
+   a 2 s bound and the port must stop listening, and the log scan above
+   stays as the second check.
 
 Exit status: the drive's when it failed, 1 for a refusal of the
 launcher's own, 77 for no display, 0 otherwise.
@@ -218,10 +219,11 @@ def main() -> int:
                          "its parameters: `Everything`, `Boundaries` or `Boundaries<256>`")
     ap.add_argument("--expect-features", default="",
                     help=f"comma-separated, among {', '.join(TRACKED)}: exactly these, no others")
-    ap.add_argument("--stop", choices=("kill", "quit", "wait"), default="kill",
+    ap.add_argument("--stop", choices=("kill", "quit", "wait"), default=None,
                     help="kill: check the app is alive and its log clean, then kill it; "
                          "quit: the same checks, then `app.quit` and its exit status must be 0; "
-                         "wait: the app is the test, and runs to its own exit within --timeout")
+                         "wait: the app is the test, and runs to its own exit within --timeout. "
+                         "Default: quit with an agent, kill without (M48/T48.13)")
     ap.add_argument("--expect-exit",
                     help="the app must exit by itself after the drive: an integer, or `nonzero`")
     ap.add_argument("--expect-panics", type=int, default=0,
@@ -229,6 +231,10 @@ def main() -> int:
                          "provokes on purpose. Exact, so one more is still a failure")
     ap.add_argument("drive", nargs=argparse.REMAINDER)
     a = ap.parse_args()
+    if a.stop is None:
+        # Every window with an endpoint quits over `app.quit` and must exit
+        # 0 within 2 s (M48/T48.13, §2.5 of plan-drive-identity.md).
+        a.stop = "kill" if a.no_agent else "quit"
     tag = f"{a.script} [{a.leg}]"
 
     # 1. a display
@@ -386,9 +392,11 @@ def main() -> int:
         if len(panics) != allowed:
             verdict.append(f"app log: {len(panics)} panic{'s' if len(panics) != 1 else ''}, "
                            f"expected {allowed}; first: {panics[0] if panics else '-'}")
+        quit_at = None
         if a.stop == "quit" and child.poll() is None:
             try:
                 rpc(port, "app.quit")
+                quit_at = time.time()
             except (OSError, RuntimeError, ValueError) as e:
                 verdict.append(f"app.quit was not answered: {e}")
         if a.stop in ("quit", "wait") or a.expect_exit:
@@ -399,6 +407,14 @@ def main() -> int:
                 verdict.append("the app was expected to exit and was still running after "
                                f"{a.timeout if a.stop == 'wait' else 10:.0f} s")
             code = child.returncode
+            if quit_at is not None and code is not None:
+                ms = (time.time() - quit_at) * 1000
+                still = answering(port)
+                say(tag, f"app.quit: exited in {ms:.0f} ms / bound 2000; port still listening: {still}")
+                if ms > 2000:
+                    verdict.append(f"app.quit: exited in {ms:.0f} ms, bound 2000")
+                if still:
+                    verdict.append(f"app.quit: port {port} still answers after the app exited")
             want = a.expect_exit or "0"
             ok = code != 0 if want == "nonzero" else code == int(want)
             if a.stop == "wait":

@@ -130,3 +130,7 @@ required-features = ["live-agent", "truetype"]
 [[test]]
 name = "agent_settled"
 required-features = ["live-agent", "truetype"]
+
+[[test]]
+name = "agent_compose"
+required-features = ["live-agent", "truetype"]

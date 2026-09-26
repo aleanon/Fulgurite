@@ -710,6 +710,36 @@ impl Agent {
                 let host_frame = host.pump().0;
                 Ok(json!({ "applied": applied, "palette": name, "frame": self.reply_frame(), "host_frame": host_frame }))
             }
+            // **An input-method step** — M48/T48.13. `{text, commit}`, or
+            // `{cancel: true}`: a preedit, a commit, or the composition
+            // abandoned, through `AgentHost::compose` — the same
+            // `Host::compose` the window routes `Ime::*` to — and then a
+            // pump, as the window's redraw does. Without it IME was
+            // covered by headless gates only, and the shadow oracle could
+            // never see a live compose frame (R1-F2's, M41/T41.1).
+            "input.compose" => {
+                let cancel = params.get("cancel").and_then(Value::as_bool).unwrap_or(false);
+                let commit = params.get("commit").and_then(Value::as_bool).unwrap_or(false);
+                let text = params.get("text").and_then(Value::as_str);
+                let step = match (cancel, text) {
+                    (true, _) => lumen_static::event::Composition::Cancel,
+                    (false, Some(t)) if commit => lumen_static::event::Composition::Commit(t),
+                    (false, Some(t)) => lumen_static::event::Composition::Preedit(t),
+                    (false, None) => {
+                        return Err((INVALID_PARAMS, "missing `text` (or `cancel: true`)".into(), Value::Null))
+                    }
+                };
+                if text.is_some_and(|t| t.chars().count() > MAX_TYPE_CHARS) {
+                    return Err((INVALID_PARAMS, format!("`text` is over {MAX_TYPE_CHARS} characters"), Value::Null));
+                }
+                let changed = host.compose(step).ok_or((
+                    INVALID_PARAMS,
+                    "this host cannot route an input-method step".into(),
+                    Value::Null,
+                ))?;
+                let host_frame = host.pump().0;
+                Ok(json!({ "frame": self.reply_frame(), "host_frame": host_frame, "changed": changed }))
+            }
             // `clicks` (1 to 3, default 1) makes it a double or triple
             // click (M45/T45.6): one press and release per click, the
             // n-th press carrying `clicks: n`, all in one pump — what the
@@ -1814,6 +1844,14 @@ pub trait AgentHost {
     /// agent comes to believe a window changed when it did not.
     fn set_palette(&mut self, _palette: lumen_static::style::Palette) -> bool {
         false
+    }
+
+    /// Route one input-method step to the focused node — M48/T48.13, the
+    /// `input.compose` method; `Some(changed)`. **`None` by default, for
+    /// a host that cannot**, which the method reports as an error rather
+    /// than as "nothing changed".
+    fn compose(&mut self, _c: lumen_static::event::Composition<'_>) -> Option<bool> {
+        None
     }
 
     /// **Whether anything is still moving** — M48/T48.2, the
