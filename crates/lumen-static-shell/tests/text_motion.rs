@@ -125,7 +125,6 @@ const WORD: Mods = if cfg!(target_os = "macos") { Mods::ALT } else { Mods::CTRL 
 const JUMP: Mods = if cfg!(target_os = "macos") { Mods::META } else { Mods::CTRL };
 
 #[test]
-#[ignore = "red until T45.6: R10-F14, no word motion, no multi-click, no Home/End in TextArea"]
 fn words_clicks_and_line_ends() {
     let mut wrong = 0;
     // "hello brave world": words at 0..5, 6..11, 12..17.
@@ -182,4 +181,76 @@ fn a_plain_left_still_moves_one_character() {
     key(&mut h, Mods::NONE, Key::Left);
     println!("plain Left from 17: caret {}", h.app.ui.w.caret());
     assert_eq!(h.app.ui.w.caret(), 16);
+}
+
+/// [`Chars`], wrapping every [`COLS`] characters whatever width it is
+/// offered: a paragraph that is one `\n`-line and two visual lines.
+struct Wrapped;
+
+const COLS: usize = 10;
+
+impl TextMeasure for Wrapped {
+    fn measure(&mut self, t: &str, size: f32, max_w: f32) -> Size {
+        self.shape(t, size, 400.0, max_w, &mut lumen_static::NoSink)
+    }
+    fn shape(&mut self, t: &str, size: f32, _w: f32, _max_w: f32, sink: &mut dyn GlyphSink) -> Size {
+        let (mut x, mut line, mut col, mut w) = (0.0f32, 0u16, 0usize, 0.0f32);
+        for (b, c) in t.char_indices() {
+            if col == COLS && c != '\n' {
+                (x, col) = (0.0, 0);
+                line += 1;
+            }
+            sink.cluster(Cluster { byte: b as u32, x, line });
+            if c == '\n' {
+                (x, col) = (0.0, 0);
+                line += 1;
+            } else {
+                x += size * 0.5;
+                col += 1;
+                w = w.max(x);
+            }
+        }
+        sink.cluster(Cluster { byte: t.len() as u32, x, line });
+        Size { w, h: size * (line as f32 + 1.0) }
+    }
+    fn line_height(&mut self, size: f32) -> f32 {
+        size
+    }
+}
+
+/// **Home and End keep to the visual line** of a wrapped paragraph — the
+/// line the caret is drawn on — and not the `\n`-line it belongs to.
+#[test]
+fn home_and_end_keep_to_a_wrapped_line() {
+    // "aaaa bbbb cccc dddd": visual line 0 is bytes 0..10, line 1 10..19.
+    let mut a = AreaApp::default();
+    a.ui.w.set_str("aaaa bbbb cccc dddd");
+    let mut h: Host<AreaApp> = Host::new(a, 600, 200);
+    let wkey = |h: &mut Host<AreaApp>, k: Key| {
+        h.post(Event::Key { key: k, down: true });
+        h.pump_with(&mut Wrapped);
+    };
+    h.pump_with(&mut Wrapped);
+    h.post(Event::Key { key: Key::Tab, down: true });
+    h.pump_with(&mut Wrapped);
+    assert_eq!(h.input.focus, Some(1), "setup: Tab did not focus the area");
+    let at = |h: &mut Host<AreaApp>, col: usize, line: usize| {
+        let s = h.states[1];
+        let (x, y) = (s.pos.x + s.pad.0 + (col as f32 + 0.5) * PX * 0.5, s.pos.y + s.pad.1 + (line as f32 + 0.5) * PX);
+        h.post(Event::PointerDown { x, y, button: PointerButton::Left, clicks: 1 });
+        h.post(Event::PointerUp { x, y, button: PointerButton::Left });
+        h.pump_with(&mut Wrapped);
+        h.app.ui.w.caret()
+    };
+    let mut wrong = 0;
+    assert_eq!(at(&mut h, 2, 1), 12, "setup: the click did not land on byte 12, visual line 1");
+    wkey(&mut h, Key::Home);
+    check("wrapped: Home from line 1", (h.app.ui.w.caret(), None), (10, None), &mut wrong);
+    wkey(&mut h, Key::End);
+    check("wrapped: End on the last line", (h.app.ui.w.caret(), None), (19, None), &mut wrong);
+    assert_eq!(at(&mut h, 3, 0), 3, "setup: the click did not land on byte 3, visual line 0");
+    wkey(&mut h, Key::End);
+    check("wrapped: End on line 0 stops before the wrap", (h.app.ui.w.caret(), None), (9, None), &mut wrong);
+    println!("wrong {wrong} (bound 0)");
+    assert_eq!(wrong, 0, "{wrong} Home or End on a wrapped line landed on the wrong line");
 }

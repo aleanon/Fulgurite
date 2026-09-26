@@ -200,8 +200,8 @@ class Ctx:
         return self.c.rpc("ui.lastChange").get("frame", 0)
 
     # -- inputs --------------------------------------------------------
-    def click(self, sel: str | None = None):
-        return self.c.click(sel or self.sel)
+    def click(self, sel: str | None = None, clicks: int = 1):
+        return self.c.click(sel or self.sel, clicks)
 
     def click_outside(self, pad: float = 6.0):
         """The same click, `pad` px past the widget's own edge.
@@ -212,9 +212,9 @@ class Ctx:
         b = self.box()
         return self.c.rpc("input.click", x=(b[0] + b[2]) / 2, y=b[1] - pad)
 
-    def key(self, name: str):
-        self.c.key(name, True)
-        return self.c.key(name, False)
+    def key(self, name: str, mods=None):
+        self.c.key(name, True, mods)
+        return self.c.key(name, False, mods)
 
     def hover(self, sel: str | None = None):
         return self.c.rpc("input.hover", selector=sel or self.sel)

@@ -23,6 +23,8 @@ The protocol is JSON-RPC 2.0. Methods divide into three groups:
 **Synthesise** — `input.click`, `input.hover`, `input.key`,
 `input.type`, `input.fill`, `input.paste`, `input.scroll`, `input.scrollIntoView`,
 `input.pointerDown`, `input.pointerUp`, `input.invokeAction`.
+`input.key` takes `mods` (`["ctrl", "shift"]`), held for that key only,
+and `input.click` takes `clicks` (2 or 3) for a double or triple click.
 
 **Observe** — `app.diagnostics`, `app.logs`, `app.perf`,
 `ui.waitSettled`.

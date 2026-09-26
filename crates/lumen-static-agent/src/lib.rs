@@ -612,10 +612,26 @@ impl Agent {
                 let applied = host.set_palette(palette);
                 Ok(json!({ "applied": applied, "palette": name, "frame": host.pump().0 }))
             }
+            // `clicks` (1 to 3, default 1) makes it a double or triple
+            // click (M45/T45.6): one press and release per click, the
+            // n-th press carrying `clicks: n`, all in one pump — what the
+            // window's click counter produces for presses in quick
+            // succession.
             "input.click" | "input.invokeAction" => {
                 let (x, y) = self.point_param(host, params)?;
-                host.enqueue(Event::down(x, y));
-                host.enqueue(Event::up(x, y));
+                let n = match params.get("clicks") {
+                    None => 1,
+                    Some(v) => match v.as_u64() {
+                        Some(n @ 1..=3) => n as u8,
+                        _ => {
+                            return Err((INVALID_PARAMS, "`clicks` must be 1, 2 or 3".into(), v.clone()))
+                        }
+                    },
+                };
+                for k in 1..=n {
+                    host.enqueue(Event::PointerDown { x, y, button: lumen_static::event::PointerButton::Left, clicks: k });
+                    host.enqueue(Event::up(x, y));
+                }
                 let (f, h) = host.pump();
                 Ok(json!({ "frame": f, "handled": h, "at": [x, y] }))
             }
@@ -662,7 +678,20 @@ impl Agent {
                     (INVALID_PARAMS, format!("unknown key `{name}`"), json!({ "known": KEY_NAMES }))
                 })?;
                 let down = params.get("down").and_then(Value::as_bool).unwrap_or(true);
+                // `mods`, a list of "shift", "ctrl", "alt" and "meta", are
+                // held for this key and released after it (M45/T45.6), so
+                // Ctrl+Left is one call rather than three.
+                let mods = match params.get("mods") {
+                    None => None,
+                    Some(v) => Some(parse_mods(v)?),
+                };
+                if let Some(m) = mods {
+                    host.enqueue(Event::Modifiers(m));
+                }
                 host.enqueue(Event::Key { key, down });
+                if mods.is_some() {
+                    host.enqueue(Event::Modifiers(lumen_static::event::Mods::NONE));
+                }
                 let (f, h) = host.pump();
                 Ok(json!({ "frame": f, "handled": h }))
             }
@@ -1778,6 +1807,23 @@ pub fn process_block(strategy: &str, features: &[&str]) -> Value {
 /// The keys `input.key` names. PageUp and PageDown since M44/T44.10: a
 /// list's active row and a scroll view both answer them, and a drive that
 /// could not press them could not check either.
+/// `input.key`'s `mods`: a list of modifier names (M45/T45.6).
+fn parse_mods(v: &Value) -> Result<lumen_static::event::Mods, (i64, String, Value)> {
+    use lumen_static::event::Mods;
+    let bad = || (INVALID_PARAMS, "`mods` is a list of \"shift\", \"ctrl\", \"alt\", \"meta\"".into(), v.clone());
+    let mut m = Mods::NONE;
+    for name in v.as_array().ok_or_else(bad)? {
+        m = m.with(match name.as_str() {
+            Some("shift") => Mods::SHIFT,
+            Some("ctrl") => Mods::CTRL,
+            Some("alt") => Mods::ALT,
+            Some("meta") => Mods::META,
+            _ => return Err(bad()),
+        });
+    }
+    Ok(m)
+}
+
 const KEY_NAMES: [&str; 14] = [
     "Enter",
     "Space",

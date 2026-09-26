@@ -95,6 +95,8 @@ checkable", which is not a pass.
 `input.scrollIntoView` `input.scroll` `input.invokeAction` ·
 `app.diagnostics` `app.logs`
 `app.perf` `app.quit` (the last is the window's, not the crate's).
+`input.key` takes `mods` (`["ctrl"]`, held for that key only) and
+`input.click` takes `clicks` (2 or 3) — M45/T45.6.
 
 **When a click does not do what you expected, ask `ui.explain` before
 reading code.** It runs the *real* hit test at the node's centre and

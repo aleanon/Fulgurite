@@ -4,13 +4,14 @@
   "Edited by hand, never generated from the inventories: a manifest read from what it checks is the tautology this replaces.",
   "A removal fails; an addition fails until this file names it, so the change is visible in the diff.",
   "`static` lists every action that is not checked for landing; `counts` pins actions, landed-checked (non-static) and isolated (T42.6).",
-  "M44/T44.10 added Select and ScrollView (owed since M42) and a keyboard action each to PickList, ColorPicker, Tree (two) and DataGrid."
+  "M44/T44.10 added Select and ScrollView (owed since M42) and a keyboard action each to PickList, ColorPicker, Tree (two) and DataGrid.",
+  "M45/T45.6 added word-Left, double click and triple click to TextInput and TextArea, and Ctrl+End and Home to TextArea."
  ],
  "counts": {
   "entries": 42,
-  "actions": 109,
-  "landed_checked": 86,
-  "isolated": 46
+  "actions": 117,
+  "landed_checked": 94,
+  "isolated": 50
  },
  "entries": {
   "PickList": [
@@ -149,12 +150,20 @@
    "a click focuses the field",
    "typing inserts at the caret",
    "backspace removes the character before the caret",
+   "a word-Left moves the caret to the word's start",
+   "a double click selects the word under it",
+   "a triple click selects the whole value",
    "fill replaces the whole value"
   ],
   "TextArea": [
    "a click focuses the area",
    "a paste keeps its line breaks, as one edit",
-   "Enter breaks a line"
+   "Enter breaks a line",
+   "Ctrl+End goes to the end of the text",
+   "Home goes to the line's start",
+   "a word-Left moves the caret to the word's start",
+   "a double click selects the word under it",
+   "a triple click selects the line"
   ],
   "Slider": [
    "a click sets the value to where it landed",

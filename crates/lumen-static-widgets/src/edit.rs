@@ -105,3 +105,122 @@ impl core::ops::Deref for Str<'_> {
         }
     }
 }
+
+// --- Words, clicks and line ends — M45/T45.6, R10-F14 -----------------
+
+/// The modifier that makes Left and Right move by word: Alt on macOS,
+/// Ctrl elsewhere, which is each platform's own convention.
+pub(crate) const WORD: lumen_static::event::Mods =
+    if cfg!(target_os = "macos") { lumen_static::event::Mods::ALT } else { lumen_static::event::Mods::CTRL };
+
+/// The modifier that makes Home and End go to the buffer's ends rather
+/// than the line's: Cmd on macOS, Ctrl elsewhere.
+pub(crate) const JUMP: lumen_static::event::Mods =
+    if cfg!(target_os = "macos") { lumen_static::event::Mods::META } else { lumen_static::event::Mods::CTRL };
+
+fn is_word_char(c: char) -> bool {
+    c.is_alphanumeric() || c == '_'
+}
+
+/// Walk `s`'s word segments in order as `(start, end, is_word)`, until
+/// `f` answers `true`.
+///
+/// **By Unicode word boundary where there is an allocator** (UAX #29,
+/// `unicode-segmentation`'s `split_word_bound_indices`), so `don't` and
+/// `3.14` are one word each; a segment is a word when it holds a letter,
+/// a digit or `_`. The leaf profile has no tables linked, as for
+/// graphemes above, and groups runs of word characters instead.
+fn segments(s: &str, mut f: impl FnMut(usize, usize, bool) -> bool) {
+    #[cfg(feature = "alloc")]
+    {
+        use unicode_segmentation::UnicodeSegmentation;
+        for (i, w) in s.split_word_bound_indices() {
+            if f(i, i + w.len(), w.chars().any(is_word_char)) {
+                return;
+            }
+        }
+    }
+    #[cfg(not(feature = "alloc"))]
+    {
+        let mut chars = s.char_indices().peekable();
+        while let Some((i, c)) = chars.next() {
+            let word = is_word_char(c);
+            let mut end = i + c.len_utf8();
+            while let Some(&(j, d)) = chars.peek() {
+                if !word || !is_word_char(d) {
+                    break;
+                }
+                end = j + d.len_utf8();
+                chars.next();
+            }
+            if f(i, end, word) {
+                return;
+            }
+        }
+    }
+}
+
+/// Word-Right from `at`: the end of the next word, skipping whatever
+/// separates it — or the buffer's end. `None` at the end already.
+pub(crate) fn next_word(s: &str, at: usize) -> Option<usize> {
+    if at >= s.len() {
+        return None;
+    }
+    let mut to = s.len();
+    segments(s, |_, b, word| {
+        let hit = word && b > at;
+        if hit {
+            to = b;
+        }
+        hit
+    });
+    Some(to)
+}
+
+/// Word-Left from `at`: the start of the word the caret is in or the one
+/// before it — or 0. `None` at the start already.
+pub(crate) fn prev_word(s: &str, at: usize) -> Option<usize> {
+    let at = at.min(s.len());
+    if at == 0 {
+        return None;
+    }
+    let mut to = 0;
+    segments(s, |a, _, word| {
+        if a >= at {
+            return true;
+        }
+        if word {
+            to = a;
+        }
+        false
+    });
+    Some(to)
+}
+
+/// The segment a double click at `at` selects: the word under it. A
+/// click just past a word's last character lands on the boundary after
+/// it, and selects that word rather than the space beside it.
+pub(crate) fn word_at(s: &str, at: usize) -> core::ops::Range<usize> {
+    let mut prev: Option<(usize, usize, bool)> = None;
+    let mut got = None;
+    segments(s, |a, b, word| {
+        if a <= at && at < b {
+            got = Some(match prev {
+                Some((pa, pb, true)) if !word && a == at && pb == at => pa..pb,
+                _ => a..b,
+            });
+            return true;
+        }
+        prev = Some((a, b, word));
+        false
+    });
+    got.or_else(|| prev.map(|(a, b, _)| a..b)).unwrap_or(0..0)
+}
+
+/// The `\n`-delimited line holding `at`, without its line break.
+pub(crate) fn line_at(s: &str, at: usize) -> core::ops::Range<usize> {
+    let at = at.min(s.len());
+    let lo = s[..at].rfind('\n').map_or(0, |i| i + 1);
+    let hi = s[at..].find('\n').map_or(s.len(), |i| at + i);
+    lo..hi
+}

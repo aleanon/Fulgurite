@@ -19,7 +19,7 @@ until T45.k"]`. The quantity it prints, beside its bound:
 | 6 | `lumen-static-shell/tests/font_fallback.rs` | R10-F12 | `你好` and `שלום` laid out as glyph 34 (`?`) at every character, pixels identical to `??`/`????` | 0 substituted |
 | 7 | `lumen-static-shell/tests/paste.rs`, `clipboard.rs` | R8-F4, R8-F5, R10-F5, R10-F6 | 6 mismatches (newlines lost, count 8 for 6 kept); a 256 KB paste **4,096 pumps** | 0; 1 pump |
 | 8 | `lumen-static-shell/tests/graphemes.rs` | R10-F7 | **0 / 40** whole graphemes, five widgets | 40 / 40 |
-| 9 | `lumen-static-shell/tests/text_motion.rs` | R10-F14 | **12** motions wrong of 12 | 0 |
+| 9 | `lumen-static-shell/tests/text_motion.rs` | R10-F14 | **12** motions wrong of 12 (0 since T45.6) | 0 |
 | 10 | `lumen-static-winit/tests/key_text.rs` | R10-F8 | **0 / 4** multi-character key texts whole (`"^a"` → `"^"`) | 4 / 4 |
 | 11 | `lumen-static-winit/tests/clipboard_shortcut.rs`, `clipboard.rs` | R10-F13 | **6 / 12** decisions wrong; `NumberInput` copy `None` | 0; its text |
 | 12 | `lumen-static-shell/tests/compose_marks.rs` | R10-F15 | `NumberInput` refused `"12"` and `"ab"` alike | accept `"12"`, refuse `"ab"` |
@@ -145,6 +145,34 @@ so all five text widgets step through them.
 
 Leaf `.text` unchanged at 27,964 B; the alloc tier's host cost is in
 `docs/results-embedded.md`.
+
+## T45.6 — words, clicks and line ends (R10-F14)
+
+`crate::edit::{next_word, prev_word, word_at, line_at}` in
+`lumen-static-widgets`, over `unicode-segmentation`'s word bounds behind
+`alloc` (runs of letters, digits and `_` without it); both editors move
+and select through them. Built on M44/T44.1's `owns_arrows`.
+
+| gate | before | after | bound |
+|---|---|---|---|
+| `text_motion.rs`, `words_clicks_and_line_ends` (12 motions) | 12 wrong | **0 wrong** | 0 |
+| — with `EventCtx.clicks` ignored | — | 4 wrong (both double and both triple clicks) | — |
+| — with the word branch dropped | — | 4 wrong (word-Left moves 17 → 16, word-Right 0 → 1) | — |
+| — with the jump branch dropped | — | 3 wrong (Ctrl+End 18 for 23, Ctrl+Home 8 for 0) | — |
+| `text_motion.rs`, `home_and_end_keep_to_a_wrapped_line` (3) | — | **0 wrong** | 0 |
+| — with the visual line replaced by the `\n`-line | — | 2 wrong (Home 0 for 10, End 19 for 9) | — |
+| `handled_narrowing.rs`, word-Left, double and triple click, End beside a button, `Boundaries<16>` | — | same frames, one range marked each | equal |
+| — with a collapsing End answering "unchanged" | — | 0 ranges marked | ≥ 1 |
+| `agent_motion.rs`: `input.key` `mods`, `input.click` `clicks` | — | caret 4, then 3; selection `0..7` | — |
+| `just widget-drive TextInput TextArea`, both strategies and the oracle | 4 + 3 actions | **7 + 8 actions green**, damage 1.00× each, the shadow oracle diverged on no frame | — |
+
+The live drive's first run was vacuous twice, and both are fixed in the
+inventory: an isolate typed `Z` over a word that was already `Z`, which
+"replaced a word" with the value unchanged; and Ctrl+End was pressed on
+the last line, where the line's end is the text's end, so a plain End
+passed. Leaf `.text` unchanged at 27,968 B (measured with and without
+the change); the 0.85% against `docs/results-embedded.md`'s headline is
+older than this task.
 
 ## T45.7 — a paste is one edit (R8-F4, R8-F5, R10-F5, R10-F6)
 

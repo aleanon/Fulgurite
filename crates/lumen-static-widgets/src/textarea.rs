@@ -32,14 +32,27 @@
 //! keystroke misses a frame; a paragraph cache is what would change that,
 //! and nothing here has one.
 //!
-//! # Still not here
+//! # Keys and clicks
 //!
-//! No selection and no IME, for the same reasons as the single-line
-//! field:
-//! selection needs modifier state on `Event::Key` or a pointer drag, and
-//! IME needs a preedit event. Both are named in
-//! `docs/plan-architecture-v2.md`'s Phase D paragraph, and neither is a
-//! field reserved here.
+//! Selection (M14/T14.4) and composition (M14/T14.8) work as in the
+//! single-line field; this header said neither existed until M45/T45.6.
+//!
+//! | input | effect |
+//! |---|---|
+//! | Left, Right | one grapheme (M45/T45.5) |
+//! | word modifier + Left, Right | to the start of the word, to the end of the next (M45/T45.6) |
+//! | Up, Down | the nearest cluster on the line above or below |
+//! | Home, End | to the ends of the visual line (M45/T45.6) |
+//! | jump modifier + Home, End | to the ends of the text (M45/T45.6) |
+//! | Shift + any of the above | extends the selection |
+//! | Enter | a line break |
+//! | Ctrl+A, Cmd+A | selects everything |
+//! | a double click | selects the word under it (M45/T45.6) |
+//! | a triple click | selects the `\n`-delimited line, without its break |
+//!
+//! The word modifier is Ctrl and the jump modifier Ctrl too, except on
+//! macOS, where they are Alt and Cmd. A triple click takes the logical
+//! line and Home and End the visual one, which is what desktop editors do.
 
 // `alloc`, not the std prelude: this crate is `no_std` when the
 // `std` feature is off (M13/T13.1), and absent entirely without the
@@ -265,11 +278,13 @@ impl<S: TextBuffer> TextArea<S> {
     }
 
     /// Extend or collapse after a caret move. See `TextInput::moved`.
-    fn moved(&mut self, extend: bool, from: usize) {
+    /// Returns whether a selection was dropped (M45/T45.6).
+    fn moved(&mut self, extend: bool, from: usize) -> bool {
         if extend {
             self.anchor.get_or_insert(from);
+            false
         } else {
-            self.anchor = None;
+            self.selection().is_some() & self.anchor.take().is_some()
         }
     }
 
@@ -358,6 +373,71 @@ impl<S: TextBuffer> TextArea<S> {
                 true
             }
             None => false,
+        }
+    }
+
+    /// Put the caret at `to`; returns whether it moved.
+    fn move_to(&mut self, to: usize) -> bool {
+        core::mem::replace(&mut self.caret, to) != to
+    }
+
+    /// Move the caret to the start of the word it is in, or of the one
+    /// before it (M45/T45.6).
+    pub fn move_word_left(&mut self) -> bool {
+        match crate::edit::prev_word(self.text.as_ref(), self.caret) {
+            Some(p) => self.move_to(p),
+            None => false,
+        }
+    }
+
+    /// Move the caret to the end of the next word (M45/T45.6).
+    pub fn move_word_right(&mut self) -> bool {
+        match crate::edit::next_word(self.text.as_ref(), self.caret) {
+            Some(n) => self.move_to(n),
+            None => false,
+        }
+    }
+
+    /// The bounds Home and End go to from `at`: the **visual** line, when
+    /// the paragraph wraps and the clusters are fresh, and the
+    /// `\n`-delimited line otherwise (M45/T45.6).
+    ///
+    /// A shaper need not report a cluster for the `\n` itself, so the
+    /// visual line is looked for only among the clusters inside the
+    /// logical line. A wrapped line's End is its last cluster, not the
+    /// next line's first: the two are the same byte offset, and a caret
+    /// there is drawn on the next line.
+    fn line_bounds(&self, at: usize) -> core::ops::Range<usize> {
+        let s = self.text.as_ref();
+        let logical = crate::edit::line_at(s, at);
+        if self.shaped_key.is_none() {
+            return logical;
+        }
+        let inside = |c: &&Cluster| (logical.start..=logical.end).contains(&(c.byte as usize));
+        let cl = self.clusters.as_slice();
+        let Some(line) = cl.iter().filter(inside).rfind(|c| c.byte as usize <= at).map(|c| c.line) else {
+            return logical;
+        };
+        let (mut first, mut last, mut next) = (None, None, None);
+        for c in cl.iter().filter(inside) {
+            let b = c.byte as usize;
+            if c.line == line {
+                first.get_or_insert(b);
+                last = Some(b);
+            } else if c.line > line {
+                next = Some(b);
+                break;
+            }
+        }
+        let lo = first.unwrap_or(logical.start);
+        let hi = match (next, last) {
+            (Some(_), Some(l)) => l,
+            _ => logical.end,
+        };
+        if s.is_char_boundary(lo) && s.is_char_boundary(hi) && lo <= hi {
+            lo..hi
+        } else {
+            logical
         }
     }
 
@@ -461,8 +541,7 @@ impl<S: TextBuffer> TextArea<S> {
     fn moving(&mut self, cx: &EventCtx, f: impl FnOnce(&mut Self) -> bool) -> bool {
         let from = self.caret;
         let moved = f(self);
-        self.moved(cx.mods.has(lumen_static::event::Mods::SHIFT), from);
-        moved
+        self.moved(cx.mods.has(lumen_static::event::Mods::SHIFT), from) | moved
     }
 
     fn offset_at(&self, x: f32, y: f32) -> usize {
@@ -692,8 +771,26 @@ impl<S: TextBuffer> Node for TextArea<S> {
             }
             Event::Key { key: Key::Backspace, down: true } => self.backspace(),
             Event::Key { key: Key::Delete, down: true } => self.delete(),
+            // With the word modifier (Ctrl, Alt on macOS) an arrow moves
+            // by word; Home and End go to the visual line's bounds, and
+            // with the jump modifier (Ctrl, Cmd on macOS) to the buffer's
+            // (M45/T45.6).
+            Event::Key { key: Key::Left, down: true } if cx.mods.has(crate::edit::WORD) => {
+                self.moving(cx, Self::move_word_left)
+            }
+            Event::Key { key: Key::Right, down: true } if cx.mods.has(crate::edit::WORD) => {
+                self.moving(cx, Self::move_word_right)
+            }
             Event::Key { key: Key::Left, down: true } => self.moving(cx, Self::move_left),
             Event::Key { key: Key::Right, down: true } => self.moving(cx, Self::move_right),
+            Event::Key { key: Key::Home, down: true } if cx.mods.has(crate::edit::JUMP) => {
+                self.moving(cx, |s| s.move_to(0))
+            }
+            Event::Key { key: Key::End, down: true } if cx.mods.has(crate::edit::JUMP) => {
+                self.moving(cx, |s| s.move_to(s.text.as_ref().len()))
+            }
+            Event::Key { key: Key::Home, down: true } => self.moving(cx, |s| s.move_to(s.line_bounds(s.caret).start)),
+            Event::Key { key: Key::End, down: true } => self.moving(cx, |s| s.move_to(s.line_bounds(s.caret).end)),
             Event::Key { key: Key::Up, down: true } => self.moving(cx, |s| s.move_line(-1)),
             Event::Key { key: Key::Down, down: true } => self.moving(cx, |s| s.move_line(1)),
             Event::Key { key: Key::Char('a'), down: true }
@@ -703,6 +800,16 @@ impl<S: TextBuffer> Node for TextArea<S> {
                 self.select_all()
             }
             Event::Key { key: Key::Escape, down: true } => self.clear_selection(),
+            // A double click selects the word under it; a triple click the
+            // `\n`-delimited line, without its break (M45/T45.6).
+            Event::PointerDown { .. } if cx.clicks >= 2 => {
+                let at = self.at_pointer(cx);
+                let s = self.text.as_ref();
+                let r = if cx.clicks == 2 { crate::edit::word_at(s, at) } else { crate::edit::line_at(s, at) };
+                self.anchor = Some(r.start);
+                self.caret = r.end;
+                true
+            }
             Event::PointerDown { .. } => {
                 let at = self.at_pointer(cx);
                 let from = self.caret;

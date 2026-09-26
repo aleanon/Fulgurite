@@ -425,6 +425,13 @@ Coverage stops being a review question and becomes an assertion. What
 the reviewer is then for is the question a runner cannot ask: *which
 action is missing from the list*, which is §5's job.
 
+**Word, click and line-end actions, added by M45/T45.6 (2026-09-27).**
+`TextInput` and `TextArea` each gained a word-Left, a double click that
+selects a word and a triple click that selects the value or the line;
+`TextArea` also Ctrl+End and Home
+(`scripts/drive/widgets/text_and_slider.py`). The agent needed two
+parameters for them: `input.key`'s `mods` and `input.click`'s `clicks`.
+
 **Keyboard actions, added by M44/T44.10 (2026-09-27).** R3-F6 found that
 no inventory drove a list from the keyboard, so none could see that it
 was impossible. `Select` and `ScrollView` have inventories now

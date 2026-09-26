@@ -89,6 +89,16 @@ pattern.
 * `scroll` — horizontal offset so the caret stays visible in a field
   narrower than its content.
 
+Both editors answer the same keys. The arrows step by grapheme, and with
+the word modifier — Ctrl, or Alt on macOS — by word, from Unicode's word
+boundaries: word-Left to the start of the word, word-Right to the end of
+the next. Shift extends the selection with any of them. A double click
+selects the word under the pointer; a triple click selects the whole
+value in a `TextInput` and the line in a `TextArea`. In a `TextArea`,
+Home and End go to the ends of the line the caret is drawn on — the
+visual line, when a paragraph wraps — and with Ctrl (Cmd on macOS) to the
+ends of the text.
+
 `TextArea` is a separate type rather than a `wrap` flag on `TextInput`,
 and that reversed an earlier decision deliberately: the plan had reserved
 a field for it, and **an unused field is a claim the code has not

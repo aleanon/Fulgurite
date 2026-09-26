@@ -97,8 +97,11 @@ class AgentClient:
     def layout(self, selector: str):
         return self.rpc("ui.getLayout", selector=selector)
 
-    def click(self, selector: str):
-        return self.rpc("input.click", selector=selector)
+    def click(self, selector: str, clicks: int = 1):
+        """`clicks` 2 or 3 is a double or triple click (M45/T45.6)."""
+        if clicks == 1:
+            return self.rpc("input.click", selector=selector)
+        return self.rpc("input.click", selector=selector, clicks=clicks)
 
     def press(self, selector: str):
         """Pointer down, held. Pair with `release`."""
@@ -123,7 +126,11 @@ class AgentClient:
     def scroll_into_view(self, selector: str):
         return self.rpc("input.scrollIntoView", selector=selector)
 
-    def key(self, key: str, down: bool = True):
+    def key(self, key: str, down: bool = True, mods=None):
+        """`mods`, e.g. `["ctrl", "shift"]`, are held for this key only
+        (M45/T45.6)."""
+        if mods:
+            return self.rpc("input.key", key=key, down=down, mods=list(mods))
         return self.rpc("input.key", key=key, down=down)
 
     def screenshot(self, path: str):

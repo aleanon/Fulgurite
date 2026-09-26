@@ -1,8 +1,8 @@
 # M45 — text that measures, paints and edits as one thing
 
-> **T45.0–T45.5 and T45.7–T45.11 DONE 2026-09-26; T45.6 NOT BUILT** — it
-> waits for M44/T44.1 (`owns_arrows`), which is not on this branch's
-> base; its gate (`text_motion.rs`) is committed red. Every figure is in
+> **M45 DONE 2026-09-27: T45.0–T45.12 all built.** T45.0–T45.5 and
+> T45.7–T45.11 landed 2026-09-26, T45.12 early, and T45.6 on 2026-09-27,
+> once M44/T44.1's `owns_arrows` was on its base. Every figure is in
 > `docs/results-text.md`.
 > - **T45.0** fourteen gates red at `826c7c3`, the baseline recorded.
 > - **T45.1** runs measured from the pen: 0 of 1,200 re-wrapped (was 600);
@@ -24,6 +24,10 @@
 >   93.2); 100 KB 34.8 → 5.4 ms.
 > - **T45.11** `TextArea` paints visible lines: 225 glyphs for a caret move
 >   in 64 KB (was 53,595).
+> - **T45.6** word motion, double and triple click, and `TextArea`'s
+>   Home/End (visual line) and Ctrl+Home/End: 0 of 12 motions wrong (was
+>   12), 0 of 3 on a wrapped line; `input.key` `mods` and `input.click`
+>   `clicks` so the drive reaches them; leaf `.text` unchanged.
 
 > **T45.12 DONE 2026-09-26 (early landing).** `BakedFace` moves an
 > overflowing word whole to the next line; `"aaa bbbb"` at 60 is two
@@ -674,12 +678,35 @@ selection. Drop the Ctrl branch: Ctrl+Left moves one grapheme.
 `book/src/input-widgets.md`. `docs/plan-widget-parity.md`'s inventories
 for `TextInput` and `TextArea`.
 
-*Not built (2026-09-26).* M44/T44.1 is on `impl/m44`, not on this
-branch's base, and the brief says not to build `owns_arrows` here. The
-gate is written and committed red (`crates/lumen-static-shell/tests/text_motion.rs`,
+*Not built (2026-09-26).* M44/T44.1 was on `impl/m44`, not on this
+branch's base, and the brief said not to build `owns_arrows` here. The
+gate was written and committed red (`crates/lumen-static-shell/tests/text_motion.rs`,
 12 of 12 motions wrong at `826c7c3`), with each field alone in its tree
-so it measures this task and not M44's; `TextArea`'s drive inventory,
-which this task extends, exists since T45.7.
+so it measured this task and not M44's.
+
+*What building found (2026-09-27).* Built on M44's `owns_arrows`, which
+needed nothing more: a word motion is still an arrow key, so the group
+rule already leaves it to the field. `handled_narrowing.rs` now proves
+that beside a button (its step 1c). Four things the plan did not say:
+
+1. **"The line's bounds" had two readings, and they differ.** Home and
+   End take the **visual** line — the one the caret is drawn on — and a
+   triple click the `\n`-line. A shaper need not report a cluster for a
+   `\n`, so the visual line is looked for only inside the logical one,
+   and a wrapped line's End stops on its last cluster, because the next
+   line's first is the same byte offset and a caret there is drawn on the
+   next line. The gate's one measurer never wraps, so it could not tell
+   the readings apart; `home_and_end_keep_to_a_wrapped_line` does.
+2. **"Driven after M42" needed agent parameters that did not exist.**
+   `input.key` sent no modifiers and `input.click` a count of 1, so no
+   drive could press Ctrl+Left or double click. Both gained an optional
+   parameter (`mods`, `clicks`), tested in `agent_motion.rs`.
+3. **A latent defect in both editors' motion arms.** A move that only
+   collapsed a selection — End at the end of a selected value — answered
+   "unchanged", so the key went unconsumed, nothing was marked, and an
+   ancestor could take it. `moved` now reports a dropped selection.
+4. **The live drive's first run was vacuous twice** (both recorded in
+   `docs/results-text.md` T45.6), and the fixes are in the inventory.
 
 **Effort:** M. **Depends on:** T45.5; T45.7 (`TextArea`'s drive
 inventory); **M44's T44.1** (an arrow must

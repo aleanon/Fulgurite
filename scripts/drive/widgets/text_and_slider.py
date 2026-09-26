@@ -8,11 +8,119 @@ status is `none`), so the widget itself is the only thing that can
 report — which is exactly the case a drive script has to handle without
 quietly asserting nothing.
 """
+import re
+import sys
+
 from harness import Action
+
+# M45/T45.6: the word modifier (Left/Right by word) and the jump modifier
+# (Home/End to the buffer's ends) are each platform's own.
+WORD = ["alt"] if sys.platform == "darwin" else ["ctrl"]
+JUMP = ["meta"] if sys.platform == "darwin" else ["ctrl"]
 
 
 def _focused(c, sel=None):
     return c.styles(sel)["state"]["focused"]
+
+
+# --- Words, clicks and line ends (M45/T45.6) --------------------------
+def _record(c):
+    c.__dict__["_v0"] = c.value()
+
+
+def _word_left_then(c, ch):
+    """Caret to the end, one word-Left, then type `ch` where it landed."""
+    _record(c)
+    c.key("End", JUMP)
+    c.key("Left", WORD)
+    c.c.type(ch)
+
+
+def _at_last_word(c, ch):
+    v0, v = c._v0, c.value()
+    words = list(re.finditer(r"\w+", v0))
+    i = words[-1].start() if words else 0
+    want = v0[:i] + ch + v0[i:]
+    return v == want, f"value {v0!r} -> {v!r}, expected {want!r} (typed at the last word's start, byte {i})"
+
+
+def _clicked_then(c, n, ch):
+    """An `n`-click at the widget's centre, then type `ch` over it."""
+    _record(c)
+    c.click(clicks=n)
+    c.c.type(ch)
+
+
+def _click_first_line(c, n=1):
+    b = c.box()
+    return c.c.rpc("input.click", x=(b[0] + b[2]) / 2, y=b[1] + 12.0, clicks=n)
+
+
+def _clicked_first_line_then(c, n, ch):
+    """An `n`-click on the first line, then type `ch` over it: the one
+    line the drive knows holds more than one word ("first line...")."""
+    _record(c)
+    _click_first_line(c, n)
+    c.c.type(ch)
+
+
+def _clicked_outside_then(c, n, ch):
+    _record(c)
+    b = c.box()
+    c.c.rpc("input.click", x=(b[0] + b[2]) / 2, y=b[1] - 6.0, clicks=n)
+    c.c.type(ch)
+
+
+def _replaced_one(c, pattern, ch, what, several=False):
+    """The value is the old one with exactly one `pattern` span replaced
+    by `ch` — a selection typed over, not an insertion. `several` counts
+    only spans of more than one word, so a line selection cannot pass by
+    being a word selection on a one-word line."""
+    v0, v = c._v0, c.value()
+    spans = [(m.start(), m.end()) for m in re.finditer(pattern, v0)
+             if not several or re.search(r"\W", m.group())]
+    # **Changed, as well as matching.** A span that is already `ch`
+    # "replaced by `ch`" is the value unchanged, which is what the isolate
+    # arm produces — the first run passed its isolate on exactly that.
+    hit = [(a, b) for a, b in spans if v0[:a] + ch + v0[b:] == v] if v != v0 else []
+    return bool(hit), (f"value {v0!r} -> {v!r}: the {what} {hit[0]} replaced by {ch!r}" if hit
+                       else f"value {v0!r} -> {v!r}: no {what} of {len(spans)} was replaced by {ch!r}")
+
+
+def _motion_actions(kind, whole):
+    """The three T45.6 actions both editors share. `whole` is what a
+    triple click selects: the whole value, or the line."""
+    return [
+        Action(
+            name="a word-Left moves the caret to the word's start",
+            needs=f"a focused {kind} whose value ends in a word",
+            prep=lambda c: c.click(),
+            do=lambda c: _word_left_then(c, "X"),
+            expect=lambda c: _at_last_word(c, "X"),
+            injection=f"drop the word branch in {kind}::on_event (Left moves one grapheme)",
+        ),
+        Action(
+            name="a double click selects the word under it",
+            needs=f"a {kind} with a word under its centre",
+            do=lambda c: _clicked_then(c, 2, "Z"),
+            expect=lambda c: _replaced_one(c, r"\w+", "Z", "word"),
+            isolate=lambda c: _clicked_outside_then(c, 2, "Z"),
+            injection=f"ignore EventCtx.clicks in {kind}::on_event",
+        ),
+        Action(
+            name=f"a triple click selects the {whole}",
+            needs=f"a {kind} with several words where it is clicked",
+            do=(lambda c: _clicked_then(c, 3, "T")) if whole == "whole value"
+            else (lambda c: _clicked_first_line_then(c, 3, "T")),
+            expect=(
+                (lambda c: (c.value() == "T" != c._v0, f"value {c._v0!r} -> {c.value()!r}, expected 'T'"))
+                if whole == "whole value"
+                else (lambda c: _replaced_one(c, r"[^\n]+", "T", "line", several=True))
+            ),
+            isolate=lambda c: _clicked_outside_then(c, 3, "T"),
+            injection=f"treat clicks == 3 as a double click in {kind}::on_event",
+        ),
+    ]
 
 
 # --- TextInput ------------------------------------------------------
@@ -51,6 +159,7 @@ TEXTINPUT = ("TextInput", "#d_textinput_a", [
         ),
         injection="drop the Backspace arm in TextInput::on_event",
     ),
+    *_motion_actions("TextInput", "whole value"),
     Action(
         name="fill replaces the whole value",
         needs="a field with any text in it",
@@ -121,6 +230,32 @@ TEXTAREA = ("TextArea", "#d_textarea_a", [
         ),
         injection="drop the Key::Enter arm in TextArea::on_event",
     ),
+    Action(
+        name="Ctrl+End goes to the end of the text",
+        needs="a focused area whose caret is on its first line, of several",
+        # On the *first* line: the first version clicked the centre, which
+        # is the last line here, where the line's end is the text's end and
+        # a plain End passed too.
+        prep=lambda c: _click_first_line(c),
+        # Three characters, so the Home after it is not one Left away.
+        do=lambda c: (_record(c), c.key("End", JUMP), c.c.type("End"))[0],
+        expect=lambda c: (
+            c.value() == c._v0 + "End",
+            f"value {c._v0!r} -> {c.value()!r}, expected {(c._v0 + 'End')!r}",
+        ),
+        injection="drop the jump branch of Key::End in TextArea::on_event",
+    ),
+    Action(
+        name="Home goes to the line's start",
+        needs="a focused area whose caret ends a three-character line",
+        do=lambda c: (_record(c), c.key("Home"), c.c.type("H"))[0],
+        expect=lambda c: (
+            c.value() == c._v0[:c._v0.rfind(chr(10)) + 1] + "H" + c._v0[c._v0.rfind(chr(10)) + 1:],
+            f"value {c._v0!r} -> {c.value()!r}, expected H at byte {c._v0.rfind(chr(10)) + 1}",
+        ),
+        injection="drop the Key::Home arm in TextArea::on_event (Home then does nothing)",
+    ),
+    *_motion_actions("TextArea", "line"),
 ])
 
 

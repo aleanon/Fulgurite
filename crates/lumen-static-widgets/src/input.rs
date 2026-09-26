@@ -39,6 +39,25 @@
 //! (T14.1); a drag sets it from the press and moves the caret with
 //! capture. The selection is painted as a `Cmd::Rect` behind the run —
 //! B4 decided the rectangle before there was anything to put in it.
+//!
+//! # Keys and clicks
+//!
+//! | input | effect |
+//! |---|---|
+//! | Left, Right | one grapheme (M45/T45.5) |
+//! | word modifier + Left, Right | to the start of the word, to the end of the next (M45/T45.6) |
+//! | Home, End | to the ends of the value |
+//! | Shift + any of the above | extends the selection |
+//! | Ctrl+A, Cmd+A | selects everything |
+//! | Escape | drops the selection |
+//! | a press, a drag | puts the caret, selects to the pointer |
+//! | a double click | selects the word under it (M45/T45.6) |
+//! | a triple click | selects everything — a single line is its own line |
+//!
+//! The word modifier is Ctrl, and Alt on macOS. A word is a Unicode word
+//! segment holding a letter, a digit or `_` (`crate::edit`). The arrows
+//! stay in the field beside a focusable sibling ([`Node::owns_arrows`],
+//! M44/T44.1), with a modifier or without.
 
 // `alloc`, not the std prelude: this crate is `no_std` when the
 // `std` feature is off (M13/T13.1), and absent entirely without the
@@ -279,11 +298,18 @@ impl<S: TextBuffer> TextInput<S> {
     /// created and destroyed, so the rule is stated once: extending from
     /// no selection anchors where the caret *was*; not extending drops
     /// the anchor.
-    fn moved(&mut self, extend: bool, from: usize) {
+    ///
+    /// Returns whether a selection was dropped, which is a change even
+    /// when the caret did not move: End at the end of a selected value
+    /// collapses it, and an arm answering "unchanged" then would leave
+    /// the highlight painted and let the key reach an ancestor
+    /// (M45/T45.6).
+    fn moved(&mut self, extend: bool, from: usize) -> bool {
         if extend {
             self.anchor.get_or_insert(from);
+            false
         } else {
-            self.anchor = None;
+            self.selection().is_some() & self.anchor.take().is_some()
         }
     }
 
@@ -346,6 +372,23 @@ impl<S: TextBuffer> TextInput<S> {
                 self.caret = n;
                 true
             }
+            None => false,
+        }
+    }
+
+    /// Move the caret to the start of the word it is in, or of the one
+    /// before it (M45/T45.6); returns whether it moved.
+    pub fn move_word_left(&mut self) -> bool {
+        match crate::edit::prev_word(self.text.as_ref(), self.caret) {
+            Some(p) => core::mem::replace(&mut self.caret, p) != p,
+            None => false,
+        }
+    }
+
+    /// Move the caret to the end of the next word (M45/T45.6).
+    pub fn move_word_right(&mut self) -> bool {
+        match crate::edit::next_word(self.text.as_ref(), self.caret) {
+            Some(n) => core::mem::replace(&mut self.caret, n) != n,
             None => false,
         }
     }
@@ -674,29 +717,27 @@ impl<S: TextBuffer> Node for TextInput<S> {
             // Shift extends the selection, anything else collapses it.
             // `moved` is called with where the caret *was*, because that
             // is the anchor a fresh selection starts from (T14.4).
+            // With the word modifier (Ctrl, Alt on macOS) an arrow moves
+            // by word, not by grapheme (M45/T45.6).
             Event::Key { key: Key::Left, down: true } => {
                 let from = self.caret;
-                let moved = self.move_left();
-                self.moved(cx.mods.has(Mods::SHIFT), from);
-                moved
+                let moved = if cx.mods.has(crate::edit::WORD) { self.move_word_left() } else { self.move_left() };
+                self.moved(cx.mods.has(Mods::SHIFT), from) | moved
             }
             Event::Key { key: Key::Right, down: true } => {
                 let from = self.caret;
-                let moved = self.move_right();
-                self.moved(cx.mods.has(Mods::SHIFT), from);
-                moved
+                let moved = if cx.mods.has(crate::edit::WORD) { self.move_word_right() } else { self.move_right() };
+                self.moved(cx.mods.has(Mods::SHIFT), from) | moved
             }
             Event::Key { key: Key::Home, down: true } => {
                 let from = self.caret;
                 let moved = self.move_home();
-                self.moved(cx.mods.has(Mods::SHIFT), from);
-                moved
+                self.moved(cx.mods.has(Mods::SHIFT), from) | moved
             }
             Event::Key { key: Key::End, down: true } => {
                 let from = self.caret;
                 let moved = self.move_end();
-                self.moved(cx.mods.has(Mods::SHIFT), from);
-                moved
+                self.moved(cx.mods.has(Mods::SHIFT), from) | moved
             }
             // Ctrl+A / Cmd+A. Both, because which one is "the" shortcut
             // modifier is the platform's business and `Mods` reports
@@ -711,6 +752,20 @@ impl<S: TextBuffer> Node for TextInput<S> {
             // relative to the node's origin, and the run starts one
             // padding in — read from the resolved attributes rather than
             // guessed, because a stylesheet may have changed it.
+            //
+            // A double click selects the word under it and a triple click
+            // the whole value (M45/T45.6): a single line is its own line.
+            Event::PointerDown { .. } if cx.clicks >= 2 => {
+                if cx.clicks == 2 {
+                    let at = self.offset_at(cx.local.x - self.pad_left + self.scroll);
+                    let w = crate::edit::word_at(self.text.as_ref(), at);
+                    self.anchor = Some(w.start);
+                    self.caret = w.end;
+                    true
+                } else {
+                    self.select_all()
+                }
+            }
             Event::PointerDown { .. } => {
                 let at = self.offset_at(cx.local.x - self.pad_left + self.scroll);
                 let from = self.caret;

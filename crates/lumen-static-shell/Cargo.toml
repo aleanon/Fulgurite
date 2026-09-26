@@ -111,3 +111,8 @@ required-features = ["live-agent", "truetype"]
 [[test]]
 name = "agent_paste"
 required-features = ["live-agent", "truetype"]
+
+# M45/T45.6: drives `input.key`'s `mods` and `input.click`'s `clicks`.
+[[test]]
+name = "agent_motion"
+required-features = ["live-agent", "truetype"]

@@ -5,7 +5,8 @@
 //! byte-identical under `Everything` and `Boundaries`. The session covers
 //! every way an event can change the tree without a binding: a
 //! `TextInput` taking characters and arrows (beside a button, so the
-//! arrow-group rule is in play, M44/T44.1), a `Slider` moving on a track press, two
+//! arrow-group rule is in play, M44/T44.1), a word motion and a double
+//! and triple click in it (M45/T45.6), a `Slider` moving on a track press, two
 //! overlays closed by one press outside, Tab past an open select
 //! (M44/T44.9), a select's row chosen by keyboard (M44/T44.10), a drag from one button to
 //! another that activates neither (M44/T44.2), a slider hidden mid-drag
@@ -213,6 +214,55 @@ fn a_click_driven_session_narrows_and_draws_the_same_frames() {
         assert_eq!(p.b.app.ui.entry.field.caret(), before - 1, "setup: Left did not move the caret");
         assert!(!p.b.last_marks().all, "an arrow in a split application marked everything");
     }
+
+    // 1c. A word motion and a double click beside the same button
+    // (M45/T45.6): Ctrl+Left (Alt on macOS) is still an arrow, so the
+    // group rule must leave it to the field; and a selection made by a
+    // double or triple click is drawn the same in the narrowed frame.
+    let word = if cfg!(target_os = "macos") { lumen_static::Mods::ALT } else { lumen_static::Mods::CTRL };
+    p.step("word-Left in the field", |post| {
+        post(Event::Modifiers(word));
+        post(Event::Key { key: lumen_static::Key::Left, down: true });
+        post(Event::Modifiers(lumen_static::Mods::NONE));
+    });
+    println!("    (focus, caret) = {:?}, expected {:?}", (p.b.input.focus, p.b.app.ui.entry.field.caret()), (Some(field), 8));
+    assert_eq!((p.b.input.focus, p.b.app.ui.entry.field.caret()), (Some(field), 8), "setup: word-Left did not reach the start of \"wide\"");
+    let (wx, wy) = (p.b.states[field as usize].pos.x + 4.0, fy);
+    p.step("double click: first press", |post| {
+        post(Event::PointerDown { x: wx, y: wy, button: lumen_static::PointerButton::Left, clicks: 1 });
+        post(Event::up(wx, wy));
+    });
+    p.step("double click: second press", |post| {
+        post(Event::PointerDown { x: wx, y: wy, button: lumen_static::PointerButton::Left, clicks: 2 });
+        post(Event::up(wx, wy));
+    });
+    // `Host::pump` measures with the stand-in, which reports no clusters,
+    // so every press lands at the end: the word is "wide", and its
+    // highlight is zero-wide (`x_of` puts both ends at the run's end).
+    // The third press selects everything, which the stand-in *can* draw,
+    // so the frame is required to change.
+    println!("    selection {:?}, expected Some(8..12)", p.b.app.ui.entry.field.selection());
+    assert_eq!(p.b.app.ui.entry.field.selection(), Some(8..12), "setup: the double click did not select the word");
+    assert!(!p.b.last_marks().all, "a double click in a split application marked everything");
+    let h2 = p.b.list.hash_from(0);
+    p.step("triple click: third press", |post| {
+        post(Event::PointerDown { x: wx, y: wy, button: lumen_static::PointerButton::Left, clicks: 3 });
+        post(Event::up(wx, wy));
+    });
+    println!("    selection {:?}, expected Some(0..12); frame changed: {}", p.b.app.ui.entry.field.selection(), p.b.list.hash_from(0) != h2);
+    assert_eq!(p.b.app.ui.entry.field.selection(), Some(0..12), "setup: the triple click did not select everything");
+    assert_ne!(p.b.list.hash_from(0), h2, "setup: selecting everything drew nothing");
+    assert!(!p.b.last_marks().all, "a triple click in a split application marked everything");
+    // The caret is already at the end, so only the selection changes —
+    // which is still a change. The field has to say so: a key it answers
+    // `false` for is unconsumed, so nothing is marked and the key goes on
+    // to an ancestor (a `ScrollView` would take End and scroll). The
+    // frame alone cannot see it here, since paint re-runs regardless;
+    // the mark is what records consumption.
+    p.step("End collapses it", |post| post(Event::Key { key: lumen_static::Key::End, down: true }));
+    println!("    selection {:?}, marks {:?}, expected None and one range", p.b.app.ui.entry.field.selection(), p.b.last_marks());
+    assert_eq!(p.b.app.ui.entry.field.selection(), None, "End did not collapse the selection");
+    assert!(p.b.last_marks().ranges > 0, "collapsing a selection marked nothing: the field answered 'unchanged'");
 
     // 2. Press the slider's track at three quarters — the slider moves itself.
     let si = lumen_static::style::index_of_wid(<Ui as Widget>::SUB_TABLE, "slider").unwrap();
