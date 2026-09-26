@@ -147,3 +147,46 @@ fn an_animated_value_costs_no_registry() {
     fn assert_copy<T: Copy>() {}
     assert_copy::<Animated<f32>>();
 }
+
+/// **A NaN `dt` must not freeze an animation** — M47/T47.0, R7-F8.
+///
+/// `tick` clamps `dt` with `num::clamp`, which hands a NaN back
+/// unchanged, so `elapsed` became NaN and `elapsed >= duration` was false
+/// for ever: the value never settled and a loop that asks for frames
+/// while anything animates never went idle again. The winit shell cannot
+/// produce a NaN `dt`; a custom shell can.
+///
+/// After the NaN, thirteen 16 ms ticks must settle a 200 ms animation
+/// (13 x 16 = 208) with a finite value. The frames taken print beside
+/// the bound. The `-inf` and `1e9` arms are the accepting direction: a
+/// clock that went backwards and a stalled host already land sanely.
+#[test]
+#[ignore = "red until T47.5: R7-F8, a NaN dt leaves an animation unsettled forever"]
+fn a_nan_dt_advances_nothing_and_the_animation_still_settles() {
+    const BOUND: usize = 13;
+    for (label, bad, most) in
+        [("NaN", f32::NAN, BOUND), ("-inf", f32::NEG_INFINITY, BOUND), ("1e9", 1e9, 1)]
+    {
+        let mut a = Animated::new(0.0f32);
+        a.duration = 200.0;
+        a.easing = Easing::Linear;
+        a.go(10.0);
+        a.tick(bad);
+        let mut frames = 0;
+        // 10_000 is where the review stopped counting; a settled value
+        // is found long before it or never.
+        while !a.settled() && frames < 10_000 {
+            a.tick(16.0);
+            frames += 1;
+        }
+        println!(
+            "dt {label}: settled={} after {frames} more 16 ms frames (bound {most}), value {}",
+            a.settled(),
+            a.get()
+        );
+        assert!(a.settled(), "dt {label}: unsettled after {frames} frames (bound {most})");
+        assert!(frames <= most, "dt {label}: took {frames} frames to settle (bound {most})");
+        assert!(a.get().is_finite(), "dt {label}: settled on a non-finite value {}", a.get());
+        assert_eq!(a.get(), 10.0, "dt {label}: and on the target");
+    }
+}

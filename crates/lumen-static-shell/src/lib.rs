@@ -1238,6 +1238,16 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         self.unspawned
     }
 
+    /// Job failures no application message reported — M47/T47.0, R7-F9.
+    ///
+    /// `FailFn`'s `None` means "this application does not model that
+    /// failure", and this is where such a drop is meant to be counted.
+    /// Read from the inbox's shared counter, because the failure is seen
+    /// on a worker.
+    pub fn unmodelled_failures(&self) -> usize {
+        self.inbox.unmodelled()
+    }
+
     /// A sender for deferred work, already carrying this host's waker.
     ///
     /// The one way an application gets one, so a sender minted before

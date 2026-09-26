@@ -208,3 +208,79 @@ fn a_job_that_succeeds_reports_no_failure() {
 
     assert_eq!(h.app.seen, vec![Msg::Ok(9)], "no failure where there was none");
 }
+
+// ---------------------------------------------------------------------------
+// M47/T47.0 — R7-F9: a failure the application does not model is counted.
+// ---------------------------------------------------------------------------
+
+/// An application that leaves `App::failed` at its default (`None`).
+#[derive(Default)]
+struct Unmodelled {
+    ui: Ui,
+    outbox: Outbox,
+    seen: Vec<Msg>,
+}
+
+impl App for Unmodelled {
+    type State = Self;
+    fn state_mut(&mut self) -> &mut Self::State {
+        self
+    }
+    type Tree = Ui;
+    type Msg = Msg;
+    fn tree(&self) -> &Ui {
+        &self.ui
+    }
+    fn tree_mut(&mut self) -> &mut Ui {
+        &mut self.ui
+    }
+    fn apply(this: &mut Self, m: Msg) -> bool {
+        this.seen.push(m);
+        true
+    }
+    fn outbox(&mut self) -> Option<&mut Outbox> {
+        Some(&mut self.outbox)
+    }
+    fn job_for(d: Descriptor) -> Option<JobFn<Msg>> {
+        (d.kind == KIND && d.step == STEP_BOOM).then_some(boom as JobFn<Msg>)
+    }
+    // `failed` left at its default: this application models no failure.
+}
+
+/// **An unmodelled failure leaves a trace** — R7-F9.
+///
+/// `FailFn`'s rustdoc said the host "counts the drop" when an
+/// application does not model a failure; `report()` dropped it, and its
+/// own comment said a spawner has no host. The re-triage's probe: a
+/// panicking job in such an application moved no counter, and the panic
+/// reached stderr only. Under `Threads`, pumped until the counter moves
+/// or the bound runs out; both print.
+#[test]
+#[ignore = "red until T47.6: R7-F9, an unmodelled failure is counted nowhere"]
+fn an_unmodelled_failure_is_counted() {
+    let mut h: Host<Unmodelled, Rebuild> = Host::new(Unmodelled::default(), 100, 50);
+    h.pump();
+    h.set_spawner(Box::new(Threads));
+
+    let prev = std::panic::take_hook();
+    std::panic::set_hook(Box::new(|_| {}));
+    h.app.outbox.push(Descriptor { kind: KIND, step: STEP_BOOM, payload: 1 });
+
+    const BOUND: usize = 500;
+    let mut pumps = 0;
+    while h.unmodelled_failures() == 0 && pumps < BOUND {
+        h.pump();
+        pumps += 1;
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    std::panic::set_hook(prev);
+
+    println!(
+        "unmodelled panicking job: unmodelled_failures {} (want 1) after {pumps} pumps \
+         (bound {BOUND}); messages {:?}",
+        h.unmodelled_failures(),
+        h.app.seen
+    );
+    assert!(h.app.seen.is_empty(), "setup: the application models no failure");
+    assert_eq!(h.unmodelled_failures(), 1, "the failure left no trace a caller can read");
+}

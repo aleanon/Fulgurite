@@ -52,6 +52,10 @@ pub struct Inbox<M> {
     tx: mpsc::SyncSender<(u64, M)>,
     waker: Option<Arc<dyn Waker>>,
     refused: Arc<AtomicUsize>,
+    /// Failures no application message reported — M47/T47.0, R7-F9.
+    /// Shared with every [`Sender`] for the reason `refused` is: the
+    /// failure happens on a worker and the question is asked on the frame.
+    unmodelled: Arc<AtomicUsize>,
     /// The epoch senders are minted at, and the one a result must carry
     /// to be applied — M28/T28.8.
     epoch: u64,
@@ -94,6 +98,7 @@ pub struct Sender<M> {
     tx: mpsc::SyncSender<(u64, M)>,
     waker: Option<Arc<dyn Waker>>,
     refused: Arc<AtomicUsize>,
+    unmodelled: Arc<AtomicUsize>,
     /// The epoch this sender was minted at — M28/T28.8. Fixed at mint
     /// time, so a worker cannot un-cancel itself.
     epoch: u64,
@@ -107,6 +112,7 @@ impl<M> Clone for Sender<M> {
             tx: self.tx.clone(),
             waker: self.waker.clone(),
             refused: self.refused.clone(),
+            unmodelled: self.unmodelled.clone(),
             epoch: self.epoch,
         }
     }
@@ -158,7 +164,15 @@ impl<M> Default for Inbox<M> {
 impl<M> Inbox<M> {
     pub fn new() -> Self {
         let (tx, rx) = mpsc::sync_channel(Self::CAPACITY);
-        Inbox { rx, tx, waker: None, refused: Arc::new(AtomicUsize::new(0)), epoch: 0, stale: core::cell::Cell::new(0) }
+        Inbox {
+            rx,
+            tx,
+            waker: None,
+            refused: Arc::new(AtomicUsize::new(0)),
+            unmodelled: Arc::new(AtomicUsize::new(0)),
+            epoch: 0,
+            stale: core::cell::Cell::new(0),
+        }
     }
 
     /// Cancel every task in flight — M28/T28.8, `docs/plan-tasks.md`
@@ -206,6 +220,16 @@ impl<M> Inbox<M> {
         self.refused.load(Ordering::Relaxed)
     }
 
+    /// How many job failures reached no application message — M47/T47.0,
+    /// R7-F9: an application that leaves `App::failed` at its default, or
+    /// whose handler answers `None` for this failure. Monotonic.
+    ///
+    /// **Nothing increments it yet**; T47.6 makes the spawners' failure
+    /// path count here.
+    pub fn unmodelled(&self) -> usize {
+        self.unmodelled.load(Ordering::Relaxed)
+    }
+
     /// Route every later [`Sender::send`] through `waker` — M28/T28.1.
     ///
     /// The shell calls this once, after its event loop exists. Senders
@@ -232,6 +256,7 @@ impl<M> Inbox<M> {
             tx: self.tx.clone(),
             waker: self.waker.clone(),
             refused: self.refused.clone(),
+            unmodelled: self.unmodelled.clone(),
             epoch: self.epoch,
         }
     }

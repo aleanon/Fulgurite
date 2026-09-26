@@ -140,3 +140,38 @@ fn recognizers_cost_nothing_to_a_tree_that_holds_none() {
     assert_copy::<Pinch>();
     assert_copy::<LongPress>();
 }
+
+/// **A NaN `dt` must not stall a long press** — M47/T47.0, R7-F8.
+///
+/// `tick` clamps with `num::clamp`, which returns a NaN unchanged, so
+/// `held` became NaN and `held >= hold` was false for ever: the press
+/// never fired however long the finger stayed down.
+///
+/// After the NaN, 32 ticks of 16 ms (512 ms against the default 500 ms
+/// hold) must fire it. The `-inf` arm (a clock that went backwards)
+/// takes the same 32; the `1e9` arm (a stalled host) fires on the stall
+/// itself and needs none.
+#[test]
+#[ignore = "red until T47.5: R7-F8, a NaN dt stalls a long press for ever"]
+fn a_nan_dt_advances_nothing_and_the_press_still_fires() {
+    const BOUND: usize = 32;
+    for (label, bad, most) in
+        [("NaN", f32::NAN, BOUND), ("-inf", f32::NEG_INFINITY, BOUND), ("1e9", 1e9, 0)]
+    {
+        let mut lp = LongPress::default();
+        lp.feed(&t(1, 5.0, 5.0, TouchPhase::Begin));
+        let mut fired = lp.tick(bad);
+        let mut frames = 0;
+        while fired.is_none() && frames < 10_000 {
+            fired = lp.tick(16.0);
+            frames += 1;
+        }
+        println!("dt {label}: fired={} after {frames} more 16 ms frames (bound {most})", fired.is_some());
+        assert_eq!(
+            fired,
+            Some(Point { x: 5.0, y: 5.0 }),
+            "dt {label}: unfired after {frames} frames (bound {most})"
+        );
+        assert!(frames <= most, "dt {label}: took {frames} frames to fire (bound {most})");
+    }
+}

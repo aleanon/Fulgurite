@@ -208,3 +208,212 @@ fn a_nonsense_period_is_refused_and_counted() {
     assert_eq!(t.refused(), 3);
     assert_eq!(t.len(), 1);
 }
+
+// ---------------------------------------------------------------------------
+// M47/T47.0 — the gates for R7-F3, R7-F4 and R7-F5, committed red.
+// ---------------------------------------------------------------------------
+
+/// **A stalled `dt` must not hang the catch-up** — R7-F3.
+///
+/// `advance` caught up one period at a time in `f32`: `while remaining
+/// <= 0 { remaining += period }`. Past about 2^24 periods, adding 16 to
+/// the remainder no longer changes it and the loop never ends. The
+/// re-triage's probe: `dt` 1e9 at 16 ms did not return within 5000 ms.
+///
+/// Run on its own thread behind a 200 ms watchdog, because the failure
+/// is a hang and `cargo test` has no per-test timeout. The spinning
+/// thread is abandoned, not joined; the harness exits past it.
+#[test]
+#[ignore = "red until T47.2: R7-F3, a large dt hangs Timers::advance"]
+fn a_huge_dt_returns_within_the_watchdog() {
+    const WATCHDOG: std::time::Duration = std::time::Duration::from_millis(200);
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut t = Timers::new();
+        assert!(t.every(TICK, 1, 16.0), "setup: the timer was accepted");
+        let mut out = Outbox::new();
+        let started = std::time::Instant::now();
+        let fired = t.advance(1e9, &mut out);
+        let _ = tx.send((fired, t.earliest(), out.len(), started.elapsed()));
+    });
+    match rx.recv_timeout(WATCHDOG) {
+        Ok((fired, remaining, queued, took)) => {
+            println!(
+                "advance(1e9) at 16 ms: returned in {:.3} ms (bound {} ms), fired {fired:?}, \
+                 queued {queued}, remaining {remaining:?}",
+                took.as_secs_f64() * 1e3,
+                WATCHDOG.as_millis()
+            );
+            assert!(took < WATCHDOG);
+        }
+        Err(_) => panic!(
+            "advance(1e9) at a 16 ms period did not return within {} ms: the catch-up \
+             loop is spinning (R7-F3)",
+            WATCHDOG.as_millis()
+        ),
+    }
+}
+
+/// **Every firing is delivered or counted** — R7-F4.
+///
+/// `Host::tick` advanced into a stack-local scratch outbox of 32 and
+/// dropped its refusal count, so a 10 ms timer handed `tick(1000)` fired
+/// 100, delivered 32, and counted the other 68 nowhere a caller can
+/// read. `counted` here is the sum of every counter a caller can read.
+#[test]
+#[ignore = "red until T47.2: R7-F4, firings past the outbox are lost uncounted"]
+fn a_stalled_tick_delivers_or_counts_every_firing() {
+    const FIRED: usize = 100; // 1000 ms / 10 ms
+    let mut h: Host<Work, Rebuild> = Host::new(Work::default(), 100, 50);
+    h.set_spawner(Box::new(lumen_static::spawn::Immediate));
+    h.pump();
+    assert!(h.app.timers.every(TICK, 1, 10.0), "setup: the timer was accepted");
+
+    h.tick(1000.0);
+    // Enough pumps to drain the inbox at 64 a frame.
+    for _ in 0..8 {
+        h.pump();
+    }
+
+    let delivered = h.app.fired.len();
+    let counted = counted_losses(&mut h);
+    println!(
+        "10 ms timer, tick(1000): fired {FIRED}, delivered {delivered}, counted {counted} \
+         (delivered + counted must be {FIRED})"
+    );
+    assert!(delivered > 0, "setup: the timer fired at all");
+    assert_eq!(
+        delivered + counted,
+        FIRED,
+        "{} firings were neither delivered nor counted anywhere a caller can read",
+        FIRED - delivered - counted
+    );
+}
+
+/// Every drop counter a caller can read on this host.
+fn counted_losses(h: &mut Host<Work, Rebuild>) -> usize {
+    h.app.outbox.refused()
+        + h.app.timers.refused()
+        + h.inbox.refused()
+        + h.inbox.stale()
+        + h.unknown_kind()
+        + h.unspawned()
+}
+
+/// Which threads ran a [`on_tick_where`] job. A static because a job is a
+/// non-capturing `fn`; only [`twenty_firings_create_at_most_the_pool`]
+/// uses this kind.
+static RAN_ON: std::sync::Mutex<Vec<std::thread::ThreadId>> = std::sync::Mutex::new(Vec::new());
+const TICK_WHERE: u64 = 10;
+
+fn on_tick_where(d: Descriptor, tx: &lumen_static::inbox::Sender<u64>) {
+    RAN_ON.lock().unwrap().push(std::thread::current().id());
+    let _ = tx.send(d.payload);
+}
+
+#[derive(Default)]
+struct Where {
+    inner: Work,
+}
+
+impl App for Where {
+    type State = Self;
+    fn state_mut(&mut self) -> &mut Self::State {
+        self
+    }
+    type Tree = Ui;
+    type Msg = u64;
+    fn tree(&self) -> &Ui {
+        &self.inner.ui
+    }
+    fn tree_mut(&mut self) -> &mut Ui {
+        &mut self.inner.ui
+    }
+    fn apply(this: &mut Self, m: u64) -> bool {
+        this.inner.fired.push(m);
+        true
+    }
+    fn outbox(&mut self) -> Option<&mut Outbox> {
+        Some(&mut self.inner.outbox)
+    }
+    fn timers(&mut self) -> Option<&mut Timers> {
+        Some(&mut self.inner.timers)
+    }
+    fn job_for(d: Descriptor) -> Option<JobFn<u64>> {
+        (d.kind == TICK_WHERE).then_some(on_tick_where as JobFn<u64>)
+    }
+}
+
+/// **Threads created for 20 timer firings** under the spawner a window
+/// installs — R7-F5.
+///
+/// `Local::from_host` installs `Threads`, and until T47.3 that was one
+/// `std::thread` per job: strace counted 28 clones for 28 ticks of
+/// stock `tasks-demo`. Counted here as the **distinct `ThreadId`s** the
+/// jobs ran on: an id is never reused within a process, so the count is
+/// threads created, not threads alive, and threads other tests in this
+/// binary create cannot enter it.
+#[test]
+#[ignore = "red until T47.3: R7-F5, one OS thread per timer firing"]
+fn twenty_firings_create_at_most_the_pool() {
+    use lumen_static::spawn::Threads;
+    const FIRINGS: usize = 20;
+    const POOL: usize = 4; // T47.3's cap; replaced by the pool's own figure there.
+
+    let mut h: Host<Where, Rebuild> = Host::new(Where::default(), 100, 50);
+    h.set_spawner(Box::new(Threads));
+    h.pump();
+    assert!(h.app.inner.timers.every(TICK_WHERE, 1, 50.0), "setup: the timer was accepted");
+
+    for _ in 0..40 {
+        h.tick(25.0);
+        h.pump();
+    }
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while h.app.inner.fired.len() < FIRINGS && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(1));
+        h.pump();
+    }
+
+    let mut ids = RAN_ON.lock().unwrap().clone();
+    let ran = ids.len();
+    ids.sort_by_key(|i| format!("{i:?}"));
+    ids.dedup();
+    let created = ids.len();
+    println!("threads created {created} for {FIRINGS} firings (bound {POOL}); jobs ran {ran}");
+    assert_eq!(h.app.inner.fired.len(), FIRINGS, "setup: every firing landed");
+    assert!(
+        created <= POOL,
+        "{created} threads for {FIRINGS} timer firings: the spawner creates a thread per job"
+    );
+}
+
+/// The accepting direction for the two gates above: **an hour** at 16 ms
+/// returns (the re-triage's probe: 225000 fired), and a stall that fits
+/// the outbox delivers every firing with nothing counted.
+#[test]
+fn an_hour_returns_and_a_stall_that_fits_delivers_everything() {
+    let mut t = Timers::new();
+    t.every(TICK, 1, 16.0);
+    let mut out = Outbox::new();
+    let started = std::time::Instant::now();
+    let fired = t.advance(3_600_000.0, &mut out);
+    println!(
+        "advance(1 h) at 16 ms: fired {fired} (of 225000) in {:.1} ms, queued {}",
+        started.elapsed().as_secs_f64() * 1e3,
+        out.len()
+    );
+    assert_eq!(fired, 225_000, "one hour of 16 ms periods");
+
+    let mut h: Host<Work, Rebuild> = Host::new(Work::default(), 100, 50);
+    h.set_spawner(Box::new(lumen_static::spawn::Immediate));
+    h.pump();
+    h.app.timers.every(TICK, 1, 10.0);
+    h.tick(300.0);
+    h.pump();
+    h.pump();
+    let counted = counted_losses(&mut h);
+    println!("10 ms timer, tick(300): delivered {} (of 30), counted {counted}", h.app.fired.len());
+    assert_eq!(h.app.fired.len(), 30, "a stall that fits the outbox delivers every firing");
+    assert_eq!(counted, 0, "and counts nothing");
+}
