@@ -41,7 +41,7 @@ for strategy in everything boundaries; do
         cargo build --release -q -p tasks-demo
         expect=(--expect-strategy Boundaries --expect-features "")
     fi
-    $LAUNCH --leg "$strategy" --bin target/release/tasks-demo "${expect[@]}" \
+    $LAUNCH --leg "$strategy" --exe target/release/tasks-demo "${expect[@]}" \
         -- env LUMEN_TASKS_PID={pid} python3 scripts/tasks_drive.py {port} "$strategy"
 done
 

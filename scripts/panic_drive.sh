@@ -26,13 +26,13 @@ for strategy in everything boundaries; do
     cargo build --release -q -p panic-app --features "$feats"
     # Eight panics, all provoked: the seven sites, and site 1 again for
     # the timer step. Exact, so a ninth is a failure (M42/T42.3).
-    $LAUNCH --leg "$strategy" --bin target/release/panic-app --arg=--window "${expect[@]}" --expect-panics 8 \
+    $LAUNCH --leg "$strategy" --exe target/release/panic-app --arg=--window "${expect[@]}" --expect-panics 8 \
         -- python3 scripts/panic_drive.py {port} "$strategy"
 done
 
 echo "== release without reload: must still die =="
 cargo build --release -q -p panic-app --features agent
-$LAUNCH --leg norecover --bin target/release/panic-app --arg=--window \
+$LAUNCH --leg norecover --exe target/release/panic-app --arg=--window \
     --expect-strategy Boundaries --expect-features "" --expect-exit nonzero \
     -- python3 - {port} <<'PY'
 import json, socket, sys

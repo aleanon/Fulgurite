@@ -19,4 +19,4 @@ cargo build -q -p wake-gate
 # The fixture exits non-zero on its own deadline, so a hang here is a
 # bug in the fixture rather than the thing under test; the launcher's
 # 30 s bound covers that too, six times the fixture's own 5 s deadline.
-$LAUNCH --no-agent --bin target/debug/wake-gate --stop wait --timeout 30
+$LAUNCH --no-agent --exe target/debug/wake-gate --stop wait --timeout 30

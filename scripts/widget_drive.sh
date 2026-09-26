@@ -43,7 +43,7 @@ status=0
 run_one() {
     local strategy="$1" features="$2" expect="$3"
     cargo build --release -p showcase --features "$features" >/dev/null
-    $LAUNCH --leg "$strategy" --bin target/release/showcase \
+    $LAUNCH --leg "$strategy" --exe target/release/showcase \
         --expect-strategy "$strategy" --expect-features "$expect" \
         -- python3 scripts/drive/run.py "$ONLY" || status=1
 }

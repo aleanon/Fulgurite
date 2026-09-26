@@ -34,7 +34,7 @@ tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 
 # grab LEG OUT [K=V]: the window on one backend, read back off the X server.
 grab() {
-    $LAUNCH --no-agent --settle 3 --leg "$1" --bin "$bin" ${3:+--env "$3"} \
+    $LAUNCH --no-agent --settle 3 --leg "$1" --exe "$bin" ${3:+--env "$3"} \
         -- bash -c "xwd -name minimal -out '$2' 2>/dev/null || true"
 }
 

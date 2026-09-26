@@ -23,7 +23,7 @@ if [ "${1:-}" != --drive ]; then
     LAUNCH="python3 scripts/live/launch.py --script live-gate"
     $LAUNCH --display-only || exit $?
     cargo build -q -p counter-window
-    exec $LAUNCH --bin target/debug/counter-window --stop quit \
+    exec $LAUNCH --exe target/debug/counter-window --stop quit \
         --expect-strategy Boundaries --expect-features "" \
         -- "$0" --drive
 fi

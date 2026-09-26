@@ -124,7 +124,7 @@ Every leg also printed `app log: N panics` equal to its declared count
 At each SHA the scratch worktree was checked out, and for each leg:
 `cargo build --release -p <pkg> --features <that commit's leg features>`,
 the binary copied to `target/rerun/bins/<sha>-<drive>-<leg>-<pkg>` and
-hashed, then `launch.py --identity socket --bin <copy> -- <drive>`, where
+hashed, then `launch.py --identity socket --exe <copy> -- <drive>`, where
 the drive is that commit's own: `scripts/drive/run.py` with
 the strategy variable set as the old script set it (widget), the
 heredoc body extracted from `scripts/agent_drive.sh` (agent),

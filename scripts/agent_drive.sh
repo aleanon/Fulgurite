@@ -40,7 +40,7 @@ $LAUNCH --display-only || exit $?
 run_one() {
 cargo build --release -p showcase --features "$2"
 echo "== $1 =="
-$LAUNCH --leg "$1" --bin target/release/showcase \
+$LAUNCH --leg "$1" --exe target/release/showcase \
     --expect-strategy "$1" --expect-features "$3" \
     -- python3 - "{port}" <<'PY'
 import socket, json, sys, base64, hashlib

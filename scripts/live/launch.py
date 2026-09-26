@@ -205,7 +205,7 @@ def main() -> int:
     ap.add_argument("--leg", default="only")
     ap.add_argument("--display-only", action="store_true",
                     help="only step 1: exit 77 without a display, 0 with one")
-    ap.add_argument("--bin")
+    ap.add_argument("--exe")
     ap.add_argument("--arg", action="append", default=[], help="an argument for the binary; `--arg=--flag` for one that starts with a dash")
     ap.add_argument("--env", action="append", default=[], help="K=V for the binary's environment")
     ap.add_argument("--port", type=int)
@@ -237,8 +237,8 @@ def main() -> int:
         return 77
     if a.display_only:
         return 0
-    if not a.bin:
-        fail(tag, "--bin is required")
+    if not a.exe:
+        fail(tag, "--exe is required")
     drive = a.drive[1:] if a.drive[:1] == ["--"] else a.drive
     expect = {f for f in a.expect_features.split(",") if f}
     unknown = expect - set(TRACKED)
@@ -270,9 +270,9 @@ def main() -> int:
     safe_leg = re.sub(r"[^A-Za-z0-9_.-]", "_", a.leg)
     log = logdir / f"{a.script}-{safe_leg}.log"
     logf = open(log, "wb")
-    child = subprocess.Popen([a.bin, *a.arg], env=env, stdout=logf, stderr=subprocess.STDOUT,
+    child = subprocess.Popen([a.exe, *a.arg], env=env, stdout=logf, stderr=subprocess.STDOUT,
                              stdin=subprocess.DEVNULL, start_new_session=True)
-    say(tag, f"launched {a.bin} as pid {child.pid}"
+    say(tag, f"launched {a.exe} as pid {child.pid}"
              + (f" on 127.0.0.1:{port}" if port else "") + f", log {log.relative_to(ROOT)}")
 
     def stop() -> int | None:
