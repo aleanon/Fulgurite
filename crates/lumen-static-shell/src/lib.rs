@@ -292,7 +292,8 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         {
             let mut cx = LayoutCx::with_changed(metrics, lumen_static::invalidate::Changed::ALL)
                 .with_palette(&self.palette)
-                .with_scale(self.scale);
+                .with_scale(self.scale)
+                .with_viewport(lumen_static::Size { w: limits.max_w, h: limits.max_h });
             let tree = self.app.tree_mut();
             tree.layout(&mut cx, limits, &self.styles, &mut scratch, 0);
             tree.place(Point::default(), &self.styles, &mut scratch, 0);
@@ -1268,7 +1269,9 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
                 // this line a `ScaleFactorChanged` that holds the logical
                 // size constant — the ordinary monitor-to-monitor drag —
                 // leaves every text box measured for the old display.
-                .with_scale(self.scale);
+                .with_scale(self.scale)
+                // The window, so a popup stays on it (M57/A18).
+                .with_viewport(lumen_static::Size { w: limits.max_w, h: limits.max_h });
             let tree = self.app.tree_mut();
             tree.layout(&mut cx, limits, &self.styles, &mut self.states, 0);
             self.last_layout_ns = t0.elapsed().as_nanos() as u64;

@@ -253,6 +253,8 @@ impl<S: 'static> Node for Select<S> {
         let size = self.trigger.layout(cx, limits, style, st, i + Self::TRIGGER);
         // The menu measures itself loosely and reports zero, so it
         // cannot widen or lengthen this control.
+        // Flipping above clears the trigger (M57/A18).
+        self.menu.above_by = size.h;
         self.menu.layout(cx, limits, style, st, i + Self::MENU);
         lumen_static::ops::record_painted(st, i, limits, size, &me)
     }

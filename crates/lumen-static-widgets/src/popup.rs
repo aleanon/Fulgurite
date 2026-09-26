@@ -58,6 +58,16 @@ pub struct Popup<W: Widget> {
     /// position it. The same reason `ScrollView` keeps its overflow:
     /// `place` does not re-measure.
     measured: Size,
+    /// How far above its anchor point the popup goes when it has to flip
+    /// — the height of whatever it hangs from, plus any gap — M57/A18.
+    ///
+    /// A `Below` popup is placed *at* its anchor, which its owner puts at
+    /// the bottom of its trigger; flipping above has to clear the trigger
+    /// too, and only the owner knows how tall it is. `0` (the default)
+    /// flips to end at the anchor point itself.
+    pub above_by: f32,
+    /// The window, as the last layout saw it (`LayoutCx::viewport`).
+    viewport: Size,
 }
 
 impl<W: Widget + Default> Default for Popup<W> {
@@ -68,6 +78,8 @@ impl<W: Widget + Default> Default for Popup<W> {
             anchor: Anchor::default(),
             passive: false,
             measured: Size::default(),
+            above_by: 0.0,
+            viewport: Size { w: f32::INFINITY, h: f32::INFINITY },
         }
     }
 }
@@ -77,7 +89,15 @@ impl<W: Widget> Popup<W> {
     const AT: usize = 1;
 
     pub fn new(content: W) -> Self {
-        Popup { content, open: false, anchor: Anchor::default(), passive: false, measured: Size::default() }
+        Popup {
+            content,
+            open: false,
+            anchor: Anchor::default(),
+            passive: false,
+            measured: Size::default(),
+            above_by: 0.0,
+            viewport: Size { w: f32::INFINITY, h: f32::INFINITY },
+        }
     }
 }
 
@@ -150,8 +170,17 @@ impl<W: Widget> Node for Popup<W> {
         // space: a popup is out of flow, so the space its siblings left
         // is not the space it has. It gets the whole viewport's width as
         // an upper bound and its natural height.
-        let loose =
-            Constraints { min_w: 0.0, max_w: limits.max_w, min_h: 0.0, max_h: f32::INFINITY };
+        //
+        // **At most the window's height** (M57/A18): content taller than
+        // the screen is given the screen, and a list inside scrolls
+        // rather than running off the bottom.
+        //
+        // **And the window's width, not the parent's** (M57/A18): a tip
+        // on a 30 px button was given 30 px and wrapped into a column 174
+        // px tall. Out of flow means the parent's width is not its limit.
+        self.viewport = cx.viewport;
+        let max_w = if cx.viewport.w.is_finite() { cx.viewport.w } else { limits.max_w };
+        let loose = Constraints { min_w: 0.0, max_w, min_h: 0.0, max_h: cx.viewport.h };
         self.measured = self.content.layout(cx, loose, style, st, i + Self::AT);
 
         // Zero in flow. The parent lays its siblings out as if this were
@@ -169,11 +198,31 @@ impl<W: Widget> Node for Popup<W> {
         }
         // Relative to the anchor — this node's own position, which its
         // parent has just assigned from the flow it is not part of.
-        let to = match self.anchor {
+        let above = at.y - self.above_by - self.measured.h;
+        let mut to = match self.anchor {
             Anchor::Below => Point { x: at.x, y: at.y },
-            Anchor::Above => Point { x: at.x, y: at.y - self.measured.h },
+            Anchor::Above => Point { x: at.x, y: above },
             Anchor::Over => at,
         };
+        // **Kept on the window** — M57/A18. `Below` flips above its
+        // trigger when it would cross the bottom edge and there is more
+        // room above; then both axes are clamped inside. Before this a
+        // tooltip by the right edge ran off it and a list near the bottom
+        // ran off the screen (`docs/widget-audit.md`, Tooltip).
+        let (vw, vh) = (self.viewport.w, self.viewport.h);
+        if vh.is_finite() && matches!(self.anchor, Anchor::Below) && to.y + self.measured.h > vh {
+            let room_below = vh - at.y;
+            let room_above = at.y - self.above_by;
+            if room_above > room_below {
+                to.y = above;
+            }
+        }
+        if vw.is_finite() {
+            to.x = to.x.min(vw - self.measured.w).max(0.0);
+        }
+        if vh.is_finite() {
+            to.y = to.y.min(vh - self.measured.h).max(0.0);
+        }
         self.content.place(to, style, st, i + Self::AT);
     }
 

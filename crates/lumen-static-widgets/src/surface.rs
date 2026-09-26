@@ -516,6 +516,8 @@ impl<W: Widget, S: TextStorage> Node for Tooltip<W, S> {
         let c = self.content.layout(cx, limits, style, st, i + Self::AT);
         // The tip measures against the same limits and is placed out of
         // flow; it contributes nothing to this node's size.
+        // Flipping above clears the control and both gaps (M57/A18).
+        self.tip.above_by = c.h + 2.0 * Self::GAP;
         self.tip.layout(cx, limits, style, st, i + Self::TIP);
         lumen_static::ops::record_painted(st, i, limits, c, &me)
     }

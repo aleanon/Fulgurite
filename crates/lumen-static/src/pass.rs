@@ -27,6 +27,11 @@ pub fn layout_with<W: Node + ?Sized>(
     st: &mut [NodeState],
     limits: Constraints,
 ) {
+    // The root's limits are the window, unless the caller said otherwise
+    // (M57/A18: what a popup must stay inside).
+    if !cx.viewport.w.is_finite() && limits.max_w.is_finite() && limits.max_h.is_finite() {
+        cx.viewport = crate::desc::Size { w: limits.max_w, h: limits.max_h };
+    }
     tree.layout(cx, limits, style, st, 0);
     tree.place(Point::default(), style, st, 0);
 }

@@ -58,6 +58,12 @@ pub struct OptionList {
     picked: Option<usize>,
     /// Laid-out height, so `on_event` can turn `local.y` into a row.
     height: f32,
+    /// How far the rows are scrolled — M57/A18. A list taller than the
+    /// window is given the window (`Popup` caps it), and scrolls by wheel
+    /// inside it rather than running off the bottom of the screen.
+    scroll: f32,
+    /// The rows' full height, padding included, for the scroll clamp.
+    content_h: f32,
 }
 
 impl Default for OptionList {
@@ -70,6 +76,8 @@ impl Default for OptionList {
             hot: None,
             picked: None,
             height: 0.0,
+            scroll: 0.0,
+            content_h: 0.0,
         }
     }
 }
@@ -147,6 +155,11 @@ impl OptionList {
         if self.shown_count == 0 || self.height <= 0.0 {
             return None;
         }
+        // In the scrolled list's coordinates (M57/A18).
+        let y = y + self.scroll;
+        if y < 0.0 {
+            return None;
+        }
         let k = (y / ROW_H) as usize;
         self.nth_shown(k.min(self.shown_count - 1))
     }
@@ -222,6 +235,8 @@ impl Node for OptionList {
         };
         let s = lumen_static::ops::resolve_self(limits, &me, content);
         self.height = s.h;
+        self.content_h = content.h;
+        self.scroll = self.scroll.clamp(0.0, (self.content_h - self.height).max(0.0));
         lumen_static::ops::record_painted(st, i, limits, s, &me)
     }
 
@@ -237,12 +252,18 @@ impl Node for OptionList {
         out.rounded_rect(r, s.bg, s.radius);
         lumen_static::ops::border(st, i, out);
         let p = s.pad;
+        // Clipped to the panel, so a scrolled row does not paint past it.
+        out.push_clip(r);
         let mut k = 0usize;
         for idx in 0..self.count {
             if !self.shown[idx] {
                 continue;
             }
-            let y = r[1] + p.1 + ROW_H * k as f32;
+            let y = r[1] + p.1 + ROW_H * k as f32 - self.scroll;
+            if y + ROW_H < r[1] || y > r[3] {
+                k += 1;
+                continue;
+            }
             if Some(idx) == self.hot {
                 out.rounded_rect([r[0] + 4.0, y, r[2] - 4.0, y + ROW_H], s.fg, 6.0);
             }
@@ -256,10 +277,22 @@ impl Node for OptionList {
             );
             k += 1;
         }
+        out.pop_clip();
     }
 
     fn on_event(&mut self, ev: &Event, cx: &EventCtx) -> bool {
         match ev {
+            // A wheel scrolls a list that does not fit (M57/A18); one that
+            // does declines it, so it reaches whatever is behind.
+            Event::Scroll { dy, .. } => {
+                let max = (self.content_h - self.height).max(0.0);
+                let want = (self.scroll - dy).clamp(0.0, max);
+                if want == self.scroll {
+                    return false;
+                }
+                self.scroll = want;
+                true
+            }
             // `Hover`, not `PointerMove` — see `Event::Hover`. A move
             // reaches a widget only under capture, so this arm never ran
             // and an option list never highlighted the row under the
@@ -562,6 +595,8 @@ impl<const KIND: u8> Node for Chooser<KIND> {
         } else {
             self.trigger.layout(cx, limits, style, st, i + Self::TRIGGER)
         };
+        // Flipping above clears the trigger (M57/A18).
+        self.list.above_by = t.h;
         self.list.layout(cx, limits, style, st, i + Self::POPUP);
         let s = lumen_static::ops::resolve_self(limits, &me, t);
         self.trigger_rect = (Point { x: 0.0, y: 0.0 }, t);

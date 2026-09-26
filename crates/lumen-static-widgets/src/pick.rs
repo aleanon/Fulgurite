@@ -754,6 +754,8 @@ impl<const KIND: u8> Node for Picker<KIND> {
             &style[i + Self::TRIGGER],
         );
         self.trigger = t;
+        // Flipping above clears the trigger (M57/A18).
+        self.pad.above_by = t.h;
         self.pad.layout(cx, limits, style, st, i + Self::POPUP);
         let s = lumen_static::ops::resolve_self(limits, &me, t);
         lumen_static::ops::record_painted(st, i, limits, s, &me)
