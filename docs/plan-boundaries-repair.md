@@ -519,6 +519,17 @@ remove. Until T41.2b lands, `agent_drive.sh`'s only `Boundaries` leg is
 still `agent,shadow-oracle`, so no live drive judges `Boundaries`
 without the oracle's repair of the frames after a defect (§0 rule 2).
 
+**T41.2b done 2026-09-26.** `agent_drive.sh` runs three legs:
+`Everything`, `Boundaries` built `agent` alone, and `Boundaries+oracle`
+built `agent,shadow-oracle`; a leg name's `+oracle` suffix is dropped
+before the launcher compares strategies. The per-leg `supported` check
+moved out of the drive's heredoc into `scripts/live/shadow.py`, one copy
+that T41.7 also gives the widget and tasks drives, and it runs whether
+the drive passed or not, so a failing drive still reports what its
+oracle saw. The copy is not a second identity check: the launcher's
+feature check (T42.2) refuses a mis-built leg first, and `shadow.py` is
+the drive asking the running process, as T42.4 had it.
+
 ### T41.3 — a `Repeat` whose data changed is marked
 
 **Closes:** R1-F4.

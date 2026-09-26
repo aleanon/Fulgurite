@@ -163,7 +163,10 @@ Each injected session asserts its own precondition (`pump` returned
 > oracle** — until then `if sh.get("supported"):` had no else, so a leg
 > built without it passed having compared nothing (I-NEW-3). Whether the
 > oracle's silence means anything — it repairs what it inspects — is
-> M41's, `docs/plan-boundaries-repair.md`.)*
+> M41's, `docs/plan-boundaries-repair.md`. *M41/T41.2b:* the oracle is
+> now a third leg, `Boundaries+oracle`, beside a plain `Boundaries` leg
+> built without it, so the leg that judges `Boundaries` as it ships is
+> not one the oracle repairs.)*
 >
 > **Its first live run reported a divergence that was the checker's**:
 > the host zeroes the focused node's `focus_ring` *after* layout (T15.6),
@@ -311,5 +314,5 @@ Fixes are M41's; this table records what changed here.
 | 1 | T34.0's inventory missed `Host::compose`, which marked nothing — an S0 in the default (R1-F2, R10-F9) | M41/T41.1 marks the focused subtree; the T34.0 table gained a row per `&mut self` method |
 | 2 | the oracle repaired the frame it judged, and could not see widget-internal state (R1-F6) | M41/T41.2: runs after paint and compares display lists; T34.1 amended above |
 | 3 | no test showed the oracle could fire: a scratch that cloned the states left `tests/shadow.rs` green (I-NEW-1) | M41/T41.2: three positive cases beside the quiet one |
-| 4 | `agent_drive.sh`'s only `Boundaries` leg built the oracle in, so no drive judged `Boundaries` without the repair | M41/T41.2b, waiting for M42/T42.4's per-leg identity check |
+| 4 | `agent_drive.sh`'s only `Boundaries` leg built the oracle in, so no drive judged `Boundaries` without the repair | **M41/T41.2b, done 2026-09-26**: three legs — `Everything`, a plain `Boundaries` leg that asserts `supported: false`, and a `Boundaries+oracle` leg; the per-leg check is `scripts/live/shadow.py`, one copy for every drive |
 | 5 | "29 frames compared, none diverged" was measured on repaired frames | M41/T41.7 gathers it again |

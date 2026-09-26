@@ -36,13 +36,20 @@ $LAUNCH --display-only || exit $?
 #
 # run_one LEG CARGO-FEATURES EXPECTED-FEATURES -- the expected features are
 # declared apart from the build's, so a leg built wrong is refused rather
-# than re-described.
+# than re-described. LEG is the strategy the process must report, with a
+# `+oracle` suffix on the leg that builds the shadow oracle in (M41/T41.2b).
+#
+# After the drive, `scripts/live/shadow.py` asks the running window's
+# oracle the leg's question (M42/T42.4, one copy for every drive): a leg
+# that declares `shadow-oracle` asserts `supported`, then `compared > 0`,
+# then no divergence; any other leg asserts `supported: false`.
 run_one() {
 cargo build --release -p showcase --features "$2"
 echo "== $1 =="
 $LAUNCH --leg "$1" --exe target/release/showcase \
-    --expect-strategy "$1" --expect-features "$3" \
-    -- python3 - "{port}" <<'PY'
+    --expect-strategy "${1%%+*}" --expect-features "$3" \
+    -- bash -c 'python3 - "$1"; r=$?; python3 scripts/live/shadow.py agent-drive || exit 1; exit $r' \
+       _ "{port}" <<'PY'
 import socket, json, sys, base64, hashlib
 port = int(sys.argv[1])
 s = socket.create_connection(("127.0.0.1", port), timeout=15)
@@ -138,31 +145,17 @@ for name in ("dark", "light"):
     prev_bg, prev_shot = bg, frame
 print(f"agent-drive: {before.split()[0]} -> {after.split()[0]}, "
       f"menu {int(box[2]-box[0])}x{int(box[3]-box[1])} px, press observable")
-# M34/T34.1: the shadow oracle -- M42/T42.4 (I-NEW-3): **"cannot say" is
-# never "no"**. This was `if sh.get("supported"):` with no else, so a leg
-# built without the oracle passed having compared nothing. The leg says
-# whether it expects the oracle (the launcher hands its declared features
-# over as LUMEN_LIVE_EXPECT_FEATURES), and the answer is checked against
-# that: present, then a count, then silence, in that order -- a quiet
-# oracle that compared nothing proves nothing. This makes the leg refuse
-# a build with no oracle; whether the oracle's silence *means* anything
-# (it repairs what it inspects, R1-F6) is M41's.
-import os
-expected = "shadow-oracle" in os.environ.get("LUMEN_LIVE_EXPECT_FEATURES", "").split(",")
-sh = call("app.shadow")
-supported = sh.get("supported") is True
-print(f"agent-drive: shadow: supported={supported} expected={expected}, "
-      f"compared {sh.get('compared', 0)}")
-if expected:
-    assert supported, f"agent-drive: expected the shadow oracle in this build: {sh!r}"
-    assert sh["compared"] > 0, f"agent-drive: the shadow oracle never ran: {sh!r}"
-    assert sh["first"] is None, f"agent-drive: a bounded frame diverged from the whole-tree one: {sh['first']!r}"
-    print(f"agent-drive: shadow oracle compared {sh['compared']} frames, none diverged")
-else:
-    assert not supported, f"agent-drive: shadow oracle present in a leg that does not expect it: {sh!r}"
 PY
 }
 
+# **Three legs** (M41/T41.2b, docs/plan-boundaries-repair.md §0 rule 2).
+# Until 2026-09-26 the only `Boundaries` leg built the shadow oracle in,
+# and the oracle's second pass lays the live widgets out again after the
+# frame it judges -- so a defect was reported once and then repaired, and
+# no drive judged `Boundaries` as it ships. The plain leg is that build;
+# the oracle leg is a separate binary, which the launcher's feature check
+# proves (a plain leg that reports `shadow-oracle` is refused).
 run_one Everything agent,everything everything
-run_one Boundaries agent,shadow-oracle shadow-oracle
-echo "agent-drive: both strategies"
+run_one Boundaries agent ""
+run_one Boundaries+oracle agent,shadow-oracle shadow-oracle
+echo "agent-drive: both strategies, and Boundaries with and without the shadow oracle"

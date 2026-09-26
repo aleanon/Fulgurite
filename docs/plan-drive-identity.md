@@ -377,7 +377,7 @@ harness. Each plant states the output it expects once the fix is in:
 |---|---|---|---|
 | stranger | start a showcase on the port, then run `widget_drive.sh Switch` on it | `port already answering` before any build is driven | green (exit 0) |
 | leg-drop (I5a) | `run_one Everything agent` in `widget_drive.sh` | `expected Everything, got …Boundaries<256>` | green |
-| shadow-absent | drop `shadow-oracle` from `agent_drive.sh`'s `Boundaries` leg | `expected the shadow oracle in this build` | green |
+| shadow-absent | drop `shadow-oracle` from `agent_drive.sh`'s `Boundaries` leg (its `Boundaries+oracle` leg since M41/T41.2b) | `expected the shadow oracle in this build` | green |
 | shadow-unexpected | add `shadow-oracle` to the `Everything` leg | `shadow oracle present in a leg that does not expect it` | green |
 | inventory-drop (I5b/I5c) | delete Radio from `widgets/toggles.py`'s `ALL`, and delete one Switch row | `manifest expects Radio`, `Switch: missing action` | green (38/92) |
 | export-unowned | remove one name from the undriven allow file | the static check names it | no check exists |
