@@ -25,7 +25,7 @@ it is: `cargo check` proves none of them — it type-checks and stops, with
 no codegen, no link, no `.text`. Section sizes below come from a real
 `cargo build --release` for the target.
 
-## The headline — measured 2026-09-26 (after M45/T45.12 and M46/T46.1)
+## The headline — measured 2026-09-27 (after M45)
 
 **This table is the current measurement, and `scripts/check_text.sh`
 holds it to the linked firmware:** it reads the `.text` row below and
@@ -43,10 +43,10 @@ that produces real sections.
 
 | | Threshold | Measured | |
 |---|---:|---:|---|
-| `.text` | ≤ 64 KB | **27,732 B** (27.1 KB) | **pass**, at 42.3% of budget |
+| `.text` | ≤ 64 KB | **27,968 B** (27.3 KB) | **pass**, at 42.7% of budget |
 | `.bss` + `.data` | zero framework symbols | **1 symbol, 4 B, exempted** | **pass** — the fixture's own `SINK` (`scripts/bss.allow`) |
-| `.rodata` | — | 12,860 B | of which the baked face is most; 9,010 B at T13.7 |
-| Flash, total | ≤ 512 KB | **40,809 B** (39.9 KB) | 7.8% of the part |
+| `.rodata` | — | 12,880 B | of which the baked face is most; 9,010 B at T13.7 |
+| Flash, total | ≤ 512 KB | **41,065 B** (40.1 KB) | 7.8% of the part |
 | RAM, 100 nodes | ≤ 24 KB | **16.0 KB** state + style | **pass**; measured at M27/T27.1 (2026-09-18), below |
 | Stack, actual depth | ≤ 4 KB | asserted at compile time | since 2026-09-07; see "The stack budget is enforced now" |
 | `f64` in the frame path | zero | **zero** | the only `f64` is `observe`'s accesskit call, which needs `std` |
@@ -505,3 +505,15 @@ was inlined into `Button::layout`. A symbol search is evidence of
 absence only for a function that is not inlined, which is the same
 lesson as the `#[no_mangle]` static that the linker dropped (M15): the
 quantity has to be *measured*, not looked up.
+
+## M45 — the headline re-measured, 2026-09-27
+
+After all of M45 had merged (T45.0–T45.12), `just firmware-size` gave
+`.text` **27,732 → 27,968 B (+236)**, `.rodata` 12,860 → 12,880 (+20), and
+flash 41,065 B. That drift sat 0.85% inside check_text.sh's 1% tolerance,
+so no gate asked for it. It was re-measured when M45 closed, because a
+headline left near its tolerance hands the next branch a failure that
+branch did not cause. T45.6, the last task, moved `.text` by 0 B
+(measured with and without it). The +236 belongs to M45's earlier
+tasks, taken together; no per-task split was measured.
+
