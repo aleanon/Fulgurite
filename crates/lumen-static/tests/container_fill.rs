@@ -219,4 +219,7 @@ impl lumen_static::retain::Retention for Counted {
     fn reset(&mut self) {
         self.n = 0;
     }
+    fn still(&mut self) -> lumen_static::retain::Damage {
+        lumen_static::retain::Damage::All
+    }
 }

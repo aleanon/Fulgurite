@@ -303,6 +303,11 @@ fn changing_a_strength_reports_damage() {
         ("morph_y", |m: &mut Material| m.morph_y = 80),
     ] {
         f(&mut host.app.ui.panel.material);
+        // A direct write to the tree is marked by its writer (M53/T53.3:
+        // an unmarked frame is skipped, so it would paint nothing). A
+        // full mark repaints every command, so the hash comparison is
+        // still the only thing that can report this panel damaged.
+        host.invalidate_all();
         host.pump();
         let d = host.damage();
         println!("changing {name} -> {d:?}");

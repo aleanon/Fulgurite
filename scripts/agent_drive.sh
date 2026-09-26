@@ -42,6 +42,7 @@ $LAUNCH --display-only || exit $?
 # After the drive, `scripts/live/shadow.py` asks the running window's
 # oracle the leg's question (M42/T42.4, one copy for every drive): a leg
 # that declares `shadow-oracle` asserts `supported`, then `compared > 0`,
+# then `skipped > 0` (M53/T53.3: the idle fast path was judged too),
 # then no divergence; any other leg asserts `supported: false`.
 run_one() {
 cargo build --release -p showcase --features "$2"

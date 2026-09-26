@@ -498,3 +498,33 @@ skip) and `place`.
 The count behind it is the gate: `tests/arena_marks.rs`, 40 clicks on a
 box, **0 cascades in 40** (40 in 40 before), and 40 wheels over the
 repeater still 40 in 40.
+
+## T53.3 — an idle pump does nothing, 2026-09-27
+
+**The idle row above was not zero** (R6-F1): under `Boundaries` a pump
+with nothing marked skipped layout and still placed, painted and
+finished. Since T53.3 it returns early when nothing is marked, handled,
+applied or owed and no pointer or focus state moved
+(`docs/plan-frame-cost.md` T53.3). Quiet (load 3.3/32, `just bench-lock`).
+
+| measure | before | after |
+|---|---:|---:|
+| `idle_pump.rs`, 40 idle pumps: place / paint passes | 40 / 40 | **0 / 0** |
+| `flip::measure_the_flip`, idle, `Boundaries<256>` pump | 0.49–0.50 µs | **0.06 µs** |
+| same, `Everything` pump (never skips) | 0.72–0.74 µs | 0.69–0.70 µs |
+
+The T34.2 idle row's definition changes with it: under `Boundaries` it is
+now the fast path's cost — the input stage and the predicate — and under
+`Everything` it is still the whole walk.
+
+**Kill rule** (§5): the predicate must not slow a busy frame by more than
+its spread. `just grid`'s `bound` arm, the T53.2 binary against this one,
+interleaved eight invocations a side: median pump **33.98 → 34.01 µs**
+(+0.03), against a fast-cluster spread of 0.25 µs. Ships.
+
+**The oracle over the drives, fast path on:** `just agent-drive`'s oracle
+leg compared 42 frames, 28 of them skipped; `just widget-drive`'s
+compared 6 243, 5 397 skipped; none diverged. A headless sweep of the
+workspace with `shadow-oracle` compared 4 289 frames with the same
+divergences as before the change, less one it fixed (`loop_test` wrote a
+label with no mark).

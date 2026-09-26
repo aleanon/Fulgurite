@@ -878,6 +878,7 @@ impl<A: App, P: RecoverPolicy> lumen_static_agent::AgentHost for Live<'_, A, P> 
         Some(serde_json::json!({
             "supported": true,
             "compared": r.compared,
+            "skipped": r.skipped,
             "first": r.first.map(|d| serde_json::json!({
                 "frame": d.frame, "node": d.node, "field": d.field,
             })),

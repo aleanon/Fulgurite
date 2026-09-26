@@ -43,9 +43,8 @@ fn host() -> Host<Still, Incremental, Boundaries<256>> {
     h
 }
 
-/// **Red until T53.3.**
+/// Red until T53.3 at 40 place and 40 paint passes per 40 idle pumps.
 #[test]
-#[ignore = "red until T53.3: an idle pump under Boundaries still places and paints (R6-F1)"]
 fn an_idle_pump_places_and_paints_nothing() {
     let mut h = host();
     let before = h.pass_counts();

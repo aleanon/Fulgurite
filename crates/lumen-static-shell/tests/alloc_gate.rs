@@ -783,6 +783,11 @@ mod truetype {
         let mut step = |host: &mut Host<ListApp, Incremental>, canvas: &mut Canvas, k: usize| {
             let s = if k.is_multiple_of(2) { "row number 5 of the list" } else { "row number 5 OF the list" };
             host.app.ui.items.items[5].name.set_str(s);
+            // A direct write is marked by its writer: since M53/T53.3 an
+            // unmarked pump is skipped outright, and this one would damage
+            // nothing (the setup assertion below says so). Marked here,
+            // outside the counted span; the list has no author id.
+            host.invalidate_all();
             let a = counters();
             host.pump_with(&mut m);
             let b = counters();

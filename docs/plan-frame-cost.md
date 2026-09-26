@@ -414,6 +414,27 @@ row's definition; `docs/00-handoff-static-tree.md`, invalidation; the
 **Effort:** M. **Depends on:** T53.1, T53.2 (the predicate reads the
 arena flag after T53.2 has narrowed it); M41.
 
+*What building found (2026-09-27).*
+
+- **The oracle had to be told to judge a skipped frame.** It ran after
+  paint, so a skipped frame was the one frame nothing checked. It now
+  runs on the fast path too, against the list held, and counts
+  `skipped` beside `compared`; `scripts/live/shadow.py` requires
+  `skipped > 0`. `tests/shadow.rs`'s new case writes a label with no
+  mark: the frame is skipped (0 paints) and the oracle names the label.
+  With the fast-path oracle call removed, four of the five cases go red.
+- **`Rebuild` needed a word of its own.** Its contract is `All` every
+  frame; the fast path reported `None`. `Retention::still` is required,
+  `All` for `Rebuild` and `None` for the tracking strategies.
+- **`Host::repaint_all` marks everything now.** It reset retention and
+  marked nothing, so a following pump would have been skipped and left a
+  surface full of foreign pixels with no damage reported.
+- **Two tests wrote the tree with no mark** and relied on paint running
+  every frame (`loop_test`, `glass_material`); the oracle had already
+  named `loop_test`'s write as a divergence before T53.3. Both mark now.
+- The kill rules held: `bound` +0.03 µs against a 0.25 µs spread, and
+  the oracle fired on a wrongly skipped frame (above).
+
 ### T53.4 — a motion that changes nothing presents nothing
 
 **Closes:** R7-F6.

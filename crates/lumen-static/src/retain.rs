@@ -432,6 +432,18 @@ pub trait Retention: Default {
     /// Forget everything: the next frame is a full redraw. A resize or
     /// a tree swap calls this.
     fn reset(&mut self);
+
+    /// End a frame that **painted nothing because nothing changed** —
+    /// M53/T53.3's idle fast path — and say what it damaged. The frame
+    /// retained stays the one retained, and nothing is added to what is
+    /// pending for the next present.
+    ///
+    /// [`Damage::None`] for a strategy that tracks; [`Damage::All`] for
+    /// [`Rebuild`], whose contract is that every frame is everything.
+    /// **Required, not provided**: a default of `None` would make a
+    /// strategy that tracks nothing report a still frame as clean, which
+    /// is the one direction that loses pixels.
+    fn still(&mut self) -> Damage;
 }
 
 /// Retain nothing; redraw everything, every frame.
@@ -458,6 +470,9 @@ impl Retention for Rebuild {
         Damage::All
     }
     fn reset(&mut self) {}
+    fn still(&mut self) -> Damage {
+        Damage::All
+    }
 }
 
 /// How many frames of damage are kept for [`Retention::take_damage_for_age`].
@@ -803,6 +818,10 @@ impl Retention for Incremental {
         self.prev.clear();
         self.d.reset();
     }
+
+    fn still(&mut self) -> Damage {
+        Damage::None
+    }
 }
 
 /// Retain `(hash, ink)` for up to `N` commands in a fixed array — the
@@ -860,6 +879,10 @@ impl<const N: usize> Retention for Streaming<N> {
 
     fn reset(&mut self) {
         self.d.reset();
+    }
+
+    fn still(&mut self) -> Damage {
+        Damage::None
     }
 }
 

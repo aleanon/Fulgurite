@@ -946,6 +946,14 @@ focused subtree; the host's writes are now audited method by method in
 (a `Repeat`'s data, the agent's probe, a paste's measurer) are gated and
 fixed by M41's later tasks, and the re-validation found the probe's class
 in five more widgets (T41.7).
+**DECIDED 2026-09-27 (M53/T53.2–T53.3, `docs/plan-frame-cost.md`): a
+frame pays only for what it marked.** The arena cascade asks only the
+marked nodes, and a pump with nothing marked, handled, applied or owed
+is skipped outright under a strategy that can skip — no place, paint or
+`finish`, damage `None` — with the shadow oracle judging skipped frames
+too. An unmarked write to the tree, which paint used to hide, now paints
+nothing at all. Figures: `docs/results-damage-precision.md` T53.2 and
+T53.3.
 
 **DECIDED 2026-09-03 — confirmed by the first profile of a live frame**
 (`docs/results-frame-cost.md`): layout and paint were 1 µs of a 190 ms frame.

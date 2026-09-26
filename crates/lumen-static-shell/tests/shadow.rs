@@ -23,6 +23,12 @@
 //! - a direct write to a label, with no mark, is named.
 //! - a tick that writes on a zero `dt`, against `App::tick`'s contract,
 //!   is named on that frame.
+//!
+//! Since M53/T53.3 a pump with nothing marked is skipped — no layout,
+//! place or paint — and an unmarked write is exactly what such a pump
+//! does not see. The oracle judges skipped frames too, and the last case
+//! here asserts it fires on one: **if it could not, the fast path would
+//! not ship** (`docs/plan-frame-cost.md` §5).
 
 use lumen_static::invalidate::Boundaries;
 use lumen_static::prelude::*;
@@ -80,9 +86,17 @@ fn a_correct_session_is_compared_and_quiet() {
     h.pump();
     h.post(Event::PointerMove { x: 290.0, y: 110.0 });
     h.pump();
+    // Two more with nothing happening: the idle fast path skips them
+    // (M53/T53.3), and the oracle judges skipped frames too.
+    h.pump();
+    h.pump();
     let r = h.shadow_report();
-    println!("compared {} frames, first divergence {:?}, presses {}", r.compared, r.first, h.app.tally.n);
+    println!(
+        "compared {} frames ({} skipped by the idle fast path), first divergence {:?}, presses {}",
+        r.compared, r.skipped, r.first, h.app.tally.n
+    );
     assert!(r.compared > 0, "the shadow oracle never ran — 'no divergence' would prove nothing");
+    assert!(r.skipped > 0, "setup: no frame was skipped, so the fast path went unjudged");
     assert_eq!(h.app.tally.n, 1, "setup: the click did not land");
     assert!(r.first.is_none(), "a correct session diverged: {:?}", r.first);
 }
@@ -238,6 +252,32 @@ fn a_zero_dt_tick_write_is_named() {
     let frame = h.shadow_report().compared;
     h.pump();
     let d = named(&h, "a tick's write on a zero dt");
+    assert_eq!(d.node, label as u32, "the oracle named the wrong node: {d:?}");
+    assert_eq!(d.frame, frame, "named on a later frame than the write's: {d:?}");
+}
+
+/// **The fast path's own gate** — M53/T53.3. A write with no mark leaves
+/// every mark site quiet, so the idle fast path skips the frame: nothing
+/// is laid out or painted, and the screen keeps last frame's list. The
+/// oracle must still judge that frame, and name the write on it.
+#[test]
+fn the_oracle_fires_on_a_frame_the_fast_path_skipped() {
+    let mut h = offset_host();
+    let label = lumen_static::style::index_of_wid(<OffsetUi as Widget>::SUB_TABLE, "label").unwrap();
+    let before = h.pass_counts();
+    let frame = h.shadow_report().compared;
+    h.app.ui.label.set("written with no mark".into());
+    h.pump();
+    let d_passes = h.pass_counts().since(before);
+    println!(
+        "the write's frame: skipped {}, place {}, paint {} (the fast path took it); oracle skipped-frames {}",
+        d_passes.skipped,
+        d_passes.places,
+        d_passes.paints,
+        h.shadow_report().skipped
+    );
+    assert_eq!((d_passes.skipped, d_passes.paints), (1, 0), "setup: the fast path did not skip the frame");
+    let d = named(&h, "an unmarked write on a skipped frame");
     assert_eq!(d.node, label as u32, "the oracle named the wrong node: {d:?}");
     assert_eq!(d.frame, frame, "named on a later frame than the write's: {d:?}");
 }

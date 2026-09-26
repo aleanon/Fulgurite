@@ -46,6 +46,10 @@ pub struct Shadow {
     /// Frames compared. Zero means the oracle never ran — a drive that
     /// asserts "no divergence" must assert this is not zero first.
     pub compared: u64,
+    /// Of those, frames the idle fast path skipped — M53/T53.3. Printed
+    /// beside `compared` by every drive, so a run in which nothing was
+    /// skipped cannot pass as one in which skipping was checked.
+    pub skipped: u64,
     pub first: Option<Divergence>,
 }
 
@@ -601,9 +605,14 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
     /// retained history rather than as one frame's full damage, because
     /// a buffer two presents old holds the foreign pixels too — M37/T37.4,
     /// where a reload's error bar outlived its fix on the older buffers.
+    ///
+    /// **Marks everything too** (M53/T53.3): the next pump must paint,
+    /// or the idle fast path would keep a list nothing re-rendered and
+    /// report no damage for a surface that needs all of it.
     pub fn repaint_all(&mut self) {
         self.retain.reset();
         self.last_damage = Damage::All;
+        self.invalidation.mark_all();
     }
 
     /// Clear the failure, so the next guarded entry runs again — M36.
@@ -1474,6 +1483,13 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
     /// One frame: drain input, lay out, paint. Returns whether any event
     /// was consumed, which a real shell uses to decide whether to
     /// redraw.
+    ///
+    /// **A pump with nothing to do does nothing** (M53/T53.3): under a
+    /// strategy that can skip, a frame with nothing marked, handled,
+    /// applied or owed keeps the list it has and reports
+    /// [`Retention::still`]'s
+    /// damage — `None` for a tracking strategy. So a write to the tree
+    /// must be marked (`Host::invalidate`) to be drawn at all.
     pub fn pump(&mut self) -> bool {
         self.pump_with(&mut BlockMetrics)
     }
@@ -1658,6 +1674,52 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
                 self.arenas_dirty = true;
             }
         }
+        // **An idle pump does nothing** — M53/T53.3 (R6-F1,
+        // `docs/plan-frame-cost.md` §2.3(a)). Nothing marked, nothing
+        // handled, no pointer or focus state moved, nothing applied, no
+        // binding wrote and no arena owed: every one of those marks the
+        // tree when it happens, and so do a resize, a scale or palette
+        // change, a new sheet, `adopt` and a caught panic — and a fresh
+        // host starts with everything marked. So this frame would lay
+        // out nothing, and paint exactly the list already held. Keep the
+        // list, report no damage, and skip place, paint and `finish`,
+        // which ran on every pump until T53.3 whatever `Boundaries`
+        // skipped. **Only under a strategy that can skip**: `Everything`
+        // is the diagnostic that always walks (M34).
+        //
+        // The risk is paint that changes without a mark: until T53.3 a
+        // pump always painted, and hid it. The shadow oracle judges a
+        // skipped frame like any other (below), so it is what finds one.
+        if I::CAN_SKIP
+            && !handled
+            && after == before
+            && !applied_changed
+            && !self.arenas_dirty
+            && self.invalidation.marks() == lumen_static::invalidate::Marks::default()
+        {
+            self.stages.input = t_pump.elapsed().as_nanos() as u64;
+            self.last_damage = self.retain.still();
+            self.last_marks = lumen_static::invalidate::Marks::default();
+            self.last_arenas_owed = false;
+            (self.last_layout_ns, self.last_place_ns, self.last_paint_ns) = (0, 0, 0);
+            self.passes.skipped += 1;
+            // Judged like a painted frame: the list held is what is on
+            // screen, and the oracle's whole-tree frame must still equal
+            // it. Without this a skipped frame is the one frame nothing
+            // checks (§5's condition for shipping this at all).
+            #[cfg(feature = "shadow-oracle")]
+            {
+                let limits = self.limits();
+                self.shadow_check(metrics, limits);
+                self.shadow.skipped += 1;
+            }
+            self.frame += 1;
+            self.passes.pumps += 1;
+            let pump = t_pump.elapsed().as_nanos() as u64;
+            self.stages = frame_cost::StageTimes { input: self.stages.input, pump, ..Default::default() };
+            return handled;
+        }
+
         // **The arenas, if any are owed.** Before layout, so a template
         // styled by the previous frame's pass is laid out with those
         // styles rather than one frame behind them.

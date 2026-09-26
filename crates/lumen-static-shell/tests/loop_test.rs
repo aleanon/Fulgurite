@@ -94,7 +94,12 @@ fn the_update_step_reaches_the_screen() {
     let mut h = host();
     let before = h.list.hash_from(0);
 
+    // A direct write to the tree is marked by its writer. Unmarked, it
+    // painted the new text into last frame's box under `Boundaries` (the
+    // shadow oracle names exactly that, `tests/shadow.rs`), and since
+    // M53/T53.3 an unmarked pump is skipped outright.
     h.app.ui.label.set("changed".into());
+    assert!(h.invalidate("label"), "setup: #label is on the table");
     h.pump();
     assert_ne!(h.list.hash_from(0), before, "new state paints differently");
 }

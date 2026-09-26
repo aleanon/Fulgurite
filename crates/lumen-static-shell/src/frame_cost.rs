@@ -27,6 +27,9 @@ pub struct PassCounts {
     pub layouts: u64,
     pub places: u64,
     pub paints: u64,
+    /// Pumps the idle fast path skipped (M53/T53.3): no layout, place,
+    /// paint or `finish`, damage `None`. Counted in `pumps` too.
+    pub skipped: u64,
 }
 
 impl PassCounts {
@@ -38,6 +41,7 @@ impl PassCounts {
             layouts: self.layouts - earlier.layouts,
             places: self.places - earlier.places,
             paints: self.paints - earlier.paints,
+            skipped: self.skipped - earlier.skipped,
         }
     }
 }

@@ -355,7 +355,7 @@ What M16 *did* buy, in configurations an application opts into:
 | | before | after |
 |---|---:|---:|
 | layout, one subtree marked (901 nodes) | 5.29 µs | **0.53 µs — 10×** |
-| layout, still frame | 5.29 µs | **0.01 µs — ~450×** |
+| layout only, still frame | 5.29 µs | **0.01 µs — ~450×** |
 | paint stage at 10 000 rows (culled) | 62.8 µs | **7.5 µs — 8.4×** |
 | commands emitted for an 800 px viewport | 10 002 | **39** |
 
@@ -412,7 +412,11 @@ both.
 
 An idle frame — nothing changed, damage `None` — costs 211 µs at 10 000
 rows under `Everything`, of which raster and blit are 0.01 each. Under
-`Boundaries` that frame is the 0.01 µs row in the table above.
+`Boundaries` the 0.01 µs row in the table above is **layout only**: the
+whole idle pump placed, painted and finished every time, and cost
+0.49–0.50 µs on the showcase (R6-F1; `docs/results-damage-precision.md`
+T53.1). Since M53/T53.3 an idle pump is skipped, and costs 0.06 µs
+(`docs/results-damage-precision.md` T53.3).
 
 Reproduce: `benches-competitive/competitors.sh`, `just stages`,
 `benches --bin invalidation`. Every build in `benches-competitive` passes
