@@ -37,11 +37,21 @@ pub const MAX_SURFACE_NODES: usize = 256;
 /// A raised panel: padding, a radius, a shadow, and whatever is on it.
 pub struct Card<W: Widget> {
     pub content: W,
+    /// How far it stands off the page — M57/B33. `None` is the style's
+    /// `shadow` (8 by default), so a stylesheet stays in charge; `Some(0)`
+    /// is flat and outlined in `Role::Border`, and `Some(1..=3)` are
+    /// [`ELEVATION`]'s shadows. A card had one look, and a dark page shows
+    /// a shadow barely at all: level 0's outline is what separates it
+    /// there.
+    pub elevation: Option<u8>,
 }
+
+/// Shadow spread per elevation level, 0..=3 (M57/B33).
+pub const ELEVATION: [f32; 4] = [0.0, 4.0, 8.0, 16.0];
 
 impl<W: Widget + Default> Default for Card<W> {
     fn default() -> Self {
-        Card { content: W::default() }
+        Card { content: W::default(), elevation: None }
     }
 }
 
@@ -50,7 +60,13 @@ impl<W: Widget> Card<W> {
     const AT: usize = 1;
 
     pub fn new(content: W) -> Self {
-        Card { content }
+        Card { content, elevation: None }
+    }
+
+    /// The same card at elevation `level` (clamped to 3).
+    pub fn with_elevation(mut self, level: u8) -> Self {
+        self.elevation = Some(level.min(3));
+        self
     }
 }
 
@@ -78,7 +94,10 @@ impl<W: Widget> CardTable<W> {
                 Fields::SHADOW,
                 Fields::CURSOR,
                 Fields::VISIBLE,
-            ]),).with_roles(lumen_static::style::SeedRoles::NONE.background(lumen_static::style::Role::Raised));
+            ]),).with_roles(
+                // The border role also colours elevation 0's outline (M57/B33).
+                lumen_static::style::SeedRoles::NONE.background(lumen_static::style::Role::Raised).border(lumen_static::style::Role::Border),
+            );
         lumen_static::widget::splice_seeds(&mut s, 1, W::SEEDS);
         s
     };
@@ -162,11 +181,20 @@ impl<W: Widget> Node for Card<W> {
             return;
         }
         let r = lumen_static::ops::rect_of(&st[i]);
-        if st[i].shadow > 0.0 {
-            out.shadow(r, st[i].radius, st[i].shadow);
+        let shadow = match self.elevation {
+            Some(k) => ELEVATION[(k as usize).min(3)],
+            None => st[i].shadow,
+        };
+        if shadow > 0.0 {
+            out.shadow(r, st[i].radius, shadow);
         }
         out.rounded_rect(r, st[i].bg, st[i].radius);
         lumen_static::ops::border(st, i, out);
+        // Level 0: flat, so an outline says where it is (unless the style
+        // already draws one).
+        if self.elevation == Some(0) && st[i].border_width == 0 {
+            out.stroked_rect(r, st[i].border_color, st[i].radius, 1.0);
+        }
         self.content.paint(st, i + Self::AT, out);
     }
 
