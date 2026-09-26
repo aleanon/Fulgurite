@@ -620,6 +620,18 @@ fn dispatch_at<S: crate::event::App>(
     // modifier state; adding one is a change to the event vocabulary and
     // to every shell that fills it in.
     if matches!(ev, crate::event::Event::Key { key: crate::event::Key::Tab, down: true }) {
+        // **The focused widget first** — M57/B25, as arrows are (A11). A
+        // control with more than one stop inside one node — a range
+        // slider's two handles — takes Tab to move between them, and lets
+        // it go at its last stop. Its `Key::Tab` arm was dead code, because
+        // this consumed every Tab before any widget saw it.
+        if let Some(f) = (*focus).filter(|&f| (f as usize) < table.len()) {
+            let cx = crate::event::EventCtx::for_event_with(f, *ev, mods);
+            if state.tree_mut().node_mut(f as usize).on_event(ev, &cx) {
+                consumed.push(f as usize);
+                return true;
+            }
+        }
         // Shift+Tab goes back, which is half of what Tab means and was
         // missing until T15.6 — a form you can only walk forwards is a
         // form you cannot correct.

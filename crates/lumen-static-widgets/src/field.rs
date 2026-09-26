@@ -117,8 +117,14 @@ impl NumberInput {
         }
     }
 
+    /// Step by `by` **from what the field shows** — M57/B24. This added to
+    /// the last committed value and threw the typed text away: type "3"
+    /// into a field holding 10, press Up, and it read 10.00 rather than
+    /// 3.50 (`docs/widget-audit.md`, NumberInput). Text that does not parse
+    /// steps from the committed value, as before.
     fn nudge(&mut self, by: f32) -> bool {
-        self.set_value(self.value + by)
+        let base = parse_decimal(self.field.as_str()).unwrap_or(self.value);
+        self.set_value(base + by)
     }
 }
 
@@ -376,6 +382,14 @@ impl RangeSlider {
     /// one there would pin it: `set_low` clamps to `high`, so dragging
     /// right would move nothing.
     fn nearest(&self, at: f32) -> bool {
+        // **Collapsed, the side of the press decides** — M57/B25. Taking
+        // the high handle whenever the two were equal opened the range to
+        // the right only: `set_high` clamps to `low`, so a drag left moved
+        // nothing, and the low bound could never be reached again by
+        // pointer (`docs/widget-audit.md`, RangeSlider).
+        if self.low == self.high {
+            return at >= self.high;
+        }
         let (dl, dh) = ((at - self.low).abs(), (at - self.high).abs());
         dh <= dl
     }
@@ -464,7 +478,10 @@ impl Node for RangeSlider {
             out.rounded_rect([xl, mid - t / 2.0, xh, mid + t / 2.0], s.fg, t / 2.0);
         }
         let d = h * 0.75;
-        for x in [xl, xh] {
+        for (x, high) in [(xl, false), (xh, true)] {
+            // The handle the keyboard moves is drawn larger while focused
+            // (M57/B25): with two identical handles nothing said which.
+            let d = if s.focused && high == self.high_active { d * 1.25 } else { d };
             let kx = lumen_static::num::clamp(x - d / 2.0, r[0], r[2] - d);
             out.rounded_rect([kx, mid - d / 2.0, kx + d, mid + d / 2.0], s.fg, d / 2.0);
         }
@@ -493,10 +510,25 @@ impl Node for RangeSlider {
                 self.high_active = true;
                 self.set_high(1.0)
             }
-            // Tab between the two handles, so a keyboard can reach both.
+            // Arriving by Tab starts at the low handle, by Shift+Tab at the
+            // high one, so the next Tab has a stop left to take (M57/B25).
+            Event::Focus { gained: true } if cx.target == cx.node => {
+                self.high_active = cx.mods.has(lumen_static::event::Mods::SHIFT);
+                false
+            }
+            // **Tab moves between the two handles, then on** — M57/B25.
+            // The pass offers Tab to the focused widget first now; this arm
+            // was dead code while it did not. Forward from the low handle
+            // stops on the high one; backward from the high stops on the
+            // low; past either end the Tab is declined and focus moves.
             Event::Key { key: Key::Tab, down: true } => {
-                self.high_active = !self.high_active;
-                true
+                let back = cx.mods.has(lumen_static::event::Mods::SHIFT);
+                if back == self.high_active {
+                    self.high_active = !back;
+                    true
+                } else {
+                    false
+                }
             }
             _ => false,
         }

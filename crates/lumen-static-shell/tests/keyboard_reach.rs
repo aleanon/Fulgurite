@@ -114,3 +114,85 @@ fn focus_moves_into_an_opened_modal_and_back_when_it_closes() {
     h.pump();
     assert_eq!(h.input.focus, Some(index("before")), "focus did not come back from the closed dialog");
 }
+
+// ---- M57/B25: a range slider's two handles are two Tab stops ----------
+
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 12.0)]
+struct RangeUi {
+    #[widget_id("range")]
+    range: lumen_static_widgets::RangeSlider,
+    #[widget_id("after")]
+    after: Button<RangeApp>,
+}
+
+#[derive(DeriveApp, Default)]
+struct RangeApp {
+    #[tree]
+    ui: RangeUi,
+}
+
+/// Tab reaches the low handle, Tab again moves to the high one, Right then
+/// moves *that* handle, and a third Tab leaves. The `Key::Tab` arm that
+/// was meant to do this was dead: the pass consumed every Tab first.
+#[test]
+fn tab_walks_a_range_sliders_two_handles_then_leaves() {
+    let mut app = RangeApp::default();
+    app.ui.range = lumen_static_widgets::RangeSlider::new(0.25, 0.75);
+    app.ui.after.label = "After";
+    let mut h: Host<RangeApp> = Host::new(app, 400, 200);
+    h.set_stylesheet(&[lumen_static::style::Rule::new(
+        lumen_static::style::Selector::Id("range"),
+        lumen_static::style::Patch::new().width(lumen_static::style::Length::Fixed(300.0)),
+    )]);
+    h.pump();
+    let t = <RangeUi as Widget>::SUB_TABLE;
+    let range = lumen_static::style::index_of_wid(t, "range").unwrap() as u32;
+    let after = lumen_static::style::index_of_wid(t, "after").unwrap() as u32;
+    let tab = |h: &mut Host<RangeApp>| {
+        h.post(Event::Key { key: Key::Tab, down: true });
+        h.post(Event::Key { key: Key::Tab, down: false });
+        h.pump();
+    };
+    let right = |h: &mut Host<RangeApp>| {
+        h.post(Event::Key { key: Key::Right, down: true });
+        h.post(Event::Key { key: Key::Right, down: false });
+        h.pump();
+    };
+    tab(&mut h);
+    assert_eq!(h.input.focus, Some(range), "setup: Tab did not reach the range slider");
+    right(&mut h);
+    let r = &h.app.ui.range;
+    assert!(r.low() > 0.25 && r.high() == 0.75, "Right on arrival moved {:.2}..{:.2}; the low handle should", r.low(), r.high());
+    tab(&mut h);
+    assert_eq!(h.input.focus, Some(range), "the second Tab left the slider instead of moving to its high handle");
+    right(&mut h);
+    let r = &h.app.ui.range;
+    println!("after Tab, Right, Tab, Right: {:.2}..{:.2}", r.low(), r.high());
+    assert!(r.high() > 0.75, "Right after the second Tab did not move the high handle");
+    tab(&mut h);
+    assert_eq!(h.input.focus, Some(after), "the third Tab did not leave the slider");
+}
+
+/// And a collapsed range reopens to the left, which a pointer could never
+/// do: the high handle took every press once the two met.
+#[test]
+fn a_collapsed_range_reopens_to_the_left() {
+    let mut app = RangeApp::default();
+    app.ui.range = lumen_static_widgets::RangeSlider::new(0.75, 0.75);
+    let mut h: Host<RangeApp> = Host::new(app, 400, 200);
+    h.set_stylesheet(&[lumen_static::style::Rule::new(
+        lumen_static::style::Selector::Id("range"),
+        lumen_static::style::Patch::new().width(lumen_static::style::Length::Fixed(300.0)),
+    )]);
+    h.pump();
+    let i = lumen_static::style::index_of_wid(<RangeUi as Widget>::SUB_TABLE, "range").unwrap();
+    let s = h.states[i];
+    let (x, y) = (s.pos.x + s.size.w * 0.3, s.pos.y + s.size.h / 2.0);
+    h.post(Event::PointerDown { x, y, button: lumen_static::PointerButton::Left, clicks: 1 });
+    h.post(Event::PointerUp { x, y, button: lumen_static::PointerButton::Left });
+    h.pump();
+    let r = &h.app.ui.range;
+    println!("collapsed at 0.75, pressed at 30%: {:.2}..{:.2}", r.low(), r.high());
+    assert!(r.low() < 0.5 && r.high() == 0.75, "the low handle did not come left");
+}

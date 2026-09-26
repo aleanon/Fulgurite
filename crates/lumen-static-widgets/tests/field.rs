@@ -332,3 +332,26 @@ fn clearing_reports_whether_it_did_anything() {
     assert_eq!(s.as_str(), "");
     assert!(!s.clear(), "clearing an empty field reported a change — a caller would re-search");
 }
+
+/// **A step starts from what was typed** — M57/B24.
+///
+/// `nudge` added to the last committed value and discarded the text: type
+/// 3 into a field holding 10, press Up, and it read 10.00
+/// (`docs/widget-audit.md`, NumberInput).
+#[test]
+fn up_after_typing_steps_from_the_typed_value() {
+    use lumen_static::event::{Event, EventCtx, Key};
+    use lumen_static::widget::Node;
+    let mut n = lumen_static_widgets::NumberInput::new(10.0, 0.0, 10.0, 0.5);
+    n.select_all();
+    let text = |n: &mut lumen_static_widgets::NumberInput, ch: char| {
+        let ev = Event::Text { ch };
+        Node::on_event(n, &ev, &EventCtx::for_event(1, ev));
+    };
+    text(&mut n, '3');
+    assert_eq!(n.as_str(), "3", "setup: the typed text did not replace the value");
+    let up = Event::Key { key: Key::Up, down: true };
+    Node::on_event(&mut n, &up, &EventCtx::for_event(1, up));
+    println!("typed 3, pressed Up: value {}, text {:?}", n.value(), n.as_str());
+    assert_eq!(n.value(), 3.5, "Up stepped from the committed value, not the typed one");
+}
