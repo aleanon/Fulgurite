@@ -1020,6 +1020,20 @@ unnecessary — half (b), hoisting the walk out of the rule loop by
 accumulating per-rule state, would allocate; narrowing the walk needs no
 allocation at all and fixes both sites.
 
+**Built, 2026-09-27, for the pump's walk only, and as neither the const
+nor a list** (M53/T53.2, `docs/plan-frame-cost.md`). The per-frame
+arena cascade in `Host::pump_with` now asks only the nodes inside the
+frame's marked ranges (`style::cascade_arenas_marked`), because an arena
+is owed the cascade only when it is *new*, and a new arena is a write the
+marks already cover. A frame that marks everything still walks the whole
+table, so the `set_stylesheet`, `set_palette` and lint walks priced
+above are unchanged. The const was not built for the reason recorded
+above; the plan's run-time owner list was not built because an arena
+that **appears** inside a narrowed range — an `Option` becoming `Some`,
+an enum switching variant — is on no list made before it existed, and
+`lumen-static-shell/tests/arena_marks.rs` shows the list injected and
+both cases red. The figure is `docs/results-damage-precision.md` T53.2.
+
 ### Finding 11 — ids and classes compared by content: **closed on cost**
 
 **The arm the plan named cannot exhibit this finding.** `benches --bin

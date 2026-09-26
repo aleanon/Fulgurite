@@ -468,3 +468,33 @@ move — still holds on the pump. The idle row is the whole pump here,
 and it is not zero: R6-F1 (an idle pump places, paints and finishes) is
 T53.3's.
 
+
+## T53.2 — the arena cascade only where a mark is, 2026-09-27
+
+**The cascade above ran on every arm, whatever the frame touched**
+(R6-F3). Since T53.2 the pump asks only the nodes inside its marked
+ranges (`style::cascade_arenas_marked`; `docs/plan-frame-cost.md`
+T53.2 has why that is enough). The grid's owner is the body `Repeat`,
+which no narrowed arm marks, so those arms cascade nothing.
+
+`just grid`, the pump column (µs), a baseline binary built from the
+parent commit and this one, **interleaved eight invocations a side**;
+each figure is one invocation's median of its eight runs. Quiet (load
+2.8 on 32 cores, `just bench-lock`).
+
+| arm | before: pump (range) | before: cascade | after: pump (range) | after: cascade | delta of medians |
+|---|---:|---:|---:|---:|---:|
+| `handled/split` | **55.73** (55.21–56.95) | 20.42–20.85 | **33.97** (33.86–36.20) | 0.01–0.02 | **−21.76, −39%** |
+| `bound` | **55.51** (53.82–56.61) | 19.54–20.91 | **33.97** (33.37–36.23) | 0.01–0.03 | **−21.54, −39%** |
+
+The kill rule (`docs/plan-frame-cost.md` §5) wanted the `handled/split`
+pump to fall by more than that arm's spread: it fell 21.76 µs against a
+before-range of 1.74 µs. The `mark_all` and `handled` arms mark
+everything and still walk the whole table, as they must. **The share
+T53.1 printed for the cascade of a split click, 33%, is now zero**; what
+is left of that frame is paint (a whole-table walk T16.8 refused to
+skip) and `place`.
+
+The count behind it is the gate: `tests/arena_marks.rs`, 40 clicks on a
+box, **0 cascades in 40** (40 in 40 before), and 40 wheels over the
+repeater still 40 in 40.

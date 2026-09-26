@@ -12,10 +12,11 @@
 /// host was built. Monotonic; a test reads it before and after the
 /// frames it cares about and subtracts.
 ///
-/// `cascades` counts runs of `lumen_static::style::cascade_arenas_deep`
-/// — the arena cascade a pump runs when an arena is owed one and a
-/// sheet is set — not `Host::set_stylesheet`'s full cascade, which is
-/// not part of a pump. `layouts`, `places` and `paints` count calls of
+/// `cascades` counts pumps whose arena cascade
+/// (`lumen_static::style::cascade_arenas_marked`) styled at least one
+/// arena — not `Host::set_stylesheet`'s full cascade, which is not part
+/// of a pump. Since M53/T53.2 the pump asks only the marked nodes, so a
+/// frame whose marks hold no arena owner counts nothing. `layouts`, `places` and `paints` count calls of
 /// the pass, whether or not a bounded strategy then skipped every node
 /// inside it: the question the idle gate asks is whether the pump
 /// walked at all.
@@ -56,7 +57,7 @@ impl PassCounts {
 /// | field | what runs inside it |
 /// |---|---|
 /// | `input` | dispatch, the cancel, subscriptions, the outbox drain, the pointer-state marks, the deferred-result drain and the bindings |
-/// | `cascade` | `cascade_arenas_deep`, when an arena is owed one and a sheet is set; 0 otherwise |
+/// | `cascade` | `cascade_arenas_marked` over the marked nodes, when an arena is owed one and a sheet is set; 0 otherwise |
 /// | `layout` | `layout` on the root |
 /// | `place` | `place` on the root |
 /// | `paint` | clearing the list and painting through `Scaled(Recording(list))` |

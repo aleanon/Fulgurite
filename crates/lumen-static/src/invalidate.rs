@@ -136,6 +136,25 @@ impl Changed<'_> {
     pub fn can_skip(&self) -> bool {
         !self.all
     }
+
+    /// The marked ranges, half-open in table index space, or `None` when
+    /// everything is marked — M53/T53.2.
+    ///
+    /// For a walk that has work only **inside** what changed, which the
+    /// intersection question [`Changed::is_clean`] cannot drive: a mark
+    /// on a node's descendant leaves the node itself clean by that test
+    /// (`i..i + 1` does not meet the descendant's range), and the arena
+    /// cascade wants exactly the nodes a mark covers
+    /// (`crate::style::cascade_arenas_marked`). A [`Boundaries`] set
+    /// merges on overlap, so the ranges are disjoint and no index is
+    /// yielded twice.
+    #[inline]
+    pub fn ranges(&self) -> Option<impl Iterator<Item = Range<usize>> + '_> {
+        if self.all {
+            return None;
+        }
+        Some(self.ranges.iter().map(|&(s, e)| s as usize..e as usize))
+    }
 }
 
 /// A frame's dirty set, over subtree index ranges.

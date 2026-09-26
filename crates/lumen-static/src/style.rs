@@ -1551,13 +1551,72 @@ pub fn cascade_arenas_deep<W: crate::widget::Widget + ?Sized>(
     sheet: Stylesheet,
     palette: &Palette,
 ) {
-    #[cfg(feature = "alloc")]
-    for i in 0..W::SUB_TABLE.len() {
-        cascade_arenas(tree.node_mut(i), sheet, palette);
-    }
+    cascade_arenas_marked(tree, sheet, palette, crate::invalidate::Changed::ALL);
 }
 
-/// Cascade every arena `node` owns, and every arena under those.
+/// [`cascade_arenas_deep`], over only the nodes `changed` marks —
+/// M53/T53.2 (`docs/plan-frame-cost.md`, R6-F3). Returns how many arenas
+/// it cascaded.
+///
+/// **An arena needs the cascade only when it is new.** Its style row is
+/// per *template* (`Arena::ensure_style`), not per row, so a repeater
+/// scrolling to new rows does not need it; a widget value that was
+/// *replaced* — a `Repeat` assigned, an `Option` becoming `Some`, an enum
+/// switching to a variant that holds one — does, because the new arena
+/// has never seen the sheet. A replacement is a write to the tree, and a
+/// write the frame knows about is marked, so the marked nodes are the
+/// only ones that can hold a new arena. That is the completeness
+/// `Boundaries`' layout already stands on (M41).
+///
+/// So this walks the nodes inside each marked range and asks only them.
+/// `Host::pump_with` ran the whole-table walk on every handled click
+/// until T53.2 — every node asked, for a click on a box that owns no
+/// arena. [`Changed::ALL`](crate::invalidate::Changed::ALL) — everything
+/// marked, and every `Everything` frame — walks the whole table, as
+/// before.
+///
+/// **Not a list of owners kept from the last full walk**, which is what
+/// the plan proposed (§2.2(b)): an arena that *appears* inside a
+/// narrowed range — the `Option` and enum cases — is not on a list built
+/// before it existed, and `lumen-static-shell/tests/arena_marks.rs`
+/// shows both. Walking the marked nodes finds it, because the write that
+/// made it marked it.
+///
+/// Without `alloc` it walks nothing and answers 0: the loops are gated
+/// with the arenas (M52/T52.4), for the reason [`cascade_arenas_deep`]
+/// gives.
+#[cfg_attr(not(feature = "alloc"), allow(unused_variables))]
+pub fn cascade_arenas_marked<W: crate::widget::Widget + ?Sized>(
+    tree: &mut W,
+    sheet: Stylesheet,
+    palette: &Palette,
+    changed: crate::invalidate::Changed<'_>,
+) -> usize {
+    #[cfg_attr(not(feature = "alloc"), allow(unused_mut))]
+    let mut done = 0;
+    #[cfg(feature = "alloc")]
+    {
+        let n = W::SUB_TABLE.len();
+        match changed.ranges() {
+            None => {
+                for i in 0..n {
+                    done += cascade_arenas(tree.node_mut(i), sheet, palette);
+                }
+            }
+            Some(ranges) => {
+                for r in ranges {
+                    for i in r.start..r.end.min(n) {
+                        done += cascade_arenas(tree.node_mut(i), sheet, palette);
+                    }
+                }
+            }
+        }
+    }
+    done
+}
+
+/// Cascade every arena `node` owns, and every arena under those; how
+/// many.
 ///
 /// **Compiled only with `alloc`** (M52/T52.4), because Repeat, List and
 /// Dyn — every arena — are. Its callers' loops are gated the same way,
@@ -1568,12 +1627,14 @@ pub fn cascade_arenas_deep<W: crate::widget::Widget + ?Sized>(
 /// widget's `on_event` and `hit` for nothing (R12-F4,
 /// `docs/results-embedded.md`).
 #[cfg(feature = "alloc")]
-fn cascade_arenas(node: &mut dyn crate::widget::Node, sheet: Stylesheet, palette: &Palette) {
+fn cascade_arenas(node: &mut dyn crate::widget::Node, sheet: Stylesheet, palette: &Palette) -> usize {
+    let mut done = 0;
     for a in 0..node.arena_count() {
         let Some(arena) = node.arena_mut(a) else { continue };
         // Every arena carries its seeds (M26/T26.10); the
         // instance-reading fallback this used to have is deleted.
         cascade_with(arena.table, arena.seeds, sheet, palette, arena.style);
+        done += 1;
     }
     // Arenas nested inside an arena's template are not reached: the
     // template is borrowed shared while its style row is borrowed
@@ -1582,4 +1643,5 @@ fn cascade_arenas(node: &mut dyn crate::widget::Node, sheet: Stylesheet, palette
     // list's rows but not the repeater's. Recorded rather than papered
     // over; the shape that fixes it is an arena walk that yields owned
     // handles, which is F4.4's territory.
+    done
 }

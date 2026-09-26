@@ -285,6 +285,12 @@ pub struct Host<A: App, R: Retention = Incremental, I: Invalidation = lumen_stat
     /// Only the arenas: the main table was cascaded when the sheet was
     /// set, and re-running that every frame an application changed is
     /// the per-frame cascade M16 removed.
+    ///
+    /// **Owed, then paid only inside the frame's marks** (M53/T53.2):
+    /// every site that sets this also marks where its change landed, and
+    /// the pump asks only the marked nodes for arenas
+    /// (`style::cascade_arenas_marked`). A frame that marked everything
+    /// walks the whole table.
     arenas_dirty: bool,
     /// The last stylesheet applied — M25/T25.2.
     ///
@@ -881,6 +887,9 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
     #[must_use = "false means the id matched no node and nothing was invalidated; \
                   true means every node carrying it was"]
     pub fn invalidate(&mut self, wid: &str) -> bool {
+        // Owed, and paid only inside the subtrees marked below
+        // (M53/T53.2): an id whose subtree holds no arena costs no
+        // cascade.
         self.arenas_dirty = true;
         let table = <A::Tree as Widget>::SUB_TABLE;
         let mut any = false;
@@ -1455,8 +1464,10 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         } else {
             self.invalidation.mark_all();
         }
-        // Kept either way: a consumed wheel moves a repeater's window,
-        // and the arena cascade is what styles the new rows.
+        // Owed either way, and paid only inside the marks just made
+        // (M53/T53.2): a consumed wheel marks its repeater, so the
+        // repeater is asked; a click on a box marks the box, which owns
+        // no arena, so nothing is cascaded.
         self.arenas_dirty = true;
     }
 
@@ -1635,7 +1646,9 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         // `after_update` that changed something, or a hand-written
         // `update` that cannot say. The arena flag is kept on any write:
         // §2.4 asks a narrowed mark to show that a binding cannot change
-        // a template's styles, and nothing here shows it.
+        // a template's styles, and nothing here shows it. Since
+        // M53/T53.2 it is paid only over the ranges the binding marked,
+        // which is where a binding that swapped an arena in wrote.
         let inv = &mut self.invalidation;
         match self.app.update_marked(&mut |r| inv.mark(r)) {
             lumen_static::event::Wrote::Nothing => {}
@@ -1648,18 +1661,29 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         // **The arenas, if any are owed.** Before layout, so a template
         // styled by the previous frame's pass is laid out with those
         // styles rather than one frame behind them.
+        //
+        // **Only the marked nodes are asked** — M53/T53.2 (R6-F3). An
+        // arena is owed the cascade only when it is new, a new arena is
+        // a write, and a write this frame knows about is in the marks
+        // (`style::cascade_arenas_marked` has the argument). So a click
+        // on a box that owns no arena walks the box's range and cascades
+        // nothing, where it walked every node in the table until T53.2;
+        // a frame that marked everything walks everything, as before.
         self.stages.input = t_pump.elapsed().as_nanos() as u64;
         let t_cascade = std::time::Instant::now();
         self.last_arenas_owed = self.arenas_dirty;
         if self.arenas_dirty {
             self.arenas_dirty = false;
             if !self.sheet.is_empty() {
-                self.passes.cascades += 1;
-                lumen_static::style::cascade_arenas_deep(
+                let styled = lumen_static::style::cascade_arenas_marked(
                     self.app.tree_mut(),
                     &self.sheet,
                     &self.palette,
+                    self.invalidation.view(),
                 );
+                if styled > 0 {
+                    self.passes.cascades += 1;
+                }
             }
         }
 

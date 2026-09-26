@@ -348,6 +348,36 @@ M52/T52.4**, which wraps `cascade_arenas_deep`'s loop in
 `cfg(feature = "alloc")`: whichever lands second rebases, and M52's
 cascade-only firmware gate stays green.
 
+*What building found (2026-09-27).*
+
+- **The owner list fails its own risky cases, so it was not built.**
+  §2.2(b) records owners during a full cascade and cascades a narrowed
+  frame only when a marked range holds one. An `Option<Repeat>` that is
+  `None`, and an enum on a variant without one, answer `arena_count() ==
+  0` (their `node_mut` hands back the container), so the repeater that
+  appears is on no list. Injected as written, both of the gate's cases go
+  red: the new rows' cell is **0.0 px** against the sheet's 120.
+- **What shipped instead walks the marked nodes**
+  (`style::cascade_arenas_marked`, over the new `Changed::ranges`). An
+  arena needs the cascade only when it is *new* — its style row is per
+  template, not per row — and a new arena is a write the frame's marks
+  cover, which is the completeness M41 gives layout. No list, no
+  refresh, and no widget declares anything. The four sites in §1.2 are
+  unchanged: they still owe the cascade, and it is paid only over what
+  they marked.
+- **A wheel does not need the cascade**, contrary to the comment the
+  handled branch carried ("the arena cascade is what styles the new
+  rows"): the rows share one style row. It still cascades 40 in 40,
+  because the wheel marks its repeater and the rule asks marked nodes.
+- **The shadow oracle cannot see this class.** Its second layout reads
+  the same arena style row as the bounded frame, so a missed cascade is
+  unstyled in both. The risky cases' oracle is therefore an `Everything`
+  host — which walks the whole table whatever was marked — beside the
+  `Boundaries` one, plus the row's resolved width.
+- **The kill rule held:** `handled/split`'s pump fell 21.76 µs (−39%)
+  against a before-spread of 1.74 µs (`docs/results-damage-precision.md`
+  T53.2). The counter is 0 of 40.
+
 ### T53.3 — an idle pump does nothing
 
 **Closes:** R6-F1.
