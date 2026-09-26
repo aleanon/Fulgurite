@@ -94,7 +94,6 @@ fn lines(log: &[String], key: &str) -> usize {
 /// R5-F3: a kept field whose save failed, or whose value serde writes as
 /// null, keeps its fresh value and says so — it does not become `None`.
 #[test]
-#[ignore = "red until T49.6: R5-F3, a failed save restores None with no line"]
 fn a_value_that_did_not_save_keeps_its_fresh_value_and_says_so() {
     let (v2, log) = swap();
     let fresh = V2::default();

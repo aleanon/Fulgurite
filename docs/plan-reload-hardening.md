@@ -604,6 +604,15 @@ rustdoc.
 
 **Effort:** S. **Depends on:** T49.0.
 
+> **Built 2026-09-26, and the plan's injection alone was covered twice.**
+> Both rules live in the core (`reload::save_keep`, `reload::restore_keep`),
+> and the derive calls them. Putting `Value::Null` back on a failed save
+> does turn the `Option<HashMap>` row red (`None`, 0 lines) — but only
+> because that row's *fresh* value cannot serialize either, so the null
+> check cannot see it is non-null. For a type that can, the null check
+> alone would have caught the injection. Removing the null check turns
+> the NaN row red.
+
 ### T49.7 — a kept struct restores field by field
 
 **Closes:** R5-F4.

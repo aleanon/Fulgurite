@@ -51,6 +51,15 @@ simply missing from old bytes → fresh default + log, never a hard error.
 JSON (rather than a positional binary format) is what buys this; it is a
 dev-only path, so debuggability beats compactness.
 
+**Two silent fallbacks closed (M49/T49.6, R5-F3).** A keep field whose
+save failed was saved as `null`, and a `NaN` serializes as `null`; either
+restored an `Option` as `None` over its fresh value with no log line —
+and the save's own line is the old library's, drained before the
+restore. `reload::save_keep` now leaves a failed value out (the restore
+logs it missing), and `reload::restore_keep` refuses a `null` over a
+non-null fresh value, logged "serialized as null".
+`crates/lumen-static-shell/tests/reload_schema.rs` has the rows.
+
 ### The no-code-pointers property is compile-time
 
 Only `#[reload(keep)]` fields go through serde. A fn pointer or closure

@@ -21,6 +21,13 @@ a missing field, a removed enum variant, a changed type — keeps the
 does not abort the reload, and a reload does not silently produce a state
 that no version of the code could have written.
 
+Two cases look like success and are not, so they are refused and logged
+too: a kept value that **did not save** (serde_json cannot write a map
+with non-string keys) is left out of the saved state rather than saved
+as `null`, and a saved `null` over a fresh value that is not `null` —
+which is how serde writes `f32::NAN` — keeps the fresh value. Without
+both, a kept `Option` came back `None`, with no line.
+
 ## `#[reload(...)]` on each field
 
 ```text

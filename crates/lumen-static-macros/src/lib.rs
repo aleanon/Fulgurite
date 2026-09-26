@@ -1224,24 +1224,15 @@ fn expand_reloadable(input: DeriveInput) -> syn::Result<Ts2> {
         let key = ident.to_string();
         match reload_mode(f)? {
             ReloadMode::Keep => {
+                // Both halves live in the core (`save_keep`,
+                // `restore_keep`), so the rules — a failed save is left
+                // out, a null over a non-null fresh value is refused —
+                // are code the core's own tests reach (M49/T49.6).
                 save_stmts.push(quote! {
-                    m.insert(#key.to_owned(), match ::lumen_static::reload::to_value(&self.#ident) {
-                        Ok(v) => v,
-                        Err(e) => {
-                            ::lumen_static::reload::log_fallback(#name_str, #key, &format!("save failed: {e}"));
-                            ::lumen_static::reload::Value::Null
-                        }
-                    });
+                    ::lumen_static::reload::save_keep(&mut m, &self.#ident, #name_str, #key);
                 });
                 restore_stmts.push(quote! {
-                    match obj.get(#key) {
-                        Some(v) => match ::lumen_static::reload::from_value(v.clone()) {
-                            Ok(x) => self.#ident = x,
-                            Err(e) => ::lumen_static::reload::log_fallback(
-                                #name_str, #key, &format!("incompatible saved value: {e}")),
-                        },
-                        None => ::lumen_static::reload::log_fallback(#name_str, #key, "missing from saved state"),
-                    }
+                    ::lumen_static::reload::restore_keep(&mut self.#ident, obj.get(#key), #name_str, #key);
                 });
             }
             ReloadMode::Skip => {}

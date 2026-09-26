@@ -80,6 +80,55 @@ pub fn take_log() -> Vec<String> {
     LOG.with(|l| core::mem::take(&mut *l.borrow_mut()))
 }
 
+// ---- the derive's keep arm ------------------------------------------------
+
+/// Save one `#[reload(keep)]` field into `out` — what the derive's `save`
+/// calls, per field.
+///
+/// **A value that does not serialize is left out, and logged** (M49/T49.6,
+/// R5-F3). It used to be saved as `null`, and `null` deserializes into an
+/// `Option` as `None` — so a kept `Option<HashMap<(u8, u8), _>>` (serde_json
+/// refuses non-string keys) came back `None` over the fresh value, with
+/// no line: the save's log is the *old* library's, and the swap drains it
+/// before the restore. Left out, the restore logs "missing from saved
+/// state" in the new library, where the window's bar reads it.
+pub fn save_keep<T: serde::Serialize>(out: &mut Map<String, Value>, value: &T, ty: &str, field: &str) {
+    match to_value(value) {
+        Ok(v) => {
+            out.insert(String::from(field), v);
+        }
+        Err(e) => log_fallback(ty, field, &format!("save failed, not saved: {e}")),
+    }
+}
+
+/// Restore one `#[reload(keep)]` field — what the derive's `restore`
+/// calls, per field. Keeps the fresh value, and logs, when the saved
+/// state has no such key, when it cannot be read as this build's type,
+/// and (M49/T49.6) when it is `null` where the fresh value is not: serde
+/// writes `NaN` as `null`, so a kept `Some(f32::NAN)` would otherwise come
+/// back `None` over a fresh `Some(x)`, silently. That covers NaN without
+/// a per-type walk; the cost is that a user's deliberate `None` over a
+/// build's `Some` default is kept as the fresh value too, and says so.
+pub fn restore_keep<T: serde::Serialize + serde::de::DeserializeOwned>(
+    slot: &mut T,
+    saved: Option<&Value>,
+    ty: &str,
+    field: &str,
+) {
+    let Some(v) = saved else {
+        log_fallback(ty, field, "missing from saved state");
+        return;
+    };
+    if v.is_null() && to_value(&*slot).is_ok_and(|f| !f.is_null()) {
+        log_fallback(ty, field, "serialized as null (a NaN, or a value that did not save)");
+        return;
+    }
+    match from_value(v.clone()) {
+        Ok(x) => *slot = x,
+        Err(e) => log_fallback(ty, field, &format!("incompatible saved value: {e}")),
+    }
+}
+
 // ---- framework impls --------------------------------------------------------
 
 
