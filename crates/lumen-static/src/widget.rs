@@ -246,6 +246,15 @@ pub trait Node {
         true
     }
 
+    /// Whether moving focus onto this node by an arrow key also
+    /// activates it — M57/B13. A radio: the arrows in a radio group move
+    /// the *selection*, as on every desktop, where they only moved focus
+    /// and left the choice behind (`docs/widget-audit.md`, Radio).
+    /// `false` by default; Tab never activates.
+    fn selects_on_focus(&self) -> bool {
+        false
+    }
+
     /// One step of an input-method composition (T14.8).
     ///
     /// `false` from a node that does not edit text, which is what lets

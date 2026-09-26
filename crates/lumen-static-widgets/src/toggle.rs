@@ -251,6 +251,11 @@ impl<S: 'static, const SHAPE: u8> Node for Toggle<S, SHAPE> {
         st[i].pos = at;
     }
 
+    /// A radio's arrows move the selection (M57/B13).
+    fn selects_on_focus(&self) -> bool {
+        SHAPE == RADIO
+    }
+
     fn node(&self, _i: usize) -> &dyn Node {
         self
     }

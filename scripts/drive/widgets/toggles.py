@@ -186,6 +186,21 @@ RADIO = ("Radio", "#d_radio_b > #labelled-control", [
         isolate=_flip_outside,
         injection="drop the selection write in Toggle::on_event",
     ),
+    # M57/B13: the arrows walk the group *and* move the selection. The
+    # group was the radio's parent -- its Labelled -- so Down did nothing.
+    Action(
+        name="Down moves the selection to the next option",
+        # Clicked first: the action before ends on a click *outside*,
+        # which takes focus away -- and a Down with nothing focused is a
+        # Down nobody gets.
+        needs="the second option, clicked so it is selected and focused",
+        do=lambda c: (c.click(), c.__dict__.__setitem__("_f0", _flag(c)), c.key("Down"))[0],
+        expect=lambda c: (
+            _flag(c) != c._f0 and "Blue" in _flag(c),
+            f"readout {c._f0!r} -> {_flag(c)!r}",
+        ),
+        injection="group arrows by the parent only, or Radio::selects_on_focus false",
+    ),
 ])
 
 ALL = [BUTTON, CHECKBOX, SWITCH, RADIO]

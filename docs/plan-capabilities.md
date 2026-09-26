@@ -481,6 +481,14 @@ usually the root and the root's subtree holds every focusable in the
 tree. With one focusable sibling there is no group, and the key belongs
 to the widget — which is what keeps Left and Right editing text.
 
+*Amended by M57/B13 (2026-09-26):* a sibling that **wraps** exactly one
+focusable stands for it, and the walk climbs through such wrappers,
+asking each one for the key first. A radio beside its words (a
+`Labelled`, or a row pairing it with a `Label`) was its parent's only
+focusable, so the showcase's radio group never had a group at all. And
+a radio **selects** as the arrow reaches it (`Node::selects_on_focus`),
+which is what arrows in a radio group mean on every desktop.
+
 **The ring is a rounded rect drawn *behind* the control, not an outline
 on top**, and the live gate is what said so. The first version drew four
 `Cmd::Line`s around the box; `ui_check.py`'s corner test dropped to five

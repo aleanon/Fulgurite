@@ -694,8 +694,34 @@ fn dispatch_at<S: crate::event::App>(
             if let Some(f) = *focus {
                 let i = f as usize;
                 if i < table.len() && table[i].parent != crate::desc::NO_PARENT {
-                    let p = table[i].parent as usize;
-                    let group: heapless_vec::Small = focusable_siblings(table, st, style, p)
+                    // **Through wrappers** — M57/B13. The group was the
+                    // focused node's parent, so a radio inside a
+                    // `Labelled` (or any row pairing it with its words)
+                    // was its parent's only focusable and the arrows did
+                    // nothing. Climb while the ancestor holds just this
+                    // one focusable: that ancestor *stands for* it among
+                    // its own siblings.
+                    //
+                    // **Each wrapper climbed through is asked first.** A
+                    // composite whose only focusable is its own part — a
+                    // pick list's field — handles the arrow itself (Down
+                    // opens it), and climbing past it moved focus to the
+                    // next pick list instead: `chooser_closes.rs` caught
+                    // it. One that takes the key ends the walk; one that
+                    // declines (`Labelled`) is climbed through.
+                    let mut p = table[i].parent as usize;
+                    while table[p].parent != crate::desc::NO_PARENT
+                        && sole_focusable(table, st, style, p) == Some(i)
+                    {
+                        let mut cx = crate::event::EventCtx::for_event_with(f, *ev, mods);
+                        cx.node = p as u32;
+                        if state.tree_mut().node_mut(p).on_event(ev, &cx) {
+                            consumed.push(p);
+                            return true;
+                        }
+                        p = table[p].parent as usize;
+                    }
+                    let group: heapless_vec::Small = group_members(table, st, style, p)
                         .fold(heapless_vec::Small::new(), |mut v, x| {
                             v.push(x as u32);
                             v
@@ -707,7 +733,18 @@ fn dispatch_at<S: crate::event::App>(
                         if let Some(k) = group.iter().position(|&x| x == f) {
                             let n = group.len();
                             let j = if dir > 0 { (k + 1) % n } else { (k + n - 1) % n };
-                            *focus = Some(group.at(j));
+                            let to = group.at(j);
+                            *focus = Some(to);
+                            // A radio's selection follows the arrow
+                            // (`Node::selects_on_focus`): run its handler
+                            // as activation would.
+                            if state.tree().node(to as usize).selects_on_focus() {
+                                let sel = crate::event::NodeSel { i: to as usize, inner: None };
+                                if let Some(h) = state.tree().handler(sel) {
+                                    let cx = crate::event::EventCtx::for_event_with(to, *ev, mods);
+                                    h(state.state_mut(), &cx);
+                                }
+                            }
                             return true;
                         }
                     }
@@ -1123,22 +1160,6 @@ fn focusable(
         && !disabled_at(table, st, i)
 }
 
-/// The focusable **immediate children** of `parent`, in table order.
-///
-/// Immediate children, not the whole subtree — that distinction is the
-/// difference between arrows navigating a radio group and arrows
-/// jumping out of a text field. A field's parent is usually the root,
-/// whose *subtree* holds every focusable in the tree; its *children*
-/// hold only the field.
-fn focusable_siblings<'a>(
-    table: &'a [crate::desc::NodeDesc],
-    st: &'a [NodeState],
-    style: &'a [Style],
-    parent: usize,
-) -> impl Iterator<Item = usize> + 'a {
-    crate::style::subtree_range(table, parent)
-        .filter(move |&i| table[i].parent as usize == parent && focusable(table, st, style, i))
-}
 
 /// The previous focusable, wrapping — Shift+Tab, and Up/Left.
 fn prev_focusable(
@@ -1175,6 +1196,43 @@ fn prev_focusable_in(
         // node stayed a Tab stop when M57/A16 taught `focusable` better.
         .find(|&i| focusable(table, st, style, i))
         .map(|i| i as u32)
+}
+
+/// The one focusable node in `p`'s subtree, if there is exactly one.
+fn sole_focusable(
+    table: &[crate::desc::NodeDesc],
+    st: &[NodeState],
+    style: &[Style],
+    p: usize,
+) -> Option<usize> {
+    let mut it = crate::style::subtree_range(table, p).filter(|&k| focusable(table, st, style, k));
+    match (it.next(), it.next()) {
+        (Some(k), None) => Some(k),
+        _ => None,
+    }
+}
+
+/// An arrow group under `parent`, in table order: each immediate child
+/// that is focusable, or that wraps exactly one focusable, stands for it
+/// — M57/B13. Immediate children, not the whole subtree, which is the
+/// difference between arrows walking a radio group and arrows jumping
+/// out of a text field (T15.6); a child holding several focusables is
+/// not a member, since its controls are their own group.
+fn group_members<'a>(
+    table: &'a [crate::desc::NodeDesc],
+    st: &'a [NodeState],
+    style: &'a [Style],
+    parent: usize,
+) -> impl Iterator<Item = usize> + 'a {
+    crate::style::subtree_range(table, parent)
+        .filter(move |&c| table[c].parent as usize == parent)
+        .filter_map(move |c| {
+            if focusable(table, st, style, c) {
+                Some(c)
+            } else {
+                sole_focusable(table, st, style, c)
+            }
+        })
 }
 
 fn next_focusable(
