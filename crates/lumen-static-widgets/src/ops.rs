@@ -323,7 +323,7 @@ impl Node for Spacer {
 /// it cannot capture, so `fresh()` re-supplies it across a hot reload
 /// (`docs/events-decision.md`). Payload a closure would have captured
 /// arrives in [`EventCtx`] — notably `ctx.row` inside a repeater.
-pub struct Button<S: 'static, T: TextStorage = &'static str> {
+pub struct Button<S: 'static, T: TextStorage = &'static str, const ROW: bool = false> {
     pub label: T,
     pub on_click: fn(&mut S, &EventCtx),
     /// The label's measured box and what it was measured under. `label`
@@ -344,7 +344,7 @@ pub struct Button<S: 'static, T: TextStorage = &'static str> {
 
 pub fn ignore_click<S>(_: &mut S, _: &EventCtx) {}
 
-impl<S, T: TextStorage> Default for Button<S, T> {
+impl<S, T: TextStorage, const ROW: bool> Default for Button<S, T, ROW> {
     fn default() -> Self {
         Button {
             label: T::default(),
@@ -354,25 +354,49 @@ impl<S, T: TextStorage> Default for Button<S, T> {
     }
 }
 
-impl<S: 'static, T: TextStorage> Button<S, T> {}
+impl<S: 'static, T: TextStorage, const ROW: bool> Button<S, T, ROW> {}
 
-impl<S: 'static, T: TextStorage> Widget for Button<S, T> {
+impl<S: 'static, T: TextStorage, const ROW: bool> Widget for Button<S, T, ROW> {
     const NODE_COUNT: usize = 1;
     const DEPTH: usize = 1;
     const IS_RIGID: bool = false;
     const SUB_TABLE: &'static [NodeDesc] =
         &[NodeDesc::new(0, NO_PARENT, 0, 0, NodeDesc::FOCUSABLE)];
 
-    const KIND: &'static str = "button";
+    /// `ROW` is a **menu row** — `Select`'s — M57/C1. The same control,
+    /// with its own kind and look: full width, flat, a hover tint over the
+    /// menu's own colour. The showcase had to style menu rows with a
+    /// `Kind("button")` rule, which also reached every button it did not
+    /// name field by field — and set `hover_dim(0.0)` on all of them, so
+    /// no demo button showed hover (`docs/widget-audit.md`, Button). A row
+    /// with its own kind is styled by its widget, and a sheet that wants
+    /// to restyle rows says `Kind("selectrow")`.
+    const KIND: &'static str = if ROW { "selectrow" } else { "button" };
 
     fn type_defaults() -> Style {
+        if ROW {
+            return Style {
+                width: lumen_static::style::Length::FILL,
+                padding: lumen_static::style::Edges { left: 14.0, right: 10.0, top: 6.0, bottom: 6.0 },
+                pressed_dim: 0.18,
+                hover_dim: 0.08,
+                cursor: lumen_static::style::Cursor::Pointer,
+                background: Color(255, 255, 255, 255),
+                color: Color(15, 23, 42, 255),
+                font_size: 14.0,
+                ..Style::default()
+            };
+        }
         Style {
             padding: lumen_static::style::Edges { left: 14.0, right: 14.0, top: 9.0, bottom: 9.0 },
             // A control that does not change while held reads as broken,
             // and it is the one GUI-theory check `scripts/ui_check.py`
             // could not make before C6.
             pressed_dim: 0.18,
-            hover_dim: 0.07,
+            // 0.12, not 0.07 (M57/B10): at least 1.2:1 against the rest
+            // shade on the lightest body and on the accent, where 0.07
+            // was a hover nobody could see.
+            hover_dim: 0.12,
             // A hand over something clickable (T14.6).
             cursor: lumen_static::style::Cursor::Pointer,
             background: Color(226, 232, 240, 255),
@@ -398,10 +422,14 @@ impl<S: 'static, T: TextStorage> Widget for Button<S, T> {
             lumen_static::style::Fields::FONT_WEIGHT,
             lumen_static::style::Fields::PRESSED_DIM,
             lumen_static::style::Fields::HOVER_DIM,
-        ])).with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Text).background(lumen_static::style::Role::Surface))];
+        ]))
+        // A row sits on its menu's raised panel; a button on the page.
+        .with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Text).background(
+            if ROW { lumen_static::style::Role::Raised } else { lumen_static::style::Role::Surface },
+        ))];
 }
 
-impl<S: 'static, T: TextStorage> Node for Button<S, T> {
+impl<S: 'static, T: TextStorage, const ROW: bool> Node for Button<S, T, ROW> {
     fn layout(
         &mut self,
         cx: &mut LayoutCx,
@@ -463,7 +491,7 @@ impl<S: 'static, T: TextStorage> Node for Button<S, T> {
         let content = Size { w: text.w + pad.horizontal(), h: text.h + pad.vertical() };
         record_painted(st, i, limits, resolve_self(limits, &style[i], content), &style[i])
     }
-    lumen_static::leaf_common!(Button<S, T>, NodeDesc::FOCUSABLE);
+    lumen_static::leaf_common!(Button<S, T, ROW>, NodeDesc::FOCUSABLE);
 
     #[cfg(feature = "observe")]
     fn observe(
@@ -504,7 +532,7 @@ no_handlers!(Spacer);
 /// Only for its *own* state type — a `Button<A>` inside a `B`-rooted
 /// tree fails to satisfy the derive's `Handlers<S>` bound, which is the
 /// compile-time form of the old dispatch safety contract.
-impl<S: 'static, T: TextStorage> Handlers<S> for Button<S, T> {
+impl<S: 'static, T: TextStorage, const ROW: bool> Handlers<S> for Button<S, T, ROW> {
     fn handler(&self, _sel: NodeSel) -> Option<fn(&mut S, &EventCtx)> {
         Some(self.on_click)
     }

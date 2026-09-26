@@ -241,7 +241,7 @@ fn bind_label(l: &mut Label<String>, row: usize) {
     l.set(format!("row {row}"));
 }
 
-fn bind_row(b: &mut Button<(), String>, row: usize) {
+fn bind_row(b: &mut lumen_static_widgets::select::Row<()>, row: usize) {
     b.label = format!("option {row}");
 }
 

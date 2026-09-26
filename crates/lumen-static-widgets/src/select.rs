@@ -64,7 +64,13 @@ use lumen_static::widget::{Node, Widget};
 
 /// One row of the menu. A `Button`, so a row gets hover, press and focus
 /// from the core rather than from this file.
-pub type Row<S> = Button<S, alloc::string::String>;
+///
+/// Its own kind, `selectrow` (M57/C1), so a row's look is the widget's and
+/// a sheet can restyle rows without reaching every other button.
+pub type Row<S> = Button<S, alloc::string::String, true>;
+
+/// The closed control: an ordinary button, which is what it looks like.
+pub type Trigger<S> = Button<S, alloc::string::String>;
 
 /// The menu itself: rows in an out-of-flow popup.
 ///
@@ -88,7 +94,7 @@ pub type SelectMenu<S> = Popup<Repeat<Row<S>>>;
 /// See the module docs for what it owns and what the application does.
 pub struct Select<S: 'static> {
     /// What the closed control shows. The application writes the label.
-    pub trigger: Row<S>,
+    pub trigger: Trigger<S>,
     /// The rows, and whether they are showing. `menu.open` is what the
     /// application binds.
     pub menu: SelectMenu<S>,
@@ -101,7 +107,7 @@ impl<S: 'static> Default for Select<S> {
     fn default() -> Self {
         let mut menu = SelectMenu::<S>::default();
         menu.anchor = Anchor::Below;
-        Select { trigger: Row::<S>::default(), menu, on_dismiss: |_, _| {} }
+        Select { trigger: Trigger::<S>::default(), menu, on_dismiss: |_, _| {} }
     }
 }
 
@@ -146,7 +152,7 @@ impl<S: 'static> Select<S> {
 
     /// Index of the trigger within this subtree, and of the menu.
     const TRIGGER: usize = 1;
-    const MENU: usize = 1 + <Row<S> as Widget>::NODE_COUNT;
+    const MENU: usize = 1 + <Trigger<S> as Widget>::NODE_COUNT;
 }
 
 /// The merged table for one `Select`, built at compile time — the same
@@ -154,14 +160,14 @@ impl<S: 'static> Select<S> {
 pub struct SelectTable<S>(core::marker::PhantomData<S>);
 
 impl<S: 'static> SelectTable<S> {
-    const N: usize = 1 + <Row<S> as Widget>::NODE_COUNT + <SelectMenu<S> as Widget>::NODE_COUNT;
+    const N: usize = 1 + <Trigger<S> as Widget>::NODE_COUNT + <SelectMenu<S> as Widget>::NODE_COUNT;
 
     const ARRAY: [NodeDesc; MAX_SELECT_NODES] = {
         assert!(Self::N <= MAX_SELECT_NODES, "Select exceeds MAX_SELECT_NODES");
         let mut t = [NodeDesc::EMPTY; MAX_SELECT_NODES];
         t[0] = NodeDesc::new(1, NO_PARENT, 0, 2, NodeDesc::CONTAINER);
-        lumen_static::widget::splice_child(&mut t, 1, <Row<S> as Widget>::SUB_TABLE, 0);
-        let menu_at = 1 + <Row<S> as Widget>::NODE_COUNT;
+        lumen_static::widget::splice_child(&mut t, 1, <Trigger<S> as Widget>::SUB_TABLE, 0);
+        let menu_at = 1 + <Trigger<S> as Widget>::NODE_COUNT;
         lumen_static::widget::splice_child(&mut t, menu_at, <SelectMenu<S> as Widget>::SUB_TABLE, 0);
         t[1].next_sibling = menu_at as u32;
         // **The parts are addressable.** A `Select` is three `Button`s
@@ -184,10 +190,10 @@ impl<S: 'static> SelectTable<S> {
     const SEED_ARRAY: [Seed; MAX_SELECT_NODES] = {
         let mut s = [Seed::WIDGET; MAX_SELECT_NODES];
         s[0] = Seed::new(<Select<S> as Widget>::KIND, <Select<S> as Widget>::type_defaults, lumen_static::style::Fields::of(&[lumen_static::style::Fields::VISIBLE]));
-        lumen_static::widget::splice_seeds(&mut s, 1, <Row<S> as Widget>::SEEDS);
+        lumen_static::widget::splice_seeds(&mut s, 1, <Trigger<S> as Widget>::SEEDS);
         lumen_static::widget::splice_seeds(
             &mut s,
-            1 + <Row<S> as Widget>::NODE_COUNT,
+            1 + <Trigger<S> as Widget>::NODE_COUNT,
             <SelectMenu<S> as Widget>::SEEDS,
         );
         s
@@ -207,9 +213,9 @@ pub const PART_POPUP: &str = "select-popup";
 pub const PART_MENU: &str = "select-menu";
 
 impl<S: 'static> Widget for Select<S> {
-    const NODE_COUNT: usize = 1 + <Row<S> as Widget>::NODE_COUNT + <SelectMenu<S> as Widget>::NODE_COUNT;
+    const NODE_COUNT: usize = 1 + <Trigger<S> as Widget>::NODE_COUNT + <SelectMenu<S> as Widget>::NODE_COUNT;
     const DEPTH: usize = 1 + {
-        let a = <Row<S> as Widget>::DEPTH;
+        let a = <Trigger<S> as Widget>::DEPTH;
         let b = <SelectMenu<S> as Widget>::DEPTH;
         if a > b {
             a
@@ -220,7 +226,7 @@ impl<S: 'static> Widget for Select<S> {
     /// Its size is the trigger's, and the menu is out of flow — so a
     /// longer option list never resizes anything above it. That is the
     /// property `Popup` exists for, inherited.
-    const IS_RIGID: bool = <Row<S> as Widget>::IS_RIGID;
+    const IS_RIGID: bool = <Trigger<S> as Widget>::IS_RIGID;
     const SUB_TABLE: &'static [NodeDesc] = SelectTable::<S>::SLICE;
 
     const KIND: &'static str = "select";

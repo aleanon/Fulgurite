@@ -1248,24 +1248,18 @@ fn stylesheet_with(c: Chrome) -> Vec<StyleRule> {
             Selector::Id("d_skeleton_b"),
             Patch::new().width(Length::Fixed(120.0)).height(Length::Fixed(18.0)),
         ),
-        // **The menu rows, by kind.** A `Repeat`'s rows live in an
-        // arena, off the main table, and are styled from the *template*
-        // — which carries no `#[widget_id]`, so `Kind` is the only
-        // selector that reaches them. It works here because every other
-        // `Button` in this sheet is addressed by id and an id beats a
-        // kind; it would not survive an un-named button being added.
-        // `docs/plan-select.md` T24.4 is the per-row addressing that
-        // would make this exact rather than merely true.
+        // **The menu rows, by their own kind** — M57/C1. A `Repeat`'s rows
+        // live in an arena and carry no `#[widget_id]`, so a kind is the
+        // only selector that reaches them. This was `Kind("button")`, which
+        // also reached every button it did not name field by field — and
+        // its `hover_dim(0.0)` switched hover off on all of them, so no
+        // demo button showed one. A `Select`'s rows are `selectrow` now,
+        // with their own look; this only sets the demo's row height.
         StyleRule::new(
-            Selector::Kind("button"),
+            Selector::Kind("selectrow"),
             Patch::new()
-                .width(Length::FILL)
                 .height(Length::Fixed(ROW_H))
-                .background(Color(0, 0, 0, 0))
-                .color_role(Role::Text)
                 .font_size(13.0)
-                .radius(0.0)
-                .hover_dim(0.0)
                 .padding(Edges { left: 14.0, right: 10.0, top: 6.0, bottom: 6.0 }),
         ),
     ];
@@ -2167,6 +2161,33 @@ mod tests {
             Damage::None => false,
         };
         assert!(covers, "the press damaged something, but not the button it was on");
+    }
+
+    /// **Every demo button shows hover** — M57/C1.
+    ///
+    /// The `Kind("button")` rule meant for `Select`'s menu rows set
+    /// `hover_dim(0.0)`, and an id rule that does not set the field keeps
+    /// the kind's: no demo button changed under the pointer
+    /// (`docs/widget-audit.md`, Button). Hover each and compare the
+    /// painted background.
+    #[test]
+    fn every_demo_button_shows_hover() {
+        let entry = CATALOG.iter().position(|e| e.name == "Button").unwrap();
+        let mut h = host(entry, false);
+        let btns = button_ids();
+        assert_eq!(btns.len(), 3, "setup: the Button demo has three buttons");
+        for &b in &btns {
+            let s = h.states[b];
+            let rest = s.bg;
+            h.post(Event::PointerMove { x: s.pos.x + s.size.w / 2.0, y: s.pos.y + s.size.h / 2.0 });
+            h.pump();
+            let hover = h.states[b].bg;
+            println!("button {b}: rest {rest:?}, hovered {hover:?}");
+            assert!(h.states[b].hovered, "setup: the pointer is not over button {b}");
+            assert_ne!(rest, hover, "button {b} painted the same background under the pointer");
+            h.post(Event::PointerMove { x: 1.0, y: 1.0 });
+            h.pump();
+        }
     }
 
     /// **Every stylesheet rule matches a node.**
