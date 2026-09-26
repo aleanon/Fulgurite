@@ -51,6 +51,10 @@ impl Backend for GpuBackend {
         self.gpu.set_images(images);
     }
 
+    fn take_images(&mut self) -> Option<Box<dyn lumen_static::ImageSource>> {
+        self.gpu.take_images()
+    }
+
     fn resize(&mut self, width: u32, height: u32) -> bool {
         if self.gpu.size() == (width, height) {
             return false;

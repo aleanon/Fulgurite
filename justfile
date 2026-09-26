@@ -537,6 +537,12 @@ const-budget:
 gpu-parity:
     ./scripts/gpu_parity.sh
 
+# M47/T47.7 (R15-F6): examples/glasswall's images survive a suspend and
+# resume round trip (a debug-only LUMEN_TEST_RESUME hook runs it), on the
+# software and GPU backends, screenshot before and after. Needs a display.
+resume-drive:
+    ./scripts/resume_drive.sh
+
 # **`--locked` on every benches-competitive build** (M43/T43.12): its
 # lock went stale at M30 and every recipe that built there rewrote the
 # committed file, `just test` included. `check_locks.sh` in `static` now

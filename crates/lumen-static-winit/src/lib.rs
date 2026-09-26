@@ -159,6 +159,16 @@ fn resume_backend(
     backend
 }
 
+/// The backend half of `suspended`: take the images back, then drop the
+/// backend — M47/T47.7 (R15-F6). What [`resume_backend`] took out of
+/// `images`, this puts back, so the next resume hands it on again.
+fn suspend_backend(images: &mut Option<Box<dyn lumen_static::ImageSource>>, mut backend: Box<dyn Backend>) {
+    if let Some(i) = backend.take_images() {
+        *images = Some(i);
+    }
+    drop(backend);
+}
+
 fn pick_backend(
     window: Arc<Window>,
     font: Option<FontStack>,
@@ -203,7 +213,10 @@ pub struct Config {
     /// was simply no way to reach either from `run`, so every windowed
     /// application was one with no photographs in it.
     ///
-    /// Taken once, when the backend is created. A `None` here is not an
+    /// **Held across suspend and resume** (M47/T47.7): handed to each
+    /// backend `resumed` makes, and taken back from it by `suspended`
+    /// (`Backend::take_images`) before it is dropped. It was "taken once",
+    /// and a second `resumed` got none (R15-F6). A `None` here is not an
     /// error: `ImageSource` already says a missing asset draws nothing.
     pub images: Option<Box<dyn lumen_static::ImageSource>>,
     /// Where to serve the agent endpoint, with `--features agent`.
@@ -418,6 +431,13 @@ struct Win {
     /// [`control_flow_for`]: `WaitUntil` the soonest timer's instant, or
     /// `Wait` when there is none or a panic is shown (M47/T47.1).
     wait: ControlFlow,
+    /// **A test hook, debug builds only** — M47/T47.7. With
+    /// `LUMEN_TEST_RESUME=<ms>` set, the window runs its own `suspended`
+    /// and `resumed` once, `<ms>` after it starts, so a live drive can
+    /// compare the window before and after a lifecycle round trip on a
+    /// desktop, where the platform never sends one.
+    #[cfg(debug_assertions)]
+    test_resume: Option<Instant>,
     /// The reload state, when the window rebuilds its application (M37).
     #[cfg(feature = "hot")]
     hot: Option<hot::Hot>,
@@ -446,6 +466,11 @@ impl Win {
             cursor_shown: lumen_static::style::Cursor::Default,
             last_frame: None,
             wait: ControlFlow::Wait,
+            #[cfg(debug_assertions)]
+            test_resume: std::env::var("LUMEN_TEST_RESUME")
+                .ok()
+                .and_then(|v| v.parse::<u64>().ok())
+                .map(|ms| Instant::now() + std::time::Duration::from_millis(ms)),
             #[cfg(feature = "hot")]
             hot: None,
         }
@@ -610,6 +635,20 @@ impl ApplicationHandler<UserEvent> for Win {
     fn resumed(&mut self, e: &ActiveEventLoop) {
         Win::resumed_impl(self, e);
     }
+
+    /// **The images come back before the backend goes** — M47/T47.7.
+    ///
+    /// `resumed` makes a new window and backend on every call, so a
+    /// suspend must drop both — and take the image source back into
+    /// `Config` first, or the next backend is handed none and every image
+    /// vanishes (R15-F6). This is the desktop half of a lifecycle; surface
+    /// recreation on Android stays with `docs/mobile-decision.md`.
+    fn suspended(&mut self, _e: &ActiveEventLoop) {
+        if let Some(backend) = self.backend.take() {
+            suspend_backend(&mut self.config.images, backend);
+        }
+        self.window = None;
+    }
     fn window_event(&mut self, e: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
         Win::window_event_impl(self, e, id, event);
     }
@@ -631,6 +670,23 @@ impl ApplicationHandler<UserEvent> for Win {
     /// `docs/results-frame-cost.md` true — this changes when a still
     /// window wakes, never how often a busy one draws.
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        #[cfg(debug_assertions)]
+        if let Some(at) = self.test_resume {
+            if Instant::now() >= at {
+                self.test_resume = None;
+                eprintln!("lumen-static: LUMEN_TEST_RESUME: suspend and resume");
+                self.suspended(event_loop);
+                self.resumed_impl(event_loop);
+            } else {
+                // Wake for the hook as well as for the timers.
+                let flow = match self.wait {
+                    ControlFlow::WaitUntil(t) if t < at => ControlFlow::WaitUntil(t),
+                    _ => ControlFlow::WaitUntil(at),
+                };
+                event_loop.set_control_flow(flow);
+                return;
+            }
+        }
         event_loop.set_control_flow(self.wait);
     }
 
@@ -1222,6 +1278,9 @@ mod tests {
             }
             self.images = Some(images);
         }
+        fn take_images(&mut self) -> Option<Box<dyn lumen_static::ImageSource>> {
+            self.images.take()
+        }
         fn name(&self) -> &str {
             "fake"
         }
@@ -1232,10 +1291,10 @@ mod tests {
     /// `resumed` makes a new backend every time and hands it
     /// `config.images.take()`; there is no suspend handler, so the
     /// first backend's images go down with it and the second gets none.
-    /// Driven here as resume, suspend (today: the backend is dropped),
-    /// resume, printing what each backend was given.
+    /// Driven here as resume, suspend, resume, printing what each backend
+    /// was given. Until T47.7 the suspend was a bare drop, and backend #2
+    /// printed `None`.
     #[test]
-    #[ignore = "red until T47.7: R15-F6, a second resumed gets no images"]
     fn a_second_resume_still_has_the_images() {
         let mut images: Option<Box<dyn lumen_static::ImageSource>> = Some(Box::new(OnePixel));
         let log = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
@@ -1247,8 +1306,8 @@ mod tests {
             });
             let given = log.borrow().contains(&round);
             println!("backend #{round} images: {}", if given { "Some" } else { "None" });
-            // The suspend a window does today: the backend is dropped.
-            drop(backend);
+            // What `suspended` does with it.
+            suspend_backend(&mut images, backend);
         }
         assert_eq!(made, 2, "setup: two backends were made");
         assert_eq!(*log.borrow(), vec![1, 2], "backend #2 was given no images");

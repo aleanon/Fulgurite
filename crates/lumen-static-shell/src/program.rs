@@ -165,7 +165,10 @@ pub struct Program<A: App> {
     /// The palette a stylesheet's roles resolve against (M25/T25.11).
     pub palette: Palette,
     pub backend: Prefer,
-    /// Where `Cmd::Image` gets its pixels. Taken once, by the window.
+    /// Where `Cmd::Image` gets its pixels. Moved into the window's
+    /// `Config` by `run`, which hands it to each backend it makes and
+    /// takes it back on suspend (M47/T47.7), so one source serves every
+    /// resume.
     pub images: Option<Box<dyn lumen_static::ImageSource>>,
     /// Where to serve the agent endpoint, when the window crate was
     /// built with its `agent` feature. Inert otherwise.

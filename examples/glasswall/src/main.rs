@@ -731,7 +731,14 @@ fn main() {
             shot(&path, dim(2, dw), dim(3, dh));
         }
         Some("--bench") => bench(dim(1, dw), dim(2, dh)),
-        _ => program(W, H).title("glasswall").images(Wallpaper::new()).run(),
+        _ => {
+            let mut p = program(W, H).title("glasswall").images(Wallpaper::new());
+            // Inert unless built with `--features agent` (M47/T47.7).
+            if let Ok(addr) = std::env::var("LUMEN_AGENT") {
+                p = p.agent(addr);
+            }
+            p.run()
+        }
     }
 }
 

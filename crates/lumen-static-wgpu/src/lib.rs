@@ -560,6 +560,13 @@ impl Gpu {
         self.image_atlas.reset();
     }
 
+    /// Give the image source back, so a window that drops this renderer
+    /// on suspend can hand it to the next one (M47/T47.7).
+    pub fn take_images(&mut self) -> Option<Box<dyn ImageSource>> {
+        self.image_atlas.reset();
+        self.images.take()
+    }
+
     /// Match the target and the swapchain to a new window size.
     ///
     /// The target's contents do not survive, which is correct: every

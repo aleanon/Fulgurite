@@ -31,6 +31,20 @@ bare `cargo check` of the core against an Android target has no linker
 and cannot complete. `docs/competitive-feature-gaps.md` already says it
 plainly: desktop-only, plus a `no_std` core with no driver.
 
+### The lifecycle, on desktop (M47/T47.7, 2026-09-26)
+
+One piece of a mobile lifecycle now holds on desktop: a window that is
+suspended and resumed keeps its images. `resumed` makes a new window
+and backend each time, and until T47.7 there was no `suspended` handler
+and the image source was taken once, so a second `resumed` drew every
+image as nothing (R15-F6). `Win::suspended` now takes the source back
+through `Backend::take_images` (required on every backend) and drops the
+backend and window. `just resume-drive` runs the round trip on a live
+window through a debug-only `LUMEN_TEST_RESUME` hook and reads 0
+differing pixels of 458,620 on the software and GPU backends
+(`docs/plan-timers-wake.md` T47.7). Surface recreation on an Android
+activity is still the deferred work below.
+
 ## Why this is not a small gap
 
 The core is genuinely portable — it is `no_std` at two tiers and links a

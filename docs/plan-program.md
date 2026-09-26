@@ -91,7 +91,7 @@ application(boot)                 // boot: impl Boot<A>
     .size(460, 620)
     .page(PAGE)
     .palette(p)
-    .images(Wallpaper::new)       // fn() -> impl ImageSource
+    .images(Wallpaper::new)       // fn() -> impl ImageSource (built: a value, taken back on suspend — M47/T47.7)
     .agent(addr)
     .backend(Prefer::Gpu)
     .run();

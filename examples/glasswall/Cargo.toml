@@ -25,6 +25,10 @@ default = []
 # them is not a frame, it is a slideshow. M22/T22.6 put the whole filter
 # on the GPU, where the same work is milliseconds.
 gpu = ["lumen-static-winit/gpu", "dep:lumen-static-wgpu"]
+# M47/T47.7: the agent endpoint, so `just resume-drive` can screenshot the
+# window before and after a suspend/resume round trip. Glasswall is the
+# example with images, which is what that round trip used to lose.
+agent = ["lumen-static-winit/agent", "lumen-static-widgets/observe"]
 
 [dev-dependencies]
 # The sheet lint is agent-gated (M26/T26.6); this crate's tests assert

@@ -69,6 +69,21 @@ pub trait Backend {
         let _ = images;
     }
 
+    /// Hand the image source back — M47/T47.7 (R15-F6).
+    ///
+    /// A window that is suspended drops its backend and makes a new one on
+    /// the next `resumed`. The source is a trait object the backend owns,
+    /// not a thing that can be cloned, so it must be **taken back** before
+    /// the drop, or every image vanishes on the second resume.
+    ///
+    /// **Required, not provided**, where `set_images` is provided: a
+    /// backend that cannot draw images is a real configuration, but one
+    /// that was handed a source and answers "nothing" here reproduces the
+    /// bug exactly. `AGENT.md`'s rule — a provided method is right for a
+    /// leaf and wrong for a wrapper — in its other form: a default that
+    /// cannot know what the implementor holds is the defect.
+    fn take_images(&mut self) -> Option<Box<dyn lumen_static::ImageSource>>;
+
     /// The last frame this backend rendered, as RGBA8.
     ///
     /// **Not the same as `fetch_rgba`**, and the difference is the whole
@@ -121,6 +136,10 @@ impl Backend for Software {
 
     fn set_images(&mut self, images: Box<dyn lumen_static::ImageSource>) {
         self.canvas.images = Some(images);
+    }
+
+    fn take_images(&mut self) -> Option<Box<dyn lumen_static::ImageSource>> {
+        self.canvas.images.take()
     }
 
     fn frame_rgba(&self) -> Option<(u32, u32, &[u8])> {

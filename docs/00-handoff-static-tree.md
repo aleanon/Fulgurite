@@ -569,6 +569,11 @@ spawned and not yet landed (body returned, every result drained); its
 length is `Host::in_flight`, the one in-flight count M48's "settled"
 answer and M49's re-issue across a swap read.
 
+**DECIDED 2026-09-26 (M47/T47.7, `docs/mobile-decision.md`):** a window
+keeps its images across suspend and resume — `Backend::take_images` is
+required, and `suspended` takes the source back before the backend is
+dropped.
+
 ### Sequence — not negotiable
 
 The old tree's `Serialize` impls, `Drop` impls, and vtables all live in the old

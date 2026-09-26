@@ -608,6 +608,25 @@ the `Backend` trait's rustdoc; `docs/mobile-decision.md`, lifecycle;
 
 **Effort:** S. **Depends on:** T47.0.
 
+**What building found (2026-09-26).**
+
+- **The hook lives in the window crate, not in `examples/glasswall`.**
+  `suspended` and `resumed` are `Win`'s, which an example cannot call;
+  the debug-only `LUMEN_TEST_RESUME=<ms>` is read by `Win::new` and runs
+  both from `about_to_wait` once, `<ms>` in. Glasswall gained an `agent`
+  feature so the drive can reach it (`just resume-drive`).
+- **`ui.screenshot` cannot see the GPU backend**: it answers "this host
+  does not render", because `GpuBackend` has no `frame_rgba`. The GPU
+  leg reads the window back with `xwd`, as `just gpu-parity` does.
+- **The unit test cannot see `suspended` itself.** It needs an
+  `ActiveEventLoop`, so the test drives the extracted `suspend_backend`.
+  The plan's injection — `suspended` not taking the images back — leaves
+  the unit test green and is caught live only (98.96% of pixels differ,
+  1,771 colours against 85,279); the unit test's own injection is the
+  same removal inside `suspend_backend`.
+- **The drive checks its setup**: the app's log must show one round trip
+  and two backends made on a resume leg, and none on the still leg.
+
 ### T47.8 — the idle numbers the comments cite
 
 **Closes:** R7-F11.
