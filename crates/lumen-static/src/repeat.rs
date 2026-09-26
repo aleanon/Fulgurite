@@ -449,6 +449,13 @@ impl<T: Widget + Default + 'static> Node for Repeat<T> {
         self.generation.wrapping_add(self.count_epoch)
     }
 
+    /// The cursor the rows' shared style row resolved for that template
+    /// node (M44/T44.8) — every row is styled alike, so the row index
+    /// does not matter.
+    fn inner_cursor(&self, inner: crate::hit::Inner) -> Option<crate::style::Cursor> {
+        self.arena.style().get(inner.node as usize).map(|s| s.cursor)
+    }
+
     fn layout(
         &mut self,
         cx: &mut LayoutCx,

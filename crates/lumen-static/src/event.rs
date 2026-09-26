@@ -422,6 +422,11 @@ pub struct InputState {
     /// (`invalidate::Boundaries`) would otherwise keep painting the
     /// shade of the node the pointer left.
     pub hovered: Option<u32>,
+    /// Which row, and which node of it, the pointer is over when
+    /// [`InputState::hovered`] is a virtualizer — M44/T44.8. What the
+    /// host's cursor asks the virtualizer about; the hit test already
+    /// knew it and threw it away.
+    pub hover_inner: Option<crate::hit::Inner>,
     /// The node a press latched on, until its release — M25/T25.0.
     /// Kept for the same reason as [`InputState::hovered`].
     pub pressed: Option<u32>,

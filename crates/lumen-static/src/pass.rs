@@ -702,11 +702,13 @@ fn dispatch_at<S: crate::event::App>(
                 Event::PointerMove { .. } => {
                     let was = input.hovered;
                     input.hovered = hit.map(|h| h.node);
+                    input.hover_inner = hit.and_then(|h| h.inner);
                     input.state_writes.add(set_hovered(st, was, input.hovered));
                 }
                 Event::PointerDown { .. } => {
                     let was = input.hovered;
                     input.hovered = hit.map(|h| h.node);
+                    input.hover_inner = hit.and_then(|h| h.inner);
                     input.state_writes.add(set_hovered(st, was, input.hovered));
                     // A press with one still held (a second pointer)
                     // lets the first go, so no bit is left behind.

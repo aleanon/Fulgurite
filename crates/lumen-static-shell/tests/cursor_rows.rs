@@ -78,7 +78,6 @@ fn centre(s: NodeState) -> (f32, f32) {
 }
 
 #[test]
-#[ignore = "red until T44.8: R15-F7 (Host::cursor reads only the main table, so a row's Button reads Default)"]
 fn the_cursor_over_a_row_is_the_rows() {
     let mut h = host();
     let btn = centre(h.states[index("btn") as usize]);

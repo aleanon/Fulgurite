@@ -629,6 +629,7 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         self.input.capture = None;
         self.input.pressed = None;
         self.input.hovered = None;
+        self.input.hover_inner = None;
         self.input.swallow_release = false;
         // T44.2's latch goes with the press it identified.
         self.input.press = None;
@@ -1811,18 +1812,30 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
     /// against the RAM budget in `docs/results-embedded.md`. The host
     /// has both arrays, so nothing needed to grow.
     ///
-    /// The **deepest** hovered node wins. C6 marks every node on the
-    /// hover chain, and an ancestor's cursor should not override the
-    /// leaf the pointer is actually on — a button inside a text field's
-    /// row must read as a button.
+    /// The node the last pointer move **hit** wins, which is the deepest
+    /// one — an ancestor's cursor must not override the leaf the pointer
+    /// is actually on.
+    ///
+    /// **Read from the hit, not by scanning the hovered bits** — M44/T44.8.
+    /// The scan walked the main table only, so a `Button` inside a
+    /// `Repeat` row read as the repeater's own cursor, `Default` — the
+    /// case T14.6 names (R15-F7). Dispatch records the hit's row part in
+    /// `InputState::hover_inner`, and a virtualizer answers for its rows
+    /// through `Node::inner_cursor`. It is also O(1) now, and the window
+    /// calls this per event.
     pub fn cursor(&self) -> lumen_static::style::Cursor {
-        self.states
-            .iter()
-            .enumerate()
-            .rev()
-            .find(|(_, s)| s.hovered)
-            .and_then(|(i, _)| self.styles.get(i))
-            .map_or(lumen_static::style::Cursor::Default, |s| s.cursor)
+        let Some(i) = self.input.hovered.map(|i| i as usize) else {
+            return lumen_static::style::Cursor::Default;
+        };
+        if i >= self.styles.len() {
+            return lumen_static::style::Cursor::Default;
+        }
+        if let Some(inner) = self.input.hover_inner {
+            if let Some(c) = self.app.tree().node(i).inner_cursor(inner) {
+                return c;
+            }
+        }
+        self.styles[i].cursor
     }
 
     /// The focused node's selected text — what a copy sends to the

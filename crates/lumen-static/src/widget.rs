@@ -232,6 +232,18 @@ pub trait Node {
         0
     }
 
+    /// The pointer shape over template node `inner.node` of one of this
+    /// node's rows — M44/T44.8.
+    ///
+    /// A row is not in the main table, so the host's style array has no
+    /// entry for a `Button` inside a list row, and the cursor over it read
+    /// as the list's own (R15-F7). `None` by default; a virtualizer
+    /// answers from its rows' resolved styles. Asked of the hit's table
+    /// node, like [`row_generation`](Node::row_generation).
+    fn inner_cursor(&self, _inner: crate::hit::Inner) -> Option<crate::style::Cursor> {
+        None
+    }
+
     /// One step of an input-method composition (T14.8).
     ///
     /// `false` from a node that does not edit text, which is what lets

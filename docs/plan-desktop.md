@@ -502,6 +502,16 @@ on the hover chain and an ancestor's cursor must not override the leaf
 the pointer is on: a button inside a text field's row has to read as a
 button.
 
+**The row case this names was not true until M44/T44.8 (2026-09-26).**
+A *repeater's* row is not in the main table, so the scan over hovered
+bits found the repeater and read its cursor: a `Button` in a list row
+read as `Default` (R15-F7). `Host::cursor` now reads the node the last
+move hit, and when that hit was on a row it asks the repeater for the
+row's resolved cursor (`Node::inner_cursor`).
+`crates/lumen-static-shell/tests/cursor_rows.rs` gates it: a table
+button, a button row and a label row read `Pointer`, `Pointer`,
+`Default`.
+
 `TextInput` and `TextArea` default to `Text`, `Button`, `Slider` and
 `Toggle` to `Pointer`, so an application gets the right shapes without
 writing a rule. `Cursor` is a closed enum rather than a string because
