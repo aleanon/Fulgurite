@@ -574,6 +574,14 @@ reports no uncovered action.**
 
 ### The adversary is itself a gate, so it is itself tested
 
+> *M42/T42.7 (R18-F11):* "once per tranche" did not happen — the
+> adversary ran once, for T27.10, and its plant existed only as prose.
+> It now re-runs: `just adversary-plant` stores the plant and the widget
+> defect it hides as patches (`scripts/drive/plants/`) and proves both
+> arms — the real drive catches the defect, the planted drive does not.
+> Storing it found that the T27.10 plant as written (`<=`) is no longer a
+> blind spot: check (3) catches it. The stored plant is `<`.
+
 This is the part that is easy to skip and is the reason the whole
 structure is not just one more passing test at a higher level. Once per
 tranche, the adversary is run against a drive that has been

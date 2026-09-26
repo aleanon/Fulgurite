@@ -153,6 +153,11 @@ selftest-slow:
 selftest-live:
     ./scripts/selftest/live.sh
 
+# M42/T42.7: the adversary's planted weakness proves it is one -- the real
+# drive catches the widget defect, the planted drive does not. Needs a display.
+adversary-plant:
+    ./scripts/drive/plants/adversary_plant.sh
+
 # ---------------------------------------------------------------------------
 # Pre-push / CI
 # ---------------------------------------------------------------------------

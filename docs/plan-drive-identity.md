@@ -859,6 +859,15 @@ for every plan a build corrected.
   the frame; restoring "any non-empty readout" is what turns it green.
   The subtree filter's own evidence is (ii) above: one change in the
   frame, outside the content's subtree.
+- **T42.7: §1.5's premise no longer holds for the plant as written.**
+  With `_page(c) <= c._p0` and the widget defect applied, the drive is
+  **red**, not green — by check (3), the isolate: an outside click
+  leaves the page unchanged, which `<=` accepts, so the drive reports
+  "the handler fires on everything". (With the plant alone and no
+  defect it is red the same way.) The isolate postdates the T27.10 run.
+  The stored plant is `_page(c) < c._p0`, which accepts the defect's
+  jump (22 -> 18) and rejects the unchanged page, so it is the blind spot
+  `<=` was meant to be.
 - **AGENT.md is the coordinator's.** The tasks' "docs in the same
   commit" name AGENT.md entries; the implementation brief reserves that
   file for the merge, so those edits are listed in the final report
