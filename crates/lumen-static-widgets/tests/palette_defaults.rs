@@ -89,7 +89,10 @@ fn kinds() -> Vec<Kind> {
         k(<Divider as Widget>::SEEDS, &[]),
         k(<Skeleton as Widget>::SEEDS, &[]),
         k(<PaintBox as Widget>::SEEDS, &[]),
-        k(<BarChart as Widget>::SEEDS, &[(F::Fg, F::Page, UI, "the default series colour")]),
+        k(<BarChart as Widget>::SEEDS, &[
+            (F::Fg, F::Page, UI, "the default series colour"),
+            (F::Border, F::Page, TEXT, "the axes' labels (M57/B30)"),
+        ]),
         k(<PullToRefresh<Label> as Widget>::SEEDS, &[(F::Fg, F::Page, UI, "the pull indicator")]),
     ]
 }

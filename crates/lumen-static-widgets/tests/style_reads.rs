@@ -300,8 +300,10 @@ kinds! {
     PProgress: ProgressBar = [|r| r.w.value = 0.5];
     PSpinner: Spinner = [|r| r.w.phase = 0.3];
     PSkeleton: Skeleton = [|r| r.w.phase = 0.3];
-    PBar: BarChart = [|r| r.w = BarChart::new(&[1.0, 3.0, 2.0])];
-    PLine: LineChart = [|r| r.w = LineChart::new(&[1.0, 3.0, 2.0])];
+    // With axes and labels: a chart's font is read only there (M57/B30),
+    // and a fixture without them measured `font_size` as unread.
+    PBar: BarChart = [|r| { r.w = BarChart::new(&[1.0, 3.0, 2.0]); r.w.axes = true; r.w.labels = &["a", "b", "c"]; }];
+    PLine: LineChart = [|r| { r.w = LineChart::new(&[1.0, 3.0, 2.0]); r.w.axes = true; r.w.labels = &["a", "b", "c"]; }];
     PPie: PieChart = [|r| r.w = PieChart::new(&[1.0, 3.0, 2.0])];
 }
 

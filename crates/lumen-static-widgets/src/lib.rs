@@ -121,7 +121,7 @@ pub use slider::Slider;
 pub use textarea::TextArea;
 pub use toggle::{CheckBox, Radio, Switch, Toggle};
 
-pub use chart::{BarChart, Chart, LineChart, PieChart, Series, MAX_POINTS};
+pub use chart::{fmt_num, nice_scale, BarChart, Chart, LineChart, PieChart, Series, MAX_POINTS};
 #[cfg(feature = "alloc")]
 pub use choose::{
     Chooser, Combobox, Menu, OptionList, PickList, COMBOBOX, MAX_OPTIONS, MENU, PICKLIST,

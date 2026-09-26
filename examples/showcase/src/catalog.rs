@@ -436,13 +436,13 @@ pub static CATALOG: &[Entry] = &[
         true,
         |s| on(s, Demo::Skeleton(DSkeleton { a: Skeleton::new(s.store.phase), b: Skeleton::new(s.store.phase) })),
         |s| format!("phase {:.2}", s.store.phase)),
-    entry!("Charts", "BarChart", "Bars from a zero baseline.",
+    entry!("Charts", "BarChart", "Bars on a scale; hover one for its value.",
         false,
-        |s| on(s, Demo::Bar(DBarChart { a: BarChart::new(SAMPLE) })),
+        |s| on(s, Demo::Bar(DBarChart { a: { let mut c = BarChart::new(SAMPLE); c.axes = true; c.labels = SAMPLE_LABELS; c } })),
         none),
-    entry!("Charts", "LineChart", "A polyline through the same points.",
+    entry!("Charts", "LineChart", "The same points as a line; hover one.",
         false,
-        |s| on(s, Demo::Line(DLineChart { a: LineChart::new(SAMPLE) })),
+        |s| on(s, Demo::Line(DLineChart { a: { let mut c = LineChart::new(SAMPLE); c.axes = true; c.labels = SAMPLE_LABELS; c } })),
         none),
     entry!("Charts", "PieChart", "Proportions of a whole, as a ring.",
         false,
@@ -569,3 +569,5 @@ pub static CATALOG: &[Entry] = &[
 
 /// The series the charts share, so the three demos are comparable.
 pub static SAMPLE: &[f32] = &[3.0, 7.0, 4.0, 9.0, 6.0, 8.0, 5.0, 10.0, 7.5, 4.5];
+/// One per sample, under its bar or point (M57/B30).
+pub static SAMPLE_LABELS: &[&str] = &["J", "F", "M", "A", "M", "J", "J", "A", "S", "O"];
