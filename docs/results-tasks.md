@@ -798,6 +798,15 @@ timer that silently drops ticks under load has a count that depends on
 the frame rate, and a count that depends on the frame rate cannot be
 asserted.
 
+> **Corrected 2026-09-26 (M47/T47.2, R7-F3, R7-F4).** The catch-up held
+> for a frame, not for a stall. It was a `while` adding the period to an
+> `f32` remainder, which stops moving past about 2^24 periods: `dt` 1e9 ms
+> at 16 ms never returned. And each firing was a push into a 32-slot
+> outbox whose refusals `Host::tick` dropped, so a 10 ms timer handed
+> `tick(1000)` fired 100, delivered 32 and counted 68 nowhere. Both are
+> fixed in T47.2 below; "catches up" now reads "up to the outbox's
+> capacity, and counts the rest".
+
 ### Injections
 
 | injection | fires as |
@@ -979,3 +988,33 @@ and the one a reload re-issuing work needs most.
 | a pool of one worker (`with_cap(1)`) | headless: `quick job landed after 403 ms ... (bound 300 ms, pool cap 1); landed [400, 1]`; live: `no tick landed in 331 ms while a 400 ms job ran: a busy worker held the timer back` |
 
 Restored, all green again, both strategies.
+
+## M47/T47.2 — catch-up by arithmetic, and every firing accounted for
+
+**Landed 2026-09-26** (`docs/plan-timers-wake.md` §2.2(c), R7-F3, R7-F4).
+`Timers` holds its periods and remainders in integer microseconds, and
+`advance` computes the number due in one step. It pushes at most the
+outbox's free slots and counts the rest as **coalesced**, per timer
+(`Timers::coalesced`) and in its return value (`Advanced { delivered,
+coalesced }`), which no longer counts a refused push as fired.
+`Host::tick` advances straight into the application's outbox (the timers
+are taken out for the call) and keeps the coalesced total
+(`Host::timer_coalesced`).
+
+| `tests/timers.rs` | before | after | bound |
+|---|---|---|---|
+| `advance(1e9)` at 16 ms | did not return (200 ms watchdog) | **0.002 ms**; fired 62,500,000 = 32 delivered + 62,499,968 coalesced; remaining 16.0 | < 200 ms; remaining in (0, 16] |
+| 10 ms timer, `tick(1000)` | delivered 32, counted **0** | delivered 32, counted **68** | delivered + counted = 100 |
+| one hour at 16 ms | fired 225,000 | fired 225,000, 224,968 coalesced for that timer | 225,000 |
+| 10 ms timer, `tick(300)` | 30 of 30, 0 counted | the same | 30, 0 |
+| 80 ms frame, 25 ms timer | 3 | 3 | 3 |
+
+**Injections.** The `f32` `while` loop put back: `advance(1e9) at a 16 ms
+period did not return within 200 ms: the catch-up loop is spinning
+(R7-F3)`. The host's `timer_coalesced += …` removed: `fired 100,
+delivered 32, counted 0` — `68 firings were neither delivered nor
+counted anywhere a caller can read`. Restored, green.
+
+**What a caller reads.** `Host::timer_coalesced` and `Timers::coalesced`;
+the agent reports no host counters today, so nothing there changed
+(`docs/plan-timers-wake.md` T47.2, "What building found").

@@ -418,6 +418,23 @@ caveat) and the `Outbox` rustdoc ("Overflow refuses and counts");
 **Effort:** S. **Depends on:** T47.0, T47.1 (so the panic path no longer
 feeds it).
 
+**What building found (2026-09-26).**
+
+- **"The agent's existing counters" do not exist.** No host counter —
+  `unknown_kind`, `unspawned`, the inbox's refused — reaches the agent
+  today, so there was nothing to add this one to. It is a host accessor,
+  `Host::timer_coalesced`, beside those. The reply shape belongs to M48,
+  which is rewriting `app.diagnostics`/`ui.waitSettled` concurrently;
+  reporting the counters there is its call, and adding a field under it
+  would have been a merge conflict for no reader.
+- **No scratch outbox is left to fold.** Taking the timers out for the
+  call works for every application that has both; one with timers and no
+  outbox has nothing that could ever spawn a firing, so every firing is
+  counted as coalesced.
+- **Periods are held in whole microseconds**, at least 1 and at most
+  `u64::MAX` (about 580,000 years). `Timers::every` still accepts every
+  finite positive `f32`; a period above that ceiling fires at the ceiling.
+
 ### T47.3 — a pool instead of a thread per job
 
 **Closes:** R7-F5.

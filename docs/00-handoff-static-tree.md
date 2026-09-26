@@ -556,8 +556,10 @@ at the deadline and drew no frame, and the live gate could not tell
 because its every read asked for one (`docs/results-tasks.md` T28.12,
 the correction). The window now fixes the deadline as an instant after
 each frame and turns a wake at it into a frame; while a panic is shown
-the timers are frozen and a retry starts from `dt` 0. Still deferred to
-the rest of M47: catch-up by arithmetic (T47.2).
+the timers are frozen and a retry starts from `dt` 0. **Catch-up is
+arithmetic since M47/T47.2**: a stall fires at most a full outbox and
+counts the rest (`Host::timer_coalesced`), where it used to hang or lose
+them uncounted (`docs/results-tasks.md` T47.2).
 
 **DECIDED 2026-09-26 (M47/T47.3, `docs/results-tasks.md` T47.3):** the
 default spawner is a small pool — at most `Threads::cap` long-lived

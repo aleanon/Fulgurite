@@ -175,6 +175,9 @@ pub struct Host<A: App, R: Retention = Incremental, I: Invalidation = lumen_stat
     /// spawner is refused and counted rather than silently dropped —
     /// see [`Host::spawn`].
     spawner: Option<Box<dyn lumen_static::spawn::Spawner<A::Msg>>>,
+    /// Timer firings coalesced for want of outbox room, over this host's
+    /// life — M47/T47.2. [`Host::timer_coalesced`].
+    timer_coalesced: u64,
     /// Every job spawned and not yet landed — M47/T47.3. Its length is
     /// the in-flight count ([`Host::in_flight`]).
     ledger: lumen_static::spawn::Ledger,
@@ -733,6 +736,7 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             more_deferred: false,
             spawner: None,
             ledger: lumen_static::spawn::Ledger::new(),
+            timer_coalesced: 0,
             unspawned: 0,
             unknown_kind: 0,
             running: Vec::new(),
@@ -1258,6 +1262,15 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         &self.ledger
     }
 
+    /// Timer firings that came due with no room in the outbox and were
+    /// counted rather than pushed — M47/T47.2, R7-F4. Monotonic.
+    ///
+    /// Delivered plus this is every period that elapsed. Per timer, the
+    /// same figure is `Timers::coalesced`.
+    pub fn timer_coalesced(&self) -> u64 {
+        self.timer_coalesced
+    }
+
     /// How many spawns were refused for want of a spawner.
     pub fn unspawned(&self) -> usize {
         self.unspawned
@@ -1640,28 +1653,32 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         // `Threads::cap` long-lived workers now. `docs/plan-tasks.md`
         // §2.4's rule that the inbox is the only way deferred work
         // re-enters the app is why there is no second path here either.
-        let fired = match (self.app.timers(), ()) {
-            (Some(_), ()) => {
-                // Two borrows of `self.app` are needed and cannot
-                // overlap, so the timers are advanced into a local
-                // outbox and merged. `Outbox` is `Copy`-free but small
-                // and stack-resident; nothing allocates.
-                let mut scratch = lumen_static::spawn::Outbox::new();
-                let n = self
-                    .app
-                    .timers()
-                    .map_or(0, |t| t.advance(dt_ms, &mut scratch));
-                if n > 0 {
-                    let mut buf = [lumen_static::spawn::Descriptor::default();
-                        lumen_static::spawn::Outbox::CAPACITY];
-                    let k = scratch.drain_into(&mut buf);
-                    if let Some(o) = self.app.outbox() {
-                        for d in buf.iter().take(k) {
-                            o.push(*d);
-                        }
+        //
+        // **Straight into the application's outbox** (M47/T47.2, R7-F4).
+        // `advance` pushes only as many as the outbox has room for and
+        // counts the rest, so nothing it fires can be refused. It went
+        // through a scratch outbox here, whose refusals were dropped: a
+        // 10 ms timer handed `tick(1000)` fired 100, delivered 32 and
+        // counted 68 nowhere. The timers are taken out for the call,
+        // because the two borrows of `self.app` cannot overlap.
+        let fired = match self.app.timers() {
+            Some(t) if !t.is_empty() => {
+                let mut timers = core::mem::take(t);
+                let done = match self.app.outbox() {
+                    Some(o) => timers.advance(dt_ms, o),
+                    // Timers and no outbox: nothing could ever spawn what
+                    // they fire, so every firing is coalesced, and counted.
+                    None => {
+                        let mut nowhere = lumen_static::spawn::Outbox::new();
+                        let d = timers.advance(dt_ms, &mut nowhere);
+                        lumen_static::spawn::Advanced { delivered: 0, coalesced: d.fired() }
                     }
+                };
+                if let Some(t) = self.app.timers() {
+                    *t = timers;
                 }
-                n
+                self.timer_coalesced += done.coalesced;
+                done.fired()
             }
             _ => 0,
         };

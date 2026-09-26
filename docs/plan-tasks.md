@@ -434,6 +434,9 @@ indefinitely, falling back to today's behaviour when nothing is pending.
   on, asserted without a window; and **zero threads** are spawned for a
   timer — counted through T28.3's spawner seam, which every thread this
   milestone creates goes through, rather than by asking the OS.
+  *(Corrected by M47/T47.2: a long frame catches up, but a stall did
+  not — the `f32` loop hung past 2^24 periods and firings past the
+  outbox were lost uncounted; now arithmetic, with the overflow counted.)*
   *(Corrected by M47/T47.3: what the seam counts is spawns. Each firing
   is a job, and under the shipped `Threads` each job was a thread — 28
   clones for 28 ticks. The pool that replaced it creates at most its

@@ -222,7 +222,6 @@ fn a_nonsense_period_is_refused_and_counted() {
 /// is a hang and `cargo test` has no per-test timeout. The spinning
 /// thread is abandoned, not joined; the harness exits past it.
 #[test]
-#[ignore = "red until T47.2: R7-F3, a large dt hangs Timers::advance"]
 fn a_huge_dt_returns_within_the_watchdog() {
     const WATCHDOG: std::time::Duration = std::time::Duration::from_millis(200);
     let (tx, rx) = std::sync::mpsc::channel();
@@ -235,14 +234,22 @@ fn a_huge_dt_returns_within_the_watchdog() {
         let _ = tx.send((fired, t.earliest(), out.len(), started.elapsed()));
     });
     match rx.recv_timeout(WATCHDOG) {
-        Ok((fired, remaining, queued, took)) => {
+        Ok((done, remaining, queued, took)) => {
             println!(
-                "advance(1e9) at 16 ms: returned in {:.3} ms (bound {} ms), fired {fired:?}, \
-                 queued {queued}, remaining {remaining:?}",
+                "advance(1e9) at 16 ms: returned in {:.3} ms (bound {} ms), fired {} \
+                 (of 62500000: delivered {}, coalesced {}), queued {queued}, remaining {remaining:?} \
+                 (in (0, 16])",
                 took.as_secs_f64() * 1e3,
-                WATCHDOG.as_millis()
+                WATCHDOG.as_millis(),
+                done.fired(),
+                done.delivered,
+                done.coalesced
             );
             assert!(took < WATCHDOG);
+            assert_eq!(done.fired(), 62_500_000, "1e9 ms of 16 ms periods");
+            assert_eq!(done.delivered, Outbox::CAPACITY, "the outbox filled, and no further");
+            let r = remaining.expect("the timer is still running");
+            assert!(r > 0.0 && r <= 16.0, "remaining {r} is not in (0, 16]");
         }
         Err(_) => panic!(
             "advance(1e9) at a 16 ms period did not return within {} ms: the catch-up \
@@ -259,7 +266,6 @@ fn a_huge_dt_returns_within_the_watchdog() {
 /// 100, delivered 32, and counted the other 68 nowhere a caller can
 /// read. `counted` here is the sum of every counter a caller can read.
 #[test]
-#[ignore = "red until T47.2: R7-F4, firings past the outbox are lost uncounted"]
 fn a_stalled_tick_delivers_or_counts_every_firing() {
     const FIRED: usize = 100; // 1000 ms / 10 ms
     let mut h: Host<Work, Rebuild> = Host::new(Work::default(), 100, 50);
@@ -290,7 +296,8 @@ fn a_stalled_tick_delivers_or_counts_every_firing() {
 
 /// Every drop counter a caller can read on this host.
 fn counted_losses(h: &mut Host<Work, Rebuild>) -> usize {
-    h.app.outbox.refused()
+    h.timer_coalesced() as usize
+        + h.app.outbox.refused()
         + h.app.timers.refused()
         + h.inbox.refused()
         + h.inbox.stale()
@@ -395,13 +402,15 @@ fn an_hour_returns_and_a_stall_that_fits_delivers_everything() {
     t.every(TICK, 1, 16.0);
     let mut out = Outbox::new();
     let started = std::time::Instant::now();
-    let fired = t.advance(3_600_000.0, &mut out);
+    let fired = t.advance(3_600_000.0, &mut out).fired();
     println!(
-        "advance(1 h) at 16 ms: fired {fired} (of 225000) in {:.1} ms, queued {}",
+        "advance(1 h) at 16 ms: fired {fired} (of 225000) in {:.1} ms, queued {}, coalesced {:?}",
         started.elapsed().as_secs_f64() * 1e3,
-        out.len()
+        out.len(),
+        t.coalesced(TICK, 1)
     );
     assert_eq!(fired, 225_000, "one hour of 16 ms periods");
+    assert_eq!(t.coalesced(TICK, 1), Some(225_000 - 32), "and what did not fit is counted per timer");
 
     let mut h: Host<Work, Rebuild> = Host::new(Work::default(), 100, 50);
     h.set_spawner(Box::new(lumen_static::spawn::Immediate));

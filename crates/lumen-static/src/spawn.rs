@@ -496,7 +496,11 @@ impl<M: Send + 'static> Spawner<M> for Queued<M> {
 ///
 /// **Fixed capacity, no allocation.** It lives on the application, which
 /// is laid out beside the tree and counted by the same allocation gate
-/// as a frame. Overflow refuses and counts, like the inbox's.
+/// as a frame. Overflow refuses and counts, like the inbox's — for a
+/// handler's push. [`Timers::advance`] never overflows it: it pushes only
+/// as many as there is room for and counts the rest as coalesced
+/// (M47/T47.2), because a scratch outbox's refusals were once the only
+/// record of a stall's lost ticks, and nothing read them (R7-F4).
 pub struct Outbox {
     q: [Descriptor; Outbox::CAPACITY],
     len: usize,
@@ -676,10 +680,33 @@ impl Subs {
 /// shown the window ticks nothing and arms no deadline, and a retry
 /// starts from `dt` 0.
 pub struct Timers {
-    /// `(kind, key, period_ms, remaining_ms)`.
-    t: [(u64, u64, f32, f32); Timers::CAPACITY],
+    /// `(kind, key, period_us, remaining_us, coalesced)`. Integer
+    /// microseconds since M47/T47.2: in `f32` milliseconds a catch-up
+    /// past about 2^24 periods stopped moving the remainder (R7-F3).
+    t: [(u64, u64, u64, u64, u64); Timers::CAPACITY],
     len: usize,
     refused: usize,
+    /// Every firing ever coalesced, cancelled timers included.
+    coalesced: u64,
+}
+
+/// What one [`Timers::advance`] did — M47/T47.2.
+///
+/// `delivered` firings were pushed as descriptors; `coalesced` came due
+/// with no room for them and were counted instead. Their sum is how many
+/// periods elapsed, which is what `advance` returned alone until T47.2 —
+/// counting refused pushes as fired (R7-F4).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Advanced {
+    pub delivered: usize,
+    pub coalesced: u64,
+}
+
+impl Advanced {
+    /// Every period that elapsed, delivered or not.
+    pub fn fired(&self) -> u64 {
+        self.delivered as u64 + self.coalesced
+    }
 }
 
 impl Default for Timers {
@@ -688,20 +715,28 @@ impl Default for Timers {
     }
 }
 
+/// Milliseconds as whole microseconds, saturating: a period or a `dt`
+/// past `u64::MAX` µs (about 580,000 years) is held as that.
+fn to_us(ms: f32) -> u64 {
+    // `as` saturates, and the caller has already refused NaN.
+    (ms as f64 * 1000.0).round() as u64
+}
+
 impl Timers {
     pub const CAPACITY: usize = 8;
 
     pub const fn new() -> Timers {
-        Timers { t: [(0, 0, 0.0, 0.0); Timers::CAPACITY], len: 0, refused: 0 }
+        Timers { t: [(0, 0, 0, 0, 0); Timers::CAPACITY], len: 0, refused: 0, coalesced: 0 }
     }
 
     /// Fire `(kind, key)` every `period_ms`. Returns whether it was
     /// taken; a non-positive or non-finite period is refused, because a
     /// zero period is an infinite loop and a `NaN` one never fires.
     ///
-    /// **Every other period is accepted, up to `f32::MAX`**, so a shell
+    /// **Every other period is accepted, up to `f32::MAX`**, and held in
+    /// whole microseconds (at least 1, at most `u64::MAX`), so a shell
     /// turning [`Timers::earliest`] into a wait must convert fallibly: a
-    /// period above about 1.8e22 ms is no `Duration` and no `Instant`
+    /// deadline above about 1.8e22 ms is no `Duration` and no `Instant`
     /// (R7-F10; `lumen-static-winit` waits without a deadline then, since
     /// M47/T47.1).
     pub fn every(&mut self, kind: u64, key: u64, period_ms: f32) -> bool {
@@ -709,7 +744,8 @@ impl Timers {
             self.refused += 1;
             return false;
         }
-        self.t[self.len] = (kind, key, period_ms, period_ms);
+        let p = to_us(period_ms).max(1);
+        self.t[self.len] = (kind, key, p, p, 0);
         self.len += 1;
         true
     }
@@ -726,29 +762,62 @@ impl Timers {
         false
     }
 
-    /// Advance every timer by `dt_ms` and push a descriptor for each one
-    /// that came due. Returns how many fired.
+    /// Advance every timer by `dt_ms` and push a descriptor for each
+    /// period that came due, **as far as `out` has room**.
     ///
-    /// **Catches up rather than skipping.** A frame that took 80 ms with
-    /// a 25 ms timer fires it three times, not once: a timer that
-    /// silently drops ticks under load is a timer whose count depends on
-    /// the frame rate, and the deterministic half of this task's gate
-    /// exists precisely to pin the count.
-    pub fn advance(&mut self, dt_ms: f32, out: &mut Outbox) -> usize {
+    /// **Catches up rather than skipping**, up to the outbox's capacity.
+    /// A frame that took 80 ms with a 25 ms timer fires it three times,
+    /// not once: a timer that silently drops ticks under load is a timer
+    /// whose count depends on the frame rate. Past the outbox's free
+    /// slots — a stalled host, or a retry after the panic screen before
+    /// M47/T47.1 — the rest are **coalesced**: counted per timer
+    /// ([`Timers::coalesced`]) and in the return value, not pushed. An
+    /// application that needs every tick reads the count; one that does
+    /// not gets at most a full outbox after a stall.
+    ///
+    /// **Arithmetic, not a loop** (M47/T47.2, R7-F3): the number due is
+    /// computed in one step in integer microseconds. It was a `while`
+    /// adding the period to an `f32` remainder, which stopped moving past
+    /// about 2^24 periods and never returned — `dt` 1e9 ms at 16 ms hung.
+    pub fn advance(&mut self, dt_ms: f32, out: &mut Outbox) -> Advanced {
+        let mut done = Advanced::default();
         if !dt_ms.is_finite() || dt_ms <= 0.0 {
-            return 0;
+            return done;
         }
-        let mut fired = 0;
+        let dt = to_us(dt_ms);
         for i in 0..self.len {
-            let (kind, key, period) = (self.t[i].0, self.t[i].1, self.t[i].2);
-            self.t[i].3 -= dt_ms;
-            while self.t[i].3 <= 0.0 {
-                self.t[i].3 += period;
-                out.push(Descriptor { kind, step: 0, payload: key });
-                fired += 1;
+            let (kind, key, period, remaining, _) = self.t[i];
+            if dt < remaining {
+                self.t[i].3 = remaining - dt;
+                continue;
             }
+            // Due at `remaining`, then every `period` after it.
+            let over = dt - remaining;
+            let due = 1 + over / period;
+            self.t[i].3 = period - over % period;
+            let room = (Outbox::CAPACITY - out.len()) as u64;
+            let push = due.min(room);
+            for _ in 0..push {
+                out.push(Descriptor { kind, step: 0, payload: key });
+            }
+            let lost = due - push;
+            self.t[i].4 += lost;
+            self.coalesced += lost;
+            done.delivered += push as usize;
+            done.coalesced += lost;
         }
-        fired
+        done
+    }
+
+    /// Firings of `(kind, key)` coalesced for want of outbox room since
+    /// it was started. `None` if no such timer is running.
+    pub fn coalesced(&self, kind: u64, key: u64) -> Option<u64> {
+        self.t[..self.len].iter().find(|e| (e.0, e.1) == (kind, key)).map(|e| e.4)
+    }
+
+    /// Every firing ever coalesced here, cancelled timers included.
+    pub fn coalesced_total(&self) -> u64 {
+        self.coalesced
     }
 
     /// How long until the soonest timer is due, in milliseconds.
@@ -756,9 +825,7 @@ impl Timers {
     /// `None` when nothing is pending, which is what tells a loop to
     /// fall back to waiting indefinitely rather than spinning.
     pub fn earliest(&self) -> Option<f32> {
-        self.t[..self.len].iter().map(|e| e.3).fold(None, |acc: Option<f32>, v| {
-            Some(acc.map_or(v, |a| a.min(v)))
-        })
+        self.t[..self.len].iter().map(|e| e.3).min().map(|us| (us as f64 / 1000.0) as f32)
     }
 
     pub fn len(&self) -> usize {
