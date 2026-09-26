@@ -44,7 +44,9 @@ by what `lumen-static-shell` already ships and by extending it:
 
 - **Text:** `FontStack`/`FontMetrics` (fontdue) behind `dyn TextMeasure`
   — real faces, real rasterization, advance-based measurement, wrapping,
-  cross-face fallback. One dependency, no `lumen-core`. What it lacked
+  cross-face fallback (between regular and bold until M45/T45.3; since
+  then a list of fallback faces — CJK, Hebrew, Arabic, symbols — read the
+  first time a run needs one, `docs/results-text.md` T45.3). One dependency, no `lumen-core`. What it lacked
   is what T7.2's own justification named: per-glyph positions for M8/M9's
   `Shaped` cache. **T7.2b adds them** (`TextMeasure::shape`), which is
   the task the plan already said must be designed before wiring.

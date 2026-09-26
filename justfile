@@ -101,7 +101,8 @@ test-crates *names:
     ./scripts/test_crates.sh {{ names }}
 
 # The text tests against the committed face, and system font discovery
-# under a requirement (M43/T43.11, docs/plan-gate-hygiene.md §2.2). The
+# under a requirement (M43/T43.11, docs/plan-gate-hygiene.md §2.2) --
+# with the fallback faces (M45/T45.3), which are the system's too. The
 # shaping tests used to return early -- passing -- with no system face;
 # now only `font_discovery` needs one, and here it must find it unless
 # LUMEN_ALLOW_SKIP=1. In `dev-shape`.
@@ -109,7 +110,7 @@ fonts:
     #!/usr/bin/env bash
     set -euo pipefail
     if [ "${LUMEN_ALLOW_SKIP:-}" = 1 ]; then echo "fonts: LUMEN_ALLOW_SKIP=1 -- discovery may skip"; else export LUMEN_REQUIRE_FONTS=1; fi
-    cargo test -q -p lumen-static-shell --features truetype --test shaping --test glyph_placement --test font_discovery
+    cargo test -q -p lumen-static-shell --features truetype --test shaping --test glyph_placement --test font_discovery --test font_fallback
     cargo test -q -p lumen-static-shell --features truetype --test font_discovery -- --nocapture | grep '^fonts:'
     cargo test -q -p lumen-static-text --test shaping
     cargo test -q -p embedded --test baked_face

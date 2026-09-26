@@ -904,7 +904,9 @@ Layout and traversal are the tractable, fun part, and roughly 15% of the work.
 The years go to:
 
 - **Text**: shaping, bidi, complex scripts, font fallback, IME composition,
-  selection across all of it
+  selection across all of it. *Status (M45):* font fallback **DECIDED** —
+  a list of fallback faces, loaded the first time a run needs one
+  (`docs/plan-text-correctness.md` §2.4, `docs/results-text.md` T45.3).
 - **Platform integration**: multi-window, HiDPI, per-monitor scaling, clipboard,
   drag and drop
 

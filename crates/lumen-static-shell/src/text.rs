@@ -21,12 +21,62 @@ use lumen_static::Size;
 
 /// A loaded font, shared by the measurer and the rasterizer so the two
 /// cannot disagree about advances.
+///
+/// # Fallback faces — M45/T45.3
+///
+/// Two primary faces (regular and bold), and after them a list of
+/// **fallback** faces tried in order for a character neither primary
+/// has: CJK, Hebrew, Arabic, Devanagari, symbols, monochrome emoji. The
+/// list is paths, and a face is read and parsed the first time a run
+/// needs a character no earlier face has — never at start-up, since a
+/// CJK face is tens of megabytes.
+///
+/// **`?` remains only for a character no face in the stack has.** The
+/// tofu doctrine (Lumen's `verifying-apps` skill) is "not a box if any
+/// face has it", and until this stack had one face, "any face" meant the
+/// one it had: `你好` rendered `??` on a machine with two CJK faces
+/// installed (R10-F12).
+///
+/// **Colour emoji stays `?`.** fontdue rasterises outlines, and a colour
+/// emoji face is bitmaps (CBDT) or layered colour glyphs (COLR), which it
+/// cannot draw; a monochrome emoji face is in the list and used when one
+/// is installed.
+///
+/// A choice is by list order and nothing else — the first face that has
+/// the character, loaded or not — so what a run measures does not depend
+/// on which faces an earlier run happened to load.
 #[derive(Clone)]
 pub struct FontStack {
     regular: std::sync::Arc<Font>,
     /// A bold face when one was found; otherwise `regular` serves both
     /// weights and the request is quietly honoured as best it can be.
     bold: Option<std::sync::Arc<Font>>,
+    /// The fallback faces, shared by every clone — so the measurer and
+    /// the canvas that hold clones of one stack load each face once.
+    fallback: std::sync::Arc<[Slot]>,
+}
+
+/// One fallback face: where it is, and the face once something needed it.
+struct Slot {
+    path: &'static str,
+    /// The face's index in a collection (`.ttc`); 0 for a single face.
+    index: u32,
+    face: std::sync::OnceLock<Option<std::sync::Arc<Font>>>,
+}
+
+impl Slot {
+    /// The face, read and parsed on first use. `None` when the file is
+    /// absent or not a font, which is remembered, so a missing path costs
+    /// one failed `read`.
+    fn get(&self) -> Option<&Font> {
+        self.face
+            .get_or_init(|| {
+                let bytes = std::fs::read(self.path).ok()?;
+                let settings = fontdue::FontSettings { collection_index: self.index, ..Default::default() };
+                Font::from_bytes(bytes, settings).ok().map(std::sync::Arc::new)
+            })
+            .as_deref()
+    }
 }
 
 /// Where to look for a sans-serif face, in order: (regular, bold).
@@ -44,58 +94,163 @@ const CANDIDATES: &[(&str, &str)] = &[
     ("C:\\Windows\\Fonts\\segoeui.ttf", "C:\\Windows\\Fonts\\segoeuib.ttf"),
 ];
 
+/// The fallback faces [`FontStack::system`] attaches, tried in this order
+/// for a character the primary faces lack: (path, collection index).
+///
+/// Broad Latin-plus faces first (DejaVu covers Hebrew, Arabic, Greek and
+/// Cyrillic), then script faces, then the CJK faces — Droid's is a
+/// quarter the size of Noto's and is read first for that reason.
+const FALLBACKS: &[(&str, u32)] = &[
+    ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 0),
+    ("/usr/share/fonts/TTF/DejaVuSans.ttf", 0),
+    ("/usr/share/fonts/truetype/noto/NotoSansHebrew-Regular.ttf", 0),
+    ("/usr/share/fonts/truetype/noto/NotoSansArabic-Regular.ttf", 0),
+    ("/usr/share/fonts/truetype/noto/NotoSansDevanagari-Regular.ttf", 0),
+    ("/usr/share/fonts/truetype/noto/NotoSansThai-Regular.ttf", 0),
+    ("/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf", 0),
+    ("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", 0),
+    ("/usr/share/fonts/truetype/wqy/wqy-microhei.ttc", 0),
+    ("/usr/share/fonts/truetype/noto/NotoSansSymbols-Regular.ttf", 0),
+    ("/usr/share/fonts/truetype/noto/NotoSansSymbols2-Regular.ttf", 0),
+    ("/usr/share/fonts/truetype/noto/NotoSansMath-Regular.ttf", 0),
+    ("/usr/share/fonts/truetype/noto/NotoEmoji-Regular.ttf", 0),
+    ("/System/Library/Fonts/Supplemental/Arial Unicode.ttf", 0),
+    ("/System/Library/Fonts/PingFang.ttc", 0),
+    ("C:\\Windows\\Fonts\\seguisym.ttf", 0),
+    ("C:\\Windows\\Fonts\\msyh.ttc", 0),
+];
+
+/// Which faces a run is laid out with, as [`FontStack::prepare`] chose.
+enum Faces<'a> {
+    /// One face has every character — the steady state for Latin, and
+    /// allocation-free.
+    One(&'a Font, u8),
+    /// Several: each face with its id, and the run's segments as (index
+    /// into the faces, byte range of the laid-out text). Boxed, so the
+    /// steady state's `prepare` returns 16 bytes of this rather than 48.
+    Many(Box<Segments<'a>>),
+}
+
+/// A multi-face run's faces and segments — [`Faces::Many`].
+struct Segments<'a> {
+    faces: Vec<(&'a Font, u8)>,
+    segs: Vec<(usize, core::ops::Range<usize>)>,
+}
+
+impl Faces<'_> {
+    /// The face a glyph's `font_index` names, and its id.
+    fn get(&self, i: usize) -> (&Font, u8) {
+        match self {
+            Faces::One(f, id) => (f, *id),
+            Faces::Many(m) => m.faces[i],
+        }
+    }
+
+    /// The face the run's line metrics and cap shift come from.
+    fn first(&self) -> &Font {
+        self.get(0).0
+    }
+}
+
+/// A face's [`GlyphId::face`]: 0 regular, 1 bold, 2 + k fallback k.
+const REGULAR: u8 = 0;
+const BOLD: u8 = 1;
+
 impl FontStack {
-    /// Load a regular face, and optionally a bold one, from bytes.
+    /// Load a regular face, and optionally a bold one, from bytes. No
+    /// fallback faces: a stack built from bytes draws exactly what it was
+    /// given, which is what a test with a committed face wants.
     pub fn from_bytes(regular: &[u8], bold: Option<&[u8]>) -> Option<Self> {
         let load = |b: &[u8]| {
             Font::from_bytes(b, fontdue::FontSettings::default()).ok().map(std::sync::Arc::new)
         };
-        Some(FontStack { regular: load(regular)?, bold: bold.and_then(load) })
+        Some(FontStack { regular: load(regular)?, bold: bold.and_then(load), fallback: std::sync::Arc::new([]) })
+    }
+
+    /// The same stack, with `faces` — (path, collection index) — tried in
+    /// order for a character the primary faces lack. Each is read the
+    /// first time a run needs it.
+    pub fn with_fallbacks(mut self, faces: &[(&'static str, u32)]) -> Self {
+        self.fallback = faces
+            .iter()
+            .map(|&(path, index)| Slot { path, index, face: std::sync::OnceLock::new() })
+            .collect();
+        self
     }
 
     /// The face for a CSS-style weight: 600 and up is bold.
-    fn face(&self, weight: f32) -> &Font {
+    fn face(&self, weight: f32) -> (&Font, u8) {
         match (&self.bold, weight >= 600.0) {
-            (Some(b), true) => b,
-            _ => &self.regular,
+            (Some(b), true) => (b, BOLD),
+            _ => (&self.regular, REGULAR),
         }
     }
 
-    /// Find a system sans-serif face.
+    /// Find a system sans-serif face, with the platform's fallback faces
+    /// behind it ([`FALLBACKS`]).
     ///
     /// Returns `None` rather than panicking: a caller can fall back to
     /// the block stand-in and still show *something*, which is better
     /// than a window that fails to open on a machine with unusual font
     /// paths.
     pub fn system() -> Option<Self> {
-        CANDIDATES.iter().find_map(|(r, b)| {
-            let regular = std::fs::read(r).ok()?;
-            let bold = std::fs::read(b).ok();
-            Self::from_bytes(&regular, bold.as_deref())
+        CANDIDATES
+            .iter()
+            .find_map(|(r, b)| {
+                let regular = std::fs::read(r).ok()?;
+                let bold = std::fs::read(b).ok();
+                Self::from_bytes(&regular, bold.as_deref())
+            })
+            .map(|s| s.with_fallbacks(FALLBACKS))
+    }
+
+    /// Which face draws `ch` at `weight`: 0 for a primary face, `1 + k`
+    /// for fallback `k`, `None` when no face in the stack has it and it is
+    /// substituted. Loads fallback faces as [`FontStack::prepare`] would.
+    ///
+    /// For a test that prints where each character came from
+    /// (`tests/font_fallback.rs`), and the answer to "why is this a `?`".
+    pub fn face_of(&self, ch: char, weight: f32) -> Option<usize> {
+        let (wanted, _) = self.face(weight);
+        if ch.is_whitespace() || wanted.lookup_glyph_index(ch) != 0 || self.other(weight).0.lookup_glyph_index(ch) != 0 {
+            return Some(0);
+        }
+        self.fallback_for(ch).map(|(k, _)| k + 1)
+    }
+
+    /// The primary face that is not the one `weight` asked for.
+    fn other(&self, weight: f32) -> (&Font, u8) {
+        match self.face(weight) {
+            (_, REGULAR) => self.bold.as_deref().map_or((&*self.regular, REGULAR), |b| (b, BOLD)),
+            _ => (&self.regular, REGULAR),
+        }
+    }
+
+    /// The first fallback face that has `ch`, loading faces in order
+    /// until one does.
+    fn fallback_for(&self, ch: char) -> Option<(usize, &Font)> {
+        self.fallback.iter().enumerate().find_map(|(k, slot)| {
+            slot.get().filter(|f| f.lookup_glyph_index(ch) != 0).map(|f| (k, f))
         })
     }
 
-    /// Pick the face for `weight` and, if it still lacks a glyph,
-    /// substitute per character.
+    /// Choose the faces a run is laid out with, and substitute what no
+    /// face has.
     ///
     /// Tofu doctrine (Lumen's `verifying-apps` skill): a glyph the
     /// chosen face lacks must not render as a box if any face has it.
-    /// Try the requested weight, then the other face; only then
+    /// Try the requested weight, then the other primary face; then, **per
+    /// character**, the fallback faces in order (M45/T45.3); only then
     /// substitute — per character rather than per run, so one missing
     /// symbol does not box the whole label.
     ///
-    /// Returns the face and the text to lay out. The returned text is
-    /// borrowed when nothing was substituted, which is every steady-state
-    /// call; substitution allocates, and is a fallback path.
-    fn prepare<'t>(&self, text: &'t str, weight: f32) -> (&Font, Cow<'t, str>) {
-        let wanted = self.face(weight);
+    /// The returned text is borrowed when nothing was substituted, which
+    /// is every steady-state call; substitution allocates, and so does a
+    /// run that needs more than one face — both are fallback paths.
+    fn prepare<'t>(&self, text: &'t str, weight: f32) -> (Faces<'_>, Cow<'t, str>) {
+        let (wanted, wanted_id) = self.face(weight);
         let has_all =
             |f: &Font| text.chars().all(|c| c.is_whitespace() || f.lookup_glyph_index(c) != 0);
-        let other: &Font = if std::ptr::eq(wanted, &*self.regular) {
-            self.bold.as_deref().unwrap_or(&self.regular)
-        } else {
-            &self.regular
-        };
         // **One scan of the chosen face, not two** — M26/T26.17 Phase
         // D #13. This used to call `has_all(wanted)` to pick a face and
         // then `has_all(font)` again on the very face it had just asked
@@ -104,42 +259,80 @@ impl FontStack {
         // choice costs one `bool` and is worth 5% of a layout that
         // re-measures every row (`docs/results-frame-and-types.md`
         // T26.17 finding 13).
-        let (font, covered) = if has_all(wanted) {
-            (wanted, true)
-        } else if has_all(other) {
-            (other, true)
-        } else {
-            (wanted, false)
-        };
-        if covered {
-            return (font, Cow::Borrowed(text));
+        if has_all(wanted) {
+            return (Faces::One(wanted, wanted_id), Cow::Borrowed(text));
         }
-        let out = text
-            .chars()
-            .map(|c| {
-                if c.is_whitespace() || font.lookup_glyph_index(c) != 0 {
-                    c
-                } else {
-                    match c {
-                        '\u{2212}' | '\u{2013}' | '\u{2014}' => '-',
-                        '\u{2018}' | '\u{2019}' => '\'',
-                        '\u{201c}' | '\u{201d}' => '"',
-                        _ => '?',
-                    }
-                }
-            })
-            .collect();
-        (font, Cow::Owned(out))
+        let (other, other_id) = self.other(weight);
+        if has_all(other) {
+            return (Faces::One(other, other_id), Cow::Borrowed(text));
+        }
+        // Per character: the face each one is drawn from, as an index
+        // into `faces`, and a substitute where no face has it.
+        let mut faces: Vec<(&Font, u8)> = vec![(wanted, wanted_id)];
+        let mut segs: Vec<(usize, core::ops::Range<usize>)> = Vec::new();
+        let mut out = String::with_capacity(text.len());
+        let mut substituted = false;
+        for c in text.chars() {
+            let (fi, ch) = if c.is_whitespace() || wanted.lookup_glyph_index(c) != 0 {
+                (0, c)
+            } else if let Some((k, f)) = self.fallback_for(c) {
+                let id = 2 + k as u8;
+                let fi = faces.iter().position(|(_, i)| *i == id).unwrap_or_else(|| {
+                    faces.push((f, id));
+                    faces.len() - 1
+                });
+                (fi, c)
+            } else {
+                substituted = true;
+                let sub = match c {
+                    '\u{2212}' | '\u{2013}' | '\u{2014}' => '-',
+                    '\u{2018}' | '\u{2019}' => '\'',
+                    '\u{201c}' | '\u{201d}' => '"',
+                    _ => '?',
+                };
+                (0, sub)
+            };
+            let at = out.len();
+            out.push(ch);
+            match segs.last_mut() {
+                Some((f, r)) if *f == fi => r.end = out.len(),
+                _ => segs.push((fi, at..out.len())),
+            }
+        }
+        if faces.len() == 1 {
+            // No fallback face drew anything: the old single-face path,
+            // substitutions and all.
+            let text = if substituted { Cow::Owned(out) } else { Cow::Borrowed(text) };
+            return (Faces::One(wanted, wanted_id), text);
+        }
+        let text = if substituted { Cow::Owned(out) } else { Cow::Borrowed(text) };
+        (Faces::Many(Box::new(Segments { faces, segs })), text)
     }
 
-    /// Run fontdue's line layout for one styled run.
-    fn run(font: &Font, text: &str, px: f32, max_w: f32) -> Layout {
+    /// Run fontdue's line layout for one styled run, one segment per
+    /// face.
+    ///
+    /// No per-glyph user data: fontdue reports a glyph's byte offset
+    /// within the segment it was appended in, and carrying the segment's
+    /// start on every glyph cost the steady state 3% of a label's layout
+    /// for a path only a multi-face run takes (`docs/results-text.md`
+    /// T45.3). `shape_into` recovers the caller's offsets for that path
+    /// instead.
+    fn run(faces: &Faces<'_>, text: &str, px: f32, max_w: f32) -> Layout {
         let mut layout = Layout::new(CoordinateSystem::PositiveYDown);
         layout.reset(&LayoutSettings {
             max_width: if max_w.is_finite() && max_w > 0.0 { Some(max_w) } else { None },
             ..LayoutSettings::default()
         });
-        layout.append(&[font], &TextStyle::new(text, px, 0));
+        match faces {
+            Faces::One(f, _) => layout.append(&[*f], &TextStyle::new(text, px, 0)),
+            Faces::Many(m) => {
+                let fonts: Vec<&Font> = m.faces.iter().map(|(f, _)| *f).collect();
+                for (fi, r) in &m.segs {
+                    layout.append(&fonts, &TextStyle::new(&text[r.clone()], px, *fi));
+                }
+            }
+        }
         layout
     }
 
@@ -159,14 +352,24 @@ impl FontStack {
     /// the width is exactly the space fontdue's own wrap needs the run to
     /// have. The ink term keeps an overhanging glyph (an italic tail, a
     /// wide `W`) inside the box as well.
-    fn extent(font: &Font, layout: &Layout, px: f32) -> Size {
+    fn extent(faces: &Faces<'_>, layout: &Layout, px: f32) -> Size {
+        // Monomorphised per case, so the one-face steady state asks no
+        // question per glyph about which face drew it.
+        match faces {
+            Faces::One(f, _) => Self::extent_by(|_| f, layout, px),
+            Faces::Many(m) => Self::extent_by(|i| m.faces[i].0, layout, px),
+        }
+    }
+
+    /// [`FontStack::extent`], with the face for a glyph's `font_index`.
+    fn extent_by<'f>(face: impl Fn(usize) -> &'f Font, layout: &Layout, px: f32) -> Size {
         let glyphs = layout.glyphs();
         let (mut w, mut h) = (0.0f32, 0.0f32);
         let mut line = |range: core::ops::Range<usize>| {
             let mut pen = 0.0f32;
             for g in glyphs.get(range).unwrap_or(&[]) {
                 if !g.char_data.is_control() {
-                    pen += font.metrics_indexed(g.key.glyph_index, px).advance_width.ceil();
+                    pen += face(g.font_index).metrics_indexed(g.key.glyph_index, px).advance_width.ceil();
                 }
                 w = w.max(pen).max(g.x + g.width as f32);
                 h = h.max(g.y + g.height as f32);
@@ -219,25 +422,27 @@ impl FontStack {
     /// pixel-comparable" is a claim about rasterisation only, which is
     /// the claim `tests/parity.rs` in that crate can actually check.
     pub fn place_run(&self, text: &str, px: f32, weight: f32, max_w: f32) -> (Vec<Placed>, Size) {
-        let (font, prepared) = self.prepare(text, weight);
+        let (faces, prepared) = self.prepare(text, weight);
         let text: &str = &prepared;
-        let layout = Self::run(font, text, px, Self::paint_width(max_w));
-        let shift = cap_shift(font, px);
-        // Which of the two faces `prepare` actually chose — not which
-        // one the weight asked for. A bold run in a stack with no bold
-        // face is rasterised from `regular`, and an id that recorded
-        // the request rather than the outcome would collide with the
-        // regular run's glyphs at the same size while naming a
-        // different face.
-        let bold = self.bold.as_deref().is_some_and(|b| core::ptr::eq(b, font));
+        let layout = Self::run(&faces, text, px, Self::paint_width(max_w));
+        // From the run's first face, for every glyph: one baseline, one
+        // shift, however many faces drew it.
+        let shift = cap_shift(faces.first(), px);
 
         let mut out = Vec::with_capacity(text.len());
         for g in layout.glyphs() {
             if g.width == 0 || g.height == 0 {
                 continue;
             }
+            // Which face `prepare` actually chose — not which one the
+            // weight asked for. A bold run in a stack with no bold face is
+            // rasterised from `regular`, and an id that recorded the
+            // request rather than the outcome would collide with the
+            // regular run's glyphs at the same size while naming a
+            // different face.
+            let face = faces.get(g.font_index).1;
             out.push(Placed {
-                id: GlyphId { index: g.key.glyph_index, px_bits: px.to_bits(), bold },
+                id: GlyphId { index: g.key.glyph_index, px_bits: px.to_bits(), face },
                 x: g.x,
                 y: g.y + shift,
                 w: g.width as u32,
@@ -246,7 +451,7 @@ impl FontStack {
         }
         // The box by the same rule `measure_run` uses (`extent`), so the
         // two cannot disagree.
-        let size = Self::extent(font, &layout, px);
+        let size = Self::extent(&faces, &layout, px);
         (out, size)
     }
 
@@ -270,10 +475,11 @@ impl FontStack {
     /// byte-identical bitmaps. That is what makes an atlas cache
     /// correct rather than approximately correct.
     pub fn rasterize(&self, id: GlyphId) -> Option<(u32, u32, Vec<u8>)> {
-        let font = match (id.bold, &self.bold) {
-            (true, Some(b)) => b.as_ref(),
-            (true, None) => return None,
-            (false, _) => self.regular.as_ref(),
+        let font = match (id.face, &self.bold) {
+            (REGULAR, _) => self.regular.as_ref(),
+            (BOLD, Some(b)) => b.as_ref(),
+            (BOLD, None) => return None,
+            (k, _) => self.fallback.get(k as usize - 2)?.get()?,
         };
         let (m, cov) = font.rasterize_indexed(id.index, f32::from_bits(id.px_bits));
         RASTERISED.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
@@ -317,10 +523,10 @@ impl FontStack {
     /// cannot disagree about a box — which they must not, because
     /// `layout` sizes from this and `paint` lays the run out inside it.
     pub(crate) fn measure_run(&self, text: &str, px: f32, weight: f32, max_w: f32) -> Size {
-        let (font, prepared) = self.prepare(text, weight);
+        let (faces, prepared) = self.prepare(text, weight);
         let text: &str = &prepared;
-        let layout = Self::run(font, text, px, max_w);
-        Self::extent(font, &layout, px)
+        let layout = Self::run(&faces, text, px, max_w);
+        Self::extent(&faces, &layout, px)
     }
 
     /// Shape one run and report every cluster boundary to `sink`.
@@ -345,9 +551,17 @@ impl FontStack {
         max_w: f32,
         sink: &mut dyn GlyphSink,
     ) -> Size {
-        let (font, prepared) = self.prepare(text, weight);
+        let (faces, prepared) = self.prepare(text, weight);
         let laid: &str = &prepared;
-        let layout = Self::run(font, laid, px, max_w);
+        let layout = Self::run(&faces, laid, px, max_w);
+        // A multi-face run was appended as segments, and fontdue counts a
+        // glyph's byte offset from its segment's start. fontdue emits one
+        // glyph per character, so the laid-out text's own character
+        // offsets, in order, are the glyphs' offsets.
+        let starts: Vec<usize> = match faces {
+            Faces::One(..) => Vec::new(),
+            Faces::Many(..) => laid.char_indices().map(|(i, _)| i).collect(),
+        };
 
         // Offset in the laid-out copy → offset in the caller's string.
         // Identity in the common case; a lookup table only when the
@@ -375,10 +589,13 @@ impl FontStack {
 
         let mut end = (0.0f32, 0u16);
         for (gi, g) in layout.glyphs().iter().enumerate() {
-            let adv = font.metrics_indexed(g.key.glyph_index, px).advance_width;
+            let adv = faces.get(g.font_index).0.metrics_indexed(g.key.glyph_index, px).advance_width;
             let line = line_of(gi);
             if !sink.is_full() {
-                sink.cluster(Cluster { byte: remap(g.byte_offset), x: g.x, line });
+                // The segment's offset plus the glyph's within it: fontdue
+                // counts from the start of the text it was appended.
+                let b = starts.get(gi).copied().unwrap_or(g.byte_offset);
+                sink.cluster(Cluster { byte: remap(b), x: g.x, line });
             }
             end = (g.x + adv, line);
         }
@@ -386,7 +603,7 @@ impl FontStack {
         if !sink.is_full() {
             sink.cluster(Cluster { byte: text.len() as u32, x: end.0, line: end.1 });
         }
-        Self::extent(font, &layout, px)
+        Self::extent(&faces, &layout, px)
     }
 }
 
@@ -458,7 +675,10 @@ pub struct GlyphId {
     /// two at sizes a hair apart do not, which is correct — they
     /// rasterise differently.
     px_bits: u32,
-    bold: bool,
+    /// Which face: 0 regular, 1 bold, 2 + k the stack's fallback `k`
+    /// (M45/T45.3; a `bool` for bold before). A glyph index names a
+    /// glyph only within its face.
+    face: u8,
 }
 
 impl GlyphId {

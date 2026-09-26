@@ -552,6 +552,20 @@ projects", the Text bullet): font fallback DECIDED, with a pointer.
 `docs/text-render-adoption-decision.md`. `docs/plan-desktop.md` T14.8
 (IME output is now drawable).
 
+*What building found (2026-09-26).* **The generation does not bump on a
+lazy load**, and the injection that skips it has nothing to skip. A face
+is chosen by list order — the first face that has the character,
+loaded or not — so what a run measures never depends on which faces an
+earlier run happened to load, and no memo can hold a box the load
+changed. The generation stays what T45.2 made it: the stack's identity,
+new on `FontMetrics::set_stack`. **The kill rule fired on the first
+build**, +3.4% on the short-label arm, from fontdue's per-glyph
+`user_data` carrying segment offsets that only a multi-face run needs;
+without it, and with the multi-face case boxed, the arms sit inside the
+old build's spread (`docs/results-text.md` T45.3). The pixel-identity
+check hashes the containment strings through the *system* stack, since
+a stack built from bytes has no fallback faces to change anything.
+
 **Effort:** M. **Depends on:** T45.1 (same run code), T45.2 (the
 generation). §5's kill rule applies.
 

@@ -533,6 +533,11 @@ the remaining half rather than left implied.
 
 ## T14.8 — IME — **DONE 2026-09-05** (was OPEN)
 
+> **M45/T45.3 (2026-09-26): what IME commits is now drawable.** Until
+> then the font stack was one face and substituted `?` for every
+> character it lacked, so a CJK commit reached the buffer and rendered
+> as `??` (R10-F12). `docs/results-text.md` T45.3.
+
 Without it, Chinese, Japanese and Korean input are *impossible*, not
 merely awkward. `WindowEvent::Ime` is not handled and the vocabulary
 has no preedit.

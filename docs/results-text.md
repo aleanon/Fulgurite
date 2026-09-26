@@ -81,3 +81,39 @@ equality) fires the NaN gate at 5 calls; the generation dropped fires
 
 RAM: `Ui` on the target 1,168 → 1,176 B, the generation's cost
 (`docs/results-embedded.md`).
+
+## T45.3 — a font stack with fallback (R10-F12)
+
+`FontStack::system` attaches a list of fallback faces, each read the first
+time a run needs a character no earlier face has; a run that needs several
+faces is appended to fontdue's layout as one segment per face. On the
+build machine (`tests/font_fallback.rs`):
+
+| text | faces per character | glyphs | width vs tofu |
+|---|---|---|---|
+| `你好` | fallback 6 (DroidSansFallbackFull), both | 7416, 10005 | 48 vs 22 |
+| `שלום` | fallback 0 (DejaVuSans), all four | 1344, 1331, 1324, 1332 | 55 vs 44 |
+
+A mixed run's carets are the caller's offsets: `ab你好cd` reports
+`[0, 1, 2, 5, 8, 9, 10]`, x rising across the faces.
+
+**Latin is unchanged**: the twelve containment strings at 11, 16 and
+24 px through the system stack hash `0xf688fc6aefbb610b` before and
+after.
+
+**Kill rule (§5)**, `--bin bindings`, the real-face "memo cold (miss)"
+arms, eight runs a side interleaved under the bench lock (LOADED: load
+average 3–7):
+
+| build | short label, ns (median of each run) | 60-char wrapped, ns |
+|---|---|---|
+| before (T45.2) | 435.4–489.9 | 2,326.6–2,415.2 |
+| first build: glyph `user_data` for segment offsets | 452.3–467.8 against 435.9–450.8 | 2,376.4–2,407.5 against 2,311.1–2,355.4 |
+| shipped: no user data, `Faces::Many` boxed | 436.6–445.8, one run 493.5 | 2,313.3–2,373.6 |
+
+The first build fired the rule, **+3.4% and +2.4%**, on a path Latin
+never takes: fontdue's `user_data` made every glyph of every run eight
+bytes wider to serve the multi-face path. The shipped build recovers
+multi-face offsets from the laid-out text instead, and returns the one-
+face `Faces` in 16 bytes rather than 48. Its runs sit inside the before
+build's own spread on both arms.
