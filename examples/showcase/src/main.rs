@@ -2216,6 +2216,27 @@ mod tests {
         assert!(covers, "the press damaged something, but not the button it was on");
     }
 
+    /// **A search field is one pill, not a box inside a box** — M57/C5.
+    ///
+    /// The sheet's `Kind("textinput")` rule reached the field inside the
+    /// search pill too, and gave it a 220 px bordered box of its own
+    /// (`docs/widget-audit.md`, SearchField). The inner field is kind
+    /// `searchinput` now; the rule must not reach it.
+    #[test]
+    fn a_search_field_has_no_box_inside_it() {
+        let entry = CATALOG.iter().position(|e| e.name == "SearchField").unwrap();
+        let h = host(entry, false);
+        let table = <<Show as lumen_static::event::App>::Tree as lumen_static::widget::Widget>::SUB_TABLE;
+        let i = table
+            .iter()
+            .position(|d| d.wid == "search-field")
+            .expect("setup: no search field part");
+        let st = h.styles[i];
+        println!("inner field: border {} px, width {:?}", st.border_width, st.width);
+        assert_eq!(st.border_width, 0, "the search pill's field draws a border of its own");
+        assert_ne!(st.width, Length::Fixed(220.0), "the text field rule sized the search pill's field");
+    }
+
     /// **The number field's readout follows it** — M57/C4.
     ///
     /// `refresh` read the `Slider` back and nothing else, so the number

@@ -614,7 +614,16 @@ impl SearchFieldTable {
                 Fields::VISIBLE,
             ])).with_roles(lumen_static::style::SeedRoles::NONE.background(lumen_static::style::Role::Raised).border(lumen_static::style::Role::Border));
         s[SF_ICON] = <Icon as Widget>::SEEDS[0];
-        s[SF_FIELD] = <crate::input::TextInput<alloc::string::String> as Widget>::SEEDS[0];
+        // **Its own kind, `searchinput`** — M57/C5. The field inside the
+        // pill is a `TextInput`, and seeded as one it answered to every
+        // `Kind("textinput")` rule: the showcase's gave it a 220 px
+        // bordered box of its own, and the pill drew a box inside a box
+        // with 60 px of dead space (`docs/widget-audit.md`, SearchField).
+        // The same defaults and reads; a different name, so a sheet
+        // styling text fields does not reach into this one.
+        let mut field = <crate::input::TextInput<alloc::string::String> as Widget>::SEEDS[0];
+        field.kind = "searchinput";
+        s[SF_FIELD] = field;
         s
     };
     pub const SEED_SLICE: &'static [Seed] = &Self::SEED_ARRAY;
