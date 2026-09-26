@@ -251,3 +251,46 @@ fn the_parent_link_oracle_agrees_on_real_tables() {
         assert!(bad.is_empty(), "{name}: {bad:?}");
     }
 }
+
+/// **An enum is on the table, every variant of it** — M46/T46.3 (R2-F8).
+///
+/// `expand_enum`'s rustdoc said an enum contributes **one** table node
+/// with its variants off-table, so `NODE_COUNT` would not depend on the
+/// variants. The derive has emitted `1 + Σ variants` since F4.3, and the
+/// rustdoc was wrong, so this has no red state against the code; its
+/// injection is making the derive emit one node for an enum.
+#[test]
+fn an_enum_counts_one_node_plus_every_variant() {
+    use lumen_static::StaticTree;
+    use lumen_static_widgets::ops::{Fixed, Label, Spacer};
+
+    #[derive(StaticTree, Default)]
+    #[widget(column, spacing = 0.0)]
+    struct Pair {
+        a: Label,
+        b: Fixed,
+    }
+
+    #[derive(StaticTree)]
+    #[allow(dead_code)]
+    enum Three {
+        One(Label),
+        Two(Pair),
+        Gap(Spacer),
+    }
+    impl Default for Three {
+        fn default() -> Self {
+            Three::One(Label::default())
+        }
+    }
+
+    let sum = <Label as lumen_static::Widget>::NODE_COUNT
+        + <Pair as lumen_static::Widget>::NODE_COUNT
+        + <Spacer as lumen_static::Widget>::NODE_COUNT;
+    let n = <Three as lumen_static::Widget>::NODE_COUNT;
+    let t = <Three as lumen_static::Widget>::SUB_TABLE;
+    println!("enum NODE_COUNT {n} (must be 1 + {sum}), root child_count {} (must be 3)", t[0].child_count);
+    assert_eq!(n, 1 + sum, "an enum's NODE_COUNT is not 1 + the sum of its variants");
+    assert_eq!(t[0].child_count, 3, "every variant is a child of the enum's node");
+    assert!(table_is_well_formed(t));
+}

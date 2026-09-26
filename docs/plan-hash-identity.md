@@ -1,6 +1,12 @@
 # M46 — what a hash, an id and a table count claim to identify
 
-> **Written 2026-09-24, not started.** Closes R2-F2, R2-F3, R2-F4,
+> **T46.3 DONE 2026-09-26 (early landing).** `concat_table` refuses
+> more than 65,535 instances by name and debug-asserts
+> `table_is_well_formed`; at `0091266` 65,536 instances gave a root
+> child count of 0 and a malformed table. `expand_enum`'s rustdoc says
+> `1 + Σ variants`, and its "like `Either`" was stale too.
+>
+> **Written 2026-09-24.** Closes R2-F2, R2-F3, R2-F4,
 > R2-F7, R2-F8 and R2-F9 from M38's deep review
 > (`docs/results-deep-review.md`), as re-triaged against `main` at
 > `1717808` on 2026-09-24. Where the review and the re-triage differ,
@@ -384,6 +390,30 @@ and the agent's hatch tests run in debug).
 limit). `widget.rs:379` ("runtime assembly … calls the same fn"): say it
 is now also checked. The book's enum section in `book/src/containers.md`
 or `book/src/topology.md`, if either says an enum is one node.
+
+*What building found (2026-09-26).*
+
+- **T46.0 item 5 contradicts itself.** "`concat_table(65_536)` must
+  panic" and "a second test, without `should_panic`, asserts child
+  count == count at 65,536" cannot both pass. What the second test is
+  for — that the gate cannot be satisfied by panicking for the wrong
+  reason — is carried by `should_panic(expected = "65535")` instead,
+  and the accept test checks child count == count at 0, 1, 2, 1,000
+  and 65,535. The injection that removes the bound shows why the
+  expected string matters: the new debug assertion then panics first,
+  on a malformed table, and the test reports "panic did not contain
+  expected string".
+- **The "like `Either`" half was stale too.** `Either` is
+  `1 + A + B` on the table since its own rework, not one node with an
+  arena. The rustdoc now says both.
+- **R2-F8's injection cannot reach the test.** Making the derive
+  declare an enum `NODE_COUNT = 1` is refused at compile time by the
+  derive's own length asserts ("the spliced table's length is not this
+  tree's NODE_COUNT", E0080, from M26/T26.16). The runtime assertion
+  in `table_invariants.rs` is kept as the readable statement of the
+  count; the compile-time assert is what fires first.
+- `crates/lumen-static/tests/table_invariants.rs` is also edited by M41
+  (T41.6); this task appends one test at its end.
 
 **Effort:** S. **Depends on:** nothing it cannot land without. **This
 task may land before Phase 3**, because it touches no retention, no

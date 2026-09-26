@@ -1342,10 +1342,18 @@ fn expand_reloadable(input: DeriveInput) -> syn::Result<Ts2> {
 /// is why adopting it unblocked this task
 /// (`docs/layout-and-storage-decisions.md` §4d).
 ///
-/// Like `Either`, an enum contributes **one** table node and keeps the
-/// active variant's subtree off-table with its own state arena, so
-/// `NODE_COUNT` is independent of how many variants there are. Each
-/// variant must be a single unnamed field holding a widget.
+/// The enum contributes one container node **plus every variant's
+/// subtable**, each variant at its own index range: `NODE_COUNT` is
+/// `1 + Σ variants`, so a node's index means the same thing whichever
+/// variant is showing (F4.3; `TABLE` below). Inactive variants are
+/// on-table and *hidden* — laid out as zero-sized, the way an empty
+/// `Option` is — not kept off-table. `Either` has the same shape since
+/// its own rework (`1 + A + B`, `lumen_static::hatch`). *Corrected in
+/// M46/T46.3 (R2-F8): this paragraph said "one table node", "off-table
+/// with its own state arena" and "independent of how many variants",
+/// the pre-F4.3 shape, and "like `Either`", which was stale for the same
+/// reason; `tests/table_invariants.rs` pins the count.* Each variant
+/// must be a single unnamed field holding a widget.
 fn expand_enum(
     name: &syn::Ident,
     name_str: &str,

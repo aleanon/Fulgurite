@@ -19,7 +19,19 @@ use crate::widget::{splice_child, Node, Widget};
 
 /// Build the concatenated table: a synthetic column root followed by
 /// `count` copies of `sub`, rebased.
+///
+/// **At most `u16::MAX` instances** (M46/T46.3, R2-F9). The root's
+/// `child_count` is a `u16`, and this wrote `count as u16` unchecked: at
+/// 65,536 the root claimed no children while marked `CONTAINER`, and the
+/// observe walk listed none. It panics past the limit, naming it, and in
+/// debug builds asserts `table_is_well_formed` on the result, the check
+/// the derive `const`-asserts for every table it builds
+/// (`crates/lumen-static/tests/assemble_bounds.rs`).
 pub fn concat_table(count: usize, node_count: usize, sub: &[NodeDesc]) -> Vec<NodeDesc> {
+    assert!(
+        count <= u16::MAX as usize,
+        "concat_table: {count} instances, but a node's child_count is a u16 and holds at most 65535"
+    );
     let n = 1 + count * node_count;
     let mut table = vec![NodeDesc::EMPTY; n];
     table[0] = NodeDesc::new(
@@ -39,6 +51,10 @@ pub fn concat_table(count: usize, node_count: usize, sub: &[NodeDesc]) -> Vec<No
         prev_root = at;
         at += node_count;
     }
+    debug_assert!(
+        crate::widget::table_is_well_formed(&table),
+        "concat_table built a malformed table ({count} instances of {node_count} nodes)"
+    );
     table
 }
 

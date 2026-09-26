@@ -390,7 +390,10 @@ pub const fn splice_seeds(dst: &mut [Seed], write_at: usize, src: &[Seed]) {
 /// Copy a child's `SUB_TABLE` into a parent table being built, rebasing
 /// indices by `write_at`. The child's root is re-parented to
 /// `parent_index`. Const, so derives run it at compile time; runtime
-/// assembly (handoff §8) calls the same fn.
+/// assembly (handoff §8) calls the same fn, and since M46/T46.3 also
+/// checks its result with [`table_is_well_formed`] in debug builds and
+/// refuses more instances than a `u16` child count holds
+/// (`assemble::concat_table`).
 #[doc(hidden)]
 pub const fn splice_child(
     dst: &mut [NodeDesc],
