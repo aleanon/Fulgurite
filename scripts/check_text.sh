@@ -5,7 +5,9 @@
 # it exists to price is linked (scripts/lib/firmware.sh says why four).
 # The interactive one keeps the same 64 KB: an application that handles
 # input is the ordinary case, not a larger product
-# (docs/plan-embedded-footprint.md §2.5).
+# (docs/plan-embedded-footprint.md §2.5). And two symbol classes are
+# forbidden outright, bound 0, per binary -- float formatting and soft
+# `f64` (M52/T52.2) -- because the ceiling absorbed both regressions.
 #
 # **The number was written down on 2026-09-05 and nothing checked it.**
 # `docs/results-embedded.md` states `<= 64 KB` as a gate and records
@@ -126,6 +128,36 @@ if [ "${tasks:-0}" -ne 0 ]; then
   continue
 fi
 
+# **Two forbidden symbol classes, counted -- M52/T52.2 (R11-F1, R11-F2).**
+# Properties, gated by the quantity they name, not by the ceiling
+# (docs/plan-embedded-footprint.md §0 rule 2), which absorbed both
+# regressions with room to spare:
+#   float formatting -- one `f32::clamp` once linked 26.5 KB of
+#     `core::num::flt2dec` through its panic message, in a GUI that
+#     formats no floats (docs/results-embedded.md);
+#   soft `f64` -- the FPU is single-precision, so any `f64` becomes
+#     `compiler_builtins` calls: the `__aeabi_d*` ABI names, the
+#     `__*df*` family (`__adddf3`, `__floatsidf`, `__truncdfsf2`,
+#     `__extendsfdf2`, ...) and the `__aeabi_*2d` conversions.
+# Kept separate so a failure says which property broke; both bound 0 in
+# every binary. Matched on the demangled name anywhere, so the
+# `compiler_builtins::float::add::__adddf3` form counts as well as the
+# bare ABI alias.
+FLOAT_FMT_RE='core::num::flt2dec|core::fmt::float'
+SOFT_F64_RE='(^|[^A-Za-z0-9_])__(aeabi_d[a-z0-9]+|aeabi_[a-z0-9]*2d|[a-z]*df[a-z0-9]*)([^A-Za-z0-9_]|$)'
+float_fmt=$(printf '%s\n' "$NM" | grep -cE -- "$FLOAT_FMT_RE" || true)
+soft_f64=$(printf '%s\n' "$NM" | grep -cE -- "$SOFT_F64_RE" || true)
+if [ "$float_fmt" -ne 0 ]; then
+    fail "$name: float-fmt symbols $float_fmt (bound 0) -- float formatting is linked:"
+    printf '%s\n' "$NM" | grep -E -- "$FLOAT_FMT_RE" | head -5 | sed 's/^/    /' >&2
+fi
+if [ "$soft_f64" -ne 0 ]; then
+    fail "$name: soft-f64 symbols $soft_f64 (bound 0) -- double-precision arithmetic is linked:"
+    printf '%s\n' "$NM" | grep -E -- "$SOFT_F64_RE" | head -5 | sed 's/^/    /' >&2
+fi
+# No `continue` here: the ceiling line below still prints, so a red
+# count beside a green `.text` shows the count is not riding on it.
+
 forbid_var="FORBID_$name"; xfail_var="XFAIL_$name"; forbid_line=""
 for pat in ${!forbid_var:-}; do
     n=$(count "$pat")
@@ -154,7 +186,7 @@ if [ "$text" -gt "$CEILING" ]; then
   continue
 fi
 
-echo "text: $name: .text $text B of $CEILING ($pct% of budget), $toggles Toggle symbols linked, $tasks task symbols (bound 0)$pre_line$forbid_line"
+echo "text: $name: .text $text B of $CEILING ($pct% of budget), $toggles Toggle symbols linked, $tasks task symbols (bound 0), float-fmt symbols $float_fmt (bound 0), soft-f64 symbols $soft_f64 (bound 0)$pre_line$forbid_line"
 
 # The headline: the first `| `.text` | ... | **N B** |` row of the doc,
 # which is the headline table by construction (it precedes the history).

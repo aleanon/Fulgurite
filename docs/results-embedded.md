@@ -17,7 +17,7 @@ framebuffer.
 | Framework `.bss` + `.data` | **zero symbols**, exemptions named | The framework's *own* statics. **Tightened from "≤ 2 KB" on 2026-09-07**: a bound nothing had approached told nobody anything, and what the number was standing in for is a *shape* — no allocator arena, no lazily-initialised registry, no static caches, nothing claiming RAM before `main`. `scripts/check_bss.sh` checks that, and `scripts/bss.allow` names what is allowed and why. |
 | RAM for a 100-node tree | **≤ 24 KB** | T13.0's budget said ~19 KB for state + style + widget structs. 24 KB leaves headroom and still fits with the 8 KB stack in well under half of RAM. |
 | Stack, actual depth | **≤ 4 KB** | T13.0 measured 256–272 B per level and a real screen at 4–5 deep (~1.6 KB). 4 KB is generous for that and half the 8 KB budgeted. |
-| `f64` in the frame path | **zero** | The FPU is single-precision, so any `f64` becomes soft-float calls. |
+| `f64` in the frame path | **zero** | The FPU is single-precision, so any `f64` becomes soft-float calls. A symbol count in `scripts/check_text.sh` since M52/T52.2, not prose (R11-F2). |
 | The fixture builds and runs | **yes** | The binary answer to "zero allocation, no allocator required". |
 
 Recorded threats to these numbers, so a pass cannot be read as more than
@@ -51,7 +51,7 @@ that produces real sections.
 | Total (`size -A`) | ≤ 512 KB flash | **41,065 B** (40.1 KB) | 7.8% of the part |
 | RAM, 100 nodes | ≤ 24 KB | **16.0 KB** state + style | **pass**; measured at M27/T27.1 (2026-09-18), below |
 | Stack, actual depth | ≤ 4 KB | asserted at compile time | since 2026-09-07; see "The stack budget is enforced now" |
-| `f64` in the frame path | zero | **zero** | the only `f64` is `observe`'s accesskit call, which needs `std` |
+| `f64` in the frame path | zero | **0 soft-f64 symbols**, and 0 float-formatting | in all four binaries, counted by `scripts/check_text.sh` (M52/T52.2); the only `f64` is `observe`'s accesskit call, which needs `std` |
 | Fixture builds and runs | yes | **yes** | links for the target; runs on the host with an aborting allocator |
 
 The 2026-09-26 headline read 27,732 B `.text` and 12,860 B `.rodata`; the
@@ -169,6 +169,20 @@ the better failure for a frame loop. **This is the finding that
 justifies the task**: it is invisible on a desktop, where 26 KB is
 nothing and nobody links for a 512 KB part, and no amount of
 `cargo check` would have shown it.
+
+**Gated by a count since M52/T52.2** (R11-F1). Until then the only thing
+that could catch a return of this was the `.text` ceiling, and a
+paint-only firmware stays under it with the 26.5 KB back in (the review
+measured 48,720 of 65,536, exit 0). `scripts/check_text.sh` counts
+`core::num::flt2dec` and `core::fmt::float` symbols, bound 0, in every
+binary: the same `f32::clamp` edit gives **18** in each, and the
+cascade-only binary's `.text` (64,840 B) is still under the ceiling
+while its count is red. Formatting one `f32` with `Display` gives 17.
+Soft `f64` is a separate count (the `__aeabi_d*`, `__*df*` and
+`__aeabi_*2d` names, demangled `compiler_builtins` paths included): an
+`f64` round-trip in `Constraints::clamp` gives **6**. Both are planted
+for re-runs (`scripts/selftest/plants/build/text-float-fmt.sh`,
+`text-soft-f64.sh`).
 
 ### Re-measured 2026-09-10 — and the ceiling is a gate now
 
