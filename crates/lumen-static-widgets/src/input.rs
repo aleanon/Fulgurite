@@ -117,7 +117,26 @@ pub struct TextInput<S: TextBuffer = lumen_static::text::DefaultTextStorage> {
     /// (`docs/widget-audit.md`, PickList). Read-only, it declines text and
     /// deletion, which then reach its owner, and draws no caret.
     pub read_only: bool,
+    /// Shown, dimmed, while the field is empty — M57/B15. The text colour
+    /// at [`PLACEHOLDER_ALPHA`], so it follows the palette and stays above
+    /// 4.5:1 on the field's ground in both (`tests/text_input_b15.rs`
+    /// prints the ratios).
+    pub placeholder: &'static str,
+    /// Set by Enter, taken by the application — M57/B15. The field has no
+    /// application-state parameter to carry a handler, so a submission is
+    /// a flag, the shape `PullToRefresh::take_triggered` and
+    /// `Menu::take_chosen` already have.
+    submitted: bool,
+    /// The placeholder's width, measured with the run while the text is
+    /// empty: an empty field's content is otherwise zero wide, and a
+    /// shrink field then had no room to show it in.
+    placeholder_w: f32,
 }
+
+/// A placeholder's alpha over the text colour, out of 255: 68%. 62% read
+/// 4.55:1 on white — over the bound by a hair a slightly lighter text
+/// colour would take away.
+pub const PLACEHOLDER_ALPHA: u16 = 0xad;
 
 impl<S: TextBuffer> Default for TextInput<S> {
     fn default() -> Self {
@@ -134,6 +153,9 @@ impl<S: TextBuffer> Default for TextInput<S> {
             caret_color: None,
             selection_color: None,
             read_only: false,
+            placeholder: "",
+            submitted: false,
+            placeholder_w: 0.0,
         }
     }
 }
@@ -312,6 +334,44 @@ impl<S: TextBuffer> TextInput<S> {
     }
 
     /// Move the caret one character left; returns whether it moved.
+    /// Whether Enter was pressed since the last call — and clears it.
+    pub fn take_submitted(&mut self) -> bool {
+        core::mem::take(&mut self.submitted)
+    }
+
+    /// To the start of the word before the caret — Ctrl+Left (M57/B15).
+    pub fn move_word_left(&mut self) -> bool {
+        let t = self.text.as_ref();
+        let head = &t[..self.caret];
+        let end = head.trim_end_matches(|c: char| !c.is_alphanumeric()).len();
+        let at = head[..end].rfind(|c: char| !c.is_alphanumeric()).map_or(0, |k| k + head[k..].chars().next().map_or(1, char::len_utf8));
+        core::mem::replace(&mut self.caret, at) != at
+    }
+
+    /// To the end of the word after the caret — Ctrl+Right.
+    pub fn move_word_right(&mut self) -> bool {
+        let t = self.text.as_ref();
+        let tail = &t[self.caret..];
+        let skip = tail.len() - tail.trim_start_matches(|c: char| !c.is_alphanumeric()).len();
+        let word = tail[skip..].find(|c: char| !c.is_alphanumeric()).unwrap_or(tail.len() - skip);
+        let at = self.caret + skip + word;
+        core::mem::replace(&mut self.caret, at) != at
+    }
+
+    /// Select the word around `at` — a double-click.
+    fn select_word_at(&mut self, at: usize) -> bool {
+        let t = self.text.as_ref();
+        let is_w = |c: char| c.is_alphanumeric();
+        let start = t[..at].rfind(|c: char| !is_w(c)).map_or(0, |k| k + t[k..].chars().next().map_or(1, char::len_utf8));
+        let end = t[at..].find(|c: char| !is_w(c)).map_or(t.len(), |k| at + k);
+        if start == end {
+            return false;
+        }
+        self.anchor = Some(start);
+        self.caret = end;
+        true
+    }
+
     pub fn move_left(&mut self) -> bool {
         match self.prev_boundary(self.caret) {
             Some(p) => {
@@ -367,31 +427,35 @@ impl<S: TextBuffer> TextInput<S> {
     /// clusters — `BlockMetrics` does, deliberately (T7.2b) — so a field
     /// under the stand-in still shows a caret in a sensible place
     /// instead of at zero.
-    fn caret_x(&self, run_w: f32) -> f32 {
-        if self.clusters.as_slice().is_empty() {
-            return run_w;
-        }
-        self.x_of(self.caret, run_w)
+    fn caret_x(&self) -> f32 {
+        self.x_of(self.caret)
     }
 
     /// The x of a byte offset within the run — `caret_x` generalised,
     /// so the selection rect and the caret cannot disagree about where a
     /// boundary is.
-    fn x_of(&self, at: usize, run_w: f32) -> f32 {
+    ///
+    /// **Past the last cluster is the run's end** — M57/B15. It answered
+    /// the last cluster's *start*, so a caret at the end of the text sat
+    /// before the last glyph, and a selection to the end stopped short of
+    /// it. The run's width is the shaped one (`shaped_size`): `paint`
+    /// passed the box's width here, which is not where the text ends.
+    fn x_of(&self, at: usize) -> f32 {
+        let run_w = self.shaped_size.0;
         let cl = self.clusters.as_slice();
         if cl.is_empty() {
             return if at == 0 { 0.0 } else { run_w };
         }
-        cl.iter()
-            .find(|c| c.byte as usize >= at)
-            .map(|c| c.x)
-            .unwrap_or_else(|| cl.last().map(|c| c.x).unwrap_or(0.0))
+        cl.iter().find(|c| c.byte as usize >= at).map(|c| c.x).unwrap_or(run_w)
     }
 
     /// Byte offset nearest an x within the run — a click's landing spot.
     fn offset_at(&self, x: f32) -> usize {
         let cl = self.clusters.as_slice();
-        let mut best = (f32::INFINITY, self.text.as_ref().len());
+        // The end of the text is a place a click can land too: only
+        // cluster *starts* were candidates, so a click past the last
+        // character put the caret before it (M57/B15).
+        let mut best = ((self.shaped_size.0 - x).abs(), self.text.as_ref().len());
         for c in cl {
             let d = (c.x - x).abs();
             if d < best.0 {
@@ -480,11 +544,15 @@ impl<S: TextBuffer> Node for TextInput<S> {
             return lumen_static::ops::hide_subtree(st, i, limits, 1);
         }
         let px = me.font_size;
+        // **Not the box's width** (M57/B15): the run is shaped against
+        // no width, so `limits.max_w` changed nothing it produced and
+        // every probe under a new box re-shaped it. The display scale
+        // instead, which the shaper does depend on.
         let key = (
             self.text.as_ref().len() as u64,
             px.to_bits(),
             me.font_weight.to_bits(),
-            limits.max_w.to_bits(),
+            cx.scale().to_bits(),
         );
         // A single line: shaped against no width limit, because wrapping
         // is what a field does not do (B7) and clamping the shape to the
@@ -499,11 +567,16 @@ impl<S: TextBuffer> Node for TextInput<S> {
                 &mut self.clusters,
             );
             self.shaped_size = (run.w, cx.text.line_height(px));
+            self.placeholder_w = if self.text.as_ref().is_empty() && !self.placeholder.is_empty() {
+                cx.text.measure_weighted(self.placeholder, px, me.font_weight, f32::INFINITY).w
+            } else {
+                0.0
+            };
             self.shaped_key = Some(key);
         }
         let (run_w, line) = self.shaped_size;
 
-        let content = Size { w: run_w, h: line };
+        let content = Size { w: run_w.max(self.placeholder_w), h: line };
         let padded =
             Size { w: content.w + me.padding.horizontal(), h: content.h + me.padding.vertical() };
         let size = resolve_self(limits, &me, padded);
@@ -512,7 +585,7 @@ impl<S: TextBuffer> Node for TextInput<S> {
         // the caret's x is known. Same place and shape as A6's scroll
         // clamp, and for the same reason.
         let inner_w = (size.w - me.padding.horizontal()).max(0.0);
-        let cx_pos = self.caret_x(run_w);
+        let cx_pos = self.caret_x();
         if cx_pos - self.scroll > inner_w {
             self.scroll = cx_pos - inner_w;
         }
@@ -546,32 +619,35 @@ impl<S: TextBuffer> Node for TextInput<S> {
         // painted *before* the run so the text sits on top of it —
         // a selection drawn after would hide the glyphs it highlights.
         if let Some(sel) = self.selection() {
-            let run_w = inner[2] - inner[0];
-            let (a, b) = (self.x_of(sel.start, run_w), self.x_of(sel.end, run_w));
+            let (a, b) = (self.x_of(sel.start), self.x_of(sel.end));
             out.rect(
                 [x + a, inner[1], x + b, inner[3]],
                 self.selection_color.unwrap_or_else(|| selection_tint(s.fg)),
             );
         }
-        out.text_weighted(
-            [x, inner[1], x + (inner[2] - inner[0]) + self.scroll, inner[3]],
-            self.text.as_ref(),
-            s.font_size,
-            s.font_weight,
-            s.fg,
-        );
+        if self.text.as_ref().is_empty() && !self.placeholder.is_empty() {
+            let dim = Color(s.fg.0, s.fg.1, s.fg.2, (s.fg.3 as u16 * PLACEHOLDER_ALPHA / 0xff) as u8);
+            out.text_weighted([x, inner[1], inner[2], inner[3]], self.placeholder, s.font_size, s.font_weight, dim);
+        } else {
+            out.text_weighted(
+                [x, inner[1], x + (inner[2] - inner[0]) + self.scroll, inner[3]],
+                self.text.as_ref(),
+                s.font_size,
+                s.font_weight,
+                s.fg,
+            );
+        }
         // B4: the caret is an ordinary rect. Only in the focused field —
         // a caret in every field at once is the tell that focus is not
         // actually being tracked.
         // The composing run is underlined, which is how every platform
         // shows "this is not committed yet" (T14.8).
         if let Some(pre) = self.preedit.clone() {
-            let run_w = inner[2] - inner[0];
-            let (a, b) = (self.x_of(pre.start, run_w), self.x_of(pre.end, run_w));
+            let (a, b) = (self.x_of(pre.start), self.x_of(pre.end));
             out.rect([x + a, inner[3] - 2.0, x + b, inner[3] - 1.0], s.fg);
         }
         if s.focused && !self.read_only {
-            let cx_pos = inner[0] - self.scroll + self.caret_x(inner[2] - inner[0]);
+            let cx_pos = inner[0] - self.scroll + self.caret_x();
             out.rect([cx_pos, inner[1], cx_pos + 1.0, inner[3]], self.caret_color.unwrap_or(s.fg));
         }
         out.pop_clip();
@@ -603,6 +679,30 @@ impl<S: TextBuffer> Node for TextInput<S> {
             // Shift extends the selection, anything else collapses it.
             // `moved` is called with where the caret *was*, because that
             // is the anchor a fresh selection starts from (T14.4).
+            // Enter submits (M57/B15), and **is not consumed**: a
+            // composite whose part is a field — a combobox choosing its
+            // highlighted row — acts on the Enter its field declines.
+            Event::Key { key: Key::Enter, down: true } => {
+                self.submitted = true;
+                false
+            }
+            // Ctrl (or Alt, as on a Mac) moves by word.
+            Event::Key { key: Key::Left, down: true }
+                if cx.mods.has(Mods::CTRL) || cx.mods.has(Mods::ALT) =>
+            {
+                let from = self.caret;
+                let moved = self.move_word_left();
+                self.moved(cx.mods.has(Mods::SHIFT), from);
+                moved
+            }
+            Event::Key { key: Key::Right, down: true }
+                if cx.mods.has(Mods::CTRL) || cx.mods.has(Mods::ALT) =>
+            {
+                let from = self.caret;
+                let moved = self.move_word_right();
+                self.moved(cx.mods.has(Mods::SHIFT), from);
+                moved
+            }
             Event::Key { key: Key::Left, down: true } => {
                 let from = self.caret;
                 let moved = self.move_left();
@@ -640,6 +740,12 @@ impl<S: TextBuffer> Node for TextInput<S> {
             // relative to the node's origin, and the run starts one
             // padding in — read from the resolved attributes rather than
             // guessed, because a stylesheet may have changed it.
+            // A double-click selects the word under it (M57/B15).
+            Event::PointerDown { clicks: 2, .. } => {
+                let at = self.offset_at(cx.local.x - self.pad_left + self.scroll);
+                self.select_word_at(at);
+                true
+            }
             Event::PointerDown { .. } => {
                 let at = self.offset_at(cx.local.x - self.pad_left + self.scroll);
                 let from = self.caret;
