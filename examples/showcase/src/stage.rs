@@ -245,6 +245,10 @@ pub struct DCombobox {
 #[derive(StaticTree, Default)]
 #[widget(column, spacing = 0.0)]
 pub struct DMenu {
+    /// Opens the menu again (M57/C3): a menu with no way back in could be
+    /// used once and then the demo was empty.
+    #[widget_id("d_menu_open")]
+    pub open: Button<Store, String>,
     #[widget_id("d_menu_a")]
     pub a: Menu,
 }

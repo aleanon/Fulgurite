@@ -498,6 +498,8 @@ pub struct Chooser<const KIND: u8 = PICKLIST> {
     /// The trigger's rect, kept from `place` — `on_event` gets neither
     /// style nor state array. `Select::trigger_rect` says why.
     trigger_rect: (Point, Size),
+    /// A menu's chosen command, until the application takes it — M57/B23.
+    chosen: Option<usize>,
 }
 
 /// A picker over its own options.
@@ -517,6 +519,7 @@ impl<const KIND: u8> Default for Chooser<KIND> {
             selected: None,
             typed: false,
             trigger_rect: (Point { x: 0.0, y: 0.0 }, Size::default()),
+            chosen: None,
         }
     }
 }
@@ -573,6 +576,15 @@ impl<const KIND: u8> Chooser<KIND> {
         moved
     }
 
+    /// **A menu's command, taken once** — M57/B23. A menu runs a command;
+    /// it does not hold a value. It stored the choice as a selection, so
+    /// "Copy" became the menu's value and no action ran
+    /// (`docs/widget-audit.md`, Menu). The application takes the command
+    /// here and does it; `selected` stays `None` for a menu.
+    pub fn take_chosen(&mut self) -> Option<usize> {
+        self.chosen.take()
+    }
+
     /// What the trigger currently reads.
     pub fn text(&self) -> &str {
         self.trigger.as_str()
@@ -603,6 +615,13 @@ impl<const KIND: u8> ChooserTable<KIND> {
         );
         t[2] = t[2].with_id(PART_POPUP);
         t[3] = t[3].with_id(PART_LIST);
+        // A menu's list takes focus (M57/B23): it has no trigger, so an open
+        // menu is where the keyboard must be for its rows to be chosen —
+        // focus moves into it when it opens (A12). Not for a pick list or
+        // a combobox, whose field keeps focus while their list is open.
+        if KIND == MENU {
+            t[3].flags |= NodeDesc::FOCUSABLE;
+        }
         t
     };
     pub const SLICE: &'static [NodeDesc] = Self::ARRAY.split_at(Self::N).0;
@@ -663,7 +682,11 @@ impl<const KIND: u8> Node for Chooser<KIND> {
         // *list*, not this — the same reason `Tooltip` reads hover here
         // and `Glass` reads its press here.
         if let Some(idx) = self.list.content.take_picked() {
-            self.select(idx);
+            if KIND == MENU {
+                self.chosen = Some(idx);
+            } else {
+                self.select(idx);
+            }
             self.list.open = false;
         }
         // **A query is what the trigger holds when it is no longer
@@ -851,8 +874,13 @@ impl<const KIND: u8> Node for Chooser<KIND> {
         node: &mut accesskit::Node,
         _extra: &mut alloc::vec::Vec<(accesskit::NodeId, accesskit::Node)>,
     ) {
-        node.set_role(accesskit::Role::ComboBox);
-        node.set_value(self.trigger.as_str());
+        if KIND == MENU {
+            // A menu, not a combo box: it has no value (M57/B23).
+            node.set_role(accesskit::Role::Menu);
+        } else {
+            node.set_role(accesskit::Role::ComboBox);
+            node.set_value(self.trigger.as_str());
+        }
         node.set_expanded(self.list.open);
     }
 }

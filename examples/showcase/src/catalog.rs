@@ -376,8 +376,10 @@ pub static CATALOG: &[Entry] = &[
         none),
     entry!("Choice", "Menu", "A command list with no trigger.",
         false,
-        |s| on(s, Demo::Menu(DMenu { a: opened(Menu::new(&COMMANDS)) })),
-        none),
+        |s| on(s, Demo::Menu(DMenu {
+            open: { let mut b = btn("Commands"); b.on_click = |s: &mut Store, _: &EventCtx| s.menu_open = true; b },
+            a: opened(Menu::new(&COMMANDS)) })),
+        |s| format!("ran: {}", s.store.command.map_or("nothing yet", |k| COMMANDS[k]))),
     entry!("Fields", "NumberInput", "Arrows step it; letters are refused.",
         false,
         |s| on(s, Demo::Number(DNumberInput { a: NumberInput::new(s.store.fraction * 10.0, 0.0, 10.0, 0.5) })),

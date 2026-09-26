@@ -316,6 +316,9 @@ pub struct Store {
     section: Option<usize>,
     /// Refreshes the pull-to-refresh demo has fired (M57/B40).
     refreshes: u32,
+    /// The menu demo's reopen request, and the last command it ran (C3).
+    menu_open: bool,
+    command: Option<usize>,
 }
 
 /// After every pump: rebuild the demos whose state lives in the store,
@@ -414,6 +417,18 @@ fn refresh(s: &mut Show) -> bool {
         }
         let want = s.store.section;
         changed |= d.a.set_open(want == Some(0)) | d.b.set_open(want == Some(1)) | d.c.set_open(want == Some(2));
+    }
+    // **A menu runs a command** (M57/B23, C3): taken once, shown in the
+    // readout; its button opens it again.
+    if let Demo::Menu(d) = &mut s.ui.main.stage.row.demo {
+        if s.store.menu_open {
+            s.store.menu_open = false;
+            changed |= d.a.open();
+        }
+        if let Some(k) = d.a.take_chosen() {
+            s.store.command = Some(k);
+            changed = true;
+        }
     }
     // **A pull that fired is a refresh** (M57/B40): taken once, counted,
     // so the readout shows the widget doing what it is for.

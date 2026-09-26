@@ -160,6 +160,44 @@ MENU = ("Menu", "#d_menu_a", [
         static=True,
         injection="lay out a trigger for a menu too",
     ),
+    # M57/B23: a menu runs a command. It stored the choice as a selection,
+    # so "Copy" became the menu's value and no action ran.
+    Action(
+        name="choosing a command runs it and closes the menu",
+        needs="an open menu",
+        do=lambda c: _menu_row(c, 1),
+        # Closed is a list with no box: a hidden list still publishes its
+        # options (with the hidden flag), so they are not what to count.
+        expect=lambda c: (
+            c.readout() == "ran: Copy" and _list_h(c) == 0.0,
+            f"readout {c.readout()!r}, list {_list_h(c):.0f} px tall",
+        ),
+        static=True,
+        # The closed list's body is audited at 0x0, as every closed popup's is.
+        expects_lint=("W1001",),
+        injection="store a menu's choice as a selection",
+    ),
+    Action(
+        name="its button opens it again",
+        needs="a closed menu",
+        do=lambda c: c.click("#d_menu_open"),
+        expect=lambda c: (
+            len(_shown(c)) == 4 and _list_h(c) > 0.0,
+            f"{len(_shown(c))} commands, list {_list_h(c):.0f} px tall after pressing Commands",
+        ),
+        static=True,
+        injection="drop the showcase's reopen",
+    ),
 ])
+
+
+def _list_h(c) -> float:
+    b = c.box(f"{c.sel} > #chooser-list")
+    return b[3] - b[1]
+
+
+def _menu_row(c, k):
+    b = c.box(f"{c.sel} > #chooser-list")
+    c.c.rpc("input.click", x=b[0] + 30.0, y=b[1] + 6.0 + 30.0 * k + 15.0)
 
 ALL = [PICKLIST, COMBOBOX, MENU]
