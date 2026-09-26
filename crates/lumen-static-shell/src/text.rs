@@ -143,6 +143,67 @@ impl FontStack {
         layout
     }
 
+    /// A laid-out run's box: per line, the larger of **where the pen
+    /// ends** and where the ink ends — M45/T45.1, R10-F1.
+    ///
+    /// fontdue's glyph `x` is the *ink* origin — the pen plus the glyph's
+    /// left bearing, floored — and this used to take `x + advance` as the
+    /// right edge. A glyph with a negative bearing (`j`) put its ink
+    /// origin left of its pen, so a run ending in one measured a pixel or
+    /// two short, and the painter, which wraps inside the measured box,
+    /// moved the `j` to a second line below it: 600 of 1,200 cases in
+    /// `tests/text_containment.rs` (`docs/results-text.md` T45.0).
+    ///
+    /// The pen is rebuilt the way fontdue advances it — from each line's
+    /// start, by `ceil(advance)`, nothing for a control character — so
+    /// the width is exactly the space fontdue's own wrap needs the run to
+    /// have. The ink term keeps an overhanging glyph (an italic tail, a
+    /// wide `W`) inside the box as well.
+    fn extent(font: &Font, layout: &Layout, px: f32) -> Size {
+        let glyphs = layout.glyphs();
+        let (mut w, mut h) = (0.0f32, 0.0f32);
+        let mut line = |range: core::ops::Range<usize>| {
+            let mut pen = 0.0f32;
+            for g in glyphs.get(range).unwrap_or(&[]) {
+                if !g.char_data.is_control() {
+                    pen += font.metrics_indexed(g.key.glyph_index, px).advance_width.ceil();
+                }
+                w = w.max(pen).max(g.x + g.width as f32);
+                h = h.max(g.y + g.height as f32);
+            }
+        };
+        match layout.lines() {
+            Some(lines) => {
+                for l in lines {
+                    line(l.glyph_start..(l.glyph_end + 1).max(l.glyph_start));
+                }
+            }
+            None => line(0..glyphs.len()),
+        }
+        // Ceiled: `layout` sizes the box from this.
+        Size { w: w.ceil(), h: h.max(layout.height()).ceil() }
+    }
+
+    /// The width the painter lays a run out in, given the rect it was
+    /// handed — M45/T45.1.
+    ///
+    /// **A run that measured as one line is never re-wrapped.** The rect
+    /// is the measured box, but it reaches here as the difference of its
+    /// two edges, each a logical position times the display scale, and
+    /// off the pixel grid that difference rounds *down* in `f32` as often
+    /// as not — a whole-pixel run then wraps its last glyph (92 of 1,200
+    /// cases without this, `docs/results-text.md` T45.1). Half a pixel
+    /// absorbs the round-down, and is less
+    /// than any glyph's advance, so a run that genuinely does not fit
+    /// still wraps where the measurer said it would.
+    fn paint_width(max_w: f32) -> f32 {
+        if max_w.is_finite() {
+            max_w + 0.5
+        } else {
+            max_w
+        }
+    }
+
     /// Lay out one run and report where each inked glyph goes, **without
     /// rasterising any of them**.
     ///
@@ -160,7 +221,7 @@ impl FontStack {
     pub fn place_run(&self, text: &str, px: f32, weight: f32, max_w: f32) -> (Vec<Placed>, Size) {
         let (font, prepared) = self.prepare(text, weight);
         let text: &str = &prepared;
-        let layout = Self::run(font, text, px, max_w);
+        let layout = Self::run(font, text, px, Self::paint_width(max_w));
         let shift = cap_shift(font, px);
         // Which of the two faces `prepare` actually chose — not which
         // one the weight asked for. A bold run in a stack with no bold
@@ -171,16 +232,7 @@ impl FontStack {
         let bold = self.bold.as_deref().is_some_and(|b| core::ptr::eq(b, font));
 
         let mut out = Vec::with_capacity(text.len());
-        let (mut w, mut h) = (0.0f32, 0.0f32);
         for g in layout.glyphs() {
-            // Width from the *advance*, not the ink box. Wrapping is
-            // done on advances, so measuring ink under-reports by the
-            // last glyph's right side bearing — and `paint` then re-wraps
-            // inside a box a hair too narrow and drops that glyph.
-            // "POSITIVE" came out "POSITIV" exactly this way.
-            let adv = font.metrics_indexed(g.key.glyph_index, px).advance_width;
-            w = w.max(g.x + adv.max(g.width as f32));
-            h = h.max(g.y + g.height as f32);
             if g.width == 0 || g.height == 0 {
                 continue;
             }
@@ -192,11 +244,10 @@ impl FontStack {
                 h: g.height as u32,
             });
         }
-        // Ceiled: `layout` sizes the box from this, and `paint` re-wraps
-        // inside it. A width rounded *down* by a fraction of a pixel
-        // drops the last glyph — which is how "POSITIVE" came out as
-        // "POSITIV".
-        (out, Size { w: w.ceil(), h: h.max(layout.height()).ceil() })
+        // The box by the same rule `measure_run` uses (`extent`), so the
+        // two cannot disagree.
+        let size = Self::extent(font, &layout, px);
+        (out, size)
     }
 
     /// The coverage mask for one glyph identity: `(width, height, cov)`.
@@ -262,22 +313,14 @@ impl FontStack {
     ///
     /// It cost **2.9 µs a label**, which at 3000 labels is 8.7 ms of a
     /// frame; `docs/results-competitive.md` has the before and after.
-    /// The width and height arithmetic below is lifted verbatim from
-    /// `glyphs`, so the two cannot disagree about a box — which they
-    /// must not, because `layout` sizes from this and `paint` re-wraps
-    /// inside it.
+    /// The box is `extent`'s, which `place_run` uses too, so the two
+    /// cannot disagree about a box — which they must not, because
+    /// `layout` sizes from this and `paint` lays the run out inside it.
     pub(crate) fn measure_run(&self, text: &str, px: f32, weight: f32, max_w: f32) -> Size {
         let (font, prepared) = self.prepare(text, weight);
         let text: &str = &prepared;
         let layout = Self::run(font, text, px, max_w);
-        let (mut w, mut h) = (0.0f32, 0.0f32);
-        for g in layout.glyphs() {
-            // Width from the *advance*, not the ink box — see `glyphs`.
-            let adv = font.metrics_indexed(g.key.glyph_index, px).advance_width;
-            w = w.max(g.x + adv.max(g.width as f32));
-            h = h.max(g.y + g.height as f32);
-        }
-        Size { w: w.ceil(), h: h.max(layout.height()).ceil() }
+        Self::extent(font, &layout, px)
     }
 
     /// Shape one run and report every cluster boundary to `sink`.
@@ -330,12 +373,9 @@ impl FontStack {
             }
         };
 
-        let (mut w, mut h) = (0.0f32, 0.0f32);
         let mut end = (0.0f32, 0u16);
         for (gi, g) in layout.glyphs().iter().enumerate() {
             let adv = font.metrics_indexed(g.key.glyph_index, px).advance_width;
-            w = w.max(g.x + adv.max(g.width as f32));
-            h = h.max(g.y + g.height as f32);
             let line = line_of(gi);
             if !sink.is_full() {
                 sink.cluster(Cluster { byte: remap(g.byte_offset), x: g.x, line });
@@ -346,7 +386,7 @@ impl FontStack {
         if !sink.is_full() {
             sink.cluster(Cluster { byte: text.len() as u32, x: end.0, line: end.1 });
         }
-        Size { w: w.ceil(), h: h.max(layout.height()).ceil() }
+        Self::extent(font, &layout, px)
     }
 }
 

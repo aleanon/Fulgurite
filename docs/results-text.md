@@ -30,3 +30,31 @@ until T45.k"]`. The quantity it prints, beside its bound:
 Item 13's timings were taken under load (load average 10 on the build
 machine; the self-ratio beside them is the check that load did not
 spoil the ratio).
+
+## T45.1 — the measurer and the painter agree on the box (R10-F1)
+
+`FontStack::extent` measures each line from where fontdue's pen ends
+(`ceil(advance)` per glyph from the line's start) and where its ink ends;
+`place_run` lays a run out in the rect's width plus half a pixel.
+`tests/text_containment.rs`, 1,200 cases, labels at four logical x
+offsets (0, 0.3, 7.7, 13.1):
+
+| build | wrapped | worst overhang right/y | leading bearing (not bounded) |
+|---|---|---|---|
+| `826c7c3` (ink-origin width, x = 0 only) | 600 / 1200 | 0 / 93 px | — (clipped by the canvas edge) |
+| T45.1 | **0 / 1200** | 0.45 / 0 px | 2.4 px |
+| T45.1 with the ink-origin width restored | 600 / 1200 | 0.45 / 93 px | 2.4 px |
+| T45.1 with the painter's slack removed | 92 / 1200 | 0.45 / 76 px | 2.4 px |
+
+The slack case is the fractional-scale round-down: a rect whose two
+edges are scaled separately, so its physical width comes out a hair
+under the whole-pixel run measured for it. It needs a label off the
+pixel grid; at x = 0 the product was exact for
+every case and deleting the slack left the gate green.
+
+A `TextInput` scrolled part-way handed the painter `inner + scroll`,
+narrower than its run: 327 px for a 384 px run, and the word at the
+right edge painted on a second line under the clip. It paints in its
+run's width now (`a_part_scrolled_field_paints_its_run_on_one_line`).
+`just gpu-parity` after the change: worst channel delta 1, 0 px over 8
+(its baseline, `docs/results-gpu.md`).

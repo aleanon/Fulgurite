@@ -472,6 +472,18 @@ the box.
 results doc's containment table. `docs/text-render-adoption-decision.md`
 if it states containment.
 
+*What building found (2026-09-26).* **The slack injection left the gate
+green at first**: every label sat at x = 0, where a rect's physical width
+is `w × k` and exact for these scales. The round-down needs the two edges
+scaled separately, so the corpus now starts labels at four logical
+offsets, and removing the slack wraps 92 of 1,200. Moving labels off the
+edge also exposed ink *left* of the box — a leading `j` or `T` bearing,
+up to 2.4 px — which the canvas edge had clipped at x = 0; the gate
+prints it and bounds only the right edge and the rows, since the box
+starts at the pen as a CSS content box does. And **`TextInput` handed
+the painter a rect narrower than its run** whenever it was scrolled
+part-way; it paints in its run's width now.
+
 **Effort:** M. **Depends on:** T45.0.
 
 ### T45.2 — one key for every text memo

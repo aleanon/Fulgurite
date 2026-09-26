@@ -589,8 +589,15 @@ impl<S: TextBuffer> Node for TextInput<S> {
                 self.selection_color.unwrap_or_else(|| selection_tint(s.fg)),
             );
         }
+        // The run's own width, not the field's: a painter wraps inside the
+        // rect it is handed, and a field scrolled part-way used to hand it
+        // `inner + scroll`, narrower than the run, so the word crossing
+        // the right edge moved to a second line below the clip and the
+        // visible line ended a word early (M45/T45.1). The clip above is
+        // what keeps the text inside the field, not the rect.
+        let run_w = self.shaped_size.0.max(inner[2] - inner[0] + self.scroll);
         out.text_weighted(
-            [x, inner[1], x + (inner[2] - inner[0]) + self.scroll, inner[3]],
+            [x, inner[1], x + run_w, inner[3]],
             self.text.as_ref(),
             s.font_size,
             s.font_weight,
