@@ -25,7 +25,7 @@ it is: `cargo check` proves none of them — it type-checks and stops, with
 no codegen, no link, no `.text`. Section sizes below come from a real
 `cargo build --release` for the target.
 
-## The headline — measured 2026-09-25 (M43/T43.4)
+## The headline — measured 2026-09-26 (after M45/T45.12 and M46/T46.1)
 
 **This table is the current measurement, and `scripts/check_text.sh`
 holds it to the linked firmware:** it reads the `.text` row below and
@@ -43,10 +43,10 @@ that produces real sections.
 
 | | Threshold | Measured | |
 |---|---:|---:|---|
-| `.text` | ≤ 64 KB | **27,024 B** (26.4 KB) | **pass**, at 41.2% of budget |
+| `.text` | ≤ 64 KB | **27,732 B** (27.1 KB) | **pass**, at 42.3% of budget |
 | `.bss` + `.data` | zero framework symbols | **1 symbol, 4 B, exempted** | **pass** — the fixture's own `SINK` (`scripts/bss.allow`) |
 | `.rodata` | — | 12,860 B | of which the baked face is most; 9,010 B at T13.7 |
-| Flash, total | ≤ 512 KB | **40,101 B** (39.2 KB) | 7.6% of the part |
+| Flash, total | ≤ 512 KB | **40,809 B** (39.9 KB) | 7.8% of the part |
 | RAM, 100 nodes | ≤ 24 KB | **16.0 KB** state + style | **pass**; measured at M27/T27.1 (2026-09-18), below |
 | Stack, actual depth | ≤ 4 KB | asserted at compile time | since 2026-09-07; see "The stack budget is enforced now" |
 | `f64` in the frame path | zero | **zero** | the only `f64` is `observe`'s accesskit call, which needs `std` |
@@ -465,7 +465,9 @@ the pass itself.** `scripts/check_text.sh`: 27,332 B of 65,536, 41.7%.
 
 ## M46/T46.1 — the text hash, measured 2026-09-26
 
-`.text` **27,024 → 27,424 B (+400)**, 41.8% of the ceiling. All of it is
+`.text` **+400 B**, measured on M46's own base: 27,024 → 27,424. On the
+merged tree, after T45.12's 27,332, it is **27,732 B**, the headline
+above (+308 + 400 = +708 over 27,024, exactly). All of it is
 `Button::layout` (848 → 1,248 B): the fixture's `Button` keys its
 `FoldedText` memo on `display::hash_bytes`, inlined, where it used to
 fold byte by byte. The fixture links no `Recording`. RAM is unchanged —
