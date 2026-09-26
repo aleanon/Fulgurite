@@ -111,3 +111,21 @@ counted over 100 calls after 300 warm ones (past the journal's
 256-frame ring, so the counted frames are its steady state). The mask
 and the table's subtree sizes are scratch on `Agent`, the sizes computed
 once per table.
+
+## No endpoint, no journal — M48/T48.12
+
+An agent build ran `frame_done` — the journal's diff and the audit, the
+cost measured above — on **every frame of every window**, whether or not
+an address was set (R14-F8); `Config::agent`'s `None` was inert only
+without the feature. The window now journals only when an endpoint was
+configured. Counted by `crates/lumen-static-winit/tests/agent_transport.rs`
+over a spinning window's first three frames:
+
+| | journaled / frames |
+|---|---|
+| no address (was 3 / 3 with the check dropped) | **0 / 3** |
+| an address | 3 / 3 |
+
+And a build without the feature links none of it: `just agent-symbols`
+counts 0 `lumen_static_agent` and 0 `serde_json` symbols in a release
+showcase, against 66 and 192 with `agent` (the positive control).

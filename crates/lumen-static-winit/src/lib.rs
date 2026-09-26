@@ -257,7 +257,10 @@ pub struct Config {
     /// meant copying a socket into your own binary — see the
     /// `agent` module, which the feature compiles in.
     ///
-    /// `None`, and without the feature the field is inert, which is what
+    /// `None` is inert **with the feature on as well** (M48/T48.12): no
+    /// socket, and no journal or audit on any frame — they ran on every
+    /// frame of every agent build until then. Without the feature the
+    /// field is inert and nothing of the agent is linked, which is what
     /// keeps a release build free of `observe`.
     ///
     /// **One JSON object per line, or the connection ends** (M39/T39.1):
@@ -360,6 +363,8 @@ fn start(session: Box<dyn Session>, config: Config, hot: Option<std::path::PathB
         std::thread::spawn(move || agent::serve(addr, proxy));
     }
     let mut win = Win::new(session, config);
+    // M48/T48.12: no endpoint, no journal.
+    win.journal = cfg!(feature = "agent") && win.config.agent.is_some();
     // **Deferred work, wired up** — M28/T28.12. The waker is the
     // window's, because the window owns the loop; the spawner is the
     // session's own (`Local::from_host` installs `Threads`), because a
@@ -501,6 +506,17 @@ struct Win {
     /// The reload state, when the window rebuilds its application (M37).
     #[cfg(feature = "hot")]
     hot: Option<hot::Hot>,
+    /// Whether an endpoint was configured — M48/T48.12 (R14-F8). The
+    /// journal and the audit run only then: an agent build with no
+    /// address paid for both on every frame, for answers nothing could
+    /// ask for.
+    journal: bool,
+    /// Frames drawn and frames journaled, for `LUMEN_FRAME_REPORT`.
+    frames: (u64, u64),
+    /// `LUMEN_FRAME_REPORT=N`: after N frames, print how many were
+    /// journaled and exit 0 — the diagnostic the T48.12 gate reads, since
+    /// a window with no endpoint has nothing else to ask.
+    report_after: Option<u64>,
 }
 
 impl Win {
@@ -534,6 +550,9 @@ impl Win {
             present_drops: 0,
             #[cfg(feature = "hot")]
             hot: None,
+            journal: false,
+            frames: (0, 0),
+            report_after: std::env::var("LUMEN_FRAME_REPORT").ok().and_then(|v| v.parse().ok()),
         }
     }
 
@@ -706,7 +725,22 @@ impl Win {
         // `ui.lastChange`, `ui.lastDamage` and `ui.waitSettled` read, and
         // without it an agent can drive the window but cannot tell when
         // it has finished moving.
-        self.session.agent_frame_done(frame_times(&presented));
+        //
+        // **Only with an endpoint** (M48/T48.12): nothing else can read it.
+        self.frames.0 += 1;
+        if self.journal {
+            self.session.agent_frame_done(frame_times(&presented));
+            self.frames.1 += 1;
+        }
+        if self.report_after.is_some_and(|n| self.frames.0 >= n) {
+            eprintln!(
+                "lumen-static: {} frames drawn, {} journaled (endpoint: {})",
+                self.frames.0,
+                self.frames.1,
+                self.config.agent.as_deref().unwrap_or("none")
+            );
+            std::process::exit(0);
+        }
 
         // Another frame only while something is moving, or while the
         // inbox has a backlog (M28/T28.2: the drain is capped per frame,

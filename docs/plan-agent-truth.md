@@ -889,6 +889,14 @@ rewritten.
   labelled by its symbol. `Card` has no title of its own, so it is a
   `Group` whose content describes itself; `Tooltip` is a `Group`
   described by its tip's text.
+- **T48.12: the journal is not seeded by a first request.** The plan
+  had a first request seed the journal and report `reset: true`. With
+  the endpoint configured the window journals every frame from the
+  first, so there is nothing to seed; with none, no request can arrive.
+  The debug counter is `LUMEN_FRAME_REPORT=N` — after N frames the
+  window prints `N frames drawn, M journaled` and exits — read by the
+  event-loop test on a spinning window rather than on tasks-demo, which
+  draws no frame unasked.
 
 ## Appendix: finding → task
 

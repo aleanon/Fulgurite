@@ -240,12 +240,17 @@ bench-lock +cmd:
 # decision CI gets to make.
 
 # Release-shape rustdoc, binsize, and the exhaustive f32 check.
-check-extra: floats thumb gpu simd threads book
+check-extra: floats thumb gpu simd threads book agent-symbols
     # Release-shape rustdoc: `--workspace` hides broken links that point at
     # items which only exist behind `observe`/`reload`.
     RUSTDOCFLAGS="-D warnings" cargo doc -p lumen-static --no-deps
     cargo build --release -p binsize
     @ls -l target/release/binsize | awk '{print "binsize: " $5 " bytes"}'
+
+# M48/T48.12: a window built without `agent` links no agent symbols, and
+# the agent build is the positive control. Two release builds.
+agent-symbols:
+    ./scripts/check_agent_symbols.sh
 
 # The GPU backend (T15.12), which `test` excludes for compile time.
 # Its own tests are the backend-parity gate: the same display list

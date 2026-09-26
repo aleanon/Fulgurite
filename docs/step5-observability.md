@@ -13,6 +13,13 @@ additive dev gate with measured-zero release cost. Also pays Step 4's
 > stated without the condition and two reviewers read it as unconditional.
 > `fixtures/binsize` links neither the agent nor any feature, so the
 > release figure it records is a release figure.
+>
+> **And checked, since M48/T48.12** (R14-F8): `just agent-symbols`
+> counts `lumen_static_agent` and `serde_json` symbols in a release
+> showcase built without the `agent` feature — 0 of each, against 66 and
+> 192 in the agent build, its positive control. Inside an agent build, a
+> window with no address set no longer runs the journal or the audit on
+> any frame (`crates/lumen-static-winit/tests/agent_transport.rs`).
 recorded debt: the reload surface is now gated too.*
 
 ## The gate: additive cargo features, not a mode

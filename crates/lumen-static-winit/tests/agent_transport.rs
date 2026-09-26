@@ -22,7 +22,9 @@
 //! regression of anything already green.
 //!
 //! Ports 7812 and 7813 (the milestone's range is 7810–7819), and 7862
-//! for M48/T48.4's session-backed window (M48's range is 7860–7869).
+//! and 7863 for M48/T48.4's and T48.12's windows (M48's range is
+//! 7860–7869). T48.12's children end themselves with
+//! `LUMEN_FRAME_REPORT=3`, which prints how many frames were journaled.
 //!
 //! # A real window's journal (M48/T48.4, R13-F8)
 //!
@@ -71,6 +73,62 @@ struct STally {
     ui: SUi,
     #[bind(ui.count, "count {}")]
     n: i64,
+}
+
+/// M48/T48.12: an application that animates forever, so a window draws
+/// frames with no input at all.
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+struct AUi {
+    l: Label<String>,
+}
+
+#[derive(Default)]
+struct Spin {
+    ui: AUi,
+    t: f32,
+}
+
+impl lumen_static::event::App for Spin {
+    type State = Self;
+    fn state_mut(&mut self) -> &mut Self {
+        self
+    }
+    type Tree = AUi;
+    type Msg = lumen_static::event::Never;
+    fn apply(_: &mut Self, m: Self::Msg) -> bool {
+        match m {}
+    }
+    fn tree(&self) -> &AUi {
+        &self.ui
+    }
+    fn tree_mut(&mut self) -> &mut AUi {
+        &mut self.ui
+    }
+    fn tick(&mut self, dt_ms: f32) -> bool {
+        self.t += dt_ms;
+        true
+    }
+}
+
+/// Run the spinning window as a child with `LUMEN_FRAME_REPORT=3` and
+/// read back its "N frames drawn, M journaled" line.
+fn frame_report(endpoint: bool) -> (Option<u64>, String) {
+    let out = std::process::Command::new(std::env::current_exe().unwrap())
+        .env("LUMEN_SPIN_CHILD", if endpoint { "endpoint" } else { "none" })
+        .env("LUMEN_FRAME_REPORT", "3")
+        .env_remove("LUMEN_AGENT_ADDR")
+        .env_remove("LUMEN_AGENT")
+        .output()
+        .expect("spawn the spin child");
+    let err = String::from_utf8_lossy(&out.stderr).into_owned();
+    let line = err.lines().find(|l| l.contains("frames drawn")).unwrap_or("").to_string();
+    let journaled = line
+        .split(", ")
+        .nth(1)
+        .and_then(|s| s.split_whitespace().next())
+        .and_then(|n| n.parse().ok());
+    (journaled, line)
 }
 
 /// One JSON-RPC call on its own connection, or `None` on any failure.
@@ -379,6 +437,25 @@ fn drive(executed: Arc<AtomicUsize>) -> Vec<Outcome> {
         });
     }
 
+    // M48/T48.12 (R14-F8): no endpoint, no journal -- and with one,
+    // every frame journaled (the accept direction).
+    {
+        let (none, line_none) = frame_report(false);
+        out.push(Outcome {
+            name: "a window with no endpoint journals nothing".into(),
+            green: none == Some(0),
+            line: format!("journaled {none:?} / bound Some(0) -- \"{line_none}\""),
+            red_until: None,
+        });
+        let (some, line_some) = frame_report(true);
+        out.push(Outcome {
+            name: "a window with an endpoint journals every frame".into(),
+            green: some == Some(3),
+            line: format!("journaled {some:?} / expected Some(3) -- \"{line_some}\""),
+            red_until: None,
+        });
+    }
+
     // Stop the loop through the endpoint itself.
     let _ = line_exit();
     out
@@ -391,6 +468,16 @@ fn main() {
     // test with many vectors, and listing must never open a window.
     if std::env::args().any(|a| a == "--list") {
         println!("agent_transport: test");
+        return;
+    }
+    if let Ok(which) = std::env::var("LUMEN_SPIN_CHILD") {
+        // M48/T48.12's child: a spinning window, with or without an
+        // endpoint; `LUMEN_FRAME_REPORT` ends it after three frames.
+        let agent = (which == "endpoint").then(|| "127.0.0.1:7863".to_string());
+        lumen_static_winit::run(
+            Spin::default(),
+            lumen_static_winit::Config { agent, width: 120, height: 80, ..Default::default() },
+        );
         return;
     }
     if std::env::var("LUMEN_SESSION_CHILD").is_ok() {
