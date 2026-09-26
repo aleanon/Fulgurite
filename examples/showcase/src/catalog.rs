@@ -291,7 +291,7 @@ pub static CATALOG: &[Entry] = &[
     entry!("Text", "Avatar", "Initials, trimmed on a char boundary.",
         false,
         |s| on(s, Demo::Avatar(DAvatar {
-            a: Avatar { initials: "ÅB".into() }, b: Avatar { initials: "JD".into() }, c: Avatar { initials: "K".into() } })),
+            a: Avatar::new("ÅB".into()), b: Avatar::new("JD".into()), c: Avatar::new("K".into()) })),
         none),
     entry!("Text", "Icon", "All eight marks, drawn from primitives.",
         false,

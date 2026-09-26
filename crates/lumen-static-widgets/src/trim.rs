@@ -8,7 +8,7 @@
 use lumen_static::desc::{NodeDesc, NodeState, NO_PARENT};
 use lumen_static::display::{Color, Painter};
 use lumen_static::ops::{record_painted, rect_of, resolve_self};
-use lumen_static::style::{Align, Edges, Length, Seed, Style};
+use lumen_static::style::{Edges, Length, Seed, Style};
 use lumen_static::widget::{Node, Widget};
 use lumen_static::{Constraints, LayoutCx, Size, TextStorage};
 
@@ -190,7 +190,14 @@ impl<S: TextStorage> Node for Badge<S> {
         let m = self.measured.get_or(key, text, || {
             cx.text.measure_weighted(text, me.font_size, me.font_weight, limits.max_w)
         });
-        let content = Size { w: m.w + me.padding.horizontal(), h: m.h + me.padding.vertical() };
+        let mut content = Size { w: m.w + me.padding.horizontal(), h: m.h + me.padding.vertical() };
+        // **Never narrower than tall** — M57/B1. The rustdoc promises a
+        // one- or two-character count comes out circular, and nothing made
+        // it so: "3" was round only because the digit is narrow, and "12"
+        // was a pill (`docs/widget-audit.md`, Badge).
+        if content.w < content.h {
+            content.w = content.h;
+        }
         let size = resolve_self(limits, &me, content);
         record_painted(st, i, limits, size, &me)
     }
@@ -220,8 +227,11 @@ impl<S: TextStorage> Node for Badge<S> {
         }
         out.rounded_rect(r, s.bg, s.radius.min((r[3] - r[1]) / 2.0));
         lumen_static::ops::border(st, i, out);
-        let inner = [r[0] + s.pad.0, r[1] + s.pad.1, r[2] - s.pad.2, r[3] - s.pad.3];
-        out.text_weighted(inner, self.text.as_ref(), s.font_size, s.font_weight, s.fg);
+        // Centred on the measured text, not drawn from the inner left —
+        // which is only centred when nothing widened the box (B1 does).
+        let m = self.measured.size();
+        let x = r[0] + ((r[2] - r[0]) - m.w).max(0.0) / 2.0;
+        out.text_weighted([x, r[1] + s.pad.1, x + m.w, r[3] - s.pad.3], self.text.as_ref(), s.font_size, s.font_weight, s.fg);
     }
 
     lumen_static::leaf_common!(Badge<S>, 0, nohit);
@@ -368,15 +378,24 @@ pub struct Avatar<S: TextStorage = &'static str> {
     /// avatar is decoration, and a panic here would take a frame down
     /// over a name.
     pub initials: S,
+    /// The shown initials' measured box, so `paint` can centre them —
+    /// M57/B3. Keyed on a fold of the bytes, as `Badge`'s is.
+    measured: lumen_static::text::FoldedText,
 }
 
 impl<S: TextStorage> Default for Avatar<S> {
     fn default() -> Self {
-        Avatar { initials: S::default() }
+        Avatar { initials: S::default(), measured: lumen_static::text::FoldedText::new() }
     }
 }
 
 impl<S: TextStorage> Avatar<S> {
+    /// A constructor, because the memo is private (M57/B3) — the same
+    /// reason `Badge::new` exists.
+    pub fn new(initials: S) -> Self {
+        Avatar { initials, measured: lumen_static::text::FoldedText::new() }
+    }
+
     pub fn set(&mut self, initials: S) {
         self.initials = initials;
     }
@@ -411,7 +430,6 @@ impl<S: TextStorage> Widget for Avatar<S> {
             color: Color(0xff, 0xff, 0xff, 0xff),
             font_size: 15.0,
             font_weight: 700.0,
-            align: Align::Center,
             ..Style::default()
         }
     }
@@ -434,7 +452,7 @@ const AVATAR: f32 = 40.0;
 impl<S: TextStorage> Node for Avatar<S> {
     fn layout(
         &mut self,
-        _cx: &mut LayoutCx,
+        cx: &mut LayoutCx,
         limits: Constraints,
         style: &[Style],
         st: &mut [NodeState],
@@ -442,6 +460,14 @@ impl<S: TextStorage> Node for Avatar<S> {
     ) -> Size {
         let me = style[i];
         let size = resolve_self(limits, &me, Size { w: AVATAR, h: AVATAR });
+        // Measured so paint can centre them (M57/B3).
+        let key = lumen_static::text::MeasureKey::of(limits, &me, cx.scale());
+        let s = self.initials.as_ref();
+        let shown = match s.char_indices().nth(2) {
+            Some((at, _)) => &s[..at],
+            None => s,
+        };
+        self.measured.get_or(key, shown, || cx.text.measure_weighted(shown, me.font_size, me.font_weight, f32::INFINITY));
         record_painted(st, i, limits, size, &me)
     }
 
@@ -471,18 +497,18 @@ impl<S: TextStorage> Node for Avatar<S> {
         }
         out.rounded_rect(r, s.bg, w.min(h) / 2.0);
         lumen_static::ops::border(st, i, out);
-        // Roughly centred: the text primitive takes a box and aligns
-        // within it, so the box is the avatar inset by a quarter of its
-        // height — which puts a cap-height glyph on the middle line
-        // without the widget needing to measure anything.
-        let inset = h * 0.26;
-        out.text_weighted(
-            [r[0], r[1] + inset, r[2], r[3] - inset],
-            self.shown(),
-            s.font_size,
-            s.font_weight,
-            s.fg,
-        );
+        // **Centred on the measured initials** — M57/B3. This passed the
+        // whole avatar to the text primitive on the belief that it aligns
+        // within its box; it draws from the box's left edge, so the
+        // initials sat 9.5–14 px left of centre and a "J" poked out of the
+        // circle (`docs/widget-audit.md`, bug 2). Clipped to the avatar,
+        // so a wide pair cannot spill.
+        let m = self.measured.size();
+        let x = r[0] + (w - m.w) / 2.0;
+        let y = r[1] + (h - m.h) / 2.0;
+        out.push_clip(r);
+        out.text_weighted([x, y, x + m.w, y + m.h], self.shown(), s.font_size, s.font_weight, s.fg);
+        out.pop_clip();
     }
 
     lumen_static::leaf_common!(Avatar<S>, 0, nohit);
