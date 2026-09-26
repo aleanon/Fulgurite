@@ -1085,7 +1085,7 @@ impl Agent {
                     "this host cannot paste".into(),
                     json!({ "supported": false }),
                 ))?;
-                Ok(json!({ "frame": f, "kept": kept, "chars": n }))
+                Ok(json!({ "frame": self.reply_frame(), "host_frame": f, "kept": kept, "chars": n }))
             }
             _ => Err((METHOD_NOT_FOUND, format!("unknown method `{method}`"), Value::Null)),
         }

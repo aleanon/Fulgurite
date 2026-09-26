@@ -88,3 +88,28 @@ fn preedit_then_commit_types_into_the_focused_field() {
     let r = ask(&mut s, "input.compose", "{}");
     assert_eq!(r["error"]["code"], -32602, "no text and no cancel must be refused: {r}");
 }
+
+/// `input.paste` (M45/T45.7) keeps T48.1's contract: its reply's `frame`
+/// is the journal frame it lands in, so `since = frame - 1` finds it.
+/// Pasted three times, because the two counters agree on a fresh session.
+#[test]
+fn a_paste_reply_names_the_journal_frame() {
+    let host: Host<Form, _, _> = Host::new(Form::default(), 320, 120);
+    let mut s = Local::from_host(host, "agent-paste-frame", Color(255, 255, 255, 255), Recover::Off);
+    s.frame(0.0, 320, 120);
+    s.agent_frame_done(Default::default());
+    ask(&mut s, "input.click", r##"{"selector":"#field"}"##);
+    s.frame(16.0, 320, 120);
+    s.agent_frame_done(Default::default());
+    let field = ask(&mut s, "ui.resolve", r##"{"selector":"#field"}"##)["result"]["index"].as_u64().unwrap();
+    for k in 1..=3 {
+        let r = ask(&mut s, "input.paste", r#"{"text":"xy"}"#);
+        let f = r["result"]["frame"].as_u64().expect("a paste names a frame");
+        s.frame(16.0, 320, 120);
+        s.agent_frame_done(Default::default());
+        let lc = ask(&mut s, "ui.lastChange", &format!(r#"{{"since":{}}}"#, f - 1));
+        let hit = lc["result"]["changed"].as_array().unwrap().iter().any(|c| c["index"].as_u64() == Some(field));
+        println!("paste {k}: reply frame {f}, #field among the changes: {hit}");
+        assert!(hit, "paste {k}: `since = reply.frame - 1` did not find the field: {lc}");
+    }
+}
