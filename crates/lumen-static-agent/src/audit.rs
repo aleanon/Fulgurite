@@ -432,12 +432,14 @@ impl Auditor {
     /// nodes, so the old finding set is discarded and everything true now
     /// re-announces itself. An agent that just swapped a dylib wants the
     /// current state of the world, not a diff against a vanished one.
-    pub fn record(&mut self, frame: u64, tree: &mut TreeMut, structural_reset: bool) {
+    /// `live` as the journal's — `Agent::frame_done` computes it once
+    /// (M48/T48.8).
+    pub fn record(&mut self, frame: u64, tree: &mut TreeMut, structural_reset: bool, live: &[bool]) {
         // `found` is the buffer the previous frame's findings vacated:
         // the two alternate, so a frame with findings allocates nothing
         // once both have grown.
         let mut found = std::mem::take(&mut self.spare);
-        self.collect(tree, &mut found);
+        self.collect(tree, &mut found, live);
 
         if structural_reset {
             self.current.clear();
@@ -558,7 +560,7 @@ impl Auditor {
         out
     }
 
-    fn collect(&mut self, tree: &mut TreeMut, out: &mut Vec<Finding>) {
+    fn collect(&mut self, tree: &mut TreeMut, out: &mut Vec<Finding>, live: &[bool]) {
         out.clear();
         let st = tree.states;
 
@@ -579,8 +581,6 @@ impl Auditor {
         let mut opaque_content = false;
 
         let table = tree.table;
-        let mut live = Vec::new();
-        crate::live_nodes(tree.as_ref().root, table, &mut live);
         for (i, d) in table.iter().enumerate() {
             let leaf = d.child_count == 0 && !d.is_container();
             let a = area(&st[i]);

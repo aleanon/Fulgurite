@@ -169,14 +169,13 @@ fn measure_into(
     geom: &mut Vec<Geom>,
     sums: &mut Vec<u64>,
     list: &mut lumen_static::DisplayList,
+    live: &[bool],
 ) {
     let n = tree.table.len();
     geom.clear();
     sums.clear();
     list.clear();
     sums.resize(n, 0);
-    let mut live = Vec::new();
-    crate::live_nodes(tree.root, tree.table, &mut live);
 
     for (i, (d, sum)) in tree.table.iter().zip(sums.iter_mut()).enumerate() {
         let st = tree.states[i];
@@ -210,7 +209,7 @@ fn measure_into(
         // hidden branch by its area: a hidden subtree is zeroed by
         // `layout`, and a part is laid out to be seen. Costs one paint of
         // such a container's subtree per frame, only where one exists.
-        if live[i] && owns_a_visible_part(tree, &live, i) {
+        if live[i] && owns_a_visible_part(tree, live, i) {
             let from = list.len();
             tree.root.node(i).paint(tree.states, i, list);
             sums[i] = list.hash_from(from);
@@ -254,7 +253,9 @@ impl Journal {
     /// Returns true when the tree's structure changed under us, so the
     /// audit can re-seed its finding set in step (indices either side of
     /// a reload address different nodes).
-    pub fn record(&mut self, frame: u64, tree: &TreeRef) -> bool {
+    /// `live` is `crate::live_nodes_with`'s answer for this frame, which
+    /// `Agent` keeps and shares with the auditor (M48/T48.8).
+    pub fn record(&mut self, frame: u64, tree: &TreeRef, live: &[bool]) -> bool {
         // Measured into the retained buffers, then swapped with the
         // baseline — so the two Vecs alternate roles instead of one pair
         // being allocated and the other dropped every frame.
@@ -263,7 +264,7 @@ impl Journal {
             core::mem::take(&mut self.next_sums),
             core::mem::take(&mut self.list),
         );
-        measure_into(tree, &mut geom, &mut sums, &mut list);
+        measure_into(tree, &mut geom, &mut sums, &mut list, live);
         self.list = list;
         let fp = fingerprint(tree.table);
 
@@ -307,6 +308,12 @@ impl Journal {
     }
 
     fn push(&mut self, rec: FrameRecord) {
+        // The ring's whole capacity at once, on the first record: grown
+        // by doubling it reallocated at 128 and 256 frames, which
+        // `tests/alloc_frame_done.rs` read as 0.04 per call (M48/T48.8).
+        if self.records.capacity() == 0 {
+            self.records.reserve_exact(DEFAULT_CAPACITY + 1);
+        }
         self.records.push_back(rec);
         while self.records.len() > DEFAULT_CAPACITY {
             self.records.pop_front();

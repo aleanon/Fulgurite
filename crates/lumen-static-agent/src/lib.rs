@@ -139,23 +139,16 @@ pub struct TreeRef<'a> {
 /// the owner answers for it (the journal signs such an owner by painting
 /// it, `journal.rs`).
 ///
-/// O(n): one `node()` call per index and one reverse pass for the sizes.
-/// `sizes` is scratch, kept by the caller so a frame allocates nothing.
-pub fn live_nodes_with(root: &dyn Node, table: &[NodeDesc], sizes: &mut Vec<u32>, out: &mut Vec<bool>) {
+/// O(n): one `node()` call per index, against `sizes` from
+/// [`subtree_sizes`] — which depend on the table alone, so a per-frame
+/// caller computes them once per table (`Agent::frame_done` does), and
+/// both are scratch it keeps, so a frame allocates nothing (M48/T48.8).
+pub fn live_nodes_with(root: &dyn Node, table: &[NodeDesc], sizes: &[u32], out: &mut Vec<bool>) {
     // **The one place that must keep asking the instance** — M26/T26.2.
     // Everything that *reports* a kind reads `TreeRef::seeds`, because a
     // hidden node's instance is its container standing in. Here the
     // stand-in is precisely what is being detected.
-    sizes.clear();
-    sizes.resize(table.len(), 1);
-    // Pre-order: every child follows its parent, so a reverse pass has
-    // each node's size complete before it is added to its parent's.
-    for i in (1..table.len()).rev() {
-        let p = table[i].parent;
-        if p != lumen_static::NO_PARENT {
-            sizes[p as usize] += sizes[i];
-        }
-    }
+    debug_assert_eq!(sizes.len(), table.len(), "sizes are for another table");
     out.clear();
     out.resize(table.len(), true);
     for i in 0..table.len() {
@@ -167,10 +160,27 @@ pub fn live_nodes_with(root: &dyn Node, table: &[NodeDesc], sizes: &mut Vec<u32>
     }
 }
 
-/// [`live_nodes_with`] with its own scratch — for a one-off caller. The
-/// per-frame callers (the journal, the audit) keep theirs.
+/// Every node's subtree size in `table`, itself included — M48/T48.7.
+///
+/// Pre-order: every child follows its parent, so one reverse pass has
+/// each node's size complete before it is added to its parent's.
+pub fn subtree_sizes(table: &[NodeDesc], sizes: &mut Vec<u32>) {
+    sizes.clear();
+    sizes.resize(table.len(), 1);
+    for i in (1..table.len()).rev() {
+        let p = table[i].parent;
+        if p != lumen_static::NO_PARENT {
+            sizes[p as usize] += sizes[i];
+        }
+    }
+}
+
+/// [`live_nodes_with`] with its own scratch — for a one-off caller (a
+/// test, a probe). The per-frame callers share `Agent`'s.
 pub fn live_nodes(root: &dyn Node, table: &[NodeDesc], out: &mut Vec<bool>) {
-    live_nodes_with(root, table, &mut Vec::new(), out);
+    let mut sizes = Vec::new();
+    subtree_sizes(table, &mut sizes);
+    live_nodes_with(root, table, &sizes, out);
 }
 
 impl<'a> TreeRef<'a> {
@@ -248,6 +258,14 @@ pub struct Agent {
     perf_next: usize,
     journal: Journal,
     auditor: Auditor,
+    /// Scratch the journal and the auditor share — M48/T48.8 (R14-F4):
+    /// which nodes `node()` answers for, and the table's subtree sizes,
+    /// computed once per table (`sized_for`). Each allocated per call
+    /// until then — 4.04 allocations per `frame_done` against a
+    /// documented zero (`tests/alloc_frame_done.rs`).
+    live: Vec<bool>,
+    sizes: Vec<u32>,
+    sized_for: (usize, usize),
 }
 
 /// Frames `app.perf` summarises. Two seconds at 60 Hz: enough for a
@@ -441,6 +459,9 @@ impl Agent {
             perf_next: 0,
             journal: Journal::default(),
             auditor: Auditor::default(),
+            live: Vec::new(),
+            sizes: Vec::new(),
+            sized_for: (0, usize::MAX),
         }
     }
 
@@ -551,9 +572,11 @@ impl Agent {
     /// Runs both the journal's diff and the ambient audit — the audit is
     /// the larger half, and this doc omitted it entirely until
     /// 2026-09-02. Measured at 901 nodes: 46 µs against a 7.3 µs frame
-    /// with few findings, 54 µs with 132, and **zero allocations in
-    /// steady state** either way (`docs/results-agent-cost.md`). A dev
-    /// surface, not a release path.
+    /// with few findings, 54 µs with 132 (`docs/results-agent-cost.md`).
+    /// **Zero allocations in steady state** either way — claimed since
+    /// 2026-09-02, false by 4.04 per call until M48/T48.8 moved the
+    /// liveness mask onto `Agent`, and asserted since by
+    /// `tests/alloc_frame_done.rs`. A dev surface, not a release path.
     pub fn frame_done(&mut self, tree: &mut TreeMut, timing: FrameTiming) {
         self.frame += 1;
         if self.perf.len() < PERF_RING {
@@ -562,8 +585,14 @@ impl Agent {
             self.perf[self.perf_next] = timing;
         }
         self.perf_next = (self.perf_next + 1) % PERF_RING;
-        let structural_reset = self.journal.record(self.frame, &tree.as_ref());
-        self.auditor.record(self.frame, tree, structural_reset);
+        let key = (tree.table.as_ptr() as usize, tree.table.len());
+        if self.sized_for != key {
+            subtree_sizes(tree.table, &mut self.sizes);
+            self.sized_for = key;
+        }
+        live_nodes_with(&*tree.root, tree.table, &self.sizes, &mut self.live);
+        let structural_reset = self.journal.record(self.frame, &tree.as_ref(), &self.live);
+        self.auditor.record(self.frame, tree, structural_reset, &self.live);
     }
 
     /// Dispatch one JSON-RPC 2.0 request, returning the response object.

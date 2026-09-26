@@ -86,7 +86,9 @@ fn per_frame(max_h: f32) -> (f64, usize) {
     let mut st = vec![NodeState::default(); Tree::NODE_COUNT];
     pass::layout(&mut w, &sty, &mut st, Constraints { min_w: 0.0, max_w: 1920.0, min_h: 0.0, max_h });
     let mut agent = Agent::new();
-    for _ in 0..5 {
+    // Past the journal's 256-frame ring, so the counted frames are the
+    // ring's steady state -- pop one, push one -- and not its filling.
+    for _ in 0..300 {
         agent.frame_done(&mut TreeMut::of_root(&mut w, &sty, &st), FrameTiming::passes(1, 1));
     }
     let before = ALLOCS.load(Ordering::Relaxed);
@@ -97,7 +99,6 @@ fn per_frame(max_h: f32) -> (f64, usize) {
 }
 
 #[test]
-#[ignore = "red until T48.8: R14-F4, frame_done allocates four times a call"]
 fn frame_done_allocates_nothing_in_steady_state() {
     let (tall, tall_findings) = per_frame(100_000.0);
     let (short, short_findings) = per_frame(900.0);

@@ -99,3 +99,15 @@ gap.
 steady state, either viewport. That is an integer, it is
 machine-independent, and `benches --bin agent` prints it. The µs figures
 are not portable and should not be gated on.
+
+**It is asserted since M48/T48.8** (R14-F4), by
+`crates/lumen-static-agent/tests/alloc_frame_done.rs` in `just test`,
+and **the table's "0" above had stopped being true**: the bench printed
+4.00 per call and nothing read it. `live_nodes` built an identity `Vec`
+every call and the journal and the auditor each built their own `live`
+mask. At T48.0 the test read `allocs/frame_done 4.04 / bound 0` at 911
+nodes, with 0 and with 162 findings; now `0.00 / bound 0` both ways,
+counted over 100 calls after 300 warm ones (past the journal's
+256-frame ring, so the counted frames are its steady state). The mask
+and the table's subtree sizes are scratch on `Agent`, the sizes computed
+once per table.
