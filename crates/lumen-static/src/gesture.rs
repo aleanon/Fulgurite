@@ -197,11 +197,18 @@ impl LongPress {
     /// Once, not every tick: a long press is an event, and a recognizer
     /// that kept reporting it would fire a context menu per frame for
     /// as long as the finger stayed down.
+    ///
+    /// A negative or NaN `dt` holds nothing (M47/T47.5: a NaN used to
+    /// stall the press for ever); a huge one completes it.
     pub fn tick(&mut self, dt: f32) -> Option<Point> {
         let (_, at) = self.down?;
         if self.fired {
             return None;
         }
+        // A NaN `dt` advances nothing (M47/T47.5, R7-F8): `clamp` returns
+        // it unchanged, and a NaN `held` is never `>= hold`, so the press
+        // never fired however long the finger stayed down.
+        let dt = if dt.is_nan() { 0.0 } else { dt };
         self.held += clamp(dt, 0.0, self.hold);
         if self.held >= self.hold {
             self.fired = true;

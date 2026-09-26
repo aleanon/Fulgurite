@@ -134,7 +134,8 @@ impl<T: Lerp> Animated<T> {
     /// can stop asking for frames.
     pub fn settled(&self) -> bool {
         // Spelled positively so NaN lands in the "settled" arm: an
-        // animation with a NaN duration must stop, not run forever.
+        // animation with a NaN duration must stop, not run forever. A NaN
+        // *elapsed* cannot arise: `tick` treats a NaN `dt` as 0 (M47/T47.5).
         !self.duration.is_finite() || self.duration <= 0.0 || self.elapsed >= self.duration
     }
 
@@ -167,6 +168,11 @@ impl<T: Lerp> Animated<T> {
 
     /// Advance by `dt` milliseconds. Returns whether the value changed,
     /// so a caller knows whether the frame needs repainting.
+    ///
+    /// `dt` is guarded rather than trusted: a stall's huge `dt` lands on
+    /// the target, a negative one moves nothing, and **a NaN one moves
+    /// nothing** (M47/T47.5) — it used to leave the value unsettled for
+    /// ever, since a NaN `elapsed` is never past the duration.
     pub fn tick(&mut self, dt: f32) -> bool {
         if self.settled() {
             return false;
@@ -174,7 +180,13 @@ impl<T: Lerp> Animated<T> {
         // Guarded rather than trusted: a host that stalls hands back a
         // huge `dt`, and a negative one is a clock that went backwards.
         // Both must land the value somewhere sane rather than off the
-        // end of the curve.
+        // end of the curve. **A NaN advances nothing** (M47/T47.5,
+        // R7-F8): `clamp` hands a NaN back unchanged, and a NaN
+        // `elapsed` is never `>= duration`, so the value never settled
+        // and a loop asking for frames while anything animates never
+        // went idle. Treated as 0, as `Timers::advance` refuses a
+        // non-finite `dt`.
+        let dt = if dt.is_nan() { 0.0 } else { dt };
         self.elapsed += clamp(dt, 0.0, self.duration);
         true
     }

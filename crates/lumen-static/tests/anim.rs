@@ -161,7 +161,6 @@ fn an_animated_value_costs_no_registry() {
 /// the bound. The `-inf` and `1e9` arms are the accepting direction: a
 /// clock that went backwards and a stalled host already land sanely.
 #[test]
-#[ignore = "red until T47.5: R7-F8, a NaN dt leaves an animation unsettled forever"]
 fn a_nan_dt_advances_nothing_and_the_animation_still_settles() {
     const BOUND: usize = 13;
     for (label, bad, most) in

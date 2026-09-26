@@ -152,7 +152,6 @@ fn recognizers_cost_nothing_to_a_tree_that_holds_none() {
 /// takes the same 32; the `1e9` arm (a stalled host) fires on the stall
 /// itself and needs none.
 #[test]
-#[ignore = "red until T47.5: R7-F8, a NaN dt stalls a long press for ever"]
 fn a_nan_dt_advances_nothing_and_the_press_still_fires() {
     const BOUND: usize = 32;
     for (label, bad, most) in
