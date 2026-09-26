@@ -130,6 +130,7 @@ fixtures:
     ./scripts/abi_stamp.sh
     ./scripts/window_reload_demo.sh
     cargo run -q -p miri-reload
+    ./scripts/reload_gating.sh
 
 # Every refusal, planted (M43, docs/plan-gate-hygiene.md §2.4): each check
 # runs green on an unmodified copy of the tree, then each plant under

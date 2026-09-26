@@ -126,7 +126,6 @@ carries across. The application needs three things.
 # extern crate lumen_static;
 # extern crate lumen_static_shell;
 # extern crate lumen_static_widgets;
-# extern crate lumen_static_reload;
 # use lumen_static::prelude::*;
 # use lumen_static::{App as DeriveApp, Reloadable as DeriveReloadable};
 # use lumen_static::style::{Length, Patch, Rule, Selector};
@@ -152,6 +151,11 @@ window which features to build the library with; the default is `hot`):
 ```toml
 {{#include ../../fixtures/hot-window/Cargo.toml:features}}
 ```
+
+`hot` is the only thing that turns the reload surface on. Without it,
+`#[derive(Reloadable)]` expands to nothing and the `#[reload(..)]`
+attributes are inert, so a release build carries none of it — no serde_json,
+no reload crate — and the library export is `#[cfg(feature = "hot")]`.
 
 At start-up the statically linked application runs at once and the first
 build starts, so there is no wait. After that, every save follows the

@@ -1320,7 +1320,9 @@ fn expand_reloadable(input: DeriveInput) -> syn::Result<Ts2> {
         quote! {}
     };
 
-    Ok(quote! {
+    // Through the core's `__reloadable!` (M49/T49.9): nothing at all
+    // unless the core's `reload` feature is on.
+    Ok(quote! { ::lumen_static::__reloadable! {
         #no_default
 
         impl ::lumen_static::reload::Reloadable for #name {
@@ -1337,7 +1339,7 @@ fn expand_reloadable(input: DeriveInput) -> syn::Result<Ts2> {
                 #(#restore_stmts)*
             }
         }
-    })
+    }})
 }
 
 /// `#[derive(Reloadable)]` on a widget enum — M49/T49.5
@@ -1367,7 +1369,7 @@ fn expand_reloadable_enum(name: &syn::Ident, name_str: &str, data: &syn::DataEnu
         tys.push(f.unnamed[0].ty.clone());
     }
     let names: Vec<String> = idents.iter().map(|i| i.to_string()).collect();
-    Ok(quote! {
+    Ok(quote! { ::lumen_static::__reloadable! {
         impl ::lumen_static::reload::Reloadable for #name {
             fn save(&self) -> ::lumen_static::reload::Value {
                 match self {
@@ -1400,7 +1402,7 @@ fn expand_reloadable_enum(name: &syn::Ident, name_str: &str, data: &syn::DataEnu
                 }
             }
         }
-    })
+    }})
 }
 
 /// `#[derive(StaticTree)]` on an enum — plan T4.4, §6's variant hatch.

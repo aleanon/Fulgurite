@@ -61,5 +61,7 @@ pub fn program() -> Program<Counter> {
         .style(|_: &Counter| vec![Rule::new(Selector::Id("inc"), Patch::new().width(Length::FILL))])
 }
 
+// Only a hot build is a library a window loads (M49/T49.9).
+#[cfg(feature = "hot")]
 lumen_static_reload::export_program!(program);
 // ANCHOR_END: program

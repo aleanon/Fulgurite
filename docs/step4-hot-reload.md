@@ -150,9 +150,13 @@ comfortably inside the 2 s criterion end to end.
    the §7 rule — but a component system that passes framework types
    across the seam will need the fingerprint problem solved or avoided
    the same way. (Lumen's `hotpatch.rs` documents the same conclusion.)
-2. **Reload surface is not yet cfg-gated.** serde/serde_json ride along
-   in release builds; §9 says the dev surface must compile to nothing.
-   Deferred to the observability step, which shares the gating.
+2. **The reload surface is cfg-gated** (M49/T49.9). `#[derive(Reloadable)]`
+   expands through the core's `__reloadable!`, which is nothing without
+   `lumen-static/reload`, so an application that derives it builds with
+   reload off and carries no serde_json: `fixtures/hot-window` forwards
+   its `hot` feature to the reload features instead of enabling them
+   always, and `just reload-gating` counts serde_json in its graph (0
+   without `hot`, 2 with). The export line is `#[cfg(feature = "hot")]`.
 3. **`fresh()` = `Default`** — sufficient until construction needs
    context (an allocator handle, §8's one type axis); revisit then.
 

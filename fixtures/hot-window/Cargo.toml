@@ -11,16 +11,27 @@ publish = false
 # never this checked-in one. Its library is `program()` behind
 # `export_program!`; its binary is `program().run()`.
 
+# M49/T49.9: `hot` turns the reload surface on, and nothing else does. The
+# `Reloadable` derive expands to nothing without the core's `reload`, so a
+# build without `hot` carries no serde_json and no reload crate at all
+# (`just reload-gating` counts it). It used to enable `reload` on every
+# dependency unconditionally, because the derive did not build without it.
 # ANCHOR: features
 [features]
-hot = ["lumen-static-winit/hot"]
+hot = [
+    "lumen-static-winit/hot",
+    "lumen-static/reload",
+    "lumen-static-widgets/reload",
+    "lumen-static-shell/reload",
+    "dep:lumen-static-reload",
+]
 agent = ["lumen-static-winit/agent", "lumen-static-widgets/observe"]
 # ANCHOR_END: features
 
 [dependencies]
-lumen-static = { path = "../../crates/lumen-static", features = ["reload"] }
-lumen-static-widgets = { path = "../../crates/lumen-static-widgets", features = ["reload"] }
-lumen-static-shell = { path = "../../crates/lumen-static-shell", features = ["truetype", "reload"] }
-lumen-static-reload = { path = "../../crates/lumen-static-reload", features = ["window"] }
+lumen-static = { path = "../../crates/lumen-static" }
+lumen-static-widgets = { path = "../../crates/lumen-static-widgets" }
+lumen-static-shell = { path = "../../crates/lumen-static-shell", features = ["truetype"] }
+lumen-static-reload = { path = "../../crates/lumen-static-reload", features = ["window"], optional = true }
 lumen-static-winit = { path = "../../crates/lumen-static-winit" }
 serde = { version = "1", features = ["derive"] }

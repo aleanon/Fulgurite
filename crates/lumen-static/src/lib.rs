@@ -208,6 +208,31 @@ pub use event::{Event, EventCtx, InputQueue, Key, Mods, PointerButton, TouchPhas
 // so `use lumen_static::App` brings in whichever the position calls for.
 pub use event::App;
 pub use lumen_static_macros::{App, Reloadable, StaticTree};
+
+/// **What `#[derive(Reloadable)]` expands through** — M49/T49.9, R5-F8.
+///
+/// The derive and its `#[reload(..)]` attribute are always registered, so
+/// an application that derives `Reloadable` builds whether or not hot
+/// reload is on. The derive wraps everything it emits in this macro, and
+/// the core defines it twice: with the `reload` feature it passes the
+/// tokens through, and without it it expands to **nothing** — no impl,
+/// no path into `lumen_static::reload` (which does not exist then), no
+/// serde. So the dev surface costs a release build nothing, which
+/// handoff §9 requires, and `just reload-gating` checks.
+#[doc(hidden)]
+#[cfg(feature = "reload")]
+#[macro_export]
+macro_rules! __reloadable {
+    ($($t:tt)*) => { $($t)* };
+}
+
+/// See the `reload` definition above; this one is the release shape.
+#[doc(hidden)]
+#[cfg(not(feature = "reload"))]
+#[macro_export]
+macro_rules! __reloadable {
+    ($($t:tt)*) => {};
+}
 pub use overlay::{NoOverlays, OverlaySink, Overlays};
 pub use anim::{Animated, Easing, Lerp};
 pub use drag::{Drag, DragPhase};
