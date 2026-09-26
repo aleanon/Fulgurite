@@ -907,6 +907,8 @@ The years go to:
   selection across all of it. *Status (M45):* font fallback **DECIDED** —
   a list of fallback faces, loaded the first time a run needs one
   (`docs/plan-text-correctness.md` §2.4, `docs/results-text.md` T45.3).
+  Shaped paint **OPEN**: `lumen-static-text` shapes for measurement only,
+  and the painter draws the unshaped string (§2.1 there; T45.4).
 - **Platform integration**: multi-window, HiDPI, per-monitor scaling, clipboard,
   drag and drop
 

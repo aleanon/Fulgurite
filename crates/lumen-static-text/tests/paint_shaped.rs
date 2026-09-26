@@ -8,6 +8,10 @@
 //! claim as T15.8 made it — the painted glyph ids are the shaper's, in
 //! visual order, and the ink stays in the shaper's box — and prints
 //! whether what was painted is simply the isolated forms.
+//!
+//! **It is expected to fail** (M45/T45.4, `docs/plan-text-correctness.md`
+//! §2.1 B): the claim is T15.8's, T15.8 is now "measurement only", and
+//! the second test states the limitation as it stands.
 
 use lumen_static::display::{Color, DisplayList, Renderer};
 use lumen_static::TextMeasure;
@@ -21,8 +25,13 @@ mod pinned;
 const WORD: &str = "\u{645}\u{631}\u{62d}\u{628}\u{627}";
 const PX: f32 = 32.0;
 
+/// **The pin** — M45/T45.4. Expected to fail: T15.8 is "measurement
+/// only" (`docs/plan-capabilities.md`), and this is the claim it used to
+/// make. The day a painter draws the shaper's glyphs, this stops
+/// panicking, the harness reports it red, and T15.8's status, this
+/// crate's rustdoc and the book's table have to move with it.
 #[test]
-#[ignore = "red until shaped paint (§2.1 A): R10-F2, the painter draws cmap glyphs in logical order"]
+#[should_panic(expected = "the painter drew other glyphs than the shaper produced")]
 fn arabic_paints_the_shapers_glyphs_right_to_left_inside_its_box() {
     let bytes = pinned::bytes();
     let mut shaper = ComplexText::new(bytes, PX).expect("the pinned face parses");
@@ -65,4 +74,19 @@ fn arabic_paints_the_shapers_glyphs_right_to_left_inside_its_box() {
     println!("box {r:?}, ink {x0}..{x1} x {y0}..{y1}, inside (1 px): {inside}");
     assert_eq!(painted, shaped, "the painter drew other glyphs than the shaper produced");
     assert!(inside, "the painted ink left the shaper's box");
+}
+
+/// **The limitation, as it stands** — M45/T45.4. With no width limit, the
+/// painter draws the word's letters as their isolated cmap glyphs, in
+/// logical order. When shaped paint lands this goes red beside the pin.
+#[test]
+fn painted_arabic_is_its_isolated_letters_in_logical_order() {
+    let bytes = pinned::bytes();
+    let face = rustybuzz::Face::from_slice(bytes, 0).expect("the pinned face parses");
+    let isolated: Vec<u16> = WORD.chars().map(|c| face.glyph_index(c).map_or(0, |g| g.0)).collect();
+    let font = FontStack::from_bytes(bytes, None).expect("the pinned face parses");
+    let (placed, _) = font.place_run(WORD, PX, 400.0, f32::INFINITY);
+    let painted: Vec<u16> = placed.iter().map(|p| p.id.index()).collect();
+    println!("painted {painted:?}, isolated (logical order) {isolated:?}");
+    assert_eq!(painted, isolated, "the painter no longer draws the isolated letters: shaped paint has landed, so T15.8 and this crate's docs must say so");
 }

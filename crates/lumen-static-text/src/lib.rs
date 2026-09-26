@@ -19,11 +19,23 @@
 //! `FontMetrics` are untouched, and `just thumb` still builds the core
 //! with no `std` and no allocator.
 //!
-//! # What it does and does not do
+//! # What it does and does not do — measurement only
 //!
-//! It shapes and it orders. It does **not** replace the rasteriser:
-//! glyphs still reach the screen through `lumen-static-shell`'s canvas,
-//! so this changes *where the glyphs go*, not how they are drawn.
+//! It shapes and it orders, and what that changes is **the box and the
+//! clusters**: the width a run is laid out in, and where a caret, a
+//! selection and a click land. It does **not** change what is painted.
+//! Glyphs reach the screen through `lumen-static-shell`'s canvas, which
+//! draws the *string* with its own cmap lookup in logical order — so
+//! Arabic is painted unjoined and left to right inside a box measured
+//! for the joined, right-to-left run (R10-F2,
+//! `docs/plan-text-correctness.md` §2.1). This used to say it "changes
+//! where the glyphs go", which it never did.
+//!
+//! **A window cannot install it.** The winit `Session` builds a
+//! `FontMetrics`, and a `Program` has no measurer parameter; a `Host`
+//! caller passes one to `pump_with` by hand. Shaped paint — the painter
+//! consuming this crate's glyphs — is a proposed milestone of its own,
+//! and `tests/paint_shaped.rs` is the pin that goes red when it lands.
 #![forbid(unsafe_code)]
 
 use lumen_static::cx::{Cluster, GlyphSink, TextMeasure};
@@ -46,7 +58,17 @@ struct Run<'a> {
     rtl: bool,
 }
 
-/// A text stack that shapes complex scripts.
+/// A text stack that shapes complex scripts — **for measurement**.
+///
+/// **Pair it only with a painter that consumes its clusters, and none
+/// exists yet.** Measured with this and painted with `Canvas::with_font`,
+/// a run is laid out in the shaper's box and drawn with fontdue's own
+/// advances, which are wider for every string (plain ASCII included), so
+/// the painter would once have wrapped every label. Since M45/T45.1 the
+/// painter lays a run out in its rect plus half a pixel and does not
+/// re-wrap one that fits, so the harm left is a horizontal overhang of a
+/// few pixels — and Arabic drawn unjoined, left to right
+/// (`docs/plan-text-correctness.md` §2.1 B).
 pub struct ComplexText {
     face: rustybuzz::Face<'static>,
     /// Fallback for everything geometric: line height, and the sizes of

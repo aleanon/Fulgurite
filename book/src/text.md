@@ -28,7 +28,7 @@ three implementations exist at different points on the cost curve:
 |---|---|---|
 | `BakedFace` | nothing — a `&'static` table in flash | measures and draws without an allocator |
 | `FontMetrics` (`fontdue`) | `alloc`, `std` | real outlines, real metrics |
-| `lumen-static-text` | its own crate | cluster-correct segmentation, Arabic joining, Indic reordering, bidi runs |
+| `lumen-static-text` | its own crate | **measurement only**: cluster-correct segmentation, Arabic joining, Indic reordering, bidi runs — for the box and the caret; the painter still draws the string unshaped |
 
 `BakedFace` exists because of a gap worth remembering: `FontMetrics` is a
 `std` crate living in the shell, so until the baked face was written the
@@ -45,6 +45,14 @@ everyone's — including the embedded targets that cannot afford a shaper.
 
 `docs/text-render-adoption-decision.md` records a different stack being
 measured against this one and declined, with reasons.
+
+**It measures; it does not paint.** The shaper decides the box a run is
+laid out in and where its carets are, and the canvas then draws the
+original string with its own glyph lookup — so Arabic is measured joined
+and right to left and painted unjoined and left to right. No window can
+install it yet either. `docs/plan-capabilities.md` T15.8 records the
+correction, and `docs/plan-text-correctness.md` §2.1 proposes shaped
+paint as its own milestone.
 
 ## Localisation
 

@@ -117,3 +117,15 @@ bytes wider to serve the multi-face path. The shipped build recovers
 multi-face offsets from the laid-out text instead, and returns the one-
 face `Faces` in 16 bytes rather than 48. Its runs sit inside the before
 build's own spread on both arms.
+
+## T45.4 — complex text says what it does (R10-F2, R10-F11)
+
+Documentation, and two pins in `lumen-static-text/tests/paint_shaped.rs`:
+the claim T15.8 made, `#[should_panic]` on "the painter drew other glyphs
+than the shaper produced", and the limitation as it stands — painted
+`[1390, 1375, 1371, 1366, 1365]`, the isolated letters in logical order.
+The smallest possible shaped paint, injected (the test word's joined
+presentation forms in visual order, unwrapped), turns both red: painted
+`[5256, 5260, 5277, 5288, 5341]` equals the shaper's, and the claim then
+fails on its next clause instead (ink to y 49 in a box ending at 47.25).
+T45.0 item 3's assertions stay green: RTL x falls, the Arabic word joins.

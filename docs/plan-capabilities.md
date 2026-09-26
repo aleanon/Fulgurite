@@ -540,7 +540,21 @@ Two behaviours that make the difference between a drag and a click:
 It builds on pointer capture (T11.2), the fourth thing to do so, which
 is what routes `PointerMove` to the node that started the gesture.
 
-### T15.8 — complex-script text — **DONE 2026-09-07**
+### T15.8 — complex-script text — **DONE 2026-09-07, measurement only**
+
+> **Corrected by M45/T45.4 (2026-09-26): measurement only.** The gate
+> below says "measures and paints right-to-left", and only the first
+> half was ever true. `ComplexText` shapes, orders and reports clusters;
+> the painter then draws the original string with fontdue — cmap glyphs
+> in logical order — so Arabic is painted unjoined and left to right
+> (R10-F2), and no window can install `ComplexText` at all (the winit
+> `Session` builds a `FontMetrics`, and `Program` has no measurer
+> parameter). The shaper's box and clusters are right and are what this
+> task delivered. **Shaped paint** — a glyph command carrying the
+> shaper's ids and positions, rasterised by id in both backends, and a
+> measurer seam on `Program` — is proposed as its own milestone
+> (`docs/plan-text-correctness.md` §2.1 A, §4). The pin that goes red the
+> day it is built is `crates/lumen-static-text/tests/paint_shaped.rs`.
 
 Bidi, Arabic and Indic shaping, grapheme-correct segmentation. The
 seam already exists — `TextMeasure` — and

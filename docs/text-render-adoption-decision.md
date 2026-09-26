@@ -57,7 +57,8 @@ by what `lumen-static-shell` already ships and by extending it:
 
 What this defers, honestly: no complex-script shaping (parley does
 bidi, Indic reordering, cluster-correct segmentation; fontdue's layout
-does not), no GPU backend, no SVG/gradient/image commands. None of them
+does not — `lumen-static-text` later added it **for measurement only**,
+M15/T15.8 as corrected by M45/T45.4: nothing paints the shaper's glyphs), no GPU backend, no SVG/gradient/image commands. None of them
 is on the path to M8b/M8c/M8/M9, and each can arrive behind the same
 seam. The `no_std` and zero-allocation profiles stay reachable, which
 adoption would have ended.
