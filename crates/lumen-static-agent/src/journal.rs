@@ -39,9 +39,17 @@ use lumen_static::{Point, Size};
 
 use crate::TreeRef;
 
-/// Frames of history kept. An agent polling once per second at 60fps
-/// stays inside this; one polling slower gets `truncated: true`.
-const DEFAULT_CAPACITY: usize = 64;
+/// Frames of history kept: about four seconds at 60 fps. An agent
+/// polling slower gets `truncated: true`.
+///
+/// **256 since M48/T48.4**, from 64. A focused field's caret, or any
+/// animation, draws a frame every 16 ms whether or not anyone asks, so
+/// one drive action of a dozen requests — focus, press, release, read
+/// back — spanned 107 journal frames under `Boundaries`, and
+/// `ui.lastDamage` answered from a truncated history with no region at
+/// all. A frame that changed nothing costs a record with an empty,
+/// unallocated `Vec`.
+const DEFAULT_CAPACITY: usize = 256;
 
 #[derive(Clone, Copy, PartialEq, Default)]
 pub(crate) struct Geom {
@@ -191,6 +199,23 @@ fn measure_into(
         if d.child_count == 0 {
             continue;
         }
+        // **A container that paints a part itself is signed by painting
+        // it** — M48/T48.4. A `Picker`'s trigger is a table node its
+        // `Picker` draws: `node(trigger)` answers with the picker, so the
+        // trigger is a stand-in and is never signed, and the picker's
+        // state-only signature has none of the trigger's text or swatch.
+        // Choosing a colour changed the trigger and the journal reported
+        // nothing (the drive's picker rows, once a repainting action with
+        // no damage over its widget began to fail). A part is told from a
+        // hidden branch by its area: a hidden subtree is zeroed by
+        // `layout`, and a part is laid out to be seen. Costs one paint of
+        // such a container's subtree per frame, only where one exists.
+        if live[i] && owns_a_visible_part(tree, &live, i) {
+            let from = list.len();
+            tree.root.node(i).paint(tree.states, i, list);
+            sums[i] = list.hash_from(from);
+            continue;
+        }
         let st = &tree.states[i];
         let mut h = 0x9E37_79B9_7F4A_7C15u64;
         for v in [st.radius, st.shadow] {
@@ -203,6 +228,25 @@ fn measure_into(
         h = h.wrapping_mul(0x9E37_79B9_7F4A_7C15).wrapping_add(st.border_width as u64);
         sums[i] = h;
     }
+}
+
+/// Whether container `i` has a direct child it paints itself: a node
+/// `node()` does not answer for (a stand-in, `live` false) that is laid
+/// out with area — see the part-signing branch in `measure_into`.
+fn owns_a_visible_part(tree: &TreeRef, live: &[bool], i: usize) -> bool {
+    let d = &tree.table[i];
+    let mut c = d.first_child as usize;
+    for _ in 0..d.child_count {
+        let s = &tree.states[c];
+        if !live[c] && s.size.w > 0.0 && s.size.h > 0.0 {
+            return true;
+        }
+        if tree.table[c].next_sibling == 0 {
+            break;
+        }
+        c = tree.table[c].next_sibling as usize;
+    }
+    false
 }
 
 impl Journal {

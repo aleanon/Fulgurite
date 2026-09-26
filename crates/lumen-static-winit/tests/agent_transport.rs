@@ -21,7 +21,18 @@
 //! without removing its marker is noticed, and a marker cannot hide a
 //! regression of anything already green.
 //!
-//! Ports 7812 and 7813 (the milestone's range is 7810–7819).
+//! Ports 7812 and 7813 (the milestone's range is 7810–7819), and 7862
+//! for M48/T48.4's session-backed window (M48's range is 7860–7869).
+//!
+//! # A real window's journal (M48/T48.4, R13-F8)
+//!
+//! The handler above only counts methods. The last case runs a
+//! **`Session`-backed window** — `lumen_static_winit::run`, in a child
+//! process, because `run` owns its event loop until the window closes —
+//! and asserts that after `input.click`, `ui.lastChange` with
+//! `since = reply.frame - 1` is non-empty. That holds only if the redraw
+//! `answer_agent` requests ran and fed the journal; deleting it (the
+//! review's `1beed32`) left every live drive green.
 
 use std::io::{Read, Write};
 use std::net::TcpStream;
@@ -29,6 +40,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use lumen_static::prelude::*;
+use lumen_static_widgets::prelude::*;
 use lumen_static_winit::agent::{self, Rpc};
 use lumen_static_winit::UserEvent;
 use winit::application::ApplicationHandler;
@@ -38,6 +51,45 @@ use winit::window::WindowId;
 
 const MAIN: &str = "127.0.0.1:7812";
 const WILD_PORT: u16 = 7813;
+/// M48/T48.4: the session-backed window's endpoint.
+const SESSION: &str = "127.0.0.1:7862";
+
+// ---- M48/T48.4: an application for a real window ----------------------------
+
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 8.0)]
+struct SUi {
+    #[widget_id("count")]
+    count: Label<String>,
+    #[widget_id("inc")]
+    inc: Button<STally>,
+}
+
+#[derive(DeriveApp, Default)]
+struct STally {
+    #[tree]
+    ui: SUi,
+    #[bind(ui.count, "count {}")]
+    n: i64,
+}
+
+/// One JSON-RPC call on its own connection, or `None` on any failure.
+fn rpc(addr: &str, method: &str, params: &str) -> Option<serde_json::Value> {
+    let mut s = TcpStream::connect(addr).ok()?;
+    s.write_all(format!("{{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"{method}\",\"params\":{params}}}\n").as_bytes())
+        .ok()?;
+    s.set_read_timeout(Some(Duration::from_secs(5))).ok()?;
+    let mut line = Vec::new();
+    let mut b = [0u8; 1];
+    loop {
+        match s.read(&mut b) {
+            Ok(1) if b[0] == b'\n' => break,
+            Ok(1) => line.push(b[0]),
+            _ => return None,
+        }
+    }
+    serde_json::from_slice(&line).ok()
+}
 
 // ---- a counting allocator: live bytes, and the peak since a reset -----------
 
@@ -282,6 +334,51 @@ fn drive(executed: Arc<AtomicUsize>) -> Vec<Outcome> {
         });
     }
 
+    // M48/T48.4 (R13-F8): a real window's redraw feeds the journal.
+    {
+        let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+            .env("LUMEN_SESSION_CHILD", "1")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .expect("spawn the session child");
+        let deadline = Instant::now() + Duration::from_secs(20);
+        let mut up = false;
+        while Instant::now() < deadline && !up {
+            up = rpc(SESSION, "ui.getTree", "{}").is_some();
+            if !up {
+                std::thread::sleep(Duration::from_millis(50));
+            }
+        }
+        let (mut landed, mut changes, mut frame) = (false, 0usize, 0u64);
+        if up {
+            // The window's first frame seeds the journal; give it one.
+            std::thread::sleep(Duration::from_millis(200));
+            if let Some(r) = rpc(SESSION, "input.click", r##"{"selector":"#inc"}"##) {
+                landed = r["result"]["handled"] == true;
+                frame = r["result"]["frame"].as_u64().unwrap_or(0);
+            }
+            // The redraw the click asked for runs on the loop; one wait,
+            // not a poll -- a redraw that never comes must fail here.
+            std::thread::sleep(Duration::from_millis(300));
+            if let Some(lc) = rpc(SESSION, "ui.lastChange", &format!(r#"{{"since":{}}}"#, frame.saturating_sub(1))) {
+                changes = lc["result"]["changed"].as_array().map_or(0, |a| a.len());
+            }
+        }
+        let _ = child.kill();
+        let _ = child.wait();
+        out.push(Outcome {
+            name: "a session window's redraw feeds the journal".into(),
+            green: up && landed && changes >= 1,
+            line: format!(
+                "window up {up}, click landed {landed}; lastChange after click: {changes} changes \
+                 (must be >= 1), since {}",
+                frame.saturating_sub(1)
+            ),
+            red_until: None,
+        });
+    }
+
     // Stop the loop through the endpoint itself.
     let _ = line_exit();
     out
@@ -294,6 +391,16 @@ fn main() {
     // test with many vectors, and listing must never open a window.
     if std::env::args().any(|a| a == "--list") {
         println!("agent_transport: test");
+        return;
+    }
+    if std::env::var("LUMEN_SESSION_CHILD").is_ok() {
+        // M48/T48.4's child: the turnkey window, with its endpoint.
+        let mut app = STally::default();
+        app.ui.inc.on_click = |t: &mut STally, _: &lumen_static::EventCtx| t.n += 1;
+        lumen_static_winit::run(
+            app,
+            lumen_static_winit::Config { agent: Some(SESSION.into()), width: 240, height: 160, ..Default::default() },
+        );
         return;
     }
     if std::env::var("LUMEN_WILD_CHILD").is_ok() {

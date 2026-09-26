@@ -41,7 +41,9 @@ struct Tally {
 struct Blind;
 
 impl Screen for Blind {
-    fn present(&mut self, _src: &mut dyn FrameSource, _page: Color) {}
+    fn present(&mut self, _src: &mut dyn FrameSource, _page: Color) -> lumen_static_shell::session::FrameTimes {
+        Default::default()
+    }
     fn frame_rgba(&self) -> Option<(u32, u32, &[u8])> {
         None
     }

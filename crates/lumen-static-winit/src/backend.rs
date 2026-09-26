@@ -27,7 +27,7 @@
 use std::time::Instant;
 
 use lumen_static::Color;
-use lumen_static_shell::session::{FrameSource, Screen};
+use lumen_static_shell::session::{FrameSource, FrameTimes, Screen};
 use lumen_static_shell::software::Canvas;
 use lumen_static_shell::text::FontStack;
 
@@ -164,8 +164,8 @@ impl Backend for Software {
 pub struct AsScreen<'a>(pub &'a mut dyn Backend);
 
 impl Screen for AsScreen<'_> {
-    fn present(&mut self, src: &mut dyn FrameSource, page: Color) {
-        self.0.present(src, page, Instant::now());
+    fn present(&mut self, src: &mut dyn FrameSource, page: Color) -> FrameTimes {
+        crate::frame_times(&self.0.present(src, page, Instant::now()))
     }
     fn frame_rgba(&self) -> Option<(u32, u32, &[u8])> {
         self.0.frame_rgba()

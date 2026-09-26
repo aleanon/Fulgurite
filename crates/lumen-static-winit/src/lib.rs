@@ -1007,7 +1007,7 @@ impl Win {
 /// default holds: `app.perf` reports `null` for it, never `0`. Input
 /// latency is not measured by this window (`counter-window` measures it
 /// itself), so it is `None` too.
-fn frame_times(f: &Frame) -> lumen_static_shell::session::FrameTimes {
+pub(crate) fn frame_times(f: &Frame) -> lumen_static_shell::session::FrameTimes {
     if f.frame_ns == 0 {
         return Default::default();
     }

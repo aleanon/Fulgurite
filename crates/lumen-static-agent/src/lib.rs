@@ -466,7 +466,7 @@ impl Agent {
 
     /// `app.perf`: the last frame, and p50/p95/max over the ring — the
     /// summary a latency budget is checked against.
-    fn perf(&self) -> Value {
+    fn perf(&self, params: &Value) -> Value {
         // An empty window is `null`, not 0: a stage nothing measured
         // must not read as a stage that took no time (M48/T48.3).
         fn pct(sorted: &[u64], p: f64) -> Option<u64> {
@@ -499,12 +499,35 @@ impl Agent {
                 }),
             );
         }
-        json!({
+        let mut out = json!({
             "frame": self.frame,
             "last": self.last_timing().json(),
             "window": summary,
             "samples": self.perf.len(),
-        })
+        });
+        // `since`: what the surface presented over the journal frames
+        // after it — M48/T48.4. The drive asks this of an action's frames
+        // and prints it beside the journal's own (logical) damage, which
+        // is a different quantity (M40 §2.1).
+        if let Some(since) = params.get("since").and_then(Value::as_u64) {
+            let n = self.frame.saturating_sub(since).min(self.perf.len() as u64) as usize;
+            let len = self.perf.len();
+            let (mut px, mut measured) = (0u64, 0usize);
+            for k in 0..n {
+                let t = &self.perf[(self.perf_next + len - 1 - k) % len];
+                if let Some(d) = t.damaged_px {
+                    px += d;
+                    measured += 1;
+                }
+            }
+            out["since"] = json!({
+                "since": since,
+                "frames": n,
+                "truncated": self.frame.saturating_sub(since) > n as u64,
+                "damaged_px": if measured > 0 { json!(px) } else { Value::Null },
+            });
+        }
+        out
     }
 
     /// Record a completed frame: the host calls this after layout +
@@ -1062,7 +1085,7 @@ impl Agent {
                 "frame": self.frame,
                 "reason": "this host cannot say whether anything is still moving",
             })),
-            "app.perf" => Ok(self.perf()),
+            "app.perf" => Ok(self.perf(params)),
             _ => Err((METHOD_NOT_FOUND, format!("unknown method `{method}`"), Value::Null)),
         }
     }

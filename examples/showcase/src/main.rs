@@ -246,6 +246,26 @@ fn refresh(s: &mut Show) -> bool {
         (e.seed)(s);
         changed = true;
     }
+    // **The toggles show the flag they are bound to** (M48/T48.4). A
+    // toggle does not flip itself: its `on` is a presentation copy the
+    // application writes back. The seed wrote it once, on selection, and
+    // nothing wrote it again -- so a click flipped `flag`, the readout
+    // followed, and the box, the switch and the radio stayed as seeded.
+    // Found when the drive began failing a repainting action that painted
+    // nothing over its widget; the old damage check skipped it.
+    let flag = s.store.flag;
+    let pair = |a: &mut bool, b: &mut bool| {
+        let moved = *a != flag || *b == flag;
+        *a = flag;
+        *b = !flag;
+        moved
+    };
+    changed |= match &mut s.ui.body.stage.row.demo {
+        Demo::CheckBox(d) => pair(&mut d.a.t.on, &mut d.b.t.on),
+        Demo::Switch(d) => pair(&mut d.a.t.on, &mut d.b.t.on),
+        Demo::Radio(d) => pair(&mut d.a.t.on, &mut d.b.t.on),
+        _ => false,
+    };
     // **Read the typed fields back before reporting.** This is what a
     // `Dyn` island could not do: a `Slider` owns its value, and through
     // a `Box<dyn Node>` there was no handle to ask.

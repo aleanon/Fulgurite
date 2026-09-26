@@ -192,6 +192,22 @@ counted from the presented regions, which grows by the scale squared
 because it had been counting logical rects as physical pixels. Reporting
 the presented damage beside the journal's is M48's (T48.3, T48.4).
 
+**And it holds only for repainting actions, and now for every one of
+them** (M48/T48.4, 2026-09-26). The drive skipped its bound when no
+region overlapped the widget, so an action that left *no* damage — the
+journal stale, or nothing painted — passed silently; deleting the
+window's redraw after an agent request left `just widget-drive` at exit
+0. An action now declares whether it repaints (default: unless it is
+`static`), a repainting action with no region over any of its nodes
+fails, and each damage line prints `presented P px` beside the ratio —
+what the surface presented over the action's journal frames, from
+`app.perf`'s `since`. The first run under that rule found three things
+the skipped check had hidden: the showcase's checkbox, switch and radio
+never showed the flag they toggled (a presentation copy nothing wrote
+back), the journal never signed a `Picker`'s trigger (a part its owner
+paints), and a caret's animation could push an action past the
+journal's 64-frame history. All three are fixed in the same commit.
+
 
 ## A third: a command-count change was the whole window — M26/T26.11, 2026-09-19
 

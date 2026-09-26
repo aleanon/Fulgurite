@@ -46,7 +46,17 @@ is open and no widget test here has ever made them:
 * **`ui.lint` is clean** — the ambient auditor already runs per frame.
 * **Damage is bounded by the widget's own box**, ratio printed. A widget
   that repaints the window to show a hover is a defect M16 and M18 exist
-  to prevent and nothing checked per widget.
+  to prevent and nothing checked per widget. **This is true of every
+  repainting action** (M48/T48.4, R13-F8): an action is repainting unless
+  it says `repaints=False`, and a repainting action with *no* region over
+  its widget fails as "no damage over the widget: journal stale or
+  nothing painted". Until then the bound was skipped when no region
+  overlapped, so deleting the window's redraw after an agent request
+  (the review's `1beed32`) left the drive at exit 0 with no damage lines.
+  The ratio is **journal** damage, in logical pixels (M40 §2.1); beside
+  it the harness prints what the **surface presented** over the action's
+  frames, from `app.perf`'s `since`, in physical pixels, and a repainting
+  action that presented 0 px fails too.
 
 Run by `scripts/widget_drive.sh`, which launches the showcase twice —
 once under `Everything` and once under `Boundaries`. That is not
@@ -132,6 +142,13 @@ class Action:
     #: check on for all the others and puts the reason next to the
     #: action that causes it.
     expects_lint: tuple = ()
+    #: Whether this action changes what the widget paints — M48/T48.4.
+    #: `None` is "unless `static`". A repainting action must leave damage
+    #: over its widget in the journal *and* a presented frame with pixels
+    #: in it; one that correctly paints nothing (a click only the
+    #: application hears, a hover with no hover style) says `False`, and
+    #: the reason goes beside it.
+    repaints: bool | None = None
 
 
 @dataclass
@@ -331,6 +348,12 @@ def _area(r) -> float:
     return max(0.0, (r[2] - r[0])) * max(0.0, (r[3] - r[1]))
 
 
+def _rect(g) -> list[float]:
+    """A `ui.lastChange` geometry (`{size, pos}`) as `[x0, y0, x1, y1]`."""
+    (x, y), (w, h) = g["pos"], g["size"]
+    return [x, y, x + w, y + h]
+
+
 def _overlaps(a, b) -> bool:
     return a[0] < b[2] and a[2] > b[0] and a[1] < b[3] and a[3] > b[1]
 
@@ -387,9 +410,9 @@ def run_widget(c: AgentClient, widget: str, sel: str, actions: list[Action],
         a.do(ctx)
 
         # (1) it landed -- on this widget, not anywhere in the frame.
+        changed = c.rpc("ui.lastChange", since=since).get("changed", [])
+        mine = [ch for ch in changed if first <= ch.get("index", -1) < end]
         if not a.static:
-            changed = c.rpc("ui.lastChange", since=since).get("changed", [])
-            mine = [ch for ch in changed if first <= ch.get("index", -1) < end]
             readout = ctx.readout()
             moved = readout != readout_before
             out.append(f"      changed in subtree: {len(mine)} node(s) of {len(changed)}, "
@@ -413,26 +436,61 @@ def run_widget(c: AgentClient, widget: str, sel: str, actions: list[Action],
         # whole frame. Total damage is reported alongside so a run that
         # quietly started repainting everything is visible in the output
         # even though it is not what this bound is about.
-        regions = c.rpc("ui.lastDamage", since=since).get("regions", [])
+        dmg = c.rpc("ui.lastDamage", since=since)
+        regions = dmg.get("regions", [])
+        # A history that no longer reaches `since` cannot say what the
+        # action damaged: refused by name, not read as "nothing".
+        if dmg.get("truncated"):
+            raise Failed(
+                f"{widget}/{a.name}: the journal no longer reaches frame {since} "
+                f"(now {dmg.get('frame')}): the action spanned more frames than it keeps")
         # An action that resizes its own widget moves everything after it,
         # so the reference box is the stage rather than the widget.
         against = ctx.box("#demo") if a.reflows else box
-        mine = [r for r in regions if _overlaps(r, box)]
+        # **Over the widget** is over any of its nodes: its own box, and
+        # where each node of its subtree that changed was and now is -- a
+        # picker's popup is its own, drawn below the trigger, and when it
+        # closes its damage is where it *was* (M48/T48.4).
+        extent = [box] + [_rect(ch[k]) for ch in mine for k in ("old", "new") if k in ch]
+        mine = [r for r in regions if any(_overlaps(r, e) for e in extent)]
+        repaints = (not a.static) if a.repaints is None else a.repaints
+        presented = c.rpc("app.perf", since=since).get("since", {})
+        shown_px = presented.get("damaged_px")
+        if repaints and not mine:
+            raise Failed(
+                f"{widget}/{a.name}: FAIL no damage (regions={len(regions)}) over the widget: "
+                f"journal stale or nothing painted; presented {shown_px} px over "
+                f"{presented.get('frames')} frame(s)")
+        if repaints and not shown_px:
+            raise Failed(
+                f"{widget}/{a.name}: the journal damaged the widget but the surface presented "
+                f"{shown_px} px over {presented.get('frames')} frame(s)")
+        if not repaints:
+            out.append(f"      damage: none expected (repaints=False); journal regions over "
+                       f"it {len(mine)}, presented {shown_px} px")
         if mine:
-            worst = max(_area(r) for r in mine)
-            ratio = worst / max(_area(against), 1.0)
+            # Each region against the largest node of the widget it
+            # covers -- the trigger for a region over the trigger, the
+            # popup for one over the popup -- or the stage for a reflow.
+            def ref(r):
+                if a.reflows:
+                    return _area(against)
+                return max((_area(e) for e in extent if _overlaps(r, e)), default=_area(box))
+            worst_r = max(mine, key=lambda r: _area(r) / max(ref(r), 1.0))
+            worst, against_px = _area(worst_r), ref(worst_r)
+            ratio = worst / max(against_px, 1.0)
             total = sum(_area(r) for r in regions)
             out.append(f"      damage: {len(regions)} region(s), "
                        f"{total:.0f} px² total; the one over this widget is "
                        f"{worst:.0f} px² against "
                        f"{'the stage' if a.reflows else 'its own'} "
-                       f"{_area(against):.0f} px² "
-                       f"= {ratio:.2f}x (bound 4.0)")
+                       f"{against_px:.0f} px² "
+                       f"= {ratio:.2f}x (journal, bound 4.0), presented {shown_px} px")
             if ratio > 4.0:
                 raise Failed(
                     f"{widget}/{a.name}: the damage region covering this widget is "
                     f"{ratio:.2f}x {'the stage' if a.reflows else 'its own box'} "
-                    f"({worst:.0f} px² over {_area(against):.0f}), "
+                    f"({worst:.0f} px² over {against_px:.0f}), "
                     f"bound 4.0")
 
         # lint stays clean

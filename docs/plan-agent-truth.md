@@ -847,6 +847,40 @@ rewritten.
   journal's counter already and equals `reply.frame - 1` for a
   one-input action — and stays right for an action of several inputs,
   where the first reply's frame would not.
+- **T48.3: the p50 regression bound cannot fail.** `ui_check.py`'s
+  `check_latency` prints the p50 "regress" line and never appends its
+  failure, so the bound the comment calls "what actually catches a
+  change" has never failed a run. Found, not fixed: out of this
+  milestone's findings, and on a loaded machine the 0.18 ms bound would
+  need its own look first.
+- **T48.4: the presented damage of an input was not in `app.perf` at
+  all.** An agent's `input.*` pumps and presents *inside* the request
+  (`Live::pump`), and the redraw after it usually finds nothing left to
+  draw, so every action's journal frame reported `damaged_px` 0 (the
+  T48.3 live run: p50 0). `Screen::present` now returns what it cost,
+  and the session folds the request's presents into the next journal
+  frame; `app.perf { since }` sums them.
+- **T48.4: the new rule found three defects the skipped check hid.**
+  (1) The showcase's checkbox, switch and radio never showed the flag
+  they toggle: `on` is a presentation copy, seeded once on selection and
+  never written back (`examples/showcase/src/main.rs`, `refresh`). (2)
+  The journal never signed a `Picker`'s trigger: `node(trigger)` answers
+  with the picker, so the trigger was a stand-in, and the picker's
+  state-only signature held none of its text or swatch. A container
+  with a visible part it paints itself is now signed by painting it
+  (`journal.rs`, `owns_a_visible_part`). (3) A caret's animation pushed
+  one PickList action to 107 journal frames against a 64-frame history,
+  and `ui.lastDamage` answered from a truncated ring with no region; the
+  ring is 256, and the drive refuses a truncated answer by name.
+- **T48.4: "over the widget" is over any of its nodes.** A picker's
+  popup is its own and is drawn below its trigger, so the bound is taken
+  against every node of the widget's subtree that changed, where it was
+  and where it is, each region against the largest node it covers.
+- **T48.4: which actions paint nothing.** The review's two silent Button
+  actions are not silent at this HEAD — all four print a damage line at
+  1.00x (M42/T42.6's `prep` moved the hover off the button first). The
+  actions declared `repaints=False` are the veils' two scrim presses
+  (a request only the application hears; the veil stays).
 
 ## Appendix: finding → task
 

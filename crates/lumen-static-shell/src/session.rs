@@ -76,7 +76,12 @@ impl<A: App, R: lumen_static::retain::Retention, I: lumen_static::invalidate::In
 /// What the window's renderer offers a session: presenting a frame, and
 /// its pixels back — for the agent, which lives with the tree.
 pub trait Screen {
-    fn present(&mut self, src: &mut dyn FrameSource, page: Color);
+    /// Present the frame, and say what it cost — `damaged_px` above all,
+    /// because a frame an agent's input pumped is presented **here**,
+    /// inside the request, and the redraw after it usually finds nothing
+    /// left to draw (M48/T48.4). `FrameTimes::default()` from a screen
+    /// that measures nothing.
+    fn present(&mut self, src: &mut dyn FrameSource, page: Color) -> FrameTimes;
     /// What the renderer drew, as RGBA8.
     fn frame_rgba(&self) -> Option<(u32, u32, &[u8])>;
     /// What the display server shows, when that is checkable.
@@ -219,6 +224,12 @@ pub struct Local<A: App> {
     /// What the last [`Session::frame`] said: whether anything is still
     /// moving. `ui.waitSettled` reads it (M48/T48.2).
     animating: bool,
+    /// Pixels the agent's own pumps presented since the last journal
+    /// frame — M48/T48.4. Folded into the next `agent_frame_done`, so a
+    /// journal frame's `damaged_px` is everything the surface presented
+    /// since the previous one, and an input's damage is not lost to the
+    /// present inside its request.
+    unjournaled_px: Option<u64>,
     #[cfg(feature = "live-agent")]
     agent: lumen_static_agent::Agent,
 }
@@ -252,6 +263,7 @@ impl<A: App + 'static> Local<A> {
             saver: None,
             restore_log: String::new(),
             animating: false,
+            unjournaled_px: None,
             #[cfg(feature = "live-agent")]
             agent: lumen_static_agent::Agent::new(),
         }
@@ -463,7 +475,15 @@ impl<A: App + 'static> Session for Local<A> {
         let page = self.page;
         let recover = self.recover;
         let animating = self.animating;
-        let mut live = Live { host: &mut self.host, metrics: &mut self.metrics, screen, page, recover, animating };
+        let mut live = Live {
+            host: &mut self.host,
+            metrics: &mut self.metrics,
+            screen,
+            page,
+            recover,
+            animating,
+            presented_px: &mut self.unjournaled_px,
+        };
         // **One call.** `dispatch_input` already falls through to
         // `dispatch` for anything that is not an `input.*` method or a
         // screenshot.
@@ -501,7 +521,10 @@ impl<A: App + 'static> Session for Local<A> {
         )
     }
 
-    fn agent_frame_done(&mut self, t: FrameTimes) {
+    fn agent_frame_done(&mut self, mut t: FrameTimes) {
+        if let Some(px) = self.unjournaled_px.take() {
+            t.damaged_px = Some(t.damaged_px.unwrap_or(0) + px);
+        }
         #[cfg(not(feature = "live-agent"))]
         let _ = t;
         // Guarded: the journal walks the tree through every widget's
@@ -615,6 +638,9 @@ pub struct Live<'a, A: App> {
     /// Whether the session's last frame was still animating — its
     /// `ui.waitSettled` term (M48/T48.2).
     pub animating: bool,
+    /// Where this request's presents add their damaged pixels, for the
+    /// next journal frame (M48/T48.4).
+    pub presented_px: &'a mut Option<u64>,
 }
 
 /// One frame at 60 Hz, in milliseconds: a timer due sooner than this is
@@ -642,7 +668,9 @@ impl<A: App> Live<'_, A> {
             };
             self.host.show(list);
         }
-        self.screen.present(self.host, self.page);
+        if let Some(px) = self.screen.present(self.host, self.page).damaged_px {
+            *self.presented_px = Some(self.presented_px.unwrap_or(0) + px);
+        }
         (self.host.frame_number(), handled)
     }
 }

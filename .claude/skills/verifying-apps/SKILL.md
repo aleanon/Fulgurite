@@ -176,7 +176,10 @@ coordinate must be finite and within ±1e7.
 `damaged_px` (how much of the frame was actually redrawn, in physical
 pixels since M40/T40.1 — `ui.lastDamage` is logical and is not the same
 quantity).
-`input_latency_ns` is the number a person feels; `damaged_px` is the
+`app.perf { since: F }` adds what the surface presented over the journal
+frames after F (`since.damaged_px`, including the frames an agent's own
+request presented) — the drive prints it beside `ui.lastDamage`'s ratio
+(M48/T48.4). `input_latency_ns` is the number a person feels; `damaged_px` is the
 one that explains a slow frame, and the one that catches a partial-redraw
 path that has quietly degraded to full frames — every *stage* still
 looks reasonable when that happens.

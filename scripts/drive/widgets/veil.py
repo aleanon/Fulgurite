@@ -48,6 +48,10 @@ def _veil(name, sel, title_sel, go_sel):
             isolate=lambda c: (c.__dict__.__setitem__("_n", _dismissals(c)),
                                c.click_outside(20.0))[0],
             injection="stop setting `dismissed` in Veil::on_event",
+            # A veil never closes itself: the press is a request only the
+            # application hears, and nothing on the veil changes until it
+            # decides (M48/T48.4 sorted it; the readout is what moves).
+            repaints=False,
         ),
         Action(
             name="it does not close itself",
@@ -60,6 +64,8 @@ def _veil(name, sel, title_sel, go_sel):
                 .format(c.box()[2] - c.box()[0], c.box()[3] - c.box()[1]),
             ),
             injection="set `self.open = false` on a scrim press",
+            # Correctly paints nothing: the point is that the veil stays.
+            repaints=False,
         ),
         Action(
             name="the control on the panel still reaches the application",

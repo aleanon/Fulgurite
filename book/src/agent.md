@@ -75,6 +75,12 @@ until a drive script could not click either checkbox (M27/T27.3).
 `ui.lastChange` answers which nodes moved or repainted since a frame;
 `ui.lastDamage` answers what that costs in pixels.
 
+**The two damages are different quantities.** `ui.lastDamage` is which
+nodes the journal saw change, in logical pixels; `app.perf { since }`
+answers what the surface actually presented over those frames, in
+physical pixels. The widget drive prints both for every action, and an
+action that repaints must show some of each (M48/T48.4).
+
 **An `input.*` reply's `frame` is the first journal frame that includes
 the input**, so `since = frame - 1` finds what it changed once the window
 has drawn that frame. It used to be the host's own counter, which moves

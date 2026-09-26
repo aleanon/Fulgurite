@@ -140,8 +140,8 @@ fn coalesces_across_frames_keeping_oldest_old_and_newest_new() {
 #[test]
 fn truncation_is_reported_not_hidden() {
     let mut f = Fixture::new();
-    // The ring holds 64 frames; run well past it.
-    for i in 0..80 {
+    // The ring holds 256 frames (64 until M48/T48.4); run well past it.
+    for i in 0..300 {
         f.app.badge.w = 20.0 + (i % 7) as f32;
         f.frame();
     }
