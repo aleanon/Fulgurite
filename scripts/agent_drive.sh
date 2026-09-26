@@ -189,6 +189,43 @@ for attempt in range(3):
 assert r["handled"] is False, f"agent-drive: setup: the hover was consumed, so it marks for another reason: {r!r}"
 assert st["hovered"], "agent-drive: setup: the hover did not land on #d_button_a"
 call("input.hover", {"x": 2, "y": 2})
+
+# ---- input.compose: an IME's frames, live (M48/T48.13) -----------------
+# "abc" by preedit, then committed, through `input.compose` -- the same
+# `Host::compose` the window routes `Ime::*` to. Each step is a frame the
+# oracle leg judges (R1-F2's shape, which M41/T41.1 closed: a compose that
+# marked nothing painted over a stale layout under `Boundaries`), and the
+# field's value is read back after each. `scripts/live/shadow.py` then
+# asserts, on the oracle leg, that no judged frame diverged.
+def pick(name):
+    if menu_box() is None:
+        call("input.click", {"selector": TRIGGER})
+    rows = [n for n in call("ui.getTree", {"depth": 64})["nodes"]
+            if (n.get("label") or "").strip().split(" - ")[-1] == name and n.get("bounds")]
+    assert len(rows) == 1, f"agent-drive: setup: expected one {name} row, got {rows!r}"
+    rb = rows[0]["bounds"]
+    call("input.click", {"x": (rb[0] + rb[2]) / 2, "y": (rb[1] + rb[3]) / 2})
+    assert trigger_label().split()[0] == name, f"agent-drive: setup: expected {name}, got {trigger_label()!r}"
+pick("TextInput")
+FIELD = "#d_textinput_a"
+call("input.fill", {"selector": FIELD, "text": ""})
+def shadow_compared():
+    sh = call("app.shadow")
+    return sh.get("compared") if sh.get("supported") else None
+c0 = shadow_compared()
+for params, want in [({"text": "a"}, "a"), ({"text": "ab"}, "ab"), ({"text": "abc"}, "abc"),
+                     ({"text": "abc", "commit": True}, "abc")]:
+    r = call("input.compose", params)
+    got = call("ui.resolve", {"selector": FIELD}).get("value")
+    print(f"agent-drive: compose {params}: changed {r['changed']}, field {got!r} (want {want!r})")
+    assert r["changed"] is True, f"agent-drive: the compose step {params} changed nothing"
+    assert got == want, f"agent-drive: after compose {params} the field reads {got!r}, want {want!r}"
+c1 = shadow_compared()
+if c0 is None:
+    print("agent-drive: compose frames judged: no oracle in this leg")
+else:
+    print(f"agent-drive: compose frames judged {c1 - c0} / bound >= 2")
+    assert c1 - c0 >= 2, f"agent-drive: the oracle judged {c1 - c0} compose frames, bound 2"
 print(f"agent-drive: {before.split()[0]} -> {after.split()[0]}, "
       f"menu {int(box[2]-box[0])}x{int(box[3]-box[1])} px, press observable")
 PY

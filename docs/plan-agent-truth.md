@@ -1,7 +1,8 @@
 # M48 — the agent says what is true, and costs nothing when unused
 
-> **T48.0–T48.14 DONE 2026-09-27**, except `input.compose`'s live leg,
-> which waits for M41/T41.2b. §6 records what building found.
+> **T48.0–T48.14 DONE 2026-09-27**, including `input.compose`'s live
+> leg, built once M41/T41.2b reached the base. §6 records what building
+> found.
 >
 > - **T48.0** — every finding red at `826c7c3`: nine checks committed
 >   `#[ignore]`d or unwired; the live rows red in their own tasks.
@@ -29,8 +30,9 @@
 > - **T48.12** — no endpoint, no journal (3 → 0 of 3 frames); 0 agent
 >   symbols without the feature (66 with).
 > - **T48.13** — `app.quit` in every window (exits in 7–32 ms, status 0,
->   every drive); `input.compose` headless — **live leg waits for
->   M41/T41.2b**.
+>   every drive); `input.compose`, headless and live — the oracle leg
+>   judged 13 frames over the compose steps, none diverged, and names
+>   `#d_textinput_a` when T41.1's mark is dropped.
 > - **T48.14** — code, skill and book: 33 / 33 / 33, checked in
 >   `static`.
 
@@ -931,11 +933,14 @@ rewritten.
   window prints `N frames drawn, M journaled` and exits — read by the
   event-loop test on a spinning window rather than on tasks-demo, which
   draws no frame unasked.
-- **T48.13: the `input.compose` live leg waits for M41/T41.2b.** The
-  method and a headless gate (`crates/lumen-static-shell/tests/agent_compose.rs`)
-  are built; `agent_drive.sh`'s Boundaries leg typing "abc" by preedit
-  and commit with the oracle reporting `first: None` over those frames
-  needs T41.2b's live legs, which are not on this base.
+- **T48.13: the `input.compose` live leg came second.** It needed
+  M41/T41.2b's live oracle legs, which reached the base after the rest of
+  M48; `agent_drive.sh` now types "abc" by preedit and commit on every
+  leg and reads the field back, and on the oracle leg counts the frames
+  the oracle judged across the steps (13 / bound ≥ 2 — the count includes
+  the caret's own frames in between, so it is an upper bound on compose
+  frames and the bound is on judging *any*). `scripts/live/shadow.py`
+  then requires `first: None`.
 - **T48.13: M42's launcher quits every window by default**, times the
   exit against 2 s and requires the port to stop listening, so the
   `tasks_drive.sh` step the plan names is the launcher's, for every
