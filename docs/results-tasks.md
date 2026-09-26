@@ -654,6 +654,14 @@ is arranged to avoid.
 | the deterministic arm agrees with the shipping one | `Immediate` | same failure |
 | a spawn that never started reports too | none installed | `[Failed(0, NotStarted)]`, `unspawned() == 1` |
 | a job that succeeds reports no failure | `Immediate` | `[Ok(9)]` |
+| a failure the application does not model is **counted** (M47/T47.6, R7-F9) | `Threads` | `unmodelled_failures 1 (want 1) after 1 pumps (bound 500); messages []` — was 0 after 500; a modelled one leaves it at 0 |
+
+> **Corrected 2026-09-26 (M47/T47.6).** `FailFn`'s rustdoc said the host
+> "counts the drop" when an application does not model a failure, and
+> nothing did: `report()` dropped it, and the panic reached stderr only.
+> The spawners' failure path now counts it on a counter the inbox shares
+> with every sender, read as `Host::unmodelled_failures`. Injection — the
+> increment removed: `unmodelled_failures 0 (want 1) after 500 pumps`.
 
 The second row exists because a spawner that let the panic through would
 make a test written against it pass while the real one stalls — the two

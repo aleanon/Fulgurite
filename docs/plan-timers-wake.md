@@ -571,6 +571,12 @@ counters answer.
 
 **Effort:** S. **Depends on:** T47.0.
 
+**What building found (2026-09-26).** As in T47.2, the agent reports no
+host counters, so "the agent's counters report it" has nothing to extend:
+`Host::unmodelled_failures` is the reader, and M48 owns the reply shape.
+A spawn refused for want of a spawner stays `Host::unspawned`'s alone, so
+no failure is counted twice.
+
 ### T47.7 — images survive suspend and resume
 
 **Closes:** R15-F6.

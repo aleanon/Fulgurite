@@ -103,7 +103,9 @@ pub enum Failure {
 /// How an application turns a failure into one of its own messages.
 ///
 /// `None` means "this application does not model that failure", and the
-/// host counts the drop rather than inventing a message.
+/// drop is counted rather than a message invented: `Host::unmodelled_failures`
+/// (M47/T47.6). So is a job spawned with no `FailFn` at all. A spawn
+/// refused for want of a spawner is `Host::unspawned`'s, not this one's.
 pub type FailFn<M> = fn(Descriptor, Failure) -> Option<M>;
 
 /// One unit of deferred work: a descriptor and the code that runs it.
@@ -393,17 +395,23 @@ impl Ledger {
     }
 }
 
-/// Send a failure result, if the application models this one.
+/// Send a failure result, if the application models this one — and
+/// count it where the host can read it if not.
 ///
 /// A free function because three spawners need it and none of them owns
-/// it. A failure that cannot be expressed is dropped here rather than
-/// invented; the host's `unknown_kind`-style counters are for what the
-/// host can see, and a spawner has no host.
+/// it. A failure that cannot be expressed is not invented; it is
+/// **counted** on the sender's shared counter, which the host reads as
+/// `Host::unmodelled_failures` (M47/T47.6, R7-F9). A spawner has no host,
+/// but its sender shares a counter with the host's inbox, the way the
+/// inbox's refusals already are. Until T47.6 this dropped the failure and
+/// its comment said so; `FailFn`'s rustdoc said the host counted it, and
+/// nothing did.
 fn report<M: Send + 'static>(job: &Job<M>, tx: &Sender<M>, why: Failure) {
-    if let Some(f) = job.on_fail {
-        if let Some(m) = f(job.desc, why) {
+    match job.on_fail.and_then(|f| f(job.desc, why)) {
+        Some(m) => {
             let _ = tx.send(m);
         }
+        None => tx.count_unmodelled(),
     }
 }
 

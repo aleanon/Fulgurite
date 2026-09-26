@@ -231,6 +231,13 @@ impl<M> Sender<M> {
         }
     }
 
+    /// Count a job failure no application message reported — M47/T47.6.
+    /// Called by the spawners' failure path, on the worker's thread; the
+    /// host reads it as [`Inbox::unmodelled`].
+    pub(crate) fn count_unmodelled(&self) {
+        self.unmodelled.fetch_add(1, Ordering::Relaxed);
+    }
+
     /// How many sends this inbox has refused — see [`Inbox::refused`].
     pub fn refused(&self) -> usize {
         self.refused.load(Ordering::Relaxed)
@@ -306,8 +313,9 @@ impl<M> Inbox<M> {
     /// R7-F9: an application that leaves `App::failed` at its default, or
     /// whose handler answers `None` for this failure. Monotonic.
     ///
-    /// **Nothing increments it yet**; T47.6 makes the spawners' failure
-    /// path count here.
+    /// The spawners' failure path counts here since M47/T47.6. A custom
+    /// spawner outside this crate reports failures however it likes and
+    /// is not counted unless it goes through the same path.
     pub fn unmodelled(&self) -> usize {
         self.unmodelled.load(Ordering::Relaxed)
     }

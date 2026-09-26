@@ -146,6 +146,10 @@ fn a_panicking_job_delivers_a_failure_and_the_chain_does_not_stall() {
         "a panicking job must deliver a failure; an empty `seen` here is the chain \
          stalling forever, which is the defect this task exists to remove"
     );
+    // The accepting half of M47/T47.6: a failure the application models
+    // becomes its message and is not also counted as unmodelled.
+    println!("modelled failure: unmodelled_failures {} (want 0)", h.unmodelled_failures());
+    assert_eq!(h.unmodelled_failures(), 0, "a modelled failure is not an unmodelled one");
 }
 
 /// The same under `Immediate`, so the deterministic arm agrees with the
@@ -256,7 +260,6 @@ impl App for Unmodelled {
 /// reached stderr only. Under `Threads`, pumped until the counter moves
 /// or the bound runs out; both print.
 #[test]
-#[ignore = "red until T47.6: R7-F9, an unmodelled failure is counted nowhere"]
 fn an_unmodelled_failure_is_counted() {
     let mut h: Host<Unmodelled, Rebuild> = Host::new(Unmodelled::default(), 100, 50);
     h.pump();
