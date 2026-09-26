@@ -151,6 +151,14 @@ flaking); `just test` green.
   override `probe`; `Node::probe`'s rustdoc states the rule, and
   `crates/lumen-static-agent/tests/audit_is_inert.rs` sweeps every leaf
   kind.
+  *Amended 2026-09-26, M41/T41.7:* it did not. The sweep left
+  `Pagination` and the strips out, left `RichText`, `Markdown` and
+  `NumberInput` empty and unfocused, and probed with the layout's own
+  measurer, so it could not see a widget that caches measured widths
+  or places; the live shadow oracle found `Pagination` and
+  `NumberInput` painting the probe's measurements in the showcase. All
+  five override `probe` now, and the sweep seeds content and probes
+  with a different measurer.
 - **F2.2** `Journal` retains `geom`, `sums` and its `DisplayList` across
   frames and swaps rather than reassigns. Paints **once from the root**,
   recording each node's command range as the traversal goes, instead of

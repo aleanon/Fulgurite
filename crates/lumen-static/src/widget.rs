@@ -262,13 +262,23 @@ pub trait Node {
     /// given, so the probe's 1e6 px box reset a scrolled field to zero;
     /// under `Everything` the next layout put it back, and under the
     /// `Boundaries` default an unrelated hover left the field unmarked
-    /// and paint drew the probe's scroll. `audit_is_inert.rs`'s sweep
-    /// probes every leaf kind the widget crate ships and compares its
-    /// paint before and after.
+    /// and paint drew the probe's scroll. M41/T41.7 found five more with
+    /// the live shadow oracle in the showcase: `Pagination` and `Strip`
+    /// cache each label's measured width for paint to centre by,
+    /// `RichText` places its words against the offered width, and
+    /// `NumberInput` and `Markdown` are **wrappers**, for which this
+    /// provided body lays the inner widget out instead of probing it —
+    /// the rule that a provided method is wrong for a wrapper.
+    /// `audit_is_inert.rs`'s sweep probes the leaf kinds the widget
+    /// crate ships, seeded with content, **with a measurer unlike the
+    /// layout's** (probing with the same one wrote back the value that
+    /// was already there), and compares each leaf's paint before and
+    /// after.
     ///
     /// The default *is* `layout`, which is right for a widget whose
     /// layout writes only its `NodeState` row. `Label`, `Repeat`,
-    /// `TextInput` and `TextArea` override it.
+    /// `TextInput`, `TextArea`, `Pagination`, `Strip`, `RichText`,
+    /// `Markdown` and `NumberInput` override it.
     #[cfg(feature = "observe")]
     fn probe(
         &mut self,

@@ -256,6 +256,26 @@ impl Node for RichText {
         lumen_static::ops::record_painted(st, i, limits, s, &me)
     }
 
+    /// `layout` with nothing kept — M41/T41.7. `layout` places every
+    /// word against the width it is offered, and `paint` draws from those
+    /// places; the audit's probe offers 1e6 px, which unwraps the text,
+    /// and measures with the audit's measurer. Kept, an unmarked
+    /// `RichText` under `Boundaries` painted one unwrapped line.
+    #[cfg(feature = "observe")]
+    fn probe(
+        &mut self,
+        cx: &mut LayoutCx,
+        limits: Constraints,
+        style: &[Style],
+        st: &mut [NodeState],
+        i: usize,
+    ) -> Size {
+        let kept = (self.placed, self.lines, self.height);
+        let size = self.layout(cx, limits, style, st, i);
+        (self.placed, self.lines, self.height) = kept;
+        size
+    }
+
     fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
         let s = &st[i];
         let r = lumen_static::ops::rect_of(s);
@@ -551,6 +571,21 @@ impl Node for Markdown {
         i: usize,
     ) -> Size {
         self.inner.layout(cx, limits, style, st, i)
+    }
+
+    /// Forwarded — M41/T41.7. `Node::probe`'s provided body is this
+    /// wrapper's `layout`, which lays the inner `RichText` out and so
+    /// never reached its `probe`: a provided method acts on the wrapper.
+    #[cfg(feature = "observe")]
+    fn probe(
+        &mut self,
+        cx: &mut LayoutCx,
+        limits: Constraints,
+        style: &[Style],
+        st: &mut [NodeState],
+        i: usize,
+    ) -> Size {
+        self.inner.probe(cx, limits, style, st, i)
     }
 
     fn place(&mut self, at: Point, style: &[Style], st: &mut [NodeState], i: usize) {

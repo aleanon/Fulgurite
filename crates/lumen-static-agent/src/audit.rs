@@ -41,9 +41,16 @@
 //!    box reset a scrolled field. Invisible under `Everything`, whose
 //!    next layout put it back; painted under the `Boundaries` default,
 //!    where an unrelated hover left the field unmarked (R1-F5). Both
-//!    override `probe` now, and `tests/audit_is_inert.rs` sweeps every
-//!    leaf kind the widget crate ships, comparing each one's paint before
-//!    and after a probe.
+//!    override `probe` now, and `tests/audit_is_inert.rs` sweeps the leaf
+//!    kinds the widget crate ships, comparing each one's paint before and
+//!    after a probe. **The sweep missed five kinds** until M41/T41.7 —
+//!    `Pagination`, `Strip`, `RichText`, `Markdown`, `NumberInput` — by
+//!    leaving them out, leaving them empty, and probing with the
+//!    layout's own measurer, which writes back the value already there.
+//!    This module probes with the block stand-in unless the host calls
+//!    `Agent::set_text_measure`, so in a window that installs none the
+//!    measurers differ; the live shadow oracle found two of the five in
+//!    the showcase. All five override `probe` now.
 //!
 //! ## The intrinsic-size probe
 //!

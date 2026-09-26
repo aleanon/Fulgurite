@@ -259,6 +259,26 @@ impl<const KIND: u8> Node for Strip<KIND> {
         lumen_static::ops::record_painted(st, i, limits, s, &me)
     }
 
+    /// `layout` with nothing kept — M41/T41.7, `Pagination`'s shape.
+    /// `layout` caches each label's measured width, which `paint`
+    /// centres by, and the extent `on_event` divides into items; a probe
+    /// at the audit's 1e6 px, with the audit's measurer, must leave both
+    /// as the frame's layout left them.
+    #[cfg(feature = "observe")]
+    fn probe(
+        &mut self,
+        cx: &mut LayoutCx,
+        limits: Constraints,
+        style: &[Style],
+        st: &mut [NodeState],
+        i: usize,
+    ) -> Size {
+        let kept = (self.extent, self.widths);
+        let size = self.layout(cx, limits, style, st, i);
+        (self.extent, self.widths) = kept;
+        size
+    }
+
     fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
         lumen_static::ops::focus_ring(st, i, out);
         let s = &st[i];

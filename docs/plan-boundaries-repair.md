@@ -885,6 +885,52 @@ was re-checked as the re-triage left it and none had moved.
   x = 12 against 92). One helper, `Changed::arena_view`, now gives all
   three owners the same view.
 
+### While building T41.2b and T41.7 (2026-09-26, at 826c7c3)
+
+- **The redesigned oracle's first live sweep found divergences in a
+  shipped example** (§2.1's tripwire condition), fixed in the same
+  session. `just widget-drive`'s new oracle leg failed after 5 818
+  compared frames: node 212, `pagination #d_pagination_a`
+  (`examples/showcase/src/stage.rs:173`), `field: "paint"`, on the frame
+  the Pagination demo first appeared. `Pagination::layout` caches each
+  number's measured width, which `paint` centres by, and `Node::probe`'s
+  provided body is `layout`; the agent's audit probes every leaf with
+  its own measurer, which is the block stand-in in a window that never
+  calls `Agent::set_text_measure` — so a probe re-measured the widths
+  with a different face, and under `Boundaries` an unmarked pagination
+  painted the probe's centres. With that fixed the next run failed
+  after 5 506 frames on node 102, `numberinput #d_number_a`, `"paint"`:
+  `NumberInput` wraps a `TextInput`, and the provided `probe` laid the
+  inner field out instead of probing it, which is AGENT.md's "a
+  provided method is wrong for a wrapper" again (and it also ran the
+  blur commit against the audit's scratch focus bit). The extended
+  sweep then named three more of the same class with no live run
+  needed: `Tabs`/`BottomNav`/`NavigationRail` (one `Strip`, cached label
+  widths), `RichText` (word places against the offered width, so a
+  1e6 px probe unwrapped it) and `Markdown` (a wrapper of `RichText`).
+  All five override `probe`. **R1-F5's class, which T41.4 had closed for
+  two widgets.** The plain `Boundaries` leg stayed green throughout: no
+  drive check reads where a page number is centred.
+- **T41.4's sweep could not have found them, three ways.** Its claim was
+  "every leaf kind the widget crate ships"; it left out `Pagination`,
+  the strips, `Tree`, the pickers and choosers, `AppBar`, `PaintBox` and
+  the charts. It left `RichText`, `Markdown` and `NumberInput` empty and
+  unfocused. And it probed with the same measurer the layout had used,
+  so a widget that caches a measured width had the same width written
+  back: with the `Pagination` and `Strip` overrides deleted and the
+  probe on the layout's own measurer, the extended sweep still reads
+  `moved: []`; with a different measurer it names all four. That is the
+  "setup silently did not happen" shape.
+- **Not covered, and named rather than guessed at:** state a probe
+  writes that `on_event` reads rather than `paint` — `Slider`'s and
+  `RangeSlider`'s `track_w`, `Tree`'s height and padding, `SplitPane`'s
+  width, `Chooser`'s and `Picker`'s trigger rectangles. The sweep
+  compares paint, and the oracle compares state and paint; neither can
+  see a click routed by a probe's width. Each is written from the
+  widget's resolved size, which a `Fixed` width keeps equal under a
+  probe and a `FILL` one does not; the widget drive's click checks
+  passed on every leg, but which of these the showcase sizes `FILL` was
+  not checked.
 ## Appendix: finding → task
 
 | ID | sev now | status | task |

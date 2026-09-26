@@ -234,6 +234,24 @@ impl Node for NumberInput {
         self.field.layout(cx, limits, style, st, i)
     }
 
+    /// Forwarded, without the blur commit — M41/T41.7. The provided
+    /// `probe` is this `layout`, which laid the inner `TextInput` out
+    /// (resetting its scroll, re-shaping with the audit's measurer: the
+    /// live oracle named `#d_number_a`, `field: "paint"`), and which also
+    /// ran the blur check against the audit's *scratch* focus bit, so a
+    /// probe could commit the number or forget that it was focused.
+    #[cfg(feature = "observe")]
+    fn probe(
+        &mut self,
+        cx: &mut LayoutCx,
+        limits: Constraints,
+        style: &[Style],
+        st: &mut [NodeState],
+        i: usize,
+    ) -> Size {
+        self.field.probe(cx, limits, style, st, i)
+    }
+
     fn place(&mut self, origin: Point, style: &[Style], st: &mut [NodeState], i: usize) {
         self.field.place(origin, style, st, i);
     }

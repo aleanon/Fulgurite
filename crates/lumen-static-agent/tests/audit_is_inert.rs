@@ -208,6 +208,16 @@ mod bounded {
         }
     }
 
+    /// A measurer unlike `Blocks`: a wider advance, so anything a probe
+    /// measures differs from what the frame's layout measured.
+    struct Wide;
+
+    impl lumen_static::TextMeasure for Wide {
+        fn measure(&mut self, text: &str, size: f32, max_w: f32) -> lumen_static::Size {
+            lumen_static::BlockMetrics.measure(text, size * 1.5, max_w)
+        }
+    }
+
     const LINE: &str = "a line of text long enough to scroll the field sideways";
     const PARAGRAPH: &str = "a paragraph long enough to wrap onto several lines in a two hundred pixel window";
 
@@ -361,12 +371,29 @@ mod bounded {
         spinner: Spinner,
         skeleton: Skeleton,
         avatar: Avatar,
+        #[widget_id("number")]
         number: NumberInput,
         range: RangeSlider,
         search: SearchField,
         rich: RichText,
         markdown: Markdown,
         editor: RichTextEditor,
+        // M41/T41.7: the leaves the first sweep left out. Its claim was
+        // "every leaf kind the widget crate ships", and the live oracle
+        // then found `Pagination` — not in this list — painting the
+        // probe's measurements in the showcase.
+        pages: Pagination,
+        tree: Tree,
+        tabs: Tabs,
+        bottom: BottomNav,
+        rail: NavigationRail,
+        options: OptionList,
+        colours: ColorPicker,
+        days: DatePicker,
+        picklist: PickList,
+        appbar: AppBar<String>,
+        paint: PaintBox,
+        bars: BarChart,
     }
 
     #[derive(DeriveApp, Default)]
@@ -378,9 +405,27 @@ mod bounded {
     /// For every live leaf: paint it, probe it at the audit's two limits
     /// into scratch state, paint it again from the frame's state, and
     /// compare. A probe that writes anything paint reads moves the hash.
+    ///
+    /// **The probe measures with a different measurer than the layout
+    /// did** (M41/T41.7). That is the window's case: it lays out with
+    /// `FontMetrics`, and the agent's audit probes with the block
+    /// stand-in unless the host installs its own. Probing with the same
+    /// measurer hid every widget that caches a measured width, because
+    /// the probe wrote back the value that was already there.
     #[test]
     fn a_probe_changes_nothing_any_leaf_paints() {
-        let mut h: Host<Sweep, Incremental, Everything> = Host::new(Sweep::default(), 200, 1200);
+        let mut app = Sweep::default();
+        // Content, so a widget that measures its items has something to
+        // measure: a strip with no items and a pagination of one page
+        // cannot show a probe writing their measured widths.
+        app.ui.pages = Pagination::new(30);
+        app.ui.tree = Tree::new(&[Branch::new("root", 0), Branch::new("leaf", 1)]);
+        app.ui.tabs = Tabs::new(&["One", "Two", "Three"]);
+        app.ui.bottom = BottomNav::new(&["Home", "Search"]);
+        app.ui.rail = NavigationRail::new(&["Mail", "Chat"]);
+        app.ui.rich = RichText::new(PARAGRAPH);
+        app.ui.markdown = Markdown::new(PARAGRAPH);
+        let mut h: Host<Sweep, Incremental, Everything> = Host::new(app, 200, 1400);
         h.set_stylesheet(&[Rule::new(
             Selector::Id("area"),
             Patch::new().width(Length::FILL).height(Length::Fixed(40.0)),
@@ -393,7 +438,10 @@ mod bounded {
             let s = h.states[i];
             (s.pos.x + s.size.w / 2.0, s.pos.y + s.size.h / 2.0)
         };
-        for (wid, text) in [("field", LINE), ("area", PARAGRAPH)] {
+        // The number field last, so it stays focused: a focused field is
+        // what the showcase's drive leaves behind, and its caret is drawn
+        // from what `layout` shaped (M41/T41.7).
+        for (wid, text) in [("field", LINE), ("area", PARAGRAPH), ("number", "12345678901234567890")] {
             let (x, y) = centre(&h, wid);
             h.click(x, y);
             h.pump_with(&mut Blocks);
@@ -420,7 +468,7 @@ mod bounded {
             let before = paint(&h);
             let mut scratch = h.states.clone();
             let styles = h.styles.clone();
-            let mut m = Blocks;
+            let mut m = Wide;
             let mut cx = lumen_static::LayoutCx::new(&mut m);
             let node = h.app.tree_mut().node_mut(i);
             node.probe(&mut cx, A, &styles, &mut scratch, i);
