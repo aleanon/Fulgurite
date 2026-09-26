@@ -144,12 +144,14 @@ comfortably inside the 2 s criterion end to end.
 
 ## Honesty list
 
-1. **No ABI fingerprint.** Nothing verifies the dylib and host agree on
-   `lumen-static`'s types; the fixture is safe because the boundary
-   carries only bytes and opaque pointers *owned by one side*, which is
-   the §7 rule — but a component system that passes framework types
-   across the seam will need the fingerprint problem solved or avoided
-   the same way. (Lumen's `hotpatch.rs` documents the same conclusion.)
+1. **An ABI stamp, and what it misses** (M37/T37.0, M49/T49.1). The
+   headless fixture carries only bytes and pointers owned by one side
+   (the §7 rule). The window borrows framework types across the seam, so
+   a loader refuses a library whose stamp differs: compiler, target,
+   profile, features, the crossing types' sizes, and a hash of the source
+   of every crate whose types cross. It does not see transitive
+   dependency bumps or a library's `#[global_allocator]` (the stamp
+   section above says why each is acceptable).
 2. **The reload surface is cfg-gated** (M49/T49.9). `#[derive(Reloadable)]`
    expands through the core's `__reloadable!`, which is nothing without
    `lumen-static/reload`, so an application that derives it builds with
@@ -157,8 +159,13 @@ comfortably inside the 2 s criterion end to end.
    its `hot` feature to the reload features instead of enabling them
    always, and `just reload-gating` counts serde_json in its graph (0
    without `hot`, 2 with). The export line is `#[cfg(feature = "hot")]`.
-3. **`fresh()` = `Default`** — sufficient until construction needs
-   context (an allocator handle, §8's one type axis); revisit then.
+3. **One construction path** (M49/T49.4). An application is built by its
+   program's boot and nothing else: a window swap boots the new library's
+   `program()`, `Host::reload` re-runs the boot the host was built from,
+   and `export_reloadable_app!` takes one. `Reloadable::fresh()` and
+   `Application::build` are gone; a *reloadable* application that also
+   implements `Default` is a compile error (E0119), so no second path can
+   come back unannounced.
 
 ## A panic, in a window and across the seam (M36)
 

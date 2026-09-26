@@ -1,6 +1,47 @@
 # M49 — a live swap keeps what the user did, and refuses what it cannot read
 
-> **Written 2026-09-24, not started.** Closes R4-F2, R4-F3, R4-F5,
+> **T49.0–T49.9, T49.11, T49.13 DONE 2026-09-26; T49.10 and T49.12 not
+> built (below).**
+> - T49.0: every finding a committed gate, red where the plan said; the
+>   planned R5-F8 count (`nm`) could not see the finding and was replaced.
+> - T49.1: the stamp hashes the source of the three crossing crates (a
+>   reordered `Cmd` is refused by `source lumen-static`; a widgets-only
+>   edit is accepted); hot-host resolves every symbol and boots v2 first.
+> - T49.2: every pointer operation in `raw.rs`; `(null, 0)` and null
+>   accepted by every shim.
+> - T49.3: miri runs `raw.rs` and `panic.rs` by path in the
+>   dependency-free `fixtures/miri-reload` (14 of 14 shapes); **CI
+>   wiring into M43's `just ci` pending** (no `just ci` yet).
+> - T49.4: `fresh()` and `Application` retired; `Host::reload` rebuilds
+>   through the program's boot; `Host::reload` and a window swap draw the
+>   same frame.
+> - T49.5: 24 of 24 widget rows kept (23 lost before); a button's label,
+>   a label's text and a repeater's count show the new code. **Live step
+>   waits for M42.**
+> - T49.6: a failed save or a NaN keeps the fresh value, logged.
+> - T49.7: a kept struct that gained a field keeps the fields it had.
+> - T49.8: the derive's errors land on the field with a note naming the
+>   attribute; every widget has an impl.
+> - T49.9: the derive expands to nothing without `reload`; hot-window
+>   carries no serde_json without `hot` (0 in the graph, 2 with). The
+>   export line is gated at the call, not inside `export_program!`: that
+>   macro's crate is what a build without `hot` must not have.
+> - T49.10 **not built**: it re-issues in-flight descriptors from a host
+>   ledger, which needs each applied result to name the descriptor it
+>   came from — a change to the spawner and inbox envelope that
+>   M47/T47.3 rewrites. Built now, it would be rewritten; M48/T48.2's
+>   counter does not exist yet either. The docs crediting T28.7 with a
+>   framework property (R4-F3's doc half) are unchanged and still wrong.
+> - T49.11: `Session::shape`; a swap that moves `#value` reports
+>   `shape_changed`.
+> - T49.12 **not built**: its gate is a live latency drive, which waits
+>   for M42's drive identity (as T49.0's R4-F2 row does), and it adds a
+>   library target to `examples/showcase`, which M56 is redesigning in
+>   another session.
+> - T49.13: event.rs's `Default` claim went with `Application` (T49.4);
+>   the step4 honesty list is current.
+>
+> *Written 2026-09-24.* Closes R4-F2, R4-F3, R4-F5,
 > R4-F6, R4-F7, R4-F8, R5-F1, R5-F2, R5-F3, R5-F4, R5-F7, R5-F8, R5-F9
 > and R5-F10 from `docs/results-deep-review.md`, as re-triaged against
 > `main` at `1717808` on 2026-09-24. The review was written before M37;
