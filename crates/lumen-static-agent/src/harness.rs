@@ -25,12 +25,15 @@
 //!    bounds before pixels — and that is a property of the API rather
 //!    than of the person using it: [`TestApp::expect_text`](crate::harness::TestApp::expect_text) is easier to
 //!    reach for than a screenshot comparison, deliberately.
-//! 3. **No auto-wait, and this says so.** There is no animation
-//!    scheduler and `ui.waitSettled` is trivially true, so a retry loop
-//!    here would be machinery pretending to solve a problem this
-//!    architecture does not have. Every method below is synchronous: it
-//!    pumps, and by the time it returns the frame is settled. If a
-//!    scheduler ever arrives, waiting goes in with it.
+//! 3. **No auto-wait, and this says so.** Every method below is
+//!    synchronous: it pumps, and by the time it returns the *layout* is
+//!    current. That is not the same as settled — animations, timers and
+//!    deferred jobs outlive a pump, and this file's premise that "there
+//!    is no animation scheduler" was false by the time it was written
+//!    down (M48/T48.2, R13-F1). A test that waits on those asks the
+//!    host's `ui.waitSettled`, which answers from them, or `null` from a
+//!    host that cannot say; this harness does not poll on the caller's
+//!    behalf.
 
 use serde_json::{json, Value};
 

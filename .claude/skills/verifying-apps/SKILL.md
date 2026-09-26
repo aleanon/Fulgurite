@@ -129,7 +129,13 @@ journal frame that includes this input; ask with `since = frame - 1`**
 (M48/T48.1) — `ui.lastChange` and `ui.lastDamage` answer from that frame
 once the window has drawn it. `host_frame` is the host's own counter, for
 debugging only: it moves twice per input and means nothing to `since`.
-Re-query (`layout`, `tree`, `screenshot`) after acting. In the live window the RPC is answered on the event-loop thread
+Re-query (`layout`, `tree`, `screenshot`) after acting. **`ui.waitSettled`
+answers from the host** (M48/T48.2): `settled` is false while the last
+frame animated, the inbox has a backlog or holds a result, a spawned job
+is in flight (`pending_tasks`) or a timer is due within a frame, and the
+reply names each term; running subscriptions are counted
+(`subscriptions`), not waited on. `settled: null` means the host cannot
+say — not "yes". It does not block: poll it. In the live window the RPC is answered on the event-loop thread
 after `pump`, so a `layout` right after a `click` already sees the
 result — but write the check anyway; it is what makes the run a test.
 

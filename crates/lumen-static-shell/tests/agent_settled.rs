@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 
 use lumen_static::event::App;
 use lumen_static::prelude::*;
-use lumen_static::spawn::{Descriptor, JobFn, Outbox};
+use lumen_static::spawn::{Descriptor, JobFn, Outbox, Subs};
 use lumen_static::Color;
 use lumen_static_shell::session::{FrameSource, Local, Recover, Screen, Session};
 use lumen_static_shell::Host;
@@ -20,6 +20,8 @@ use lumen_static_widgets::prelude::*;
 use serde_json::Value;
 
 const KIND_SLOW: u64 = 1;
+/// A subscription whose job runs for longer than the test.
+const KIND_FEED: u64 = 2;
 
 #[derive(StaticTree, Default)]
 #[widget(column, spacing = 8.0)]
@@ -38,7 +40,12 @@ struct Fx {
     outbox: Outbox,
     /// Milliseconds of animation left.
     anim_ms: f32,
+    subs: Subs,
     landed: u64,
+}
+
+fn feed(_d: Descriptor, _tx: &lumen_static::inbox::Sender<u64>) {
+    std::thread::sleep(Duration::from_secs(30));
 }
 
 fn slow(d: Descriptor, tx: &lumen_static::inbox::Sender<u64>) {
@@ -68,7 +75,14 @@ impl App for Fx {
         Some(&mut self.outbox)
     }
     fn job_for(d: Descriptor) -> Option<JobFn<u64>> {
-        (d.kind == KIND_SLOW).then_some(slow as JobFn<u64>)
+        match d.kind {
+            KIND_SLOW => Some(slow as JobFn<u64>),
+            KIND_FEED => Some(feed as JobFn<u64>),
+            _ => None,
+        }
+    }
+    fn subscriptions(&mut self) -> Option<&mut Subs> {
+        Some(&mut self.subs)
     }
     fn tick(&mut self, dt_ms: f32) -> bool {
         self.anim_ms = (self.anim_ms - dt_ms).max(0.0);
@@ -118,7 +132,6 @@ fn settled(s: &mut Local<Fx>, when: &str) -> Value {
 }
 
 #[test]
-#[ignore = "red until T48.2: R13-F1, waitSettled is a constant"]
 fn an_animation_is_not_settled_until_it_stops() {
     let mut s = session();
     assert_eq!(settled(&mut s, "still")["settled"], true, "a still window must answer settled");
@@ -141,7 +154,6 @@ fn an_animation_is_not_settled_until_it_stops() {
 }
 
 #[test]
-#[ignore = "red until T48.2: R13-F1, waitSettled is a constant"]
 fn a_task_in_flight_is_not_settled_until_its_result_is_applied() {
     let mut s = session();
     let r = ask(&mut s, "input.click", r##"{"selector":"#slow"}"##);
@@ -160,4 +172,21 @@ fn a_task_in_flight_is_not_settled_until_its_result_is_applied() {
     let after = settled(&mut s, "result applied");
     assert_eq!(after["settled"], true, "still unsettled after the result was applied: {after}");
     assert_eq!(after["pending_tasks"], 0, "{after}");
+}
+
+/// **A subscription is counted, not waited on** (plan §2.2): its job runs
+/// for as long as it is declared, and waiting on it would keep a
+/// subscribed application from ever settling. M47/T47.3's ledger lists it
+/// the whole time, which is why the count here is the ledger less the
+/// running subscriptions.
+#[test]
+fn a_running_subscription_does_not_keep_a_window_unsettled() {
+    let mut s = session();
+    s.host.app.subs.declare(KIND_FEED, 7);
+    s.frame(0.0, 300, 200);
+    let r = settled(&mut s, "subscribed");
+    println!("  in flight (the whole ledger) {}", s.host.in_flight());
+    assert_eq!(s.host.in_flight(), 1, "setup: the subscription's job is not running");
+    assert_eq!(r["subscriptions"], 1, "the reply does not count the subscription: {r}");
+    assert_eq!(r["settled"], true, "a running subscription kept the window unsettled: {r}");
 }

@@ -194,6 +194,9 @@ pub struct Local<A: App> {
     recover: Recover,
     saver: Option<Saver<A>>,
     restore_log: String,
+    /// What the last [`Session::frame`] said: whether anything is still
+    /// moving. `ui.waitSettled` reads it (M48/T48.2).
+    animating: bool,
     #[cfg(feature = "live-agent")]
     agent: lumen_static_agent::Agent,
 }
@@ -226,6 +229,7 @@ impl<A: App + 'static> Local<A> {
             recover,
             saver: None,
             restore_log: String::new(),
+            animating: false,
             #[cfg(feature = "live-agent")]
             agent: lumen_static_agent::Agent::new(),
         }
@@ -369,6 +373,7 @@ impl<A: App + 'static> Session for Local<A> {
             // tick could not have seen; a zero `dt` is a pure query.
             h.tick(0.0)
         });
+        self.animating = ran.unwrap_or(false);
         match ran {
             Some(animating) => animating,
             None => {
@@ -435,7 +440,8 @@ impl<A: App + 'static> Session for Local<A> {
         };
         let page = self.page;
         let recover = self.recover;
-        let mut live = Live { host: &mut self.host, metrics: &mut self.metrics, screen, page, recover };
+        let animating = self.animating;
+        let mut live = Live { host: &mut self.host, metrics: &mut self.metrics, screen, page, recover, animating };
         // **One call.** `dispatch_input` already falls through to
         // `dispatch` for anything that is not an `input.*` method or a
         // screenshot.
@@ -574,7 +580,15 @@ pub struct Live<'a, A: App> {
     pub screen: &'a mut dyn Screen,
     pub page: Color,
     pub recover: Recover,
+    /// Whether the session's last frame was still animating — its
+    /// `ui.waitSettled` term (M48/T48.2).
+    pub animating: bool,
 }
+
+/// One frame at 60 Hz, in milliseconds: a timer due sooner than this is
+/// work the next frame does, so a window waiting on it is not settled.
+#[cfg(feature = "live-agent")]
+const FRAME_MS: f32 = 1000.0 / 60.0;
 
 #[cfg(feature = "live-agent")]
 impl<A: App> Live<'_, A> {
@@ -652,6 +666,29 @@ impl<A: App> lumen_static_agent::AgentHost for Live<'_, A> {
         };
         #[cfg(not(panic = "unwind"))]
         self.pump_app()
+    }
+
+    /// Settled when nothing is animating, the inbox has no backlog, no
+    /// job is in flight or undrained (M47/T47.3's ledger,
+    /// `Host::in_flight_unsubscribed`), and no timer is due within a
+    /// frame (`docs/plan-agent-truth.md` §2.2). Subscriptions are
+    /// excluded and counted: a recurring timer would never settle.
+    fn settled(&mut self) -> Option<serde_json::Value> {
+        let deadline = self.host.next_deadline_ms();
+        let more = self.host.more_deferred();
+        // M47/T47.3's ledger: a job is listed from spawn until its body
+        // returned and every result it sent was drained -- so a result
+        // waiting in the inbox is pending too. Subscriptions apart.
+        let pending = self.host.in_flight_unsubscribed();
+        let due = deadline.is_some_and(|ms| ms <= FRAME_MS);
+        Some(serde_json::json!({
+            "settled": !self.animating && !more && pending == 0 && !due,
+            "animating": self.animating,
+            "more_deferred": more,
+            "pending_tasks": pending,
+            "next_deadline_ms": deadline,
+            "subscriptions": self.host.subscriptions_running(),
+        }))
     }
 
     fn failure(&self) -> serde_json::Value {

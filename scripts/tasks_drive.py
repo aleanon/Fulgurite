@@ -129,6 +129,30 @@ print(f"  ok  cancel: slow stayed at {after} across 1000 ms "
 click("spawn-one")
 settle(lambda: counts()["one"] == 2, "cancel is not permanent: one=2 (bound 2)")
 
+# ---- 4b. ui.waitSettled: unsettled while a job runs, settled after ----
+# M48/T48.2 (R13-F1): it answered `settled: true` in every state. The job
+# sleeps 400 ms, so a read straight after the click lands inside it.
+before = counts()["slow"]
+click("start-slow")
+w = call("ui.waitSettled")
+print(f"  ..  waitSettled right after #start-slow: settled={w.get('settled')} "
+      f"pending_tasks={w.get('pending_tasks')}")
+if w.get("settled") is not False:
+    sys.exit(f"tasks-drive[{strategy}]: waitSettled said {w.get('settled')!r} with a "
+             f"400 ms job just started: {w}")
+settle(lambda: counts()["slow"] == before + 1, f"slow job landed: slow={before + 1} (bound {before + 1})")
+t0 = time.time()
+while True:
+    w = call("ui.waitSettled")
+    if w.get("settled") is True:
+        break
+    if time.time() - t0 > 2.0:
+        sys.exit(f"tasks-drive[{strategy}]: still unsettled 2 s after the job's result "
+                 f"was applied: {w}")
+    time.sleep(0.02)
+print(f"  ok  waitSettled: false during the job (pending {1}), true "
+      f"{(time.time() - t0) * 1000:.0f} ms after its result was shown")
+
 # ---- 5. subscribe: on, produces; off, stops --------------------------
 click("toggle-sub")
 settle(lambda: counts()["ticks"] >= 3, "subscription on: >= 3 ticks (bound 3)")

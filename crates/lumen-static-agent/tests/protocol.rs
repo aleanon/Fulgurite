@@ -208,8 +208,11 @@ fn diagnostics_and_perf() {
     assert_eq!(p["window"]["layout_ns"]["p95"], 12_345, "one sample: every percentile is it");
     assert_eq!(p["window"]["input_latency_ns"]["n"], 0);
     assert_eq!(p["samples"], 1);
+    // M48/T48.2: a tree alone cannot say whether anything is moving, so
+    // it answers `null` -- "cannot say" -- never the `true` a poll passes on.
     let w = f.result("ui.waitSettled", json!({}));
-    assert_eq!(w["settled"], true);
+    println!("waitSettled from a bare tree: settled={}", w["settled"]);
+    assert_eq!(w["settled"], Value::Null, "a host that cannot know answered {w}");
 
     // M42/T42.1: a tree alone cannot say which process it is in.
     assert_eq!(d["process"]["supported"], false, "a tree claimed a process: {d}");

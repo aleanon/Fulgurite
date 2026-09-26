@@ -1286,6 +1286,28 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         self.ledger.len()
     }
 
+    /// Subscriptions running now — what `ui.waitSettled` reports as
+    /// `subscriptions` rather than counting against settling (M48/T48.2).
+    pub fn subscriptions_running(&self) -> usize {
+        self.running.len()
+    }
+
+    /// **What `ui.waitSettled` waits on** — M48/T48.2: [`Host::in_flight`]
+    /// less the jobs of running subscriptions. From the one ledger
+    /// (`docs/plan-agent-truth.md` rule 2): a subscription's job is listed
+    /// for as long as it runs, which would keep a subscribed application
+    /// from ever settling, so it is counted apart
+    /// ([`Host::subscriptions_running`]). A subscription's job is its
+    /// declared `(kind, key)` at step 0.
+    pub fn in_flight_unsubscribed(&mut self) -> usize {
+        self.ledger.prune();
+        let running = &self.running;
+        self.ledger
+            .descriptors()
+            .filter(|d| !(d.step == 0 && running.contains(&(d.kind, d.payload))))
+            .count()
+    }
+
     /// The ledger itself: what [`Host::in_flight`] counts, and the
     /// descriptors a reload would re-issue. As of the last prune.
     pub fn ledger(&self) -> &lumen_static::spawn::Ledger {

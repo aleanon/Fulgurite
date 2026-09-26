@@ -743,6 +743,18 @@ names what reopens it. Per vector, before and after:
 a non-loopback address is refused unless `LUMEN_AGENT_ALLOW_REMOTE=1`,
 which binds it and warns that there is no authentication.
 
+**DECIDED 2026-09-26 (M48/T48.2): `ui.waitSettled` answers from the
+host, and "cannot say" is `null`.** It answered `true` in every state
+under a comment saying no animation scheduler existed, long after
+`App::tick`, timers and the task inbox made one (R13-F1). A host now
+says: settled when nothing is animating, the inbox has no backlog, no
+job is in flight or has results undrained (M47/T47.3's ledger, less
+running subscriptions) and no timer is due within a frame;
+the reply names each term. A host that cannot know answers `settled:
+null` — not `false`, which would spin every poll to its timeout.
+Polling stays the contract; a blocking wait is not built
+(`docs/plan-agent-truth.md` §2.2, §4).
+
 **DECIDED 2026-09-25 (M41/T41.4): observing must not change what is
 drawn.** The audit's intrinsic probe measures every leaf through
 `Node::probe`, and a widget whose `layout` writes state that paint reads

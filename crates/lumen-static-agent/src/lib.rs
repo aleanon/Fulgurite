@@ -568,6 +568,14 @@ impl Agent {
                 "data": Value::Null,
             }});
         }
+        // M48/T48.2: settling is host state — the last frame's animation,
+        // the inbox, jobs in flight, the next timer.
+        if method == "ui.waitSettled" {
+            if let Some(mut result) = host.settled() {
+                result["frame"] = self.frame.into();
+                return json!({ "jsonrpc": "2.0", "id": id, "result": result });
+            }
+        }
         if method == "app.shadow" {
             let result = host.shadow().unwrap_or_else(|| json!({ "supported": false }));
             return json!({ "jsonrpc": "2.0", "id": id, "result": result });
@@ -1040,10 +1048,15 @@ impl Agent {
             "ui.lastChange" => Ok(self.last_change(tree, params)),
             "ui.lastDamage" => Ok(self.last_damage(params)),
             "app.diagnostics" => Ok(self.diagnostics(tree)),
-            "ui.waitSettled" => {
-                // No animation scheduler exists: a laid-out tree is settled.
-                Ok(json!({ "settled": true, "frame": self.frame }))
-            }
+            // A tree alone cannot say whether anything is moving: that is
+            // host state (`AgentHost::settled`), which `dispatch_input`
+            // asks before it gets here. **"Cannot say" is `null`**, never
+            // the `true` that makes a poll pass (M48/T48.2, R13-F1).
+            "ui.waitSettled" => Ok(json!({
+                "settled": Value::Null,
+                "frame": self.frame,
+                "reason": "this host cannot say whether anything is still moving",
+            })),
             "app.perf" => Ok(self.perf()),
             _ => Err((METHOD_NOT_FOUND, format!("unknown method `{method}`"), Value::Null)),
         }
@@ -1760,6 +1773,27 @@ pub trait AgentHost {
     /// agent comes to believe a window changed when it did not.
     fn set_palette(&mut self, _palette: lumen_static::style::Palette) -> bool {
         false
+    }
+
+    /// **Whether anything is still moving** — M48/T48.2, the
+    /// `ui.waitSettled` method (`docs/plan-agent-truth.md` §2.2).
+    ///
+    /// An object with `settled` and each term that decided it —
+    /// `animating`, `more_deferred`, `pending_tasks`,
+    /// `next_deadline_ms`, `subscriptions` — so a caller told "no" learns
+    /// why. The agent adds `frame`.
+    ///
+    /// **`None` by default, which the method reports as `settled: null`:
+    /// "this host cannot say".** Not `false`, which would make every poll
+    /// spin to its timeout, and not `true`, which is the defect this
+    /// replaced: `ui.waitSettled` answered `true` in every state under a
+    /// comment saying no animation scheduler existed, long after
+    /// `App::tick` and the task inbox made one (R13-F1). Provided rather
+    /// than required for the reason [`AgentHost::process_info`] gives:
+    /// every implementor is a leaf holding a host, and the default says
+    /// it does not know.
+    fn settled(&mut self) -> Option<Value> {
+        None
     }
 
     /// The shadow oracle's report — M34/T34.1, the `app.shadow` method.

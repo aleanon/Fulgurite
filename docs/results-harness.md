@@ -73,10 +73,13 @@ Without this, a resolver that silently matched the root would pass every
 ### No auto-wait, and the API says so
 
 Every method is synchronous: it pumps, and by the time it returns the
-frame is settled. There is no animation scheduler and `ui.waitSettled`
-is trivially true, so a retry loop would be machinery pretending to
-solve a problem this architecture does not have. If a scheduler ever
-arrives, waiting goes in with it.
+layout is current. **The rest of this paragraph was false when written**
+(M48/T48.2): it said there was no animation scheduler and that
+`ui.waitSettled` was trivially true — but `App::tick`, timers and the
+task inbox all outlive a pump, and `ui.waitSettled` answering `true`
+through all of them was R13-F1. It now answers from the host (the
+animation, the inbox, jobs in flight, the next timer) or `null` from a
+host that cannot say. The harness still does not poll for its caller.
 
 ## T12.2 — golden images with a diff artifact
 
