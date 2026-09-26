@@ -453,8 +453,14 @@ pub struct Tree {
     /// Whether each row is expanded. A row with no children is a leaf
     /// and this is ignored for it.
     open: [bool; MAX_TREE_NODES],
-    /// The row the pointer is over.
+    /// The row the pointer is over: a subtle tint.
     hot: Option<usize>,
+    /// The selected row: the strong fill, and where the keyboard is —
+    /// M57/B50. **Controlled** like `Toggle::on`: a press or an arrow
+    /// moves it here, and an application that owns the selection writes
+    /// it back; [`Tree::take_chosen`] reports a press or Enter once.
+    pub selected: Option<usize>,
+    chosen: bool,
     height: f32,
     /// The padding `layout` last resolved, so a hit test agrees with
     /// what `paint` drew whatever a stylesheet set.
@@ -473,6 +479,8 @@ impl Default for Tree {
             count: 0,
             open: [true; MAX_TREE_NODES],
             hot: None,
+            selected: None,
+            chosen: false,
             height: 0.0,
             pad: Edges::all(8.0),
         }
@@ -538,6 +546,31 @@ impl Tree {
             }
         }
         true
+    }
+
+    /// The row a press or Enter chose since the last call — and clears it.
+    pub fn take_chosen(&mut self) -> Option<usize> {
+        if core::mem::take(&mut self.chosen) { self.selected } else { None }
+    }
+
+    /// The parent of row `i`: the last row above it with a smaller depth.
+    pub fn parent(&self, i: usize) -> Option<usize> {
+        let d = self.rows.get(i)?.depth;
+        (0..i).rev().find(|&k| self.rows[k].depth < d)
+    }
+
+    /// The visible row `step` places after (or before) `i`, if any.
+    fn step(&self, i: usize, down: bool) -> Option<usize> {
+        if down {
+            (i + 1..self.count).find(|&k| self.is_visible(k))
+        } else {
+            (0..i).rev().find(|&k| self.is_visible(k))
+        }
+    }
+
+    /// Select `i`. Answers whether the selection moved.
+    fn select(&mut self, i: usize) -> bool {
+        core::mem::replace(&mut self.selected, Some(i)) != Some(i)
     }
 
     /// How many rows are currently on screen.
@@ -643,10 +676,15 @@ impl Node for Tree {
             }
             let y = r[1] + p.1 + TREE_ROW_H * k as f32;
             let x = r[0] + p.0 + INDENT * self.rows[idx].depth as f32;
-            if Some(idx) == self.hot {
+            // **Selection is the strong fill, hover a tint** — M57/B50:
+            // the hover *was* the strong fill, and there was no selection.
+            let selected = Some(idx) == self.selected;
+            if selected {
                 out.rounded_rect([r[0] + 4.0, y, r[2] - 4.0, y + TREE_ROW_H], s.fg, 5.0);
+            } else if Some(idx) == self.hot {
+                out.rounded_rect([r[0] + 4.0, y, r[2] - 4.0, y + TREE_ROW_H], Color(s.fg.0, s.fg.1, s.fg.2, 0x1c), 5.0);
             }
-            let col = if Some(idx) == self.hot { s.bg } else { s.fg };
+            let col = if selected { s.bg } else { s.fg };
             // A chevron only where there is something to expand.
             if self.has_children(idx) {
                 let (cx0, mid, t) = (x + 5.0, y + TREE_ROW_H / 2.0, 3.5);
@@ -693,10 +731,39 @@ impl Node for Tree {
                 self.hot = self.row_at(cx.local.y - self.pad.top);
                 was != self.hot
             }
+            // A press selects the row, and folds or unfolds it if it has
+            // children — a file explorer's click.
             Event::PointerDown { .. } => match self.row_at(cx.local.y - self.pad.top) {
-                Some(idx) => self.toggle(idx),
+                Some(idx) => {
+                    self.select(idx);
+                    self.chosen = true;
+                    self.toggle(idx);
+                    true
+                }
                 None => false,
             },
+            // **The keyboard** — M57/B50. Up/Down walk the visible rows;
+            // Right opens a closed row or steps into an open one; Left
+            // closes an open row or steps out to the parent; Enter
+            // chooses. At an end the key is declined, so an arrow can move
+            // focus on through a group.
+            Event::Key { key, down: true } if self.count > 0 => {
+                let cur = self.selected.filter(|&i| i < self.count && self.is_visible(i));
+                match (key, cur) {
+                    (Key::Down | Key::Up, None) => self.select((0..self.count).find(|&k| self.is_visible(k)).unwrap_or(0)),
+                    (Key::Down, Some(i)) => self.step(i, true).is_some_and(|k| self.select(k)),
+                    (Key::Up, Some(i)) => self.step(i, false).is_some_and(|k| self.select(k)),
+                    (Key::Right, Some(i)) if self.has_children(i) && !self.open[i] => self.toggle(i),
+                    (Key::Right, Some(i)) if self.has_children(i) => self.select(i + 1),
+                    (Key::Left, Some(i)) if self.has_children(i) && self.open[i] => self.toggle(i),
+                    (Key::Left, Some(i)) => self.parent(i).is_some_and(|k| self.select(k)),
+                    (Key::Enter, Some(_)) => {
+                        self.chosen = true;
+                        true
+                    }
+                    _ => false,
+                }
+            }
             _ => false,
         }
     }

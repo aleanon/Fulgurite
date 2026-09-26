@@ -113,26 +113,24 @@ TREE = ("Tree", "#d_tree_a", [
                            c.click_outside())[0],
         injection="hide only the row pressed, not what is under it",
     ),
+    # M57/B50: a press now **selects** the row, leaf or not, so a leaf
+    # taking the press is the right answer -- this asserted the opposite
+    # when a leaf had nothing to do. What a leaf must still not do is
+    # fold anything; the guard that stops it is `a_leaf_does_not_toggle`
+    # in the unit tests, where it can be seen directly.
     Action(
-        name="pressing a leaf reports nothing, because nothing happened",
+        name="pressing a leaf selects it and folds nothing",
         needs="a tree with a leaf on screen",
         do=lambda c: (c.__dict__.__setitem__("_n0", len(_visible(c))),
                       c.__dict__.__setitem__("_m", c.mark()),
                       _row(c, 4))[0],
         expect=lambda c: (
-            len(_visible(c)) == c._n0 and c._handled is False,
-            "{} -> {} rows, and the press was handled={}. **The count is not "
-            "the assertion**: a leaf has no children, so folding its bit "
-            "changes the visible count by definition either way — an "
-            "injection that let a leaf toggle left the count-only version of "
-            "this green, and so did a version that asked what changed, "
-            "because nothing a leaf's bit does is visible. What a leaf must "
-            "not do is *take the press*, and `input.click` now answers that "
-            "(M27/T27.11)."
-            .format(c._n0, len(_visible(c)), c._handled),
+            len(_visible(c)) == c._n0 and c._handled is True and len(_changed_since(c)) > 0,
+            "{} -> {} rows, the press handled={}, {} node(s) repainted for the "
+            "selection".format(c._n0, len(_visible(c)), c._handled, len(_changed_since(c))),
         ),
         static=True,
-        injection="drop the `has_children` guard in Tree::toggle",
+        injection="let a press on a leaf decline (no selection)",
     ),
     Action(
         name="a hover lights the row under the pointer",
