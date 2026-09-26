@@ -51,11 +51,21 @@ pub struct Slider {
     /// against has to be remembered. `TextInput::pad_left` and
     /// `ScrollView::measured_overflow` exist for the same reason.
     track_w: f32,
+    /// The knob's diameter from the last layout: the knob's *centre*
+    /// travels `[knob / 2, track_w - knob / 2]`, and a pointer maps over
+    /// that span (M57/B14), so both ends are reachable with the knob under
+    /// the pointer.
+    knob: f32,
+    /// Where on the knob the press landed, from its centre, for the
+    /// gesture in flight: a press *on* the knob keeps that offset and the
+    /// knob does not jump to centre on the pointer (M57/B14). Zero for a
+    /// press on the track, which jumps there, as every toolkit does.
+    grab: f32,
 }
 
 impl Default for Slider {
     fn default() -> Self {
-        Slider { value: 0.0, step: 0.05, track_w: 0.0 }
+        Slider { value: 0.0, step: 0.05, track_w: 0.0, knob: 0.0, grab: 0.0 }
     }
 }
 
@@ -77,12 +87,19 @@ impl Slider {
         moved
     }
 
-    /// The value a pointer at `local_x` selects.
+    /// The value a pointer at `local_x` selects: the knob's centre
+    /// travels between half a knob in from either end.
     fn at(&self, local_x: f32) -> f32 {
-        if self.track_w <= 0.0 {
+        let span = self.track_w - self.knob;
+        if span <= 0.0 {
             return self.value;
         }
-        clamp01(local_x / self.track_w)
+        clamp01((local_x - self.grab - self.knob / 2.0) / span)
+    }
+
+    /// The knob's centre, from the track's left edge.
+    fn knob_x(&self) -> f32 {
+        self.knob / 2.0 + (self.track_w - self.knob).max(0.0) * self.value
     }
 }
 
@@ -163,6 +180,7 @@ impl Node for Slider {
         let me = style[i];
         let size = resolve_self(limits, &me, Size { w: H * 4.0, h: H });
         self.track_w = size.w;
+        self.knob = size.h * 0.75;
         record_painted(st, i, limits, size, &me)
     }
 
@@ -183,13 +201,14 @@ impl Node for Slider {
         let t = (h * 0.25).max(2.0);
         let mid = r[1] + h / 2.0;
         out.rounded_rect([r[0], mid - t / 2.0, r[2], mid + t / 2.0], s.bg, t / 2.0);
-        let x = r[0] + w * self.value;
-        if x > r[0] {
+        // The knob's centre travels half a knob in from either end, so
+        // the value the pointer picks is the value drawn under it.
+        let d = h * 0.75;
+        let x = r[0] + d / 2.0 + (w - d).max(0.0) * self.value;
+        if self.value > 0.0 {
             out.rounded_rect([r[0], mid - t / 2.0, x, mid + t / 2.0], s.fg, t / 2.0);
         }
-        let d = h * 0.75;
-        let kx = lumen_static::num::clamp(x - d / 2.0, r[0], r[2] - d);
-        out.rounded_rect([kx, mid - d / 2.0, kx + d, mid + d / 2.0], s.fg, d / 2.0);
+        out.rounded_rect([x - d / 2.0, mid - d / 2.0, x + d / 2.0, mid + d / 2.0], s.fg, d / 2.0);
     }
 
     fn hit(&self, st: &[NodeState], i: usize, x: f32, y: f32) -> Option<Hit> {
@@ -209,6 +228,10 @@ impl Node for Slider {
     fn on_event(&mut self, ev: &Event, cx: &EventCtx) -> bool {
         match ev {
             Event::PointerDown { .. } => {
+                // On the knob: keep where it was grabbed. On the track:
+                // jump the knob's centre there.
+                let off = cx.local.x - self.knob_x();
+                self.grab = if off.abs() <= self.knob / 2.0 { off } else { 0.0 };
                 self.set_value(self.at(cx.local.x));
                 // Consumed even when the value did not move: the press
                 // still claims the gesture, and returning false here
@@ -222,6 +245,24 @@ impl Node for Slider {
             }
             Event::Key { key: Key::Right, down: true } => {
                 let v = self.value + self.step;
+                self.set_value(v)
+            }
+            // Up/Down as well as Left/Right, and a page is ten steps —
+            // M57/B14; only the horizontal arrows moved it.
+            Event::Key { key: Key::Up, down: true } => {
+                let v = self.value + self.step;
+                self.set_value(v)
+            }
+            Event::Key { key: Key::Down, down: true } => {
+                let v = self.value - self.step;
+                self.set_value(v)
+            }
+            Event::Key { key: Key::PageUp, down: true } => {
+                let v = self.value + self.step * 10.0;
+                self.set_value(v)
+            }
+            Event::Key { key: Key::PageDown, down: true } => {
+                let v = self.value - self.step * 10.0;
                 self.set_value(v)
             }
             Event::Key { key: Key::Home, down: true } => self.set_value(0.0),
