@@ -37,6 +37,8 @@ ALL=(
     "widget-drive|./scripts/widget_drive.sh"
     "hot-window-drive|./scripts/hot_window_drive.sh"
     "gpu-parity|./scripts/gpu_parity.sh"
+    "resume-drive|./scripts/resume_drive.sh"
+    "idle-count|./scripts/idle_count.sh"
 )
 
 # Every script that goes through the live launcher is a live gate and must
