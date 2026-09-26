@@ -100,6 +100,21 @@ byte. With `--features lumen-static-winit/reload` the count is the same
 14, which is the finding: the `cfg` decides behaviour and not the link.
 `just release-window-shape` holds both, marked expected red until T52.7.
 
+**The gates read all four since T52.1** (R11-F4). `scripts/check_text.sh`
+prints each binary's `.text` against the same 64 KB ceiling — the
+interactive build keeps it, because an application that handles input
+is the ordinary case and not a larger product
+(`docs/plan-embedded-footprint.md` §2.5); needing more is a re-budget
+argued here. Before reading a number, each binary asserts the code it
+exists to price is linked: the interactive one counts `pass::dispatch`,
+`on_event`, `cascade_range` and `BindSite`, and a build with its
+dispatch calls deleted fails with `0 pass::dispatch symbols linked`.
+`scripts/check_bss.sh` runs the zero-framework-statics check on each and
+names a static by its **full** demangled name; it used to cut the name at
+its first space (`<embedded::Device`), so no exemption could have matched
+the binding cache. The three findings in the second table above are
+committed as expected red, each naming the task that turns it green.
+
 The stack rows are measured by T52.6's `fwq` under qemu and are recorded
 in that task's section; nothing between this commit and that one changes
 the core.

@@ -650,6 +650,18 @@ written; where it was wrong, the note says so and says what was done.
 - **T52.0 — the release window's recover count is 14 symbols, 13,964 B**,
   the re-triage's figures to the byte, and the same 14 with `reload` on.
 
+- **T52.1 — the paint-only firmware's headline tolerance also catches
+  the `f32::clamp` injection** (49,700 B against 27,968, +77.7%), so the
+  review's "exit 0" for `2189c21` no longer holds since M43's headline
+  check. The ceiling check is still what fires on the interactive build
+  (73,356 B, 7,820 over). T52.2's counts are still needed: a smaller
+  float leak inside 1% of the headline, or in a binary the headline does
+  not cover, is invisible to both.
+- **T52.1 — an XFAIL is a marker that must fail when its finding is
+  fixed.** Each script's expected-red entry prints `expected red -- …`
+  and passes while the finding stands, and fails with `remove the
+  XFAIL` once the count reaches 0, so no marker can outlive its task.
+
 ## Appendix: finding → task
 
 | ID | sev now | status | task |

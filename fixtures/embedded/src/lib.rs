@@ -10,6 +10,14 @@
 //! one: the dynamic check in `src/main.rs` only covers paths that run.
 //! T13.4's `--no-default-features` build, where `Vec` cannot be named at
 //! all, is stronger still.
+//!
+//! **And the source of four linked firmwares** (M52/T52.1):
+//! `src/bin/firmware.rs` paints one frame of [`Panel`]; the
+//! `firmware_*.rs` binaries beside it dispatch, bind and cascade over
+//! [`Device`] and [`Panel`], because a gate that reads only the paint-only binary cannot
+//! see input, binding or the cascade grow (R11-F4,
+//! `docs/plan-embedded-footprint.md`). `scripts/check_text.sh` and
+//! `scripts/check_bss.sh` judge all four.
 
 #![no_std]
 
