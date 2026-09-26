@@ -1,9 +1,19 @@
 # M43 — gates that run, refuse what they claim to, and say when they did not run
 
-> **T43.0–T43.12 and T43.14 DONE 2026-09-26** (branch `impl/m43`).
-> T43.13 (`just live`, `just ci`, the bench lock, the qemu/thumb probe)
-> and T43.15 (wiring the self-tests into `test`/`check`/`ci`) are NOT
-> built: both wait on M42/T42.2. One line per task:
+> **T43.0–T43.15 DONE 2026-09-26.** T43.0–T43.12 and T43.14 on branch
+> `impl/m43`; T43.13 and T43.15 on `impl/m43b`, after M42/T42.2. One line
+> per task:
+>
+> - **T43.13** `just live` (8 gates, 8 passed; no display → eight
+>   `skip(77)`, exit 77), `just ci`/`ci-verify` (steps derived from
+>   `check`'s closure at the commit; record `target/ci/<sha>.json`; a
+>   dirty tree fails), `install-hooks`, `bench-lock`, `scripts/probe.sh`
+>   (thumb, qemu, miri); the firmware gates moved into `test` (§2.10).
+> - **T43.15** `selftest` in `test`, `selftest-build` in `check`, `slow`
+>   and `live` in `ci`; a check replaced by `exit 0` fails `just test`
+>   (`stayed green`); `docs/results-deep-review.md` §4 addendum and §5.
+>   The full `just ci` record is at the end of "What building T43.13
+>   found".
 >
 > - **T43.0** `scripts/selftest/`: 37 plants (21 static, 14 build, 2 slow; 38 with T43.12's);
 >   at b213ae0 one of the 37 went red by name. All 38 are red now.
@@ -1322,6 +1332,25 @@ original wording.
   repository's shared worktree list. It is persistent by design
   (§2.1), and `git worktree prune` drops it once `target/` is removed.
 - **The firmware gates moved into `test`** (§2.10).
+
+### What T43.15 leaves to the coordinator (2026-09-26)
+
+AGENT.md is the coordinator's during parallel work, so the edits T43.13
+and T43.15 assign to it are proposed here, not made:
+
+- **Work-queue preamble:** "A milestone is not done until `just
+  ci-verify` passes for the commit that closed it, and its queue entry
+  cites that SHA (`docs/plan-m38-fixes.md` §5)."
+- **"Tests must be shown to fail", the end-to-end paragraph:** after
+  "`just gpu-parity` and `just agent-drive` exist because of this", add
+  "and `just ci` runs every one of them, with `just live`, against the
+  commit in a clean worktree."
+- **The table:** one summary row, `| M38's review and its re-triage |
+  79 rows (74 plus a dated addendum of 5) | see docs/results-deep-review.md
+  §4 |`, citing the tally there rather than restating it.
+- **The prose:** a third shape beside the two, *the gate never runs* —
+  compiled out by feature unification, skipped as a pass, or run
+  against a process it did not launch — citing §4 for the evidence.
 
 ## 4. Boundaries of this plan
 

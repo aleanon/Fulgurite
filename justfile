@@ -19,7 +19,7 @@
 # ---------------------------------------------------------------------------
 
 # The every-commit gate.
-test: static release-shape dev-shape fixtures observe-inlining firmware
+test: static selftest release-shape dev-shape fixtures observe-inlining firmware
 
 # Static checks first: sub-second, no compile. A dead doc reference should
 # not cost a 30-second build to discover.
@@ -154,8 +154,10 @@ fixtures:
 # Every refusal, planted (M43, docs/plan-gate-hygiene.md §2.4): each check
 # runs green on an unmodified copy of the tree, then each plant under
 # scripts/selftest/plants/<tier>/ edits the copy and its check must go red
-# BY NAME. scripts/selftest/run.sh's header is the format. Not yet wired
-# into `test`/`check` -- T43.15 does that; `just ci` runs `slow` and `live`.
+# BY NAME. scripts/selftest/run.sh's header is the format. Wired in by
+# M43/T43.15: `selftest` in `test` (inside §5's 30 s budget), `selftest-build`
+# in `check`, `selftest-slow` and `selftest-live` in `just ci`. A check
+# replaced by `exit 0` now fails `just test` with `stayed green`.
 
 # The no-compile plants: the drift checks in `static`, and the locks.
 selftest:
@@ -186,7 +188,7 @@ adversary-plant:
 # Before calling work done: everything in `test`, the `check-extra` builds,
 # and every live gate. **No display is a failure**, not "skipped" and green
 # (R17-F8): `live` exits 77, and so does `check`, unless LUMEN_ALLOW_SKIP=1.
-check: test check-extra live
+check: test check-extra selftest-build live
 
 # Every live gate, one line each and a total (M43/T43.13, §2.2 of
 # docs/plan-gate-hygiene.md): `name: pass | FAIL | skip(77) -- reason`.

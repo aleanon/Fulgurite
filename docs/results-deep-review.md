@@ -1421,19 +1421,28 @@ shape, but the cause is the build graph rather than the fixture.
 ### §4 addendum (dated rows, added as the fixes land)
 
 Rows found or re-run after this review, in the table's shape. M43/T43.15
-completes the addendum; a milestone that lands first adds its own row.
+completed the addendum on 2026-09-26 with the re-triage's I-NEW-1..4 and
+R7-F2's re-run; a later finding adds its own row. Counted with these five
+rows, the table holds 79, and the "what caught them" tally above covers
+the 74 the review found.
 
 | what | why it proved nothing | how caught | injection / evidence |
 |---|---|---|---|
 | `just tasks-drive` vs `run()`'s waker and `WaitUntil` (R7-F2; re-run 2026-09-25, M47/T47.1) | every read requested a frame, so the window was never idle while the drive watched it | injection | at `b213ae0`: waker uninstalled, or deadline ignored → 10/10 green; an unobserved read showed 1 tick of 25. Since T47.1 the drive's unobserved phases go red under both (`docs/results-tasks.md` T28.12) |
 | the shadow oracle (M34/T34.1; I-NEW-1 and R1-F6, fixed 2026-09-25, M41/T41.2) | it re-ran the code it checked before the output it checked, so it repaired every defect it could see; and its one test asserted only that it compared and stayed quiet | re-triage injection | a scratch cloned from the states left `tests/shadow.rs` green. Since T41.2 that injection names nothing in three positive cases, and moving the check back before paint fails `the oracle repaired the frame it judged` |
+| `tests/tick_marks.rs` (I-NEW-2; closed 2026-09-25, M41/T41.0) | it compared the two strategies' frames, and a tick that never ran left both drawing the same empty label -- the setup-did-not-happen shape | re-triage injection | `self.app.tick(dt_ms)` replaced with `false` in `Host::tick`: identical hashes, green before T41.0; since then red with `setup: the tick did not run`, and deleting `mark_all` in `Host::tick` still turns it red at the equality (`docs/plan-boundaries-repair.md` T41.0) |
+| `agent_drive.sh`'s `Boundaries` leg vs the shadow oracle (I-NEW-3; closed 2026-09-25, M42/T42.4) | `if sh.get("supported"):` had no `else`, so a build without the oracle compared nothing and printed `both strategies` | re-triage injection | `shadow-oracle` dropped from the leg: exit 0, and the only difference from the baseline was a missing "compared 264 frames" line. Since T42.4 the plants `live/shadow-absent` and `live/shadow-unexpected` go red by name (`docs/plan-drive-identity.md` §1.2) |
+| `failure_screen.rs`'s golden, and `golden.rs` (I-NEW-4; closed 2026-09-26, M43/T43.9) | a missing golden was recorded and the test passed -- `Verdict::Recorded` fell into the `println!` arm; `golden.rs` re-ran the comparison against the file it had just written. And under `--workspace` neither ran at all | re-triage injection + use | golden deleted: green before T43.9; since then `a first run is not a pass` (plant `build/golden-deleted`), a corrupted golden `differs` (`build/golden-corrupt`), and the recipe line removed names `golden` as a zero-test binary (`build/zero-tests`). `golden.rs`'s share of the shape was found by building (`docs/plan-gate-hygiene.md`, What building found) |
 
 ## 5. Gate reality
 
 Each gate the reviewers touched: where it runs, whether it can skip, and
 whether it has now been shown to fail. "Shown to fail: yes" means an
 injection in this review turned it red; "no" names the injection it
-missed.
+missed. **Bold M43 notes (added 2026-09-26, M43/T43.15)** name the plant
+under `scripts/selftest/plants/` that now turns the row red on every run
+of its tier (`static` in `just test`, `build` in `just check`, `slow` and
+`live` in `just ci`), or where the row now runs.
 
 | gate | runs where | can skip | shown to fail |
 |---|---|---|---|
@@ -1452,9 +1461,9 @@ missed.
 | `focus.rs`/`slider.rs`/`selection.rs` vs the group guard | `just test` | no | yes: 6 red |
 | `events.rs` C5 focus clear | `just test` | no | yes |
 | `slider.rs`/`select.rs` vs capture release | `just test` | no | yes: 2 red |
-| agent `input.rs` fill tests | `just test` (workspace only) | per package: 19 red | yes, by removing unification |
+| agent `input.rs` fill tests | `just test` (workspace only) | per package: 19 red | yes, by removing unification. **M43/T43.6: yes, plant `build/agent-alone`; alone in `just test-crates`, a `just ci` step** |
 | `just hot-demo` | `just fixtures` in `just test`; CI Linux | no on Linux | yes for keep/reset/bind/log (INJ1–INJ7); **no** for the chain (`79e7c7c`), sheet selectors, `mode=Basic` alone |
-| `scripts/check_no_unsafe.sh` | `just static`, CI | bypassable | plain unsafe yes; **no** for 3 bypasses (`dea0bb6`, `6105909`) |
+| `scripts/check_no_unsafe.sh` | `just static`, CI | bypassable | plain unsafe yes; **no** for 3 bypasses (`dea0bb6`, `6105909`). **M43/T43.1: yes, plants `static/unsafe-string-slash`, `static/unsafe-forbid-removed`, `build/unsafe-path-module`, `build/unsafe-outdir-include`; `forbid(unsafe_code)` is the gate** |
 | CI miri job | CI, `continue-on-error` | non-blocking | never green here; covers no unsafe |
 | `reload.rs` (core) | `just test` | no | yes: Label no-op restore, 3 red |
 | macros `ui.rs` trybuild | `just test` | no | yes: stack spacing, `fail_bind_into_default_label`; **no** for second `#[tree]`, columns=0 |
@@ -1462,36 +1471,36 @@ missed.
 | benches-competitive frame arm | manual | n/a | yes for place (I1), finish via floor (I2) |
 | stages `pump-sum6` | manual | prints only | yes I1, I2; **no** I3 |
 | `benches --bin grid` | manual; CI bench job (never run) | column unasserted | **no** for I3 |
-| `just wake-gate` | local with a display | exits 0 without DISPLAY | yes for Sender wake (D); **no** for `run()` (A) |
-| `just tasks-drive` | local with a display | exits 0 without DISPLAY | **no** for A and B |
+| `just wake-gate` | local with a display | exits 0 without DISPLAY | yes for Sender wake (D); **no** for `run()` (A). **exits 77 without a display since M42/T42.2, and `just live` (M43/T43.13) refuses a 77** |
+| `just tasks-drive` | local with a display | exits 0 without DISPLAY | **no** for A and B. **exits 77 without a display since M42/T42.2, and `just live` (M43/T43.13) refuses a 77** |
 | `inbox_wake.rs` | `just test` | no | yes: D, 2 red |
 | `timers.rs` | `just test` | no | cannot exhibit R7-F1, F3, F4 by construction |
 | `alloc_gate.rs` raster arms | `just test` | never truetype, never bands | truetype twin red; **no** under I2 threads |
 | `cursor.rs`/`focus.rs` size asserts, `glass_cmd.rs` | `just test` | no | yes: 88 vs 84 |
 | `banded.rs` | `just test`, `just threads` | no | correctly blind to the clip injection |
 | any gate on `Canvas::resize` | none exists | n/a | **no**: `68443f6` green everywhere |
-| `just gpu` (`parity.rs`, `glass_parity.rs`) | `check-extra`, CI | **skips as pass** without an adapter | yes for Line AA (186 px), gamma (3,751); **no** for Image, atlas reset; border only on llvmpipe |
-| `golden.rs` | **nowhere** | always 0 tests under unification | yes only per crate |
+| `just gpu` (`parity.rs`, `glass_parity.rs`) | `check-extra`, CI | **skips as pass** without an adapter | yes for Line AA (186 px), gamma (3,751); **no** for Image, atlas reset; border only on llvmpipe. **M43/T43.10: the skip is refused, plant `build/gpu-hidden`** |
+| `golden.rs` | **nowhere** | always 0 tests under unification | yes only per crate. **M43/T43.9: runs alone in `dev-shape`; plants `build/golden-corrupt`, `build/golden-deleted`, `build/zero-tests`** |
 | `glass_oracle.rs`, `glass_*.rs` | `just test` | no | **no** for `MAX_DEPS` |
 | `svg.rs` | `just test` | no | **no** for StrokedRect, Glass |
-| `just gpu-parity` (live) | manual | skips without display, adapter, xwd | not run (llvmpipe only) |
-| `lumen-static-text` `shaping.rs` | `just test` | skips silently without a face | partially: 1 of 6 red under two injections |
+| `just gpu-parity` (live) | manual | skips without display, adapter, xwd | not run (llvmpipe only). **in `just live` since M43/T43.13; a missing display, adapter or `xwd` exits 77, refused unless LUMEN_ALLOW_SKIP=1** |
+| `lumen-static-text` `shaping.rs` | `just test` | skips silently without a face | partially: 1 of 6 red under two injections. **M43/T43.11: shapes the committed face; discovery refused without a face, plant `build/fonts-hidden`** |
 | `clipboard.rs` | `just test` (BlockMetrics) | no | **no** for newlines |
 | `ime.rs` | `just test` | no | **no** for routing |
-| `baked_face.rs` | `just test` | skips without DejaVuSans | checks bytes, not wrap |
-| `check_text.sh` | `just thumb` in `check-extra` | stale under CARGO_TARGET_DIR | Toggle/task halves per docs; **no** for flt2dec, f64 |
-| `check_bss.sh` | `just thumb` | blind to unlinked code; stale dir; passes on nm failure | yes: static in paint; **no** in dispatch, nm failure |
+| `baked_face.rs` | `just test` | skips without DejaVuSans | checks bytes, not wrap. **M43/T43.11: reads the committed face; no skip** |
+| `check_text.sh` | `just thumb` in `check-extra` | stale under CARGO_TARGET_DIR | Toggle/task halves per docs; **no** for flt2dec, f64. **M43: in `just test` as `firmware` (T43.13, `docs/plan-gate-hygiene.md` §2.10); plants `build/text-stale-headline`, and the stale target dir through `build/bss-stale-target` (shared `scripts/lib/firmware.sh`)** |
+| `check_bss.sh` | `just thumb` | blind to unlinked code; stale dir; passes on nm failure | yes: static in paint; **no** in dispatch, nm failure. **M43/T43.4: yes, plants `build/bss-nm-fails`, `build/bss-stale-target`; in `just test` since T43.13** |
 | fixture `STACK <= 4096` | thumb builds | always, unless DEPTH changes | only for depth arithmetic |
 | fixture size equality asserts | thumb builds | UI only on 32-bit | per docs |
-| `just const-budget` | `just test` / CI | warm cache is a no-op | red only via rustc's lint; timer green on rerun |
+| `just const-budget` | `just test` / CI | warm cache is a no-op | red only via rustc's lint; timer green on rerun. **M43/T43.5: yes, plants `slow/const-quadratic` (red on rerun), `slow/const-count-wid`** |
 | "f64 in the frame path: zero" | nowhere | n/a | cannot fail |
-| `just release-shape` | `just test`, CI | no | yes for `compile_error!` and widgets observe list; runs with observe on |
-| `just thumb` | `check-extra` | type-checks only | **no** for `fa64952` |
+| `just release-shape` | `just test`, CI | no | yes for `compile_error!` and widgets observe list; runs with observe on. **M43/T43.7: observe off; plant `build/observe-tripwire`** |
+| `just thumb` | `check-extra` | type-checks only | **no** for `fa64952`. **M43/T43.8: `bind_nostd.rs` under LUMEN_REQUIRE_NOSTD=1; plant `build/nostd-bind` (`fa64952`)** |
 | `counter-window --drive2` | fixtures / live | one app | not re-run |
 | `protocol.rs` waitSettled | `just test` | no | red only by pinning a constant |
 | `changes.rs`/`hidden_subtree.rs`/`lint.rs`/`off_table_visibility.rs` | `just test` | no | yes: `2b21ded`, `1e1c180` |
 | `session.rs` refusals | `just test` | no | viewport, measurer, start frame yes; per-step and stylesheet absent |
-| `scripts/widget_drive.sh` | manual | exits 0 without DISPLAY; per action on empty regions | **no** for `1beed32`, I5a, leftover process, I5b/I5c, colour (`fd31a02`). **Since M42/T42.2: shown to fail: yes, by the stranger and leg-drop plants** (`scripts/selftest/plants/live/`); exits 77 without a display |
+| `scripts/widget_drive.sh` | manual | exits 0 without DISPLAY; per action on empty regions | **no** for `1beed32`, I5a, leftover process, I5b/I5c, colour (`fd31a02`). **Since M42/T42.2: shown to fail: yes, by the stranger and leg-drop plants** (`scripts/selftest/plants/live/`); exits 77 without a display. **In `just live` (M43/T43.13)** |
 | `scripts/ui_check.py` | `just live-gate` with a display | 2 of 3 budgets pass on zeros | latency fails on nan |
 | `benches --bin agent` allocation count | manual | never fails | no (reads 4.00) |
 | `hostile.rs` | `just test` | never reaches the transport | not injected |
@@ -1501,17 +1510,17 @@ missed.
 | T15.10 / T15.7 / T15.11 gates | nowhere | n/a | never executed |
 | widget a11y roles | none exists | n/a | **no**: `d85e851` |
 | agent lint tests | `just test` | no | yes for W1001, W1004–W1011; **no** for W1002 |
-| `scripts/check_attr_table.sh` | `just static` | exits 0 if the book file is missing | **no** for parser drift |
-| `check_doc_identifiers.sh` | `just static` | no | leading `//` and handoff yes; trailing, block, AGENT.md no |
-| `check_derive_attrs.sh` | `just static` | no | one-line list yes; multi-line, comment use no |
-| `check_doc_paths.sh` | `just static` | `--bin` half skipped without cargo | docs path and docs `--bin` yes; `--bin <dep>`, `-p`, book no |
-| `check_book_includes.sh` | `just static` | exits 0 without `book/src` | anchor and `rust,ignore` yes; `~~~`, indented no |
-| dev-shape `cargo test --workspace` | `just test`, CI | 15 font tests skip; golden 0 tests | 911/911 with and without fonts |
+| `scripts/check_attr_table.sh` | `just static` | exits 0 if the book file is missing | **no** for parser drift. **M43/T43.3: yes, plants `static/attr-ghost`, `static/attr-missing-book`** |
+| `check_doc_identifiers.sh` | `just static` | no | leading `//` and handoff yes; trailing, block, AGENT.md no. **M43/T43.2: yes, plants `static/ident-trailing`, `-block`, `-agent-md`, `-stale-allow`, `-toml-stripped`** |
+| `check_derive_attrs.sh` | `just static` | no | one-line list yes; multi-line, comment use no. **M43/T43.3: yes, plants `static/derive-multiline`, `static/derive-comment-use`** |
+| `check_doc_paths.sh` | `just static` | `--bin` half skipped without cargo | docs path and docs `--bin` yes; `--bin <dep>`, `-p`, book no. **M43/T43.2: yes, plants `static/paths-bin-is-dependency`, `-bin-is-package`, `-unknown-package`, `-bin-in-book`** |
+| `check_book_includes.sh` | `just static` | exits 0 without `book/src` | anchor and `rust,ignore` yes; `~~~`, indented no. **M43/T43.2: yes, plants `static/fence-tilde`, `static/fence-indented`** |
+| dev-shape `cargo test --workspace` | `just test`, CI | 15 font tests skip; golden 0 tests | 911/911 with and without fonts. **M43/T43.9, T43.11: zero-test binaries refused (`build/zero-tests`); fonts pinned (`build/fonts-hidden`)** |
 | `floats`, `simd`/`threads` (`check_banded`), `book`, fixtures | `check` / `test` | varies | not tested here |
 | `simd_shadow.rs` + clippy | `just simd` in `check` | no | **no**: I8 |
-| `live_gate.sh` | `check` with a display | skips without one | **no**: I6 |
+| `live_gate.sh` | `check` with a display | skips without one | **no**: I6. **In `just live` (M43/T43.13): no display is a 77, refused unless LUMEN_ALLOW_SKIP=1** |
 | compile_fail doctests (4) | `just test` | dropped under nextest alone | yes: I1a, I1c, I1d |
-| `cargo deny` / `cargo audit` | nowhere | n/a | run here: 0 vulnerabilities; 2 unmaintained (rustybuzz, ttf-parser); no license policy |
+| `cargo deny` / `cargo audit` | nowhere | n/a | run here: 0 vulnerabilities; 2 unmaintained (rustybuzz, ttf-parser); no license policy. **M43/T43.12: `just deny`, a `just ci` step; plant `static/deny-unaccepted`** |
 | shell debug-assertions off (profile) | all dev/test builds | n/a | turning them on found nothing |
 
 ## 6. Not executable here
