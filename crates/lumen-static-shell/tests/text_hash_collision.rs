@@ -167,7 +167,6 @@ fn a_non_colliding_change_damages_and_leaves_nothing_stale() {
 }
 
 #[test]
-#[ignore = "red until T46.1: R2-F2, a solved same-length pair collides under display::fold"]
 fn a_solved_colliding_change_still_damages() {
     check(A, SOLVED, true);
 }

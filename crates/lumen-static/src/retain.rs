@@ -58,9 +58,16 @@
 //!   is no special case to forget.
 //! - **Equality becomes a 64-bit hash.** Two genuinely different
 //!   commands that collide would leave stale pixels. At ~2 000 commands
-//!   a frame that is a probability around 10⁻¹³ per frame, and
-//!   `shell/tests/damage_oracle.rs` is the standing check that a
-//!   partial redraw stays pixel-identical to a full one.
+//!   a frame that is a probability around 10⁻¹³ per frame **for text
+//!   nobody chose**, and `shell/tests/damage_oracle.rs` is the standing
+//!   check that a partial redraw stays pixel-identical to a full one.
+//!   Text somebody chose is a different claim: a command's bytes go
+//!   through [`crate::display::hash_bytes`], which separates every
+//!   algebraic collision the old per-byte fold had, and which someone
+//!   who reads it can still search against. What such a collision can do
+//!   is keep a stale label on screen; the stream is not a security
+//!   boundary (M46/T46.1; `docs/results-retention.md`, "What a text hash
+//!   guarantees").
 //!
 //! # Why a buffer age, and not just this frame's damage
 //!
@@ -83,7 +90,7 @@
 #[cfg(feature = "alloc")]
 use alloc::vec::Vec;
 
-use crate::display::{fold, Color, Painter, Rect};
+use crate::display::{fold, hash_bytes, Color, Painter, Rect};
 
 /// How many regions damage keeps apart before it starts merging them.
 ///
@@ -896,14 +903,17 @@ impl<R: Retention> Painter for Recording<'_, R> {
     /// is the same offset and the same length, so the two commands were
     /// equal and the label never repainted. A stream is handed the
     /// `&str` itself, so there is no case to forget.
+    ///
+    /// The bytes go through [`crate::display::hash_bytes`], not `fold`:
+    /// a per-byte linear fold let two same-length strings collide, and a
+    /// label changed to the other one reported no damage (M46/T46.1,
+    /// `lumen-static-shell/tests/text_hash_collision.rs`).
     fn text_weighted(&mut self, rect: Rect, s: &str, size: f32, weight: f32, color: Color) {
         let mut h = h_rect(fold(0, 2), rect);
         h = fold(h, size.to_bits() as u64);
         h = fold(h, weight.to_bits() as u64);
         h = h_color(h, color);
-        for b in s.as_bytes() {
-            h = fold(h, *b as u64);
-        }
+        h = fold(h, hash_bytes(s.as_bytes()));
         self.ret.observe(h, rect);
         self.inner.text_weighted(rect, s, size, weight, color);
     }

@@ -42,15 +42,106 @@ impl Color {
 /// `[x0, y0, x1, y1]`, absolute.
 pub type Rect = [f32; 4];
 
-/// One round of the mixing function every checksum here uses.
+/// One round of the mixing function every checksum here uses — for
+/// **scalars** (a rect's bits, a colour, a size, a tag), never for text.
 ///
 /// Written out three times before 2026-09-02 — twice in this file and
 /// once in `ops.rs`, where the shared helper sat with no callers
 /// (F6.1). The journal's `measure_into` uses the same constant, so a
 /// container's folded signature mixes the way a leaf's does.
+///
+/// **Linear, and that is why text does not go through it** (M46/T46.1).
+/// `h·K + v` over ℤ/2⁶⁴ means two inputs of one length collide whenever
+/// a small integer combination of their differences vanishes, which a
+/// lattice reduction finds in seconds, and a fold from 0 cannot see a
+/// leading zero. For a rect or a colour nobody chooses the difference;
+/// for displayed text somebody may. Text goes through [`hash_bytes`].
 #[inline]
 pub(crate) fn fold(h: u64, v: u64) -> u64 {
-    h.wrapping_mul(0x9E37_79B9_7F4A_7C15).wrapping_add(v)
+    h.wrapping_mul(K).wrapping_add(v)
+}
+
+/// `fold`'s multiplier, the golden ratio in 64 bits.
+const K: u64 = 0x9E37_79B9_7F4A_7C15;
+
+/// A 64-bit hash of a byte string: **the one text identity** in this
+/// crate (M46/T46.1). `Recording::text_weighted` (retention),
+/// [`DisplayList::hash_from`] (the agent journal's signatures) and
+/// `FoldedText::fold_of` (the `Button`/`Badge`/`Chip` memo key) all call
+/// it, so the three cannot disagree about when two strings are the same.
+///
+/// Seeded with the length, one folded multiply per 8-byte word (the
+/// 128-bit product's halves xored, wyhash's step), SplitMix64's
+/// finaliser. What that guarantees, and what it does not:
+///
+/// - **Two strings of different lengths start from different seeds**, so
+///   `"x"` and `"\0x"` — equal under a fold from 0 — are separated by
+///   construction.
+/// - **It is not linear**, so the solved pairs of `fold` (a same-length
+///   collision found by lattice reduction) do not carry over, and its
+///   step is **not a bijection of the word**, so a second word cannot be
+///   *computed* to cancel a first — which the review's rotate-xor-multiply
+///   mix allowed with one xor (`docs/plan-hash-identity.md` §6).
+/// - **It is unkeyed, and not a security boundary.** Someone who reads
+///   this function can search for a collision, and a keyed PRF was
+///   measured and refused on cost (`docs/results-retention.md`, "What a
+///   text hash guarantees"). What a found collision can do is keep a
+///   stale label on screen; it cannot skip anything else.
+///
+/// The cost against the per-byte fold it replaced is in the same section:
+/// cheaper from about a word up, and within its kill rule at 9 B.
+#[inline]
+pub fn hash_bytes(bytes: &[u8]) -> u64 {
+    let mut h = (bytes.len() as u64).wrapping_mul(K);
+    let mut words = bytes.chunks_exact(8);
+    for w in &mut words {
+        let mut b = [0u8; 8];
+        b.copy_from_slice(w);
+        h = folded_mul(h ^ u64::from_le_bytes(b), P);
+    }
+    let r = words.remainder();
+    if !r.is_empty() {
+        h = folded_mul(h ^ tail(r), P);
+    }
+    finalise(h)
+}
+
+/// wyhash's odd multiplier for the per-word step.
+const P: u64 = 0xe703_7ed1_a0b4_28db;
+
+/// The low and high halves of the 128-bit product, xored. Unlike a
+/// 64-bit multiply this is not invertible, so the step does not map
+/// words one-to-one onto states.
+#[inline]
+fn folded_mul(a: u64, b: u64) -> u64 {
+    let p = (a as u128).wrapping_mul(b as u128);
+    (p as u64) ^ ((p >> 64) as u64)
+}
+
+/// The last 1–7 bytes as one word, without a copy: two overlapping
+/// 4-byte loads from four up, three single bytes below. Every byte is
+/// read at least once and the length (already in the seed) fixes how
+/// they overlap, so for a given length the map is one-to-one.
+#[inline]
+fn tail(r: &[u8]) -> u64 {
+    let n = r.len();
+    if n >= 4 {
+        let lo = u32::from_le_bytes([r[0], r[1], r[2], r[3]]) as u64;
+        let hi = u32::from_le_bytes([r[n - 4], r[n - 3], r[n - 2], r[n - 1]]) as u64;
+        lo | (hi << 32)
+    } else {
+        ((r[0] as u64) << 16) | ((r[n / 2] as u64) << 8) | r[n - 1] as u64
+    }
+}
+
+/// SplitMix64's finaliser: every input bit reaches every output bit.
+#[inline]
+fn finalise(mut z: u64) -> u64 {
+    z ^= z >> 30;
+    z = z.wrapping_mul(0xbf58_476d_1ce4_e5b9);
+    z ^= z >> 27;
+    z = z.wrapping_mul(0x94d0_49bb_1331_11eb);
+    z ^ (z >> 31)
 }
 
 /// Whether a rect encloses anything a renderer could paint.
@@ -967,9 +1058,7 @@ impl DisplayList {
         for c in &self.cmds[from.min(self.cmds.len())..] {
             c.hash_into(&mut h);
             if let Cmd::Text { text, .. } = c {
-                for b in self.str_of(*text).as_bytes() {
-                    h = fold(h, *b as u64);
-                }
+                h = fold(h, hash_bytes(self.str_of(*text).as_bytes()));
             }
         }
         h

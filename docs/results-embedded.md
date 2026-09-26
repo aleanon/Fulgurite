@@ -463,3 +463,19 @@ clones the `char_indices` iterator and sums advances to the next space.
 the choice of how to write the first pass was fifteen times the cost of
 the pass itself.** `scripts/check_text.sh`: 27,332 B of 65,536, 41.7%.
 
+## M46/T46.1 — the text hash, measured 2026-09-26
+
+`.text` **27,024 → 27,424 B (+400)**, 41.8% of the ceiling. All of it is
+`Button::layout` (848 → 1,248 B): the fixture's `Button` keys its
+`FoldedText` memo on `display::hash_bytes`, inlined, where it used to
+fold byte by byte. The fixture links no `Recording`. RAM is unchanged —
+the memo's key is a `u64` either way. The kill rule that judged it, K3,
+and the rest of the measurement are in `docs/results-retention.md`,
+"What a text hash guarantees".
+
+**The plan predicted this could not move, and was wrong.** `nm` on the
+firmware showed no `FoldedText` symbol, which read as "not linked"; it
+was inlined into `Button::layout`. A symbol search is evidence of
+absence only for a function that is not inlined, which is the same
+lesson as the `#[no_mangle]` static that the linker dropped (M15): the
+quantity has to be *measured*, not looked up.

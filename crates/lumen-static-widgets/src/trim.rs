@@ -100,7 +100,7 @@ pub struct Badge<S: TextStorage = &'static str> {
     /// layout, which `--bin bindings` measured at ~410 ns against a
     /// 4.97 ns memo hit — a still frame paying a full shape for text
     /// nobody touched. `text` is a plain public field the application
-    /// binds, so the fold stands in for the dirty bit a `Label` has
+    /// binds, so a hash of it stands in for the dirty bit a `Label` has
     /// (`lumen_static::text::FoldedText`).
     measured: lumen_static::text::FoldedText,
 }
@@ -223,7 +223,7 @@ pub struct Chip<S: TextStorage = &'static str> {
     /// layout, which `--bin bindings` measured at ~410 ns against a
     /// 4.97 ns memo hit — a still frame paying a full shape for text
     /// nobody touched. `text` is a plain public field the application
-    /// binds, so the fold stands in for the dirty bit a `Label` has
+    /// binds, so a hash of it stands in for the dirty bit a `Label` has
     /// (`lumen_static::text::FoldedText`).
     measured: lumen_static::text::FoldedText,
 }

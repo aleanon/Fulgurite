@@ -203,6 +203,12 @@ honest upper bound, not a cache hit in disguise.
 **Verdict: the memo stays, and it is not close.** The threshold was
 1 ns; the margin is three to four orders of magnitude above it.
 
+*(2026-09-26, M46/T46.1: these hits are `Label` through `Measured`, which
+keys on a dirty bit and hashes nothing. `FoldedText` — the memo `Button`,
+`Badge` and `Chip` use — hashes its text on every hit, so it is priced by
+the `Badge`/`Chip` "layout, unchanged" arms of `--bin bindings`, not by
+this table; `docs/results-retention.md`, "What a text hash guarantees".)*
+
 Two things follow that are larger than the memo itself:
 
 1. **Text measurement dominates layout once text is real.** The whole

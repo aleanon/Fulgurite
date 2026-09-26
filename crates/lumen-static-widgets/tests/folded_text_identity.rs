@@ -136,19 +136,16 @@ fn check(kind: Kind, name: &str, rows: &[Row]) {
 }
 
 #[test]
-#[ignore = "red until T46.1: R2-F3, FoldedText keys on a linear, length-free fold"]
 fn button_serves_the_width_of_the_text_it_holds() {
     check(Kind::Button, "Button", COLLIDING);
 }
 
 #[test]
-#[ignore = "red until T46.1: R2-F3, FoldedText keys on a linear, length-free fold"]
 fn badge_serves_the_width_of_the_text_it_holds() {
     check(Kind::Badge, "Badge", COLLIDING);
 }
 
 #[test]
-#[ignore = "red until T46.1: R2-F3, FoldedText keys on a linear, length-free fold"]
 fn chip_serves_the_width_of_the_text_it_holds() {
     check(Kind::Chip, "Chip", COLLIDING);
 }

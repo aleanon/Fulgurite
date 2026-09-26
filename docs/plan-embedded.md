@@ -734,7 +734,10 @@ Four findings the measurement produced that this plan did not predict:
 
 The cost, stated once: equality is now a 64-bit hash, so a collision
 would leave stale pixels — around 10⁻¹³ per frame at 2 000 commands,
-with `damage_oracle.rs` standing over it.
+with `damage_oracle.rs` standing over it. *(2026-09-26: true for text
+nobody chose; the text half of the hash was linear and had solvable
+collisions until M46/T46.1 — `docs/results-retention.md`, "What a text
+hash guarantees".)*
 
 ## T13.9 — the number, last — **DONE 2026-09-05**
 

@@ -523,17 +523,30 @@ Dated notes, kept beside the plan they correct rather than folded into it.
   The bench adds a **folded-multiply** arm (the 128-bit product's halves
   xored, wyhash's step), which is not a bijection, and T46.1 decides
   between them on the kill rule.
-- **K3 cannot move.** The leaf `no_std` firmware (`scripts/check_text.sh`)
+- ~~**K3 cannot move.** The leaf `no_std` firmware (`scripts/check_text.sh`)
   links neither `Recording` nor `FoldedText`, so no change to either can
-  reach its `.text` — a bound computed from the wrong quantity, as
-  AGENT.md records it. T46.1 reports the firmware delta (it must be 0)
-  **and** the size of the new function in a `thumbv7em-none-eabihf`
-  build of the core, which is the quantity K3 was after.
+  reach its `.text`.~~ **Wrong, found by T46.1's measurement:** the
+  firmware links a `Button`, and its `FoldedText` key was *inlined* into
+  `Button::layout`, so `nm` showed no symbol for it. `.text` moved by
+  +400 B (`docs/results-embedded.md`, M46/T46.1). A symbol search proves
+  absence only for code that is not inlined.
 - **K2's noise floor, measured before T46.1** (`--bin retain --text`,
   2,000 text commands, `build + Incremental`, eight runs a side of the
   base binary against a copy of itself, pinned to one core under the
   bench lock, load 13.1 → 10.5 on 32 cores): 32,249 ns against 32,292,
   a difference of medians of **+42.6 ns (+0.13%)**. That is the floor.
+**2026-09-26, T46.1.**
+
+- **§2.1 A shipped, as a folded multiply rather than the review's
+  rotate-xor-multiply** (see the T46.0 note above), and C was refused on
+  K1: SipHash-1-3 costs +2.6 ns at 9 B on the bare function alone. All
+  three kill rules pass; `docs/results-retention.md`, "What a text hash
+  guarantees", has the table.
+- **The fold was not the only cost at 9 B.** Without `#[inline]` the
+  function was a cross-crate call from the widgets, and the bare
+  `fold_of` rose +0.64 ns; with it, +0.11 ns. The memo hit, which is
+  K1's quantity, moved +0.07 and −0.10 ns across the two builds.
+
 - **Items 5 and 6 travel with T46.3**, as §3 allows an early T46.3 to
   carry them, so that whichever branch lands T46.3 carries its gates.
 

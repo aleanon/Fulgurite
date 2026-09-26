@@ -328,9 +328,10 @@ pub struct Button<S: 'static, T: TextStorage = &'static str> {
     /// `font_size` tall, and every label sat 4 px low
     /// (`docs/results-frame-cost.md`).
     ///
-    /// Keyed on a [`MeasureKey`] and a fold of the label's bytes. The
-    /// fold stands in for the dirty bit a `Label` has and a `Button` does
-    /// not. This was a private `ButtonKey` holding the same three fields
+    /// Keyed on a [`MeasureKey`] and a hash of the label's bytes
+    /// (`lumen_static::display::hash_bytes`; until M46/T46.1 a linear
+    /// fold, on which `"x"` and `"\0x"` shared a width). The hash stands
+    /// in for the dirty bit a `Label` has and a `Button` does not. This was a private `ButtonKey` holding the same three fields
     /// the label's memo left out, so the right key and the wrong one sat
     /// in the same file until M26/T26.3 gave both widgets the one type.
     measured: lumen_static::text::FoldedText,

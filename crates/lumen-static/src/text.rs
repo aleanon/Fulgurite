@@ -197,10 +197,21 @@ impl Measured {
 /// [`Measured`] pairs with a [`Dirty`] flag: the widget owns its text
 /// and knows when it changed. `Button`, `Badge` and `Chip` do not —
 /// their text is bound by the application, which writes it directly —
-/// so the key carries a **fold of the bytes** in place of a dirty bit.
-/// A few nanoseconds of folding against a shaping call that allocates:
-/// `docs/bindings-decision.md` T7.3 priced the pair at 4.8 ns against
-/// 2,459 ns for a short run.
+/// so the key carries a **hash of the bytes** in place of a dirty bit.
+/// A few nanoseconds of hashing against a shaping call that allocates:
+/// the `Badge` and `Chip` "layout, unchanged" arms of `--bin bindings`
+/// price a hit (`docs/results-retention.md`, "What a text hash
+/// guarantees", has them before and after M46/T46.1).
+///
+/// **What identity the key gives.** Two strings share a memo only if
+/// [`crate::display::hash_bytes`] collides on them: never for strings of
+/// different lengths by construction of the seed, never for the pairs the
+/// old linear fold had (`"x"` and `"\0x"`, and solved same-length pairs,
+/// which served a stale width — `lumen-static-widgets/tests/folded_text_identity.rs`),
+/// and for text somebody chose only by a search, since the hash is
+/// unkeyed. Comparing the bytes themselves would be exact, and would make
+/// the memo own a copy of its text: a heap allocation per text change,
+/// which M26/T26.8's budget exists to keep out of the frame.
 ///
 /// **One helper, because it was a convention.** `Button` open-coded
 /// exactly this and `Badge` and `Chip` had no memo at all — they
@@ -218,11 +229,12 @@ impl FoldedText {
         FoldedText { cache: None }
     }
 
-    /// The fold this memo keys on — public so a test can key on the
-    /// same bytes rather than on a second copy of the arithmetic.
+    /// The hash this memo keys on — [`crate::display::hash_bytes`] of
+    /// the text. Public so a test can key on the same function rather
+    /// than on a second copy of the arithmetic.
     #[inline]
     pub fn fold_of(text: &str) -> u64 {
-        text.bytes().fold(0u64, |h, b| crate::display::fold(h, b as u64))
+        crate::display::hash_bytes(text.as_bytes())
     }
 
     /// The cached size for `text` under `key`, or compute and store one.
