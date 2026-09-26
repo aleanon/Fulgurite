@@ -301,6 +301,12 @@ pub struct Store {
     /// because a showcase only ever has one demo alive.
     presses: u32,
     flag: bool,
+    /// The second box's and switch's own flag (M57/C2): two controls
+    /// bound to one flag could only ever disagree.
+    flag_b: bool,
+    /// Which radio option is chosen, 0..=2 (M57/C2). It was a `bool`
+    /// shared by three radios, so "Blue" could never be selected.
+    choice: usize,
     fraction: f32,
 }
 
@@ -357,6 +363,34 @@ fn refresh(s: &mut Show) -> bool {
             d.a.trigger.label.clear();
             d.a.trigger.label.push_str(want);
             changed = true;
+        }
+    }
+    // **The toggles, controlled** (M57/C2): `on` is a copy, written back
+    // from the store every frame, as the `Select` above is. Compared
+    // first, so an unchanged frame writes nothing.
+    {
+        let (a, b, c) = (s.store.flag, s.store.flag_b, s.store.choice);
+        let mut put = |t: &mut bool, v: bool| {
+            if *t != v {
+                *t = v;
+                changed = true;
+            }
+        };
+        match &mut s.ui.main.stage.row.demo {
+            Demo::CheckBox(d) => {
+                put(&mut d.a.t.on, a);
+                put(&mut d.b.t.on, b);
+            }
+            Demo::Switch(d) => {
+                put(&mut d.a.t.on, a);
+                put(&mut d.b.t.on, b);
+            }
+            Demo::Radio(d) => {
+                put(&mut d.a.t.on, c == 0);
+                put(&mut d.b.t.on, c == 1);
+                put(&mut d.c.t.on, c == 2);
+            }
+            _ => {}
         }
     }
     // **Read the typed fields back before reporting.** This is what a
@@ -2161,6 +2195,45 @@ mod tests {
             Damage::None => false,
         };
         assert!(covers, "the press damaged something, but not the button it was on");
+    }
+
+    /// **A toggle's drawn state follows its click** — M57/C2.
+    ///
+    /// The demos flipped the store and never wrote the toggles' `on` back,
+    /// so the readout changed while the boxes stayed as drawn; and the
+    /// three radios shared one `bool`, so Blue could never be chosen
+    /// (`docs/widget-audit.md`, CheckBox, Switch, Radio). The drive read
+    /// only the readout, which is how it passed. This reads what the
+    /// widget will paint.
+    #[test]
+    fn a_toggles_drawn_state_follows_its_click() {
+        let table = <<Show as lumen_static::event::App>::Tree as lumen_static::widget::Widget>::SUB_TABLE;
+        let idx = |w: &str| lumen_static::style::index_of_wid(table, w).expect(w);
+        let click = |h: &mut lumen_static_shell::Host<Show>, i: usize| {
+            let s = h.states[i];
+            let (x, y) = (s.pos.x + s.size.w / 2.0, s.pos.y + s.size.h / 2.0);
+            h.post(Event::down(x, y));
+            h.post(Event::up(x, y));
+            h.pump();
+            h.pump();
+        };
+
+        let entry = CATALOG.iter().position(|e| e.name == "CheckBox").unwrap();
+        let mut h = host(entry, false);
+        click(&mut h, idx("d_checkbox_a"));
+        let Demo::CheckBox(d) = &h.app.ui.main.stage.row.demo else { panic!("setup: not the CheckBox demo") };
+        println!("after one click: store {} drawn a={} b={}", h.app.store.flag, d.a.t.on, d.b.t.on);
+        assert!(h.app.store.flag, "setup: the click did not reach the store");
+        assert!(d.a.t.on, "the store says checked and the box is drawn unchecked");
+        assert!(!d.b.t.on, "the other box followed a click that was not on it");
+
+        let entry = CATALOG.iter().position(|e| e.name == "Radio").unwrap();
+        let mut h = host(entry, false);
+        click(&mut h, idx("d_radio_c"));
+        let Demo::Radio(d) = &h.app.ui.main.stage.row.demo else { panic!("setup: not the Radio demo") };
+        println!("after clicking Blue: choice {} drawn {} {} {}", h.app.store.choice, d.a.t.on, d.b.t.on, d.c.t.on);
+        assert_eq!(h.app.store.choice, 2, "clicking Blue did not choose it");
+        assert!(d.c.t.on && !d.a.t.on && !d.b.t.on, "Blue is chosen and not the one drawn");
     }
 
     /// **Every demo button shows hover** — M57/C1.

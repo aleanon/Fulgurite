@@ -238,13 +238,34 @@ fn btn(label: &str) -> Button<Store, String> {
     b
 }
 
-fn toggle<const K: u8>(on_: bool) -> Toggle<Store, K> {
-    Toggle::<Store, K> {
-        on: on_,
-        on_toggle: |s: &mut Store, _: &EventCtx| s.flag = !s.flag,
-        ..Default::default()
-    }
+/// A toggle whose press runs `on_toggle`. **`on` is a copy**: `refresh`
+/// writes the store's value back every frame (M57/C2). Seeding it once
+/// and never again was how the demos flipped the store and left the
+/// drawn boxes as they were (`docs/widget-audit.md`, CheckBox).
+fn toggle<const K: u8>(on_: bool, on_toggle: fn(&mut Store, &EventCtx)) -> Toggle<Store, K> {
+    Toggle::<Store, K> { on: on_, on_toggle, ..Default::default() }
 }
+
+fn flip_a(s: &mut Store, _: &EventCtx) {
+    s.flag = !s.flag;
+}
+fn flip_b(s: &mut Store, _: &EventCtx) {
+    s.flag_b = !s.flag_b;
+}
+/// One `fn` per option: a handler cannot capture which it is (a `fn`
+/// pointer, so it survives a reload), so each writes its own index.
+fn choose_0(s: &mut Store, _: &EventCtx) {
+    s.choice = 0;
+}
+fn choose_1(s: &mut Store, _: &EventCtx) {
+    s.choice = 1;
+}
+fn choose_2(s: &mut Store, _: &EventCtx) {
+    s.choice = 2;
+}
+
+/// The radio demo's options, by index.
+pub const COLOURS: [&str; 3] = ["Red", "Green", "Blue"];
 
 /// Everything on the stage, in sidebar order: **each group contiguous and
 /// named once** — `tests::each_group_appears_once` holds that, because the
@@ -301,18 +322,18 @@ pub static CATALOG: &[Entry] = &[
         false,
         |s| on(s, Demo::Button(DButton { a: btn("Primary"), b: btn("Default"), c: btn("Ghost") })),
         |s| format!("presses: {}", s.store.presses)),
-    entry!("Input", "CheckBox", "A box and a tick, both bound to one flag.",
+    entry!("Input", "CheckBox", "Two boxes, each bound to its own flag.",
         false,
-        |s| on(s, Demo::CheckBox(DCheckBox { a: PairCheckA { t: toggle(s.store.flag), l: { let mut l = Label::<String>::default(); l.set("I agree".into()); l } }, b: PairCheckB { t: toggle(!s.store.flag), l: { let mut l = Label::<String>::default(); l.set("Send updates".into()); l } } })),
-        |s| format!("checked: {}", s.store.flag)),
+        |s| on(s, Demo::CheckBox(DCheckBox { a: PairCheckA { t: toggle(s.store.flag, flip_a), l: { let mut l = Label::<String>::default(); l.set("I agree".into()); l } }, b: PairCheckB { t: toggle(s.store.flag_b, flip_b), l: { let mut l = Label::<String>::default(); l.set("Send updates".into()); l } } })),
+        |s| format!("checked: {} {}", s.store.flag, s.store.flag_b)),
     entry!("Input", "Switch", "The same two states, as a sliding pill.",
         false,
-        |s| on(s, Demo::Switch(DSwitch { a: PairSwitchA { t: toggle(s.store.flag), l: { let mut l = Label::<String>::default(); l.set("Wi-Fi".into()); l } }, b: PairSwitchB { t: toggle(!s.store.flag), l: { let mut l = Label::<String>::default(); l.set("Bluetooth".into()); l } } })),
-        |s| format!("on: {}", s.store.flag)),
-    entry!("Input", "Radio", "One of a set; the selection lives in the app.",
+        |s| on(s, Demo::Switch(DSwitch { a: PairSwitchA { t: toggle(s.store.flag, flip_a), l: { let mut l = Label::<String>::default(); l.set("Wi-Fi".into()); l } }, b: PairSwitchB { t: toggle(s.store.flag_b, flip_b), l: { let mut l = Label::<String>::default(); l.set("Bluetooth".into()); l } } })),
+        |s| format!("on: {} {}", s.store.flag, s.store.flag_b)),
+    entry!("Input", "Radio", "One of three; the choice lives in the app.",
         false,
-        |s| on(s, Demo::Radio(DRadio { a: PairRadioA { t: toggle(s.store.flag), l: { let mut l = Label::<String>::default(); l.set("Red".into()); l } }, b: PairRadioB { t: toggle(!s.store.flag), l: { let mut l = Label::<String>::default(); l.set("Green".into()); l } }, c: PairRadioC { t: toggle(false), l: { let mut l = Label::<String>::default(); l.set("Blue".into()); l } } })),
-        |s| format!("selected: {}", s.store.flag)),
+        |s| on(s, Demo::Radio(DRadio { a: PairRadioA { t: toggle(s.store.choice == 0, choose_0), l: { let mut l = Label::<String>::default(); l.set("Red".into()); l } }, b: PairRadioB { t: toggle(s.store.choice == 1, choose_1), l: { let mut l = Label::<String>::default(); l.set("Green".into()); l } }, c: PairRadioC { t: toggle(s.store.choice == 2, choose_2), l: { let mut l = Label::<String>::default(); l.set("Blue".into()); l } } })),
+        |s| format!("selected: {}", COLOURS[s.store.choice])),
     entry!("Input", "Slider", "Drag it, or focus it and use the arrows.",
         false,
         |s| on(s, Demo::Slider(DSlider { a: Slider::new(s.store.fraction) })),
