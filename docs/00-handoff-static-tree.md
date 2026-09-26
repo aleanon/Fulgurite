@@ -834,6 +834,11 @@ instances. Gated behind additive `observe`/`reload` features (Step 4's
 gating debt paid); zero release cost verified by re-running the Step 2
 benchmark unchanged. Deferred: action synthesis (needs events),
 incremental TreeUpdates. See `docs/step5-observability.md`.
+*Amended 2026-09-26 (M48/T48.5):* "cannot drift" was true of the walk
+and not of the JSON — the agent's `ui.getTree` carried a second
+hand-written serialiser, and both dropped every state a widget publishes
+(`toggled`, numeric value, `expanded`, `modal`, `hidden`, actions). One
+function, `observe::node_json`, now serves both, with an equality test.
 
 ### Step 6 — `#[fuse]`
 

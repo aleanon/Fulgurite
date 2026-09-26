@@ -1090,45 +1090,15 @@ impl Agent {
         }
     }
 
-    /// `observe::dump` needs the concrete widget type for `SUB_TABLE`;
-    /// through a `TreeRef` the table is carried alongside, so the JSON is
-    /// assembled from the snapshot the same way.
+    /// `ui.getTree`: the walk is `observe::emit_root` (M35/T35.1) and the
+    /// JSON is `observe::tree_json` (M48/T48.5) — the same two functions
+    /// `observe::dump` calls, so the agent's tree and the dump cannot
+    /// drift. A private copy of the serialiser lived here until T48.5,
+    /// and both copies dropped every state field a widget publishes.
     fn get_tree(&self, tree: &TreeRef) -> Value {
         let mut nodes = Vec::with_capacity(tree.table.len());
         observe::emit_root(tree.table, tree.root, tree.states, &|i| (i + 1) as u64, &mut nodes);
-        let out: Vec<Value> = nodes
-            .iter()
-            .map(|(id, n)| {
-                let mut o = Map::new();
-                o.insert("id".into(), (id.0).into());
-                o.insert("role".into(), format!("{:?}", n.role()).into());
-                if let Some(v) = n.value() {
-                    o.insert("value".into(), v.into());
-                }
-                if let Some(l) = n.label() {
-                    o.insert("label".into(), l.into());
-                }
-                if let Some(b) = n.bounds() {
-                    o.insert("bounds".into(), json!([b.x0, b.y0, b.x1, b.y1]));
-                }
-                let children: Vec<u64> = n.children().iter().map(|c| c.0).collect();
-                if !children.is_empty() {
-                    o.insert("children".into(), children.into());
-                }
-                let idx = (id.0 as usize).wrapping_sub(1);
-                if id.0 & (1 << 63) == 0 && idx < tree.table.len() {
-                    let d = &tree.table[idx];
-                    if !d.src.file.is_empty() {
-                        o.insert("src".into(), format!("{}:{}", d.src.file, d.src.line).into());
-                    }
-                    if !d.wid.is_empty() {
-                        o.insert("wid".into(), d.wid.into());
-                    }
-                }
-                Value::Object(o)
-            })
-            .collect();
-        json!({ "root": 1, "nodes": out })
+        observe::tree_json(tree.table, &nodes)
     }
 
     fn get_layout(&self, tree: &TreeRef, params: &Value) -> RpcResult {

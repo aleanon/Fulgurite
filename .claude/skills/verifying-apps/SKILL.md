@@ -98,6 +98,14 @@ checkable", which is not a pass.
 `input.key` takes `mods` (`["ctrl"]`, held for that key only) and
 `input.click` takes `clicks` (2 or 3) — M45/T45.6.
 
+**A node says what a screen reader would announce** (M48/T48.5): beside
+`id`, `role`, `value`, `label`, `bounds`, `children`, `src` and `wid`,
+`ui.getTree` carries — only when set — `toggled` (`"true"`/`"false"`/
+`"mixed"`), `numeric` (`value`, `min`, `max`, `step`), `expanded`,
+`modal`, `hidden`, `disabled`, `busy` and `actions`. An unchecked box
+reads `toggled: "false"`, never an absent field; `ui.resolve` and
+`ui.getLayout` carry the same fields (T48.6).
+
 **When a click does not do what you expected, ask `ui.explain` before
 reading code.** It runs the *real* hit test at the node's centre and
 reports what came back — occluded by which node, zero area, hidden, not

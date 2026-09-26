@@ -176,43 +176,130 @@ pub fn index_of_node<W: Widget>(id: NodeId) -> Option<usize> {
 /// Agent-facing JSON view of the same snapshot, joined with provenance,
 /// author ids and kind names — so the agent view and the screen-reader
 /// view cannot drift, one being derived from the other.
+///
+/// **That is true since M48/T48.5 and was not before**: the agent's
+/// `ui.getTree` built the same JSON with a second hand-written copy of
+/// this function. Both now call [`node_json`], and an equality test in
+/// `lumen-static-agent` holds them byte-identical.
 pub fn dump<W: Widget>(tree: &W, st: &[NodeState]) -> serde_json::Value {
     let update = snapshot(tree, st);
-    let table = W::SUB_TABLE;
-    let nodes: Vec<serde_json::Value> = update
-        .nodes
-        .iter()
-        .map(|(id, n)| {
-            let mut o = serde_json::Map::new();
-            o.insert("id".into(), (id.0).into());
-            o.insert("role".into(), format!("{:?}", n.role()).into());
-            if let Some(v) = n.value() {
-                o.insert("value".into(), v.into());
-            }
-            if let Some(l) = n.label() {
-                o.insert("label".into(), l.into());
-            }
-            if let Some(b) = n.bounds() {
-                o.insert("bounds".into(), serde_json::json!([b.x0, b.y0, b.x1, b.y1]));
-            }
-            let children: Vec<u64> = n.children().iter().map(|c| c.0).collect();
-            if !children.is_empty() {
-                o.insert("children".into(), children.into());
-            }
-            let idx = (id.0 as usize).wrapping_sub(1);
-            if id.0 & (1 << 63) == 0 && idx < table.len() {
-                let src = table[idx].src;
-                if !src.file.is_empty() {
-                    o.insert("src".into(), format!("{}:{}", src.file, src.line).into());
-                }
-                if !table[idx].wid.is_empty() {
-                    o.insert("wid".into(), table[idx].wid.into());
-                }
-            }
-            serde_json::Value::Object(o)
-        })
-        .collect();
+    tree_json(W::SUB_TABLE, &update.nodes)
+}
+
+/// `{"root": 1, "nodes": [..]}` over emitted nodes — what [`dump`] and
+/// the agent's `ui.getTree` both answer (M48/T48.5).
+pub fn tree_json(table: &[NodeDesc], nodes: &[(NodeId, AkNode)]) -> serde_json::Value {
+    let nodes: Vec<serde_json::Value> = nodes.iter().map(|(id, n)| node_json(table, *id, n)).collect();
     serde_json::json!({ "root": 1, "nodes": nodes })
+}
+
+/// **The one serialiser for a node** — M48/T48.5 (R15-F10).
+///
+/// Identity and geometry — `id`, `role`, `value`, `label`, `bounds`,
+/// `children` — then everything [`state_json`] adds, then provenance
+/// (`src`, `wid`) for a main-table node. Every field but `id` and `role`
+/// is added only when present, so a script that read the old fields
+/// reads them unchanged.
+pub fn node_json(table: &[NodeDesc], id: NodeId, n: &AkNode) -> serde_json::Value {
+    let mut o = serde_json::Map::new();
+    o.insert("id".into(), (id.0).into());
+    o.insert("role".into(), format!("{:?}", n.role()).into());
+    if let Some(v) = n.value() {
+        o.insert("value".into(), v.into());
+    }
+    if let Some(l) = n.label() {
+        o.insert("label".into(), l.into());
+    }
+    if let Some(b) = n.bounds() {
+        o.insert("bounds".into(), serde_json::json!([b.x0, b.y0, b.x1, b.y1]));
+    }
+    let children: Vec<u64> = n.children().iter().map(|c| c.0).collect();
+    if !children.is_empty() {
+        o.insert("children".into(), children.into());
+    }
+    state_json(n, &mut o);
+    let idx = (id.0 as usize).wrapping_sub(1);
+    if id.0 & (1 << 63) == 0 && idx < table.len() {
+        let src = table[idx].src;
+        if !src.file.is_empty() {
+            o.insert("src".into(), format!("{}:{}", src.file, src.line).into());
+        }
+        if !table[idx].wid.is_empty() {
+            o.insert("wid".into(), table[idx].wid.into());
+        }
+    }
+    serde_json::Value::Object(o)
+}
+
+/// The state a widget publishes and a screen reader announces — M48/T48.5
+/// (R15-F10, R13-F4). Written into `o` only when the node carries it:
+///
+/// - `toggled`: `"true"`, `"false"` or `"mixed"` — a checkbox, switch or
+///   radio, which set it in **both** states, so an unchecked box reads
+///   `"false"` rather than omitting the field;
+/// - `numeric`: `{value, min, max, step}`, each present when set — a
+///   slider, a number field, a progress bar;
+/// - `expanded`, `modal`, `hidden`, `disabled`, `busy`: flags;
+/// - `actions`: the advertised action names (`"click"`, `"increment"` …).
+///
+/// Until T48.5 every agent reply that serialised a node dropped all of
+/// these: a checked box and a moved slider were invisible to
+/// `ui.getTree`, `ui.resolve` and `ui.getLayout` alike. `ui.resolve` and
+/// `ui.getLayout` call this too (T48.6), so the second call path cannot
+/// drift from the first.
+pub fn state_json(n: &AkNode, o: &mut serde_json::Map<String, serde_json::Value>) {
+    use accesskit::{Action, Toggled};
+    if let Some(t) = n.toggled() {
+        let t = match t {
+            Toggled::True => "true",
+            Toggled::False => "false",
+            Toggled::Mixed => "mixed",
+        };
+        o.insert("toggled".into(), t.into());
+    }
+    let numeric = [
+        ("value", n.numeric_value()),
+        ("min", n.min_numeric_value()),
+        ("max", n.max_numeric_value()),
+        ("step", n.numeric_value_step()),
+    ];
+    if numeric.iter().any(|(_, v)| v.is_some()) {
+        let mut m = serde_json::Map::new();
+        for (k, v) in numeric {
+            if let Some(v) = v {
+                m.insert(k.into(), v.into());
+            }
+        }
+        o.insert("numeric".into(), serde_json::Value::Object(m));
+    }
+    if let Some(e) = n.is_expanded() {
+        o.insert("expanded".into(), e.into());
+    }
+    for (k, on) in [
+        ("modal", n.is_modal()),
+        ("hidden", n.is_hidden()),
+        ("disabled", n.is_disabled()),
+        ("busy", n.is_busy()),
+    ] {
+        if on {
+            o.insert(k.into(), true.into());
+        }
+    }
+    const ACTIONS: [(Action, &str); 9] = [
+        (Action::Click, "click"),
+        (Action::Focus, "focus"),
+        (Action::Expand, "expand"),
+        (Action::Collapse, "collapse"),
+        (Action::Increment, "increment"),
+        (Action::Decrement, "decrement"),
+        (Action::SetValue, "setValue"),
+        (Action::ScrollIntoView, "scrollIntoView"),
+        (Action::ShowContextMenu, "showContextMenu"),
+    ];
+    let actions: Vec<&str> = ACTIONS.iter().filter(|(a, _)| n.supports_action(*a)).map(|(_, s)| *s).collect();
+    if !actions.is_empty() {
+        o.insert("actions".into(), actions.into());
+    }
 }
 
 /// The synthetic AccessKit id for one node of one instance of an

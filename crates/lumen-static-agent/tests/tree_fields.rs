@@ -120,7 +120,6 @@ fn click(h: &mut H, wid: &str) {
 
 /// T48.5: every field on its widget, through `ui.getTree`.
 #[test]
-#[ignore = "red until T48.5: R15-F10, the serialiser drops what the widgets set"]
 fn get_tree_carries_the_state_a_screen_reader_announces() {
     let mut h = host();
     let before = node(&call(&h, "ui.getTree", json!({})), "check");
@@ -166,6 +165,32 @@ fn get_tree_carries_the_state_a_screen_reader_announces() {
     // And a node that is showing is not marked hidden.
     let shown = node(&tree, "shown");
     assert!(shown.get("hidden").is_none(), "a showing node reported hidden: {shown}");
+}
+
+/// T48.5: `observe::dump` and `ui.getTree` over the same tree are
+/// byte-identical — one serialiser, not two copies that agree today.
+#[test]
+fn dump_and_get_tree_are_one_serialiser() {
+    let mut h = host();
+    click(&mut h, "check");
+    h.app.ui.slider.set_value(0.25);
+    h.app.ui.chooser.open();
+    h.invalidate_all();
+    h.pump();
+    let dump = lumen_static::observe::dump(&h.app.ui, &h.states);
+    let tree = call(&h, "ui.getTree", json!({}));
+    let (a, b) = (dump["nodes"].as_array().unwrap(), tree["nodes"].as_array().unwrap());
+    let first = a.iter().zip(b.iter()).position(|(x, y)| x != y);
+    println!(
+        "dump {} nodes, getTree {} nodes, {} bytes each; first differing node: {first:?}",
+        a.len(),
+        b.len(),
+        dump.to_string().len()
+    );
+    if let Some(k) = first {
+        panic!("dump and ui.getTree differ at node {k}:\n dump:    {}\n getTree: {}", a[k], b[k]);
+    }
+    assert_eq!(dump.to_string(), tree.to_string(), "same nodes, different documents");
 }
 
 /// T48.6: `ui.resolve` is a second call path, and reads the same fields.
