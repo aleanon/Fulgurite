@@ -126,7 +126,7 @@ pub struct TreeRef<'a> {
 ///
 /// A node is a stand-in iff the object `node(i)` returns has a subtree
 /// **larger** than the table's subtree at `i`
-/// ([`Node::node_count`](lumen_static::widget::Node::node_count) against
+/// ([`Node::node_count`] against
 /// one reverse pass over the table). A stand-in is always an ancestor
 /// object, and an ancestor's subtree strictly contains `i`; a live node's
 /// object has exactly the table's subtree. That is a fact about the

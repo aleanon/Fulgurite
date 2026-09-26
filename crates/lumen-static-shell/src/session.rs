@@ -650,6 +650,17 @@ const FRAME_MS: f32 = 1000.0 / 60.0;
 
 #[cfg(feature = "live-agent")]
 impl<A: App> Live<'_, A> {
+    /// Present the host's frame, adding what it damaged to the next
+    /// journal frame's `damaged_px` (M48/T48.4). **Every present inside a
+    /// request goes through here**: M45's paste presented on its own and
+    /// its damage was lost, which `just widget-drive` read as "the journal
+    /// damaged the widget but the surface presented 0 px".
+    fn present_counted(&mut self) {
+        if let Some(px) = self.screen.present(self.host, self.page).damaged_px {
+            *self.presented_px = Some(self.presented_px.unwrap_or(0) + px);
+        }
+    }
+
     /// One pump and present — what the agent's `pump` runs, marked as
     /// application code there (M39/T39.5).
     fn pump_app(&mut self) -> (u64, bool) {
@@ -668,9 +679,7 @@ impl<A: App> Live<'_, A> {
             };
             self.host.show(list);
         }
-        if let Some(px) = self.screen.present(self.host, self.page).damaged_px {
-            *self.presented_px = Some(self.presented_px.unwrap_or(0) + px);
-        }
+        self.present_counted();
         (self.host.frame_number(), handled)
     }
 }
@@ -694,7 +703,7 @@ impl<A: App> lumen_static_agent::AgentHost for Live<'_, A> {
                 Some(m) => self.host.paste_with(text, m),
                 None => self.host.paste(text),
             };
-            self.screen.present(self.host, self.page);
+            self.present_counted();
             (self.host.frame_number(), kept)
         };
         #[cfg(panic = "unwind")]
