@@ -12,8 +12,10 @@
 > - **T43.15** `selftest` in `test`, `selftest-build` in `check`, `slow`
 >   and `live` in `ci`; a check replaced by `exit 0` fails `just test`
 >   (`stayed green`); `docs/results-deep-review.md` §4 addendum and §5.
->   The full `just ci` record is at the end of "What building T43.13
->   found".
+>   `just ci` at c6f7983: 25 steps, 0 failed, 0 skipped, tree clean,
+>   977 s; its first run found a clippy failure under `simd` and an
+>   intermittent hover in M42's Button drive ("What building T43.13
+>   found").
 >
 > - **T43.0** `scripts/selftest/`: 37 plants (21 static, 14 build, 2 slow; 38 with T43.12's);
 >   at b213ae0 one of the 37 went red by name. All 38 are red now.
@@ -1332,6 +1334,29 @@ original wording.
   repository's shared worktree list. It is persistent by design
   (§2.1), and `git worktree prune` drops it once `target/` is removed.
 - **The firmware gates moved into `test`** (§2.10).
+- **The first full run, from a fresh `git worktree add` (§5's drift
+  risk), found two things at 96cd308.** 25 steps, 2 failed, tree clean,
+  1,257 s cold (LOADED: other agents compiling). `simd`'s clippy line
+  failed on dead code in `tests/damage_scale.rs` that M40 added and no
+  gate ever built without `truetype` (fixed in c6f7983).
+  And `selftest-live`'s baseline went red once: `widget_drive.sh
+  Button`'s Boundaries leg saw `hovered=False` after a hover. Three
+  re-runs of that baseline alone, and both full `live` runs (each driving
+  Button under both strategies), were green, so it is intermittent —
+  **one red in about six Boundaries hover drives**, on a display other
+  agents were opening windows on. A real pointer event reaching the
+  window would reset the synthesized hover; that is a guess, not a
+  finding. It is M42's drive and is recorded, not fixed, here.
+- **The record, second run, at c6f7983** (warm worktree; LOADED, load
+  average 5–7 on 32 cores): `ci c6f7983cfd73: 25 steps, 0 failed, 0
+  skipped, tree clean`, 977 s — `live` 362 s and `selftest-slow` 352 s
+  of it. Inside §5's 60-minute budget cold and warm. `just ci-verify
+  c6f7983` is green.
+- **Rule 5's injection:** a commit with T43.12's lock reverted and
+  `--locked` dropped from `check_observe_inlining.sh`, run with `--only
+  observe-inlining`: the step passes and the run fails with `tree changed
+  during the run: benches-competitive/Cargo.lock`. HEAD, the same step:
+  tree clean.
 
 ### What T43.15 leaves to the coordinator (2026-09-26)
 
