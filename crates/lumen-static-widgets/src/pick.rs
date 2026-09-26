@@ -273,6 +273,45 @@ impl<const KIND: u8> Pad<KIND> {
         self.day = self.day.min(days_in_month(self.year, self.month));
     }
 
+    /// The cell the keyboard or the pointer has lit, if any.
+    pub fn hot(&self) -> Option<usize> {
+        self.hot
+    }
+
+    /// The keyboard's step through the grid — M44/T44.10.
+    ///
+    /// Left and Right move one cell, Up and Down one row, Home and End to
+    /// the ends; the first key starts from the current selection. Enter
+    /// and Space choose the lit cell, exactly as releasing over it does.
+    /// Returns whether it did anything.
+    pub fn key(&mut self, key: Key) -> bool {
+        let n = self.cells();
+        if n == 0 {
+            return false;
+        }
+        if matches!(key, Key::Enter | Key::Space) {
+            return self.hot.is_some_and(|k| self.choose(k));
+        }
+        let cols = self.cols().max(1);
+        let from = self.hot.unwrap_or_else(|| (0..n).find(|&k| self.is_selected(k)).unwrap_or(0));
+        let to = match key {
+            Key::Right => (from + 1).min(n - 1),
+            Key::Left => from.saturating_sub(1),
+            Key::Down if from + cols < n => from + cols,
+            Key::Down => from,
+            Key::Up => from.checked_sub(cols).unwrap_or(from),
+            Key::Home => 0,
+            Key::End => n - 1,
+            _ => return false,
+        };
+        // The first key lights the selection itself, so the user sees
+        // where they are before anything moves.
+        let to = if self.hot.is_none() { from } else { to };
+        let moved = self.hot != Some(to);
+        self.hot = Some(to);
+        moved
+    }
+
     /// Which cell a local point is in, or `None` outside the grid.
     ///
     /// Returns `None` for the header too: a press on `‹` is *not* a
@@ -701,6 +740,12 @@ impl<const KIND: u8> Node for Picker<KIND> {
         <Self as Widget>::KIND
     }
 
+    /// Arrows walk the grid (M44/T44.10), so they never move focus off
+    /// the trigger — which is this node: `node(1)` answers `self`.
+    fn owns_arrows(&self) -> bool {
+        true
+    }
+
     fn defaults(&self) -> Style {
         <Self as Widget>::type_defaults()
     }
@@ -801,6 +846,25 @@ impl<const KIND: u8> Node for Picker<KIND> {
         match ev {
             Event::Key { key: Key::Escape, down: true } if self.pad.open => {
                 self.pad.open = false;
+                true
+            }
+            // **The keyboard walks the open grid** (M44/T44.10). The pad
+            // is drawn, not focused; the trigger — this node — keeps
+            // focus, so its keys go to the pad: arrows light a cell, and
+            // Enter or Space chooses the lit one. With nothing lit, Enter
+            // still opens and closes, as a click does.
+            Event::Key {
+                key: k @ (Key::Left | Key::Right | Key::Up | Key::Down | Key::Home | Key::End),
+                down: true,
+            } if self.pad.open => self.pad.content.key(*k),
+            Event::Key { key: k @ (Key::Enter | Key::Space), down: true }
+                if self.pad.open && self.pad.content.hot().is_some() =>
+            {
+                self.pad.content.key(*k)
+            }
+            // Down on a closed picker opens it, as every dropdown does.
+            Event::Key { key: Key::Down, down: true } => {
+                self.pad.open = true;
                 true
             }
             // **A press on the trigger opens it; a press anywhere else

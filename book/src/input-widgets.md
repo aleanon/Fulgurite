@@ -53,8 +53,12 @@ not Tab stops — focus is a table index and a row lives in an arena — so a
 focused `Repeat` keeps one row active: Up, Down, Home, End and the page
 keys move it and scroll it into view, it wears the focus ring, and Enter
 or Space runs that row's handler with `ctx.row` set, as a click on it
-would. A `Select`'s list takes focus when the menu is opened from the
-keyboard. A `ScrollView` scrolls on the page keys, Home and End from any
+would. A `Select`'s list takes focus when the menu opens. The widgets
+that draw their own rows answer the same keys themselves: a picklist or
+combobox from its trigger (Up, Down, Enter), a picker's grid (the arrows,
+Enter), a `Tree` (Up and Down to walk, Left and Right to fold and to
+step between parent and child, Enter to fold), and a `DataGrid`'s rows,
+which are a Tab stop with an active row. A `ScrollView` scrolls on the page keys, Home and End from any
 focused control inside it, and its bar can be dragged.
 
 It also caches `track_w` from the last layout, which looks like

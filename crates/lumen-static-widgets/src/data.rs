@@ -493,13 +493,83 @@ impl Tree {
         let k = (y / TREE_ROW_H) as usize;
         (0..self.count).filter(|&i| self.is_visible(i)).nth(k)
     }
+
+    /// The row a row `i` sits under, if any: the last row above it with a
+    /// smaller depth.
+    fn parent_of(&self, i: usize) -> Option<usize> {
+        let d = self.rows[i].depth;
+        (0..i).rev().find(|&k| self.rows[k].depth < d)
+    }
+
+    /// **The keyboard's walk through the tree** — M44/T44.10, the
+    /// platform's tree-view keys.
+    ///
+    /// Up and Down move the lit row (the same `hot` the pointer lights)
+    /// through the *visible* rows, Home and End to the ends. Right opens
+    /// a closed parent, or on an open one steps to its first child; Left
+    /// closes an open parent, or steps to the row's parent. Enter and
+    /// Space fold or unfold the lit row, as a press on it does. Returns
+    /// whether it did anything.
+    pub fn key(&mut self, key: Key) -> bool {
+        let shown: [Option<usize>; MAX_TREE_NODES] = {
+            let mut a = [None; MAX_TREE_NODES];
+            let mut n = 0;
+            for i in 0..self.count {
+                if self.is_visible(i) {
+                    a[n] = Some(i);
+                    n += 1;
+                }
+            }
+            a
+        };
+        let n = shown.iter().flatten().count();
+        if n == 0 {
+            return false;
+        }
+        let at = self.hot.and_then(|h| shown[..n].iter().position(|&x| x == Some(h)));
+        let lit = |k: usize| shown[k];
+        let next = match key {
+            Key::Down => lit(at.map_or(0, |k| (k + 1).min(n - 1))),
+            Key::Up => lit(at.map_or(0, |k| k.saturating_sub(1))),
+            Key::Home => lit(0),
+            Key::End => lit(n - 1),
+            Key::Right | Key::Left | Key::Enter | Key::Space => {
+                let Some(h) = self.hot.filter(|&h| h < self.count) else {
+                    return false;
+                };
+                return match key {
+                    Key::Right if self.has_children(h) && !self.open[h] => self.toggle(h),
+                    Key::Right if self.has_children(h) => {
+                        self.hot = Some(h + 1);
+                        true
+                    }
+                    Key::Left if self.has_children(h) && self.open[h] => self.toggle(h),
+                    Key::Left => match self.parent_of(h) {
+                        Some(p) => {
+                            self.hot = Some(p);
+                            true
+                        }
+                        None => false,
+                    },
+                    Key::Enter | Key::Space => self.toggle(h),
+                    _ => false,
+                };
+            }
+            _ => return false,
+        };
+        let moved = next != self.hot;
+        self.hot = next;
+        moved
+    }
 }
 
 impl Widget for Tree {
     const NODE_COUNT: usize = 1;
     const DEPTH: usize = 1;
     const IS_RIGID: bool = false;
-    const SUB_TABLE: &'static [NodeDesc] = &[NodeDesc::new(0, NO_PARENT, 0, 0, 0)];
+    /// **A Tab stop** (M44/T44.10): a tree is walked with its own keys,
+    /// so a keyboard has to be able to reach it.
+    const SUB_TABLE: &'static [NodeDesc] = &[NodeDesc::new(0, NO_PARENT, 0, 0, NodeDesc::FOCUSABLE)];
     const KIND: &'static str = "tree";
     const SEEDS: &'static [Seed] =
         &[Seed::new(<Tree as Widget>::KIND, <Tree as Widget>::type_defaults, Fields::of(
@@ -558,6 +628,8 @@ impl Node for Tree {
         if r[2] <= r[0] || r[3] <= r[1] {
             return;
         }
+        // The ring, now that a tree can hold focus (M44/T44.10).
+        lumen_static::ops::focus_ring(st, i, out);
         out.rounded_rect(r, s.bg, s.radius);
         lumen_static::ops::border(st, i, out);
         // **Clipped to its own box** — a tree in a pane is the normal
@@ -629,8 +701,15 @@ impl Node for Tree {
                 Some(idx) => self.toggle(idx),
                 None => false,
             },
+            // Focused: the tree-view keys (M44/T44.10).
+            Event::Key { key, down: true } => self.key(*key),
             _ => false,
         }
+    }
+
+    /// Arrows walk and fold the tree (M44/T44.10).
+    fn owns_arrows(&self) -> bool {
+        true
     }
 
     lumen_static::leaf_common!(Tree, 0);
@@ -775,7 +854,10 @@ impl<R: Widget + Default + 'static> GridTable<R> {
         assert!(Self::N == 2, "a Repeat is one table node");
         let mut t = [NodeDesc::EMPTY; 2];
         t[0] = NodeDesc::new(1, NO_PARENT, 0, 1, NodeDesc::CONTAINER);
-        t[1] = NodeDesc::new(0, 0, 0, 0, 0).with_id(PART_ROWS);
+        // **The rows are a Tab stop** (M44/T44.10): focused, the
+        // `Repeat` keeps an active row the arrow and page keys move and
+        // scroll into view, and Enter or Space runs its handler.
+        t[1] = NodeDesc::new(0, 0, 0, 0, NodeDesc::FOCUSABLE).with_id(PART_ROWS);
         t
     };
     pub const SLICE: &'static [NodeDesc] = &Self::ARRAY;

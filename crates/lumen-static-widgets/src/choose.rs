@@ -143,6 +143,42 @@ impl OptionList {
         self.picked.take()
     }
 
+    /// The keyboard's step through the visible rows — M44/T44.10.
+    ///
+    /// Up, Down, Home and End move the highlighted row (the same `hot`
+    /// the pointer lights), skipping rows the filter hid; Enter and Space
+    /// choose it, exactly as releasing over it does. Returns whether it
+    /// did anything, so a key it has no use for still bubbles.
+    pub fn key(&mut self, key: Key) -> bool {
+        let n = self.shown_count;
+        if n == 0 {
+            return false;
+        }
+        if matches!(key, Key::Enter | Key::Space) {
+            return match self.hot.filter(|&h| h < self.count && self.shown[h]) {
+                Some(h) => {
+                    self.picked = Some(h);
+                    true
+                }
+                None => false,
+            };
+        }
+        let at = self.hot.and_then(|h| (0..n).find(|&k| self.nth_shown(k) == Some(h)));
+        let k = match key {
+            Key::Down => at.map_or(0, |k| (k + 1).min(n - 1)),
+            Key::Up => at.map_or(0, |k| k.saturating_sub(1)),
+            Key::Home => 0,
+            Key::End => n - 1,
+            _ => return false,
+        };
+        let next = self.nth_shown(k);
+        if next == self.hot {
+            return false;
+        }
+        self.hot = next;
+        true
+    }
+
     fn row_at(&self, y: f32) -> Option<usize> {
         if self.shown_count == 0 || self.height <= 0.0 {
             return None;
@@ -280,8 +316,16 @@ impl Node for OptionList {
                 }
                 None => false,
             },
+            // Focused itself — a `Menu`'s list is (M44/T44.10).
+            Event::Key { key, down: true } => self.key(*key),
             _ => false,
         }
+    }
+
+    /// Arrows move the highlighted row (M44/T44.1, T44.10). The list is
+    /// focusable only in a `Menu`, which has no trigger to hold focus.
+    fn owns_arrows(&self) -> bool {
+        true
     }
 
     lumen_static::leaf_common!(OptionList, 0);
@@ -370,6 +414,10 @@ pub struct Chooser<const KIND: u8 = PICKLIST> {
     /// The trigger's rect, kept from `place` — `on_event` gets neither
     /// style nor state array. `Select::trigger_rect` says why.
     trigger_rect: (Point, Size),
+    /// Whether the trigger had focus at the last layout, so the list
+    /// opens when focus **arrives** rather than whenever it is there
+    /// (M44/T44.10).
+    trigger_was_focused: bool,
 }
 
 /// A picker over its own options.
@@ -389,6 +437,7 @@ impl<const KIND: u8> Default for Chooser<KIND> {
             selected: None,
             typed: false,
             trigger_rect: (Point { x: 0.0, y: 0.0 }, Size::default()),
+            trigger_was_focused: false,
         }
     }
 }
@@ -473,6 +522,15 @@ impl<const KIND: u8> ChooserTable<KIND> {
         );
         t[2] = t[2].with_id(PART_POPUP);
         t[3] = t[3].with_id(PART_LIST);
+        // **A menu's list takes focus** (M44/T44.10): a menu has no
+        // trigger, so without this nothing in it could — and an open
+        // menu takes focus when it appears, so its keys land here. A
+        // picklist's and a combobox's list stay unfocusable: their
+        // trigger holds focus while typing, and the keys bubble to the
+        // chooser, which hands them to the list.
+        if KIND == MENU {
+            t[3].flags |= NodeDesc::FOCUSABLE;
+        }
         t
     };
     pub const SLICE: &'static [NodeDesc] = Self::ARRAY.split_at(Self::N).0;
@@ -569,9 +627,17 @@ impl<const KIND: u8> Node for Chooser<KIND> {
         // A dismissing press clears focus (`dispatch_overlaid`), so this
         // cannot re-open what that press just closed — the dropdown bug
         // `Select` avoids, avoided here by the same accident of ordering.
-        if KIND != MENU && st[i + Self::TRIGGER].focused {
+        //
+        // **When focus arrives, not while it stays** (M44/T44.10). Opening
+        // on every frame the trigger held focus reopened a list the
+        // keyboard had just chosen from — a pointer choice escaped it only
+        // because the press on the list took focus off the trigger. Down
+        // reopens a closed list (`on_event`).
+        let focused = st[i + Self::TRIGGER].focused;
+        if KIND != MENU && focused && !self.trigger_was_focused {
             self.list.open = true;
         }
+        self.trigger_was_focused = focused;
         let t = if KIND == MENU {
             // A menu has no trigger to show. Zeroed rather than absent,
             // so the table's shape does not depend on the kind.
@@ -626,6 +692,16 @@ impl<const KIND: u8> Node for Chooser<KIND> {
                 self.list.open = false;
                 true
             }
+            // **The keyboard walks the open list** (M44/T44.10). The
+            // trigger holds focus and declines Up, Down and Enter — a
+            // one-line field has no use for them — so they bubble here
+            // and go to the list, which moves its highlight or chooses
+            // it. Home and End stay the field's caret keys.
+            Event::Key { key: k @ (Key::Up | Key::Down | Key::Enter), down: true } if self.list.open => {
+                self.list.content.key(*k)
+            }
+            // Down on a closed list opens it, as every dropdown does.
+            Event::Key { key: Key::Down, down: true } if KIND != MENU => self.open(),
             // Anything else reaching a combobox is the field's. It
             // normally will not: the field is the focused node and gets
             // its own events first. This is the path for an event that

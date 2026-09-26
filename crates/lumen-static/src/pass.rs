@@ -1065,14 +1065,17 @@ pub fn settle_overlays<S: crate::event::App, O: crate::overlay::OverlaySink>(
         if let Some(slot) = input.overlay_return.iter_mut().find(|s| s.is_none()) {
             *slot = Some((o, input.focus));
         }
-        // **Opened from the keyboard, focus goes in** (M44/T44.10): to
-        // the overlay's first focusable node — a menu's list, a dialog's
-        // first control — so the next arrow or Tab acts on what just
-        // opened. Only from the keyboard (`focus_visible`), and never
-        // into a passive overlay: a tooltip that appeared under a hover
-        // must not take focus from what the user is typing into.
+        // **An overlay that opens takes focus** (M44/T44.10): its first
+        // focusable node — a menu's list, a dialog's first control — so
+        // the next arrow or Tab acts on what just opened, whether it was
+        // opened by a key or by a click (every desktop dropdown answers
+        // Down after a click opened it). Never a passive overlay: a
+        // tooltip that appeared under a hover must not take focus from
+        // what the user is typing into. An overlay with nothing
+        // focusable — a chooser whose list is drawn, not focused —
+        // leaves focus where it is.
         let node = state.tree().node(o as usize);
-        if input.focus_visible && node.dismissal_consumes_press() {
+        if node.dismissal_consumes_press() {
             let span = crate::style::subtree_range(table, o as usize);
             if let Some(f) = next_focusable_in(table, st, style, None, span) {
                 input.focus = Some(f);
