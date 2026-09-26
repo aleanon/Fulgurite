@@ -291,6 +291,13 @@ pub struct EventCtx {
     /// This is the field that replaces `move |s| s.remove(idx)`: the row
     /// is recomputed by hit testing every time, so it can never go stale
     /// the way a captured index does.
+    ///
+    /// **Fresh as an index, not as an identity.** When the list changes
+    /// between a press and its release, the index under the pointer is a
+    /// different item; that click is cancelled by the press latch
+    /// ([`InputState::press`], M44/T44.2) before a handler could receive
+    /// this row, so a handler never sees an index for an item nobody
+    /// pressed.
     pub row: Option<u64>,
     /// Node index *within the template*, when `row` is set.
     pub inner: u32,
@@ -418,6 +425,29 @@ pub struct InputState {
     /// input state still compare by what they *mean*.
     #[doc(hidden)]
     pub state_writes: WriteCount,
+    /// What the press in progress landed on — M44/T44.2
+    /// (`docs/plan-input-semantics.md` §2.2).
+    ///
+    /// Set on `PointerDown` and taken on every `PointerUp`. Activation on
+    /// the release runs only for a handler whose node contains the press
+    /// too, and for a row only when the row and the virtualizer's
+    /// [`row_generation`](crate::widget::Node::row_generation) match: a
+    /// click is a press and a release on the same logical item. The
+    /// `pressed` index above is the press *shade*; this is the press's
+    /// identity, and it is separate because the shade is cleared by the
+    /// release before activation asks.
+    pub press: Option<PressLatch>,
+}
+
+/// The item a press landed on — [`InputState::press`].
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct PressLatch {
+    /// The hit's main-table node: for a row, the virtualizer.
+    pub node: u32,
+    /// The row within it, when the press was on one.
+    pub row: Option<u64>,
+    /// The node's `row_generation` at the press.
+    pub generation: u64,
 }
 
 /// [`InputState::state_writes`]: a wrapping count that is never part of

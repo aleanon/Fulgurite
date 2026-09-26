@@ -216,6 +216,22 @@ pub trait Node {
         false
     }
 
+    /// A number that changes whenever the **items** this node's rows
+    /// stand for may have changed — M44/T44.2
+    /// (`docs/plan-input-semantics.md` §2.2).
+    ///
+    /// A click is a press and a release on the same logical item. For a
+    /// node without rows that is "the same node"; for a virtualizer a row
+    /// index is only an index, and an insertion between press and release
+    /// puts a different item under a pointer that never moved. The pass
+    /// latches this at the press and compares it at the release, and a
+    /// mismatch cancels the click. `0` by default, so every non-repeater
+    /// keeps plain `(node, row)` semantics. Asked of the hit's table node,
+    /// which for a row is the virtualizer itself.
+    fn row_generation(&self) -> u64 {
+        0
+    }
+
     /// One step of an input-method composition (T14.8).
     ///
     /// `false` from a node that does not edit text, which is what lets

@@ -253,9 +253,15 @@ pub fn dispatch_overlaid_into<S: crate::event::App, O: crate::overlay::OverlaySi
     // a menu also pressed the button under it. The release still ends
     // the press everywhere, as any release does.
     match ev {
-        Event::PointerDown { .. } => input.swallow_release = false,
+        Event::PointerDown { .. } => {
+            input.swallow_release = false;
+            // A press latches below only if it reaches ordinary
+            // dispatch; one that dismissed an overlay latches nothing.
+            input.press = None;
+        }
         Event::PointerUp { .. } if input.swallow_release => {
             input.swallow_release = false;
+            input.press = None;
             for n in st.iter_mut() {
                 n.pressed = false;
             }
@@ -595,6 +601,9 @@ fn dispatch_at<S: crate::event::App>(
                     }
                     input.state_writes.add(st.len());
                     input.pressed = None;
+                    // The gesture the capture held ends here, and a
+                    // captured release activates nothing (T44.2).
+                    input.press = None;
                 }
                 let s = &st[cap];
                 let cx = EventCtx {
@@ -622,6 +631,9 @@ fn dispatch_at<S: crate::event::App>(
         }
     }
 
+    // The press a release completes, taken from `input` as the release
+    // arrives (T44.2): `Some(None)` is a release with no press latched.
+    let mut released: Option<Option<crate::event::PressLatch>> = None;
     let (start, mut ctx, inner) = match ev.position() {
         Some(p) => {
             let hit = match preset {
@@ -649,6 +661,13 @@ fn dispatch_at<S: crate::event::App>(
                         input.state_writes.add(1);
                         input.pressed = Some(h.node);
                     }
+                    // The press's identity, for the release to compare
+                    // against (T44.2).
+                    input.press = hit.map(|h| crate::event::PressLatch {
+                        node: h.node,
+                        row: h.inner.map(|x| x.row),
+                        generation: state.tree().node(h.node as usize).row_generation(),
+                    });
                 }
                 Event::PointerUp { .. } => {
                     for n in st.iter_mut() {
@@ -656,6 +675,7 @@ fn dispatch_at<S: crate::event::App>(
                     }
                     input.state_writes.add(st.len());
                     input.pressed = None;
+                    released = Some(input.press.take());
                 }
                 _ => {}
             }
@@ -785,6 +805,16 @@ fn dispatch_at<S: crate::event::App>(
     // 2026-09-04 this comment claimed Space already worked, which no
     // static check could catch: the checks verify that backticked
     // *identifiers* exist, not that prose is true.
+    //
+    // **A pointer click is a press and a release on the same item** —
+    // M44/T44.2 (`docs/plan-input-semantics.md` §2.2). A handler runs on
+    // the release only if its node also contains the press, so a drag
+    // from one button to another activates neither — the release is
+    // offered up the chain, as on the web, and fires on the nearest node
+    // holding both ends that has a handler. A row's handler also needs
+    // the same row, under the same `row_generation`: an insertion between
+    // press and release puts a different item under a pointer that never
+    // moved, and that click is cancelled rather than delivered to it.
     let activates = matches!(
         ev,
         Event::PointerUp { .. }
@@ -795,6 +825,8 @@ fn dispatch_at<S: crate::event::App>(
         return false;
     }
 
+    // What the release is over, for comparing with the press.
+    let now = released.map(|press| (press, state.tree().node(start).row_generation()));
     let mut i = start;
     loop {
         ctx.node = i as u32;
@@ -807,7 +839,13 @@ fn dispatch_at<S: crate::event::App>(
         // Copy the handler out; the shared borrow of the tree ends here,
         // before `&mut S` exists.
         let handler = state.tree().handler(sel);
-        if let Some(h) = handler {
+        let same_item = match now {
+            None => true, // a key, not a release
+            Some((press, generation)) => {
+                press_is_within(table, press, i, sel.inner.map(|x| x.0), start, generation)
+            }
+        };
+        if let (Some(h), true) = (handler, same_item) {
             // **`state_mut()`, not `state`** — M33. A handler
             // receives `A::State`, which is the application itself
             // unless it named a `#[state]` field. When it did, the tree
@@ -819,6 +857,41 @@ fn dispatch_at<S: crate::event::App>(
             return false;
         }
         i = table[i].parent as usize;
+    }
+}
+
+/// Whether a release's candidate handler at `i` completes the latched
+/// press — M44/T44.2.
+///
+/// `row` is the release's row when `i` is the hit node and the hit was on
+/// a row; then the press must be on that node, that row, under the same
+/// `generation`. Otherwise `i` must contain the press's node: `i` is the
+/// press's node or one of its ancestors. A release with nothing latched
+/// completes nothing.
+fn press_is_within(
+    table: &[crate::desc::NodeDesc],
+    press: Option<crate::event::PressLatch>,
+    i: usize,
+    row: Option<u64>,
+    start: usize,
+    generation: u64,
+) -> bool {
+    let Some(p) = press else { return false };
+    if let Some(row) = row {
+        return i == start
+            && p.node as usize == start
+            && p.row == Some(row)
+            && p.generation == generation;
+    }
+    let mut j = p.node as usize;
+    loop {
+        if j == i {
+            return true;
+        }
+        if j >= table.len() || table[j].parent == crate::desc::NO_PARENT {
+            return false;
+        }
+        j = table[j].parent as usize;
     }
 }
 

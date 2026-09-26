@@ -129,6 +129,14 @@ pub struct Repeat<T: Widget + Default + 'static> {
     pub generation: u64,
     /// The `generation` the last layout saw.
     seen_generation: u64,
+    /// Bumped by `layout` whenever `count` differs from the last
+    /// layout's — M44/T44.2. Added to `generation` in `row_generation`,
+    /// so an insertion or a removal the application did not report still
+    /// cancels a click that spans it. Kept apart from `generation`
+    /// because that field is the application's: a `#[bind]` writes it.
+    count_epoch: u64,
+    /// The `count` the last layout saw.
+    seen_count: usize,
     /// Which row each arena slot was last laid out as; `usize::MAX` for a
     /// slot that has not been. A slot whose row changed — the ring moved
     /// — is laid out again even on a frame that did not mark the
@@ -155,6 +163,8 @@ impl<T: Widget + Default> Repeat<T> {
             viewport: 0.0,
             generation: 0,
             seen_generation: 0,
+            count_epoch: 0,
+            seen_count: count,
             slot_rows: Vec::new(),
         }
     }
@@ -432,6 +442,13 @@ impl<T: Widget + Default + 'static> Node for Repeat<T> {
         true
     }
 
+    /// The application's `generation` plus a bump for every change of
+    /// `count` a layout has seen (M44/T44.2): a press and a release on
+    /// one row index are the same item only if neither moved.
+    fn row_generation(&self) -> u64 {
+        self.generation.wrapping_add(self.count_epoch)
+    }
+
     fn layout(
         &mut self,
         cx: &mut LayoutCx,
@@ -463,6 +480,10 @@ impl<T: Widget + Default + 'static> Node for Repeat<T> {
         // `count * item_extent` and `content.w` is the limit. So the box
         // can be resolved first, and everything below measured against
         // it.
+        if self.count != self.seen_count {
+            self.seen_count = self.count;
+            self.count_epoch = self.count_epoch.wrapping_add(1);
+        }
         let content = Size { w: limits.max_w, h: self.reachable_rows() as f32 * self.item_extent };
         let s = crate::ops::resolve_self(limits, &style[i], content);
         let (first, vis) = self.visible_range(s.h);

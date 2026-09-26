@@ -918,3 +918,14 @@ records the case that forced it.
   seen (its own test lays out a million-row list in debug). The clamp is
   in every build instead, and the gate runs in both: T44.0's debug
   `should_panic` test became `a_repeater_past_the_ceiling_disagrees_nowhere`.
+- **T44.2 does not write `Repeat::generation`.** The plan said to bump
+  M41's field in `layout` when the count changes. That field is the
+  application's — `#[bind(ui.list.generation, version)]` writes it every
+  frame — so a bump in `layout` would be overwritten by the next bind and
+  re-marked the frame after. `Repeat` keeps a private count epoch instead
+  and answers `row_generation` as `generation + epoch`, which is the same
+  quantity the plan meant without two writers on one field. And the
+  release rule is "the handler's node contains the press", as on the web,
+  rather than "the release's chain contains the latched node": the two
+  differ for a container whose handler spans two children, where the
+  web's answer is the one users expect.

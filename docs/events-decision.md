@@ -117,3 +117,14 @@ Last week's logic, running after the swap, with no crash and no warning.
   chain's next step is a `step` field in a descriptor, resolved by the
   loaded build; the rule above forbids the closure form, and
   `just hot-demo` is where that is checked rather than asserted.
+- **A click is a press and a release on the same logical item**
+  (M44/T44.2, DECIDED 2026-09-26; `docs/plan-input-semantics.md` §2.2).
+  The press latches `(node, row, row_generation)`; on the release a
+  handler runs only if its node contains the press, and a row's handler
+  only if the row and the generation match. A release anywhere else
+  clears the press shade and activates nothing. `ctx.row` is still a
+  fresh index from hit testing — the latch is what checks identity, and
+  "identity" is "the list did not change shape", not an item key (the
+  key function §2.2 C describes is deferred until an application needs
+  a click to survive a reorder). `crates/lumen-static/tests/activation.rs`
+  is the gate.

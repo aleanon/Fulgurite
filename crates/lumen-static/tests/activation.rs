@@ -10,9 +10,12 @@
 //!
 //! Every case asserts that the press hit the node it meant to, and prints
 //! the press's `(node, row, generation)` beside the release's — the
-//! generation being the list's [`Repeat::generation`], which T44.2's
-//! latch compares.
+//! generation being what the hit node answers to
+//! `Node::row_generation` — for the list, its `generation` plus a bump
+//! per change of `count` — which T44.2's latch compares.
 
+use lumen_static::event::App as _;
+use lumen_static::widget::Node as _;
 use lumen_static::repeat::Repeat;
 use lumen_static::{pass, Constraints, Event, EventCtx, NodeState, StaticTree, Widget};
 use lumen_static_widgets::ops::{Button, Fixed};
@@ -137,13 +140,12 @@ impl F {
     /// its row, and the list's generation.
     fn latch_at(&self, x: f32, y: f32) -> (u32, Option<u64>, u64) {
         let h = pass::hit_test(&self.app.ui, &self.st, x, y).expect("a hit");
-        let generation = if h.node as usize == LIST { self.app.ui.list.generation } else { 0 };
+        let generation = self.app.tree().node(h.node as usize).row_generation();
         (h.node, h.inner.map(|i| i.row), generation)
     }
 }
 
 #[test]
-#[ignore = "red until T44.2: R3-F3 (a release activates whatever it lands on)"]
 fn press_one_button_release_on_another_fires_nothing() {
     let mut f = F::new();
     let (px, py) = f.centre(SAVE);
@@ -163,7 +165,6 @@ fn press_one_button_release_on_another_fires_nothing() {
 }
 
 #[test]
-#[ignore = "red until T44.2: R3-F3 (a release activates whatever row it lands on)"]
 fn press_one_row_release_on_another_picks_nothing() {
     let mut f = F::new();
     let (px, py) = f.row_point(1);
@@ -177,7 +178,6 @@ fn press_one_row_release_on_another_picks_nothing() {
 }
 
 #[test]
-#[ignore = "red until T44.2: R3-F3 (the list changed under a still pointer)"]
 fn a_row_removed_between_press_and_release_picks_nothing() {
     let mut f = F::new();
     let (x, y) = f.row_point(5);

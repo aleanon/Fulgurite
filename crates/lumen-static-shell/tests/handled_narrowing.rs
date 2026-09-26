@@ -6,7 +6,8 @@
 //! every way an event can change the tree without a binding: a
 //! `TextInput` taking characters and arrows (beside a button, so the
 //! arrow-group rule is in play, M44/T44.1), a `Slider` moving on a track press, two
-//! overlays closed by one press outside, and a button whose handler
+//! overlays closed by one press outside, a drag from one button to
+//! another that activates neither (M44/T44.2), and a button whose handler
 //! changes a bound label *outside* the button's subtree. Each step prints
 //! what the `Boundaries` frame marked, so a narrowed frame is told apart
 //! from one that fell back to everything.
@@ -98,6 +99,11 @@ fn build() -> Split {
     s.ui.top.status.set("Sheet1".into());
     s.ui.entry.after.set("after".into());
     s.ui.entry.clear.label = "clear";
+    // A handler of its own, so a release on `clear` that activated would
+    // be seen: without one, a drag from `go` ending here fired nothing
+    // under the unconditional activation T44.2 replaced, and the step
+    // could not tell the two apart.
+    s.ui.entry.clear.on_click = |s: &mut Store, _: &EventCtx| s.n = -1;
     s.ui.picks.s1 = Select::new(3, 20.0, row);
     s.ui.picks.s2 = Select::new(3, 20.0, row);
     s.ui.picks.s1.on_dismiss = |s: &mut Store, _: &EventCtx| s.a_open = false;
@@ -226,6 +232,19 @@ fn a_click_driven_session_narrows_and_draws_the_same_frames() {
         !p.b.app.ui.picks.s1.is_open() && !p.b.app.ui.picks.s2.is_open(),
         "setup: one press outside did not close both"
     );
+
+    // 3b. A drag from one button to another activates neither
+    // (M44/T44.2), and the press shade clears under `Boundaries` as it
+    // does under `Everything` -- T25.0's pointer marks must cover it.
+    let (gx, gy) = centre(&p.b, "go");
+    let (cx, cy) = centre(&p.b, "clear");
+    p.step("press go", |post| post(Event::down(gx, gy)));
+    let go = lumen_static::style::index_of_wid(<Ui as Widget>::SUB_TABLE, "go").unwrap();
+    assert!(p.b.states[go].pressed, "setup: the press did not land on go");
+    p.step("release on clear", |post| post(Event::up(cx, cy)));
+    println!("    n = {} (0: neither ran; 1234567: go's; -1: clear's); go pressed {}", p.b.app.store.n, p.b.states[go].pressed);
+    assert_eq!(p.b.app.store.n, 0, "a drag from go released on clear activated a button");
+    assert!(!p.b.states[go].pressed, "the release left go's press shade");
 
     // 4. A button whose handler changes a bound label outside its subtree.
     let (gx, gy) = centre(&p.b, "go");

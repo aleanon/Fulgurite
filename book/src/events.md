@@ -58,6 +58,20 @@ Capture is what makes dragging a slider work when the pointer leaves the
 track. It is an index rather than a reference, deliberately, because that
 is what survives a hot reload.
 
+## What counts as a click
+
+A click is a **press and a release on the same item**. The press latches
+what it landed on — the node, the row if it was on one, and a
+*generation* a list bumps whenever its items may have changed — and the
+release activates a handler only if that handler's node contains the
+press as well. So dragging off one button and releasing on another
+activates neither; pressing one row and releasing on another picks
+nothing; and a row inserted above the pointer between press and release
+cancels the click rather than delivering it to the item that moved under
+a pointer that never did. The rule is recorded in
+`docs/events-decision.md`, and keyboard activation (Enter, Space) is not
+affected by it.
+
 ## Focus
 
 Focus is the framework's, not each widget's. `NodeDesc` carries a
