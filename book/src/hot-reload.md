@@ -80,6 +80,23 @@ split application cannot write the tree from a handler, so it loses
 nothing. (`crates/lumen-static-shell/tests/reload_widget_state.rs` has a
 row per widget above; `reload_code_data.rs` checks the code half.)
 
+## When a field cannot be kept
+
+An untagged field is nested reload state, so its type must be
+`Reloadable`. A plain number or a widget of your own that has none is
+reported **on the field**, with the fix:
+
+```text
+error[E0277]: `u32` is not `Reloadable`, so a hot swap cannot keep or rebuild this field
+  |     count: u32,
+  |            ^^^ an untagged field is nested reload state, which needs `Reloadable`
+  = note: tag plain data `#[reload(keep)]` to save it through serde, and anything the new
+          build should supply `#[reload(fresh)]`; a widget of your own can `#[derive(Reloadable)]`
+```
+
+Every widget in `lumen-static-widgets` has an impl, stateless ones
+included (they keep nothing).
+
 ## Code pointers cannot be kept, structurally
 
 A `fn` pointer or a vtable marked `#[reload(keep)]` **fails to compile** —

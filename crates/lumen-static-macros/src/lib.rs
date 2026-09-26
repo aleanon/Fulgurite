@@ -36,7 +36,8 @@
 
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as Ts2;
-use quote::quote;
+use quote::{quote, quote_spanned};
+use syn::spanned::Spanned;
 use syn::{parse_macro_input, Data, DeriveInput, Fields};
 
 /// A container's declared mode. **Not `ops::Axis`** — that enum has two
@@ -1228,21 +1229,35 @@ fn expand_reloadable(input: DeriveInput) -> syn::Result<Ts2> {
                 // `restore_keep`), so the rules — a failed save is left
                 // out, a null over a non-null fresh value is refused —
                 // are code the core's own tests reach (M49/T49.6).
-                save_stmts.push(quote! {
+                // Spanned on the field's type (M49/T49.8, R5-F7): a type
+                // with no `Serialize` is reported on the field, not on
+                // the derive.
+                let ty = &f.ty;
+                save_stmts.push(quote_spanned! {ty.span()=>
                     ::lumen_static::reload::save_keep(&mut m, &self.#ident, #name_str, #key);
                 });
-                restore_stmts.push(quote! {
+                restore_stmts.push(quote_spanned! {ty.span()=>
                     ::lumen_static::reload::restore_keep(&mut self.#ident, obj.get(#key), #name_str, #key);
                 });
             }
             ReloadMode::Skip => {}
             ReloadMode::Nested => {
-                save_stmts.push(quote! {
-                    m.insert(#key.to_owned(), ::lumen_static::reload::Reloadable::save(&self.#ident));
+                // Reported on the field (M49/T49.8, R5-F7), with
+                // `Reloadable`'s `on_unimplemented` note naming the
+                // attribute to add. **The spelling is what does it**:
+                // `<#ty as Reloadable>::save` carries the field type's own
+                // tokens, so the unmet bound is reported at them. With
+                // `Reloadable::save(&self.#ident)` the error landed on the
+                // derive whether or not the statement was spanned — the
+                // injection that removed only the span left the gate
+                // green, and that is how this was found.
+                let ty = &f.ty;
+                save_stmts.push(quote_spanned! {ty.span()=>
+                    m.insert(#key.to_owned(), <#ty as ::lumen_static::reload::Reloadable>::save(&self.#ident));
                 });
-                restore_stmts.push(quote! {
+                restore_stmts.push(quote_spanned! {ty.span()=>
                     match obj.get(#key) {
-                        Some(v) => ::lumen_static::reload::Reloadable::restore(&mut self.#ident, v),
+                        Some(v) => <#ty as ::lumen_static::reload::Reloadable>::restore(&mut self.#ident, v),
                         None => ::lumen_static::reload::log_fallback(#name_str, #key, "missing from saved state"),
                     }
                 });

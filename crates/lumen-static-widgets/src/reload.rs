@@ -470,3 +470,62 @@ impl Reloadable for crate::rich::RichTextEditor {
         nest(saved, "RichTextEditor", "input", &mut self.input);
     }
 }
+
+// ---- widgets with nothing a user changes (M49/T49.8) ---------------------
+//
+// So a kept subtree can hold any widget of this crate. Each is code: what
+// it shows is the build's, or a binding's whose source is kept state.
+// `Select` is here because it is controlled (M33): the choice and whether
+// it is open live in the application's state.
+
+macro_rules! stateless {
+    ($([$($g:tt)*] $ty:ty),* $(,)?) => {$(
+        impl<$($g)*> Reloadable for $ty {
+            fn save(&self) -> Value {
+                Value::Null
+            }
+            fn restore(&mut self, _saved: &Value) {}
+        }
+    )*};
+}
+
+stateless! {
+    [] crate::trim::Divider,
+    [] crate::trim::Icon,
+    [S: TextStorage] crate::trim::Badge<S>,
+    [S: TextStorage] crate::trim::Chip<S>,
+    [S: TextStorage] crate::trim::Avatar<S>,
+    [] crate::indicator::ProgressBar,
+    [] crate::indicator::Skeleton,
+    [] crate::indicator::Spinner,
+    [const KIND: u8] crate::chart::Chart<KIND>,
+    [S: TextStorage] crate::nav::AppBar<S>,
+    [S: TextStorage] crate::surface::Toast<S>,
+    [] crate::rich::Markdown,
+    [] crate::rich::RichText,
+    [] crate::rich::PaintBox,
+    [] crate::choose::OptionList,
+    [] crate::image::Image,
+    [S: 'static] crate::select::Select<S>,
+}
+
+/// A container with nothing of its own to keep: its content's half.
+macro_rules! wraps {
+    ($([$($g:tt)*] $ty:ty, $field:ident, $name:literal),* $(,)?) => {$(
+        impl<$($g)*> Reloadable for $ty {
+            fn save(&self) -> Value {
+                json!({ stringify!($field): self.$field.save() })
+            }
+            fn restore(&mut self, saved: &Value) {
+                nest(saved, $name, stringify!($field), &mut self.$field);
+            }
+        }
+    )*};
+}
+
+wraps! {
+    [W: Widget + Reloadable] crate::surface::Card<W>, content, "Card",
+    [W: Widget + Reloadable] crate::glass::Glass<W>, content, "Glass",
+    [W: Widget + Reloadable] crate::nav::PullToRefresh<W>, content, "PullToRefresh",
+    [W: Widget + Reloadable, S: TextStorage] crate::surface::Tooltip<W, S>, content, "Tooltip",
+}

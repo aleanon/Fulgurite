@@ -1,0 +1,41 @@
+error[E0277]: `Panel` is not `Reloadable`, so a hot swap cannot keep or rebuild this field
+  --> tests/ui-reload/fail_reload_untagged_field.rs:22:12
+   |
+22 |     panel: Panel,
+   |            ^^^^^ an untagged field is nested reload state, which needs `Reloadable`
+   |
+help: the trait `Reloadable` is not implemented for `Panel`
+  --> tests/ui-reload/fail_reload_untagged_field.rs:15:1
+   |
+15 | struct Panel {
+   | ^^^^^^^^^^^^
+   = note: tag plain data `#[reload(keep)]` to save it through serde, and anything the new build should supply `#[reload(fresh)]`; a widget of your own can `#[derive(Reloadable)]`
+   = help: the following other types implement trait `Reloadable`:
+             AppBar<S>
+             Avatar<S>
+             Badge<S>
+             Button<S, T>
+             Card<W>
+             Chart<KIND>
+             Chip<S>
+             Chooser<KIND>
+           and $N others
+
+error[E0277]: `u32` is not `Reloadable`, so a hot swap cannot keep or rebuild this field
+  --> tests/ui-reload/fail_reload_untagged_field.rs:29:12
+   |
+29 |     count: u32,
+   |            ^^^ an untagged field is nested reload state, which needs `Reloadable`
+   |
+   = help: the trait `Reloadable` is not implemented for `u32`
+   = note: tag plain data `#[reload(keep)]` to save it through serde, and anything the new build should supply `#[reload(fresh)]`; a widget of your own can `#[derive(Reloadable)]`
+   = help: the following other types implement trait `Reloadable`:
+             AppBar<S>
+             Avatar<S>
+             Badge<S>
+             Button<S, T>
+             Card<W>
+             Chart<KIND>
+             Chip<S>
+             Chooser<KIND>
+           and $N others

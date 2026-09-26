@@ -663,6 +663,17 @@ the derive rustdoc.
 **Effort:** S. **Depends on:** T49.4 (the `Application` requirement is
 gone, so its error needs no message).
 
+> **What building found (2026-09-26).** The plan's first injection —
+> plain `quote!` again — left the gate **green**: the span comes from
+> spelling the call `<#ty as Reloadable>::save`, whose type tokens carry
+> the field's span, not from `quote_spanned!`. Only reverting the
+> spelling moves the error back to the derive. The gate's injection is
+> therefore "the old spelling", and the rustdoc says why. Stateless
+> widgets — every widget in the crate without an impl, `Select`
+> included, since it is controlled (M33) — got empty impls, and the
+> pass-through containers (`Card`, `Glass`, `PullToRefresh`, `Tooltip`)
+> nest their content.
+
 ### T49.9 — reload off compiles the derive to nothing
 
 **Closes:** R5-F8.

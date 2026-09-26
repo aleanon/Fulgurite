@@ -53,6 +53,17 @@ pub fn from_value<T: serde::de::DeserializeOwned>(v: Value) -> Result<T, serde_j
 /// needs a fresh row (`Vec`, `Option`, `Repeat`) takes `Default`, which
 /// is the only thing a row's `fresh()` ever was.
 ///
+///
+/// **Its error names the fix** (M49/T49.8, R5-F7). The derive treats an
+/// untagged field as nested reload state, so a plain number or a widget
+/// of the application's own with no impl fails here; the note says which
+/// attribute to add, and the derive spans the error on the field.
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` is not `Reloadable`, so a hot swap cannot keep or rebuild this field",
+    label = "an untagged field is nested reload state, which needs `Reloadable`",
+    note = "tag plain data `#[reload(keep)]` to save it through serde, and anything the new build \
+            should supply `#[reload(fresh)]`; a widget of your own can `#[derive(Reloadable)]`"
+)]
 pub trait Reloadable {
     /// The keep-half of this value, as pointer-free data.
     fn save(&self) -> Value;

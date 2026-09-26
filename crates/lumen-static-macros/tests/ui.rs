@@ -33,7 +33,6 @@ fn reload_program() {
 /// M49/T49.8 (R5-F7): the derive's errors land on the field and name the
 /// attribute that fixes them.
 #[test]
-#[ignore = "red until T49.8: R5-F7, the error lands on the derive and names no fix"]
 fn reload_diagnostics() {
     let t = trybuild::TestCases::new();
     t.compile_fail("tests/ui-reload/fail_*.rs");
