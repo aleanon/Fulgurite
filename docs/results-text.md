@@ -188,3 +188,23 @@ default `Boundaries`:
 `whole 4 / 4` (was 0 / 4). A single `a` is still `[Key(Char('a')),
 Text('a')]`. Injection: `key_text` answering the first character for
 several: `whole 0 / 4`, `"^a"` → `"^"`.
+
+## T45.9 — shortcuts route on; `NumberInput` forwards (R10-F13, R10-F15)
+
+`keys::clipboard_decision` takes the platform's modifier and answers
+`None` — route the key on — when nothing is focused, nothing is selected
+for `c`/`x`, or the clipboard is empty for `v`; `Session::has_focus`
+tells the window which. `NumberInput` forwards `selection`, and filters
+`compose` through its number rule.
+
+| gate | before | after |
+|---|---|---|
+| `clipboard_shortcut.rs`, twelve rows | 6 wrong | **0 wrong** |
+| `NumberInput`, Ctrl+A then copy | `None` | `Some("0.00")` |
+| `NumberInput`, commit `"12"` / `"ab"` | refused / refused | accepted (`"0.0012"`) / refused |
+| `SearchField`, Ctrl+A then copy (accept) | — | `Some("needle")` |
+
+Injections: copy whenever the modifier is held (the nothing-focused and
+no-selection rows fire, 2 wrong); the `selection` forward removed (copy
+`None`); the `compose` override removed (`"12"` refused); the filter
+removed (`"ab"` accepted, `"0.0012ab"`).

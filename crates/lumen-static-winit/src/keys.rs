@@ -57,17 +57,32 @@ pub struct Shortcut {
 
 /// Whether a keystroke is a clipboard shortcut, and what it does — T14.5.
 ///
-/// `None` routes the key on to the application, as any other key.
+/// `None` routes the key on to the application, as any other key — and
+/// since M45/T45.9 (R10-F13) that is the answer whenever the shortcut has
+/// nothing to act on: nothing focused, nothing selected for `c`/`x`,
+/// nothing on the clipboard for `v`. It used to consume the key in every
+/// one of those cases, so an application never saw Ctrl+C or Ctrl+V at
+/// all, not even with nothing focused.
+///
+/// **The modifier is the platform's**: Cmd on macOS, Ctrl everywhere
+/// else. It accepted either on every OS, so Super+C copied on Linux —
+/// where Super belongs to the desktop — and Ctrl+C did on macOS, where it
+/// is a terminal's interrupt.
+///
+/// [`Clip::Swallow`] is no longer an answer this gives; it stays for a
+/// caller that wants to consume a key without acting.
 pub fn clipboard_decision(s: Shortcut) -> Option<Clip> {
-    if !(s.mods.has(Mods::CTRL) || s.mods.has(Mods::META)) {
+    let shortcut = match s.os {
+        Os::MacOs => Mods::META,
+        Os::Other => Mods::CTRL,
+    };
+    if !s.mods.has(shortcut) || !s.focused {
         return None;
     }
     match s.key? {
         Key::Char('c') if s.selection => Some(Clip::Copy),
         Key::Char('x') if s.selection => Some(Clip::Cut),
-        Key::Char('c') | Key::Char('x') => Some(Clip::Swallow),
         Key::Char('v') if s.clipboard => Some(Clip::Paste),
-        Key::Char('v') => Some(Clip::Swallow),
         _ => None,
     }
 }

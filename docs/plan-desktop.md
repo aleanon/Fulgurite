@@ -387,6 +387,14 @@ next such test is written.
 
 ## T14.5 — clipboard — **DONE 2026-09-05**
 
+> **M45 (2026-09-26).** The modifier is the platform's — Cmd on macOS,
+> Ctrl elsewhere — where either had been accepted on every OS, so
+> Super+C copied on Linux; and a shortcut with nothing to act on
+> (nothing focused, nothing selected, an empty clipboard) routes the key
+> on to the application instead of consuming it (T45.9, R10-F13). A
+> paste is one edit through `Node::paste`, no longer per-character
+> typing (T45.7). `docs/results-text.md` T45.7, T45.9.
+
 There is none. For a text field this is table stakes.
 
 **Decided, and the design avoids a vocabulary change.** `Event` is

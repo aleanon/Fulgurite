@@ -43,7 +43,6 @@ fn table() -> Vec<Row> {
 }
 
 #[test]
-#[ignore = "red until T45.9: R10-F13, a shortcut with nothing to do swallows its key"]
 fn the_shortcut_decision_routes_on_what_it_cannot_act_on() {
     let mut wrong = 0;
     for r in table() {

@@ -507,13 +507,14 @@ impl Win {
         }
     }
 
-    /// Ctrl+C, Ctrl+X and Ctrl+V (or Cmd on macOS) — T14.5.
+    /// Ctrl+C, Ctrl+X and Ctrl+V (Cmd on macOS) — T14.5.
     ///
     /// Handled here rather than in a widget because the *clipboard* is
     /// the platform's; what the widget owns is the selection and the
     /// typing, and both of those are session calls. Returns whether the
-    /// keystroke was a clipboard shortcut, so the caller knows not to
-    /// route it on.
+    /// keystroke was acted on as a clipboard shortcut, so the caller
+    /// knows not to route it on — and it is not, since M45/T45.9, when
+    /// there is nothing to act on: `keys::clipboard_decision` decides.
     fn clipboard_shortcut(&mut self, event: &WindowEvent) -> bool {
         let WindowEvent::KeyboardInput { event, .. } = event else { return false };
         if event.state != winit::event::ElementState::Pressed {
@@ -534,7 +535,7 @@ impl Win {
         let decision = keys::clipboard_decision(keys::Shortcut {
             mods: self.mods,
             key,
-            focused: true,
+            focused: self.session.has_focus(),
             selection: copied.is_some(),
             clipboard: pasted.is_some(),
             os: keys::Os::CURRENT,

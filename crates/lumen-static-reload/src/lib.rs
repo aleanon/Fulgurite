@@ -758,6 +758,9 @@ pub mod hot {
         fn copy(&self) -> Option<String> {
             self.s().copy()
         }
+        fn has_focus(&self) -> bool {
+            self.s().has_focus()
+        }
         fn paste(&mut self, text: &str) -> usize {
             self.m().paste(text)
         }

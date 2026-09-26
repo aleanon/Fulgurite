@@ -254,7 +254,6 @@ struct NumberApp {
 /// `compose`, so the provided `false` refused every commit, digits
 /// included, and an IME user could not enter a number at all.
 #[test]
-#[ignore = "red until T45.9: R10-F15, NumberInput refuses every composition"]
 fn a_number_field_takes_composed_digits_and_refuses_letters() {
     let mut h: Host<NumberApp> = Host::new(NumberApp::default(), W, 60);
     h.pump();

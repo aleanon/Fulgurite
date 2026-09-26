@@ -152,7 +152,6 @@ fn paste_keeps_newlines_in_a_text_area() {
 /// forwarded neither `selection` nor `compose` to the field it owns, so
 /// Ctrl+A highlighted its text and a copy found nothing.
 #[test]
-#[ignore = "red until T45.9: R10-F13, NumberInput does not forward selection"]
 fn a_number_field_copies_its_selection() {
     let mut h: Host<NumberApp> = Host::new(NumberApp::default(), 400, 100);
     h.pump();
@@ -178,4 +177,35 @@ fn copy_after_a_shift_arrow_selection_reads_what_is_highlighted() {
     h.post(Event::Key { key: Key::Right, down: true });
     h.pump();
     assert_eq!(h.copy(), Some("he"), "what a user would see highlighted");
+}
+
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+struct SearchUi {
+    #[widget_id("search")]
+    search: lumen_static_widgets::SearchField,
+}
+
+#[derive(DeriveApp, Default)]
+struct SearchApp {
+    #[tree]
+    ui: SearchUi,
+}
+
+/// **The accept direction for T45.9**: a composite whose field is a node
+/// of its own still copies, with no forwarding of its own.
+#[test]
+fn a_search_field_copies_its_selection() {
+    let mut h: Host<SearchApp> = Host::new(SearchApp::default(), 400, 100);
+    h.app.ui.search = lumen_static_widgets::SearchField::new("needle");
+    h.pump();
+    h.post(Event::Key { key: Key::Tab, down: true });
+    h.pump();
+    assert_eq!(h.input.focus, Some(3), "setup: Tab did not focus the search field's text");
+    h.post(Event::Modifiers(Mods::CTRL));
+    h.post(Event::Key { key: Key::Char('a'), down: true });
+    h.post(Event::Modifiers(Mods::NONE));
+    h.pump();
+    println!("SearchField after Ctrl+A: copy gives {:?}", h.copy());
+    assert_eq!(h.copy(), Some("needle"));
 }

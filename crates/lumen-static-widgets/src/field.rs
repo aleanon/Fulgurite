@@ -17,7 +17,12 @@
 //! `Node` method to it *at the same index*, so a number field costs
 //! exactly what a text field costs and a stylesheet rule reaches it
 //! without a part id. `on_event` gets first refusal on the keys it cares
-//! about and hands the rest over.
+//! about and hands the rest over. **"Every" includes the provided
+//! methods** — `selection`, `compose` and `paste` — which it did not
+//! forward until M45/T45.7 and T45.9: it could not copy (R10-F13) and
+//! refused every composition (R10-F15), because the provided defaults are
+//! right for a leaf and wrong for a wrapper. `compose` and `paste` go
+//! through the number rule on the way.
 //!
 //! **Commit on blur is read in `layout`, not from an event**, because
 //! there is no blur event — focus lives in `NodeState`, and `layout` is
@@ -283,6 +288,36 @@ impl Node for NumberInput {
             Event::Key { key: Key::PageDown, down: true } => self.nudge(self.step * -10.0),
             Event::Key { key: Key::Enter, down: true } => self.commit(),
             _ => self.field.on_event(ev, cx),
+        }
+    }
+
+    /// **Forwarded** — M45/T45.9 (R10-F13). This node shares its index
+    /// with its field, so the host asks *it* what is selected; answering
+    /// the provided `None` meant Ctrl+A highlighted the number and a copy
+    /// found nothing.
+    fn selection(&self) -> Option<&str> {
+        self.field.selected_str()
+    }
+
+    /// **Forwarded, filtered** — M45/T45.9 (R10-F15). The provided `false`
+    /// refused every composition, digits included, so an input method
+    /// could not enter a number at all. A composed string goes through
+    /// the number rule `on_event` applies to a keystroke; what survives is
+    /// forwarded, and a string with nothing left is refused — so a commit
+    /// of letters changes nothing and says so.
+    fn compose(&mut self, c: lumen_static::event::Composition<'_>) -> bool {
+        use lumen_static::event::Composition;
+        let t = match c {
+            Composition::Cancel => return self.field.compose(c),
+            Composition::Preedit(t) | Composition::Commit(t) => t,
+        };
+        let digits: alloc::string::String = t.chars().filter(|c| is_number_char(*c)).collect();
+        if digits.is_empty() {
+            return false;
+        }
+        match c {
+            Composition::Preedit(_) => self.field.compose(Composition::Preedit(&digits)),
+            _ => self.field.compose(Composition::Commit(&digits)),
         }
     }
 

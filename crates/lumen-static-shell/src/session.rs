@@ -94,6 +94,9 @@ pub trait Session: FrameSource {
     fn post(&mut self, ev: Event);
     /// The focused field's selected text.
     fn copy(&self) -> Option<String>;
+    /// Whether any node has focus — the clipboard shortcuts route a key
+    /// on when nothing does (M45/T45.9).
+    fn has_focus(&self) -> bool;
     /// Paste into the focused node as one edit; the characters it kept
     /// (`Host::paste_with`, M45/T45.7). 0 when a panic was caught.
     fn paste(&mut self, text: &str) -> usize;
@@ -304,6 +307,10 @@ impl<A: App + 'static> Session for Local<A> {
 
     fn copy(&self) -> Option<String> {
         self.caught(None, |h| h.copy().map(str::to_owned))
+    }
+
+    fn has_focus(&self) -> bool {
+        self.host.input.focus.is_some()
     }
 
     fn paste(&mut self, text: &str) -> usize {
