@@ -138,14 +138,28 @@ for name in ("dark", "light"):
     prev_bg, prev_shot = bg, frame
 print(f"agent-drive: {before.split()[0]} -> {after.split()[0]}, "
       f"menu {int(box[2]-box[0])}x{int(box[3]-box[1])} px, press observable")
-# M34/T34.1: the shadow oracle, when this build has it. The count is
-# asserted before the silence, because a quiet oracle that compared
-# nothing proves nothing.
+# M34/T34.1: the shadow oracle -- M42/T42.4 (I-NEW-3): **"cannot say" is
+# never "no"**. This was `if sh.get("supported"):` with no else, so a leg
+# built without the oracle passed having compared nothing. The leg says
+# whether it expects the oracle (the launcher hands its declared features
+# over as LUMEN_LIVE_EXPECT_FEATURES), and the answer is checked against
+# that: present, then a count, then silence, in that order -- a quiet
+# oracle that compared nothing proves nothing. This makes the leg refuse
+# a build with no oracle; whether the oracle's silence *means* anything
+# (it repairs what it inspects, R1-F6) is M41's.
+import os
+expected = "shadow-oracle" in os.environ.get("LUMEN_LIVE_EXPECT_FEATURES", "").split(",")
 sh = call("app.shadow")
-if sh.get("supported"):
+supported = sh.get("supported") is True
+print(f"agent-drive: shadow: supported={supported} expected={expected}, "
+      f"compared {sh.get('compared', 0)}")
+if expected:
+    assert supported, f"agent-drive: expected the shadow oracle in this build: {sh!r}"
     assert sh["compared"] > 0, f"agent-drive: the shadow oracle never ran: {sh!r}"
     assert sh["first"] is None, f"agent-drive: a bounded frame diverged from the whole-tree one: {sh['first']!r}"
     print(f"agent-drive: shadow oracle compared {sh['compared']} frames, none diverged")
+else:
+    assert not supported, f"agent-drive: shadow oracle present in a leg that does not expect it: {sh!r}"
 PY
 }
 

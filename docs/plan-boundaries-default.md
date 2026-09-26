@@ -159,7 +159,11 @@ Each injected session asserts its own precondition (`pump` returned
 > *injection* — skip the hover mark — names the button (`node 2`,
 > `field: "colour"`) on the hover frame. Live: `just agent-drive`'s
 > `Boundaries` leg builds the oracle in and asserts **29 frames compared,
-> none diverged**.
+> none diverged**. *(M42/T42.4:* that leg now **fails without the
+> oracle** — until then `if sh.get("supported"):` had no else, so a leg
+> built without it passed having compared nothing (I-NEW-3). Whether the
+> oracle's silence means anything — it repairs what it inspects — is
+> M41's, `docs/plan-boundaries-repair.md`.)*
 >
 > **Its first live run reported a divergence that was the checker's**:
 > the host zeroes the focused node's `focus_ring` *after* layout (T15.6),
