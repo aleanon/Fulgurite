@@ -210,8 +210,30 @@ fn bind_fruit(r: &mut lumen_static_widgets::select::Row<Store>, i: usize) {
     };
 }
 
-fn chip(t: &str) -> Chip<String> {
-    Chip::<String>::new(t.into())
+/// The chip demo's tags, and one `fn` per chip — a handler cannot capture
+/// which it is (M57/B2, C2's shape).
+const CHIP_TAGS: [&str; 3] = ["rust", "systems", "no_std"];
+fn tag(t: &str, on: bool, f: fn(&mut Store, &EventCtx)) -> Chip<String, Store> {
+    let mut c = Chip::<String, Store>::new(t.into());
+    c.selected = on;
+    c.on_click = Some(f);
+    c
+}
+fn tag_0(s: &mut Store, _: &EventCtx) {
+    s.tags ^= 1;
+}
+fn tag_1(s: &mut Store, _: &EventCtx) {
+    s.tags ^= 2;
+}
+fn tag_2(s: &mut Store, _: &EventCtx) {
+    s.tags ^= 4;
+}
+fn remove_tag(s: &mut Store, _: &EventCtx) {
+    s.removed += 1;
+}
+
+fn chip(t: &str) -> Chip<String, Store> {
+    Chip::<String, Store>::new(t.into())
 }
 
 fn gbadge(t: &str) -> Badge<String> {
@@ -283,11 +305,12 @@ pub static CATALOG: &[Entry] = &[
         |s| on(s, Demo::Badge(DBadge {
             a: Badge::new("3".into()), b: Badge::new("12".into()), c: Badge::new("99+".into()) })),
         none),
-    entry!("Text", "Chip", "The same shape, in the quiet palette.",
+    entry!("Text", "Chip", "Filter tags: click to select, × to remove.",
         false,
         |s| on(s, Demo::Chip(DChip {
-            a: Chip::new("rust".into()), b: Chip::new("systems".into()), c: Chip::new("no_std".into()) })),
-        none),
+            a: tag("rust", s.store.tags & 1 != 0, tag_0), b: tag("systems", s.store.tags & 2 != 0, tag_1),
+            c: { let mut c = tag("no_std", s.store.tags & 4 != 0, tag_2); c.removable = true; c.on_remove = Some(remove_tag); c } })),
+        |s| format!("selected: {} · removed: {}", CHIP_TAGS.iter().enumerate().filter(|(k, _)| s.store.tags & (1 << k) != 0).map(|(_, t)| *t).collect::<Vec<_>>().join(" "), s.store.removed)),
     entry!("Text", "Avatar", "Initials, trimmed on a char boundary.",
         false,
         |s| on(s, Demo::Avatar(DAvatar {

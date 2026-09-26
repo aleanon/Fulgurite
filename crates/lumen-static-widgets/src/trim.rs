@@ -10,7 +10,7 @@ use lumen_static::display::{Color, Painter};
 use lumen_static::ops::{record_painted, rect_of, resolve_self};
 use lumen_static::style::{Edges, Length, Seed, Style};
 use lumen_static::widget::{Node, Widget};
-use lumen_static::{Constraints, LayoutCx, Size, TextStorage};
+use lumen_static::{Constraints, Event, LayoutCx, Point, Size, TextStorage};
 
 /// One node, no children, not focusable — the shape every widget in this
 /// file has.
@@ -237,16 +237,43 @@ impl<S: TextStorage> Node for Badge<S> {
     lumen_static::leaf_common!(Badge<S>, 0, nohit);
 }
 
-/// A badge with a quieter palette and a border-ish fill: a filter tag, a
-/// selected value, a removable token.
+/// A compact control: a filter tag that can be selected, a token that
+/// can be removed.
 ///
-/// The same shape as [`Badge`] with different `defaults`, and that is
-/// the whole difference — which is the argument for it being a separate
-/// type rather than a field: `kind_name` feeds the cascade and the
-/// agent's selectors, so `chip` and `badge` are selectable apart.
-pub struct Chip<S: TextStorage = &'static str> {
+/// **It is a control, where [`Badge`] is a label** — M57/B2. This rustdoc
+/// advertised "a selected value, a removable token" while the widget was
+/// `nohit` with no handlers, so neither could happen
+/// (`docs/widget-audit.md`, Chip). Now:
+///
+/// - `selected` is **controlled**, following `Toggle`'s precedent: the
+///   application owns the flag, `on_click` flips it, and a binding writes
+///   the copy back. A selected chip is tinted and outlined in its text
+///   colour.
+/// - `removable` adds a trailing × of [`Chip::REMOVE_W`] px. A click
+///   that begins and ends on it runs `on_remove` instead of `on_click`.
+/// - Both handlers are optional, and a chip with neither lets a click
+///   through to whatever holds it. It is focusable either way — a static
+///   tag with no behaviour is a [`Badge`].
+///
+/// Enter and Space activate `on_click`, as on a button; the keyboard has
+/// no remove, because activation is the pass's and it runs one handler.
+pub struct Chip<T: TextStorage = &'static str, S: 'static = ()> {
     /// What it reads. Bind it.
-    pub text: S,
+    pub text: T,
+    /// Whether it reads as selected. A presentation copy — bind it.
+    pub selected: bool,
+    /// Whether it carries a trailing ×.
+    pub removable: bool,
+    /// Run on a click, Enter or Space.
+    pub on_click: Option<fn(&mut S, &lumen_static::EventCtx)>,
+    /// Run on a click on the ×.
+    pub on_remove: Option<fn(&mut S, &lumen_static::EventCtx)>,
+    /// Whether the gesture in flight is on the ×: set by the press and
+    /// the release, read by [`Handlers::handler`](lumen_static::event::Handlers),
+    /// which pass 2 asks after pass 1 has run.
+    on_x: bool,
+    /// Its own width, for which part a press is on.
+    width: f32,
     /// The text's measured box, keyed on a fold of its bytes.
     ///
     /// **It had none** until M26/T26.8: this widget shaped on every
@@ -258,30 +285,47 @@ pub struct Chip<S: TextStorage = &'static str> {
     measured: lumen_static::text::FoldedText,
 }
 
-impl<S: TextStorage> Default for Chip<S> {
+impl<T: TextStorage, S: 'static> Default for Chip<T, S> {
     fn default() -> Self {
-        Chip { text: S::default(), measured: lumen_static::text::FoldedText::new() }
+        Chip::new(T::default())
     }
 }
 
-impl<S: TextStorage> Chip<S> {
+impl<T: TextStorage, S: 'static> Chip<T, S> {
+    /// The ×'s width, inside the right padding.
+    pub const REMOVE_W: f32 = 18.0;
+
     /// **A constructor, because the memo is private** (M26/T26.8).
     /// `Chip { text }` was the spelling until this widget had a memo
     /// to keep; `Label` has had `new` since it had one.
-    pub fn new(text: S) -> Self {
-        Chip { text, measured: lumen_static::text::FoldedText::new() }
+    pub fn new(text: T) -> Self {
+        Chip {
+            text,
+            selected: false,
+            removable: false,
+            on_click: None,
+            on_remove: None,
+            on_x: false,
+            width: 0.0,
+            measured: lumen_static::text::FoldedText::new(),
+        }
     }
 
-    pub fn set(&mut self, text: S) {
+    pub fn set(&mut self, text: T) {
         self.text = text;
+    }
+
+    fn extra(&self) -> f32 {
+        if self.removable { Self::REMOVE_W } else { 0.0 }
     }
 }
 
-impl<S: TextStorage> Widget for Chip<S> {
+impl<T: TextStorage, S: 'static> Widget for Chip<T, S> {
     const NODE_COUNT: usize = 1;
     const DEPTH: usize = 1;
     const IS_RIGID: bool = false;
-    const SUB_TABLE: &'static [NodeDesc] = LEAF;
+    const SUB_TABLE: &'static [NodeDesc] =
+        &[NodeDesc::new(0, NO_PARENT, 0, 0, NodeDesc::FOCUSABLE)];
 
     const KIND: &'static str = "chip";
 
@@ -295,6 +339,10 @@ impl<S: TextStorage> Widget for Chip<S> {
             color: Color(0x30, 0x3a, 0x4c, 0xff),
             font_size: 13.0,
             font_weight: 500.0,
+            // A control: it answers the pointer (M57/B2).
+            pressed_dim: 0.18,
+            hover_dim: 0.08,
+            cursor: lumen_static::style::Cursor::Pointer,
             ..Style::default()
         }
     }
@@ -305,16 +353,23 @@ impl<S: TextStorage> Widget for Chip<S> {
             lumen_static::style::Fields::HEIGHT,
             lumen_static::style::Fields::PADDING,
             lumen_static::style::Fields::VISIBLE,
+            lumen_static::style::Fields::CURSOR,
+            lumen_static::style::Fields::FOCUS_RING,
+            lumen_static::style::Fields::PRESSED_DIM,
+            lumen_static::style::Fields::HOVER_DIM,
             lumen_static::style::Fields::COLOR,
             lumen_static::style::Fields::BACKGROUND,
             lumen_static::style::Fields::BORDER,
             lumen_static::style::Fields::RADIUS,
             lumen_static::style::Fields::FONT_SIZE,
             lumen_static::style::Fields::FONT_WEIGHT,
-        ])).with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Text).background(lumen_static::style::Role::Surface))];
+        ]))// **`Track`, not `Surface`** (M57/B2): a chip sits *on* a surface —
+        // a card, a panel — so a surface body is invisible exactly where
+        // chips are used; the showcase's stage showed three bare words.
+        .with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Text).background(lumen_static::style::Role::Track))];
 }
 
-impl<S: TextStorage> Node for Chip<S> {
+impl<T: TextStorage, S: 'static> Node for Chip<T, S> {
     fn layout(
         &mut self,
         cx: &mut LayoutCx,
@@ -329,8 +384,9 @@ impl<S: TextStorage> Node for Chip<S> {
         let m = self.measured.get_or(key, text, || {
             cx.text.measure_weighted(text, me.font_size, me.font_weight, limits.max_w)
         });
-        let content = Size { w: m.w + me.padding.horizontal(), h: m.h + me.padding.vertical() };
+        let content = Size { w: m.w + me.padding.horizontal() + self.extra(), h: m.h + me.padding.vertical() };
         let size = resolve_self(limits, &me, content);
+        self.width = size.w;
         record_painted(st, i, limits, size, &me)
     }
 
@@ -357,13 +413,47 @@ impl<S: TextStorage> Node for Chip<S> {
         if r[2] <= r[0] || r[3] <= r[1] {
             return;
         }
-        out.rounded_rect(r, s.bg, s.radius.min((r[3] - r[1]) / 2.0));
+        let radius = s.radius.min((r[3] - r[1]) / 2.0);
+        out.rounded_rect(r, s.bg, radius);
         lumen_static::ops::border(st, i, out);
-        let inner = [r[0] + s.pad.0, r[1] + s.pad.1, r[2] - s.pad.2, r[3] - s.pad.3];
-        out.text_weighted(inner, self.text.as_ref(), s.font_size, s.font_weight, s.fg);
+        // Selected: a tint and an outline in the text colour, so the
+        // state reads on any ground without a new palette role.
+        if self.selected {
+            let c = s.fg;
+            out.rounded_rect(r, Color(c.0, c.1, c.2, 0x24), radius);
+            out.stroked_rect(r, c, radius, 1.5);
+        }
+        // The text centred on the measure, in the space left of the ×.
+        let m = self.measured.size();
+        let room = (r[2] - r[0]) - self.extra();
+        let x = r[0] + (room - m.w).max(0.0) / 2.0;
+        let y = r[1] + ((r[3] - r[1]) - m.h).max(0.0) / 2.0;
+        out.text_weighted([x, y, x + m.w, y + m.h], self.text.as_ref(), s.font_size, s.font_weight, s.fg);
+        if self.removable {
+            // Two strokes, 8 px, centred in the × column.
+            let cx = r[2] - s.pad.2 - Self::REMOVE_W / 2.0 + 2.0;
+            let cy = (r[1] + r[3]) / 2.0;
+            let d = 4.0;
+            out.line(Point { x: cx - d, y: cy - d }, Point { x: cx + d, y: cy + d }, 1.5, s.fg);
+            out.line(Point { x: cx - d, y: cy + d }, Point { x: cx + d, y: cy - d }, 1.5, s.fg);
+        }
     }
 
-    lumen_static::leaf_common!(Chip<S>, 0, nohit);
+    fn on_event(&mut self, ev: &Event, cx: &lumen_static::EventCtx) -> bool {
+        // Which part the gesture is on, for the handler pass 2 asks for.
+        // A press and its release must both be on the × — a press that
+        // slides off it and lets go on the body is a click, not a remove.
+        let over = self.removable && cx.local.x >= self.width - self.extra() - 8.0;
+        match ev {
+            Event::PointerDown { .. } => self.on_x = over,
+            Event::PointerUp { .. } => self.on_x &= over,
+            Event::Key { .. } => self.on_x = false,
+            _ => {}
+        }
+        false
+    }
+
+    lumen_static::leaf_common!(Chip<T, S>, NodeDesc::FOCUSABLE);
 }
 
 /// A round token carrying initials.
@@ -746,12 +836,12 @@ impl<S, T: TextStorage> lumen_static::event::Handlers<S> for Badge<T> {
 /// walks past it. This is one impl per type rather than a blanket one
 /// because a blanket `impl<W, S> Handlers<S> for W` would collide with
 /// every widget that *does* have handlers.
-impl<S, T: TextStorage> lumen_static::event::Handlers<S> for Chip<T> {
+impl<S: 'static, T: TextStorage> lumen_static::event::Handlers<S> for Chip<T, S> {
     fn handler(
         &self,
         _sel: lumen_static::event::NodeSel,
     ) -> Option<fn(&mut S, &lumen_static::EventCtx)> {
-        None
+        if self.on_x { self.on_remove } else { self.on_click }
     }
 }
 

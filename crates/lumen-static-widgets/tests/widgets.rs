@@ -47,7 +47,7 @@ fn every_widget_is_visible_with_no_stylesheet() {
     n += 1;
     put("badge", painted(&mut Badge::new("9"), box_), &mut counts[1]);
     n += 1;
-    put("chip", painted(&mut Chip::new("tag"), box_), &mut counts[2]);
+    put("chip", painted(&mut Chip::<&str>::new("tag"), box_), &mut counts[2]);
     n += 1;
     put("avatar", painted(&mut Avatar::new("AB"), box_), &mut counts[3]);
     n += 1;

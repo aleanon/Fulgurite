@@ -590,6 +590,8 @@ pub struct Palette {
     pub border: crate::display::Color,
     /// The unfilled part of a track — a slider's, a progress bar's. A
     /// quiet colour: the *filled* part carries the value, in `accent`.
+    /// Also a chip's body, which sits on a surface and needs a ground
+    /// that differs from it (M57/B2).
     pub track: crate::display::Color,
     /// A placeholder block — a skeleton — subdued against `raised`.
     pub placeholder: crate::display::Color,

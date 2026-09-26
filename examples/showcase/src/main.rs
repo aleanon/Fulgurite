@@ -319,6 +319,9 @@ pub struct Store {
     /// The menu demo's reopen request, and the last command it ran (C3).
     menu_open: bool,
     command: Option<usize>,
+    /// The chip demo's selected tags, a bit each, and its × presses (B2).
+    tags: u8,
+    removed: u32,
 }
 
 /// After every pump: rebuild the demos whose state lives in the store,
@@ -402,6 +405,12 @@ fn refresh(s: &mut Show) -> bool {
                 put(&mut d.a.t.on, c == 0);
                 put(&mut d.b.t.on, c == 1);
                 put(&mut d.c.t.on, c == 2);
+            }
+            Demo::Chip(d) => {
+                let t = s.store.tags;
+                put(&mut d.a.selected, t & 1 != 0);
+                put(&mut d.b.selected, t & 2 != 0);
+                put(&mut d.c.selected, t & 4 != 0);
             }
             _ => {}
         }

@@ -258,17 +258,17 @@ pub struct DMenu {
 #[widget(wrap, spacing = 8.0)]
 pub struct DWrap {
     #[widget_id("d_wrap_a")]
-    pub a: Chip<String>,
+    pub a: Chip<String, Store>,
     #[widget_id("d_wrap_b")]
-    pub b: Chip<String>,
+    pub b: Chip<String, Store>,
     #[widget_id("d_wrap_c")]
-    pub c: Chip<String>,
+    pub c: Chip<String, Store>,
     #[widget_id("d_wrap_d")]
-    pub d: Chip<String>,
+    pub d: Chip<String, Store>,
     #[widget_id("d_wrap_e")]
-    pub e: Chip<String>,
+    pub e: Chip<String, Store>,
     #[widget_id("d_wrap_f")]
-    pub f: Chip<String>,
+    pub f: Chip<String, Store>,
 }
 
 /// A grid: the same six, in three columns however wide the box.
@@ -474,11 +474,11 @@ pub struct DBadge {
 #[widget(row, spacing = 12.0)]
 pub struct DChip {
     #[widget_id("d_chip_a")]
-    pub a: Chip<String>,
+    pub a: Chip<String, Store>,
     #[widget_id("d_chip_b")]
-    pub b: Chip<String>,
+    pub b: Chip<String, Store>,
     #[widget_id("d_chip_c")]
-    pub c: Chip<String>,
+    pub c: Chip<String, Store>,
 }
 
 #[derive(StaticTree, Default)]
