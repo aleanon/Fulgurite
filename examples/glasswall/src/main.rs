@@ -732,12 +732,9 @@ fn main() {
         }
         Some("--bench") => bench(dim(1, dw), dim(2, dh)),
         _ => {
-            let mut p = program(W, H).title("glasswall").images(Wallpaper::new());
-            // Inert unless built with `--features agent` (M47/T47.7).
-            if let Ok(addr) = std::env::var("LUMEN_AGENT") {
-                p = p.agent(addr);
-            }
-            p.run()
+            // Built `--features agent`, the endpoint is `LUMEN_AGENT_ADDR`,
+            // read by the window (M48/T48.11); inert otherwise (M47/T47.7).
+            program(W, H).title("glasswall").images(Wallpaper::new()).run()
         }
     }
 }
