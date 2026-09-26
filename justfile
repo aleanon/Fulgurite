@@ -129,6 +129,7 @@ fixtures:
     ./scripts/hot_reload_demo.sh
     ./scripts/abi_stamp.sh
     ./scripts/window_reload_demo.sh
+    cargo run -q -p miri-reload
 
 # Every refusal, planted (M43, docs/plan-gate-hygiene.md §2.4): each check
 # runs green on an unmodified copy of the tree, then each plant under
@@ -345,6 +346,12 @@ firewall:
 # Whole-core UB check under miri (tooling currently broken).
 miri:
     cargo +nightly miri run -p miri-smoke
+
+# M49/T49.3: lumen-static-reload's raw-pointer code under miri. Works where
+# `miri` does not: the fixture has no dependencies and no build script, and
+# includes the reload crate's raw.rs and panic.rs by path.
+miri-reload:
+    cargo +nightly miri run -p miri-reload
 
 # Individual fixtures, for when you want just one.
 

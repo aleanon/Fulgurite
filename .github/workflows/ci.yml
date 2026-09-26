@@ -187,6 +187,8 @@ jobs:
   # possible, and docs/verification-notes.md records that the tooling is
   # broken. Running it non-blocking costs nothing and turns "the day miri
   # works again" into a green check instead of something nobody rechecks.
+  # fixtures/miri-reload (M49/T49.3) has no dependencies, so it runs where
+  # miri-smoke cannot; it is the hot-reload FFI's only UB check.
   miri:
     runs-on: ubuntu-latest
     continue-on-error: true
@@ -197,6 +199,10 @@ jobs:
         with:
           key: miri
       - run: cargo +nightly miri run -p miri-smoke
+      # M49/T49.3: lumen-static-reload's unsafe. Dependency-free, so it does
+      # not hit the build-script failure miri-smoke does. Belongs in M43's
+      # local runner too; that wiring waits for `just ci`.
+      - run: cargo +nightly miri run -p miri-reload
 
   # aarch64 macOS, non-blocking. crates/ has no platform code, so this is not
   # a portability check in the usual sense -- it is an f32 check. The layout

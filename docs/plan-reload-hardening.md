@@ -482,6 +482,17 @@ the job goes red.
 
 **Effort:** M. **Depends on:** T49.2; M43/T43.13 (the runner).
 
+> **Built 2026-09-26 on the fallback, and better than the fallback
+> planned.** miri cannot build this crate (T49.0's note), so no
+> transcription was written: T49.2 moved every pointer operation into
+> `src/raw.rs` (core/alloc only) and T49.3 moved the panic record into
+> `src/panic.rs` (std only), and `fixtures/miri-reload` includes **the
+> same two files** by path. There is nothing to keep in step with the
+> macro, because the macro's shims call these functions. What miri cannot
+> reach is the `libloading` calls themselves. **Pending: the M43 runner.**
+> `just miri-reload` exists and the dormant CI job runs it; putting it in
+> `just ci` waits for T43.13.
+
 ### T49.4 — one construction path
 
 **Closes:** R5-F10.

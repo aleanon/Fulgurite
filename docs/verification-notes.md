@@ -94,6 +94,15 @@ A verification effort has one central obligation, not a scattered set.
    `--target`. Making `lumen-static-macros` an optional dependency (so a
    hand-written-table profile has no proc macros at all) would sidestep
    it, and is defensible for the embedded profile regardless.
+   **Re-checked 2026-09-26 (M49/T49.0):** it is any build script, not
+   only a proc macro's — a fresh crate depending only on serde_json fails
+   the same way under nightly 2026-02-11 — and a crate with no
+   dependencies runs and reports UB. `fixtures/miri-reload`
+   (`just miri-reload`) uses that: it includes `lumen-static-reload`'s
+   `raw.rs` and `panic.rs` by path, where every pointer operation of the
+   hot-reload shims lives, and drives each call shape (14 of 14). A null
+   guard removed, or `copy_out` writing past a small buffer, is reported
+   as undefined behaviour (`docs/plan-reload-hardening.md` T49.3).
 
 ## A tiered plan, cheapest first
 

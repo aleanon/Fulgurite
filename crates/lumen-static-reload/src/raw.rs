@@ -14,8 +14,10 @@
 //! - **miri can reach them.** `cargo miri` cannot build this crate here
 //!   (every build script fails; `docs/plan-reload-hardening.md`, T49.0),
 //!   and cannot run dlopen anywhere. This file uses nothing but `core`
-//!   and `alloc`, so a dependency-free crate can include it by path — the
-//!   same file, not a transcription (T49.3). Keep it that way.
+//!   and `alloc`, so `fixtures/miri-reload` (`just miri-reload`)
+//!   includes it by path — the same file, not a transcription (T49.3) —
+//!   and drives every call shape the shims make. Keep it that way: an
+//!   import from outside `core`/`alloc` breaks that crate.
 
 extern crate alloc;
 

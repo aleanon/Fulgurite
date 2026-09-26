@@ -1,0 +1,14 @@
+[package]
+name = "miri-reload"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+# M49/T49.3 (docs/plan-reload-hardening.md, R4-F8): lumen-static-reload's
+# unsafe, under miri. `cargo miri` cannot build any crate with a build
+# script in this environment, and lumen-static-reload has one (the ABI
+# stamp's), so this crate has NO dependencies: it includes the reload
+# crate's `raw.rs` and `panic.rs` by path -- the same files the shims call,
+# not a transcription -- and drives them the way the shims do.
+[dependencies]

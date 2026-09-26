@@ -1704,6 +1704,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "miri-reload"
+version = "0.1.0"
+
+[[package]]
 name = "miri-smoke"
 version = "0.1.0"
 dependencies = [

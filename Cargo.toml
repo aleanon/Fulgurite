@@ -23,6 +23,7 @@ members = [
     "examples/glass",
     "fixtures/hot-app",
     "fixtures/miri-smoke",
+    "fixtures/miri-reload",
     "fixtures/panic-app",
     "fixtures/binsize",
     "fixtures/const-budget",
