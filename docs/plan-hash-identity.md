@@ -7,6 +7,21 @@
 > `1 + Σ variants`, and its "like `Either`" was stale too.
 >
 > **Written 2026-09-24.** Closes R2-F2, R2-F3, R2-F4,
+
+> **T46.0–T46.2 DONE 2026-09-26** on `impl/m46`; T46.3 landed separately
+> on `impl/early` (`ccb87d9`) and is not repeated here.
+> - **T46.0:** four gates red at the base (1,440 stale pixels; stale
+>   widths on all three memo widgets; `instance 4 clean=true`), the
+>   `--bin text-hash` bench, and `--bin retain --text` with K2's floor.
+> - **T46.1:** `display::hash_bytes` (length seed, folded multiply,
+>   finaliser) is the one text identity; K1–K3 pass
+>   (`docs/results-retention.md`, "What a text hash guarantees"); the
+>   review's word mix was rejected on a constructed collision.
+> - **T46.2:** `Host::invalidate` and `Host::restyle_subtree` act on every
+>   node carrying the id; the witness runs once over the union and names
+>   a duplicated id instead of blaming the sheet.
+>
+> **Written 2026-09-24, not started.** Closes R2-F2, R2-F3, R2-F4,
 > R2-F7, R2-F8 and R2-F9 from M38's deep review
 > (`docs/results-deep-review.md`), as re-triaged against `main` at
 > `1717808` on 2026-09-24. Where the review and the re-triage differ,
