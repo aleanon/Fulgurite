@@ -195,7 +195,9 @@ pub unsafe extern "C" fn hot_bump(p: *mut c_void) {
 
 #[no_mangle]
 pub unsafe extern "C" fn hot_set_title(p: *mut c_void, ptr: *const u8, len: usize) {
-    let bytes = unsafe { core::slice::from_raw_parts(ptr, len) };
+    // Through `raw::bytes`: a null `ptr` reads as empty rather than being
+    // handed to `slice::from_raw_parts` (M49/T49.2, R4-F6).
+    let bytes = unsafe { lumen_static_reload::raw::bytes(ptr, len) };
     if let Ok(s) = core::str::from_utf8(bytes) {
         unsafe { session(p) }.ui.title.set(Box::leak(s.to_owned().into_boxed_str()));
     }

@@ -47,9 +47,7 @@ macro_rules! export_reloadable_app {
         pub unsafe extern "C" fn hot_new() -> *mut ::core::ffi::c_void {
             // Null on a panic in `fresh()`; the report is in `hot_take_panic`.
             $crate::panic::guard(::core::ptr::null_mut(), || {
-                ::std::boxed::Box::into_raw(::std::boxed::Box::new(
-                    <$ty as ::lumen_static::reload::Reloadable>::fresh(),
-                )) as *mut ::core::ffi::c_void
+                $crate::raw::give(<$ty as ::lumen_static::reload::Reloadable>::fresh())
             })
         }
 
@@ -58,54 +56,60 @@ macro_rules! export_reloadable_app {
         ///
         /// # Safety
         /// `p` must come from this build's `hot_new` and not be used
-        /// afterwards.
+        /// afterwards, or be null, which does nothing (M49/T49.2).
         #[no_mangle]
         pub unsafe extern "C" fn hot_drop(p: *mut ::core::ffi::c_void) {
-            let b = unsafe { ::std::boxed::Box::from_raw(p as *mut $ty) };
-            $crate::panic::guard((), move || drop(b));
+            if let ::core::option::Option::Some(b) = unsafe { $crate::raw::take::<$ty>(p) } {
+                $crate::panic::guard((), move || drop(b));
+            }
         }
 
         /// Serialize the keep half into a host-owned buffer.
         ///
         /// # Safety
-        /// `p` must come from this build's `hot_new`; `(buf, cap)` must
-        /// be a valid writable range or `(null, 0)` to size.
+        /// `p` must come from this build's `hot_new`, or be null, which
+        /// answers `usize::MAX` (M49/T49.2); `(buf, cap)` must be a valid
+        /// writable range or `(null, 0)` to size.
         #[no_mangle]
         pub unsafe extern "C" fn hot_save(
             p: *mut ::core::ffi::c_void,
             buf: *mut u8,
             cap: usize,
         ) -> usize {
-            let app: &$ty = unsafe { &*(p as *const $ty) };
+            let ::core::option::Option::Some(app) = (unsafe { $crate::raw::get::<$ty>(p) }) else {
+                return usize::MAX;
+            };
             // `usize::MAX` on a panic in `save()`: no buffer is that large.
             let Some(bytes) = $crate::panic::guard(None, || {
                 Some(::lumen_static::reload::to_vec(&::lumen_static::reload::Reloadable::save(app)))
             }) else {
                 return usize::MAX;
             };
-            if bytes.len() <= cap && !buf.is_null() {
-                unsafe {
-                    ::core::ptr::copy_nonoverlapping(bytes.as_ptr(), buf, bytes.len());
-                }
-            }
-            bytes.len()
+            unsafe { $crate::raw::copy_out(&bytes, buf, cap) }
         }
 
         /// Graft saved bytes onto this build's fresh tree.
         ///
+        /// Returns 0 on success, 1 when the bytes are not a saved state
+        /// (`(null, 0)` included — M49/T49.2) or `p` is null, and 2 on a
+        /// panic in `restore()`.
+        ///
         /// # Safety
-        /// `p` must come from this build's `hot_new`; `(ptr, len)` must
-        /// be a valid readable range.
+        /// `p` must come from this build's `hot_new`, or be null;
+        /// `(ptr, len)` must be a valid readable range, or have a null
+        /// `ptr`, which reads as empty.
         #[no_mangle]
         pub unsafe extern "C" fn hot_restore(
             p: *mut ::core::ffi::c_void,
             ptr: *const u8,
             len: usize,
         ) -> i32 {
-            let bytes = unsafe { ::core::slice::from_raw_parts(ptr, len) };
+            let bytes = unsafe { $crate::raw::bytes(ptr, len) };
+            let ::core::option::Option::Some(app) = (unsafe { $crate::raw::get_mut::<$ty>(p) }) else {
+                return 1;
+            };
             match ::lumen_static::reload::from_slice(bytes) {
                 ::core::option::Option::Some(v) => {
-                    let app: &mut $ty = unsafe { &mut *(p as *mut $ty) };
                     // 2 on a panic in `restore()`.
                     $crate::panic::guard(2, || {
                         ::lumen_static::reload::Reloadable::restore(app, &v);
@@ -145,6 +149,9 @@ macro_rules! export_reloadable_app {
 /// `Box<dyn Any>` from another build, and a `TypeId` is not stable
 /// across builds. Without a catch, a panic reaching an `extern "C"`
 /// boundary aborts the loader (Rust 1.81).
+#[doc(hidden)]
+pub mod raw;
+
 #[cfg(test)]
 mod shim_tests;
 
@@ -212,9 +219,9 @@ pub mod panic {
     pub unsafe fn take(buf: *mut u8, cap: usize) -> usize {
         let Ok(mut r) = REPORT.lock() else { return 0 };
         let Some(s) = r.as_ref() else { return 0 };
-        let n = s.len();
+        // SAFETY: as the caller vouches.
+        let n = unsafe { crate::raw::copy_out(s.as_bytes(), buf, cap) };
         if n <= cap && !buf.is_null() {
-            unsafe { core::ptr::copy_nonoverlapping(s.as_ptr(), buf, n) };
             *r = None;
         }
         n
@@ -356,11 +363,8 @@ pub mod abi {
     /// # Safety
     /// `f` must be a library's `lumen_abi_stamp` export.
     pub unsafe fn read(f: unsafe extern "C" fn(*mut u8, usize) -> usize) -> String {
-        let need = unsafe { f(core::ptr::null_mut(), 0) };
-        let mut buf = vec![0u8; need];
-        let wrote = unsafe { f(buf.as_mut_ptr(), buf.len()) };
-        buf.truncate(wrote.min(need));
-        String::from_utf8_lossy(&buf).into_owned()
+        // SAFETY: as the caller vouches.
+        String::from_utf8_lossy(&unsafe { crate::raw::read(f) }).into_owned()
     }
 
     #[cfg(test)]
@@ -432,10 +436,7 @@ macro_rules! export_abi_stamp {
         #[no_mangle]
         pub unsafe extern "C" fn lumen_abi_stamp(buf: *mut u8, cap: usize) -> usize {
             let s = $crate::abi::stamp($extra);
-            if s.len() <= cap && !buf.is_null() {
-                unsafe { ::core::ptr::copy_nonoverlapping(s.as_ptr(), buf, s.len()) };
-            }
-            s.len()
+            unsafe { $crate::raw::copy_out(s.as_bytes(), buf, cap) }
         }
     };
 }
@@ -569,8 +570,10 @@ pub mod hot {
             // SAFETY: a non-null `lumen_boot` result is a thin pointer to a
             // `Box<dyn Session>` the library allocated, and the stamp says
             // both sides lay one out alike.
-            let session = unsafe { *Box::from_raw(p as *mut Box<dyn Session>) };
-            Ok(Hot { session: Some(session), drop: self.drop })
+            let Some(session) = (unsafe { crate::raw::take::<Box<dyn Session>>(p) }) else {
+                return Err(self.take_panic().unwrap_or_else(|| "the library's boot returned nothing".into()));
+            };
+            Ok(Hot { session: Some(*session), drop: self.drop })
         }
 
         /// The report of the last panic the library caught outside a
@@ -802,7 +805,7 @@ pub mod hot {
     impl Drop for Hot {
         fn drop(&mut self) {
             if let Some(s) = self.session.take() {
-                let p = Box::into_raw(Box::new(s)) as *mut c_void;
+                let p = crate::raw::give(s);
                 // SAFETY: `p` is the box `Build::boot` took from this
                 // library, handed back once.
                 unsafe { (self.drop)(p) };
@@ -914,27 +917,23 @@ macro_rules! export_program {
         /// `(saved, len)` must be a valid readable range, or null.
         #[no_mangle]
         pub unsafe extern "C" fn lumen_boot(saved: *const u8, len: usize) -> *mut ::core::ffi::c_void {
-            let saved = if saved.is_null() {
-                ::core::option::Option::None
-            } else {
-                ::core::option::Option::Some(unsafe { ::core::slice::from_raw_parts(saved, len) })
-            };
-            $crate::panic::guard(::core::ptr::null_mut(), || {
-                let s = $crate::hot::boot($program(), saved);
-                ::std::boxed::Box::into_raw(::std::boxed::Box::new(s)) as *mut ::core::ffi::c_void
-            })
+            let saved = (!saved.is_null()).then(|| unsafe { $crate::raw::bytes(saved, len) });
+            $crate::panic::guard(::core::ptr::null_mut(), || $crate::raw::give($crate::hot::boot($program(), saved)))
         }
 
         /// Drop a session this library booted.
         ///
         /// # Safety
-        /// `p` must come from this build's `lumen_boot`, handed back once.
+        /// `p` must come from this build's `lumen_boot`, handed back once,
+        /// or be null, which does nothing (M49/T49.2).
         #[no_mangle]
         pub unsafe extern "C" fn lumen_drop(p: *mut ::core::ffi::c_void) {
             let b = unsafe {
-                ::std::boxed::Box::from_raw(p as *mut ::std::boxed::Box<dyn ::lumen_static_shell::session::Session>)
+                $crate::raw::take::<::std::boxed::Box<dyn ::lumen_static_shell::session::Session>>(p)
             };
-            $crate::panic::guard((), move || drop(b));
+            if let ::core::option::Option::Some(b) = b {
+                $crate::panic::guard((), move || drop(b));
+            }
         }
 
         /// Drain the last caught panic's report.

@@ -105,7 +105,6 @@ fn a_real_round_trip_reaches_every_shim() {
 /// `slice::from_raw_parts`, which requires a non-null pointer even for an
 /// empty slice.
 #[test]
-#[ignore = "red until T49.2: R4-F6, hot_restore(null, 0) is undefined behaviour"]
 fn restore_accepts_null_and_zero() {
     let p = unsafe { hot_new() };
     let rc = unsafe { hot_restore(p, core::ptr::null(), 0) };
@@ -117,14 +116,12 @@ fn restore_accepts_null_and_zero() {
 
 /// R4-F6: a drop of null returns without touching it.
 #[test]
-#[ignore = "red until T49.2: R4-F6, hot_drop(null) dereferences null"]
 fn drop_accepts_null() {
     unsafe { hot_drop(core::ptr::null_mut()) };
 }
 
 /// R4-F6: a save through a null application is refused, not read.
 #[test]
-#[ignore = "red until T49.2: R4-F6, hot_save(null, ..) dereferences null"]
 fn save_refuses_a_null_application() {
     let n = unsafe { hot_save(core::ptr::null_mut(), core::ptr::null_mut(), 0) };
     assert_eq!(n, usize::MAX, "a null application has nothing to save");

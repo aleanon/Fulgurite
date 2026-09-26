@@ -239,14 +239,17 @@ pub mod symbols {
     /// `fn() -> *mut c_void` — `App::fresh()` from this build's code.
     pub const NEW: &[u8] = b"hot_new";
     /// `fn(*mut c_void)` — drop the tree while this library is still
-    /// loaded. Step 2 of §7's sequence.
+    /// loaded. Step 2 of §7's sequence. Null is accepted and does nothing
+    /// (M49/T49.2).
     pub const DROP: &[u8] = b"hot_drop";
     /// `fn(*mut c_void, *mut u8, usize) -> usize` — serialize the keep
     /// half into a host-owned buffer. Two-call protocol: pass a null
     /// pointer and zero capacity to size, then allocate and call again.
+    /// A null tree answers `usize::MAX` (M49/T49.2).
     pub const SAVE: &[u8] = b"hot_save";
     /// `fn(*mut c_void, *const u8, usize) -> i32` — graft saved bytes
-    /// onto this build's fresh tree. Returns 0 on success.
+    /// onto this build's fresh tree. Returns 0 on success; `(null, 0)` is
+    /// accepted and answers 1, "not a saved state" (M49/T49.2).
     pub const RESTORE: &[u8] = b"hot_restore";
     /// `fn(*mut u8, usize) -> usize` — drain the fallback log. Same
     /// two-call protocol as [`SAVE`], and it must not discard the log
@@ -267,7 +270,8 @@ pub mod symbols {
     /// panicked; the report is in [`TAKE_PANIC`].
     pub const BOOT: &[u8] = b"lumen_boot";
     /// `fn(*mut c_void)` — drop a session inside the library that built
-    /// it, so its application's `Drop` impls run there, caught.
+    /// it, so its application's `Drop` impls run there, caught. Null is
+    /// accepted and does nothing (M49/T49.2).
     pub const DROP_SESSION: &[u8] = b"lumen_drop";
 }
 
