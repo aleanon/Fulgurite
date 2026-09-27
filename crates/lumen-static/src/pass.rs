@@ -870,12 +870,19 @@ fn dispatch_at<S: crate::event::App>(
             }
             if matches!(ev, Event::PointerDown { .. }) {
                 // Focus moves to the deepest focusable node on the hit
-                // chain, or clears — what clicking the background does.
+                // chain, or clears — what clicking the background does —
+                // unless the chain reaches a `KEEPS_FOCUS` node first: a
+                // field's own popup list, pressed, leaves the field
+                // focused.
                 let mut f = None;
                 let mut i = h.node as usize;
                 loop {
                     if table[i].is_focusable() {
                         f = Some(i as u32);
+                        break;
+                    }
+                    if table[i].keeps_focus() {
+                        f = *focus;
                         break;
                     }
                     if table[i].parent == crate::desc::NO_PARENT {

@@ -588,6 +588,17 @@ impl Auditor {
         let table = tree.table;
         let mut live = Vec::new();
         crate::live_nodes(tree.as_ref().root, table, &mut live);
+        // Under a node whose content is deliberately absent — a closed
+        // popup (`Node::content_absent`). Its leaves have content and no
+        // box by design, which is `W1001`'s geometry without its defect.
+        // Table order is parents first, so one pass settles each subtree.
+        let mut absent = vec![false; table.len()];
+        for i in 0..table.len() {
+            let p = table[i].parent;
+            if p != lumen_static::NO_PARENT {
+                absent[i] = absent[p as usize] || tree.as_ref().root.node(p as usize).content_absent();
+            }
+        }
         for (i, d) in table.iter().enumerate() {
             let leaf = d.child_count == 0 && !d.is_container();
             let a = area(&st[i]);
@@ -604,7 +615,7 @@ impl Auditor {
             // `crate::live_nodes`. Note this is *not* "has area": a leaf
             // with content and no room is `W1001`, which must still
             // fire, and gating on area turned that lint off.
-            if leaf && live[i] {
+            if leaf && live[i] && !absent[i] {
                 let nat = Self::natural(tree.root, tree.styles, &mut self.scratch, &mut *measure, scale, i);
                 let has_content = nat.intrinsic && nat.size.w > 0.0 && nat.size.h > 0.0;
 

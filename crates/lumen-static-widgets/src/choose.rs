@@ -621,6 +621,11 @@ impl<const KIND: u8> ChooserTable<KIND> {
         // a combobox, whose field keeps focus while their list is open.
         if KIND == MENU {
             t[3].flags |= NodeDesc::FOCUSABLE;
+        } else {
+            // And a press on that list leaves the field focused, so a
+            // combobox's query survives until the release chooses from
+            // it — see `NodeDesc::KEEPS_FOCUS`.
+            t[3].flags |= NodeDesc::KEEPS_FOCUS;
         }
         t
     };

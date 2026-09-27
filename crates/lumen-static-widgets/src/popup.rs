@@ -267,6 +267,11 @@ impl<W: Widget> Node for Popup<W> {
         core::mem::replace(&mut self.open, false)
     }
 
+    /// Closed is on purpose, not a squeeze — see `Node::content_absent`.
+    fn content_absent(&self) -> bool {
+        !self.open
+    }
+
     fn dismissal_consumes_press(&self) -> bool {
         !self.passive
     }

@@ -130,6 +130,24 @@ COMBOBOX = ("Combobox", "#d_combobox_a", [
         ),
         injection="make the filter case-sensitive",
     ),
+    # The action the inventory never had: filter, *then* press a row.
+    # Pressing the list blurred the field, the field's abandoned-query
+    # revert cleared the filter, and the release chose by position in the
+    # whole list -- "ap" then its second row chose Banana. Reported from
+    # the live window; every action here filtered or chose, never both.
+    Action(
+        visible=True,
+        name="a press on a filtered row chooses that row",
+        needs="a combobox filtered to Apple, apricot",
+        do=lambda c: _menu_row(c, 1),
+        expect=lambda c: (
+            c.value(f"{c.sel} > #chooser-trigger") == "apricot",
+            f"the second of Apple, apricot chose "
+            f"{c.value(f'{c.sel} > #chooser-trigger')!r} (wanted 'apricot'; "
+            f"'Banana' is the unfiltered list's second row)",
+        ),
+        injection="leave NodeDesc::KEEPS_FOCUS off the chooser's list",
+    ),
     Action(
         visible=True,
         name="clearing the query shows everything again",

@@ -310,6 +310,24 @@ pub trait Node {
         false
     }
 
+    /// Whether this node's content is **deliberately absent** right now —
+    /// a closed popup.
+    ///
+    /// The audit's `W1001` reports a leaf with content and no box, which
+    /// is what a parent that squeezed its child to nothing produces. A
+    /// closed popup produces the same geometry on purpose, and geometry
+    /// cannot tell the two apart — so every closed chooser, picker and
+    /// select reported its list as "present in the tree, absent on
+    /// screen", all the time, and the drive only ever compared a finding
+    /// with itself (M57, found by a combobox action whose list changed
+    /// length while closed). Declared by the node, as
+    /// [`Node::overlaps_children`] is for `W1004`. Asked of the node at
+    /// its own index, so a wrapper never forwards it. Not behind
+    /// `observe`, for the same reason as that one.
+    fn content_absent(&self) -> bool {
+        false
+    }
+
     /// The agent's audit asking for this node's natural size, under a
     /// million-pixel box. The provided body is `layout`.
     ///

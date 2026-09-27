@@ -470,3 +470,30 @@ fn a_stylesheet_rule_that_does_nothing_is_w1010_and_its_working_twin_is_not() {
         "a view without a sheet reported a sheet finding"
     );
 }
+
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+struct Chosen {
+    #[widget_id("pick")]
+    pick: lumen_static_widgets::PickList,
+}
+
+/// **A closed popup's content is absent on purpose, not squeezed** — M57.
+///
+/// Every closed chooser reported its list as `W1001` ("present in the
+/// tree, absent on screen") in the live window, all the time: a closed
+/// `Popup` zeroes its subtree exactly as a parent that squeezed it would.
+/// The popup now says so (`Node::content_absent`). Both directions: the
+/// closed list is quiet, the open one is quiet, and a list with content
+/// and no box *not* under a closed popup still fires — the invisible-
+/// content test above is that case for a label.
+#[test]
+fn a_closed_popups_content_is_not_reported_as_invisible() {
+    let mut app = Chosen { pick: lumen_static_widgets::PickList::new(&["Apple", "Banana", "Cherry"]) };
+    let closed = lint_of(&mut app);
+    app.pick.open();
+    let open = lint_of(&mut app);
+    println!("closed: {closed:?}; open: {open:?}");
+    assert!(!closed.iter().any(|c| c == "W1001"), "a closed picklist's list was reported invisible: {closed:?}");
+    assert!(!open.iter().any(|c| c == "W1001"), "an open picklist's list was reported invisible: {open:?}");
+}

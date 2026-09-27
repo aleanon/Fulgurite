@@ -197,3 +197,45 @@ fn an_abandoned_combobox_query_reverts() {
     println!("after Tab away: {:?}", h.app.ui.combo.text());
     assert_eq!(h.app.ui.combo.text(), "Apple", "the abandoned query stayed in the field");
 }
+
+/// **A press on a filtered list chooses the row it lands on** — through
+/// the pass, not `OptionList::on_event`.
+///
+/// Reported from the live window: a combobox filtered down to two rows
+/// chose the *unfiltered* list's second option when its second row was
+/// pressed. The press cleared focus (the list took none), the field's
+/// focus-lost arm reverted the abandoned query, the revert cleared the
+/// filter — and the release, still on the same pixel, chose by position
+/// in the whole list. The unit test beside the option list filtered and
+/// released in one call, so no press ever moved focus in it. The list
+/// now carries `NodeDesc::KEEPS_FOCUS`.
+///
+/// "a" keeps Apple, Banana and Damson; the third visible row is Damson
+/// (index 3), and the third raw row is Cherry — so a choice by the wrong
+/// position cannot agree with the right one by accident.
+#[test]
+fn a_press_on_a_filtered_list_chooses_the_row_it_lands_on() {
+    let mut h = host();
+    open(&mut h, "combo");
+    let field = part("combo", "chooser-trigger") as u32;
+    assert_eq!(h.input.focus, Some(field), "setup: the press did not focus the field");
+    for _ in 0..8 {
+        key(&mut h, Key::Backspace);
+    }
+    h.post(Event::Text { ch: 'a' });
+    h.pump();
+    h.pump();
+    let shown: Vec<_> = (0..h.app.ui.combo.list.content.shown())
+        .map(|k| h.app.ui.combo.list.content.option(h.app.ui.combo.list.content.nth_shown(k).unwrap()))
+        .collect();
+    assert_eq!(shown, ["Apple", "Banana", "Damson"], "setup: the query `a` did not filter");
+    assert!(is_open(&h, "combo"), "setup: the list closed while typing");
+    let list = h.states[part("combo", "chooser-list")];
+    let (x, y) = (list.pos.x + 40.0, list.pos.y + 6.0 + 30.0 * 2.0 + 15.0);
+    click(&mut h, x, y);
+    println!("pressed the third of {shown:?}: chose {:?} ({:?}), focus {:?}",
+             h.app.ui.combo.selected(), h.app.ui.combo.text(), h.input.focus);
+    assert_eq!(h.app.ui.combo.selected(), Some(3), "the third visible row chose {:?}, not Damson", h.app.ui.combo.text());
+    assert_eq!(h.app.ui.combo.text(), "Damson");
+    assert_eq!(h.input.focus, Some(field), "a press on the field's own list took focus from it");
+}
