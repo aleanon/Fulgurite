@@ -13,7 +13,7 @@ use lumen_static::invalidate::{Boundaries, Everything, Invalidation};
 use lumen_static::prelude::*;
 use lumen_static::retain::Incremental;
 use lumen_static::Color;
-use lumen_static_shell::session::{FrameSource, Inval, Local, Recover, Screen, Session};
+use lumen_static_shell::session::{FrameSource, Inval, Local, Crashing, Screen, Session};
 use lumen_static_shell::Host;
 use lumen_static_widgets::prelude::*;
 use serde_json::Value;
@@ -72,7 +72,7 @@ impl Screen for Blind {
 fn a_session_reports_its_process() {
     let mut host: Host<Fx, _, Inval> = Host::new(Fx::default(), 100, 40);
     host.pump();
-    let mut s = Local::from_host(host, "process-info", Color(255, 255, 255, 255), Recover::Off);
+    let mut s = Local::from_host(host, "process-info", Color(255, 255, 255, 255), Crashing);
     let req = r#"{"jsonrpc":"2.0","id":1,"method":"app.diagnostics","params":{}}"#;
     let reply: Value = serde_json::from_str(&s.agent(req, &mut Blind)).expect("JSON");
     let p = &reply["result"]["process"];

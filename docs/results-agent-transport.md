@@ -146,6 +146,10 @@ result where `-32602` was expected.
 `layout` panics on the other arm (application code, reached through
 `input.click`):
 
+`Recover::On`/`Off` below are `Recovering`/`Crashing` since M52/T52.7 —
+the policy became a type; the rows are unchanged, and `tests/agent_panic.rs`
+runs both.
+
 | case | before (`b213ae0`) | after |
 |---|---|---|
 | agent's panic, `Recover::On` | the test thread dies with the panic | `-32603` "the agent panicked answering `ui.getTree` at …agent_panic.rs:79:13", id echoed; the next `ui.getTree` answered |

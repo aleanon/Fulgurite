@@ -8,7 +8,7 @@
 
 use lumen_static::prelude::*;
 use lumen_static::{Color, Event, Key};
-use lumen_static_shell::session::{FrameSource, Local, Recover, Screen, Session};
+use lumen_static_shell::session::{FrameSource, Local, Crashing, Screen, Session};
 use lumen_static_shell::Host;
 use lumen_static_widgets::TextArea;
 use serde_json::Value;
@@ -42,7 +42,7 @@ impl Screen for Blind {
 
 #[test]
 fn input_paste_reaches_the_focused_area_as_one_edit() {
-    let mut s = Local::from_host(Host::new(Fx::default(), 300, 200), "paste", Color(255, 255, 255, 255), Recover::Off);
+    let mut s = Local::from_host(Host::new(Fx::default(), 300, 200), "paste", Color(255, 255, 255, 255), Crashing);
     s.frame(0.0, 300, 200);
     s.post(Event::Key { key: Key::Tab, down: true });
     s.frame(0.0, 300, 200);

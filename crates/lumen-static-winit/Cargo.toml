@@ -22,7 +22,9 @@ everything = ["lumen-static-shell/everything"]
 # M36: a release window that shows a panic screen instead of crashing.
 # A debug window always does; a shipped release build does not, unless it
 # asks, so a crash reaches whatever would have reported it
-# (docs/plan-panic-recovery.md rule 3).
+# (docs/plan-panic-recovery.md rule 3). Without it a release window links
+# no recovery code at all -- the policy is a type since M52/T52.7, and
+# `just release-window-shape` counts 0 recover:: symbols.
 reload = ["lumen-static-shell/reload"]
 # M37: hot reload inside the window (`docs/plan-window-reload.md`). The
 # window builds the application crate as a library on every save and

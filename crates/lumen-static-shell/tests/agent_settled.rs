@@ -14,7 +14,7 @@ use lumen_static::event::App;
 use lumen_static::prelude::*;
 use lumen_static::spawn::{Descriptor, JobFn, Outbox, Subs};
 use lumen_static::Color;
-use lumen_static_shell::session::{FrameSource, Local, Recover, Screen, Session};
+use lumen_static_shell::session::{FrameSource, Local, Crashing, Screen, Session};
 use lumen_static_shell::Host;
 use lumen_static_widgets::prelude::*;
 use serde_json::Value;
@@ -104,7 +104,7 @@ impl Screen for Blind {
     }
 }
 
-fn session() -> Local<Fx> {
+fn session() -> Local<Fx, Crashing> {
     let mut app = Fx::default();
     app.ui.animate.on_click = |f: &mut Fx, _: &lumen_static::EventCtx| f.anim_ms = 200.0;
     app.ui.slow.on_click = |f: &mut Fx, _: &lumen_static::EventCtx| {
@@ -112,19 +112,19 @@ fn session() -> Local<Fx> {
     };
     let host: Host<Fx, _, _> = Host::new(app, 300, 200);
     // `from_host` installs the window's own spawner, `Threads`.
-    let mut s = Local::from_host(host, "agent-settled", Color(255, 255, 255, 255), Recover::Off);
+    let mut s = Local::from_host(host, "agent-settled", Color(255, 255, 255, 255), Crashing);
     s.frame(0.0, 300, 200);
     s
 }
 
-fn ask(s: &mut Local<Fx>, method: &str, params: &str) -> Value {
+fn ask(s: &mut Local<Fx, Crashing>, method: &str, params: &str) -> Value {
     let req = format!(r#"{{"jsonrpc":"2.0","id":1,"method":"{method}","params":{params}}}"#);
     let r: Value = serde_json::from_str(&s.agent(&req, &mut Blind)).expect("the reply is JSON");
     assert!(r.get("error").is_none(), "{method} failed: {r}");
     r["result"].clone()
 }
 
-fn settled(s: &mut Local<Fx>, when: &str) -> Value {
+fn settled(s: &mut Local<Fx, Crashing>, when: &str) -> Value {
     let r = ask(s, "ui.waitSettled", "{}");
     println!(
         "{when}: settled={} animating={} pending={} more_deferred={} deadline={}",

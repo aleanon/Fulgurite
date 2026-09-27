@@ -1,10 +1,14 @@
 //! **A panic shows where it happened, and the host survives it** —
 //! M36/T36.1 (`docs/plan-panic-recovery.md`).
 //!
-//! Compiled in wherever panics unwind; **used** where the window crate
-//! decides — debug builds, and release builds with its `reload` feature
-//! (plan rule 3: a shipped application should crash where a crash
-//! reporter can see it). The decision is the window crate's, not this
+//! **Linked** where the window crate decides — debug builds, and release
+//! builds with its `reload` feature (plan rule 3, as amended by M52/T52.7:
+//! a shipped application should crash where a crash reporter can see it,
+//! and should not carry recovery it cannot run). The decision reaches the
+//! session as a type, `session::RecoverPolicy`, so under `Crashing` every
+//! guarded arm and every function here is compiled away; until M52 it was
+//! a runtime field and all of this was linked into every release window
+//! (`just release-window-shape`). The decision is the window crate's, not this
 //! crate's, because the workspace's dev profile builds this crate with
 //! `debug-assertions = false` for speed: a `cfg(debug_assertions)` here
 //! was false in every debug build, which is how the first version made

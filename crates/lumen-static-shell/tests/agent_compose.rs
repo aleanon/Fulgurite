@@ -10,7 +10,7 @@
 
 use lumen_static::prelude::*;
 use lumen_static::Color;
-use lumen_static_shell::session::{FrameSource, FrameTimes, Local, Recover, Screen, Session};
+use lumen_static_shell::session::{FrameSource, FrameTimes, Local, Crashing, Screen, Session};
 use lumen_static_shell::Host;
 use lumen_static_widgets::prelude::*;
 use serde_json::Value;
@@ -42,7 +42,7 @@ impl Screen for Blind {
     }
 }
 
-fn ask(s: &mut Local<Form>, method: &str, params: &str) -> Value {
+fn ask(s: &mut Local<Form, Crashing>, method: &str, params: &str) -> Value {
     let req = format!(r#"{{"jsonrpc":"2.0","id":1,"method":"{method}","params":{params}}}"#);
     serde_json::from_str(&s.agent(&req, &mut Blind)).expect("the reply is JSON")
 }
@@ -50,7 +50,7 @@ fn ask(s: &mut Local<Form>, method: &str, params: &str) -> Value {
 #[test]
 fn preedit_then_commit_types_into_the_focused_field() {
     let host: Host<Form, _, _> = Host::new(Form::default(), 320, 120);
-    let mut s = Local::from_host(host, "agent-compose", Color(255, 255, 255, 255), Recover::Off);
+    let mut s = Local::from_host(host, "agent-compose", Color(255, 255, 255, 255), Crashing);
     s.frame(0.0, 320, 120);
     s.agent_frame_done(Default::default());
     let r = ask(&mut s, "input.click", r##"{"selector":"#field"}"##);
@@ -95,7 +95,7 @@ fn preedit_then_commit_types_into_the_focused_field() {
 #[test]
 fn a_paste_reply_names_the_journal_frame() {
     let host: Host<Form, _, _> = Host::new(Form::default(), 320, 120);
-    let mut s = Local::from_host(host, "agent-paste-frame", Color(255, 255, 255, 255), Recover::Off);
+    let mut s = Local::from_host(host, "agent-paste-frame", Color(255, 255, 255, 255), Crashing);
     s.frame(0.0, 320, 120);
     s.agent_frame_done(Default::default());
     ask(&mut s, "input.click", r##"{"selector":"#field"}"##);

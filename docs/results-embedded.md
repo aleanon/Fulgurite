@@ -121,6 +121,17 @@ byte. With `--features lumen-static-winit/reload` the count is the same
 14, which is the finding: the `cfg` decides behaviour and not the link.
 `just release-window-shape` holds both, marked expected red until T52.7.
 
+**Closed by T52.7** (on the tree rebased onto M48 and M51): the policy is
+a type, `session::RecoverPolicy`, and a release window without `reload`
+links **0** symbols defined in `recover::` — **.text 2,714,086 B**,
+against 2,740,854 B with the recovering marker forced into the same
+build: **26,768 B** of `.text`, twice the recover module's own 13.3 KB,
+because the guarded arms' `catch_unwind` paths go with it. With `reload`
+the count is 8 symbols, 13,328 B, as it must be. What remains is the drop
+glue of `Host`'s always-`None` failure field (3 × 118 B), which is data
+every host carries under `panic = "unwind"`; the gate counts symbols
+*defined* in the module and prints the glue beside the count.
+
 **The gates read all four since T52.1** (R11-F4). `scripts/check_text.sh`
 prints each binary's `.text` against the same 64 KB ceiling — the
 interactive build keeps it, because an application that handles input

@@ -29,13 +29,20 @@ cd "$(cd "$(dirname "$0")/.." && pwd)"
 export LC_ALL=C
 
 PATTERN='lumen_static_shell::recover::'
+# Symbols DEFINED in the recover module: the demangled name begins with
+# its path (or `<` and its path, for an impl). Not `core::ptr::drop_in_place
+# <Option<lumen_static_shell::recover::PanicReport>>` -- the drop glue of
+# `Host`'s always-`None` failure field, 3 x 118 B, which is data every
+# host carries under `panic = "unwind"` and not recovery code. Recorded in
+# docs/results-embedded.md (M52/T52.7), not hidden: it prints below.
+DEFINED_RE='^[0-9a-f]+ [0-9a-f]+ [A-Za-z] <?lumen_static_shell::recover::'
 
 # **Expected red until M52/T52.7**, which makes recovery a type. While this
 # is set, the bound-0 check going red is reported and passes, and it going
 # GREEN fails -- so the marker cannot outlive the fix it waits for. It
 # covers that one check only: a reload build with no recovery symbol is
 # red whatever this says.
-XFAIL="F-NEW-3: recovery is a runtime field, so it links (until T52.7)"
+XFAIL=""
 
 # Build `minimal` in release with extra cargo args; print the executable.
 build() {
@@ -60,18 +67,22 @@ print(exe)
 count() {
     local syms n bytes text
     syms=$(nm -C --size-sort -S --radix=d "$1") || { echo "release-window-shape: nm failed on $1" >&2; return 1; }
-    n=$(printf '%s\n' "$syms" | grep -cF "$PATTERN" || true)
-    bytes=$(printf '%s\n' "$syms" | grep -F "$PATTERN" | awk '{s += $2} END {print s + 0}')
+    n=$(printf '%s\n' "$syms" | grep -cE "$DEFINED_RE" || true)
+    bytes=$(printf '%s\n' "$syms" | grep -E "$DEFINED_RE" | awk '{s += $2} END {print s + 0}')
+    glue=$(printf '%s\n' "$syms" | grep -F "$PATTERN" | grep -vcE "$DEFINED_RE" || true)
     text=$(size -A "$1" | awk '$1 == ".text" {print $2}')
-    echo "$n $bytes $text"
+    echo "$n $bytes $text $glue"
 }
 
+tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 off=$(build) || exit 1
-read -r n_off b_off t_off <<<"$(count "$off")" || exit 1
-echo "release-window-shape: without reload: $n_off recover symbols ($b_off B) (bound 0), .text $t_off B"
+# Both builds write the same path: keep this one to name its symbols.
+cp "$off" "$tmp/minimal-off" && off="$tmp/minimal-off"
+read -r n_off b_off t_off g_off <<<"$(count "$off")" || exit 1
+echo "release-window-shape: without reload: $n_off recover symbols ($b_off B) (bound 0), .text $t_off B; $g_off drop-glue symbols naming a recover type (not code; recorded)"
 
 on=$(build --features lumen-static-winit/reload) || exit 1
-read -r n_on b_on t_on <<<"$(count "$on")" || exit 1
+read -r n_on b_on t_on g_on <<<"$(count "$on")" || exit 1
 echo "release-window-shape: with reload:    $n_on recover symbols ($b_on B) (bound > 0), .text $t_on B"
 
 fail=0
@@ -89,7 +100,7 @@ if [ -n "$XFAIL" ]; then
     fi
 elif [ "$n_off" -ne 0 ]; then
     echo "release-window-shape: a release window without reload links $n_off recovery symbols:" >&2
-    nm -C --size-sort -S --radix=d "$off" | grep -F "$PATTERN" | sort -k2 -n -r | head -5 | sed 's/^/    /' >&2
+    nm -C --size-sort -S --radix=d "$off" | grep -E "$DEFINED_RE" | sort -k2 -n -r | head -5 | sed 's/^/    /' >&2
     echo "" >&2
     echo "M36's rule 3, as amended by M52/T52.7: a release build without" >&2
     echo "\`lumen-static-winit/reload\` links no recover:: symbol." >&2

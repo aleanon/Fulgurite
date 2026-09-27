@@ -136,8 +136,8 @@ pub trait Session: FrameSource {
     /// **A panic in the agent itself is a `-32603` reply** naming the
     /// method and where it happened, and the session keeps answering
     /// (M39/T39.5). **A panic in application code the agent reached is
-    /// not**: it unwinds out of this call under `Recover::Off`, as it
-    /// would from a frame (M36 rule 3), and under `Recover::On` it is
+    /// not**: it unwinds out of this call under [`Crashing`], as it
+    /// would from a frame (M36 rule 3), and under [`Recovering`] it is
     /// M36's to show.
     fn agent(&mut self, req: &str, screen: &mut dyn Screen) -> String;
     /// Feed the agent's journal the frame just drawn, with what it cost
@@ -187,25 +187,52 @@ pub struct FrameTimes {
     pub atlas_give_ups: Option<u64>,
 }
 
-/// Whether this session catches panics in application code — the
-/// window crate decides (M36 rule 3), and a hot library always does.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Recover {
-    On,
-    Off,
+/// **Whether a session catches panics in application code, as a type** —
+/// M52/T52.7 (`docs/plan-embedded-footprint.md` §2.2, F-NEW-3), amending
+/// M36's rule 3 (`docs/plan-panic-recovery.md`).
+///
+/// The window crate decides (debug builds, and release builds with
+/// `lumen-static-winit/reload`), and a hot library always recovers. Until
+/// M52 the decision was a `const` value handed to a runtime field, and
+/// every guarded arm tested the field — so every `recover::` function,
+/// the failure screen and the panic hook included, was linked into every
+/// release window, 14 symbols and 13,964 B that could never run. As a
+/// type, each guarded arm tests [`RecoverPolicy::ON`], a constant per
+/// instantiation, and under [`Crashing`] the arms and everything they
+/// reach are compiled away (`just release-window-shape`).
+pub trait RecoverPolicy: Copy + Default + 'static {
+    /// Whether a panic in application code is caught and shown.
+    const ON: bool;
 }
 
-/// Run `f` on `host`, guarded when recovery is on (M36).
-fn run_guarded<A: App, T>(
+/// Catch a panic in application code, show it, and wait for a retry
+/// (M36): what a debug window, a `reload` window and a hot library use.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Recovering;
+
+impl RecoverPolicy for Recovering {
+    const ON: bool = cfg!(panic = "unwind");
+}
+
+/// Let a panic in application code unwind, as it would without this
+/// crate — a shipped release window, so a crash reaches whatever would
+/// have reported it (M36 rule 3). Links no `recover::` code.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Crashing;
+
+impl RecoverPolicy for Crashing {
+    const ON: bool = false;
+}
+
+/// Run `f` on `host`, guarded when `P` recovers (M36).
+fn run_guarded<A: App, P: RecoverPolicy, T>(
     host: &mut Host<A, Ret, Inval>,
-    recover: Recover,
     f: impl FnOnce(&mut Host<A, Ret, Inval>) -> T,
 ) -> Option<T> {
     #[cfg(panic = "unwind")]
-    if recover == Recover::On {
+    if P::ON {
         return host.guard(f);
     }
-    let _ = recover;
     Some(f(host))
 }
 
@@ -215,14 +242,17 @@ fn run_guarded<A: App, T>(
 pub type Saver<A> = fn(&A) -> Vec<u8>;
 
 /// A statically linked — or library-resident — application behind
-/// [`Session`].
-pub struct Local<A: App> {
+/// [`Session`]. `P` says whether it catches application panics
+/// ([`RecoverPolicy`]); the trait object hides it, so the dylib seam does
+/// not see it.
+pub struct Local<A: App, P: RecoverPolicy> {
     pub host: Host<A, Ret, Inval>,
     program: Option<Program<A>>,
     title: &'static str,
     page: Color,
     metrics: Option<FontMetrics>,
-    recover: Recover,
+    /// The policy, as a type only: every guarded arm reads `P::ON`.
+    recover: core::marker::PhantomData<P>,
     saver: Option<Saver<A>>,
     restore_log: String,
     /// What the last [`Session::frame`] said: whether anything is still
@@ -238,11 +268,11 @@ pub struct Local<A: App> {
     agent: lumen_static_agent::Agent,
 }
 
-impl<A: App + 'static> Local<A> {
+impl<A: App + 'static, P: RecoverPolicy> Local<A, P> {
     /// A session over a described program: boots it through
     /// [`Program::host`], installs the thread spawner, and measures text
     /// with the system face.
-    pub fn from_program(program: Program<A>, recover: Recover) -> Self {
+    pub fn from_program(program: Program<A>, recover: P) -> Self {
         let host = program.host();
         let page = program.page;
         let mut s = Local::from_host(host, "", page, recover);
@@ -251,7 +281,7 @@ impl<A: App + 'static> Local<A> {
     }
 
     /// A session over an already-built host.
-    pub fn from_host(mut host: Host<A, Ret, Inval>, title: &'static str, page: Color, recover: Recover) -> Self {
+    pub fn from_host(mut host: Host<A, Ret, Inval>, title: &'static str, page: Color, _policy: P) -> Self {
         // **Deferred work, wired up** — M28/T28.12. The waker comes from
         // the window, which owns the loop ([`Session::set_waker`]).
         host.set_spawner(Box::new(lumen_static::spawn::Threads::new()));
@@ -263,7 +293,7 @@ impl<A: App + 'static> Local<A> {
             title,
             page,
             metrics,
-            recover,
+            recover: core::marker::PhantomData,
             saver: None,
             restore_log: String::new(),
             animating: false,
@@ -293,14 +323,14 @@ impl<A: App + 'static> Local<A> {
     /// Run `f` guarded when recovery is on (M36).
     fn guarded<T>(&mut self, f: impl FnOnce(&mut Host<A, Ret, Inval>, &mut Option<FontMetrics>) -> T) -> Option<T> {
         let metrics = &mut self.metrics;
-        run_guarded(&mut self.host, self.recover, |h| f(h, metrics))
+        run_guarded::<A, P, T>(&mut self.host, |h| f(h, metrics))
     }
 
     /// A `&self` call into application code — the title, the selection —
     /// caught when recovery is on, answering `fallback` if it panicked.
     fn caught<T>(&self, fallback: T, f: impl FnOnce(&Host<A, Ret, Inval>) -> T) -> T {
         #[cfg(panic = "unwind")]
-        if self.recover == Recover::On {
+        if P::ON {
             return std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(&self.host))).unwrap_or(fallback);
         }
         let _ = &fallback;
@@ -309,6 +339,10 @@ impl<A: App + 'static> Local<A> {
 
     /// Put the panic screen in the host's list, sized to the surface.
     fn show_failure(&mut self, w: u32, h: u32) {
+        #[cfg(panic = "unwind")]
+        if !P::ON {
+            return;
+        }
         #[cfg(panic = "unwind")]
         if let Some(r) = self.host.failure().cloned() {
             use crate::recover::failure_frame;
@@ -330,7 +364,7 @@ impl<A: App + 'static> Local<A> {
     }
 }
 
-impl<A: App + 'static> FrameSource for Local<A> {
+impl<A: App + 'static, P: RecoverPolicy> FrameSource for Local<A, P> {
     fn list(&self) -> &DisplayList {
         &self.host.list
     }
@@ -342,7 +376,7 @@ impl<A: App + 'static> FrameSource for Local<A> {
     }
 }
 
-impl<A: App + 'static> Session for Local<A> {
+impl<A: App + 'static, P: RecoverPolicy> Session for Local<A, P> {
     fn post(&mut self, ev: Event) {
         self.host.post(ev);
     }
@@ -423,14 +457,14 @@ impl<A: App + 'static> Session for Local<A> {
 
     fn failed(&self) -> bool {
         #[cfg(panic = "unwind")]
-        return self.recover == Recover::On && self.host.failure().is_some();
+        return P::ON && self.host.failure().is_some();
         #[cfg(not(panic = "unwind"))]
         false
     }
 
     fn retry(&mut self) -> bool {
         #[cfg(panic = "unwind")]
-        if self.recover == Recover::On {
+        if P::ON {
             self.host.retry();
             return true;
         }
@@ -477,7 +511,7 @@ impl<A: App + 'static> Session for Local<A> {
             }
         };
         let page = self.page;
-        let recover = self.recover;
+        let recover = P::default();
         let animating = self.animating;
         let mut live = Live {
             host: &mut self.host,
@@ -496,11 +530,11 @@ impl<A: App + 'static> Session for Local<A> {
         // **The agent's own panic is a reply** — M39/T39.5 (R14-F5).
         // Selector parsing, `ui.getTree`, `ui.explain` and every widget's
         // `observe` ran bare here, so a panic in any of them ended the
-        // window. Caught whatever `Recover` says, because none of it is
-        // the application's — and **the application's is re-raised**:
-        // `Live::pump` marks it, so under `Recover::Off` a shipped
+        // window. Caught whatever the `RecoverPolicy` says, because none of
+        // it is the application's — and **the application's is re-raised**:
+        // `Live::pump` marks it, so under `Crashing` a shipped
         // application still crashes where a crash reporter can see it
-        // (M36 rule 3). Under `Recover::On` the pump's own guard has
+        // (M36 rule 3). Under `Recovering` the pump's own guard has
         // already caught it, so nothing marked arrives here. No journal
         // reset: `dispatch_input` takes `&self`.
         #[cfg(panic = "unwind")]
@@ -536,7 +570,7 @@ impl<A: App + 'static> Session for Local<A> {
         #[cfg(feature = "live-agent")]
         {
             let agent = &mut self.agent;
-            let _ = run_guarded(&mut self.host, self.recover, |h| {
+            let _ = run_guarded::<A, P, _>(&mut self.host, |h| {
                 let timing = lumen_static_agent::FrameTiming {
                     layout_ns: t.layout_ns,
                     paint_ns: t.paint_ns,
@@ -634,12 +668,12 @@ fn agent_panicked(req: &serde_json::Value, payload: &(dyn std::any::Any + Send))
 /// window's renderer for pixels. Moved here from the window crate by
 /// M37, because the tree now lives wherever the session does.
 #[cfg(feature = "live-agent")]
-pub struct Live<'a, A: App> {
+pub struct Live<'a, A: App, P: RecoverPolicy> {
     pub host: &'a mut Host<A, Ret, Inval>,
     pub metrics: &'a mut Option<FontMetrics>,
     pub screen: &'a mut dyn Screen,
     pub page: Color,
-    pub recover: Recover,
+    pub recover: P,
     /// Whether the session's last frame was still animating — its
     /// `ui.waitSettled` term (M48/T48.2).
     pub animating: bool,
@@ -654,7 +688,7 @@ pub struct Live<'a, A: App> {
 const FRAME_MS: f32 = 1000.0 / 60.0;
 
 #[cfg(feature = "live-agent")]
-impl<A: App> Live<'_, A> {
+impl<A: App, P: RecoverPolicy> Live<'_, A, P> {
     /// Present the host's frame, adding what it damaged to the next
     /// journal frame's `damaged_px` (M48/T48.4). **Every present inside a
     /// request goes through here**: M45's paste presented on its own and
@@ -670,13 +704,13 @@ impl<A: App> Live<'_, A> {
     /// application code there (M39/T39.5).
     fn pump_app(&mut self) -> (u64, bool) {
         let metrics = &mut *self.metrics;
-        let handled = run_guarded(self.host, self.recover, |h| match metrics.as_mut() {
+        let handled = run_guarded::<A, P, _>(self.host, |h| match metrics.as_mut() {
             Some(m) => h.pump_with(m),
             None => h.pump(),
         })
         .unwrap_or(false);
         #[cfg(panic = "unwind")]
-        if let Some(r) = self.host.failure().cloned() {
+        if let Some(r) = self.host.failure().cloned().filter(|_| P::ON) {
             let (w, h) = self.screen.frame_rgba().map_or((1, 1), |(w, h, _)| (w, h));
             let list = match self.metrics.as_mut() {
                 Some(m) => crate::recover::failure_frame(&r, w, h, m),
@@ -690,7 +724,7 @@ impl<A: App> Live<'_, A> {
 }
 
 #[cfg(feature = "live-agent")]
-impl<A: App> lumen_static_agent::AgentHost for Live<'_, A> {
+impl<A: App, P: RecoverPolicy> lumen_static_agent::AgentHost for Live<'_, A, P> {
     fn tree(&self) -> lumen_static_agent::TreeRef<'_> {
         lumen_static_agent::TreeRef::of_root(self.host.app.tree(), &self.host.styles, &self.host.states)
             .with_sheet(self.host.stylesheet(), self.host.sheet_findings())
@@ -732,7 +766,7 @@ impl<A: App> lumen_static_agent::AgentHost for Live<'_, A> {
     /// The window's own route (`Session::compose`): `Host::compose`,
     /// guarded, with the session's measurer untouched — M48/T48.13.
     fn compose(&mut self, c: lumen_static::event::Composition<'_>) -> Option<bool> {
-        Some(run_guarded(self.host, self.recover, |h| h.compose(c)).unwrap_or(true))
+        Some(run_guarded::<A, P, _>(self.host, |h| h.compose(c)).unwrap_or(true))
     }
 
     /// **Application code**, marked as such (M39/T39.5): anything that
@@ -773,7 +807,7 @@ impl<A: App> lumen_static_agent::AgentHost for Live<'_, A> {
 
     fn failure(&self) -> serde_json::Value {
         #[cfg(panic = "unwind")]
-        if self.recover == Recover::On {
+        if P::ON {
             return serde_json::json!({
                 "supported": true,
                 "failure": self.host.failure().map(|r| serde_json::json!({
@@ -789,7 +823,7 @@ impl<A: App> lumen_static_agent::AgentHost for Live<'_, A> {
 
     fn retry(&mut self) -> bool {
         #[cfg(panic = "unwind")]
-        if self.recover == Recover::On {
+        if P::ON {
             self.host.retry();
             return true;
         }

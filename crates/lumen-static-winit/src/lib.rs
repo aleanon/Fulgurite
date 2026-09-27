@@ -353,20 +353,26 @@ impl Default for Config {
 /// **a diagnostic**: if a stale frame goes away when you build with it,
 /// you have found an invalidation defect.
 pub use lumen_static_shell::session::{Inval, Ret};
-use lumen_static_shell::session::{Local, Recover, Session};
+use lumen_static_shell::session::{Local, Session};
 
 /// Whether this window catches panics in application code — M36
-/// (`docs/plan-panic-recovery.md` rule 3): a debug build does, a release
-/// build does with the `reload` feature, and never where panics abort.
+/// (`docs/plan-panic-recovery.md` rule 3, as amended by M52/T52.7): a
+/// debug build does, a release build does with the `reload` feature, and
+/// never where panics abort.
+///
+/// **A type, not a value** ([`lumen_static_shell::session::RecoverPolicy`]).
+/// Until M52 this was a constant handed to a runtime field, so a
+/// release window without `reload` linked every `recover::` function
+/// though none could run; `just release-window-shape` counts 0 now.
 ///
 /// Decided **here**, in the window crate, and handed to the session:
 /// the workspace's dev profile builds the shell with `debug-assertions =
 /// false`, so a `cfg(debug_assertions)` evaluated there was false in
 /// every debug build.
 #[cfg(all(panic = "unwind", any(debug_assertions, feature = "reload")))]
-pub const RECOVER: Recover = Recover::On;
+pub use lumen_static_shell::session::Recovering as Policy;
 #[cfg(not(all(panic = "unwind", any(debug_assertions, feature = "reload"))))]
-pub const RECOVER: Recover = Recover::Off;
+pub use lumen_static_shell::session::Crashing as Policy;
 
 /// Open a window on an already-built application, with no stylesheet.
 ///
@@ -378,7 +384,7 @@ pub const RECOVER: Recover = Recover::Off;
 pub fn run<A: App + 'static>(app: A, config: Config) {
     let mut host: Host<A, Ret, Inval> = Host::new(app, config.width, config.height);
     host.set_palette(config.palette);
-    let session = Local::from_host(host, config.title, config.page, RECOVER);
+    let session = Local::from_host(host, config.title, config.page, Policy);
     start(Box::new(session), config, None);
 }
 
@@ -1185,7 +1191,7 @@ pub trait Run {
 #[cfg(not(feature = "hot"))]
 impl<A: App + 'static> Run for Program<A> {
     fn run(self) {
-        run_program(self, |p| Box::new(Local::from_program(p, RECOVER)), None);
+        run_program(self, |p| Box::new(Local::from_program(p, Policy)), None);
     }
 }
 
@@ -1203,7 +1209,7 @@ impl<A: App + lumen_static::reload::Reloadable + 'static> Run for Program<A> {
             self,
             |p| {
                 Box::new(
-                    Local::from_program(p, RECOVER)
+                    Local::from_program(p, Policy)
                         .with_saver(|a| lumen_static::reload::to_vec(&lumen_static::reload::Reloadable::save(a))),
                 )
             },

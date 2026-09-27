@@ -382,7 +382,7 @@ pub mod hot {
     use lumen_static::event::App;
     use lumen_static::reload::{symbols, Reloadable};
     use lumen_static_shell::program::Program;
-    use lumen_static_shell::session::{abi_fields, FrameSource, Local, Recover, Screen, Session};
+    use lumen_static_shell::session::{abi_fields, FrameSource, Local, Recovering, Screen, Session};
 
     /// This image's ABI stamp, with the shell's fields: what a window
     /// library exports and what its loader compares against.
@@ -395,7 +395,7 @@ pub mod hot {
     /// the library (M36/T36.4) — and the session can save, for the next
     /// swap.
     pub fn boot<A: App + Reloadable + 'static>(program: Program<A>, saved: Option<&[u8]>) -> Box<dyn Session> {
-        let mut s = Local::from_program(program, Recover::On)
+        let mut s = Local::from_program(program, Recovering)
             .with_saver(|a| lumen_static::reload::to_vec(&Reloadable::save(a)));
         let Some(bytes) = saved else { return Box::new(s) };
         // **Per field** (§2.4): the derive restores each kept field on its

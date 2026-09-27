@@ -14,7 +14,7 @@
 
 use lumen_static::prelude::*;
 use lumen_static::{Color, Event, Key, Mods};
-use lumen_static_shell::session::{Local, Recover, Session};
+use lumen_static_shell::session::{Local, Crashing, Session};
 use lumen_static_shell::Host;
 use lumen_static_widgets::prelude::*;
 use lumen_static_winit::keys::deliver_key;
@@ -36,8 +36,8 @@ struct App {
 
 const FIELD: usize = 1;
 
-fn session() -> Local<App> {
-    let mut s = Local::from_host(Host::new(App::default(), 600, 60), "", Color(255, 255, 255, 255), Recover::Off);
+fn session() -> Local<App, Crashing> {
+    let mut s = Local::from_host(Host::new(App::default(), 600, 60), "", Color(255, 255, 255, 255), Crashing);
     s.frame(0.0, 600, 60);
     assert!(deliver_key(&mut s, &WKey::Named(NamedKey::Tab), None, true, Mods::NONE), "setup: Tab reached nothing");
     s.frame(0.0, 600, 60);

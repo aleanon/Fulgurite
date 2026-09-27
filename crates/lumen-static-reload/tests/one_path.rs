@@ -17,7 +17,7 @@ use lumen_static::prelude::*;
 use lumen_static::Event;
 use lumen_static_reload::hot;
 use lumen_static_shell::program::{application, Program};
-use lumen_static_shell::session::{FrameSource, Local, Recover, Session};
+use lumen_static_shell::session::{FrameSource, Local, Recovering, Session};
 use lumen_static_widgets::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -92,7 +92,7 @@ fn saver(a: &Counter) -> Vec<u8> {
 #[test]
 fn host_reload_and_a_window_swap_build_the_same_frame() {
     // In process: click, `Host::reload`, click.
-    let mut a = Local::from_program(program(), Recover::On).with_saver(saver);
+    let mut a = Local::from_program(program(), Recovering).with_saver(saver);
     a.frame(0.0, W, H);
     click(&mut a);
     let reloaded = a.host.reload();
@@ -103,7 +103,7 @@ fn host_reload_and_a_window_swap_build_the_same_frame() {
 
     // A window's swap: click, save, the library side boots the program
     // and restores, click.
-    let mut b0 = Local::from_program(program(), Recover::On).with_saver(saver);
+    let mut b0 = Local::from_program(program(), Recovering).with_saver(saver);
     b0.frame(0.0, W, H);
     click(&mut b0);
     let saved = b0.save();

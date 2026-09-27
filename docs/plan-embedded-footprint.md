@@ -711,6 +711,22 @@ written; where it was wrong, the note says so and says what was done.
   interactive preconditions read `update_marked` now, an exported trait
   method.
 
+- **T52.7 — the markers are values too.** `Local::from_host` and
+  `from_program` take the policy as a zero-sized argument (`Crashing`,
+  `Recovering`), so a call site infers `P` and reads as it did with the
+  enum; the window crate re-exports the chosen marker as `Policy`.
+  `Local` stores it as `PhantomData`.
+- **T52.7 — the gate's pattern matched drop glue.** After the fix the
+  window still had 3 symbols naming `recover::`: `drop_in_place<Option<
+  PanicReport>>`, `Host`'s always-`None` failure field. That is data, not
+  recovery code, so the gate counts symbols *defined* in the module and
+  prints the glue beside the count. With `reload` the defined count is 8
+  (13,328 B), not the 14 the loose pattern saw.
+- **T52.7 — the gate's listing read the wrong binary.** Both builds write
+  `target/release/minimal`, so the offending-symbol listing, printed after
+  the second build, named the `reload` build's symbols. The first build is
+  copied aside now.
+
 ## Appendix: finding → task
 
 | ID | sev now | status | task |

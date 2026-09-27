@@ -6,7 +6,7 @@
 
 use lumen_static::prelude::*;
 use lumen_static::{Color, Event, Key};
-use lumen_static_shell::session::{FrameSource, Local, Recover, Screen, Session};
+use lumen_static_shell::session::{FrameSource, Local, Crashing, Screen, Session};
 use lumen_static_shell::Host;
 use lumen_static_widgets::TextArea;
 use serde_json::Value;
@@ -40,10 +40,10 @@ impl Screen for Blind {
 
 const WORD: &str = if cfg!(target_os = "macos") { "alt" } else { "ctrl" };
 
-fn session() -> Local<Fx> {
+fn session() -> Local<Fx, Crashing> {
     let mut a = Fx::default();
     a.ui.area.set_str("one two");
-    let mut s = Local::from_host(Host::new(a, 300, 200), "motion", Color(255, 255, 255, 255), Recover::Off);
+    let mut s = Local::from_host(Host::new(a, 300, 200), "motion", Color(255, 255, 255, 255), Crashing);
     s.frame(0.0, 300, 200);
     s.post(Event::Key { key: Key::Tab, down: true });
     s.frame(0.0, 300, 200);
@@ -51,7 +51,7 @@ fn session() -> Local<Fx> {
     s
 }
 
-fn call(s: &mut Local<Fx>, method: &str, params: &str) -> Value {
+fn call(s: &mut Local<Fx, Crashing>, method: &str, params: &str) -> Value {
     let req = format!(r#"{{"jsonrpc":"2.0","id":1,"method":"{method}","params":{params}}}"#);
     serde_json::from_str(&s.agent(&req, &mut Blind)).expect("JSON")
 }

@@ -12,7 +12,7 @@
 //! own: a leaf whose `observe` panics when armed, reached through
 //! `ui.getTree`. The same leaf panics in `layout` on the other arm, which
 //! is **application** code reached through `input.click` — and that one
-//! must still unwind out of the session under `Recover::Off`, or a
+//! must still unwind out of the session under `Crashing`, or a
 //! shipped application would crash where no crash reporter sees it
 //! (M36 rule 3).
 
@@ -25,7 +25,7 @@ use lumen_static::observe::accesskit;
 use lumen_static::prelude::*;
 use lumen_static::style::{Seed, Style};
 use lumen_static::{Color, Constraints, NodeState, Painter};
-use lumen_static_shell::session::{FrameSource, Local, Recover, Screen, Session};
+use lumen_static_shell::session::{FrameSource, Crashing, Local, RecoverPolicy, Recovering, Screen, Session};
 use lumen_static_shell::Host;
 use serde_json::Value;
 
@@ -134,23 +134,28 @@ impl Screen for Blind {
     }
 }
 
-fn session(recover: Recover) -> Local<Fx> {
+fn session<P: RecoverPolicy>(recover: P) -> Local<Fx, P> {
     let mut host: Host<Fx, _, _> = Host::new(Fx::default(), 200, 200);
     host.pump();
     Local::from_host(host, "agent-panic", Color(255, 255, 255, 255), recover)
 }
 
-fn ask(s: &mut Local<Fx>, method: &str, params: &str) -> Value {
+fn ask<P: RecoverPolicy>(s: &mut Local<Fx, P>, method: &str, params: &str) -> Value {
     let req = format!(r#"{{"jsonrpc":"2.0","id":7,"method":"{method}","params":{params}}}"#);
     serde_json::from_str(&s.agent(&req, &mut Blind)).expect("the reply is JSON")
 }
 
 /// The agent's own panic becomes `-32603`, naming the method and where
-/// it happened, and the next call is answered — under both `Recover`
-/// values, because the agent is not application code (§2.5).
+/// it happened, and the next call is answered — under both
+/// `RecoverPolicy` types, because the agent is not application code (§2.5).
 #[test]
 fn the_agents_own_panic_is_a_reply() {
-    for recover in [Recover::On, Recover::Off] {
+    agents_own_panic(Recovering);
+    agents_own_panic(Crashing);
+}
+
+fn agents_own_panic<P: RecoverPolicy + std::fmt::Debug>(recover: P) {
+    {
         let mut s = session(recover);
         let before = ask(&mut s, "ui.getTree", "{}");
         assert!(before.get("result").is_some(), "{recover:?}: an ordinary call first: {before}");
@@ -177,12 +182,12 @@ fn the_agents_own_panic_is_a_reply() {
 }
 
 /// **The accept direction**: an application panic reached through
-/// `input.click` under `Recover::Off` still unwinds out of the session.
+/// `input.click` under `Crashing` still unwinds out of the session.
 /// Green before T39.5 and after it; T39.5's second injection (drop the
 /// re-raise) is what turns it red.
 #[test]
 fn an_application_panic_still_unwinds_under_recover_off() {
-    let mut s = session(Recover::Off);
+    let mut s = session(Crashing);
     s.host.app.ui.bomb.arm.set(IN_LAYOUT);
     s.host.invalidate_all();
     let out = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -195,24 +200,24 @@ fn an_application_panic_still_unwinds_under_recover_off() {
                 .map(|s| s.to_string())
                 .or_else(|| p.downcast_ref::<String>().cloned())
                 .unwrap_or_default();
-            println!("Recover::Off: the application's panic unwound out of the session: {m:?}");
+            println!("Crashing: the application's panic unwound out of the session: {m:?}");
             assert!(m.contains("layout panicked"), "a different panic unwound: {m:?}");
         }
         Ok(reply) => panic!("the application's panic was swallowed into a reply: {reply}"),
     }
 }
 
-/// And under `Recover::On` the pump's own guard owns it: a result, and
+/// And under `Recovering` the pump's own guard owns it: a result, and
 /// `app.failure` reports it (M36) — the outer catch never sees it.
 #[test]
 fn an_application_panic_under_recover_on_is_m36s() {
-    let mut s = session(Recover::On);
+    let mut s = session(Recovering);
     s.host.app.ui.bomb.arm.set(IN_LAYOUT);
     s.host.invalidate_all();
     let reply = ask(&mut s, "input.click", r#"{"x":10,"y":10}"#);
     assert!(reply.get("result").is_some(), "{reply}");
     let failure = ask(&mut s, "app.failure", "{}");
     let m = failure["result"]["failure"]["message"].as_str().unwrap_or("");
-    println!("Recover::On: click answered, app.failure says {m:?}");
+    println!("Recovering: click answered, app.failure says {m:?}");
     assert!(m.contains("layout panicked"), "{failure}");
 }

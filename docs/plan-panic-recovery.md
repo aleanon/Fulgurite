@@ -50,6 +50,17 @@ and prints the measured quantity beside its bound.*
    `lumen-static-shell/reload`. Always under `cfg(panic = "unwind")`. A
    release build without `reload` keeps the default behaviour, because
    a shipped application should crash where a crash reporter can see it.
+
+   > **Amended 2026-09-27 by M52/T52.7** (`docs/plan-embedded-footprint.md`
+   > §2.2, F-NEW-3). "Compiled in" was true of the *behaviour* and false
+   > of the *link*: the window crate chose the policy as a `const` and
+   > handed it to a runtime field, so every release window linked every
+   > `recover::` function (14 symbols, 13,964 B) that it could never run.
+   > The rule now says what the gate checks: **where it is linked** —
+   > debug builds, and release builds with the `reload` feature. A release
+   > build without it links no `recover::` symbol, and `just
+   > release-window-shape` asserts that. The policy is a type
+   > (`session::RecoverPolicy`, `Recovering`/`Crashing`), not a value.
 4. **One guarded entry, and every path goes through it.** The redraw,
    window events, IME composition, paste, ticks, and **the agent's
    `Live::pump`** all go through it. The review found that the agent's
