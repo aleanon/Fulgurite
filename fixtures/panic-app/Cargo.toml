@@ -22,3 +22,6 @@ default = []
 window = ["dep:lumen-static-winit"]
 agent = ["window", "lumen-static-winit/agent", "lumen-static-widgets/observe"]
 reload = ["window", "lumen-static-winit/reload"]
+# M55/T55.4: run the window under `Everything` -- selected in `main`,
+# not forwarded (the window crate has no such feature any more).
+everything = ["window"]

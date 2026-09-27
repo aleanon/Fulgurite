@@ -47,6 +47,6 @@ run_one() { # LEG CARGO-FEATURES EXPECTED-FEATURES
         --expect-strategy "$1" --expect-features "$3" \
         -- python3 scripts/motion_present.py {port} "$1"
 }
-run_one Everything agent,everything everything
+run_one Everything agent,everything ""
 run_one Boundaries agent ""
 echo "motion-present: both strategies"

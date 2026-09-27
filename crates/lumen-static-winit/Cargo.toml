@@ -13,12 +13,11 @@ name = "lumen_static_winit"
 # adding winit there would put a windowing system behind `cargo test`
 # (docs/plan-desktop.md T14.0).
 [features]
-# M34/T34.2: `Boundaries<256>` is the default. This selects `Everything`
-# instead, as a DIAGNOSTIC: if a stale frame goes away when you build with
-# it, you have found an invalidation defect. A build-time switch because
-# `Host`'s invalidation is a type parameter (see `Inval` in lib.rs). Any
-# example reaches it as `--features lumen-static-winit/everything`.
-everything = ["lumen-static-shell/everything"]
+# No `everything` feature since M55/T55.4 (R12-F5). It selected
+# `Everything` for every window in the build graph -- cargo unifies
+# features, so one crate turning it on changed `Pane::host`'s type for
+# all the others. The strategy is a type the application picks:
+# `Program::invalidation::<Everything>()`, or `Pane<A, Everything>`.
 # M36: a release window that shows a panic screen instead of crashing.
 # A debug window always does; a shipped release build does not, unless it
 # asks, so a crash reaches whatever would have reported it

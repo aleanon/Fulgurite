@@ -31,24 +31,16 @@ use lumen_static::Event;
 use crate::program::Program;
 use crate::text::{FontMetrics, FontStack};
 use crate::Host;
+use lumen_static::invalidate::Invalidation;
 
 /// The retention a window's host uses (moved here from the window crate
 /// by M37, so a hot library, which links no window system, builds the
 /// same `Host` type).
 pub type Ret = lumen_static::retain::Incremental;
 
-/// Which invalidation strategy a window's host runs.
-///
-/// **`Boundaries` by default since M34/T34.2.** The `everything` feature
-/// selects the whole-tree walk instead — **a diagnostic**: if a stale
-/// frame goes away when you build with it, you have found an
-/// invalidation defect. 256 marks because `Boundaries<N>` stores ranges,
-/// not nodes, and M26/T26.5 fixed it wrapping its length at exactly that
-/// count.
-#[cfg(not(feature = "everything"))]
-pub type Inval = lumen_static::Boundaries<256>;
-#[cfg(feature = "everything")]
-pub type Inval = lumen_static::Everything;
+/// The strategy a session runs when its program does not choose one
+/// (M55/T55.4) — defined beside [`Program`], which carries the choice.
+pub use crate::program::DefaultInval;
 
 /// What a renderer reads from a frame: the list, how much of it is
 /// stale for a surface of a given age, and what it cost to build.
@@ -235,9 +227,9 @@ impl RecoverPolicy for Crashing {
 }
 
 /// Run `f` on `host`, guarded when `P` recovers (M36).
-fn run_guarded<A: App, P: RecoverPolicy, T>(
-    host: &mut Host<A, Ret, Inval>,
-    f: impl FnOnce(&mut Host<A, Ret, Inval>) -> T,
+fn run_guarded<A: App, P: RecoverPolicy, I: Invalidation, T>(
+    host: &mut Host<A, Ret, I>,
+    f: impl FnOnce(&mut Host<A, Ret, I>) -> T,
 ) -> Option<T> {
     #[cfg(panic = "unwind")]
     if P::ON {
@@ -255,21 +247,24 @@ fn run_guarded<A: App, P: RecoverPolicy, T>(
 /// flight ([`Host::reissuable`]), and the second is not the
 /// application's. `lumen_static_reload::hot::save` is the one a window
 /// uses.
-pub type Saver<A> = fn(&Host<A, Ret, Inval>) -> Vec<u8>;
+pub type Saver<A, I = DefaultInval> = fn(&Host<A, Ret, I>) -> Vec<u8>;
 
 /// A statically linked — or library-resident — application behind
 /// [`Session`]. `P` says whether it catches application panics
 /// ([`RecoverPolicy`]); the trait object hides it, so the dylib seam does
 /// not see it.
-pub struct Local<A: App, P: RecoverPolicy> {
-    pub host: Host<A, Ret, Inval>,
-    program: Option<Program<A>>,
+///
+/// `I` is the invalidation strategy (M55/T55.4), after M52's `P`:
+/// [`DefaultInval`] unless the program chose one.
+pub struct Local<A: App, P: RecoverPolicy, I: Invalidation = DefaultInval> {
+    pub host: Host<A, Ret, I>,
+    program: Option<Program<A, I>>,
     title: &'static str,
     page: Color,
     metrics: Option<FontMetrics>,
     /// The policy, as a type only: every guarded arm reads `P::ON`.
     recover: core::marker::PhantomData<P>,
-    saver: Option<Saver<A>>,
+    saver: Option<Saver<A, I>>,
     restore_log: String,
     reissued: crate::Reissued,
     /// What the last [`Session::frame`] said: whether anything is still
@@ -285,11 +280,11 @@ pub struct Local<A: App, P: RecoverPolicy> {
     agent: lumen_static_agent::Agent,
 }
 
-impl<A: App + 'static, P: RecoverPolicy> Local<A, P> {
+impl<A: App + 'static, P: RecoverPolicy, I: Invalidation> Local<A, P, I> {
     /// A session over a described program: boots it through
     /// [`Program::host`], installs the thread spawner, and measures text
     /// with the system face.
-    pub fn from_program(program: Program<A>, recover: P) -> Self {
+    pub fn from_program(program: Program<A, I>, recover: P) -> Self {
         let host = program.host();
         let page = program.page;
         let mut s = Local::from_host(host, "", page, recover);
@@ -298,7 +293,7 @@ impl<A: App + 'static, P: RecoverPolicy> Local<A, P> {
     }
 
     /// A session over an already-built host.
-    pub fn from_host(mut host: Host<A, Ret, Inval>, title: &'static str, page: Color, _policy: P) -> Self {
+    pub fn from_host(mut host: Host<A, Ret, I>, title: &'static str, page: Color, _policy: P) -> Self {
         // **Deferred work, wired up** — M28/T28.12. The waker comes from
         // the window, which owns the loop ([`Session::set_waker`]).
         host.set_spawner(Box::new(lumen_static::spawn::Threads::new()));
@@ -322,7 +317,7 @@ impl<A: App + 'static, P: RecoverPolicy> Local<A, P> {
     }
 
     /// Let [`Session::save`] answer — a hot library sets this.
-    pub fn with_saver(mut self, saver: Saver<A>) -> Self {
+    pub fn with_saver(mut self, saver: Saver<A, I>) -> Self {
         self.saver = Some(saver);
         self
     }
@@ -340,19 +335,19 @@ impl<A: App + 'static, P: RecoverPolicy> Local<A, P> {
     }
 
     /// The program this session was booted from.
-    pub fn program(&self) -> Option<&Program<A>> {
+    pub fn program(&self) -> Option<&Program<A, I>> {
         self.program.as_ref()
     }
 
     /// Run `f` guarded when recovery is on (M36).
-    fn guarded<T>(&mut self, f: impl FnOnce(&mut Host<A, Ret, Inval>, &mut Option<FontMetrics>) -> T) -> Option<T> {
+    fn guarded<T>(&mut self, f: impl FnOnce(&mut Host<A, Ret, I>, &mut Option<FontMetrics>) -> T) -> Option<T> {
         let metrics = &mut self.metrics;
-        run_guarded::<A, P, T>(&mut self.host, |h| f(h, metrics))
+        run_guarded::<A, P, I, T>(&mut self.host, |h| f(h, metrics))
     }
 
     /// A `&self` call into application code — the title, the selection —
     /// caught when recovery is on, answering `fallback` if it panicked.
-    fn caught<T>(&self, fallback: T, f: impl FnOnce(&Host<A, Ret, Inval>) -> T) -> T {
+    fn caught<T>(&self, fallback: T, f: impl FnOnce(&Host<A, Ret, I>) -> T) -> T {
         #[cfg(panic = "unwind")]
         if P::ON {
             return std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(&self.host))).unwrap_or(fallback);
@@ -380,7 +375,7 @@ impl<A: App + 'static, P: RecoverPolicy> Local<A, P> {
         let _ = (w, h);
     }
 
-    fn pump_now(h: &mut Host<A, Ret, Inval>, m: &mut Option<FontMetrics>) -> bool {
+    fn pump_now(h: &mut Host<A, Ret, I>, m: &mut Option<FontMetrics>) -> bool {
         match m.as_mut() {
             Some(m) => h.pump_with(m),
             None => h.pump(),
@@ -388,7 +383,7 @@ impl<A: App + 'static, P: RecoverPolicy> Local<A, P> {
     }
 }
 
-impl<A: App + 'static, P: RecoverPolicy> FrameSource for Local<A, P> {
+impl<A: App + 'static, P: RecoverPolicy, I: Invalidation> FrameSource for Local<A, P, I> {
     fn list(&self) -> &DisplayList {
         &self.host.list
     }
@@ -400,7 +395,7 @@ impl<A: App + 'static, P: RecoverPolicy> FrameSource for Local<A, P> {
     }
 }
 
-impl<A: App + 'static, P: RecoverPolicy> Session for Local<A, P> {
+impl<A: App + 'static, P: RecoverPolicy, I: Invalidation> Session for Local<A, P, I> {
     fn post(&mut self, ev: Event) {
         self.host.post(ev);
     }
@@ -594,7 +589,7 @@ impl<A: App + 'static, P: RecoverPolicy> Session for Local<A, P> {
         #[cfg(feature = "live-agent")]
         {
             let agent = &mut self.agent;
-            let _ = run_guarded::<A, P, _>(&mut self.host, |h| {
+            let _ = run_guarded::<A, P, I, _>(&mut self.host, |h| {
                 let timing = lumen_static_agent::FrameTiming {
                     layout_ns: t.layout_ns,
                     paint_ns: t.paint_ns,
@@ -700,8 +695,8 @@ fn agent_panicked(req: &serde_json::Value, payload: &(dyn std::any::Any + Send))
 /// window's renderer for pixels. Moved here from the window crate by
 /// M37, because the tree now lives wherever the session does.
 #[cfg(feature = "live-agent")]
-pub struct Live<'a, A: App, P: RecoverPolicy> {
-    pub host: &'a mut Host<A, Ret, Inval>,
+pub struct Live<'a, A: App, P: RecoverPolicy, I: Invalidation = DefaultInval> {
+    pub host: &'a mut Host<A, Ret, I>,
     pub metrics: &'a mut Option<FontMetrics>,
     pub screen: &'a mut dyn Screen,
     pub page: Color,
@@ -720,7 +715,7 @@ pub struct Live<'a, A: App, P: RecoverPolicy> {
 const FRAME_MS: f32 = 1000.0 / 60.0;
 
 #[cfg(feature = "live-agent")]
-impl<A: App, P: RecoverPolicy> Live<'_, A, P> {
+impl<A: App, P: RecoverPolicy, I: Invalidation> Live<'_, A, P, I> {
     /// Present the host's frame, adding what it damaged to the next
     /// journal frame's `damaged_px` (M48/T48.4). **Every present inside a
     /// request goes through here**: M45's paste presented on its own and
@@ -736,7 +731,7 @@ impl<A: App, P: RecoverPolicy> Live<'_, A, P> {
     /// application code there (M39/T39.5).
     fn pump_app(&mut self) -> (u64, bool) {
         let metrics = &mut *self.metrics;
-        let handled = run_guarded::<A, P, _>(self.host, |h| match metrics.as_mut() {
+        let handled = run_guarded::<A, P, I, _>(self.host, |h| match metrics.as_mut() {
             Some(m) => h.pump_with(m),
             None => h.pump(),
         })
@@ -756,7 +751,7 @@ impl<A: App, P: RecoverPolicy> Live<'_, A, P> {
 }
 
 #[cfg(feature = "live-agent")]
-impl<A: App, P: RecoverPolicy> lumen_static_agent::AgentHost for Live<'_, A, P> {
+impl<A: App, P: RecoverPolicy, I: Invalidation> lumen_static_agent::AgentHost for Live<'_, A, P, I> {
     fn tree(&self) -> lumen_static_agent::TreeRef<'_> {
         lumen_static_agent::TreeRef::of_root(self.host.app.tree(), &self.host.styles, &self.host.states)
             .with_sheet(self.host.stylesheet(), self.host.sheet_findings())
@@ -798,7 +793,7 @@ impl<A: App, P: RecoverPolicy> lumen_static_agent::AgentHost for Live<'_, A, P> 
     /// The window's own route (`Session::compose`): `Host::compose`,
     /// guarded, with the session's measurer untouched — M48/T48.13.
     fn compose(&mut self, c: lumen_static::event::Composition<'_>) -> Option<bool> {
-        Some(run_guarded::<A, P, _>(self.host, |h| h.compose(c)).unwrap_or(true))
+        Some(run_guarded::<A, P, I, _>(self.host, |h| h.compose(c)).unwrap_or(true))
     }
 
     /// **Application code**, marked as such (M39/T39.5): anything that
@@ -874,8 +869,9 @@ impl<A: App, P: RecoverPolicy> lumen_static_agent::AgentHost for Live<'_, A, P> 
         self.screen.fetch_rgba()
     }
 
-    /// M42/T42.1: the strategy is the host's own type parameter — which
-    /// is [`Inval`] — and the features are the shell's `cfg!` set.
+    /// M42/T42.1: the strategy is the host's own type parameter — the
+    /// session's `I`, chosen by the application since M55/T55.4 — and the
+    /// features are the shell's `cfg!` set.
     fn process_info(&self) -> serde_json::Value {
         lumen_static_agent::process_block(self.host.strategy(), &crate::process_features())
     }
@@ -907,7 +903,6 @@ pub fn abi_fields() -> Vec<(&'static str, String)> {
         (cfg!(feature = "live-agent"), "live-agent"),
         (cfg!(feature = "reload"), "reload"),
         (cfg!(feature = "truetype"), "truetype"),
-        (cfg!(feature = "everything"), "everything"),
         (cfg!(feature = "shadow-oracle"), "shadow-oracle"),
         (cfg!(feature = "simd"), "simd"),
         (cfg!(feature = "threads"), "threads"),

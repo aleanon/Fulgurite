@@ -87,7 +87,7 @@ fn text(s: &dyn Session) -> String {
 
 /// What a window installs (M49/T49.10: the host's work in flight rides
 /// beside the application's state).
-const SAVER: lumen_static_shell::session::Saver<Counter> = hot::save::<Counter>;
+const SAVER: lumen_static_shell::session::Saver<Counter> = hot::save::<Counter, _>;
 
 #[test]
 fn host_reload_and_a_window_swap_build_the_same_frame() {

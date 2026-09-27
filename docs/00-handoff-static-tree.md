@@ -933,8 +933,12 @@ T34.2 as amended): 6 083 live frames judged by the redesigned oracle,
 beside plain `Boundaries` legs; five probe defects it found are fixed, and
 one unreproduced divergence (`OptionList`, `size`) is open in
 `docs/plan-boundaries-repair.md` §6.*
-`Boundaries<256>` is `Host`'s default and the window's (`everything` is a
-diagnostic feature); a binding marks its own node, and a click on a
+`Boundaries<256>` is `Host`'s default and the window's. `Everything` is a
+diagnostic **the application chooses in code** —
+`Program::invalidation::<Everything>()`, or `Pane<A, Everything>` —
+since M55/T55.4 (R12-F5): as the `everything` feature it changed the type
+of every public `host` field in the build graph, because cargo unifies
+features (`docs/plan-derive-dx.md` §2.1); a binding marks its own node, and a click on a
 split application narrows too. The evidence is
 `docs/plan-boundaries-default.md` T34.0–T34.2; the figures are
 `docs/results-damage-precision.md` T29.3, T29.6 and T34.2.

@@ -326,6 +326,10 @@ fn program() -> Program<Demo> {
 fn main() {
     // The endpoint's address is `LUMEN_AGENT_ADDR`, read by the window
     // (M48/T48.11); unset, this window serves none.
+    // M55/T55.4: the strategy is this application's choice, made here.
+    #[cfg(feature = "everything")]
+    program().invalidation::<lumen_static::Everything>().run();
+    #[cfg(not(feature = "everything"))]
     program().run();
 }
 

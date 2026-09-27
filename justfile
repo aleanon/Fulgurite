@@ -86,6 +86,11 @@ dev-shape:
     # on, so above they compile to zero tests (golden.rs) or lose their
     # golden test (failure_screen.rs). Here the shell is built alone.
     cargo test -p lumen-static-shell --test golden --test failure_screen
+    # M55/T55.4 (R12-F5): the window's strategy is a type the application
+    # chooses; no feature in the graph changes `Pane<A>`'s. Built with
+    # showcase's own `everything` feature on, which used to forward to the
+    # window crate and turn `&mut Pane<A> -> &mut Host<A>` into E0308.
+    cargo test --workspace --exclude lumen-static-wgpu --features showcase/everything --test inval_param
     # M43/T43.11: text tests shape a committed face; the discovery test
     # must find a system one (not skip) unless LUMEN_ALLOW_SKIP=1.
     just fonts

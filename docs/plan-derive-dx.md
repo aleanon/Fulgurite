@@ -1,6 +1,26 @@
 # M55 — the derive refuses what it ignores, the lints see clips, and the docs count what exists
 
-> **Written 2026-09-24, not started.** Closes R12-F5, R16-F1, R16-F2,
+> **T55.0–T55.8 DONE 2026-09-27.**
+> - T55.0: the gates, red — 9 new refusals, 15 pinning cases, the
+>   coverage check (31 error sites, 22 pinned at first), and the NaN,
+>   W1002, numeric and `Pane` repros.
+> - T55.1: the App derive's locals are `mixed_site`; `with = changed`
+>   and `changed()` reach the user's items (`3 42`).
+> - T55.2: repeats and arguments refused; 46 of 46 error sentences
+>   pinned, and `just static` counts them.
+> - T55.3: both attribute tables list every parser key (14), the check
+>   reads the parser, and `gaps.md` states no command count.
+> - T55.4: the strategy is `Program`'s, `Local`'s and `Pane`'s `I`
+>   parameter; both `everything` features are gone.
+> - T55.5: the cascade repairs non-finite lengths and negative padding
+>   per sheet, reported as W1012; firmware +880 B.
+> - T55.6: W1002 compares against the nearest clip; W1003 ships.
+> - T55.7: the range widgets keep their last good value.
+> - T55.8: three drifted numbers cited, one bench row re-measured.
+> §6 records what building found; `docs/results-derive-dx.md` owns the
+> numbers.
+>
+> **Written 2026-09-24.** Closes R12-F5, R16-F1, R16-F2,
 > R16-F3, R16-F4, R16-F5, R16-F6, R16-F10, R16-F11, R8-F9, R9-F11 and
 > R9-F12 from M38's deep review (`docs/results-deep-review.md`), as
 > re-triaged against `main` at 1717808 on 2026-09-24. Where the review
@@ -672,6 +692,15 @@ Recorded here rather than by rewriting the tasks above.
   clip (`docs/results-derive-dx.md` T55.6). `List` and `Dyn` answer the
   clip query as well as `ScrollView` and `Repeat`: each pushes a clip of
   its own rect in `paint`.
+- **T55.4.** `Program::host` stays generic over its own strategy, so a
+  headless frame or a test may still pick either; `Program`'s `I` is the
+  window's. `Local::from_host(Host::new(..))` no longer infers its
+  strategy from `Host`'s default (a default does not drive inference),
+  so two tests name `Local<A, Crashing>`. The launcher's tracked
+  features lose `everything`: the strategy is checked by
+  `--expect-strategy` alone, which already read the session's type.
+  `panic-app` gains its own `everything` feature, as showcase and
+  tasks-demo have.
 
 ## Appendix: finding → task
 

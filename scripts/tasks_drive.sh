@@ -44,7 +44,7 @@ for leg in everything boundaries boundaries+oracle; do
     case "$leg" in
     everything)
         cargo build --release -q -p tasks-demo --features everything
-        expect=(--expect-strategy Everything --expect-features everything) ;;
+        expect=(--expect-strategy Everything --expect-features "") ;;
     boundaries)
         cargo build --release -q -p tasks-demo
         expect=(--expect-strategy Boundaries --expect-features "") ;;

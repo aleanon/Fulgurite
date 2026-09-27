@@ -18,11 +18,13 @@ gpu = ["lumen-static-winit/gpu"]
 # the live window, so a review can open the dropdown and pick the next
 # widget instead of restarting the process once per widget.
 agent = ["lumen-static-winit/agent", "lumen-static-widgets/observe"]
-# M27/T27.3: the same showcase under `Boundaries` rather than `Everything`.
+# M27/T27.3: the same showcase under `Everything` rather than `Boundaries`.
 # `just widget-drive` runs every drive script against both, because M26
 # found four of its five defects invisible under the default -- a clean
-# subtree is skipped before a wrong answer can be observed.
-everything = ["lumen-static-winit/everything"]
+# subtree is skipped before a wrong answer can be observed. Since
+# M55/T55.4 it forwards nothing: `main` selects the type under it
+# (`Program::invalidation`), which changes only this application.
+everything = []
 shadow-oracle = ["lumen-static-winit/shadow-oracle"]
 
 [dev-dependencies]

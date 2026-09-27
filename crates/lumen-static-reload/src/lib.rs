@@ -383,7 +383,8 @@ pub mod hot {
     use lumen_static::reload::{symbols, Reloadable};
     use lumen_static::spawn::Descriptor;
     use lumen_static_shell::program::Program;
-    use lumen_static_shell::session::{abi_fields, FrameSource, Inval, Local, Recovering, Ret, Screen, Session};
+    use lumen_static::invalidate::Invalidation;
+    use lumen_static_shell::session::{abi_fields, FrameSource, Local, Recovering, Ret, Screen, Session};
     use lumen_static_shell::Host;
 
     /// This image's ABI stamp, with the shell's fields: what a window
@@ -411,7 +412,7 @@ pub mod hot {
     /// (`docs/events-decision.md` rule 3).
     ///
     /// [`Host::reissuable`]: lumen_static_shell::Host::reissuable
-    pub fn save<A: App + Reloadable>(h: &Host<A, Ret, Inval>) -> Vec<u8> {
+    pub fn save<A: App + Reloadable, I: Invalidation>(h: &Host<A, Ret, I>) -> Vec<u8> {
         use lumen_static::reload::{json, Value};
         let in_flight: Vec<Value> = h.reissuable().iter().map(|d| json!([d.kind, d.step, d.payload])).collect();
         lumen_static::reload::to_vec(&json!({
@@ -455,7 +456,7 @@ pub mod hot {
     /// again here. Delivery across a swap is therefore **at least once**
     /// ([`Host::reissuable`](lumen_static_shell::Host::reissuable)).
     pub fn boot<A: App + Reloadable + 'static>(program: Program<A>, saved: Option<&[u8]>) -> Box<dyn Session> {
-        let mut s = Local::from_program(program, Recovering).with_saver(save::<A>);
+        let mut s = Local::from_program(program, Recovering).with_saver(save::<A, _>);
         let Some(bytes) = saved else { return Box::new(s) };
         // **Per field** (§2.4): the derive restores each kept field on its
         // own, and one whose type changed keeps its boot value and is

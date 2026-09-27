@@ -31,8 +31,8 @@ In order, for one leg:
    process's own answer — `app.diagnostics`' `process` block
    (`AgentHost::process_info`) — must name the same pid, the leg's
    declared strategy and exactly the leg's declared features among the
-   ones that change what a drive can observe (`everything`,
-   `shadow-oracle`, `reload`). `--identity socket` skips the second, for
+   ones that change what a drive can observe (`shadow-oracle`,
+   `reload`; the strategy is its own check since M55/T55.4). `--identity socket` skips the second, for
    binaries that predate it (T42.8's re-run of old commits).
    It prints: `drove pid P (socket owner P), strategy S, features F, exe E`.
 6. **The drive**, with `{port}`, `{addr}`, `{pid}`, `{log}` substituted in
@@ -75,11 +75,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 #: The features a leg declares, because they change what a drive can
-#: observe: `everything` is the strategy, `shadow-oracle` decides whether
-#: `app.shadow` can say anything, `reload` whether `app.failure` can.
-TRACKED = ("everything", "shadow-oracle", "reload")
-NAMES = {"everything": "the whole-tree walk", "shadow-oracle": "the shadow oracle",
-         "reload": "panic recovery (reload)"}
+#: observe: `shadow-oracle` decides whether `app.shadow` can say
+#: anything, `reload` whether `app.failure` can. **Not the strategy**
+#: since M55/T55.4: it was the `everything` feature, and is now the
+#: session's type parameter, checked by `--expect-strategy` alone.
+TRACKED = ("shadow-oracle", "reload")
+NAMES = {"shadow-oracle": "the shadow oracle", "reload": "panic recovery (reload)"}
 
 
 def say(tag: str, msg: str) -> None:

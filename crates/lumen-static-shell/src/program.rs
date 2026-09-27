@@ -151,6 +151,22 @@ impl Prefer {
     }
 }
 
+/// Which invalidation strategy a window's host runs, when the
+/// application does not say — the default of [`Program`]'s `I`, and of
+/// the shell's `Local` and `Live` sessions, as it is [`Host`]'s.
+///
+/// **A type the application chooses, not a feature** — M55/T55.4
+/// (R12-F5). Until then the Inval alias was this type unless the shell's
+/// `everything` feature was on, and cargo unifies features across a build
+/// graph: one crate turning the diagnostic on changed the type of every
+/// public `host` field for every other crate, and plain `Host<A>` — the
+/// most natural spelling, since `Host`'s default is also
+/// `Boundaries<256>` — stopped compiling (E0308). The diagnostic is now
+/// `Program::invalidation::<Everything>()`, in the application's own code.
+/// 256 marks because `Boundaries<N>` stores ranges, not nodes, and
+/// M26/T26.5 fixed it wrapping its length at exactly that count.
+pub type DefaultInval = lumen_static::Boundaries<256>;
+
 /// A boot function, erased: the application and the jobs to start.
 ///
 /// Shared, because the host keeps it (M49/T49.4): `Host::reload` (behind `reload`)
@@ -160,7 +176,14 @@ pub type Boot<A> = Rc<dyn Fn() -> (A, Vec<Job<<A as App>::Msg>>)>;
 
 /// A program, described: how to build it and what its window looks
 /// like. Built by [`application`].
-pub struct Program<A: App> {
+///
+/// `I` is the invalidation strategy the program's **window** runs
+/// (M55/T55.4, R12-F5): `Boundaries<256>` unless
+/// [`Program::invalidation`] chose another. A type the application
+/// chooses in its own code, never a feature, so nothing else in the build
+/// graph can change it. [`Program::host`] stays generic over its own
+/// strategy, so a headless frame or a test may pick either.
+pub struct Program<A: App, I: Invalidation = DefaultInval> {
     boot: Boot<A>,
     title: Box<dyn Title<A>>,
     sheet: Option<Rc<dyn Sheet<A>>>,
@@ -183,6 +206,7 @@ pub struct Program<A: App> {
     /// The application's source directory, from `application`'s caller —
     /// M36: a panic report's application frame is found under it.
     source_root: Option<&'static str>,
+    strategy: core::marker::PhantomData<fn() -> I>,
 }
 
 /// Start describing a program from the function that builds it.
@@ -215,10 +239,35 @@ where
         backend: Prefer::Auto,
         images: None,
         agent: None,
+        strategy: core::marker::PhantomData,
     }
 }
 
-impl<A: App> Program<A> {
+impl<A: App, I: Invalidation> Program<A, I> {
+    /// Run the window under the strategy `J` instead — M55/T55.4.
+    ///
+    /// `application(boot).invalidation::<Everything>()` is the
+    /// diagnostic that the `everything` feature used to be: if a stale
+    /// frame goes away under it, an invalidation defect has been found.
+    /// An application that builds both keeps its own feature and makes
+    /// this call under it, which changes only its own code.
+    pub fn invalidation<J: Invalidation>(self) -> Program<A, J> {
+        Program {
+            boot: self.boot,
+            title: self.title,
+            sheet: self.sheet,
+            width: self.width,
+            height: self.height,
+            page: self.page,
+            palette: self.palette,
+            backend: self.backend,
+            images: self.images,
+            agent: self.agent,
+            source_root: self.source_root,
+            strategy: core::marker::PhantomData,
+        }
+    }
+
     pub fn title(mut self, title: impl Title<A> + 'static) -> Self {
         self.title = Box::new(title);
         self
@@ -287,7 +336,7 @@ impl<A: App> Program<A> {
     /// returned are held until a spawner is installed
     /// ([`Host::set_spawner`]), because a headless host has none and the
     /// window installs its own after this returns.
-    pub fn host<R: Retention, I: Invalidation>(&self) -> Host<A, R, I> {
+    pub fn host<R: Retention, J: Invalidation>(&self) -> Host<A, R, J> {
         let (app, jobs) = (self.boot)();
         let mut host = Host::new(app, self.width, self.height);
         host.set_boot(Rc::clone(&self.boot));

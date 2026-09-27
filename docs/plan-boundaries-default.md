@@ -32,7 +32,12 @@ commit subjects. Every gate names the injection that must turn it red.*
    now on. A gate with no strategy at all says nothing either way, and
    it is recorded as strategy-free rather than converted.
 2. **Keep an escape hatch, named for its purpose.** The feature that
-   selects `Everything` after the flip is a *diagnostic*. If a stale
+   selects `Everything` after the flip is a *diagnostic*. *(Since
+   M55/T55.4 it is not a feature: `Program::invalidation::<Everything>()`
+   in the application's own code, because a feature on the window crate
+   changed every window's type in the build graph — R12-F5,
+   `docs/plan-derive-dx.md` §2.1. The purpose is kept; the spelling
+   changed.)* If a stale
    frame disappears when you build with it, you have found an
    invalidation defect. The rustdoc says so, in those words.
 3. **Both defaults flip.** Both `lumen_static_winit::Inval` and `Host`'s
@@ -231,7 +236,9 @@ where it was measured.
 ## T34.2 — the flip
 
 > **DONE 2026-09-24.** `Inval` and `Host`'s default are both
-> `Boundaries<256>`; `everything` is the diagnostic feature; the three
+> `Boundaries<256>`; `everything` is the diagnostic feature *(replaced
+> by a type the application chooses, M55/T55.4; `Inval` is now the
+> sessions' `I` parameter, defaulting to `DefaultInval`)*; the three
 > drive scripts invert their legs (`everything` for the whole-tree leg).
 > **Every headless test that names `Host<A>` now runs `Boundaries`**, and
 > `just test` is green — that is the flip's own evidence run. Live:

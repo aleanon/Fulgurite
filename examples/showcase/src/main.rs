@@ -765,6 +765,11 @@ fn main() {
     if let Some(addr) = agent_addr() {
         program = program.agent(addr);
     }
+    // M55/T55.4: the drive's `Everything` leg is this application's
+    // choice, made here -- not a feature of the window crate.
+    #[cfg(feature = "everything")]
+    program.invalidation::<lumen_static::Everything>().run();
+    #[cfg(not(feature = "everything"))]
     program.run();
 }
 

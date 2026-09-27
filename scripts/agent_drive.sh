@@ -239,7 +239,7 @@ PY
 # no drive judged `Boundaries` as it ships. The plain leg is that build;
 # the oracle leg is a separate binary, which the launcher's feature check
 # proves (a plain leg that reports `shadow-oracle` is refused).
-run_one Everything agent,everything everything
+run_one Everything agent,everything ""
 run_one Boundaries agent ""
 run_one Boundaries+oracle agent,shadow-oracle shadow-oracle
 echo "agent-drive: both strategies, and Boundaries with and without the shadow oracle"

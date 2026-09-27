@@ -20,8 +20,8 @@ for strategy in everything boundaries; do
     feats="agent,reload"
     expect=(--expect-strategy Boundaries --expect-features reload)
     if [ "$strategy" = everything ]; then
-        feats="$feats,lumen-static-winit/everything"
-        expect=(--expect-strategy Everything --expect-features everything,reload)
+        feats="$feats,everything"
+        expect=(--expect-strategy Everything --expect-features reload)
     fi
     cargo build --release -q -p panic-app --features "$feats"
     # Eight panics, all provoked: the seven sites, and site 1 again for

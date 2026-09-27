@@ -271,7 +271,8 @@ pub struct Host<A: App, R: Retention = Incremental, I: Invalidation = lumen_stat
     /// `Everything` is the whole-tree walk *and* the oracle a bounded
     /// walk is checked against, so both must be constructible in one
     /// binary. It defaults to `Boundaries<256>` since M34/T34.2 — the
-    /// same type the window ships (`lumen_static_winit::Inval`) — so a
+    /// same type the window runs by default (`session::DefaultInval`,
+    /// chosen per program since M55/T55.4) — so a
     /// headless `Host<A>` and a window draw with one strategy. It was
     /// `Everything` until then, and every headless test ran the
     /// strategy no user did.
@@ -2280,8 +2281,10 @@ pub const CLEAR: Color = Color(255, 255, 255, 255);
 /// The features this shell was compiled with that change what a live
 /// drive observes — M42/T42.1, `process.features` in `app.diagnostics`.
 ///
-/// `agent` (the lint, and with `live-agent` the endpoint), `everything`,
-/// `shadow-oracle` and `reload`. A drive leg declares which of these it
+/// `agent` (the lint, and with `live-agent` the endpoint),
+/// `shadow-oracle` and `reload`. **Not the strategy** — it was, as the
+/// `everything` feature, until M55/T55.4; it is the session's type
+/// parameter now, reported as `process.strategy`. A drive leg declares which of these it
 /// expects, and `scripts/live/launch.py` refuses a process that reports
 /// otherwise: `shadow-oracle` and `reload` decide whether `app.shadow` and
 /// `app.failure` can say anything at all, and "cannot say" must not be
@@ -2290,7 +2293,6 @@ pub fn process_features() -> Vec<&'static str> {
     let mut f = Vec::new();
     for (on, name) in [
         (cfg!(feature = "agent"), "agent"),
-        (cfg!(feature = "everything"), "everything"),
         (cfg!(feature = "shadow-oracle"), "shadow-oracle"),
         (cfg!(feature = "reload"), "reload"),
     ] {

@@ -33,8 +33,13 @@ use crate::{surface, Cursor, Surface};
 /// feature. Nothing prevents the swap; it was not needed, and a second
 /// window would be a second GPU context — 174 MB resident
 /// (`docs/results-gpu.md` §5), which is a decision rather than a detail.
-pub struct Pane<A: App> {
-    pub host: Host<A, crate::Ret, crate::Inval>,
+///
+/// `I` is the invalidation strategy (M55/T55.4): `Boundaries<256>` unless
+/// the application names another, and never a feature — so `&mut
+/// Pane<A>` gives `&mut Host<A>` in every build graph
+/// (`tests/inval_param.rs`).
+pub struct Pane<A: App, I: lumen_static::invalidate::Invalidation = crate::DefaultInval> {
+    pub host: Host<A, crate::Ret, I>,
     pub window: Arc<Window>,
     pub surface: Surface,
     pub canvas: Canvas,
@@ -45,7 +50,7 @@ pub struct Pane<A: App> {
     cursor_shown: lumen_static::style::Cursor,
 }
 
-impl<A: App> Pane<A> {
+impl<A: App, I: lumen_static::invalidate::Invalidation> Pane<A, I> {
     pub fn new(host: A, window: Arc<Window>, page: Color, font: Option<FontStack>) -> Self {
         let size = window.inner_size();
         let mut host = Host::new(host, size.width.max(1), size.height.max(1));
@@ -93,26 +98,26 @@ impl<A: App> Pane<A> {
 /// enough windows for a hash to pay for itself is not an application
 /// this is written for, and a `Vec` keeps the common case — one window
 /// — to one comparison.
-pub struct Panes<A: App> {
-    panes: Vec<Pane<A>>,
+pub struct Panes<A: App, I: lumen_static::invalidate::Invalidation = crate::DefaultInval> {
+    panes: Vec<Pane<A, I>>,
 }
 
-impl<A: App> Default for Panes<A> {
+impl<A: App, I: lumen_static::invalidate::Invalidation> Default for Panes<A, I> {
     fn default() -> Self {
         Panes { panes: Vec::new() }
     }
 }
 
-impl<A: App> Panes<A> {
+impl<A: App, I: lumen_static::invalidate::Invalidation> Panes<A, I> {
     pub fn new() -> Self {
         Self::default()
     }
 
-    pub fn push(&mut self, pane: Pane<A>) {
+    pub fn push(&mut self, pane: Pane<A, I>) {
         self.panes.push(pane);
     }
 
-    pub fn get_mut(&mut self, id: WindowId) -> Option<&mut Pane<A>> {
+    pub fn get_mut(&mut self, id: WindowId) -> Option<&mut Pane<A, I>> {
         self.panes.iter_mut().find(|p| p.window.id() == id)
     }
 
@@ -137,7 +142,7 @@ impl<A: App> Panes<A> {
         self.panes.is_empty()
     }
 
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Pane<A>> {
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Pane<A, I>> {
         self.panes.iter_mut()
     }
 }

@@ -170,7 +170,7 @@ fn a_click_after_a_paste_lands_where_it_would_after_typing() {
 fn a_session_paste_measures_with_the_sessions_face() {
     use lumen_static_shell::session::{Local, Crashing, Session};
     let session = || {
-        let mut s = Local::from_host(Host::new(App::default(), 400, 60), "", lumen_static::Color(255, 255, 255, 255), Crashing);
+        let mut s: Local<App, Crashing> = Local::from_host(Host::new(App::default(), 400, 60), "", lumen_static::Color(255, 255, 255, 255), Crashing);
         s.frame(0.0, 400, 60);
         s.post(Event::Key { key: lumen_static::Key::Tab, down: true });
         s.frame(0.0, 400, 60);

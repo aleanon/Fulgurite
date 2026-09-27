@@ -10,7 +10,11 @@ fn main() {
     if std::env::args().nth(1).as_deref() == Some("--window") {
         use lumen_static_winit::{application, Run};
         // The endpoint is `LUMEN_AGENT_ADDR`, read by the window (M48/T48.11).
-        return application(panic_app::build_window).title("panic-app").size(420, 220).run();
+        let program = application(panic_app::build_window).title("panic-app").size(420, 220);
+        // M55/T55.4: the strategy is this application's choice.
+        #[cfg(feature = "everything")]
+        let program = program.invalidation::<lumen_static::Everything>();
+        return program.run();
     }
     let site: u8 = std::env::args().nth(1).and_then(|s| s.parse().ok()).unwrap_or(0);
     let mut h: Host<panic_app::Fx> = Host::new(build(), 300, 200);

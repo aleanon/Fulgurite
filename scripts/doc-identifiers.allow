@@ -117,3 +117,4 @@ BTreeMap             # std's, named where M50/T50.4 attributes the threads gate'
 __ln_                # the derive's local-name prefix (M55/T55.1); since the locals are
                      # built with `syn::Ident::new("__ln_..", mixed_site)` the prefix
                      # lives only in string literals, which the check blanks
+Inval                # the strategy alias M55/T55.4 replaced with a type parameter; the plans that record its history cite it

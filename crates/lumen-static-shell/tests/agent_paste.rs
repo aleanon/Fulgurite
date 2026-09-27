@@ -42,7 +42,7 @@ impl Screen for Blind {
 
 #[test]
 fn input_paste_reaches_the_focused_area_as_one_edit() {
-    let mut s = Local::from_host(Host::new(Fx::default(), 300, 200), "paste", Color(255, 255, 255, 255), Crashing);
+    let mut s: Local<Fx, Crashing> = Local::from_host(Host::new(Fx::default(), 300, 200), "paste", Color(255, 255, 255, 255), Crashing);
     s.frame(0.0, 300, 200);
     s.post(Event::Key { key: Key::Tab, down: true });
     s.frame(0.0, 300, 200);

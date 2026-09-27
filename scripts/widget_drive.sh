@@ -58,7 +58,7 @@ run_one() {
 # docs/plan-boundaries-repair.md §0 rule 2): the oracle lays the live
 # widgets out again after each frame it judges, so a `Boundaries` leg
 # with it compiled in would be judging a repaired window.
-run_one Everything         agent,everything     everything
+run_one Everything         agent,everything     ""
 run_one Boundaries         agent                ""
 run_one Boundaries+oracle  agent,shadow-oracle  shadow-oracle
 

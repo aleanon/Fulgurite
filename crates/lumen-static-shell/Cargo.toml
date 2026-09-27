@@ -44,9 +44,9 @@ agent = []
 # on the far side of the loader. Separate from `agent`, which is only the
 # lint: a test that wants the lint should not get `observe` with it.
 live-agent = ["agent", "dep:lumen-static-agent", "dep:serde_json"]
-# The whole-tree invalidation walk instead of `Boundaries` -- a
-# diagnostic (M34/T34.2); `session::Inval` reads it.
-everything = []
+# (No `everything` feature since M55/T55.4, R12-F5: a feature that changed
+# the type of `Local::host` for every crate in the graph. The diagnostic
+# is `Program::invalidation::<Everything>()`, in the application's code.)
 truetype = ["dep:fontdue"]
 # M34/T34.1: after every bounded frame, lay out again under an all-dirty
 # view into scratch state and compare — a live invalidation oracle. It

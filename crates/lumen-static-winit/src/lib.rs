@@ -356,24 +356,23 @@ impl Default for Config {
     }
 }
 
-/// Which invalidation strategy a turnkey window runs, and the retention
-/// its host uses — defined by the shell since M37
-/// (`lumen_static_shell::session`), because a hot library builds the same
-/// `Host` type and links no window system. Re-exported so
-/// `Host<A, Ret, Inval>` reads the same at every site.
+/// The retention a window's host uses, and the invalidation strategy it
+/// runs when the program does not choose one — defined by the shell since
+/// M37 (`lumen_static_shell::session`), because a hot library builds the
+/// same `Host` type and links no window system.
 ///
-/// **A build-time switch, and it had to be one.** `Host`'s invalidation
-/// is a type parameter, so the choice is fixed at construction.
-///
-/// **Why it exists at all (M27/T27.3).** Nothing outside `lumen-static`'s
-/// own tests had ever instantiated [`lumen_static::Boundaries`], so the
-/// strategy M26 spent five defects on was unreachable from every turnkey
-/// application. **`Boundaries` by default since M34/T34.2**; this
-/// crate's `everything` feature selects the whole-tree walk instead —
-/// **a diagnostic**: if a stale frame goes away when you build with it,
-/// you have found an invalidation defect.
-pub use lumen_static_shell::session::{Inval, Ret};
+/// **The strategy is a type the application chooses** — M55/T55.4
+/// (R12-F5). It was a build-time switch, this crate's `everything`
+/// feature, which cargo unified across the whole build graph: one crate
+/// turning the diagnostic on changed `Pane::host`'s type for every other,
+/// and plain `Host<A>` stopped compiling. Now a program says
+/// `.invalidation::<Everything>()` and a `Pane` names `Pane<A,
+/// Everything>`; [`DefaultInval`] (`Boundaries<256>`, since M34/T34.2)
+/// otherwise. `Everything` remains **a diagnostic**: if a stale frame goes
+/// away under it, you have found an invalidation defect.
+pub use lumen_static_shell::session::{DefaultInval, Ret};
 use lumen_static_shell::session::{Local, Session};
+use lumen_static::invalidate::Invalidation;
 
 /// Whether this window catches panics in application code — M36
 /// (`docs/plan-panic-recovery.md` rule 3, as amended by M52/T52.7): a
@@ -402,7 +401,7 @@ pub use lumen_static_shell::session::Crashing as Policy;
 /// one window while the headless host was styled by something else is
 /// the two-path defect `docs/plan-program.md` removed.
 pub fn run<A: App + 'static>(app: A, config: Config) {
-    let mut host: Host<A, Ret, Inval> = Host::new(app, config.width, config.height);
+    let mut host: Host<A, Ret, DefaultInval> = Host::new(app, config.width, config.height);
     host.set_palette(config.palette);
     let session = Local::from_host(host, config.title, config.page, Policy);
     start(Box::new(session), config, None);
@@ -1295,7 +1294,7 @@ pub trait Run {
 }
 
 #[cfg(not(feature = "hot"))]
-impl<A: App + 'static> Run for Program<A> {
+impl<A: App + 'static, I: Invalidation + 'static> Run for Program<A, I> {
     fn run(self) {
         run_program(self, |p| Box::new(Local::from_program(p, Policy)), None);
     }
@@ -1305,7 +1304,7 @@ impl<A: App + 'static> Run for Program<A> {
 /// application runs at once and its kept state carries into the first
 /// hot build when it lands (`docs/plan-window-reload.md` §2.1).
 #[cfg(feature = "hot")]
-impl<A: App + lumen_static::reload::Reloadable + 'static> Run for Program<A> {
+impl<A: App + lumen_static::reload::Reloadable + 'static, I: Invalidation + 'static> Run for Program<A, I> {
     fn run(self) {
         let dir = self.source_root().and_then(hot::locate);
         if dir.is_none() {
@@ -1323,9 +1322,9 @@ impl<A: App + lumen_static::reload::Reloadable + 'static> Run for Program<A> {
     }
 }
 
-fn run_program<A: App + 'static>(
-    mut program: Program<A>,
-    session: impl FnOnce(Program<A>) -> Box<dyn Session>,
+fn run_program<A: App + 'static, I: Invalidation + 'static>(
+    mut program: Program<A, I>,
+    session: impl FnOnce(Program<A, I>) -> Box<dyn Session>,
     hot: Option<std::path::PathBuf>,
 ) {
     // `LUMEN_SHOT=frame.ppm`: one headless frame from the same `host()`
@@ -1334,7 +1333,7 @@ fn run_program<A: App + 'static>(
     // an example's frame before and after its migration.
     if let Ok(path) = std::env::var("LUMEN_SHOT") {
         let (w, h, page) = (program.width, program.height, program.page);
-        return shot(program.host(), w, h, page, &path);
+        return shot(program.host::<Ret, I>(), w, h, page, &path);
     }
     // **The same `host()` a `--shot` calls** — `Local::from_program` boots
     // through it — so the window and every headless frame are built by
@@ -1356,7 +1355,7 @@ fn run_program<A: App + 'static>(
 ///
 /// Two pumps, as every example's own `--shot` does: the first teaches a
 /// scroller how far its content goes, the second is the frame.
-fn shot<A: App>(mut host: Host<A, Ret, Inval>, w: u32, h: u32, page: Color, path: &str) {
+fn shot<A: App, I: Invalidation>(mut host: Host<A, Ret, I>, w: u32, h: u32, page: Color, path: &str) {
     use lumen_static_shell::software::Canvas;
     let font = FontStack::system();
     let mut canvas = match font.clone() {
