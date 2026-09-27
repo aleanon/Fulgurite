@@ -67,7 +67,14 @@ impl<A: Widget, B: Widget> SplitPane<A, B> {
     }
 
     /// Move the divider, clamped away from both edges.
+    ///
+    /// **A non-finite fraction is refused** and answers `false`
+    /// (M55/T55.7, R16-F11): `num::clamp` passes a NaN through, so this
+    /// stored one and `split()` reported it.
     pub fn set_split(&mut self, f: f32) -> bool {
+        if !f.is_finite() {
+            return false;
+        }
         let f = lumen_static::num::clamp(f, Self::MIN, 1.0 - Self::MIN);
         let moved = f != self.split;
         self.split = f;

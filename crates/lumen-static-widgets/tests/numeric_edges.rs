@@ -23,7 +23,6 @@ fn key(n: &mut dyn Node, k: Key) -> bool {
 }
 
 #[test]
-#[ignore = "red until T55.7: R16-F11 (a NaN step resets a NumberInput to its minimum)"]
 fn a_nan_step_keeps_the_number() {
     let mut n = NumberInput::new(5.0, 0.0, 10.0, 1.0);
     n.step = f32::NAN;
@@ -33,7 +32,6 @@ fn a_nan_step_keeps_the_number() {
 }
 
 #[test]
-#[ignore = "red until T55.7: R16-F11 (a NaN step resets a RangeSlider handle to 0)"]
 fn a_nan_step_keeps_the_range() {
     let mut r = RangeSlider::new(0.3, 0.7);
     r.step = f32::NAN;
@@ -44,7 +42,6 @@ fn a_nan_step_keeps_the_range() {
 }
 
 #[test]
-#[ignore = "red until T55.7: R16-F11 (min > max pins the value to min)"]
 fn unordered_bounds_are_ordered_once() {
     // `min 10, max 0`: the range is [0, 10], and 5 is inside it. The old
     // clamp pinned it to 10 -- inside [0, 10] as well, which is why the
@@ -57,7 +54,6 @@ fn unordered_bounds_are_ordered_once() {
 }
 
 #[test]
-#[ignore = "red until T55.7: R16-F11 (SplitPane stores a NaN fraction)"]
 fn a_nan_split_is_refused() {
     let mut p: SplitPane<Fixed, Fixed> = SplitPane::default();
     let before = p.split();

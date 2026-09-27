@@ -62,7 +62,13 @@ impl Default for NumberInput {
 }
 
 impl NumberInput {
+    /// A field over `min..=max`, opening at `value` (clamped).
+    ///
+    /// **The bounds are put in order here, once** (M55/T55.7, R16-F11):
+    /// `min 10, max 0` is the range `[0, 10]`. Before, the clamp pinned
+    /// every value to `min` -- above the stated maximum.
     pub fn new(value: f32, min: f32, max: f32, step: f32) -> Self {
+        let (min, max) = if min > max { (max, min) } else { (min, max) };
         let mut n = NumberInput {
             field: crate::input::TextInput::default(),
             value: 0.0,
@@ -98,7 +104,7 @@ impl NumberInput {
 
     /// Clamp, store, and rewrite the text to match.
     pub fn set_value(&mut self, v: f32) -> bool {
-        let v = clamp_finite(v, self.min, self.max);
+        let v = clamp_finite(v, self.min, self.max, self.value);
         let text = format_fixed(v, self.decimals);
         let changed = v != self.value || self.field.as_str() != text;
         self.value = v;
@@ -132,10 +138,13 @@ impl NumberInput {
 /// `f32::clamp` panics when the bounds are unordered and returns NaN for
 /// a NaN input; a field whose value is NaN formats as "NaN" and never
 /// parses back, so it is a state with no way out. The last good value is
-/// the honest answer.
-fn clamp_finite(v: f32, lo: f32, hi: f32) -> f32 {
+/// the honest answer, and it is what this returns: `last` for a
+/// non-finite `v`. **That was not true until M55/T55.7** (R16-F11) -- it
+/// returned `lo`, so a NaN step reset a field to its minimum and a range
+/// handle to 0. A non-finite step is therefore no step.
+fn clamp_finite(v: f32, lo: f32, hi: f32, last: f32) -> f32 {
     if !v.is_finite() {
-        return lo;
+        return last;
     }
     lumen_static::num::clamp(v, lo, hi.max(lo))
 }
@@ -408,7 +417,9 @@ impl Default for RangeSlider {
 }
 
 impl RangeSlider {
+    /// A range from `low` to `high`, put in order once (M55/T55.7).
     pub fn new(low: f32, high: f32) -> Self {
+        let (low, high) = if low > high { (high, low) } else { (low, high) };
         let mut r = RangeSlider::default();
         r.set_low(low);
         r.set_high(high);
@@ -426,7 +437,7 @@ impl RangeSlider {
     /// Set the low bound. Clamped to `0.0..=high`, so it can meet the
     /// high handle but never pass it.
     pub fn set_low(&mut self, v: f32) -> bool {
-        let v = clamp_finite(v, 0.0, self.high);
+        let v = clamp_finite(v, 0.0, self.high, self.low);
         let changed = v != self.low;
         self.low = v;
         changed
@@ -434,7 +445,7 @@ impl RangeSlider {
 
     /// Set the high bound. Clamped to `low..=1.0`.
     pub fn set_high(&mut self, v: f32) -> bool {
-        let v = clamp_finite(v, self.low, 1.0);
+        let v = clamp_finite(v, self.low, 1.0, self.high);
         let changed = v != self.high;
         self.high = v;
         changed

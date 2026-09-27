@@ -101,7 +101,9 @@ pub const fn ceil(x: f32) -> f32 {
 /// (`docs/results-embedded.md`).
 ///
 /// Behaviour matches `f32::clamp` everywhere `f32::clamp` returns:
-/// NaN in gives NaN out, and the bounds are inclusive. Where
+/// NaN in gives NaN out, and the bounds are inclusive. **So a caller
+/// that stores the result guards against NaN itself** -- `SplitPane`'s
+/// `set_split` did not, and stored one (M55/T55.7, R16-F11). Where
 /// `f32::clamp` *panics* — `lo > hi`, or a NaN bound — this is total
 /// instead, which is the better failure for a frame loop: a GUI that
 /// stops drawing is worse than one that draws a degenerate rect.
