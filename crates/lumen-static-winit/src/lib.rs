@@ -977,7 +977,11 @@ impl ApplicationHandler<UserEvent> for Win {
     /// `docs/results-frame-cost.md` true — this changes when a still
     /// window wakes, never how often a busy one draws.
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
-        if self.quit {
+        // `app.quit`, or the application's key hook answering `Quit`
+        // (M60/T60.1) — asked of the session after every batch of
+        // events, so a key the window posted and one the agent's
+        // `input.key` pumped both close the window the same way.
+        if self.quit || self.session.wants_quit() {
             event_loop.exit();
             return;
         }

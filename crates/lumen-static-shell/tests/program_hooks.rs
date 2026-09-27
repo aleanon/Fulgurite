@@ -117,7 +117,6 @@ fn centre<A: lumen_static::event::App, I: Invalidation>(h: &Host<A, Incremental,
 /// `Boundaries`** — the default strategy, compared pixel for pixel with
 /// the `Everything` diagnostic (§0 rule 2).
 #[test]
-#[ignore = "red until T60.1: Host::pump_with never calls the key hook"]
 fn an_unconsumed_key_reaches_the_hook_and_is_painted_under_boundaries() {
     let mut b: Host<Keys, Incremental, Boundaries<256>> = program().host();
     let mut e: Host<Keys, Incremental, Everything> = program().host();
@@ -152,7 +151,6 @@ fn an_unconsumed_key_reaches_the_hook_and_is_painted_under_boundaries() {
 /// And the accept direction, in the same session: with nothing focused
 /// the same Up does reach it.
 #[test]
-#[ignore = "red until T60.1: Host::pump_with never calls the key hook"]
 fn a_key_a_focused_widget_consumes_never_reaches_the_hook() {
     let mut h: Host<Keys, Incremental, Boundaries<256>> = program().host();
     h.pump();
@@ -192,7 +190,6 @@ fn a_key_a_focused_widget_consumes_never_reaches_the_hook() {
 
 /// `Quit` asks to close and `Ignored` is not handled.
 #[test]
-#[ignore = "red until T60.1: Host::pump_with never calls the key hook"]
 fn quit_is_recorded_and_ignored_is_not_handled() {
     let mut h: Host<Keys, Incremental, Boundaries<256>> = program().host();
     h.pump();
@@ -230,7 +227,6 @@ struct Loose {
 /// to mark it — so `Handled` must mark everything, or `Boundaries` skips
 /// the note and draws last frame's (§2.1).
 #[test]
-#[ignore = "red until T60.1: Host::pump_with never calls the key hook"]
 fn an_unsplit_hook_that_writes_the_tree_is_painted_under_boundaries() {
     fn program() -> Program<Loose> {
         application(|| {

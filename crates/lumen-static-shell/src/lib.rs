@@ -1517,6 +1517,54 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         )
     }
 
+    /// Offer a key press dispatch did not consume to the program's key
+    /// hook ([`program::Program::on_key`]) — M60/T60.1. Whether the hook
+    /// handled it (`Handled` or `Quit`); `false` with no hook, for a
+    /// release, and for a key the focused node owns.
+    ///
+    /// **Owned is not the same as consumed** (`docs/plan-tally-slim.md`
+    /// §2.1): a focused node answering `Node::owns_arrows` — a text
+    /// field, a slider — owns its navigation and editing keys whether or
+    /// not it acted on them, because dispatch reports an arrow at a
+    /// field's edge as not consumed, and that arrow must not nudge the
+    /// application.
+    fn key_hook(&mut self, ev: &Event) -> bool {
+        use lumen_static::Key;
+        let Some(hook) = self.on_key else { return false };
+        let Event::Key { key, down: true } = *ev else { return false };
+        let editing = matches!(
+            key,
+            Key::Up
+                | Key::Down
+                | Key::Left
+                | Key::Right
+                | Key::Home
+                | Key::End
+                | Key::PageUp
+                | Key::PageDown
+                | Key::Backspace
+                | Key::Delete
+        );
+        if editing {
+            if let Some(f) = self.input.focus {
+                let f = f as usize;
+                if f < <A::Tree as Widget>::NODE_COUNT
+                    && lumen_static::widget::Node::node(self.app.tree(), f).owns_arrows()
+                {
+                    return false;
+                }
+            }
+        }
+        match hook(self.app.state_mut(), key, self.input.mods) {
+            program::KeyOutcome::Ignored => false,
+            program::KeyOutcome::Handled => true,
+            program::KeyOutcome::Quit => {
+                self.quit = true;
+                true
+            }
+        }
+    }
+
     /// Mark what a handled event may have changed — the rule below, used
     /// by the pump and by a paste's typing fallback alike.
     fn mark_handled(&mut self, consumed: &pass::Consumed) {
@@ -1569,7 +1617,13 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         // T25.0's marks redraw both nodes.
         pass::settle_overlays(&self.app, &self.styles, &mut self.states, &mut self.input, &self.overlays);
         while let Some(ev) = self.queue.pop() {
-            handled |= self.dispatch_now(&ev, &mut consumed);
+            let took = self.dispatch_now(&ev, &mut consumed);
+            // **A key press nothing took is the application's** —
+            // M60/T60.1 (`docs/plan-tally-slim.md` §2.1). Here, in the one
+            // pump the window, `host()` and the agent share, so there is no
+            // second path for it to drift on. What the hook changed is
+            // marked as any handled event is, by `mark_handled` below.
+            handled |= took || self.key_hook(&ev);
             // **The primary touch drives the pointer** — M44/T44.4
             // (`docs/plan-input-semantics.md` §2.4). The raw `Touch` went
             // first, so a recogniser in `lumen_static::gesture` still sees

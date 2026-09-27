@@ -622,6 +622,17 @@ description's sheet of the adopted application. `Application::style` and
 the window's `Config::stylesheet` are gone — they were two sources, and
 the window silently ignored the first (`docs/plan-program.md`).
 
+**DECIDED 2026-09-27 (M60/T60.1): a key no widget took is the
+program's.** `Program::on_key` holds a hook over the application's
+*state* — handler-shaped work — that `Host::pump_with` offers each key
+press dispatch did not consume and the focused node does not own
+(`Node::owns_arrows` owns its navigation and editing keys). It returns
+`KeyOutcome`: `Handled` is marked as a handled event is, `Quit` sets
+`Host::quit_requested`, which a window exits on through
+`Session::wants_quit`. One path: the window, `Program::host()` and the
+agent's `input.key` all pump the same host (`docs/plan-tally-slim.md`
+§2.1).
+
 **DECIDED 2026-09-24 (M36): a panic is caught, located and survived in
 development builds.** One guard, `Host::guard`, covers every path that
 runs application code; the screen is a display list naming the message,

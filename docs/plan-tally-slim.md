@@ -167,6 +167,10 @@ they exist, and commit as `#[ignore = "red until T60.k: …"]`.
 
 ## T60.1 — the key hook
 
+> **DONE 2026-09-27.** `Host::key_hook`, called from `pump_with` for a
+> key dispatch did not take; `Win::about_to_wait` exits on
+> `Session::wants_quit`. All four injections fired (commit body).
+
 Wire `on_key` into `pump_with`; `Win` exits on `Session::wants_quit`;
 the reload crate's `Hot` forwards it. *Injections:* (a) never call the
 hook — the unconsumed-key gates fail; (b) call it for every key press,

@@ -106,7 +106,6 @@ impl Owned for Offscreen {
 }
 
 #[test]
-#[ignore = "red until T60.1: Host::pump_with never calls the key hook"]
 fn input_key_reaches_the_key_hook() {
     let mut s = Local::from_program(program(), Crashing);
     let mut screen = Offscreen::new(W, H);
