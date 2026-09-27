@@ -48,6 +48,9 @@ def _press_scrim(c, title_sel):
 def _veil(name, sel, title_sel, go_sel):
     return (name, sel, [
         Action(
+            # A *request*: the veil does not close itself, so nothing on it
+            # changes; the readout counts the dismissals (D1).
+            visible=False,
             name="a press on the scrim asks to dismiss",
             needs="an open veil with its panel showing",
             do=lambda c: (c.__dict__.__setitem__("_n", _dismissals(c)),
@@ -64,6 +67,8 @@ def _veil(name, sel, title_sel, go_sel):
             injection="stop setting `dismissed` in Veil::on_event",
         ),
         Action(
+            # The claim is that nothing changes: the veil stays open (D1).
+            visible=False,
             name="it does not close itself",
             needs="a veil whose scrim has just been pressed",
             do=lambda c: _press_scrim(c, title_sel),
@@ -76,6 +81,8 @@ def _veil(name, sel, title_sel, go_sel):
             injection="set `self.open = false` on a scrim press",
         ),
         Action(
+            # Its consequence is the application's counter, in the readout (D1).
+        visible=False,
             name="the control on the panel still reaches the application",
             needs="a veil with a live button on its panel",
             do=lambda c: (c.__dict__.__setitem__("_n", (_confirmed(c), _dismissals(c))),

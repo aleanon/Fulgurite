@@ -19,6 +19,7 @@ def _slot(c, k: int, of: int):
 
 PAGINATION = ("Pagination", "#d_pagination_a", [
     Action(
+        visible=True,
         name="the next arrow steps one page",
         needs="a pagination on page 1 of 30",
         do=lambda c: (c.__dict__.__setitem__("_p0", _page(c)), _slot(c, 10, 11))[0],
@@ -31,6 +32,7 @@ PAGINATION = ("Pagination", "#d_pagination_a", [
         injection="drop the last-slot arm in Pagination::on_event",
     ),
     Action(
+        visible=True,
         name="pressing a number goes to that page",
         needs="a pagination whose window starts at 0",
         do=lambda c: (c.__dict__.__setitem__("_p0", _page(c)), _slot(c, 4, 11))[0],
@@ -43,6 +45,7 @@ PAGINATION = ("Pagination", "#d_pagination_a", [
         injection="make every slot the previous arrow",
     ),
     Action(
+        visible=True,
         name="the keyboard jumps to the last page",
         needs="a focused pagination away from the end",
         do=lambda c: (c.click(), c.key("End"))[0],
@@ -58,6 +61,7 @@ PAGINATION = ("Pagination", "#d_pagination_a", [
     # page the middle is 24..28, so the third number slot is page 24 --
     # and the first is page 1, always, where the centred window read 22.
     Action(
+        visible=True,
         name="a number is the page it shows, not its position in the strip",
         needs="a pagination on its last page, so the middle is 24..28",
         do=lambda c: (c.__dict__.__setitem__("_p0", _page(c)),
@@ -73,6 +77,7 @@ PAGINATION = ("Pagination", "#d_pagination_a", [
         injection="drop the window offset in Pagination::slot",
     ),
     Action(
+        visible=True,
         name="the previous arrow steps back, it does not jump",
         needs="a pagination away from the first page",
         do=lambda c: (c.__dict__.__setitem__("_p0", _page(c)), _slot(c, 0, 11))[0],
@@ -86,6 +91,7 @@ PAGINATION = ("Pagination", "#d_pagination_a", [
         injection="make the first slot go to the window's first page",
     ),
     Action(
+        visible=True,
         name="the first page is always one press away",
         needs="a pagination far from its start",
         do=lambda c: (c.__dict__.__setitem__("_p0", _page(c)), _slot(c, 1, 11))[0],
@@ -100,6 +106,7 @@ PAGINATION = ("Pagination", "#d_pagination_a", [
 
 TREE = ("Tree", "#d_tree_a", [
     Action(
+        visible=True,
         name="pressing a parent folds its whole subtree away",
         needs="a tree with everything expanded",
         do=lambda c: (c.__dict__.__setitem__("_n0", len(_visible(c))),
@@ -133,6 +140,9 @@ TREE = ("Tree", "#d_tree_a", [
         injection="let a press on a leaf decline (no selection)",
     ),
     Action(
+        # The consequence is the hover itself (D1): no pre-hover.
+        visible=True,
+        pre_hover=False,
         name="a hover lights the row under the pointer",
         needs="a tree nobody is pressing",
         do=lambda c: (c.__dict__.__setitem__("_m", c.mark()),
@@ -225,6 +235,7 @@ GRID = ("DataGrid", "#d_datagrid_a", [
         injection="place the rows at the grid's own origin, without the header offset",
     ),
     Action(
+        visible=True,
         name="a wheel scrolls the rows under the header",
         needs="more rows than the body can show",
         do=lambda c: (c.__dict__.__setitem__(
@@ -254,6 +265,7 @@ GRID = ("DataGrid", "#d_datagrid_a", [
     # its cells are -- they are labels, which decline a hit, so a press
     # on a row reached nothing.
     Action(
+        visible=True,
         name="a press on a row selects it",
         needs="a grid with rows on screen and nothing selected yet",
         do=lambda c: (c.__dict__.__setitem__("_r0", c.readout()),

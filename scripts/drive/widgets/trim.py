@@ -29,6 +29,7 @@ def _press_body(c, sel):
 
 CHIP = ("Chip", "#d_chip_a", [
     Action(
+        visible=True,
         name="a click selects the chip",
         needs="three filter chips, none selected",
         do=lambda c: (c.__dict__.__setitem__("_s0", _selected(c)), c.click())[0],
@@ -40,6 +41,7 @@ CHIP = ("Chip", "#d_chip_a", [
         injection="Chip::handler answers None — the chip is a picture of a control",
     ),
     Action(
+        visible=True,
         name="a second click deselects it",
         needs="the chip selected by the action before",
         do=lambda c: c.click(),
@@ -50,6 +52,7 @@ CHIP = ("Chip", "#d_chip_a", [
         injection="set rather than flip the tag in the showcase's handler",
     ),
     Action(
+        visible=True,
         name="the × removes and does not select",
         needs="a removable chip",
         do=lambda c: (c.__dict__.__setitem__("_r0", _removed(c)),

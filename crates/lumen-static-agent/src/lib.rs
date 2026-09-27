@@ -462,7 +462,11 @@ impl Agent {
             let result = host.shadow().unwrap_or_else(|| json!({ "supported": false }));
             return json!({ "jsonrpc": "2.0", "id": id, "result": result });
         }
-        if !method.starts_with("input.") && method != "ui.screenshot" && method != "app.setPalette"
+        // The host-backed methods: they read the frame or change the host.
+        if !method.starts_with("input.")
+            && method != "ui.screenshot"
+            && method != "ui.regionHash"
+            && method != "app.setPalette"
         {
             let tree = host.tree();
             return self.dispatch(&tree, req);
@@ -632,6 +636,39 @@ impl Agent {
                     "scale": host.scale(),
                     "image_base64": png::base64(&png),
                 }))
+            }
+            // **Did these pixels change?** — M57/D1. A hash of the
+            // canvas inside a logical rect, so a drive can assert that an
+            // action's consequence *shows* without decoding a PNG of the
+            // whole window twice per action. `[x0, y0, x1, y1]` in
+            // logical px, scaled here; `pixels` is how many were hashed,
+            // so an empty or off-screen rect is visible as 0.
+            "ui.regionHash" => {
+                let rect = params.get("rect").and_then(Value::as_array).ok_or((
+                    INVALID_PARAMS,
+                    "missing `rect` [x0, y0, x1, y1]".into(),
+                    Value::Null,
+                ))?;
+                let v = |k: usize| rect.get(k).and_then(Value::as_f64).unwrap_or(0.0) as f32;
+                let (w, h, rgba) = host.frame().ok_or((
+                    INVALID_PARAMS,
+                    "this host does not render — nothing to hash".into(),
+                    Value::Null,
+                ))?;
+                let sc = host.scale();
+                let clampx = |x: f32| ((x * sc).round().max(0.0) as u32).min(w);
+                let clampy = |y: f32| ((y * sc).round().max(0.0) as u32).min(h);
+                let (x0, x1, y0, y1) = (clampx(v(0)), clampx(v(2)), clampy(v(1)), clampy(v(3)));
+                let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+                let mut pixels = 0u64;
+                for y in y0..y1 {
+                    let row = &rgba[((y * w + x0) * 4) as usize..((y * w + x1) * 4) as usize];
+                    for b in row {
+                        hash = (hash ^ *b as u64).wrapping_mul(0x100_0000_01b3);
+                    }
+                    pixels += (x1 - x0) as u64;
+                }
+                Ok(json!({ "hash": format!("{hash:016x}"), "pixels": pixels }))
             }
             // Replace a field's whole value in one call, through the
             // queue.

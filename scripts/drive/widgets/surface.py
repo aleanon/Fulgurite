@@ -30,6 +30,7 @@ def _area(b) -> float:
 # --- Card -----------------------------------------------------------
 CARD = ("Card", "#d_card_a", [
     Action(
+        visible=True,
         name="a button on the card reaches the application",
         needs="a card whose content is wired to the press counter",
         do=lambda c: (c.__dict__.__setitem__("_n", _presses(c)),
@@ -91,6 +92,9 @@ def _show(c):
 
 TOAST = ("Toast", "#d_toast_b", [
     Action(
+        # The toast floats at the window's bottom, outside the demo (D1).
+        visible=True,
+        region="window",
         name="Save shows a toast below the stage, centred on the window",
         needs="a hidden floating toast and its button",
         do=lambda c: (c.__dict__.__setitem__("_w0", _shown_w(c)), _show(c))[0],
@@ -121,6 +125,9 @@ TOAST = ("Toast", "#d_toast_b", [
         injection="make Toast::type_defaults width FILL",
     ),
     Action(
+        # The toast floats at the window's bottom, outside the demo (D1).
+        visible=True,
+        region="window",
         name="its × closes it",
         needs="the floating toast shown, with a ×",
         do=lambda c: (c.c.rpc("input.click", x=_box(c, "#d_toast_a")[2] - 6,
@@ -129,10 +136,13 @@ TOAST = ("Toast", "#d_toast_b", [
         injection="drop the PointerUp arm in Toast::on_event",
     ),
     Action(
+        visible=True,
+        region="window",
         name="shown again, it goes away by itself",
         needs="a toast shown for 3000 ms",
-        do=lambda c: (_show(c), c.__dict__.__setitem__("_w0", _shown_w(c)), time.sleep(3.4),
-                      c.hover())[0],
+        # Shown in setup, so the "before" frame has it (D1).
+        setup=_show,
+        do=lambda c: (c.__dict__.__setitem__("_w0", _shown_w(c)), time.sleep(3.4), c.hover())[0],
         expect=lambda c: (
             c._w0 > 0.0 and _shown_w(c) == 0.0,
             f"width {c._w0:.0f} just after showing, {_shown_w(c):.0f} after 3.4 s",
@@ -172,6 +182,10 @@ def _tip_area(c) -> float:
 
 TOOLTIP = ("Tooltip", "#tooltip-content", [
     Action(
+        # The tip is the hover's consequence, drawn outside the content (D1).
+        visible=True,
+        region="window",
+        pre_hover=False,
         name="resting on the content opens the tip",
         needs="a tooltip whose tip is closed",
         # M57/B35: the tip waits for the pointer to rest (500 ms), as
@@ -194,6 +208,9 @@ TOOLTIP = ("Tooltip", "#tooltip-content", [
         injection="key the tip on the wrapper's own `hovered`, which dispatch never sets",
     ),
     Action(
+        # A claim about hit routing: the content's click lands, in the
+        # readout; nothing in the box changes (D1).
+        visible=False,
         name="the tip does not take the pointer from its content",
         needs="a tooltip with its tip open over the content",
         do=lambda c: (c.__dict__.__setitem__("_n", _presses(c)), c.click())[0],

@@ -25,6 +25,7 @@ def _focus_and(c, fn):
 
 NUMBER = ("NumberInput", "#d_number_a", [
     Action(
+        visible=True,
         name="a click focuses the field",
         needs="an unfocused number field",
         do=lambda c: c.click(),
@@ -36,6 +37,7 @@ NUMBER = ("NumberInput", "#d_number_a", [
         injection="stop setting focus on PointerDown in dispatch",
     ),
     Action(
+        visible=True,
         name="ArrowUp steps it up by exactly one step",
         needs="a focused field below its maximum",
         do=lambda c: (c.click(), c.__dict__.__setitem__("_v0", _text(c)), c.key("Up"))[0],
@@ -46,6 +48,7 @@ NUMBER = ("NumberInput", "#d_number_a", [
         injection="drop the Key::Up arm in NumberInput::on_event",
     ),
     Action(
+        visible=True,
         name="a letter is refused outright",
         needs="a focused field with a value in it",
         do=lambda c: (c.click(), c.__dict__.__setitem__("_v0", _text(c)), c.c.type("abc"))[0],
@@ -56,6 +59,7 @@ NUMBER = ("NumberInput", "#d_number_a", [
         injection="make is_number_char accept everything",
     ),
     Action(
+        visible=True,
         name="Enter commits and normalises",
         needs="a focused field holding a typed value",
         do=lambda c: (c.click(), c.c.fill(c.sel, "7"), c.key("Enter"))[0],
@@ -102,6 +106,7 @@ def _range(c) -> str:
 
 RANGE = ("RangeSlider", "#d_range_a", [
     Action(
+        visible=True,
         name="a press takes the nearer handle and moves it",
         needs="a range with its handles apart, at 0.25 and 0.75",
         do=lambda c: (c.__dict__.__setitem__("_r0", _range(c)), c.click())[0],
@@ -114,6 +119,7 @@ RANGE = ("RangeSlider", "#d_range_a", [
         injection="drop the PointerDown arm in RangeSlider::on_event",
     ),
     Action(
+        visible=True,
         name="a handle driven past the other stops at it",
         needs="a range with both handles reachable",
         # Press near the LEFT end so the low handle is taken, then drag
@@ -146,6 +152,7 @@ def _click_above(c, sel, pad=6.0):
 
 SEARCH = ("SearchField", "#search-field", [
     Action(
+        visible=True,
         name="a click reaches the text, not the container",
         needs="a search field with its magnifier and its text",
         do=lambda c: c.click(),
@@ -162,6 +169,7 @@ SEARCH = ("SearchField", "#search-field", [
         injection="let SearchField::hit fall through to the container",
     ),
     Action(
+        visible=True,
         name="typing reaches the query",
         needs="a focused search field",
         # End first: since M57/A3 a click puts the caret where it lands,
@@ -197,6 +205,7 @@ SEARCH = ("SearchField", "#search-field", [
     # M57/B26: `clear()` had no caller. And the field is inside the pill
     # now: it ended 148 px past it while laid out across the offer.
     Action(
+        visible=True,
         name="Escape clears the query, and the field ends inside the pill",
         needs="a focused search field with a query",
         do=lambda c: (c.click(), c.__dict__.__setitem__("_v0", _text(c)),

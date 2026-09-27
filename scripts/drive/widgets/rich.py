@@ -50,6 +50,7 @@ MARKDOWN = ("Markdown", "#d_markdown_a", [
 
 EDITOR = ("RichTextEditor", "#d_editor_a", [
     Action(
+        visible=True,
         name="typing markup updates the preview under it",
         needs="an editor whose preview is already parsed",
         do=lambda c: (c.__dict__.__setitem__(
@@ -72,6 +73,7 @@ EDITOR = ("RichTextEditor", "#d_editor_a", [
     # M57/B8: `bold()` existed and nothing called it; and the agent could
     # not hold a modifier, so a shortcut could not be driven at all.
     Action(
+        visible=True,
         name="Ctrl+B bolds the selection",
         needs="an editor with focus in its text area",
         do=lambda c: (c.click(f"{c.sel} > #editor-input"),

@@ -81,6 +81,7 @@ def _clear_trigger(c):
 
 PICKLIST = ("PickList", "#d_picklist_a", [
     Action(
+        visible=True,
         name="releasing over a row chooses it",
         needs="a closed picklist, opened by pressing its trigger",
         do=lambda c: (c.__dict__.__setitem__("_v0", c.value()),
@@ -109,6 +110,7 @@ PICKLIST = ("PickList", "#d_picklist_a", [
 
 COMBOBOX = ("Combobox", "#d_combobox_a", [
     Action(
+        visible=True,
         name="typing filters the list",
         needs="a combobox opened by pressing its trigger",
         # **An explicit press, release, then type** — not `input.fill`.
@@ -129,6 +131,7 @@ COMBOBOX = ("Combobox", "#d_combobox_a", [
         injection="make the filter case-sensitive",
     ),
     Action(
+        visible=True,
         name="clearing the query shows everything again",
         needs="a combobox with a query in it",
         do=lambda c: _clear_trigger(c),

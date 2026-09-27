@@ -40,9 +40,13 @@ def _shared(name, sel, cols, cw, cell, want, head=0.0):
     """The three rows every picker has."""
     return [
         Action(
+            # The pad opens below the trigger, outside the demo row's box (D1).
+            visible=True,
+            region="window",
             name="a press opens the popup",
             needs="a closed picker",
-            do=lambda c: (c.key("Escape"), c.click())[0],
+            setup=lambda c: c.key("Escape"),
+            do=lambda c: c.click(),
             expect=lambda c: (
                 _is_open(c),
                 "the pad is {:.0f}x{:.0f} px".format(
@@ -53,6 +57,7 @@ def _shared(name, sel, cols, cw, cell, want, head=0.0):
             injection="make Picker::on_event ignore the press on its trigger",
         ),
         Action(
+            visible=True,
             name="a cell sets the value and closes the popup",
             needs="an open picker",
             do=lambda c: (c.__dict__.__setitem__("_v0", c.value()),
@@ -94,6 +99,7 @@ DATE = ("DatePicker", "#d_datepicker_a", _shared(
     # exactly that ("the month moved"), which is how the defect passed.
     # Paging moves the month on show; only a day press commits.
     Action(
+        visible=True,
         name="the arrows page the month and leave the chosen date",
         needs="an open date picker",
         do=lambda c: (c.__dict__.__setitem__("_v0", c.value()),
@@ -105,6 +111,7 @@ DATE = ("DatePicker", "#d_datepicker_a", _shared(
         injection="make shift_month move the chosen year and month",
     ),
     Action(
+        visible=True,
         name="a day picked after paging commits the paged month",
         needs="an open date picker",
         do=lambda c: (c.__dict__.__setitem__("_v0", c.value()),
@@ -128,6 +135,7 @@ DATE = ("DatePicker", "#d_datepicker_a", _shared(
 TIME = ("TimePicker", "#d_timepicker_a", _shared(
     "TimePicker", "#d_timepicker_a", 6, 34.0, 27, "09:15") + [
     Action(
+        visible=True,
         name="an hour sets the hour and keeps the clock open",
         needs="an open time picker on a minute other than the hour's",
         do=lambda c: (c.__dict__.__setitem__("_v0", c.value()),

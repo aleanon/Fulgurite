@@ -67,6 +67,7 @@ GRID = ("Grid", "#d_grid_a", [
 
 SPLIT = ("SplitPane", "#d_split_a", [
     Action(
+        visible=True,
         name="dragging the divider moves it",
         needs="a split pane at its default halfway point",
         # **A transition, not a state.** `split < 0.45` is a fact about
@@ -84,6 +85,7 @@ SPLIT = ("SplitPane", "#d_split_a", [
         injection="drop the PointerDown arm in SplitPane::on_event",
     ),
     Action(
+        visible=True,
         name="it stops short of the edge",
         needs="a split pane that can be dragged",
         # **Inside the widget, at its very edge.** A press at a negative
@@ -137,6 +139,7 @@ def _click_header(c):
 
 ACCORDION = ("Accordion", "#d_acc_b", [
     Action(
+        visible=True,
         name="a press on the header opens the section",
         needs="a collapsed section",
         do=lambda c: (c.__dict__.__setitem__("_h0", c.box()[3] - c.box()[1]),
@@ -156,6 +159,7 @@ ACCORDION = ("Accordion", "#d_acc_b", [
         injection="drop the header press arm in Collapsible::on_event",
     ),
     Action(
+        visible=True,
         name="a press on the header again closes it",
         needs="an open section",
         # **On the header**, 20 px into its 40: this clicked the open
@@ -180,6 +184,9 @@ ACCORDION = ("Accordion", "#d_acc_b", [
         injection="make the press set `open = true` instead of toggling",
     ),
     Action(
+        # The section that closes is another one: watch the stage (D1).
+        visible=True,
+        region="#demo",
         name="opening one closes the one that was open",
         needs="three sections, the second open",
         do=lambda c: (c.click(), c.click("#d_acc_c")),
@@ -232,6 +239,7 @@ def _drag(c, x_frac: float, y_frac: float, grab: str):
 
 PANEGRID = ("PaneGrid", "#d_panegrid_a", [
     Action(
+        visible=True,
         name="a column's divider moves only that column",
         needs="a grid whose three dividers all sit at 0.5",
         do=lambda c: (c.__dict__.__setitem__("_f0", _fracs(c)),
@@ -261,6 +269,7 @@ PANEGRID = ("PaneGrid", "#d_panegrid_a", [
         injection="give both columns one horizontal divider",
     ),
     Action(
+        visible=True,
         name="a drag keeps the divider it started on",
         needs="a grid with a divider to grab",
         do=lambda c: (c.__dict__.__setitem__("_f0", _fracs(c)),

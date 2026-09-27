@@ -108,6 +108,30 @@ class Action:
     #: would be the bound removed, which is the shape this whole protocol
     #: exists to refuse.
     reflows: bool = False
+    #: **Does the consequence show?** — M57/D1. `True`: the pixels in the
+    #: widget's box (or `region`'s) must change, asserted from the frame
+    #: itself (`ui.regionHash`). `False`: declared invisible there — a
+    #: readout-only effect, a focus move — with the reason in a comment.
+    #: A non-static action that declares neither **fails the run**, so
+    #: "every action says" is an assertion, not a review question.
+    #:
+    #: The drives read the store and the published values, and CheckBox
+    #: passed while its box never repainted (C2): the readout moved and
+    #: the picture did not. This is the check that would have caught it.
+    visible: bool | None = None
+    #: A selector for where a `visible` consequence shows, when it is not
+    #: the widget's own box (a popup, a readout of the widget's value), or
+    #: `"window"` for the whole window (a toast, a tooltip).
+    region: str | None = None
+    #: Hover the widget before the "before" frame, so the action's own
+    #: pointer move adds no shade. `False` for an action whose consequence
+    #: *is* the hover (a highlight, a tooltip): pre-hovering would have
+    #: done its work before the frame was taken.
+    pre_hover: bool = True
+    #: Run before the "before" frame (D1): the state the action starts
+    #: from. An action that closed a popup and reopened it inside `do`
+    #: compared an open popup with an open popup.
+    setup: Callable[["Ctx"], None] | None = None
     #: Lint codes this action may legitimately introduce.
     #:
     #: **Named codes only, never "any".** Squeezing a split pane to 8%
@@ -203,6 +227,24 @@ class Ctx:
 
     def hover(self, sel: str | None = None):
         return self.c.rpc("input.hover", selector=sel or self.sel)
+
+
+def _region_name(region) -> str:
+    if callable(region):
+        return getattr(region, "__doc__", None) or "the watched rect"
+    return region or "the widget"
+
+
+def _region_rect(ctx, region):
+    """The rect a `visible` action watches, in logical px: a selector,
+    `"window"`, or a callable taking the ctx and answering a rect."""
+    if callable(region):
+        return region(ctx)
+    if region == "window":
+        shot = ctx.c.rpc("ui.screenshot")
+        sc = shot.get("scale", 1.0)
+        return [0.0, 0.0, shot["width"] / sc, shot["height"] / sc]
+    return ctx.box(region) if region else ctx.box()
 
 
 def _nav_row(c: AgentClient, widget: str):
@@ -329,8 +371,29 @@ def run_widget(c: AgentClient, widget: str, sel: str, actions: list[Action],
             f"here is ambiguous. First: {dupes[0].get('message', '')[:120]}")
 
     seen: set[str] = set()
+    undeclared = [a.name for a in actions if not a.static and a.visible is None]
+    if undeclared:
+        raise Failed(
+            f"{widget}: {len(undeclared)} action(s) do not declare `visible` "
+            f"(M57/D1): {', '.join(undeclared)}")
     for a in actions:
+        if a.setup is not None:
+            a.setup(ctx)
+            c.rpc("ui.lastChange")
         before_lint = len(c.lint().get("findings", []))
+        # **Hover first, then the "before" frame** (D1): the action's own
+        # pointer move would otherwise put a hover shade on the widget,
+        # and a checkbox that never repainted its box would pass on the
+        # shade alone.
+        if a.visible:
+            if a.pre_hover:
+                try:
+                    ctx.hover(ctx.sel)
+                except Exception:
+                    pass
+                c.rpc("ui.lastChange")
+            pix_rect = _region_rect(ctx, a.region)
+            pix_before = c.rpc("ui.regionHash", rect=pix_rect)
         since = ctx.mark()
         a.do(ctx)
 
@@ -348,6 +411,19 @@ def run_widget(c: AgentClient, widget: str, sel: str, actions: list[Action],
         out.append(f"    {a.name}: {measured}")
         if not ok:
             raise Failed(f"{widget}/{a.name}: {measured} (injection: {a.injection})")
+
+        # (2b) and it shows (D1): the same rect's pixels, after.
+        if a.visible:
+            pix_after = c.rpc("ui.regionHash", rect=pix_rect)
+            if pix_before.get("pixels", 0) <= 0:
+                raise Failed(f"{widget}/{a.name}: the region to watch is empty {pix_rect}")
+            if pix_after.get("hash") == pix_before.get("hash"):
+                raise Failed(
+                    f"{widget}/{a.name}: the consequence does not show — "
+                    f"{pix_before.get('pixels')} px of {_region_name(a.region)} "
+                    f"are unchanged (injection: {a.injection})")
+            out.append(f"      pixels: {_region_name(a.region)}'s "
+                       f"{pix_before.get('pixels')} px changed")
 
         # **Damage is the widget's own business.** Bounded against the
         # region that covers it, not against the frame's bounding box —

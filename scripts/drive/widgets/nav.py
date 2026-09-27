@@ -27,6 +27,7 @@ def _press_frac(c, frac: float, vertical: bool = False):
 def _strip(name, sel, vertical=False):
     return (name, sel, [
         Action(
+            visible=True,
             name="a press selects the item under it",
             needs="a four-item strip with the first selected",
             do=lambda c: (c.__dict__.__setitem__("_s0", _sel(c)),
@@ -106,6 +107,9 @@ PULL = ("PullToRefresh", "#d_pull_a", [
     # gone before a drive can read it. What a user sees is the refresh, so
     # that is what is asserted; `tests/pull_refresh.rs` holds the states.
     Action(
+        # The pull snaps back once the refresh fires, so the content ends where
+        # it began; the refresh shows in the readout (D1).
+        visible=False,
         name="a wheel pull past the threshold refreshes when the wheel stops",
         needs="content that has not been pulled",
         do=lambda c: (c.__dict__.__setitem__("_n", _refreshes(c)),
