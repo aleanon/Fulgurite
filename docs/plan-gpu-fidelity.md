@@ -1,5 +1,22 @@
 # M51 — the GPU path: what its parity gate can see, and what it costs
 
+> **T51.0–T51.2, T51.5 DONE 2026-09-27; T51.4 NOT DONE (waits for
+> M50/T50.2).** Run on both adapter classes: the RTX 4070 works again,
+> and llvmpipe is reachable through lavapipe.
+> **T51.0:** every finding gated; R9-F1 (5.0% of text ink missing at
+> scale 2), R9-F6, R9-F8 (+10 allocs over a floor of 62) and R9-F9 red.
+> **T51.1:** parity by region (ten shapes plus the page, `2b + 2`
+> bounds, an exhaustive `kind` over `Cmd`, an image region and a software
+> twin); the glyph atlas grows (1024 → 2048 fits the corpus, 0 give-ups)
+> and `app.perf` reports `atlas_give_ups`. Found a two-pixel seam under
+> every shadowed card, on both backends — reported, not fixed.
+> **T51.2:** `Prefer::Auto` refuses a CPU adapter; live on a
+> lavapipe-only loader, `Auto: software`.
+> **T51.4:** skipped — M50/T50.2's scratch-taking `place_run` is not on
+> the base; `tests/alloc.rs` stays ignored "red until T51.4".
+> **T51.5:** the blur scratch is made by the first glass frame (0 B
+> until then).
+>
 > **T51.3 and T51.6 DONE 2026-09-25 (early landings).** **T51.3:** `glass_deps.rs` fires
 > `dilate`'s `MAX_DEPS` escape: 4 panels go partial 5/5, 5 panels go
 > `Damage::All` 5/5, 0 px differ; with the escape deleted (`ecaf67f`)
