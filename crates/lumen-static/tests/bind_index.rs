@@ -107,3 +107,28 @@ fn an_address_outside_the_tree_names_nothing() {
     let elsewhere = 7u64;
     assert_eq!(node_of(&ui, at(&elsewhere)), None, "a foreign address must not name a node");
 }
+
+/// **`BindSite` caches every answer, index 0 and "nowhere" included** —
+/// M52/T52.3. It stores the index plus two so that a new site is all
+/// zero (`.bss`, not `.data`); the offset must round-trip for the root's
+/// index 0, for a large index, and for `None`, and `find` must run once.
+#[test]
+fn a_bind_site_caches_zero_nowhere_and_a_large_index_once() {
+    use lumen_static::bind::BindSite;
+    for want in [Some(0usize), Some(1), Some(2), Some(usize::MAX - 2), None] {
+        let site = BindSite::new();
+        let mut calls = 0;
+        let first = site.get(|| {
+            calls += 1;
+            want
+        });
+        let second = site.get(|| {
+            calls += 1;
+            Some(12345)
+        });
+        println!("want {want:?}: first {first:?}, cached {second:?}, find ran {calls}x");
+        assert_eq!(first, want, "the first answer is find's");
+        assert_eq!(second, want, "the cached answer is the first one, not find's second");
+        assert_eq!(calls, 1, "find ran once");
+    }
+}

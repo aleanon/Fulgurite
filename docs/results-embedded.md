@@ -47,6 +47,7 @@ that produces real sections.
 |---|---:|---:|---|
 | `.text` | ≤ 64 KB | **27,968 B** (27.3 KB) | **pass**, at 42.7% of budget |
 | `.bss` + `.data` | zero framework symbols | **1 symbol, 4 B, exempted** | **pass** — the fixture's own `SINK` (`scripts/bss.allow`) |
+| `.data` | 0 B | **0 B** in all four binaries | **pass**; asserted by `scripts/check_bss.sh` since M52/T52.3 — the interactive and bind-only builds had 4 B, one binding's cache (F-NEW-1) |
 | `.rodata` | — | 12,880 B | of which the baked face is most; 9,010 B at T13.7 |
 | Total (`size -A`) | ≤ 512 KB flash | **41,065 B** (40.1 KB) | 7.8% of the part |
 | RAM, 100 nodes | ≤ 24 KB | **16.0 KB** state + style | **pass**; measured at M27/T27.1 (2026-09-18), below |
@@ -114,6 +115,23 @@ names a static by its **full** demangled name; it used to cut the name at
 its first space (`<embedded::Device`), so no exemption could have matched
 the binding cache. The three findings in the second table above are
 committed as expected red, each naming the task that turns it green.
+
+### A binding's cache claims no flash — M52/T52.3
+
+The `4` in the `.data` column above was F-NEW-1: the derive's per-binding
+`BindSite` static began at `usize::MAX`, so it was initialised data —
+stored in flash, copied to RAM before `main`. `BindSite` now stores the
+index plus two, with `0` for "not looked up" and `1` for "nowhere", so a
+new site is all-zero and lands in `.bss`: **`.data` is 0 B in all four
+binaries**, and the interactive and bind-only builds each carry one 4 B
+binding cache in `.bss`. It is still a framework static, the only one
+this profile has, so `scripts/bss.allow` exempts it **by pattern**
+(`glob: *::update_marked::__ln_site`) with the argument — bounded by the
+source text, one per `#[bind]`, 4 B of zeroed RAM each — and
+`scripts/check_bss.sh` prints `1 binding cache(s) (4 B, exempt by
+pattern)` per binary so the exemption is visible. Putting "unknown" back
+at `usize::MAX` fails the `.data` assertion at 4 B on both binaries;
+removing the pattern lists the static by its full name.
 
 ### The stack, measured — M52/T52.6
 

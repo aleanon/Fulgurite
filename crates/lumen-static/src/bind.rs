@@ -239,11 +239,27 @@ pub fn node_of<T: crate::widget::Widget>(tree: &T, target: *const u8) -> Option<
 /// `static`, so [`node_of`]'s walk runs once for the life of the build
 /// that owns it (a hot reload loads a new build with fresh statics, and
 /// a new layout). A generic application gets none, and walks per write.
+///
+/// **All-zero when new, so it claims no flash** — M52/T52.3
+/// (`docs/plan-embedded-footprint.md` §2.1, F-NEW-1). It stores the index
+/// **plus two**: `0` is "not looked up yet" and `1` is "no table node
+/// holds the target". Until M52 "unknown" was `usize::MAX`, a non-zero
+/// initialiser, so each binding's static landed in `.data` — stored in
+/// flash and copied to RAM before `main`. Now it is `.bss`: 4 B of zeroed
+/// RAM per binding on a 32-bit target, and no image. That is still a
+/// framework static, which the embedded profile otherwise has none of,
+/// so `scripts/bss.allow` exempts it **by pattern**
+/// (`*::update_marked::__ln_site`) with that argument, and
+/// `scripts/check_bss.sh` counts the exempted caches and their bytes. It
+/// is bounded by the source text: one per `#[bind]` line, never per
+/// instance or per frame.
 pub struct BindSite(core::sync::atomic::AtomicUsize);
 
 impl BindSite {
-    const UNKNOWN: usize = usize::MAX;
-    const NOWHERE: usize = usize::MAX - 1;
+    const UNKNOWN: usize = 0;
+    const NOWHERE: usize = 1;
+    /// What a stored index is offset by, so `0` and `1` stay free.
+    const OFFSET: usize = 2;
 
     pub const fn new() -> BindSite {
         BindSite(core::sync::atomic::AtomicUsize::new(Self::UNKNOWN))
@@ -255,11 +271,11 @@ impl BindSite {
         match self.0.load(Relaxed) {
             Self::UNKNOWN => {
                 let found = find();
-                self.0.store(found.unwrap_or(Self::NOWHERE), Relaxed);
+                self.0.store(found.map_or(Self::NOWHERE, |i| i + Self::OFFSET), Relaxed);
                 found
             }
             Self::NOWHERE => None,
-            i => Some(i),
+            i => Some(i - Self::OFFSET),
         }
     }
 }

@@ -293,6 +293,17 @@ measure asked. And, as §2.5 predicted, **the click-driven frame did not
 move**: a consumed event still marks everything before a binding is
 asked anything. That is T29.6's job, not this one's.
 
+**What the per-site cache costs a device** (M52/T52.3, F-NEW-1). Each
+`#[bind]` of a non-generic application owns one `bind::BindSite` static,
+so the walk above runs once per site. On `thumbv7em-none-eabihf` that is
+4 B per binding. Until M52 it sat in `.data` — its "unknown" was
+`usize::MAX`, a non-zero initialiser, so each site also cost 4 B of flash
+and a copy before `main` — and no gate saw it, because the gated firmware
+had no `#[bind]`. It is all-zero now (`.bss`, no flash), and
+`scripts/check_bss.sh` exempts it by pattern and prints the count and
+bytes; the figures are in `docs/results-embedded.md` (M52). What the
+walk links — the whole `Node` vtable, through `&dyn Node` — is M52/T52.5.
+
 ## T29.6 — a click on a split application, 2026-09-24
 
 The same probe, with a fifth arm: the click on `#bump`, on the grid's

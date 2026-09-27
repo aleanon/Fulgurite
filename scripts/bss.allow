@@ -12,9 +12,11 @@
 # a reason. A framework symbol appearing in this file should be an
 # argument, not a formality.
 #
-# Format: one symbol name per line, `#` comments. Sizes are not listed:
+# Format: one symbol name per line, `#` comments; or `glob: <pattern>`, a
+# shell glob matched against the full demangled name, for a static whose
+# name carries an application's type (M52/T52.3). Sizes are not listed:
 # the point is which symbols exist, and a symbol that grows is still the
-# same decision.
+# same decision. Pattern-exempted symbols are counted in the output.
 
 # --- the fixture's own harness, not the framework ---
 # Where firmware.rs parks the frame checksum so the frame is not dead
@@ -22,3 +24,16 @@
 # had no symbol at all, LLVM having removed the store, and the frame
 # survived only on panic paths — true by accident. See its doc comment.
 SINK
+
+# --- by pattern: one per `#[bind]`, the framework's own (M52/T52.3) ---
+# A binding's node cache, `bind::BindSite`: the derive emits one `static`
+# per `#[bind]` of a non-generic application, so `update_marked` finds the
+# node a binding wrote with one atomic load instead of a table walk
+# (M29/T29.2; docs/results-damage-precision.md has what the walk costs).
+# It is the only framework static the embedded profile has, and it is
+# allowed because it is bounded by the SOURCE TEXT -- one per `#[bind]`
+# line, never per instance, per node or per frame -- and costs 4 B of
+# zeroed RAM each on a 32-bit target: its initialiser is all-zero, so it
+# is `.bss` and claims no flash (it was `.data` until T52.3, F-NEW-1).
+# `check_bss.sh` prints how many it exempted and their bytes.
+glob: *::update_marked::__ln_site
