@@ -1832,7 +1832,9 @@ struct BindSpec {
 
 enum BindKind {
     /// `#[bind(t, "fmt {}", extra…)]` — the annotated field is the first
-    /// format argument; further arguments are written out in full.
+    /// format argument; further arguments are written out in full, and
+    /// are evaluated in the user's scope only: the expansion's own locals
+    /// are `Span::mixed_site()` and cannot be named from them (M55/T55.1).
     ///
     /// The optional [`syn::Expr`] is a path **within** the annotated
     /// field, so `#[bind(ui.value, count, "count: {}")]` on a field
@@ -2030,6 +2032,29 @@ fn expand_app(input: DeriveInput) -> syn::Result<Ts2> {
     let tree_ident = tree.ident.clone().unwrap();
     let tree_ty = &tree.ty;
     let generic = !input.generics.params.is_empty();
+    // **The expansion's own locals are hygienic** — M55/T55.1 (R16-F3).
+    //
+    // They sit beside the user's `#[bind]` tokens — a format argument, a
+    // `with =` path, a source path — and were declared at call-site
+    // span, so a user item named `changed` resolved to the derive's
+    // `bool`: `with = changed` became a fn-pointer mismatch at the
+    // user's token, and an extra argument `changed()` became "expected
+    // function, found `bool`". At `Span::mixed_site()` a local binding is
+    // visible only to tokens carrying the same span, so the user's tokens
+    // — which keep their own spans, so errors still point at them — can
+    // no longer name one. The `__ln_` prefix stays as the second line of
+    // defence, and is the *only* one for `__ln_site` in the non-generic
+    // arm: that is a `static` item, and `mixed_site` does not hide item
+    // names. A user item called `__ln_site` in the same module collides;
+    // that is accepted (`docs/plan-derive-dx.md` §4).
+    let hyg = |name: &str| syn::Ident::new(name, proc_macro2::Span::mixed_site());
+    let changed = hyg("__ln_changed");
+    let all = hyg("__ln_all");
+    let mark = hyg("__ln_mark");
+    let site_id = hyg("__ln_site");
+    let ptr = hyg("__ln_p");
+    let idx = hyg("__ln_i");
+    let hook = hyg("__ln_f");
     let binds: Vec<Ts2> = bind_specs
         .iter()
         .map(|(spec, ident)| {
@@ -2041,24 +2066,24 @@ fn expand_app(input: DeriveInput) -> syn::Result<Ts2> {
             // write. An address outside the table (an arena row) marks
             // everything, the conservative answer.
             let site = if generic {
-                quote! { let __ln_site = ::lumen_static::bind::BindSite::new(); }
+                quote! { let #site_id = ::lumen_static::bind::BindSite::new(); }
             } else {
-                quote! { static __ln_site: ::lumen_static::bind::BindSite = ::lumen_static::bind::BindSite::new(); }
+                quote! { static #site_id: ::lumen_static::bind::BindSite = ::lumen_static::bind::BindSite::new(); }
             };
             let locate = |write: Ts2| {
                 quote! {
                     if #write {
-                        changed = true;
+                        #changed = true;
                         #site
-                        let __ln_p = &self.#target as *const _ as *const u8;
-                        match __ln_site.get(|| ::lumen_static::bind::node_of(&self.#tree_ident, __ln_p)) {
-                            ::core::option::Option::Some(__ln_i) => __ln_mark(
+                        let #ptr = &self.#target as *const _ as *const u8;
+                        match #site_id.get(|| ::lumen_static::bind::node_of(&self.#tree_ident, #ptr)) {
+                            ::core::option::Option::Some(#idx) => #mark(
                                 ::lumen_static::style::subtree_range(
                                     <#tree_ty as ::lumen_static::widget::Widget>::SUB_TABLE,
-                                    __ln_i,
+                                    #idx,
                                 ),
                             ),
-                            ::core::option::Option::None => __ln_all = true,
+                            ::core::option::Option::None => #all = true,
                         }
                     }
                 }
@@ -2100,10 +2125,10 @@ fn expand_app(input: DeriveInput) -> syn::Result<Ts2> {
                             // conservative direction — the alternative is a
                             // frame that skipped a change.
                             {
-                                let f: fn(&mut _, &_) = #path;
-                                f(&mut self.#target, &self.#ident);
-                                changed = true;
-                                __ln_all = true;
+                                let #hook: fn(&mut _, &_) = #path;
+                                #hook(&mut self.#target, &self.#ident);
+                                #changed = true;
+                                #all = true;
                             }
                         },
                     }
@@ -2124,12 +2149,12 @@ fn expand_app(input: DeriveInput) -> syn::Result<Ts2> {
             // widget's own box** — the whole window, every pump, for a
             // click on a button. A hook that knows whether it changed
             // anything is the only thing that can say so.
-            let f: fn(&mut Self) -> bool = #p;
+            let #hook: fn(&mut Self) -> bool = #p;
             // A hook may write anything, so a hook that wrote marks
             // everything (M29 §2.4): it reports a `bool`, not ranges.
-            if f(self) {
-                changed = true;
-                __ln_all = true;
+            if #hook(self) {
+                #changed = true;
+                #all = true;
             }
         }
     });
@@ -2139,13 +2164,14 @@ fn expand_app(input: DeriveInput) -> syn::Result<Ts2> {
     // `tick` could only come from the trait default, and a widget that
     // animates — `Glass`'s press deformation is the first — would
     // retarget and then never move. The hook mirrors `after_update`.
+    let dt = hyg("__ln_dt_ms");
     let tick_fn = tick.map(|p| {
         quote! {
-            fn tick(&mut self, dt_ms: f32) -> bool {
+            fn tick(&mut self, #dt: f32) -> bool {
                 // Typed through a binding so a wrong signature is
                 // reported at the hook, not at the call.
-                let f: fn(&mut Self, f32) -> bool = #p;
-                f(self, dt_ms)
+                let #hook: fn(&mut Self, f32) -> bool = #p;
+                #hook(self, #dt)
             }
         }
     });
@@ -2226,15 +2252,15 @@ fn expand_app(input: DeriveInput) -> syn::Result<Ts2> {
 
             fn update_marked(
                 &mut self,
-                __ln_mark: &mut dyn FnMut(::core::ops::Range<usize>),
+                #mark: &mut dyn FnMut(::core::ops::Range<usize>),
             ) -> ::lumen_static::event::Wrote {
                 #[allow(unused_mut)]
-                let mut changed = false;
+                let mut #changed = false;
                 #[allow(unused_mut)]
-                let mut __ln_all = false;
+                let mut #all = false;
                 #(#binds)*
                 #after
-                ::lumen_static::event::Wrote::of(changed, __ln_all)
+                ::lumen_static::event::Wrote::of(#changed, #all)
             }
 
             fn update(&mut self) -> bool {

@@ -12,8 +12,8 @@ use lumen_static_widgets::ops::Label;
 
 #[derive(StaticTree, Default)]
 #[widget(column, spacing = 0.0)]
-struct Ui {
-    a: Label<String>,
+pub struct Ui {
+    pub a: Label<String>,
 }
 
 mod with_form {

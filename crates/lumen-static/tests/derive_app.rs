@@ -241,3 +241,48 @@ fn a_value_binding_copies_and_reports_precisely() {
     assert!(app.update(), "and it still reports a real change");
     assert_eq!(app.ui.pane.w, 3.0);
 }
+
+// ---- M55/T55.1 (R16-F3): a binding's tokens resolve in the user's scope
+
+/// Named like the derive's old `changed` local, which a `with =` path
+/// resolved to until T55.1.
+fn changed(dst: &mut Label<String>, src: &u32) {
+    lumen_static::bind::set_if_changed(dst, &format!("{src} 42"));
+}
+
+mod value_named_changed {
+    /// Named like the derive's old local, called as an extra format
+    /// argument -- which resolved to the derive's `bool` until T55.1.
+    pub fn changed() -> u32 {
+        42
+    }
+}
+
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+struct HygUi {
+    #[widget_id("projected")]
+    projected: Label<String>,
+    #[widget_id("formatted")]
+    formatted: Label<String>,
+}
+
+#[derive(AppDerive, Default)]
+struct Hygiene {
+    #[tree]
+    ui: HygUi,
+    #[bind(ui.projected, with = changed)]
+    n: u32,
+    #[bind(ui.formatted, "{} {}", value_named_changed::changed())]
+    m: u32,
+}
+
+#[test]
+fn a_binding_names_the_users_items_not_the_derives_locals() {
+    use lumen_static::event::App;
+    let mut h = Hygiene { n: 3, m: 3, ..Default::default() };
+    h.update();
+    println!("LABEL=[{}] LABEL=[{}] (expected [3 42] twice)", h.ui.projected.as_str(), h.ui.formatted.as_str());
+    assert_eq!(h.ui.projected.as_str(), "3 42", "`with = changed` did not reach the user's fn");
+    assert_eq!(h.ui.formatted.as_str(), "3 42", "`changed()` did not reach the user's fn");
+}

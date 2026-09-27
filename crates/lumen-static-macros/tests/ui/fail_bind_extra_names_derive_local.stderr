@@ -1,0 +1,5 @@
+error[E0425]: cannot find value `changed` in this scope
+  --> tests/ui/fail_bind_extra_names_derive_local.rs:21:27
+   |
+21 |     #[bind(ui.a, "{} {}", changed)]
+   |                           ^^^^^^^ not found in this scope

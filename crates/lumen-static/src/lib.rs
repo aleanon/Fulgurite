@@ -57,7 +57,9 @@
 //! | `#[app(after_update = f)]` | an `App` struct | `fn(&mut Self) -> bool`, run after the bindings; the `bool` says whether it changed anything |
 //!
 //! `#[bind]` also takes `with = f` for a `fn(&mut Target, &Source)`
-//! projection, and extra format arguments after the string. A **source
+//! projection, and extra format arguments after the string — evaluated
+//! in your scope, never the derive's: a function of yours called
+//! `changed` is yours (M55/T55.1). A **source
 //! path** may sit between the target and the format string —
 //! `#[bind(ui.value, count, "count: {}")]` on a field `state: Tally`
 //! formats `self.state.count` — which is what lets an application whose

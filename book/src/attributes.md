@@ -20,7 +20,8 @@ the two diverge — see the note at the end.
 
 `#[bind]` also takes `with = f` for a `fn(&mut Target, &Source)`
 projection, and extra format arguments after the string — the annotated
-field is always the first.
+field is always the first. Both are evaluated in your scope, never the
+derive's: a function of yours called `changed` is yours (M55/T55.1).
 
 ## Where each is explained
 
