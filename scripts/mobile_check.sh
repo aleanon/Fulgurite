@@ -21,7 +21,9 @@ CONFIGS=(
     "lumen-static-shell|1|-p lumen-static-shell"
     "lumen-static-winit (no defaults, android-native-activity)|1|-p lumen-static-winit --no-default-features --features winit/android-native-activity"
     "lumen-static-winit (+ reload, hot, agent)|1|-p lumen-static-winit --no-default-features --features winit/android-native-activity,reload,hot,agent"
-    "lumen-static-winit (default features)|0|-p lumen-static-winit --features winit/android-native-activity"
+    "lumen-static-winit (default features)|1|-p lumen-static-winit --features winit/android-native-activity"
+    "lumen-static-winit (+ a11y)|1|-p lumen-static-winit --features winit/android-native-activity,a11y"
+    "lumen-static-winit (+ dialogs)|0|-p lumen-static-winit --features winit/android-native-activity,dialogs"
 )
 
 for c in "${CONFIGS[@]}"; do

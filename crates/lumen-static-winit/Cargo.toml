@@ -111,10 +111,6 @@ lumen-static = { path = "../lumen-static" }
 lumen-static-shell = { path = "../lumen-static-shell", features = ["truetype"] }
 winit = "0.30"
 softbuffer = "0.4"
-# The system clipboard (T14.5). `image-data` is off: this framework
-# copies text, and the image feature pulls an image-decoding stack for
-# a capability nothing here has.
-arboard = { version = "3", optional = true, default-features = false }
 # The platform's file pickers (T15.11). `gtk3` rather than
 # `xdg-portal`, measured 2026-09-07: gtk3 costs 79 crates (218 -> 297)
 # and xdg-portal costs 273 (218 -> 491), because the portal backend
@@ -138,6 +134,17 @@ serde_json = { version = "1", optional = true }
 # to it (`hot`). The loader and its `unsafe` live in the reload crate.
 lumen-static-reload = { path = "../lumen-static-reload", features = ["window"], optional = true }
 notify = { version = "8", optional = true }
+
+# The system clipboard (T14.5). `image-data` is off: this framework
+# copies text, and the image feature pulls an image-decoding stack for
+# a capability nothing here has.
+#
+# **Not on Android** (M54/T54.8, R12-F6): arboard has no Android backend,
+# so with it in the ordinary table the default features could not even
+# `cargo check` for `aarch64-linux-android`. There the `clipboard`
+# feature compiles the no-op `Clipboard` (see clipboard.rs).
+[target.'cfg(not(target_os = "android"))'.dependencies]
+arboard = { version = "3", optional = true, default-features = false }
 
 [dev-dependencies]
 # `tests/gpu_regions.rs` drives a `Host` at a device scale (M40/T40.1),

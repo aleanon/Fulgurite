@@ -6,7 +6,8 @@
 //! clipboard *is* a platform, and `lumen-static-shell` has none — which
 //! is the property that keeps `cargo test` free of a windowing system.
 //!
-//! Behind the default-on `clipboard` feature. Without it the type still
+//! Behind the default-on `clipboard` feature. Without it — and on
+//! Android, where arboard has no backend (M54/T54.8) — the type still
 //! exists and every operation is a no-op, so a host does not need a
 //! `cfg` around its Ctrl+C.
 
@@ -17,7 +18,7 @@
 /// a handle dropped after each copy would put text on the clipboard that
 /// vanishes the moment the user switches windows.
 pub struct Clipboard {
-    #[cfg(feature = "clipboard")]
+    #[cfg(all(feature = "clipboard", not(target_os = "android")))]
     inner: Option<arboard::Clipboard>,
 }
 
@@ -36,32 +37,32 @@ impl Clipboard {
     /// which is what "there is no clipboard" should look like.
     pub fn new() -> Self {
         Clipboard {
-            #[cfg(feature = "clipboard")]
+            #[cfg(all(feature = "clipboard", not(target_os = "android")))]
             inner: arboard::Clipboard::new().ok(),
         }
     }
 
     /// Put `text` on the clipboard. Returns whether it got there.
-    #[cfg(feature = "clipboard")]
+    #[cfg(all(feature = "clipboard", not(target_os = "android")))]
     pub fn set(&mut self, text: &str) -> bool {
         self.inner.as_mut().is_some_and(|c| c.set_text(text).is_ok())
     }
 
     /// Without the feature there is nowhere to put it.
-    #[cfg(not(feature = "clipboard"))]
+    #[cfg(not(all(feature = "clipboard", not(target_os = "android"))))]
     pub fn set(&mut self, text: &str) -> bool {
         let _ = text;
         false
     }
 
     /// Read the clipboard's text, if it has any.
-    #[cfg(feature = "clipboard")]
+    #[cfg(all(feature = "clipboard", not(target_os = "android")))]
     pub fn get(&mut self) -> Option<String> {
         self.inner.as_mut().and_then(|c| c.get_text().ok())
     }
 
     /// Without the feature there is nothing to read.
-    #[cfg(not(feature = "clipboard"))]
+    #[cfg(not(all(feature = "clipboard", not(target_os = "android"))))]
     pub fn get(&mut self) -> Option<String> {
         None
     }

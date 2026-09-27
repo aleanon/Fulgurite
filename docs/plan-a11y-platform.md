@@ -960,6 +960,15 @@ feature (`dev-shape`); without that line it would never run.
   reports under them is T54.5's finding (light-theme defaults), which
   no palette value can fix.
 
+**T54.8 (2026-09-27).** As planned: `arboard` is a
+`cfg(not(target_os = "android"))` dependency and the `Clipboard` it
+backs is the no-op there, so the default features check for Android.
+`a11y` checks (`accesskit_winit` has an Android backend), so §2.3's
+default is not desktop-only by construction — it is off everywhere, by
+the kill rule. `dialogs` does not check (`rfd`), is reported by the
+matrix, and is not gated. `docs/competitive-feature-gaps.md` does not
+repeat the claim.
+
 ## Appendix: finding → task
 
 | ID | sev now | status | task |

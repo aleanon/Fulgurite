@@ -23,13 +23,30 @@ Searched across `crates/`, `examples/`, `fixtures/`, `benches/`,
 - CI is `ubuntu-latest` plus a non-blocking `macos-latest`, which is
   desktop Apple Silicon, not iOS.
 
-The toolchain on the development machine happens to have
-`aarch64-linux-android`, `armv7-linux-androideabi` and
-`x86_64-linux-android` installed from unrelated work, and there is no
-`.cargo/config.toml` here or in `$HOME` naming an NDK linker — so even a
-bare `cargo check` of the core against an Android target has no linker
-and cannot complete. `docs/competitive-feature-gaps.md` already says it
-plainly: desktop-only, plus a `no_std` core with no driver.
+The toolchain on the development machine has `aarch64-linux-android`,
+`armv7-linux-androideabi` and `x86_64-linux-android` installed, and no
+`.cargo/config.toml` names an NDK linker — so nothing here can **link**
+an Android binary. `docs/competitive-feature-gaps.md` says it plainly:
+desktop-only, plus a `no_std` core with no driver.
+
+**But `cargo check` does not link, and it completes** (M54/T54.8,
+R12-F6 — this paragraph said until then that it "cannot complete"). `just
+mobile-check` type-checks for `aarch64-linux-android` (declared in
+`rust-toolchain.toml`) and prints one line per configuration:
+
+| configuration | checks |
+|---|---|
+| `lumen-static`, `lumen-static-widgets`, `lumen-static-shell` | yes |
+| `lumen-static-winit`, `--no-default-features` + `winit/android-native-activity` | yes |
+| … with `reload`, `hot` and `agent` | yes |
+| … with its **default** features (`clipboard`) | yes, since T54.8: `arboard` has no Android backend, so it is a target-gated dependency and `clipboard` is a no-op there |
+| … with `a11y` | yes (`accesskit_winit` has an Android backend) |
+| … with `dialogs` | **no** — `rfd` has no Android file dialog; the feature is desktop-only and default-off |
+
+`winit/android-native-activity` (or `-game-activity`) must come from the
+application: winit refuses to build for Android without one, and which
+activity is the application's choice. Checking is not running: no
+lifecycle beyond the desktop's below has been exercised on a device.
 
 ### The lifecycle, on desktop (M47/T47.7, 2026-09-26)
 
