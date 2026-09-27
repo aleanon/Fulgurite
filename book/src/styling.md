@@ -175,9 +175,11 @@ They are attributes on the field, not values set at runtime:
 Both are **static, fixed in the type**. There is no `add_class` at
 runtime, which is a real constraint and has a real workaround: swap the
 sheet. `examples/counter-window/src/app.rs` recolours its number by sign
-that way — `stylesheet_for(sign)` returns a different `Vec<Rule>` and the
-host re-cascades. The mechanism underneath is the same one a class toggle
-would use; the difference is where the branch lives.
+that way — `stylesheet_for(sign)` returns a different `Vec<Rule>`, and
+`Program::style_by(|t| t.count.n.signum(), stylesheet_for)` has the host
+re-apply it on the frame the sign changes. The mechanism underneath is the
+same one a class toggle would use; the difference is where the branch
+lives.
 
 ## A worked stylesheet
 

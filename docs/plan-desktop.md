@@ -140,6 +140,12 @@ What actually moved is the *windowing* code, and the honest numbers are:
 | `window.rs` (agent socket, a11y, sign cascade, app keys) | — | 384 |
 | a second app's window | ~480 | **24** |
 
+> **M60 (2026-09-27): `window.rs` is gone.** What it kept — the agent
+> socket, the a11y adapter, the sign cascade and the app keys — was the
+> window crate's already, except the keys and the keyed sheet, which
+> became `Program::on_key` and `Program::style_by`. The tally runs on
+> `Program::run`; `docs/plan-tally-slim.md` has the line counts.
+
 "Total lines in the example crate" was never the property worth
 gating; "lines an application must write to get a window" was. The gate
 should have said that, and this entry is the correction.

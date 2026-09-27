@@ -5,26 +5,27 @@ edition.workspace = true
 license.workspace = true
 publish = false
 
-# The OS seam, and the only crate in the workspace that has one. Everything
-# above it — the tree, the frame loop, the renderer — is the same code the
-# headless `counter` example runs.
+# The tally, in a window — **the framework's window** since M60
+# (`docs/plan-tally-slim.md`): `Program::run` owns the loop, the agent
+# endpoint, the a11y adapter and the frame timings. This crate is the
+# application and its headless drives.
 [dependencies]
 lumen-static-widgets = { path = "../../crates/lumen-static-widgets", features = ["observe"] }
 lumen-static = { path = "../../crates/lumen-static" }
-lumen-static-shell = { path = "../../crates/lumen-static-shell", features = ["truetype", "agent"] }
+# `agent`: the endpoint on 127.0.0.1:9230 (`Program::agent`), which every
+# live drive of the tally dials.
+lumen-static-winit = { path = "../../crates/lumen-static-winit", features = ["agent"] }
+# `live-agent`: `--drive` and `--drive2` drive a `Local` session through
+# the same `Session::agent` the window answers with.
+lumen-static-shell = { path = "../../crates/lumen-static-shell", features = ["truetype", "live-agent"] }
 lumen-static-agent = { path = "../../crates/lumen-static-agent" }
-lumen-static-winit = { path = "../../crates/lumen-static-winit" }
 serde_json = "1"
-winit = "0.30"
-softbuffer = "0.4"
 
 [features]
 default = []
-# The platform accessibility adapter — the window crate's shared one
-# since M54/T54.2 (`lumen_static_winit::a11y`); this example carried its
-# own copy from T7.5 until then.
+# The platform accessibility adapter — the window crate's (M54/T54.2).
 a11y = ["lumen-static-winit/a11y"]
 # Passed through so `just profile` can measure the rasteriser's SIMD
 # path on a real frame (M17/T17.1, docs/results-simd.md).
-simd = ["lumen-static-shell/simd"]
-threads = ["lumen-static-shell/threads"]
+simd = ["lumen-static-winit/simd"]
+threads = ["lumen-static-winit/threads"]

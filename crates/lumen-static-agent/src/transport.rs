@@ -4,8 +4,8 @@
 //! Newline-delimited JSON-RPC 2.0 over TCP: one JSON object per line in,
 //! one per line out. Lumen's `run-agent` protocol, so its client works
 //! unchanged. Every server in the workspace — the turnkey window's
-//! (`lumen_static_winit::agent::serve`) and `examples/counter-window`'s —
-//! calls [`serve_addr`](crate::transport::serve_addr), and `scripts/check_one_agent_server.sh` refuses a
+//! (`lumen_static_winit::agent::serve`), which since M60 is also the
+//! tally's — calls [`serve_addr`](crate::transport::serve_addr), and `scripts/check_one_agent_server.sh` refuses a
 //! second `TcpListener::bind` anywhere outside tests.
 //!
 //! # What it refuses, and why that is framing and not policy

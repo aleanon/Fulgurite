@@ -157,3 +157,8 @@ required-features = ["threads", "raster-counters"]
 [[test]]
 name = "agent_hooks"
 required-features = ["live-agent", "truetype"]
+
+# M60/T60.3: the session's audit measures with the session's face.
+[[test]]
+name = "agent_audit_face"
+required-features = ["live-agent", "truetype"]

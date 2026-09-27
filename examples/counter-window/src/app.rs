@@ -8,6 +8,7 @@
 
 use lumen_static::display::Color;
 use lumen_static::prelude::*;
+use lumen_static_shell::program::KeyOutcome;
 use lumen_static_widgets::prelude::*;
 
 // ---- palette: Lumen's counter tokens ---------------------------------
@@ -106,18 +107,48 @@ impl Count {
     }
 }
 
-/// **The program, described once** — M32 (`docs/plan-program.md`).
+/// **The program, described once** — M32 (`docs/plan-program.md`), and
+/// since M60 (`docs/plan-tally-slim.md`) everything the window needs:
 ///
-/// The window, `--headless` and the socket all build their host from
-/// this, so each starts styled the same way. The style is a *function of
-/// the state* — the sheet for the count's sign — which the host asks when
-/// it is built and again on `adopt`. The per-sign re-cascade between
-/// pumps stays in the window (`restyle_subtree`): a style re-asked every
-/// frame is deferred in the plan's §4, and this example is why.
+/// - the agent endpoint's default address, which `LUMEN_AGENT_ADDR`
+///   overrides (read by the window, M48/T48.11);
+/// - **the tally's keys** — [`keys`], through `Program::on_key`: a key
+///   press no widget took;
+/// - **the sheet for the count's sign**, through `Program::style_by`: the
+///   host re-applies it on the frame the sign changes, on every path.
+///
+/// Until M60 the last two needed a hand-written event loop, and the
+/// sign re-cascade was written twice in it — once for the window's pump
+/// and once for the agent's.
 pub fn program(count: i64, w: u32, h: u32) -> lumen_static_shell::program::Program<Tally> {
     lumen_static_shell::program::application(move || Tally { count: Count { n: count }, ..build() })
+        .title("lumen-static — tally")
         .size(w, h)
-        .style(|t: &Tally| stylesheet_for(t.count.n.signum()))
+        .page(PAGE)
+        .agent("127.0.0.1:9230")
+        .accessible(cfg!(feature = "a11y"))
+        .on_key(keys)
+        .style_by(|t: &Tally| t.count.n.signum(), stylesheet_for)
+}
+
+/// The tally's own keys: Up and Down nudge the count, Escape quits.
+///
+/// **Only a key nothing else took** (`docs/plan-tally-slim.md` §2.1): with
+/// a step button focused, Up and Down move focus along the row of four,
+/// as arrows do in any toolbar, and do not reach this.
+pub fn keys(c: &mut Count, key: lumen_static::Key, _: lumen_static::Mods) -> KeyOutcome {
+    match key {
+        lumen_static::Key::Up => {
+            c.n += 1;
+            KeyOutcome::Handled
+        }
+        lumen_static::Key::Down => {
+            c.n -= 1;
+            KeyOutcome::Handled
+        }
+        lumen_static::Key::Escape => KeyOutcome::Quit,
+        _ => KeyOutcome::Ignored,
+    }
 }
 
 pub fn build() -> Tally {
@@ -136,15 +167,16 @@ pub fn build() -> Tally {
     t
 }
 
-/// The stylesheet, as rules rather than `.lss` — the parser is Phase C.
-/// Selector for selector, this is Lumen's `app.lss`.
-/// The stylesheet for a given sign.
+/// The stylesheet for a given sign — selector for selector, Lumen's
+/// `app.lss`, as rules.
 ///
 /// Lumen's counter toggles a `.lss` class (`.value.pos` / `.value.neg`)
 /// and re-cascades. There is no class *toggling* here — `#[widget_class]`
 /// is static, fixed in the type — so the sign-dependent rules are
-/// swapped instead and the host re-cascades. Same mechanism underneath:
-/// the cascade runs when the sheet changes, not per frame.
+/// swapped instead: [`program`] keys the sheet on the sign
+/// (`Program::style_by`), and the host re-applies it when the sign
+/// changes. Same mechanism underneath: the cascade runs when the sheet
+/// changes, not per frame.
 pub fn stylesheet_for(sign: i64) -> Vec<Rule> {
     let (value_fg, pill_bg) = match sign {
         1 => (POS, POS),
@@ -233,7 +265,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "red until T60.3: the tally's keys and sign sheet are still the hand-written window's"]
     fn up_down_and_escape_are_the_programs_and_the_sheet_follows_the_sign() {
         let mut h: Host<Tally> = program(0, 440, 520).host();
         h.pump();
@@ -264,7 +295,6 @@ mod tests {
     const LOOP_MARKERS: [&str; 3] = ["ApplicationHandler", "EventLoop", "run_app"];
 
     #[test]
-    #[ignore = "red until T60.3: src/window.rs is the tally's own event loop"]
     fn the_example_runs_no_event_loop_of_its_own() {
         let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
         let mut found = Vec::new();

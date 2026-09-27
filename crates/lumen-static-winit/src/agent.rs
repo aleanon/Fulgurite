@@ -24,8 +24,8 @@
 //! **No thread but the loop's touches the tree.** Each request crosses
 //! to the event loop through winit's proxy and is answered there, so the
 //! tree is only ever read or driven from the thread that owns it. That
-//! is inherited from the counter-window endpoint and is the only
-//! arrangement that is sound without a lock.
+//! is inherited from the counter-window endpoint — which since M60 is
+//! this one — and is the only arrangement that is sound without a lock.
 //!
 //! **Connections run in parallel since M39/T39.3; requests still do
 //! not.** The transport gives each connection its own thread, up to

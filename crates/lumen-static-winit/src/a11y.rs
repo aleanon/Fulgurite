@@ -3,9 +3,10 @@
 //!
 //! `accesskit_winit` bridges one `accesskit::TreeUpdate` to AT-SPI, UI
 //! Automation and NSAccessibility. This is the one place the framework
-//! drives it: [`run`](crate::run) and every `Program` through `Win`, and
-//! `examples/counter-window`'s own event loop, which used to carry a
-//! second copy of all of this.
+//! drives it: [`run`](crate::run) and every `Program` through `Win`.
+//! `examples/counter-window`'s own event loop carried a second copy of
+//! all of this until T54.2, and a second caller of it until M60 deleted
+//! that loop.
 //!
 //! The order matters and is `accesskit_winit`'s contract: the window is
 //! created **invisible**, the adapter is built, then the window is shown

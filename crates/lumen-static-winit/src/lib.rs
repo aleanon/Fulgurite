@@ -11,8 +11,10 @@
 //! - [`run`] — a window in one call. Everything below the seam is the
 //!   framework's; the application supplies a tree and a background.
 //! - [`Backend`] and [`translate`] — the two halves, for an application
-//!   that owns its own event loop because it has something else in it
-//!   (the tally has an agent socket of its own).
+//!   that owns its own event loop because it has something else in it.
+//!   The tally owned one until M60 (`docs/plan-tally-slim.md`), for its
+//!   keys and its sign sheet; `Program::on_key` and `Program::style_by`
+//!   are those two now.
 //!
 //! A screen reader sees a window built with the `a11y` feature, through
 //! the platform adapter in `a11y` — [`run`] and every `Program` attach
@@ -620,6 +622,14 @@ struct Win {
     quit: bool,
     /// Frames drawn and frames journaled, for `LUMEN_FRAME_REPORT`.
     frames: (u64, u64),
+    /// When the oldest input not yet on screen arrived — M60/T60.3. Set
+    /// by the first input after a presented frame (a window event that
+    /// translates to input, a key, an `input.*` agent request), taken by
+    /// the next journal frame: [`journal_times`]'s `input_latency_ns`,
+    /// which `app.perf` reports and `ui_check.py latency` bounds. Until
+    /// M60 only `examples/counter-window`'s own loop measured it, and
+    /// every `Program` window reported `null`.
+    input_at: Option<Instant>,
     /// The platform accessibility adapter, once the window exists
     /// (M54/T54.2), and the proxy it reports through.
     #[cfg(feature = "a11y")]
@@ -669,6 +679,7 @@ impl Win {
             journal: false,
             quit: false,
             frames: (0, 0),
+            input_at: None,
             report_after: std::env::var("LUMEN_FRAME_REPORT").ok().and_then(|v| v.parse().ok()),
             #[cfg(feature = "a11y")]
             a11y: None,
@@ -905,7 +916,7 @@ impl Win {
         }
         self.frames.0 += 1;
         if self.journal {
-            self.session.agent_frame_done(frame_times(&presented));
+            self.session.agent_frame_done(journal_times(&presented, &mut self.input_at));
             self.frames.1 += 1;
         }
         if self.report_after.is_some_and(|n| self.frames.0 >= n) {
@@ -1143,6 +1154,12 @@ impl Win {
             }));
             return;
         }
+        // An input's latency runs from its arrival to the frame that
+        // shows it (M60/T60.3): the present inside this request, and the
+        // redraw asked for below, which journals it.
+        if rpc.req.get("method").and_then(|m| m.as_str()).is_some_and(|m| m.starts_with("input.")) {
+            self.input_at.get_or_insert_with(Instant::now);
+        }
         let text = self.session.agent(&rpc.req.to_string(), &mut backend::AsScreen(backend));
         let resp = serde_json::from_str(&text).unwrap_or_else(|e| {
             serde_json::json!({
@@ -1252,6 +1269,7 @@ impl Win {
                     Ime::Enabled => false,
                 };
                 if changed {
+                    self.input_at.get_or_insert_with(Instant::now);
                     self.ask_redraw();
                 }
             }
@@ -1273,6 +1291,7 @@ impl Win {
             WindowEvent::KeyboardInput { event: ref k, .. } => {
                 let down = k.state == winit::event::ElementState::Pressed;
                 if keys::deliver_key(&mut *self.session, &k.logical_key, k.text.as_deref(), down, self.mods) {
+                    self.input_at.get_or_insert_with(Instant::now);
                     self.ask_redraw();
                 }
             }
@@ -1307,6 +1326,9 @@ impl Win {
                     self.mods = translate::mods(m.state());
                 }
                 let any = t.events[0].is_some();
+                if t.is_input {
+                    self.input_at.get_or_insert_with(Instant::now);
+                }
                 for ev in t.iter() {
                     self.session.post(ev);
                 }
@@ -1318,13 +1340,21 @@ impl Win {
     }
 }
 
+/// A journal frame's cost: [`frame_times`], and the latency of the oldest
+/// input it shows — taken from `input_at`, so the next frame measures
+/// the next input (M60/T60.3).
+pub(crate) fn journal_times(f: &Frame, input_at: &mut Option<Instant>) -> lumen_static_shell::session::FrameTimes {
+    let mut t = frame_times(f);
+    t.input_latency_ns = input_at.take().map(|at| at.elapsed().as_nanos() as u64);
+    t
+}
+
 /// A presented frame's cost as the session's agent wants it — M48/T48.3.
 ///
 /// A frame that presented nothing (a zero-sized surface) measured
 /// nothing, so every stage is `None` rather than the zeros `Frame`'s
 /// default holds: `app.perf` reports `null` for it, never `0`. Input
-/// latency is not measured by this window (`counter-window` measures it
-/// itself), so it is `None` too.
+/// latency is not the frame's to know: [`journal_times`] adds it.
 pub(crate) fn frame_times(f: &Frame) -> lumen_static_shell::session::FrameTimes {
     if f.frame_ns == 0 {
         return Default::default();
@@ -1655,6 +1685,19 @@ mod tests {
         assert_eq!(t.atlas_give_ups, Some(7));
         let sw = surface::Frame { frame_ns: 1, ..Default::default() };
         assert_eq!(frame_times(&sw).atlas_give_ups, None, "the software canvas has no atlas");
+    }
+
+    /// M60/T60.3: a journal frame carries the latency of the input it
+    /// shows, once — the next frame, with no input since, carries none.
+    #[test]
+    fn a_journal_frame_carries_its_inputs_latency_once() {
+        let f = surface::Frame { frame_ns: 1, ..Default::default() };
+        let mut at = Some(Instant::now() - std::time::Duration::from_millis(5));
+        let first = journal_times(&f, &mut at).input_latency_ns;
+        let second = journal_times(&f, &mut at).input_latency_ns;
+        println!("input 5 ms ago -> {first:?} ns (bound >= 5e6); the next frame -> {second:?} (want None)");
+        assert!(first.is_some_and(|ns| ns >= 5_000_000), "the frame did not carry the input's latency");
+        assert_eq!(second, None, "a frame with no new input reported one");
     }
 
     /// R7-F10: every period `Timers::every` accepts must give a control

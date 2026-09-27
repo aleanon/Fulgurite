@@ -158,8 +158,9 @@ flexbox would need `justify-content` for.
 
 The counter example runs headless: it builds a `Host`, pumps frames, clicks
 its own buttons through the agent protocol, and writes a PPM. The window
-version (`examples/counter-window`) adds exactly two things to that — window
-events into `Host::post`, and `Canvas` pixels blitted to the surface.
+version (`examples/counter-window`) describes its tally as a `Program` and
+calls `run`, which adds exactly two things to that — window events into
+`Host::post`, and `Canvas` pixels blitted to the surface.
 
 ```console
 $ cargo run -p counter

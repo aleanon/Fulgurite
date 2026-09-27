@@ -122,8 +122,8 @@ impl Software {
     }
 
     /// The canvas, for an application that wants the pixels without the
-    /// display server — the tally's agent endpoint answers
-    /// `ui.screenshot` from here.
+    /// display server — the agent's `ui.screenshot` reads it through
+    /// [`AsScreen`].
     pub fn canvas(&self) -> &Canvas {
         &self.canvas
     }

@@ -728,8 +728,6 @@ dependencies = [
  "lumen-static-widgets",
  "lumen-static-winit",
  "serde_json",
- "softbuffer",
- "winit",
 ]
 
 [[package]]

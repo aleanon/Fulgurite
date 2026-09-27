@@ -194,6 +194,28 @@ the comparison — the sign gate fails with 0 pixels of the new colour.
 
 ## T60.3 — the window, migrated
 
+> **DONE 2026-09-27.** `main` runs `app::program(0, 440, 520)`, which
+> carries the title, size, page, the agent's default address, `accessible`,
+> `on_key(keys)` and `style_by(sign, stylesheet_for)`; `window.rs` and
+> `agent_socket.rs` are deleted and the example no longer depends on
+> winit or softbuffer. `Win` measures input latency (`journal_times`).
+> `just live-gate` passes all eight checks against the migrated window,
+> and `just a11y-drive` finds it on the bus.
+>
+> **What building found, 2026-09-27: every `Program` window's `ui.lint`
+> was the block stand-in's opinion.** The first live-gate run on the
+> framework's window failed lint with two W1005s (`#dec10` "wants 72x38
+> but only got 66x44"): `Local` built its agent with `Agent::new()`,
+> whose audit measures with the block stand-in, while its host laid out
+> with the system face. The old loop had called `set_text_measure`
+> itself. `Local::from_host` does now; `tests/agent_audit_face.rs`
+> reproduces the two findings without it.
+>
+> **Not driven with a real keyboard**: the machine has no `xdotool`. A
+> window key reaches the same host queue through `keys::deliver_key`;
+> `input.key` Up, Up, Escape against the live window moved `#value` to 2
+> and closed it with exit status 0.
+
 `main` becomes `program(count).title(..).size(..).agent("127.0.0.1:9230")
 .accessible(..).on_key(..).style_by(..).run()`. `window.rs` and
 `agent_socket.rs` are deleted. `Win` learns input latency (§1), with a

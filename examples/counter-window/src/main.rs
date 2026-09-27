@@ -1,25 +1,28 @@
 //! The counter, in a window.
 //!
-//! Since M14/T14.0 this file is only the entry point. The window is
-//! `lumen-static-winit`; what is left in this crate is what makes the
-//! tally *this* application rather than the minimal one:
+//! **The window is the framework's** since M60
+//! (`docs/plan-tally-slim.md`): `main` describes the program and runs it,
+//! and `Program::run` owns the event loop, the agent endpoint on
+//! 127.0.0.1:9230, the a11y adapter, IME, the frame timings and
+//! `app.quit`. What is left in this crate is what makes the tally *this*
+//! application:
 //!
 //! | module | what it is |
 //! |---|---|
-//! | `app` | the tree, the stylesheet, the palette |
-//! | `window` | the agent endpoint, the a11y adapter and the sign cascade, on `lumen_static_winit::Surface` |
-//! | `agent_socket` | the JSON-RPC listener and its bridge to `AgentHost` |
-//! | `headless` | `--headless`, `--profile`, `--drive` — rungs 1–3 of the ladder |
-//! | `form` | `--form`, the M8/M9 widgets through the real rasteriser |
+//! | `app` | the tree, the stylesheet, the palette, its keys, the program |
+//! | `headless` | `--drive` and `--drive2`, rungs 2 of the ladder, through a `Local` session |
 //!
-//! It was 1160 lines, ~480 of them a window every other application
-//! would have had to copy. `examples/minimal` is the same window in 24.
+//! It was 1160 lines before M14 and 1,383 before M60, ~540 of them a
+//! copy of the window crate's loop kept for two things the framework
+//! could not do: app-level keys (`Program::on_key`) and a sheet keyed on
+//! the count's sign (`Program::style_by`).
 
-mod agent_socket;
 mod app;
 mod form;
 mod headless;
-mod window;
+
+use lumen_static_winit::Run;
+
 fn main() {
     let mut args = std::env::args().skip(1);
     if let Some(flag) = args.next() {
@@ -28,7 +31,7 @@ fn main() {
             return;
         }
         // M12/T12.1: the same session through the harness. Both run in
-        // , because the comparison is the task's evidence.
+        // `just tally-drive`, because the comparison is the task's evidence.
         if flag == "--drive2" {
             headless::drive_harness();
             return;
@@ -45,5 +48,5 @@ fn main() {
             return;
         }
     }
-    window::run();
+    app::program(0, 440, 520).run();
 }

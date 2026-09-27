@@ -83,8 +83,8 @@ pub fn sync_size(canvas: &mut Canvas, font: Option<&FontStack>, width: u32, heig
 /// through.
 ///
 /// It does **not** own the canvas. An application may need to read the
-/// canvas while the surface does not exist — the tally's agent endpoint
-/// answers `ui.screenshot` before `resumed` has run — and a `Surface`
+/// canvas while the surface does not exist — an agent endpoint may
+/// answer `ui.screenshot` before `resumed` has run — and a `Surface`
 /// that owned it would make that a `None`.
 /// The window is held in an `Arc`, not an `Rc`, and the reason is the
 /// GPU backend: wgpu's *safe* surface constructor wants a `Send + Sync`

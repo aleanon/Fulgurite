@@ -385,6 +385,19 @@ impl<A: App + 'static, P: RecoverPolicy, I: Invalidation> Local<A, P, I> {
         // the window, which owns the loop ([`Session::set_waker`]).
         host.set_spawner(Box::new(lumen_static::spawn::Threads::new()));
         let font = FontStack::system();
+        // **The audit measures with the face the host lays out with** —
+        // M60/T60.3. Left at the block stand-in, `ui.lint` reported the
+        // block's opinion of every text box (`tests/agent_audit_face.rs`);
+        // `examples/counter-window` set this itself until M60 moved it
+        // onto this session.
+        #[cfg(feature = "live-agent")]
+        let agent = {
+            let mut agent = lumen_static_agent::Agent::new();
+            if let Some(f) = font.clone() {
+                agent.set_text_measure(Box::new(FontMetrics::new(f)));
+            }
+            agent
+        };
         let metrics = font.map(FontMetrics::new);
         Local {
             host,
@@ -399,7 +412,7 @@ impl<A: App + 'static, P: RecoverPolicy, I: Invalidation> Local<A, P, I> {
             animating: false,
             unjournaled_px: None,
             #[cfg(feature = "live-agent")]
-            agent: lumen_static_agent::Agent::new(),
+            agent,
         }
     }
 
