@@ -1429,17 +1429,14 @@ mod tests {
         assert!(wrong.is_empty(), "fields that did not follow their rule:\n{}", wrong.join("\n"));
     }
 
-    /// **Every text run the catalogue paints reaches WCAG AA** — M54/T54.0
-    /// (R16-F9), measured on the display list with the real stylesheet and
-    /// `SHOW_LIGHT` (`lumen_static_shell::contrast`), entry by entry. It
-    /// prints the runs below 4.5:1 against the total measured, and fails if
-    /// fewer than half of the catalogue's text commands were measured, so a
-    /// harness that found no ground cannot pass.
-    #[test]
-    #[ignore = "red until T54.6: R16-F9 -- the showcase accent 0x2f6bff is under 4.5:1"]
-    fn every_catalogue_text_run_reaches_aa() {
+    /// The catalogue's painted text, entry by entry, under `palette`, with
+    /// the real stylesheet (`lumen_static_shell::contrast`) — M54/T54.0,
+    /// T54.5. Returns the runs under `bound`, the runs measured, the
+    /// unmeasured count and the catalogue's count of text commands.
+    fn catalogue_contrast(palette: Palette, bound: f32) -> (Vec<String>, usize, usize, usize) {
         use lumen_static_shell::contrast::text_contrast;
         let mut h = host(0, false);
+        h.set_palette(palette);
         let (mut measured, mut texts, mut unmeasured) = (0usize, 0usize, 0usize);
         let mut below = Vec::new();
         for (i, e) in CATALOG.iter().enumerate() {
@@ -1452,13 +1449,57 @@ mod tests {
                 };
             }
             texts += h.list.cmds.iter().filter(|c| matches!(c, Cmd::Text { text, .. } if !h.list.str_of(*text).trim().is_empty())).count();
-            let r = text_contrast(&h.list, SHOW_LIGHT.page);
+            let r = text_contrast(&h.list, palette.page);
             measured += r.measured.len();
             unmeasured += r.unmeasured.len();
-            for x in r.below(4.5) {
+            for x in r.below(bound) {
                 below.push(format!("{}: {:?} {:.2}:1 (fg {:?} on {:?})", e.name, x.text, x.ratio, x.fg, x.ground));
             }
         }
+        (below, measured, unmeasured, texts)
+    }
+
+    fn three_to_one(palettes: &[(&str, Palette)]) {
+        let mut bad = Vec::new();
+        for (name, p) in palettes {
+            let (below, measured, unmeasured, texts) = catalogue_contrast(*p, 3.0);
+            println!("{name}: runs below 3.0: {} / {measured} measured ({unmeasured} unmeasured, {texts} text commands)", below.len());
+            assert!(measured * 2 >= texts, "setup: {name}: {measured} of {texts} text commands measured");
+            bad.extend(below.into_iter().map(|b| format!("{name}: {b}")));
+        }
+        assert!(bad.is_empty(), "{} run(s) under 3:1:\n  {}", bad.len(), bad.join("\n  "));
+    }
+
+    /// **Every text run the catalogue paints reaches 3:1**, the non-text
+    /// minimum, under the showcase's light palette and the core's —
+    /// M54/T54.5 (R16-F8; the core's is what `app.setPalette` swaps to).
+    /// It fails if fewer than half the catalogue's text commands were
+    /// measured, so a harness that found no ground cannot pass.
+    #[test]
+    fn every_catalogue_text_run_reaches_three_to_one_in_light() {
+        three_to_one(&[("SHOW_LIGHT", SHOW_LIGHT), ("Palette::LIGHT", Palette::LIGHT)]);
+    }
+
+    /// **The same under the dark palettes — red, and not this milestone's
+    /// to fix.** The widgets' own defaults are light-theme *values*, not
+    /// palette roles, so every widget and demo label the stylesheet does
+    /// not re-colour paints near-black text on the dark page: 120 of 446
+    /// runs under 3:1 in `SHOW_DARK` and in `Palette::DARK` (measured
+    /// 2026-09-27). Making defaults follow the palette is a design change
+    /// the showcase redesign (M56) and the widgets share;
+    /// `docs/plan-a11y-platform.md`'s "What building found" (T54.5) records it.
+    #[test]
+    #[ignore = "red: widget defaults are light-theme values, not palette roles (plan-a11y-platform, T54.5 finding) -- 120/446 runs under 3:1 in dark"]
+    fn every_catalogue_text_run_reaches_three_to_one_in_dark() {
+        three_to_one(&[("SHOW_DARK", SHOW_DARK), ("Palette::DARK", Palette::DARK)]);
+    }
+
+    /// **And WCAG AA, 4.5:1, for text** — M54/T54.0 (R16-F9), under the
+    /// showcase's light palette.
+    #[test]
+    #[ignore = "red until T54.6: R16-F9 -- the showcase accent 0x2f6bff is under 4.5:1"]
+    fn every_catalogue_text_run_reaches_aa() {
+        let (below, measured, unmeasured, texts) = catalogue_contrast(SHOW_LIGHT, 4.5);
         println!("runs below 4.5: {} / {measured} measured ({unmeasured} unmeasured, {texts} text commands)", below.len());
         assert!(measured * 2 >= texts, "setup: {measured} of {texts} text commands measured");
         assert!(below.is_empty(), "{} run(s) under 4.5:1:\n  {}", below.len(), below.join("\n  "));

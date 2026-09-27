@@ -322,7 +322,12 @@ impl<const KIND: u8> Node for Strip<KIND> {
             // sits *on* the foreground, so it takes the background's —
             // which is why a filled kind's `type_defaults` must give it
             // an opaque one, and why `a_filled_strip_has_a_ground_for_its_selected_label`
-            // asserts that rather than trusting it.
+            // asserts that rather than trusting it. **The guard is the
+            // painted colour since M54/T54.5**: that test reads the
+            // defaults, and drawing this label in the pill's own colour
+            // (the review's fd31a02) left it green; the contrast harness
+            // (`tests/text_contrast.rs`) and `just widget-drive` measure
+            // the run against the fill it lands on, and read 1.00:1.
             let col = if on && KIND != TABS { s.bg } else { s.fg };
             // Centred on its cell, from the width `layout` measured.
             let tw = self.widths[k].min(cell[2] - cell[0]);

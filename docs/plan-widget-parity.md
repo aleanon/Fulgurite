@@ -402,6 +402,13 @@ artifacts that make a claim about it falsifiable.**
 
 ### (a) The action inventory — written first, and stored as data
 
+> **And a fourth per-action assertion** (M54/T54.5, 2026-09-27): after
+> every action the runner measures the text painted inside the widget's
+> box with `ui.contrast` — each run against the fill under it, from the
+> display list — and fails under 3:1, printing the minimum beside the
+> bound. A selected rail label drawn in its pill's colour read 1.00:1
+> and every other check was green.
+>
 > **And a role column** (M54/T54.3, 2026-09-27): `scripts/drive/roles.py`
 > names the role `ui.getTree` must report for every inventory entry's
 > node; the runner asserts it before the first action and

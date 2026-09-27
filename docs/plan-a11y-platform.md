@@ -922,6 +922,26 @@ feature (`dev-shape`); without that line it would never run.
   built beside it); `Action::SetValue` is `f32` so it cannot add one,
   and the firmware's `.text` is unchanged.
 
+**T54.5 (2026-09-27).**
+- **The widgets' defaults do not follow the palette.** They are
+  light-theme *values*, so under a dark palette every widget and label a
+  stylesheet does not re-colour paints near-black text on the dark page:
+  the showcase's catalogue has **120 of 446 runs under 3:1** in
+  `SHOW_DARK` and in `Palette::DARK`, and none in either light palette.
+  The plan assumed "under `Palette::LIGHT` and `Palette::DARK`" was a
+  parameter of the harness; for the widgets' own catalogue it is not a
+  parameter at all (no stylesheet, no roles). Making defaults follow the
+  palette is a design change the widgets and the showcase redesign (M56)
+  share, so it is **reported, not built here**: the dark measurement is
+  an `#[ignore]`d test that prints the count
+  (`every_catalogue_text_run_reaches_three_to_one_in_dark`), and the
+  light one gates.
+- **The drive reaches the harness through a new agent method**,
+  `ui.contrast`, answered by the session from its own display list
+  (`AgentHost::contrast`, `None` from a host with no list). The agent
+  crate cannot name the shell, which owns the display list and the
+  harness.
+
 ## Appendix: finding → task
 
 | ID | sev now | status | task |

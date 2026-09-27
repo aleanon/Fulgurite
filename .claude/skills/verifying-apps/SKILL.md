@@ -92,7 +92,7 @@ checkable", which is not a pass.
 checked against both by `scripts/check_agent_methods.sh`, M48/T48.14):
 `ui.getTree` `ui.getLayout` `ui.resolve` `ui.probe` `ui.probeRegion`
 `ui.explain` `ui.getAppliedStyles` `ui.lint` `ui.lastChange`
-`ui.lastDamage` `ui.waitSettled` `ui.screenshot` · `input.click` `input.pointerDown` `input.pointerUp`
+`ui.lastDamage` `ui.waitSettled` `ui.screenshot` `ui.contrast` · `input.click` `input.pointerDown` `input.pointerUp`
 `input.hover` `input.key` `input.type` `input.fill` `input.paste` `input.compose`
 `input.scrollIntoView` `input.scroll` `input.invokeAction` ·
 `app.diagnostics` `app.logs` `app.perf` `app.setPalette` `app.shadow`
@@ -108,7 +108,10 @@ IME path does.
 takes `action` (`default`, `increment`, `decrement`, `setValue` with
 `value`, `expand`, `collapse`, `focus`) and queues the `Event::Action` a
 screen reader's request becomes, answering `handled` — M54/T54.4; it is
-no longer a click at the centre.
+no longer a click at the centre. `ui.contrast {selector}` measures the
+painted text inside a node's box against the fill under each run (the
+display list, not pixels) and answers `measured`, `unmeasured` and the
+`min` run — `just widget-drive` asserts it at 3:1 after every action.
 
 **A node says what a screen reader would announce** (M48/T48.5): beside
 `id`, `role`, `value`, `label`, `bounds`, `children`, `src` and `wid`,

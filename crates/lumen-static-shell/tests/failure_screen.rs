@@ -56,17 +56,10 @@ fn the_location_and_the_application_frame_are_on_the_screen() {
     assert!(all.iter().any(|t| t.contains("Press R to retry")), "no hint");
 }
 
-/// WCAG relative luminance and contrast ratio.
+/// WCAG contrast — the one implementation, `lumen_static_shell::contrast`
+/// (M54/T54.5 moved this file's own copy there).
 fn contrast(a: Color, b: Color) -> f32 {
-    fn lum(c: Color) -> f32 {
-        let f = |v: u8| {
-            let v = v as f32 / 255.0;
-            if v <= 0.03928 { v / 12.92 } else { ((v + 0.055) / 1.055).powf(2.4) }
-        };
-        0.2126 * f(c.0) + 0.7152 * f(c.1) + 0.0722 * f(c.2)
-    }
-    let (x, y) = (lum(a), lum(b));
-    (x.max(y) + 0.05) / (x.min(y) + 0.05)
+    lumen_static_shell::contrast::ratio(a, b)
 }
 
 #[test]

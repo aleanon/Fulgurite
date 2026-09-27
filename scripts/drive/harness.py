@@ -40,8 +40,11 @@ three ways this repository has actually been fooled:
    ever presses the right spot cannot tell a working handler from one
    that fires on everything.
 
-And two more after *every* action, because they are free once a socket
+And more after *every* action, because they are free once a socket
 is open and no widget test here has ever made them:
+
+* **Painted text is readable** — `ui.contrast` over the widget's box,
+  each run against the fill under it, at 3:1 (M54/T54.5, R16-F8).
 
 * **`ui.lint` is clean** — the ambient auditor already runs per frame.
 * **Damage is bounded by the widget's own box**, ratio printed. A widget
@@ -501,6 +504,26 @@ def run_widget(c: AgentClient, widget: str, sel: str, actions: list[Action],
                     f"{ratio:.2f}x {'the stage' if a.reflows else 'its own box'} "
                     f"({worst:.0f} px² over {against_px:.0f}), "
                     f"bound 4.0")
+
+        # (4) **the text it now paints can be read** (M54/T54.5, R16-F8):
+        # every run inside the widget's box against the fill under it,
+        # from the display list, at the non-text minimum. A selected rail
+        # label drawn in its pill's colour measured 1.0 and every check
+        # here was green.
+        con = c.rpc("ui.contrast", selector=root or sel)
+        if con.get("supported"):
+            m = con.get("min")
+            out.append(
+                f"      contrast: min {m['ratio']:.2f} at {m['text']!r} (bound 3.0), "
+                f"measured: {con['measured']}, unmeasured: {con['unmeasured']}"
+                if m else f"      contrast: no text in the widget's box "
+                          f"(measured: 0, unmeasured: {con['unmeasured']})")
+            if m and m["ratio"] < 3.0:
+                raise Failed(
+                    f"{widget}/{a.name}: text {m['text']!r} painted at {m['ratio']:.2f}:1 "
+                    f"(fg {m['fg']} on {m['ground']}), bound 3.0")
+        else:
+            raise Failed(f"{widget}/{a.name}: ui.contrast is not supported by this window")
 
         # lint stays clean
         after = c.lint().get("findings", [])

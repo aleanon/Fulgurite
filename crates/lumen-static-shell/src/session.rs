@@ -950,6 +950,39 @@ impl<A: App, P: RecoverPolicy, I: Invalidation> lumen_static_agent::AgentHost fo
         lumen_static_agent::process_block(self.host.strategy(), &crate::process_features())
     }
 
+    /// Measured on the frame's own display list (M54/T54.5): each text
+    /// run whose centre lies in `rect` against the opaque fill under it,
+    /// with the page behind everything.
+    fn contrast(&self, rect: Option<[f32; 4]>) -> Option<serde_json::Value> {
+        let r = crate::contrast::text_contrast(&self.host.list, self.page);
+        let inside = |b: &[f32; 4]| {
+            let (x, y) = ((b[0] + b[2]) / 2.0, (b[1] + b[3]) / 2.0);
+            rect.is_none_or(|q| x >= q[0] && x < q[2] && y >= q[1] && y < q[3])
+        };
+        let runs: Vec<&crate::contrast::Run> = r.measured.iter().filter(|m| inside(&m.rect)).collect();
+        let min = runs.iter().min_by(|a, b| a.ratio.total_cmp(&b.ratio));
+        let run_json = |m: &crate::contrast::Run| {
+            serde_json::json!({
+                "text": m.text, "ratio": m.ratio,
+                "fg": [m.fg.0, m.fg.1, m.fg.2], "ground": [m.ground.0, m.ground.1, m.ground.2],
+            })
+        };
+        Some(serde_json::json!({
+            "supported": true,
+            "measured": runs.len(),
+            "unmeasured": r
+                .unmeasured
+                .iter()
+                .filter(|(k, _, _)| match self.host.list.cmds.get(*k) {
+                    Some(lumen_static::display::Cmd::Text { rect, .. }) => inside(rect),
+                    _ => false,
+                })
+                .count(),
+            "clipped": r.clipped,
+            "min": min.map(|m| run_json(m)),
+        }))
+    }
+
     #[cfg(feature = "shadow-oracle")]
     fn shadow(&self) -> Option<serde_json::Value> {
         let r = self.host.shadow_report();

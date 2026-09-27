@@ -675,6 +675,28 @@ impl Agent {
             let result = host.shadow().unwrap_or_else(|| json!({ "supported": false }));
             return json!({ "jsonrpc": "2.0", "id": id, "result": result });
         }
+        // M54/T54.5: the contrast of the text a frame painted, measured on
+        // the display list against the ground under each run. `selector`
+        // narrows it to that node's box; without one, the whole frame.
+        if method == "ui.contrast" {
+            let params = req.get("params").cloned().unwrap_or_else(|| json!({}));
+            let rect = match params.get("selector").and_then(Value::as_str) {
+                None => None,
+                Some(sel) => {
+                    let tree = host.tree();
+                    let ix = Index::build(&tree);
+                    match resolve_one(&ix, sel) {
+                        Ok(e) => e.bounds().map(|b| [b.x0 as f32, b.y0 as f32, b.x1 as f32, b.y1 as f32]),
+                        Err((code, message, data)) => {
+                            return json!({ "jsonrpc": "2.0", "id": id, "error": {
+                                "code": code, "message": message, "data": data } })
+                        }
+                    }
+                }
+            };
+            let result = host.contrast(rect).unwrap_or_else(|| json!({ "supported": false }));
+            return json!({ "jsonrpc": "2.0", "id": id, "result": result });
+        }
         // M42/T42.1: the tree answers the diagnostics; the host adds which
         // process it is, so a drive can check it drove the build it
         // launched rather than whatever held the port.
@@ -1960,6 +1982,13 @@ pub trait AgentHost {
     /// divergence": a drive that asserted "quiet" against a host that
     /// never compared anything would be proving nothing.
     fn shadow(&self) -> Option<Value> {
+        None
+    }
+
+    /// The painted text's contrast, within `rect` (logical px) or over the
+    /// whole frame — M54/T54.5, the `ui.contrast` method. `None` from a
+    /// host with no display list to read, reported as `supported: false`.
+    fn contrast(&self, _rect: Option<[f32; 4]>) -> Option<Value> {
         None
     }
 

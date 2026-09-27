@@ -18,7 +18,10 @@ The protocol is JSON-RPC 2.0. Methods divide into three groups:
 
 **Query** — `ui.getTree`, `ui.getLayout`, `ui.getAppliedStyles`,
 `ui.resolve`, `ui.probe`, `ui.probeRegion`, `ui.screenshot`,
-`ui.lastChange`, `ui.lastDamage`, `ui.lint`, `ui.explain`.
+`ui.lastChange`, `ui.lastDamage`, `ui.lint`, `ui.explain`, and
+`ui.contrast` — the WCAG ratio of each painted text run against the fill
+under it, read off the display list, within a selector's box
+(M54/T54.5).
 
 **Synthesise** — `input.click`, `input.hover`, `input.key`,
 `input.type`, `input.fill`, `input.paste`, `input.scroll`, `input.scrollIntoView`,
