@@ -10,9 +10,6 @@ cd "$(dirname "$0")/.."
 
 # name  reason
 ALLOW='
-Fixed      layout only: a fixed box with no content
-Spacer     layout only: empty space
-Divider    decorative: a rule between things, nothing to read
 Glass      a wrapper: its content speaks
 Popup      a wrapper: its content speaks
 ScrollView a wrapper: its content speaks

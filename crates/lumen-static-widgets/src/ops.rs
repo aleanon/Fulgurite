@@ -263,6 +263,22 @@ impl Node for Fixed {
         out.rect(rect_of(&st[i]), st[i].fg);
     }
     lumen_static::leaf_common!(Fixed, NodeDesc::RIGID);
+
+    /// **Hidden from a reader on purpose** — M57/D7. It is layout, not
+    /// content; published as a nameless `GenericContainer` it read as a
+    /// control that says nothing, and the live accessibility sweep
+    /// flagged every filler in the showcase's grid rows.
+    #[cfg(feature = "observe")]
+    fn observe(
+        &self,
+        _st: &[NodeState],
+        _i: usize,
+        _id: u64,
+        node: &mut lumen_static::observe::accesskit::Node,
+        _extra: &mut alloc::vec::Vec<(lumen_static::observe::accesskit::NodeId, lumen_static::observe::accesskit::Node)>,
+    ) {
+        node.set_hidden();
+    }
 }
 
 /// Fills whatever its parent hands it.
@@ -317,6 +333,22 @@ impl Node for Spacer {
     // It swallowed every click and every wheel event in
     // `examples/glass` (found 2026-09-11).
     lumen_static::leaf_common!(Spacer, 0, nohit);
+
+    /// **Hidden from a reader on purpose** — M57/D7. It is layout, not
+    /// content; published as a nameless `GenericContainer` it read as a
+    /// control that says nothing, and the live accessibility sweep
+    /// flagged every filler in the showcase's grid rows.
+    #[cfg(feature = "observe")]
+    fn observe(
+        &self,
+        _st: &[NodeState],
+        _i: usize,
+        _id: u64,
+        node: &mut lumen_static::observe::accesskit::Node,
+        _extra: &mut alloc::vec::Vec<(lumen_static::observe::accesskit::NodeId, lumen_static::observe::accesskit::Node)>,
+    ) {
+        node.set_hidden();
+    }
 }
 
 /// A clickable leaf. `on_click` is a plain `fn` pointer, never a closure:

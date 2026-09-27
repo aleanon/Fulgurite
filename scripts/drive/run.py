@@ -55,6 +55,17 @@ def main() -> int:
     failures = 0
     actions = 0
     bare = 0
+
+    # M57/D5: first, on the fresh window, the agent must not change what
+    # is drawn. Full runs only: a filtered run's window has already been
+    # driven by whatever ran before in the same process.
+    if not only:
+        from parity import run_parity  # noqa: E402
+        from harness import _pick  # noqa: E402
+        lines, pfail = run_parity(c, _pick, strategy)
+        for line in lines:
+            print(line, file=sys.stderr if line.startswith("  FAIL") else sys.stdout)
+        failures += pfail
     for widget, sel, acts in entries:
         actions += len(acts)
         try:
@@ -104,6 +115,13 @@ def main() -> int:
     print(f"keyboard-drive [{strategy}]: {len(names)} entries, {len(KEYS)} with keys, "
           f"{kdone} actions, {kfail} failed")
     failures += kfail
+
+    # M57/D7: the accessibility sweep, every demo.
+    from a11y import run_a11y  # noqa: E402
+    lines, afail = run_a11y(c, _pick, names, strategy)
+    for line in lines:
+        print(line, file=sys.stderr if line.startswith("  FAIL") else sys.stdout)
+    failures += afail
     return 1 if failures else 0
 
 

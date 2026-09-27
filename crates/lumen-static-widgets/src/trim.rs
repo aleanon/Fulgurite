@@ -88,6 +88,22 @@ impl Node for Divider {
     }
 
     lumen_static::leaf_common!(Divider, 0, nohit);
+
+    /// **Hidden from a reader on purpose** — M57/D7. It is layout, not
+    /// content; published as a nameless `GenericContainer` it read as a
+    /// control that says nothing, and the live accessibility sweep
+    /// flagged every filler in the showcase's grid rows.
+    #[cfg(feature = "observe")]
+    fn observe(
+        &self,
+        _st: &[NodeState],
+        _i: usize,
+        _id: u64,
+        node: &mut lumen_static::observe::accesskit::Node,
+        _extra: &mut alloc::vec::Vec<(lumen_static::observe::accesskit::NodeId, lumen_static::observe::accesskit::Node)>,
+    ) {
+        node.set_hidden();
+    }
 }
 
 /// A small pill of text: a count, a status, a tag.

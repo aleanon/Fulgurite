@@ -941,6 +941,11 @@ impl Agent {
                 if let Some(b) = n.bounds() {
                     o.insert("bounds".into(), json!([b.x0, b.y0, b.x1, b.y1]));
                 }
+                // Hidden from a reader on purpose — a skeleton, busy — which
+                // D7's sweep must tell from "says nothing" (M57/D7).
+                if n.is_hidden() {
+                    o.insert("hidden".into(), true.into());
+                }
                 let children: Vec<u64> = n.children().iter().map(|c| c.0).collect();
                 if !children.is_empty() {
                     o.insert("children".into(), children.into());
