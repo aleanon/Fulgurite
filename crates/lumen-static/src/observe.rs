@@ -4,14 +4,15 @@
 //! **Two features since M54/T54.1** (`docs/plan-a11y-platform.md` §2.1).
 //! The module and the accesskit walk are `a11y` — what a screen reader
 //! needs, and all a release application links for one. The JSON view
-//! ([`dump`], [`tree_json`], [`node_json`], [`state_json`]) is `observe`,
+//! (`dump`, `tree_json`, `node_json`, `state_json`) is `observe`,
 //! which implies `a11y` and adds `serde_json` and the `NodeDesc.src`
-//! stamp for agents.
+//! stamp for agents. (Named without links here: under `a11y` alone they
+//! do not exist, and `cargo doc --features a11y` must still resolve.)
 //!
 //! One implementation serves screen readers and coding agents alike — no
 //! bespoke agent channel. **Including the state a widget publishes**
-//! (M48/T48.5, T48.6): [`node_json`] and [`state_json`] are the one
-//! serialiser behind [`dump`], `ui.getTree`, `ui.resolve` and
+//! (M48/T48.5, T48.6): `node_json` and `state_json` are the one
+//! serialiser behind `dump`, `ui.getTree`, `ui.resolve` and
 //! `ui.getLayout`, so a checked box reads checked on every path. Node identity is positional and survives hot
 //! reload: main-table nodes are `table index + 1`; repeater instances get
 //! row-stable synthetic ids, so "the third row" keeps its id across

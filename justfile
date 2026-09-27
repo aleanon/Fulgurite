@@ -112,6 +112,10 @@ dev-shape:
     # ICE in the gate is a gate that cries wolf.
     rm -rf target/doc
     RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --exclude lumen-static-wgpu
+    # M54/T54.1: `a11y` without `observe` is a third doc build of the core --
+    # the workspace's unifies `observe` on, so a link to an `observe`-only
+    # item from `a11y` code resolves there and fails for the feature alone.
+    RUSTDOCFLAGS="-D warnings" cargo doc -p lumen-static --no-deps --features a11y
     # M48/T48.9: the core's `observe` without the widgets' must not
     # build, and the matched build must. Compiles, so not in `static`.
     ./scripts/check_feature_seam.sh
