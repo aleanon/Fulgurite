@@ -1049,8 +1049,18 @@ impl Surface<'_> {
         // the stack still starts one deep and `PopClip`'s floor below is
         // unchanged.
         let band = [0.0, self.y0 as f32, self.width as f32, self.y_hi() as f32];
+        // **The damage is snapped outward to whole pixels** (M57/D6),
+        // as `lumen-static-wgpu`'s `snap_out` does. `fill` rounds a rect
+        // outward and the glyph blit truncates one, so a region ending
+        // at 608.4 px — a popup's edge at scale 2 — had its row 608
+        // cleared by `clear_within` and its glyph ink clipped away: one
+        // stale row under the trigger's text on every partial repaint,
+        // where a full repaint's integer band drew it.
         let outer = match damage {
-            Some(d) => [d[0].max(band[0]), d[1].max(band[1]), d[2].min(band[2]), d[3].min(band[3])],
+            Some(d) => {
+                let d = [d[0].floor(), d[1].floor(), d[2].ceil(), d[3].ceil()];
+                [d[0].max(band[0]), d[1].max(band[1]), d[2].min(band[2]), d[3].min(band[3])]
+            }
             None => band,
         };
         // **A fixed stack, not a `Vec`** (M26/T26.13). This allocated

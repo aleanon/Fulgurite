@@ -55,6 +55,11 @@ def main() -> int:
     failures = 0
     actions = 0
     bare = 0
+    # Which scale this pass really runs at: a scale-2 pass whose window
+    # came up at 1 would compare nothing new and still say "Scale2".
+    shot = c.rpc("ui.screenshot")
+    print(f"widget-drive [{strategy}]: window {shot['width']}x{shot['height']} px at scale {shot.get('scale')}"
+          f"{', full-repaint check on' if os.environ.get('LUMEN_DRIVE_FULLCHECK') == '1' else ''}")
 
     # M57/D5: first, on the fresh window, the agent must not change what
     # is drawn. Full runs only: a filtered run's window has already been

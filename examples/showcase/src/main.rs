@@ -1524,6 +1524,81 @@ mod tests {
         h
     }
 
+    /// **A partial repaint matches a full one at scale 2, on the real
+    /// layout** — found by M57/D6's scale-2 drive. Opening a picker left
+    /// one physical row of the trigger's text stale: the popup's damage
+    /// ended on a half-pixel logical edge, and the damaged and painted
+    /// extents rounded it differently. The framework's own test lays out
+    /// on whole pixels, which is why only the showcase's layout showed it.
+    #[test]
+    fn a_popup_repaints_partially_to_the_same_pixels_at_scale_2() {
+        use lumen_static::retain::Damage;
+        use lumen_static_shell::software::Canvas;
+        use lumen_static_shell::text::{FontMetrics, FontStack};
+        let Some(font) = FontStack::system() else {
+            eprintln!("no system font; skipping");
+            return;
+        };
+        let table = <<Show as lumen_static::event::App>::Tree as lumen_static::widget::Widget>::SUB_TABLE;
+        let mut worst = Vec::new();
+        for name in ["DatePicker", "FilePicker", "PickList"] {
+            let entry = CATALOG.iter().position(|e| e.name == name).unwrap();
+            let mut h = host(entry, false);
+            // The size the scale-2 drive's window really had: the window
+            // manager fitted the requested 2240x1520 to the screen, and the
+            // defect needs that layout's half-pixel edge. At 2240x1520 every
+            // edge here was whole and this test was green.
+            let (w, hh) = (1920, 1008);
+            h.resize(w, hh);
+            h.set_scale(2.0);
+            let mut m = FontMetrics::new(font.clone());
+            h.pump_with(&mut m);
+            h.post(Event::Key { key: lumen_static::event::Key::Escape, down: true });
+            h.pump_with(&mut m);
+            let (mut full, mut part) = (Canvas::with_font(w, hh, font.clone()), Canvas::with_font(w, hh, font.clone()));
+            for c in [&mut full, &mut part] {
+                c.clear(palette().page);
+                lumen_static::Renderer::render(c, &h.list, w, hh);
+            }
+            h.take_damage_for_age(1);
+            // The trigger, found by part id under the demo.
+            let demo = lumen_static::style::index_of_wid(table, "demo").unwrap();
+            let trig = lumen_static::style::subtree_range(table, demo)
+                .find(|&k| matches!(table[k].wid, "picker-trigger" | "chooser-trigger") && h.states[k].size.w > 0.0)
+                .expect("setup: no trigger on stage");
+            let (mut partial, mut differ) = (0, 0);
+            for _ in 0..3 {
+                let t = h.states[trig];
+                let (x, y) = (t.pos.x + 20.0, t.pos.y + t.size.h / 2.0);
+                h.post(Event::down(x, y));
+                h.pump_with(&mut m);
+                h.post(Event::up(x, y));
+                h.pump_with(&mut m);
+                full.clear(palette().page);
+                lumen_static::Renderer::render(&mut full, &h.list, w, hh);
+                match h.take_damage_for_age(1) {
+                    Damage::None => {}
+                    Damage::All => {
+                        part.clear(palette().page);
+                        lumen_static::Renderer::render(&mut part, &h.list, w, hh);
+                    }
+                    d @ Damage::Regions(_) => {
+                        partial += 1;
+                        for r in d.regions([0.0, 0.0, w as f32, hh as f32]) {
+                            part.clear_within(r, palette().page);
+                            part.render_within(&h.list, r);
+                        }
+                    }
+                }
+                differ = differ.max(full.pixels.chunks(4).zip(part.pixels.chunks(4)).filter(|(a, b)| a != b).count());
+            }
+            println!("{name} at scale 2: {partial} partial repaints, worst {differ} px differ");
+            assert!(partial >= 2, "setup: {name} repainted partially {partial} times");
+            worst.push((name, differ));
+        }
+        assert!(worst.iter().all(|w| w.1 == 0), "stale pixels after a partial repaint: {worst:?}");
+    }
+
     /// **A grid row's cells take their column** (M27/T27.11, finding 4).
     ///
     /// The header is drawn over `column_width` bands of a box the rows

@@ -69,6 +69,11 @@ def _headless(index: int) -> tuple[list[float], bytes]:
 def run_parity(c, pick, strategy: str) -> tuple[list[str], int]:
     """Compare every non-animated entry; answer the lines and the failures."""
     out, failures, checked, skipped = [], 0, 0, []
+    scale = c.rpc("ui.screenshot").get("scale", 1.0)
+    if scale != 1.0:
+        # The headless render is at scale 1; comparing it with a scale-2
+        # window would be comparing different pixels, not finding a defect.
+        return [f"parity [{strategy}]: skipped at scale {scale} -- the headless render is at 1"], 0
     for index, (name, animated) in enumerate(_entries()):
         if animated:
             skipped.append(name)

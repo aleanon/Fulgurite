@@ -46,6 +46,7 @@ can be observed.
 """
 from __future__ import annotations
 
+import os
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -108,6 +109,13 @@ class Action:
     #: would be the bound removed, which is the shape this whole protocol
     #: exists to refuse.
     reflows: bool = False
+    #: The box of the popup this action opens, read after it has opened.
+    #: Its damage is then bounded against the widget **and** that popup
+    #: -- the pad is the consequence, and it may cover the widget: a pad
+    #: that flips above its trigger drops its shadow on it, which is what
+    #: the scale-2 pass's short window did (M57/D6). The bound moves, as
+    #: `reflows`'s does; it does not go away.
+    opens: Callable[["Ctx"], list[float]] | None = None
     #: **Does the consequence show?** — M57/D1. `True`: the pixels in the
     #: widget's box (or `region`'s) must change, asserted from the frame
     #: itself (`ui.regionHash`). `False`: declared invisible there — a
@@ -212,14 +220,22 @@ class Ctx:
     def click(self, sel: str | None = None):
         return self.c.click(sel or self.sel)
 
-    def click_outside(self, pad: float = 6.0):
+    def click_outside(self, pad: float = 6.0, avoid: list | None = None):
         """The same click, `pad` px past the widget's own edge.
 
         Above rather than beside: the stage centres its demo, so left and
-        right of a FILL widget is still the widget.
+        right of a FILL widget is still the widget. `avoid` names other
+        boxes the press must miss -- an open popup, which flips *above*
+        its trigger in a short window, so "just above the widget" was
+        inside the pad at scale 2 (M57/D6). Past all of them, above if
+        there is room and below if not.
         """
         b = self.box()
-        return self.c.rpc("input.click", x=(b[0] + b[2]) / 2, y=b[1] - pad)
+        for o in avoid or []:
+            b = [min(b[0], o[0]), min(b[1], o[1]), max(b[2], o[2]), max(b[3], o[3])]
+        x = (self.box()[0] + self.box()[2]) / 2
+        y = b[1] - pad if b[1] - pad > 0 else b[3] + pad
+        return self.c.rpc("input.click", x=x, y=y)
 
     def key(self, name: str):
         self.c.key(name, True)
@@ -227,6 +243,42 @@ class Ctx:
 
     def hover(self, sel: str | None = None):
         return self.c.rpc("input.hover", selector=sel or self.sel)
+
+
+def _settled_hash(c: AgentClient, rect) -> dict:
+    """The rect's hash once two reads 100 ms apart agree (at most 3 s)."""
+    import time
+    prev = c.rpc("ui.regionHash", rect=rect)
+    for _ in range(30):
+        time.sleep(0.1)
+        cur = c.rpc("ui.regionHash", rect=rect)
+        if cur.get("hash") == prev.get("hash"):
+            return cur
+        prev = cur
+    return prev
+
+
+def _dump_diff(widget: str, action: str, before: dict, after: dict) -> str:
+    """Save both frames of a D6 failure, and say where they differ."""
+    import base64
+    import io
+    import tempfile
+    try:
+        from PIL import Image, ImageChops
+    except ImportError:
+        return "(PIL absent: frames not saved)"
+    a = Image.open(io.BytesIO(base64.b64decode(before["image_base64"]))).convert("RGBA")
+    b = Image.open(io.BytesIO(base64.b64decode(after["image_base64"]))).convert("RGBA")
+    # RGB, not RGBA: `getbbox` on an RGBA image reads only the alpha
+    # band, and both frames are opaque -- it answered `None` for a real
+    # one-row difference until this converted first.
+    bb = ImageChops.difference(a.convert("RGB"), b.convert("RGB")).getbbox()
+    d = Path(tempfile.gettempdir()) / "widget_drive_d6"
+    d.mkdir(exist_ok=True)
+    stem = f"{widget}-{action}".replace(" ", "_").replace("/", "_")[:60]
+    a.save(d / f"{stem}-damaged.png")
+    b.save(d / f"{stem}-full.png")
+    return f"physical diff box {bb}; frames in {d}"
 
 
 def _region_name(region) -> str:
@@ -412,6 +464,27 @@ def run_widget(c: AgentClient, widget: str, sel: str, actions: list[Action],
         if not ok:
             raise Failed(f"{widget}/{a.name}: {measured} (injection: {a.injection})")
 
+        # (2a) D6: the damaged frame equals a full repaint of the same
+        # state. Enabled for the scale-2 pass, where fractional logical
+        # edges land on physical pixels and a damage rect that is off by
+        # one leaves a seam.
+        if os.environ.get("LUMEN_DRIVE_FULLCHECK") == "1":
+            win = _region_rect(ctx, "window")
+            # **Settled first.** An action can legitimately schedule one
+            # more frame -- a popup that opens moves focus into itself on
+            # the next pump (M57/A12) -- and the window's loop draws it
+            # after the action returns. Hashing before that frame compared
+            # a frame in flight with a full repaint: the first run failed
+            # three pickers with two *identical* screenshots either side.
+            h0 = _settled_hash(c, win)
+            s0 = c.rpc("ui.screenshot")
+            if c.rpc("app.repaintAll").get("repainted"):
+                h1 = c.rpc("ui.regionHash", rect=win)
+                if h0.get("hash") != h1.get("hash"):
+                    where = _dump_diff(widget, a.name, s0, c.rpc("ui.screenshot"))
+                    raise Failed(f"{widget}/{a.name}: the damaged frame differs from a full "
+                                 f"repaint of the same state, over the window {win}; {where}")
+
         # (2b) and it shows (D1): the same rect's pixels, after.
         if a.visible:
             pix_after = c.rpc("ui.regionHash", rect=pix_rect)
@@ -436,6 +509,9 @@ def run_widget(c: AgentClient, widget: str, sel: str, actions: list[Action],
         # An action that resizes its own widget moves everything after it,
         # so the reference box is the stage rather than the widget.
         against = ctx.box("#demo") if a.reflows else box
+        if a.opens:
+            p = a.opens(ctx)
+            against = [min(box[0], p[0]), min(box[1], p[1]), max(box[2], p[2]), max(box[3], p[3])]
         mine = [r for r in regions if _overlaps(r, box)]
         if mine:
             worst = max(_area(r) for r in mine)
@@ -444,13 +520,13 @@ def run_widget(c: AgentClient, widget: str, sel: str, actions: list[Action],
             out.append(f"      damage: {len(regions)} region(s), "
                        f"{total:.0f} px² total; the one over this widget is "
                        f"{worst:.0f} px² against "
-                       f"{'the stage' if a.reflows else 'its own'} "
+                       f"{'the stage' if a.reflows else 'its own and its popup' if a.opens else 'its own'} "
                        f"{_area(against):.0f} px² "
                        f"= {ratio:.2f}x (bound 4.0)")
             if ratio > 4.0:
                 raise Failed(
                     f"{widget}/{a.name}: the damage region covering this widget is "
-                    f"{ratio:.2f}x {'the stage' if a.reflows else 'its own box'} "
+                    f"{ratio:.2f}x {'the stage' if a.reflows else 'its own box and its popup' if a.opens else 'its own box'} "
                     f"({worst:.0f} px² over {_area(against):.0f}), "
                     f"bound 4.0")
 

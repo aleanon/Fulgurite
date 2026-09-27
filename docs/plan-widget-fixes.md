@@ -28,6 +28,12 @@ Every entry below has three parts:
 
 "Read" marks a cause inferred from code rather than measured.
 
+**Status: DONE 2026-09-27**, on branch `m56-showcase-design`. Every A, B,
+C and D item landed; `docs/widget-audit.md` now carries a *fixed in* and a
+*checked by* column, computed by `scripts/audit_fixed_in.py` from the
+commit log and the drives rather than written. **What building it found**,
+including where this plan was wrong, is the last section below.
+
 ---
 
 ## Phase A — framework defects
@@ -1064,3 +1070,98 @@ rows mechanically against the drive rather than restating them.
   `Painter` has no slant axis.
 - **PaneGrid stays a fixed 2×2.** Rearranging panes as a tree is the
   topology-as-data question its rustdoc already names.
+
+## What building it found
+
+Kept here rather than folded into the entries above, so the plan still
+reads as it was written and the corrections are in one place.
+
+### Where the plan was wrong
+
+- **B15's end-of-text caret.** The plan read `x_of` answering the last
+  cluster's start at `len`. The shell's shaper emits an insertion point
+  after the last character, so the live caret was already right, and
+  restoring the old fallback left the test green. The fallback matters
+  when that cluster is missing; with the shaper's end cluster removed it
+  put the caret inside the last glyph (32 px against 42).
+- **B7's bullet.** The audit's "2.5 px high" was right; the first test of
+  the fix said the opposite, because a headless `Host` has no face and
+  every glyph is a solid box. The test now lays out with the system face
+  and asserts its `x` is not a box.
+- **B9's "the sparkline draws 500 px past the edge".** Nothing did. What
+  the clip keeps in is the edge dots' 3 px, and the drive now says so.
+- **B26** asked for a clear button and a submit; building its gate found a
+  **layout defect in four wrappers** the plan never mentioned: `SearchField`,
+  `Card`, `Glass` and `ScrollView` laid their content out across what they
+  were *offered*, not their own `Fixed` size -- M56's defect in the derive,
+  never fixed in hand-written wrappers (`tests/wrapper_own_size.rs`).
+- **B34**'s timer is on the application's clock (`Toast::tick`), not an M28
+  job: a job needs the application's timer set and a message type for one
+  widget's countdown. Using the floating toast found that a window-anchored
+  popup was dismissed by the very press that opened it; it now has no
+  "outside".
+- **B41–B43** did not need per-corner radius: a sheet or drawer is laid out
+  past the window's edge by its radius and painted clipped to the veil.
+- **Not built, and why**: `Radio<T>` controlled by `selected == value`
+  (arrows did not need a new type); `Slider::on_change` (a handler runs on
+  activation, which a drag never is); rounded clips for `PaintBox` (its
+  rustdoc now says the clip is the box).
+
+### Framework defects the fixes uncovered
+
+- An arrow group was its parent's children, so a radio beside its label
+  had no group (B13); grouping now looks through single-control wrappers,
+  asking each first -- the first version stole Down from a pick list.
+- A table's row was not a target when its cells declined a hit (B51).
+- Layout leaves published themselves as nameless containers, which the
+  live accessibility sweep (D7) found in the grid's rows.
+- **The software canvas repainted a mid-pixel damage edge wrong** (D6).
+  `fill` rounds a rect outward and the glyph blit truncates it, so a
+  region ending at 608.4 px -- a popup edge at 304.2 logical, scale 2 --
+  cleared row 608 and never re-inked it: one stale row under every
+  picker's trigger text. The canvas now snaps the damage outward, as the
+  GPU backend's `snap_out` already did. It showed only at the window size
+  the window manager actually granted (1920x1008, not the 2240x1520
+  asked for): at the requested size every edge was whole, and a headless
+  reproduction stayed green until it used the real one.
+- **That edge was inside the trigger to begin with.** A picker hangs its
+  pad 4 px under its trigger and told the popup to flip by the trigger's
+  height alone, so a pad opened above ended 4 px *inside* the trigger
+  (A18's flip, one gap short; `Tooltip` had counted both). Only the
+  scale-2 window was short enough to flip it. The drive also learned
+  that an action which opens a popup is bounded against the widget and
+  that popup (`Action.opens`): a flipped pad's shadow falls on its
+  trigger, and the old bound read that as 9.14x the trigger's box.
+- DataGrid's rows cannot be reached by keyboard at all (D3); B51 did not
+  ask for it, and it is recorded rather than fixed here.
+
+### Tests that proved nothing until fixed
+
+Each was caught by an injection that left it green, or by a pass that
+removed the incidental difference it had leaned on:
+
+- the Play icon's stripes were **tonal**, not gaps, so a 50% threshold
+  saw none (B4);
+- a split's drift test used numbers where the broken and fixed mappings
+  agreed within its tolerance (B46);
+- a toast's "no × means no press" pressed outside the band a × would own
+  (B34), and an app bar's trim was never exercised by its title (B39);
+- **the Switch's "track changes colour" drive action** compared a colour
+  an on switch does not paint with, and passed on a hover shade -- found
+  when D1 hovered first and took that difference away;
+- several drive actions **asserted the defect**: the TimePicker's hour
+  closing the clock, a tree leaf declining a press, the pagination
+  window, a SearchField isolate that only passed while the field overran
+  the pill, an accordion press landing on the header only while the body
+  was short.
+
+### Standing gates this plan added
+
+D1 (pixels, `visible` declared for every action), D2 (a direct `on_event`
+test goes through the pass or says why), D3 (keyboard-only), D4 (contrast
+across every demo, both palettes), D5 (agent versus headless, byte for
+byte), D6 (scale 2 against a full repaint), D7 (every leaf speaks or is
+hidden). Two intermittent full-run failures (SplitPane's drag, Combobox's
+clear) did not reproduce and read like input landing before a demo
+settled; they are recorded in their commits.
+

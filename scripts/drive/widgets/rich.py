@@ -117,7 +117,11 @@ def _ink_inside(c):
     shot = c.c.rpc("ui.screenshot", {}) if False else c.c.rpc("ui.screenshot")
     png = base64.b64decode(shot["image_base64"])
     w, h, px = _decode(png)
-    b = c.box()
+    # **Physical pixels**: the screenshot is at the window's scale and the
+    # box is logical. Unscaled, the scale-2 pass (M57/D6) looked for ink
+    # in the top-left quarter of the window and found none.
+    sc = shot.get("scale", 1.0)
+    b = [v * sc for v in c.box()]
     ink = (0x25, 0x63, 0xeb)
     inside = outside = 0
     for y in range(max(0, int(b[1]) - 6), min(h, int(b[3]) + 6)):

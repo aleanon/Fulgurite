@@ -466,6 +466,7 @@ impl Agent {
         if !method.starts_with("input.")
             && method != "ui.screenshot"
             && method != "ui.regionHash"
+            && method != "app.repaintAll"
             && method != "app.setPalette"
         {
             let tree = host.tree();
@@ -637,6 +638,9 @@ impl Agent {
                     "image_base64": png::base64(&png),
                 }))
             }
+            // A full repaint, for comparing against the damaged frame —
+            // M57/D6.
+            "app.repaintAll" => Ok(json!({ "repainted": host.repaint_all() })),
             // **Did these pixels change?** — M57/D1. A hash of the
             // canvas inside a logical rect, so a drive can assert that an
             // action's consequence *shows* without decoding a PNG of the
@@ -1557,6 +1561,14 @@ pub trait AgentHost {
     /// `None` where a platform cannot read a window back (softbuffer
     /// implements it on X11 and Web only), so a caller must treat an
     /// absent answer as "not checkable here", never as "matches".
+    /// Repaint the whole frame, ignoring damage, and present it — M57/D6.
+    /// A drive compares the frame before and after: an incrementally
+    /// damaged frame must equal a full repaint of the same state. `false`
+    /// where a host cannot, which a caller reads as "not checkable here".
+    fn repaint_all(&mut self) -> bool {
+        false
+    }
+
     fn presented(&mut self) -> Option<(u32, u32, Vec<u8>)> {
         None
     }

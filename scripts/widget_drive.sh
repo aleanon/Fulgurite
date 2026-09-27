@@ -49,5 +49,9 @@ run_one() {
 
 run_one Everything  agent,everything
 run_one Boundaries  agent
+# M57/D6: a third pass at scale 2, where fractional logical edges land on
+# physical pixels, and every action's damaged frame is compared with a
+# full repaint of the same state.
+WINIT_X11_SCALE_FACTOR=2 LUMEN_DRIVE_FULLCHECK=1 run_one Scale2 agent
 
 exit "$status"

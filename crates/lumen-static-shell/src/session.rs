@@ -541,6 +541,15 @@ impl<A: App> lumen_static_agent::AgentHost for Live<'_, A> {
         self.screen.fetch_rgba()
     }
 
+    /// Everything marked, every buffer's history dropped, then one frame:
+    /// the whole canvas repainted from the display list (M57/D6).
+    fn repaint_all(&mut self) -> bool {
+        self.host.invalidate_all();
+        self.host.repaint_all();
+        lumen_static_agent::AgentHost::pump(self);
+        true
+    }
+
     #[cfg(feature = "shadow-oracle")]
     fn shadow(&self) -> Option<serde_json::Value> {
         let r = self.host.shadow_report();

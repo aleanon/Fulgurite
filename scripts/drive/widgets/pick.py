@@ -44,6 +44,7 @@ def _shared(name, sel, cols, cw, cell, want, head=0.0):
             visible=True,
             region="window",
             name="a press opens the popup",
+            opens=_pad,
             needs="a closed picker",
             setup=lambda c: c.key("Escape"),
             do=lambda c: c.click(),
@@ -79,7 +80,7 @@ def _shared(name, sel, cols, cw, cell, want, head=0.0):
             name="a press outside closes it and changes nothing",
             needs="an open picker",
             do=lambda c: (_open(c), c.__dict__.__setitem__("_v0", c.value()),
-                          c.click_outside())[0],
+                          c.click_outside(avoid=[_pad(c)]))[0],
             expect=lambda c: (
                 c.value() == c._v0 and not _is_open(c),
                 f"value {c._v0!r} -> {c.value()!r}, open={_is_open(c)}",

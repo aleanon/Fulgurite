@@ -659,6 +659,11 @@ impl<const KIND: u8> Default for Picker<KIND> {
 impl<const KIND: u8> Picker<KIND> {
     const TRIGGER: usize = 1;
     const POPUP: usize = 2;
+    /// The space between the trigger and its pad, on whichever side the
+    /// pad opens. One constant for both paths, because the flip path
+    /// once left it out and a pad opened above ended 4 px inside its own
+    /// trigger (M57/D6).
+    const GAP: f32 = 4.0;
 
     pub fn new() -> Self {
         Self::default()
@@ -843,7 +848,9 @@ impl<const KIND: u8> Node for Picker<KIND> {
         self.trigger = t;
         self.line_h = cx.text.line_height(style[i + Self::TRIGGER].font_size);
         // Flipping above clears the trigger (M57/A18).
-        self.pad.above_by = t.h;
+        // The anchor is a gap under the trigger, so flipping crosses that
+        // gap, the trigger, and a gap above it — as `Tooltip` does.
+        self.pad.above_by = t.h + 2.0 * Self::GAP;
         self.pad.layout(cx, limits, style, st, i + Self::POPUP);
         let s = lumen_static::ops::resolve_self(limits, &me, t);
         lumen_static::ops::record_painted(st, i, limits, s, &me)
@@ -853,7 +860,7 @@ impl<const KIND: u8> Node for Picker<KIND> {
         st[i].pos = origin;
         st[i + Self::TRIGGER].pos = origin;
         self.pad.place(
-            Point { x: origin.x, y: origin.y + st[i + Self::TRIGGER].size.h + 4.0 },
+            Point { x: origin.x, y: origin.y + st[i + Self::TRIGGER].size.h + Self::GAP },
             style,
             st,
             i + Self::POPUP,
