@@ -1,12 +1,16 @@
 # Appendix: the attribute reference
 
-Seven attributes across three derives. This table mirrors the one in
+The attributes of the three derives. This table mirrors the one in
 `crates/lumen-static/src/lib.rs`, and a check in `just static` fails if
-the two diverge — see the note at the end.
+the two diverge, or if either omits an attribute a derive declares or a
+key its parser accepts — see the note at the end. It states no count: a
+count here was wrong twice.
 
 | attribute | on | meaning |
 |---|---|---|
 | `#[widget(row \| column \| stack, spacing = 4.0)]` | a `StaticTree` struct | container mode, and the gap between children. `stack`'s children share its rect (M11/T11.6) and it takes no spacing |
+| `#[widget(wrap)]` | a `StaticTree` struct | children flow left to right and wrap onto the next line when the width runs out (M27/T27.8) |
+| `#[widget(grid, columns = 3)]` | a `StaticTree` struct | a wrap that breaks every `columns` children instead of on width; `columns` belongs to `grid` alone, and 0 is refused |
 | `#[widget(fuse)]` | a `StaticTree` struct | emit static calls instead of `&dyn` — the erasure dial |
 | `#[widget_id("save")]` | a field | stable author id: an agent selector, and `#save` in a stylesheet |
 | `#[widget_class("row", "striped")]` | a field **or the struct** | style classes, matched by `.row`; on the struct they land on the container's own node |
@@ -15,8 +19,10 @@ the two diverge — see the note at the end.
 | `#[state]` | an `App` field | what a handler receives, and the tree is not in it. Absent, a handler gets the whole application |
 | `#[bind(ui.value, "count: {}")]` | an `App` field | how this state reaches the screen |
 | `#[bind(ui.value, count, "count: {}")]` | an `App` field | the same, reading a path *inside* that field |
+| `#[bind(ui.value, with = f)]` | an `App` field | a `fn(&mut Target, &Source)` projection; it cannot say whether it wrote, so it marks everything |
 | `#[bind(ui.pane.w, blur)]` | an `App` field | the value form: copy a path inside that field into a non-text target, compared first |
 | `#[app(after_update = f)]` | an `App` struct | `fn(&mut Self) -> bool`, run after the bindings; the `bool` says whether it changed anything |
+| `#[app(tick = f)]` | an `App` struct | `fn(&mut Self, f32) -> bool`, called each frame with the elapsed ms; the `bool` says whether anything is still moving (M22/T22.4) |
 
 **Each key once, and nothing ignored** (M55/T55.2). A repeated key —
 two container modes, `spacing` twice, a second `#[widget_id]` on a
@@ -53,10 +59,13 @@ remember. See [Hot reload](./hot-reload.md).
 ## Why there is a check
 
 This table exists in two places, which is exactly the shape the project's
-doc-currency rule warns about. `scripts/check_attr_table.sh` extracts the
-attribute names from both and fails if the sets differ, so adding an
-attribute to the derive without documenting it — or documenting one that
-does not exist — is a build failure rather than a discovery.
+doc-currency rule warns about. `scripts/check_attr_table.sh` reads the
+derives' own attribute lists and every key their parsers accept, and
+fails if either table omits one — so adding an attribute or a key to the
+derive without documenting it, or documenting one that does not exist, is
+a build failure rather than a discovery.
 
 It was worth writing: the rustdoc table said `row | column` for four days
-after `stack` shipped.
+after `stack` shipped. And comparing names was not enough — both tables
+listed every attribute and still omitted `wrap`, `grid`, `columns` and
+`tick` until the check read the keys too (M55/T55.3).

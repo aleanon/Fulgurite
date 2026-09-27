@@ -28,22 +28,23 @@ reading as written.
 
 From the code, not from the survey:
 
-**Menus.** No menu bar and no context-menu widget. The *mechanism*
-exists — the overlay phase handles submenus and consumes the click that
-dismisses them — but the widgets are not built
-(`docs/plan-widgets.md` T11.5).
+**A menu bar.** There is a dropdown menu — `Menu`, one of the three
+`Chooser` kinds (M27/T27.9) — and the overlay phase that carries it, but
+no application menu bar and no platform menu integration.
 
 **A style file format.** Stylesheets are `Vec<Rule>` in Rust. There is no
 parser, and the `.lss` shape is referenced as a possible future rather
 than a thing that exists.
 
-**Rich text.** Text runs carry a size, a weight and a colour. There are
-no spans within a run, so no bold word inside a sentence.
+**Italic, and rich text beyond weight.** `RichText` and `Markdown`
+(M27/T27.12) put a bold word inside a sentence, but a span's only
+typographic axis is weight, so Markdown has no italic and says why. A
+span is a word: it never wraps inside itself.
 
-**Arbitrary vector paths.** Lines and gradients shipped; general paths,
-strokes and SVG rendering did not. The drawing vocabulary is nine
-commands and is meant to stay small enough for an embedded target to
-implement.
+**Arbitrary vector paths.** Lines and gradients shipped; general paths
+and SVG rendering did not. The drawing vocabulary is the `Cmd` enum in
+`crates/lumen-static/src/display.rs`, and is meant to stay small enough
+for an embedded target to implement.
 
 **A layer tree in the GPU backend.** There is a persistent target texture
 that damage is scissored into, but no per-subtree texture and no

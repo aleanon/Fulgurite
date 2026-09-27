@@ -41,12 +41,16 @@
 //!
 //! ## The attributes
 //!
-//! Seven, across three derives. This list is the only place they appear
-//! together.
+//! Across three derives. How many is not written here (it was wrong
+//! twice): `scripts/check_attr_table.sh` requires every attribute the
+//! derives declare, and every key their parsers accept, to have a row in
+//! this table and in the book's (`book/src/attributes.md`).
 //!
 //! | attribute | on | meaning |
 //! |---|---|---|
 //! | `#[widget(row \| column \| stack, spacing = 4.0)]` | a `StaticTree` struct | container mode, and the gap between children. `stack`'s children share its rect (M11/T11.6) and it takes no spacing |
+//! | `#[widget(wrap)]` | a `StaticTree` struct | children flow left to right and wrap onto the next line when the width runs out (M27/T27.8) |
+//! | `#[widget(grid, columns = 3)]` | a `StaticTree` struct | a wrap that breaks every `columns` children instead of on width; `columns` belongs to `grid` alone, and 0 is refused |
 //! | `#[widget(fuse)]` | a `StaticTree` struct | emit static calls instead of `&dyn` — the erasure dial |
 //! | `#[widget_id("save")]` | a field | stable author id: an agent selector, and `#save` in a stylesheet |
 //! | `#[widget_class("row", "striped")]` | a field **or the struct** | style classes, matched by `.row`; on the struct they land on the container's own node |
@@ -54,7 +58,9 @@
 //! | `#[tree]` | an `App` field | which field is the widget tree |
 //! | `#[state]` | an `App` field | what a handler receives, and the tree is not in it. Absent, a handler gets the whole application |
 //! | `#[bind(ui.value, "count: {}")]` | an `App` field | how this state reaches the screen |
+//! | `#[bind(ui.value, with = f)]` | an `App` field | a `fn(&mut Target, &Source)` projection; it cannot say whether it wrote, so it marks everything |
 //! | `#[app(after_update = f)]` | an `App` struct | `fn(&mut Self) -> bool`, run after the bindings; the `bool` says whether it changed anything |
+//! | `#[app(tick = f)]` | an `App` struct | `fn(&mut Self, f32) -> bool`, called each frame with the elapsed ms; the `bool` says whether anything is still moving (M22/T22.4) |
 //!
 //! **Each key once, and nothing ignored** (M55/T55.2). A repeated key —
 //! two container modes, `spacing` twice, a second `#[widget_id]` on a
