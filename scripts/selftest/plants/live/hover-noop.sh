@@ -5,7 +5,11 @@
 # check is filtered to the widget's subtree and compares the readout
 # before and after.
 CHECK='./scripts/widget_drive.sh Button'
-EXPECT='Button/hovering is visible.*changed in subtree 0'
+# hover_dim(0.0) also removes the press shade, and since M48/T48.4 the
+# drive checks that a click paints damage over the widget. That action
+# runs before the hover action, so the same planted fault is now named
+# one action earlier. Either name is this plant's mechanism.
+EXPECT='Button/(hovering is visible.*changed in subtree 0|a click reaches the application: FAIL no damage)'
 plant() {
     sub examples/showcase/src/main.rs \
         '(Selector::Id\("d_button_a"\),\n\s*btn\(\)\.background_role\(Role::Accent\)\.color_role\(Role::OnAccent\))' \
