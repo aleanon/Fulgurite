@@ -206,6 +206,14 @@ pub struct LayoutCx<'a> {
     /// otherwise, which is correct for every headless caller: the bug
     /// needs a scale that *changes*, and only a windowed host has one.
     scale: f32,
+    /// `text.generation()`, read once when the context is built. M45's
+    /// memo key reads it for every text node, and through
+    /// `&mut dyn TextMeasure` that was a virtual call in the hot layout
+    /// loop (`docs/results-text.md`, "The memo key's generation"). A
+    /// measurer's generation changes only through `&mut self` on the
+    /// concrete type, which the borrow here excludes for the whole pass;
+    /// code that replaces `text` must build a new context.
+    generation: u32,
     /// Which subtrees changed this frame — `docs/plan-invalidation.md`
     /// T16.7.
     ///
@@ -237,8 +245,10 @@ pub struct LayoutCx<'a> {
 
 impl<'a> LayoutCx<'a> {
     pub fn new(text: &'a mut dyn TextMeasure) -> Self {
+        let generation = text.generation();
         LayoutCx {
             text,
+            generation,
             fill_span: None,
             scale: 1.0,
             changed: crate::invalidate::Changed::ALL,
@@ -261,6 +271,11 @@ impl<'a> LayoutCx<'a> {
         self.scale
     }
 
+    /// The measurer's generation, as read when this context was built.
+    pub fn generation(&self) -> u32 {
+        self.generation
+    }
+
     /// The same context, resolving looks against `palette` (M25/T25.3).
     pub fn with_palette(mut self, palette: &'a crate::style::Palette) -> Self {
         self.palette = palette;
@@ -276,8 +291,10 @@ impl<'a> LayoutCx<'a> {
         text: &'a mut dyn TextMeasure,
         changed: crate::invalidate::Changed<'a>,
     ) -> Self {
+        let generation = text.generation();
         LayoutCx {
             text,
+            generation,
             fill_span: None,
             scale: 1.0,
             changed,

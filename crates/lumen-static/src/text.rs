@@ -150,7 +150,7 @@ impl MeasureKey {
     ///
     /// Bit patterns, not values: see the type's docs.
     pub fn new(cx: &crate::LayoutCx, limits: Constraints, style: &Style) -> MeasureKey {
-        MeasureKey::of(limits, style, cx.scale(), cx.text.generation())
+        MeasureKey::of(limits, style, cx.scale(), cx.generation())
     }
 
     /// [`MeasureKey::new`] with the scale and the measurer's generation

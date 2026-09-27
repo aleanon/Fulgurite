@@ -82,6 +82,50 @@ equality) fires the NaN gate at 5 calls; the generation dropped fires
 RAM: `Ui` on the target 1,168 → 1,176 B, the generation's cost
 (`docs/results-embedded.md`).
 
+### The memo key's generation — a regression, found and fixed 2026-09-27
+
+**Found by the post-M55 regression run.** An interleaved A/B of every
+common bench, `1717808` against the finished branch (8 runs a side,
+under the bench lock, load 0.6–2.2), flagged memo hits and text-heavy
+layout as slower. Then:
+
+- A sweep across all 24 milestone merge points showed every flagged
+  metric flat through M47 and stepping up at M45.
+- Measuring each of M45's commits pinned the step to this task's
+  `c9aff22`. Before it, grid's `mark_all` layout was 22.80 µs and a
+  memo hit 5.19 ns; at it, 28.66 µs and 10.38 ns. No later commit moved
+  either.
+
+**Cause.** `MeasureKey::new` read `cx.text.generation()` through
+`&mut dyn TextMeasure`, which is a virtual call for every text node on
+every layout, in the hottest loop the framework has.
+
+**Fix.** `LayoutCx` reads the generation once, when it is built. A
+measurer's generation changes only through `&mut self` on the concrete
+type (`FontMetrics::set_stack`, or a constructor), and the context holds
+the measurer exclusively borrowed for the whole pass, so the cached value
+is the one the call would have returned.
+
+Measured against the unpatched tip, 8 interleaved runs a side, load 1.1–1.4:
+
+| metric | tip, unpatched | fixed | before M45 |
+|---|---|---|---|
+| memo hit, `short, memo warm (hit)` (min) | 10.20 ns | **6.63 ns** | 5.19 ns |
+| grid `mark_all` layout (median) | 28.66 µs | **18.73 µs** | 22.80 µs |
+| grid `mark_all` whole pump (median) | 82.13 µs | **72.93 µs** | — |
+| fusion `1k/fused` (min) | 12.08 µs | **10.23 µs** | 10.79 µs |
+| crossover `1k/static` (min) | 11.70 µs | **10.37 µs** | 10.97 µs |
+
+The ~1.4 ns left on a memo hit is the wider key's comparison: bit
+patterns plus a generation, which is what makes the key correct.
+Grid's layout now beats its pre-M45 figure. M50's glyph cache and
+layout scratch had been paying off all along, hidden behind this call.
+
+**The key still guards.** With `LayoutCx::generation` forced to 0,
+`measurer_generation.rs`'s `a_new_generation_reshapes_a_warm_field`
+fails. Restored, it passes. The test needs `--features truetype`: run
+without it, it lists zero tests and proves nothing.
+
 ## T45.3 — a font stack with fallback (R10-F12)
 
 `FontStack::system` attaches a list of fallback faces, each read the first
