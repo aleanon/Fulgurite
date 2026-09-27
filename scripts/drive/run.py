@@ -76,6 +76,34 @@ def main() -> int:
             failures += 1
     print(f"widget-drive [{strategy}]: {len(entries)} widgets, {actions} actions, "
           f"{bare} without an isolate, {failures} failed")
+
+    # M57/D3: the keyboard-only pass. Every demo with a focusable node must
+    # have an entry in keys.py -- coverage as data, not as a review.
+    from keys import KEYS  # noqa: E402
+    from harness import run_keys, _pick, _focusables_in_demo  # noqa: E402
+    catalog = Path(HERE.parent.parent / "examples/showcase/src/catalog.rs").read_text()
+    names = [n.split('"')[2] for n in catalog.split('entry!("')[1:]]
+    if only:
+        names = [n for n in names if n.lower() == only.lower()]
+    kfail = kdone = 0
+    for w in names:
+        try:
+            if w in KEYS:
+                target, acts = KEYS[w]
+                for line in run_keys(c, w, target, acts, strategy):
+                    print(line)
+                kdone += len(acts)
+            else:
+                _pick(c, w)
+                f = _focusables_in_demo(c)
+                if f:
+                    raise Failed(f"{len(f)} focusable node(s) and no keyboard entry in keys.py")
+        except (Failed, RuntimeError) as e:
+            print(f"  FAIL {w} [{strategy}] keyboard: {e}", file=sys.stderr)
+            kfail += 1
+    print(f"keyboard-drive [{strategy}]: {len(names)} entries, {len(KEYS)} with keys, "
+          f"{kdone} actions, {kfail} failed")
+    failures += kfail
     return 1 if failures else 0
 
 

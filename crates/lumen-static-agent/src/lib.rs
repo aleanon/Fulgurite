@@ -954,6 +954,15 @@ impl Agent {
                     if !d.wid.is_empty() {
                         o.insert("wid".into(), d.wid.into());
                     }
+                    // M57/D3: which nodes a keyboard can stop on, and which
+                    // one it is on, so a keyboard-only drive can assert
+                    // that Tab reaches a widget rather than assume it.
+                    if d.is_focusable() {
+                        o.insert("focusable".into(), true.into());
+                    }
+                    if tree.states.get(idx).is_some_and(|s| s.focused) {
+                        o.insert("focused".into(), true.into());
+                    }
                 }
                 Value::Object(o)
             })

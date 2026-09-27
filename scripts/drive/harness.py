@@ -487,3 +487,87 @@ def run_widget(c: AgentClient, widget: str, sel: str, actions: list[Action],
         + (f"; {len(bare)} with no isolate: {', '.join(bare)}" if bare else "")
     )
     return out
+
+
+# ---- M57/D3: the keyboard-only pass -----------------------------------
+
+def _focused_index(c: AgentClient):
+    for n in c.tree()["nodes"]:
+        if n.get("focused"):
+            return n["id"] - 1
+    return None
+
+
+def _focusables_in_demo(c: AgentClient) -> list:
+    d = c.rpc("ui.resolve", selector="#demo")["bounds"]
+    out = []
+    for n in c.tree()["nodes"]:
+        b = n.get("bounds")
+        if not n.get("focusable") or not b or b[2] <= b[0]:
+            continue
+        if b[0] >= d[0] - 1 and b[2] <= d[2] + 1 and b[1] >= d[1] - 1 and b[3] <= d[3] + 1:
+            out.append(n)
+    return out
+
+
+def _target_index(c: AgentClient, target: str):
+    # AppBar's slots are buttons with no author id: the first focusable
+    # inside the demo stands for them.
+    if target == "appbar-first-button":
+        f = _focusables_in_demo(c)
+        return f[0]["id"] - 1 if f else None
+    return c.rpc("ui.resolve", selector=target)["index"]
+
+
+def run_keys(c: AgentClient, widget: str, target: str, actions: list, strategy: str) -> list[str]:
+    """Reach `target` by Tab alone, then drive each action by keys alone."""
+    out: list[str] = []
+    _pick(c, widget)
+    from keys import START
+    for k in START.get(widget, []):
+        c.rpc("input.key", key=k)
+    want = _target_index(c, target)
+    if want is None:
+        raise Failed(f"{widget}: the keyboard target {target} resolved to nothing")
+    tabs = 0
+    while _focused_index(c) != want:
+        if tabs >= 200:
+            raise Failed(f"{widget}: 200 Tabs never reached {target} -- the keyboard cannot get there")
+        c.key("Tab", True)
+        c.key("Tab", False)
+        tabs += 1
+    out.append(f"  {widget} [{strategy}] keyboard: {target} reached in {tabs} Tab(s)")
+    for a in actions:
+        sel = None if target == "appbar-first-button" else target
+        r0 = Ctx(c, widget, sel or "#demo").readout()
+        v0 = c.rpc("ui.resolve", selector=sel).get("value") if sel else None
+        for k in a.keys:
+            if isinstance(k, str) and k.startswith("text:"):
+                c.rpc("input.type", text=k[5:])
+            elif isinstance(k, tuple):
+                c.rpc("input.key", key=k[0], mods=k[1])
+            else:
+                c.rpc("input.key", key=k)
+        c.rpc("ui.lastChange")
+        kind = a.expect
+        if kind == "open":
+            owner = target.split(" > ")[0]
+            b = c.rpc("ui.resolve", selector=f"{owner} > #picker-pad").get("bounds", [0, 0, 0, 0])
+            ok, msg = b[2] > b[0], f"the pad is {b[2]-b[0]:.0f} px wide"
+        elif kind == "menu":
+            b = c.rpc("ui.resolve", selector="#d_menu_a > #chooser-list").get("bounds", [0, 0, 0, 0])
+            ok, msg = b[2] > b[0], f"the menu list is {b[2]-b[0]:.0f} px wide"
+        elif kind == "tip":
+            b = c.rpc("ui.resolve", selector="#tooltip-tip").get("bounds", [0, 0, 0, 0])
+            ok, msg = b[2] > b[0], f"the tip is {b[2]-b[0]:.0f} px wide on focus alone"
+        elif kind == "focus-only":
+            ok, msg = _focused_index(c) == want, "focus stayed on the chip"
+        else:
+            r1 = Ctx(c, widget, sel or "#demo").readout()
+            v1 = c.rpc("ui.resolve", selector=sel).get("value") if sel else None
+            ok = r1 != r0 or v1 != v0
+            msg = f"readout {r0!r} -> {r1!r}, value {v0!r} -> {v1!r}"
+        out.append(f"    {a.name}: {msg}")
+        if not ok:
+            raise Failed(f"{widget}/{a.name} (keyboard): {msg}")
+    return out
