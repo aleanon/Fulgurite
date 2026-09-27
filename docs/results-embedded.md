@@ -48,8 +48,8 @@ that produces real sections.
 | `.text` | ≤ 64 KB | **27,968 B** (27.3 KB) | **pass**, at 42.7% of budget |
 | `.bss` + `.data` | zero framework symbols | **1 symbol, 4 B, exempted** | **pass** — the fixture's own `SINK` (`scripts/bss.allow`) |
 | `.data` | 0 B | **0 B** in all four binaries | **pass**; asserted by `scripts/check_bss.sh` since M52/T52.3 — the interactive and bind-only builds had 4 B, one binding's cache (F-NEW-1) |
-| `.rodata` | — | 12,880 B | of which the baked face is most; 9,010 B at T13.7 |
-| Total (`size -A`) | ≤ 512 KB flash | **41,065 B** (40.1 KB) | 7.8% of the part |
+| `.rodata` | — | 12,864 B | of which the baked face is most; 9,010 B at T13.7 |
+| Total (`size -A`) | ≤ 512 KB flash | **41,049 B** (40.1 KB) | 7.8% of the part |
 | RAM, 100 nodes | ≤ 24 KB | **16.0 KB** state + style | **pass**; measured at M27/T27.1 (2026-09-18), below |
 | Stack, release | ≤ 4 KB | **1,192 B** a cold frame (model 1,328) | **pass**, measured under qemu by `just stack` since M52/T52.6; dev 6,996 B, recorded not gated — below |
 | `f64` in the frame path | zero | **0 soft-f64 symbols**, and 0 float-formatting | in all four binaries, counted by `scripts/check_text.sh` (M52/T52.2); the only `f64` is `observe`'s accesskit call, which needs `std` |
@@ -77,7 +77,27 @@ commit that adds them, before any M52 task changed the core:
 | `firmware_bind` | one `#[bind]` update, no dispatch | 46,610 | 71.1% | 18,042 | **4** | 64,873 |
 | `firmware_cascade` | `cascade_deep_with`, no dispatch | 43,886 | 67.0% | 17,926 | 0 | 62,029 |
 
-What each links that it should not, counted with `nm -C`:
+**Re-measured after rebasing M52 onto M48 and M51** (2026-09-27, before
+T52.4): the paint-only figures above did not move; the other three each
+grew by ~3.7 KB of `.text` and ~2.2 KB of `.rodata`:
+
+| binary | `.text` | of 64 KB | `.rodata` | total (`size -A`) |
+|---|---:|---:|---:|---:|
+| `firmware_interactive` | **56,486** | **86.2%** | 21,598 | 78,305 |
+| `firmware_bind` | 50,282 | 76.7% | 20,230 | 70,733 |
+| `firmware_cascade` | 47,618 | 72.7% | 20,114 | 67,949 |
+
+Every new named symbol is `TextInput`'s word movement
+(`move_word_left`/`move_word_right`, `edit::next_word`/`prev_word`/`word_at`)
+and the Unicode `alphabetic` and `n` tables its word test reads. The
+paint-only firmware links none of it, because nothing there reaches
+`TextInput::on_event`. The interactive build pays it as the real price of
+a keystroke; **the bind-only and cascade-only builds pay it through the
+vtable alone** — R12-F4 and F-NEW-2 made visible a second time, by code
+neither binary can call.
+
+What each links that it should not, counted with `nm -C` (at the commit
+that added them; the counts did not change with the rebase):
 
 | binary | `__ln_site` in `.data` (F-NEW-1) | `Node>::hit` (F-NEW-2) | `on_event` (R12-F4) | float formatting / soft `f64` |
 |---|---:|---:|---:|---:|
