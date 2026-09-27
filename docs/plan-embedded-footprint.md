@@ -1,6 +1,19 @@
 # M52 — the footprint gates price a firmware that does nothing, and a window that cannot recover
 
-> **Written 2026-09-24, not started.** Closes R11-F1, R11-F2, R11-F3,
+> **T52.0–T52.7 DONE 2026-09-27.** T52.0: every budget re-measured, three
+> device-shaped firmwares added, the release-window gate committed red.
+> T52.1: the firmware gates read four binaries, with preconditions and
+> full symbol names. T52.2: float formatting and soft `f64` are counts,
+> bound 0. T52.6 (landed third): the stack measured under qemu — 1,192 B
+> a release frame against a model that said 816; `stack_bytes` gained an
+> intercept. T52.3: a binding's cache is `.bss`, exempted by pattern,
+> counted. T52.4: the cascade-only firmware 47,618 → 29,304 B, 0
+> `on_event`. T52.5: the bind walk is static — 50,282 → 31,512 B, 0 `hit`;
+> its delta bound was the wrong quantity and was corrected, not raised.
+> T52.7: a release window without `reload` links 0 `recover::` symbols
+> (−26,768 B `.text`). §6 records what building found.
+>
+> **Written 2026-09-24.** Closes R11-F1, R11-F2, R11-F3,
 > R11-F4, R12-F4, F-NEW-1, F-NEW-2 and F-NEW-3. The R-numbered findings
 > are from M38 (`docs/results-deep-review.md`). The three F-NEW findings
 > are the re-triage's own: it found them against `main` at 1717808 on

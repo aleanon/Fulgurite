@@ -45,11 +45,11 @@ that produces real sections.
 
 | | Threshold | Measured | |
 |---|---:|---:|---|
-| `.text` | ≤ 64 KB | **27,968 B** (27.3 KB) | **pass**, at 42.7% of budget |
+| `.text` | ≤ 64 KB | **27,964 B** (27.3 KB) | **pass**, at 42.7% of budget; re-measured at the end of M52 |
 | `.bss` + `.data` | zero framework symbols | **1 symbol, 4 B, exempted** | **pass** — the fixture's own `SINK` (`scripts/bss.allow`) |
 | `.data` | 0 B | **0 B** in all four binaries | **pass**; asserted by `scripts/check_bss.sh` since M52/T52.3 — the interactive and bind-only builds had 4 B, one binding's cache (F-NEW-1) |
 | `.rodata` | — | 12,864 B | of which the baked face is most; 9,010 B at T13.7 |
-| Total (`size -A`) | ≤ 512 KB flash | **41,049 B** (40.1 KB) | 7.8% of the part |
+| Total (`size -A`) | ≤ 512 KB flash | **41,045 B** (40.1 KB) | 7.8% of the part |
 | RAM, 100 nodes | ≤ 24 KB | **16.0 KB** state + style | **pass**; measured at M27/T27.1 (2026-09-18), below |
 | Stack, release | ≤ 4 KB | **1,192 B** a cold frame (model 1,328) | **pass**, measured under qemu by `just stack` since M52/T52.6; dev 6,996 B, recorded not gated — below |
 | `f64` in the frame path | zero | **0 soft-f64 symbols**, and 0 float-formatting | in all four binaries, counted by `scripts/check_text.sh` (M52/T52.2); the only `f64` is `observe`'s accesskit call, which needs `std` |
@@ -95,6 +95,22 @@ paint-only firmware links none of it, because nothing there reaches
 a keystroke; **the bind-only and cascade-only builds pay it through the
 vtable alone** — R12-F4 and F-NEW-2 made visible a second time, by code
 neither binary can call.
+
+**At the end of M52** (2026-09-27, T52.3–T52.5 and T52.7 landed, on
+M48 and M51) — the figures the gates hold now:
+
+| binary | `.text` | of 64 KB | `.rodata` | `.data` | total (`size -A`) | forbidden symbols |
+|---|---:|---:|---:|---:|---:|---|
+| `firmware` | **27,964** | 42.7% | 12,864 | 0 | 41,045 | none |
+| `firmware_interactive` | 55,922 | 85.3% | 21,194 | 0 | 77,337 | (dispatch is its price) |
+| `firmware_bind` | 31,512 | 48.1% | 13,428 | 0 | 45,161 | 0 `hit`, 0 `on_event` |
+| `firmware_cascade` | 29,304 | 44.7% | 13,828 | 0 | 43,349 | 0 `hit`, 0 `on_event` |
+
+The paint-only `.text` moved −4 B over the milestone (alignment; no
+symbol it links changed). The `alloc`-tier cascade record now prints 10
+`on_event` symbols where T52.4's commit printed 17: identical-code folding
+merges more of the default methods once the bind walk stopped
+instantiating them, and the record is not a gate.
 
 What each links that it should not, counted with `nm -C` (at the commit
 that added them; the counts did not change with the rebase):
