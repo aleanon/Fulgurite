@@ -53,6 +53,7 @@ const fn toggle(wid: &'static str, role: Role, on: bool) -> Row {
 /// The table. `GenericContainer` appears only where a widget carries no
 /// meaning of its own, and [`GENERIC_BOUND`] lists them, so the choice is
 /// visible rather than a default nobody overrode.
+// ANCHOR: rows
 const ROWS: &[Row] = &[
     row("Label", "Label", Role::Label, false),
     row("Button", "Button", Role::Button, true),
@@ -111,19 +112,22 @@ const ROWS: &[Row] = &[
     row("Markdown", "Markdown", Role::Paragraph, false),
     row("RichTextEditor", "RichTextEditor", Role::TextInput, false),
     row("PaintBox", "PaintBox", Role::Canvas, false),
-    row("Divider", "Divider", Role::Splitter, false),
+    row("Divider", "Divider", Role::GenericContainer, false),
     row("Badge", "Badge", Role::Label, false),
     row("Chip", "Chip", Role::Label, false),
     row("Avatar", "Avatar", Role::Image, false),
     row("Icon", "Icon", Role::Image, false),
 ];
+// ANCHOR_END: rows
 
 /// The kinds that report `GenericContainer` on purpose: a box with a
 /// fixed size, a gap, a picker's cell pad (its trigger carries the
 /// combo box), two wrappers that add paint and no meaning, a loading
-/// placeholder, and a gesture wrapper around content that has its own.
+/// placeholder, a gesture wrapper around content that has its own, and a
+/// divider, which is decoration (M48/T48.6 decided it and
+/// `lumen-static-agent/tests/tree_fields.rs` allows it by name).
 const GENERIC_BOUND: &[&str] =
-    &["Fixed", "Spacer", "Popup", "Glass", "Skeleton", "Pad", "PullToRefresh"];
+    &["Fixed", "Spacer", "Popup", "Glass", "Skeleton", "Pad", "PullToRefresh", "Divider"];
 
 /// Lay the tree out and emit it; every node keyed by its author id.
 fn snapshot(ui: &mut Ui) -> BTreeMap<&'static str, AkNode> {
@@ -211,7 +215,6 @@ fn a_toggle_reads_back_as_a_checkbox() {
 }
 
 #[test]
-#[ignore = "red until T54.3: R15-F3 -- unnamed controls and GenericContainer kinds"]
 fn every_widget_publishes_its_role_name_and_state() {
     let mut ui = build();
     let nodes = snapshot(&mut ui);
@@ -241,4 +244,18 @@ fn every_widget_publishes_its_role_name_and_state() {
         }
     }
     assert!(bad.is_empty(), "{} row(s) wrong:\n  {}", bad.len(), bad.join("\n  "));
+}
+
+/// **The name check reads the node** — M54/T54.3's accept direction. A
+/// control built with an empty label is reported unnamed, not passed:
+/// the check is on what was emitted, not on the row's `named` flag.
+#[test]
+fn a_control_built_without_a_name_is_reported_unnamed() {
+    let mut ui = build();
+    ui.slider.set_label("");
+    let nodes = snapshot(&mut ui);
+    let n = &nodes["Slider"];
+    println!("Slider built with label \"\": role={:?} label={:?}", n.role(), n.label());
+    assert_eq!(n.role(), Role::Slider, "setup: the slider is still a slider");
+    assert!(n.label().is_none_or(str::is_empty), "an empty label was published as a name");
 }

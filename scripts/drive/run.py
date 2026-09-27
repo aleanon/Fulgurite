@@ -91,6 +91,14 @@ def check_manifest(entries) -> list[str]:
     for k, v in m["counts"].items():
         if got.get(k) != v:
             bad.append(f"count {k}: discovered {got.get(k)}, manifest {v}")
+    # M54/T54.3: every entry states its role, and no role names nothing.
+    from roles import ROLES
+    for w in have:
+        if w not in ROLES:
+            bad.append(f"{w}: no row in scripts/drive/roles.py -- say what a screen reader is told it is")
+    for w in ROLES:
+        if w not in have:
+            bad.append(f"{w}: a role in scripts/drive/roles.py for no inventory entry")
     return bad
 
 

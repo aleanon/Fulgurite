@@ -867,6 +867,31 @@ feature (`dev-shape`); without that line it would never run.
   argument), because its default entry has one button; the walk finds
   "Primary" as the plan asked.
 
+**T54.3 (2026-09-27).**
+- **A name is `label: &'static str`** on `Toggle`, `Slider`,
+  `RangeSlider`, `TextInput`, `NumberInput`, `SearchField`, `Chooser`,
+  `Picker` and `Select`, and `alt: &'static str` on `Image` — not a
+  `TextStorage` parameter, which would have changed every one of those
+  types' signatures. Empty is not published.
+- **The field exists only with `a11y`**, written through `set_label` /
+  `set_alt`, which every build has. An unconditional field reached the
+  firmware and broke M52's const size assertion on its `Ui` ("Ui is no
+  longer 1176 B on the target"): three controls there, 8 B each, for a
+  name no screen reader on the device could read.
+- **`Divider` stays `GenericContainer`**: M48/T48.6 decided a divider is
+  decoration, and `lumen-static-agent/tests/tree_fields.rs` allows it by
+  name. The explicit list is eight kinds, not the plan's three: `Fixed`,
+  `Spacer`, `Pad`, and also `Popup` and `Glass` (paint, no meaning),
+  `Skeleton` (a placeholder), `PullToRefresh` (a gesture wrapper around
+  content with its own role) and `Divider`.
+- **`Card` has no title to name it by**, so its row is a `Group` with no
+  name, not "a group when titled".
+- **Charts are `Figure`s whose value is their data**, which the plan did
+  not list; a chart was `GenericContainer`.
+- **A composite's inner controls are not named here.** A `Chooser`'s
+  node is a named combo box; the `TextInput` inside it is a second,
+  unnamed node. The table checks each widget's own node.
+
 ## Appendix: finding → task
 
 | ID | sev now | status | task |

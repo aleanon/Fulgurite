@@ -347,6 +347,8 @@ impl<S: TextStorage> Node for Toast<S> {
     ) {
         node.set_role(lumen_static::observe::accesskit::Role::Status);
         node.set_value(self.text.as_ref());
+        // Announced when it appears, without taking focus — M54/T54.3.
+        node.set_live(lumen_static::observe::accesskit::Live::Polite);
     }
 
     lumen_static::leaf_common!(Toast<S>, 0);

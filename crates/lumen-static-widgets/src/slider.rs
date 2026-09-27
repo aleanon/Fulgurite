@@ -51,11 +51,25 @@ pub struct Slider {
     /// against has to be remembered. `TextInput::pad_left` and
     /// `ScrollView::measured_overflow` exist for the same reason.
     track_w: f32,
+    /// What a screen reader announces this control as — M54/T54.3
+    /// (R15-F3). Empty by default, and an empty one is not published: a
+    /// control with no visible text of its own needs its application to
+    /// say what it is for. A field rather than a relation to a sibling
+    /// `Label`, so it works inside a `Repeat` row.
+    ///
+    /// **Only with `a11y`**: a build nobody can read aloud — the firmware
+    /// — does not carry it (its `Ui` is a const-asserted size). Write it
+    /// through `set_label`, which every build has.
+    #[cfg(feature = "a11y")]
+    pub label: &'static str,
 }
 
 impl Default for Slider {
     fn default() -> Self {
-        Slider { value: 0.0, step: 0.05, track_w: 0.0 }
+        Slider { value: 0.0, step: 0.05, track_w: 0.0,
+            #[cfg(feature = "a11y")]
+            label: "",
+        }
     }
 }
 
@@ -262,6 +276,9 @@ impl Node for Slider {
     ) {
         use lumen_static::observe::accesskit::Role;
         node.set_role(Role::Slider);
+        if !self.label.is_empty() {
+            node.set_label(self.label);
+        }
         node.set_numeric_value(self.value as f64);
         node.set_min_numeric_value(0.0);
         node.set_max_numeric_value(1.0);
@@ -274,5 +291,17 @@ impl<S> lumen_static::event::Handlers<S> for Slider {
     /// it does it does in `on_event`. The application reads `value()`.
     fn handler(&self, _sel: lumen_static::event::NodeSel) -> Option<fn(&mut S, &EventCtx)> {
         None
+    }
+}
+
+impl Slider {
+    /// Name this control for a screen reader (M54/T54.3). A no-op in a build without `a11y`, which
+    /// carries no name.
+    #[allow(unused_variables)]
+    pub fn set_label(&mut self, label: &'static str) {
+        #[cfg(feature = "a11y")]
+        {
+            self.label = label;
+        }
     }
 }

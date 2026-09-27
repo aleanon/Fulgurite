@@ -402,6 +402,13 @@ artifacts that make a claim about it falsifiable.**
 
 ### (a) The action inventory — written first, and stored as data
 
+> **And a role column** (M54/T54.3, 2026-09-27): `scripts/drive/roles.py`
+> names the role `ui.getTree` must report for every inventory entry's
+> node; the runner asserts it before the first action and
+> `run.py --manifest-only` refuses an entry with no role. A drive that
+> proves a checkbox toggles says nothing about what a screen reader is
+> told it is.
+
 Every action a user can perform on the widget, written **before the
 widget is built**. An inventory written afterwards describes what was
 built; that is the whole reason it comes first.

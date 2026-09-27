@@ -469,6 +469,20 @@ impl<W: Widget> Node for ScrollView<W> {
             self.content.node_mut(i - Self::AT)
         }
     }
+
+    /// A scroll view — M54/T54.3; it reported `GenericContainer`.
+    #[cfg(feature = "a11y")]
+    fn observe(
+        &self,
+        _st: &[NodeState],
+        _i: usize,
+        _id: u64,
+        node: &mut lumen_static::observe::accesskit::Node,
+        _extra: &mut alloc::vec::Vec<(lumen_static::observe::accesskit::NodeId, lumen_static::observe::accesskit::Node)>,
+    ) {
+        use lumen_static::observe::accesskit::Role;
+        node.set_role(Role::ScrollView);
+    }
 }
 
 impl<W, S> lumen_static::event::Handlers<S> for ScrollView<W>

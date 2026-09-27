@@ -304,6 +304,27 @@ impl<const KIND: u8> Node for Chart<KIND> {
         }
     }
 
+    /// A figure, its values as its text — M54/T54.3 (R15-F3): a chart
+    /// reported `GenericContainer`, so a screen reader announced nothing
+    /// where a sighted user reads the data.
+    #[cfg(feature = "a11y")]
+    fn observe(
+        &self,
+        _st: &[NodeState],
+        _i: usize,
+        _id: u64,
+        node: &mut lumen_static::observe::accesskit::Node,
+        _extra: &mut alloc::vec::Vec<(lumen_static::observe::accesskit::NodeId, lumen_static::observe::accesskit::Node)>,
+    ) {
+        use core::fmt::Write;
+        node.set_role(lumen_static::observe::accesskit::Role::Figure);
+        let mut v = alloc::string::String::new();
+        for (k, x) in self.data.as_slice().iter().enumerate() {
+            let _ = write!(v, "{}{x}", if k > 0 { ", " } else { "" });
+        }
+        node.set_value(v);
+    }
+
     lumen_static::leaf_common!(Chart<KIND>, 0, nohit);
 }
 

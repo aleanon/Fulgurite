@@ -161,20 +161,45 @@ pub fn build() -> Ui {
     ui.cb_on.on = true;
     ui.sw_on.on = true;
     ui.ra_on.on = true;
+    // Every control that can carry a name is built with one (M54/T54.3):
+    // the role table requires it to reach the emitted node.
+    for (t, l) in [(&mut ui.cb_off, "Subscribe"), (&mut ui.cb_on, "Agree")] {
+        t.set_label(l);
+    }
+    for (t, l) in [(&mut ui.sw_off, "Wi-Fi"), (&mut ui.sw_on, "Bluetooth")] {
+        t.set_label(l);
+    }
+    for (t, l) in [(&mut ui.ra_off, "Small"), (&mut ui.ra_on, "Large")] {
+        t.set_label(l);
+    }
     ui.slider = Slider::new(0.25);
+    ui.slider.set_label("Volume");
     ui.input = TextInput::new("typed");
+    ui.input.set_label("Name");
     ui.area = TextArea::new("two\nlines");
     ui.image = Image::new(lumen_static::ImageId(1), lumen_static::Size { w: 16.0, h: 16.0 });
+    ui.image.set_alt("A red square");
     ui.scroll.content = Label::new("scrolled".into());
     ui.select = Select::new(3, 20.0, bind_select);
     ui.select.trigger.label = "option 0".into();
+    ui.select.set_label("Size");
     ui.number = NumberInput::new(3.0, 0.0, 10.0, 1.0);
+    ui.number.set_label("Quantity");
     ui.range = RangeSlider::new(0.2, 0.8);
+    ui.range.set_label("Price");
     ui.search = SearchField::new("query");
+    ui.search.set_label("Search");
     ui.options = OptionList::new(&["one", "two"]);
     ui.picklist = PickList::new(&["one", "two"]);
     ui.combobox = Combobox::new(&["one", "two"]);
     ui.menu = Menu::new(&["one", "two"]);
+    ui.picklist.set_label("Fruit");
+    ui.combobox.set_label("City");
+    ui.menu.set_label("Actions");
+    ui.color.set_label("Colour");
+    ui.date.set_label("Date");
+    ui.time.set_label("Time");
+    ui.file.set_label("File");
     ui.progress = ProgressBar::new(0.4);
     ui.bar = BarChart::new(&[1.0, 2.0]);
     ui.line = LineChart::new(&[1.0, 2.0]);

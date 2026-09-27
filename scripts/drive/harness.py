@@ -379,6 +379,15 @@ def run_widget(c: AgentClient, widget: str, sel: str, actions: list[Action],
     out.append(f"  {widget} [{strategy}] on stage at "
                f"{int(box[2]-box[0])}x{int(box[3]-box[1])} px")
 
+    # **The role column** (M54/T54.3): what a screen reader is told this
+    # widget is, read off the emitted node, against `roles.py`.
+    from roles import ROLES
+    got = c.rpc("ui.resolve", selector=root or sel).get("role")
+    want = ROLES.get(widget)
+    out.append(f"    role: {got} (expected {want})")
+    if got != want:
+        raise Failed(f"{widget}: {root or sel} reports role {got!r}, the role column says {want!r}")
+
     # **Refuse to drive a tree with a duplicated author id.**
     #
     # `W1011` means two nodes answer to one name, so `ui.resolve` refuses

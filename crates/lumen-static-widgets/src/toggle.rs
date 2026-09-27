@@ -77,6 +77,17 @@ pub struct Toggle<S: 'static, const SHAPE: u8 = CHECKBOX> {
     /// so making the resting grey dark enough to *see* on a light page also
     /// made the tick on a checked box that grey.
     pub mark: Color,
+    /// What a screen reader announces this control as — M54/T54.3
+    /// (R15-F3). Empty by default, and an empty one is not published: a
+    /// control with no visible text of its own needs its application to
+    /// say what it is for. A field rather than a relation to a sibling
+    /// `Label`, so it works inside a `Repeat` row.
+    ///
+    /// **Only with `a11y`**: a build nobody can read aloud — the firmware
+    /// — does not carry it (its `Ui` is a const-asserted size). Write it
+    /// through `set_label`, which every build has.
+    #[cfg(feature = "a11y")]
+    pub label: &'static str,
 }
 
 pub type CheckBox<S> = Toggle<S, CHECKBOX>;
@@ -88,7 +99,10 @@ const WHITE: Color = Color(255, 255, 255, 255);
 
 impl<S, const SHAPE: u8> Default for Toggle<S, SHAPE> {
     fn default() -> Self {
-        Toggle { on: false, on_toggle: crate::ops::ignore_click::<S>, mark: WHITE }
+        Toggle { on: false, on_toggle: crate::ops::ignore_click::<S>, mark: WHITE,
+            #[cfg(feature = "a11y")]
+            label: "",
+        }
     }
 }
 
@@ -271,8 +285,14 @@ impl<S: 'static, const SHAPE: u8> Node for Toggle<S, SHAPE> {
             _ => Role::CheckBox,
         });
         // The state a screen reader announces. Without it a checkbox is
-        // read as a checkbox and never as a *checked* one.
+        // read as a checkbox and never as a *checked* one. The role,
+        // `toggled` in both states and the name are checked off the
+        // emitted node by `tests/a11y_roles.rs` (M54/T54.3), which went red
+        // by name when the role line was deleted.
         node.set_toggled(if self.on { Toggled::True } else { Toggled::False });
+        if !self.label.is_empty() {
+            node.set_label(self.label);
+        }
         node.add_action(lumen_static::observe::accesskit::Action::Click);
     }
 }
@@ -315,3 +335,15 @@ impl<S: 'static, const SHAPE: u8> lumen_static::event::Handlers<S> for Toggle<S,
 
 /// The colour a toggle reads as "on" with no stylesheet.
 pub const ON: Color = Color(53, 99, 239, 255);
+
+impl<S, const SHAPE: u8> Toggle<S, SHAPE> {
+    /// Name this control for a screen reader (M54/T54.3). A no-op in a build without `a11y`, which
+    /// carries no name.
+    #[allow(unused_variables)]
+    pub fn set_label(&mut self, label: &'static str) {
+        #[cfg(feature = "a11y")]
+        {
+            self.label = label;
+        }
+    }
+}

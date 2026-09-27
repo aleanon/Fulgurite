@@ -47,11 +47,23 @@ pub struct Image {
     /// Multiplied into the source. Opaque white is untinted, which is
     /// what lets one monochrome icon serve several colours.
     pub tint: Color,
+    /// What the picture shows, for a screen reader — M54/T54.3. Empty is
+    /// decoration and publishes no name. Only with `a11y` (a build nobody
+    /// reads aloud does not carry it); write it through `set_alt`.
+    #[cfg(feature = "a11y")]
+    pub alt: &'static str,
 }
 
 impl Image {
     pub fn new(id: ImageId, source: Size) -> Self {
-        Image { id, source, fit: Fit::default(), tint: Color(255, 255, 255, 255) }
+        Image {
+            id,
+            source,
+            fit: Fit::default(),
+            tint: Color(255, 255, 255, 255),
+            #[cfg(feature = "a11y")]
+            alt: "",
+        }
     }
 
     /// The sub-rect of `box_` this image occupies under `fit`.
@@ -148,10 +160,39 @@ impl Node for Image {
     fn node_mut(&mut self, _i: usize) -> &mut dyn Node {
         self
     }
+
+    /// An image, named by [`Image::alt`] — M54/T54.3 (R15-F3).
+    #[cfg(feature = "a11y")]
+    fn observe(
+        &self,
+        _st: &[NodeState],
+        _i: usize,
+        _id: u64,
+        node: &mut lumen_static::observe::accesskit::Node,
+        _extra: &mut alloc::vec::Vec<(lumen_static::observe::accesskit::NodeId, lumen_static::observe::accesskit::Node)>,
+    ) {
+        use lumen_static::observe::accesskit::Role;
+        node.set_role(Role::Image);
+        if !self.alt.is_empty() {
+            node.set_label(self.alt);
+        }
+    }
 }
 
 impl<S> lumen_static::event::Handlers<S> for Image {
     fn handler(&self, _: lumen_static::event::NodeSel) -> Option<fn(&mut S, &lumen_static::event::EventCtx)> {
         None
+    }
+}
+
+impl Image {
+    /// Describe this image for a screen reader (M54/T54.3). A no-op in a build without `a11y`, which
+    /// carries no name.
+    #[allow(unused_variables)]
+    pub fn set_alt(&mut self, alt: &'static str) {
+        #[cfg(feature = "a11y")]
+        {
+            self.alt = alt;
+        }
     }
 }

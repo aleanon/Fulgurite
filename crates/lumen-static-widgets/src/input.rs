@@ -139,6 +139,17 @@ pub struct TextInput<S: TextBuffer = lumen_static::text::DefaultTextStorage> {
     /// The selection highlight's colour; [`selection_tint`] of the text
     /// colour when `None` — M25/T25.10.
     pub selection_color: Option<Color>,
+    /// What a screen reader announces this control as — M54/T54.3
+    /// (R15-F3). Empty by default, and an empty one is not published: a
+    /// control with no visible text of its own needs its application to
+    /// say what it is for. A field rather than a relation to a sibling
+    /// `Label`, so it works inside a `Repeat` row.
+    ///
+    /// **Only with `a11y`**: a build nobody can read aloud — the firmware
+    /// — does not carry it (its `Ui` is a const-asserted size). Write it
+    /// through `set_label`, which every build has.
+    #[cfg(feature = "a11y")]
+    pub label: &'static str,
 }
 
 impl<S: TextBuffer> Default for TextInput<S> {
@@ -155,6 +166,8 @@ impl<S: TextBuffer> Default for TextInput<S> {
             pad_left: 0.0,
             caret_color: None,
             selection_color: None,
+            #[cfg(feature = "a11y")]
+            label: "",
         }
     }
 }
@@ -833,6 +846,9 @@ impl<S: TextBuffer> Node for TextInput<S> {
         _extra: &mut Vec<(lumen_static::observe::accesskit::NodeId, lumen_static::observe::accesskit::Node)>,
     ) {
         node.set_role(lumen_static::observe::accesskit::Role::TextInput);
+        if !self.label.is_empty() {
+            node.set_label(self.label);
+        }
         node.set_value(self.text.as_ref());
     }
 }
@@ -840,5 +856,17 @@ impl<S: TextBuffer> Node for TextInput<S> {
 impl<S: TextBuffer, A> lumen_static::event::Handlers<A> for TextInput<S> {
     fn handler(&self, _sel: lumen_static::event::NodeSel) -> Option<fn(&mut A, &EventCtx)> {
         None
+    }
+}
+
+impl<S: TextBuffer> TextInput<S> {
+    /// Name this control for a screen reader (M54/T54.3). A no-op in a build without `a11y`, which
+    /// carries no name.
+    #[allow(unused_variables)]
+    pub fn set_label(&mut self, label: &'static str) {
+        #[cfg(feature = "a11y")]
+        {
+            self.label = label;
+        }
     }
 }

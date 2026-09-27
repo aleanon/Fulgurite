@@ -179,6 +179,27 @@ and a recorded session replays by construction.
 is, clicks the centre of it, pumps, and asserts the count. Coordinates
 come from the laid-out tree rather than from guesses.
 
+## What each widget tells a screen reader
+
+The agent's tree is the screen reader's tree, so a widget's role, name
+and state are one answer for both. The table the role test holds every
+widget to (`crates/lumen-static-widgets/tests/a11y_roles.rs`, M54/T54.3)
+— `row(id, impl, role, named)`, where `named` means the control carries
+a name when it is built with one (its `label`, or an image's `alt`):
+
+```text
+{{#include ../../crates/lumen-static-widgets/tests/a11y_roles.rs:rows}}
+```
+
+A control with no visible text of its own — a checkbox, a slider, a
+field — is announced by its `label`, which is empty by default and then
+not published: an application says what the control is for, with
+`set_label`. The field exists only with `a11y`, so a build nobody reads
+aloud — the firmware — carries no name at all. The test
+counts `impl Node for` in the widgets' source, so a new widget without a
+row fails it by name, and `just widget-drive` checks each driven
+widget's role live (`scripts/drive/roles.py`).
+
 ## The trap that makes an agent test vacuous
 
 Read this before writing one. In M16/T16.7 an invalidation oracle drove

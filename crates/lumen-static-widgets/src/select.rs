@@ -103,13 +103,22 @@ pub struct Select<S: 'static> {
     /// Run when the pass dismisses the menu — Escape, or a press outside
     /// it — so the application can clear its `open`. See the module docs.
     pub on_dismiss: fn(&mut S, &EventCtx),
+    /// What a screen reader announces the control as — M54/T54.3. The
+    /// trigger shows the chosen option; this says what is being chosen.
+    /// Empty by default, and not published when empty. Only with `a11y`;
+    /// write it through `set_label`, which every build has.
+    #[cfg(feature = "a11y")]
+    pub label: &'static str,
 }
 
 impl<S: 'static> Default for Select<S> {
     fn default() -> Self {
         let mut menu = SelectMenu::<S>::default();
         menu.anchor = Anchor::Below;
-        Select { trigger: Row::<S>::default(), menu, on_dismiss: |_, _| {} }
+        Select { trigger: Row::<S>::default(), menu, on_dismiss: |_, _| {},
+            #[cfg(feature = "a11y")]
+            label: "",
+        }
     }
 }
 
@@ -328,6 +337,26 @@ impl<S: 'static> Node for Select<S> {
             self.menu.node_mut(i - Self::MENU)
         }
     }
+
+    /// A combo box: its name, the option showing, and whether the menu is
+    /// open — M54/T54.3 (R15-F3). It reported `GenericContainer` until then.
+    #[cfg(feature = "a11y")]
+    fn observe(
+        &self,
+        _st: &[NodeState],
+        _i: usize,
+        _id: u64,
+        node: &mut lumen_static::observe::accesskit::Node,
+        _extra: &mut alloc::vec::Vec<(lumen_static::observe::accesskit::NodeId, lumen_static::observe::accesskit::Node)>,
+    ) {
+        use lumen_static::observe::accesskit::Role;
+        node.set_role(Role::ComboBox);
+        if !self.label.is_empty() {
+            node.set_label(self.label);
+        }
+        node.set_value(self.trigger.label.as_str());
+        node.set_expanded(self.menu.open);
+    }
 }
 
 impl<S: 'static> lumen_static::event::Handlers<S> for Select<S> {
@@ -342,5 +371,17 @@ impl<S: 'static> lumen_static::event::Handlers<S> for Select<S> {
             return self.trigger.handler(lumen_static::event::NodeSel { i: sel.i - Self::TRIGGER, ..sel });
         }
         self.menu.handler(lumen_static::event::NodeSel { i: sel.i - Self::MENU, ..sel })
+    }
+}
+
+impl<S: 'static> Select<S> {
+    /// Name this control for a screen reader (M54/T54.3). A no-op in a build without `a11y`, which
+    /// carries no name.
+    #[allow(unused_variables)]
+    pub fn set_label(&mut self, label: &'static str) {
+        #[cfg(feature = "a11y")]
+        {
+            self.label = label;
+        }
     }
 }

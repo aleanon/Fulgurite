@@ -591,11 +591,25 @@ pub struct Picker<const KIND: u8 = COLOR> {
     /// The trigger's laid-out box, so a press can be told from a press
     /// somewhere else.
     trigger: Size,
+    /// What a screen reader announces this control as — M54/T54.3
+    /// (R15-F3). Empty by default, and an empty one is not published: a
+    /// control with no visible text of its own needs its application to
+    /// say what it is for. A field rather than a relation to a sibling
+    /// `Label`, so it works inside a `Repeat` row.
+    ///
+    /// **Only with `a11y`**: a build nobody can read aloud — the firmware
+    /// — does not carry it (its `Ui` is a const-asserted size). Write it
+    /// through `set_label`, which every build has.
+    #[cfg(feature = "a11y")]
+    pub label: &'static str,
 }
 
 impl<const KIND: u8> Default for Picker<KIND> {
     fn default() -> Self {
-        Picker { pad: Popup::new(Pad::<KIND>::default()), trigger: Size { w: 0.0, h: 0.0 } }
+        Picker { pad: Popup::new(Pad::<KIND>::default()), trigger: Size { w: 0.0, h: 0.0 },
+            #[cfg(feature = "a11y")]
+            label: "",
+        }
     }
 }
 
@@ -911,6 +925,9 @@ impl<const KIND: u8> Node for Picker<KIND> {
         _extra: &mut alloc::vec::Vec<(accesskit::NodeId, accesskit::Node)>,
     ) {
         node.set_role(accesskit::Role::ComboBox);
+        if !self.label.is_empty() {
+            node.set_label(self.label);
+        }
         node.set_value(self.text());
         node.set_expanded(self.pad.open);
     }
@@ -930,3 +947,15 @@ pub type DatePicker = Picker<DATE>;
 pub type TimePicker = Picker<TIME>;
 /// A list of names the application supplies.
 pub type FilePicker = Picker<FILE>;
+
+impl<const KIND: u8> Picker<KIND> {
+    /// Name this control for a screen reader (M54/T54.3). A no-op in a build without `a11y`, which
+    /// carries no name.
+    #[allow(unused_variables)]
+    pub fn set_label(&mut self, label: &'static str) {
+        #[cfg(feature = "a11y")]
+        {
+            self.label = label;
+        }
+    }
+}

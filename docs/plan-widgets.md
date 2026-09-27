@@ -406,7 +406,10 @@ half of selection.
 ## One example, growing — the gate behind every gate
 
 Every task gate above is agent-protocol-shaped: `ui.lint` is clean, the
-role appears in `ui.getTree`, `ui_check.py press` passes. That is a real
+role appears in `ui.getTree`, `ui_check.py press` passes. (*Since
+M54/T54.3 the role is a gate for every widget, not a per-task claim:
+`crates/lumen-static-widgets/tests/a11y_roles.rs` checks role, name and
+state off the emitted node, one row per `Node` impl.*) That is a real
 risk the review named: a widget can satisfy all of it without anyone
 having put it on a screen next to another widget, which is the fastest
 route to a vocabulary that is individually correct and **collectively
