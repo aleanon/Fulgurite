@@ -1,0 +1,5 @@
+error: `#[widget_id]` goes on the field that holds this container, not on the struct: a node's id is given by its parent
+ --> tests/ui/fail_widget_id_on_struct.rs:9:1
+  |
+9 | #[widget_id("root")]
+  | ^^^^^^^^^^^^^^^^^^^^

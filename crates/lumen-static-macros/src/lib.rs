@@ -145,7 +145,14 @@ impl syn::parse::Parse for ClassName {
 /// `#[widget_id("save")]`. The bare-ident form is rejected rather than
 /// silently yielding an empty id — `wid` is the agent's stable address
 /// and a selector input, so a dropped one fails far from the typo.
+///
+/// **So are a second one and an empty one** — M55/T55.2 (R16-F4). This
+/// returned the *first* `#[widget_id]` and dropped the rest, and
+/// `#[widget_id("")]` meant the same as no id at all: both compiled, and
+/// the author's selector then matched nothing, far from the attribute.
+/// One on the struct is refused in [`expand`].
 fn parse_wid(f: &syn::Field) -> syn::Result<String> {
+    let mut found: Option<(&syn::Attribute, String)> = None;
     for attr in &f.attrs {
         if attr.path().is_ident("widget_id") {
             let lit: syn::LitStr = attr.parse_args().map_err(|_| {
@@ -154,10 +161,61 @@ fn parse_wid(f: &syn::Field) -> syn::Result<String> {
                     "expected a string literal: `#[widget_id(\"save\")]`",
                 )
             })?;
-            return Ok(lit.value());
+            if lit.value().is_empty() {
+                return Err(syn::Error::new_spanned(
+                    &lit,
+                    "an empty `#[widget_id]` addresses nothing; name the node or remove the attribute",
+                ));
+            }
+            if let Some((prev, _)) = found {
+                let mut e = syn::Error::new_spanned(attr, "a second `#[widget_id]` on one field");
+                e.combine(syn::Error::new_spanned(prev, "the first is here"));
+                return Err(e);
+            }
+            found = Some((attr, lit.value()));
         }
     }
-    Ok(String::new())
+    Ok(found.map(|(_, id)| id).unwrap_or_default())
+}
+
+/// Refuse `#[widget_id]` on a container struct — M55/T55.2 (R16-F4).
+///
+/// A node's id is given by the field that holds it, in its *parent*: the
+/// struct's own node is the root, or a field of some other container,
+/// and that field is where its id goes. On the struct it was accepted and
+/// nothing read it, so the root kept the empty id.
+fn refuse_struct_wid(attrs: &[syn::Attribute]) -> syn::Result<()> {
+    match attrs.iter().find(|a| a.path().is_ident("widget_id")) {
+        Some(a) => Err(syn::Error::new_spanned(
+            a,
+            "`#[widget_id]` goes on the field that holds this container, not on the struct: \
+             a node's id is given by its parent",
+        )),
+        None => Ok(()),
+    }
+}
+
+/// Refuse a `StaticTree` attribute on an enum or its variants — M55/T55.2.
+///
+/// An enum is a variant switch: it has no axis, and its node's id and
+/// classes come from the field that holds it. `attributes(widget,
+/// widget_id, widget_class)` let all three through here, and nothing
+/// read them.
+fn refuse_enum_attrs(data: &syn::DataEnum, attrs: &[syn::Attribute]) -> syn::Result<()> {
+    let is_ours = |a: &&syn::Attribute| {
+        ["widget", "widget_id", "widget_class"].iter().any(|n| a.path().is_ident(n))
+    };
+    let variant_attrs = data.variants.iter().flat_map(|v| {
+        v.attrs.iter().chain(v.fields.iter().flat_map(|f| f.attrs.iter()))
+    });
+    match attrs.iter().chain(variant_attrs).find(is_ours) {
+        Some(a) => Err(syn::Error::new_spanned(
+            a,
+            "an enum widget takes no `#[widget]`, `#[widget_id]` or `#[widget_class]`: it has no \
+             axis, and its id and classes go on the field that holds it",
+        )),
+        None => Ok(()),
+    }
 }
 
 /// Reject a generic or lifetime-parameterized widget with one sentence.
@@ -184,12 +242,22 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
     // An enum is a variant switch, not a container: it has no axis and
     // takes no `#[widget(...)]`.
     if let Data::Enum(e) = &input.data {
+        refuse_enum_attrs(e, &input.attrs)?;
         let line = input.ident.span().start().line as u32;
         return expand_enum(name, &name_str, e, line);
     }
+    refuse_struct_wid(&input.attrs)?;
 
     // ---- #[widget(row|column|stack, spacing = <f32>, fuse)] ----
+    //
+    // **Every key once** — M55/T55.2 (R16-F4). They used to overwrite:
+    // `#[widget(row, column)]` laid out as a column, and so did the same
+    // two keywords in two separate `#[widget]` attributes, which read as
+    // though both applied. An axis given twice names the first; any
+    // other key given twice is refused at the repeat.
     let mut axis = None;
+    let mut axis_kw: Option<syn::Path> = None;
+    let mut seen: Vec<String> = Vec::new();
     let mut spacing = 0.0f32;
     let mut spacing_span = None;
     let mut columns: Option<usize> = None;
@@ -200,17 +268,39 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
             continue;
         }
         attr.parse_nested_meta(|meta| {
-            if meta.path.is_ident("row") {
-                axis = Some(Axis::Row);
+            let mode = if meta.path.is_ident("row") {
+                Some(Axis::Row)
             } else if meta.path.is_ident("column") {
-                axis = Some(Axis::Column);
+                Some(Axis::Column)
             } else if meta.path.is_ident("stack") {
-                axis = Some(Axis::Stack);
+                Some(Axis::Stack)
             } else if meta.path.is_ident("wrap") {
-                axis = Some(Axis::Flow(None));
+                Some(Axis::Flow(None))
             } else if meta.path.is_ident("grid") {
-                axis = Some(Axis::Flow(Some(0)));
-            } else if meta.path.is_ident("columns") {
+                Some(Axis::Flow(Some(0)))
+            } else {
+                None
+            };
+            if let Some(mode) = mode {
+                if let Some(first) = &axis_kw {
+                    let name = |p: &syn::Path| p.get_ident().map(|i| i.to_string()).unwrap_or_default();
+                    let mut e = meta.error(format!(
+                        "a second container mode: `{}` after `{}` — a container has one",
+                        name(&meta.path),
+                        name(first)
+                    ));
+                    e.combine(syn::Error::new_spanned(first, "the first is here"));
+                    return Err(e);
+                }
+                axis = Some(mode);
+                axis_kw = Some(meta.path.clone());
+                return Ok(());
+            }
+            let key = meta.path.get_ident().map(|i| i.to_string()).unwrap_or_default();
+            if seen.contains(&key) {
+                return Err(meta.error(format!("`{key}` given twice")));
+            }
+            if meta.path.is_ident("columns") {
                 let lit: syn::LitInt = meta.value()?.parse()?;
                 columns = Some(lit.base10_parse()?);
                 columns_span = Some(lit);
@@ -226,6 +316,7 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                      `columns = <int>`, `spacing = <float>`, or `fuse`",
                 ));
             }
+            seen.push(key);
             Ok(())
         })?;
     }
@@ -239,6 +330,8 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
     // **`columns` belongs to `grid` and nothing else.** Accepting it on
     // a row and ignoring it is the shape the `stack`/`spacing` check
     // below exists to refuse, so it is an error at the token that asked.
+    // (The same shape as a repeated key, which the loop above refuses —
+    // M55/T55.2.)
     let axis = match (axis, columns) {
         (Axis::Flow(Some(_)), Some(0)) => {
             return Err(syn::Error::new_spanned(
@@ -1208,20 +1301,34 @@ pub fn derive_reloadable(input: TokenStream) -> TokenStream {
     }
 }
 
+/// A field's reload mode: `keep`, `fresh`/`reset`, or none (a nested
+/// `Reloadable`).
+///
+/// **Once** — M55/T55.2 (R16-F4). The last mode used to win, so
+/// `#[reload(keep)] #[reload(fresh)]` dropped the value the first
+/// attribute asked to keep, silently.
 fn reload_mode(field: &syn::Field) -> syn::Result<ReloadMode> {
     let mut mode = ReloadMode::Nested;
+    let mut first: Option<syn::Path> = None;
     for attr in &field.attrs {
         if !attr.path().is_ident("reload") {
             continue;
         }
         attr.parse_nested_meta(|meta| {
-            if meta.path.is_ident("keep") {
-                mode = ReloadMode::Keep;
+            let m = if meta.path.is_ident("keep") {
+                ReloadMode::Keep
             } else if meta.path.is_ident("fresh") || meta.path.is_ident("reset") {
-                mode = ReloadMode::Skip;
+                ReloadMode::Skip
             } else {
                 return Err(meta.error("expected `keep`, `fresh`, or `reset`"));
+            };
+            if let Some(prev) = &first {
+                let mut e = meta.error("a field has one reload mode");
+                e.combine(syn::Error::new_spanned(prev, "the first is here"));
+                return Err(e);
             }
+            first = Some(meta.path.clone());
+            mode = m;
             Ok(())
         })?;
     }
@@ -1991,16 +2098,22 @@ fn expand_app(input: DeriveInput) -> syn::Result<Ts2> {
         if !attr.path().is_ident("app") {
             continue;
         }
+        // Each key once (M55/T55.2, R16-F4): `tick = t1, tick = t2` used
+        // to run `t2`, silently.
         attr.parse_nested_meta(|meta| {
-            if meta.path.is_ident("after_update") {
-                after_update = Some(meta.value()?.parse()?);
-                Ok(())
+            let slot = if meta.path.is_ident("after_update") {
+                &mut after_update
             } else if meta.path.is_ident("tick") {
-                tick = Some(meta.value()?.parse()?);
-                Ok(())
+                &mut tick
             } else {
-                Err(meta.error("expected `after_update = path` or `tick = path`"))
+                return Err(meta.error("expected `after_update = path` or `tick = path`"));
+            };
+            if slot.is_some() {
+                let key = if meta.path.is_ident("tick") { "tick" } else { "after_update" };
+                return Err(meta.error(format!("`#[app({key} = ..)]` given twice")));
             }
+            *slot = Some(meta.value()?.parse()?);
+            Ok(())
         })?;
     }
 
@@ -2010,6 +2123,11 @@ fn expand_app(input: DeriveInput) -> syn::Result<Ts2> {
         let ident = f.ident.clone().unwrap();
         for attr in &f.attrs {
             if attr.path().is_ident("tree") {
+                // A marker: arguments were accepted and ignored until
+                // M55/T55.2 (R16-F4), so `#[tree(junk = 5)]` compiled.
+                attr.meta.require_path_only().map_err(|_| {
+                    syn::Error::new_spanned(attr, "`#[tree]` takes no arguments")
+                })?;
                 if let Some(prev) = tree_field {
                     let mut e = syn::Error::new_spanned(f, "a second `#[tree]` field");
                     e.combine(syn::Error::new_spanned(prev, "the first is here"));
@@ -2189,8 +2307,21 @@ fn expand_app(input: DeriveInput) -> syn::Result<Ts2> {
     // the first).
     let mut state_field: Option<&syn::Field> = None;
     for f in fields.named.iter() {
-        if !f.attrs.iter().any(|a| a.path().is_ident("state")) {
+        let mut states = f.attrs.iter().filter(|a| a.path().is_ident("state"));
+        let Some(first) = states.next() else {
             continue;
+        };
+        // A marker, like `#[tree]` (M55/T55.2): `#[state(junk)]` was
+        // detected by its path alone and compiled.
+        for a in f.attrs.iter().filter(|a| a.path().is_ident("state")) {
+            a.meta.require_path_only().map_err(|_| {
+                syn::Error::new_spanned(a, "`#[state]` takes no arguments")
+            })?;
+        }
+        if let Some(again) = states.next() {
+            let mut e = syn::Error::new_spanned(again, "a second `#[state]` field");
+            e.combine(syn::Error::new_spanned(first, "the first is here"));
+            return Err(e);
         }
         if f.attrs.iter().any(|a| a.path().is_ident("tree")) {
             return Err(syn::Error::new_spanned(

@@ -1,0 +1,5 @@
+error: `#[tree]` takes no arguments
+  --> tests/ui/fail_tree_with_args.rs:14:5
+   |
+14 |     #[tree(junk = 5)]
+   |     ^^^^^^^^^^^^^^^^^

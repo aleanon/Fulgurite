@@ -1,0 +1,5 @@
+error: `#[state]` takes no arguments
+  --> tests/ui/fail_state_with_args.rs:21:5
+   |
+21 |     #[state(junk)]
+   |     ^^^^^^^^^^^^^^

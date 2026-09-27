@@ -1,0 +1,11 @@
+error: an enum widget takes no `#[widget]`, `#[widget_id]` or `#[widget_class]`: it has no axis, and its id and classes go on the field that holds it
+ --> tests/ui/fail_enum_widget_attr.rs:8:1
+  |
+8 | #[widget(row)]
+  | ^^^^^^^^^^^^^^
+
+error: an enum widget takes no `#[widget]`, `#[widget_id]` or `#[widget_class]`: it has no axis, and its id and classes go on the field that holds it
+  --> tests/ui/fail_enum_widget_attr.rs:15:5
+   |
+15 |     #[widget_id("a")]
+   |     ^^^^^^^^^^^^^^^^^

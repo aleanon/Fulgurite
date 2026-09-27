@@ -40,14 +40,3 @@ fn reload_diagnostics() {
     t.compile_fail("tests/ui-reload/fail_*.rs");
 }
 
-/// M55/T55.0: the cases the derive accepted and then ignored (R16-F4),
-/// and the one whose user tokens resolved in the derive's scope
-/// (R16-F3). Red until the tasks named: each refusal compiles and the
-/// hygiene case does not.
-#[test]
-#[ignore = "red until T55.1/T55.2: R16-F3 (derive locals visible) and R16-F4 (repeats and arguments ignored)"]
-fn m55_red() {
-    let t = trybuild::TestCases::new();
-    t.compile_fail("tests/ui-m55/fail_*.rs");
-    t.pass("tests/ui-m55/pass_*.rs");
-}

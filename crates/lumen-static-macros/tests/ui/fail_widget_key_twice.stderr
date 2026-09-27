@@ -1,0 +1,5 @@
+error: `spacing` given twice
+ --> tests/ui/fail_widget_key_twice.rs:7:30
+  |
+7 | #[widget(row, spacing = 2.0, spacing = 8.0)]
+  |                              ^^^^^^^

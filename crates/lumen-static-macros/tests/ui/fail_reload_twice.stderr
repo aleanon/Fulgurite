@@ -1,0 +1,11 @@
+error: a field has one reload mode
+ --> tests/ui/fail_reload_twice.rs:9:14
+  |
+9 |     #[reload(fresh)]
+  |              ^^^^^
+
+error: the first is here
+ --> tests/ui/fail_reload_twice.rs:8:14
+  |
+8 |     #[reload(keep)]
+  |              ^^^^

@@ -56,6 +56,12 @@
 //! | `#[bind(ui.value, "count: {}")]` | an `App` field | how this state reaches the screen |
 //! | `#[app(after_update = f)]` | an `App` struct | `fn(&mut Self) -> bool`, run after the bindings; the `bool` says whether it changed anything |
 //!
+//! **Each key once, and nothing ignored** (M55/T55.2). A repeated key —
+//! two container modes, `spacing` twice, a second `#[widget_id]` on a
+//! field, `tick` twice, two reload modes — is an error, not a silent
+//! overwrite; so are `#[tree]` or `#[state]` with arguments, an empty or
+//! struct-level `#[widget_id]`, and a `StaticTree` attribute on an enum.
+//!
 //! `#[bind]` also takes `with = f` for a `fn(&mut Target, &Source)`
 //! projection, and extra format arguments after the string — evaluated
 //! in your scope, never the derive's: a function of yours called

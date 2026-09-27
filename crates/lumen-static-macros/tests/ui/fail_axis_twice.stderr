@@ -1,0 +1,23 @@
+error: a second container mode: `column` after `row` — a container has one
+ --> tests/ui/fail_axis_twice.rs:8:15
+  |
+8 | #[widget(row, column)]
+  |               ^^^^^^
+
+error: the first is here
+ --> tests/ui/fail_axis_twice.rs:8:10
+  |
+8 | #[widget(row, column)]
+  |          ^^^
+
+error: a second container mode: `column` after `row` — a container has one
+  --> tests/ui/fail_axis_twice.rs:15:10
+   |
+15 | #[widget(column, spacing = 2.0)]
+   |          ^^^^^^
+
+error: the first is here
+  --> tests/ui/fail_axis_twice.rs:14:10
+   |
+14 | #[widget(row)]
+   |          ^^^

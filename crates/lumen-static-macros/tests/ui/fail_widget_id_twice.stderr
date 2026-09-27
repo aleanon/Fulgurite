@@ -1,0 +1,11 @@
+error: a second `#[widget_id]` on one field
+  --> tests/ui/fail_widget_id_twice.rs:10:5
+   |
+10 |     #[widget_id("store")]
+   |     ^^^^^^^^^^^^^^^^^^^^^
+
+error: the first is here
+ --> tests/ui/fail_widget_id_twice.rs:9:5
+  |
+9 |     #[widget_id("save")]
+  |     ^^^^^^^^^^^^^^^^^^^^

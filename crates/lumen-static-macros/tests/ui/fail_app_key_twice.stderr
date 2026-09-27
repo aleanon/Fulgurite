@@ -1,0 +1,5 @@
+error: `#[app(tick = ..)]` given twice
+  --> tests/ui/fail_app_key_twice.rs:20:18
+   |
+20 | #[app(tick = t1, tick = t2)]
+   |                  ^^^^
