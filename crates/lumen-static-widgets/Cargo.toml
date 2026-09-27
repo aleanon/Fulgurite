@@ -47,3 +47,9 @@ observe = ["std", "dep:accesskit", "lumen-static/observe"]
 # exactly as `lumen-static`'s is, and for the same reason: the dev
 # surface must compile to nothing in a release build.
 reload = ["std", "dep:serde_json", "lumen-static/reload"]
+
+[dev-dependencies]
+# M54/T54.0: `tests/text_contrast.rs` measures the catalogue's painted
+# text with `lumen_static_shell::contrast`, the one WCAG implementation.
+# No features: the harness is headless and needs no face.
+lumen-static-shell = { path = "../lumen-static-shell" }

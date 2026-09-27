@@ -40,6 +40,7 @@ ALL=(
     "gpu-parity|./scripts/gpu_parity.sh"
     "resume-drive|./scripts/resume_drive.sh"
     "idle-count|./scripts/idle_count.sh"
+    "a11y-drive|./scripts/a11y_drive.sh"
 )
 
 # Every script that goes through the live launcher is a live gate and must

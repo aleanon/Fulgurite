@@ -1650,6 +1650,7 @@ version = "0.1.0"
 dependencies = [
  "accesskit",
  "lumen-static",
+ "lumen-static-shell",
  "serde_json",
  "unicode-segmentation",
 ]

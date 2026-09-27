@@ -6,7 +6,9 @@
 # `just thumb` -- and the local runner never noticed, because it shares the
 # developer's rustup home, where the target was added by hand once. A
 # triple is anything shaped like `<arch>-none-eabi[hf]`,
-# `<arch>-unknown-<os>`, `<arch>-apple-<os>` or `<arch>-pc-windows-<abi>`;
+# `<arch>-unknown-<os>`, `<arch>-linux-android[eabi]` (M54/T54.0: the
+# pattern missed Android, so `just mobile-check` passed undeclared),
+# `<arch>-apple-<os>` or `<arch>-pc-windows-<abi>`;
 # the host's own is exempt only because it is always installed, and none
 # is named today.
 set -uo pipefail
@@ -24,7 +26,7 @@ host=$(rustc -vV 2>/dev/null | awk '/^host:/ {print $2}')
 files=(justfile .github/workflows/ci.yml)
 while IFS= read -r f; do files+=("$f"); done < <(find scripts -type f \( -name '*.sh' -o -name '*.py' \) -not -path 'scripts/selftest/*' | sort)
 
-uses=$(grep -noE '\b[a-z0-9_]+-(none-eabihf|none-eabi|unknown-[a-z0-9_]+(-[a-z0-9_]+)?|apple-[a-z]+|pc-windows-[a-z]+)\b' "${files[@]}" 2>/dev/null \
+uses=$(grep -noE '\b[a-z0-9_]+-(none-eabihf|none-eabi|unknown-[a-z0-9_]+(-[a-z0-9_]+)?|linux-android(eabi)?|apple-[a-z]+|pc-windows-[a-z]+)\b' "${files[@]}" 2>/dev/null \
        | grep -v 'x86_64-unknown-linux-gnu$' || true)
 status=0
 used=$(echo "$uses" | awk -F: 'NF {print $3}' | sort -u | grep -v "^${host:-none}\$" || true)

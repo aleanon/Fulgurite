@@ -703,6 +703,17 @@ run-agent:
 tally-a11y:
     cargo run -p counter-window --features a11y
 
+# M54/T54.0: the platform accessibility bus (AT-SPI), walked for a
+# screen reader's view of a window and compared with the agent's. Needs a
+# display and AT-SPI; exits 77 without either. In `check` through `live`.
+a11y-drive:
+    ./scripts/a11y_drive.sh
+
+# M54/T54.0 (R12-F6): `cargo check` of each crate for Android, one line per
+# configuration with its exit status. Manual, like the GPU recipes.
+mobile-check:
+    ./scripts/mobile_check.sh
+
 # Every live check against a fresh window (scripts/ui_check.py is the list
 # — do not restate it here, it drifted to six once already). Rung 4's gate;
 # needs a display. In `check` through `live`.

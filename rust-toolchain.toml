@@ -5,5 +5,7 @@ components = ["rustfmt", "clippy"]
 # for the M13 device. Declared here so a clean checkout gets it with the
 # toolchain (M43/T43.14, R17-F10); scripts/check_toolchain_targets.sh
 # refuses a `--target` the justfile or a script uses that is not listed.
-targets = ["thumbv7em-none-eabihf"]
+# `just mobile-check` (M54/T54.0) type-checks for Android; `cargo check`
+# links nothing, so no NDK is needed, only the target's std.
+targets = ["thumbv7em-none-eabihf", "aarch64-linux-android"]
 profile = "minimal"

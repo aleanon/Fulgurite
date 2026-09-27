@@ -101,3 +101,15 @@ fn a_tree_that_drags_nothing_carries_one_byte() {
     assert_copy::<Drag<u32>>();
     assert_copy::<DragPhase>();
 }
+
+/// **The rustdoc's number, as a test** — M54/T54.0 (R15-F8). `drag.rs`
+/// says a tree that drags nothing carries a `Drag<()>` "that is one byte";
+/// the test named for that claim asserted `size_of::<Option<()>>() == 1`,
+/// a language fact. This asserts the number the rustdoc states.
+#[test]
+#[ignore = "red until T54.9: R15-F8 -- drag.rs says Drag<()> is one byte; it is 24"]
+fn a_drag_of_nothing_is_the_one_byte_the_rustdoc_states() {
+    let n = core::mem::size_of::<Drag<()>>();
+    println!("Drag<()> = {n} B (the rustdoc says 1)");
+    assert_eq!(n, 1, "Drag<()> is {n} B, not the one byte drag.rs states");
+}

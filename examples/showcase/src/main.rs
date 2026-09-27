@@ -1422,6 +1422,41 @@ mod tests {
         assert!(wrong.is_empty(), "fields that did not follow their rule:\n{}", wrong.join("\n"));
     }
 
+    /// **Every text run the catalogue paints reaches WCAG AA** — M54/T54.0
+    /// (R16-F9), measured on the display list with the real stylesheet and
+    /// `SHOW_LIGHT` (`lumen_static_shell::contrast`), entry by entry. It
+    /// prints the runs below 4.5:1 against the total measured, and fails if
+    /// fewer than half of the catalogue's text commands were measured, so a
+    /// harness that found no ground cannot pass.
+    #[test]
+    #[ignore = "red until T54.6: R16-F9 -- the showcase accent 0x2f6bff is under 4.5:1"]
+    fn every_catalogue_text_run_reaches_aa() {
+        use lumen_static_shell::contrast::text_contrast;
+        let mut h = host(0, false);
+        let (mut measured, mut texts, mut unmeasured) = (0usize, 0usize, 0usize);
+        let mut below = Vec::new();
+        for (i, e) in CATALOG.iter().enumerate() {
+            choose(&mut h.app.store, i);
+            let mut m = FontStack2::system().map(FontMetrics2::new);
+            for _ in 0..2 {
+                match m.as_mut() {
+                    Some(m) => h.pump_with(m),
+                    None => h.pump(),
+                };
+            }
+            texts += h.list.cmds.iter().filter(|c| matches!(c, Cmd::Text { text, .. } if !h.list.str_of(*text).trim().is_empty())).count();
+            let r = text_contrast(&h.list, SHOW_LIGHT.page);
+            measured += r.measured.len();
+            unmeasured += r.unmeasured.len();
+            for x in r.below(4.5) {
+                below.push(format!("{}: {:?} {:.2}:1 (fg {:?} on {:?})", e.name, x.text, x.ratio, x.fg, x.ground));
+            }
+        }
+        println!("runs below 4.5: {} / {measured} measured ({unmeasured} unmeasured, {texts} text commands)", below.len());
+        assert!(measured * 2 >= texts, "setup: {measured} of {texts} text commands measured");
+        assert!(below.is_empty(), "{} run(s) under 4.5:1:\n  {}", below.len(), below.join("\n  "));
+    }
+
     #[test]
     fn every_entry_paints_a_demo() {
         let mut seen: Vec<(&str, core::mem::Discriminant<Demo>)> = Vec::new();

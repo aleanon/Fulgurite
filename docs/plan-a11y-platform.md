@@ -765,6 +765,37 @@ drag and image fixes may land at any time.
   scratch branch. If they are gone when this runs, each injection is
   described well enough above to be re-made by hand.
 
+## What building found
+
+*Dated notes, added as each task was built; the sections above are the
+plan as written and are left as they were.*
+
+**T54.0 (2026-09-27).** Every finding re-checked at `12c5df1`: all nine
+still stand where the plan put them, with line numbers moved.
+- **AT-SPI names an application after its executable**, not its window
+  title, so "an application with the showcase's title" is not a test
+  anyone can write. The walker (`scripts/a11y_drive.py`) finds the
+  application **by pid** (`Accessible.get_process_id`), which the live
+  launcher already knows, so a second copy of the same binary from a
+  sibling worktree cannot answer for this one.
+- **The expected-to-fail leg is an `XFAIL`/`XPASS` pair**, not an
+  `#[ignore]`: the showcase leg passes while the application is absent
+  and fails the moment it appears, so the expectation cannot outlive
+  T54.2. That is what lets the script sit in `scripts/live.sh`'s list
+  from the first commit.
+- **The measuring function is built here, not in T54.5.** A gate needs
+  a measurement, so `lumen_static_shell::contrast` lands with T54.0;
+  T54.5 moves T36.2's helper onto it and wires it into the drive.
+- **The widgets' own defaults are a third accent.** The painted accent
+  is `#2f6bff` — the showcase's value — not `Palette::LIGHT`'s
+  (53, 99, 239), so §1.3's "the framework's palette has the same
+  defect" is true of a palette no default paints. The harness reports
+  six runs under 4.5:1 in the catalogue, all in `#2f6bff` (T54.6 owns
+  the values), and 40 of 446 in the showcase.
+- **`scripts/check_toolchain_targets.sh` could not see an Android
+  triple**: its pattern knew `-unknown-`, `-apple-`, `-pc-windows-` and
+  `-none-eabi*`, so `just mobile-check` would have passed undeclared.
+
 ## Appendix: finding → task
 
 | ID | sev now | status | task |

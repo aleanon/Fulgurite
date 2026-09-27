@@ -19,6 +19,8 @@ use lumen_static::style::{Rule, Style};
 use lumen_static::widget::{Node, Widget};
 use lumen_static::{pass, Constraints, Event, Point};
 
+/// M54/T54.0: WCAG contrast of each text run against what it is painted on.
+pub mod contrast;
 /// M53/T53.0: what a pump did, counted.
 pub mod frame_cost;
 /// M12/T12.2: golden images, with a diff artifact.
