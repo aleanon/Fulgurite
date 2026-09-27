@@ -5,6 +5,11 @@
 //! that table as assertions, which is the point of writing it first: an
 //! inventory produced afterwards describes what was built.
 
+// on_event only: these test stepping, parsing and handle logic, one call
+// deep. Delivery is crates/lumen-static-shell/tests/search_field.rs through
+// a Host, and scripts/drive/widgets/fields.py live, keyboard included.
+// (M57/D2)
+
 use lumen_static::event::{Event, EventCtx, Key};
 use lumen_static::widget::{Node, Widget};
 use lumen_static::{Constraints, NodeState, Point};

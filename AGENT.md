@@ -810,7 +810,7 @@ separate pass the rule exists to prevent. If a commit is big enough that
 the docs feel like a second task, that is the signal to split the commit,
 not to defer the docs.
 
-Seven checks in `just static` mechanise the part a human reliably misses:
+Eight checks in `just static` mechanise the part a human reliably misses:
 - a backticked identifier in a comment must exist in the code;
 - a declared derive attribute must have a user;
 - a cited `docs/*.md` or bench binary must exist;
@@ -820,6 +820,9 @@ Seven checks in `just static` mechanise the part a human reliably misses:
   book;
 - the core must contain no `unsafe`;
 - since M57/A17, every widget must implement `observe` or be listed with
-  the reason it has nothing to say. They run before
+  the reason it has nothing to say;
+- since M57/D2, a widget test that hands `on_event` a press or a key and
+  never pumps must say why (`// on_event only:`), since that shape hid
+  A4, A7, A13 and the first `Hover` test. They run before
 any compile. The first three read `book/src/*.md` as well as `docs/*.md`,
 from 2026-09-10.

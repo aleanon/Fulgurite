@@ -7,6 +7,11 @@
 //! the only real computation in the tranche, and the only place a
 //! widget can be wrong in a way nobody notices for a month.
 
+// on_event only: these test the cells' geometry and date arithmetic.
+// Delivery -- the trigger-only toggle, the clock's minute commit, the file
+// list's wheel -- is crates/lumen-static-shell/tests/picker_b16.rs, and
+// scripts/drive/widgets/pick.py live. (M57/D2)
+
 use lumen_static::event::{Event, EventCtx};
 use lumen_static::widget::{Node, Widget};
 use lumen_static::{Constraints, NodeState, Point};

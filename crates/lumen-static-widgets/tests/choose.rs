@@ -4,6 +4,11 @@
 //! exactly two things: whether there is a trigger, and whether typing in
 //! it filters.
 
+// on_event only: these test the option logic and filtering, one call deep.
+// What the pass delivers -- a choice closing the list, Escape, the keyboard
+// -- is crates/lumen-static-shell/tests/chooser_closes.rs, and
+// scripts/drive/widgets/choose.py drives it live. (M57/D2)
+
 use lumen_static::event::{Event, EventCtx, Key};
 use lumen_static::widget::{Node, Widget};
 use lumen_static::{Constraints, NodeState, Point};

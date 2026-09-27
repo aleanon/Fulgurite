@@ -27,6 +27,7 @@ static:
     ./scripts/check_book_includes.sh    # book includes, anchors and links must all resolve
     ./scripts/check_attr_table.sh       # the attribute table in lib.rs and the book must agree
     ./scripts/check_observe.sh          # every widget publishes itself to a reader, or says why not
+    ./scripts/check_on_event_tests.sh   # M57/D2: a direct on_event test goes through the pass or says why not
 
 # Default features == the shipped shape. This is the ONLY build that compiles
 # what docs/verification-notes.md scopes its argument to; `--workspace` cannot

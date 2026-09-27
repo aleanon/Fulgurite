@@ -5,6 +5,11 @@
 //! its shape (collapsing is arithmetic over the array), and a grid owns
 //! nothing — its rows are a `Repeat` the application binds.
 
+// on_event only: these test each widget's arithmetic (the page strip, the
+// tree's folding, the grid's columns). Delivery is crates/lumen-static-
+// shell/tests/tree_b50.rs and data_grid_b51.rs through a Host, and
+// scripts/drive/widgets/data.py live. (M57/D2)
+
 use lumen_static::event::{Event, EventCtx, Key};
 use lumen_static_widgets::ops::Label;
 use lumen_static::widget::{Node, Widget};

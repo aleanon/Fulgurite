@@ -16,6 +16,11 @@
 //!    an application that must confirm before discarding cannot undo a
 //!    close that already happened.
 
+// on_event only: these test panel geometry and the dismissal request.
+// Delivery -- Shift+Tab in the trap, the scrim press -- is crates/lumen-
+// static-shell/tests/veil_b41.rs, and scripts/drive/widgets/veil.py live.
+// (M57/D2)
+
 use lumen_static::display::{Cmd, DisplayList};
 use lumen_static::event::{Event, EventCtx, Handlers, Key, NodeSel};
 use lumen_static_widgets::ops::Button;

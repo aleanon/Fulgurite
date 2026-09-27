@@ -6,6 +6,11 @@
 //! reason: a shared test would have had to pretend an app bar has a
 //! selected index.
 
+// on_event only: these test a strip's index arithmetic and a pull's
+// thresholds. Delivery, hover and press shades included, is
+// scripts/drive/widgets/nav.py against the live window under both
+// strategies. (M57/D2)
+
 use lumen_static::event::{Event, EventCtx, Key};
 use lumen_static::widget::{Node, Widget};
 use lumen_static::{Constraints, NodeState, Point};
