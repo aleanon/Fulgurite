@@ -1164,6 +1164,57 @@ Three defects found by using the showcase, each fixed where it lives:
   their own text by `DataGrid::CELL_INSET`, since the rules sit on the
   column boundaries of a row the grid does not own.
 
+The second round, the same day, from using the first round's fixes:
+
+- **After a choice, the combobox was stuck.** The caret followed the
+  pointer, a press on the field did nothing, and typing opened no list.
+  Three causes. The chooser handed *every* event that bubbled to it to
+  its field, so a press on the list reached the field as a click, was
+  consumed, and gave the chooser the pointer capture. The release was
+  consumed by the list on the overlay path, which returned before
+  capture was consulted, so the capture outlived the gesture; captured
+  moves and releases now go to the captured node first on that path too.
+  And with the field still focused (`KEEPS_FOCUS`), opening on the focus
+  transition had nothing left to fire on. It now also reopens on a press
+  of the field, counted by `TextInput::presses` because a pressed bit
+  does not survive a press and release in one frame (the live drive's
+  click), and on a changed query.
+- **A full search field's view jumped on every click.** `TextInput`
+  decided its scroll in `layout`, which also runs as a measure. Laid out
+  wide, by a measuring parent or by the agent's audit under a
+  million-pixel box, the run "fitted" and the scroll clamped to 0. The
+  scroll is decided in `place` now, against the final box, which is
+  T27.10's answer for `Repeat`.
+- **The DataGrid's scrollbar took no press.** It has its own strip, a
+  thumb that drags, and a track that jumps the thumb to the press.
+
+Two things about the scale-2 pass this round showed, not fixed:
+
+- **Its sensitivity depends on the window it is granted.** Since the
+  drive waits for the window to settle, the size it runs at is the one
+  the window manager chose, and that varies: 1920x1008 on some runs,
+  1920x1048 on others. At 1048 the flipped pad's edge lands on a whole
+  pixel, and with D6's damage snap removed again the pass stays green.
+  The headless test at 1920x1008
+  (`a_popup_repaints_partially_to_the_same_pixels_at_scale_2`) is the
+  gate that does not depend on it.
+- **One intermittent failure is not attributed.** DatePicker's "a press
+  opens the popup" failed the full-repaint check twice, in about seven
+  runs at 1008. The damaged frame showed the trigger hovered, and the
+  full repaint showed it not hovered. Three instrumented runs read the
+  trigger hovered both before and after the forced repaint, and passed.
+  One unconfirmed explanation is a real pointer event from the machine
+  landing between the two reads. A retry keyed to the frame counter was
+  tried and removed: with the stale-row defect injected it passed on its
+  third attempt, because the first forced repaint had already cleaned the
+  frame it was comparing.
+
+Two of this round's tests were vacuous on their first run, and both were
+caught by injection. A capture test pressed the field of an open list:
+that press dismisses the list, so nothing was ever captured. The
+drag-release test moved with nothing pressed, and a stale drag only
+shows once the grid holds the pointer again.
+
 ### Tests that proved nothing until fixed
 
 Each was caught by an injection that left it green, or by a pass that

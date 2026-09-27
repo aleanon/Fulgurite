@@ -840,6 +840,11 @@ pub const PART_ROWS: &str = "grid-rows";
 ///   view. The grid is focusable for exactly this: D3 found its rows
 ///   unreachable from the keyboard (M57).
 ///
+/// * a **scrollbar** in its own strip right of the columns
+///   ([`DataGrid::SCROLLBAR_W`]): the thumb drags, and a press on the
+///   track moves the thumb there and keeps dragging. It was drawn and took
+///   no press at all.
+///
 /// A row selected either way is reported once by
 /// [`DataGrid::take_selected`], and [`DataGrid::active`] is the cell.
 ///
@@ -871,6 +876,9 @@ pub struct DataGrid<R: Widget + Default + 'static> {
     /// Its own width from layout: `on_event` has no state array, and the
     /// column under a press is this width's arithmetic.
     width: f32,
+    /// A thumb drag in flight: where in the thumb it was grabbed, from
+    /// the thumb's top.
+    drag: Option<f32>,
 }
 
 impl<R: Widget + Default + 'static> Default for DataGrid<R> {
@@ -904,6 +912,13 @@ impl<R: Widget + Default + 'static> DataGrid<R> {
     pub const CELL_INSET: f32 = 8.0;
     /// The narrowest row-number gutter.
     const MIN_GUTTER: f32 = 36.0;
+    /// The scrollbar's strip, right of the columns: wide enough to grab.
+    /// It was the 8 px cell inset with a 4 px thumb drawn in it, and
+    /// nothing took a press there at all.
+    pub const SCROLLBAR_W: f32 = 12.0;
+    /// The thumb's width inside the strip, and its shortest length.
+    const THUMB_W: f32 = 6.0;
+    const MIN_THUMB: f32 = 24.0;
 
     pub fn new(
         columns: &[&'static str],
@@ -925,6 +940,7 @@ impl<R: Widget + Default + 'static> DataGrid<R> {
             gutter: 0.0,
             body_h: 0.0,
             width: 0.0,
+            drag: None,
         };
         for (i, c) in columns.iter().take(MAX_COLUMNS).enumerate() {
             g.columns[i] = c;
@@ -944,7 +960,30 @@ impl<R: Widget + Default + 'static> DataGrid<R> {
     /// these columns, so `FILL` cells agree with it by construction, and
     /// `the_header_sits_over_a_row_that_follows_the_column_rule` pins it.
     pub fn column_width(&self, grid_w: f32) -> f32 {
-        (grid_w - self.gutter - Self::CELL_INSET).max(0.0) / self.column_count.max(1) as f32
+        (grid_w - self.gutter - Self::SCROLLBAR_W).max(0.0) / self.column_count.max(1) as f32
+    }
+
+    /// The thumb as `(top, length)` from the body's top, while the rows
+    /// overflow — **the one geometry** `paint` draws and `on_event` grabs,
+    /// so the thumb a person sees is the thumb a press finds.
+    fn thumb(&self) -> Option<(f32, f32)> {
+        let (view, content) = (self.body_h, self.rows.count as f32 * self.rows.item_extent);
+        if view <= 0.0 || content <= view + 0.5 {
+            return None;
+        }
+        let len = (view * view / content).max(Self::MIN_THUMB).min(view);
+        let at = (view - len) * (self.rows.scroll / (content - view)).clamp(0.0, 1.0);
+        Some((at, len))
+    }
+
+    /// Scroll so the thumb's top sits at `top` from the body's top.
+    fn scroll_thumb_to(&mut self, top: f32) -> bool {
+        let Some((_, len)) = self.thumb() else { return false };
+        let (view, content) = (self.body_h, self.rows.count as f32 * self.rows.item_extent);
+        let track = (view - len).max(0.0);
+        let frac = if track > 0.0 { (top / track).clamp(0.0, 1.0) } else { 0.0 };
+        let want = frac * (content - view);
+        core::mem::replace(&mut self.rows.scroll, want) != want
     }
 
     pub fn columns(&self) -> usize {
@@ -1102,7 +1141,7 @@ impl<R: Widget + Default + Node + 'static> Node for DataGrid<R> {
         // height, not the limits it was offered**, which is the
         // asymmetry M27/T27.4 fixed inside `Repeat` and which a caller
         // has to respect too or the repeater cannot scroll.
-        let inner = (s.w - self.gutter - Self::CELL_INSET).max(0.0);
+        let inner = (s.w - self.gutter - Self::SCROLLBAR_W).max(0.0);
         self.width = s.w;
         self.body_h = (s.h - Self::HEADER).max(0.0);
         let body = Constraints { min_w: inner, max_w: inner, min_h: 0.0, max_h: self.body_h };
@@ -1235,16 +1274,16 @@ impl<R: Widget + Default + Node + 'static> Node for DataGrid<R> {
             out.pop_clip();
         }
 
-        // The thumb, in the strip right of the cells, while the rows
-        // overflow: its length the viewport's share of the content, its
-        // position the scroll's.
-        let content = self.rows.count as f32 * ext;
-        let view = b[3] - b[1];
-        if content > view + 0.5 && view > 0.0 {
-            let len = (view * view / content).max(24.0).min(view);
-            let y = b[1] + (view - len) * (self.rows.scroll / (content - view)).clamp(0.0, 1.0);
-            let x = right + (Self::CELL_INSET - 4.0) / 2.0;
-            out.rounded_rect([x, y + 2.0, x + 4.0, y + len - 2.0], tint(0x70), 2.0);
+        // The scrollbar, in the strip right of the cells, while the rows
+        // overflow: a faint track, and a thumb whose length is the
+        // viewport's share of the content and whose position is the
+        // scroll's — darker while it is being dragged.
+        if let Some((at, len)) = self.thumb() {
+            let x = right + (Self::SCROLLBAR_W - Self::THUMB_W) / 2.0;
+            let y = body_top + at;
+            out.rounded_rect([x, body_top + 2.0, x + Self::THUMB_W, r[3] - 2.0], tint(0x14), Self::THUMB_W / 2.0);
+            let a = if self.drag.is_some() { 0xa0 } else { 0x70 };
+            out.rounded_rect([x, y + 2.0, x + Self::THUMB_W, y + len - 2.0], tint(a), Self::THUMB_W / 2.0);
         }
         // The frame, in the rules' colour, and an author's border over it.
         out.stroked_rect(r, rule, s.radius, 1.0);
@@ -1276,6 +1315,32 @@ impl<R: Widget + Default + Node + 'static> Node for DataGrid<R> {
         let w = self.width;
         match ev {
             Event::Scroll { .. } if cx.target == cx.node => self.rows.on_event(ev, cx),
+            // **The scrollbar** — a press on the thumb grabs it where it
+            // landed; a press on the track jumps the thumb to centre there
+            // and grabs it too. Consumed, so the grid holds the capture and
+            // the drag follows the pointer off the strip.
+            Event::PointerDown { .. }
+                if cx.local.x >= self.gutter + self.column_width(w) * self.column_count as f32
+                    && cx.local.y >= Self::HEADER =>
+            {
+                let Some((at, len)) = self.thumb() else { return false };
+                let y = cx.local.y - Self::HEADER;
+                if y >= at && y <= at + len {
+                    self.drag = Some(y - at);
+                } else {
+                    self.drag = Some(len / 2.0);
+                    self.scroll_thumb_to(y - len / 2.0);
+                }
+                true
+            }
+            Event::PointerMove { .. } if self.drag.is_some() => {
+                let grab = self.drag.unwrap_or(0.0);
+                self.scroll_thumb_to(cx.local.y - Self::HEADER - grab)
+            }
+            Event::PointerUp { .. } if self.drag.is_some() => {
+                self.drag = None;
+                true
+            }
             // **The row from this node's own `local`, not `cx.row`**: the
             // row is the repeater's coordinate and does not survive the
             // climb out of it, so the grid reads its own — the body starts

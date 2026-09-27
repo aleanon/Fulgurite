@@ -102,6 +102,9 @@ DATE = ("DatePicker", "#d_datepicker_a", _shared(
     Action(
         visible=True,
         name="the arrows page the month and leave the chosen date",
+        # The pad stays open and redraws: bounded against it too, since a
+        # pad flipped above its trigger (a short window) covers the trigger.
+        opens=_pad,
         needs="an open date picker",
         do=lambda c: (c.__dict__.__setitem__("_v0", c.value()),
                       _page(c, forward=True))[0],
@@ -138,6 +141,9 @@ TIME = ("TimePicker", "#d_timepicker_a", _shared(
     Action(
         visible=True,
         name="an hour sets the hour and keeps the clock open",
+        # The pad stays open and redraws: bounded against it too, since a
+        # pad flipped above its trigger (a short window) covers the trigger.
+        opens=_pad,
         needs="an open time picker on a minute other than the hour's",
         do=lambda c: (c.__dict__.__setitem__("_v0", c.value()),
                       _cell(c, 14, 6, 34.0))[0],

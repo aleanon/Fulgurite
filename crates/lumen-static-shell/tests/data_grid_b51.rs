@@ -76,13 +76,16 @@ fn a_thumb_beside_the_rows_and_the_header_over_its_column() {
     let h = host();
     let g = grid(&h);
     let rows = h.states[lumen_static::style::index_of_wid(<Ui as Widget>::SUB_TABLE, "g").unwrap() + 1];
-    let thumbs: Vec<[f32; 4]> = h.list.cmds.iter().filter_map(|c| match c {
-        Cmd::RoundedRect { rect, .. } if (rect[2] - rect[0] - 4.0).abs() < 0.01 => Some(*rect),
+    // The scrollbar's track and thumb, each 6 px wide; the thumb is the
+    // shorter.
+    let bars: Vec<[f32; 4]> = h.list.cmds.iter().filter_map(|c| match c {
+        Cmd::RoundedRect { rect, .. } if (rect[2] - rect[0] - 6.0).abs() < 0.01 => Some(*rect),
         _ => None,
     }).collect();
     let rows_right = rows.pos.x + rows.size.w;
-    println!("rows end at {rows_right}; thumbs {thumbs:?}");
-    assert_eq!(thumbs.len(), 1, "no thumb while 100 rows overflow");
+    println!("rows end at {rows_right}; track and thumb {bars:?}");
+    assert_eq!(bars.len(), 2, "no scrollbar while 100 rows overflow");
+    let thumbs = [if bars[0][3] - bars[0][1] < bars[1][3] - bars[1][1] { bars[0] } else { bars[1] }];
     assert!(thumbs[0][0] >= rows_right, "the thumb is drawn over the rows");
     // Hairlines between the rows on show: a 172 px body of 24 px rows
     // has seven boundaries in it.
@@ -201,4 +204,79 @@ fn it_draws_column_rules_and_row_numbers() {
         assert!(rules.iter().any(|r| (r - x).abs() < 0.5), "no rule through the sheet at x {x}: {rules:?}");
     }
     assert!(numbers.len() >= 6 && numbers[0] == "1" && numbers[1] == "2", "the gutter does not number the rows: {numbers:?}");
+}
+
+/// The thumb's box as drawn: the shorter of the scrollbar's two 6 px bars.
+fn thumb_rect(h: &Host<App>) -> [f32; 4] {
+    let bars: Vec<[f32; 4]> = h.list.cmds.iter().filter_map(|c| match c {
+        Cmd::RoundedRect { rect, .. } if (rect[2] - rect[0] - 6.0).abs() < 0.01 => Some(*rect),
+        _ => None,
+    }).collect();
+    assert_eq!(bars.len(), 2, "setup: no scrollbar drawn");
+    if bars[0][3] - bars[0][1] < bars[1][3] - bars[1][1] { bars[0] } else { bars[1] }
+}
+
+/// **The thumb drags** — reported from the live window: the scrollbar
+/// could be neither dragged nor clicked. It was drawn and nothing took a
+/// press on it.
+///
+/// Grabbed at its middle, as drawn, and dragged 40 px: the rows scroll by
+/// the drag times the content's share of the track, the release ends the
+/// drag, and a move after it scrolls nothing — a drag that outlived its
+/// release is the combobox's capture defect in a scrollbar.
+#[test]
+fn the_thumb_drags_the_rows_and_lets_go() {
+    let mut h = host();
+    let t = thumb_rect(&h);
+    let (x, y) = ((t[0] + t[2]) / 2.0, (t[1] + t[3]) / 2.0);
+    h.post(Event::PointerDown { x, y, button: lumen_static::PointerButton::Left, clicks: 1 });
+    let took = h.pump();
+    h.post(Event::PointerMove { x: x + 30.0, y: y + 40.0 });
+    h.pump();
+    let dragged = h.app.ui.g.rows.scroll;
+    h.post(Event::PointerUp { x: x + 30.0, y: y + 40.0, button: lumen_static::PointerButton::Left });
+    h.pump();
+    // **Then a press on a cell, moved over the cells.** A move after the
+    // release reaches the grid only under capture, so a drag that forgot
+    // to end shows only once the grid holds the pointer again — which a
+    // press on a cell gives it. The first version moved with nothing
+    // pressed and stayed green with the release arm deleted.
+    // In the second column: a press that changes the active cell is taken,
+    // and one that does not is declined and captures nothing.
+    let (r, each) = (rows(&h), h.app.ui.g.column_width(grid(&h).size.w));
+    let (cx, cy) = (r.pos.x + each * 1.5, r.pos.y + 30.0);
+    h.post(Event::PointerDown { x: cx, y: cy, button: lumen_static::PointerButton::Left, clicks: 1 });
+    h.pump();
+    let pressed_capture = h.input.capture;
+    h.post(Event::PointerMove { x: cx + 10.0, y: cy + 60.0 });
+    h.pump();
+    h.post(Event::PointerUp { x: cx + 10.0, y: cy + 60.0, button: lumen_static::PointerButton::Left });
+    h.pump();
+    let after = h.app.ui.g.rows.scroll;
+    // The expected scroll, from the grid's own geometry: 40 px of a track
+    // the thumb can travel, mapped onto the content the view can travel.
+    let body = rows(&h).size.h;
+    let (content, len) = (100.0 * 24.0, (t[3] - t[1]) + 4.0);
+    let want = 40.0 / (body - len) * (content - body);
+    println!("press on the thumb taken {took}; dragged 40 px -> scroll {dragged} (want {want}); a press and a move on the cells after it leave {after}; capture {:?}", h.input.capture);
+    assert!(took, "the press on the thumb was not taken");
+    assert!(pressed_capture.is_some(), "setup: the press on a cell did not give the grid the pointer, so no move could reach it");
+    assert!((dragged - want).abs() < 1.0, "a 40 px drag scrolled {dragged}, not {want}");
+    assert_eq!(after, dragged, "a press and a move on the cells after the release still dragged the rows");
+    assert_eq!(h.input.capture, None, "the release left the grid holding the pointer");
+}
+
+/// **A press on the track moves the thumb there.**
+#[test]
+fn a_press_on_the_track_jumps_the_thumb_to_it() {
+    let mut h = host();
+    let (t, body) = (thumb_rect(&h), rows(&h));
+    // Near the bottom of the track, well below the thumb.
+    let (x, y) = ((t[0] + t[2]) / 2.0, body.pos.y + body.size.h - 10.0);
+    click(&mut h, x, y);
+    let t2 = thumb_rect(&h);
+    let centre = (t2[1] + t2[3]) / 2.0;
+    println!("thumb {}..{} -> {}..{} after a press at y {y}; scroll {}", t[1], t[3], t2[1], t2[3], h.app.ui.g.rows.scroll);
+    assert!(h.app.ui.g.rows.scroll > 0.0, "a press on the track scrolled nothing");
+    assert!((centre - y).abs() < 12.0 || t2[3] >= body.pos.y + body.size.h - 3.0, "the thumb did not move to the press: centred at {centre}, pressed at {y}");
 }

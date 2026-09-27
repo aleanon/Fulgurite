@@ -318,7 +318,48 @@ GRID = ("DataGrid", "#d_datagrid_a", [
         ),
         injection="drop FOCUSABLE from the grid's table node",
     ),
+    # Reported: the scrollbar could be neither dragged nor clicked -- it was
+    # drawn and nothing took a press on it.
+    Action(
+        visible=True,
+        name="dragging the thumb scrolls the rows",
+        needs="a grid scrolled to its top, rows overflowing",
+        setup=lambda c: c.c.rpc("input.scroll", x=(c.box()[0] + c.box()[2]) / 2,
+                                y=(c.box()[1] + c.box()[3]) / 2, dy=4000.0),
+        # **Far, not merely moved**: row 30 gone too, which a wheel's step
+        # or a nudge would not do. The row that *arrives* depends on the
+        # thumb's length, and a guessed one was wrong (row 64, not 60).
+        do=lambda c: (c.__dict__.__setitem__(
+            "_w0", (_row_shown(c, "file-000.rs"), _row_shown(c, "file-030.rs"))),
+            _drag_thumb(c, 70.0))[0],
+        expect=lambda c: (
+            c._w0 == (True, False)
+            and (_row_shown(c, "file-000.rs"), _row_shown(c, "file-030.rs")) == (False, False),
+            "(row 0 shown, row 30 shown) {} -> {} after dragging the thumb 70 px".format(
+                c._w0, (_row_shown(c, "file-000.rs"), _row_shown(c, "file-030.rs"))),
+        ),
+        # The same drag, started on the last column instead of the strip —
+        # **from the top**, as the action starts: from the scrolled grid the
+        # action leaves, "row 0 hidden" held before the isolate and after it
+        # whatever the drag did.
+        isolate=lambda c: (c.c.rpc("input.scroll", x=(c.box()[0] + c.box()[2]) / 2,
+                                   y=(c.box()[1] + c.box()[3]) / 2, dy=4000.0),
+                           c.__dict__.__setitem__(
+            "_w0", (_row_shown(c, "file-000.rs"), _row_shown(c, "file-030.rs"))),
+            _drag_thumb(c, 70.0, x_off=-30.0))[0],
+        injection="drop DataGrid::on_event's scrollbar press arm",
+    ),
 ])
+
+
+def _drag_thumb(c, dy: float, x_off: float = 0.0):
+    """Press the thumb's top at the scrollbar's centre and drag it `dy`."""
+    g, b = c.box(), c.box(f"{c.sel} > #grid-rows")
+    x = b[2] + 6.0 + x_off
+    y = b[1] + 8.0
+    c.c.rpc("input.pointerDown", x=x, y=y)
+    c.c.rpc("input.hover", x=x, y=y + dy)
+    c.c.rpc("input.pointerUp", x=x, y=y + dy)
 
 
 #: The demo's row extent (`catalog.rs`, the DataGrid entry).
