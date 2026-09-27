@@ -666,6 +666,12 @@ Recorded here rather than by rewriting the tasks above.
   a `fn` call per node and 84 more bytes of firmware. W1012 is reported
   per rule and field, like W1010, rather than per node — the value is
   the rule's.
+- **T55.6.** W1003 ships: the probe found a container sized smaller
+  than its limits (a row with `width: Fixed(50)` in 200 px) laying its
+  children out against the limits, so they escape a parent that does not
+  clip (`docs/results-derive-dx.md` T55.6). `List` and `Dyn` answer the
+  clip query as well as `ScrollView` and `Repeat`: each pushes a clip of
+  its own rect in `paint`.
 
 ## Appendix: finding → task
 

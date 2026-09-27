@@ -186,7 +186,10 @@ the smallest change that works and it adds nothing to `NodeState`.
 - `W1003` becomes implementable and *more useful* than originally
   specified: content exceeding its box is expected inside a clip scope
   and a bug outside one. That is a real diagnostic rather than a
-  structural impossibility.
+  structural impossibility. *Shipped by M55/T55.6*, exempting a parent
+  that answers `Node::clips_children`; the guard test was not re-pinned
+  as this said until then, and its fixture held no scroller, so it could
+  not fail (R16-F2).
 - `W1005` currently fires on any `Shrink` node given less than it asked
   for. Inside a scroller that is the normal case and the lint would
   scream on every scrolling view. It must learn about clip scopes at the

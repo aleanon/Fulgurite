@@ -526,6 +526,11 @@ impl<W: Widget> Widget for List<W> {
 
 #[cfg(feature = "alloc")]
 impl<W: Widget> Node for List<W> {
+    /// Its content is clipped to its rect in `paint` (M55/T55.6).
+    fn clips_children(&self) -> bool {
+        true
+    }
+
     crate::node_count!();
     fn defaults(&self) -> Style {
         <Self as Widget>::type_defaults()
@@ -944,6 +949,11 @@ impl<S> Widget for Dyn<S> {
 
 #[cfg(feature = "alloc")]
 impl<S> Node for Dyn<S> {
+    /// Its content is clipped to its rect in `paint` (M55/T55.6).
+    fn clips_children(&self) -> bool {
+        true
+    }
+
     crate::node_count!();
     fn defaults(&self) -> Style {
         <Self as Widget>::type_defaults()

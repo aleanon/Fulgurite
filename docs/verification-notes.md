@@ -65,8 +65,11 @@ A verification effort has one central obligation, not a scattered set.
 > viewport shapes x squeezed and free. Verified to fail, naming the
 > case, when `Repeat`'s clip is removed.
   *depends* on them (`hit.rs` picks the last containing node in DFS
-  order), and the audit reserves `W1003`/`W1004` because of them. Today
-  both are pinned by one test on one fixture.
+  order), and the audit reserved `W1003`/`W1004` because of them. Today
+  both are pinned by one test on one fixture. *Both have since shipped:
+  `W1004` with `#[widget(stack)]` (M11/T11.6) and `W1003` with M55/T55.6,
+  after its probe found a container sized smaller than its limits
+  escaping a parent that does not clip.*
 
 ## What is hostile
 

@@ -189,49 +189,102 @@ fn a_blank_frame_announces_itself() {
     assert!(of_code(&findings, "W1006").is_some(), "W1006 expected: {findings:?}");
 }
 
-/// Pins the reason W1003 (overflow) is reserved rather than shipped:
-/// constraints flow down and every node clamps to them, so a squeezed
-/// layout cannot push a child outside its parent — it can only leave the
-/// child too small, which is W1005.
+/// A squeeze is not an escape: three children sharing 30 px each get
+/// less than they ask for, and that surfaces as truncation (W1005), with
+/// every child still inside its parent — so no W1003.
 ///
-/// If a later layout mode (scroll content, absolute positioning, a
-/// minimum exceeding the parent's maximum) breaks this invariant, this
-/// test fails and W1003 becomes implementable.
-///
-/// **W1004 is no longer among them.** It shipped 2026-09-10 with
-/// `#[widget(stack)]` — the layout mode it was reserved against — and
-/// `stack_overlap.rs` covers it. The invariant below is unchanged for
-/// sequential containers, which is exactly why the code is scoped to
-/// them.
+/// **This was W1003's tripwire until M55/T55.6**, pinning "constraints
+/// flow down and every node clamps to them" as the reason W1003 was
+/// reserved. Its fixture held no scroller and no negative padding, the
+/// two constructs known to escape, so it could not fail (R16-F2). The
+/// escapes are the two tests below.
 #[test]
-fn overflow_is_impossible_here_so_squeezing_surfaces_as_truncation() {
+fn a_squeeze_surfaces_as_truncation_not_as_an_escape() {
     let mut f = Fixture::healthy();
-    // Squeeze the main axis of the bar: three children sharing 30px
-    // cannot all have what they ask for.
     f.view.max_w = 30.0;
     f.app.bar.title.set("far too long for ten pixels");
     f.frame();
+    let codes = f.codes();
+    println!("squeezed: {codes:?}");
+    assert!(codes.iter().any(|c| c == "W1005"), "the squeeze is reported as truncation: {codes:?}");
+    assert!(!codes.iter().any(|c| c == "W1003"), "a squeeze is not an escape: {codes:?}");
+}
 
-    for (i, d) in App::SUB_TABLE.iter().enumerate().skip(1) {
-        let (c, p) = (&f.states[i], &f.states[d.parent as usize]);
-        let slack = 0.5;
-        assert!(
-            c.pos.x + c.size.w <= p.pos.x + p.size.w + slack
-                && c.pos.y + c.size.h <= p.pos.y + p.size.h + slack
-                && c.pos.x + slack >= p.pos.x
-                && c.pos.y + slack >= p.pos.y,
-            "node {i} escaped its parent — the layout model changed, so W1003 is now \
-             implementable: child {:?} parent {:?}",
-            c,
-            p
-        );
+// ---- M55/T55.6 (R16-F2): W1003 ships ------------------------------------
+
+#[derive(StaticTree, Default)]
+#[widget(row, spacing = 0.0)]
+struct NarrowRow {
+    a: Label,
+    b: Label,
+}
+
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+struct Narrow {
+    #[widget_id("row")]
+    row: NarrowRow,
+}
+
+/// The construct T55.6's probe found escaping a parent that does not clip:
+/// a row given `width: Fixed(50)` inside 200 px lays its two 80 px labels
+/// out against the 200 px it was offered, so the second runs past its own
+/// 50 px edge — painted, and outside the rect hit testing trusts.
+#[test]
+fn w1003_fires_on_escape_without_clip() {
+    use lumen_static::{Length, Patch, Rule, Selector};
+    let mut app = Narrow::default();
+    app.row.a.set("aaaaaaaaaa");
+    app.row.b.set("bbbbbbbbbb");
+    let sheet = [
+        Rule::new(Selector::Kind("NarrowRow"), Patch::new().width(Length::Fixed(50.0))),
+        Rule::new(Selector::Kind("label"), Patch::new().width(Length::Fixed(80.0))),
+    ];
+    let mut styles = pass::default_styles(&app);
+    lumen_static::style::cascade_deep(&mut app, &sheet, &mut styles);
+    let mut st = vec![NodeState::default(); Narrow::NODE_COUNT];
+    pass::layout(&mut app, &styles, &mut st, Constraints { min_w: 0.0, max_w: 200.0, min_h: 0.0, max_h: 100.0 });
+    let mut agent = Agent::new();
+    {
+        let mut tm = TreeMut::of_root(&mut app, &styles, &st);
+        agent.frame_done(&mut tm, lumen_static_agent::FrameTiming::passes(1, 1));
     }
+    let tree = TreeRef::of_root(&app, &styles, &st);
+    let resp = agent.dispatch(&tree, &json!({ "jsonrpc": "2.0", "id": 1, "method": "ui.lint", "params": {} }));
+    let found: Vec<&Value> =
+        resp["result"]["findings"].as_array().unwrap().iter().filter(|x| x["code"] == "W1003").collect();
+    println!("W1003 findings: {} (expected 2, one per label): {found:?}", found.len());
+    assert_eq!(found.len(), 2, "each label outside the non-clipping row must be W1003");
+    assert!(found.iter().all(|x| x["detail"]["parent"] == 1), "the row (node 1) is the parent escaped");
+}
 
-    assert!(
-        of_code(&f.findings(), "W1005").is_some(),
-        "the squeeze is reported as truncation instead: {:?}",
-        f.findings()
+/// The quiet direction: a scroller's content runs past it on purpose, and
+/// the scroller clips — so the same geometry is not W1003 there.
+#[test]
+fn w1003_quiet_inside_scrollview() {
+    let mut app = ScrolledLabels::default();
+    for (l, t) in [
+        (&mut app.scroller.content.a, "one"),
+        (&mut app.scroller.content.b, "two"),
+        (&mut app.scroller.content.c, "three"),
+        (&mut app.scroller.content.d, "four"),
+    ] {
+        l.set(t);
+    }
+    let f = findings_of(&mut app, 200.0, 40.0, "W1003");
+    // The setup: the content is taller than its scroller.
+    let styles = pass::default_styles(&app);
+    let mut st = vec![NodeState::default(); ScrolledLabels::NODE_COUNT];
+    pass::layout(&mut app, &styles, &mut st, Constraints { min_w: 0.0, max_w: 200.0, min_h: 0.0, max_h: 40.0 });
+    let (content, scroller) = (&st[2], &st[1]);
+    println!(
+        "content bottom {} against the scroller's {}; W1003 findings: {} (expected 0)",
+        content.pos.y + content.size.h,
+        scroller.pos.y + scroller.size.h,
+        f.len()
     );
+    assert!(content.pos.y + content.size.h > scroller.pos.y + scroller.size.h, "setup: no overflow");
+    assert!(f.is_empty(), "W1003 fired on a scroller's content: {f:?}");
 }
 
 #[test]
@@ -523,7 +576,6 @@ where
 /// **The setup is asserted, not assumed**: the content must overflow the
 /// window, or the quiet answer would be quiet for want of anything to say.
 #[test]
-#[ignore = "red until T55.6: R16-F1 (W1002 compares against the root, not the nearest clip)"]
 fn w1002_quiet_on_scrolled_out_content() {
     let mut fired = Vec::new();
     for scroll in [0.0f32, 20.0] {
@@ -614,4 +666,31 @@ fn a_repaired_length_is_w1012_one_per_field_and_legal_values_are_quiet() {
         println!("padding {p}: W1012 findings: {} (expected 0)", found.len());
         assert!(found.is_empty(), "a legal value was reported as repaired: {found:?}");
     }
+}
+
+/// The firing direction (M55/T55.6): a node outside the window with no
+/// clipping ancestor. Nothing in this layout model puts one there by
+/// itself -- which is W1003's reservation below -- so the fixture moves
+/// the healthy frame's badge after layout, the way a widget that placed
+/// a child wrongly would.
+#[test]
+fn w1002_fires_on_a_node_placed_off_root() {
+    let mut f = Fixture::healthy();
+    pass::layout(&mut f.app, &f.styles, &mut f.states, f.view);
+    let badge = lumen_static::style::index_of_wid(App::SUB_TABLE, "badge").expect("badge exists");
+    f.states[badge].pos.y = 10_000.0;
+    f.states[badge].size = lumen_static::Size { w: 8.0, h: 8.0 };
+    {
+        let mut tree = TreeMut::of_root(&mut f.app, &f.styles, &f.states);
+        f.agent.frame_done(&mut tree, lumen_static_agent::FrameTiming::passes(1, 1));
+    }
+    let found: Vec<Value> = f.findings().into_iter().filter(|x| x["code"] == "W1002").collect();
+    println!(
+        "W1002 findings: {} (expected 1); badge {:?}, root {:?}",
+        found.len(),
+        found.first().map(|x| x["detail"]["bounds"].clone()),
+        found.first().map(|x| x["detail"]["viewport"].clone())
+    );
+    assert_eq!(found.len(), 1, "a node off the root with no clip must be W1002: {found:?}");
+    assert_eq!(found[0]["index"], badge);
 }

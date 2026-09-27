@@ -54,3 +54,25 @@ outside the spread) and it moved. What shipped has none, and the one
 comparison that controls for layout measures it faster, not slower. The
 firmware pays for the code, not for the calls: `docs/results-embedded.md`,
 M55/T55.5.
+
+## T55.6 — does anything still escape a parent that does not clip?
+
+§2.3 decided W1003 by probe, after T55.5 removed negative padding, over
+the three candidate constructs, each in a 200 × 100 window
+(2026-09-27, a scratch test in `crates/lumen-static-agent`, not kept):
+
+| construct | escapes its parent? |
+|---|---|
+| a `Fixed` of 1000 × 1000 in a column | no — clamped to the 200 × 100 it was offered |
+| a 1000 × 1000 `Fixed` in a `stack` | no — clamped the same way (and a stack's children are W1004's) |
+| a `wrap` of two 500 px `Fixed`s | no |
+| **a row given `width: Fixed(50)`, holding two labels of `width: Fixed(300)`** | **yes** — each label is laid out against the 200 px the row was offered, not its own 50 px: `[0, 100, 200, 100]` in `[0, 100, 50, 100]`, and the second at x = 200 |
+
+**Verdict: W1003 ships.** The escaping construct is a container sized
+smaller than its limits — the plan's "a minimum larger than the parent's
+maximum", from the parent's side — and its children are painted outside
+it and unreachable by the pointer, which is what W1003 was reserved to
+report. `tests/lint.rs` keeps it as `w1003_fires_on_escape_without_clip`
+(two findings, one per label, at 50 px against 80 px labels), beside
+`w1003_quiet_inside_scrollview` (content 64 px tall in a 40 px scroller,
+0 findings). The layout behaviour itself is not changed here.

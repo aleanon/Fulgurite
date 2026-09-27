@@ -113,21 +113,36 @@ pub mod codes {
     /// Intrinsic content laid out with zero area: in the tree, absent on
     /// screen.
     pub const INVISIBLE: &str = "W1001";
-    /// Non-empty node entirely outside the root's bounds.
+    /// Non-empty node entirely outside the root's bounds **and not
+    /// clipped away**: a node outside its nearest clipping ancestor
+    /// ([`lumen_static::widget::Node::clips_children`] — a scroller's
+    /// rows below the fold) is scrolled-out content, and is not this.
+    /// Until M55/T55.6 it compared every node with the root and fired on
+    /// those rows (R16-F1).
     pub const OFFSCREEN: &str = "W1002";
-    /// *Reserved:* a child's bounds escape its parent's. Unreachable in
-    /// the current layout model and therefore not shipped: constraints
-    /// flow down and every node clamps to them, so a child is never
-    /// allotted more space than its slot (a container's own size clamps
-    /// to `max`, and its children were already divided out of that same
-    /// `max`). In this model "does not fit" surfaces as
-    /// [`TRUNCATED`] instead — which is what the audit reports, and what
-    /// `overflow_is_impossible_...` in `tests/lint.rs` pins.
+    /// A child's bounds escape its parent's, and nothing between them
+    /// clips — M55/T55.6 (R16-F2).
     ///
-    /// Ships with the first construct that can exceed its constraints: a
-    /// scrollable content region, absolute positioning, or a minimum size
-    /// larger than the parent's maximum.
-    pub const _OVERFLOW_RESERVED: &str = "W1003";
+    /// **Reserved until M55**, on the claim that constraints flow down and
+    /// every node clamps to them, so a child is never allotted more space
+    /// than its slot; `tests/lint.rs`'s tripwire was meant to announce the
+    /// first construct that broke it, and could not, because its fixture
+    /// held no scroller and no negative padding (R16-F2). Both escape.
+    /// Negative padding is repaired by the cascade since T55.5
+    /// ([`NON_FINITE_STYLE`]); a scroller's content escapes on purpose and
+    /// is clipped. What still escapes, found by T55.6's probe, is **a
+    /// container sized smaller than the limits it was given** — a row
+    /// with `width: Fixed(50)` inside 200 px lays its children out against
+    /// the 200 px it was offered, so they run past its own 50 px edge,
+    /// painted and not hit.
+    ///
+    /// Exempt: a parent that clips its children
+    /// ([`lumen_static::widget::Node::clips_children`] — the escape is
+    /// scrolled-out content) and one that overlaps them on purpose
+    /// ([`lumen_static::widget::Node::overlaps_children`] — a stack's
+    /// children are [`OVERLAP`]'s business). A child with no area is
+    /// not an escape.
+    pub const OVERFLOW: &str = "W1003";
     /// Two direct children of the same container overlap.
     ///
     /// **Shipped 2026-09-10 with `#[widget(stack)]`** (M11/T11.6), which
@@ -246,6 +261,7 @@ pub(crate) enum What {
     NestedVirtualizer { scroller: u32, items: u64 },
     UnaddressableRows { rows: u64, addressable: u64, extent: f32 },
     Overlap { a: u32, b: u32, over: [f32; 4] },
+    Escape { parent: u32, bounds: [f32; 4], parent_bounds: [f32; 4] },
 }
 
 impl Finding {
@@ -273,6 +289,12 @@ impl Finding {
                 "laid out at [{:.0},{:.0},{:.0},{:.0}], entirely outside the \
                  root's [{:.0},{:.0},{:.0},{:.0}]",
                 r[0], r[1], r[2], r[3], v[0], v[1], v[2], v[3]
+            ),
+            What::Escape { parent, bounds: r, parent_bounds: p } => format!(
+                "laid out at [{:.0},{:.0},{:.0},{:.0}], outside its parent {parent}'s \
+                 [{:.0},{:.0},{:.0},{:.0}], which does not clip — painted there, and \
+                 unreachable by the pointer",
+                r[0], r[1], r[2], r[3], p[0], p[1], p[2], p[3]
             ),
             What::Overlap { a, b, over } => format!(
                 "children {a} and {b} overlap over [{:.0},{:.0},{:.0},{:.0}] — \
@@ -320,6 +342,9 @@ impl Finding {
                 "materialized": shown,
                 "size": [size.w, size.h],
             }),
+            What::Escape { parent, bounds, parent_bounds } => json!({
+                "parent": parent, "bounds": bounds, "parent_bounds": parent_bounds,
+            }),
             What::Offscreen { bounds, viewport } => json!({
                 "bounds": bounds, "viewport": viewport,
             }),
@@ -362,6 +387,19 @@ pub(crate) struct Auditor {
     was_keys: Vec<(&'static str, u32)>,
     /// The findings buffer not currently held by `current`.
     spare: Vec<Finding>,
+    /// Each node's nearest ancestor that clips its children
+    /// ([`lumen_static::widget::Node::clips_children`]), or [`NO_CLIP`] —
+    /// what `W1002` compares a node with before the root (M55/T55.6).
+    /// Kept across frames, like `scratch`.
+    clip_of: Vec<u32>,
+}
+
+/// `clip_of`'s "no clipping ancestor".
+const NO_CLIP: u32 = u32::MAX;
+
+/// Whether rect `r` lies entirely outside rect `v`.
+fn outside(r: [f32; 4], v: [f32; 4]) -> bool {
+    r[2] <= v[0] || r[0] >= v[2] || r[3] <= v[1] || r[1] >= v[3]
 }
 
 impl Default for Auditor {
@@ -376,6 +414,7 @@ impl Default for Auditor {
             now_keys: Vec::new(),
             was_keys: Vec::new(),
             spare: Vec::new(),
+            clip_of: Vec::new(),
         }
     }
 }
@@ -597,6 +636,22 @@ impl Auditor {
         let mut opaque_content = false;
 
         let table = tree.table;
+        // Each node's nearest clipping ancestor, in one pre-order pass: a
+        // parent precedes its children in the table, so its entry is
+        // already written (M55/T55.6). Only containers are asked.
+        self.clip_of.clear();
+        self.clip_of.resize(table.len(), NO_CLIP);
+        for (i, d) in table.iter().enumerate() {
+            if d.parent == lumen_static::desc::NO_PARENT {
+                continue;
+            }
+            let p = d.parent as usize;
+            self.clip_of[i] = if tree.as_ref().root.node(p).clips_children() {
+                p as u32
+            } else {
+                self.clip_of[p]
+            };
+        }
         for (i, d) in table.iter().enumerate() {
             let leaf = d.child_count == 0 && !d.is_container();
             let a = area(&st[i]);
@@ -656,8 +711,8 @@ impl Auditor {
             // what it is for, and a code that fires on every stack is
             // noise rather than a diagnostic.
             //
-            // Direct children only. A grandchild escaping its parent is
-            // W1003's business and is still unreachable; this is about
+            // Direct children only. A child escaping its parent is
+            // W1003's business (M55/T55.6); this is about
             // siblings that were each given a slot and did not stay in
             // it.
             if d.child_count > 1 && !tree.as_ref().root.node(i).overlaps_children() {
@@ -739,15 +794,36 @@ impl Auditor {
                 continue;
             }
 
+            // -- W1003: a child outside its parent, and nothing clips it
+            //    (M55/T55.6). Geometry first, then the two questions, so
+            //    a healthy frame asks no node anything here. --
+            let p = d.parent as usize;
+            if a > 0.0 {
+                let (r, q) = (rect(&st[i]), rect(&st[p]));
+                let escaped = r[0] + EPS < q[0] || r[1] + EPS < q[1] || r[2] > q[2] + EPS || r[3] > q[3] + EPS;
+                if escaped && self.clip_of[i] != p as u32 && !tree.as_ref().root.node(p).overlaps_children() {
+                    out.push(Finding {
+                        code: codes::OVERFLOW,
+                        idx: i as u32,
+                        what: What::Escape { parent: p as u32, bounds: r, parent_bounds: q },
+                    });
+                }
+            }
+
             // -- offscreen: skip when the root itself is degenerate, or
             //    W1006 would drag every node along with it --
-            if viewport_ok && a > 0.0 {
+            //
+            // **Against the nearest clip first** (M55/T55.6, R16-F1). A
+            // node outside its clipping ancestor's rect is scrolled-out
+            // content — a row below a scroller's fold — and the review
+            // found this firing on exactly those rows, because it
+            // compared every node with the root. Only a node inside its
+            // clip (or with none) and outside the root is misplaced.
+            let c = self.clip_of[i];
+            let scrolled_out = c != NO_CLIP && outside(rect(&st[i]), rect(&st[c as usize]));
+            if viewport_ok && a > 0.0 && !scrolled_out {
                 let r = rect(&st[i]);
-                if r[2] <= viewport[0]
-                    || r[0] >= viewport[2]
-                    || r[3] <= viewport[1]
-                    || r[1] >= viewport[3]
-                {
+                if outside(r, viewport) {
                     out.push(Finding {
                         code: codes::OFFSCREEN,
                         idx: i as u32,

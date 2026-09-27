@@ -347,6 +347,28 @@ pub trait Node {
         false
     }
 
+    /// Whether this node **clips what it contains to its own rect** —
+    /// M55/T55.6 (R16-F1).
+    ///
+    /// A scroller's content runs past its box on purpose: the rows below
+    /// the fold are laid out below it and clipped, and scrolling reaches
+    /// them. The audit's `W1002` (a node entirely outside the frame) used
+    /// to compare every node with the *root*, so it fired on exactly
+    /// those rows; it compares with the nearest ancestor that answers
+    /// `true` here instead, and a node outside that is scrolled-out
+    /// content, not a misplaced one. `ScrollView`, `Repeat`, `List` and
+    /// `Dyn` answer it — each pushes a clip of its own rect in `paint`,
+    /// which the audit cannot see.
+    ///
+    /// **Provided, default `false`, and right that way for a wrapper**,
+    /// for the reason [`Node::overlaps_children`] is: it is asked of each
+    /// node by its own table index, so a wrapper is asked about itself
+    /// and the scroller inside it about itself. Not behind `observe`: a
+    /// lint must agree with a release build about what the tree is.
+    fn clips_children(&self) -> bool {
+        false
+    }
+
     /// Measure under `limits` **without disturbing any memo, or anything
     /// paint reads**.
     ///

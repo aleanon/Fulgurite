@@ -259,6 +259,11 @@ pub const MAX_SCROLL_NODES: usize = 256;
 
 impl<W: Widget> Node for ScrollView<W> {
     lumen_static::node_count!();
+    /// Its content is clipped to the viewport: a row below the fold is
+    /// scrolled out, not misplaced (M55/T55.6, `W1002`).
+    fn clips_children(&self) -> bool {
+        true
+    }
     fn kind_name(&self) -> &'static str {
         <Self as Widget>::KIND
     }

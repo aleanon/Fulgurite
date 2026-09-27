@@ -454,6 +454,11 @@ impl<T: Widget + Default + 'static> Node for Repeat<T> {
         true
     }
 
+    /// Its rows are clipped to its box (M55/T55.6).
+    fn clips_children(&self) -> bool {
+        true
+    }
+
     /// The application's `generation` plus a bump for every change of
     /// `count` a layout has seen (M44/T44.2): a press and a release on
     /// one row index are the same item only if neither moved.
