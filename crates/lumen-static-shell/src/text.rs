@@ -318,8 +318,16 @@ impl FontStack {
     /// for a path only a multi-face run takes (`docs/results-text.md`
     /// T45.3). `shape_into` recovers the caller's offsets for that path
     /// instead.
-    fn run(faces: &Faces<'_>, text: &str, px: f32, max_w: f32) -> Layout {
-        let mut layout = Layout::new(CoordinateSystem::PositiveYDown);
+    ///
+    /// **Into a layout the caller keeps** — M50/T50.2, R8-F1. This built
+    /// a fresh fontdue `Layout` per run, whose glyph, output and line
+    /// `Vec`s then grew from empty on every call: allocations on every
+    /// frame that drew or measured text. `reset` clears them and keeps
+    /// their capacity, so a layout that has laid out a run this long
+    /// before lays this one out without touching the allocator. The
+    /// multi-face fallback path still collects its face list, which is a
+    /// run no single face covers.
+    fn run(faces: &Faces<'_>, text: &str, px: f32, max_w: f32, layout: &mut Layout) {
         layout.reset(&LayoutSettings {
             max_width: if max_w.is_finite() && max_w > 0.0 { Some(max_w) } else { None },
             ..LayoutSettings::default()
@@ -333,7 +341,6 @@ impl FontStack {
                 }
             }
         }
-        layout
     }
 
     /// A laid-out run's box: per line, the larger of **where the pen
@@ -410,27 +417,50 @@ impl FontStack {
     /// Lay out one run and report where each inked glyph goes, **without
     /// rasterising any of them**.
     ///
-    /// The shaping half of the crate-private `glyphs`, split out for
-    /// `lumen-static-wgpu`: a GPU backend shapes every run every frame
-    /// but rasterises a glyph only the first time it is seen, because
-    /// the pixels live in an atlas on the device. A software canvas has
-    /// nowhere to keep them and so does both every time.
+    /// The shaping half of the software canvas's text path, split out for
+    /// `lumen-static-wgpu`: a GPU backend shapes every run every frame but
+    /// rasterises a glyph only the first time it is seen, because the
+    /// pixels live in an atlas on the device. The software canvas does the
+    /// same since M50/T50.2, with its coverage cache in host memory.
     ///
-    /// **Both paths shape here**, which is the point. `glyphs` below is
-    /// written in terms of this, so the CPU and GPU renderers cannot
-    /// disagree about where a glyph goes — and "the two backends are
-    /// pixel-comparable" is a claim about rasterisation only, which is
-    /// the claim `tests/parity.rs` in that crate can actually check.
+    /// **Both paths shape here**, which is the point. The canvas calls
+    /// [`FontStack::place_run_into`], of which this is the allocating
+    /// wrapper, so the CPU and GPU renderers cannot disagree about where a
+    /// glyph goes — and "the two backends are pixel-comparable" is a claim
+    /// about rasterisation only, which is the claim `tests/parity.rs` in
+    /// that crate can actually check.
+    ///
+    /// **Allocates**: a fresh [`ShapeScratch`] and the returned `Vec`. A
+    /// caller that shapes every frame keeps a scratch and calls
+    /// [`FontStack::place_run_into`] (M51/T51.4's GPU path).
     pub fn place_run(&self, text: &str, px: f32, weight: f32, max_w: f32) -> (Vec<Placed>, Size) {
+        let mut scratch = ShapeScratch::new();
+        let size = self.place_run_into(&mut scratch, text, px, weight, max_w);
+        (scratch.placed, size)
+    }
+
+    /// [`FontStack::place_run`] into a scratch the caller keeps — M50/T50.2.
+    ///
+    /// The placements are in [`ShapeScratch::placed`] until the next call.
+    /// **Allocation-free once the scratch is warm** — once its layout and
+    /// placement buffer have held a run this long and its cap-shift table
+    /// has seen this face and size — on the steady-state path, a run one
+    /// primary face covers with nothing substituted. A run that needs a
+    /// fallback face or a substitute allocates for that, as
+    /// `FontStack::prepare` says.
+    pub fn place_run_into(&self, scratch: &mut ShapeScratch, text: &str, px: f32, weight: f32, max_w: f32) -> Size {
         let (faces, prepared) = self.prepare(text, weight);
         let text: &str = &prepared;
-        let layout = Self::run(&faces, text, px, Self::paint_width(max_w));
-        SHAPED.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
         // From the run's first face, for every glyph: one baseline, one
-        // shift, however many faces drew it.
-        let shift = cap_shift(faces.first(), px);
+        // shift, however many faces drew it. Looked up before the run is
+        // laid out, because a miss lays out a probe of its own.
+        let shift = scratch.caps.shift(faces.get(0).1, faces.first(), px);
+        Self::run(&faces, text, px, Self::paint_width(max_w), &mut scratch.layout);
+        SHAPED.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
 
-        let mut out = Vec::with_capacity(text.len());
+        let layout = &scratch.layout;
+        let out = &mut scratch.placed;
+        out.clear();
         for g in layout.glyphs() {
             if g.width == 0 || g.height == 0 {
                 continue;
@@ -450,21 +480,23 @@ impl FontStack {
                 h: g.height as u32,
             });
         }
+        PLACED.fetch_add(out.len() as u64, core::sync::atomic::Ordering::Relaxed);
         // The box by the same rule `measure_run` uses (`extent`), so the
         // two cannot disagree.
-        let size = Self::extent(&faces, &layout, px);
-        (out, size)
+        Self::extent(&faces, layout, px)
     }
 
     /// The coverage mask for one glyph identity: `(width, height, cov)`.
     ///
-    /// **Called every frame for every glyph on the software path**, and
-    /// that is a known cost, not an oversight that has gone unnoticed:
-    /// there is no cache here, `glyphs` below calls this per glyph per
-    /// run per frame, and the GPU backend avoids it only because its
-    /// atlas keeps the pixels on the device. Measured against
-    /// `vello_cpu`, which does cache across frames, in
-    /// `docs/results-vello.md` §4.
+    /// **Allocates**, twice per call: fontdue's accumulator and the
+    /// coverage `Vec` it returns. So nothing calls it per frame: the
+    /// software canvas keeps what it returns in a coverage cache keyed on
+    /// the id (M50/T50.2) and the GPU backend in its atlas, and each asks
+    /// again only for a glyph it has not seen. Until T50.2 the canvas
+    /// called it for every glyph of every drawn run on every frame, which
+    /// was most of the 25.80 allocations a frame `docs/results-allocation.md`
+    /// records; its time against `vello_cpu`, which cached across frames
+    /// already, is `docs/results-vello.md` §4.
     ///
     /// `None` when the id names a face this stack does not have, which
     /// cannot happen for an id this stack produced and is a "draw
@@ -490,8 +522,11 @@ impl FontStack {
     /// Lay out one run and return each glyph's raster and position.
     ///
     /// [`FontStack::place_run`] followed by [`FontStack::rasterize`] per
-    /// glyph — written this way rather than duplicated so the software
-    /// canvas and the GPU atlas share one shaping path.
+    /// glyph, **allocating both**. Only a band worker of the threaded
+    /// rasteriser still calls it, because a worker cannot borrow the
+    /// canvas's cache mutably; M50/T50.3 shapes on the frame thread and
+    /// removes it.
+    #[cfg(feature = "threads")]
     pub(crate) fn glyphs(
         &self,
         text: &str,
@@ -523,12 +558,15 @@ impl FontStack {
     /// The box is `extent`'s, which `place_run` uses too, so the two
     /// cannot disagree about a box — which they must not, because
     /// `layout` sizes from this and `paint` lays the run out inside it.
-    pub(crate) fn measure_run(&self, text: &str, px: f32, weight: f32, max_w: f32) -> Size {
+    ///
+    /// Into the caller's `layout`, which [`FontMetrics`] keeps, so a
+    /// measure allocates nothing once that layout is warm (M50/T50.2).
+    pub(crate) fn measure_run(&self, text: &str, px: f32, weight: f32, max_w: f32, layout: &mut Layout) -> Size {
         let (faces, prepared) = self.prepare(text, weight);
         let text: &str = &prepared;
-        let layout = Self::run(&faces, text, px, max_w);
+        Self::run(&faces, text, px, max_w, layout);
         MEASURED.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
-        Self::extent(&faces, &layout, px)
+        Self::extent(&faces, layout, px)
     }
 
     /// Shape one run and report every cluster boundary to `sink`.
@@ -552,10 +590,12 @@ impl FontStack {
         weight: f32,
         max_w: f32,
         sink: &mut dyn GlyphSink,
+        layout: &mut Layout,
     ) -> Size {
         let (faces, prepared) = self.prepare(text, weight);
         let laid: &str = &prepared;
-        let layout = Self::run(&faces, laid, px, max_w);
+        Self::run(&faces, laid, px, max_w, layout);
+        let layout = &*layout;
         MEASURED.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
         // **Offsets in the caller's string, by walking it in step** —
         // M45/T45.10, R16-F7. fontdue emits one glyph per character of
@@ -609,7 +649,7 @@ impl FontStack {
         if !sink.is_full() {
             sink.cluster(Cluster { byte: text.len() as u32, x: end.0, line: end.1 });
         }
-        Self::extent(&faces, &layout, px)
+        Self::extent(&faces, layout, px)
     }
 }
 
@@ -632,6 +672,8 @@ pub fn glyphs_rasterised() -> u64 {
 static SHAPED: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
 /// Runs laid out for a measure or a shape query — [`text_counters`].
 static MEASURED: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
+/// Glyphs laid out by paint-side shaping — [`text_counters`].
+static PLACED: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
 /// Glyphs the software canvas blitted — [`text_counters`].
 static DRAWN: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
 
@@ -649,9 +691,13 @@ pub struct TextCounters {
     /// Runs laid out to be painted (`place_run` and the canvas's own
     /// shaping).
     pub shaped: u64,
+    /// Inked glyphs those runs placed — what a frame shaped, whether or
+    /// not any of it was drawn. The quantity a long run inflates.
+    pub placed: u64,
     /// Runs laid out to be measured or shaped for clusters.
     pub measured: u64,
-    /// Glyph coverage masks produced by fontdue ([`glyphs_rasterised`]).
+    /// Glyph coverage masks produced by fontdue ([`glyphs_rasterised`]):
+    /// cache misses, since M50/T50.2.
     pub rasterised: u64,
     /// Glyphs the software canvas blitted.
     pub drawn: u64,
@@ -662,6 +708,7 @@ pub fn text_counters() -> TextCounters {
     use core::sync::atomic::Ordering::Relaxed;
     TextCounters {
         shaped: SHAPED.load(Relaxed),
+        placed: PLACED.load(Relaxed),
         measured: MEASURED.load(Relaxed),
         rasterised: RASTERISED.load(Relaxed),
         drawn: DRAWN.load(Relaxed),
@@ -712,6 +759,216 @@ fn cap_shift(font: &Font, px: f32) -> f32 {
     }
 }
 
+/// Reusable shaping state for [`FontStack::place_run_into`] — M50/T50.2.
+///
+/// One fontdue layout, one placement buffer and a cap-shift table. Owned
+/// by whoever shapes every frame — the software canvas, and M51's GPU
+/// path — so that [`FontStack`] stays immutable and `Sync`, which the
+/// banded rasteriser needs (`docs/plan-raster-allocation.md` §2.1: a
+/// `RefCell` inside the stack would make it `!Sync`, and a `Mutex` would
+/// put a lock on every glyph of every worker).
+pub struct ShapeScratch {
+    layout: Layout,
+    placed: Vec<Placed>,
+    caps: CapShifts,
+}
+
+impl Default for ShapeScratch {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ShapeScratch {
+    /// Empty; it grows to the longest run it is asked to shape and keeps
+    /// that capacity.
+    pub fn new() -> Self {
+        ShapeScratch { layout: Layout::new(CoordinateSystem::PositiveYDown), placed: Vec::new(), caps: CapShifts::default() }
+    }
+
+    /// The last run's placements.
+    pub fn placed(&self) -> &[Placed] {
+        &self.placed
+    }
+}
+
+/// [`cap_shift`]'s answers, per (face, size) — M50/T50.2.
+///
+/// `cap_shift` lays out a probe `H` to find where the layout puts it,
+/// which is a second fontdue layout per run, and it depends only on the
+/// face and the size. A fixed table rather than a map, so a lookup never
+/// allocates: a screen uses a handful of (face, size) pairs, and a
+/// thirty-third evicts round-robin and costs one probe when it returns.
+struct CapShifts {
+    keys: [(u8, u32); CapShifts::N],
+    shift: [f32; CapShifts::N],
+    len: usize,
+    next: usize,
+}
+
+impl Default for CapShifts {
+    fn default() -> Self {
+        CapShifts { keys: [(0, 0); CapShifts::N], shift: [0.0; CapShifts::N], len: 0, next: 0 }
+    }
+}
+
+impl CapShifts {
+    const N: usize = 32;
+
+    fn shift(&mut self, face: u8, font: &Font, px: f32) -> f32 {
+        let key = (face, px.to_bits());
+        if let Some(i) = self.keys[..self.len].iter().position(|k| *k == key) {
+            return self.shift[i];
+        }
+        let v = cap_shift(font, px);
+        let i = if self.len < Self::N {
+            self.len += 1;
+            self.len - 1
+        } else {
+            let i = self.next;
+            self.next = (self.next + 1) % Self::N;
+            i
+        };
+        self.keys[i] = key;
+        self.shift[i] = v;
+        v
+    }
+}
+
+/// What a software canvas's glyph cache has done — M50/T50.2
+/// ([`crate::software::Canvas::glyph_cache_stats`]).
+///
+/// `uncached` is the number `docs/plan-raster-allocation.md` §5 names as
+/// the risk to watch: a glyph drawn straight from fontdue because it did
+/// not fit, which allocates. It must read 0 after warm-up on a real
+/// screen; `just grid` and showcase's headless frame print it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct CacheStats {
+    /// Lookups answered from the cache.
+    pub hits: u64,
+    /// Lookups that rasterised a glyph and kept it.
+    pub misses: u64,
+    /// Glyphs rasterised and drawn without being kept: larger than the
+    /// arena's per-glyph limit. Allocates, and is never skipped.
+    pub uncached: u64,
+    /// Times the cache emptied itself to make room.
+    pub resets: u64,
+}
+
+/// The software canvas's coverage cache — M50/T50.2, R8-F1.
+///
+/// Keyed on [`GlyphId`], whose contract is that equal ids are
+/// byte-identical bitmaps (no subpixel phase), so a hit is exact rather
+/// than approximate. One arena of coverage bytes and an index, both sized
+/// **once**, on first use: a lookup that hits never allocates, and a
+/// miss allocates only inside fontdue.
+///
+/// **Bounded, and a miss never drops a glyph** (plan §2.1). When the
+/// arena or the index is full the cache empties itself and starts over,
+/// which costs re-rasterising what the next frames draw and nothing
+/// else. A glyph too large to keep is rasterised and drawn anyway, and
+/// counted as `uncached`: a cache that dropped glyphs to keep a zero
+/// would be the GPU atlas's defect (M51, R9-F1), on purpose avoided.
+pub(crate) struct GlyphCache {
+    index: std::collections::HashMap<GlyphId, (u32, u16, u16), GlyphHash>,
+    arena: Vec<u8>,
+    stats: CacheStats,
+}
+
+impl Default for GlyphCache {
+    fn default() -> Self {
+        GlyphCache { index: std::collections::HashMap::with_hasher(GlyphHash), arena: Vec::new(), stats: CacheStats::default() }
+    }
+}
+
+impl GlyphCache {
+    /// Glyphs the index holds before it resets.
+    const ENTRIES: usize = 4096;
+    /// Coverage bytes the arena holds before it resets: at 16 px a Latin
+    /// glyph is about 150 bytes, so this is several thousand glyphs at
+    /// body sizes and still dozens at display sizes.
+    const BYTES: usize = 2 << 20;
+    /// A glyph larger than this is drawn without being kept, so one huge
+    /// glyph cannot empty the cache for everything else.
+    const MAX_GLYPH: usize = Self::BYTES / 8;
+
+    pub(crate) fn stats(&self) -> CacheStats {
+        self.stats
+    }
+
+    /// Call `draw` with glyph `id`'s coverage and size, from the cache or
+    /// rasterised into it. `None` — nothing drawn — only when the stack
+    /// cannot rasterise the id at all ([`FontStack::rasterize`]).
+    pub(crate) fn with<R>(&mut self, font: &FontStack, id: GlyphId, draw: impl FnOnce(&[u8], usize, usize) -> R) -> Option<R> {
+        if let Some(&(off, w, h)) = self.index.get(&id) {
+            self.stats.hits += 1;
+            let (w, h) = (w as usize, h as usize);
+            let off = off as usize;
+            return Some(draw(&self.arena[off..off + w * h], w, h));
+        }
+        let (w, h, cov) = font.rasterize(id)?;
+        let (w, h) = (w as usize, h as usize);
+        let n = w * h;
+        if n > Self::MAX_GLYPH || w > u16::MAX as usize || h > u16::MAX as usize {
+            self.stats.uncached += 1;
+            return Some(draw(&cov, w, h));
+        }
+        if self.arena.capacity() == 0 {
+            // First use: size both once. Nothing after this grows either.
+            self.arena.reserve_exact(Self::BYTES);
+            self.index.reserve(Self::ENTRIES);
+        }
+        if self.arena.len() + n > Self::BYTES || self.index.len() >= Self::ENTRIES {
+            self.arena.clear();
+            self.index.clear();
+            self.stats.resets += 1;
+        }
+        let off = self.arena.len();
+        self.arena.extend_from_slice(&cov);
+        self.index.insert(id, (off as u32, w as u16, h as u16));
+        self.stats.misses += 1;
+        Some(draw(&self.arena[off..off + n], w, h))
+    }
+}
+
+/// A hasher for [`GlyphId`]: three small integers, so a multiply-and-fold
+/// rather than SipHash, whose resistance to chosen keys buys nothing for
+/// ids the stack itself produced.
+#[derive(Clone, Copy, Default)]
+pub(crate) struct GlyphHash;
+
+impl std::hash::BuildHasher for GlyphHash {
+    type Hasher = GlyphHasher;
+    fn build_hasher(&self) -> GlyphHasher {
+        GlyphHasher(0)
+    }
+}
+
+pub(crate) struct GlyphHasher(u64);
+
+impl std::hash::Hasher for GlyphHasher {
+    fn finish(&self) -> u64 {
+        self.0
+    }
+    fn write(&mut self, bytes: &[u8]) {
+        for b in bytes {
+            self.write_u64(*b as u64);
+        }
+    }
+    fn write_u8(&mut self, v: u8) {
+        self.write_u64(v as u64);
+    }
+    fn write_u16(&mut self, v: u16) {
+        self.write_u64(v as u64);
+    }
+    fn write_u32(&mut self, v: u32) {
+        self.write_u64(v as u64);
+    }
+    fn write_u64(&mut self, v: u64) {
+        self.0 = (self.0.rotate_left(5) ^ v).wrapping_mul(0x51_7c_c1_b7_27_22_0a_95);
+    }
+}
+
 /// The identity of one rasterised glyph.
 ///
 /// Opaque: equal ids mean identical coverage bitmaps, and that is the
@@ -755,6 +1012,7 @@ pub struct Placed {
 }
 
 /// One rasterized glyph: an 8-bit coverage mask and where to put it.
+#[cfg(feature = "threads")]
 pub(crate) struct Glyph {
     pub x: f32,
     pub y: f32,
@@ -782,6 +1040,11 @@ pub struct FontMetrics {
     /// [`FontMetrics::set_stack`], never 0 (the stand-ins' value), so a
     /// memo keyed on it cannot serve one stack's box to another.
     generation: u32,
+    /// The layout every measure and shape query lays its run out into —
+    /// M50/T50.2. A fresh one per measure grew three `Vec`s from empty
+    /// each time: 4.60 allocations a frame on a label that changed every
+    /// frame (`docs/results-allocation.md`).
+    layout: Layout,
 }
 
 /// The next [`FontMetrics`] generation. Starts at 1: 0 is every
@@ -795,14 +1058,14 @@ fn next_generation() -> u32 {
 impl FontMetrics {
     /// A measurer for a 1:1 display.
     pub fn new(stack: FontStack) -> Self {
-        FontMetrics { stack, scale: 1.0, generation: next_generation() }
+        FontMetrics { stack, scale: 1.0, generation: next_generation(), layout: Layout::new(CoordinateSystem::PositiveYDown) }
     }
 
     /// A measurer that reports logical sizes for a display with this
     /// scale factor.
     pub fn with_scale(stack: FontStack, scale: f32) -> Self {
         let scale = if scale.is_finite() && scale > 0.0 { scale } else { 1.0 };
-        FontMetrics { stack, scale, generation: next_generation() }
+        FontMetrics { stack, scale, generation: next_generation(), layout: Layout::new(CoordinateSystem::PositiveYDown) }
     }
 
     /// Measure with a different font stack from now on. A new
@@ -833,7 +1096,7 @@ impl TextMeasure for FontMetrics {
         }
         let k = self.scale;
         // `measure_run`, not `glyphs`: measuring must not rasterise.
-        let s = self.stack.measure_run(text, size * k, weight, max_w * k);
+        let s = self.stack.measure_run(text, size * k, weight, max_w * k, &mut self.layout);
         Size { w: s.w / k, h: s.h / k }
     }
 
@@ -854,7 +1117,7 @@ impl TextMeasure for FontMetrics {
         // by `layout` and `paint`, both of which speak logical.
         let k = self.scale;
         let mut scaled = LogicalClusters { inner: sink, scale: k };
-        let s = self.stack.shape_into(text, size * k, weight, max_w * k, &mut scaled);
+        let s = self.stack.shape_into(text, size * k, weight, max_w * k, &mut scaled, &mut self.layout);
         Size { w: s.w / k, h: s.h / k }
     }
 

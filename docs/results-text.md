@@ -291,5 +291,10 @@ the unwrapped paragraph at the padding edge). `RichText` and `Markdown`
 already paint one run per span, a word, and are unchanged.
 
 Part (b) — rasterising only the glyphs of a run that meet the clip —
-needs no task once M50's glyph cache lands (`docs/plan-text-correctness.md`
-§4, and the consistency review).
+needed no task: M50/T50.2's glyph cache closes it
+(`docs/plan-text-correctness.md` §4). And the gate above counts glyphs
+**placed** since T50.2, not rasterised: a warm cache rasterises nothing
+for a caret move whether the area paints one run per line or one run in
+all, so the rasterised count stopped being able to see this defect.
+Placed, the same move is 180 glyphs against the bound of 660, and the
+whole value as one run again is 107,190.

@@ -12,14 +12,17 @@
 //! The number asserted is **zero**, not a budget. Every path here is at
 //! zero today, so a budget would only encode a bug.
 //!
-//! **What "every path" does not include — M50/T50.1.** The raster arms
-//! render on `Canvas::new`, which draws block glyphs, and pump with
-//! `BlockMetrics`. The truetype path every window runs
-//! (`Canvas::with_font`, `FontMetrics`) is not measured here, and it
-//! allocates on every frame that draws text
-//! (`docs/results-allocation.md`, "The truetype path is not covered").
-//! The truetype arms are at the bottom (`mod truetype`, M50/T50.0),
-//! ignored until M50/T50.2's glyph cache turns them green.
+//! **What "every path" did not include until M50 — T50.1.** The first
+//! raster arms render on `Canvas::new`, which draws block glyphs, and pump
+//! with `BlockMetrics`. The truetype path every window runs
+//! (`Canvas::with_font`, `FontMetrics`) was not measured, and it
+//! allocated on every frame that drew text
+//! (`docs/results-allocation.md`, "The truetype path was not covered").
+//! **Since M50/T50.2 it is covered**: the truetype arms at the bottom
+//! (`mod truetype`) draw that path on the pinned face — a changing label,
+//! a 3000-row list with one row changed, a text field per edit — and read
+//! zero, because the canvas shapes into scratch it keeps and blits from
+//! a glyph cache, and `FontMetrics` measures into a layout it keeps.
 //!
 //! Its own binary, because `#[global_allocator]` is per-binary and would
 //! otherwise tax every other test. Counters are read outside any
@@ -368,13 +371,12 @@ fn the_retention_seam_allocates_nothing_in_either_mode() {
 /// **Block glyphs only — M50/T50.1.** It renders on `Canvas::new`, whose
 /// text is the block-glyph stand-in, and pumps with `BlockMetrics`. Every
 /// window renders on `Canvas::with_font` and measures with `FontMetrics`,
-/// and that path **allocates on every frame**: fontdue `Layout`s, the
-/// placement and glyph `Vec`s, one coverage `Vec` per glyph
-/// (`docs/results-allocation.md`, "The truetype path is not covered").
-/// This arm was named `rasterising_a_frame_allocates_nothing` until
-/// T50.1, which read as covering the frame every window draws. M50/T50.2
-/// owns the glyph cache that makes the truetype path zero, and adds its
-/// arm here.
+/// and that path allocated on every frame until M50/T50.2: fontdue
+/// `Layout`s, the placement and glyph `Vec`s, one coverage `Vec` per
+/// glyph (`docs/results-allocation.md`). This arm was named
+/// `rasterising_a_frame_allocates_nothing` until T50.1, which read as
+/// covering the frame every window draws; the truetype arms in `mod
+/// truetype` below are the ones that do.
 #[test]
 fn rasterising_a_block_glyph_frame_allocates_nothing() {
     use lumen_static::Renderer;
@@ -684,8 +686,9 @@ mod truetype {
     fn per_frame(a: TextCounters, b: TextCounters, frames: usize) -> String {
         let n = frames as f64;
         format!(
-            "runs shaped {:.2}/frame, runs measured {:.2}/frame, glyphs rasterised {:.2}/frame, glyphs drawn {:.2}/frame",
+            "runs shaped {:.2}/frame, glyphs placed {:.2}/frame, runs measured {:.2}/frame, glyphs rasterised {:.2}/frame, glyphs drawn {:.2}/frame",
             (b.shaped - a.shaped) as f64 / n,
+            (b.placed - a.placed) as f64 / n,
             (b.measured - a.measured) as f64 / n,
             (b.rasterised - a.rasterised) as f64 / n,
             (b.drawn - a.drawn) as f64 / n,
@@ -696,7 +699,6 @@ mod truetype {
     /// full redraws.** The review measured 4.60 pump + 25.80 raster
     /// allocations per frame here.
     #[test]
-    #[ignore = "red until T50.2: R8-F1, the truetype path allocates on every frame"]
     fn a_truetype_frame_allocates_nothing() {
         let _one = super::lock(&ONE);
         let f = face();
@@ -758,7 +760,6 @@ mod truetype {
     /// 6.00 pump (0.00 since M29 and M34) and 156.00 raster allocations per
     /// frame.
     #[test]
-    #[ignore = "red until T50.2: R8-F1, the truetype path allocates on every frame"]
     fn a_truetype_list_with_one_row_changed_allocates_nothing() {
         let _one = super::lock(&ONE);
         let (w, h) = (800u32, 800u32);
@@ -868,7 +869,6 @@ mod truetype {
     /// 5.66 + 62.28 and a paste 0.08 + 475.56 allocations per event (pump +
     /// raster).
     #[test]
-    #[ignore = "red until T50.2: R8-F1, the truetype path allocates on every frame"]
     fn truetype_text_input_events_allocate_nothing() {
         let _one = super::lock(&ONE);
         let (w, h) = (400u32, 120u32);

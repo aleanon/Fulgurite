@@ -639,6 +639,40 @@ fn main() {
          #formula at table index {formula_at}\n"
     );
 
+    // ---- M50/T50.2: the glyph cache holds a real screen ---------------
+    //
+    // The timed runs below rasterise on `Canvas::new`, block glyphs, so
+    // their raster column is comparable with every table already
+    // published. This draws the same grid on a truetype canvas instead —
+    // three full frames, then twenty edits over their damage — and prints
+    // the canvas's glyph cache. `uncached` is the risk
+    // `docs/plan-raster-allocation.md` §5 names: a cap too small for a real
+    // screen would keep the allocation gate green while a window
+    // allocated. It must read 0, and so must the misses after warm-up.
+    if let Some(face) = FontStack::system() {
+        let mut hw = host(m);
+        let mut tc = Canvas::with_font(W, H, face);
+        for _ in 0..3 {
+            lumen_static::Renderer::render(&mut tc, &hw.list, W, H);
+        }
+        let _ = hw.take_damage_for_age(1);
+        let warm = tc.glyph_cache_stats();
+        for k in 0..20 {
+            arm_a(&mut hw, 1000 + k, m);
+            for r in hw.take_damage_for_age(1).regions([0.0, 0.0, W as f32, H as f32]) {
+                tc.clear_within(r, PAGE);
+                tc.render_within(&hw.list, r);
+            }
+        }
+        let after = tc.glyph_cache_stats();
+        println!(
+            "glyph cache: warm {warm:?}; after 20 edits {after:?} (bound: uncached 0, resets 0, \
+             misses after warm-up only for digits not yet drawn)\n"
+        );
+        assert_eq!(after.uncached, 0, "the glyph cache drew {} glyphs uncached on the grid", after.uncached);
+        assert_eq!(after.resets, 0, "the glyph cache reset {} times on one screen", after.resets);
+    }
+
     // ---- the byte-identity gate --------------------------------------
     //
     // The two arms must produce the *same frame*. Without this the probe

@@ -124,7 +124,10 @@ buffers and never put them back.
 "a frame allocates nothing" that measures one stage of the frame reads
 as covering all of it. What a gate measures belongs in its own name.
 
-## The truetype path is not covered — M50/T50.1 (2026-09-25)
+## The truetype path was not covered — M50/T50.1 (2026-09-25)
+
+*Closed by M50/T50.2; the next section has the after. Kept as written,
+because it is the measurement the fix was judged against.*
 
 **The "after: 0" above is true for block glyphs only**, and the lesson
 the previous paragraph draws was broken by the arm it was drawn from.
@@ -156,6 +159,52 @@ M50 owns the fix: a glyph cache and reusable shaping scratch
 (`docs/plan-raster-allocation.md` T50.2), with truetype arms in
 `alloc_gate.rs` that can fail. Until then no sentence in this repository
 should say a *window's* frame allocates nothing.
+
+## The truetype path, covered — M50/T50.2 (2026-09-27)
+
+Three arms in `alloc_gate.rs` (`mod truetype`), on the pinned face,
+`Canvas::with_font` and `pump_with(FontMetrics)`, each asserting that
+the frames shaped, measured and drew text before it reads a count. The
+"before" column is T50.0's red run of the same arms at `80ff4c1`:
+
+| arm | before: pump / raster allocs | after |
+|---|---:|---:|
+| `a_truetype_frame_allocates_nothing` — `PlainApp`, 50 changing frames | 230 / 1,290 (**4.60 / 25.80 per frame**) | **0 / 0** |
+| `a_truetype_list_with_one_row_changed_allocates_nothing` — 3000 rows, 50 frames over the damage | 0 / 7,800 (**156.00 per frame**) | **0 / 0** |
+| `truetype_text_input_events_allocate_nothing`, `Text` then `Backspace`, 20 cycles | 240 / 1,720 | **0 / 0** |
+| the same, `Left` then `Right` | 0 / 1,800 | **0 / 0** |
+| the same, a paste then five `Backspace`s | 720 / 1,720 | **0 / 0** |
+
+Frees match allocations on every row. What made each zero:
+
+- **The canvas keeps a coverage cache** keyed on `GlyphId` — one arena
+  and an index, sized once — so a glyph is rasterised the first time it
+  is drawn and blitted from the cache after. Forcing every lookup to miss
+  puts **15.20 allocations a frame** back on the first arm (fontdue's
+  two per glyph, 7.60 glyphs a frame).
+- **The canvas shapes into a layout and placement buffer it keeps**, and
+  a cap-shift table replaces the second layout per run. A fresh layout
+  per run puts **4.60 a frame** back on the first arm and 18.00 on the
+  list.
+- **`FontMetrics` measures into a layout it keeps.** Without it the first
+  arm's pump reads **230** again.
+
+The TextInput arm is written as cycles that leave the field as they
+found it: an edit that lengthens the string allocates for the string,
+which is the application's data and not the frame.
+
+**What is still outside it**, each stated where it happens:
+
+- **A run no primary face covers** — a fallback face or a substituted
+  character — collects its faces and segments, which allocates
+  (`FontStack::prepare`). Latin text on the default stack does not take
+  that path.
+- **A glyph too large to keep** (over an eighth of the cache's arena) is
+  rasterised and drawn without being kept, which allocates; it is
+  counted as `CacheStats::uncached`, and `just grid` and showcase's
+  headless frame print it at 0 after warm-up.
+- **The threaded rasteriser** — `threads`, default-off — until
+  M50/T50.3 and T50.4.
 
 ## What is *not* covered
 

@@ -925,7 +925,12 @@ T45.12 carries its own gate, T45.0 item 15, committed red first.
   M50/T50.2's cache a glyph is rasterised once, not per frame, and
   M50/T50.3's blit skips glyphs outside the rows being drawn. T45.11
   does the widget-local half and closes R8-F3; it does not wait for M50,
-  which is Phase 4.
+  which is Phase 4. *Closed 2026-09-27 (M50/T50.2):* the canvas clips a
+  glyph before it asks the cache for its coverage, so a glyph outside the
+  clip is never rasterised, and `tests/textarea_visible.rs`
+  `a_run_clipped_to_a_few_glyphs_rasterises_only_those` pins it (4
+  rasterised to draw 4 of a 124-glyph run; 62 with the lookup moved
+  before the clip).
 - **`Host::paste_with` is M41's** (R10-F4, R2-F1). T45.7 builds on it
   and does not re-specify it.
 - **No paragraph cache for `TextArea`.** Linear reshaping per edit

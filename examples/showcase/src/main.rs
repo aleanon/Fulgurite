@@ -432,6 +432,18 @@ fn shot(path: &str, entry: usize, open: bool) {
     };
     c.clear(palette().page);
     lumen_static::Renderer::render(&mut c, &host.list, W, H);
+    // M50/T50.2: the glyph cache on a real screen. A second, warm frame
+    // must rasterise nothing and draw nothing uncached
+    // (`docs/plan-raster-allocation.md` §5's risk).
+    let cold = c.glyph_cache_stats();
+    c.clear(palette().page);
+    lumen_static::Renderer::render(&mut c, &host.list, W, H);
+    let warm = c.glyph_cache_stats();
+    println!(
+        "glyph cache: first frame {cold:?}; second frame misses {}, uncached {} (bound 0, 0)",
+        warm.misses - cold.misses,
+        warm.uncached - cold.uncached
+    );
     let mut out = format!("P6\n{W} {H}\n255\n").into_bytes();
     for p in c.pixels.chunks_exact(4) {
         out.extend_from_slice(&p[..3]);

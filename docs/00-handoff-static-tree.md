@@ -326,11 +326,15 @@ tree *position*. The code-size blowup from §4 disappears.
   `Host::pump`, which stops at the display list, so the software
   rasteriser was outside every zero in `docs/results-allocation.md`. It
   was allocating 1.00 per frame for its clip stack and 3.00 per glass
-  panel for the blur's buffers; both are zero now, and the gate covers
-  a rasterised frame **drawn with block glyphs**. **The truetype path
-  every window runs allocates on every frame that draws text**
-  (`docs/results-allocation.md`, "The truetype path is not covered");
-  M50 owns the fix (`docs/plan-raster-allocation.md` T50.2).
+  panel for the blur's buffers; both are zero now. **The truetype path
+  every window runs is gated too since M50/T50.2** — a changing label, a
+  3000-row list with one row changed, a text field per edit, each on
+  `Canvas::with_font` with `FontMetrics`, each at zero: the canvas shapes
+  into scratch it keeps and blits from a glyph cache, and the measurer
+  lays out into a layout it keeps (`docs/results-allocation.md`, "The
+  truetype path, covered"). Until T50.2 the gate drew block glyphs only
+  and that path allocated 25.80 times a frame (T50.1 said so). A run that
+  needs a fallback face still allocates, and says so.
 - Stable identity — a node's offset *is* its ID.
 - `NODE_COUNT` still const, so `[NodeState; N]` still fits a fixed budget.
 - Rigidity still computed at compile time; it is a flag byte now rather than a
@@ -897,10 +901,12 @@ The two advantages that are real and that nothing else gives:
 - **Zero allocation for the entire UI** — not "few", zero. This is why Slint
   went this way: microcontrollers with no allocator and a fixed memory budget
   known before shipping.
-  *Qualified 2026-09-25 (M50/T50.1):* it holds for `pump` and for a
-  block-glyph raster; the truetype raster and `FontMetrics` allocate per
-  frame until M50/T50.2 (`docs/results-allocation.md`, "The truetype
-  path is not covered").
+  *Qualified 2026-09-25 (M50/T50.1), and the qualifier closed 2026-09-27
+  (M50/T50.2):* it holds for `pump`, for a block-glyph raster and for
+  the truetype raster and `FontMetrics` (`docs/results-allocation.md`,
+  "The truetype path, covered"). What remains outside it is stated
+  there: a run that needs a fallback face, a glyph too large to cache,
+  and — until M50/T50.4 — the threaded rasteriser.
 - **Const-folded rigidity** — a dynamic tree checks the flag at runtime per node
   per frame. The static version does not have the check at all.
 

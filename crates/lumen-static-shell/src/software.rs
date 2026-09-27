@@ -46,6 +46,12 @@ pub struct Canvas {
     /// which is what the headless oracle needs, and not enough to read.
     #[cfg(feature = "truetype")]
     pub font: Option<crate::text::FontStack>,
+    /// The shaping scratch and the glyph coverage cache — M50/T50.2.
+    /// Private, like `glass`: scratch the canvas owns because it is the
+    /// one thing in a frame holding `&mut` (`docs/plan-raster-allocation.md`
+    /// §2.1), which keeps [`crate::text::FontStack`] immutable and `Sync`.
+    #[cfg(feature = "truetype")]
+    text: TextState,
     /// Where `Cmd::Image` is resolved to pixels (T15.2).
     ///
     /// `None` draws nothing, which is what a host that ships no images
@@ -104,6 +110,15 @@ impl GlassScratch {
     }
 }
 
+/// A canvas's text scratch: one layout and placement buffer, and the
+/// coverage cache — M50/T50.2.
+#[cfg(feature = "truetype")]
+#[derive(Default)]
+pub(crate) struct TextState {
+    shape: crate::text::ShapeScratch,
+    cache: crate::text::GlyphCache,
+}
+
 struct Surface<'a> {
     px: &'a mut [u8],
     width: u32,
@@ -114,6 +129,11 @@ struct Surface<'a> {
     /// The blur's buffers, owned by the `Canvas` (or by a worker's own
     /// band) and lent here for the frame.
     glass: &'a mut GlassScratch,
+    /// The canvas's text scratch and glyph cache, lent for the frame —
+    /// `None` in a band worker, which cannot borrow them (M50/T50.3
+    /// shapes on the frame thread instead).
+    #[cfg(feature = "truetype")]
+    text: Option<&'a mut TextState>,
 }
 
 impl Surface<'_> {
@@ -131,8 +151,74 @@ impl Surface<'_> {
     /// treatment a rect gets, which is what keeps text inside a scroller.
     /// Each glyph is clipped once as a rect; the first version clipped
     /// every pixel and that was most of the text cost.
+    ///
+    /// **Shaped into the canvas's scratch, blitted from its cache** —
+    /// M50/T50.2, R8-F1. This called `FontStack::glyphs`, which built two
+    /// fontdue layouts, a placement `Vec`, a glyph `Vec` and a coverage
+    /// `Vec` per glyph on every frame: 25.80 allocations a frame on the
+    /// allocation gate's own fixture (`docs/results-allocation.md`). And
+    /// a glyph is clipped **before** its coverage is asked for, so a
+    /// glyph outside the clip is never rasterised at all — the half of
+    /// R8-F3 M45 left to this cache (`docs/plan-text-correctness.md` §4).
     #[cfg(feature = "truetype")]
     fn draw_run(&mut self, font: &crate::text::FontStack, run: TextRun<'_>, clip: &[[f32; 4]]) {
+        let Some(text) = self.text.take() else {
+            #[cfg(feature = "threads")]
+            self.draw_run_uncached(font, run, clip);
+            return;
+        };
+        let TextRun { rect, text: s, size, weight, color } = run;
+        font.place_run_into(&mut text.shape, s, size, weight, rect[2] - rect[0]);
+        let TextState { shape, cache } = &mut *text;
+        for p in shape.placed() {
+            let gx = (rect[0] + p.x).round();
+            let gy = (rect[1] + p.y).round();
+            let Some(r) = clipped([gx, gy, gx + p.w as f32, gy + p.h as f32], clip) else {
+                continue;
+            };
+            cache.with(font, p.id, |cov, w, h| self.blit_glyph(cov, w, h, gx, gy, r, color));
+        }
+        self.text = Some(text);
+    }
+
+    /// Blend one glyph's coverage at `(gx, gy)`, limited to `r`, its rect
+    /// already clipped.
+    ///
+    /// `floor..ceil`, the convention every command here follows (module
+    /// docs). The glyph's own rect is whole-pixel, so only a clip edge can
+    /// be fractional — and a damage region's far edge is one whenever the
+    /// scale is not whole. This took the far edge with a bare `as i64`,
+    /// which truncates: a region ending at 173.2 was cleared through row
+    /// 173 and the glyphs were redrawn through row 172, leaving row 173
+    /// blank until something damaged it again (R1-F8, M40/T40.2;
+    /// `tests/partial_text_edge.rs`). Neither end can leave the glyph: its
+    /// rect is integer, so `ceil` of a clip inside it stays inside it —
+    /// and the loop is bounded by the coverage's own size as well, so a
+    /// placement whose box disagrees with its bitmap cannot index past it.
+    #[cfg(feature = "truetype")]
+    #[allow(clippy::too_many_arguments)]
+    fn blit_glyph(&mut self, cov: &[u8], gw: usize, gh: usize, gx: f32, gy: f32, r: [f32; 4], color: Color) {
+        let (w, h) = (self.width as i64, self.y_hi());
+        let (x0, y0) = ((r[0].floor() as i64).max(0), (r[1].floor() as i64).max(self.y0));
+        let x1 = (r[2].ceil() as i64).min(w).min(gx as i64 + gw as i64);
+        let y1 = (r[3].ceil() as i64).min(h).min(gy as i64 + gh as i64);
+        for y in y0..y1 {
+            let row = (y - gy as i64) as usize;
+            for x in x0..x1 {
+                let col = (x - gx as i64) as usize;
+                let c = cov[row * gw + col];
+                if c != 0 {
+                    self.blend_cov(x, y, color, c);
+                }
+            }
+        }
+        crate::text::count_drawn(1);
+    }
+
+    /// The pre-T50.2 path, for a band worker: shape and rasterise the run
+    /// fresh, allocating. M50/T50.3 removes it.
+    #[cfg(all(feature = "truetype", feature = "threads"))]
+    fn draw_run_uncached(&mut self, font: &crate::text::FontStack, run: TextRun<'_>, clip: &[[f32; 4]]) {
         let TextRun { rect, text, size, weight, color } = run;
         let (glyphs, _) = font.glyphs(text, size, weight, rect[2] - rect[0]);
         for g in glyphs {
@@ -141,31 +227,7 @@ impl Surface<'_> {
             let Some(r) = clipped([gx, gy, gx + g.w as f32, gy + g.h as f32], clip) else {
                 continue;
             };
-            // `floor..ceil`, the convention every command here follows
-            // (module docs). The glyph's own rect is whole-pixel, so only
-            // a clip edge can be fractional — and a damage region's far
-            // edge is one whenever the scale is not whole. This took the
-            // far edge with a bare `as i64`, which truncates: a region
-            // ending at 173.2 was cleared through row 173 and the glyphs
-            // were redrawn through row 172, leaving row 173 blank until
-            // something damaged it again (R1-F8, M40/T40.2;
-            // `tests/partial_text_edge.rs`). Neither end can leave the
-            // glyph: its rect is integer, so `ceil` of a clip inside it
-            // stays inside it.
-            let (w, h) = (self.width as i64, self.y_hi());
-            let (x0, y0) = ((r[0].floor() as i64).max(0), (r[1].floor() as i64).max(self.y0));
-            let (x1, y1) = ((r[2].ceil() as i64).min(w), (r[3].ceil() as i64).min(h));
-            for y in y0..y1 {
-                let row = (y - gy as i64) as usize;
-                for x in x0..x1 {
-                    let col = (x - gx as i64) as usize;
-                    let cov = g.cov[row * g.w + col];
-                    if cov != 0 {
-                        self.blend_cov(x, y, color, cov);
-                    }
-                }
-            }
-            crate::text::count_drawn(1);
+            self.blit_glyph(&g.cov, g.w, g.h, gx, gy, r, color);
         }
     }
 
@@ -1234,6 +1296,8 @@ impl Canvas {
             glass: GlassScratch::default(),
             #[cfg(feature = "truetype")]
             font: None,
+            #[cfg(feature = "truetype")]
+            text: TextState::default(),
             images: None,
         }
     }
@@ -1244,6 +1308,14 @@ impl Canvas {
         let mut c = Self::new(width, height);
         c.font = Some(font);
         c
+    }
+
+    /// What this canvas's glyph cache has done — M50/T50.2. `uncached`
+    /// is the count to watch: it must read 0 once a screen is warm
+    /// ([`crate::text::CacheStats`]).
+    #[cfg(feature = "truetype")]
+    pub fn glyph_cache_stats(&self) -> crate::text::CacheStats {
+        self.text.cache.stats()
     }
 
     /// Resize the pixel buffer **in place**, keeping everything else.
@@ -1452,6 +1524,8 @@ impl Canvas {
             y0: 0,
             rows: self.height as i64,
             glass: &mut self.glass,
+            #[cfg(feature = "truetype")]
+            text: Some(&mut self.text),
         }
     }
 
@@ -1607,8 +1681,15 @@ impl Canvas {
                     // — bounded by the worker count, where it used to be
                     // three `Vec`s per panel per band (M26/T26.13).
                     let mut scratch = GlassScratch::default();
-                    let mut band =
-                        Surface { px: chunk, width, y0, rows: nrows, glass: &mut scratch };
+                    let mut band = Surface {
+                        px: chunk,
+                        width,
+                        y0,
+                        rows: nrows,
+                        glass: &mut scratch,
+                        #[cfg(feature = "truetype")]
+                        text: None,
+                    };
                     band.render(
                         list,
                         damage,

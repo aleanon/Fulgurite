@@ -1303,6 +1303,29 @@ reason (`docs/results-gpu.md`); the software canvas has nothing.
 > It paints one run per visible line now: 225 glyphs for the same move
 > (`docs/results-text.md` T45.11). The glyph cache itself stays M50's.
 
+> **Built — M50/T50.2 (2026-09-27).** The canvas keeps a coverage cache
+> keyed on `GlyphId`, and shapes into scratch it keeps
+> (`docs/plan-raster-allocation.md` §2.1). It shipped for the allocation
+> claim, not the clock (`docs/results-allocation.md`, "The truetype path,
+> covered"). The clock, `just profile`'s tally, eight interleaved runs a
+> side under `just bench-lock` (quiet, load1 3.45 / 3.41), median of 50
+> per run:
+>
+> | | before | after |
+> |---|---:|---:|
+> | `render(all)` text | 23–26 µs | **14–16 µs** |
+> | **`render_within`** | **12 µs** (all eight) | **9–10 µs** |
+> | `render_within` text | 10 µs (all eight) | 7–8 µs |
+>
+> **1.2× on the damaged-region render, not the 6× the ceiling above
+> predicted — and the ceiling was the wrong quantity.** Its stub returned
+> an 8×12 coverage map, 96 pixels a glyph, and was called unfavourable to
+> itself because every byte blended; the tally's count is set at 76 px,
+> whose digits are about 2,000 pixels each. So the stub removed the
+> rasterisation *and most of the blend*. Measured directly, with the
+> cache in and the blend removed instead: `render_within` text 2 µs. The
+> remaining 6 µs is blending real glyphs, which no cache removes.
+
 ## T26.17 — finding 10, shipped: one arena walk, not one per rule
 
 Phase D promoted findings 9 and 10 as one defect. This ships the half

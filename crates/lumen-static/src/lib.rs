@@ -2,9 +2,9 @@
 //!
 //! A `#[derive(StaticTree)]` struct *is* the tree. Its fields are its
 //! children, `NODE_COUNT` and the node table are computed at compile
-//! time, and the tree's passes allocate nothing in steady state. (The
-//! shell's truetype text path does not yet — `docs/results-allocation.md`,
-//! "The truetype path is not covered".)
+//! time, and the tree's passes allocate nothing in steady state — the
+//! shell's truetype text path included, since M50/T50.2
+//! (`docs/results-allocation.md`, "The truetype path, covered").
 //!
 //! ```
 //! use lumen_static::prelude::*;

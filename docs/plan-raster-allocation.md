@@ -476,6 +476,36 @@ says allocation as well as time, and that the canvas caches.
 `docs/results-frame-and-types.md` Finding 15 is marked built.
 `alloc_gate.rs`'s module doc.
 
+*What building found (2026-09-27).*
+
+- **`tests/textarea_visible.rs` went vacuous under the cache**, which is
+  the first failure shape again. It bounded glyphs *rasterised* per caret
+  move, and a warm cache rasterises none: 0 against a bound of 660,
+  whether the area painted one run per visible line or the whole 64 KB as
+  one run, so M45/T45.11's own injection could no longer turn it red. It
+  bounds glyphs **placed** now (`text::TextCounters::placed`): 180 per
+  move, and 107,190 with T45.11 undone. A new case beside it pins the
+  out-of-clip half of R8-F3 that §4 assigned here: a cold canvas draws a
+  124-glyph run through a 40 px clip and rasterises 4 to draw 4 (62 with
+  the cache lookup moved before the clip test).
+- **The injections read different numbers from the plan's**, because the
+  cache and the scratch are separate mechanisms now: forcing every lookup
+  to miss is 15.20 allocations a frame on arm (i), not the review's
+  25.80, which also counted the layouts; a fresh layout per run is 4.60
+  per run, not one.
+- **The time saving is 1.2×, and Finding 15's 6× was a bound computed
+  from the wrong quantity**: its stub's coverage map was 8×12, so it
+  removed most of the blend with the rasterisation. The table is in
+  `docs/results-frame-and-types.md` Finding 15.
+- **The grid's timed raster is block glyphs.** §5 asks `just grid` to
+  print the uncached count; its timed runs render on `Canvas::new`, so a
+  truetype canvas draws the same grid beside them, prints the cache's
+  statistics and asserts `uncached` and `resets` at 0, without moving any
+  published column.
+- **The multi-face path still allocates** (`FontStack::prepare` collects
+  faces and segments). It is a run no primary face covers, and
+  `docs/results-allocation.md` names it among what the zero excludes.
+
 **Effort:** L. **Depends on:** T50.1; M40/T40.2 (R1-F8's `draw_run`
 change must land first); M43/T43.13's CI runner. **Unblocks:** T50.3;
 M51/T51.4.
