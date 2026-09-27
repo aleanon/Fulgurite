@@ -188,7 +188,13 @@ are independent of each other**, so either may go first:
   and `Cmd::hash_into` folding a text run's buffer offset. Damage per
   interaction went from 170×–1 200× the widget's own box to **1.00×**
   (`docs/damage-amplification-decision.md`). Twelve widgets are left to retrofit; the harness drives 18
-  actions across six today, every one at 1.00×. **T27.4 shipped
+  actions across six today, every one at 1.00×. *(Corrected
+  2026-09-27: the 1.00× is the agent journal's damage in logical units,
+  over repainting actions. It never measured what the surface presents;
+  M48/T48.4 prints that beside it, `docs/plan-agent-truth.md`. Every
+  "green both ways" below was re-run at its own SHA by M42/T42.8, on the
+  binary each leg launched: all legs pass, `docs/results-drive-identity.md`.)*
+  **T27.4 shipped
   2026-09-19** — `Card`, `Toast`, `Tooltip` in `lumen-static-widgets`,
   and three more defects the drive found: a `Repeat` handled no wheel at
   all (so **a `Select` with more options than fit could not be scrolled
@@ -297,7 +303,12 @@ are independent of each other**, so either may go first:
   three `u64`s. Its injection — holding the continuation as a captured
   function pointer — makes the demo answer with v1's value, which is
   `docs/events-decision.md` rule 3's defect **demonstrated rather than
-  argued** for the first time since that rule was written.
+  argued** for the first time since that rule was written. *(Corrected
+  2026-09-27: that injection lives on the fixture side, and
+  `fixtures/hot-host` holds only the descriptor, so T28.7 proves the
+  descriptor survives, not that the framework carries a chain. A window
+  swap re-issuing work in flight is M49/T49.10's,
+  `docs/plan-reload-hardening.md`.)*
 
   **Three plan claims were falsified by building them**, and all three
   are recorded where they were wrong rather than quietly fixed: §2.6
@@ -389,7 +400,8 @@ are independent of each other**, so either may go first:
 
   **The number the old split was argued from does not support it.** The
   widgets crate's manifest argued from the embedded budget; the leaf
-  `no_std` profile links `.text` **27,024 B** with every widget in the
+  `no_std` profile links `.text` **27,024 B** (at M30; the current figure
+  is the headline in `docs/results-embedded.md`) with every widget in the
   optional crate against 27,036 B with the first tier in core —
   *twelve bytes smaller*. The gate was never the crate: it is
   `#[cfg(feature)]` and the linker, and both drop what a tree does not
@@ -559,33 +571,48 @@ found" section rather than silently replacing itself.
   first, and M41 (Boundaries completeness) is a prerequisite of M34's
   flip. **Now planned: see the M39–M55 entry below.**
 
-- **M39–M55 — `docs/plan-m38-fixes.md`** (160 tasks in 17 plans):
-  **planned 2026-09-25, not started.** These plans fix M38's findings.
-  They are written against `main` at 1717808, not the review's
-  `ac91d51`, because M32–M37 landed while the review ran. So every
-  finding was re-triaged first: 165 OPEN, 14 WORSE, 7 PARTIAL, 3 FIXED.
-  - **Three S0s:**
-    - R1-F1: stale pixels at any scale other than 1.0.
-    - R14-F1: any web page can drive a dev app, on both agent servers.
-    - R1-F2: the IME commit is never marked. It was raised from S1,
-      because M34 made Boundaries the default before its repair landed.
-  - **M34's evidence is being gathered again.** T34.1's shadow oracle
-    repairs the frames it inspects, and T34.2's "29 frames quiet" was
-    measured on repaired frames. M41/T41.7 gathers that evidence again
-    once M42 can say which binary a drive drove.
-  - **Four of the six gates added since the review, when audited, were
-    vacuous** (I-NEW-1..4).
-  - **Order:**
-    - Phase 1 is the S0s: M39, M40 and M41's T41.0–T41.1.
-    - Phase 2: M42, then M41; M43 runs alongside.
-    - Phase 3: M44–M49. Phase 4: M50–M53. Phase 5: M54–M55.
-    - T47.1, an idle window's timer never firing, is five lines and may
-      go first.
-  - **Nine decisions are collected in §4 for the owner to overrule.** One
-    of them is keeping Boundaries as the default while M41 repairs it,
-    with a tripwire.
-  - **Rule:** each milestone's T<n>.0 re-checks its findings at the
-    current HEAD first. M56 has already fixed R3-F5 independently.
+- ~~**M39–M55 — `docs/plan-m38-fixes.md`**~~ — **DONE 2026-09-27** on
+  branch `m39-m55-fixes`, **`just ci-verify 29a2fe7` green**: 28 steps,
+  0 failed, 0 skipped, a clean tree. That covers every test tier, the
+  live gates, the firmware, the GPU, miri, the book and three self-test
+  tiers. Every task is done except **T49.12**, a live latency gate that
+  needs a library target in the showcase M56 is redesigning. It waits for
+  M56.
+  - **The three S0s are closed.** Damage is physical, so a scale other
+    than 1.0 leaves no stale pixels (M40). The agent transport closes on
+    anything but a JSON object and binds loopback only (M39). An IME
+    commit marks what it changed (M41/T41.1).
+  - **M34's evidence was gathered again** with an oracle that inspects
+    without repairing (M41/T41.7), on a harness that names the binary it
+    drove (M42). Every leg passed, and the first sweep found a real
+    divergence in the shipped showcase, which T41.3 fixed.
+  - **Merge-time integration found about a dozen defects that no branch
+    could see alone.** Each is fixed in its own commit, with red and
+    green evidence. Examples: a `harness=false` test counting as zero
+    tests; a launcher flag that read as a cargo target; allow entries
+    and a firmware headline that one branch made stale for another;
+    M48's doc link and M55's `hot` build, which only `check-extra`
+    builds; and M55's W1003 firing on every open popup. **Run `just ci`,
+    not `just test`, before calling a milestone done.** That is now the
+    rule in this queue's preamble.
+  - **Decided against on measurement.** Each is in its plan's "What
+    building found":
+    - T50.9's bounded glass capture (unsound for every material);
+    - T50.4's pool, where the exact budget ships instead;
+    - `a11y` on by default (its kill rule fired: +4.12 MiB), so the
+      showcase opts in;
+    - M53's arena-owner list, replaced by a walk over marked ranges.
+  - **Open, recorded rather than fixed:**
+    - dark palettes fail contrast, because widget defaults are
+      light-theme values (M54 §6; shared with M56);
+    - a 2 px seam under every card shadow (M51 §6), which changes every
+      golden when fixed;
+    - `ui_check.py`'s p50 line cannot fail (M48 §6);
+    - the drive harness could judge lint findings by key rather than by
+      index (M55 §6);
+    - intermittent segfaults of unrelated programs on the reference
+      machine (python3, LLVM `opt`, rustc; `dmesg` shows ip 0), which
+      look like hardware or system instability rather than any code.
 
 Unsequenced: ~~`docs/plan-harness.md`.~~ — **M12 DONE 2026-09-20.**
 T12.3 and T12.4 landed 2026-09-04; T12.1 (a locator and expectation API,
@@ -593,7 +620,13 @@ T12.3 and T12.4 landed 2026-09-04; T12.1 (a locator and expectation API,
 diff artifact) on 2026-09-20. `docs/results-harness.md` owns the
 numbers. The premise held — its substrate was already finished, so it
 stayed cheap: what was missing was ergonomics and artifacts, and that is
-all that was built.
+all that was built. *(The golden gates ran in no recipe until M43/T43.9:
+feature unification compiled them to zero tests. `dev-shape` now runs
+them per package, `docs/plan-gate-hygiene.md`.)*
+
+**A milestone is not done until `just ci-verify` passes for the commit
+that closed it, and its queue entry cites that SHA** (`docs/plan-m38-fixes.md`
+§5; M43/T43.13).
 
 Task ids (`T0.6`, `F1.3`, `T16.7`) go in commit subjects. Decision records live beside it in `docs/`; the
 design spec is `docs/00-handoff-static-tree.md`, whose DECIDED/SUPERSEDED
@@ -631,8 +664,8 @@ Three things the injection has to actually be:
    both directions in the same session, or the next tightening turns it
    into a gate that refuses everything.
 
-**Two failure shapes account for every vacuous test found on this
-repository so far, and neither looks wrong when you read it:**
+**Three failure shapes account for every vacuous test found on this
+repository so far, and none of them looks wrong when you read it:**
 
 - **The setup silently did not happen**, so both sides agree about a
   frame in which nothing occurred. A `Fixed(220)` card in a 300 px
@@ -649,6 +682,14 @@ repository so far, and neither looks wrong when you read it:**
   and the assertion unreachable (M16/T16.2). A parity bound of 6% sat
   over a measured 0.01% (M15/T15.12). Print the quantity next to the
   bound so a vacuous one is visible in the output.
+- **The gate never runs**, and its silence reads as a pass. It was
+  compiled out by feature unification, skipped with exit 0 (no display,
+  no adapter, no font), or run against a process it did not launch, such
+  as a leftover window on the port. M38 found this shape more often than
+  either of the others (`docs/results-deep-review.md` §4). The answer is
+  M43's and M42's: a skip exits 77 and fails unless allowed, a test
+  binary that lists zero tests must say why, and every live leg checks
+  the pid, strategy and features of the process it drove.
 
 **And the injection itself can be wrong.** A `#[no_mangle] pub static`
 added to prove the `.bss` gate fires was dropped by the linker, so the
@@ -683,6 +724,7 @@ while proving nothing:
 | every test vs. per-widget damage (M27/T27.3) | nothing had ever asked what one interaction costs in pixels, so a click reported the whole window at **1 200×** the widget's own box and 151 test binaries were green |
 | every test vs. a container's own background (M27/T27.3) | the journal folded a container's signature from its *children's*, so every container looked busy whenever anything under it moved — **one defect hid the other**, and no test could have seen the second while the first stood |
 | `shaping.rs`'s substitution test (M26/T26.17 #13) | it names substitution in its title and never triggers one: every system face has U+2212 and U+2014, so the fall-through it claims to cover is dead. Found by an injection that disabled substitution and left it green |
+| M38's review and its re-triage (2026-09-23/24) | 79 rows: 74, plus a dated addendum of 5 -- see `docs/results-deep-review.md` §4, which owns the tally and names each one's injection |
 
 **Three were caught by injecting a fault; three by printing the measured
 number beside the bound and seeing the gap.** Neither method is
@@ -714,8 +756,9 @@ The pattern is not that the tests were bad. Each one tested its pass
 directly and correctly. What nothing did was **assemble them** — and an
 end-to-end assembly is the only thing that can find a capability which
 is present, correct in isolation, and unreachable. `just gpu-parity` and
-`just agent-drive` exist because of this; a new capability wants one
-before it is called done.
+`just agent-drive` exist because of this, and `just ci` runs every one
+of them, with `just live`, against the commit in a clean worktree; a new
+capability wants one before it is called done.
 
 **The seventh was caught by a review agent reading the plan for a
 *different* feature** (2026-09-10, M18's spec review). `tests/banded.rs`
@@ -827,11 +870,14 @@ separate pass the rule exists to prevent. If a commit is big enough that
 the docs feel like a second task, that is the signal to split the commit,
 not to defer the docs.
 
-Six checks in `just static` mechanise the part a human reliably misses:
+The checks in `just static` (the recipe is the list; since M43 each has a
+planted-violation self-test in `scripts/selftest/`) mechanise the part a
+human reliably misses:
 a backticked identifier in a comment must exist in the code, a declared
 derive attribute must have a user, a cited `docs/*.md` or bench binary
 must exist, every `{{#include}}` in the book must name a live file and a
 live anchor, the attribute table must say the same thing in the rustdoc
-and in the book, and the core must contain no `unsafe`. They run before
+and in the book, and no crate but the reload FFI crate may contain
+`unsafe` (`#![forbid(unsafe_code)]` since M43/T43.1). They run before
 any compile. The first three read `book/src/*.md` as well as `docs/*.md`,
 from 2026-09-10.

@@ -1,6 +1,10 @@
 # M39–M55 — fixing what M38 found
 
-> **Written 2026-09-24, not started.** This is the index of seventeen
+> **Written 2026-09-24; DONE 2026-09-27** on branch `m39-m55-fixes`,
+> `just ci-verify 29a2fe7` green (28 steps, 0 failed, 0 skipped). Every
+> task landed except T49.12, which waits for M56's showcase. Each plan's
+> header records its results, and its "What building found" notes
+> record where building overturned it. This is the index of seventeen
 > fix plans, M39–M55. Together they close every finding of M38's deep
 > review (`docs/results-deep-review.md`) that is still open, and seven
 > found since. Each milestone has its own plan doc, with tasks, gates,
