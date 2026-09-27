@@ -175,6 +175,52 @@ pub fn snapshot_focused<W: Widget>(
     TreeUpdate { nodes, tree: Some(TreeInfo::new(NodeId(1))), tree_id: TreeId::ROOT, focus }
 }
 
+/// The platform window's own node in [`platform_tree`] — M54/T54.2.
+///
+/// Outside both id spaces: a main-table node is `index + 1` (below 2³²)
+/// and a synthesised instance sets bit 63 ([`instance_id`]), so bit 62
+/// alone names nothing else.
+pub const WINDOW_NODE: NodeId = NodeId(1 << 62);
+
+/// **The tree a platform adapter sends** — M54/T54.2
+/// (`docs/plan-a11y-platform.md` §2.2).
+///
+/// [`emit_root`]'s nodes under one `Window` node named `title`, with
+/// every bound multiplied by `scale`: layout is logical, and a platform
+/// accessibility API — AT-SPI, UI Automation, NSAccessibility, which
+/// `accesskit_winit` bridges — places a node in the window's **physical**
+/// pixels, so an unscaled tree puts every control's highlight in the
+/// wrong place at any scale but 1.0. `focus` is a main-table index, or
+/// `None` for the window itself.
+pub fn platform_tree(
+    table: &[NodeDesc],
+    root: &dyn Node,
+    st: &[NodeState],
+    focus: Option<u32>,
+    scale: f32,
+    title: &str,
+) -> TreeUpdate {
+    let mut nodes: Vec<(NodeId, AkNode)> = Vec::with_capacity(table.len() + 1);
+    emit_root(table, root, st, &|i| (i + 1) as u64, &mut nodes);
+    let k = scale as f64;
+    for (_, n) in nodes.iter_mut() {
+        if let Some(b) = n.bounds() {
+            n.set_bounds(Rect { x0: b.x0 * k, y0: b.y0 * k, x1: b.x1 * k, y1: b.y1 * k });
+        }
+    }
+    let mut window = AkNode::new(Role::Window);
+    window.set_label(title);
+    if !table.is_empty() {
+        window.push_child(NodeId(1));
+    }
+    nodes.push((WINDOW_NODE, window));
+    let focus = match focus {
+        Some(i) if (i as usize) < table.len() => NodeId(i as u64 + 1),
+        _ => WINDOW_NODE,
+    };
+    TreeUpdate { nodes, tree: Some(TreeInfo::new(WINDOW_NODE)), tree_id: TreeId::ROOT, focus }
+}
+
 /// The main-table index an AccessKit [`NodeId`] refers to, if it names a
 /// main-table node. The inverse of the `index + 1` above; an id an
 /// adapter invented, or one naming a synthesized instance, gives `None`.

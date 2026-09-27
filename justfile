@@ -714,6 +714,24 @@ tally-a11y:
 a11y-drive:
     ./scripts/a11y_drive.sh
 
+# M54/T54.2: §2.3's kill rule, measured -- CPU per idle redraw of the
+# showcase with and without the window crate's `a11y`, eight runs a side,
+# under the bench lock (docs/results-a11y-platform.md). Manual.
+a11y-cost:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    sed_off='s|features = \["a11y"\]|features = []|'
+    cargo build -q --release -p showcase --features agent
+    cp target/release/showcase target/showcase-a11y
+    cp examples/showcase/Cargo.toml target/showcase.toml.bak
+    sed -i "$sed_off" examples/showcase/Cargo.toml
+    trap 'cp target/showcase.toml.bak examples/showcase/Cargo.toml' EXIT
+    cargo build -q --release -p showcase --features agent
+    cp target/release/showcase target/showcase-plain
+    uptime
+    ./scripts/bench_lock.sh python3 scripts/a11y_cost.py target/showcase-plain target/showcase-a11y
+    uptime
+
 # M54/T54.0 (R12-F6): `cargo check` of each crate for Android, one line per
 # configuration with its exit status. Manual, like the GPU recipes.
 mobile-check:

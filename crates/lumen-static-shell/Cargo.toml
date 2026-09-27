@@ -47,6 +47,11 @@ live-agent = ["agent", "dep:lumen-static-agent", "dep:serde_json"]
 # (No `everything` feature since M55/T55.4, R12-F5: a feature that changed
 # the type of `Local::host` for every crate in the graph. The diagnostic
 # is `Program::invalidation::<Everything>()`, in the application's code.)
+# The screen-reader tree a window hands its platform adapter (M54/T54.2):
+# `Host::accessibility_tree` and `Session::a11y_tree`. Forwards the core's
+# `a11y` (docs/plan-a11y-platform.md §2.1), which pulls accesskit and
+# nothing of the agent.
+a11y = ["lumen-static/a11y"]
 truetype = ["dep:fontdue"]
 # M34/T34.1: after every bounded frame, lay out again under an all-dirty
 # view into scratch state and compare — a live invalidation oracle. It

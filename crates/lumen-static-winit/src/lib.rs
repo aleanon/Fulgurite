@@ -12,7 +12,13 @@
 //!   framework's; the application supplies a tree and a background.
 //! - [`Backend`] and [`translate`] — the two halves, for an application
 //!   that owns its own event loop because it has something else in it
-//!   (the tally has an agent socket and an accessibility adapter).
+//!   (the tally has an agent socket of its own).
+//!
+//! A screen reader sees a window built with the `a11y` feature, through
+//! the platform adapter in `a11y` — [`run`] and every `Program` attach
+//! it, and an application with its own loop calls the same module
+//! (M54/T54.2). Default-off, by measurement
+//! (`docs/results-a11y-platform.md`).
 //! - Neither: `lumen-static-shell` still has no window dependency, and
 //!   `Host` still runs headless. That is what keeps `cargo test`
 //!   free of a windowing system.
@@ -53,6 +59,8 @@ use winit::window::{Window, WindowId};
 
 #[cfg(feature = "agent")]
 pub mod agent;
+#[cfg(feature = "a11y")]
+pub mod a11y;
 
 /// What reaches the event loop from somewhere other than the window.
 ///
@@ -83,6 +91,17 @@ pub enum UserEvent {
     /// …and finished one.
     #[cfg(feature = "hot")]
     Built(lumen_static_reload::hot::Outcome),
+    /// A callback from the platform accessibility adapter (M54/T54.2): the
+    /// first tree was asked for, or a screen reader acted on a node.
+    #[cfg(feature = "a11y")]
+    A11y(accesskit_winit::Event),
+}
+
+#[cfg(feature = "a11y")]
+impl From<accesskit_winit::Event> for UserEvent {
+    fn from(e: accesskit_winit::Event) -> Self {
+        UserEvent::A11y(e)
+    }
 }
 
 /// A [`Waker`](lumen_static::inbox::Waker) over the event loop's proxy —
@@ -339,6 +358,10 @@ pub struct Config {
     /// The override binds it and warns that the endpoint has no
     /// authentication.
     pub agent: Option<String>,
+    /// Whether to attach the platform accessibility adapter (M54/T54.2),
+    /// with the `a11y` feature. From `Program::accessible`; `true` by
+    /// default wherever the feature is on.
+    pub accessible: bool,
 }
 
 impl Default for Config {
@@ -352,6 +375,7 @@ impl Default for Config {
             palette: lumen_static::style::Palette::LIGHT,
             images: None,
             agent: None,
+            accessible: cfg!(feature = "a11y"),
         }
     }
 }
@@ -428,6 +452,10 @@ fn start(session: Box<dyn Session>, config: Config, hot: Option<std::path::PathB
         std::thread::spawn(move || agent::serve(addr, proxy));
     }
     let mut win = Win::new(session, config);
+    #[cfg(feature = "a11y")]
+    if win.config.accessible {
+        win.proxy = Some(event_loop.create_proxy());
+    }
     // M48/T48.12: no endpoint, no journal.
     win.journal = cfg!(feature = "agent") && win.config.agent.is_some();
     // **Deferred work, wired up** — M28/T28.12. The waker is the
@@ -592,6 +620,12 @@ struct Win {
     quit: bool,
     /// Frames drawn and frames journaled, for `LUMEN_FRAME_REPORT`.
     frames: (u64, u64),
+    /// The platform accessibility adapter, once the window exists
+    /// (M54/T54.2), and the proxy it reports through.
+    #[cfg(feature = "a11y")]
+    a11y: Option<a11y::Accessible>,
+    #[cfg(feature = "a11y")]
+    proxy: Option<winit::event_loop::EventLoopProxy<UserEvent>>,
     /// `LUMEN_FRAME_REPORT=N`: after N frames, print how many were
     /// journaled and exit 0 — the diagnostic the T48.12 gate reads, since
     /// a window with no endpoint has nothing else to ask.
@@ -636,6 +670,10 @@ impl Win {
             quit: false,
             frames: (0, 0),
             report_after: std::env::var("LUMEN_FRAME_REPORT").ok().and_then(|v| v.parse().ok()),
+            #[cfg(feature = "a11y")]
+            a11y: None,
+            #[cfg(feature = "a11y")]
+            proxy: None,
         }
     }
 
@@ -856,6 +894,15 @@ impl Win {
         // it has finished moving.
         //
         // **Only with an endpoint** (M48/T48.12): nothing else can read it.
+        // **The screen reader's view of the frame just presented**
+        // (M54/T54.2), beside the journal, so the tree, the journal and
+        // the pixels describe one frame. Built only while an assistive
+        // technology is attached.
+        #[cfg(feature = "a11y")]
+        if let Some(a) = self.a11y.as_mut() {
+            let session = &self.session;
+            a.update(|| a11y::tree_of(&**session));
+        }
         self.frames.0 += 1;
         if self.journal {
             self.session.agent_frame_done(frame_times(&presented));
@@ -904,6 +951,10 @@ impl ApplicationHandler<UserEvent> for Win {
             suspend_backend(&mut self.config.images, backend);
         }
         self.window = None;
+        #[cfg(feature = "a11y")]
+        {
+            self.a11y = None;
+        }
     }
     fn window_event(&mut self, e: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
         Win::window_event_impl(self, e, id, event);
@@ -995,6 +1046,23 @@ impl ApplicationHandler<UserEvent> for Win {
                     h.reloader.building = true;
                 }
                 self.ask_redraw();
+            }
+            #[cfg(feature = "a11y")]
+            UserEvent::A11y(e) => {
+                let Some(a) = self.a11y.as_mut() else { return };
+                let session = &self.session;
+                let req = a.event(e, || a11y::tree_of(&**session));
+                // A screen reader's activation: a click at the node's
+                // centre until T54.4 gives actions their own event.
+                if let Some(req) = req {
+                    if req.action == lumen_static::observe::accesskit::Action::Click
+                        && self.session.a11y_click(req.target_node.0)
+                    {
+                        if let Some(w) = &self.window {
+                            w.request_redraw();
+                        }
+                    }
+                }
             }
             #[cfg(feature = "hot")]
             UserEvent::Built(outcome) => {
@@ -1104,7 +1172,15 @@ impl Win {
                 self.config.width as f64,
                 self.config.height as f64,
             ));
+        // **Invisible until the adapter exists** (M54/T54.2): the
+        // platform adapter must be built before the window is first shown.
+        #[cfg(feature = "a11y")]
+        let attrs = a11y::attributes(attrs, self.proxy.is_some());
         let window = Arc::new(event_loop.create_window(attrs).expect("create window"));
+        #[cfg(feature = "a11y")]
+        if let Some(proxy) = self.proxy.clone() {
+            self.a11y = Some(a11y::Accessible::attach(event_loop, &window, proxy));
+        }
 
         // Before the first frame: layout is logical, the surface is
         // physical, and this is the only thing that relates them (M10b).
@@ -1124,6 +1200,12 @@ impl Win {
     }
 
     fn window_event_impl(&mut self, event_loop: &ActiveEventLoop, _: WindowId, event: WindowEvent) {
+        // The adapter sees every event first: it tracks focus and
+        // geometry, and consumes nothing (M54/T54.2).
+        #[cfg(feature = "a11y")]
+        if let (Some(a), Some(w)) = (self.a11y.as_mut(), self.window.as_ref()) {
+            a.process_event(w, &event);
+        }
         // **While a panic is shown** (M36 §2.2): close, resize and redraw
         // as ever; **R retries**; everything else is swallowed, so nothing
         // piles up in the queue to replay into the application on retry.
@@ -1347,6 +1429,7 @@ fn run_program<A: App + 'static, I: Invalidation + 'static>(
         palette: program.palette,
         images: program.images.take(),
         agent: program.agent.take(),
+        accessible: program.accessible,
     };
     start(session(program), config, hot);
 }

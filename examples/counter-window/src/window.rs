@@ -57,11 +57,11 @@ pub struct WinApp {
     /// input after a frame, cleared when the frame that consumed it is
     /// on screen: the interval is `FrameTiming::input_latency_ns`.
     input_at: Option<Instant>,
-    /// The platform accessibility adapter (T7.5). `observe` has built a
-    /// `TreeUpdate` since M5; this is the thing that hands it to the
-    /// screen reader.
+    /// The platform accessibility adapter — the window crate's shared one
+    /// (`lumen_static_winit::a11y`, M54/T54.2), which `run` and every
+    /// `Program` use too.
     #[cfg(feature = "a11y")]
-    a11y: Option<accesskit_winit::Adapter>,
+    a11y: Option<lumen_static_winit::a11y::Accessible>,
     #[cfg(feature = "a11y")]
     proxy: winit::event_loop::EventLoopProxy<UserEvent>,
 }
@@ -103,18 +103,13 @@ impl WinApp {
         }
     }
 
-    /// The accessibility tree as the platform wants it: the same
-    /// `observe` snapshot the agent reads, with focus filled in from the
-    /// host. One source, two consumers — a screen reader and an agent
-    /// cannot see different trees, which is the property `observe::dump`
-    /// exists to keep.
+    /// The accessibility tree as the platform wants it — the host's
+    /// (`Host::accessibility_tree`, physical pixels, focus filled in), the
+    /// same one `run` sends. One source, two consumers: a screen reader
+    /// and an agent cannot see different trees.
     #[cfg(feature = "a11y")]
-    fn a11y_tree(&self) -> accesskit::TreeUpdate {
-        lumen_static::observe::snapshot_focused(
-            &self.host.app.ui,
-            &self.host.states,
-            self.host.input.focus,
-        )
+    fn a11y_tree(&self) -> lumen_static::observe::accesskit::TreeUpdate {
+        self.host.accessibility_tree("lumen-static — tally")
     }
 
     /// A request from the agent socket. Answered on this thread, against
@@ -148,40 +143,24 @@ impl WinApp {
         }
     }
 
-    /// A callback from the platform accessibility adapter. It runs on
-    /// this thread, and every arm ends by handing the platform a tree or
-    /// an input the rest of the app cannot tell from a click.
+    /// A callback from the platform accessibility adapter. The first tree
+    /// is sent inside the shared adapter; an activation becomes a click
+    /// at the node's centre — the same two queued events a mouse
+    /// produces, so it routes, dispatches and shows up in the agent's
+    /// journal identically.
     #[cfg(feature = "a11y")]
-    fn a11y_event(&mut self, e: accesskit_winit::Event) {
-        use accesskit_winit::WindowEvent as AkWindowEvent;
-        match e.window_event {
-            // The screen reader just attached: it has no tree yet.
-            AkWindowEvent::InitialTreeRequested => {
-                let update = self.a11y_tree();
-                if let Some(a) = self.a11y.as_mut() {
-                    a.update_if_active(|| update);
-                }
-            }
-            // A screen-reader activation. It becomes a click at the
-            // node's centre — the same two queued events a mouse
-            // produces, so it routes, dispatches and shows up in the
-            // agent's journal identically. Synthesizing the input rather
-            // than calling the handler directly is what keeps one input
-            // path (`docs/events-decision.md`).
-            AkWindowEvent::ActionRequested(req) => {
-                let Some(i) = lumen_static::observe::index_of_node::<crate::app::Page>(req.target_node)
-                else {
-                    return;
-                };
-                let st = &self.host.states[i];
-                let (x, y) = (st.pos.x + st.size.w / 2.0, st.pos.y + st.size.h / 2.0);
-                self.input_arrived();
-                self.host.click(x, y);
-                if let Some(w) = &self.window {
-                    w.request_redraw();
-                }
-            }
-            AkWindowEvent::AccessibilityDeactivated => {}
+    fn a11y_event(&mut self, e: lumen_static_winit::a11y::Event) {
+        let update = self.a11y_tree();
+        let Some(req) = self.a11y.as_mut().and_then(|a| a.event(e, || update)) else { return };
+        let Some(i) = lumen_static::observe::index_of_node::<crate::app::Page>(req.target_node) else {
+            return;
+        };
+        let st = &self.host.states[i];
+        let (x, y) = (st.pos.x + st.size.w / 2.0, st.pos.y + st.size.h / 2.0);
+        self.input_arrived();
+        self.host.click(x, y);
+        if let Some(w) = &self.window {
+            w.request_redraw();
         }
     }
 
@@ -271,9 +250,9 @@ impl WinApp {
         // what makes a screen reader read a stale label.
         #[cfg(feature = "a11y")]
         {
-            let update = self.a11y_tree();
+            let host = &self.host;
             if let Some(a) = self.a11y.as_mut() {
-                a.update_if_active(|| update);
+                a.update(|| host.accessibility_tree("lumen-static — tally"));
             }
         }
     }
@@ -296,11 +275,14 @@ impl ApplicationHandler<UserEvent> for WinApp {
         let attrs = Window::default_attributes()
             .with_title("lumen-static — tally")
             .with_inner_size(winit::dpi::LogicalSize::new(440.0, 520.0));
+        // Invisible until the adapter exists, per its contract; `attach`
+        // shows the window.
+        #[cfg(feature = "a11y")]
+        let attrs = lumen_static_winit::a11y::attributes(attrs, true);
         let window = Arc::new(event_loop.create_window(attrs).expect("create window"));
-        // Before the window is shown, per the adapter's contract.
         #[cfg(feature = "a11y")]
         {
-            self.a11y = Some(accesskit_winit::Adapter::with_event_loop_proxy(
+            self.a11y = Some(lumen_static_winit::a11y::Accessible::attach(
                 event_loop,
                 &window,
                 self.proxy.clone(),

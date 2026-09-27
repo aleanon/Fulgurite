@@ -761,6 +761,19 @@ and adds the JSON view, `probe`, `stats` and the `src` stamp (72 B).
 `docs/plan-a11y-platform.md` §2.1; the sizes are asserted by
 `crates/lumen-static-widgets/tests/desc_size.rs`.
 
+**DECIDED 2026-09-27 (M54/T54.2): the platform adapter is the window
+crate's, and a turnkey application is accessible when it asks.** "One
+implementation serves both screen readers and agents" was true of the
+tree and false of the platform: only `examples/counter-window` handed it
+to a screen reader, through a hand-written loop (R15-F1).
+`lumen_static_winit::a11y` now attaches `accesskit_winit` for `run`,
+every `Program` (`Program::accessible` is the run-time switch) and
+counter-window alike. The window crate's `a11y` feature is
+**default-off** because the kill rule written before it was built fired
+on both conditions (`docs/results-a11y-platform.md`): an application
+names the feature, as `examples/showcase` does. `just a11y-drive` walks
+AT-SPI for both.
+
 **DECIDED (2026-09-25, M39/T39.1): the endpoint is a local line protocol
 that refuses HTTP.** Newline-delimited JSON-RPC over TCP, one transport
 (`lumen_static_agent::transport`) that every server calls, and a line
@@ -878,6 +891,10 @@ instances. Gated behind additive `observe`/`reload` features (Step 4's
 gating debt paid); zero release cost verified by re-running the Step 2
 benchmark unchanged. Deferred: action synthesis (needs events),
 incremental TreeUpdates. See `docs/step5-observability.md`.
+*Amended 2026-09-27 (M54/T54.1–T54.2):* the tree is its own feature,
+`a11y`, which `observe` implies, and the window crate hands it to the
+platform (behind that crate's default-off `a11y`); until then no
+turnkey application reached a screen reader.
 *Amended 2026-09-26 (M48/T48.5):* "cannot drift" was true of the walk
 and not of the JSON — the agent's `ui.getTree` carried a second
 hand-written serialiser, and both dropped every state a widget publishes

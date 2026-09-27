@@ -830,6 +830,43 @@ feature (`dev-shape`); without that line it would never run.
   features, and removing the new assertion makes it report "build
   succeeded / expected refusal".
 
+**T54.2 (2026-09-27).**
+- **§2.3's kill rule fired on both conditions**, so `a11y` ships
+  **default-off** and the handoff says a turnkey application is
+  accessible when it asks (`docs/results-a11y-platform.md`: the
+  stripped showcase grew 4.12 MiB against a 3 MB bound; the idle redraw
+  left the other build's spread). `examples/showcase` asks, in its
+  manifest, and the AT-SPI gate drives it.
+- **The idle-frame measurement is the attached case.** This desktop runs
+  AT-SPI with accessibility enabled, so the adapter is active from the
+  first frame; the "no assistive technology" case the rule names was not
+  available to measure. Condition 2 decides on its own.
+- **`Session`'s new methods are unconditional**, returning an opaque
+  `A11yTree` that holds a `TreeUpdate` only with `a11y`: a `cfg`-gated
+  trait method would have made the hot session's forwarding wrapper
+  (`lumen_static_reload`) fail to compile in any graph where the shell's
+  `a11y` was on and the reload crate did not know. The stamp's feature
+  list carries `a11y`.
+- **The window crate turns the widgets' `a11y` on**, through an optional
+  dependency: the core's `a11y` without the widgets' does not compile
+  (T54.1's seam), and an application should not have to name both.
+- **The tree's root is a `Window` node named by the title**
+  (`observe::WINDOW_NODE`, bit 62), with the application's root under
+  it; the platform shows a frame named `showcase` with the controls
+  inside.
+- **Actions route as a click at the node's centre until T54.4**
+  (`Session::a11y_click`), as counter-window's adapter did.
+- **"Send a root-only tree on `InitialTreeRequested`" cannot fire live.**
+  The adapter is attached before the first frame, so every frame's
+  update replaces whatever the first answer was: with the injection in,
+  the walk still found "push buttons on the bus: 4 (agent's visible
+  Button count: 4)". The unit gate catches a root-only tree
+  (`tests/a11y_tree.rs`: "tree: 0 table nodes emitted ... / table 5"),
+  and the live gate catches a missing adapter.
+- **The showcase's Button entry is opened by name** (a bare number
+  argument), because its default entry has one button; the walk finds
+  "Primary" as the plan asked.
+
 ## Appendix: finding → task
 
 | ID | sev now | status | task |

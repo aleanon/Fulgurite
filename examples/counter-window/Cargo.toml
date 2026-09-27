@@ -17,16 +17,13 @@ lumen-static-winit = { path = "../../crates/lumen-static-winit" }
 serde_json = "1"
 winit = "0.30"
 softbuffer = "0.4"
-# T7.5: the platform adapter for the `TreeUpdate` snapshot `observe`
-# already builds. Behind a default-off feature — on Linux it pulls
-# accesskit_unix and a D-Bus/async stack, and `just test` builds this
-# example on every run (measured: 95 -> 157 crates).
-accesskit_winit = { version = "0.34", optional = true }
-accesskit = { version = "0.25", optional = true }
 
 [features]
 default = []
-a11y = ["dep:accesskit_winit", "dep:accesskit"]
+# The platform accessibility adapter — the window crate's shared one
+# since M54/T54.2 (`lumen_static_winit::a11y`); this example carried its
+# own copy from T7.5 until then.
+a11y = ["lumen-static-winit/a11y"]
 # Passed through so `just profile` can measure the rasteriser's SIMD
 # path on a real frame (M17/T17.1, docs/results-simd.md).
 simd = ["lumen-static-shell/simd"]

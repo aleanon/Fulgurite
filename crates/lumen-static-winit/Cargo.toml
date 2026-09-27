@@ -44,12 +44,26 @@ simd = ["lumen-static-shell/simd"]
 threads = ["lumen-static-shell/threads"]
 # M34/T34.1: the shadow oracle, reported by the agent's `app.shadow`.
 shadow-oracle = ["lumen-static-shell/shadow-oracle"]
-# Clipboard is default-ON, unlike the a11y feature, and the difference
-# is measured: arboard costs **11 crates** (207 -> 218, 2026-09-05)
-# against a11y's 62 (95 -> 157). A text field without copy and paste is
-# not a working text field, and a fifth of a11y's cost is worth paying
-# by default. An application that wants neither writes
+# Clipboard is default-ON: arboard costs **11 crates** (207 -> 218,
+# 2026-09-05). A text field without copy and paste is not a working text
+# field. An application that wants neither this nor `a11y` writes
 # `default-features = false`.
+#
+# **`a11y`: a screen reader can see the window** (M54/T54.2,
+# docs/plan-a11y-platform.md §2.2-2.3). The platform adapter
+# (`accesskit_winit`: AT-SPI, UI Automation, NSAccessibility) built before
+# the window is shown, the whole tree sent when an assistive technology
+# asks and after each frame while one is attached. Turns on the widgets'
+# `a11y` too, so an application names one feature.
+#
+# **Default-OFF, by the kill rule written before it was built** (§2.3):
+# the stripped release showcase grew by more than the 3 MB bound, and its
+# idle redraw left the no-a11y build's eight-run spread with an assistive
+# technology attached (docs/results-a11y-platform.md has both numbers). So
+# a turnkey application is accessible **when it asks** --
+# `features = ["a11y"]` here, which `examples/showcase` does -- and
+# `Program::accessible(false)` turns the adapter off at run time.
+a11y = ["dep:accesskit_winit", "lumen-static-shell/a11y", "dep:lumen-static-widgets", "lumen-static-widgets/a11y"]
 default = ["clipboard"]
 # The agent endpoint: a JSON-RPC socket that drives the *running* window
 # (M23/T23.1c). Default-OFF and a feature rather than always-on, because
@@ -111,6 +125,14 @@ rfd = { version = "0.15", optional = true, default-features = false, features = 
 # M15 policy asks for: nothing pulls wgpu unless a manifest says so.
 lumen-static-wgpu = { path = "../lumen-static-wgpu", optional = true }
 lumen-static-agent = { path = "../lumen-static-agent", optional = true }
+# M54/T54.2: the platform accessibility adapter, behind `a11y`. On Linux it
+# brings accesskit_unix and a D-Bus stack (the count is in the `a11y`
+# feature's comment above).
+accesskit_winit = { version = "0.34", optional = true }
+# Only so `a11y` can turn on the widgets' own `a11y`: the core's `a11y`
+# without the widgets' does not compile (the seam, M54/T54.1), and an
+# application should not have to name both.
+lumen-static-widgets = { path = "../lumen-static-widgets", optional = true, default-features = false }
 serde_json = { version = "1", optional = true }
 # M37/T37.2: a window that rebuilds its application as a library and swaps
 # to it (`hot`). The loader and its `unsafe` live in the reload crate.

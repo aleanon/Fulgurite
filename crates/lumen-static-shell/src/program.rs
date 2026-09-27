@@ -203,6 +203,11 @@ pub struct Program<A: App, I: Invalidation = DefaultInval> {
     /// Where to serve the agent endpoint, when the window crate was
     /// built with its `agent` feature. Inert otherwise.
     pub agent: Option<String>,
+    /// Whether the window hands the platform an accessibility tree — M54/T54.2.
+    /// Defaults to whether the window crate was built with `a11y`, which
+    /// is on by default for desktop; `false` turns the adapter off at run
+    /// time without a rebuild. Inert in a build without the feature.
+    pub accessible: bool,
     /// The application's source directory, from `application`'s caller —
     /// M36: a panic report's application frame is found under it.
     source_root: Option<&'static str>,
@@ -240,6 +245,7 @@ where
         images: None,
         agent: None,
         strategy: core::marker::PhantomData,
+        accessible: cfg!(feature = "a11y"),
     }
 }
 
@@ -265,6 +271,7 @@ impl<A: App, I: Invalidation> Program<A, I> {
             agent: self.agent,
             source_root: self.source_root,
             strategy: core::marker::PhantomData,
+            accessible: self.accessible,
         }
     }
 
@@ -311,6 +318,14 @@ impl<A: App, I: Invalidation> Program<A, I> {
     /// the variable itself.
     pub fn agent(mut self, addr: impl Into<String>) -> Self {
         self.agent = Some(addr.into());
+        self
+    }
+
+    /// Whether a screen reader can see this window — M54/T54.2
+    /// (`docs/plan-a11y-platform.md` §2.2). On by default wherever the
+    /// window crate has `a11y`; `false` builds no adapter.
+    pub fn accessible(mut self, on: bool) -> Self {
+        self.accessible = on;
         self
     }
 

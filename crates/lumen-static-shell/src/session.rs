@@ -156,12 +156,34 @@ pub trait Session: FrameSource {
     /// — M53/T53.4. A window that asked for a frame because of input
     /// presents nothing when this is `Damage::None`.
     fn damage(&self) -> Damage;
+    /// **The accessibility tree of the frame last drawn** — M54/T54.2
+    /// (`docs/plan-a11y-platform.md` §2.2): what the window's platform
+    /// adapter sends on `InitialTreeRequested` and after every frame, in
+    /// physical pixels. `None` from a build without `a11y`.
+    ///
+    /// **Unconditional, with an opaque type**, so the vtable is the same
+    /// shape in every build and a wrapper (the hot session) forwards it
+    /// without a `cfg` of its own; the stamp's feature list tells two
+    /// builds apart ([`abi_fields`]).
+    fn a11y_tree(&self) -> Option<A11yTree>;
+    /// A screen reader's activation of node `target` (an accesskit node
+    /// id): a click at the node's centre, queued as a mouse's would be —
+    /// T54.2's routing until T54.4 gives actions their own event. Whether
+    /// the id named a node with an area.
+    fn a11y_click(&mut self, target: u64) -> bool;
     /// **The tree's shape**, hashed — M49/T49.11 (R4-F7): the node count
     /// and every table entry's links, flags and author id. A node's
     /// identity is its offset in the table, so an agent holding node
     /// indices across a swap must resolve them again when this changes;
     /// the author id and a `#a > #b` path are the names that survive.
     fn shape(&self) -> u64;
+}
+
+/// An accessibility tree crossing the session seam — M54/T54.2. Holds
+/// an `accesskit::TreeUpdate` with `a11y`, and nothing without it.
+pub struct A11yTree {
+    #[cfg(feature = "a11y")]
+    pub update: lumen_static::observe::accesskit::TreeUpdate,
 }
 
 /// What one presented frame cost, as the window measured it — the
@@ -380,6 +402,43 @@ impl<A: App + 'static, P: RecoverPolicy, I: Invalidation> Local<A, P, I> {
             Some(m) => h.pump_with(m),
             None => h.pump(),
         }
+    }
+}
+
+/// The accessibility half of [`Session`] for a [`Local`] — M54/T54.2,
+/// one body per build so neither has a dead branch.
+impl<A: App + 'static, P: RecoverPolicy, I: Invalidation> Local<A, P, I> {
+    #[cfg(feature = "a11y")]
+    fn tree_for_platform(&self) -> Option<A11yTree> {
+        let title = Session::title(self);
+        self.caught(None, |h| Some(A11yTree { update: h.accessibility_tree(&title) }))
+    }
+
+    #[cfg(not(feature = "a11y"))]
+    fn tree_for_platform(&self) -> Option<A11yTree> {
+        None
+    }
+
+    /// A click at the centre of the node `target` names in the tree the
+    /// platform was sent — physical there, logical in the queue.
+    #[cfg(feature = "a11y")]
+    fn click_for_platform(&mut self, target: u64) -> bool {
+        let Some(tree) = self.tree_for_platform() else { return false };
+        let Some(b) = tree.update.nodes.iter().find(|(id, _)| id.0 == target).and_then(|(_, n)| n.bounds()) else {
+            return false;
+        };
+        if b.x1 <= b.x0 || b.y1 <= b.y0 {
+            return false;
+        }
+        let (x, y) = self.host.to_logical(((b.x0 + b.x1) / 2.0) as f32, ((b.y0 + b.y1) / 2.0) as f32);
+        self.host.post(Event::down(x, y));
+        self.host.post(Event::up(x, y));
+        true
+    }
+
+    #[cfg(not(feature = "a11y"))]
+    fn click_for_platform(&mut self, _target: u64) -> bool {
+        false
     }
 }
 
@@ -627,6 +686,14 @@ impl<A: App + 'static, P: RecoverPolicy, I: Invalidation> Session for Local<A, P
 
     fn damage(&self) -> Damage {
         self.host.damage()
+    }
+
+    fn a11y_tree(&self) -> Option<A11yTree> {
+        self.tree_for_platform()
+    }
+
+    fn a11y_click(&mut self, target: u64) -> bool {
+        self.click_for_platform(target)
     }
 
     fn shape(&self) -> u64 {
@@ -906,6 +973,7 @@ pub fn abi_fields() -> Vec<(&'static str, String)> {
         (cfg!(feature = "shadow-oracle"), "shadow-oracle"),
         (cfg!(feature = "simd"), "simd"),
         (cfg!(feature = "threads"), "threads"),
+        (cfg!(feature = "a11y"), "a11y"),
     ] {
         if on {
             features.push(name);

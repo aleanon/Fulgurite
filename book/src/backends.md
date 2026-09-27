@@ -51,6 +51,25 @@ buffer age, the damage and the font to live.
 `.page(..)` is worth noticing: it is the colour cleared behind every
 *damaged region* before redraw, not a background you paint once.
 
+## A screen reader: the `a11y` feature
+
+A window built with the windowing crate's `a11y` feature hands the
+platform an accessibility tree — AT-SPI on Linux, UI Automation on
+Windows, NSAccessibility on macOS, through `accesskit_winit` — so a
+screen reader can see and read it. The tree is the one the agent reads
+(`ui.getTree`), with bounds in physical pixels, and it is built only
+while an assistive technology is attached.
+
+**It is off by default, and asked for.** The rule that decided that was
+written before the adapter was built, and the adapter broke it: the
+binary grew past its bound (`docs/results-a11y-platform.md`). So an
+application that wants a screen reader says so in its manifest, as the
+showcase does, and `.accessible` turns it off at run time:
+
+```text
+{{#include ../../examples/showcase/src/main.rs:accessible}}
+```
+
 ## GPU: a feature on the windowing crate
 
 ```text

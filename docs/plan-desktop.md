@@ -99,6 +99,14 @@ What moves: window creation, the `ApplicationHandler`, event
 translation (`named_key` and its callers), the softbuffer present with
 damage and buffer age, scale-factor changes, the `a11y` feature.
 
+> **The `a11y` feature did not move — until M54/T54.2 (2026-09-27).** It
+> stayed in `examples/counter-window` as a hand-written adapter, so no
+> application started through `run` could reach a screen reader
+> (R15-F1). It is `lumen-static-winit`'s `a11y` feature and
+> `lumen_static_winit::a11y` now, used by `run`, every `Program` and
+> counter-window alike; default-off by a measured kill rule
+> (`docs/results-a11y-platform.md`).
+
 What stays behind: the agent endpoint (it belongs with
 `lumen-static-agent`), `--headless`, `--drive`, the profiler and the
 `--form` fixture. Those are harness and example concerns, and mixing

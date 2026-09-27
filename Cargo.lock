@@ -722,8 +722,6 @@ dependencies = [
 name = "counter-window"
 version = "0.1.0"
 dependencies = [
- "accesskit",
- "accesskit_winit",
  "lumen-static",
  "lumen-static-agent",
  "lumen-static-shell",
@@ -1659,6 +1657,7 @@ dependencies = [
 name = "lumen-static-winit"
 version = "0.1.0"
 dependencies = [
+ "accesskit_winit",
  "arboard",
  "lumen-static",
  "lumen-static-agent",

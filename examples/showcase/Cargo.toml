@@ -8,7 +8,9 @@ publish = false
 [dependencies]
 lumen-static = { path = "../../crates/lumen-static" }
 lumen-static-widgets = { path = "../../crates/lumen-static-widgets" }
-lumen-static-winit = { path = "../../crates/lumen-static-winit" }
+# `a11y` (M54/T54.2): the showcase asks for the screen-reader adapter,
+# which the window crate leaves off by default (its manifest says why).
+lumen-static-winit = { path = "../../crates/lumen-static-winit", features = ["a11y"] }
 lumen-static-shell = { path = "../../crates/lumen-static-shell", features = ["truetype"] }
 
 [features]

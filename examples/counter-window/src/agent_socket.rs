@@ -111,12 +111,12 @@ pub struct Rpc {
 pub enum UserEvent {
     Agent(Rpc),
     #[cfg(feature = "a11y")]
-    A11y(accesskit_winit::Event),
+    A11y(lumen_static_winit::a11y::Event),
 }
 
 #[cfg(feature = "a11y")]
-impl From<accesskit_winit::Event> for UserEvent {
-    fn from(e: accesskit_winit::Event) -> Self {
+impl From<lumen_static_winit::a11y::Event> for UserEvent {
+    fn from(e: lumen_static_winit::a11y::Event) -> Self {
         UserEvent::A11y(e)
     }
 }

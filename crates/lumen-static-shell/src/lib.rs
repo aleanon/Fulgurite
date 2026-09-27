@@ -1040,6 +1040,23 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         self.queue.room()
     }
 
+    /// **The accessibility tree a platform adapter sends** — M54/T54.2:
+    /// every widget's role, name and state, the focused node, and every
+    /// bound in the surface's physical pixels
+    /// ([`lumen_static::observe::platform_tree`]), under a window node
+    /// named `title`. Built from the frame last laid out.
+    #[cfg(feature = "a11y")]
+    pub fn accessibility_tree(&self, title: &str) -> lumen_static::observe::accesskit::TreeUpdate {
+        lumen_static::observe::platform_tree(
+            <A::Tree as Widget>::SUB_TABLE,
+            self.app.tree(),
+            &self.states,
+            self.input.focus,
+            self.scale,
+            title,
+        )
+    }
+
     pub fn frame_number(&self) -> u64 {
         self.frame
     }

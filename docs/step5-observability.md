@@ -110,9 +110,11 @@ synthetic ids.
    adapters want incremental updates driven by the same dirty tracking
    that invalidation needs. Same future work item as §11's invalidation
    emphasis.
-3. **Platform adapter wiring** (winit + accesskit_winit): needs a shell,
-   which this project composes rather than builds (§11); the `TreeUpdate`
-   is the interface contract.
+3. ~~**Platform adapter wiring**~~ — **done 2026-09-27 (M54/T54.2)**:
+   `lumen_static_winit::a11y` attaches `accesskit_winit` for `run`, every
+   `Program` and counter-window's own loop, behind the window crate's
+   `a11y` feature (default-off: `docs/results-a11y-platform.md`), with
+   bounds in physical pixels (`observe::platform_tree`).
 
 ## Verification
 

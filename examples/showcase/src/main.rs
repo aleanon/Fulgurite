@@ -757,7 +757,14 @@ fn main() {
     // A bare number opens the window on that entry, so a review can
     // look at one widget without clicking through the picker.
     let start: usize = args.first().and_then(|a| a.parse::<usize>().ok()).unwrap_or(0);
-    let mut program = program(start.min(CATALOG.len() - 1), false).title("showcase");
+    // ANCHOR: accessible
+    // A screen reader can see this window: the manifest asks for the
+    // window crate's `a11y` feature, which builds the platform adapter,
+    // and `accessible` is the run-time switch -- `false` builds none.
+    let mut program = program(start.min(CATALOG.len() - 1), false)
+        .title("showcase")
+        .accessible(true);
+    // ANCHOR_END: accessible
     // Built `--features agent`, the window can be steered from outside:
     // `input.click` on the picker, `ui.screenshot` of the result.
     // `LUMEN_AGENT_ADDR` overrides the address, read by the window
