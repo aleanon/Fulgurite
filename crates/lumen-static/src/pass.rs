@@ -354,8 +354,17 @@ fn dispatch_overlaid_inner<S: crate::event::App, O: crate::overlay::OverlaySink>
     // Otherwise ordinary dispatch, with overlays taking pointer hits
     // first. `dispatch` does its own hit test, so an overlay hit is
     // routed by index here rather than by re-walking.
+    //
+    // **Except a captured gesture's moves and release**, which go to the
+    // captured node first, here as in `dispatch_at` — the rule that lets
+    // a drag keep reaching its control. An overlay that consumed the
+    // release used to return before `dispatch_at` was reached, so the
+    // gesture ended and its capture did not: every later move went to a
+    // node nobody was pressing (a combobox's caret followed the pointer
+    // after a choice).
+    let captured = input.capture.is_some() && matches!(ev, Event::PointerMove { .. } | Event::PointerUp { .. });
     let mut on_overlay = None;
-    if let Some(p) = ev.position() {
+    if let Some(p) = ev.position().filter(|_| !captured) {
         if !ov.is_empty() {
             for k in (0..ov.len()).rev() {
                 let i = ov.at(k) as usize;

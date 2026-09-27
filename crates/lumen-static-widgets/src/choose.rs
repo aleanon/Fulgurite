@@ -500,6 +500,11 @@ pub struct Chooser<const KIND: u8 = PICKLIST> {
     trigger_rect: (Point, Size),
     /// A menu's chosen command, until the application takes it — M57/B23.
     chosen: Option<usize>,
+    /// The trigger's press count and its text's hash as the last layout
+    /// saw them, so a press and a query changing are **edges**. See the
+    /// layout arm that reads them.
+    seen_presses: u32,
+    last_text: u64,
 }
 
 /// A picker over its own options.
@@ -520,6 +525,8 @@ impl<const KIND: u8> Default for Chooser<KIND> {
             typed: false,
             trigger_rect: (Point { x: 0.0, y: 0.0 }, Size::default()),
             chosen: None,
+            seen_presses: 0,
+            last_text: 0,
         }
     }
 }
@@ -713,6 +720,38 @@ impl<const KIND: u8> Node for Chooser<KIND> {
         if KIND == COMBOBOX && self.typed {
             self.list.content.filter(self.trigger.as_str());
         }
+        // **It reopens on the two things a person does next** — a press on
+        // its field, and typing a new query. Opening is otherwise the
+        // focus *transition* (A7), and since a press on the list keeps the
+        // field focused (`NodeDesc::KEEPS_FOCUS`), after a choice there is
+        // no transition left: the field was focused, a press on it opened
+        // nothing, and a query filtered a list nobody could see. Both are
+        // edges — the press starting, the text changing — never the level
+        // X5 was, so a choice or an Escape still closes it for good.
+        // The field consumes its own press, so this is where the chooser
+        // can see one — **by the field's press count, not its `pressed`
+        // bit**: a click whose press and release land in one frame (an
+        // agent's, or a quick hand's) sets and clears the bit before any
+        // layout reads it, and the first version reopened only for slow
+        // clicks. Found by the live drive, which clicks in one frame.
+        let presses = self.trigger.presses();
+        let text = {
+            let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+            for b in self.trigger.as_str().bytes() {
+                h = (h ^ b as u64).wrapping_mul(0x0100_0000_01b3);
+            }
+            h
+        };
+        if KIND != MENU && !self.list.open {
+            let pressed_now = presses != self.seen_presses;
+            let queried = KIND == COMBOBOX && self.typed && text != self.last_text;
+            if pressed_now || queried {
+                self.list.open = true;
+                self.list.content.set_highlight(self.selected);
+            }
+        }
+        self.seen_presses = presses;
+        self.last_text = text;
         // The chosen option is marked when the list opens again (M57/B20).
         self.list.content.set_current(if KIND == MENU { None } else { self.selected });
         let t = if KIND == MENU {
@@ -845,11 +884,13 @@ impl<const KIND: u8> Node for Chooser<KIND> {
                 self.list.open = false;
                 true
             }
-            // Anything else reaching a combobox is the field's. It
-            // normally will not: the field is the focused node and gets
-            // its own events first. This is the path for an event that
-            // bubbled past it.
-            _ if KIND == COMBOBOX => self.trigger.on_event(ev, cx),
+            // Anything else addressed to the combobox itself is the
+            // field's. **Only addressed to it** — not whatever bubbles up:
+            // a press on the open list bubbled here, went to the field as
+            // a click at the list's x, was consumed, and so gave this node
+            // the pointer capture; every move after the choice then dragged
+            // the field's caret (reported from the live window).
+            _ if KIND == COMBOBOX && cx.target == cx.node => self.trigger.on_event(ev, cx),
             _ => false,
         }
     }

@@ -239,3 +239,101 @@ fn a_press_on_a_filtered_list_chooses_the_row_it_lands_on() {
     assert_eq!(h.app.ui.combo.text(), "Damson");
     assert_eq!(h.input.focus, Some(field), "a press on the field's own list took focus from it");
 }
+
+
+/// **After a choice the combobox is back where it started** — reported
+/// from the live window: the caret then followed the pointer back and
+/// forth, a press on the field did nothing, and typing brought back no
+/// list; only a click outside reset it.
+///
+/// Three causes, each asserted here by what it broke: a press on the list
+/// bubbled to the chooser, which handed it to its field as a click, which
+/// took the pointer capture — and the release, consumed by the list on
+/// the overlay path, never ended it (`capture` after the choice, and a
+/// move that must not move the caret); and with the field still focused
+/// after the choice, opening on the focus transition never fired again
+/// (a press on the field, and a typed query, must each reopen it).
+#[test]
+fn after_a_choice_the_combobox_is_ready_again() {
+    let mut h = host();
+    open(&mut h, "combo");
+    for _ in 0..8 {
+        key(&mut h, Key::Backspace);
+    }
+    h.post(Event::Text { ch: 'a' });
+    h.pump();
+    h.pump();
+    let list = h.states[part("combo", "chooser-list")];
+    let (x, y) = (list.pos.x + 40.0, list.pos.y + 6.0 + 30.0 + 15.0);
+    click(&mut h, x, y);
+    assert_eq!(h.app.ui.combo.text(), "Banana", "setup: the second row of the filtered list did not choose Banana");
+    assert!(!is_open(&h, "combo"), "setup: the choice did not close the list");
+    let capture = h.input.capture;
+    let caret0 = h.app.ui.combo.trigger.caret();
+    h.post(Event::PointerMove { x: x - 30.0, y: 10.0 });
+    h.pump();
+    let caret1 = h.app.ui.combo.trigger.caret();
+    // Typing first, straight after the choice — what was reported.
+    for _ in 0..8 {
+        key(&mut h, Key::Backspace);
+    }
+    h.post(Event::Text { ch: 'c' });
+    h.pump();
+    h.pump();
+    let reopened_by_query = is_open(&h, "combo");
+    // Then a choice again, and a press on the field.
+    let list = h.states[part("combo", "chooser-list")];
+    click(&mut h, list.pos.x + 40.0, list.pos.y + 6.0 + 15.0);
+    assert!(!is_open(&h, "combo"), "setup: the second choice did not close the list");
+    // Press and release **in one frame**, as an agent's click and a quick
+    // hand's do: a reopen keyed to the field's `pressed` bit saw neither,
+    // and passed only while this test pumped between the two.
+    let (tx, ty) = centre(&h, part("combo", "chooser-trigger"));
+    h.post(Event::PointerDown { x: tx, y: ty, button: lumen_static::PointerButton::Left, clicks: 1 });
+    h.post(Event::PointerUp { x: tx, y: ty, button: lumen_static::PointerButton::Left });
+    h.pump();
+    let reopened_by_press = is_open(&h, "combo");
+    println!("after the choice: capture {capture:?}, caret {caret0} -> {caret1} on a move; \
+              a press on the field opens {reopened_by_press}; the query `c` opens {reopened_by_query} ({} rows)",
+             h.app.ui.combo.list.content.shown());
+    assert_eq!(capture, None, "the choice left the pointer captured");
+    assert_eq!(caret0, caret1, "a pointer move after the choice dragged the field's caret");
+    assert!(reopened_by_press, "a press on the focused field did not reopen the list");
+    assert!(reopened_by_query, "typing a query did not reopen the list");
+}
+
+
+
+
+/// **A captured release over an open overlay goes to the captured node**
+/// — the pass's half of the report above.
+///
+/// The combobox's chain left its field holding the capture while its list
+/// was open; the release landed on the list, which consumed it on the
+/// overlay path and returned before capture was consulted, so the capture
+/// outlived its gesture and every later move dragged the field's caret.
+/// Captured moves and releases now go to the captured node first on that
+/// path too, as they always did on the ordinary one.
+///
+/// The gesture is put in flight directly, through `InputState`: a press
+/// that could start one here — outside the open list — dismisses the list
+/// instead (a passive overlay too), so no pointer sequence reaches this
+/// state any more, and a test that tried one passed with the fix removed.
+#[test]
+fn a_captured_release_over_an_open_overlay_goes_to_the_captured_node() {
+    let mut h = host();
+    open(&mut h, "combo");
+    assert!(is_open(&h, "combo"), "setup: the combobox did not open");
+    let field = part("combo", "chooser-trigger") as u32;
+    h.input.capture = Some(field);
+    let list = h.states[part("combo", "chooser-list")];
+    // Row 1, Banana: the selection starts on Apple, so a release that
+    // chose from the list shows as a moved selection.
+    let (x, y) = (list.pos.x + 40.0, list.pos.y + 6.0 + 30.0 + 15.0);
+    h.post(Event::PointerUp { x, y, button: lumen_static::PointerButton::Left });
+    h.pump();
+    let (after, took) = (h.input.capture, h.app.ui.combo.selected());
+    println!("capture on the field; released over Banana's row: capture after {after:?}, selected {took:?}");
+    assert_eq!(after, None, "a release over the open list left the field's capture in place");
+    assert_eq!(took, Some(0), "the release chose from the list instead of ending the captured gesture");
+}

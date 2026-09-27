@@ -148,6 +148,25 @@ COMBOBOX = ("Combobox", "#d_combobox_a", [
         ),
         injection="leave NodeDesc::KEEPS_FOCUS off the chooser's list",
     ),
+    # Reported: after a choice the field's caret followed the pointer, a
+    # press on the field did nothing, and only a click outside reset it.
+    # The press on the list had given the chooser the pointer capture and
+    # the release never ended it; and with the field still focused, the
+    # list that opens on focus had no focus transition left to open on.
+    Action(
+        visible=True,
+        region="window",
+        name="after a choice a press on the field opens the list again",
+        needs="a combobox that has just chosen, its field still focused",
+        do=lambda c: c.click(f"{c.sel} > #chooser-trigger"),
+        expect=lambda c: (
+            _list_h(c) > 0.0 and len(_shown(c)) > 0,
+            f"the list is {_list_h(c):.0f} px tall with {len(_shown(c))} rows after a "
+            f"press on the field that just chose",
+        ),
+        isolate=lambda c: c.click_outside(),
+        injection="drop the pressed-edge reopen in Chooser::layout",
+    ),
     Action(
         visible=True,
         name="clearing the query shows everything again",
