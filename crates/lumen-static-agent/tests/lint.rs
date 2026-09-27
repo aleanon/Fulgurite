@@ -694,3 +694,43 @@ fn w1002_fires_on_a_node_placed_off_root() {
     assert_eq!(found.len(), 1, "a node off the root with no clip must be W1002: {found:?}");
     assert_eq!(found[0]["index"], badge);
 }
+
+// ---- M55: an open popup's content is out of flow, not an escape ------
+
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+struct Tipped {
+    #[widget_id("anchor")]
+    anchor: Label,
+    #[widget_id("tip")]
+    tip: lumen_static_widgets::Popup<Label>,
+    #[widget_id("after")]
+    after: Label,
+}
+
+/// T55.6 shipped W1003 and every open tooltip fired it: a `Popup` is
+/// zero-sized at its anchor and places its content below it, so the
+/// content is outside its parent's rect by design. `just widget-drive`
+/// found it, misattributed (its count-based slice named the next finding
+/// in the list, a pre-existing W1005). The setup asserts the content does
+/// lie outside the popup's rect, so the quiet answer is not quiet for
+/// want of an escape.
+#[test]
+fn w1003_quiet_on_an_open_popups_content() {
+    let mut app = Tipped::default();
+    app.anchor.set("hover me");
+    app.tip.content.set("a tip that is wider than nothing");
+    app.tip.open = true;
+    app.after.set("after");
+    let f = findings_of(&mut app, 400.0, 200.0, "W1003");
+    let styles = pass::default_styles(&app);
+    let mut st = vec![NodeState::default(); Tipped::NODE_COUNT];
+    pass::layout(&mut app, &styles, &mut st, Constraints { min_w: 0.0, max_w: 400.0, min_h: 0.0, max_h: 200.0 });
+    let (popup, content) = (&st[2], &st[3]);
+    println!(
+        "popup {:?}+{:?}, content {:?}+{:?}; W1003 findings: {} (expected 0)",
+        popup.pos, popup.size, content.pos, content.size, f.len()
+    );
+    assert!(content.size.w > popup.size.w, "setup: the content does not escape the popup's rect");
+    assert!(f.is_empty(), "W1003 fired on an open popup's content: {f:?}");
+}

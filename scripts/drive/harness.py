@@ -416,7 +416,9 @@ def run_widget(c: AgentClient, widget: str, sel: str, actions: list[Action],
     for a in actions:
         if a.prep is not None:
             a.prep(ctx)
-        before_lint = len(c.lint().get("findings", []))
+        before_findings = c.lint().get("findings", [])
+        before_lint = len(before_findings)
+        before_keys = {(f.get("code"), f.get("index"), f.get("rule")) for f in before_findings}
         readout_before = ctx.readout()
         since = ctx.mark()
         a.do(ctx)
@@ -528,11 +530,28 @@ def run_widget(c: AgentClient, widget: str, sel: str, actions: list[Action],
         # lint stays clean
         after = c.lint().get("findings", [])
         if len(after) > before_lint:
-            new_ones = [f for f in after[before_lint:]
-                        if f.get("code") not in a.expects_lint]
-            if new_ones:
+            # **Name the findings that are new, by key** — M55. The list
+            # is ordered by node index, not by age, so `after[before:]`
+            # is whatever sorts last: when an open tooltip gained a W1003
+            # at node 102, this reported the W1005 at node 241 that had
+            # been there all along, and the regression was hunted in the
+            # wrong widget. The verdict is still the count-and-slice rule
+            # (`gained`), so what this gate accepts is unchanged — a
+            # stricter key diff turned four green actions red, each a
+            # popup closing and its content going W1001, and is not this
+            # task's to decide; only what it names is new.
+            gained = [f for f in after[before_lint:]
+                      if f.get("code") not in a.expects_lint]
+            fresh = [f for f in after
+                     if (f.get("code"), f.get("index"), f.get("rule")) not in before_keys
+                     and f.get("code") not in a.expects_lint]
+            new_ones = fresh or gained
+            if gained:
                 raise Failed(
-                    f"{widget}/{a.name}: ui.lint gained a finding: {new_ones[0]}")
+                    f"{widget}/{a.name}: ui.lint gained "
+                    + ", ".join(f"{f.get('code')} on #{f.get('wid') or f.get('kind')} (node {f.get('index')})"
+                                for f in new_ones)
+                    + f"; first: {new_ones[0]}")
             out.append(f"      lint: {len(after) - before_lint} expected "
                        f"{'/'.join(a.expects_lint)} finding(s)")
 

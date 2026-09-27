@@ -211,6 +211,12 @@ impl<W: Widget> Node for Popup<W> {
         core::mem::replace(&mut self.open, false)
     }
 
+    /// Out of flow: zero-sized itself, its content placed at the anchor
+    /// (M55; `W1003` exempts it).
+    fn floats_children(&self) -> bool {
+        true
+    }
+
     fn dismissal_consumes_press(&self) -> bool {
         !self.passive
     }

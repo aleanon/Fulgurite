@@ -369,6 +369,22 @@ pub trait Node {
         false
     }
 
+    /// Whether this node places its content **out of flow** — beside or
+    /// over an anchor, not inside its own box — M55 (the Tooltip
+    /// regression T55.6 shipped).
+    ///
+    /// A `Popup` measures its content and reports zero size for itself,
+    /// so opening one moves nothing; its content is then placed below,
+    /// above or over the anchor and painted in the overlay phase. Every
+    /// open popup's content therefore lies outside its parent's
+    /// zero-sized rect by design, and the audit's `W1003` (a child escaping
+    /// a parent that does not clip) fired on every open tooltip and menu
+    /// until this existed. Answered by `Popup`, provided `false`, for the
+    /// reason [`Node::overlaps_children`] is.
+    fn floats_children(&self) -> bool {
+        false
+    }
+
     /// Measure under `limits` **without disturbing any memo, or anything
     /// paint reads**.
     ///

@@ -76,3 +76,10 @@ report. `tests/lint.rs` keeps it as `w1003_fires_on_escape_without_clip`
 (two findings, one per label, at 50 px against 80 px labels), beside
 `w1003_quiet_inside_scrollview` (content 64 px tall in a 40 px scroller,
 0 findings). The layout behaviour itself is not changed here.
+
+**What the probe missed**: a `Popup` is zero-sized at its anchor and
+places its open content outside itself on purpose, so W1003 fired on
+every open tooltip and menu. `just widget-drive` found it on Tooltip,
+both strategies; `Node::floats_children` exempts it, and
+`w1003_quiet_on_an_open_popups_content` pins it (1 finding with Popup's
+answer removed, 0 with it).

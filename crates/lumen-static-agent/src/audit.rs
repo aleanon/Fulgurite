@@ -140,8 +140,12 @@ pub mod codes {
     /// ([`lumen_static::widget::Node::clips_children`] — the escape is
     /// scrolled-out content) and one that overlaps them on purpose
     /// ([`lumen_static::widget::Node::overlaps_children`] — a stack's
-    /// children are [`OVERLAP`]'s business). A child with no area is
-    /// not an escape.
+    /// children are [`OVERLAP`]'s business), and one that places them out
+    /// of flow ([`lumen_static::widget::Node::floats_children`] — a
+    /// `Popup`, zero-sized at its anchor, whose open content is outside
+    /// it by design; T55.6 shipped without this and every open tooltip
+    /// fired, found by `just widget-drive`). A child with no area is not
+    /// an escape.
     pub const OVERFLOW: &str = "W1003";
     /// Two direct children of the same container overlap.
     ///
@@ -801,7 +805,12 @@ impl Auditor {
             if a > 0.0 {
                 let (r, q) = (rect(&st[i]), rect(&st[p]));
                 let escaped = r[0] + EPS < q[0] || r[1] + EPS < q[1] || r[2] > q[2] + EPS || r[3] > q[3] + EPS;
-                if escaped && self.clip_of[i] != p as u32 && !tree.as_ref().root.node(p).overlaps_children() {
+                let parent = tree.as_ref().root.node(p);
+                if escaped
+                    && self.clip_of[i] != p as u32
+                    && !parent.overlaps_children()
+                    && !parent.floats_children()
+                {
                     out.push(Finding {
                         code: codes::OVERFLOW,
                         idx: i as u32,

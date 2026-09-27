@@ -701,6 +701,14 @@ Recorded here rather than by rewriting the tasks above.
   `--expect-strategy` alone, which already read the session's type.
   `panic-app` gains its own `everything` feature, as showcase and
   tasks-demo have.
+- **T55.6, after merge.** W1003 fired on every open tooltip: a
+  `Popup` is zero-sized at its anchor and places its content outside
+  itself by design. `Node::floats_children` (answered by `Popup`) exempts
+  it. `just widget-drive` caught it and **named the wrong finding** — its
+  lint check sliced `after[before:]`, which is ordered by node, so it
+  reported showcase's `#note` W1005 that had been there all along — and
+  the regression was first hunted in the wrong widget. The harness now
+  names findings new by key; its verdict is unchanged.
 
 ## Appendix: finding → task
 
