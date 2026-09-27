@@ -61,6 +61,11 @@ smaller than the table's.
 
 ### RAM, the fixture as it stands
 
+*These are the 2026-09-15 sizes, and both types have grown since; today's
+are asserted in `crates/lumen-static/tests/cursor.rs` and not restated
+here (R8-F9, M55/T55.8). The arithmetic below is the decision's evidence
+as it stood.*
+
 `NODE_STATE` 76 + `STYLE` 72 = 148 B per node, × 11 = 1,628 B, plus the
 `Ui` struct's **1,104 B** — asserted on the target at T25.1 because
 `PER_NODE_RAM` alone cannot see bytes that move onto widgets. **2,732 B
@@ -69,7 +74,8 @@ for 11 nodes, 248 B per node.** 768 B of `Ui` is the text field's
 
 ### RAM, an arena row on the host
 
-`NodeState` 76 plus one instance: a `Label<String>` row is **140 B**
+*The 2026-09-15 sizes again (see above).* `NodeState` 76 plus one
+instance: a `Label<String>` row is **140 B**
 (76 + 64), a `Button<(), String>` row **156 B** (76 + 80). With the look
 the probe sizes, those become 60 + 72 = 132 B and 60 + 96 = 156 B — a
 label row 8 B lighter, a button row unchanged. Printed by

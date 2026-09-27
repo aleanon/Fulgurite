@@ -168,8 +168,9 @@ impl Surface {
         // winit 0.30 does not say which kind of `RedrawRequested` this
         // is, and guessing wrong is invisible in every headless test, so
         // the frame is always presented. What T8b.4 actually saves is the
-        // *raster*, which is the expensive half: render p95 0.089 ms
-        // against present p95 0.044 ms (`docs/results-frame-cost.md`).
+        // *raster*, which is the expensive half: the render and present
+        // p95s are in `docs/results-frame-cost.md`, "Correction, same
+        // day" (this comment restated them, and drifted -- R8-F9).
         //
         // **Every region, not their bounding box** — M18. A box union of
         // two changes in opposite corners is the whole window, which is

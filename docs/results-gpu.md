@@ -644,9 +644,9 @@ it, so the step compares against the real frame instead.
   one, and `ImageSource` already says a missing image draws nothing.
 - **No text-only or shadow-only sweep.** The scene is mixed on purpose;
   attributing the 20× to a stage has not been done.
-- **The crossover is bounded but not located.** §5b shows the GPU losing
-  on every damage-clipped frame and winning on large repaints; the four
-  points do not say where the curves meet (T16.13).
+- **The crossover** is §5b's: 3–5% of the surface. This bullet said it
+  was "bounded but not located" after §5b had located it (R9-F12,
+  corrected by M55/T55.8), so it now points there instead of restating.
 - **Multi-window is software-only.** `Pane` still owns a `Surface` and a
   `Canvas` directly rather than a `Box<dyn Backend>`. Nothing prevents
   it; it was not needed, and a second window is a second GPU context —

@@ -194,8 +194,16 @@ fn main() {
         );
     }
 
-    println!("\n  the bevel: frosted against liquid, same panel");
-    println!("{:>14} {:>12} {:>12} {:>10}", "panel", "frosted ms", "liquid ms", "bevel");
+    // **Frosted against frosted-plus-the-bevel** -- M55/T55.8 (R9-F11).
+    // This row compared `FROSTED` with the whole `LIQUID` material and
+    // was labelled "so only the bevel differs", which stopped being true
+    // when M22 added Fresnel, the inner shadow, saturation, dispersion
+    // and the adaptive tint to `LIQUID`: the column was "the rest of
+    // liquid", and did not reproduce `docs/results-glass.md` §5b. Now
+    // the second arm is the first with M21's four bevel fields and
+    // nothing else, so the label is true by construction.
+    println!("\n  the bevel: frosted against frosted + M21's bevel (rim, refraction, specular, light), same panel");
+    println!("{:>14} {:>12} {:>12} {:>10}", "panel", "frosted ms", "+bevel ms", "bevel");
     for (pw, ph) in [(400.0f32, 200.0f32), (800.0, 300.0)] {
         let area = [0.0, 0.0, w as f32, h as f32];
         let mut timed = |m: Material| {
@@ -218,9 +226,18 @@ fn main() {
             });
             with - without
         };
-        // Frosted at the liquid blur, so only the bevel differs.
-        let flat = timed(Material { blur: Material::LIQUID.blur, ..Material::FROSTED });
-        let bevel = timed(Material::LIQUID);
+        // Frosted at the liquid blur; then the same with the bevel's
+        // fields from `LIQUID` and no others, so only the bevel differs.
+        let flat_m = Material { blur: Material::LIQUID.blur, ..Material::FROSTED };
+        let bevel_m = Material {
+            rim: Material::LIQUID.rim,
+            refraction: Material::LIQUID.refraction,
+            specular: Material::LIQUID.specular,
+            light: Material::LIQUID.light,
+            ..flat_m
+        };
+        let flat = timed(flat_m);
+        let bevel = timed(bevel_m);
         println!(
             "{:>14} {flat:>12.2} {bevel:>12.2} {:>9.0}%",
             format!("{pw:.0}x{ph:.0}"),

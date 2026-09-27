@@ -763,14 +763,30 @@ bevel of width `rim`, which is what separates
 [`Material::LIQUID`](../crates/lumen-static/src/display.rs) from
 `FROSTED`.
 
-| panel | frosted | liquid | the bevel |
+**Re-measured 2026-09-27 (M55/T55.8, R9-F11)** — frosted at σ = 3 against
+the same material with M21's four bevel fields (`rim`, `refraction`,
+`specular`, `light`) and nothing else. `benches --bin glass-cost`, "the
+bevel" row, eight runs, median (min–max). **LOADED** (load 6.5 → 9.7 on
+32 cores, over the bench lock's bound of 8):
+
+| panel | frosted | + the bevel | the bevel |
 |---|---:|---:|---:|
-| 400×200 | 4.56 ms | 5.38 | **+18%** |
-| 800×300 | 13.71 | 14.42 | **+5%** |
+| 400×200 | 4.47 ms | 5.41 ms | **+21%** (17–27%) |
+| 800×300 | 13.73 ms | 15.51 ms | **+12.5%** (10–14%) |
 
 Both at σ = 3, so only the bevel differs. (Both are dearer than §1's
 table because σ = 3 takes `k = 1` and runs the box passes at full
 resolution — the same "a small blur is the expensive one" result.)
+
+**Why it was re-measured.** The 2026-09-11 table (+18% and +5%) compared
+`FROSTED` with `LIQUID`, which *was* the bevel then. M22 then added
+Fresnel, the inner shadow, saturation, dispersion and the adaptive tint
+to `LIQUID`, and the bench kept comparing against it under the comment
+"so only the bevel differs" — so the column became the rest of the
+liquid material and stopped reproducing. The same eight runs measured
+that old comparison at **+43%** (36–52%) and **+34%** (30–61%). The
+bench now builds the bevel-only arm itself. §0b owns what the whole
+material costs; this section owns the bevel.
 
 ### Why a *third* normal component is the whole trick
 
