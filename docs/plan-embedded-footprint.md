@@ -680,6 +680,18 @@ written; where it was wrong, the note says so and says what was done.
   `Wrote::Marked`; deleting the focus line fails the gate, so the
   keystroke figure cannot be the price of an ignored event.
 
+- **Rebase onto M48 and M51 (2026-09-27, before T52.4).** The three
+  new firmwares each grew ~3.7 KB: `TextInput`'s word movement and the
+  Unicode tables it reads, reached through the vtable in the bind-only
+  and cascade-only builds. `docs/results-embedded.md` records it; it made
+  T52.4's and T52.5's deltas larger, not different in kind.
+- **T52.4 — the `alloc`-tier record needed a global allocator.** A
+  `no_std` + `alloc` binary does not link without one, so the fixture
+  gained an `alloc-tier` feature with a refusing allocator; thumb record
+  builds only, in their own target directory.
+- **T52.4 — the gate forbids `Node>::hit` as well as `on_event`** in the
+  cascade-only binary, since the plan's gate text names both.
+
 ## Appendix: finding → task
 
 | ID | sev now | status | task |

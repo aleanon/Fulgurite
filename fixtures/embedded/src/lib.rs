@@ -23,6 +23,29 @@
 
 pub mod face;
 
+/// The allocator an `alloc`-tier firmware links, and never calls
+/// successfully — M52/T52.4. A `no_std` binary with `alloc` in its graph
+/// must name a global allocator to link at all; this one refuses every
+/// request, because the firmwares measure what the `alloc` tier *links*
+/// and nothing in their frames allocates. Only with `alloc-tier`, which
+/// only thumb record builds turn on.
+#[cfg(feature = "alloc-tier")]
+mod refuse {
+    use core::alloc::{GlobalAlloc, Layout};
+
+    struct Refuse;
+
+    unsafe impl GlobalAlloc for Refuse {
+        unsafe fn alloc(&self, _: Layout) -> *mut u8 {
+            core::ptr::null_mut()
+        }
+        unsafe fn dealloc(&self, _: *mut u8, _: Layout) {}
+    }
+
+    #[global_allocator]
+    static A: Refuse = Refuse;
+}
+
 use lumen_static::display::{Color, Painter, Rect};
 use lumen_static::prelude::*;
 use lumen_static_widgets::prelude::*;

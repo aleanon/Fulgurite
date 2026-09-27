@@ -153,6 +153,30 @@ pattern)` per binary so the exemption is visible. Putting "unknown" back
 at `usize::MAX` fails the `.data` assertion at 4 B on both binaries;
 removing the pattern lists the static by its full name.
 
+### A stylesheet costs the cascade, not a vtable — M52/T52.4
+
+`cascade_deep_with`, `cascade_arenas_deep` and the scoped cascade's
+per-root loop each called `tree.node_mut(i)` for every node and handed the
+`&mut dyn Node` to `cascade_arenas`, whose body was compiled out without
+`alloc` — so the loop did nothing and the coercion linked the whole
+`Node` vtable (R12-F4). The three loops, and `cascade_arenas` itself, are
+gated on `alloc` now. `scripts/check_text.sh` gates the leaf tier and
+records the `alloc` tier:
+
+| cascade-only firmware | `.text` | paint-only | delta (bound 3,072) | `on_event` / `Node>::hit` |
+|---|---:|---:|---:|---:|
+| leaf, before (after the M48/M51 rebase) | 47,618 | 27,968 | 19,650 | 17 / 10 |
+| **leaf, after** | **29,308** | 27,968 | **1,340** | **0 / 0** |
+| `alloc` tier (record, not gated) | 57,378 | 27,964 | 29,414 | 17 / — |
+
+**The `alloc` tier still pays**, as §2.4 of
+`docs/plan-embedded-footprint.md` says it would: there, arenas exist and
+the loop must ask every node whether it owns one, through the vtable,
+until a derive-computed "has arenas" constant lets it skip the types that
+cannot (M26 Phase D finding 9, promoted and not built). Putting the loop
+in `cascade_deep_with` back un-gated returns the leaf build to 47,618 B,
+17 `on_event` and 10 `hit`, and the gate fires on all three.
+
 ### The stack, measured — M52/T52.6
 
 **The stack row reported a model as a measurement** (R11-F3): it was

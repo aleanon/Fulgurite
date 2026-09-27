@@ -67,12 +67,15 @@ PRE_firmware_cascade='cascade_range'
 # so the marker cannot outlive the fix.
 #   bind-only hit-tests nothing, so a `Node>::hit` is the vtable
 #   `bind::node_of`'s `&dyn Node` reaches (F-NEW-2);
-#   cascade-only dispatches nothing, so an `on_event` is the vtable the
-#   arena loop's `node_mut` reaches (R12-F4).
+#   cascade-only dispatches nothing, so an `on_event` or a `hit` is the
+#   vtable the arena loop's `node_mut` reaches (R12-F4; green since T52.4,
+#   which gates that loop on `alloc`).
+# And the cascade-only binary's `.text` must sit within CASCADE_DELTA of
+# the paint-only one: a three-rule sheet costs the cascade, not a vtable.
+CASCADE_DELTA=3072
 FORBID_firmware_bind='Node>::hit'
-FORBID_firmware_cascade='on_event'
+FORBID_firmware_cascade='on_event Node>::hit'
 XFAIL_firmware_bind='F-NEW-2: bind::node_of walks through &dyn Node (until T52.5)'
-XFAIL_firmware_cascade='R12-F4: the arena loop runs without alloc (until T52.4)'
 
 for name in $FIRMWARE_BINS; do
 BIN=$(firmware_path "$name")
@@ -186,6 +189,12 @@ if [ "$text" -gt "$CEILING" ]; then
   continue
 fi
 
+[ "$name" = firmware ] && paint_text=$text
+if [ "$name" = firmware_cascade ]; then
+    d=$((text - ${paint_text:-0}))
+    echo "text: cascade firmware: .text $text (paint-only ${paint_text:-?}, delta $d; bound $CASCADE_DELTA), on_event symbols $(count on_event) (bound 0)"
+    [ -n "${paint_text:-}" ] && [ "$d" -le "$CASCADE_DELTA" ] || fail "cascade firmware: .text $text is $d B over the paint-only ${paint_text:-?}, bound $CASCADE_DELTA -- a stylesheet costs more than the cascade (R12-F4)"
+fi
 echo "text: $name: .text $text B of $CEILING ($pct% of budget), $toggles Toggle symbols linked, $tasks task symbols (bound 0), float-fmt symbols $float_fmt (bound 0), soft-f64 symbols $soft_f64 (bound 0)$pre_line$forbid_line"
 
 # The headline: the first `| `.text` | ... | **N B** |` row of the doc,
@@ -209,4 +218,32 @@ if [ "$over" -eq 1 ]; then
   echo "and rewrite the headline (keeping the history below it, dated)." >&2
 fi
 done
+
+# **A record, not a gate** (M52/T52.4, docs/plan-embedded-footprint.md §2.4):
+# the cascade-only firmware at the M13 device's `alloc` tier, where arenas
+# exist and the arena loop still asks every node through the vtable. Its
+# own target directory, so the leaf builds above are not relinked.
+if json=$(CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-target}/firmware-alloc" cargo build --release -q -p embedded \
+        --bin firmware --bin firmware_cascade --features firmware,alloc-tier \
+        --target "$FIRMWARE_TARGET" --message-format=json); then
+    at=$(printf '%s\n' "$json" | python3 -c '
+import json, sys
+exe = {}
+for line in sys.stdin:
+    try:
+        m = json.loads(line)
+    except ValueError:
+        continue
+    if m.get("reason") == "compiler-artifact" and m.get("executable"):
+        exe[m["target"]["name"]] = m["executable"]
+print(exe.get("firmware", ""), exe.get("firmware_cascade", ""))
+')
+    read -r ap ac <<<"$at"
+    tp=$(size -A "$ap" | awk '$1 == ".text" {print $2}')
+    tc=$(size -A "$ac" | awk '$1 == ".text" {print $2}')
+    ev=$(nm -C "$ac" | grep -cF on_event || true)
+    echo "text: record (alloc tier, not gated): cascade firmware .text $tc (paint-only $tp, delta $((tc - tp))), on_event symbols $ev -- the arena loop's vtable, until a has-arenas constant (M26 finding 9)"
+else
+    fail "the alloc-tier record build failed"
+fi
 exit "$rc"

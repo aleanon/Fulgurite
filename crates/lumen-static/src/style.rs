@@ -1408,6 +1408,7 @@ impl Iterator for WidMatches<'_> {
 
 /// The scoped cascade over one or more roots, then the debug witness
 /// over the union of their ranges.
+#[cfg_attr(not(feature = "alloc"), allow(unused_variables))]
 fn cascade_roots<W: crate::widget::Widget + ?Sized>(
     tree: &mut W,
     sheet: Stylesheet,
@@ -1434,6 +1435,8 @@ fn cascade_roots<W: crate::widget::Widget + ?Sized>(
     for root in roots.clone() {
         let range = subtree_range(table, root);
         cascade_range(table, W::SEEDS, sheet, palette, out, range.clone());
+        // Only where arenas exist (M52/T52.4): see `cascade_deep_with`.
+        #[cfg(feature = "alloc")]
         for i in range {
             cascade_arenas(tree.node_mut(i), sheet, palette);
         }
@@ -1500,6 +1503,17 @@ pub fn cascade_deep<W: crate::widget::Widget + ?Sized>(
 /// [`cascade_deep`], resolving the sheet's palette roles against
 /// `palette` — what `Host::set_stylesheet` and `Host::set_palette` run
 /// (M25/T25.11).
+///
+/// **Without `alloc` this is `cascade_with` and nothing else** (M52/T52.4):
+/// there are no arenas, so the arena loop is compiled out with them. It
+/// used to stay in with an empty body, and its `&mut dyn Node` coercion
+/// linked every widget's `on_event` and `hit` into a leaf firmware that
+/// takes no input. **An `alloc` build still pays that** — the loop asks
+/// every node, through the vtable, whether it owns an arena — until a
+/// derive-computed "has arenas" constant lets it skip the types that
+/// cannot (M26 Phase D finding 9, promoted and not built);
+/// `docs/results-embedded.md` records what it costs.
+#[cfg_attr(not(feature = "alloc"), allow(unused_variables))]
 pub fn cascade_deep_with<W: crate::widget::Widget + ?Sized>(
     tree: &mut W,
     sheet: Stylesheet,
@@ -1507,6 +1521,7 @@ pub fn cascade_deep_with<W: crate::widget::Widget + ?Sized>(
     out: &mut [Style],
 ) {
     cascade_with(W::SUB_TABLE, W::SEEDS, sheet, palette, out);
+    #[cfg(feature = "alloc")]
     for i in 0..W::SUB_TABLE.len() {
         cascade_arenas(tree.node_mut(i), sheet, palette);
     }
@@ -1527,22 +1542,33 @@ pub fn cascade_deep_with<W: crate::widget::Widget + ?Sized>(
 /// The main table is not touched: it was cascaded when the sheet was
 /// set, and re-running it every time the application changed would be
 /// the per-frame cascade M16 removed.
+///
+/// A no-op without `alloc`, where no arena exists, and compiled to one:
+/// the walk is gated with them (M52/T52.4), so it links no vtable.
+#[cfg_attr(not(feature = "alloc"), allow(unused_variables))]
 pub fn cascade_arenas_deep<W: crate::widget::Widget + ?Sized>(
     tree: &mut W,
     sheet: Stylesheet,
     palette: &Palette,
 ) {
+    #[cfg(feature = "alloc")]
     for i in 0..W::SUB_TABLE.len() {
         cascade_arenas(tree.node_mut(i), sheet, palette);
     }
 }
 
 /// Cascade every arena `node` owns, and every arena under those.
-// The parameters are unused without `alloc`: nothing implements the
-// arena hooks then, because Repeat, List and Dyn are all gated.
-#[cfg_attr(not(feature = "alloc"), allow(unused_variables))]
+///
+/// **Compiled only with `alloc`** (M52/T52.4), because Repeat, List and
+/// Dyn — every arena — are. Its callers' loops are gated the same way,
+/// and that is the part that matters: the loop hands `tree.node_mut(i)`,
+/// a `&mut dyn Node`, to this function, and the coercion instantiates
+/// every method of every node type in the tree. With the body compiled
+/// out and the loop left in, a style-only leaf firmware linked every
+/// widget's `on_event` and `hit` for nothing (R12-F4,
+/// `docs/results-embedded.md`).
+#[cfg(feature = "alloc")]
 fn cascade_arenas(node: &mut dyn crate::widget::Node, sheet: Stylesheet, palette: &Palette) {
-    #[cfg(feature = "alloc")]
     for a in 0..node.arena_count() {
         let Some(arena) = node.arena_mut(a) else { continue };
         // Every arena carries its seeds (M26/T26.10); the

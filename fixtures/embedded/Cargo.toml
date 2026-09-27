@@ -79,3 +79,9 @@ required-features = ["firmware"]
 
 [features]
 firmware = []
+# M52/T52.4: the firmwares at the M13 device's `alloc` tier, for a RECORD
+# (`scripts/check_text.sh` prints the cascade-only delta; it gates the
+# leaf tier). Pairs with a refusing global allocator in src/lib.rs, which
+# a `no_std` + `alloc` link requires. Thumb builds only: the host bin has
+# its own allocator.
+alloc-tier = ["lumen-static/alloc", "lumen-static-widgets/alloc"]

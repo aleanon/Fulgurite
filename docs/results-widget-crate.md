@@ -44,6 +44,14 @@ name whichever crate it lives in. The optional tier still pays for
 itself the same way — `alloc`-needing widgets stay behind `alloc`, and a
 leaf profile takes neither.
 
+**Qualified by M52/T52.4: not what a vtable reaches.** The linker drops
+what a tree does not *name*, but a `&mut dyn Node` coercion names every
+method of every node type in the tree — including the ones the program
+never calls. The cascade's arena loop made that coercion without `alloc`,
+where its body was compiled out, so a style-only leaf firmware linked
+every widget's `on_event` and `hit` (R12-F4). The loop is gated on
+`alloc` now; `docs/results-embedded.md` has the before and after.
+
 ## The precondition: the crate could not build `no_std` at all
 
 Found while sizing the move, and fixed before it
