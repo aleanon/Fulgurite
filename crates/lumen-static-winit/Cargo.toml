@@ -32,6 +32,17 @@ reload = ["lumen-static-shell/reload"]
 # `reload`, so a panic in the new code shows M36's screen, and requires
 # the program's application to be `Reloadable`.
 hot = ["reload", "dep:lumen-static-reload", "dep:notify"]
+# The software rasteriser's two fast paths, forwarded so an application
+# that depends only on this crate can reach them (M50/T50.5, R6-F5):
+# `simd` vectorises the shadow and the blits (`docs/results-simd.md`),
+# `threads` bands a large repaint across cores (`docs/results-threading.md`).
+# **Both default-OFF, by decision** (`docs/plan-raster-allocation.md`
+# §2.3): the recorded answer for full redraws on desktop is the GPU
+# (`docs/results-gpu.md`), and `threads` spends a stated allocation budget
+# per banded frame (`docs/results-allocation.md`, "The threaded
+# rasteriser's budget"). `tests/raster_features.rs` checks both arms.
+simd = ["lumen-static-shell/simd"]
+threads = ["lumen-static-shell/threads"]
 # M34/T34.1: the shadow oracle, reported by the agent's `app.shadow`.
 shadow-oracle = ["lumen-static-shell/shadow-oracle"]
 # Clipboard is default-ON, unlike the a11y feature, and the difference

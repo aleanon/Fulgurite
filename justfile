@@ -284,12 +284,15 @@ release-window-shape:
 
 # The rasteriser's SIMD path (M17/T17.1). Default-OFF, so `just test`
 # builds the scalar one; this proves the vector one is byte-identical
-# rather than merely close, which is the whole basis for offering it.
+# rather than merely close, which is the whole basis for offering it --
+# and, with the test-only `raster-counters` feature, that each of the three
+# vector branches actually ran (M50/T50.5: compiling one out left the
+# byte-identity tests green, because the scalar path draws the same bytes).
 
 # The SIMD rasteriser: byte-identity against the scalar path, and lint.
 simd:
-    cargo test -p lumen-static-shell --features simd --test simd_shadow
-    cargo test -p lumen-static-shell --features simd --test wide_stores
+    cargo test -p lumen-static-shell --features simd,raster-counters --test simd_shadow -- --nocapture
+    cargo test -p lumen-static-shell --features simd,raster-counters --test wide_stores -- --nocapture
     cargo test -p lumen-static-shell --features simd --test damage_oracle
     cargo clippy -p lumen-static-shell --features simd --all-targets -- -D warnings
 
@@ -307,6 +310,8 @@ threads:
     # frame's allocations on every thread (R18-F4), in its own binary.
     cargo test -q -p lumen-static-shell --features threads,truetype --test banded
     cargo test -q -p lumen-static-shell --features threads,truetype,raster-counters --test alloc_gate_threads -- --nocapture
+    # M50/T50.5: reachable from the window crate (R6-F5).
+    cargo test -q -p lumen-static-winit --features threads --test raster_features -- --nocapture
 
 # The GPU backend: build, lint, and compare its pixels with the software canvas.
 gpu:

@@ -383,6 +383,12 @@ narrowed frame (`docs/results-damage-precision.md`, T53.1).
 | frame (independent) | 8.73 | 30.43 | 77.08 | 242.51 |
 | raster (GPU, alternative) | 33.01 | 34.61 | 41.08 | 88.66 |
 
+*Which raster build (M50/T50.5):* `raster (software)` is the stages arm's
+default build — scalar, one thread, no `simd` and no `threads`, which
+are default-off and reached from the window crate as
+`lumen-static-winit/simd` and `/threads`. The fast software row this
+project publishes is `docs/results-vello.md`'s, built with both.
+
 **Paint is the largest stage of a small-update frame** and the damaged
 region is 2 002 px in every cell — identical rasteriser work — so the
 growth is the walk, not the pixels. That is what culling addresses and

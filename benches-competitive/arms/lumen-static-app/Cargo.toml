@@ -6,7 +6,11 @@ publish = false
 
 # The default shape: what `lumen-static-winit` gives you out of the box,
 # clipboard included. This is the row a reader should compare against Qt and
-# GTK, because it is what an application actually ships.
+# GTK for size and for what an application ships -- **not** for a full 4K
+# CPU redraw: the fast software raster needs `lumen-static-winit/simd` and
+# `lumen-static-winit/threads`, both default-off by decision (M50/T50.5,
+# docs/00-handoff-static-tree.md, "How to turn it on"), and the recorded
+# answer for a full redraw is the `gpu` feature.
 [dependencies]
 lumen-static-widgets = { path = "../../../crates/lumen-static-widgets" }
 lumen-static = { path = "../../../crates/lumen-static" }

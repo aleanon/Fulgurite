@@ -158,6 +158,17 @@ and not. It adds no latency, needs no `unsafe`, and is still not urgent,
 because the frames it helps are the ones the GPU backend already wins
 and the frames it cannot help are already 18 µs.
 
+**How to turn it on, and why it is off — DECIDED 2026-09-27 (M50/T50.5).**
+It shipped as the shell's `threads` feature (T17.4), with `simd` beside
+it (T17.1), and until M50 neither was reachable from `lumen-static-winit`
+(R6-F5). An application enables `lumen-static-winit/threads` and
+`lumen-static-winit/simd` now. **Both stay default-off by decision**
+(`docs/plan-raster-allocation.md` §2.3): full redraws on desktop are the
+GPU's (`docs/results-gpu.md`), and a banded frame spends a stated budget
+of `std`'s spawns, 3 per worker + 1 (`docs/results-allocation.md`, "The
+threaded rasteriser's budget"). Reopening the default wants a
+measurement, not this paragraph.
+
 **AMENDED 2026-09-01:** flat contiguous *state* storage (`[NodeState; N]`)
 stands; flat *traversal* does not — see §5's supersession note. Recursive
 descent over the static struct, writing into the flat state array, measured

@@ -1431,6 +1431,8 @@ impl Canvas {
         // pays here, not the spelling.
         #[cfg(feature = "simd")]
         {
+            #[cfg(feature = "raster-counters")]
+            VECTOR[0].fetch_add(1, core::sync::atomic::Ordering::Relaxed);
             use wide::u32x8;
             let (m_r, m_g, m_b) = (
                 u32x8::splat(0x0000_00FF),
@@ -1827,6 +1829,35 @@ pub fn in_band_worker() -> bool {
     IN_WORKER.try_with(|w| w.get()).unwrap_or(false)
 }
 
+/// Times each `simd` vector branch ran: `blit_0rgb`, `blit_run`,
+/// `shadow_run` — M50/T50.5, R18-F10.
+#[cfg(all(feature = "simd", feature = "raster-counters"))]
+static VECTOR: [core::sync::atomic::AtomicU64; 3] = [const { core::sync::atomic::AtomicU64::new(0) }; 3];
+
+/// How many times each `simd` vector branch has run in this process:
+/// `[blit_0rgb, blit_run, shadow_run]` — M50/T50.5, R18-F10.
+///
+/// **A counter, not a constant**, because the vector code is chosen only
+/// by `#[cfg]` and the scalar path produces the same pixels: compiling a
+/// branch out (the review's I8, gating it on a target feature the default
+/// target lacks) left every byte-identity test green. A `const` beside the
+/// branch would have its own `cfg` and stay true; this increments inside
+/// the branch, so a branch that is not compiled reads 0. Zeros without
+/// `simd`. Test-only (`raster-counters`): the shipped `simd` build has no
+/// counter in its hot loop.
+#[cfg(feature = "raster-counters")]
+pub fn vector_path_counts() -> [u64; 3] {
+    #[cfg(feature = "simd")]
+    {
+        let r = core::sync::atomic::Ordering::Relaxed;
+        [VECTOR[0].load(r), VECTOR[1].load(r), VECTOR[2].load(r)]
+    }
+    #[cfg(not(feature = "simd"))]
+    {
+        [0; 3]
+    }
+}
+
 /// How many worker threads to run for `px` damaged pixels — T17.4.
 ///
 /// **The threshold is the point, not the arithmetic.** A thread costs
@@ -2098,6 +2129,8 @@ fn box_cols(src: &[u16], dst: &mut [u16], w: usize, h: usize, left: usize, right
 fn blit_run(pixels: &[u8], dst: &mut [u32], base: usize, x0: usize, x1: usize) {
     #[cfg(feature = "simd")]
     {
+        #[cfg(feature = "raster-counters")]
+        VECTOR[1].fetch_add(1, core::sync::atomic::Ordering::Relaxed);
         use wide::u32x8;
         let (m_r, m_g, m_b) = (
             u32x8::splat(0x0000_00FF),
@@ -2172,6 +2205,8 @@ fn shadow_run(
 
     #[cfg(feature = "simd")]
     {
+        #[cfg(feature = "raster-counters")]
+        VECTOR[2].fetch_add(1, core::sync::atomic::Ordering::Relaxed);
         use wide::{f32x8, CmpGe};
         let base = c.3 as f32;
         let (vhx, vrad, vsp) = (f32x8::splat(hx), f32x8::splat(rad), f32x8::splat(spread));

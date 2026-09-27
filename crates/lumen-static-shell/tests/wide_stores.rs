@@ -190,3 +190,27 @@ fn the_damaged_blit_is_byte_identical_at_every_run_length() {
         }
     }
 }
+
+/// Both vector blit branches are compiled in and were invoked —
+/// M50/T50.5, R18-F10. The pixels above are identical either way, so
+/// only a count can say which path ran (`software::vector_path_counts`).
+#[cfg(feature = "raster-counters")]
+#[test]
+fn the_vector_blit_paths_ran() {
+    use lumen_static_shell::software::vector_path_counts;
+    let before = vector_path_counts();
+    let c = Canvas::new(33, 5);
+    let mut dst = vec![0u32; 33 * 5];
+    c.blit_0rgb(&mut dst);
+    c.blit_0rgb_within(&mut dst, [3.0, 0.0, 30.0, 5.0]);
+    let after = vector_path_counts();
+    let (whole, run) = (after[0] - before[0], after[1] - before[1]);
+    let compiled = cfg!(feature = "simd");
+    println!("blit_0rgb: vector path compiled: {compiled}, invoked {whole} times; blit_run: invoked {run} times");
+    if compiled {
+        assert!(whole > 0, "vector path not compiled: blit_0rgb's simd branch was invoked 0 times");
+        assert!(run > 0, "vector path not compiled: blit_run's simd branch was invoked 0 times");
+    } else {
+        assert_eq!((whole, run), (0, 0), "no simd feature, yet a vector branch counted");
+    }
+}

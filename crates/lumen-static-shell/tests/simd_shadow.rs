@@ -16,6 +16,13 @@
 //!   cargo test -p lumen-static-shell --test simd_shadow --features simd
 //!
 //! `just check` runs both.
+//!
+//! **And that the vector path ran** (M50/T50.5, R18-F10). The scalar path
+//! produces exactly these pixels, so compiling the vector branch out could
+//! not turn anything above red: the review gated it on AVX-512, which
+//! the default x86-64 target lacks, and `just simd` stayed green. With
+//! the test-only `raster-counters` feature, which `just simd` turns on,
+//! `the_vector_shadow_path_ran` reads how many times the branch ran.
 
 use lumen_static::display::{Color, DisplayList};
 use lumen_static_shell::software::Canvas;
@@ -156,4 +163,24 @@ fn the_shadow_actually_draws_something() {
         .count();
     let frac = inked as f32 / (w * h) as f32;
     assert!(frac > 0.15, "the shadow inked {frac:.3} of the canvas — nothing to compare");
+}
+
+/// The vector branch is compiled in and was invoked — M50/T50.5.
+#[cfg(feature = "raster-counters")]
+#[test]
+fn the_vector_shadow_path_ran() {
+    let before = lumen_static_shell::software::vector_path_counts()[2];
+    let mut list = DisplayList::new();
+    list.shadow([30.0, 24.0, 50.0, 36.0], 5.0, 24.0);
+    let mut c = Canvas::new(80, 60);
+    c.clear(GROUND);
+    lumen_static::Renderer::render(&mut c, &list, 80, 60);
+    let n = lumen_static_shell::software::vector_path_counts()[2] - before;
+    let compiled = cfg!(feature = "simd");
+    println!("shadow_run: vector path compiled: {compiled}, invoked {n} times");
+    if compiled {
+        assert!(n > 0, "vector path not compiled: shadow_run's simd branch was invoked 0 times");
+    } else {
+        assert_eq!(n, 0, "no simd feature, yet a vector branch counted {n}");
+    }
 }

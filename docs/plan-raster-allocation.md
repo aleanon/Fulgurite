@@ -627,6 +627,13 @@ that it is default-off by decision); the `lumen-static-app` manifest's
 "default shape" note; `docs/results-competitive.md`'s raster rows (say
 which features the fast row used).
 
+*What building found (2026-09-27).* T50.4 added `raster-counters`
+first, for the worker marker, so this task only adds the vector counters
+to it (`software::vector_path_counts`). A counter increments at the top
+of each vector branch, per call rather than per lane chunk, which is
+enough to say "compiled and invoked". I8 on each of the three branches
+reads `invoked 0 times` and fails its own test by name.
+
 **Effort:** S. **Depends on:** T50.4 for the handoff sentence about
 the default. The rest is independent.
 
