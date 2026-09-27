@@ -775,6 +775,22 @@ arm repaints less than the source.
 damage-bounded variant, and why `adapt` forbids it); `dilate`'s and
 `glass_within`'s rustdoc.
 
+*What building found (2026-09-27): closed as measured, not built —
+the rule is unsound.* The kill rule allowed it (T50.0: a frosted sheet,
+21.63 ms). But a partial redraw clears its region and redraws every
+command inside it, so a repainted panel pixel near the region's edge
+reads — outside the region — last frame's finished pixels, which inside
+the panel are the panel's own previous output. Damage ∪ (damage ⊕
+reach) ∩ source leaves 8,530 px wrong on a 600×200 frosted panel, and ⊕
+twice the reach 12,546; the whole source 0 (`tests/glass_damage_bound.rs`,
+`docs/results-glass.md` §5a). Every sound region contains the whole
+panel, whatever `adapt` is: §1.5's "only correct for a material whose
+`adapt` is zero" was wrong too. Injections (2) and (3) above therefore
+test a rule nobody should ship. What the test pins instead, both ways: a
+region that stops 20 px inside the panel reads 4,799 px wrong (red), and
+a "bounded" region replaced by the panel alone reads 0 (the second
+assertion fires, saying the bound has become possible).
+
 **Effort:** M. **Depends on:** T50.0's measurement and §5's kill rule;
 **M51/T51.3**, which gates `dilate`'s `MAX_DEPS` fallback and rewrites
 its rustdoc. This task edits the same function and must land after it,

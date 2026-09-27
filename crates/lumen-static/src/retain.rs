@@ -572,6 +572,12 @@ impl Diffing {
     /// smears a little more every frame. Damaging only where it draws
     /// fixes neither.
     ///
+    /// **Nor can it be bounded by the change's reach** (M50/T50.9): a
+    /// region that stops inside the panel redraws its edge from the
+    /// panel's previous output, for any material, so every sound region
+    /// holds the whole panel (`docs/results-glass.md` §5a;
+    /// `crates/lumen-static-shell/tests/glass_damage_bound.rs`).
+    ///
     /// Two bounds, and only one of them is a fallback (corrected in
     /// M51/T51.3 — this comment said "there is no cap and no fallback"
     /// directly above the fallback):

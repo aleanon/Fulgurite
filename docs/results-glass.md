@@ -736,6 +736,26 @@ names no panel size, and a sheet is an ordinary panel, so it fires.
 `LIQUID` cannot take the bounded rule at all (§0e: its tint is a mean
 over the panel).
 
+**And then building found the bounded rule unsound for every material**
+(M50/T50.9, closed as measured; `tests/glass_damage_bound.rs`). A
+partial redraw clears its region and redraws every command clipped to
+it, so a panel pixel near the region's edge reads, outside the region,
+last frame's *finished* pixels — inside the panel that is the panel's own
+previous output, not the backdrop. On a 600×200 frosted panel with a
+24×24 change (reach 40 px), a partial redraw over the change plus the
+reach leaves **8,530 px** wrong and over the change plus twice the reach
+**12,546**; the whole source leaves **0**. Growing the region to cover a
+repainted pixel's reads brings more panel pixels in, so **every sound
+region contains the whole panel**, and `adapt` has nothing to do with
+it. The most a sound rule could shed is the reach ring around the panel
+— 37% of the source in that fixture, 38% for the toolbar above, 10% for
+the sheet — and only where nothing drawn after the panel reaches the
+ring; the panel alone redraws to 0 px wrong in that fixture. Anything
+smaller than the panel needs the backdrop kept across frames, which is
+§5's cache. The ring variant is not built: it moves the toolbar under the
+kill rule's line by a cost the table above already puts under it, and
+does nothing for the sheet.
+
 ## 5b. The bevel — what makes it look like glass rather than frost
 
 **Measured 2026-09-11.** M21 added `refraction` and `specular` over a
