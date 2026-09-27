@@ -692,6 +692,25 @@ written; where it was wrong, the note says so and says what was done.
 - **T52.4 — the gate forbids `Node>::hit` as well as `on_event`** in the
   cascade-only binary, since the plan's gate text names both.
 
+- **T52.5 — the kill rule fired, and the attribution says the bound was
+  computed from the wrong quantity.** The bind-only binary is 3,548 B over
+  the paint-only one after the static walk, with 0 `hit` and 0 `on_event`
+  symbols. By symbol diff: ~2.2 KB is that binary's *different tree*
+  (`Device`'s, one more label) and its second frame; 1.66 KB is binding
+  and formatting, of which the binding's own code is 778 B. The bound was
+  not raised: it now bounds the binding's own symbols (1,024), and the
+  whole-binary delta is printed beside it as a record
+  (`docs/results-embedded.md`, "A binding links no vtable").
+- **T52.5 — the walk lives on `Widget`, not `Node`,** because its default
+  needs `SUB_TABLE`, `NODE_COUNT` and `KIND`; a leaf's default answers from
+  its own address and never coerces. The old walk stays as
+  `bind::node_of_by_vtable`, the equivalence test's oracle.
+- **T52.5 — the `BindSite` precondition was fragile**: with the walk
+  routed through the vtable, `BindSite::get` was inlined and the
+  precondition fired instead of the forbidden counts. The bind and
+  interactive preconditions read `update_marked` now, an exported trait
+  method.
+
 ## Appendix: finding → task
 
 | ID | sev now | status | task |

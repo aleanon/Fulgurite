@@ -132,3 +132,60 @@ fn a_bind_site_caches_zero_nowhere_and_a_large_index_once() {
         assert_eq!(calls, 1, "find ran once");
     }
 }
+
+/// A tree with an `Option` — `None` and `Some` — and an enum parked on
+/// its *second* variant, for the equivalence sweep below.
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+struct Wide {
+    ui: Ui,
+    #[widget_id("maybe")]
+    maybe: Option<Solo>,
+    #[widget_id("sure")]
+    sure: Option<Solo>,
+    other: Pane,
+}
+
+/// **The static walk answers exactly what the vtable walk answered** —
+/// M52/T52.5 (`docs/plan-embedded-footprint.md` §2.3, F-NEW-2).
+///
+/// `node_of` now asks each type's `Widget::bind_walk`: derived trees walk
+/// their fields on concrete types, leaves answer from their own address,
+/// and hand-written containers (`Select`'s popup, `Option`) fall back to
+/// the vtable walk over their children. `node_of_by_vtable` is the old
+/// walk, kept as this oracle. Every byte from 16 before the tree to 16
+/// past it is asked of both — so an enum's inactive variant and a `None`,
+/// which resolve to their parent, are covered along with every field —
+/// and the first disagreement is printed with its offset.
+#[test]
+fn the_static_walk_agrees_with_the_vtable_walk_at_every_byte() {
+    use lumen_static::bind::node_of_by_vtable;
+    let w = Wide { sure: Some(Solo::default()), other: Pane::B(PaneB::default()), ..Default::default() };
+    let base = at(&w) as usize;
+    let size = core::mem::size_of::<Wide>();
+    let (mut asked, mut named, mut first) = (0usize, 0usize, None);
+    for off in -16isize..(size as isize + 16) {
+        let p = (base as isize + off) as usize as *const u8;
+        let (got, want) = (node_of(&w, p), node_of_by_vtable(&w, p));
+        asked += 1;
+        named += got.is_some() as usize;
+        if got != want && first.is_none() {
+            first = Some((off, got, want));
+        }
+    }
+    let distinct: std::collections::BTreeSet<_> =
+        (0..size).filter_map(|o| node_of(&w, (base + o) as *const u8)).collect();
+    println!(
+        "asked {asked} addresses over a {size} B tree of {} nodes: {named} named a node, {} distinct nodes; first disagreement {first:?}",
+        <Wide as Widget>::NODE_COUNT,
+        distinct.len()
+    );
+    assert_eq!(first, None, "(offset, static walk, vtable walk): the two walks disagree");
+    // The sweep must reach the fallback and the enum: a node inside the
+    // `Some` and the second variant's label are both named.
+    let Pane::B(pb) = &w.other else { unreachable!() };
+    let sure = w.sure.as_ref().unwrap();
+    assert!(node_of(&w, at(&sure.only)).is_some_and(|i| i > 0), "the Some's label is named");
+    assert!(node_of(&w, at(&pb.b)).is_some(), "the active second variant's label is named");
+    assert!(distinct.len() > 10, "the sweep named only {} distinct nodes", distinct.len());
+}

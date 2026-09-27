@@ -177,6 +177,32 @@ cannot (M26 Phase D finding 9, promoted and not built). Putting the loop
 in `cascade_deep_with` back un-gated returns the leaf build to 47,618 B,
 17 `on_event` and 10 `hit`, and the gate fires on all three.
 
+### A binding links no vtable — M52/T52.5
+
+`bind::node_of` coerced every table node to `&dyn Node` to read its
+address, size and kind (F-NEW-2). It asks `Widget::bind_walk` now, which
+the derive answers on concrete types. The bind-only firmware, before and
+after (leaf tier, after the M48/M51 rebase and T52.4):
+
+| bind-only firmware | `.text` | `Node>::hit` / `on_event` | binding's own symbols (bound 1,024) |
+|---|---:|---:|---:|
+| before | 50,282 | 10 / 17 | — |
+| **after** | **31,512** | **0 / 0** | **778 B** |
+
+**The plan's bound was the wrong quantity.** It asked for the bind-only
+binary within 1,024 B of the paint-only one; it is 3,548 B over, and the
+symbol diff says why: the bind-only binary holds a *different tree* —
+`Device`'s, one more label, whose layout, place and paint are ~2.2 KB
+larger than `Panel`'s — and runs a second frame. What a binding itself
+links (`bind::format_into`, `BindSite::get`, `update_marked`,
+`TextTarget::set_str`) is **778 B**, and that is what `check_text.sh`
+bounds at 1,024, printing the whole-binary delta beside it as a record.
+The `u32` formatting a `"{}"` binding needs (`core::fmt::write` and
+friends, ~0.7 KB) is outside both: it is the format string's price, and
+a device that formats anything pays it. Routing the derived walk back
+through `&dyn Node` puts 13 `hit` and 17 `on_event` symbols back and the
+binary at 50,338 B; the gate fires on all three counts.
+
 ### The stack, measured — M52/T52.6
 
 **The stack row reported a model as a measurement** (R11-F3): it was

@@ -57,25 +57,33 @@ count() { printf '%s\n' "$NM" | grep -cF -- "$1" || true; }
 # because an optimisation that removed the dispatch a binary was built to
 # price would leave a smaller, greener number and nothing else.
 PRE_firmware=''
-PRE_firmware_interactive='pass::dispatch on_event cascade_range BindSite'
-PRE_firmware_bind='BindSite'
+PRE_firmware_interactive='pass::dispatch on_event cascade_range update_marked'
+PRE_firmware_bind='update_marked'
 PRE_firmware_cascade='cascade_range'
 
 # **What a binary must NOT link**, bound 0 (M52/T52.1). Each is a finding
 # of docs/plan-embedded-footprint.md, committed red with an XFAIL naming
 # the task that turns it green; an XFAIL whose count is already 0 fails,
 # so the marker cannot outlive the fix.
-#   bind-only hit-tests nothing, so a `Node>::hit` is the vtable
-#   `bind::node_of`'s `&dyn Node` reaches (F-NEW-2);
+#   bind-only hit-tests and dispatches nothing, so a `Node>::hit` or an
+#   `on_event` is the vtable `bind::node_of`'s `&dyn Node` reached
+#   (F-NEW-2; green since T52.5, which made the walk static);
 #   cascade-only dispatches nothing, so an `on_event` or a `hit` is the
 #   vtable the arena loop's `node_mut` reaches (R12-F4; green since T52.4,
 #   which gates that loop on `alloc`).
 # And the cascade-only binary's `.text` must sit within CASCADE_DELTA of
 # the paint-only one: a three-rule sheet costs the cascade, not a vtable.
 CASCADE_DELTA=3072
-FORBID_firmware_bind='Node>::hit'
+# The binding's own code in the bind-only binary -- `lumen_static::bind::`,
+# `update_marked` and `TextTarget` symbols, summed -- must stay within
+# BIND_OWN. NOT the whole-binary delta against the paint-only firmware,
+# which the plan first named: that binary holds a different tree (one
+# more label) and runs a second frame, and 2.2 KB of its 3.5 KB delta is
+# that (docs/plan-embedded-footprint.md §6, T52.5). The delta is printed
+# beside it as a record.
+BIND_OWN=1024
+FORBID_firmware_bind='Node>::hit on_event'
 FORBID_firmware_cascade='on_event Node>::hit'
-XFAIL_firmware_bind='F-NEW-2: bind::node_of walks through &dyn Node (until T52.5)'
 
 for name in $FIRMWARE_BINS; do
 BIN=$(firmware_path "$name")
@@ -190,6 +198,12 @@ if [ "$text" -gt "$CEILING" ]; then
 fi
 
 [ "$name" = firmware ] && paint_text=$text
+if [ "$name" = firmware_bind ]; then
+    own=$(nm -C -S --radix=d "$BIN" | awk '$3 ~ /^[TtWw]$/ && /lumen_static::bind::|update_marked|TextTarget/ {s += $2} END {print s + 0}')
+    echo "text: bind firmware: binding's own symbols $own B (bound $BIND_OWN); .text $text (paint-only ${paint_text:-?}, delta $((text - ${paint_text:-0})), a different tree and two frames -- record), Node>::hit symbols $(count 'Node>::hit') (bound 0)"
+    [ "$own" -gt 0 ] || fail "bind firmware: no binding symbol found -- the pattern or the binary is wrong, so the bound proves nothing"
+    [ "$own" -le "$BIND_OWN" ] || fail "bind firmware: the binding's own symbols are $own B, over $BIND_OWN"
+fi
 if [ "$name" = firmware_cascade ]; then
     d=$((text - ${paint_text:-0}))
     echo "text: cascade firmware: .text $text (paint-only ${paint_text:-?}, delta $d; bound $CASCADE_DELTA), on_event symbols $(count on_event) (bound 0)"

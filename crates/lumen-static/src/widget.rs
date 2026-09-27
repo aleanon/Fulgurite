@@ -503,6 +503,40 @@ pub trait Widget: Node {
     /// `"widget"` with `Style::default()` is precisely the failure this
     /// exists to end. Requiring it makes the compiler name every site.
     const SEEDS: &'static [Seed];
+
+    /// **Which node of this subtree holds address `target`** — the
+    /// static half of [`crate::bind::node_of`], M52/T52.5
+    /// (`docs/plan-embedded-footprint.md` §2.3, F-NEW-2). A local index,
+    /// or `None` when `target` is outside `self`.
+    ///
+    /// The `StaticTree` derive overrides it with a walk over its fields'
+    /// own `bind_walk`s, called on their concrete types — no `&dyn Node`
+    /// anywhere, which is the point: the old walk coerced every table
+    /// node to `&dyn Node`, and that instantiated every method of every
+    /// node type in a bound tree, `hit` and `place` included, in a
+    /// firmware that calls neither (+3.5 KB on the re-triage's probe).
+    ///
+    /// **Provided, not required**, as M35's `observe_walk` is. A leaf
+    /// (one node) answers from its own address and size, and links
+    /// nothing. A hand-written container with children falls back to the
+    /// address walk through [`Node::node`] — which is correct for any
+    /// container and **costs its children's vtables**; the default drops
+    /// nothing. Answers are identical either way; `tests/bind_index.rs`
+    /// holds the derived walk to the vtable one.
+    #[doc(hidden)]
+    fn bind_walk(&self, target: usize) -> Option<usize>
+    where
+        Self: Sized,
+    {
+        let lo = self as *const Self as usize;
+        if target < lo || target >= lo + core::mem::size_of::<Self>() {
+            return None;
+        }
+        if Self::NODE_COUNT == 1 {
+            return Some(0);
+        }
+        Some(crate::bind::deepest_child(self, Self::SUB_TABLE, target, Self::KIND).unwrap_or(0))
+    }
 }
 
 /// Copy a child's `SEEDS` into a parent's array being built. The seed

@@ -304,6 +304,19 @@ had no `#[bind]`. It is all-zero now (`.bss`, no flash), and
 bytes; the figures are in `docs/results-embedded.md` (M52). What the
 walk links — the whole `Node` vtable, through `&dyn Node` — is M52/T52.5.
 
+**And what the walk cost in flash, measured then removed** (M52/T52.5,
+F-NEW-2). `node_of` coerced every table node to `&dyn Node`, which
+instantiated every method of every type in a bound tree. On the
+bind-only firmware (`docs/results-embedded.md`) that was 10 `Node>::hit`
+and 17 `on_event` symbols in a binary that hit-tests and dispatches
+nothing. The walk is `Widget::bind_walk` now — the derive's field-by-field
+walk on concrete types, a leaf's own address, and the vtable walk only
+for a hand-written container's children — and the same binary links
+none of them. Routing the derived walk back through `&dyn Node` costs
+**18,826 B** of `.text` there today. The answers are unchanged:
+`tests/bind_index.rs` asks both walks every byte of a tree with an enum
+on its second variant, a `None`, a `Some` and a `Select`.
+
 ## T29.6 — a click on a split application, 2026-09-24
 
 The same probe, with a fifth arm: the click on `#bump`, on the grid's

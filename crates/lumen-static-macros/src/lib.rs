@@ -814,6 +814,27 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
 
                 const KIND: &'static str = #name_str;
 
+                // **The static bind walk** — M52/T52.5. Each field's own
+                // walk, on its concrete type: no `&dyn Node`, so a bound
+                // tree links no vtable for `bind::node_of`'s sake.
+                fn bind_walk(&self, target: usize) -> ::core::option::Option<usize> {
+                    let lo = self as *const Self as usize;
+                    if target < lo || target >= lo + ::core::mem::size_of::<Self>() {
+                        return ::core::option::Option::None;
+                    }
+                    let mut at: usize = 1;
+                    #(
+                        if let ::core::option::Option::Some(j) =
+                            <#field_ty as ::lumen_static::widget::Widget>::bind_walk(&self.#field_ident, target)
+                        {
+                            return ::core::option::Option::Some(at + j);
+                        }
+                        at += <#field_ty as ::lumen_static::widget::Widget>::NODE_COUNT;
+                    )*
+                    let _ = at;
+                    ::core::option::Option::Some(0)
+                }
+
                 fn type_defaults() -> ::lumen_static::Style {
                     ::lumen_static::Style {
                         width: #default_w,
@@ -1526,6 +1547,27 @@ fn expand_enum(
                 const SUB_TABLE: &'static [::lumen_static::desc::NodeDesc] = &TABLE;
 
                 const KIND: &'static str = #name_str;
+
+                // **The static bind walk** — M52/T52.5: the active
+                // variant's own walk, offset to where its indices start.
+                // An inactive variant's indices are never answered, which
+                // is what the vtable walk's degenerate-index skip does.
+                fn bind_walk(&self, target: usize) -> ::core::option::Option<usize> {
+                    let lo = self as *const Self as usize;
+                    if target < lo || target >= lo + ::core::mem::size_of::<Self>() {
+                        return ::core::option::Option::None;
+                    }
+                    match self {
+                        #( #name::#var_ident(w) => {
+                            if let ::core::option::Option::Some(j) =
+                                <#var_ty as ::lumen_static::widget::Widget>::bind_walk(w, target)
+                            {
+                                return ::core::option::Option::Some(STARTS[#var_no] + j);
+                            }
+                        } ),*
+                    }
+                    ::core::option::Option::Some(0)
+                }
 
                 /// **A container's defaults, like every other
                 /// container's.** The enum switch emitted no `defaults`

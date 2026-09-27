@@ -208,7 +208,26 @@ pub fn set_if_changed<D: TextTarget + ?Sized>(dst: &mut D, text: &str) -> bool {
 /// by resolving to the same address, size and kind as their parent.
 /// `None` when no table node contains `target` — an address in an arena
 /// row, which the caller answers conservatively.
+///
+/// **Static where derived** (M52/T52.5, F-NEW-2): this asks
+/// [`crate::widget::Widget::bind_walk`], which a derived tree answers
+/// field by field on concrete types, and a leaf from its own address. A
+/// hand-written container falls back to the vtable walk over its
+/// children, and costs their vtables; nothing else does.
 pub fn node_of<T: crate::widget::Widget>(tree: &T, target: *const u8) -> Option<usize> {
+    // **Static where the tree is derived** — M52/T52.5. The walk used to
+    // be the vtable one below for every tree, and coercing each node to
+    // `&dyn Node` linked the whole vtable of every type in it.
+    tree.bind_walk(target as usize)
+}
+
+/// [`node_of`] by the **vtable walk**: every table index through
+/// [`crate::widget::Node::node`]. What `node_of` was until M52/T52.5,
+/// kept as the oracle `tests/bind_index.rs` holds the static walk to. It
+/// links the `Node` vtable of every type in `tree`; nothing on a frame
+/// path calls it.
+#[doc(hidden)]
+pub fn node_of_by_vtable<T: crate::widget::Widget>(tree: &T, target: *const u8) -> Option<usize> {
     let table = T::SUB_TABLE;
     let span = |i: usize| {
         let n = crate::widget::Node::node(tree, i);
@@ -227,6 +246,44 @@ pub fn node_of<T: crate::widget::Widget>(tree: &T, target: *const u8) -> Option<
         }
         let lo = p as usize;
         if t >= lo && t < lo + size {
+            best = Some(i);
+        }
+    }
+    best
+}
+
+/// The fallback for a hand-written container's `Widget::bind_walk`: the
+/// vtable walk over its **children** only (index 0 is `this`, whose
+/// address, size and kind are known statically), `None` when no child
+/// holds `target`. It costs the children's vtables, and says so in the
+/// rustdoc of the method that calls it.
+#[doc(hidden)]
+pub fn deepest_child<T: crate::widget::Node>(
+    this: &T,
+    table: &[crate::desc::NodeDesc],
+    target: usize,
+    kind: &'static str,
+) -> Option<usize> {
+    let root = (this as *const T as *const u8, core::mem::size_of::<T>(), kind);
+    let span = |i: usize| {
+        if i == 0 {
+            return root;
+        }
+        let n = crate::widget::Node::node(this, i);
+        let p = n as *const dyn crate::widget::Node as *const u8;
+        (p, core::mem::size_of_val(n), n.kind_name())
+    };
+    let mut best = None;
+    for (i, d) in table.iter().enumerate().skip(1) {
+        let (p, size, kind) = span(i);
+        if d.parent != crate::desc::NO_PARENT {
+            let (pp, ps, pk) = span(d.parent as usize);
+            if p == pp && size == ps && kind == pk {
+                continue;
+            }
+        }
+        let lo = p as usize;
+        if target >= lo && target < lo + size {
             best = Some(i);
         }
     }
