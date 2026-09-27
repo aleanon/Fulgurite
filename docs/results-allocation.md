@@ -206,6 +206,40 @@ which is the application's data and not the frame.
 - **The threaded rasteriser** — `threads`, default-off — until
   M50/T50.3 and T50.4.
 
+## The threaded rasteriser's budget — M50/T50.4 (2026-09-27)
+
+**A decision, not a zero.** `render_banded` (`threads`, default-off)
+spawns its workers in a `std::thread::scope` on every banded frame, and
+`std` allocates **3 per worker + 1 per scope** on the frame thread for
+that, freeing as many. `alloc_gate.rs` could not see it — it counts per
+thread and its 320×200 fixtures never band (R18-F4) — so
+`tests/alloc_gate_threads.rs` is its own binary with a process-wide
+counter, asserting the canvas bands before it reads anything:
+
+| | before (T50.0, block glyphs / pinned face) | after |
+|---|---:|---:|
+| frame thread, per banded frame at 8 bands | 25 / 25 | **25, bound exactly 3 × 8 + 1** |
+| a worker's own code | 0 / **5,350** (shaping and rasterising) | **0** (T50.3) |
+| `std` starting a thread | occasional | occasional, printed |
+
+**Why not zero.** The plan's option (A) was a pool created once. Without
+`unsafe`, which the shell forbids, a pool cannot borrow a frame's list
+and pixel rows, so each banded frame it must copy the rows out and back.
+`benches --bin banded_pool`, 1080p, 8 runs, quiet: the scoped banded
+frame is **215.7 µs** median with a spread of 58.8; the spawns alone are
+95.6; **two row copies are 614.6**. (A)'s overhead is at least copies −
+spawns = 519 µs, 8.8× the spread — the kill rule in
+`docs/plan-raster-allocation.md` §5 — so (B) ships: the budget.
+
+**What the budget still catches.** The frame thread's count is asserted
+equal to the budget, so an extra spawn reads 28 against 25; a worker's
+own code (marked by the test-only `software::in_band_worker`) is bound
+at zero, so the review's I2, one `Vec` per strip, reads 32 a frame. The
+remainder is `std`'s stack-overflow handler registering each new thread
+in a `BTreeMap`, whose node splits land on a spawned thread now and then
+(a 544 B leaf and a 640 B internal node, by backtrace); it is printed, not
+bounded, because it is `std`'s and not every frame.
+
 ## What is *not* covered
 
 Construction. `Host::new` allocates the two parallel arrays, `Either`

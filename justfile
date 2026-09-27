@@ -56,9 +56,11 @@ static:
 #
 # The steady-state allocation gate runs with the dev-shape tests, as
 # `crates/lumen-static-shell/tests/alloc_gate.rs` — its own binary, since
-# #[global_allocator] is per-binary. Every path asserts **zero**, not a
-# budget: they are all at zero, so a budget would only encode a bug
-# (docs/results-allocation.md).
+# #[global_allocator] is per-binary. Every path it draws asserts **zero**,
+# not a budget -- truetype text included since M50/T50.2. The one budget is
+# the threaded rasteriser's (`just threads`, tests/alloc_gate_threads.rs):
+# exactly the spawns, 3 per worker + 1, by decision, because a pool would
+# cost more than the frame (docs/results-allocation.md, M50/T50.4).
 
 # Default features: the shipped shape, and the only one docs/verification-notes.md covers.
 release-shape: const-budget
@@ -304,7 +306,7 @@ threads:
     # M50/T50.0: shaping per visible run when banded (R8-F2), and a banded
     # frame's allocations on every thread (R18-F4), in its own binary.
     cargo test -q -p lumen-static-shell --features threads,truetype --test banded
-    cargo test -q -p lumen-static-shell --features threads,truetype --test alloc_gate_threads -- --nocapture
+    cargo test -q -p lumen-static-shell --features threads,truetype,raster-counters --test alloc_gate_threads -- --nocapture
 
 # The GPU backend: build, lint, and compare its pixels with the software canvas.
 gpu:

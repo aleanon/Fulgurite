@@ -1673,6 +1673,16 @@ impl Canvas {
     /// partial redraw equal a full one. Nothing is skipped and nothing
     /// is reordered, so there is no interleaving for two threads to get
     /// wrong.
+    ///
+    /// **It allocates, and exactly this much: `std::thread::scope`'s 3 per
+    /// worker plus 1, on the frame thread** — a recorded budget, not a
+    /// zero (M50/T50.4, `docs/results-allocation.md`). The workers' own
+    /// code allocates nothing: text arrives shaped and cached from the
+    /// frame thread (T50.3). A persistent pool would remove the spawns,
+    /// but without `unsafe` it cannot borrow this frame's list or rows and
+    /// must copy the rows out and back — 615 µs a frame at 1080p against a
+    /// 216 µs banded frame (`benches --bin banded_pool`).
+    /// `tests/alloc_gate_threads.rs` holds both halves.
     #[cfg(feature = "threads")]
     fn render_banded(
         &mut self,
@@ -1753,35 +1763,39 @@ impl Canvas {
         std::thread::scope(|sc| {
             for _ in 0..workers {
                 let queue = &queue;
-                sc.spawn(move || loop {
-                    // Held only long enough to take a strip, never while
-                    // drawing one.
-                    let next = queue.lock().map(|mut q| q.next()).unwrap_or(None);
-                    let Some((k, chunk)) = next else { break };
-                    let y0 = (y_lo + k * strip_rows) as i64;
-                    let nrows = (chunk.len() / stride) as i64;
-                    // **One scratch per worker, not per glass command.**
-                    // A `Canvas`'s own buffers cannot be shared across
-                    // threads, so a banded frame builds one set per band
-                    // — bounded by the worker count, where it used to be
-                    // three `Vec`s per panel per band (M26/T26.13).
-                    let mut scratch = GlassScratch::default();
-                    let mut band = Surface {
-                        px: chunk,
-                        width,
-                        y0,
-                        rows: nrows,
-                        glass: &mut scratch,
-                        #[cfg(feature = "truetype")]
-                        text,
-                    };
-                    band.render(
-                        list,
-                        damage,
-                        #[cfg(feature = "truetype")]
-                        font,
-                        None,
-                    );
+                sc.spawn(move || {
+                    #[cfg(feature = "raster-counters")]
+                    IN_WORKER.with(|w| w.set(true));
+                    loop {
+                        // Held only long enough to take a strip, never while
+                        // drawing one.
+                        let next = queue.lock().map(|mut q| q.next()).unwrap_or(None);
+                        let Some((k, chunk)) = next else { break };
+                        let y0 = (y_lo + k * strip_rows) as i64;
+                        let nrows = (chunk.len() / stride) as i64;
+                        // **One scratch per worker, not per glass command.**
+                        // A `Canvas`'s own buffers cannot be shared across
+                        // threads, so a banded frame builds one set per band
+                        // — bounded by the worker count, where it used to be
+                        // three `Vec`s per panel per band (M26/T26.13).
+                        let mut scratch = GlassScratch::default();
+                        let mut band = Surface {
+                            px: chunk,
+                            width,
+                            y0,
+                            rows: nrows,
+                            glass: &mut scratch,
+                            #[cfg(feature = "truetype")]
+                            text,
+                        };
+                        band.render(
+                            list,
+                            damage,
+                            #[cfg(feature = "truetype")]
+                            font,
+                            None,
+                        );
+                    }
                 });
             }
         });
@@ -1794,6 +1808,23 @@ impl Renderer for Canvas {
     fn render(&mut self, list: &DisplayList, _w: u32, _h: u32) {
         self.render_impl(list, None);
     }
+}
+
+#[cfg(all(feature = "threads", feature = "raster-counters"))]
+thread_local! {
+    /// Set as a band worker's closure starts — M50/T50.4.
+    static IN_WORKER: core::cell::Cell<bool> = const { core::cell::Cell::new(false) };
+}
+
+/// Whether the calling thread is running a band worker's own code — for
+/// `tests/alloc_gate_threads.rs`'s allocator, which must tell a worker's
+/// allocations from the ones `std` makes starting the thread (its
+/// stack-overflow handler's thread registry, a `BTreeMap` whose node
+/// splits land on a spawned thread now and then). Test-only
+/// (`raster-counters`).
+#[cfg(all(feature = "threads", feature = "raster-counters"))]
+pub fn in_band_worker() -> bool {
+    IN_WORKER.try_with(|w| w.get()).unwrap_or(false)
 }
 
 /// How many worker threads to run for `px` damaged pixels — T17.4.

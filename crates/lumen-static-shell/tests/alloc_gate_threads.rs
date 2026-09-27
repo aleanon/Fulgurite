@@ -17,6 +17,27 @@
 //!
 //! `required-features = ["threads"]`; `just threads` runs it with
 //! `truetype` as well, so the bands draw real glyphs.
+//!
+//! **The bound is an exact budget, not zero — a recorded decision**
+//! (M50/T50.4; `docs/results-allocation.md`, "The threaded rasteriser's
+//! budget"). A worker pool created once cannot borrow a frame's list or
+//! pixel rows without `unsafe`, which this crate forbids, so a pool must
+//! copy the banded rows out and back every frame: 615 µs at 1080p against
+//! a 216 µs banded frame (`benches --bin banded_pool`, §5's kill rule). So
+//! the scoped spawn stays and its cost is stated: `std` allocates three
+//! times per spawned worker and once for the scope, on the frame thread,
+//! and frees as many. That bound is exact. A worker's own code — marked by
+//! `software::in_band_worker`, a test-only counter (`raster-counters`) —
+//! is bound at zero, so an allocation a worker adds on any thread fails
+//! it.
+//!
+//! **What is neither**: `std`'s stack-overflow handler keeps a registry of
+//! running threads, a `BTreeMap` that each spawned thread enters as it
+//! starts, before the worker's code runs; now and then an insert splits a
+//! node, allocating on the new thread (a 544 B leaf and a 640 B internal
+//! node, found by a backtrace in this allocator). It is `std`'s, it is
+//! not every frame, and it is printed as the remainder rather than
+//! bounded — a bound of zero on it failed one run in three.
 
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
@@ -32,6 +53,9 @@ static ARMED: AtomicBool = AtomicBool::new(false);
 static ALLOCS: AtomicUsize = AtomicUsize::new(0);
 static FREES: AtomicUsize = AtomicUsize::new(0);
 
+/// Allocations a band worker's own code made (`in_band_worker`).
+static WORKER: AtomicUsize = AtomicUsize::new(0);
+
 thread_local! {
     /// The frame thread's share, printed beside the process-wide count so
     /// the difference — the workers' — is visible.
@@ -44,6 +68,9 @@ unsafe impl GlobalAlloc for Counting {
         if ARMED.load(Relaxed) {
             ALLOCS.fetch_add(1, Relaxed);
             let _ = MINE.try_with(|c| c.set(c.get() + 1));
+            if lumen_static_shell::software::in_band_worker() {
+                WORKER.fetch_add(1, Relaxed);
+            }
         }
         unsafe { System.alloc(l) }
     }
@@ -85,9 +112,15 @@ fn canvas(w: u32, h: u32) -> Canvas {
     Canvas::new(w, h)
 }
 
+/// Allocations `std::thread::scope` makes per spawned worker (the
+/// thread's handle, its result packet and the boxed closure) and per
+/// scope — measured, not assumed: T50.0's red run read 25 a frame at 8
+/// bands, every one on the frame thread.
+const PER_WORKER: usize = 3;
+const PER_SCOPE: usize = 1;
+
 #[test]
-#[ignore = "red until T50.4: R18-F4, every banded frame spawns its workers"]
-fn a_banded_frame_allocates_nothing_on_any_thread() {
+fn a_banded_frame_allocates_only_its_spawns_on_any_thread() {
     let (w, h) = (1920u32, 1080u32);
     let list = scene(w, h);
     let mut c = canvas(w, h);
@@ -106,12 +139,17 @@ fn a_banded_frame_allocates_nothing_on_any_thread() {
     ARMED.store(false, Relaxed);
     let (a, f) = (ALLOCS.load(Relaxed), FREES.load(Relaxed));
     let mine = MINE.with(Cell::get) - mine0;
-    let bound = 0usize;
+    let worker = WORKER.load(Relaxed);
+    let bound = PER_WORKER * bands + PER_SCOPE;
     println!(
-        "bands={bands}, allocs/frame process-wide {:.2} (bound {bound}), frees/frame {:.2}, frame-thread {:.2}; {N} frames of {w}x{h}",
+        "bands={bands}, allocs/frame process-wide {:.2}, frees/frame {:.2}; frame-thread {:.2} (bound exactly {bound}), \
+         worker code {:.2} (bound 0), std thread start {:.2} (printed); {N} frames of {w}x{h}",
         a as f64 / N as f64,
         f as f64 / N as f64,
-        mine as f64 / N as f64
+        mine as f64 / N as f64,
+        worker as f64 / N as f64,
+        (a - mine - worker) as f64 / N as f64
     );
-    assert_eq!((a, f), (bound * N, bound * N), "a banded frame touched the allocator: {a} allocs, {f} frees over {N} frames");
+    assert_eq!(mine, bound * N, "the frame thread's allocations are off the spawn budget ({bound}/frame at {bands} bands): {mine} over {N} frames");
+    assert_eq!(worker, 0, "a band worker's own code allocated {worker} times over {N} frames");
 }

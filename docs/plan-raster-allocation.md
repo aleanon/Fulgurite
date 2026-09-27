@@ -576,6 +576,21 @@ the gate passes and prints the band count.
 `docs/results-allocation.md` (the arm and, under (B), the decision);
 `render_banded`'s rustdoc.
 
+*What building found (2026-09-27).* **The kill rule fired, and (B)
+ships.** The probe is `benches --bin banded_pool` rather than a pool on a
+branch: (A)'s unavoidable work — copying the banded rows out to buffers
+it owns and back — is 614.6 µs at 1080p, against a 215.7 µs scoped frame
+whose spread is 58.8 and whose spawns are 95.6, so no pool built on it
+could come within the spread (`docs/results-allocation.md`, "The threaded
+rasteriser's budget"). And **"exactly the spawn count, process-wide" was
+not exact**: `std`'s stack-overflow handler enters each new thread in a
+`BTreeMap` whose node splits allocate on the spawned thread about one
+run in three. So the gate splits the count three ways: the frame thread
+exactly 3w + 1, a worker's own code 0 (marked through the test-only
+`raster-counters` feature, which T50.5 was to add and this adds first),
+and `std`'s remainder printed. Injection (1) belongs to (A) and does not
+apply; an extra spawn per frame stands in for it (28 against 25).
+
 **Effort:** M under (B), L under (A). **Depends on:** T50.3, because
 the worker's body changes there.
 

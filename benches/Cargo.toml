@@ -18,6 +18,8 @@ lumen-static-shell = { path = "../crates/lumen-static-shell", features = ["truet
 lumen-static-widgets = { path = "../crates/lumen-static-widgets" }
 
 [features]
+# M50/T50.4: `--bin banded_pool` measures the threaded rasteriser.
+threads = ["lumen-static-shell/threads"]
 # **Default-on, and optional since M35/T35.0** (`docs/plan-observe-cost.md`).
 # It was unconditional, so no bench here could be built without the
 # widgets' observability compiled in — and `--bin grid` could not say what
@@ -76,3 +78,10 @@ path = "src/bin/text_hash.rs"
 [[bin]]
 name = "spawn"
 path = "src/bin/spawn.rs"
+
+# M50/T50.4: the persistent-pool probe's kill rule, against the scoped
+# banded frame (`docs/plan-raster-allocation.md` §2.2, §5).
+[[bin]]
+name = "banded_pool"
+path = "src/bin/banded_pool.rs"
+required-features = ["threads"]

@@ -76,6 +76,13 @@ simd = ["dep:wide"]
 # draws every command that reaches its rows, in order. `just threads`
 # asserts it against the single-band build.
 threads = []
+# **Test-only: counters, never a path** (M50/T50.4, T50.5;
+# `docs/plan-raster-allocation.md` §2.4). Marks a band worker's own code
+# for `tests/alloc_gate_threads.rs`, so the allocations `std` makes
+# starting a thread are told apart from the worker's; and counts each
+# `simd` vector branch as it runs. `just threads` and `just simd` turn it
+# on; a shipped build never does.
+raster-counters = []
 
 [dev-dependencies]
 # `observe` since M48/T48.9: the tests built with `live-agent` turn the
@@ -139,4 +146,4 @@ required-features = ["live-agent", "truetype"]
 # process-wide in a binary of its own; `just threads` runs it.
 [[test]]
 name = "alloc_gate_threads"
-required-features = ["threads"]
+required-features = ["threads", "raster-counters"]

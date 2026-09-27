@@ -220,8 +220,12 @@ desktop-only: a separate crate or a feature, under
 `docs/plan-capabilities.md`'s gating policy. `alloc_gate` asserts zero
 steady-state allocation, so per-thread state must be pre-allocated —
 *which the shipped banded path did not do: `alloc_gate` counts per
-thread and never bands, so it could not see it (R18-F4; M50/T50.4 and
-`docs/results-allocation.md` own what the threaded path does now).* The
+thread and never bands, so it could not see it (R18-F4). Since M50 the
+workers' own code allocates nothing (T50.3 shapes on the frame thread),
+and the spawns are a stated budget of 3 per worker + 1, because a pool
+that avoided them without `unsafe` would copy the rows out and back at
+2.9× the cost of the frame itself (T50.4; `docs/results-allocation.md`,
+"The threaded rasteriser's budget").* The
 output must stay byte-identical or `damage_oracle.rs` and the agent's
 journal both break — which disjoint bands give for free, since they
 touch disjoint pixels. And it needs no `unsafe`: disjoint horizontal
