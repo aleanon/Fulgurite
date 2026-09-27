@@ -555,20 +555,33 @@ found" section rather than silently replacing itself.
   contrast gate covers both palettes. The drive scripts follow the new
   chrome and must stay green under both strategies.
 
-- **M57 — `docs/plan-widget-fixes.md`**, queued 2026-09-25, not
-  started. It fixes what `docs/widget-audit.md` found across the
-  showcase's 52 widgets: 12 broken, 35 with flaws. Phase A holds the
-  framework defects:
-  - focus is published before it moves (the late-ring bug);
-  - the agent's probe leaves estimated layout behind;
-  - bubbled presses carry child coordinates;
-  - `Repeat` rows skip on the main table's dirty set;
-  - the focus ring is a filled underlay;
-  - defaults are blind to the palette.
+- ~~**M57 — `docs/plan-widget-fixes.md`**~~ — **DONE 2026-09-27** on
+  branch `m56-showcase-design`: every A, B, C and D item. It fixed what
+  `docs/widget-audit.md` found across the showcase's 52 widgets (12
+  broken, 35 with flaws), **framework defects in the framework, never
+  worked around in the example**. The audit's two tables now carry *fixed
+  in* and *checked by* columns computed by `scripts/audit_fixed_in.py`
+  from the log and the drives, not written from memory.
 
-  **Framework defects are fixed in the framework, never worked around
-  in the example.** Phase C is the only showcase change, and it covers
-  only the showcase's own wiring and stylesheet.
+  **Phase D is the part worth carrying forward**, seven standing gates:
+  every drive action declares whether its consequence shows in pixels
+  (D1, `ui.regionHash`); a direct `on_event` test goes through the pass
+  or says why (D2, in `just static`); a keyboard-only pass reaches every
+  focusable demo by Tab (D3); contrast across every demo in both
+  palettes (D4); the live window with the agent is byte-identical to a
+  headless render without it (D5); a third pass at scale 2 compares every
+  damaged frame with a full repaint (D6); and every leaf speaks or is
+  hidden (D7). **D1 found a vacuous drive action on its first run** --
+  the Switch's track check passed on a hover shade -- and D7 found layout
+  leaves publishing themselves as nameless controls.
+
+  The plan's "What building it found" section records where it was wrong
+  (B15's end caret was already right live; B9's "500 px" never existed;
+  B26's gate found four hand-written wrappers laying out across their
+  offer, M56's derive defect again) and five drive actions that asserted
+  the defect they were meant to catch. Not built, with reasons: `Radio<T>`,
+  `Slider::on_change`, a rounded clip; DataGrid's rows are still
+  unreachable by keyboard, found by D3 and recorded.
 
 Unsequenced: ~~`docs/plan-harness.md`.~~ — **M12 DONE 2026-09-20.**
 T12.3 and T12.4 landed 2026-09-04; T12.1 (a locator and expectation API,
