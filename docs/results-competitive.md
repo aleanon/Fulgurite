@@ -198,6 +198,16 @@ tens of megabytes before a frame is drawn. That is a real cost a user
 pays, and it is also not a fair measure of *framework* overhead — both
 statements are true and the table means less without the second.
 
+**And most of lumen-static's own figure is two parsed fonts** (M38,
+R8-F10; attributed 2026-09-27 for M50/T50.7). fontdue's parse of Noto
+Sans is **8.61 MB** of heap for the regular face and **8.42 MB** for the
+bold, and `FontStack::system` held **17.03 MB** after start-up — against
+a resident 24–26 MB. The GPU paragraph above explains the gap to the
+GPU-backed arms; this explains what the smallest resident is made of.
+Since T50.7 the bold face is parsed on its first bold run rather than at
+start-up (`tests/font_heap.rs`), so a window that never draws bold holds
+one face. The table above predates that and has not been re-measured.
+
 ## 4. Distributable size
 
 Executable, plus the unique shared objects `ldd` resolves for it,

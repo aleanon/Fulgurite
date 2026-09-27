@@ -50,10 +50,43 @@ pub struct FontStack {
     regular: std::sync::Arc<Font>,
     /// A bold face when one was found; otherwise `regular` serves both
     /// weights and the request is quietly honoured as best it can be.
-    bold: Option<std::sync::Arc<Font>>,
+    ///
+    /// **Parsed on first use** — M50/T50.7, R8-F10. The bytes are read
+    /// when the stack is built, so a missing file is still found at
+    /// start-up, but fontdue's parse — 8.4 MB of heap for Noto Sans Bold,
+    /// about half an idle window's (`docs/results-competitive.md` §3) —
+    /// waits for the first run of weight 600 or more, or the first
+    /// character the regular face lacks. A `OnceLock`, so the stack stays
+    /// `Sync` for the banded rasteriser; shared by every clone, so the
+    /// canvas and the measurer parse it once between them.
+    bold: std::sync::Arc<Bold>,
     /// The fallback faces, shared by every clone — so the measurer and
     /// the canvas that hold clones of one stack load each face once.
     fallback: std::sync::Arc<[Slot]>,
+}
+
+/// The bold face: its bytes until something needs it, then the face.
+struct Bold {
+    bytes: std::sync::Mutex<Option<Vec<u8>>>,
+    face: std::sync::OnceLock<Option<Font>>,
+}
+
+impl Bold {
+    fn new(bytes: Option<&[u8]>) -> Self {
+        Bold { bytes: std::sync::Mutex::new(bytes.map(<[u8]>::to_vec)), face: std::sync::OnceLock::new() }
+    }
+
+    /// The face, parsed on first call; `None` when there were no bytes or
+    /// they did not parse, which is remembered. The bytes are dropped once
+    /// parsed.
+    fn get(&self) -> Option<&Font> {
+        self.face
+            .get_or_init(|| {
+                let bytes = self.bytes.lock().unwrap_or_else(|e| e.into_inner()).take()?;
+                Font::from_bytes(bytes, fontdue::FontSettings::default()).ok()
+            })
+            .as_ref()
+    }
 }
 
 /// One fallback face: where it is, and the face once something needed it.
@@ -160,11 +193,18 @@ impl FontStack {
     /// Load a regular face, and optionally a bold one, from bytes. No
     /// fallback faces: a stack built from bytes draws exactly what it was
     /// given, which is what a test with a committed face wants.
+    ///
+    /// The regular face is parsed here; the bold one is kept as bytes and
+    /// parsed on its first use (M50/T50.7).
     pub fn from_bytes(regular: &[u8], bold: Option<&[u8]>) -> Option<Self> {
         let load = |b: &[u8]| {
             Font::from_bytes(b, fontdue::FontSettings::default()).ok().map(std::sync::Arc::new)
         };
-        Some(FontStack { regular: load(regular)?, bold: bold.and_then(load), fallback: std::sync::Arc::new([]) })
+        Some(FontStack {
+            regular: load(regular)?,
+            bold: std::sync::Arc::new(Bold::new(bold)),
+            fallback: std::sync::Arc::new([]),
+        })
     }
 
     /// The same stack, with `faces` — (path, collection index) — tried in
@@ -180,14 +220,20 @@ impl FontStack {
 
     /// The face for a CSS-style weight: 600 and up is bold.
     fn face(&self, weight: f32) -> (&Font, u8) {
-        match (&self.bold, weight >= 600.0) {
-            (Some(b), true) => (b, BOLD),
+        match (weight >= 600.0).then(|| self.bold.get()).flatten() {
+            Some(b) => (b, BOLD),
             _ => (&self.regular, REGULAR),
         }
     }
 
     /// Find a system sans-serif face, with the platform's fallback faces
     /// behind it (this module's `FALLBACKS` list).
+    ///
+    /// Both primary faces' files are **read** here, so a missing one is
+    /// found at start-up; the bold face is **parsed** on the first run
+    /// that needs it — fontdue's parse is megabytes of heap per face, and
+    /// an application that never draws bold should not hold one
+    /// (M50/T50.7, `docs/results-competitive.md` §3).
     ///
     /// Returns `None` rather than panicking: a caller can fall back to
     /// the block stand-in and still show *something*, which is better
@@ -221,7 +267,7 @@ impl FontStack {
     /// The primary face that is not the one `weight` asked for.
     fn other(&self, weight: f32) -> (&Font, u8) {
         match self.face(weight) {
-            (_, REGULAR) => self.bold.as_deref().map_or((&*self.regular, REGULAR), |b| (b, BOLD)),
+            (_, REGULAR) => self.bold.get().map_or((&*self.regular, REGULAR), |b| (b, BOLD)),
             _ => (&self.regular, REGULAR),
         }
     }
@@ -508,11 +554,10 @@ impl FontStack {
     /// byte-identical bitmaps. That is what makes an atlas cache
     /// correct rather than approximately correct.
     pub fn rasterize(&self, id: GlyphId) -> Option<(u32, u32, Vec<u8>)> {
-        let font = match (id.face, &self.bold) {
-            (REGULAR, _) => self.regular.as_ref(),
-            (BOLD, Some(b)) => b.as_ref(),
-            (BOLD, None) => return None,
-            (k, _) => self.fallback.get(k as usize - 2)?.get()?,
+        let font = match id.face {
+            REGULAR => self.regular.as_ref(),
+            BOLD => self.bold.get()?,
+            k => self.fallback.get(k as usize - 2)?.get()?,
         };
         let (m, cov) = font.rasterize_indexed(id.index, f32::from_bits(id.px_bits));
         RASTERISED.fetch_add(1, core::sync::atomic::Ordering::Relaxed);

@@ -691,6 +691,14 @@ system with no bold face never parses one.
 **Docs in the same commit:** `docs/results-competitive.md` §3;
 `FontStack::system`'s rustdoc.
 
+*What building found (2026-09-27).* The gate uses the pinned face for
+both weights, so it does not depend on the machine's fonts, and its
+"stated margin" has to include the frame's glyph cache, which reserves
+2 MiB on first use (T50.2): a first margin of the bold bytes plus 1 MiB
+failed on the cache, not on bold. The bold bytes are dropped once parsed.
+The idle-RSS table was not re-measured: it needs a window, and whether
+a given window draws bold decides the saving.
+
 **Effort:** S. **Depends on:** T50.2 (both change `FontStack`'s
 internals, so this goes second).
 
