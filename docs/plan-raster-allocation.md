@@ -660,6 +660,12 @@ Accept: a resize to the same size allocates 0.
 retention policy); `docs/results-allocation.md` (resize is outside the
 steady state, and this arm is what says so).
 
+*What building found (2026-09-27).* `reserve_exact` and `shrink_to` on
+a cleared `Vec` both `realloc`, which copies the stale pixels and holds
+two buffers at the peak; the reallocating paths drop the old buffer and
+reserve afresh instead. The drag check reads 3 allocations against a
+bound of 3.
+
 **Effort:** S. **Depends on:** none.
 
 ### T50.7 — the font heap: attributed, and bold loaded when first used

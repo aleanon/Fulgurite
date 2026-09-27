@@ -595,7 +595,6 @@ fn a_pump_that_applies_results_allocates_nothing() {
 /// only when it passes what it already holds. Each check prints its
 /// capacity beside its length.
 #[test]
-#[ignore = "red until T50.6: R8-F7, a one-pixel grow doubles the reservation"]
 fn resizing_the_canvas_grows_exactly_and_gives_memory_back() {
     use lumen_static_shell::software::Canvas;
 

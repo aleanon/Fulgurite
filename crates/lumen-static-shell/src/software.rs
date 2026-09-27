@@ -1402,14 +1402,37 @@ impl Canvas {
     /// list that nobody wrote down and the compiler will not check.
     ///
     /// Cheap and idempotent when the size has not changed.
+    ///
+    /// **Exact growth, and memory given back** — M50/T50.6, R8-F7. This
+    /// cleared the `Vec` and `resize`d it, so a grow past capacity took
+    /// `Vec`'s amortised doubling — one pixel wider at 4K reserved a second
+    /// 4K frame, 66 MB for 33 — and nothing ever shrank it. Now a grow past
+    /// capacity reserves exactly the new length, a shrink below half the
+    /// capacity gives the rest back, and anything else reuses the buffer in
+    /// place, so a drag of a pixel or two allocates only when it passes the
+    /// largest size it has held. Both reallocating paths drop the old
+    /// buffer before taking the new one: the old pixels are about to be
+    /// overwritten, so copying them would be waste and holding both would
+    /// double the peak. `tests/alloc_gate.rs`
+    /// `resizing_the_canvas_grows_exactly_and_gives_memory_back` holds all
+    /// three. A resize is not the steady state (`docs/results-allocation.md`).
+    ///
+    /// softbuffer keeps its own buffer, whose growth is outside this crate.
     pub fn resize(&mut self, width: u32, height: u32) {
         if (self.width, self.height) == (width, height) {
             return;
         }
         self.width = width;
         self.height = height;
-        self.pixels.clear();
-        self.pixels.resize((width as usize * height as usize) * 4, 255);
+        let n = (width as usize * height as usize) * 4;
+        let cap = self.pixels.capacity();
+        if n > cap || n < cap / 2 {
+            self.pixels = Vec::new();
+            self.pixels.reserve_exact(n);
+        } else {
+            self.pixels.clear();
+        }
+        self.pixels.resize(n, 255);
     }
 
     /// Copy the frame into a `0RGB` `u32` buffer — softbuffer's format.

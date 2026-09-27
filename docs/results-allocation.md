@@ -240,6 +240,23 @@ in a `BTreeMap`, whose node splits land on a spawned thread now and then
 (a 544 B leaf and a 640 B internal node, by backtrace); it is printed, not
 bounded, because it is `std`'s and not every frame.
 
+## A resize — bounded, not zero — M50/T50.6 (2026-09-27)
+
+A resize is not the steady state: the pixel buffer has to change size.
+What it may cost is bounded instead, by
+`resizing_the_canvas_grows_exactly_and_gives_memory_back`:
+
+| check | before | after (bound) |
+|---|---:|---:|
+| 4K, one pixel wider: capacity for 33,186,240 B | **66,355,200** (doubled) | **33,186,240** (== len), 1 allocation |
+| then 1280×720: capacity for 3,686,400 B | 66,355,200 (kept) | **3,686,400** (≤ 2 × len) |
+| a 40-step ±1 px drag at 800×600 | — | **3** allocations (bound 3, the steps past capacity) |
+| a resize to the same size | 0 | **0** |
+
+`Canvas::resize` cleared and `resize`d its `Vec`, so growth was `Vec`'s
+amortised doubling and nothing shrank (R8-F7). softbuffer's own buffer
+is outside this crate and not measured here.
+
 ## What is *not* covered
 
 Construction. `Host::new` allocates the two parallel arrays, `Either`
