@@ -61,7 +61,12 @@ fn main() {
         repeat_arm(rows, 20_000);
     }
     println!();
+    // The materialized arm stops at 65,535 rows: a node's child count is a
+    // `u16`, and since M46/T46.3 `concat_table` refuses more instances than
+    // it can hold. Until then the 100k and 1M arms here built a table whose
+    // root child count had wrapped -- a malformed tree, so the times they
+    // printed (docs/step3-repeaters.md, dated) were not of a real one.
     materialized_arm(1_000, 20_000);
-    materialized_arm(100_000, 300);
-    materialized_arm(1_000_000, 20);
+    materialized_arm(10_000, 2_000);
+    materialized_arm(65_535, 300);
 }

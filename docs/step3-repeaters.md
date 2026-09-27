@@ -84,6 +84,26 @@ Full layout + paint per iteration, 800px viewport (35-row window),
 - The materialized arm is linear, as it must be: at 1M rows a single
   frame is 69 ms and the tree holds ~280 MB of table + state. That is the
   world §6 exists to prevent.
+
+**Corrected 2026-09-27: the 100k and 1M materialized rows above measured
+a malformed tree.** A node's child count is a `u16`, so `concat_table`
+wrapped the root's count: 100,000 instances linked 34,464 children, and
+the rest of the table was never reached. That is why "4.66 ms at 100k"
+is *cheaper* than the valid 65,535-row table below. M46/T46.3 made
+`concat_table` refuse more than 65,535 instances, the benchmark then
+panicked, and its materialized arms now stop at the limit. Re-measured
+with the same bench (`--bin repeater`, three runs, load 0.46), medians:
+
+| rows | materialized | resident nodes |
+|---|---|---|
+| 1k | 48.3 µs | 5,001 |
+| 10k | 0.554 ms | 50,001 |
+| 65,535 | 5.27 ms | 327,676 |
+
+About 80 ns per row, linear. The repeat arm reads ~1.8 µs a frame at
+every size on the same machine, against ~2.0 µs for the same bench at
+`1717808`, the review's base (8 interleaved runs a side). Both are above
+the 1.26 µs this doc first recorded, and that drift predates M39.
 - Per-window-node cost in the repeat arm (~7 ns) matches the Step 2
   full-pass figure — the nested pass adds no measurable overhead over the
   outer one.

@@ -864,8 +864,9 @@ scales with source size rather than data size.
 
 **DONE 2026-08-30.** `Repeat<T>` contributes one table entry; the template
 is `T::SUB_TABLE` itself, so no skip logic exists anywhere. Measured flat
-1.26 µs/frame from 1k to 10M rows (35-row window) vs 69 ms materialized at
-1M rows. `NODE_COUNT` data-independence is a compile-time assertion. See
+1.26 µs/frame from 1k to 10M rows (35-row window) against a materialized
+tree that grows linearly with its rows (the 1M-row figure first cited here
+measured a malformed table; corrected in `docs/step3-repeaters.md`). `NODE_COUNT` data-independence is a compile-time assertion. See
 `docs/step3-repeaters.md`.
 
 ### Step 4 — Hot reload
