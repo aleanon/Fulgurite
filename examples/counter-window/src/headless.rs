@@ -4,7 +4,7 @@
 //! Rung 2 of the verification ladder. Since M60/T60.4
 //! (`docs/plan-tally-slim.md`) both go through
 //! `lumen_static_shell::session::Local`, booted from the same
-//! [`program`](crate::app::program) the window runs: `--drive` sends the
+//! `app::program` the window runs: `--drive` sends the
 //! agent protocol through `Session::agent`, as the window's endpoint
 //! does, and `--drive2` runs M12's harness over the same session's
 //! `Local::live`. The example keeps no adapter of its own. One frame to a
