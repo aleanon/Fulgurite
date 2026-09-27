@@ -483,6 +483,27 @@ impl<A: App + 'static, P: RecoverPolicy, I: Invalidation> Local<A, P, I> {
     }
 }
 
+#[cfg(feature = "live-agent")]
+impl<A: App + 'static, P: RecoverPolicy, I: Invalidation> Local<A, P, I> {
+    /// **The agent's view of this session**, over `screen` — the [`Live`]
+    /// that [`Session::agent`] drives, for a caller that drives it some
+    /// other way: `lumen_static_agent::harness::TestApp` above all
+    /// (M60/T60.4). So a harness session and an agent request go through
+    /// one adapter, and `examples/counter-window --drive2` needs none of
+    /// its own.
+    pub fn live<'a>(&'a mut self, screen: &'a mut dyn Screen) -> Live<'a, A, P, I> {
+        Live {
+            host: &mut self.host,
+            metrics: &mut self.metrics,
+            screen,
+            page: self.page,
+            recover: P::default(),
+            animating: self.animating,
+            presented_px: &mut self.unjournaled_px,
+        }
+    }
+}
+
 /// The accessibility half of [`Session`] for a [`Local`] — M54/T54.2,
 /// one body per build so neither has a dead branch.
 impl<A: App + 'static, P: RecoverPolicy, I: Invalidation> Local<A, P, I> {

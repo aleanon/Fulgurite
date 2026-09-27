@@ -168,14 +168,18 @@ firmware:
 # `assert!`, so it proves only that no path panics or aborts, which is still
 # the cheapest whole-core exercise available.
 
-# The counter, the M8/M9 form, the alloc-free embedded frame, and the
-# hot-reload swap. The form drives a
+# The counter, the M8/M9 form, the tally's two headless drives, the
+# alloc-free embedded frame, and the hot-reload swap. The form drives a
 # `ScrollView` with real wheel events and renders a `TextInput` through the
 # real rasteriser: unit tests count display-list commands, which is not the
 # same as knowing a widget paints where it claims to.
 fixtures:
     cargo run -p counter -- {{ justfile_directory() }}/target/counter.ppm
-    cargo run -p counter-window -- --form {{ justfile_directory() }}/target/form.ppm
+    cargo run -p form -- {{ justfile_directory() }}/target/form.ppm
+    # M60/T60.4: the tally's session, through the agent protocol and then
+    # the harness -- both assert, and both boot the program the window runs.
+    cargo run -q -p counter-window -- --drive
+    cargo run -q -p counter-window -- --drive2
     cargo run -p embedded --bin embedded
     ./scripts/hot_reload_demo.sh
     ./scripts/abi_stamp.sh
@@ -558,14 +562,17 @@ examples:
 tally:
     cargo run -p counter-window
 
-# One frame of the tally to a viewable image, at a given count.
+# One frame of the tally to a viewable image, at a given count --
+# `LUMEN_SHOT`, the window crate's, from the program the window runs.
 tally-frame count="7":
-    cargo run -p counter-window -- --headless target/tally.ppm {{ count }}
+    LUMEN_SHOT=target/tally.ppm cargo run -p counter-window -- {{ count }}
 
 # Drive the tally through the agent surface and assert — rung 2 of the
-# verification ladder, above a screenshot.
+# verification ladder, above a screenshot. Then the same session through
+# the harness (M12/T12.1).
 tally-drive:
     cargo run -p counter-window -- --drive
+    cargo run -p counter-window -- --drive2
 
 # The counter, rendered headlessly to a viewable frame.
 counter:
@@ -748,9 +755,10 @@ live-gate:
     ./scripts/live_gate.sh
 
 # Per-stage cost of one tally frame, headless, median of 50. The numbers
-# belong in docs/results-frame-cost.md.
+# belong in docs/results-frame-cost.md. `LUMEN_PROFILE` is the window
+# crate's (M60/T60.4); the damaged frame is a click on `#inc`.
 profile:
-    LUMEN_PROFILE=1 cargo run -q -p counter-window -- --headless target/tally.ppm 12
+    LUMEN_SHOT=target/tally.ppm LUMEN_PROFILE=1 LUMEN_PROFILE_CLICK=inc cargo run -q -p counter-window -- 12
 
 # The frame a popup opens on, damaged area against the window's
 # (M26/T26.0). `profile` above is fixed to the tally and takes no
@@ -761,11 +769,11 @@ profile-showcase:
 
 # The same frame with the rasteriser's SIMD path on (M17/T17.1).
 profile-simd:
-    LUMEN_PROFILE=1 cargo run -q -p counter-window --features simd -- --headless target/tally.ppm 12
+    LUMEN_SHOT=target/tally.ppm LUMEN_PROFILE=1 LUMEN_PROFILE_CLICK=inc cargo run -q -p counter-window --features simd -- 12
 
 # And with band-parallel rasterisation as well (M17/T17.4).
 profile-threads:
-    LUMEN_PROFILE=1 cargo run -q -p counter-window --features simd,threads -- --headless target/tally.ppm 12
+    LUMEN_SHOT=target/tally.ppm LUMEN_PROFILE=1 LUMEN_PROFILE_CLICK=inc cargo run -q -p counter-window --features simd,threads -- 12
 
 # ---------------------------------------------------------------------------
 # The book

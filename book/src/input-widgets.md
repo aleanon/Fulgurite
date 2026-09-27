@@ -11,7 +11,7 @@ question: **where does the value originate?**
 
 That is not a stylistic split. A `Toggle`'s `on` is a *copy* of state, so
 something must keep the copy in agreement — a `#[bind]` with a `with =`
-projection, exactly as `examples/counter-window/src/form.rs` does. A
+projection, exactly as `examples/form/src/main.rs` does. A
 slider's value has no earlier home; the gesture created it.
 
 ## `Toggle` — one type, three presentations

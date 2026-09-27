@@ -22,7 +22,7 @@ text or input is not verified until `ui_check.py latency` has passed.
 ## Rung 1 — a frame to look at
 
 ```bash
-just tally-frame 12                               # examples/counter-window, --headless
+just tally-frame 12                               # examples/counter-window under LUMEN_SHOT
 python3 -c "from PIL import Image; Image.open('target/tally.ppm').save('/tmp/f.png')"
 ```
 Then `Read /tmp/f.png`. Without PIL, `ffmpeg -i target/tally.ppm /tmp/f.png`.
@@ -31,18 +31,22 @@ Then `Read /tmp/f.png`. Without PIL, `ffmpeg -i target/tally.ppm /tmp/f.png`.
 otherwise.** `Host::pump()` measures with `BlockMetrics` (one block per
 glyph); the window measures with `FontMetrics` (fontdue, `truetype`
 feature). A headless frame that looks right can still wrap in the
-window. `counter-window` passes its `FontMetrics` to `pump_with` in
-*both* modes for this reason; do the same in any new example. The same
-trap applies to the agent's audit: install the host's measurer with
-`Agent::set_text_measure`, or `ui.lint` reports the stand-in's opinion.
+window. A `Program`'s `LUMEN_SHOT` and its `Local` session measure with
+the system face for this reason; a hand-built `Host` must pass its
+`FontMetrics` to `pump_with` itself. The same trap applies to the agent's
+audit: `Local` installs the session's face with `Agent::set_text_measure`
+(M60/T60.3 — until then every `Program` window's `ui.lint` was the
+stand-in's opinion); an agent you build yourself needs the same call.
 
 ## Rung 2 — drive headlessly and assert
 
-`examples/counter-window --drive` is the pattern: click by author id via
-`ui.getLayout`, one `pump` per click, then assert on `host.app.<field>`
-and the bound label's `as_str()`. `examples/counter` is the minimal
-form. Both are run by `just fixtures`, which `just test` includes — an
-assertion in `main` that nothing runs is not a test.
+`examples/counter-window --drive` is the pattern: boot the program's
+`Local` session, send `input.click` by author id through
+`Session::agent` and require `handled`, then assert on
+`s.host.app.<field>` and `ui.resolve`'s `value`. `--drive2` is the same
+session through `TestApp`, over `Local::live`. `examples/counter` is the
+minimal form. All are run by `just fixtures`, which `just test` includes —
+an assertion in `main` that nothing runs is not a test.
 
 ## Rung 3 — the agent surface in tests
 
@@ -229,8 +233,9 @@ turnkey window (`lumen_static_winit::run`, a `Program`) reported 0 ns for
 every stage until then, and the budgets above passed on the zeros.
 `ui_check.py latency` now prints `NOT MEASURED` and fails on a window with
 no samples, a `null` stage or a frame that took 0 ns; `ui_check.py
-selftest` shows it both ways. A turnkey window does not measure
-`input_latency_ns` (counter-window does), so there it is `null`.
+selftest` shows it both ways. Every `Program` window measures
+`input_latency_ns` since M60/T60.3 — it was `null` outside
+counter-window's own loop until then.
 
 Read the *warm* window: the first ~5 frames after launch are 4× slower
 (cold clocks, first touch of the pixel buffer). `ui_check.py latency`

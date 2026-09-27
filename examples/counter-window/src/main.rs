@@ -10,43 +10,39 @@
 //! | module | what it is |
 //! |---|---|
 //! | `app` | the tree, the stylesheet, the palette, its keys, the program |
-//! | `headless` | `--drive` and `--drive2`, rungs 2 of the ladder, through a `Local` session |
+//! | `headless` | `--drive` and `--drive2`, rung 2 of the ladder, through a `Local` session |
+//!
+//! ```text
+//! counter-window [count]            the window, opening at `count`
+//! LUMEN_SHOT=f.ppm counter-window 12   one headless frame at 12 (the window crate's)
+//!   … LUMEN_PROFILE=1 LUMEN_PROFILE_CLICK=inc   and its per-stage cost
+//! counter-window --drive | --drive2    the agent protocol, then the harness
+//! ```
 //!
 //! It was 1160 lines before M14 and 1,383 before M60, ~540 of them a
 //! copy of the window crate's loop kept for two things the framework
 //! could not do: app-level keys (`Program::on_key`) and a sheet keyed on
-//! the count's sign (`Program::style_by`).
+//! the count's sign (`Program::style_by`). The M8/M9 form fixture that
+//! shared this crate is `examples/form`.
 
 mod app;
-mod form;
 mod headless;
 
 use lumen_static_winit::Run;
 
 fn main() {
-    let mut args = std::env::args().skip(1);
-    if let Some(flag) = args.next() {
-        if flag == "--drive" {
-            headless::drive();
-            return;
-        }
+    let arg = std::env::args().nth(1);
+    match arg.as_deref() {
+        Some("--drive") => headless::drive(),
         // M12/T12.1: the same session through the harness. Both run in
-        // `just tally-drive`, because the comparison is the task's evidence.
-        if flag == "--drive2" {
-            headless::drive_harness();
-            return;
-        }
-        if flag == "--form" {
-            let path = args.next().unwrap_or_else(|| "form.ppm".into());
-            form::form(&path);
-            return;
-        }
-        if flag == "--headless" {
-            let path = args.next().unwrap_or_else(|| "tally.ppm".into());
-            let count = args.next().and_then(|s| s.parse().ok()).unwrap_or(0);
-            headless::headless(&path, count);
-            return;
+        // `just tally-drive` and `just fixtures`, because the comparison
+        // is the task's evidence.
+        Some("--drive2") => headless::drive_harness(),
+        // The count the tally opens at, read here and captured by the
+        // boot — which is what `LUMEN_SHOT` renders, too.
+        _ => {
+            let count = arg.and_then(|a| a.parse().ok()).unwrap_or(0);
+            app::program(count, 440, 520).run();
         }
     }
-    app::program(0, 440, 520).run();
 }

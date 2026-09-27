@@ -40,7 +40,7 @@ Either<A, B> exceeds MAX_EITHER_NODES; raise it or split the branches
 ```
 
 A tab strip is `Either` plus two buttons and application handlers —
-`examples/counter-window/src/form.rs` builds one that way, and needed no
+`examples/form/src/main.rs` builds one that way, and needed no
 new widget type to do it.
 
 ### `List<W>` — a `Vec` of one widget type

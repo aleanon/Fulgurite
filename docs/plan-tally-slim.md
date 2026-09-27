@@ -223,6 +223,25 @@ the comparison — the sign gate fails with 0 pixels of the new colour.
 
 ## T60.4 — the headless half
 
+> **DONE 2026-09-27.** `--headless` is gone: the count is the first
+> argument, captured by the boot, and `LUMEN_SHOT=<path>` renders it —
+> byte-identical to the old `--headless` at counts 0, 12 and −7.
+> `--drive` sends `input.click` through `Session::agent` on a
+> `Local::from_program` session with an `Offscreen` screen, and requires
+> `handled`; `--drive2` runs `TestApp` over `Local::live`, the shell's
+> adapter. Both now run in `just fixtures`. `LUMEN_PROFILE` is the
+> window crate's (`lumen_static_shell::profile`), with
+> `LUMEN_PROFILE_CLICK=inc` giving the same damaged region as the old
+> profile (9,152 px, `[176, 143.5, 264, 247.5]`). `--form` is
+> `examples/form`, whose frame is byte-identical to `--form`'s.
+>
+> **What building found: the old profile's first row measured nothing.**
+> It printed `pump(layout+paint) 0 us`: under `Boundaries` since
+> M34/T34.2 a pump with nothing marked is skipped (M53/T53.3), and it
+> pumped fifty times with nothing marked. The row now marks everything
+> before each pump, so it is a whole frame's layout and paint (4 µs on
+> the tally, debug build).
+
 - `--headless` becomes `LUMEN_SHOT=<path>` with the count as the first
   argument, read in boot.
 - `--drive` drives `Local::from_program(..)` through `Session::agent`,

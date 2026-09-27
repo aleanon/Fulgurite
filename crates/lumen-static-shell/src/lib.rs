@@ -25,6 +25,8 @@ pub mod contrast;
 pub mod frame_cost;
 /// M12/T12.2: golden images, with a diff artifact.
 pub mod golden;
+/// M60/T60.4: `LUMEN_PROFILE`, the per-stage cost of a headless frame.
+pub mod profile;
 /// M32: `application(boot)` — the program described once.
 pub mod program;
 /// M36: a panic's report, and the host's recovery from it.

@@ -18,6 +18,7 @@ members = [
     "examples/wake-gate",
     "examples/tasks-demo",
     "examples/counter-window",
+    "examples/form",
     "examples/glasswall",
     "examples/showcase",
     "examples/glass",

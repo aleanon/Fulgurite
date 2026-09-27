@@ -1,15 +1,29 @@
-//! `--form`: the M8/M9 widget set through the real rasteriser.
+//! The M8/M9 widget set through the real rasteriser — a `ScrollView`
+//! driven by real wheel events, a `TextInput`, the toggles, a slider and
+//! a tab strip, rendered and asserted.
 //!
-//! Moved out of `main.rs` by M14/T14.0.
+//! `cargo run -p form -- target/form.ppm`; `just fixtures` runs it. It
+//! was `examples/counter-window --form` from M14 to M60/T60.4
+//! (`docs/plan-tally-slim.md`), a second application in the tally's
+//! crate that shared only its palette.
 
+use lumen_static::display::Color;
 use lumen_static::prelude::*;
-use lumen_static_widgets::prelude::*;
 use lumen_static_shell::software::Canvas;
 use lumen_static_shell::text::{FontMetrics, FontStack};
 use lumen_static_shell::Host;
+use lumen_static_widgets::prelude::*;
 
-use crate::app::{ACCENT, INK, PAGE, SURFACE};
+// The tally's palette, which this fixture was drawn in.
+const PAGE: Color = Color(0x0e, 0x11, 0x18, 0xff);
+const SURFACE: Color = Color(0x16, 0x1c, 0x28, 0xff);
+const INK: Color = Color(0xf1, 0xf5, 0xfb, 0xff);
+const ACCENT: Color = Color(0x35, 0x63, 0xef, 0xff);
 
+fn main() {
+    let path = std::env::args().nth(1).unwrap_or_else(|| "form.ppm".into());
+    form(&path);
+}
 
 /// One row of the settings panel: a control and its label.
 ///
@@ -133,7 +147,7 @@ fn set_on<S: 'static, const K: u8>(t: &mut lumen_static_widgets::toggle::Toggle<
 /// its viewport for three milestones, and a renderer that ignored clip
 /// scopes entirely. So the new widgets go through `Canvas` here, in
 /// `just fixtures`, and the frame is asserted.
-pub fn form(path: &str) {
+fn form(path: &str) {
     let (w, h) = (300u32, 200u32);
     let mut host: Host<Form> = Host::new(Form::default(), w, h);
     {

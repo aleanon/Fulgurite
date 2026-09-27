@@ -1466,7 +1466,8 @@ fn run_program<A: App + 'static, I: Invalidation + 'static>(
     start(session(program), config, hot);
 }
 
-/// Render one frame headlessly and write it as a PPM — `LUMEN_SHOT`.
+/// Render one frame headlessly and write it as a PPM — `LUMEN_SHOT` —
+/// and with `LUMEN_PROFILE` set, profile it.
 ///
 /// Two pumps, as every example's own `--shot` does: the first teaches a
 /// scroller how far its content goes, the second is the frame.
@@ -1491,6 +1492,18 @@ fn shot<A: App, I: Invalidation>(mut host: Host<A, Ret, I>, w: u32, h: u32, page
     canvas.clear(page);
     host.render(&mut canvas);
     std::fs::write(path, canvas.to_ppm()).expect("LUMEN_SHOT: write frame");
+    // `LUMEN_PROFILE=1` beside it: what each stage of that frame costs
+    // (M60/T60.4; `lumen_static_shell::profile`). `LUMEN_PROFILE_CLICK`
+    // names the node whose click the partial path measures.
+    if std::env::var_os("LUMEN_PROFILE").is_some() {
+        let click = std::env::var("LUMEN_PROFILE_CLICK").ok();
+        let mut block = lumen_static::cx::BlockMetrics;
+        let m: &mut dyn lumen_static::TextMeasure = match metrics.as_mut() {
+            Some(m) => m,
+            None => &mut block,
+        };
+        lumen_static_shell::profile::profile(&mut host, &mut canvas, m, page, click.as_deref());
+    }
 }
 
 // ---- M37: hot reload inside the window ------------------------------

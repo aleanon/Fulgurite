@@ -1,0 +1,17 @@
+[package]
+name = "form"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+# The M8/M9 widget set through the real rasteriser -- `just fixtures`
+# runs it and it asserts. It was `counter-window --form` until M60/T60.4
+# (`docs/plan-tally-slim.md`): a different application that shared four
+# palette constants with the tally, and nothing else.
+[dependencies]
+lumen-static = { path = "../../crates/lumen-static" }
+lumen-static-widgets = { path = "../../crates/lumen-static-widgets" }
+# `agent` for `Host::sheet_findings`: the fixture asserts every rule in
+# its sheet does something (M25/T25.2).
+lumen-static-shell = { path = "../../crates/lumen-static-shell", features = ["truetype", "agent"] }
