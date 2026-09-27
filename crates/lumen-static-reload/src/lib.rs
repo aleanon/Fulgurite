@@ -902,6 +902,9 @@ pub mod hot {
         fn repaint_all(&mut self) {
             self.m().repaint_all()
         }
+        fn damage(&self) -> lumen_static::retain::Damage {
+            self.s().damage()
+        }
         fn shape(&self) -> u64 {
             self.s().shape()
         }

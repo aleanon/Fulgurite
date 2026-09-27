@@ -1,5 +1,16 @@
 # M53 — what a frame costs, measured whole, and a still frame that costs nothing
 
+> **T53.0–T53.4 DONE 2026-09-27.** **T53.2:** the pump's arena cascade
+> asks only the marked nodes — a split click's pump −39% (−21.8 µs), 0
+> cascades per 40 clicks; not the owner list, which failed its own
+> `Option` and enum cases. **T53.3:** an idle pump is skipped — 0 place
+> and 0 paint passes per 40 idle pumps, 0.49 → 0.06 µs, the oracle judging
+> skipped frames (5 397 of 6 243 on the widget drive, none diverged).
+> **T53.4 and T53.0's live row:** a window's own redraw with no damage
+> presents nothing — 199 → 0 presents per 200 motions, `just
+> motion-present`, both strategies; exposes folded into an enter force a
+> present.
+>
 > **T53.0 and T53.1 DONE 2026-09-26 (early landings; T53.0 headless
 > rows only).** **T53.1:** the host times its six stages and the whole
 > pump (`Host::stage_timings`); the grid, the `stages` arm and
@@ -464,6 +475,39 @@ invalidation.
 
 **Effort:** M. **Depends on:** T53.3; M47/T47.8 (the section it writes
 into); M40 (damage in physical space, which the present decision reads).
+
+*What building found (2026-09-27).*
+
+- **Exposes are folded into our own redraws, and the first gate caught
+  it.** A window uncovered under the pointer gets EnterNotify and
+  Expose together; winit 0.30 makes one `RedrawRequested` of both, the
+  enter made it "own", its damage was `None`, and the present was
+  skipped — the surface read back **differed from the canvas** after the
+  cover went away. So `CursorEntered`, `CursorLeft`, `Focused`,
+  `Occluded` and `Moved` force a present, as a resize and a dropped
+  present's retry do. What is left: an expose that coincides with a
+  motion and no enter (a window above this one closing while the pointer
+  moves elsewhere on it) is skipped until the next change. Under a
+  compositor there are no exposes. Recorded in `present_needed`'s rustdoc.
+- **"Make the fast path's predicate always false: the same" is wrong.**
+  The present decision keys on damage, and a frame that repaints
+  unchanged commands has `None` damage by hash: `Everything`, which never
+  skips the pump, presents 0 frames for 200 motions as well. The
+  injection that turns the gate red is "always present": **199 presents
+  for 200 motions**.
+- **The live gate runs on a private Xephyr display.** On the shared `:0`
+  the first run counted 0 redraws for 200 motions: a locked screen's
+  saver was over the window and took every motion. The setup floor (at
+  least 20 redraws) is what said so; the script now starts its own
+  Xephyr and, without one, refuses to count unless the pointer is over
+  the window. The window's count is a new window method, `app.presents`,
+  answered without drawing a frame.
+- **T53.0's live row landed with T53.4, in one commit**: the count it
+  reads (`app.presents`) is the fix's plumbing. Its red state is the
+  "always present" injection, which is the behaviour before T53.4.
+- The software surface's age-0 rule needed nothing: a skipped present
+  never asks the buffer's age, and the damage it did not take stays
+  pending for the next present.
 
 ## 4. Boundaries of this plan
 

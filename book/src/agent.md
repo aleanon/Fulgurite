@@ -34,7 +34,9 @@ and `input.click` takes `clicks` (2 or 3) for a double or triple click.
 
 **The window's own** — `app.quit` replies and then exits the process
 with status 0 (every turnkey window since M48/T48.13); `app.reloads`
-counts hot swaps. The list above, the skill's and the code are held to
+counts hot swaps; `app.presents` counts frames presented and redraws
+that presented nothing because nothing changed (M53/T53.4), and asking
+does not draw a frame. The list above, the skill's and the code are held to
 one another by `scripts/check_agent_methods.sh`.
 
 **A synthesised input reports what arrived.** Everything above goes

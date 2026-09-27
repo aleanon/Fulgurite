@@ -952,7 +952,8 @@ marked nodes, and a pump with nothing marked, handled, applied or owed
 is skipped outright under a strategy that can skip — no place, paint or
 `finish`, damage `None` — with the shadow oracle judging skipped frames
 too. An unmarked write to the tree, which paint used to hide, now paints
-nothing at all. Figures: `docs/results-damage-precision.md` T53.2 and
+nothing at all. A window's own redraw with no damage presents nothing
+(T53.4); a redraw the platform asked for always presents. Figures: `docs/results-damage-precision.md` T53.2 and
 T53.3.
 
 **DECIDED 2026-09-03 — confirmed by the first profile of a live frame**

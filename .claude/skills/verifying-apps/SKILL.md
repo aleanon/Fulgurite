@@ -97,8 +97,10 @@ checked against both by `scripts/check_agent_methods.sh`, M48/T48.14):
 `input.scrollIntoView` `input.scroll` `input.invokeAction` ·
 `app.diagnostics` `app.logs` `app.perf` `app.setPalette` `app.shadow`
 `app.failure` `app.retry` · the window's own: `app.quit` (every turnkey
-window since M48/T48.13; the reply comes first, then the process exits 0)
-and `app.reloads`. `input.compose` takes `{text, commit}` or
+window since M48/T48.13; the reply comes first, then the process exits 0),
+`app.reloads`, and `app.presents` (`{presents, skipped}`: frames
+presented, and redraws that presented nothing because nothing changed —
+M53/T53.4; answered without drawing a frame). `input.compose` takes `{text, commit}` or
 `{cancel: true}` and routes through the same `Host::compose` the window's
 IME path does.
 `input.key` takes `mods` (`["ctrl"]`, held for that key only) and

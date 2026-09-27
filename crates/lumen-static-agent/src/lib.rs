@@ -37,8 +37,8 @@
 //! index — match the row's template only.
 //!
 //! **The method set** is what `Agent::dispatch` and
-//! `Agent::dispatch_input` answer, plus the window's own `app.quit` and
-//! `app.reloads` (`lumen-static-winit`'s `answer_agent`);
+//! `Agent::dispatch_input` answer, plus the window's own `app.quit`,
+//! `app.reloads` and `app.presents` (`lumen-static-winit`'s `answer_agent`);
 //! `scripts/check_agent_methods.sh` holds the skill and the book to it
 //! (M48/T48.14).
 #![forbid(unsafe_code)]

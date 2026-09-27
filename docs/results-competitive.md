@@ -416,7 +416,9 @@ rows under `Everything`, of which raster and blit are 0.01 each. Under
 whole idle pump placed, painted and finished every time, and cost
 0.49–0.50 µs on the showcase (R6-F1; `docs/results-damage-precision.md`
 T53.1). Since M53/T53.3 an idle pump is skipped, and costs 0.06 µs
-(`docs/results-damage-precision.md` T53.3).
+(`docs/results-damage-precision.md` T53.3); since T53.4 a window whose
+pointer moves over nothing presents nothing either
+(`docs/results-frame-cost.md`, Idle).
 
 Reproduce: `benches-competitive/competitors.sh`, `just stages`,
 `benches --bin invalidation`. Every build in `benches-competitive` passes

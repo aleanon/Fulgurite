@@ -241,6 +241,35 @@ cost. On `:47` the same binary drew none.
   subscription's first job before the phase began. Before T47.3 each
   firing was a `std::thread` (R7-F5).
 
+### A pointer moving over nothing (M53/T53.4, 2026-09-27)
+
+R7-F6: every `CursorMoved` asked for a redraw, the redraw ran a whole
+pump and the surface presented all of itself. Since M53/T53.3 the pump is
+skipped when nothing changed, and since T53.4 a redraw the window asked
+for itself whose damage is `None` presents nothing.
+
+`just motion-present` (`scripts/motion_present.sh`): 200 XTest motions
+over a 40×16 px region inside `#blurb` in `examples/showcase`, release,
+on a private Xephyr display; counts from the window's `app.presents`.
+
+| per 200 motions | presents | redraws that presented nothing |
+|---|---:|---:|
+| before (T53.4's injection: always present), `Everything` | 199 | 0 |
+| after, `Everything` | **0** | 199 |
+| after, `Boundaries<256>` | **0** | 199 |
+
+- **`Everything` presents nothing too**: it lays out and paints every
+  frame, but retention compares each command's hash, so an unchanged
+  frame's damage is `None` all the same. The present decision keys on
+  damage, not on the pump's fast path.
+- **The pump a motion costs** is the idle pump: 0.49–0.50 µs before
+  T53.3, 0.06 µs after, headless (`docs/results-damage-precision.md`
+  T53.3).
+- **Accepting cases**, both strategies: crossing `#d_button_a`'s edge in
+  12 motions presents exactly **1** frame (the hover shade; 12 with every
+  frame presented); a window covered and uncovered by another presents
+  (3 frames) and the surface read back from the server equals the canvas.
+
 ### While the panic screen is up
 
 T47.1 arms no deadline while a panic is shown, because the timers' clock

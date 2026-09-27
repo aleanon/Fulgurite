@@ -173,6 +173,26 @@ pub fn present_retry(dropped: bool, streak: &mut u32) -> bool {
     *streak <= MAX_PRESENT_RETRIES
 }
 
+/// **Whether a frame is presented** — M53/T53.4
+/// (`docs/plan-frame-cost.md` §2.3(b)).
+///
+/// `own` is whether the window asked for this redraw itself (input, a
+/// wake, a deadline, an agent answer) and nothing forced a present — a
+/// resize, or the retry of a dropped one. `forced` is a panic screen or
+/// a reload bar, which are pixels the session's damage does not see.
+/// Only an own, unforced frame whose `damage` is `None` is skipped;
+/// every redraw the platform asked for presents, because winit 0.30
+/// does not say whether it is an expose (`surface::Surface::present`),
+/// and an expose means the server lost the pixels.
+///
+/// **What it cannot see**: an expose that arrives while an own request
+/// is pending is coalesced into one `RedrawRequested`, and is skipped if
+/// the frame changed nothing. Under a compositor there are no exposes;
+/// without one, the next frame that changes anything repaints.
+pub fn present_needed(own: bool, forced: bool, damage: lumen_static::retain::Damage) -> bool {
+    !own || forced || damage != lumen_static::retain::Damage::None
+}
+
 /// How many dropped presents in a row [`present_retry`] asks again for.
 pub const MAX_PRESENT_RETRIES: u32 = 3;
 
@@ -549,6 +569,17 @@ struct Win {
     test_resume: Option<Instant>,
     /// Dropped presents in a row, for [`present_retry`] (M47/T47.4).
     present_drops: u32,
+    /// The pending redraw was this window's own request — input, a wake,
+    /// a deadline, an agent answer — and not only the platform's
+    /// (M53/T53.4). See [`present_needed`].
+    own_redraw: bool,
+    /// The next frame presents whatever its damage says: a resize, or
+    /// the retry of a dropped present, whose damage was banked by the
+    /// present that did not land.
+    must_present: bool,
+    /// Frames presented, and redraws that presented nothing because
+    /// nothing changed — `app.presents` (M53/T53.4).
+    presents: (u64, u64),
     /// The reload state, when the window rebuilds its application (M37).
     #[cfg(feature = "hot")]
     hot: Option<hot::Hot>,
@@ -597,6 +628,9 @@ impl Win {
                 .and_then(|v| v.parse::<u64>().ok())
                 .map(|ms| Instant::now() + std::time::Duration::from_millis(ms)),
             present_drops: 0,
+            own_redraw: false,
+            must_present: false,
+            presents: (0, 0),
             #[cfg(feature = "hot")]
             hot: None,
             journal: false,
@@ -666,10 +700,22 @@ impl Win {
         }
     }
 
+    /// Ask for a frame of the window's own — M53/T53.4. The frame it
+    /// gets presents only if it changed something ([`present_needed`]).
+    fn ask_redraw(&mut self) {
+        if let Some(w) = &self.window {
+            self.own_redraw = true;
+            w.request_redraw();
+        }
+    }
+
     fn redraw(&mut self) {
         let (Some(window), Some(backend)) = (self.window.clone(), self.backend.as_mut()) else {
             return;
         };
+        // Whose frame this is, taken now: a request made during the
+        // frame is for the next one.
+        let own = core::mem::take(&mut self.own_redraw) && !core::mem::take(&mut self.must_present);
         let size = window.inner_size();
         let (w, h) = (size.width.max(1), size.height.max(1));
         if backend.resize(w, h) {
@@ -750,18 +796,43 @@ impl Win {
         // **What the frame cost is kept** (M48/T48.3): `present` fills it
         // in, and it was dropped here, so `app.perf` read 0 for every
         // stage of every turnkey window (R13-F2).
+        //
+        // **A frame of our own that changed nothing presents nothing**
+        // (M53/T53.4, R7-F6): a pointer crossing a region it changes
+        // nothing in cost one pump and one whole-surface present per
+        // motion. The pump is already skipped (T53.3); this skips the
+        // blit and the present. The damage is not taken, so it stays
+        // pending for the next present.
         #[cfg(feature = "hot")]
-        let presented = match barred {
-            Some(mut b) => backend.present(&mut b, self.config.page, start),
-            None => backend.present(&mut *self.session, self.config.page, start),
-        };
+        let overlay = barred.is_some();
         #[cfg(not(feature = "hot"))]
-        let presented = backend.present(&mut *self.session, self.config.page, start);
+        let overlay = false;
+        let presented = if !present_needed(own, self.session.failed() || overlay, self.session.damage()) {
+            self.presents.1 += 1;
+            // The pump's own figures still stand (under `Everything` it
+            // laid out and painted); nothing was rendered or presented.
+            let (layout_ns, paint_ns) = self.session.timings();
+            surface::Frame { layout_ns, paint_ns, frame_ns: start.elapsed().as_nanos() as u64, ..Default::default() }
+        } else {
+            self.presents.0 += 1;
+            #[cfg(feature = "hot")]
+            let presented = match barred {
+                Some(mut b) => backend.present(&mut b, self.config.page, start),
+                None => backend.present(&mut *self.session, self.config.page, start),
+            };
+            #[cfg(not(feature = "hot"))]
+            let presented = backend.present(&mut *self.session, self.config.page, start);
+            presented
+        };
         // **A dropped present asks again** (M47/T47.4): the frame was
         // rendered and did not reach the screen, and nothing else will ask
         // on an idle window. Before the failure check, so a panic screen
         // whose present was dropped is shown too.
         if present_retry(presented.dropped, &mut self.present_drops) {
+            // The pending damage went with the dropped present, so the
+            // retry's own damage says nothing: it must present
+            // (M53/T53.4).
+            self.must_present = true;
             window.request_redraw();
         }
         if self.session.failed() {
@@ -806,9 +877,13 @@ impl Win {
         // so a backlog asks for another frame instead of the cap being
         // raised), or after a dropped present (above, M47/T47.4). A still
         // UI idles, which is what keeps the idle frame numbers in
-        // `docs/results-frame-cost.md` true.
+        // `docs/results-frame-cost.md` true — and since M53/T53.4 a still
+        // UI under a moving pointer idles too: each motion's redraw runs
+        // the skipped pump (T53.3) and presents nothing
+        // (`present_needed`), 0 presents for 200 motions in that file's
+        // Idle section, where it was one per motion.
         if animating || self.session.more_deferred() {
-            window.request_redraw();
+            self.ask_redraw();
         }
     }
 }
@@ -894,9 +969,7 @@ impl ApplicationHandler<UserEvent> for Win {
             // past `WaitUntil` left armed would spin the loop wherever the
             // platform holds the redraw back (a hidden window).
             self.wait = ControlFlow::Wait;
-            if let Some(w) = &self.window {
-                w.request_redraw();
-            }
+            self.ask_redraw();
         }
     }
 
@@ -913,9 +986,7 @@ impl ApplicationHandler<UserEvent> for Win {
             // handler already own that sequence, and a second entry
             // point into it is how two frame loops come to disagree.
             UserEvent::Wake => {
-                if let Some(w) = &self.window {
-                    w.request_redraw();
-                }
+                self.ask_redraw();
             }
             #[cfg(feature = "agent")]
             UserEvent::Agent(rpc) => self.answer_agent(rpc),
@@ -924,18 +995,14 @@ impl ApplicationHandler<UserEvent> for Win {
                 if let Some(h) = self.hot.as_mut() {
                     h.reloader.building = true;
                 }
-                if let Some(w) = &self.window {
-                    w.request_redraw();
-                }
+                self.ask_redraw();
             }
             #[cfg(feature = "hot")]
             UserEvent::Built(outcome) => {
                 if let Some(h) = self.hot.as_mut() {
                     h.reloader.outcome(outcome);
                 }
-                if let Some(w) = &self.window {
-                    w.request_redraw();
-                }
+                self.ask_redraw();
             }
         }
     }
@@ -970,9 +1037,7 @@ impl Win {
                 "result": { "ok": true }
             }));
             self.quit = true;
-            if let Some(w) = &self.window {
-                w.request_redraw();
-            }
+            self.ask_redraw();
             return;
         }
         // `app.reloads` is the window's, not the session's: the count
@@ -999,6 +1064,16 @@ impl Win {
             }));
             return;
         }
+        // `app.presents` is the window's too (M53/T53.4): frames
+        // presented, and redraws that presented nothing because nothing
+        // changed. Answered without a frame, so asking does not move it.
+        if rpc.req.get("method").and_then(|m| m.as_str()) == Some("app.presents") {
+            let _ = rpc.reply.send(serde_json::json!({
+                "jsonrpc": "2.0", "id": rpc.req.get("id").cloned().unwrap_or(serde_json::Value::Null),
+                "result": {"presents": self.presents.0, "skipped": self.presents.1},
+            }));
+            return;
+        }
         let text = self.session.agent(&rpc.req.to_string(), &mut backend::AsScreen(backend));
         let resp = serde_json::from_str(&text).unwrap_or_else(|e| {
             serde_json::json!({
@@ -1007,9 +1082,7 @@ impl Win {
             })
         });
         let _ = rpc.reply.send(resp);
-        if let Some(w) = &self.window {
-            w.request_redraw();
-        }
+        self.ask_redraw();
     }
 }
 
@@ -1067,9 +1140,7 @@ impl Win {
                         ) =>
                 {
                     self.session.retry();
-                    if let Some(w) = &self.window {
-                        w.request_redraw();
-                    }
+                    self.ask_redraw();
                 }
                 _ => {}
             }
@@ -1081,9 +1152,7 @@ impl Win {
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
                 // A window can be dragged between monitors.
                 self.session.set_scale(scale_factor as f32);
-                if let Some(w) = &self.window {
-                    w.request_redraw();
-                }
+                self.ask_redraw();
             }
 
             // Input-method composition (T14.8). Not routed through
@@ -1100,18 +1169,20 @@ impl Win {
                     Ime::Enabled => false,
                 };
                 if changed {
-                    if let Some(w) = &self.window {
-                        w.request_redraw();
-                    }
+                    self.ask_redraw();
                 }
             }
 
-            WindowEvent::Resized(_) | WindowEvent::RedrawRequested => self.redraw(),
+            // A resize is the platform's: the surface was reallocated and
+            // must be presented whatever the damage says (M53/T53.4).
+            WindowEvent::Resized(_) => {
+                self.must_present = true;
+                self.redraw()
+            }
+            WindowEvent::RedrawRequested => self.redraw(),
 
             ref event if self.clipboard_shortcut(event) => {
-                if let Some(w) = &self.window {
-                    w.request_redraw();
-                }
+                self.ask_redraw();
             }
 
             // A key press, through the same function a test drives
@@ -1119,13 +1190,32 @@ impl Win {
             WindowEvent::KeyboardInput { event: ref k, .. } => {
                 let down = k.state == winit::event::ElementState::Pressed;
                 if keys::deliver_key(&mut *self.session, &k.logical_key, k.text.as_deref(), down, self.mods) {
-                    if let Some(w) = &self.window {
-                        w.request_redraw();
-                    }
+                    self.ask_redraw();
                 }
             }
 
             ref event => {
+                // **An event that goes with a change of stacking presents**
+                // (M53/T53.4). A window uncovered under the pointer gets
+                // its EnterNotify and its Expose together, and winit
+                // folds the expose's redraw into the one the enter asks
+                // for — so without this, the frame the enter asked for
+                // changed nothing, skipped its present, and left the
+                // uncovered area as the server cleared it
+                // (`just motion-present`'s expose case, first run).
+                if matches!(
+                    event,
+                    WindowEvent::CursorEntered { .. }
+                        | WindowEvent::CursorLeft { .. }
+                        | WindowEvent::Focused(_)
+                        | WindowEvent::Occluded(_)
+                        | WindowEvent::Moved(_)
+                ) {
+                    self.must_present = true;
+                    if let Some(w) = &self.window {
+                        w.request_redraw();
+                    }
+                }
                 let session = &self.session;
                 let t = translate::window_event(event, &mut self.cursor, &mut self.clicks, self.mods, |x, y| {
                     session.to_logical(x, y)
@@ -1138,9 +1228,7 @@ impl Win {
                     self.session.post(ev);
                 }
                 if any {
-                    if let Some(w) = &self.window {
-                        w.request_redraw();
-                    }
+                    self.ask_redraw();
                 }
             }
         }
@@ -1158,9 +1246,15 @@ pub(crate) fn frame_times(f: &Frame) -> lumen_static_shell::session::FrameTimes 
     if f.frame_ns == 0 {
         return Default::default();
     }
+    // **0 is "this frame ran no such pass", not a measurement** —
+    // M53/T53.3–T53.4: a pump the idle fast path skipped lays out and
+    // paints nothing, and `app.perf` reads a 0 as a stage nobody timed
+    // (M48/T48.3). So it is `None`, and the percentiles are over frames
+    // that ran the pass.
+    let ran = |ns: u64| (ns > 0).then_some(ns);
     lumen_static_shell::session::FrameTimes {
-        layout_ns: Some(f.layout_ns),
-        paint_ns: Some(f.paint_ns),
+        layout_ns: ran(f.layout_ns),
+        paint_ns: ran(f.paint_ns),
         render_ns: Some(f.render_ns),
         present_ns: Some(f.present_ns),
         frame_ns: Some(f.frame_ns),
@@ -1497,6 +1591,22 @@ mod tests {
             other => panic!("120 ms gave {other:?}, not WaitUntil"),
         }
         assert_eq!(control_flow_for(now, None), ControlFlow::Wait, "no timer must wait without a deadline");
+    }
+
+    /// **The present decision** (M53/T53.4).
+    #[test]
+    fn only_an_own_unforced_frame_with_no_damage_skips_its_present() {
+        use lumen_static::retain::Damage;
+        let cases = [
+            (true, false, Damage::None, false),
+            (true, false, Damage::All, true),
+            (false, false, Damage::None, true), // the platform's: maybe an expose
+            (true, true, Damage::None, true),   // a panic screen or reload bar
+        ];
+        for (own, forced, damage, want) in cases {
+            println!("own {own}, forced {forced}, damage {damage:?} -> present {want}");
+            assert_eq!(present_needed(own, forced, damage), want, "own {own} forced {forced} {damage:?}");
+        }
     }
 
     /// **The retry decision** (M47/T47.4): a drop asks again, up to the

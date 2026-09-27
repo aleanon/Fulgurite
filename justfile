@@ -601,6 +601,13 @@ const-budget:
 gpu-parity:
     ./scripts/gpu_parity.sh
 
+# M53/T53.0/T53.4 (R7-F6): 200 real pointer motions over a still region of
+# the showcase present at most 2 frames, under both strategies; crossing a
+# button's edge presents exactly one, and an expose still repaints. Needs a
+# display and python3-xlib.
+motion-present:
+    ./scripts/motion_present.sh
+
 # M47/T47.8: the Idle section of docs/results-frame-cost.md -- frames,
 # wakes, context switches and threads of a still window and of one with a
 # 120 ms timer, over SECONDS. Needs a display (run it on a private one).

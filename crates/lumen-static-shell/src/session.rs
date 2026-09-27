@@ -160,6 +160,10 @@ pub trait Session: FrameSource {
     /// own overlay, now gone: repaint all of it, in every buffer
     /// (`Host::repaint_all`).
     fn repaint_all(&mut self);
+    /// What the last frame changed, in physical pixels (`Host::damage`)
+    /// — M53/T53.4. A window that asked for a frame because of input
+    /// presents nothing when this is `Damage::None`.
+    fn damage(&self) -> Damage;
     /// **The tree's shape**, hashed — M49/T49.11 (R4-F7): the node count
     /// and every table entry's links, flags and author id. A node's
     /// identity is its offset in the table, so an agent holding node
@@ -624,6 +628,10 @@ impl<A: App + 'static, P: RecoverPolicy> Session for Local<A, P> {
 
     fn repaint_all(&mut self) {
         self.host.repaint_all();
+    }
+
+    fn damage(&self) -> Damage {
+        self.host.damage()
     }
 
     fn shape(&self) -> u64 {

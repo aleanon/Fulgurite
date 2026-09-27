@@ -33,6 +33,7 @@ ALL=(
     "wake-gate|./scripts/wake_gate.sh"
     "tasks-drive|./scripts/tasks_drive.sh"
     "panic-drive|./scripts/panic_drive.sh"
+    "motion-present|./scripts/motion_present.sh"
     "agent-drive|./scripts/agent_drive.sh"
     "widget-drive|./scripts/widget_drive.sh"
     "hot-window-drive|./scripts/hot_window_drive.sh"
