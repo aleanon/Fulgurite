@@ -1,0 +1,5 @@
+error: App needs named fields
+ --> tests/ui/fail_app_tuple.rs:5:8
+  |
+5 | struct Counter(i64);
+  |        ^^^^^^^

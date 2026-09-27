@@ -470,3 +470,92 @@ fn a_stylesheet_rule_that_does_nothing_is_w1010_and_its_working_twin_is_not() {
         "a view without a sheet reported a sheet finding"
     );
 }
+
+// ---- M55/T55.6 (R16-F1): W1002 against the nearest clip -------------
+
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+struct FourLabels {
+    a: Label,
+    b: Label,
+    c: Label,
+    d: Label,
+}
+
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+struct ScrolledLabels {
+    #[widget_id("scroller")]
+    scroller: lumen_static_widgets::scroll::ScrollView<FourLabels>,
+}
+
+/// The findings of one code for a tree laid out in a `w` x `h` window,
+/// with each finding's node index.
+fn findings_of<W>(app: &mut W, w: f32, h: f32, code: &str) -> Vec<Value>
+where
+    W: lumen_static::widget::Node + Widget,
+{
+    let styles = pass::default_styles(app);
+    let mut st = vec![NodeState::default(); W::NODE_COUNT];
+    let view = Constraints { min_w: 0.0, max_w: w, min_h: 0.0, max_h: h };
+    pass::layout(app, &styles, &mut st, view);
+    let mut agent = Agent::new();
+    {
+        let mut tm = TreeMut::of_root(app, &styles, &st);
+        agent.frame_done(&mut tm, lumen_static_agent::FrameTiming::passes(1, 1));
+    }
+    let tree = TreeRef::of_root(app, &styles, &st);
+    let resp = agent.dispatch(
+        &tree,
+        &json!({ "jsonrpc": "2.0", "id": 1, "method": "ui.lint", "params": {} }),
+    );
+    resp["result"]["findings"]
+        .as_array()
+        .map(|a| a.iter().filter(|f| f["code"] == code).cloned().collect())
+        .unwrap_or_default()
+}
+
+/// The review's fixture (R16-F1): a 40 px window holding a `ScrollView`
+/// of four labels, so two of them lie below the window unscrolled. Those
+/// rows are scrolled-out content, not misplaced nodes: the scroller clips
+/// them and scrolling reaches them.
+///
+/// **The setup is asserted, not assumed**: the content must overflow the
+/// window, or the quiet answer would be quiet for want of anything to say.
+#[test]
+#[ignore = "red until T55.6: R16-F1 (W1002 compares against the root, not the nearest clip)"]
+fn w1002_quiet_on_scrolled_out_content() {
+    let mut fired = Vec::new();
+    for scroll in [0.0f32, 20.0] {
+        let mut app = ScrolledLabels::default();
+        for (l, t) in [
+            (&mut app.scroller.content.a, "one"),
+            (&mut app.scroller.content.b, "two"),
+            (&mut app.scroller.content.c, "three"),
+            (&mut app.scroller.content.d, "four"),
+        ] {
+            l.set(t);
+        }
+        app.scroller.scroll = scroll;
+        let f = findings_of(&mut app, 200.0, 40.0, "W1002");
+        // The setup: the last label's bottom is past the 40 px window.
+        let styles = pass::default_styles(&app);
+        let mut st = vec![NodeState::default(); ScrolledLabels::NODE_COUNT];
+        pass::layout(
+            &mut app,
+            &styles,
+            &mut st,
+            Constraints { min_w: 0.0, max_w: 200.0, min_h: 0.0, max_h: 40.0 },
+        );
+        let last = st.len() - 1;
+        let bottom = st[last].pos.y + st[last].size.h;
+        println!(
+            "scroll {scroll}: last row bottom {bottom} against a 40 px window; W1002 findings: {} \
+             (expected 0) {f:?}",
+            f.len()
+        );
+        assert!(bottom > 40.0, "setup: the content does not overflow the window");
+        fired.push((scroll, f.len()));
+    }
+    assert_eq!(fired, [(0.0, 0), (20.0, 0)], "W1002 fired on scrolled-out content (scroll, findings)");
+}

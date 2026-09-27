@@ -1,0 +1,5 @@
+error: expected `#[bind(target, source, "format {}")]` — a source path must be followed by a format string
+  --> tests/ui/fail_bind_source_without_format.rs:21:18
+   |
+21 |     #[bind(ui.a, count "count: {}")]
+   |                  ^^^^^

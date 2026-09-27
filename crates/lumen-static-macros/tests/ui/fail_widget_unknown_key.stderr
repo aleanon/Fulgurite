@@ -1,0 +1,5 @@
+error: expected `row`, `column`, `stack`, `wrap`, `grid`, `columns = <int>`, `spacing = <float>`, or `fuse`
+ --> tests/ui/fail_widget_unknown_key.rs:7:15
+  |
+7 | #[widget(row, gap = 4.0)]
+  |               ^^^

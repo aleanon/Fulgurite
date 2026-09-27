@@ -1,0 +1,5 @@
+error: App derives a struct with named fields
+ --> tests/ui/fail_app_enum.rs:5:6
+  |
+5 | enum Counter {
+  |      ^^^^^^^

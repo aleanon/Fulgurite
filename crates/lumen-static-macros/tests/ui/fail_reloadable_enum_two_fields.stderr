@@ -1,0 +1,5 @@
+error: a Reloadable enum's variants each hold exactly one widget
+ --> tests/ui/fail_reloadable_enum_two_fields.rs:7:5
+  |
+7 |     Two(Label, Label),
+  |     ^^^^^^^^^^^^^^^^^

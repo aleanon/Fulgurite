@@ -1,0 +1,5 @@
+error: Reloadable derives structs and widget enums, not unions
+ --> tests/ui/fail_reloadable_union.rs:5:7
+  |
+5 | union Bits {
+  |       ^^^^

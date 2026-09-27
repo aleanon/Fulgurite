@@ -1,0 +1,5 @@
+error: StaticTree derives structs (containers) and enums (variant switches)
+ --> tests/ui/fail_static_tree_union.rs:6:7
+  |
+6 | union Bits {
+  |       ^^^^

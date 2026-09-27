@@ -1,0 +1,13 @@
+error: a second `#[tree]` field
+  --> tests/ui/fail_tree_twice.rs:17:5
+   |
+17 | /     #[tree]
+18 | |     other: Ui,
+   | |_____________^
+
+error: the first is here
+  --> tests/ui/fail_tree_twice.rs:15:5
+   |
+15 | /     #[tree]
+16 | |     ui: Ui,
+   | |__________^

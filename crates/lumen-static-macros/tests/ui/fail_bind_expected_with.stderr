@@ -1,0 +1,5 @@
+error: expected `with`
+  --> tests/ui/fail_bind_expected_with.rs:19:18
+   |
+19 |     #[bind(ui.a, using = show)]
+   |                  ^^^^^

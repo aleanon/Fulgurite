@@ -1,0 +1,5 @@
+error: expected `after_update = path` or `tick = path`
+  --> tests/ui/fail_app_unknown_key.rs:16:7
+   |
+16 | #[app(before_update = hook)]
+   |       ^^^^^^^^^^^^^

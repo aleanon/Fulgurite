@@ -1,0 +1,5 @@
+error: an enum widget needs at least one variant
+ --> tests/ui/fail_enum_no_variants.rs:6:6
+  |
+6 | enum Nothing {}
+  |      ^^^^^^^
