@@ -376,8 +376,18 @@ already exceptional.
 > `the atlas gave up 2 times`; with the atlas started at 64 the scale-1
 > case reads `(1,4,0)` and fails on its "nothing to reset, grow or give
 > up" assertion, which is the old inverse check (an atlas of 64 left
-> parity green) now red. `app.perf` does not carry the give-up count
-> yet: that waits for M48/T48.3.
+> parity green) now red.
+>
+> **`app.perf` reports it** as `atlas_give_ups` (the newest frame's
+> running count; `null` from the software canvas), since M48/T48.3 made
+> `app.perf` carry measured frames at all. `just gpu-parity`'s live leg
+> runs a debug showcase with `LUMEN_GPU_ATLAS_MAX=64` (a debug-only cap,
+> like `LUMEN_GPU_DROP_FIRST`) on the RTX: `app.perf atlas_give_ups = 1;
+> the renderer logged 1 give-up line(s)`; uncapped, `= 0` and 0 lines.
+> With `app.perf` dropping the field, the capped leg fails `app.perf
+> carried no atlas count`, and `protocol.rs`
+> `perf_reports_the_atlas_give_up_count` fails `app.perf lost the
+> renderer's give-up count`.
 
 ## 5. What it costs, and why the CPU is still the default
 

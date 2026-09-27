@@ -437,6 +437,13 @@ R17-F6.
   exposed as `Gpu::atlas_stats` with its renderer-side gate and the
   agent half **waits for M48/T48.3**. §4's line saying nobody plans it
   predates the index assigning it here (2026-09-25).
+  *Later the same day:* M48 merged, the branch was rebased onto it, and
+  the wiring landed as a follow-up commit (`atlas_give_ups` on `Frame`,
+  `FrameTimes`, `FrameTiming` and `app.perf`), with a live leg in
+  `just gpu-parity` that needed one more debug-only switch,
+  `LUMEN_GPU_ATLAS_MAX`: with growth to the device limit, nothing on a
+  real screen gives up, so a gate that must see a non-zero count has to
+  cap the atlas.
 
 
 ### T51.2 — a CPU adapter is not a GPU under `Auto`
@@ -627,7 +634,8 @@ run in its commit body.
 - **R9-F4**, the golden-image gate running zero tests, is M43's.
 - **R13-F2** (`app.perf` reports zero) is M48's. The give-up counter is
   exposed on `Gpu`. Reporting it through the agent is not planned by
-  M48 or here (§2.1), and waits for a caller that needs it.
+  M48 or here (§2.1), and waits for a caller that needs it. *(Superseded 2026-09-27: the index assigned it to T51.1, and it
+  landed after M48's merge; see T51.1's "What building found".)*
 - **Not done, and recorded:** a multi-page atlas (§2.1); a skyline
   packer; shrinking a grown atlas; sizing the blur scratch to the
   capture rect; growing `MAX_DEPS`, or making the dependency table a

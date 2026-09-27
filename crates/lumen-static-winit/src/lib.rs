@@ -1148,6 +1148,7 @@ pub(crate) fn frame_times(f: &Frame) -> lumen_static_shell::session::FrameTimes 
         frame_ns: Some(f.frame_ns),
         damaged_px: Some(f.damaged_px),
         input_latency_ns: None,
+        atlas_give_ups: f.atlas_give_ups,
     }
 }
 
@@ -1448,6 +1449,18 @@ pub mod hot {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// M51/T51.1: the GPU backend's atlas give-up count survives the
+    /// window's hand-off to the session, which is what `app.perf` reports.
+    #[test]
+    fn frame_times_carries_the_atlas_give_up_count() {
+        let f = surface::Frame { frame_ns: 1, atlas_give_ups: Some(7), ..Default::default() };
+        let t = frame_times(&f);
+        println!("Frame.atlas_give_ups {:?} -> FrameTimes.atlas_give_ups {:?}", f.atlas_give_ups, t.atlas_give_ups);
+        assert_eq!(t.atlas_give_ups, Some(7));
+        let sw = surface::Frame { frame_ns: 1, ..Default::default() };
+        assert_eq!(frame_times(&sw).atlas_give_ups, None, "the software canvas has no atlas");
+    }
 
     /// R7-F10: every period `Timers::every` accepts must give a control
     /// flow, not a panic, and an ordinary one must give its instant.

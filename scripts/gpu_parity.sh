@@ -145,3 +145,35 @@ if [ "$tried" -gt 8 ]; then
     echo "gpu-parity: a surface that never came back kept the window retrying ($tried presents)" >&2
     exit 1
 fi
+
+# ---- M51/T51.1 (R9-F1): an atlas give-up reaches app.perf --------------
+# The glyph atlas grows to the device's limit, so no real screen gives up
+# any more; a DEBUG build with LUMEN_GPU_ATLAS_MAX=64 caps it at 64², which
+# the showcase's first frame overflows. The renderer logs its first
+# give-up once; app.perf must report a non-zero running count beside it.
+# The accepting leg, uncapped, must report 0 -- a number, not null, which
+# is what says the frame came from a renderer with an atlas at all.
+cargo build -q -p showcase --features gpu,agent
+for cap in 64 none; do
+    echo "== glyph atlas cap: $cap =="
+    envs=(); [ "$cap" = none ] || envs=(--env "LUMEN_GPU_ATLAS_MAX=$cap")
+    $LAUNCH --leg "atlas-$cap" --exe target/debug/showcase "${envs[@]}" \
+        -- bash -c 'sleep 1; python3 scripts/agent_client.py call app.perf > "$1"' _ "$tmp/perf-$cap.json"
+    python3 - "$tmp/perf-$cap.json" "target/live/gpu-parity-atlas-$cap.log" "$cap" <<'PY'
+import json, sys
+perf = json.load(open(sys.argv[1]))
+perf = perf.get("result", perf)
+log = open(sys.argv[2], errors="replace").read()
+logged = log.count("did not fit the glyph atlas")
+n = perf.get("atlas_give_ups")
+print(f"gpu-parity: atlas cap {sys.argv[3]}: app.perf atlas_give_ups = {n}; the renderer logged "
+      f"{logged} give-up line(s) (it logs the first only)")
+if n is None:
+    sys.exit("gpu-parity: app.perf carried no atlas count -- the frames did not come from the GPU backend")
+if sys.argv[3] == "none":
+    if n != 0 or logged:
+        sys.exit(f"gpu-parity: an uncapped atlas gave up ({n}, {logged} logged)")
+elif n < 1 or logged != 1:
+    sys.exit(f"gpu-parity: a 64² atlas gave up but app.perf reports {n} and the log {logged}")
+PY
+done

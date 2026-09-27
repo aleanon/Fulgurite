@@ -255,6 +255,7 @@ impl WinApp {
             frame_ns: Some(f.frame_ns),
             input_latency_ns: self.input_at.take().map(|t| t.elapsed().as_nanos() as u64),
             damaged_px: Some(f.damaged_px),
+            atlas_give_ups: f.atlas_give_ups,
         };
         let mut tree = lumen_static_agent::TreeMut::of_root(
             &mut self.host.app.ui,

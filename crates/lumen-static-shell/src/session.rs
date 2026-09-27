@@ -181,6 +181,10 @@ pub struct FrameTimes {
     pub frame_ns: Option<u64>,
     pub damaged_px: Option<u64>,
     pub input_latency_ns: Option<u64>,
+    /// The GPU renderer's running count of frames drawn with glyphs or
+    /// images missing because an atlas could not hold them (M51/T51.1,
+    /// R9-F1); `None` from a renderer with no atlas.
+    pub atlas_give_ups: Option<u64>,
 }
 
 /// Whether this session catches panics in application code — the
@@ -541,6 +545,7 @@ impl<A: App + 'static> Session for Local<A> {
                     frame_ns: t.frame_ns,
                     input_latency_ns: t.input_latency_ns,
                     damaged_px: t.damaged_px,
+                    atlas_give_ups: t.atlas_give_ups,
                 };
                 let mut tree = lumen_static_agent::TreeMut::of_root(h.app.tree_mut(), &h.styles, &h.states);
                 agent.frame_done(&mut tree, timing);

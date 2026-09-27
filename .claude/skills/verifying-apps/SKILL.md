@@ -196,6 +196,10 @@ coordinate must be finite and within ±1e7.
 `damaged_px` (how much of the frame was actually redrawn, in physical
 pixels since M40/T40.1 — `ui.lastDamage` is logical and is not the same
 quantity).
+It also carries `atlas_give_ups`, once, beside `last`: the GPU backend's
+running count of frames drawn with glyphs or images missing because an
+atlas could not hold them (M51/T51.1). Non-zero is a visible defect;
+`null` means the frames came from the software canvas, which has no atlas.
 `app.perf { since: F }` adds what the surface presented over the journal
 frames after F (`since.damaged_px`, including the frames an agent's own
 request presented) — the drive prints it beside `ui.lastDamage`'s ratio

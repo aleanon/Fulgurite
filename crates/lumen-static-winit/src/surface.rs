@@ -40,6 +40,12 @@ pub struct Frame {
     /// a row ([`crate::present_retry`]). Always `false` from softbuffer,
     /// which panics rather than dropping.
     pub dropped: bool,
+    /// How many frames the GPU renderer has drawn with glyphs or images
+    /// missing because an atlas could not hold them, since it was made
+    /// (`lumen_static_wgpu::AtlasStats::give_ups`, M51/T51.1). A running
+    /// count, not this frame's; `None` from the software canvas, which has
+    /// no atlas.
+    pub atlas_give_ups: Option<u64>,
 }
 
 /// A canvas of `width` x `height` that rasterises with `font`.
@@ -213,6 +219,7 @@ impl Surface {
             damaged_px,
             // softbuffer's present panics on failure; it never drops.
             dropped: false,
+            atlas_give_ups: None,
         }
     }
 }

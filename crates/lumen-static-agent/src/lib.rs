@@ -317,6 +317,14 @@ pub struct FrameTiming {
     /// partial-redraw path that has quietly degraded to full frames is
     /// otherwise invisible: every stage still looks reasonable.
     pub damaged_px: Option<u64>,
+    /// The renderer's **running** count of frames drawn with glyphs or
+    /// images missing because an atlas could not hold them — the GPU
+    /// backend's `AtlasStats::give_ups` (M51/T51.1, R9-F1). Not a
+    /// per-frame stage, so `app.perf` reports it once, as
+    /// `atlas_give_ups` beside `last`, from the newest frame that carried
+    /// one. `None` from the software canvas, which has no atlas; a
+    /// non-zero value means a frame was shown with text missing.
+    pub atlas_give_ups: Option<u64>,
 }
 
 impl FrameTiming {
@@ -334,6 +342,7 @@ impl FrameTiming {
             "frame_ns": self.frame_ns,
             "input_latency_ns": self.input_latency_ns,
             "damaged_px": self.damaged_px,
+            "atlas_give_ups": self.atlas_give_ups,
         })
     }
 }
@@ -508,7 +517,10 @@ impl Agent {
     }
 
     /// `app.perf`: the last frame, and p50/p95/max over the ring — the
-    /// summary a latency budget is checked against.
+    /// summary a latency budget is checked against — plus
+    /// `atlas_give_ups`, the renderer's running count from the newest
+    /// frame that carried one (M51/T51.1; see
+    /// [`FrameTiming::atlas_give_ups`]).
     fn perf(&self, params: &Value) -> Value {
         // An empty window is `null`, not 0: a stage nothing measured
         // must not read as a stage that took no time (M48/T48.3).
@@ -547,6 +559,10 @@ impl Agent {
             "last": self.last_timing().json(),
             "window": summary,
             "samples": self.perf.len(),
+            // A running count, so the newest frame that has one is the
+            // answer; `null` when no frame came from a renderer with an
+            // atlas (M51/T51.1).
+            "atlas_give_ups": self.perf.iter().rev().find_map(|t| t.atlas_give_ups),
         });
         // `since`: what the surface presented over the journal frames
         // after it — M48/T48.4. The drive asks this of an action's frames

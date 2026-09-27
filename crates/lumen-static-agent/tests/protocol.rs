@@ -218,6 +218,32 @@ fn diagnostics_and_perf() {
     assert_eq!(d["process"]["supported"], false, "a tree claimed a process: {d}");
 }
 
+/// M51/T51.1 (R9-F1): the GPU renderer's atlas give-up count reaches
+/// `app.perf`. A running count, so the newest frame that carried one is
+/// the answer, and a later frame from a renderer with no atlas does not
+/// erase it; a session that never had one answers `null`, not 0.
+#[test]
+fn perf_reports_the_atlas_give_up_count() {
+    let mut f = Fixture::new();
+    let p = f.result("app.perf", json!({}));
+    println!("no atlas yet: atlas_give_ups = {}", p["atlas_give_ups"]);
+    assert_eq!(p["atlas_give_ups"], Value::Null, "a frame with no atlas reported a count: {p}");
+
+    let frames = [Some(0), Some(3), None];
+    for g in frames {
+        let mut tm = TreeMut::of_root(&mut f.app, &f.styles, &f.states);
+        let t = lumen_static_agent::FrameTiming { atlas_give_ups: g, ..lumen_static_agent::FrameTiming::passes(1, 1) };
+        f.agent.frame_done(&mut tm, t);
+    }
+    let p = f.result("app.perf", json!({}));
+    println!(
+        "after frames carrying {frames:?}: atlas_give_ups = {} (want 3), last = {}",
+        p["atlas_give_ups"], p["last"]["atlas_give_ups"]
+    );
+    assert_eq!(p["atlas_give_ups"], 3, "app.perf lost the renderer's give-up count: {p}");
+    assert_eq!(p["last"]["atlas_give_ups"], Value::Null, "the last frame carried none");
+}
+
 /// A host over the fixture, with and without `process_info`.
 struct Hosted<'a>(&'a Fixture, Option<Value>);
 

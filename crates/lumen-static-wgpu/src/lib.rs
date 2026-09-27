@@ -275,9 +275,8 @@ pub struct Gpu {
 /// counted nothing and logged nothing, and three documents said it never
 /// happened. It now logs once per renderer, and this counts every one.
 ///
-/// The agent's `app.perf` does not report it yet: that waits for
-/// M48/T48.3, which makes `app.perf` carry measured stages at all
-/// (`docs/plan-gpu-fidelity.md` §2.1).
+/// The agent's `app.perf` reports `give_ups` as `atlas_give_ups`, through
+/// the window's `Frame` (`docs/results-gpu.md` §4).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct AtlasStats {
     pub resets: u64,
@@ -617,7 +616,18 @@ impl Gpu {
             cache: None,
         });
 
-        let max_atlas = device.limits().max_texture_dimension_2d;
+        #[allow(unused_mut)]
+        let mut max_atlas = device.limits().max_texture_dimension_2d;
+        // **A fault switch, debug builds only** — M51/T51.1, like
+        // `LUMEN_GPU_DROP_FIRST`. `LUMEN_GPU_ATLAS_MAX=n` caps the glyph
+        // atlas at `n` texels, so a live gate can make an ordinary window
+        // give up and see the count reach `app.perf`. With growth to the
+        // device limit, nothing on a real screen gets there.
+        #[cfg(debug_assertions)]
+        if let Some(n) = std::env::var("LUMEN_GPU_ATLAS_MAX").ok().and_then(|v| v.parse::<u32>().ok()) {
+            max_atlas = max_atlas.min(n.max(1));
+        }
+        let glyph_start = GLYPH_ATLAS.min(max_atlas);
         let (target, target_view) = make_target(&device, width, height);
         let globals = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("lumen-static globals"),
@@ -630,7 +640,7 @@ impl Gpu {
         let mats = make_mat_buffer(&device, 2);
         let placeholder = make_atlas_texture(&device, 1, TARGET_FORMAT)
             .create_view(&wgpu::TextureViewDescriptor::default());
-        let glyph_tex = make_atlas_texture(&device, GLYPH_ATLAS, wgpu::TextureFormat::R8Unorm);
+        let glyph_tex = make_atlas_texture(&device, glyph_start, wgpu::TextureFormat::R8Unorm);
         // A 1x1 placeholder until an image command asks for a real one.
         let image_tex = make_atlas_texture(&device, 1, wgpu::TextureFormat::Rgba8Unorm);
 
@@ -670,7 +680,7 @@ impl Gpu {
             src_layout,
             linear,
             glyph_tex,
-            glyph_atlas: Atlas::new(GLYPH_ATLAS),
+            glyph_atlas: Atlas::new(glyph_start),
             image_tex,
             image_atlas: Atlas::new(1),
             bind_dirty: false,
@@ -678,7 +688,7 @@ impl Gpu {
             images: None,
             #[cfg(debug_assertions)]
             drop_first: std::env::var("LUMEN_GPU_DROP_FIRST").ok().and_then(|v| v.parse().ok()).unwrap_or(0),
-            atlas_stats: AtlasStats { glyph_size: GLYPH_ATLAS, ..AtlasStats::default() },
+            atlas_stats: AtlasStats { glyph_size: glyph_start, ..AtlasStats::default() },
             max_atlas,
         })
     }

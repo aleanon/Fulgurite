@@ -124,6 +124,8 @@ impl Backend for GpuBackend {
                 .sum(),
             // M47/T47.4: the window asks for another frame on this.
             dropped: !presented,
+            // M51/T51.1: reported through `app.perf` as `atlas_give_ups`.
+            atlas_give_ups: Some(self.gpu.atlas_stats().give_ups),
         }
     }
 
