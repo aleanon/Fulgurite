@@ -358,8 +358,9 @@ value, even though both builds nominally have that type: v1 and v2 each
 link their own copy and no layout agreement is promised, which is item
 1's whole point.
 
-**The chain's state lives in the loader process**, outside both dylibs —
-the inbox, the epoch and the pending descriptor. That arrangement is
+**The chain's state lives in the loader process**, outside both dylibs:
+the pending descriptor, and nothing more. The loader has no inbox and no
+epoch; this said it had both until R4-F3. That arrangement is
 forced by §7's sequence rather than chosen: step 2 of the sequence drops
 the entire app object while the old library is still loaded, so anything
 that must survive the swap cannot live in the app.
@@ -372,4 +373,19 @@ restore over.
 
 `just hot-demo` asserts the whole path, and
 `docs/events-decision.md`'s async-boundary section has the numbers and
-the injection.
+the injection. **That path is the fixture's, not the framework's**: its
+loader holds the descriptor itself, and no framework inbox or spawner is
+on it (R4-F3, corrected 2026-09-27).
+
+**In a window (M49/T49.10)** the descriptor crosses inside the saved
+bytes, as JSON integers: `hot::save` writes
+`{"$lumen": {"in_flight": [[kind, step, payload], …]}, "state": …}`.
+The in-flight list is the old host's ledger, less settled entries and
+running subscriptions (`Host::reissuable`). The new build's `hot::boot`
+restores the state and then spawns each descriptor through its own
+`App::job_for` (`Host::reissue`). A descriptor it has no job for is
+dropped and counted, and one its own boot already started is not spawned
+twice. The old session's inbox goes with it, so a result sitting there
+is produced again by the new build. **Delivery across a swap is at least
+once.** `Reloader::reissued` and `app.reloads` report the count
+(`docs/results-tasks.md` T49.10).

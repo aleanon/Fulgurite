@@ -1302,16 +1302,76 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
     pub fn in_flight_unsubscribed(&mut self) -> usize {
         self.ledger.prune();
         let running = &self.running;
-        self.ledger
-            .descriptors()
-            .filter(|d| !(d.step == 0 && running.contains(&(d.kind, d.payload))))
-            .count()
+        self.ledger.descriptors().filter(|d| !is_subscription_job(running, d)).count()
     }
 
-    /// The ledger itself: what [`Host::in_flight`] counts, and the
-    /// descriptors a reload would re-issue. As of the last prune.
+    /// The ledger itself: what [`Host::in_flight`] counts. As of the last
+    /// prune; [`Host::reissuable`] is what a reload re-issues.
     pub fn ledger(&self) -> &lumen_static::spawn::Ledger {
         &self.ledger
+    }
+
+    /// **What a hot swap hands the new build** — M49/T49.10 (R4-F3): every
+    /// job in flight, oldest first, less the jobs of running
+    /// subscriptions.
+    ///
+    /// In flight is the ledger's definition — spawned, and not yet both
+    /// returned and drained ([`Ledger::unsettled`](lumen_static::spawn::Ledger::unsettled),
+    /// read without a prune because a session saves through `&self`), so
+    /// a result still sitting in this host's inbox is included: the inbox
+    /// goes with this host, and the job must run again to be delivered.
+    /// A subscription's job is left out for the reason
+    /// [`Host::in_flight_unsubscribed`] leaves it out: the new build
+    /// starts what its application declares, and re-issuing it too would
+    /// run the stream twice.
+    ///
+    /// **Delivery is at least once** across the swap: the old build's
+    /// worker is not stopped (a thread cannot be), so a job that was
+    /// running still finishes there — into an inbox nobody drains — and
+    /// runs again under the new build. A job with a side effect may
+    /// perform it twice. `book/src/events.md` says so beside the chains.
+    pub fn reissuable(&self) -> Vec<lumen_static::spawn::Descriptor> {
+        let running = &self.running;
+        self.ledger.unsettled().filter(|d| !is_subscription_job(running, d)).collect()
+    }
+
+    /// Spawn what an old build had in flight, through **this** build's
+    /// `App::job_for` — M49/T49.10. The other half of
+    /// [`Host::reissuable`], called by a hot library's boot after the
+    /// restore.
+    ///
+    /// A descriptor already in flight here is **not spawned twice**: the
+    /// new build's boot has already started its own boot jobs, and an old
+    /// build's copy of the same job, still running at the swap, is that
+    /// job. Matched one for one, so two identical requests from the old
+    /// build and one boot job spawn one more. A descriptor this build has
+    /// no job for is dropped and counted in [`Host::unknown_kind`], as
+    /// `drain_outbox` drops one — never guessed at.
+    pub fn reissue(&mut self, descs: &[lumen_static::spawn::Descriptor]) -> Reissued {
+        self.ledger.prune();
+        let mut here: Vec<lumen_static::spawn::Descriptor> = self.ledger.descriptors().collect();
+        let mut out = Reissued::default();
+        for d in descs {
+            if let Some(i) = here.iter().position(|h| h == d) {
+                here.swap_remove(i);
+                out.already += 1;
+                continue;
+            }
+            match A::job_for(*d) {
+                Some(job) => {
+                    if self.spawn(lumen_static::spawn::Job { desc: *d, job, on_fail: Some(A::failed) }) {
+                        out.spawned += 1;
+                    } else {
+                        out.refused += 1;
+                    }
+                }
+                None => {
+                    self.unknown_kind += 1;
+                    out.unknown += 1;
+                }
+            }
+        }
+        out
     }
 
     /// Timer firings that came due with no room in the outbox and were
@@ -2047,6 +2107,29 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
 /// stands for nothing. On X11 winit also synthesises a `CursorMoved` for
 /// the first touch; that arrives as one more move and never as a second
 /// press (`tests/touch_as_pointer.rs`).
+/// Whether `d` is the job of a running subscription: its declared
+/// `(kind, key)` at step 0 (M48/T48.2). One predicate for the two readers
+/// that leave such jobs out — settling, and a swap's re-issue.
+fn is_subscription_job(running: &[(u64, u64)], d: &lumen_static::spawn::Descriptor) -> bool {
+    d.step == 0 && running.contains(&(d.kind, d.payload))
+}
+
+/// What [`Host::reissue`] did with an old build's work in flight —
+/// M49/T49.10. Plain counts, so it can cross a library seam as integers.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Reissued {
+    /// Spawned under this build's `App::job_for`.
+    pub spawned: usize,
+    /// Already in flight here (a boot job this build started itself), so
+    /// not spawned again.
+    pub already: usize,
+    /// This build has no job for its `(kind, step)`: dropped, and counted
+    /// in [`Host::unknown_kind`] too.
+    pub unknown: usize,
+    /// Refused for want of a spawner ([`Host::unspawned`]).
+    pub refused: usize,
+}
+
 fn promote_touch(primary: &mut Option<u32>, ev: &Event) -> [Option<Event>; 2] {
     use lumen_static::event::TouchPhase;
     let Event::Touch { id, x, y, phase } = *ev else { return [None, None] };

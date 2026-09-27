@@ -392,9 +392,9 @@ pub unsafe extern "C" fn hot_take_log(buf: *mut u8, cap: usize) -> usize {
 
 // ---- M28/T28.7: the step verb -----------------------------------------------
 //
-// The chain lives in the **host**, not here: the inbox, the epoch and
-// the pending descriptor are all in `fixtures/hot-host`, outside both
-// dylibs. This is the one thing a dylib contributes — *what a step
+// The chain lives in the **host**, not here: the pending descriptor is
+// held by `fixtures/hot-host`, outside both dylibs. (It has no inbox and
+// no epoch; this comment said it had both until R4-F3.) This is the one thing a dylib contributes — *what a step
 // means* — and it is reached through primitives, like every other verb
 // in this fixture.
 //
@@ -403,6 +403,13 @@ pub unsafe extern "C" fn hot_take_log(buf: *mut u8, cap: usize) -> usize {
 // agreement is promised. So a `Descriptor` crosses as three `u64`s and
 // is reassembled on the far side, which is what
 // `docs/plan-tasks.md` §2.1 means by "crosses as primitives".
+//
+// **This shows the principle, not a framework property** (R4-F3,
+// corrected 2026-09-27): no `lumen_static::spawn` or `inbox` code is on
+// this path, so it says nothing about what the framework carries. A
+// window swap carries the host's work in flight since M49/T49.10
+// (`lumen_static_reload::hot::save` and `hot::boot`), gated by
+// `just window-reload-demo` with `fixtures/chain-app`.
 
 /// Interpret one step of a chain, and return what it produced.
 ///

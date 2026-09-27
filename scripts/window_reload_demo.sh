@@ -18,5 +18,11 @@ cargo build --release -q -p reload-app --features grow
 cp target/release/libreload_app.so "$OUT/v-grow.so"
 cargo build --release -q -p reload-app --features v4
 cp target/release/libreload_app.so "$OUT/v4.so"
+# M49/T49.10: a chain in flight at the swap.
+cargo build --release -q -p chain-app
+cp target/release/libchain_app.so "$OUT/chain-v1.so"
+cargo build --release -q -p chain-app --features v2
+cp target/release/libchain_app.so "$OUT/chain-v2.so"
 cargo build --release -q -p reload-host
-./target/release/reload-host "$OUT/v1.so" "$OUT/v2.so" "$OUT/v3.so" "$OUT/v-panic.so" "$OUT/v-grow.so" "$OUT/v4.so"
+./target/release/reload-host "$OUT/v1.so" "$OUT/v2.so" "$OUT/v3.so" "$OUT/v-panic.so" "$OUT/v-grow.so" "$OUT/v4.so" \
+    "$OUT/chain-v1.so" "$OUT/chain-v2.so"

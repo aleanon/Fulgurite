@@ -16,3 +16,5 @@ lumen-static-shell = { path = "../../crates/lumen-static-shell", features = ["tr
 lumen-static-reload = { path = "../../crates/lumen-static-reload", features = ["window"] }
 # M49/T49.11: to read a fixture-only symbol, `reload_app_value_index`.
 libloading = "0.8"
+# M49/T49.10: to read the work in flight out of a session's saved bytes.
+serde_json = "1"

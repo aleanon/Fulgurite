@@ -169,6 +169,13 @@ same path:
    sound.
 3. The library boots **its own** `program()` and grafts the saved state
    on. Nothing is built through a pointer into the old code.
+4. Work that was **in flight** is started again under the new build:
+   every job the old host had spawned and not yet landed goes through the
+   new build's `job_for`. A chain whose first step was running finishes
+   under the new step function. `app.reloads` reports how many jobs were
+   re-issued (`docs/results-tasks.md` T49.10). This is **at least once**:
+   the old worker cannot be stopped, so a job with a side effect, such as
+   a write or a request, may perform it twice.
 
 Three things can go wrong, and none of them takes the window down:
 

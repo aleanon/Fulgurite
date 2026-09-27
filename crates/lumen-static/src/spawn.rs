@@ -345,9 +345,10 @@ impl<M: Send + 'static> Spawner<M> for Threads {
 ///
 /// It is one structure for three readers, on purpose, so they cannot
 /// disagree: `Host::in_flight` answers from its length (and M48/T48.2's
-/// "is anything pending" is that answer); M49/T49.10 re-issues
-/// [`Ledger::descriptors`] to a new build across a swap; and a test asks
-/// it where it would otherwise have to sleep.
+/// "is anything pending" is that answer); a window's hot swap re-issues
+/// its [unsettled](Ledger::unsettled) descriptors to the new build
+/// (M49/T49.10, `Host::reissuable`); and a test asks it where it would
+/// otherwise have to sleep.
 ///
 /// **What it cannot see**: a clone of a job's sender that outlives the
 /// body. Its later results are still applied, untracked — the entry ends
@@ -389,9 +390,19 @@ impl Ledger {
         self.entries.is_empty()
     }
 
-    /// What is listed, oldest first: the data a reload re-issues.
+    /// What is listed, oldest first, as of the last [`Ledger::prune`].
     pub fn descriptors(&self) -> impl Iterator<Item = Descriptor> + '_ {
         self.entries.iter().map(|(d, _)| *d)
+    }
+
+    /// What is listed **and not settled as of this call**, oldest first:
+    /// the data a reload re-issues (M49/T49.10). [`Ledger::descriptors`]
+    /// without a prune, for a caller that holds only `&self` — a session
+    /// saving itself for a swap. An entry that settled since the last
+    /// prune has had its result applied, and re-issuing it would apply
+    /// it twice.
+    pub fn unsettled(&self) -> impl Iterator<Item = Descriptor> + '_ {
+        self.entries.iter().filter(|(_, t)| !t.settled()).map(|(d, _)| *d)
     }
 }
 

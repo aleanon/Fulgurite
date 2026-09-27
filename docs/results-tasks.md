@@ -509,6 +509,17 @@ above is what that looks like from the outside.
 
 **Landed 2026-09-20. The milestone's centre.**
 
+> **Corrected 2026-09-27 (M49/T49.10, R4-F3).** What follows shows the
+> *principle* on real code: a descriptor held as data is interpreted by
+> whichever build is loaded when it lands. It does **not** show a
+> framework property. The pending descriptor in this gate is held by the
+> fixture's loader, which has no inbox and no epoch at all; no
+> `lumen_static::spawn` or `inbox` code is on its path (`docs/results-deep-review.md` R4-F3 counted
+> zero such symbols). Until T49.10 the framework's window swap carried no
+> work at all: the old session's inbox and its jobs were dropped with it.
+> The framework half now exists and is gated with a framework-side
+> injection. It is in "M49/T49.10" at the end of this file.
+
 The plan's first draft claimed `fixtures/hot-app` and `fixtures/hot-host`
 "already drive a swap with state in flight". They do not: the sequence is
 strictly sequential — save, drop, load, fresh, restore — with no thread,
@@ -1035,3 +1046,80 @@ counted anywhere a caller can read`. Restored, green.
 **What a caller reads.** `Host::timer_coalesced` and `Timers::coalesced`;
 the agent reports no host counters today, so nothing there changed
 (`docs/plan-timers-wake.md` T47.2, "What building found").
+
+## M49/T49.10 — work in flight crosses a window swap
+
+**Landed 2026-09-27** (`docs/plan-reload-hardening.md` T49.10, R4-F3).
+The old session saves its host's work in flight beside the kept state:
+`hot::save`, under `hot::RESERVED`, as `[kind, step, payload]` integers.
+The new build's `hot::boot` re-issues each entry through its own
+`App::job_for` after the restore (`Host::reissuable`, `Host::reissue`).
+The ledger it reads is M47/T47.3's, above.
+
+### The gate, in `just window-reload-demo`
+
+`fixtures/chain-app` is a two-step chain from payload 4. v1's step 0 is
+`p + 1` and **blocks until the loader releases it**, so it is in flight
+at the swap without a race. v2's step 0 is `p + 100`. Both builds' step 1
+is `x * 10`. So `chain 1040` means v2 ran both steps, and `chain 50` means
+v1's step 0 ran after the swap.
+
+```
+chain, v2 with no swap: `start | chain 1040`, in flight after 0
+chain, v1 clicked: `start | chain -`, in flight before the swap 1 [[9, 0, 4]]
+chain, swapped: reissued Reissued { spawned: 1, already: 0, unknown: 0, refused: 0 }
+chain, after the swap and a drain: `start | chain 1040` (want `chain 1040`), in flight after 0
+  ok: a chain in flight at the swap completed under v2's step function
+```
+
+The first line is the accepting direction: the same chain with no swap
+reaches the same frame and leaves the ledger empty. The second is the
+setup assertion: without a step 0 in flight, the swap would carry an
+empty ledger whichever way the code went.
+
+### Injections
+
+| injection | fires as |
+|---|---|
+| `hot::boot` re-issues nothing (the behaviour before this task) | `reissued Reissued { spawned: 0, … }`; `chain did not complete after swap`, the frame still at `chain -` |
+| the continuation held as the **old build's fn pointer**: `hot::save` writes v1's `job_for` answer as a fourth integer, and `hot::boot` spawns that pointer instead of asking its own table (T28.7's injection, now on the framework path) | `chain 50`; `the chain completed into the OLD build's step 0` |
+
+The second injection is `docs/events-decision.md` rule 3's defect, run
+through the framework's own inbox, spawner and ledger for the first time.
+
+### The selection rules, in `tests/reissue.rs`
+
+The live gate's ledger holds one job, so it cannot reach these rules.
+
+| at the save | listed | carried |
+|---|---|---|
+| applied / result in the inbox / not started / settled since the last prune / a running subscription | `[7, 11, 13, 12]` (10 pruned) | **`[11, 12]`** |
+
+| the new build, with its own boot job `(1, 0, 5)` in flight, given `(1,0,5)`, `(1,0,5)`, `(1,0,6)`, `(99,0,1)` | |
+|---|---|
+| `Reissued` | `spawned 2, already 1, unknown 1, refused 0` |
+| in flight / `unknown_kind` / landed | 3 / 1 / `[5, 5, 6]` |
+
+| injection | fires as |
+|---|---|
+| `Ledger::unsettled` does not filter settled entries | `a job that settled since the last prune was re-issued: [11, 13, 12]` |
+| `reissuable` keeps subscription jobs | `a running subscription's job was re-issued: [7, 11, 12]` |
+| `reissue` does not skip a job already in flight | `Reissued { spawned: 3, already: 0, … }` against `spawned: 2, already: 1` |
+| an unknown descriptor is not counted in `unknown_kind` | `a descriptor this build has no job for is counted where drain_outbox counts it`: 0 against 1 |
+
+Restored, all green.
+
+### What it costs
+
+Nothing per spawn or per result. `Host::spawn`, the drain and the
+ledger's `record`/`prune` are unchanged. The added work runs once per
+swap: a walk of the ledger at the save and one spawn per re-issued entry.
+The plan's kill rule priced the ledger's per-result work, which is
+T47.3's and is judged above. It could not fire here
+(`docs/plan-reload-hardening.md` T49.10, "What building found").
+
+**Delivery across a swap is at least once.** A thread cannot be stopped,
+so the old build's worker finishes into an inbox nobody drains, and the
+job runs again under the new build. In the gate, v1's worker is released
+after the swap, and its late `p + 1` never reaches v2's frame.
+

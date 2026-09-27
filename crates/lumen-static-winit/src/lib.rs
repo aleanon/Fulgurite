@@ -687,6 +687,15 @@ impl Win {
                 s.resize(w, h);
             }) {
                 eprintln!("lumen-static: reloaded ({})", hot.reloader.reloads);
+                // M49/T49.10: at least once — a job with a side effect that
+                // was running at the swap may perform it twice.
+                let r = hot.reloader.reissued;
+                if r.spawned + r.unknown > 0 {
+                    eprintln!(
+                        "lumen-static: {} task(s) in flight re-issued to the new build, {} dropped (no job for them)",
+                        r.spawned, r.unknown
+                    );
+                }
                 self.last_frame = None;
             }
         }
@@ -983,6 +992,9 @@ impl Win {
                     // M49/T49.11: node indices from before the last swap
                     // address other nodes; resolve by author id again.
                     "shape_changed": r.is_some_and(|r| r.shape_changed),
+                    // M49/T49.10: the old build's work in flight, handed on.
+                    "reissued": r.map_or(0, |r| r.reissued.spawned),
+                    "reissue_dropped": r.map_or(0, |r| r.reissued.unknown),
                 }
             }));
             return;
@@ -1209,8 +1221,7 @@ impl<A: App + lumen_static::reload::Reloadable + 'static> Run for Program<A> {
             self,
             |p| {
                 Box::new(
-                    Local::from_program(p, Policy)
-                        .with_saver(|a| lumen_static::reload::to_vec(&lumen_static::reload::Reloadable::save(a))),
+                    Local::from_program(p, Policy).with_saver(lumen_static_reload::hot::save::<A>),
                 )
             },
             dir,

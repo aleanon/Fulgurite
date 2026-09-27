@@ -346,6 +346,15 @@ strictly sequential — save, drop, load, fresh, restore — with no thread,
 no channel, no `Host`, no pump and no inbox, and step two destroys the
 entire app object while the old library is still loaded.
 
+> **Corrected 2026-09-27 (M49/T49.10, R4-F3).** What this task built shows
+> the principle on the fixture's own loader. The loader holds the pending
+> descriptor and has **no inbox and no epoch**, despite what the next
+> paragraph says. No framework code is on the path, so this is not
+> evidence that the framework carries a chain across a swap.
+> It did not. A window swap dropped the old session's work until M49/T49.10
+> made `hot::boot` re-issue the host's ledger through the new build's
+> `job_for` (`docs/results-tasks.md` T49.10).
+
 **So the task builds what the gate needs**, and the arrangement is forced
 by §7's sequence: **the inbox, the epoch and the pending descriptor live
 in `hot-host`** — the loader process, outside both dylibs — and the

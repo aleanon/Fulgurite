@@ -32,6 +32,7 @@ members = [
     "fixtures/stamp-host",
     "fixtures/reload-app",
     "fixtures/reload-host",
+    "fixtures/chain-app",
     "fixtures/hot-window",
     "fixtures/embedded",
     "fixtures/observe-tests",

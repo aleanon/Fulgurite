@@ -145,11 +145,24 @@ happens next, and what happens next is itself data — finish, or another
 descriptor. `App::job_for` dispatches on `(kind, step)`, so the step
 *is* the chain.
 
-`just hot-demo` checks this across a real dylib swap: a chain starts
-against v1, the pending descriptor survives as three `u64`s, and v2's
-step function completes it. Holding the continuation as a captured
-function pointer instead makes the same demo fail with v1's answer,
-which is rule 3's defect shown rather than described.
+A window's hot swap relies on this. The old session saves every job its
+host had in flight as `(kind, step, payload)`, and the new build spawns
+each one through its **own** `App::job_for`. A chain whose first step
+was running at the swap therefore finishes under the new step function.
+`just window-reload-demo` checks this across a real dylib swap with
+`fixtures/chain-app`. If the re-issue is dropped, the chain never
+finishes. If the continuation is held as the old build's function
+pointer, it finishes with v1's answer, which is rule 3's defect shown
+rather than described (`docs/results-tasks.md` T49.10).
+
+**Across a swap, delivery is at least once.** The old build's worker is
+not stopped, because a thread cannot be. It finishes into an inbox that
+nobody drains, and its job runs again under the new build, so a job with
+a side effect may perform it twice. A running subscription is not
+re-issued: the new build starts whatever its application declares.
+
+`just hot-demo` shows the same shape on a fixture's own loader, which
+holds the descriptor itself. No framework code is on that path.
 
 ### Batches, cancellation and subscriptions
 

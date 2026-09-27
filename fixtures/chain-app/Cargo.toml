@@ -1,0 +1,26 @@
+[package]
+name = "chain-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+# M49/T49.10: a window library with a two-step chain, for the gate that a
+# chain in flight at a swap completes under the NEW build's step function
+# (R4-F3). `scripts/window_reload_demo.sh` builds it as v1 (whose step 0
+# blocks until the loader releases it, so it is in flight at the swap) and
+# v2 (whose step 0 answers differently), and `fixtures/reload-host` swaps
+# between them. Its dependencies are `fixtures/reload-app`'s, feature for
+# feature, so the ABI stamp agrees with the one loader.
+[lib]
+crate-type = ["cdylib"]
+
+[features]
+v2 = []
+
+[dependencies]
+lumen-static = { path = "../../crates/lumen-static", features = ["reload"] }
+lumen-static-widgets = { path = "../../crates/lumen-static-widgets", features = ["reload"] }
+lumen-static-shell = { path = "../../crates/lumen-static-shell", features = ["truetype", "reload"] }
+lumen-static-reload = { path = "../../crates/lumen-static-reload", features = ["window"] }
+serde = { version = "1", features = ["derive"] }

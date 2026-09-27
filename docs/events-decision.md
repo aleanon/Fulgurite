@@ -90,6 +90,19 @@ held as a code pointer captured at spawn, which is what rule 3 forbids
 
 Last week's logic, running after the swap, with no crash and no warning.
 
+**Corrected 2026-09-27 (M49/T49.10, R4-F3): that demonstration ran on the
+fixture's own code.** `fixtures/hot-host` keeps the pending descriptor
+itself and calls the library's `hot_step`. No `lumen_static::spawn` or
+`inbox` code is on the path, so it shows the rule and not the framework
+keeping it. The framework's window swap carried no work in flight until
+T49.10. Now the old session saves its host's ledger beside the kept state
+(`hot::save`), and the new build's `hot::boot` re-issues each descriptor
+through its own `App::job_for`. `just window-reload-demo` runs the same
+two injections on that path. With the re-issue dropped, the chain never
+completes (`chain -`). With the continuation held as the old build's fn
+pointer, it answers with v1's value (`chain 50` against `chain 1040`).
+`docs/results-tasks.md` T49.10 has the output.
+
 ## What is given up, priced
 
 - **Introspectable actions.** `Msg::Save` names itself; an `fn` pointer
@@ -116,7 +129,9 @@ Last week's logic, running after the swap, with no crash and no warning.
 - **A continuation is an index, not a function** (M28/T28.6, T28.7). A
   chain's next step is a `step` field in a descriptor, resolved by the
   loaded build; the rule above forbids the closure form, and
-  `just hot-demo` is where that is checked rather than asserted.
+  `just window-reload-demo` is where the framework is checked against it
+  across a real window swap (M49/T49.10). `just hot-demo` shows the same
+  shape on a fixture loader's own code.
 - **A click is a press and a release on the same logical item**
   (M44/T44.2, DECIDED 2026-09-26; `docs/plan-input-semantics.md` §2.2).
   The press latches `(node, row, row_generation)`; on the release a

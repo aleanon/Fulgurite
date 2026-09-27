@@ -9,7 +9,9 @@
 >
 > **What exists:** `fixtures/hot-host` and `just hot-demo` swap a real
 > `cdylib` headlessly, with `#[reload(keep)]` state carried by
-> `save`/`restore` and pending M28 chains carried as data (T28.7). There
+> `save`/`restore` and pending M28 chains carried as data (T28.7 — by
+> the fixture's own loader, not by framework code; corrected 2026-09-27,
+> R4-F3, and built for the window by M49/T49.10). There
 > is no window, no `Host`, no build step and no watcher. The loader
 > leaks every library it has loaded.
 >
@@ -297,10 +299,18 @@ fires.
 >
 > **Not carried across a window swap: M28 work in flight.** The old
 > session's inbox and its running jobs stay with the old session, which
-> is dropped. `fixtures/hot-host` proves descriptors can cross as data
-> (T28.7), but the window's `Session` has no method that hands pending
+> is dropped. The window's `Session` has no method that hands pending
 > descriptors over, so a chain started before a reload does not complete
 > after it. Recorded, not built.
+>
+> *Corrected 2026-09-27.* This paragraph also said `fixtures/hot-host`
+> "proves descriptors can cross as data (T28.7)". It proves that of the
+> fixture's own loader, which holds the descriptor itself; no framework
+> code is on that path (R4-F3). **Built since, by M49/T49.10**: the
+> session saves the host's work in flight beside its kept state
+> (`hot::save`), and the new build's `hot::boot` re-issues it through its
+> own `job_for`. `just window-reload-demo`'s `chain_across_a_swap` gates
+> it (`docs/results-tasks.md` T49.10).
 
 §2.4, plus the M28 carry-over that `fixtures/hot-host` already proves.
 **Gate:** change a kept field's type between v1 and v2. The swap

@@ -143,13 +143,19 @@ pub trait Session: FrameSource {
     /// Feed the agent's journal the frame just drawn, with what it cost
     /// as the window measured it (M48/T48.3).
     fn agent_frame_done(&mut self, timing: FrameTimes);
-    /// The application's `#[reload(keep)]` state, as bytes — empty for a
-    /// session that cannot reload.
+    /// What a swap carries, as bytes: the application's `#[reload(keep)]`
+    /// state and, beside it, the host's work in flight (M49/T49.10) —
+    /// whatever the installed [`Saver`] writes. Empty for a session that
+    /// cannot reload.
     fn save(&self) -> Vec<u8>;
     /// What restoring saved state onto this session could not keep — one
     /// line per field that fell back to its boot value, naming it and why
     /// (M37/T37.3, `docs/plan-window-reload.md` §2.4). Drained.
     fn take_restore_log(&mut self) -> String;
+    /// What the boot did with the previous build's work in flight —
+    /// M49/T49.10 (`Host::reissue`). All zeros for a session that was not
+    /// booted from a swap.
+    fn reissued(&self) -> crate::Reissued;
     /// The surface holds pixels this session did not draw — a window's
     /// own overlay, now gone: repaint all of it, in every buffer
     /// (`Host::repaint_all`).
@@ -236,10 +242,16 @@ fn run_guarded<A: App, P: RecoverPolicy, T>(
     Some(f(host))
 }
 
-/// Save a session's application, for a reload. A function pointer and
-/// not a bound, so `Local<A>` does not require `A: Reloadable` of an
-/// application that never reloads.
-pub type Saver<A> = fn(&A) -> Vec<u8>;
+/// Save a session, for a reload. A function pointer and not a bound, so
+/// `Local<A>` does not require `A: Reloadable` of an application that
+/// never reloads.
+///
+/// **It is handed the host, not the application** — M49/T49.10: what a
+/// swap carries is the application's kept state *and* the host's work in
+/// flight ([`Host::reissuable`]), and the second is not the
+/// application's. `lumen_static_reload::hot::save` is the one a window
+/// uses.
+pub type Saver<A> = fn(&Host<A, Ret, Inval>) -> Vec<u8>;
 
 /// A statically linked — or library-resident — application behind
 /// [`Session`]. `P` says whether it catches application panics
@@ -255,6 +267,7 @@ pub struct Local<A: App, P: RecoverPolicy> {
     recover: core::marker::PhantomData<P>,
     saver: Option<Saver<A>>,
     restore_log: String,
+    reissued: crate::Reissued,
     /// What the last [`Session::frame`] said: whether anything is still
     /// moving. `ui.waitSettled` reads it (M48/T48.2).
     animating: bool,
@@ -296,6 +309,7 @@ impl<A: App + 'static, P: RecoverPolicy> Local<A, P> {
             recover: core::marker::PhantomData,
             saver: None,
             restore_log: String::new(),
+            reissued: crate::Reissued::default(),
             animating: false,
             unjournaled_px: None,
             #[cfg(feature = "live-agent")]
@@ -313,6 +327,12 @@ impl<A: App + 'static, P: RecoverPolicy> Local<A, P> {
     /// [`Session::take_restore_log`].
     pub fn note_restore(&mut self, log: String) {
         self.restore_log = log;
+    }
+
+    /// Record what re-issuing the previous build's work did, for
+    /// [`Session::reissued`] (M49/T49.10).
+    pub fn note_reissue(&mut self, r: crate::Reissued) {
+        self.reissued = r;
     }
 
     /// The program this session was booted from.
@@ -589,13 +609,17 @@ impl<A: App + 'static, P: RecoverPolicy> Session for Local<A, P> {
 
     fn save(&self) -> Vec<u8> {
         match self.saver {
-            Some(save) => self.caught(Vec::new(), |h| save(&h.app)),
+            Some(save) => self.caught(Vec::new(), save),
             None => Vec::new(),
         }
     }
 
     fn take_restore_log(&mut self) -> String {
         std::mem::take(&mut self.restore_log)
+    }
+
+    fn reissued(&self) -> crate::Reissued {
+        self.reissued
     }
 
     fn repaint_all(&mut self) {

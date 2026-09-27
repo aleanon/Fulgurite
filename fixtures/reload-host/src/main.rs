@@ -2,7 +2,8 @@
 //! and check the swapped session against v2 run from the start —
 //! M37/T37.1 (`docs/plan-window-reload.md`).
 //!
-//! `reload-host <v1.so> <v2.so> <v3.so> <v-panic.so> <v-grow.so> <v4.so>`. The exit code is the verdict.
+//! `reload-host <v1.so> <v2.so> <v3.so> <v-panic.so> <v-grow.so> <v4.so>
+//! <chain-v1.so> <chain-v2.so>`. The exit code is the verdict.
 //!
 //! **What is compared.** v1 is clicked once, saved, dropped; v2 boots
 //! its own program with those bytes. A second v2 session boots with
@@ -255,5 +256,110 @@ fn main() {
     assert!(after.contains("clicks: 2"), "the swap lost the count: `{after}`");
     println!("  ok: the swap reported the shape change; #value moved {before} -> {after_i}");
 
+    chain_across_a_swap(&args[6], &args[7]);
+
     println!("\nWINDOW RELOAD (headless): PASS");
+}
+
+/// The descriptors a session's saved bytes carry as in flight — the
+/// host's ledger, less running subscriptions, as `hot::save` writes it
+/// (M49/T49.10).
+fn in_flight_of(s: &dyn Session) -> Vec<[u64; 3]> {
+    let v: serde_json::Value = serde_json::from_slice(&s.save()).expect("a session saves JSON");
+    v[lumen_static_reload::hot::RESERVED]["in_flight"]
+        .as_array()
+        .expect("the saved bytes carry the work in flight")
+        .iter()
+        .map(|e| {
+            let a = e.as_array().expect("[kind, step, payload]");
+            [a[0].as_u64().unwrap(), a[1].as_u64().unwrap(), a[2].as_u64().unwrap()]
+        })
+        .collect()
+}
+
+/// Frame until the chain's label shows a result, or `ms` pass.
+fn drain_chain(s: &mut dyn Session, ms: u64) -> String {
+    let until = std::time::Instant::now() + std::time::Duration::from_millis(ms);
+    loop {
+        s.frame(16.0, W, H);
+        let t = text_of(s);
+        if !t.contains("chain -") || std::time::Instant::now() >= until {
+            return t;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(2));
+    }
+}
+
+/// Call a fixture-only `extern "C" fn()` in the library at `p`.
+fn call(p: &str, name: &[u8]) {
+    // SAFETY: the fixture's own `extern "C" fn()`; the library is already
+    // loaded by `Build::open`, so this only finds it again, and it is
+    // never unloaded, as every build here.
+    let lib = unsafe { libloading::Library::new(p) }.expect("load");
+    let f: libloading::Symbol<extern "C" fn()> = unsafe { lib.get(name) }.expect("the fixture exports it");
+    f();
+    std::mem::forget(lib);
+}
+
+/// **M49/T49.10 (R4-F3): a chain in flight at a swap completes under the
+/// new build's step function.**
+///
+/// `chain-app` v1's step 0 blocks until released, so a click leaves it in
+/// flight — listed in the ledger, the label at `chain -`. The swap must
+/// carry the descriptor as data and the new build must re-issue it through
+/// its own `job_for`: v2's step 0 is `p + 100`, so the chain ends at
+/// `chain 1040`. The old build's code run after the swap ends at
+/// `chain 50`; a dropped chain never ends.
+fn chain_across_a_swap(v1_path: &str, v2_path: &str) {
+    const V2: &str = "chain 1040";
+
+    // The accepting direction first: v2 with no swap completes, and its
+    // ledger is empty after.
+    let v2 = open(v2_path);
+    let mut d: Box<dyn Session> = Box::new(v2.boot(None).expect("chain v2 boots"));
+    d.frame(0.0, W, H);
+    d.post(Event::down(AT.0, AT.1));
+    d.post(Event::up(AT.0, AT.1));
+    let direct = drain_chain(&mut *d, 5000);
+    let direct_left = in_flight_of(&*d);
+    println!("chain, v2 with no swap: `{direct}`, in flight after {}", direct_left.len());
+    assert!(direct.contains(V2), "setup: v2's chain with no swap did not reach `{V2}`: `{direct}`");
+    assert!(direct_left.is_empty(), "a completed chain left work listed: {direct_left:?}");
+
+    // v1: click, and step 0 is in flight (blocked).
+    let v1 = open(v1_path);
+    let mut r = Reloader::new();
+    let mut cur: Box<dyn Session> = Box::new(v1.boot(None).expect("chain v1 boots"));
+    cur.frame(0.0, W, H);
+    cur.post(Event::down(AT.0, AT.1));
+    cur.post(Event::up(AT.0, AT.1));
+    cur.frame(16.0, W, H);
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    cur.frame(16.0, W, H);
+    let before = in_flight_of(&*cur);
+    let shown = text_of(&*cur);
+    println!("chain, v1 clicked: `{shown}`, in flight before the swap {} {before:?}", before.len());
+    // The setup must happen: a click that missed spawns nothing, and the
+    // swap would carry an empty ledger whichever way the code went.
+    assert_eq!(before, vec![[9, 0, 4]], "setup: v1's step 0 is not in flight at the swap");
+    assert!(shown.contains("chain -"), "setup: v1's chain finished before the swap: `{shown}`");
+
+    r.outcome(Outcome::Built(std::path::PathBuf::from(v2_path)));
+    assert!(r.swap(&mut cur, |s: &mut dyn Session| { s.frame(0.0, W, H); }), "chain v2 must swap");
+    println!("chain, swapped: reissued {:?}", r.reissued);
+    // The old build's worker finishes now, into an inbox nobody drains.
+    call(v1_path, b"chain_app_release");
+
+    let after = drain_chain(&mut *cur, 5000);
+    let left = in_flight_of(&*cur);
+    println!("chain, after the swap and a drain: `{after}` (want `{V2}`), in flight after {}", left.len());
+    assert!(!after.contains("chain -"), "chain did not complete after swap: `{after}`, reissued {:?}", r.reissued);
+    assert!(
+        after.contains(V2),
+        "the chain completed into the OLD build's step 0 (`chain 50` is v1's p + 1, times 10): `{after}`"
+    );
+    assert_eq!(r.reissued.spawned, 1, "the swap re-issued {:?}, want one job", r.reissued);
+    assert!(left.is_empty(), "the completed chain left work listed after the swap: {left:?}");
+    assert_eq!(after, direct, "the swapped chain's frame differs from v2 run with no swap");
+    println!("  ok: a chain in flight at the swap completed under v2's step function");
 }

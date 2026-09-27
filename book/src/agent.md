@@ -142,6 +142,11 @@ edit keeps the tree's shape**. An edit that adds, removes or reorders a
 field moves every offset after it, and the window's `app.reloads` answer
 then carries `"shape_changed": true`: resolve again, by author id or a
 `#a > #b` path, which are the names that survive any edit (M49/T49.11).
+The same answer carries `"reissued"` and `"reissue_dropped"`: how many
+jobs that were in flight at the last swap the new build started again,
+and how many it had no job for (M49/T49.10). Treat a non-zero
+`reissued` as a reason to wait before reading the screen. `ui.waitSettled`
+counts those jobs like any others.
 
 ## `ui.explain`
 

@@ -569,6 +569,16 @@ spawned and not yet landed (body returned, every result drained); its
 length is `Host::in_flight`, the one in-flight count M48's "settled"
 answer and M49's re-issue across a swap read.
 
+**DECIDED 2026-09-27 (M49/T49.10, `docs/results-tasks.md` T49.10):** a
+window's hot swap **re-issues the work in flight** to the new build. The
+old session saves the ledger's unsettled descriptors, less running
+subscriptions (`Host::reissuable`), beside its kept state. The new build's
+boot spawns each one through its own `App::job_for` after the restore
+(`Host::reissue`). Delivery across a swap is at least once: the old
+worker cannot be stopped, so a job with a side effect may perform it
+twice. Until then a chain in flight at a window swap was dropped silently,
+and the docs credited M28/T28.7 with carrying it.
+
 **DECIDED 2026-09-26 (M47/T47.7, `docs/mobile-decision.md`):** a window
 keeps its images across suspend and resume — `Backend::take_images` is
 required, and `suspended` takes the source back before the backend is

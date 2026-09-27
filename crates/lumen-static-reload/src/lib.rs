@@ -381,8 +381,10 @@ pub mod hot {
 
     use lumen_static::event::App;
     use lumen_static::reload::{symbols, Reloadable};
+    use lumen_static::spawn::Descriptor;
     use lumen_static_shell::program::Program;
-    use lumen_static_shell::session::{abi_fields, FrameSource, Local, Recovering, Screen, Session};
+    use lumen_static_shell::session::{abi_fields, FrameSource, Inval, Local, Recovering, Ret, Screen, Session};
+    use lumen_static_shell::Host;
 
     /// This image's ABI stamp, with the shell's fields: what a window
     /// library exports and what its loader compares against.
@@ -390,13 +392,70 @@ pub mod hot {
         crate::abi::stamp(&abi_fields())
     }
 
-    /// **The library side**: boot `program`, then graft `saved` onto it.
-    /// Recovery is always on — a hot library's panic must be caught in
-    /// the library (M36/T36.4) — and the session can save, for the next
-    /// swap.
+    /// The key a session's saved bytes reserve for the framework — M49/T49.10.
+    ///
+    /// `save` writes `{"$lumen": {"in_flight": [[kind, step, payload], …]},
+    /// "state": <the application's kept state>}`. The work in flight is the
+    /// host's, not the application's, so it rides beside the state rather
+    /// than inside it, and a `#[reload(keep)]` field can never collide with
+    /// it. Bytes without this key are read as the state alone.
+    pub const RESERVED: &str = "$lumen";
+
+    /// **What a window saves for a swap**: the application's kept state and
+    /// the host's work in flight ([`Host::reissuable`]), under
+    /// [`RESERVED`]. The [`Saver`](lumen_static_shell::session::Saver) a hot
+    /// window and a hot library both install.
+    ///
+    /// A descriptor is three `u64`s and is written as three JSON integers
+    /// — data, never a framework type or a code reference
+    /// (`docs/events-decision.md` rule 3).
+    ///
+    /// [`Host::reissuable`]: lumen_static_shell::Host::reissuable
+    pub fn save<A: App + Reloadable>(h: &Host<A, Ret, Inval>) -> Vec<u8> {
+        use lumen_static::reload::{json, Value};
+        let in_flight: Vec<Value> = h.reissuable().iter().map(|d| json!([d.kind, d.step, d.payload])).collect();
+        lumen_static::reload::to_vec(&json!({
+            RESERVED: { "in_flight": in_flight },
+            "state": Reloadable::save(&h.app),
+        }))
+    }
+
+    /// Split saved bytes into the application's state and the work that
+    /// was in flight. Bytes without [`RESERVED`] are all state, and none
+    /// in flight; an entry that is not three integers is skipped.
+    fn unpack(v: lumen_static::reload::Value) -> (lumen_static::reload::Value, Vec<Descriptor>) {
+        let lumen_static::reload::Value::Object(mut m) = v else { return (v, Vec::new()) };
+        let Some(meta) = m.remove(RESERVED) else { return (lumen_static::reload::Value::Object(m), Vec::new()) };
+        let state = m.remove("state").unwrap_or(lumen_static::reload::Value::Null);
+        let descs = meta
+            .get("in_flight")
+            .and_then(|l| l.as_array())
+            .map(|l| {
+                l.iter()
+                    .filter_map(|e| match e.as_array().map(|a| a.as_slice()) {
+                        Some([k, s, p]) => Some(Descriptor { kind: k.as_u64()?, step: s.as_u64()?, payload: p.as_u64()? }),
+                        _ => None,
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        (state, descs)
+    }
+
+    /// **The library side**: boot `program`, graft `saved` onto it, and
+    /// re-issue the work the previous build had in flight. Recovery is
+    /// always on — a hot library's panic must be caught in the library
+    /// (M36/T36.4) — and the session can save, for the next swap.
+    ///
+    /// **Work in flight is re-issued to this build** (M49/T49.10, R4-F3):
+    /// each descriptor [`save`] carried is spawned through *this* build's
+    /// `App::job_for`, after the restore, so a chain started under the old
+    /// build completes under the new one's step function. The old build's
+    /// inbox is dropped with its session; what was sitting in it runs
+    /// again here. Delivery across a swap is therefore **at least once**
+    /// ([`Host::reissuable`](lumen_static_shell::Host::reissuable)).
     pub fn boot<A: App + Reloadable + 'static>(program: Program<A>, saved: Option<&[u8]>) -> Box<dyn Session> {
-        let mut s = Local::from_program(program, Recovering)
-            .with_saver(|a| lumen_static::reload::to_vec(&Reloadable::save(a)));
+        let mut s = Local::from_program(program, Recovering).with_saver(save::<A>);
         let Some(bytes) = saved else { return Box::new(s) };
         // **Per field** (§2.4): the derive restores each kept field on its
         // own, and one whose type changed keeps its boot value and is
@@ -404,11 +463,22 @@ pub mod hot {
         // library's (a thread-local in its copy of the core), so it is
         // drained here and handed over with the session.
         let _ = lumen_static::reload::take_log();
-        match lumen_static::reload::from_slice(bytes) {
-            Some(v) => s.host.restore(&v),
-            None => lumen_static::reload::log_fallback("(all)", "(all)", "the saved state could not be read at all"),
-        }
+        let in_flight = match lumen_static::reload::from_slice(bytes) {
+            Some(v) => {
+                let (state, in_flight) = unpack(v);
+                s.host.restore(&state);
+                in_flight
+            }
+            None => {
+                lumen_static::reload::log_fallback("(all)", "(all)", "the saved state could not be read at all");
+                Vec::new()
+            }
+        };
         s.note_restore(lumen_static::reload::take_log().join("\n"));
+        // After the restore, so a job's result is applied to the kept
+        // state and not overwritten by it.
+        let r = s.host.reissue(&in_flight);
+        s.note_reissue(r);
         Box::new(s)
     }
 
@@ -610,6 +680,13 @@ pub mod hot {
         /// holding node indices must resolve them again; the author id and
         /// a `#a > #b` path survive. `false` for an edit that kept the shape.
         pub shape_changed: bool,
+        /// What the last swap did with the old build's **work in flight**
+        /// — M49/T49.10 (R4-F3): how many jobs the new build re-issued
+        /// through its own `job_for`, and how many it had no job for.
+        /// Not a [`warning`](Reloader::warning): a re-issue resets nothing,
+        /// and the warning is a bar held over the window until the next
+        /// swap. `app.reloads` reports it and the window logs it.
+        pub reissued: lumen_static_shell::Reissued,
         /// A build is running.
         pub building: bool,
     }
@@ -697,6 +774,7 @@ pub mod hot {
                     let mut next: Box<dyn Session> = Box::new(hot);
                     adopt(&mut *next);
                     self.shape_changed = next.shape() != shape;
+                    self.reissued = next.reissued();
                     let log = next.take_restore_log();
                     *current = next;
                     self.hash = Some(h);
@@ -817,6 +895,9 @@ pub mod hot {
         }
         fn take_restore_log(&mut self) -> String {
             self.m().take_restore_log()
+        }
+        fn reissued(&self) -> lumen_static_shell::Reissued {
+            self.s().reissued()
         }
         fn repaint_all(&mut self) {
             self.m().repaint_all()
