@@ -261,6 +261,23 @@ pub struct Gpu {
     /// The largest glyph atlas this device can hold:
     /// `max_texture_dimension_2d` of its limits.
     max_atlas: u32,
+    /// The frame's instance lists and shaping scratch, kept across
+    /// frames — M51/T51.4, R9-F8. `draw_regions` built all five per call
+    /// and shaped through the allocating `FontStack::place_run`, so a
+    /// steady-state caret frame allocated in this crate on top of wgpu's
+    /// own floor. Cleared per frame, so their capacity is reused.
+    frame: FrameScratch,
+}
+
+/// [`Gpu`]'s per-frame buffers — M51/T51.4.
+#[derive(Default)]
+struct FrameScratch {
+    quads: Vec<Quad>,
+    grads: Vec<Grad>,
+    mats: Vec<Mat>,
+    splits: Vec<Split>,
+    clip: Vec<Rect>,
+    shape: lumen_static_shell::text::ShapeScratch,
 }
 
 /// How often the atlases ran out of room, and what was done about it —
@@ -690,6 +707,7 @@ impl Gpu {
             drop_first: std::env::var("LUMEN_GPU_DROP_FIRST").ok().and_then(|v| v.parse().ok()).unwrap_or(0),
             atlas_stats: AtlasStats { glyph_size: glyph_start, ..AtlasStats::default() },
             max_atlas,
+            frame: FrameScratch::default(),
         })
     }
 
@@ -823,11 +841,53 @@ impl Gpu {
     /// The page clear follows the same rule: one opaque quad per
     /// region, at the head of that region's instances, exactly as the
     /// single-rect form put one at the head of the frame.
+    ///
+    /// **Allocation-free in this crate once warm** (M51/T51.4): the
+    /// instance lists and the shaping scratch are [`Gpu`]'s, taken for the
+    /// frame and put back, and runs are shaped with
+    /// `FontStack::place_run_into` (M50/T50.2). What is left is wgpu's own
+    /// encoding, which `tests/alloc.rs` subtracts as the empty frame's
+    /// floor.
     pub fn draw_regions(&mut self, list: &DisplayList, regions: &[Rect], page: Option<Color>) {
         if regions.is_empty() {
             return;
         }
-        let mut quads = Vec::new();
+        let mut fr = std::mem::take(&mut self.frame);
+        self.draw_regions_into(&mut fr, list, regions, page);
+        self.frame = fr;
+    }
+
+    /// **wgpu's own floor, alone** — for `tests/alloc.rs` (M51/T51.4).
+    ///
+    /// One page quad over `rect`, submitted straight from the retained
+    /// frame scratch: what an empty-list [`Gpu::draw_regions`] does minus
+    /// everything this crate adds around the submission. The gate needs it
+    /// because an allocation this crate makes on *every* frame lands in
+    /// the empty frame too, so "caret minus empty" cannot see it; "empty
+    /// minus this" can. Not for applications.
+    #[doc(hidden)]
+    pub fn submit_floor(&mut self, rect: Rect, page: Color) {
+        let mut fr = std::mem::take(&mut self.frame);
+        fr.quads.clear();
+        fr.grads.clear();
+        fr.mats.clear();
+        fr.splits.clear();
+        let r = snap_out(rect);
+        fr.quads.push(Quad {
+            rect: r,
+            clip: r,
+            color: linear(Color(page.0, page.1, page.2, 255)),
+            params: [0.0; 4],
+            uv: [0.0; 4],
+            kind: KIND_ROUNDED,
+            _pad: [0; 3],
+        });
+        self.submit(&fr.quads, &fr.grads, &fr.mats, &fr.splits);
+        self.frame = fr;
+    }
+
+    /// [`Gpu::draw_regions`], into the frame scratch it lends.
+    fn draw_regions_into(&mut self, fr: &mut FrameScratch, list: &DisplayList, regions: &[Rect], page: Option<Color>) {
         // An atlas that fills is reset and the frame is built again from
         // an empty one; a glyph set that does not fit an empty glyph
         // atlas grows it and is built again, once per doubling, up to the
@@ -836,16 +896,16 @@ impl Gpu {
         // is a rendering bug rather than a slow frame.
         let mut attempt = 0u32;
         loop {
-            quads.clear();
-            let mut grads = Vec::new();
+            fr.quads.clear();
+            fr.grads.clear();
             // **Cleared with the quads, not declared outside the loop.**
             // A retry rebuilds the frame from an empty atlas, and a
             // split names an *instance index*: carrying the first
             // attempt's splits into the second would blur at whatever
             // the rebuilt list happens to have at that position, which
             // on an atlas reset is a different command every time.
-            let mut mats: Vec<Mat> = Vec::new();
-            let mut splits: Vec<Split> = Vec::new();
+            fr.mats.clear();
+            fr.splits.clear();
             // **Once per region.** A quad carries its own clip, so a
             // region is expressed by building the frame's quads again
             // with that region's clip — no scissor, and no second pass.
@@ -861,7 +921,7 @@ impl Gpu {
                     // region's instances — opaque, like
                     // `Canvas::clear_within`: a page colour with alpha
                     // is a page colour that lets the last frame through.
-                    quads.push(Quad {
+                    fr.quads.push(Quad {
                         rect: r,
                         clip: r,
                         color: linear(Color(c.0, c.1, c.2, 255)),
@@ -871,14 +931,14 @@ impl Gpu {
                         _pad: [0; 3],
                     });
                 }
-                outcome = self.collect(list, Some(r), &mut quads, &mut grads, &mut mats, &mut splits);
+                outcome = self.collect(list, Some(r), fr);
                 if outcome.is_err() {
                     break;
                 }
             }
             let overflow = match outcome {
                 Ok(()) => {
-                    self.submit(&quads, &grads, &mats, &splits);
+                    self.submit(&fr.quads, &fr.grads, &fr.mats, &fr.splits);
                     return;
                 }
                 Err(o) => o,
@@ -909,7 +969,7 @@ impl Gpu {
                     self.max_atlas,
                 );
             }
-            self.submit(&quads, &grads, &mats, &splits);
+            self.submit(&fr.quads, &fr.grads, &fr.mats, &fr.splits);
             return;
         }
     }
@@ -940,17 +1000,15 @@ impl Gpu {
         &mut self,
         list: &DisplayList,
         damage: Option<Rect>,
-        out: &mut Vec<Quad>,
-        grads: &mut Vec<Grad>,
-        mats: &mut Vec<Mat>,
-        splits: &mut Vec<Split>,
+        fr: &mut FrameScratch,
     ) -> Result<(), Overflow> {
+        let FrameScratch { quads: out, grads, mats, splits, clip, shape: shaping } = fr;
         // Taken for the pass and put back at the end, like the software
         // canvas does: the source is a field and the atlas needs
         // `&mut self`.
         let images = self.images.take();
         let font = self.font.clone();
-        let mut clip: Vec<Rect> = Vec::new();
+        clip.clear();
         if let Some(d) = damage {
             clip.push(d);
         }
@@ -959,12 +1017,12 @@ impl Gpu {
         for c in &list.cmds {
             match c {
                 Cmd::Rect { rect, color } => {
-                    if let Some(r) = clipped(*rect, &clip) {
+                    if let Some(r) = clipped(*rect, clip) {
                         out.push(shape(*rect, r, *color, 0.0, KIND_ROUNDED));
                     }
                 }
                 Cmd::RoundedRect { rect, color, radius } => {
-                    if let Some(r) = clipped(*rect, &clip) {
+                    if let Some(r) = clipped(*rect, clip) {
                         // The radius is clamped the way the software
                         // canvas clamps it, so a radius larger than the
                         // box gives a stadium on both backends rather
@@ -974,7 +1032,7 @@ impl Gpu {
                     }
                 }
                 Cmd::StrokedRect { rect, color, radius, width } => {
-                    if let Some(r) = clipped(*rect, &clip) {
+                    if let Some(r) = clipped(*rect, clip) {
                         let half_w = (rect[2] - rect[0]) / 2.0;
                         let half_h = (rect[3] - rect[1]) / 2.0;
                         // Clamped exactly as the software canvas clamps
@@ -996,7 +1054,7 @@ impl Gpu {
                     // frame is split instead, and the six blur
                     // instances below run in their own passes between
                     // the backdrop and the panel.
-                    let Some(r) = clipped(*rect, &clip) else { continue };
+                    let Some(r) = clipped(*rect, clip) else { continue };
                     let m = *material;
                     let prim = lumen_static::display::glass_primary(*rect, &m);
                     let rad = radius
@@ -1104,7 +1162,7 @@ impl Gpu {
                 Cmd::Shadow { rect, color, radius, spread } => {
                     let reach =
                         [rect[0] - spread, rect[1] - spread, rect[2] + spread, rect[3] + spread];
-                    if let Some(r) = clipped(reach, &clip) {
+                    if let Some(r) = clipped(reach, clip) {
                         let rad = radius
                             .clamp(0.0, (rect[2] - rect[0]).min(rect[3] - rect[1]) / 2.0);
                         out.push(Quad {
@@ -1126,7 +1184,7 @@ impl Gpu {
                         a.x.max(b.x) + hw,
                         a.y.max(b.y) + hw,
                     ];
-                    if let Some(r) = clipped(bounds, &clip) {
+                    if let Some(r) = clipped(bounds, clip) {
                         out.push(Quad {
                             rect: bounds,
                             clip: r,
@@ -1139,7 +1197,7 @@ impl Gpu {
                     }
                 }
                 Cmd::Gradient { rect, stops, angle } => {
-                    let Some(r) = clipped(*rect, &clip) else { continue };
+                    let Some(r) = clipped(*rect, clip) else { continue };
                     // Axis and span computed here, once, exactly as
                     // `fill_gradient` computes them — the shader gets
                     // the answer rather than the trigonometry.
@@ -1167,22 +1225,22 @@ impl Gpu {
                     // run's box.
                     let pad = *size;
                     let reach = [rect[0] - pad, rect[1] - pad, rect[2] + pad, rect[3] + pad];
-                    if clipped(reach, &clip).is_none() {
+                    if clipped(reach, clip).is_none() {
                         continue;
                     }
                     let s = list.str_of(*text);
                     match &font {
                         Some(f) => {
-                            if self.glyphs(f, rect, s, *size, *weight, *color, &clip, out).is_err()
+                            if self.glyphs(f, rect, s, *size, *weight, *color, clip, shaping, out).is_err()
                             {
                                 result = Err(Overflow::Glyph);
                             }
                         }
-                        None => blocks(rect, s, *size, *color, &clip, out),
+                        None => blocks(rect, s, *size, *color, clip, out),
                     }
                 }
                 Cmd::Image { rect, id, tint } => {
-                    let Some(r) = clipped(*rect, &clip) else { continue };
+                    let Some(r) = clipped(*rect, clip) else { continue };
                     let Some(src) = images.as_ref() else { continue };
                     match self.image_slot(src.as_ref(), *id) {
                         Ok(Some(uv)) => out.push(Quad {
@@ -1232,11 +1290,12 @@ impl Gpu {
         weight: f32,
         color: Color,
         clip: &[Rect],
+        shape: &mut lumen_static_shell::text::ShapeScratch,
         out: &mut Vec<Quad>,
     ) -> Result<(), Overflow> {
-        let (placed, _) = font.place_run(text, size, weight, rect[2] - rect[0]);
+        font.place_run_into(shape, text, size, weight, rect[2] - rect[0]);
         let col = linear(color);
-        for g in placed {
+        for &g in shape.placed() {
             // Rounded to whole pixels, like `draw_run` — a glyph bitmap
             // has no subpixel phase, so placing it at a fraction would
             // resample what the rasteriser already decided.

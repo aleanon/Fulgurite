@@ -12,8 +12,11 @@
 > every shadowed card, on both backends — reported, not fixed.
 > **T51.2:** `Prefer::Auto` refuses a CPU adapter; live on a
 > lavapipe-only loader, `Auto: software`.
-> **T51.4:** skipped — M50/T50.2's scratch-taking `place_run` is not on
-> the base; `tests/alloc.rs` stays ignored "red until T51.4".
+> **T51.4 DONE 2026-09-27, by the M50 branch** once T50.2's
+> `place_run_into` existed: the frame lists and the shaping scratch are
+> `Gpu`'s, and a caret frame reads 0 over the floor on the RTX 4070 (61
+> total, 61 floor). The plan's first injection left the gate green — see
+> T51.4's "What building found".
 > **T51.5:** the blur scratch is made by the first glass frame (0 B
 > until then).
 >
@@ -572,6 +575,18 @@ floor.
 **Docs in the same commit:** `docs/results-allocation.md` (the GPU path,
 what is gated and what is wgpu's); the handoff's §10 qualifier that M50
 wrote gains the GPU sentence; `draw_regions`'s comment.
+
+*What building found (2026-09-27).* **The plan's first injection
+could not fire.** Recreating `quads` per call put the same allocation in
+the empty frame the gate subtracts, so the caret frame read "total 62,
+floor 62, difference 0" — the floor absorbed it. A per-frame allocation
+in this crate is independent of content, so no content subtraction can
+see it. The gate gained a second quantity: `Gpu::submit_floor` submits
+one page quad from the retained scratch and nothing else, and the empty
+frame minus that must be 0 ("empty frame: floor 61, wgpu's submission
+alone 61, difference 0"); the same injection reads difference 1, red.
+The allocating `place_run` reads a caret difference of 12, red. The
+floor was recorded on the discrete adapter (RTX 4070, Vulkan): 61.
 
 **Effort:** S. **Depends on:** T51.0; M50/T50.2.
 

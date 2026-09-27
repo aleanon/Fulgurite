@@ -917,7 +917,9 @@ The two advantages that are real and that nothing else gives:
   the truetype raster and `FontMetrics` (`docs/results-allocation.md`,
   "The truetype path, covered"). What remains outside it is stated
   there: a run that needs a fallback face, a glyph too large to cache,
-  and — until M50/T50.4 — the threaded rasteriser.
+  the threaded rasteriser's stated spawn budget (M50/T50.4), and wgpu's
+  own per-frame encoding on the GPU path — what `lumen-static-wgpu` adds
+  on top of it is gated at zero since M51/T51.4.
 - **Const-folded rigidity** — a dynamic tree checks the flag at runtime per node
   per frame. The static version does not have the check at all.
 

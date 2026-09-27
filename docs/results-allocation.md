@@ -203,8 +203,15 @@ which is the application's data and not the frame.
   rasterised and drawn without being kept, which allocates; it is
   counted as `CacheStats::uncached`, and `just grid` and showcase's
   headless frame print it at 0 after warm-up.
-- **The threaded rasteriser** — `threads`, default-off — until
-  M50/T50.3 and T50.4.
+- **The threaded rasteriser** — `threads`, default-off — which spends a
+  stated budget of `std`'s spawns (the section below).
+- **The GPU path's encoding.** wgpu allocates to encode and submit
+  every frame, and that floor is not this workspace's: 61 allocations a
+  frame on the RTX 4070. What `lumen-static-wgpu` itself adds is gated
+  at **0** since M51/T51.4 by `crates/lumen-static-wgpu/tests/alloc.rs`,
+  twice: a caret frame against an empty frame, and the empty frame
+  against wgpu's submission alone (`Gpu::submit_floor`). Before T51.4 the
+  caret frame read 10 over the floor (R9-F8).
 
 ## The threaded rasteriser's budget — M50/T50.4 (2026-09-27)
 

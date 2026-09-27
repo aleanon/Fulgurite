@@ -7,6 +7,13 @@
 //! that the **difference** is zero (`docs/plan-gpu-fidelity.md` §2.4).
 //! It prints total, floor and difference.
 //!
+//! **And the floor itself against wgpu's alone** (M51/T51.4). A `Vec`
+//! this crate built on *every* frame landed in the empty frame as well, so
+//! "caret minus empty" read 0 with `quads` recreated per call — the plan's
+//! own injection left the gate green. `Gpu::submit_floor` submits one page
+//! quad from the retained scratch and nothing else; the empty frame minus
+//! that is what `draw_regions` adds around wgpu, and must be 0 too.
+//!
 //! What the subtraction means on each adapter: Mesa's own allocations
 //! (llvmpipe) go through the C allocator and are invisible to the Rust
 //! allocator on both sides; a discrete driver's floor may differ from
@@ -55,7 +62,6 @@ fn count(f: impl FnOnce()) -> usize {
 }
 
 #[test]
-#[ignore = "red until T51.4: R9-F8, draw_regions builds its Vecs per call and place_run allocates"]
 fn a_caret_frame_allocates_nothing_this_crate_owns() {
     let Some(mut g) = Gpu::headless(W, H) else {
         assert!(
@@ -92,6 +98,14 @@ fn a_caret_frame_allocates_nothing_this_crate_owns() {
         }
     }
     let floor = *floors.last().unwrap();
+    let mut wgpu_only = 0;
+    for _ in 0..3 {
+        wgpu_only = count(|| g.submit_floor(whole[0], PAGE));
+        g.wait();
+    }
+    let around = floor as i64 - wgpu_only as i64;
+    eprintln!("empty frame: floor {floor}, wgpu's submission alone {wgpu_only}, difference {around} (bound 0)");
+    assert_eq!(around, 0, "draw_regions allocated {around} around wgpu's own submission on an empty frame");
     let total = count(|| g.draw_regions(&caret, &region, Some(PAGE)));
     g.wait();
     let diff = total as i64 - floor as i64;
