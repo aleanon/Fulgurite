@@ -1,6 +1,33 @@
 # M54 — a screen reader can see a turnkey application, and the platform claims say what was built
 
-> **Written 2026-09-24, not started.** Closes R15-F1, R15-F2, R15-F3,
+> **T54.0–T54.9 DONE 2026-09-27.** "What building found" (before the
+> appendix) records every claim building falsified.
+> - **T54.0** — the gates first: the role table, the AT-SPI walk
+>   (`just a11y-drive`, in `just live`), painted contrast, the drag
+>   size, `just mobile-check`.
+> - **T54.1** — `a11y` split from `observe`; `NodeDesc` 48 B under
+>   `a11y`, 72 under `observe`, asserted; the seam refused both ways.
+> - **T54.2** — the adapter in the window for `run`, every `Program` and
+>   counter-window; the kill rule fired on both conditions, so `a11y`
+>   ships **default-off** and the showcase asks
+>   (`docs/results-a11y-platform.md`).
+> - **T54.3** — names, roles and states for every widget; 8 explicit
+>   `GenericContainer` kinds; a role column in `just widget-drive`.
+> - **T54.4** — `Event::Action`; every published action handled (40/40);
+>   `input.invokeAction` takes `action`; an AT-SPI press lands live.
+> - **T54.5** — contrast measured on the display list, per widget and per
+>   driven action (`ui.contrast`); the dark palettes fail on light-theme
+>   widget defaults — reported, not fixed.
+> - **T54.6** — the showcase's and `Palette::LIGHT`'s accent and muted
+>   values changed; 0 of 446 runs under AA in both light palettes.
+> - **T54.7** — T15.7's platform half, T15.10, T15.11 un-marked;
+>   `Dropped::File`.
+> - **T54.8** — `arboard` target-gated; the default features check for
+>   Android.
+> - **T54.9** — `Drag<()>` is 24 B; image decoding is not built; a
+>   feature named in a comment must exist.
+>
+> **Written 2026-09-24.** Closes R15-F1, R15-F2, R15-F3,
 > R15-F5, R15-F8, R15-F9, R16-F8, R16-F9 and R12-F6 from M38's deep
 > review (`docs/results-deep-review.md`), as re-triaged against `main`
 > at 1717808 on 2026-09-24. Where the review and the re-triage differ,
