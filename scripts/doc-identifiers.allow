@@ -113,7 +113,6 @@ Origin               # the HTTP header the transport deliberately never reads (f
 ptrace               # why same-user processes are out of the transport's scope
 rasterising_a_frame_allocates_nothing # renamed rasterising_a_block_glyph_frame_allocates_nothing in M50/T50.1; the rename is recorded
 TextRun              # the glyph-blit argument struct M50/T50.3 removed; the plan's T50.8 note cites it
-BTreeMap             # std's, named where M50/T50.4 attributes the threads gate's remainder to std's thread registry
 __ln_                # the derive's local-name prefix (M55/T55.1); since the locals are
                      # built with `syn::Ident::new("__ln_..", mixed_site)` the prefix
                      # lives only in string literals, which the check blanks
