@@ -85,31 +85,20 @@ fn events_that_are_not_pointer_events_are_ignored() {
 }
 
 #[test]
-fn a_tree_that_drags_nothing_carries_one_byte() {
+fn the_payload_is_in_the_type_not_boxed() {
     // The gating policy's second mechanism: the payload is a type
-    // parameter, so `Drag<()>` costs the phase and nothing else, and
-    // there is no `Box<dyn Any>` and no allocator anywhere near it.
-    // `Option<()>` is one byte, not zero -- the discriminant is real.
-    // What matters is that it is a byte and not a heap pointer plus a
-    // vtable, which a `Box<dyn Any>` payload would have been.
-    assert_eq!(core::mem::size_of::<Option<()>>(), 1);
-    assert!(
-        core::mem::size_of::<Drag<()>>() < core::mem::size_of::<Drag<[u8; 64]>>(),
-        "the payload is in the type, so an unused one costs nothing"
-    );
+    // parameter, so `Drag<()>` costs the phase, two points, the threshold
+    // and an empty `Option`, and there is no `Box<dyn Any>` and no
+    // allocator anywhere near it. **Absolute as well as relative** since
+    // M54/T54.9 (R15-F8): this test was named for "one byte" and asserted
+    // `size_of::<Option<()>>() == 1`, a language fact, while `drag.rs` said
+    // a `Drag<()>` was one byte. It is 24.
+    let unit = core::mem::size_of::<Drag<()>>();
+    let big = core::mem::size_of::<Drag<[u8; 64]>>();
+    println!("Drag<()> = {unit} B (bound 24); Drag<[u8; 64]> = {big} B");
+    assert!(unit < big, "the payload is in the type, so an unused one costs nothing");
+    assert!(unit <= 24, "Drag<()> is {unit} B, over its 24 B bound");
     fn assert_copy<T: Copy>() {}
     assert_copy::<Drag<u32>>();
     assert_copy::<DragPhase>();
-}
-
-/// **The rustdoc's number, as a test** — M54/T54.0 (R15-F8). `drag.rs`
-/// says a tree that drags nothing carries a `Drag<()>` "that is one byte";
-/// the test named for that claim asserted `size_of::<Option<()>>() == 1`,
-/// a language fact. This asserts the number the rustdoc states.
-#[test]
-#[ignore = "red until T54.9: R15-F8 -- drag.rs says Drag<()> is one byte; it is 24"]
-fn a_drag_of_nothing_is_the_one_byte_the_rustdoc_states() {
-    let n = core::mem::size_of::<Drag<()>>();
-    println!("Drag<()> = {n} B (the rustdoc says 1)");
-    assert_eq!(n, 1, "Drag<()> is {n} B, not the one byte drag.rs states");
 }

@@ -796,6 +796,24 @@ still stand where the plan put them, with line numbers moved.
   triple**: its pattern knew `-unknown-`, `-apple-`, `-pc-windows-` and
   `-none-eabi*`, so `just mobile-check` would have passed undeclared.
 
+**T54.7 (2026-09-27).** As planned. The `dnd` test is `cfg`-gated in
+`tests/translate.rs`, so `just test` runs that binary once more with the
+feature (`dev-shape`); without that line it would never run.
+
+**T54.9 (2026-09-27).** Two corrections to the plan's injections.
+- **"Box the payload" cannot be built as written**: `Drag` is `Copy`, and
+  a `Box` is not. The injection that ran drops `Copy`, boxes the payload
+  and deletes the test's `assert_copy::<Drag<u32>>()` line with it; the
+  relative assertion then fires (32 B against 32 B). The relative
+  assertion now runs before the absolute one, so each injection is
+  reported by the assertion named for it.
+- **The feature rule needs a negation.** `lumen-static`'s manifest and
+  `lib.rs` both say there is deliberately *no* `no_std` feature; "no
+  `x` feature", with the "no" on the same or the previous comment line,
+  is skipped. The rule lives in `scripts/check_doc_identifiers.sh`, as
+  the plan said, with a selftest plant
+  (`scripts/selftest/plants/static/ident-feature-ghost.sh`).
+
 ## Appendix: finding → task
 
 | ID | sev now | status | task |

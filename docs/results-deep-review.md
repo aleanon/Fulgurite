@@ -1254,8 +1254,8 @@ Short form: claim (source) — status — evidence or finding.
 - T15.10 multi-window done — **overstated** — R15-F5.
 - accesskit_winit panics on a visible window — **held as not a defect** on X11.
 - dnd and dialogs build — **held**.
-- `Drag<()>` is one byte — **false** — R15-F8.
-- Decoding behind the shell's `image` feature — **false** — R15-F9.
+- `Drag<()>` is one byte — **false** — R15-F8. *Corrected by M54/T54.9 (2026-09-27): the rustdoc says 24 B and `tests/drag.rs` bounds it.*
+- Decoding behind the shell's `image` feature — **false** — R15-F9. *Corrected by M54/T54.9 (2026-09-27); `scripts/check_doc_identifiers.sh` now refuses a backticked name called a feature that no `[features]` table has.*
 - One implementation serves both — **overstated** — R15-F1.
 
 **R16 (DX and widgets).**

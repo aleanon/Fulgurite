@@ -184,10 +184,57 @@ if [ -s "$tmp/dead" ]; then
     status=1
 fi
 
+# --- feature names (M54/T54.9, R15-F9) -------------------------------------
+# A backticked name followed by "feature" in a comment -- Rust or manifest --
+# must be a key in some `[features]` table (after a `crate/` prefix is cut).
+# `image.rs` said decoding "lives behind" the shell's default-off `image`
+# feature for a feature that never existed, and the identifier rule above
+# passed it because `image` is a live token. "there is no `x` feature" is a
+# negation and is skipped.
+python3 - "$tmp/comments" "${tomls[@]}" > "$tmp/features.out" <<'PY' || status=1
+import re, sys
+comments, tomls = sys.argv[1], sys.argv[2:]
+feats = set()
+for t in tomls:
+    s = open(t).read()
+    m = re.search(r"^\[features\]\n(.*?)(?=^\[|\Z)", s, re.M | re.S)
+    if m:
+        feats.update(re.findall(r"^([A-Za-z0-9_-]+)\s*=", m.group(1), re.M))
+pat = re.compile(r"`([^`]+)`\s+(?:Cargo\s+)?features?\b")
+# "no `x` feature", the "no" possibly ending the previous comment line.
+neg = re.compile(r"\bno\s*$", re.I)
+sites = []
+for line in open(comments):
+    parts = line.rstrip("\n").split("\t")
+    if len(parts) >= 4:
+        sites.append((parts[0], parts[1], parts[3]))
+for t in tomls:
+    for i, l in enumerate(open(t), 1):
+        if l.lstrip().startswith("#"):
+            sites.append((t, str(i), l))
+checked, missing = 0, []
+prev = ("", "")
+for f, ln, text in sites:
+    for m in pat.finditer(text):
+        before = text[: m.start()]
+        if neg.search(before) or (not before.strip(" #/!*") and prev[0] == f and neg.search(prev[1])):
+            continue
+        checked += 1
+        name = m.group(1).split("/")[-1]
+        if name not in feats:
+            missing.append(f"{f}:{ln}: `{m.group(1)}` is called a feature, and no [features] table has `{name}`")
+    prev = (f, text)
+for x in missing:
+    print(x, file=sys.stderr)
+print(f"feature refs checked: {checked}, missing: {len(missing)} (bound 0)")
+sys.exit(1 if missing or checked == 0 else 0)
+PY
+cat "$tmp/features.out"
+
 n() { grep -c . "$1" || true; }
 if [ "$status" -ne 0 ]; then
     echo "" >&2
-    echo "doc-identifiers: FAILED -- $(n "$tmp/dead") dead, $nstale stale allowlist entries, $stripped stripped manifest comments" >&2
+    echo "doc-identifiers: FAILED -- $(n "$tmp/dead") dead, $nstale stale allowlist entries, $stripped stripped manifest comments; $(tail -1 "$tmp/features.out")" >&2
     exit 1
 fi
 echo "doc-identifiers: candidates $(n "$tmp/cands.all") (line $(n "$tmp/cands.line"), trailing $(n "$tmp/cands.trailing"), block $(n "$tmp/cands.block"), markdown $(n "$tmp/mdcands"), toml+ci.yml $(n "$tmp/tomlcands")), allowlist $(n "$tmp/allow"), stale 0, all live"

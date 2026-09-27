@@ -16,8 +16,10 @@
 //! A `Box<dyn Any>` payload would need an allocator and a downcast at
 //! every drop target. A drag is the application's own enum — "a row
 //! index", "a file", "a colour" — and naming it in the type means the
-//! drop handler receives it already typed, and a tree that drags
-//! nothing carries a `Drag<()>` that is one byte.
+//! drop handler receives it already typed. A `Drag<()>` is **24 bytes**
+//! — the phase, the press and current points, and the threshold, with no
+//! payload — and no tree carries one unless the application adds it
+//! (`tests/drag.rs` asserts the size; it said "one byte" until M54/T54.9).
 //!
 //! It builds on pointer capture (T11.2), which is what routes
 //! `PointerMove` to the node that started the gesture; without that a
@@ -41,8 +43,9 @@ pub enum DragPhase {
 
 /// A drag in progress, carrying `T`.
 ///
-/// `T` is the application's payload type. `Drag<()>` is what a tree
-/// that never drags carries, and it costs one byte.
+/// `T` is the application's payload type. `Drag<()>` is 24 B — the
+/// phase, two points and the threshold — and is carried only by a tree
+/// that adds one (`tests/drag.rs`).
 #[derive(Clone, Copy, Debug)]
 pub struct Drag<T> {
     /// How far the pointer must move before a press becomes a drag, in

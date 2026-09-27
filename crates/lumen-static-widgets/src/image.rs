@@ -7,9 +7,11 @@
 //! flash, a desktop host to a decoded buffer, and the widget, the
 //! command and the layout are identical in both.
 //!
-//! Decoding — PNG, JPEG, WebP — is the *shell's* business and lives
-//! behind its default-off `image` feature, because that is where the
-//! decoder and the allocator are.
+//! **Decoding is planned, not built** (`docs/plan-capabilities.md`
+//! T15.2). No crate in this workspace decodes PNG, JPEG or WebP: an
+//! application decodes itself and supplies the pixels through
+//! [`lumen_static::ImageSource`] today. This comment said decoding lived
+//! behind a shell feature that never existed (M54/T54.9, R15-F9).
 
 use lumen_static::cx::LayoutCx;
 use lumen_static::desc::{Constraints, NodeDesc, NodeState, Size, NO_PARENT};
