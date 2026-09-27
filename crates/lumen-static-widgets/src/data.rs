@@ -331,7 +331,7 @@ impl Node for Pagination {
 
     lumen_static::leaf_common!(Pagination, 0);
 
-    #[cfg(feature = "observe")]
+    #[cfg(feature = "a11y")]
     fn observe(
         &self,
         _st: &[NodeState],
@@ -714,7 +714,7 @@ impl Node for Tree {
 
     lumen_static::leaf_common!(Tree, 0);
 
-    #[cfg(feature = "observe")]
+    #[cfg(feature = "a11y")]
     fn observe(
         &self,
         _st: &[NodeState],
@@ -1018,7 +1018,7 @@ impl<R: Widget + Default + Node + 'static> Node for DataGrid<R> {
         self.rows.arena_mut(a)
     }
 
-    #[cfg(feature = "observe")]
+    #[cfg(feature = "a11y")]
     fn observe(
         &self,
         _st: &[NodeState],

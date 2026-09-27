@@ -1,6 +1,13 @@
 //! The §9 observability surface: the tree exposed as an AccessKit tree,
 //! plus a JSON dump carrying source provenance for agents and tooling.
 //!
+//! **Two features since M54/T54.1** (`docs/plan-a11y-platform.md` §2.1).
+//! The module and the accesskit walk are `a11y` — what a screen reader
+//! needs, and all a release application links for one. The JSON view
+//! ([`dump`], [`tree_json`], [`node_json`], [`state_json`]) is `observe`,
+//! which implies `a11y` and adds `serde_json` and the `NodeDesc.src`
+//! stamp for agents.
+//!
 //! One implementation serves screen readers and coding agents alike — no
 //! bespoke agent channel. **Including the state a widget publishes**
 //! (M48/T48.5, T48.6): [`node_json`] and [`state_json`] are the one
@@ -176,6 +183,7 @@ pub fn index_of_node<W: Widget>(id: NodeId) -> Option<usize> {
     (i < W::SUB_TABLE.len()).then_some(i)
 }
 
+#[cfg(feature = "observe")]
 /// Agent-facing JSON view of the same snapshot, joined with provenance,
 /// author ids and kind names — so the agent view and the screen-reader
 /// view cannot drift, one being derived from the other.
@@ -189,6 +197,7 @@ pub fn dump<W: Widget>(tree: &W, st: &[NodeState]) -> serde_json::Value {
     tree_json(W::SUB_TABLE, &update.nodes)
 }
 
+#[cfg(feature = "observe")]
 /// `{"root": 1, "nodes": [..]}` over emitted nodes — what [`dump`] and
 /// the agent's `ui.getTree` both answer (M48/T48.5).
 pub fn tree_json(table: &[NodeDesc], nodes: &[(NodeId, AkNode)]) -> serde_json::Value {
@@ -196,6 +205,7 @@ pub fn tree_json(table: &[NodeDesc], nodes: &[(NodeId, AkNode)]) -> serde_json::
     serde_json::json!({ "root": 1, "nodes": nodes })
 }
 
+#[cfg(feature = "observe")]
 /// **The one serialiser for a node** — M48/T48.5 (R15-F10).
 ///
 /// Identity and geometry — `id`, `role`, `value`, `label`, `bounds`,
@@ -234,6 +244,7 @@ pub fn node_json(table: &[NodeDesc], id: NodeId, n: &AkNode) -> serde_json::Valu
     serde_json::Value::Object(o)
 }
 
+#[cfg(feature = "observe")]
 /// The state a widget publishes and a screen reader announces — M48/T48.5
 /// (R15-F10, R13-F4). Written into `o` only when the node carries it:
 ///

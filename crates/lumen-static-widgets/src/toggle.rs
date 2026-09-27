@@ -37,7 +37,7 @@
 // `alloc`, not the std prelude: this crate is `no_std` when the
 // `std` feature is off (M13/T13.1).
 // Only the accesskit `extra` arg needs it, and that is observe-gated.
-#[cfg(feature = "observe")]
+#[cfg(feature = "a11y")]
 use alloc::vec::Vec;
 
 use lumen_static::desc::{NodeDesc, NodeState, NO_PARENT};
@@ -255,7 +255,7 @@ impl<S: 'static, const SHAPE: u8> Node for Toggle<S, SHAPE> {
         self
     }
 
-    #[cfg(feature = "observe")]
+    #[cfg(feature = "a11y")]
     fn observe(
         &self,
         _st: &[NodeState],

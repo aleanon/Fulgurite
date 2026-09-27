@@ -27,12 +27,20 @@ accesskit = { version = "0.25", optional = true }
 default = ["std"]
 std = ["alloc"]
 alloc = []
-# The S9 dev surface: additive, off in release builds. Both require `std`:
-# they pull accesskit and serde_json, which are not no_std, so without the
-# requirement `--no-default-features --features alloc,observe` would
-# resolve cleanly and then fail deep inside a dependency instead of at the
-# point of the mistake.
-observe = ["std", "dep:accesskit", "dep:serde", "dep:serde_json"]
+# The accessibility tree (M54/T54.1, docs/plan-a11y-platform.md §2.1):
+# every widget's `Node::observe`, the static walk and
+# `observe::snapshot`, which a screen-reader adapter sends. Split out of
+# `observe` so a release application can carry the tree without the
+# agent's dev surface: it leaves `NodeDesc` at 48 B (tests/desc_size.rs)
+# and links no serde. Requires `std` for the reason below.
+a11y = ["std", "dep:accesskit"]
+# The S9 dev surface: additive, off in release builds. Implies `a11y`, and
+# adds the JSON dump, `probe`, `stats` and the `NodeDesc.src` stamp (48 ->
+# 72 B). Both require `std`: they pull accesskit and serde_json, which are
+# not no_std, so without the requirement `--no-default-features --features
+# alloc,observe` would resolve cleanly and then fail deep inside a
+# dependency instead of at the point of the mistake.
+observe = ["a11y", "dep:serde", "dep:serde_json"]
 reload = ["std", "dep:serde", "dep:serde_json"]
 # Forwarded to the derive: see docs/results-safe-prototype.md.
 # Measurement only: makes the recursive arm's dispatch opaque to the

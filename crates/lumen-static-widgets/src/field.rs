@@ -356,7 +356,7 @@ impl Node for NumberInput {
         self
     }
 
-    #[cfg(feature = "observe")]
+    #[cfg(feature = "a11y")]
     fn observe(
         &self,
         _st: &[NodeState],
@@ -593,7 +593,7 @@ impl Node for RangeSlider {
 
     lumen_static::leaf_common!(RangeSlider, 0);
 
-    #[cfg(feature = "observe")]
+    #[cfg(feature = "a11y")]
     fn observe(
         &self,
         _st: &[NodeState],
@@ -852,7 +852,7 @@ impl Node for SearchField {
         }
     }
 
-    #[cfg(feature = "observe")]
+    #[cfg(feature = "a11y")]
     fn observe(
         &self,
         _st: &[NodeState],

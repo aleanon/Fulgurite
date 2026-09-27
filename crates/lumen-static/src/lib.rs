@@ -170,7 +170,9 @@ pub mod num;
 // Threads and the inbox both, so `std` for the same reason (M13/T13.1).
 #[cfg(feature = "std")]
 pub mod spawn;
-#[cfg(feature = "observe")]
+// The accessibility tree (`a11y`, M54/T54.1); its JSON view for agents
+// is the `observe` half inside the module.
+#[cfg(feature = "a11y")]
 pub mod observe;
 
 /// Whether this build of the core has `observe` on — M48/T48.9 (R12-F3).
@@ -182,6 +184,12 @@ pub mod observe;
 /// `GenericContainer`, silently, and now fails to compile, naming the
 /// feature (`docs/results-widget-crate.md`, "One feature seam").
 pub const OBSERVE: bool = cfg!(feature = "observe");
+
+/// Whether this build of the core has `a11y` on — M54/T54.1. The same
+/// seam as [`OBSERVE`], one level down: `a11y` gates every widget's
+/// `Node::observe`, and a widgets crate whose own `a11y` is off would
+/// report `GenericContainer` for all of them. `observe` implies `a11y`.
+pub const A11Y: bool = cfg!(feature = "a11y");
 pub mod overlay;
 pub mod pass;
 #[cfg(feature = "reload")]

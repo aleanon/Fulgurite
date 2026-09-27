@@ -210,7 +210,7 @@ impl<S: TextStorage> Node for Badge<S> {
 
     /// What it reads — M48/T48.6 (R13-F4): it had no `observe`, so the agent
     /// saw a `GenericContainer` with no text.
-    #[cfg(feature = "observe")]
+    #[cfg(feature = "a11y")]
     fn observe(
         &self,
         _st: &[NodeState],
@@ -336,7 +336,7 @@ impl<S: TextStorage> Node for Chip<S> {
     }
 
     /// What it reads — M48/T48.6, as [`Badge`].
-    #[cfg(feature = "observe")]
+    #[cfg(feature = "a11y")]
     fn observe(
         &self,
         _st: &[NodeState],
@@ -465,7 +465,7 @@ impl<S: TextStorage> Node for Avatar<S> {
     }
 
     /// An image, labelled by its initials — M48/T48.6.
-    #[cfg(feature = "observe")]
+    #[cfg(feature = "a11y")]
     fn observe(
         &self,
         _st: &[NodeState],
@@ -663,7 +663,7 @@ impl Node for Icon {
     /// An image, labelled by its symbol's name — M48/T48.6. The review
     /// listed eight widgets with no `observe`; the coverage walk found this
     /// ninth.
-    #[cfg(feature = "observe")]
+    #[cfg(feature = "a11y")]
     fn observe(
         &self,
         _st: &[NodeState],

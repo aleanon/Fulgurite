@@ -349,7 +349,7 @@ impl<W: Widget, const KIND: u8> Node for Veil<W, KIND> {
         }
     }
 
-    #[cfg(feature = "observe")]
+    #[cfg(feature = "a11y")]
     fn observe(
         &self,
         _st: &[NodeState],

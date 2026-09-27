@@ -75,6 +75,16 @@ const _: () = assert!(
     "lumen-static has `observe` on and lumen-static-widgets does not, so every widget would \
      report `GenericContainer` to the agent: enable `lumen-static-widgets/observe` (M48/T48.9)"
 );
+// **The same seam, one level down** — M54/T54.1. Every widget's
+// `Node::observe` is gated on THIS crate's `a11y` since the split, so a
+// screen-reader build that turned on the core's `a11y` without this one's
+// would announce every widget here as `GenericContainer`.
+// `scripts/check_feature_seam.sh` shows it both ways, for both features.
+const _: () = assert!(
+    !lumen_static::A11Y || cfg!(feature = "a11y"),
+    "lumen-static has `a11y` on and lumen-static-widgets does not, so every widget would \
+     report `GenericContainer` to a screen reader: enable `lumen-static-widgets/a11y` (M54/T54.1)"
+);
 
 // ---- M30: the widgets that used to live in the core ------------------
 //

@@ -752,6 +752,15 @@ Gate the entire dev surface behind one `cfg` that compiles to nothing in
 release. The const tables already exist; only *exposure* is gated, so the
 release cost is genuinely zero rather than "small".
 
+**DECIDED 2026-09-27 (M54/T54.1): the screen-reader tree is its own
+feature.** "One `cfg`" made the accessibility tree a dev surface, so a
+release application could not have one without the agent's cost.
+`a11y` gates the tree (every widget's `Node::observe`, the static walk,
+`observe::snapshot`) and leaves `NodeDesc` at 48 B; `observe` implies it
+and adds the JSON view, `probe`, `stats` and the `src` stamp (72 B).
+`docs/plan-a11y-platform.md` §2.1; the sizes are asserted by
+`crates/lumen-static-widgets/tests/desc_size.rs`.
+
 **DECIDED (2026-09-25, M39/T39.1): the endpoint is a local line protocol
 that refuses HTTP.** Newline-delimited JSON-RPC over TCP, one transport
 (`lumen_static_agent::transport`) that every server calls, and a line

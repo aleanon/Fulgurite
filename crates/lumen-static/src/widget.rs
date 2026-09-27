@@ -20,8 +20,8 @@
 
 // `alloc`, not the std prelude: this crate is `no_std` when the
 // `std` feature is off (M13/T13.1).
-// Only the accesskit `extra` arg needs it, and that is observe-gated.
-#[cfg(feature = "observe")]
+// Only the accesskit `extra` arg needs it, and that is `a11y`-gated.
+#[cfg(feature = "a11y")]
 use alloc::vec::Vec;
 
 use crate::desc::{Constraints, NodeDesc, NodeState, Point, Size};
@@ -415,7 +415,11 @@ pub trait Node {
         self.layout(cx, limits, style, st, i)
     }
 
-    #[cfg(feature = "observe")]
+    /// **This node's accessibility entry** — what a screen reader and the
+    /// agent are told. Behind `a11y` since M54/T54.1, which `observe`
+    /// implies: a release application can carry the screen-reader tree
+    /// without the agent's dev surface.
+    #[cfg(feature = "a11y")]
     #[allow(unused_variables)]
     fn observe(
         &self,
@@ -445,7 +449,7 @@ pub trait Node {
     /// every widget with a walk still kept `Label::paint` address-taken
     /// (`just observe-inlining`). A default body is compiled only for the
     /// types that use it.
-    #[cfg(feature = "observe")]
+    #[cfg(feature = "a11y")]
     fn observe_walk(
         &self,
         table: &[crate::desc::NodeDesc],

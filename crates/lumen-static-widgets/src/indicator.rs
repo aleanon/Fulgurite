@@ -113,7 +113,7 @@ impl Node for ProgressBar {
     }
 
     /// How full, as a number — M48/T48.6.
-    #[cfg(feature = "observe")]
+    #[cfg(feature = "a11y")]
     fn observe(
         &self,
         _st: &[NodeState],
@@ -229,7 +229,7 @@ impl Node for Spinner {
     }
 
     /// An indeterminate progress indicator, marked busy — M48/T48.6.
-    #[cfg(feature = "observe")]
+    #[cfg(feature = "a11y")]
     fn observe(
         &self,
         _st: &[NodeState],

@@ -13,7 +13,7 @@
 //! one line per row, then `rows checked: n / Node impls: m`, where `m` is
 //! counted from this crate's source, so a new widget without a row fails
 //! [`every_node_impl_has_a_row`] by name.
-#![cfg(feature = "observe")]
+#![cfg(feature = "a11y")]
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -188,6 +188,26 @@ fn every_node_impl_has_a_row() {
     assert!(impls.len() > 30, "setup: only {} `impl Node for` found in src/ -- the scan is broken", impls.len());
     assert!(missing.is_empty(), "Node impls with no row in the table: {missing:?}");
     assert!(stale.is_empty(), "rows naming no Node impl in src/: {stale:?}");
+}
+
+/// **The feature seam, read back** — M54/T54.1 (§2.1). `just test` runs
+/// this file with `--features a11y` alone as well as under the
+/// workspace's `observe`: a toggle must report `CheckBox` either way. A
+/// build whose widgets did not publish would read `GenericContainer`.
+#[test]
+fn a_toggle_reads_back_as_a_checkbox() {
+    let mut ui = build();
+    let nodes = snapshot(&mut ui);
+    let n = &nodes["CheckBox-on"];
+    println!(
+        "CheckBox-on role={:?} toggled={:?} (core a11y {}, observe {})",
+        n.role(),
+        n.toggled(),
+        lumen_static::A11Y,
+        lumen_static::OBSERVE
+    );
+    assert_eq!(n.role(), Role::CheckBox, "a toggle reports {:?}", n.role());
+    assert_eq!(n.toggled(), Some(Toggled::True));
 }
 
 #[test]

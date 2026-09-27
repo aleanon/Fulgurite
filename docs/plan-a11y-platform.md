@@ -814,6 +814,22 @@ feature (`dev-shape`); without that line it would never run.
   the plan said, with a selftest plant
   (`scripts/selftest/plants/static/ident-feature-ghost.sh`).
 
+**T54.1 (2026-09-27).** Two plan claims did not survive building.
+- **The size test cannot live in core.** Core cannot be *tested* with
+  `a11y` alone: its dev-dependency on the widgets builds them without
+  `a11y`, which the seam assertion refuses. So
+  `crates/lumen-static-widgets/tests/desc_size.rs` asserts `NodeDesc`
+  under the features it finds, and `just test` runs it three ways
+  (default 48, `--features a11y` 48, the workspace's `observe` 72).
+- **"Drop `lumen-static/a11y` from the widgets' `a11y`: the build does
+  not fail" is false.** It fails, with 89 errors: without the core's
+  `a11y` the trait has no `observe` method and `lumen_static::observe`
+  does not exist. The seam that *can* be silent is the other direction —
+  the core's `a11y` on, the widgets' off — and the seam assertion
+  refuses it; `scripts/check_feature_seam.sh` now shows it for both
+  features, and removing the new assertion makes it report "build
+  succeeded / expected refusal".
+
 ## Appendix: finding → task
 
 | ID | sev now | status | task |

@@ -794,7 +794,7 @@ impl<T: Widget + Default + 'static> Node for Repeat<T> {
         self
     }
 
-    #[cfg(feature = "observe")]
+    #[cfg(feature = "a11y")]
     fn observe(
         &self,
         _st: &[NodeState],

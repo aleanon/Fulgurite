@@ -419,7 +419,7 @@ macro_rules! leaf_common {
             self
         }
         $crate::node_count!();
-        $crate::__observe_items! {
+        $crate::__a11y_items! {
             fn observe_walk(
                 &self,
                 _table: &[$crate::desc::NodeDesc],
@@ -474,7 +474,7 @@ macro_rules! leaf_common {
             self
         }
         $crate::node_count!();
-        $crate::__observe_items! {
+        $crate::__a11y_items! {
             fn observe_walk(
                 &self,
                 _table: &[$crate::desc::NodeDesc],
@@ -531,5 +531,26 @@ macro_rules! __observe_items {
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __observe_items {
+    ($($t:tt)*) => {};
+}
+
+/// Expands its items only when `lumen-static` is built with `a11y` —
+/// M54/T54.1. The accessibility half of what `__observe_items!` gated
+/// until then: the derive's and `leaf_common!`'s static walk
+/// ([`Node::observe_walk`](crate::widget::Node::observe_walk)) follows the
+/// screen-reader tree, and `observe` implies `a11y`, so an agent build
+/// still has it.
+#[cfg(feature = "a11y")]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __a11y_items {
+    ($($t:tt)*) => { $($t)* };
+}
+
+/// See the `a11y` build of this macro.
+#[cfg(not(feature = "a11y"))]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __a11y_items {
     ($($t:tt)*) => {};
 }

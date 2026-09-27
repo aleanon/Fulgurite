@@ -323,7 +323,7 @@ impl Node for RichText {
 
     lumen_static::leaf_common!(RichText, 0);
 
-    #[cfg(feature = "observe")]
+    #[cfg(feature = "a11y")]
     fn observe(
         &self,
         _st: &[NodeState],
@@ -609,7 +609,7 @@ impl Node for Markdown {
         self
     }
 
-    #[cfg(feature = "observe")]
+    #[cfg(feature = "a11y")]
     fn observe(
         &self,
         st: &[NodeState],
@@ -821,7 +821,7 @@ impl Node for RichTextEditor {
         }
     }
 
-    #[cfg(feature = "observe")]
+    #[cfg(feature = "a11y")]
     fn observe(
         &self,
         _st: &[NodeState],
@@ -947,7 +947,7 @@ impl Node for PaintBox {
 
     lumen_static::leaf_common!(PaintBox, 0);
 
-    #[cfg(feature = "observe")]
+    #[cfg(feature = "a11y")]
     fn observe(
         &self,
         _st: &[NodeState],

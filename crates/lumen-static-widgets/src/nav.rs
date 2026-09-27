@@ -365,7 +365,7 @@ impl<const KIND: u8> Node for Strip<KIND> {
 
     lumen_static::leaf_common!(Strip<KIND>, 0);
 
-    #[cfg(feature = "observe")]
+    #[cfg(feature = "a11y")]
     fn observe(
         &self,
         _st: &[NodeState],
@@ -506,7 +506,7 @@ impl<S: lumen_static::text::TextStorage> Node for AppBar<S> {
 
     lumen_static::leaf_common!(AppBar<S>, 0, nohit);
 
-    #[cfg(feature = "observe")]
+    #[cfg(feature = "a11y")]
     fn observe(
         &self,
         _st: &[NodeState],
@@ -734,7 +734,7 @@ impl<W: Widget> Node for PullToRefresh<W> {
         }
     }
 
-    #[cfg(feature = "observe")]
+    #[cfg(feature = "a11y")]
     fn observe(
         &self,
         _st: &[NodeState],

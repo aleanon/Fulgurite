@@ -5,7 +5,8 @@
 # The symbol table is the gate: it answers yes or no, on any machine, with
 # or without `perf`. Two containers — `List` and `Repeat`, the two whose
 # observe walks reach statically typed rows — each built plain and with
-# `observe`, UNSTRIPPED (the harness profile strips by default). Any
+# `observe`, and with `a11y` alone (M54/T54.1), UNSTRIPPED (the harness
+# profile strips by default). Any
 # standalone `Label<S> as Node>::{layout,paint}` symbol fails the gate,
 # with its size printed.
 #
@@ -21,8 +22,14 @@ export CARGO_PROFILE_RELEASE_STRIP=false
 CARGO_TARGET_DIR=target/probe-plain cargo build -q --locked --release -p observe-probe
 # shellcheck disable=SC2086
 CARGO_TARGET_DIR=target/probe-second cargo build -q --locked --release -p observe-probe $second
+# M54/T54.1: the static walk follows `a11y` now, so a screen-reader build
+# without the agent must keep the rows inlined too.
+third="--features a11y"
+[ "$mode" = --aa ] && third=""
+# shellcheck disable=SC2086
+CARGO_TARGET_DIR=target/probe-a11y cargo build -q --locked --release -p observe-probe $third
 fail=0
-for build in plain second; do
+for build in plain second a11y; do
     for bin in list repeat; do
         syms=$(nm -C -S "target/probe-$build/release/$bin" \
             | grep -E 'Label<.*> as lumen_static::widget::Node>::(layout|paint)$' || true)

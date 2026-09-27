@@ -63,7 +63,7 @@
 // `std` feature is off (M13/T13.1), and absent entirely without the
 // `alloc` feature (T13.4).
 // Only the accesskit `extra` arg needs it, and that is observe-gated.
-#[cfg(feature = "observe")]
+#[cfg(feature = "a11y")]
 use alloc::vec::Vec;
 
 use lumen_static::cx::LayoutCx;
@@ -823,7 +823,7 @@ impl<S: TextBuffer> Node for TextInput<S> {
         self
     }
 
-    #[cfg(feature = "observe")]
+    #[cfg(feature = "a11y")]
     fn observe(
         &self,
         _st: &[NodeState],

@@ -81,6 +81,9 @@ dev-shape:
     cargo test --workspace --exclude lumen-static-wgpu
     # M34/T34.1: the shadow oracle is a feature, so its test needs it on.
     cargo test -p lumen-static-shell --features shadow-oracle --test shadow
+    # M54/T54.1: the screen-reader tree without the agent -- NodeDesc stays
+    # 48 B, and the widgets still publish roles, under `a11y` alone.
+    cargo test -p lumen-static-widgets --features a11y --test a11y_roles --test desc_size
     # M54/T54.7: a dropped file's translation is behind `dnd`.
     cargo test -p lumen-static-winit --features dnd --test translate
     # M43/T43.9: the golden gates. Both need `truetype` OFF (a golden with

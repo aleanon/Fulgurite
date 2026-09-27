@@ -131,7 +131,7 @@ impl<W: Widget + Default> Node for Option<W> {
         }
     }
 
-    #[cfg(feature = "observe")]
+    #[cfg(feature = "a11y")]
     fn observe(
         &self,
         st: &[NodeState],
@@ -681,7 +681,7 @@ impl<W: Widget> Node for List<W> {
         self
     }
 
-    #[cfg(feature = "observe")]
+    #[cfg(feature = "a11y")]
     fn observe(
         &self,
         _st: &[NodeState],
@@ -1042,7 +1042,7 @@ impl<S> Node for Dyn<S> {
         self
     }
 
-    #[cfg(feature = "observe")]
+    #[cfg(feature = "a11y")]
     fn observe(
         &self,
         _st: &[NodeState],

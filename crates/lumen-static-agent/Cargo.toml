@@ -13,7 +13,10 @@ name = "lumen_static_agent"
 #
 # Cargo unifies features across a selection, so **any binary that links
 # this crate builds `lumen-static` with `observe` on** — `NodeDesc` grows
-# 48 B -> 72 B and the accesskit dependency comes with it. That is not
+# 48 B -> 72 B and the accesskit dependency comes with it. (`observe`
+# implies `a11y` since M54/T54.1: the screen-reader tree alone costs a
+# release build accesskit and nothing in `NodeDesc`, and this crate's
+# `observe` is what adds the rest.) That is not
 # the mutually-exclusive size-dial pattern handoff §8 rejects; it is the
 # additive dev gate §9 blesses, used as intended. But §9's "off in
 # release builds" holds only for a binary that does not link the agent,

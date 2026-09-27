@@ -25,8 +25,19 @@ recorded debt: the reload surface is now gated too.*
 ## The gate: additive cargo features, not a mode
 
 `observe` and `reload` are non-default features of `lumen-static`
-(`observe = ["dep:accesskit", "dep:serde_json"]`, `reload = ["dep:serde",
-"dep:serde_json"]`). §8 rejected features for *semantic* dials because
+(`observe = ["a11y", "dep:serde", "dep:serde_json"]`, `reload =
+["std", "dep:serde", "dep:serde_json"]`).
+
+> **Split since M54/T54.1** (`docs/plan-a11y-platform.md` §2.1): the
+> accessibility tree is its own feature, `a11y = ["std",
+> "dep:accesskit"]`, which `observe` implies. `a11y` gates every
+> widget's `Node::observe`, the static walk and `observe::snapshot` —
+> what a screen-reader adapter sends — and leaves `NodeDesc` at 48 B;
+> `observe` adds the JSON dump, `probe`, `stats` and the `src` stamp
+> (72 B). `crates/lumen-static-widgets/tests/desc_size.rs` asserts both
+> sizes, and `scripts/check_feature_seam.sh` refuses the core's `a11y`
+> without the widgets' as it refuses `observe`.
+ §8 rejected features for *semantic* dials because
 unification breaks third parties; a dev surface is the opposite case —
 purely additive, so unification is harmless (someone enabling observe
 anywhere just turns the lights on). Release builds without the features

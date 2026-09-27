@@ -901,7 +901,7 @@ impl<const KIND: u8> Node for Picker<KIND> {
         }
     }
 
-    #[cfg(feature = "observe")]
+    #[cfg(feature = "a11y")]
     fn observe(
         &self,
         _st: &[NodeState],

@@ -6,7 +6,8 @@ license.workspace = true
 
 [dependencies]
 lumen-static = { path = "../lumen-static", default-features = false }
-# Only under `observe`; `lumen-static` gates its own the same way.
+# Only under `a11y` (which `observe` implies); `lumen-static` gates its
+# own the same way.
 accesskit = { version = "0.25", optional = true }
 # M45/T45.5: editing steps by extended grapheme cluster. `no_std` and
 # allocation-free, and behind `alloc` anyway, so the leaf profile — which
@@ -34,6 +35,14 @@ default = ["std"]
 # would lose `Vec` for no reason anyone asked for.
 std = ["alloc", "lumen-static/std"]
 alloc = ["lumen-static/alloc", "dep:unicode-segmentation"]
+# **The screen-reader half — M54/T54.1.** Every widget's `Node::observe`:
+# its role, name, state and actions, which is what a platform
+# accessibility adapter sends. Split out of `observe` so a release build
+# can carry it; it adds nothing to `NodeDesc`. `lumen-static/a11y` is
+# required, not optional: without it the core's walk would not call these
+# at all, and the core with `a11y` and this crate without it does not
+# compile (the seam assertion in lib.rs).
+a11y = ["std", "dep:accesskit", "lumen-static/a11y"]
 # **The agent-facing half — M27/T27.5.** Without this no widget in this
 # crate publishes a role or a value, so `ui.getTree` sees geometry and
 # nothing else and a drive script cannot read a number field's number.
@@ -41,7 +50,7 @@ alloc = ["lumen-static/alloc", "dep:unicode-segmentation"]
 # nothing had ever asked one of them a question. Default-off and additive
 # for the same reason `lumen-static`'s is: it takes `NodeDesc` from 48 B
 # to 72 B in every binary that links it.
-observe = ["std", "dep:accesskit", "lumen-static/observe"]
+observe = ["a11y", "lumen-static/observe"]
 # **M30.** `Reloadable` for the widgets this crate owns — the impls that
 # moved with `Label`, `Button`, `Toggle`, `Fixed` and `Spacer`. Gated
 # exactly as `lumen-static`'s is, and for the same reason: the dev

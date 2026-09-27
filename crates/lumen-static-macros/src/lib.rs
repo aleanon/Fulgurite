@@ -1231,10 +1231,11 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                 // `emit_subtree`, which walks a field statically when it
                 // has a walk of its own. So a derived row inside a `List`
                 // or `Repeat` is never coerced to `&dyn Node` for the
-                // agent's sake. Gated through `__observe_items!` because
-                // this expands in the user's crate, where a `cfg` would
-                // read the wrong features.
-                ::lumen_static::__observe_items! {
+                // agent's sake. Gated through `__a11y_items!` (M54/T54.1:
+                // the walk follows the screen-reader tree, not the agent)
+                // because this expands in the user's crate, where a `cfg`
+                // would read the wrong features.
+                ::lumen_static::__a11y_items! {
                     fn observe_walk(
                         &self,
                         _table: &[::lumen_static::desc::NodeDesc],

@@ -17,3 +17,5 @@ lumen-static-shell = { path = "../../../crates/lumen-static-shell" }
 
 [features]
 observe = ["lumen-static/observe", "lumen-static-widgets/observe"]
+# M54/T54.1: the screen-reader tree alone, which carries the static walk.
+a11y = ["lumen-static/a11y", "lumen-static-widgets/a11y"]

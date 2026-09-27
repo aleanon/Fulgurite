@@ -201,7 +201,7 @@ impl<S: TextStorage> Node for Label<S> {
     }
     lumen_static::leaf_common!(Label<S>, 0);
 
-    #[cfg(feature = "observe")]
+    #[cfg(feature = "a11y")]
     fn observe(
         &self,
         _st: &[NodeState],
@@ -465,7 +465,7 @@ impl<S: 'static, T: TextStorage> Node for Button<S, T> {
     }
     lumen_static::leaf_common!(Button<S, T>, NodeDesc::FOCUSABLE);
 
-    #[cfg(feature = "observe")]
+    #[cfg(feature = "a11y")]
     fn observe(
         &self,
         _st: &[NodeState],

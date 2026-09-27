@@ -265,7 +265,7 @@ impl<A: Widget, B: Widget> Node for SplitPane<A, B> {
         }
     }
 
-    #[cfg(feature = "observe")]
+    #[cfg(feature = "a11y")]
     fn observe(
         &self,
         _st: &[NodeState],
@@ -578,7 +578,7 @@ impl<W: Widget, S: TextStorage> Node for Collapsible<W, S> {
         }
     }
 
-    #[cfg(feature = "observe")]
+    #[cfg(feature = "a11y")]
     fn observe(
         &self,
         _st: &[NodeState],
@@ -1011,7 +1011,7 @@ where
         }
     }
 
-    #[cfg(feature = "observe")]
+    #[cfg(feature = "a11y")]
     fn observe(
         &self,
         _st: &[NodeState],

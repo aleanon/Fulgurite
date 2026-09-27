@@ -330,7 +330,7 @@ impl Node for OptionList {
 
     lumen_static::leaf_common!(OptionList, 0);
 
-    #[cfg(feature = "observe")]
+    #[cfg(feature = "a11y")]
     fn observe(
         &self,
         _st: &[NodeState],
@@ -728,7 +728,7 @@ impl<const KIND: u8> Node for Chooser<KIND> {
         }
     }
 
-    #[cfg(feature = "observe")]
+    #[cfg(feature = "a11y")]
     fn observe(
         &self,
         _st: &[NodeState],
