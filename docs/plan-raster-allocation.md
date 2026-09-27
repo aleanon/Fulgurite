@@ -1,5 +1,24 @@
 # M50 — the software rasteriser allocates what its gate says it does not
 
+> **T50.0, T50.2–T50.7 and T50.9 DONE 2026-09-27; M50 is closed.**
+> **T50.0:** every finding re-checked and gated red (truetype arms 230 +
+> 1,290 allocs over 50 frames; banded 3w + 1 and 5,375 with text; 2.27 /
+> 3.63 shapings per run; a 4K grow reserving 66 MB for 33; a frosted
+> sheet's 576 px change costing 21.63 ms through `Host`).
+> **T50.2:** glyph cache + shaping scratch: all three truetype arms at 0/0;
+> R8-F3's out-of-clip half closed; 1.2× on `render_within`, not Finding
+> 15's 6×. **T50.3:** shaped once on the frame thread, 1.00 per run at
+> 8 and 32 bands, byte-identical to pre-M50. **T50.4:** the pool's kill
+> rule fired (two row copies 615 µs against a 216 µs frame); the budget
+> ships — frame thread exactly 3w + 1, worker code 0. **T50.5:**
+> `lumen-static-winit/simd` and `/threads`; each vector branch counted
+> and I8 red on all three. **T50.6:** exact growth (33,186,240 for
+> 33,186,240) and a 720p shrink returns the rest. **T50.7:** bold parsed
+> on first use (a regular-only stack holds one face). **T50.9:** closed as
+> measured, not built — the bounded rule is unsound for every material
+> (8,530 px wrong); every sound region holds the whole panel.
+> M51/T51.4 was done here too, on T50.2's scratch.
+>
 > **T50.1 and T50.8 DONE 2026-09-25 (early landings).** **T50.1:** the raster arm is
 > `rasterising_a_block_glyph_frame_allocates_nothing`, and the handoff,
 > `docs/results-allocation.md`, the book and the rustdoc say the
@@ -858,12 +877,12 @@ Risks, and what would reveal each:
 
 | ID | sev now | status | task |
 |---|---|---|---|
-| R8-F1 | S1 | OPEN | T50.2 (claim corrected in T50.1) |
-| R8-F2 | S3 | OPEN | T50.3 |
-| R18-F4 | S2 | OPEN | T50.4 |
-| R6-F5 | S3 | OPEN | T50.5 |
-| R18-F10 | S3 | OPEN | T50.5 |
-| R8-F7 | S3 | OPEN | T50.6 |
-| R8-F10 | S4 | OPEN | T50.7 |
-| R8-F8 | S3 | OPEN | T50.8 |
-| R8-F6 | S3 | OPEN | T50.9 (or closed as measured, §5) |
+| R8-F1 | S1 | CLOSED | T50.2 (claim corrected in T50.1) |
+| R8-F2 | S3 | CLOSED | T50.3 |
+| R18-F4 | S2 | CLOSED (budget, by decision) | T50.4 |
+| R6-F5 | S3 | CLOSED | T50.5 |
+| R18-F10 | S3 | CLOSED | T50.5 |
+| R8-F7 | S3 | CLOSED | T50.6 |
+| R8-F10 | S4 | CLOSED | T50.7 |
+| R8-F8 | S3 | CLOSED | T50.8 |
+| R8-F6 | S3 | CLOSED as measured | T50.9 (the bounded rule is unsound) |
