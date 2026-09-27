@@ -56,7 +56,10 @@ fn only(list: &DisplayList, keep: fn(&Cmd) -> bool) -> DisplayList {
     sub
 }
 
-const CLASSES: [(&str, fn(&Cmd) -> bool); 4] = [
+/// A command class: its name, and which commands belong to it.
+type Class = (&'static str, fn(&Cmd) -> bool);
+
+const CLASSES: [Class; 4] = [
     ("rect", |c| matches!(c, Cmd::Rect { .. })),
     ("rounded_rect", |c| matches!(c, Cmd::RoundedRect { .. })),
     // **Shadow was missing from this list until 2026-09-09**, so the
