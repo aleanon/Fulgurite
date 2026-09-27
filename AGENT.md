@@ -621,7 +621,8 @@ found" section rather than silently replacing itself.
   count's sign — so the milestone is two framework hooks
   (`Program::on_key`, `Program::style_by`, both through
   `Host::pump_with`) and then the migration. **T60.0–T60.5 DONE
-  2026-09-28**: the tally runs on `Program::run`, 1,383 → 514 lines, its
+  2026-09-28, `just ci-verify 8d496c1` green** (28 steps, 0 failed, 0
+  skipped): the tally runs on `Program::run`, 1,383 → 514 lines, its
   window loop 538 → 0. The migration found two framework gaps every
   `Program` window had: no input latency in `app.perf`, and a `ui.lint`
   audit measuring with the block stand-in instead of the session's face.

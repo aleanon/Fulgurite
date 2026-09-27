@@ -1,6 +1,7 @@
 # M60 — the tally on the framework: two hooks, and no event loop of its own
 
-> **T60.0–T60.5 DONE 2026-09-28** on branch `tally-slim`.
+> **T60.0–T60.5 DONE 2026-09-28** on branch `tally-slim`, **`just
+> ci-verify 8d496c1` green**: 28 steps, 0 failed, 0 skipped, tree clean.
 > - **T60.0** — the gates, red, over the API surface without its mechanism.
 > - **T60.1** — `Program::on_key`: a key press dispatch did not take and
 >   the focused node does not own reaches the hook, from `pump_with`.
@@ -294,7 +295,7 @@ the comparison — the sign gate fails with 0 pixels of the new colour.
 > `2b36612`** (9, 11 and 840 wakes in three runs there): the bound counts
 > the main thread's context switches, and the display is shared with
 > another session's windows. Not this milestone's; recorded for the
-> coordinator.
+> coordinator. It passed in `just ci`'s run of `8d496c1`.
 
 Every recipe and script that runs `counter-window` green; module docs,
 the book's citations and `docs/plan-desktop.md` updated; line counts
