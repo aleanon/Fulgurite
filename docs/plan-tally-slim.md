@@ -180,6 +180,14 @@ pixel comparison fails.
 
 ## T60.2 — style keyed on state
 
+> **DONE 2026-09-27.** `pump_with` compares the key after `update` and
+> re-applies the **whole** sheet on a change: scoping it to `#card`
+> saves 2% of the flip frame at the tally's 13 nodes
+> (`docs/results-cascade-cost.md`, M60/T60.2), so the promise
+> `restyle_subtree` needs is not worth extracting from every program.
+> *Injection:* the comparison skipped — 0 px of the new colour on the
+> click's frame, headless and through the agent.
+
 Wire the key comparison into `pump_with` and `reasked`. Measure the
 tally's re-cascade full against scoped and record it. *Injection:* skip
 the comparison — the sign gate fails with 0 pixels of the new colour.

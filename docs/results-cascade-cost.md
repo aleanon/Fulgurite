@@ -153,3 +153,28 @@ broke both sides, since both sides would be the same code. Three
 injections (DX–DZ): marking a present level absent, running the passes
 in reverse, and skipping a level unconditionally. All three redden, and
 the first two are caught by two tests each.
+
+## M60/T60.2 — the tally's own sign flip, full against scoped
+
+*2026-09-27, `docs/plan-tally-slim.md` T60.2. Same machine, under the
+bench lock (load 0.77 → 1.27). `cargo test --release` on
+`Host<Tally>` (13 nodes, the 13-rule `stylesheet_for`), alternating the
+positive and negative sheets, 2,000 swaps per block, median of 41 blocks.
+Both arms run the sheet lint, which the agent feature compiles in.*
+
+| arm, 13 nodes | median |
+|---|---:|
+| `set_stylesheet` — the whole sheet | 829 ns |
+| `restyle_subtree(.., "card")` | 752 ns |
+| whole sheet, then the pump that lays it out | 1,391 ns |
+| scoped, then the pump | 1,360 ns |
+| the pump alone after `invalidate_all` | 521 ns |
+
+**Scoping saves 31 ns of a 1.4 µs frame (2%) at the tally's size**,
+where it saved 10.8× at 901 nodes: the card *is* the tree here (every
+node but the page and its two spacers). So `Program::style_by` cascades
+the whole sheet, which asks nothing of its caller — `restyle_subtree`'s
+promise that a new sheet differs only inside the subtree is one a
+program-level API would have to extract from every application, for a
+saving that only exists when the keyed rules sit in a small corner of a
+large tree. Such an application can still call `restyle_subtree` itself.

@@ -124,7 +124,6 @@ fn input_key_reaches_the_key_hook() {
 }
 
 #[test]
-#[ignore = "red until T60.2: Host::pump_with never compares the sheet key"]
 fn input_click_that_flips_the_key_is_recoloured_in_its_own_frame() {
     let mut s = Local::from_program(program(), Crashing);
     let mut screen = Offscreen::new(W, H);

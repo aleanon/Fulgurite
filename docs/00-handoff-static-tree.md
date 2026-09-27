@@ -633,6 +633,14 @@ press dispatch did not consume and the focused node does not own
 agent's `input.key` all pump the same host (`docs/plan-tally-slim.md`
 §2.1).
 
+**DECIDED 2026-09-27 (M60/T60.2): a sheet may be keyed on state.**
+`Program::style_by(key, sheet)` is `sheet(key(app))`, re-asked where
+`style` is and also whenever the key's value changes, which
+`Host::pump_with` compares after `App::update` and before layout — so
+the frame that lands the change is drawn with its sheet, on every path.
+The whole sheet is re-applied: scoping saved 2% at the tally's size
+(`docs/results-cascade-cost.md`, M60/T60.2).
+
 **DECIDED 2026-09-24 (M36): a panic is caught, located and survived in
 development builds.** One guard, `Host::guard`, covers every path that
 runs application code; the screen is a display list naming the message,

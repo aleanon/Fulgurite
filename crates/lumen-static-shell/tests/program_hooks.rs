@@ -296,7 +296,6 @@ fn pixels_of<A: lumen_static::event::App, I: Invalidation>(h: &Host<A, Increment
 /// **A click that flips the key is drawn in the new sheet on the frame
 /// the click lands** — one pump, no second frame to catch up (§2.2).
 #[test]
-#[ignore = "red until T60.2: Host::pump_with never compares the sheet key"]
 fn a_click_that_flips_the_key_is_drawn_in_the_new_sheet_on_its_own_frame() {
     let mut b: Host<Keys, Incremental, Boundaries<256>> = program().host();
     let mut e: Host<Keys, Incremental, Everything> = program().host();
@@ -321,7 +320,11 @@ fn a_click_that_flips_the_key_is_drawn_in_the_new_sheet_on_its_own_frame() {
     assert!(neg_after > 0, "the sign flipped and the value was not drawn in the negative sheet on that frame");
     assert_eq!(stale, 0, "Boundaries drew the re-styled frame differently from Everything");
 
-    // And back: Up twice crosses zero, and the sheet follows again.
+    // And back: three Ups cross zero, and the sheet follows again.
+    // Focus off the button first: the click focused it, and an arrow on a
+    // focused button with a focusable sibling moves focus in the group
+    // (T15.6) — consumed, so the hook would never see it (§2.1).
+    b.input.focus = None;
     for _ in 0..3 {
         key(&mut b, Key::Up);
     }

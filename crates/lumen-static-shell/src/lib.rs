@@ -728,6 +728,11 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             let sheet = source.sheet(&self.app);
             self.set_stylesheet(&sheet);
         }
+        // The sheet just applied was built from this key's value, so a
+        // change is measured from it (M60/T60.2).
+        if let Some(key) = self.sheet_key.as_mut() {
+            let _ = key.changed(&self.app);
+        }
         self.invalidation.mark_all();
         self.arenas_dirty = true;
     }
@@ -1789,6 +1794,27 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
                 self.arenas_dirty = true;
             }
         }
+        // **A sheet keyed on state** — M60/T60.2
+        // (`docs/plan-tally-slim.md` §2.2). After `update`, because the
+        // key reads state that handlers, `apply`, `tick` and the key hook
+        // have all written by now; before layout, so the frame that lands
+        // a change of key is drawn with its sheet. `set_stylesheet` marks
+        // everything, so this frame is not skipped below.
+        //
+        // **The whole sheet, not a subtree** — measured on the tally in
+        // `docs/results-cascade-cost.md` (M60/T60.2): at its size the
+        // scoped cascade saves too little to be worth the promise
+        // `restyle_subtree` needs from every caller (a new sheet may
+        // differ only inside the subtree).
+        if let Some(key) = self.sheet_key.as_mut() {
+            if key.changed(&self.app) {
+                if let Some(source) = self.sheet_source.clone() {
+                    let sheet = source.sheet(&self.app);
+                    self.set_stylesheet(&sheet);
+                }
+            }
+        }
+
         // **An idle pump does nothing** — M53/T53.3 (R6-F1,
         // `docs/plan-frame-cost.md` §2.3(a)). Nothing marked, nothing
         // handled, no pointer or focus state moved, nothing applied, no
