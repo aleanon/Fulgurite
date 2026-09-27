@@ -167,3 +167,68 @@ fn the_query_is_not_clipped_to_the_fields_padding() {
     assert!(clip[1] <= run[1] + 0.01 && clip[3] >= run[1] + line - 0.01,
             "the query's line y {}..{} is cut by its clip y {}..{}", run[1], run[1] + line, clip[1], clip[3]);
 }
+
+
+/// **A measure does not move the view** — reported from the live window:
+/// with the field full, every click jumped the text between two scroll
+/// positions, and the caret could leave the view.
+///
+/// The field decided its scroll in `layout`, and `layout` also runs as a
+/// *measure* — a parent sizing its children loosely before placing them,
+/// or the agent's audit under a million-pixel box. Laid out that wide the
+/// run fitted, the scroll clamped to 0, and the frame could only put the
+/// caret back at the right edge. So: a full field, a click in its middle,
+/// one loose measure of the field, then a frame — and the run must start
+/// where it did, with the caret still inside the field.
+#[test]
+#[cfg(feature = "truetype")]
+fn a_measure_does_not_move_a_full_fields_view() {
+    use lumen_static::widget::Node;
+    // **A real face.** The default measure produces no clusters, so a click
+    // could not place the caret and the caret had no x to scroll to: the
+    // first version of this test passed with its setup never happening.
+    let Some(font) = lumen_static_shell::text::FontStack::system() else {
+        eprintln!("no system font; skipping");
+        return;
+    };
+    let mut m = lumen_static_shell::text::FontMetrics::new(font);
+    let q = "searchthe quick brown fox jumps over the lazy dog again";
+    let mut app = App::default();
+    app.ui.q = SearchField::new(q);
+    let mut h: Host<App> = Host::new(app, 400, 100);
+    h.set_stylesheet(&[Rule::new(Selector::Id("q"), Patch::new().width(Length::Fixed(220.0)))]);
+    h.pump_with(&mut m);
+    let f = at("q") + 2;
+    h.input.focus = Some(f as u32);
+    h.pump_with(&mut m);
+    let run_x = |h: &Host<App>| h.list.cmds.iter().find_map(|c| match c {
+        Cmd::Text { rect, text, .. } if h.list.str_of(*text) == q => Some(rect[0]),
+        _ => None,
+    }).expect("setup: the query's run was not drawn");
+    // A press in the middle of the scrolled field: the caret lands there,
+    // and the view is where neither a clamp to 0 nor a caret at the right
+    // edge would put it.
+    let s = h.states[f];
+    let (x, y) = (s.pos.x + s.size.w / 2.0, s.pos.y + s.size.h / 2.0);
+    h.post(Event::PointerDown { x, y, button: lumen_static::PointerButton::Left, clicks: 1 });
+    h.pump_with(&mut m);
+    h.post(Event::PointerUp { x, y, button: lumen_static::PointerButton::Left });
+    h.pump_with(&mut m);
+    let (before, caret) = (run_x(&h), h.app.ui.q.field.caret());
+    assert!(caret > 0 && caret < q.len(), "setup: the press did not put the caret inside the query ({caret})");
+    assert!(before < s.pos.x - 1.0, "setup: the view is not scrolled ({before})");
+    // One loose measure, as a measuring parent or the audit makes.
+    {
+        let mut cx = lumen_static::LayoutCx::new(&mut m);
+        let loose = lumen_static::Constraints { min_w: 0.0, max_w: 1.0e6, min_h: 0.0, max_h: 1.0e6 };
+        let styles = h.styles.clone();
+        let mut scratch = h.states.clone();
+        h.app.ui.q.field.layout(&mut cx, loose, &styles, &mut scratch, f);
+    }
+    h.invalidate_all();
+    h.pump_with(&mut m);
+    let after = run_x(&h);
+    println!("caret {caret}; the run starts at {before} -> {after} after a loose measure (field {}..{})", s.pos.x, s.pos.x + s.size.w);
+    assert_eq!(before, after, "a loose measure moved the view: the run started at {before}, now at {after}");
+    assert_eq!(h.app.ui.q.field.caret(), caret, "the caret moved without an input");
+}

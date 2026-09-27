@@ -202,6 +202,23 @@ SEARCH = ("SearchField", "#search-field", [
         injection="hand the icon the wrapper's own `inner` limits — its "
                   "min_w then forces a 20 px magnifier to the full width",
     ),
+    # Reported: a full field's text jumped between two views on every
+    # click, and the caret could leave it. The field decided its scroll in
+    # `layout`, which the agent's audit also runs under a million-pixel
+    # box -- so this drive, with the agent attached, is exactly the window
+    # that showed it. Two presses on one spot must leave the same pixels.
+    Action(
+        visible=True,
+        name="clicking a full field twice on one spot leaves its view still",
+        needs="a search field holding a query wider than itself",
+        do=lambda c: _click_twice_on_a_full_field(c),
+        expect=lambda c: (
+            c._h1 == c._h2 and len(_text(c)) > 40,
+            f"field pixels after the first press {c._h1} and the second {c._h2}; "
+            f"query of {len(_text(c))} characters",
+        ),
+        injection="decide TextInput's scroll in layout again, not in place",
+    ),
     # M57/B26: `clear()` had no caller. And the field is inside the pill
     # now: it ended 148 px past it while laid out across the offer.
     Action(
@@ -222,3 +239,21 @@ SEARCH = ("SearchField", "#search-field", [
 ])
 
 ALL = [NUMBER, RANGE, SEARCH]
+
+
+def _click_twice_on_a_full_field(c):
+    """Fill the field past its width, then press one spot in it twice,
+    hashing the field's pixels after each press (settled)."""
+    import time
+    c.click()
+    c.c.rpc("input.key", key="End")
+    c.c.type(" the quick brown fox jumps over the lazy dog again")
+    b = c.box("#search-field")
+    x, y = b[0] + (b[2] - b[0]) * 0.6, (b[1] + b[3]) / 2
+    hashes = []
+    for _ in range(2):
+        c.c.rpc("input.click", x=x, y=y)
+        time.sleep(0.4)
+        c.c.rpc("ui.lastChange")
+        hashes.append(c.c.rpc("ui.regionHash", rect=b).get("hash"))
+    c._h1, c._h2 = hashes

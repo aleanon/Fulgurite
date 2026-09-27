@@ -127,6 +127,11 @@ pub struct TextInput<S: TextBuffer = lumen_static::text::DefaultTextStorage> {
     /// a flag, the shape `PullToRefresh::take_triggered` and
     /// `Menu::take_chosen` already have.
     submitted: bool,
+    /// Presses taken, wrapping. A counter, not a flag, so an owner that
+    /// reads it once a frame sees a press whose release landed in the same
+    /// frame — which a `pressed` bit does not survive (`Chooser` reopens on
+    /// a press of its field).
+    presses: u32,
     /// The placeholder's width, measured with the run while the text is
     /// empty: an empty field's content is otherwise zero wide, and a
     /// shrink field then had no room to show it in.
@@ -155,6 +160,7 @@ impl<S: TextBuffer> Default for TextInput<S> {
             read_only: false,
             placeholder: "",
             submitted: false,
+            presses: 0,
             placeholder_w: 0.0,
         }
     }
@@ -334,6 +340,12 @@ impl<S: TextBuffer> TextInput<S> {
     }
 
     /// Move the caret one character left; returns whether it moved.
+    /// How many presses this field has taken, wrapping: compare with the
+    /// last count seen to learn that a press happened since.
+    pub fn presses(&self) -> u32 {
+        self.presses
+    }
+
     /// Whether Enter was pressed since the last call — and clears it.
     pub fn take_submitted(&mut self) -> bool {
         core::mem::take(&mut self.submitted)
@@ -581,10 +593,25 @@ impl<S: TextBuffer> Node for TextInput<S> {
             Size { w: content.w + me.padding.horizontal(), h: content.h + me.padding.vertical() };
         let size = resolve_self(limits, &me, padded);
 
-        // B5: caret into view, here, because this is the first moment
-        // the caret's x is known. Same place and shape as A6's scroll
-        // clamp, and for the same reason.
-        let inner_w = (size.w - me.padding.horizontal()).max(0.0);
+        self.pad_left = me.padding.left;
+
+        lumen_static::ops::record_painted(st, i, limits, size, &me)
+    }
+
+    /// **The scroll is decided here, against the final box — never in
+    /// `layout`.** B5 brought the caret into view in `layout`, which runs
+    /// for every *measure* as well as for the frame: a parent that sizes
+    /// its children loosely before placing them, and the agent's audit
+    /// under a million-pixel box, each laid the field out wider than it
+    /// is, so the run "fitted", the scroll clamped to 0, and the frame's
+    /// own layout could only put the caret at the right edge again. The
+    /// view jumped on every click of a full field (reported from the live
+    /// window) — the `Repeat` defect of M27/T27.10 in a text field, with
+    /// the same answer: layout derives, `place` decides.
+    fn place(&mut self, at: Point, _style: &[Style], st: &mut [NodeState], i: usize) {
+        st[i].pos = at;
+        let (pl, _, pr, _) = st[i].pad;
+        let inner_w = (st[i].size.w - pl - pr).max(0.0);
         let cx_pos = self.caret_x();
         if cx_pos - self.scroll > inner_w {
             self.scroll = cx_pos - inner_w;
@@ -592,14 +619,7 @@ impl<S: TextBuffer> Node for TextInput<S> {
         if cx_pos < self.scroll {
             self.scroll = cx_pos;
         }
-        self.scroll = lumen_static::num::clamp(self.scroll, 0.0, (run_w - inner_w).max(0.0));
-        self.pad_left = me.padding.left;
-
-        lumen_static::ops::record_painted(st, i, limits, size, &me)
-    }
-
-    fn place(&mut self, at: Point, _style: &[Style], st: &mut [NodeState], i: usize) {
-        st[i].pos = at;
+        self.scroll = lumen_static::num::clamp(self.scroll, 0.0, (self.shaped_size.0 - inner_w).max(0.0));
     }
 
     fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
@@ -754,11 +774,13 @@ impl<S: TextBuffer> Node for TextInput<S> {
             // guessed, because a stylesheet may have changed it.
             // A double-click selects the word under it (M57/B15).
             Event::PointerDown { clicks: 2, .. } => {
+                self.presses = self.presses.wrapping_add(1);
                 let at = self.offset_at(cx.local.x - self.pad_left + self.scroll);
                 self.select_word_at(at);
                 true
             }
             Event::PointerDown { .. } => {
+                self.presses = self.presses.wrapping_add(1);
                 let at = self.offset_at(cx.local.x - self.pad_left + self.scroll);
                 let from = self.caret;
                 self.caret = at;
