@@ -620,7 +620,11 @@ found" section rather than silently replacing itself.
   things needed that loop — app-level keys and a sheet keyed on the
   count's sign — so the milestone is two framework hooks
   (`Program::on_key`, `Program::style_by`, both through
-  `Host::pump_with`) and then the migration. In progress.
+  `Host::pump_with`) and then the migration. **T60.0–T60.5 DONE
+  2026-09-28**: the tally runs on `Program::run`, 1,383 → 514 lines, its
+  window loop 538 → 0. The migration found two framework gaps every
+  `Program` window had: no input latency in `app.perf`, and a `ui.lint`
+  audit measuring with the block stand-in instead of the session's face.
 
 Unsequenced: ~~`docs/plan-harness.md`.~~ — **M12 DONE 2026-09-20.**
 T12.3 and T12.4 landed 2026-09-04; T12.1 (a locator and expectation API,

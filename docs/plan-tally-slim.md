@@ -1,6 +1,20 @@
 # M60 — the tally on the framework: two hooks, and no event loop of its own
 
-> **Written 2026-09-27, not started.** From the coordinator's audit of
+> **T60.0–T60.5 DONE 2026-09-28** on branch `tally-slim`.
+> - **T60.0** — the gates, red, over the API surface without its mechanism.
+> - **T60.1** — `Program::on_key`: a key press dispatch did not take and
+>   the focused node does not own reaches the hook, from `pump_with`.
+> - **T60.2** — `Program::style_by`: the sheet is re-applied on the frame
+>   its key changes; whole, not scoped (2% at the tally's size).
+> - **T60.3** — the tally runs on `Program::run`; `Win` measures input
+>   latency, and `Local`'s audit measures with its face (a defect every
+>   `Program` window had).
+> - **T60.4** — `LUMEN_SHOT`/`LUMEN_PROFILE`, `Local` drives through
+>   `Session::agent` and `Local::live`, `examples/form`.
+> - **T60.5** — every recipe green; `examples/counter-window` 1,383 → 514
+>   lines, its window loop 538 → 0.
+>
+> **Written 2026-09-27.** From the coordinator's audit of
 > `examples/counter-window`: about 540 of its 1,383 lines
 > (`src/window.rs` 399, `src/agent_socket.rs` 139) re-implement what
 > `lumen_static_winit`'s `Program::run` and the shell's `Local`/`Live`
@@ -253,6 +267,34 @@ the comparison — the sign gate fails with 0 pixels of the new colour.
 - `--form` moves to `examples/form`, which `just fixtures` runs.
 
 ## T60.5 — verify and document
+
+> **DONE 2026-09-27.** Every recipe and script that runs `counter-window`
+> was run: `tally-frame`, `tally-drive`, `profile`, `profile-simd`,
+> `profile-threads`, `fixtures` (which runs both drives and `form` now),
+> `live-gate`, `a11y-drive`, and the `quit-panic` live plant — red as
+> expected (`app exited 101`) with its plant moved into the window
+> crate. `run-agent`, `tally` and `tally-a11y` are the window itself.
+>
+> **Lines** (`wc -l`, `src/*.rs`):
+>
+> | | before | after |
+> |---|---:|---:|
+> | `examples/counter-window` | 1,383 (6 files) | **514** (3 files) |
+> | …of which a window loop (`window.rs`, `agent_socket.rs`) | 538 | **0** |
+> | …of which the form fixture | 286 | 0 — `examples/form`, 300 |
+> | …of which the M60 acceptance tests (`app.rs`) | — | 75 |
+>
+> The framework grew by what the example had and it lacked: the two
+> hooks, `Offscreen`, `Local::live`, `profile.rs`, input latency in `Win`
+> and the audit's face in `Local`.
+>
+> **`just test` green; `just live` 11 of 12.** `panic-drive` fails its
+> wake bound (the loop woke 161–292 times in 2 s with the panic screen
+> up, bound 4) **intermittently, and identically at the base commit
+> `2b36612`** (9, 11 and 840 wakes in three runs there): the bound counts
+> the main thread's context switches, and the display is shared with
+> another session's windows. Not this milestone's; recorded for the
+> coordinator.
 
 Every recipe and script that runs `counter-window` green; module docs,
 the book's citations and `docs/plan-desktop.md` updated; line counts
