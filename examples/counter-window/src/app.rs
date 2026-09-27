@@ -209,3 +209,81 @@ fn stylesheet() -> Vec<Rule> {
         Rule::new(Selector::Id("inc10"), btn(ACCENT, WHITE)),
     ]
 }
+
+/// **The migration's acceptance checks** — M60/T60.0
+/// (`docs/plan-tally-slim.md`). The tally's own keys and its sign sheet
+/// through the program alone, which is what lets the window be the
+/// framework's: a headless `Program::host()` pumps exactly as the window
+/// and the agent do.
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use lumen_static::{Event, Key};
+    use lumen_static_shell::Host;
+
+    fn press(h: &mut Host<Tally>, key: Key) -> bool {
+        h.post(Event::Key { key, down: true });
+        h.post(Event::Key { key, down: false });
+        h.pump()
+    }
+
+    fn value_colour(h: &Host<Tally>) -> Color {
+        let i = lumen_static::style::index_of_wid(<Page as Widget>::SUB_TABLE, "value").expect("#value");
+        h.styles[i].color
+    }
+
+    #[test]
+    #[ignore = "red until T60.3: the tally's keys and sign sheet are still the hand-written window's"]
+    fn up_down_and_escape_are_the_programs_and_the_sheet_follows_the_sign() {
+        let mut h: Host<Tally> = program(0, 440, 520).host();
+        h.pump();
+        let handled = press(&mut h, Key::Up);
+        println!(
+            "Up: count {} (want 1), handled {handled}, #value {:?}, pill {:?}, colour {:?} (want POS {POS:?})",
+            h.app.count.n,
+            h.app.ui.card.value.as_str(),
+            h.app.ui.card.pill.as_str(),
+            value_colour(&h)
+        );
+        assert_eq!(h.app.count.n, 1, "Up did not nudge the count");
+        assert_eq!(h.app.ui.card.pill.as_str(), "POSITIVE");
+        assert_eq!(value_colour(&h), POS, "the count went positive and #value kept the zero sheet");
+        press(&mut h, Key::Down);
+        press(&mut h, Key::Down);
+        println!("Down twice: count {} (want -1), colour {:?} (want NEG {NEG:?})", h.app.count.n, value_colour(&h));
+        assert_eq!(h.app.count.n, -1, "Down did not nudge the count");
+        assert_eq!(value_colour(&h), NEG, "the count went negative and #value kept the positive sheet");
+        assert!(!h.quit_requested());
+        press(&mut h, Key::Escape);
+        println!("Escape: quit requested {}", h.quit_requested());
+        assert!(h.quit_requested(), "Escape did not ask to quit");
+    }
+
+    /// The accept direction of the check below: it can see a loop when
+    /// one is there.
+    const LOOP_MARKERS: [&str; 3] = ["ApplicationHandler", "EventLoop", "run_app"];
+
+    #[test]
+    #[ignore = "red until T60.3: src/window.rs is the tally's own event loop"]
+    fn the_example_runs_no_event_loop_of_its_own() {
+        let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut found = Vec::new();
+        let mut files = 0;
+        for e in std::fs::read_dir(&src).expect("src/") {
+            let p = e.expect("an entry").path();
+            if p.extension().is_some_and(|x| x == "rs") {
+                files += 1;
+                let text = std::fs::read_to_string(&p).expect("readable");
+                for m in LOOP_MARKERS {
+                    // This file names the markers to look for them.
+                    if text.contains(m) && !p.ends_with("app.rs") {
+                        found.push(format!("{}: {m}", p.display()));
+                    }
+                }
+            }
+        }
+        println!("{files} source files scanned; loop markers found: {found:?} (bound none)");
+        assert!(files >= 2, "setup: found {files} source files");
+        assert!(found.is_empty(), "the tally still runs an event loop of its own:\n{}", found.join("\n"));
+    }
+}

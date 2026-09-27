@@ -915,6 +915,9 @@ pub mod hot {
         fn shape(&self) -> u64 {
             self.s().shape()
         }
+        fn wants_quit(&self) -> bool {
+            self.s().wants_quit()
+        }
     }
 }
 

@@ -95,6 +95,16 @@ application(boot).on_key(|state: &mut A::State, key: Key, mods: Mods| -> KeyOutc
   because it ran the key before posting it. The framework's rule wins;
   the old behaviour was the double handling this hook exists to rule
   out.
+- **A focused node that owns its arrows owns its navigation and
+  editing keys too**, whether or not it acted on them: arrows, Home,
+  End, Page Up/Down, Backspace and Delete, while the focused node
+  answers `Node::owns_arrows` (a text field, a slider, a list). *What
+  building found, 2026-09-27:* dispatch reports an arrow at a field's
+  edge as **not consumed** — T60.0's first run pressed Left into an empty
+  `TextInput` and got `handled: false` — so "not consumed" alone would
+  have let an arrow at the end of a field nudge the tally. `owns_arrows`
+  is the only non-mutating question a node answers about its keys, so
+  it is the one the rule asks.
 - **`Quit` is a request, not an exit.** The host records it
   (`Host::quit_requested`); `Session::wants_quit` carries it across the
   session seam; `Win::about_to_wait` exits on it, as it does for

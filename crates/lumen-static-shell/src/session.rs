@@ -80,6 +80,65 @@ pub trait Screen {
     fn fetch_rgba(&mut self) -> Option<(u32, u32, Vec<u8>)>;
 }
 
+/// **A [`Screen`] with no window behind it** — M60/T60.0: a software
+/// canvas the session's frames are drawn into, for a headless drive
+/// through [`Session::agent`] (`input.*` presents here, `ui.screenshot`
+/// reads it back). What a window's backend does, minus the window: the
+/// damaged regions are cleared and replayed, as `Surface::present` does,
+/// and `source: "surface"` has nothing to read.
+pub struct Offscreen {
+    pub canvas: crate::software::Canvas,
+    /// The age of the canvas's content, for `take_damage_for_age`: 0
+    /// until the first present, then 1 — one buffer, always last frame's.
+    age: u8,
+}
+
+impl Offscreen {
+    /// A `width × height` canvas, drawing text with the system face
+    /// when there is one (the block stand-in otherwise, as `LUMEN_SHOT`
+    /// does).
+    pub fn new(width: u32, height: u32) -> Self {
+        let canvas = match FontStack::system() {
+            Some(f) => crate::software::Canvas::with_font(width, height, f),
+            None => crate::software::Canvas::new(width, height),
+        };
+        Offscreen { canvas, age: 0 }
+    }
+}
+
+impl Screen for Offscreen {
+    fn present(&mut self, src: &mut dyn FrameSource, page: Color) -> FrameTimes {
+        let t = std::time::Instant::now();
+        let viewport = [0.0, 0.0, self.canvas.width as f32, self.canvas.height as f32];
+        let damage = src.take_damage_for_age(self.age);
+        self.age = 1;
+        let mut damaged_px = 0u64;
+        for area in damage.regions(viewport) {
+            self.canvas.clear_within(area, page);
+            self.canvas.render_within(src.list(), area);
+            damaged_px += ((area[2] - area[0]) as f64 * (area[3] - area[1]) as f64).max(0.0) as u64;
+        }
+        let (layout_ns, paint_ns) = src.timings();
+        let render_ns = t.elapsed().as_nanos() as u64;
+        FrameTimes {
+            layout_ns: Some(layout_ns),
+            paint_ns: Some(paint_ns),
+            render_ns: Some(render_ns),
+            present_ns: Some(0),
+            frame_ns: Some(render_ns),
+            damaged_px: Some(damaged_px),
+            input_latency_ns: None,
+            atlas_give_ups: None,
+        }
+    }
+    fn frame_rgba(&self) -> Option<(u32, u32, &[u8])> {
+        Some((self.canvas.width, self.canvas.height, &self.canvas.pixels))
+    }
+    fn fetch_rgba(&mut self) -> Option<(u32, u32, Vec<u8>)> {
+        None
+    }
+}
+
 /// A running application, as a window drives it. Object-safe, and every
 /// value it passes is either `Copy` or owned by the caller's side of the
 /// call — except the display list, which a renderer borrows in place.
@@ -179,6 +238,10 @@ pub trait Session: FrameSource {
     /// indices across a swap must resolve them again when this changes;
     /// the author id and a `#a > #b` path are the names that survive.
     fn shape(&self) -> u64;
+    /// **The application asked to close** — M60/T60.1: its key hook
+    /// answered `KeyOutcome::Quit` (`Host::quit_requested`). The window
+    /// exits at its next `about_to_wait`, as it does for `app.quit`.
+    fn wants_quit(&self) -> bool;
 }
 
 /// An accessibility tree crossing the session seam — M54/T54.2. Holds
@@ -705,6 +768,10 @@ impl<A: App + 'static, P: RecoverPolicy, I: Invalidation> Session for Local<A, P
 
     fn shape(&self) -> u64 {
         table_shape(<A::Tree as lumen_static::widget::Widget>::SUB_TABLE)
+    }
+
+    fn wants_quit(&self) -> bool {
+        self.host.quit_requested()
     }
 }
 

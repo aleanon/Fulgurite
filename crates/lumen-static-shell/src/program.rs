@@ -41,8 +41,56 @@ use lumen_static::invalidate::Invalidation;
 use lumen_static::retain::Retention;
 use lumen_static::spawn::Job;
 use lumen_static::style::{Palette, Rule};
+use lumen_static::{Key, Mods};
 
 use crate::Host;
+
+/// What an application's key hook did with a key no widget consumed —
+/// M60/T60.1 (`docs/plan-tally-slim.md` §2.1).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum KeyOutcome {
+    /// Not the application's key. Nothing is marked, and the pump does
+    /// not count it as handled.
+    Ignored,
+    /// The application acted on it. Counted as handled, and marked as a
+    /// handled event is: a split application's bindings mark the nodes
+    /// they write, an unsplit one's whole tree is marked.
+    Handled,
+    /// The application asks to close. [`Host::quit_requested`] turns
+    /// true, and a window exits at its next `about_to_wait`; a headless
+    /// host only records it. Counted as handled, and marks nothing.
+    Quit,
+}
+
+/// An application's hook for a key press no widget consumed —
+/// [`Program::on_key`]. It gets what a handler gets, the state, and the
+/// modifiers held with the key.
+pub type KeyHook<A> = fn(&mut <A as App>::State, Key, Mods) -> KeyOutcome;
+
+/// A stylesheet key, type-erased: whether its value changed since it was
+/// last asked — [`Program::style_by`], M60/T60.2. The first call answers
+/// `true`, and records the value.
+pub trait SheetKey<A> {
+    fn changed(&mut self, app: &A) -> bool;
+}
+
+/// [`SheetKey`] over a key function and the value it last returned.
+struct Keyed<A, K> {
+    key: fn(&A) -> K,
+    last: Option<K>,
+}
+
+impl<A, K: PartialEq + Copy> SheetKey<A> for Keyed<A, K> {
+    fn changed(&mut self, app: &A) -> bool {
+        let k = (self.key)(app);
+        let changed = self.last != Some(k);
+        self.last = Some(k);
+        changed
+    }
+}
+
+/// Makes a fresh [`SheetKey`] for each host a program builds.
+type SheetKeyMaker<A> = Rc<dyn Fn() -> Box<dyn SheetKey<A>>>;
 
 /// What a boot function may return: the application, or the
 /// application and the jobs it wants started before the first frame —
@@ -187,6 +235,11 @@ pub struct Program<A: App, I: Invalidation = DefaultInval> {
     boot: Boot<A>,
     title: Box<dyn Title<A>>,
     sheet: Option<Rc<dyn Sheet<A>>>,
+    /// The key [`Program::style_by`] re-asks the sheet on, when it was
+    /// used; `None` for a sheet that changes only on `adopt`.
+    sheet_key: Option<SheetKeyMaker<A>>,
+    /// [`Program::on_key`]'s hook.
+    on_key: Option<KeyHook<A>>,
     /// Window size in logical pixels.
     pub width: u32,
     pub height: u32,
@@ -237,6 +290,8 @@ where
         boot: Rc::new(move || boot().into_boot()),
         title: Box::new("lumen-static"),
         sheet: None,
+        sheet_key: None,
+        on_key: None,
         width: 640,
         height: 480,
         page: Color(255, 255, 255, 255),
@@ -262,6 +317,8 @@ impl<A: App, I: Invalidation> Program<A, I> {
             boot: self.boot,
             title: self.title,
             sheet: self.sheet,
+            sheet_key: self.sheet_key,
+            on_key: self.on_key,
             width: self.width,
             height: self.height,
             page: self.page,
@@ -283,6 +340,44 @@ impl<A: App, I: Invalidation> Program<A, I> {
     /// The program's stylesheet — the **only** place one comes from.
     pub fn style(mut self, sheet: impl Sheet<A> + 'static) -> Self {
         self.sheet = Some(Rc::new(sheet));
+        self.sheet_key = None;
+        self
+    }
+
+    /// **A stylesheet that is a function of a key of the state** —
+    /// M60/T60.2 (`docs/plan-tally-slim.md` §2.2).
+    ///
+    /// `sheet(key(app))` is the program's sheet, re-asked where
+    /// [`Program::style`]'s is (`adopt`, `restore`, `reload`) — and
+    /// **also whenever `key`'s value changes**: every host this program
+    /// builds compares the key after `App::update` and before layout, in
+    /// every pump, so the frame that lands a change of key is the frame
+    /// drawn with its sheet. The window, `host()` and the agent all pump
+    /// through `Host::pump_with`, so there is one path.
+    ///
+    /// `key` should be cheap and coarse: the tally's is the count's sign,
+    /// three values for every count there is. A key that changes every
+    /// frame re-cascades every frame.
+    pub fn style_by<K: PartialEq + Copy + 'static>(mut self, key: fn(&A) -> K, sheet: fn(K) -> Vec<Rule>) -> Self
+    where
+        A: 'static,
+    {
+        self.sheet = Some(Rc::new(move |a: &A| sheet(key(a))));
+        self.sheet_key = Some(Rc::new(move || Box::new(Keyed { key, last: None })));
+        self
+    }
+
+    /// **A key press no widget consumed** goes to `hook` — M60/T60.1
+    /// (`docs/plan-tally-slim.md` §2.1).
+    ///
+    /// Called from `Host::pump_with` for a key *press* that dispatch did
+    /// not consume — so not Tab, not an arrow that moved focus within a
+    /// group or that a focused text field owns, not an Escape that closed
+    /// an overlay. The window, a headless `host()` and the agent's
+    /// `input.key` all reach it through that one pump. What it returns is
+    /// a [`KeyOutcome`].
+    pub fn on_key(mut self, hook: KeyHook<A>) -> Self {
+        self.on_key = Some(hook);
         self
     }
 
@@ -358,6 +453,12 @@ impl<A: App, I: Invalidation> Program<A, I> {
         host.set_palette(self.palette);
         if let Some(sheet) = &self.sheet {
             host.set_sheet_source(Rc::clone(sheet));
+        }
+        if let Some(make) = &self.sheet_key {
+            host.set_sheet_key(make());
+        }
+        if let Some(hook) = self.on_key {
+            host.set_on_key(hook);
         }
         if let Some(root) = self.source_root {
             host.set_source_root(root);

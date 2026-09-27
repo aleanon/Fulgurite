@@ -152,3 +152,8 @@ required-features = ["live-agent", "truetype"]
 [[test]]
 name = "alloc_gate_threads"
 required-features = ["threads", "raster-counters"]
+
+# M60/T60.1-T60.2: the program hooks through `Session::agent`.
+[[test]]
+name = "agent_hooks"
+required-features = ["live-agent", "truetype"]

@@ -1361,7 +1361,7 @@ pub fn regions_for(
 
 // ---- M32: running a described program ------------------------------
 
-pub use lumen_static_shell::program::{application, Program};
+pub use lumen_static_shell::program::{application, KeyOutcome, Program};
 
 /// Open a window on a described program and run until it closes — M32.
 ///

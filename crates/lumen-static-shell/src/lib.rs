@@ -329,6 +329,13 @@ pub struct Host<A: App, R: Retention = Incremental, I: Invalidation = lumen_stat
     /// through: the one construction path, in process as in a window
     /// swap. `None` for a host built with [`Host::new`] directly.
     boot: Option<program::Boot<A>>,
+    /// The key [`program::Program::style_by`] re-asks the sheet source
+    /// on — M60/T60.2. `None` for a sheet that changes only on `adopt`.
+    sheet_key: Option<Box<dyn program::SheetKey<A>>>,
+    /// [`program::Program::on_key`]'s hook — M60/T60.1.
+    on_key: Option<program::KeyHook<A>>,
+    /// The key hook answered [`program::KeyOutcome::Quit`] — M60/T60.1.
+    quit: bool,
     /// What the last frame had marked when it cleared — M29/T29.3.
     last_marks: lumen_static::invalidate::Marks,
     /// Whether the last frame owed the arenas a cascade — M29/T29.4.
@@ -370,6 +377,27 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         if !sheet.is_empty() {
             self.set_stylesheet(&sheet);
         }
+    }
+
+    /// Re-ask the sheet source whenever `key` changes — M60/T60.2,
+    /// installed by [`program::Program::style_by`]. Asked once here, so
+    /// the value the sheet was just built from is the one a change is
+    /// measured against.
+    pub fn set_sheet_key(&mut self, mut key: Box<dyn program::SheetKey<A>>) {
+        let _ = key.changed(&self.app);
+        self.sheet_key = Some(key);
+    }
+
+    /// The hook for a key press no widget consumed — M60/T60.1,
+    /// installed by [`program::Program::on_key`].
+    pub fn set_on_key(&mut self, hook: program::KeyHook<A>) {
+        self.on_key = Some(hook);
+    }
+
+    /// Whether the key hook asked to close — M60/T60.1. A window exits
+    /// on it (`Session::wants_quit`); nothing clears it.
+    pub fn quit_requested(&self) -> bool {
+        self.quit
     }
 
     /// Keep the program's boot, for `Host::reload` — M49/T49.4.
@@ -791,6 +819,9 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             palette: lumen_static::style::Palette::LIGHT,
             sheet_source: None,
             boot: None,
+            sheet_key: None,
+            on_key: None,
+            quit: false,
             held: Vec::new(),
             last_marks: lumen_static::invalidate::Marks::default(),
             last_arenas_owed: false,
