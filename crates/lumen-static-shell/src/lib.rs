@@ -1779,6 +1779,9 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             self.passes.places += 1;
             tree.place(Point::default(), &self.styles, &mut self.states, 0);
             self.last_place_ns = t1.elapsed().as_nanos() as u64;
+            // M55/T55.5's net: a length that did not come through the
+            // cascade's repair stops a debug build here, by node.
+            lumen_static::pass::debug_assert_finite(&self.states);
         }
 
         // A focus ring only for keyboard focus (T15.6). **After**

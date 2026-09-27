@@ -133,7 +133,6 @@ const ROOT: Selector = Selector::Kind("Ui");
 macro_rules! rows {
     ($($test:ident: $sel:expr, $patch:expr;)*) => {$(
         #[test]
-        #[ignore = "red until T55.5: R16-F5/R16-F6 (non-finite and negative lengths reach layout)"]
         fn $test() {
             let name = stringify!($test);
             row::<Everything>(name, $sel, $patch);

@@ -97,7 +97,8 @@ vtable alone** — R12-F4 and F-NEW-2 made visible a second time, by code
 neither binary can call.
 
 **At the end of M52** (2026-09-27, T52.3–T52.5 and T52.7 landed, on
-M48 and M51) — the figures the gates hold now:
+M48 and M51) — the figures the gates held then; M55/T55.5 has since moved
+the cascade and interactive rows (its section below):
 
 | binary | `.text` | of 64 KB | `.rodata` | `.data` | total (`size -A`) | forbidden symbols |
 |---|---:|---:|---:|---:|---:|---|
@@ -203,6 +204,28 @@ until a derive-computed "has arenas" constant lets it skip the types that
 cannot (M26 Phase D finding 9, promoted and not built). Putting the loop
 in `cascade_deep_with` back un-gated returns the leaf build to 47,618 B,
 17 `on_event` and 10 `hit`, and the gate fires on all three.
+
+### The cascade repairs lengths — M55/T55.5 (2026-09-27)
+
+The cascade now asks each rule whether it carries a length that cannot
+be laid out, and runs a cold repair pass when one does
+(`docs/results-derive-dx.md` T55.5). The firmware links both for every
+build that cascades; the paint-only headline does not move. Leaf tier,
+`scripts/check_text.sh`:
+
+| binary | `.text` before | after | delta |
+|---|---:|---:|---:|
+| `firmware` (headline) | 27,964 | 27,964 | 0 |
+| `firmware_cascade` | 29,304 | **30,184** | +880 (delta over paint-only 1,340 → **2,220**, bound 3,072) |
+| `firmware_interactive` | 55,922 | **56,802** | +880 (86.7% of 64 KB) |
+
+**Three shapes were built to get there**, each measured on this table: a
+repaired copy of every applied patch (+1,504 B on both), the same with
+`apply_to` out of line (+960), and a pass against each kind's own
+defaults (+964, the defaults are a `fn` call per node). The shipped pass
+compares against `Style::default()`'s constants, and the per-sheet
+question (`Patch::needs_repair`, 484 B) is written apart from the lint's
+field-naming `Patch::repairs`, which firmware does not link.
 
 ### A binding links no vtable — M52/T52.5
 

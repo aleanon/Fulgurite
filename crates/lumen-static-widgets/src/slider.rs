@@ -93,6 +93,11 @@ impl Slider {
 /// where every `contains` against it is false and the control silently
 /// stops being clickable. `±inf` needs no special case: clamping takes
 /// them to the ends, which is what a gesture past either end means.
+///
+/// A *stylesheet* length that is non-finite never gets this far: the
+/// cascade repairs it where it enters and the agent reports it as
+/// `W1012` (`Patch::needs_repair`, M55/T55.5). This guards the one value no
+/// stylesheet carries — a gesture's fraction of the track.
 fn clamp01(v: f32) -> f32 {
     if v.is_nan() {
         0.0

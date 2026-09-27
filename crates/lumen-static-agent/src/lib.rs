@@ -1493,6 +1493,28 @@ impl Agent {
         for f in tree.sheet_findings {
             let Some(rule) = tree.sheet.get(f.rule) else { continue };
             let selector = format!("{:?}", rule.selector);
+            // W1012 (M55/T55.5): a length the cascade repaired instead of
+            // applying. Per rule and field, like W1010: the value is the
+            // rule's.
+            if let lumen_static::style::SheetIssue::Repaired(x) = f.issue {
+                let to = if x.field == "padding" {
+                    "0 for that edge"
+                } else {
+                    "that field's type default"
+                };
+                findings.push(json!({
+                    "code": audit::codes::NON_FINITE_STYLE,
+                    "rule": f.rule,
+                    "selector": selector,
+                    "message": format!(
+                        "stylesheet rule {} ({selector}) sets {} to {}, which cannot be laid \
+                         out; the cascade used {to} instead",
+                        f.rule, x.field, x.value()
+                    ),
+                    "detail": { "field": x.field, "value": x.value().to_string() },
+                }));
+                continue;
+            }
             let (message, fields) = match f.issue {
                 lumen_static::style::SheetIssue::Unmatched => (
                     format!(
@@ -1513,6 +1535,7 @@ impl Agent {
                         names,
                     )
                 }
+                lumen_static::style::SheetIssue::Repaired(_) => unreachable!("reported above"),
             };
             findings.push(json!({
                 "code": audit::codes::SHEET_NO_EFFECT,

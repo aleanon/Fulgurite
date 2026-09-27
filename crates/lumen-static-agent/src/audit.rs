@@ -200,6 +200,22 @@ pub mod codes {
     /// Static: it depends on the const table alone, so it is computed
     /// beside the sheet lint rather than per frame by the auditor.
     pub const DUPLICATE_ID: &str = "W1011";
+    /// A stylesheet length the cascade repaired instead of applying —
+    /// M55/T55.5 (R16-F5, R16-F6).
+    ///
+    /// A non-finite length (NaN spacing, infinite padding, a NaN font
+    /// size or radius) takes its field's type default, and a
+    /// negative padding edge becomes zero. Before, one NaN made most of
+    /// the tree's `NodeState` non-finite and the window blank and
+    /// unclickable with no panic and no diagnostic, and a negative
+    /// padding put children outside their parent, painted and never hit.
+    /// The repair is in the cascade, where author lengths enter;
+    /// this is what says it happened. Per rule and field, like
+    /// [`SHEET_NO_EFFECT`], and static like it: computed when a sheet is
+    /// set. Named NON_FINITE_STYLE by the re-triage and widened to
+    /// negative padding, which is not non-finite but is the same
+    /// decision (`docs/plan-derive-dx.md` §2.2).
+    pub const NON_FINITE_STYLE: &str = "W1012";
 }
 
 /// A condition that is true of the current frame.

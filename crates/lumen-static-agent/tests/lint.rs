@@ -559,3 +559,59 @@ fn w1002_quiet_on_scrolled_out_content() {
     }
     assert_eq!(fired, [(0.0, 0), (20.0, 0)], "W1002 fired on scrolled-out content (scroll, findings)");
 }
+
+// ---- M55/T55.5 (R16-F5, R16-F6): W1012, a length the cascade repaired
+
+/// The W1012 findings for one sheet over the healthy fixture.
+fn w1012_of(sheet: &[lumen_static::Rule]) -> Vec<Value> {
+    use lumen_static::style::lint_sheet_deep;
+    let mut f = Fixture::healthy();
+    f.frame();
+    let mut found = Vec::new();
+    lint_sheet_deep(&mut f.app, sheet, &mut |x| found.push(x));
+    let tree = TreeRef::of_root(&f.app, &f.styles, &f.states).with_sheet(sheet, &found);
+    let resp = f.agent.dispatch(
+        &tree,
+        &json!({ "jsonrpc": "2.0", "id": 1, "method": "ui.lint", "params": {} }),
+    );
+    resp["result"]["findings"]
+        .as_array()
+        .expect("ui.lint returns findings")
+        .iter()
+        .filter(|x| x["code"] == "W1012")
+        .cloned()
+        .collect()
+}
+
+/// One W1012 per poisoned field, and none for legal values. The poisoned
+/// sheet sets four fields in one rule and one in another, so a lint that
+/// reported per rule, or per node, would count differently.
+#[test]
+fn a_repaired_length_is_w1012_one_per_field_and_legal_values_are_quiet() {
+    use lumen_static::{Edges, Patch, Rule, Selector};
+
+    let poisoned = [
+        Rule::new(
+            Selector::Kind("App"),
+            Patch::new().spacing(f32::NAN).padding(Edges::all(-50.0)).radius(f32::INFINITY),
+        ),
+        Rule::new(Selector::Kind("label"), Patch::new().font_size(f32::NAN)),
+    ];
+    let found = w1012_of(&poisoned);
+    let fields: Vec<&str> = found.iter().map(|x| x["detail"]["field"].as_str().unwrap_or("?")).collect();
+    println!("poisoned: W1012 findings: {} (expected 4): {fields:?}", found.len());
+    for x in &found {
+        println!("  {}", x["message"].as_str().unwrap_or(""));
+    }
+    assert_eq!(fields, ["padding", "spacing", "radius", "font_size"], "one W1012 per poisoned field");
+
+    for p in [0.0f32, 8.0] {
+        let legal = [Rule::new(
+            Selector::Kind("App"),
+            Patch::new().spacing(6.0).padding(Edges::all(p)).radius(4.0),
+        )];
+        let found = w1012_of(&legal);
+        println!("padding {p}: W1012 findings: {} (expected 0)", found.len());
+        assert!(found.is_empty(), "a legal value was reported as repaired: {found:?}");
+    }
+}

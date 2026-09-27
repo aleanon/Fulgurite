@@ -29,6 +29,30 @@ pub fn layout_with<W: Node + ?Sized>(
 ) {
     tree.layout(cx, limits, style, st, 0);
     tree.place(Point::default(), style, st, 0);
+    debug_assert_finite(st);
+}
+
+/// **Every laid-out rect is finite** — M55/T55.5's net, debug builds only.
+///
+/// The cascade repairs non-finite and negative lengths where a `Patch`
+/// applies them (`style::Patch::repairs`, `W1012`), but a length can
+/// also arrive without one — a kind's own `type_defaults`, a widget that
+/// writes its style, a measurer that answers NaN. One such value used to
+/// blank the window silently, so a debug build stops at the first node
+/// instead, by index.
+#[inline]
+pub fn debug_assert_finite(st: &[NodeState]) {
+    if cfg!(debug_assertions) {
+        if let Some((i, s)) = st.iter().enumerate().find(|(_, s)| {
+            !(s.pos.x.is_finite() && s.pos.y.is_finite() && s.size.w.is_finite() && s.size.h.is_finite())
+        }) {
+            panic!(
+                "layout produced a non-finite rect at node {i}: pos ({}, {}) size ({}, {}) -- \
+                 a style length that did not come through the cascade (M55/T55.5)",
+                s.pos.x, s.pos.y, s.size.w, s.size.h
+            );
+        }
+    }
 }
 
 /// Lay out with the built-in metrics — what tests and simple apps use

@@ -632,6 +632,41 @@ rule. What would stop or change the milestone:
   entry, it is wrong or the entry is. *Revealed by* `just widget-drive`
   reading `ui.lint` after each action, which it already does.
 
+## 6. What building found (2026-09-27)
+
+Recorded here rather than by rewriting the tasks above.
+
+- **T55.0 item 1.** The runtime twin "prints `3 false` with the `with`
+  case removed" needs a bare `changed` in a format argument, which after
+  T55.1 is (rightly) a resolution error. It became a fail case,
+  `fail_bind_extra_names_derive_local.rs`, pinning rustc's own E0425 at
+  the user's token; the runtime twin names a function `changed` instead.
+- **T55.0 item 2.** Nine sentences had no `.stderr`, not five, and the
+  first version of the coverage check counted a tenth as pinned only
+  because it was a prefix of another sentence; the check matches the
+  whole `error:` line. The refusals are seven of the plan's plus two it
+  did not list — a repeated `#[reload]` mode (last one won) and
+  `StaticTree` attributes on an enum or its variants (read by nothing).
+- **T55.0 item 3.** A NaN font size or radius on the *root* is read by
+  nothing and passes today; the rows put each length where it is read
+  (labels, buttons).
+- **T55.0 item 5.** "`min 10, max 0` yields a value inside [0, 10]"
+  could not fail: the old answer, 10, is inside it. The row asserts the
+  value survives and the bounds are ordered.
+- **T55.3.** `textarea.rs`'s "No selection and no IME" was fixed by
+  M45/T45.6 before M55 reached it.
+- **T55.5, §2.2 and §5.** "Called from `Patch::apply_to`" measured
+  +1.8% on `cascade_deep`, outside the spread, so the kill rule moved
+  the repair to a per-sheet question and a cold per-node pass. After
+  that the clock swung ±10% between builds in both directions, including
+  a build with strictly less work measuring slower
+  (`docs/results-derive-dx.md` T55.5); the verdict rests on construction.
+  A non-finite length takes its field's *type* default,
+  `Style::default()`'s (the plan's words): the kind's own defaults cost
+  a `fn` call per node and 84 more bytes of firmware. W1012 is reported
+  per rule and field, like W1010, rather than per node — the value is
+  the rule's.
+
 ## Appendix: finding → task
 
 | ID | sev now | status | task |

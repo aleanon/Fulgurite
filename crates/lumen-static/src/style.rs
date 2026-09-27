@@ -125,6 +125,9 @@ pub enum Cursor {
 pub struct Style {
     pub width: Length,
     pub height: Length,
+    /// Finite and never negative when it came through the cascade
+    /// (M55/T55.5): there is no negative-margin model, and hit testing
+    /// assumes a child lies inside its parent.
     pub padding: Edges,
     /// Gap between a container's children.
     pub spacing: f32,
@@ -606,6 +609,11 @@ impl Selector {
 
 /// What a rule changes. `None` fields leave the cascaded value alone, so
 /// rules compose rather than overwrite.
+///
+/// **A length that cannot be laid out is repaired, and reported** — a
+/// non-finite value becomes its field's type default, and a
+/// non-finite or negative padding edge becomes 0 ([`Patch::needs_repair`], M55/T55.5). The agent
+/// reports each such field as `W1012`.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Patch {
     pub width: Option<Length>,
@@ -778,6 +786,9 @@ impl Patch {
     }
 
     #[inline]
+    /// Apply the fields this patch sets, as written. The cascade repairs
+    /// the result when the sheet carries a length that cannot be laid out
+    /// ([`Patch::needs_repair`], M55/T55.5).
     fn apply_to(&self, s: &mut Style, palette: &Palette) {
         if let Some(v) = self.width {
             s.width = v;
@@ -838,6 +849,115 @@ impl Patch {
         }
         if let Some(v) = self.shadow {
             s.shadow = v;
+        }
+    }
+}
+
+/// A length that can be laid out (M55/T55.5).
+#[inline]
+fn ok(v: f32) -> bool {
+    v.is_finite()
+}
+
+/// A padding edge that can be laid out: finite and not negative. There
+/// is no negative-margin model, and hit testing assumes a child lies
+/// inside its parent.
+#[inline]
+fn ok_edge(v: f32) -> bool {
+    v.is_finite() && v >= 0.0
+}
+
+/// One value a patch carries that the cascade will not apply as written
+/// — M55/T55.5. Reported by the sheet lint as [`SheetIssue::Repaired`],
+/// and by the agent as `W1012`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Repair {
+    /// The `Patch` field, by name (`"padding"`, `"spacing"`, ...).
+    pub field: &'static str,
+    /// The value as written, as bits so the type can be `Eq`.
+    bits: u32,
+}
+
+impl Repair {
+    /// The value as written: non-finite, or a negative padding edge.
+    pub fn value(&self) -> f32 {
+        f32::from_bits(self.bits)
+    }
+}
+
+impl Patch {
+    /// Whether this patch carries a length that cannot be laid out — the
+    /// cascade's per-sheet question (M55/T55.5, R16-F5, R16-F6).
+    ///
+    /// When any rule of a sheet answers yes, the cascade repairs each
+    /// node's style after its rules apply: a non-finite length becomes
+    /// its field's type default (`Style::default()`'s), and a non-finite
+    /// or negative padding edge becomes 0. The cascade is the one place
+    /// author lengths enter, so it is the choke point, and a clean sheet
+    /// pays one scan of its rules per cascade and nothing per node.
+    /// Nothing is repaired silently: [`Patch::repairs`] is the same test,
+    /// reported by the sheet lint as [`SheetIssue::Repaired`] and by the
+    /// agent as `W1012`.
+    ///
+    /// Before, one NaN spacing made most of a tree's `NodeState`
+    /// non-finite — every `contains` against a NaN rect is false, so the
+    /// window was blank and unclickable with no diagnostic — and a
+    /// negative padding widened the content box, so `place` put children
+    /// outside their parent, painted and never hit
+    /// (`crates/lumen-static-shell/tests/non_finite_style.rs`). Written apart from [`Patch::repairs`] because
+    /// it is linked into every build that cascades, firmware included,
+    /// and the field names `repairs` reports are the lint's, not the
+    /// frame's (`scripts/check_text.sh` bounds what a stylesheet costs).
+    pub fn needs_repair(&self) -> bool {
+        let len = |l: Option<Length>| matches!(l, Some(Length::Fixed(x)) if !ok(x));
+        let val = |v: Option<f32>| matches!(v, Some(x) if !ok(x));
+        len(self.width)
+            || len(self.height)
+            || self.padding.is_some_and(|e| {
+                !(ok_edge(e.left) && ok_edge(e.right) && ok_edge(e.top) && ok_edge(e.bottom))
+            })
+            || val(self.spacing)
+            || val(self.radius)
+            || val(self.font_size)
+            || val(self.font_weight)
+            || val(self.pressed_dim)
+            || val(self.hover_dim)
+            || val(self.shadow)
+    }
+
+    /// Every field this patch sets to a value the cascade repairs — the
+    /// same test [`Patch::needs_repair`] applies, one [`Repair`] per field
+    /// (a padding reports its first bad edge). M55/T55.5.
+    pub fn repairs(&self, report: &mut dyn FnMut(Repair)) {
+        let mut bad = |field: &'static str, v: f32| report(Repair { field, bits: v.to_bits() });
+        for (field, len) in [("width", self.width), ("height", self.height)] {
+            if let Some(Length::Fixed(x)) = len {
+                if !ok(x) {
+                    bad(field, x);
+                }
+            }
+        }
+        if let Some(p) = self.padding {
+            if let Some(v) =
+                [p.left, p.right, p.top, p.bottom].into_iter().find(|v| !ok_edge(*v))
+            {
+                bad("padding", v);
+            }
+        }
+        for (field, v) in [
+            ("spacing", self.spacing),
+            ("radius", self.radius),
+            ("font_size", self.font_size),
+            ("font_weight", self.font_weight),
+            ("pressed_dim", self.pressed_dim),
+            ("hover_dim", self.hover_dim),
+            ("shadow", self.shadow),
+        ] {
+            if let Some(v) = v {
+                if !ok(v) {
+                    bad(field, v);
+                }
+            }
         }
     }
 }
@@ -997,8 +1117,13 @@ fn cascade_range(
     // than re-derived per node. The pass order is untouched: this skips
     // empty passes, it does not reorder or merge them.
     let mut levels = 0u8;
+    // M55/T55.5: whether any rule carries a length that cannot be laid
+    // out. Per sheet, like `levels`, so a clean sheet applies its patches
+    // as written and pays nothing per node for the repair.
+    let mut repair = false;
     for r in sheet {
         levels |= 1 << r.selector.specificity();
+        repair |= r.patch.needs_repair();
     }
     for (i, d) in table.iter().enumerate().skip(range.start).take(range.len()) {
         let mut s = (seeds[i].defaults)();
@@ -1015,6 +1140,52 @@ fn cascade_range(
         }
         out[i] = s;
     }
+    // Its own pass rather than a branch in the loop above, so a clean
+    // sheet runs exactly the loop it ran before M55 (the branch measured
+    // outside `cascade_deep`'s spread — `docs/results-derive-dx.md`).
+    if repair {
+        for i in range {
+            repair_style(&mut out[i]);
+        }
+    }
+}
+
+/// The cascade's repair of one node's style, after its rules applied —
+/// M55/T55.5. A non-finite length takes its field's type default
+/// (`Style::default()`'s), and a non-finite or negative padding edge
+/// becomes 0. Runs only for a sheet with a rule that
+/// [`Patch::needs_repair`]. Cold and out of line: it is a development
+/// error's path, and the firmware pays for its code, not for its calls
+/// (`docs/results-embedded.md`, M55/T55.5).
+#[cold]
+#[inline(never)]
+fn repair_style(s: &mut Style) {
+    let d = Style::default();
+    if matches!(s.width, Length::Fixed(x) if !ok(x)) {
+        s.width = d.width;
+    }
+    if matches!(s.height, Length::Fixed(x) if !ok(x)) {
+        s.height = d.height;
+    }
+    let p = &mut s.padding;
+    for e in [&mut p.left, &mut p.right, &mut p.top, &mut p.bottom] {
+        if !ok_edge(*e) {
+            *e = 0.0;
+        }
+    }
+    for (v, d) in [
+        (&mut s.spacing, d.spacing),
+        (&mut s.radius, d.radius),
+        (&mut s.font_size, d.font_size),
+        (&mut s.font_weight, d.font_weight),
+        (&mut s.pressed_dim, d.pressed_dim),
+        (&mut s.hover_dim, d.hover_dim),
+        (&mut s.shadow, d.shadow),
+    ] {
+        if !ok(*v) {
+            *v = d;
+        }
+    }
 }
 
 
@@ -1028,6 +1199,10 @@ pub enum SheetIssue {
     /// It matches, and these fields it sets are read by **none** of the
     /// nodes it matches — a checkbox given a `font_weight`.
     Unread(Fields),
+    /// It matches, and sets a length the cascade repairs rather than
+    /// applies: a non-finite value, or a negative padding edge — M55/T55.5.
+    /// One per field; `W1012` in the agent.
+    Repaired(Repair),
 }
 
 /// One rule the lint found doing nothing, by its index in the sheet.
@@ -1132,6 +1307,10 @@ pub fn lint_sheet_deep<W: crate::widget::Widget + ?Sized>(
         if !unread.is_empty() {
             report(SheetFinding { rule: r, issue: SheetIssue::Unread(unread) });
         }
+        // M55/T55.5: a length the cascade repaired. Per rule and field,
+        // not per node — the value is the rule's, and a rule matching a
+        // thousand rows is one thing to fix, as `Unread` is.
+        rule.patch.repairs(&mut |x| report(SheetFinding { rule: r, issue: SheetIssue::Repaired(x) }));
     }
 }
 

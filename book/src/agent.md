@@ -72,6 +72,13 @@ not lint at all (M26/T26.18):
 node it matches reads — by rule, because the rule is what is wrong
 (M25/T25.2).
 
+`W1012` names a rule that sets a length the cascade cannot lay out — a
+NaN spacing, an infinite padding, a NaN font size — or a negative padding
+edge. The cascade repairs it where it enters (the field takes its type
+default; a bad padding edge becomes 0) and this says that it did, by rule
+and field. Before, one NaN left the window blank and unclickable with no
+diagnostic at all (M55/T55.5).
+
 `W1011` names two nodes carrying the same `#[widget_id]`. Both are then
 **unaddressable**: `ui.resolve` refuses the ambiguity and so does every
 `input.*` that takes a selector. It is easy to write by accident, because
