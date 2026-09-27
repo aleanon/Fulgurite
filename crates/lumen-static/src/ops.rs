@@ -497,13 +497,9 @@ macro_rules! leaf_common {
     };
 }
 
-/// Expands its items only when `lumen-static` is built with `observe` —
-/// M35/T35.1. Derive- and macro-emitted code lands in the *user's* crate,
-/// where a `cfg(feature = "observe")` would test the user's features, not
-/// this crate's; routing through a macro defined twice here decides it
-/// where the feature lives.
-/// [`Node::node_count`](crate::widget::Node::node_count) for a hand-written
-/// impl — M48/T48.7. One line inside `impl Node for X`, where `X:
+/// `Node::node_count` for a hand-written impl — M48/T48.7. (The method
+/// exists only when core is built with `observe`, so it is named here
+/// rather than linked: a link would not resolve in the default build.) One line inside `impl Node for X`, where `X:
 /// Widget`: it answers `X::NODE_COUNT` and names no child, so it cannot
 /// forward wrongly. Expands to nothing without core's `observe`, whichever
 /// crate it is written in.
@@ -518,6 +514,11 @@ macro_rules! node_count {
     };
 }
 
+/// Expands its items only when `lumen-static` is built with `observe` —
+/// M35/T35.1. Derive- and macro-emitted code lands in the *user's* crate,
+/// where a `cfg(feature = "observe")` would test the user's features, not
+/// this crate's; routing through a macro defined twice here decides it
+/// where the feature lives.
 #[cfg(feature = "observe")]
 #[doc(hidden)]
 #[macro_export]
