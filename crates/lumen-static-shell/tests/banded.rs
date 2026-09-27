@@ -238,7 +238,6 @@ fn print_checksums_for_cross_build_comparison() {
 /// straddle ratio until T50.3 shapes on the frame thread.
 #[cfg(feature = "truetype")]
 #[test]
-#[cfg_attr(feature = "threads", ignore = "red until T50.3: R8-F2, a run straddling strips is shaped per strip")]
 fn each_visible_run_is_shaped_once_per_frame() {
     use lumen_static_shell::text::{text_counters, FontStack};
     #[path = "fonts/pinned.rs"]

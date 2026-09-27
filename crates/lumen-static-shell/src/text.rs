@@ -519,32 +519,6 @@ impl FontStack {
         Some((m.width as u32, m.height as u32, cov))
     }
 
-    /// Lay out one run and return each glyph's raster and position.
-    ///
-    /// [`FontStack::place_run`] followed by [`FontStack::rasterize`] per
-    /// glyph, **allocating both**. Only a band worker of the threaded
-    /// rasteriser still calls it, because a worker cannot borrow the
-    /// canvas's cache mutably; M50/T50.3 shapes on the frame thread and
-    /// removes it.
-    #[cfg(feature = "threads")]
-    pub(crate) fn glyphs(
-        &self,
-        text: &str,
-        px: f32,
-        weight: f32,
-        max_w: f32,
-    ) -> (Vec<Glyph>, Size) {
-        let (placed, size) = self.place_run(text, px, weight, max_w);
-        let out = placed
-            .into_iter()
-            .filter_map(|p| {
-                let (w, h, cov) = self.rasterize(p.id)?;
-                Some(Glyph { x: p.x, y: p.y, w: w as usize, h: h as usize, cov })
-            })
-            .collect();
-        (out, size)
-    }
-
     /// The size of a run, **without rasterising it**.
     ///
     /// `measure` used to call [`Self::glyphs`] and keep only its `Size`,
@@ -896,22 +870,21 @@ impl GlyphCache {
         self.stats
     }
 
-    /// Call `draw` with glyph `id`'s coverage and size, from the cache or
-    /// rasterised into it. `None` — nothing drawn — only when the stack
-    /// cannot rasterise the id at all ([`FontStack::rasterize`]).
-    pub(crate) fn with<R>(&mut self, font: &FontStack, id: GlyphId, draw: impl FnOnce(&[u8], usize, usize) -> R) -> Option<R> {
-        if let Some(&(off, w, h)) = self.index.get(&id) {
+    /// Make sure glyph `id` is in the cache, rasterising it if not — the
+    /// frame thread's half (`TextState::prepare` in `software.rs`). A
+    /// glyph too large to keep is counted `uncached` and left for the
+    /// band that draws it to rasterise.
+    pub(crate) fn fill(&mut self, font: &FontStack, id: GlyphId) {
+        if self.index.contains_key(&id) {
             self.stats.hits += 1;
-            let (w, h) = (w as usize, h as usize);
-            let off = off as usize;
-            return Some(draw(&self.arena[off..off + w * h], w, h));
+            return;
         }
-        let (w, h, cov) = font.rasterize(id)?;
+        let Some((w, h, cov)) = font.rasterize(id) else { return };
         let (w, h) = (w as usize, h as usize);
         let n = w * h;
         if n > Self::MAX_GLYPH || w > u16::MAX as usize || h > u16::MAX as usize {
             self.stats.uncached += 1;
-            return Some(draw(&cov, w, h));
+            return;
         }
         if self.arena.capacity() == 0 {
             // First use: size both once. Nothing after this grows either.
@@ -927,7 +900,14 @@ impl GlyphCache {
         self.arena.extend_from_slice(&cov);
         self.index.insert(id, (off as u32, w as u16, h as u16));
         self.stats.misses += 1;
-        Some(draw(&self.arena[off..off + n], w, h))
+    }
+
+    /// Glyph `id`'s coverage and size, if the cache holds it — the bands'
+    /// half, through a shared `&`.
+    pub(crate) fn get(&self, id: GlyphId) -> Option<(&[u8], usize, usize)> {
+        let &(off, w, h) = self.index.get(&id)?;
+        let (off, w, h) = (off as usize, w as usize, h as usize);
+        Some((&self.arena[off..off + w * h], w, h))
     }
 }
 
@@ -1009,16 +989,6 @@ pub struct Placed {
     pub y: f32,
     pub w: u32,
     pub h: u32,
-}
-
-/// One rasterized glyph: an 8-bit coverage mask and where to put it.
-#[cfg(feature = "threads")]
-pub(crate) struct Glyph {
-    pub x: f32,
-    pub y: f32,
-    pub w: usize,
-    pub h: usize,
-    pub cov: Vec<u8>,
 }
 
 /// [`TextMeasure`] backed by a real face — what `layout` asks.

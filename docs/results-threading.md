@@ -121,6 +121,18 @@ is one). Attribution at 4K, against 19.3 ms on one thread:
 penalty was real but small, and it had been swamped by a cost that grew
 with the band count. The cap is gone.
 
+*What that fix removed, and what it left — M50/T50.3 (2026-09-27).*
+T17.5 removed the **whole-list** re-shape: a strip no longer shapes runs
+nowhere near its rows. It left the **straddle** re-shape: a strip culls a
+run against its rows padded by one em and then shapes the whole run, so
+a run whose padded reach crosses a strip boundary was shaped by every
+strip it touched — 2.27 shaping calls per visible run at 1080p with 8
+bands and 3.63 at 4K with 32 (R8-F2; `tests/banded.rs`
+`each_visible_run_is_shaped_once_per_frame`). Since T50.3 the frame
+thread shapes each visible run once and fills the glyph cache before
+any band starts, and the bands only blit: 1.00 at both sizes, and the
+render is byte-identical to the pre-M50 one in both builds.
+
 ### The work queue
 
 Strips are pulled from a shared queue rather than assigned up front, so
@@ -206,7 +218,10 @@ build.
 **What it would cost this project.** `no_std` has no threads, so it is
 desktop-only: a separate crate or a feature, under
 `docs/plan-capabilities.md`'s gating policy. `alloc_gate` asserts zero
-steady-state allocation, so per-thread state must be pre-allocated. The
+steady-state allocation, so per-thread state must be pre-allocated —
+*which the shipped banded path did not do: `alloc_gate` counts per
+thread and never bands, so it could not see it (R18-F4; M50/T50.4 and
+`docs/results-allocation.md` own what the threaded path does now).* The
 output must stay byte-identical or `damage_oracle.rs` and the agent's
 journal both break — which disjoint bands give for free, since they
 touch disjoint pixels. And it needs no `unsafe`: disjoint horizontal

@@ -68,8 +68,9 @@ pub struct Canvas {
 /// N disjoint bands of one surface can be handed to N threads with no
 /// aliasing and no `unsafe`, because a safe split of the pixel buffer
 /// into row groups is what produces them and the borrow checker proves
-/// they do not overlap. (The threading itself is not built yet; this is
-/// the shape that makes it possible.)
+/// they do not overlap. `Canvas::render_banded` is the threaded caller
+/// (M17/T17.4), behind `threads`; text reaches a band already shaped, from
+/// the frame thread's `TextState::prepare` (M50/T50.3).
 ///
 /// A whole-surface render is the `y0 = 0`, `rows = height` band, so
 /// there is **one** implementation of the pixel arithmetic and not two.
@@ -110,13 +111,70 @@ impl GlassScratch {
     }
 }
 
-/// A canvas's text scratch: one layout and placement buffer, and the
-/// coverage cache — M50/T50.2.
+/// A canvas's text scratch: one layout and placement buffer, the
+/// coverage cache (M50/T50.2), and this frame's shaped runs (T50.3).
 #[cfg(feature = "truetype")]
 #[derive(Default)]
 pub(crate) struct TextState {
     shape: crate::text::ShapeScratch,
     cache: crate::text::GlyphCache,
+    /// The frame's visible runs, in command order: (command index, range
+    /// into `placed`).
+    runs: Vec<(u32, u32, u32)>,
+    /// Every visible run's placements, back to back.
+    placed: Vec<crate::text::Placed>,
+}
+
+#[cfg(feature = "truetype")]
+impl TextState {
+    /// **Shape each visible run once, on the frame thread, before any
+    /// band draws** — M50/T50.3, R8-F2.
+    ///
+    /// A band culled a run against its own rows padded by one em and then
+    /// shaped the whole run, so a run whose padded reach straddled a strip
+    /// boundary was shaped once per strip it touched: 2.27 times per
+    /// visible run at 1080p and 3.63 at 4K (`tests/banded.rs`). This walks
+    /// the list once with the same clip stack and the same cull, against
+    /// the frame's outer clip — which contains every band's, so every run
+    /// a band will draw is here — and fills the cache for every glyph that
+    /// meets the clip. The bands then only read: placements and coverage
+    /// through a shared `&`, which is what lets them run on threads without
+    /// borrowing the cache mutably (`docs/plan-raster-allocation.md` §2.1).
+    ///
+    /// Without `threads` the same pass runs and the single band reads it,
+    /// so there is one text path and `scripts/check_banded.sh` compares
+    /// like with like.
+    fn prepare(&mut self, list: &DisplayList, outer: [f32; 4], font: &crate::text::FontStack) {
+        self.runs.clear();
+        self.placed.clear();
+        let mut clip = ClipStack::new(outer);
+        for (i, c) in list.cmds.iter().enumerate() {
+            match c {
+                Cmd::PushClip { rect } => clip.push(*rect),
+                Cmd::PopClip => clip.pop(),
+                Cmd::Text { rect, text, size, weight, .. } => {
+                    let pad = *size;
+                    let reach = [rect[0] - pad, rect[1] - pad, rect[2] + pad, rect[3] + pad];
+                    if clipped(reach, clip.as_slice()).is_none() {
+                        continue;
+                    }
+                    font.place_run_into(&mut self.shape, list.str_of(*text), *size, *weight, rect[2] - rect[0]);
+                    let start = self.placed.len();
+                    for p in self.shape.placed() {
+                        let (gx, gy) = ((rect[0] + p.x).round(), (rect[1] + p.y).round());
+                        // Only a glyph that meets the clip is rasterised
+                        // (R8-F3's out-of-clip half, T50.2).
+                        if clipped([gx, gy, gx + p.w as f32, gy + p.h as f32], clip.as_slice()).is_some() {
+                            self.cache.fill(font, p.id);
+                        }
+                        self.placed.push(*p);
+                    }
+                    self.runs.push((i as u32, start as u32, self.placed.len() as u32));
+                }
+                _ => {}
+            }
+        }
+    }
 }
 
 struct Surface<'a> {
@@ -129,11 +187,11 @@ struct Surface<'a> {
     /// The blur's buffers, owned by the `Canvas` (or by a worker's own
     /// band) and lent here for the frame.
     glass: &'a mut GlassScratch,
-    /// The canvas's text scratch and glyph cache, lent for the frame —
-    /// `None` in a band worker, which cannot borrow them (M50/T50.3
-    /// shapes on the frame thread instead).
+    /// The frame's shaped runs and the glyph cache, shared by every band
+    /// — read-only, because the frame thread filled both before any band
+    /// started (`TextState::prepare`, M50/T50.3).
     #[cfg(feature = "truetype")]
-    text: Option<&'a mut TextState>,
+    text: &'a TextState,
 }
 
 impl Surface<'_> {
@@ -152,33 +210,55 @@ impl Surface<'_> {
     /// Each glyph is clipped once as a rect; the first version clipped
     /// every pixel and that was most of the text cost.
     ///
-    /// **Shaped into the canvas's scratch, blitted from its cache** —
-    /// M50/T50.2, R8-F1. This called `FontStack::glyphs`, which built two
-    /// fontdue layouts, a placement `Vec`, a glyph `Vec` and a coverage
-    /// `Vec` per glyph on every frame: 25.80 allocations a frame on the
-    /// allocation gate's own fixture (`docs/results-allocation.md`). And
-    /// a glyph is clipped **before** its coverage is asked for, so a
-    /// glyph outside the clip is never rasterised at all — the half of
-    /// R8-F3 M45 left to this cache (`docs/plan-text-correctness.md` §4).
+    /// **Blitted from placements and coverage the frame thread prepared**
+    /// — M50/T50.2 and T50.3. This called `FontStack::glyphs`, which built
+    /// two fontdue layouts, a placement `Vec`, a glyph `Vec` and a coverage
+    /// `Vec` per glyph on every frame (R8-F1: 25.80 allocations a frame on
+    /// the allocation gate's own fixture, `docs/results-allocation.md`),
+    /// and in every band the run reached (R8-F2). Now `TextState::prepare`
+    /// shapes each visible run once and fills the cache, and this only
+    /// finds the run by its command index — `cursor` walks forward, since
+    /// both are in list order — and blends. A glyph is clipped before its
+    /// coverage is looked up, so a glyph outside the clip is never
+    /// rasterised (R8-F3's second half).
+    ///
+    /// A glyph the cache does not hold — too large to keep, or lost to a
+    /// reset during a frame that needed more than the cache holds — is
+    /// rasterised here and drawn, allocating: never dropped (plan §2.1).
     #[cfg(feature = "truetype")]
-    fn draw_run(&mut self, font: &crate::text::FontStack, run: TextRun<'_>, clip: &[[f32; 4]]) {
-        let Some(text) = self.text.take() else {
-            #[cfg(feature = "threads")]
-            self.draw_run_uncached(font, run, clip);
+    #[allow(clippy::too_many_arguments)]
+    fn draw_run(
+        &mut self,
+        font: &crate::text::FontStack,
+        index: u32,
+        cursor: &mut usize,
+        rect: &[f32; 4],
+        color: Color,
+        clip: &[[f32; 4]],
+    ) {
+        let text = self.text;
+        while *cursor < text.runs.len() && text.runs[*cursor].0 < index {
+            *cursor += 1;
+        }
+        let Some(&(at, a, b)) = text.runs.get(*cursor) else { return };
+        if at != index {
             return;
-        };
-        let TextRun { rect, text: s, size, weight, color } = run;
-        font.place_run_into(&mut text.shape, s, size, weight, rect[2] - rect[0]);
-        let TextState { shape, cache } = &mut *text;
-        for p in shape.placed() {
+        }
+        for p in &text.placed[a as usize..b as usize] {
             let gx = (rect[0] + p.x).round();
             let gy = (rect[1] + p.y).round();
             let Some(r) = clipped([gx, gy, gx + p.w as f32, gy + p.h as f32], clip) else {
                 continue;
             };
-            cache.with(font, p.id, |cov, w, h| self.blit_glyph(cov, w, h, gx, gy, r, color));
+            match text.cache.get(p.id) {
+                Some((cov, w, h)) => self.blit_glyph(cov, w, h, gx, gy, r, color),
+                None => {
+                    if let Some((w, h, cov)) = font.rasterize(p.id) {
+                        self.blit_glyph(&cov, w as usize, h as usize, gx, gy, r, color);
+                    }
+                }
+            }
         }
-        self.text = Some(text);
     }
 
     /// Blend one glyph's coverage at `(gx, gy)`, limited to `r`, its rect
@@ -213,22 +293,6 @@ impl Surface<'_> {
             }
         }
         crate::text::count_drawn(1);
-    }
-
-    /// The pre-T50.2 path, for a band worker: shape and rasterise the run
-    /// fresh, allocating. M50/T50.3 removes it.
-    #[cfg(all(feature = "truetype", feature = "threads"))]
-    fn draw_run_uncached(&mut self, font: &crate::text::FontStack, run: TextRun<'_>, clip: &[[f32; 4]]) {
-        let TextRun { rect, text, size, weight, color } = run;
-        let (glyphs, _) = font.glyphs(text, size, weight, rect[2] - rect[0]);
-        for g in glyphs {
-            let gx = (rect[0] + g.x).round();
-            let gy = (rect[1] + g.y).round();
-            let Some(r) = clipped([gx, gy, gx + g.w as f32, gy + g.h as f32], clip) else {
-                continue;
-            };
-            self.blit_glyph(&g.cov, g.w, g.h, gx, gy, r, color);
-        }
     }
 
     /// Fill `bounds`, rounding against `shape`'s corners with
@@ -1113,6 +1177,9 @@ impl Surface<'_> {
     /// because a band borrows only pixels (T17.4). That also removes the
     /// take-and-put-back dance the old `render_impl` needed to get
     /// around borrowing `self.images` while `&mut self` was live.
+    // The command index finds a run's shaping (M50/T50.3), which only the
+    // truetype build has.
+    #[cfg_attr(not(feature = "truetype"), allow(clippy::unused_enumerate_index))]
     fn render(
         &mut self,
         list: &DisplayList,
@@ -1124,13 +1191,15 @@ impl Surface<'_> {
         // a strip cheap** (M17/T17.5).
         //
         // Every command is culled against the clip stack before any work
-        // is done for it — decisively for text, where `clipped` is what
-        // stands between the arm and `FontStack::glyphs`, which shapes
-        // *and rasterises* a whole run. Without the band in the stack a
-        // full redraw has an empty one, so every strip re-shaped every
-        // run in the frame: at 4K with 8-row strips that was 270 strips
-        // x 192 runs, and the "parallel" render came out **11x slower
-        // than one thread**.
+        // is done for it. For text this used to be what stood between the
+        // arm and shaping and rasterising a whole run: without the band in
+        // the stack a full redraw had an empty one, so every strip
+        // re-shaped every run in the frame — at 4K with 8-row strips 270
+        // strips x 192 runs, and the "parallel" render came out **11x
+        // slower than one thread**. Since M50/T50.3 the frame thread
+        // shapes each run once before any band starts (`TextState::
+        // prepare`) and a band only blits, so for text this cull now saves
+        // a lookup rather than a shaping.
         //
         // Intersecting the damage rect with the band gives one rect, so
         // the stack still starts one deep and `PopClip`'s floor below is
@@ -1148,7 +1217,10 @@ impl Surface<'_> {
         // `Overlays`': a fixed depth, and an explicit answer when it is
         // reached.
         let mut clip = ClipStack::new(outer);
-        for c in &list.cmds {
+        // Where this band is in the frame's shaped runs (M50/T50.3).
+        #[cfg(feature = "truetype")]
+        let mut cursor = 0usize;
+        for (_index, c) in list.cmds.iter().enumerate() {
             match c {
                 Cmd::Rect { rect, color } => {
                     if let Some(r) = clipped(*rect, clip.as_slice()) {
@@ -1216,8 +1288,7 @@ impl Surface<'_> {
                     let s = list.str_of(*text);
                     #[cfg(feature = "truetype")]
                     if let Some(font) = font {
-                        let run = TextRun { rect, text: s, size: *size, weight: *weight, color: *color };
-                        self.draw_run(font, run, clip.as_slice());
+                        self.draw_run(font, _index as u32, &mut cursor, rect, *color, clip.as_slice());
                         continue;
                     }
                     let _ = weight;
@@ -1525,13 +1596,25 @@ impl Canvas {
             rows: self.height as i64,
             glass: &mut self.glass,
             #[cfg(feature = "truetype")]
-            text: Some(&mut self.text),
+            text: &self.text,
         }
     }
 
     fn render_impl(&mut self, list: &DisplayList, damage: Option<[f32; 4]>) {
         #[cfg(feature = "truetype")]
         let font = self.font.clone();
+        // Shape every visible run once, here, before any band draws
+        // (M50/T50.3). The outer clip is the one the whole-surface band
+        // starts with, which contains every strip's.
+        #[cfg(feature = "truetype")]
+        if let Some(f) = font.as_ref() {
+            let (w, h) = (self.width as f32, self.height as f32);
+            let outer = match damage {
+                Some(d) => [d[0].max(0.0), d[1].max(0.0), d[2].min(w), d[3].min(h)],
+                None => [0.0, 0.0, w, h],
+            };
+            self.text.prepare(list, outer, f);
+        }
         let images = self.images.take();
         {
             #[cfg(feature = "threads")]
@@ -1640,6 +1723,8 @@ impl Canvas {
         }
         let strip_rows = strip_rows_for(rows, workers);
         let width = self.width;
+        #[cfg(feature = "truetype")]
+        let text = &self.text;
         let slice = &mut self.pixels[y_lo * stride..y_hi * stride];
 
         // **A shared queue, not a fixed partition** -- M17/T17.5.
@@ -1688,7 +1773,7 @@ impl Canvas {
                         rows: nrows,
                         glass: &mut scratch,
                         #[cfg(feature = "truetype")]
-                        text: None,
+                        text,
                     };
                     band.render(
                         list,
@@ -1709,17 +1794,6 @@ impl Renderer for Canvas {
     fn render(&mut self, list: &DisplayList, _w: u32, _h: u32) {
         self.render_impl(list, None);
     }
-}
-
-/// One `Cmd::Text` as the glyph blitter wants it: the fields of the
-/// command, borrowed, so the call site does not spell out six scalars.
-#[cfg(feature = "truetype")]
-struct TextRun<'a> {
-    rect: &'a [f32; 4],
-    text: &'a str,
-    size: f32,
-    weight: f32,
-    color: Color,
 }
 
 /// How many worker threads to run for `px` damaged pixels — T17.4.
@@ -2300,7 +2374,8 @@ impl ClipStack {
 /// `ScrollView`'s viewport on a full redraw — the case `tests/damage_oracle.rs`
 /// cannot see, because a full and a partial render escape identically.
 /// Until T50.8 it covered the first three only. (This comment also sat
-/// on `TextRun` until then, detached from the function it describes.)
+/// on the text-run struct M50/T50.3 removed, detached from the function
+/// it describes.)
 fn clipped(rect: [f32; 4], stack: &[[f32; 4]]) -> Option<[f32; 4]> {
     // Reject non-finite and empty input on entry. `f32::max`/`min` return
     // the non-NaN operand, so without this a NaN coordinate would be

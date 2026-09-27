@@ -537,6 +537,14 @@ task removed. The band comment in `Surface::render`. The `Surface`
 rustdoc's "The threading itself is not built yet" (`software.rs:52`),
 which has been stale since T17.4.
 
+*What building found (2026-09-27).* As planned, with one addition: a
+glyph the cache does not hold when a band reaches it — too large to keep,
+or lost to a reset in a frame that needed more than the cache holds — is
+rasterised by the band and drawn, allocating, rather than skipped; the
+bands read the cache through `&` and cannot fill it. The injection that
+shapes again inside the band reads 3.27 and 4.63 (the pre-pass's one
+plus the straddle ratio), not the review's 2.27 and 3.63.
+
 **Effort:** M. **Depends on:** T50.2.
 
 ### T50.4 — the threaded rasteriser: a gate that sees every thread, and a zero or a stated budget

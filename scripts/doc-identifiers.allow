@@ -112,3 +112,4 @@ curl                 # the HTTP client a developer points at the port; the refus
 Origin               # the HTTP header the transport deliberately never reads (framing, not policy)
 ptrace               # why same-user processes are out of the transport's scope
 rasterising_a_frame_allocates_nothing # renamed rasterising_a_block_glyph_frame_allocates_nothing in M50/T50.1; the rename is recorded
+TextRun              # the glyph-blit argument struct M50/T50.3 removed; the plan's T50.8 note cites it
