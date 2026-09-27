@@ -125,3 +125,45 @@ fn a_long_query_keeps_its_end_in_view() {
     assert!(text_x < f.pos.x, "setup: the query fits in the field and never scrolled");
     assert!(caret >= lo && caret <= hi, "the caret at the end of a long query is outside the field");
 }
+
+/// **The query is drawn whole, not a slice of its tops** — reported from
+/// the live window: only the top of the text showed, with the field's
+/// fill below it.
+///
+/// The pill gives its field 22 px; the field kept its own 6 + 6 padding
+/// and clipped its run to the 10 px left, while the line is taller. So
+/// this checks the clip open when the query's run is drawn: it must hold
+/// the run's whole line, top to bottom. Printed beside each other, so a
+/// clip that merely touches the run is visible in the output.
+#[test]
+fn the_query_is_not_clipped_to_the_fields_padding() {
+    let h = host("rust");
+    let (mut clips, mut seen) = (Vec::<[f32; 4]>::new(), None);
+    for c in &h.list.cmds {
+        match c {
+            Cmd::PushClip { rect } => clips.push(*rect),
+            Cmd::PopClip => {
+                clips.pop();
+            }
+            Cmd::Text { rect, text, .. } if h.list.str_of(*text) == "rust" => {
+                seen = Some((*rect, clips.last().copied()));
+            }
+            _ => {}
+        }
+    }
+    let (run, clip) = seen.expect("setup: the query's run was not drawn");
+    let clip = clip.expect("setup: the run was drawn under no clip");
+    let field = h.states[at("q") + 2];
+    // **The line the field was laid out with**, from the measure `pump`
+    // used — not the run's own rect. The old paint made the rect the
+    // clipped 10 px too, so "the run fits its clip" held while the glyphs,
+    // which overhang the rect, were cut.
+    use lumen_static::TextMeasure;
+    let line = lumen_static::BlockMetrics.line_height(field.font_size);
+    println!("field {} px tall; line {line} px; run y {}..{}; clip y {}..{} ({} px)",
+             field.size.h, run[1], run[3], clip[1], clip[3], clip[3] - clip[1]);
+    assert!(field.size.h < line + 12.0, "setup: the field is {} px, room for its padding and a {line} px line", field.size.h);
+    assert!(clip[3] - clip[1] >= line - 0.01, "the query's clip is {} px for a {line} px line", clip[3] - clip[1]);
+    assert!(clip[1] <= run[1] + 0.01 && clip[3] >= run[1] + line - 0.01,
+            "the query's line y {}..{} is cut by its clip y {}..{}", run[1], run[1] + line, clip[1], clip[3]);
+}

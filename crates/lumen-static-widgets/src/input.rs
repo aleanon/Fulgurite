@@ -609,11 +609,23 @@ impl<S: TextBuffer> Node for TextInput<S> {
         lumen_static::ops::border(st, i, out);
 
         let (pl, pt, pr, pb) = s.pad;
-        let inner = [r[0] + pl, r[1] + pt, r[2] - pr, r[3] - pb];
+        // **The line, centred; the padding is horizontal room, not a
+        // vertical clip.** The text used to start at the top padding and
+        // be clipped to the padded box, so a field squeezed shorter than
+        // padding + line cut its own text: a `SearchField`'s pill gives
+        // its field 22 px, the field kept 6 + 6 of it, and a 20 px line
+        // showed a 10 px slice of its tops with the field's own fill
+        // below. The line sits in the middle of the padded box when it
+        // fits there, and of the whole box when it does not.
+        let line = if self.shaped_size.1 > 0.0 { self.shaped_size.1 } else { (r[3] - r[1] - pt - pb).max(0.0) };
+        let (bh, ih) = (r[3] - r[1], r[3] - r[1] - pt - pb);
+        let top = if ih >= line { r[1] + pt + (ih - line) / 2.0 } else { r[1] + (bh - line) / 2.0 };
+        let inner = [r[0] + pl, top, r[2] - pr, top + line];
         // The text may be wider than the field; the clip is what keeps
         // it inside, exactly as a scroller's content is kept inside
-        // (A1's scoped containment, one widget down).
-        out.push_clip(inner);
+        // (A1's scoped containment, one widget down). Across, the
+        // padding; down, the box — a glyph is never cut by padding.
+        out.push_clip([inner[0], r[1], inner[2], r[3]]);
         let x = inner[0] - self.scroll;
         // B4 decided the selection is an ordinary rect, and it is
         // painted *before* the run so the text sits on top of it —
