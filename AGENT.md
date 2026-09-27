@@ -580,8 +580,11 @@ found" section rather than silently replacing itself.
   B26's gate found four hand-written wrappers laying out across their
   offer, M56's derive defect again) and five drive actions that asserted
   the defect they were meant to catch. Not built, with reasons: `Radio<T>`,
-  `Slider::on_change`, a rounded clip; DataGrid's rows are still
-  unreachable by keyboard, found by D3 and recorded.
+  `Slider::on_change`, a rounded clip. Three defects reported from the
+  showcase after closing are fixed and recorded in the plan ("Reported
+  after closing"): a filtered combobox choosing by unfiltered position,
+  a search field clipping its text, and a DataGrid that read as a list
+  -- now a sheet the keyboard reaches, which also closes D3's finding.
 
 Unsequenced: ~~`docs/plan-harness.md`.~~ — **M12 DONE 2026-09-20.**
 T12.3 and T12.4 landed 2026-09-04; T12.1 (a locator and expectation API,

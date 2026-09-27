@@ -326,7 +326,9 @@ pub struct Store {
     toast_request: bool,
     toasts: u32,
     /// The data grid's selected row, taken from the grid (B51).
-    grid_row: Option<usize>,
+    /// The grid's active cell, `(row, column)`, as its last selection
+    /// left it.
+    grid_cell: Option<(usize, usize)>,
 }
 
 /// After every pump: rebuild the demos whose state lives in the store,
@@ -463,8 +465,9 @@ fn refresh(s: &mut Show) -> bool {
     }
     // A press on a grid row, taken once (M57/B51).
     if let Demo::DataGrid(d) = &mut s.ui.main.stage.row.demo {
-        if let Some(r) = d.a.take_selected() {
-            s.store.grid_row = Some(r);
+        // A press or a key; the column comes with it (`DataGrid::active`).
+        if d.a.take_selected().is_some() {
+            s.store.grid_cell = d.a.active();
             changed = true;
         }
     }
@@ -1353,7 +1356,7 @@ fn stylesheet_with(c: Chrome) -> Vec<StyleRule> {
         // tuned against a width that does not occur (M27/T27.11,
         // finding 12). The sheet lint cannot catch this one — the rule
         // *matches*, and the node *does* read `WIDTH`.
-        StyleRule::new(Selector::Id("d_datagrid_a"), Patch::new().height(Length::Fixed(220.0))),
+        StyleRule::new(Selector::Id("d_datagrid_a"), Patch::new().height(Length::Fixed(260.0))),
         // A tree is a *pane*: a file tree lives in a sidebar with a size,
         // and it is the sidebar that stops a collapse from moving the
         // rest of the window. Without one the stage centres a
@@ -1441,7 +1444,7 @@ fn stylesheet_with(c: Chrome) -> Vec<StyleRule> {
         ("DRichTextEditor", Length::Fixed(420.0)),
         ("DPaintBox", Length::Fixed(320.0)),
         ("DPaneGrid", Length::Fixed(480.0)),
-        ("DDataGrid", Length::Fixed(320.0)),
+        ("DDataGrid", Length::Fixed(560.0)),
         ("DModal", Length::FILL),
         ("DSheet", Length::FILL),
         ("DDrawer", Length::FILL),
@@ -1628,11 +1631,17 @@ mod tests {
         let grid = lumen_static::style::index_of_wid(table, "d_datagrid_a").expect("no `#d_datagrid_a`");
         let width = h.states[grid].size.w;
         let want = d.a.column_width(width);
-        // Node 1 of `GridRow` is the first cell, node 3 the second.
-        let (c0, c1) = (d.a.rows.instance_state(0, 1), d.a.rows.instance_state(0, 3));
-        println!("grid {width} px, column {want}, cells {} and {} px wide", c0.size.w, c1.size.w);
+        // The cells by id within the row's own table, not by index: the
+        // cells pad themselves now, which moved every index after the first.
+        let row = <stage::GridRow as lumen_static::widget::Widget>::SUB_TABLE;
+        let cells: Vec<_> = ["d_grid_name", "d_grid_kind", "d_grid_size", "d_grid_lines"]
+            .iter()
+            .map(|id| d.a.rows.instance_state(0, row.iter().position(|n| n.wid == *id).expect("no cell id")))
+            .collect();
+        println!("grid {width} px, column {want}, cells {:?} px wide", cells.iter().map(|c| c.size.w).collect::<Vec<_>>());
         assert!(want > 0.0, "setup: the grid reported a zero-wide column");
-        for (k, c) in [(0, c0), (1, c1)] {
+        assert_eq!(cells.len(), d.a.columns(), "setup: a cell per column");
+        for (k, c) in cells.into_iter().enumerate() {
             assert!(
                 (c.size.w - want).abs() < 0.5,
                 "cell {k} is {:.1} px wide, not the column's {want} — the row \

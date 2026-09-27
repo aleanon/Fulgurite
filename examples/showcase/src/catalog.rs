@@ -117,7 +117,9 @@ const TREE_ROWS: [lumen_static_widgets::Branch; 7] = [
 /// reason a grid does not own its data.
 fn grid_row(r: &mut GridRow, i: usize) {
     r.name.l.set(format!("file-{i:03}.rs"));
+    r.kind.l.set(["Source", "Test", "Bench", "Example"][i % 4].to_string());
     r.size.l.set(format!("{} KB", 1 + i % 97));
+    r.lines.l.set(format!("{}", 40 + (i * 37) % 900));
 }
 
 /// What M27/T27.12's rich text says.
@@ -551,18 +553,21 @@ pub static CATALOG: &[Entry] = &[
         false,
         |s| on(s, Demo::Tree(DTree { a: Tree::new(&TREE_ROWS) })),
         none),
-    entry!("Data", "DataGrid", "A header over virtualized rows; press one.",
+    entry!("Data", "DataGrid", "A sheet over virtualized rows; press a cell, or use the arrows.",
         false,
         |s| on(s, Demo::DataGrid(DDataGrid {
             a: {
-                let mut g = DataGrid::new(&["Name", "Size"], 200, 24.0, grid_row);
-                // Sizes are numbers: the header sits over them at the end
-                // of its column, where `EndCell` puts them (B51).
-                g.align[1] = lumen_static::style::Align::End;
+                let mut g = DataGrid::new(&["Name", "Type", "Size", "Lines"], 200, 26.0, grid_row);
+                // Sizes and line counts are numbers: their headers sit at
+                // the end of the column, where `EndCell` puts them (B51).
+                g.align[2] = lumen_static::style::Align::End;
+                g.align[3] = lumen_static::style::Align::End;
                 g
             } })),
-        |s| match s.store.grid_row {
-            Some(r) => format!("selected: file-{r:03}.rs"),
+        // The cell in a sheet's own notation: a column letter and a
+        // one-based row, as the gutter numbers it.
+        |s| match s.store.grid_cell {
+            Some((r, c)) => format!("selected: file-{r:03}.rs, cell {}{}", (b'A' + c as u8) as char, r + 1),
             None => "selected: none".into(),
         }),
 ];

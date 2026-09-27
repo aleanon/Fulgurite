@@ -530,14 +530,23 @@ fn a_page_number_is_not_clamped_to_a_table() {
     }
 }
 
-/// A row built the way `DataGrid::column_width` documents: two cells
-/// that each take their column. A derived container is `FILL` across
-/// its main axis, so the row divides evenly for itself.
-#[derive(StaticTree, Default)]
-#[widget(column, spacing = 0.0)]
+/// A row built the way `DataGrid` documents: two cells that each take
+/// their column — a derived container is `FILL` across its main axis, so
+/// the row divides evenly for itself — and pad their own text off the
+/// column's rule by `CELL_INSET`, since the grid draws its rules on the
+/// column boundaries and cannot inset a label inside a row it does not own.
+#[derive(StaticTree)]
+#[widget(row, spacing = 0.0)]
 struct Cell {
+    lead: lumen_static_widgets::ops::Fixed,
     #[widget_id("cell-label")]
     l: Label<String>,
+}
+
+impl Default for Cell {
+    fn default() -> Self {
+        Cell { lead: lumen_static_widgets::ops::Fixed { w: DataGrid::<Wide>::CELL_INSET, h: 0.0 }, l: Label::default() }
+    }
 }
 
 #[derive(StaticTree, Default)]
@@ -566,12 +575,6 @@ fn the_header_sits_over_a_row_that_follows_the_column_rule() {
     use lumen_static::display::{Cmd, DisplayList};
 
     let mut g = DataGrid::<Wide>::new(&["Name", "Size"], 40, 24.0, bind_wide);
-    let each = g.column_width(320.0);
-    assert_eq!(
-        each, 152.0,
-        "setup: two columns of a 320 px grid inset by {} on each side",
-        DataGrid::<Wide>::CELL_INSET
-    );
     let styles = lumen_static::pass::default_styles(&g);
     let mut st = vec![NodeState::default(); <DataGrid<Wide> as Widget>::NODE_COUNT];
     let grid = Constraints { min_w: 320.0, max_w: 320.0, min_h: 0.0, max_h: 220.0 };
@@ -581,6 +584,12 @@ fn the_header_sits_over_a_row_that_follows_the_column_rule() {
         Node::layout(&mut g, &mut cx, grid, &styles, &mut st, 0);
     }
     Node::place(&mut g, Point { x: 0.0, y: 0.0 }, &styles, &mut st, 0);
+    // After layout, which is when the gutter is known.
+    let each = g.column_width(320.0);
+    let rows = st[1];
+    println!("column {each} px; the rows' box starts at x {} and is {} wide", rows.pos.x, rows.size.w);
+    assert!(rows.pos.x > 0.0, "setup: no row-number gutter to the left of the rows");
+    assert!((rows.size.w - 2.0 * each).abs() < 0.5, "setup: the rows' box is {} px, not two columns of {each}", rows.size.w);
 
     let mut list = DisplayList::new();
     Node::paint(&g, &st, 0, &mut list);

@@ -814,7 +814,7 @@ pub const MAX_COLUMNS: usize = 8;
 /// M27/T27.0's descendant step.
 pub const PART_ROWS: &str = "grid-rows";
 
-/// A header strip over rows the application binds.
+/// A spreadsheet grid over rows the application binds.
 ///
 /// **It owns no data.** Its rows are a [`lumen_static::repeat::Repeat`]
 /// of the application's own row type, bound by the `fn` `Repeat` takes —
@@ -823,24 +823,54 @@ pub const PART_ROWS: &str = "grid-rows";
 /// call from `Chooser`, which owns its options, and the reason is the
 /// same in both: who the data belongs to.
 ///
-/// # Rows as a table — M57/B51
+/// # A sheet, not a list
 ///
-/// The rows hover and select (`Repeat::hover_rows` and `select_rows`,
-/// switched on here), [`DataGrid::take_selected`] reports a press on a
-/// row once — the grid has no application-state parameter for a handler,
-/// and a control *inside* a row still gets its press — a wheel over the
-/// header scrolls the rows, a thumb shows while they overflow, rows are
-/// separated by hairlines, and a column's header can align to its end
-/// ([`DataGrid::align`]) to sit over numbers the application right-aligns
-/// in its own cells.
+/// It read as a list — a header over rows with hairlines between them —
+/// and was reported as one. It draws what a spreadsheet draws:
+///
+/// * **cells** — a rule at every column boundary, through the header
+///   and the body, and one between rows;
+/// * a **header band** and a **row-number gutter** ([`DataGrid::row_numbers`]),
+///   tinted, meeting in a corner cell; the gutter follows the scroll;
+/// * an **active cell**, outlined in the grid's `border_color` (the
+///   palette's accent role), with its row number and column heading
+///   tinted to match. A press on a cell makes it active; so do the
+///   arrows, Home/End (first and last column), Ctrl+Home/End (first
+///   and last row) and PageUp/PageDown, each scrolling the cell into
+///   view. The grid is focusable for exactly this: D3 found its rows
+///   unreachable from the keyboard (M57).
+///
+/// A row selected either way is reported once by
+/// [`DataGrid::take_selected`], and [`DataGrid::active`] is the cell.
+///
+/// # Cells line up by construction
+///
+/// The body is handed a box exactly as wide as its columns and already
+/// past the gutter, so a row whose `k`-th child is `FILL` gives it exactly
+/// column `k` — [`DataGrid::column_width`]. The rules are drawn at those
+/// boundaries, so **a cell pads its own text** by [`DataGrid::CELL_INSET`]:
+/// the grid cannot inset a label inside the application's row, and a
+/// grid that inset the whole body would draw its rules through the text.
 pub struct DataGrid<R: Widget + Default + 'static> {
     columns: [&'static str; MAX_COLUMNS],
     column_count: usize,
     pub rows: lumen_static::repeat::Repeat<R>,
     /// Each column header's alignment: `Start` or `End`.
     pub align: [lumen_static::style::Align; MAX_COLUMNS],
+    /// Draw the row-number gutter. On by default: it is most of what makes
+    /// a grid read as a sheet.
+    pub row_numbers: bool,
     /// Each header's measured width, for an `End` header.
     header_w: [f32; MAX_COLUMNS],
+    /// The active cell's column; its row is `rows.current`.
+    col: usize,
+    /// The gutter's width from layout, and the body's height, which the
+    /// keyboard scrolls against.
+    gutter: f32,
+    body_h: f32,
+    /// Its own width from layout: `on_event` has no state array, and the
+    /// column under a press is this width's arithmetic.
+    width: f32,
 }
 
 impl<R: Widget + Default + 'static> Default for DataGrid<R> {
@@ -849,20 +879,31 @@ impl<R: Widget + Default + 'static> Default for DataGrid<R> {
     }
 }
 
+/// `n` in decimal, into `buf`: a row number, painted without allocating
+/// (a paint is steady-state code — T29.5).
+fn decimal(mut n: usize, buf: &mut [u8; 20]) -> &str {
+    let mut at = buf.len();
+    loop {
+        at -= 1;
+        buf[at] = b'0' + (n % 10) as u8;
+        n /= 10;
+        if n == 0 {
+            break;
+        }
+    }
+    core::str::from_utf8(&buf[at..]).unwrap_or("")
+}
+
 impl<R: Widget + Default + 'static> DataGrid<R> {
     const ROWS: usize = 1;
     /// The header's height.
     const HEADER: f32 = 28.0;
-    /// How far the grid's **content** — header and rows alike — is
-    /// inset from its own edge.
-    ///
-    /// The inset is the grid's, not the cell's: it insets the header and
-    /// hands the rows a box already inset by the same amount, so column
-    /// k starts at one x for both. The alternative — the header insets
-    /// itself and every row is expected to inset its cells to match —
-    /// is what shipped in T27.10, and the `Size` values sat 72 px left
-    /// of the `Size` heading (M27/T27.11, finding 4).
+    /// How far a cell's text sits from its column's rule — the header's,
+    /// and what a row's cell should use for its own (see the type's docs).
+    /// Also the strip at the right of the body where the scroll thumb runs.
     pub const CELL_INSET: f32 = 8.0;
+    /// The narrowest row-number gutter.
+    const MIN_GUTTER: f32 = 36.0;
 
     pub fn new(
         columns: &[&'static str],
@@ -878,7 +919,12 @@ impl<R: Widget + Default + 'static> DataGrid<R> {
             column_count: 0,
             rows,
             align: [lumen_static::style::Align::Start; MAX_COLUMNS],
+            row_numbers: true,
             header_w: [0.0; MAX_COLUMNS],
+            col: 0,
+            gutter: 0.0,
+            body_h: 0.0,
+            width: 0.0,
         };
         for (i, c) in columns.iter().take(MAX_COLUMNS).enumerate() {
             g.columns[i] = c;
@@ -887,31 +933,26 @@ impl<R: Widget + Default + 'static> DataGrid<R> {
         g
     }
 
-    /// How wide one column is, given the grid's own width.
+    /// How wide one column is, given the grid's own width: what is left
+    /// after the gutter and the thumb's strip, divided evenly.
     ///
     /// **Published, because a row cannot line up with a number it
-    /// cannot see.** A grid divides its header evenly; its *rows* are
-    /// the application's widget, bound by a plain `fn`, and nothing
-    /// reconciles the two — the review measured the `Size` column's
-    /// values 72 px left of the `Size` header, on a demo whose header
-    /// was correct and whose rows were correct and which together were
-    /// wrong (M27/T27.11, finding 4).
-    ///
-    /// A row lines up when its k-th child takes exactly one column —
-    /// which a `row` container does for itself if its children are
-    /// `FILL`, because the rows are handed a box already inset and
-    /// already divided. `the_header_sits_over_a_row_that_follows_the_column_rule`
-    /// pins it, and the showcase's `GridRow` is two `FILL` cells and no
-    /// stylesheet rule at all.
+    /// cannot see.** The rows are the application's widget, bound by a
+    /// plain `fn`; the review measured the `Size` column's values 72 px
+    /// left of the `Size` header on a demo whose header and rows were
+    /// each correct (M27/T27.11, finding 4). The body's box is exactly
+    /// these columns, so `FILL` cells agree with it by construction, and
+    /// `the_header_sits_over_a_row_that_follows_the_column_rule` pins it.
     pub fn column_width(&self, grid_w: f32) -> f32 {
-        (grid_w - 2.0 * Self::CELL_INSET).max(0.0) / self.column_count.max(1) as f32
+        (grid_w - self.gutter - Self::CELL_INSET).max(0.0) / self.column_count.max(1) as f32
     }
 
     pub fn columns(&self) -> usize {
         self.column_count
     }
 
-    /// The row a press selected since the last call — and clears it.
+    /// The row a press or a key selected since the last call — and
+    /// clears it.
     pub fn take_selected(&mut self) -> Option<usize> {
         self.rows.take_selected()
     }
@@ -921,8 +962,39 @@ impl<R: Widget + Default + 'static> DataGrid<R> {
         self.rows.current
     }
 
+    /// The active cell as `(row, column)`, once a row has been selected.
+    pub fn active(&self) -> Option<(usize, usize)> {
+        self.rows.current.map(|r| (r, self.col))
+    }
+
     pub fn column(&self, i: usize) -> &'static str {
         self.columns[i.min(MAX_COLUMNS - 1)]
+    }
+
+    /// Make `(row, col)` the active cell, clamped to the sheet, and scroll
+    /// it into view. Answers whether anything moved.
+    fn go_to(&mut self, row: usize, col: usize) -> bool {
+        if self.rows.count == 0 || self.column_count == 0 {
+            return false;
+        }
+        let row = row.min(self.rows.count - 1);
+        let col = col.min(self.column_count - 1);
+        let moved = self.rows.current != Some(row) || self.col != col;
+        self.col = col;
+        self.rows.select(row);
+        let scrolled = self.rows.scroll_into_view(row, self.body_h);
+        moved || scrolled
+    }
+
+    /// The column under `x`, from the grid's own left edge.
+    fn column_at(&self, x: f32, grid_w: f32) -> Option<usize> {
+        let each = self.column_width(grid_w);
+        let along = x - self.gutter;
+        if each <= 0.0 || along < 0.0 {
+            return None;
+        }
+        let k = (along / each) as usize;
+        (k < self.column_count).then_some(k)
     }
 }
 
@@ -932,10 +1004,11 @@ impl<R: Widget + Default + 'static> GridTable<R> {
     const N: usize = 1 + <lumen_static::repeat::Repeat<R> as Widget>::NODE_COUNT;
     const ARRAY: [NodeDesc; 2] = {
         // A `Repeat` is one table node whatever its rows, so a grid is
-        // exactly two — the header is this node's own paint.
+        // exactly two — the header, gutter and rules are this node's own
+        // paint. Focusable, because the active cell moves by key.
         assert!(Self::N == 2, "a Repeat is one table node");
         let mut t = [NodeDesc::EMPTY; 2];
-        t[0] = NodeDesc::new(1, NO_PARENT, 0, 1, NodeDesc::CONTAINER);
+        t[0] = NodeDesc::new(1, NO_PARENT, 0, 1, NodeDesc::CONTAINER | NodeDesc::FOCUSABLE);
         t[1] = NodeDesc::new(0, 0, 0, 0, 0).with_id(PART_ROWS);
         t
     };
@@ -953,7 +1026,13 @@ impl<R: Widget + Default + 'static> GridTable<R> {
                 Fields::FONT_SIZE,
                 Fields::RADIUS,
                 Fields::VISIBLE,
-            ])).with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Muted).background(lumen_static::style::Role::Raised));
+            ])).with_roles(lumen_static::style::SeedRoles::NONE
+                .color(lumen_static::style::Role::Muted)
+                .background(lumen_static::style::Role::Raised)
+                // The active cell's outline — not a frame: the grid draws
+                // its own frame in the rule colour, and `border_width` is
+                // zero by default.
+                .border(lumen_static::style::Role::Accent));
         s[1] = <lumen_static::repeat::Repeat<R> as Widget>::SEEDS[0];
         s
     };
@@ -974,6 +1053,7 @@ impl<R: Widget + Default + 'static> Widget for DataGrid<R> {
             height: Length::Fixed(200.0),
             background: Color(0xff, 0xff, 0xff, 0xff),
             color: Color(0x5b, 0x66, 0x7a, 0xff),
+            border_color: Color(0x25, 0x63, 0xeb, 0xff),
             font_size: 13.0,
             font_weight: 600.0,
             radius: 8.0,
@@ -1008,17 +1088,24 @@ impl<R: Widget + Default + Node + 'static> Node for DataGrid<R> {
             &me,
             Size { w: limits.max_w, h: limits.max_h },
         );
+        // The gutter fits the largest row number, in the header's face.
+        self.gutter = if self.row_numbers {
+            let mut buf = [0u8; 20];
+            let widest = cx.text.measure_weighted(decimal(self.rows.count.max(1), &mut buf), me.font_size, me.font_weight, f32::INFINITY).w;
+            // Whole pixels: the rows are placed at a snapped x (M57/A15),
+            // and the rules are drawn at the gutter's edge.
+            lumen_static::num::ceil(widest + 2.0 * Self::CELL_INSET).max(Self::MIN_GUTTER)
+        } else {
+            0.0
+        };
         // The rows get what is left under the header — **its resolved
         // height, not the limits it was offered**, which is the
         // asymmetry M27/T27.4 fixed inside `Repeat` and which a caller
         // has to respect too or the repeater cannot scroll.
-        let inner = (s.w - 2.0 * Self::CELL_INSET).max(0.0);
-        let body = Constraints {
-            min_w: inner,
-            max_w: inner,
-            min_h: 0.0,
-            max_h: (s.h - Self::HEADER).max(0.0),
-        };
+        let inner = (s.w - self.gutter - Self::CELL_INSET).max(0.0);
+        self.width = s.w;
+        self.body_h = (s.h - Self::HEADER).max(0.0);
+        let body = Constraints { min_w: inner, max_w: inner, min_h: 0.0, max_h: self.body_h };
         self.rows.layout(cx, body, style, st, i + Self::ROWS);
         for k in 0..self.column_count {
             if self.align[k] == lumen_static::style::Align::End {
@@ -1031,7 +1118,7 @@ impl<R: Widget + Default + Node + 'static> Node for DataGrid<R> {
     fn place(&mut self, origin: Point, style: &[Style], st: &mut [NodeState], i: usize) {
         st[i].pos = origin;
         self.rows.place(
-            Point { x: origin.x + Self::CELL_INSET, y: origin.y + Self::HEADER },
+            Point { x: origin.x + self.gutter, y: origin.y + Self::HEADER },
             style,
             st,
             i + Self::ROWS,
@@ -1044,69 +1131,133 @@ impl<R: Widget + Default + Node + 'static> Node for DataGrid<R> {
         if r[2] <= r[0] || r[3] <= r[1] {
             return;
         }
-        out.rounded_rect(r, s.bg, s.radius);
-        lumen_static::ops::border(st, i, out);
-        if self.column_count > 0 {
-            let each = self.column_width(r[2] - r[0]);
-            for k in 0..self.column_count {
-                let mut x = r[0] + Self::CELL_INSET + each * k as f32;
-                if self.align[k] == lumen_static::style::Align::End {
-                    x += (each - self.header_w[k]).max(0.0);
-                }
-                out.text_weighted(
-                    [x, r[1] + Self::HEADER / 2.0 - s.font_size * 0.6,
-                     x + each, r[1] + Self::HEADER],
-                    self.columns[k],
-                    s.font_size,
-                    s.font_weight,
-                    s.fg,
-                );
-            }
-            // A rule under the header, so it reads as a header rather
-            // than as a first row.
-            out.rect([r[0], r[1] + Self::HEADER - 1.0, r[2], r[1] + Self::HEADER],
-                     Color(s.fg.0, s.fg.1, s.fg.2, 0x33));
-        }
-        self.rows.paint(st, i + Self::ROWS, out);
-        // Hairlines between rows (M57/B51), clipped to the body: one per
-        // boundary the viewport shows, following the scroll.
+        let tint = |a: u8| Color(s.fg.0, s.fg.1, s.fg.2, a);
+        let accent = |a: u8| Color(s.border_color.0, s.border_color.1, s.border_color.2, a);
+        let rule = tint(0x33);
+        let each = self.column_width(r[2] - r[0]);
+        let (c0, body_top) = (r[0] + self.gutter, r[1] + Self::HEADER);
+        // A column boundary, snapped as the cells' own positions are.
+        let edge = |k: usize| lumen_static::num::round(c0 + each * k as f32);
+        let right = edge(self.column_count);
         let b = lumen_static::ops::rect_of(&st[i + Self::ROWS]);
-        // The thumb, in the grid's right inset beside the rows, while
-        // they overflow: its length the viewport's share of the content,
-        // its position the scroll's.
-        let content = self.rows.count as f32 * self.rows.item_extent;
+        let ext = self.rows.item_extent;
+        // Which row is active, and where it is drawn, if it is on screen.
+        let active = self.rows.current.filter(|&row| row < self.rows.count);
+        let row_y = |row: usize| b[1] + row as f32 * ext - self.rows.scroll;
+
+        out.rounded_rect(r, s.bg, s.radius);
+        out.push_clip(r);
+        // The header band and the gutter, one tint, meeting in the corner.
+        out.rect([r[0], r[1], r[2], body_top], tint(0x10));
+        if self.gutter > 0.0 {
+            out.rect([r[0], body_top, c0, r[3]], tint(0x10));
+        }
+        // The active cell's heading and row number, tinted to match it.
+        if let Some(row) = active {
+            out.rect([edge(self.col), r[1], edge(self.col + 1), body_top], accent(0x26));
+            if self.gutter > 0.0 {
+                let y = row_y(row);
+                out.push_clip([r[0], body_top, c0, r[3]]);
+                out.rect([r[0], y, c0, y + ext], accent(0x26));
+                out.pop_clip();
+            }
+        }
+        for k in 0..self.column_count {
+            let mut x = c0 + each * k as f32 + Self::CELL_INSET;
+            if self.align[k] == lumen_static::style::Align::End {
+                x = c0 + each * (k + 1) as f32 - Self::CELL_INSET - self.header_w[k];
+            }
+            out.text_weighted(
+                [x, r[1] + Self::HEADER / 2.0 - s.font_size * 0.6,
+                 x + each, r[1] + Self::HEADER],
+                self.columns[k],
+                s.font_size,
+                s.font_weight,
+                s.fg,
+            );
+        }
+        out.pop_clip();
+
+        self.rows.paint(st, i + Self::ROWS, out);
+
+        // The row numbers and the rules, clipped below the header so a
+        // scrolled row never draws over it.
+        let below = [r[0], body_top, r[2], r[3]];
+        out.push_clip(below);
+        if ext > 0.0 && b[3] > b[1] {
+            let first = (self.rows.scroll / ext) as usize;
+            let mut k = first;
+            while k < self.rows.count {
+                let y = row_y(k);
+                if y > r[3] {
+                    break;
+                }
+                if self.gutter > 0.0 {
+                    let mut buf = [0u8; 20];
+                    let strong = active == Some(k);
+                    out.text_weighted(
+                        [r[0] + Self::CELL_INSET, y + ext / 2.0 - s.font_size * 0.6, c0, y + ext],
+                        decimal(k + 1, &mut buf),
+                        s.font_size,
+                        if strong { 700.0 } else { 400.0 },
+                        s.fg,
+                    );
+                }
+                // The rule under row k, across the gutter and the cells —
+                // one whole pixel, as every rule here is (X10: a 1 px line
+                // on a half-pixel edge renders 2 px wide and pale).
+                let yb = lumen_static::num::round(y + ext);
+                out.rect([r[0], yb - 1.0, right, yb], tint(0x22));
+                k += 1;
+            }
+        }
+        out.pop_clip();
+        // The column rules, through the header and the body; the first is
+        // the gutter's edge, the last the sheet's. Each in the pixel just
+        // inside its boundary's left, so the last one closes the sheet.
+        for k in 0..=self.column_count {
+            if k == 0 && self.gutter <= 0.0 {
+                continue;
+            }
+            let x = edge(k);
+            out.rect([x - 1.0, r[1], x, r[3]], rule);
+        }
+        // The rule under the header, so it reads as a header rather than as
+        // a first row.
+        out.rect([r[0], body_top - 1.0, right, body_top], rule);
+
+        // The active cell, over its row's tint and inside the body.
+        if let Some(row) = active {
+            let y = row_y(row);
+            out.push_clip(below);
+            let (y0, y1) = (lumen_static::num::round(y), lumen_static::num::round(y + ext));
+            out.stroked_rect([edge(self.col) - 1.0, y0 - 1.0, edge(self.col + 1), y1], accent(0xff), 0.0, 2.0);
+            out.pop_clip();
+        }
+
+        // The thumb, in the strip right of the cells, while the rows
+        // overflow: its length the viewport's share of the content, its
+        // position the scroll's.
+        let content = self.rows.count as f32 * ext;
         let view = b[3] - b[1];
         if content > view + 0.5 && view > 0.0 {
             let len = (view * view / content).max(24.0).min(view);
             let y = b[1] + (view - len) * (self.rows.scroll / (content - view)).clamp(0.0, 1.0);
-            let x = b[2] + (Self::CELL_INSET - 4.0) / 2.0;
-            out.rounded_rect([x, y + 2.0, x + 4.0, y + len - 2.0], Color(s.fg.0, s.fg.1, s.fg.2, 0x70), 2.0);
+            let x = right + (Self::CELL_INSET - 4.0) / 2.0;
+            out.rounded_rect([x, y + 2.0, x + 4.0, y + len - 2.0], tint(0x70), 2.0);
         }
-        let ext = self.rows.item_extent;
-        if ext > 0.0 && b[3] > b[1] {
-            out.push_clip(b);
-            let c = Color(s.fg.0, s.fg.1, s.fg.2, 0x22);
-            let first = (self.rows.scroll / ext) as usize + 1;
-            let mut k = first;
-            while k < self.rows.count {
-                let y = b[1] + k as f32 * ext - self.rows.scroll;
-                if y > b[3] {
-                    break;
-                }
-                out.rect([b[0], y - 0.5, b[2], y + 0.5], c);
-                k += 1;
-            }
-            out.pop_clip();
-        }
+        // The frame, in the rules' colour, and an author's border over it.
+        out.stroked_rect(r, rule, s.radius, 1.0);
+        lumen_static::ops::border(st, i, out);
     }
 
     fn hit(&self, st: &[NodeState], i: usize, x: f32, y: f32) -> Option<lumen_static::Hit> {
         if !lumen_static::hit::contains(&st[i], x, y) {
             return None;
         }
-        // The rows first. The header answers as the grid itself, so a
-        // wheel over it reaches `on_event` and scrolls the rows (M57/B51);
-        // it takes no press (sorting is not built).
+        // The rows first. The header and gutter answer as the grid itself,
+        // so a wheel over them reaches `on_event` and scrolls the rows
+        // (M57/B51), and a press on a heading picks its column.
         self.rows.hit(st, i + Self::ROWS, x, y).or(Some(lumen_static::Hit {
             node: i as u32,
             inner: None,
@@ -1114,11 +1265,69 @@ impl<R: Widget + Default + Node + 'static> Node for DataGrid<R> {
         }))
     }
 
-    /// A wheel over the header scrolls the rows (M57/B51): it scrolled
-    /// nothing, since only the rows' own box took a wheel.
+    /// The wheel over the header, a press on a cell or a heading, and the
+    /// keys that move the active cell.
+    ///
+    /// A press on a cell reaches here **bubbled** from the rows, which
+    /// record the row and decline it (a control inside a row still gets
+    /// its press first); the pass hands every node it climbs to its own
+    /// `local`, so the column is this node's arithmetic.
     fn on_event(&mut self, ev: &Event, cx: &EventCtx) -> bool {
+        let w = self.width;
         match ev {
             Event::Scroll { .. } if cx.target == cx.node => self.rows.on_event(ev, cx),
+            // **The row from this node's own `local`, not `cx.row`**: the
+            // row is the repeater's coordinate and does not survive the
+            // climb out of it, so the grid reads its own — the body starts
+            // under the header and is scrolled by the rows' offset.
+            Event::PointerDown { .. } => {
+                let Some(col) = self.column_at(cx.local.x, w) else { return false };
+                if cx.local.y < Self::HEADER {
+                    // A heading: that column, in the active row (or the first).
+                    let row = self.rows.current.unwrap_or(0);
+                    return self.go_to(row, col);
+                }
+                let ext = self.rows.item_extent;
+                if ext <= 0.0 {
+                    return false;
+                }
+                let row = ((cx.local.y - Self::HEADER + self.rows.scroll) / ext) as usize;
+                if row >= self.rows.count {
+                    return false;
+                }
+                // The rows recorded this row on the way up; the column is
+                // what only the grid can know.
+                let moved = self.col != col || self.rows.current != Some(row);
+                self.col = col;
+                moved
+            }
+            Event::Key { key, down: true } => {
+                if self.rows.count == 0 || self.column_count == 0 {
+                    return false;
+                }
+                let ctrl = cx.mods.has(lumen_static::event::Mods::CTRL);
+                let (row, col) = match self.rows.current {
+                    Some(r) => (r, self.col),
+                    // From nothing, any move lands on the first cell.
+                    None => return matches!(key, Key::Up | Key::Down | Key::Left | Key::Right | Key::Home | Key::End | Key::PageUp | Key::PageDown) && self.go_to(0, 0),
+                };
+                let page = if self.rows.item_extent > 0.0 { ((self.body_h / self.rows.item_extent) as usize).max(1) } else { 1 };
+                let last_row = self.rows.count - 1;
+                let (row, col) = match key {
+                    Key::Up => (row.saturating_sub(1), col),
+                    Key::Down => ((row + 1).min(last_row), col),
+                    Key::Left => (row, col.saturating_sub(1)),
+                    Key::Right => (row, col + 1),
+                    Key::Home if ctrl => (0, col),
+                    Key::End if ctrl => (last_row, col),
+                    Key::Home => (row, 0),
+                    Key::End => (row, self.column_count - 1),
+                    Key::PageUp => (row.saturating_sub(page), col),
+                    Key::PageDown => ((row + page).min(last_row), col),
+                    _ => return false,
+                };
+                self.go_to(row, col)
+            }
             _ => false,
         }
     }
@@ -1165,6 +1374,8 @@ impl<R: Widget + Default + Node + 'static> Node for DataGrid<R> {
             v.push_str(self.columns[k]);
         }
         node.set_value(v);
+        node.set_row_count(self.rows.count);
+        node.set_column_count(self.column_count);
     }
 }
 

@@ -1132,8 +1132,37 @@ reads as it was written and the corrections are in one place.
   that an action which opens a popup is bounded against the widget and
   that popup (`Action.opens`): a flipped pad's shadow falls on its
   trigger, and the old bound read that as 9.14x the trigger's box.
-- DataGrid's rows cannot be reached by keyboard at all (D3); B51 did not
-  ask for it, and it is recorded rather than fixed here.
+- DataGrid's rows could not be reached by keyboard at all (D3); B51 did
+  not ask for it. Fixed after closing, below, when the grid became a sheet.
+
+### Reported after closing (2026-09-27)
+
+Three defects found by using the showcase, each fixed where it lives:
+
+- **A filtered combobox chose by the unfiltered position.** Typing "ap"
+  left Apple and apricot; pressing the second chose Banana. The press
+  cleared focus (the list is not focusable), B22's "an abandoned query
+  reverts" arm fired on the field's focus loss and cleared the filter,
+  and the release chose by position in the whole list. A press on a
+  field's own list now leaves focus where it is (`NodeDesc::KEEPS_FOCUS`,
+  honoured by the pass, set on the chooser's list). Every drive action
+  either filtered or chose, never both; the combobox drive now does both.
+  Building that action exposed a second, older false positive: every
+  *closed* chooser's list was `W1001` all the time, because a closed
+  popup zeroes its subtree exactly as a squeeze does. A popup now says
+  its content is absent on purpose (`Node::content_absent`), as a stack
+  says its children overlap for `W1004`.
+- **A search field showed a slice of its text.** The pill gives its
+  field 22 px; `TextInput` kept its own 6 + 6 padding and clipped its run
+  to the 10 px left of a 19 px line. A single-line field now centres its
+  line and clips only across to its padding, down to its box.
+- **The DataGrid read as a list.** It is a sheet now: rules on every
+  column boundary and between rows, a tinted header band and row-number
+  gutter, and an active cell a press or the arrows move (Home/End,
+  Ctrl+Home/End, PageUp/PageDown), scrolled into view and reported as a
+  press is. The grid is focusable, which closes D3's finding. Cells pad
+  their own text by `DataGrid::CELL_INSET`, since the rules sit on the
+  column boundaries of a row the grid does not own.
 
 ### Tests that proved nothing until fixed
 

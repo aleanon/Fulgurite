@@ -55,6 +55,22 @@ def main() -> int:
     failures = 0
     actions = 0
     bare = 0
+    # **The window's settled size, not its first one.** A window manager
+    # may shrink the window it was asked for a moment after it maps: the
+    # scale-2 pass asks 2240x1520 and gets 1920x1008. A drive that began
+    # before that read the sidebar's geometry, the window moved under it,
+    # and the pick's scroll loop chased a row that had changed place -- and
+    # this header printed whichever size it happened to see.
+    import time
+    last, since = None, time.monotonic()
+    deadline = since + 5.0
+    while time.monotonic() < deadline:
+        b = c.rpc("ui.resolve", selector="#sidebar").get("bounds")
+        if b != last:
+            last, since = b, time.monotonic()
+        elif time.monotonic() - since >= 0.6:
+            break
+        time.sleep(0.1)
     # Which scale this pass really runs at: a scale-2 pass whose window
     # came up at 1 would compare nothing new and still say "Scale2".
     shot = c.rpc("ui.screenshot")

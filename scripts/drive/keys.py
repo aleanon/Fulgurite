@@ -75,4 +75,7 @@ KEYS: dict[str, tuple[str, list[KeyAction]]] = {
     "PaneGrid": ("#d_panegrid_a", [KeyAction("Right moves the vertical divider", ["Right"])]),
     "Pagination": ("#d_pagination_a", [KeyAction("Right goes to the next page", ["Right"])]),
     "Tree": ("#d_tree_a", [KeyAction("Down, Left folds a branch", ["Down", "Left"])]),
+    # D3 recorded the grid's rows unreachable by keyboard; the sheet takes
+    # focus itself and the arrows move its active cell.
+    "DataGrid": ("#d_datagrid_a", [KeyAction("Down, Right moves the active cell", ["Down", "Right"])]),
 }

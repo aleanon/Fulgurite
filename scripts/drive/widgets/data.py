@@ -219,10 +219,10 @@ def _row_shown(c, text: str) -> bool:
 GRID = ("DataGrid", "#d_datagrid_a", [
     Action(
         name="it shows its columns over virtualized rows",
-        needs="a grid of 200 rows in a 220 px box",
+        needs="a grid of 200 rows in a 260 px box",
         do=lambda c: c.hover(),
         expect=lambda c: (
-            c.value() == "Name,Size"
+            c.value() == "Name,Type,Size,Lines"
             and c.box(f"{c.sel} > #grid-rows")[1] >= c.box()[1] + 27.0,
             "columns {!r}, rows start {:.0f} px below the top (the header is 28)"
             .format(c.value(), c.box(f"{c.sel} > #grid-rows")[1] - c.box()[1]),
@@ -270,7 +270,7 @@ GRID = ("DataGrid", "#d_datagrid_a", [
         needs="a grid with rows on screen and nothing selected yet",
         do=lambda c: (c.__dict__.__setitem__("_r0", c.readout()),
                       c.c.rpc("input.click", x=(c.box()[0] + c.box()[2]) / 2,
-                              y=c.box()[1] + 28 + 24 * 1.5))[0],
+                              y=c.box()[1] + 28 + ROW_H * 1.5))[0],
         expect=lambda c: (
             c.readout() != c._r0 and c.readout().startswith("selected: file-"),
             f"readout {c._r0!r} -> {c.readout()!r}",
@@ -278,6 +278,58 @@ GRID = ("DataGrid", "#d_datagrid_a", [
         isolate=lambda c: (c.__dict__.__setitem__("_r0", c.readout()), c.click_outside())[0],
         injection="drop the row-band fallback in Repeat::hit, or select_rows",
     ),
+    # A sheet, not a list (reported: "the datagrid is just a list"). A press
+    # makes the *cell* under it active: the column is the grid's arithmetic
+    # on the press it is handed bubbled from the rows.
+    Action(
+        visible=True,
+        name="a press on a cell makes that cell active",
+        needs="a grid of four columns, scrolled to its top",
+        # The wheel action above leaves the rows scrolled, and a press on
+        # the third *visible* row is then row 12 -- which the grid reported
+        # correctly as C12, and this action, assuming the top, called wrong.
+        setup=lambda c: c.c.rpc("input.scroll", x=(c.box()[0] + c.box()[2]) / 2,
+                                y=(c.box()[1] + c.box()[3]) / 2, dy=4000.0),
+        do=lambda c: (c.__dict__.__setitem__("_r0", c.readout()),
+                      _press_cell(c, col=2, row=2))[0],
+        # **Changed, and to C3.** "Ends with C3" alone held after the press
+        # outside too -- the readout still said what the real press left --
+        # and the isolate caught it.
+        expect=lambda c: (
+            c.readout() != c._r0 and c.readout().endswith(", cell C3"),
+            f"readout {c._r0!r} -> {c.readout()!r} after a press in column C, "
+            f"the third visible row (wanted '..., cell C3')",
+        ),
+        isolate=lambda c: (c.__dict__.__setitem__("_r0", c.readout()), c.click_outside())[0],
+        injection="leave DataGrid::on_event's PointerDown arm out, so the column never moves",
+    ),
+    # And the keyboard reaches it, which D3 recorded it could not (M57).
+    Action(
+        visible=True,
+        name="the arrows move the active cell",
+        needs="a grid with C3 active, focused by the press on it",
+        # Its own start: the action before it ends on a press *outside*,
+        # which clears focus as a background click should.
+        setup=lambda c: _press_cell(c, col=2, row=2),
+        do=lambda c: (c.key("Right"), c.key("Down"))[0],
+        expect=lambda c: (
+            c.readout().endswith(", cell D4"),
+            f"readout {c.readout()!r} after Right, Down from C3 (wanted '..., cell D4')",
+        ),
+        injection="drop FOCUSABLE from the grid's table node",
+    ),
 ])
+
+
+#: The demo's row extent (`catalog.rs`, the DataGrid entry).
+ROW_H = 26.0
+
+
+def _press_cell(c, col: int, row: int):
+    """Press the middle of visible cell (`col`, `row`), from the grid's box
+    and its published geometry: the rows' box is the columns, exactly."""
+    g, b = c.box(), c.box(f"{c.sel} > #grid-rows")
+    each = (b[2] - b[0]) / 4.0
+    return c.c.rpc("input.click", x=b[0] + each * (col + 0.5), y=b[1] + ROW_H * (row + 0.5))
 
 ALL = [PAGINATION, TREE, GRID]

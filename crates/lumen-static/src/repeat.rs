@@ -154,6 +154,35 @@ impl<T: Widget + Default> Repeat<T> {
         if core::mem::take(&mut self.selected_now) { self.current } else { None }
     }
 
+    /// Select `row` as a press on it would — the keyboard's way in. It is
+    /// reported once by [`Repeat::take_selected`], exactly like a press,
+    /// so an application reading presses reads the arrows too. Answers
+    /// whether the selection moved.
+    pub fn select(&mut self, row: usize) -> bool {
+        if row >= self.count {
+            return false;
+        }
+        let moved = self.current != Some(row);
+        self.current = Some(row);
+        self.selected_now = true;
+        moved
+    }
+
+    /// Scroll the least distance that shows all of `row`, given the
+    /// viewport's height; answers whether the offset moved.
+    pub fn scroll_into_view(&mut self, row: usize, viewport_h: f32) -> bool {
+        let top = row as f32 * self.item_extent;
+        let want = if top < self.scroll {
+            top
+        } else if top + self.item_extent > self.scroll + viewport_h {
+            top + self.item_extent - viewport_h
+        } else {
+            self.scroll
+        };
+        let want = crate::num::clamp(want, 0.0, self.max_scroll(viewport_h));
+        core::mem::replace(&mut self.scroll, want) != want
+    }
+
     /// The row under the pointer, when `hover_rows` is on.
     pub fn hot(&self) -> Option<usize> {
         self.hot

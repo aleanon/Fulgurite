@@ -168,23 +168,42 @@ pub struct DTree {
 /// rule naming a *repeated row's* node matches nothing while its demo
 /// is off stage, and an ambient `W1010` for a rule that is right is the
 /// false positive the audit exists to avoid.
-#[derive(StaticTree, Default)]
-#[widget(column, spacing = 0.0)]
+///
+/// **It pads its own text** off the column's rule by the grid's
+/// `CELL_INSET`: the rules sit on the column boundaries the grid hands
+/// its rows, and only the row's own cell can inset a label inside it.
+#[derive(StaticTree)]
+#[widget(row, spacing = 0.0)]
 pub struct GridCell {
+    pub lead: Fixed,
     #[widget_id("d_grid_cell")]
     pub l: Label<String>,
 }
 
+impl Default for GridCell {
+    fn default() -> Self {
+        GridCell { lead: Fixed { w: DataGrid::<GridRow>::CELL_INSET, h: 0.0 }, l: Label::default() }
+    }
+}
+
 /// A cell whose text sits at its end, for numbers (M57/B51): a filling
-/// spacer, then the label. In the type for the reason `GridCell` gives —
-/// an `align` rule on the repeated row's node matched nothing while the
-/// grid was off stage, and the live drive's `W1010` said so.
-#[derive(StaticTree, Default)]
+/// spacer, then the label, then the inset. In the type for the reason
+/// `GridCell` gives — an `align` rule on the repeated row's node matched
+/// nothing while the grid was off stage, and the live drive's `W1010`
+/// said so.
+#[derive(StaticTree)]
 #[widget(row, spacing = 0.0)]
 pub struct EndCell {
     pub fill: Spacer,
     #[widget_id("d_grid_cell_end")]
     pub l: Label<String>,
+    pub trail: Fixed,
+}
+
+impl Default for EndCell {
+    fn default() -> Self {
+        EndCell { fill: Spacer::default(), l: Label::default(), trail: Fixed { w: DataGrid::<GridRow>::CELL_INSET, h: 0.0 } }
+    }
 }
 
 #[derive(StaticTree, Default)]
@@ -192,8 +211,12 @@ pub struct EndCell {
 pub struct GridRow {
     #[widget_id("d_grid_name")]
     pub name: GridCell,
+    #[widget_id("d_grid_kind")]
+    pub kind: GridCell,
     #[widget_id("d_grid_size")]
     pub size: EndCell,
+    #[widget_id("d_grid_lines")]
+    pub lines: EndCell,
 }
 
 #[derive(StaticTree, Default)]
