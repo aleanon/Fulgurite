@@ -1394,7 +1394,7 @@ impl<A: App + lumen_static::reload::Reloadable + 'static, I: Invalidation + 'sta
             self,
             |p| {
                 Box::new(
-                    Local::from_program(p, Policy).with_saver(lumen_static_reload::hot::save::<A>),
+                    Local::from_program(p, Policy).with_saver(lumen_static_reload::hot::save::<A, I>),
                 )
             },
             dir,
