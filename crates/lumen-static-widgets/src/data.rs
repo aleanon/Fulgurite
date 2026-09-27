@@ -175,7 +175,9 @@ impl Widget for Pagination {
             width: Length::Fixed(320.0),
             height: Length::Fixed(36.0),
             background: Color(0xf3, 0xf5, 0xf9, 0xff),
-            color: Color(0x2f, 0x6b, 0xff, 0xff),
+            // `Palette::LIGHT`'s accent since M54/T54.6: `#2f6bff` digits
+            // on the pale ground read 4.12:1 (`docs/results-a11y-platform.md`).
+            color: Color(0x31, 0x5c, 0xde, 0xff),
             font_size: 14.0,
             radius: 8.0,
             cursor: lumen_static::style::Cursor::Pointer,

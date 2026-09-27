@@ -64,9 +64,12 @@ const SHOW_LIGHT: Palette = Palette {
     control: Color(0xf0, 0xf2, 0xf6, 0xff),
     text: Color(0x1b, 0x22, 0x30, 0xff),
     muted: Color(0x6b, 0x74, 0x88, 0xff),
-    accent: Color(0x2f, 0x6b, 0xff, 0xff),
+    // M54/T54.6 (R16-F9): `#2f6bff` was under AA on three grounds; this
+    // is the first value that passes all of them
+    // (`docs/results-a11y-platform.md`). The focus ring shares it.
+    accent: Color(0x26, 0x5c, 0xe6, 0xff),
     on_accent: Color(0xff, 0xff, 0xff, 0xff),
-    focus: Color(0x2f, 0x6b, 0xff, 0xff),
+    focus: Color(0x26, 0x5c, 0xe6, 0xff),
 };
 
 const SHOW_DARK: Palette = Palette {
@@ -1494,15 +1497,18 @@ mod tests {
         three_to_one(&[("SHOW_DARK", SHOW_DARK), ("Palette::DARK", Palette::DARK)]);
     }
 
-    /// **And WCAG AA, 4.5:1, for text** — M54/T54.0 (R16-F9), under the
-    /// showcase's light palette.
+    /// **And WCAG AA, 4.5:1, for text** — M54/T54.0, green since T54.6
+    /// (R16-F9), under the showcase's light palette and the core's.
     #[test]
-    #[ignore = "red until T54.6: R16-F9 -- the showcase accent 0x2f6bff is under 4.5:1"]
     fn every_catalogue_text_run_reaches_aa() {
-        let (below, measured, unmeasured, texts) = catalogue_contrast(SHOW_LIGHT, 4.5);
-        println!("runs below 4.5: {} / {measured} measured ({unmeasured} unmeasured, {texts} text commands)", below.len());
-        assert!(measured * 2 >= texts, "setup: {measured} of {texts} text commands measured");
-        assert!(below.is_empty(), "{} run(s) under 4.5:1:\n  {}", below.len(), below.join("\n  "));
+        let mut bad = Vec::new();
+        for (name, p) in [("SHOW_LIGHT", SHOW_LIGHT), ("Palette::LIGHT", Palette::LIGHT)] {
+            let (below, measured, unmeasured, texts) = catalogue_contrast(p, 4.5);
+            println!("{name}: runs below 4.5: {} / {measured} measured ({unmeasured} unmeasured, {texts} text commands)", below.len());
+            assert!(measured * 2 >= texts, "setup: {name}: {measured} of {texts} text commands measured");
+            bad.extend(below.into_iter().map(|b| format!("{name}: {b}")));
+        }
+        assert!(bad.is_empty(), "{} run(s) under 4.5:1:\n  {}", bad.len(), bad.join("\n  "));
     }
 
     #[test]

@@ -59,7 +59,6 @@ fn every_painted_text_run_reaches_the_non_text_minimum() {
 }
 
 #[test]
-#[ignore = "red until T54.6: R16-F9 -- Palette::LIGHT's accent on its surface is under 4.5:1"]
 fn the_default_palette_reaches_aa_for_text() {
     let r = measure();
     assert!(r.measured.len() >= 40, "setup: only {} text runs measured", r.measured.len());

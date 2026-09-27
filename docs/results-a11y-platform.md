@@ -61,3 +61,41 @@ An incremental `TreeUpdate` (the plan's §4) addresses condition 1 when a
 reader is attached; nothing in this workspace addresses condition 2,
 which is the platform stack's size. A lighter bridge — `accesskit_unix`
 without its async runtime — would be the thing to measure.
+
+## T54.5–T54.6 — contrast as painted (R16-F8, R16-F9)
+
+Measured by `lumen_static_shell::contrast::text_contrast`: every text
+run in the display list against the topmost opaque fill under its centre
+(clips respected; translucent, gradient, image and glass grounds counted
+as unmeasured). WCAG 2.x relative luminance; bounds 4.5:1 for text and
+3:1 for the non-text minimum.
+
+### The values that changed (T54.6)
+
+| palette / widget | role or field | was | ratio then | now | ratio now |
+|---|---|---|---:|---|---:|
+| `examples/showcase` `SHOW_LIGHT` | `accent` (and `focus`) | `#2f6bff` | 3.91 on the Ghost ground, 4.16 on the page | `#265ce6` | 4.86 / 5.17 |
+| `Palette::LIGHT` | `accent` | (53, 99, 239) | 4.07 on `surface` | (49, 92, 222) `#315cde` | 4.58 |
+| `Palette::LIGHT` | `muted` | (100, 116, 139) | 3.86 on `surface` | (90, 104, 125) | 4.59 (5.66 on `page`) |
+| `AppBar` default | background | `#2f6bff` | 4.497 under white text | `#315cde` | 5.65 |
+| `Pagination` default | colour | `#2f6bff` | 4.12 on its ground | `#315cde` | 5.18 |
+| `DatePicker` weekday strip | dim alpha | 0x99 | 4.04 on white | 0xb4 | 5.63 |
+
+`#265ce6` is the re-triage's search result; the core's accent and muted
+are the first value down their own hue (scaled toward black in 1% steps)
+that passes every ground the harness reported.
+
+### What the catalogue measures now
+
+| harness | palette | measured | runs under the bound |
+|---|---|---:|---:|
+| widgets' catalogue, `tests/text_contrast.rs` | defaults | 50 | 0 under 4.5 (min 4.77) |
+| showcase, every entry | `SHOW_LIGHT` | 446 of 457 | 0 under 4.5 (was 40) |
+| showcase, every entry | `Palette::LIGHT` | 446 of 457 | 0 under 4.5 (was 54, then 17 with the old accent) |
+| showcase, every entry | `SHOW_DARK` | 446 of 457 | **120 under 3:1** — not fixed |
+| showcase, every entry | `Palette::DARK` | 446 of 457 | **120 under 3:1** — not fixed |
+
+**The dark palettes fail for a reason no palette value can fix**: the
+widgets' defaults are light-theme values, not roles, so anything the
+stylesheet does not re-colour paints near-black on the dark page
+(`docs/plan-a11y-platform.md`, "What building found", T54.5).

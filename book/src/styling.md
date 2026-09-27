@@ -154,6 +154,15 @@ cannot reach is a colour a widget keeps as its own field — a toggle's
 than a shade; `docs/plan-appearance.md` T25.10 and T25.11 record why
 those were left there.
 
+**A palette is checked where it is painted.** The showcase's tests
+measure every text run of the catalogue against the fill under it, from
+the display list, under its light palette and the core's — 4.5:1 for
+text, 3:1 in the tests that also cover the dark ones — and the values
+that failed were changed rather than a role added
+(`docs/results-a11y-platform.md` has them). The dark palettes do not yet
+pass: the widgets' own defaults are light-theme values, which a
+stylesheet has to re-colour.
+
 ## Ids and classes come from the tree
 
 They are attributes on the field, not values set at runtime:

@@ -451,7 +451,9 @@ impl<S: lumen_static::text::TextStorage> Widget for AppBar<S> {
             width: Length::FILL,
             height: Length::Fixed(56.0),
             padding: Edges { left: 16.0, right: 16.0, top: 0.0, bottom: 0.0 },
-            background: Color(0x2f, 0x6b, 0xff, 0xff),
+            // `Palette::LIGHT`'s accent since M54/T54.6: `#2f6bff` put its
+            // white title at 4.497:1 (`docs/results-a11y-platform.md`).
+            background: Color(0x31, 0x5c, 0xde, 0xff),
             color: Color(0xff, 0xff, 0xff, 0xff),
             font_size: 18.0,
             font_weight: 600.0,

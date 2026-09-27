@@ -942,6 +942,24 @@ feature (`dev-shape`); without that line it would never run.
   crate cannot name the shell, which owns the display list and the
   harness.
 
+**T54.6 (2026-09-27).**
+- **The painted accent was not `Palette::LIGHT`'s.** The widgets'
+  defaults paint `#2f6bff`; the core palette's accent (53, 99, 239) is
+  what the showcase's `app.setPalette` swaps to. Both changed: the core
+  palette by the search, and the two defaults the harness reported
+  (`AppBar`'s ground, `Pagination`'s digits) to the new core value, so
+  the widgets and the palette agree on the one accent a user sees.
+  Non-text uses of `#2f6bff` (charts, progress, the range track) were
+  not reported and were left.
+- **`Palette::LIGHT`'s `muted` on `surface` is painted** — 54 runs, the
+  pair §1.3 could not say anyone painted — and changed.
+- **A third value the plan did not name**: `DatePicker`'s weekday strip,
+  its text colour at alpha 0x99, 4.04:1 on white.
+- **No golden changed**: none of the committed goldens paints an accent.
+- **`SHOW_DARK` and `Palette::DARK` were not changed**: what the harness
+  reports under them is T54.5's finding (light-theme defaults), which
+  no palette value can fix.
+
 ## Appendix: finding → task
 
 | ID | sev now | status | task |

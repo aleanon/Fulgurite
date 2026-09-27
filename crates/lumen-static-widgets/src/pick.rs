@@ -477,8 +477,10 @@ impl<const KIND: u8> Node for Pad<KIND> {
             );
             // The weekday strip, one label per column, dimmed: it is a
             // heading, not a row of cells, and nothing in it is
-            // pressable.
-            let dim = Color(s.fg.0, s.fg.1, s.fg.2, 0x99);
+            // pressable. **Dimmed to 0xb4, not 0x99** (M54/T54.6): at 0x99
+            // the strip measured 4.04:1 on the pad's white, under AA
+            // (`docs/results-a11y-platform.md`).
+            let dim = Color(s.fg.0, s.fg.1, s.fg.2, 0xb4);
             for (c, d) in DOW.iter().enumerate() {
                 let x = x0 + c as f32 * self.cell_w();
                 out.text_weighted(

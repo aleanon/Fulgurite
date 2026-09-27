@@ -506,13 +506,24 @@ impl Palette {
     /// The light palette, and the default. Its values are the ones the
     /// widgets' own defaults already use, so a tree that never sets a
     /// palette looks exactly as it did before one existed.
+    ///
+    /// **Its `accent` and `muted` pass WCAG AA as painted** since
+    /// M54/T54.6: measured on the showcase's display list under this
+    /// palette, not as a table of role pairs; the values and their ratios
+    /// are stated once, in `docs/results-a11y-platform.md`.
     pub const LIGHT: Palette = Palette {
         page: crate::display::Color(255, 255, 255, 255),
         surface: crate::display::Color(226, 232, 240, 255),
         control: crate::display::Color(0xbf, 0xc4, 0xcc, 255),
         text: crate::display::Color(15, 23, 42, 255),
-        muted: crate::display::Color(100, 116, 139, 255),
-        accent: crate::display::Color(53, 99, 239, 255),
+        // M54/T54.6: (100, 116, 139) painted secondary text at 3.86:1 on
+        // `surface`, 54 runs of the showcase's catalogue; this is the
+        // first step down its hue that passes AA there and on `page`.
+        muted: crate::display::Color(90, 104, 125, 255),
+        // M54/T54.6: (53, 99, 239) was 4.07:1 on `surface`; this is the
+        // first step down its own hue that passes AA on every ground the
+        // contrast harness reports (`docs/results-a11y-platform.md`).
+        accent: crate::display::Color(0x31, 0x5c, 0xde, 255),
         on_accent: crate::display::Color(255, 255, 255, 255),
         focus: crate::display::Color(53, 99, 239, 255),
     };
