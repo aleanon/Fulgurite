@@ -117,6 +117,13 @@ pub fn emit_node(
     if st[i].size.w <= 0.0 || st[i].size.h <= 0.0 {
         n.set_hidden();
     }
+    // **Focus is dispatch's, so it is published here** (M54/T54.4): every
+    // focusable node takes `Event::Action { action: Focus }` through the
+    // same path Tab uses, whatever widget it is.
+    // Only on screen: dispatch refuses a node that is not (C5).
+    if d.is_focusable() && st[i].size.w > 0.0 && st[i].size.h > 0.0 {
+        n.add_action(accesskit::Action::Focus);
+    }
     if d.child_count > 0 {
         let mut c = d.first_child as usize;
         loop {

@@ -35,7 +35,18 @@ Key         { key, down }
 Text        { ch }
 Touch       { id, x, y, phase }
 Modifiers   { .. }
+Action      { node, action }
 ```
+
+`Action` is what an assistive technology asks of a node — `Default`,
+`Increment`, `Decrement`, `SetValue(f32)`, `Expand`, `Collapse`, `Focus`
+(M54/T54.4). It is delivered like a key, but from `node` instead of the
+focused node: offered to `on_event` up the chain, and a `Default` then
+runs the activation handler exactly as Enter does, so a screen reader's
+"press" runs the same handler a click does. `Focus` moves focus the way
+Tab does. It goes through the one queue, so a session a screen reader
+drove replays as a test; `Host::action` queues one, and the agent's
+`input.invokeAction` sends the same.
 
 `Event` is 16 bytes and that is asserted. It is worth knowing why:
 `Touch::id` is a `u32` rather than a `u64` because the wider id makes the

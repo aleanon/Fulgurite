@@ -864,6 +864,17 @@ impl<const KIND: u8> Node for Picker<KIND> {
 
     fn on_event(&mut self, ev: &Event, _cx: &EventCtx) -> bool {
         match ev {
+            // A screen reader's open and close (M54/T54.4).
+            Event::Action { action: lumen_static::Action::Expand, .. } => {
+                let was = self.pad.open;
+                self.pad.open = true;
+                !was
+            }
+            Event::Action { action: lumen_static::Action::Collapse, .. } => {
+                let was = self.pad.open;
+                self.pad.open = false;
+                was
+            }
             Event::Key { key: Key::Escape, down: true } if self.pad.open => {
                 self.pad.open = false;
                 true
@@ -930,10 +941,21 @@ impl<const KIND: u8> Node for Picker<KIND> {
         }
         node.set_value(self.text());
         node.set_expanded(self.pad.open);
+        node.add_action(if self.pad.open { accesskit::Action::Collapse } else { accesskit::Action::Expand });
     }
 }
 
 impl<const KIND: u8, A> lumen_static::event::Handlers<A> for Picker<KIND> {
+    fn handler(&self, _sel: lumen_static::event::NodeSel) -> Option<fn(&mut A, &EventCtx)> {
+        None
+    }
+}
+
+/// A pad carries no handler of its own, like the picker around it. It had
+/// no `Handlers` impl at all, so a `Pad` — which this crate exports —
+/// could not be placed in an application's tree: found when the role
+/// table's catalogue became one (M54/T54.4).
+impl<const KIND: u8, A> lumen_static::event::Handlers<A> for Pad<KIND> {
     fn handler(&self, _sel: lumen_static::event::NodeSel) -> Option<fn(&mut A, &EventCtx)> {
         None
     }

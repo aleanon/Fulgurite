@@ -144,21 +144,21 @@ impl WinApp {
     }
 
     /// A callback from the platform accessibility adapter. The first tree
-    /// is sent inside the shared adapter; an activation becomes a click
-    /// at the node's centre — the same two queued events a mouse
-    /// produces, so it routes, dispatches and shows up in the agent's
-    /// journal identically.
+    /// is sent inside the shared adapter; an action is the framework's
+    /// own event (`Host::action`, M54/T54.4), dispatched from its target
+    /// through the one input queue like a key, so it shows up in the
+    /// agent's journal as any input does.
     #[cfg(feature = "a11y")]
     fn a11y_event(&mut self, e: lumen_static_winit::a11y::Event) {
         let update = self.a11y_tree();
         let Some(req) = self.a11y.as_mut().and_then(|a| a.event(e, || update)) else { return };
+        let Some((target, action)) = lumen_static_winit::a11y::action_of(&req) else { return };
         let Some(i) = lumen_static::observe::index_of_node::<crate::app::Page>(req.target_node) else {
             return;
         };
-        let st = &self.host.states[i];
-        let (x, y) = (st.pos.x + st.size.w / 2.0, st.pos.y + st.size.h / 2.0);
+        let _ = target;
         self.input_arrived();
-        self.host.click(x, y);
+        self.host.action(i as u32, action);
         if let Some(w) = &self.window {
             w.request_redraw();
         }

@@ -142,12 +142,22 @@ fn click_by_coordinates_also_works() {
     assert_eq!(h.app.clicks, 1);
 }
 
+/// `invokeAction`'s default is the activation a click is — M54/T54.4:
+/// the handler runs once, through `Event::Action`, not a synthesised
+/// pointer (it was literally `input.click` until then, R15-F2).
 #[test]
-fn invoke_action_is_a_click_at_the_node_centre() {
+fn invoke_action_default_runs_the_handler_once_as_a_click_does() {
     let mut h = Host::new();
     let agent = Agent::new();
-    call(&mut h, &agent, "input.invokeAction", json!({ "selector": "#save" }));
-    assert_eq!(h.app.clicks, 1);
+    let r = call(&mut h, &agent, "input.invokeAction", json!({ "selector": "#save" }));
+    println!("default on #save: handler ran {} time(s), trace {:?}, reply {r}", h.app.clicks, h.trace);
+    assert_eq!(h.app.clicks, 1, "the handler ran {} times", h.app.clicks);
+    assert_eq!(r["result"]["handled"], true);
+    assert!(
+        matches!(h.trace.as_slice(), [Event::Action { action: lumen_static::Action::Default, .. }]),
+        "the agent queued {:?}, not one action",
+        h.trace
+    );
 }
 
 #[test]

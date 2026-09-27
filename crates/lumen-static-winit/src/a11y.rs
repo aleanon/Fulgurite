@@ -39,6 +39,29 @@ pub fn tree_of(session: &dyn lumen_static_shell::session::Session) -> TreeUpdate
     })
 }
 
+/// The framework's action for a platform's request — M54/T54.4. `Click`
+/// is `Default`; a `SetValue` carries a number, narrowed to `f32`
+/// (`Event` is 16 B and the firmware links no soft-`f64`); anything the
+/// framework has no word for is `None` and is not routed.
+pub fn action_of(req: &ActionRequest) -> Option<(u64, lumen_static::Action)> {
+    use lumen_static::observe::accesskit::{Action as Ak, ActionData};
+    use lumen_static::Action;
+    let a = match req.action {
+        Ak::Click => Action::Default,
+        Ak::Increment => Action::Increment,
+        Ak::Decrement => Action::Decrement,
+        Ak::Expand => Action::Expand,
+        Ak::Collapse => Action::Collapse,
+        Ak::Focus => Action::Focus,
+        Ak::SetValue => match req.data {
+            Some(ActionData::NumericValue(v)) => Action::SetValue(v as f32),
+            _ => return None,
+        },
+        _ => return None,
+    };
+    Some((req.target_node.0, a))
+}
+
 /// The window's attributes, invisible when an adapter will be attached —
 /// `accesskit_winit` panics if the window has been shown before it.
 pub fn attributes(attrs: WindowAttributes, accessible: bool) -> WindowAttributes {

@@ -253,6 +253,17 @@ impl Node for Slider {
             }
             Event::Key { key: Key::Home, down: true } => self.set_value(0.0),
             Event::Key { key: Key::End, down: true } => self.set_value(1.0),
+            // What a screen reader asks (M54/T54.4), one step as an arrow
+            // key takes, and published in `observe` — each one here.
+            Event::Action { action: lumen_static::Action::Increment, .. } => {
+                let v = self.value + self.step;
+                self.set_value(v)
+            }
+            Event::Action { action: lumen_static::Action::Decrement, .. } => {
+                let v = self.value - self.step;
+                self.set_value(v)
+            }
+            Event::Action { action: lumen_static::Action::SetValue(v), .. } => self.set_value(*v),
             _ => false,
         }
     }
@@ -276,6 +287,11 @@ impl Node for Slider {
     ) {
         use lumen_static::observe::accesskit::Role;
         node.set_role(Role::Slider);
+        // The actions `on_event` handles, and no others (M54/T54.4).
+        use lumen_static::observe::accesskit::Action as Ak;
+        node.add_action(Ak::Increment);
+        node.add_action(Ak::Decrement);
+        node.add_action(Ak::SetValue);
         if !self.label.is_empty() {
             node.set_label(self.label);
         }

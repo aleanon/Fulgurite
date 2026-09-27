@@ -105,7 +105,9 @@ synthetic ids.
 1. ~~**Action synthesis**~~ — **done 2026-08-31**: the event system
    landed (`docs/plan-events.md`), `Button` advertises
    `accesskit::Action::Click`, and `input.invokeAction` synthesizes it
-   through the one input queue.
+   through the one input queue. *It was a click at the centre whatever
+   the action; since M54/T54.4 it is `Event::Action`, and `Increment`,
+   `SetValue`, `Expand` and `Focus` do what they name.*
 2. **Live TreeUpdate diffing**: `snapshot` rebuilds the full tree; real
    adapters want incremental updates driven by the same dirty tracking
    that invalidation needs. Same future work item as §11's invalidation

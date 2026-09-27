@@ -240,6 +240,48 @@ pub enum Event {
     /// the current value and puts it in every [`EventCtx`], so a
     /// handler reads `ctx.mods` and never sees this event.
     Modifiers(Mods),
+    /// **An assistive technology acted on a node** — M54/T54.4
+    /// (`docs/plan-a11y-platform.md` §2.4, R15-F2).
+    ///
+    /// Delivered like a key, but to `node` rather than to the focused
+    /// node: offered to `node` and then to each ancestor through
+    /// `on_event` until one consumes it, and — for
+    /// [`Action::Default`] — then to the application's activation
+    /// handler, exactly as Enter would be. So a screen reader's "press"
+    /// on a label inside a button reaches the button, and runs the same
+    /// handler a click does, without synthesising pointer coordinates.
+    /// [`Action::Focus`] is dispatch's own: it moves focus to a focusable
+    /// node, as Tab does.
+    ///
+    /// In the queue, so a session an assistive technology drove replays
+    /// as a test (E0). `node` is a main-table index; `Event` stays 16 B
+    /// (`tests/modifiers.rs`).
+    Action { node: u32, action: Action },
+}
+
+/// What an assistive technology asked a node to do — M54/T54.4.
+///
+/// The framework's own vocabulary, `no_std` and free of `accesskit`: the
+/// window crate maps the platform's actions onto it. **`f32`, not
+/// accesskit's `f64`**: `Event` is 16 B and asserted, and the
+/// interactive firmware links no soft-`f64` code (M52/T52.2).
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "observe", derive(serde::Serialize, serde::Deserialize))]
+pub enum Action {
+    /// Activate: what a click or Enter does.
+    Default,
+    /// One step up, as an arrow key would.
+    Increment,
+    /// One step down.
+    Decrement,
+    /// Set the value outright, in the widget's own units.
+    SetValue(f32),
+    /// Open a disclosure, a list, a popup.
+    Expand,
+    /// Close it.
+    Collapse,
+    /// Take keyboard focus.
+    Focus,
 }
 
 impl Event {
@@ -286,7 +328,7 @@ impl Event {
             | Event::Hover { x, y }
             | Event::Touch { x, y, .. }
             | Event::Scroll { x, y, .. } => Some(Point { x, y }),
-            Event::Key { .. } | Event::Text { .. } | Event::Modifiers(_) => None,
+            Event::Key { .. } | Event::Text { .. } | Event::Modifiers(_) | Event::Action { .. } => None,
         }
     }
 }

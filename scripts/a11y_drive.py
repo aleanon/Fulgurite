@@ -96,6 +96,8 @@ def main() -> int:
     ap.add_argument("--expect", choices=("present", "absent"), required=True)
     ap.add_argument("--button")
     ap.add_argument("--timeout", type=float, default=10.0)
+    ap.add_argument("--act", help="perform the named push button's AT-SPI action, and require the "
+                                   "application's tree to change (M54/T54.4)")
     a = ap.parse_args()
     pid = int(os.environ.get("LUMEN_LIVE_PID", "0"))
     if pid == 0:
@@ -152,7 +154,47 @@ def main() -> int:
         if a.button not in buttons:
             fail(f"no push button named {a.button!r} among {buttons}")
         print(f"a11y-drive: push button {a.button!r} found")
+    if a.act:
+        act(found[2], a.act, a.port)
     return 0
+
+
+def values(port: int) -> list[str]:
+    return sorted(n.get("value") or "" for n in rpc(port, "ui.getTree")["nodes"])
+
+
+def act(app, name: str, port: int) -> None:
+    """A screen reader's press, through the bus: the push button's own
+    action, which the adapter hands the window as `ActionRequested` and
+    the window dispatches as `Event::Action`. The press must land: some
+    value in the application's tree changes (printed)."""
+    stack, target = [app], None
+    while stack and target is None:
+        o = stack.pop()
+        try:
+            if o.get_role_name() == "push button" and o.get_name() == name:
+                target = o
+                break
+            stack.extend(o.get_child_at_index(i) for i in range(o.get_child_count()))
+        except Exception:
+            continue
+    if target is None:
+        fail(f"--act: no push button named {name!r}")
+    iface = target.get_action_iface()
+    n = iface.get_n_actions() if iface else 0
+    if n == 0:
+        fail(f"--act: {name!r} offers no action on the bus")
+    before = values(port)
+    ok = iface.do_action(0)
+    deadline = time.monotonic() + 3.0
+    after = before
+    while after == before and time.monotonic() < deadline:
+        time.sleep(0.1)
+        after = values(port)
+    changed = sorted(set(after) - set(before))
+    print(f"a11y-drive: AT-SPI action on {name!r} (do_action: {ok}): values changed: {changed}")
+    if not changed:
+        fail(f"--act: the press on {name!r} changed nothing the agent can see")
 
 
 if __name__ == "__main__":

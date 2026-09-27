@@ -259,3 +259,68 @@ fn a_control_built_without_a_name_is_reported_unnamed() {
     assert_eq!(n.role(), Role::Slider, "setup: the slider is still a slider");
     assert!(n.label().is_none_or(str::is_empty), "an empty label was published as a name");
 }
+
+/// The framework's action for each one a node publishes.
+fn core_action(a: lumen_static::observe::accesskit::Action) -> Option<lumen_static::Action> {
+    use lumen_static::observe::accesskit::Action as Ak;
+    use lumen_static::Action;
+    Some(match a {
+        Ak::Click => Action::Default,
+        Ak::Increment => Action::Increment,
+        Ak::Decrement => Action::Decrement,
+        // A value no row starts at, inside every row's range.
+        Ak::SetValue => Action::SetValue(0.5),
+        Ak::Expand => Action::Expand,
+        Ak::Collapse => Action::Collapse,
+        Ak::Focus => Action::Focus,
+        _ => return None,
+    })
+}
+
+/// **Every action a node publishes is handled** — M54/T54.4 (§0 rule 3).
+///
+/// A node that announces `Increment` and ignores it is worse than one that
+/// announces nothing: the screen reader says the control can be adjusted,
+/// and it cannot. Each published action is dispatched as
+/// `Event::Action` on a fresh catalogue, from the row's own node, and must
+/// come back handled. Prints `published: p, handled: h` per row that
+/// publishes any, against the bound `h == p`.
+#[test]
+fn every_published_action_is_handled() {
+    use lumen_static::observe::accesskit::Action as Ak;
+    const ALL: [Ak; 7] = [Ak::Click, Ak::Increment, Ak::Decrement, Ak::SetValue, Ak::Expand, Ak::Collapse, Ak::Focus];
+    let table = <Ui as Widget>::SUB_TABLE;
+    let (mut total_p, mut total_h) = (0, 0);
+    let mut bad = Vec::new();
+    for r in ROWS {
+        let nodes = snapshot(&mut build());
+        let published: Vec<Ak> = ALL.iter().copied().filter(|a| nodes[r.wid].supports_action(*a)).collect();
+        if published.is_empty() {
+            continue;
+        }
+        let i = lumen_static::style::index_of_wid(table, r.wid).unwrap();
+        let mut handled = Vec::new();
+        for a in &published {
+            let Some(action) = core_action(*a) else { continue };
+            let mut app = catalogue::CatApp { ui: build() };
+            let styles = pass::default_styles(&app.ui);
+            let mut st = vec![lumen_static::NodeState::default(); <Ui as Widget>::NODE_COUNT];
+            pass::layout(&mut app.ui, &styles, &mut st, Constraints { min_w: 0.0, max_w: 800.0, min_h: 0.0, max_h: 20000.0 });
+            let mut input = lumen_static::event::InputState::default();
+            let ev = lumen_static::Event::Action { node: i as u32, action };
+            if pass::dispatch(&mut app, &styles, &mut st, &mut input, &ev) {
+                handled.push(*a);
+            }
+        }
+        println!("{:<15} published: {} {:?}, handled: {}", r.wid, published.len(), published, handled.len());
+        total_p += published.len();
+        total_h += handled.len();
+        if handled.len() != published.len() {
+            let missed: Vec<_> = published.iter().filter(|a| !handled.contains(a)).collect();
+            bad.push(format!("{}: handled {} / published {} -- not handled: {missed:?}", r.wid, handled.len(), published.len()));
+        }
+    }
+    println!("all rows: published: {total_p}, handled: {total_h} (bound: equal)");
+    assert!(total_p >= 20, "setup: only {total_p} actions published across the catalogue");
+    assert!(bad.is_empty(), "{} row(s) publish what they do not handle:\n  {}", bad.len(), bad.join("\n  "));
+}

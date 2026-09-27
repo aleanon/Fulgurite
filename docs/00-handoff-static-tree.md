@@ -891,7 +891,12 @@ instances. Gated behind additive `observe`/`reload` features (Step 4's
 gating debt paid); zero release cost verified by re-running the Step 2
 benchmark unchanged. Deferred: action synthesis (needs events),
 incremental TreeUpdates. See `docs/step5-observability.md`.
-*Amended 2026-09-27 (M54/T54.1–T54.2):* the tree is its own feature,
+*Amended 2026-09-27 (M54/T54.4):* action synthesis is **DONE** — an
+assistive technology's request is `Event::Action { node, action }`,
+delivered through `on_event` from its target like a key, and a node
+publishes exactly the actions it handles (`docs/plan-a11y-platform.md`
+§2.4; `crates/lumen-static-widgets/tests/a11y_roles.rs` invokes every
+one). *Amended 2026-09-27 (M54/T54.1–T54.2):* the tree is its own feature,
 `a11y`, which `observe` implies, and the window crate hands it to the
 platform (behind that crate's default-off `a11y`); until then no
 turnkey application reached a screen reader.

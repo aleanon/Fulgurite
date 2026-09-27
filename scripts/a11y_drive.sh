@@ -45,6 +45,6 @@ cargo build --release -q -p showcase --features agent
 entry=$(awk '/pub static CATALOG/ {on=1} on && /entry!\(/ {if ($0 ~ /"Button"/) {print n; exit} n++}' examples/showcase/src/catalog.rs)
 [ -n "$entry" ] || { echo "a11y-drive: FAIL -- no Button entry in the showcase catalogue" >&2; exit 1; }
 $LAUNCH --leg showcase --exe target/release/showcase --arg "$entry" \
-    -- python3 scripts/a11y_drive.py {port} --expect present --button Primary
+    -- python3 scripts/a11y_drive.py {port} --expect present --button Primary --act Primary
 
 echo "a11y-drive: counter-window and showcase (a Program) are on the bus, buttons matching the agent"

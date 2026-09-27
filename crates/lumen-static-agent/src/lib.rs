@@ -769,7 +769,43 @@ impl Agent {
             // n-th press carrying `clicks: n`, all in one pump — what the
             // window's click counter produces for presses in quick
             // succession.
-            "input.click" | "input.invokeAction" => {
+            // **An assistive technology's action** — M54/T54.4 (R15-F2).
+            // It was `input.click` under another name, so `increment` on
+            // a slider was a click at its centre. Now it queues the same
+            // `Event::Action` the window's platform adapter does
+            // (`Host::action`), dispatched from the node like a key.
+            // `action`: default (the default), increment, decrement,
+            // setValue (with `value`), expand, collapse, focus. A repeater
+            // row's node has no table index and takes only `default`, as
+            // a click at its centre (`docs/plan-a11y-platform.md` §2.4).
+            "input.invokeAction" => {
+                let action = action_param(params)?;
+                let idx = {
+                    let tree = host.tree();
+                    let ix = Index::build(&tree);
+                    resolve_one(&ix, selector_param(params)?)?.idx
+                };
+                match idx {
+                    Some(i) => {
+                        host.enqueue(Event::Action { node: i as u32, action });
+                        let (f, h) = host.pump();
+                        Ok(json!({ "frame": self.reply_frame(), "host_frame": f, "handled": h, "node": i }))
+                    }
+                    None if action == lumen_static::Action::Default => {
+                        let (x, y) = self.point_param(host, params)?;
+                        host.enqueue(Event::down(x, y));
+                        host.enqueue(Event::up(x, y));
+                        let (f, h) = host.pump();
+                        Ok(json!({ "frame": self.reply_frame(), "host_frame": f, "handled": h, "at": [x, y] }))
+                    }
+                    None => Err((
+                        INVALID_PARAMS,
+                        "a repeater row takes only the `default` action: it holds no state of its own".into(),
+                        Value::Null,
+                    )),
+                }
+            }
+            "input.click" => {
                 let (x, y) = self.point_param(host, params)?;
                 let n = match params.get("clicks") {
                     None => 1,
@@ -2476,6 +2512,29 @@ fn resolve_one<'e>(ix: &'e Index<'_>, selector: &str) -> Result<&'e Entry, (i64,
 }
 
 // ---- param helpers ----------------------------------------------------------
+
+/// `input.invokeAction`'s `action` (M54/T54.4): a name, and `value` for
+/// `setValue`. Absent is `default`.
+fn action_param(params: &Value) -> Result<lumen_static::Action, (i64, String, Value)> {
+    use lumen_static::Action;
+    let name = params.get("action").and_then(Value::as_str).unwrap_or("default");
+    Ok(match name {
+        "default" | "click" => Action::Default,
+        "increment" => Action::Increment,
+        "decrement" => Action::Decrement,
+        "expand" => Action::Expand,
+        "collapse" => Action::Collapse,
+        "focus" => Action::Focus,
+        "setValue" => Action::SetValue(coord(f64_param(params, "value")?, "value")?),
+        other => {
+            return Err((
+                INVALID_PARAMS,
+                format!("unknown action `{other}`: default, increment, decrement, setValue, expand, collapse, focus"),
+                Value::Null,
+            ))
+        }
+    })
+}
 
 fn selector_param(params: &Value) -> Result<&str, (i64, String, Value)> {
     params.get("selector").and_then(Value::as_str).ok_or((

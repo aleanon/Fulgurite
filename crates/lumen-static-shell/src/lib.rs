@@ -1040,6 +1040,16 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         self.queue.room()
     }
 
+    /// **An assistive technology's action on node `node`** — M54/T54.4
+    /// (`docs/plan-a11y-platform.md` §2.4). Queued as
+    /// [`Event::Action`], so the next pump
+    /// dispatches it from `node` the way a key goes from the focused node:
+    /// `on_event` up the chain, then — for `Action::Default` — the
+    /// application's activation handler, exactly as a click would.
+    pub fn action(&mut self, node: u32, action: lumen_static::Action) {
+        self.post(Event::Action { node, action });
+    }
+
     /// **The accessibility tree a platform adapter sends** — M54/T54.2:
     /// every widget's role, name and state, the focused node, and every
     /// bound in the surface's physical pixels

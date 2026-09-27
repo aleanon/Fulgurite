@@ -24,5 +24,5 @@ pub fn missing_selector() {
     }));
     assert!(r.get("error").is_none(), "step 3 (`input.click`) failed: {r}");
     let tree = agent.dispatch_input(&mut host, &serde_json::json!({"jsonrpc": "2.0", "id": 0, "method": "ui.getTree"}));
-    assert_eq!(lumen_static_agent::session::digest(&tree["result"]), 0xb174ac046e2fdc9f, "the final tree differs from the recorded one");
+    assert_eq!(lumen_static_agent::session::digest(&tree["result"]), 0x388ee7f1b7f8b05b, "the final tree differs from the recorded one");
 }

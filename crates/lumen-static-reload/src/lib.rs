@@ -909,8 +909,8 @@ pub mod hot {
         fn a11y_tree(&self) -> Option<lumen_static_shell::session::A11yTree> {
             self.s().a11y_tree()
         }
-        fn a11y_click(&mut self, target: u64) -> bool {
-            self.m().a11y_click(target)
+        fn a11y_action(&mut self, target: u64, action: lumen_static::Action) -> bool {
+            self.m().a11y_action(target, action)
         }
         fn shape(&self) -> u64 {
             self.s().shape()

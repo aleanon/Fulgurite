@@ -104,7 +104,11 @@ M53/T53.4; answered without drawing a frame). `input.compose` takes `{text, comm
 `{cancel: true}` and routes through the same `Host::compose` the window's
 IME path does.
 `input.key` takes `mods` (`["ctrl"]`, held for that key only) and
-`input.click` takes `clicks` (2 or 3) — M45/T45.6.
+`input.click` takes `clicks` (2 or 3) — M45/T45.6. `input.invokeAction`
+takes `action` (`default`, `increment`, `decrement`, `setValue` with
+`value`, `expand`, `collapse`, `focus`) and queues the `Event::Action` a
+screen reader's request becomes, answering `handled` — M54/T54.4; it is
+no longer a click at the centre.
 
 **A node says what a screen reader would announce** (M48/T48.5): beside
 `id`, `role`, `value`, `label`, `bounds`, `children`, `src` and `wid`,

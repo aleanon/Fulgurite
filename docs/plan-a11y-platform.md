@@ -892,6 +892,36 @@ feature (`dev-shape`); without that line it would never run.
   node is a named combo box; the `TextInput` inside it is a second,
   unnamed node. The table checks each widget's own node.
 
+**T54.4 (2026-09-27).**
+- **The table caught a published action nothing could handle**: a
+  `Menu`'s own node is laid out at zero size (its application opens
+  it), so `Expand` on it was refused by dispatch's on-screen rule —
+  "Menu: handled 0 / published 1". A chooser now publishes Expand or
+  Collapse only while its node has an area.
+- **`Focus` is published by the walk, not by each widget**: dispatch
+  handles it for every focusable node on screen, so `emit_node` adds it
+  for exactly those.
+- **Only the one that changes something**: a chooser, picker or
+  `Collapsible` publishes `Expand` while closed and `Collapse` while
+  open.
+- **A slider cannot show the oracle a missing mark.** Its thumb moves
+  only in `paint`, which a bounded frame does not skip; with consumed
+  actions left unmarked the oracle stayed quiet on a slider. The oracle
+  frame drives `Expand` on a `Collapsible` instead, whose size changes,
+  in a split application (M29/T29.6), where a handled frame marks only
+  what consumed it — and there the injection is named.
+- **No widget has a disabled state**, so `set_disabled` has no caller to
+  gain; the plan's line for it describes nothing that exists.
+- **There is no label inside a button** — `Button` draws its own — so
+  the good-input case is a `Default` on the button itself, which runs
+  its handler once (`lumen-static-agent/tests/input.rs`).
+- **A `Pad` could not be placed in an application's tree**: exported,
+  with no `Handlers` impl. Found when the catalogue became an
+  application to dispatch into; fixed.
+- **M52/T52.2's soft-`f64` count is not in this branch** (M52 is being
+  built beside it); `Action::SetValue` is `f32` so it cannot add one,
+  and the firmware's `.text` is unchanged.
+
 ## Appendix: finding → task
 
 | ID | sev now | status | task |

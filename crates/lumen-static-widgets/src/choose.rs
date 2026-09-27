@@ -716,6 +716,9 @@ impl<const KIND: u8> Node for Chooser<KIND> {
             }
             // Down on a closed list opens it, as every dropdown does.
             Event::Key { key: Key::Down, down: true } if KIND != MENU => self.open(),
+            // A screen reader's open and close (M54/T54.4).
+            Event::Action { action: lumen_static::Action::Expand, .. } => self.open(),
+            Event::Action { action: lumen_static::Action::Collapse, .. } => self.close(),
             // Anything else reaching a combobox is the field's. It
             // normally will not: the field is the focused node and gets
             // its own events first. This is the path for an event that
@@ -744,8 +747,8 @@ impl<const KIND: u8> Node for Chooser<KIND> {
     #[cfg(feature = "a11y")]
     fn observe(
         &self,
-        _st: &[NodeState],
-        _i: usize,
+        st: &[NodeState],
+        i: usize,
         _id: u64,
         node: &mut accesskit::Node,
         _extra: &mut alloc::vec::Vec<(accesskit::NodeId, accesskit::Node)>,
@@ -756,6 +759,14 @@ impl<const KIND: u8> Node for Chooser<KIND> {
         }
         node.set_value(self.trigger.as_str());
         node.set_expanded(self.list.open);
+        // Exactly the one that would change something (M54/T54.4) — and
+        // none on a node with no area: dispatch refuses an action on a node
+        // that is not on screen, and a `Menu`'s own node is laid out at
+        // zero size (the application opens it). The role table found
+        // that: "Menu: handled 0 / published 1".
+        if st[i].size.w > 0.0 && st[i].size.h > 0.0 {
+            node.add_action(if self.list.open { accesskit::Action::Collapse } else { accesskit::Action::Expand });
+        }
     }
 }
 

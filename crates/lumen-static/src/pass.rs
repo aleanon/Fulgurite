@@ -588,6 +588,25 @@ fn dispatch_at<S: crate::event::App>(
         }
         return taken;
     }
+    // **An assistive technology's action** — M54/T54.4. Its target must
+    // be on screen, as focus must (C5): a node in a hidden branch is not
+    // there to act on. `Focus` is dispatch's own and moves focus to a
+    // focusable node as Tab would; every other action is delivered below,
+    // from its target, the way a key is from the focused node.
+    if let Event::Action { node, action } = *ev {
+        let n = node as usize;
+        if n >= table.len() || gone(table.len(), style, st, n) {
+            return false;
+        }
+        if action == crate::event::Action::Focus {
+            if !table[n].is_focusable() {
+                return false;
+            }
+            input.focus = Some(node);
+            input.focus_visible = true;
+            return true;
+        }
+    }
     // The press's click count survives to its release, where activation
     // happens (T14.3).
     if let Event::PointerDown { clicks, .. } = ev {
@@ -764,6 +783,12 @@ fn dispatch_at<S: crate::event::App>(
         }
     }
 
+    // What a positionless event is addressed to: an action's own node,
+    // a key's focused one (M54/T54.4).
+    let key_target = match *ev {
+        Event::Action { node, .. } => Some(node),
+        _ => *focus,
+    };
     // The press a release completes, taken from `input` as the release
     // arrives (T44.2): `Some(None)` is a release with no press latched.
     let mut released: Option<Option<crate::event::PressLatch>> = None;
@@ -850,7 +875,9 @@ fn dispatch_at<S: crate::event::App>(
             };
             (h.node as usize, ctx, h.inner.map(|x| (x.row, x.node)))
         }
-        None => match *focus {
+        // A key goes to the focused node; an action to its own target,
+        // checked on screen above (M54/T54.4).
+        None => match key_target {
             // Bounds-checked where the index *enters*, not where it is
             // used: `Host.focus` is public, and a hot reload can shrink
             // the tree under a focus set against the old one. `table[i]`
@@ -861,7 +888,11 @@ fn dispatch_at<S: crate::event::App>(
                 // **Enter or Space on a list activates its active row**
                 // (M44/T44.10): the selection and `ctx.row` a click on
                 // that row would have produced.
-                let act = if matches!(ev, Event::Key { key: Key::Enter | Key::Space, down: true }) {
+                let act = if matches!(
+                    ev,
+                    Event::Key { key: Key::Enter | Key::Space, down: true }
+                        | Event::Action { action: crate::event::Action::Default, .. }
+                ) {
                     state.tree().node(f as usize).active_row()
                 } else {
                     None
@@ -966,6 +997,7 @@ fn dispatch_at<S: crate::event::App>(
         Event::PointerUp { .. }
             | Event::Key { key: Key::Enter, down: true }
             | Event::Key { key: Key::Space, down: true }
+            | Event::Action { action: crate::event::Action::Default, .. }
     );
     if !activates {
         return false;

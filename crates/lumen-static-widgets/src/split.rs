@@ -558,6 +558,10 @@ impl<W: Widget, S: TextStorage> Node for Collapsible<W, S> {
             // header is on the section's own padding, not on a control.
             Event::PointerDown { .. } if cx.local.y <= self.header_h => self.toggle(),
             Event::Key { key: Key::Enter, down: true } => self.toggle(),
+            // A screen reader's open and close (M54/T54.4): each only
+            // when it changes something.
+            Event::Action { action: lumen_static::Action::Expand, .. } if !self.open => self.toggle(),
+            Event::Action { action: lumen_static::Action::Collapse, .. } if self.open => self.toggle(),
             _ => false,
         }
     }
@@ -589,6 +593,8 @@ impl<W: Widget, S: TextStorage> Node for Collapsible<W, S> {
     ) {
         node.set_role(accesskit::Role::DisclosureTriangle);
         node.set_label(self.title.as_ref());
+        node.set_expanded(self.open);
+        node.add_action(if self.open { accesskit::Action::Collapse } else { accesskit::Action::Expand });
         node.set_value(if self.open { "expanded" } else { "collapsed" });
     }
 }

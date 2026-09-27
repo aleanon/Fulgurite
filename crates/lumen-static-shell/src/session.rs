@@ -166,11 +166,13 @@ pub trait Session: FrameSource {
     /// without a `cfg` of its own; the stamp's feature list tells two
     /// builds apart ([`abi_fields`]).
     fn a11y_tree(&self) -> Option<A11yTree>;
-    /// A screen reader's activation of node `target` (an accesskit node
-    /// id): a click at the node's centre, queued as a mouse's would be —
-    /// T54.2's routing until T54.4 gives actions their own event. Whether
-    /// the id named a node with an area.
-    fn a11y_click(&mut self, target: u64) -> bool;
+    /// **An assistive technology's action on node `target`** (an accesskit
+    /// node id) — M54/T54.4. A main-table node takes it as
+    /// `Host::action`; a repeater row's synthesised node understands only
+    /// `Default`, as a click at its centre, because a row holds no state
+    /// of its own to step (`docs/plan-a11y-platform.md` §2.4). Whether
+    /// anything was queued.
+    fn a11y_action(&mut self, target: u64, action: lumen_static::Action) -> bool;
     /// **The tree's shape**, hashed — M49/T49.11 (R4-F7): the node count
     /// and every table entry's links, flags and author id. A node's
     /// identity is its offset in the table, so an agent holding node
@@ -692,8 +694,13 @@ impl<A: App + 'static, P: RecoverPolicy, I: Invalidation> Session for Local<A, P
         self.tree_for_platform()
     }
 
-    fn a11y_click(&mut self, target: u64) -> bool {
-        self.click_for_platform(target)
+    fn a11y_action(&mut self, target: u64, action: lumen_static::Action) -> bool {
+        let table = <A::Tree as lumen_static::widget::Widget>::SUB_TABLE.len();
+        if target >= 1 && (target as usize) <= table {
+            self.host.action((target - 1) as u32, action);
+            return true;
+        }
+        action == lumen_static::Action::Default && self.click_for_platform(target)
     }
 
     fn shape(&self) -> u64 {

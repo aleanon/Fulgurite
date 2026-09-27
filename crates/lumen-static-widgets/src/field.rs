@@ -316,6 +316,11 @@ impl Node for NumberInput {
             Event::Key { key: Key::PageUp, down: true } => self.nudge(self.step * 10.0),
             Event::Key { key: Key::PageDown, down: true } => self.nudge(self.step * -10.0),
             Event::Key { key: Key::Enter, down: true } => self.commit(),
+            // A screen reader's step and set (M54/T54.4), as the arrow
+            // keys and a typed number do.
+            Event::Action { action: lumen_static::Action::Increment, .. } => self.nudge(self.step),
+            Event::Action { action: lumen_static::Action::Decrement, .. } => self.nudge(-self.step),
+            Event::Action { action: lumen_static::Action::SetValue(v), .. } => self.set_value(*v),
             _ => self.field.on_event(ev, cx),
         }
     }
@@ -379,6 +384,9 @@ impl Node for NumberInput {
         _extra: &mut alloc::vec::Vec<(accesskit::NodeId, accesskit::Node)>,
     ) {
         node.set_role(accesskit::Role::SpinButton);
+        node.add_action(accesskit::Action::Increment);
+        node.add_action(accesskit::Action::Decrement);
+        node.add_action(accesskit::Action::SetValue);
         if !self.label.is_empty() {
             node.set_label(self.label);
         }
@@ -604,6 +612,11 @@ impl Node for RangeSlider {
             Event::PointerMove { .. } => self.drag_to(at(cx.local.x, self.track_w)),
             Event::Key { key: Key::Right, down: true } => self.nudge(self.step),
             Event::Key { key: Key::Left, down: true } => self.nudge(-self.step),
+            // A screen reader's step and set, on the active handle, as
+            // the arrow keys do (M54/T54.4).
+            Event::Action { action: lumen_static::Action::Increment, .. } => self.nudge(self.step),
+            Event::Action { action: lumen_static::Action::Decrement, .. } => self.nudge(-self.step),
+            Event::Action { action: lumen_static::Action::SetValue(v), .. } => self.drag_to(*v),
             Event::Key { key: Key::Home, down: true } => {
                 self.high_active = false;
                 self.set_low(0.0)
@@ -633,6 +646,9 @@ impl Node for RangeSlider {
         _extra: &mut alloc::vec::Vec<(accesskit::NodeId, accesskit::Node)>,
     ) {
         node.set_role(accesskit::Role::Slider);
+        node.add_action(accesskit::Action::Increment);
+        node.add_action(accesskit::Action::Decrement);
+        node.add_action(accesskit::Action::SetValue);
         if !self.label.is_empty() {
             node.set_label(self.label);
         }

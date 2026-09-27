@@ -281,3 +281,61 @@ fn the_oracle_fires_on_a_frame_the_fast_path_skipped() {
     assert_eq!(d.node, label as u32, "the oracle named the wrong node: {d:?}");
     assert_eq!(d.frame, frame, "named on a later frame than the write's: {d:?}");
 }
+
+// ---------------------------------------------------------------------
+// M54/T54.4 (`docs/plan-a11y-platform.md` §2.4): an assistive
+// technology's action is a new kind of event, so the oracle must see a
+// frame one drove. A consumed action marks the node that consumed it,
+// like a consumed key. A `Collapsible` is the widget to drive: `Expand`
+// changes its **size**, which a bounded layout skips if nothing marked it
+// (a slider's thumb moves only in `paint`, which is not bounded, so a
+// slider could not show a missing mark at all -- tried first).
+// ---------------------------------------------------------------------
+
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 4.0)]
+struct ActionUi {
+    #[widget_id("more")]
+    more: Collapsible<Label<String>, String>,
+    #[widget_id("after")]
+    after: Label<String>,
+}
+
+#[derive(Default)]
+struct ActionState;
+
+/// Split (`#[state]`), so a handled frame marks only the nodes that
+/// consumed it (M29/T29.6): with the whole tree marked, an action that
+/// forgot to report its node would be repaired before anyone could see.
+#[derive(DeriveApp, Default)]
+struct ActionApp {
+    #[tree]
+    ui: ActionUi,
+    #[state]
+    st: ActionState,
+}
+
+#[test]
+fn an_action_frame_is_compared_and_quiet() {
+    let mut a = ActionApp::default();
+    a.ui.more = Collapsible::new("More".into(), Label::new("hidden body".into()));
+    a.ui.after.set("below".into());
+    let mut h: Host<ActionApp, Incremental, Boundaries<16>> = Host::new(a, 300, 200);
+    h.pump();
+    h.pump();
+    let i = lumen_static::style::index_of_wid(<ActionUi as Widget>::SUB_TABLE, "more").unwrap();
+    let before = h.states[i].size.h;
+    h.action(i as u32, lumen_static::Action::Expand);
+    h.pump();
+    h.pump();
+    let r = h.shadow_report();
+    println!(
+        "action frame: section {before} -> {} px tall; compared {} frames, first divergence {:?}",
+        h.states[i].size.h,
+        r.compared,
+        r.first
+    );
+    assert!(r.compared > 0, "the shadow oracle never ran");
+    assert!(r.first.is_none(), "an action frame diverged: {:?}", r.first);
+    assert!(h.states[i].size.h > before, "setup: Expand did not open the section");
+}

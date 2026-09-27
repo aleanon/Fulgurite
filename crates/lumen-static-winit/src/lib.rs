@@ -1052,12 +1052,10 @@ impl ApplicationHandler<UserEvent> for Win {
                 let Some(a) = self.a11y.as_mut() else { return };
                 let session = &self.session;
                 let req = a.event(e, || a11y::tree_of(&**session));
-                // A screen reader's activation: a click at the node's
-                // centre until T54.4 gives actions their own event.
-                if let Some(req) = req {
-                    if req.action == lumen_static::observe::accesskit::Action::Click
-                        && self.session.a11y_click(req.target_node.0)
-                    {
+                // A screen reader's action, as the framework's own event
+                // (M54/T54.4): dispatched from its target like a key.
+                if let Some((target, action)) = req.as_ref().and_then(a11y::action_of) {
+                    if self.session.a11y_action(target, action) {
                         if let Some(w) = &self.window {
                             w.request_redraw();
                         }

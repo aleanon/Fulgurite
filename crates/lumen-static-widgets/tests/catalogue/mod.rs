@@ -14,7 +14,15 @@ use lumen_static_widgets::{
     BOTTOM, COLOR, DATE, FILE, RAIL, TABS, TIME,
 };
 
-pub type S = ();
+/// The application the catalogue's handlers run on — M54/T54.4: the
+/// role table dispatches actions, and a handler needs a state to run on.
+#[derive(lumen_static::App, Default)]
+pub struct CatApp {
+    #[tree]
+    pub ui: Ui,
+}
+
+pub type S = CatApp;
 
 #[derive(StaticTree, Default)]
 #[widget(column, spacing = 4.0)]
