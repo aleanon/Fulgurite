@@ -614,6 +614,14 @@ found" section rather than silently replacing itself.
       machine (python3, LLVM `opt`, rustc; `dmesg` shows ip 0), which
       look like hardware or system instability rather than any code.
 
+- **M60 — `docs/plan-tally-slim.md`** (T60.0–T60.5), branch
+  `tally-slim`: `examples/counter-window` onto `Program::run`. About 540
+  of its 1,383 lines re-implement the window crate's loop, and only two
+  things needed that loop — app-level keys and a sheet keyed on the
+  count's sign — so the milestone is two framework hooks
+  (`Program::on_key`, `Program::style_by`, both through
+  `Host::pump_with`) and then the migration. In progress.
+
 Unsequenced: ~~`docs/plan-harness.md`.~~ — **M12 DONE 2026-09-20.**
 T12.3 and T12.4 landed 2026-09-04; T12.1 (a locator and expectation API,
 `lumen_static_agent::harness::TestApp`) and T12.2 (golden images with a
