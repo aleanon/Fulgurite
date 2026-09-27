@@ -269,3 +269,25 @@ fn a_slow_second_click_is_a_new_single() {
     std::thread::sleep(lumen_static_winit::translate::MULTI_CLICK_TIME + std::time::Duration::from_millis(20));
     assert_eq!(n.press(0.0, 0.0, PointerButton::Left), 1);
 }
+
+/// **One dropped file is one `Dropped::File`** — M54/T54.7 (R15-F5).
+///
+/// winit emits one `DroppedFile` per file, so the translation carries one
+/// path, not a `Vec` that always held exactly one. A pointer move is not a
+/// drop. Needs `dnd`; `just test` runs it (`dev-shape`).
+#[cfg(feature = "dnd")]
+#[test]
+fn a_dropped_file_is_one_drop_carrying_its_path() {
+    use lumen_static_winit::translate::{dropped, Dropped};
+    let path = std::path::PathBuf::from("/tmp/lumen-static/dropped.txt");
+    let got = dropped(&WindowEvent::DroppedFile(path.clone()));
+    println!("DroppedFile({}) -> {got:?}", path.display());
+    assert_eq!(got, Some(Dropped::File(path)), "the drop did not carry its path");
+    let moved = WindowEvent::CursorMoved {
+        device_id: unsafe_device_id(),
+        position: winit::dpi::PhysicalPosition::new(3.0, 4.0),
+    };
+    let n = dropped(&moved).into_iter().count();
+    println!("CursorMoved -> {n} drops");
+    assert_eq!(n, 0, "a pointer move translated to a drop");
+}

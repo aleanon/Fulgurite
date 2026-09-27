@@ -13,6 +13,13 @@
 //! application that wants them to agree owns the shared part itself,
 //! which is the same answer the single-window case gives for state
 //! shared between widgets.
+//!
+//! **No application opens a second window** (M54/T54.7, R15-F5): these
+//! types are re-exported and nothing in any crate, example or fixture
+//! uses them, and [`run`](crate::run) and a `Program` open exactly one.
+//! `docs/plan-capabilities.md` T15.10 records them as shipped types,
+//! never assembled; `docs/plan-a11y-platform.md` §4 names the gate that
+//! would reopen it — a two-window example with one agent port per window.
 
 use std::sync::Arc;
 

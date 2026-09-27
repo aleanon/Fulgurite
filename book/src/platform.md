@@ -6,6 +6,12 @@ That is not modesty, it is what keeps the `no_std` profile honest.
 
 ## Multi-window
 
+**Not reachable from an application yet.** The types below exist and
+nothing opens a second window: `run` and a `Program` open one, and no
+example uses `Panes` (`docs/plan-capabilities.md` T15.10 records it as
+shipped types, never assembled). What follows is the design they
+implement.
+
 `Host` is already one tree and one surface, which turns out to be the
 right unit. A second window is a **second `Host`**, not a `Host` with two
 of anything.
@@ -33,6 +39,10 @@ enough for something this close to table stakes.
 
 ## Dialogs
 
+**Not reachable from an application yet**: `Dialogs` compiles and
+nothing calls it, and it has no test (`docs/plan-capabilities.md`
+T15.11). What follows is why it is gated the way it is.
+
 File, colour and font pickers, behind a **default-off** `dialogs`
 feature — and the measurement is the reason rather than a formality.
 `rfd` costs seventy-nine crates against clipboard's eleven and
@@ -59,12 +69,16 @@ times every node of every tree.
 
 Four capabilities, four different mechanisms, one rule:
 
-| capability | mechanism | why |
-|---|---|---|
-| multi-window | none needed | a second `Host` was already the right shape |
-| clipboard | default-on feature | small, and close to table stakes |
-| dialogs | default-off feature | large dependency, measured |
-| cursors | a `Style` field | cascades, and fits in existing padding |
+| capability | mechanism | why | reachable |
+|---|---|---|---|
+| multi-window | none needed | a second `Host` was already the right shape | no: types only |
+| clipboard | default-on feature | small, and close to table stakes | yes |
+| dialogs | default-off feature | large dependency, measured | no: types only |
+| cursors | a `Style` field | cascades, and fits in existing padding | yes |
+
+Platform drag and drop is in the same state as multi-window and dialogs:
+`translate::dropped` exists behind `dnd`, and the turnkey window routes
+no drop (`docs/plan-a11y-platform.md` §2.5).
 
 The rule is that **none of it is paid for by an application that does not
 ask** — and which mechanism enforces that is chosen per capability, from

@@ -531,7 +531,11 @@ took `Style` from 72 to 76 bytes. A ring wider than 255 px is not a
 ring, so the byte costs nothing real — and the M15 policy's "fits or
 gets re-budgeted" is what forced the question.
 
-### T15.7 — drag and drop — **DONE 2026-09-07**
+### T15.7 — drag and drop — **within-application half DONE 2026-09-07; platform half: types shipped, never assembled (2026-09-27)**
+
+> **Types shipped, never assembled — 2026-09-27** (M54/T54.7, R15-F5).
+> The within-application half (`lumen_static::Drag`) stands. The platform half does not: `translate::dropped` has no caller, `run` and `Program` translate no file event, so a `dnd` build of either discards every drop. `Dropped::Files(Vec)` is now `Dropped::File(PathBuf)`, one per event, as winit delivers them. `docs/plan-a11y-platform.md` §2.5 has the reasoning and §4 names
+> what would reopen it. The rest of this entry is the record as written.
 
 Two halves that should not be conflated:
 
@@ -668,7 +672,11 @@ key" while its code returned `""`. Collapsed to a single method — that
 disagreement is exactly the drift the doc-currency rule exists to stop,
 and it was in a doc comment about the same function's own behaviour.
 
-### T15.10 — multi-window — **DONE 2026-09-07**
+### T15.10 — multi-window — **types shipped, never assembled (2026-09-27)**
+
+> **Types shipped, never assembled — 2026-09-27** (M54/T54.7, R15-F5).
+> `Pane` and `Panes` are re-exported and used by no crate, example or fixture; nothing has ever opened a second window, so the gate below was never run. `docs/plan-a11y-platform.md` §2.5 has the reasoning and §4 names
+> what would reopen it. The rest of this entry is the record as written.
 
 `Host` is already one tree and one surface, which is the right unit. The
 work is in `lumen-static-winit`: a window map, per-window `Surface` and
@@ -696,7 +704,11 @@ application's decision — a tray application or a daemon with a settings
 panel keeps running with no window — so `Panes::is_empty` reports and
 the caller decides.
 
-### T15.11 — platform dialogs — **DONE 2026-09-07**
+### T15.11 — platform dialogs — **types shipped, never assembled (2026-09-27)**
+
+> **Types shipped, never assembled — 2026-09-27** (M54/T54.7, R15-F5).
+> `Dialogs` is re-exported and called by nothing; `rfd` has no mock backend, so it has no test either. `docs/plan-a11y-platform.md` §2.5 has the reasoning and §4 names
+> what would reopen it. The rest of this entry is the record as written.
 
 File, colour and font pickers.
 

@@ -983,7 +983,11 @@ The years go to:
   Shaped paint **OPEN**: `lumen-static-text` shapes for measurement only,
   and the painter draws the unshaped string (§2.1 there; T45.4).
 - **Platform integration**: multi-window, HiDPI, per-monitor scaling, clipboard,
-  drag and drop
+  drag and drop. *Status (M54/T54.7):* multi-window, platform drag and
+  drop and platform dialogs are **types shipped, never assembled** — no
+  application reaches them and `run`/`Program` route none of them
+  (`docs/plan-capabilities.md` T15.7, T15.10, T15.11;
+  `docs/plan-a11y-platform.md` §2.5). HiDPI and clipboard are reached.
 
 None of these get easier because the tree is static. **Strong recommendation:**
 compose rather than build. Take an existing shaping and rasterization stack and

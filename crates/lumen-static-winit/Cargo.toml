@@ -67,6 +67,10 @@ clipboard = ["dep:arboard"]
 # events, so the feature costs no dependency — it gates the *surface*,
 # not a crate. The within-application half (`lumen_static::Drag`) needs
 # neither this nor a platform.
+#
+# **`run` and `Program` do not route drops** (M54/T54.7, R15-F5): the
+# turnkey window translates no file event, so this feature only compiles
+# `translate::dropped` for an application that owns its event loop.
 dnd = []
 # Platform file pickers (T15.11). Default-OFF, and the measurement is
 # why rather than a formality: rfd costs **79 crates** (218 -> 297,

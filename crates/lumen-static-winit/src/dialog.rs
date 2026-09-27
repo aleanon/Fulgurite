@@ -15,6 +15,11 @@
 //! Without the feature the type still exists and every call returns
 //! `None`, so a host needs no `cfg` around its "Open…" handler and an
 //! application built without dialogs still compiles and still runs.
+//!
+//! **No turnkey path opens one** (M54/T54.7, R15-F5): nothing in any
+//! crate, example or fixture calls [`Dialogs`], and there is no test —
+//! `rfd` has no mock backend. `docs/plan-capabilities.md` T15.11 records
+//! it as shipped types, never assembled.
 
 /// The platform's pickers.
 ///

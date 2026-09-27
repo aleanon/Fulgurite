@@ -248,29 +248,36 @@ pub fn key_text(text: Option<&str>, down: bool, held: Mods) -> KeyText<'_> {
 /// stack, and an application that does not accept drops should not link
 /// one. The *within-application* half is `lumen_static::Drag` and needs
 /// no feature and no platform at all.
+///
+/// **No turnkey path routes a drop** (M54/T54.7, R15-F5): [`run`](crate::run)
+/// and a `Program` send every window event through [`window_event`],
+/// which has no arm for a file, so a `dnd` build of either discards
+/// drops. An application with its own event loop calls [`dropped`]
+/// itself. `docs/plan-capabilities.md` T15.7 records the platform half as
+/// shipped types, never assembled; `docs/plan-a11y-platform.md` §4 names
+/// what would reopen it.
 #[cfg(feature = "dnd")]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Dropped {
-    /// The pointer is over the window carrying files.
+    /// The pointer is over the window carrying files — once per file.
     Hovering,
-    /// Files were released on it.
-    Files(alloc_vec::Vec<std::path::PathBuf>),
+    /// One file was released on it. **One per event**, as winit delivers
+    /// them: a drop of three files is three events (M54/T54.7). This was
+    /// `Files(Vec<PathBuf>)`, a `Vec` that always held exactly one path
+    /// and told a caller it might hold several.
+    File(std::path::PathBuf),
     /// The pointer left without dropping.
     Cancelled,
 }
 
-#[cfg(feature = "dnd")]
-mod alloc_vec {
-    pub use std::vec::Vec;
-}
-
-/// Translate a platform drag-and-drop event, if this is one.
+/// Translate a platform drag-and-drop event, if this is one. No turnkey
+/// path calls it (see [`Dropped`]).
 #[cfg(feature = "dnd")]
 pub fn dropped(event: &WindowEvent) -> Option<Dropped> {
     match event {
         WindowEvent::HoveredFile(_) => Some(Dropped::Hovering),
         WindowEvent::HoveredFileCancelled => Some(Dropped::Cancelled),
-        WindowEvent::DroppedFile(p) => Some(Dropped::Files(alloc_vec::Vec::from([p.clone()]))),
+        WindowEvent::DroppedFile(p) => Some(Dropped::File(p.clone())),
         _ => None,
     }
 }
