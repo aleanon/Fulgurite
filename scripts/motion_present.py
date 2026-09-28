@@ -126,15 +126,13 @@ def bounds(sel):
 
 
 # The Button demo, chosen through the agent before anything is counted,
-# as `scripts/agent_drive.sh` chooses it: the menu folds a group's name
-# into its first row, so the row is found by its label.
-TRIGGER = "#picker > #select-trigger"
-call("input.click", {"selector": TRIGGER})
-rows = [nd for nd in call("ui.getTree", {"depth": 64})["nodes"]
-        if (nd.get("label") or "").strip().split(" - ")[-1] == "Button" and nd.get("bounds")]
-assert len(rows) == 1, f"motion-present [{leg}]: setup: expected one Button row, got {rows!r}"
-rb = rows[0]["bounds"]
-call("input.click", {"x": (rb[0] + rb[2]) / 2, "y": (rb[1] + rb[3]) / 2})
+# as `scripts/agent_drive.sh` chooses it: since M56 by its sidebar row,
+# found by the exact text it shows (`~=`, so `Button` is not a prefix
+# match), and the page title says whether the pick landed.
+call("input.click", {"selector": "~=Button"})
+titles = [nd.get("value") or nd.get("label") for nd in call("ui.getTree", {"depth": 64})["nodes"]
+          if nd.get("wid") == "title"]
+assert titles == ["Button"], f"motion-present [{leg}]: setup: expected the Button page, got {titles!r}"
 time.sleep(0.5)
 
 # 1. Motion over nothing.

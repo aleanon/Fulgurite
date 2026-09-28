@@ -154,6 +154,12 @@ call("input.pointerDown", {"x": cx, "y": cy})
 held = shot()
 call("input.pointerUp", {"x": cx, "y": cy})
 assert held != rest, "agent-drive: a held press looks identical to the resting frame"
+# That press was a whole click on the trigger, so the menu is open again.
+# Close it with Escape: left open, the next click anywhere is the outside
+# press that dismisses it, and a sidebar pick lands on nothing.
+assert menu_box(), "agent-drive: the press and release on the trigger did not open its menu"
+call("input.key", {"key": "Escape"})
+assert menu_box() is None, "agent-drive: Escape left the Select menu open"
 
 # M25/T25.3 and T25.11: the running window takes a palette, and the
 # showcase's sheet names roles, so each swap re-resolves them. Asserted on

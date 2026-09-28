@@ -352,21 +352,33 @@ def check_press(c: AgentClient) -> list[str]:
     into one pump, so the frame it returns has already let go. The two
     halves go in separately and the screenshot is taken between them.
     """
+    def away():
+        c.rpc("input.hover", x=1.0, y=1.0)
+
     fails = []
     for n in nodes(c, "Button"):
         wid = n.get("wid", "?")
         box = ibox(n["bounds"], scale(c))
+        # **Read rest and after with the pointer off the control.** A
+        # release leaves the pointer over it, and its hover shade lies
+        # between rest and held -- within 8 of held on a dark button, so
+        # the M9 check (`after` near rest *or* far from held) read the
+        # hover shade as "stayed pressed" once a press started tracking
+        # the pointer (the M56 merge: #dec, #dec10, #reset). Off the
+        # control, after must simply be rest again.
+        away()
         rest = screenshot(c)
         c.press(f"#{wid}")
         held = screenshot(c)
         c.release(f"#{wid}")
+        away()
         back = screenshot(c)
 
         rest_bg = dominant(rest, box)
         held_bg = dominant(held, box)
         back_bg = dominant(back, box)
         changed = dist(rest_bg, held_bg) > 8
-        restored = dist(rest_bg, back_bg) <= 8 or dist(held_bg, back_bg) > 8
+        restored = dist(rest_bg, back_bg) <= 8
         tag = "ok " if changed and restored else "FAIL"
         print(f"  {tag} press    #{wid:8} rest={rest_bg} held={held_bg} after={back_bg}")
         if not changed:
