@@ -8,14 +8,19 @@
 //! apply (§2.1); Lumen's resolver and animation modules are not here.
 //!
 //! - [`parse`] — text to syntax, every error with its `line:col`.
+//! - [`compile`] — text to [`Sheet`]: the rules, lowered through the
+//!   property table ([`lower::PROPERTIES`]), with `@tokens` substituted
+//!   and palette roles resolved to their `*_role` setters.
 
 #![forbid(unsafe_code)]
 
 pub mod ast;
 pub mod lexer;
+pub mod lower;
 pub mod parser;
 
 pub use ast::Span;
+pub use lower::{compile, Sheet};
 pub use parser::{parse, Error};
 
 #[cfg(test)]

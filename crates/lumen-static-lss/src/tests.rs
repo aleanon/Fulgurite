@@ -148,3 +148,165 @@ fn a_refusal_drops_its_rule_and_keeps_parsing() {
         .collect();
     assert_eq!(kept, [("#ok".to_string(), 1), ("#t".to_string(), 0)]);
 }
+
+// ---- T61.2: lowering -------------------------------------------------
+
+use crate::compile;
+use crate::lower::{Align, Cursor, Edges, Length, Role, Rule as LRule, Setter, Val, PROPERTIES};
+
+fn lowered(src: &str) -> crate::Sheet {
+    compile(src).unwrap_or_else(|e| panic!("{:#?}", e.iter().map(|e| e.at("t.lss")).collect::<Vec<_>>()))
+}
+
+fn set(method: &'static str, value: Val) -> Setter {
+    Setter { method, value }
+}
+
+#[test]
+fn every_property_lowers_to_its_setter() {
+    let s = lowered(
+        "@tokens { ink: #f1f5fbff; gap: 6px; }
+         #a {
+            width: 12px; height: fixed(40px); padding: 4px 8px; spacing: $gap;
+            align: center; visible: false; cursor: not-allowed; focus-ring: 2px;
+            color: $ink; background: $surface; border-width: 1px; border-color: $focus;
+            border-radius: 8px; font-size: 15px; font-weight: 600; box-shadow: 12px;
+            pressed-dim: 0.15; hover-dim: 0.07;
+         }
+         #b { width: fill; height: shrink; padding: 1px 2px 3px; color: #10203040; }
+         #c { width: fill(3); padding: 1px 2px 3px 4px; }",
+    );
+    let want_a = vec![
+        set("width", Val::Length(Length::Fixed(12.0))),
+        set("height", Val::Length(Length::Fixed(40.0))),
+        set("padding", Val::Edges(Edges { left: 8.0, right: 8.0, top: 4.0, bottom: 4.0 })),
+        set("spacing", Val::F32(6.0)),
+        set("align", Val::Align(Align::Center)),
+        set("visible", Val::Bool(false)),
+        set("cursor", Val::Cursor(Cursor::NotAllowed)),
+        set("focus_ring", Val::U8(2)),
+        set("color", Val::Color([0xf1, 0xf5, 0xfb, 0xff])),
+        set("background_role", Val::Role(Role::Surface)),
+        set("border_width", Val::U8(1)),
+        set("border_color_role", Val::Role(Role::Focus)),
+        set("radius", Val::F32(8.0)),
+        set("font_size", Val::F32(15.0)),
+        set("font_weight", Val::F32(600.0)),
+        set("shadow", Val::F32(12.0)),
+        set("pressed_dim", Val::F32(0.15)),
+        set("hover_dim", Val::F32(0.07)),
+    ];
+    assert_eq!(s.base[0].setters, want_a);
+    assert_eq!(
+        s.base[1].setters,
+        vec![
+            set("width", Val::Length(Length::FillPortion(1))),
+            set("height", Val::Length(Length::Shrink)),
+            set("padding", Val::Edges(Edges { left: 2.0, right: 2.0, top: 1.0, bottom: 3.0 })),
+            set("color", Val::Color([0x10, 0x20, 0x30, 0x40])),
+        ]
+    );
+    assert_eq!(
+        s.base[2].setters,
+        vec![
+            set("width", Val::Length(Length::FillPortion(3))),
+            set("padding", Val::Edges(Edges { left: 4.0, right: 2.0, top: 1.0, bottom: 3.0 })),
+        ]
+    );
+    // Every property in the table was exercised above.
+    let used: Vec<&str> = s.base.iter().flat_map(|r| r.setters.iter().map(|x| x.method)).collect();
+    for p in PROPERTIES {
+        assert!(
+            used.contains(&p.setter) || p.role_setter.is_some_and(|r| used.contains(&r)),
+            "property `{}` is not exercised by this test",
+            p.name
+        );
+    }
+}
+
+#[test]
+fn a_decimal_is_the_f32_a_person_would_type() {
+    // Through f64 first, 0.07 and 0.15 could round twice; the text goes
+    // straight to f32, so each is the literal's value bit for bit.
+    let s = lowered("#a { hover-dim: 0.07; pressed-dim: 0.15; font-size: 13.3px; }");
+    let bits: Vec<u32> = s.base[0]
+        .setters
+        .iter()
+        .map(|x| match x.value {
+            Val::F32(v) => v.to_bits(),
+            other => panic!("{other:?}"),
+        })
+        .collect();
+    assert_eq!(bits, [0.07f32.to_bits(), 0.15f32.to_bits(), 13.3f32.to_bits()]);
+}
+
+#[test]
+fn comma_lists_and_sheets_lower_in_declaration_order() {
+    let s = lowered(
+        "* { spacing: 5px; }\n#a, .b, label { font-size: 12px; }\n@sheet big { #a { font-size: 24px; } }",
+    );
+    let sels: Vec<String> = s.base.iter().map(|r| r.selector.to_string()).collect();
+    assert_eq!(sels, ["*", "#a", ".b", "label"]);
+    let big: Vec<&LRule> = s.select(Some("big")).expect("big");
+    assert_eq!(big.len(), 5, "the four base rules, then the block's");
+    assert_eq!(big[4].setters, vec![set("font_size", Val::F32(24.0))]);
+    assert_eq!(s.select(None).expect("base").len(), 4);
+    let err = s.select(Some("small")).expect_err("no such block");
+    assert_eq!(err, "no `@sheet small`: the file has `big`");
+}
+
+/// `(what, source, the message must contain, line, col)`.
+const REFUSED_LOWERING: &[(&str, &str, &str, u32, u32)] = &[
+    ("unknown property", "#t {\n    colour: #ffffff;\n}", "unknown property `colour`; did you mean `color`?", 2, 5),
+    ("css alias", "#t { gap: 4px; }", "unknown property `gap`; did you mean `spacing`?", 1, 6),
+    ("colour given px", "#t { color: 12px; }", "`color` takes a colour", 1, 13),
+    ("length keyword", "#t { width: wide; }", "`width` takes a length", 1, 13),
+    ("px without unit", "#t { font-size: 12; }", "`font-size` takes a length in px", 1, 17),
+    ("number with unit", "#t { font-weight: 600px; }", "`font-weight` takes a bare number", 1, 19),
+    ("byte too big", "#t { border-width: 300px; }", "`border-width` takes a whole number of px", 1, 20),
+    ("byte fraction", "#t { focus-ring: 1.5px; }", "`focus-ring` takes a whole number of px", 1, 18),
+    ("five edges", "#t { padding: 1px 2px 3px 4px 5px; }", "`padding` takes one to four lengths", 1, 15),
+    ("align", "#t { align: middle; }", "`align` takes `start`, `center`, `end` or `fill`", 1, 13),
+    ("cursor", "#t { cursor: hand; }", "`cursor` takes `default`", 1, 14),
+    ("bool", "#t { visible: yes; }", "`visible` takes `true` or `false`", 1, 15),
+    ("fill zero", "#t { width: fill(0); }", "`width` takes a length", 1, 13),
+    ("string", "#t { color: \"red\"; }", "or a palette role like `$accent`, not `\"red\"`", 1, 13),
+    ("percent", "#t { width: 50%; }", "`shrink`, not `50%`", 1, 13),
+    ("unknown token", "@tokens { ink: #ffffff; }\n#t { color: $inkk; }", "unknown token `$inkk`; did you mean `$ink`?", 2, 13),
+    ("role shadowed", "@tokens {\n    accent: #4d7cfeff;\n}", "`@tokens` name `accent` shadows the palette role `$accent`", 2, 5),
+    ("role in a length", "#t { padding: $accent; }", "`$accent` is a palette role, which is a colour; `padding` takes", 1, 15),
+    ("role in a list", "#t { padding: 1px $text; }", "`$text` is a palette role", 1, 15),
+    ("token of the wrong type", "@tokens { gap: 6px; }\n#t { color: $gap; }", "not `$gap` (`$gap` is `6px`)", 2, 13),
+    ("token names a token", "@tokens { a: 1px; b: $a; }", "token `$b`: a token's value cannot name another token", 1, 19),
+    ("sheet name", "@sheet on-accent { }", "a sheet's name must be a Rust identifier", 1, 1),
+];
+
+#[test]
+fn every_value_refusal_is_an_error_naming_its_reason_at_the_value() {
+    let mut failures = Vec::new();
+    for &(what, src, want, line, col) in REFUSED_LOWERING {
+        let errs = match compile(src) {
+            Ok(s) => {
+                failures.push(format!("{what}: compiled, to {s:?}"));
+                continue;
+            }
+            Err(e) => e,
+        };
+        let shown: Vec<String> = errs.iter().map(|e| e.at("t.lss")).collect();
+        println!("{what:>24}: {shown:?}");
+        match errs.iter().find(|e| e.msg.contains(want)) {
+            None => failures.push(format!("{what}: no error contains {want:?}; got {shown:?}")),
+            Some(e) if (e.span.line, e.span.col) != (line, col) => {
+                failures.push(format!("{what}: at {}:{}, want {line}:{col}", e.span.line, e.span.col))
+            }
+            Some(_) => {}
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "{} of {} refusals wrong:\n{}",
+        failures.len(),
+        REFUSED_LOWERING.len(),
+        failures.join("\n")
+    );
+}

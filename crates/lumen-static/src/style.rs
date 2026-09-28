@@ -625,7 +625,12 @@ impl Selector {
 /// non-finite value becomes its field's type default, and a
 /// non-finite or negative padding edge becomes 0 ([`Patch::needs_repair`], M55/T55.5). The agent
 /// reports each such field as `W1012`.
-#[derive(Clone, Copy, Debug, Default)]
+///
+/// `PartialEq` since M61/T61.2: the `.lss` parity gates compare a sheet
+/// `include_lss!` emitted with one read at run time, and with one written
+/// by hand (`docs/plan-lss.md`). A derive, so it costs nothing a caller
+/// does not call.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Patch {
     pub width: Option<Length>,
     pub height: Option<Length>,
@@ -1039,7 +1044,9 @@ impl Patch {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+/// One selector and what it changes. `PartialEq` since M61/T61.2, as
+/// [`Patch`] is.
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Rule {
     pub selector: Selector,
     pub patch: Patch,
