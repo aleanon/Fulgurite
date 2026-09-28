@@ -2,6 +2,7 @@
 # Open the tally window, run every live check against it, close it.
 # Exit code is the verdict. Needs a display (or xvfb-run).
 set -euo pipefail
+. "$(dirname "$0")/drive_window.sh"  # live windows on the monitor the user is not reading
 cd "$(dirname "$0")/.."
 export LUMEN_AGENT_ADDR="${LUMEN_AGENT_ADDR:-127.0.0.1:9231}"   # not the dev window's port
 

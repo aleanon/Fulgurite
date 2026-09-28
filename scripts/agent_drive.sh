@@ -19,6 +19,7 @@
 # configuration CI runs in.
 set -euo pipefail
 cd "$(cd "$(dirname "$0")/.." && pwd)"
+. scripts/drive_window.sh  # live windows on the monitor the user is not reading
 
 if [ -z "${DISPLAY:-}" ]; then
     echo "agent-drive: no X display — skipped"
