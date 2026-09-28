@@ -223,10 +223,16 @@ fn measure_into(
         // hidden branch by its area: a hidden subtree is zeroed by
         // `layout`, and a part is laid out to be seen. Costs one paint of
         // such a container's subtree per frame, only where one exists.
+        //
+        // It paints if that paint drew anything — the M56 `paints` rule
+        // below, for a part. The M56 merge found the two rules crossing:
+        // this branch `continue`d past the line that sets `paints`, so a
+        // chosen date was a change with no damage anywhere.
         if live[i] && owns_a_visible_part(tree, live, i) {
             let from = list.len();
             tree.root.node(i).paint(tree.states, i, list);
             sums[i] = list.hash_from(from);
+            paints[i] = list.len() > from;
             continue;
         }
         let st = &tree.states[i];
