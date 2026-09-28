@@ -62,20 +62,14 @@ fn tick(a: &mut App, _: &EventCtx) {
 }
 
 fn radio(f: fn(&mut App, &EventCtx)) -> Labelled<Radio<App>> {
-    let mut r = Radio::<App>::default();
-    r.on_toggle = f;
-    Labelled::new(r, "option")
+    Labelled::new(Radio::<App> { on_toggle: f, ..Default::default() }, "option")
 }
 
 fn host() -> Host<App> {
     let mut app = App::default();
     app.ui.radios = Radios { a: radio(c0), b: radio(c1), c: radio(c2) };
-    let mut b = CheckBox::<App>::default();
-    b.on_toggle = tick;
-    app.ui.boxes.a = Labelled::new(b, "one");
-    let mut b = CheckBox::<App>::default();
-    b.on_toggle = tick;
-    app.ui.boxes.b = Labelled::new(b, "two");
+    app.ui.boxes.a = Labelled::new(CheckBox::<App> { on_toggle: tick, ..Default::default() }, "one");
+    app.ui.boxes.b = Labelled::new(CheckBox::<App> { on_toggle: tick, ..Default::default() }, "two");
     let mut h = Host::new(app, 600, 200);
     h.pump();
     h

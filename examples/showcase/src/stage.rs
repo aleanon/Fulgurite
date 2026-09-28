@@ -202,7 +202,7 @@ pub struct EndCell {
 
 impl Default for EndCell {
     fn default() -> Self {
-        EndCell { fill: Spacer::default(), l: Label::default(), trail: Fixed { w: DataGrid::<GridRow>::CELL_INSET, h: 0.0 } }
+        EndCell { fill: Spacer, l: Label::default(), trail: Fixed { w: DataGrid::<GridRow>::CELL_INSET, h: 0.0 } }
     }
 }
 

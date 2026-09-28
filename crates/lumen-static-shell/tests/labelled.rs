@@ -31,8 +31,7 @@ fn flip(a: &mut App, _: &EventCtx) {
 
 fn host() -> Host<App> {
     let mut app = App::default();
-    let mut t = CheckBox::<App>::default();
-    t.on_toggle = flip;
+    let t = CheckBox::<App> { on_toggle: flip, ..Default::default() };
     app.ui.agree = Labelled::new(t, "I agree to the terms");
     let mut h = Host::new(app, 500, 100);
     h.pump();

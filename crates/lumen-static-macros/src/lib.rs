@@ -499,9 +499,12 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
 
     // A grid's column count, and whether this flow is one (M57/A19): a
     // grid places every cell at its *column's* x, a wrap packs each line.
-    let (flow_cols, flow_grid) = match axis {
-        Axis::Flow(Some(c)) => (quote! { #c }, quote! { true }),
-        _ => (quote! { 1usize }, quote! { false }),
+    // `flow_col` is a cell's column: a wrap has one, and emitting it as
+    // `in_line % 1` put clippy's `modulo_one` on every crate that derives
+    // a `wrap` (the M56 merge's clippy gate, `tests/flow.rs`).
+    let (flow_cols, flow_grid, flow_col) = match axis {
+        Axis::Flow(Some(c)) => (quote! { #c }, quote! { true }, quote! { in_line % #c }),
+        _ => (quote! { 1usize }, quote! { false }, quote! { 0usize }),
     };
     // `None` wraps on the line's width; `Some(n)` breaks every `n`.
     let flow_break = match axis {
@@ -663,7 +666,7 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                     #opaque_stmt
                     let s = d.layout(cx, loose, style, st, at);
                     if #flow_grid {
-                        let c = in_line % #flow_cols;
+                        let c = #flow_col;
                         if s.w > col_w[c] { col_w[c] = s.w; }
                     }
                     if #flow_break {
@@ -823,7 +826,7 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                             in_line = 0;
                         }
                         if #flow_grid {
-                            let c = in_line % #flow_cols;
+                            let c = #flow_col;
                             if s.w > col_w[c] { col_w[c] = s.w; }
                         }
                         cur += s.w + me.spacing;
@@ -858,7 +861,7 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                     // A grid cell sits at its column's edge; a wrapped
                     // item after the one before it, its line aligned.
                     let x = if #flow_grid {
-                        let c = in_line % #flow_cols;
+                        let c = #flow_col;
                         line_off(grid_w) + col_w[..c].iter().map(|w| w + me.spacing).sum::<f32>()
                     } else {
                         line_off(line_w[line]) + cur

@@ -736,17 +736,20 @@ impl<S: lumen_static::text::TextStorage, L: Widget, A: Widget> AppBar<S, L, A> {
             return;
         }
         let e = w(ELLIPSIS);
-        let bounds: alloc::vec::Vec<usize> = t.char_indices().map(|(k, _)| k).chain(core::iter::once(t.len())).collect();
-        let (mut lo, mut hi) = (0usize, bounds.len() - 1);
+        // The byte offset of the `k`-th character boundary, found by
+        // walking rather than collected: this runs in layout, which
+        // allocates nothing in steady state, and in the no-allocator tier.
+        let at = |k: usize| t.char_indices().nth(k).map_or(t.len(), |(b, _)| b);
+        let (mut lo, mut hi) = (0usize, t.chars().count());
         while lo < hi {
-            let mid = (lo + hi + 1) / 2;
-            if w(&t[..bounds[mid]]) + e <= room {
+            let mid = (lo + hi).div_ceil(2);
+            if w(&t[..at(mid)]) + e <= room {
                 lo = mid;
             } else {
                 hi = mid - 1;
             }
         }
-        let cut = bounds[lo];
+        let cut = at(lo);
         // Drop a trailing space before the ellipsis: "Inbox …" is a gap.
         let cut = t[..cut].trim_end().len();
         self.fit = (cut, true, w(&t[..cut]));

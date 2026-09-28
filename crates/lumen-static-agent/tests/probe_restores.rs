@@ -71,13 +71,14 @@ struct F {
 }
 
 fn fixture() -> F {
-    let mut page = Page::default();
-    page.rich = RichText::new(
-        "A span here, a bold word there, and enough words after them that the paragraph \
-         has to wrap across three lines inside its box.",
-    );
-    page.field = TextInput::new("type here");
-    page.tabs = Tabs::new(&["Overview", "Activity", "Settings"]);
+    let mut page = Page {
+        rich: RichText::new(
+            "A span here, a bold word there, and enough words after them that the paragraph \
+             has to wrap across three lines inside its box.",
+        ),
+        field: TextInput::new("type here"),
+        tabs: Tabs::new(&["Overview", "Activity", "Settings"]),
+    };
     let mut styles = vec![lumen_static::Style::default(); Page::NODE_COUNT];
     let sheet = [
         Rule::new(Selector::Id("rich"), Patch::new().width(Length::Fixed(300.0))),

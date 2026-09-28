@@ -149,8 +149,7 @@ fn a_tooltip_by_the_right_edge_stays_inside() {
     let tip = (0..host.states.len())
         .filter(|&k| k > b)
         .map(|k| host.states[k])
-        .filter(|s| s.size.w > 40.0)
-        .last()
+        .rfind(|s| s.size.w > 40.0)
         .expect("setup: no tip opened on hover");
     println!("tip x {}..{} in a 300 px window", tip.pos.x, tip.pos.x + tip.size.w);
     assert!(tip.pos.x + tip.size.w <= 300.5, "the tip ran off the right edge");

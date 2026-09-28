@@ -1236,7 +1236,7 @@ impl Painter for Scaled<'_> {
     /// it sits at 1.5, which is what platform toolkits draw too.
     ///
     /// This is the plain-rect path. Rounded and stroked rects are snapped
-    /// too, through [`Scaled::snapped`] (M57/A15): a bordered button's
+    /// too, through `Scaled::snapped` (M57/A15): a bordered button's
     /// edge and a focus ring smeared across two rows at a fractional
     /// layout edge, and the SDF the backends share agrees on a snapped
     /// rect as well as on an exact one. A text run's origin goes to the

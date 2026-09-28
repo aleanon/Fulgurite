@@ -106,7 +106,7 @@ fn paging_moves_the_view_and_not_the_chosen_date() {
     assert_eq!(p.shown_month(), (2026, 12), "and January - 1 is last December");
     // A day picked in the shown month commits both.
     let k = (0..42).find(|&k| p.day_at(k) == Some(5)).unwrap();
-    assert!(p.is_selected(k) == false, "a day in another month is not shown as chosen");
+    assert!(!p.is_selected(k), "a day in another month is not shown as chosen");
 }
 
 // ---- the grid, which every kind shares --------------------------------
