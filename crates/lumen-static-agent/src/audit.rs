@@ -704,8 +704,8 @@ impl Auditor {
         // fresh `vec!` here was one allocation a frame.
         self.absent.clear();
         self.absent.resize(table.len(), false);
-        for i in 0..table.len() {
-            let p = table[i].parent;
+        for (i, d) in table.iter().enumerate() {
+            let p = d.parent;
             if p != lumen_static::NO_PARENT {
                 self.absent[i] = self.absent[p as usize] || tree.as_ref().root.node(p as usize).content_absent();
             }
@@ -836,8 +836,12 @@ impl Auditor {
                 let shown = stats.materialized.unwrap_or(0);
                 // Under the `Length` model a list *fills* its scrollport,
                 // so zero height is no longer the signal — a list with
-                // rows that materializes nothing is.
-                if items > 0 && (shown == 0 || a <= 0.0) {
+                // rows that materializes nothing is. **Not under a closed
+                // popup**: a closed `Select`'s menu is a list with rows
+                // and no box by design, the leaves' `W1001` exemption
+                // above in collection form (found by the M56 merge's
+                // Select drive, the first to lint a menu after it closed).
+                if items > 0 && !absent[i] && (shown == 0 || a <= 0.0) {
                     out.push(Finding {
                         code: codes::COLLAPSED_COLLECTION,
                         idx: i as u32,

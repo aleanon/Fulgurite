@@ -772,3 +772,38 @@ fn a_closed_popups_content_is_not_reported_as_invisible() {
     assert!(!closed.iter().any(|c| c == "W1001"), "a closed picklist's list was reported invisible: {closed:?}");
     assert!(!open.iter().any(|c| c == "W1001"), "an open picklist's list was reported invisible: {open:?}");
 }
+
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+struct Selected {
+    #[widget_id("sel")]
+    sel: lumen_static_widgets::select::Select<()>,
+}
+
+fn fruit(r: &mut lumen_static_widgets::select::Row<()>, i: usize) {
+    r.label.clear();
+    r.label.push_str(["Apple", "Banana", "Cherry"][i]);
+}
+
+/// **A closed menu's list is not a collapsed collection** — the M56
+/// merge. `W1007` is "a list with rows that shows none, or has no box",
+/// and a closed `Select`'s menu is exactly that by design: the live drive
+/// linted the demo after choosing a row and found `W1007` on
+/// `#select-menu`, six rows in a 0×0 box. The collection check now
+/// honours `Node::content_absent` as the leaves' checks already did.
+/// Both directions: closed and open are quiet, and a list with rows and
+/// no box *not* under a popup still fires
+/// (`a_collection_with_items_but_no_height_is_found`).
+#[test]
+fn a_closed_menus_list_is_not_a_collapsed_collection() {
+    let mut app = Selected { sel: lumen_static_widgets::select::Select::new(3, 30.0, fruit) };
+    let closed = lint_of(&mut app);
+    app.sel.open();
+    let open = lint_of(&mut app);
+    app.sel.close();
+    let reclosed = lint_of(&mut app);
+    println!("closed: {closed:?}; open: {open:?}; closed again: {reclosed:?}");
+    for (when, codes) in [("closed", &closed), ("open", &open), ("closed again", &reclosed)] {
+        assert!(!codes.iter().any(|c| c == "W1007"), "the {when} select's menu was reported collapsed: {codes:?}");
+    }
+}
