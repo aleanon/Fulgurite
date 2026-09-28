@@ -222,6 +222,16 @@ pub struct Style {
     /// The sheet lint reports such a rule (M25/T25.2,
     /// `docs/results-appearance.md`).
     pub visible: bool,
+    /// Whether this node and everything under it **refuses input** —
+    /// M57/A16 (`docs/plan-widget-fixes.md`).
+    ///
+    /// A disabled node is not hit, not focused and not activated, and
+    /// neither is anything inside it; it paints at a reduced alpha so it
+    /// reads as unavailable, and the agent publishes it as disabled. No
+    /// widget had any way to say this (`docs/widget-audit.md` X12). Free:
+    /// it takes a byte of the padding `border_width`'s slot already had,
+    /// and `Style` stays 80 bytes (`tests/focus.rs`).
+    pub disabled: bool,
 }
 
 impl Default for Style {
@@ -245,6 +255,7 @@ impl Default for Style {
             border_color: crate::display::Color::TRANSPARENT,
             cursor: Cursor::Default,
             visible: true,
+            disabled: false,
         }
     }
 }
@@ -299,6 +310,63 @@ pub struct Seed {
     /// and `crates/lumen-static-widgets/tests/style_reads.rs` measures
     /// every declared mask against what the kind's output actually does.
     pub reads: Fields,
+    /// Which of this kind's colours are **palette roles** rather than
+    /// the literal values `defaults` returns — M57/A8
+    /// (`docs/plan-widget-fixes.md`).
+    ///
+    /// Applied by the cascade after `defaults` and before any rule, against
+    /// the host's palette, so a widget's own colours follow
+    /// `Host::set_palette` with no stylesheet rule at all. Until this, the
+    /// palette reached a node only through a rule's `color_role`, and the
+    /// widgets' `const fn` defaults were light-palette literals: every
+    /// application had to restyle every kind for dark mode, and the
+    /// showcase did it for four, so a label read 1.30:1 and a card stayed
+    /// white on a dark page (`docs/widget-audit.md` X6). A rule still
+    /// overrides a role, literal or role, because rules apply after.
+    pub roles: SeedRoles,
+}
+
+/// The colours of a [`Seed`] that are palette roles — M57/A8.
+///
+/// Three bytes, not a [`Patch`]: a seed is a static per widget kind, and
+/// these are the only three colour fields `Style` has.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct SeedRoles {
+    pub color: Option<Role>,
+    pub background: Option<Role>,
+    pub border: Option<Role>,
+}
+
+impl SeedRoles {
+    pub const NONE: SeedRoles = SeedRoles { color: None, background: None, border: None };
+
+    pub const fn color(mut self, r: Role) -> Self {
+        self.color = Some(r);
+        self
+    }
+
+    pub const fn background(mut self, r: Role) -> Self {
+        self.background = Some(r);
+        self
+    }
+
+    pub const fn border(mut self, r: Role) -> Self {
+        self.border = Some(r);
+        self
+    }
+
+    /// Resolve these roles into `s` against `palette`.
+    pub fn apply(&self, s: &mut Style, palette: &Palette) {
+        if let Some(r) = self.color {
+            s.color = palette.get(r);
+        }
+        if let Some(r) = self.background {
+            s.background = palette.get(r);
+        }
+        if let Some(r) = self.border {
+            s.border_color = palette.get(r);
+        }
+    }
 }
 
 impl Seed {
@@ -336,7 +404,23 @@ impl Seed {
     /// and the four that did not are `Seed::WIDGET` and three test
     /// fixtures.
     pub const fn new(kind: &'static str, defaults: fn() -> Style, reads: Fields) -> Seed {
-        Seed { kind, defaults, reads }
+        Seed { kind, defaults, reads, roles: SeedRoles::NONE }
+    }
+
+    /// This seed with `roles` for its colours — M57/A8. See
+    /// [`Seed::roles`](field@Seed::roles).
+    pub const fn with_roles(mut self, roles: SeedRoles) -> Seed {
+        self.roles = roles;
+        self
+    }
+
+    /// This kind's style before any rule: its defaults with its roles
+    /// resolved against `palette`. Every place that seeds a style from a
+    /// seed goes through this, so none can forget the roles.
+    pub fn style(&self, palette: &Palette) -> Style {
+        let mut s = (self.defaults)();
+        self.roles.apply(&mut s, palette);
+        s
     }
 
     /// A seed that opts **out** of the `W1010` lint, spelled.
@@ -346,7 +430,7 @@ impl Seed {
     /// wrapper's table carries, and a test fixture that is not about
     /// styling.
     pub const fn unlinted(kind: &'static str, defaults: fn() -> Style) -> Seed {
-        Seed { kind, defaults, reads: Fields::ALL }
+        Seed { kind, defaults, reads: Fields::ALL, roles: SeedRoles::NONE }
     }
 
 
@@ -500,6 +584,26 @@ pub struct Palette {
     pub on_accent: crate::display::Color,
     /// The keyboard focus ring.
     pub focus: crate::display::Color,
+    /// A panel raised off the page: a card, a popup, a dialog, a menu —
+    /// M57/A8. White on a light page; a step *lighter* than the page on a
+    /// dark one, which is how a dark theme shows elevation.
+    pub raised: crate::display::Color,
+    /// An edge that has to be seen — a field's border, an outline button,
+    /// a divider between panes — at ≥ 3:1 against `page` (WCAG 1.4.11).
+    pub border: crate::display::Color,
+    /// The unfilled part of a track — a slider's, a progress bar's. A
+    /// quiet colour: the *filled* part carries the value, in `accent`.
+    /// Also a chip's body, which sits on a surface and needs a ground
+    /// that differs from it (M57/B2).
+    pub track: crate::display::Color,
+    /// A placeholder block — a skeleton — subdued against `raised`.
+    pub placeholder: crate::display::Color,
+    /// The veil behind a modal: translucent, so the page shows through.
+    pub scrim: crate::display::Color,
+    /// An alert: a badge's count, a destructive action.
+    pub danger: crate::display::Color,
+    /// Text and marks on `danger`.
+    pub on_danger: crate::display::Color,
 }
 
 impl Palette {
@@ -514,7 +618,10 @@ impl Palette {
     pub const LIGHT: Palette = Palette {
         page: crate::display::Color(255, 255, 255, 255),
         surface: crate::display::Color(226, 232, 240, 255),
-        control: crate::display::Color(0xbf, 0xc4, 0xcc, 255),
+        // 3.06:1 on `page` (WCAG 1.4.11) — M57/A8. It was 0xbfc4cc at
+        // 1.75:1, which is how an unchecked box, an off switch and an
+        // unselected radio came to be the faintest thing on the screen.
+        control: crate::display::Color(0x8a, 0x94, 0xa6, 255),
         text: crate::display::Color(15, 23, 42, 255),
         // M54/T54.6: (100, 116, 139) painted secondary text at 3.86:1 on
         // `surface`, 54 runs of the showcase's catalogue; this is the
@@ -526,18 +633,35 @@ impl Palette {
         accent: crate::display::Color(0x31, 0x5c, 0xde, 255),
         on_accent: crate::display::Color(255, 255, 255, 255),
         focus: crate::display::Color(53, 99, 239, 255),
+        raised: crate::display::Color(255, 255, 255, 255),
+        border: crate::display::Color(0x83, 0x8d, 0x9f, 255),
+        track: crate::display::Color(0xd5, 0xdb, 0xe4, 255),
+        placeholder: crate::display::Color(0xe4, 0xe9, 0xf0, 255),
+        scrim: crate::display::Color(15, 23, 42, 110),
+        danger: crate::display::Color(0xdc, 0x26, 0x26, 255),
+        on_danger: crate::display::Color(255, 255, 255, 255),
     };
 
     /// The dark palette: the same roles, for a dark page.
     pub const DARK: Palette = Palette {
         page: crate::display::Color(15, 18, 26, 255),
         surface: crate::display::Color(38, 44, 58, 255),
-        control: crate::display::Color(74, 82, 99, 255),
+        // 4.0:1 on `page` — M57/A8; it was (74, 82, 99) at 2.4:1.
+        control: crate::display::Color(0x6b, 0x75, 0x89, 255),
         text: crate::display::Color(230, 234, 242, 255),
         muted: crate::display::Color(148, 160, 180, 255),
         accent: crate::display::Color(99, 140, 255, 255),
         on_accent: crate::display::Color(10, 14, 24, 255),
         focus: crate::display::Color(130, 170, 255, 255),
+        raised: crate::display::Color(0x1f, 0x25, 0x33, 255),
+        // 3:1 on `raised` as well as on `page`: a divider sits on a
+        // panel as often as on the page (M57/A8, `palette_defaults.rs`).
+        border: crate::display::Color(0x6b, 0x75, 0x89, 255),
+        track: crate::display::Color(0x39, 0x41, 0x52, 255),
+        placeholder: crate::display::Color(0x2c, 0x33, 0x42, 255),
+        scrim: crate::display::Color(0, 0, 0, 150),
+        danger: crate::display::Color(0xf8, 0x71, 0x71, 255),
+        on_danger: crate::display::Color(0x1a, 0x0a, 0x0a, 255),
     };
 
     /// The colour this palette gives `role`.
@@ -551,6 +675,13 @@ impl Palette {
             Role::Accent => self.accent,
             Role::OnAccent => self.on_accent,
             Role::Focus => self.focus,
+            Role::Raised => self.raised,
+            Role::Border => self.border,
+            Role::Track => self.track,
+            Role::Placeholder => self.placeholder,
+            Role::Scrim => self.scrim,
+            Role::Danger => self.danger,
+            Role::OnDanger => self.on_danger,
         }
     }
 }
@@ -573,6 +704,13 @@ pub enum Role {
     Accent,
     OnAccent,
     Focus,
+    Raised,
+    Border,
+    Track,
+    Placeholder,
+    Scrim,
+    Danger,
+    OnDanger,
 }
 
 impl Default for Palette {
@@ -652,6 +790,8 @@ pub struct Patch {
     pub border_width: Option<u8>,
     pub border_color: Option<crate::display::Color>,
     pub border_color_role: Option<Role>,
+    /// [`Style::disabled`] — M57/A16.
+    pub disabled: Option<bool>,
 }
 
 impl Patch {
@@ -678,7 +818,14 @@ impl Patch {
             border_width: None,
             border_color: None,
             border_color_role: None,
+            disabled: None,
         }
+    }
+
+    /// Refuse input, and look it — M57/A16 ([`Style::disabled`]).
+    pub const fn disabled(mut self, d: bool) -> Self {
+        self.disabled = Some(d);
+        self
     }
 
     pub const fn width(mut self, l: Length) -> Self {
@@ -827,6 +974,9 @@ impl Patch {
         }
         if let Some(v) = self.border_width {
             s.border_width = v;
+        }
+        if let Some(v) = self.disabled {
+            s.disabled = v;
         }
         if let Some(r) = self.border_color_role {
             s.border_color = palette.get(r);
@@ -1137,7 +1287,7 @@ fn cascade_range(
         repair |= r.patch.needs_repair();
     }
     for (i, d) in table.iter().enumerate().skip(range.start).take(range.len()) {
-        let mut s = (seeds[i].defaults)();
+        let mut s = seeds[i].style(palette);
         let kind = seeds[i].kind;
         for spec in 0..=3u8 {
             if levels & (1 << spec) == 0 {

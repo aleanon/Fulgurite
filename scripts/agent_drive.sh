@@ -24,6 +24,7 @@
 # Needs a display. Skips with exit 77 without one (M43 §2).
 set -euo pipefail
 cd "$(cd "$(dirname "$0")/.." && pwd)"
+. scripts/drive_window.sh  # live windows on the monitor the user is not reading
 LAUNCH="python3 scripts/live/launch.py --script agent-drive"
 $LAUNCH --display-only || exit $?
 
@@ -56,6 +57,13 @@ port = int(sys.argv[1])
 s = socket.create_connection(("127.0.0.1", port), timeout=15)
 f = s.makefile("rwb")
 n = [0]
+def try_call(method, params=None):
+    """A request whose error is an answer, not a failure."""
+    n[0] += 1
+    f.write((json.dumps({"jsonrpc": "2.0", "id": n[0],
+                         "method": method, "params": params or {}}) + "\n").encode())
+    f.flush()
+    return json.loads(f.readline())
 def call(method, params=None):
     n[0] += 1
     f.write((json.dumps({"jsonrpc": "2.0", "id": n[0],
@@ -76,19 +84,16 @@ def call(method, params=None):
 # `select-trigger` and `select-menu` are the ids `Select` stamps on its
 # own nodes -- a composite is more than one node and the derive names only
 # a field, so a widget that is several has to publish its parts or nothing
-# can address them: not a stylesheet, not this script.
-#
-# **Through the owner** -- `#picker > ...` -- since M44/T44.10 put a
-# second `Select` on the showcase's stage: a part id is unique only within
-# its owner, and the bare `#select-trigger` became ambiguous.
-TRIGGER = "#picker > #select-trigger"
-MENU = "#picker > #select-menu"
+# can address them: not a stylesheet, not this script. Since M56 the only
+# `Select` in the showcase is its own demo, reached through the sidebar.
+TRIGGER = "#select-trigger"
+MENU = "#select-menu"
 
-def trigger_label():
-    r = call("ui.resolve", {"selector": TRIGGER})
-    if r.get("label") is None and r.get("value") is None:
-        sys.exit(f"agent-drive: no {TRIGGER} in the tree")
-    return r.get("label") or r.get("value") or ""
+def wid_text(wid):
+    for node in call("ui.getTree", {"depth": 12})["nodes"]:
+        if node.get("wid") == wid:
+            return node.get("value") or node.get("label") or ""
+    sys.exit(f"agent-drive: no #{wid} in the tree")
 
 def menu_box():
     """The menu's bounds, or None when it is closed."""
@@ -102,25 +107,43 @@ def shot():
     r = call("ui.screenshot", {})
     return hashlib.sha256(base64.b64decode(r["image_base64"])).hexdigest()
 
-before = trigger_label()
-assert menu_box() is None, "agent-drive: the menu is already open before anything was clicked"
+# **Pick an entry by the text its sidebar row shows** (M27/T27.0, M56).
+# `~=` is exact: `~Select` would also match a row whose name only starts
+# with it. Reorder the catalogue and this still picks the Switch.
+before = wid_text("title")
+call("input.click", {"selector": "~=Switch"})
+after = wid_text("title")
+assert after != before, f"agent-drive: picking a sidebar row changed nothing ({before!r})"
+assert after == "Switch", f"agent-drive: expected the Switch page, got {after!r}"
+
+def pick(name):
+    """Scroll the sidebar until `name`'s row is announced, then click it.
+    A repeater announces only the rows in its viewport (F4.7), so a row
+    below the fold has to be scrolled to -- as a user would."""
+    nav = call("ui.resolve", {"selector": "#nav"})["bounds"]
+    mid = ((nav[0] + nav[2]) / 2, (nav[1] + nav[3]) / 2)
+    for _ in range(40):
+        r = try_call("ui.resolve", {"selector": f"~={name}"})
+        b = r.get("result", {}).get("bounds") if "result" in r else None
+        if b and b[1] >= nav[1] and b[3] <= nav[3]:
+            call("input.click", {"selector": f"~={name}"})
+            return
+        call("input.scroll", {"x": mid[0], "y": mid[1], "dy": -64.0})
+    sys.exit(f"agent-drive: the {name} row never scrolled into the sidebar")
+
+# The dropdown, as a demo now: open it, choose a row by its text, and the
+# trigger and the readout follow while the menu closes.
+pick("Select")
+assert wid_text("title") == "Select", f"agent-drive: the Select page did not open: {wid_text('title')!r}"
+assert menu_box() is None, "agent-drive: the Select demo's menu is open before anything was clicked"
 call("input.click", {"selector": TRIGGER})
 box = menu_box()
 assert box, "agent-drive: the dropdown did not open"
-
-# **Pick the row by the text it shows** (M27/T27.0). This was
-# `{"y": box[1] + ROW_H * 8 + ROW_H / 2}` until 2026-09-18 -- arithmetic
-# over a resolved box, because every action method refused a repeater row
-# and said so: "selector resolved to virtualized content; pass x/y
-# instead". Taking that advice is the first vacuous shape AGENT.md names:
-# reorder the catalogue and row 8 is a different widget, silently, with
-# the assertion below still green because it only ever checked that
-# *something* changed.
-call("input.click", {"selector": "~Switch"})
-after = trigger_label()
-assert after != before, f"agent-drive: picking a row changed nothing ({before!r})"
-assert "Switch" in after, f"agent-drive: expected Switch, got {after!r}"
-assert menu_box() is None, "agent-drive: picking a row left the menu open"
+call("input.click", {"selector": "~=Cherry"})
+chosen, readout = wid_text("select-trigger"), wid_text("readout")
+assert chosen == "Cherry", f"agent-drive: the trigger reads {chosen!r} after choosing Cherry"
+assert readout == "selected: Cherry", f"agent-drive: the readout reads {readout!r}"
+assert menu_box() is None, "agent-drive: choosing a row left the menu open"
 
 # A press, held. The frame while held must differ from the released one --
 # which is the claim a screenshot taken after a click cannot make.
@@ -137,15 +160,16 @@ assert held != rest, "agent-drive: a held press looks identical to the resting f
 # the header's resolved background *and* on the frame's pixels: `applied`
 # alone was the check before any rule named a role, and it would pass for a
 # host that stored the palette and re-cascaded nothing.
+# The sidebar's surface since M56: the header no longer has a ground.
 def header_bg():
-    return call("ui.getAppliedStyles", {"selector": "#header"})["background"]
+    return call("ui.getAppliedStyles", {"selector": "#sidebar"})["background"]
 prev_bg, prev_shot = header_bg(), shot()
 for name in ("dark", "light"):
     r = call("app.setPalette", {"name": name})
     assert r.get("applied") is True, f"agent-drive: the window did not take the {name} palette: {r!r}"
     bg, frame = header_bg(), shot()
-    print(f"agent-drive: palette {name}: header background {prev_bg} -> {bg}")
-    assert bg != prev_bg, f"agent-drive: the {name} palette did not re-resolve the header's role"
+    print(f"agent-drive: palette {name}: sidebar background {prev_bg} -> {bg}")
+    assert bg != prev_bg, f"agent-drive: the {name} palette did not re-resolve the sidebar's role"
     assert frame != prev_shot, f"agent-drive: the {name} palette left the frame's pixels unchanged"
     prev_bg, prev_shot = bg, frame
 # A hover, alone on its frame (M41/T41.7). Every step above is a click, a
@@ -159,21 +183,8 @@ for name in ("dark", "light"):
 # `hover_dim(0.0)` reaches it, so a stale hover there is invisible.)
 # Whether the shade *shows* is `just widget-drive`'s Button check; this
 # drive only supplies the frame.
-# The held press above was a whole click on the trigger, so the menu may
-# already be open; open it only if it is not.
-if menu_box() is None:
-    call("input.click", {"selector": TRIGGER})
-assert menu_box(), "agent-drive: setup: the dropdown did not open for the Button demo"
-# The Button row reads "Input - Button": the menu folds a group's name
-# into its first row (`bind_row`), `~Button` is ambiguous, and a selector
-# cannot carry the spaces. So the row is found by its label and clicked
-# by its box, as `scripts/drive/harness.py` does.
-rows = [n for n in call("ui.getTree", {"depth": 64})["nodes"]
-        if (n.get("label") or "").strip().split(" - ")[-1] == "Button" and n.get("bounds")]
-assert len(rows) == 1, f"agent-drive: setup: expected one Button row, got {rows!r}"
-rb = rows[0]["bounds"]
-call("input.click", {"x": (rb[0] + rb[2]) / 2, "y": (rb[1] + rb[3]) / 2})
-assert trigger_label().split()[0] == "Button", f"agent-drive: setup: expected the Button demo, got {trigger_label()!r}"
+pick("Button")
+assert wid_text("title") == "Button", f"agent-drive: setup: expected the Button page, got {wid_text('title')!r}"
 #
 # Up to three tries: the window is on a real display, and a real pointer
 # moving over it posts its own `PointerMove`, which moves the hover
@@ -198,16 +209,8 @@ call("input.hover", {"x": 2, "y": 2})
 # marked nothing painted over a stale layout under `Boundaries`), and the
 # field's value is read back after each. `scripts/live/shadow.py` then
 # asserts, on the oracle leg, that no judged frame diverged.
-def pick(name):
-    if menu_box() is None:
-        call("input.click", {"selector": TRIGGER})
-    rows = [n for n in call("ui.getTree", {"depth": 64})["nodes"]
-            if (n.get("label") or "").strip().split(" - ")[-1] == name and n.get("bounds")]
-    assert len(rows) == 1, f"agent-drive: setup: expected one {name} row, got {rows!r}"
-    rb = rows[0]["bounds"]
-    call("input.click", {"x": (rb[0] + rb[2]) / 2, "y": (rb[1] + rb[3]) / 2})
-    assert trigger_label().split()[0] == name, f"agent-drive: setup: expected {name}, got {trigger_label()!r}"
 pick("TextInput")
+assert wid_text("title") == "TextInput", f"agent-drive: setup: expected the TextInput page, got {wid_text('title')!r}"
 FIELD = "#d_textinput_a"
 call("input.fill", {"selector": FIELD, "text": ""})
 def shadow_compared():
@@ -227,7 +230,7 @@ if c0 is None:
 else:
     print(f"agent-drive: compose frames judged {c1 - c0} / bound >= 2")
     assert c1 - c0 >= 2, f"agent-drive: the oracle judged {c1 - c0} compose frames, bound 2"
-print(f"agent-drive: {before.split()[0]} -> {after.split()[0]}, "
+print(f"agent-drive: {before} -> {after} by the sidebar; Select chose {chosen}, "
       f"menu {int(box[2]-box[0])}x{int(box[3]-box[1])} px, press observable")
 PY
 }

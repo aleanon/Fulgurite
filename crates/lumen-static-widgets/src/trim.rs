@@ -8,9 +8,9 @@
 use lumen_static::desc::{NodeDesc, NodeState, NO_PARENT};
 use lumen_static::display::{Color, Painter};
 use lumen_static::ops::{record_painted, rect_of, resolve_self};
-use lumen_static::style::{Align, Edges, Length, Seed, Style};
+use lumen_static::style::{Edges, Length, Seed, Style};
 use lumen_static::widget::{Node, Widget};
-use lumen_static::{Constraints, LayoutCx, Size, TextStorage};
+use lumen_static::{Constraints, Event, LayoutCx, Point, Size, TextStorage};
 
 /// One node, no children, not focusable — the shape every widget in this
 /// file has.
@@ -26,8 +26,11 @@ const LEAF: &[NodeDesc] = &[NodeDesc::new(0, NO_PARENT, 0, 0, 0)];
 ///
 /// **Its thickness is `Style::height`, not a field**, so a stylesheet
 /// sets it and a theme can set it once for every rule in an
-/// application. The default is 1 logical pixel, which the renderer
-/// antialiases to whatever the scale factor makes of it.
+/// application. The default is 1 logical pixel, which lands on exactly
+/// `scale` device rows: its edges are snapped to the pixel grid where
+/// logical becomes physical (M57/A15). This said the renderer antialiased
+/// it, and a divider centred on a half pixel drew two full rows
+/// (`docs/widget-audit.md`, Divider).
 #[derive(Default)]
 pub struct Divider;
 
@@ -58,7 +61,7 @@ impl Widget for Divider {
             lumen_static::style::Fields::BACKGROUND,
             lumen_static::style::Fields::BORDER,
             lumen_static::style::Fields::RADIUS,
-        ]))];
+        ])).with_roles(lumen_static::style::SeedRoles::NONE.background(lumen_static::style::Role::Track))];
 }
 
 impl Node for Divider {
@@ -89,6 +92,22 @@ impl Node for Divider {
     // coverage walk in `lumen-static-agent/tests/tree_fields.rs` allows it
     // by name with this reason.
     lumen_static::leaf_common!(Divider, 0, nohit);
+
+    /// **Hidden from a reader on purpose** — M57/D7. It is layout, not
+    /// content; published as a nameless `GenericContainer` it read as a
+    /// control that says nothing, and the live accessibility sweep
+    /// flagged every filler in the showcase's grid rows.
+    #[cfg(feature = "a11y")]
+    fn observe(
+        &self,
+        _st: &[NodeState],
+        _i: usize,
+        _id: u64,
+        node: &mut lumen_static::observe::accesskit::Node,
+        _extra: &mut alloc::vec::Vec<(lumen_static::observe::accesskit::NodeId, lumen_static::observe::accesskit::Node)>,
+    ) {
+        node.set_hidden();
+    }
 }
 
 /// A small pill of text: a count, a status, a tag.
@@ -173,7 +192,7 @@ impl<S: TextStorage> Widget for Badge<S> {
             lumen_static::style::Fields::RADIUS,
             lumen_static::style::Fields::FONT_SIZE,
             lumen_static::style::Fields::FONT_WEIGHT,
-        ]))];
+        ])).with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::OnDanger).background(lumen_static::style::Role::Danger))];
 }
 
 impl<S: TextStorage> Node for Badge<S> {
@@ -191,7 +210,14 @@ impl<S: TextStorage> Node for Badge<S> {
         let m = self.measured.get_or(key, text, || {
             cx.text.measure_weighted(text, me.font_size, me.font_weight, limits.max_w)
         });
-        let content = Size { w: m.w + me.padding.horizontal(), h: m.h + me.padding.vertical() };
+        let mut content = Size { w: m.w + me.padding.horizontal(), h: m.h + me.padding.vertical() };
+        // **Never narrower than tall** — M57/B1. The rustdoc promises a
+        // one- or two-character count comes out circular, and nothing made
+        // it so: "3" was round only because the digit is narrow, and "12"
+        // was a pill (`docs/widget-audit.md`, Badge).
+        if content.w < content.h {
+            content.w = content.h;
+        }
         let size = resolve_self(limits, &me, content);
         record_painted(st, i, limits, size, &me)
     }
@@ -204,8 +230,11 @@ impl<S: TextStorage> Node for Badge<S> {
         }
         out.rounded_rect(r, s.bg, s.radius.min((r[3] - r[1]) / 2.0));
         lumen_static::ops::border(st, i, out);
-        let inner = [r[0] + s.pad.0, r[1] + s.pad.1, r[2] - s.pad.2, r[3] - s.pad.3];
-        out.text_weighted(inner, self.text.as_ref(), s.font_size, s.font_weight, s.fg);
+        // Centred on the measured text, not drawn from the inner left —
+        // which is only centred when nothing widened the box (B1 does).
+        let m = self.measured.size();
+        let x = r[0] + ((r[2] - r[0]) - m.w).max(0.0) / 2.0;
+        out.text_weighted([x, r[1] + s.pad.1, x + m.w, r[3] - s.pad.3], self.text.as_ref(), s.font_size, s.font_weight, s.fg);
     }
 
     /// What it reads — M48/T48.6 (R13-F4): it had no `observe`, so the agent
@@ -226,16 +255,43 @@ impl<S: TextStorage> Node for Badge<S> {
     lumen_static::leaf_common!(Badge<S>, 0, nohit);
 }
 
-/// A badge with a quieter palette and a border-ish fill: a filter tag, a
-/// selected value, a removable token.
+/// A compact control: a filter tag that can be selected, a token that
+/// can be removed.
 ///
-/// The same shape as [`Badge`] with different `defaults`, and that is
-/// the whole difference — which is the argument for it being a separate
-/// type rather than a field: `kind_name` feeds the cascade and the
-/// agent's selectors, so `chip` and `badge` are selectable apart.
-pub struct Chip<S: TextStorage = &'static str> {
+/// **It is a control, where [`Badge`] is a label** — M57/B2. This rustdoc
+/// advertised "a selected value, a removable token" while the widget was
+/// `nohit` with no handlers, so neither could happen
+/// (`docs/widget-audit.md`, Chip). Now:
+///
+/// - `selected` is **controlled**, following `Toggle`'s precedent: the
+///   application owns the flag, `on_click` flips it, and a binding writes
+///   the copy back. A selected chip is tinted and outlined in its text
+///   colour.
+/// - `removable` adds a trailing × of [`Chip::REMOVE_W`] px. A click
+///   that begins and ends on it runs `on_remove` instead of `on_click`.
+/// - Both handlers are optional, and a chip with neither lets a click
+///   through to whatever holds it. It is focusable either way — a static
+///   tag with no behaviour is a [`Badge`].
+///
+/// Enter and Space activate `on_click`, as on a button; the keyboard has
+/// no remove, because activation is the pass's and it runs one handler.
+pub struct Chip<T: TextStorage = &'static str, S: 'static = ()> {
     /// What it reads. Bind it.
-    pub text: S,
+    pub text: T,
+    /// Whether it reads as selected. A presentation copy — bind it.
+    pub selected: bool,
+    /// Whether it carries a trailing ×.
+    pub removable: bool,
+    /// Run on a click, Enter or Space.
+    pub on_click: Option<fn(&mut S, &lumen_static::EventCtx)>,
+    /// Run on a click on the ×.
+    pub on_remove: Option<fn(&mut S, &lumen_static::EventCtx)>,
+    /// Whether the gesture in flight is on the ×: set by the press and
+    /// the release, read by [`Handlers::handler`](lumen_static::event::Handlers),
+    /// which pass 2 asks after pass 1 has run.
+    on_x: bool,
+    /// Its own width, for which part a press is on.
+    width: f32,
     /// The text's measured box, keyed on a fold of its bytes.
     ///
     /// **It had none** until M26/T26.8: this widget shaped on every
@@ -247,30 +303,47 @@ pub struct Chip<S: TextStorage = &'static str> {
     measured: lumen_static::text::FoldedText,
 }
 
-impl<S: TextStorage> Default for Chip<S> {
+impl<T: TextStorage, S: 'static> Default for Chip<T, S> {
     fn default() -> Self {
-        Chip { text: S::default(), measured: lumen_static::text::FoldedText::new() }
+        Chip::new(T::default())
     }
 }
 
-impl<S: TextStorage> Chip<S> {
+impl<T: TextStorage, S: 'static> Chip<T, S> {
+    /// The ×'s width, inside the right padding.
+    pub const REMOVE_W: f32 = 18.0;
+
     /// **A constructor, because the memo is private** (M26/T26.8).
     /// `Chip { text }` was the spelling until this widget had a memo
     /// to keep; `Label` has had `new` since it had one.
-    pub fn new(text: S) -> Self {
-        Chip { text, measured: lumen_static::text::FoldedText::new() }
+    pub fn new(text: T) -> Self {
+        Chip {
+            text,
+            selected: false,
+            removable: false,
+            on_click: None,
+            on_remove: None,
+            on_x: false,
+            width: 0.0,
+            measured: lumen_static::text::FoldedText::new(),
+        }
     }
 
-    pub fn set(&mut self, text: S) {
+    pub fn set(&mut self, text: T) {
         self.text = text;
+    }
+
+    fn extra(&self) -> f32 {
+        if self.removable { Self::REMOVE_W } else { 0.0 }
     }
 }
 
-impl<S: TextStorage> Widget for Chip<S> {
+impl<T: TextStorage, S: 'static> Widget for Chip<T, S> {
     const NODE_COUNT: usize = 1;
     const DEPTH: usize = 1;
     const IS_RIGID: bool = false;
-    const SUB_TABLE: &'static [NodeDesc] = LEAF;
+    const SUB_TABLE: &'static [NodeDesc] =
+        &[NodeDesc::new(0, NO_PARENT, 0, 0, NodeDesc::FOCUSABLE)];
 
     const KIND: &'static str = "chip";
 
@@ -284,6 +357,10 @@ impl<S: TextStorage> Widget for Chip<S> {
             color: Color(0x30, 0x3a, 0x4c, 0xff),
             font_size: 13.0,
             font_weight: 500.0,
+            // A control: it answers the pointer (M57/B2).
+            pressed_dim: 0.18,
+            hover_dim: 0.08,
+            cursor: lumen_static::style::Cursor::Pointer,
             ..Style::default()
         }
     }
@@ -294,16 +371,23 @@ impl<S: TextStorage> Widget for Chip<S> {
             lumen_static::style::Fields::HEIGHT,
             lumen_static::style::Fields::PADDING,
             lumen_static::style::Fields::VISIBLE,
+            lumen_static::style::Fields::CURSOR,
+            lumen_static::style::Fields::FOCUS_RING,
+            lumen_static::style::Fields::PRESSED_DIM,
+            lumen_static::style::Fields::HOVER_DIM,
             lumen_static::style::Fields::COLOR,
             lumen_static::style::Fields::BACKGROUND,
             lumen_static::style::Fields::BORDER,
             lumen_static::style::Fields::RADIUS,
             lumen_static::style::Fields::FONT_SIZE,
             lumen_static::style::Fields::FONT_WEIGHT,
-        ]))];
+        ]))// **`Track`, not `Surface`** (M57/B2): a chip sits *on* a surface —
+        // a card, a panel — so a surface body is invisible exactly where
+        // chips are used; the showcase's stage showed three bare words.
+        .with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Text).background(lumen_static::style::Role::Track))];
 }
 
-impl<S: TextStorage> Node for Chip<S> {
+impl<T: TextStorage, S: 'static> Node for Chip<T, S> {
     fn layout(
         &mut self,
         cx: &mut LayoutCx,
@@ -318,24 +402,15 @@ impl<S: TextStorage> Node for Chip<S> {
         let m = self.measured.get_or(key, text, || {
             cx.text.measure_weighted(text, me.font_size, me.font_weight, limits.max_w)
         });
-        let content = Size { w: m.w + me.padding.horizontal(), h: m.h + me.padding.vertical() };
+        let content = Size { w: m.w + me.padding.horizontal() + self.extra(), h: m.h + me.padding.vertical() };
         let size = resolve_self(limits, &me, content);
+        self.width = size.w;
         record_painted(st, i, limits, size, &me)
     }
 
-    fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
-        let s = &st[i];
-        let r = rect_of(s);
-        if r[2] <= r[0] || r[3] <= r[1] {
-            return;
-        }
-        out.rounded_rect(r, s.bg, s.radius.min((r[3] - r[1]) / 2.0));
-        lumen_static::ops::border(st, i, out);
-        let inner = [r[0] + s.pad.0, r[1] + s.pad.1, r[2] - s.pad.2, r[3] - s.pad.3];
-        out.text_weighted(inner, self.text.as_ref(), s.font_size, s.font_weight, s.fg);
-    }
-
-    /// What it reads — M48/T48.6, as [`Badge`].
+    /// What a screen reader and the agent are told — M57/A17
+    /// (`docs/plan-widget-fixes.md`). This published nothing at all
+    /// (`GenericContainer`, no value) until M57.
     #[cfg(feature = "a11y")]
     fn observe(
         &self,
@@ -345,11 +420,58 @@ impl<S: TextStorage> Node for Chip<S> {
         node: &mut lumen_static::observe::accesskit::Node,
         _extra: &mut alloc::vec::Vec<(lumen_static::observe::accesskit::NodeId, lumen_static::observe::accesskit::Node)>,
     ) {
-        node.set_role(lumen_static::observe::accesskit::Role::Label);
+        use lumen_static::observe::accesskit as ak;
+        node.set_role(ak::Role::Label);
         node.set_value(self.text.as_ref());
     }
 
-    lumen_static::leaf_common!(Chip<S>, 0, nohit);
+    fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
+        let s = &st[i];
+        let r = rect_of(s);
+        if r[2] <= r[0] || r[3] <= r[1] {
+            return;
+        }
+        let radius = s.radius.min((r[3] - r[1]) / 2.0);
+        out.rounded_rect(r, s.bg, radius);
+        lumen_static::ops::border(st, i, out);
+        // Selected: a tint and an outline in the text colour, so the
+        // state reads on any ground without a new palette role.
+        if self.selected {
+            let c = s.fg;
+            out.rounded_rect(r, Color(c.0, c.1, c.2, 0x24), radius);
+            out.stroked_rect(r, c, radius, 1.5);
+        }
+        // The text centred on the measure, in the space left of the ×.
+        let m = self.measured.size();
+        let room = (r[2] - r[0]) - self.extra();
+        let x = r[0] + (room - m.w).max(0.0) / 2.0;
+        let y = r[1] + ((r[3] - r[1]) - m.h).max(0.0) / 2.0;
+        out.text_weighted([x, y, x + m.w, y + m.h], self.text.as_ref(), s.font_size, s.font_weight, s.fg);
+        if self.removable {
+            // Two strokes, 8 px, centred in the × column.
+            let cx = r[2] - s.pad.2 - Self::REMOVE_W / 2.0 + 2.0;
+            let cy = (r[1] + r[3]) / 2.0;
+            let d = 4.0;
+            out.line(Point { x: cx - d, y: cy - d }, Point { x: cx + d, y: cy + d }, 1.5, s.fg);
+            out.line(Point { x: cx - d, y: cy + d }, Point { x: cx + d, y: cy - d }, 1.5, s.fg);
+        }
+    }
+
+    fn on_event(&mut self, ev: &Event, cx: &lumen_static::EventCtx) -> bool {
+        // Which part the gesture is on, for the handler pass 2 asks for.
+        // A press and its release must both be on the × — a press that
+        // slides off it and lets go on the body is a click, not a remove.
+        let over = self.removable && cx.local.x >= self.width - self.extra() - 8.0;
+        match ev {
+            Event::PointerDown { .. } => self.on_x = over,
+            Event::PointerUp { .. } => self.on_x &= over,
+            Event::Key { .. } => self.on_x = false,
+            _ => {}
+        }
+        false
+    }
+
+    lumen_static::leaf_common!(Chip<T, S>, NodeDesc::FOCUSABLE);
 }
 
 /// A round token carrying initials.
@@ -364,15 +486,24 @@ pub struct Avatar<S: TextStorage = &'static str> {
     /// avatar is decoration, and a panic here would take a frame down
     /// over a name.
     pub initials: S,
+    /// The shown initials' measured box, so `paint` can centre them —
+    /// M57/B3. Keyed on a fold of the bytes, as `Badge`'s is.
+    measured: lumen_static::text::FoldedText,
 }
 
 impl<S: TextStorage> Default for Avatar<S> {
     fn default() -> Self {
-        Avatar { initials: S::default() }
+        Avatar { initials: S::default(), measured: lumen_static::text::FoldedText::new() }
     }
 }
 
 impl<S: TextStorage> Avatar<S> {
+    /// A constructor, because the memo is private (M57/B3) — the same
+    /// reason `Badge::new` exists.
+    pub fn new(initials: S) -> Self {
+        Avatar { initials, measured: lumen_static::text::FoldedText::new() }
+    }
+
     pub fn set(&mut self, initials: S) {
         self.initials = initials;
     }
@@ -407,7 +538,6 @@ impl<S: TextStorage> Widget for Avatar<S> {
             color: Color(0xff, 0xff, 0xff, 0xff),
             font_size: 15.0,
             font_weight: 700.0,
-            align: Align::Center,
             ..Style::default()
         }
     }
@@ -422,7 +552,7 @@ impl<S: TextStorage> Widget for Avatar<S> {
             lumen_static::style::Fields::BORDER,
             lumen_static::style::Fields::FONT_SIZE,
             lumen_static::style::Fields::FONT_WEIGHT,
-        ]))];
+        ])).with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Page).background(lumen_static::style::Role::Muted))];
 }
 
 const AVATAR: f32 = 40.0;
@@ -430,7 +560,7 @@ const AVATAR: f32 = 40.0;
 impl<S: TextStorage> Node for Avatar<S> {
     fn layout(
         &mut self,
-        _cx: &mut LayoutCx,
+        cx: &mut LayoutCx,
         limits: Constraints,
         style: &[Style],
         st: &mut [NodeState],
@@ -438,6 +568,14 @@ impl<S: TextStorage> Node for Avatar<S> {
     ) -> Size {
         let me = style[i];
         let size = resolve_self(limits, &me, Size { w: AVATAR, h: AVATAR });
+        // Measured so paint can centre them (M57/B3).
+        let key = lumen_static::text::MeasureKey::new(cx, limits, &me);
+        let s = self.initials.as_ref();
+        let shown = match s.char_indices().nth(2) {
+            Some((at, _)) => &s[..at],
+            None => s,
+        };
+        self.measured.get_or(key, shown, || cx.text.measure_weighted(shown, me.font_size, me.font_weight, f32::INFINITY));
         record_painted(st, i, limits, size, &me)
     }
 
@@ -450,18 +588,18 @@ impl<S: TextStorage> Node for Avatar<S> {
         }
         out.rounded_rect(r, s.bg, w.min(h) / 2.0);
         lumen_static::ops::border(st, i, out);
-        // Roughly centred: the text primitive takes a box and aligns
-        // within it, so the box is the avatar inset by a quarter of its
-        // height — which puts a cap-height glyph on the middle line
-        // without the widget needing to measure anything.
-        let inset = h * 0.26;
-        out.text_weighted(
-            [r[0], r[1] + inset, r[2], r[3] - inset],
-            self.shown(),
-            s.font_size,
-            s.font_weight,
-            s.fg,
-        );
+        // **Centred on the measured initials** — M57/B3. This passed the
+        // whole avatar to the text primitive on the belief that it aligns
+        // within its box; it draws from the box's left edge, so the
+        // initials sat 9.5–14 px left of centre and a "J" poked out of the
+        // circle (`docs/widget-audit.md`, bug 2). Clipped to the avatar,
+        // so a wide pair cannot spill.
+        let m = self.measured.size();
+        let x = r[0] + (w - m.w) / 2.0;
+        let y = r[1] + (h - m.h) / 2.0;
+        out.push_clip(r);
+        out.text_weighted([x, y, x + m.w, y + m.h], self.shown(), s.font_size, s.font_weight, s.fg);
+        out.pop_clip();
     }
 
     /// An image, labelled by its initials — M48/T48.6.
@@ -554,7 +692,7 @@ impl Widget for Icon {
             lumen_static::style::Fields::HEIGHT,
             lumen_static::style::Fields::VISIBLE,
             lumen_static::style::Fields::COLOR,
-        ]))];
+        ])).with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Text))];
 }
 
 const ICON: f32 = 20.0;
@@ -590,22 +728,23 @@ impl Node for Icon {
         let c = s.fg;
         let at = |x: f32, y: f32| Point { x: cx + x, y: cy + y };
         match self.symbol {
-            // A triangle from three horizontal runs: the renderer has no
-            // polygon, and a run per row at this size is under twenty
-            // commands. `Cmd::Line` with a width is the primitive that
-            // exists, so the fill is lines.
+            // A triangle as **horizontal** runs, half a logical pixel
+            // tall: the renderer has no polygon. It was vertical `Line`s
+            // whose widths were fractions of a pixel, and snapping them
+            // to the grid (M57/A15) left alternate columns empty — a
+            // striped mark (M57/B4). Rows that share an edge snap to the
+            // same pixel, so they tile with no gap and no overlap at any
+            // scale; a row that snaps to nothing is covered by the next.
             Symbol::Play => {
-                let steps = (k * 2.0).max(2.0) as i32;
-                for n in 0..steps {
-                    let t = n as f32 / (steps - 1).max(1) as f32;
-                    let half = k * (1.0 - t);
-                    let x = cx - k * 0.7 + t * k * 1.4;
-                    out.line(
-                        lumen_static::Point { x, y: cy - half },
-                        lumen_static::Point { x, y: cy + half },
-                        (k * 1.4 / steps as f32).max(1.0),
-                        c,
-                    );
+                let (x0, len) = (cx - k * 0.7, k * 1.4);
+                let rows = lumen_static::num::ceil(k * 4.0).max(2.0) as i32;
+                let dy = 2.0 * k / rows as f32;
+                for n in 0..rows {
+                    let y = cy - k + n as f32 * dy;
+                    // The width at the row's centre: full at the middle,
+                    // nothing at the two corners.
+                    let t = 1.0 - ((y + dy / 2.0) - cy).abs() / k;
+                    out.rect([x0, y, x0 + len * t, y + dy], c);
                 }
             }
             Symbol::Pause => {
@@ -642,8 +781,13 @@ impl Node for Icon {
                 //
                 // The ring is offset up and left so the handle has room
                 // inside the icon's own box rather than overhanging it.
-                let (ox, oy) = (-k * 0.18, -k * 0.18);
-                let r = k * 0.58;
+                //
+                // A thinner stroke and a wider ring than the other marks
+                // (M57/B4): at the shared 0.12 d stroke a 24 px icon's
+                // ring had a hole under 2 px and read as a filled dot.
+                let (ox, oy) = (-k * 0.16, -k * 0.16);
+                let r = k * 0.68;
+                let stroke = (d * 0.085).max(1.0);
                 let n = 16;
                 let ring = |seg: usize| {
                     let u = crate::chart::unit(seg * (crate::chart::STEPS_ROUND / n));
@@ -712,12 +856,12 @@ impl<S, T: TextStorage> lumen_static::event::Handlers<S> for Badge<T> {
 /// walks past it. This is one impl per type rather than a blanket one
 /// because a blanket `impl<W, S> Handlers<S> for W` would collide with
 /// every widget that *does* have handlers.
-impl<S, T: TextStorage> lumen_static::event::Handlers<S> for Chip<T> {
+impl<S: 'static, T: TextStorage> lumen_static::event::Handlers<S> for Chip<T, S> {
     fn handler(
         &self,
         _sel: lumen_static::event::NodeSel,
     ) -> Option<fn(&mut S, &lumen_static::EventCtx)> {
-        None
+        if self.on_x { self.on_remove } else { self.on_click }
     }
 }
 

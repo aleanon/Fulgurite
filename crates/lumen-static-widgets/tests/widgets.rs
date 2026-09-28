@@ -47,9 +47,9 @@ fn every_widget_is_visible_with_no_stylesheet() {
     n += 1;
     put("badge", painted(&mut Badge::new("9"), box_), &mut counts[1]);
     n += 1;
-    put("chip", painted(&mut Chip::new("tag"), box_), &mut counts[2]);
+    put("chip", painted(&mut Chip::<&str>::new("tag"), box_), &mut counts[2]);
     n += 1;
-    put("avatar", painted(&mut Avatar { initials: "AB" }, box_), &mut counts[3]);
+    put("avatar", painted(&mut Avatar::new("AB"), box_), &mut counts[3]);
     n += 1;
     put("icon", painted(&mut Icon::new(Symbol::Check), box_), &mut counts[4]);
     n += 1;
@@ -145,12 +145,18 @@ fn a_bar_chart_scales_to_its_largest_value() {
 fn an_avatar_trims_multibyte_initials() {
     let box_ = Size { w: 40.0, h: 40.0 };
     for name in ["ÅB", "ÆØÅ", "AB", "A", "", "日本語"] {
-        let l = painted(&mut Avatar { initials: name }, box_);
+        let l = painted(&mut Avatar::new(name), box_);
         let shown = l.cmds.iter().find_map(|c| match c {
             Cmd::Text { text, .. } => Some(l.str_of(*text).to_string()),
             _ => None,
         });
         println!("  {name:?} -> {shown:?}");
+        // No initials, no text run: since M57/B3 the run is the measured
+        // initials' own box, which is empty for an empty name.
+        if name.is_empty() {
+            assert!(shown.as_deref().is_none_or(str::is_empty), "an empty name painted {shown:?}");
+            continue;
+        }
         let shown = shown.expect("an avatar painted no text");
         assert!(shown.chars().count() <= 2, "{name:?} kept {shown:?}");
         assert!(name.starts_with(&shown), "{name:?} did not keep its own prefix");
@@ -384,4 +390,46 @@ fn no_two_widgets_share_a_kind() {
         }
     }
     println!("{} distinct kinds: {kinds:?}", kinds.len());
+}
+
+/// **A badge is never narrower than it is tall** — M57/B1.
+///
+/// The rustdoc promised a one- or two-character count comes out circular,
+/// and nothing made it so: "3" was round only because the digit is narrow
+/// (`docs/widget-audit.md`, Badge). Tall padding makes every count here
+/// narrower than its height by nature, so only the rule can round it —
+/// without the padding, the block stand-in's wide digits pass either way.
+#[test]
+fn a_badge_is_at_least_as_wide_as_it_is_tall() {
+    for text in ["3", "12"] {
+        let mut b: Badge = Badge::new(text);
+        let mut st = [NodeState::default(); 1];
+        let mut style = [lumen_static::Node::defaults(&b); 1];
+        style[0].padding.top = 14.0;
+        style[0].padding.bottom = 14.0;
+        let limits = Constraints { min_w: 0.0, max_w: 200.0, min_h: 0.0, max_h: 200.0 };
+        let mut metrics = lumen_static::cx::BlockMetrics;
+        let mut cx = LayoutCx::new(&mut metrics);
+        let s = lumen_static::Node::layout(&mut b, &mut cx, limits, &style, &mut st, 0);
+        println!("  {text:?}: {} x {}", s.w, s.h);
+        assert!(s.w >= s.h - 0.01, "{text:?} is {} wide and {} tall", s.w, s.h);
+    }
+}
+
+/// **A pie closes its ring** — M57/B32.
+///
+/// Each wedge's boundary was truncated, and the fractions summed in f32
+/// end just below 1.0, so the last of the 96 segments was never drawn: a
+/// 1.35% gap at 12 o'clock (`docs/widget-audit.md`, PieChart). A full
+/// ring is 96 segment lines, whatever the data.
+#[test]
+fn a_pie_draws_every_segment_of_its_ring() {
+    for data in [&[10.0f32, 6.0, 4.0, 3.0, 2.0][..], &[1.0, 1.0, 1.0][..], &[7.0][..], &[0.3, 0.3, 0.4][..]] {
+        let mut pie: PieChart = PieChart::default();
+        pie.data = Series::new(data);
+        let l = painted(&mut pie, Size { w: 160.0, h: 160.0 });
+        let lines = l.cmds.iter().filter(|c| matches!(c, Cmd::Line { .. })).count();
+        println!("  {data:?}: {lines} segments");
+        assert_eq!(lines, 96, "{data:?}: the ring has {lines} of its 96 segments");
+    }
 }

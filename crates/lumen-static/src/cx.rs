@@ -241,6 +241,15 @@ pub struct LayoutCx<'a> {
     /// widgets' defaults already are, so every existing caller is
     /// unaffected.
     pub palette: &'a crate::style::Palette,
+    /// The window, in logical px — M57/A18 (`docs/plan-widget-fixes.md`).
+    ///
+    /// What an out-of-flow popup must stay inside. `layout` is handed only
+    /// its parent's limits, which for a dropdown in a form is the form, not
+    /// the screen; so a tooltip near the right edge ran off it and a long
+    /// option list ran off the bottom (`docs/widget-audit.md`, Tooltip,
+    /// FilePicker). Infinite unless the caller knows the window: the host
+    /// and [`crate::pass::layout_with`] set it from the root's limits.
+    pub viewport: crate::desc::Size,
 }
 
 impl<'a> LayoutCx<'a> {
@@ -253,7 +262,14 @@ impl<'a> LayoutCx<'a> {
             scale: 1.0,
             changed: crate::invalidate::Changed::ALL,
             palette: &crate::style::Palette::LIGHT,
+            viewport: crate::desc::Size { w: f32::INFINITY, h: f32::INFINITY },
         }
+    }
+
+    /// The same context, knowing the window is `viewport` (M57/A18).
+    pub fn with_viewport(mut self, viewport: crate::desc::Size) -> Self {
+        self.viewport = viewport;
+        self
     }
 
     /// The same context, measuring for a display with this scale factor
@@ -299,6 +315,7 @@ impl<'a> LayoutCx<'a> {
             scale: 1.0,
             changed,
             palette: &crate::style::Palette::LIGHT,
+            viewport: crate::desc::Size { w: f32::INFINITY, h: f32::INFINITY },
         }
     }
 

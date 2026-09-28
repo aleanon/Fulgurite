@@ -8,10 +8,10 @@
   "M45/T45.6 added word-Left, double click and triple click to TextInput and TextArea, and Ctrl+End and Home to TextArea."
  ],
  "counts": {
-  "entries": 42,
-  "actions": 117,
-  "landed_checked": 94,
-  "isolated": 50
+  "entries": 43,
+  "actions": 139,
+  "landed_checked": 113,
+  "isolated": 57
  },
  "entries": {
   "PickList": [
@@ -21,21 +21,26 @@
   ],
   "Combobox": [
    "typing filters the list",
+   "a press on a filtered row chooses that row",
+   "after a choice a press on the field opens the list again",
    "clearing the query shows everything again"
   ],
   "Menu": [
-   "it shows its commands with no trigger"
+   "it shows its commands with no trigger",
+   "choosing a command runs it and closes the menu",
+   "its button opens it again"
   ],
   "Pagination": [
    "the next arrow steps one page",
    "pressing a number goes to that page",
    "the keyboard jumps to the last page",
    "a number is the page it shows, not its position in the strip",
-   "the previous arrow steps back, it does not jump"
+   "the previous arrow steps back, it does not jump",
+   "the first page is always one press away"
   ],
   "Tree": [
    "pressing a parent folds its whole subtree away",
-   "pressing a leaf reports nothing, because nothing happened",
+   "pressing a leaf selects it and folds nothing",
    "a hover lights the row under the pointer",
    "the keyboard folds the lit parent",
    "the keyboard unfolds it again"
@@ -43,7 +48,11 @@
   "DataGrid": [
    "it shows its columns over virtualized rows",
    "a wheel scrolls the rows under the header",
-   "End from a focused row brings the last row into view"
+   "a press on a row selects it",
+   "a press on a cell makes that cell active",
+   "the arrows move the active cell",
+   "dragging the thumb scrolls the rows",
+   "Ctrl+End from a focused cell brings the last row into view"
   ],
   "NumberInput": [
    "a click focuses the field",
@@ -58,7 +67,9 @@
   "SearchField": [
    "a click reaches the text, not the container",
    "typing reaches the query",
-   "the magnifier is left of the text and inside the pill"
+   "the magnifier is left of the text and inside the pill",
+   "clicking a full field twice on one spot leaves its view still",
+   "Escape clears the query, and the field ends inside the pill"
   ],
   "Wrap": [
    "six chips land on more than one line",
@@ -74,7 +85,7 @@
   "Accordion": [
    "a press on the header opens the section",
    "a press on the header again closes it",
-   "the other sections are independent"
+   "opening one closes the one that was open"
   ],
   "PaneGrid": [
    "a column's divider moves only that column",
@@ -96,7 +107,8 @@
    "it shows its title and does not grow with it"
   ],
   "PullToRefresh": [
-   "a downward drag pulls the content",
+   "a wheel pull past the threshold refreshes when the wheel stops",
+   "a short pull springs back without refreshing",
    "an upward wheel is not a pull"
   ],
   "ColorPicker": [
@@ -109,13 +121,14 @@
    "a press opens the popup",
    "a cell sets the value and closes the popup",
    "a press outside closes it and changes nothing",
-   "the arrows page the month and keep the day"
+   "the arrows page the month and leave the chosen date",
+   "a day picked after paging commits the paged month"
   ],
   "TimePicker": [
    "a press opens the popup",
    "a cell sets the value and closes the popup",
    "a press outside closes it and changes nothing",
-   "a minute mark changes the minute and not the hour"
+   "an hour sets the hour and keeps the clock open"
   ],
   "FilePicker": [
    "a press opens the popup",
@@ -129,21 +142,36 @@
    "the markers are markup, not text"
   ],
   "RichTextEditor": [
-   "typing markup updates the preview under it"
+   "typing markup updates the preview under it",
+   "Ctrl+B bolds the selection"
   ],
   "PaintBox": [
    "the application's drawing is on screen and inside the box"
+  ],
+  "Select": [
+   "pressing the trigger opens the menu",
+   "releasing over a row chooses it and closes the menu",
+   "the keyboard opens it, walks the rows and chooses one",
+   "Escape closes it and focus returns to the trigger"
+  ],
+  "ScrollView": [
+   "PageDown from a focused row scrolls the view",
+   "the wheel scrolls it back",
+   "a drag on the bar scrolls it"
   ],
   "Card": [
    "a button on the card reaches the application",
    "the content is inset by the card's padding"
   ],
   "Toast": [
-   "it shrinks to its text rather than filling the stage",
+   "Save shows a toast below the stage, centred on the window",
+   "it shrinks to its text rather than filling the window",
+   "its × closes it",
+   "shown again, it goes away by itself",
    "it paints a ground, so its light text is readable"
   ],
   "Tooltip": [
-   "hovering the content opens the tip",
+   "resting on the content opens the tip",
    "the tip does not take the pointer from its content"
   ],
   "TextInput": [
@@ -180,14 +208,21 @@
   "CheckBox": [
    "a click flips the bound flag",
    "a second click flips it back",
-   "the second checkbox is independently addressable"
+   "the second checkbox is independently addressable",
+   "a click on its words flips it"
   ],
   "Switch": [
    "a click flips the bound flag",
    "the track changes colour with the state"
   ],
   "Radio": [
-   "clicking the other option moves the selection"
+   "clicking the other option moves the selection",
+   "Down moves the selection to the next option"
+  ],
+  "Chip": [
+   "a click selects the chip",
+   "a second click deselects it",
+   "the × removes and does not select"
   ],
   "Modal": [
    "a press on the scrim asks to dismiss",
@@ -203,23 +238,14 @@
    "a press on the scrim asks to dismiss",
    "it does not close itself",
    "the control on the panel still reaches the application"
-  ],
-  "Select": [
-   "pressing the trigger opens the menu",
-   "releasing over a row chooses it and closes the menu",
-   "the keyboard opens it, walks the rows and chooses one",
-   "Escape closes it and focus returns to the trigger"
-  ],
-  "ScrollView": [
-   "PageDown from a focused row scrolls the view",
-   "the wheel scrolls it back",
-   "a drag on the bar scrolls it"
   ]
  },
  "static": [
   "PickList/a picklist does not filter on its trigger",
   "Menu/it shows its commands with no trigger",
-  "Tree/pressing a leaf reports nothing, because nothing happened",
+  "Menu/choosing a command runs it and closes the menu",
+  "Menu/its button opens it again",
+  "Tree/pressing a leaf selects it and folds nothing",
   "DataGrid/it shows its columns over virtualized rows",
   "SearchField/the magnifier is left of the text and inside the pill",
   "Wrap/six chips land on more than one line",
@@ -229,6 +255,7 @@
   "BottomNav/a press on the item already selected changes nothing but is taken",
   "NavigationRail/a press on the item already selected changes nothing but is taken",
   "AppBar/it shows its title and does not grow with it",
+  "PullToRefresh/a short pull springs back without refreshing",
   "PullToRefresh/an upward wheel is not a pull",
   "ColorPicker/a press outside closes it and changes nothing",
   "DatePicker/a press outside closes it and changes nothing",
@@ -238,7 +265,7 @@
   "Markdown/the markers are markup, not text",
   "PaintBox/the application's drawing is on screen and inside the box",
   "Card/the content is inset by the card's padding",
-  "Toast/it shrinks to its text rather than filling the stage",
+  "Toast/it shrinks to its text rather than filling the window",
   "Toast/it paints a ground, so its light text is readable"
  ]
 }

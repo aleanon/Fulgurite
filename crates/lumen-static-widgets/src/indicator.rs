@@ -74,7 +74,7 @@ impl Widget for ProgressBar {
             lumen_static::style::Fields::BACKGROUND,
             lumen_static::style::Fields::BORDER,
             lumen_static::style::Fields::RADIUS,
-        ]))];
+        ])).with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Accent).background(lumen_static::style::Role::Track))];
 }
 
 const BAR_H: f32 = 8.0;
@@ -91,6 +91,27 @@ impl Node for ProgressBar {
         let me = style[i];
         let size = resolve_self(limits, &me, Size { w: 0.0, h: BAR_H });
         record_painted(st, i, limits, size, &me)
+    }
+
+    /// What a screen reader and the agent are told — M57/A17
+    /// (`docs/plan-widget-fixes.md`). This published nothing at all
+    /// (`GenericContainer`, no value) until M57.
+    #[cfg(feature = "a11y")]
+    fn observe(
+        &self,
+        _st: &[NodeState],
+        _i: usize,
+        _id: u64,
+        node: &mut lumen_static::observe::accesskit::Node,
+        _extra: &mut alloc::vec::Vec<(lumen_static::observe::accesskit::NodeId, lumen_static::observe::accesskit::Node)>,
+    ) {
+        use lumen_static::observe::accesskit as ak;
+        node.set_role(ak::Role::ProgressIndicator);
+        let v = if self.value.is_finite() { self.value.clamp(0.0, 1.0) } else { 0.0 };
+        node.set_min_numeric_value(0.0);
+        node.set_max_numeric_value(1.0);
+        node.set_numeric_value(v as f64);
+        node.set_value(alloc::format!("{:.0}%", v * 100.0));
     }
 
     fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
@@ -110,22 +131,6 @@ impl Node for ProgressBar {
         if filled > 0.5 {
             out.rounded_rect([r[0], r[1], r[0] + filled.max(radius * 2.0), r[3]], s.fg, radius);
         }
-    }
-
-    /// How full, as a number — M48/T48.6.
-    #[cfg(feature = "a11y")]
-    fn observe(
-        &self,
-        _st: &[NodeState],
-        _i: usize,
-        _id: u64,
-        node: &mut lumen_static::observe::accesskit::Node,
-        _extra: &mut alloc::vec::Vec<(lumen_static::observe::accesskit::NodeId, lumen_static::observe::accesskit::Node)>,
-    ) {
-        node.set_role(lumen_static::observe::accesskit::Role::ProgressIndicator);
-        node.set_numeric_value(self.fraction() as f64);
-        node.set_min_numeric_value(0.0);
-        node.set_max_numeric_value(1.0);
     }
 
     lumen_static::leaf_common!(ProgressBar, 0, nohit);
@@ -171,7 +176,7 @@ impl Widget for Spinner {
             lumen_static::style::Fields::HEIGHT,
             lumen_static::style::Fields::VISIBLE,
             lumen_static::style::Fields::COLOR,
-        ]))];
+        ])).with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Accent))];
 }
 
 const SPIN: f32 = 28.0;
@@ -189,6 +194,25 @@ impl Node for Spinner {
         let me = style[i];
         let size = resolve_self(limits, &me, Size { w: SPIN, h: SPIN });
         record_painted(st, i, limits, size, &me)
+    }
+
+    /// What a screen reader and the agent are told — M57/A17
+    /// (`docs/plan-widget-fixes.md`). This published nothing at all
+    /// (`GenericContainer`, no value) until M57.
+    #[cfg(feature = "a11y")]
+    fn observe(
+        &self,
+        _st: &[NodeState],
+        _i: usize,
+        _id: u64,
+        node: &mut lumen_static::observe::accesskit::Node,
+        _extra: &mut alloc::vec::Vec<(lumen_static::observe::accesskit::NodeId, lumen_static::observe::accesskit::Node)>,
+    ) {
+        use lumen_static::observe::accesskit as ak;
+        // Indeterminate: a progress indicator with no value, and busy.
+        node.set_role(ak::Role::ProgressIndicator);
+        node.set_busy();
+        node.set_value("busy");
     }
 
     fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
@@ -228,31 +252,26 @@ impl Node for Spinner {
         }
     }
 
-    /// An indeterminate progress indicator, marked busy — M48/T48.6.
-    #[cfg(feature = "a11y")]
-    fn observe(
-        &self,
-        _st: &[NodeState],
-        _i: usize,
-        _id: u64,
-        node: &mut lumen_static::observe::accesskit::Node,
-        _extra: &mut alloc::vec::Vec<(lumen_static::observe::accesskit::NodeId, lumen_static::observe::accesskit::Node)>,
-    ) {
-        node.set_role(lumen_static::observe::accesskit::Role::ProgressIndicator);
-        node.set_busy();
-    }
-
     lumen_static::leaf_common!(Spinner, 0, nohit);
 }
+
+/// The shimmer band's width, and the distance between bands, in logical
+/// px — M57/B29. Fixed rather than a share of each block, so a group of
+/// skeletons shows one band of one shape.
+pub const SHIMMER_BAND: f32 = 120.0;
+pub const SHIMMER_PERIOD: f32 = 480.0;
 
 /// A placeholder block for content that has not arrived.
 ///
 /// The shimmer is a `phase` the application advances, like [`Spinner`]'s.
-/// At `phase == 0` it is a flat block, which is what a host that
-/// animates nothing gets and is still the right picture.
+/// At `phase == 0` the band sits on the window's left edge, so a block
+/// away from it is flat — what a host that animates nothing gets, and
+/// still the right picture.
 #[derive(Default)]
 pub struct Skeleton {
-    /// Where the highlight is, in `0.0..=1.0` of the width.
+    /// Where the highlight is in its sweep, `0.0..=1.0` of
+    /// [`SHIMMER_PERIOD`] in window coordinates (M57/B29), so every
+    /// skeleton given the same phase shows the same band.
     pub phase: f32,
 }
 
@@ -290,7 +309,7 @@ impl Widget for Skeleton {
             lumen_static::style::Fields::BACKGROUND,
             lumen_static::style::Fields::BORDER,
             lumen_static::style::Fields::RADIUS,
-        ]))];
+        ])).with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Raised).background(lumen_static::style::Role::Placeholder))];
 }
 
 impl Node for Skeleton {
@@ -307,6 +326,26 @@ impl Node for Skeleton {
         record_painted(st, i, limits, size, &me)
     }
 
+    /// What a screen reader and the agent are told — M57/A17
+    /// (`docs/plan-widget-fixes.md`). This published nothing at all
+    /// (`GenericContainer`, no value) until M57.
+    #[cfg(feature = "a11y")]
+    fn observe(
+        &self,
+        _st: &[NodeState],
+        _i: usize,
+        _id: u64,
+        node: &mut lumen_static::observe::accesskit::Node,
+        _extra: &mut alloc::vec::Vec<(lumen_static::observe::accesskit::NodeId, lumen_static::observe::accesskit::Node)>,
+    ) {
+        use lumen_static::observe::accesskit as ak;
+        // A placeholder has nothing to read yet: busy, and hidden from a
+        // reader, so it announces the loading rather than a grey block.
+        node.set_role(ak::Role::GenericContainer);
+        node.set_busy();
+        node.set_hidden();
+    }
+
     fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
         let s = &st[i];
         let r = rect_of(s);
@@ -320,10 +359,31 @@ impl Node for Skeleton {
         // does not paint past it. `push_clip`/`pop_clip` rather than
         // arithmetic, because the renderer's clip is a hard test and
         // the arithmetic would have to repeat the rounded corner.
-        let band = w * 0.28;
-        let x = r[0] - band + (w + band * 2.0) * lumen_static::num::fract_euclid(self.phase);
+        //
+        // **A soft band, and one sweep for a group** — M57/B29. It was a
+        // hard-edged block a fraction of *this* skeleton's width, placed
+        // along *this* skeleton, so three stacked rows flashed three
+        // separate blocks of three sizes. The band is a gradient now,
+        // clear → highlight → clear, a fixed `SHIMMER_BAND` wide, and it
+        // travels in window coordinates with period `SHIMMER_PERIOD`: rows
+        // that line up show one band passing down them.
+        let t = lumen_static::num::fract_euclid(self.phase);
+        let c = t * SHIMMER_PERIOD;
+        // The copy of the band nearest this block, and the one after it.
+        let k = lumen_static::num::floor((r[0] - c) / SHIMMER_PERIOD);
+        let clear = Color(s.fg.0, s.fg.1, s.fg.2, 0);
+        let stops = lumen_static::display::Stops {
+            at: [0.0, 0.5, 1.0, 1.0],
+            color: [clear, s.fg, clear, clear],
+            len: 3,
+        };
         out.push_clip(r);
-        out.rounded_rect([x, r[1], x + band, r[3]], s.fg, s.radius.min(h / 2.0));
+        for n in 0..3 {
+            let x = c + (k + n as f32) * SHIMMER_PERIOD - SHIMMER_BAND / 2.0;
+            if x < r[2] && x + SHIMMER_BAND > r[0] {
+                out.gradient([x, r[1], x + SHIMMER_BAND, r[3]], stops, 0.0);
+            }
+        }
         out.pop_clip();
     }
 

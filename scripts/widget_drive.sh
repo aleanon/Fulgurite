@@ -25,6 +25,7 @@
 # Needs a display. Skips with exit 77 without one (M43 §2).
 set -euo pipefail
 cd "$(cd "$(dirname "$0")/.." && pwd)"
+. scripts/drive_window.sh  # live windows on the monitor the user is not reading
 LAUNCH="python3 scripts/live/launch.py --script widget-drive"
 $LAUNCH --display-only || exit $?
 
@@ -61,5 +62,11 @@ run_one() {
 run_one Everything         agent,everything     ""
 run_one Boundaries         agent                ""
 run_one Boundaries+oracle  agent,shadow-oracle  shadow-oracle
+# M57/D6: a scale-2 leg, where fractional logical edges land on physical
+# pixels, and every action's damaged frame is compared with a full
+# repaint of the same state. A `Boundaries` process, so the leg is named
+# for the strategy it must report, as the oracle's is.
+WINIT_X11_SCALE_FACTOR=2 LUMEN_DRIVE_FULLCHECK=1 \
+run_one Boundaries+scale2  agent                ""
 
 exit "$status"

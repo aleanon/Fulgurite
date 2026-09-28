@@ -21,7 +21,9 @@ The protocol is JSON-RPC 2.0. Methods divide into three groups:
 `ui.lastChange`, `ui.lastDamage`, `ui.lint`, `ui.explain`, and
 `ui.contrast` — the WCAG ratio of each painted text run against the fill
 under it, read off the display list, within a selector's box
-(M54/T54.5).
+(M54/T54.5) — and `ui.regionHash`, a hash of the presented frame's
+pixels over a rect, which is how a drive asserts that an action's
+consequence *shows* rather than that a value moved (M57/D1).
 
 **Synthesise** — `input.click`, `input.hover`, `input.key`,
 `input.type`, `input.fill`, `input.paste`, `input.scroll`, `input.scrollIntoView`,
@@ -62,7 +64,9 @@ real Firefox and Chrome send, and what each executed before and after,
 is `docs/results-agent-transport.md`. Pointing `curl` at the port gets
 a reply that says it is not HTTP.
 
-**Steer** — `app.setPalette` swaps a running window's palette, by name
+**Steer** — `app.repaintAll` marks everything and repaints the whole
+frame, so a drive can compare the frame damage produced with a full
+repaint of the same state (M57/D6). `app.setPalette` swaps a running window's palette, by name
 (`light`, `dark`), and the host re-resolves every stylesheet rule that
 names a role (M25/T25.11) — so `ui.getAppliedStyles` answers in the new
 colours on the next call. It answers `applied: false` from a host that

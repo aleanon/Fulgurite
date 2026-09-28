@@ -139,6 +139,38 @@ def main() -> int:
     failures = 0
     actions = 0
     bare = 0
+    # **The window's settled size, not its first one.** A window manager
+    # may shrink the window it was asked for a moment after it maps: the
+    # scale-2 pass asks 2240x1520 and gets 1920x1008. A drive that began
+    # before that read the sidebar's geometry, the window moved under it,
+    # and the pick's scroll loop chased a row that had changed place -- and
+    # this header printed whichever size it happened to see.
+    import time
+    last, since = None, time.monotonic()
+    deadline = since + 5.0
+    while time.monotonic() < deadline:
+        b = c.rpc("ui.resolve", selector="#sidebar").get("bounds")
+        if b != last:
+            last, since = b, time.monotonic()
+        elif time.monotonic() - since >= 0.6:
+            break
+        time.sleep(0.1)
+    # Which scale this pass really runs at: a scale-2 pass whose window
+    # came up at 1 would compare nothing new and still say "Scale2".
+    shot = c.rpc("ui.screenshot")
+    print(f"widget-drive [{strategy}]: window {shot['width']}x{shot['height']} px at scale {shot.get('scale')}"
+          f"{', full-repaint check on' if os.environ.get('LUMEN_DRIVE_FULLCHECK') == '1' else ''}")
+
+    # M57/D5: first, on the fresh window, the agent must not change what
+    # is drawn. Full runs only: a filtered run's window has already been
+    # driven by whatever ran before in the same process.
+    if not only:
+        from parity import run_parity  # noqa: E402
+        from harness import _pick  # noqa: E402
+        lines, pfail = run_parity(c, _pick, strategy)
+        for line in lines:
+            print(line, file=sys.stderr if line.startswith("  FAIL") else sys.stdout)
+        failures += pfail
     for widget, sel, acts, *root in entries:
         actions += len(acts)
         try:
@@ -163,6 +195,41 @@ def main() -> int:
           f"{bare} without an isolate, {failures} failed; "
           f"actions {n['actions']}, landed-checked {n['landed_checked']}, "
           f"isolated {n['isolated']}")
+
+    # M57/D3: the keyboard-only pass. Every demo with a focusable node must
+    # have an entry in keys.py -- coverage as data, not as a review.
+    from keys import KEYS  # noqa: E402
+    from harness import run_keys, _pick, _focusables_in_demo  # noqa: E402
+    catalog = Path(HERE.parent.parent / "examples/showcase/src/catalog.rs").read_text()
+    names = [n.split('"')[2] for n in catalog.split('entry!("')[1:]]
+    if only:
+        names = [n for n in names if n.lower() == only.lower()]
+    kfail = kdone = 0
+    for w in names:
+        try:
+            if w in KEYS:
+                target, acts = KEYS[w]
+                for line in run_keys(c, w, target, acts, strategy):
+                    print(line)
+                kdone += len(acts)
+            else:
+                _pick(c, w)
+                f = _focusables_in_demo(c)
+                if f:
+                    raise Failed(f"{len(f)} focusable node(s) and no keyboard entry in keys.py")
+        except (Failed, RuntimeError) as e:
+            print(f"  FAIL {w} [{strategy}] keyboard: {e}", file=sys.stderr)
+            kfail += 1
+    print(f"keyboard-drive [{strategy}]: {len(names)} entries, {len(KEYS)} with keys, "
+          f"{kdone} actions, {kfail} failed")
+    failures += kfail
+
+    # M57/D7: the accessibility sweep, every demo.
+    from a11y import run_a11y  # noqa: E402
+    lines, afail = run_a11y(c, _pick, names, strategy)
+    for line in lines:
+        print(line, file=sys.stderr if line.startswith("  FAIL") else sys.stdout)
+    failures += afail
     return 1 if failures else 0
 
 

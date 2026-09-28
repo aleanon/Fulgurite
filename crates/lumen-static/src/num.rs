@@ -77,6 +77,20 @@ pub fn fract_euclid(x: f32) -> f32 {
     }
 }
 
+/// `x` rounded to the nearest integer, halves up (toward +∞) — M57/A15.
+///
+/// For snapping geometry to the pixel grid, where "halves up" is what
+/// keeps a 1 px edge pair at 428.5–429.5 exactly one pixel (429–430)
+/// rather than splitting its halves in opposite directions. Built on
+/// [`floor`] for the reason every function here is: `f32::round` is not
+/// in `core`. Non-finite input is returned unchanged.
+pub fn round(x: f32) -> f32 {
+    if !x.is_finite() {
+        return x;
+    }
+    floor(x + 0.5)
+}
+
 /// The smallest integer not less than `x`. Bit-exact with `f32::ceil`.
 pub const fn ceil(x: f32) -> f32 {
     if !has_fraction(x) {

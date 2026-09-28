@@ -37,11 +37,21 @@ pub const MAX_SURFACE_NODES: usize = 256;
 /// A raised panel: padding, a radius, a shadow, and whatever is on it.
 pub struct Card<W: Widget> {
     pub content: W,
+    /// How far it stands off the page — M57/B33. `None` is the style's
+    /// `shadow` (8 by default), so a stylesheet stays in charge; `Some(0)`
+    /// is flat and outlined in `Role::Border`, and `Some(1..=3)` are
+    /// [`ELEVATION`]'s shadows. A card had one look, and a dark page shows
+    /// a shadow barely at all: level 0's outline is what separates it
+    /// there.
+    pub elevation: Option<u8>,
 }
+
+/// Shadow spread per elevation level, 0..=3 (M57/B33).
+pub const ELEVATION: [f32; 4] = [0.0, 4.0, 8.0, 16.0];
 
 impl<W: Widget + Default> Default for Card<W> {
     fn default() -> Self {
-        Card { content: W::default() }
+        Card { content: W::default(), elevation: None }
     }
 }
 
@@ -50,7 +60,13 @@ impl<W: Widget> Card<W> {
     const AT: usize = 1;
 
     pub fn new(content: W) -> Self {
-        Card { content }
+        Card { content, elevation: None }
+    }
+
+    /// The same card at elevation `level` (clamped to 3).
+    pub fn with_elevation(mut self, level: u8) -> Self {
+        self.elevation = Some(level.min(3));
+        self
     }
 }
 
@@ -78,7 +94,10 @@ impl<W: Widget> CardTable<W> {
                 Fields::SHADOW,
                 Fields::CURSOR,
                 Fields::VISIBLE,
-            ]),);
+            ]),).with_roles(
+                // The border role also colours elevation 0's outline (M57/B33).
+                lumen_static::style::SeedRoles::NONE.background(lumen_static::style::Role::Raised).border(lumen_static::style::Role::Border),
+            );
         lumen_static::widget::splice_seeds(&mut s, 1, W::SEEDS);
         s
     };
@@ -150,7 +169,10 @@ impl<W: Widget> Node for Card<W> {
         if !me.visible {
             return lumen_static::ops::hide_subtree(st, i, limits, Self::NODE_COUNT);
         }
-        let inner = lumen_static::ops::inner_limits(limits, me.padding);
+        // Inside its own `Fixed` size, not across the offer (M57/B26:
+        // the same defect M56 found in the derive, in a hand-written
+        // wrapper; `tests/wrapper_own_size.rs`).
+        let inner = lumen_static::ops::inner_limits(lumen_static::ops::within_own_size(limits, &me), me.padding);
         let c = self.content.layout(cx, inner, style, st, i + Self::AT);
         let content =
             Size { w: c.w + me.padding.horizontal(), h: c.h + me.padding.vertical() };
@@ -174,11 +196,20 @@ impl<W: Widget> Node for Card<W> {
             return;
         }
         let r = lumen_static::ops::rect_of(&st[i]);
-        if st[i].shadow > 0.0 {
-            out.shadow(r, st[i].radius, st[i].shadow);
+        let shadow = match self.elevation {
+            Some(k) => ELEVATION[(k as usize).min(3)],
+            None => st[i].shadow,
+        };
+        if shadow > 0.0 {
+            out.shadow(r, st[i].radius, shadow);
         }
         out.rounded_rect(r, st[i].bg, st[i].radius);
         lumen_static::ops::border(st, i, out);
+        // Level 0: flat, so an outline says where it is (unless the style
+        // already draws one).
+        if self.elevation == Some(0) && st[i].border_width == 0 {
+            out.stroked_rect(r, st[i].border_color, st[i].radius, 1.0);
+        }
         self.content.paint(st, i + Self::AT, out);
     }
 
@@ -231,19 +262,92 @@ const fn i_zero() -> usize {
 /// here — the same reason `Spinner` does not drive its own phase. The
 /// application decides when it is up, through `Style::visible` or by not
 /// building it; this draws one.
+///
+/// # Showing, timing out and closing — M57/B34
+///
+/// A toast drew a pill in the flow and could do nothing else
+/// (`docs/widget-audit.md`, Toast). It now:
+///
+/// - **owns whether it is shown**: [`Toast::show`] shows it, optionally
+///   for a time, and [`Toast::hide`] hides it; hidden, it lays out as a
+///   hidden subtree. Shown by default, which is what a tooltip's tip
+///   (`Popup<Toast>`) relies on.
+/// - **times out on the application's clock.** Widgets have no clock
+///   here, which is why a `Spinner` takes its phase; [`Toast::tick`] is
+///   that, for a countdown, and answers whether the toast went away so
+///   the application knows to ask for a frame. The plan's alternative, a
+///   M28 job returned by `show`, needs the application's timer set and a
+///   message type for one widget's countdown.
+/// - **can be closed**: with `closable`, a × at its right hides it.
+/// - **floats**: put it in a [`crate::popup::Popup`] with
+///   [`crate::popup::Anchor::WindowBottom`] to overlay the bottom centre
+///   of the window rather than take a place in the flow. Keep the popup's
+///   `open` in step with [`Toast::is_shown`], or an empty overlay stays
+///   open and takes Escape; the showcase's `refresh` is the three lines.
 pub struct Toast<S: TextStorage = &'static str> {
     pub text: S,
+    /// Draw a × that hides it.
+    pub closable: bool,
+    hidden: bool,
+    /// Milliseconds left, when it was shown for a time.
+    remaining: Option<f32>,
+    /// A press began on the ×.
+    on_close: bool,
+    width: f32,
 }
 
 impl<S: TextStorage + Default> Default for Toast<S> {
     fn default() -> Self {
-        Toast { text: S::default() }
+        Toast::new(S::default())
     }
 }
 
 impl<S: TextStorage> Toast<S> {
+    /// The ×'s column, inside the right padding.
+    pub const CLOSE_W: f32 = 20.0;
+
     pub fn new(text: S) -> Self {
-        Toast { text }
+        Toast { text, closable: false, hidden: false, remaining: None, on_close: false, width: 0.0 }
+    }
+
+    /// Show it — for `ms` milliseconds, or until hidden when `None`.
+    pub fn show(&mut self, ms: Option<f32>) {
+        self.hidden = false;
+        self.remaining = ms.filter(|m| m.is_finite() && *m > 0.0);
+    }
+
+    /// Hide it now. Answers whether it was showing.
+    pub fn hide(&mut self) -> bool {
+        self.remaining = None;
+        !core::mem::replace(&mut self.hidden, true)
+    }
+
+    pub fn is_shown(&self) -> bool {
+        !self.hidden
+    }
+
+    /// Whether a countdown is running — a host should keep ticking.
+    pub fn is_counting(&self) -> bool {
+        !self.hidden && self.remaining.is_some()
+    }
+
+    /// Advance the countdown by `dt_ms`. Answers whether the toast just
+    /// went away.
+    pub fn tick(&mut self, dt_ms: f32) -> bool {
+        let Some(left) = self.remaining.as_mut() else { return false };
+        *left -= dt_ms.max(0.0);
+        if *left <= 0.0 {
+            return self.hide();
+        }
+        false
+    }
+
+    fn extra(&self) -> f32 {
+        if self.closable { Self::CLOSE_W } else { 0.0 }
+    }
+
+    fn on_x(&self, x: f32) -> bool {
+        self.closable && x >= self.width - self.extra() - 12.0
     }
 }
 
@@ -268,7 +372,7 @@ impl<S: TextStorage> Widget for Toast<S> {
         Fields::FONT_SIZE,
         Fields::FONT_WEIGHT,
         Fields::VISIBLE,
-    ]))];
+    ])).with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Page).background(lumen_static::style::Role::Text))];
 
     /// Dark on light, which is the convention every toolkit shares and
     /// the inverse of everything else in this crate — a toast is a
@@ -301,7 +405,7 @@ impl<S: TextStorage> Node for Toast<S> {
         i: usize,
     ) -> Size {
         let me = style[i];
-        if !me.visible {
+        if !me.visible || self.hidden {
             return lumen_static::ops::hide_subtree(st, i, limits, 1);
         }
         let t = cx.text.measure_weighted(
@@ -310,8 +414,9 @@ impl<S: TextStorage> Node for Toast<S> {
             me.font_weight,
             limits.max_w,
         );
-        let content = Size { w: t.w + me.padding.horizontal(), h: t.h + me.padding.vertical() };
+        let content = Size { w: t.w + me.padding.horizontal() + self.extra(), h: t.h + me.padding.vertical() };
         let s = lumen_static::ops::resolve_self(limits, &me, content);
+        self.width = s.w;
         lumen_static::ops::record_painted(st, i, limits, s, &me)
     }
 
@@ -327,12 +432,34 @@ impl<S: TextStorage> Node for Toast<S> {
         lumen_static::ops::border(st, i, out);
         let p = st[i].pad;
         out.text_weighted(
-            [r[0] + p.0, r[1] + p.1, r[2] - p.2, r[3] - p.3],
+            [r[0] + p.0, r[1] + p.1, r[2] - p.2 - self.extra(), r[3] - p.3],
             self.text.as_ref(),
             st[i].font_size,
             st[i].font_weight,
             st[i].fg,
         );
+        if self.closable {
+            let (cx, cy, d) = (r[2] - p.2 - Self::CLOSE_W / 2.0 + 2.0, (r[1] + r[3]) / 2.0, 4.0);
+            let c = st[i].fg;
+            out.line(Point { x: cx - d, y: cy - d }, Point { x: cx + d, y: cy + d }, 1.5, c);
+            out.line(Point { x: cx - d, y: cy + d }, Point { x: cx + d, y: cy - d }, 1.5, c);
+        }
+    }
+
+    /// A press and release on the × hide it; anything else is declined,
+    /// so a tip or a toast without one takes nothing from what is under.
+    fn on_event(&mut self, ev: &lumen_static::Event, cx: &lumen_static::EventCtx) -> bool {
+        match ev {
+            lumen_static::Event::PointerDown { .. } => {
+                self.on_close = self.on_x(cx.local.x);
+                self.on_close
+            }
+            lumen_static::Event::PointerUp { .. } => {
+                let hit = core::mem::take(&mut self.on_close) && self.on_x(cx.local.x);
+                hit && self.hide()
+            }
+            _ => false,
+        }
     }
 
     /// A status message, with its text — M48/T48.6.
@@ -393,13 +520,24 @@ pub const PART_CONTENT: &str = "tooltip-content";
 pub struct Tooltip<W: Widget, S: TextStorage = &'static str> {
     pub content: W,
     pub tip: crate::popup::Popup<Toast<S>>,
+    /// The pointer has rested on the content (`Event::Linger`) — M57/B35.
+    lingered: bool,
+    /// Keyboard focus is on the content: the tip shows for it too, which a
+    /// keyboard user had no way to see (M57/B35).
+    focused: bool,
+    /// Closed by a press or by Escape, until the pointer leaves: the tip
+    /// re-opened on every hovered frame, so neither closed it (M57/B35).
+    suppressed: bool,
+    /// Whether the last layout showed the tip, to see it closed from
+    /// outside — the pass's Escape dismisses the popup directly.
+    shown: bool,
 }
 
 impl<W: Widget + Default, S: TextStorage + Default> Default for Tooltip<W, S> {
     fn default() -> Self {
         let mut tip = crate::popup::Popup::default();
         tip.passive = true;
-        Tooltip { content: W::default(), tip }
+        Tooltip { content: W::default(), tip, lingered: false, focused: false, suppressed: false, shown: false }
     }
 }
 
@@ -416,7 +554,7 @@ impl<W: Widget, S: TextStorage> Tooltip<W, S> {
         // Passive: a press on the content closes the tip and still
         // reaches the content (M33/T33.3).
         tip.passive = true;
-        Tooltip { content, tip }
+        Tooltip { content, tip, lingered: false, focused: false, suppressed: false, shown: false }
     }
 
     /// Whether the tip is showing.
@@ -539,11 +677,29 @@ impl<W: Widget, S: TextStorage> Node for Tooltip<W, S> {
         // tip opened" against a bare `Tooltip<Label>` would still pass,
         // because a label *is* the deepest node.
         let hovered = (i + Self::AT..i + Self::TIP).any(|k| st[k].hovered);
-        self.tip.open = hovered;
+        // **After a rest, or for keyboard focus; not after a press** —
+        // M57/B35. This was `open = hovered`: it opened on the first frame
+        // the pointer crossed the control, never for keyboard focus, and a
+        // press or Escape could not close it, since the next layout
+        // re-opened it (its own comment promised a press closed it).
+        if self.shown && !self.tip.open {
+            // Closed from outside since the last layout: Escape.
+            self.suppressed = true;
+        }
+        if !hovered {
+            self.lingered = false;
+            if !self.focused {
+                self.suppressed = false;
+            }
+        }
+        self.tip.open = ((hovered && self.lingered) || self.focused) && !self.suppressed;
+        self.shown = self.tip.open;
 
         let c = self.content.layout(cx, limits, style, st, i + Self::AT);
         // The tip measures against the same limits and is placed out of
         // flow; it contributes nothing to this node's size.
+        // Flipping above clears the control and both gaps (M57/A18).
+        self.tip.above_by = c.h + 2.0 * Self::GAP;
         self.tip.layout(cx, limits, style, st, i + Self::TIP);
         lumen_static::ops::record_painted(st, i, limits, c, &me)
     }
@@ -564,8 +720,10 @@ impl<W: Widget, S: TextStorage> Node for Tooltip<W, S> {
         // not see this (it calls `Node::hit` directly, below the overlay
         // pass); `just widget-drive` reported the press counter not
         // moving, which is the same defect from the outside.
+        // **Centred under the control** (M57/B35), not left-aligned to it;
+        // the popup keeps it on the window.
         let below = Point {
-            x: origin.x,
+            x: origin.x + (st[i + Self::AT].size.w - self.tip.measured().w) / 2.0,
             y: origin.y + st[i + Self::AT].size.h + Self::GAP,
         };
         self.tip.place(below, style, st, i + Self::TIP);
@@ -576,6 +734,31 @@ impl<W: Widget, S: TextStorage> Node for Tooltip<W, S> {
         // The tip defers itself into the overlay phase; painting it here
         // is what makes that offer.
         self.tip.paint(st, i + Self::TIP, out);
+    }
+
+    /// Hover intent, focus and presses, from the content — M57/B35. None of
+    /// these is *consumed*: the content keeps its own press and focus.
+    fn on_event(&mut self, ev: &lumen_static::event::Event, cx: &lumen_static::event::EventCtx) -> bool {
+        use lumen_static::event::Event;
+        let mine = cx.target != cx.node;
+        match ev {
+            Event::Linger if mine && !self.lingered => {
+                self.lingered = true;
+                true
+            }
+            Event::PointerDown { .. } if mine => {
+                self.suppressed = true;
+                false
+            }
+            Event::Focus { gained } if mine => {
+                self.focused = *gained;
+                if !*gained {
+                    self.suppressed = false;
+                }
+                false
+            }
+            _ => false,
+        }
     }
 
     fn hit(&self, st: &[NodeState], i: usize, x: f32, y: f32) -> Option<lumen_static::Hit> {

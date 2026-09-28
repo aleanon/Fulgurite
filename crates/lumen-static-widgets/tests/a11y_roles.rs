@@ -79,14 +79,16 @@ const ROWS: &[Row] = &[
     row("OptionList", "OptionList", Role::ListBox, false),
     row("PickList", "Chooser", Role::ComboBox, true),
     row("Combobox", "Chooser", Role::ComboBox, true),
-    row("Menu", "Chooser", Role::ComboBox, true),
+    // A menu runs a command and holds no value (M57/B23).
+    row("Menu", "Chooser", Role::Menu, true),
     row("ProgressBar", "ProgressBar", Role::ProgressIndicator, false),
     row("Spinner", "Spinner", Role::ProgressIndicator, false),
     row("Skeleton", "Skeleton", Role::GenericContainer, false),
     row("BarChart", "Chart", Role::Figure, false),
     row("LineChart", "Chart", Role::Figure, false),
     row("PieChart", "Chart", Role::Figure, false),
-    row("Pad", "Pad", Role::GenericContainer, false),
+    // A grid of cells: swatches, days, clock marks, files (M57/A17).
+    row("Pad", "Pad", Role::Grid, false),
     row("ColorPicker", "Picker", Role::ComboBox, true),
     row("DatePicker", "Picker", Role::ComboBox, true),
     row("TimePicker", "Picker", Role::ComboBox, true),
@@ -115,6 +117,7 @@ const ROWS: &[Row] = &[
     row("Divider", "Divider", Role::GenericContainer, false),
     row("Badge", "Badge", Role::Label, false),
     row("Chip", "Chip", Role::Label, false),
+    row("Labelled", "Labelled", Role::Label, false),
     row("Avatar", "Avatar", Role::Image, false),
     row("Icon", "Icon", Role::Image, false),
 ];

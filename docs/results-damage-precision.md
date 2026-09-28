@@ -528,3 +528,35 @@ compared 6 243, 5 397 skipped; none diverged. A headless sweep of the
 workspace with `shadow-oracle` compared 4 289 frames with the same
 divergences as before the change, less one it fixed (`loop_test` wrote a
 label with no mark).
+
+## M57/A5 — laying a repeater's rows out whole costs nothing measurable
+
+*Superseded at the merge with M39–M55 (2026-09-28):* `main`'s
+M41/T41.3 had fixed the same defect with `Changed::arena_view` and a
+repeater that tracks which row each slot last showed, so `in_arena` was
+removed and its call sites use that. The measurement below is the
+branch's, of the mechanism it replaced.
+
+`LayoutCx::in_arena` laid out every arena node (a `Repeat` row, a `List`
+item, a `Dyn`'s content) with the dirty set treated as everything changed.
+The set is indexed by the table, and an arena's nodes are not in it, so the
+derive's skip had been asking about the main table's first nodes. Rows the
+bind rewrote kept last frame's size (`docs/widget-audit.md` X3). The gate
+is `crates/lumen-static/tests/repeat_rebind.rs`. With the frame's set
+passed through instead, it measured 3 of 11 visible rows stale after a
+three-row scroll.
+
+The `grid` bench's 18-row body, eight runs a side, on the same machine and
+in the same session:
+
+| arm | layout µs, before | layout µs, after |
+|---|---|---|
+| narrowed | 2.55–2.65 (handled/split) | 2.54–2.68 |
+| handled (mark_all) | 23.30–23.36 | 23.16–23.36 |
+
+**Verdict: inside the arm's own spread, so kept.** A window of 18 rows was
+already being re-bound every frame (T29.5). Laying out the rows it
+re-binds adds less than the run-to-run noise. A second pair of runs taken
+back to back showed a 2 µs shift in `paint`, which no layout change can
+move. That shift is the machine's drift between runs, and it is why the
+table compares rows taken in one session.

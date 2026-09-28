@@ -43,6 +43,8 @@ static:
     ./scripts/check_agent_methods.sh    # M48/T48.14: the skill and the book name exactly the methods the code answers
     python3 scripts/ui_check.py selftest # M48/T48.3: an unmeasured app.perf is NOT MEASURED, not a pass
     python3 scripts/agent_client.py selftest # M48/T48.13: quit raises on an error reply
+    ./scripts/check_observe.sh          # every widget publishes itself to a reader, or says why not
+    ./scripts/check_on_event_tests.sh   # M57/D2: a direct on_event test goes through the pass or says why not
 
 # Default features == the shipped shape. This is the ONLY build that compiles
 # what docs/verification-notes.md scopes its argument to; `--workspace` cannot

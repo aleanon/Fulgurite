@@ -79,10 +79,16 @@ pub struct Strip<const KIND: u8 = TABS> {
     /// same trade `Popup::measured` and `ScrollView::measured_overflow`
     /// make, and for the same reason.
     widths: [f32; MAX_ITEMS],
+    /// The item under the pointer, for hover and press feedback — M57/B36.
+    /// Paint ignored `hovered` and `pressed` entirely.
+    hot: Option<usize>,
 }
 
 /// `Tabs`: a horizontal strip with the selection underlined.
 pub type Tabs = Strip<TABS>;
+
+/// A rail item's height (M57/B38).
+const RAIL_ITEM: f32 = 56.0;
 /// `BottomNav`: a horizontal strip with the selection filled.
 pub type BottomNav = Strip<BOTTOM>;
 /// `NavigationRail`: a vertical strip with the selection filled.
@@ -96,6 +102,7 @@ impl<const KIND: u8> Default for Strip<KIND> {
             selected: 0,
             extent: 0.0,
             widths: [0.0; MAX_ITEMS],
+            hot: None,
         }
     }
 }
@@ -143,16 +150,36 @@ impl<const KIND: u8> Strip<KIND> {
         KIND == RAIL
     }
 
+    /// The item under a local point, read along the strip's own axis.
+    ///
+    /// **A rail reads `local.y` where the other two read `local.x`.** It is
+    /// the one line three presentations sharing one implementation can get
+    /// wrong with nothing else looking different, and only a press down a
+    /// rail can tell — `a_rail_reads_the_press_down_its_own_axis` in
+    /// `tests/nav.rs` is that press.
+    /// One item's extent along the strip. A rail stacks fixed 56 px items
+    /// from its top, as Material's does (M57/B38); it divided its whole
+    /// height among them, so four items in a tall rail were 65 px each and
+    /// grew with the window. Strips divide their width.
+    fn each(&self) -> f32 {
+        let even = self.extent / self.count.max(1) as f32;
+        if KIND == RAIL { even.min(RAIL_ITEM) } else { even }
+    }
+
     fn item_at(&self, local: Point) -> Option<usize> {
         if self.count == 0 || self.extent <= 0.0 {
             return None;
         }
         let along = if Self::vertical() { local.y } else { local.x };
-        let each = self.extent / self.count as f32;
-        if each <= 0.0 {
+        let each = self.each();
+        if each <= 0.0 || along < 0.0 {
             return None;
         }
         let k = (along / each) as usize;
+        if KIND == RAIL && k >= self.count {
+            // Below the last item of a rail is not an item.
+            return None;
+        }
         Some(k.min(self.count - 1))
     }
 }
@@ -182,7 +209,7 @@ impl<const KIND: u8> Widget for Strip<KIND> {
                 Fields::FOCUS_RING,
                 Fields::CURSOR,
                 Fields::VISIBLE,
-            ]))];
+            ])).with_roles(match KIND { TABS => lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Muted).border(lumen_static::style::Role::Accent), _ => lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Text).background(lumen_static::style::Role::Surface) })];
 
     fn type_defaults() -> Style {
         let base = Style {
@@ -280,7 +307,6 @@ impl<const KIND: u8> Node for Strip<KIND> {
     }
 
     fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
-        lumen_static::ops::focus_ring(st, i, out);
         let s = &st[i];
         let r = lumen_static::ops::rect_of(s);
         let (w, h) = (r[2] - r[0], r[3] - r[1]);
@@ -289,7 +315,7 @@ impl<const KIND: u8> Node for Strip<KIND> {
         }
         out.rounded_rect(r, s.bg, s.radius);
         lumen_static::ops::border(st, i, out);
-        let each = if Self::vertical() { h } else { w } / self.count as f32;
+        let each = self.each();
         for k in 0..self.count {
             let cell = if Self::vertical() {
                 [r[0], r[1] + each * k as f32, r[2], r[1] + each * (k as f32 + 1.0)]
@@ -297,14 +323,27 @@ impl<const KIND: u8> Node for Strip<KIND> {
                 [r[0] + each * k as f32, r[1], r[0] + each * (k as f32 + 1.0), r[3]]
             };
             let on = k == self.selected;
+            // **Hover and press** (M57/B36): a tint on the item under the
+            // pointer, stronger while it is held.
+            if !on && self.hot == Some(k) {
+                let a = if s.pressed { 0x2e } else { 0x16 };
+                out.rounded_rect(
+                    [cell[0] + 4.0, cell[1] + 4.0, cell[2] - 4.0, cell[3] - 4.0],
+                    lumen_static::display::Color(s.fg.0, s.fg.1, s.fg.2, a),
+                    8.0,
+                );
+            }
             match KIND {
                 // **An underline, not a fill.** A filled tab reads as a
                 // button; the underline is what says "this is the page
                 // you are on" without competing with the content.
                 TABS => {
                     if on {
+                        // In the accent (M57/B36): the underline and the
+                        // label were the text colour, and only the weight
+                        // told the current tab apart.
                         let t = 3.0;
-                        out.rect([cell[0] + 8.0, cell[3] - t, cell[2] - 8.0, cell[3]], s.fg);
+                        out.rect([cell[0] + 8.0, cell[3] - t, cell[2] - 8.0, cell[3]], s.border_color);
                     }
                 }
                 _ => {
@@ -328,7 +367,11 @@ impl<const KIND: u8> Node for Strip<KIND> {
             // (the review's fd31a02) left it green; the contrast harness
             // (`tests/text_contrast.rs`) and `just widget-drive` measure
             // the run against the fill it lands on, and read 1.00:1.
-            let col = if on && KIND != TABS { s.bg } else { s.fg };
+            let col = match (on, KIND) {
+                (true, TABS) => s.border_color,
+                (true, _) => s.bg,
+                _ => s.fg,
+            };
             // Centred on its cell, from the width `layout` measured.
             let tw = self.widths[k].min(cell[2] - cell[0]);
             let tx = cell[0] + ((cell[2] - cell[0]) - tw) / 2.0;
@@ -345,6 +388,12 @@ impl<const KIND: u8> Node for Strip<KIND> {
 
     fn on_event(&mut self, ev: &Event, cx: &EventCtx) -> bool {
         match ev {
+            Event::Hover { .. } => {
+                let was = self.hot;
+                self.hot = self.item_at(cx.local);
+                was != self.hot
+            }
+            Event::Leave => self.hot.take().is_some(),
             Event::PointerDown { .. } => match self.item_at(cx.local) {
                 Some(k) => {
                     // **True even when the selection did not move.** A
@@ -400,40 +449,99 @@ impl<const KIND: u8, S> lumen_static::event::Handlers<S> for Strip<KIND> {
 
 // ---- AppBar ----------------------------------------------------------
 
-/// A titled bar across the top of a screen.
+/// Upper bound on one [`AppBar`]'s nodes: itself and its two slots.
+pub const MAX_APPBAR_NODES: usize = 64;
+
+/// A titled bar across the top of a screen, with a leading and an
+/// actions slot.
 ///
 /// **Not a selector**, which is why it is not a [`Strip`]. Nothing in it
 /// is selected, there is no index, and giving it one to fit the group
 /// would be a field that is always zero and a keyboard that moves it
 /// nowhere. It is a title, a ground and an elevation.
-pub struct AppBar<S: lumen_static::text::TextStorage = &'static str> {
+///
+/// **Slots** — M57/B39. `L` sits at the start (a back or menu button) and
+/// `A` at the end (actions); both default to `Option<Spacer>`, and `None`
+/// is a hidden subtree that takes no room. The title fills what is left
+/// and **ends in an ellipsis** when it does not fit, which the rustdoc
+/// claimed and nothing tested: it drew past the bar.
+pub struct AppBar<
+    S: lumen_static::text::TextStorage = &'static str,
+    L: Widget = Option<crate::ops::Spacer>,
+    A: Widget = Option<crate::ops::Spacer>,
+> {
     pub title: S,
+    pub leading: L,
+    pub actions: A,
+    /// How much of the title fits, from layout: its byte length, whether
+    /// it was cut, and the drawn prefix's width.
+    fit: (usize, bool, f32),
+    /// What `fit` was computed under: the title's fold, the room and the
+    /// font, so a still frame measures nothing.
+    fit_key: (u64, u32, u32, u32),
+    /// The title's box, from `place`.
+    title_x: (f32, f32),
 }
 
-impl<S: lumen_static::text::TextStorage + Default> Default for AppBar<S> {
+impl<S, L, A> Default for AppBar<S, L, A>
+where
+    S: lumen_static::text::TextStorage + Default,
+    L: Widget + Default,
+    A: Widget + Default,
+{
     fn default() -> Self {
-        AppBar { title: S::default() }
+        AppBar::with(S::default(), L::default(), A::default())
     }
 }
 
 impl<S: lumen_static::text::TextStorage> AppBar<S> {
     pub fn new(title: S) -> Self {
-        AppBar { title }
+        AppBar::with(title, None, None)
     }
 }
 
-impl<S: lumen_static::text::TextStorage> Widget for AppBar<S> {
-    const NODE_COUNT: usize = 1;
-    const DEPTH: usize = 1;
-    /// **Rigid.** An app bar's height is its style's, never its title's
-    /// — a longer title wraps or truncates rather than making the bar
-    /// taller, which is what every platform's bar does and what stops a
-    /// title change relaying out the whole screen below it.
-    const IS_RIGID: bool = true;
-    const SUB_TABLE: &'static [NodeDesc] = &[NodeDesc::new(0, NO_PARENT, 0, 0, NodeDesc::RIGID)];
-    const KIND: &'static str = "appbar";
-    const SEEDS: &'static [Seed] =
-        &[Seed::new(<AppBar<S> as Widget>::KIND, <AppBar<S> as Widget>::type_defaults, Fields::of(&[
+impl<S: lumen_static::text::TextStorage, L: Widget, A: Widget> AppBar<S, L, A> {
+    const LEAD: usize = 1;
+
+    /// A bar with both slots.
+    pub fn with(title: S, leading: L, actions: A) -> Self {
+        AppBar { title, leading, actions, fit: (0, false, 0.0), fit_key: (0, 0, 0, 0), title_x: (0.0, 0.0) }
+    }
+
+    fn act() -> usize {
+        1 + L::NODE_COUNT
+    }
+
+    /// The part of the title drawn, and whether it was cut.
+    pub fn shown_title(&self) -> (&str, bool) {
+        let t = self.title.as_ref();
+        (&t[..self.fit.0.min(t.len())], self.fit.1)
+    }
+}
+
+/// The gap between a slot and the title.
+const SLOT_GAP: f32 = 8.0;
+const ELLIPSIS: &str = "…";
+
+pub struct AppBarTable<L, A>(core::marker::PhantomData<(L, A)>);
+
+impl<L: Widget, A: Widget> AppBarTable<L, A> {
+    const N: usize = 1 + L::NODE_COUNT + A::NODE_COUNT;
+    const ARRAY: [NodeDesc; MAX_APPBAR_NODES] = {
+        assert!(Self::N <= MAX_APPBAR_NODES, "AppBar slots exceed MAX_APPBAR_NODES");
+        let mut t = [NodeDesc::EMPTY; MAX_APPBAR_NODES];
+        t[0] = NodeDesc::new(1, NO_PARENT, 0, 2, NodeDesc::CONTAINER | NodeDesc::RIGID);
+        lumen_static::widget::splice_child(&mut t, 1, L::SUB_TABLE, 0);
+        lumen_static::widget::splice_child(&mut t, 1 + L::NODE_COUNT, A::SUB_TABLE, 0);
+        // The leading slot's next sibling is the actions slot.
+        t[1].next_sibling = (1 + L::NODE_COUNT) as u32;
+        t
+    };
+    pub const SLICE: &'static [NodeDesc] = Self::ARRAY.split_at(Self::N).0;
+
+    const SEED_ARRAY: [Seed; MAX_APPBAR_NODES] = {
+        let mut s = [Seed::WIDGET; MAX_APPBAR_NODES];
+        s[0] = Seed::new("appbar", appbar_defaults, Fields::of(&[
                 Fields::WIDTH,
                 Fields::HEIGHT,
                 Fields::PADDING,
@@ -444,29 +552,60 @@ impl<S: lumen_static::text::TextStorage> Widget for AppBar<S> {
                 Fields::FONT_WEIGHT,
                 Fields::SHADOW,
                 Fields::VISIBLE,
-            ]),)];
+            ]),).with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::OnAccent).background(lumen_static::style::Role::Accent));
+        lumen_static::widget::splice_seeds(&mut s, 1, L::SEEDS);
+        lumen_static::widget::splice_seeds(&mut s, 1 + L::NODE_COUNT, A::SEEDS);
+        s
+    };
+    pub const SEED_SLICE: &'static [Seed] = Self::SEED_ARRAY.split_at(Self::N).0;
+}
 
-    fn type_defaults() -> Style {
-        Style {
-            width: Length::FILL,
-            height: Length::Fixed(56.0),
-            padding: Edges { left: 16.0, right: 16.0, top: 0.0, bottom: 0.0 },
-            // `Palette::LIGHT`'s accent since M54/T54.6: `#2f6bff` put its
-            // white title at 4.497:1 (`docs/results-a11y-platform.md`).
-            background: Color(0x31, 0x5c, 0xde, 0xff),
-            color: Color(0xff, 0xff, 0xff, 0xff),
-            font_size: 18.0,
-            font_weight: 600.0,
-            shadow: 6.0,
-            ..Style::default()
-        }
+fn appbar_defaults() -> Style {
+    Style {
+        width: Length::FILL,
+        height: Length::Fixed(56.0),
+        padding: Edges { left: 16.0, right: 16.0, top: 0.0, bottom: 0.0 },
+        // `Palette::LIGHT`'s accent since M54/T54.6: `#2f6bff` put its
+        // white title at 4.497:1 (`docs/results-a11y-platform.md`).
+        background: Color(0x31, 0x5c, 0xde, 0xff),
+        color: Color(0xff, 0xff, 0xff, 0xff),
+        font_size: 18.0,
+        font_weight: 600.0,
+        shadow: 6.0,
+        ..Style::default()
     }
 }
 
-impl<S: lumen_static::text::TextStorage> Node for AppBar<S> {
+impl<S: lumen_static::text::TextStorage, L: Widget, A: Widget> Widget for AppBar<S, L, A> {
+    const NODE_COUNT: usize = AppBarTable::<L, A>::N;
+    const DEPTH: usize = 1 + if L::DEPTH > A::DEPTH { L::DEPTH } else { A::DEPTH };
+    /// **Rigid.** An app bar's height is its style's, never its title's
+    /// — a longer title is cut with an ellipsis rather than making the bar
+    /// taller, which is what every platform's bar does and what stops a
+    /// title change relaying out the whole screen below it.
+    const IS_RIGID: bool = true;
+    const SUB_TABLE: &'static [NodeDesc] = AppBarTable::<L, A>::SLICE;
+    const KIND: &'static str = "appbar";
+    const SEEDS: &'static [Seed] = AppBarTable::<L, A>::SEED_SLICE;
+
+    fn type_defaults() -> Style {
+        appbar_defaults()
+    }
+}
+
+impl<S: lumen_static::text::TextStorage, L: Widget, A: Widget> Node for AppBar<S, L, A> {
+    lumen_static::node_count!();
+    fn kind_name(&self) -> &'static str {
+        <Self as Widget>::KIND
+    }
+
+    fn defaults(&self) -> Style {
+        <Self as Widget>::type_defaults()
+    }
+
     fn layout(
         &mut self,
-        _cx: &mut LayoutCx,
+        cx: &mut LayoutCx,
         limits: Constraints,
         style: &[Style],
         st: &mut [NodeState],
@@ -474,16 +613,32 @@ impl<S: lumen_static::text::TextStorage> Node for AppBar<S> {
     ) -> Size {
         let me = style[i];
         if !me.visible {
-            return lumen_static::ops::hide_subtree(st, i, limits, 1);
+            return lumen_static::ops::hide_subtree(st, i, limits, Self::NODE_COUNT);
         }
-        // The title is not measured: the bar's height is its style's.
-        // Measuring it would make `IS_RIGID` a lie.
-        let s = lumen_static::ops::resolve_self(
-            limits,
-            &me,
-            Size { w: limits.max_w, h: 56.0 },
-        );
-        lumen_static::ops::record_painted(st, i, limits, s, &me)
+        // The bar's size is its style's: the title and the slots are
+        // fitted into it, never the other way round.
+        let s = lumen_static::ops::resolve_self(limits, &me, Size { w: limits.max_w, h: 56.0 });
+        let inner = Constraints { min_w: 0.0, max_w: (s.w - me.padding.horizontal()).max(0.0), min_h: 0.0, max_h: s.h };
+        let l = self.leading.layout(cx, inner, style, st, i + Self::LEAD);
+        let a = self.actions.layout(cx, inner, style, st, i + Self::act());
+        let gap = |w: f32| if w > 0.0 { SLOT_GAP } else { 0.0 };
+        let room = (inner.max_w - l.w - gap(l.w) - a.w - gap(a.w)).max(0.0);
+        self.fit_title(cx, room, &me);
+        record_painted_rigid(st, i, limits, s, &me)
+    }
+
+    fn place(&mut self, origin: Point, style: &[Style], st: &mut [NodeState], i: usize) {
+        st[i].pos = origin;
+        let me = &style[i];
+        let h = st[i].size.h;
+        let (lw, lh) = (st[i + Self::LEAD].size.w, st[i + Self::LEAD].size.h);
+        let (aw, ah) = (st[i + Self::act()].size.w, st[i + Self::act()].size.h);
+        let x0 = origin.x + me.padding.left;
+        let x1 = origin.x + st[i].size.w - me.padding.right;
+        self.leading.place(Point { x: x0, y: origin.y + (h - lh) / 2.0 }, style, st, i + Self::LEAD);
+        self.actions.place(Point { x: x1 - aw, y: origin.y + (h - ah) / 2.0 }, style, st, i + Self::act());
+        let tx = x0 + lw + if lw > 0.0 { SLOT_GAP } else { 0.0 };
+        self.title_x = (tx, x1 - aw - if aw > 0.0 { SLOT_GAP } else { 0.0 });
     }
 
     fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
@@ -497,21 +652,49 @@ impl<S: lumen_static::text::TextStorage> Node for AppBar<S> {
         }
         out.rounded_rect(r, s.bg, s.radius);
         lumen_static::ops::border(st, i, out);
-        let p = s.pad;
         // Vertically centred on the bar, not on the padding box: an app
         // bar's padding is horizontal and a title pinned to the top of
         // it would sit against the status area.
         let mid = (r[1] + r[3]) / 2.0;
-        out.text_weighted(
-            [r[0] + p.0, mid - s.font_size * 0.6, r[2] - p.2, mid + s.font_size * 0.8],
-            self.title.as_ref(),
-            s.font_size,
-            s.font_weight,
-            s.fg,
-        );
+        let (y0, y1) = (mid - s.font_size * 0.6, mid + s.font_size * 0.8);
+        let (x0, x1) = self.title_x;
+        let (shown, cut) = self.shown_title();
+        out.text_weighted([x0, y0, x1, y1], shown, s.font_size, s.font_weight, s.fg);
+        if cut {
+            let e = x0 + self.fit.2;
+            out.text_weighted([e, y0, x1, y1], ELLIPSIS, s.font_size, s.font_weight, s.fg);
+        }
+        self.leading.paint(st, i + Self::LEAD, out);
+        self.actions.paint(st, i + Self::act(), out);
     }
 
-    lumen_static::leaf_common!(AppBar<S>, 0, nohit);
+    fn hit(&self, st: &[NodeState], i: usize, x: f32, y: f32) -> Option<lumen_static::Hit> {
+        if !lumen_static::hit::contains(&st[i], x, y) {
+            return None;
+        }
+        // The slots only: the bar itself is a ground, and takes nothing.
+        self.leading.hit(st, i + Self::LEAD, x, y).or_else(|| self.actions.hit(st, i + Self::act(), x, y))
+    }
+
+    fn node(&self, k: usize) -> &dyn Node {
+        if k == 0 {
+            self
+        } else if k < Self::act() {
+            self.leading.node(k - Self::LEAD)
+        } else {
+            self.actions.node(k - Self::act())
+        }
+    }
+
+    fn node_mut(&mut self, k: usize) -> &mut dyn Node {
+        if k == 0 {
+            self
+        } else if k < Self::act() {
+            self.leading.node_mut(k - Self::LEAD)
+        } else {
+            self.actions.node_mut(k - Self::act())
+        }
+    }
 
     #[cfg(feature = "a11y")]
     fn observe(
@@ -522,17 +705,78 @@ impl<S: lumen_static::text::TextStorage> Node for AppBar<S> {
         node: &mut accesskit::Node,
         _extra: &mut alloc::vec::Vec<(accesskit::NodeId, accesskit::Node)>,
     ) {
+        // The whole title, not the cut one: a reader is not short of room.
         node.set_role(accesskit::Role::Banner);
         node.set_value(self.title.as_ref());
     }
 }
 
-impl<S: lumen_static::text::TextStorage, A> lumen_static::event::Handlers<A> for AppBar<S> {
+impl<S: lumen_static::text::TextStorage, L: Widget, A: Widget> AppBar<S, L, A> {
+    /// How much of the title fits in `room`, with an ellipsis when not all
+    /// of it does: the longest prefix, on a char boundary, whose width
+    /// plus the ellipsis's fits. A binary search over boundaries, and
+    /// memoised, so a still frame measures nothing.
+    fn fit_title(&mut self, cx: &mut LayoutCx, room: f32, me: &Style) {
+        let t = self.title.as_ref();
+        let key = (
+            lumen_static::text::FoldedText::fold_of(t),
+            room.to_bits(),
+            me.font_size.to_bits(),
+            me.font_weight.to_bits() ^ cx.scale().to_bits().rotate_left(7),
+        );
+        if key == self.fit_key {
+            return;
+        }
+        self.fit_key = key;
+        let (px, wt) = (me.font_size, me.font_weight);
+        let mut w = |s: &str| cx.text.measure_weighted(s, px, wt, f32::INFINITY).w;
+        let full = w(t);
+        if full <= room {
+            self.fit = (t.len(), false, full);
+            return;
+        }
+        let e = w(ELLIPSIS);
+        let bounds: alloc::vec::Vec<usize> = t.char_indices().map(|(k, _)| k).chain(core::iter::once(t.len())).collect();
+        let (mut lo, mut hi) = (0usize, bounds.len() - 1);
+        while lo < hi {
+            let mid = (lo + hi + 1) / 2;
+            if w(&t[..bounds[mid]]) + e <= room {
+                lo = mid;
+            } else {
+                hi = mid - 1;
+            }
+        }
+        let cut = bounds[lo];
+        // Drop a trailing space before the ellipsis: "Inbox …" is a gap.
+        let cut = t[..cut].trim_end().len();
+        self.fit = (cut, true, w(&t[..cut]));
+    }
+}
+
+/// `record_painted` for a rigid container: the same call, named for the
+/// reader who looks for why the bar's size ignores its content.
+fn record_painted_rigid(st: &mut [NodeState], i: usize, limits: Constraints, s: Size, me: &Style) -> Size {
+    lumen_static::ops::record_painted(st, i, limits, s, me)
+}
+
+impl<S, L, A, X> lumen_static::event::Handlers<X> for AppBar<S, L, A>
+where
+    S: lumen_static::text::TextStorage,
+    L: Widget + lumen_static::event::Handlers<X>,
+    A: Widget + lumen_static::event::Handlers<X>,
+{
     fn handler(
         &self,
-        _sel: lumen_static::event::NodeSel,
-    ) -> Option<fn(&mut A, &EventCtx)> {
-        None
+        sel: lumen_static::event::NodeSel,
+    ) -> Option<fn(&mut X, &EventCtx)> {
+        let act = 1 + L::NODE_COUNT;
+        if sel.i == 0 {
+            None
+        } else if sel.i < act {
+            self.leading.handler(lumen_static::event::NodeSel { i: sel.i - 1, inner: sel.inner })
+        } else {
+            self.actions.handler(lumen_static::event::NodeSel { i: sel.i - act, inner: sel.inner })
+        }
     }
 }
 
@@ -561,6 +805,15 @@ pub struct PullToRefresh<W: Widget> {
     pub threshold: f32,
     /// Set when `pull` crosses `threshold`; cleared by `take_triggered`.
     triggered: bool,
+    /// Where a pointer drag started, less the pull it started from — set
+    /// by a press, cleared by the release (M57/B40).
+    drag_from: Option<f32>,
+    /// **Held open while the application refreshes** — M57/B40. Set it
+    /// when you take the trigger, clear it when the work is done; while it
+    /// is set the indicator is full and the content stays pulled down,
+    /// which is the "refreshing" state a user waits on. Controlled, like
+    /// `Toggle::on`: the widget never clears it.
+    pub refreshing: bool,
 }
 
 impl<W: Widget + Default> Default for PullToRefresh<W> {
@@ -573,7 +826,7 @@ impl<W: Widget> PullToRefresh<W> {
     const AT: usize = 1;
 
     pub fn new(content: W) -> Self {
-        PullToRefresh { content, pull: 0.0, threshold: 64.0, triggered: false }
+        PullToRefresh { content, pull: 0.0, threshold: 64.0, triggered: false, drag_from: None, refreshing: false }
     }
 
     /// How far it has been pulled, in px.
@@ -594,6 +847,18 @@ impl<W: Widget> PullToRefresh<W> {
     }
 
     /// Let go: arm a refresh if the pull got far enough, and spring back.
+    /// Whether the content is scrolled to its top, or does not scroll —
+    /// the only time a pull may begin (M57/B40).
+    fn at_top(&self) -> bool {
+        self.content.node(0).scroll_offset().is_none_or(|o| o <= 0.5)
+    }
+
+    /// The offset the content is drawn at: the pull, or the threshold while
+    /// the application is refreshing.
+    fn shown(&self) -> f32 {
+        if self.refreshing { self.threshold.max(self.pull) } else { self.pull }
+    }
+
     pub fn release(&mut self) -> bool {
         let armed = self.is_armed();
         self.triggered |= armed;
@@ -619,7 +884,7 @@ impl<W: Widget> PullTable<W> {
         let mut s = [Seed::WIDGET; MAX_PULL_NODES];
         s[0] = Seed::new(
             <PullToRefresh<W> as Widget>::KIND,
-            <PullToRefresh<W> as Widget>::type_defaults, Fields::of(&[Fields::WIDTH, Fields::HEIGHT, Fields::COLOR, Fields::VISIBLE]));
+            <PullToRefresh<W> as Widget>::type_defaults, Fields::of(&[Fields::WIDTH, Fields::HEIGHT, Fields::COLOR, Fields::VISIBLE])).with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Accent));
         lumen_static::widget::splice_seeds(&mut s, 1, W::SEEDS);
         s
     };
@@ -666,19 +931,28 @@ impl<W: Widget> Node for PullToRefresh<W> {
         if !me.visible {
             return lumen_static::ops::hide_subtree(st, i, limits, Self::NODE_COUNT);
         }
-        let c = self.content.layout(cx, limits, style, st, i + Self::AT);
-        let s = lumen_static::ops::resolve_self(limits, &me, c);
+        // **Within its own box, less its padding** — M57/B40. The content
+        // was offered the pull's *limits*, so a 50 px pull laid a scroll
+        // view out 300 px tall, and the padding a sheet set was ignored in
+        // both layout and place (the showcase's padding did nothing).
+        let own = lumen_static::ops::within_own_size(limits, &me);
+        let inner = lumen_static::ops::inner_limits(own, me.padding);
+        let loose = Constraints { min_w: 0.0, max_w: inner.max_w, min_h: 0.0, max_h: inner.max_h };
+        let c = self.content.layout(cx, loose, style, st, i + Self::AT);
+        let padded = Size { w: c.w + me.padding.horizontal(), h: c.h + me.padding.vertical() };
+        let s = lumen_static::ops::resolve_self(limits, &me, padded);
         lumen_static::ops::record_painted(st, i, limits, s, &me)
     }
 
     fn place(&mut self, origin: Point, style: &[Style], st: &mut [NodeState], i: usize) {
         st[i].pos = origin;
+        let pad = style[i].padding;
         // **The content moves with the pull.** An indicator that
         // appeared without the content moving reads as an overlay, not
         // as a drag — and the whole affordance is that the surface
         // itself follows the finger.
         self.content.place(
-            Point { x: origin.x, y: origin.y + self.pull },
+            Point { x: origin.x + pad.left, y: origin.y + pad.top + self.shown() },
             style,
             st,
             i + Self::AT,
@@ -688,28 +962,61 @@ impl<W: Widget> Node for PullToRefresh<W> {
     fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
         let s = &st[i];
         let r = lumen_static::ops::rect_of(s);
-        if self.pull > 0.0 && r[2] > r[0] {
+        let pull = self.shown();
+        if pull > 0.0 && r[2] > r[0] {
             // A bar across the top, filling as the pull approaches the
             // threshold — a progress reading, not a spinner, because a
             // spinner would have to be animated and this widget has no
             // clock. `Spinner`'s own note says the same.
-            let frac = lumen_static::num::clamp(self.pull / self.threshold.max(1.0), 0.0, 1.0);
-            let h = (self.pull * 0.4).min(6.0);
+            let frac = lumen_static::num::clamp(pull / self.threshold.max(1.0), 0.0, 1.0);
+            let h = (pull * 0.4).min(6.0);
             out.rounded_rect([r[0], r[1], r[0] + (r[2] - r[0]) * frac, r[1] + h], s.fg, h / 2.0);
         }
+        // Clipped to its own box: pulled down, the content drew past the
+        // bottom of the widget (M57/B40).
+        out.push_clip(r);
         self.content.paint(st, i + Self::AT, out);
+        out.pop_clip();
     }
 
-    fn on_event(&mut self, ev: &Event, _cx: &EventCtx) -> bool {
+    fn on_event(&mut self, ev: &Event, cx: &EventCtx) -> bool {
+        let max = self.threshold * 2.0;
         match ev {
-            // Only a downward wheel *at the top* pulls. Everything else
-            // is the content's, including an upward one, or a list could
-            // never be scrolled back.
-            Event::Scroll { dy, .. } if *dy > 0.0 => {
-                self.pull = (self.pull + dy).min(self.threshold * 2.0);
+            // **Only at the top** (M57/B40): the comment said so, and any
+            // downward wheel pulled, so inside a list this took every
+            // scroll. Half the wheel's distance, so the pull resists.
+            Event::Scroll { dy, .. } if *dy > 0.0 && self.at_top() => {
+                self.pull = (self.pull + dy * 0.5).min(max);
                 true
             }
-            Event::PointerUp { .. } => self.release(),
+            // An upward wheel while pulled takes the pull back first.
+            Event::Scroll { dy, .. } if *dy < 0.0 && self.pull > 0.0 => {
+                self.pull = (self.pull + dy * 0.5).max(0.0);
+                true
+            }
+            // **A wheel has no release; the gesture going quiet is one**
+            // (M57/B40). Released only on a `PointerUp`, a wheel pull stayed
+            // armed, its content held down, until an unrelated click.
+            Event::ScrollEnd if self.pull > 0.0 => self.release(),
+            // **A drag pulls** (M57/B40). There was no arm for it, so the
+            // gesture the widget is named for did not exist. A press the
+            // content declined starts one — but not a control's, which
+            // must keep its own press or never activate.
+            Event::PointerDown { .. } if !cx.target_is_control && self.at_top() => {
+                self.drag_from = Some(cx.pos.y - self.pull * 2.0);
+                true
+            }
+            Event::PointerMove { .. } => match self.drag_from {
+                Some(from) => {
+                    self.pull = ((cx.pos.y - from) * 0.5).clamp(0.0, max);
+                    true
+                }
+                None => false,
+            },
+            Event::PointerUp { .. } => {
+                self.drag_from = None;
+                self.release()
+            }
             _ => false,
         }
     }

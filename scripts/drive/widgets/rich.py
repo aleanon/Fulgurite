@@ -50,6 +50,7 @@ MARKDOWN = ("Markdown", "#d_markdown_a", [
 
 EDITOR = ("RichTextEditor", "#d_editor_a", [
     Action(
+        visible=True,
         name="typing markup updates the preview under it",
         needs="an editor whose preview is already parsed",
         do=lambda c: (c.__dict__.__setitem__(
@@ -69,12 +70,30 @@ EDITOR = ("RichTextEditor", "#d_editor_a", [
             c.c.rpc("input.type", text="x"))[0],
         injection="stop re-parsing in RichTextEditor::layout",
     ),
+    # M57/B8: `bold()` existed and nothing called it; and the agent could
+    # not hold a modifier, so a shortcut could not be driven at all.
+    Action(
+        visible=True,
+        name="Ctrl+B bolds the selection",
+        needs="an editor with focus in its text area",
+        do=lambda c: (c.click(f"{c.sel} > #editor-input"),
+                      c.c.rpc("input.key", key="a", mods=["ctrl"]),
+                      c.c.rpc("input.key", key="b", mods=["ctrl"]))[0],
+        expect=lambda c: (
+            c.value(f"{c.sel} > #editor-input").startswith("**")
+            and c.value(f"{c.sel} > #editor-input").endswith("**")
+            and "**" not in c.value(f"{c.sel} > #editor-preview"),
+            "the source reads {!r}".format(c.value(f"{c.sel} > #editor-input")[:40]),
+        ),
+        injection="drop the Ctrl+B arm in RichTextEditor::on_event, or the "
+                  "`mods` parameter of input.key",
+    ),
 ])
 
 PAINTBOX = ("PaintBox", "#d_paintbox_a", [
     Action(
         name="the application's drawing is on screen and inside the box",
-        needs="a paint box with a callback that draws past its own edge",
+        needs="a paint box whose callback draws dots across its own edges",
         do=lambda c: c.hover(),
         expect=lambda c: _ink_inside(c),
         static=True,
@@ -98,22 +117,34 @@ def _ink_inside(c):
     shot = c.c.rpc("ui.screenshot", {}) if False else c.c.rpc("ui.screenshot")
     png = base64.b64decode(shot["image_base64"])
     w, h, px = _decode(png)
-    b = c.box()
+    # **Physical pixels**: the screenshot is at the window's scale and the
+    # box is logical. Unscaled, the scale-2 pass (M57/D6) looked for ink
+    # in the top-left quarter of the window and found none.
+    sc = shot.get("scale", 1.0)
+    b = [v * sc for v in c.box()]
     ink = (0x25, 0x63, 0xeb)
     inside = outside = 0
     for y in range(max(0, int(b[1]) - 6), min(h, int(b[3]) + 6)):
         for x in range(max(0, int(b[0]) - 6), min(w, int(b[2]) + 6)):
             p = px[(y * w + x) * 4:(y * w + x) * 4 + 3]
             if abs(p[0] - ink[0]) < 24 and abs(p[1] - ink[1]) < 24 and abs(p[2] - ink[2]) < 24:
-                if b[0] <= x < b[2] and b[1] <= y < b[3]:
-                    inside += 1
-                else:
+                # **A pixel is outside only if it is wholly outside.** The
+                # box's edges need not fall on whole pixels -- a 320 px box
+                # centred in a 743 px stage starts at x = 524.5 (M56) --
+                # and a pixel straddling an edge is half inside, so the
+                # clip may ink it. Comparing the pixel's index with a
+                # fractional edge counted it outside: six such pixels
+                # failed this action on an exactly clipped sparkline.
+                if x + 1 <= b[0] or x >= b[2] or y + 1 <= b[1] or y >= b[3]:
                     outside += 1
+                else:
+                    inside += 1
     return (
         inside > 200 and outside == 0,
         f"{inside} px of the callback's ink inside the box and {outside} "
-        f"outside it — the sparkline draws 500 px past the right edge and "
-        f"the widget clips it",
+        f"outside it — the sparkline's first and last dots straddle the "
+        f"box's edges by 3 px, and only the clip keeps that half in "
+        f"(18 px outside with the clip removed, M57/B9)",
     )
 
 

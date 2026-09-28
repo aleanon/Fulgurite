@@ -67,6 +67,7 @@ GRID = ("Grid", "#d_grid_a", [
 
 SPLIT = ("SplitPane", "#d_split_a", [
     Action(
+        visible=True,
         name="dragging the divider moves it",
         needs="a split pane at its default halfway point",
         # **A transition, not a state.** `split < 0.45` is a fact about
@@ -84,6 +85,7 @@ SPLIT = ("SplitPane", "#d_split_a", [
         injection="drop the PointerDown arm in SplitPane::on_event",
     ),
     Action(
+        visible=True,
         name="it stops short of the edge",
         needs="a split pane that can be dragged",
         # **Inside the widget, at its very edge.** A press at a negative
@@ -106,15 +108,38 @@ SPLIT = ("SplitPane", "#d_split_a", [
 
 
 def _drag_divider(c, frac):
+    """Press **on the divider**, move to `frac` of the width, let go.
+
+    This pressed *at* `frac` and let go, inside a pane — which moved the
+    divider only because a press anywhere in a pane jumped it there, the
+    defect M57/A4 fixed (`docs/widget-audit.md` X2). The drive asserted
+    the bug as the behaviour. The divider is drawn at `(w - 6) * split`,
+    6 px wide, and its grab zone is three times that.
+    """
     b = c.box()
     y = (b[1] + b[3]) / 2
-    x = b[0] + (b[2] - b[0]) * frac
-    c.c.rpc("input.pointerDown", x=x, y=y)
-    c.c.rpc("input.pointerUp", x=x, y=y)
+    w = b[2] - b[0]
+    split = float(c.value() or 0.5)
+    on_bar = b[0] + (w - 6.0) * split + 3.0
+    to = b[0] + w * frac
+    c.c.rpc("input.pointerDown", x=on_bar, y=y)
+    c.c.rpc("input.hover", x=to, y=y)
+    c.c.rpc("input.pointerUp", x=to, y=y)
 
 
-ACCORDION = ("Accordion", "#d_acc_a", [
+# M57/C7: the demo opens its first section, as its comment always said,
+# and the application keeps one open at a time -- which is what an
+# accordion is. So the inventory drives the *second* section, which starts
+# closed, and its last action asserts the one-open rule; "the other
+# sections are independent" asserted the rule's absence.
+def _click_header(c):
+    b = c.box()
+    return c.c.rpc("input.click", x=(b[0] + b[2]) / 2, y=b[1] + 20)
+
+
+ACCORDION = ("Accordion", "#d_acc_b", [
     Action(
+        visible=True,
         name="a press on the header opens the section",
         needs="a collapsed section",
         do=lambda c: (c.__dict__.__setitem__("_h0", c.box()[3] - c.box()[1]),
@@ -129,33 +154,51 @@ ACCORDION = ("Accordion", "#d_acc_a", [
         isolate=lambda c: (c.__dict__.__setitem__("_h0", c.box()[3] - c.box()[1]),
                            c.click_outside())[0],
         reflows=True,
+        # The first section closing is the one-open rule at work.
+        expects_lint=("W1005", "W1001"),
         injection="drop the header press arm in Collapsible::on_event",
     ),
     Action(
+        visible=True,
         name="a press on the header again closes it",
         needs="an open section",
-        do=lambda c: c.click(),
+        # **On the header**, 20 px into its 40: this clicked the open
+        # section's centre, which landed in the header only while the
+        # body was short -- a 12 px gap under the body (M57/B47) moved the
+        # centre onto the body and the press did nothing.
+        do=lambda c: _click_header(c),
         expect=lambda c: (
             c.value() == "collapsed",
             f"state {c.value()!r}",
         ),
         reflows=True,
-        # A collapsing section squeezes its body on the way out; the
-        # truncation lint is correct about the frame it sees.
-        expects_lint=("W1005",),
+        # A collapsing section's body leaves the screen, and the lint is
+        # correct about the frame it sees: squeezed on the way out
+        # (`W1005`) while the demo sat in the stage's old 248 px share,
+        # laid out at 0x0 (`W1001`) since M56 gives it its own 320 px. A
+        # collapsed body is audited because its addresses still answer
+        # with the body, where an absent `Option` branch answers with its
+        # container and is not — recorded in docs/plan-showcase-design.md
+        # T56.4, not changed here.
+        expects_lint=("W1005", "W1001"),
         injection="make the press set `open = true` instead of toggling",
     ),
     Action(
-        name="the other sections are independent",
-        needs="three sections in a column",
-        do=lambda c: c.click("#d_acc_b"),
+        # The section that closes is another one: watch the stage (D1).
+        visible=True,
+        region="#demo",
+        name="opening one closes the one that was open",
+        needs="three sections, the second open",
+        do=lambda c: (c.click(), c.click("#d_acc_c")),
         expect=lambda c: (
-            c.value("#d_acc_b") == "expanded" and c.value() == "collapsed",
-            f"a={c.value()!r} b={c.value('#d_acc_b')!r} — opening one must not "
-            f"touch the others; the one-open rule is the application's",
+            c.value("#d_acc_c") == "expanded" and c.value() == "collapsed"
+            and c.value("#d_acc_a") == "collapsed",
+            f"a={c.value('#d_acc_a')!r} b={c.value()!r} c={c.value('#d_acc_c')!r} "
+            f"— one section open at a time is the application's rule",
         ),
         reflows=True,
-        injection="share one `open` flag between sections",
+        expects_lint=("W1005", "W1001"),
+        injection="drop the one-open rule from the showcase's refresh",
     ),
 ])
 
@@ -196,6 +239,7 @@ def _drag(c, x_frac: float, y_frac: float, grab: str):
 
 PANEGRID = ("PaneGrid", "#d_panegrid_a", [
     Action(
+        visible=True,
         name="a column's divider moves only that column",
         needs="a grid whose three dividers all sit at 0.5",
         do=lambda c: (c.__dict__.__setitem__("_f0", _fracs(c)),
@@ -225,6 +269,7 @@ PANEGRID = ("PaneGrid", "#d_panegrid_a", [
         injection="give both columns one horizontal divider",
     ),
     Action(
+        visible=True,
         name="a drag keeps the divider it started on",
         needs="a grid with a divider to grab",
         do=lambda c: (c.__dict__.__setitem__("_f0", _fracs(c)),

@@ -70,8 +70,13 @@ impl F {
         self.frame();
         h
     }
+    // A whole press, down then up, as a keyboard sends one: since M57/A10
+    // a second down with no up between is an auto-repeat, which does not
+    // activate.
     fn key(&mut self, k: Key) -> bool {
-        self.send(Event::Key { key: k, down: true })
+        let h = self.send(Event::Key { key: k, down: true });
+        self.send(Event::Key { key: k, down: false });
+        h
     }
     fn click(&mut self, i: u32) {
         let s = self.st[i as usize];
@@ -138,8 +143,13 @@ fn an_open_menu_takes_focus_and_the_keyboard_chooses() {
     println!("open menu: focus {:?} (the list is {list})", f.input.focus);
     assert_eq!(f.input.focus, Some(list), "the open menu did not take focus");
     let handled = [f.key(Key::Down), f.key(Key::Down), f.key(Key::Enter)];
-    println!("menu: Down x2, Enter handled {handled:?}; selected {:?} (expected Some(1))", f.app.ui.mn.selected());
-    assert_eq!(f.app.ui.mn.selected(), Some(1), "the keyboard did not choose the second command");
+    f.frame();
+    // **A menu runs a command** (M57/B23): the choice is taken once as a
+    // command, and the menu holds no selection afterwards.
+    let ran = f.app.ui.mn.take_chosen();
+    println!("menu: Down x2, Enter handled {handled:?}; ran {ran:?} (expected Some(1)); selected {:?}", f.app.ui.mn.selected());
+    assert_eq!(ran, Some(1), "the keyboard did not run the second command");
+    assert_eq!(f.app.ui.mn.selected(), None, "a menu kept a selection");
 }
 
 // ---- pickers, trees and grids ------------------------------------------
@@ -216,8 +226,10 @@ impl G {
         self.ov = Overlays::default();
         pass::paint_overlaid(&self.app.ui, &self.st, &mut list, &mut self.ov);
     }
+    // A whole press, down then up (M57/A10: downs alone are auto-repeat).
     fn key(&mut self, k: Key) -> bool {
         let h = pass::dispatch_overlaid(&mut self.app, &self.sty, &mut self.st, &mut self.input, &self.ov, &Event::Key { key: k, down: true });
+        pass::dispatch_overlaid(&mut self.app, &self.sty, &mut self.st, &mut self.input, &self.ov, &Event::Key { key: k, down: false });
         self.frame();
         h
     }
@@ -282,12 +294,14 @@ fn a_tree_is_walked_and_folded_from_the_keyboard() {
     assert_eq!(g.app.ui.tree.hot(), Some(3), "Left on a leaf did not step to its parent");
 }
 
-/// A data grid: its rows are a Tab stop; End goes to the last row and
-/// scrolls it into view; Enter runs that row's handler with its index.
+/// A data grid: the sheet is a Tab stop; Ctrl+End goes to the last row
+/// and scrolls it into view; Enter runs that row's handler with its
+/// index. (M44/T44.10 made the *rows* the stop, with End; the sheet's
+/// active cell supersedes it, and End is the last column there.)
 #[test]
 fn a_data_grid_row_is_chosen_from_the_keyboard() {
     let mut g = G::new();
-    let rows = owid("grid") + 1;
+    let rows = owid("grid");
     // **Reached by Tab**, not by setting focus: a focus set by hand
     // proves the keys work on a node nothing can reach, which is what the
     // grid's rows were until they became a Tab stop — and the first
@@ -295,15 +309,17 @@ fn a_data_grid_row_is_chosen_from_the_keyboard() {
     // removed.
     g.input.focus = Some(owid("tree"));
     g.key(Key::Tab);
-    println!("grid: Tab from the tree -> focus {:?} (the rows are {rows})", g.input.focus);
-    assert_eq!(g.input.focus, Some(rows), "Tab did not reach the grid's rows");
+    println!("grid: Tab from the tree -> focus {:?} (the grid is {rows})", g.input.focus);
+    assert_eq!(g.input.focus, Some(rows), "Tab did not reach the grid");
+    g.input.mods = lumen_static::Mods::CTRL;
     g.key(Key::End);
+    g.input.mods = lumen_static::Mods::NONE;
     let scroll = g.app.ui.grid.rows.scroll;
     g.key(Key::Enter);
     println!(
-        "grid: End then Enter -> chosen {:?} (expected Some(39)); scroll {scroll} (the last row in view)",
+        "grid: Ctrl+End then Enter -> chosen {:?} (expected Some(39)); scroll {scroll} (the last row in view)",
         g.app.chosen
     );
     assert_eq!(g.app.chosen, Some(39), "Enter did not run the last row's handler");
-    assert!(scroll > 0.0, "End did not scroll the last row into view");
+    assert!(scroll > 0.0, "Ctrl+End did not scroll the last row into view");
 }

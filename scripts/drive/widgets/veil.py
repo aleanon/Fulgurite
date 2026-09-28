@@ -8,32 +8,49 @@ reach what is behind it**, and only the dispatch path can say so.
 from harness import Action
 
 
-def _dismissals(c) -> int:
+def _count(c, name) -> int:
+    """The number after `name:` in the readout — `dismissals: 2 ·
+    confirmed: 1` since M57/C6, which split the two. This used to join
+    every digit in the readout, which was right only while it held one
+    number."""
     r = c.readout()
-    return int("".join(ch for ch in r if ch.isdigit()) or -1)
+    tail = r.split(name + ":", 1)[1] if (name + ":") in r else ""
+    digits = "".join(ch for ch in tail.strip().split(" ")[0] if ch.isdigit())
+    return int(digits or -1)
+
+
+def _dismissals(c) -> int:
+    return _count(c, "dismissals")
+
+
+def _confirmed(c) -> int:
+    return _count(c, "confirmed")
 
 
 def _press_scrim(c, title_sel):
-    """A point inside the veil but outside its panel.
+    """A point inside the veil but outside its panel: the veil's top-right
+    corner, which is scrim for all three kinds -- a modal's panel is
+    centred, a sheet's sits along the bottom, a drawer's down the left.
 
-    Read from the two resolved boxes rather than computed from a
-    fraction: a fraction that happened to land on the panel would report
-    that the scrim does not dismiss, which is a true statement about the
-    wrong pixel.
+    Asserted rather than assumed. The first version aimed right of the
+    panel at the veil's *bottom* edge, which on a sheet is the panel; it
+    counted anyway only because a press on the panel used to ask to
+    dismiss too (the defect M57/A4 fixed), so the check proved nothing.
     """
     v = c.box()
     p = c.box(title_sel)
-    # Below the panel's title and to the right of the panel, whichever
-    # the kind leaves free. The veil is always at least as wide as the
-    # panel for a drawer, and always taller for a sheet.
-    x = min(v[2] - 4, p[2] + 20) if p[2] + 20 < v[2] else (v[0] + v[2]) / 2
-    y = v[3] - 6
+    x, y = v[2] - 6.0, v[1] + 6.0
+    assert not (p[0] <= x <= p[2] and p[1] <= y <= p[3]), \
+        f"setup: the scrim point ({x:.0f}, {y:.0f}) is on the panel's title"
     c.c.rpc("input.click", x=x, y=y)
 
 
 def _veil(name, sel, title_sel, go_sel):
     return (name, sel, [
         Action(
+            # A *request*: the veil does not close itself, so nothing on it
+            # changes; the readout counts the dismissals (D1).
+            visible=False,
             name="a press on the scrim asks to dismiss",
             needs="an open veil with its panel showing",
             do=lambda c: (c.__dict__.__setitem__("_n", _dismissals(c)),
@@ -54,6 +71,8 @@ def _veil(name, sel, title_sel, go_sel):
             repaints=False,
         ),
         Action(
+            # The claim is that nothing changes: the veil stays open (D1).
+            visible=False,
             name="it does not close itself",
             needs="a veil whose scrim has just been pressed",
             do=lambda c: _press_scrim(c, title_sel),
@@ -68,18 +87,17 @@ def _veil(name, sel, title_sel, go_sel):
             repaints=False,
         ),
         Action(
+            # Its consequence is the application's counter, in the readout (D1).
+        visible=False,
             name="the control on the panel still reaches the application",
             needs="a veil with a live button on its panel",
-            do=lambda c: (c.__dict__.__setitem__("_n", _dismissals(c)),
+            do=lambda c: (c.__dict__.__setitem__("_n", (_confirmed(c), _dismissals(c))),
                           c.click(go_sel))[0],
-            # The button bumps the same counter the dismissals use, so a
-            # press on it looks like a dismissal from the readout — which
-            # is fine here: what this asserts is that the press *reached*
-            # something, where a veil that swallowed it would show no
-            # change at all.
+            # Its own counter since M57/C6: a confirm is counted, and it is
+            # *not* a dismissal — a press on the panel used to read as one.
             expect=lambda c: (
-                _dismissals(c) != c._n,
-                f"counter {c._n} -> {_dismissals(c)} after pressing the panel's button",
+                _confirmed(c) == c._n[0] + 1 and _dismissals(c) == c._n[1],
+                f"confirmed {c._n[0]} -> {_confirmed(c)}, dismissals {c._n[1]} -> {_dismissals(c)}",
             ),
             injection="make Veil::handler return None — the shape `Dyn` shipped as",
         ),

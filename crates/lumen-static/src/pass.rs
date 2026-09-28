@@ -27,6 +27,11 @@ pub fn layout_with<W: Node + ?Sized>(
     st: &mut [NodeState],
     limits: Constraints,
 ) {
+    // The root's limits are the window, unless the caller said otherwise
+    // (M57/A18: what a popup must stay inside).
+    if !cx.viewport.w.is_finite() && limits.max_w.is_finite() && limits.max_h.is_finite() {
+        cx.viewport = crate::desc::Size { w: limits.max_w, h: limits.max_h };
+    }
     tree.layout(cx, limits, style, st, 0);
     tree.place(Point::default(), style, st, 0);
     debug_assert_finite(st);
@@ -115,7 +120,7 @@ pub fn default_styles_into<W: Widget>(tree: &W, out: &mut [Style]) {
     // inactive variant's width and got the enum's.
     let _ = tree;
     for (i, slot) in out.iter_mut().enumerate().take(W::NODE_COUNT) {
-        *slot = (W::SEEDS[i].defaults)();
+        *slot = W::SEEDS[i].style(&crate::style::Palette::LIGHT);
     }
 }
 
@@ -269,8 +274,10 @@ pub fn dispatch_overlaid_into<S: crate::event::App, O: crate::overlay::OverlaySi
     ev: &crate::event::Event,
     consumed: &mut Consumed,
 ) -> bool {
+    let before = input.focus;
     let handled = overlaid(state, style, st, input, ov, ev, consumed);
     publish_focus(st, input);
+    tell_focus(state, input, before, consumed);
     handled
 }
 
@@ -351,6 +358,9 @@ fn overlaid<S: crate::event::App, O: crate::overlay::OverlaySink>(
                 let mut back = input.focus;
                 for k in (0..ov.len()).rev() {
                     let i = ov.at(k) as usize;
+                    if !state.tree().node(i).dismissed_by_outside_press() {
+                        continue;
+                    }
                     let consumes = state.tree().node(i).dismissal_consumes_press();
                     if state.tree_mut().node_mut(i).dismiss() {
                         consumes_press |= consumes;
@@ -433,15 +443,30 @@ fn overlaid<S: crate::event::App, O: crate::overlay::OverlaySink>(
     // Otherwise ordinary dispatch, with overlays taking pointer hits
     // first. `dispatch` does its own hit test, so an overlay hit is
     // routed by index here rather than by re-walking.
+    //
+    // **Except a captured gesture's moves and release**, which go to the
+    // captured node first, here as in `dispatch_at` — the rule that lets
+    // a drag keep reaching its control. An overlay that consumed the
+    // release used to return before `dispatch_at` was reached, so the
+    // gesture ended and its capture did not: every later move went to a
+    // node nobody was pressing (a combobox's caret followed the pointer
+    // after a choice).
+    let captured = input.capture.is_some() && matches!(ev, Event::PointerMove { .. } | Event::PointerUp { .. });
     let mut on_overlay = None;
-    if let Some(p) = ev.position() {
+    if let Some(p) = ev.position().filter(|_| !captured) {
         if !ov.is_empty() {
             for k in (0..ov.len()).rev() {
                 let i = ov.at(k) as usize;
                 if let Some(h) = state.tree().node(i).hit(st, i, p.x, p.y) {
+                    let table = <S::Tree as crate::widget::Widget>::SUB_TABLE;
+                    if disabled_at(table, st, h.node as usize) {
+                        return false;
+                    }
                     let cx = crate::event::EventCtx {
                         event: *ev,
                         node: h.node,
+                        target: h.node,
+                        target_is_control: <S::Tree as crate::widget::Widget>::SUB_TABLE.get(h.node as usize).is_some_and(|d| d.is_focusable()),
                         row: h.inner.map(|x| x.row),
                         inner: h.inner.map_or(0, |x| x.node),
                         pos: p,
@@ -515,9 +540,67 @@ pub fn dispatch<S: crate::event::App>(
     input: &mut crate::event::InputState,
     ev: &crate::event::Event,
 ) -> bool {
-    let handled = dispatch_at(state, style, st, input, ev, None, &mut Consumed::default());
+    let before = input.focus;
+    let mut consumed = Consumed::default();
+    let handled = dispatch_at(state, style, st, input, ev, None, &mut consumed);
     publish_focus(st, input);
+    tell_focus(state, input, before, &mut consumed);
     handled
+}
+
+/// **Tell the old and new focus that focus moved** — M57/A7.
+///
+/// [`Event::Focus`](crate::event::Event::Focus) to the node focus left,
+/// then to the node it reached, each bubbling to its ancestors until one
+/// consumes it. Nothing is sent when the event did not move focus, so a
+/// widget that opens "on focus" opens once, on the transition — not on
+/// every frame its part happens to be focused. A consumer is recorded in
+/// `consumed`, so the host marks it and it is laid out this frame.
+pub fn tell_focus<S: crate::event::App>(
+    state: &mut S,
+    input: &crate::event::InputState,
+    before: Option<u32>,
+    consumed: &mut Consumed,
+) {
+    use crate::event::Event;
+    let after = input.focus;
+    if before == after {
+        return;
+    }
+    for (node, gained) in [(before, false), (after, true)] {
+        if let Some(n) = node {
+            deliver(state, n, Event::Focus { gained }, input.mods, consumed);
+        }
+    }
+}
+
+/// **Offer a synthesized event to `node`, then to each ancestor until one
+/// consumes it** — M57, shared by `Event::Focus` (A7) and
+/// `Event::ScrollEnd` (B40). `ctx.target` names `node` throughout; the
+/// consumer is recorded so the host marks it. Answers whether anything
+/// took it.
+pub fn deliver<S: crate::event::App>(
+    state: &mut S,
+    node: u32,
+    ev: crate::event::Event,
+    mods: crate::event::Mods,
+    consumed: &mut Consumed,
+) -> bool {
+    let table = <S::Tree as crate::widget::Widget>::SUB_TABLE;
+    let Some(start) = Some(node as usize).filter(|&n| n < table.len()) else { return false };
+    let mut ctx = crate::event::EventCtx::for_event_with(node, ev, mods);
+    let mut i = start;
+    loop {
+        ctx.node = i as u32;
+        if state.tree_mut().node_mut(i).on_event(&ev, &ctx) {
+            consumed.push(i);
+            return true;
+        }
+        if table[i].parent == crate::desc::NO_PARENT {
+            return false;
+        }
+        i = table[i].parent as usize;
+    }
 }
 
 /// [`dispatch`], with the hit supplied rather than computed.
@@ -574,6 +657,8 @@ fn dispatch_at<S: crate::event::App>(
         let cx = EventCtx {
             event: *ev,
             node: cap as u32,
+            target: cap as u32,
+            target_is_control: table[cap].is_focusable(),
             row: None,
             inner: 0,
             pos: p,
@@ -607,6 +692,28 @@ fn dispatch_at<S: crate::event::App>(
             return true;
         }
     }
+    // **Whether this key-down is an auto-repeat** — M57/A10. A host sends
+    // a down per repeat and one up at the end, so a down for a key the
+    // mask says is already held is a repeat. Only the activation keys are
+    // tracked; the mask is a byte.
+    let held_bit = |k: &Key| match k {
+        Key::Enter => 1u8,
+        Key::Space => 2u8,
+        _ => 0u8,
+    };
+    let repeat = match ev {
+        Event::Key { key, down: true } => {
+            let bit = held_bit(key);
+            let was = input.held & bit != 0;
+            input.held |= bit;
+            was
+        }
+        Event::Key { key, down: false } => {
+            input.held &= !held_bit(key);
+            false
+        }
+        _ => false,
+    };
     // The press's click count survives to its release, where activation
     // happens (T14.3).
     if let Event::PointerDown { clicks, .. } = ev {
@@ -646,7 +753,10 @@ fn dispatch_at<S: crate::event::App>(
     // **The same test ends a capture** (M44/T44.3, R3-F4): see the
     // capture block below.
     if let Some(f) = *focus {
-        if gone(table.len(), style, st, f as usize) {
+        if gone(table.len(), style, st, f as usize)
+            // Disabled since it was focused (M57/A16).
+            || disabled_at(table, st, f as usize)
+        {
             *focus = None;
         }
     }
@@ -659,6 +769,18 @@ fn dispatch_at<S: crate::event::App>(
     // — it never reaches a handler, the way it never does on any
     // platform.
     if matches!(ev, crate::event::Event::Key { key: crate::event::Key::Tab, down: true }) {
+        // **The focused widget first** — M57/B25, as arrows are (A11). A
+        // control with more than one stop inside one node — a range
+        // slider's two handles — takes Tab to move between them, and lets
+        // it go at its last stop. Its `Key::Tab` arm was dead code, because
+        // this consumed every Tab before any widget saw it.
+        if let Some(f) = (*focus).filter(|&f| (f as usize) < table.len()) {
+            let cx = crate::event::EventCtx::for_event_with(f, *ev, mods);
+            if state.tree_mut().node_mut(f as usize).on_event(ev, &cx) {
+                consumed.push(f as usize);
+                return true;
+            }
+        }
         // Shift+Tab goes back, which is half of what Tab means and was
         // missing until T15.6 — a form you can only walk forwards is a
         // form you cannot correct.
@@ -703,16 +825,78 @@ fn dispatch_at<S: crate::event::App>(
             _ => 0,
         };
         if dir != 0 {
+            // **The focused widget first** — M57/A11. Grouping ran before
+            // anything was asked, so a text field or a slider in a row
+            // beside a button lost Left and Right to focus movement the
+            // moment the row had two focusable children
+            // (`docs/widget-audit.md` X11). The widget is offered the key;
+            // only one that declines it — a button, a toggle — lets the
+            // arrow move focus through its group.
+            if let Some(f) = (*focus).filter(|&f| (f as usize) < table.len()) {
+                let cx = crate::event::EventCtx::for_event_with(f, *ev, mods);
+                if state.tree_mut().node_mut(f as usize).on_event(ev, &cx) {
+                    consumed.push(f as usize);
+                    return true;
+                }
+            }
             if let Some(f) = *focus {
                 let i = f as usize;
                 if i < table.len()
                     && table[i].parent != crate::desc::NO_PARENT
                     && !state.tree().node(i).owns_arrows()
                 {
-                    let p = table[i].parent as usize;
-                    if let Some(j) = next_in_group(table, st, style, p, i, dir > 0) {
-                        *focus = Some(j as u32);
-                        return true;
+                    // **Through wrappers** — M57/B13. The group was the
+                    // focused node's parent, so a radio inside a
+                    // `Labelled` (or any row pairing it with its words)
+                    // was its parent's only focusable and the arrows did
+                    // nothing. Climb while the ancestor holds just this
+                    // one focusable: that ancestor *stands for* it among
+                    // its own siblings.
+                    //
+                    // **Each wrapper climbed through is asked first.** A
+                    // composite whose only focusable is its own part — a
+                    // pick list's field — handles the arrow itself (Down
+                    // opens it), and climbing past it moved focus to the
+                    // next pick list instead: `chooser_closes.rs` caught
+                    // it. One that takes the key ends the walk; one that
+                    // declines (`Labelled`) is climbed through.
+                    let mut p = table[i].parent as usize;
+                    while table[p].parent != crate::desc::NO_PARENT
+                        && sole_focusable(table, st, style, p) == Some(i)
+                    {
+                        let mut cx = crate::event::EventCtx::for_event_with(f, *ev, mods);
+                        cx.node = p as u32;
+                        if state.tree_mut().node_mut(p).on_event(ev, &cx) {
+                            consumed.push(p);
+                            return true;
+                        }
+                        p = table[p].parent as usize;
+                    }
+                    // Counted and indexed straight from the walk: a group
+                    // is a handful of controls, and walking it twice costs
+                    // less than the buffer it would take to hold it.
+                    let members = || group_members(table, st, style, p);
+                    let n = members().count();
+                    // One focusable child is not a group: the key
+                    // belongs to the widget, which is what keeps Left
+                    // and Right editing text inside a field.
+                    if n > 1 {
+                        if let Some(k) = members().position(|x| x as u32 == f) {
+                            let j = if dir > 0 { (k + 1) % n } else { (k + n - 1) % n };
+                            let Some(to) = members().nth(j).map(|x| x as u32) else { return false };
+                            *focus = Some(to);
+                            // A radio's selection follows the arrow
+                            // (`Node::selects_on_focus`): run its handler
+                            // as activation would.
+                            if state.tree().node(to as usize).selects_on_focus() {
+                                let sel = crate::event::NodeSel { i: to as usize, inner: None };
+                                if let Some(h) = state.tree().handler(sel) {
+                                    let cx = crate::event::EventCtx::for_event_with(to, *ev, mods);
+                                    h(state.state_mut(), &cx);
+                                }
+                            }
+                            return true;
+                        }
                     }
                 }
             }
@@ -761,6 +945,8 @@ fn dispatch_at<S: crate::event::App>(
                 let cx = EventCtx {
                     event: *ev,
                     node: cap as u32,
+                    target: cap as u32,
+                    target_is_control: table[cap].is_focusable(),
                     row: None,
                     inner: 0,
                     pos: p,
@@ -814,12 +1000,21 @@ fn dispatch_at<S: crate::event::App>(
                     let was = input.hovered;
                     input.hovered = hit.map(|h| h.node);
                     input.hover_inner = hit.and_then(|h| h.inner);
+                    input.pointer = Some(p);
                     input.state_writes.add(set_hovered(st, was, input.hovered));
+                    // **The node the pointer left is told** — M57/B50.
+                    if let Some(l) = was.filter(|&l| Some(l) != input.hovered && (l as usize) < table.len()) {
+                        let lctx = EventCtx::for_event_with(l, Event::Leave, mods);
+                        if state.tree_mut().node_mut(l as usize).on_event(&Event::Leave, &lctx) {
+                            consumed.push(l as usize);
+                        }
+                    }
                 }
                 Event::PointerDown { .. } => {
                     let was = input.hovered;
                     input.hovered = hit.map(|h| h.node);
                     input.hover_inner = hit.and_then(|h| h.inner);
+                    input.pointer = Some(p);
                     input.state_writes.add(set_hovered(st, was, input.hovered));
                     // A press with one still held (a second pointer)
                     // lets the first go, so no bit is left behind.
@@ -845,14 +1040,27 @@ fn dispatch_at<S: crate::event::App>(
             }
 
             let Some(h) = hit else { return false };
+            // A disabled control takes nothing — no press, no focus, no
+            // activation (M57/A16). Its pointer state above still tracks,
+            // so the frame is consistent; nothing acts on it.
+            if disabled_at(table, st, h.node as usize) {
+                return false;
+            }
             if matches!(ev, Event::PointerDown { .. }) {
                 // Focus moves to the deepest focusable node on the hit
-                // chain, or clears — what clicking the background does.
+                // chain, or clears — what clicking the background does —
+                // unless the chain reaches a `KEEPS_FOCUS` node first: a
+                // field's own popup list, pressed, leaves the field
+                // focused.
                 let mut f = None;
                 let mut i = h.node as usize;
                 loop {
                     if table[i].is_focusable() {
                         f = Some(i as u32);
+                        break;
+                    }
+                    if table[i].keeps_focus() {
+                        f = *focus;
                         break;
                     }
                     if table[i].parent == crate::desc::NO_PARENT {
@@ -865,6 +1073,8 @@ fn dispatch_at<S: crate::event::App>(
             let ctx = EventCtx {
                 event: *ev,
                 node: h.node,
+                target: h.node,
+                target_is_control: table.get(h.node as usize).is_some_and(|d| d.is_focusable()),
                 row: h.inner.map(|x| x.row),
                 inner: h.inner.map_or(0, |x| x.node),
                 pos: p,
@@ -943,7 +1153,16 @@ fn dispatch_at<S: crate::event::App>(
     // ancestors behind for pass 2. Saved and restored rather than
     // rebuilt: a fresh ctx would have to re-derive `local`, which only
     // the hit knows.
-    let (row0, inner0) = (ctx.row, ctx.inner);
+    let (row0, inner0, local0) = (ctx.row, ctx.inner, ctx.local);
+    // **`local` is re-derived at each node the event reaches** — M57/A4.
+    // It stayed the hit node's, so a container that declined nothing read
+    // its child's coordinates as its own. `target` keeps naming the node
+    // the event was aimed at, so the container can tell the two apart.
+    let pointed = ev.position().is_some();
+    let local_at = |st: &[NodeState], i: usize, ctx: &EventCtx| Point {
+        x: ctx.pos.x - st[i].pos.x,
+        y: ctx.pos.y - st[i].pos.y,
+    };
     {
         let mut i = start;
         loop {
@@ -951,6 +1170,9 @@ fn dispatch_at<S: crate::event::App>(
             if i != start {
                 ctx.row = None;
                 ctx.inner = 0;
+                if pointed {
+                    ctx.local = local_at(st, i, &ctx);
+                }
             }
             if state.tree_mut().node_mut(i).on_event(ev, &ctx) {
                 consumed.push(i);
@@ -969,6 +1191,7 @@ fn dispatch_at<S: crate::event::App>(
     }
     ctx.row = row0;
     ctx.inner = inner0;
+    ctx.local = local0;
 
     // Pass 2 — activation: the application's handler.
     //
@@ -992,16 +1215,49 @@ fn dispatch_at<S: crate::event::App>(
     // the same row, under the same `row_generation`: an insertion between
     // press and release puts a different item under a pointer that never
     // moved, and that click is cancelled rather than delivered to it.
+    //
+    // Space activates as well, since M11/T11.1 gave `Key` a variant for
+    // it. **Once per press, not once per auto-repeat** — M57/A10. Both
+    // keys activate on the down, and a held key sends a down per repeat,
+    // so holding Enter pressed a button a dozen times. `repeat` is
+    // derived above from the held-key mask: a down for a key already down.
     let activates = matches!(
         ev,
         Event::PointerUp { .. }
             | Event::Key { key: Key::Enter, down: true }
             | Event::Key { key: Key::Space, down: true }
             | Event::Action { action: crate::event::Action::Default, .. }
-    );
+    ) && !repeat;
     if !activates {
         return false;
     }
+
+    // **A key may activate a row the keyboard is on** — M57/B21. A
+    // `Select`'s rows are the application's, virtual and never focused;
+    // Enter on its trigger ran the trigger's handler, so a keyboard user
+    // could open the menu and never choose from it. An ancestor of the
+    // focus that answers `activation_redirect` names the row, and the walk
+    // starts there with the row in `ctx`, exactly as a click on it would.
+    let (start, inner) = {
+        let (mut start, mut inner) = (start, inner);
+        if matches!(ev, Event::Key { .. }) {
+            let mut k = start;
+            loop {
+                if let Some((node, row, tnode)) = state.tree().node(k).activation_redirect(k) {
+                    start = node as usize;
+                    inner = Some((row, tnode));
+                    ctx.row = Some(row);
+                    ctx.inner = tnode;
+                    break;
+                }
+                if table[k].parent == crate::desc::NO_PARENT {
+                    break;
+                }
+                k = table[k].parent as usize;
+            }
+        }
+        (start, inner)
+    };
 
     // What the release is over, for comparing with the press.
     let now = released.map(|press| (press, state.tree().node(start).row_generation()));
@@ -1012,6 +1268,9 @@ fn dispatch_at<S: crate::event::App>(
             // Only the node actually hit owns the row detail.
             ctx.row = None;
             ctx.inner = 0;
+            if pointed {
+                ctx.local = local_at(st, i, &ctx);
+            }
         }
         let sel = NodeSel { i, inner: if i == start { inner } else { None } };
         // Copy the handler out; the shared borrow of the tree ends here,
@@ -1217,6 +1476,9 @@ fn tell_owner<S: crate::event::App>(
         let ctx = crate::event::EventCtx {
             event: *ev,
             node: owner,
+            // The overlay was dismissed; the owner is told on its behalf.
+            target: overlay as u32,
+            target_is_control: false,
             row: None,
             inner: 0,
             pos: ev.position().unwrap_or(Point { x: 0.0, y: 0.0 }),
@@ -1246,6 +1508,24 @@ fn gone(len: usize, style: &[Style], st: &[NodeState], i: usize) -> bool {
 /// Skips anything with no area or `visible: false` — a Tab stop you
 /// cannot see is a Tab stop that loses the user.
 /// Whether node `i` can take focus right now.
+/// Whether `i`, or any node it sits inside, is disabled — M57/A16.
+///
+/// Disabling a container disables what is in it: a form section switched
+/// off must not leave its buttons live. Walked up the table, which is
+/// the depth of the tree and nothing more.
+pub fn disabled_at(table: &[crate::desc::NodeDesc], st: &[NodeState], mut i: usize) -> bool {
+    while i < table.len() && i < st.len() {
+        if st[i].disabled {
+            return true;
+        }
+        if table[i].parent == crate::desc::NO_PARENT {
+            return false;
+        }
+        i = table[i].parent as usize;
+    }
+    false
+}
+
 fn focusable(
     table: &[crate::desc::NodeDesc],
     st: &[NodeState],
@@ -1257,36 +1537,9 @@ fn focusable(
         && style[i].visible
         && st[i].size.w > 0.0
         && st[i].size.h > 0.0
+        && !disabled_at(table, st, i)
 }
 
-/// The next member of `i`'s focus group after `i` — forwards or
-/// backwards, wrapping — or `None` when `i` is not a member or is the
-/// only one (M44/T44.1).
-///
-/// A member is a focusable **immediate child** of `parent`, not any
-/// focusable in its subtree — that distinction is the difference
-/// between arrows navigating a radio group and arrows jumping out of a
-/// nested control. The scan covers the parent's subtree range, which
-/// holds every child; it is linear in that range and has no cap.
-fn next_in_group(
-    table: &[crate::desc::NodeDesc],
-    st: &[NodeState],
-    style: &[Style],
-    parent: usize,
-    i: usize,
-    forward: bool,
-) -> Option<usize> {
-    let range = crate::style::subtree_range(table, parent);
-    let (lo, n) = (range.start, range.end.min(table.len()).saturating_sub(range.start));
-    let member = |j: usize| table[j].parent as usize == parent && focusable(table, st, style, j);
-    if n == 0 || i < lo || i >= lo + n || !member(i) {
-        return None;
-    }
-    let at = i - lo;
-    (1..n)
-        .map(|k| lo + if forward { (at + k) % n } else { (at + n - k) % n })
-        .find(|&j| member(j))
-}
 
 /// The previous focusable, wrapping — Shift+Tab, and Up/Left.
 fn prev_focusable(
@@ -1319,13 +1572,47 @@ fn prev_focusable_in(
     };
     (0..n)
         .map(|k| lo + (start + n - k) % n)
-        .find(|&i| {
-            table[i].is_focusable()
-                && style[i].visible
-                && st[i].size.w > 0.0
-                && st[i].size.h > 0.0
-        })
+        // `focusable`, not a copy of it: the copy is how a disabled
+        // node stayed a Tab stop when M57/A16 taught `focusable` better.
+        .find(|&i| focusable(table, st, style, i))
         .map(|i| i as u32)
+}
+
+/// The one focusable node in `p`'s subtree, if there is exactly one.
+fn sole_focusable(
+    table: &[crate::desc::NodeDesc],
+    st: &[NodeState],
+    style: &[Style],
+    p: usize,
+) -> Option<usize> {
+    let mut it = crate::style::subtree_range(table, p).filter(|&k| focusable(table, st, style, k));
+    match (it.next(), it.next()) {
+        (Some(k), None) => Some(k),
+        _ => None,
+    }
+}
+
+/// An arrow group under `parent`, in table order: each immediate child
+/// that is focusable, or that wraps exactly one focusable, stands for it
+/// — M57/B13. Immediate children, not the whole subtree, which is the
+/// difference between arrows walking a radio group and arrows jumping
+/// out of a text field (T15.6); a child holding several focusables is
+/// not a member, since its controls are their own group.
+fn group_members<'a>(
+    table: &'a [crate::desc::NodeDesc],
+    st: &'a [NodeState],
+    style: &'a [Style],
+    parent: usize,
+) -> impl Iterator<Item = usize> + 'a {
+    crate::style::subtree_range(table, parent)
+        .filter(move |&c| table[c].parent as usize == parent)
+        .filter_map(move |c| {
+            if focusable(table, st, style, c) {
+                Some(c)
+            } else {
+                sole_focusable(table, st, style, c)
+            }
+        })
 }
 
 fn next_focusable(
@@ -1343,7 +1630,7 @@ fn next_focusable(
 /// `scope` is a half-open range of table indices. Tab wraps **within**
 /// it, which is what a modal needs: a dialog that lets Tab walk out to
 /// the window behind it is a dialog a keyboard user cannot use.
-fn next_focusable_in(
+pub fn next_focusable_in(
     table: &[crate::desc::NodeDesc],
     st: &[NodeState],
     style: &[Style],
@@ -1364,12 +1651,9 @@ fn next_focusable_in(
     };
     (0..n)
         .map(|k| lo + (start + k) % n)
-        .find(|&i| {
-            table[i].is_focusable()
-                && style[i].visible
-                && st[i].size.w > 0.0
-                && st[i].size.h > 0.0
-        })
+        // `focusable`, not a copy of it: the copy is how a disabled
+        // node stayed a Tab stop when M57/A16 taught `focusable` better.
+        .find(|&i| focusable(table, st, style, i))
         .map(|i| i as u32)
 }
 
@@ -1418,7 +1702,7 @@ fn release_press(st: &mut [NodeState], pressed: &mut Option<u32>, writes: &mut c
 /// just left, until the next event republished it. The new node's bit is
 /// checked rather than assumed, so a state array replaced under a kept
 /// focus gets its bit back.
-fn publish_focus(st: &mut [NodeState], input: &mut crate::event::InputState) {
+pub fn publish_focus(st: &mut [NodeState], input: &mut crate::event::InputState) {
     let now = input.focus.filter(|&f| (f as usize) < st.len());
     if let Some(old) = input.focus_published.filter(|&o| Some(o) != now && (o as usize) < st.len()) {
         st[old as usize].focused = false;

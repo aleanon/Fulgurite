@@ -30,6 +30,7 @@ def _area(b) -> float:
 # --- Card -----------------------------------------------------------
 CARD = ("Card", "#d_card_a", [
     Action(
+        visible=True,
         name="a button on the card reaches the application",
         needs="a card whose content is wired to the press counter",
         do=lambda c: (c.__dict__.__setitem__("_n", _presses(c)),
@@ -58,21 +59,95 @@ CARD = ("Card", "#d_card_a", [
 
 
 # --- Toast ----------------------------------------------------------
-TOAST = ("Toast", "#d_toast_a", [
+# M57/B34: `#d_toast_a` floats at the window's bottom centre, hidden until
+# "Save" shows it, closable, and gone after TOAST_MS (3000). `#d_toast_b`
+# is the long message, in the flow.
+import time
+
+
+def _shown_w(c) -> float:
+    """The floating toast's width, 0 when hidden (a hidden subtree has no
+    box, and `ui.resolve` may then answer with none at all)."""
+    try:
+        b = c.box("#d_toast_a")
+        return b[2] - b[0]
+    except Exception:
+        return 0.0
+
+
+def _centre_x(c) -> float:
+    b = _box(c, "#d_toast_a")
+    return (b[0] + b[2]) / 2
+
+
+def _window_w(c) -> float:
+    """The window's width in logical px, from the screenshot."""
+    shot = c.c.rpc("ui.screenshot")
+    return shot["width"] / shot.get("scale", 1.0)
+
+
+def _show(c):
+    return c.click("#d_toast_show")
+
+
+TOAST = ("Toast", "#d_toast_b", [
     Action(
-        name="it shrinks to its text rather than filling the stage",
-        needs="a short toast and a long one, side by side",
+        # The toast floats at the window's bottom, outside the demo (D1).
+        visible=True,
+        region="window",
+        name="Save shows a toast below the stage, centred on the window",
+        needs="a hidden floating toast and its button",
+        do=lambda c: (c.__dict__.__setitem__("_w0", _shown_w(c)), _show(c))[0],
+        expect=lambda c: (
+            c._w0 == 0.0 and _shown_w(c) > 0.0
+            and _box(c, "#d_toast_a")[1] > _box(c, "#d_toast_b")[3]
+            and abs(_centre_x(c) - _window_w(c) / 2) <= 1.0,
+            "hidden width {:.0f} -> {:.0f}; toast top {} below the flow's toast bottom {}; "
+            "centre x {} in a {:.0f} px window".format(
+                c._w0, _shown_w(c),
+                round(_box(c, "#d_toast_a")[1]) if _shown_w(c) else None,
+                round(_box(c, "#d_toast_b")[3]),
+                round(_centre_x(c)) if _shown_w(c) else None, _window_w(c)),
+        ),
+        injection="ignore Anchor::WindowBottom, or never call Toast::show",
+    ),
+    Action(
+        name="it shrinks to its text rather than filling the window",
+        needs="the short floating toast shown, and the long one in the flow",
         do=lambda c: c.hover(),
         expect=lambda c: (
-            _box(c, "#d_toast_a")[2] - _box(c, "#d_toast_a")[0]
-            < _box(c, "#d_toast_b")[2] - _box(c, "#d_toast_b")[0],
+            0.0 < _shown_w(c) < _box(c, "#d_toast_b")[2] - _box(c, "#d_toast_b")[0],
             "short {:.0f} px wide, long {:.0f} px — a FILL toast would read equal".format(
-                _box(c, "#d_toast_a")[2] - _box(c, "#d_toast_a")[0],
-                _box(c, "#d_toast_b")[2] - _box(c, "#d_toast_b")[0],
+                _shown_w(c), _box(c, "#d_toast_b")[2] - _box(c, "#d_toast_b")[0],
             ),
         ),
         static=True,
         injection="make Toast::type_defaults width FILL",
+    ),
+    Action(
+        # The toast floats at the window's bottom, outside the demo (D1).
+        visible=True,
+        region="window",
+        name="its × closes it",
+        needs="the floating toast shown, with a ×",
+        do=lambda c: (c.c.rpc("input.click", x=_box(c, "#d_toast_a")[2] - 6,
+                              y=(_box(c, "#d_toast_a")[1] + _box(c, "#d_toast_a")[3]) / 2)),
+        expect=lambda c: (_shown_w(c) == 0.0, f"width after the × {_shown_w(c):.0f}"),
+        injection="drop the PointerUp arm in Toast::on_event",
+    ),
+    Action(
+        visible=True,
+        region="window",
+        name="shown again, it goes away by itself",
+        needs="a toast shown for 3000 ms",
+        # Shown in setup, so the "before" frame has it (D1).
+        setup=_show,
+        do=lambda c: (c.__dict__.__setitem__("_w0", _shown_w(c)), time.sleep(3.4), c.hover())[0],
+        expect=lambda c: (
+            c._w0 > 0.0 and _shown_w(c) == 0.0,
+            f"width {c._w0:.0f} just after showing, {_shown_w(c):.0f} after 3.4 s",
+        ),
+        injection="stop ticking the toast in the showcase's advance, or in Toast::tick",
     ),
     Action(
         name="it paints a ground, so its light text is readable",
@@ -107,9 +182,19 @@ def _tip_area(c) -> float:
 
 TOOLTIP = ("Tooltip", "#tooltip-content", [
     Action(
-        name="hovering the content opens the tip",
+        # The tip is the hover's consequence, drawn outside the content (D1).
+        visible=True,
+        region="window",
+        pre_hover=False,
+        name="resting on the content opens the tip",
         needs="a tooltip whose tip is closed",
-        do=lambda c: (c.__dict__.__setitem__("_a0", _tip_area(c)), c.hover())[0],
+        # M57/B35: the tip waits for the pointer to rest (500 ms), as
+        # toolkits do -- it opened on the first hover frame, strobing every
+        # tip a pointer crossed. The request after the wait runs a frame
+        # whose tick covers the rest.
+        do=lambda c: (c.__dict__.__setitem__("_a0", _tip_area(c)), c.hover(),
+                      __import__("time").sleep(0.7),
+                      c.c.rpc("ui.waitSettled", timeout_ms=1000))[0],
         expect=lambda c: (
             _tip_area(c) > 0.0 and c._a0 == 0.0,
             f"tip area {c._a0:.0f} -> {_tip_area(c):.0f} px²",
@@ -123,6 +208,9 @@ TOOLTIP = ("Tooltip", "#tooltip-content", [
         injection="key the tip on the wrapper's own `hovered`, which dispatch never sets",
     ),
     Action(
+        # A claim about hit routing: the content's click lands, in the
+        # readout; nothing in the box changes (D1).
+        visible=False,
         name="the tip does not take the pointer from its content",
         needs="a tooltip with its tip open over the content",
         do=lambda c: (c.__dict__.__setitem__("_n", _presses(c)), c.click())[0],

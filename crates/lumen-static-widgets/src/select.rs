@@ -62,7 +62,7 @@
 use lumen_static::cx::LayoutCx;
 use lumen_static::desc::{Constraints, NodeDesc, NodeState, Point, Size, NO_PARENT};
 use lumen_static::display::Painter;
-use lumen_static::event::EventCtx;
+use lumen_static::event::{Event, EventCtx, Key};
 use lumen_static::hit::Hit;
 use crate::ops::Button;
 use crate::popup::{Anchor, Popup};
@@ -72,7 +72,13 @@ use lumen_static::widget::{Node, Widget};
 
 /// One row of the menu. A `Button`, so a row gets hover, press and focus
 /// from the core rather than from this file.
-pub type Row<S> = Button<S, alloc::string::String>;
+///
+/// Its own kind, `selectrow` (M57/C1), so a row's look is the widget's and
+/// a sheet can restyle rows without reaching every other button.
+pub type Row<S> = Button<S, alloc::string::String, true>;
+
+/// The closed control: an ordinary button, which is what it looks like.
+pub type Trigger<S> = Button<S, alloc::string::String>;
 
 /// The menu itself: rows in an out-of-flow popup.
 ///
@@ -96,7 +102,7 @@ pub type SelectMenu<S> = Popup<Repeat<Row<S>>>;
 /// See the module docs for what it owns and what the application does.
 pub struct Select<S: 'static> {
     /// What the closed control shows. The application writes the label.
-    pub trigger: Row<S>,
+    pub trigger: Trigger<S>,
     /// The rows, and whether they are showing. `menu.open` is what the
     /// application binds.
     pub menu: SelectMenu<S>,
@@ -109,13 +115,19 @@ pub struct Select<S: 'static> {
     /// write it through `set_label`, which every build has.
     #[cfg(feature = "a11y")]
     pub label: &'static str,
+    /// **The current choice, for the menu to mark** — M57/B21. Controlled,
+    /// like the trigger's label: the application writes it. The reopened
+    /// menu marked nothing (`docs/widget-audit.md`, Select).
+    pub current: Option<usize>,
+    /// The keyboard's row while the menu is open (M57/B21).
+    highlight: Option<usize>,
 }
 
 impl<S: 'static> Default for Select<S> {
     fn default() -> Self {
         let mut menu = SelectMenu::<S>::default();
         menu.anchor = Anchor::Below;
-        Select { trigger: Row::<S>::default(), menu, on_dismiss: |_, _| {},
+        Select { trigger: Trigger::<S>::default(), menu, on_dismiss: |_, _| {}, current: None, highlight: None,
             #[cfg(feature = "a11y")]
             label: "",
         }
@@ -163,7 +175,7 @@ impl<S: 'static> Select<S> {
 
     /// Index of the trigger within this subtree, and of the menu.
     const TRIGGER: usize = 1;
-    const MENU: usize = 1 + <Row<S> as Widget>::NODE_COUNT;
+    const MENU: usize = 1 + <Trigger<S> as Widget>::NODE_COUNT;
 }
 
 /// The merged table for one `Select`, built at compile time — the same
@@ -171,14 +183,14 @@ impl<S: 'static> Select<S> {
 pub struct SelectTable<S>(core::marker::PhantomData<S>);
 
 impl<S: 'static> SelectTable<S> {
-    const N: usize = 1 + <Row<S> as Widget>::NODE_COUNT + <SelectMenu<S> as Widget>::NODE_COUNT;
+    const N: usize = 1 + <Trigger<S> as Widget>::NODE_COUNT + <SelectMenu<S> as Widget>::NODE_COUNT;
 
     const ARRAY: [NodeDesc; MAX_SELECT_NODES] = {
         assert!(Self::N <= MAX_SELECT_NODES, "Select exceeds MAX_SELECT_NODES");
         let mut t = [NodeDesc::EMPTY; MAX_SELECT_NODES];
         t[0] = NodeDesc::new(1, NO_PARENT, 0, 2, NodeDesc::CONTAINER);
-        lumen_static::widget::splice_child(&mut t, 1, <Row<S> as Widget>::SUB_TABLE, 0);
-        let menu_at = 1 + <Row<S> as Widget>::NODE_COUNT;
+        lumen_static::widget::splice_child(&mut t, 1, <Trigger<S> as Widget>::SUB_TABLE, 0);
+        let menu_at = 1 + <Trigger<S> as Widget>::NODE_COUNT;
         lumen_static::widget::splice_child(&mut t, menu_at, <SelectMenu<S> as Widget>::SUB_TABLE, 0);
         t[1].next_sibling = menu_at as u32;
         // **The parts are addressable.** A `Select` is three `Button`s
@@ -207,10 +219,10 @@ impl<S: 'static> SelectTable<S> {
     const SEED_ARRAY: [Seed; MAX_SELECT_NODES] = {
         let mut s = [Seed::WIDGET; MAX_SELECT_NODES];
         s[0] = Seed::new(<Select<S> as Widget>::KIND, <Select<S> as Widget>::type_defaults, lumen_static::style::Fields::of(&[lumen_static::style::Fields::VISIBLE]));
-        lumen_static::widget::splice_seeds(&mut s, 1, <Row<S> as Widget>::SEEDS);
+        lumen_static::widget::splice_seeds(&mut s, 1, <Trigger<S> as Widget>::SEEDS);
         lumen_static::widget::splice_seeds(
             &mut s,
-            1 + <Row<S> as Widget>::NODE_COUNT,
+            1 + <Trigger<S> as Widget>::NODE_COUNT,
             <SelectMenu<S> as Widget>::SEEDS,
         );
         s
@@ -230,9 +242,9 @@ pub const PART_POPUP: &str = "select-popup";
 pub const PART_MENU: &str = "select-menu";
 
 impl<S: 'static> Widget for Select<S> {
-    const NODE_COUNT: usize = 1 + <Row<S> as Widget>::NODE_COUNT + <SelectMenu<S> as Widget>::NODE_COUNT;
+    const NODE_COUNT: usize = 1 + <Trigger<S> as Widget>::NODE_COUNT + <SelectMenu<S> as Widget>::NODE_COUNT;
     const DEPTH: usize = 1 + {
-        let a = <Row<S> as Widget>::DEPTH;
+        let a = <Trigger<S> as Widget>::DEPTH;
         let b = <SelectMenu<S> as Widget>::DEPTH;
         if a > b {
             a
@@ -243,7 +255,7 @@ impl<S: 'static> Widget for Select<S> {
     /// Its size is the trigger's, and the menu is out of flow — so a
     /// longer option list never resizes anything above it. That is the
     /// property `Popup` exists for, inherited.
-    const IS_RIGID: bool = <Row<S> as Widget>::IS_RIGID;
+    const IS_RIGID: bool = <Trigger<S> as Widget>::IS_RIGID;
     const SUB_TABLE: &'static [NodeDesc] = SelectTable::<S>::SLICE;
 
     const KIND: &'static str = "select";
@@ -277,6 +289,14 @@ impl<S: 'static> Node for Select<S> {
         let size = self.trigger.layout(cx, limits, style, st, i + Self::TRIGGER);
         // The menu measures itself loosely and reports zero, so it
         // cannot widen or lengthen this control.
+        // Flipping above clears the trigger (M57/A18).
+        self.menu.above_by = size.h;
+        // The current choice and the keyboard's row, for the menu to draw.
+        if !self.menu.open {
+            self.highlight = None;
+        }
+        self.menu.content.current = self.current;
+        self.menu.content.highlight = self.highlight;
         self.menu.layout(cx, limits, style, st, i + Self::MENU);
         lumen_static::ops::record_painted(st, i, limits, size, &me)
     }
@@ -302,6 +322,38 @@ impl<S: 'static> Node for Select<S> {
         self.menu
             .hit(st, i + Self::MENU, x, y)
             .or_else(|| self.trigger.hit(st, i + Self::TRIGGER, x, y))
+    }
+
+    /// **Down and Up walk the open menu** — M57/B21. The menu's rows are
+    /// the application's and cannot take focus, so the keyboard stays on
+    /// the trigger and moves a highlight; Enter on the trigger reaches the
+    /// highlighted row through `activation_redirect`. Tab was trapped in
+    /// the overlay and focus never reached a row, so a keyboard user could
+    /// open a Select and not choose from it.
+    fn on_event(&mut self, ev: &Event, _cx: &EventCtx) -> bool {
+        match ev {
+            Event::Key { key: k @ (Key::Down | Key::Up), down: true } if self.menu.open => {
+                let n = self.menu.content.count;
+                if n == 0 {
+                    return false;
+                }
+                let d: i64 = if *k == Key::Down { 1 } else { -1 };
+                let from = self.highlight.or(self.current);
+                self.highlight = Some(match from {
+                    Some(h) => (h as i64 + d).clamp(0, n as i64 - 1) as usize,
+                    None if d > 0 => 0,
+                    None => n - 1,
+                });
+                true
+            }
+            _ => false,
+        }
+    }
+
+    fn activation_redirect(&self, i: usize) -> Option<(u32, u64, u32)> {
+        // The repeater is the popup's content: one past the popup's node.
+        let h = self.highlight.filter(|_| self.menu.open)?;
+        Some(((i + Self::MENU + 1) as u32, h as u64, 0))
     }
 
     fn dismiss(&mut self) -> bool {

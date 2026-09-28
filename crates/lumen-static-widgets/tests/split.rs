@@ -1,5 +1,9 @@
 //! M27/T27.8 — `SplitPane` and `Collapsible`.
 
+// on_event only: these test divider and section arithmetic. Delivery is
+// crates/lumen-static-shell/tests/split_drift.rs, pane_grid_b48.rs,
+// collapsible_b47.rs and bubbled_press.rs through a Host. (M57/D2)
+
 use lumen_static::event::{Event, EventCtx, Handlers, Key, NodeSel};
 use lumen_static_widgets::ops::{Button, Fixed};
 use lumen_static::widget::{Node, Widget};

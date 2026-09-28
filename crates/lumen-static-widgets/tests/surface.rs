@@ -104,6 +104,16 @@ impl F {
         self.frame();
     }
 
+    /// Hover intent, as the host sends it once the pointer has rested
+    /// (M57/B35): the tip waits for it.
+    fn rest(&mut self) {
+        if let Some(n) = self.input.hovered {
+            let mut c = pass::Consumed::default();
+            pass::deliver(&mut self.app, n, Event::Linger, lumen_static::event::Mods::NONE, &mut c);
+        }
+        self.frame();
+    }
+
     fn idx(&self, wid: &str) -> usize {
         <Ui as Widget>::SUB_TABLE.iter().position(|d| d.wid == wid).expect("wid")
     }
@@ -185,6 +195,7 @@ fn a_tooltip_opens_when_its_content_is_hovered() {
     // The wrapper's own node is never marked hovered; the button is.
     let (x, y) = f.centre(tip + 1);
     f.send(Event::PointerMove { x, y });
+    f.rest();
     assert!(
         f.app.ui.tip.is_open(),
         "hovering the content did not open the tip — the wrapper's own `hovered` \
@@ -202,6 +213,7 @@ fn the_tip_does_not_take_the_pointer() {
     let tip = f.idx("tip");
     let (x, y) = f.centre(tip + 1);
     f.send(Event::PointerMove { x, y });
+    f.rest();
     assert!(f.app.ui.tip.is_open(), "setup: the tip is not open, so this proves nothing");
     // With the tip open and overlapping, the same point must still find
     // the content — a tip that took the hit would close itself.

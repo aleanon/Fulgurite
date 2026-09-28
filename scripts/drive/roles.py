@@ -12,9 +12,13 @@ is a gesture wrapper around content that has its own role.
 """
 
 ROLES = {
+    # A tag that reads as its text; pressable since M57/B2.
+    "Chip": "Label",
     "PickList": "ComboBox",
     "Combobox": "ComboBox",
-    "Menu": "ComboBox",
+    # A menu, not a combo box, since M57/B23: it runs a command and has
+    # no value.
+    "Menu": "Menu",
     "Pagination": "ListBox",
     "Tree": "Tree",
     "DataGrid": "Grid",

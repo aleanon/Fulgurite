@@ -175,6 +175,18 @@ pub struct Host<A: App, R: Retention = Incremental, I: Invalidation = lumen_stat
     /// M28/T28.2. A shell asks for another frame rather than the host
     /// raising the cap.
     more_deferred: bool,
+    /// The overlay focus was last moved into, and where it came from —
+    /// M57/A12. `None` when focus is not held by an overlay.
+    overlay_focus: Option<(u32, Option<u32>)>,
+    /// An overlay opened or closed on the last paint and focus is owed a
+    /// move next frame, so the shell should ask for one (M57/A12).
+    focus_owed: bool,
+    /// The node that took the last wheel, and how long until the gesture
+    /// counts as ended — M57/B40 (`Event::ScrollEnd`).
+    scroll_end: Option<(u32, f32)>,
+    /// The node the pointer is resting on, and how long until that counts
+    /// as hover intent — M57/B35 (`Event::Linger`).
+    linger: Option<(u32, f32)>,
     /// Where deferred work runs — M28/T28.3.
     ///
     /// `dyn` at the shell, which `docs/plan-agent-parity.md`'s appendix
@@ -501,7 +513,8 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         {
             let mut cx = LayoutCx::with_changed(metrics, lumen_static::invalidate::Changed::ALL)
                 .with_palette(&self.palette)
-                .with_scale(self.scale);
+                .with_scale(self.scale)
+                .with_viewport(lumen_static::Size { w: limits.max_w, h: limits.max_h });
             let tree = self.app.tree_mut();
             tree.layout(&mut cx, limits, &self.styles, &mut scratch, 0);
             tree.place(Point::default(), &self.styles, &mut scratch, 0);
@@ -793,6 +806,10 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             app,
             inbox: lumen_static::inbox::Inbox::new(),
             more_deferred: false,
+            overlay_focus: None,
+            focus_owed: false,
+            scroll_end: None,
+            linger: None,
             spawner: None,
             ledger: lumen_static::spawn::Ledger::new(),
             timer_coalesced: 0,
@@ -1105,6 +1122,15 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         )
     }
 
+    /// How many overlays — popups, menus, veils — were open on the last
+    /// painted frame. A press outside all of them dismisses them and is
+    /// consumed (`pass::dispatch_overlaid_into`), so a test that clicks
+    /// something must know whether its press will reach it or only close
+    /// a popup (M56's sidebar walk).
+    pub fn open_overlays(&self) -> usize {
+        lumen_static::overlay::OverlaySink::len(&self.overlays)
+    }
+
     pub fn frame_number(&self) -> u64 {
         self.frame
     }
@@ -1200,7 +1226,60 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
     /// raising the cap until the queue empties, is what turns a burst of
     /// completions into one long frame.
     pub fn more_deferred(&self) -> bool {
-        self.more_deferred
+        self.more_deferred || self.focus_owed
+    }
+
+    /// **Focus into an overlay that opened, and back when it closes** —
+    /// M57/A12 (`docs/plan-widget-fixes.md`).
+    ///
+    /// A dialog, a sheet or a picker that opened left focus where it was,
+    /// behind it, so a keyboard user met a modal they could not reach
+    /// (`docs/widget-audit.md` X8, Modal). The overlays are what the
+    /// *last* paint deferred, so this runs at the start of a pump: an
+    /// overlay topmost now that was not before takes focus onto its first
+    /// focusable, if it has one; when the overlay focus was moved into is
+    /// gone, focus goes back to where it came from.
+    ///
+    /// **Restored only if it was moved.** A chooser's list has nothing
+    /// focusable, so focus stays on its field; restoring "where focus
+    /// was" when that list closed would hand focus back to the field, and
+    /// a focus arriving at a chooser's field opens it (A7).
+    fn settle_overlay_focus(&mut self) {
+        use lumen_static::overlay::OverlaySink;
+        self.focus_owed = false;
+        let table = <A::Tree as Widget>::SUB_TABLE;
+        let top = (!self.overlays.is_empty()).then(|| self.overlays.at(self.overlays.len() - 1));
+        let before = self.input.focus;
+        match (top, self.overlay_focus) {
+            (Some(t), held) if held.map(|(o, _)| o) != Some(t) => {
+                let span = lumen_static::style::subtree_range(table, t as usize);
+                let inside = self.input.focus.is_some_and(|f| span.contains(&(f as usize)));
+                if inside {
+                    return;
+                }
+                let first = pass::next_focusable_in(table, &self.states, &self.styles, None, span);
+                if let Some(f) = first {
+                    let from = held.map_or(self.input.focus, |(_, from)| from);
+                    self.overlay_focus = Some((t, from));
+                    self.input.focus = Some(f);
+                }
+            }
+            (None, Some((o, from))) => {
+                self.overlay_focus = None;
+                // Back only if focus is gone or still inside what closed —
+                // not if the press that closed it focused something else.
+                let span = lumen_static::style::subtree_range(table, o as usize);
+                if self.input.focus.is_none_or(|f| span.contains(&(f as usize))) {
+                    self.input.focus = from.filter(|&f| (f as usize) < table.len());
+                }
+            }
+            _ => return,
+        }
+        if self.input.focus != before {
+            pass::publish_focus(&mut self.states, &mut self.input);
+            let mut consumed = pass::Consumed::default();
+            pass::tell_focus(&mut self.app, &self.input, before, &mut consumed);
+        }
     }
 
     /// Install the spawner deferred work runs on — M28/T28.3.
@@ -1623,7 +1702,12 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         // focus it opened over comes back — inside `before`/`after`, so
         // T25.0's marks redraw both nodes.
         pass::settle_overlays(&self.app, &self.styles, &mut self.states, &mut self.input, &self.overlays);
+        // And **into** one the last paint opened (M57/A12): a menu's list
+        // and a picker's pad take focus when they appear, which the
+        // record above does not do; closing hands it back either way.
+        self.settle_overlay_focus();
         while let Some(ev) = self.queue.pop() {
+            let took_before = consumed.nodes().len();
             let took = self.dispatch_now(&ev, &mut consumed);
             // **A key press nothing took is the application's** —
             // M60/T60.1 (`docs/plan-tally-slim.md` §2.1). Here, in the one
@@ -1640,6 +1724,18 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             // `Event::Touch` into a `Host` gets the same behaviour.
             for synth in promote_touch(&mut self.primary_touch, &ev).into_iter().flatten() {
                 handled |= self.dispatch_now(&synth, &mut consumed);
+            }
+            // A move restarts the wait for hover intent on whatever the
+            // pointer is over now; nothing under it, nothing to wait for.
+            if matches!(ev, Event::PointerMove { .. }) {
+                self.linger = self.input.hovered.map(|n| (n, lumen_static::event::LINGER_MS));
+            }
+            // A wheel someone took: its gesture ends when no other comes
+            // for `SCROLL_END_MS` (M57/B40).
+            if matches!(ev, Event::Scroll { .. }) {
+                if let Some(&n) = consumed.nodes().get(took_before..).and_then(|t| t.last()) {
+                    self.scroll_end = Some((n, lumen_static::event::SCROLL_END_MS));
+                }
             }
         }
 
@@ -1908,7 +2004,9 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
                 // `tests/scale_memo.rs` is this line's gate (M40/T40.0):
                 // `BlockMetrics` is linear in the scale, so no other host
                 // test can tell whether the scale arrived.
-                .with_scale(self.scale);
+                .with_scale(self.scale)
+                // The window, so a popup stays on it (M57/A18).
+                .with_viewport(lumen_static::Size { w: limits.max_w, h: limits.max_h });
             let tree = self.app.tree_mut();
             self.passes.layouts += 1;
             tree.layout(&mut cx, limits, &self.styles, &mut self.states, 0);
@@ -1927,22 +2025,6 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             lumen_static::pass::debug_assert_finite(&self.states);
         }
 
-        // A focus ring only for keyboard focus (T15.6). **After**
-        // layout, which resolves the ring from the stylesheet and would
-        // otherwise overwrite this — the first version zeroed it before
-        // and had no effect at all.
-        //
-        // One write per frame rather than a per-node flag: there is one
-        // focus, and `NodeState` would have grown from 76 bytes to 80
-        // for every node of every tree to say something about one of
-        // them, which the M15 gating policy forbids.
-        if !self.input.focus_visible {
-            if let Some(f) = self.input.focus {
-                if let Some(s) = self.states.get_mut(f as usize) {
-                    s.focus_ring = 0;
-                }
-            }
-        }
 
         let t1 = std::time::Instant::now();
         self.list.clear();
@@ -1968,10 +2050,39 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             // At a scale of 1.0 `Scaled` is a forwarding wrapper, and
             // under `Rebuild` `Recording` forwards to an empty
             // `observe` the optimizer removes.
+            // **Retention inside `Scaled`, so it sees physical pixels** —
+            // M40/T40.1, and M57/A2 found and fixed the same line
+            // independently (R1-F1; `tests/scaled_damage.rs`): outside, it
+            // banked logical rects against a physical surface, and at
+            // scale 2 a change repainted a region half its size.
             let mut rec = lumen_static::Recording::new(&mut self.list, &mut self.retain);
             let mut out = lumen_static::Scaled::new(&mut rec, self.scale);
             self.passes.paints += 1;
             pass::paint_overlaid(self.app.tree(), &self.states, &mut out, &mut self.overlays);
+            paint_focus_ring::<A>(&self.input, &self.states, &self.overlays, &self.palette, &mut out);
+        }
+        // An overlay opened or closed in this paint: focus owes it a move,
+        // which the next pump makes (M57/A12). Ask for that frame.
+        {
+            use lumen_static::overlay::OverlaySink;
+            let top = (!self.overlays.is_empty()).then(|| self.overlays.at(self.overlays.len() - 1));
+            let held = self.overlay_focus.map(|(o, _)| o);
+            let table = <A::Tree as Widget>::SUB_TABLE;
+            let opened = top.is_some_and(|t| {
+                held != Some(t)
+                    && pass::next_focusable_in(
+                        table,
+                        &self.states,
+                        &self.styles,
+                        None,
+                        lumen_static::style::subtree_range(table, t as usize),
+                    )
+                    .is_some()
+                    && !self.input.focus.is_some_and(|f| {
+                        lumen_static::style::subtree_range(table, t as usize).contains(&(f as usize))
+                    })
+            });
+            self.focus_owed = opened || (top.is_none() && held.is_some());
         }
         self.last_paint_ns = t1.elapsed().as_nanos() as u64;
 
@@ -2082,12 +2193,47 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         // it, so under `Boundaries` a tick-written label kept its old box
         // (`tests/tick_marks.rs`). A zero `dt` is a pure query by
         // `App::tick`'s contract and changes nothing, so it marks nothing.
+        // **A wheel gesture that has gone quiet ends** — M57/B40.
+        let mut ended = false;
+        if let Some((n, left)) = self.scroll_end {
+            let left = left - dt_ms;
+            if left > 0.0 {
+                self.scroll_end = Some((n, left));
+            } else {
+                self.scroll_end = None;
+                let mut consumed = pass::Consumed::default();
+                if pass::deliver(&mut self.app, n, Event::ScrollEnd, self.input.mods, &mut consumed) {
+                    let table = <A::Tree as Widget>::SUB_TABLE;
+                    for &k in consumed.nodes() {
+                        self.invalidation.mark(lumen_static::style::subtree_range(table, k as usize));
+                    }
+                    ended = true;
+                }
+            }
+        }
+        // **The pointer has rested** — M57/B35.
+        if let Some((n, left)) = self.linger {
+            let left = left - dt_ms;
+            if left > 0.0 {
+                self.linger = Some((n, left));
+            } else {
+                self.linger = None;
+                let mut consumed = pass::Consumed::default();
+                if pass::deliver(&mut self.app, n, Event::Linger, self.input.mods, &mut consumed) {
+                    let table = <A::Tree as Widget>::SUB_TABLE;
+                    for &k in consumed.nodes() {
+                        self.invalidation.mark(lumen_static::style::subtree_range(table, k as usize));
+                    }
+                    ended = true;
+                }
+            }
+        }
         let ticked = self.app.tick(dt_ms);
         if ticked && dt_ms > 0.0 {
             self.invalidation.mark_all();
             self.arenas_dirty = true;
         }
-        ticked || fired > 0
+        ticked || fired > 0 || ended
     }
 
     /// How long until this host's soonest timer is due, in milliseconds
@@ -2106,7 +2252,13 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
     /// The figure is measured from the last tick, so the instant is that
     /// frame's start plus this, not "now" plus this.
     pub fn next_deadline_ms(&mut self) -> Option<f32> {
-        self.app.timers().and_then(|t| t.earliest())
+        let timers = self.app.timers().and_then(|t| t.earliest());
+        // A wheel gesture waiting to end is a deadline too (M57/B40).
+        // So is hover intent waiting to arrive (M57/B35).
+        [timers, self.scroll_end.map(|(_, l)| l.max(0.0)), self.linger.map(|(_, l)| l.max(0.0))]
+            .into_iter()
+            .flatten()
+            .reduce(f32::min)
     }
 
     /// Route one composition step to the focused node — T14.8.
@@ -2170,6 +2322,14 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         }
         if let Some(inner) = self.input.hover_inner {
             if let Some(c) = self.app.tree().node(i).inner_cursor(inner) {
+                return c;
+            }
+        }
+        // The node's own answer for this point (M57/B48): a pane grid's
+        // two kinds of divider.
+        if let (Some(p), Some(st)) = (self.input.pointer, self.states.get(i)) {
+            let local = lumen_static::Point { x: p.x - st.pos.x, y: p.y - st.pos.y };
+            if let Some(c) = self.app.tree().node(i).cursor_at(local) {
                 return c;
             }
         }
@@ -2417,6 +2577,48 @@ fn mark_node<I: Invalidation>(inv: &mut I, table: &[lumen_static::desc::NodeDesc
 
 /// Background colour a shell clears to before rendering.
 pub const CLEAR: Color = Color(255, 255, 255, 255);
+
+/// **The one focus ring**, drawn after the tree and its overlays —
+/// M57/A6 (`docs/plan-widget-fixes.md`).
+///
+/// Only for keyboard focus (T15.6): a press hides it, a Tab or an
+/// arrow shows it, which `dispatch` records as `focus_visible`. This
+/// used to be done by zeroing the focused node's resolved
+/// `focus_ring` after layout, while every widget drew its own ring
+/// from the flag `dispatch` published — and that flag was one event
+/// late (A1), so the zeroing hid the ring on the new node while the
+/// old one drew its own. Drawing it here reads `input.focus`
+/// directly, so the two can no longer disagree.
+///
+/// **Not over an overlay it is not inside.** A trigger keeps focus
+/// while its menu is open, and a ring drawn after the overlays would
+/// cross the menu's top edge; the ring shows when focus is inside
+/// the topmost overlay, or no overlay is open.
+///
+/// Damage needs nothing: the ring goes through the same recording
+/// painter as the tree, so a ring that appears, moves or goes is a
+/// changed command like any other.
+fn paint_focus_ring<A: App>(
+input: &lumen_static::event::InputState,
+states: &[NodeState],
+overlays: &impl lumen_static::overlay::OverlaySink,
+palette: &lumen_static::style::Palette,
+out: &mut dyn lumen_static::Painter,
+) {
+    if !input.focus_visible {
+        return;
+    }
+    let Some(f) = input.focus else { return };
+    let Some(s) = states.get(f as usize) else { return };
+    if !overlays.is_empty() {
+        let table = <A::Tree as lumen_static::Widget>::SUB_TABLE;
+        let top = overlays.at(overlays.len() - 1) as usize;
+        if !lumen_static::style::subtree_range(table, top).contains(&(f as usize)) {
+            return;
+        }
+    }
+    lumen_static::ops::focus_ring(s, palette.focus, out);
+}
 
 /// Everything a command list needs to be drawn, for renderers that want
 /// to walk it without matching on `Cmd` themselves.

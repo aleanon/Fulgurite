@@ -123,6 +123,9 @@ fn tab_passes_through_an_open_tooltip() {
     let b = h.states[tipped_button() as usize];
     h.post(Event::PointerMove { x: b.pos.x + b.size.w / 2.0, y: b.pos.y + b.size.h / 2.0 });
     h.pump();
+    // A tooltip opens on hover **intent** since M57/B35: the pointer rests
+    // for `LINGER_MS` first.
+    h.tick(lumen_static::event::LINGER_MS + 100.0);
     h.pump();
     assert!(h.app.ui.tipped.is_open(), "setup: hovering did not open the tooltip");
     // The tip's toast: the first node after the popup with any area.

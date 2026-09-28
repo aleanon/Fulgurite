@@ -25,18 +25,26 @@ The alternative — updating the label inside the handler — is the thing
 that produces a frame showing a count the handler has already changed.
 That failure cannot be expressed here.
 
-## Why layout comes before the focus ring
+## Why the host draws the focus ring
 
-The focus ring is written *after* layout, not before, because layout is
-what resolves the ring width from the stylesheet. The first version
-zeroed it beforehand and had no effect whatsoever — a bug that a reader
-of the code would not have spotted, because both orderings look equally
-sensible until you know which pass owns the value.
+There is one focus, so there is one ring, and the host draws it: after
+the tree and its overlays have painted, from `input.focus` and whether
+focus is keyboard-visible, in the palette's `focus` colour. It is an
+outline with a gap, outside the node, so it can neither cover the
+control nor merge with a body of its own colour.
 
-It is also one write per frame rather than a per-node flag. There is one
-focus. Storing "am I the focused node, and is focus visible" per node
-would have grown `NodeState` for every node of every tree to say
-something about one of them, which the M15 gating policy forbids.
+Until M57 each widget drew its own ring, as a filled rect underneath
+itself in its text colour, from a `focused` flag the pass published —
+and the host hid it for pointer focus by zeroing the ring width after
+layout. Every part of that failed somewhere
+(`docs/widget-audit.md` X4 and bug 1): a strip with no body became a
+solid block, a slider became a solid bar, a white-labelled button got a
+white ring, and the flag was one event late, so clicking one button lit
+the ring on the button before it. Reading `input.focus` in the one place
+that draws the ring is what makes the two unable to disagree.
+
+It still costs no per-node state: the width is `Style::focus_ring`, a
+`u8`, and zero opts a node out.
 
 ## Why paint is wrapped twice
 

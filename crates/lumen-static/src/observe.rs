@@ -125,6 +125,11 @@ pub fn emit_node(
     if d.is_focusable() && st[i].size.w > 0.0 && st[i].size.h > 0.0 {
         n.add_action(accesskit::Action::Focus);
     }
+    // M57/A16: a disabled control is announced as one — the one place
+    // every node passes, so no widget can forget it.
+    if st[i].disabled {
+        n.set_disabled();
+    }
     if d.child_count > 0 {
         let mut c = d.first_child as usize;
         loop {
@@ -248,14 +253,14 @@ pub fn index_of_node<W: Widget>(id: NodeId) -> Option<usize> {
 /// `lumen-static-agent` holds them byte-identical.
 pub fn dump<W: Widget>(tree: &W, st: &[NodeState]) -> serde_json::Value {
     let update = snapshot(tree, st);
-    tree_json(W::SUB_TABLE, &update.nodes)
+    tree_json(W::SUB_TABLE, st, &update.nodes)
 }
 
 #[cfg(feature = "observe")]
 /// `{"root": 1, "nodes": [..]}` over emitted nodes — what [`dump`] and
 /// the agent's `ui.getTree` both answer (M48/T48.5).
-pub fn tree_json(table: &[NodeDesc], nodes: &[(NodeId, AkNode)]) -> serde_json::Value {
-    let nodes: Vec<serde_json::Value> = nodes.iter().map(|(id, n)| node_json(table, *id, n)).collect();
+pub fn tree_json(table: &[NodeDesc], st: &[NodeState], nodes: &[(NodeId, AkNode)]) -> serde_json::Value {
+    let nodes: Vec<serde_json::Value> = nodes.iter().map(|(id, n)| node_json(table, st, *id, n)).collect();
     serde_json::json!({ "root": 1, "nodes": nodes })
 }
 
@@ -267,7 +272,7 @@ pub fn tree_json(table: &[NodeDesc], nodes: &[(NodeId, AkNode)]) -> serde_json::
 /// (`src`, `wid`) for a main-table node. Every field but `id` and `role`
 /// is added only when present, so a script that read the old fields
 /// reads them unchanged.
-pub fn node_json(table: &[NodeDesc], id: NodeId, n: &AkNode) -> serde_json::Value {
+pub fn node_json(table: &[NodeDesc], st: &[NodeState], id: NodeId, n: &AkNode) -> serde_json::Value {
     let mut o = serde_json::Map::new();
     o.insert("id".into(), (id.0).into());
     o.insert("role".into(), format!("{:?}", n.role()).into());
@@ -293,6 +298,14 @@ pub fn node_json(table: &[NodeDesc], id: NodeId, n: &AkNode) -> serde_json::Valu
         }
         if !table[idx].wid.is_empty() {
             o.insert("wid".into(), table[idx].wid.into());
+        }
+        // M57/D3: a keyboard can stop here, and whether it is on it — so
+        // a keyboard-only drive can assert that Tab reached a widget.
+        if table[idx].is_focusable() {
+            o.insert("focusable".into(), true.into());
+        }
+        if st.get(idx).is_some_and(|s| s.focused) {
+            o.insert("focused".into(), true.into());
         }
     }
     serde_json::Value::Object(o)

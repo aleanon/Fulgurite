@@ -25,6 +25,7 @@ def _focus_and(c, fn):
 
 NUMBER = ("NumberInput", "#d_number_a", [
     Action(
+        visible=True,
         name="a click focuses the field",
         needs="an unfocused number field",
         do=lambda c: c.click(),
@@ -36,6 +37,7 @@ NUMBER = ("NumberInput", "#d_number_a", [
         injection="stop setting focus on PointerDown in dispatch",
     ),
     Action(
+        visible=True,
         name="ArrowUp steps it up by exactly one step",
         needs="a focused field below its maximum",
         do=lambda c: (c.click(), c.__dict__.__setitem__("_v0", _text(c)), c.key("Up"))[0],
@@ -46,6 +48,7 @@ NUMBER = ("NumberInput", "#d_number_a", [
         injection="drop the Key::Up arm in NumberInput::on_event",
     ),
     Action(
+        visible=True,
         name="a letter is refused outright",
         needs="a focused field with a value in it",
         do=lambda c: (c.click(), c.__dict__.__setitem__("_v0", _text(c)), c.c.type("abc"))[0],
@@ -56,6 +59,7 @@ NUMBER = ("NumberInput", "#d_number_a", [
         injection="make is_number_char accept everything",
     ),
     Action(
+        visible=True,
         name="Enter commits and normalises",
         needs="a focused field holding a typed value",
         do=lambda c: (c.click(), c.c.fill(c.sel, "7"), c.key("Enter"))[0],
@@ -102,6 +106,7 @@ def _range(c) -> str:
 
 RANGE = ("RangeSlider", "#d_range_a", [
     Action(
+        visible=True,
         name="a press takes the nearer handle and moves it",
         needs="a range with its handles apart, at 0.25 and 0.75",
         do=lambda c: (c.__dict__.__setitem__("_r0", _range(c)), c.click())[0],
@@ -114,6 +119,7 @@ RANGE = ("RangeSlider", "#d_range_a", [
         injection="drop the PointerDown arm in RangeSlider::on_event",
     ),
     Action(
+        visible=True,
         name="a handle driven past the other stops at it",
         needs="a range with both handles reachable",
         # Press near the LEFT end so the low handle is taken, then drag
@@ -139,8 +145,14 @@ RANGE = ("RangeSlider", "#d_range_a", [
 ])
 
 
+def _click_above(c, sel, pad=6.0):
+    b = c.box(sel)
+    return c.c.rpc("input.click", x=(b[0] + b[2]) / 2, y=b[1] - pad)
+
+
 SEARCH = ("SearchField", "#search-field", [
     Action(
+        visible=True,
         name="a click reaches the text, not the container",
         needs="a search field with its magnifier and its text",
         do=lambda c: c.click(),
@@ -149,13 +161,23 @@ SEARCH = ("SearchField", "#search-field", [
             f"state.focused={c.styles()['state']['focused']} — the *field*, "
             f"not the pill around it",
         ),
-        isolate=lambda c: c.click_outside(),
+        # Outside the *pill*: 6 px above the field is the pill's padding,
+        # where a press focuses the field by design. This clicked there and
+        # passed only while the field was laid out past the pill's right
+        # edge (M57/B26), so its centre was outside the pill too.
+        isolate=lambda c: _click_above(c, "#d_search_a"),
         injection="let SearchField::hit fall through to the container",
     ),
     Action(
+        visible=True,
         name="typing reaches the query",
         needs="a focused search field",
-        do=lambda c: (c.click(), c.__dict__.__setitem__("_v0", _text(c)),
+        # End first: since M57/A3 a click puts the caret where it lands,
+        # which is the middle of the query. The caret was always at the end
+        # before only because the agent's audit had emptied the field's
+        # clusters, and this action's expectation had leaned on that.
+        do=lambda c: (c.click(), c.c.rpc("input.key", key="End"),
+                      c.__dict__.__setitem__("_v0", _text(c)),
                       c.c.type("X"))[0],
         expect=lambda c: (
             _text(c) == c._v0 + "X",
@@ -180,6 +202,62 @@ SEARCH = ("SearchField", "#search-field", [
         injection="hand the icon the wrapper's own `inner` limits — its "
                   "min_w then forces a 20 px magnifier to the full width",
     ),
+    # Reported: a full field's text jumped between two views on every
+    # click, and the caret could leave it. The field decided its scroll in
+    # `layout`, which the agent's audit also runs under a million-pixel
+    # box -- so this drive, with the agent attached, is exactly the window
+    # that showed it. Two presses on one spot must leave the same pixels.
+    Action(
+        visible=True,
+        name="clicking a full field twice on one spot leaves its view still",
+        needs="a search field holding a query wider than itself",
+        do=lambda c: _click_twice_on_a_full_field(c),
+        expect=lambda c: (
+            c._h1 == c._h2 and len(_text(c)) > 40,
+            f"field pixels after the first press {c._h1} and the second {c._h2}; "
+            f"query of {len(_text(c))} characters",
+        ),
+        injection="decide TextInput's scroll in layout again, not in place",
+    ),
+    # M57/B26: `clear()` had no caller. And the field is inside the pill
+    # now: it ended 148 px past it while laid out across the offer.
+    Action(
+        visible=True,
+        name="Escape clears the query, and the field ends inside the pill",
+        needs="a focused search field with a query",
+        do=lambda c: (c.click(), c.__dict__.__setitem__("_v0", _text(c)),
+                      c.key("Escape"))[0],
+        expect=lambda c: (
+            c._v0 != "" and _text(c) == ""
+            and c.box("#search-field")[2] <= c.box("#d_search_a")[2],
+            f"query {c._v0!r} -> {_text(c)!r}; field ends "
+            f"{round(c.box('#search-field')[2])}, pill {round(c.box('#d_search_a')[2])}",
+        ),
+        injection="drop the Escape arm in SearchField::on_event, or lay the "
+                  "field out across the offer",
+    ),
 ])
 
 ALL = [NUMBER, RANGE, SEARCH]
+
+
+def _click_twice_on_a_full_field(c):
+    """Fill the field past its width, then press one spot in it twice,
+    hashing the field's pixels after each press (settled)."""
+    import time
+    c.click()
+    c.c.rpc("input.key", key="End")
+    c.c.type(" the quick brown fox jumps over the lazy dog again")
+    b = c.box("#search-field")
+    x, y = b[0] + (b[2] - b[0]) * 0.6, (b[1] + b[3]) / 2
+    hashes = []
+    for _ in range(2):
+        c.c.rpc("input.click", x=x, y=y)
+        time.sleep(0.4)
+        # `ui.waitSettled`, not `ui.lastChange`: the harness asks
+        # `lastChange` what this action changed, and a read in here left it
+        # nothing to find on some runs ("the input did not reach the
+        # widget", once in five).
+        c.c.rpc("ui.waitSettled")
+        hashes.append(c.c.rpc("ui.regionHash", rect=b).get("hash"))
+    c._h1, c._h2 = hashes

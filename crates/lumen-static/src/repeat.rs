@@ -152,6 +152,25 @@ pub struct Repeat<T: Widget + Default + 'static> {
     /// — is laid out again even on a frame that did not mark the
     /// repeater; one whose row did not is left to its own boundary.
     slot_rows: Vec<usize>,
+    /// A row drawn as the keyboard's — M57/B21 — tinted over its content.
+    /// For an owner like `Select` whose rows are the application's: only
+    /// the repeater paints them, in the overlay pass, so only it can mark
+    /// one.
+    pub highlight: Option<usize>,
+    /// A row drawn as the current choice, tinted more faintly (M57/B21).
+    pub current: Option<usize>,
+    /// **Opt-in row behaviour** for a list that is a table — M57/B51.
+    /// `hover_rows` tints the row under the pointer (from `Hover` with
+    /// the row the hit resolved to; `Leave` clears it); `select_rows`
+    /// makes a press set `current` and flag it for `take_selected`,
+    /// *without* consuming the press, so a control inside the row still
+    /// gets it. With either on, a point in a row's band is that row even
+    /// where its cells decline a hit. Both off by default: `Select`'s
+    /// menu and every existing list keep exactly the behaviour they had.
+    pub hover_rows: bool,
+    pub select_rows: bool,
+    hot: Option<usize>,
+    selected_now: bool,
 }
 
 impl<T: Widget + Default> Default for Repeat<T> {
@@ -177,7 +196,52 @@ impl<T: Widget + Default> Repeat<T> {
             seen_count: count,
             active: None,
             slot_rows: Vec::new(),
+            highlight: None,
+            current: None,
+            hover_rows: false,
+            select_rows: false,
+            hot: None,
+            selected_now: false,
         }
+    }
+
+    /// The row a press selected since the last call — and clears it.
+    pub fn take_selected(&mut self) -> Option<usize> {
+        if core::mem::take(&mut self.selected_now) { self.current } else { None }
+    }
+
+    /// Select `row` as a press on it would — the keyboard's way in. It is
+    /// reported once by [`Repeat::take_selected`], exactly like a press,
+    /// so an application reading presses reads the arrows too. Answers
+    /// whether the selection moved.
+    pub fn select(&mut self, row: usize) -> bool {
+        if row >= self.count {
+            return false;
+        }
+        let moved = self.current != Some(row);
+        self.current = Some(row);
+        self.selected_now = true;
+        moved
+    }
+
+    /// Scroll the least distance that shows all of `row`, given the
+    /// viewport's height; answers whether the offset moved.
+    pub fn scroll_into_view(&mut self, row: usize, viewport_h: f32) -> bool {
+        let top = row as f32 * self.item_extent;
+        let want = if top < self.scroll {
+            top
+        } else if top + self.item_extent > self.scroll + viewport_h {
+            top + self.item_extent - viewport_h
+        } else {
+            self.scroll
+        };
+        let want = crate::num::clamp(want, 0.0, self.max_scroll(viewport_h));
+        core::mem::replace(&mut self.scroll, want) != want
+    }
+
+    /// The row under the pointer, when `hover_rows` is on.
+    pub fn hot(&self) -> Option<usize> {
+        self.hot
     }
 
     /// Materialized instances (visible window), for tests/inspection.
@@ -421,6 +485,11 @@ pub const MAX_ADDRESSABLE_EXTENT: f32 = 16_777_216.0;
 
 impl<T: Widget + Default + 'static> Node for Repeat<T> {
     crate::node_count!();
+    /// How far the rows are scrolled — M57/B40 (`Node::scroll_offset`).
+    fn scroll_offset(&self) -> Option<f32> {
+        Some(self.scroll)
+    }
+
     fn kind_name(&self) -> &'static str {
         <Self as Widget>::KIND
     }
@@ -687,6 +756,17 @@ impl<T: Widget + Default + 'static> Node for Repeat<T> {
         for k in 0..self.window.len() {
             self.window[self.slot(k)].paint(self.slice(k), 0, out);
         }
+        // The keyboard's row and the current choice, over their rows and in
+        // each row's own text colour, so the tint reads in either palette.
+        for (row, alpha) in [(self.hot, 0x12), (self.current, 0x1a), (self.highlight, 0x33)] {
+            let Some(row) = row else { continue };
+            if row < self.first || row >= self.first + self.window.len() {
+                continue;
+            }
+            let rs = self.slice(row - self.first)[0];
+            let c = rs.fg;
+            out.rounded_rect(crate::ops::rect_of(&rs), crate::display::Color(c.0, c.1, c.2, alpha), 6.0);
+        }
         out.pop_clip();
     }
 
@@ -701,6 +781,22 @@ impl<T: Widget + Default + 'static> Node for Repeat<T> {
                     inner: Some(Inner { row: (self.first + k) as u64, node: h.node }),
                     local: h.local,
                 });
+            }
+        }
+        // **A table's row is a target whatever is in it** (M57/B51): with
+        // hover or selection on, a point in a row's band is that row, even
+        // where its cells (labels) decline a hit.
+        if self.hover_rows || self.select_rows {
+            let along = y - st[i].pos.y + self.scroll;
+            if along >= 0.0 && self.item_extent > 0.0 {
+                let row = (along / self.item_extent) as usize;
+                if row < self.count {
+                    return Some(Hit {
+                        node: i as u32,
+                        inner: Some(Inner { row: row as u64, node: 0 }),
+                        local: Point { x: x - st[i].pos.x, y: y - st[i].pos.y },
+                    });
+                }
             }
         }
         Some(Hit {
@@ -724,8 +820,26 @@ impl<T: Widget + Default + 'static> Node for Repeat<T> {
     /// parent gets the rest of the gesture. Both are
     /// `ScrollView`'s conventions, because a list that scrolled
     /// the other way from every other list would be its own defect.
-    fn on_event(&mut self, ev: &crate::event::Event, _cx: &crate::event::EventCtx) -> bool {
+    fn on_event(&mut self, ev: &crate::event::Event, cx: &crate::event::EventCtx) -> bool {
         use crate::event::{Event, Key};
+        // A table's rows (M57/B51): hover and selection, before the
+        // scroll and the keyboard.
+        match ev {
+            Event::Hover { .. } if self.hover_rows => {
+                let row = cx.row.map(|r| r as usize);
+                return core::mem::replace(&mut self.hot, row) != row;
+            }
+            Event::Leave if self.hover_rows => return self.hot.take().is_some(),
+            // Recorded, not consumed: a button in the row still gets it.
+            Event::PointerDown { .. } if self.select_rows => {
+                if let Some(r) = cx.row {
+                    self.current = Some(r as usize);
+                    self.selected_now = true;
+                }
+                return false;
+            }
+            _ => {}
+        }
         match *ev {
             Event::Scroll { dy, .. } => {
                 let want = crate::num::clamp(self.scroll - dy, 0.0, self.max_scroll(self.viewport));
@@ -853,7 +967,8 @@ where
         // `(first + k) % len`; this indexed `window` raw, so once the ring
         // had rotated a click ran another row's handler, which nothing
         // saw while every repeater bound the same handler to every row
-        // (`crates/lumen-static/tests/events.rs`). The explicit bound
+        // (`crates/lumen-static/tests/events.rs`). M56 found and fixed the same line
+        // independently (`crates/lumen-static/tests/repeat_handler.rs`). The explicit bound
         // replaces the one the raw `get` gave, since `slot` wraps.
         if k >= self.window.len() {
             return None;

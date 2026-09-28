@@ -644,6 +644,86 @@ found" section rather than silently replacing itself.
     colour change needs no rebuild.
   - **Deferred:** a compile-time cascade (§4).
 
+
+- ~~**M56 — `docs/plan-showcase-design.md`**~~ — **DONE 2026-09-25**
+  on branch `m56-showcase-design`, all six tasks. It built what was
+  asked, and building it found **three framework defects no test had
+  seen**, each fixed with its own gate:
+  - a `Fixed` container laid its content out across its *offer* (two
+    halves of 250 px inside a 100 px box);
+  - a scrolled `Repeat` asked the wrong row for its handler (10 of 11
+    rows);
+  - `ui.lastDamage` counted nodes that draw nothing (7.47x on a 1.00x
+    frame).
+  All three were latent until a layout changed what containers were
+  offered. **Two tests had been passing on the chrome**: a "draws only
+  text" check credited RichText and PullToRefresh with the header's
+  hairline. The contrast gate's first run found three AA failures that
+  looked fine by eye, and the visual review found four demos illegible
+  in dark mode **before** M56 too. One attribution was corrected before
+  it left the machine: a sidebar click was being eaten by an open
+  popup's dismissal, not by the `Repeat` defect found while chasing it.
+  (T56.0–T56.5), queued
+  2026-09-24. The showcase gets a component-gallery layout:
+  a grouped sidebar replaces the dropdown picker, the demo sits on a
+  canvas card, the readout becomes a status chip, and the chrome follows
+  4/8 px spacing and a 12/14/16/24 type scale. **The explanatory note
+  under each widget is removed**, and any claim a note held that no
+  rustdoc does is moved there first. The one-line blurb stays. A
+  contrast gate covers both palettes. The drive scripts follow the new
+  chrome and must stay green under both strategies.
+
+- ~~**M57 — `docs/plan-widget-fixes.md`**~~ — **DONE 2026-09-27** on
+  branch `m56-showcase-design`: every A, B, C and D item. It fixed what
+  `docs/widget-audit.md` found across the showcase's 52 widgets (12
+  broken, 35 with flaws), **framework defects in the framework, never
+  worked around in the example**. The audit's two tables now carry *fixed
+  in* and *checked by* columns computed by `scripts/audit_fixed_in.py`
+  from the log and the drives, not written from memory.
+
+  **Phase D is the part worth carrying forward**, seven standing gates:
+  every drive action declares whether its consequence shows in pixels
+  (D1, `ui.regionHash`); a direct `on_event` test goes through the pass
+  or says why (D2, in `just static`); a keyboard-only pass reaches every
+  focusable demo by Tab (D3); contrast across every demo in both
+  palettes (D4); the live window with the agent is byte-identical to a
+  headless render without it (D5); a third pass at scale 2 compares every
+  damaged frame with a full repaint (D6); and every leaf speaks or is
+  hidden (D7). **D1 found a vacuous drive action on its first run** --
+  the Switch's track check passed on a hover shade -- and D7 found layout
+  leaves publishing themselves as nameless controls.
+
+  The plan's "What building it found" section records where it was wrong
+  (B15's end caret was already right live; B9's "500 px" never existed;
+  B26's gate found four hand-written wrappers laying out across their
+  offer, M56's derive defect again) and five drive actions that asserted
+  the defect they were meant to catch. Not built, with reasons: `Radio<T>`,
+  `Slider::on_change`, a rounded clip. Three defects reported from the
+  showcase after closing are fixed and recorded in the plan ("Reported
+  after closing"): a filtered combobox choosing by unfiltered position,
+  a search field clipping its text, and a DataGrid that read as a list
+  -- now a sheet the keyboard reaches, which also closes D3's finding.
+
+
+- ~~**Merge of `m56-showcase-design` into `main`**~~ — **2026-09-28.** Two
+  programs had run in parallel from `1717808`: M38's review and M39–M55
+  on `main`, M56 and M57 on the branch. 45 files conflicted, and **both
+  sides had fixed several of the same defects independently**: physical
+  damage (M40/T40.1 and M57/A2), the ring-indexed repeater handler
+  (M44/T44.7 and M56), arena rows against the main table's dirty set
+  (M41/T41.3 and M57/A5), pixel snapping (M40/T40.3 and M57/A15), the
+  press latch (M44/T44.2 and M57/A9), toggles showing their flag
+  (M48/T48.4 and M57/C2), a stuck timer on an idle window (M47/T47.1 and
+  M57/B40), and keyboards for the choosers, pickers, tree and grid
+  (M44/T44.10 and M57/B20–B23, B50, B51). **Where one side's mechanism
+  came from a dedicated repair program with its own oracle, it was kept
+  and the other side's tests were made to pass against it**; where the
+  branch's was the one asked for (the sheet, the combobox's reopening),
+  it was kept and `main`'s tests were ported to it with their claims
+  intact. The merge commit's body lists every decision. Two of `main`'s
+  findings closed at the merge: its dark-palette catalogue test (T54.5)
+  reads 0 of 1672 runs under 3:1 now that M57/A8's roles exist, and its
+  W1003 fixture depended on the layout bug M56 fixed, so it was rebuilt.
 Unsequenced: ~~`docs/plan-harness.md`.~~ — **M12 DONE 2026-09-20.**
 T12.3 and T12.4 landed 2026-09-04; T12.1 (a locator and expectation API,
 `lumen_static_agent::harness::TestApp`) and T12.2 (golden images with a
@@ -907,7 +987,11 @@ a backticked identifier in a comment must exist in the code, a declared
 derive attribute must have a user, a cited `docs/*.md` or bench binary
 must exist, every `{{#include}}` in the book must name a live file and a
 live anchor, the attribute table must say the same thing in the rustdoc
-and in the book, and no crate but the reload FFI crate may contain
-`unsafe` (`#![forbid(unsafe_code)]` since M43/T43.1). They run before
+and in the book, no crate but the reload FFI crate may contain
+`unsafe` (`#![forbid(unsafe_code)]` since M43/T43.1), every widget must
+implement `observe` or be listed with the reason it has nothing to say
+(since M57/A17), and a widget test that hands `on_event` a press or a key
+and never pumps must say why (`// on_event only:`, since M57/D2 — that
+shape hid A4, A7, A13 and the first `Hover` test). They run before
 any compile. The first three read `book/src/*.md` as well as `docs/*.md`,
 from 2026-09-10.

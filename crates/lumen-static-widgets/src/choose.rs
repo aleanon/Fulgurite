@@ -58,6 +58,17 @@ pub struct OptionList {
     picked: Option<usize>,
     /// Laid-out height, so `on_event` can turn `local.y` into a row.
     height: f32,
+    /// The keyboard's row, by option index — M57/B20. Drawn as a hovered
+    /// row is, and chosen by Enter; the list had no keyboard at all.
+    highlight: Option<usize>,
+    /// The chosen option, marked when the list opens again — M57/B20.
+    current: Option<usize>,
+    /// How far the rows are scrolled — M57/A18. A list taller than the
+    /// window is given the window (`Popup` caps it), and scrolls by wheel
+    /// inside it rather than running off the bottom of the screen.
+    scroll: f32,
+    /// The rows' full height, padding included, for the scroll clamp.
+    content_h: f32,
 }
 
 impl Default for OptionList {
@@ -70,6 +81,10 @@ impl Default for OptionList {
             hot: None,
             picked: None,
             height: 0.0,
+            highlight: None,
+            current: None,
+            scroll: 0.0,
+            content_h: 0.0,
         }
     }
 }
@@ -116,6 +131,10 @@ impl OptionList {
                 self.shown_count += 1;
             }
         }
+        // A keyboard row the filter hid is no longer a row to choose.
+        if self.highlight.is_some_and(|h| !self.shown[h]) {
+            self.highlight = None;
+        }
         self.shown_count != before
     }
 
@@ -143,44 +162,93 @@ impl OptionList {
         self.picked.take()
     }
 
-    /// The keyboard's step through the visible rows — M44/T44.10.
-    ///
-    /// Up, Down, Home and End move the highlighted row (the same `hot`
-    /// the pointer lights), skipping rows the filter hid; Enter and Space
-    /// choose it, exactly as releasing over it does. Returns whether it
-    /// did anything, so a key it has no use for still bubbles.
-    pub fn key(&mut self, key: Key) -> bool {
-        let n = self.shown_count;
-        if n == 0 {
+    /// The keyboard's row (M57/B20).
+    pub fn highlight(&self) -> Option<usize> {
+        self.highlight
+    }
+
+    /// Put the keyboard's row on option `i`, if it is shown.
+    pub fn set_highlight(&mut self, i: Option<usize>) {
+        self.highlight = i.filter(|&k| k < self.count && self.shown[k]);
+    }
+
+    /// Move the keyboard's row by `d` among the shown options, stopping at
+    /// the ends; from nothing, down starts at the first and up at the last.
+    pub fn move_highlight(&mut self, d: i32) -> bool {
+        let shown: alloc::vec::Vec<usize> = (0..self.count).filter(|&k| self.shown[k]).collect();
+        if shown.is_empty() {
             return false;
         }
-        if matches!(key, Key::Enter | Key::Space) {
-            return match self.hot.filter(|&h| h < self.count && self.shown[h]) {
-                Some(h) => {
-                    self.picked = Some(h);
-                    true
-                }
-                None => false,
-            };
-        }
-        let at = self.hot.and_then(|h| (0..n).find(|&k| self.nth_shown(k) == Some(h)));
-        let k = match key {
-            Key::Down => at.map_or(0, |k| (k + 1).min(n - 1)),
-            Key::Up => at.map_or(0, |k| k.saturating_sub(1)),
-            Key::Home => 0,
-            Key::End => n - 1,
-            _ => return false,
+        let at = self.highlight.and_then(|h| shown.iter().position(|&k| k == h));
+        let next = match at {
+            Some(p) => (p as i32 + d).clamp(0, shown.len() as i32 - 1) as usize,
+            None if d >= 0 => 0,
+            None => shown.len() - 1,
         };
-        let next = self.nth_shown(k);
-        if next == self.hot {
-            return false;
+        let was = self.highlight;
+        self.highlight = Some(shown[next]);
+        was != self.highlight
+    }
+
+    /// Choose the keyboard's row, as a press on it would.
+    pub fn pick_highlight(&mut self) -> bool {
+        match self.highlight {
+            Some(k) => {
+                self.picked = Some(k);
+                true
+            }
+            None => false,
         }
-        self.hot = next;
-        true
+    }
+
+    /// Mark option `i` as the chosen one.
+    pub fn set_current(&mut self, i: Option<usize>) {
+        self.current = i;
+    }
+
+    /// The first shown option whose text starts with `ch`, after `from`,
+    /// wrapping — type-ahead (M57/B20).
+    pub fn find_prefix(&self, ch: char, from: Option<usize>) -> Option<usize> {
+        let n = self.count;
+        let start = from.map_or(0, |f| f + 1);
+        (0..n).map(|k| (start + k) % n).find(|&k| {
+            self.shown[k] && self.options[k].chars().next().is_some_and(|c| c.to_lowercase().eq(ch.to_lowercase()))
+        })
+    }
+
+    /// One key's step through the visible rows — M44/T44.10's entry
+    /// point, on M57's keyboard highlight (the two programs built the same
+    /// thing; the merge kept one row cursor). Up and Down move the
+    /// highlight, Home and End go to the first and last shown row, and
+    /// Enter or Space choose it, exactly as releasing over it does.
+    /// Returns whether it did anything, so a key it has no use for still
+    /// bubbles.
+    pub fn key(&mut self, key: Key) -> bool {
+        match key {
+            Key::Enter | Key::Space => self.pick_highlight(),
+            Key::Down => self.move_highlight(1),
+            Key::Up => self.move_highlight(-1),
+            Key::Home | Key::End => {
+                let at = if key == Key::Home { 0 } else { self.shown_count.saturating_sub(1) };
+                match self.nth_shown(at) {
+                    Some(i) if self.highlight != Some(i) => {
+                        self.highlight = Some(i);
+                        true
+                    }
+                    _ => false,
+                }
+            }
+            _ => false,
+        }
     }
 
     fn row_at(&self, y: f32) -> Option<usize> {
         if self.shown_count == 0 || self.height <= 0.0 {
+            return None;
+        }
+        // In the scrolled list's coordinates (M57/A18).
+        let y = y + self.scroll;
+        if y < 0.0 {
             return None;
         }
         let k = (y / ROW_H) as usize;
@@ -222,7 +290,7 @@ impl Widget for OptionList {
                 Fields::RADIUS,
                 Fields::SHADOW,
                 Fields::VISIBLE,
-            ]),)];
+            ]),).with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Text).background(lumen_static::style::Role::Raised))];
 
     fn type_defaults() -> Style {
         Style {
@@ -252,12 +320,16 @@ impl Node for OptionList {
         if !me.visible {
             return lumen_static::ops::hide_subtree(st, i, limits, 1);
         }
+        // One row for "No matches" when a filter hid every option (B22).
+        let rows = if self.shown_count == 0 && self.count > 0 { 1 } else { self.shown_count };
         let content = Size {
             w: limits.max_w,
-            h: self.shown_count as f32 * ROW_H + me.padding.vertical(),
+            h: rows as f32 * ROW_H + me.padding.vertical(),
         };
         let s = lumen_static::ops::resolve_self(limits, &me, content);
         self.height = s.h;
+        self.content_h = content.h;
+        self.scroll = self.scroll.clamp(0.0, (self.content_h - self.height).max(0.0));
         lumen_static::ops::record_painted(st, i, limits, s, &me)
     }
 
@@ -273,16 +345,36 @@ impl Node for OptionList {
         out.rounded_rect(r, s.bg, s.radius);
         lumen_static::ops::border(st, i, out);
         let p = s.pad;
+        // Clipped to the panel, so a scrolled row does not paint past it.
+        out.push_clip(r);
         let mut k = 0usize;
         for idx in 0..self.count {
             if !self.shown[idx] {
                 continue;
             }
-            let y = r[1] + p.1 + ROW_H * k as f32;
-            if Some(idx) == self.hot {
-                out.rounded_rect([r[0] + 4.0, y, r[2] - 4.0, y + ROW_H], s.fg, 6.0);
+            let y = r[1] + p.1 + ROW_H * k as f32 - self.scroll;
+            if y + ROW_H < r[1] || y > r[3] {
+                k += 1;
+                continue;
             }
-            let col = if Some(idx) == self.hot { s.bg } else { s.fg };
+            let lit = Some(idx) == self.hot || Some(idx) == self.highlight;
+            if lit {
+                out.rounded_rect([r[0] + 4.0, y, r[2] - 4.0, y + ROW_H], s.fg, 6.0);
+            } else if Some(idx) == self.current {
+                // The chosen option, when the list opens again (M57/B20).
+                out.rounded_rect(
+                    [r[0] + 4.0, y, r[2] - 4.0, y + ROW_H],
+                    lumen_static::display::Color(s.fg.0, s.fg.1, s.fg.2, 0x1f),
+                    6.0,
+                );
+            }
+            let col = if lit { s.bg } else { s.fg };
+            if Some(idx) == self.current {
+                // A tick at the row's right, in the text's colour.
+                let (tx, ty) = (r[2] - p.2 - 12.0, y + ROW_H / 2.0);
+                out.line(lumen_static::desc::Point { x: tx, y: ty }, lumen_static::desc::Point { x: tx + 3.5, y: ty + 3.5 }, 2.0, col);
+                out.line(lumen_static::desc::Point { x: tx + 3.5, y: ty + 3.5 }, lumen_static::desc::Point { x: tx + 10.0, y: ty - 4.0 }, 2.0, col);
+            }
             out.text_weighted(
                 [r[0] + p.0, y + ROW_H / 2.0 - s.font_size * 0.6, r[2] - p.2, y + ROW_H],
                 self.options[idx],
@@ -292,14 +384,40 @@ impl Node for OptionList {
             );
             k += 1;
         }
+        // **Nothing matched** (M57/B22): the panel was an empty 12 px
+        // sliver with a shadow; it says so instead.
+        if self.shown_count == 0 && self.count > 0 {
+            let y = r[1] + p.1;
+            out.text_weighted(
+                [r[0] + p.0, y + ROW_H / 2.0 - s.font_size * 0.6, r[2] - p.2, y + ROW_H],
+                "No matches",
+                s.font_size,
+                s.font_weight,
+                lumen_static::display::Color(s.fg.0, s.fg.1, s.fg.2, 0xa0),
+            );
+        }
+        out.pop_clip();
     }
 
     fn on_event(&mut self, ev: &Event, cx: &EventCtx) -> bool {
         match ev {
+            // A wheel scrolls a list that does not fit (M57/A18); one that
+            // does declines it, so it reaches whatever is behind.
+            Event::Scroll { dy, .. } => {
+                let max = (self.content_h - self.height).max(0.0);
+                let want = (self.scroll - dy).clamp(0.0, max);
+                if want == self.scroll {
+                    return false;
+                }
+                self.scroll = want;
+                true
+            }
             // `Hover`, not `PointerMove` — see `Event::Hover`. A move
             // reaches a widget only under capture, so this arm never ran
             // and an option list never highlighted the row under the
             // pointer (M27/T27.11, finding 3).
+            // The pointer left: no row is hot (M57/B50).
+            Event::Leave => self.hot.take().is_some(),
             Event::Hover { .. } => {
                 let was = self.hot;
                 self.hot = self.row_at(cx.local.y - 6.0);
@@ -425,10 +543,13 @@ pub struct Chooser<const KIND: u8 = PICKLIST> {
     /// through `set_label`, which every build has.
     #[cfg(feature = "a11y")]
     pub label: &'static str,
-    /// Whether the trigger had focus at the last layout, so the list
-    /// opens when focus **arrives** rather than whenever it is there
-    /// (M44/T44.10).
-    trigger_was_focused: bool,
+    /// A menu's chosen command, until the application takes it — M57/B23.
+    chosen: Option<usize>,
+    /// The trigger's press count and its text's hash as the last layout
+    /// saw them, so a press and a query changing are **edges**. See the
+    /// layout arm that reads them.
+    seen_presses: u32,
+    last_text: u64,
 }
 
 /// A picker over its own options.
@@ -443,14 +564,16 @@ impl<const KIND: u8> Default for Chooser<KIND> {
         let mut list = Popup::<OptionList>::default();
         list.anchor = Anchor::Below;
         Chooser::<KIND> {
-            trigger: crate::input::TextInput::default(),
+            trigger: { let mut t = crate::input::TextInput::default(); t.read_only = KIND == PICKLIST; t },
             list,
             selected: None,
             typed: false,
             trigger_rect: (Point { x: 0.0, y: 0.0 }, Size::default()),
-            trigger_was_focused: false,
             #[cfg(feature = "a11y")]
             label: "",
+            chosen: None,
+            seen_presses: 0,
+            last_text: 0,
         }
     }
 }
@@ -461,6 +584,8 @@ impl<const KIND: u8> Chooser<KIND> {
 
     pub fn new(options: &[&'static str]) -> Self {
         let mut c = Chooser::<KIND>::default();
+        // A pick list shows its choice; it does not take typing (M57/B20).
+        c.trigger.read_only = KIND == PICKLIST;
         c.list.content.set_options(options);
         if KIND != MENU && c.list.content.count() > 0 {
             c.select(0);
@@ -505,6 +630,15 @@ impl<const KIND: u8> Chooser<KIND> {
         moved
     }
 
+    /// **A menu's command, taken once** — M57/B23. A menu runs a command;
+    /// it does not hold a value. It stored the choice as a selection, so
+    /// "Copy" became the menu's value and no action ran
+    /// (`docs/widget-audit.md`, Menu). The application takes the command
+    /// here and does it; `selected` stays `None` for a menu.
+    pub fn take_chosen(&mut self) -> Option<usize> {
+        self.chosen.take()
+    }
+
     /// What the trigger currently reads.
     pub fn text(&self) -> &str {
         self.trigger.as_str()
@@ -535,14 +669,17 @@ impl<const KIND: u8> ChooserTable<KIND> {
         );
         t[2] = t[2].with_id(PART_POPUP);
         t[3] = t[3].with_id(PART_LIST);
-        // **A menu's list takes focus** (M44/T44.10): a menu has no
-        // trigger, so without this nothing in it could — and an open
-        // menu takes focus when it appears, so its keys land here. A
-        // picklist's and a combobox's list stay unfocusable: their
-        // trigger holds focus while typing, and the keys bubble to the
-        // chooser, which hands them to the list.
+        // A menu's list takes focus (M57/B23): it has no trigger, so an open
+        // menu is where the keyboard must be for its rows to be chosen —
+        // focus moves into it when it opens (A12). Not for a pick list or
+        // a combobox, whose field keeps focus while their list is open.
         if KIND == MENU {
             t[3].flags |= NodeDesc::FOCUSABLE;
+        } else {
+            // And a press on that list leaves the field focused, so a
+            // combobox's query survives until the release chooses from
+            // it — see `NodeDesc::KEEPS_FOCUS`.
+            t[3].flags |= NodeDesc::KEEPS_FOCUS;
         }
         t
     };
@@ -605,7 +742,11 @@ impl<const KIND: u8> Node for Chooser<KIND> {
         // *list*, not this — the same reason `Tooltip` reads hover here
         // and `Glass` reads its press here.
         if let Some(idx) = self.list.content.take_picked() {
-            self.select(idx);
+            if KIND == MENU {
+                self.chosen = Some(idx);
+            } else {
+                self.select(idx);
+            }
             self.list.open = false;
         }
         // **A query is what the trigger holds when it is no longer
@@ -627,31 +768,40 @@ impl<const KIND: u8> Node for Chooser<KIND> {
         if KIND == COMBOBOX && self.typed {
             self.list.content.filter(self.trigger.as_str());
         }
-        // **It opens on focus, not on a press.** The trigger is a
-        // `TextInput` and consumes the `PointerDown` itself — the
-        // bubbling walk stops at the node that took the event, so an
-        // arm here never ran and the list never opened. Focus is the
-        // signal that survives: `dispatch` sets it from the *hit chain*
-        // before any node is asked, so it is true by the time this runs.
-        //
-        // It also reads better than a press arm would: a chooser reached
-        // by Tab opens too, which a keyboard user needs and a press arm
-        // could not give them.
-        //
-        // A dismissing press clears focus (`dispatch_overlaid`), so this
-        // cannot re-open what that press just closed — the dropdown bug
-        // `Select` avoids, avoided here by the same accident of ordering.
-        //
-        // **When focus arrives, not while it stays** (M44/T44.10). Opening
-        // on every frame the trigger held focus reopened a list the
-        // keyboard had just chosen from — a pointer choice escaped it only
-        // because the press on the list took focus off the trigger. Down
-        // reopens a closed list (`on_event`).
-        let focused = st[i + Self::TRIGGER].focused;
-        if KIND != MENU && focused && !self.trigger_was_focused {
-            self.list.open = true;
+        // **It reopens on the two things a person does next** — a press on
+        // its field, and typing a new query. Opening is otherwise the
+        // focus *transition* (A7), and since a press on the list keeps the
+        // field focused (`NodeDesc::KEEPS_FOCUS`), after a choice there is
+        // no transition left: the field was focused, a press on it opened
+        // nothing, and a query filtered a list nobody could see. Both are
+        // edges — the press starting, the text changing — never the level
+        // X5 was, so a choice or an Escape still closes it for good.
+        // The field consumes its own press, so this is where the chooser
+        // can see one — **by the field's press count, not its `pressed`
+        // bit**: a click whose press and release land in one frame (an
+        // agent's, or a quick hand's) sets and clears the bit before any
+        // layout reads it, and the first version reopened only for slow
+        // clicks. Found by the live drive, which clicks in one frame.
+        let presses = self.trigger.presses();
+        let text = {
+            let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+            for b in self.trigger.as_str().bytes() {
+                h = (h ^ b as u64).wrapping_mul(0x0100_0000_01b3);
+            }
+            h
+        };
+        if KIND != MENU && !self.list.open {
+            let pressed_now = presses != self.seen_presses;
+            let queried = KIND == COMBOBOX && self.typed && text != self.last_text;
+            if pressed_now || queried {
+                self.list.open = true;
+                self.list.content.set_highlight(self.selected);
+            }
         }
-        self.trigger_was_focused = focused;
+        self.seen_presses = presses;
+        self.last_text = text;
+        // The chosen option is marked when the list opens again (M57/B20).
+        self.list.content.set_current(if KIND == MENU { None } else { self.selected });
         let t = if KIND == MENU {
             // A menu has no trigger to show. Zeroed rather than absent,
             // so the table's shape does not depend on the kind.
@@ -659,6 +809,8 @@ impl<const KIND: u8> Node for Chooser<KIND> {
         } else {
             self.trigger.layout(cx, limits, style, st, i + Self::TRIGGER)
         };
+        // Flipping above clears the trigger (M57/A18).
+        self.list.above_by = t.h;
         self.list.layout(cx, limits, style, st, i + Self::POPUP);
         let s = lumen_static::ops::resolve_self(limits, &me, t);
         self.trigger_rect = (Point { x: 0.0, y: 0.0 }, t);
@@ -684,6 +836,19 @@ impl<const KIND: u8> Node for Chooser<KIND> {
         if KIND != MENU {
             self.trigger.paint(st, i + Self::TRIGGER, out);
         }
+        // **A chevron says "this opens"** (M57/B20); a pick list had none
+        // and read as a text field.
+        if KIND == PICKLIST {
+            let t = &st[i + Self::TRIGGER];
+            let (cx, cy) = (t.pos.x + t.size.w - 16.0, t.pos.y + t.size.h / 2.0);
+            if t.size.w > 32.0 {
+                let a = lumen_static::desc::Point { x: cx - 4.0, y: cy - 2.0 };
+                let m = lumen_static::desc::Point { x: cx, y: cy + 2.0 };
+                let b = lumen_static::desc::Point { x: cx + 4.0, y: cy - 2.0 };
+                out.line(a, m, 1.75, t.fg);
+                out.line(m, b, 1.75, t.fg);
+            }
+        }
         self.list.paint(st, i + Self::POPUP, out);
     }
 
@@ -702,28 +867,81 @@ impl<const KIND: u8> Node for Chooser<KIND> {
 
     fn on_event(&mut self, ev: &Event, cx: &EventCtx) -> bool {
         match ev {
+            // **The keyboard** — M57/B20, B22. Down and Up open the list and
+            // move a highlighted row; Enter chooses it (a combobox with no
+            // row highlighted takes the first match). There was no keyboard
+            // at all: Down, Up and Enter answered `handled: false`.
+            Event::Key { key: k @ (Key::Down | Key::Up), down: true } => {
+                let d = if *k == Key::Down { 1 } else { -1 };
+                if !self.list.open {
+                    self.list.open = true;
+                    self.list.content.set_highlight(self.selected);
+                    if self.list.content.highlight().is_none() {
+                        self.list.content.move_highlight(d);
+                    }
+                    return true;
+                }
+                self.list.content.move_highlight(d);
+                true
+            }
+            Event::Key { key: Key::Enter, down: true } if self.list.open => {
+                if self.list.content.highlight().is_none() && KIND == COMBOBOX {
+                    self.list.content.move_highlight(1);
+                }
+                self.list.content.pick_highlight()
+            }
+            // **Type-ahead** on a pick list (M57/B20): its trigger is read
+            // only and declines the character, which lands here.
+            Event::Text { ch } if KIND == PICKLIST && !ch.is_control() => {
+                let from = if self.list.open { self.list.content.highlight() } else { self.selected };
+                match self.list.content.find_prefix(*ch, from) {
+                    Some(k) if self.list.open => {
+                        self.list.content.set_highlight(Some(k));
+                        true
+                    }
+                    Some(k) => self.select(k),
+                    None => false,
+                }
+            }
+            // **A query abandoned reverts** (M57/B22): focus leaving a
+            // combobox that holds typed text which chose nothing restores
+            // the selection's text, so the field and the selection agree.
+            Event::Focus { gained: false } if KIND == COMBOBOX && cx.target == cx.node + Self::TRIGGER as u32 => {
+                if self.typed {
+                    if let Some(k) = self.selected {
+                        self.select(k);
+                        return true;
+                    }
+                }
+                false
+            }
+            // **It opens when focus arrives at its field** — the
+            // transition, delivered once by `dispatch` (M57/A7). The
+            // trigger consumes the `PointerDown` itself, so a press arm
+            // here never ran; focus is the signal that survives, and a
+            // chooser reached by Tab opens too, which a keyboard user
+            // needs. This used to be `if focused { open }` in `layout`,
+            // a *level*: a choice or an Escape closed the list and the
+            // same pass, still reading the field as focused, reopened it
+            // (`docs/widget-audit.md` X5).
+            Event::Focus { gained: true } if KIND != MENU && cx.target == cx.node + Self::TRIGGER as u32 => {
+                self.list.open = true;
+                true
+            }
             Event::Key { key: Key::Escape, down: true } if self.list.open => {
                 self.list.open = false;
                 true
             }
-            // **The keyboard walks the open list** (M44/T44.10). The
-            // trigger holds focus and declines Up, Down and Enter — a
-            // one-line field has no use for them — so they bubble here
-            // and go to the list, which moves its highlight or chooses
-            // it. Home and End stay the field's caret keys.
-            Event::Key { key: k @ (Key::Up | Key::Down | Key::Enter), down: true } if self.list.open => {
-                self.list.content.key(*k)
-            }
-            // Down on a closed list opens it, as every dropdown does.
-            Event::Key { key: Key::Down, down: true } if KIND != MENU => self.open(),
             // A screen reader's open and close (M54/T54.4).
             Event::Action { action: lumen_static::Action::Expand, .. } => self.open(),
             Event::Action { action: lumen_static::Action::Collapse, .. } => self.close(),
-            // Anything else reaching a combobox is the field's. It
-            // normally will not: the field is the focused node and gets
-            // its own events first. This is the path for an event that
-            // bubbled past it.
-            _ if KIND == COMBOBOX => self.trigger.on_event(ev, cx),
+            // Anything else addressed to the combobox itself is the
+            // field's. **Only addressed to it** — not whatever bubbles up:
+            // a press on the open list bubbled here, went to the field as
+            // a click at the list's x, was consumed, and so gave this node
+            // the pointer capture; every move after the choice then dragged
+            // the field's caret (reported from the live window).
+            _ if KIND == COMBOBOX && cx.target == cx.node => self.trigger.on_event(ev, cx),
             _ => false,
         }
     }
@@ -753,11 +971,16 @@ impl<const KIND: u8> Node for Chooser<KIND> {
         node: &mut accesskit::Node,
         _extra: &mut alloc::vec::Vec<(accesskit::NodeId, accesskit::Node)>,
     ) {
-        node.set_role(accesskit::Role::ComboBox);
+        if KIND == MENU {
+            // A menu, not a combo box: it has no value (M57/B23).
+            node.set_role(accesskit::Role::Menu);
+        } else {
+            node.set_role(accesskit::Role::ComboBox);
+            node.set_value(self.trigger.as_str());
+        }
         if !self.label.is_empty() {
             node.set_label(self.label);
         }
-        node.set_value(self.trigger.as_str());
         node.set_expanded(self.list.open);
         // Exactly the one that would change something (M54/T54.4) — and
         // none on a node with no area: dispatch refuses an action on a node

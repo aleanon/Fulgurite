@@ -152,6 +152,16 @@ iteration:
 - no min/max clamping interacting with distribution, therefore **no
   freeze-and-redistribute loop at all**.
 
+**A `Fixed` container offers its content its own size, not its offer**
+(M56, 2026-09-25). The derive used to compute a container's content box
+from the limits it was offered and apply its own `Fixed` length only when
+it resolved its box afterwards, so a `Fixed(100)` box offered 500 px let a
+row inside it divide 500 px, and a `Fixed(60)` column gave a `FILL` child
+380 px of height. `ops::within_own_size` now tightens the offer on every
+`Fixed` axis before the content is laid out; the offer is still what the
+relayout boundary records. `crates/lumen-static/tests/fixed_container.rs`
+is the gate.
+
 **This deletes the deviation.** The four-pass scheme below was going to
 have to document "distribution is single-round, unlike CSS". With
 `Length` there is no second round to omit: the model *is* single-round by

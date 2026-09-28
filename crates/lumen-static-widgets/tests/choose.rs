@@ -4,6 +4,11 @@
 //! exactly two things: whether there is a trigger, and whether typing in
 //! it filters.
 
+// on_event only: these test the option logic and filtering, one call deep.
+// What the pass delivers -- a choice closing the list, Escape, the keyboard
+// -- is crates/lumen-static-shell/tests/chooser_closes.rs, and
+// scripts/drive/widgets/choose.py drives it live. (M57/D2)
+
 use lumen_static::event::{Event, EventCtx, Key};
 use lumen_static::widget::{Node, Widget};
 use lumen_static::{Constraints, NodeState, Point};
@@ -218,8 +223,8 @@ fn choosing_clears_a_query() {
     );
 }
 
-/// A `PickList` does **not** filter — its trigger is a label, not a
-/// query. Without this the combobox test passes on an implementation
+/// A `PickList` does **not** filter — its trigger shows the choice and is
+/// read only (M57/B20), not a query. Without this the combobox test passes on an implementation
 /// that filters everything.
 #[test]
 fn a_picklist_does_not_filter() {
@@ -233,6 +238,10 @@ fn a_picklist_does_not_filter() {
     );
 }
 
+/// `on_event` only: this checks the widget's own Escape arm, and **no
+/// layout pass runs**, so it cannot see a list that closes and reopens in
+/// the same frame — which is what shipped (`docs/widget-audit.md` X5).
+/// The pumped check is `lumen-static-shell/tests/chooser_closes.rs`.
 #[test]
 fn escape_closes_an_open_chooser() {
     let mut p = PickList::new(&OPTS);

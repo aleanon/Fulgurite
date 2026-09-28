@@ -17,6 +17,7 @@
 # `wait "$pid" || true` until then, so a panic on the way out -- the
 # review's I6 -- was discarded and the gate stayed green.
 set -euo pipefail
+. "$(dirname "$0")/drive_window.sh"  # live windows on the monitor the user is not reading
 cd "$(dirname "$0")/.."
 
 if [ "${1:-}" != --drive ]; then

@@ -79,6 +79,14 @@ pub struct RichText {
     /// is the question a test about wrapping actually asks.
     lines: usize,
     height: f32,
+    /// Each span's measured width and the space after it, and the fold
+    /// they were measured under — M57/B6. Every layout re-measured every
+    /// word, and a probe lays out twice more per frame under `observe`.
+    /// The widths do not depend on the box (a span never wraps inside
+    /// itself), so the key is the text, the spans, the font size and the
+    /// display scale, folded; a still frame measures nothing.
+    widths: [(f32, f32); MAX_SPANS],
+    measured_under: u64,
 }
 
 impl Default for RichText {
@@ -90,6 +98,8 @@ impl Default for RichText {
             placed: [(0.0, 0.0, 0.0); MAX_SPANS],
             lines: 0,
             height: 0.0,
+            widths: [(0.0, 0.0); MAX_SPANS],
+            measured_under: 0,
         }
     }
 }
@@ -100,6 +110,28 @@ impl RichText {
         let mut r = RichText { text: text.to_string(), ..Default::default() };
         r.split_plain();
         r
+    }
+
+    /// The measure memo's key: FNV-1a over everything a width depends on.
+    fn fold(&self, font_size: f32, scale: f32) -> u64 {
+        let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+        let mut eat = |b: &[u8]| {
+            for &x in b {
+                h = (h ^ x as u64).wrapping_mul(0x100_0000_01b3);
+            }
+        };
+        eat(self.text.as_bytes());
+        eat(&font_size.to_bits().to_le_bytes());
+        eat(&scale.to_bits().to_le_bytes());
+        for s in &self.spans[..self.count] {
+            eat(&s.range.0.to_le_bytes());
+            eat(&s.range.1.to_le_bytes());
+            eat(&s.scale.to_bits().to_le_bytes());
+            eat(&s.weight.to_bits().to_le_bytes());
+            eat(&[s.space as u8]);
+        }
+        // Never 0, which is "never measured".
+        h | 1
     }
 
     /// The spans, as parsed.
@@ -157,6 +189,15 @@ impl RichText {
 const LINE: f32 = 1.45;
 /// A bullet's indent and its dot's radius.
 const BULLET_X: f32 = 14.0;
+/// How far below the line box's middle a bullet's centre sits, in ems —
+/// M57/B7. The renderer centres a run's *capitals* in its line box
+/// (`cap_shift` in `lumen-static-shell`'s text module), so the middle of a
+/// lower-case letter is below it by half of cap height less x-height:
+/// (0.714 − 0.536) / 2 em for Noto Sans, plus the 0.08 em the run's box
+/// sits below the dot's box here. The dot was centred on the box and read
+/// 2.5 px high at 15 px; `tests/markdown_bullet.rs` in the shell checks
+/// the dot against a rasterised `x`, since this is a fact about ink.
+const BULLET_DROP: f32 = 0.17;
 /// Padding around a `code` chip.
 const CHIP: f32 = 3.0;
 
@@ -179,7 +220,7 @@ impl Widget for RichText {
         Fields::FONT_WEIGHT,
         Fields::RADIUS,
         Fields::VISIBLE,
-    ]))];
+    ])).with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Text))];
 
     fn type_defaults() -> Style {
         Style {
@@ -213,37 +254,50 @@ impl Node for RichText {
         // width it is given and shrinks in height, which is what
         // `type_defaults` says and what this relies on.
         let inner = (limits.max_w - me.padding.horizontal()).max(0.0);
+        let key = self.fold(me.font_size, cx.scale());
+        if key != self.measured_under {
+            for k in 0..self.count {
+                let s = self.spans[k];
+                let size = me.font_size * s.scale;
+                let w = cx.text.measure_weighted(self.span_str(k), size, s.weight, f32::INFINITY).w;
+                let gap = if s.space { cx.text.measure_weighted(" ", size, s.weight, f32::INFINITY).w } else { 0.0 };
+                self.widths[k] = (w, gap);
+            }
+            self.measured_under = key;
+        }
         let (mut x, mut y) = (0.0f32, 0.0f32);
+        // **A wrapped bullet hangs** (M57/B7): its continuation lines
+        // start under its text, not under the dot. Set by a bullet span,
+        // cleared by the next line break.
+        let mut hang = 0.0f32;
         let mut line_h = me.font_size * LINE;
         self.lines = if self.count == 0 { 0 } else { 1 };
         for k in 0..self.count {
             let s = self.spans[k];
             let size = me.font_size * s.scale;
-            let w = cx
-                .text
-                .measure_weighted(self.span_str(k), size, s.weight, f32::INFINITY)
-                .w
-                + if s.code { CHIP * 2.0 } else { 0.0 };
+            let (w, gap) = self.widths[k];
+            let w = w + if s.code { CHIP * 2.0 } else { 0.0 };
             let lead = if s.bullet { BULLET_X } else { 0.0 };
             if s.br && k > 0 {
                 x = 0.0;
+                hang = 0.0;
                 y += line_h;
                 line_h = size * LINE;
                 self.lines += 1;
-            } else if x > 0.0 && x + w > inner {
+            } else if x > hang && x + w > inner {
                 // Wraps *between* spans: a span is a word and never
                 // breaks inside itself.
-                x = 0.0;
+                x = hang;
                 y += line_h;
                 line_h = size * LINE;
                 self.lines += 1;
             }
             line_h = line_h.max(size * LINE);
             self.placed[k] = (x + lead, y, w);
-            x += lead + w;
-            if s.space {
-                x += cx.text.measure_weighted(" ", size, s.weight, f32::INFINITY).w;
+            if s.bullet {
+                hang = x + lead;
             }
+            x += lead + w + gap;
         }
         let content =
             Size { w: limits.max_w, h: if self.count == 0 { 0.0 } else { y + line_h } };
@@ -294,7 +348,7 @@ impl Node for RichText {
             let size = s.font_size * sp.scale;
             let h = size * LINE;
             if sp.bullet {
-                let mid = y0 + y + h / 2.0;
+                let mid = y0 + y + h / 2.0 + size * BULLET_DROP;
                 out.rounded_rect(
                     [x0 + x - BULLET_X + 2.0, mid - 2.0, x0 + x - BULLET_X + 6.0, mid + 2.0],
                     s.fg,
@@ -336,10 +390,19 @@ impl Node for RichText {
         // The *rendered* text, not the markup: what a screen reader
         // should say is what a reader sees, and for `Markdown` those
         // differ by every asterisk.
+        //
+        // **A space only where the previous span has one** — M57/B6. The
+        // join put a space between every pair, so "`code`." was read as
+        // "code ." — the separator the layout honours (`Span::space`) and
+        // the one it published disagreed.
         let mut v = String::new();
         for k in 0..self.count {
             if k > 0 {
-                v.push(if self.spans[k].br { '\n' } else { ' ' });
+                if self.spans[k].br {
+                    v.push('\n');
+                } else if self.spans[k - 1].space {
+                    v.push(' ');
+                }
             }
             v.push_str(self.span_str(k));
         }
@@ -546,7 +609,7 @@ impl Widget for Markdown {
         Fields::FONT_WEIGHT,
         Fields::RADIUS,
         Fields::VISIBLE,
-    ]))];
+    ])).with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Text))];
 
     fn type_defaults() -> Style {
         <RichText as Widget>::type_defaults()
@@ -805,6 +868,21 @@ impl Node for RichTextEditor {
         self.input.hit(st, i + Self::INPUT, x, y)
     }
 
+    /// **Formatting from the keyboard** — M57/B8. [`RichTextEditor::bold`]
+    /// and [`RichTextEditor::code`] existed and nothing called them: the
+    /// editor had no formatting UI at all. Ctrl+B and Ctrl+E (⌘ on a Mac)
+    /// reach here because the text area declines a shortcut it does not
+    /// know, and the pass walks up to its container.
+    fn on_event(&mut self, ev: &lumen_static::Event, cx: &lumen_static::event::EventCtx) -> bool {
+        use lumen_static::event::{Key, Mods};
+        let short = cx.mods.has(Mods::CTRL) || cx.mods.has(Mods::META);
+        match ev {
+            lumen_static::Event::Key { key: Key::Char('b'), down: true } if short => self.bold(),
+            lumen_static::Event::Key { key: Key::Char('e'), down: true } if short => self.code(),
+            _ => false,
+        }
+    }
+
     fn node(&self, k: usize) -> &dyn Node {
         match k {
             0 => self,
@@ -860,6 +938,14 @@ impl<S> lumen_static::event::Handlers<S> for RichTextEditor {
 /// ends up reading the wrong file (M27/T27.2).
 pub struct PaintBox {
     /// Called with the widget's rect, in window coordinates.
+    ///
+    /// **Clipped to that rect, not to its rounded corners** — M57/B9. The
+    /// ground is drawn with the style's `radius` (8 by default), and the
+    /// clip is the box: the painter's clip is a rectangle, and every
+    /// backend would need a rounded one for this one widget. So ink drawn
+    /// into a corner shows past the ground's curve. A drawing that reaches
+    /// its edges should inset itself by the radius, or the application
+    /// should set `radius: 0`.
     pub draw: fn(&mut dyn Painter, [f32; 4]),
 }
 
@@ -892,7 +978,7 @@ impl Widget for PaintBox {
         Fields::BORDER,
         Fields::RADIUS,
         Fields::VISIBLE,
-    ]))];
+    ])).with_roles(lumen_static::style::SeedRoles::NONE.background(lumen_static::style::Role::Raised))];
 
     fn type_defaults() -> Style {
         Style {
@@ -939,7 +1025,8 @@ impl Node for PaintBox {
         // **Clipped, because the callback is the application's.** It is
         // handed a rect and nothing stops it drawing outside one; a
         // `Tree` that painted 116 px past its own box is the same
-        // mistake made by code this repository owns (M27/T27.11).
+        // mistake made by code this repository owns (M27/T27.11). The
+        // clip is the rectangle, not the rounded ground: see `draw`.
         out.push_clip(r);
         (self.draw)(out, r);
         out.pop_clip();

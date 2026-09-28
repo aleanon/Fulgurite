@@ -16,8 +16,9 @@
 > - **T54.4** — `Event::Action`; every published action handled (40/40);
 >   `input.invokeAction` takes `action`; an AT-SPI press lands live.
 > - **T54.5** — contrast measured on the display list, per widget and per
->   driven action (`ui.contrast`); the dark palettes fail on light-theme
->   widget defaults — reported, not fixed.
+>   driven action (`ui.contrast`); the dark palettes failed on light-theme
+>   widget defaults — reported, not fixed here, and closed at the merge
+>   with M57 (A8's palette roles): 0 of 1672 runs under 3:1 in dark.
 > - **T54.6** — the showcase's and `Palette::LIGHT`'s accent and muted
 >   values changed; 0 of 446 runs under AA in both light palettes.
 > - **T54.7** — T15.7's platform half, T15.10, T15.11 un-marked;
@@ -959,7 +960,10 @@ feature (`dev-shape`); without that line it would never run.
   parameter of the harness; for the widgets' own catalogue it is not a
   parameter at all (no stylesheet, no roles). Making defaults follow the
   palette is a design change the widgets and the showcase redesign (M56)
-  share, so it is **reported, not built here**: the dark measurement is
+  share, so it is **reported, not built here**. **Closed at the merge
+  with M56/M57** (2026-09-28): M57/A8 made widget defaults palette roles,
+  and this harness then read 0 of 1672 runs under 3:1 in both dark
+  palettes, so the dark test runs rather than being ignored. The dark measurement is
   an `#[ignore]`d test that prints the count
   (`every_catalogue_text_run_reaches_three_to_one_in_dark`), and the
   light one gates.

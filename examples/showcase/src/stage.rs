@@ -54,44 +54,18 @@ use super::*;
 /// control is ignored outright — `resolve_self` returns the `Fixed`
 /// width whatever the padding says. So the pair is its own row with its
 /// own spacing, and the outer row spaces the pairs.
-/// One labelled control per *instance*, stamped from one macro.
+/// A toggle and its words, as one control — M57/B11.
 ///
-/// **Seven types where there were three, and that is not duplication —
-/// it is what an author id means here.** A `#[widget_id]` lives on a
-/// *type's* field, so a composite instantiated twice carries the same id
-/// twice; `PairCheck` was used for both checkboxes and both of them
-/// answered to `d_checkbox_a`. `ui.resolve` refuses that ambiguity, so
-/// neither control could be clicked by name, no stylesheet rule could
-/// reach one without the other, and nothing said so.
-///
-/// Found on the **first run** of `just widget-drive` (M27/T27.3), which
-/// could not address either checkbox. Eight ids were duplicated across
-/// the three demos. `W1011` now reports it for everyone.
-///
-/// The labels keep unique ids *and* share a class: an id is an address
-/// and must be unique, a class is a style handle and is meant to repeat.
-/// The sheet uses the class.
-macro_rules! pair {
-    ($name:ident, $ctrl:ty, $cid:literal, $lid:literal) => {
-        #[derive(StaticTree, Default)]
-        #[widget(row, spacing = 10.0)]
-        pub struct $name {
-            #[widget_id($cid)]
-            pub t: $ctrl,
-            #[widget_id($lid)]
-            #[widget_class("pair-label")]
-            pub l: Label<String>,
-        }
-    };
-}
-
-pair!(PairCheckA, CheckBox<Store>, "d_checkbox_a", "d_checkbox_al");
-pair!(PairCheckB, CheckBox<Store>, "d_checkbox_b", "d_checkbox_bl");
-pair!(PairSwitchA, Switch<Store>, "d_switch_a", "d_switch_al");
-pair!(PairSwitchB, Switch<Store>, "d_switch_b", "d_switch_bl");
-pair!(PairRadioA, Radio<Store>, "d_radio_a", "d_radio_al");
-pair!(PairRadioB, Radio<Store>, "d_radio_b", "d_radio_bl");
-pair!(PairRadioC, Radio<Store>, "d_radio_c", "d_radio_cl");
+/// These were a macro-stamped row per instance: a `Toggle` beside a
+/// `Label`, seven types so each control had its own address (M27/T27.3's
+/// `W1011`). Clicking the words did nothing, because the label was a
+/// separate node with no handler. [`Labelled`] makes the words part of
+/// the control's target, and since the author id now sits on the demo's
+/// own fields, one generic type per shape is enough; the control is
+/// `#d_checkbox_a > #labelled-control`.
+pub type PairCheck = Labelled<CheckBox<Store>>;
+pub type PairSwitch = Labelled<Switch<Store>>;
+pub type PairRadio = Labelled<Radio<Store>>;
 
 /// A card with something on it — the point being that the something is
 /// live. `docs/plan-widgets-gallery.md` §3 records what a wrapper that
@@ -194,11 +168,42 @@ pub struct DTree {
 /// rule naming a *repeated row's* node matches nothing while its demo
 /// is off stage, and an ambient `W1010` for a rule that is right is the
 /// false positive the audit exists to avoid.
-#[derive(StaticTree, Default)]
-#[widget(column, spacing = 0.0)]
+///
+/// **It pads its own text** off the column's rule by the grid's
+/// `CELL_INSET`: the rules sit on the column boundaries the grid hands
+/// its rows, and only the row's own cell can inset a label inside it.
+#[derive(StaticTree)]
+#[widget(row, spacing = 0.0)]
 pub struct GridCell {
+    pub lead: Fixed,
     #[widget_id("d_grid_cell")]
     pub l: Label<String>,
+}
+
+impl Default for GridCell {
+    fn default() -> Self {
+        GridCell { lead: Fixed { w: DataGrid::<GridRow>::CELL_INSET, h: 0.0 }, l: Label::default() }
+    }
+}
+
+/// A cell whose text sits at its end, for numbers (M57/B51): a filling
+/// spacer, then the label, then the inset. In the type for the reason
+/// `GridCell` gives — an `align` rule on the repeated row's node matched
+/// nothing while the grid was off stage, and the live drive's `W1010`
+/// said so.
+#[derive(StaticTree)]
+#[widget(row, spacing = 0.0)]
+pub struct EndCell {
+    pub fill: Spacer,
+    #[widget_id("d_grid_cell_end")]
+    pub l: Label<String>,
+    pub trail: Fixed,
+}
+
+impl Default for EndCell {
+    fn default() -> Self {
+        EndCell { fill: Spacer::default(), l: Label::default(), trail: Fixed { w: DataGrid::<GridRow>::CELL_INSET, h: 0.0 } }
+    }
 }
 
 #[derive(StaticTree, Default)]
@@ -206,8 +211,12 @@ pub struct GridCell {
 pub struct GridRow {
     #[widget_id("d_grid_name")]
     pub name: GridCell,
+    #[widget_id("d_grid_kind")]
+    pub kind: GridCell,
     #[widget_id("d_grid_size")]
-    pub size: GridCell,
+    pub size: EndCell,
+    #[widget_id("d_grid_lines")]
+    pub lines: EndCell,
 }
 
 #[derive(StaticTree, Default)]
@@ -215,16 +224,6 @@ pub struct GridRow {
 pub struct DDataGrid {
     #[widget_id("d_datagrid_a")]
     pub a: DataGrid<GridRow>,
-}
-
-/// A `Select` on the stage — M44/T44.10. The header's picker is one too,
-/// but it is the drive's own navigation; this one is a demo it can
-/// drive, controlled like any application's.
-#[derive(StaticTree, Default)]
-#[widget(column, spacing = 0.0)]
-pub struct DSelect {
-    #[widget_id("d_select_a")]
-    pub a: Select<Store>,
 }
 
 /// Twelve buttons in a `ScrollView` too short for them — M44/T44.10.
@@ -261,6 +260,17 @@ pub struct DPickList {
     pub a: PickList,
 }
 
+/// `Select`, controlled (M33/T33.3): the application owns whether it is
+/// open and which option is chosen. It was the showcase's own picker
+/// until M56 moved navigation into a sidebar, and it is a demo now so the
+/// dropdown is still on screen and still driven.
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+pub struct DSelect {
+    #[widget_id("d_select_a")]
+    pub a: lumen_static_widgets::select::Select<crate::Store>,
+}
+
 #[derive(StaticTree, Default)]
 #[widget(column, spacing = 0.0)]
 pub struct DCombobox {
@@ -271,6 +281,10 @@ pub struct DCombobox {
 #[derive(StaticTree, Default)]
 #[widget(column, spacing = 0.0)]
 pub struct DMenu {
+    /// Opens the menu again (M57/C3): a menu with no way back in could be
+    /// used once and then the demo was empty.
+    #[widget_id("d_menu_open")]
+    pub open: Button<Store, String>,
     #[widget_id("d_menu_a")]
     pub a: Menu,
 }
@@ -280,17 +294,17 @@ pub struct DMenu {
 #[widget(wrap, spacing = 8.0)]
 pub struct DWrap {
     #[widget_id("d_wrap_a")]
-    pub a: Chip<String>,
+    pub a: Chip<String, Store>,
     #[widget_id("d_wrap_b")]
-    pub b: Chip<String>,
+    pub b: Chip<String, Store>,
     #[widget_id("d_wrap_c")]
-    pub c: Chip<String>,
+    pub c: Chip<String, Store>,
     #[widget_id("d_wrap_d")]
-    pub d: Chip<String>,
+    pub d: Chip<String, Store>,
     #[widget_id("d_wrap_e")]
-    pub e: Chip<String>,
+    pub e: Chip<String, Store>,
     #[widget_id("d_wrap_f")]
-    pub f: Chip<String>,
+    pub f: Chip<String, Store>,
 }
 
 /// A grid: the same six, in three columns however wide the box.
@@ -411,7 +425,8 @@ pub struct DNavigationRail {
 #[widget(column, spacing = 12.0)]
 pub struct DAppBar {
     #[widget_id("d_appbar_a")]
-    pub a: AppBar<String>,
+    /// With both slots (M57/B39): a leading Back and a Save action.
+    pub a: AppBar<String, Button<Store, String>, Button<Store, String>>,
 }
 
 #[derive(StaticTree, Default)]
@@ -461,10 +476,24 @@ pub struct CardBody {
 #[derive(StaticTree, Default)]
 #[widget(row, spacing = 12.0)]
 pub struct DToast {
-    #[widget_id("d_toast_a")]
-    pub a: Toast<String>,
+    /// Shows the floating toast (M57/B34).
+    #[widget_id("d_toast_show")]
+    pub show: Button<Store, String>,
+    /// A toast that floats at the window's bottom centre, closable, and
+    /// gone after a few seconds — the kind an application raises.
+    pub a: Popup<ToastSlot>,
+    /// The long message, in the flow, for its width.
     #[widget_id("d_toast_b")]
     pub b: Toast<String>,
+}
+
+/// The floating toast, under an author id: a `Popup` has no part id for
+/// its content, so the id rides on this one-field struct.
+#[derive(StaticTree, Default)]
+#[widget(column)]
+pub struct ToastSlot {
+    #[widget_id("d_toast_a")]
+    pub t: Toast<String>,
 }
 
 #[derive(StaticTree, Default)]
@@ -496,11 +525,11 @@ pub struct DBadge {
 #[widget(row, spacing = 12.0)]
 pub struct DChip {
     #[widget_id("d_chip_a")]
-    pub a: Chip<String>,
+    pub a: Chip<String, Store>,
     #[widget_id("d_chip_b")]
-    pub b: Chip<String>,
+    pub b: Chip<String, Store>,
     #[widget_id("d_chip_c")]
-    pub c: Chip<String>,
+    pub c: Chip<String, Store>,
 }
 
 #[derive(StaticTree, Default)]
@@ -533,6 +562,9 @@ pub struct DIcon {
     pub g: Icon,
     #[widget_id("d_icon_h")]
     pub h: Icon,
+    /// The ninth mark (M57/B4): the blurb said eight and the enum has nine.
+    #[widget_id("d_icon_i")]
+    pub i: Icon,
 }
 
 #[derive(StaticTree, Default)]
@@ -556,23 +588,30 @@ pub struct DButton {
 #[derive(StaticTree, Default)]
 #[widget(row, spacing = 34.0)]
 pub struct DCheckBox {
-    pub a: PairCheckA,
-    pub b: PairCheckB,
+    #[widget_id("d_checkbox_a")]
+    pub a: PairCheck,
+    #[widget_id("d_checkbox_b")]
+    pub b: PairCheck,
 }
 
 #[derive(StaticTree, Default)]
 #[widget(row, spacing = 34.0)]
 pub struct DSwitch {
-    pub a: PairSwitchA,
-    pub b: PairSwitchB,
+    #[widget_id("d_switch_a")]
+    pub a: PairSwitch,
+    #[widget_id("d_switch_b")]
+    pub b: PairSwitch,
 }
 
 #[derive(StaticTree, Default)]
 #[widget(row, spacing = 34.0)]
 pub struct DRadio {
-    pub a: PairRadioA,
-    pub b: PairRadioB,
-    pub c: PairRadioC,
+    #[widget_id("d_radio_a")]
+    pub a: PairRadio,
+    #[widget_id("d_radio_b")]
+    pub b: PairRadio,
+    #[widget_id("d_radio_c")]
+    pub c: PairRadio,
 }
 
 #[derive(StaticTree, Default)]
@@ -674,9 +713,25 @@ pub struct DPieChart {
 /// `DTree`, whose 32 `Branch`es are inline for the same reason
 /// (M27/T27.10). The cost is real and is the enum's by design: a
 /// one-of-N stage is as large as its largest demo.
-#[allow(clippy::large_enum_variant)]
-#[derive(StaticTree)]
-pub enum Demo {
+/// Declares the enum and, beside it, the kind of every variant's
+/// struct — so the list the stylesheet walks ([`DEMO_KINDS`]) cannot
+/// drift from the enum: they are one declaration.
+macro_rules! demos {
+    ($($v:ident($t:ident)),* $(,)?) => {
+        #[allow(clippy::large_enum_variant)]
+        #[derive(StaticTree)]
+        pub enum Demo {
+            $($v($t)),*
+        }
+
+        /// Every demo struct's kind, in `Demo`'s order — M56. The sheet
+        /// sets each to `Shrink` so the stage can centre what a demo
+        /// actually draws (`stylesheet()` says why it has to).
+        pub const DEMO_KINDS: &[&str] = &[$(<$t as lumen_static::widget::Widget>::KIND),*];
+    };
+}
+
+demos! {
     Label(DLabel),
     Badge(DBadge),
     Chip(DChip),
@@ -715,6 +770,7 @@ pub enum Demo {
     Split(DSplitPane),
     Accordion(DAccordion),
     PickList(DPickList),
+    Select(DSelect),
     Combobox(DCombobox),
     Menu(DMenu),
     PaneGrid(DPaneGrid),
@@ -729,7 +785,6 @@ pub enum Demo {
     Pagination(DPagination),
     Tree(DTree),
     DataGrid(DDataGrid),
-    Select(DSelect),
     Scroll(DScrollView),
 }
 
@@ -740,4 +795,7 @@ impl Default for Demo {
 }
 
 /// How many demos the stage has. Asserted against the catalogue.
+// The branch's 52 (M56/M57) and main's TextArea and ScrollView (M44,
+// M45); main's second `Select` is not among them — the sidebar replaced
+// the picker it stood beside, so the catalogue's own `Select` is the one.
 pub const DEMOS: usize = 54;

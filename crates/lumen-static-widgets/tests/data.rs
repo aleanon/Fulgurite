@@ -5,11 +5,16 @@
 //! its shape (collapsing is arithmetic over the array), and a grid owns
 //! nothing — its rows are a `Repeat` the application binds.
 
+// on_event only: these test each widget's arithmetic (the page strip, the
+// tree's folding, the grid's columns). Delivery is crates/lumen-static-
+// shell/tests/tree_b50.rs and data_grid_b51.rs through a Host, and
+// scripts/drive/widgets/data.py live. (M57/D2)
+
 use lumen_static::event::{Event, EventCtx, Key};
 use lumen_static_widgets::ops::Label;
 use lumen_static::widget::{Node, Widget};
 use lumen_static::{Constraints, NodeState, Point, StaticTree};
-use lumen_static_widgets::{Branch, DataGrid, Pagination, Tree, MAX_TREE_NODES};
+use lumen_static_widgets::{PageSlot, Branch, DataGrid, Pagination, Tree, MAX_TREE_NODES};
 
 const VIEW: Constraints = Constraints { min_w: 0.0, max_w: 400.0, min_h: 0.0, max_h: 400.0 };
 
@@ -44,61 +49,65 @@ fn key<W: Node>(w: &mut W, k: Key) -> bool {
 
 // ---- Pagination ------------------------------------------------------
 
-/// **The window is centred, not paged in blocks.** A block-paged strip
-/// jumps under the finger — you press "5" and the numbers shift so 5 is
-/// somewhere else — which is the one thing every pagination gets wrong.
-#[test]
-fn the_page_window_follows_the_current_page() {
-    let mut p = Pagination::new(30);
-    let (first, n) = p.window();
-    assert_eq!((first, n), (0, 9), "at page 0 the window should start at 0");
-    // **Centred, and that is what is asserted** — the page sits in the
-    // middle of its own window, away from the ends. "inside the window"
-    // is satisfied by block paging too, which is what the first version
-    // of this checked and why an injection that paged in blocks left it
-    // green.
-    for page in [10usize, 14, 19] {
-        p.go(page);
-        let (first, n) = p.window();
-        let offset = page - first;
-        assert_eq!(
-            offset, n / 2,
-            "page {page} sits {offset} into its window {first}..{}; centred is {}",
-            first + n, n / 2
-        );
-    }
-}
-
-/// **And it moves by one when the page does**, which block paging does
-/// not: a block window stays put for eight presses and then jumps.
-#[test]
-fn the_window_slides_one_page_at_a_time() {
-    let mut p = Pagination::new(30);
-    p.go(12);
-    let a = p.window().0;
-    p.go(13);
-    let b = p.window().0;
-    assert_eq!(
-        b, a + 1,
-        "the window went {a} -> {b} for one page; a block-paged strip jumps \
-         under the finger, which is the one thing every pagination gets wrong"
-    );
+/// **First and last always, a gap only where it hides more than one**
+/// — M57/B49. The strip was a centred window of nine numbers, re-centred
+/// on every change, so a press moved the numbers under the pointer.
+fn strip(p: &Pagination) -> Vec<String> {
+    (0..p.count())
+        .map(|k| match p.slot(k) {
+            PageSlot::Page(n) => (n + 1).to_string(),
+            PageSlot::Gap => "…".into(),
+        })
+        .collect()
 }
 
 #[test]
-fn the_window_clamps_at_both_ends() {
+fn the_first_and_last_are_always_shown() {
     let mut p = Pagination::new(30);
-    p.go(0);
-    assert_eq!(p.window().0, 0, "the window ran off the front");
+    println!("page 1:  {:?}", strip(&p));
+    assert_eq!(strip(&p), ["1", "2", "3", "4", "5", "6", "7", "…", "30"]);
+    p.go(14);
+    println!("page 15: {:?}", strip(&p));
+    assert_eq!(strip(&p), ["1", "…", "13", "14", "15", "16", "17", "…", "30"]);
     p.go(29);
-    let (first, n) = p.window();
-    assert_eq!(first + n, 30, "the window ran off the back: {first}..{}", first + n);
+    println!("page 30: {:?}", strip(&p));
+    assert_eq!(strip(&p), ["1", "…", "24", "25", "26", "27", "28", "29", "30"]);
+}
+
+/// The keyboard slides the middle only at its edge: a step inside it
+/// leaves the numbers where they are.
+#[test]
+fn the_keyboard_slides_only_at_the_edge() {
+    let mut p = Pagination::new(30);
+    p.go(14);
+    let before = strip(&p);
+    p.next_page(); // 16: inside 13..17, not at its edge
+    assert_eq!(strip(&p), before, "a step inside the middle moved it");
+    p.next_page(); // 17: the edge, so it slides
+    println!("after reaching 17: {:?}", strip(&p));
+    assert_ne!(strip(&p), before, "reaching the middle's edge did not slide it");
+}
+
+/// **A press never moves the numbers**, including a press on the edge of
+/// the middle — which is the one the old re-centring moved most.
+#[test]
+fn a_press_on_a_number_leaves_the_strip_still() {
+    let mut p = Pagination::new(30);
+    p.go(14);
+    let st = lay(&mut p);
+    let each = st[0].size.w / 11.0;
+    let before = strip(&p);
+    // Slot 7 (after the `<`) is the middle's last page, 17.
+    press_at(&mut p, Point { x: each * 7.5, y: 10.0 });
+    println!("pressed 17: page {}, strip {:?}", p.page() + 1, strip(&p));
+    assert_eq!(p.page(), 16, "setup: the press did not go to 17");
+    assert_eq!(strip(&p), before, "the numbers moved under the pointer");
 }
 
 #[test]
 fn a_short_list_shows_every_page() {
     let p = Pagination::new(3);
-    assert_eq!(p.window(), (0, 3), "3 pages should show as 3, not padded to the maximum");
+    assert_eq!(strip(&p), ["1", "2", "3"], "3 pages should show as 3, not padded or gapped");
 }
 
 #[test]
@@ -521,14 +530,23 @@ fn a_page_number_is_not_clamped_to_a_table() {
     }
 }
 
-/// A row built the way `DataGrid::column_width` documents: two cells
-/// that each take their column. A derived container is `FILL` across
-/// its main axis, so the row divides evenly for itself.
-#[derive(StaticTree, Default)]
-#[widget(column, spacing = 0.0)]
+/// A row built the way `DataGrid` documents: two cells that each take
+/// their column — a derived container is `FILL` across its main axis, so
+/// the row divides evenly for itself — and pad their own text off the
+/// column's rule by `CELL_INSET`, since the grid draws its rules on the
+/// column boundaries and cannot inset a label inside a row it does not own.
+#[derive(StaticTree)]
+#[widget(row, spacing = 0.0)]
 struct Cell {
+    lead: lumen_static_widgets::ops::Fixed,
     #[widget_id("cell-label")]
     l: Label<String>,
+}
+
+impl Default for Cell {
+    fn default() -> Self {
+        Cell { lead: lumen_static_widgets::ops::Fixed { w: DataGrid::<Wide>::CELL_INSET, h: 0.0 }, l: Label::default() }
+    }
 }
 
 #[derive(StaticTree, Default)]
@@ -557,12 +575,6 @@ fn the_header_sits_over_a_row_that_follows_the_column_rule() {
     use lumen_static::display::{Cmd, DisplayList};
 
     let mut g = DataGrid::<Wide>::new(&["Name", "Size"], 40, 24.0, bind_wide);
-    let each = g.column_width(320.0);
-    assert_eq!(
-        each, 152.0,
-        "setup: two columns of a 320 px grid inset by {} on each side",
-        DataGrid::<Wide>::CELL_INSET
-    );
     let styles = lumen_static::pass::default_styles(&g);
     let mut st = vec![NodeState::default(); <DataGrid<Wide> as Widget>::NODE_COUNT];
     let grid = Constraints { min_w: 320.0, max_w: 320.0, min_h: 0.0, max_h: 220.0 };
@@ -572,6 +584,12 @@ fn the_header_sits_over_a_row_that_follows_the_column_rule() {
         Node::layout(&mut g, &mut cx, grid, &styles, &mut st, 0);
     }
     Node::place(&mut g, Point { x: 0.0, y: 0.0 }, &styles, &mut st, 0);
+    // After layout, which is when the gutter is known.
+    let each = g.column_width(320.0);
+    let rows = st[1];
+    println!("column {each} px; the rows' box starts at x {} and is {} wide", rows.pos.x, rows.size.w);
+    assert!(rows.pos.x > 0.0, "setup: no row-number gutter to the left of the rows");
+    assert!((rows.size.w - 2.0 * each).abs() < 0.5, "setup: the rows' box is {} px, not two columns of {each}", rows.size.w);
 
     let mut list = DisplayList::new();
     Node::paint(&g, &st, 0, &mut list);
@@ -637,4 +655,27 @@ fn a_hover_lights_the_row_under_the_pointer() {
     let (moved, _) = lit(4);
     assert!(!moved, "hovering the same row again reported a change");
     let _ = st;
+}
+
+/// A hover tints the slot under the pointer, and leaving clears it
+/// (M57/B49). Delivered as the pass delivers it: `Hover` to the hit node.
+#[test]
+fn a_hovered_page_is_tinted() {
+    let mut p = Pagination::new(30);
+    let st = lay(&mut p);
+    let each = st[0].size.w / 11.0;
+    let tints = |p: &Pagination| {
+        let mut list = lumen_static::display::DisplayList::new();
+        Node::paint(p, &st, 0, &mut list);
+        list.cmds.iter().filter(|c| matches!(c, lumen_static::display::Cmd::RoundedRect { color, .. } if color.3 > 0 && color.3 < 0x40)).count()
+    };
+    let hover = Event::Hover { x: 0.0, y: 0.0 };
+    let mut cx = EventCtx::for_event(0, hover);
+    cx.local = Point { x: each * 4.5, y: 10.0 };
+    let changed = p.on_event(&hover, &cx);
+    let lit = tints(&p);
+    let left = p.on_event(&Event::Leave, &EventCtx::for_event(0, Event::Leave));
+    println!("hover changed {changed}, tints {lit}; leave changed {left}, tints {}", tints(&p));
+    assert!(changed && lit == 1, "no tint under the pointer");
+    assert!(left && tints(&p) == 0, "the tint outlived the pointer");
 }

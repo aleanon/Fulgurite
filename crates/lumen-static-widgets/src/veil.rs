@@ -42,8 +42,16 @@ use lumen_static::LayoutCx;
 pub const MODAL: u8 = 0;
 /// Across the bottom, full width — `Sheet`.
 pub const SHEET: u8 = 1;
-/// Down the left, full height — `Drawer`.
+/// Down one side, full height — `Drawer`.
 pub const DRAWER: u8 = 2;
+
+/// Which side a drawer comes from — M57/B43. It was always the left.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Edge {
+    #[default]
+    Left,
+    Right,
+}
 
 /// Upper bound on `1 + W::NODE_COUNT` for one veil.
 pub const MAX_VEIL_NODES: usize = 256;
@@ -65,6 +73,11 @@ pub struct Veil<W: Widget, const KIND: u8 = MODAL> {
     /// The panel's measured size, kept from `layout` so `place` can
     /// position it. `Popup::measured` exists for the same reason.
     measured: Size,
+    /// A drawer's side (M57/B43). Ignored by the other kinds.
+    pub edge: Edge,
+    /// The panel's corner radius, from layout: how far a sheet or a
+    /// drawer runs past the window so only its inner corners are round.
+    bleed: f32,
 }
 
 /// A centred panel over a dimmed window.
@@ -81,6 +94,8 @@ impl<W: Widget + Default, const KIND: u8> Default for Veil<W, KIND> {
             open: false,
             dismissed: false,
             measured: Size::default(),
+            edge: Edge::Left,
+            bleed: 0.0,
         }
     }
 }
@@ -103,8 +118,14 @@ impl<W: Widget, const KIND: u8> Veil<W, KIND> {
     /// what is behind — every platform lands near 40%.
     const SCRIM: u8 = 0x66;
 
+    /// A sheet's visible height: its content's, within 20–42% of the
+    /// window.
+    fn sheet_h(&self, h: f32) -> f32 {
+        (h * Self::SPAN).min(self.measured.h.max(1.0)).max(h * 0.2)
+    }
+
     pub fn new(panel: W) -> Self {
-        Veil { panel, open: false, dismissed: false, measured: Size::default() }
+        Veil { panel, open: false, dismissed: false, measured: Size::default(), edge: Edge::Left, bleed: 0.0 }
     }
 
     pub fn open(&mut self) -> bool {
@@ -132,16 +153,27 @@ impl<W: Widget, const KIND: u8> Veil<W, KIND> {
     /// panel" and "on the scrim" without repeating this arithmetic —
     /// and an assertion that recomputed it could agree with a wrong
     /// implementation.
+    ///
+    /// **A sheet and a drawer run past the window by their radius** —
+    /// M57/B42, B43. Only the corners facing the page should be round;
+    /// the panel is laid out that much longer, off the window's edge, and
+    /// painted clipped to the veil, so its outer corners are cut off by
+    /// the window rather than drawn round. The part of this rect inside
+    /// `outer` is what shows.
     pub fn panel_rect(&self, outer: lumen_static::display::Rect) -> lumen_static::display::Rect {
         let (w, h) = (outer[2] - outer[0], outer[3] - outer[1]);
+        let b = self.bleed;
         match KIND {
             SHEET => {
-                let ph = (h * Self::SPAN).min(self.measured.h.max(1.0) + 0.0).max(h * 0.2);
-                [outer[0], outer[3] - ph, outer[2], outer[3]]
+                let ph = self.sheet_h(h);
+                [outer[0], outer[3] - ph, outer[2], outer[3] + b]
             }
             DRAWER => {
                 let pw = w * Self::SPAN;
-                [outer[0], outer[1], outer[0] + pw, outer[3]]
+                match self.edge {
+                    Edge::Left => [outer[0] - b, outer[1], outer[0] + pw, outer[3]],
+                    Edge::Right => [outer[2] - pw, outer[1], outer[2] + b, outer[3]],
+                }
             }
             _ => {
                 let (pw, ph) = (self.measured.w.min(w), self.measured.h.min(h));
@@ -173,7 +205,7 @@ impl<W: Widget, const KIND: u8> VeilTable<W, KIND> {
             Fields::HEIGHT,
             Fields::BACKGROUND,
             Fields::VISIBLE,
-        ]));
+        ])).with_roles(lumen_static::style::SeedRoles::NONE.background(lumen_static::style::Role::Scrim));
         lumen_static::widget::splice_seeds(&mut s, 1, W::SEEDS);
         s
     };
@@ -259,6 +291,16 @@ impl<W: Widget, const KIND: u8> Node for Veil<W, KIND> {
             },
         };
         self.measured = self.panel.layout(cx, panel_limits, style, st, i + Self::AT);
+        // A sheet or a drawer is laid out again at the size it shows plus
+        // its radius — the bleed past the window's edge (see
+        // `panel_rect`). Only these two kinds, and only when rounded.
+        self.bleed = if KIND == MODAL { 0.0 } else { style[i + Self::AT].radius.max(0.0) };
+        if KIND != MODAL {
+            let r = self.panel_rect([0.0, 0.0, outer.w, outer.h]);
+            let (pw, ph) = (r[2] - r[0], r[3] - r[1]);
+            let exact = Constraints { min_w: pw, max_w: pw, min_h: ph, max_h: ph };
+            self.panel.layout(cx, exact, style, st, i + Self::AT);
+        }
         lumen_static::ops::record_painted(st, i, limits, outer, &me)
     }
 
@@ -287,7 +329,11 @@ impl<W: Widget, const KIND: u8> Node for Veil<W, KIND> {
             return;
         }
         out.rect(r, st[i].bg);
+        // Clipped to the window: a sheet's or a drawer's outer corners
+        // and its shadow on that side are cut, not drawn (B42, B43).
+        out.push_clip(r);
         self.panel.paint(st, i + Self::AT, out);
+        out.pop_clip();
     }
 
     /// A veil is modal by definition: Tab stays on it (M44/T44.9).
@@ -310,15 +356,18 @@ impl<W: Widget, const KIND: u8> Node for Veil<W, KIND> {
         }))
     }
 
-    fn on_event(&mut self, ev: &Event, _cx: &EventCtx) -> bool {
+    fn on_event(&mut self, ev: &Event, cx: &EventCtx) -> bool {
         if !self.open {
             return false;
         }
+        let own = cx.target == cx.node;
         match ev {
-            // A press that reached *this* node is a press on the scrim:
-            // `hit` gives the panel first refusal, so anything landing
-            // here missed it.
-            Event::PointerDown { .. } => {
+            // **A press aimed at this node is a press on the scrim.** One
+            // that *bubbled* here from the panel — a label, the panel's
+            // own background — is not (M57/A4): this said "anything
+            // landing here missed it", and a press on a modal's own title
+            // asked to close it (`docs/widget-audit.md` X2).
+            Event::PointerDown { .. } if own => {
                 self.dismissed = true;
                 true
             }
@@ -326,11 +375,56 @@ impl<W: Widget, const KIND: u8> Node for Veil<W, KIND> {
                 self.dismissed = true;
                 true
             }
-            // Everything else is swallowed while it is open, which is
-            // what modal means — a wheel over the scrim must not scroll
-            // the page behind it.
-            _ => true,
+            // A wheel is swallowed wherever it came from: a wheel over the
+            // dialog must not scroll the page behind it.
+            Event::Scroll { .. } => true,
+            // Anything else aimed at the scrim is swallowed too.
+            _ if own => true,
+            // **But not what bubbled up from the panel** — M57/C6. Taking
+            // it here ended pass 1 before activation ran, so the panel's
+            // own Confirm button never activated, by pointer or by Enter.
+            // The drive said it did: its counter moved because the press
+            // also asked to dismiss, and both bumped one number.
+            _ => false,
         }
+    }
+
+    /// **Escape, and a press outside, ask to dismiss** — M57/A13
+    /// (`docs/plan-widget-fixes.md`).
+    ///
+    /// The pass's overlay path offers Escape to the topmost overlay through
+    /// this, before any widget sees the key. Without an override the veil
+    /// answered `false`, so on a freshly opened modal — nothing inside it
+    /// focused — Escape reached nothing at all, and worked only once a
+    /// control inside had focus and the key bubbled to `on_event`
+    /// (`docs/widget-audit.md`, Modal). A veil's dismissal is a *request*,
+    /// as its scrim press is: the application answers it through
+    /// [`Veil::take_dismissed`], so this raises the flag rather than
+    /// closing.
+    fn dismiss(&mut self) -> bool {
+        if !self.open {
+            return false;
+        }
+        self.dismissed = true;
+        true
+    }
+
+    /// **A press outside the veil is not the veil's to take.** The veil
+    /// already claims everything *inside* its box through `hit` — that is
+    /// the scrim, and what makes it modal. A press that misses the box
+    /// entirely landed on something the veil does not cover, and must
+    /// reach it. Found the moment `dismiss` above began answering `true`:
+    /// the showcase's modal covers its stage card, not the window, and a
+    /// sidebar click beside it was eaten (`every_sidebar_row_picks_its_own_entry`).
+    fn dismissal_consumes_press(&self) -> bool {
+        false
+    }
+
+    /// **And it does not ask to close for it either.** Escape is the only
+    /// dismissal the pass asks of a veil; a press on its scrim is the
+    /// veil's own, through `on_event`.
+    fn dismissed_by_outside_press(&self) -> bool {
+        false
     }
 
     fn node(&self, k: usize) -> &dyn Node {

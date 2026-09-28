@@ -71,6 +71,11 @@ pub(crate) struct Change {
     pub new: Geom,
     pub geometry: bool,
     pub content: bool,
+    /// The node drew something — in the frame before or in this one. A
+    /// node that paints nothing (a spacer, a transparent container) can
+    /// move without a pixel changing, so its move is a change but not
+    /// damage (M56, `damage_regions`).
+    pub paints: bool,
 }
 
 /// A node's coalesced change across a queried interval: `old` is its
@@ -84,6 +89,8 @@ pub(crate) struct Coalesced {
     pub new: Geom,
     pub geometry: bool,
     pub content: bool,
+    /// See [`Change::paints`]; the union across the interval.
+    pub paints: bool,
 }
 
 struct FrameRecord {
@@ -111,6 +118,8 @@ pub(crate) struct Journal {
     fingerprint: u64,
     geom: Vec<Geom>,
     sums: Vec<u64>,
+    /// Whether each node drew anything in the baseline frame.
+    paints: Vec<bool>,
     records: VecDeque<FrameRecord>,
     seeded: bool,
     /// This frame's measurement, retained across frames. Three
@@ -119,6 +128,7 @@ pub(crate) struct Journal {
     /// (`docs/plan-review-fixes.md` F2.2).
     next_geom: Vec<Geom>,
     next_sums: Vec<u64>,
+    next_paints: Vec<bool>,
     list: lumen_static::DisplayList,
 }
 
@@ -168,14 +178,17 @@ fn measure_into(
     tree: &TreeRef,
     geom: &mut Vec<Geom>,
     sums: &mut Vec<u64>,
+    paints: &mut Vec<bool>,
     list: &mut lumen_static::DisplayList,
     live: &[bool],
 ) {
     let n = tree.table.len();
     geom.clear();
     sums.clear();
+    paints.clear();
     list.clear();
     sums.resize(n, 0);
+    paints.resize(n, false);
 
     for (i, (d, sum)) in tree.table.iter().zip(sums.iter_mut()).enumerate() {
         let st = tree.states[i];
@@ -188,6 +201,7 @@ fn measure_into(
             let from = list.len();
             tree.root.node(i).paint(tree.states, i, list);
             *sum = list.hash_from(from);
+            paints[i] = list.len() > from;
         }
     }
 
@@ -226,6 +240,9 @@ fn measure_into(
         }
         h = h.wrapping_mul(0x9E37_79B9_7F4A_7C15).wrapping_add(st.border_width as u64);
         sums[i] = h;
+        // What the derive's `paint` draws before recursing, and whether
+        // any of it is visible: a transparent container draws nothing.
+        paints[i] = st.bg.3 > 0 || st.shadow > 0.0 || (st.border_width > 0 && st.border_color.3 > 0);
     }
 }
 
@@ -259,12 +276,13 @@ impl Journal {
         // Measured into the retained buffers, then swapped with the
         // baseline — so the two Vecs alternate roles instead of one pair
         // being allocated and the other dropped every frame.
-        let (mut geom, mut sums, mut list) = (
+        let (mut geom, mut sums, mut paints, mut list) = (
             core::mem::take(&mut self.next_geom),
             core::mem::take(&mut self.next_sums),
+            core::mem::take(&mut self.next_paints),
             core::mem::take(&mut self.list),
         );
-        measure_into(tree, &mut geom, &mut sums, &mut list, live);
+        measure_into(tree, &mut geom, &mut sums, &mut paints, &mut list, live);
         self.list = list;
         let fp = fingerprint(tree.table);
 
@@ -277,8 +295,10 @@ impl Journal {
             self.fingerprint = fp;
             core::mem::swap(&mut self.geom, &mut geom);
             core::mem::swap(&mut self.sums, &mut sums);
+            core::mem::swap(&mut self.paints, &mut paints);
             self.next_geom = geom;
             self.next_sums = sums;
+            self.next_paints = paints;
             self.seeded = true;
             return reset;
         }
@@ -296,14 +316,17 @@ impl Journal {
                     // Paint folds geometry, so a pure move also flips the
                     // checksum; "content" means changed beyond geometry.
                     content: repainted && !moved,
+                    paints: paints[i] || self.paints[i],
                 });
             }
         }
         self.push(FrameRecord { frame, reset: false, changes });
         core::mem::swap(&mut self.geom, &mut geom);
         core::mem::swap(&mut self.sums, &mut sums);
+        core::mem::swap(&mut self.paints, &mut paints);
         self.next_geom = geom;
         self.next_sums = sums;
+        self.next_paints = paints;
         false
     }
 
@@ -344,6 +367,7 @@ impl Journal {
                         prev.new = c.new;
                         prev.geometry |= c.geometry;
                         prev.content |= c.content;
+                        prev.paints |= c.paints;
                     }
                     None => {
                         order.push(c.idx);
@@ -355,6 +379,7 @@ impl Journal {
                                 new: c.new,
                                 geometry: c.geometry,
                                 content: c.content,
+                                paints: c.paints,
                             },
                         );
                     }
@@ -383,9 +408,17 @@ impl Journal {
 /// Capped at [`lumen_static::retain::MAX_REGIONS`], exactly as the
 /// renderer caps it, so what an agent sees is what a frame would redraw
 /// rather than a more optimistic parallel answer.
+///
+/// **And only nodes that draw** (M56). A spacer or a transparent
+/// container that moved changed no pixel — the renderer's damage, taken
+/// from commands, never saw it — but its box went into this set, and a
+/// centring stage's four spacers and its row, all as wide as the stage,
+/// merged into the stage's whole inner box: 7.47x an accordion whose own
+/// damage was 1.00x (`tests/damage_paints.rs`). The move is still a
+/// change, and `ui.lastChange` still reports it.
 pub(crate) fn damage_regions(changed: &[Coalesced]) -> lumen_static::retain::Regions {
     let mut set = lumen_static::retain::Regions::default();
-    for c in changed {
+    for c in changed.iter().filter(|c| c.paints) {
         for r in [c.old.rect(), c.new.rect()] {
             if r[2] <= r[0] || r[3] <= r[1] {
                 continue;
@@ -398,7 +431,7 @@ pub(crate) fn damage_regions(changed: &[Coalesced]) -> lumen_static::retain::Reg
 
 pub(crate) fn damage(changed: &[Coalesced]) -> Option<[f32; 4]> {
     let mut acc: Option<[f32; 4]> = None;
-    for c in changed {
+    for c in changed.iter().filter(|c| c.paints) {
         for r in [c.old.rect(), c.new.rect()] {
             // A zero-area node contributes nothing to damage, but a node
             // that *became* zero-area still damages where it used to be —

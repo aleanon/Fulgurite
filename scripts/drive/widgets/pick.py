@@ -40,9 +40,13 @@ def _shared(name, sel, cols, cw, cell, want, head=0.0):
     """The three rows every picker has."""
     return [
         Action(
+            # The pad opens below the trigger, outside the demo row's box (D1).
+            visible=True,
+            region="window",
             name="a press opens the popup",
             needs="a closed picker",
-            do=lambda c: (c.key("Escape"), c.click())[0],
+            setup=lambda c: c.key("Escape"),
+            do=lambda c: c.click(),
             expect=lambda c: (
                 _is_open(c),
                 "the pad is {:.0f}x{:.0f} px".format(
@@ -53,6 +57,7 @@ def _shared(name, sel, cols, cw, cell, want, head=0.0):
             injection="make Picker::on_event ignore the press on its trigger",
         ),
         Action(
+            visible=True,
             name="a cell sets the value and closes the popup",
             needs="an open picker",
             do=lambda c: (c.__dict__.__setitem__("_v0", c.value()),
@@ -74,7 +79,7 @@ def _shared(name, sel, cols, cw, cell, want, head=0.0):
             name="a press outside closes it and changes nothing",
             needs="an open picker",
             do=lambda c: (_open(c), c.__dict__.__setitem__("_v0", c.value()),
-                          c.click_outside())[0],
+                          c.click_outside(avoid=[_pad(c)]))[0],
             expect=lambda c: (
                 c.value() == c._v0 and not _is_open(c),
                 f"value {c._v0!r} -> {c.value()!r}, open={_is_open(c)}",
@@ -110,38 +115,60 @@ COLOR = ("ColorPicker", "#d_colorpicker_a", _shared(
 
 DATE = ("DatePicker", "#d_datepicker_a", _shared(
     "DatePicker", "#d_datepicker_a", 7, 30.0, 8, "2026-09-08", head=48.0) + [
+    # M57/B17: paging changed the *chosen* date -- this action asserted
+    # exactly that ("the month moved"), which is how the defect passed.
+    # Paging moves the month on show; only a day press commits.
     Action(
-        name="the arrows page the month and keep the day",
+        visible=True,
+        name="the arrows page the month and leave the chosen date",
         needs="an open date picker",
         do=lambda c: (c.__dict__.__setitem__("_v0", c.value()),
                       _page(c, forward=True))[0],
         expect=lambda c: (
-            c.value()[5:7] != c._v0[5:7] and c.value()[8:] == c._v0[8:],
-            f"{c._v0} -> {c.value()}: the month moved and the day did not",
+            c.value() == c._v0 and _is_open(c),
+            f"{c._v0} -> {c.value()}: paging must not change the date",
+        ),
+        injection="make shift_month move the chosen year and month",
+    ),
+    Action(
+        visible=True,
+        name="a day picked after paging commits the paged month",
+        needs="an open date picker",
+        do=lambda c: (c.__dict__.__setitem__("_v0", c.value()),
+                      _page(c, forward=True),
+                      _cell(c, 10, 7, 30.0, 48.0))[0],
+        expect=lambda c: (
+            c.value()[5:7] != c._v0[5:7],
+            f"{c._v0} -> {c.value()}: the picked day is in the month on show",
         ),
         isolate=lambda c: (c.__dict__.__setitem__("_v0", c.value()),
                            c.click_outside())[0],
-        injection="fold the header into row 0, so paging picks a day too",
+        # The pad closes on the pick, and its body is audited at 0x0.
+        expects_lint=("W1001",),
+        injection="commit the day in the chosen month rather than the shown one",
     ),
 ])
 
+# M57/B18: the clock's commit is the *minute*. The shared action pressed
+# hour 14 and expected the popup closed -- which asserted the defect, that
+# picking the hour closed the clock before a minute could be chosen.
 TIME = ("TimePicker", "#d_timepicker_a", _shared(
-    "TimePicker", "#d_timepicker_a", 6, 34.0, 14, "14:00") + [
+    "TimePicker", "#d_timepicker_a", 6, 34.0, 27, "09:15") + [
     Action(
-        name="a minute mark changes the minute and not the hour",
-        needs="an open time picker on some hour",
+        visible=True,
+        name="an hour sets the hour and keeps the clock open",
+        needs="an open time picker on a minute other than the hour's",
         do=lambda c: (c.__dict__.__setitem__("_v0", c.value()),
-                      _cell(c, 27, 6, 34.0))[0],
+                      _cell(c, 14, 6, 34.0))[0],
         expect=lambda c: (
-            c.value()[:2] == c._v0[:2]
-            and c.value()[3:] == "15"
-            and c._v0[3:] != "15",
-            f"{c._v0} -> {c.value()}: cell 27 is the fourth minute mark, :15 — "
-            f"and the hour is untouched",
+            c.value()[:2] == "14" and c._v0[:2] != "14"
+            and c.value()[3:] == c._v0[3:] and _is_open(c),
+            f"{c._v0} -> {c.value()}, open={_is_open(c)}: cell 14 is hour 14, "
+            f"the minute is untouched and the clock stays open for it",
         ),
         isolate=lambda c: (c.__dict__.__setitem__("_v0", c.value()),
                            c.click_outside())[0],
-        injection="treat every cell as an hour",
+        injection="set `picked` on an hour press, so the picker closes on it",
     ),
 ])
 

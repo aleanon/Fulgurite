@@ -164,7 +164,7 @@ impl<S: 'static, const SHAPE: u8> Widget for Toggle<S, SHAPE> {
             lumen_static::style::Fields::RADIUS,
             lumen_static::style::Fields::PRESSED_DIM,
             lumen_static::style::Fields::HOVER_DIM,
-        ]))];
+        ])).with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Accent).background(lumen_static::style::Role::Control))];
 }
 
 /// Logical pixels. 24 is the WCAG 2.5.8 minimum pointer target, and a
@@ -193,11 +193,16 @@ impl<S: 'static, const SHAPE: u8> Node for Toggle<S, SHAPE> {
     ) -> Size {
         let me = style[i];
         let size = resolve_self(limits, &me, Size { w: BOX, h: BOX });
-        record_painted(st, i, limits, size, &me)
+        let out = record_painted(st, i, limits, size, &me);
+        // An *on* body is `color`, which `record_painted` does not shade
+        // (M57/B11): hover and press read on it as they do on the rest.
+        if !me.disabled {
+            st[i].fg = lumen_static::ops::shaded(me.color, &st[i], &me);
+        }
+        out
     }
 
     fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
-        lumen_static::ops::focus_ring(st, i, out);
         let s = &st[i];
         let r = rect_of(s);
         let (w, h) = (r[2] - r[0], r[3] - r[1]);
@@ -259,6 +264,11 @@ impl<S: 'static, const SHAPE: u8> Node for Toggle<S, SHAPE> {
 
     fn place(&mut self, at: Point, _style: &[Style], st: &mut [NodeState], i: usize) {
         st[i].pos = at;
+    }
+
+    /// A radio's arrows move the selection (M57/B13).
+    fn selects_on_focus(&self) -> bool {
+        SHAPE == RADIO
     }
 
     fn node(&self, _i: usize) -> &dyn Node {

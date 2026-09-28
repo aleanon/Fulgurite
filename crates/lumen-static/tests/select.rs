@@ -280,7 +280,14 @@ fn a_press_outside_tells_the_application_and_the_menu_stays_closed() {
 fn tab_enter_down_down_enter_chooses_row_one() {
     use lumen_static::Key;
     let mut f = Fx::new(5);
-    let key = |f: &mut Fx, k: Key| f.send(Event::Key { key: k, down: true });
+    // A whole press, down then up, as a keyboard sends one: since M57/A10
+    // a second down with no up between is an auto-repeat, which does not
+    // activate — so an Enter sent as downs alone chose nothing.
+    let key = |f: &mut Fx, k: Key| {
+        let handled = f.send(Event::Key { key: k, down: true });
+        f.send(Event::Key { key: k, down: false });
+        handled
+    };
     key(&mut f, Key::Tab);
     let trigger = f.input.focus;
     assert!(trigger.is_some(), "setup: Tab focused nothing");

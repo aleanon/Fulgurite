@@ -747,6 +747,7 @@ impl<A: App + 'static, P: RecoverPolicy, I: Invalidation> Session for Local<A, P
         #[cfg(feature = "live-agent")]
         {
             let agent = &mut self.agent;
+            let metrics = &mut self.metrics;
             let _ = run_guarded::<A, P, I, _>(&mut self.host, |h| {
                 let timing = lumen_static_agent::FrameTiming {
                     layout_ns: t.layout_ns,
@@ -758,8 +759,14 @@ impl<A: App + 'static, P: RecoverPolicy, I: Invalidation> Session for Local<A, P
                     damaged_px: t.damaged_px,
                     atlas_give_ups: t.atlas_give_ups,
                 };
+                let scale = h.scale();
                 let mut tree = lumen_static_agent::TreeMut::of_root(h.app.tree_mut(), &h.styles, &h.states);
-                agent.frame_done(&mut tree, timing);
+                // The measure the host laid out with, so the audit's
+                // re-layout leaves every widget as the frame did (M57/A3).
+                match metrics {
+                    Some(m) => agent.frame_done_measured(&mut tree, timing, m, scale),
+                    None => agent.frame_done(&mut tree, timing),
+                }
             });
         }
     }
@@ -1082,6 +1089,15 @@ impl<A: App, P: RecoverPolicy, I: Invalidation> lumen_static_agent::AgentHost fo
             "clipped": r.clipped,
             "min": min.map(|m| run_json(m)),
         }))
+    }
+
+    /// Everything marked, every buffer's history dropped, then one frame:
+    /// the whole canvas repainted from the display list (M57/D6).
+    fn repaint_all(&mut self) -> bool {
+        self.host.invalidate_all();
+        self.host.repaint_all();
+        lumen_static_agent::AgentHost::pump(self);
+        true
     }
 
     #[cfg(feature = "shadow-oracle")]

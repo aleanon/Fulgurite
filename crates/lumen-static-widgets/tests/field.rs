@@ -5,6 +5,11 @@
 //! that table as assertions, which is the point of writing it first: an
 //! inventory produced afterwards describes what was built.
 
+// on_event only: these test stepping, parsing and handle logic, one call
+// deep. Delivery is crates/lumen-static-shell/tests/search_field.rs through
+// a Host, and scripts/drive/widgets/fields.py live, keyboard included.
+// (M57/D2)
+
 use lumen_static::event::{Event, EventCtx, Key};
 use lumen_static::widget::{Node, Widget};
 use lumen_static::{Constraints, NodeState, Point};
@@ -281,7 +286,9 @@ fn tab_switches_which_handle_the_keyboard_moves() {
 
 #[test]
 fn a_click_anywhere_in_a_search_field_reaches_the_text() {
-    let mut s = SearchField::new("query");
+    // **Empty**: with a query, the far right is the × (M57/B26), which is
+    // the pill's own and answers with node 0 by design — checked below.
+    let mut s = SearchField::new("");
     let styles = vec![<SearchField as Widget>::type_defaults(); 3];
     let mut st = vec![NodeState::default(); <SearchField as Widget>::NODE_COUNT];
     let mut m = lumen_static::cx::BlockMetrics;
@@ -300,6 +307,15 @@ fn a_click_anywhere_in_a_search_field_reaches_the_text() {
         "a click in the padding landed on node {} — the container, which focuses nothing",
         hit.node
     );
+    // With a query the same point is the ×, and it is the pill's.
+    let mut s = SearchField::new("query");
+    {
+        let mut cx = lumen_static::LayoutCx::new(&mut m);
+        Node::layout(&mut s, &mut cx, VIEW, &styles, &mut st, 0);
+    }
+    Node::place(&mut s, Point { x: 0.0, y: 0.0 }, &styles, &mut st, 0);
+    let hit = Node::hit(&s, &st, 0, r[2] - 2.0, (r[1] + r[3]) / 2.0).unwrap();
+    assert_eq!(hit.node, 0, "the × did not answer as the pill's own part");
 }
 
 #[test]
@@ -331,4 +347,27 @@ fn clearing_reports_whether_it_did_anything() {
     assert!(s.clear(), "clearing a non-empty field reported no change");
     assert_eq!(s.as_str(), "");
     assert!(!s.clear(), "clearing an empty field reported a change — a caller would re-search");
+}
+
+/// **A step starts from what was typed** — M57/B24.
+///
+/// `nudge` added to the last committed value and discarded the text: type
+/// 3 into a field holding 10, press Up, and it read 10.00
+/// (`docs/widget-audit.md`, NumberInput).
+#[test]
+fn up_after_typing_steps_from_the_typed_value() {
+    use lumen_static::event::{Event, EventCtx, Key};
+    use lumen_static::widget::Node;
+    let mut n = lumen_static_widgets::NumberInput::new(10.0, 0.0, 10.0, 0.5);
+    n.select_all();
+    let text = |n: &mut lumen_static_widgets::NumberInput, ch: char| {
+        let ev = Event::Text { ch };
+        Node::on_event(n, &ev, &EventCtx::for_event(1, ev));
+    };
+    text(&mut n, '3');
+    assert_eq!(n.as_str(), "3", "setup: the typed text did not replace the value");
+    let up = Event::Key { key: Key::Up, down: true };
+    Node::on_event(&mut n, &up, &EventCtx::for_event(1, up));
+    println!("typed 3, pressed Up: value {}, text {:?}", n.value(), n.as_str());
+    assert_eq!(n.value(), 3.5, "Up stepped from the committed value, not the typed one");
 }

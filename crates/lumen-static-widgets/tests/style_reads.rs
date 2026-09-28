@@ -120,6 +120,14 @@ fn render<R: Widget + Node + Default>(setup: fn(&mut R), sheet: &[Rule], sc: Sce
     pass::layout(&mut root, &styles, &mut st, LIMITS);
     let mut list = DisplayList::new();
     pass::paint(&root, &st, &mut list);
+    // **The host's ring, as the host draws it** — M57/A6. No widget draws
+    // its own ring any more; the host does, once, around the keyboard-
+    // focused node, reading that node's `focus_ring` and `radius`. So a
+    // focused kind's output is its paint *plus* that ring, or every
+    // focusable kind would measure as not reading `focus_ring`.
+    if matches!(sc, Scenario::Focused) {
+        lumen_static::ops::focus_ring(&st[i], Color(0, 0, 255, 255), &mut list);
+    }
     let geometry = st.iter().map(|s| (s.size, s.pos)).collect();
     let c = st[i];
     let (x, y) = (c.pos.x + c.size.w / 2.0, c.pos.y + c.size.h / 2.0);
@@ -233,7 +241,7 @@ fn bind_label(l: &mut Label<String>, row: usize) {
     l.set(format!("row {row}"));
 }
 
-fn bind_row(b: &mut Button<(), String>, row: usize) {
+fn bind_row(b: &mut lumen_static_widgets::select::Row<()>, row: usize) {
     b.label = format!("option {row}");
 }
 
@@ -292,8 +300,10 @@ kinds! {
     PProgress: ProgressBar = [|r| r.w.value = 0.5];
     PSpinner: Spinner = [|r| r.w.phase = 0.3];
     PSkeleton: Skeleton = [|r| r.w.phase = 0.3];
-    PBar: BarChart = [|r| r.w = BarChart::new(&[1.0, 3.0, 2.0])];
-    PLine: LineChart = [|r| r.w = LineChart::new(&[1.0, 3.0, 2.0])];
+    // With axes and labels: a chart's font is read only there (M57/B30),
+    // and a fixture without them measured `font_size` as unread.
+    PBar: BarChart = [|r| { r.w = BarChart::new(&[1.0, 3.0, 2.0]); r.w.axes = true; r.w.labels = &["a", "b", "c"]; }];
+    PLine: LineChart = [|r| { r.w = LineChart::new(&[1.0, 3.0, 2.0]); r.w.axes = true; r.w.labels = &["a", "b", "c"]; }];
     PPie: PieChart = [|r| r.w = PieChart::new(&[1.0, 3.0, 2.0])];
 }
 

@@ -396,6 +396,9 @@ pub(crate) struct Auditor {
     /// what `W1002` compares a node with before the root (M55/T55.6).
     /// Kept across frames, like `scratch`.
     clip_of: Vec<u32>,
+    /// Whether each node is under a closed popup (`Node::content_absent`),
+    /// retained between frames like `clip_of`.
+    absent: Vec<bool>,
 }
 
 /// `clip_of`'s "no clipping ancestor".
@@ -419,6 +422,7 @@ impl Default for Auditor {
             was_keys: Vec::new(),
             spare: Vec::new(),
             clip_of: Vec::new(),
+            absent: Vec::new(),
         }
     }
 }
@@ -492,13 +496,21 @@ impl Auditor {
     /// re-announces itself. An agent that just swapped a dylib wants the
     /// current state of the world, not a diff against a vanished one.
     /// `live` as the journal's — `Agent::frame_done` computes it once
-    /// (M48/T48.8).
-    pub fn record(&mut self, frame: u64, tree: &mut TreeMut, structural_reset: bool, live: &[bool]) {
+    /// (M48/T48.8) — and the host's own measure and scale for this frame
+    /// when it has them (M57/A3).
+    pub fn record(
+        &mut self,
+        frame: u64,
+        tree: &mut TreeMut,
+        structural_reset: bool,
+        live: &[bool],
+        host: Option<(&mut dyn lumen_static::TextMeasure, f32)>,
+    ) {
         // `found` is the buffer the previous frame's findings vacated:
         // the two alternate, so a frame with findings allocates nothing
         // once both have grown.
         let mut found = std::mem::take(&mut self.spare);
-        self.collect(tree, &mut found, live);
+        self.collect(tree, &mut found, live, host);
 
         if structural_reset {
             self.current.clear();
@@ -599,6 +611,7 @@ impl Auditor {
         styles: &[lumen_static::Style],
         scratch: &mut [NodeState],
         measure: &mut dyn lumen_static::TextMeasure,
+        scale: f32,
         i: usize,
     ) -> Natural {
         // Measured with the host's own text stack (`Agent::
@@ -607,9 +620,23 @@ impl Auditor {
         // stand-in while the window laid out with a real face reported
         // every button of the live tally as truncated — the block's
         // 0.5 em advance is wider than any real digit.
-        let mut cx = lumen_static::LayoutCx::new(measure);
+        let mut cx = lumen_static::LayoutCx::new(measure).with_scale(scale);
+        let real = scratch[i].constraints;
         let a = root.node_mut(i).probe(&mut cx, PROBE_A, styles, scratch, i);
         let b = root.node_mut(i).probe(&mut cx, PROBE_B, styles, scratch, i);
+        // **Put back what the probe disturbed** — M57/A3
+        // (`docs/plan-widget-fixes.md`). A widget that caches a layout
+        // result — `RichText`'s placed words, a text field's clusters, a
+        // strip's label widths, a slider's track — kept the probe's,
+        // measured inside a million-pixel box, and painted from it on
+        // every frame that did not lay it out again: paragraphs on one
+        // line, words split, a caret that always went to the end
+        // (`docs/widget-audit.md` X1). `Repeat` met this first (T27.10)
+        // and was fixed by an override, which left the shape waiting for
+        // the next widget. Laying the leaf out again under the limits the
+        // frame gave it restores any cache that is a function of its
+        // limits, with no per-widget code.
+        root.node_mut(i).layout(&mut cx, real, styles, scratch, i);
         Natural { intrinsic: a == b, size: a }
     }
 
@@ -619,7 +646,19 @@ impl Auditor {
         out
     }
 
-    fn collect(&mut self, tree: &mut TreeMut, out: &mut Vec<Finding>, live: &[bool]) {
+    fn collect(
+        &mut self,
+        tree: &mut TreeMut,
+        out: &mut Vec<Finding>,
+        live: &[bool],
+        host: Option<(&mut dyn lumen_static::TextMeasure, f32)>,
+    ) {
+        // The host's own measure and scale for this frame when it passed
+        // them (M57/A3), the installed one otherwise.
+        let (measure, scale): (&mut dyn lumen_static::TextMeasure, f32) = match host {
+            Some((m, s)) => (m, s),
+            None => (&mut *self.measure, 1.0),
+        };
         out.clear();
         let st = tree.states;
 
@@ -656,6 +695,22 @@ impl Auditor {
                 self.clip_of[p]
             };
         }
+        // Under a node whose content is deliberately absent — a closed
+        // popup (`Node::content_absent`). Its leaves have content and no
+        // box by design, which is `W1001`'s geometry without its defect.
+        // Table order is parents first, so one pass settles each subtree.
+        // A retained buffer, as `clip_of` is: `frame_done` allocates
+        // nothing in steady state (`tests/alloc_frame_done.rs`), and a
+        // fresh `vec!` here was one allocation a frame.
+        self.absent.clear();
+        self.absent.resize(table.len(), false);
+        for i in 0..table.len() {
+            let p = table[i].parent;
+            if p != lumen_static::NO_PARENT {
+                self.absent[i] = self.absent[p as usize] || tree.as_ref().root.node(p as usize).content_absent();
+            }
+        }
+        let absent = &self.absent;
         for (i, d) in table.iter().enumerate() {
             let leaf = d.child_count == 0 && !d.is_container();
             let a = area(&st[i]);
@@ -672,9 +727,8 @@ impl Auditor {
             // `crate::live_nodes`. Note this is *not* "has area": a leaf
             // with content and no room is `W1001`, which must still
             // fire, and gating on area turned that lint off.
-            if leaf && live[i] {
-                let nat =
-                    Self::natural(tree.root, tree.styles, &mut self.scratch, &mut *self.measure, i);
+            if leaf && live[i] && !absent[i] {
+                let nat = Self::natural(tree.root, tree.styles, &mut self.scratch, &mut *measure, scale, i);
                 let has_content = nat.intrinsic && nat.size.w > 0.0 && nat.size.h > 0.0;
 
                 if has_content && a > 0.0 {

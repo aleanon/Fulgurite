@@ -43,34 +43,43 @@ pub fn hide_subtree(st: &mut [NodeState], i: usize, limits: Constraints, count: 
     Size::default()
 }
 
-/// Draw the focus ring behind `i`, if it has focus and a ring width.
+/// Draw the keyboard focus ring around `s` — **called once per frame by
+/// the host, not by widgets** (M57/A6, `docs/plan-widget-fixes.md`).
 ///
-/// One helper rather than five copies: `Button`, `TextInput`,
-/// `TextArea`, `Toggle` and `Slider` all need the same thing, and a
-/// ring that differs between widgets is a ring a user cannot learn.
+/// **An outline with a gap, outside the node, in the palette's `focus`
+/// colour, drawn after the tree.** The ring used to be a larger rounded
+/// rect *underneath* each widget, in `s.fg`, relying on the widget to
+/// paint an opaque full-box body over its middle. The widget audit
+/// (`docs/widget-audit.md` X4) found every way that fails: a `Tabs`
+/// strip has no body and turned into a solid dark block; a `Slider`
+/// paints only a thin track and became a solid blue bar with the knob
+/// gone; a primary button's `fg` is white, so its ring was white on a
+/// white card; a checked toggle's ring was its own blue with no gap.
 ///
-/// **A larger rounded rect *underneath*, not an outline on top.** The
-/// first version drew four `Cmd::Line`s around the box, and the live
-/// gate caught it within a frame: a square ring over a rounded button
-/// covers the antialiased corner, and `ui_check.py`'s corner test
-/// dropped to five blended pixels. Drawing behind reuses the rounded
-/// rect the renderer already antialiases, follows the control's own
-/// radius, and cannot cover the content it is marking.
-pub fn focus_ring(st: &[crate::desc::NodeState], i: usize, out: &mut dyn crate::Painter) {
-    let s = &st[i];
-    if !s.focused || s.focus_ring == 0 {
+/// Before that, a ring of four `Cmd::Line`s over a rounded button covered
+/// the antialiased corner (`ui_check.py`'s corner test). A
+/// `stroked_rect` follows the radius the renderer already antialiases,
+/// and the `gap` keeps it off the control's own pixels, so it can neither
+/// cover the content nor merge with a body of the same colour.
+///
+/// There is one focus, so there is one ring, and the host — which knows
+/// `input.focus`, whether focus is keyboard-visible, and the palette —
+/// draws it. A widget opts out with `Style::focus_ring == 0`.
+pub fn focus_ring(s: &crate::desc::NodeState, color: crate::display::Color, out: &mut dyn crate::Painter) {
+    if s.focus_ring == 0 || s.size.w <= 0.0 || s.size.h <= 0.0 {
         return;
     }
-    let w = s.focus_ring as f32;
+    let (w, gap) = (s.focus_ring as f32, FOCUS_GAP);
     let r = rect_of(s);
-    out.rounded_rect(
-        [r[0] - w, r[1] - w, r[2] + w, r[3] + w],
-        s.fg,
-        // The control's own radius plus the ring's width, so the ring
-        // stays concentric rather than squaring off at the corners.
-        s.radius + w,
-    );
+    let o = gap + w;
+    // `stroked_rect` strokes *inside* its rect (T27.1), so the rect is
+    // the ring's outer edge and the stroke fills `[gap, gap + w]`.
+    out.stroked_rect([r[0] - o, r[1] - o, r[2] + o, r[3] + o], color, s.radius + o, w);
 }
+
+/// The transparent space between a control and its focus ring, so a
+/// ring the colour of the control's body still reads as a ring.
+pub const FOCUS_GAP: f32 = 2.0;
 
 /// Draw `i`'s border, if it has one.
 ///
@@ -153,6 +162,35 @@ impl Axis {
             Axis::Column => s.width,
         }
     }
+}
+
+/// **What a container offers its own content**: on an axis where its
+/// own length is `Fixed`, that length — clamped into the offer exactly
+/// as [`resolve_self`] will clamp it — and not the whole offer.
+///
+/// Found by M56 (`docs/plan-showcase-design.md`,
+/// `crates/lumen-static/tests/fixed_container.rs`): the derive computed
+/// a container's content box from what it was *offered* and applied its
+/// own `Fixed` size only when it resolved its box afterwards, so a
+/// `Fixed(60)` column offered 400 px gave a `FILL` child 380 px of height
+/// and a `Fixed(320)` column holding a grid laid the grid's rows out
+/// 727 px wide. It stayed hidden while every such container sat in a
+/// parent offering less than its fixed size.
+#[inline]
+#[doc(hidden)]
+pub fn within_own_size(limits: Constraints, style: &Style) -> Constraints {
+    let mut c = limits;
+    if let Length::Fixed(v) = style.width {
+        let w = limits.clamp(Size { w: v, h: 0.0 }).w;
+        c.min_w = w;
+        c.max_w = w;
+    }
+    if let Length::Fixed(v) = style.height {
+        let h = limits.clamp(Size { w: 0.0, h: v }).h;
+        c.min_h = h;
+        c.max_h = h;
+    }
+    c
 }
 
 /// The content box: the node's limits minus its own padding.
@@ -326,18 +364,29 @@ pub fn record_painted(
     size: Size,
     style: &Style,
 ) -> Size {
+    st[i].disabled = style.disabled;
+    if style.disabled {
+        // **Unavailable reads as faded** — M57/A16. Both colours at 40%
+        // alpha, and no hover or press shade: nothing will happen.
+        let fade = |c: crate::display::Color| crate::display::Color(c.0, c.1, c.2, (c.3 as u16 * 2 / 5) as u8);
+        st[i].fg = fade(style.color);
+        st[i].bg = fade(style.background);
+        st[i].border_color = fade(style.border_color);
+        st[i].radius = style.radius;
+        st[i].focus_ring = style.focus_ring;
+        st[i].border_width = style.border_width;
+        st[i].font_size = style.font_size;
+        st[i].font_weight = style.font_weight;
+        st[i].shadow = style.shadow;
+        st[i].pad = (style.padding.left, style.padding.top, style.padding.right, style.padding.bottom);
+        return record(st, i, limits, size);
+    }
     st[i].fg = style.color;
     // C6: the pointer affordance is resolved here, with the rest of the
     // paint attributes, so `paint` — which has no `&[Style]` — needs no
     // second array and no per-frame cascade. Pressed wins over hovered:
     // a control under a held pointer is pressed, not merely hovered.
-    st[i].bg = if st[i].pressed && style.pressed_dim > 0.0 {
-        dim(style.background, style.pressed_dim)
-    } else if st[i].hovered && style.hover_dim > 0.0 {
-        dim(style.background, style.hover_dim)
-    } else {
-        style.background
-    };
+    st[i].bg = shaded(style.background, &st[i], style);
     st[i].radius = style.radius;
     st[i].focus_ring = style.focus_ring;
     st[i].border_color = style.border_color;
@@ -347,6 +396,24 @@ pub fn record_painted(
     st[i].shadow = style.shadow;
     st[i].pad = (style.padding.left, style.padding.top, style.padding.right, style.padding.bottom);
     record(st, i, limits, size)
+}
+
+/// `c` as the pointer affordance shows it on `n`: darkened by the style's
+/// `pressed_dim` while pressed, else by `hover_dim` while hovered.
+///
+/// What [`record_painted`] does to `background`, public — M57/B11 —
+/// for a widget whose visible body is another colour. A toggle that is
+/// on is drawn in `color`, so it showed no hover and no press at all:
+/// `record_painted` shades only the background, which an on toggle does
+/// not paint.
+pub fn shaded(c: crate::display::Color, n: &NodeState, style: &Style) -> crate::display::Color {
+    if n.pressed && style.pressed_dim > 0.0 {
+        dim(c, style.pressed_dim)
+    } else if n.hovered && style.hover_dim > 0.0 {
+        dim(c, style.hover_dim)
+    } else {
+        c
+    }
 }
 
 /// `c` darkened by `f` (0.0–1.0), alpha untouched.

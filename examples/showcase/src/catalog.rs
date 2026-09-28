@@ -1,23 +1,19 @@
 //! The catalogue: every widget the showcase can put on the stage.
 //!
 //! A `static` table of plain `fn` pointers, which is what lets the
-//! dropdown's `Repeat` bind rows without capturing and what lets a hot
+//! sidebar's `Repeat` bind rows without capturing and what lets a hot
 //! reload re-supply every entry.
 
 use super::*;
 
 /// One showcased widget.
 pub struct Entry {
-    /// Group heading, as it appears in the dropdown.
+    /// Group heading, as it appears in the sidebar.
     pub group: &'static str,
     /// Display name.
     pub name: &'static str,
     /// One line on what the demo shows.
     pub blurb: &'static str,
-    /// A subtlety worth a sentence, printed under the demo — Lumen's
-    /// showcase does this and it is most of what makes it teach rather
-    /// than merely list.
-    pub note: &'static str,
     /// Whether it wants a per-frame tick.
     pub animated: bool,
     /// Put it on the stage, seeded with real data and wired to `Show`.
@@ -31,17 +27,49 @@ fn none(_: &Show) -> String {
 }
 
 macro_rules! entry {
-    ($group:literal, $name:literal, $blurb:literal, $note:literal, $anim:expr, $seed:expr, $status:expr) => {
+    ($group:literal, $name:literal, $blurb:literal, $anim:expr, $seed:expr, $status:expr) => {
         Entry {
             group: $group,
             name: $name,
             blurb: $blurb,
-            note: $note,
             animated: $anim,
             seed: $seed,
             status: $status,
         }
     };
+}
+
+/// What one sidebar row is: a group's heading, or entry `k`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NavItem {
+    Heading(&'static str),
+    Entry(usize),
+}
+
+/// Sidebar row `i`: a heading wherever the group changes, then the
+/// entries under it. A walk over the static table — no allocation, so a
+/// bind can call it every frame (M29/T29.5).
+pub fn nav_item(i: usize) -> NavItem {
+    let mut row = 0;
+    for (k, e) in CATALOG.iter().enumerate() {
+        if k == 0 || CATALOG[k - 1].group != e.group {
+            if row == i {
+                return NavItem::Heading(e.group);
+            }
+            row += 1;
+        }
+        if row == i {
+            return NavItem::Entry(k);
+        }
+        row += 1;
+    }
+    NavItem::Entry(CATALOG.len() - 1)
+}
+
+/// How many sidebar rows there are: every entry, and one heading per group.
+pub fn nav_len() -> usize {
+    let groups = (0..CATALOG.len()).filter(|&k| k == 0 || CATALOG[k - 1].group != CATALOG[k].group).count();
+    CATALOG.len() + groups
 }
 
 /// Put one demo on the stage.
@@ -52,7 +80,7 @@ macro_rules! entry {
 /// end of the one bug that shape made possible (a field left out of
 /// `clear` left the previous demo underneath the new one).
 fn on(s: &mut Show, demo: Demo) {
-    s.ui.body.stage.row.demo = demo;
+    s.ui.main.stage.row.demo = demo;
 }
 
 /// A veil's body: a title and a live control. One per veil kind,
@@ -89,7 +117,9 @@ const TREE_ROWS: [lumen_static_widgets::Branch; 7] = [
 /// reason a grid does not own its data.
 fn grid_row(r: &mut GridRow, i: usize) {
     r.name.l.set(format!("file-{i:03}.rs"));
+    r.kind.l.set(["Source", "Test", "Bench", "Example"][i % 4].to_string());
     r.size.l.set(format!("{} KB", 1 + i % 97));
+    r.lines.l.set(format!("{}", 40 + (i * 37) % 900));
 }
 
 /// What M27/T27.12's rich text says.
@@ -159,36 +189,65 @@ fn shown<const K: u8>(mut p: lumen_static_widgets::Picker<K>) -> lumen_static_wi
     p
 }
 
-fn chip(t: &str) -> Chip<String> {
-    Chip::<String>::new(t.into())
+/// The `Select` demo: controlled, so opening, dismissal and a choice all
+/// write `Store`, and `refresh` puts them on the tree.
+fn select_demo() -> lumen_static_widgets::select::Select<Store> {
+    let mut d = lumen_static_widgets::select::Select::new(FRUIT.len(), 30.0, bind_fruit);
+    d.trigger.on_click = |s: &mut Store, _: &EventCtx| s.select_open = true;
+    d.on_dismiss = |s: &mut Store, _: &EventCtx| s.select_open = false;
+    d
+}
+
+/// One option. **Writes the label only when it differs**: a bind is
+/// steady-state code and runs every frame, so an unconditional
+/// `String` write would allocate per row per frame (M29/T29.5).
+fn bind_fruit(r: &mut lumen_static_widgets::select::Row<Store>, i: usize) {
+    if r.label != FRUIT[i] {
+        r.label.clear();
+        r.label.push_str(FRUIT[i]);
+    }
+    r.on_click = |s: &mut Store, cx: &EventCtx| {
+        s.pick = cx.row.map_or(0, |r| r as usize).min(FRUIT.len() - 1);
+        s.select_open = false;
+    };
+}
+
+/// The chip demo's tags, and one `fn` per chip — a handler cannot capture
+/// which it is (M57/B2, C2's shape).
+const CHIP_TAGS: [&str; 3] = ["rust", "systems", "no_std"];
+fn tag(t: &str, on: bool, f: fn(&mut Store, &EventCtx)) -> Chip<String, Store> {
+    let mut c = Chip::<String, Store>::new(t.into());
+    c.selected = on;
+    c.on_click = Some(f);
+    c
+}
+fn tag_0(s: &mut Store, _: &EventCtx) {
+    s.tags ^= 1;
+}
+fn tag_1(s: &mut Store, _: &EventCtx) {
+    s.tags ^= 2;
+}
+fn tag_2(s: &mut Store, _: &EventCtx) {
+    s.tags ^= 4;
+}
+/// The toast demo's button (M57/B34): the application asks, and
+/// `refresh` shows the toast for `TOAST_MS`.
+fn show_toast(s: &mut Store, _: &EventCtx) {
+    s.toast_request = true;
+    s.toasts += 1;
+}
+pub const TOAST_MS: f32 = 3000.0;
+
+fn remove_tag(s: &mut Store, _: &EventCtx) {
+    s.removed += 1;
+}
+
+fn chip(t: &str) -> Chip<String, Store> {
+    Chip::<String, Store>::new(t.into())
 }
 
 fn gbadge(t: &str) -> Badge<String> {
     Badge::<String>::new(t.into())
-}
-
-/// The stage's `Select`, wired as an application wires one: the trigger
-/// opens it, a row chooses and closes it, a dismissal closes it
-/// (M44/T44.10).
-fn demo_select() -> Select<Store> {
-    let mut sel = Select::new(FRUIT.len(), 30.0, select_row);
-    sel.trigger.label = "Choose a fruit".into();
-    sel.trigger.on_click = |s: &mut Store, _: &EventCtx| s.select_open = true;
-    sel.on_dismiss = |s: &mut Store, _: &EventCtx| s.select_open = false;
-    sel
-}
-
-/// A row of the stage's `Select`. Compares before writing: a bind runs
-/// on every layout, and a row that allocated each time would be the
-/// steady-state allocation M29/T29.5 found in a fixture's bind.
-fn select_row(r: &mut SelectRow<Store>, i: usize) {
-    if r.label != FRUIT[i] {
-        r.label = FRUIT[i].into();
-    }
-    r.on_click = |s: &mut Store, cx: &EventCtx| {
-        s.select_choice = cx.row.map(|k| k as usize);
-        s.select_open = false;
-    };
 }
 
 fn scroll_rows() -> ScrollRows {
@@ -211,10 +270,13 @@ fn lbl_of(t: &str) -> Label<String> {
     l
 }
 
-/// One accordion section, open on the first so the demo shows both
-/// states at once.
-fn section(title: &str, body: &str) -> Collapsible<Label<String>, String> {
-    Collapsible::new(title.into(), lbl_of(body))
+/// One accordion section. The first is opened by the entry, so the demo
+/// shows both states at once — this comment said so, and until M57/C7 no
+/// section started open.
+fn section(title: &str, body: &str, open: bool) -> Collapsible<Label<String>, String> {
+    let mut c = Collapsible::new(title.into(), lbl_of(body));
+    c.set_open(open);
+    c
 }
 
 /// A `Button` wired to the press counter.
@@ -225,121 +287,188 @@ fn btn(label: &str) -> Button<Store, String> {
     b
 }
 
-fn toggle<const K: u8>(on_: bool) -> Toggle<Store, K> {
-    Toggle::<Store, K> {
-        on: on_,
-        on_toggle: |s: &mut Store, _: &EventCtx| s.flag = !s.flag,
-        ..Default::default()
-    }
+/// A toggle whose press runs `on_toggle`. **`on` is a copy**: `refresh`
+/// writes the store's value back every frame (M57/C2). Seeding it once
+/// and never again was how the demos flipped the store and left the
+/// drawn boxes as they were (`docs/widget-audit.md`, CheckBox).
+fn toggle<const K: u8>(on_: bool, on_toggle: fn(&mut Store, &EventCtx)) -> Toggle<Store, K> {
+    Toggle::<Store, K> { on: on_, on_toggle, ..Default::default() }
 }
 
-/// Everything on the stage, in dropdown order.
+fn flip_a(s: &mut Store, _: &EventCtx) {
+    s.flag = !s.flag;
+}
+fn flip_b(s: &mut Store, _: &EventCtx) {
+    s.flag_b = !s.flag_b;
+}
+/// One `fn` per option: a handler cannot capture which it is (a `fn`
+/// pointer, so it survives a reload), so each writes its own index.
+fn choose_0(s: &mut Store, _: &EventCtx) {
+    s.choice = 0;
+}
+fn choose_1(s: &mut Store, _: &EventCtx) {
+    s.choice = 1;
+}
+fn choose_2(s: &mut Store, _: &EventCtx) {
+    s.choice = 2;
+}
+
+/// The radio demo's options, by index.
+pub const COLOURS: [&str; 3] = ["Red", "Green", "Blue"];
+
+/// Everything on the stage, in sidebar order: **each group contiguous and
+/// named once** — `tests::each_group_appears_once` holds that, because the
+/// sidebar prints a heading where the group changes (M56).
 pub static CATALOG: &[Entry] = &[
     entry!("Text", "Label", "A line of text — the core's simplest widget.",
-        "A `Label`'s text is a presentation copy: the application owns it and `#[bind]` writes it here.",
         false,
         |s| on(s, Demo::Label(DLabel { a: { let mut l = Label::<String>::default(); l.set("The quick brown fox".into()); l } })),
         none),
     entry!("Text", "Badge", "A count, a status and a tag.",
-        "It shrinks to its text, so `IS_RIGID` is false — a changed count is a relayout boundary, not just a repaint.",
         false,
         |s| on(s, Demo::Badge(DBadge {
             a: Badge::new("3".into()), b: Badge::new("12".into()), c: Badge::new("99+".into()) })),
         none),
-    entry!("Text", "Chip", "The same shape, in the quiet palette.",
-        "A separate type rather than a field, because `kind_name` feeds the cascade and the agent's selectors.",
+    entry!("Text", "Chip", "Filter tags: click to select, × to remove.",
         false,
         |s| on(s, Demo::Chip(DChip {
-            a: Chip::new("rust".into()), b: Chip::new("systems".into()), c: Chip::new("no_std".into()) })),
-        none),
+            a: tag("rust", s.store.tags & 1 != 0, tag_0), b: tag("systems", s.store.tags & 2 != 0, tag_1),
+            c: { let mut c = tag("no_std", s.store.tags & 4 != 0, tag_2); c.removable = true; c.on_remove = Some(remove_tag); c } })),
+        |s| format!("selected: {} · removed: {}", CHIP_TAGS.iter().enumerate().filter(|(k, _)| s.store.tags & (1 << k) != 0).map(|(_, t)| *t).collect::<Vec<_>>().join(" "), s.store.removed)),
     entry!("Text", "Avatar", "Initials, trimmed on a char boundary.",
-        "Two *chars*, not two bytes: \"ÅB\" sliced at byte two would panic, and an avatar is decoration.",
         false,
         |s| on(s, Demo::Avatar(DAvatar {
-            a: Avatar { initials: "ÅB".into() }, b: Avatar { initials: "JD".into() }, c: Avatar { initials: "K".into() } })),
+            a: Avatar::new("ÅB".into()), b: Avatar::new("JD".into()), c: Avatar::new("K".into()) })),
         none),
-    entry!("Text", "Icon", "All eight marks, drawn from primitives.",
-        "A closed enum, not a font codepoint — a glyph icon set fails as the missing-glyph box, which is how `examples/glasswall` lost twenty-two icons.",
+    entry!("Text", "Icon", "All nine marks, drawn from primitives.",
         false,
         |s| on(s, Demo::Icon(DIcon {
             a: Icon::new(Symbol::Play), b: Icon::new(Symbol::Pause), c: Icon::new(Symbol::Stop),
             d: Icon::new(Symbol::Check), e: Icon::new(Symbol::Close), f: Icon::new(Symbol::Down),
-            g: Icon::new(Symbol::Plus), h: Icon::new(Symbol::Minus) })),
+            g: Icon::new(Symbol::Plus), h: Icon::new(Symbol::Minus), i: Icon::new(Symbol::Search) })),
         none),
     entry!("Text", "Divider", "A hairline; its thickness is its style's.",
-        "Named `Divider` where Lumen says `Rule`, because `lumen_static::Rule` is a stylesheet rule and is in the prelude.",
         false,
         |s| on(s, Demo::Divider(DDivider { a: Divider })),
         none),
+    entry!("Text", "RichText", "Words that wrap, and a span is a word.",
+        false,
+        |s| on(s, Demo::RichText(DRichText { a: RichText::new(RICH) })),
+        none),
+    entry!("Text", "Markdown", "Headings, bold, code, bullets.",
+        false,
+        |s| on(s, Demo::Markdown(DMarkdown { a: Markdown::new(DOC) })),
+        none),
+    entry!("Text", "RichTextEditor", "Type markup; see it rendered.",
+        false,
+        |s| on(s, Demo::RichTextEditor(DRichTextEditor {
+            a: RichTextEditor::new("# Title\n\nSome **bold** and `code`.") })),
+        none),
+    entry!("Text", "PaintBox", "A box the application draws into.",
+        false,
+        |s| on(s, Demo::PaintBox(DPaintBox { a: PaintBox::new(sparkline) })),
+        none),
     entry!("Input", "Button", "Three of them, all wired to one counter.",
-        "An `on_click` is a plain `fn` pointer: it cannot capture, which is what lets a hot reload re-supply it.",
         false,
         |s| on(s, Demo::Button(DButton { a: btn("Primary"), b: btn("Default"), c: btn("Ghost") })),
         |s| format!("presses: {}", s.store.presses)),
-    entry!("Input", "CheckBox", "A box and a tick, both bound to one flag.",
-        "A toggle does not flip itself: the app owns the boolean and the binding writes this copy back, or the two could disagree.",
+    entry!("Input", "CheckBox", "Two boxes, each bound to its own flag.",
         false,
-        |s| on(s, Demo::CheckBox(DCheckBox { a: PairCheckA { t: toggle(s.store.flag), l: { let mut l = Label::<String>::default(); l.set("I agree".into()); l } }, b: PairCheckB { t: toggle(!s.store.flag), l: { let mut l = Label::<String>::default(); l.set("Send updates".into()); l } } })),
-        |s| format!("checked: {}", s.store.flag)),
+        |s| on(s, Demo::CheckBox(DCheckBox { a: Labelled::new(toggle(s.store.flag, flip_a), "I agree"), b: Labelled::new(toggle(s.store.flag_b, flip_b), "Send updates") })),
+        |s| format!("checked: {} {}", s.store.flag, s.store.flag_b)),
     entry!("Input", "Switch", "The same two states, as a sliding pill.",
-        "One type with three presentations, chosen by a *const* parameter — so `kind_name` and `defaults` answer at compile time.",
         false,
-        |s| on(s, Demo::Switch(DSwitch { a: PairSwitchA { t: toggle(s.store.flag), l: { let mut l = Label::<String>::default(); l.set("Wi-Fi".into()); l } }, b: PairSwitchB { t: toggle(!s.store.flag), l: { let mut l = Label::<String>::default(); l.set("Bluetooth".into()); l } } })),
-        |s| format!("on: {}", s.store.flag)),
-    entry!("Input", "Radio", "One of a set; the selection lives in the app.",
-        "There is no group container: each radio compares against a shared value, which is the honest cost of not inventing one.",
+        |s| on(s, Demo::Switch(DSwitch { a: Labelled::new(toggle(s.store.flag, flip_a), "Wi-Fi"), b: Labelled::new(toggle(s.store.flag_b, flip_b), "Bluetooth") })),
+        |s| format!("on: {} {}", s.store.flag, s.store.flag_b)),
+    entry!("Input", "Radio", "One of three; the choice lives in the app.",
         false,
-        |s| on(s, Demo::Radio(DRadio { a: PairRadioA { t: toggle(s.store.flag), l: { let mut l = Label::<String>::default(); l.set("Red".into()); l } }, b: PairRadioB { t: toggle(!s.store.flag), l: { let mut l = Label::<String>::default(); l.set("Green".into()); l } }, c: PairRadioC { t: toggle(false), l: { let mut l = Label::<String>::default(); l.set("Blue".into()); l } } })),
-        |s| format!("selected: {}", s.store.flag)),
+        |s| on(s, Demo::Radio(DRadio { a: Labelled::new(toggle(s.store.choice == 0, choose_0), "Red"), b: Labelled::new(toggle(s.store.choice == 1, choose_1), "Green"), c: Labelled::new(toggle(s.store.choice == 2, choose_2), "Blue") })),
+        |s| format!("selected: {}", COLOURS[s.store.choice])),
     entry!("Input", "Slider", "Drag it, or focus it and use the arrows.",
-        "A slider only draggable by mouse is not an accessible slider, so `step` is a field.",
         false,
         |s| on(s, Demo::Slider(DSlider { a: Slider::new(s.store.fraction) })),
         |s| format!("value: {:.2}", s.store.fraction)),
     entry!("Input", "TextInput", "One line, editable. Click it and type.",
-        "The one place a widget owning state is right: the data originates *at* the widget, because the user typed it.",
         false,
         |s| on(s, Demo::TextInput(DTextInput { a: { let mut t = TextInput::<String>::default(); t.set_str("type here"); t } })),
         none),
     entry!("Input", "TextArea", "Several lines, editable. Enter breaks a line; a paste keeps its lines.",
-        "A paste is one edit: the whole string reaches the area at once and keeps its line breaks, where typing it one key at a time would not (M45/T45.7).",
         false,
         |s| on(s, Demo::TextArea(DTextArea { a: { let mut t = TextArea::<String>::default(); t.set_str("first line"); t } })),
         none),
+    entry!("Input", "ColorPicker", "Six hues, four lightnesses.",
+        false,
+        |s| on(s, Demo::ColorPicker(DColorPicker { a: ColorPicker::new() })),
+        none),
+    entry!("Input", "DatePicker", "A month; the arrows page it.",
+        false,
+        |s| on(s, Demo::DatePicker(DDatePicker { a: shown(DatePicker::new()) })),
+        none),
+    entry!("Input", "TimePicker", "Twenty-four hours over twelve marks.",
+        false,
+        |s| on(s, Demo::TimePicker(DTimePicker { a: TimePicker::new() })),
+        none),
+    entry!("Input", "FilePicker", "A list of names the application owns.",
+        false,
+        |s| on(s, Demo::FilePicker(DFilePicker {
+            a: FilePicker::new().with_files(&FILES) })),
+        none),
+    entry!("Choice", "PickList", "Press it; pick one of six.",
+        false,
+        |s| on(s, Demo::PickList(DPickList { a: PickList::new(&FRUIT) })),
+        none),
+    entry!("Choice", "Select", "A dropdown the application opens, closes and fills.",
+        false,
+        |s| on(s, Demo::Select(DSelect { a: select_demo() })),
+        |s| format!("selected: {}", FRUIT[s.store.pick])),
+    entry!("Choice", "Combobox", "The same list, filtered as you type.",
+        false,
+        |s| on(s, Demo::Combobox(DCombobox { a: Combobox::new(&FRUIT) })),
+        none),
+    entry!("Choice", "Menu", "A command list with no trigger.",
+        false,
+        |s| on(s, Demo::Menu(DMenu {
+            open: { let mut b = btn("Commands"); b.on_click = |s: &mut Store, _: &EventCtx| s.menu_open = true; b },
+            a: opened(Menu::new(&COMMANDS)) })),
+        |s| format!("ran: {}", s.store.command.map_or("nothing yet", |k| COMMANDS[k]))),
+    entry!("Fields", "NumberInput", "Arrows step it; letters are refused.",
+        false,
+        |s| on(s, Demo::Number(DNumberInput { a: NumberInput::new(s.store.fraction * 10.0, 0.0, 10.0, 0.5) })),
+        |s| format!("value: {:.2}", s.store.fraction * 10.0)),
+    entry!("Fields", "RangeSlider", "Two handles that cannot cross.",
+        false,
+        |s| on(s, Demo::Range(DRangeSlider { a: RangeSlider::new(0.25, 0.75) })),
+        |s| format!("range: {:.2}..{:.2}", s.store.range.0, s.store.range.1)),
+    entry!("Fields", "SearchField", "A magnifier, then the text.",
+        false,
+        |s| on(s, Demo::Search(DSearchField { a: SearchField::new("search") })),
+        none),
     entry!("Progress", "ProgressBar", "Determinate, driven by the tick.",
-        "An empty bar paints nothing at all: a zero-width rounded rect still covers `2 × radius` px once the radius is clamped.",
         true,
         |s| on(s, Demo::Progress(DProgressBar { a: ProgressBar::new(s.store.phase) })),
         |s| format!("{:.0}%", s.store.phase * 100.0)),
     entry!("Progress", "Spinner", "Three phases of the same ring.",
-        "It does not drive its own clock — there is no per-node tick, so the application advances the phase.",
         true,
         |s| on(s, Demo::Spinner(DSpinner {
             a: Spinner::new(s.store.phase), b: Spinner::new(s.store.phase + 0.33), c: Spinner::new(s.store.phase + 0.66) })),
         |s| format!("phase {:.2}", s.store.phase)),
     entry!("Progress", "Skeleton", "A placeholder with a travelling highlight.",
-        "The shimmer is clipped to the block, because the renderer's clip is a hard test and the arithmetic would have to repeat the rounded corner.",
         true,
         |s| on(s, Demo::Skeleton(DSkeleton { a: Skeleton::new(s.store.phase), b: Skeleton::new(s.store.phase) })),
         |s| format!("phase {:.2}", s.store.phase)),
-    entry!("Charts", "BarChart", "Bars from a zero baseline.",
-        "`Series` is a fixed array, so a chart allocates nothing and is `Copy`; over-long input is truncated rather than refused.",
+    entry!("Charts", "BarChart", "Bars on a scale; hover one for its value.",
         false,
-        |s| on(s, Demo::Bar(DBarChart { a: BarChart::new(SAMPLE) })),
+        |s| on(s, Demo::Bar(DBarChart { a: { let mut c = BarChart::new(SAMPLE); c.axes = true; c.labels = SAMPLE_LABELS; c } })),
         none),
-    entry!("Charts", "LineChart", "A polyline through the same points.",
-        "A non-finite sample costs one segment, not the whole scale — a chart is a view of numbers it did not produce.",
+    entry!("Charts", "LineChart", "The same points as a line; hover one.",
         false,
-        |s| on(s, Demo::Line(DLineChart { a: LineChart::new(SAMPLE) })),
+        |s| on(s, Demo::Line(DLineChart { a: { let mut c = LineChart::new(SAMPLE); c.axes = true; c.labels = SAMPLE_LABELS; c } })),
         none),
     entry!("Charts", "PieChart", "Proportions of a whole, as a ring.",
-        "Wedges are runs of radial lines: the renderer has no arc and no polygon, and 96 segments hides the joins at any size.",
         false,
         |s| on(s, Demo::Pie(DPieChart { a: PieChart::new(&[5.0, 3.0, 2.0, 1.5, 1.0]) })),
         none),
-    // ---- M27/T27.4 ------------------------------------------------
     entry!("Surface", "Card", "A raised panel with a live control on it.",
-        "A wrapper that does not route `Handlers<S>` leaves every control inside it hit-testable, hoverable, pressable and wired to nothing — which is what `Dyn` shipped as.",
         false,
         |s| on(s, Demo::Card(DCard { a: Card::new(CardBody {
             title: { let mut l = Label::<String>::default(); l.set("Storage".into()); l },
@@ -347,142 +476,91 @@ pub static CATALOG: &[Entry] = &[
         }) })),
         |s| format!("presses: {}", s.store.presses)),
     entry!("Surface", "Toast", "A transient message, in two lengths.",
-        "It does not dismiss itself: there is no per-node tick here, so the application owns the lifetime — the same reason `Spinner` does not drive its own phase.",
         false,
         |s| on(s, Demo::Toast(DToast {
-            a: Toast::new("Saved".into()),
+            show: { let mut b = btn("Save"); b.on_click = show_toast; b },
+            a: {
+                let mut t = Toast::new("Saved".into());
+                t.closable = true;
+                t.hide();
+                let mut p = Popup::new(ToastSlot { t });
+                p.anchor = lumen_static_widgets::Anchor::WindowBottom;
+                p.open = false;
+                p.passive = true;
+                p
+            },
             b: Toast::new("Could not reach the server — retrying".into()),
         })),
-        none),
+        |s| format!("toasts shown: {}", s.store.toasts)),
     entry!("Surface", "Tooltip", "Hover the button; the tip follows.",
-        "The tip keys on the *content's* hover, not the wrapper's: `dispatch` marks the deepest node it hits, so a wrapper never sees one.",
         false,
         |s| on(s, Demo::Tooltip(DTooltip {
             a: Tooltip::new(btn("Hover me"), "Shows while the pointer is over it".into()),
         })),
         |s| format!("presses: {}", s.store.presses)),
-    // ---- M27/T27.5 ------------------------------------------------
-    entry!("Fields", "NumberInput", "Arrows step it; letters are refused.",
-        "Not a Stepper: no +/- buttons. Blur commits, because focus is *state* — there is no blur event, and `layout` is the one method that can see it change.",
-        false,
-        |s| on(s, Demo::Number(DNumberInput { a: NumberInput::new(s.store.fraction * 10.0, 0.0, 10.0, 0.5) })),
-        |s| format!("value: {:.2}", s.store.fraction * 10.0)),
-    entry!("Fields", "RangeSlider", "Two handles that cannot cross.",
-        "A pair of sliders is not a range: nothing stops the low one passing the high one, and the moment it does the span between them is inverted.",
-        false,
-        |s| on(s, Demo::Range(DRangeSlider { a: RangeSlider::new(0.25, 0.75) })),
-        none),
-    entry!("Fields", "SearchField", "A magnifier, then the text.",
-        "A click in the padding focuses the *field*, not the container — falling through would focus nothing and the control would feel dead at its edges.",
-        false,
-        |s| on(s, Demo::Search(DSearchField { a: SearchField::new("search") })),
-        none),
-    // ---- M27/T27.6 ------------------------------------------------
     entry!("Navigation", "Tabs", "Four pages; the current one is underlined.",
-        "An underline, not a fill: a filled tab reads as a button, and the underline says \"this is the page you are on\" without competing with the content.",
         false,
         |s| on(s, Demo::Tabs(DTabs { a: Tabs::new(&["Overview", "Activity", "Files", "Settings"]) })),
         none),
     entry!("Navigation", "BottomNav", "The same strip, filled instead.",
-        "One type, three presentations, chosen by a *const* parameter — so `kind_name` and `defaults` answer at compile time. `Chart` is built the same way.",
         false,
         |s| on(s, Demo::Bottom(DBottomNav { a: BottomNav::new(&["Home", "Search", "Saved", "Profile"]) })),
         none),
     entry!("Navigation", "NavigationRail", "The same strip again, down the side.",
-        "A rail reads a press down `local.y` where the others read `local.x` — the one thing a shared implementation can get wrong and the only test that can tell.",
         false,
         |s| on(s, Demo::Rail(DNavigationRail { a: NavigationRail::new(&["Home", "Search", "Saved", "Profile"]) })),
         none),
-    entry!("Navigation", "AppBar", "A title and a raised ground.",
-        "Not a selector, so not a strip: nothing in it is selected. Its height is its style's, never its title's, or a title change relays out the whole screen below it.",
+    entry!("Navigation", "AppBar", "A title between a leading and an action slot.",
         false,
-        |s| on(s, Demo::AppBar(DAppBar { a: AppBar::new("Inbox".into()) })),
-        none),
+        |s| on(s, Demo::AppBar(DAppBar { a: AppBar::with("Inbox".into(), btn("Back"), btn("Save")) })),
+        |s| format!("presses: {}", s.store.presses)),
     entry!("Navigation", "PullToRefresh", "Drag the content down past its top.",
-        "It does not refresh anything: `take_triggered` hands the gesture over once, and taking rather than reading is what stops a double refresh.",
         false,
         |s| on(s, Demo::Pull(DPullToRefresh { a: PullToRefresh::new({ let mut l = Label::<String>::default(); l.set("pull me down".into()); l }) })),
-        none),
-    // ---- M27/T27.7 ------------------------------------------------
+        |s| format!("refreshes: {}", s.store.refreshes)),
     entry!("Overlay", "Modal", "A centred panel over a dimmed window.",
-        "A shut veil is *absent*, not merely unpainted — one that only skipped `paint` would still hit-test at full size and swallow every click in the window.",
         false,
         |s| on(s, Demo::Modal(DModal { a: veil(Modal::new(body_for!(ModalBody, "Delete this file?"))) })),
-        |s| format!("dismissals: {}", s.store.presses)),
+        |s| format!("dismissals: {} · confirmed: {}", s.store.dismissals, s.store.presses)),
     entry!("Overlay", "Sheet", "The same panel, across the bottom.",
-        "Its panel is measured against what its kind will give it, not against the window: a sheet measured full-height would size its content to a box it never gets.",
         false,
         |s| on(s, Demo::Sheet(DSheet { a: veil(Sheet::new(body_for!(SheetBody, "Share with"))) })),
-        |s| format!("dismissals: {}", s.store.presses)),
+        |s| format!("dismissals: {} · confirmed: {}", s.store.dismissals, s.store.presses)),
     entry!("Overlay", "Drawer", "And down the side.",
-        "Dismissal is a *request*: pressing the scrim asks, and the application decides — one that must confirm before discarding cannot undo a close that already happened.",
         false,
         |s| on(s, Demo::Drawer(DDrawer { a: veil(Drawer::new(body_for!(DrawerBody, "Navigate"))) })),
-        |s| format!("dismissals: {}", s.store.presses)),
-    // ---- M27/T27.8 ------------------------------------------------
+        |s| format!("dismissals: {} · confirmed: {}", s.store.dismissals, s.store.presses)),
     entry!("Layout", "Wrap", "Six chips that reflow onto a second line.",
-        "A derive axis, not a widget: a container's children are its *fields* here, so a wrapping row is a way of arranging fields rather than something that holds them.",
         false,
         |s| on(s, Demo::Wrap(DWrap {
             a: chip("alpha"), b: chip("bravo"), c: chip("charlie"),
             d: chip("delta"), e: chip("echo"), f: chip("foxtrot") })),
         none),
     entry!("Layout", "Grid", "The same six, three to a row.",
-        "`wrap` and `grid` are one lowering: a grid is a wrap whose line break is a *count* instead of a width, and two lowerings would be two places for the cross-axis arithmetic to disagree.",
         false,
         |s| on(s, Demo::Grid(DGrid {
             a: gbadge("1"), b: gbadge("2"), c: gbadge("3"),
             d: gbadge("4"), e: gbadge("5"), f: gbadge("6") })),
         none),
     entry!("Layout", "SplitPane", "Drag the divider between two panes.",
-        "The divider stops short of both edges: a pane with no area cannot be clicked to get it back, so the control would be one-way.",
         false,
         |s| on(s, Demo::Split(DSplitPane { a: SplitPane::new(lbl_of("left"), lbl_of("right")) })),
         none),
-    entry!("Layout", "Accordion", "Three sections; press a header.",
-        "Not a widget — a column of `Collapsible`s. A press in the *body* must not collapse the section, or clicking what is inside it would close it.",
+    entry!("Layout", "Accordion", "Three sections, one open at a time.",
         false,
         |s| on(s, Demo::Accordion(DAccordion {
-            a: section("Account", "Your name and email"),
-            b: section("Privacy", "Who can see your activity"),
-            c: section("Advanced", "Developer options") })),
+            a: section("Account", "Your name and email", true),
+            b: section("Privacy", "Who can see your activity", false),
+            c: section("Advanced", "Developer options", false) })),
         none),
-    // ---- M27/T27.9 ------------------------------------------------
-    entry!("Choice", "PickList", "Press it; pick one of six.",
-        "It owns its options, which is what `Select` cannot: `Repeat::bind` is a plain `fn` and cannot capture the widget holding them — so these draw their rows the way `Strip` does.",
-        false,
-        |s| on(s, Demo::PickList(DPickList { a: PickList::new(&FRUIT) })),
-        none),
-    entry!("Choice", "Combobox", "The same list, filtered as you type.",
-        "An empty query shows everything: a filter that hid every row when the field was cleared would make the control unusable the moment anyone deleted what they typed.",
-        false,
-        |s| on(s, Demo::Combobox(DCombobox { a: Combobox::new(&FRUIT) })),
-        none),
-    entry!("Choice", "Menu", "A command list with no trigger.",
-        "A release chooses, a press does not — every menu in every toolkit commits on release, and choosing on the press also closes the list under a finger that is still down.",
-        false,
-        |s| on(s, Demo::Menu(DMenu { a: opened(Menu::new(&COMMANDS)) })),
-        none),
-    // ---- M44/T44.10 ------------------------------------------------
-    entry!("Choice", "Select", "Press it, or Enter on it; pick one of six.",
-        "Controlled: whether it is open is the application's, so a dismissal has to reach the application or the next binding reopens it. The keyboard reaches its rows through the list's active row, since a row is not a Tab stop.",
-        false,
-        |s| {
-            s.store.select_open = false;
-            s.store.select_choice = None;
-            on(s, Demo::Select(DSelect { a: demo_select() }))
-        },
-        |s| format!("chose: {}", s.store.select_choice.map_or("nothing", |k| FRUIT[k]))),
     entry!("Layout", "ScrollView", "Twelve rows in a view for four.",
-        "The wheel, a drag on its bar, and PageUp, PageDown, Home and End from a focused control inside it — the view is not focusable itself, so the keys bubble up to it.",
         false,
         |s| on(s, Demo::Scroll(DScrollView { a: ScrollView::new(scroll_rows()) })),
-        |s| match &s.ui.body.stage.row.demo {
+        |s| match &s.ui.main.stage.row.demo {
             Demo::Scroll(d) => format!("scroll: {:.0} px", d.a.scroll),
             _ => String::new(),
         }),
     entry!("Layout", "PaneGrid", "Four panes, three dividers.",
-        "iced's is a *tree* the user re-arranges, which is topology as data and the one thing this framework does not do — so this is the shape almost every pane grid ends up in, and what is missing is named rather than faked.",
         false,
         |s| on(s, Demo::PaneGrid(DPaneGrid { a: PaneGrid::new(
             // One word each: a `~text` selector splits its terms on
@@ -492,68 +570,34 @@ pub static CATALOG: &[Entry] = &[
             lbl_of("northwest"), lbl_of("northeast"),
             lbl_of("southwest"), lbl_of("southeast")) })),
         none),
-    // ---- M27/T27.12 -----------------------------------------------
-    entry!("Text", "RichText", "Words that wrap, and a span is a word.",
-        "The measure hook answers `how wide is this string`, not `where would it break` — so a span never wraps inside itself and the breaker only decides whether the next one fits.",
-        false,
-        |s| on(s, Demo::RichText(DRichText { a: RichText::new(RICH) })),
-        none),
-    entry!("Text", "Markdown", "Headings, bold, code, bullets.",
-        "No italic, deliberately: `Painter`'s only typographic axis is weight, and markup that rendered identically to plain text would claim to have done something.",
-        false,
-        |s| on(s, Demo::Markdown(DMarkdown { a: Markdown::new(DOC) })),
-        none),
-    entry!("Text", "RichTextEditor", "Type markup; see it rendered.",
-        "It edits *markup*, not a document model: one source of truth, which round-trips through a file and survives a reload as a `String`.",
-        false,
-        |s| on(s, Demo::RichTextEditor(DRichTextEditor {
-            a: RichTextEditor::new("# Title\n\nSome **bold** and `code`.") })),
-        none),
-    entry!("Text", "PaintBox", "A box the application draws into.",
-        "A plain `fn` pointer and not a closure — a `Box<dyn FnMut>` is a pointer into the old dylib after a reload, and everything the callback needs arrives as an argument.",
-        false,
-        |s| on(s, Demo::PaintBox(DPaintBox { a: PaintBox::new(sparkline) })),
-        none),
-    // ---- M27/T27.11 -----------------------------------------------
-    entry!("Input", "ColorPicker", "Six hues, four lightnesses.",
-        "A fixed palette, not a wheel: a wheel needs a saturation square and a hue strip — three geometries for a widget whose job is usually `pick one of the ones we use`.",
-        false,
-        |s| on(s, Demo::ColorPicker(DColorPicker { a: ColorPicker::new() })),
-        none),
-    entry!("Input", "DatePicker", "A month; the arrows page it.",
-        "A month grid is a lead-in of blanks and then the days, so the only real arithmetic is which weekday the 1st falls on — Sakamoto's, spelled out, because `chrono` is `std` and this runs on a microcontroller.",
-        false,
-        |s| on(s, Demo::DatePicker(DDatePicker { a: shown(DatePicker::new()) })),
-        none),
-    entry!("Input", "TimePicker", "Twenty-four hours over twelve marks.",
-        "Hours and five-minute marks in one grid: a clock is two lists, and two lists in one popup is one hit test instead of two.",
-        false,
-        |s| on(s, Demo::TimePicker(DTimePicker { a: TimePicker::new() })),
-        none),
-    entry!("Input", "FilePicker", "A list of names the application owns.",
-        "It owns no data either — the names are handed to it, the way a grid's rows are, because a file list belongs to whatever read the directory.",
-        false,
-        |s| on(s, Demo::FilePicker(DFilePicker {
-            a: FilePicker::new().with_files(&FILES) })),
-        none),
-    // ---- M27/T27.10 -----------------------------------------------
     entry!("Data", "Pagination", "Thirty pages; the window follows you.",
-        "Centred, not paged in blocks: a block-paged strip jumps under the finger — you press 5 and the numbers shift so 5 is somewhere else.",
         false,
         |s| on(s, Demo::Pagination(DPagination { a: Pagination::new(30) })),
         none),
     entry!("Data", "Tree", "Press a chevron; the subtree folds away.",
-        "Collapsing hides a whole subtree, not one row — and a *leaf* does not toggle, which is the difference between a chevron that does nothing and one that is not drawn.",
         false,
         |s| on(s, Demo::Tree(DTree { a: Tree::new(&TREE_ROWS) })),
         none),
-    entry!("Data", "DataGrid", "A header over virtualized rows.",
-        "It owns no data: its rows are a `Repeat` the application binds, because a grid is a view of a table someone else holds and copying it in would be a second copy to keep in step.",
+    entry!("Data", "DataGrid", "A sheet over virtualized rows; press a cell, or use the arrows.",
         false,
         |s| on(s, Demo::DataGrid(DDataGrid {
-            a: DataGrid::new(&["Name", "Size"], 200, 24.0, grid_row) })),
-        none),
+            a: {
+                let mut g = DataGrid::new(&["Name", "Type", "Size", "Lines"], 200, 26.0, grid_row);
+                // Sizes and line counts are numbers: their headers sit at
+                // the end of the column, where `EndCell` puts them (B51).
+                g.align[2] = lumen_static::style::Align::End;
+                g.align[3] = lumen_static::style::Align::End;
+                g
+            } })),
+        // The cell in a sheet's own notation: a column letter and a
+        // one-based row, as the gutter numbers it.
+        |s| match s.store.grid_cell {
+            Some((r, c)) => format!("selected: file-{r:03}.rs, cell {}{}", (b'A' + c as u8) as char, r + 1),
+            None => "selected: none".into(),
+        }),
 ];
 
 /// The series the charts share, so the three demos are comparable.
 pub static SAMPLE: &[f32] = &[3.0, 7.0, 4.0, 9.0, 6.0, 8.0, 5.0, 10.0, 7.5, 4.5];
+/// One per sample, under its bar or point (M57/B30).
+pub static SAMPLE_LABELS: &[&str] = &["J", "F", "M", "A", "M", "J", "J", "A", "S", "O"];

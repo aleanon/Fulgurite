@@ -23,6 +23,7 @@
 # still alive, and the log is per worktree (`target/live/gpu-parity-*.log`).
 set -euo pipefail
 cd "$(cd "$(dirname "$0")/.." && pwd)"
+. scripts/drive_window.sh  # live windows on the monitor the user is not reading
 LAUNCH="python3 scripts/live/launch.py --script gpu-parity"
 $LAUNCH --display-only || exit $?
 if ! command -v xwd >/dev/null; then

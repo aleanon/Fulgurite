@@ -374,7 +374,7 @@ mod bounded {
         switch: Switch<Sweep>,
         radio: Radio<Sweep>,
         badge: Badge,
-        chip: Chip,
+        chip: Chip<&'static str, Sweep>,
         progress: ProgressBar,
         divider: Divider,
         spinner: Spinner,

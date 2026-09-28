@@ -123,10 +123,22 @@ fn a_release_behind_sixty_three_moves_releases() {
 #[test]
 fn a_single_move_lands_where_it_was_posted() {
     let (mut h, x0, w, y) = host();
-    h.post(Event::down(x0 + w * 0.1, y));
+    // Pressed on the track, **off the knob**: a press on the knob keeps
+    // its offset from the knob's centre through the drag (M57/B14), which
+    // would move every later position by that offset. At 10% the press
+    // landed on the knob of a slider at 0.
+    h.post(Event::down(x0 + w * 0.3, y));
     h.pump();
     h.post(Event::PointerMove { x: x0 + w * 0.6, y });
     h.pump();
-    println!("one move to 0.6 under capture: value {}", h.app.ui.slider.value());
-    assert!((h.app.ui.slider.value() - 0.6).abs() < 1e-4, "the move landed at {}", h.app.ui.slider.value());
+    // **Against the slider's own mapping**, not `x / w`: since M57/B14 the
+    // knob's centre travels inside the track, so a pointer 60% along is
+    // not the value 0.6. A press made directly there — on the track, so
+    // with no grab offset — is what the delivered move must equal.
+    let (mut d, _, _, _) = host();
+    d.post(Event::down(x0 + w * 0.6, y));
+    d.pump();
+    let direct = d.app.ui.slider.value();
+    println!("one move to 60% under capture: value {}; a press there: {direct}", h.app.ui.slider.value());
+    assert!((h.app.ui.slider.value() - direct).abs() < 1e-4, "the move landed at {}, a press there gives {direct}", h.app.ui.slider.value());
 }

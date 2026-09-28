@@ -972,8 +972,8 @@ impl<R: Retention> Painter for Recording<'_, R> {
         let mut h = h_rect(fold(0, 4), rect);
         h = fold(h, radius.to_bits() as u64);
         h = fold(h, spread.to_bits() as u64);
-        let ink = [rect[0] - spread, rect[1] - spread, rect[2] + spread, rect[3] + spread];
-        self.ret.observe(h, ink);
+        // The drop included — M57/A14 (`crate::display::shadow_ink`).
+        self.ret.observe(h, crate::display::shadow_ink(rect, spread));
         self.inner.shadow(rect, radius, spread);
     }
 

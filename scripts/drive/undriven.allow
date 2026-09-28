@@ -26,7 +26,6 @@ Skeleton | M27 | takes no input
 Spinner | M27 | takes no input
 Avatar | M27 | takes no input
 Badge | M27 | takes no input
-Chip | M27 | takes no input
 Divider | M27 | takes no input
 Icon | M27 | takes no input
 
@@ -42,6 +41,8 @@ Anchor | n/a | data (a Popup's anchor)
 Series | n/a | data (a chart's series)
 OptionList | n/a | data (a chooser's options)
 Branch | n/a | data (a Tree's node)
+PageSlot | n/a | data (what a Pagination slot shows: a page or a gap, M57/B49)
+Edge | n/a | data (which side a Drawer or Sheet comes from)
 PageLabel | n/a | data (a Pagination's label)
 Span | n/a | data (a RichText span)
 Pad | n/a | data (a picker's cell pad)
@@ -50,4 +51,5 @@ Symbol | n/a | data (an Icon's glyph)
 
 # --- driven under another name -------------------------------------------
 Collapsible = Accordion
+Labelled = CheckBox
 Popup = Select

@@ -78,7 +78,10 @@ and prints the measured quantity beside its bound.*
   builds an `agent::Live`, whose `pump` calls `host.pump_with` and
   `backend.present` directly. `input.key` enqueues into the host's
   queue. The agent's key parser knows named keys only, with no letters,
-  so `input.key R` is rejected today. Non-input methods see only the
+  so `input.key R` is rejected today. *(True when written. M57/B8 made
+  any single character a key, `Key::Char`, with an optional `mods`
+  list, so `input.key R` now reaches the host's queue; the agent's
+  retry remains `app.retry`.)* Non-input methods see only the
   tree, and `AgentHost` has no accessor for host state.
 - **Application code also runs outside `pump_with`:** `tick` before and
   after the pump (`App::tick` and timers), `compose` (IME) and `paste`

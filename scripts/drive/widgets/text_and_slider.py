@@ -132,6 +132,7 @@ def _typed(c, text):
 
 TEXTINPUT = ("TextInput", "#d_textinput_a", [
     Action(
+        visible=True,
         name="a click focuses the field",
         needs="an unfocused text field",
         do=lambda c: c.click(),
@@ -140,6 +141,7 @@ TEXTINPUT = ("TextInput", "#d_textinput_a", [
         injection="stop setting focus on PointerDown in dispatch",
     ),
     Action(
+        visible=True,
         name="typing inserts at the caret",
         needs="a focused field with a known value",
         do=lambda c: _typed(c, "XY"),
@@ -150,6 +152,7 @@ TEXTINPUT = ("TextInput", "#d_textinput_a", [
         injection="drop the Event::Text arm in TextInput::on_event",
     ),
     Action(
+        visible=True,
         name="backspace removes the character before the caret",
         needs="a focused field with text in it",
         do=lambda c: (c.__dict__.__setitem__("_v0", c.value()), c.key("Backspace"))[0],
@@ -161,6 +164,7 @@ TEXTINPUT = ("TextInput", "#d_textinput_a", [
     ),
     *_motion_actions("TextInput", "whole value"),
     Action(
+        visible=True,
         name="fill replaces the whole value",
         needs="a field with any text in it",
         do=lambda c: (c.__dict__.__setitem__("_v0", c.value()),
@@ -287,6 +291,7 @@ def _keyed(c, key):
 # left it there would be the same hole as the click's was.
 SLIDER = ("Slider", "#d_slider_a", [
     Action(
+        visible=True,
         name="a click sets the value to where it landed",
         needs="a slider whose value is not already at the click point",
         do=lambda c: (c.__dict__.__setitem__("_x0", _val(c)), c.click())[0],
@@ -307,6 +312,7 @@ SLIDER = ("Slider", "#d_slider_a", [
         injection="drop the PointerDown arm in Slider::on_event",
     ),
     Action(
+        visible=True,
         name="End takes it to the maximum",
         needs="a focused slider below its maximum",
         do=lambda c: _keyed(c, "End"),
@@ -317,6 +323,7 @@ SLIDER = ("Slider", "#d_slider_a", [
         injection="drop the Key::End arm in Slider::on_event",
     ),
     Action(
+        visible=True,
         name="Home takes it to the minimum",
         needs="a focused slider above its minimum",
         do=lambda c: _keyed(c, "Home"),
@@ -327,6 +334,7 @@ SLIDER = ("Slider", "#d_slider_a", [
         injection="drop the Key::Home arm in Slider::on_event",
     ),
     Action(
+        visible=True,
         name="an arrow moves it by one step, not to an end",
         needs="a focused slider away from both ends",
         do=lambda c: _keyed(c, "Right"),

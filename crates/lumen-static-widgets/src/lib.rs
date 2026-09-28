@@ -102,6 +102,7 @@ pub mod reload;
 pub mod image;
 pub(crate) mod edit;
 pub mod input;
+pub mod labelled;
 pub mod ops;
 pub mod popup;
 pub mod scroll;
@@ -134,6 +135,7 @@ mod veil;
 pub use glass::Glass;
 pub use image::{Fit, Image};
 pub use input::TextInput;
+pub use labelled::Labelled;
 pub use ops::{Button, Fixed, Label, Spacer};
 pub use popup::{Anchor, Popup};
 pub use scroll::ScrollView;
@@ -143,14 +145,14 @@ pub use slider::Slider;
 pub use textarea::TextArea;
 pub use toggle::{CheckBox, Radio, Switch, Toggle};
 
-pub use chart::{BarChart, Chart, LineChart, PieChart, Series, MAX_POINTS};
+pub use chart::{fmt_num, nice_scale, BarChart, Chart, LineChart, PieChart, Series, MAX_POINTS};
 #[cfg(feature = "alloc")]
 pub use choose::{
     Chooser, Combobox, Menu, OptionList, PickList, COMBOBOX, MAX_OPTIONS, MENU, PICKLIST,
 };
 #[cfg(feature = "alloc")]
 pub use data::{
-    Branch, DataGrid, PageLabel, Pagination, Tree, MAX_COLUMNS, MAX_PAGES, MAX_TREE_NODES,
+    Branch, DataGrid, PageLabel, PageSlot, Pagination, Tree, MAX_COLUMNS, MAX_PAGES, MAX_TREE_NODES,
 };
 #[cfg(feature = "alloc")]
 pub use field::{NumberInput, RangeSlider, SearchField};
@@ -165,9 +167,9 @@ pub use pick::{
 };
 pub use nav::{AppBar, BottomNav, PullToRefresh, Item, NavigationRail, Strip, Tabs, MAX_ITEMS, BOTTOM, RAIL, TABS};
 pub use indicator::{ProgressBar, Skeleton, Spinner};
-pub use split::{Collapsible, PaneGrid, SplitPane, MAX_SPLIT_NODES};
+pub use split::{Collapsible, PaneGrid, SplitPane, VSplitPane, MAX_SPLIT_NODES};
 pub use surface::{Card, Toast, Tooltip, MAX_SURFACE_NODES};
-pub use veil::{Drawer, Modal, Sheet, Veil, DRAWER, MODAL, SHEET};
+pub use veil::{Drawer, Edge, Modal, Sheet, Veil, DRAWER, MODAL, SHEET};
 pub use trim::{Avatar, Badge, Chip, Divider, Icon, Symbol};
 
 /// Everything in this crate, for a `use` that keeps up.
@@ -177,7 +179,7 @@ pub mod prelude {
     // the rest of the set with them, which is the point.
     pub use crate::{
         Button, CheckBox, Fixed, Glass, Image, Label, Popup, Radio, ScrollView, Slider, Spacer,
-        Switch, TextArea, TextInput, Toggle,
+        Labelled, Switch, TextArea, TextInput, Toggle,
     };
     #[cfg(feature = "alloc")]
     pub use crate::Select;

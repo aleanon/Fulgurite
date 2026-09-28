@@ -164,11 +164,12 @@ pub enum Cmd {
     /// An **inset** stroked rounded rect: a border, drawn inside `rect`.
     ///
     /// Inset rather than expanded, and that is the whole reason this is a
-    /// command instead of a second `RoundedRect` underneath. The underlay
-    /// trick works — [`crate::ops::focus_ring`] uses it — but it paints
-    /// *outside* the node's box, which is right for a ring that means
-    /// "this has focus" and wrong for a border, because a bordered and an
-    /// unbordered control in the same row would no longer line up.
+    /// command instead of a second `RoundedRect` underneath. An underlay
+    /// paints *outside* the node's box, which is wrong for a border,
+    /// because a bordered and an unbordered control in the same row would
+    /// no longer line up. The focus ring was that underlay until M57/A6,
+    /// and is now this command too, given a rect outside the node
+    /// ([`crate::ops::focus_ring`]).
     ///
     /// **Four `Line`s were tried first, elsewhere, and failed visibly.**
     /// `focus_ring`'s first version drew them and the live gate caught it
@@ -781,6 +782,26 @@ impl Cmd {
 /// can assign; an immediate-mode implementation has nowhere to intern
 /// it. So the trait takes the bytes and `DisplayList`'s impl does the
 /// interning it already did.
+/// The rect a shadow of `spread` under `rect` is drawn around: dropped
+/// by a third of its spread, like light from above.
+pub fn shadow_drop(rect: Rect, spread: f32) -> Rect {
+    [rect[0], rect[1] + spread * 0.35, rect[2], rect[3] + spread * 0.35]
+}
+
+/// **Everything a shadow of `spread` under `rect` can touch** — M57/A14.
+///
+/// The drop above, then the spread on every side. Retention's damage for
+/// a shadow was the *undropped* rect inflated by the spread, so the lowest
+/// third of every shadow was outside it: a popup that shrank left the
+/// bottom of its old shadow on screen as a few grey rows
+/// (`docs/widget-audit.md`, Combobox). One function, used by both the
+/// list that draws the shadow and the recording that damages it, so the
+/// two cannot drift apart again.
+pub fn shadow_ink(rect: Rect, spread: f32) -> Rect {
+    let r = shadow_drop(rect, spread);
+    [r[0] - spread, r[1] - spread, r[2] + spread, r[3] + spread]
+}
+
 pub trait Painter {
     fn rect(&mut self, rect: Rect, color: Color);
     fn text_weighted(&mut self, rect: Rect, s: &str, size: f32, weight: f32, color: Color);
@@ -986,7 +1007,7 @@ impl DisplayList {
         }
         // Dropped a little, like light from above; ~30% black at the
         // edge. The renderer owns the falloff curve.
-        let r = [rect[0], rect[1] + spread * 0.35, rect[2], rect[3] + spread * 0.35];
+        let r = shadow_drop(rect, spread);
         self.cmds.push(Cmd::Shadow { rect: r, color: Color(0, 0, 0, 80), radius, spread });
     }
 
@@ -1127,6 +1148,37 @@ impl<'a> Scaled<'a> {
     fn r(&self, r: Rect) -> Rect {
         [r[0] * self.scale, r[1] * self.scale, r[2] * self.scale, r[3] * self.scale]
     }
+
+    /// [`Scaled::r`], with every edge **on the device pixel grid** —
+    /// M57/A15 (`docs/plan-widget-fixes.md`).
+    ///
+    /// Layout centres things, and centring lands on halves: a divider at
+    /// y 428.5–429.5 was rasterised as two full rows, because the
+    /// software renderer rounds an axis-aligned edge outward
+    /// (`docs/widget-audit.md` X10) — so a 1 px hairline drew 2 px wide
+    /// and a bordered button's edge smeared. Rounding the edges here,
+    /// where logical becomes physical, is the one place every fill and
+    /// border passes, at any scale. An edge pair that would round to
+    /// nothing keeps its physical extent instead, so a hairline narrower
+    /// than a pixel is never erased.
+    #[inline]
+    fn snapped(&self, r: Rect) -> Rect {
+        let p = self.r(r);
+        let (x0, x1) = snap_pair(p[0], p[2]);
+        let (y0, y1) = snap_pair(p[1], p[3]);
+        [x0, y0, x1, y1]
+    }
+}
+
+/// Round an edge pair to whole pixels, unless that would leave nothing.
+#[inline]
+fn snap_pair(a: f32, b: f32) -> (f32, f32) {
+    let (ra, rb) = (crate::num::round(a), crate::num::round(b));
+    if rb > ra || b <= a {
+        (ra, rb)
+    } else {
+        (a, b)
+    }
 }
 
 /// `x` to the nearest integer, **ties to even** — the FPU's own rounding,
@@ -1183,9 +1235,13 @@ impl Painter for Scaled<'_> {
     /// price is that a hairline is one or two pixels depending on where
     /// it sits at 1.5, which is what platform toolkits draw too.
     ///
-    /// Plain rects only. Rounded and stroked rects go through the SDF the
-    /// two backends share and already agree; text, lines, gradients,
-    /// images and glass keep their exact geometry. An empty or
+    /// This is the plain-rect path. Rounded and stroked rects are snapped
+    /// too, through [`Scaled::snapped`] (M57/A15): a bordered button's
+    /// edge and a focus ring smeared across two rows at a fractional
+    /// layout edge, and the SDF the backends share agrees on a snapped
+    /// rect as well as on an exact one. A text run's origin goes to the
+    /// grid and its size is kept. Lines, gradients, images and glass keep
+    /// their exact geometry. An empty or
     /// non-finite rect is forwarded unsnapped, so snapping can never
     /// turn nothing into a pixel. Applies at 1.0 too, where a fractional
     /// *layout* edge over-inked by the same mechanism
@@ -1202,17 +1258,21 @@ impl Painter for Scaled<'_> {
         self.inner.rect([x0, y0, x1, y1], color);
     }
     fn text_weighted(&mut self, rect: Rect, s: &str, size: f32, weight: f32, color: Color) {
+        // The run's *origin* on the grid, its size kept: a glyph run
+        // starting on a half pixel is rasterised soft (M57/A15).
         let r = self.r(rect);
+        let (dx, dy) = (crate::num::round(r[0]) - r[0], crate::num::round(r[1]) - r[1]);
+        let r = [r[0] + dx, r[1] + dy, r[2] + dx, r[3] + dy];
         let size = size * self.scale;
         self.inner.text_weighted(r, s, size, weight, color);
     }
     fn rounded_rect(&mut self, rect: Rect, color: Color, radius: f32) {
-        let r = self.r(rect);
+        let r = self.snapped(rect);
         let radius = radius * self.scale;
         self.inner.rounded_rect(r, color, radius);
     }
     fn stroked_rect(&mut self, rect: Rect, color: Color, radius: f32, width: f32) {
-        let r = self.r(rect);
+        let r = self.snapped(rect);
         // The width scales too. A border that kept its logical width on a
         // 2x display would be half as thick as everything around it.
         self.inner.stroked_rect(r, color, radius * self.scale, width * self.scale);

@@ -269,6 +269,61 @@ pub trait Node {
         None
     }
 
+    /// The row a key activation should reach instead of the focused node —
+    /// M57/B21 — as `(repeater's table index, row, template node)`.
+    ///
+    /// For a widget whose choices are virtual rows the keyboard cannot
+    /// focus: a `Select` walks a highlight with the arrows, and Enter on its
+    /// trigger must run the highlighted row's handler, not the trigger's.
+    /// `i` is this node's own table index. `None` by default.
+    fn activation_redirect(&self, i: usize) -> Option<(u32, u64, u32)> {
+        let _ = i;
+        None
+    }
+
+    /// How far this node's content is scrolled from its top, for a node
+    /// that scrolls; `None` for one that does not — M57/B40.
+    ///
+    /// Asked by a parent that must act only at the top of what it holds: a
+    /// pull-to-refresh pulled on every downward wheel, so inside a list it
+    /// would have taken every scroll (`docs/widget-audit.md`,
+    /// PullToRefresh). `ScrollView` and `Repeat` answer.
+    fn scroll_offset(&self) -> Option<f32> {
+        None
+    }
+
+    /// Whether a press **outside** this overlay dismisses it — M57/A13.
+    ///
+    /// `dismiss` answers two requests: Escape, and a press outside every
+    /// open overlay. A menu wants both. A veil claims its whole box through
+    /// `hit` — a press inside it is on the scrim or the panel — so a press
+    /// outside that box never reached it, and must not ask it to close:
+    /// the widget drive caught a showcase modal requesting dismissal for a
+    /// click on the stage beside it. `false` makes Escape the only way
+    /// the pass dismisses this node.
+    fn dismissed_by_outside_press(&self) -> bool {
+        true
+    }
+
+    /// Whether moving focus onto this node by an arrow key also
+    /// activates it — M57/B13. A radio: the arrows in a radio group move
+    /// the *selection*, as on every desktop, where they only moved focus
+    /// and left the choice behind (`docs/widget-audit.md`, Radio).
+    /// `false` by default; Tab never activates.
+    fn selects_on_focus(&self) -> bool {
+        false
+    }
+
+    /// The cursor at `local` (from this node's origin), where it depends
+    /// on the point — M57/B48. A pane grid shows a column-resize cursor
+    /// over its vertical divider and a row-resize one over the others;
+    /// a style has one cursor per node. `None`, the default, leaves the
+    /// style's.
+    fn cursor_at(&self, local: crate::desc::Point) -> Option<crate::style::Cursor> {
+        let _ = local;
+        None
+    }
+
     /// One step of an input-method composition (T14.8).
     ///
     /// `false` from a node that does not edit text, which is what lets
@@ -419,6 +474,35 @@ pub trait Node {
     /// layout writes only its `NodeState` row. `Label`, `Repeat`,
     /// `TextInput`, `TextArea`, `Pagination`, `Strip`, `RichText`,
     /// `Markdown` and `NumberInput` override it.
+    /// Whether this node's content is **deliberately absent** right now —
+    /// a closed popup.
+    ///
+    /// The audit's `W1001` reports a leaf with content and no box, which
+    /// is what a parent that squeezed its child to nothing produces. A
+    /// closed popup produces the same geometry on purpose, and geometry
+    /// cannot tell the two apart — so every closed chooser, picker and
+    /// select reported its list as "present in the tree, absent on
+    /// screen", all the time, and the drive only ever compared a finding
+    /// with itself (M57, found by a combobox action whose list changed
+    /// length while closed). Declared by the node, as
+    /// [`Node::overlaps_children`] is for `W1004`. Asked of the node at
+    /// its own index, so a wrapper never forwards it. Not behind
+    /// `observe`, for the same reason as that one.
+    fn content_absent(&self) -> bool {
+        false
+    }
+
+    /// The agent's audit asking for this node's natural size, under a
+    /// million-pixel box. The provided body is `layout`.
+    ///
+    /// **A probe may not change what the next paint draws.** Since
+    /// M57/A3 the audit lays the node out again under its real limits
+    /// straight after probing, which restores any cache that is a
+    /// function of the limits — so a widget needs no override just
+    /// because it caches (`docs/widget-audit.md` X1 was five widgets
+    /// that did). Override it only where layout itself would decide
+    /// something a probe must not, as `Repeat` does with its scroll
+    /// clamp (T27.10).
     #[cfg(feature = "observe")]
     fn probe(
         &mut self,

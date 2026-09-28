@@ -97,9 +97,17 @@ indicator is the difference between a keyboard user being able to use an
 application and not, and this is the cheapest way to make it the default
 rather than a thing each widget must remember.
 
+**Disabled is a style too** (M57/A16). `Patch::disabled(true)` makes
+a node, and everything inside it, refuse hits, focus and activation. It
+paints faded, and the agent reports it as disabled. It is a `Style`
+field for the reason the ring is: it cascades, so a rule can switch a
+whole form section off.
+
 `focus_visible` distinguishes keyboard focus from pointer focus, so a
-click does not leave a ring behind. It is one write per frame rather than
-a per-node flag — there is one focus, and storing the answer per node
+click does not leave a ring behind. The ring itself is drawn by the host,
+once per frame, around the focused node — no widget draws its own
+(M57/A6; the frame chapter says why). Visibility is one field on the
+input state rather than a per-node flag — there is one focus, and storing the answer per node
 would have grown `NodeState` for every node of every tree to say
 something about one of them.
 

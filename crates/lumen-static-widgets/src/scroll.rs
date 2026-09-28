@@ -264,6 +264,12 @@ impl<W: Widget> Node for ScrollView<W> {
     fn clips_children(&self) -> bool {
         true
     }
+
+    /// How far the content is scrolled — M57/B40 (`Node::scroll_offset`).
+    fn scroll_offset(&self) -> Option<f32> {
+        Some(self.scroll)
+    }
+
     fn kind_name(&self) -> &'static str {
         <Self as Widget>::KIND
     }
@@ -284,7 +290,10 @@ impl<W: Widget> Node for ScrollView<W> {
         if !me.visible {
             return lumen_static::ops::hide_subtree(st, i, limits, Self::NODE_COUNT);
         }
-        let inner = inner_limits(limits, me.padding);
+        // Inside its own `Fixed` size, not across the offer (M57/B26:
+        // the same defect M56 found in the derive, in a hand-written
+        // wrapper; `tests/wrapper_own_size.rs`).
+        let inner = inner_limits(lumen_static::ops::within_own_size(limits, &me), me.padding);
 
         // The viewport, resolved before the content: `Fill` inside needs
         // it, and it does not depend on the content — a scroller is

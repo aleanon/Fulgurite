@@ -70,6 +70,14 @@ pub const MAX_FILES: usize = 64;
 const CELL_H: f32 = 26.0;
 /// The month header's height — `< Sep 2026 >`.
 const HEAD_H: f32 = 28.0;
+/// How far in from each end of the date header a press pages the month —
+/// twice the arrow's drawn width, so it is a target and not a glyph
+/// (M57/B17).
+const ARROW_HIT: f32 = 28.0;
+/// Rows a file list shows before it scrolls — M57/B19. A long list was a
+/// popup taller than the window.
+pub const FILE_ROWS: usize = 8;
+
 /// The weekday strip under it.
 ///
 /// **A calendar without weekday headings is a grid of numbers.** The
@@ -120,10 +128,17 @@ pub fn weekday_of(year: i32, month: u8, day: u8) -> u8 {
 pub struct Pad<const KIND: u8> {
     /// `COLOR`: which swatch.
     pub color: usize,
-    /// `DATE`: the month on show, and the chosen day.
+    /// `DATE`: the **chosen** date.
     pub year: i32,
     pub month: u8,
     pub day: u8,
+    /// `DATE`: the month **on show**, when it is not the chosen one —
+    /// M57/B17 (`docs/plan-widget-fixes.md`). Paging moved `year`/`month`,
+    /// which the trigger reads: one press on `›` changed the chosen date
+    /// from 2026-09-19 to 2026-10-19, and clamped a 31st to a 28th, without
+    /// a day being picked (`docs/widget-audit.md`, DatePicker). The view is
+    /// separate now, and only a day press commits.
+    pub view: Option<(i32, u8)>,
     /// `TIME`.
     pub hour: u8,
     pub minute: u8,
@@ -131,6 +146,8 @@ pub struct Pad<const KIND: u8> {
     files: [&'static str; MAX_FILES],
     file_count: usize,
     pub file: usize,
+    /// `FILE`: the first file on show, moved by the wheel (M57/B19).
+    first: usize,
     /// The cell under the pointer, for the hover shade.
     hot: Option<usize>,
     /// Set when a cell was chosen; the `Picker` takes it in `layout`,
@@ -142,6 +159,10 @@ pub struct Pad<const KIND: u8> {
     /// would pick the wrong cell for every styled pad.
     size: Size,
     pad: Edges,
+    /// Widths of a one- and a two-digit label, measured at layout, so the
+    /// grid can centre numbers in their cells (M57/B17: they sat 4 px in
+    /// from the left, a ragged column under each weekday heading).
+    digit_w: (f32, f32),
 }
 
 impl<const KIND: u8> Default for Pad<KIND> {
@@ -151,13 +172,16 @@ impl<const KIND: u8> Default for Pad<KIND> {
             year: 2026,
             month: 9,
             day: 19,
+            view: None,
             hour: 9,
             minute: 0,
             files: [""; MAX_FILES],
             file_count: 0,
             file: 0,
+            first: 0,
             hot: None,
             picked: false,
+            digit_w: (0.0, 0.0),
             size: Size { w: 0.0, h: 0.0 },
             pad: Edges::all(8.0),
         }
@@ -187,7 +211,8 @@ impl<const KIND: u8> Pad<KIND> {
             DATE => 42,
             // Twenty-four hours, then twelve five-minute marks.
             TIME => 36,
-            _ => self.file_count,
+            // A window of the list: visible cell `k` is file `k + first`.
+            _ => self.file_count.min(FILE_ROWS),
         }
     }
 
@@ -219,12 +244,19 @@ impl<const KIND: u8> Pad<KIND> {
 
     /// The day in cell `k`, or `None` for a lead-in or trailing blank.
     pub fn day_at(&self, k: usize) -> Option<u8> {
-        let lead = weekday_of(self.year, self.month, 1) as usize;
-        let dim = days_in_month(self.year, self.month) as usize;
+        let (year, month) = self.shown_month();
+        let lead = weekday_of(year, month, 1) as usize;
+        let dim = days_in_month(year, month) as usize;
         if k < lead || k >= lead + dim {
             return None;
         }
         Some((k - lead + 1) as u8)
+    }
+
+    /// How many names a `FilePicker` holds — not how many it shows, which
+    /// is [`Pad::cells`], at most [`FILE_ROWS`] (M57/B19).
+    pub fn file_count(&self) -> usize {
+        self.file_count
     }
 
     /// The name in cell `k`.
@@ -240,10 +272,10 @@ impl<const KIND: u8> Pad<KIND> {
     pub fn is_selected(&self, k: usize) -> bool {
         match KIND {
             COLOR => k == self.color,
-            DATE => self.day_at(k) == Some(self.day),
+            DATE => self.shown_month() == (self.year, self.month) && self.day_at(k) == Some(self.day),
             TIME if k < 24 => k as u8 == self.hour,
             TIME => (k - 24) as u8 * 5 == self.minute,
-            _ => k == self.file,
+            _ => k + self.first == self.file,
         }
     }
 
@@ -265,12 +297,17 @@ impl<const KIND: u8> Pad<KIND> {
         self.file = self.file.min(self.file_count.saturating_sub(1));
     }
 
-    /// The month, shifted by `d` months, keeping the day in range.
+    /// The month the grid shows: the view, or the chosen month.
+    pub fn shown_month(&self) -> (i32, u8) {
+        self.view.unwrap_or((self.year, self.month))
+    }
+
+    /// Page the **shown** month by `d` — M57/B17. The chosen date does not
+    /// move; only a day press commits one.
     pub fn shift_month(&mut self, d: i32) {
-        let total = self.year * 12 + (self.month as i32 - 1) + d;
-        self.year = total.div_euclid(12);
-        self.month = (total.rem_euclid(12) + 1) as u8;
-        self.day = self.day.min(days_in_month(self.year, self.month));
+        let (y, m) = self.shown_month();
+        let total = y * 12 + (m as i32 - 1) + d;
+        self.view = Some((total.div_euclid(12), (total.rem_euclid(12) + 1) as u8));
     }
 
     /// The cell the keyboard or the pointer has lit, if any.
@@ -345,26 +382,34 @@ impl<const KIND: u8> Pad<KIND> {
             }
             DATE => match self.day_at(k) {
                 Some(d) => {
+                    // The day, *in the month on show*: this is the commit.
+                    (self.year, self.month) = self.shown_month();
                     self.day = d;
+                    self.view = None;
                     self.picked = true;
                     true
                 }
                 None => false,
             },
+            // **An hour does not close the clock** — M57/B18. Picking the
+            // hour closed the popup, so a time was always HH:00 unless the
+            // user opened it twice. The hour is set and the popup stays;
+            // the minute is the commit.
             TIME => {
                 if k < 24 {
                     self.hour = k as u8;
                 } else {
                     self.minute = (k - 24) as u8 * 5;
+                    self.picked = true;
                 }
-                self.picked = true;
                 true
             }
             _ => {
-                if k >= self.file_count {
+                let f = k + self.first;
+                if f >= self.file_count {
                     return false;
                 }
-                self.file = k;
+                self.file = f;
                 self.picked = true;
                 true
             }
@@ -383,6 +428,11 @@ impl<const KIND: u8> Widget for Pad<KIND> {
     const NODE_COUNT: usize = 1;
     const DEPTH: usize = 1;
     const IS_RIGID: bool = false;
+    // **Not focusable**: the trigger keeps focus and walks the pad with
+    // the arrows (M44/T44.10). M57/A12 had made the pad focusable so focus
+    // could move into it, but gave it no keys of its own — and with
+    // M44/T44.9's "an overlay that opens takes focus" the first arrow
+    // then landed on a pad that declined it and moved focus elsewhere.
     const SUB_TABLE: &'static [NodeDesc] = &[NodeDesc::new(0, NO_PARENT, 0, 0, 0)];
     const KIND: &'static str = match KIND {
         COLOR => "colorpad",
@@ -399,7 +449,7 @@ impl<const KIND: u8> Widget for Pad<KIND> {
             Fields::FONT_SIZE,
             Fields::RADIUS,
             Fields::VISIBLE,
-        ]))];
+        ])).with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Text).background(lumen_static::style::Role::Raised))];
 
     fn type_defaults() -> Style {
         Style {
@@ -419,7 +469,7 @@ impl<const KIND: u8> Widget for Pad<KIND> {
 impl<const KIND: u8> Node for Pad<KIND> {
     fn layout(
         &mut self,
-        _cx: &mut LayoutCx,
+        cx: &mut LayoutCx,
         limits: Constraints,
         style: &[Style],
         st: &mut [NodeState],
@@ -429,6 +479,10 @@ impl<const KIND: u8> Node for Pad<KIND> {
         if !me.visible {
             return lumen_static::ops::hide_subtree(st, i, limits, 1);
         }
+        if KIND == DATE || KIND == TIME {
+            let mut m = |t: &str| cx.text.measure_weighted(t, me.font_size, me.font_weight, f32::INFINITY).w;
+            self.digit_w = (m("8"), m("28"));
+        }
         let content = Size {
             w: self.cols() as f32 * self.cell_w() + me.padding.horizontal(),
             h: self.head_h() + self.rows() as f32 * CELL_H + me.padding.vertical(),
@@ -437,6 +491,20 @@ impl<const KIND: u8> Node for Pad<KIND> {
         self.size = s;
         self.pad = me.padding;
         lumen_static::ops::record_painted(st, i, limits, s, &me)
+    }
+
+    /// What a screen reader and the agent are told — M57/A17.
+    #[cfg(feature = "a11y")]
+    fn observe(
+        &self,
+        _st: &[NodeState],
+        _i: usize,
+        _id: u64,
+        node: &mut lumen_static::observe::accesskit::Node,
+        _extra: &mut alloc::vec::Vec<(lumen_static::observe::accesskit::NodeId, lumen_static::observe::accesskit::Node)>,
+    ) {
+        // The pad is a grid of choices: swatches, days, times, files.
+        node.set_role(lumen_static::observe::accesskit::Role::Grid);
     }
 
     fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
@@ -452,7 +520,8 @@ impl<const KIND: u8> Node for Pad<KIND> {
         lumen_static::ops::border(st, i, out);
         let (x0, y0) = (r[0] + s.pad.0, r[1] + s.pad.1);
         if KIND == DATE {
-            let m = MONTHS[(self.month.clamp(1, 12) - 1) as usize];
+            let (year, month) = self.shown_month();
+            let m = MONTHS[(month.clamp(1, 12) - 1) as usize];
             out.text_weighted(
                 [x0, y0 + 4.0, x0 + 14.0, y0 + HEAD_H],
                 "<",
@@ -460,7 +529,7 @@ impl<const KIND: u8> Node for Pad<KIND> {
                 700.0,
                 s.fg,
             );
-            let title = alloc::format!("{m} {}", self.year);
+            let title = alloc::format!("{m} {year}");
             out.text_weighted(
                 [x0 + 20.0, y0 + 4.0, r[2] - s.pad.2 - 20.0, y0 + HEAD_H],
                 &title,
@@ -477,10 +546,12 @@ impl<const KIND: u8> Node for Pad<KIND> {
             );
             // The weekday strip, one label per column, dimmed: it is a
             // heading, not a row of cells, and nothing in it is
-            // pressable. **Dimmed to 0xb4, not 0x99** (M54/T54.6): at 0x99
-            // the strip measured 4.04:1 on the pad's white, under AA
-            // (`docs/results-a11y-platform.md`).
-            let dim = Color(s.fg.0, s.fg.1, s.fg.2, 0xb4);
+            // pressable. **Dimmed to 0xb8, not 0x99**: at 0x99 the strip
+            // measured 4.04:1 on the pad's white (M54/T54.6,
+            // `docs/results-a11y-platform.md`) and 4.30:1 on the showcase's
+            // pad (M57/A8's demo contrast gate), both under AA. Both
+            // programs raised it; this is the higher of the two.
+            let dim = Color(s.fg.0, s.fg.1, s.fg.2, 0xb8);
             for (c, d) in DOW.iter().enumerate() {
                 let x = x0 + c as f32 * self.cell_w();
                 out.text_weighted(
@@ -510,15 +581,16 @@ impl<const KIND: u8> Node for Pad<KIND> {
             let cell = [x, y, x + self.cell_w(), y + CELL_H];
             let selected = self.is_selected(k);
             if KIND == COLOR {
-                let inset = if selected { 1.0 } else { 3.0 };
+                // **A ring, a gap, then the swatch** — M57/B16. The ring
+                // was the text colour straight against the swatch, so on a
+                // dark swatch the selection all but vanished. The gap in
+                // the pad's own ground separates them whatever the swatch.
+                let sw = [cell[0] + 5.0, cell[1] + 3.0, cell[2] - 5.0, cell[3] - 3.0];
                 if selected {
-                    out.rounded_rect(cell, s.fg, 7.0);
+                    out.rounded_rect([sw[0] - 3.0, sw[1] - 3.0, sw[2] + 3.0, sw[3] + 3.0], s.fg, 8.0);
+                    out.rounded_rect([sw[0] - 1.5, sw[1] - 1.5, sw[2] + 1.5, sw[3] + 1.5], s.bg, 6.5);
                 }
-                out.rounded_rect(
-                    [cell[0] + inset + 2.0, cell[1] + inset, cell[2] - inset - 2.0, cell[3] - inset],
-                    SWATCHES[k.min(SWATCHES.len() - 1)],
-                    5.0,
-                );
+                out.rounded_rect(sw, SWATCHES[k.min(SWATCHES.len() - 1)], 5.0);
                 continue;
             }
             let text = match KIND {
@@ -528,7 +600,7 @@ impl<const KIND: u8> Node for Pad<KIND> {
                 },
                 TIME if k < 24 => alloc::format!("{k}"),
                 TIME => alloc::format!(":{:02}", (k - 24) * 5),
-                _ => String::from(self.file_at(k)),
+                _ => String::from(self.file_at(k + self.first)),
             };
             if selected {
                 out.rounded_rect(cell, s.fg, 6.0);
@@ -536,8 +608,15 @@ impl<const KIND: u8> Node for Pad<KIND> {
                 out.rounded_rect(cell, Color(s.fg.0, s.fg.1, s.fg.2, 0x22), 6.0);
             }
             let col = if selected { s.bg } else { s.fg };
+            // A number is centred in its cell; a file name or a minute
+            // label stays left-aligned, where a list reads from.
+            let tx = match (KIND, text.len()) {
+                (DATE, 1) | (TIME, 1) => cell[0] + ((cell[2] - cell[0]) - self.digit_w.0) / 2.0,
+                (DATE, 2) | (TIME, 2) => cell[0] + ((cell[2] - cell[0]) - self.digit_w.1) / 2.0,
+                _ => cell[0] + 4.0,
+            };
             out.text_weighted(
-                [cell[0] + 4.0, y + CELL_H / 2.0 - s.font_size * 0.6, cell[2] - 4.0, cell[3]],
+                [tx, y + CELL_H / 2.0 - s.font_size * 0.6, cell[2] - 4.0, cell[3]],
                 &text,
                 s.font_size,
                 s.font_weight,
@@ -549,6 +628,17 @@ impl<const KIND: u8> Node for Pad<KIND> {
     fn on_event(&mut self, ev: &Event, cx: &EventCtx) -> bool {
         let pad = self.pad;
         match ev {
+            // The pointer left: no cell is hot (M57/B50).
+            Event::Leave => self.hot.take().is_some(),
+            // A long file list scrolls by rows (M57/B19). Declined at an
+            // end, so the wheel chains to what is behind, as a scroller's
+            // does (C4).
+            Event::Scroll { dy, .. } if KIND == FILE => {
+                let rows = (lumen_static::num::round(dy.abs() / CELL_H) as usize).max(1);
+                let last = self.file_count.saturating_sub(FILE_ROWS);
+                let to = if *dy < 0.0 { (self.first + rows).min(last) } else { self.first.saturating_sub(rows) };
+                core::mem::replace(&mut self.first, to) != to
+            }
             Event::PointerMove { .. } => {
                 let was = self.hot;
                 self.hot = self.cell_at(cx.local.x, cx.local.y, pad);
@@ -559,8 +649,17 @@ impl<const KIND: u8> Node for Pad<KIND> {
             // drags off the cell must not choose it.
             Event::PointerUp { .. } => {
                 if KIND == DATE && cx.local.y - pad.top < HEAD_H {
-                    let right = cx.local.x > self.size.w / 2.0;
-                    self.shift_month(if right { 1 } else { -1 });
+                    // **Only the arrows page** — M57/B17. Any press in the
+                    // header paged, split at the middle, so the right half
+                    // of "Oct 2026" went forward and the left half back.
+                    // The arrows are drawn 14 px wide at each end; their
+                    // targets are 28 px, and the title between does nothing.
+                    let x = cx.local.x;
+                    if x < pad.left + ARROW_HIT {
+                        self.shift_month(-1);
+                    } else if x > self.size.w - pad.right - ARROW_HIT {
+                        self.shift_month(1);
+                    }
                     return true;
                 }
                 match self.cell_at(cx.local.x, cx.local.y, pad) {
@@ -604,11 +703,13 @@ pub struct Picker<const KIND: u8 = COLOR> {
     /// through `set_label`, which every build has.
     #[cfg(feature = "a11y")]
     pub label: &'static str,
+    /// The trigger text's line height, from layout.
+    line_h: f32,
 }
 
 impl<const KIND: u8> Default for Picker<KIND> {
     fn default() -> Self {
-        Picker { pad: Popup::new(Pad::<KIND>::default()), trigger: Size { w: 0.0, h: 0.0 },
+        Picker { pad: Popup::new(Pad::<KIND>::default()), trigger: Size { w: 0.0, h: 0.0 }, line_h: 0.0,
             #[cfg(feature = "a11y")]
             label: "",
         }
@@ -618,6 +719,11 @@ impl<const KIND: u8> Default for Picker<KIND> {
 impl<const KIND: u8> Picker<KIND> {
     const TRIGGER: usize = 1;
     const POPUP: usize = 2;
+    /// The space between the trigger and its pad, on whichever side the
+    /// pad opens. One constant for both paths, because the flip path
+    /// once left it out and a pad opened above ended 4 px inside its own
+    /// trigger (M57/D6).
+    const GAP: f32 = 4.0;
 
     pub fn new() -> Self {
         Self::default()
@@ -706,7 +812,10 @@ impl<const KIND: u8> PickerTable<KIND> {
                 Fields::RADIUS,
                 Fields::BORDER,
                 Fields::VISIBLE,
-            ]));
+                Fields::CURSOR,
+                Fields::HOVER_DIM,
+                Fields::PRESSED_DIM,
+            ])).with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Text).background(lumen_static::style::Role::Raised).border(lumen_static::style::Role::Border));
         lumen_static::widget::splice_seeds(&mut s, 2, <Popup<Pad<KIND>> as Widget>::SEEDS);
         s
     };
@@ -746,6 +855,10 @@ impl<const KIND: u8> Picker<KIND> {
             border_color: Color(0xcb, 0xd2, 0xdb, 0xff),
             font_size: 14.0,
             radius: 8.0,
+            // A control that opens something says so (M57/B16).
+            cursor: lumen_static::style::Cursor::Pointer,
+            hover_dim: 0.04,
+            pressed_dim: 0.10,
             ..Style::default()
         }
     }
@@ -805,6 +918,11 @@ impl<const KIND: u8> Node for Picker<KIND> {
             &style[i + Self::TRIGGER],
         );
         self.trigger = t;
+        self.line_h = cx.text.line_height(style[i + Self::TRIGGER].font_size);
+        // Flipping above clears the trigger (M57/A18).
+        // The anchor is a gap under the trigger, so flipping crosses that
+        // gap, the trigger, and a gap above it — as `Tooltip` does.
+        self.pad.above_by = t.h + 2.0 * Self::GAP;
         self.pad.layout(cx, limits, style, st, i + Self::POPUP);
         let s = lumen_static::ops::resolve_self(limits, &me, t);
         lumen_static::ops::record_painted(st, i, limits, s, &me)
@@ -814,7 +932,7 @@ impl<const KIND: u8> Node for Picker<KIND> {
         st[i].pos = origin;
         st[i + Self::TRIGGER].pos = origin;
         self.pad.place(
-            Point { x: origin.x, y: origin.y + st[i + Self::TRIGGER].size.h + 4.0 },
+            Point { x: origin.x, y: origin.y + st[i + Self::TRIGGER].size.h + Self::GAP },
             style,
             st,
             i + Self::POPUP,
@@ -835,14 +953,17 @@ impl<const KIND: u8> Node for Picker<KIND> {
                 out.rounded_rect([x, mid - 8.0, x + 16.0, mid + 8.0], c, 4.0);
                 x += 24.0;
             }
+            // Centred on the line box, as a button centres its label —
+            // the renderer puts the capitals in its middle (M57/B19: it
+            // was placed from a 0.6 em guess and sat high).
             let text = self.text();
-            out.text_weighted(
-                [x, (r[1] + r[3]) / 2.0 - s.font_size * 0.6, r[2] - s.pad.2, r[3]],
-                &text,
-                s.font_size,
-                s.font_weight,
-                s.fg,
-            );
+            let y = (r[1] + r[3] - self.line_h) / 2.0;
+            let chev = 16.0;
+            out.text_weighted([x, y, r[2] - s.pad.2 - chev, y + self.line_h], &text, s.font_size, s.font_weight, s.fg);
+            // A chevron: this opens (M57/B16).
+            let (cx, cy, d) = (r[2] - s.pad.2 - chev / 2.0, (r[1] + r[3]) / 2.0, 3.5);
+            out.line(Point { x: cx - d, y: cy - d / 2.0 }, Point { x: cx, y: cy + d / 2.0 }, 1.5, s.fg);
+            out.line(Point { x: cx, y: cy + d / 2.0 }, Point { x: cx + d, y: cy - d / 2.0 }, 1.5, s.fg);
         }
         self.pad.paint(st, i + Self::POPUP, out);
     }
@@ -864,7 +985,7 @@ impl<const KIND: u8> Node for Picker<KIND> {
         None
     }
 
-    fn on_event(&mut self, ev: &Event, _cx: &EventCtx) -> bool {
+    fn on_event(&mut self, ev: &Event, cx: &EventCtx) -> bool {
         match ev {
             // A screen reader's open and close (M54/T54.4).
             Event::Action { action: lumen_static::Action::Expand, .. } => {
@@ -900,13 +1021,25 @@ impl<const KIND: u8> Node for Picker<KIND> {
                 self.pad.open = true;
                 true
             }
+            // **Only the trigger toggles** — M57/B16. A press on the pad's
+            // own padding or its weekday strip is declined by the pad and
+            // bubbled here, and this flipped `open` for any release: the
+            // popup closed under a press inside it. The trigger is this
+            // node's own index (`node(1)` is `self`), so a release aimed
+            // at it arrives with `node == target`; one bubbled up from the
+            // pad does not.
+            Event::PointerUp { .. } | Event::Key { key: Key::Enter | Key::Space, down: true }
+                if cx.target != cx.node =>
+            {
+                false
+            }
             // **A press on the trigger opens it; a press anywhere else
             // does not reach here.** `dispatch_overlaid` consumes a
             // press that misses every open overlay — so this arm cannot
             // re-open what that press just closed, which is the
             // second-press-closes behaviour a dropdown needs and the one
             // `Chooser` had to reach for focus to get (T27.9).
-            Event::PointerUp { .. } | Event::Key { key: Key::Enter, down: true } => {
+            Event::PointerUp { .. } | Event::Key { key: Key::Enter | Key::Space, down: true } => {
                 self.pad.open = !self.pad.open;
                 true
             }
@@ -968,8 +1101,17 @@ pub type ColorPicker = Picker<COLOR>;
 /// A month, with `<` and `>`.
 pub type DatePicker = Picker<DATE>;
 /// Hours over five-minute marks.
+///
+/// **One grid, not two lists.** A clock is an hour list and a minute list;
+/// putting both in one popup of cells — twenty-four hours, then twelve
+/// five-minute marks — makes it one hit test instead of two. The seam
+/// painted between them is what keeps it reading as two.
 pub type TimePicker = Picker<TIME>;
 /// A list of names the application supplies.
+///
+/// **It owns no data.** It does not read a directory; the names are handed
+/// to it (`Picker::with_files`), the way a `DataGrid`'s rows are, because
+/// a file list belongs to whatever read the directory.
 pub type FilePicker = Picker<FILE>;
 
 impl<const KIND: u8> Picker<KIND> {

@@ -132,7 +132,7 @@ impl Arena {
         if self.style.len() != self.node_count {
             self.style.clear();
             self.style
-                .extend((0..self.node_count).map(|j| (seeds[j.min(seeds.len() - 1)].defaults)()));
+                .extend((0..self.node_count).map(|j| seeds[j.min(seeds.len() - 1)].style(&crate::style::Palette::LIGHT)));
         }
     }
 

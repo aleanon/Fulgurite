@@ -226,24 +226,33 @@ struct Narrow {
     row: NarrowRow,
 }
 
-/// The construct T55.6's probe found escaping a parent that does not clip:
-/// a row given `width: Fixed(50)` inside 200 px lays its two 80 px labels
-/// out against the 200 px it was offered, so the second runs past its own
-/// 50 px edge — painted, and outside the rect hit testing trusts.
+/// **A child placed outside a parent that does not clip is W1003** — the
+/// geometry a node that does not stay in its box leaves behind, built
+/// directly: after layout, two labels are moved 60 px past the 50 px row
+/// that holds them.
+///
+/// T55.6 found this escape with a derived row given `width: Fixed(50)`
+/// laying its 80 px labels out against the 200 px it was *offered*. M56
+/// fixed exactly that (a container lays its content out across its own
+/// box), so at the merge that construct no longer escaped and this test
+/// could not fire; no derived container escapes now, and M57/B26's four
+/// hand-written wrappers were fixed too. The lint still has to see the
+/// geometry, which is what this asks of it.
 #[test]
 fn w1003_fires_on_escape_without_clip() {
     use lumen_static::{Length, Patch, Rule, Selector};
     let mut app = Narrow::default();
-    app.row.a.set("aaaaaaaaaa");
-    app.row.b.set("bbbbbbbbbb");
-    let sheet = [
-        Rule::new(Selector::Kind("NarrowRow"), Patch::new().width(Length::Fixed(50.0))),
-        Rule::new(Selector::Kind("label"), Patch::new().width(Length::Fixed(80.0))),
-    ];
+    app.row.a.set("aaa");
+    app.row.b.set("bbb");
+    let sheet = [Rule::new(Selector::Kind("NarrowRow"), Patch::new().width(Length::Fixed(50.0)))];
     let mut styles = pass::default_styles(&app);
     lumen_static::style::cascade_deep(&mut app, &sheet, &mut styles);
     let mut st = vec![NodeState::default(); Narrow::NODE_COUNT];
     pass::layout(&mut app, &styles, &mut st, Constraints { min_w: 0.0, max_w: 200.0, min_h: 0.0, max_h: 100.0 });
+    // Both labels past the row's right edge, as an escaping node leaves them.
+    for i in [2, 3] {
+        st[i].pos.x += 60.0;
+    }
     let mut agent = Agent::new();
     {
         let mut tm = TreeMut::of_root(&mut app, &styles, &st);
@@ -253,6 +262,8 @@ fn w1003_fires_on_escape_without_clip() {
     let resp = agent.dispatch(&tree, &json!({ "jsonrpc": "2.0", "id": 1, "method": "ui.lint", "params": {} }));
     let found: Vec<&Value> =
         resp["result"]["findings"].as_array().unwrap().iter().filter(|x| x["code"] == "W1003").collect();
+    let at = |i: usize| (st[i].pos.x, st[i].pos.x + st[i].size.w);
+    println!("row x {:?}, labels x {:?} and {:?}", at(1), at(2), at(3));
     println!("W1003 findings: {} (expected 2, one per label): {found:?}", found.len());
     assert_eq!(found.len(), 2, "each label outside the non-clipping row must be W1003");
     assert!(found.iter().all(|x| x["detail"]["parent"] == 1), "the row (node 1) is the parent escaped");
@@ -733,4 +744,31 @@ fn w1003_quiet_on_an_open_popups_content() {
     );
     assert!(content.size.w > popup.size.w, "setup: the content does not escape the popup's rect");
     assert!(f.is_empty(), "W1003 fired on an open popup's content: {f:?}");
+}
+
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+struct Chosen {
+    #[widget_id("pick")]
+    pick: lumen_static_widgets::PickList,
+}
+
+/// **A closed popup's content is absent on purpose, not squeezed** — M57.
+///
+/// Every closed chooser reported its list as `W1001` ("present in the
+/// tree, absent on screen") in the live window, all the time: a closed
+/// `Popup` zeroes its subtree exactly as a parent that squeezed it would.
+/// The popup now says so (`Node::content_absent`). Both directions: the
+/// closed list is quiet, the open one is quiet, and a list with content
+/// and no box *not* under a closed popup still fires — the invisible-
+/// content test above is that case for a label.
+#[test]
+fn a_closed_popups_content_is_not_reported_as_invisible() {
+    let mut app = Chosen { pick: lumen_static_widgets::PickList::new(&["Apple", "Banana", "Cherry"]) };
+    let closed = lint_of(&mut app);
+    app.pick.open();
+    let open = lint_of(&mut app);
+    println!("closed: {closed:?}; open: {open:?}");
+    assert!(!closed.iter().any(|c| c == "W1001"), "a closed picklist's list was reported invisible: {closed:?}");
+    assert!(!open.iter().any(|c| c == "W1001"), "an open picklist's list was reported invisible: {open:?}");
 }

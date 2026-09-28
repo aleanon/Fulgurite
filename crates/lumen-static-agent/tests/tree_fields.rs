@@ -257,7 +257,7 @@ impl Default for Everyone {
             label: Label::new("label"),
             badge: Badge::new("3"),
             chip: Chip::new("tag"),
-            avatar: Avatar { initials: "AB" },
+            avatar: Avatar::new("AB"),
             progress: ProgressBar::new(0.4),
             spinner: Spinner::new(0.0),
             card: Card::new(Label::new("card body")),

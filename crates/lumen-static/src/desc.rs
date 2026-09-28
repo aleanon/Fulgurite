@@ -55,6 +55,16 @@ impl NodeDesc {
     pub const CONTAINER: u8 = 1 << 1;
     /// Can take keyboard focus.
     pub const FOCUSABLE: u8 = 1 << 2;
+    /// **A press here leaves focus where it is.** A press normally moves
+    /// focus to the deepest focusable node on its hit chain, or clears it
+    /// — what clicking the background does. A popup list that belongs to
+    /// a field is neither: a combobox's field keeps focus while its list
+    /// is open, as a browser's input does when its suggestion list is
+    /// clicked. Without this the press blurred the field, the field's
+    /// "abandoned query" revert cleared the filter, and the release chose
+    /// by position in the *unfiltered* list (a combobox filtered to
+    /// Apple, apricot chose Banana).
+    pub const KEEPS_FOCUS: u8 = 1 << 3;
 
     /// Placeholder for const table construction; every slot is overwritten.
     pub const EMPTY: NodeDesc = NodeDesc::new(0, NO_PARENT, 0, 0, 0);
@@ -115,6 +125,12 @@ impl NodeDesc {
     #[inline]
     pub const fn is_focusable(&self) -> bool {
         self.flags & Self::FOCUSABLE != 0
+    }
+
+    /// Whether a press on this node leaves focus alone —
+    /// [`NodeDesc::KEEPS_FOCUS`].
+    pub const fn keeps_focus(&self) -> bool {
+        self.flags & Self::KEEPS_FOCUS != 0
     }
 }
 
@@ -296,6 +312,10 @@ pub struct NodeState {
     /// something to do quietly inside a widget milestone.
     pub border_color: crate::display::Color,
     pub border_width: u8,
+    /// `Style::disabled`, resolved — M57/A16. The pass reads it (with
+    /// every ancestor's) to refuse hits, focus and activation. In the
+    /// struct's tail padding, so `NodeState` stays 84 bytes.
+    pub disabled: bool,
 }
 
 /// Scalar facts a kind knows about itself that geometry cannot show —

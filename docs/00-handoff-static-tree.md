@@ -1172,8 +1172,9 @@ remains** — which is why §10 Step 1 is the kill criterion.
    with `border_width`/`border_color` on `Style` and a role variant that
    follows the palette. Inset rather than outset is the load-bearing
    choice: a bordered and an unbordered control in the same row line up,
-   where `ops::focus_ring`'s deliberately-outset underlay would widen
-   one. `Painter::stroked_rect` is a **required** method, not a provided
+   where the focus ring's deliberately-outset underlay would widen
+   one (since M57/A6 the ring is itself a `StrokedRect`, outside the
+   node, drawn by the host). `Painter::stroked_rect` is a **required** method, not a provided
    one, so every wrapper is a compile error until it forwards — the
    `Deferring` lesson, and an injection in
    `crates/lumen-static/tests/border.rs` reproduces that bug exactly by
@@ -1209,3 +1210,9 @@ remains** — which is why §10 Step 1 is the kill criterion.
    cost about four times the frame threshold, and probes put that cost in
    the cache check and the look-shaped paint, not in the widget's size
    (`docs/results-appearance.md` T25.12).
+   **Amended 2026-09-25 (M57/A8):** a widget's *own* colours are palette
+   roles now, declared on its `Seed` and resolved by the cascade before any
+   rule. Before this, the palette reached a widget only through a sheet
+   rule, so every kind's defaults were light-only
+   (`docs/widget-audit.md` X6). Appearance still lives in `Style`; the
+   roles only decide what goes into it.

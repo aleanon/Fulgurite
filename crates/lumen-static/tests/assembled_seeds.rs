@@ -60,7 +60,9 @@ fn a_hidden_variant_in_a_slab_is_seeded_from_its_own_kind() {
     // field this asserts on.
     let seeds = <Row as Widget>::SEEDS;
     assert_eq!(seeds[CHECK].kind, "checkbox", "setup: index {CHECK} is the hidden checkbox");
-    let want = (seeds[CHECK].defaults)();
+    // `Seed::style`, not the raw defaults: seeding resolves a kind's
+    // palette roles too (M57/A8), against the light palette headless.
+    let want = seeds[CHECK].style(&lumen_static::style::Palette::LIGHT);
     let enum_defaults = (seeds[1].defaults)();
     assert_eq!(want.width, Length::Fixed(24.0), "setup: a checkbox has a fixed width");
     assert_ne!(

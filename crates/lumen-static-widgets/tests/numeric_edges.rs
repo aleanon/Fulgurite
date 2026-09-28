@@ -12,6 +12,9 @@
 //! tests are the accepting direction: a finite step still moves, and a
 //! step of 0 is still a no-op.
 
+// on_event only: these test the range widgets' arithmetic on a non-finite
+// or inverted range, one call deep; the pass adds nothing to a NaN step.
+
 use lumen_static::event::{Event, EventCtx, Key};
 use lumen_static::widget::Node;
 use lumen_static_widgets::ops::Fixed;

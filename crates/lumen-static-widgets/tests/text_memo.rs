@@ -129,3 +129,27 @@ fn an_empty_string_is_still_memoized() {
     let mut badge: Badge<String> = Badge::new(String::new());
     assert_eq!(still_frames(&mut badge, 4), 0, "an empty badge re-measured");
 }
+
+/// `RichText` measured every word on every layout — M57/B6. Its widths
+/// never depend on the box, so a still frame must ask for none of them;
+/// and a changed text must be measured again, or the memo answers with
+/// the old words' widths.
+#[test]
+fn a_still_rich_text_measures_nothing_and_a_new_one_does() {
+    let mut r = lumen_static_widgets::RichText::new("a span here is a word and never breaks");
+    let n = still_frames(&mut r, 6);
+    let mut md = lumen_static_widgets::Markdown::new("**bold**, `code`. plain words");
+    let n_md = still_frames(&mut md, 6);
+    println!("RichText: {n}, Markdown: {n_md} measure calls on five still frames");
+    assert_eq!((n, n_md), (0, 0), "a rich text measured on a still frame");
+    md.set_str("different words entirely, **and more of them** than before");
+    let styles = vec![<lumen_static_widgets::Markdown as Node>::defaults(&md); 1];
+    let mut st = vec![NodeState::default(); 1];
+    let mut m = Counting::default();
+    {
+        let mut cx = lumen_static::LayoutCx::new(&mut m);
+        Node::layout(&mut md, &mut cx, VIEW, &styles, &mut st, 0);
+    }
+    println!("after set_str: {} calls", m.calls.get());
+    assert!(m.calls.get() > 0, "a changed text was not measured again");
+}

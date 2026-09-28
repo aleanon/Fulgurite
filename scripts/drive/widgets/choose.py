@@ -81,6 +81,7 @@ def _clear_trigger(c):
 
 PICKLIST = ("PickList", "#d_picklist_a", [
     Action(
+        visible=True,
         name="releasing over a row chooses it",
         needs="a closed picklist, opened by pressing its trigger",
         do=lambda c: (c.__dict__.__setitem__("_v0", c.value()),
@@ -91,12 +92,6 @@ PICKLIST = ("PickList", "#d_picklist_a", [
         ),
         isolate=lambda c: (c.__dict__.__setitem__("_v0", c.value()),
                            c.click_outside())[0],
-        # Choosing changes the trigger's text, which relays out the
-        # stage — and the showcase's own note is a wrapping `Label`
-        # whose *unwrapped* natural width always exceeds its box, so
-        # `W1005` re-reports it. The lint is right about the frame it
-        # sees; it is not a defect this action introduced.
-        expects_lint=("W1005",),
         injection="choose on the press instead of the release",
     ),
     Action(
@@ -134,6 +129,7 @@ PICKLIST = ("PickList", "#d_picklist_a", [
 
 COMBOBOX = ("Combobox", "#d_combobox_a", [
     Action(
+        visible=True,
         name="typing filters the list",
         needs="a combobox opened by pressing its trigger",
         # **An explicit press, release, then type** — not `input.fill`.
@@ -153,7 +149,45 @@ COMBOBOX = ("Combobox", "#d_combobox_a", [
         ),
         injection="make the filter case-sensitive",
     ),
+    # The action the inventory never had: filter, *then* press a row.
+    # Pressing the list blurred the field, the field's abandoned-query
+    # revert cleared the filter, and the release chose by position in the
+    # whole list -- "ap" then its second row chose Banana. Reported from
+    # the live window; every action here filtered or chose, never both.
     Action(
+        visible=True,
+        name="a press on a filtered row chooses that row",
+        needs="a combobox filtered to Apple, apricot",
+        do=lambda c: _menu_row(c, 1),
+        expect=lambda c: (
+            c.value(f"{c.sel} > #chooser-trigger") == "apricot",
+            f"the second of Apple, apricot chose "
+            f"{c.value(f'{c.sel} > #chooser-trigger')!r} (wanted 'apricot'; "
+            f"'Banana' is the unfiltered list's second row)",
+        ),
+        injection="leave NodeDesc::KEEPS_FOCUS off the chooser's list",
+    ),
+    # Reported: after a choice the field's caret followed the pointer, a
+    # press on the field did nothing, and only a click outside reset it.
+    # The press on the list had given the chooser the pointer capture and
+    # the release never ended it; and with the field still focused, the
+    # list that opens on focus had no focus transition left to open on.
+    Action(
+        visible=True,
+        region="window",
+        name="after a choice a press on the field opens the list again",
+        needs="a combobox that has just chosen, its field still focused",
+        do=lambda c: c.click(f"{c.sel} > #chooser-trigger"),
+        expect=lambda c: (
+            _list_h(c) > 0.0 and len(_shown(c)) > 0,
+            f"the list is {_list_h(c):.0f} px tall with {len(_shown(c))} rows after a "
+            f"press on the field that just chose",
+        ),
+        isolate=lambda c: c.click_outside(),
+        injection="drop the pressed-edge reopen in Chooser::layout",
+    ),
+    Action(
+        visible=True,
         name="clearing the query shows everything again",
         needs="a combobox with a query in it",
         do=lambda c: _clear_trigger(c),
@@ -185,6 +219,44 @@ MENU = ("Menu", "#d_menu_a", [
         static=True,
         injection="lay out a trigger for a menu too",
     ),
+    # M57/B23: a menu runs a command. It stored the choice as a selection,
+    # so "Copy" became the menu's value and no action ran.
+    Action(
+        name="choosing a command runs it and closes the menu",
+        needs="an open menu",
+        do=lambda c: _menu_row(c, 1),
+        # Closed is a list with no box: a hidden list still publishes its
+        # options (with the hidden flag), so they are not what to count.
+        expect=lambda c: (
+            c.readout() == "ran: Copy" and _list_h(c) == 0.0,
+            f"readout {c.readout()!r}, list {_list_h(c):.0f} px tall",
+        ),
+        static=True,
+        # The closed list's body is audited at 0x0, as every closed popup's is.
+        expects_lint=("W1001",),
+        injection="store a menu's choice as a selection",
+    ),
+    Action(
+        name="its button opens it again",
+        needs="a closed menu",
+        do=lambda c: c.click("#d_menu_open"),
+        expect=lambda c: (
+            len(_shown(c)) == 4 and _list_h(c) > 0.0,
+            f"{len(_shown(c))} commands, list {_list_h(c):.0f} px tall after pressing Commands",
+        ),
+        static=True,
+        injection="drop the showcase's reopen",
+    ),
 ])
+
+
+def _list_h(c) -> float:
+    b = c.box(f"{c.sel} > #chooser-list")
+    return b[3] - b[1]
+
+
+def _menu_row(c, k):
+    b = c.box(f"{c.sel} > #chooser-list")
+    c.c.rpc("input.click", x=b[0] + 30.0, y=b[1] + 6.0 + 30.0 * k + 15.0)
 
 ALL = [PICKLIST, COMBOBOX, MENU]

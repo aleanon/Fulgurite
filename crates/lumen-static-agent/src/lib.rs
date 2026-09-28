@@ -609,6 +609,41 @@ impl Agent {
             self.perf[self.perf_next] = timing;
         }
         self.perf_next = (self.perf_next + 1) % PERF_RING;
+        self.record_frame(tree, None);
+    }
+
+    /// [`Agent::frame_done`], with the **host's own text measure and
+    /// display scale for this frame** — M57/A3 (`docs/plan-widget-fixes.md`).
+    ///
+    /// The audit re-lays leaves out to find their natural size, and a
+    /// widget keeps what its last layout computed. Measured with anything
+    /// but what the host laid out with, it left `W1005` reporting labels
+    /// that fit and — worse — widgets painting from the wrong widths
+    /// (`docs/widget-audit.md` X1). A host that has a real face should
+    /// call this rather than install a second copy of it with
+    /// [`Agent::set_text_measure`], because the scale moves with the
+    /// window and a copy would not.
+    pub fn frame_done_measured(
+        &mut self,
+        tree: &mut TreeMut,
+        timing: FrameTiming,
+        measure: &mut dyn lumen_static::TextMeasure,
+        scale: f32,
+    ) {
+        self.frame += 1;
+        if self.perf.len() < PERF_RING {
+            self.perf.push(timing);
+        } else {
+            self.perf[self.perf_next] = timing;
+        }
+        self.perf_next = (self.perf_next + 1) % PERF_RING;
+        self.record_frame(tree, Some((measure, scale)));
+    }
+
+    /// The journal and the audit for one frame, over `live` computed once
+    /// and shared (M48/T48.8); `host` is the measure and scale M57/A3
+    /// passes when the host has them.
+    fn record_frame(&mut self, tree: &mut TreeMut, host: Option<(&mut dyn lumen_static::TextMeasure, f32)>) {
         let key = (tree.table.as_ptr() as usize, tree.table.len());
         if self.sized_for != key {
             subtree_sizes(tree.table, &mut self.sizes);
@@ -616,7 +651,7 @@ impl Agent {
         }
         live_nodes_with(&*tree.root, tree.table, &self.sizes, &mut self.live);
         let structural_reset = self.journal.record(self.frame, &tree.as_ref(), &self.live);
-        self.auditor.record(self.frame, tree, structural_reset, &self.live);
+        self.auditor.record(self.frame, tree, structural_reset, &self.live, host);
     }
 
     /// Dispatch one JSON-RPC 2.0 request, returning the response object.
@@ -713,7 +748,12 @@ impl Agent {
             }
             return reply;
         }
-        if !method.starts_with("input.") && method != "ui.screenshot" && method != "app.setPalette"
+        // The host-backed methods: they read the frame or change the host.
+        if !method.starts_with("input.")
+            && method != "ui.screenshot"
+            && method != "ui.regionHash"
+            && method != "app.repaintAll"
+            && method != "app.setPalette"
         {
             let tree = host.tree();
             return self.dispatch(&tree, req);
@@ -887,10 +927,17 @@ impl Agent {
                 let key = parse_key(name).ok_or_else(|| {
                     (INVALID_PARAMS, format!("unknown key `{name}`"), json!({ "known": KEY_NAMES }))
                 })?;
-                let down = params.get("down").and_then(Value::as_bool).unwrap_or(true);
+                // **Without `down`, a whole press: down, then up** —
+                // M57/A10. A host tracks which activation keys are held,
+                // and a second down with no up between is an auto-repeat
+                // that does not activate; an agent that sent only downs
+                // would have pressed Enter once however often it asked.
+                // `handled` is the down's answer. `down: true` or `false`
+                // sends that half alone, for a test of the halves.
+                let half = params.get("down").and_then(Value::as_bool);
                 // `mods`, a list of "shift", "ctrl", "alt" and "meta", are
-                // held for this key and released after it (M45/T45.6), so
-                // Ctrl+Left is one call rather than three.
+                // held for this key and released after it (M45/T45.6,
+                // M57/B8), so Ctrl+Left is one call rather than three.
                 let mods = match params.get("mods") {
                     None => None,
                     Some(v) => Some(parse_mods(v)?),
@@ -898,11 +945,16 @@ impl Agent {
                 if let Some(m) = mods {
                     host.enqueue(Event::Modifiers(m));
                 }
-                host.enqueue(Event::Key { key, down });
+                host.enqueue(Event::Key { key, down: half.unwrap_or(true) });
+                let (mut f, h) = host.pump();
+                if half.is_none() {
+                    host.enqueue(Event::Key { key, down: false });
+                    f = host.pump().0;
+                }
                 if mods.is_some() {
                     host.enqueue(Event::Modifiers(lumen_static::event::Mods::NONE));
+                    f = host.pump().0;
                 }
-                let (f, h) = host.pump();
                 Ok(json!({ "frame": self.reply_frame(), "host_frame": f, "handled": h }))
             }
             // P5 of docs/plan-agent-parity.md, arriving with the first
@@ -942,6 +994,42 @@ impl Agent {
                     "scale": host.scale(),
                     "image_base64": png::base64(&png),
                 }))
+            }
+            // A full repaint, for comparing against the damaged frame —
+            // M57/D6.
+            "app.repaintAll" => Ok(json!({ "repainted": host.repaint_all() })),
+            // **Did these pixels change?** — M57/D1. A hash of the
+            // canvas inside a logical rect, so a drive can assert that an
+            // action's consequence *shows* without decoding a PNG of the
+            // whole window twice per action. `[x0, y0, x1, y1]` in
+            // logical px, scaled here; `pixels` is how many were hashed,
+            // so an empty or off-screen rect is visible as 0.
+            "ui.regionHash" => {
+                let rect = params.get("rect").and_then(Value::as_array).ok_or((
+                    INVALID_PARAMS,
+                    "missing `rect` [x0, y0, x1, y1]".into(),
+                    Value::Null,
+                ))?;
+                let v = |k: usize| rect.get(k).and_then(Value::as_f64).unwrap_or(0.0) as f32;
+                let (w, h, rgba) = host.frame().ok_or((
+                    INVALID_PARAMS,
+                    "this host does not render — nothing to hash".into(),
+                    Value::Null,
+                ))?;
+                let sc = host.scale();
+                let clampx = |x: f32| ((x * sc).round().max(0.0) as u32).min(w);
+                let clampy = |y: f32| ((y * sc).round().max(0.0) as u32).min(h);
+                let (x0, x1, y0, y1) = (clampx(v(0)), clampx(v(2)), clampy(v(1)), clampy(v(3)));
+                let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+                let mut pixels = 0u64;
+                for y in y0..y1 {
+                    let row = &rgba[((y * w + x0) * 4) as usize..((y * w + x1) * 4) as usize];
+                    for b in row {
+                        hash = (hash ^ *b as u64).wrapping_mul(0x100_0000_01b3);
+                    }
+                    pixels += (x1 - x0) as u64;
+                }
+                Ok(json!({ "hash": format!("{hash:016x}"), "pixels": pixels }))
             }
             // Replace a field's whole value in one call, through the
             // queue.
@@ -1253,7 +1341,7 @@ impl Agent {
     fn get_tree(&self, tree: &TreeRef) -> Value {
         let mut nodes = Vec::with_capacity(tree.table.len());
         observe::emit_root(tree.table, tree.root, tree.states, &|i| (i + 1) as u64, &mut nodes);
-        observe::tree_json(tree.table, &nodes)
+        observe::tree_json(tree.table, tree.states, &nodes)
     }
 
     fn get_layout(&self, tree: &TreeRef, params: &Value) -> RpcResult {
@@ -1461,12 +1549,14 @@ impl Agent {
             "border_color": color(s.border_color),
             "align": format!("{:?}", s.align),
             "visible": s.visible,
+            "disabled": s.disabled,
             // The interaction state that changes what is painted (C6),
             // so a screenshot taken mid-gesture can be explained.
             "state": {
                 "pressed": st.pressed,
                 "hovered": st.hovered,
                 "focused": st.focused,
+                "disabled": st.disabled,
                 "painted_background": color(st.bg),
             },
         }))
@@ -1896,6 +1986,14 @@ pub trait AgentHost {
     /// `None` where a platform cannot read a window back (softbuffer
     /// implements it on X11 and Web only), so a caller must treat an
     /// absent answer as "not checkable here", never as "matches".
+    /// Repaint the whole frame, ignoring damage, and present it — M57/D6.
+    /// A drive compares the frame before and after: an incrementally
+    /// damaged frame must equal a full repaint of the same state. `false`
+    /// where a host cannot, which a caller reads as "not checkable here".
+    fn repaint_all(&mut self) -> bool {
+        false
+    }
+
     fn presented(&mut self) -> Option<(u32, u32, Vec<u8>)> {
         None
     }
@@ -2069,7 +2167,9 @@ fn parse_mods(v: &Value) -> Result<lumen_static::event::Mods, (i64, String, Valu
     Ok(m)
 }
 
-const KEY_NAMES: [&str; 14] = [
+/// Named keys; any single character is also a key, `Key::Char` —
+/// M57/B8, so a shortcut (`a` with `mods: ["ctrl"]`) can be driven.
+const KEY_NAMES: [&str; 15] = [
     "Enter",
     "Space",
     "Escape",
@@ -2084,6 +2184,7 @@ const KEY_NAMES: [&str; 14] = [
     "End",
     "PageUp",
     "PageDown",
+    "a single character",
 ];
 
 fn parse_key(name: &str) -> Option<Key> {
@@ -2102,7 +2203,15 @@ fn parse_key(name: &str) -> Option<Key> {
         "Down" => Key::Down,
         "Home" => Key::Home,
         "End" => Key::End,
-        _ => return None,
+        // One character, lower-cased as a key is: `Key::Char` names the
+        // key, and Shift is a modifier.
+        _ => {
+            let mut cs = name.chars();
+            match (cs.next(), cs.next()) {
+                (Some(c), None) if !c.is_control() => Key::Char(c.to_ascii_lowercase()),
+                _ => return None,
+            }
+        }
     })
 }
 

@@ -12,6 +12,7 @@
 # as the verdict. Skips with exit 77 without a display (M43 §2).
 set -euo pipefail
 cd "$(cd "$(dirname "$0")/.." && pwd)"
+. scripts/drive_window.sh  # live windows on the monitor the user is not reading
 LAUNCH="python3 scripts/live/launch.py --script wake-gate"
 $LAUNCH --display-only || exit $?
 

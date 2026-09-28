@@ -160,6 +160,15 @@ pub enum PointerButton {
     Middle,
 }
 
+/// How long after the last wheel event a gesture counts as ended —
+/// [`Event::ScrollEnd`]. Long enough to span the gaps between a touchpad's
+/// events, short enough that a spring-back feels like a release.
+pub const SCROLL_END_MS: f32 = 150.0;
+
+/// How long the pointer rests on a node before [`Event::Linger`] — the
+/// half second toolkits wait before a tooltip.
+pub const LINGER_MS: f32 = 500.0;
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[cfg_attr(feature = "observe", derive(serde::Serialize, serde::Deserialize))]
 pub enum Event {
@@ -209,6 +218,52 @@ pub enum Event {
     Scroll { x: f32, y: f32, dy: f32 },
     Key { key: Key, down: bool },
     Text { ch: char },
+    /// Focus arrived at (`gained`) or left this node — M57/A7
+    /// (`docs/plan-widget-fixes.md`).
+    ///
+    /// Synthesized by `dispatch` once an event has **finished** moving
+    /// focus, and offered to the old node and then the new one, bubbling
+    /// like any event (so `ctx.target` names the node focus moved to or
+    /// from, and a container can tell its own part apart).
+    ///
+    /// **A transition, not a state.** A chooser opened its list from
+    /// `layout` whenever its field was focused, so a choice that closed
+    /// the list reopened it in the same pass (`docs/widget-audit.md` X5),
+    /// and a tooltip had no way to open on keyboard focus at all. An
+    /// event fires once, when focus moves, which is what "opens on focus"
+    /// means. Never enqueued by a host.
+    Focus { gained: bool },
+    /// The pointer left this node — M57/B50 (`docs/plan-widget-fixes.md`).
+    ///
+    /// Synthesized by `dispatch` when a move changes which node the pointer
+    /// is over, and sent to the node it left. A widget that tracks a hovered
+    /// *row* from [`Event::Hover`] learned when the row changed, never when
+    /// the pointer left altogether: a tree kept its highlight after the
+    /// pointer moved away (`docs/widget-audit.md`, Tree). Never enqueued by
+    /// a host.
+    Leave,
+    /// A wheel gesture on this node ended: no wheel event has arrived for
+    /// a moment — M57/B40 (`docs/plan-widget-fixes.md`).
+    ///
+    /// The browser's scroll-end event. A wheel has no release, so a widget that
+    /// acts when a scroll *finishes* — a pull-to-refresh springing back and
+    /// firing — had nothing to act on, and stayed armed with its content
+    /// held down until an unrelated click (`docs/widget-audit.md`,
+    /// PullToRefresh). The host sends it to the node that took the last
+    /// wheel, bubbling, once none has come for [`SCROLL_END_MS`]. Never
+    /// enqueued by a host's input path.
+    ScrollEnd,
+    /// The pointer has rested on this node for [`LINGER_MS`] — hover
+    /// intent — M57/B35 (`docs/plan-widget-fixes.md`).
+    ///
+    /// Sent by the host to the node under a pointer that has stopped,
+    /// bubbling. A tooltip opened on the very first hover frame and closed
+    /// on the next, which is how a pointer passing over a toolbar strobes
+    /// every tip on the way (`docs/widget-audit.md`, Tooltip); toolkits
+    /// wait for the pointer to rest. Widgets have no clock, so the host
+    /// keeps this one, as it keeps [`Event::ScrollEnd`]'s. Never enqueued
+    /// by a host's input path.
+    Linger,
     /// One finger, at one moment — `docs/plan-capabilities.md` T15.5.
     ///
     /// **`id` is a `u32`, and that was measured rather than chosen.**
@@ -328,7 +383,14 @@ impl Event {
             | Event::Hover { x, y }
             | Event::Touch { x, y, .. }
             | Event::Scroll { x, y, .. } => Some(Point { x, y }),
-            Event::Key { .. } | Event::Text { .. } | Event::Modifiers(_) | Event::Action { .. } => None,
+            Event::Key { .. }
+            | Event::Text { .. }
+            | Event::Modifiers(_)
+            | Event::Action { .. }
+            | Event::Focus { .. }
+            | Event::Leave
+            | Event::ScrollEnd
+            | Event::Linger => None,
         }
     }
 }
@@ -349,6 +411,28 @@ pub struct EventCtx {
     pub event: Event,
     /// Main-table index of the node that received the event.
     pub node: u32,
+    /// Main-table index of the node the event was **aimed at**: the node
+    /// hit by a pointer, or the focused node for a key — M57/A4
+    /// (`docs/plan-widget-fixes.md`).
+    ///
+    /// Equal to `node` for the node itself, and different once the event
+    /// bubbles: a press that a label ignored reaches its container with
+    /// `target` still naming the label. A container that acts on presses
+    /// on *its own* chrome asks `ctx.target == ctx.node`, or tests `local`
+    /// against its chrome's rect. Before this, `Veil`, `SplitPane`,
+    /// `Collapsible` and `PaneGrid` each read any press that reached them
+    /// as a press on themselves: a click on a modal's panel dismissed it,
+    /// a click inside a pane moved the divider (`docs/widget-audit.md` X2).
+    pub target: u32,
+    /// Whether [`EventCtx::target`] is a **control** — a focusable node —
+    /// M57/B40 (`docs/plan-widget-fixes.md`).
+    ///
+    /// For a container that may take a press its content declined: a
+    /// pull-to-refresh can start a drag from a label or from its own
+    /// surface, and must leave a button's press to the button, since
+    /// taking it would capture the pointer and the click would never
+    /// activate.
+    pub target_is_control: bool,
     /// For virtualized content: which row. `None` for ordinary nodes.
     ///
     /// This is the field that replaces `move |s| s.remove(idx)`: the row
@@ -366,7 +450,10 @@ pub struct EventCtx {
     pub inner: u32,
     /// Absolute pointer position, when the event carries one.
     pub pos: Point,
-    /// Pointer position relative to the receiving node's origin.
+    /// Pointer position relative to the **receiving** node's origin —
+    /// `node`'s, re-derived at every node the event bubbles through
+    /// (M57/A4). It used to stay relative to the node first hit, so a
+    /// container read its child's coordinates as its own.
     pub local: Point,
     /// Which button, for a pointer event; [`PointerButton::Left`] otherwise.
     pub button: PointerButton,
@@ -397,6 +484,8 @@ impl EventCtx {
         EventCtx {
             event,
             node,
+            target: node,
+            target_is_control: false,
             row: None,
             inner: 0,
             pos: Point::default(),
@@ -512,6 +601,15 @@ pub struct InputState {
     /// For each open overlay, the focus it opened over — M44/T44.9. A
     /// dismissal returns focus there (`pass::settle_overlays`).
     pub overlay_return: [Option<(u32, Option<u32>)>; 4],
+    /// The activation keys now held down — bit 0 Enter, bit 1 Space —
+    /// M57/A10. A down for a key already held is an auto-repeat, which
+    /// does not activate again.
+    pub held: u8,
+    /// Where the pointer last was, in window coordinates — M57/B48. For
+    /// [`crate::widget::Node::cursor_at`]: a node whose cursor depends on
+    /// *where* on it the pointer is (a pane grid's two kinds of divider)
+    /// needs the point, and the hover bit alone does not carry it.
+    pub pointer: Option<Point>,
 }
 
 /// The item a press landed on — [`InputState::press`].

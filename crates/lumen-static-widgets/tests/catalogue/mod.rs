@@ -145,8 +145,13 @@ pub struct Ui {
     pub divider: Divider,
     #[widget_id("Badge")]
     pub badge: Badge<String>,
+    // Its handlers take the application (M57/B2 made a chip pressable).
     #[widget_id("Chip")]
-    pub chip: Chip<String>,
+    pub chip: Chip<String, CatApp>,
+    // A control with its words beside it (M57/B11); the row reads as its
+    // label.
+    #[widget_id("Labelled")]
+    pub labelled: lumen_static_widgets::Labelled<lumen_static_widgets::ops::Fixed>,
     #[widget_id("Avatar")]
     pub avatar: Avatar<String>,
     #[widget_id("Icon")]
@@ -228,6 +233,7 @@ pub fn build() -> Ui {
     ui.editor = RichTextEditor::new("edit me");
     ui.badge = Badge::new("3".into());
     ui.chip = Chip::new("tag".into());
+    ui.labelled = lumen_static_widgets::Labelled::new(lumen_static_widgets::ops::Fixed { w: 16.0, h: 16.0 }, "Remember me");
     ui.avatar.set("AB".into());
     ui
 }

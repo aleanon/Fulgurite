@@ -13,6 +13,7 @@ SUPER                # winit's name for the same key; ours is META
 platform_specific    # winit KeyEvent field with no public constructor; translate.rs says why
 KeyEvent             # winit's type, named where translate.rs says why it is not used
 libm                 # the crate M13/T13.2 declined to depend on; num.rs says why
+chrono               # the crate M27/T27.11 declined; pick.rs says why (was only in a showcase note until M56)
 Task                 # iced's type. M28 takes its *shape* and deliberately does not have it:
                      # a chain here is a step index, not a closure across an await
                      # (docs/plan-tasks.md §2.1). The name must stay in the prose that
@@ -102,7 +103,8 @@ ERROR                # mdbook log level, quoted in docs/book-decision.md -- not 
 feGaussianBlur       # SVG filter primitive, named in svg.rs and plan-glass.md -- not ours
 BackgroundImage      # SVG 1.1 filter input, named in the same comment for why it is unusable
 ValueContains        # renamed TextContains in M27/T27.0; the rustdoc records the rename
-PairCheck            # split into PairCheckA/PairCheckB in M27/T27.3; two comments record why
+PairCheckA           # M27/T27.3's per-instance pair types, gone in M57/B11 (the author id moved
+PairCheckB           # onto the demo's field when Labelled replaced the row); cited as history
 VeilBody             # split into ModalBody/SheetBody/DrawerBody in M27/T27.7; W1011 is why
 PanicHookInfo        # std::panic::PanicHookInfo, named in docs/plan-panic-recovery.md -- not ours
 RECOVER              # replaced by the RecoverPolicy type in M52/T52.7; the plan names what it replaced
@@ -118,3 +120,5 @@ __ln_                # the derive's local-name prefix (M55/T55.1); since the loc
                      # lives only in string literals, which the check blanks
 Inval                # the strategy alias M55/T55.4 replaced with a type parameter; the plans that record its history cite it
 WinApp  # counter-window's own ApplicationHandler, deleted by M60 (docs/plan-tally-slim.md); docs/plan-desktop.md's M14 history names it
+
+MenuItem             # AccessKit's role names; docs/plan-widget-fixes.md A17 maps widgets onto them

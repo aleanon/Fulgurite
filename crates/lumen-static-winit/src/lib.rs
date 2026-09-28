@@ -1185,12 +1185,27 @@ impl Win {
     }
 
     fn resumed_impl(&mut self, event_loop: &ActiveEventLoop) {
-        let attrs = Window::default_attributes()
+        let mut attrs = Window::default_attributes()
             .with_title(self.title_now())
             .with_inner_size(winit::dpi::LogicalSize::new(
                 self.config.width as f64,
                 self.config.height as f64,
             ));
+        // **Where a window opens, and whether it takes focus** — for the
+        // live drives, which open a window per pass on a desktop someone
+        // may be reading. `LUMEN_WINDOW_POS=x,y` asks for that position in
+        // physical screen pixels (a monitor's origin, as xrandr reports it), and
+        // `LUMEN_WINDOW_INACTIVE=1` asks not to be activated on opening.
+        // Both are requests: the window manager decides.
+        if let Some((x, y)) = std::env::var("LUMEN_WINDOW_POS").ok().and_then(|v| {
+            let (x, y) = v.split_once(',')?;
+            Some((x.trim().parse::<i32>().ok()?, y.trim().parse::<i32>().ok()?))
+        }) {
+            attrs = attrs.with_position(winit::dpi::PhysicalPosition::new(x, y));
+        }
+        if std::env::var("LUMEN_WINDOW_INACTIVE").as_deref() == Ok("1") {
+            attrs = attrs.with_active(false);
+        }
         // **Invisible until the adapter exists** (M54/T54.2): the
         // platform adapter must be built before the window is first shown.
         #[cfg(feature = "a11y")]

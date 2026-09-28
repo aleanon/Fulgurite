@@ -244,3 +244,23 @@ there.
 And the per-command price *fell*, because the comparison left the hot
 path: `--bin retain`'s `streaming: build + Incremental` arm, 34
 commands, **328 → 295 ns**.
+
+## A fourth, on the agent's side again: a node that draws nothing — M56, 2026-09-25
+
+The journal put the old and new box of every *changed* node into
+`ui.lastDamage`, and a node changes when it moves. A spacer or a
+transparent container moves without a pixel changing — the renderer's
+damage, taken from commands, never sees it — but its box went into the
+set. M56's showcase centres each demo between four spacers inside a row,
+all as wide as the stage card, so when an accordion opened they merged
+into the card's whole inner box: **7.47x** the demo's own box, on a frame
+the renderer redrew at **1.00x**. `just widget-drive` failed it under both
+strategies.
+
+The journal now records whether each node drew anything — a leaf that
+emitted commands, a container whose ground, shadow or border is visible —
+and only those contribute damage. The move is still a change;
+`ui.lastChange` still reports it. Gate:
+`crates/lumen-static-agent/tests/damage_paints.rs`, where a spacer and a
+transparent row move a short label: damage is the label's two boxes,
+1,280 px², and **84,800 px²** without the filter.

@@ -69,6 +69,7 @@ can be observed.
 """
 from __future__ import annotations
 
+import os
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -136,6 +137,30 @@ class Action:
     #: action landing (M42/T42.6: a hover that starts on the widget is
     #: no transition, and a leave inside `do` would be one).
     prep: Callable[["Ctx"], None] | None = None
+    #: **Does the consequence show?** — M57/D1. `True`: the pixels in the
+    #: widget's box (or `region`'s) must change, asserted from the frame
+    #: itself (`ui.regionHash`). `False`: declared invisible there — a
+    #: readout-only effect, a focus move — with the reason in a comment.
+    #: A non-static action that declares neither **fails the run**, so
+    #: "every action says" is an assertion, not a review question.
+    #:
+    #: The drives read the store and the published values, and CheckBox
+    #: passed while its box never repainted (C2): the readout moved and
+    #: the picture did not. This is the check that would have caught it.
+    visible: bool | None = None
+    #: A selector for where a `visible` consequence shows, when it is not
+    #: the widget's own box (a popup, a readout of the widget's value), or
+    #: `"window"` for the whole window (a toast, a tooltip).
+    region: str | None = None
+    #: Hover the widget before the "before" frame, so the action's own
+    #: pointer move adds no shade. `False` for an action whose consequence
+    #: *is* the hover (a highlight, a tooltip): pre-hovering would have
+    #: done its work before the frame was taken.
+    pre_hover: bool = True
+    #: Run before the "before" frame (D1): the state the action starts
+    #: from. An action that closed a popup and reopened it inside `do`
+    #: compared an open popup with an open popup.
+    setup: Callable[["Ctx"], None] | None = None
     #: Lint codes this action may legitimately introduce.
     #:
     #: **Named codes only, never "any".** Squeezing a split pane to 8%
@@ -223,14 +248,22 @@ class Ctx:
     def click(self, sel: str | None = None, clicks: int = 1):
         return self.c.click(sel or self.sel, clicks)
 
-    def click_outside(self, pad: float = 6.0):
+    def click_outside(self, pad: float = 6.0, avoid: list | None = None):
         """The same click, `pad` px past the widget's own edge.
 
         Above rather than beside: the stage centres its demo, so left and
-        right of a FILL widget is still the widget.
+        right of a FILL widget is still the widget. `avoid` names other
+        boxes the press must miss -- an open popup, which flips *above*
+        its trigger in a short window, so "just above the widget" was
+        inside the pad at scale 2 (M57/D6). Past all of them, above if
+        there is room and below if not.
         """
         b = self.box()
-        return self.c.rpc("input.click", x=(b[0] + b[2]) / 2, y=b[1] - pad)
+        for o in avoid or []:
+            b = [min(b[0], o[0]), min(b[1], o[1]), max(b[2], o[2]), max(b[3], o[3])]
+        x = (self.box()[0] + self.box()[2]) / 2
+        y = b[1] - pad if b[1] - pad > 0 else b[3] + pad
+        return self.c.rpc("input.click", x=x, y=y)
 
     def key(self, name: str, mods=None):
         self.c.key(name, True, mods)
@@ -240,17 +273,71 @@ class Ctx:
         return self.c.rpc("input.hover", selector=sel or self.sel)
 
 
-def _menu_row(c: AgentClient, widget: str):
-    """The bounds of the menu row named `widget`, or `None`.
+def _settled_hash(c: AgentClient, rect) -> dict:
+    """The rect's hash once two reads 100 ms apart agree (at most 3 s)."""
+    import time
+    prev = c.rpc("ui.regionHash", rect=rect)
+    for _ in range(30):
+        time.sleep(0.1)
+        cur = c.rpc("ui.regionHash", rect=rect)
+        if cur.get("hash") == prev.get("hash"):
+            return cur
+        prev = cur
+    return prev
 
-    The menu's labels carry two decorations: the group, folded into the
-    first row of each (`"Layout - PaneGrid"`), and an indent on the
-    rest. Both are stripped before comparing, so the match is on the
-    widget's *name* and nothing else.
+
+def _dump_diff(widget: str, action: str, before: dict, after: dict) -> str:
+    """Save both frames of a D6 failure, and say where they differ."""
+    import base64
+    import io
+    import tempfile
+    try:
+        from PIL import Image, ImageChops
+    except ImportError:
+        return "(PIL absent: frames not saved)"
+    a = Image.open(io.BytesIO(base64.b64decode(before["image_base64"]))).convert("RGBA")
+    b = Image.open(io.BytesIO(base64.b64decode(after["image_base64"]))).convert("RGBA")
+    # RGB, not RGBA: `getbbox` on an RGBA image reads only the alpha
+    # band, and both frames are opaque -- it answered `None` for a real
+    # one-row difference until this converted first.
+    bb = ImageChops.difference(a.convert("RGB"), b.convert("RGB")).getbbox()
+    d = Path(tempfile.gettempdir()) / "widget_drive_d6"
+    d.mkdir(exist_ok=True)
+    stem = f"{widget}-{action}".replace(" ", "_").replace("/", "_")[:60]
+    a.save(d / f"{stem}-damaged.png")
+    b.save(d / f"{stem}-full.png")
+    return f"physical diff box {bb}; frames in {d}"
+
+
+def _region_name(region) -> str:
+    if callable(region):
+        return getattr(region, "__doc__", None) or "the watched rect"
+    return region or "the widget"
+
+
+def _region_rect(ctx, region):
+    """The rect a `visible` action watches, in logical px: a selector,
+    `"window"`, or a callable taking the ctx and answering a rect."""
+    if callable(region):
+        return region(ctx)
+    if region == "window":
+        shot = ctx.c.rpc("ui.screenshot")
+        sc = shot.get("scale", 1.0)
+        return [0.0, 0.0, shot["width"] / sc, shot["height"] / sc]
+    return ctx.box(region) if region else ctx.box()
+
+
+def _nav_row(c: AgentClient, widget: str):
+    """The bounds of the sidebar row named `widget`, or `None`.
+
+    **Exactly the name, and not a heading.** A row's label is the
+    widget's bare name (M56), so equality is exact where `~Name` is
+    ambiguous (`RichText` is a prefix of `RichTextEditor`), and a group
+    heading announces the `Heading` role, so a group that shared a
+    widget's name could not be picked in its place.
     """
     for n in c.rpc("ui.getTree", depth=12)["nodes"]:
-        label = (n.get("label") or "").strip()
-        if label != widget and not label.endswith(f" - {widget}"):
+        if (n.get("label") or "").strip() != widget or n.get("role") == "Heading":
             continue
         b = n.get("bounds")
         if b and b[2] > b[0] and b[3] > b[1]:
@@ -259,92 +346,66 @@ def _menu_row(c: AgentClient, widget: str):
 
 
 def _pick(c: AgentClient, widget: str) -> None:
-    """Put `widget` on the stage, by name.
+    """Put `widget` on the stage, by name, through the sidebar (M56).
 
     By **name**, not by row index — M27/T27.0 exists so this line can be
     written. `agent_drive.sh` used to compute `box[1] + ROW_H * k`, which
     is the first vacuous shape AGENT.md names: reorder the catalogue and
     row k is a different widget, silently.
 
-    **Scrolling, because the catalogue has outgrown its own menu.**
+    **Scrolling, because the catalogue outgrows the sidebar.**
     `Repeat::observe` announces only the rows that intersect the
     viewport — deliberately, so the agent never sees a row no click can
-    land on (F4.7). `docs/plan-widget-parity.md` T27.0 predicted this
-    would bite when the menu could no longer show every widget and put it
-    at fifty-one entries; it arrived at **twenty-one**, the moment
-    T27.4's three landed. Scrolling the open menu is a real user action
-    and needs no new endpoint, so it is what this does until T27.0's
-    third landing gives rows an addressable scroll.
+    land on (F4.7) — so a row off the bottom is scrolled into view, a
+    real user action needing no new endpoint.
     """
     # **Settle first.** A drive leaves the window however the previous
     # widget's last action left it, and an open overlay is not a neutral
-    # state: a `Tooltip`'s tip is a `Popup`, and one left showing sits in
-    # the overlay layer above the menu that is about to open. The first
-    # run of this walked six widgets and then reported the next fifteen
-    # as "never came into the menu's viewport", which is a true statement
-    # about a menu nothing could reach.
-    #
-    # Escape dismisses; the pointer goes to the corner so nothing is
-    # hovered, which is what re-opens a tip.
+    # state: a press that misses every overlay dismisses them all and is
+    # *consumed* — so a pick made while a demo's list is open would only
+    # close the list. Escape dismisses the topmost; a press and a hover
+    # in the corner (the sidebar's own padding, which answers nothing)
+    # dismiss the rest and un-hover whatever a tip was showing for.
     c.key("Escape", True)
     c.key("Escape", False)
-    # **And a press in the corner.** Escape dismisses the *topmost*
-    # overlay; a press that misses them all dismisses every one and is
-    # consumed. A widget left with an open list — a chooser, a veil —
-    # otherwise leaves it open into the next widget's turn, where it
-    # covers the menu this is about to use. That reached the next drive
-    # as "never came into the menu's viewport", which is a true
-    # statement about a menu nothing could see.
     c.rpc("input.click", x=2.0, y=2.0)
     c.rpc("input.hover", x=2.0, y=2.0)
-    # Through the owner (M44/T44.10): the stage has a `Select` of its own
-    # now, so the bare part ids are ambiguous.
-    c.click("#picker > #select-trigger")
-    menu = c.rpc("ui.resolve", selector="#picker > #select-menu").get("bounds")
-    if not menu:
-        raise Failed("the picker did not open")
-    mid = ((menu[0] + menu[2]) / 2, (menu[1] + menu[3]) / 2)
-    # **Back to the top first.** The menu keeps its offset between
-    # openings, so a drive that only ever scrolls *down* can reach the
-    # last widget and then never the first again — which is what
-    # happened the first time this scrolled at all.
+    nav = c.rpc("ui.resolve", selector="#nav").get("bounds")
+    if not nav:
+        raise Failed("the sidebar has no bounds")
+    mid = ((nav[0] + nav[2]) / 2, (nav[1] + nav[3]) / 2)
+    # **Back to the top first.** The list keeps its offset, so a drive
+    # that only ever scrolls *down* could reach the last widget and then
+    # never the first again. A positive `dy` moves toward the top.
     for _ in range(30):
         c.rpc("input.scroll", x=mid[0], y=mid[1], dy=120.0)
-    for attempt in range(24):
-        # **The row is found by its label and clicked by its box.**
-        #
-        # Not by selector: `~Name` is ambiguous the moment one widget's
-        # name is a prefix of another's (`RichText`, `RichTextEditor`),
-        # and `~=Name` misses every row the menu *groups* — those read
-        # "Layout - PaneGrid", because `bind_row` folds the group into
-        # the first row of each. Both were live failures. Normalising
-        # here is exact, needs no grammar guess, and says what it means:
-        # the row whose name is this widget's (M27/T27.12).
-        box = _menu_row(c, widget)
-        if box is not None:
+    for attempt in range(40):
+        box = _nav_row(c, widget)
+        # Wholly inside the list's viewport: a row half under its edge
+        # is clipped where the click would land.
+        if box is not None and box[1] >= nav[1] and box[3] <= nav[3]:
             c.rpc("input.click", x=(box[0] + box[2]) / 2, y=(box[1] + box[3]) / 2)
             break
-        if True:
-            if attempt == 23:
-                # **Say what *was* visible.** "never came into view" is a
-                # true statement about a menu that never opened, one
-                # scrolled to the wrong end, and one covered by another
-                # overlay — three different bugs with one message. The
-                # labels tell them apart at a glance.
-                seen = [
-                    (n.get("label") or "").strip()
-                    for n in c.tree()["nodes"]
-                    if (n.get("label") or "").strip()
-                ]
-                raise Failed(
-                    f"{widget!r} never came into the menu's viewport after "
-                    f"{attempt + 1} scrolls; visible labels were {seen[-14:]}"
-                )
-            c.rpc("input.scroll", x=mid[0], y=mid[1], dy=-90.0)
-    r = c.rpc("ui.resolve", selector="#picker > #select-trigger")
-    label = r.get("label") or r.get("value") or ""
-    if widget not in label:
-        raise Failed(f"picking {widget!r} left the trigger reading {label!r}")
+        if attempt == 39:
+            # **Say what *was* visible**, so "never came into view" can
+            # tell a list scrolled the wrong way from one covered by an
+            # overlay.
+            seen = [
+                (n.get("label") or "").strip()
+                for n in c.tree()["nodes"]
+                if (n.get("label") or "").strip()
+            ]
+            raise Failed(
+                f"{widget!r} never came into the sidebar's viewport after "
+                f"{attempt + 1} scrolls; visible labels were {seen[-14:]}"
+            )
+        c.rpc("input.scroll", x=mid[0], y=mid[1], dy=-64.0)
+    title = ""
+    for n in c.tree()["nodes"]:
+        if n.get("wid") == "title":
+            title = n.get("value") or n.get("label") or ""
+    if title != widget:
+        raise Failed(f"picking {widget!r} left the page titled {title!r}")
 
 
 def _area(r) -> float:
@@ -413,13 +474,34 @@ def run_widget(c: AgentClient, widget: str, sel: str, actions: list[Action],
     # check (1) filters `ui.lastChange` by (M42/T42.6).
     first, end = c.rpc("ui.resolve", selector=root or sel)["subtree"]
 
+    undeclared = [a.name for a in actions if not a.static and a.visible is None]
+    if undeclared:
+        raise Failed(
+            f"{widget}: {len(undeclared)} action(s) do not declare `visible` "
+            f"(M57/D1): {', '.join(undeclared)}")
     for a in actions:
+        if a.setup is not None:
+            a.setup(ctx)
+            c.rpc("ui.lastChange")
         if a.prep is not None:
             a.prep(ctx)
         before_findings = c.lint().get("findings", [])
         before_lint = len(before_findings)
         before_keys = {(f.get("code"), f.get("index"), f.get("rule")) for f in before_findings}
         readout_before = ctx.readout()
+        # **Hover first, then the "before" frame** (D1): the action's own
+        # pointer move would otherwise put a hover shade on the widget,
+        # and a checkbox that never repainted its box would pass on the
+        # shade alone.
+        if a.visible:
+            if a.pre_hover:
+                try:
+                    ctx.hover(ctx.sel)
+                except Exception:
+                    pass
+                c.rpc("ui.lastChange")
+            pix_rect = _region_rect(ctx, a.region)
+            pix_before = c.rpc("ui.regionHash", rect=pix_rect)
         since = ctx.mark()
         a.do(ctx)
 
@@ -442,6 +524,40 @@ def run_widget(c: AgentClient, widget: str, sel: str, actions: list[Action],
         out.append(f"    {a.name}: {measured}")
         if not ok:
             raise Failed(f"{widget}/{a.name}: {measured} (injection: {a.injection})")
+
+        # (2a) D6: the damaged frame equals a full repaint of the same
+        # state. Enabled for the scale-2 pass, where fractional logical
+        # edges land on physical pixels and a damage rect that is off by
+        # one leaves a seam.
+        if os.environ.get("LUMEN_DRIVE_FULLCHECK") == "1":
+            win = _region_rect(ctx, "window")
+            # **Settled first.** An action can legitimately schedule one
+            # more frame -- a popup that opens moves focus into itself on
+            # the next pump (M57/A12) -- and the window's loop draws it
+            # after the action returns. Hashing before that frame compared
+            # a frame in flight with a full repaint: the first run failed
+            # three pickers with two *identical* screenshots either side.
+            h0 = _settled_hash(c, win)
+            s0 = c.rpc("ui.screenshot")
+            if c.rpc("app.repaintAll").get("repainted"):
+                h1 = c.rpc("ui.regionHash", rect=win)
+                if h0.get("hash") != h1.get("hash"):
+                    where = _dump_diff(widget, a.name, s0, c.rpc("ui.screenshot"))
+                    raise Failed(f"{widget}/{a.name}: the damaged frame differs from a full "
+                                 f"repaint of the same state, over the window {win}; {where}")
+
+        # (2b) and it shows (D1): the same rect's pixels, after.
+        if a.visible:
+            pix_after = c.rpc("ui.regionHash", rect=pix_rect)
+            if pix_before.get("pixels", 0) <= 0:
+                raise Failed(f"{widget}/{a.name}: the region to watch is empty {pix_rect}")
+            if pix_after.get("hash") == pix_before.get("hash"):
+                raise Failed(
+                    f"{widget}/{a.name}: the consequence does not show — "
+                    f"{pix_before.get('pixels')} px of {_region_name(a.region)} "
+                    f"are unchanged (injection: {a.injection})")
+            out.append(f"      pixels: {_region_name(a.region)}'s "
+                       f"{pix_before.get('pixels')} px changed")
 
         # **Damage is the widget's own business.** Bounded against the
         # region that covers it, not against the frame's bounding box —
@@ -573,4 +689,88 @@ def run_widget(c: AgentClient, widget: str, sel: str, actions: list[Action],
         f"  {widget} [{strategy}]: {len(actions)} actions, all driven"
         + (f"; {len(bare)} with no isolate: {', '.join(bare)}" if bare else "")
     )
+    return out
+
+
+# ---- M57/D3: the keyboard-only pass -----------------------------------
+
+def _focused_index(c: AgentClient):
+    for n in c.tree()["nodes"]:
+        if n.get("focused"):
+            return n["id"] - 1
+    return None
+
+
+def _focusables_in_demo(c: AgentClient) -> list:
+    d = c.rpc("ui.resolve", selector="#demo")["bounds"]
+    out = []
+    for n in c.tree()["nodes"]:
+        b = n.get("bounds")
+        if not n.get("focusable") or not b or b[2] <= b[0]:
+            continue
+        if b[0] >= d[0] - 1 and b[2] <= d[2] + 1 and b[1] >= d[1] - 1 and b[3] <= d[3] + 1:
+            out.append(n)
+    return out
+
+
+def _target_index(c: AgentClient, target: str):
+    # AppBar's slots are buttons with no author id: the first focusable
+    # inside the demo stands for them.
+    if target == "appbar-first-button":
+        f = _focusables_in_demo(c)
+        return f[0]["id"] - 1 if f else None
+    return c.rpc("ui.resolve", selector=target)["index"]
+
+
+def run_keys(c: AgentClient, widget: str, target: str, actions: list, strategy: str) -> list[str]:
+    """Reach `target` by Tab alone, then drive each action by keys alone."""
+    out: list[str] = []
+    _pick(c, widget)
+    from keys import START
+    for k in START.get(widget, []):
+        c.rpc("input.key", key=k)
+    want = _target_index(c, target)
+    if want is None:
+        raise Failed(f"{widget}: the keyboard target {target} resolved to nothing")
+    tabs = 0
+    while _focused_index(c) != want:
+        if tabs >= 200:
+            raise Failed(f"{widget}: 200 Tabs never reached {target} -- the keyboard cannot get there")
+        c.key("Tab", True)
+        c.key("Tab", False)
+        tabs += 1
+    out.append(f"  {widget} [{strategy}] keyboard: {target} reached in {tabs} Tab(s)")
+    for a in actions:
+        sel = None if target == "appbar-first-button" else target
+        r0 = Ctx(c, widget, sel or "#demo").readout()
+        v0 = c.rpc("ui.resolve", selector=sel).get("value") if sel else None
+        for k in a.keys:
+            if isinstance(k, str) and k.startswith("text:"):
+                c.rpc("input.type", text=k[5:])
+            elif isinstance(k, tuple):
+                c.rpc("input.key", key=k[0], mods=k[1])
+            else:
+                c.rpc("input.key", key=k)
+        c.rpc("ui.lastChange")
+        kind = a.expect
+        if kind == "open":
+            owner = target.split(" > ")[0]
+            b = c.rpc("ui.resolve", selector=f"{owner} > #picker-pad").get("bounds", [0, 0, 0, 0])
+            ok, msg = b[2] > b[0], f"the pad is {b[2]-b[0]:.0f} px wide"
+        elif kind == "menu":
+            b = c.rpc("ui.resolve", selector="#d_menu_a > #chooser-list").get("bounds", [0, 0, 0, 0])
+            ok, msg = b[2] > b[0], f"the menu list is {b[2]-b[0]:.0f} px wide"
+        elif kind == "tip":
+            b = c.rpc("ui.resolve", selector="#tooltip-tip").get("bounds", [0, 0, 0, 0])
+            ok, msg = b[2] > b[0], f"the tip is {b[2]-b[0]:.0f} px wide on focus alone"
+        elif kind == "focus-only":
+            ok, msg = _focused_index(c) == want, "focus stayed on the chip"
+        else:
+            r1 = Ctx(c, widget, sel or "#demo").readout()
+            v1 = c.rpc("ui.resolve", selector=sel).get("value") if sel else None
+            ok = r1 != r0 or v1 != v0
+            msg = f"readout {r0!r} -> {r1!r}, value {v0!r} -> {v1!r}"
+        out.append(f"    {a.name}: {msg}")
+        if not ok:
+            raise Failed(f"{widget}/{a.name} (keyboard): {msg}")
     return out

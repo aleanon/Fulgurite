@@ -141,8 +141,14 @@ impl NumberInput {
         }
     }
 
+    /// Step by `by` **from what the field shows** — M57/B24. This added to
+    /// the last committed value and threw the typed text away: type "3"
+    /// into a field holding 10, press Up, and it read 10.00 rather than
+    /// 3.50 (`docs/widget-audit.md`, NumberInput). Text that does not parse
+    /// steps from the committed value, as before.
     fn nudge(&mut self, by: f32) -> bool {
-        self.set_value(self.value + by)
+        let base = parse_decimal(self.field.as_str()).unwrap_or(self.value);
+        self.set_value(base + by)
     }
 }
 
@@ -214,7 +220,7 @@ impl Widget for NumberInput {
                 Fields::FOCUS_RING,
                 Fields::CURSOR,
                 Fields::VISIBLE,
-            ]))];
+            ])).with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Text).background(lumen_static::style::Role::Raised).border(lumen_static::style::Role::Border))];
 
     /// A field's look, plus the border M27/T27.1 made possible. Narrower
     /// than a text field, because a number is short and a wide box
@@ -496,6 +502,14 @@ impl RangeSlider {
     /// one there would pin it: `set_low` clamps to `high`, so dragging
     /// right would move nothing.
     fn nearest(&self, at: f32) -> bool {
+        // **Collapsed, the side of the press decides** — M57/B25. Taking
+        // the high handle whenever the two were equal opened the range to
+        // the right only: `set_high` clamps to `low`, so a drag left moved
+        // nothing, and the low bound could never be reached again by
+        // pointer (`docs/widget-audit.md`, RangeSlider).
+        if self.low == self.high {
+            return at >= self.high;
+        }
         let (dl, dh) = ((at - self.low).abs(), (at - self.high).abs());
         dh <= dl
     }
@@ -534,7 +548,7 @@ impl Widget for RangeSlider {
                 Fields::FOCUS_RING,
                 Fields::CURSOR,
                 Fields::VISIBLE,
-            ]))];
+            ])).with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Accent).background(lumen_static::style::Role::Track))];
 
     fn type_defaults() -> Style {
         Style {
@@ -573,7 +587,6 @@ impl Node for RangeSlider {
     }
 
     fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
-        lumen_static::ops::focus_ring(st, i, out);
         let s = &st[i];
         let r = lumen_static::ops::rect_of(s);
         let (w, h) = (r[2] - r[0], r[3] - r[1]);
@@ -591,7 +604,10 @@ impl Node for RangeSlider {
             out.rounded_rect([xl, mid - t / 2.0, xh, mid + t / 2.0], s.fg, t / 2.0);
         }
         let d = h * 0.75;
-        for x in [xl, xh] {
+        for (x, high) in [(xl, false), (xh, true)] {
+            // The handle the keyboard moves is drawn larger while focused
+            // (M57/B25): with two identical handles nothing said which.
+            let d = if s.focused && high == self.high_active { d * 1.25 } else { d };
             let kx = lumen_static::num::clamp(x - d / 2.0, r[0], r[2] - d);
             out.rounded_rect([kx, mid - d / 2.0, kx + d, mid + d / 2.0], s.fg, d / 2.0);
         }
@@ -625,10 +641,25 @@ impl Node for RangeSlider {
                 self.high_active = true;
                 self.set_high(1.0)
             }
-            // Tab between the two handles, so a keyboard can reach both.
+            // Arriving by Tab starts at the low handle, by Shift+Tab at the
+            // high one, so the next Tab has a stop left to take (M57/B25).
+            Event::Focus { gained: true } if cx.target == cx.node => {
+                self.high_active = cx.mods.has(lumen_static::event::Mods::SHIFT);
+                false
+            }
+            // **Tab moves between the two handles, then on** — M57/B25.
+            // The pass offers Tab to the focused widget first now; this arm
+            // was dead code while it did not. Forward from the low handle
+            // stops on the high one; backward from the high stops on the
+            // low; past either end the Tab is declined and focus moves.
             Event::Key { key: Key::Tab, down: true } => {
-                self.high_active = !self.high_active;
-                true
+                let back = cx.mods.has(lumen_static::event::Mods::SHIFT);
+                if back == self.high_active {
+                    self.high_active = !back;
+                    true
+                } else {
+                    false
+                }
             }
             _ => false,
         }
@@ -686,6 +717,13 @@ pub const PART_SEARCH_ICON: &str = "search-icon";
 pub const PART_SEARCH_FIELD: &str = "search-field";
 
 /// A text field that looks like one: a magnifier, then the text.
+///
+/// **Escape clears, and so does its ×** — M57/B26. `clear()` existed and
+/// nothing called it (`docs/widget-audit.md`, SearchField). The field
+/// declines Escape when it has no selection, so the pill takes it; the ×
+/// is drawn at the right while there is a query, and a press on it is
+/// routed to the pill rather than the field. Enter is
+/// [`SearchField::take_submitted`].
 pub struct SearchField {
     pub icon: Icon,
     pub field: crate::input::TextInput<alloc::string::String>,
@@ -700,6 +738,10 @@ pub struct SearchField {
     /// through `set_label`, which every build has.
     #[cfg(feature = "a11y")]
     pub label: &'static str,
+    /// Its own width from layout, for which part a press is on.
+    width: f32,
+    /// A press began on the ×: the release clears only if so.
+    on_clear: bool,
 }
 
 impl Default for SearchField {
@@ -709,6 +751,8 @@ impl Default for SearchField {
             field: crate::input::TextInput::default(),
             #[cfg(feature = "a11y")]
             label: "",
+            width: 0.0,
+            on_clear: false,
         }
     }
 }
@@ -734,8 +778,24 @@ impl SearchField {
         true
     }
 
+    /// Whether Enter was pressed since the last call — and clears it.
+    pub fn take_submitted(&mut self) -> bool {
+        self.field.take_submitted()
+    }
+
     /// Gap between the magnifier and the text.
     const GAP: f32 = 8.0;
+    /// The ×'s column, inside the right padding.
+    const CLEAR_W: f32 = 20.0;
+
+    fn has_clear(&self) -> bool {
+        !self.field.as_str().is_empty()
+    }
+
+    /// Whether a point `x` from the pill's left edge is on the ×.
+    fn on_x(&self, x: f32) -> bool {
+        self.has_clear() && x >= self.width - Self::CLEAR_W - 12.0
+    }
 }
 
 pub struct SearchFieldTable;
@@ -763,9 +823,18 @@ impl SearchFieldTable {
                 Fields::RADIUS,
                 Fields::CURSOR,
                 Fields::VISIBLE,
-            ]));
+            ])).with_roles(lumen_static::style::SeedRoles::NONE.background(lumen_static::style::Role::Raised).border(lumen_static::style::Role::Border));
         s[SF_ICON] = <Icon as Widget>::SEEDS[0];
-        s[SF_FIELD] = <crate::input::TextInput<alloc::string::String> as Widget>::SEEDS[0];
+        // **Its own kind, `searchinput`** — M57/C5. The field inside the
+        // pill is a `TextInput`, and seeded as one it answered to every
+        // `Kind("textinput")` rule: the showcase's gave it a 220 px
+        // bordered box of its own, and the pill drew a box inside a box
+        // with 60 px of dead space (`docs/widget-audit.md`, SearchField).
+        // The same defaults and reads; a different name, so a sheet
+        // styling text fields does not reach into this one.
+        let mut field = <crate::input::TextInput<alloc::string::String> as Widget>::SEEDS[0];
+        field.kind = "searchinput";
+        s[SF_FIELD] = field;
         s
     };
     pub const SEED_SLICE: &'static [Seed] = &Self::SEED_ARRAY;
@@ -816,7 +885,13 @@ impl Node for SearchField {
         if !me.visible {
             return lumen_static::ops::hide_subtree(st, i, limits, Self::NODE_COUNT);
         }
-        let inner = lumen_static::ops::inner_limits(limits, me.padding);
+        // **Its own width first** — M57/B26. The children were laid out
+        // across the *offered* width, so a `Fixed(220)` pill in a 400 px
+        // row put a 328 px field in it, running 148 px past its right
+        // edge; the caret at a long query's end was drawn outside the
+        // pill. `within_own_size` is M56's answer to the same defect in
+        // the derive; a hand-written wrapper has to ask for it.
+        let inner = lumen_static::ops::inner_limits(lumen_static::ops::within_own_size(limits, &me), me.padding);
         // **Loose limits for the icon.** A `SearchField` is `FILL`, so
         // its own `min_w` is the width its parent insisted on — and
         // `resolve_self` clamps a `Fixed` *up* to `min_w`. Handing the
@@ -830,9 +905,10 @@ impl Node for SearchField {
         let loose = Constraints { min_w: 0.0, max_w: inner.max_w, min_h: 0.0, max_h: inner.max_h };
         let ic = self.icon.layout(cx, loose, style, st, i + SF_ICON);
         // The field takes what is left after the icon and the gap.
+        let clear = if self.has_clear() { Self::CLEAR_W } else { 0.0 };
         let rest = Constraints {
             min_w: 0.0,
-            max_w: (inner.max_w - ic.w - Self::GAP).max(0.0),
+            max_w: (inner.max_w - ic.w - Self::GAP - clear).max(0.0),
             min_h: 0.0,
             max_h: inner.max_h,
         };
@@ -842,6 +918,7 @@ impl Node for SearchField {
             h: ic.h.max(f.h) + me.padding.vertical(),
         };
         let s = lumen_static::ops::resolve_self(limits, &me, content);
+        self.width = s.w;
         lumen_static::ops::record_painted(st, i, limits, s, &me)
     }
 
@@ -877,11 +954,45 @@ impl Node for SearchField {
         lumen_static::ops::border(st, i, out);
         self.icon.paint(st, i + SF_ICON, out);
         self.field.paint(st, i + SF_FIELD, out);
+        if self.has_clear() {
+            // The ×, in the icon's colour: it is the same kind of mark.
+            let c = st[i + SF_ICON].fg;
+            let (cx, cy, d) = (r[2] - st[i].pad.2 - Self::CLEAR_W / 2.0, (r[1] + r[3]) / 2.0, 4.0);
+            out.line(Point { x: cx - d, y: cy - d }, Point { x: cx + d, y: cy + d }, 1.5, c);
+            out.line(Point { x: cx - d, y: cy + d }, Point { x: cx + d, y: cy - d }, 1.5, c);
+        }
+    }
+
+    fn on_event(&mut self, ev: &Event, cx: &EventCtx) -> bool {
+        match ev {
+            // The field declined it: it had no selection to drop.
+            Event::Key { key: Key::Escape, down: true } => self.clear(),
+            // Only a press aimed at the pill itself — the × — and not one
+            // the field declined on its way up.
+            Event::PointerDown { .. } if cx.target == cx.node => {
+                self.on_clear = self.on_x(cx.local.x);
+                self.on_clear
+            }
+            Event::PointerUp { .. } if cx.target == cx.node => {
+                let hit = core::mem::take(&mut self.on_clear) && self.on_x(cx.local.x);
+                hit && self.clear()
+            }
+            _ => false,
+        }
     }
 
     fn hit(&self, st: &[NodeState], i: usize, x: f32, y: f32) -> Option<lumen_static::Hit> {
         if !lumen_static::hit::contains(&st[i], x, y) {
             return None;
+        }
+        // The × is the pill's own: a press there must not put a caret in
+        // the field.
+        if self.on_x(x - st[i].pos.x) {
+            return Some(lumen_static::Hit {
+                node: i as u32,
+                inner: None,
+                local: Point { x: x - st[i].pos.x, y: y - st[i].pos.y },
+            });
         }
         // **The field, wherever inside the box the click landed.** The
         // icon is decoration and `Icon` declines a hit anyway; falling

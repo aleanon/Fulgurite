@@ -20,5 +20,5 @@ pub fn untouched() {
     assert!(r.get("error").is_none(), "step 2 (`input.click`) failed: {r}");
     assert_eq!(r["result"]["handled"], true, "step 2 (`input.click`): handled");
     let tree = agent.dispatch_input(&mut host, &serde_json::json!({"jsonrpc": "2.0", "id": 0, "method": "ui.getTree"}));
-    assert_eq!(lumen_static_agent::session::digest(&tree["result"]), 0x388ee7f1b7f8b05b, "the final tree differs from the recorded one");
+    assert_eq!(lumen_static_agent::session::digest(&tree["result"]), 0x93b38b287faf89f2, "the final tree differs from the recorded one");
 }
