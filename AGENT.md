@@ -627,6 +627,23 @@ found" section rather than silently replacing itself.
   `Program` window had: no input latency in `app.perf`, and a `ui.lint`
   audit measuring with the block stand-in instead of the session's face.
 
+- **M61 — `docs/plan-lss.md`** (T61.0–T61.7): `.lss` stylesheets,
+  **parsed at compile time**. Not started (2026-09-28).
+  - **What it is:** `include_lss!(Tree, "app.lss")` emits the same
+    `const` rules a person writes by hand. Its claim is zero bytes and
+    zero instructions over a hand-written sheet (kill rule K1: the
+    firmware's `.text` and `.rodata` byte-identical).
+  - **Errors at build time:** an unknown property, a bad value or an
+    `#id`/`.class` the tree lacks is a compile error at `file:line:col`.
+    A kind selector stays with `W1010` at run time, because `NodeDesc`
+    carries no kind.
+  - **v1's grammar:** what our cascade can apply, plus `@tokens`,
+    palette roles as `$tokens`, and `@sheet` blocks for `style_by`.
+    Everything else in Lumen's `.lss` is a named compile error.
+  - **Dev builds:** the same parser reads the file at run time, so a
+    colour change needs no rebuild.
+  - **Deferred:** a compile-time cascade (§4).
+
 Unsequenced: ~~`docs/plan-harness.md`.~~ — **M12 DONE 2026-09-20.**
 T12.3 and T12.4 landed 2026-09-04; T12.1 (a locator and expectation API,
 `lumen_static_agent::harness::TestApp`) and T12.2 (golden images with a
