@@ -214,6 +214,36 @@ pub fn present_needed(own: bool, forced: bool, damage: lumen_static::retain::Dam
     !own || forced || damage != lumen_static::retain::Damage::None
 }
 
+/// **When an animating window draws next** — the M56 merge.
+///
+/// A frame that presented is paced by its present. One that presented
+/// nothing ([`present_needed`], M53/T53.4) costs almost nothing, so
+/// asking for the next frame at once spins the loop at the CPU's rate
+/// for as long as the application says it is moving without changing a
+/// pixel — a toast's countdown (M57/B34) is exactly that, and one drive
+/// action spanned 6,000 frames and outran the agent's journal. Such a
+/// frame waits one display `interval` from its start instead, folded
+/// into `wait` so an earlier timer still wins.
+///
+/// Answers the control flow to wait on, and whether to ask for a frame
+/// now. Nothing moving and nothing deferred leaves `wait` alone.
+pub fn next_frame(moving: bool, deferred: bool, presented: bool, start: Instant, interval: std::time::Duration, wait: ControlFlow) -> (ControlFlow, bool) {
+    if !(moving || deferred) {
+        return (wait, false);
+    }
+    // A deferred backlog is drained a capped amount per frame (M28/T28.2)
+    // and is not display-bound: it asks at once, as before.
+    if presented || deferred {
+        return (wait, true);
+    }
+    let at = start + interval;
+    let flow = match wait {
+        ControlFlow::WaitUntil(t) if t < at => ControlFlow::WaitUntil(t),
+        _ => ControlFlow::WaitUntil(at),
+    };
+    (flow, false)
+}
+
 /// How many dropped presents in a row [`present_retry`] asks again for.
 pub const MAX_PRESENT_RETRIES: u32 = 3;
 
@@ -855,7 +885,8 @@ impl Win {
         let overlay = barred.is_some();
         #[cfg(not(feature = "hot"))]
         let overlay = false;
-        let presented = if !present_needed(own, self.session.failed() || overlay, self.session.damage()) {
+        let skipped = !present_needed(own, self.session.failed() || overlay, self.session.damage());
+        let presented = if skipped {
             self.presents.1 += 1;
             // The pump's own figures still stand (under `Everything` it
             // laid out and painted); nothing was rendered or presented.
@@ -939,7 +970,18 @@ impl Win {
         // the skipped pump (T53.3) and presents nothing
         // (`present_needed`), 0 presents for 200 motions in that file's
         // Idle section, where it was one per motion.
-        if animating || self.session.more_deferred() {
+        // And an animating frame that presented nothing waits a display
+        // interval rather than asking at once ([`next_frame`]).
+        let interval = window
+            .current_monitor()
+            .and_then(|m| m.refresh_rate_millihertz())
+            .filter(|&mhz| mhz > 0)
+            .map_or(std::time::Duration::from_micros(16_667), |mhz| {
+                std::time::Duration::from_micros(1_000_000_000 / mhz as u64)
+            });
+        let (wait, now) = next_frame(animating, self.session.more_deferred(), !skipped, start, interval, self.wait);
+        self.wait = wait;
+        if now {
             self.ask_redraw();
         }
     }
@@ -1762,6 +1804,36 @@ mod tests {
             println!("own {own}, forced {forced}, damage {damage:?} -> present {want}");
             assert_eq!(present_needed(own, forced, damage), want, "own {own} forced {forced} {damage:?}");
         }
+    }
+
+    /// **An animating frame that presented nothing waits** (the M56
+    /// merge, [`next_frame`]): a presented frame and a deferred backlog
+    /// ask at once, a still window asks for nothing, and an unpresented
+    /// moving frame waits one interval from its start — or for an
+    /// earlier timer, which must still win.
+    #[test]
+    fn a_moving_frame_that_presented_nothing_waits_an_interval() {
+        use std::time::Duration;
+        let start = Instant::now();
+        let iv = Duration::from_micros(16_667);
+        let (flow, now) = next_frame(true, false, false, start, iv, ControlFlow::Wait);
+        let waited = match flow {
+            ControlFlow::WaitUntil(t) => t.duration_since(start).as_secs_f64() * 1000.0,
+            other => panic!("an unpresented moving frame gave {other:?}, not WaitUntil"),
+        };
+        println!("unpresented, moving: redraw now {now}, waits {waited:.3} ms (want 16.667)");
+        assert!(!now, "an unpresented moving frame asked for the next one at once: the loop spins");
+        assert!((waited - 16.667).abs() < 0.01, "waited {waited:.3} ms, not one interval");
+
+        let early = start + Duration::from_millis(5);
+        assert_eq!(next_frame(true, false, false, start, iv, ControlFlow::WaitUntil(early)).0,
+                   ControlFlow::WaitUntil(early), "an earlier timer lost to the pacing");
+        assert_eq!(next_frame(true, false, true, start, iv, ControlFlow::Wait), (ControlFlow::Wait, true),
+                   "a presented moving frame must ask at once");
+        assert_eq!(next_frame(false, true, false, start, iv, ControlFlow::Wait), (ControlFlow::Wait, true),
+                   "a deferred backlog must ask at once");
+        assert_eq!(next_frame(false, false, false, start, iv, ControlFlow::Wait), (ControlFlow::Wait, false),
+                   "a still window asked for a frame");
     }
 
     /// **The retry decision** (M47/T47.4): a drop asks again, up to the
