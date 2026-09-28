@@ -294,6 +294,35 @@ fn a_tree_is_walked_and_folded_from_the_keyboard() {
     assert_eq!(g.app.ui.tree.hot(), Some(3), "Left on a leaf did not step to its parent");
 }
 
+/// **The pointer resting on a row does not redirect the keys** — the
+/// M56 merge. Pointer hover and the keyboard shared one `hot`, so with
+/// the mouse over a leaf, Right tried to open the leaf and did nothing:
+/// the live drive's "the keyboard unfolds it again" failed once D1 began
+/// hovering the widget before each frame. Since M57/B50 the keyboard's
+/// row is the selection, and the walk starts there.
+#[test]
+fn a_hovered_row_does_not_take_the_keyboard() {
+    let mut g = G::new();
+    g.input.focus = Some(owid("tree"));
+    g.key(Key::Down); // lights and selects "src"
+    g.key(Key::Left); // folds it: src, tests, it.rs are visible
+    assert!(!g.app.ui.tree.is_open(0), "setup: Left did not fold src");
+    // Rest the pointer on "it.rs", a leaf, as a user reaching for the
+    // mouse would; found by sampling so the geometry is not restated.
+    let t = g.st[owid("tree") as usize];
+    let lit = (0..400).map(|k| t.pos.y + k as f32 * 0.5).find(|&y| {
+        let ev = Event::PointerMove { x: t.pos.x + 20.0, y };
+        pass::dispatch_overlaid(&mut g.app, &g.sty, &mut g.st, &mut g.input, &g.ov, &ev);
+        g.app.ui.tree.hot() == Some(4)
+    });
+    g.frame();
+    println!("hover lit it.rs at y {lit:?}; hot {:?}, selected {:?}", g.app.ui.tree.hot(), g.app.ui.tree.selected);
+    assert!(lit.is_some(), "setup: no pointer position lit the leaf, so the hover never happened");
+    let moved = g.key(Key::Right);
+    println!("Right with the pointer on it.rs: handled {moved}, src open {}", g.app.ui.tree.is_open(0));
+    assert!(g.app.ui.tree.is_open(0), "Right acted on the hovered leaf, not the selected parent");
+}
+
 /// A data grid: the sheet is a Tab stop; Ctrl+End goes to the last row
 /// and scrolls it into view; Enter runs that row's handler with its
 /// index. (M44/T44.10 made the *rows* the stop, with End; the sheet's

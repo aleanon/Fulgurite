@@ -592,7 +592,7 @@ impl Tree {
 
     /// Select `i`. Answers whether the selection moved.
     fn select(&mut self, i: usize) -> bool {
-        core::mem::replace(&mut self.selected, Some(i)) != Some(i)
+        self.selected.replace(i) != Some(i)
     }
 
     /// How many rows are currently on screen.
@@ -634,7 +634,16 @@ impl Tree {
     /// selection** (M57/B50): what the arrows land on is selected and
     /// drawn as the strong fill, while the pointer's hover stays a tint.
     /// Answers whether anything moved.
+    ///
+    /// **The walk starts from the selection**, not from wherever the
+    /// pointer rests: hover lights `hot` too, and with the mouse on a leaf
+    /// Right tried to open the leaf and moved the selection there (the
+    /// M56 merge's live drive, `tests/keyboard_rows.rs`). A selection
+    /// folded out of sight falls back to `hot`, as before.
     pub fn key(&mut self, key: Key) -> bool {
+        if let Some(s) = self.selected.filter(|&s| s < self.count && self.is_visible(s)) {
+            self.hot = Some(s);
+        }
         let moved = self.key_walk(key);
         match self.hot {
             Some(h) if h < self.count && self.selected != Some(h) => {
