@@ -7,6 +7,7 @@ members = [
     "crates/lumen-static-agent",
     "crates/lumen-static-reload",
     "crates/lumen-static-macros",
+    "crates/lumen-static-lss",
     "crates/lumen-static-shell",
     "crates/lumen-static-text",
     "crates/lumen-static-winit",
