@@ -1,0 +1,7 @@
+/* M61/T61.0 gate 3's run-time half (docs/plan-lss.md §2.3). The two
+   rules differ only in the kind's case: a built-in leaf's kind is
+   lowercase, so `Label` matches nothing. A kind is not checked at compile
+   time -- `NodeDesc` carries no kind -- so this sheet compiles, and W1010
+   must name the first rule. */
+Label { color: #141414ff; }
+label { color: #141414ff; }

@@ -299,3 +299,21 @@ Risks:
 | T61.4 | bad id/class fail to compile; real sheets compile; bad kind is W1010 | id assertion `>= 0` |
 | T61.5 | both paths equal on every `.lss`; K3 no symbol in release | lower a colour differently in `load` |
 | T61.6 | tally shots byte-identical at −3, 0, 7 | swap two colours in `app.lss` |
+
+## What building found
+
+- **2026-09-28, T61.0 — K1 cannot compare a cargo feature against its
+  absence.** The first K1 script built the `include_lss!` side with a
+  fixture feature, and the two *paint-only* firmwares — which never read
+  `SHEET` — came out 780 `.text` bytes apart at equal sizes. A feature
+  changes the crate's `-C metadata`, so every mangled name changes, and
+  the linker lays same-sized functions out in a different order. The
+  choice is now a cfg the fixture's `build.rs` sets from `LUMEN_SHEET=lss`,
+  which leaves the metadata alone: the two builds of `firmware` and
+  `firmware_bind` are then byte-identical, and the stub's empty sheet
+  shows as the only difference (−396 B `.rodata` in the two firmwares
+  that cascade).
+- **2026-09-28, T61.0 — item 5 is written with T61.5**, because `load` —
+  one of the two sides it compares — is T61.5's API; a gate over a
+  function that does not exist cannot be committed ignored, only
+  uncompiled.

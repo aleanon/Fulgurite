@@ -1,0 +1,8 @@
+/* The firmwares' three-rule sheet (`SHEET` in lib.rs), authored as .lss.
+   Kill rule K1 (docs/plan-lss.md §5): linked through include_lss!, the
+   firmwares' .text and .rodata must be byte-identical to the
+   hand-written slice's -- scripts/check_lss_parity.sh. */
+
+* { spacing: 5px; }
+button { border-radius: 3px; }
+#title { font-size: 18px; }

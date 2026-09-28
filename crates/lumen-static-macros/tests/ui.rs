@@ -40,3 +40,24 @@ fn reload_diagnostics() {
     t.compile_fail("tests/ui-reload/fail_*.rs");
 }
 
+
+/// M61/T61.0 gate 2 (`docs/plan-lss.md` §2.1): every refusal is a compile
+/// error that names the `.lss` file, line and column, and the reason; and
+/// every accepted construct lowers to the rules a person would write.
+#[test]
+#[ignore = "red until T61.3: include_lss! is a stub that accepts everything and emits nothing"]
+fn lss_errors() {
+    let t = trybuild::TestCases::new();
+    t.compile_fail("tests/ui-lss/fail_[!t]*.rs");
+    t.pass("tests/ui-lss/pass_*.rs");
+}
+
+/// M61/T61.0 gate 3 (`docs/plan-lss.md` §2.3): an `#id` or a `.class` the
+/// tree does not have fails to compile, by name. (A kind does not: that
+/// is W1010 at run time, pinned by `lumen-static-agent`'s `tests/lss_kind.rs`.)
+#[test]
+#[ignore = "red until T61.4: include_lss! does not check selectors against the tree"]
+fn lss_tree_checks() {
+    let t = trybuild::TestCases::new();
+    t.compile_fail("tests/ui-lss/fail_tree_*.rs");
+}

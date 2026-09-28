@@ -66,6 +66,20 @@ enum Axis {
     Flow(Option<usize>),
 }
 
+/// `include_lss!(Tree, "file.lss")` — a `.lss` stylesheet as `const`
+/// rules, parsed while the crate compiles (M61, `docs/plan-lss.md`).
+///
+/// **A stub until T61.3**: it expands to an empty sheet, so the gates
+/// T61.0 commits compile and are red.
+#[proc_macro]
+pub fn include_lss(_input: TokenStream) -> TokenStream {
+    quote! {{
+        const __LUMEN_LSS: &[::lumen_static::style::Rule] = &[];
+        __LUMEN_LSS
+    }}
+    .into()
+}
+
 #[proc_macro_derive(StaticTree, attributes(widget, widget_id, widget_class))]
 pub fn derive_static_tree(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);

@@ -240,6 +240,9 @@ pub use event::{Action, Event, EventCtx, InputQueue, Key, Mods, PointerButton, T
 // so `use lumen_static::App` brings in whichever the position calls for.
 pub use event::App;
 pub use lumen_static_macros::{App, Reloadable, StaticTree};
+/// A `.lss` stylesheet as `const` rules, parsed at compile time — M61
+/// (`docs/plan-lss.md`).
+pub use lumen_static_macros::include_lss;
 
 /// **What `#[derive(Reloadable)]` expands through** — M49/T49.9, R5-F8.
 ///

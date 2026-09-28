@@ -321,6 +321,13 @@ pub const DEVICE_NODES: usize = DeviceUi::NODE_COUNT;
 /// A three-rule sheet — an id, a kind and a class-free `Any` — for the
 /// firmwares that cascade (M52/T52.1). Three specificity levels, so
 /// `cascade_range`'s level scan has more than one pass to run.
+///
+/// **Written twice, on purpose** (M61/T61.0, kill rule K1 of
+/// `docs/plan-lss.md`): by hand here, and as `sheet.lss` under
+/// `cfg(lumen_lss_sheet)` below (`LUMEN_SHEET=lss`; `build.rs` says why it
+/// is not a feature). `scripts/check_lss_parity.sh` links the firmwares both
+/// ways and requires their `.text` and `.rodata` to be byte-identical.
+#[cfg(not(lumen_lss_sheet))]
 pub const SHEET: &[lumen_static::Rule] = &[
     lumen_static::Rule::new(
         lumen_static::Selector::Any,
@@ -335,6 +342,11 @@ pub const SHEET: &[lumen_static::Rule] = &[
         lumen_static::Patch::new().font_size(18.0),
     ),
 ];
+
+/// [`SHEET`], authored as `.lss` and parsed while this crate compiles —
+/// the other side of K1's comparison (`docs/plan-lss.md` §5).
+#[cfg(lumen_lss_sheet)]
+pub const SHEET: &[lumen_static::Rule] = lumen_static::include_lss!(Ui, "sheet.lss");
 
 /// Lay out and paint over styles the caller already has — the cascade's
 /// output, which [`frame`] would overwrite with the defaults — laying out

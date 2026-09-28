@@ -1,0 +1,4 @@
+#title {
+    color: #ffffffff;
+    &:hovered { color: #000000ff; }
+}
