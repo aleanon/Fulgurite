@@ -55,7 +55,6 @@ fn lss_errors() {
 /// tree does not have fails to compile, by name. (A kind does not: that
 /// is W1010 at run time, pinned by `lumen-static-agent`'s `tests/lss_kind.rs`.)
 #[test]
-#[ignore = "red until T61.4: include_lss! does not check selectors against the tree"]
 fn lss_tree_checks() {
     let t = trybuild::TestCases::new();
     t.compile_fail("tests/ui-lss/tree_fail_*.rs");

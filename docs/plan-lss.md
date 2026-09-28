@@ -334,3 +334,12 @@ Risks:
   writes, in order): emit the rules **reversed**. Sizes stay equal and
   `.rodata` differs in both firmwares that cascade, which is also the case
   for comparing bytes rather than sizes.
+- **2026-09-28, T61.4 — "the showcase's real sheet still compiles" needed
+  a showcase `.lss`, which §4 said not to migrate.** It is written as a
+  **mirror**, not a migration: `examples/showcase/showcase.lss` is 49 rules
+  checked against `Screen` at compile time, and a test holds it equal,
+  rule by rule, to the `stylesheet()` the showcase actually runs. That is
+  the accept direction of the tree checks on a sheet nobody wrote for
+  them — including three part ids a composite stamps (`#select-trigger`,
+  `#select-menu`, `#tooltip-content`), which are in `SUB_TABLE` and so
+  pass — and it is K2's larger arm.

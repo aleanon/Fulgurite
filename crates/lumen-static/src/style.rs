@@ -1415,6 +1415,35 @@ pub const fn count_wid(table: &[NodeDesc], wid: &str) -> usize {
     n
 }
 
+/// How many nodes of `table` carry the style class `class` —
+/// `#[widget_class]`.
+///
+/// **`const`, for `include_lss!`** (M61/T61.4, `docs/plan-lss.md` §2.3):
+/// a `.class` a `.lss` file names must be carried by some node of the
+/// tree it styles, and the macro asserts `count_class(..) > 0` at compile
+/// time — so a misspelled class is a build error at the file's line, not
+/// a `W1010` at run time. `> 0` and not `== 1`: a class is for many nodes.
+/// An empty `class` matches nothing.
+pub const fn count_class(table: &[NodeDesc], class: &str) -> usize {
+    if class.is_empty() {
+        return 0;
+    }
+    let (mut i, mut n) = (0, 0);
+    while i < table.len() {
+        let classes = table[i].classes;
+        let mut j = 0;
+        while j < classes.len() {
+            if bytes_eq(classes[j], class) {
+                n += 1;
+                break;
+            }
+            j += 1;
+        }
+        i += 1;
+    }
+    n
+}
+
 /// `a == b` for `&str`, in a `const` context.
 const fn bytes_eq(a: &str, b: &str) -> bool {
     let (a, b) = (a.as_bytes(), b.as_bytes());

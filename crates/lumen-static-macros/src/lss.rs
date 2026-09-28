@@ -106,12 +106,65 @@ pub(crate) fn expand(input: Ts2, invoker: Option<std::path::PathBuf>) -> Ts2 {
     let absolute = std::fs::canonicalize(&path).unwrap_or(path);
     let absolute = absolute.to_string_lossy().into_owned();
     let rules: Vec<Ts2> = rules.iter().map(|r| rule(r)).collect();
-    let _ = &args.tree;
+    let checks = tree_checks(&args.tree, &sheet, &written, span);
     quote! {{
         const _: &[u8] = ::core::include_bytes!(#absolute);
+        #(#checks)*
         const __LUMEN_LSS: &[::lumen_static::style::Rule] = &[#(#rules),*];
         __LUMEN_LSS
     }}
+}
+
+/// **Ids and classes are checked against the tree type** (T61.4,
+/// `docs/plan-lss.md` §2.3): one `const` assertion per distinct `#id` and
+/// `.class` in the whole file — every block, not only the one selected —
+/// that some node of `Tree` carries it. `count_wid(..) > 0`, not
+/// `wid_index!`'s `== 1`: styling several nodes with one id is allowed;
+/// only addressing them is not.
+///
+/// **Kinds are not checked**: `NodeDesc` carries no kind, which is
+/// `Node::kind_name`, a run-time method. A kind selector is left to
+/// `W1010` at run time (`lumen-static-agent`'s `tests/lss_kind.rs` pins
+/// that), and checking it here would need a `const KIND` on `Widget` —
+/// the plan's §4 says why that is its own change.
+fn tree_checks(tree: &Type, sheet: &lumen_static_lss::Sheet, written: &str, span: Span) -> Vec<Ts2> {
+    let tree_name = quote!(#tree).to_string().replace(' ', "");
+    let mut seen: Vec<(bool, &str)> = Vec::new();
+    let mut out = Vec::new();
+    for r in sheet.all_rules() {
+        let (is_id, name) = match &r.selector {
+            Part::Id(s) => (true, s.as_str()),
+            Part::Class(s) => (false, s.as_str()),
+            Part::Kind(_) | Part::Any => continue,
+        };
+        if seen.contains(&(is_id, name)) {
+            continue;
+        }
+        seen.push((is_id, name));
+        let at = format!("{written}:{}:{}", r.span.line, r.span.col);
+        // A format string under edition 2021's `assert!`: braces doubled.
+        let msg = if is_id {
+            format!(
+                "{at}: `#{name}` names no node -- there is no `#[widget_id(\"{name}\")]` in `{tree_name}` \
+                 (docs/plan-lss.md §2.3)"
+            )
+        } else {
+            format!(
+                "{at}: `.{name}` names no node -- there is no `#[widget_class(\"{name}\")]` in \
+                 `{tree_name}` (docs/plan-lss.md §2.3)"
+            )
+        }
+        .replace('{', "{{")
+        .replace('}', "}}");
+        let count = if is_id { quote!(count_wid) } else { quote!(count_class) };
+        out.push(quote_spanned! {span=>
+            const _: () = ::core::assert!(
+                ::lumen_static::style::#count(<#tree as ::lumen_static::widget::Widget>::SUB_TABLE, #name) > 0,
+                #msg
+            );
+        });
+    }
+    out
 }
 
 /// Every error as its own `compile_error!`, in a block that still has the
