@@ -2,10 +2,10 @@
 //! (`docs/plan-lss.md` §2.4).
 //!
 //! The same parser and lowering `include_lss!` runs at build time
-//! (`lumen_static_lss::compile`), turned into [`Rule`] *values* here
+//! (`lumen_static_lss::compile`), turned into [`Rule`](lumen_static::style::Rule) *values* here
 //! instead of `const` tokens — two independent lowerings of one IR, held
 //! to each other by T61.5's parity gate (every `.lss` in the repository,
-//! `include_lss!` and [`load`] equal; `scripts/check_lss_coverage.sh`
+//! `include_lss!` and [`load`](crate::lss::load) equal; `scripts/check_lss_coverage.sh`
 //! refuses a `.lss` with no such test).
 //!
 //! It is what lets a colour change reach a running window without a
