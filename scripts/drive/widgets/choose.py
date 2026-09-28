@@ -106,6 +106,7 @@ PICKLIST = ("PickList", "#d_picklist_a", [
         injection="filter on every kind, not only on a combobox",
     ),
     Action(
+        visible=True,
         name="the keyboard walks the list and chooses a row",
         needs="an open picklist whose trigger has focus",
         # Up six times first: the highlight starts wherever the pointer
@@ -120,9 +121,6 @@ PICKLIST = ("PickList", "#d_picklist_a", [
             f"(wanted 'Banana', the second row)",
         ),
         injection="make OptionList::key a no-op",
-        # Choosing rewrites the trigger — the same `W1005` re-report the
-        # pointer's choosing action names.
-        expects_lint=("W1005",),
     ),
 ])
 

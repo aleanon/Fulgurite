@@ -51,7 +51,7 @@ KEYS: dict[str, tuple[str, list[KeyAction]]] = {
     "PickList": ("#d_picklist_a > #chooser-trigger",
                  [KeyAction("Down, Down, Enter chooses", ["Down", "Down", "Enter"])]),
     "Select": ("#d_select_a > #select-trigger",
-               [KeyAction("Enter, Down, Enter chooses", ["Enter", "Down", "Enter"])]),
+               [KeyAction("Enter, Down, Down, Enter chooses", ["Enter", "Down", "Down", "Enter"])]),
     "Combobox": ("#d_combobox_a > #chooser-trigger",
                  [KeyAction("Down, Down, Enter chooses", ["Down", "Down", "Enter"])]),
     "Menu": ("#d_menu_open", [KeyAction("Enter opens the menu", ["Enter"], "menu")]),
@@ -78,4 +78,8 @@ KEYS: dict[str, tuple[str, list[KeyAction]]] = {
     # D3 recorded the grid's rows unreachable by keyboard; the sheet takes
     # focus itself and the arrows move its active cell.
     "DataGrid": ("#d_datagrid_a", [KeyAction("Down, Right moves the active cell", ["Down", "Right"])]),
+    # Both came from main in the M56 merge (M44/T44.10's demos), after
+    # D3's table was written.
+    "TextArea": ("#d_textarea_a", [KeyAction("typing edits it", ["text:x"])]),
+    "ScrollView": ("#d_scroll_first", [KeyAction("PageDown scrolls the view", ["PageDown"])]),
 }

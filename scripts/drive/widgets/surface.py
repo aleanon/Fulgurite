@@ -95,6 +95,9 @@ TOAST = ("Toast", "#d_toast_b", [
         # The toast floats at the window's bottom, outside the demo (D1).
         visible=True,
         region="window",
+        # The toast shown is `#d_toast_a`, a sibling of the inventory's
+        # widget: it lands and damages where it appears, not on `#d_toast_b`.
+        subject="#d_toast_a",
         name="Save shows a toast below the stage, centred on the window",
         needs="a hidden floating toast and its button",
         do=lambda c: (c.__dict__.__setitem__("_w0", _shown_w(c)), _show(c))[0],
@@ -128,6 +131,7 @@ TOAST = ("Toast", "#d_toast_b", [
         # The toast floats at the window's bottom, outside the demo (D1).
         visible=True,
         region="window",
+        subject="#d_toast_a",
         name="its × closes it",
         needs="the floating toast shown, with a ×",
         do=lambda c: (c.c.rpc("input.click", x=_box(c, "#d_toast_a")[2] - 6,
@@ -138,6 +142,7 @@ TOAST = ("Toast", "#d_toast_b", [
     Action(
         visible=True,
         region="window",
+        subject="#d_toast_a",
         name="shown again, it goes away by itself",
         needs="a toast shown for 3000 ms",
         # Shown in setup, so the "before" frame has it (D1).

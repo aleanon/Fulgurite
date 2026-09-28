@@ -152,6 +152,15 @@ class Action:
     #: the widget's own box (a popup, a readout of the widget's value), or
     #: `"window"` for the whole window (a toast, a tooltip).
     region: str | None = None
+    #: A node **outside the widget's subtree** that this action is about
+    #: — the floating toast a demo's button shows and its × closes. Its
+    #: subtree counts as the widget's for both "did it land" (1) and
+    #: "is there damage over it", so its changes, and the rects they
+    #: had and have, are the action's own. Named, never inferred: widening
+    #: to the window would let any change anywhere pass. (The M56 merge:
+    #: the branch's floating toast met main's landing and damage checks,
+    #: which both read the inventory widget's subtree only.)
+    subject: str | None = None
     #: Hover the widget before the "before" frame, so the action's own
     #: pointer move adds no shade. `False` for an action whose consequence
     #: *is* the hover (a highlight, a tooltip): pre-hovering would have
@@ -507,7 +516,10 @@ def run_widget(c: AgentClient, widget: str, sel: str, actions: list[Action],
 
         # (1) it landed -- on this widget, not anywhere in the frame.
         changed = c.rpc("ui.lastChange", since=since).get("changed", [])
-        mine = [ch for ch in changed if first <= ch.get("index", -1) < end]
+        ranges = [(first, end)]
+        if a.subject:
+            ranges.append(tuple(c.rpc("ui.resolve", selector=a.subject)["subtree"]))
+        mine = [ch for ch in changed if any(f <= ch.get("index", -1) < e for f, e in ranges)]
         if not a.static:
             readout = ctx.readout()
             moved = readout != readout_before

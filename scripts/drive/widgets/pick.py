@@ -93,6 +93,7 @@ def _shared(name, sel, cols, cw, cell, want, head=0.0):
 COLOR = ("ColorPicker", "#d_colorpicker_a", _shared(
     "ColorPicker", "#d_colorpicker_a", 4, 32.0, 5, "#dc2626") + [
     Action(
+        visible=True,
         name="the keyboard walks the swatches and chooses one",
         needs="a closed picker on swatch 5 (#dc2626), its trigger focused",
         # Escape, then a click on the trigger to focus it and open the
@@ -107,9 +108,6 @@ COLOR = ("ColorPicker", "#d_colorpicker_a", _shared(
             f"(wanted '#fb923c', swatch 10), open={_is_open(c)}",
         ),
         injection="make Pad::key ignore the arrows",
-        # The value's text changes width and relays out the stage, which
-        # re-reports the showcase's wrapping note as `W1005`.
-        expects_lint=("W1005",),
     ),
 ])
 

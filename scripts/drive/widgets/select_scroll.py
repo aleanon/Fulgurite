@@ -7,8 +7,9 @@ because no milestone owned it until the index assigned it here.
 
 The stage's `Select` is controlled like any application's — the showcase
 binds its `open` by hand and reads the choice into the readout — and it is
-addressed **through its owner**, `#d_select_a > ...`, because the header's
-picker is a `Select` too and carries the same part ids.
+addressed **through its owner**, `#d_select_a > ...`: part ids live on a
+type's table, so any second `Select` would carry the same ones (the header
+picker did, until M56 replaced it with the sidebar).
 """
 from harness import Action
 
@@ -43,6 +44,8 @@ def _keys(c, *names):
 
 SELECT = ("Select", "#d_select_a", [
     Action(
+        visible=True,
+        region="window",
         name="pressing the trigger opens the menu",
         needs="a closed select",
         prep=lambda c: c.key("Escape"),
@@ -57,25 +60,22 @@ SELECT = ("Select", "#d_select_a", [
         injection="leave the trigger's on_click unset, so nothing sets `select_open`",
     ),
     Action(
+        visible=True,
         name="releasing over a row chooses it and closes the menu",
         needs="an open select",
         prep=lambda c: None if _open(c) else c.click(TRIG),
         do=lambda c: (c.__dict__.__setitem__("_r0", c.readout()), _row(c, 2))[0],
         expect=lambda c: (
-            c.readout() == "chose: Cherry" and c._r0 != c.readout() and not _open(c),
-            f"readout {c._r0!r} -> {c.readout()!r} (wanted 'chose: Cherry', the third row), "
+            c.readout() == "selected: Cherry" and c._r0 != c.readout() and not _open(c),
+            f"readout {c._r0!r} -> {c.readout()!r} (wanted 'selected: Cherry', the third row), "
             f"open={_open(c)}",
         ),
         isolate=lambda c: (c.__dict__.__setitem__("_r0", c.readout()),
                            c.click(TRIG), c.click_outside())[0],
         injection="make the row's on_click forget to record `cx.row`",
-        # Choosing rewrites the trigger's label, which relays out the
-        # stage — and the showcase's note is a wrapping `Label` whose
-        # unwrapped natural width always exceeds its box, so `W1005`
-        # re-reports it; the PickList's choosing action says the same.
-        expects_lint=("W1005",),
     ),
     Action(
+        visible=True,
         name="the keyboard opens it, walks the rows and chooses one",
         needs="a closed select whose trigger has focus",
         # The choice above returned focus to the trigger (T44.9); Escape
@@ -85,20 +85,17 @@ SELECT = ("Select", "#d_select_a", [
                       c.__dict__.__setitem__("_f0", _focused(c, TRIG)),
                       _keys(c, "Enter", "Down", "Down", "Down", "Down", "Enter"))[0],
         expect=lambda c: (
-            c._f0 and c.readout() == "chose: Damson" and not _open(c)
+            c._f0 and c.readout() == "selected: Damson" and not _open(c)
             and _focused(c, TRIG),
             f"trigger focused before: {c._f0}; readout {c._r0!r} -> {c.readout()!r} after "
-            f"Enter, Down x4, Enter (wanted 'chose: Damson', the fourth row); open={_open(c)}; "
+            f"Enter, Down x4, Enter (wanted 'selected: Damson', the fourth row); open={_open(c)}; "
             f"focus back on the trigger: {_focused(c, TRIG)}",
         ),
         injection="leave `ctx.row` unset on a key activation, or keep focus off the list",
-        # Choosing rewrites the trigger's label, which relays out the
-        # stage — and the showcase's note is a wrapping `Label` whose
-        # unwrapped natural width always exceeds its box, so `W1005`
-        # re-reports it; the PickList's choosing action says the same.
-        expects_lint=("W1005",),
     ),
     Action(
+        visible=True,
+        region="window",
         name="Escape closes it and focus returns to the trigger",
         needs="a select opened from the keyboard",
         prep=lambda c: (c.key("Escape"), c.key("Enter"))[0],
@@ -108,8 +105,6 @@ SELECT = ("Select", "#d_select_a", [
             f"open before {c._o0}, after {_open(c)}; the trigger has focus: {_focused(c, TRIG)}",
         ),
         injection="clear focus on Escape instead of returning it",
-        # Closing relays out the stage too, and re-reports the note.
-        expects_lint=("W1005",),
     ),
 ])
 
@@ -121,6 +116,7 @@ def _scroll(c) -> float:
 
 SCROLLVIEW = ("ScrollView", "#d_scrollview_a", [
     Action(
+        visible=True,
         name="PageDown from a focused row scrolls the view",
         needs="a view at the top, with its first row visible",
         do=lambda c: (c.__dict__.__setitem__("_s0", _scroll(c)),
@@ -132,6 +128,7 @@ SCROLLVIEW = ("ScrollView", "#d_scrollview_a", [
         injection="drop the PageDown arm in ScrollView::on_event",
     ),
     Action(
+        visible=True,
         name="the wheel scrolls it back",
         needs="a view scrolled away from the top",
         do=lambda c: (c.__dict__.__setitem__("_s0", _scroll(c)),
@@ -147,6 +144,7 @@ SCROLLVIEW = ("ScrollView", "#d_scrollview_a", [
         injection="decline the wheel in ScrollView::on_event",
     ),
     Action(
+        visible=True,
         name="a drag on the bar scrolls it",
         needs="a view whose bar has room to move",
         prep=lambda c: c.c.rpc("input.scroll", x=(c.box()[0] + c.box()[2]) / 2,

@@ -47,14 +47,24 @@ NUMBER = ("NumberInput", "#d_number_a", [
         ),
         injection="drop the Key::Up arm in NumberInput::on_event",
     ),
+    # **Static: the correct outcome is that nothing happens.** The click
+    # used to be inside `do`, so "did it land" was answered by whatever
+    # the click changed -- a caret-blink restart on the branch's runs,
+    # nothing at all after the M56 merge -- and never by the letters.
+    # Focus is `prep` now, and the expectation insists the letters were
+    # aimed at a focused field, so a missed focus cannot pass as a
+    # refusal. Not `visible`: an unchanged field is the claim.
     Action(
-        visible=True,
+        visible=False,
+        static=True,
         name="a letter is refused outright",
         needs="a focused field with a value in it",
-        do=lambda c: (c.click(), c.__dict__.__setitem__("_v0", _text(c)), c.c.type("abc"))[0],
+        prep=lambda c: c.click(),
+        do=lambda c: (c.__dict__.__setitem__("_v0", _text(c)), c.c.type("abc"))[0],
         expect=lambda c: (
-            _text(c) == c._v0,
-            f"text {c._v0!r} -> {_text(c)!r}; letters must not reach it at all",
+            c.styles()["state"]["focused"] and _text(c) == c._v0 and c._v0 != "",
+            f"focused={c.styles()['state']['focused']}; text {c._v0!r} -> {_text(c)!r}; "
+            f"letters must not reach it at all",
         ),
         injection="make is_number_char accept everything",
     ),

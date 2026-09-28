@@ -5,12 +5,13 @@
   "A removal fails; an addition fails until this file names it, so the change is visible in the diff.",
   "`static` lists every action that is not checked for landing; `counts` pins actions, landed-checked (non-static) and isolated (T42.6).",
   "M44/T44.10 added Select and ScrollView (owed since M42) and a keyboard action each to PickList, ColorPicker, Tree (two) and DataGrid.",
-  "M45/T45.6 added word-Left, double click and triple click to TextInput and TextArea, and Ctrl+End and Home to TextArea."
+  "M45/T45.6 added word-Left, double click and triple click to TextInput and TextArea, and Ctrl+End and Home to TextArea.",
+  "The M56 merge made NumberInput's letter refusal static: its landing had been read off the click inside `do`, never off the letters."
  ],
  "counts": {
   "entries": 43,
   "actions": 139,
-  "landed_checked": 113,
+  "landed_checked": 112,
   "isolated": 57
  },
  "entries": {
@@ -241,6 +242,7 @@
   ]
  },
  "static": [
+  "NumberInput/a letter is refused outright",
   "PickList/a picklist does not filter on its trigger",
   "Menu/it shows its commands with no trigger",
   "Menu/choosing a command runs it and closes the menu",

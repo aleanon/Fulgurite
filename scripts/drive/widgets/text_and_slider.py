@@ -92,6 +92,7 @@ def _motion_actions(kind, whole):
     triple click selects: the whole value, or the line."""
     return [
         Action(
+            visible=True,
             name="a word-Left moves the caret to the word's start",
             needs=f"a focused {kind} whose value ends in a word",
             prep=lambda c: c.click(),
@@ -100,6 +101,7 @@ def _motion_actions(kind, whole):
             injection=f"drop the word branch in {kind}::on_event (Left moves one grapheme)",
         ),
         Action(
+            visible=True,
             name="a double click selects the word under it",
             needs=f"a {kind} with a word under its centre",
             do=lambda c: _clicked_then(c, 2, "Z"),
@@ -108,6 +110,7 @@ def _motion_actions(kind, whole):
             injection=f"ignore EventCtx.clicks in {kind}::on_event",
         ),
         Action(
+            visible=True,
             name=f"a triple click selects the {whole}",
             needs=f"a {kind} with several words where it is clicked",
             do=(lambda c: _clicked_then(c, 3, "T")) if whole == "whole value"
@@ -199,6 +202,7 @@ def _pasted_outside(c, text):
 
 TEXTAREA = ("TextArea", "#d_textarea_a", [
     Action(
+        visible=True,
         name="a click focuses the area",
         needs="an unfocused text area",
         do=lambda c: c.click(),
@@ -207,6 +211,7 @@ TEXTAREA = ("TextArea", "#d_textarea_a", [
         injection="stop setting focus on PointerDown in dispatch",
     ),
     Action(
+        visible=True,
         name="a paste keeps its line breaks, as one edit",
         needs="a focused area with a known value",
         prep=lambda c: c.click(),
@@ -224,6 +229,7 @@ TEXTAREA = ("TextArea", "#d_textarea_a", [
         injection="make TextArea::paste drop newlines (edit::printable(text, false))",
     ),
     Action(
+        visible=True,
         name="Enter breaks a line",
         needs="a focused area",
         prep=lambda c: c.click(),
@@ -235,6 +241,7 @@ TEXTAREA = ("TextArea", "#d_textarea_a", [
         injection="drop the Key::Enter arm in TextArea::on_event",
     ),
     Action(
+        visible=True,
         name="Ctrl+End goes to the end of the text",
         needs="a focused area whose caret is on its first line, of several",
         # On the *first* line: the first version clicked the centre, which
@@ -250,6 +257,7 @@ TEXTAREA = ("TextArea", "#d_textarea_a", [
         injection="drop the jump branch of Key::End in TextArea::on_event",
     ),
     Action(
+        visible=True,
         name="Home goes to the line's start",
         needs="a focused area whose caret ends a three-character line",
         do=lambda c: (_record(c), c.key("Home"), c.c.type("H"))[0],

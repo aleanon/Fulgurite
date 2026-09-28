@@ -1,14 +1,12 @@
 diff --git a/crates/lumen-static-widgets/src/data.rs b/crates/lumen-static-widgets/src/data.rs
-index fc1fab8..6db0ed5 100644
 --- a/crates/lumen-static-widgets/src/data.rs
 +++ b/crates/lumen-static-widgets/src/data.rs
-@@ -278,7 +278,8 @@ impl Node for Pagination {
+@@ -387,7 +387,7 @@
          match ev {
              Event::PointerDown { .. } => match self.slot_at(cx.local.x) {
                  Some(0) => {
 -                    self.prev_page();
-+                    let (first, _) = self.window();
-+                    self.go(first);
++                    self.go(0);
                      true
                  }
                  Some(k) if k == self.slots() - 1 => {

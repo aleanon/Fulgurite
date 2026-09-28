@@ -84,11 +84,11 @@ PAGINATION = ("Pagination", "#d_pagination_a", [
         expect=lambda c: (
             _page(c) == c._p0 - 1,
             f"page {c._p0} -> {_page(c)}; the first slot is `previous`, and a "
-            f"slot that were a *page* would jump to the window's first",
+            f"slot that were a *page* would jump to page 1",
         ),
         isolate=lambda c: (c.__dict__.__setitem__("_p0", _page(c)),
                            c.click_outside())[0],
-        injection="make the first slot go to the window's first page",
+        injection="make the first slot go to page 1",
     ),
     Action(
         visible=True,
@@ -164,6 +164,7 @@ TREE = ("Tree", "#d_tree_a", [
         injection="stop synthesizing Event::Hover in dispatch_at",
     ),
     Action(
+        visible=True,
         name="the keyboard folds the lit parent",
         needs="a focused tree with its first root expanded",
         # Focus by a press on the tree's padding, which toggles no row;
@@ -178,6 +179,7 @@ TREE = ("Tree", "#d_tree_a", [
         injection="make Tree::key ignore Left",
     ),
     Action(
+        visible=True,
         name="the keyboard unfolds it again",
         needs="a focused tree with its first root folded",
         do=lambda c: (c.__dict__.__setitem__("_n0", len(_visible(c))), c.key("Right"))[0],
@@ -378,6 +380,7 @@ GRID = ("DataGrid", "#d_datagrid_a", [
     # *row* is Ctrl+End -- the same question, "can the keyboard reach the
     # bottom of a long grid and bring it into view".
     Action(
+        visible=True,
         name="Ctrl+End from a focused cell brings the last row into view",
         needs="a grid of 200 rows scrolled near the top, a cell focused by a press",
         setup=lambda c: c.c.rpc("input.scroll", x=(c.box()[0] + c.box()[2]) / 2,
