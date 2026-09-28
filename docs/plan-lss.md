@@ -317,3 +317,20 @@ Risks:
   one of the two sides it compares — is T61.5's API; a gate over a
   function that does not exist cannot be committed ignored, only
   uncompiled.
+- **2026-09-28, T61.3 — the path is relative to the invoking file, not
+  to `CARGO_MANIFEST_DIR`** as §2.2 said. A trybuild case compiles inside
+  a generated crate under `target/tests/trybuild/`, so a manifest-relative
+  path could not name the case's own `.lss`, and gate 2 could not have
+  been written as trybuild cases at all. `include_str!` and
+  `include_bytes!` — which the tracking line already is — resolve against
+  the invoking file, so `include_lss!` now does too
+  (`proc_macro::Span::local_file`, stable since 1.88), falling back to the
+  manifest directory only when the compiler does not know the file.
+- **2026-09-28, T61.3 — the planned K1 injection cannot reach K1.** "Emit
+  the rules through a `Vec` built at run time" does not compile in the
+  leaf firmware — it has no allocator, and a `const` cannot hold one — so
+  the build fails before any byte is compared. The injection used instead
+  breaks the same mechanism (the expansion must be the rules a person
+  writes, in order): emit the rules **reversed**. Sizes stay equal and
+  `.rodata` differs in both firmwares that cascade, which is also the case
+  for comparing bytes rather than sizes.

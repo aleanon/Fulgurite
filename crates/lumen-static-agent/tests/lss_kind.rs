@@ -20,7 +20,6 @@ struct Ui {
 const SHEET: &[Rule] = include_lss!(Ui, "lss_kind.lss");
 
 #[test]
-#[ignore = "red until T61.3: include_lss! is a stub that emits no rules"]
 fn a_wrong_case_kind_compiles_and_w1010_names_it() {
     println!("sheet: {SHEET:?}");
     assert_eq!(SHEET.len(), 2, "setup: the sheet lowered to {} rules, want 2", SHEET.len());

@@ -1,0 +1,5 @@
+error: fail_unknown_token.lss:3:17: unknown token `$inkk`; did you mean `$ink`?
+  --> tests/ui-lss/fail_unknown_token.rs:13:55
+   |
+13 | const SHEET: &[lumen_static::Rule] = include_lss!(Ui, "fail_unknown_token.lss");
+   |                                                       ^^^^^^^^^^^^^^^^^^^^^^^^

@@ -1,4 +1,4 @@
-//! M61/T61.0 gate 3 (`docs/plan-lss.md`): a `.class` no node carries fails to compile, by name
+//! M61/T61.0 gate 3 (`docs/plan-lss.md`): an `#id` the tree does not have fails to compile, by name
 //! and at the rule's line and column (§2.3).
 use lumen_static::{include_lss, StaticTree};
 use lumen_static_widgets::ops::Label;
@@ -10,7 +10,7 @@ struct Ui {
     title: Label,
 }
 
-const SHEET: &[lumen_static::Rule] = include_lss!(Ui, "fail_tree_class.lss");
+const SHEET: &[lumen_static::Rule] = include_lss!(Ui, "tree_fail_id.lss");
 
 fn main() {
     let _ = SHEET;

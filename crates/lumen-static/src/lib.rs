@@ -240,8 +240,27 @@ pub use event::{Action, Event, EventCtx, InputQueue, Key, Mods, PointerButton, T
 // so `use lumen_static::App` brings in whichever the position calls for.
 pub use event::App;
 pub use lumen_static_macros::{App, Reloadable, StaticTree};
-/// A `.lss` stylesheet as `const` rules, parsed at compile time — M61
+/// **A `.lss` stylesheet as `const` rules, parsed at compile time** — M61
 /// (`docs/plan-lss.md`).
+///
+/// ```text
+/// const BASE: &[Rule] = include_lss!(Page, "../app.lss");       // the top-level rules
+/// const POS: &[Rule] = include_lss!(Page, "../app.lss", pos);   // …then `@sheet pos`'s
+/// ```
+///
+/// The file is read while the invoking crate compiles, and the expansion
+/// is the `Rule::new(..)` / `Patch::new().setter(..)` a person would
+/// write, as a `const` — so it links to the same bytes as the hand-written
+/// sheet (kill rule K1, `scripts/check_lss_parity.sh`) and costs nothing at
+/// run time. The path is relative to the invoking source file, as
+/// `include_bytes!`'s is, and an edited file rebuilds the crate
+/// (`scripts/lss_tracking.sh`).
+///
+/// **A mistake is a compile error at the file's line and column**: an
+/// unknown property, a value its setter cannot take, and everything v1
+/// refuses — a compound selector, a combinator, a `:state`, `@media` —
+/// each with its own message. The grammar is the book's styling chapter's
+/// (`book/src/styling.md`).
 pub use lumen_static_macros::include_lss;
 
 /// **What `#[derive(Reloadable)]` expands through** — M49/T49.9, R5-F8.

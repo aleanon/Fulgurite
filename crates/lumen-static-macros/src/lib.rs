@@ -34,6 +34,8 @@
 //! that could overflow the stack does not compile.
 #![forbid(unsafe_code)]
 
+mod lss;
+
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as Ts2;
 use quote::{quote, quote_spanned};
@@ -66,18 +68,14 @@ enum Axis {
     Flow(Option<usize>),
 }
 
-/// `include_lss!(Tree, "file.lss")` — a `.lss` stylesheet as `const`
-/// rules, parsed while the crate compiles (M61, `docs/plan-lss.md`).
-///
-/// **A stub until T61.3**: it expands to an empty sheet, so the gates
-/// T61.0 commits compile and are red.
+/// `include_lss!(Tree, "file.lss" [, sheet])` — a `.lss` stylesheet as
+/// `const` rules, parsed while the crate compiles (M61,
+/// `docs/plan-lss.md`). The expansion and its guarantees are described in
+/// this crate's `lss` module; `lumen_static::include_lss`'s rustdoc is the
+/// user's page.
 #[proc_macro]
-pub fn include_lss(_input: TokenStream) -> TokenStream {
-    quote! {{
-        const __LUMEN_LSS: &[::lumen_static::style::Rule] = &[];
-        __LUMEN_LSS
-    }}
-    .into()
+pub fn include_lss(input: TokenStream) -> TokenStream {
+    lss::expand(input.into(), proc_macro::Span::call_site().local_file()).into()
 }
 
 #[proc_macro_derive(StaticTree, attributes(widget, widget_id, widget_class))]

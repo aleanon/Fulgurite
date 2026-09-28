@@ -1083,9 +1083,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "lumen-static-lss"
+version = "0.1.0"
+
+[[package]]
 name = "lumen-static-macros"
 version = "0.1.0"
 dependencies = [
+ "lumen-static-lss",
  "proc-macro2",
  "quote",
  "syn 2.0.119",

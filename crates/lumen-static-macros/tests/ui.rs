@@ -45,10 +45,9 @@ fn reload_diagnostics() {
 /// error that names the `.lss` file, line and column, and the reason; and
 /// every accepted construct lowers to the rules a person would write.
 #[test]
-#[ignore = "red until T61.3: include_lss! is a stub that accepts everything and emits nothing"]
 fn lss_errors() {
     let t = trybuild::TestCases::new();
-    t.compile_fail("tests/ui-lss/fail_[!t]*.rs");
+    t.compile_fail("tests/ui-lss/fail_*.rs");
     t.pass("tests/ui-lss/pass_*.rs");
 }
 
@@ -59,5 +58,5 @@ fn lss_errors() {
 #[ignore = "red until T61.4: include_lss! does not check selectors against the tree"]
 fn lss_tree_checks() {
     let t = trybuild::TestCases::new();
-    t.compile_fail("tests/ui-lss/fail_tree_*.rs");
+    t.compile_fail("tests/ui-lss/tree_fail_*.rs");
 }

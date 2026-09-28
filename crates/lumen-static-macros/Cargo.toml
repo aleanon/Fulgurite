@@ -11,6 +11,10 @@ proc-macro = true
 syn = { version = "2", features = ["full"] }
 quote = "1"
 proc-macro2 = { version = "1", features = ["span-locations"] }
+# `include_lss!` (M61): the `.lss` parser and lowering, run at build time.
+# A proc-macro dependency is built for the host and never linked into what
+# the macro's caller ships (kill rule K3, docs/plan-lss.md §5).
+lumen-static-lss = { path = "../lumen-static-lss" }
 
 # A dev-dependency cycle is legal (dev-deps are not in the normal build
 # graph) and is what lets this crate's doctests and, later, its trybuild

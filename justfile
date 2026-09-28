@@ -163,6 +163,9 @@ firmware:
     ./scripts/probe.sh thumb
     ./scripts/check_bss.sh
     ./scripts/check_text.sh
+    # M61/T61.3, kill rule K1: the firmwares with their sheet authored as
+    # .lss link byte-identical .text and .rodata (docs/plan-lss.md §5).
+    ./scripts/check_lss_parity.sh
 
 # The four fixtures. Until today none of these ran in the gate; three of them
 # assert. miri-smoke runs in `release-shape` above -- it contains zero
@@ -187,6 +190,8 @@ fixtures:
     ./scripts/window_reload_demo.sh
     cargo run -q -p miri-reload
     ./scripts/reload_gating.sh
+    # M61/T61.3: an edited .lss rebuilds the crate that includes it.
+    ./scripts/lss_tracking.sh
 
 # Every refusal, planted (M43, docs/plan-gate-hygiene.md §2.4): each check
 # runs green on an unmodified copy of the tree, then each plant under

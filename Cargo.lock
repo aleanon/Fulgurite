@@ -1598,6 +1598,7 @@ name = "lumen-static-macros"
 version = "0.1.0"
 dependencies = [
  "lumen-static",
+ "lumen-static-lss",
  "lumen-static-reload",
  "lumen-static-shell",
  "lumen-static-widgets",

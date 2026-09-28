@@ -1,0 +1,5 @@
+error: fail_bad_colour.lss:1:17: `color` takes a colour: `#rrggbb`, `#rrggbbaa`, or a palette role like `$accent`, not `12px`
+  --> tests/ui-lss/fail_bad_colour.rs:13:55
+   |
+13 | const SHEET: &[lumen_static::Rule] = include_lss!(Ui, "fail_bad_colour.lss");
+   |                                                       ^^^^^^^^^^^^^^^^^^^^^
