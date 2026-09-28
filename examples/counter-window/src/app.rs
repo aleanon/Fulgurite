@@ -11,21 +11,12 @@ use lumen_static::prelude::*;
 use lumen_static_shell::program::KeyOutcome;
 use lumen_static_widgets::prelude::*;
 
-// ---- palette: Lumen's counter tokens ---------------------------------
+// ---- palette ---------------------------------------------------------
 
+/// The page: `app.lss`'s `$ground`, which the window also clears to
+/// behind every damaged region. The rest of Lumen's counter tokens live
+/// in `app.lss` since M61 (`docs/plan-lss.md`).
 pub const PAGE: Color = Color(0x0e, 0x11, 0x18, 0xff);
-pub const SURFACE: Color = Color(0x16, 0x1c, 0x28, 0xff);
-pub const INK: Color = Color(0xf1, 0xf5, 0xfb, 0xff);
-pub const MUTED: Color = Color(0x8b, 0x94, 0xa7, 0xff);
-/// Lumen's accent is `#4d7cfe`; white on it is 3.7:1, under the 4.5:1
-/// WCAG AA asks of 16 px text. This is the same hue two steps darker,
-/// 5.0:1 (`scripts/ui_check.py contrast`).
-pub const ACCENT: Color = Color(0x35, 0x63, 0xef, 0xff);
-pub const GHOST: Color = Color(0x23, 0x2c, 0x3e, 0xff);
-pub const POS: Color = Color(0x34, 0xd3, 0x99, 0xff);
-pub const NEG: Color = Color(0xfb, 0x71, 0x85, 0xff);
-pub const ZERO: Color = Color(0x9a, 0xa3, 0xb6, 0xff);
-pub const WHITE: Color = Color(0xff, 0xff, 0xff, 0xff);
 
 // ---- the tree --------------------------------------------------------
 
@@ -114,8 +105,10 @@ impl Count {
 ///   overrides (read by the window, M48/T48.11);
 /// - **the tally's keys** — [`keys`], through `Program::on_key`: a key
 ///   press no widget took;
-/// - **the sheet for the count's sign**, through `Program::style_by`: the
-///   host re-applies it on the frame the sign changes, on every path.
+/// - **the sheet for the count's sign**, from `app.lss` since M61
+///   (`docs/plan-lss.md`) through `Program::style_lss_by`: the host
+///   re-applies it on the frame the sign changes, on every path, and a
+///   debug window re-reads the file when it is saved.
 ///
 /// Until M60 the last two needed a hand-written event loop, and the
 /// sign re-cascade was written twice in it — once for the window's pump
@@ -128,7 +121,7 @@ pub fn program(count: i64, w: u32, h: u32) -> lumen_static_shell::program::Progr
         .agent("127.0.0.1:9230")
         .accessible(cfg!(feature = "a11y"))
         .on_key(keys)
-        .style_by(|t: &Tally| t.count.n.signum(), stylesheet_for)
+        .style_lss_by(|t: &Tally| t.count.n.signum(), stylesheet_for, SHEET_PATH, sheet_block)
 }
 
 /// The tally's own keys: Up and Down nudge the count, Escape quits.
@@ -167,79 +160,46 @@ pub fn build() -> Tally {
     t
 }
 
-/// The stylesheet for a given sign — selector for selector, Lumen's
-/// `app.lss`, as rules.
+// ---- the stylesheet: `app.lss` ----------------------------------------
+
+/// The sheet's file — Lumen's `examples/counter/app.lss`, selector for
+/// selector (its header says where the two differ, and why).
+pub const SHEET_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/app.lss");
+
+/// `app.lss` for each sign, parsed while this crate compiles (M61,
+/// `docs/plan-lss.md`): the top-level rules, then the sign's `@sheet`.
+/// Every `#id` in the file is checked against [`Page`] here, so a typo
+/// is a build error at the file's line.
+const POS_SHEET: &[Rule] = lumen_static::include_lss!(Page, "../app.lss", pos);
+const NEG_SHEET: &[Rule] = lumen_static::include_lss!(Page, "../app.lss", neg);
+const ZERO_SHEET: &[Rule] = lumen_static::include_lss!(Page, "../app.lss", zero);
+
+/// The stylesheet for a given sign.
 ///
 /// Lumen's counter toggles a `.lss` class (`.value.pos` / `.value.neg`)
 /// and re-cascades. There is no class *toggling* here — `#[widget_class]`
 /// is static, fixed in the type — so the sign-dependent rules are
-/// swapped instead: [`program`] keys the sheet on the sign
-/// (`Program::style_by`), and the host re-applies it when the sign
-/// changes. Same mechanism underneath: the cascade runs when the sheet
-/// changes, not per frame.
-pub fn stylesheet_for(sign: i64) -> Vec<Rule> {
-    let (value_fg, pill_bg) = match sign {
-        1 => (POS, POS),
-        -1 => (NEG, NEG),
-        _ => (INK, ZERO),
-    };
-    let mut rules = stylesheet();
-    rules.push(Rule::new(
-        Selector::Id("value"),
-        Patch::new().color(value_fg).font_size(76.0).font_weight(800.0),
-    ));
-    rules.push(Rule::new(
-        Selector::Id("pill"),
-        Patch::new()
-            .background(pill_bg)
-            .color(PAGE)
-            .radius(999.0)
-            .font_size(12.0)
-            .font_weight(700.0)
-            .padding(Edges { left: 14.0, right: 14.0, top: 5.0, bottom: 5.0 }),
-    ));
-    rules
+/// `@sheet` blocks, swapped instead: [`program`] keys the sheet on the
+/// sign (`Program::style_lss_by`), and the host re-applies it when the
+/// sign changes. Same mechanism underneath: the cascade runs when the
+/// sheet changes, not per frame.
+pub fn stylesheet_for(sign: i64) -> &'static [Rule] {
+    match sign {
+        1 => POS_SHEET,
+        -1 => NEG_SHEET,
+        _ => ZERO_SHEET,
+    }
 }
 
-/// Lumen's `.btn`: 16px, weight 600, 16h/11v padding, 13px radius.
-const fn btn(bg: Color, fg: Color) -> Patch {
-    Patch::new()
-        .background(bg)
-        .color(fg)
-        .radius(13.0)
-        .font_size(16.0)
-        .font_weight(600.0)
-        .padding(Edges { left: 16.0, right: 16.0, top: 11.0, bottom: 11.0 })
-}
-
-fn stylesheet() -> Vec<Rule> {
-    vec![
-        Rule::new(
-            Selector::Id("card"),
-            Patch::new()
-                .background(SURFACE)
-                .radius(26.0)
-                .padding(Edges::all(32.0))
-                .width(Length::Fixed(360.0))
-                .shadow(18.0)
-                .align(Align::Center),
-        ),
-        Rule::new(
-            Selector::Id("caption"),
-            Patch::new().color(MUTED).font_size(13.0).font_weight(700.0),
-        ),
-        Rule::new(Selector::Id("steps"), Patch::new().align(Align::Center)),
-        Rule::new(
-            Selector::Kind("Page"),
-            Patch::new().background(PAGE).padding(Edges::all(24.0)).align(Align::Center),
-        ),
-        Rule::new(Selector::Id("reset"), btn(Color(0x1b, 0x23, 0x33, 0xff), MUTED)),
-        // The four step buttons: two ghost, two accent.
-        Rule::new(Selector::Id("dec10"), btn(GHOST, INK)),
-        Rule::new(Selector::Id("dec"), btn(GHOST, INK)),
-        Rule::new(Selector::Id("inc"), btn(ACCENT, WHITE)),
-        Rule::new(Selector::Id("inc10"), btn(ACCENT, WHITE)),
-    ]
+/// The `@sheet` [`stylesheet_for`] compiled in for `sign` — what a debug
+/// window reads from `app.lss` instead. The two must agree, and
+/// `app_lss_is_the_hand_written_sheet_both_ways` holds them to it.
+pub fn sheet_block(sign: i64) -> Option<&'static str> {
+    Some(match sign {
+        1 => "pos",
+        -1 => "neg",
+        _ => "zero",
+    })
 }
 
 /// **The migration's acceptance checks** — M60/T60.0
@@ -250,8 +210,160 @@ fn stylesheet() -> Vec<Rule> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use hand::{NEG, POS};
     use lumen_static::{Event, Key};
     use lumen_static_shell::Host;
+
+    /// **The sheet the pilot replaced, kept as its reference** — M61/T61.6
+    /// (`docs/plan-lss.md`). This was `stylesheet_for` until `app.lss`
+    /// took over, verbatim; the two tests after it hold `app.lss` to it,
+    /// rule by rule and pixel by pixel.
+    mod hand {
+        use lumen_static::display::Color;
+        use lumen_static::prelude::*;
+
+        pub const PAGE: Color = Color(0x0e, 0x11, 0x18, 0xff);
+        pub const SURFACE: Color = Color(0x16, 0x1c, 0x28, 0xff);
+        pub const INK: Color = Color(0xf1, 0xf5, 0xfb, 0xff);
+        pub const MUTED: Color = Color(0x8b, 0x94, 0xa7, 0xff);
+        pub const ACCENT: Color = Color(0x35, 0x63, 0xef, 0xff);
+        pub const GHOST: Color = Color(0x23, 0x2c, 0x3e, 0xff);
+        pub const POS: Color = Color(0x34, 0xd3, 0x99, 0xff);
+        pub const NEG: Color = Color(0xfb, 0x71, 0x85, 0xff);
+        pub const ZERO: Color = Color(0x9a, 0xa3, 0xb6, 0xff);
+        pub const WHITE: Color = Color(0xff, 0xff, 0xff, 0xff);
+
+        pub fn stylesheet_for(sign: i64) -> Vec<Rule> {
+            let (value_fg, pill_bg) = match sign {
+                1 => (POS, POS),
+                -1 => (NEG, NEG),
+                _ => (INK, ZERO),
+            };
+            let mut rules = stylesheet();
+            rules.push(Rule::new(
+                Selector::Id("value"),
+                Patch::new().color(value_fg).font_size(76.0).font_weight(800.0),
+            ));
+            rules.push(Rule::new(
+                Selector::Id("pill"),
+                Patch::new()
+                    .background(pill_bg)
+                    .color(PAGE)
+                    .radius(999.0)
+                    .font_size(12.0)
+                    .font_weight(700.0)
+                    .padding(Edges { left: 14.0, right: 14.0, top: 5.0, bottom: 5.0 }),
+            ));
+            rules
+        }
+
+        const fn btn(bg: Color, fg: Color) -> Patch {
+            Patch::new()
+                .background(bg)
+                .color(fg)
+                .radius(13.0)
+                .font_size(16.0)
+                .font_weight(600.0)
+                .padding(Edges { left: 16.0, right: 16.0, top: 11.0, bottom: 11.0 })
+        }
+
+        fn stylesheet() -> Vec<Rule> {
+            vec![
+                Rule::new(
+                    Selector::Id("card"),
+                    Patch::new()
+                        .background(SURFACE)
+                        .radius(26.0)
+                        .padding(Edges::all(32.0))
+                        .width(Length::Fixed(360.0))
+                        .shadow(18.0)
+                        .align(Align::Center),
+                ),
+                Rule::new(Selector::Id("caption"), Patch::new().color(MUTED).font_size(13.0).font_weight(700.0)),
+                Rule::new(Selector::Id("steps"), Patch::new().align(Align::Center)),
+                Rule::new(
+                    Selector::Kind("Page"),
+                    Patch::new().background(PAGE).padding(Edges::all(24.0)).align(Align::Center),
+                ),
+                Rule::new(Selector::Id("reset"), btn(Color(0x1b, 0x23, 0x33, 0xff), MUTED)),
+                Rule::new(Selector::Id("dec10"), btn(GHOST, INK)),
+                Rule::new(Selector::Id("dec"), btn(GHOST, INK)),
+                Rule::new(Selector::Id("inc"), btn(ACCENT, WHITE)),
+                Rule::new(Selector::Id("inc10"), btn(ACCENT, WHITE)),
+            ]
+        }
+    }
+
+    const SIGNS: [i64; 3] = [-1, 0, 1];
+
+    /// `app.lss` is the hand-written sheet, rule for rule, for every sign
+    /// — through `include_lss!` (what a release window draws with) and
+    /// through `lss::load` (what a debug window reads), so the pair
+    /// [`program`] hands `Program::style_lss_by` agrees with itself too.
+    #[test]
+    fn app_lss_is_the_hand_written_sheet_both_ways() {
+        let mut differ = Vec::new();
+        for sign in SIGNS {
+            let compiled = stylesheet_for(sign);
+            let hand = hand::stylesheet_for(sign);
+            let read = lumen_static_shell::lss::load(SHEET_PATH, sheet_block(sign)).unwrap_or_else(|e| panic!("{e}"));
+            println!(
+                "sign {sign:>2}: include_lss! {} rules, hand-written {}, lss::load {}",
+                compiled.len(),
+                hand.len(),
+                read.len()
+            );
+            for (i, h) in hand.iter().enumerate() {
+                if compiled.get(i) != Some(h) {
+                    differ.push(format!("sign {sign}, rule {i}:\n  app.lss: {:?}\n  hand:    {h:?}", compiled.get(i)));
+                }
+            }
+            if compiled.len() != hand.len() {
+                differ.push(format!("sign {sign}: {} rules in app.lss, {} by hand", compiled.len(), hand.len()));
+            }
+            if read != compiled {
+                differ.push(format!("sign {sign}: lss::load and include_lss! disagree"));
+            }
+        }
+        assert!(differ.is_empty(), "{}", differ.join("\n"));
+    }
+
+    /// **The frames are the hand-written sheet's frames** — T61.6's gate,
+    /// headless: the tally at -3, 0 and 7 rendered from `app.lss` compiled
+    /// in, from `app.lss` read live (`Program::live_lss`, the debug
+    /// window's path), and from the hand-written sheet; every byte equal.
+    /// The differing pixels are counted and printed, so a failure says how
+    /// much moved.
+    #[test]
+    fn the_lss_frames_are_the_hand_written_frames() {
+        use lumen_static_shell::software::Canvas;
+        fn frame(program: lumen_static_shell::program::Program<Tally>) -> Vec<u8> {
+            let (w, h) = (program.width, program.height);
+            let mut host: Host<Tally> = program.host();
+            host.pump();
+            host.pump();
+            let mut canvas = Canvas::new(w, h);
+            canvas.clear(PAGE);
+            host.render(&mut canvas);
+            canvas.to_ppm()
+        }
+        fn pixels_apart(a: &[u8], b: &[u8]) -> usize {
+            a.chunks(3).zip(b.chunks(3)).filter(|(x, y)| x != y).count() + a.len().abs_diff(b.len()) / 3
+        }
+        let mut bad = Vec::new();
+        for count in [-3, 0, 7] {
+            let hand = frame(program(count, 440, 520).style_by(|t: &Tally| t.count.n.signum(), hand::stylesheet_for));
+            let compiled = frame(program(count, 440, 520));
+            let live = frame(program(count, 440, 520).live_lss());
+            let (c, l) = (pixels_apart(&compiled, &hand), pixels_apart(&live, &hand));
+            println!("count {count:>2}: {} px; compiled differs by {c} px, live by {l} px (bound 0)", (440 * 520));
+            assert_ne!(hand, frame(program(count, 440, 520).style(&[][..])), "setup: the sheet changes nothing on screen");
+            if c + l != 0 {
+                bad.push(format!("count {count}: compiled {c} px, live {l} px apart from the hand-written frame"));
+            }
+        }
+        assert!(bad.is_empty(), "{}", bad.join("\n"));
+    }
 
     fn press(h: &mut Host<Tally>, key: Key) -> bool {
         h.post(Event::Key { key, down: true });

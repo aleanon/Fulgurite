@@ -1,0 +1,80 @@
+/* The tally's stylesheet -- M61/T61.6 (docs/plan-lss.md).
+
+   Lumen's examples/counter/app.lss, selector for selector where this
+   framework can say the same thing, and saying why where it cannot:
+
+   - The token names differ. Lumen's `page`, `surface`, `muted` and
+     `accent` are palette ROLES here (`$page` follows `app.setPalette`),
+     and a token may not shadow a role -- it would silently stop following
+     the palette. The tally keeps fixed colours, so its tokens are renamed.
+   - The accent is two steps darker than Lumen's #4d7cfe: white on that is
+     3.7:1, under WCAG AA's 4.5:1 for 16 px text; this is 5.0:1
+     (`scripts/ui_check.py contrast`).
+   - There are no run-time classes, so Lumen's `.value.pos` / `.pill.pos`
+     are `@sheet pos` blocks, one per sign, which `Program::style_lss_by`
+     swaps when the count's sign changes (src/app.rs).
+   - Lumen's layout lives in Rust there and in the sheet here: width,
+     padding, alignment and the type scale are declarations. */
+
+@tokens {
+    ground: #0e1118ff;   /* Lumen's `page` */
+    panel: #161c28ff;    /* Lumen's `surface` */
+    ink: #f1f5fbff;
+    faint: #8b94a7ff;    /* Lumen's `muted` */
+    action: #3563efff;   /* Lumen's `accent`, darkened (above) */
+    ghost: #232c3eff;
+    pos: #34d399ff;
+    neg: #fb7185ff;
+    zero: #9aa3b6ff;
+    white: #ffffffff;
+}
+
+#card {
+    background: $panel;
+    border-radius: 26px;
+    padding: 32px;
+    width: 360px;
+    box-shadow: 18px;
+    align: center;
+}
+#caption { color: $faint; font-size: 13px; font-weight: 700; }
+#steps { align: center; }
+Page { background: $ground; padding: 24px; align: center; }
+
+/* Lumen's `.btn`: 16px, weight 600, 16h/11v padding, 13px radius. */
+#reset {
+    background: #1b2333ff; color: $faint;
+    border-radius: 13px; font-size: 16px; font-weight: 600; padding: 11px 16px;
+}
+/* The four step buttons: two ghost, two accent. */
+#dec10, #dec {
+    background: $ghost; color: $ink;
+    border-radius: 13px; font-size: 16px; font-weight: 600; padding: 11px 16px;
+}
+#inc, #inc10 {
+    background: $action; color: $white;
+    border-radius: 13px; font-size: 16px; font-weight: 600; padding: 11px 16px;
+}
+
+/* The hero number and the pill, per sign. */
+@sheet pos {
+    #value { color: $pos; font-size: 76px; font-weight: 800; }
+    #pill {
+        background: $pos; color: $ground;
+        border-radius: 999px; font-size: 12px; font-weight: 700; padding: 5px 14px;
+    }
+}
+@sheet neg {
+    #value { color: $neg; font-size: 76px; font-weight: 800; }
+    #pill {
+        background: $neg; color: $ground;
+        border-radius: 999px; font-size: 12px; font-weight: 700; padding: 5px 14px;
+    }
+}
+@sheet zero {
+    #value { color: $ink; font-size: 76px; font-weight: 800; }
+    #pill {
+        background: $zero; color: $ground;
+        border-radius: 999px; font-size: 12px; font-weight: 700; padding: 5px 14px;
+    }
+}

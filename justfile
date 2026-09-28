@@ -293,9 +293,12 @@ agent-symbols:
 # docs/plan-embedded-footprint.md §2.2). Two release builds of
 # examples/minimal, so `check-extra` and not `test`.
 
-# Recovery symbols in a release window: 0 without `reload`, above 0 with it.
+# Recovery symbols in a release window: 0 without `reload`, above 0 with it
+# -- and `.lss` reader symbols the same way (M61, K3).
 release-window-shape:
     ./scripts/release_window_shape.sh
+    # M61/T61.6, kill rule K3: nor any `.lss` reader (docs/plan-lss.md §5).
+    ./scripts/check_lss_release.sh
 
 # The GPU backend (T15.12), which `test` excludes for compile time.
 # Its own tests are the backend-parity gate: the same display list
