@@ -724,6 +724,20 @@ found" section rather than silently replacing itself.
   findings closed at the merge: its dark-palette catalogue test (T54.5)
   reads 0 of 1672 runs under 3:1 now that M57/A8's roles exist, and its
   W1003 fixture depended on the layout bug M56 fixed, so it was rebuilt.
+  **`just ci` on the merge commit then failed 15 of 28 steps, and five
+  of the causes were defects neither side had alone** — each side's fix
+  correct, the pair wrong: the journal's part-signing branch (M48/T48.4)
+  skipped the `paints` flag M56 added, so a chosen date damaged nothing;
+  the shadow oracle still copied the focus-ring zeroing M57/A6 had
+  removed, and reported every pressed control as diverged; a toast's
+  countdown (M57/B34) is motion that changes no pixel, and frames that
+  present nothing (M53/T53.4) cost nothing, so the window spun at 2,000
+  frames a second until an unpresented animating frame waited a display
+  interval; the tree's keyboard (M44) walked from the row the *pointer*
+  lit, which M57/D1's pre-hover exposed; and `W1007` ignored the
+  `content_absent` its leaf checks honoured. The rest was `main`'s
+  scripts addressing the old chrome and the branch's drives meeting
+  `main`'s damage check for the first time.
 Unsequenced: ~~`docs/plan-harness.md`.~~ — **M12 DONE 2026-09-20.**
 T12.3 and T12.4 landed 2026-09-04; T12.1 (a locator and expectation API,
 `lumen_static_agent::harness::TestApp`) and T12.2 (golden images with a
