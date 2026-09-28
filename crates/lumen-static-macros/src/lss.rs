@@ -118,9 +118,15 @@ pub(crate) fn expand(input: Ts2, invoker: Option<std::path::PathBuf>) -> Ts2 {
 /// **Ids and classes are checked against the tree type** (T61.4,
 /// `docs/plan-lss.md` §2.3): one `const` assertion per distinct `#id` and
 /// `.class` in the whole file — every block, not only the one selected —
-/// that some node of `Tree` carries it. `count_wid(..) > 0`, not
-/// `wid_index!`'s `== 1`: styling several nodes with one id is allowed;
-/// only addressing them is not.
+/// that some node of `Tree` carries it. "Some node", not `wid_index!`'s
+/// "exactly one": styling several nodes with one id is allowed; only
+/// addressing them is not.
+///
+/// **The table is walked once**, into the list of the tree's ids
+/// (`style::wids_of`) and of its classes (`style::classes_of`), and each
+/// assertion reads the short list. Asserting `count_wid(..) > 0` per id
+/// walked the whole table per id, and in `const` evaluation that was 88 ms
+/// of a warm build for the showcase's 42 names (`docs/results-lss.md`, K2).
 ///
 /// **Kinds are not checked**: `NodeDesc` carries no kind, which is
 /// `Node::kind_name`, a run-time method. A kind selector is left to
@@ -129,6 +135,7 @@ pub(crate) fn expand(input: Ts2, invoker: Option<std::path::PathBuf>) -> Ts2 {
 /// the plan's §4 says why that is its own change.
 fn tree_checks(tree: &Type, sheet: &lumen_static_lss::Sheet, written: &str, span: Span) -> Vec<Ts2> {
     let tree_name = quote!(#tree).to_string().replace(' ', "");
+    let table = quote_spanned!(span=> <#tree as ::lumen_static::widget::Widget>::SUB_TABLE);
     let mut seen: Vec<(bool, &str)> = Vec::new();
     let mut out = Vec::new();
     for r in sheet.all_rules() {
@@ -156,15 +163,29 @@ fn tree_checks(tree: &Type, sheet: &lumen_static_lss::Sheet, written: &str, span
         }
         .replace('{', "{{")
         .replace('}', "}}");
-        let count = if is_id { quote!(count_wid) } else { quote!(count_class) };
+        let list = if is_id { quote!(__LUMEN_LSS_IDS) } else { quote!(__LUMEN_LSS_CLASSES) };
         out.push(quote_spanned! {span=>
-            const _: () = ::core::assert!(
-                ::lumen_static::style::#count(<#tree as ::lumen_static::widget::Widget>::SUB_TABLE, #name) > 0,
-                #msg
-            );
+            const _: () = ::core::assert!(::lumen_static::style::names_contain(&#list, #name), #msg);
         });
     }
-    out
+    if out.is_empty() {
+        return out;
+    }
+    let mut lists = Vec::new();
+    if seen.iter().any(|(id, _)| *id) {
+        lists.push(quote_spanned! {span=>
+            const __LUMEN_LSS_IDS: [&str; ::lumen_static::style::wid_count(#table)] =
+                ::lumen_static::style::wids_of::<{ ::lumen_static::style::wid_count(#table) }>(#table);
+        });
+    }
+    if seen.iter().any(|(id, _)| !*id) {
+        lists.push(quote_spanned! {span=>
+            const __LUMEN_LSS_CLASSES: [&str; ::lumen_static::style::class_count(#table)] =
+                ::lumen_static::style::classes_of::<{ ::lumen_static::style::class_count(#table) }>(#table);
+        });
+    }
+    lists.extend(out);
+    lists
 }
 
 /// Every error as its own `compile_error!`, in a block that still has the
