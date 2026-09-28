@@ -462,8 +462,9 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
     ///    children, which includes an arena container such as `Repeat` —
     ///    is signed from the bounded widgets *before* the second layout.
     /// 2. It lays out and places again under [`Changed::ALL`] into a
-    ///    scratch copy of the states, applies the focus-ring rule, and
-    ///    paints the whole tree into a scratch list through `Scaled` —
+    ///    scratch copy of the states, and paints the whole tree — the
+    ///    host's focus ring included, as the live frame draws it — into
+    ///    a scratch list through `Scaled` —
     ///    **not** `Recording`, so retention, `last_damage` and the
     ///    journal are untouched — with scratch overlays.
     /// 3. `NodeState`, field by field: the first node that differs is
@@ -519,17 +520,13 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             tree.layout(&mut cx, limits, &self.styles, &mut scratch, 0);
             tree.place(Point::default(), &self.styles, &mut scratch, 0);
         }
-        if !self.input.focus_visible {
-            if let Some(s) = self.input.focus.and_then(|f| scratch.get_mut(f as usize)) {
-                s.focus_ring = 0;
-            }
-        }
         sc.list.clear();
         sc.list.set_bounds(self.list.bounds);
         {
             let mut ov = lumen_static::overlay::Overlays::<16>::default();
             let mut out = lumen_static::Scaled::new(&mut sc.list, self.scale);
             pass::paint_overlaid(self.app.tree(), &scratch, &mut out, &mut ov);
+            paint_focus_ring::<A>(&self.input, &scratch, &ov, &self.palette, &mut out);
         }
         let lists_differ = sc.list.hash_from(0) != self.list.hash_from(0);
         self.shadow.compared += 1;
@@ -2094,13 +2091,12 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         // **The shadow oracle** — M34/T34.1, moved here by M41/T41.2.
         // Only a strategy that can skip has anything to check. **After
         // paint and `finish`**: its second layout runs on the live
-        // widgets, and before paint it repaired the frame it judged. It
-        // applies the focus-ring rule above to its scratch too: the rule
-        // rewrites a field after layout, so a node the bounded frame
-        // skipped keeps last frame's zero while a re-layout restores the
-        // sheet's value — equal pixels, unequal state. Compared before
-        // the rule, the first live run reported exactly that as a
-        // divergence (showcase, node 5, "shape").
+        // widgets, and before paint it repaired the frame it judged. Its
+        // scratch frame is the live one step for step, the host's focus
+        // ring included: while a rule zeroed `focus_ring` after layout the
+        // oracle had to copy it (showcase, node 5, "shape"), and once
+        // M57/A6 drew the ring here instead, a copy left behind reported
+        // every pressed control as diverged on that field.
         #[cfg(feature = "shadow-oracle")]
         if I::CAN_SKIP {
             self.shadow_check(metrics, limits);
