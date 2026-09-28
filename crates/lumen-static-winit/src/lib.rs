@@ -1437,10 +1437,20 @@ impl<A: App + lumen_static::reload::Reloadable + 'static, I: Invalidation + 'sta
 }
 
 fn run_program<A: App + 'static, I: Invalidation + 'static>(
-    mut program: Program<A, I>,
+    program: Program<A, I>,
     session: impl FnOnce(Program<A, I>) -> Box<dyn Session>,
     hot: Option<std::path::PathBuf>,
 ) {
+    // M61/T61.5: a `.lss` sheet is read from its file, and re-read when it
+    // changes, in debug and `reload` builds — decided HERE, because the
+    // shell is built without debug assertions in the dev profile
+    // (`Program::live_lss`). A release window without `reload` never
+    // calls it, so it links no `.lss` reader (kill rule K3,
+    // `scripts/check_lss_release.sh`). Before `LUMEN_SHOT`, so a shot is
+    // the frame the window would draw.
+    #[cfg(any(debug_assertions, feature = "reload"))]
+    let program = program.live_lss();
+    let mut program = program;
     // `LUMEN_SHOT=frame.ppm`: one headless frame from the same `host()`
     // the window would drive, then exit. Every program gets it without
     // writing a `--shot` of its own, which is what let M32/T32.1 compare

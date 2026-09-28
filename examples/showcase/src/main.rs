@@ -1160,6 +1160,12 @@ mod tests {
             .collect();
         assert_eq!(LSS.len(), hand.len(), "rule counts differ");
         assert!(differ.is_empty(), "{} rules differ:\n{}", differ.len(), differ.join("\n"));
+        // T61.5's parity: the run-time reader lowers the file to the same
+        // rules the macro emitted.
+        let read = lumen_static_shell::lss::load(concat!(env!("CARGO_MANIFEST_DIR"), "/showcase.lss"), None)
+            .unwrap_or_else(|e| panic!("{e}"));
+        println!("lss::load: {} rules", read.len());
+        assert_eq!(read, LSS, "include_lss! and lss::load disagree on showcase.lss");
     }
     use lumen_static_shell::text::{FontMetrics as FontMetrics2, FontStack as FontStack2};
     use lumen_static::display::Cmd;

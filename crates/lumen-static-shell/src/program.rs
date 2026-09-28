@@ -89,6 +89,58 @@ impl<A, K: PartialEq + Copy> SheetKey<A> for Keyed<A, K> {
     }
 }
 
+/// Where a program's `.lss` sheet can be read from at run time, kept by
+/// [`Program::style_lss`] and [`Program::style_lss_by`] until
+/// [`Program::live_lss`] uses it — M61/T61.5. **Data only**: nothing
+/// here names the reader, so a program whose window never goes live links
+/// none of it (kill rule K3).
+struct LssSource<A> {
+    path: &'static str,
+    /// The `@sheet` for this state, if any.
+    block: BlockOf<A>,
+    /// The sheet this build compiled in for this state — drawn with when
+    /// the file cannot be read or does not lower.
+    compiled: CompiledOf<A>,
+}
+
+/// Which `@sheet` a state reads, if any — [`LssSource::block`].
+type BlockOf<A> = Rc<dyn Fn(&A) -> Option<&'static str>>;
+/// The sheet a build compiled in, for a state — [`LssSource::compiled`].
+type CompiledOf<A> = Rc<dyn Fn(&A) -> &'static [Rule]>;
+
+/// [`SheetKey`] for a live `.lss`: the program's own key, **and the
+/// file's modification time**, so saving the file is a change of key like
+/// any other and reaches the frame through the one pump every host runs.
+struct MtimeKey<A> {
+    inner: Option<Box<dyn SheetKey<A>>>,
+    path: &'static str,
+    last: Option<Option<std::time::SystemTime>>,
+}
+
+impl<A> SheetKey<A> for MtimeKey<A> {
+    fn changed(&mut self, app: &A) -> bool {
+        // Both asked every time: a key that short-circuited would stop
+        // recording the other's value.
+        let inner = self.inner.as_mut().is_some_and(|k| k.changed(app));
+        let now = crate::lss::modified(self.path);
+        let file = self.last != Some(now);
+        self.last = Some(now);
+        inner || file
+    }
+}
+
+/// The sheet at `path`, or — when it cannot be read or does not lower —
+/// the one this build compiled in, with the errors on stderr.
+fn read_lss(path: &str, block: Option<&str>, compiled: &'static [Rule]) -> Vec<Rule> {
+    match crate::lss::load(path, block) {
+        Ok(rules) => rules,
+        Err(e) => {
+            eprintln!("lumen-static: {e}\n  (drawing with the sheet this build compiled in)");
+            compiled.to_vec()
+        }
+    }
+}
+
 /// Makes a fresh [`SheetKey`] for each host a program builds.
 type SheetKeyMaker<A> = Rc<dyn Fn() -> Box<dyn SheetKey<A>>>;
 
@@ -240,6 +292,9 @@ pub struct Program<A: App, I: Invalidation = DefaultInval> {
     sheet_key: Option<SheetKeyMaker<A>>,
     /// [`Program::on_key`]'s hook.
     on_key: Option<KeyHook<A>>,
+    /// Where [`Program::live_lss`] reads the sheet from, when it came
+    /// from a `.lss` (M61/T61.5).
+    lss: Option<LssSource<A>>,
     /// Window size in logical pixels.
     pub width: u32,
     pub height: u32,
@@ -292,6 +347,7 @@ where
         sheet: None,
         sheet_key: None,
         on_key: None,
+        lss: None,
         width: 640,
         height: 480,
         page: Color(255, 255, 255, 255),
@@ -319,6 +375,7 @@ impl<A: App, I: Invalidation> Program<A, I> {
             sheet: self.sheet,
             sheet_key: self.sheet_key,
             on_key: self.on_key,
+            lss: self.lss,
             width: self.width,
             height: self.height,
             page: self.page,
@@ -341,6 +398,7 @@ impl<A: App, I: Invalidation> Program<A, I> {
     pub fn style(mut self, sheet: impl Sheet<A> + 'static) -> Self {
         self.sheet = Some(Rc::new(sheet));
         self.sheet_key = None;
+        self.lss = None;
         self
     }
 
@@ -364,6 +422,89 @@ impl<A: App, I: Invalidation> Program<A, I> {
     {
         self.sheet = Some(Rc::new(move |a: &A| sheet(key(a))));
         self.sheet_key = Some(Rc::new(move || Box::new(Keyed { key, last: None })));
+        self.lss = None;
+        self
+    }
+
+    /// **A `.lss` sheet: compiled in, and live where the window says so**
+    /// — M61/T61.5 (`docs/plan-lss.md` §2.4).
+    ///
+    /// `compiled` is `include_lss!`'s output and `path` the same file
+    /// (`concat!(env!("CARGO_MANIFEST_DIR"), "/app.lss")`). As written it
+    /// is [`Program::style`]`(compiled)` and nothing more; the path is
+    /// kept for [`Program::live_lss`], which the window calls in a debug
+    /// build and in a `reload` build, and which reads the file instead —
+    /// again whenever it changes. A release build without `reload` never
+    /// calls it, so no part of the `.lss` reader is linked (kill rule K3,
+    /// `scripts/check_lss_release.sh`).
+    ///
+    /// **Why the compiled sheet is an argument**, when the plan's §2.4
+    /// named only the path: a program must build in release, where there
+    /// is no reader, so the release answer has to be in the call.
+    pub fn style_lss(mut self, compiled: &'static [Rule], path: &'static str) -> Self
+    where
+        A: 'static,
+    {
+        self = self.style(compiled);
+        self.lss = Some(LssSource { path, block: Rc::new(|_: &A| None), compiled: Rc::new(move |_: &A| compiled) });
+        self
+    }
+
+    /// [`Program::style_lss`] keyed on the state, as [`Program::style_by`]
+    /// is: `compiled(key(app))` is the sheet, and a live program reads the
+    /// `@sheet` named `block(key(app))` from `path` instead. `compiled`
+    /// and `block` must agree — `include_lss!(T, "app.lss", pos)` for the
+    /// key `block` maps to `"pos"` — and the tally's parity test is what
+    /// holds its pair to that (M61/T61.6).
+    pub fn style_lss_by<K: PartialEq + Copy + 'static>(
+        mut self,
+        key: fn(&A) -> K,
+        compiled: fn(K) -> &'static [Rule],
+        path: &'static str,
+        block: fn(K) -> Option<&'static str>,
+    ) -> Self
+    where
+        A: 'static,
+    {
+        self.sheet = Some(Rc::new(move |a: &A| compiled(key(a)).to_vec()));
+        self.sheet_key = Some(Rc::new(move || Box::new(Keyed { key, last: None })));
+        self.lss = Some(LssSource {
+            path,
+            block: Rc::new(move |a: &A| block(key(a))),
+            compiled: Rc::new(move |a: &A| compiled(key(a))),
+        });
+        self
+    }
+
+    /// **Read the program's `.lss` at run time, and again when it
+    /// changes** — M61/T61.5. A no-op for a sheet that did not come from
+    /// [`Program::style_lss`] or [`Program::style_lss_by`].
+    ///
+    /// The sheet becomes the file's, re-read whenever the program's key
+    /// or the file's modification time changes — checked where
+    /// [`Program::style_by`]'s key is, in every pump, so a saved colour
+    /// reaches the next frame with no rebuild. A file that cannot be read
+    /// or does not lower draws with the compiled sheet and says why on
+    /// stderr.
+    ///
+    /// **Called by the window** (`lumen-static-winit`'s `run`) in debug
+    /// builds and `reload` builds — not decided here, because the
+    /// workspace's dev profile builds this crate with `debug-assertions =
+    /// false`, and a `cfg(debug_assertions)` in this crate is false in
+    /// every debug build. `recover`'s module note records the same trap,
+    /// met first by M36. A headless host a test builds stays on the
+    /// compiled sheet unless the test calls this.
+    pub fn live_lss(mut self) -> Self
+    where
+        A: 'static,
+    {
+        if let Some(LssSource { path, block, compiled }) = self.lss.take() {
+            self.sheet = Some(Rc::new(move |a: &A| read_lss(path, block(a), compiled(a))));
+            let inner = self.sheet_key.take();
+            self.sheet_key = Some(Rc::new(move || {
+                Box::new(MtimeKey { inner: inner.as_ref().map(|m| m()), path, last: None }) as Box<dyn SheetKey<A>>
+            }));
+        }
         self
     }
 

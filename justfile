@@ -34,6 +34,7 @@ static:
     ./scripts/check_attr_table.sh       # the attribute table in lib.rs and the book must agree
     ./scripts/check_derive_errors.sh    # M55: every derive error sentence is pinned by a .stderr
     ./scripts/check_lss_setters.sh      # M61/T61.2: every Patch setter has a .lss declaration
+    ./scripts/check_lss_coverage.sh     # M61/T61.5: every .lss is read both ways by some test
     ./scripts/check_one_agent_server.sh # M39: one agent transport; nothing else binds a listener
     ./scripts/check_locks.sh            # both Cargo.lock files match their manifests (--locked)
     ./scripts/check_toolchain_targets.sh  # every --target used is declared in rust-toolchain.toml

@@ -343,3 +343,26 @@ Risks:
   them — including three part ids a composite stamps (`#select-trigger`,
   `#select-menu`, `#tooltip-content`), which are in `SUB_TABLE` and so
   pass — and it is K2's larger arm.
+- **2026-09-28, T61.5 — "behind `debug_assertions`" cannot be written in
+  the shell.** The workspace's dev profile builds `lumen-static-shell` with
+  `debug-assertions = false` (for the rasteriser's speed), so a
+  `cfg(debug_assertions)` there is false in every debug build — the first
+  cut of `lss` compiled out of exactly the builds it was for, and the
+  parity test could not import it. M36 met the same trap
+  (`recover.rs`'s module note). The decision is the window's now:
+  `Program::style_lss`/`style_lss_by` keep the compiled sheet *and* the
+  path, and `lumen-static-winit`'s `run` calls `Program::live_lss` under
+  its own `cfg(any(debug_assertions, feature = "reload"))`. The reader is
+  compiled into the shell unconditionally and reached only from there, so
+  a release window without `reload` drops it at link time — which is what
+  K3 counts.
+- **2026-09-28, T61.5 — `style_lss` takes the compiled sheet too.** §2.4
+  named `Program::style_lss(path)`; a program must build in release, where
+  there is no reader, so the release answer has to be in the call:
+  `style_lss(include_lss!(..), path)`, and `style_lss_by(key, compiled,
+  path, block)` for a keyed sheet. A file that does not lower draws with
+  the compiled sheet and says why on stderr.
+- **2026-09-28, T61.5 — K3's gate lands with T61.6**, because the tally is
+  the first program that calls `style_lss_by`: a symbol count over a
+  binary that never names the reader is 0 whatever the gating does, and
+  the gate's accept direction (above 0 with `reload`) needs a caller.
