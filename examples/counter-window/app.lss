@@ -16,6 +16,7 @@
    - Lumen's layout lives in Rust there and in the sheet here: width,
      padding, alignment and the type scale are declarations. */
 
+// ANCHOR: base
 @tokens {
     ground: #0e1118ff;   /* Lumen's `page` */
     panel: #161c28ff;    /* Lumen's `surface` */
@@ -40,6 +41,7 @@
 #caption { color: $faint; font-size: 13px; font-weight: 700; }
 #steps { align: center; }
 Page { background: $ground; padding: 24px; align: center; }
+// ANCHOR_END: base
 
 /* Lumen's `.btn`: 16px, weight 600, 16h/11v padding, 13px radius. */
 #reset {
@@ -57,6 +59,7 @@ Page { background: $ground; padding: 24px; align: center; }
 }
 
 /* The hero number and the pill, per sign. */
+// ANCHOR: sheet
 @sheet pos {
     #value { color: $pos; font-size: 76px; font-weight: 800; }
     #pill {
@@ -64,6 +67,7 @@ Page { background: $ground; padding: 24px; align: center; }
         border-radius: 999px; font-size: 12px; font-weight: 700; padding: 5px 14px;
     }
 }
+// ANCHOR_END: sheet
 @sheet neg {
     #value { color: $neg; font-size: 76px; font-weight: 800; }
     #pill {

@@ -1,8 +1,9 @@
 # Styling
 
-Styling is a cascade, in Rust rather than in a stylesheet language. You
-build a `Vec<Rule>`, hand it to the host, and every node's `Style` is
-resolved once — **not per frame**.
+Styling is a cascade. You build a `Vec<Rule>` — in Rust, or in a `.lss`
+file that becomes the same rules while your crate compiles (below) —
+hand it to the host, and every node's `Style` is resolved once — **not
+per frame**.
 
 ## Rule, Selector, Patch
 
@@ -174,12 +175,97 @@ They are attributes on the field, not values set at runtime:
 
 Both are **static, fixed in the type**. There is no `add_class` at
 runtime, which is a real constraint and has a real workaround: swap the
-sheet. `examples/counter-window/src/app.rs` recolours its number by sign
-that way — `stylesheet_for(sign)` returns a different `Vec<Rule>`, and
-`Program::style_by(|t| t.count.n.signum(), stylesheet_for)` has the host
-re-apply it on the frame the sign changes. The mechanism underneath is the
-same one a class toggle would use; the difference is where the branch
-lives.
+sheet. `examples/counter-window` recolours its number by sign that way —
+`stylesheet_for(sign)` returns a different sheet for each sign, and
+`Program::style_by` (or `Program::style_lss_by`, for a `.lss` sheet,
+below) has the host re-apply it on the frame the sign changes. The
+mechanism underneath is the same one a class toggle would use; the
+difference is where the branch lives.
+
+## A stylesheet as a file: `.lss`
+
+A sheet can be written as a `.lss` file — CSS-shaped, and Lumen's format
+cut down to what this cascade can apply — and **cost nothing at run time
+that the same sheet written in Rust does not**. `include_lss!` reads the
+file while your crate compiles and expands to the `Rule::new(..)` /
+`Patch::new().setter(..)` a person would write, as a `const`: a firmware
+linked with its sheet authored either way is byte-identical
+(`docs/results-lss.md`, K1).
+
+This is the tally's, `examples/counter-window/app.lss`:
+
+```text
+{{#include ../../examples/counter-window/app.lss:base}}
+```
+
+and the part that depends on the count's sign:
+
+```text
+{{#include ../../examples/counter-window/app.lss:sheet}}
+```
+
+On the Rust side, one `include_lss!` per sign — the tree type first, so
+every `#id` and `.class` in the file is checked against it — and the
+program keyed on the sign:
+
+```text
+{{#include ../../examples/counter-window/src/app.rs:lss}}
+```
+
+```text
+{{#include ../../examples/counter-window/src/app.rs:program}}
+```
+
+What v1 accepts:
+
+* **Selectors**: `#id`, `.class`, a kind word (spelled as above —
+  `label`, `Page`), `*`, and comma lists of them. One simple selector per
+  rule.
+* **Declarations**, one per `Patch` setter: `width`, `height` (`12px`,
+  `fixed(12px)`, `fill`, `fill(2)`, `shrink`), `padding` (one to four
+  lengths, in CSS order), `spacing`, `align`, `visible`, `cursor`,
+  `focus-ring`, `color`, `background`, `border-width`, `border-color`,
+  `border-radius`, `font-size`, `font-weight`, `box-shadow`, `hover-dim`,
+  `pressed-dim`. A setter added to `Patch` without a declaration here
+  fails `just static`.
+* **`@tokens { name: value; }`**, used as `$name`.
+* **Palette roles as tokens**: `$page`, `$surface`, `$control`, `$text`,
+  `$muted`, `$accent`, `$on-accent`, `$focus` lower to the `*_role`
+  setters, so the colour follows the palette as `Patch::color_role` does.
+  A `@tokens` name may not shadow one — it would silently stop following
+  the palette — which is why the tally's `page` token is `ground`.
+* **`@sheet name { rules }`** — not CSS. A named block, chosen by
+  `include_lss!(Tree, "app.lss", name)`: the top-level rules, then the
+  block's. It stands in for the run-time classes this framework does not
+  have, and it will be revisited if those ever exist.
+
+**A mistake is a build error at the file's line and column**, not a
+finding at run time:
+
+```text
+error: app.lss:3:5: unknown property `colour`; did you mean `color`?
+error: app.lss:1:1: compound selector `.value.pos`: v1 takes one simple selector per rule ...
+error[E0080]: evaluation panicked: app.lss:2:1: `#titel` names no node -- there is no `#[widget_id("titel")]` in `Ui` ...
+```
+
+Everything Lumen's grammar has beyond v1 — compound selectors,
+combinators, `:state`, `@media`, `@keyframes`, `@theme` — is **refused
+with its own message, not ignored**: a sheet that silently dropped a rule
+would be worse than no sheet. Hover and press are the `hover-dim` and
+`pressed-dim` declarations, because that is what the cascade applies.
+
+**Kinds are not checked at compile time.** A node's kind is a run-time
+method, not a table entry, so `Label { .. }` — the wrong case, as above —
+compiles, and the `W1010` lint names it when the sheet is applied.
+
+**In a debug window the file is live.** `Program::style_lss` and
+`Program::style_lss_by` take the compiled sheet *and* the file's path; a
+debug build (or one with `lumen-static-winit/reload`) reads the file
+instead, and again whenever it is saved, so a colour change needs no
+rebuild. A file that does not lower draws with the compiled sheet and
+prints why. A release window without `reload` links none of the reader
+(`docs/results-lss.md`, K3), and an edited `.lss` rebuilds the crate that
+includes it.
 
 ## A worked stylesheet
 

@@ -32,9 +32,12 @@ From the code, not from the survey:
 `Chooser` kinds (M27/T27.9) — and the overlay phase that carries it, but
 no application menu bar and no platform menu integration.
 
-**A style file format.** Stylesheets are `Vec<Rule>` in Rust. There is no
-parser, and the `.lss` shape is referenced as a possible future rather
-than a thing that exists.
+**Most of a style language.** Since M61 a sheet can be a `.lss` file,
+parsed at compile time ([Styling](./styling.md)), but only the part of
+Lumen's grammar this cascade can apply: one simple selector per rule. No
+compound selectors, no combinators, no `:state`, `@media`, `@keyframes`
+or `@theme`, and no classes that change at run time — each is a compile
+error that says so (`docs/plan-lss.md` §4).
 
 **Italic, and rich text beyond weight.** `RichText` and `Markdown`
 (M27/T27.12) put a bold word inside a sentence, but a span's only

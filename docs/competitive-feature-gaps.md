@@ -214,9 +214,16 @@ stale, but the *shape* of the gap is unchanged. Present in
   *conformance checking* beyond a snapshot.
 - **`theme.rs` / `design.rs`** — design tokens and a theme system.
 - **`shader.rs`** — a GPU escape hatch.
-- **A style language.** `lumen-style` (4.3k lines) is a `.lss`
-  lexer/parser/AST. lumen-static's cascade has no parser and no file
-  format.
+- **A style language — closed in part by M61 (2026-09-28).**
+  `lumen-style` (4.3k lines) is a `.lss` lexer/parser/AST and a resolver.
+  lumen-static now reads `.lss` too — Lumen's lexer and parser, trimmed
+  to one simple selector per rule, `@tokens`, palette roles and `@sheet`
+  blocks, parsed at compile time by `include_lss!` into the same `const`
+  rules as hand-written Rust, and re-read at run time in debug windows
+  (`docs/plan-lss.md`, `docs/results-lss.md`). What is still Lumen's
+  alone: compound selectors, combinators, `:state`, `@media`,
+  `@keyframes`, `@theme` and run-time classes — each a named compile
+  error here, because the cascade has no machinery for them.
 - **Platform shells**: `lumen-shell-web`, `lumen-shell-android`,
   `lumen-shell-ios`. lumen-static is desktop-only, plus a `no_std` core
   with no driver.

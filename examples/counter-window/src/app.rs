@@ -121,7 +121,9 @@ pub fn program(count: i64, w: u32, h: u32) -> lumen_static_shell::program::Progr
         .agent("127.0.0.1:9230")
         .accessible(cfg!(feature = "a11y"))
         .on_key(keys)
+        // ANCHOR: program
         .style_lss_by(|t: &Tally| t.count.n.signum(), stylesheet_for, SHEET_PATH, sheet_block)
+    // ANCHOR_END: program
 }
 
 /// The tally's own keys: Up and Down nudge the count, Escape quits.
@@ -162,6 +164,7 @@ pub fn build() -> Tally {
 
 // ---- the stylesheet: `app.lss` ----------------------------------------
 
+// ANCHOR: lss
 /// The sheet's file — Lumen's `examples/counter/app.lss`, selector for
 /// selector (its header says where the two differ, and why).
 pub const SHEET_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/app.lss");
@@ -201,6 +204,7 @@ pub fn sheet_block(sign: i64) -> Option<&'static str> {
         _ => "zero",
     })
 }
+// ANCHOR_END: lss
 
 /// **The migration's acceptance checks** — M60/T60.0
 /// (`docs/plan-tally-slim.md`). The tally's own keys and its sign sheet

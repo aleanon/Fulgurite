@@ -641,6 +641,23 @@ the frame that lands the change is drawn with its sheet, on every path.
 The whole sheet is re-applied: scoping saved 2% at the tally's size
 (`docs/results-cascade-cost.md`, M60/T60.2).
 
+**DECIDED 2026-09-28 (M61): a stylesheet may be a `.lss` file, parsed at
+compile time.** `include_lss!(Tree, "app.lss" [, block])` runs
+`lumen-static-lss` (Lumen's lexer and parser, trimmed) while the crate
+compiles and emits the `const` rules a person writes — byte-identical in
+the firmware (K1) and under 100 ms of build time (K2,
+`docs/results-lss.md`). v1's grammar is what this cascade can apply: one
+simple selector per rule, a declaration per `Patch` setter, `@tokens`,
+palette roles as `$tokens`, and `@sheet` blocks for a `style_by` key;
+everything else in Lumen's grammar is a named compile error. Ids and
+classes are asserted against the tree type; kinds are not (no `const`
+kind on `Widget`) and stay `W1010`'s. The same parser reads the file at
+run time in debug and `reload` windows (`Program::live_lss`, called by
+the window crate because the shell is built without debug assertions),
+and a release window without `reload` links none of it (K3). A cascade
+at compile time is **deferred** (`docs/plan-lss.md` §4). This was
+`docs/plan-lumen-parity.md` Phase C's first half.
+
 **DECIDED 2026-09-24 (M36): a panic is caught, located and survived in
 development builds.** One guard, `Host::guard`, covers every path that
 runs application code; the screen is a display list naming the message,

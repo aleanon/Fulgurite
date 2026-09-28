@@ -1,6 +1,28 @@
 # M61 — `.lss` stylesheets, parsed at compile time
 
-> **Written 2026-09-28, not started.** A stylesheet can be written as a
+> **T61.0–T61.7 DONE 2026-09-28. All three kill rules hold**
+> (`docs/results-lss.md` owns the numbers): **K1** zero bytes in all four
+> firmwares; **K2** +9 ms (tally) and +44 ms (showcase) of warm build, the
+> latter after a fix — the first cut's tree checks spent 88 of the 100 ms;
+> **K3** 0 `lumen_static_lss` symbols in a release window, 63 with
+> `reload`. Per task:
+> T61.0 — the gates committed red, against a stub macro;
+> T61.1 — `lumen-static-lss`: Lumen's lexer and parser, trimmed, spans
+> kept, 21 refusals by name;
+> T61.2 — the lowering and property table (21 setters, held to `Patch` by
+> `scripts/check_lss_setters.sh`); `PartialEq` on `Rule` and `Patch`;
+> T61.3 — `include_lss!`, errors at `file:line:col`, tracked by cargo;
+> T61.4 — ids and classes asserted against the tree (one table pass since
+> K2); kinds stay `W1010`'s, pinned;
+> T61.5 — `lss::load`, `Program::style_lss`/`style_lss_by`/`live_lss`,
+> parity over every `.lss` (`scripts/check_lss_coverage.sh`);
+> T61.6 — the tally's sheet is `app.lss`, `LUMEN_SHOT` byte-identical at
+> −3, 0 and 7 on both paths; K3 gated;
+> T61.7 — the handoff, the book's styling chapter and gaps, the gaps doc,
+> this header. **Ten corrections and findings** are recorded below,
+> under "What building found".
+>
+> *Written 2026-09-28.* A stylesheet can be written as a
 > `.lss` file and cost nothing at run time that a hand-written
 > `&[Rule]` does not already cost. `include_lss!` parses the file while
 > the crate compiles and emits the same `const` rules a person writes
@@ -366,3 +388,14 @@ Risks:
   the first program that calls `style_lss_by`: a symbol count over a
   binary that never names the reader is 0 whatever the gating does, and
   the gate's accept direction (above 0 with `reload`) needs a caller.
+- **2026-09-28, K2 — §2.3's `count_wid(..) > 0` per id nearly spent the
+  build budget.** Measured first with the checks as §2.3 wrote them: the
+  showcase's 42 names cost **+88 ms** of const evaluation, +94 ms in all
+  against K2's 100 ms. Each assertion walked the whole table. The
+  expansion now collects the tree's ids and classes once
+  (`style::wids_of`, `style::classes_of`) and each assertion reads that
+  list: 88 → 31 ms, +44 ms in all (`docs/results-lss.md`). The rule held
+  both times; the margin is why it was fixed rather than recorded.
+- **2026-09-28, T61.7 — there was no OPEN marker to flip.** The handoff
+  had no section on a style file format, so M61's decision is a new
+  **DECIDED** paragraph beside M60's `style_by`, pointing here.
