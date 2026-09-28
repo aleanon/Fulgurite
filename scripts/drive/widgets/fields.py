@@ -254,6 +254,10 @@ def _click_twice_on_a_full_field(c):
     for _ in range(2):
         c.c.rpc("input.click", x=x, y=y)
         time.sleep(0.4)
-        c.c.rpc("ui.lastChange")
+        # `ui.waitSettled`, not `ui.lastChange`: the harness asks
+        # `lastChange` what this action changed, and a read in here left it
+        # nothing to find on some runs ("the input did not reach the
+        # widget", once in five).
+        c.c.rpc("ui.waitSettled")
         hashes.append(c.c.rpc("ui.regionHash", rect=b).get("hash"))
     c._h1, c._h2 = hashes

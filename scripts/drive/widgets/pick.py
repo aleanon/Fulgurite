@@ -118,7 +118,12 @@ DATE = ("DatePicker", "#d_datepicker_a", _shared(
         visible=True,
         name="a day picked after paging commits the paged month",
         needs="an open date picker",
+        # The pad closes on the pick, so its box is read *before*: the
+        # damage it leaves is the pad's, which a flipped pad lays over
+        # its trigger (the scale-2 window).
+        opens=lambda c: c._pad0,
         do=lambda c: (c.__dict__.__setitem__("_v0", c.value()),
+                      c.__dict__.__setitem__("_pad0", _pad(c)),
                       _page(c, forward=True),
                       _cell(c, 10, 7, 30.0, 48.0))[0],
         expect=lambda c: (

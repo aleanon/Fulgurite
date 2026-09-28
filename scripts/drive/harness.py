@@ -451,12 +451,16 @@ def run_widget(c: AgentClient, widget: str, sel: str, actions: list[Action],
 
         # (1) it landed -- on this widget, not on the root.
         if not a.static:
-            changed = c.rpc("ui.lastChange", since=since).get("changed", [])
+            report = c.rpc("ui.lastChange", since=since)
+            changed = report.get("changed", [])
             readout = ctx.readout()
             if not changed and not readout:
                 raise Failed(
                     f"{widget}/{a.name}: nothing changed and the readout is empty — "
-                    f"the input did not reach the widget (injection: {a.injection})")
+                    f"the input did not reach the widget (injection: {a.injection}); "
+                    f"journal since frame {since}: now {report.get('frame')}, "
+                    f"reset {report.get('reset')}, truncated {report.get('truncated')}, "
+                    f"oldest {report.get('oldest_frame')}")
 
         # (2) the specific consequence, with the number beside the bound.
         ok, measured = a.expect(ctx)

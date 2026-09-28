@@ -232,3 +232,53 @@ fn a_measure_does_not_move_a_full_fields_view() {
     assert_eq!(before, after, "a loose measure moved the view: the run started at {before}, now at {after}");
     assert_eq!(h.app.ui.q.field.caret(), caret, "the caret moved without an input");
 }
+
+/// **A full field's run never wraps out of sight** — reported from the
+/// live window: a search field full of one long word went blank when one
+/// more letter was typed.
+///
+/// The run's rect is the width its glyphs are laid out in. The field
+/// passed its *visible* width, which with the caret at the end equals the
+/// run's own width to the float, and on every other keystroke the word
+/// came out wider than its rect by a fraction of a pixel and wrapped whole
+/// onto a second line, below the clip. This types the reported word one
+/// letter at a time and asks the measure the renderer uses what height the
+/// run lays out to at its rect's width: one line, every time.
+#[test]
+#[cfg(feature = "truetype")]
+fn typing_into_a_full_field_never_wraps_its_run() {
+    use lumen_static::TextMeasure;
+    let Some(font) = lumen_static_shell::text::FontStack::system() else {
+        eprintln!("no system font; skipping");
+        return;
+    };
+    let mut m = lumen_static_shell::text::FontMetrics::new(font);
+    let mut app = App::default();
+    app.ui.q = SearchField::new("");
+    let mut h: Host<App> = Host::new(app, 400, 100);
+    h.set_stylesheet(&[Rule::new(Selector::Id("q"), Patch::new().width(Length::Fixed(220.0)))]);
+    h.pump_with(&mut m);
+    let f = at("q") + 2;
+    h.input.focus = Some(f as u32);
+    h.pump_with(&mut m);
+    let (mut worst, mut scrolled) = (0.0f32, 0);
+    for ch in "sfsdfsalfsasdfkdkdkdkdkdkdkdkdkdkd".chars() {
+        h.post(Event::Text { ch });
+        h.pump_with(&mut m);
+        let text = h.app.ui.q.as_str().to_string();
+        let s = h.states[f];
+        let rect = h.list.cmds.iter().find_map(|c| match c {
+            Cmd::Text { rect, text: t, .. } if h.list.str_of(*t) == text => Some(*rect),
+            _ => None,
+        }).expect("setup: the query's run was not drawn");
+        if rect[0] < s.pos.x {
+            scrolled += 1;
+        }
+        let tall = m.measure_weighted(&text, s.font_size, s.font_weight, rect[2] - rect[0]).h;
+        let one = m.line_height(s.font_size);
+        worst = worst.max(tall / one);
+    }
+    println!("{scrolled} keystrokes with the field scrolled; the tallest run was {worst} lines at its own rect's width");
+    assert!(scrolled >= 8, "setup: the field scrolled on only {scrolled} keystrokes");
+    assert!(worst < 1.5, "a run laid out to {worst} lines in its own rect: it wrapped out of the field");
+}

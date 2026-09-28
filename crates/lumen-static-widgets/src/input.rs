@@ -657,12 +657,23 @@ impl<S: TextBuffer> Node for TextInput<S> {
                 self.selection_color.unwrap_or_else(|| selection_tint(s.fg)),
             );
         }
+        // **The run's rect holds the whole run, never just the visible part
+        // of it.** A text rect's width is the width the glyphs are laid
+        // out in, and a run wider than it *wraps*. The field passed the
+        // visible width, from the scrolled start to the right padding, which
+        // with the caret at the end *is* the run's width, to the float: a
+        // 235 px word in a 234.84 px rect went to a second line, under the
+        // clip, and a full field went blank on every other keystroke
+        // (reported from the live window). A field never wraps (B7), so the
+        // rect is the shaped run rounded up with a pixel to spare, and the
+        // clip alone decides what shows.
+        let whole = |w: f32| x + lumen_static::num::ceil(w) + 1.0;
         if self.text.as_ref().is_empty() && !self.placeholder.is_empty() {
             let dim = Color(s.fg.0, s.fg.1, s.fg.2, (s.fg.3 as u16 * PLACEHOLDER_ALPHA / 0xff) as u8);
-            out.text_weighted([x, inner[1], inner[2], inner[3]], self.placeholder, s.font_size, s.font_weight, dim);
+            out.text_weighted([x, inner[1], whole(self.placeholder_w).max(inner[2]), inner[3]], self.placeholder, s.font_size, s.font_weight, dim);
         } else {
             out.text_weighted(
-                [x, inner[1], x + (inner[2] - inner[0]) + self.scroll, inner[3]],
+                [x, inner[1], whole(self.shaped_size.0).max(inner[2]), inner[3]],
                 self.text.as_ref(),
                 s.font_size,
                 s.font_weight,

@@ -1185,6 +1185,14 @@ The second round, the same day, from using the first round's fixes:
   million-pixel box, the run "fitted" and the scroll clamped to 0. The
   scroll is decided in `place` now, against the final box, which is
   T27.10's answer for `Repeat`.
+- **A full search field went blank on the next letter** (reported with
+  a screenshot, the same evening). The run's rect is the width its glyphs
+  are laid out in, and the field passed its visible width. With the
+  caret at the end, that equals the run's width to the float, so on every
+  other keystroke a word with no spaces came out wider than its rect by a
+  fraction of a pixel and wrapped whole onto a line below the clip. This
+  is also the likelier cause of the first round's "visible on every
+  second click". The rect now holds the whole run.
 - **The DataGrid's scrollbar took no press.** It has its own strip, a
   thumb that drags, and a track that jumps the thumb to the press.
 
@@ -1198,6 +1206,20 @@ Two things about the scale-2 pass this round showed, not fixed:
   The headless test at 1920x1008
   (`a_popup_repaints_partially_to_the_same_pixels_at_scale_2`) is the
   gate that does not depend on it.
+- **Whole-window damage lands in a random action, now and then.** Its
+  `ui.lastDamage` is the whole 960x504 window where the same action
+  otherwise reports 1.00x its box: one Combobox scale-2 run in four,
+  each time on a different action, and never headless. The window is
+  full-repainting for a reason of its own, and a late resize from the
+  window manager is the unconfirmed candidate. The checks are left as
+  they are, and it is recorded here.
+- **The evening's full live drives ran on a desktop in use.** The drive
+  opens a new window for each pass, and the user closed them, which
+  showed in the drive as "agent endpoint closed the connection". Real
+  pointer and keyboard input on those windows is the likeliest single
+  explanation for the one-off failures above. Each failed action was
+  rerun alone, three or four times, and passed every time. Live drives
+  want an idle display.
 - **One intermittent failure is not attributed.** DatePicker's "a press
   opens the popup" failed the full-repaint check twice, in about seven
   runs at 1008. The damaged frame showed the trigger hovered, and the
