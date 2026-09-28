@@ -1,6 +1,7 @@
 # M61 — `.lss` stylesheets, parsed at compile time
 
-> **T61.0–T61.7 DONE 2026-09-28. All three kill rules hold**
+> **T61.0–T61.7 DONE 2026-09-28; `just ci-verify 0793dd5` green** (28
+> steps, 0 failed, 0 skipped). **All three kill rules hold**
 > (`docs/results-lss.md` owns the numbers): **K1** zero bytes in all four
 > firmwares; **K2** +9 ms (tally) and +44 ms (showcase) of warm build, the
 > latter after a fix — the first cut's tree checks spent 88 of the 100 ms;
