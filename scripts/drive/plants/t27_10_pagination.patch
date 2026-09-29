@@ -8,5 +8,5 @@ diff --git a/scripts/drive/widgets/data.py b/scripts/drive/widgets/data.py
 -            _page(c) == c._p0 - 1,
 +            _page(c) < c._p0,
              f"page {c._p0} -> {_page(c)}; the first slot is `previous`, and a "
-             f"slot that were a *page* would jump to page 1",
+             f"slot that skipped would land further back",
          ),

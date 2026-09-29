@@ -84,11 +84,11 @@ PAGINATION = ("Pagination", "#d_pagination_a", [
         expect=lambda c: (
             _page(c) == c._p0 - 1,
             f"page {c._p0} -> {_page(c)}; the first slot is `previous`, and a "
-            f"slot that were a *page* would jump to page 1",
+            f"slot that skipped would land further back",
         ),
         isolate=lambda c: (c.__dict__.__setitem__("_p0", _page(c)),
                            c.click_outside())[0],
-        injection="make the first slot go to page 1",
+        injection="make the first slot step back two pages",
     ),
     Action(
         visible=True,

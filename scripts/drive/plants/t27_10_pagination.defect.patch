@@ -6,7 +6,7 @@ diff --git a/crates/lumen-static-widgets/src/data.rs b/crates/lumen-static-widge
              Event::PointerDown { .. } => match self.slot_at(cx.local.x) {
                  Some(0) => {
 -                    self.prev_page();
-+                    self.go(0);
++                    self.go(self.page.saturating_sub(2));
                      true
                  }
                  Some(k) if k == self.slots() - 1 => {

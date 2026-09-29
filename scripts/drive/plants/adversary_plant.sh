@@ -15,9 +15,11 @@
 # nothing else, the drive is green. What makes it a fair test of a
 # reviewer is that it hides a real defect, so this runs two arms in a
 # scratch copy, each over the widget-side defect the weakened assertion
-# names ("make the first slot go to page 1" -- since M57/B49 there is
-# no window to jump to the first of: a jump to the middle's first page
-# moves nothing after the drive's previous action, and both arms go red):
+# names ("make the first slot step back two pages" -- since M57/B49 there
+# is no window to jump to the first of, and the two plain translations fail
+# as tests: a jump to the middle's first page moves nothing after the
+# drive's previous action, and a jump to page 1 leaves the next action no
+# far page to start from, so the planted arm goes red on it):
 #
 #   (A) the defect, with the real drive     -- must go RED, by name
 #   (B) the defect, with the planted drive  -- must stay GREEN
