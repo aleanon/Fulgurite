@@ -122,3 +122,5 @@ Inval                # the strategy alias M55/T55.4 replaced with a type paramet
 WinApp  # counter-window's own ApplicationHandler, deleted by M60 (docs/plan-tally-slim.md); docs/plan-desktop.md's M14 history names it
 
 MenuItem             # AccessKit's role names; docs/plan-widget-fixes.md A17 maps widgets onto them
+StateSet             # promised by docs/plan-lss-selectors.md T62.7; comes off when it exists
+HIGH_CONTRAST        # promised by docs/plan-lss-selectors.md T62.3 (Palette::HIGH_CONTRAST); comes off when it exists

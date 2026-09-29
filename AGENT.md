@@ -754,6 +754,38 @@ found" section rather than silently replacing itself.
   `#hr` and `.pair-label`, which M56's redesign removed — so it was
   regenerated from the merged `stylesheet()`, 111 rules held equal by
   value.
+- **M62 — `docs/plan-lss-selectors.md`** (T62.0–T62.7): `.lss` catches
+  up, part 1. Not started (2026-09-29).
+  - **Part A** is syntax over capabilities that already exist: padding
+    longhands, colour functions evaluated at compile time, `@theme` onto
+    `Palette` (plus a high-contrast palette), and did-you-mean with
+    Lumen's alias table.
+  - **Part B** extends the cascade: compound selectors, combinators, and
+    `:state` for the states the framework already tracks.
+  - Kill rules: simple sheets must not slow down, descendant combinators
+    ≤ 2× simple, and a `:hovered` rule ≤ 1.5× today's paint-time
+    `hover-dim`.
+- **M63 — `docs/plan-style-capabilities.md`** (T63.0–T63.7), after M62:
+  new framework capabilities with `.lss` properties.
+  - Size limits and `aspect-ratio`, a non-negative margin, text
+    alignment and ellipsis, opacity (colour-multiply, not a layer),
+    gradient backgrounds, and a shadow with offset and colour.
+  - Kill rules: `Style` may grow by at most 24 B per node, since every
+    field costs every node's RAM on every target, and trees that do not
+    use a feature must not pay for it.
+- **M64 — deferred. Not started until M62 and M63 are both closed with
+  a green `just ci-verify`** (the owner's decision, 2026-09-29). Its list
+  is `docs/plan-style-capabilities.md` §6. When M62 and M63 are done, M64
+  is planned from that list, re-checked against the code as it is then.
+  - **§6.1, large or design-level:** transitions and animation, `@media`
+    and container queries, run-time classes, transform/z-index/filters
+    and a true opacity layer, per-node font family and italic, and
+    layout axes as style.
+  - **§6.2, the framework items not picked for M63:** flex and gap
+    details, absolute positioning, overflow, per-side borders, the rest
+    of typography, the widget states no widget models yet, `calc`,
+    nested rules and `!important`.
+
 Unsequenced: ~~`docs/plan-harness.md`.~~ — **M12 DONE 2026-09-20.**
 T12.3 and T12.4 landed 2026-09-04; T12.1 (a locator and expectation API,
 `lumen_static_agent::harness::TestApp`) and T12.2 (golden images with a
