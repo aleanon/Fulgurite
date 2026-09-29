@@ -45,7 +45,7 @@ that produces real sections.
 
 | | Threshold | Measured | |
 |---|---:|---:|---|
-| `.text` | ≤ 64 KB | **27,964 B** (27.3 KB) | **pass**, at 42.7% of budget; re-measured at the end of M52 |
+| `.text` | ≤ 64 KB | **28,616 B** (27.9 KB) | **pass**, at 43.7% of budget; re-measured at the M56 merge (2026-09-29; section below) |
 | `.bss` + `.data` | zero framework symbols | **1 symbol, 4 B, exempted** | **pass** — the fixture's own `SINK` (`scripts/bss.allow`) |
 | `.data` | 0 B | **0 B** in all four binaries | **pass**; asserted by `scripts/check_bss.sh` since M52/T52.3 — the interactive and bind-only builds had 4 B, one binding's cache (F-NEW-1) |
 | `.rodata` | — | 12,864 B | of which the baked face is most; 9,010 B at T13.7 |
@@ -726,6 +726,40 @@ another — the key half of R2-F1 (`docs/plan-text-correctness.md` §2.3).
 a `u32` length), the number is exactly 1,168. A `u64` length, which the
 old tuple had, made it 1,192; the length is a `u32` because no field
 holds 4 GB. `.text` after it: 27,964 B, inside the headline's 1%.
+
+### `Ui` re-budgeted 1,176 → 1,192 B on the target — the M56 merge
+
+**Attributed by type**, each measured on `thumbv7em-none-eabihf` in both
+trees: `Label` 56, `Button` 72, the three toggles 12 each, `Fixed` 8 and
+the derived `Controls` 144 are unchanged; `TextInput<InlineText<64>>`
+went 932 → 948 B. The sixteen bytes are M57's fields on it —
+`read_only` and `submitted` (`bool`), `presses` (`u32`, the press edge
+the combobox reopens on) and `placeholder_w` (`f32`). The branch asserted
+1,168 throughout M57 and the assertion never ran: `fixtures/embedded` did
+not build for the target on the branch (`alloc` and `f32::ceil` in
+`no_std` code), which the merge fixed. So the cost was paid in M57 and
+first measured here.
+
+### The headline re-measured at the M56 merge — 2026-09-29
+
+`scripts/check_text.sh` refused the merge: **28,616 B** linked against the
+27,964 B headline, 2.33% over its 1% tolerance. `main` at `1a59224` links
+**28,020 B** on the same toolchain, so the merge adds **596 B**, and the
+branch's M56/M57 work is all of it — like `Ui` above, the branch's
+fixture never linked for the target. Netted by owner from a symbol diff
+of the two binaries (inlining moves code between symbols, so single
+symbols overstate): `Toggle` layout and paint +508, `SeedRoles::apply`
++314 (M57/A8's palette roles), `TextInput::paint` +298 (the centred,
+clipped line), `ops::shaded` +240, `ops::record_painted` +124 (M56's
+`paints` flag); `Button` and the derived `Ui` net about zero or below.
+
+The other three binaries, same build: `firmware_interactive` **61,922 B,
+94.5% of 64 KB** (56,802 in the M55/T55.5 table below — the dispatch
+path carries M57's input work: the press latch, focus moves, the
+combobox's edges), `firmware_bind` 32,008, `firmware_cascade` 30,644
+(delta over paint-only 2,028, bound 3,072). Every binary is gated on the
+64 KB ceiling, and the interactive one has **3,614 B** left under it: the
+next milestone that adds input will meet the gate.
 
 ### Grapheme editing is behind `alloc` — M45/T45.5
 

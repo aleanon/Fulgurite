@@ -427,8 +427,14 @@ pub mod sizes {
     // gained the measurer's generation, so one stack's box is not served
     // to another's frame. Attributed the same way: without the field, 1,168.
     // `docs/results-embedded.md` has the argument.
+    //
+    // **Re-budgeted 1,176 -> 1,192 on 2026-09-29** (the M56 merge): all
+    // sixteen bytes are `TextInput`'s (932 -> 948), the fields M57 gave it
+    // -- `read_only`, `submitted`, `presses`, `placeholder_w`. The branch
+    // asserted 1,168 and never checked it here: its thumb build did not
+    // compile. `docs/results-embedded.md` has the measurement.
     #[cfg(target_pointer_width = "32")]
-    const _: () = assert!(UI == 1176, "Ui is no longer 1176 B on the target; re-budget docs/results-frame-and-types.md");
+    const _: () = assert!(UI == 1192, "Ui is no longer 1192 B on the target; re-budget docs/results-frame-and-types.md");
 
     // **A depth backstop, not the stack budget's measurement** — M52/T52.6.
     //
