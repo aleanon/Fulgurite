@@ -1,0 +1,5 @@
+error: fail_role_as_length.lss:1:19: `$accent` is a palette role, which is a colour; `padding` takes one to four lengths in px, in CSS order: `4px`, `4px 8px`, `4px 8px 2px 1px`
+  --> tests/ui-lss/fail_role_as_length.rs:13:55
+   |
+13 | const SHEET: &[lumen_static::Rule] = include_lss!(Ui, "fail_role_as_length.lss");
+   |                                                       ^^^^^^^^^^^^^^^^^^^^^^^^^

@@ -10,6 +10,12 @@ license.workspace = true
 # stand-in. See src/text.rs.
 fontdue = { version = "0.9", optional = true }
 lumen-static = { path = "../lumen-static" }
+# M61/T61.5: `lss::load`, the run-time reading of a `.lss` sheet. Not
+# optional -- a std crate with no dependencies -- and reached only through
+# `Program::live_lss`, which the window calls in debug and `reload` builds,
+# so a release build without `reload` links none of it (kill rule K3,
+# docs/plan-lss.md §5; scripts/check_lss_release.sh counts the symbols).
+lumen-static-lss = { path = "../lumen-static-lss" }
 # Safe SIMD types for the shadow SDF (T17.1). Optional; see the feature.
 wide = { version = "0.7", optional = true, default-features = false }
 # M37/T37.1: the agent's bridge to a session lives with the tree, so it

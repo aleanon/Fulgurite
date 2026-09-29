@@ -1,0 +1,5 @@
+error: fail_bad_hex.lss:1:17: invalid colour `#12345`: v1 takes `#rrggbb` or `#rrggbbaa`
+  --> tests/ui-lss/fail_bad_hex.rs:13:55
+   |
+13 | const SHEET: &[lumen_static::Rule] = include_lss!(Ui, "fail_bad_hex.lss");
+   |                                                       ^^^^^^^^^^^^^^^^^^

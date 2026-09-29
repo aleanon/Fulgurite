@@ -1,0 +1,5 @@
+error: fail_state.lss:1:1: `:hovered` is a state selector, which v1 does not have -- for hover and press, the declarations are `hover-dim` and `pressed-dim` (docs/plan-lss.md §4)
+  --> tests/ui-lss/fail_state.rs:13:55
+   |
+13 | const SHEET: &[lumen_static::Rule] = include_lss!(Ui, "fail_state.lss");
+   |                                                       ^^^^^^^^^^^^^^^^

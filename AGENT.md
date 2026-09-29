@@ -628,7 +628,16 @@ found" section rather than silently replacing itself.
   audit measuring with the block stand-in instead of the session's face.
 
 - **M61 — `docs/plan-lss.md`** (T61.0–T61.7): `.lss` stylesheets,
-  **parsed at compile time**. Not started (2026-09-28).
+  **parsed at compile time**. **T61.0–T61.7 DONE 2026-09-28, `just
+  ci-verify 0793dd5` green** (28 steps, 0 failed, 0 skipped; live gates
+  on a private Xephyr display). All three kill rules hold
+  (`docs/results-lss.md`): K1 zero bytes in four firmwares, K2 +9 ms
+  (tally) / +44 ms (showcase) of warm build, K3 0 reader symbols in a
+  release window. The tally's sheet is `app.lss`, its frames
+  byte-identical at −3, 0, 7. Found: the first tree checks spent 88 of
+  K2's 100 ms (one table pass now); `cfg(debug_assertions)` is false in
+  the shell's dev build, so the window decides when the file is read
+  live (`Program::live_lss`); paths resolve from the invoking file.
   - **What it is:** `include_lss!(Tree, "app.lss")` emits the same
     `const` rules a person writes by hand. Its claim is zero bytes and
     zero instructions over a hand-written sheet (kill rule K1: the
@@ -738,6 +747,13 @@ found" section rather than silently replacing itself.
   `content_absent` its leaf checks honoured. The rest was `main`'s
   scripts addressing the old chrome and the branch's drives meeting
   `main`'s damage check for the first time.
+  **M61 landed on `main` while that ran**, and merged without a textual
+  conflict and three semantic ones: `.lss` could not spell M57/A8's seven
+  new palette roles or M57/A16's `disabled` (both refused by
+  `scripts/check_lss_setters.sh`), and the showcase's `.lss` mirror named
+  `#hr` and `.pair-label`, which M56's redesign removed — so it was
+  regenerated from the merged `stylesheet()`, 111 rules held equal by
+  value.
 Unsequenced: ~~`docs/plan-harness.md`.~~ — **M12 DONE 2026-09-20.**
 T12.3 and T12.4 landed 2026-09-04; T12.1 (a locator and expectation API,
 `lumen_static_agent::harness::TestApp`) and T12.2 (golden images with a

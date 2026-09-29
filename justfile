@@ -33,6 +33,8 @@ static:
     ./scripts/check_book_includes.sh    # book includes, anchors and links must all resolve
     ./scripts/check_attr_table.sh       # the attribute table in lib.rs and the book must agree
     ./scripts/check_derive_errors.sh    # M55: every derive error sentence is pinned by a .stderr
+    ./scripts/check_lss_setters.sh      # M61/T61.2: every Patch setter has a .lss declaration
+    ./scripts/check_lss_coverage.sh     # M61/T61.5: every .lss is read both ways by some test
     ./scripts/check_one_agent_server.sh # M39: one agent transport; nothing else binds a listener
     ./scripts/check_locks.sh            # both Cargo.lock files match their manifests (--locked)
     ./scripts/check_toolchain_targets.sh  # every --target used is declared in rust-toolchain.toml
@@ -164,6 +166,9 @@ firmware:
     ./scripts/probe.sh thumb
     ./scripts/check_bss.sh
     ./scripts/check_text.sh
+    # M61/T61.3, kill rule K1: the firmwares with their sheet authored as
+    # .lss link byte-identical .text and .rodata (docs/plan-lss.md §5).
+    ./scripts/check_lss_parity.sh
 
 # The four fixtures. Until today none of these ran in the gate; three of them
 # assert. miri-smoke runs in `release-shape` above -- it contains zero
@@ -188,6 +193,8 @@ fixtures:
     ./scripts/window_reload_demo.sh
     cargo run -q -p miri-reload
     ./scripts/reload_gating.sh
+    # M61/T61.3: an edited .lss rebuilds the crate that includes it.
+    ./scripts/lss_tracking.sh
 
 # Every refusal, planted (M43, docs/plan-gate-hygiene.md §2.4): each check
 # runs green on an unmodified copy of the tree, then each plant under
@@ -288,9 +295,12 @@ agent-symbols:
 # docs/plan-embedded-footprint.md §2.2). Two release builds of
 # examples/minimal, so `check-extra` and not `test`.
 
-# Recovery symbols in a release window: 0 without `reload`, above 0 with it.
+# Recovery symbols in a release window: 0 without `reload`, above 0 with it
+# -- and `.lss` reader symbols the same way (M61, K3).
 release-window-shape:
     ./scripts/release_window_shape.sh
+    # M61/T61.6, kill rule K3: nor any `.lss` reader (docs/plan-lss.md §5).
+    ./scripts/check_lss_release.sh
 
 # The GPU backend (T15.12), which `test` excludes for compile time.
 # Its own tests are the backend-parity gate: the same display list

@@ -1525,6 +1525,35 @@ fn stylesheet_with(c: Chrome) -> Vec<StyleRule> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// **The showcase's sheet as `.lss`** — M61/T61.4
+    /// (`docs/plan-lss.md`). `showcase.lss` mirrors [`stylesheet`] rule
+    /// for rule, and `include_lss!` checks every `#id` and `.class` in it
+    /// against `Screen` at compile time: this compiling is the accept
+    /// direction of those checks on a real sheet. The comparison is by
+    /// value, rule by rule, so a mirror that drifted from the sheet the
+    /// showcase runs is named here rather than trusted.
+    #[test]
+    fn the_lss_mirror_is_the_hand_written_sheet() {
+        const LSS: &[StyleRule] = lumen_static::include_lss!(Screen, "../showcase.lss");
+        let hand = stylesheet();
+        println!("showcase.lss: {} rules; stylesheet(): {} rules", LSS.len(), hand.len());
+        let differ: Vec<String> = LSS
+            .iter()
+            .zip(&hand)
+            .enumerate()
+            .filter(|(_, (a, b))| a != b)
+            .map(|(i, (a, b))| format!("rule {i}:\n  lss:  {a:?}\n  hand: {b:?}"))
+            .collect();
+        assert_eq!(LSS.len(), hand.len(), "rule counts differ");
+        assert!(differ.is_empty(), "{} rules differ:\n{}", differ.len(), differ.join("\n"));
+        // T61.5's parity: the run-time reader lowers the file to the same
+        // rules the macro emitted.
+        let read = lumen_static_shell::lss::load(concat!(env!("CARGO_MANIFEST_DIR"), "/showcase.lss"), None)
+            .unwrap_or_else(|e| panic!("{e}"));
+        println!("lss::load: {} rules", read.len());
+        assert_eq!(read, LSS, "include_lss! and lss::load disagree on showcase.lss");
+    }
     use lumen_static_shell::text::{FontMetrics as FontMetrics2, FontStack as FontStack2};
     use lumen_static::display::Cmd;
     use lumen_static::style::Selector;

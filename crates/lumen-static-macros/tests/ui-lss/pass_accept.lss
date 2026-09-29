@@ -1,0 +1,31 @@
+/* Every construct v1 accepts (docs/plan-lss.md §2.1), once. */
+@tokens {
+    ink: #f1f5fbff;
+    gap: 6px;
+}
+
+* { spacing: $gap; }
+label { color: $ink; font-size: 15px; font-weight: 600; }
+.note { color: $muted; background: $surface; border-color: $focus; }
+#title, #badge {
+    width: fixed(120px);
+    height: 40px;
+    padding: 4px 8px;
+    align: center;
+    visible: true;
+    disabled: false;
+    cursor: pointer;
+    focus-ring: 2px;
+    background: #16202cff;
+    border-width: 1px;
+    border-color: #334455;
+    border-radius: 8px;
+    box-shadow: 12px;
+    hover-dim: 0.07;
+    pressed-dim: 0.15;
+}
+#badge { width: fill; height: shrink; padding: 1px 2px 3px 4px; }
+
+@sheet loud {
+    #title { font-size: 24px; color: $accent; width: fill(2); }
+}

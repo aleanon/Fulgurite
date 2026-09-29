@@ -1,0 +1,3 @@
+@tokens { ink: #f1f5fbff; }
+
+#title { color: $inkk; }

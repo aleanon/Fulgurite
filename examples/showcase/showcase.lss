@@ -1,0 +1,128 @@
+/* The showcase's sheet, as .lss -- M61/T61.4 (docs/plan-lss.md).
+
+   NOT what the showcase runs: `stylesheet()` in src/main.rs is, with the
+   reasoning for every rule beside it. This file mirrors it rule for rule,
+   and `the_lss_mirror_is_the_hand_written_sheet` holds the two equal, so
+   this is the accept direction of include_lss!'s tree checks on a real
+   sheet (every #id and .class below is checked against `Screen` at
+   compile time) and K2's larger measurement. The plan's §4: the showcase
+   moves only if the tally's pilot shows the path is clean.
+
+   Regenerated at the M56 merge (2026-09-29) from the redesigned sheet --
+   the sidebar, the canvas card, the chip -- one rule per line, in the
+   sheet's order. The chrome's own colours (hairline, chip, ghost, outline,
+   the chip's text) are literals here because `stylesheet()` writes them as
+   colours of the light chrome rather than as roles; `btn()` and `lbl()`
+   are spelled out, since .lss has no mixins. */
+
+Screen { width: fill; height: fill; background: $page; }
+#sidebar { width: 248px; height: fill; padding: 24px 0px 12px 0px; background: $surface; }
+#brand { padding: 0px 20px 2px 20px; color: $text; font-size: 16px; font-weight: 700; }
+#brand_sub { padding: 0px 20px 16px 20px; color: $muted; font-size: 12px; font-weight: 600; }
+#nav { width: fill; height: fill; }
+navrow { width: fill; height: 32px; color: $text; background: $surface; border-color: $accent; border-radius: 8px; font-size: 14px; }
+#rule { width: 1px; height: fill; background: #e1e6eeff; }
+#main { width: fill; height: fill; padding: 28px 32px 32px 32px; }
+#header { width: fill; }
+#crumb { color: $muted; font-size: 12px; font-weight: 600; }
+#title { color: $text; font-size: 24px; font-weight: 700; }
+#tgap { width: fill; }
+#readout { padding: 4px 10px 4px 10px; color: #1f4fd1ff; background: #e8efffff; border-radius: 12px; font-size: 12px; font-weight: 600; }
+#blurb { color: $muted; font-size: 14px; }
+#stage { width: fill; height: fill; padding: 32px 32px 32px 32px; background: $surface; border-width: 1px; border-color: #e1e6eeff; border-radius: 16px; box-shadow: 6px; }
+#st { height: fill; }
+#sb { height: fill; }
+#demo { width: shrink; }
+#sl { width: fill; }
+#sr { width: fill; }
+#select-trigger { width: 220px; padding: 9px 14px 9px 14px; color: $text; background: $raised; border-radius: 8px; font-size: 15px; }
+#select-menu { width: 220px; height: 180px; background: $surface; border-width: 1px; border-color: #e1e6eeff; border-radius: 12px; box-shadow: 12px; }
+#d_button_a { width: shrink; height: shrink; padding: 10px 18px 10px 18px; color: $on-accent; background: $accent; border-radius: 8px; font-size: 15px; font-weight: 600; hover-dim: 0.07; }
+#d_button_b { width: shrink; height: shrink; padding: 10px 18px 10px 18px; color: $text; background: $surface; border-width: 1px; border-color: #cfd6e2ff; border-radius: 8px; font-size: 15px; font-weight: 600; hover-dim: 0.07; }
+#d_button_c { width: shrink; height: shrink; padding: 10px 18px 10px 18px; color: #1f4fd1ff; background: #eaeffbff; border-radius: 8px; font-size: 15px; font-weight: 600; hover-dim: 0.07; }
+#d_card_a { width: 280px; }
+#d_card_title { font-weight: 600; }
+#d_card_go { width: shrink; height: shrink; padding: 10px 18px 10px 18px; color: $on-accent; background: $accent; border-radius: 8px; font-size: 15px; font-weight: 600; hover-dim: 0.07; }
+#tooltip-content { width: shrink; height: shrink; padding: 10px 18px 10px 18px; color: $on-accent; background: $accent; border-radius: 8px; font-size: 15px; font-weight: 600; hover-dim: 0.07; }
+#d_textinput_a { width: 260px; height: 38px; padding: 9px 12px 9px 12px; color: $text; background: $raised; border-width: 1px; border-color: $muted; border-radius: 8px; font-size: 15px; }
+#d_textarea_a { width: 260px; height: 96px; padding: 9px 12px 9px 12px; color: $text; background: $raised; border-width: 1px; border-color: $muted; border-radius: 8px; font-size: 15px; }
+labelled { color: $text; font-size: 15px; }
+#d_slider_a { width: 280px; }
+#d_scrollview_a { width: 260px; height: 180px; }
+#d_range_a { width: 280px; }
+#d_search_a { width: 320px; }
+textinput { width: 220px; height: 36px; padding: 8px 12px 8px 12px; color: $text; background: $raised; border-width: 1px; border-color: $muted; border-radius: 8px; }
+DWrap { width: 260px; align: center; }
+DAccordion { height: 200px; }
+DGrid { width: 420px; }
+#d_split_a { width: 360px; height: 140px; }
+DAccordion { width: 320px; }
+.veil-body { padding: 20px 20px 20px 20px; background: $surface; border-radius: 12px; box-shadow: 12px; }
+ModalBody { width: shrink; height: shrink; }
+.veil-title { font-weight: 600; }
+.veil-go { width: shrink; height: shrink; padding: 10px 18px 10px 18px; color: $on-accent; background: $accent; border-radius: 8px; font-size: 15px; font-weight: 600; hover-dim: 0.07; }
+#d_menu_a { height: 40px; }
+#d_datagrid_a { height: 260px; }
+#d_tree_a { height: 200px; }
+#d_panegrid_a { height: 260px; }
+#d_tabs_a { width: 420px; }
+#d_bottomnav_a { width: 420px; }
+#d_appbar_a { width: 420px; }
+#d_rail_a { height: 260px; }
+#d_pull_a { width: 280px; height: 120px; }
+DPullToRefresh { width: shrink; padding: 16px 16px 16px 16px; background: $raised; border-radius: 12px; }
+DSplitPane { width: shrink; background: $raised; border-radius: 8px; }
+#d_progress_a { width: 280px; }
+#d_divider_a { width: 280px; }
+#d_skeleton_a { width: 180px; height: 18px; }
+#d_skeleton_b { width: 120px; height: 18px; }
+DRichText { width: 420px; }
+DMarkdown { width: 420px; }
+DRichTextEditor { width: 420px; }
+DPaintBox { width: 320px; }
+DPaneGrid { width: 480px; }
+DDataGrid { width: 560px; }
+DModal { width: fill; }
+DSheet { width: fill; }
+DDrawer { width: fill; }
+ToastSlot { width: shrink; }
+DLabel { width: shrink; }
+DBadge { width: shrink; }
+DChip { width: shrink; }
+DAvatar { width: shrink; }
+DIcon { width: shrink; }
+DDivider { width: shrink; }
+DButton { width: shrink; }
+DCheckBox { width: shrink; }
+DSwitch { width: shrink; }
+DRadio { width: shrink; }
+DSlider { width: shrink; }
+DTextInput { width: shrink; }
+DTextArea { width: shrink; }
+DProgressBar { width: shrink; }
+DSpinner { width: shrink; }
+DSkeleton { width: shrink; }
+DBarChart { width: shrink; }
+DLineChart { width: shrink; }
+DPieChart { width: shrink; }
+DCard { width: shrink; }
+DToast { width: shrink; }
+DTooltip { width: shrink; }
+DNumberInput { width: shrink; }
+DRangeSlider { width: shrink; }
+DSearchField { width: shrink; }
+DTabs { width: shrink; }
+DBottomNav { width: shrink; }
+DNavigationRail { width: shrink; }
+DAppBar { width: shrink; }
+DPickList { width: shrink; }
+DSelect { width: shrink; }
+DCombobox { width: shrink; }
+DMenu { width: shrink; }
+DColorPicker { width: shrink; }
+DDatePicker { width: shrink; }
+DTimePicker { width: shrink; }
+DFilePicker { width: shrink; }
+DPagination { width: shrink; }
+DTree { width: shrink; }
+DScrollView { width: shrink; }

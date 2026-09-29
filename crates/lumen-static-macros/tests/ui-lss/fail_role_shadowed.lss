@@ -1,0 +1,5 @@
+@tokens {
+    accent: #4d7cfeff;
+}
+
+#title { color: $accent; }

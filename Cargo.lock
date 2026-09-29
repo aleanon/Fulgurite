@@ -1590,10 +1590,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "lumen-static-lss"
+version = "0.1.0"
+
+[[package]]
 name = "lumen-static-macros"
 version = "0.1.0"
 dependencies = [
  "lumen-static",
+ "lumen-static-lss",
  "lumen-static-reload",
  "lumen-static-shell",
  "lumen-static-widgets",
@@ -1622,6 +1627,7 @@ dependencies = [
  "fontdue",
  "lumen-static",
  "lumen-static-agent",
+ "lumen-static-lss",
  "lumen-static-widgets",
  "serde",
  "serde_json",

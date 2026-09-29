@@ -763,7 +763,12 @@ impl Selector {
 /// non-finite value becomes its field's type default, and a
 /// non-finite or negative padding edge becomes 0 ([`Patch::needs_repair`], M55/T55.5). The agent
 /// reports each such field as `W1012`.
-#[derive(Clone, Copy, Debug, Default)]
+///
+/// `PartialEq` since M61/T61.2: the `.lss` parity gates compare a sheet
+/// `include_lss!` emitted with one read at run time, and with one written
+/// by hand (`docs/plan-lss.md`). A derive, so it costs nothing a caller
+/// does not call.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Patch {
     pub width: Option<Length>,
     pub height: Option<Length>,
@@ -1189,7 +1194,9 @@ impl Patch {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+/// One selector and what it changes. `PartialEq` since M61/T61.2, as
+/// [`Patch`] is.
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Rule {
     pub selector: Selector,
     pub patch: Patch,
@@ -1556,6 +1563,111 @@ pub const fn count_wid(table: &[NodeDesc], wid: &str) -> usize {
         i += 1;
     }
     n
+}
+
+/// How many nodes of `table` carry the style class `class` —
+/// `#[widget_class]`.
+///
+/// `const`, as [`count_wid`] is. Written for `include_lss!` (M61/T61.4)
+/// and superseded there by [`classes_of`], which collects the classes in
+/// one pass instead of walking the table once per class. An empty
+/// `class` matches nothing.
+pub const fn count_class(table: &[NodeDesc], class: &str) -> usize {
+    if class.is_empty() {
+        return 0;
+    }
+    let (mut i, mut n) = (0, 0);
+    while i < table.len() {
+        let classes = table[i].classes;
+        let mut j = 0;
+        while j < classes.len() {
+            if bytes_eq(classes[j], class) {
+                n += 1;
+                break;
+            }
+            j += 1;
+        }
+        i += 1;
+    }
+    n
+}
+
+/// How many nodes of `table` carry an author id — the length of
+/// [`wids_of`]'s array.
+///
+/// **For `include_lss!`'s tree checks** (M61, `docs/plan-lss.md` §2.3).
+/// Asserting each `#id` with [`count_wid`] walks the whole table once per
+/// id, and in `const` evaluation that is what a check costs: 42 of them
+/// over the showcase's table were 88 ms of a warm build, most of kill rule
+/// K2's 100 ms (`docs/results-lss.md`). Collecting the ids once and
+/// asserting against the short list walks the table once.
+pub const fn wid_count(table: &[NodeDesc]) -> usize {
+    let (mut i, mut n) = (0, 0);
+    while i < table.len() {
+        if !table[i].wid.is_empty() {
+            n += 1;
+        }
+        i += 1;
+    }
+    n
+}
+
+/// Every author id in `table`, in table order (`K` is [`wid_count`]).
+pub const fn wids_of<const K: usize>(table: &[NodeDesc]) -> [&'static str; K] {
+    let mut out = [""; K];
+    let (mut i, mut k) = (0, 0);
+    while i < table.len() && k < K {
+        if !table[i].wid.is_empty() {
+            out[k] = table[i].wid;
+            k += 1;
+        }
+        i += 1;
+    }
+    out
+}
+
+/// How many style classes `table` carries, counting a class once per
+/// node that has it — the length of [`classes_of`]'s array.
+pub const fn class_count(table: &[NodeDesc]) -> usize {
+    let (mut i, mut n) = (0, 0);
+    while i < table.len() {
+        n += table[i].classes.len();
+        i += 1;
+    }
+    n
+}
+
+/// Every style class in `table`, flattened (`K` is [`class_count`]).
+pub const fn classes_of<const K: usize>(table: &[NodeDesc]) -> [&'static str; K] {
+    let mut out = [""; K];
+    let (mut i, mut k) = (0, 0);
+    while i < table.len() {
+        let classes = table[i].classes;
+        let mut j = 0;
+        while j < classes.len() && k < K {
+            out[k] = classes[j];
+            k += 1;
+            j += 1;
+        }
+        i += 1;
+    }
+    out
+}
+
+/// Whether `list` holds `name` — the assertion `include_lss!` makes
+/// against [`wids_of`] and [`classes_of`]. An empty `name` is never held.
+pub const fn names_contain(list: &[&str], name: &str) -> bool {
+    if name.is_empty() {
+        return false;
+    }
+    let mut i = 0;
+    while i < list.len() {
+        if bytes_eq(list[i], name) {
+            return true;
+        }
+        i += 1;
+    }
+    false
 }
 
 /// `a == b` for `&str`, in a `const` context.

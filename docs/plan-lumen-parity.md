@@ -18,8 +18,8 @@ about where it is and is not done.*
 > 2026-09-04, with a third of Phase B already built.
 >
 > Phases A–E became milestones instead, and only where they earned it:
-> Phase A shipped as M5/M7, Phase B is now M11, Phase E is M12, Phase C
-> is unscheduled, and **M10 is the embedded profile — which is not in
+> Phase A shipped as M5/M7, Phase B is now M11, Phase E is M12, Phase C's
+> first half is M61 (2026-09-28, `docs/plan-lss.md`), and **M10 is the embedded profile — which is not in
 > this document at all**, because it is the thing this architecture can
 > do that Lumen cannot. See `docs/plan-architecture-v2.md`.
 >
@@ -160,6 +160,11 @@ container/card, tabs, dropdown/select, tooltip, modal, and the §6 escape
 hatches as first-class widgets.
 
 ### Phase C — styling
+
+**First half DONE as M61 (2026-09-28, `docs/plan-lss.md`)**: the lexer,
+parser and AST adopted and trimmed, lowered at compile time to the
+existing `Rule`s. The cascade is ours already; a cascade *at compile
+time* is deferred there, with its reasons.
 
 Adopt the `.lss` lexer/parser/AST; write the cascade against our fields;
 animation and transitions after that (Lumen has springs and motion, and

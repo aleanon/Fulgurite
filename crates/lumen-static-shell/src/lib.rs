@@ -25,6 +25,10 @@ pub mod contrast;
 pub mod frame_cost;
 /// M12/T12.2: golden images, with a diff artifact.
 pub mod golden;
+/// M61/T61.5: a `.lss` sheet read at run time — reached only through
+/// `Program::live_lss`, which the window calls in debug and `reload`
+/// builds (kill rule K3, `docs/plan-lss.md` §5).
+pub mod lss;
 /// M60/T60.4: `LUMEN_PROFILE`, the per-stage cost of a headless frame.
 pub mod profile;
 /// M32: `application(boot)` — the program described once.
