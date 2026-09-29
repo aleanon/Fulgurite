@@ -500,7 +500,7 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
     // A grid's column count, and whether this flow is one (M57/A19): a
     // grid places every cell at its *column's* x, a wrap packs each line.
     // `flow_col` is a cell's column: a wrap has one, and emitting it as
-    // `in_line % 1` put clippy's `modulo_one` on every crate that derives
+    // `in_line % 1` put clippy's modulo-one lint on every crate that derives
     // a `wrap` (the M56 merge's clippy gate, `tests/flow.rs`).
     let (flow_cols, flow_grid, flow_col) = match axis {
         Axis::Flow(Some(c)) => (quote! { #c }, quote! { true }, quote! { in_line % #c }),

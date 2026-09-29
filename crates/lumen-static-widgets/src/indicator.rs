@@ -270,7 +270,7 @@ pub const SHIMMER_PERIOD: f32 = 480.0;
 #[derive(Default)]
 pub struct Skeleton {
     /// Where the highlight is in its sweep, `0.0..=1.0` of
-    /// [`SHIMMER_PERIOD`] in window coordinates (M57/B29), so every
+    /// `SHIMMER_PERIOD` in window coordinates (M57/B29), so every
     /// skeleton given the same phase shows the same band.
     pub phase: f32,
 }
