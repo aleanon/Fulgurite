@@ -759,3 +759,35 @@ dev-dependency, the version the text crate already pulls). Stripped
 release `examples/showcase`: 9,679,336 B → 10,428,296 B with
 `lumen-static-winit/shaping`, **+748,960 B** (0.71 MiB) against K81e's
 3 MB — holds.
+
+## M81/T81.5 — caret, selection and hit test over bidi runs (2026-10-04)
+
+`TextInput`, `TextArea` and `Selectable` place their caret, answer
+`caret_rect`, hit-test a press and tint a selection through one module,
+`lumen-static-widgets`' `caret`: an offset is the **last** cluster with
+its byte (`caret::at`, which `TextInput::x_of` and `TextArea::cluster_at`
+read), a press the nearest leading edge, a selection one rect per visually
+contiguous span (`caret::spans`). `lumen-static-text`'s `Shaper` reports
+a direction change as **two insertion points with one byte** — the ending
+run's trailing edge, then the next leading edge — because no leading edge
+is that boundary (`docs/plan-shaped-paint.md`, "What building found").
+The tint colours are unchanged: `Selectable` keeps M80/T80.4's alpha 40,
+the fields their 64, which is still unmeasured under text.
+
+Gates in `crates/lumen-static-shell/tests/bidi_caret.rs` (`just fonts`):
+pinned face, 16 px, a `Complex` stack from `from_static`, each on an
+`Everything` and a `Boundaries<256>` host with identical output, every
+input asserted handled:
+
+| gate | quantity | measured | bound | injection → measured |
+|---|---|---|---|---|
+| typing `שלום 123` into an empty `TextInput` | caret x from the run's right edge, per keystroke | −12, −21, −26, −36, −41, −52, −62, −72 | strictly falling | `find(byte >= at)` in `TextInput::x_of`: −12, −21, −26, −36, −41, **−41.82, −41.64, −41.46** |
+| — into an empty `TextArea` | the same | the same eight | strictly falling | `find(byte >= at)` in `TextArea::cluster_at`: the same three rising values |
+| a `TextInput` over `abc שלום`, bytes 2..8 selected by keys | selected letters' ink columns covered; ink columns of unselected letters inside the tint; tint rects | **23/23**, **0**, **2** | all, 0 (±1 px), 2 | one rect from `x_of(start)` to `x_of(end)`: 7/23, **10** stray (columns 43..50, 54..55: `ם`, `ו`), 1 rect |
+| — a `Selectable<String>`, the same bytes by a drag | the same | **23/23**, **0**, **2** | the same | the same one-rect injection in `tint_rows`: 7/23, **10** stray, 1 rect |
+| — either, the shaper's pair removed | the same | — | — | `place_line` pushes no closing point: 23/23 but **10** stray in both (the space's span ends at the word's right end), 2 rects in the field and 1 in the `Selectable` |
+| a press at the visual left end of `שלום` (line 1 of a two-line right-to-left `TextArea`) | the caret's offset | **8**, the `\n` (accept: its right end → 0) | 8; 0 | `offset_at` measures each cluster at its trailing edge: **6** |
+| `caret_rect` at scale 2 against the painted caret column | \|centre − column\|, physical px: `TextInput` at byte 4 of `abc שלום` (a direction change), at the end of `שלום`, `TextArea` at line 1's end | **0.50**, 0.00, 0.00 (columns 37 px of a 37.2 px line) | ≤ 1 | `TextInput::caret_rect` with `find(byte >= at)` while paint looks up exactly: **70.31** at byte 4 (the Hebrew word's width), 0 elsewhere |
+| `crates/lumen-static-text/tests/shaper.rs` mixed line | pairs (byte, trailing edge, leading edge) in `abc שלום def` | (4, **33.84**, 69.25), (12, **33.84**, 33.84) | bytes 4 and 12; both trailing edges equal, between the space's leading edge (28.76) and the word's (69.25) | no closing point pushed: **[]** |
+| firmware | `.text` Δ against `3f5c7e3`, four binaries | **+860 / +844 / +860 / +860 B** | K4: 1,000 B on `firmware_interactive` | `docs/results-embedded.md` M81/T81.5 |
+

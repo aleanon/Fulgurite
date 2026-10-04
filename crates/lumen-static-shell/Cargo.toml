@@ -199,3 +199,9 @@ required-features = ["live-agent", "truetype"]
 [[test]]
 name = "paint_shaped"
 required-features = ["shaping", "truetype"]
+
+# M81/T81.5: caret, selection and hit test over bidi runs, on a stack in
+# Complex mode.
+[[test]]
+name = "bidi_caret"
+required-features = ["shaping", "truetype"]

@@ -828,6 +828,56 @@ rather than as a display-list command: see the first decision.*
   The gate asserts equality with the `Complex` render, which all three
   break.
 
+- T81.5: **leading edges cannot give a span's trailing edge at a
+  direction change, so the shaper reports a second insertion point
+  there.** In `abc שלום` the edge between the space and the Hebrew word
+  is neither cluster's leading edge (the space's is its left, the
+  word's first letter's is the word's right end), and the line's width
+  and the trailing insertion point leave it underdetermined: one unknown
+  per left-to-right-then-right-to-left transition. "Using `rtl` for each
+  cluster's trailing edge" had nothing to read it from. So `Shaper`
+  pushes, at every direction change on a line and at a paragraph's end
+  when its last run runs against the paragraph, the ending run's
+  trailing edge as a cluster with the next byte, *before* that byte's
+  own cluster (`ShapedRun::clusters`; `Cluster`'s contract in `cx.rs`).
+  `Cluster` stays 12 B and a run with no direction change reports
+  exactly what it did; an offset at a direction change has two places on
+  screen, and the list now says so. Two text-crate tests that asserted
+  strictly rising bytes take the pair (`shaper.rs`'s mixed line now
+  asserts it: bytes 4 and 12, one edge seen from both sides; injection:
+  no pair pushed, the pair count prints 0).
+- T81.5: **`find(byte >= at)` is the exact lookup on a list in rising
+  byte order with one cluster per byte**, so the planned injection could
+  not fire on a pure right-to-left string; it differs only where a byte
+  appears twice. The typing gate types `שלום 123`, whose digits run left
+  to right inside a right-to-left paragraph, so its end is a direction
+  change; under the injection the caret answers the digits' trailing
+  edge and both lists stop falling at the sixth keystroke.
+- T81.5: **"each keystroke's caret x is below the last" cannot hold on
+  screen**: lines are laid out from x 0 whatever their direction (T81.2),
+  so a right-to-left paragraph's end, where the caret is, stays at the
+  run's left while its start moves right. The gate measures the caret
+  from the run's right edge, where a right-to-left paragraph starts.
+  Aligning a right-to-left paragraph to its box's right is not this
+  task's and is not built.
+- T81.5: the click injection ("`offset_at` picks trailing edges") prints
+  offset 6, before `ם`, not the line's logical start: the nearest
+  trailing edge to the left end is the last letter's. Recorded as
+  measured. The click gate works for a line a `\n` ends (the separator
+  is a zero-width cluster at the paragraph's level, at the line's far
+  end) and for the last line; a soft-wrapped right-to-left line has no
+  insertion point at its far end and lands on its last letter (the
+  `TextArea::offset_at` rustdoc says so).
+- T81.5: **the three widgets share one `caret` module**, not three
+  copies: `caret::at` (the lookup) and `caret::spans` (the tint), the
+  latter non-generic over a `&mut dyn FnMut`, because `TextInput` is in
+  every firmware binary and a generic copy per closure cost +1,464 B on
+  `firmware_interactive` against K4's 1,000; shared, +844 B. `TextInput`'s
+  `offset_at` also dropped the run's right end as its seed candidate when
+  the measurer reports the text's end: at a right-to-left run's right end
+  it tied the first letter's leading edge and won. `Selectable`'s line
+  ends go to the left of a right-to-left line's last letter.
+
 **What the review found (M81).**
 
 - C4 → adopted: `Session::shaping` is required, the compiler is the

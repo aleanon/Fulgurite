@@ -34,6 +34,15 @@ use crate::desc::Size;
 /// right-to-left text (`BakedFace`, `FontMetrics`) reports `rtl: false`
 /// throughout, and for it nothing changed.
 ///
+/// **A direction change is two insertion points** (M81/T81.5): where a
+/// run ends and the next character, or the text's end, runs the other
+/// way, the offset between them is reported twice with one byte — first
+/// the ending run's *trailing* edge (its `rtl` and line), then the next
+/// cluster's leading edge. No leading edge is that boundary, so without
+/// it a caret, a click or a selection's tint could not reach it. A reader
+/// wanting one place per offset takes the **last** cluster with that
+/// byte; a run that never changes direction reports no pair.
+///
 /// 12 bytes: `rtl` takes a byte of what was padding after `line`
 /// (`docs/results-embedded.md`, M81/T81.2, prints the size).
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -65,7 +74,8 @@ pub struct Cluster {
 pub trait GlyphSink {
     /// Record one cluster boundary. Called in source order, with `x` the
     /// leading edge ([`Cluster`]'s contract), whatever the run's
-    /// direction.
+    /// direction — and twice for one byte at a direction change, the
+    /// first time with the ending run's trailing edge.
     fn cluster(&mut self, c: Cluster);
 
     /// Whether further clusters would be dropped. `shape` checks this

@@ -12,7 +12,10 @@
 //!   opportunity or inside a word wider than the box;
 //! - a `FaceSource`'s answer is the face a glyph is keyed with: Hebrew
 //!   from the fallback face the source names, a 700 run from the bold;
-//! - `Cluster` is still 12 bytes with `rtl` in it.
+//! - `Cluster` is still 12 bytes with `rtl` in it;
+//! - since M81/T81.5, a direction change in a mixed line is reported as
+//!   two insertion points with one byte, the ending run's trailing edge
+//!   first.
 
 use lumen_static::cx::Cluster;
 use lumen_static_text::{FaceSource, ShapedRun, Shaper};
@@ -76,14 +79,33 @@ fn hebrew_clusters_arrive_in_source_order_with_falling_leading_edges() {
 /// A mixed line: source order throughout, the Hebrew word's clusters
 /// falling inside it and the Latin ones rising, the base direction
 /// left to right (the trailing point at the right end).
+///
+/// Since M81/T81.5 a direction change is **two insertion points**: the
+/// byte where the Hebrew word starts (4) and where it ends (12) each
+/// appear twice, the ending run's trailing edge first. Both trailing
+/// edges are the one edge between the space and the word — which no
+/// leading edge is — so they are equal and lie between the space's
+/// leading edge and the word's. Injection (T81.5's commit): `place_line`
+/// pushes no closing point; the pair count prints 0.
 #[test]
 fn a_mixed_line_keeps_source_order_and_each_runs_direction() {
     let text = "abc \u{5e9}\u{5dc}\u{5d5}\u{5dd} def";
     let run = shape(text, f32::INFINITY);
     let cs: Vec<(u32, f32, bool)> = run.clusters.iter().map(|c| (c.byte, c.x, c.rtl)).collect();
     println!("mixed clusters (byte, x, rtl): {cs:?}");
-    assert!(cs.windows(2).all(|w| w[1].0 > w[0].0), "not in source order: {cs:?}");
-    let heb: Vec<f32> = cs.iter().filter(|c| c.2).map(|c| c.1).collect();
+    assert!(cs.windows(2).all(|w| w[1].0 >= w[0].0), "not in source order: {cs:?}");
+    // The pairs: a byte reported twice, the first carrying the other
+    // direction.
+    let pairs: Vec<(u32, f32, f32)> =
+        cs.windows(2).filter(|w| w[0].0 == w[1].0).map(|w| (w[0].0, w[0].1, w[1].1)).collect();
+    println!("direction changes (byte, trailing edge, leading edge): {pairs:?} (bound: bytes [4, 12], trailing edges equal)");
+    assert_eq!(pairs.iter().map(|p| p.0).collect::<Vec<_>>(), vec![4, 12], "not one pair per direction change: {pairs:?}");
+    assert!(cs.windows(2).filter(|w| w[0].0 == w[1].0).all(|w| w[0].2 != w[1].2), "a pair keeps one direction: {cs:?}");
+    let (edge, space, word) = (pairs[0].1, cs[3].1, pairs[0].2);
+    assert!((pairs[1].1 - edge).abs() < 0.01, "the two sides of one edge disagree: {pairs:?}");
+    assert!(space < edge && edge < word, "the edge {edge} is not between the space's {space} and the word's {word}");
+    let letter = |k: usize| cs.get(k + 1).is_none_or(|n| n.0 != cs[k].0);
+    let heb: Vec<f32> = (0..cs.len()).filter(|&k| cs[k].2 && letter(k)).map(|k| cs[k].1).collect();
     assert_eq!(heb.len(), 4, "setup: the four Hebrew letters are right to left");
     assert!(heb.windows(2).all(|w| w[1] < w[0]), "Hebrew x does not fall: {heb:?}");
     let last = cs.last().unwrap();

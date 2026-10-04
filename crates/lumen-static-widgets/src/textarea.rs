@@ -323,9 +323,15 @@ impl<S: TextBuffer> TextArea<S> {
         crate::edit::next_boundary(self.text.as_ref(), at)
     }
 
+    /// The cluster that places offset `byte` — **looked up exactly**
+    /// (M81/T81.5, [`crate::caret::at`]): the last cluster with that byte,
+    /// so a direction change's offset is placed at what follows it and the
+    /// text's end at the paragraph direction's end. It was the first with
+    /// `byte >= at`, which assumed one place per offset. `caret_at`, the
+    /// IME area and Up/Down all read this.
     fn cluster_at(&self, byte: usize) -> Option<Cluster> {
         let cl = self.clusters.as_slice();
-        cl.iter().find(|c| c.byte as usize >= byte).copied().or_else(|| cl.last().copied())
+        crate::caret::at(cl, byte).copied().or_else(|| cl.last().copied())
     }
 
     /// Move the caret to the line `delta` away, keeping its x.
@@ -463,7 +469,9 @@ impl<S: TextBuffer> TextArea<S> {
         }
     }
 
-    /// Caret position within the run, in logical px.
+    /// Caret position within the run, in logical px: `cluster_at`'s x,
+    /// so over a right-to-left line the caret after a letter is at the
+    /// letter's left (M81/T81.5).
     fn caret_at(&self) -> (f32, f32) {
         match self.cluster_at(self.caret) {
             Some(c) => (c.x, c.line as f32 * self.line_h),
@@ -535,33 +543,18 @@ impl<S: TextBuffer> TextArea<S> {
     }
 
     /// Byte offset nearest a point in the run — where a click lands.
-    /// The selection as one rect per line it covers.
+    /// The selection as rects, `f(x0, x1, line)`.
     ///
     /// A multi-line selection is not one rectangle: it is a partial
-    /// first line, whole middle lines, and a partial last one. Yielding
-    /// per line keeps `paint` from having to know that, and keeps the
-    /// geometry in the one place that has the clusters.
-    fn selection_runs(
-        &self,
-        sel: &core::ops::Range<usize>,
-    ) -> impl Iterator<Item = (f32, f32, u16)> + '_ {
-        let cl = self.clusters.as_slice();
-        let (lo, hi) = (sel.start, sel.end);
-        let lines = cl.iter().map(|c| c.line).max().unwrap_or(0);
-        (0..=lines).filter_map(move |line| {
-            let mut bounds: Option<(f32, f32)> = None;
-            for c in cl.iter().filter(|c| c.line == line) {
-                let b = c.byte as usize;
-                if b < lo || b > hi {
-                    continue;
-                }
-                bounds = Some(match bounds {
-                    None => (c.x, c.x),
-                    Some((a, z)) => (a.min(c.x), z.max(c.x)),
-                });
-            }
-            bounds.filter(|(a, z)| z > a).map(|(a, z)| (a, z, line))
-        })
+    /// first line, whole middle lines, and a partial last one — and
+    /// since M81/T81.5 a line that changes direction inside the
+    /// selection is one rect per visually contiguous span
+    /// ([`crate::caret::spans`]). It was each line's lowest to highest
+    /// selected x, which over `abc שלום` tinted the unselected letters
+    /// between the two parts. A line's last cluster ends where it starts
+    /// (its trailing edge is on no cluster of the line), as before.
+    fn selection_runs(&self, sel: &core::ops::Range<usize>, mut f: impl FnMut(f32, f32, u16)) {
+        crate::caret::spans(self.clusters.as_slice(), sel.clone(), &[], &mut f);
     }
 
     /// Where a pointer event landed, in byte offsets.
@@ -578,6 +571,14 @@ impl<S: TextBuffer> TextArea<S> {
         self.moved(cx.mods.has(lumen_static::event::Mods::SHIFT), from) | moved
     }
 
+    /// The byte nearest a point: on the line `y` falls in, **the nearest
+    /// leading edge** (M81/T81.5) — a cluster's own x, a direction
+    /// change's trailing edge and the text's end each being one. So a
+    /// click at the visual left end of a right-to-left line lands at its
+    /// logical end: a line a `\n` ends has that separator there (no
+    /// width, at the paragraph's level), the last line has the text's
+    /// end. A soft-wrapped line has no insertion point at its far end,
+    /// and lands on its last letter.
     fn offset_at(&self, x: f32, y: f32) -> usize {
         let line = if self.line_h > 0.0 { (y / self.line_h).max(0.0) as u16 } else { 0 };
         let cl = self.clusters.as_slice();
@@ -800,19 +801,17 @@ impl<S: TextBuffer> Node for TextArea<S> {
         // The selection, behind the run — same rule as `TextInput`: a
         // highlight painted after the glyphs would hide them.
         if let Some(sel) = self.selection() {
-            for (x0, x1, line) in self.selection_runs(&sel) {
+            let tint = self.selection_color.unwrap_or_else(|| crate::input::selection_tint(s.fg));
+            self.selection_runs(&sel, |x0, x1, line| {
                 let top = inner[1] + line as f32 * self.line_h - self.scroll;
-                out.rect(
-                    [inner[0] + x0, top, inner[0] + x1, top + self.line_h],
-                    self.selection_color.unwrap_or_else(|| crate::input::selection_tint(s.fg)),
-                );
-            }
+                out.rect([inner[0] + x0, top, inner[0] + x1, top + self.line_h], tint);
+            });
         }
         if let Some(pre) = self.preedit.clone() {
-            for (x0, x1, line) in self.selection_runs(&pre) {
+            self.selection_runs(&pre, |x0, x1, line| {
                 let top = inner[1] + (line as f32 + 1.0) * self.line_h - self.scroll;
                 out.rect([inner[0] + x0, top - 2.0, inner[0] + x1, top - 1.0], s.fg);
-            }
+            });
         }
         if s.focused {
             let (cx, cy) = self.caret_at();

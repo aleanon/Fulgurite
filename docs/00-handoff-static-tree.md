@@ -1058,6 +1058,14 @@ The years go to:
   `LUMEN_SHOT` and every headless shot. Until M81 it was **OPEN**:
   `lumen-static-text` shaped for measurement only, and the painter drew
   the unshaped string (§2.1 there; T45.4).
+  *M81/T81.5:* selection across bidi runs **DECIDED** for one run: a
+  direction change is two insertion points with one byte (the ending
+  run's trailing edge, then the next leading edge), an offset is placed
+  by the last cluster with its byte, a click takes the nearest leading
+  edge, and a selection is tinted one rect per visually contiguous span
+  (`TextInput`, `TextArea`, `Selectable`; `docs/results-text.md`
+  M81/T81.5). Visual caret movement stays **deferred** (Left/Right are
+  logical), as does bidi word order in `RichText`.
   *M81/T81.1:* the crate edge is **DECIDED** and turned round
   (`docs/plan-shaped-paint.md`, D1 a and c): the text crate depends on
   the core alone, the shell reaches it behind its default-off `shaping`

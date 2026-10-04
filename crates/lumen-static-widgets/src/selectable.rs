@@ -63,7 +63,8 @@ pub struct Selectable<S: TextStorage = &'static str> {
     /// The shown text's clusters, shaped against the room the label wraps
     /// in, so a cluster's `line` is the painted run's line.
     clusters: Vec<Cluster>,
-    /// The right edge of each line's last character, by line.
+    /// The trailing edge of each line's last character, by line: its
+    /// right edge, or its left in a right-to-left run (M81/T81.5).
     line_ends: Vec<f32>,
     /// What `clusters` was shaped under: the key the label's memo uses,
     /// and the shown text's length. A still frame reshapes nothing.
@@ -139,8 +140,10 @@ impl<S: TextStorage> Selectable<S> {
     }
 
     /// The byte nearest a point in the content box: the row it falls in,
-    /// then the nearest cluster boundary on that row (a row's end
-    /// included, so a press past a line's last character lands after it).
+    /// then the nearest cluster boundary on that row — a leading edge, a
+    /// direction change's trailing edge, or the row's end (so a press past
+    /// a line's last character lands after it, at the left of a
+    /// right-to-left one: M81/T81.5).
     fn offset_at(&self, x: f32, y: f32) -> usize {
         let cl = &self.clusters;
         let Some(last) = cl.last() else { return 0 };
@@ -172,29 +175,16 @@ impl<S: TextStorage> Selectable<S> {
         best.1
     }
 
-    /// The selection as one rect per row it covers, `(x0, x1, line)` in
-    /// the content box: a partial first row, whole middle rows, a partial
-    /// last one.
+    /// The selection as rects, `(x0, x1, line)` in the content box: a
+    /// partial first row, whole middle rows, a partial last one — and,
+    /// over a row that changes direction, **one rect per visually
+    /// contiguous span** (M81/T81.5, [`crate::caret::spans`], the rule
+    /// `TextInput` and `TextArea` tint by). It was each row from the
+    /// first selected offset's x to the last's, which over a mixed run
+    /// tinted the unselected letters between the parts. A row's last
+    /// character ends at its `line_ends` entry.
     fn tint_rows(&self, sel: core::ops::Range<usize>, mut f: impl FnMut(f32, f32, u16)) {
-        let cl = &self.clusters;
-        let lines = cl.last().map_or(0, |c| c.line as usize + 1);
-        let mut k = 0;
-        for line in 0..lines {
-            let start = k;
-            while k < cl.len() && cl[k].line as usize == line {
-                k += 1;
-            }
-            let row = &cl[start..k];
-            if !row.iter().any(|c| (sel.start..sel.end).contains(&(c.byte as usize))) {
-                continue;
-            }
-            let end = self.line_ends.get(line).copied().unwrap_or(0.0);
-            let x_of = |b: usize| row.iter().find(|c| c.byte as usize >= b).map_or(end, |c| c.x);
-            let (x0, x1) = (x_of(sel.start), x_of(sel.end));
-            if x1 > x0 {
-                f(x0, x1, line as u16);
-            }
-        }
+        crate::caret::spans(&self.clusters, sel, &self.line_ends, &mut f);
     }
 }
 
@@ -291,8 +281,11 @@ impl<S: TextStorage> Node for Selectable<S> {
             let (px, wt) = (s.font_size, s.font_weight);
             self.clusters.clear();
             let run = cx.text.shape(shown, px, wt, room, &mut self.clusters);
-            // Each line's right edge: its last character's start plus that
-            // character's width (a cluster carries only its start).
+            // Each line's end: its last character's leading edge plus that
+            // character's width (a cluster carries only its leading edge),
+            // to the left when the character runs right to left (M81/T81.5).
+            // A direction change's or the text's end point is a cluster
+            // already, and adds no width.
             self.line_ends.clear();
             for (k, c) in self.clusters.iter().enumerate() {
                 let last_on_line = self.clusters.get(k + 1).is_none_or(|n| n.line != c.line);
@@ -305,7 +298,7 @@ impl<S: TextStorage> Node for Selectable<S> {
                 while self.line_ends.len() < c.line as usize {
                     self.line_ends.push(c.x);
                 }
-                self.line_ends.push(c.x + w);
+                self.line_ends.push(if c.rtl { c.x - w } else { c.x + w });
             }
             let lines = self.clusters.last().map_or(0, |c| c.line as u32 + 1);
             self.rows = if lines == 0 {

@@ -101,6 +101,7 @@ pub mod glass;
 pub mod reload;
 pub mod image;
 pub(crate) mod edit;
+mod caret;
 pub mod fit;
 pub mod input;
 pub mod labelled;

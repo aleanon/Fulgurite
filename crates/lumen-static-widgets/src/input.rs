@@ -530,27 +530,43 @@ impl<S: TextBuffer> TextInput<S> {
     /// so the selection rect and the caret cannot disagree about where a
     /// boundary is.
     ///
-    /// **Past the last cluster is the run's end** — M57/B15. It answered
-    /// the last cluster's *start*, so a caret at the end of the text sat
-    /// before the last glyph, and a selection to the end stopped short of
-    /// it. The run's width is the shaped one (`shaped_size`): `paint`
-    /// passed the box's width here, which is not where the text ends.
+    /// **The byte is looked up exactly** — M81/T81.5. It was the first
+    /// cluster with `byte >= at`, which is the same thing while every
+    /// offset has one place; at a direction change an offset has two (the
+    /// ending run's trailing edge, then what follows), and the caret is
+    /// the second, as [`crate::caret::at`] says for all three text
+    /// widgets. So the end of the text is the trailing insertion point,
+    /// at the paragraph direction's end: the run's right end for a
+    /// left-to-right paragraph (M57/B15: the last cluster's *start* put
+    /// the caret before the last glyph), its left end for a right-to-left
+    /// one. With no clusters at all (the `BlockMetrics` stand-in) the end
+    /// is the run's width (`shaped_size`), not the box's.
     fn x_of(&self, at: usize) -> f32 {
         let run_w = self.shaped_size.0;
         let cl = self.clusters.as_slice();
         if cl.is_empty() {
             return if at == 0 { 0.0 } else { run_w };
         }
-        cl.iter().find(|c| c.byte as usize >= at).map(|c| c.x).unwrap_or(run_w)
+        crate::caret::at(cl, at).map_or(run_w, |c| c.x)
     }
 
-    /// Byte offset nearest an x within the run — a click's landing spot.
+    /// Byte offset nearest an x within the run — a click's landing spot:
+    /// **the nearest leading edge** (M81/T81.5), a direction change's
+    /// trailing edge and the text's end included, each a cluster.
     fn offset_at(&self, x: f32) -> usize {
         let cl = self.clusters.as_slice();
+        let len = self.text.as_ref().len();
         // The end of the text is a place a click can land too: only
         // cluster *starts* were candidates, so a click past the last
-        // character put the caret before it (M57/B15).
-        let mut best = ((self.shaped_size.0 - x).abs(), self.text.as_ref().len());
+        // character put the caret before it (M57/B15). A measurer reports
+        // that end as a cluster, at the paragraph direction's end; the
+        // run's right end stands in only where none does — as the
+        // candidate it was, a click at a right-to-left run's right end
+        // tied its first letter and won (M81/T81.5).
+        let mut best = match cl.last() {
+            Some(c) if c.byte as usize == len => (f32::INFINITY, len),
+            _ => ((self.shaped_size.0 - x).abs(), len),
+        };
         for c in cl {
             let d = (c.x - x).abs();
             if d < best.0 {
@@ -558,6 +574,18 @@ impl<S: TextBuffer> TextInput<S> {
             }
         }
         best.1
+    }
+
+    /// The x spans `range` covers in the run, through
+    /// [`crate::caret::spans`]: each selected cluster from its leading to
+    /// its trailing edge, contiguous ones joined. With no clusters (the
+    /// stand-in), the one span between the range's ends.
+    fn spans(&self, range: core::ops::Range<usize>, mut f: impl FnMut(f32, f32)) {
+        let cl = self.clusters.as_slice();
+        if cl.is_empty() {
+            return f(self.x_of(range.start), self.x_of(range.end));
+        }
+        crate::caret::spans(cl, range, &[], &mut |a, b, _| f(a, b));
     }
 }
 
@@ -791,12 +819,11 @@ impl<S: TextBuffer> Node for TextInput<S> {
         // B4 decided the selection is an ordinary rect, and it is
         // painted *before* the run so the text sits on top of it —
         // a selection drawn after would hide the glyphs it highlights.
+        // One rect per visually contiguous span (M81/T81.5,
+        // `caret::spans`): a selection across a direction change is two.
         if let Some(sel) = self.selection() {
-            let (a, b) = (self.x_of(sel.start), self.x_of(sel.end));
-            out.rect(
-                [x + a, inner[1], x + b, inner[3]],
-                self.selection_color.unwrap_or_else(|| selection_tint(s.fg)),
-            );
+            let tint = self.selection_color.unwrap_or_else(|| selection_tint(s.fg));
+            self.spans(sel, |a, b| out.rect([x + a, inner[1], x + b, inner[3]], tint));
         }
         // **The run's rect holds the whole run, never just the visible part
         // of it.** A text rect's width is the width the glyphs are laid
@@ -829,8 +856,7 @@ impl<S: TextBuffer> Node for TextInput<S> {
         // The composing run is underlined, which is how every platform
         // shows "this is not committed yet" (T14.8).
         if let Some(pre) = self.preedit.clone() {
-            let (a, b) = (self.x_of(pre.start), self.x_of(pre.end));
-            out.rect([x + a, inner[3] - 2.0, x + b, inner[3] - 1.0], s.fg);
+            self.spans(pre, |a, b| out.rect([x + a, inner[3] - 2.0, x + b, inner[3] - 1.0], s.fg));
         }
         if s.focused && !self.read_only {
             let cx_pos = inner[0] - self.scroll + self.caret_x();

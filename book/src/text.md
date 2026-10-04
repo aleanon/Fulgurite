@@ -127,6 +127,23 @@ the one mode, so a box and its glyphs cannot disagree
 says why it is not a glyph command). `Basic`, the default, is what every
 program had before.
 
+**Carets and selections follow the shaped run** (M81/T81.5). In
+right-to-left text a letter's caret is at its left, and where a line changes
+direction one offset has two places on screen — the end of the run that
+stops there and the start of what follows — so the shaper reports both,
+and a field puts its caret at the second. A press lands on the nearest
+leading edge, so a press at the left end of a right-to-left line puts
+the caret at the line's logical end. The highlight is the part a
+reader would expect, never the letters between two selected parts:
+
+```text
+{{#include ../../crates/lumen-static-widgets/src/caret.rs:tint_rule}}
+```
+
+Left and Right still step through the text in reading order, not across
+the screen (`docs/plan-shaped-paint.md`, "Not in M81"); the gates and
+their numbers are in `docs/results-text.md` (M81/T81.5).
+
 ## Localisation
 
 A `Catalogue` is a sorted `&'static [(&str, &str)]` — the same shape a

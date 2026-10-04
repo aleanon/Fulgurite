@@ -97,7 +97,10 @@ fn a_mixed_line_produces_runs_in_both_directions() {
     let bytes: Vec<u32> = c.0.iter().map(|c| c.byte).collect();
     let xs: Vec<f32> = c.0.iter().map(|c| c.x).collect();
     println!("bytes {bytes:?}, x {xs:?}");
-    assert!(bytes.windows(2).all(|w| w[1] > w[0]), "clusters not in source order: {bytes:?}");
+    // A byte may repeat once at a direction change (M81/T81.5: the
+    // ending run's trailing edge, then the next run's leading edge).
+    assert!(bytes.windows(2).all(|w| w[1] >= w[0]), "clusters not in source order: {bytes:?}");
+    assert!(bytes.windows(3).all(|w| !(w[0] == w[1] && w[1] == w[2])), "a byte reported three times: {bytes:?}");
     assert!(xs.windows(2).any(|w| w[1] < w[0]), "x never falls, so nothing ran right to left: {xs:?}");
     assert!(c.0.iter().any(|c| c.rtl) && c.0.iter().any(|c| !c.rtl), "both directions are reported");
 }

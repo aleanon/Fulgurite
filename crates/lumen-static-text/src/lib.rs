@@ -127,6 +127,20 @@ pub struct ShapedRun {
     /// edge ([`Cluster`]'s contract), then the trailing insertion point
     /// (byte = the text's length), which carries the last paragraph's
     /// direction and sits at that direction's end of the last line.
+    ///
+    /// **A direction change is two insertion points** — M81/T81.5. Where
+    /// the next character (or the text's end) runs the other way, the
+    /// offset between them has two places on screen: the trailing edge
+    /// of the run that ends there, and the leading edge of what follows.
+    /// The first is reported too, *before* the second and with the same
+    /// byte, carrying the ending run's `rtl` and line. Leading edges
+    /// alone cannot give it: in `abc שלום` the edge between the space
+    /// and the Hebrew word is neither cluster's leading edge, so a
+    /// selection's tint could not end there (`docs/plan-shaped-paint.md`,
+    /// "What building found"). A run with no direction change — every
+    /// run that builds no `BidiInfo` — has none, so its list is
+    /// unchanged. A reader that wants one place per offset takes the
+    /// last cluster with that byte.
     pub clusters: Vec<Cluster>,
     pub lines: Vec<ShapedLine>,
     /// Whether `unicode_bidi` ordered this run: some character has a
@@ -235,6 +249,9 @@ pub struct Shaper {
     units: Vec<Unit>,
     paras: Vec<Para>,
     breaks: Vec<(u32, bool)>,
+    /// The trailing insertion points at direction changes, before they
+    /// are merged into the run's clusters (`ShapedRun::clusters`).
+    closing: Vec<Cluster>,
 }
 
 /// Whether `c` is a right-to-left bidi class, or an embedding that can
@@ -329,16 +346,39 @@ impl Shaper {
 
         let mut line: u16 = 0;
         let mut last_rtl = false;
+        let mut closing = core::mem::take(&mut self.closing);
+        closing.clear();
         for pi in 0..self.paras.len() {
             let para = self.paras[pi];
             last_rtl = para.rtl;
             self.shape_paragraph(src, text, px, weight, para, bidi.as_ref());
-            self.break_and_place(px, wrap, max_w, para, bidi.as_ref(), &mut line, out);
+            self.break_and_place(px, wrap, max_w, para, bidi.as_ref(), &mut line, out, &mut closing);
         }
 
         // Clusters arrive per line in visual order; the contract is
         // source order.
         out.clusters.sort_unstable_by_key(|c| c.byte);
+        // Each direction change's trailing insertion point goes in
+        // before the cluster with its byte (`ShapedRun::clusters`):
+        // merged from the back, a regular cluster taking the later slot
+        // on a tie. Only a bidi run has any.
+        if !closing.is_empty() {
+            closing.sort_unstable_by_key(|c| c.byte);
+            let (mut i, mut j) = (out.clusters.len(), closing.len());
+            out.clusters.extend_from_slice(&closing);
+            let mut k = out.clusters.len();
+            while j > 0 {
+                k -= 1;
+                if i > 0 && out.clusters[i - 1].byte >= closing[j - 1].byte {
+                    i -= 1;
+                    out.clusters[k] = out.clusters[i];
+                } else {
+                    j -= 1;
+                    out.clusters[k] = closing[j];
+                }
+            }
+        }
+        self.closing = closing;
 
         // The insertion point after the last character: the paragraph
         // direction's end of the last line, or the start of a new empty
@@ -495,6 +535,7 @@ impl Shaper {
         bidi: Option<&BidiInfo<'_>>,
         line: &mut u16,
         out: &mut ShapedRun,
+        closing: &mut Vec<Cluster>,
     ) {
         let n = self.units.len();
         if n == 0 {
@@ -533,14 +574,27 @@ impl Shaper {
                 }
                 (width, ink) = (w, i);
             }
-            self.place_line(px, LineAt { units: (start, end), soft, line: *line }, para, bidi, out);
+            self.place_line(px, LineAt { units: (start, end), soft, line: *line }, para, bidi, out, closing);
             *line = line.saturating_add(1);
             start = end;
         }
     }
 
-    /// Place one line's units in visual order.
-    fn place_line(&self, px: f32, at: LineAt, para: Para, bidi: Option<&BidiInfo<'_>>, out: &mut ShapedRun) {
+    /// Place one line's units in visual order, and push to `closing` the
+    /// trailing insertion point of every visual run whose logical
+    /// successor runs the other way: the next unit on the line, or, after
+    /// a paragraph's last unit, the text's end in the paragraph's
+    /// direction (the trailing insertion point `shape` adds).
+    #[allow(clippy::too_many_arguments)]
+    fn place_line(
+        &self,
+        px: f32,
+        at: LineAt,
+        para: Para,
+        bidi: Option<&BidiInfo<'_>>,
+        out: &mut ShapedRun,
+        closing: &mut Vec<Cluster>,
+    ) {
         let (start, end) = at.units;
         let units = &self.units[start..end];
         let lb = units[0].byte as usize;
@@ -575,10 +629,28 @@ impl Shaper {
                 for r in runs {
                     let rtl = levels[r.start].is_rtl();
                     let inside = units.iter().filter(|u| r.contains(&(u.byte as usize)));
+                    let from = pen;
                     if rtl {
-                        inside.rev().for_each(|u| place(u, true, &mut pen, out));
+                        inside.clone().rev().for_each(|u| place(u, true, &mut pen, out));
                     } else {
-                        inside.for_each(|u| place(u, false, &mut pen, out));
+                        inside.clone().for_each(|u| place(u, false, &mut pen, out));
+                    }
+                    // The run's logically last unit, and what follows it.
+                    let Some(k) = units.iter().rposition(|u| r.contains(&(u.byte as usize))).map(|p| start + p) else {
+                        continue;
+                    };
+                    let next = if k + 1 < end {
+                        let b = self.units[k + 1].byte as usize;
+                        (levels[b].is_rtl() != rtl).then_some(b as u32)
+                    } else if end == self.units.len() && rtl != para.rtl {
+                        Some(para.end as u32)
+                    } else {
+                        None
+                    };
+                    if let Some(byte) = next {
+                        // An LTR run ends at its right edge, an RTL one at
+                        // its left: where the pen left it, or began it.
+                        closing.push(Cluster { byte, x: if rtl { from } else { pen }, line, rtl });
                     }
                 }
             }
@@ -613,7 +685,9 @@ impl FaceSource for OneFace {
 /// before) and reports clusters **in source order with leading-edge
 /// x**, which `GlyphSink`'s contract had always said and this type
 /// broke by reporting them in visual order. A right-to-left cluster's
-/// `x` is its right edge, and its `rtl` is set.
+/// `x` is its right edge, and its `rtl` is set; a direction change is
+/// two insertion points with one byte (M81/T81.5,
+/// [`ShapedRun::clusters`]).
 ///
 /// **Its painter is a `Complex` stack** (M81/T81.3): measured with this
 /// and painted with a `Basic` `Canvas::with_font`, a run is laid out in
