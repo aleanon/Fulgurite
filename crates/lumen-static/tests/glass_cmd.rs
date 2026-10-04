@@ -33,6 +33,28 @@ fn the_command_is_free() {
     );
 }
 
+/// **`Gradient`'s payload is what sets `Cmd`'s 60 B**, so it is mirrored
+/// and printed beside its 56 B bound (M82/T82.0,
+/// `docs/plan-paint-vocabulary.md` K82a). M82 widens the variant (a kind,
+/// a geometry and a corner) and shrinks `Stops` to pay for it; this is
+/// the number those tasks must keep at 56.
+#[test]
+fn the_gradient_payload_fits() {
+    use lumen_static::display::Stops;
+    struct GradientPayload {
+        _rect: [f32; 4],
+        _stops: Stops,
+        _angle: f32,
+    }
+    let payload = core::mem::size_of::<GradientPayload>();
+    println!(
+        "Gradient payload {payload} B (bound 56; Stops {} B), Cmd {} B (bound 60)",
+        core::mem::size_of::<Stops>(),
+        core::mem::size_of::<Cmd>()
+    );
+    assert!(payload <= 56, "Gradient ({payload} B) grew past 56 and sets Cmd's size; that is a re-budget");
+}
+
 /// No two command kinds may fold to the same value for the same
 /// geometry, or retention cannot tell one becoming the other apart.
 ///

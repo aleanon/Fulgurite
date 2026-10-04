@@ -138,7 +138,6 @@ TRACKED                        # proposed by M81
 BACKGROUND_FILL                # proposed by M82
 GradKind                       # proposed by M82
 GradShape                      # proposed by M82
-GradientPayload                # proposed by M82
 MaskKey                        # proposed by M82
 PAINTBOX                       # proposed by M82
 PATH_TILE                      # proposed by M82

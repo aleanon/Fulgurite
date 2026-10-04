@@ -2,7 +2,8 @@
 
 > **Written 2026-09-28 as a section of `docs/plan-iced-roadmap.md`;
 > revised 2026-09-29 after that plan's seven-lens review, and moved to
-> its own file. Not started.** The shared byte inventory, seams (S1,
+> its own file. Building: T82.0 landed 2026-10-04
+> (`docs/results-paint-vocabulary.md`).** The shared byte inventory, seams (S1,
 > S2), test and doc discipline, and plan-wide kill rules K1–K4 are in
 > `docs/plan-iced-roadmap.md` §2–§4 and bind this plan; this file does
 > not restate them.

@@ -944,7 +944,10 @@ caret and selection through the `caret` module; the section below);
 rewritten by M81/T81.8 to carry M81/T81.6's −708 B on
 `firmware_interactive` (its own section above), which T81.6 had recorded
 there and not here, and re-measured by T81.8 itself: Δ 0 on all four
-(`just firmware-delta 3b3760d`).
+(`just firmware-delta 3b3760d`). Re-measured by M82/T82.0 (pins and a
+results doc, no firmware source): Δ 0 on all four (`just firmware-delta
+b873ab0`), `firmware_interactive` at 18,836 B of headroom
+(`docs/results-paint-vocabulary.md` T82.0).
 M80a's column is T80.0–T80.3, as K80b bounds it.
 
 | binary | `.text` | of 81,920 | headroom | `.rodata` | `.text` at `553fa5e` | T80.1 Δ | T80.2 Δ | T80.3 Δ | T80.5 Δ | M80a (K80b) | T81.1 Δ | T81.2 Δ | T81.3 Δ | T81.5 Δ | T81.6 Δ |
